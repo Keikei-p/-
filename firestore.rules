@@ -49,6 +49,11 @@ service cloud.firestore {
         && get(memberPath(companyId, request.auth.uid)).data.role == 'leader';
     }
 
+    function isCompanyOwner(companyId) {
+      return isCompanyMember(companyId)
+        && get(memberPath(companyId, request.auth.uid)).data.companyRole == 'owner';
+    }
+
     function sameCompany(companyId) {
       return companyId != null
         && currentCompanyId() == companyId
@@ -141,6 +146,16 @@ service cloud.firestore {
             .hasOnly(['name', 'updatedAt'])
         )
         || (
+          isSelf(userId)
+          && resource.data.companyId != null
+          && resource.data.companyRole != 'owner'
+          && resource.data.active == true
+          && request.resource.data.active == false
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['active', 'updatedAt'])
+          && getAfter(memberPath(resource.data.companyId, userId)).data.active == false
+        )
+        || (
           resource.data.companyId != null
           && isCompanyLeader(resource.data.companyId)
           && request.resource.data.companyId == resource.data.companyId
@@ -149,6 +164,10 @@ service cloud.firestore {
           && request.resource.data.companyRole == resource.data.companyRole
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['name', 'role', 'teamId', 'active', 'updatedAt'])
+          && (
+            request.resource.data.active == resource.data.active
+            || isCompanyOwner(resource.data.companyId)
+          )
           && (
             resource.data.companyRole != 'owner'
             || (
@@ -203,6 +222,10 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['name', 'role', 'teamId', 'active', 'updatedAt'])
           && (
+            request.resource.data.active == resource.data.active
+            || isCompanyOwner(companyId)
+          )
+          && (
             resource.data.companyRole != 'owner'
             || (
               request.resource.data.role == 'leader'
@@ -215,6 +238,16 @@ service cloud.firestore {
           && isCompanyMember(companyId)
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['name', 'updatedAt'])
+        )
+        || (
+          memberId == request.auth.uid
+          && isCompanyMember(companyId)
+          && resource.data.companyRole != 'owner'
+          && resource.data.active == true
+          && request.resource.data.active == false
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['active', 'updatedAt'])
+          && getAfter(userPath(request.auth.uid)).data.active == false
         );
 
         allow delete: if false;
