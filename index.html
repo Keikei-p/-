@@ -3,9 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
 <title>営業実績管理</title>
 
 <style>
+
 * {
   box-sizing: border-box;
 }
@@ -123,6 +125,8 @@ input {
   font-size: 15px;
   font-weight: 700;
   margin-top: 8px;
+  border: none;
+  cursor: pointer;
 }
 
 .secondary-btn {
@@ -131,6 +135,7 @@ input {
   padding: 10px 12px;
   border-radius: 9px;
   font-size: 13px;
+  border: none;
 }
 
 .danger-btn {
@@ -139,6 +144,8 @@ input {
   padding: 8px 10px;
   border-radius: 8px;
   font-size: 12px;
+  border: none;
+  cursor: pointer;
 }
 
 .product-row {
@@ -252,10 +259,6 @@ input {
   border-bottom: none;
 }
 
-.result-number {
-  font-weight: 800;
-}
-
 .result-revenue {
   color: #4b5563;
   font-size: 12px;
@@ -311,22 +314,50 @@ input {
   font-size: 14px;
 }
 
+.setup-message {
+  background: #f3f4f6;
+  border-radius: 12px;
+  padding: 16px;
+  text-align: center;
+  color: #4b5563;
+  font-size: 14px;
+  margin-bottom: 14px;
+}
+
+.setup-message strong {
+  display: block;
+  font-size: 16px;
+  color: #111827;
+  margin-bottom: 5px;
+}
+
 @media (min-width: 700px) {
+
   .summary-grid {
     grid-template-columns: repeat(3, 1fr);
   }
+
 }
+
 </style>
 </head>
+
 
 <body>
 
 <header>
+
   <h1>営業実績管理</h1>
-  <p>件数・個人実績・チーム実績・収益を一括管理</p>
+
+  <p>
+    件数・個人実績・チーム実績・収益を一括管理
+  </p>
+
 </header>
 
+
 <main>
+
 
 <!-- =========================
      タブ
@@ -334,27 +365,32 @@ input {
 
 <div class="tabs">
 
-  <button class="tab active"
+  <button
+    class="tab active"
     onclick="showPage('input', this)">
     ➕ 入力
   </button>
 
-  <button class="tab"
+  <button
+    class="tab"
     onclick="showPage('team', this)">
     👥 チーム
   </button>
 
-  <button class="tab"
+  <button
+    class="tab"
     onclick="showPage('personal', this)">
     👤 個人
   </button>
 
-  <button class="tab"
+  <button
+    class="tab"
     onclick="showPage('history', this)">
     📋 履歴
   </button>
 
-  <button class="tab"
+  <button
+    class="tab"
     onclick="showPage('settings', this)">
     ⚙️ 管理
   </button>
@@ -366,30 +402,68 @@ input {
      入力
 ========================= -->
 
-<section id="input" class="page active">
+<section
+  id="input"
+  class="page active">
 
   <div class="card">
 
     <h2>実績を入力</h2>
 
+
+    <div
+      id="noMemberMessage"
+      class="setup-message"
+      style="display:none;">
+
+      <strong>
+        スタッフを登録してください
+      </strong>
+
+      「管理」からスタッフを追加すると
+      実績入力ができるようになります。
+
+    </div>
+
+
     <div class="form-group">
-      <label>担当者</label>
+
+      <label>
+        担当者
+      </label>
+
       <select id="inputMember"></select>
+
     </div>
+
 
     <div class="form-group">
-      <label>日付</label>
-      <input type="date" id="inputDate">
+
+      <label>
+        日付
+      </label>
+
+      <input
+        type="date"
+        id="inputDate">
+
     </div>
 
-    <h3>商材別実績</h3>
+
+    <h3>
+      商材別実績
+    </h3>
+
 
     <div id="inputProducts"></div>
+
 
     <button
       class="primary-btn"
       onclick="saveRecord()">
+
       実績を登録する
+
     </button>
 
   </div>
@@ -401,11 +475,16 @@ input {
      チーム
 ========================= -->
 
-<section id="team" class="page">
+<section
+  id="team"
+  class="page">
 
   <div class="card">
 
-    <h2>チーム全体</h2>
+    <h2>
+      チーム全体
+    </h2>
+
 
     <div class="revenue-total">
 
@@ -416,10 +495,13 @@ input {
       <div
         class="value"
         id="teamRevenue">
+
         0円
+
       </div>
 
     </div>
+
 
     <div
       id="teamSummary"
@@ -435,13 +517,19 @@ input {
      個人
 ========================= -->
 
-<section id="personal" class="page">
+<section
+  id="personal"
+  class="page">
 
   <div class="card">
 
-    <h2>個人実績</h2>
+    <h2>
+      個人実績
+    </h2>
 
-    <div id="personalResults"></div>
+    <div
+      id="personalResults">
+    </div>
 
   </div>
 
@@ -452,13 +540,19 @@ input {
      履歴
 ========================= -->
 
-<section id="history" class="page">
+<section
+  id="history"
+  class="page">
 
   <div class="card">
 
-    <h2>実績履歴</h2>
+    <h2>
+      実績履歴
+    </h2>
 
-    <div id="historyList"></div>
+    <div
+      id="historyList">
+    </div>
 
   </div>
 
@@ -469,59 +563,36 @@ input {
      管理
 ========================= -->
 
-<section id="settings" class="page">
+<section
+  id="settings"
+  class="page">
+
+
+  <!-- スタッフ -->
 
   <div class="card">
 
-    <h2>商材管理</h2>
+    <h2>
+      スタッフ管理
+    </h2>
 
-    <p style="font-size:12px;color:#6b7280;">
-      商材名と1件あたりの収益を設定できます。
+    <p
+      style="
+        font-size:12px;
+        color:#6b7280;
+      ">
+
+      このチームで働くスタッフを
+      自由に登録できます。
+
     </p>
 
-    <div class="form-group">
-
-      <label>商材名</label>
-
-      <input
-        id="newProductName"
-        placeholder="例：NURO光">
-
-    </div>
 
     <div class="form-group">
 
-      <label>1件あたりの収益</label>
-
-      <input
-        id="newProductRevenue"
-        type="number"
-        inputmode="numeric"
-        placeholder="例：25000">
-
-    </div>
-
-    <button
-      class="primary-btn"
-      onclick="addProduct()">
-      ＋ 商材を追加
-    </button>
-
-    <div
-      style="margin-top:18px"
-      id="productList">
-    </div>
-
-  </div>
-
-
-  <div class="card">
-
-    <h2>スタッフ管理</h2>
-
-    <div class="form-group">
-
-      <label>スタッフ名</label>
+      <label>
+        スタッフ名
+      </label>
 
       <input
         id="newMemberName"
@@ -529,11 +600,15 @@ input {
 
     </div>
 
+
     <button
       class="primary-btn"
       onclick="addMember()">
+
       ＋ スタッフを追加
+
     </button>
+
 
     <div
       style="margin-top:18px"
@@ -543,29 +618,108 @@ input {
   </div>
 
 
+  <!-- 商材 -->
+
   <div class="card">
 
-    <h2>データ管理</h2>
+    <h2>
+      商材管理
+    </h2>
+
+    <p
+      style="
+        font-size:12px;
+        color:#6b7280;
+      ">
+
+      商材名と1件あたりの収益を
+      自由に設定できます。
+
+    </p>
+
+
+    <div class="form-group">
+
+      <label>
+        商材名
+      </label>
+
+      <input
+        id="newProductName"
+        placeholder="例：NURO光">
+
+    </div>
+
+
+    <div class="form-group">
+
+      <label>
+        1件あたりの収益
+      </label>
+
+      <input
+        id="newProductRevenue"
+        type="number"
+        inputmode="numeric"
+        placeholder="例：25000">
+
+    </div>
+
+
+    <button
+      class="primary-btn"
+      onclick="addProduct()">
+
+      ＋ 商材を追加
+
+    </button>
+
+
+    <div
+      style="margin-top:18px"
+      id="productList">
+    </div>
+
+  </div>
+
+
+  <!-- データ管理 -->
+
+  <div class="card">
+
+    <h2>
+      データ管理
+    </h2>
 
     <button
       class="danger-btn"
       onclick="resetAllData()">
+
       全データを削除
+
     </button>
 
   </div>
 
 </section>
 
+
 </main>
 
 
 <script>
 
+/* =========================================================
+   初期データ
+   ========================================================= */
+
 /*
-============================================================
-初期データ
-============================================================
+   ここが今回の重要ポイント。
+
+   初期スタッフは「0人」。
+
+   誰が使っても、
+   自分でスタッフを追加して使える。
 */
 
 const defaultProducts = [
@@ -603,60 +757,44 @@ const defaultProducts = [
 ];
 
 
-const defaultMembers = [
-
-  {
-    id: Date.now() + 100,
-    name: "中本"
-  },
-
-  {
-    id: Date.now() + 101,
-    name: "灘野"
-  },
-
-  {
-    id: Date.now() + 102,
-    name: "異儀田"
-  },
-
-  {
-    id: Date.now() + 103,
-    name: "扇"
-  }
-
-];
-
-
 /*
-============================================================
-データ読み込み
-============================================================
+   スタッフは最初から存在しない。
 */
+
+const defaultMembers = [];
+
+
+/* =========================================================
+   データ読み込み
+   ========================================================= */
 
 let products =
   JSON.parse(
-    localStorage.getItem("sales_products")
+    localStorage.getItem(
+      "sales_products"
+    )
   ) || defaultProducts;
 
 
 let members =
   JSON.parse(
-    localStorage.getItem("sales_members")
+    localStorage.getItem(
+      "sales_members"
+    )
   ) || defaultMembers;
 
 
 let records =
   JSON.parse(
-    localStorage.getItem("sales_records")
+    localStorage.getItem(
+      "sales_records"
+    )
   ) || [];
 
 
-/*
-============================================================
-保存
-============================================================
-*/
+/* =========================================================
+   データ保存
+   ========================================================= */
 
 function saveData() {
 
@@ -665,10 +803,12 @@ function saveData() {
     JSON.stringify(products)
   );
 
+
   localStorage.setItem(
     "sales_members",
     JSON.stringify(members)
   );
+
 
   localStorage.setItem(
     "sales_records",
@@ -678,11 +818,9 @@ function saveData() {
 }
 
 
-/*
-============================================================
-起動
-============================================================
-*/
+/* =========================================================
+   起動
+   ========================================================= */
 
 document.addEventListener(
   "DOMContentLoaded",
@@ -695,25 +833,29 @@ document.addEventListener(
       .toISOString()
       .split("T")[0];
 
+
     renderAll();
 
   }
 );
 
 
-/*
-============================================================
-ページ切り替え
-============================================================
-*/
+/* =========================================================
+   ページ切り替え
+   ========================================================= */
 
-function showPage(pageId, button) {
+function showPage(
+  pageId,
+  button
+) {
 
   document
     .querySelectorAll(".page")
     .forEach(page => {
 
-      page.classList.remove("active");
+      page.classList.remove(
+        "active"
+      );
 
     });
 
@@ -722,7 +864,9 @@ function showPage(pageId, button) {
     .querySelectorAll(".tab")
     .forEach(tab => {
 
-      tab.classList.remove("active");
+      tab.classList.remove(
+        "active"
+      );
 
     });
 
@@ -732,18 +876,19 @@ function showPage(pageId, button) {
     .classList.add("active");
 
 
-  button.classList.add("active");
+  button.classList.add(
+    "active"
+  );
+
 
   renderAll();
 
 }
 
 
-/*
-============================================================
-入力画面
-============================================================
-*/
+/* =========================================================
+   入力画面
+   ========================================================= */
 
 function renderInput() {
 
@@ -753,23 +898,63 @@ function renderInput() {
     );
 
 
+  const noMemberMessage =
+    document.getElementById(
+      "noMemberMessage"
+    );
+
+
   memberSelect.innerHTML = "";
 
 
-  members.forEach(member => {
+  /*
+    スタッフが0人の場合
+  */
 
-    const option =
-      document.createElement("option");
+  if (
+    members.length === 0
+  ) {
 
-    option.value =
-      member.id;
+    memberSelect.disabled =
+      true;
 
-    option.textContent =
-      member.name;
+    noMemberMessage.style.display =
+      "block";
 
-    memberSelect.appendChild(option);
+  } else {
 
-  });
+    memberSelect.disabled =
+      false;
+
+    noMemberMessage.style.display =
+      "none";
+
+
+    members.forEach(
+      member => {
+
+        const option =
+          document.createElement(
+            "option"
+          );
+
+
+        option.value =
+          member.id;
+
+
+        option.textContent =
+          member.name;
+
+
+        memberSelect.appendChild(
+          option
+        );
+
+      }
+    );
+
+  }
 
 
   const container =
@@ -781,60 +966,98 @@ function renderInput() {
   container.innerHTML = "";
 
 
-  products.forEach(product => {
+  if (
+    products.length === 0
+  ) {
 
-    const row =
-      document.createElement("div");
-
-    row.className =
-      "product-row";
-
-
-    row.innerHTML = `
-
-      <div class="product-name">
-        ${escapeHtml(product.name)}
+    container.innerHTML = `
+      <div class="empty">
+        商材が登録されていません。
+        「管理」から商材を追加してください。
       </div>
-
-      <button
-        class="count-btn"
-        onclick="changeCount(
-          '${product.id}',
-          -1
-        )">
-        −
-      </button>
-
-      <div
-        class="count"
-        id="count-${product.id}">
-        0
-      </div>
-
-      <button
-        class="count-btn"
-        onclick="changeCount(
-          '${product.id}',
-          1
-        )">
-        ＋
-      </button>
-
     `;
 
+    return;
 
-    container.appendChild(row);
+  }
 
-  });
+
+  products.forEach(
+    product => {
+
+      const row =
+        document.createElement(
+          "div"
+        );
+
+
+      row.className =
+        "product-row";
+
+
+      row.innerHTML = `
+
+        <div class="product-name">
+
+          ${escapeHtml(
+            product.name
+          )}
+
+        </div>
+
+
+        <button
+          class="count-btn"
+          onclick="
+            changeCount(
+              '${product.id}',
+              -1
+            )
+          ">
+
+          −
+
+        </button>
+
+
+        <div
+          class="count"
+          id="count-${product.id}">
+
+          0
+
+        </div>
+
+
+        <button
+          class="count-btn"
+          onclick="
+            changeCount(
+              '${product.id}',
+              1
+            )
+          ">
+
+          ＋
+
+        </button>
+
+      `;
+
+
+      container.appendChild(
+        row
+      );
+
+    }
+  );
 
 }
 
 
-/*
-============================================================
-件数変更
-============================================================
-*/
+/* =========================================================
+   件数変更
+   ========================================================= */
 
 function changeCount(
   productId,
@@ -847,8 +1070,13 @@ function changeCount(
     );
 
 
+  if (!element) return;
+
+
   let count =
-    Number(element.textContent);
+    Number(
+      element.textContent
+    );
 
 
   count += amount;
@@ -867,13 +1095,24 @@ function changeCount(
 }
 
 
-/*
-============================================================
-実績登録
-============================================================
-*/
+/* =========================================================
+   実績登録
+   ========================================================= */
 
 function saveRecord() {
+
+  if (
+    members.length === 0
+  ) {
+
+    alert(
+      "先にスタッフを登録してください。"
+    );
+
+    return;
+
+  }
+
 
   const memberId =
     Number(
@@ -891,7 +1130,9 @@ function saveRecord() {
 
   if (!date) {
 
-    alert("日付を入力してください");
+    alert(
+      "日付を入力してください。"
+    );
 
     return;
 
@@ -901,38 +1142,48 @@ function saveRecord() {
   const results = {};
 
 
-  products.forEach(product => {
+  products.forEach(
+    product => {
 
-    const element =
-      document.getElementById(
-        `count-${product.id}`
-      );
-
-
-    const count =
-      Number(
-        element.textContent
-      );
+      const element =
+        document.getElementById(
+          `count-${product.id}`
+        );
 
 
-    if (count > 0) {
+      if (!element) return;
 
-      /*
-      登録時点の単価を保存
-      */
 
-      results[product.id] = {
+      const count =
+        Number(
+          element.textContent
+        );
 
-        count: count,
 
-        revenuePerUnit:
-          Number(product.revenue)
+      if (count > 0) {
 
-      };
+        /*
+          実績登録時点の単価を保存。
+
+          後から商材単価を変更しても
+          過去の実績は変わらない。
+        */
+
+        results[product.id] = {
+
+          count: count,
+
+          revenuePerUnit:
+            Number(
+              product.revenue
+            )
+
+        };
+
+      }
 
     }
-
-  });
+  );
 
 
   if (
@@ -940,7 +1191,7 @@ function saveRecord() {
   ) {
 
     alert(
-      "実績を1件以上入力してください"
+      "実績を1件以上入力してください。"
     );
 
     return;
@@ -974,64 +1225,103 @@ function saveRecord() {
 }
 
 
-/*
-============================================================
-チーム集計
-============================================================
-*/
+/* =========================================================
+   チーム集計
+   ========================================================= */
 
 function getTeamResults() {
 
   const totals = {};
 
 
-  products.forEach(product => {
+  products.forEach(
+    product => {
 
-    totals[product.id] = {
+      totals[product.id] = {
 
-      count: 0,
+        count: 0,
 
-      revenue: 0
+        revenue: 0
 
-    };
+      };
 
-  });
+    }
+  );
 
 
-  records.forEach(record => {
+  records.forEach(
+    record => {
 
-    Object.entries(
-      record.results
-    ).forEach(
-      ([productId, data]) => {
+      Object.entries(
+        record.results
+      ).forEach(
+        ([productId, data]) => {
 
-        if (
-          !totals[productId]
-        ) {
+          if (
+            !totals[productId]
+          ) {
 
-          totals[productId] = {
+            totals[productId] = {
 
-            count: 0,
+              count: 0,
 
-            revenue: 0
+              revenue: 0
 
-          };
+            };
+
+          }
+
+
+          /*
+            古いデータにも対応
+          */
+
+          if (
+            typeof data === "number"
+          ) {
+
+            const product =
+              products.find(
+                p =>
+                  p.id == productId
+              );
+
+
+            const unitPrice =
+              product
+                ? Number(
+                    product.revenue
+                  )
+                : 0;
+
+
+            totals[productId].count +=
+              Number(data);
+
+
+            totals[productId].revenue +=
+              Number(data) *
+              unitPrice;
+
+          } else {
+
+            totals[productId].count +=
+              Number(data.count);
+
+
+            totals[productId].revenue +=
+              Number(data.count) *
+              Number(
+                data.revenuePerUnit
+              );
+
+          }
 
         }
+      );
 
-
-        totals[productId].count +=
-          Number(data.count);
-
-
-        totals[productId].revenue +=
-          Number(data.count) *
-          Number(data.revenuePerUnit);
-
-      }
-    );
-
-  });
+    }
+  );
 
 
   return totals;
@@ -1039,11 +1329,9 @@ function getTeamResults() {
 }
 
 
-/*
-============================================================
-チーム表示
-============================================================
-*/
+/* =========================================================
+   チーム表示
+   ========================================================= */
 
 function renderTeam() {
 
@@ -1062,62 +1350,76 @@ function renderTeam() {
 
   let totalRevenue = 0;
 
-
   let totalCount = 0;
 
 
-  products.forEach(product => {
+  products.forEach(
+    product => {
 
-    const data =
-      totals[product.id] || {
+      const data =
+        totals[product.id] || {
 
-        count: 0,
+          count: 0,
 
-        revenue: 0
+          revenue: 0
 
-      };
-
-
-    totalCount +=
-      data.count;
+        };
 
 
-    totalRevenue +=
-      data.revenue;
+      totalCount +=
+        data.count;
 
 
-    const box =
-      document.createElement(
-        "div"
+      totalRevenue +=
+        data.revenue;
+
+
+      const box =
+        document.createElement(
+          "div"
+        );
+
+
+      box.className =
+        "summary-box";
+
+
+      box.innerHTML = `
+
+        <div class="name">
+
+          ${escapeHtml(
+            product.name
+          )}
+
+        </div>
+
+
+        <div class="number">
+
+          ${data.count}件
+
+        </div>
+
+
+        <div class="sub">
+
+          収益
+          ${formatYen(
+            data.revenue
+          )}
+
+        </div>
+
+      `;
+
+
+      container.appendChild(
+        box
       );
 
-
-    box.className =
-      "summary-box";
-
-
-    box.innerHTML = `
-
-      <div class="name">
-        ${escapeHtml(product.name)}
-      </div>
-
-      <div class="number">
-        ${data.count}件
-      </div>
-
-      <div class="sub">
-        収益 ${formatYen(
-          data.revenue
-        )}
-      </div>
-
-    `;
-
-
-    container.appendChild(box);
-
-  });
+    }
+  );
 
 
   const totalBox =
@@ -1141,7 +1443,8 @@ function renderTeam() {
     </div>
 
     <div class="sub">
-      収益 ${formatYen(
+      収益
+      ${formatYen(
         totalRevenue
       )}
     </div>
@@ -1149,22 +1452,24 @@ function renderTeam() {
   `;
 
 
-  container.prepend(totalBox);
+  container.prepend(
+    totalBox
+  );
 
 
   document.getElementById(
     "teamRevenue"
   ).textContent =
-    formatYen(totalRevenue);
+    formatYen(
+      totalRevenue
+    );
 
 }
 
 
-/*
-============================================================
-個人集計
-============================================================
-*/
+/* =========================================================
+   個人集計
+   ========================================================= */
 
 function getMemberResults(
   memberId
@@ -1173,17 +1478,19 @@ function getMemberResults(
   const totals = {};
 
 
-  products.forEach(product => {
+  products.forEach(
+    product => {
 
-    totals[product.id] = {
+      totals[product.id] = {
 
-      count: 0,
+        count: 0,
 
-      revenue: 0
+        revenue: 0
 
-    };
+      };
 
-  });
+    }
+  );
 
 
   records
@@ -1191,40 +1498,75 @@ function getMemberResults(
       record =>
         record.memberId === memberId
     )
-    .forEach(record => {
+    .forEach(
+      record => {
 
-      Object.entries(
-        record.results
-      ).forEach(
-        ([productId, data]) => {
+        Object.entries(
+          record.results
+        ).forEach(
+          ([productId, data]) => {
 
-          if (
-            !totals[productId]
-          ) {
+            if (
+              !totals[productId]
+            ) {
 
-            totals[productId] = {
+              totals[productId] = {
 
-              count: 0,
+                count: 0,
 
-              revenue: 0
+                revenue: 0
 
-            };
+              };
+
+            }
+
+
+            if (
+              typeof data === "number"
+            ) {
+
+              const product =
+                products.find(
+                  p =>
+                    p.id == productId
+                );
+
+
+              const unitPrice =
+                product
+                  ? Number(
+                      product.revenue
+                    )
+                  : 0;
+
+
+              totals[productId].count +=
+                Number(data);
+
+
+              totals[productId].revenue +=
+                Number(data) *
+                unitPrice;
+
+            } else {
+
+              totals[productId].count +=
+                Number(data.count);
+
+
+              totals[productId].revenue +=
+                Number(data.count) *
+                Number(
+                  data.revenuePerUnit
+                );
+
+            }
 
           }
+        );
 
-
-          totals[productId].count +=
-            Number(data.count);
-
-
-          totals[productId].revenue +=
-            Number(data.count) *
-            Number(data.revenuePerUnit);
-
-        }
-      );
-
-    });
+      }
+    );
 
 
   return totals;
@@ -1232,11 +1574,9 @@ function getMemberResults(
 }
 
 
-/*
-============================================================
-個人表示
-============================================================
-*/
+/* =========================================================
+   個人表示
+   ========================================================= */
 
 function renderPersonal() {
 
@@ -1249,124 +1589,168 @@ function renderPersonal() {
   container.innerHTML = "";
 
 
-  members.forEach(member => {
+  if (
+    members.length === 0
+  ) {
 
-    const totals =
-      getMemberResults(
-        member.id
-      );
+    container.innerHTML = `
 
+      <div class="empty">
 
-    let totalCount = 0;
+        まだスタッフが登録されていません。
 
-    let totalRevenue = 0;
+        <br><br>
 
-
-    products.forEach(product => {
-
-      totalCount +=
-        totals[product.id]?.count || 0;
-
-      totalRevenue +=
-        totals[product.id]?.revenue || 0;
-
-    });
-
-
-    const card =
-      document.createElement(
-        "div"
-      );
-
-
-    card.className =
-      "member-card";
-
-
-    let resultHtml = "";
-
-
-    products.forEach(product => {
-
-      const data =
-        totals[product.id] || {
-
-          count: 0,
-
-          revenue: 0
-
-        };
-
-
-      resultHtml += `
-
-        <div class="result-line">
-
-          <span>
-            ${escapeHtml(
-              product.name
-            )}
-          </span>
-
-          <span>
-
-            <strong>
-              ${data.count}件
-            </strong>
-
-            <span
-              class="result-revenue">
-              ${formatYen(
-                data.revenue
-              )}
-            </span>
-
-          </span>
-
-        </div>
-
-      `;
-
-    });
-
-
-    card.innerHTML = `
-
-      <div class="member-header">
-
-        <div class="member-name">
-          ${escapeHtml(
-            member.name
-          )}
-        </div>
-
-        <div class="member-total">
-          ${totalCount}件
-          /
-          ${formatYen(
-            totalRevenue
-          )}
-        </div>
+        「管理」からスタッフを追加してください。
 
       </div>
 
-      ${resultHtml}
-
     `;
 
+    return;
 
-    container.appendChild(card);
+  }
 
-  });
+
+  members.forEach(
+    member => {
+
+      const totals =
+        getMemberResults(
+          member.id
+        );
+
+
+      let totalCount = 0;
+
+      let totalRevenue = 0;
+
+
+      products.forEach(
+        product => {
+
+          totalCount +=
+            totals[product.id]?.count || 0;
+
+
+          totalRevenue +=
+            totals[product.id]?.revenue || 0;
+
+        }
+      );
+
+
+      const card =
+        document.createElement(
+          "div"
+        );
+
+
+      card.className =
+        "member-card";
+
+
+      let resultHtml = "";
+
+
+      products.forEach(
+        product => {
+
+          const data =
+            totals[product.id] || {
+
+              count: 0,
+
+              revenue: 0
+
+            };
+
+
+          resultHtml += `
+
+            <div class="result-line">
+
+              <span>
+
+                ${escapeHtml(
+                  product.name
+                )}
+
+              </span>
+
+
+              <span>
+
+                <strong>
+
+                  ${data.count}件
+
+                </strong>
+
+
+                <span
+                  class="result-revenue">
+
+                  ${formatYen(
+                    data.revenue
+                  )}
+
+                </span>
+
+              </span>
+
+            </div>
+
+          `;
+
+        }
+      );
+
+
+      card.innerHTML = `
+
+        <div class="member-header">
+
+          <div class="member-name">
+
+            ${escapeHtml(
+              member.name
+            )}
+
+          </div>
+
+
+          <div class="member-total">
+
+            ${totalCount}件
+            /
+            ${formatYen(
+              totalRevenue
+            )}
+
+          </div>
+
+        </div>
+
+
+        ${resultHtml}
+
+      `;
+
+
+      container.appendChild(
+        card
+      );
+
+    }
+  );
 
 }
 
 
-/*
-============================================================
-履歴
-============================================================
-*/
+/* =========================================================
+   履歴
+   ========================================================= */
 
 function renderHistory() {
 
@@ -1383,10 +1767,15 @@ function renderHistory() {
     records.length === 0
   ) {
 
-    container.innerHTML =
-      `<div class="empty">
+    container.innerHTML = `
+
+      <div class="empty">
+
         まだ実績がありません。
-      </div>`;
+
+      </div>
+
+    `;
 
     return;
 
@@ -1395,148 +1784,198 @@ function renderHistory() {
 
   const sorted =
     [...records].sort(
-      (a,b) => b.id - a.id
+      (a, b) =>
+        b.id - a.id
     );
 
 
-  sorted.forEach(record => {
+  sorted.forEach(
+    record => {
 
-    const member =
-      members.find(
-        m =>
-          m.id === record.memberId
+      const member =
+        members.find(
+          m =>
+            m.id === record.memberId
+        );
+
+
+      const memberName =
+        member
+          ? member.name
+          : "削除されたスタッフ";
+
+
+      let resultHtml = "";
+
+      let totalRevenue = 0;
+
+
+      Object.entries(
+        record.results
+      ).forEach(
+        ([productId, data]) => {
+
+          const product =
+            products.find(
+              p =>
+                p.id == productId
+            );
+
+
+          if (!product) return;
+
+
+          let count;
+
+          let unitPrice;
+
+
+          if (
+            typeof data === "number"
+          ) {
+
+            count =
+              Number(data);
+
+
+            unitPrice =
+              Number(
+                product.revenue
+              );
+
+          } else {
+
+            count =
+              Number(
+                data.count
+              );
+
+
+            unitPrice =
+              Number(
+                data.revenuePerUnit
+              );
+
+          }
+
+
+          const revenue =
+            count * unitPrice;
+
+
+          totalRevenue +=
+            revenue;
+
+
+          resultHtml += `
+
+            ${escapeHtml(
+              product.name
+            )}
+
+            ${count}件
+
+            ×
+
+            ${formatYen(
+              unitPrice
+            )}
+
+            ＝
+
+            ${formatYen(
+              revenue
+            )}
+
+            <br>
+
+          `;
+
+        }
       );
 
 
-    const memberName =
-      member
-        ? member.name
-        : "不明";
+      const item =
+        document.createElement(
+          "div"
+        );
 
 
-    let resultHtml = "";
+      item.className =
+        "history-item";
 
 
-    let totalRevenue = 0;
+      item.innerHTML = `
+
+        <div class="history-top">
+
+          <span class="history-member">
+
+            ${escapeHtml(
+              memberName
+            )}
+
+          </span>
 
 
-    Object.entries(
-      record.results
-    ).forEach(
-      ([productId, data]) => {
+          <span class="history-date">
 
-        const product =
-          products.find(
-            p =>
-              p.id == productId
-          );
+            ${record.date}
+
+          </span>
+
+        </div>
 
 
-        if (!product) return;
+        <div class="history-results">
+
+          ${resultHtml}
+
+          <strong>
+
+            合計
+            ${formatYen(
+              totalRevenue
+            )}
+
+          </strong>
+
+        </div>
 
 
-        const revenue =
-          Number(data.count) *
-          Number(data.revenuePerUnit);
+        <div
+          style="margin-top:8px">
+
+          <button
+            class="danger-btn"
+            onclick="
+              deleteRecord(
+                ${record.id}
+              )
+            ">
+
+            削除
+
+          </button>
+
+        </div>
+
+      `;
 
 
-        totalRevenue +=
-          revenue;
-
-
-        resultHtml += `
-
-          ${escapeHtml(
-            product.name
-          )}
-
-          ${data.count}件
-
-          ×
-
-          ${formatYen(
-            data.revenuePerUnit
-          )}
-
-          ＝
-
-          ${formatYen(
-            revenue
-          )}
-
-          <br>
-
-        `;
-
-      }
-    );
-
-
-    const item =
-      document.createElement(
-        "div"
+      container.appendChild(
+        item
       );
 
-
-    item.className =
-      "history-item";
-
-
-    item.innerHTML = `
-
-      <div class="history-top">
-
-        <span class="history-member">
-          ${escapeHtml(
-            memberName
-          )}
-        </span>
-
-        <span class="history-date">
-          ${record.date}
-        </span>
-
-      </div>
-
-      <div class="history-results">
-
-        ${resultHtml}
-
-        <strong>
-          合計 ${formatYen(
-            totalRevenue
-          )}
-        </strong>
-
-      </div>
-
-      <div style="margin-top:8px">
-
-        <button
-          class="danger-btn"
-          onclick="deleteRecord(
-            ${record.id}
-          )">
-          削除
-        </button>
-
-      </div>
-
-    `;
-
-
-    container.appendChild(item);
-
-  });
+    }
+  );
 
 }
 
 
-/*
-============================================================
-商材追加
-============================================================
-*/
+/* =========================================================
+   商材追加
+   ========================================================= */
 
 function addProduct() {
 
@@ -1560,7 +1999,7 @@ function addProduct() {
   if (!name) {
 
     alert(
-      "商材名を入力してください"
+      "商材名を入力してください。"
     );
 
     return;
@@ -1574,7 +2013,7 @@ function addProduct() {
   ) {
 
     alert(
-      "1件あたりの収益を入力してください"
+      "1件あたりの収益を入力してください。"
     );
 
     return;
@@ -1582,17 +2021,15 @@ function addProduct() {
   }
 
 
-  const exists =
+  if (
     products.some(
       product =>
         product.name === name
-    );
-
-
-  if (exists) {
+    )
+  ) {
 
     alert(
-      "同じ名前の商材があります"
+      "同じ名前の商材があります。"
     );
 
     return;
@@ -1633,11 +2070,9 @@ function addProduct() {
 }
 
 
-/*
-============================================================
-商材一覧
-============================================================
-*/
+/* =========================================================
+   商材一覧
+   ========================================================= */
 
 function renderProducts() {
 
@@ -1650,68 +2085,91 @@ function renderProducts() {
   container.innerHTML = "";
 
 
-  products.forEach(product => {
+  if (
+    products.length === 0
+  ) {
 
-    const row =
-      document.createElement(
-        "div"
-      );
+    container.innerHTML = `
 
+      <div class="empty">
 
-    row.className =
-      "management-row";
+        商材が登録されていません。
 
-
-    row.innerHTML = `
-
-      <input
-        value="${escapeAttribute(
-          product.name
-        )}"
-        onchange="
-          renameProduct(
-            ${product.id},
-            this.value
-          )
-        "
-      >
-
-      <input
-        type="number"
-        value="${product.revenue}"
-        onchange="
-          changeProductRevenue(
-            ${product.id},
-            this.value
-          )
-        "
-      >
-
-      <button
-        class="danger-btn"
-        onclick="
-          deleteProduct(
-            ${product.id}
-          )
-        ">
-        削除
-      </button>
+      </div>
 
     `;
 
+    return;
 
-    container.appendChild(row);
+  }
 
-  });
+
+  products.forEach(
+    product => {
+
+      const row =
+        document.createElement(
+          "div"
+        );
+
+
+      row.className =
+        "management-row";
+
+
+      row.innerHTML = `
+
+        <input
+          value="${escapeAttribute(
+            product.name
+          )}"
+          onchange="
+            renameProduct(
+              ${product.id},
+              this.value
+            )
+          ">
+
+
+        <input
+          type="number"
+          value="${product.revenue}"
+          onchange="
+            changeProductRevenue(
+              ${product.id},
+              this.value
+            )
+          ">
+
+
+        <button
+          class="danger-btn"
+          onclick="
+            deleteProduct(
+              ${product.id}
+            )
+          ">
+
+          削除
+
+        </button>
+
+      `;
+
+
+      container.appendChild(
+        row
+      );
+
+    }
+  );
 
 }
 
 
-/*
-============================================================
-商材名変更
-============================================================
-*/
+/* =========================================================
+   商材名変更
+   ========================================================= */
 
 function renameProduct(
   id,
@@ -1725,7 +2183,7 @@ function renameProduct(
   if (!newName) {
 
     alert(
-      "商材名を空にできません"
+      "商材名を空にできません。"
     );
 
     renderAll();
@@ -1735,18 +2193,16 @@ function renameProduct(
   }
 
 
-  const duplicate =
+  if (
     products.some(
       product =>
         product.id !== id &&
         product.name === newName
-    );
-
-
-  if (duplicate) {
+    )
+  ) {
 
     alert(
-      "同じ名前の商材があります"
+      "同じ名前の商材があります。"
     );
 
     renderAll();
@@ -1778,11 +2234,9 @@ function renameProduct(
 }
 
 
-/*
-============================================================
-商材単価変更
-============================================================
-*/
+/* =========================================================
+   商材単価変更
+   ========================================================= */
 
 function changeProductRevenue(
   id,
@@ -1799,7 +2253,7 @@ function changeProductRevenue(
   ) {
 
     alert(
-      "正しい収益を入力してください"
+      "正しい収益を入力してください。"
     );
 
     renderAll();
@@ -1831,11 +2285,9 @@ function changeProductRevenue(
 }
 
 
-/*
-============================================================
-商材削除
-============================================================
-*/
+/* =========================================================
+   商材削除
+   ========================================================= */
 
 function deleteProduct(id) {
 
@@ -1874,11 +2326,9 @@ function deleteProduct(id) {
 }
 
 
-/*
-============================================================
-スタッフ追加
-============================================================
-*/
+/* =========================================================
+   スタッフ追加
+   ========================================================= */
 
 function addMember() {
 
@@ -1895,7 +2345,7 @@ function addMember() {
   if (!name) {
 
     alert(
-      "スタッフ名を入力してください"
+      "スタッフ名を入力してください。"
     );
 
     return;
@@ -1911,13 +2361,17 @@ function addMember() {
   ) {
 
     alert(
-      "同じ名前のスタッフがあります"
+      "同じ名前のスタッフがあります。"
     );
 
     return;
 
   }
 
+
+  /*
+    新しいスタッフを追加
+  */
 
   members.push({
 
@@ -1928,26 +2382,29 @@ function addMember() {
   });
 
 
-  input.value = "";
-
+  /*
+    localStorageに即保存
+  */
 
   saveData();
+
+
+  input.value = "";
+
 
   renderAll();
 
 
   alert(
-    "スタッフを追加しました！"
+    `${name}さんを追加しました！`
   );
 
 }
 
 
-/*
-============================================================
-スタッフ一覧
-============================================================
-*/
+/* =========================================================
+   スタッフ一覧
+   ========================================================= */
 
 function renderMembers() {
 
@@ -1960,59 +2417,83 @@ function renderMembers() {
   container.innerHTML = "";
 
 
-  members.forEach(member => {
+  if (
+    members.length === 0
+  ) {
 
-    const row =
-      document.createElement(
-        "div"
-      );
+    container.innerHTML = `
 
+      <div class="empty">
 
-    row.className =
-      "management-row";
+        まだスタッフが登録されていません。
 
-
-    row.innerHTML = `
-
-      <input
-        value="${escapeAttribute(
-          member.name
-        )}"
-        onchange="
-          renameMember(
-            ${member.id},
-            this.value
-          )
-        "
-      >
-
-      <div></div>
-
-      <button
-        class="danger-btn"
-        onclick="
-          deleteMember(
-            ${member.id}
-          )
-        ">
-        削除
-      </button>
+      </div>
 
     `;
 
+    return;
 
-    container.appendChild(row);
+  }
 
-  });
+
+  members.forEach(
+    member => {
+
+      const row =
+        document.createElement(
+          "div"
+        );
+
+
+      row.className =
+        "management-row";
+
+
+      row.innerHTML = `
+
+        <input
+          value="${escapeAttribute(
+            member.name
+          )}"
+          onchange="
+            renameMember(
+              ${member.id},
+              this.value
+            )
+          ">
+
+
+        <div></div>
+
+
+        <button
+          class="danger-btn"
+          onclick="
+            deleteMember(
+              ${member.id}
+            )
+          ">
+
+          削除
+
+        </button>
+
+      `;
+
+
+      container.appendChild(
+        row
+      );
+
+    }
+  );
 
 }
 
 
-/*
-============================================================
-スタッフ名変更
-============================================================
-*/
+/* =========================================================
+   スタッフ名変更
+   ========================================================= */
 
 function renameMember(
   id,
@@ -2026,7 +2507,7 @@ function renameMember(
   if (!newName) {
 
     alert(
-      "名前を空にできません"
+      "名前を空にできません。"
     );
 
     renderAll();
@@ -2036,18 +2517,16 @@ function renameMember(
   }
 
 
-  const duplicate =
+  if (
     members.some(
       member =>
         member.id !== id &&
         member.name === newName
-    );
-
-
-  if (duplicate) {
+    )
+  ) {
 
     alert(
-      "同じ名前のスタッフがあります"
+      "同じ名前のスタッフがあります。"
     );
 
     renderAll();
@@ -2072,18 +2551,21 @@ function renameMember(
   }
 
 
+  /*
+    変更した瞬間に保存
+  */
+
   saveData();
+
 
   renderAll();
 
 }
 
 
-/*
-============================================================
-スタッフ削除
-============================================================
-*/
+/* =========================================================
+   スタッフ削除
+   ========================================================= */
 
 function deleteMember(id) {
 
@@ -2122,11 +2604,9 @@ function deleteMember(id) {
 }
 
 
-/*
-============================================================
-履歴削除
-============================================================
-*/
+/* =========================================================
+   履歴削除
+   ========================================================= */
 
 function deleteRecord(id) {
 
@@ -2155,11 +2635,9 @@ function deleteRecord(id) {
 }
 
 
-/*
-============================================================
-全データ削除
-============================================================
-*/
+/* =========================================================
+   全データ削除
+   ========================================================= */
 
 function resetAllData() {
 
@@ -2182,9 +2660,11 @@ function resetAllData() {
     "sales_products"
   );
 
+
   localStorage.removeItem(
     "sales_members"
   );
+
 
   localStorage.removeItem(
     "sales_records"
@@ -2196,11 +2676,9 @@ function resetAllData() {
 }
 
 
-/*
-============================================================
-全体更新
-============================================================
-*/
+/* =========================================================
+   全体更新
+   ========================================================= */
 
 function renderAll() {
 
@@ -2219,13 +2697,13 @@ function renderAll() {
 }
 
 
-/*
-============================================================
-円表示
-============================================================
-*/
+/* =========================================================
+   円表示
+   ========================================================= */
 
-function formatYen(value) {
+function formatYen(
+  value
+) {
 
   return Number(value)
     .toLocaleString("ja-JP")
@@ -2234,19 +2712,36 @@ function formatYen(value) {
 }
 
 
-/*
-============================================================
-HTMLエスケープ
-============================================================
-*/
+/* =========================================================
+   HTMLエスケープ
+   ========================================================= */
 
-function escapeHtml(value) {
+function escapeHtml(
+  value
+) {
 
   return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
+
+    .replaceAll(
+      "&",
+      "&amp;"
+    )
+
+    .replaceAll(
+      "<",
+      "&lt;"
+    )
+
+    .replaceAll(
+      ">",
+      "&gt;"
+    )
+
+    .replaceAll(
+      '"',
+      "&quot;"
+    )
+
     .replaceAll(
       "'",
       "&#039;"
@@ -2255,7 +2750,9 @@ function escapeHtml(value) {
 }
 
 
-function escapeAttribute(value) {
+function escapeAttribute(
+  value
+) {
 
   return escapeHtml(value);
 
