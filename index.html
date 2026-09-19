@@ -955,6 +955,103 @@ header {
 
 
 <!-- =====================================================
+     会社セットアップ
+===================================================== -->
+
+<main
+  id="companySetupScreen"
+  style="display:none;">
+
+  <div class="auth-wrapper">
+
+    <div class="auth-card">
+
+      <div class="auth-logo">🏢</div>
+
+      <div class="auth-title">
+        会社を設定
+      </div>
+
+      <div class="auth-description">
+        会社を作成するか、届いた招待リンクから参加してください。
+      </div>
+
+      <div
+        id="invitationPanel"
+        style="display:none;margin-top:22px;padding:18px;border:1px solid var(--border);border-radius:12px;">
+
+        <div style="font-size:13px;color:var(--sub);">
+          この会社に招待されています
+        </div>
+
+        <div
+          id="invitationCompanyName"
+          style="margin-top:7px;font-size:20px;font-weight:800;">
+          -
+        </div>
+
+        <div
+          id="invitationRole"
+          style="margin-top:6px;font-size:13px;color:var(--sub);">
+          -
+        </div>
+
+        <button
+          id="acceptInvitationButton"
+          class="primary-button"
+          style="margin-top:16px;">
+          この会社に参加
+        </button>
+
+      </div>
+
+      <div
+        id="companyCreatePanel"
+        style="margin-top:20px;">
+
+        <div class="form-group">
+
+          <label for="companyNameInput">
+            会社名
+          </label>
+
+          <input
+            id="companyNameInput"
+            type="text"
+            maxlength="80"
+            placeholder="例：株式会社サンプル">
+
+        </div>
+
+        <button
+          id="createCompanyButton"
+          class="primary-button">
+          会社を作成
+        </button>
+
+      </div>
+
+      <div
+        id="companySetupMessage"
+        class="success-message"
+        style="display:none;">
+      </div>
+
+      <button
+        id="companySetupLogoutButton"
+        class="link-button"
+        style="width:100%;margin-top:14px;">
+        別のアカウントでログイン
+      </button>
+
+    </div>
+
+  </div>
+
+</main>
+
+
+<!-- =====================================================
      アプリ
 ===================================================== -->
 
@@ -1005,6 +1102,79 @@ header {
 
     <div class="welcome-text">
       班・メンバー・商材・実績を一元管理できます。
+    </div>
+
+  </div>
+
+
+  <!-- =====================================================
+       会社
+  ===================================================== -->
+
+  <div
+    id="companyManagement"
+    class="management-card">
+
+    <div class="management-title">
+      🏢 会社
+    </div>
+
+    <div
+      id="companyNameDisplay"
+      style="margin-top:8px;font-size:20px;font-weight:800;">
+      -
+    </div>
+
+    <div
+      id="companyInviteControls"
+      style="display:none;margin-top:18px;">
+
+      <div style="font-size:13px;color:var(--sub);line-height:1.7;">
+        メンバーの登録メールアドレスを指定して招待リンクを作ります。
+        作成したリンクをLINEやメールで送ってください。
+      </div>
+
+      <div class="management-input-row" style="margin-top:12px;">
+
+        <input
+          id="inviteEmailInput"
+          type="email"
+          placeholder="招待するメールアドレス">
+
+        <select id="inviteRoleSelect">
+          <option value="member">メンバー</option>
+          <option value="leader">リーダー</option>
+        </select>
+
+        <button id="createInviteButton">
+          招待リンク作成
+        </button>
+
+      </div>
+
+      <div
+        id="inviteResult"
+        style="display:none;margin-top:14px;">
+
+        <div style="font-size:12px;color:var(--sub);margin-bottom:6px;">
+          このリンクを相手に送ってください（有効期限7日）
+        </div>
+
+        <div class="management-input-row">
+
+          <input
+            id="inviteLinkOutput"
+            type="text"
+            readonly>
+
+          <button id="copyInviteButton">
+            コピー
+          </button>
+
+        </div>
+
+      </div>
+
     </div>
 
   </div>
@@ -1614,6 +1784,10 @@ import {
   deleteDoc,
   collection,
   getDocs,
+  query,
+  where,
+  writeBatch,
+  Timestamp,
   serverTimestamp,
   onSnapshot
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
@@ -1666,6 +1840,60 @@ const resendVerificationButton =
 
 const verificationLogoutButton =
   document.getElementById("verificationLogoutButton");
+
+const companySetupScreen =
+  document.getElementById("companySetupScreen");
+
+const invitationPanel =
+  document.getElementById("invitationPanel");
+
+const invitationCompanyName =
+  document.getElementById("invitationCompanyName");
+
+const invitationRole =
+  document.getElementById("invitationRole");
+
+const acceptInvitationButton =
+  document.getElementById("acceptInvitationButton");
+
+const companyCreatePanel =
+  document.getElementById("companyCreatePanel");
+
+const companyNameInput =
+  document.getElementById("companyNameInput");
+
+const createCompanyButton =
+  document.getElementById("createCompanyButton");
+
+const companySetupMessage =
+  document.getElementById("companySetupMessage");
+
+const companySetupLogoutButton =
+  document.getElementById("companySetupLogoutButton");
+
+const companyNameDisplay =
+  document.getElementById("companyNameDisplay");
+
+const companyInviteControls =
+  document.getElementById("companyInviteControls");
+
+const inviteEmailInput =
+  document.getElementById("inviteEmailInput");
+
+const inviteRoleSelect =
+  document.getElementById("inviteRoleSelect");
+
+const createInviteButton =
+  document.getElementById("createInviteButton");
+
+const inviteResult =
+  document.getElementById("inviteResult");
+
+const inviteLinkOutput =
+  document.getElementById("inviteLinkOutput");
+
+const copyInviteButton =
+  document.getElementById("copyInviteButton");
 
 const authTitle =
   document.getElementById("authTitle");
@@ -1980,6 +2208,8 @@ let members = [];
 let records = [];
 
 let currentUserData = null;
+let currentCompanyData = null;
+let pendingInvitationData = null;
 let currentUser = null;
 
 let editingTeamId = null;
@@ -2067,6 +2297,36 @@ function clearMessages() {
 
   successMessage.style.display =
     "none";
+}
+
+
+function companyCollectionQuery(
+  collectionName
+) {
+
+  if (
+    !currentUserData?.companyId
+  ) {
+
+    throw new Error(
+      "会社情報が設定されていません。"
+    );
+
+  }
+
+
+  return query(
+    collection(
+      db,
+      collectionName
+    ),
+    where(
+      "companyId",
+      "==",
+      currentUserData.companyId
+    )
+  );
+
 }
 
 
@@ -2548,18 +2808,15 @@ async function enterApplication(
   authScreen.style.display =
     "none";
 
+  companySetupScreen.style.display =
+    "none";
+
   appScreen.style.display =
-    "block";
+    "none";
 
   loginStatus.textContent =
     "ログイン中";
 
-
-  /*
-    メール確認直後は Firebase Auth のユーザー情報だけ更新され、
-    Firestore Security Rules が参照する ID トークンが古い場合がある。
-    Firestoreへ接続する前に最新トークンへ更新する。
-  */
 
   if (
     user.emailVerified
@@ -2572,9 +2829,24 @@ async function enterApplication(
   }
 
 
-  await loadUserData(
-    user
-  );
+  const ready =
+    await loadUserData(
+      user
+    );
+
+
+  if (!ready) {
+
+    return;
+
+  }
+
+
+  companySetupScreen.style.display =
+    "none";
+
+  appScreen.style.display =
+    "block";
 
 
   startRealtimeListeners();
@@ -2715,6 +2987,829 @@ verificationLogoutButton.onclick =
 
 
 /* =====================================================
+   会社
+===================================================== */
+
+function getInviteIdFromUrl() {
+
+  const params =
+    new URLSearchParams(
+      window.location.search
+    );
+
+  return (
+    params.get(
+      "invite"
+    ) ||
+    ""
+  ).trim();
+
+}
+
+
+function setCompanySetupMessage(
+  message,
+  isError = false
+) {
+
+  companySetupMessage.textContent =
+    message;
+
+  companySetupMessage.style.display =
+    message
+      ? "block"
+      : "none";
+
+  companySetupMessage.style.background =
+    isError
+      ? "#fef2f2"
+      : "#f0fdf4";
+
+  companySetupMessage.style.color =
+    isError
+      ? "#b91c1c"
+      : "#15803d";
+
+}
+
+
+async function showCompanySetupScreen() {
+
+  stopRealtimeListeners();
+
+  appScreen.style.display =
+    "none";
+
+  authScreen.style.display =
+    "none";
+
+  verificationScreen.style.display =
+    "none";
+
+  companySetupScreen.style.display =
+    "block";
+
+  pendingInvitationData =
+    null;
+
+  invitationPanel.style.display =
+    "none";
+
+  companyCreatePanel.style.display =
+    "block";
+
+  setCompanySetupMessage(
+    ""
+  );
+
+
+  const inviteId =
+    getInviteIdFromUrl();
+
+
+  if (!inviteId) {
+
+    return;
+
+  }
+
+
+  try {
+
+    const inviteRef =
+      doc(
+        db,
+        "invitations",
+        inviteId
+      );
+
+    const inviteSnap =
+      await getDoc(
+        inviteRef
+      );
+
+
+    if (
+      !inviteSnap.exists()
+    ) {
+
+      throw new Error(
+        "招待が見つかりません。"
+      );
+
+    }
+
+
+    const invite =
+      inviteSnap.data();
+
+    const expiresAtMs =
+      invite.expiresAt?.toMillis
+        ? invite.expiresAt.toMillis()
+        : 0;
+
+
+    if (
+      invite.status !== "pending" ||
+      expiresAtMs <= Date.now()
+    ) {
+
+      throw new Error(
+        "この招待は期限切れ、または使用済みです。"
+      );
+
+    }
+
+
+    pendingInvitationData = {
+
+      id:
+        inviteId,
+
+      ...invite
+
+    };
+
+
+    invitationCompanyName.textContent =
+      invite.companyName ||
+      "招待された会社";
+
+    invitationRole.textContent =
+      invite.role === "leader"
+        ? "権限：リーダー"
+        : "権限：メンバー";
+
+    invitationPanel.style.display =
+      "block";
+
+    companyCreatePanel.style.display =
+      "none";
+
+
+  } catch (error) {
+
+    console.error(error);
+
+    setCompanySetupMessage(
+      error?.code ===
+      "permission-denied"
+        ? "この招待は、現在ログインしているメールアドレス宛てではありません。"
+        : firebaseErrorMessage(
+            error
+          ),
+      true
+    );
+
+  }
+
+}
+
+
+async function loadCompanyData() {
+
+  if (
+    !currentUserData?.companyId
+  ) {
+
+    currentCompanyData =
+      null;
+
+    return;
+
+  }
+
+
+  const companySnap =
+    await getDoc(
+      doc(
+        db,
+        "companies",
+        currentUserData.companyId
+      )
+    );
+
+
+  if (
+    !companySnap.exists()
+  ) {
+
+    throw new Error(
+      "会社情報が見つかりません。"
+    );
+
+  }
+
+
+  currentCompanyData = {
+
+    id:
+      companySnap.id,
+
+    ...companySnap.data()
+
+  };
+
+
+  companyNameDisplay.textContent =
+    currentCompanyData.name ||
+    "会社名未設定";
+
+  companyInviteControls.style.display =
+    currentUserData.role ===
+    "leader"
+      ? "block"
+      : "none";
+
+}
+
+
+createCompanyButton.onclick =
+  async () => {
+
+    const name =
+      companyNameInput.value
+        .trim()
+        .replace(
+          /\s+/g,
+          " "
+        );
+
+
+    if (
+      name.length < 2 ||
+      name.length > 80
+    ) {
+
+      setCompanySetupMessage(
+        "会社名は2〜80文字で入力してください。",
+        true
+      );
+
+      return;
+
+    }
+
+
+    if (
+      !currentUser ||
+      !currentUserData
+    ) {
+
+      setCompanySetupMessage(
+        "ログイン状態を確認できません。",
+        true
+      );
+
+      return;
+
+    }
+
+
+    try {
+
+      createCompanyButton.disabled =
+        true;
+
+      createCompanyButton.textContent =
+        "作成中...";
+
+
+      const companyRef =
+        doc(
+          collection(
+            db,
+            "companies"
+          )
+        );
+
+      const memberRef =
+        doc(
+          db,
+          "companies",
+          companyRef.id,
+          "members",
+          currentUser.uid
+        );
+
+      const userRef =
+        doc(
+          db,
+          "users",
+          currentUser.uid
+        );
+
+      const batch =
+        writeBatch(
+          db
+        );
+
+
+      batch.set(
+        companyRef,
+        {
+
+          name,
+
+          ownerUid:
+            currentUser.uid,
+
+          active:
+            true,
+
+          createdBy:
+            currentUser.uid,
+
+          createdAt:
+            serverTimestamp(),
+
+          updatedAt:
+            serverTimestamp()
+
+        }
+      );
+
+
+      batch.set(
+        memberRef,
+        {
+
+          uid:
+            currentUser.uid,
+
+          name:
+            currentUserData.name ||
+            "名前未設定",
+
+          email:
+            currentUser.email ||
+            "",
+
+          role:
+            "leader",
+
+          companyRole:
+            "owner",
+
+          teamId:
+            null,
+
+          active:
+            true,
+
+          joinedAt:
+            serverTimestamp(),
+
+          updatedAt:
+            serverTimestamp()
+
+        }
+      );
+
+
+      batch.update(
+        userRef,
+        {
+
+          companyId:
+            companyRef.id,
+
+          companyRole:
+            "owner",
+
+          role:
+            "leader",
+
+          teamId:
+            null,
+
+          updatedAt:
+            serverTimestamp()
+
+        }
+      );
+
+
+      await batch.commit();
+
+
+      companyNameInput.value =
+        "";
+
+      setCompanySetupMessage(
+        "会社を作成しました。"
+      );
+
+
+      await enterApplication(
+        currentUser
+      );
+
+
+    } catch (error) {
+
+      console.error(error);
+
+      setCompanySetupMessage(
+        firebaseErrorMessage(
+          error
+        ),
+        true
+      );
+
+    } finally {
+
+      createCompanyButton.disabled =
+        false;
+
+      createCompanyButton.textContent =
+        "会社を作成";
+
+    }
+
+  };
+
+
+acceptInvitationButton.onclick =
+  async () => {
+
+    if (
+      !currentUser ||
+      !currentUserData ||
+      !pendingInvitationData
+    ) {
+
+      setCompanySetupMessage(
+        "招待情報を確認できません。",
+        true
+      );
+
+      return;
+
+    }
+
+
+    try {
+
+      acceptInvitationButton.disabled =
+        true;
+
+      acceptInvitationButton.textContent =
+        "参加中...";
+
+
+      const invite =
+        pendingInvitationData;
+
+      const inviteRef =
+        doc(
+          db,
+          "invitations",
+          invite.id
+        );
+
+      const memberRef =
+        doc(
+          db,
+          "companies",
+          invite.companyId,
+          "members",
+          currentUser.uid
+        );
+
+      const userRef =
+        doc(
+          db,
+          "users",
+          currentUser.uid
+        );
+
+      const role =
+        invite.role ===
+        "leader"
+          ? "leader"
+          : "member";
+
+      const batch =
+        writeBatch(
+          db
+        );
+
+
+      batch.update(
+        inviteRef,
+        {
+
+          status:
+            "accepted",
+
+          acceptedBy:
+            currentUser.uid,
+
+          acceptedAt:
+            serverTimestamp()
+
+        }
+      );
+
+
+      batch.set(
+        memberRef,
+        {
+
+          uid:
+            currentUser.uid,
+
+          name:
+            currentUserData.name ||
+            "名前未設定",
+
+          email:
+            currentUser.email ||
+            "",
+
+          role,
+
+          companyRole:
+            "member",
+
+          teamId:
+            null,
+
+          active:
+            true,
+
+          invitationId:
+            invite.id,
+
+          joinedAt:
+            serverTimestamp(),
+
+          updatedAt:
+            serverTimestamp()
+
+        }
+      );
+
+
+      batch.update(
+        userRef,
+        {
+
+          companyId:
+            invite.companyId,
+
+          companyRole:
+            "member",
+
+          role,
+
+          teamId:
+            null,
+
+          updatedAt:
+            serverTimestamp()
+
+        }
+      );
+
+
+      await batch.commit();
+
+
+      window.history.replaceState(
+        {},
+        document.title,
+        window.location.pathname
+      );
+
+
+      pendingInvitationData =
+        null;
+
+
+      await enterApplication(
+        currentUser
+      );
+
+
+    } catch (error) {
+
+      console.error(error);
+
+      setCompanySetupMessage(
+        firebaseErrorMessage(
+          error
+        ),
+        true
+      );
+
+    } finally {
+
+      acceptInvitationButton.disabled =
+        false;
+
+      acceptInvitationButton.textContent =
+        "この会社に参加";
+
+    }
+
+  };
+
+
+companySetupLogoutButton.onclick =
+  async () => {
+
+    await signOut(
+      auth
+    );
+
+  };
+
+
+createInviteButton.onclick =
+  async () => {
+
+    if (
+      !currentUserData?.companyId ||
+      currentUserData.role !==
+      "leader"
+    ) {
+
+      showError(
+        "招待リンクを作成する権限がありません。"
+      );
+
+      return;
+
+    }
+
+
+    const email =
+      inviteEmailInput.value
+        .trim()
+        .toLowerCase();
+
+    const role =
+      inviteRoleSelect.value ===
+      "leader"
+        ? "leader"
+        : "member";
+
+
+    if (
+      !email ||
+      !email.includes(
+        "@"
+      )
+    ) {
+
+      showError(
+        "招待するメールアドレスを入力してください。"
+      );
+
+      return;
+
+    }
+
+
+    try {
+
+      createInviteButton.disabled =
+        true;
+
+      createInviteButton.textContent =
+        "作成中...";
+
+
+      const inviteRef =
+        doc(
+          collection(
+            db,
+            "invitations"
+          )
+        );
+
+      const expiresAt =
+        Timestamp.fromMillis(
+          Date.now() +
+          7 * 24 * 60 * 60 * 1000
+        );
+
+
+      await setDoc(
+        inviteRef,
+        {
+
+          companyId:
+            currentUserData.companyId,
+
+          companyName:
+            currentCompanyData?.name ||
+            "会社",
+
+          email,
+
+          role,
+
+          status:
+            "pending",
+
+          invitedBy:
+            currentUser.uid,
+
+          createdAt:
+            serverTimestamp(),
+
+          expiresAt
+
+        }
+      );
+
+
+      const inviteUrl =
+        `${window.location.origin}${window.location.pathname}?invite=${encodeURIComponent(
+          inviteRef.id
+        )}`;
+
+
+      inviteLinkOutput.value =
+        inviteUrl;
+
+      inviteResult.style.display =
+        "block";
+
+
+      showSuccess(
+        "招待リンクを作成しました。LINEやメールで送ってください。"
+      );
+
+
+    } catch (error) {
+
+      console.error(error);
+
+      showError(
+        firebaseErrorMessage(
+          error
+        )
+      );
+
+    } finally {
+
+      createInviteButton.disabled =
+        false;
+
+      createInviteButton.textContent =
+        "招待リンク作成";
+
+    }
+
+  };
+
+
+copyInviteButton.onclick =
+  async () => {
+
+    const inviteText =
+      inviteLinkOutput.value;
+
+
+    if (!inviteText) {
+
+      return;
+
+    }
+
+
+    try {
+
+      await navigator.clipboard.writeText(
+        inviteText
+      );
+
+      showSuccess(
+        "招待リンクをコピーしました。"
+      );
+
+    } catch {
+
+      inviteLinkOutput.select();
+
+      document.execCommand(
+        "copy"
+      );
+
+      showSuccess(
+        "招待リンクをコピーしました。"
+      );
+
+    }
+
+  };
+
+
+/* =====================================================
    Auth状態
 ===================================================== */
 
@@ -2752,7 +3847,16 @@ onAuthStateChanged(
       currentUserData =
         null;
 
+      currentCompanyData =
+        null;
+
+      pendingInvitationData =
+        null;
+
       verificationScreen.style.display =
+        "none";
+
+      companySetupScreen.style.display =
         "none";
 
       authScreen.style.display =
@@ -2823,6 +3927,23 @@ async function loadUserData(
     };
 
 
+    if (
+      !currentUserData.companyId
+    ) {
+
+      databaseStatus.textContent =
+        "会社設定待ち";
+
+      await showCompanySetupScreen();
+
+      return false;
+
+    }
+
+
+    await loadCompanyData();
+
+
     updateCurrentUserUI();
 
     prepareRecordInputs();
@@ -2840,6 +3961,9 @@ async function loadUserData(
       "接続済み";
 
 
+    return true;
+
+
   } catch (error) {
 
     console.error(error);
@@ -2852,6 +3976,9 @@ async function loadUserData(
         error
       )
     );
+
+
+    return false;
 
   }
 
@@ -2888,6 +4015,13 @@ function updateCurrentUserUI() {
 
   accountNameInput.value =
     name;
+
+
+  companyInviteControls.style.display =
+    currentUserData.role ===
+    "leader"
+      ? "block"
+      : "none";
 
 
   if (
@@ -2989,7 +4123,13 @@ saveAccountNameButton.onclick =
         "保存中...";
 
 
-      await updateDoc(
+      const batch =
+        writeBatch(
+          db
+        );
+
+
+      batch.update(
         doc(
           db,
           "users",
@@ -3005,6 +4145,35 @@ saveAccountNameButton.onclick =
 
         }
       );
+
+
+      if (
+        currentUserData.companyId
+      ) {
+
+        batch.update(
+          doc(
+            db,
+            "companies",
+            currentUserData.companyId,
+            "members",
+            currentUser.uid
+          ),
+          {
+
+            name:
+              newName,
+
+            updatedAt:
+              serverTimestamp()
+
+          }
+        );
+
+      }
+
+
+      await batch.commit();
 
 
       /*
@@ -3082,10 +4251,7 @@ function startRealtimeListeners() {
 
   unsubscribeUsers =
     onSnapshot(
-      collection(
-        db,
-        "users"
-      ),
+      companyCollectionQuery("users"),
       snapshot => {
 
         members = [];
@@ -3183,10 +4349,7 @@ function startRealtimeListeners() {
 
   unsubscribeTeams =
     onSnapshot(
-      collection(
-        db,
-        "teams"
-      ),
+      companyCollectionQuery("teams"),
       snapshot => {
 
         teams = [];
@@ -3239,10 +4402,7 @@ function startRealtimeListeners() {
 
   unsubscribeProducts =
     onSnapshot(
-      collection(
-        db,
-        "products"
-      ),
+      companyCollectionQuery("products"),
       snapshot => {
 
         products = [];
@@ -3290,10 +4450,7 @@ function startRealtimeListeners() {
 
   unsubscribeRecords =
     onSnapshot(
-      collection(
-        db,
-        "records"
-      ),
+      companyCollectionQuery("records"),
       snapshot => {
 
         records = [];
@@ -3398,10 +4555,7 @@ async function loadTeams() {
 
     const snapshot =
       await getDocs(
-        collection(
-          db,
-          "teams"
-        )
+        companyCollectionQuery("teams")
       );
 
 
@@ -3614,10 +4768,7 @@ async function countTeamMembers(
 
     const snapshot =
       await getDocs(
-        collection(
-          db,
-          "users"
-        )
+        companyCollectionQuery("users")
       );
 
 
@@ -3688,6 +4839,9 @@ addTeamButton.onclick =
       await setDoc(
         teamRef,
         {
+
+          companyId:
+            currentUserData.companyId,
 
           name,
 
@@ -3851,10 +5005,7 @@ async function deleteTeam(
 
     const snapshot =
       await getDocs(
-        collection(
-          db,
-          "users"
-        )
+        companyCollectionQuery("users")
       );
 
 
@@ -3933,10 +5084,7 @@ async function loadProducts() {
 
     const snapshot =
       await getDocs(
-        collection(
-          db,
-          "products"
-        )
+        companyCollectionQuery("products")
       );
 
 
@@ -4186,6 +5334,9 @@ addProductButton.onclick =
         productRef,
         {
 
+          companyId:
+            currentUserData.companyId,
+
           name,
 
           revenue,
@@ -4415,10 +5566,7 @@ async function loadMembers() {
 
     const snapshot =
       await getDocs(
-        collection(
-          db,
-          "users"
-        )
+        companyCollectionQuery("users")
       );
 
 
@@ -4614,16 +5762,31 @@ function renderMembers() {
       roleButton.className =
         "member-action-button";
 
-      roleButton.textContent =
-        member.role === "leader"
-          ? "メンバーに変更"
-          : "リーダーに変更";
+      if (
+        member.companyRole ===
+        "owner"
+      ) {
 
-      roleButton.onclick =
-        () =>
-          changeMemberRole(
-            member
-          );
+        roleButton.textContent =
+          "オーナー";
+
+        roleButton.disabled =
+          true;
+
+      } else {
+
+        roleButton.textContent =
+          member.role === "leader"
+            ? "メンバーに変更"
+            : "リーダーに変更";
+
+        roleButton.onclick =
+          () =>
+            changeMemberRole(
+              member
+            );
+
+      }
 
 
       const teamButton =
@@ -4699,7 +5862,13 @@ async function changeMemberRole(
 
   try {
 
-    await updateDoc(
+    const batch =
+      writeBatch(
+        db
+      );
+
+
+    batch.update(
       doc(
         db,
         "users",
@@ -4715,6 +5884,29 @@ async function changeMemberRole(
 
       }
     );
+
+
+    batch.update(
+      doc(
+        db,
+        "companies",
+        currentUserData.companyId,
+        "members",
+        member.id
+      ),
+      {
+
+        role:
+          newRole,
+
+        updatedAt:
+          serverTimestamp()
+
+      }
+    );
+
+
+    await batch.commit();
 
 
     await loadMembers();
@@ -4825,7 +6017,13 @@ saveMemberTeamModal.onclick =
         null;
 
 
-      await updateDoc(
+      const batch =
+        writeBatch(
+          db
+        );
+
+
+      batch.update(
         doc(
           db,
           "users",
@@ -4840,6 +6038,28 @@ saveMemberTeamModal.onclick =
 
         }
       );
+
+
+      batch.update(
+        doc(
+          db,
+          "companies",
+          currentUserData.companyId,
+          "members",
+          editingMemberId
+        ),
+        {
+
+          teamId,
+
+          updatedAt:
+            serverTimestamp()
+
+        }
+      );
+
+
+      await batch.commit();
 
 
       closeMemberTeamModal();
@@ -5537,7 +6757,7 @@ saveRecordButton.onclick =
       } else {
 
         const recordId =
-          `${memberId}_${date}`;
+          `${currentUserData.companyId}_${memberId}_${date}`;
 
 
         recordRef =
@@ -5557,6 +6777,9 @@ saveRecordButton.onclick =
 
 
       const data = {
+
+        companyId:
+          currentUserData.companyId,
 
         uid:
           member.id,
@@ -5660,10 +6883,7 @@ async function loadRecords() {
 
     const snapshot =
       await getDocs(
-        collection(
-          db,
-          "records"
-        )
+        companyCollectionQuery("records")
       );
 
 
