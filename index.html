@@ -12,30 +12,22 @@
 
   <title>営業実績管理</title>
 
-
   <style>
 
     * {
       box-sizing: border-box;
     }
 
-
     body {
-
       margin: 0;
-
       font-family:
         -apple-system,
         BlinkMacSystemFont,
         "Segoe UI",
         sans-serif;
-
       background: #f4f6f8;
-
       color: #222;
-
     }
-
 
     button,
     input,
@@ -43,439 +35,252 @@
       font: inherit;
     }
 
-
     button {
       cursor: pointer;
     }
 
-
     .app {
       min-height: 100vh;
     }
-
 
     /* =====================================================
        ヘッダー
     ===================================================== */
 
     header {
-
       background: #111827;
-
       color: white;
-
       padding: 18px 16px;
-
     }
-
 
     .header-inner {
-
       max-width: 1100px;
-
       margin: 0 auto;
-
     }
-
 
     .title {
-
       font-size: 22px;
-
       font-weight: 700;
-
     }
-
 
     .subtitle {
-
       margin-top: 4px;
-
       font-size: 13px;
-
       color: #9ca3af;
-
     }
-
 
     main {
-
       max-width: 1100px;
-
       margin: 0 auto;
-
       padding: 20px 16px 60px;
-
     }
-
 
     /* =====================================================
        ログイン
     ===================================================== */
 
     .auth-wrapper {
-
       min-height: calc(100vh - 80px);
-
       display: flex;
-
       align-items: center;
-
       justify-content: center;
-
     }
-
 
     .auth-card {
-
       width: 100%;
-
       max-width: 420px;
-
       background: white;
-
       border-radius: 18px;
-
       padding: 28px;
-
       box-shadow:
         0 10px 30px rgba(0,0,0,0.08);
-
     }
-
 
     .auth-logo {
-
       text-align: center;
-
       font-size: 42px;
-
       margin-bottom: 8px;
-
     }
-
 
     .auth-title {
-
       text-align: center;
-
       font-size: 24px;
-
       font-weight: 700;
-
       margin-bottom: 8px;
-
     }
-
 
     .auth-description {
-
       text-align: center;
-
       color: #6b7280;
-
       font-size: 14px;
-
       margin-bottom: 24px;
-
     }
-
 
     .form-group {
-
       margin-bottom: 16px;
-
     }
-
 
     .form-group label {
-
       display: block;
-
       font-size: 13px;
-
       font-weight: 600;
-
       margin-bottom: 7px;
-
     }
-
 
     input,
     select {
-
       width: 100%;
-
       border: 1px solid #d1d5db;
-
       border-radius: 10px;
-
       padding: 13px;
-
       outline: none;
-
       background: white;
-
     }
-
 
     input:focus,
     select:focus {
-
       border-color: #2563eb;
-
     }
-
 
     .primary-button {
-
       width: 100%;
-
       border: none;
-
       border-radius: 10px;
-
       padding: 14px;
-
       background: #2563eb;
-
       color: white;
-
       font-weight: 700;
-
     }
-
 
     .primary-button:disabled {
-
       opacity: 0.6;
-
       cursor: not-allowed;
-
     }
-
 
     .error-message {
-
       display: none;
-
       background: #fef2f2;
-
       color: #b91c1c;
-
       border: 1px solid #fecaca;
-
       border-radius: 10px;
-
       padding: 12px;
-
       margin-bottom: 16px;
-
       font-size: 13px;
-
       line-height: 1.5;
-
     }
-
 
     .success-message {
-
       display: none;
-
       background: #ecfdf5;
-
       color: #047857;
-
       border: 1px solid #a7f3d0;
-
       border-radius: 10px;
-
       padding: 12px;
-
       margin-bottom: 16px;
-
       font-size: 13px;
-
       line-height: 1.5;
-
     }
-
 
     .switch-text {
-
       text-align: center;
-
       margin-top: 18px;
-
       color: #6b7280;
-
       font-size: 13px;
-
     }
-
 
     .link-button {
-
       border: none;
-
       background: none;
-
       color: #2563eb;
-
       font-weight: 600;
-
     }
-
 
     /* =====================================================
        アプリ
     ===================================================== */
 
     #appScreen {
-
       display: none;
-
     }
-
 
     .user-bar {
-
       background: white;
-
       border-radius: 14px;
-
       padding: 15px;
-
       margin-bottom: 18px;
-
       display: flex;
-
       justify-content: space-between;
-
       align-items: center;
-
       gap: 10px;
-
       box-shadow:
         0 4px 15px rgba(0,0,0,0.05);
-
     }
-
 
     .user-info {
-
       min-width: 0;
-
     }
-
 
     .user-name {
-
       font-weight: 700;
-
     }
-
 
     .user-email {
-
       font-size: 12px;
-
       color: #6b7280;
-
       margin-top: 3px;
-
       word-break: break-all;
-
     }
-
 
     .role-badge {
-
       display: inline-block;
-
       margin-top: 5px;
-
       background: #eff6ff;
-
       color: #1d4ed8;
-
       padding: 4px 8px;
-
       border-radius: 999px;
-
       font-size: 11px;
-
       font-weight: 700;
-
     }
-
 
     .logout-button {
-
       flex-shrink: 0;
-
       border: none;
-
       background: #f3f4f6;
-
       color: #374151;
-
       padding: 9px 12px;
-
       border-radius: 9px;
-
       font-size: 12px;
-
       font-weight: 600;
-
     }
-
 
     /* =====================================================
        ウェルカム
     ===================================================== */
 
     .welcome-card {
-
       background:
         linear-gradient(
           135deg,
           #2563eb,
           #1d4ed8
         );
-
       color: white;
-
       border-radius: 18px;
-
       padding: 24px;
-
       margin-bottom: 18px;
-
     }
-
 
     .welcome-title {
-
       font-size: 22px;
-
       font-weight: 700;
-
     }
-
 
     .welcome-text {
-
       margin-top: 8px;
-
       font-size: 14px;
-
       opacity: 0.9;
-
       line-height: 1.6;
-
     }
-
 
     /* =====================================================
        共通カード
@@ -483,650 +288,360 @@
 
     .status-card,
     .management-card {
-
       background: white;
-
       border-radius: 14px;
-
       padding: 20px;
-
       box-shadow:
         0 4px 15px rgba(0,0,0,0.05);
-
       margin-bottom: 18px;
-
     }
-
 
     .status-title,
     .management-title {
-
       font-weight: 700;
-
       margin-bottom: 10px;
-
     }
-
 
     .status-text {
-
       color: #6b7280;
-
       line-height: 1.7;
-
       font-size: 14px;
-
     }
-
 
     .setup-warning {
-
       margin-top: 15px;
-
       padding: 14px;
-
       background: #fff7ed;
-
       border: 1px solid #fed7aa;
-
       border-radius: 10px;
-
       color: #9a3412;
-
       font-size: 13px;
-
       line-height: 1.6;
-
     }
-
 
     .management-card {
-
       display: none;
-
     }
-
 
     .management-description {
-
       color: #6b7280;
-
       font-size: 13px;
-
       margin-bottom: 16px;
-
       line-height: 1.6;
-
     }
-
 
     /* =====================================================
        班追加
     ===================================================== */
 
     .team-add-area {
-
       display: flex;
-
       gap: 10px;
-
       margin-bottom: 18px;
-
     }
-
 
     .team-add-area input {
-
       flex: 1;
-
     }
-
 
     .team-add-button {
-
       flex-shrink: 0;
-
       border: none;
-
       border-radius: 10px;
-
       padding: 0 18px;
-
       background: #2563eb;
-
       color: white;
-
       font-weight: 700;
-
     }
-
 
     /* =====================================================
        班一覧
     ===================================================== */
 
     .team-list {
-
       display: flex;
-
       flex-direction: column;
-
       gap: 10px;
-
     }
-
 
     .team-item {
-
       border: 1px solid #e5e7eb;
-
       border-radius: 12px;
-
       padding: 14px;
-
       display: flex;
-
       justify-content: space-between;
-
       align-items: center;
-
       gap: 12px;
-
     }
-
 
     .team-info {
-
       min-width: 0;
-
     }
-
 
     .team-name {
-
       font-weight: 700;
-
       font-size: 15px;
-
     }
-
 
     .team-member-count {
-
       color: #6b7280;
-
       font-size: 12px;
-
       margin-top: 4px;
-
     }
-
 
     .team-actions {
-
       display: flex;
-
       gap: 7px;
-
       flex-shrink: 0;
-
     }
-
 
     .edit-team-button,
     .delete-team-button {
-
       border: none;
-
       border-radius: 9px;
-
       padding: 9px 11px;
-
       font-size: 12px;
-
       font-weight: 700;
-
     }
-
 
     .edit-team-button {
-
       background: #eff6ff;
-
       color: #1d4ed8;
-
     }
-
 
     .delete-team-button {
-
       background: #fef2f2;
-
       color: #b91c1c;
-
     }
-
 
     /* =====================================================
        商材管理
     ===================================================== */
 
     .product-add-area {
-
       display: grid;
-
       grid-template-columns: 1fr 180px auto;
-
       gap: 10px;
-
       margin-bottom: 18px;
-
     }
-
 
     .product-add-button {
-
       border: none;
-
       border-radius: 10px;
-
       padding: 0 18px;
-
       background: #16a34a;
-
       color: white;
-
       font-weight: 700;
-
       white-space: nowrap;
-
     }
-
 
     .product-list {
-
       display: flex;
-
       flex-direction: column;
-
       gap: 10px;
-
     }
-
 
     .product-item {
-
       border: 1px solid #e5e7eb;
-
       border-radius: 12px;
-
       padding: 15px;
-
       display: flex;
-
       justify-content: space-between;
-
       align-items: center;
-
       gap: 12px;
-
     }
-
 
     .product-info {
-
       min-width: 0;
-
     }
-
 
     .product-name {
-
       font-size: 15px;
-
       font-weight: 700;
-
     }
-
 
     .product-revenue {
-
       margin-top: 5px;
-
       font-size: 13px;
-
       color: #16a34a;
-
       font-weight: 700;
-
     }
-
 
     .product-actions {
-
       display: flex;
-
       gap: 7px;
-
       flex-shrink: 0;
-
     }
-
 
     .edit-product-button,
     .delete-product-button {
-
       border: none;
-
       border-radius: 9px;
-
       padding: 9px 11px;
-
       font-size: 12px;
-
       font-weight: 700;
-
     }
-
 
     .edit-product-button {
-
       background: #eff6ff;
-
       color: #1d4ed8;
-
     }
-
 
     .delete-product-button {
-
       background: #fef2f2;
-
       color: #b91c1c;
-
     }
-
 
     /* =====================================================
        メンバー
     ===================================================== */
 
     .member-list {
-
       display: flex;
-
       flex-direction: column;
-
       gap: 10px;
-
     }
-
 
     .member-item {
-
       border: 1px solid #e5e7eb;
-
       border-radius: 12px;
-
       padding: 14px;
-
       display: flex;
-
       justify-content: space-between;
-
       align-items: center;
-
       gap: 12px;
-
     }
-
 
     .member-info {
-
       min-width: 0;
-
       flex: 1;
-
     }
-
 
     .member-name {
-
       font-weight: 700;
-
       font-size: 15px;
-
     }
-
 
     .member-email {
-
       color: #6b7280;
-
       font-size: 12px;
-
       margin-top: 4px;
-
       word-break: break-all;
-
     }
-
 
     .member-role {
-
       display: inline-block;
-
       margin-top: 7px;
-
       padding: 4px 8px;
-
       border-radius: 999px;
-
       font-size: 11px;
-
       font-weight: 700;
-
       background: #f3f4f6;
-
       color: #374151;
-
     }
-
 
     .member-role.leader {
-
       background: #fef3c7;
-
       color: #92400e;
-
     }
-
 
     .member-team {
-
       display: inline-block;
-
       margin-top: 7px;
-
       margin-left: 4px;
-
       padding: 4px 8px;
-
       border-radius: 999px;
-
       font-size: 11px;
-
       font-weight: 700;
-
       background: #eff6ff;
-
       color: #1d4ed8;
-
     }
-
 
     .member-actions {
-
       display: flex;
-
       gap: 7px;
-
       flex-shrink: 0;
-
     }
-
 
     .role-change-button,
     .team-change-button {
-
       border: none;
-
       border-radius: 9px;
-
       padding: 9px 11px;
-
       font-size: 12px;
-
       font-weight: 700;
-
     }
-
 
     .role-change-button {
-
       background: #2563eb;
-
       color: white;
-
     }
-
 
     .role-change-button.demote {
-
       background: #f3f4f6;
-
       color: #374151;
-
     }
-
 
     .team-change-button {
-
       background: #111827;
-
       color: white;
-
     }
-
-
-    .role-change-button:disabled {
-
-      opacity: 0.5;
-
-      cursor: not-allowed;
-
-    }
-
 
     /* =====================================================
        モーダル
     ===================================================== */
 
     .modal-overlay {
-
       display: none;
-
       position: fixed;
-
       inset: 0;
-
-      background:
-        rgba(0,0,0,0.45);
-
+      background: rgba(0,0,0,0.45);
       z-index: 999;
-
       align-items: center;
-
       justify-content: center;
-
       padding: 20px;
-
     }
-
 
     .modal {
-
       width: 100%;
-
       max-width: 420px;
-
       background: white;
-
       border-radius: 18px;
-
       padding: 24px;
-
       box-shadow:
         0 20px 50px rgba(0,0,0,0.2);
-
     }
-
 
     .modal-title {
-
       font-size: 19px;
-
       font-weight: 700;
-
       margin-bottom: 18px;
-
     }
-
 
     .modal-buttons {
-
       display: flex;
-
       gap: 10px;
-
       margin-top: 18px;
-
     }
-
 
     .modal-cancel,
     .modal-confirm {
-
       flex: 1;
-
       border: none;
-
       border-radius: 10px;
-
       padding: 12px;
-
       font-weight: 700;
-
     }
-
 
     .modal-cancel {
-
       background: #f3f4f6;
-
       color: #374151;
-
     }
-
 
     .modal-confirm {
-
       background: #2563eb;
-
       color: white;
-
     }
-
 
     /* =====================================================
        共通
@@ -1134,17 +649,11 @@
 
     .empty-message,
     .loading-message {
-
       text-align: center;
-
       color: #6b7280;
-
       padding: 20px 10px;
-
       font-size: 13px;
-
     }
-
 
     /* =====================================================
        スマホ
@@ -1153,94 +662,56 @@
     @media (max-width: 700px) {
 
       .auth-card {
-
         padding: 22px;
-
       }
-
 
       .user-bar {
-
         align-items: flex-start;
-
       }
-
 
       .product-add-area {
-
         grid-template-columns: 1fr;
-
       }
-
 
       .product-add-button {
-
         padding: 13px;
-
       }
-
 
       .product-item {
-
         align-items: flex-start;
-
       }
-
 
       .product-actions {
-
         flex-direction: column;
-
       }
-
 
       .member-item {
-
         align-items: flex-start;
-
       }
-
 
       .member-actions {
-
         flex-direction: column;
-
       }
-
 
       .role-change-button,
       .team-change-button {
-
         width: 110px;
-
       }
-
 
       .team-add-area {
-
         flex-direction: column;
-
       }
-
 
       .team-add-button {
-
         padding: 13px;
-
       }
-
 
       .team-item {
-
         align-items: flex-start;
-
       }
 
-
       .team-actions {
-
         flex-direction: column;
-
       }
 
     }
@@ -1252,9 +723,7 @@
 
 <body>
 
-
 <div class="app">
-
 
   <header>
 
@@ -1274,7 +743,7 @@
 
 
   <!-- =====================================================
-       ログイン画面
+       ログイン
   ====================================================== -->
 
   <main id="authScreen">
@@ -1287,7 +756,6 @@
           📊
         </div>
 
-
         <div
           class="auth-title"
           id="authTitle"
@@ -1295,23 +763,19 @@
           ログイン
         </div>
 
-
         <div class="auth-description">
           営業実績管理システム
         </div>
-
 
         <div
           id="errorMessage"
           class="error-message"
         ></div>
 
-
         <div
           id="successMessage"
           class="success-message"
         ></div>
-
 
         <div
           class="form-group"
@@ -1331,7 +795,6 @@
 
         </div>
 
-
         <div class="form-group">
 
           <label for="email">
@@ -1345,7 +808,6 @@
           >
 
         </div>
-
 
         <div class="form-group">
 
@@ -1361,14 +823,12 @@
 
         </div>
 
-
         <button
           id="authButton"
           class="primary-button"
         >
           ログイン
         </button>
-
 
         <div class="switch-text">
 
@@ -1393,13 +853,10 @@
 
 
   <!-- =====================================================
-       アプリ画面
+       アプリ
   ====================================================== -->
 
   <main id="appScreen">
-
-
-    <!-- ユーザー情報 -->
 
     <div class="user-bar">
 
@@ -1412,14 +869,12 @@
           -
         </div>
 
-
         <div
           id="userEmail"
           class="user-email"
         >
           -
         </div>
-
 
         <div
           id="userRole"
@@ -1429,7 +884,6 @@
         </div>
 
       </div>
-
 
       <button
         id="logoutButton"
@@ -1441,14 +895,11 @@
     </div>
 
 
-    <!-- ウェルカム -->
-
     <div class="welcome-card">
 
       <div class="welcome-title">
         営業実績管理へようこそ
       </div>
-
 
       <div class="welcome-text">
         Firebaseとの接続が完了しました。<br>
@@ -1458,14 +909,11 @@
     </div>
 
 
-    <!-- 状態 -->
-
     <div class="status-card">
 
       <div class="status-title">
         現在の状態
       </div>
-
 
       <div class="status-text">
 
@@ -1489,7 +937,6 @@
         </strong>
 
       </div>
-
 
       <div
         id="setupWarning"
@@ -1524,15 +971,12 @@
         🏢 班管理
       </div>
 
-
       <div class="management-description">
 
         営業チームを作成・編集できます。<br>
-
         作成した班はメンバーの所属先として使用します。
 
       </div>
-
 
       <div class="team-add-area">
 
@@ -1542,7 +986,6 @@
           placeholder="例：1班"
         >
 
-
         <button
           id="addTeamButton"
           class="team-add-button"
@@ -1551,7 +994,6 @@
         </button>
 
       </div>
-
 
       <div
         id="teamList"
@@ -1580,15 +1022,12 @@
         🛍️ 商材管理
       </div>
 
-
       <div class="management-description">
 
         商材名と1件あたりの収益を自由に設定できます。<br>
-
         登録した商材は、後で実績入力に使用します。
 
       </div>
-
 
       <div class="product-add-area">
 
@@ -1598,7 +1037,6 @@
           placeholder="商材名 例：NURO光"
         >
 
-
         <input
           id="productRevenueInput"
           type="number"
@@ -1606,7 +1044,6 @@
           step="1"
           placeholder="1件あたり収益"
         >
-
 
         <button
           id="addProductButton"
@@ -1616,7 +1053,6 @@
         </button>
 
       </div>
-
 
       <div
         id="productList"
@@ -1645,13 +1081,11 @@
         👑 メンバー管理
       </div>
 
-
       <div class="management-description">
 
         メンバーの権限と所属班を変更できます。
 
       </div>
-
 
       <div
         id="memberList"
@@ -1666,9 +1100,7 @@
 
     </div>
 
-
   </main>
-
 
 </div>
 
@@ -1684,18 +1116,15 @@
 
   <div class="modal">
 
-
     <div class="modal-title">
       班名を変更
     </div>
-
 
     <div class="form-group">
 
       <label for="editTeamName">
         班名
       </label>
-
 
       <input
         id="editTeamName"
@@ -1704,7 +1133,6 @@
       >
 
     </div>
-
 
     <div class="modal-buttons">
 
@@ -1715,7 +1143,6 @@
         キャンセル
       </button>
 
-
       <button
         id="saveTeamModal"
         class="modal-confirm"
@@ -1724,7 +1151,6 @@
       </button>
 
     </div>
-
 
   </div>
 
@@ -1742,18 +1168,15 @@
 
   <div class="modal">
 
-
     <div class="modal-title">
       商材を編集
     </div>
-
 
     <div class="form-group">
 
       <label for="editProductName">
         商材名
       </label>
-
 
       <input
         id="editProductName"
@@ -1763,13 +1186,11 @@
 
     </div>
 
-
     <div class="form-group">
 
       <label for="editProductRevenue">
         1件あたり収益
       </label>
-
 
       <input
         id="editProductRevenue"
@@ -1781,7 +1202,6 @@
 
     </div>
 
-
     <div class="modal-buttons">
 
       <button
@@ -1790,7 +1210,6 @@
       >
         キャンセル
       </button>
-
 
       <button
         id="saveProductModal"
@@ -1801,6 +1220,59 @@
 
     </div>
 
+  </div>
+
+</div>
+
+
+<!-- =====================================================
+     メンバー班変更モーダル
+====================================================== -->
+
+<div
+  id="memberTeamModal"
+  class="modal-overlay"
+>
+
+  <div class="modal">
+
+    <div class="modal-title">
+      所属班を変更
+    </div>
+
+    <div class="form-group">
+
+      <label for="memberTeamSelect">
+        班
+      </label>
+
+      <select id="memberTeamSelect">
+
+        <option value="">
+          所属なし
+        </option>
+
+      </select>
+
+    </div>
+
+    <div class="modal-buttons">
+
+      <button
+        id="cancelMemberTeamModal"
+        class="modal-cancel"
+      >
+        キャンセル
+      </button>
+
+      <button
+        id="saveMemberTeamModal"
+        class="modal-confirm"
+      >
+        保存
+      </button>
+
+    </div>
 
   </div>
 
@@ -1813,13 +1285,11 @@
 
 <script type="module">
 
-
   import {
     initializeApp
   }
   from
     "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
-
 
   import {
     getAuth,
@@ -1830,7 +1300,6 @@
   }
   from
     "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
-
 
   import {
     getFirestore,
@@ -1879,10 +1348,8 @@
       firebaseConfig
     );
 
-
   const auth =
     getAuth(app);
-
 
   const db =
     getFirestore(app);
@@ -1893,257 +1360,152 @@
   ====================================================== */
 
   const authScreen =
-    document.getElementById(
-      "authScreen"
-    );
-
+    document.getElementById("authScreen");
 
   const appScreen =
-    document.getElementById(
-      "appScreen"
-    );
-
+    document.getElementById("appScreen");
 
   const authTitle =
-    document.getElementById(
-      "authTitle"
-    );
-
+    document.getElementById("authTitle");
 
   const authButton =
-    document.getElementById(
-      "authButton"
-    );
-
+    document.getElementById("authButton");
 
   const switchButton =
-    document.getElementById(
-      "switchButton"
-    );
-
+    document.getElementById("switchButton");
 
   const switchDescription =
-    document.getElementById(
-      "switchDescription"
-    );
-
+    document.getElementById("switchDescription");
 
   const nameGroup =
-    document.getElementById(
-      "nameGroup"
-    );
-
+    document.getElementById("nameGroup");
 
   const nameInput =
-    document.getElementById(
-      "name"
-    );
-
+    document.getElementById("name");
 
   const emailInput =
-    document.getElementById(
-      "email"
-    );
-
+    document.getElementById("email");
 
   const passwordInput =
-    document.getElementById(
-      "password"
-    );
-
+    document.getElementById("password");
 
   const errorMessage =
-    document.getElementById(
-      "errorMessage"
-    );
-
+    document.getElementById("errorMessage");
 
   const successMessage =
-    document.getElementById(
-      "successMessage"
-    );
-
+    document.getElementById("successMessage");
 
   const userName =
-    document.getElementById(
-      "userName"
-    );
-
+    document.getElementById("userName");
 
   const userEmail =
-    document.getElementById(
-      "userEmail"
-    );
-
+    document.getElementById("userEmail");
 
   const userRole =
-    document.getElementById(
-      "userRole"
-    );
-
+    document.getElementById("userRole");
 
   const logoutButton =
-    document.getElementById(
-      "logoutButton"
-    );
-
+    document.getElementById("logoutButton");
 
   const loginStatus =
-    document.getElementById(
-      "loginStatus"
-    );
-
+    document.getElementById("loginStatus");
 
   const databaseStatus =
-    document.getElementById(
-      "databaseStatus"
-    );
-
+    document.getElementById("databaseStatus");
 
   const setupWarning =
-    document.getElementById(
-      "setupWarning"
-    );
-
+    document.getElementById("setupWarning");
 
   const teamManagement =
-    document.getElementById(
-      "teamManagement"
-    );
-
+    document.getElementById("teamManagement");
 
   const teamNameInput =
-    document.getElementById(
-      "teamNameInput"
-    );
-
+    document.getElementById("teamNameInput");
 
   const addTeamButton =
-    document.getElementById(
-      "addTeamButton"
-    );
-
+    document.getElementById("addTeamButton");
 
   const teamList =
-    document.getElementById(
-      "teamList"
-    );
-
+    document.getElementById("teamList");
 
   const productManagement =
-    document.getElementById(
-      "productManagement"
-    );
-
+    document.getElementById("productManagement");
 
   const productNameInput =
-    document.getElementById(
-      "productNameInput"
-    );
-
+    document.getElementById("productNameInput");
 
   const productRevenueInput =
-    document.getElementById(
-      "productRevenueInput"
-    );
-
+    document.getElementById("productRevenueInput");
 
   const addProductButton =
-    document.getElementById(
-      "addProductButton"
-    );
-
+    document.getElementById("addProductButton");
 
   const productList =
-    document.getElementById(
-      "productList"
-    );
-
+    document.getElementById("productList");
 
   const memberManagement =
-    document.getElementById(
-      "memberManagement"
-    );
-
+    document.getElementById("memberManagement");
 
   const memberList =
-    document.getElementById(
-      "memberList"
-    );
-
+    document.getElementById("memberList");
 
   const teamModal =
-    document.getElementById(
-      "teamModal"
-    );
-
+    document.getElementById("teamModal");
 
   const editTeamName =
-    document.getElementById(
-      "editTeamName"
-    );
-
+    document.getElementById("editTeamName");
 
   const cancelTeamModal =
-    document.getElementById(
-      "cancelTeamModal"
-    );
-
+    document.getElementById("cancelTeamModal");
 
   const saveTeamModal =
-    document.getElementById(
-      "saveTeamModal"
-    );
-
+    document.getElementById("saveTeamModal");
 
   const productModal =
-    document.getElementById(
-      "productModal"
-    );
-
+    document.getElementById("productModal");
 
   const editProductName =
-    document.getElementById(
-      "editProductName"
-    );
-
+    document.getElementById("editProductName");
 
   const editProductRevenue =
-    document.getElementById(
-      "editProductRevenue"
-    );
-
+    document.getElementById("editProductRevenue");
 
   const cancelProductModal =
-    document.getElementById(
-      "cancelProductModal"
-    );
-
+    document.getElementById("cancelProductModal");
 
   const saveProductModal =
-    document.getElementById(
-      "saveProductModal"
-    );
+    document.getElementById("saveProductModal");
+
+  const memberTeamModal =
+    document.getElementById("memberTeamModal");
+
+  const memberTeamSelect =
+    document.getElementById("memberTeamSelect");
+
+  const cancelMemberTeamModal =
+    document.getElementById("cancelMemberTeamModal");
+
+  const saveMemberTeamModal =
+    document.getElementById("saveMemberTeamModal");
 
 
-  let isRegisterMode =
-    false;
+  /* =====================================================
+     状態
+  ====================================================== */
 
+  let isRegisterMode = false;
 
-  let teams =
-    [];
+  let teams = [];
 
+  let products = [];
 
-  let products =
-    [];
+  let members = [];
 
+  let editingTeamId = null;
 
-  let editingTeamId =
-    null;
+  let editingProductId = null;
 
-
-  let editingProductId =
-    null;
+  let editingMemberId = null;
 
 
   /* =====================================================
@@ -2152,39 +1514,31 @@
 
   function showError(message) {
 
-    errorMessage.textContent =
-      message;
+    errorMessage.textContent = message;
 
-    errorMessage.style.display =
-      "block";
+    errorMessage.style.display = "block";
 
   }
 
 
   function showSuccess(message) {
 
-    successMessage.textContent =
-      message;
+    successMessage.textContent = message;
 
-    successMessage.style.display =
-      "block";
+    successMessage.style.display = "block";
 
   }
 
 
   function clearMessages() {
 
-    errorMessage.textContent =
-      "";
+    errorMessage.textContent = "";
 
-    successMessage.textContent =
-      "";
+    successMessage.textContent = "";
 
-    errorMessage.style.display =
-      "none";
+    errorMessage.style.display = "none";
 
-    successMessage.style.display =
-      "none";
+    successMessage.style.display = "none";
 
   }
 
@@ -2195,46 +1549,37 @@
 
   function firebaseErrorMessage(error) {
 
-    console.error(
-      error
-    );
+    console.error(error);
 
-
-    switch (
-      error.code
-    ) {
+    switch (error.code) {
 
       case "auth/email-already-in-use":
-
         return "このメールアドレスはすでに登録されています。";
 
       case "auth/invalid-email":
-
         return "メールアドレスの形式が正しくありません。";
 
       case "auth/weak-password":
-
         return "パスワードは6文字以上にしてください。";
 
       case "auth/invalid-credential":
-
         return "メールアドレスまたはパスワードが違います。";
 
       case "auth/user-not-found":
-
         return "アカウントが見つかりません。";
 
       case "auth/wrong-password":
-
         return "パスワードが違います。";
 
-      case "permission-denied":
+      case "auth/network-request-failed":
+        return "ネットワークエラーが発生しました。";
 
+      case "permission-denied":
         return "Firestoreへのアクセス権限がありません。";
 
       default:
-
-        return "エラーが発生しました。もう一度試してください。";
+        return error.message ||
+          "エラーが発生しました。もう一度試してください。";
 
     }
 
@@ -2242,7 +1587,7 @@
 
 
   /* =====================================================
-     ログイン切り替え
+     ログイン / 新規登録 切り替え
   ====================================================== */
 
   switchButton.addEventListener(
@@ -2252,13 +1597,9 @@
       isRegisterMode =
         !isRegisterMode;
 
-
       clearMessages();
 
-
-      if (
-        isRegisterMode
-      ) {
+      if (isRegisterMode) {
 
         authTitle.textContent =
           "新規登録";
@@ -2314,21 +1655,16 @@
         user.uid
       );
 
-
     const userSnap =
       await getDoc(
         userRef
       );
 
-
-    if (
-      userSnap.exists()
-    ) {
+    if (userSnap.exists()) {
 
       return userSnap.data();
 
     }
-
 
     const userData = {
 
@@ -2357,12 +1693,10 @@
 
     };
 
-
     await setDoc(
       userRef,
       userData
     );
-
 
     return userData;
 
@@ -2378,14 +1712,11 @@
     const name =
       nameInput.value.trim();
 
-
     const email =
       emailInput.value.trim();
 
-
     const password =
       passwordInput.value;
-
 
     if (!name) {
 
@@ -2397,7 +1728,6 @@
 
     }
 
-
     if (!email) {
 
       showError(
@@ -2408,10 +1738,7 @@
 
     }
 
-
-    if (
-      password.length < 6
-    ) {
+    if (password.length < 6) {
 
       showError(
         "パスワードは6文字以上にしてください。"
@@ -2421,16 +1748,12 @@
 
     }
 
-
     try {
 
-      authButton.disabled =
-        true;
-
+      authButton.disabled = true;
 
       authButton.textContent =
         "登録中...";
-
 
       const result =
         await createUserWithEmailAndPassword(
@@ -2439,31 +1762,24 @@
           password
         );
 
-
       await createUserDocument(
         result.user,
         name
       );
 
-
       showSuccess(
         "アカウントを作成しました。"
       );
 
-
     } catch (error) {
 
       showError(
-        firebaseErrorMessage(
-          error
-        )
+        firebaseErrorMessage(error)
       );
 
     } finally {
 
-      authButton.disabled =
-        false;
-
+      authButton.disabled = false;
 
       authButton.textContent =
         isRegisterMode
@@ -2484,10 +1800,8 @@
     const email =
       emailInput.value.trim();
 
-
     const password =
       passwordInput.value;
-
 
     if (!email) {
 
@@ -2499,7 +1813,6 @@
 
     }
 
-
     if (!password) {
 
       showError(
@@ -2510,16 +1823,12 @@
 
     }
 
-
     try {
 
-      authButton.disabled =
-        true;
-
+      authButton.disabled = true;
 
       authButton.textContent =
         "ログイン中...";
-
 
       await signInWithEmailAndPassword(
         auth,
@@ -2527,20 +1836,15 @@
         password
       );
 
-
     } catch (error) {
 
       showError(
-        firebaseErrorMessage(
-          error
-        )
+        firebaseErrorMessage(error)
       );
 
     } finally {
 
-      authButton.disabled =
-        false;
-
+      authButton.disabled = false;
 
       authButton.textContent =
         "ログイン";
@@ -2550,22 +1854,43 @@
   }
 
 
+  /* =====================================================
+     ログインボタン
+  ====================================================== */
+
   authButton.addEventListener(
     "click",
     async () => {
 
       clearMessages();
 
-
-      if (
-        isRegisterMode
-      ) {
+      if (isRegisterMode) {
 
         await registerUser();
 
       } else {
 
         await loginUser();
+
+      }
+
+    }
+  );
+
+
+  /* =====================================================
+     Enterキーでもログイン
+  ====================================================== */
+
+  passwordInput.addEventListener(
+    "keydown",
+    (event) => {
+
+      if (
+        event.key === "Enter"
+      ) {
+
+        authButton.click();
 
       }
 
@@ -2581,16 +1906,22 @@
     "click",
     async () => {
 
-      await signOut(
-        auth
-      );
+      try {
+
+        await signOut(auth);
+
+      } catch (error) {
+
+        console.error(error);
+
+      }
 
     }
   );
 
 
   /* =====================================================
-     ログイン状態
+     ログイン状態監視
   ====================================================== */
 
   onAuthStateChanged(
@@ -2602,41 +1933,30 @@
         authScreen.style.display =
           "none";
 
-
         appScreen.style.display =
           "block";
-
 
         loginStatus.textContent =
           "ログイン中";
 
-
-        await loadUserData(
-          user
-        );
-
+        await loadUserData(user);
 
       } else {
 
         authScreen.style.display =
           "block";
 
-
         appScreen.style.display =
           "none";
-
 
         loginStatus.textContent =
           "未ログイン";
 
-
         teamManagement.style.display =
           "none";
 
-
         productManagement.style.display =
           "none";
-
 
         memberManagement.style.display =
           "none";
@@ -2648,18 +1968,15 @@
 
 
   /* =====================================================
-     ユーザー情報
+     ユーザー情報取得
   ====================================================== */
 
-  async function loadUserData(
-    user
-  ) {
+  async function loadUserData(user) {
 
     try {
 
       databaseStatus.textContent =
         "確認中...";
-
 
       const userRef =
         doc(
@@ -2668,21 +1985,14 @@
           user.uid
         );
 
-
       let userSnap =
-        await getDoc(
-          userRef
-        );
+        await getDoc(userRef);
 
-
-      if (
-        !userSnap.exists()
-      ) {
+      if (!userSnap.exists()) {
 
         await createUserDocument(
           user
         );
-
 
         userSnap =
           await getDoc(
@@ -2691,10 +2001,7 @@
 
       }
 
-
-      if (
-        !userSnap.exists()
-      ) {
+      if (!userSnap.exists()) {
 
         throw new Error(
           "ユーザーデータがありません"
@@ -2702,21 +2009,17 @@
 
       }
 
-
       const data =
         userSnap.data();
-
 
       userName.textContent =
         data.name ||
         "名前未設定";
 
-
       userEmail.textContent =
         data.email ||
         user.email ||
         "";
-
 
       if (
         data.role === "leader"
@@ -2725,73 +2028,58 @@
         userRole.textContent =
           "👑 リーダー";
 
-
         setupWarning.style.display =
           "none";
-
 
         teamManagement.style.display =
           "block";
 
-
         productManagement.style.display =
           "block";
-
 
         memberManagement.style.display =
           "block";
 
-
         await loadTeams();
-
 
         await loadProducts();
 
-
         await loadMembers();
-
 
       } else {
 
         userRole.textContent =
           "👤 メンバー";
 
-
         setupWarning.style.display =
           "block";
-
 
         teamManagement.style.display =
           "none";
 
-
         productManagement.style.display =
           "none";
-
 
         memberManagement.style.display =
           "none";
 
       }
 
-
       databaseStatus.textContent =
         "接続済み";
-
 
     } catch (error) {
 
       console.error(
+        "ユーザー情報取得エラー:",
         error
       );
-
 
       databaseStatus.textContent =
         "接続エラー";
 
-
       showError(
-        "Firestoreへの接続に失敗しました。"
+        firebaseErrorMessage(error)
       );
 
     }
@@ -2811,7 +2099,6 @@
       </div>
     `;
 
-
     try {
 
       const snapshot =
@@ -2822,9 +2109,7 @@
           )
         );
 
-
       teams = [];
-
 
       snapshot.forEach(
         (teamDoc) => {
@@ -2841,9 +2126,15 @@
         }
       );
 
+      teams.sort(
+        (a, b) =>
+          (a.name || "").localeCompare(
+            b.name || "",
+            "ja"
+          )
+      );
 
       renderTeams();
-
 
     } catch (error) {
 
@@ -2851,7 +2142,6 @@
         "班取得エラー:",
         error
       );
-
 
       teamList.innerHTML = `
         <div class="empty-message">
@@ -2885,96 +2175,60 @@
 
     }
 
-
-    teamList.innerHTML =
-      "";
-
+    teamList.innerHTML = "";
 
     teams.forEach(
       (team) => {
 
         const item =
-          document.createElement(
-            "div"
-          );
-
+          document.createElement("div");
 
         item.className =
           "team-item";
 
-
         const info =
-          document.createElement(
-            "div"
-          );
-
+          document.createElement("div");
 
         info.className =
           "team-info";
 
-
         const name =
-          document.createElement(
-            "div"
-          );
-
+          document.createElement("div");
 
         name.className =
           "team-name";
-
 
         name.textContent =
           team.name ||
           "名前未設定";
 
-
         const count =
-          document.createElement(
-            "div"
-          );
-
+          document.createElement("div");
 
         count.className =
           "team-member-count";
 
-
         count.textContent =
           "メンバー数を確認中...";
 
+        info.appendChild(name);
 
-        info.appendChild(
-          name
-        );
-
-
-        info.appendChild(
-          count
-        );
-
+        info.appendChild(count);
 
         const actions =
-          document.createElement(
-            "div"
-          );
-
+          document.createElement("div");
 
         actions.className =
           "team-actions";
 
-
         const editButton =
-          document.createElement(
-            "button"
-          );
-
+          document.createElement("button");
 
         editButton.className =
           "edit-team-button";
 
-
         editButton.textContent =
           "✏️ 編集";
-
 
         editButton.addEventListener(
           "click",
@@ -2987,20 +2241,14 @@
           }
         );
 
-
         const deleteButton =
-          document.createElement(
-            "button"
-          );
-
+          document.createElement("button");
 
         deleteButton.className =
           "delete-team-button";
 
-
         deleteButton.textContent =
           "🗑️ 削除";
-
 
         deleteButton.addEventListener(
           "click",
@@ -3013,30 +2261,1429 @@
           }
         );
 
-
         actions.appendChild(
           editButton
         );
-
 
         actions.appendChild(
           deleteButton
         );
 
+        item.appendChild(info);
 
-        item.appendChild(
-          info
+        item.appendChild(actions);
+
+        teamList.appendChild(item);
+
+        countTeamMembers(
+          team.id,
+          count
         );
 
+      }
+    );
 
-        item.appendChild(
-          actions
+  }
+
+
+  /* =====================================================
+     班メンバー数
+  ====================================================== */
+
+  async function countTeamMembers(
+    teamId,
+    element
+  ) {
+
+    try {
+
+      const snapshot =
+        await getDocs(
+          collection(
+            db,
+            "users"
+          )
         );
 
+      let count = 0;
 
-        teamList.appendChild(
-          item
+      snapshot.forEach(
+        (userDoc) => {
+
+          const data =
+            userDoc.data();
+
+          if (
+            data.teamId === teamId
+          ) {
+
+            count++;
+
+          }
+
+        }
+      );
+
+      element.textContent =
+        `メンバー ${count}人`;
+
+    } catch (error) {
+
+      console.error(
+        error
+      );
+
+      element.textContent =
+        "人数取得エラー";
+
+    }
+
+  }
+
+
+  /* =====================================================
+     班追加
+  ====================================================== */
+
+  addTeamButton.addEventListener(
+    "click",
+    async () => {
+
+      const name =
+        teamNameInput.value.trim();
+
+      if (!name) {
+
+        showError(
+          "班名を入力してください。"
         );
 
+        return;
 
-        countTeamMembers
+      }
+
+      try {
+
+        addTeamButton.disabled =
+          true;
+
+        addTeamButton.textContent =
+          "追加中...";
+
+        const teamRef =
+          doc(
+            collection(
+              db,
+              "teams"
+            )
+          );
+
+        await setDoc(
+          teamRef,
+          {
+
+            name:
+              name,
+
+            leaderUids:
+              [],
+
+            active:
+              true,
+
+            createdAt:
+              serverTimestamp()
+
+          }
+        );
+
+        teamNameInput.value =
+          "";
+
+        await loadTeams();
+
+        showSuccess(
+          "班を追加しました。"
+        );
+
+      } catch (error) {
+
+        console.error(
+          error
+        );
+
+        showError(
+          firebaseErrorMessage(error)
+        );
+
+      } finally {
+
+        addTeamButton.disabled =
+          false;
+
+        addTeamButton.textContent =
+          "＋ 班を追加";
+
+      }
+
+    }
+  );
+
+
+  /* =====================================================
+     班編集
+  ====================================================== */
+
+  function openEditTeamModal(team) {
+
+    editingTeamId =
+      team.id;
+
+    editTeamName.value =
+      team.name || "";
+
+    teamModal.style.display =
+      "flex";
+
+  }
+
+
+  function closeTeamModal() {
+
+    editingTeamId =
+      null;
+
+    editTeamName.value =
+      "";
+
+    teamModal.style.display =
+      "none";
+
+  }
+
+
+  cancelTeamModal.addEventListener(
+    "click",
+    closeTeamModal
+  );
+
+
+  saveTeamModal.addEventListener(
+    "click",
+    async () => {
+
+      const name =
+        editTeamName.value.trim();
+
+      if (!name) {
+
+        alert(
+          "班名を入力してください。"
+        );
+
+        return;
+
+      }
+
+      if (!editingTeamId) {
+
+        return;
+
+      }
+
+      try {
+
+        saveTeamModal.disabled =
+          true;
+
+        saveTeamModal.textContent =
+          "保存中...";
+
+        await updateDoc(
+          doc(
+            db,
+            "teams",
+            editingTeamId
+          ),
+          {
+
+            name:
+              name,
+
+            updatedAt:
+              serverTimestamp()
+
+          }
+        );
+
+        closeTeamModal();
+
+        await loadTeams();
+
+        showSuccess(
+          "班名を変更しました。"
+        );
+
+      } catch (error) {
+
+        console.error(
+          error
+        );
+
+        alert(
+          firebaseErrorMessage(error)
+        );
+
+      } finally {
+
+        saveTeamModal.disabled =
+          false;
+
+        saveTeamModal.textContent =
+          "保存";
+
+      }
+
+    }
+  );
+
+
+  /* =====================================================
+     班削除
+  ====================================================== */
+
+  async function deleteTeam(team) {
+
+    const confirmed =
+      window.confirm(
+        `「${team.name}」を削除しますか？`
+      );
+
+    if (!confirmed) {
+
+      return;
+
+    }
+
+    try {
+
+      await deleteDoc(
+        doc(
+          db,
+          "teams",
+          team.id
+        )
+      );
+
+      /* 所属メンバーの班を解除 */
+
+      const userSnapshot =
+        await getDocs(
+          collection(
+            db,
+            "users"
+          )
+        );
+
+      const updates = [];
+
+      userSnapshot.forEach(
+        (userDoc) => {
+
+          const data =
+            userDoc.data();
+
+          if (
+            data.teamId === team.id
+          ) {
+
+            updates.push(
+              updateDoc(
+                doc(
+                  db,
+                  "users",
+                  userDoc.id
+                ),
+                {
+                  teamId: null
+                }
+              )
+            );
+
+          }
+
+        }
+      );
+
+      await Promise.all(
+        updates
+      );
+
+      await loadTeams();
+
+      await loadMembers();
+
+      showSuccess(
+        "班を削除しました。"
+      );
+
+    } catch (error) {
+
+      console.error(
+        error
+      );
+
+      showError(
+        firebaseErrorMessage(error)
+      );
+
+    }
+
+  }
+
+
+  /* =====================================================
+     商材一覧取得
+  ====================================================== */
+
+  async function loadProducts() {
+
+    productList.innerHTML = `
+      <div class="loading-message">
+        商材情報を読み込み中...
+      </div>
+    `;
+
+    try {
+
+      const snapshot =
+        await getDocs(
+          collection(
+            db,
+            "products"
+          )
+        );
+
+      products = [];
+
+      snapshot.forEach(
+        (productDoc) => {
+
+          products.push({
+
+            id:
+              productDoc.id,
+
+            ...productDoc.data()
+
+          });
+
+        }
+      );
+
+      products.sort(
+        (a, b) =>
+          (a.name || "").localeCompare(
+            b.name || "",
+            "ja"
+          )
+      );
+
+      renderProducts();
+
+    } catch (error) {
+
+      console.error(
+        "商材取得エラー:",
+        error
+      );
+
+      productList.innerHTML = `
+        <div class="empty-message">
+          商材情報を取得できませんでした。
+        </div>
+      `;
+
+    }
+
+  }
+
+
+  /* =====================================================
+     商材表示
+  ====================================================== */
+
+  function renderProducts() {
+
+    if (
+      products.length === 0
+    ) {
+
+      productList.innerHTML = `
+        <div class="empty-message">
+          まだ商材がありません。<br>
+          上の入力欄から商材を追加してください。
+        </div>
+      `;
+
+      return;
+
+    }
+
+    productList.innerHTML = "";
+
+    products.forEach(
+      (product) => {
+
+        const item =
+          document.createElement("div");
+
+        item.className =
+          "product-item";
+
+        const info =
+          document.createElement("div");
+
+        info.className =
+          "product-info";
+
+        const name =
+          document.createElement("div");
+
+        name.className =
+          "product-name";
+
+        name.textContent =
+          product.name ||
+          "名前未設定";
+
+        const revenue =
+          document.createElement("div");
+
+        revenue.className =
+          "product-revenue";
+
+        revenue.textContent =
+          `1件：¥${Number(
+            product.revenue || 0
+          ).toLocaleString("ja-JP")}`;
+
+        info.appendChild(name);
+
+        info.appendChild(revenue);
+
+        const actions =
+          document.createElement("div");
+
+        actions.className =
+          "product-actions";
+
+        const editButton =
+          document.createElement("button");
+
+        editButton.className =
+          "edit-product-button";
+
+        editButton.textContent =
+          "✏️ 編集";
+
+        editButton.addEventListener(
+          "click",
+          () => {
+
+            openEditProductModal(
+              product
+            );
+
+          }
+        );
+
+        const deleteButton =
+          document.createElement("button");
+
+        deleteButton.className =
+          "delete-product-button";
+
+        deleteButton.textContent =
+          "🗑️ 削除";
+
+        deleteButton.addEventListener(
+          "click",
+          async () => {
+
+            await deleteProduct(
+              product
+            );
+
+          }
+        );
+
+        actions.appendChild(
+          editButton
+        );
+
+        actions.appendChild(
+          deleteButton
+        );
+
+        item.appendChild(info);
+
+        item.appendChild(actions);
+
+        productList.appendChild(item);
+
+      }
+    );
+
+  }
+
+
+  /* =====================================================
+     商材追加
+  ====================================================== */
+
+  addProductButton.addEventListener(
+    "click",
+    async () => {
+
+      const name =
+        productNameInput.value.trim();
+
+      const revenueValue =
+        productRevenueInput.value;
+
+      if (!name) {
+
+        showError(
+          "商材名を入力してください。"
+        );
+
+        return;
+
+      }
+
+      if (
+        revenueValue === "" ||
+        Number(revenueValue) < 0
+      ) {
+
+        showError(
+          "1件あたりの収益を入力してください。"
+        );
+
+        return;
+
+      }
+
+      const revenue =
+        Number(revenueValue);
+
+      try {
+
+        addProductButton.disabled =
+          true;
+
+        addProductButton.textContent =
+          "追加中...";
+
+        const productRef =
+          doc(
+            collection(
+              db,
+              "products"
+            )
+          );
+
+        await setDoc(
+          productRef,
+          {
+
+            name:
+              name,
+
+            revenue:
+              revenue,
+
+            active:
+              true,
+
+            createdAt:
+              serverTimestamp(),
+
+            updatedAt:
+              serverTimestamp()
+
+          }
+        );
+
+        productNameInput.value =
+          "";
+
+        productRevenueInput.value =
+          "";
+
+        await loadProducts();
+
+        showSuccess(
+          "商材を追加しました。"
+        );
+
+      } catch (error) {
+
+        console.error(
+          error
+        );
+
+        showError(
+          firebaseErrorMessage(error)
+        );
+
+      } finally {
+
+        addProductButton.disabled =
+          false;
+
+        addProductButton.textContent =
+          "＋ 商材を追加";
+
+      }
+
+    }
+  );
+
+
+  /* =====================================================
+     商材編集
+  ====================================================== */
+
+  function openEditProductModal(
+    product
+  ) {
+
+    editingProductId =
+      product.id;
+
+    editProductName.value =
+      product.name || "";
+
+    editProductRevenue.value =
+      product.revenue ?? 0;
+
+    productModal.style.display =
+      "flex";
+
+  }
+
+
+  function closeProductModal() {
+
+    editingProductId =
+      null;
+
+    editProductName.value =
+      "";
+
+    editProductRevenue.value =
+      "";
+
+    productModal.style.display =
+      "none";
+
+  }
+
+
+  cancelProductModal.addEventListener(
+    "click",
+    closeProductModal
+  );
+
+
+  saveProductModal.addEventListener(
+    "click",
+    async () => {
+
+      const name =
+        editProductName.value.trim();
+
+      const revenueValue =
+        editProductRevenue.value;
+
+      if (!name) {
+
+        alert(
+          "商材名を入力してください。"
+        );
+
+        return;
+
+      }
+
+      if (
+        revenueValue === "" ||
+        Number(revenueValue) < 0
+      ) {
+
+        alert(
+          "収益を正しく入力してください。"
+        );
+
+        return;
+
+      }
+
+      if (!editingProductId) {
+
+        return;
+
+      }
+
+      try {
+
+        saveProductModal.disabled =
+          true;
+
+        saveProductModal.textContent =
+          "保存中...";
+
+        await updateDoc(
+          doc(
+            db,
+            "products",
+            editingProductId
+          ),
+          {
+
+            name:
+              name,
+
+            revenue:
+              Number(revenueValue),
+
+            updatedAt:
+              serverTimestamp()
+
+          }
+        );
+
+        closeProductModal();
+
+        await loadProducts();
+
+        showSuccess(
+          "商材を変更しました。"
+        );
+
+      } catch (error) {
+
+        console.error(
+          error
+        );
+
+        alert(
+          firebaseErrorMessage(error)
+        );
+
+      } finally {
+
+        saveProductModal.disabled =
+          false;
+
+        saveProductModal.textContent =
+          "保存";
+
+      }
+
+    }
+  );
+
+
+  /* =====================================================
+     商材削除
+  ====================================================== */
+
+  async function deleteProduct(
+    product
+  ) {
+
+    const confirmed =
+      window.confirm(
+        `「${product.name}」を削除しますか？`
+      );
+
+    if (!confirmed) {
+
+      return;
+
+    }
+
+    try {
+
+      await deleteDoc(
+        doc(
+          db,
+          "products",
+          product.id
+        )
+      );
+
+      await loadProducts();
+
+      showSuccess(
+        "商材を削除しました。"
+      );
+
+    } catch (error) {
+
+      console.error(
+        error
+      );
+
+      showError(
+        firebaseErrorMessage(error)
+      );
+
+    }
+
+  }
+
+
+  /* =====================================================
+     メンバー一覧
+  ====================================================== */
+
+  async function loadMembers() {
+
+    memberList.innerHTML = `
+      <div class="loading-message">
+        メンバー情報を読み込み中...
+      </div>
+    `;
+
+    try {
+
+      const snapshot =
+        await getDocs(
+          collection(
+            db,
+            "users"
+          )
+        );
+
+      members = [];
+
+      snapshot.forEach(
+        (memberDoc) => {
+
+          members.push({
+
+            id:
+              memberDoc.id,
+
+            ...memberDoc.data()
+
+          });
+
+        }
+      );
+
+      members.sort(
+        (a, b) =>
+          (a.name || "").localeCompare(
+            b.name || "",
+            "ja"
+          )
+      );
+
+      renderMembers();
+
+    } catch (error) {
+
+      console.error(
+        "メンバー取得エラー:",
+        error
+      );
+
+      memberList.innerHTML = `
+        <div class="empty-message">
+          メンバー情報を取得できませんでした。
+        </div>
+      `;
+
+    }
+
+  }
+
+
+  /* =====================================================
+     班名取得
+  ====================================================== */
+
+  function getTeamName(teamId) {
+
+    if (!teamId) {
+
+      return "所属なし";
+
+    }
+
+    const team =
+      teams.find(
+        (item) =>
+          item.id === teamId
+      );
+
+    return team
+      ? team.name
+      : "所属なし";
+
+  }
+
+
+  /* =====================================================
+     メンバー表示
+  ====================================================== */
+
+  function renderMembers() {
+
+    if (
+      members.length === 0
+    ) {
+
+      memberList.innerHTML = `
+        <div class="empty-message">
+          メンバーがいません。
+        </div>
+      `;
+
+      return;
+
+    }
+
+    memberList.innerHTML = "";
+
+    members.forEach(
+      (member) => {
+
+        const item =
+          document.createElement("div");
+
+        item.className =
+          "member-item";
+
+        const info =
+          document.createElement("div");
+
+        info.className =
+          "member-info";
+
+        const name =
+          document.createElement("div");
+
+        name.className =
+          "member-name";
+
+        name.textContent =
+          member.name ||
+          "名前未設定";
+
+        const email =
+          document.createElement("div");
+
+        email.className =
+          "member-email";
+
+        email.textContent =
+          member.email ||
+          "";
+
+        const role =
+          document.createElement("span");
+
+        role.className =
+          "member-role";
+
+        if (
+          member.role === "leader"
+        ) {
+
+          role.classList.add(
+            "leader"
+          );
+
+          role.textContent =
+            "👑 リーダー";
+
+        } else {
+
+          role.textContent =
+            "👤 メンバー";
+
+        }
+
+        const team =
+          document.createElement("span");
+
+        team.className =
+          "member-team";
+
+        team.textContent =
+          getTeamName(
+            member.teamId
+          );
+
+        info.appendChild(name);
+
+        info.appendChild(email);
+
+        info.appendChild(role);
+
+        info.appendChild(team);
+
+        const actions =
+          document.createElement("div");
+
+        actions.className =
+          "member-actions";
+
+        const roleButton =
+          document.createElement("button");
+
+        roleButton.className =
+          "role-change-button";
+
+        if (
+          member.role === "leader"
+        ) {
+
+          roleButton.classList.add(
+            "demote"
+          );
+
+          roleButton.textContent =
+            "メンバーに変更";
+
+        } else {
+
+          roleButton.textContent =
+            "リーダーに変更";
+
+        }
+
+        roleButton.addEventListener(
+          "click",
+          async () => {
+
+            await changeMemberRole(
+              member
+            );
+
+          }
+        );
+
+        const teamButton =
+          document.createElement("button");
+
+        teamButton.className =
+          "team-change-button";
+
+        teamButton.textContent =
+          "班を変更";
+
+        teamButton.addEventListener(
+          "click",
+          () => {
+
+            openMemberTeamModal(
+              member
+            );
+
+          }
+        );
+
+        actions.appendChild(
+          roleButton
+        );
+
+        actions.appendChild(
+          teamButton
+        );
+
+        item.appendChild(info);
+
+        item.appendChild(actions);
+
+        memberList.appendChild(item);
+
+      }
+    );
+
+  }
+
+
+  /* =====================================================
+     権限変更
+  ====================================================== */
+
+  async function changeMemberRole(
+    member
+  ) {
+
+    const newRole =
+      member.role === "leader"
+        ? "member"
+        : "leader";
+
+    const roleText =
+      newRole === "leader"
+        ? "リーダー"
+        : "メンバー";
+
+    const confirmed =
+      window.confirm(
+        `「${member.name || "名前未設定"}」を${roleText}に変更しますか？`
+      );
+
+    if (!confirmed) {
+
+      return;
+
+    }
+
+    try {
+
+      await updateDoc(
+        doc(
+          db,
+          "users",
+          member.id
+        ),
+        {
+
+          role:
+            newRole,
+
+          updatedAt:
+            serverTimestamp()
+
+        }
+      );
+
+      await loadMembers();
+
+      showSuccess(
+        "権限を変更しました。"
+      );
+
+    } catch (error) {
+
+      console.error(
+        error
+      );
+
+      showError(
+        firebaseErrorMessage(error)
+      );
+
+    }
+
+  }
+
+
+  /* =====================================================
+     メンバー班変更モーダル
+  ====================================================== */
+
+  function openMemberTeamModal(
+    member
+  ) {
+
+    editingMemberId =
+      member.id;
+
+    memberTeamSelect.innerHTML = `
+      <option value="">
+        所属なし
+      </option>
+    `;
+
+    teams.forEach(
+      (team) => {
+
+        const option =
+          document.createElement("option");
+
+        option.value =
+          team.id;
+
+        option.textContent =
+          team.name;
+
+        if (
+          member.teamId === team.id
+        ) {
+
+          option.selected =
+            true;
+
+        }
+
+        memberTeamSelect.appendChild(
+          option
+        );
+
+      }
+    );
+
+    memberTeamModal.style.display =
+      "flex";
+
+  }
+
+
+  function closeMemberTeamModal() {
+
+    editingMemberId =
+      null;
+
+    memberTeamModal.style.display =
+      "none";
+
+  }
+
+
+  cancelMemberTeamModal.addEventListener(
+    "click",
+    closeMemberTeamModal
+  );
+
+
+  saveMemberTeamModal.addEventListener(
+    "click",
+    async () => {
+
+      if (!editingMemberId) {
+
+        return;
+
+      }
+
+      try {
+
+        saveMemberTeamModal.disabled =
+          true;
+
+        saveMemberTeamModal.textContent =
+          "保存中...";
+
+        const teamId =
+          memberTeamSelect.value ||
+          null;
+
+        await updateDoc(
+          doc(
+            db,
+            "users",
+            editingMemberId
+          ),
+          {
+
+            teamId:
+              teamId,
+
+            updatedAt:
+              serverTimestamp()
+
+          }
+        );
+
+        closeMemberTeamModal();
+
+        await loadMembers();
+
+        await loadTeams();
+
+        showSuccess(
+          "所属班を変更しました。"
+        );
+
+      } catch (error) {
+
+        console.error(
+          error
+        );
+
+        alert(
+          firebaseErrorMessage(error)
+        );
+
+      } finally {
+
+        saveMemberTeamModal.disabled =
+          false;
+
+        saveMemberTeamModal.textContent =
+          "保存";
+
+      }
+
+    }
+  );
+
+
+  /* =====================================================
+     モーダル外クリック
+  ====================================================== */
+
+  teamModal.addEventListener(
+    "click",
+    (event) => {
+
+      if (
+        event.target === teamModal
+      ) {
+
+        closeTeamModal();
+
+      }
+
+    }
+  );
+
+
+  productModal.addEventListener(
+    "click",
+    (event) => {
+
+      if (
+        event.target === productModal
+      ) {
+
+        closeProductModal();
+
+      }
+
+    }
+  );
+
+
+  memberTeamModal.addEventListener(
+    "click",
+    (event) => {
+
+      if (
+        event.target === memberTeamModal
+      ) {
+
+        closeMemberTeamModal();
+
+      }
+
+    }
+  );
+
+
+</script>
+
+</body>
+
+</html>
