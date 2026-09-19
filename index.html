@@ -3847,6 +3847,12 @@ onAuthStateChanged(
       currentUserData =
         null;
 
+      currentCompanyData =
+        null;
+
+      pendingInvitationData =
+        null;
+
       verificationScreen.style.display =
         "none";
 
@@ -4011,6 +4017,13 @@ function updateCurrentUserUI() {
     name;
 
 
+  companyInviteControls.style.display =
+    currentUserData.role ===
+    "leader"
+      ? "block"
+      : "none";
+
+
   if (
     currentUserData.role ===
     "leader"
@@ -4110,7 +4123,13 @@ saveAccountNameButton.onclick =
         "保存中...";
 
 
-      await updateDoc(
+      const batch =
+        writeBatch(
+          db
+        );
+
+
+      batch.update(
         doc(
           db,
           "users",
@@ -4126,6 +4145,35 @@ saveAccountNameButton.onclick =
 
         }
       );
+
+
+      if (
+        currentUserData.companyId
+      ) {
+
+        batch.update(
+          doc(
+            db,
+            "companies",
+            currentUserData.companyId,
+            "members",
+            currentUser.uid
+          ),
+          {
+
+            name:
+              newName,
+
+            updatedAt:
+              serverTimestamp()
+
+          }
+        );
+
+      }
+
+
+      await batch.commit();
 
 
       /*
@@ -5714,16 +5762,31 @@ function renderMembers() {
       roleButton.className =
         "member-action-button";
 
-      roleButton.textContent =
-        member.role === "leader"
-          ? "メンバーに変更"
-          : "リーダーに変更";
+      if (
+        member.companyRole ===
+        "owner"
+      ) {
 
-      roleButton.onclick =
-        () =>
-          changeMemberRole(
-            member
-          );
+        roleButton.textContent =
+          "オーナー";
+
+        roleButton.disabled =
+          true;
+
+      } else {
+
+        roleButton.textContent =
+          member.role === "leader"
+            ? "メンバーに変更"
+            : "リーダーに変更";
+
+        roleButton.onclick =
+          () =>
+            changeMemberRole(
+              member
+            );
+
+      }
 
 
       const teamButton =
