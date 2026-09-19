@@ -2555,6 +2555,23 @@ async function enterApplication(
     "ログイン中";
 
 
+  /*
+    メール確認直後は Firebase Auth のユーザー情報だけ更新され、
+    Firestore Security Rules が参照する ID トークンが古い場合がある。
+    Firestoreへ接続する前に最新トークンへ更新する。
+  */
+
+  if (
+    user.emailVerified
+  ) {
+
+    await user.getIdToken(
+      true
+    );
+
+  }
+
+
   await loadUserData(
     user
   );
