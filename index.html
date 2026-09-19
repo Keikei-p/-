@@ -4679,116 +4679,233 @@ function startRealtimeListeners() {
   /*
     users監視
 
-    名前変更・権限変更・所属班変更を
-    全員の画面にリアルタイム反映
+    leader は会社メンバー一覧を監視する。
+    member は自分のドキュメントだけを監視し、
+    他メンバーのメールアドレスを取得しない。
   */
 
-  unsubscribeUsers =
-    onSnapshot(
-      companyCollectionQuery("users"),
-      snapshot => {
+  if (
+    currentUserData?.role ===
+    "leader"
+  ) {
 
-        members = [];
+    unsubscribeUsers =
+      onSnapshot(
+        companyCollectionQuery("users"),
+        snapshot => {
 
-        snapshot.forEach(
-          userDoc => {
+          members = [];
 
-            const data =
-              userDoc.data();
+          snapshot.forEach(
+            userDoc => {
+
+              const data =
+                userDoc.data();
 
 
-            if (
-              data.active ===
-              false
-            ) {
+              if (
+                data.active ===
+                false
+              ) {
 
-              return;
+                return;
+
+              }
+
+
+              members.push({
+
+                id:
+                  userDoc.id,
+
+                ...data
+
+              });
+
+            }
+          );
+
+
+          members.sort(
+            (a, b) =>
+              (
+                a.name ||
+                ""
+              ).localeCompare(
+                b.name ||
+                "",
+                "ja"
+              )
+          );
+
+
+          if (
+            currentUser
+          ) {
+
+            const latest =
+              members.find(
+                member =>
+                  member.id ===
+                  currentUser.uid
+              );
+
+
+            if (latest) {
+
+              const previousRole =
+                currentUserData?.role;
+
+
+              currentUserData = {
+
+                ...latest,
+
+                uid:
+                  currentUser.uid
+
+              };
+
+
+              updateCurrentUserUI();
+
+
+              if (
+                previousRole !==
+                currentUserData.role
+              ) {
+
+                loadMembers()
+                  .then(
+                    () =>
+                      startRealtimeListeners()
+                  );
+
+                return;
+
+              }
 
             }
 
-
-            members.push({
-
-              id:
-                userDoc.id,
-
-              ...data
-
-            });
-
           }
-        );
 
 
-        members.sort(
-          (a, b) =>
-            (
-              a.name ||
-              ""
-            ).localeCompare(
-              b.name ||
-              "",
-              "ja"
-            )
-        );
+          renderMembers();
 
+          updateRecordMemberOptions();
 
-        /*
-          自分のユーザー情報を更新
-        */
+          renderDashboard();
 
-        if (
-          currentUser
-        ) {
+        },
+        error => {
 
-          const latest =
-            members.find(
-              member =>
-                member.id ===
-                currentUser.uid
-            );
-
-
-          if (latest) {
-
-            currentUserData = {
-
-              ...latest,
-
-              uid:
-                currentUser.uid
-
-            };
-
-
-            updateCurrentUserUI();
-
-          }
+          console.error(
+            "ユーザーリアルタイム監視エラー:",
+            error
+          );
 
         }
+      );
+
+  } else if (
+    currentUser
+  ) {
+
+    members = [
+      currentUserData
+    ];
 
 
-        renderMembers();
+    unsubscribeUsers =
+      onSnapshot(
+        doc(
+          db,
+          "users",
+          currentUser.uid
+        ),
+        async userSnap => {
 
-        /*
-          担当者選択欄の名前だけ更新
-          （実績の入力中の数値は保持）
-        */
+          if (
+            !userSnap.exists()
+          ) {
 
-        updateRecordMemberOptions();
+            return;
 
-        renderDashboard();
+          }
 
-      },
-      error => {
 
-        console.error(
-          "ユーザーリアルタイム監視エラー:",
-          error
-        );
+          const latest = {
 
-      }
-    );
+            ...userSnap.data(),
+
+            uid:
+              currentUser.uid
+
+          };
+
+
+          if (
+            latest.active ===
+            false
+          ) {
+
+            stopRealtimeListeners();
+
+            await signOut(
+              auth
+            );
+
+            showError(
+              "このアカウントは利用停止されています。会社オーナーに確認してください。"
+            );
+
+            return;
+
+          }
+
+
+          const previousRole =
+            currentUserData?.role;
+
+
+          currentUserData =
+            latest;
+
+          members = [
+            currentUserData
+          ];
+
+
+          updateCurrentUserUI();
+
+          updateRecordMemberOptions();
+
+          renderDashboard();
+
+
+          if (
+            previousRole !==
+            currentUserData.role
+          ) {
+
+            await loadMembers();
+
+            startRealtimeListeners();
+
+          }
+
+        },
+        error => {
+
+          console.error(
+            "ユーザー情報監視エラー:",
+            error
+          );
+
+        }
+      );
+
+  }
 
 
   /*
@@ -5211,6 +5328,19 @@ async function countTeamMembers(
   teamId,
   element
 ) {
+
+  if (
+    currentUserData?.role !==
+    "leader"
+  ) {
+
+    element.textContent =
+      "";
+
+    return;
+
+  }
+
 
   try {
 
@@ -6031,6 +6161,22 @@ async function deleteProduct(
 ===================================================== */
 
 async function loadMembers() {
+
+  if (
+    currentUserData?.role !==
+    "leader"
+  ) {
+
+    members = currentUserData
+      ? [currentUserData]
+      : [];
+
+    renderMembers();
+
+    return;
+
+  }
+
 
   try {
 
