@@ -1,83 +1,64 @@
-/* ========================================
-   営業実績管理
-   JavaScript
-======================================== */
+const STORAGE_KEY =
+  "salesPerformanceApp_v2";
 
 
-/* ========================================
+/* =========================
    データ
-======================================== */
+========================= */
 
-let items =
-  JSON.parse(
-    localStorage.getItem("salesItems")
-  ) || [];
+const state =
+  loadState();
 
 
-let members =
-  JSON.parse(
-    localStorage.getItem("salesMembers")
-  ) || [];
+function loadState() {
+
+  const saved =
+    localStorage.getItem(STORAGE_KEY);
+
+  if (saved) {
+
+    return JSON.parse(saved);
+
+  }
 
 
-let dailyRecords =
-  JSON.parse(
-    localStorage.getItem("salesDailyRecords")
-  ) || {};
+  return {
+
+    months: {
+
+      [getMonthKey()]: {
+
+        items: {},
+
+        entries: []
+
+      }
+
+    }
+
+  };
+
+}
 
 
-/* ========================================
-   現在の月
-======================================== */
-
-let currentMonth = new Date();
-
-
-/* ========================================
-   要素
-======================================== */
-
-const itemModal =
-  document.getElementById("itemModal");
-
-const memberModal =
-  document.getElementById("memberModal");
-
-const dailyModal =
-  document.getElementById("dailyModal");
-
-
-/* ========================================
-   保存
-======================================== */
-
-function saveData() {
+function saveState() {
 
   localStorage.setItem(
-    "salesItems",
-    JSON.stringify(items)
-  );
 
+    STORAGE_KEY,
 
-  localStorage.setItem(
-    "salesMembers",
-    JSON.stringify(members)
-  );
+    JSON.stringify(state)
 
-
-  localStorage.setItem(
-    "salesDailyRecords",
-    JSON.stringify(dailyRecords)
   );
 
 }
 
 
-/* ========================================
-   日付キー
-======================================== */
+/* =========================
+   日付
+========================= */
 
-function getDateKey(date) {
+function getMonthKey(date = new Date()) {
 
   const year =
     date.getFullYear();
@@ -87,405 +68,349 @@ function getDateKey(date) {
       date.getMonth() + 1
     ).padStart(2, "0");
 
-  const day =
-    String(
-      date.getDate()
-    ).padStart(2, "0");
-
-
-  return `${year}-${month}-${day}`;
-
-}
-
-
-/* ========================================
-   月キー
-======================================== */
-
-function getMonthKey() {
-
-  const year =
-    currentMonth.getFullYear();
-
-  const month =
-    String(
-      currentMonth.getMonth() + 1
-    ).padStart(2, "0");
-
-
   return `${year}-${month}`;
 
 }
 
 
-/* ========================================
-   今日の日付
-======================================== */
+function getToday() {
 
-function getTodayKey() {
+  const date =
+    new Date();
 
-  return getDateKey(
-    new Date()
-  );
+  const offset =
+    date.getTimezoneOffset();
 
-}
-
-
-/* ========================================
-   月表示
-======================================== */
-
-function updateMonth() {
-
-  const year =
-    currentMonth.getFullYear();
-
-  const month =
-    currentMonth.getMonth() + 1;
-
-
-  document
-    .getElementById("currentYear")
-    .textContent =
-      `${year}年`;
-
-
-  document
-    .getElementById("currentMonth")
-    .textContent =
-      `${month}月`;
-
-
-  updateSummary();
-
-  renderItems();
-
-  renderTodaySummary();
+  return new Date(
+    date.getTime() -
+    offset * 60000
+  )
+    .toISOString()
+    .slice(0, 10);
 
 }
 
 
-/* ========================================
-   月移動
-======================================== */
+/* =========================
+   月データ
+========================= */
 
-document
-  .getElementById("prevMonth")
-  .addEventListener(
-    "click",
-    () => {
+function currentMonthData() {
 
-      currentMonth.setMonth(
-        currentMonth.getMonth() - 1
-      );
-
-      updateMonth();
-
-    }
-  );
-
-
-document
-  .getElementById("nextMonth")
-  .addEventListener(
-    "click",
-    () => {
-
-      currentMonth.setMonth(
-        currentMonth.getMonth() + 1
-      );
-
-      updateMonth();
-
-    }
-  );
-
-
-/* ========================================
-   商材追加モーダル
-======================================== */
-
-function openItemModal() {
-
-  itemModal.classList.add(
-    "active"
-  );
-
-}
-
-
-function closeItemModal() {
-
-  itemModal.classList.remove(
-    "active"
-  );
-
-}
-
-
-document
-  .getElementById("addItemButton")
-  .addEventListener(
-    "click",
-    openItemModal
-  );
-
-
-document
-  .getElementById("emptyAddButton")
-  .addEventListener(
-    "click",
-    openItemModal
-  );
-
-
-document
-  .getElementById("closeItemModal")
-  .addEventListener(
-    "click",
-    closeItemModal
-  );
-
-
-/* ========================================
-   商材追加
-======================================== */
-
-document
-  .getElementById("saveItem")
-  .addEventListener(
-    "click",
-    () => {
-
-      const name =
-        document
-          .getElementById("itemName")
-          .value
-          .trim();
-
-
-      const target =
-        Number(
-          document
-            .getElementById("itemTarget")
-            .value
-        );
-
-
-      const revenue =
-        Number(
-          document
-            .getElementById("itemRevenue")
-            .value
-        );
-
-
-      if (!name) {
-
-        alert(
-          "商材名を入力してください。"
-        );
-
-        return;
-
-      }
-
-
-      if (target <= 0) {
-
-        alert(
-          "月間目標を入力してください。"
-        );
-
-        return;
-
-      }
-
-
-      if (revenue < 0) {
-
-        alert(
-          "収益を正しく入力してください。"
-        );
-
-        return;
-
-      }
-
-
-      items.push({
-
-        id: Date.now(),
-
-        name: name,
-
-        target: target,
-
-        revenue: revenue
-
-      });
-
-
-      saveData();
-
-      renderItems();
-
-      updateSummary();
-
-      closeItemModal();
-
-
-      document
-        .getElementById("itemName")
-        .value = "";
-
-
-      document
-        .getElementById("itemTarget")
-        .value = "";
-
-
-      document
-        .getElementById("itemRevenue")
-        .value = "";
-
-    }
-  );
-
-
-/* ========================================
-   商材表示
-======================================== */
-
-function getMonthlyItemActual(
-  itemId
-) {
-
-  const monthKey =
+  const key =
     getMonthKey();
 
 
-  let total = 0;
+  if (!state.months[key]) {
+
+    state.months[key] = {
+
+      items: {},
+
+      entries: []
+
+    };
+
+  }
 
 
-  Object
-    .keys(dailyRecords)
-    .forEach(dateKey => {
-
-      if (
-        dateKey.startsWith(
-          monthKey
-        )
-      ) {
-
-        const day =
-          dailyRecords[dateKey];
-
-
-        Object
-          .values(day)
-          .forEach(memberData => {
-
-            total +=
-              Number(
-                memberData[itemId]
-              ) || 0;
-
-          });
-
-      }
-
-    });
-
-
-  return total;
+  return state.months[key];
 
 }
 
 
-function renderItems() {
+/* =========================
+   ID
+========================= */
 
-  const itemList =
-    document.getElementById(
-      "itemList"
+function createId() {
+
+  return (
+
+    Date.now() +
+
+    "_" +
+
+    Math.random()
+      .toString(16)
+      .slice(2)
+
+  );
+
+}
+
+
+/* =========================
+   通貨
+========================= */
+
+function formatYen(value) {
+
+  return new Intl.NumberFormat(
+    "ja-JP",
+    {
+      style: "currency",
+      currency: "JPY",
+      maximumFractionDigits: 0
+    }
+  ).format(value);
+
+}
+
+
+/* =========================
+   商材計算
+========================= */
+
+function calculateItem(itemId) {
+
+  const month =
+    currentMonthData();
+
+  const item =
+    month.items[itemId];
+
+
+  const count =
+    month.entries
+
+      .filter(
+        entry =>
+          entry.itemId === itemId
+      )
+
+      .reduce(
+        (sum, entry) =>
+          sum + entry.quantity,
+        0
+      );
+
+
+  const revenue =
+    count *
+    item.unitRevenue;
+
+
+  const remaining =
+    Math.max(
+      item.target - count,
+      0
     );
 
 
-  if (items.length === 0) {
+  const rate =
+    item.target > 0
+      ? Math.min(
+          (count / item.target) *
+          100,
+          100
+        )
+      : 0;
 
-    itemList.innerHTML = `
 
-      <div class="empty-state">
+  return {
 
-        <div class="empty-icon">
-          ＋
-        </div>
+    count,
 
-        <h3>
+    revenue,
+
+    target:
+      item.target,
+
+    remaining,
+
+    rate
+
+  };
+
+}
+
+
+/* =========================
+   ホーム
+========================= */
+
+function renderHome() {
+
+  const month =
+    currentMonthData();
+
+
+  const itemIds =
+    Object.keys(
+      month.items
+    );
+
+
+  let totalCount = 0;
+
+  let totalRevenue = 0;
+
+  let totalTarget = 0;
+
+
+  itemIds.forEach(id => {
+
+    const result =
+      calculateItem(id);
+
+
+    totalCount +=
+      result.count;
+
+
+    totalRevenue +=
+      result.revenue;
+
+
+    totalTarget +=
+      result.target;
+
+  });
+
+
+  const overallRate =
+    totalTarget > 0
+      ? Math.min(
+          (totalCount /
+            totalTarget) *
+            100,
+          100
+        )
+      : 0;
+
+
+  document.querySelector(
+    "#monthButton"
+  ).textContent =
+    formatMonth(
+      getMonthKey()
+    );
+
+
+  document.querySelector(
+    "#totalRevenue"
+  ).textContent =
+    formatYen(
+      totalRevenue
+    );
+
+
+  document.querySelector(
+    "#totalCount"
+  ).textContent =
+    totalCount;
+
+
+  document.querySelector(
+    "#remainingCount"
+  ).textContent =
+    Math.max(
+      totalTarget -
+        totalCount,
+      0
+    );
+
+
+  document.querySelector(
+    "#itemCount"
+  ).textContent =
+    itemIds.length;
+
+
+  document.querySelector(
+    "#overallRate"
+  ).textContent =
+    `${Math.round(
+      overallRate
+    )}%`;
+
+
+  document.querySelector(
+    "#overallProgress"
+  ).style.width =
+    `${overallRate}%`;
+
+
+  document.querySelector(
+    "#overallTargetText"
+  ).textContent =
+    `${totalCount}件 / ${totalTarget}件`;
+
+
+  renderItems(
+    month,
+    itemIds
+  );
+
+
+  renderEntrySelect(
+    month,
+    itemIds
+  );
+
+}
+
+
+/* =========================
+   商材一覧
+========================= */
+
+function renderItems(
+  month,
+  itemIds
+) {
+
+  const container =
+    document.querySelector(
+      "#itemsContainer"
+    );
+
+
+  container.innerHTML = "";
+
+
+  if (
+    itemIds.length === 0
+  ) {
+
+    container.innerHTML = `
+
+      <div class="item-card">
+
+        <strong>
           まだ商材がありません
-        </h3>
+        </strong>
 
-        <p>
-          商材を追加すると<br>
-          ここに実績が表示されます。
+        <p class="item-meta">
+
+          「＋ 商材追加」から
+          好きな商材を登録できます。
+
         </p>
-
-        <button id="emptyAddButton">
-          商材を追加する
-        </button>
 
       </div>
 
     `;
-
-
-    document
-      .getElementById(
-        "emptyAddButton"
-      )
-      .addEventListener(
-        "click",
-        openItemModal
-      );
-
 
     return;
 
   }
 
 
-  itemList.innerHTML = "";
+  itemIds.forEach(id => {
+
+    const item =
+      month.items[id];
 
 
-  items.forEach(item => {
-
-    const actual =
-      getMonthlyItemActual(
-        item.id
-      );
-
-
-    const rate =
-      item.target > 0
-        ? Math.round(
-            (actual /
-              item.target) *
-              100
-          )
-        : 0;
-
-
-    const remaining =
-      Math.max(
-        item.target -
-          actual,
-        0
-      );
+    const result =
+      calculateItem(id);
 
 
     const card =
       document.createElement(
-        "div"
+        "article"
       );
 
 
@@ -497,13 +422,33 @@ function renderItems() {
 
       <div class="item-top">
 
-        <span class="item-name">
-          ${escapeHtml(item.name)}
-        </span>
+        <div>
 
-        <span class="item-count">
-          ${actual} / ${item.target}件
-        </span>
+          <div class="item-name">
+
+            ${escapeHtml(
+              item.name
+            )}
+
+          </div>
+
+          <div class="item-meta">
+
+            ${formatYen(
+              item.unitRevenue
+            )}
+            / 1件
+
+          </div>
+
+        </div>
+
+
+        <div class="item-count">
+
+          ${result.count}件
+
+        </div>
 
       </div>
 
@@ -511,10 +456,10 @@ function renderItems() {
       <div class="item-progress">
 
         <div
-          class="item-progress-value"
-          style="width:
-            ${Math.min(rate,100)}%">
-        </div>
+          style="
+            width:${result.rate}%;
+          "
+        ></div>
 
       </div>
 
@@ -522,11 +467,18 @@ function renderItems() {
       <div class="item-bottom">
 
         <span>
-          達成率 ${rate}%
+          目標 ${result.target}件
         </span>
 
         <span>
-          残り ${remaining}件
+
+          ${Math.round(
+            result.rate
+          )}%
+
+          達成 ・ 残り
+          ${result.remaining}件
+
         </span>
 
       </div>
@@ -534,7 +486,7 @@ function renderItems() {
     `;
 
 
-    itemList.appendChild(
+    container.appendChild(
       card
     );
 
@@ -543,495 +495,42 @@ function renderItems() {
 }
 
 
-/* ========================================
-   全体集計
-======================================== */
-
-function updateSummary() {
-
-  let total = 0;
-
-  let target = 0;
-
-  let revenue = 0;
-
-
-  items.forEach(item => {
-
-    const actual =
-      getMonthlyItemActual(
-        item.id
-      );
-
-
-    total += actual;
-
-    target +=
-      Number(item.target);
-
-
-    revenue +=
-      actual *
-      Number(item.revenue);
-
-  });
-
-
-  const remaining =
-    Math.max(
-      target -
-        total,
-      0
-    );
-
-
-  const rate =
-    target > 0
-      ? Math.round(
-          (total /
-            target) *
-            100
-        )
-      : 0;
-
-
-  document
-    .getElementById(
-      "totalCount"
-    )
-    .textContent =
-      total;
-
-
-  document
-    .getElementById(
-      "targetCount"
-    )
-    .textContent =
-      target;
-
-
-  document
-    .getElementById(
-      "totalRevenue"
-    )
-    .textContent =
-      `¥${revenue.toLocaleString()}`;
-
-
-  document
-    .getElementById(
-      "remainingCount"
-    )
-    .textContent =
-      `${remaining}件`;
-
-
-  document
-    .getElementById(
-      "achievementRate"
-    )
-    .textContent =
-      `${rate}%`;
-
-
-  document
-    .getElementById(
-      "progressBar"
-    )
-    .style.width =
-      `${Math.min(rate,100)}%`;
-
-}
-
-
-/* ========================================
-   メンバー追加
-======================================== */
-
-function openMemberModal() {
-
-  memberModal.classList.add(
-    "active"
-  );
-
-}
-
-
-function closeMemberModal() {
-
-  memberModal.classList.remove(
-    "active"
-  );
-
-}
-
-
-document
-  .getElementById(
-    "addMemberButton"
-  )
-  .addEventListener(
-    "click",
-    openMemberModal
-  );
-
-
-document
-  .getElementById(
-    "emptyMemberButton"
-  )
-  .addEventListener(
-    "click",
-    openMemberModal
-  );
-
-
-document
-  .getElementById(
-    "closeMemberModal"
-  )
-  .addEventListener(
-    "click",
-    closeMemberModal
-  );
-
-
-/* ========================================
-   メンバー保存
-======================================== */
-
-document
-  .getElementById(
-    "saveMember"
-  )
-  .addEventListener(
-    "click",
-    () => {
-
-      const name =
-        document
-          .getElementById(
-            "memberName"
-          )
-          .value
-          .trim();
-
-
-      if (!name) {
-
-        alert(
-          "メンバー名を入力してください。"
-        );
-
-        return;
-
-      }
-
-
-      members.push({
-
-        id: Date.now(),
-
-        name: name
-
-      });
-
-
-      saveData();
-
-      renderMembers();
-
-      updateMemberSelect();
-
-      closeMemberModal();
-
-
-      document
-        .getElementById(
-          "memberName"
-        )
-        .value = "";
-
-    }
-  );
-
-
-/* ========================================
-   メンバー表示
-======================================== */
-
-function renderMembers() {
-
-  const memberList =
-    document.getElementById(
-      "memberList"
-    );
-
-
-  if (members.length === 0) {
-
-    memberList.innerHTML = `
-
-      <div class="empty-state">
-
-        <div class="empty-icon">
-          ＋
-        </div>
-
-        <h3>
-          まだメンバーがいません
-        </h3>
-
-        <p>
-          メンバーを登録すると<br>
-          誰が獲得したか管理できます。
-        </p>
-
-        <button id="emptyMemberButton">
-          メンバーを追加する
-        </button>
-
-      </div>
-
-    `;
-
-
-    document
-      .getElementById(
-        "emptyMemberButton"
-      )
-      .addEventListener(
-        "click",
-        openMemberModal
-      );
-
-
-    return;
-
-  }
-
-
-  memberList.innerHTML = "";
-
-
-  members.forEach(member => {
-
-    const card =
-      document.createElement(
-        "div"
-      );
-
-
-    card.className =
-      "member-card";
-
-
-    card.innerHTML = `
-
-      <span class="member-name">
-        ${escapeHtml(member.name)}
-      </span>
-
-      <button
-        class="member-delete"
-        data-id="${member.id}">
-
-        削除
-
-      </button>
-
-    `;
-
-
-    memberList.appendChild(
-      card
-    );
-
-  });
-
-
-  document
-    .querySelectorAll(
-      ".member-delete"
-    )
-    .forEach(button => {
-
-      button.addEventListener(
-        "click",
-        () => {
-
-          const id =
-            Number(
-              button.dataset.id
-            );
-
-
-          const member =
-            members.find(
-              m => m.id === id
-            );
-
-
-          if (!member) {
-            return;
-          }
-
-
-          const result =
-            confirm(
-              `${member.name}を削除しますか？`
-            );
-
-
-          if (!result) {
-            return;
-          }
-
-
-          members =
-            members.filter(
-              m => m.id !== id
-            );
-
-
-          saveData();
-
-          renderMembers();
-
-          updateMemberSelect();
-
-        }
-      );
-
-    });
-
-}
-
-
-/* ========================================
-   今日の実績入力
-======================================== */
-
-function openDailyModal() {
-
-  if (members.length === 0) {
-
-    alert(
-      "先にメンバーを登録してください。"
-    );
-
-    openMemberModal();
-
-    return;
-
-  }
-
-
-  if (items.length === 0) {
-
-    alert(
-      "先に商材を登録してください。"
-    );
-
-    openItemModal();
-
-    return;
-
-  }
-
-
-  updateMemberSelect();
-
-
-  document
-    .getElementById(
-      "dailyDate"
-    )
-    .textContent =
-      formatJapaneseDate(
-        new Date()
-      );
-
-
-  dailyModal.classList.add(
-    "active"
-  );
-
-}
-
-
-function closeDailyModal() {
-
-  dailyModal.classList.remove(
-    "active"
-  );
-
-}
-
-
-document
-  .getElementById(
-    "openDailyInput"
-  )
-  .addEventListener(
-    "click",
-    openDailyModal
-  );
-
-
-document
-  .getElementById(
-    "emptyDailyInput"
-  )
-  .addEventListener(
-    "click",
-    openDailyModal
-  );
-
-
-document
-  .getElementById(
-    "inputButton"
-  )
-  .addEventListener(
-    "click",
-    openDailyModal
-  );
-
-
-document
-  .getElementById(
-    "closeDailyModal"
-  )
-  .addEventListener(
-    "click",
-    closeDailyModal
-  );
-
-
-/* ========================================
-   メンバー選択
-======================================== */
-
-function updateMemberSelect() {
+/* =========================
+   入力欄
+========================= */
+
+function renderEntrySelect(
+  month,
+  itemIds
+) {
 
   const select =
-    document.getElementById(
-      "dailyMember"
+    document.querySelector(
+      "#entryItem"
     );
 
 
-  select.innerHTML = `
-
-    <option value="">
-      メンバーを選択
-    </option>
-
-  `;
+  select.innerHTML = "";
 
 
-  members.forEach(member => {
+  if (
+    itemIds.length === 0
+  ) {
+
+    select.innerHTML = `
+
+      <option value="">
+        先に商材を追加してください
+      </option>
+
+    `;
+
+    return;
+
+  }
+
+
+  itemIds.forEach(id => {
 
     const option =
       document.createElement(
@@ -1039,12 +538,11 @@ function updateMemberSelect() {
       );
 
 
-    option.value =
-      member.id;
+    option.value = id;
 
 
     option.textContent =
-      member.name;
+      month.items[id].name;
 
 
     select.appendChild(
@@ -1056,46 +554,105 @@ function updateMemberSelect() {
 }
 
 
-document
-  .getElementById(
-    "dailyMember"
-  )
-  .addEventListener(
-    "change",
-    renderDailyInputs
-  );
+/* =========================
+   個人実績
+========================= */
+
+function renderPerformance() {
+
+  const month =
+    currentMonthData();
 
 
-/* ========================================
-   商材入力欄
-======================================== */
-
-function renderDailyInputs() {
-
-  const memberId =
-    Number(
-      document
-        .getElementById(
-          "dailyMember"
-        )
-        .value
+  const itemIds =
+    Object.keys(
+      month.items
     );
+
+
+  let totalCount = 0;
+
+  let totalRevenue = 0;
+
+
+  itemIds.forEach(id => {
+
+    const result =
+      calculateItem(id);
+
+
+    totalCount +=
+      result.count;
+
+
+    totalRevenue +=
+      result.revenue;
+
+  });
+
+
+  const dates =
+    new Set(
+      month.entries.map(
+        entry =>
+          entry.date
+      )
+    );
+
+
+  const workDays =
+    dates.size;
+
+
+  const dailyAverage =
+    workDays > 0
+
+      ? (
+          totalCount /
+          workDays
+        ).toFixed(1)
+
+      : "0";
+
+
+  document.querySelector(
+    "#performanceCount"
+  ).textContent =
+    totalCount;
+
+
+  document.querySelector(
+    "#performanceRevenue"
+  ).textContent =
+    formatYen(
+      totalRevenue
+    );
+
+
+  document.querySelector(
+    "#dailyAverage"
+  ).textContent =
+    dailyAverage;
 
 
   const container =
-    document.getElementById(
-      "dailyItemInputs"
+    document.querySelector(
+      "#performanceItems"
     );
 
 
-  if (!memberId) {
+  container.innerHTML = "";
+
+
+  if (
+    itemIds.length === 0
+  ) {
 
     container.innerHTML = `
 
-      <div class="empty-input-message">
+      <div class="history-empty">
 
-        メンバーを選択すると<br>
-        商材入力欄が表示されます。
+        まだ商材が登録されていません。
 
       </div>
 
@@ -1106,20 +663,147 @@ function renderDailyInputs() {
   }
 
 
-  const today =
-    getTodayKey();
+  itemIds.forEach(id => {
+
+    const item =
+      month.items[id];
 
 
-  const existing =
-    dailyRecords[today]?.[
-      memberId
-    ] || {};
+    const result =
+      calculateItem(id);
+
+
+    const card =
+      document.createElement(
+        "div"
+      );
+
+
+    card.className =
+      "performance-item";
+
+
+    card.innerHTML = `
+
+      <div
+        class="performance-item-top"
+      >
+
+        <span
+          class="performance-item-name"
+        >
+
+          ${escapeHtml(
+            item.name
+          )}
+
+        </span>
+
+
+        <span
+          class="performance-item-count"
+        >
+
+          ${result.count}件
+
+        </span>
+
+      </div>
+
+
+      <div
+        class="performance-item-revenue"
+      >
+
+        収益：
+        ${formatYen(
+          result.revenue
+        )}
+
+        ／
+
+        目標：
+        ${result.target}件
+
+        ／
+
+        達成率：
+        ${Math.round(
+          result.rate
+        )}%
+
+      </div>
+
+    `;
+
+
+    container.appendChild(
+      card
+    );
+
+  });
+
+}
+
+
+/* =========================
+   履歴
+========================= */
+
+function renderHistory() {
+
+  const month =
+    currentMonthData();
+
+
+  const container =
+    document.querySelector(
+      "#historyList"
+    );
 
 
   container.innerHTML = "";
 
 
-  items.forEach(item => {
+  if (
+    month.entries.length === 0
+  ) {
+
+    container.innerHTML = `
+
+      <div class="history-empty">
+
+        まだ実績がありません。
+
+      </div>
+
+    `;
+
+    return;
+
+  }
+
+
+  const entries =
+    [...month.entries]
+      .sort(
+        (a, b) =>
+          b.date.localeCompare(
+            a.date
+          )
+      );
+
+
+  entries.forEach(entry => {
+
+    const item =
+      month.items[
+        entry.itemId
+      ];
+
+
+    if (!item) return;
+
 
     const row =
       document.createElement(
@@ -1128,20 +812,38 @@ function renderDailyInputs() {
 
 
     row.className =
-      "daily-item-row";
+      "history-item";
 
 
     row.innerHTML = `
 
-      <span>
-        ${escapeHtml(item.name)}
-      </span>
+      <div>
 
-      <input
-        type="number"
-        min="0"
-        value="${existing[item.id] || 0}"
-        data-item-id="${item.id}">
+        <div class="history-date">
+
+          ${formatDate(
+            entry.date
+          )}
+
+        </div>
+
+
+        <div class="history-name">
+
+          ${escapeHtml(
+            item.name
+          )}
+
+        </div>
+
+      </div>
+
+
+      <div class="history-quantity">
+
+        +${entry.quantity}件
+
+      </div>
 
     `;
 
@@ -1155,411 +857,413 @@ function renderDailyInputs() {
 }
 
 
-/* ========================================
-   今日の実績保存
-======================================== */
+/* =========================
+   ページ切り替え
+========================= */
+
+function switchPage(
+  page
+) {
+
+  document
+    .querySelectorAll(
+      ".page"
+    )
+    .forEach(element => {
+
+      element.classList.remove(
+        "active"
+      );
+
+    });
+
+
+  document
+    .querySelectorAll(
+      ".tab"
+    )
+    .forEach(element => {
+
+      element.classList.remove(
+        "active"
+      );
+
+    });
+
+
+  document
+    .querySelector(
+      `#${page}Page`
+    )
+    .classList.add(
+      "active"
+    );
+
+
+  document
+    .querySelector(
+      `[data-page="${page}"]`
+    )
+    .classList.add(
+      "active"
+    );
+
+
+  if (
+    page === "performance"
+  ) {
+
+    renderPerformance();
+
+  }
+
+
+  if (
+    page === "history"
+  ) {
+
+    renderHistory();
+
+  }
+
+}
+
+
+/* =========================
+   商材追加
+========================= */
 
 document
-  .getElementById(
-    "saveDaily"
+  .querySelector(
+    "#itemForm"
   )
   .addEventListener(
-    "click",
-    () => {
+    "submit",
+    event => {
 
-      const memberId =
+      event.preventDefault();
+
+
+      const name =
+        document.querySelector(
+          "#itemName"
+        ).value.trim();
+
+
+      const target =
         Number(
-          document
-            .getElementById(
-              "dailyMember"
-            )
-            .value
+          document.querySelector(
+            "#itemTarget"
+          ).value
         );
 
 
-      if (!memberId) {
-
-        alert(
-          "メンバーを選択してください。"
+      const unitRevenue =
+        Number(
+          document.querySelector(
+            "#itemRevenue"
+          ).value
         );
+
+
+      if (
+        !name ||
+        target < 0 ||
+        unitRevenue < 0
+      ) {
 
         return;
 
       }
 
 
-      const today =
-        getTodayKey();
+      const month =
+        currentMonthData();
 
 
-      if (!dailyRecords[today]) {
-
-        dailyRecords[today] = {};
-
-      }
+      const id =
+        createId();
 
 
-      if (!dailyRecords[today][memberId]) {
+      month.items[id] = {
 
-        dailyRecords[today][memberId] = {};
+        name,
 
-      }
+        target,
+
+        unitRevenue
+
+      };
 
 
-      const inputs =
-        document.querySelectorAll(
-          "#dailyItemInputs input"
+      saveState();
+
+
+      closeModal();
+
+
+      renderAll();
+
+    }
+  );
+
+
+/* =========================
+   実績登録
+========================= */
+
+document
+  .querySelector(
+    "#entryForm"
+  )
+  .addEventListener(
+    "submit",
+    event => {
+
+      event.preventDefault();
+
+
+      const month =
+        currentMonthData();
+
+
+      const itemId =
+        document.querySelector(
+          "#entryItem"
+        ).value;
+
+
+      const quantity =
+        Number(
+          document.querySelector(
+            "#entryQuantity"
+          ).value
         );
 
 
-      inputs.forEach(input => {
-
-        const itemId =
-          Number(
-            input.dataset.itemId
-          );
+      const date =
+        document.querySelector(
+          "#entryDate"
+        ).value;
 
 
-        const value =
-          Number(
-            input.value
-          ) || 0;
+      if (
+        !itemId ||
+        quantity < 1 ||
+        !date
+      ) {
+
+        return;
+
+      }
 
 
-        dailyRecords[today][
-          memberId
-        ][itemId] = value;
+      month.entries.push({
+
+        id:
+          createId(),
+
+        date,
+
+        itemId,
+
+        quantity
 
       });
 
 
-      saveData();
+      saveState();
 
-      updateSummary();
 
-      renderItems();
+      document.querySelector(
+        "#entryQuantity"
+      ).value = 1;
 
-      renderTodaySummary();
 
-      closeDailyModal();
+      renderAll();
 
+    }
+  );
+
+
+/* =========================
+   モーダル
+========================= */
+
+document
+  .querySelector(
+    "#addItemButton"
+  )
+  .addEventListener(
+    "click",
+    () => {
 
       document
-        .getElementById(
-          "dailyMember"
+        .querySelector(
+          "#itemModal"
         )
-        .value = "";
+        .classList.remove(
+          "hidden"
+        );
+
+    }
+  );
 
 
-      renderDailyInputs();
+document
+  .querySelectorAll(
+    "[data-close-modal]"
+  )
+  .forEach(
+    button => {
 
-      alert(
-        "今日の実績を保存しました。"
+      button.addEventListener(
+        "click",
+        closeModal
       );
 
     }
   );
 
 
-/* ========================================
-   今日の実績表示
-======================================== */
+function closeModal() {
 
-function renderTodaySummary() {
-
-  const container =
-    document.getElementById(
-      "todaySummary"
+  document
+    .querySelector(
+      "#itemModal"
+    )
+    .classList.add(
+      "hidden"
     );
 
 
-  const today =
-    getTodayKey();
-
-
-  const todayData =
-    dailyRecords[today];
-
-
-  if (
-    !todayData ||
-    Object.keys(todayData).length === 0
-  ) {
-
-    container.innerHTML = `
-
-      <div class="empty-state">
-
-        <div class="empty-icon">
-          ＋
-        </div>
-
-        <h3>
-          今日の実績はまだありません
-        </h3>
-
-        <p>
-          1日の最後に<br>
-          メンバーごとの実績をまとめて入力できます。
-        </p>
-
-        <button id="emptyDailyInput">
-          今日の実績を入力
-        </button>
-
-      </div>
-
-    `;
-
-
-    document
-      .getElementById(
-        "emptyDailyInput"
-      )
-      .addEventListener(
-        "click",
-        openDailyModal
-      );
-
-
-    return;
-
-  }
-
-
-  container.innerHTML = "";
-
-
-  members.forEach(member => {
-
-    const data =
-      todayData[
-        member.id
-      ];
-
-
-    if (!data) {
-      return;
-    }
-
-
-    let total = 0;
-
-
-    const rows = [];
-
-
-    items.forEach(item => {
-
-      const count =
-        Number(
-          data[item.id]
-        ) || 0;
-
-
-      if (count > 0) {
-
-        total += count;
-
-
-        rows.push(`
-
-          <div class="today-item-row">
-
-            <span>
-              ${escapeHtml(item.name)}
-            </span>
-
-            <span class="today-item-count">
-              ${count}件
-            </span>
-
-          </div>
-
-        `);
-
-      }
-
-    });
-
-
-    if (total === 0) {
-      return;
-    }
-
-
-    const card =
-      document.createElement(
-        "div"
-      );
-
-
-    card.className =
-      "today-person";
-
-
-    card.innerHTML = `
-
-      <div class="today-person-header">
-
-        <span class="today-person-name">
-          ${escapeHtml(member.name)}
-        </span>
-
-        <span class="today-person-total">
-          合計 ${total}件
-        </span>
-
-      </div>
-
-
-      <div class="today-items">
-
-        ${rows.join("")}
-
-      </div>
-
-    `;
-
-
-    container.appendChild(
-      card
-    );
-
-  });
-
-
-  if (
-    container.children.length === 0
-  ) {
-
-    container.innerHTML = `
-
-      <div class="empty-state">
-
-        <h3>
-          今日はまだ獲得実績がありません
-        </h3>
-
-      </div>
-
-    `;
-
-  }
+  document
+    .querySelector(
+      "#itemForm"
+    )
+    .reset();
 
 }
 
 
-/* ========================================
-   日本語日付
-======================================== */
+/* =========================
+   タブ
+========================= */
 
-function formatJapaneseDate(
+document
+  .querySelectorAll(
+    ".tab"
+  )
+  .forEach(
+    button => {
+
+      button.addEventListener(
+        "click",
+        () => {
+
+          switchPage(
+            button.dataset.page
+          );
+
+        }
+      );
+
+    }
+  );
+
+
+/* =========================
+   共通
+========================= */
+
+function renderAll() {
+
+  renderHome();
+
+  renderPerformance();
+
+  renderHistory();
+
+}
+
+
+function formatMonth(
+  key
+) {
+
+  const [
+    year,
+    month
+  ] =
+    key.split("-");
+
+
+  return `${year}年${Number(month)}月`;
+
+}
+
+
+function formatDate(
   date
 ) {
 
-  const year =
-    date.getFullYear();
-
-  const month =
-    date.getMonth() + 1;
-
-  const day =
-    date.getDate();
+  const [
+    year,
+    month,
+    day
+  ] =
+    date.split("-");
 
 
-  return `${year}年${month}月${day}日`;
+  return `${year}/${month}/${day}`;
 
 }
 
-
-/* ========================================
-   HTML対策
-======================================== */
 
 function escapeHtml(
-  text
+  value
 ) {
 
-  const div =
-    document.createElement(
-      "div"
+  return String(value)
+
+    .replaceAll(
+      "&",
+      "&amp;"
+    )
+
+    .replaceAll(
+      "<",
+      "&lt;"
+    )
+
+    .replaceAll(
+      ">",
+      "&gt;"
+    )
+
+    .replaceAll(
+      '"',
+      "&quot;"
+    )
+
+    .replaceAll(
+      "'",
+      "&#039;"
     );
-
-
-  div.textContent =
-    text;
-
-
-  return div.innerHTML;
 
 }
 
 
-/* ========================================
-   その他ボタン
-======================================== */
+/* =========================
+   初期化
+========================= */
 
 document
-  .getElementById(
-    "performanceButton"
+  .querySelector(
+    "#entryDate"
   )
-  .addEventListener(
-    "click",
-    () => {
-
-      alert(
-        "個人実績画面は次のアップデートで作ります。"
-      );
-
-    }
-  );
+  .value =
+  getToday();
 
 
-document
-  .getElementById(
-    "analysisButton"
-  )
-  .addEventListener(
-    "click",
-    () => {
-
-      alert(
-        "分析画面はこれから作ります。"
-      );
-
-    }
-  );
-
-
-document
-  .getElementById(
-    "settingsButton"
-  )
-  .addEventListener(
-    "click",
-    () => {
-
-      alert(
-        "設定画面はこれから作ります。"
-      );
-
-    }
-  );
-
-
-/* ========================================
-   初期表示
-======================================== */
-
-renderItems();
-
-renderMembers();
-
-updateMemberSelect();
-
-updateSummary();
-
-renderTodaySummary();
-
-updateMonth();
+renderAll();
