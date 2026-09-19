@@ -69,6 +69,30 @@ service cloud.firestore {
         && get(memberPath(companyId, request.auth.uid)).data.companyRole == 'owner';
     }
 
+    function validOwnerTransfer(companyId) {
+      let newOwnerUid = getAfter(companyPath(companyId)).data.ownerUid;
+
+      return isCompanyOwner(companyId)
+        && newOwnerUid is string
+        && newOwnerUid != request.auth.uid
+        && existsAfter(userPath(newOwnerUid))
+        && getAfter(userPath(newOwnerUid)).data.companyId == companyId
+        && getAfter(userPath(newOwnerUid)).data.companyRole == 'owner'
+        && getAfter(userPath(newOwnerUid)).data.role == 'leader'
+        && getAfter(userPath(newOwnerUid)).data.active == true
+        && existsAfter(memberPath(companyId, newOwnerUid))
+        && getAfter(memberPath(companyId, newOwnerUid)).data.companyRole == 'owner'
+        && getAfter(memberPath(companyId, newOwnerUid)).data.role == 'leader'
+        && getAfter(memberPath(companyId, newOwnerUid)).data.active == true
+        && getAfter(userPath(request.auth.uid)).data.companyId == companyId
+        && getAfter(userPath(request.auth.uid)).data.companyRole == 'member'
+        && getAfter(userPath(request.auth.uid)).data.role == 'leader'
+        && getAfter(userPath(request.auth.uid)).data.active == true
+        && getAfter(memberPath(companyId, request.auth.uid)).data.companyRole == 'member'
+        && getAfter(memberPath(companyId, request.auth.uid)).data.role == 'leader'
+        && getAfter(memberPath(companyId, request.auth.uid)).data.active == true;
+    }
+
     function sameCompany(companyId) {
       return companyId != null
         && currentCompanyId() == companyId
@@ -222,6 +246,27 @@ service cloud.firestore {
               && request.resource.data.active == true
             )
           )
+        )
+        || (
+          resource.data.companyId != null
+          && validOwnerTransfer(resource.data.companyId)
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['companyRole', 'role', 'updatedAt'])
+          && (
+            (
+              userId == request.auth.uid
+              && resource.data.companyRole == 'owner'
+              && request.resource.data.companyRole == 'member'
+              && request.resource.data.role == 'leader'
+            )
+            || (
+              userId == getAfter(companyPath(resource.data.companyId)).data.ownerUid
+              && resource.data.companyRole == 'member'
+              && request.resource.data.companyRole == 'owner'
+              && request.resource.data.role == 'leader'
+            )
+          )
         );
 
       allow delete: if false;
@@ -250,7 +295,8 @@ service cloud.firestore {
         && getAfter(memberPath(companyId, request.auth.uid)).data.active == true
         && getAfter(userPath(request.auth.uid)).data.companyId == companyId;
 
-      allow update: if isCompanyOwner(companyId)
+      allow update: if (
+        isCompanyOwner(companyId)
         && resource.data.ownerUid == request.auth.uid
         && request.resource.data.ownerUid == resource.data.ownerUid
         && request.resource.data.diff(resource.data).affectedKeys()
@@ -258,7 +304,17 @@ service cloud.firestore {
         && request.resource.data.name is string
         && request.resource.data.name.size() >= 2
         && request.resource.data.name.size() <= 80
-        && request.resource.data.updatedAt == request.time;
+        && request.resource.data.updatedAt == request.time
+      )
+      || (
+        isCompanyOwner(companyId)
+        && resource.data.ownerUid == request.auth.uid
+        && request.resource.data.ownerUid != resource.data.ownerUid
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['ownerUid', 'updatedAt'])
+        && validOwnerTransfer(companyId)
+      );
 
       allow delete: if false;
 
@@ -315,6 +371,26 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['active', 'updatedAt'])
           && getAfter(userPath(request.auth.uid)).data.active == false
+        )
+        || (
+          validOwnerTransfer(companyId)
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['companyRole', 'role', 'updatedAt'])
+          && (
+            (
+              memberId == request.auth.uid
+              && resource.data.companyRole == 'owner'
+              && request.resource.data.companyRole == 'member'
+              && request.resource.data.role == 'leader'
+            )
+            || (
+              memberId == getAfter(companyPath(companyId)).data.ownerUid
+              && resource.data.companyRole == 'member'
+              && request.resource.data.companyRole == 'owner'
+              && request.resource.data.role == 'leader'
+            )
+          )
         );
 
         allow delete: if false;

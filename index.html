@@ -1205,6 +1205,38 @@ header {
 
     </div>
 
+    <div
+      id="ownerTransferPanel"
+      style="display:none;margin-top:22px;padding-top:20px;border-top:1px solid var(--border);">
+
+      <div style="font-weight:800;">
+        オーナー移譲
+      </div>
+
+      <div style="margin-top:7px;font-size:12px;color:var(--sub);line-height:1.7;">
+        退職などでオーナーを変更する場合に使います。
+        移譲先は自動的にリーダーになります。
+        移譲後、現在のオーナーはリーダーとして残り、自分のアカウントを削除できます。
+      </div>
+
+      <div class="management-input-row">
+
+        <select
+          id="ownerTransferSelect"
+          style="min-width:0;flex:1;padding:10px;border:1px solid var(--border);border-radius:8px;">
+          <option value="">移譲先を選択</option>
+        </select>
+
+        <button
+          id="ownerTransferButton"
+          disabled>
+          オーナーを移譲
+        </button>
+
+      </div>
+
+    </div>
+
   </div>
 
 
@@ -1966,6 +1998,15 @@ const inviteLinkOutput =
 
 const copyInviteButton =
   document.getElementById("copyInviteButton");
+
+const ownerTransferPanel =
+  document.getElementById("ownerTransferPanel");
+
+const ownerTransferSelect =
+  document.getElementById("ownerTransferSelect");
+
+const ownerTransferButton =
+  document.getElementById("ownerTransferButton");
 
 const authTitle =
   document.getElementById("authTitle");
@@ -4280,6 +4321,15 @@ function updateCurrentUserUI() {
       : "none";
 
 
+  ownerTransferPanel.style.display =
+    currentUserData.companyRole ===
+    "owner"
+      ? "block"
+      : "none";
+
+  renderOwnerTransferOptions();
+
+
   if (
     currentUserData.role ===
     "leader"
@@ -6233,6 +6283,8 @@ async function loadMembers() {
 
     renderMembers();
 
+    renderOwnerTransferOptions();
+
   } catch (error) {
 
     showError(
@@ -6244,6 +6296,356 @@ async function loadMembers() {
   }
 
 }
+
+
+function renderOwnerTransferOptions() {
+
+  if (
+    !ownerTransferPanel ||
+    !ownerTransferSelect ||
+    !ownerTransferButton
+  ) {
+
+    return;
+
+  }
+
+
+  if (
+    currentUserData?.companyRole !==
+    "owner"
+  ) {
+
+    ownerTransferPanel.style.display =
+      "none";
+
+    ownerTransferButton.disabled =
+      true;
+
+    return;
+
+  }
+
+
+  ownerTransferPanel.style.display =
+    "block";
+
+
+  const previousValue =
+    ownerTransferSelect.value;
+
+
+  ownerTransferSelect.innerHTML = `
+    <option value="">
+      移譲先を選択
+    </option>
+  `;
+
+
+  members
+    .filter(
+      member =>
+        member.id !==
+          currentUser?.uid &&
+        member.active !==
+          false &&
+        member.companyRole !==
+          "owner"
+    )
+    .forEach(
+      member => {
+
+        const option =
+          document.createElement(
+            "option"
+          );
+
+        option.value =
+          member.id;
+
+        option.textContent =
+          member.name ||
+          member.email ||
+          "名前未設定";
+
+        ownerTransferSelect.appendChild(
+          option
+        );
+
+      }
+    );
+
+
+  if (
+    Array.from(
+      ownerTransferSelect.options
+    ).some(
+      option =>
+        option.value ===
+        previousValue
+    )
+  ) {
+
+    ownerTransferSelect.value =
+      previousValue;
+
+  }
+
+
+  ownerTransferButton.disabled =
+    !ownerTransferSelect.value;
+
+}
+
+
+ownerTransferSelect.onchange =
+  () => {
+
+    ownerTransferButton.disabled =
+      !ownerTransferSelect.value;
+
+  };
+
+
+ownerTransferButton.onclick =
+  async () => {
+
+    if (
+      currentUserData?.companyRole !==
+      "owner" ||
+      !currentUserData?.companyId ||
+      !currentUser
+    ) {
+
+      showError(
+        "オーナーだけが実行できます。"
+      );
+
+      return;
+
+    }
+
+
+    const newOwner =
+      members.find(
+        member =>
+          member.id ===
+          ownerTransferSelect.value &&
+          member.active !==
+          false &&
+          member.companyRole !==
+          "owner"
+      );
+
+
+    if (!newOwner) {
+
+      showError(
+        "移譲先のメンバーを選択してください。"
+      );
+
+      return;
+
+    }
+
+
+    if (
+      !confirm(
+        `${newOwner.name || "このメンバー"}へ会社オーナーを移譲しますか？\n\n移譲先はリーダーになります。移譲後、あなたはリーダーとして残ります。`
+      )
+    ) {
+
+      return;
+
+    }
+
+
+    try {
+
+      ownerTransferButton.disabled =
+        true;
+
+      ownerTransferButton.textContent =
+        "移譲中...";
+
+
+      const batch =
+        writeBatch(
+          db
+        );
+
+      const companyId =
+        currentUserData.companyId;
+
+
+      batch.update(
+        doc(
+          db,
+          "companies",
+          companyId
+        ),
+        {
+
+          ownerUid:
+            newOwner.id,
+
+          updatedAt:
+            serverTimestamp()
+
+        }
+      );
+
+
+      batch.update(
+        doc(
+          db,
+          "users",
+          currentUser.uid
+        ),
+        {
+
+          companyRole:
+            "member",
+
+          role:
+            "leader",
+
+          updatedAt:
+            serverTimestamp()
+
+        }
+      );
+
+
+      batch.update(
+        doc(
+          db,
+          "companies",
+          companyId,
+          "members",
+          currentUser.uid
+        ),
+        {
+
+          companyRole:
+            "member",
+
+          role:
+            "leader",
+
+          updatedAt:
+            serverTimestamp()
+
+        }
+      );
+
+
+      batch.update(
+        doc(
+          db,
+          "users",
+          newOwner.id
+        ),
+        {
+
+          companyRole:
+            "owner",
+
+          role:
+            "leader",
+
+          updatedAt:
+            serverTimestamp()
+
+        }
+      );
+
+
+      batch.update(
+        doc(
+          db,
+          "companies",
+          companyId,
+          "members",
+          newOwner.id
+        ),
+        {
+
+          companyRole:
+            "owner",
+
+          role:
+            "leader",
+
+          updatedAt:
+            serverTimestamp()
+
+        }
+      );
+
+
+      await batch.commit();
+
+
+      currentUserData = {
+
+        ...currentUserData,
+
+        companyRole:
+          "member",
+
+        role:
+          "leader"
+
+      };
+
+
+      if (
+        currentCompanyData
+      ) {
+
+        currentCompanyData = {
+
+          ...currentCompanyData,
+
+          ownerUid:
+            newOwner.id
+
+        };
+
+      }
+
+
+      updateCurrentUserUI();
+
+      await loadMembers();
+
+
+      showSuccess(
+        "オーナーを移譲しました。必要なら続けて自分のアカウントを削除できます。"
+      );
+
+
+    } catch (error) {
+
+      console.error(error);
+
+      showError(
+        firebaseErrorMessage(
+          error
+        )
+      );
+
+    } finally {
+
+      ownerTransferButton.textContent =
+        "オーナーを移譲";
+
+      renderOwnerTransferOptions();
+
+    }
+
+  };
 
 
 function getTeamName(
@@ -6494,6 +6896,9 @@ function renderMembers() {
 
     }
   );
+
+
+  renderOwnerTransferOptions();
 
 }
 
