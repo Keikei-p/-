@@ -3,603 +3,352 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#111827">
-
   <title>営業実績管理</title>
-
   <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
 
-  <!-- ================================
-       Header
-  ================================= -->
+<header class="app-header">
+  <div>
+    <p class="eyebrow">SALES PERFORMANCE</p>
+    <h1>営業実績管理</h1>
+  </div>
 
-  <header class="header">
+  <button id="monthButton" class="month-button"></button>
+</header>
 
-    <div>
-      <p class="header-subtitle">SALES MANAGEMENT</p>
-      <h1>営業実績管理</h1>
+<nav class="tab-nav">
+  <button class="tab active" data-page="home">ホーム</button>
+  <button class="tab" data-page="performance">個人実績</button>
+  <button class="tab" data-page="history">履歴</button>
+</nav>
+
+<main class="container">
+
+  <!-- =========================
+       ホーム
+  ========================== -->
+
+  <section id="homePage" class="page active">
+
+    <section class="hero-card">
+
+      <div>
+        <p class="muted">今月の収益</p>
+        <p id="totalRevenue" class="hero-number">¥0</p>
+      </div>
+
+      <div class="hero-progress">
+
+        <div class="progress-label">
+          <span>目標達成率</span>
+          <strong id="overallRate">0%</strong>
+        </div>
+
+        <div class="progress-track">
+          <div id="overallProgress" class="progress-bar"></div>
+        </div>
+
+        <p id="overallTargetText" class="muted">
+          0件 / 0件
+        </p>
+
+      </div>
+
+    </section>
+
+    <section class="summary-grid">
+
+      <article class="stat-card">
+        <span>総獲得数</span>
+        <strong id="totalCount">0</strong>
+        <small>件</small>
+      </article>
+
+      <article class="stat-card">
+        <span>目標残り</span>
+        <strong id="remainingCount">0</strong>
+        <small>件</small>
+      </article>
+
+      <article class="stat-card">
+        <span>登録商材</span>
+        <strong id="itemCount">0</strong>
+        <small>種類</small>
+      </article>
+
+    </section>
+
+    <section class="section">
+
+      <div class="section-title">
+
+        <div>
+          <p class="eyebrow">PROGRESS</p>
+          <h2>商材別進捗</h2>
+        </div>
+
+        <button id="addItemButton" class="primary-button">
+          ＋ 商材追加
+        </button>
+
+      </div>
+
+      <div id="itemsContainer" class="items-list"></div>
+
+    </section>
+
+    <section class="section">
+
+      <div class="section-title">
+
+        <div>
+          <p class="eyebrow">QUICK INPUT</p>
+          <h2>実績を入力</h2>
+        </div>
+
+      </div>
+
+      <form id="entryForm" class="entry-form">
+
+        <label>
+          日付
+          <input id="entryDate" type="date" required>
+        </label>
+
+        <label>
+          商材
+          <select id="entryItem" required></select>
+        </label>
+
+        <label>
+          獲得数
+          <input
+            id="entryQuantity"
+            type="number"
+            min="1"
+            value="1"
+            required
+          >
+        </label>
+
+        <button class="primary-button" type="submit">
+          実績を登録
+        </button>
+
+      </form>
+
+      <p id="emptyHint" class="empty-hint"></p>
+
+    </section>
+
+  </section>
+
+
+  <!-- =========================
+       個人実績
+  ========================== -->
+
+  <section id="performancePage" class="page">
+
+    <div class="page-heading">
+
+      <p class="eyebrow">MY PERFORMANCE</p>
+
+      <h2>個人実績</h2>
+
+      <p class="muted">
+        今月の営業実績をまとめて確認できます。
+      </p>
+
     </div>
 
-    <button class="menu-button" id="menuButton">
-      ☰
-    </button>
 
-  </header>
+    <section class="performance-summary">
 
+      <article class="performance-card">
 
-  <main class="container">
+        <span>総獲得数</span>
 
-    <!-- ================================
-         Month
-    ================================= -->
+        <strong id="performanceCount">
+          0
+        </strong>
 
-    <section class="month-section">
+        <small>件</small>
 
-      <button id="prevMonth">‹</button>
-
-      <div class="month-display">
-        <span id="currentYear">2026年</span>
-        <strong id="currentMonth">9月</strong>
-      </div>
-
-      <button id="nextMonth">›</button>
-
-    </section>
+      </article>
 
 
-    <!-- ================================
-         Main Summary
-    ================================= -->
+      <article class="performance-card">
 
-    <section class="main-card">
+        <span>総収益</span>
 
-      <div class="card-title">
-
-        <span>今月の実績</span>
-
-        <span class="status">
-          CURRENT
-        </span>
-
-      </div>
-
-
-      <div class="main-number">
-
-        <strong id="totalCount">0</strong>
-
-        <span>件</span>
-
-      </div>
-
-
-      <div class="progress-area">
-
-        <div class="progress-info">
-
-          <span>月間目標</span>
-
-          <strong>
-            <span id="targetCount">0</span>件
-          </strong>
-
-        </div>
-
-
-        <div class="progress-bar">
-
-          <div
-            class="progress-value"
-            id="progressBar">
-          </div>
-
-        </div>
-
-
-        <div class="achievement">
-
-          達成率
-
-          <strong id="achievementRate">
-            0%
-          </strong>
-
-        </div>
-
-      </div>
-
-    </section>
-
-
-    <!-- ================================
-         Stats
-    ================================= -->
-
-    <section class="stats-grid">
-
-      <div class="stat-card">
-
-        <span class="stat-label">
-          今月の収益
-        </span>
-
-        <strong id="totalRevenue">
+        <strong id="performanceRevenue">
           ¥0
         </strong>
 
-      </div>
+      </article>
 
 
-      <div class="stat-card">
+      <article class="performance-card">
 
-        <span class="stat-label">
-          残り目標
-        </span>
+        <span>1日平均</span>
 
-        <strong id="remainingCount">
-          0件
+        <strong id="dailyAverage">
+          0
         </strong>
 
-      </div>
+        <small>件</small>
+
+      </article>
 
     </section>
 
-
-    <!-- ================================
-         Today's Input
-    ================================= -->
 
     <section class="section">
 
-      <div class="section-header">
-
-        <h2>今日の実績</h2>
-
-        <button
-          class="add-button"
-          id="openDailyInput">
-
-          ＋ 実績入力
-
-        </button>
-
-      </div>
-
-
-      <div id="todaySummary">
-
-        <div class="empty-state">
-
-          <div class="empty-icon">
-            ＋
-          </div>
-
-          <h3>
-            今日の実績はまだありません
-          </h3>
-
-          <p>
-            1日の最後に<br>
-            メンバーごとの実績をまとめて入力できます。
-          </p>
-
-          <button id="emptyDailyInput">
-            今日の実績を入力
-          </button>
-
-        </div>
-
-      </div>
-
-    </section>
-
-
-    <!-- ================================
-         Items
-    ================================= -->
-
-    <section class="section">
-
-      <div class="section-header">
-
-        <h2>商材別実績</h2>
-
-        <button
-          class="add-button"
-          id="addItemButton">
-
-          ＋ 商材追加
-
-        </button>
-
-      </div>
-
-
-      <div id="itemList">
-
-        <div class="empty-state">
-
-          <div class="empty-icon">
-            ＋
-          </div>
-
-          <h3>
-            まだ商材がありません
-          </h3>
-
-          <p>
-            商材を追加すると<br>
-            ここに実績が表示されます。
-          </p>
-
-          <button id="emptyAddButton">
-            商材を追加する
-          </button>
-
-        </div>
-
-      </div>
-
-    </section>
-
-
-    <!-- ================================
-         Members
-    ================================= -->
-
-    <section class="section">
-
-      <div class="section-header">
-
-        <h2>メンバー</h2>
-
-        <button
-          class="add-button"
-          id="addMemberButton">
-
-          ＋ メンバー追加
-
-        </button>
-
-      </div>
-
-
-      <div id="memberList">
-
-        <div class="empty-state">
-
-          <div class="empty-icon">
-            ＋
-          </div>
-
-          <h3>
-            まだメンバーがいません
-          </h3>
-
-          <p>
-            メンバーを登録すると<br>
-            誰が獲得したか管理できます。
-          </p>
-
-          <button id="emptyMemberButton">
-            メンバーを追加する
-          </button>
-
-        </div>
-
-      </div>
-
-    </section>
-
-
-    <!-- ================================
-         Quick Menu
-    ================================= -->
-
-    <section class="quick-section">
-
-      <h2>クイックメニュー</h2>
-
-
-      <div class="quick-grid">
-
-        <button
-          class="quick-card"
-          id="inputButton">
-
-          <span class="quick-icon">
-            ＋
-          </span>
-
-          <span>
-            実績を入力
-          </span>
-
-        </button>
-
-
-        <button
-          class="quick-card"
-          id="performanceButton">
-
-          <span class="quick-icon">
-            📊
-          </span>
-
-          <span>
-            個人実績
-          </span>
-
-        </button>
-
-
-        <button
-          class="quick-card"
-          id="analysisButton">
-
-          <span class="quick-icon">
-            📈
-          </span>
-
-          <span>
-            分析
-          </span>
-
-        </button>
-
-
-        <button
-          class="quick-card"
-          id="settingsButton">
-
-          <span class="quick-icon">
-            ⚙
-          </span>
-
-          <span>
-            設定
-          </span>
-
-        </button>
-
-      </div>
-
-    </section>
-
-  </main>
-
-
-  <!-- ==================================================
-       商材追加モーダル
-  =================================================== -->
-
-  <div
-    class="modal"
-    id="itemModal">
-
-    <div class="modal-content">
-
-      <div class="modal-header">
-
-        <h2>
-          商材を追加
-        </h2>
-
-        <button id="closeItemModal">
-          ×
-        </button>
-
-      </div>
-
-
-      <div class="form-group">
-
-        <label>
-          商材名
-        </label>
-
-        <input
-          type="text"
-          id="itemName"
-          placeholder="例：NURO光">
-
-      </div>
-
-
-      <div class="form-group">
-
-        <label>
-          月間目標
-        </label>
-
-        <div class="input-unit">
-
-          <input
-            type="number"
-            id="itemTarget"
-            min="0"
-            placeholder="例：10">
-
-          <span>
-            件
-          </span>
-
-        </div>
-
-      </div>
-
-
-      <div class="form-group">
-
-        <label>
-          1件あたりの収益
-        </label>
-
-        <div class="input-unit">
-
-          <input
-            type="number"
-            id="itemRevenue"
-            min="0"
-            placeholder="例：25000">
-
-          <span>
-            円
-          </span>
-
-        </div>
-
-      </div>
-
-
-      <button
-        class="save-button"
-        id="saveItem">
-
-        商材を追加する
-
-      </button>
-
-    </div>
-
-  </div>
-
-
-  <!-- ==================================================
-       メンバー追加モーダル
-  =================================================== -->
-
-  <div
-    class="modal"
-    id="memberModal">
-
-    <div class="modal-content">
-
-      <div class="modal-header">
-
-        <h2>
-          メンバーを追加
-        </h2>
-
-        <button id="closeMemberModal">
-          ×
-        </button>
-
-      </div>
-
-
-      <div class="form-group">
-
-        <label>
-          メンバー名
-        </label>
-
-        <input
-          type="text"
-          id="memberName"
-          placeholder="例：田中">
-
-      </div>
-
-
-      <button
-        class="save-button"
-        id="saveMember">
-
-        メンバーを追加する
-
-      </button>
-
-    </div>
-
-  </div>
-
-
-  <!-- ==================================================
-       1日の実績入力モーダル
-  =================================================== -->
-
-  <div
-    class="modal"
-    id="dailyModal">
-
-    <div class="modal-content daily-modal">
-
-      <div class="modal-header">
+      <div class="section-title">
 
         <div>
 
-          <h2>
-            今日の実績入力
-          </h2>
-
-          <p class="modal-date" id="dailyDate">
-            2026年9月19日
+          <p class="eyebrow">
+            BREAKDOWN
           </p>
 
-        </div>
-
-        <button id="closeDailyModal">
-          ×
-        </button>
-
-      </div>
-
-
-      <!-- メンバー選択 -->
-
-      <div class="form-group">
-
-        <label>
-          獲得者
-        </label>
-
-        <select id="dailyMember">
-
-          <option value="">
-            メンバーを選択
-          </option>
-
-        </select>
-
-      </div>
-
-
-      <!-- 商材入力 -->
-
-      <div
-        id="dailyItemInputs"
-        class="daily-item-inputs">
-
-        <div class="empty-input-message">
-
-          メンバーを選択すると<br>
-          商材入力欄が表示されます。
+          <h2>
+            商材別実績
+          </h2>
 
         </div>
 
       </div>
 
+      <div id="performanceItems" class="performance-list"></div>
 
-      <!-- 保存 -->
+    </section>
 
-      <button
-        class="save-button"
-        id="saveDaily">
+  </section>
 
-        この日の実績を保存
 
-      </button>
+  <!-- =========================
+       履歴
+  ========================== -->
+
+  <section id="historyPage" class="page">
+
+    <div class="page-heading">
+
+      <p class="eyebrow">
+        HISTORY
+      </p>
+
+      <h2>
+        実績履歴
+      </h2>
+
+      <p class="muted">
+        登録した営業実績を確認できます。
+      </p>
 
     </div>
 
+
+    <section class="section">
+
+      <div id="historyList" class="history-list"></div>
+
+    </section>
+
+  </section>
+
+</main>
+
+
+<!-- =========================
+     商材追加モーダル
+========================== -->
+
+<div id="itemModal" class="modal hidden">
+
+  <div
+    class="modal-backdrop"
+    data-close-modal
+  ></div>
+
+  <div class="modal-card">
+
+    <button
+      class="modal-close"
+      data-close-modal
+    >
+      ×
+    </button>
+
+    <p class="eyebrow">
+      NEW ITEM
+    </p>
+
+    <h2>
+      商材を追加
+    </h2>
+
+
+    <form id="itemForm">
+
+      <label>
+        商材名
+
+        <input
+          id="itemName"
+          type="text"
+          placeholder="例：NURO光"
+          required
+        >
+      </label>
+
+
+      <label>
+        月間目標
+
+        <input
+          id="itemTarget"
+          type="number"
+          min="0"
+          placeholder="例：10"
+          required
+        >
+      </label>
+
+
+      <label>
+        1件あたりの収益
+
+        <input
+          id="itemRevenue"
+          type="number"
+          min="0"
+          placeholder="例：25000"
+          required
+        >
+      </label>
+
+
+      <button
+        class="primary-button full"
+        type="submit"
+      >
+        追加する
+      </button>
+
+    </form>
+
   </div>
 
+</div>
 
-  <script src="script.js"></script>
+
+<script src="script.js"></script>
 
 </body>
 </html>
