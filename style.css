@@ -950,3 +950,44 @@ select {
   }
 
 }
+
+
+/* =====================================================
+   アカウント設定
+====================================================== */
+
+.account-card {
+  background: white;
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow:
+    0 4px 15px rgba(0,0,0,0.05);
+  margin-bottom: 18px;
+}
+
+.account-title {
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.account-description {
+  color: #6b7280;
+  font-size: 13px;
+  margin-bottom: 16px;
+  line-height: 1.6;
+}
+
+.account-save-button {
+  width: 100%;
+  border: none;
+  border-radius: 10px;
+  padding: 13px;
+  background: #2563eb;
+  color: white;
+  font-weight: 700;
+}
+
+.account-save-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
