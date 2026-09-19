@@ -329,7 +329,7 @@
     }
 
     /* =====================================================
-       実績管理
+       実績入力
     ====================================================== */
 
     .record-card {
@@ -356,12 +356,63 @@
       gap: 14px;
     }
 
+    .product-input-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .product-input-row {
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 13px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 15px;
+      background: #fff;
+    }
+
+    .product-input-info {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .product-input-name {
+      font-weight: 700;
+      font-size: 14px;
+    }
+
+    .product-input-unit {
+      margin-top: 4px;
+      font-size: 11px;
+      color: #6b7280;
+    }
+
+    .product-input-control {
+      width: 110px;
+      flex-shrink: 0;
+    }
+
+    .product-input-control input {
+      text-align: center;
+      font-weight: 700;
+      padding: 10px;
+    }
+
     .record-total {
       margin-top: 18px;
-      padding: 16px;
+      padding: 17px;
       border-radius: 12px;
       background: #eff6ff;
       border: 1px solid #bfdbfe;
+    }
+
+    .record-total-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
     }
 
     .record-total-label {
@@ -392,8 +443,19 @@
       opacity: 0.6;
     }
 
+    .record-clear-button {
+      width: 100%;
+      border: none;
+      border-radius: 10px;
+      padding: 12px;
+      margin-top: 8px;
+      background: #f3f4f6;
+      color: #374151;
+      font-weight: 700;
+    }
+
     /* =====================================================
-       月間ダッシュボード
+       ダッシュボード
     ====================================================== */
 
     .dashboard-card {
@@ -451,8 +513,10 @@
       font-size: 15px;
       font-weight: 700;
       margin-bottom: 12px;
+      margin-top: 22px;
     }
 
+    .ranking-list,
     .product-summary-list,
     .daily-summary-list {
       display: flex;
@@ -460,6 +524,7 @@
       gap: 9px;
     }
 
+    .ranking-row,
     .summary-row {
       border: 1px solid #e5e7eb;
       border-radius: 10px;
@@ -468,6 +533,69 @@
       justify-content: space-between;
       align-items: center;
       gap: 10px;
+    }
+
+    .ranking-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .ranking-number {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f3f4f6;
+      font-weight: 800;
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+
+    .ranking-number.top1 {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .ranking-number.top2 {
+      background: #e5e7eb;
+      color: #374151;
+    }
+
+    .ranking-number.top3 {
+      background: #fed7aa;
+      color: #9a3412;
+    }
+
+    .ranking-name {
+      font-weight: 700;
+      font-size: 13px;
+    }
+
+    .ranking-sub {
+      color: #6b7280;
+      font-size: 11px;
+      margin-top: 3px;
+    }
+
+    .ranking-value {
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .ranking-count {
+      font-weight: 800;
+      color: #2563eb;
+    }
+
+    .ranking-revenue {
+      color: #16a34a;
+      font-size: 12px;
+      font-weight: 700;
+      margin-top: 3px;
     }
 
     .summary-row-name {
@@ -484,10 +612,6 @@
     /* =====================================================
        実績履歴
     ====================================================== */
-
-    .record-history {
-      margin-top: 20px;
-    }
 
     .history-item {
       border: 1px solid #e5e7eb;
@@ -506,15 +630,24 @@
       font-weight: 700;
     }
 
+    .history-member {
+      color: #374151;
+      font-size: 12px;
+      margin-top: 4px;
+      font-weight: 600;
+    }
+
     .history-product {
       color: #6b7280;
       font-size: 12px;
-      margin-top: 4px;
+      margin-top: 6px;
+      line-height: 1.5;
     }
 
     .history-count {
       font-weight: 800;
       color: #2563eb;
+      white-space: nowrap;
     }
 
     .history-revenue {
@@ -784,6 +917,12 @@
       font-size: 13px;
     }
 
+    .divider {
+      height: 1px;
+      background: #e5e7eb;
+      margin: 20px 0;
+    }
+
     /* =====================================================
        スマホ
     ====================================================== */
@@ -800,6 +939,10 @@
 
       .record-grid {
         grid-template-columns: 1fr;
+      }
+
+      .record-total-grid {
+        grid-template-columns: 1fr 1fr;
       }
 
       .summary-grid {
@@ -846,6 +989,14 @@
 
       .team-add-button {
         padding: 13px;
+      }
+
+      .product-input-row {
+        padding: 11px;
+      }
+
+      .product-input-control {
+        width: 90px;
       }
 
     }
@@ -1105,8 +1256,8 @@
     </div>
 
     <div class="record-description">
-      日付・担当者・商材・獲得件数を入力すると、
-      売上を自動計算して保存します。
+      その日の全商材をまとめて入力できます。
+      件数を入力して「一括登録」を押してください。
     </div>
 
     <div class="record-grid">
@@ -1141,55 +1292,54 @@
 
       </div>
 
-
-      <div class="form-group">
-
-        <label for="recordProduct">
-          商材
-        </label>
-
-        <select id="recordProduct">
-
-          <option value="">
-            商材を選択
-          </option>
-
-        </select>
-
-      </div>
-
-
-      <div class="form-group">
-
-        <label for="recordCount">
-          獲得件数
-        </label>
-
-        <input
-          id="recordCount"
-          type="number"
-          min="0"
-          step="1"
-          value="1"
-          placeholder="例：3"
-        >
-
-      </div>
-
     </div>
+
+
+    <div class="section-title">
+      商材別実績
+    </div>
+
+    <div
+      id="productInputList"
+      class="product-input-list"
+    ></div>
 
 
     <div class="record-total">
 
-      <div class="record-total-label">
-        今回の売上
-      </div>
+      <div class="record-total-grid">
 
-      <div
-        id="recordTotal"
-        class="record-total-value"
-      >
-        ¥0
+        <div>
+
+          <div class="record-total-label">
+            合計獲得
+          </div>
+
+          <div
+            id="recordTotalCount"
+            class="record-total-value"
+          >
+            0件
+          </div>
+
+        </div>
+
+
+        <div>
+
+          <div class="record-total-label">
+            合計売上
+          </div>
+
+          <div
+            id="recordTotalRevenue"
+            class="record-total-value"
+          >
+            ¥0
+          </div>
+
+        </div>
+
       </div>
 
     </div>
@@ -1199,7 +1349,15 @@
       id="saveRecordButton"
       class="record-save-button"
     >
-      実績を登録
+      実績を一括登録
+    </button>
+
+
+    <button
+      id="clearRecordButton"
+      class="record-clear-button"
+    >
+      入力をクリア
     </button>
 
   </div>
@@ -1265,14 +1423,14 @@
       <div class="summary-item">
 
         <div class="summary-label">
-          実績登録数
+          稼働日数
         </div>
 
         <div
-          id="monthlyRecords"
+          id="monthlyWorkDays"
           class="summary-value"
         >
-          0件
+          0日
         </div>
 
       </div>
@@ -1280,8 +1438,40 @@
     </div>
 
 
+    <!-- =====================================================
+         個人ランキング
+    ====================================================== -->
+
     <div class="section-title">
-      商材別
+      🏆 個人ランキング
+    </div>
+
+    <div
+      id="individualRankingList"
+      class="ranking-list"
+    ></div>
+
+
+    <!-- =====================================================
+         班ランキング
+    ====================================================== -->
+
+    <div class="section-title">
+      🏢 班別ランキング
+    </div>
+
+    <div
+      id="teamRankingList"
+      class="ranking-list"
+    ></div>
+
+
+    <!-- =====================================================
+         商材別
+    ====================================================== -->
+
+    <div class="section-title">
+      🛍️ 商材別
     </div>
 
     <div
@@ -1290,8 +1480,12 @@
     ></div>
 
 
-    <div class="section-title record-history">
-      日別実績
+    <!-- =====================================================
+         日別
+    ====================================================== -->
+
+    <div class="section-title">
+      📅 日別実績
     </div>
 
     <div
@@ -1300,8 +1494,12 @@
     ></div>
 
 
-    <div class="section-title record-history">
-      登録履歴
+    <!-- =====================================================
+         履歴
+    ====================================================== -->
+
+    <div class="section-title">
+      📋 登録履歴
     </div>
 
     <div
@@ -1325,9 +1523,7 @@
     </div>
 
     <div class="management-description">
-
       営業チームを作成・編集できます。
-
     </div>
 
     <div class="team-add-area">
@@ -1369,9 +1565,7 @@
     </div>
 
     <div class="management-description">
-
       商材名と1件あたりの収益を設定できます。
-
     </div>
 
     <div class="product-add-area">
@@ -1421,9 +1615,7 @@
     </div>
 
     <div class="management-description">
-
       メンバーの権限と所属班を変更できます。
-
     </div>
 
     <div
@@ -1616,6 +1808,7 @@
   from
     "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
 
+
   import {
     getAuth,
     createUserWithEmailAndPassword,
@@ -1626,6 +1819,7 @@
   from
     "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 
+
   import {
     getFirestore,
     doc,
@@ -1635,10 +1829,7 @@
     deleteDoc,
     collection,
     getDocs,
-    serverTimestamp,
-    query,
-    where,
-    orderBy
+    serverTimestamp
   }
   from
     "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
@@ -1745,7 +1936,9 @@
     document.getElementById("setupWarning");
 
 
-  /* 実績 */
+  /* =====================================================
+     実績DOM
+  ====================================================== */
 
   const recordManagement =
     document.getElementById("recordManagement");
@@ -1756,17 +1949,33 @@
   const recordMember =
     document.getElementById("recordMember");
 
-  const recordProduct =
-    document.getElementById("recordProduct");
+  const productInputList =
+    document.getElementById("productInputList");
 
-  const recordCount =
-    document.getElementById("recordCount");
+  const recordTotalCount =
+    document.getElementById(
+      "recordTotalCount"
+    );
 
-  const recordTotal =
-    document.getElementById("recordTotal");
+  const recordTotalRevenue =
+    document.getElementById(
+      "recordTotalRevenue"
+    );
 
   const saveRecordButton =
-    document.getElementById("saveRecordButton");
+    document.getElementById(
+      "saveRecordButton"
+    );
+
+  const clearRecordButton =
+    document.getElementById(
+      "clearRecordButton"
+    );
+
+
+  /* =====================================================
+     ダッシュボードDOM
+  ====================================================== */
 
   const dashboard =
     document.getElementById("dashboard");
@@ -1780,8 +1989,20 @@
   const monthlyRevenue =
     document.getElementById("monthlyRevenue");
 
-  const monthlyRecords =
-    document.getElementById("monthlyRecords");
+  const monthlyWorkDays =
+    document.getElementById(
+      "monthlyWorkDays"
+    );
+
+  const individualRankingList =
+    document.getElementById(
+      "individualRankingList"
+    );
+
+  const teamRankingList =
+    document.getElementById(
+      "teamRankingList"
+    );
 
   const productSummaryList =
     document.getElementById(
@@ -1799,25 +2020,40 @@
     );
 
 
-  /* 管理 */
+  /* =====================================================
+     管理DOM
+  ====================================================== */
 
   const teamManagement =
-    document.getElementById("teamManagement");
+    document.getElementById(
+      "teamManagement"
+    );
 
   const teamNameInput =
-    document.getElementById("teamNameInput");
+    document.getElementById(
+      "teamNameInput"
+    );
 
   const addTeamButton =
-    document.getElementById("addTeamButton");
+    document.getElementById(
+      "addTeamButton"
+    );
 
   const teamList =
-    document.getElementById("teamList");
+    document.getElementById(
+      "teamList"
+    );
+
 
   const productManagement =
-    document.getElementById("productManagement");
+    document.getElementById(
+      "productManagement"
+    );
 
   const productNameInput =
-    document.getElementById("productNameInput");
+    document.getElementById(
+      "productNameInput"
+    );
 
   const productRevenueInput =
     document.getElementById(
@@ -1830,7 +2066,10 @@
     );
 
   const productList =
-    document.getElementById("productList");
+    document.getElementById(
+      "productList"
+    );
+
 
   const memberManagement =
     document.getElementById(
@@ -1838,13 +2077,19 @@
     );
 
   const memberList =
-    document.getElementById("memberList");
+    document.getElementById(
+      "memberList"
+    );
 
 
-  /* モーダル */
+  /* =====================================================
+     モーダルDOM
+  ====================================================== */
 
   const teamModal =
-    document.getElementById("teamModal");
+    document.getElementById(
+      "teamModal"
+    );
 
   const editTeamName =
     document.getElementById(
@@ -1860,6 +2105,7 @@
     document.getElementById(
       "saveTeamModal"
     );
+
 
   const productModal =
     document.getElementById(
@@ -1885,6 +2131,7 @@
     document.getElementById(
       "saveProductModal"
     );
+
 
   const memberTeamModal =
     document.getElementById(
@@ -1923,15 +2170,19 @@
 
   let currentUserData = null;
 
+  let currentUser = null;
+
   let editingTeamId = null;
 
   let editingProductId = null;
 
   let editingMemberId = null;
 
+  let editingRecordId = null;
+
 
   /* =====================================================
-     今日の日付
+     今日
   ====================================================== */
 
   function getTodayString() {
@@ -1945,12 +2196,18 @@
     const month =
       String(
         now.getMonth() + 1
-      ).padStart(2, "0");
+      ).padStart(
+        2,
+        "0"
+      );
 
     const day =
       String(
         now.getDate()
-      ).padStart(2, "0");
+      ).padStart(
+        2,
+        "0"
+      );
 
     return `${year}-${month}-${day}`;
 
@@ -2018,7 +2275,9 @@
 
     return `¥${Number(
       value || 0
-    ).toLocaleString("ja-JP")}`;
+    ).toLocaleString(
+      "ja-JP"
+    )}`;
 
   }
 
@@ -2140,11 +2399,14 @@
         userRef
       );
 
-    if (userSnap.exists()) {
+    if (
+      userSnap.exists()
+    ) {
 
       return userSnap.data();
 
     }
+
 
     const userData = {
 
@@ -2173,10 +2435,12 @@
 
     };
 
+
     await setDoc(
       userRef,
       userData
     );
+
 
     return userData;
 
@@ -2198,6 +2462,7 @@
     const password =
       passwordInput.value;
 
+
     if (!name) {
 
       showError(
@@ -2207,6 +2472,7 @@
       return;
 
     }
+
 
     if (!email) {
 
@@ -2218,7 +2484,10 @@
 
     }
 
-    if (password.length < 6) {
+
+    if (
+      password.length < 6
+    ) {
 
       showError(
         "パスワードは6文字以上にしてください。"
@@ -2228,6 +2497,7 @@
 
     }
 
+
     try {
 
       authButton.disabled =
@@ -2236,6 +2506,7 @@
       authButton.textContent =
         "登録中...";
 
+
       const result =
         await createUserWithEmailAndPassword(
           auth,
@@ -2243,10 +2514,12 @@
           password
         );
 
+
       await createUserDocument(
         result.user,
         name
       );
+
 
       showSuccess(
         "アカウントを作成しました。"
@@ -2285,6 +2558,7 @@
     const password =
       passwordInput.value;
 
+
     if (!email) {
 
       showError(
@@ -2294,6 +2568,7 @@
       return;
 
     }
+
 
     if (!password) {
 
@@ -2305,6 +2580,7 @@
 
     }
 
+
     try {
 
       authButton.disabled =
@@ -2312,6 +2588,7 @@
 
       authButton.textContent =
         "ログイン中...";
+
 
       await signInWithEmailAndPassword(
         auth,
@@ -2344,7 +2621,9 @@
 
       clearMessages();
 
-      if (isRegisterMode) {
+      if (
+        isRegisterMode
+      ) {
 
         await registerUser();
 
@@ -2360,7 +2639,7 @@
 
   passwordInput.addEventListener(
     "keydown",
-    (event) => {
+    event => {
 
       if (
         event.key === "Enter"
@@ -2390,9 +2669,12 @@
 
   onAuthStateChanged(
     auth,
-    async (user) => {
+    async user => {
 
       if (user) {
+
+        currentUser =
+          user;
 
         authScreen.style.display =
           "none";
@@ -2403,9 +2685,18 @@
         loginStatus.textContent =
           "ログイン中";
 
-        await loadUserData(user);
+
+        await loadUserData(
+          user
+        );
 
       } else {
+
+        currentUser =
+          null;
+
+        currentUserData =
+          null;
 
         authScreen.style.display =
           "block";
@@ -2423,12 +2714,15 @@
      ユーザー情報
   ====================================================== */
 
-  async function loadUserData(user) {
+  async function loadUserData(
+    user
+  ) {
 
     try {
 
       databaseStatus.textContent =
         "確認中...";
+
 
       const userRef =
         doc(
@@ -2437,12 +2731,16 @@
           user.uid
         );
 
+
       let userSnap =
         await getDoc(
           userRef
         );
 
-      if (!userSnap.exists()) {
+
+      if (
+        !userSnap.exists()
+      ) {
 
         await createUserDocument(
           user
@@ -2455,24 +2753,31 @@
 
       }
 
+
       const data =
         userSnap.data();
 
+
       currentUserData = {
+
         ...data,
-        uid: user.uid
+
+        uid:
+          user.uid
+
       };
+
 
       userName.textContent =
         data.name ||
         "名前未設定";
+
 
       userEmail.textContent =
         data.email ||
         user.email ||
         "";
 
-      /* 全員に実績機能を表示 */
 
       recordManagement.style.display =
         "block";
@@ -2482,7 +2787,8 @@
 
 
       if (
-        data.role === "leader"
+        data.role ===
+        "leader"
       ) {
 
         userRole.textContent =
@@ -2499,6 +2805,7 @@
 
         memberManagement.style.display =
           "block";
+
 
         await loadTeams();
 
@@ -2523,28 +2830,38 @@
         memberManagement.style.display =
           "none";
 
+
         await loadTeams();
 
         await loadProducts();
 
+        await loadMembers();
+
       }
+
 
       await prepareRecordInputs();
 
       await loadRecords();
+
 
       databaseStatus.textContent =
         "接続済み";
 
     } catch (error) {
 
-      console.error(error);
+      console.error(
+        error
+      );
 
       databaseStatus.textContent =
         "接続エラー";
 
+
       showError(
-        firebaseErrorMessage(error)
+        firebaseErrorMessage(
+          error
+        )
       );
 
     }
@@ -2568,10 +2885,12 @@
           )
         );
 
+
       teams = [];
 
+
       snapshot.forEach(
-        (teamDoc) => {
+        teamDoc => {
 
           teams.push({
 
@@ -2585,19 +2904,25 @@
         }
       );
 
+
       teams.sort(
         (a, b) =>
-          (a.name || "").localeCompare(
+          (
+            a.name || ""
+          ).localeCompare(
             b.name || "",
             "ja"
           )
       );
 
+
       renderTeams();
 
     } catch (error) {
 
-      console.error(error);
+      console.error(
+        error
+      );
 
     }
 
@@ -2620,25 +2945,36 @@
 
     }
 
-    teamList.innerHTML = "";
+
+    teamList.innerHTML =
+      "";
+
 
     teams.forEach(
-      (team) => {
+      team => {
 
         const item =
-          document.createElement("div");
+          document.createElement(
+            "div"
+          );
 
         item.className =
           "team-item";
 
+
         const info =
-          document.createElement("div");
+          document.createElement(
+            "div"
+          );
 
         info.className =
           "team-info";
 
+
         const name =
-          document.createElement("div");
+          document.createElement(
+            "div"
+          );
 
         name.className =
           "team-name";
@@ -2647,8 +2983,11 @@
           team.name ||
           "名前未設定";
 
+
         const count =
-          document.createElement("div");
+          document.createElement(
+            "div"
+          );
 
         count.className =
           "team-member-count";
@@ -2656,18 +2995,29 @@
         count.textContent =
           "メンバー数を確認中...";
 
-        info.appendChild(name);
 
-        info.appendChild(count);
+        info.appendChild(
+          name
+        );
+
+        info.appendChild(
+          count
+        );
+
 
         const actions =
-          document.createElement("div");
+          document.createElement(
+            "div"
+          );
 
         actions.className =
           "team-actions";
 
+
         const editButton =
-          document.createElement("button");
+          document.createElement(
+            "button"
+          );
 
         editButton.className =
           "edit-team-button";
@@ -2677,10 +3027,15 @@
 
         editButton.onclick =
           () =>
-            openEditTeamModal(team);
+            openEditTeamModal(
+              team
+            );
+
 
         const deleteButton =
-          document.createElement("button");
+          document.createElement(
+            "button"
+          );
 
         deleteButton.className =
           "delete-team-button";
@@ -2690,7 +3045,10 @@
 
         deleteButton.onclick =
           () =>
-            deleteTeam(team);
+            deleteTeam(
+              team
+            );
+
 
         actions.appendChild(
           editButton
@@ -2700,11 +3058,20 @@
           deleteButton
         );
 
-        item.appendChild(info);
 
-        item.appendChild(actions);
+        item.appendChild(
+          info
+        );
 
-        teamList.appendChild(item);
+        item.appendChild(
+          actions
+        );
+
+
+        teamList.appendChild(
+          item
+        );
+
 
         countTeamMembers(
           team.id,
@@ -2732,10 +3099,12 @@
           )
         );
 
+
       let count = 0;
 
+
       snapshot.forEach(
-        (userDoc) => {
+        userDoc => {
 
           if (
             userDoc.data().teamId ===
@@ -2748,6 +3117,7 @@
 
         }
       );
+
 
       element.textContent =
         `メンバー ${count}人`;
@@ -2773,6 +3143,7 @@
       const name =
         teamNameInput.value.trim();
 
+
       if (!name) {
 
         showError(
@@ -2783,10 +3154,12 @@
 
       }
 
+
       try {
 
         addTeamButton.disabled =
           true;
+
 
         const teamRef =
           doc(
@@ -2795,6 +3168,7 @@
               "teams"
             )
           );
+
 
         await setDoc(
           teamRef,
@@ -2812,10 +3186,14 @@
           }
         );
 
+
         teamNameInput.value =
           "";
 
+
         await loadTeams();
+
+        await loadMembers();
 
         showSuccess(
           "班を追加しました。"
@@ -2824,7 +3202,9 @@
       } catch (error) {
 
         showError(
-          firebaseErrorMessage(error)
+          firebaseErrorMessage(
+            error
+          )
         );
 
       } finally {
@@ -2842,7 +3222,9 @@
      班編集
   ====================================================== */
 
-  function openEditTeamModal(team) {
+  function openEditTeamModal(
+    team
+  ) {
 
     editingTeamId =
       team.id;
@@ -2874,17 +3256,29 @@
   saveTeamModal.onclick =
     async () => {
 
-      if (!editingTeamId) {
+      if (
+        !editingTeamId
+      ) {
+
         return;
+
       }
+
 
       const name =
         editTeamName.value.trim();
 
+
       if (!name) {
-        alert("班名を入力してください。");
+
+        alert(
+          "班名を入力してください。"
+        );
+
         return;
+
       }
+
 
       try {
 
@@ -2895,11 +3289,15 @@
             editingTeamId
           ),
           {
+
             name,
+
             updatedAt:
               serverTimestamp()
+
           }
         );
+
 
         closeTeamModal();
 
@@ -2912,7 +3310,9 @@
       } catch (error) {
 
         showError(
-          firebaseErrorMessage(error)
+          firebaseErrorMessage(
+            error
+          )
         );
 
       }
@@ -2920,15 +3320,20 @@
     };
 
 
-  async function deleteTeam(team) {
+  async function deleteTeam(
+    team
+  ) {
 
     if (
       !confirm(
         `「${team.name}」を削除しますか？`
       )
     ) {
+
       return;
+
     }
+
 
     try {
 
@@ -2940,6 +3345,7 @@
         )
       );
 
+
       const snapshot =
         await getDocs(
           collection(
@@ -2948,10 +3354,12 @@
           )
         );
 
+
       const updates = [];
 
+
       snapshot.forEach(
-        (userDoc) => {
+        userDoc => {
 
           if (
             userDoc.data().teamId ===
@@ -2976,7 +3384,11 @@
         }
       );
 
-      await Promise.all(updates);
+
+      await Promise.all(
+        updates
+      );
+
 
       await loadTeams();
 
@@ -2989,7 +3401,9 @@
     } catch (error) {
 
       showError(
-        firebaseErrorMessage(error)
+        firebaseErrorMessage(
+          error
+        )
       );
 
     }
@@ -3013,10 +3427,12 @@
           )
         );
 
+
       products = [];
 
+
       snapshot.forEach(
-        (productDoc) => {
+        productDoc => {
 
           products.push({
 
@@ -3030,19 +3446,25 @@
         }
       );
 
+
       products.sort(
         (a, b) =>
-          (a.name || "").localeCompare(
+          (
+            a.name || ""
+          ).localeCompare(
             b.name || "",
             "ja"
           )
       );
 
+
       renderProducts();
 
     } catch (error) {
 
-      console.error(error);
+      console.error(
+        error
+      );
 
     }
 
@@ -3065,25 +3487,36 @@
 
     }
 
-    productList.innerHTML = "";
+
+    productList.innerHTML =
+      "";
+
 
     products.forEach(
-      (product) => {
+      product => {
 
         const item =
-          document.createElement("div");
+          document.createElement(
+            "div"
+          );
 
         item.className =
           "product-item";
 
+
         const info =
-          document.createElement("div");
+          document.createElement(
+            "div"
+          );
 
         info.className =
           "product-info";
 
+
         const name =
-          document.createElement("div");
+          document.createElement(
+            "div"
+          );
 
         name.className =
           "product-name";
@@ -3091,8 +3524,11 @@
         name.textContent =
           product.name;
 
+
         const revenue =
-          document.createElement("div");
+          document.createElement(
+            "div"
+          );
 
         revenue.className =
           "product-revenue";
@@ -3102,18 +3538,29 @@
             product.revenue
           )}`;
 
-        info.appendChild(name);
 
-        info.appendChild(revenue);
+        info.appendChild(
+          name
+        );
+
+        info.appendChild(
+          revenue
+        );
+
 
         const actions =
-          document.createElement("div");
+          document.createElement(
+            "div"
+          );
 
         actions.className =
           "product-actions";
 
+
         const editButton =
-          document.createElement("button");
+          document.createElement(
+            "button"
+          );
 
         editButton.className =
           "edit-product-button";
@@ -3127,8 +3574,11 @@
               product
             );
 
+
         const deleteButton =
-          document.createElement("button");
+          document.createElement(
+            "button"
+          );
 
         deleteButton.className =
           "delete-product-button";
@@ -3142,6 +3592,7 @@
               product
             );
 
+
         actions.appendChild(
           editButton
         );
@@ -3150,11 +3601,19 @@
           deleteButton
         );
 
-        item.appendChild(info);
 
-        item.appendChild(actions);
+        item.appendChild(
+          info
+        );
 
-        productList.appendChild(item);
+        item.appendChild(
+          actions
+        );
+
+
+        productList.appendChild(
+          item
+        );
 
       }
     );
@@ -3177,6 +3636,7 @@
           productRevenueInput.value
         );
 
+
       if (!name) {
 
         showError(
@@ -3186,6 +3646,7 @@
         return;
 
       }
+
 
       if (
         productRevenueInput.value ===
@@ -3201,6 +3662,7 @@
 
       }
 
+
       try {
 
         const productRef =
@@ -3210,6 +3672,7 @@
               "products"
             )
           );
+
 
         await setDoc(
           productRef,
@@ -3230,15 +3693,17 @@
           }
         );
 
+
         productNameInput.value =
           "";
 
         productRevenueInput.value =
           "";
 
+
         await loadProducts();
 
-        await prepareRecordInputs();
+        prepareProductInputList();
 
         showSuccess(
           "商材を追加しました。"
@@ -3247,7 +3712,9 @@
       } catch (error) {
 
         showError(
-          firebaseErrorMessage(error)
+          firebaseErrorMessage(
+            error
+          )
         );
 
       }
@@ -3296,9 +3763,14 @@
   saveProductModal.onclick =
     async () => {
 
-      if (!editingProductId) {
+      if (
+        !editingProductId
+      ) {
+
         return;
+
       }
+
 
       const name =
         editProductName.value.trim();
@@ -3308,10 +3780,17 @@
           editProductRevenue.value
         );
 
+
       if (!name) {
-        alert("商材名を入力してください。");
+
+        alert(
+          "商材名を入力してください。"
+        );
+
         return;
+
       }
+
 
       if (
         editProductRevenue.value ===
@@ -3326,6 +3805,7 @@
         return;
 
       }
+
 
       try {
 
@@ -3347,11 +3827,12 @@
           }
         );
 
+
         closeProductModal();
 
         await loadProducts();
 
-        await prepareRecordInputs();
+        prepareProductInputList();
 
         showSuccess(
           "商材を変更しました。"
@@ -3360,7 +3841,9 @@
       } catch (error) {
 
         showError(
-          firebaseErrorMessage(error)
+          firebaseErrorMessage(
+            error
+          )
         );
 
       }
@@ -3368,15 +3851,20 @@
     };
 
 
-  async function deleteProduct(product) {
+  async function deleteProduct(
+    product
+  ) {
 
     if (
       !confirm(
         `「${product.name}」を削除しますか？`
       )
     ) {
+
       return;
+
     }
+
 
     try {
 
@@ -3388,9 +3876,10 @@
         )
       );
 
+
       await loadProducts();
 
-      await prepareRecordInputs();
+      prepareProductInputList();
 
       showSuccess(
         "商材を削除しました。"
@@ -3399,7 +3888,9 @@
     } catch (error) {
 
       showError(
-        firebaseErrorMessage(error)
+        firebaseErrorMessage(
+          error
+        )
       );
 
     }
@@ -3423,10 +3914,12 @@
           )
         );
 
+
       members = [];
 
+
       snapshot.forEach(
-        (memberDoc) => {
+        memberDoc => {
 
           members.push({
 
@@ -3440,36 +3933,49 @@
         }
       );
 
+
       members.sort(
         (a, b) =>
-          (a.name || "").localeCompare(
+          (
+            a.name || ""
+          ).localeCompare(
             b.name || "",
             "ja"
           )
       );
 
+
       renderMembers();
 
     } catch (error) {
 
-      console.error(error);
+      console.error(
+        error
+      );
 
     }
 
   }
 
 
-  function getTeamName(teamId) {
+  function getTeamName(
+    teamId
+  ) {
 
     if (!teamId) {
+
       return "所属なし";
+
     }
+
 
     const team =
       teams.find(
         item =>
-          item.id === teamId
+          item.id ===
+          teamId
       );
+
 
     return team
       ? team.name
@@ -3494,25 +4000,36 @@
 
     }
 
-    memberList.innerHTML = "";
+
+    memberList.innerHTML =
+      "";
+
 
     members.forEach(
-      (member) => {
+      member => {
 
         const item =
-          document.createElement("div");
+          document.createElement(
+            "div"
+          );
 
         item.className =
           "member-item";
 
+
         const info =
-          document.createElement("div");
+          document.createElement(
+            "div"
+          );
 
         info.className =
           "member-info";
 
+
         const name =
-          document.createElement("div");
+          document.createElement(
+            "div"
+          );
 
         name.className =
           "member-name";
@@ -3521,8 +4038,11 @@
           member.name ||
           "名前未設定";
 
+
         const email =
-          document.createElement("div");
+          document.createElement(
+            "div"
+          );
 
         email.className =
           "member-email";
@@ -3531,19 +4051,25 @@
           member.email ||
           "";
 
+
         const role =
-          document.createElement("span");
+          document.createElement(
+            "span"
+          );
 
         role.className =
           "member-role";
 
         role.textContent =
-          member.role === "leader"
+          member.role ===
+          "leader"
             ? "👑 リーダー"
             : "👤 メンバー";
 
+
         if (
-          member.role === "leader"
+          member.role ===
+          "leader"
         ) {
 
           role.classList.add(
@@ -3552,8 +4078,11 @@
 
         }
 
+
         const team =
-          document.createElement("span");
+          document.createElement(
+            "span"
+          );
 
         team.className =
           "member-team";
@@ -3563,28 +4092,45 @@
             member.teamId
           );
 
-        info.appendChild(name);
 
-        info.appendChild(email);
+        info.appendChild(
+          name
+        );
 
-        info.appendChild(role);
+        info.appendChild(
+          email
+        );
 
-        info.appendChild(team);
+        info.appendChild(
+          role
+        );
+
+        info.appendChild(
+          team
+        );
+
 
         const actions =
-          document.createElement("div");
+          document.createElement(
+            "div"
+          );
 
         actions.className =
           "member-actions";
 
+
         const roleButton =
-          document.createElement("button");
+          document.createElement(
+            "button"
+          );
 
         roleButton.className =
           "role-change-button";
 
+
         if (
-          member.role === "leader"
+          member.role ===
+          "leader"
         ) {
 
           roleButton.classList.add(
@@ -3601,14 +4147,18 @@
 
         }
 
+
         roleButton.onclick =
           () =>
             changeMemberRole(
               member
             );
 
+
         const teamButton =
-          document.createElement("button");
+          document.createElement(
+            "button"
+          );
 
         teamButton.className =
           "team-change-button";
@@ -3622,6 +4172,7 @@
               member
             );
 
+
         actions.appendChild(
           roleButton
         );
@@ -3630,11 +4181,19 @@
           teamButton
         );
 
-        item.appendChild(info);
 
-        item.appendChild(actions);
+        item.appendChild(
+          info
+        );
 
-        memberList.appendChild(item);
+        item.appendChild(
+          actions
+        );
+
+
+        memberList.appendChild(
+          item
+        );
 
       }
     );
@@ -3642,25 +4201,34 @@
   }
 
 
-  async function changeMemberRole(member) {
+  async function changeMemberRole(
+    member
+  ) {
 
     const newRole =
-      member.role === "leader"
+      member.role ===
+      "leader"
         ? "member"
         : "leader";
 
+
     const roleText =
-      newRole === "leader"
+      newRole ===
+      "leader"
         ? "リーダー"
         : "メンバー";
+
 
     if (
       !confirm(
         `「${member.name}」を${roleText}に変更しますか？`
       )
     ) {
+
       return;
+
     }
+
 
     try {
 
@@ -3671,13 +4239,16 @@
           member.id
         ),
         {
+
           role:
             newRole,
 
           updatedAt:
             serverTimestamp()
+
         }
       );
+
 
       await loadMembers();
 
@@ -3688,7 +4259,9 @@
     } catch (error) {
 
       showError(
-        firebaseErrorMessage(error)
+        firebaseErrorMessage(
+          error
+        )
       );
 
     }
@@ -3700,16 +4273,20 @@
      メンバー班変更
   ====================================================== */
 
-  function openMemberTeamModal(member) {
+  function openMemberTeamModal(
+    member
+  ) {
 
     editingMemberId =
       member.id;
+
 
     memberTeamSelect.innerHTML = `
       <option value="">
         所属なし
       </option>
     `;
+
 
     teams.forEach(
       team => {
@@ -3725,6 +4302,7 @@
         option.textContent =
           team.name;
 
+
         if (
           member.teamId ===
           team.id
@@ -3735,12 +4313,14 @@
 
         }
 
+
         memberTeamSelect.appendChild(
           option
         );
 
       }
     );
+
 
     memberTeamModal.style.display =
       "flex";
@@ -3766,15 +4346,21 @@
   saveMemberTeamModal.onclick =
     async () => {
 
-      if (!editingMemberId) {
+      if (
+        !editingMemberId
+      ) {
+
         return;
+
       }
+
 
       try {
 
         const teamId =
           memberTeamSelect.value ||
           null;
+
 
         await updateDoc(
           doc(
@@ -3792,11 +4378,13 @@
           }
         );
 
+
         closeMemberTeamModal();
 
         await loadMembers();
 
         await loadTeams();
+
 
         showSuccess(
           "所属班を変更しました。"
@@ -3805,7 +4393,9 @@
       } catch (error) {
 
         showError(
-          firebaseErrorMessage(error)
+          firebaseErrorMessage(
+            error
+          )
         );
 
       }
@@ -3814,7 +4404,7 @@
 
 
   /* =====================================================
-     実績入力欄
+     実績入力準備
   ====================================================== */
 
   async function prepareRecordInputs() {
@@ -3825,10 +4415,6 @@
       </option>
     `;
 
-    /*
-      リーダーは全員、
-      メンバーは自分だけ
-    */
 
     if (
       currentUserData?.role ===
@@ -3871,9 +4457,11 @@
         currentUserData.name ||
         "自分";
 
+
       recordMember.appendChild(
         option
       );
+
 
       recordMember.value =
         currentUserData.uid;
@@ -3881,82 +4469,455 @@
     }
 
 
-    recordProduct.innerHTML = `
-      <option value="">
-        商材を選択
-      </option>
-    `;
+    prepareProductInputList();
+
+  }
+
+
+  /* =====================================================
+     全商材入力欄
+  ====================================================== */
+
+  function prepareProductInputList(
+    existingResults = null
+  ) {
+
+    productInputList.innerHTML =
+      "";
+
+
+    if (
+      products.length === 0
+    ) {
+
+      productInputList.innerHTML = `
+        <div class="empty-message">
+          先に商材管理から商材を追加してください。
+        </div>
+      `;
+
+      updateRecordTotals();
+
+      return;
+
+    }
+
 
     products.forEach(
       product => {
 
-        const option =
+        const row =
           document.createElement(
-            "option"
+            "div"
           );
 
-        option.value =
-          product.id;
+        row.className =
+          "product-input-row";
 
-        option.textContent =
-          `${product.name} / ${formatYen(
+
+        const info =
+          document.createElement(
+            "div"
+          );
+
+        info.className =
+          "product-input-info";
+
+
+        const name =
+          document.createElement(
+            "div"
+          );
+
+        name.className =
+          "product-input-name";
+
+        name.textContent =
+          product.name;
+
+
+        const unit =
+          document.createElement(
+            "div"
+          );
+
+        unit.className =
+          "product-input-unit";
+
+        unit.textContent =
+          `1件 ${formatYen(
             product.revenue
           )}`;
 
-        recordProduct.appendChild(
-          option
+
+        info.appendChild(
+          name
+        );
+
+        info.appendChild(
+          unit
+        );
+
+
+        const control =
+          document.createElement(
+            "div"
+          );
+
+        control.className =
+          "product-input-control";
+
+
+        const input =
+          document.createElement(
+            "input"
+          );
+
+        input.type =
+          "number";
+
+        input.min =
+          "0";
+
+        input.step =
+          "1";
+
+        input.value =
+          "0";
+
+        input.dataset.productId =
+          product.id;
+
+
+        if (
+          existingResults &&
+          existingResults[
+            product.id
+          ]
+        ) {
+
+          input.value =
+            Number(
+              existingResults[
+                product.id
+              ].count || 0
+            );
+
+        }
+
+
+        input.addEventListener(
+          "input",
+          updateRecordTotals
+        );
+
+
+        control.appendChild(
+          input
+        );
+
+
+        row.appendChild(
+          info
+        );
+
+        row.appendChild(
+          control
+        );
+
+
+        productInputList.appendChild(
+          row
         );
 
       }
     );
 
-    updateRecordTotal();
+
+    updateRecordTotals();
 
   }
 
 
   /* =====================================================
-     実績売上計算
+     入力合計
   ====================================================== */
 
-  function updateRecordTotal() {
+  function getCurrentInputResults() {
 
-    const product =
-      products.find(
-        item =>
-          item.id ===
-          recordProduct.value
+    const results =
+      {};
+
+
+    const inputs =
+      productInputList.querySelectorAll(
+        "input[data-product-id]"
       );
 
-    const count =
-      Number(
-        recordCount.value || 0
-      );
 
-    const total =
-      product
-        ? product.revenue * count
-        : 0;
+    inputs.forEach(
+      input => {
 
-    recordTotal.textContent =
-      formatYen(total);
+        const productId =
+          input.dataset.productId;
+
+        const count =
+          Number(
+            input.value || 0
+          );
+
+
+        if (
+          Number.isInteger(count) &&
+          count > 0
+        ) {
+
+          const product =
+            products.find(
+              item =>
+                item.id ===
+                productId
+            );
+
+
+          if (product) {
+
+            results[
+              productId
+            ] = {
+
+              productName:
+                product.name,
+
+              count,
+
+              revenuePerUnit:
+                Number(
+                  product.revenue || 0
+                )
+
+            };
+
+          }
+
+        }
+
+      }
+    );
+
+
+    return results;
 
   }
 
 
-  recordProduct.addEventListener(
-    "change",
-    updateRecordTotal
-  );
+  function calculateResultsTotals(
+    results
+  ) {
 
-  recordCount.addEventListener(
-    "input",
-    updateRecordTotal
-  );
+    let count =
+      0;
+
+    let revenue =
+      0;
+
+
+    Object.values(
+      results
+    ).forEach(
+      result => {
+
+        count +=
+          Number(
+            result.count || 0
+          );
+
+        revenue +=
+          Number(
+            result.count || 0
+          ) *
+          Number(
+            result.revenuePerUnit || 0
+          );
+
+      }
+    );
+
+
+    return {
+      count,
+      revenue
+    };
+
+  }
+
+
+  function updateRecordTotals() {
+
+    const results =
+      getCurrentInputResults();
+
+
+    const totals =
+      calculateResultsTotals(
+        results
+      );
+
+
+    recordTotalCount.textContent =
+      `${totals.count}件`;
+
+
+    recordTotalRevenue.textContent =
+      formatYen(
+        totals.revenue
+      );
+
+  }
 
 
   /* =====================================================
-     実績登録
+     日付・担当者変更時
+  ====================================================== */
+
+  recordDate.addEventListener(
+    "change",
+    async () => {
+
+      await loadExistingRecordIntoForm();
+
+    }
+  );
+
+
+  recordMember.addEventListener(
+    "change",
+    async () => {
+
+      await loadExistingRecordIntoForm();
+
+    }
+  );
+
+
+  async function loadExistingRecordIntoForm() {
+
+    if (
+      !recordDate.value ||
+      !recordMember.value
+    ) {
+
+      return;
+
+    }
+
+
+    const record =
+      findDailyRecord(
+        recordMember.value,
+        recordDate.value
+      );
+
+
+    if (
+      record &&
+      record.results
+    ) {
+
+      editingRecordId =
+        record.id;
+
+
+      prepareProductInputList(
+        record.results
+      );
+
+
+      saveRecordButton.textContent =
+        "実績を更新";
+
+
+      return;
+
+    }
+
+
+    editingRecordId =
+      null;
+
+
+    prepareProductInputList();
+
+
+    saveRecordButton.textContent =
+      "実績を一括登録";
+
+  }
+
+
+  function findDailyRecord(
+    memberId,
+    date
+  ) {
+
+    return records.find(
+      record =>
+        record.uid ===
+          memberId &&
+        record.date ===
+          date &&
+        record.results
+    );
+
+  }
+
+
+  /* =====================================================
+     入力クリア
+  ====================================================== */
+
+  clearRecordButton.onclick =
+    () => {
+
+      editingRecordId =
+        null;
+
+
+      recordDate.value =
+        getTodayString();
+
+
+      if (
+        currentUserData?.role ===
+        "leader"
+      ) {
+
+        recordMember.value =
+          "";
+
+      } else {
+
+        recordMember.value =
+          currentUserData?.uid ||
+          "";
+
+      }
+
+
+      prepareProductInputList();
+
+
+      saveRecordButton.textContent =
+        "実績を一括登録";
+
+
+      clearMessages();
+
+    };
+
+
+  /* =====================================================
+     一括登録
   ====================================================== */
 
   saveRecordButton.onclick =
@@ -3968,13 +4929,6 @@
       const memberId =
         recordMember.value;
 
-      const productId =
-        recordProduct.value;
-
-      const count =
-        Number(
-          recordCount.value
-        );
 
       if (!date) {
 
@@ -3986,6 +4940,7 @@
 
       }
 
+
       if (!memberId) {
 
         showError(
@@ -3996,28 +4951,6 @@
 
       }
 
-      if (!productId) {
-
-        showError(
-          "商材を選択してください。"
-        );
-
-        return;
-
-      }
-
-      if (
-        !Number.isInteger(count) ||
-        count <= 0
-      ) {
-
-        showError(
-          "獲得件数は1件以上で入力してください。"
-        );
-
-        return;
-
-      }
 
       const member =
         members.find(
@@ -4027,22 +4960,40 @@
         ) ||
         currentUserData;
 
-      const product =
-        products.find(
-          item =>
-            item.id ===
-            productId
-        );
 
-      if (!member || !product) {
+      if (!member) {
 
         showError(
-          "担当者または商材が見つかりません。"
+          "担当者が見つかりません。"
         );
 
         return;
 
       }
+
+
+      const results =
+        getCurrentInputResults();
+
+
+      const totals =
+        calculateResultsTotals(
+          results
+        );
+
+
+      if (
+        totals.count <= 0
+      ) {
+
+        showError(
+          "少なくとも1つの商材に1件以上入力してください。"
+        );
+
+        return;
+
+      }
+
 
       const team =
         teams.find(
@@ -4051,14 +5002,6 @@
             member.teamId
         );
 
-      const revenuePerUnit =
-        Number(
-          product.revenue || 0
-        );
-
-      const totalRevenue =
-        count *
-        revenuePerUnit;
 
       try {
 
@@ -4066,75 +5009,131 @@
           true;
 
         saveRecordButton.textContent =
-          "登録中...";
+          editingRecordId
+            ? "更新中..."
+            : "登録中...";
 
-        const recordRef =
-          doc(
-            collection(
+
+        let recordRef;
+
+
+        if (
+          editingRecordId
+        ) {
+
+          recordRef =
+            doc(
               db,
-              "records"
-            )
+              "records",
+              editingRecordId
+            );
+
+        } else {
+
+          /*
+            1人 × 1日 = 1レコード
+
+            IDを固定化して、
+            同じ日の二重登録を防止
+          */
+
+          const recordId =
+            `${memberId}_${date}`;
+
+          recordRef =
+            doc(
+              db,
+              "records",
+              recordId
+            );
+
+        }
+
+
+        const existingSnap =
+          await getDoc(
+            recordRef
           );
+
+
+        const data = {
+
+          uid:
+            member.id,
+
+          memberNameSnapshot:
+            member.name ||
+            "名前未設定",
+
+          teamId:
+            member.teamId ||
+            null,
+
+          teamNameSnapshot:
+            team
+              ? team.name
+              : "所属なし",
+
+          date,
+
+          results,
+
+          totalCount:
+            totals.count,
+
+          totalRevenue:
+            totals.revenue,
+
+          updatedAt:
+            serverTimestamp()
+
+        };
+
+
+        if (
+          !existingSnap.exists()
+        ) {
+
+          data.createdAt =
+            serverTimestamp();
+
+        }
+
 
         await setDoc(
           recordRef,
+          data,
           {
-
-            uid:
-              member.id,
-
-            memberNameSnapshot:
-              member.name ||
-              "名前未設定",
-
-            teamId:
-              member.teamId ||
-              null,
-
-            teamNameSnapshot:
-              team
-                ? team.name
-                : "所属なし",
-
-            date,
-
-            productId,
-
-            productNameSnapshot:
-              product.name,
-
-            count,
-
-            revenuePerUnit,
-
-            totalRevenue,
-
-            createdAt:
-              serverTimestamp(),
-
-            updatedAt:
-              serverTimestamp()
-
+            merge: true
           }
         );
 
+
+        editingRecordId =
+          recordRef.id;
+
+
         showSuccess(
-          `${date}の実績を登録しました。`
+          `${date}の実績を保存しました。`
         );
 
-        recordCount.value =
-          1;
 
         await loadRecords();
 
-        updateRecordTotal();
+        saveRecordButton.textContent =
+          "実績を更新";
+
 
       } catch (error) {
 
-        console.error(error);
+        console.error(
+          error
+        );
 
         showError(
-          firebaseErrorMessage(error)
+          firebaseErrorMessage(
+            error
+          )
         );
 
       } finally {
@@ -4142,8 +5141,19 @@
         saveRecordButton.disabled =
           false;
 
-        saveRecordButton.textContent =
-          "実績を登録";
+        if (
+          editingRecordId
+        ) {
+
+          saveRecordButton.textContent =
+            "実績を更新";
+
+        } else {
+
+          saveRecordButton.textContent =
+            "実績を一括登録";
+
+        }
 
       }
 
@@ -4166,7 +5176,9 @@
           )
         );
 
+
       records = [];
+
 
       snapshot.forEach(
         recordDoc => {
@@ -4183,16 +5195,21 @@
         }
       );
 
+
       records.sort(
         (a, b) =>
-          (b.date || "").localeCompare(
+          (
+            b.date || ""
+          ).localeCompare(
             a.date || ""
           )
       );
 
+
       createMonthOptions();
 
       renderDashboard();
+
 
     } catch (error) {
 
@@ -4201,8 +5218,11 @@
         error
       );
 
+
       showError(
-        firebaseErrorMessage(error)
+        firebaseErrorMessage(
+          error
+        )
       );
 
     }
@@ -4218,6 +5238,7 @@
 
     const months =
       new Set();
+
 
     records.forEach(
       record => {
@@ -4243,6 +5264,7 @@
     const today =
       getTodayString();
 
+
     months.add(
       today.slice(
         0,
@@ -4252,7 +5274,9 @@
 
 
     const sortedMonths =
-      Array.from(months).sort(
+      Array.from(
+        months
+      ).sort(
         (a, b) =>
           b.localeCompare(a)
       );
@@ -4277,16 +5301,19 @@
         option.value =
           month;
 
+
         const [
           year,
           monthNumber
         ] =
           month.split("-");
 
+
         option.textContent =
           `${year}年${Number(
             monthNumber
           )}月`;
+
 
         dashboardMonth.appendChild(
           option
@@ -4297,7 +5324,9 @@
 
 
     if (
-      sortedMonths.includes(current)
+      sortedMonths.includes(
+        current
+      )
     ) {
 
       dashboardMonth.value =
@@ -4323,6 +5352,84 @@
 
 
   /* =====================================================
+     月間データ正規化
+  ====================================================== */
+
+  function getRecordResults(
+    record
+  ) {
+
+    /*
+      新方式
+      results:
+      {
+        productId: {
+          productName,
+          count,
+          revenuePerUnit
+        }
+      }
+
+      旧方式
+      productId,
+      productNameSnapshot,
+      count,
+      revenuePerUnit
+
+      どちらにも対応
+    */
+
+    if (
+      record.results &&
+      typeof record.results ===
+      "object"
+    ) {
+
+      return Object.values(
+        record.results
+      );
+
+    }
+
+
+    if (
+      record.productId
+    ) {
+
+      return [
+
+        {
+
+          productId:
+            record.productId,
+
+          productName:
+            record.productNameSnapshot ||
+            "不明",
+
+          count:
+            Number(
+              record.count || 0
+            ),
+
+          revenuePerUnit:
+            Number(
+              record.revenuePerUnit || 0
+            )
+
+        }
+
+      ];
+
+    }
+
+
+    return [];
+
+  }
+
+
+  /* =====================================================
      月間ダッシュボード
   ====================================================== */
 
@@ -4330,6 +5437,7 @@
 
     const selectedMonth =
       dashboardMonth.value;
+
 
     if (!selectedMonth) {
 
@@ -4339,15 +5447,36 @@
       monthlyRevenue.textContent =
         "¥0";
 
-      monthlyRecords.textContent =
-        "0件";
+      monthlyWorkDays.textContent =
+        "0日";
+
+      individualRankingList.innerHTML =
+        "";
+
+      teamRankingList.innerHTML =
+        "";
+
+      productSummaryList.innerHTML =
+        "";
+
+      dailySummaryList.innerHTML =
+        "";
+
+      recordHistoryList.innerHTML =
+        "";
 
       return;
 
     }
 
 
-    const monthly =
+    /*
+      新方式の1日1レコードと
+      旧方式の商材別レコードを
+      まとめて集計
+    */
+
+    let monthly =
       records.filter(
         record =>
           record.date &&
@@ -4357,9 +5486,31 @@
       );
 
 
-    let totalCount = 0;
+    /*
+      メンバーの場合は
+      自分のデータだけ
+    */
 
-    let totalRevenue = 0;
+    if (
+      currentUserData?.role !==
+      "leader"
+    ) {
+
+      monthly =
+        monthly.filter(
+          record =>
+            record.uid ===
+            currentUserData.uid
+        );
+
+    }
+
+
+    let totalCount =
+      0;
+
+    let totalRevenue =
+      0;
 
 
     const productMap =
@@ -4368,72 +5519,223 @@
     const dailyMap =
       {};
 
+    const individualMap =
+      {};
+
+    const teamMap =
+      {};
+
 
     monthly.forEach(
       record => {
 
-        const count =
-          Number(
-            record.count || 0
+        const results =
+          getRecordResults(
+            record
           );
 
-        const revenue =
-          Number(
-            record.totalRevenue || 0
-          );
+
+        let recordCount =
+          0;
+
+        let recordRevenue =
+          0;
+
+
+        results.forEach(
+          result => {
+
+            const count =
+              Number(
+                result.count || 0
+              );
+
+            const revenuePerUnit =
+              Number(
+                result.revenuePerUnit || 0
+              );
+
+            const revenue =
+              count *
+              revenuePerUnit;
+
+
+            recordCount +=
+              count;
+
+            recordRevenue +=
+              revenue;
+
+
+            const productName =
+              result.productName ||
+              "不明";
+
+
+            if (
+              !productMap[
+                productName
+              ]
+            ) {
+
+              productMap[
+                productName
+              ] = {
+
+                count: 0,
+
+                revenue: 0
+
+              };
+
+            }
+
+
+            productMap[
+              productName
+            ].count +=
+              count;
+
+
+            productMap[
+              productName
+            ].revenue +=
+              revenue;
+
+          }
+        );
+
 
         totalCount +=
-          count;
+          recordCount;
 
         totalRevenue +=
-          revenue;
+          recordRevenue;
 
 
-        const productName =
-          record.productNameSnapshot ||
-          "不明";
-
-        if (
-          !productMap[productName]
-        ) {
-
-          productMap[productName] = {
-            count: 0,
-            revenue: 0
-          };
-
-        }
-
-        productMap[
-          productName
-        ].count +=
-          count;
-
-        productMap[
-          productName
-        ].revenue +=
-          revenue;
-
+        /*
+          日別
+        */
 
         const date =
           record.date;
+
 
         if (
           !dailyMap[date]
         ) {
 
           dailyMap[date] = {
+
             count: 0,
+
             revenue: 0
+
           };
 
         }
 
+
         dailyMap[date].count +=
-          count;
+          recordCount;
 
         dailyMap[date].revenue +=
-          revenue;
+          recordRevenue;
+
+
+        /*
+          個人
+        */
+
+        const memberName =
+          record.memberNameSnapshot ||
+          "不明";
+
+
+        const memberKey =
+          record.uid ||
+          memberName;
+
+
+        if (
+          !individualMap[
+            memberKey
+          ]
+        ) {
+
+          individualMap[
+            memberKey
+          ] = {
+
+            name:
+              memberName,
+
+            teamName:
+              record.teamNameSnapshot ||
+              "所属なし",
+
+            count: 0,
+
+            revenue: 0
+
+          };
+
+        }
+
+
+        individualMap[
+          memberKey
+        ].count +=
+          recordCount;
+
+
+        individualMap[
+          memberKey
+        ].revenue +=
+          recordRevenue;
+
+
+        /*
+          班
+        */
+
+        const teamName =
+          record.teamNameSnapshot ||
+          "所属なし";
+
+
+        if (
+          !teamMap[
+            teamName
+          ]
+        ) {
+
+          teamMap[
+            teamName
+          ] = {
+
+            name:
+              teamName,
+
+            count: 0,
+
+            revenue: 0
+
+          };
+
+        }
+
+
+        teamMap[
+          teamName
+        ].count +=
+          recordCount;
+
+
+        teamMap[
+          teamName
+        ].revenue +=
+          recordRevenue;
 
       }
     );
@@ -4442,28 +5744,448 @@
     monthlyCount.textContent =
       `${totalCount}件`;
 
+
     monthlyRevenue.textContent =
       formatYen(
         totalRevenue
       );
 
-    monthlyRecords.textContent =
-      `${monthly.length}件`;
+
+    monthlyWorkDays.textContent =
+      `${Object.keys(
+        dailyMap
+      ).length}日`;
 
 
-    /* 商材別 */
+    renderIndividualRanking(
+      individualMap
+    );
+
+
+    renderTeamRanking(
+      teamMap
+    );
+
+
+    renderProductSummary(
+      productMap
+    );
+
+
+    renderDailySummary(
+      dailyMap
+    );
+
+
+    renderRecordHistory(
+      monthly
+    );
+
+  }
+
+
+  /* =====================================================
+     個人ランキング
+  ====================================================== */
+
+  function renderIndividualRanking(
+    individualMap
+  ) {
+
+    individualRankingList.innerHTML =
+      "";
+
+
+    const ranking =
+      Object.values(
+        individualMap
+      ).sort(
+        (a, b) => {
+
+          if (
+            b.count !==
+            a.count
+          ) {
+
+            return b.count -
+              a.count;
+
+          }
+
+          return b.revenue -
+            a.revenue;
+
+        }
+      );
+
+
+    if (
+      ranking.length === 0
+    ) {
+
+      individualRankingList.innerHTML = `
+        <div class="empty-message">
+          この月の個人実績はありません。
+        </div>
+      `;
+
+      return;
+
+    }
+
+
+    ranking.forEach(
+      (item, index) => {
+
+        const row =
+          document.createElement(
+            "div"
+          );
+
+        row.className =
+          "ranking-row";
+
+
+        const left =
+          document.createElement(
+            "div"
+          );
+
+        left.className =
+          "ranking-left";
+
+
+        const number =
+          document.createElement(
+            "div"
+          );
+
+        number.className =
+          "ranking-number";
+
+
+        if (
+          index === 0
+        ) {
+
+          number.classList.add(
+            "top1"
+          );
+
+        } else if (
+          index === 1
+        ) {
+
+          number.classList.add(
+            "top2"
+          );
+
+        } else if (
+          index === 2
+        ) {
+
+          number.classList.add(
+            "top3"
+          );
+
+        }
+
+
+        number.textContent =
+          index + 1;
+
+
+        const info =
+          document.createElement(
+            "div"
+          );
+
+
+        const name =
+          document.createElement(
+            "div"
+          );
+
+        name.className =
+          "ranking-name";
+
+        name.textContent =
+          item.name;
+
+
+        const sub =
+          document.createElement(
+            "div"
+          );
+
+        sub.className =
+          "ranking-sub";
+
+        sub.textContent =
+          item.teamName;
+
+
+        info.appendChild(
+          name
+        );
+
+        info.appendChild(
+          sub
+        );
+
+
+        left.appendChild(
+          number
+        );
+
+        left.appendChild(
+          info
+        );
+
+
+        const value =
+          document.createElement(
+            "div"
+          );
+
+        value.className =
+          "ranking-value";
+
+
+        value.innerHTML = `
+          <div class="ranking-count">
+            ${item.count}件
+          </div>
+          <div class="ranking-revenue">
+            ${formatYen(
+              item.revenue
+            )}
+          </div>
+        `;
+
+
+        row.appendChild(
+          left
+        );
+
+        row.appendChild(
+          value
+        );
+
+
+        individualRankingList.appendChild(
+          row
+        );
+
+      }
+    );
+
+  }
+
+
+  /* =====================================================
+     班ランキング
+  ====================================================== */
+
+  function renderTeamRanking(
+    teamMap
+  ) {
+
+    teamRankingList.innerHTML =
+      "";
+
+
+    const ranking =
+      Object.values(
+        teamMap
+      ).sort(
+        (a, b) => {
+
+          if (
+            b.count !==
+            a.count
+          ) {
+
+            return b.count -
+              a.count;
+
+          }
+
+          return b.revenue -
+            a.revenue;
+
+        }
+      );
+
+
+    if (
+      ranking.length === 0
+    ) {
+
+      teamRankingList.innerHTML = `
+        <div class="empty-message">
+          この月の班実績はありません。
+        </div>
+      `;
+
+      return;
+
+    }
+
+
+    ranking.forEach(
+      (item, index) => {
+
+        const row =
+          document.createElement(
+            "div"
+          );
+
+        row.className =
+          "ranking-row";
+
+
+        const left =
+          document.createElement(
+            "div"
+          );
+
+        left.className =
+          "ranking-left";
+
+
+        const number =
+          document.createElement(
+            "div"
+          );
+
+        number.className =
+          "ranking-number";
+
+
+        if (
+          index === 0
+        ) {
+
+          number.classList.add(
+            "top1"
+          );
+
+        } else if (
+          index === 1
+        ) {
+
+          number.classList.add(
+            "top2"
+          );
+
+        } else if (
+          index === 2
+        ) {
+
+          number.classList.add(
+            "top3"
+          );
+
+        }
+
+
+        number.textContent =
+          index + 1;
+
+
+        const info =
+          document.createElement(
+            "div"
+          );
+
+
+        const name =
+          document.createElement(
+            "div"
+          );
+
+        name.className =
+          "ranking-name";
+
+        name.textContent =
+          item.name;
+
+
+        info.appendChild(
+          name
+        );
+
+
+        left.appendChild(
+          number
+        );
+
+        left.appendChild(
+          info
+        );
+
+
+        const value =
+          document.createElement(
+            "div"
+          );
+
+        value.className =
+          "ranking-value";
+
+
+        value.innerHTML = `
+          <div class="ranking-count">
+            ${item.count}件
+          </div>
+          <div class="ranking-revenue">
+            ${formatYen(
+              item.revenue
+            )}
+          </div>
+        `;
+
+
+        row.appendChild(
+          left
+        );
+
+        row.appendChild(
+          value
+        );
+
+
+        teamRankingList.appendChild(
+          row
+        );
+
+      }
+    );
+
+  }
+
+
+  /* =====================================================
+     商材別
+  ====================================================== */
+
+  function renderProductSummary(
+    productMap
+  ) {
 
     productSummaryList.innerHTML =
       "";
 
-    const productNames =
+
+    const names =
       Object.keys(
         productMap
       ).sort();
 
 
     if (
-      productNames.length === 0
+      names.length === 0
     ) {
 
       productSummaryList.innerHTML = `
@@ -4472,53 +6194,69 @@
         </div>
       `;
 
-    } else {
-
-      productNames.forEach(
-        name => {
-
-          const data =
-            productMap[name];
-
-          const row =
-            document.createElement(
-              "div"
-            );
-
-          row.className =
-            "summary-row";
-
-          row.innerHTML = `
-            <div>
-              <div class="summary-row-name">
-                ${escapeHtml(name)}
-              </div>
-              <div style="font-size:12px;color:#6b7280;margin-top:3px;">
-                ${data.count}件
-              </div>
-            </div>
-
-            <div class="summary-row-value">
-              ${formatYen(
-                data.revenue
-              )}
-            </div>
-          `;
-
-          productSummaryList.appendChild(
-            row
-          );
-
-        }
-      );
+      return;
 
     }
 
 
-    /* 日別 */
+    names.forEach(
+      name => {
+
+        const data =
+          productMap[name];
+
+
+        const row =
+          document.createElement(
+            "div"
+          );
+
+        row.className =
+          "summary-row";
+
+
+        row.innerHTML = `
+          <div>
+            <div class="summary-row-name">
+              ${escapeHtml(
+                name
+              )}
+            </div>
+
+            <div style="font-size:12px;color:#6b7280;margin-top:3px;">
+              ${data.count}件
+            </div>
+          </div>
+
+          <div class="summary-row-value">
+            ${formatYen(
+              data.revenue
+            )}
+          </div>
+        `;
+
+
+        productSummaryList.appendChild(
+          row
+        );
+
+      }
+    );
+
+  }
+
+
+  /* =====================================================
+     日別
+  ====================================================== */
+
+  function renderDailySummary(
+    dailyMap
+  ) {
 
     dailySummaryList.innerHTML =
       "";
+
 
     const dates =
       Object.keys(
@@ -4539,55 +6277,69 @@
         </div>
       `;
 
-    } else {
-
-      dates.forEach(
-        date => {
-
-          const data =
-            dailyMap[date];
-
-          const row =
-            document.createElement(
-              "div"
-            );
-
-          row.className =
-            "summary-row";
-
-          row.innerHTML = `
-            <div>
-              <div class="summary-row-name">
-                ${formatDateJapanese(
-                  date
-                )}
-              </div>
-              <div style="font-size:12px;color:#6b7280;margin-top:3px;">
-                ${data.count}件
-              </div>
-            </div>
-
-            <div class="summary-row-value">
-              ${formatYen(
-                data.revenue
-              )}
-            </div>
-          `;
-
-          dailySummaryList.appendChild(
-            row
-          );
-
-        }
-      );
+      return;
 
     }
 
 
-    /* 履歴 */
+    dates.forEach(
+      date => {
+
+        const data =
+          dailyMap[date];
+
+
+        const row =
+          document.createElement(
+            "div"
+          );
+
+        row.className =
+          "summary-row";
+
+
+        row.innerHTML = `
+          <div>
+            <div class="summary-row-name">
+              ${formatDateJapanese(
+                date
+              )}
+            </div>
+
+            <div style="font-size:12px;color:#6b7280;margin-top:3px;">
+              ${data.count}件
+            </div>
+          </div>
+
+          <div class="summary-row-value">
+            ${formatYen(
+              data.revenue
+            )}
+          </div>
+        `;
+
+
+        dailySummaryList.appendChild(
+          row
+        );
+
+      }
+    );
+
+  }
+
+
+  /* =====================================================
+     履歴
+  ====================================================== */
+
+  function renderRecordHistory(
+    monthly
+  ) {
 
     recordHistoryList.innerHTML =
       "";
+
 
     if (
       monthly.length === 0
@@ -4599,57 +6351,141 @@
         </div>
       `;
 
-    } else {
+      return;
 
-      monthly.forEach(
-        record => {
+    }
 
-          const item =
-            document.createElement(
-              "div"
-            );
 
-          item.className =
-            "history-item";
+    monthly.forEach(
+      record => {
 
-          item.innerHTML = `
-            <div class="history-top">
+        const item =
+          document.createElement(
+            "div"
+          );
 
-              <div>
-                <div class="history-date">
-                  ${formatDateJapanese(
-                    record.date
-                  )}
-                </div>
+        item.className =
+          "history-item";
 
-                <div class="history-product">
-                  ${escapeHtml(
-                    record.memberNameSnapshot ||
-                    "不明"
-                  )}
-                  /
-                  ${escapeHtml(
-                    record.productNameSnapshot ||
-                    "不明"
-                  )}
-                </div>
+
+        const results =
+          getRecordResults(
+            record
+          );
+
+
+        let totalCount =
+          0;
+
+        let totalRevenue =
+          0;
+
+
+        const productTexts =
+          [];
+
+
+        results.forEach(
+          result => {
+
+            const count =
+              Number(
+                result.count || 0
+              );
+
+            const revenue =
+              count *
+              Number(
+                result.revenuePerUnit || 0
+              );
+
+
+            totalCount +=
+              count;
+
+            totalRevenue +=
+              revenue;
+
+
+            if (
+              count > 0
+            ) {
+
+              productTexts.push(
+                `${result.productName || "不明"} ${count}件`
+              );
+
+            }
+
+          }
+        );
+
+
+        item.innerHTML = `
+          <div class="history-top">
+
+            <div>
+
+              <div class="history-date">
+                ${formatDateJapanese(
+                  record.date
+                )}
               </div>
 
-              <div class="history-count">
-                ${Number(
-                  record.count || 0
-                )}件
+              <div class="history-member">
+                ${escapeHtml(
+                  record.memberNameSnapshot ||
+                  "不明"
+                )}
+              </div>
+
+              <div class="history-product">
+                ${
+                  productTexts.length > 0
+                    ? productTexts
+                        .map(
+                          text =>
+                            escapeHtml(
+                              text
+                            )
+                        )
+                        .join(" / ")
+                    : "実績なし"
+                }
               </div>
 
             </div>
 
-            <div class="history-revenue">
-              ${formatYen(
-                record.totalRevenue
-              )}
+            <div class="history-count">
+              ${totalCount}件
             </div>
-          `;
 
+          </div>
+
+          <div class="history-revenue">
+            ${formatYen(
+              totalRevenue
+            )}
+          </div>
+        `;
+
+
+        /*
+          現在のユーザーが
+          編集できるレコードだけ
+          削除ボタンを表示
+        */
+
+        const canEdit =
+          currentUserData?.role ===
+          "leader" ||
+          record.uid ===
+          currentUserData?.uid;
+
+
+        if (
+          canEdit
+        ) {
 
           const actions =
             document.createElement(
@@ -4658,6 +6494,24 @@
 
           actions.className =
             "history-actions";
+
+
+          const editButton =
+            document.createElement(
+              "button"
+            );
+
+          editButton.className =
+            "edit-product-button";
+
+          editButton.textContent =
+            "✏️ 編集";
+
+          editButton.onclick =
+            () =>
+              editRecord(
+                record
+              );
 
 
           const deleteButton =
@@ -4679,21 +6533,74 @@
 
 
           actions.appendChild(
+            editButton
+          );
+
+          actions.appendChild(
             deleteButton
           );
+
 
           item.appendChild(
             actions
           );
 
-          recordHistoryList.appendChild(
-            item
-          );
-
         }
-      );
 
-    }
+
+        recordHistoryList.appendChild(
+          item
+        );
+
+      }
+    );
+
+  }
+
+
+  /* =====================================================
+     実績編集
+  ====================================================== */
+
+  function editRecord(
+    record
+  ) {
+
+    recordDate.value =
+      record.date;
+
+
+    recordMember.value =
+      record.uid;
+
+
+    editingRecordId =
+      record.id;
+
+
+    prepareProductInputList(
+      record.results ||
+      null
+    );
+
+
+    saveRecordButton.textContent =
+      "実績を更新";
+
+
+    recordManagement.scrollIntoView({
+      behavior:
+        "smooth",
+      block:
+        "start"
+    });
+
+
+    showSuccess(
+      `${formatDateJapanese(
+        record.date
+      )}の実績を編集しています。`
+    );
 
   }
 
@@ -4702,17 +6609,18 @@
      実績削除
   ====================================================== */
 
-  async function deleteRecord(record) {
+  async function deleteRecord(
+    record
+  ) {
 
     if (
       !confirm(
         `${formatDateJapanese(
           record.date
         )} / ${
-          record.productNameSnapshot
-        } / ${
-          record.count
-        }件\n\nこの実績を削除しますか？`
+          record.memberNameSnapshot ||
+          "不明"
+        }\n\nこの日の実績を削除しますか？`
       )
     ) {
 
@@ -4731,7 +6639,20 @@
         )
       );
 
+
+      if (
+        editingRecordId ===
+        record.id
+      ) {
+
+        editingRecordId =
+          null;
+
+      }
+
+
       await loadRecords();
+
 
       showSuccess(
         "実績を削除しました。"
@@ -4739,10 +6660,15 @@
 
     } catch (error) {
 
-      console.error(error);
+      console.error(
+        error
+      );
+
 
       showError(
-        firebaseErrorMessage(error)
+        firebaseErrorMessage(
+          error
+        )
       );
 
     }
@@ -4759,8 +6685,11 @@
   ) {
 
     if (!dateString) {
+
       return "";
+
     }
+
 
     const [
       year,
@@ -4769,11 +6698,12 @@
     ] =
       dateString.split("-");
 
-    return `${Number(
+
+    return `${year}年${Number(
       month
-    )}/${Number(
+    )}月${Number(
       day
-    )}`;
+    )}日`;
 
   }
 
