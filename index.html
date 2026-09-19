@@ -893,6 +893,68 @@ header {
 
 
 <!-- =====================================================
+     メール確認
+===================================================== -->
+
+<main id="verificationScreen" style="display:none;">
+
+  <div class="auth-wrapper">
+
+    <div class="auth-card">
+
+      <div class="auth-logo">✉️</div>
+
+      <div class="auth-title">
+        メールアドレスの確認
+      </div>
+
+      <div class="auth-description">
+        登録したメールアドレスに確認メールを送信しました。
+      </div>
+
+      <div
+        id="verificationEmail"
+        class="user-email"
+        style="margin-top:16px;text-align:center;">
+        -
+      </div>
+
+      <div
+        id="verificationMessage"
+        class="success-message"
+        style="display:block;margin-top:16px;">
+        メール内のリンクを開いたあと、「確認できた」を押してください。
+      </div>
+
+      <button
+        id="checkVerificationButton"
+        class="primary-button"
+        style="margin-top:16px;">
+        確認できた
+      </button>
+
+      <button
+        id="resendVerificationButton"
+        class="link-button"
+        style="width:100%;margin-top:12px;">
+        確認メールを再送
+      </button>
+
+      <button
+        id="verificationLogoutButton"
+        class="link-button"
+        style="width:100%;margin-top:8px;">
+        別のアカウントでログイン
+      </button>
+
+    </div>
+
+  </div>
+
+</main>
+
+
+<!-- =====================================================
      アプリ
 ===================================================== -->
 
@@ -1538,7 +1600,9 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
-  onAuthStateChanged
+  onAuthStateChanged,
+  sendEmailVerification,
+  reload
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 
 import {
@@ -1584,6 +1648,24 @@ const authScreen =
 
 const appScreen =
   document.getElementById("appScreen");
+
+const verificationScreen =
+  document.getElementById("verificationScreen");
+
+const verificationEmail =
+  document.getElementById("verificationEmail");
+
+const verificationMessage =
+  document.getElementById("verificationMessage");
+
+const checkVerificationButton =
+  document.getElementById("checkVerificationButton");
+
+const resendVerificationButton =
+  document.getElementById("resendVerificationButton");
+
+const verificationLogoutButton =
+  document.getElementById("verificationLogoutButton");
 
 const authTitle =
   document.getElementById("authTitle");
@@ -2021,6 +2103,9 @@ function firebaseErrorMessage(error) {
     "auth/wrong-password":
       "パスワードが正しくありません。",
 
+    "auth/too-many-requests":
+      "操作回数が多すぎます。少し時間をおいてからもう一度お試しください。",
+
     "permission-denied":
       "Firestoreの権限がありません。",
 
@@ -2131,6 +2216,9 @@ async function createUserDocument(
       user.email ||
       "",
 
+    companyId:
+      null,
+
     role:
       "member",
 
@@ -2230,9 +2318,29 @@ async function register() {
     );
 
 
-    showSuccess(
-      "アカウントを作成しました。"
-    );
+    try {
+
+      await sendEmailVerification(
+        result.user
+      );
+
+      showVerificationScreen(
+        result.user,
+        "確認メールを送信しました。メール内のリンクを開いてください。"
+      );
+
+    } catch (verificationError) {
+
+      console.error(
+        verificationError
+      );
+
+      showVerificationScreen(
+        result.user,
+        "アカウントは作成できましたが、確認メールの送信に失敗しました。「確認メールを再送」を押してください。"
+      );
+
+    }
 
 
   } catch (error) {
@@ -2393,6 +2501,203 @@ logoutButton.onclick =
 
 
 /* =====================================================
+   メール確認
+===================================================== */
+
+function showVerificationScreen(
+  user,
+  message = ""
+) {
+
+  currentUser =
+    user;
+
+  authScreen.style.display =
+    "none";
+
+  appScreen.style.display =
+    "none";
+
+  verificationScreen.style.display =
+    "block";
+
+  verificationEmail.textContent =
+    user?.email ||
+    "";
+
+  verificationMessage.textContent =
+    message ||
+    "メール内のリンクを開いたあと、「確認できた」を押してください。";
+
+  loginStatus.textContent =
+    "メール確認待ち";
+
+}
+
+
+async function enterApplication(
+  user
+) {
+
+  currentUser =
+    user;
+
+  verificationScreen.style.display =
+    "none";
+
+  authScreen.style.display =
+    "none";
+
+  appScreen.style.display =
+    "block";
+
+  loginStatus.textContent =
+    "ログイン中";
+
+
+  await loadUserData(
+    user
+  );
+
+
+  startRealtimeListeners();
+
+}
+
+
+checkVerificationButton.onclick =
+  async () => {
+
+    const user =
+      auth.currentUser;
+
+    if (!user) {
+
+      verificationMessage.textContent =
+        "ログイン状態を確認できません。もう一度ログインしてください。";
+
+      return;
+
+    }
+
+
+    try {
+
+      checkVerificationButton.disabled =
+        true;
+
+      await reload(
+        user
+      );
+
+      if (
+        auth.currentUser?.emailVerified
+      ) {
+
+        verificationMessage.textContent =
+          "メールアドレスを確認できました。";
+
+        await enterApplication(
+          auth.currentUser
+        );
+
+      } else {
+
+        verificationMessage.textContent =
+          "まだメール確認が完了していません。確認メール内のリンクを開いてください。";
+
+      }
+
+    } catch (error) {
+
+      console.error(error);
+
+      verificationMessage.textContent =
+        firebaseErrorMessage(
+          error
+        );
+
+    } finally {
+
+      checkVerificationButton.disabled =
+        false;
+
+    }
+
+  };
+
+
+resendVerificationButton.onclick =
+  async () => {
+
+    const user =
+      auth.currentUser;
+
+    if (!user) {
+
+      verificationMessage.textContent =
+        "ログイン状態を確認できません。もう一度ログインしてください。";
+
+      return;
+
+    }
+
+
+    try {
+
+      resendVerificationButton.disabled =
+        true;
+
+      await sendEmailVerification(
+        user
+      );
+
+      verificationMessage.textContent =
+        "確認メールを再送しました。";
+
+    } catch (error) {
+
+      console.error(error);
+
+      verificationMessage.textContent =
+        firebaseErrorMessage(
+          error
+        );
+
+    } finally {
+
+      resendVerificationButton.disabled =
+        false;
+
+    }
+
+  };
+
+
+verificationLogoutButton.onclick =
+  async () => {
+
+    try {
+
+      await stopRealtimeListeners();
+
+      await signOut(
+        auth
+      );
+
+    } catch (error) {
+
+      verificationMessage.textContent =
+        firebaseErrorMessage(
+          error
+        );
+
+    }
+
+  };
+
+
+/* =====================================================
    Auth状態
 ===================================================== */
 
@@ -2405,22 +2710,22 @@ onAuthStateChanged(
       currentUser =
         user;
 
-      authScreen.style.display =
-        "none";
+      if (
+        !user.emailVerified
+      ) {
 
-      appScreen.style.display =
-        "block";
+        showVerificationScreen(
+          user
+        );
 
-      loginStatus.textContent =
-        "ログイン中";
+        return;
+
+      }
 
 
-      await loadUserData(
+      await enterApplication(
         user
       );
-
-
-      startRealtimeListeners();
 
     } else {
 
@@ -2429,6 +2734,9 @@ onAuthStateChanged(
 
       currentUserData =
         null;
+
+      verificationScreen.style.display =
+        "none";
 
       authScreen.style.display =
         "block";
