@@ -3,14 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
   <title>営業実績管理</title>
-
   <style>
     * {
       box-sizing: border-box;
     }
-
     body {
       margin: 0;
       font-family:
@@ -21,52 +18,43 @@
       background: #f4f6f8;
       color: #222;
     }
-
     button,
     input,
     select {
       font: inherit;
     }
-
     .app {
       min-height: 100vh;
     }
-
     header {
       background: #111827;
       color: white;
       padding: 18px 16px;
     }
-
     .header-inner {
       max-width: 1100px;
       margin: 0 auto;
     }
-
     .title {
       font-size: 22px;
       font-weight: 700;
     }
-
     .subtitle {
       margin-top: 4px;
       font-size: 13px;
       color: #9ca3af;
     }
-
     main {
       max-width: 1100px;
       margin: 0 auto;
       padding: 20px 16px 50px;
     }
-
     .auth-wrapper {
       min-height: calc(100vh - 80px);
       display: flex;
       align-items: center;
       justify-content: center;
     }
-
     .auth-card {
       width: 100%;
       max-width: 420px;
@@ -75,38 +63,32 @@
       padding: 28px;
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
     }
-
     .auth-logo {
       text-align: center;
       font-size: 42px;
       margin-bottom: 8px;
     }
-
     .auth-title {
       text-align: center;
       font-size: 24px;
       font-weight: 700;
       margin-bottom: 8px;
     }
-
     .auth-description {
       text-align: center;
       color: #6b7280;
       font-size: 14px;
       margin-bottom: 24px;
     }
-
     .form-group {
       margin-bottom: 16px;
     }
-
     .form-group label {
       display: block;
       font-size: 13px;
       font-weight: 600;
       margin-bottom: 7px;
     }
-
     input {
       width: 100%;
       border: 1px solid #d1d5db;
@@ -115,11 +97,9 @@
       outline: none;
       background: white;
     }
-
     input:focus {
       border-color: #2563eb;
     }
-
     .primary-button {
       width: 100%;
       border: none;
@@ -130,16 +110,13 @@
       font-weight: 700;
       cursor: pointer;
     }
-
     .primary-button:hover {
       opacity: 0.9;
     }
-
     .primary-button:disabled {
       opacity: 0.6;
       cursor: not-allowed;
     }
-
     .error-message {
       display: none;
       background: #fef2f2;
@@ -151,7 +128,6 @@
       font-size: 13px;
       line-height: 1.5;
     }
-
     .success-message {
       display: none;
       background: #ecfdf5;
@@ -163,14 +139,12 @@
       font-size: 13px;
       line-height: 1.5;
     }
-
     .switch-text {
       text-align: center;
       margin-top: 18px;
       color: #6b7280;
       font-size: 13px;
     }
-
     .link-button {
       border: none;
       background: none;
@@ -178,11 +152,9 @@
       cursor: pointer;
       font-weight: 600;
     }
-
     #appScreen {
       display: none;
     }
-
     .user-bar {
       background: white;
       border-radius: 14px;
@@ -194,22 +166,18 @@
       gap: 10px;
       box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
     }
-
     .user-info {
       min-width: 0;
     }
-
     .user-name {
       font-weight: 700;
     }
-
     .user-email {
       font-size: 12px;
       color: #6b7280;
       margin-top: 3px;
       word-break: break-all;
     }
-
     .role-badge {
       display: inline-block;
       margin-top: 5px;
@@ -220,7 +188,6 @@
       font-size: 11px;
       font-weight: 700;
     }
-
     .logout-button {
       flex-shrink: 0;
       border: none;
@@ -232,7 +199,6 @@
       font-size: 12px;
       font-weight: 600;
     }
-
     .welcome-card {
       background: linear-gradient(135deg, #2563eb, #1d4ed8);
       color: white;
@@ -240,37 +206,34 @@
       padding: 24px;
       margin-bottom: 18px;
     }
-
     .welcome-title {
       font-size: 22px;
       font-weight: 700;
     }
-
     .welcome-text {
       margin-top: 8px;
       font-size: 14px;
       opacity: 0.9;
       line-height: 1.6;
     }
-
-    .status-card {
+    .status-card,
+    .management-card {
       background: white;
       border-radius: 14px;
       padding: 20px;
       box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+      margin-bottom: 18px;
     }
-
-    .status-title {
+    .status-title,
+    .management-title {
       font-weight: 700;
       margin-bottom: 10px;
     }
-
     .status-text {
       color: #6b7280;
       line-height: 1.7;
       font-size: 14px;
     }
-
     .setup-warning {
       margin-top: 15px;
       padding: 14px;
@@ -281,226 +244,271 @@
       font-size: 13px;
       line-height: 1.6;
     }
-
+    .management-card {
+      display: none;
+    }
+    .management-description {
+      color: #6b7280;
+      font-size: 13px;
+      margin-bottom: 16px;
+      line-height: 1.6;
+    }
+    .member-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .member-item {
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    .member-info {
+      min-width: 0;
+    }
+    .member-name {
+      font-weight: 700;
+      font-size: 15px;
+    }
+    .member-email {
+      color: #6b7280;
+      font-size: 12px;
+      margin-top: 4px;
+      word-break: break-all;
+    }
+    .member-role {
+      display: inline-block;
+      margin-top: 7px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      background: #f3f4f6;
+      color: #374151;
+    }
+    .member-role.leader {
+      background: #fef3c7;
+      color: #92400e;
+    }
+    .role-change-button {
+      flex-shrink: 0;
+      border: none;
+      border-radius: 9px;
+      padding: 9px 11px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 700;
+      background: #2563eb;
+      color: white;
+    }
+    .role-change-button.demote {
+      background: #f3f4f6;
+      color: #374151;
+    }
+    .role-change-button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .empty-message {
+      text-align: center;
+      color: #9ca3af;
+      padding: 20px 10px;
+      font-size: 13px;
+    }
+    .loading-message {
+      text-align: center;
+      color: #6b7280;
+      padding: 20px 10px;
+      font-size: 13px;
+    }
     @media (max-width: 600px) {
       .auth-card {
         padding: 22px;
       }
-
       .user-bar {
         align-items: flex-start;
       }
-
       .logout-button {
         margin-top: 2px;
+      }
+      .member-item {
+        align-items: flex-start;
+      }
+      .role-change-button {
+        width: 110px;
       }
     }
   </style>
 </head>
-
 <body>
-
 <div class="app">
-
   <header>
     <div class="header-inner">
       <div class="title">営業実績管理</div>
       <div class="subtitle">Sales Management System</div>
     </div>
   </header>
-
+  <!-- ログイン画面 -->
   <main id="authScreen">
-
-    <div class="auth-wrapper">
-
-      <div class="auth-card">
-
-        <div class="auth-logo">📊</div>
-
-        <div class="auth-title" id="authTitle">
-          ログイン
-        </div>
-
-        <div class="auth-description">
-          営業実績管理システム
-        </div>
-
-        <div id="errorMessage" class="error-message"></div>
-
-        <div id="successMessage" class="success-message"></div>
-
-        <div
-          class="form-group"
-          id="nameGroup"
-          style="display:none;"
-        >
-
-          <label for="name">
-            名前
-          </label>
-
-          <input
-            id="name"
-            type="text"
-            placeholder="例：山田太郎"
-          >
-
-        </div>
-
-        <div class="form-group">
-
-          <label for="email">
-            メールアドレス
-          </label>
-
-          <input
-            id="email"
-            type="email"
-            placeholder="example@gmail.com"
-          >
-
-        </div>
-
-        <div class="form-group">
-
-          <label for="password">
-            パスワード
-          </label>
-
-          <input
-            id="password"
-            type="password"
-            placeholder="6文字以上"
-          >
-
-        </div>
-
-        <button
-          id="authButton"
-          class="primary-button"
-        >
-          ログイン
-        </button>
-
-        <div class="switch-text">
-
-          <span id="switchDescription">
-            アカウントを持っていない？
-          </span>
-
-          <button
-            id="switchButton"
-            class="link-button"
-          >
-            新規登録
-          </button>
-
-        </div>
-
-      </div>
-
+<div class="auth-wrapper">
+  <div class="auth-card">
+    <div class="auth-logo">📊</div>
+    <div class="auth-title" id="authTitle">
+      ログイン
     </div>
-
-  </main>
-
-  <main id="appScreen">
-
-    <div class="user-bar">
-
-      <div class="user-info">
-
-        <div id="userName" class="user-name">
-          -
-        </div>
-
-        <div id="userEmail" class="user-email">
-          -
-        </div>
-
-        <div id="userRole" class="role-badge">
-          メンバー
-        </div>
-
-      </div>
-
+    <div class="auth-description">
+      営業実績管理システム
+    </div>
+    <div id="errorMessage" class="error-message"></div>
+    <div id="successMessage" class="success-message"></div>
+    <div
+      class="form-group"
+      id="nameGroup"
+      style="display:none;"
+    >
+      <label for="name">
+        名前
+      </label>
+      <input
+        id="name"
+        type="text"
+        placeholder="例：山田太郎"
+      >
+    </div>
+    <div class="form-group">
+      <label for="email">
+        メールアドレス
+      </label>
+      <input
+        id="email"
+        type="email"
+        placeholder="example@gmail.com"
+      >
+    </div>
+    <div class="form-group">
+      <label for="password">
+        パスワード
+      </label>
+      <input
+        id="password"
+        type="password"
+        placeholder="6文字以上"
+      >
+    </div>
+    <button
+      id="authButton"
+      class="primary-button"
+    >
+      ログイン
+    </button>
+    <div class="switch-text">
+      <span id="switchDescription">
+        アカウントを持っていない？
+      </span>
       <button
-        id="logoutButton"
-        class="logout-button"
+        id="switchButton"
+        class="link-button"
       >
-        ログアウト
+        新規登録
       </button>
-
     </div>
-
-    <div class="welcome-card">
-
-      <div class="welcome-title">
-        営業実績管理へようこそ
-      </div>
-
-      <div class="welcome-text">
-        Firebaseとの接続が完了しました。<br>
-        ここから班・メンバー・実績・全体ダッシュボードを追加していきます。
-      </div>
-
-    </div>
-
-    <div class="status-card">
-
-      <div class="status-title">
-        現在の状態
-      </div>
-
-      <div class="status-text">
-
-        ログイン：
-        <strong id="loginStatus">
-          確認中
-        </strong>
-
-        <br>
-
-        Firebase：
-        <strong id="firebaseStatus">
-          接続済み
-        </strong>
-
-        <br>
-
-        データベース：
-        <strong id="databaseStatus">
-          接続確認中
-        </strong>
-
-      </div>
-
-      <div
-        id="setupWarning"
-        class="setup-warning"
-        style="display:none;"
-      >
-
-        現在、このアカウントは
-        <strong>メンバー</strong>
-        として登録されています。<br><br>
-
-        次の段階でリーダー設定・班設定を作ります。
-
-      </div>
-
-    </div>
-
-  </main>
-
+  </div>
 </div>
-
-
+  </main>
+  <!-- アプリ画面 -->
+  <main id="appScreen">
+<div class="user-bar">
+  <div class="user-info">
+    <div id="userName" class="user-name">
+      -
+    </div>
+    <div id="userEmail" class="user-email">
+      -
+    </div>
+    <div id="userRole" class="role-badge">
+      メンバー
+    </div>
+  </div>
+  <button
+    id="logoutButton"
+    class="logout-button"
+  >
+    ログアウト
+  </button>
+</div>
+<div class="welcome-card">
+  <div class="welcome-title">
+    営業実績管理へようこそ
+  </div>
+  <div class="welcome-text">
+    Firebaseとの接続が完了しました。<br>
+    ここから班・メンバー・実績・全体ダッシュボードを追加していきます。
+  </div>
+</div>
+<!-- 現在の状態 -->
+<div class="status-card">
+  <div class="status-title">
+    現在の状態
+  </div>
+  <div class="status-text">
+    ログイン：
+    <strong id="loginStatus">
+      確認中
+    </strong>
+    <br>
+    Firebase：
+    <strong id="firebaseStatus">
+      接続済み
+    </strong>
+    <br>
+    データベース：
+    <strong id="databaseStatus">
+      接続確認中
+    </strong>
+  </div>
+  <div
+    id="setupWarning"
+    class="setup-warning"
+    style="display:none;"
+  >
+    現在、このアカウントは
+    <strong>メンバー</strong>
+    として登録されています。<br><br>
+    リーダーから権限を変更してもらうことで、
+    管理機能が使用できるようになります。
+  </div>
+</div>
+<!-- リーダー専用：メンバー管理 -->
+<div
+  id="memberManagement"
+  class="management-card"
+>
+  <div class="management-title">
+    👑 メンバー管理
+  </div>
+  <div class="management-description">
+    メンバーの権限を変更できます。<br>
+    リーダーに変更すると、管理機能を使用できるようになります。
+  </div>
+  <div
+    id="memberList"
+    class="member-list"
+  >
+    <div class="loading-message">
+      メンバー情報を読み込み中...
+    </div>
+  </div>
+</div>
+  </main>
+</div>
 <script type="module">
-
   import {
     initializeApp
   } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
-
   import {
     getAuth,
     createUserWithEmailAndPassword,
@@ -508,677 +516,654 @@
     signOut,
     onAuthStateChanged
   } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
-
   import {
     getFirestore,
     doc,
     setDoc,
     getDoc,
+    updateDoc,
+    collection,
+    getDocs,
     serverTimestamp
   } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
-
-
   const firebaseConfig = {
-
     apiKey:
       "AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
-
     authDomain:
       "sales-management-cc116.firebaseapp.com",
-
     projectId:
       "sales-management-cc116",
-
     storageBucket:
       "sales-management-cc116.firebasestorage.app",
-
     messagingSenderId:
       "904932511564",
-
     appId:
       "1:904932511564:web:6583e8b0c585231b9049e"
-
   };
-
-
   const app =
     initializeApp(firebaseConfig);
-
   const auth =
     getAuth(app);
-
   const db =
     getFirestore(app);
-
-
   const authScreen =
     document.getElementById("authScreen");
-
   const appScreen =
     document.getElementById("appScreen");
-
   const authTitle =
     document.getElementById("authTitle");
-
   const authButton =
     document.getElementById("authButton");
-
   const switchButton =
     document.getElementById("switchButton");
-
   const switchDescription =
     document.getElementById("switchDescription");
-
   const nameGroup =
     document.getElementById("nameGroup");
-
   const nameInput =
     document.getElementById("name");
-
   const emailInput =
     document.getElementById("email");
-
   const passwordInput =
     document.getElementById("password");
-
   const errorMessage =
     document.getElementById("errorMessage");
-
   const successMessage =
     document.getElementById("successMessage");
-
   const userName =
     document.getElementById("userName");
-
   const userEmail =
     document.getElementById("userEmail");
-
   const userRole =
     document.getElementById("userRole");
-
   const logoutButton =
     document.getElementById("logoutButton");
-
   const loginStatus =
     document.getElementById("loginStatus");
-
   const databaseStatus =
     document.getElementById("databaseStatus");
-
   const setupWarning =
     document.getElementById("setupWarning");
-
-
+  const memberManagement =
+    document.getElementById("memberManagement");
+  const memberList =
+    document.getElementById("memberList");
   let isRegisterMode = false;
-
-
+  let currentUserData = null;
+  /* =========================================================
+     ログイン / 新規登録切り替え
+  ========================================================= */
   switchButton.addEventListener(
     "click",
     () => {
-
       isRegisterMode =
         !isRegisterMode;
-
       clearMessages();
-
       if (isRegisterMode) {
-
         authTitle.textContent =
           "新規登録";
-
         authButton.textContent =
           "アカウントを作成";
-
         switchDescription.textContent =
           "すでにアカウントを持っている？";
-
         switchButton.textContent =
           "ログイン";
-
         nameGroup.style.display =
           "block";
-
       } else {
-
         authTitle.textContent =
           "ログイン";
-
         authButton.textContent =
           "ログイン";
-
         switchDescription.textContent =
           "アカウントを持っていない？";
-
         switchButton.textContent =
           "新規登録";
-
         nameGroup.style.display =
           "none";
-
       }
-
     }
   );
-
-
+  /* =========================================================
+     メッセージ
+  ========================================================= */
   function showError(message) {
-
     errorMessage.textContent =
       message;
-
     errorMessage.style.display =
       "block";
-
   }
-
-
   function showSuccess(message) {
-
     successMessage.textContent =
       message;
-
     successMessage.style.display =
       "block";
-
   }
-
-
   function clearMessages() {
-
     errorMessage.textContent =
       "";
-
     successMessage.textContent =
       "";
-
     errorMessage.style.display =
       "none";
-
     successMessage.style.display =
       "none";
-
   }
-
-
+  /* =========================================================
+     Firebaseエラー
+  ========================================================= */
   function firebaseErrorMessage(error) {
-
     console.error(
       "Firebase Error:",
       error
     );
-
     switch (error.code) {
-
       case "auth/email-already-in-use":
         return "このメールアドレスはすでに登録されています。ログインしてください。";
-
       case "auth/invalid-email":
         return "メールアドレスの形式が正しくありません。";
-
       case "auth/weak-password":
         return "パスワードは6文字以上にしてください。";
-
       case "auth/invalid-credential":
         return "メールアドレスまたはパスワードが違います。";
-
       case "auth/user-not-found":
         return "アカウントが見つかりません。";
-
       case "auth/wrong-password":
         return "パスワードが違います。";
-
       case "permission-denied":
         return "Firestoreへのアクセス権限がありません。";
-
       default:
         return "エラーが発生しました。もう一度試してください。";
-
     }
-
   }
-
-
+  /* =========================================================
+     ユーザー作成
+  ========================================================= */
   async function createUserDocument(
     user,
     name = ""
   ) {
-
     const userRef =
       doc(
         db,
         "users",
         user.uid
       );
-
-
     const userSnap =
       await getDoc(userRef);
-
-
     if (userSnap.exists()) {
-
       return userSnap.data();
-
     }
-
-
     const userData = {
-
       uid:
         user.uid,
-
       name:
         name ||
         user.displayName ||
         "名前未設定",
-
       email:
         user.email || "",
-
       role:
         "member",
-
       teamId:
         null,
-
       active:
         true,
-
       createdAt:
         serverTimestamp()
-
     };
-
-
     await setDoc(
       userRef,
       userData
     );
-
-
     return userData;
-
   }
-
-
+  /* =========================================================
+     新規登録
+  ========================================================= */
   async function registerUser() {
-
     const name =
       nameInput.value.trim();
-
     const email =
       emailInput.value.trim();
-
     const password =
       passwordInput.value;
-
-
     if (!name) {
-
       showError(
         "名前を入力してください。"
       );
-
       return;
-
     }
-
-
     if (!email) {
-
       showError(
         "メールアドレスを入力してください。"
       );
-
       return;
-
     }
-
-
     if (password.length < 6) {
-
       showError(
         "パスワードは6文字以上にしてください。"
       );
-
       return;
-
     }
-
-
     try {
-
       authButton.disabled =
         true;
-
       authButton.textContent =
         "登録中...";
-
-
       const result =
         await createUserWithEmailAndPassword(
           auth,
           email,
           password
         );
-
-
       const user =
         result.user;
-
-
       await createUserDocument(
         user,
         name
       );
-
-
       showSuccess(
         "アカウントを作成しました。Firestoreにも登録しました。"
       );
-
-
     } catch (error) {
-
       console.error(
         "登録エラー:",
         error
       );
-
       showError(
         firebaseErrorMessage(error)
       );
-
     } finally {
-
       authButton.disabled =
         false;
-
       authButton.textContent =
         isRegisterMode
           ? "アカウントを作成"
           : "ログイン";
-
     }
-
   }
-
-
+  /* =========================================================
+     ログイン
+  ========================================================= */
   async function loginUser() {
-
     const email =
       emailInput.value.trim();
-
     const password =
       passwordInput.value;
-
-
     if (!email) {
-
       showError(
         "メールアドレスを入力してください。"
       );
-
       return;
-
     }
-
-
     if (!password) {
-
       showError(
         "パスワードを入力してください。"
       );
-
       return;
-
     }
-
-
     try {
-
       authButton.disabled =
         true;
-
       authButton.textContent =
         "ログイン中...";
-
-
       await signInWithEmailAndPassword(
         auth,
         email,
         password
       );
-
-
     } catch (error) {
-
       console.error(
         "ログインエラー:",
         error
       );
-
       showError(
         firebaseErrorMessage(error)
       );
-
     } finally {
-
       authButton.disabled =
         false;
-
       authButton.textContent =
         "ログイン";
-
     }
-
   }
-
-
   authButton.addEventListener(
     "click",
     async () => {
-
       clearMessages();
-
       if (isRegisterMode) {
-
         await registerUser();
-
       } else {
-
         await loginUser();
-
       }
-
     }
   );
-
-
+  /* =========================================================
+     ログアウト
+  ========================================================= */
   logoutButton.addEventListener(
     "click",
     async () => {
-
       try {
-
         await signOut(auth);
-
       } catch (error) {
-
         console.error(
           "ログアウトエラー:",
           error
         );
-
       }
-
     }
   );
-
-
+  /* =========================================================
+     ログイン状態監視
+  ========================================================= */
   onAuthStateChanged(
     auth,
     async (user) => {
-
       if (user) {
-
         console.log(
           "ログイン中:",
           user.uid
         );
-
-
         authScreen.style.display =
           "none";
-
         appScreen.style.display =
           "block";
-
         loginStatus.textContent =
           "ログイン中";
-
-
         await loadUserData(
           user
         );
-
-
       } else {
-
         authScreen.style.display =
           "block";
-
         appScreen.style.display =
           "none";
-
         loginStatus.textContent =
           "未ログイン";
-
+        memberManagement.style.display =
+          "none";
       }
-
     }
   );
-
-
+  /* =========================================================
+     ユーザー情報取得
+  ========================================================= */
   async function loadUserData(user) {
-
     try {
-
       databaseStatus.textContent =
         "確認中...";
-
-
       const userRef =
         doc(
           db,
           "users",
           user.uid
         );
-
-
       let userSnap =
         await getDoc(userRef);
-
-
       if (!userSnap.exists()) {
-
         console.log(
           "Firestoreにユーザーがないため作成します"
         );
-
-
         await createUserDocument(
           user
         );
-
-
         userSnap =
           await getDoc(userRef);
-
       }
-
-
       if (userSnap.exists()) {
-
         const data =
           userSnap.data();
-
-
+        currentUserData =
+          data;
         userName.textContent =
           data.name ||
           "名前未設定";
-
-
         userEmail.textContent =
           data.email ||
           user.email ||
           "";
-
-
         if (data.role === "leader") {
-
           userRole.textContent =
             "👑 リーダー";
-
           setupWarning.style.display =
             "none";
-
+          memberManagement.style.display =
+            "block";
+          await loadMembers();
         } else {
-
           userRole.textContent =
             "👤 メンバー";
-
           setupWarning.style.display =
             "block";
-
+          memberManagement.style.display =
+            "none";
         }
-
-
         if (data.teamId) {
-
           console.log(
             "所属班:",
             data.teamId
           );
-
         }
-
-
         databaseStatus.textContent =
           "接続済み";
-
       }
-
-
     } catch (error) {
-
       console.error(
         "ユーザー情報取得エラー:",
         error
       );
-
-
       databaseStatus.textContent =
         "接続エラー";
-
-
       userName.textContent =
         "データ取得エラー";
-
-
       setupWarning.style.display =
         "block";
-
-
+      memberManagement.style.display =
+        "none";
       showError(
         "Firestoreへの接続に失敗しました。Firebaseのルールを確認してください。"
       );
-
     }
-
   }
-
+  /* =========================================================
+     メンバー一覧取得
+  ========================================================= */
+  async function loadMembers() {
+    memberList.innerHTML = `
+      <div class="loading-message">
+        メンバー情報を読み込み中...
+      </div>
+    `;
+    try {
+      const usersSnapshot =
+        await getDocs(
+          collection(
+            db,
+            "users"
+          )
+        );
+      if (usersSnapshot.empty) {
+        memberList.innerHTML = `
+          <div class="empty-message">
+            まだメンバーが登録されていません。
+          </div>
+        `;
+        return;
+      }
+      memberList.innerHTML = "";
+      usersSnapshot.forEach(
+        (userDoc) => {
+          const data =
+            userDoc.data();
+          const uid =
+            userDoc.id;
+          const item =
+            document.createElement(
+              "div"
+            );
+          item.className =
+            "member-item";
+          const info =
+            document.createElement(
+              "div"
+            );
+          info.className =
+            "member-info";
+          const name =
+            document.createElement(
+              "div"
+            );
+          name.className =
+            "member-name";
+          name.textContent =
+            data.name ||
+            "名前未設定";
+          const email =
+            document.createElement(
+              "div"
+            );
+          email.className =
+            "member-email";
+          email.textContent =
+            data.email ||
+            "";
+          const role =
+            document.createElement(
+              "span"
+            );
+          role.className =
+            data.role === "leader"
+              ? "member-role leader"
+              : "member-role";
+          role.textContent =
+            data.role === "leader"
+              ? "👑 リーダー"
+              : "👤 メンバー";
+          info.appendChild(
+            name
+          );
+          info.appendChild(
+            email
+          );
+          info.appendChild(
+            role
+          );
+          const button =
+            document.createElement(
+              "button"
+            );
+          if (data.role === "leader") {
+            button.textContent =
+              "メンバーに戻す";
+            button.className =
+              "role-change-button demote";
+          } else {
+            button.textContent =
+              "👑 リーダーにする";
+            button.className =
+              "role-change-button";
+          }
+          /*
+           * 自分自身の権限変更ボタンは無効化
+           */
+          if (
+            auth.currentUser &&
+            uid === auth.currentUser.uid
+          ) {
+            button.disabled =
+              true;
+            button.textContent =
+              "自分";
+          }
+          button.addEventListener(
+            "click",
+            async () => {
+              await changeUserRole(
+                uid,
+                data.name || "このユーザー",
+                data.role
+              );
+            }
+          );
+          item.appendChild(
+            info
+          );
+          item.appendChild(
+            button
+          );
+          memberList.appendChild(
+            item
+          );
+        }
+      );
+    } catch (error) {
+      console.error(
+        "メンバー取得エラー:",
+        error
+      );
+      memberList.innerHTML = `
+        <div class="empty-message">
+          メンバー情報を取得できませんでした。<br>
+          Firestoreのルールを確認してください。
+        </div>
+      `;
+    }
+  }
+  /* =========================================================
+     リーダー / メンバー変更
+  ========================================================= */
+  async function changeUserRole(
+    uid,
+    name,
+    currentRole
+  ) {
+    const newRole =
+      currentRole === "leader"
+        ? "member"
+        : "leader";
+    const message =
+      newRole === "leader"
+        ? `${name} さんをリーダーに変更しますか？`
+        : `${name} さんをメンバーに戻しますか？`;
+    const confirmed =
+      window.confirm(
+        message
+      );
+    if (!confirmed) {
+      return;
+    }
+    try {
+      const userRef =
+        doc(
+          db,
+          "users",
+          uid
+        );
+      await updateDoc(
+        userRef,
+        {
+          role:
+            newRole
+        }
+      );
+      alert(
+        newRole === "leader"
+          ? `${name} さんをリーダーに変更しました。`
+          : `${name} さんをメンバーに戻しました。`
+      );
+      await loadMembers();
+    } catch (error) {
+      console.error(
+        "権限変更エラー:",
+        error
+      );
+      alert(
+        "権限変更に失敗しました。\n\nFirestoreのセキュリティルールを確認してください。"
+      );
+    }
+  }
 </script>
-
 </body>
 </html>
