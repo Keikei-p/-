@@ -4,144 +4,366 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>営業実績管理</title>
-  <link rel="stylesheet" href="style.css">
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+      background: #f5f7fb;
+      color: #1f2937;
+    }
+
+    header {
+      background: #111827;
+      color: white;
+      padding: 20px;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 22px;
+    }
+
+    header p {
+      margin: 5px 0 0;
+      font-size: 13px;
+      opacity: 0.75;
+    }
+
+    main {
+      max-width: 900px;
+      margin: auto;
+      padding: 16px;
+      padding-bottom: 100px;
+    }
+
+    .tabs {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      margin-bottom: 16px;
+    }
+
+    .tab {
+      border: none;
+      background: white;
+      padding: 12px 5px;
+      border-radius: 10px;
+      font-size: 12px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .tab.active {
+      background: #111827;
+      color: white;
+    }
+
+    .page {
+      display: none;
+    }
+
+    .page.active {
+      display: block;
+    }
+
+    .card {
+      background: white;
+      border-radius: 16px;
+      padding: 18px;
+      margin-bottom: 14px;
+      box-shadow: 0 3px 12px rgba(0,0,0,0.05);
+    }
+
+    .card h2 {
+      margin: 0 0 15px;
+      font-size: 18px;
+    }
+
+    .card h3 {
+      margin: 0 0 12px;
+      font-size: 16px;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    select,
+    input {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 10px;
+      font-size: 16px;
+      background: white;
+    }
+
+    .form-group {
+      margin-bottom: 14px;
+    }
+
+    .product-row {
+      display: grid;
+      grid-template-columns: 1fr 44px 60px 44px;
+      gap: 6px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .product-name {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .count {
+      text-align: center;
+      font-weight: 700;
+    }
+
+    button {
+      border: none;
+      cursor: pointer;
+    }
+
+    .count-btn {
+      height: 42px;
+      border-radius: 10px;
+      background: #eef2f7;
+      font-size: 20px;
+    }
+
+    .count-btn:active {
+      transform: scale(0.95);
+    }
+
+    .primary-btn {
+      width: 100%;
+      background: #111827;
+      color: white;
+      padding: 14px;
+      border-radius: 11px;
+      font-size: 15px;
+      font-weight: 700;
+      margin-top: 8px;
+    }
+
+    .danger-btn {
+      background: #fee2e2;
+      color: #b91c1c;
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: 12px;
+    }
+
+    .edit-btn {
+      background: #e5e7eb;
+      color: #374151;
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: 12px;
+    }
+
+    .product-management-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+
+    .summary-box {
+      background: #f8fafc;
+      border-radius: 12px;
+      padding: 14px;
+    }
+
+    .summary-box .name {
+      font-size: 12px;
+      color: #6b7280;
+    }
+
+    .summary-box .number {
+      font-size: 25px;
+      font-weight: 800;
+      margin-top: 4px;
+    }
+
+    .member-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+
+    .member-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .member-name {
+      font-weight: 800;
+      font-size: 17px;
+    }
+
+    .member-total {
+      font-size: 12px;
+      color: #6b7280;
+    }
+
+    .result-line {
+      display: flex;
+      justify-content: space-between;
+      padding: 7px 0;
+      border-bottom: 1px solid #f0f0f0;
+      font-size: 14px;
+    }
+
+    .result-line:last-child {
+      border-bottom: none;
+    }
+
+    .result-number {
+      font-weight: 800;
+    }
+
+    .history-item {
+      border-bottom: 1px solid #e5e7eb;
+      padding: 12px 0;
+    }
+
+    .history-item:last-child {
+      border-bottom: none;
+    }
+
+    .history-top {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .history-date {
+      font-size: 12px;
+      color: #6b7280;
+    }
+
+    .history-member {
+      font-weight: 700;
+    }
+
+    .history-results {
+      font-size: 13px;
+      color: #4b5563;
+      line-height: 1.8;
+    }
+
+    .empty {
+      text-align: center;
+      color: #9ca3af;
+      padding: 30px 10px;
+      font-size: 14px;
+    }
+
+    .danger-zone {
+      margin-top: 20px;
+      padding-top: 15px;
+      border-top: 1px solid #e5e7eb;
+    }
+
+    @media (min-width: 700px) {
+      .summary-grid {
+        grid-template-columns: repeat(3, 1fr);
+      }
+
+      .tabs {
+        grid-template-columns: repeat(5, 1fr);
+      }
+    }
+  </style>
 </head>
 
 <body>
 
-<header class="app-header">
-  <div>
-    <p class="eyebrow">SALES PERFORMANCE</p>
-    <h1>営業実績管理</h1>
-  </div>
-
-  <button id="monthButton" class="month-button"></button>
+<header>
+  <h1>営業実績管理</h1>
+  <p>入力した実績を個人・チーム別に自動集計</p>
 </header>
 
-<nav class="tab-nav">
-  <button class="tab active" data-page="home">ホーム</button>
-  <button class="tab" data-page="performance">個人実績</button>
-  <button class="tab" data-page="history">履歴</button>
-</nav>
+<main>
 
-<main class="container">
+  <!-- ナビゲーション -->
+  <div class="tabs">
+    <button class="tab active" onclick="showPage('input', this)">➕ 入力</button>
+    <button class="tab" onclick="showPage('team', this)">👥 チーム</button>
+    <button class="tab" onclick="showPage('personal', this)">👤 個人</button>
+    <button class="tab" onclick="showPage('history', this)">📋 履歴</button>
+    <button class="tab" onclick="showPage('settings', this)">⚙️ 管理</button>
+  </div>
+
 
   <!-- =========================
-       ホーム
+       実績入力
   ========================== -->
+  <section id="input" class="page active">
 
-  <section id="homePage" class="page active">
+    <div class="card">
 
-    <section class="hero-card">
+      <h2>実績を入力</h2>
 
-      <div>
-        <p class="muted">今月の収益</p>
-        <p id="totalRevenue" class="hero-number">¥0</p>
+      <div class="form-group">
+        <label>担当者</label>
+        <select id="inputMember"></select>
       </div>
 
-      <div class="hero-progress">
-
-        <div class="progress-label">
-          <span>目標達成率</span>
-          <strong id="overallRate">0%</strong>
-        </div>
-
-        <div class="progress-track">
-          <div id="overallProgress" class="progress-bar"></div>
-        </div>
-
-        <p id="overallTargetText" class="muted">
-          0件 / 0件
-        </p>
-
+      <div class="form-group">
+        <label>日付</label>
+        <input type="date" id="inputDate">
       </div>
 
-    </section>
+      <h3>商材別実績</h3>
 
-    <section class="summary-grid">
+      <div id="inputProducts"></div>
 
-      <article class="stat-card">
-        <span>総獲得数</span>
-        <strong id="totalCount">0</strong>
-        <small>件</small>
-      </article>
+      <button class="primary-btn" onclick="saveRecord()">
+        実績を登録する
+      </button>
 
-      <article class="stat-card">
-        <span>目標残り</span>
-        <strong id="remainingCount">0</strong>
-        <small>件</small>
-      </article>
+    </div>
 
-      <article class="stat-card">
-        <span>登録商材</span>
-        <strong id="itemCount">0</strong>
-        <small>種類</small>
-      </article>
+  </section>
 
-    </section>
 
-    <section class="section">
+  <!-- =========================
+       チーム全体
+  ========================== -->
+  <section id="team" class="page">
 
-      <div class="section-title">
+    <div class="card">
 
-        <div>
-          <p class="eyebrow">PROGRESS</p>
-          <h2>商材別進捗</h2>
-        </div>
+      <h2>チーム全体</h2>
 
-        <button id="addItemButton" class="primary-button">
-          ＋ 商材追加
-        </button>
+      <div id="teamSummary" class="summary-grid"></div>
 
-      </div>
-
-      <div id="itemsContainer" class="items-list"></div>
-
-    </section>
-
-    <section class="section">
-
-      <div class="section-title">
-
-        <div>
-          <p class="eyebrow">QUICK INPUT</p>
-          <h2>実績を入力</h2>
-        </div>
-
-      </div>
-
-      <form id="entryForm" class="entry-form">
-
-        <label>
-          日付
-          <input id="entryDate" type="date" required>
-        </label>
-
-        <label>
-          商材
-          <select id="entryItem" required></select>
-        </label>
-
-        <label>
-          獲得数
-          <input
-            id="entryQuantity"
-            type="number"
-            min="1"
-            value="1"
-            required
-          >
-        </label>
-
-        <button class="primary-button" type="submit">
-          実績を登録
-        </button>
-
-      </form>
-
-      <p id="emptyHint" class="empty-hint"></p>
-
-    </section>
+    </div>
 
   </section>
 
@@ -149,84 +371,15 @@
   <!-- =========================
        個人実績
   ========================== -->
+  <section id="personal" class="page">
 
-  <section id="performancePage" class="page">
-
-    <div class="page-heading">
-
-      <p class="eyebrow">MY PERFORMANCE</p>
+    <div class="card">
 
       <h2>個人実績</h2>
 
-      <p class="muted">
-        今月の営業実績をまとめて確認できます。
-      </p>
+      <div id="personalResults"></div>
 
     </div>
-
-
-    <section class="performance-summary">
-
-      <article class="performance-card">
-
-        <span>総獲得数</span>
-
-        <strong id="performanceCount">
-          0
-        </strong>
-
-        <small>件</small>
-
-      </article>
-
-
-      <article class="performance-card">
-
-        <span>総収益</span>
-
-        <strong id="performanceRevenue">
-          ¥0
-        </strong>
-
-      </article>
-
-
-      <article class="performance-card">
-
-        <span>1日平均</span>
-
-        <strong id="dailyAverage">
-          0
-        </strong>
-
-        <small>件</small>
-
-      </article>
-
-    </section>
-
-
-    <section class="section">
-
-      <div class="section-title">
-
-        <div>
-
-          <p class="eyebrow">
-            BREAKDOWN
-          </p>
-
-          <h2>
-            商材別実績
-          </h2>
-
-        </div>
-
-      </div>
-
-      <div id="performanceItems" class="performance-list"></div>
-
-    </section>
 
   </section>
 
@@ -234,121 +387,1269 @@
   <!-- =========================
        履歴
   ========================== -->
+  <section id="history" class="page">
 
-  <section id="historyPage" class="page">
+    <div class="card">
 
-    <div class="page-heading">
+      <h2>実績履歴</h2>
 
-      <p class="eyebrow">
-        HISTORY
-      </p>
+      <div id="historyList"></div>
 
-      <h2>
-        実績履歴
-      </h2>
+    </div>
 
-      <p class="muted">
-        登録した営業実績を確認できます。
-      </p>
+  </section>
+
+
+  <!-- =========================
+       商材・スタッフ管理
+  ========================== -->
+  <section id="settings" class="page">
+
+    <div class="card">
+
+      <h2>商材管理</h2>
+
+      <div class="form-group">
+        <label>新しい商材</label>
+
+        <input
+          type="text"
+          id="newProductName"
+          placeholder="例：ソフトバンク光"
+        >
+      </div>
+
+      <button class="primary-btn" onclick="addProduct()">
+        ＋ 商材を追加
+      </button>
+
+      <div style="margin-top:18px" id="productList"></div>
 
     </div>
 
 
-    <section class="section">
+    <div class="card">
 
-      <div id="historyList" class="history-list"></div>
+      <h2>スタッフ管理</h2>
 
-    </section>
+      <div class="form-group">
+        <label>新しいスタッフ</label>
+
+        <input
+          type="text"
+          id="newMemberName"
+          placeholder="例：山田"
+        >
+      </div>
+
+      <button class="primary-btn" onclick="addMember()">
+        ＋ スタッフを追加
+      </button>
+
+      <div style="margin-top:18px" id="memberList"></div>
+
+    </div>
+
+
+    <div class="card danger-zone">
+
+      <h2>データ管理</h2>
+
+      <button class="danger-btn" onclick="resetAllData()">
+        全データを削除
+      </button>
+
+    </div>
 
   </section>
 
 </main>
 
 
-<!-- =========================
-     商材追加モーダル
-========================== -->
+<script>
 
-<div id="itemModal" class="modal hidden">
+  /*
+  ============================================================
+  データ
+  ============================================================
+  */
 
-  <div
-    class="modal-backdrop"
-    data-close-modal
-  ></div>
+  const defaultProducts = [
+    "MNP",
+    "NURO光",
+    "ウォーター",
+    "つばさ電気",
+    "HTBエナジー"
+  ];
 
-  <div class="modal-card">
-
-    <button
-      class="modal-close"
-      data-close-modal
-    >
-      ×
-    </button>
-
-    <p class="eyebrow">
-      NEW ITEM
-    </p>
-
-    <h2>
-      商材を追加
-    </h2>
+  const defaultMembers = [
+    "中本",
+    "灘野",
+    "異儀田",
+    "扇"
+  ];
 
 
-    <form id="itemForm">
+  let products =
+    JSON.parse(localStorage.getItem("sales_products"))
+    || defaultProducts.map((name, index) => ({
+      id: Date.now() + index,
+      name
+    }));
 
-      <label>
-        商材名
+
+  let members =
+    JSON.parse(localStorage.getItem("sales_members"))
+    || defaultMembers.map((name, index) => ({
+      id: Date.now() + 100 + index,
+      name
+    }));
+
+
+  let records =
+    JSON.parse(localStorage.getItem("sales_records"))
+    || [];
+
+
+  /*
+  ============================================================
+  保存
+  ============================================================
+  */
+
+  function saveData() {
+
+    localStorage.setItem(
+      "sales_products",
+      JSON.stringify(products)
+    );
+
+    localStorage.setItem(
+      "sales_members",
+      JSON.stringify(members)
+    );
+
+    localStorage.setItem(
+      "sales_records",
+      JSON.stringify(records)
+    );
+  }
+
+
+  /*
+  ============================================================
+  初期設定
+  ============================================================
+  */
+
+  document.addEventListener("DOMContentLoaded", () => {
+
+    document.getElementById("inputDate").value =
+      new Date().toISOString().split("T")[0];
+
+    renderAll();
+
+  });
+
+
+  /*
+  ============================================================
+  ページ切り替え
+  ============================================================
+  */
+
+  function showPage(pageId, button) {
+
+    document.querySelectorAll(".page")
+      .forEach(page => page.classList.remove("active"));
+
+    document.querySelectorAll(".tab")
+      .forEach(tab => tab.classList.remove("active"));
+
+    document.getElementById(pageId)
+      .classList.add("active");
+
+    button.classList.add("active");
+
+    renderAll();
+  }
+
+
+  /*
+  ============================================================
+  入力画面
+  ============================================================
+  */
+
+  function renderInput() {
+
+    const memberSelect =
+      document.getElementById("inputMember");
+
+    memberSelect.innerHTML = "";
+
+    members.forEach(member => {
+
+      const option = document.createElement("option");
+
+      option.value = member.id;
+      option.textContent = member.name;
+
+      memberSelect.appendChild(option);
+
+    });
+
+
+    const container =
+      document.getElementById("inputProducts");
+
+    container.innerHTML = "";
+
+    products.forEach(product => {
+
+      const row =
+        document.createElement("div");
+
+      row.className = "product-row";
+
+      row.innerHTML = `
+        <div class="product-name">
+          ${escapeHtml(product.name)}
+        </div>
+
+        <button
+          class="count-btn"
+          onclick="changeCount('${product.id}', -1)"
+        >
+          −
+        </button>
+
+        <div
+          class="count"
+          id="count-${product.id}"
+        >
+          0
+        </div>
+
+        <button
+          class="count-btn"
+          onclick="changeCount('${product.id}', 1)"
+        >
+          ＋
+        </button>
+      `;
+
+      container.appendChild(row);
+
+    });
+
+  }
+
+
+  /*
+  ============================================================
+  入力カウント
+  ============================================================
+  */
+
+  function changeCount(productId, amount) {
+
+    const element =
+      document.getElementById(`count-${productId}`);
+
+    let count =
+      Number(element.textContent);
+
+    count += amount;
+
+    if (count < 0) {
+      count = 0;
+    }
+
+    element.textContent = count;
+
+  }
+
+
+  /*
+  ============================================================
+  実績登録
+  ============================================================
+  */
+
+  function saveRecord() {
+
+    const memberId =
+      Number(document.getElementById("inputMember").value);
+
+    const date =
+      document.getElementById("inputDate").value;
+
+
+    if (!date) {
+
+      alert("日付を入力してください");
+
+      return;
+
+    }
+
+
+    const results = {};
+
+
+    products.forEach(product => {
+
+      const element =
+        document.getElementById(`count-${product.id}`);
+
+      const count =
+        Number(element.textContent);
+
+      if (count > 0) {
+
+        results[product.id] = count;
+
+      }
+
+    });
+
+
+    const hasResult =
+      Object.keys(results).length > 0;
+
+
+    if (!hasResult) {
+
+      alert("実績を1件以上入力してください");
+
+      return;
+
+    }
+
+
+    records.push({
+
+      id: Date.now(),
+
+      date,
+
+      memberId,
+
+      results
+
+    });
+
+
+    saveData();
+
+    alert("実績を登録しました！");
+
+
+    products.forEach(product => {
+
+      const element =
+        document.getElementById(`count-${product.id}`);
+
+      if (element) {
+
+        element.textContent = "0";
+
+      }
+
+    });
+
+
+    renderAll();
+
+  }
+
+
+  /*
+  ============================================================
+  チーム集計
+  ============================================================
+  */
+
+  function getTeamResults() {
+
+    const totals = {};
+
+    products.forEach(product => {
+
+      totals[product.id] = 0;
+
+    });
+
+
+    records.forEach(record => {
+
+      Object.entries(record.results)
+        .forEach(([productId, count]) => {
+
+          if (totals[productId] === undefined) {
+
+            totals[productId] = 0;
+
+          }
+
+          totals[productId] += Number(count);
+
+        });
+
+    });
+
+
+    return totals;
+
+  }
+
+
+  /*
+  ============================================================
+  チーム表示
+  ============================================================
+  */
+
+  function renderTeam() {
+
+    const container =
+      document.getElementById("teamSummary");
+
+    container.innerHTML = "";
+
+    const totals =
+      getTeamResults();
+
+    let grandTotal = 0;
+
+
+    products.forEach(product => {
+
+      const count =
+        totals[product.id] || 0;
+
+      grandTotal += count;
+
+
+      const box =
+        document.createElement("div");
+
+      box.className = "summary-box";
+
+      box.innerHTML = `
+        <div class="name">
+          ${escapeHtml(product.name)}
+        </div>
+
+        <div class="number">
+          ${count}件
+        </div>
+      `;
+
+      container.appendChild(box);
+
+    });
+
+
+    const totalBox =
+      document.createElement("div");
+
+    totalBox.className = "summary-box";
+
+    totalBox.innerHTML = `
+      <div class="name">
+        全商材合計
+      </div>
+
+      <div class="number">
+        ${grandTotal}件
+      </div>
+    `;
+
+    container.prepend(totalBox);
+
+  }
+
+
+  /*
+  ============================================================
+  個人集計
+  ============================================================
+  */
+
+  function getMemberResults(memberId) {
+
+    const totals = {};
+
+    products.forEach(product => {
+
+      totals[product.id] = 0;
+
+    });
+
+
+    records
+      .filter(record =>
+        record.memberId === memberId
+      )
+      .forEach(record => {
+
+        Object.entries(record.results)
+          .forEach(([productId, count]) => {
+
+            if (totals[productId] === undefined) {
+
+              totals[productId] = 0;
+
+            }
+
+            totals[productId] += Number(count);
+
+          });
+
+      });
+
+
+    return totals;
+
+  }
+
+
+  /*
+  ============================================================
+  個人表示
+  ============================================================
+  */
+
+  function renderPersonal() {
+
+    const container =
+      document.getElementById("personalResults");
+
+    container.innerHTML = "";
+
+
+    if (members.length === 0) {
+
+      container.innerHTML =
+        `<div class="empty">スタッフが登録されていません。</div>`;
+
+      return;
+
+    }
+
+
+    members.forEach(member => {
+
+      const totals =
+        getMemberResults(member.id);
+
+      let total = 0;
+
+
+      products.forEach(product => {
+
+        total +=
+          totals[product.id] || 0;
+
+      });
+
+
+      const card =
+        document.createElement("div");
+
+      card.className = "member-card";
+
+
+      let resultHtml = "";
+
+
+      products.forEach(product => {
+
+        const count =
+          totals[product.id] || 0;
+
+
+        resultHtml += `
+          <div class="result-line">
+
+            <span>
+              ${escapeHtml(product.name)}
+            </span>
+
+            <span class="result-number">
+              ${count}件
+            </span>
+
+          </div>
+        `;
+
+      });
+
+
+      card.innerHTML = `
+
+        <div class="member-header">
+
+          <div class="member-name">
+            ${escapeHtml(member.name)}
+          </div>
+
+          <div class="member-total">
+            合計 ${total}件
+          </div>
+
+        </div>
+
+        ${resultHtml}
+
+      `;
+
+
+      container.appendChild(card);
+
+    });
+
+  }
+
+
+  /*
+  ============================================================
+  履歴
+  ============================================================
+  */
+
+  function renderHistory() {
+
+    const container =
+      document.getElementById("historyList");
+
+    container.innerHTML = "";
+
+
+    if (records.length === 0) {
+
+      container.innerHTML =
+        `<div class="empty">まだ実績がありません。</div>`;
+
+      return;
+
+    }
+
+
+    const sortedRecords =
+      [...records].sort(
+        (a, b) => b.id - a.id
+      );
+
+
+    sortedRecords.forEach(record => {
+
+      const member =
+        members.find(
+          member => member.id === record.memberId
+        );
+
+
+      const memberName =
+        member ? member.name : "不明";
+
+
+      let resultsHtml = "";
+
+
+      Object.entries(record.results)
+        .forEach(([productId, count]) => {
+
+          const product =
+            products.find(
+              product => product.id == productId
+            );
+
+
+          if (product) {
+
+            resultsHtml +=
+              `${escapeHtml(product.name)} ${count}件　`;
+
+          }
+
+        });
+
+
+      const item =
+        document.createElement("div");
+
+      item.className = "history-item";
+
+
+      item.innerHTML = `
+
+        <div class="history-top">
+
+          <span class="history-member">
+            ${escapeHtml(memberName)}
+          </span>
+
+          <span class="history-date">
+            ${record.date}
+          </span>
+
+        </div>
+
+        <div class="history-results">
+          ${resultsHtml}
+        </div>
+
+        <div style="margin-top:8px">
+
+          <button
+            class="danger-btn"
+            onclick="deleteRecord(${record.id})"
+          >
+            削除
+          </button>
+
+        </div>
+
+      `;
+
+
+      container.appendChild(item);
+
+    });
+
+  }
+
+
+  /*
+  ============================================================
+  商材追加
+  ============================================================
+  */
+
+  function addProduct() {
+
+    const input =
+      document.getElementById("newProductName");
+
+    const name =
+      input.value.trim();
+
+
+    if (!name) {
+
+      alert("商材名を入力してください");
+
+      return;
+
+    }
+
+
+    const exists =
+      products.some(
+        product => product.name === name
+      );
+
+
+    if (exists) {
+
+      alert("同じ名前の商材があります");
+
+      return;
+
+    }
+
+
+    products.push({
+
+      id: Date.now(),
+
+      name
+
+    });
+
+
+    input.value = "";
+
+    saveData();
+
+    renderAll();
+
+    alert("商材を追加しました！");
+
+  }
+
+
+  /*
+  ============================================================
+  商材一覧
+  ============================================================
+  */
+
+  function renderProducts() {
+
+    const container =
+      document.getElementById("productList");
+
+    container.innerHTML = "";
+
+
+    products.forEach(product => {
+
+      const row =
+        document.createElement("div");
+
+      row.className =
+        "product-management-row";
+
+
+      row.innerHTML = `
 
         <input
-          id="itemName"
-          type="text"
-          placeholder="例：NURO光"
-          required
+          value="${escapeAttribute(product.name)}"
+          onchange="renameProduct(${product.id}, this.value)"
         >
-      </label>
+
+        <button
+          class="danger-btn"
+          onclick="deleteProduct(${product.id})"
+        >
+          削除
+        </button>
+
+      `;
 
 
-      <label>
-        月間目標
+      container.appendChild(row);
+
+    });
+
+  }
+
+
+  /*
+  ============================================================
+  商材名変更
+  ============================================================
+  */
+
+  function renameProduct(id, newName) {
+
+    newName =
+      newName.trim();
+
+
+    if (!newName) {
+
+      alert("商材名を空にできません");
+
+      renderAll();
+
+      return;
+
+    }
+
+
+    const duplicate =
+      products.some(
+        product =>
+          product.id !== id &&
+          product.name === newName
+      );
+
+
+    if (duplicate) {
+
+      alert("同じ名前の商材があります");
+
+      renderAll();
+
+      return;
+
+    }
+
+
+    const product =
+      products.find(
+        product => product.id === id
+      );
+
+
+    if (product) {
+
+      product.name = newName;
+
+    }
+
+
+    saveData();
+
+    renderAll();
+
+  }
+
+
+  /*
+  ============================================================
+  商材削除
+  ============================================================
+  */
+
+  function deleteProduct(id) {
+
+    const product =
+      products.find(
+        product => product.id === id
+      );
+
+
+    if (!product) return;
+
+
+    if (
+      !confirm(
+        `「${product.name}」を削除しますか？`
+      )
+    ) {
+
+      return;
+
+    }
+
+
+    products =
+      products.filter(
+        product => product.id !== id
+      );
+
+
+    saveData();
+
+    renderAll();
+
+  }
+
+
+  /*
+  ============================================================
+  スタッフ追加
+  ============================================================
+  */
+
+  function addMember() {
+
+    const input =
+      document.getElementById("newMemberName");
+
+    const name =
+      input.value.trim();
+
+
+    if (!name) {
+
+      alert("スタッフ名を入力してください");
+
+      return;
+
+    }
+
+
+    const exists =
+      members.some(
+        member => member.name === name
+      );
+
+
+    if (exists) {
+
+      alert("同じ名前のスタッフがあります");
+
+      return;
+
+    }
+
+
+    members.push({
+
+      id: Date.now(),
+
+      name
+
+    });
+
+
+    input.value = "";
+
+    saveData();
+
+    renderAll();
+
+    alert("スタッフを追加しました！");
+
+  }
+
+
+  /*
+  ============================================================
+  スタッフ一覧
+  ============================================================
+  */
+
+  function renderMembers() {
+
+    const container =
+      document.getElementById("memberList");
+
+    container.innerHTML = "";
+
+
+    members.forEach(member => {
+
+      const row =
+        document.createElement("div");
+
+      row.className =
+        "product-management-row";
+
+
+      row.innerHTML = `
 
         <input
-          id="itemTarget"
-          type="number"
-          min="0"
-          placeholder="例：10"
-          required
+          value="${escapeAttribute(member.name)}"
+          onchange="renameMember(${member.id}, this.value)"
         >
-      </label>
 
-
-      <label>
-        1件あたりの収益
-
-        <input
-          id="itemRevenue"
-          type="number"
-          min="0"
-          placeholder="例：25000"
-          required
+        <button
+          class="danger-btn"
+          onclick="deleteMember(${member.id})"
         >
-      </label>
+          削除
+        </button>
+
+      `;
 
 
-      <button
-        class="primary-button full"
-        type="submit"
-      >
-        追加する
-      </button>
+      container.appendChild(row);
 
-    </form>
+    });
 
-  </div>
-
-</div>
+  }
 
 
-<script src="script.js"></script>
+  /*
+  ============================================================
+  スタッフ名変更
+  ============================================================
+  */
+
+  function renameMember(id, newName) {
+
+    newName =
+      newName.trim();
+
+
+    if (!newName) {
+
+      alert("名前を空にできません");
+
+      renderAll();
+
+      return;
+
+    }
+
+
+    const duplicate =
+      members.some(
+        member =>
+          member.id !== id &&
+          member.name === newName
+      );
+
+
+    if (duplicate) {
+
+      alert("同じ名前のスタッフがあります");
+
+      renderAll();
+
+      return;
+
+    }
+
+
+    const member =
+      members.find(
+        member => member.id === id
+      );
+
+
+    if (member) {
+
+      member.name = newName;
+
+    }
+
+
+    saveData();
+
+    renderAll();
+
+  }
+
+
+  /*
+  ============================================================
+  スタッフ削除
+  ============================================================
+  */
+
+  function deleteMember(id) {
+
+    const member =
+      members.find(
+        member => member.id === id
+      );
+
+
+    if (!member) return;
+
+
+    if (
+      !confirm(
+        `「${member.name}」を削除しますか？`
+      )
+    ) {
+
+      return;
+
+    }
+
+
+    members =
+      members.filter(
+        member => member.id !== id
+      );
+
+
+    saveData();
+
+    renderAll();
+
+  }
+
+
+  /*
+  ============================================================
+  履歴削除
+  ============================================================
+  */
+
+  function deleteRecord(id) {
+
+    if (
+      !confirm("この実績を削除しますか？")
+    ) {
+
+      return;
+
+    }
+
+
+    records =
+      records.filter(
+        record => record.id !== id
+      );
+
+
+    saveData();
+
+    renderAll();
+
+  }
+
+
+  /*
+  ============================================================
+  全データ削除
+  ============================================================
+  */
+
+  function resetAllData() {
+
+    const answer =
+      prompt(
+        "全データを削除します。\n確認のため「削除」と入力してください。"
+      );
+
+
+    if (answer !== "削除") {
+
+      return;
+
+    }
+
+
+    localStorage.removeItem("sales_products");
+    localStorage.removeItem("sales_members");
+    localStorage.removeItem("sales_records");
+
+
+    location.reload();
+
+  }
+
+
+  /*
+  ============================================================
+  全画面更新
+  ============================================================
+  */
+
+  function renderAll() {
+
+    renderInput();
+
+    renderTeam();
+
+    renderPersonal();
+
+    renderHistory();
+
+    renderProducts();
+
+    renderMembers();
+
+  }
+
+
+  /*
+  ============================================================
+  XSS対策
+  ============================================================
+  */
+
+  function escapeHtml(value) {
+
+    return String(value)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+
+  }
+
+
+  function escapeAttribute(value) {
+
+    return escapeHtml(value);
+
+  }
+
+</script>
 
 </body>
 </html>
