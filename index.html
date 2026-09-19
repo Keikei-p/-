@@ -1,1035 +1,802 @@
 <!DOCTYPE html>
 <html lang="ja">
-
 <head>
-
-  <meta charset="UTF-8">
-
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0"
-  >
-
-  <title>営業実績管理</title>
-
-  <style>
-
-    * {
-      box-sizing: border-box;
-    }
-
-    body {
-      margin: 0;
-      font-family:
-        -apple-system,
-        BlinkMacSystemFont,
-        "Segoe UI",
-        sans-serif;
-      background: #f4f6f8;
-      color: #222;
-    }
-
-    button,
-    input,
-    select {
-      font: inherit;
-    }
-
-    button {
-      cursor: pointer;
-    }
-
-    .app {
-      min-height: 100vh;
-    }
-
-    header {
-      background: #111827;
-      color: white;
-      padding: 18px 16px;
-    }
-
-    .header-inner {
-      max-width: 1100px;
-      margin: 0 auto;
-    }
-
-    .title {
-      font-size: 22px;
-      font-weight: 700;
-    }
-
-    .subtitle {
-      margin-top: 4px;
-      font-size: 13px;
-      color: #9ca3af;
-    }
-
-    main {
-      max-width: 1100px;
-      margin: 0 auto;
-      padding: 20px 16px 60px;
-    }
-
-    /* =====================================================
-       ログイン
-    ====================================================== */
-
-    .auth-wrapper {
-      min-height: calc(100vh - 80px);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .auth-card {
-      width: 100%;
-      max-width: 420px;
-      background: white;
-      border-radius: 18px;
-      padding: 28px;
-      box-shadow:
-        0 10px 30px rgba(0,0,0,0.08);
-    }
-
-    .auth-logo {
-      text-align: center;
-      font-size: 42px;
-      margin-bottom: 8px;
-    }
-
-    .auth-title {
-      text-align: center;
-      font-size: 24px;
-      font-weight: 700;
-      margin-bottom: 8px;
-    }
-
-    .auth-description {
-      text-align: center;
-      color: #6b7280;
-      font-size: 14px;
-      margin-bottom: 24px;
-    }
-
-    .form-group {
-      margin-bottom: 16px;
-    }
-
-    .form-group label {
-      display: block;
-      font-size: 13px;
-      font-weight: 600;
-      margin-bottom: 7px;
-    }
-
-    input,
-    select {
-      width: 100%;
-      border: 1px solid #d1d5db;
-      border-radius: 10px;
-      padding: 13px;
-      outline: none;
-      background: white;
-    }
-
-    input:focus,
-    select:focus {
-      border-color: #2563eb;
-    }
-
-    .primary-button {
-      width: 100%;
-      border: none;
-      border-radius: 10px;
-      padding: 14px;
-      background: #2563eb;
-      color: white;
-      font-weight: 700;
-    }
-
-    .primary-button:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-
-    .error-message {
-      display: none;
-      background: #fef2f2;
-      color: #b91c1c;
-      border: 1px solid #fecaca;
-      border-radius: 10px;
-      padding: 12px;
-      margin-bottom: 16px;
-      font-size: 13px;
-      line-height: 1.5;
-    }
-
-    .success-message {
-      display: none;
-      background: #ecfdf5;
-      color: #047857;
-      border: 1px solid #a7f3d0;
-      border-radius: 10px;
-      padding: 12px;
-      margin-bottom: 16px;
-      font-size: 13px;
-      line-height: 1.5;
-    }
-
-    .switch-text {
-      text-align: center;
-      margin-top: 18px;
-      color: #6b7280;
-      font-size: 13px;
-    }
-
-    .link-button {
-      border: none;
-      background: none;
-      color: #2563eb;
-      font-weight: 600;
-    }
-
-    /* =====================================================
-       アプリ
-    ====================================================== */
-
-    #appScreen {
-      display: none;
-    }
-
-    .user-bar {
-      background: white;
-      border-radius: 14px;
-      padding: 15px;
-      margin-bottom: 18px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 10px;
-      box-shadow:
-        0 4px 15px rgba(0,0,0,0.05);
-    }
-
-    .user-info {
-      min-width: 0;
-    }
-
-    .user-name {
-      font-weight: 700;
-    }
-
-    .user-email {
-      font-size: 12px;
-      color: #6b7280;
-      margin-top: 3px;
-      word-break: break-all;
-    }
-
-    .role-badge {
-      display: inline-block;
-      margin-top: 5px;
-      background: #eff6ff;
-      color: #1d4ed8;
-      padding: 4px 8px;
-      border-radius: 999px;
-      font-size: 11px;
-      font-weight: 700;
-    }
-
-    .logout-button {
-      flex-shrink: 0;
-      border: none;
-      background: #f3f4f6;
-      color: #374151;
-      padding: 9px 12px;
-      border-radius: 9px;
-      font-size: 12px;
-      font-weight: 600;
-    }
-
-    /* =====================================================
-       ウェルカム
-    ====================================================== */
-
-    .welcome-card {
-      background:
-        linear-gradient(
-          135deg,
-          #2563eb,
-          #1d4ed8
-        );
-      color: white;
-      border-radius: 18px;
-      padding: 24px;
-      margin-bottom: 18px;
-    }
-
-    .welcome-title {
-      font-size: 22px;
-      font-weight: 700;
-    }
-
-    .welcome-text {
-      margin-top: 8px;
-      font-size: 14px;
-      opacity: 0.9;
-      line-height: 1.6;
-    }
-
-    /* =====================================================
-       共通カード
-    ====================================================== */
-
-    .status-card,
-    .management-card,
-    .record-card,
-    .dashboard-card {
-      background: white;
-      border-radius: 14px;
-      padding: 20px;
-      box-shadow:
-        0 4px 15px rgba(0,0,0,0.05);
-      margin-bottom: 18px;
-    }
-
-    .status-title,
-    .management-title {
-      font-weight: 700;
-      margin-bottom: 10px;
-    }
-
-    .status-text {
-      color: #6b7280;
-      line-height: 1.7;
-      font-size: 14px;
-    }
-
-    .setup-warning {
-      margin-top: 15px;
-      padding: 14px;
-      background: #fff7ed;
-      border: 1px solid #fed7aa;
-      border-radius: 10px;
-      color: #9a3412;
-      font-size: 13px;
-      line-height: 1.6;
-    }
-
-    .management-card {
-      display: none;
-    }
-
-    .management-description {
-      color: #6b7280;
-      font-size: 13px;
-      margin-bottom: 16px;
-      line-height: 1.6;
-    }
-
-    /* =====================================================
-       実績入力
-    ====================================================== */
-
-    .record-card {
-      display: none;
-    }
-
-    .record-title {
-      font-size: 18px;
-      font-weight: 700;
-      margin-bottom: 6px;
-    }
-
-    .record-description {
-      color: #6b7280;
-      font-size: 13px;
-      line-height: 1.6;
-      margin-bottom: 20px;
-    }
-
-    .record-grid {
-      display: grid;
-      grid-template-columns:
-        repeat(2, 1fr);
-      gap: 14px;
-    }
-
-    .product-input-list {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      margin-top: 10px;
-    }
-
-    .product-input-row {
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
-      padding: 13px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 15px;
-      background: #fff;
-    }
-
-    .product-input-info {
-      min-width: 0;
-      flex: 1;
-    }
-
-    .product-input-name {
-      font-weight: 700;
-      font-size: 14px;
-    }
-
-    .product-input-unit {
-      margin-top: 4px;
-      font-size: 11px;
-      color: #6b7280;
-    }
-
-    .product-input-control {
-      width: 110px;
-      flex-shrink: 0;
-    }
-
-    .product-input-control input {
-      text-align: center;
-      font-weight: 700;
-      padding: 10px;
-    }
-
-    .record-total {
-      margin-top: 18px;
-      padding: 17px;
-      border-radius: 12px;
-      background: #eff6ff;
-      border: 1px solid #bfdbfe;
-    }
-
-    .record-total-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 15px;
-    }
-
-    .record-total-label {
-      color: #1d4ed8;
-      font-size: 12px;
-      font-weight: 700;
-    }
-
-    .record-total-value {
-      font-size: 24px;
-      font-weight: 800;
-      color: #1e40af;
-      margin-top: 4px;
-    }
-
-    .record-save-button {
-      width: 100%;
-      border: none;
-      border-radius: 10px;
-      padding: 14px;
-      margin-top: 18px;
-      background: #16a34a;
-      color: white;
-      font-weight: 700;
-    }
-
-    .record-save-button:disabled {
-      opacity: 0.6;
-    }
-
-    .record-clear-button {
-      width: 100%;
-      border: none;
-      border-radius: 10px;
-      padding: 12px;
-      margin-top: 8px;
-      background: #f3f4f6;
-      color: #374151;
-      font-weight: 700;
-    }
-
-    /* =====================================================
-       ダッシュボード
-    ====================================================== */
-
-    .dashboard-card {
-      display: none;
-    }
-
-    .dashboard-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 18px;
-    }
-
-    .dashboard-title {
-      font-size: 18px;
-      font-weight: 700;
-    }
-
-    .month-selector {
-      width: 180px;
-    }
-
-    .summary-grid {
-      display: grid;
-      grid-template-columns:
-        repeat(3, 1fr);
-      gap: 12px;
-      margin-bottom: 20px;
-    }
-
-    .summary-item {
-      background: #f9fafb;
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
-      padding: 15px;
-    }
-
-    .summary-label {
-      font-size: 12px;
-      color: #6b7280;
-    }
-
-    .summary-value {
-      font-size: 22px;
-      font-weight: 800;
-      margin-top: 5px;
-    }
-
-    .summary-value.revenue {
-      color: #16a34a;
-    }
-
-    .section-title {
-      font-size: 15px;
-      font-weight: 700;
-      margin-bottom: 12px;
-      margin-top: 22px;
-    }
-
-    .ranking-list,
-    .product-summary-list,
-    .daily-summary-list {
-      display: flex;
-      flex-direction: column;
-      gap: 9px;
-    }
-
-    .ranking-row,
-    .summary-row {
-      border: 1px solid #e5e7eb;
-      border-radius: 10px;
-      padding: 12px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .ranking-left {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      min-width: 0;
-    }
-
-    .ranking-number {
-      width: 28px;
-      height: 28px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: #f3f4f6;
-      font-weight: 800;
-      font-size: 12px;
-      flex-shrink: 0;
-    }
-
-    .ranking-number.top1 {
-      background: #fef3c7;
-      color: #92400e;
-    }
-
-    .ranking-number.top2 {
-      background: #e5e7eb;
-      color: #374151;
-    }
-
-    .ranking-number.top3 {
-      background: #fed7aa;
-      color: #9a3412;
-    }
-
-    .ranking-name {
-      font-weight: 700;
-      font-size: 13px;
-    }
-
-    .ranking-sub {
-      color: #6b7280;
-      font-size: 11px;
-      margin-top: 3px;
-    }
-
-    .ranking-value {
-      text-align: right;
-      white-space: nowrap;
-    }
-
-    .ranking-count {
-      font-weight: 800;
-      color: #2563eb;
-    }
-
-    .ranking-revenue {
-      color: #16a34a;
-      font-size: 12px;
-      font-weight: 700;
-      margin-top: 3px;
-    }
-
-    .summary-row-name {
-      font-weight: 600;
-      font-size: 13px;
-    }
-
-    .summary-row-value {
-      font-weight: 700;
-      color: #16a34a;
-      white-space: nowrap;
-    }
-
-    /* =====================================================
-       実績履歴
-    ====================================================== */
-
-    .history-item {
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
-      padding: 14px;
-      margin-bottom: 9px;
-    }
-
-    .history-top {
-      display: flex;
-      justify-content: space-between;
-      gap: 10px;
-    }
-
-    .history-date {
-      font-weight: 700;
-    }
-
-    .history-member {
-      color: #374151;
-      font-size: 12px;
-      margin-top: 4px;
-      font-weight: 600;
-    }
-
-    .history-product {
-      color: #6b7280;
-      font-size: 12px;
-      margin-top: 6px;
-      line-height: 1.5;
-    }
-
-    .history-count {
-      font-weight: 800;
-      color: #2563eb;
-      white-space: nowrap;
-    }
-
-    .history-revenue {
-      color: #16a34a;
-      font-weight: 700;
-      margin-top: 7px;
-    }
-
-    .history-actions {
-      margin-top: 10px;
-      display: flex;
-      gap: 7px;
-    }
-
-    .history-delete {
-      border: none;
-      border-radius: 8px;
-      padding: 7px 10px;
-      background: #fef2f2;
-      color: #b91c1c;
-      font-size: 11px;
-      font-weight: 700;
-    }
-
-    /* =====================================================
-       班追加
-    ====================================================== */
-
-    .team-add-area {
-      display: flex;
-      gap: 10px;
-      margin-bottom: 18px;
-    }
-
-    .team-add-area input {
-      flex: 1;
-    }
-
-    .team-add-button {
-      flex-shrink: 0;
-      border: none;
-      border-radius: 10px;
-      padding: 0 18px;
-      background: #2563eb;
-      color: white;
-      font-weight: 700;
-    }
-
-    .team-list,
-    .product-list,
-    .member-list {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-
-    .team-item,
-    .product-item,
-    .member-item {
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
-      padding: 14px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .team-info,
-    .product-info,
-    .member-info {
-      min-width: 0;
-    }
-
-    .team-name,
-    .product-name,
-    .member-name {
-      font-weight: 700;
-      font-size: 15px;
-    }
-
-    .team-member-count {
-      color: #6b7280;
-      font-size: 12px;
-      margin-top: 4px;
-    }
-
-    .team-actions,
-    .product-actions,
-    .member-actions {
-      display: flex;
-      gap: 7px;
-      flex-shrink: 0;
-    }
-
-    .edit-team-button,
-    .delete-team-button,
-    .edit-product-button,
-    .delete-product-button,
-    .role-change-button,
-    .team-change-button {
-      border: none;
-      border-radius: 9px;
-      padding: 9px 11px;
-      font-size: 12px;
-      font-weight: 700;
-    }
-
-    .edit-team-button,
-    .edit-product-button {
-      background: #eff6ff;
-      color: #1d4ed8;
-    }
-
-    .delete-team-button,
-    .delete-product-button {
-      background: #fef2f2;
-      color: #b91c1c;
-    }
-
-    /* =====================================================
-       商材管理
-    ====================================================== */
-
-    .product-add-area {
-      display: grid;
-      grid-template-columns:
-        1fr 180px auto;
-      gap: 10px;
-      margin-bottom: 18px;
-    }
-
-    .product-add-button {
-      border: none;
-      border-radius: 10px;
-      padding: 0 18px;
-      background: #16a34a;
-      color: white;
-      font-weight: 700;
-      white-space: nowrap;
-    }
-
-    .product-revenue {
-      margin-top: 5px;
-      font-size: 13px;
-      color: #16a34a;
-      font-weight: 700;
-    }
-
-    /* =====================================================
-       メンバー
-    ====================================================== */
-
-    .member-email {
-      color: #6b7280;
-      font-size: 12px;
-      margin-top: 4px;
-      word-break: break-all;
-    }
-
-    .member-role,
-    .member-team {
-      display: inline-block;
-      margin-top: 7px;
-      padding: 4px 8px;
-      border-radius: 999px;
-      font-size: 11px;
-      font-weight: 700;
-    }
-
-    .member-role {
-      background: #f3f4f6;
-      color: #374151;
-    }
-
-    .member-role.leader {
-      background: #fef3c7;
-      color: #92400e;
-    }
-
-    .member-team {
-      margin-left: 4px;
-      background: #eff6ff;
-      color: #1d4ed8;
-    }
-
-    .role-change-button {
-      background: #2563eb;
-      color: white;
-    }
-
-    .role-change-button.demote {
-      background: #f3f4f6;
-      color: #374151;
-    }
-
-    .team-change-button {
-      background: #111827;
-      color: white;
-    }
-
-    /* =====================================================
-       モーダル
-    ====================================================== */
-
-    .modal-overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.45);
-      z-index: 999;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-    }
-
-    .modal {
-      width: 100%;
-      max-width: 420px;
-      background: white;
-      border-radius: 18px;
-      padding: 24px;
-      box-shadow:
-        0 20px 50px rgba(0,0,0,0.2);
-    }
-
-    .modal-title {
-      font-size: 19px;
-      font-weight: 700;
-      margin-bottom: 18px;
-    }
-
-    .modal-buttons {
-      display: flex;
-      gap: 10px;
-      margin-top: 18px;
-    }
-
-    .modal-cancel,
-    .modal-confirm {
-      flex: 1;
-      border: none;
-      border-radius: 10px;
-      padding: 12px;
-      font-weight: 700;
-    }
-
-    .modal-cancel {
-      background: #f3f4f6;
-      color: #374151;
-    }
-
-    .modal-confirm {
-      background: #2563eb;
-      color: white;
-    }
-
-    /* =====================================================
-       共通
-    ====================================================== */
-
-    .empty-message,
-    .loading-message {
-      text-align: center;
-      color: #6b7280;
-      padding: 20px 10px;
-      font-size: 13px;
-    }
-
-    .divider {
-      height: 1px;
-      background: #e5e7eb;
-      margin: 20px 0;
-    }
-
-    /* =====================================================
-       スマホ
-    ====================================================== */
-
-    @media (max-width: 700px) {
-
-      .auth-card {
-        padding: 22px;
-      }
-
-      .user-bar {
-        align-items: flex-start;
-      }
-
-      .record-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .record-total-grid {
-        grid-template-columns: 1fr 1fr;
-      }
-
-      .summary-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .dashboard-header {
-        align-items: stretch;
-        flex-direction: column;
-      }
-
-      .month-selector {
-        width: 100%;
-      }
-
-      .product-add-area {
-        grid-template-columns: 1fr;
-      }
-
-      .product-add-button {
-        padding: 13px;
-      }
-
-      .product-item,
-      .member-item,
-      .team-item {
-        align-items: flex-start;
-      }
-
-      .product-actions,
-      .member-actions,
-      .team-actions {
-        flex-direction: column;
-      }
-
-      .role-change-button,
-      .team-change-button {
-        width: 110px;
-      }
-
-      .team-add-area {
-        flex-direction: column;
-      }
-
-      .team-add-button {
-        padding: 13px;
-      }
-
-      .product-input-row {
-        padding: 11px;
-      }
-
-      .product-input-control {
-        width: 90px;
-      }
-
-    }
-
-  </style>
-
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>営業実績管理</title>
+
+<style>
+/* =====================================================
+   基本
+===================================================== */
+
+:root {
+  --bg: #f5f7fb;
+  --card: #ffffff;
+  --text: #111827;
+  --sub: #6b7280;
+  --border: #e5e7eb;
+  --primary: #2563eb;
+  --primary-dark: #1d4ed8;
+  --success: #16a34a;
+  --danger: #dc2626;
+  --warning: #d97706;
+  --shadow: 0 10px 30px rgba(0,0,0,.06);
+  --radius: 16px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    "Noto Sans JP",
+    sans-serif;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.app {
+  min-height: 100vh;
+}
+
+/* =====================================================
+   ヘッダー
+===================================================== */
+
+header {
+  background: #111827;
+  color: #fff;
+  padding: 22px 20px;
+}
+
+.header-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.title {
+  font-size: 25px;
+  font-weight: 800;
+}
+
+.subtitle {
+  margin-top: 4px;
+  font-size: 12px;
+  opacity: .65;
+}
+
+/* =====================================================
+   認証
+===================================================== */
+
+#authScreen {
+  min-height: calc(100vh - 90px);
+}
+
+.auth-wrapper {
+  min-height: calc(100vh - 90px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 30px 20px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 430px;
+  background: #fff;
+  padding: 35px;
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+}
+
+.auth-logo {
+  text-align: center;
+  font-size: 48px;
+}
+
+.auth-title {
+  margin-top: 12px;
+  text-align: center;
+  font-size: 26px;
+  font-weight: 800;
+}
+
+.auth-description {
+  margin-top: 7px;
+  text-align: center;
+  color: var(--sub);
+  font-size: 14px;
+}
+
+.form-group {
+  margin-top: 18px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 7px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.form-group input,
+.form-group select {
+  width: 100%;
+  padding: 13px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  outline: none;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(37,99,235,.1);
+}
+
+.primary-button {
+  width: 100%;
+  margin-top: 22px;
+  padding: 14px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--primary);
+  color: #fff;
+  font-weight: 700;
+}
+
+.primary-button:hover {
+  background: var(--primary-dark);
+}
+
+.switch-text {
+  margin-top: 18px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--sub);
+}
+
+.link-button {
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.error-message,
+.success-message {
+  display: none;
+  margin-top: 16px;
+  padding: 12px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.error-message {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.success-message {
+  background: #f0fdf4;
+  color: #15803d;
+}
+
+/* =====================================================
+   アプリ
+===================================================== */
+
+#appScreen {
+  display: none;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.user-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 15px 18px;
+  box-shadow: var(--shadow);
+}
+
+.user-name {
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.user-email {
+  margin-top: 3px;
+  color: var(--sub);
+  font-size: 12px;
+}
+
+.role-badge {
+  display: inline-block;
+  margin-top: 7px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.logout-button {
+  border: 1px solid var(--border);
+  background: #fff;
+  color: #374151;
+  padding: 9px 14px;
+  border-radius: 9px;
+  font-size: 13px;
+}
+
+.logout-button:hover {
+  background: #f9fafb;
+}
+
+/* =====================================================
+   カード
+===================================================== */
+
+.welcome-card,
+.status-card,
+.account-card,
+.record-card,
+.dashboard-card,
+.management-card {
+  margin-top: 18px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px;
+  box-shadow: var(--shadow);
+}
+
+.welcome-title {
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.welcome-text,
+.account-description,
+.record-description {
+  margin-top: 6px;
+  color: var(--sub);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.account-title,
+.record-title,
+.status-title,
+.dashboard-title,
+.management-title {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.account-save-button,
+.record-save-button,
+.record-clear-button,
+.management-add-button {
+  margin-top: 15px;
+  border: 0;
+  border-radius: 9px;
+  padding: 11px 16px;
+  font-weight: 700;
+}
+
+.account-save-button,
+.record-save-button,
+.management-add-button {
+  background: var(--primary);
+  color: #fff;
+}
+
+.record-clear-button {
+  margin-left: 7px;
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.status-text {
+  margin-top: 10px;
+  color: var(--sub);
+  line-height: 1.9;
+  font-size: 13px;
+}
+
+.setup-warning {
+  margin-top: 15px;
+  padding: 13px;
+  background: #fff7ed;
+  color: #9a3412;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+/* =====================================================
+   セクション
+===================================================== */
+
+.section-title {
+  margin-top: 22px;
+  font-weight: 800;
+  font-size: 15px;
+}
+
+.record-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+}
+
+.product-input-list {
+  margin-top: 12px;
+}
+
+.product-input-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+  padding: 13px;
+  border-bottom: 1px solid var(--border);
+}
+
+.product-input-row:last-child {
+  border-bottom: 0;
+}
+
+.product-input-name {
+  font-weight: 700;
+}
+
+.product-input-unit {
+  margin-top: 3px;
+  color: var(--sub);
+  font-size: 12px;
+}
+
+.product-input-control input {
+  width: 100px;
+  padding: 9px;
+  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.record-total {
+  margin-top: 18px;
+  padding: 18px;
+  background: #f8fafc;
+  border-radius: 12px;
+}
+
+.record-total-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+}
+
+.record-total-label {
+  color: var(--sub);
+  font-size: 12px;
+}
+
+.record-total-value {
+  margin-top: 4px;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+/* =====================================================
+   ダッシュボード
+===================================================== */
+
+.dashboard-select {
+  margin-top: 15px;
+  max-width: 250px;
+}
+
+.dashboard-select select {
+  width: 100%;
+  padding: 11px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+
+.dashboard-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.summary-card {
+  padding: 18px;
+  background: #f8fafc;
+  border-radius: 12px;
+}
+
+.summary-label {
+  color: var(--sub);
+  font-size: 12px;
+}
+
+.summary-value {
+  margin-top: 5px;
+  font-size: 23px;
+  font-weight: 800;
+}
+
+.dashboard-section {
+  margin-top: 25px;
+}
+
+.dashboard-section-title {
+  font-size: 15px;
+  font-weight: 800;
+  margin-bottom: 10px;
+}
+
+.ranking-row,
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+  padding: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ranking-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ranking-number {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: #f3f4f6;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ranking-number.top1 {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.ranking-number.top2 {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.ranking-number.top3 {
+  background: #fed7aa;
+  color: #9a3412;
+}
+
+.ranking-name {
+  font-weight: 700;
+}
+
+.ranking-sub {
+  margin-top: 2px;
+  color: var(--sub);
+  font-size: 11px;
+}
+
+.ranking-value {
+  text-align: right;
+}
+
+.ranking-count {
+  font-weight: 800;
+}
+
+.ranking-revenue {
+  margin-top: 3px;
+  color: var(--sub);
+  font-size: 12px;
+}
+
+.summary-row-name {
+  font-weight: 700;
+}
+
+.summary-row-value {
+  font-weight: 800;
+}
+
+.history-item {
+  padding: 15px;
+  border-bottom: 1px solid var(--border);
+}
+
+.history-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 15px;
+}
+
+.history-date {
+  font-size: 12px;
+  color: var(--sub);
+}
+
+.history-member {
+  margin-top: 4px;
+  font-weight: 800;
+}
+
+.history-product {
+  margin-top: 5px;
+  color: var(--sub);
+  font-size: 12px;
+}
+
+.history-count {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.history-revenue {
+  margin-top: 8px;
+  font-weight: 700;
+}
+
+.history-actions {
+  display: flex;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.edit-product-button,
+.history-delete,
+.member-action-button,
+.team-action-button {
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 11px;
+  font-size: 12px;
+}
+
+.edit-product-button,
+.member-action-button,
+.team-action-button {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.history-delete {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+/* =====================================================
+   管理
+===================================================== */
+
+.management-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+
+.management-input-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.management-input-row input {
+  min-width: 0;
+  flex: 1;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.management-input-row button {
+  border: 0;
+  background: var(--primary);
+  color: #fff;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-weight: 700;
+}
+
+.team-list,
+.product-list,
+.member-list {
+  margin-top: 15px;
+}
+
+.team-item,
+.product-item,
+.member-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.team-name,
+.product-name,
+.member-name {
+  font-weight: 800;
+}
+
+.team-count,
+.product-revenue,
+.member-email,
+.member-role,
+.member-team {
+  margin-top: 3px;
+  color: var(--sub);
+  font-size: 11px;
+}
+
+.team-actions,
+.product-actions,
+.member-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.empty-message {
+  padding: 20px;
+  color: var(--sub);
+  text-align: center;
+  font-size: 13px;
+}
+
+/* =====================================================
+   モーダル
+===================================================== */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  background: rgba(0,0,0,.45);
+  z-index: 1000;
+}
+
+.modal {
+  width: 100%;
+  max-width: 450px;
+  background: #fff;
+  border-radius: 16px;
+  padding: 22px;
+}
+
+.modal-title {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.modal-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.modal-cancel,
+.modal-confirm {
+  border: 0;
+  padding: 10px 15px;
+  border-radius: 8px;
+  font-weight: 700;
+}
+
+.modal-cancel {
+  background: #f3f4f6;
+}
+
+.modal-confirm {
+  background: var(--primary);
+  color: #fff;
+}
+
+/* =====================================================
+   レスポンシブ
+===================================================== */
+
+@media (max-width: 700px) {
+
+  #appScreen {
+    padding: 12px;
+  }
+
+  .auth-card {
+    padding: 25px 20px;
+  }
+
+  .record-grid,
+  .dashboard-summary,
+  .management-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .user-bar {
+    align-items: flex-start;
+  }
+
+  .product-input-row,
+  .team-item,
+  .product-item,
+  .member-item {
+    align-items: flex-start;
+  }
+
+  .team-actions,
+  .product-actions,
+  .member-actions {
+    flex-direction: column;
+  }
+
+  .record-clear-button {
+    margin-left: 0;
+  }
+}
+</style>
 </head>
-
 
 <body>
 
 <div class="app">
 
 <header>
-
   <div class="header-inner">
-
-    <div class="title">
-      営業実績管理
-    </div>
-
-    <div class="subtitle">
-      Sales Management System
-    </div>
-
+    <div class="title">営業実績管理</div>
+    <div class="subtitle">Sales Management System</div>
   </div>
-
 </header>
-
 
 <!-- =====================================================
      ログイン
-====================================================== -->
+===================================================== -->
 
 <main id="authScreen">
 
@@ -1037,14 +804,9 @@
 
     <div class="auth-card">
 
-      <div class="auth-logo">
-        📊
-      </div>
+      <div class="auth-logo">📊</div>
 
-      <div
-        class="auth-title"
-        id="authTitle"
-      >
+      <div class="auth-title" id="authTitle">
         ログイン
       </div>
 
@@ -1052,21 +814,15 @@
         営業実績管理システム
       </div>
 
-      <div
-        id="errorMessage"
-        class="error-message"
-      ></div>
+      <div id="errorMessage"
+           class="error-message"></div>
 
-      <div
-        id="successMessage"
-        class="success-message"
-      ></div>
+      <div id="successMessage"
+           class="success-message"></div>
 
-      <div
-        class="form-group"
-        id="nameGroup"
-        style="display:none;"
-      >
+      <div class="form-group"
+           id="nameGroup"
+           style="display:none;">
 
         <label for="name">
           名前
@@ -1075,6 +831,7 @@
         <input
           id="name"
           type="text"
+          maxlength="30"
           placeholder="例：山田太郎"
         >
 
@@ -1110,8 +867,7 @@
 
       <button
         id="authButton"
-        class="primary-button"
-      >
+        class="primary-button">
         ログイン
       </button>
 
@@ -1123,8 +879,7 @@
 
         <button
           id="switchButton"
-          class="link-button"
-        >
+          class="link-button">
           新規登録
         </button>
 
@@ -1139,9 +894,11 @@
 
 <!-- =====================================================
      アプリ
-====================================================== -->
+===================================================== -->
 
 <main id="appScreen">
+
+  <!-- ユーザー情報 -->
 
   <div class="user-bar">
 
@@ -1149,22 +906,19 @@
 
       <div
         id="userName"
-        class="user-name"
-      >
+        class="user-name">
         -
       </div>
 
       <div
         id="userEmail"
-        class="user-email"
-      >
+        class="user-email">
         -
       </div>
 
       <div
         id="userRole"
-        class="role-badge"
-      >
+        class="role-badge">
         メンバー
       </div>
 
@@ -1172,13 +926,14 @@
 
     <button
       id="logoutButton"
-      class="logout-button"
-    >
+      class="logout-button">
       ログアウト
     </button>
 
   </div>
 
+
+  <!-- ようこそ -->
 
   <div class="welcome-card">
 
@@ -1191,47 +946,52 @@
     </div>
 
   </div>
-<!-- =====================================================
-     アカウント設定
-====================================================== -->
 
-<div
-  id="accountSettings"
-  class="account-card"
->
 
-  <div class="account-title">
-    👤 アカウント設定
+  <!-- =====================================================
+       アカウント設定
+  ===================================================== -->
+
+  <div
+    id="accountSettings"
+    class="account-card">
+
+    <div class="account-title">
+      👤 アカウント設定
+    </div>
+
+    <div class="account-description">
+      自分の名前を変更できます。
+      変更した名前は、メンバー一覧・実績入力・ランキング・登録履歴などに反映されます。
+    </div>
+
+    <div class="form-group">
+
+      <label for="accountNameInput">
+        名前
+      </label>
+
+      <input
+        id="accountNameInput"
+        type="text"
+        maxlength="30"
+        placeholder="例：山田太郎"
+      >
+
+    </div>
+
+    <button
+      id="saveAccountNameButton"
+      class="account-save-button">
+      名前を保存
+    </button>
+
   </div>
 
-  <div class="account-description">
-    自分の名前を変更できます。
-    変更した名前は、メンバー一覧・実績入力・ランキング・登録履歴などに反映されます。
-  </div>
 
-  <div class="form-group">
-
-    <label for="accountNameInput">
-      名前
-    </label>
-
-    <input
-      id="accountNameInput"
-      type="text"
-      maxlength="30"
-      placeholder="例：山田太郎"
-    >
-
-  </div>
-
-  <button
-    id="saveAccountNameButton"
-    class="account-save-button"
-  >
-    名前を保存
-  </button>
-
-</div>
+  <!-- =====================================================
+       状態
+  ===================================================== -->
 
   <div class="status-card">
 
@@ -1265,8 +1025,7 @@
     <div
       id="setupWarning"
       class="setup-warning"
-      style="display:none;"
-    >
+      style="display:none;">
 
       現在、このアカウントは
       <strong>メンバー</strong>
@@ -1284,12 +1043,11 @@
 
   <!-- =====================================================
        実績入力
-  ====================================================== -->
+  ===================================================== -->
 
   <div
     id="recordManagement"
-    class="record-card"
-  >
+    class="record-card">
 
     <div class="record-title">
       📊 実績入力
@@ -1315,7 +1073,6 @@
 
       </div>
 
-
       <div class="form-group">
 
         <label for="recordMember">
@@ -1334,16 +1091,14 @@
 
     </div>
 
-
     <div class="section-title">
       商材別実績
     </div>
 
     <div
       id="productInputList"
-      class="product-input-list"
-    ></div>
-
+      class="product-input-list">
+    </div>
 
     <div class="record-total">
 
@@ -1357,13 +1112,11 @@
 
           <div
             id="recordTotalCount"
-            class="record-total-value"
-          >
+            class="record-total-value">
             0件
           </div>
 
         </div>
-
 
         <div>
 
@@ -1373,8 +1126,7 @@
 
           <div
             id="recordTotalRevenue"
-            class="record-total-value"
-          >
+            class="record-total-value">
             ¥0
           </div>
 
@@ -1384,19 +1136,15 @@
 
     </div>
 
-
     <button
       id="saveRecordButton"
-      class="record-save-button"
-    >
+      class="record-save-button">
       実績を一括登録
     </button>
 
-
     <button
       id="clearRecordButton"
-      class="record-clear-button"
-    >
+      class="record-clear-button">
       入力をクリア
     </button>
 
@@ -1404,63 +1152,55 @@
 
 
   <!-- =====================================================
-       月間ダッシュボード
-  ====================================================== -->
+       ダッシュボード
+  ===================================================== -->
 
   <div
     id="dashboard"
-    class="dashboard-card"
-  >
+    class="dashboard-card">
 
-    <div class="dashboard-header">
+    <div class="dashboard-title">
+      📈 月間ダッシュボード
+    </div>
 
-      <div class="dashboard-title">
-        📈 月間実績
-      </div>
+    <div class="dashboard-select">
 
-      <select
-        id="dashboardMonth"
-        class="month-selector"
-      ></select>
+      <select id="dashboardMonth">
+      </select>
 
     </div>
 
+    <div class="dashboard-summary">
 
-    <div class="summary-grid">
-
-      <div class="summary-item">
+      <div class="summary-card">
 
         <div class="summary-label">
-          獲得件数
+          月間獲得
         </div>
 
         <div
           id="monthlyCount"
-          class="summary-value"
-        >
+          class="summary-value">
           0件
         </div>
 
       </div>
 
-
-      <div class="summary-item">
+      <div class="summary-card">
 
         <div class="summary-label">
-          売上
+          月間売上
         </div>
 
         <div
           id="monthlyRevenue"
-          class="summary-value revenue"
-        >
+          class="summary-value">
           ¥0
         </div>
 
       </div>
 
-
-      <div class="summary-item">
+      <div class="summary-card">
 
         <div class="summary-label">
           稼働日数
@@ -1468,8 +1208,7 @@
 
         <div
           id="monthlyWorkDays"
-          class="summary-value"
-        >
+          class="summary-value">
           0日
         </div>
 
@@ -1478,223 +1217,181 @@
     </div>
 
 
-    <!-- =====================================================
-         個人ランキング
-    ====================================================== -->
+    <div class="dashboard-section">
 
-    <div class="section-title">
-      🏆 個人ランキング
+      <div class="dashboard-section-title">
+        🏆 個人ランキング
+      </div>
+
+      <div id="individualRankingList">
+      </div>
+
     </div>
 
-    <div
-      id="individualRankingList"
-      class="ranking-list"
-    ></div>
 
+    <div class="dashboard-section">
 
-    <!-- =====================================================
-         班ランキング
-    ====================================================== -->
+      <div class="dashboard-section-title">
+        👥 班ランキング
+      </div>
 
-    <div class="section-title">
-      🏢 班別ランキング
+      <div id="teamRankingList">
+      </div>
+
     </div>
 
-    <div
-      id="teamRankingList"
-      class="ranking-list"
-    ></div>
 
+    <div class="dashboard-section">
 
-    <!-- =====================================================
-         商材別
-    ====================================================== -->
+      <div class="dashboard-section-title">
+        📦 商材別
+      </div>
 
-    <div class="section-title">
-      🛍️ 商材別
+      <div id="productSummaryList">
+      </div>
+
     </div>
 
-    <div
-      id="productSummaryList"
-      class="product-summary-list"
-    ></div>
 
+    <div class="dashboard-section">
 
-    <!-- =====================================================
-         日別
-    ====================================================== -->
+      <div class="dashboard-section-title">
+        📅 日別
+      </div>
 
-    <div class="section-title">
-      📅 日別実績
+      <div id="dailySummaryList">
+      </div>
+
     </div>
 
-    <div
-      id="dailySummaryList"
-      class="daily-summary-list"
-    ></div>
 
+    <div class="dashboard-section">
 
-    <!-- =====================================================
-         履歴
-    ====================================================== -->
+      <div class="dashboard-section-title">
+        📝 登録履歴
+      </div>
 
-    <div class="section-title">
-      📋 登録履歴
+      <div id="recordHistoryList">
+      </div>
+
     </div>
-
-    <div
-      id="recordHistoryList"
-    ></div>
 
   </div>
 
 
   <!-- =====================================================
-       班管理
-  ====================================================== -->
+       管理
+  ===================================================== -->
 
   <div
     id="teamManagement"
     class="management-card"
-  >
+    style="display:none;">
 
     <div class="management-title">
-      🏢 班管理
+      👥 班管理
     </div>
 
-    <div class="management-description">
-      営業チームを作成・編集できます。
-    </div>
-
-    <div class="team-add-area">
+    <div class="management-input-row">
 
       <input
         id="teamNameInput"
         type="text"
-        placeholder="例：1班"
-      >
+        placeholder="班名">
 
-      <button
-        id="addTeamButton"
-        class="team-add-button"
-      >
-        ＋ 班を追加
+      <button id="addTeamButton">
+        追加
       </button>
 
     </div>
 
     <div
       id="teamList"
-      class="team-list"
-    ></div>
+      class="team-list">
+    </div>
 
   </div>
 
 
-  <!-- =====================================================
-       商材管理
-  ====================================================== -->
-
   <div
     id="productManagement"
     class="management-card"
-  >
+    style="display:none;">
 
     <div class="management-title">
-      🛍️ 商材管理
+      📦 商材管理
     </div>
 
-    <div class="management-description">
-      商材名と1件あたりの収益を設定できます。
-    </div>
-
-    <div class="product-add-area">
+    <div class="management-input-row">
 
       <input
         id="productNameInput"
         type="text"
-        placeholder="商材名 例：NURO光"
-      >
+        placeholder="商材名">
 
       <input
         id="productRevenueInput"
         type="number"
         min="0"
-        step="1"
-        placeholder="1件あたり収益"
-      >
+        placeholder="単価">
 
-      <button
-        id="addProductButton"
-        class="product-add-button"
-      >
-        ＋ 商材を追加
+      <button id="addProductButton">
+        追加
       </button>
 
     </div>
 
     <div
       id="productList"
-      class="product-list"
-    ></div>
+      class="product-list">
+    </div>
 
   </div>
 
 
-  <!-- =====================================================
-       メンバー管理
-  ====================================================== -->
-
   <div
     id="memberManagement"
     class="management-card"
-  >
+    style="display:none;">
 
     <div class="management-title">
-      👑 メンバー管理
-    </div>
-
-    <div class="management-description">
-      メンバーの権限と所属班を変更できます。
+      👤 メンバー管理
     </div>
 
     <div
       id="memberList"
-      class="member-list"
-    ></div>
+      class="member-list">
+    </div>
 
   </div>
 
 </main>
 
-</div>
-
 
 <!-- =====================================================
-     班名編集
-====================================================== -->
+     班編集モーダル
+===================================================== -->
 
 <div
   id="teamModal"
-  class="modal-overlay"
->
+  class="modal-overlay">
 
   <div class="modal">
 
     <div class="modal-title">
-      班名を変更
+      班を編集
     </div>
 
     <div class="form-group">
 
-      <label>
+      <label for="editTeamName">
         班名
       </label>
 
       <input
         id="editTeamName"
         type="text"
-      >
+        maxlength="30">
 
     </div>
 
@@ -1702,15 +1399,13 @@
 
       <button
         id="cancelTeamModal"
-        class="modal-cancel"
-      >
+        class="modal-cancel">
         キャンセル
       </button>
 
       <button
         id="saveTeamModal"
-        class="modal-confirm"
-      >
+        class="modal-confirm">
         保存
       </button>
 
@@ -1722,13 +1417,12 @@
 
 
 <!-- =====================================================
-     商材編集
-====================================================== -->
+     商材編集モーダル
+===================================================== -->
 
 <div
   id="productModal"
-  class="modal-overlay"
->
+  class="modal-overlay">
 
   <div class="modal">
 
@@ -1738,28 +1432,27 @@
 
     <div class="form-group">
 
-      <label>
+      <label for="editProductName">
         商材名
       </label>
 
       <input
         id="editProductName"
         type="text"
-      >
+        maxlength="50">
 
     </div>
 
     <div class="form-group">
 
-      <label>
-        1件あたり収益
+      <label for="editProductRevenue">
+        1件あたり売上
       </label>
 
       <input
         id="editProductRevenue"
         type="number"
-        min="0"
-      >
+        min="0">
 
     </div>
 
@@ -1767,15 +1460,13 @@
 
       <button
         id="cancelProductModal"
-        class="modal-cancel"
-      >
+        class="modal-cancel">
         キャンセル
       </button>
 
       <button
         id="saveProductModal"
-        class="modal-confirm"
-      >
+        class="modal-confirm">
         保存
       </button>
 
@@ -1787,13 +1478,12 @@
 
 
 <!-- =====================================================
-     メンバー班変更
-====================================================== -->
+     メンバー班変更モーダル
+===================================================== -->
 
 <div
   id="memberTeamModal"
-  class="modal-overlay"
->
+  class="modal-overlay">
 
   <div class="modal">
 
@@ -1803,16 +1493,11 @@
 
     <div class="form-group">
 
-      <label>
-        班
+      <label for="memberTeamSelect">
+        所属班
       </label>
 
       <select id="memberTeamSelect">
-
-        <option value="">
-          所属なし
-        </option>
-
       </select>
 
     </div>
@@ -1821,15 +1506,13 @@
 
       <button
         id="cancelMemberTeamModal"
-        class="modal-cancel"
-      >
+        class="modal-cancel">
         キャンセル
       </button>
 
       <button
         id="saveMemberTeamModal"
-        class="modal-confirm"
-      >
+        class="modal-confirm">
         保存
       </button>
 
@@ -1842,590 +1525,935 @@
 
 <script type="module">
 
-  import {
-    initializeApp
-  }
-  from
-    "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
+/* =====================================================
+   Firebase
+===================================================== */
+
+import {
+  initializeApp
+} from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
+
+import {
+  getAuth,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
+
+import {
+  getFirestore,
+  doc,
+  setDoc,
+  getDoc,
+  updateDoc,
+  deleteDoc,
+  collection,
+  getDocs,
+  serverTimestamp,
+  onSnapshot
+} from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
 
-  import {
-    getAuth,
-    createUserWithEmailAndPassword,
-    signInWithEmailAndPassword,
-    signOut,
-    onAuthStateChanged
-  }
-  from
-    "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
+const firebaseConfig = {
+  apiKey: "AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
+  authDomain: "sales-management-cc116.firebaseapp.com",
+  projectId: "sales-management-cc116",
+  storageBucket: "sales-management-cc116.firebasestorage.app",
+  messagingSenderId: "904932511564",
+  appId: "1:904932511564:web:6583e8b0c585231b9049e"
+};
 
 
-  import {
-    getFirestore,
-    doc,
-    setDoc,
-    getDoc,
-    updateDoc,
-    deleteDoc,
-    collection,
-    getDocs,
-    serverTimestamp
-  }
-  from
-    "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
+const app =
+  initializeApp(firebaseConfig);
+
+const auth =
+  getAuth(app);
+
+const db =
+  getFirestore(app);
 
 
-  /* =====================================================
-     Firebase
-  ====================================================== */
+/* =====================================================
+   DOM
+===================================================== */
 
-  const firebaseConfig = {
+const authScreen =
+  document.getElementById("authScreen");
 
-    apiKey:
-      "AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
+const appScreen =
+  document.getElementById("appScreen");
 
-    authDomain:
-      "sales-management-cc116.firebaseapp.com",
+const authTitle =
+  document.getElementById("authTitle");
 
-    projectId:
-      "sales-management-cc116",
+const authButton =
+  document.getElementById("authButton");
 
-    storageBucket:
-      "sales-management-cc116.firebasestorage.app",
+const switchButton =
+  document.getElementById("switchButton");
 
-    messagingSenderId:
-      "904932511564",
+const switchDescription =
+  document.getElementById("switchDescription");
 
-    appId:
-      "1:904932511564:web:6583e8b0c585231b9049e"
+const nameGroup =
+  document.getElementById("nameGroup");
+
+const nameInput =
+  document.getElementById("name");
+
+const emailInput =
+  document.getElementById("email");
+
+const passwordInput =
+  document.getElementById("password");
+
+const errorMessage =
+  document.getElementById("errorMessage");
+
+const successMessage =
+  document.getElementById("successMessage");
+
+const userName =
+  document.getElementById("userName");
+
+const userEmail =
+  document.getElementById("userEmail");
+
+const userRole =
+  document.getElementById("userRole");
+
+const logoutButton =
+  document.getElementById("logoutButton");
+
+const loginStatus =
+  document.getElementById("loginStatus");
+
+const databaseStatus =
+  document.getElementById("databaseStatus");
+
+const setupWarning =
+  document.getElementById("setupWarning");
+
+
+/* =====================================================
+   アカウント設定
+===================================================== */
+
+const accountNameInput =
+  document.getElementById(
+    "accountNameInput"
+  );
+
+const saveAccountNameButton =
+  document.getElementById(
+    "saveAccountNameButton"
+  );
+
+
+/* =====================================================
+   実績
+===================================================== */
+
+const recordManagement =
+  document.getElementById(
+    "recordManagement"
+  );
+
+const recordDate =
+  document.getElementById(
+    "recordDate"
+  );
+
+const recordMember =
+  document.getElementById(
+    "recordMember"
+  );
+
+const productInputList =
+  document.getElementById(
+    "productInputList"
+  );
+
+const recordTotalCount =
+  document.getElementById(
+    "recordTotalCount"
+  );
+
+const recordTotalRevenue =
+  document.getElementById(
+    "recordTotalRevenue"
+  );
+
+const saveRecordButton =
+  document.getElementById(
+    "saveRecordButton"
+  );
+
+const clearRecordButton =
+  document.getElementById(
+    "clearRecordButton"
+  );
+
+
+/* =====================================================
+   ダッシュボード
+===================================================== */
+
+const dashboard =
+  document.getElementById(
+    "dashboard"
+  );
+
+const dashboardMonth =
+  document.getElementById(
+    "dashboardMonth"
+  );
+
+const monthlyCount =
+  document.getElementById(
+    "monthlyCount"
+  );
+
+const monthlyRevenue =
+  document.getElementById(
+    "monthlyRevenue"
+  );
+
+const monthlyWorkDays =
+  document.getElementById(
+    "monthlyWorkDays"
+  );
+
+const individualRankingList =
+  document.getElementById(
+    "individualRankingList"
+  );
+
+const teamRankingList =
+  document.getElementById(
+    "teamRankingList"
+  );
+
+const productSummaryList =
+  document.getElementById(
+    "productSummaryList"
+  );
+
+const dailySummaryList =
+  document.getElementById(
+    "dailySummaryList"
+  );
+
+const recordHistoryList =
+  document.getElementById(
+    "recordHistoryList"
+  );
+
+
+/* =====================================================
+   管理
+===================================================== */
+
+const teamManagement =
+  document.getElementById(
+    "teamManagement"
+  );
+
+const teamNameInput =
+  document.getElementById(
+    "teamNameInput"
+  );
+
+const addTeamButton =
+  document.getElementById(
+    "addTeamButton"
+  );
+
+const teamList =
+  document.getElementById(
+    "teamList"
+  );
+
+
+const productManagement =
+  document.getElementById(
+    "productManagement"
+  );
+
+const productNameInput =
+  document.getElementById(
+    "productNameInput"
+  );
+
+const productRevenueInput =
+  document.getElementById(
+    "productRevenueInput"
+  );
+
+const addProductButton =
+  document.getElementById(
+    "addProductButton"
+  );
+
+const productList =
+  document.getElementById(
+    "productList"
+  );
+
+
+const memberManagement =
+  document.getElementById(
+    "memberManagement"
+  );
+
+const memberList =
+  document.getElementById(
+    "memberList"
+  );
+
+
+/* =====================================================
+   モーダル
+===================================================== */
+
+const teamModal =
+  document.getElementById(
+    "teamModal"
+  );
+
+const editTeamName =
+  document.getElementById(
+    "editTeamName"
+  );
+
+const cancelTeamModal =
+  document.getElementById(
+    "cancelTeamModal"
+  );
+
+const saveTeamModal =
+  document.getElementById(
+    "saveTeamModal"
+  );
+
+
+const productModal =
+  document.getElementById(
+    "productModal"
+  );
+
+const editProductName =
+  document.getElementById(
+    "editProductName"
+  );
+
+const editProductRevenue =
+  document.getElementById(
+    "editProductRevenue"
+  );
+
+const cancelProductModal =
+  document.getElementById(
+    "cancelProductModal"
+  );
+
+const saveProductModal =
+  document.getElementById(
+    "saveProductModal"
+  );
+
+
+const memberTeamModal =
+  document.getElementById(
+    "memberTeamModal"
+  );
+
+const memberTeamSelect =
+  document.getElementById(
+    "memberTeamSelect"
+  );
+
+const cancelMemberTeamModal =
+  document.getElementById(
+    "cancelMemberTeamModal"
+  );
+
+const saveMemberTeamModal =
+  document.getElementById(
+    "saveMemberTeamModal"
+  );
+
+
+/* =====================================================
+   状態
+===================================================== */
+
+let isRegisterMode = false;
+
+let teams = [];
+let products = [];
+let members = [];
+let records = [];
+
+let currentUserData = null;
+let currentUser = null;
+
+let editingTeamId = null;
+let editingProductId = null;
+let editingMemberId = null;
+let editingRecordId = null;
+
+
+/*
+  Firestoreリアルタイム監視
+*/
+
+let unsubscribeUsers = null;
+let unsubscribeTeams = null;
+let unsubscribeProducts = null;
+let unsubscribeRecords = null;
+
+
+/* =====================================================
+   共通
+===================================================== */
+
+function getTodayString() {
+
+  const now =
+    new Date();
+
+  const year =
+    now.getFullYear();
+
+  const month =
+    String(
+      now.getMonth() + 1
+    ).padStart(2, "0");
+
+  const day =
+    String(
+      now.getDate()
+    ).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+
+recordDate.value =
+  getTodayString();
+
+
+function showError(message) {
+
+  errorMessage.textContent =
+    message;
+
+  errorMessage.style.display =
+    "block";
+
+  successMessage.style.display =
+    "none";
+}
+
+
+function showSuccess(message) {
+
+  successMessage.textContent =
+    message;
+
+  successMessage.style.display =
+    "block";
+
+  errorMessage.style.display =
+    "none";
+}
+
+
+function clearMessages() {
+
+  errorMessage.textContent =
+    "";
+
+  successMessage.textContent =
+    "";
+
+  errorMessage.style.display =
+    "none";
+
+  successMessage.style.display =
+    "none";
+}
+
+
+function formatYen(value) {
+
+  return `¥${Number(
+    value || 0
+  ).toLocaleString("ja-JP")}`;
+}
+
+
+function firebaseErrorMessage(error) {
+
+  const code =
+    error?.code || "";
+
+  const messages = {
+
+    "auth/email-already-in-use":
+      "このメールアドレスはすでに登録されています。",
+
+    "auth/invalid-email":
+      "メールアドレスの形式が正しくありません。",
+
+    "auth/weak-password":
+      "パスワードは6文字以上で設定してください。",
+
+    "auth/invalid-credential":
+      "メールアドレスまたはパスワードが正しくありません。",
+
+    "auth/user-not-found":
+      "ユーザーが見つかりません。",
+
+    "auth/wrong-password":
+      "パスワードが正しくありません。",
+
+    "permission-denied":
+      "Firestoreの権限がありません。",
+
+    "not-found":
+      "データが見つかりません。"
+
+  };
+
+  return (
+    messages[code] ||
+    error?.message ||
+    "エラーが発生しました。"
+  );
+}
+
+
+/* =====================================================
+   認証切り替え
+===================================================== */
+
+switchButton.onclick =
+  () => {
+
+    isRegisterMode =
+      !isRegisterMode;
+
+    clearMessages();
+
+    if (isRegisterMode) {
+
+      authTitle.textContent =
+        "新規登録";
+
+      authButton.textContent =
+        "アカウントを作成";
+
+      switchDescription.textContent =
+        "すでにアカウントを持っている？";
+
+      switchButton.textContent =
+        "ログイン";
+
+      nameGroup.style.display =
+        "block";
+
+    } else {
+
+      authTitle.textContent =
+        "ログイン";
+
+      authButton.textContent =
+        "ログイン";
+
+      switchDescription.textContent =
+        "アカウントを持っていない？";
+
+      switchButton.textContent =
+        "新規登録";
+
+      nameGroup.style.display =
+        "none";
+
+    }
 
   };
 
 
-  const app =
-    initializeApp(
-      firebaseConfig
+/* =====================================================
+   ユーザードキュメント
+===================================================== */
+
+async function createUserDocument(
+  user,
+  name = ""
+) {
+
+  const userRef =
+    doc(
+      db,
+      "users",
+      user.uid
     );
 
-  const auth =
-    getAuth(app);
-
-  const db =
-    getFirestore(app);
-
-
-  /* =====================================================
-     DOM
-  ====================================================== */
-
-  const authScreen =
-    document.getElementById("authScreen");
-
-  const appScreen =
-    document.getElementById("appScreen");
-
-  const authTitle =
-    document.getElementById("authTitle");
-
-  const authButton =
-    document.getElementById("authButton");
-
-  const switchButton =
-    document.getElementById("switchButton");
-
-  const switchDescription =
-    document.getElementById("switchDescription");
-
-  const nameGroup =
-    document.getElementById("nameGroup");
-
-  const nameInput =
-    document.getElementById("name");
-
-  const emailInput =
-    document.getElementById("email");
-
-  const passwordInput =
-    document.getElementById("password");
-
-  const errorMessage =
-    document.getElementById("errorMessage");
-
-  const successMessage =
-    document.getElementById("successMessage");
-
-  const userName =
-    document.getElementById("userName");
-
-  const userEmail =
-    document.getElementById("userEmail");
-
-  const userRole =
-    document.getElementById("userRole");
-
-  const logoutButton =
-    document.getElementById("logoutButton");
-
-  const loginStatus =
-    document.getElementById("loginStatus");
-
-  const databaseStatus =
-    document.getElementById("databaseStatus");
-
-  const setupWarning =
-    document.getElementById("setupWarning");
-
-
-  /* =====================================================
-     実績DOM
-  ====================================================== */
-
-  const recordManagement =
-    document.getElementById("recordManagement");
-
-  const recordDate =
-    document.getElementById("recordDate");
-
-  const recordMember =
-    document.getElementById("recordMember");
-
-  const productInputList =
-    document.getElementById("productInputList");
-
-  const recordTotalCount =
-    document.getElementById(
-      "recordTotalCount"
+  const userSnap =
+    await getDoc(
+      userRef
     );
 
-  const recordTotalRevenue =
-    document.getElementById(
-      "recordTotalRevenue"
-    );
-
-  const saveRecordButton =
-    document.getElementById(
-      "saveRecordButton"
-    );
-
-  const clearRecordButton =
-    document.getElementById(
-      "clearRecordButton"
-    );
-
-
-  /* =====================================================
-     ダッシュボードDOM
-  ====================================================== */
-
-  const dashboard =
-    document.getElementById("dashboard");
-
-  const dashboardMonth =
-    document.getElementById("dashboardMonth");
-
-  const monthlyCount =
-    document.getElementById("monthlyCount");
-
-  const monthlyRevenue =
-    document.getElementById("monthlyRevenue");
-
-  const monthlyWorkDays =
-    document.getElementById(
-      "monthlyWorkDays"
-    );
-
-  const individualRankingList =
-    document.getElementById(
-      "individualRankingList"
-    );
-
-  const teamRankingList =
-    document.getElementById(
-      "teamRankingList"
-    );
-
-  const productSummaryList =
-    document.getElementById(
-      "productSummaryList"
-    );
-
-  const dailySummaryList =
-    document.getElementById(
-      "dailySummaryList"
-    );
-
-  const recordHistoryList =
-    document.getElementById(
-      "recordHistoryList"
-    );
-
-
-  /* =====================================================
-     管理DOM
-  ====================================================== */
-
-  const teamManagement =
-    document.getElementById(
-      "teamManagement"
-    );
-
-  const teamNameInput =
-    document.getElementById(
-      "teamNameInput"
-    );
-
-  const addTeamButton =
-    document.getElementById(
-      "addTeamButton"
-    );
-
-  const teamList =
-    document.getElementById(
-      "teamList"
-    );
-
-
-  const productManagement =
-    document.getElementById(
-      "productManagement"
-    );
-
-  const productNameInput =
-    document.getElementById(
-      "productNameInput"
-    );
-
-  const productRevenueInput =
-    document.getElementById(
-      "productRevenueInput"
-    );
-
-  const addProductButton =
-    document.getElementById(
-      "addProductButton"
-    );
-
-  const productList =
-    document.getElementById(
-      "productList"
-    );
-
-
-  const memberManagement =
-    document.getElementById(
-      "memberManagement"
-    );
-
-  const memberList =
-    document.getElementById(
-      "memberList"
-    );
-
-
-  /* =====================================================
-     モーダルDOM
-  ====================================================== */
-
-  const teamModal =
-    document.getElementById(
-      "teamModal"
-    );
-
-  const editTeamName =
-    document.getElementById(
-      "editTeamName"
-    );
-
-  const cancelTeamModal =
-    document.getElementById(
-      "cancelTeamModal"
-    );
-
-  const saveTeamModal =
-    document.getElementById(
-      "saveTeamModal"
-    );
-
-
-  const productModal =
-    document.getElementById(
-      "productModal"
-    );
-
-  const editProductName =
-    document.getElementById(
-      "editProductName"
-    );
-
-  const editProductRevenue =
-    document.getElementById(
-      "editProductRevenue"
-    );
-
-  const cancelProductModal =
-    document.getElementById(
-      "cancelProductModal"
-    );
-
-  const saveProductModal =
-    document.getElementById(
-      "saveProductModal"
-    );
-
-
-  const memberTeamModal =
-    document.getElementById(
-      "memberTeamModal"
-    );
-
-  const memberTeamSelect =
-    document.getElementById(
-      "memberTeamSelect"
-    );
-
-  const cancelMemberTeamModal =
-    document.getElementById(
-      "cancelMemberTeamModal"
-    );
-
-  const saveMemberTeamModal =
-    document.getElementById(
-      "saveMemberTeamModal"
-    );
-
-
-  /* =====================================================
-     状態
-  ====================================================== */
-
-  let isRegisterMode = false;
-
-  let teams = [];
-
-  let products = [];
-
-  let members = [];
-
-  let records = [];
-
-  let currentUserData = null;
-
-  let currentUser = null;
-
-  let editingTeamId = null;
-
-  let editingProductId = null;
-
-  let editingMemberId = null;
-
-  let editingRecordId = null;
-
-
-  /* =====================================================
-     今日
-  ====================================================== */
-
-  function getTodayString() {
-
-    const now =
-      new Date();
-
-    const year =
-      now.getFullYear();
-
-    const month =
-      String(
-        now.getMonth() + 1
-      ).padStart(
-        2,
-        "0"
-      );
-
-    const day =
-      String(
-        now.getDate()
-      ).padStart(
-        2,
-        "0"
-      );
-
-    return `${year}-${month}-${day}`;
+  if (
+    userSnap.exists()
+  ) {
+
+    return userSnap.data();
 
   }
 
 
-  recordDate.value =
-    getTodayString();
+  const userData = {
+
+    uid:
+      user.uid,
+
+    name:
+      name ||
+      "名前未設定",
+
+    email:
+      user.email ||
+      "",
+
+    role:
+      "member",
+
+    teamId:
+      null,
+
+    active:
+      true,
+
+    createdAt:
+      serverTimestamp()
+
+  };
 
 
-  /* =====================================================
-     メッセージ
-  ====================================================== */
-
-  function showError(message) {
-
-    errorMessage.textContent =
-      message;
-
-    errorMessage.style.display =
-      "block";
-
-    successMessage.style.display =
-      "none";
-
-  }
-
-
-  function showSuccess(message) {
-
-    successMessage.textContent =
-      message;
-
-    successMessage.style.display =
-      "block";
-
-    errorMessage.style.display =
-      "none";
-
-  }
-
-
-  function clearMessages() {
-
-    errorMessage.textContent =
-      "";
-
-    successMessage.textContent =
-      "";
-
-    errorMessage.style.display =
-      "none";
-
-    successMessage.style.display =
-      "none";
-
-  }
-
-
-  /* =====================================================
-     金額
-  ====================================================== */
-
-  function formatYen(value) {
-
-    return `¥${Number(
-      value || 0
-    ).toLocaleString(
-      "ja-JP"
-    )}`;
-
-  }
-
-
-  /* =====================================================
-     Firebaseエラー
-  ====================================================== */
-
-  function firebaseErrorMessage(error) {
-
-    console.error(error);
-
-    switch (error.code) {
-
-      case "auth/email-already-in-use":
-        return "このメールアドレスはすでに登録されています。";
-
-      case "auth/invalid-email":
-        return "メールアドレスの形式が正しくありません。";
-
-      case "auth/weak-password":
-        return "パスワードは6文字以上にしてください。";
-
-      case "auth/invalid-credential":
-        return "メールアドレスまたはパスワードが違います。";
-
-      case "auth/user-not-found":
-        return "アカウントが見つかりません。";
-
-      case "auth/wrong-password":
-        return "パスワードが違います。";
-
-      case "auth/network-request-failed":
-        return "ネットワークエラーが発生しました。";
-
-      case "permission-denied":
-        return "Firestoreへのアクセス権限がありません。";
-
-      default:
-        return error.message ||
-          "エラーが発生しました。";
-
-    }
-
-  }
-
-
-  /* =====================================================
-     ログイン切り替え
-  ====================================================== */
-
-  switchButton.addEventListener(
-    "click",
-    () => {
-
-      isRegisterMode =
-        !isRegisterMode;
-
-      clearMessages();
-
-      if (isRegisterMode) {
-
-        authTitle.textContent =
-          "新規登録";
-
-        authButton.textContent =
-          "アカウントを作成";
-
-        switchDescription.textContent =
-          "すでにアカウントを持っている？";
-
-        switchButton.textContent =
-          "ログイン";
-
-        nameGroup.style.display =
-          "block";
-
-      } else {
-
-        authTitle.textContent =
-          "ログイン";
-
-        authButton.textContent =
-          "ログイン";
-
-        switchDescription.textContent =
-          "アカウントを持っていない？";
-
-        switchButton.textContent =
-          "新規登録";
-
-        nameGroup.style.display =
-          "none";
-
-      }
-
-    }
+  await setDoc(
+    userRef,
+    userData
   );
 
 
-  /* =====================================================
-     ユーザー作成
-  ====================================================== */
+  return userData;
+}
 
-  async function createUserDocument(
-    user,
-    name = ""
+
+/* =====================================================
+   登録
+===================================================== */
+
+async function register() {
+
+  const name =
+    nameInput.value.trim();
+
+  const email =
+    emailInput.value.trim();
+
+  const password =
+    passwordInput.value;
+
+
+  if (!name) {
+
+    showError(
+      "名前を入力してください。"
+    );
+
+    return;
+
+  }
+
+
+  if (!email) {
+
+    showError(
+      "メールアドレスを入力してください。"
+    );
+
+    return;
+
+  }
+
+
+  if (
+    password.length < 6
   ) {
+
+    showError(
+      "パスワードは6文字以上で入力してください。"
+    );
+
+    return;
+
+  }
+
+
+  try {
+
+    authButton.disabled =
+      true;
+
+    authButton.textContent =
+      "登録中...";
+
+
+    const result =
+      await createUserWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
+
+
+    await createUserDocument(
+      result.user,
+      name
+    );
+
+
+    showSuccess(
+      "アカウントを作成しました。"
+    );
+
+
+  } catch (error) {
+
+    console.error(error);
+
+    showError(
+      firebaseErrorMessage(
+        error
+      )
+    );
+
+  } finally {
+
+    authButton.disabled =
+      false;
+
+    authButton.textContent =
+      "アカウントを作成";
+
+  }
+
+}
+
+
+/* =====================================================
+   ログイン
+===================================================== */
+
+async function login() {
+
+  const email =
+    emailInput.value.trim();
+
+  const password =
+    passwordInput.value;
+
+
+  if (!email) {
+
+    showError(
+      "メールアドレスを入力してください。"
+    );
+
+    return;
+
+  }
+
+
+  if (!password) {
+
+    showError(
+      "パスワードを入力してください。"
+    );
+
+    return;
+
+  }
+
+
+  try {
+
+    authButton.disabled =
+      true;
+
+    authButton.textContent =
+      "ログイン中...";
+
+
+    await signInWithEmailAndPassword(
+      auth,
+      email,
+      password
+    );
+
+
+  } catch (error) {
+
+    console.error(error);
+
+    showError(
+      firebaseErrorMessage(
+        error
+      )
+    );
+
+  } finally {
+
+    authButton.disabled =
+      false;
+
+    authButton.textContent =
+      "ログイン";
+
+  }
+
+}
+
+
+authButton.onclick =
+  async () => {
+
+    clearMessages();
+
+    if (isRegisterMode) {
+
+      await register();
+
+    } else {
+
+      await login();
+
+    }
+
+  };
+
+
+passwordInput.addEventListener(
+  "keydown",
+  event => {
+
+    if (
+      event.key === "Enter"
+    ) {
+
+      authButton.click();
+
+    }
+
+  }
+);
+
+
+/* =====================================================
+   ログアウト
+===================================================== */
+
+logoutButton.onclick =
+  async () => {
+
+    try {
+
+      await stopRealtimeListeners();
+
+      await signOut(auth);
+
+    } catch (error) {
+
+      showError(
+        firebaseErrorMessage(
+          error
+        )
+      );
+
+    }
+
+  };
+
+
+/* =====================================================
+   Auth状態
+===================================================== */
+
+onAuthStateChanged(
+  auth,
+  async user => {
+
+    if (user) {
+
+      currentUser =
+        user;
+
+      authScreen.style.display =
+        "none";
+
+      appScreen.style.display =
+        "block";
+
+      loginStatus.textContent =
+        "ログイン中";
+
+
+      await loadUserData(
+        user
+      );
+
+
+      startRealtimeListeners();
+
+    } else {
+
+      currentUser =
+        null;
+
+      currentUserData =
+        null;
+
+      authScreen.style.display =
+        "block";
+
+      appScreen.style.display =
+        "none";
+
+      loginStatus.textContent =
+        "未ログイン";
+
+    }
+
+  }
+);
+
+
+/* =====================================================
+   ユーザー情報読み込み
+===================================================== */
+
+async function loadUserData(
+  user
+) {
+
+  try {
 
     const userRef =
       doc(
@@ -2439,71 +2467,171 @@
         userRef
       );
 
+
+    let data;
+
+
     if (
-      userSnap.exists()
+      !userSnap.exists()
     ) {
 
-      return userSnap.data();
+      data =
+        await createUserDocument(
+          user
+        );
+
+    } else {
+
+      data =
+        userSnap.data();
 
     }
 
 
-    const userData = {
+    currentUserData = {
+
+      ...data,
 
       uid:
-        user.uid,
-
-      name:
-        name ||
-        "名前未設定",
-
-      email:
-        user.email ||
-        "",
-
-      role:
-        "member",
-
-      teamId:
-        null,
-
-      active:
-        true,
-
-      createdAt:
-        serverTimestamp()
+        user.uid
 
     };
 
 
-    await setDoc(
-      userRef,
-      userData
+    updateCurrentUserUI();
+
+    prepareRecordInputs();
+
+    await loadTeams();
+
+    await loadProducts();
+
+    await loadMembers();
+
+    await loadRecords();
+
+
+    databaseStatus.textContent =
+      "接続済み";
+
+
+  } catch (error) {
+
+    console.error(error);
+
+    databaseStatus.textContent =
+      "接続エラー";
+
+    showError(
+      firebaseErrorMessage(
+        error
+      )
     );
 
+  }
 
-    return userData;
+}
+
+
+/* =====================================================
+   現在ユーザーUI
+===================================================== */
+
+function updateCurrentUserUI() {
+
+  if (
+    !currentUserData
+  ) {
+
+    return;
 
   }
 
 
-  /* =====================================================
-     新規登録
-  ====================================================== */
-
-  async function registerUser() {
-
-    const name =
-      nameInput.value.trim();
-
-    const email =
-      emailInput.value.trim();
-
-    const password =
-      passwordInput.value;
+  const name =
+    currentUserData.name ||
+    "名前未設定";
 
 
-    if (!name) {
+  userName.textContent =
+    name;
+
+  userEmail.textContent =
+    currentUserData.email ||
+    currentUser?.email ||
+    "";
+
+  accountNameInput.value =
+    name;
+
+
+  if (
+    currentUserData.role ===
+    "leader"
+  ) {
+
+    userRole.textContent =
+      "👑 リーダー";
+
+    setupWarning.style.display =
+      "none";
+
+    teamManagement.style.display =
+      "block";
+
+    productManagement.style.display =
+      "block";
+
+    memberManagement.style.display =
+      "block";
+
+  } else {
+
+    userRole.textContent =
+      "👤 メンバー";
+
+    setupWarning.style.display =
+      "block";
+
+    teamManagement.style.display =
+      "none";
+
+    productManagement.style.display =
+      "none";
+
+    memberManagement.style.display =
+      "none";
+
+  }
+
+}
+
+
+/* =====================================================
+   ★ 名前変更
+===================================================== */
+
+saveAccountNameButton.onclick =
+  async () => {
+
+    if (
+      !currentUser
+    ) {
+
+      showError(
+        "ログインしてください。"
+      );
+
+      return;
+
+    }
+
+
+    const newName =
+      accountNameInput.value.trim();
+
+
+    if (!newName) {
 
       showError(
         "名前を入力してください。"
@@ -2514,23 +2642,12 @@
     }
 
 
-    if (!email) {
-
-      showError(
-        "メールアドレスを入力してください。"
-      );
-
-      return;
-
-    }
-
-
     if (
-      password.length < 6
+      newName.length > 30
     ) {
 
       showError(
-        "パスワードは6文字以上にしてください。"
+        "名前は30文字以内で入力してください。"
       );
 
       return;
@@ -2540,363 +2657,66 @@
 
     try {
 
-      authButton.disabled =
+      saveAccountNameButton.disabled =
         true;
 
-      authButton.textContent =
-        "登録中...";
+      saveAccountNameButton.textContent =
+        "保存中...";
 
 
-      const result =
-        await createUserWithEmailAndPassword(
-          auth,
-          email,
-          password
-        );
-
-
-      await createUserDocument(
-        result.user,
-        name
-      );
-
-
-      showSuccess(
-        "アカウントを作成しました。"
-      );
-
-    } catch (error) {
-
-      showError(
-        firebaseErrorMessage(error)
-      );
-
-    } finally {
-
-      authButton.disabled =
-        false;
-
-      authButton.textContent =
-        isRegisterMode
-          ? "アカウントを作成"
-          : "ログイン";
-
-    }
-
-  }
-
-
-  /* =====================================================
-     ログイン
-  ====================================================== */
-
-  async function loginUser() {
-
-    const email =
-      emailInput.value.trim();
-
-    const password =
-      passwordInput.value;
-
-
-    if (!email) {
-
-      showError(
-        "メールアドレスを入力してください。"
-      );
-
-      return;
-
-    }
-
-
-    if (!password) {
-
-      showError(
-        "パスワードを入力してください。"
-      );
-
-      return;
-
-    }
-
-
-    try {
-
-      authButton.disabled =
-        true;
-
-      authButton.textContent =
-        "ログイン中...";
-
-
-      await signInWithEmailAndPassword(
-        auth,
-        email,
-        password
-      );
-
-    } catch (error) {
-
-      showError(
-        firebaseErrorMessage(error)
-      );
-
-    } finally {
-
-      authButton.disabled =
-        false;
-
-      authButton.textContent =
-        "ログイン";
-
-    }
-
-  }
-
-
-  authButton.addEventListener(
-    "click",
-    async () => {
-
-      clearMessages();
-
-      if (
-        isRegisterMode
-      ) {
-
-        await registerUser();
-
-      } else {
-
-        await loginUser();
-
-      }
-
-    }
-  );
-
-
-  passwordInput.addEventListener(
-    "keydown",
-    event => {
-
-      if (
-        event.key === "Enter"
-      ) {
-
-        authButton.click();
-
-      }
-
-    }
-  );
-
-
-  logoutButton.addEventListener(
-    "click",
-    async () => {
-
-      await signOut(auth);
-
-    }
-  );
-
-
-  /* =====================================================
-     ログイン状態
-  ====================================================== */
-
-  onAuthStateChanged(
-    auth,
-    async user => {
-
-      if (user) {
-
-        currentUser =
-          user;
-
-        authScreen.style.display =
-          "none";
-
-        appScreen.style.display =
-          "block";
-
-        loginStatus.textContent =
-          "ログイン中";
-
-
-        await loadUserData(
-          user
-        );
-
-      } else {
-
-        currentUser =
-          null;
-
-        currentUserData =
-          null;
-
-        authScreen.style.display =
-          "block";
-
-        appScreen.style.display =
-          "none";
-
-      }
-
-    }
-  );
-
-
-  /* =====================================================
-     ユーザー情報
-  ====================================================== */
-
-  async function loadUserData(
-    user
-  ) {
-
-    try {
-
-      databaseStatus.textContent =
-        "確認中...";
-
-
-      const userRef =
+      await updateDoc(
         doc(
           db,
           "users",
-          user.uid
-        );
+          currentUser.uid
+        ),
+        {
+
+          name:
+            newName,
+
+          updatedAt:
+            serverTimestamp()
+
+        }
+      );
 
 
-      let userSnap =
-        await getDoc(
-          userRef
-        );
-
-
-      if (
-        !userSnap.exists()
-      ) {
-
-        await createUserDocument(
-          user
-        );
-
-        userSnap =
-          await getDoc(
-            userRef
-          );
-
-      }
-
-
-      const data =
-        userSnap.data();
-
+      /*
+        現在のユーザー情報も即時更新
+      */
 
       currentUserData = {
 
-        ...data,
+        ...currentUserData,
 
-        uid:
-          user.uid
+        name:
+          newName
 
       };
 
 
-      userName.textContent =
-        data.name ||
-        "名前未設定";
+      updateCurrentUserUI();
 
 
-      userEmail.textContent =
-        data.email ||
-        user.email ||
-        "";
+      /*
+        実績入力・ランキング・履歴を
+        即時再描画
+      */
+
+      prepareRecordInputs();
+
+      renderDashboard();
 
 
-      recordManagement.style.display =
-        "block";
+      showSuccess(
+        "名前を変更しました。"
+      );
 
-      dashboard.style.display =
-        "block";
-
-
-      if (
-        data.role ===
-        "leader"
-      ) {
-
-        userRole.textContent =
-          "👑 リーダー";
-
-        setupWarning.style.display =
-          "none";
-
-        teamManagement.style.display =
-          "block";
-
-        productManagement.style.display =
-          "block";
-
-        memberManagement.style.display =
-          "block";
-
-
-        await loadTeams();
-
-        await loadProducts();
-
-        await loadMembers();
-
-      } else {
-
-        userRole.textContent =
-          "👤 メンバー";
-
-        setupWarning.style.display =
-          "block";
-
-        teamManagement.style.display =
-          "none";
-
-        productManagement.style.display =
-          "none";
-
-        memberManagement.style.display =
-          "none";
-
-
-        await loadTeams();
-
-        await loadProducts();
-
-        await loadMembers();
-
-      }
-
-
-      await prepareRecordInputs();
-
-      await loadRecords();
-
-
-      databaseStatus.textContent =
-        "接続済み";
 
     } catch (error) {
 
-      console.error(
-        error
-      );
-
-      databaseStatus.textContent =
-        "接続エラー";
-
+      console.error(error);
 
       showError(
         firebaseErrorMessage(
@@ -2904,21 +2724,623 @@
         )
       );
 
+    } finally {
+
+      saveAccountNameButton.disabled =
+        false;
+
+      saveAccountNameButton.textContent =
+        "名前を保存";
+
     }
+
+  };
+
+
+/* =====================================================
+   ★ リアルタイム監視
+===================================================== */
+
+function startRealtimeListeners() {
+
+  stopRealtimeListeners();
+
+
+  /*
+    users監視
+
+    名前変更・権限変更・所属班変更を
+    全員の画面にリアルタイム反映
+  */
+
+  unsubscribeUsers =
+    onSnapshot(
+      collection(
+        db,
+        "users"
+      ),
+      snapshot => {
+
+        members = [];
+
+        snapshot.forEach(
+          userDoc => {
+
+            members.push({
+
+              id:
+                userDoc.id,
+
+              ...userDoc.data()
+
+            });
+
+          }
+        );
+
+
+        members.sort(
+          (a, b) =>
+            (
+              a.name ||
+              ""
+            ).localeCompare(
+              b.name ||
+              "",
+              "ja"
+            )
+        );
+
+
+        /*
+          自分のユーザー情報を更新
+        */
+
+        if (
+          currentUser
+        ) {
+
+          const latest =
+            members.find(
+              member =>
+                member.id ===
+                currentUser.uid
+            );
+
+
+          if (latest) {
+
+            currentUserData = {
+
+              ...latest,
+
+              uid:
+                currentUser.uid
+
+            };
+
+
+            updateCurrentUserUI();
+
+          }
+
+        }
+
+
+        renderMembers();
+
+        prepareRecordInputs();
+
+        renderDashboard();
+
+      },
+      error => {
+
+        console.error(
+          "ユーザーリアルタイム監視エラー:",
+          error
+        );
+
+      }
+    );
+
+
+  /*
+    班
+  */
+
+  unsubscribeTeams =
+    onSnapshot(
+      collection(
+        db,
+        "teams"
+      ),
+      snapshot => {
+
+        teams = [];
+
+        snapshot.forEach(
+          teamDoc => {
+
+            teams.push({
+
+              id:
+                teamDoc.id,
+
+              ...teamDoc.data()
+
+            });
+
+          }
+        );
+
+
+        teams.sort(
+          (a, b) =>
+            (
+              a.name ||
+              ""
+            ).localeCompare(
+              b.name ||
+              "",
+              "ja"
+            )
+        );
+
+
+        renderTeams();
+
+        prepareRecordInputs();
+
+      }
+    );
+
+
+  /*
+    商材
+  */
+
+  unsubscribeProducts =
+    onSnapshot(
+      collection(
+        db,
+        "products"
+      ),
+      snapshot => {
+
+        products = [];
+
+        snapshot.forEach(
+          productDoc => {
+
+            products.push({
+
+              id:
+                productDoc.id,
+
+              ...productDoc.data()
+
+            });
+
+          }
+        );
+
+
+        products.sort(
+          (a, b) =>
+            (
+              a.name ||
+              ""
+            ).localeCompare(
+              b.name ||
+              "",
+              "ja"
+            )
+        );
+
+
+        renderProducts();
+
+        prepareProductInputList();
+
+      }
+    );
+
+
+  /*
+    実績
+  */
+
+  unsubscribeRecords =
+    onSnapshot(
+      collection(
+        db,
+        "records"
+      ),
+      snapshot => {
+
+        records = [];
+
+        snapshot.forEach(
+          recordDoc => {
+
+            records.push({
+
+              id:
+                recordDoc.id,
+
+              ...recordDoc.data()
+
+            });
+
+          }
+        );
+
+
+        records.sort(
+          (a, b) =>
+            (
+              b.date ||
+              ""
+            ).localeCompare(
+              a.date ||
+              ""
+            )
+        );
+
+
+        createMonthOptions();
+
+        renderDashboard();
+
+      }
+    );
+
+}
+
+
+function stopRealtimeListeners() {
+
+  if (
+    unsubscribeUsers
+  ) {
+
+    unsubscribeUsers();
+
+    unsubscribeUsers =
+      null;
 
   }
 
 
-  /* =====================================================
-     班取得
-  ====================================================== */
+  if (
+    unsubscribeTeams
+  ) {
 
-  async function loadTeams() {
+    unsubscribeTeams();
+
+    unsubscribeTeams =
+      null;
+
+  }
+
+
+  if (
+    unsubscribeProducts
+  ) {
+
+    unsubscribeProducts();
+
+    unsubscribeProducts =
+      null;
+
+  }
+
+
+  if (
+    unsubscribeRecords
+  ) {
+
+    unsubscribeRecords();
+
+    unsubscribeRecords =
+      null;
+
+  }
+
+}
+
+
+/* =====================================================
+   班
+===================================================== */
+
+async function loadTeams() {
+
+  try {
+
+    const snapshot =
+      await getDocs(
+        collection(
+          db,
+          "teams"
+        )
+      );
+
+
+    teams = [];
+
+    snapshot.forEach(
+      teamDoc => {
+
+        teams.push({
+
+          id:
+            teamDoc.id,
+
+          ...teamDoc.data()
+
+        });
+
+      }
+    );
+
+
+    teams.sort(
+      (a, b) =>
+        (
+          a.name ||
+          ""
+        ).localeCompare(
+          b.name ||
+          "",
+          "ja"
+        )
+    );
+
+
+    renderTeams();
+
+  } catch (error) {
+
+    console.error(error);
+
+    showError(
+      firebaseErrorMessage(
+        error
+      )
+    );
+
+  }
+
+}
+
+
+function renderTeams() {
+
+  teamList.innerHTML =
+    "";
+
+
+  if (
+    teams.length === 0
+  ) {
+
+    teamList.innerHTML = `
+      <div class="empty-message">
+        班がありません。
+      </div>
+    `;
+
+    return;
+
+  }
+
+
+  teams.forEach(
+    team => {
+
+      const item =
+        document.createElement(
+          "div"
+        );
+
+      item.className =
+        "team-item";
+
+
+      const info =
+        document.createElement(
+          "div"
+        );
+
+
+      const name =
+        document.createElement(
+          "div"
+        );
+
+      name.className =
+        "team-name";
+
+      name.textContent =
+        team.name ||
+        "名前未設定";
+
+
+      const count =
+        document.createElement(
+          "div"
+        );
+
+      count.className =
+        "team-count";
+
+      count.textContent =
+        "メンバー数を確認中...";
+
+
+      info.appendChild(
+        name
+      );
+
+      info.appendChild(
+        count
+      );
+
+
+      const actions =
+        document.createElement(
+          "div"
+        );
+
+      actions.className =
+        "team-actions";
+
+
+      const edit =
+        document.createElement(
+          "button"
+        );
+
+      edit.className =
+        "team-action-button";
+
+      edit.textContent =
+        "編集";
+
+      edit.onclick =
+        () =>
+          openEditTeamModal(
+            team
+          );
+
+
+      const del =
+        document.createElement(
+          "button"
+        );
+
+      del.className =
+        "history-delete";
+
+      del.textContent =
+        "削除";
+
+      del.onclick =
+        () =>
+          deleteTeam(
+            team
+          );
+
+
+      actions.appendChild(
+        edit
+      );
+
+      actions.appendChild(
+        del
+      );
+
+
+      item.appendChild(
+        info
+      );
+
+      item.appendChild(
+        actions
+      );
+
+
+      teamList.appendChild(
+        item
+      );
+
+
+      countTeamMembers(
+        team.id,
+        count
+      );
+
+    }
+  );
+
+}
+
+
+async function countTeamMembers(
+  teamId,
+  element
+) {
+
+  try {
+
+    const snapshot =
+      await getDocs(
+        collection(
+          db,
+          "users"
+        )
+      );
+
+
+    let count = 0;
+
+
+    snapshot.forEach(
+      userDoc => {
+
+        const data =
+          userDoc.data();
+
+        if (
+          data.teamId ===
+          teamId
+        ) {
+
+          count++;
+
+        }
+
+      }
+    );
+
+
+    element.textContent =
+      `${count}人`;
+
+  } catch {
+
+    element.textContent =
+      "人数不明";
+
+  }
+
+}
+
+
+addTeamButton.onclick =
+  async () => {
+
+    const name =
+      teamNameInput.value.trim();
+
+
+    if (!name) {
+
+      showError(
+        "班名を入力してください。"
+      );
+
+      return;
+
+    }
+
 
     try {
 
-      const snapshot =
-        await getDocs(
+      const teamRef =
+        doc(
           collection(
             db,
             "teams"
@@ -2926,516 +3348,30 @@
         );
 
 
-      teams = [];
+      await setDoc(
+        teamRef,
+        {
 
+          name,
 
-      snapshot.forEach(
-        teamDoc => {
+          leaderUids: [],
 
-          teams.push({
+          active: true,
 
-            id:
-              teamDoc.id,
-
-            ...teamDoc.data()
-
-          });
+          createdAt:
+            serverTimestamp()
 
         }
       );
 
 
-      teams.sort(
-        (a, b) =>
-          (
-            a.name || ""
-          ).localeCompare(
-            b.name || "",
-            "ja"
-          )
-      );
-
-
-      renderTeams();
-
-    } catch (error) {
-
-      console.error(
-        error
-      );
-
-    }
-
-  }
-
-
-  function renderTeams() {
-
-    if (
-      teams.length === 0
-    ) {
-
-      teamList.innerHTML = `
-        <div class="empty-message">
-          まだ班がありません。
-        </div>
-      `;
-
-      return;
-
-    }
-
-
-    teamList.innerHTML =
-      "";
-
-
-    teams.forEach(
-      team => {
-
-        const item =
-          document.createElement(
-            "div"
-          );
-
-        item.className =
-          "team-item";
-
-
-        const info =
-          document.createElement(
-            "div"
-          );
-
-        info.className =
-          "team-info";
-
-
-        const name =
-          document.createElement(
-            "div"
-          );
-
-        name.className =
-          "team-name";
-
-        name.textContent =
-          team.name ||
-          "名前未設定";
-
-
-        const count =
-          document.createElement(
-            "div"
-          );
-
-        count.className =
-          "team-member-count";
-
-        count.textContent =
-          "メンバー数を確認中...";
-
-
-        info.appendChild(
-          name
-        );
-
-        info.appendChild(
-          count
-        );
-
-
-        const actions =
-          document.createElement(
-            "div"
-          );
-
-        actions.className =
-          "team-actions";
-
-
-        const editButton =
-          document.createElement(
-            "button"
-          );
-
-        editButton.className =
-          "edit-team-button";
-
-        editButton.textContent =
-          "✏️ 編集";
-
-        editButton.onclick =
-          () =>
-            openEditTeamModal(
-              team
-            );
-
-
-        const deleteButton =
-          document.createElement(
-            "button"
-          );
-
-        deleteButton.className =
-          "delete-team-button";
-
-        deleteButton.textContent =
-          "🗑️ 削除";
-
-        deleteButton.onclick =
-          () =>
-            deleteTeam(
-              team
-            );
-
-
-        actions.appendChild(
-          editButton
-        );
-
-        actions.appendChild(
-          deleteButton
-        );
-
-
-        item.appendChild(
-          info
-        );
-
-        item.appendChild(
-          actions
-        );
-
-
-        teamList.appendChild(
-          item
-        );
-
-
-        countTeamMembers(
-          team.id,
-          count
-        );
-
-      }
-    );
-
-  }
-
-
-  async function countTeamMembers(
-    teamId,
-    element
-  ) {
-
-    try {
-
-      const snapshot =
-        await getDocs(
-          collection(
-            db,
-            "users"
-          )
-        );
-
-
-      let count = 0;
-
-
-      snapshot.forEach(
-        userDoc => {
-
-          if (
-            userDoc.data().teamId ===
-            teamId
-          ) {
-
-            count++;
-
-          }
-
-        }
-      );
-
-
-      element.textContent =
-        `メンバー ${count}人`;
-
-    } catch {
-
-      element.textContent =
-        "人数取得エラー";
-
-    }
-
-  }
-
-
-  /* =====================================================
-     班追加
-  ====================================================== */
-
-  addTeamButton.addEventListener(
-    "click",
-    async () => {
-
-      const name =
-        teamNameInput.value.trim();
-
-
-      if (!name) {
-
-        showError(
-          "班名を入力してください。"
-        );
-
-        return;
-
-      }
-
-
-      try {
-
-        addTeamButton.disabled =
-          true;
-
-
-        const teamRef =
-          doc(
-            collection(
-              db,
-              "teams"
-            )
-          );
-
-
-        await setDoc(
-          teamRef,
-          {
-
-            name,
-
-            leaderUids: [],
-
-            active: true,
-
-            createdAt:
-              serverTimestamp()
-
-          }
-        );
-
-
-        teamNameInput.value =
-          "";
-
-
-        await loadTeams();
-
-        await loadMembers();
-
-        showSuccess(
-          "班を追加しました。"
-        );
-
-      } catch (error) {
-
-        showError(
-          firebaseErrorMessage(
-            error
-          )
-        );
-
-      } finally {
-
-        addTeamButton.disabled =
-          false;
-
-      }
-
-    }
-  );
-
-
-  /* =====================================================
-     班編集
-  ====================================================== */
-
-  function openEditTeamModal(
-    team
-  ) {
-
-    editingTeamId =
-      team.id;
-
-    editTeamName.value =
-      team.name || "";
-
-    teamModal.style.display =
-      "flex";
-
-  }
-
-
-  function closeTeamModal() {
-
-    editingTeamId =
-      null;
-
-    teamModal.style.display =
-      "none";
-
-  }
-
-
-  cancelTeamModal.onclick =
-    closeTeamModal;
-
-
-  saveTeamModal.onclick =
-    async () => {
-
-      if (
-        !editingTeamId
-      ) {
-
-        return;
-
-      }
-
-
-      const name =
-        editTeamName.value.trim();
-
-
-      if (!name) {
-
-        alert(
-          "班名を入力してください。"
-        );
-
-        return;
-
-      }
-
-
-      try {
-
-        await updateDoc(
-          doc(
-            db,
-            "teams",
-            editingTeamId
-          ),
-          {
-
-            name,
-
-            updatedAt:
-              serverTimestamp()
-
-          }
-        );
-
-
-        closeTeamModal();
-
-        await loadTeams();
-
-        showSuccess(
-          "班名を変更しました。"
-        );
-
-      } catch (error) {
-
-        showError(
-          firebaseErrorMessage(
-            error
-          )
-        );
-
-      }
-
-    };
-
-
-  async function deleteTeam(
-    team
-  ) {
-
-    if (
-      !confirm(
-        `「${team.name}」を削除しますか？`
-      )
-    ) {
-
-      return;
-
-    }
-
-
-    try {
-
-      await deleteDoc(
-        doc(
-          db,
-          "teams",
-          team.id
-        )
-      );
-
-
-      const snapshot =
-        await getDocs(
-          collection(
-            db,
-            "users"
-          )
-        );
-
-
-      const updates = [];
-
-
-      snapshot.forEach(
-        userDoc => {
-
-          if (
-            userDoc.data().teamId ===
-            team.id
-          ) {
-
-            updates.push(
-              updateDoc(
-                doc(
-                  db,
-                  "users",
-                  userDoc.id
-                ),
-                {
-                  teamId: null
-                }
-              )
-            );
-
-          }
-
-        }
-      );
-
-
-      await Promise.all(
-        updates
-      );
-
+      teamNameInput.value =
+        "";
 
       await loadTeams();
 
-      await loadMembers();
-
       showSuccess(
-        "班を削除しました。"
+        "班を追加しました。"
       );
 
     } catch (error) {
@@ -3448,19 +3384,460 @@
 
     }
 
-  }
+  };
 
 
-  /* =====================================================
-     商材取得
-  ====================================================== */
+function openEditTeamModal(
+  team
+) {
 
-  async function loadProducts() {
+  editingTeamId =
+    team.id;
+
+  editTeamName.value =
+    team.name ||
+    "";
+
+  teamModal.style.display =
+    "flex";
+
+}
+
+
+function closeTeamModal() {
+
+  editingTeamId =
+    null;
+
+  teamModal.style.display =
+    "none";
+
+}
+
+
+cancelTeamModal.onclick =
+  closeTeamModal;
+
+
+saveTeamModal.onclick =
+  async () => {
+
+    if (
+      !editingTeamId
+    ) {
+
+      return;
+
+    }
+
+
+    const name =
+      editTeamName.value.trim();
+
+
+    if (!name) {
+
+      showError(
+        "班名を入力してください。"
+      );
+
+      return;
+
+    }
+
 
     try {
 
-      const snapshot =
-        await getDocs(
+      await updateDoc(
+        doc(
+          db,
+          "teams",
+          editingTeamId
+        ),
+        {
+
+          name,
+
+          updatedAt:
+            serverTimestamp()
+
+        }
+      );
+
+
+      closeTeamModal();
+
+      await loadTeams();
+
+      showSuccess(
+        "班名を変更しました。"
+      );
+
+    } catch (error) {
+
+      showError(
+        firebaseErrorMessage(
+          error
+        )
+      );
+
+    }
+
+  };
+
+
+async function deleteTeam(
+  team
+) {
+
+  if (
+    !confirm(
+      `${team.name}を削除しますか？\n\n所属しているメンバーの班は「所属なし」になります。`
+    )
+  ) {
+
+    return;
+
+  }
+
+
+  try {
+
+    await deleteDoc(
+      doc(
+        db,
+        "teams",
+        team.id
+      )
+    );
+
+
+    const snapshot =
+      await getDocs(
+        collection(
+          db,
+          "users"
+        )
+      );
+
+
+    const updates = [];
+
+
+    snapshot.forEach(
+      userDoc => {
+
+        const data =
+          userDoc.data();
+
+        if (
+          data.teamId ===
+          team.id
+        ) {
+
+          updates.push(
+            updateDoc(
+              doc(
+                db,
+                "users",
+                userDoc.id
+              ),
+              {
+
+                teamId:
+                  null,
+
+                updatedAt:
+                  serverTimestamp()
+
+              }
+            )
+          );
+
+        }
+
+      }
+    );
+
+
+    await Promise.all(
+      updates
+    );
+
+
+    await loadTeams();
+
+    await loadMembers();
+
+    showSuccess(
+      "班を削除しました。"
+    );
+
+  } catch (error) {
+
+    showError(
+      firebaseErrorMessage(
+        error
+      )
+    );
+
+  }
+
+}
+
+
+/* =====================================================
+   商材
+===================================================== */
+
+async function loadProducts() {
+
+  try {
+
+    const snapshot =
+      await getDocs(
+        collection(
+          db,
+          "products"
+        )
+      );
+
+
+    products = [];
+
+    snapshot.forEach(
+      productDoc => {
+
+        products.push({
+
+          id:
+            productDoc.id,
+
+          ...productDoc.data()
+
+        });
+
+      }
+    );
+
+
+    products.sort(
+      (a, b) =>
+        (
+          a.name ||
+          ""
+        ).localeCompare(
+          b.name ||
+          "",
+          "ja"
+        )
+    );
+
+
+    renderProducts();
+
+  } catch (error) {
+
+    showError(
+      firebaseErrorMessage(
+        error
+      )
+    );
+
+  }
+
+}
+
+
+function renderProducts() {
+
+  productList.innerHTML =
+    "";
+
+
+  if (
+    products.length === 0
+  ) {
+
+    productList.innerHTML = `
+      <div class="empty-message">
+        商材がありません。
+      </div>
+    `;
+
+    return;
+
+  }
+
+
+  products.forEach(
+    product => {
+
+      const item =
+        document.createElement(
+          "div"
+        );
+
+      item.className =
+        "product-item";
+
+
+      const info =
+        document.createElement(
+          "div"
+        );
+
+
+      const name =
+        document.createElement(
+          "div"
+        );
+
+      name.className =
+        "product-name";
+
+      name.textContent =
+        product.name ||
+        "名前未設定";
+
+
+      const revenue =
+        document.createElement(
+          "div"
+        );
+
+      revenue.className =
+        "product-revenue";
+
+      revenue.textContent =
+        `1件 ${formatYen(
+          product.revenue
+        )}`;
+
+
+      info.appendChild(
+        name
+      );
+
+      info.appendChild(
+        revenue
+      );
+
+
+      const actions =
+        document.createElement(
+          "div"
+        );
+
+      actions.className =
+        "product-actions";
+
+
+      const edit =
+        document.createElement(
+          "button"
+        );
+
+      edit.className =
+        "edit-product-button";
+
+      edit.textContent =
+        "編集";
+
+      edit.onclick =
+        () =>
+          openEditProductModal(
+            product
+          );
+
+
+      const del =
+        document.createElement(
+          "button"
+        );
+
+      del.className =
+        "history-delete";
+
+      del.textContent =
+        "削除";
+
+      del.onclick =
+        () =>
+          deleteProduct(
+            product
+          );
+
+
+      actions.appendChild(
+        edit
+      );
+
+      actions.appendChild(
+        del
+      );
+
+
+      item.appendChild(
+        info
+      );
+
+      item.appendChild(
+        actions
+      );
+
+
+      productList.appendChild(
+        item
+      );
+
+    }
+  );
+
+}
+
+
+addProductButton.onclick =
+  async () => {
+
+    const name =
+      productNameInput.value.trim();
+
+    const revenue =
+      Number(
+        productRevenueInput.value
+      );
+
+
+    if (!name) {
+
+      showError(
+        "商材名を入力してください。"
+      );
+
+      return;
+
+    }
+
+
+    if (
+      revenue < 0 ||
+      !Number.isFinite(revenue)
+    ) {
+
+      showError(
+        "売上単価を正しく入力してください。"
+      );
+
+      return;
+
+    }
+
+
+    try {
+
+      const productRef =
+        doc(
           collection(
             db,
             "products"
@@ -3468,125 +3845,2849 @@
         );
 
 
-      products = [];
+      await setDoc(
+        productRef,
+        {
 
+          name,
 
-      snapshot.forEach(
-        productDoc => {
+          revenue,
 
-          products.push({
+          active: true,
 
-            id:
-              productDoc.id,
+          createdAt:
+            serverTimestamp(),
 
-            ...productDoc.data()
-
-          });
+          updatedAt:
+            serverTimestamp()
 
         }
       );
 
 
-      products.sort(
-        (a, b) =>
-          (
-            a.name || ""
-          ).localeCompare(
-            b.name || "",
-            "ja"
-          )
+      productNameInput.value =
+        "";
+
+      productRevenueInput.value =
+        "";
+
+
+      await loadProducts();
+
+      prepareProductInputList();
+
+      showSuccess(
+        "商材を追加しました。"
       );
-
-
-      renderProducts();
 
     } catch (error) {
 
-      console.error(
-        error
+      showError(
+        firebaseErrorMessage(
+          error
+        )
       );
 
     }
 
-  }
+  };
 
 
-  function renderProducts() {
+function openEditProductModal(
+  product
+) {
+
+  editingProductId =
+    product.id;
+
+  editProductName.value =
+    product.name ||
+    "";
+
+  editProductRevenue.value =
+    Number(
+      product.revenue ||
+      0
+    );
+
+  productModal.style.display =
+    "flex";
+
+}
+
+
+function closeProductModal() {
+
+  editingProductId =
+    null;
+
+  productModal.style.display =
+    "none";
+
+}
+
+
+cancelProductModal.onclick =
+  closeProductModal;
+
+
+saveProductModal.onclick =
+  async () => {
 
     if (
-      products.length === 0
+      !editingProductId
     ) {
-
-      productList.innerHTML = `
-        <div class="empty-message">
-          まだ商材がありません。
-        </div>
-      `;
 
       return;
 
     }
 
 
-    productList.innerHTML =
+    const name =
+      editProductName.value.trim();
+
+    const revenue =
+      Number(
+        editProductRevenue.value
+      );
+
+
+    if (!name) {
+
+      showError(
+        "商材名を入力してください。"
+      );
+
+      return;
+
+    }
+
+
+    if (
+      !Number.isFinite(revenue) ||
+      revenue < 0
+    ) {
+
+      showError(
+        "売上単価を正しく入力してください。"
+      );
+
+      return;
+
+    }
+
+
+    try {
+
+      await updateDoc(
+        doc(
+          db,
+          "products",
+          editingProductId
+        ),
+        {
+
+          name,
+
+          revenue,
+
+          updatedAt:
+            serverTimestamp()
+
+        }
+      );
+
+
+      closeProductModal();
+
+      await loadProducts();
+
+      prepareProductInputList();
+
+      showSuccess(
+        "商材を変更しました。"
+      );
+
+    } catch (error) {
+
+      showError(
+        firebaseErrorMessage(
+          error
+        )
+      );
+
+    }
+
+  };
+
+
+async function deleteProduct(
+  product
+) {
+
+  if (
+    !confirm(
+      `${product.name}を削除しますか？`
+    )
+  ) {
+
+    return;
+
+  }
+
+
+  try {
+
+    await deleteDoc(
+      doc(
+        db,
+        "products",
+        product.id
+      )
+    );
+
+
+    await loadProducts();
+
+    prepareProductInputList();
+
+    showSuccess(
+      "商材を削除しました。"
+    );
+
+  } catch (error) {
+
+    showError(
+      firebaseErrorMessage(
+        error
+      )
+    );
+
+  }
+
+}
+
+
+/* =====================================================
+   メンバー
+===================================================== */
+
+async function loadMembers() {
+
+  try {
+
+    const snapshot =
+      await getDocs(
+        collection(
+          db,
+          "users"
+        )
+      );
+
+
+    members = [];
+
+    snapshot.forEach(
+      userDoc => {
+
+        members.push({
+
+          id:
+            userDoc.id,
+
+          ...userDoc.data()
+
+        });
+
+      }
+    );
+
+
+    members.sort(
+      (a, b) =>
+        (
+          a.name ||
+          ""
+        ).localeCompare(
+          b.name ||
+          "",
+          "ja"
+        )
+    );
+
+
+    renderMembers();
+
+  } catch (error) {
+
+    showError(
+      firebaseErrorMessage(
+        error
+      )
+    );
+
+  }
+
+}
+
+
+function getTeamName(
+  teamId
+) {
+
+  const team =
+    teams.find(
+      item =>
+        item.id ===
+        teamId
+    );
+
+
+  return team
+    ? team.name
+    : "所属なし";
+
+}
+
+
+function renderMembers() {
+
+  memberList.innerHTML =
+    "";
+
+
+  if (
+    members.length === 0
+  ) {
+
+    memberList.innerHTML = `
+      <div class="empty-message">
+        メンバーがいません。
+      </div>
+    `;
+
+    return;
+
+  }
+
+
+  members.forEach(
+    member => {
+
+      const item =
+        document.createElement(
+          "div"
+        );
+
+      item.className =
+        "member-item";
+
+
+      const info =
+        document.createElement(
+          "div"
+        );
+
+
+      const name =
+        document.createElement(
+          "div"
+        );
+
+      name.className =
+        "member-name";
+
+      name.textContent =
+        member.name ||
+        "名前未設定";
+
+
+      const email =
+        document.createElement(
+          "div"
+        );
+
+      email.className =
+        "member-email";
+
+      email.textContent =
+        member.email ||
+        "";
+
+
+      const role =
+        document.createElement(
+          "div"
+        );
+
+      role.className =
+        "member-role";
+
+      role.textContent =
+        member.role === "leader"
+          ? "👑 リーダー"
+          : "👤 メンバー";
+
+
+      const team =
+        document.createElement(
+          "div"
+        );
+
+      team.className =
+        "member-team";
+
+      team.textContent =
+        getTeamName(
+          member.teamId
+        );
+
+
+      info.appendChild(
+        name
+      );
+
+      info.appendChild(
+        email
+      );
+
+      info.appendChild(
+        role
+      );
+
+      info.appendChild(
+        team
+      );
+
+
+      const actions =
+        document.createElement(
+          "div"
+        );
+
+      actions.className =
+        "member-actions";
+
+
+      const roleButton =
+        document.createElement(
+          "button"
+        );
+
+      roleButton.className =
+        "member-action-button";
+
+      roleButton.textContent =
+        member.role === "leader"
+          ? "メンバーに変更"
+          : "リーダーに変更";
+
+      roleButton.onclick =
+        () =>
+          changeMemberRole(
+            member
+          );
+
+
+      const teamButton =
+        document.createElement(
+          "button"
+        );
+
+      teamButton.className =
+        "member-action-button";
+
+      teamButton.textContent =
+        "班変更";
+
+      teamButton.onclick =
+        () =>
+          openMemberTeamModal(
+            member
+          );
+
+
+      actions.appendChild(
+        roleButton
+      );
+
+      actions.appendChild(
+        teamButton
+      );
+
+
+      item.appendChild(
+        info
+      );
+
+      item.appendChild(
+        actions
+      );
+
+
+      memberList.appendChild(
+        item
+      );
+
+    }
+  );
+
+}
+
+
+async function changeMemberRole(
+  member
+) {
+
+  const newRole =
+    member.role === "leader"
+      ? "member"
+      : "leader";
+
+
+  if (
+    !confirm(
+      `${member.name || "このユーザー"}を${
+        newRole === "leader"
+          ? "リーダー"
+          : "メンバー"
+      }に変更しますか？`
+    )
+  ) {
+
+    return;
+
+  }
+
+
+  try {
+
+    await updateDoc(
+      doc(
+        db,
+        "users",
+        member.id
+      ),
+      {
+
+        role:
+          newRole,
+
+        updatedAt:
+          serverTimestamp()
+
+      }
+    );
+
+
+    await loadMembers();
+
+    showSuccess(
+      "権限を変更しました。"
+    );
+
+  } catch (error) {
+
+    showError(
+      firebaseErrorMessage(
+        error
+      )
+    );
+
+  }
+
+}
+
+
+function openMemberTeamModal(
+  member
+) {
+
+  editingMemberId =
+    member.id;
+
+
+  memberTeamSelect.innerHTML = `
+    <option value="">
+      所属なし
+    </option>
+  `;
+
+
+  teams.forEach(
+    team => {
+
+      const option =
+        document.createElement(
+          "option"
+        );
+
+      option.value =
+        team.id;
+
+      option.textContent =
+        team.name;
+
+
+      if (
+        team.id ===
+        member.teamId
+      ) {
+
+        option.selected =
+          true;
+
+      }
+
+
+      memberTeamSelect.appendChild(
+        option
+      );
+
+    }
+  );
+
+
+  memberTeamModal.style.display =
+    "flex";
+
+}
+
+
+function closeMemberTeamModal() {
+
+  editingMemberId =
+    null;
+
+  memberTeamModal.style.display =
+    "none";
+
+}
+
+
+cancelMemberTeamModal.onclick =
+  closeMemberTeamModal;
+
+
+saveMemberTeamModal.onclick =
+  async () => {
+
+    if (
+      !editingMemberId
+    ) {
+
+      return;
+
+    }
+
+
+    try {
+
+      const teamId =
+        memberTeamSelect.value ||
+        null;
+
+
+      await updateDoc(
+        doc(
+          db,
+          "users",
+          editingMemberId
+        ),
+        {
+
+          teamId,
+
+          updatedAt:
+            serverTimestamp()
+
+        }
+      );
+
+
+      closeMemberTeamModal();
+
+      await loadMembers();
+
+      await loadTeams();
+
+      showSuccess(
+        "所属班を変更しました。"
+      );
+
+    } catch (error) {
+
+      showError(
+        firebaseErrorMessage(
+          error
+        )
+      );
+
+    }
+
+  };
+
+
+/* =====================================================
+   実績入力準備
+===================================================== */
+
+async function prepareRecordInputs() {
+
+  recordMember.innerHTML = `
+    <option value="">
+      担当者を選択
+    </option>
+  `;
+
+
+  if (
+    currentUserData?.role ===
+    "leader"
+  ) {
+
+    members.forEach(
+      member => {
+
+        const option =
+          document.createElement(
+            "option"
+          );
+
+        option.value =
+          member.id;
+
+        option.textContent =
+          member.name ||
+          "名前未設定";
+
+        recordMember.appendChild(
+          option
+        );
+
+      }
+    );
+
+  } else {
+
+    if (
+      !currentUserData
+    ) {
+
+      return;
+
+    }
+
+
+    const option =
+      document.createElement(
+        "option"
+      );
+
+    option.value =
+      currentUserData.uid;
+
+    option.textContent =
+      currentUserData.name ||
+      "自分";
+
+
+    recordMember.appendChild(
+      option
+    );
+
+
+    recordMember.value =
+      currentUserData.uid;
+
+  }
+
+
+  prepareProductInputList();
+
+}
+
+
+/* =====================================================
+   全商材入力欄
+===================================================== */
+
+function prepareProductInputList(
+  existingResults = null
+) {
+
+  productInputList.innerHTML =
+    "";
+
+
+  if (
+    products.length === 0
+  ) {
+
+    productInputList.innerHTML = `
+      <div class="empty-message">
+        先に商材管理から商材を追加してください。
+      </div>
+    `;
+
+    updateRecordTotals();
+
+    return;
+
+  }
+
+
+  products.forEach(
+    product => {
+
+      const row =
+        document.createElement(
+          "div"
+        );
+
+      row.className =
+        "product-input-row";
+
+
+      const info =
+        document.createElement(
+          "div"
+        );
+
+      info.className =
+        "product-input-info";
+
+
+      const name =
+        document.createElement(
+          "div"
+        );
+
+      name.className =
+        "product-input-name";
+
+      name.textContent =
+        product.name;
+
+
+      const unit =
+        document.createElement(
+          "div"
+        );
+
+      unit.className =
+        "product-input-unit";
+
+      unit.textContent =
+        `1件 ${formatYen(
+          product.revenue
+        )}`;
+
+
+      info.appendChild(
+        name
+      );
+
+      info.appendChild(
+        unit
+      );
+
+
+      const control =
+        document.createElement(
+          "div"
+        );
+
+      control.className =
+        "product-input-control";
+
+
+      const input =
+        document.createElement(
+          "input"
+        );
+
+      input.type =
+        "number";
+
+      input.min =
+        "0";
+
+      input.step =
+        "1";
+
+      input.value =
+        "0";
+
+      input.dataset.productId =
+        product.id;
+
+
+      if (
+        existingResults &&
+        existingResults[
+          product.id
+        ]
+      ) {
+
+        input.value =
+          Number(
+            existingResults[
+              product.id
+            ].count || 0
+          );
+
+      }
+
+
+      input.addEventListener(
+        "input",
+        updateRecordTotals
+      );
+
+
+      control.appendChild(
+        input
+      );
+
+
+      row.appendChild(
+        info
+      );
+
+      row.appendChild(
+        control
+      );
+
+
+      productInputList.appendChild(
+        row
+      );
+
+    }
+  );
+
+
+  updateRecordTotals();
+
+}
+
+
+/* =====================================================
+   入力合計
+===================================================== */
+
+function getCurrentInputResults() {
+
+  const results =
+    {};
+
+
+  const inputs =
+    productInputList.querySelectorAll(
+      "input[data-product-id]"
+    );
+
+
+  inputs.forEach(
+    input => {
+
+      const productId =
+        input.dataset.productId;
+
+      const count =
+        Number(
+          input.value || 0
+        );
+
+
+      if (
+        Number.isInteger(count) &&
+        count > 0
+      ) {
+
+        const product =
+          products.find(
+            item =>
+              item.id ===
+              productId
+          );
+
+
+        if (product) {
+
+          results[
+            productId
+          ] = {
+
+            productName:
+              product.name,
+
+            count,
+
+            revenuePerUnit:
+              Number(
+                product.revenue || 0
+              )
+
+          };
+
+        }
+
+      }
+
+    }
+  );
+
+
+  return results;
+
+}
+
+
+function calculateResultsTotals(
+  results
+) {
+
+  let count =
+    0;
+
+  let revenue =
+    0;
+
+
+  Object.values(
+    results
+  ).forEach(
+    result => {
+
+      count +=
+        Number(
+          result.count || 0
+        );
+
+      revenue +=
+        Number(
+          result.count || 0
+        ) *
+        Number(
+          result.revenuePerUnit || 0
+        );
+
+    }
+  );
+
+
+  return {
+    count,
+    revenue
+  };
+
+}
+
+
+function updateRecordTotals() {
+
+  const results =
+    getCurrentInputResults();
+
+
+  const totals =
+    calculateResultsTotals(
+      results
+    );
+
+
+  recordTotalCount.textContent =
+    `${totals.count}件`;
+
+
+  recordTotalRevenue.textContent =
+    formatYen(
+      totals.revenue
+    );
+
+}
+
+
+/* =====================================================
+   日付・担当者変更
+===================================================== */
+
+recordDate.addEventListener(
+  "change",
+  async () => {
+
+    await loadExistingRecordIntoForm();
+
+  }
+);
+
+
+recordMember.addEventListener(
+  "change",
+  async () => {
+
+    await loadExistingRecordIntoForm();
+
+  }
+);
+
+
+async function loadExistingRecordIntoForm() {
+
+  if (
+    !recordDate.value ||
+    !recordMember.value
+  ) {
+
+    return;
+
+  }
+
+
+  const record =
+    findDailyRecord(
+      recordMember.value,
+      recordDate.value
+    );
+
+
+  if (
+    record &&
+    record.results
+  ) {
+
+    editingRecordId =
+      record.id;
+
+
+    prepareProductInputList(
+      record.results
+    );
+
+
+    saveRecordButton.textContent =
+      "実績を更新";
+
+    return;
+
+  }
+
+
+  editingRecordId =
+    null;
+
+  prepareProductInputList();
+
+  saveRecordButton.textContent =
+    "実績を一括登録";
+
+}
+
+
+function findDailyRecord(
+  memberId,
+  date
+) {
+
+  return records.find(
+    record =>
+      record.uid ===
+        memberId &&
+      record.date ===
+        date &&
+      record.results
+  );
+
+}
+
+
+/* =====================================================
+   入力クリア
+===================================================== */
+
+clearRecordButton.onclick =
+  () => {
+
+    editingRecordId =
+      null;
+
+
+    recordDate.value =
+      getTodayString();
+
+
+    if (
+      currentUserData?.role ===
+      "leader"
+    ) {
+
+      recordMember.value =
+        "";
+
+    } else {
+
+      recordMember.value =
+        currentUserData?.uid ||
+        "";
+
+    }
+
+
+    prepareProductInputList();
+
+
+    saveRecordButton.textContent =
+      "実績を一括登録";
+
+
+    clearMessages();
+
+  };
+
+
+/* =====================================================
+   実績登録
+===================================================== */
+
+saveRecordButton.onclick =
+  async () => {
+
+    const date =
+      recordDate.value;
+
+    const memberId =
+      recordMember.value;
+
+
+    if (!date) {
+
+      showError(
+        "日付を選択してください。"
+      );
+
+      return;
+
+    }
+
+
+    if (!memberId) {
+
+      showError(
+        "担当者を選択してください。"
+      );
+
+      return;
+
+    }
+
+
+    /*
+      最新のmembersから取得することで
+      名前変更後も最新名を保存
+    */
+
+    const member =
+      members.find(
+        item =>
+          item.id ===
+          memberId
+      ) ||
+      currentUserData;
+
+
+    if (!member) {
+
+      showError(
+        "担当者が見つかりません。"
+      );
+
+      return;
+
+    }
+
+
+    const results =
+      getCurrentInputResults();
+
+
+    const totals =
+      calculateResultsTotals(
+        results
+      );
+
+
+    if (
+      totals.count <= 0
+    ) {
+
+      showError(
+        "少なくとも1つの商材に1件以上入力してください。"
+      );
+
+      return;
+
+    }
+
+
+    const team =
+      teams.find(
+        item =>
+          item.id ===
+          member.teamId
+      );
+
+
+    try {
+
+      saveRecordButton.disabled =
+        true;
+
+
+      saveRecordButton.textContent =
+        editingRecordId
+          ? "更新中..."
+          : "登録中...";
+
+
+      let recordRef;
+
+
+      if (
+        editingRecordId
+      ) {
+
+        recordRef =
+          doc(
+            db,
+            "records",
+            editingRecordId
+          );
+
+      } else {
+
+        const recordId =
+          `${memberId}_${date}`;
+
+
+        recordRef =
+          doc(
+            db,
+            "records",
+            recordId
+          );
+
+      }
+
+
+      const existingSnap =
+        await getDoc(
+          recordRef
+        );
+
+
+      const data = {
+
+        uid:
+          member.id,
+
+        memberNameSnapshot:
+          member.name ||
+          "名前未設定",
+
+        teamId:
+          member.teamId ||
+          null,
+
+        teamNameSnapshot:
+          team
+            ? team.name
+            : "所属なし",
+
+        date,
+
+        results,
+
+        totalCount:
+          totals.count,
+
+        totalRevenue:
+          totals.revenue,
+
+        updatedAt:
+          serverTimestamp()
+
+      };
+
+
+      if (
+        !existingSnap.exists()
+      ) {
+
+        data.createdAt =
+          serverTimestamp();
+
+      }
+
+
+      await setDoc(
+        recordRef,
+        data,
+        {
+          merge: true
+        }
+      );
+
+
+      editingRecordId =
+        recordRef.id;
+
+
+      showSuccess(
+        `${date}の実績を保存しました。`
+      );
+
+
+      await loadRecords();
+
+
+      saveRecordButton.textContent =
+        "実績を更新";
+
+
+    } catch (error) {
+
+      console.error(error);
+
+      showError(
+        firebaseErrorMessage(
+          error
+        )
+      );
+
+    } finally {
+
+      saveRecordButton.disabled =
+        false;
+
+      saveRecordButton.textContent =
+        editingRecordId
+          ? "実績を更新"
+          : "実績を一括登録";
+
+    }
+
+  };
+
+
+/* =====================================================
+   実績取得
+===================================================== */
+
+async function loadRecords() {
+
+  try {
+
+    const snapshot =
+      await getDocs(
+        collection(
+          db,
+          "records"
+        )
+      );
+
+
+    records = [];
+
+
+    snapshot.forEach(
+      recordDoc => {
+
+        records.push({
+
+          id:
+            recordDoc.id,
+
+          ...recordDoc.data()
+
+        });
+
+      }
+    );
+
+
+    records.sort(
+      (a, b) =>
+        (
+          b.date ||
+          ""
+        ).localeCompare(
+          a.date ||
+          ""
+        )
+    );
+
+
+    createMonthOptions();
+
+    renderDashboard();
+
+
+  } catch (error) {
+
+    console.error(
+      "実績取得エラー:",
+      error
+    );
+
+
+    showError(
+      firebaseErrorMessage(
+        error
+      )
+    );
+
+  }
+
+}
+
+
+/* =====================================================
+   月選択肢
+===================================================== */
+
+function createMonthOptions() {
+
+  const months =
+    new Set();
+
+
+  records.forEach(
+    record => {
+
+      if (
+        record.date &&
+        record.date.length >= 7
+      ) {
+
+        months.add(
+          record.date.slice(
+            0,
+            7
+          )
+        );
+
+      }
+
+    }
+  );
+
+
+  const today =
+    getTodayString();
+
+
+  months.add(
+    today.slice(
+      0,
+      7
+    )
+  );
+
+
+  const sortedMonths =
+    Array.from(
+      months
+    ).sort(
+      (a, b) =>
+        b.localeCompare(a)
+    );
+
+
+  const current =
+    dashboardMonth.value;
+
+
+  dashboardMonth.innerHTML =
+    "";
+
+
+  sortedMonths.forEach(
+    month => {
+
+      const option =
+        document.createElement(
+          "option"
+        );
+
+
+      option.value =
+        month;
+
+
+      const [
+        year,
+        monthNumber
+      ] =
+        month.split("-");
+
+
+      option.textContent =
+        `${year}年${Number(
+          monthNumber
+        )}月`;
+
+
+      dashboardMonth.appendChild(
+        option
+      );
+
+    }
+  );
+
+
+  if (
+    sortedMonths.includes(
+      current
+    )
+  ) {
+
+    dashboardMonth.value =
+      current;
+
+  } else {
+
+    dashboardMonth.value =
+      today.slice(
+        0,
+        7
+      );
+
+  }
+
+}
+
+
+dashboardMonth.addEventListener(
+  "change",
+  renderDashboard
+);
+
+
+/* =====================================================
+   月間データ正規化
+===================================================== */
+
+function getRecordResults(
+  record
+) {
+
+  if (
+    record.results &&
+    typeof record.results ===
+      "object"
+  ) {
+
+    return Object.values(
+      record.results
+    );
+
+  }
+
+
+  if (
+    record.productId
+  ) {
+
+    return [
+
+      {
+
+        productId:
+          record.productId,
+
+        productName:
+          record.productNameSnapshot ||
+          "不明",
+
+        count:
+          Number(
+            record.count || 0
+          ),
+
+        revenuePerUnit:
+          Number(
+            record.revenuePerUnit || 0
+          )
+
+      }
+
+    ];
+
+  }
+
+
+  return [];
+
+}
+
+
+/* =====================================================
+   ★ 現在のメンバー名を取得
+===================================================== */
+
+function getCurrentMemberName(
+  record
+) {
+
+  if (
+    record.uid
+  ) {
+
+    const member =
+      members.find(
+        item =>
+          item.id ===
+          record.uid
+      );
+
+
+    if (
+      member &&
+      member.name
+    ) {
+
+      return member.name;
+
+    }
+
+  }
+
+
+  return (
+    record.memberNameSnapshot ||
+    "不明"
+  );
+
+}
+
+
+function getCurrentTeamName(
+  record
+) {
+
+  if (
+    record.teamId
+  ) {
+
+    const team =
+      teams.find(
+        item =>
+          item.id ===
+          record.teamId
+      );
+
+
+    if (
+      team &&
+      team.name
+    ) {
+
+      return team.name;
+
+    }
+
+  }
+
+
+  return (
+    record.teamNameSnapshot ||
+    "所属なし"
+  );
+
+}
+
+
+/* =====================================================
+   月間ダッシュボード
+===================================================== */
+
+function renderDashboard() {
+
+  const selectedMonth =
+    dashboardMonth.value;
+
+
+  if (!selectedMonth) {
+
+    monthlyCount.textContent =
+      "0件";
+
+    monthlyRevenue.textContent =
+      "¥0";
+
+    monthlyWorkDays.textContent =
+      "0日";
+
+    individualRankingList.innerHTML =
       "";
 
+    teamRankingList.innerHTML =
+      "";
 
-    products.forEach(
-      product => {
+    productSummaryList.innerHTML =
+      "";
 
-        const item =
-          document.createElement(
-            "div"
-          );
+    dailySummaryList.innerHTML =
+      "";
 
-        item.className =
-          "product-item";
+    recordHistoryList.innerHTML =
+      "";
 
+    return;
 
-        const info =
-          document.createElement(
-            "div"
-          );
-
-        info.className =
-          "product-info";
+  }
 
 
-        const name =
-          document.createElement(
-            "div"
-          );
-
-        name.className =
-          "product-name";
-
-        name.textContent =
-          product.name;
+  let monthly =
+    records.filter(
+      record =>
+        record.date &&
+        record.date.startsWith(
+          selectedMonth
+        )
+    );
 
 
-        const revenue =
-          document.createElement(
-            "div"
-          );
+  if (
+    currentUserData?.role !==
+    "leader"
+  ) {
 
-        revenue.className =
-          "product-revenue";
+    monthly =
+      monthly.filter(
+        record =>
+          record.uid ===
+          currentUserData?.uid
+      );
 
-        revenue.textContent =
-          `1件：${formatYen(
-            product.revenue
-          )}`;
+  }
 
 
-        info.appendChild(
-          name
+  let totalCount =
+    0;
+
+  let totalRevenue =
+    0;
+
+
+  const productMap =
+    {};
+
+  const dailyMap =
+    {};
+
+  const individualMap =
+    {};
+
+  const teamMap =
+    {};
+
+
+  monthly.forEach(
+    record => {
+
+      const results =
+        getRecordResults(
+          record
         );
 
-        info.appendChild(
-          revenue
+
+      let recordCount =
+        0;
+
+      let recordRevenue =
+        0;
+
+
+      results.forEach(
+        result => {
+
+          const count =
+            Number(
+              result.count || 0
+            );
+
+
+          const revenuePerUnit =
+            Number(
+              result.revenuePerUnit ||
+              0
+            );
+
+
+          const revenue =
+            count *
+            revenuePerUnit;
+
+
+          recordCount +=
+            count;
+
+          recordRevenue +=
+            revenue;
+
+
+          const productName =
+            result.productName ||
+            "不明";
+
+
+          if (
+            !productMap[
+              productName
+            ]
+          ) {
+
+            productMap[
+              productName
+            ] = {
+
+              count: 0,
+
+              revenue: 0
+
+            };
+
+          }
+
+
+          productMap[
+            productName
+          ].count +=
+            count;
+
+
+          productMap[
+            productName
+          ].revenue +=
+            revenue;
+
+        }
+      );
+
+
+      totalCount +=
+        recordCount;
+
+      totalRevenue +=
+        recordRevenue;
+
+
+      const date =
+        record.date;
+
+
+      if (
+        !dailyMap[date]
+      ) {
+
+        dailyMap[date] = {
+
+          count: 0,
+
+          revenue: 0
+
+        };
+
+      }
+
+
+      dailyMap[date].count +=
+        recordCount;
+
+      dailyMap[date].revenue +=
+        recordRevenue;
+
+
+      /*
+        ★ 現在の名前を使用
+      */
+
+      const memberName =
+        getCurrentMemberName(
+          record
         );
 
+
+      const memberKey =
+        record.uid ||
+        memberName;
+
+
+      if (
+        !individualMap[
+          memberKey
+        ]
+      ) {
+
+        individualMap[
+          memberKey
+        ] = {
+
+          name:
+            memberName,
+
+          teamName:
+            getCurrentTeamName(
+              record
+            ),
+
+          count: 0,
+
+          revenue: 0
+
+        };
+
+      }
+
+
+      individualMap[
+        memberKey
+      ].name =
+        memberName;
+
+
+      individualMap[
+        memberKey
+      ].teamName =
+        getCurrentTeamName(
+          record
+        );
+
+
+      individualMap[
+        memberKey
+      ].count +=
+        recordCount;
+
+
+      individualMap[
+        memberKey
+      ].revenue +=
+        recordRevenue;
+
+
+      /*
+        班
+      */
+
+      const teamName =
+        getCurrentTeamName(
+          record
+        );
+
+
+      if (
+        !teamMap[
+          teamName
+        ]
+      ) {
+
+        teamMap[
+          teamName
+        ] = {
+
+          name:
+            teamName,
+
+          count: 0,
+
+          revenue: 0
+
+        };
+
+      }
+
+
+      teamMap[
+        teamName
+      ].count +=
+        recordCount;
+
+
+      teamMap[
+        teamName
+      ].revenue +=
+        recordRevenue;
+
+    }
+  );
+
+
+  monthlyCount.textContent =
+    `${totalCount}件`;
+
+
+  monthlyRevenue.textContent =
+    formatYen(
+      totalRevenue
+    );
+
+
+  monthlyWorkDays.textContent =
+    `${Object.keys(
+      dailyMap
+    ).length}日`;
+
+
+  renderIndividualRanking(
+    individualMap
+  );
+
+
+  renderTeamRanking(
+    teamMap
+  );
+
+
+  renderProductSummary(
+    productMap
+  );
+
+
+  renderDailySummary(
+    dailyMap
+  );
+
+
+  renderRecordHistory(
+    monthly
+  );
+
+}
+
+
+/* =====================================================
+   個人ランキング
+===================================================== */
+
+function renderIndividualRanking(
+  individualMap
+) {
+
+  individualRankingList.innerHTML =
+    "";
+
+
+  const ranking =
+    Object.values(
+      individualMap
+    ).sort(
+      (a, b) => {
+
+        if (
+          b.count !==
+          a.count
+        ) {
+
+          return (
+            b.count -
+            a.count
+          );
+
+        }
+
+
+        return (
+          b.revenue -
+          a.revenue
+        );
+
+      }
+    );
+
+
+  if (
+    ranking.length === 0
+  ) {
+
+    individualRankingList.innerHTML = `
+      <div class="empty-message">
+        この月の個人実績はありません。
+      </div>
+    `;
+
+    return;
+
+  }
+
+
+  ranking.forEach(
+    (item, index) => {
+
+      const row =
+        document.createElement(
+          "div"
+        );
+
+      row.className =
+        "ranking-row";
+
+
+      const left =
+        document.createElement(
+          "div"
+        );
+
+      left.className =
+        "ranking-left";
+
+
+      const number =
+        document.createElement(
+          "div"
+        );
+
+      number.className =
+        "ranking-number";
+
+
+      if (
+        index === 0
+      ) {
+
+        number.classList.add(
+          "top1"
+        );
+
+      } else if (
+        index === 1
+      ) {
+
+        number.classList.add(
+          "top2"
+        );
+
+      } else if (
+        index === 2
+      ) {
+
+        number.classList.add(
+          "top3"
+        );
+
+      }
+
+
+      number.textContent =
+        index + 1;
+
+
+      const info =
+        document.createElement(
+          "div"
+        );
+
+
+      const name =
+        document.createElement(
+          "div"
+        );
+
+      name.className =
+        "ranking-name";
+
+      name.textContent =
+        item.name;
+
+
+      const sub =
+        document.createElement(
+          "div"
+        );
+
+      sub.className =
+        "ranking-sub";
+
+      sub.textContent =
+        item.teamName;
+
+
+      info.appendChild(
+        name
+      );
+
+      info.appendChild(
+        sub
+      );
+
+
+      left.appendChild(
+        number
+      );
+
+      left.appendChild(
+        info
+      );
+
+
+      const value =
+        document.createElement(
+          "div"
+        );
+
+      value.className =
+        "ranking-value";
+
+
+      value.innerHTML = `
+        <div class="ranking-count">
+          ${item.count}件
+        </div>
+
+        <div class="ranking-revenue">
+          ${formatYen(
+            item.revenue
+          )}
+        </div>
+      `;
+
+
+      row.appendChild(
+        left
+      );
+
+      row.appendChild(
+        value
+      );
+
+
+      individualRankingList.appendChild(
+        row
+      );
+
+    }
+  );
+
+}
+
+
+/* =====================================================
+   班ランキング
+===================================================== */
+
+function renderTeamRanking(
+  teamMap
+) {
+
+  teamRankingList.innerHTML =
+    "";
+
+
+  const ranking =
+    Object.values(
+      teamMap
+    ).sort(
+      (a, b) => {
+
+        if (
+          b.count !==
+          a.count
+        ) {
+
+          return (
+            b.count -
+            a.count
+          );
+
+        }
+
+
+        return (
+          b.revenue -
+          a.revenue
+        );
+
+      }
+    );
+
+
+  if (
+    ranking.length === 0
+  ) {
+
+    teamRankingList.innerHTML = `
+      <div class="empty-message">
+        この月の班実績はありません。
+      </div>
+    `;
+
+    return;
+
+  }
+
+
+  ranking.forEach(
+    (item, index) => {
+
+      const row =
+        document.createElement(
+          "div"
+        );
+
+      row.className =
+        "ranking-row";
+
+
+      const left =
+        document.createElement(
+          "div"
+        );
+
+      left.className =
+        "ranking-left";
+
+
+      const number =
+        document.createElement(
+          "div"
+        );
+
+      number.className =
+        "ranking-number";
+
+
+      if (
+        index === 0
+      ) {
+
+        number.classList.add(
+          "top1"
+        );
+
+      } else if (
+        index === 1
+      ) {
+
+        number.classList.add(
+          "top2"
+        );
+
+      } else if (
+        index === 2
+      ) {
+
+        number.classList.add(
+          "top3"
+        );
+
+      }
+
+
+      number.textContent =
+        index + 1;
+
+
+      const info =
+        document.createElement(
+          "div"
+        );
+
+
+      const name =
+        document.createElement(
+          "div"
+        );
+
+      name.className =
+        "ranking-name";
+
+      name.textContent =
+        item.name;
+
+
+      info.appendChild(
+        name
+      );
+
+
+      left.appendChild(
+        number
+      );
+
+      left.appendChild(
+        info
+      );
+
+
+      const value =
+        document.createElement(
+          "div"
+        );
+
+      value.className =
+        "ranking-value";
+
+
+      value.innerHTML = `
+        <div class="ranking-count">
+          ${item.count}件
+        </div>
+
+        <div class="ranking-revenue">
+          ${formatYen(
+            item.revenue
+          )}
+        </div>
+      `;
+
+
+      row.appendChild(
+        left
+      );
+
+      row.appendChild(
+        value
+      );
+
+
+      teamRankingList.appendChild(
+        row
+      );
+
+    }
+  );
+
+}
+
+
+/* =====================================================
+   商材別
+===================================================== */
+
+function renderProductSummary(
+  productMap
+) {
+
+  productSummaryList.innerHTML =
+    "";
+
+
+  const names =
+    Object.keys(
+      productMap
+    ).sort();
+
+
+  if (
+    names.length === 0
+  ) {
+
+    productSummaryList.innerHTML = `
+      <div class="empty-message">
+        この月の実績はありません。
+      </div>
+    `;
+
+    return;
+
+  }
+
+
+  names.forEach(
+    name => {
+
+      const data =
+        productMap[name];
+
+
+      const row =
+        document.createElement(
+          "div"
+        );
+
+      row.className =
+        "summary-row";
+
+
+      row.innerHTML = `
+        <div>
+          <div class="summary-row-name">
+            ${escapeHtml(
+              name
+            )}
+          </div>
+
+          <div style="font-size:12px;color:#6b7280;margin-top:3px;">
+            ${data.count}件
+          </div>
+        </div>
+
+        <div class="summary-row-value">
+          ${formatYen(
+            data.revenue
+          )}
+        </div>
+      `;
+
+
+      productSummaryList.appendChild(
+        row
+      );
+
+    }
+  );
+
+}
+
+
+/* =====================================================
+   日別
+===================================================== */
+
+function renderDailySummary(
+  dailyMap
+) {
+
+  dailySummaryList.innerHTML =
+    "";
+
+
+  const dates =
+    Object.keys(
+      dailyMap
+    ).sort(
+      (a, b) =>
+        b.localeCompare(a)
+    );
+
+
+  if (
+    dates.length === 0
+  ) {
+
+    dailySummaryList.innerHTML = `
+      <div class="empty-message">
+        この月の実績はありません。
+      </div>
+    `;
+
+    return;
+
+  }
+
+
+  dates.forEach(
+    date => {
+
+      const data =
+        dailyMap[date];
+
+
+      const row =
+        document.createElement(
+          "div"
+        );
+
+      row.className =
+        "summary-row";
+
+
+      row.innerHTML = `
+        <div>
+          <div class="summary-row-name">
+            ${formatDateJapanese(
+              date
+            )}
+          </div>
+
+          <div style="font-size:12px;color:#6b7280;margin-top:3px;">
+            ${data.count}件
+          </div>
+        </div>
+
+        <div class="summary-row-value">
+          ${formatYen(
+            data.revenue
+          )}
+        </div>
+      `;
+
+
+      dailySummaryList.appendChild(
+        row
+      );
+
+    }
+  );
+
+}
+
+
+/* =====================================================
+   履歴
+===================================================== */
+
+function renderRecordHistory(
+  monthly
+) {
+
+  recordHistoryList.innerHTML =
+    "";
+
+
+  if (
+    monthly.length === 0
+  ) {
+
+    recordHistoryList.innerHTML = `
+      <div class="empty-message">
+        登録履歴はありません。
+      </div>
+    `;
+
+    return;
+
+  }
+
+
+  monthly.forEach(
+    record => {
+
+      const item =
+        document.createElement(
+          "div"
+        );
+
+      item.className =
+        "history-item";
+
+
+      const results =
+        getRecordResults(
+          record
+        );
+
+
+      let totalCount =
+        0;
+
+      let totalRevenue =
+        0;
+
+
+      const productTexts =
+        [];
+
+
+      results.forEach(
+        result => {
+
+          const count =
+            Number(
+              result.count || 0
+            );
+
+
+          const revenue =
+            count *
+            Number(
+              result.revenuePerUnit ||
+              0
+            );
+
+
+          totalCount +=
+            count;
+
+          totalRevenue +=
+            revenue;
+
+
+          if (
+            count > 0
+          ) {
+
+            productTexts.push(
+              `${result.productName || "不明"} ${count}件`
+            );
+
+          }
+
+        }
+      );
+
+
+      /*
+        ★ ここも現在の名前を表示
+      */
+
+      const currentName =
+        getCurrentMemberName(
+          record
+        );
+
+
+      item.innerHTML = `
+        <div class="history-top">
+
+          <div>
+
+            <div class="history-date">
+              ${formatDateJapanese(
+                record.date
+              )}
+            </div>
+
+            <div class="history-member">
+              ${escapeHtml(
+                currentName
+              )}
+            </div>
+
+            <div class="history-product">
+              ${
+                productTexts.length > 0
+                  ? productTexts
+                      .map(
+                        text =>
+                          escapeHtml(
+                            text
+                          )
+                      )
+                      .join(" / ")
+                  : "実績なし"
+              }
+            </div>
+
+          </div>
+
+          <div class="history-count">
+            ${totalCount}件
+          </div>
+
+        </div>
+
+        <div class="history-revenue">
+          ${formatYen(
+            totalRevenue
+          )}
+        </div>
+      `;
+
+
+      const canEdit =
+        currentUserData?.role ===
+          "leader" ||
+        record.uid ===
+          currentUserData?.uid;
+
+
+      if (
+        canEdit
+      ) {
 
         const actions =
           document.createElement(
@@ -3594,7 +6695,7 @@
           );
 
         actions.className =
-          "product-actions";
+          "history-actions";
 
 
         const editButton =
@@ -3610,8 +6711,8 @@
 
         editButton.onclick =
           () =>
-            openEditProductModal(
-              product
+            editRecord(
+              record
             );
 
 
@@ -3621,15 +6722,15 @@
           );
 
         deleteButton.className =
-          "delete-product-button";
+          "history-delete";
 
         deleteButton.textContent =
           "🗑️ 削除";
 
         deleteButton.onclick =
           () =>
-            deleteProduct(
-              product
+            deleteRecord(
+              record
             );
 
 
@@ -3643,3196 +6744,267 @@
 
 
         item.appendChild(
-          info
-        );
-
-        item.appendChild(
           actions
         );
 
-
-        productList.appendChild(
-          item
-        );
-
-      }
-    );
-
-  }
-
-
-  /* =====================================================
-     商材追加
-  ====================================================== */
-
-  addProductButton.onclick =
-    async () => {
-
-      const name =
-        productNameInput.value.trim();
-
-      const revenue =
-        Number(
-          productRevenueInput.value
-        );
-
-
-      if (!name) {
-
-        showError(
-          "商材名を入力してください。"
-        );
-
-        return;
-
       }
 
 
-      if (
-        productRevenueInput.value ===
-        "" ||
-        revenue < 0
-      ) {
-
-        showError(
-          "1件あたりの収益を入力してください。"
-        );
-
-        return;
-
-      }
-
-
-      try {
-
-        const productRef =
-          doc(
-            collection(
-              db,
-              "products"
-            )
-          );
-
-
-        await setDoc(
-          productRef,
-          {
-
-            name,
-
-            revenue,
-
-            active: true,
-
-            createdAt:
-              serverTimestamp(),
-
-            updatedAt:
-              serverTimestamp()
-
-          }
-        );
-
-
-        productNameInput.value =
-          "";
-
-        productRevenueInput.value =
-          "";
-
-
-        await loadProducts();
-
-        prepareProductInputList();
-
-        showSuccess(
-          "商材を追加しました。"
-        );
-
-      } catch (error) {
-
-        showError(
-          firebaseErrorMessage(
-            error
-          )
-        );
-
-      }
-
-    };
-
-
-  /* =====================================================
-     商材編集
-  ====================================================== */
-
-  function openEditProductModal(
-    product
-  ) {
-
-    editingProductId =
-      product.id;
-
-    editProductName.value =
-      product.name;
-
-    editProductRevenue.value =
-      product.revenue;
-
-    productModal.style.display =
-      "flex";
-
-  }
-
-
-  function closeProductModal() {
-
-    editingProductId =
-      null;
-
-    productModal.style.display =
-      "none";
-
-  }
-
-
-  cancelProductModal.onclick =
-    closeProductModal;
-
-
-  saveProductModal.onclick =
-    async () => {
-
-      if (
-        !editingProductId
-      ) {
-
-        return;
-
-      }
-
-
-      const name =
-        editProductName.value.trim();
-
-      const revenue =
-        Number(
-          editProductRevenue.value
-        );
-
-
-      if (!name) {
-
-        alert(
-          "商材名を入力してください。"
-        );
-
-        return;
-
-      }
-
-
-      if (
-        editProductRevenue.value ===
-        "" ||
-        revenue < 0
-      ) {
-
-        alert(
-          "収益を正しく入力してください。"
-        );
-
-        return;
-
-      }
-
-
-      try {
-
-        await updateDoc(
-          doc(
-            db,
-            "products",
-            editingProductId
-          ),
-          {
-
-            name,
-
-            revenue,
-
-            updatedAt:
-              serverTimestamp()
-
-          }
-        );
-
-
-        closeProductModal();
-
-        await loadProducts();
-
-        prepareProductInputList();
-
-        showSuccess(
-          "商材を変更しました。"
-        );
-
-      } catch (error) {
-
-        showError(
-          firebaseErrorMessage(
-            error
-          )
-        );
-
-      }
-
-    };
-
-
-  async function deleteProduct(
-    product
-  ) {
-
-    if (
-      !confirm(
-        `「${product.name}」を削除しますか？`
-      )
-    ) {
-
-      return;
-
-    }
-
-
-    try {
-
-      await deleteDoc(
-        doc(
-          db,
-          "products",
-          product.id
-        )
+      recordHistoryList.appendChild(
+        item
       );
-
-
-      await loadProducts();
-
-      prepareProductInputList();
-
-      showSuccess(
-        "商材を削除しました。"
-      );
-
-    } catch (error) {
-
-      showError(
-        firebaseErrorMessage(
-          error
-        )
-      );
-
-    }
-
-  }
-
-
-  /* =====================================================
-     メンバー取得
-  ====================================================== */
-
-  async function loadMembers() {
-
-    try {
-
-      const snapshot =
-        await getDocs(
-          collection(
-            db,
-            "users"
-          )
-        );
-
-
-      members = [];
-
-
-      snapshot.forEach(
-        memberDoc => {
-
-          members.push({
-
-            id:
-              memberDoc.id,
-
-            ...memberDoc.data()
-
-          });
-
-        }
-      );
-
-
-      members.sort(
-        (a, b) =>
-          (
-            a.name || ""
-          ).localeCompare(
-            b.name || "",
-            "ja"
-          )
-      );
-
-
-      renderMembers();
-
-    } catch (error) {
-
-      console.error(
-        error
-      );
-
-    }
-
-  }
-
-
-  function getTeamName(
-    teamId
-  ) {
-
-    if (!teamId) {
-
-      return "所属なし";
-
-    }
-
-
-    const team =
-      teams.find(
-        item =>
-          item.id ===
-          teamId
-      );
-
-
-    return team
-      ? team.name
-      : "所属なし";
-
-  }
-
-
-  function renderMembers() {
-
-    if (
-      members.length === 0
-    ) {
-
-      memberList.innerHTML = `
-        <div class="empty-message">
-          メンバーがいません。
-        </div>
-      `;
-
-      return;
-
-    }
-
-
-    memberList.innerHTML =
-      "";
-
-
-    members.forEach(
-      member => {
-
-        const item =
-          document.createElement(
-            "div"
-          );
-
-        item.className =
-          "member-item";
-
-
-        const info =
-          document.createElement(
-            "div"
-          );
-
-        info.className =
-          "member-info";
-
-
-        const name =
-          document.createElement(
-            "div"
-          );
-
-        name.className =
-          "member-name";
-
-        name.textContent =
-          member.name ||
-          "名前未設定";
-
-
-        const email =
-          document.createElement(
-            "div"
-          );
-
-        email.className =
-          "member-email";
-
-        email.textContent =
-          member.email ||
-          "";
-
-
-        const role =
-          document.createElement(
-            "span"
-          );
-
-        role.className =
-          "member-role";
-
-        role.textContent =
-          member.role ===
-          "leader"
-            ? "👑 リーダー"
-            : "👤 メンバー";
-
-
-        if (
-          member.role ===
-          "leader"
-        ) {
-
-          role.classList.add(
-            "leader"
-          );
-
-        }
-
-
-        const team =
-          document.createElement(
-            "span"
-          );
-
-        team.className =
-          "member-team";
-
-        team.textContent =
-          getTeamName(
-            member.teamId
-          );
-
-
-        info.appendChild(
-          name
-        );
-
-        info.appendChild(
-          email
-        );
-
-        info.appendChild(
-          role
-        );
-
-        info.appendChild(
-          team
-        );
-
-
-        const actions =
-          document.createElement(
-            "div"
-          );
-
-        actions.className =
-          "member-actions";
-
-
-        const roleButton =
-          document.createElement(
-            "button"
-          );
-
-        roleButton.className =
-          "role-change-button";
-
-
-        if (
-          member.role ===
-          "leader"
-        ) {
-
-          roleButton.classList.add(
-            "demote"
-          );
-
-          roleButton.textContent =
-            "メンバーに変更";
-
-        } else {
-
-          roleButton.textContent =
-            "リーダーに変更";
-
-        }
-
-
-        roleButton.onclick =
-          () =>
-            changeMemberRole(
-              member
-            );
-
-
-        const teamButton =
-          document.createElement(
-            "button"
-          );
-
-        teamButton.className =
-          "team-change-button";
-
-        teamButton.textContent =
-          "班を変更";
-
-        teamButton.onclick =
-          () =>
-            openMemberTeamModal(
-              member
-            );
-
-
-        actions.appendChild(
-          roleButton
-        );
-
-        actions.appendChild(
-          teamButton
-        );
-
-
-        item.appendChild(
-          info
-        );
-
-        item.appendChild(
-          actions
-        );
-
-
-        memberList.appendChild(
-          item
-        );
-
-      }
-    );
-
-  }
-
-
-  async function changeMemberRole(
-    member
-  ) {
-
-    const newRole =
-      member.role ===
-      "leader"
-        ? "member"
-        : "leader";
-
-
-    const roleText =
-      newRole ===
-      "leader"
-        ? "リーダー"
-        : "メンバー";
-
-
-    if (
-      !confirm(
-        `「${member.name}」を${roleText}に変更しますか？`
-      )
-    ) {
-
-      return;
-
-    }
-
-
-    try {
-
-      await updateDoc(
-        doc(
-          db,
-          "users",
-          member.id
-        ),
-        {
-
-          role:
-            newRole,
-
-          updatedAt:
-            serverTimestamp()
-
-        }
-      );
-
-
-      await loadMembers();
-
-      showSuccess(
-        "権限を変更しました。"
-      );
-
-    } catch (error) {
-
-      showError(
-        firebaseErrorMessage(
-          error
-        )
-      );
-
-    }
-
-  }
-
-
-  /* =====================================================
-     メンバー班変更
-  ====================================================== */
-
-  function openMemberTeamModal(
-    member
-  ) {
-
-    editingMemberId =
-      member.id;
-
-
-    memberTeamSelect.innerHTML = `
-      <option value="">
-        所属なし
-      </option>
-    `;
-
-
-    teams.forEach(
-      team => {
-
-        const option =
-          document.createElement(
-            "option"
-          );
-
-        option.value =
-          team.id;
-
-        option.textContent =
-          team.name;
-
-
-        if (
-          member.teamId ===
-          team.id
-        ) {
-
-          option.selected =
-            true;
-
-        }
-
-
-        memberTeamSelect.appendChild(
-          option
-        );
-
-      }
-    );
-
-
-    memberTeamModal.style.display =
-      "flex";
-
-  }
-
-
-  function closeMemberTeamModal() {
-
-    editingMemberId =
-      null;
-
-    memberTeamModal.style.display =
-      "none";
-
-  }
-
-
-  cancelMemberTeamModal.onclick =
-    closeMemberTeamModal;
-
-
-  saveMemberTeamModal.onclick =
-    async () => {
-
-      if (
-        !editingMemberId
-      ) {
-
-        return;
-
-      }
-
-
-      try {
-
-        const teamId =
-          memberTeamSelect.value ||
-          null;
-
-
-        await updateDoc(
-          doc(
-            db,
-            "users",
-            editingMemberId
-          ),
-          {
-
-            teamId,
-
-            updatedAt:
-              serverTimestamp()
-
-          }
-        );
-
-
-        closeMemberTeamModal();
-
-        await loadMembers();
-
-        await loadTeams();
-
-
-        showSuccess(
-          "所属班を変更しました。"
-        );
-
-      } catch (error) {
-
-        showError(
-          firebaseErrorMessage(
-            error
-          )
-        );
-
-      }
-
-    };
-
-
-  /* =====================================================
-     実績入力準備
-  ====================================================== */
-
-  async function prepareRecordInputs() {
-
-    recordMember.innerHTML = `
-      <option value="">
-        担当者を選択
-      </option>
-    `;
-
-
-    if (
-      currentUserData?.role ===
-      "leader"
-    ) {
-
-      members.forEach(
-        member => {
-
-          const option =
-            document.createElement(
-              "option"
-            );
-
-          option.value =
-            member.id;
-
-          option.textContent =
-            member.name ||
-            "名前未設定";
-
-          recordMember.appendChild(
-            option
-          );
-
-        }
-      );
-
-    } else {
-
-      const option =
-        document.createElement(
-          "option"
-        );
-
-      option.value =
-        currentUserData.uid;
-
-      option.textContent =
-        currentUserData.name ||
-        "自分";
-
-
-      recordMember.appendChild(
-        option
-      );
-
-
-      recordMember.value =
-        currentUserData.uid;
-
-    }
-
-
-    prepareProductInputList();
-
-  }
-
-
-  /* =====================================================
-     全商材入力欄
-  ====================================================== */
-
-  function prepareProductInputList(
-    existingResults = null
-  ) {
-
-    productInputList.innerHTML =
-      "";
-
-
-    if (
-      products.length === 0
-    ) {
-
-      productInputList.innerHTML = `
-        <div class="empty-message">
-          先に商材管理から商材を追加してください。
-        </div>
-      `;
-
-      updateRecordTotals();
-
-      return;
-
-    }
-
-
-    products.forEach(
-      product => {
-
-        const row =
-          document.createElement(
-            "div"
-          );
-
-        row.className =
-          "product-input-row";
-
-
-        const info =
-          document.createElement(
-            "div"
-          );
-
-        info.className =
-          "product-input-info";
-
-
-        const name =
-          document.createElement(
-            "div"
-          );
-
-        name.className =
-          "product-input-name";
-
-        name.textContent =
-          product.name;
-
-
-        const unit =
-          document.createElement(
-            "div"
-          );
-
-        unit.className =
-          "product-input-unit";
-
-        unit.textContent =
-          `1件 ${formatYen(
-            product.revenue
-          )}`;
-
-
-        info.appendChild(
-          name
-        );
-
-        info.appendChild(
-          unit
-        );
-
-
-        const control =
-          document.createElement(
-            "div"
-          );
-
-        control.className =
-          "product-input-control";
-
-
-        const input =
-          document.createElement(
-            "input"
-          );
-
-        input.type =
-          "number";
-
-        input.min =
-          "0";
-
-        input.step =
-          "1";
-
-        input.value =
-          "0";
-
-        input.dataset.productId =
-          product.id;
-
-
-        if (
-          existingResults &&
-          existingResults[
-            product.id
-          ]
-        ) {
-
-          input.value =
-            Number(
-              existingResults[
-                product.id
-              ].count || 0
-            );
-
-        }
-
-
-        input.addEventListener(
-          "input",
-          updateRecordTotals
-        );
-
-
-        control.appendChild(
-          input
-        );
-
-
-        row.appendChild(
-          info
-        );
-
-        row.appendChild(
-          control
-        );
-
-
-        productInputList.appendChild(
-          row
-        );
-
-      }
-    );
-
-
-    updateRecordTotals();
-
-  }
-
-
-  /* =====================================================
-     入力合計
-  ====================================================== */
-
-  function getCurrentInputResults() {
-
-    const results =
-      {};
-
-
-    const inputs =
-      productInputList.querySelectorAll(
-        "input[data-product-id]"
-      );
-
-
-    inputs.forEach(
-      input => {
-
-        const productId =
-          input.dataset.productId;
-
-        const count =
-          Number(
-            input.value || 0
-          );
-
-
-        if (
-          Number.isInteger(count) &&
-          count > 0
-        ) {
-
-          const product =
-            products.find(
-              item =>
-                item.id ===
-                productId
-            );
-
-
-          if (product) {
-
-            results[
-              productId
-            ] = {
-
-              productName:
-                product.name,
-
-              count,
-
-              revenuePerUnit:
-                Number(
-                  product.revenue || 0
-                )
-
-            };
-
-          }
-
-        }
-
-      }
-    );
-
-
-    return results;
-
-  }
-
-
-  function calculateResultsTotals(
-    results
-  ) {
-
-    let count =
-      0;
-
-    let revenue =
-      0;
-
-
-    Object.values(
-      results
-    ).forEach(
-      result => {
-
-        count +=
-          Number(
-            result.count || 0
-          );
-
-        revenue +=
-          Number(
-            result.count || 0
-          ) *
-          Number(
-            result.revenuePerUnit || 0
-          );
-
-      }
-    );
-
-
-    return {
-      count,
-      revenue
-    };
-
-  }
-
-
-  function updateRecordTotals() {
-
-    const results =
-      getCurrentInputResults();
-
-
-    const totals =
-      calculateResultsTotals(
-        results
-      );
-
-
-    recordTotalCount.textContent =
-      `${totals.count}件`;
-
-
-    recordTotalRevenue.textContent =
-      formatYen(
-        totals.revenue
-      );
-
-  }
-
-
-  /* =====================================================
-     日付・担当者変更時
-  ====================================================== */
-
-  recordDate.addEventListener(
-    "change",
-    async () => {
-
-      await loadExistingRecordIntoForm();
 
     }
   );
 
+}
 
-  recordMember.addEventListener(
-    "change",
-    async () => {
 
-      await loadExistingRecordIntoForm();
+/* =====================================================
+   実績編集
+===================================================== */
 
-    }
+function editRecord(
+  record
+) {
+
+  recordDate.value =
+    record.date;
+
+
+  recordMember.value =
+    record.uid;
+
+
+  editingRecordId =
+    record.id;
+
+
+  prepareProductInputList(
+    record.results ||
+    null
   );
 
 
-  async function loadExistingRecordIntoForm() {
-
-    if (
-      !recordDate.value ||
-      !recordMember.value
-    ) {
-
-      return;
-
-    }
+  saveRecordButton.textContent =
+    "実績を更新";
 
 
-    const record =
-      findDailyRecord(
-        recordMember.value,
-        recordDate.value
-      );
+  recordManagement.scrollIntoView({
+    behavior:
+      "smooth",
+    block:
+      "start"
+  });
 
 
-    if (
-      record &&
-      record.results
-    ) {
+  showSuccess(
+    `${formatDateJapanese(
+      record.date
+    )}の実績を編集しています。`
+  );
 
-      editingRecordId =
-        record.id;
-
-
-      prepareProductInputList(
-        record.results
-      );
+}
 
 
-      saveRecordButton.textContent =
-        "実績を更新";
+/* =====================================================
+   実績削除
+===================================================== */
 
+async function deleteRecord(
+  record
+) {
 
-      return;
-
-    }
-
-
-    editingRecordId =
-      null;
-
-
-    prepareProductInputList();
-
-
-    saveRecordButton.textContent =
-      "実績を一括登録";
-
-  }
-
-
-  function findDailyRecord(
-    memberId,
-    date
-  ) {
-
-    return records.find(
-      record =>
-        record.uid ===
-          memberId &&
-        record.date ===
-          date &&
-        record.results
+  const currentName =
+    getCurrentMemberName(
+      record
     );
 
+
+  if (
+    !confirm(
+      `${formatDateJapanese(
+        record.date
+      )} / ${currentName}\n\nこの日の実績を削除しますか？`
+    )
+  ) {
+
+    return;
+
   }
 
 
-  /* =====================================================
-     入力クリア
-  ====================================================== */
+  try {
 
-  clearRecordButton.onclick =
-    () => {
+    await deleteDoc(
+      doc(
+        db,
+        "records",
+        record.id
+      )
+    );
+
+
+    if (
+      editingRecordId ===
+      record.id
+    ) {
 
       editingRecordId =
         null;
 
-
-      recordDate.value =
-        getTodayString();
-
-
-      if (
-        currentUserData?.role ===
-        "leader"
-      ) {
-
-        recordMember.value =
-          "";
-
-      } else {
-
-        recordMember.value =
-          currentUserData?.uid ||
-          "";
-
-      }
-
-
-      prepareProductInputList();
-
-
-      saveRecordButton.textContent =
-        "実績を一括登録";
-
-
-      clearMessages();
-
-    };
-
-
-  /* =====================================================
-     一括登録
-  ====================================================== */
-
-  saveRecordButton.onclick =
-    async () => {
-
-      const date =
-        recordDate.value;
-
-      const memberId =
-        recordMember.value;
-
-
-      if (!date) {
-
-        showError(
-          "日付を選択してください。"
-        );
-
-        return;
-
-      }
-
-
-      if (!memberId) {
-
-        showError(
-          "担当者を選択してください。"
-        );
-
-        return;
-
-      }
-
-
-      const member =
-        members.find(
-          item =>
-            item.id ===
-            memberId
-        ) ||
-        currentUserData;
-
-
-      if (!member) {
-
-        showError(
-          "担当者が見つかりません。"
-        );
-
-        return;
-
-      }
-
-
-      const results =
-        getCurrentInputResults();
-
-
-      const totals =
-        calculateResultsTotals(
-          results
-        );
-
-
-      if (
-        totals.count <= 0
-      ) {
-
-        showError(
-          "少なくとも1つの商材に1件以上入力してください。"
-        );
-
-        return;
-
-      }
-
-
-      const team =
-        teams.find(
-          item =>
-            item.id ===
-            member.teamId
-        );
-
-
-      try {
-
-        saveRecordButton.disabled =
-          true;
-
-        saveRecordButton.textContent =
-          editingRecordId
-            ? "更新中..."
-            : "登録中...";
-
-
-        let recordRef;
-
-
-        if (
-          editingRecordId
-        ) {
-
-          recordRef =
-            doc(
-              db,
-              "records",
-              editingRecordId
-            );
-
-        } else {
-
-          /*
-            1人 × 1日 = 1レコード
-
-            IDを固定化して、
-            同じ日の二重登録を防止
-          */
-
-          const recordId =
-            `${memberId}_${date}`;
-
-          recordRef =
-            doc(
-              db,
-              "records",
-              recordId
-            );
-
-        }
-
-
-        const existingSnap =
-          await getDoc(
-            recordRef
-          );
-
-
-        const data = {
-
-          uid:
-            member.id,
-
-          memberNameSnapshot:
-            member.name ||
-            "名前未設定",
-
-          teamId:
-            member.teamId ||
-            null,
-
-          teamNameSnapshot:
-            team
-              ? team.name
-              : "所属なし",
-
-          date,
-
-          results,
-
-          totalCount:
-            totals.count,
-
-          totalRevenue:
-            totals.revenue,
-
-          updatedAt:
-            serverTimestamp()
-
-        };
-
-
-        if (
-          !existingSnap.exists()
-        ) {
-
-          data.createdAt =
-            serverTimestamp();
-
-        }
-
-
-        await setDoc(
-          recordRef,
-          data,
-          {
-            merge: true
-          }
-        );
-
-
-        editingRecordId =
-          recordRef.id;
-
-
-        showSuccess(
-          `${date}の実績を保存しました。`
-        );
-
-
-        await loadRecords();
-
-        saveRecordButton.textContent =
-          "実績を更新";
-
-
-      } catch (error) {
-
-        console.error(
-          error
-        );
-
-        showError(
-          firebaseErrorMessage(
-            error
-          )
-        );
-
-      } finally {
-
-        saveRecordButton.disabled =
-          false;
-
-        if (
-          editingRecordId
-        ) {
-
-          saveRecordButton.textContent =
-            "実績を更新";
-
-        } else {
-
-          saveRecordButton.textContent =
-            "実績を一括登録";
-
-        }
-
-      }
-
-    };
-
-
-  /* =====================================================
-     実績取得
-  ====================================================== */
-
-  async function loadRecords() {
-
-    try {
-
-      const snapshot =
-        await getDocs(
-          collection(
-            db,
-            "records"
-          )
-        );
-
-
-      records = [];
-
-
-      snapshot.forEach(
-        recordDoc => {
-
-          records.push({
-
-            id:
-              recordDoc.id,
-
-            ...recordDoc.data()
-
-          });
-
-        }
-      );
-
-
-      records.sort(
-        (a, b) =>
-          (
-            b.date || ""
-          ).localeCompare(
-            a.date || ""
-          )
-      );
-
-
-      createMonthOptions();
-
-      renderDashboard();
-
-
-    } catch (error) {
-
-      console.error(
-        "実績取得エラー:",
-        error
-      );
-
-
-      showError(
-        firebaseErrorMessage(
-          error
-        )
-      );
-
-    }
-
-  }
-
-
-  /* =====================================================
-     月選択肢
-  ====================================================== */
-
-  function createMonthOptions() {
-
-    const months =
-      new Set();
-
-
-    records.forEach(
-      record => {
-
-        if (
-          record.date &&
-          record.date.length >= 7
-        ) {
-
-          months.add(
-            record.date.slice(
-              0,
-              7
-            )
-          );
-
-        }
-
-      }
-    );
-
-
-    const today =
-      getTodayString();
-
-
-    months.add(
-      today.slice(
-        0,
-        7
-      )
-    );
-
-
-    const sortedMonths =
-      Array.from(
-        months
-      ).sort(
-        (a, b) =>
-          b.localeCompare(a)
-      );
-
-
-    const current =
-      dashboardMonth.value;
-
-
-    dashboardMonth.innerHTML =
-      "";
-
-
-    sortedMonths.forEach(
-      month => {
-
-        const option =
-          document.createElement(
-            "option"
-          );
-
-        option.value =
-          month;
-
-
-        const [
-          year,
-          monthNumber
-        ] =
-          month.split("-");
-
-
-        option.textContent =
-          `${year}年${Number(
-            monthNumber
-          )}月`;
-
-
-        dashboardMonth.appendChild(
-          option
-        );
-
-      }
-    );
-
-
-    if (
-      sortedMonths.includes(
-        current
-      )
-    ) {
-
-      dashboardMonth.value =
-        current;
-
-    } else {
-
-      dashboardMonth.value =
-        today.slice(
-          0,
-          7
-        );
-
-    }
-
-  }
-
-
-  dashboardMonth.addEventListener(
-    "change",
-    renderDashboard
-  );
-
-
-  /* =====================================================
-     月間データ正規化
-  ====================================================== */
-
-  function getRecordResults(
-    record
-  ) {
-
-    /*
-      新方式
-      results:
-      {
-        productId: {
-          productName,
-          count,
-          revenuePerUnit
-        }
-      }
-
-      旧方式
-      productId,
-      productNameSnapshot,
-      count,
-      revenuePerUnit
-
-      どちらにも対応
-    */
-
-    if (
-      record.results &&
-      typeof record.results ===
-      "object"
-    ) {
-
-      return Object.values(
-        record.results
-      );
-
     }
 
 
-    if (
-      record.productId
-    ) {
-
-      return [
-
-        {
-
-          productId:
-            record.productId,
-
-          productName:
-            record.productNameSnapshot ||
-            "不明",
-
-          count:
-            Number(
-              record.count || 0
-            ),
-
-          revenuePerUnit:
-            Number(
-              record.revenuePerUnit || 0
-            )
-
-        }
-
-      ];
-
-    }
-
-
-    return [];
-
-  }
-
-
-  /* =====================================================
-     月間ダッシュボード
-  ====================================================== */
-
-  function renderDashboard() {
-
-    const selectedMonth =
-      dashboardMonth.value;
-
-
-    if (!selectedMonth) {
-
-      monthlyCount.textContent =
-        "0件";
-
-      monthlyRevenue.textContent =
-        "¥0";
-
-      monthlyWorkDays.textContent =
-        "0日";
-
-      individualRankingList.innerHTML =
-        "";
-
-      teamRankingList.innerHTML =
-        "";
-
-      productSummaryList.innerHTML =
-        "";
-
-      dailySummaryList.innerHTML =
-        "";
-
-      recordHistoryList.innerHTML =
-        "";
-
-      return;
-
-    }
-
-
-    /*
-      新方式の1日1レコードと
-      旧方式の商材別レコードを
-      まとめて集計
-    */
-
-    let monthly =
-      records.filter(
-        record =>
-          record.date &&
-          record.date.startsWith(
-            selectedMonth
-          )
-      );
-
-
-    /*
-      メンバーの場合は
-      自分のデータだけ
-    */
-
-    if (
-      currentUserData?.role !==
-      "leader"
-    ) {
-
-      monthly =
-        monthly.filter(
-          record =>
-            record.uid ===
-            currentUserData.uid
-        );
-
-    }
-
-
-    let totalCount =
-      0;
-
-    let totalRevenue =
-      0;
-
-
-    const productMap =
-      {};
-
-    const dailyMap =
-      {};
-
-    const individualMap =
-      {};
-
-    const teamMap =
-      {};
-
-
-    monthly.forEach(
-      record => {
-
-        const results =
-          getRecordResults(
-            record
-          );
-
-
-        let recordCount =
-          0;
-
-        let recordRevenue =
-          0;
-
-
-        results.forEach(
-          result => {
-
-            const count =
-              Number(
-                result.count || 0
-              );
-
-            const revenuePerUnit =
-              Number(
-                result.revenuePerUnit || 0
-              );
-
-            const revenue =
-              count *
-              revenuePerUnit;
-
-
-            recordCount +=
-              count;
-
-            recordRevenue +=
-              revenue;
-
-
-            const productName =
-              result.productName ||
-              "不明";
-
-
-            if (
-              !productMap[
-                productName
-              ]
-            ) {
-
-              productMap[
-                productName
-              ] = {
-
-                count: 0,
-
-                revenue: 0
-
-              };
-
-            }
-
-
-            productMap[
-              productName
-            ].count +=
-              count;
-
-
-            productMap[
-              productName
-            ].revenue +=
-              revenue;
-
-          }
-        );
-
-
-        totalCount +=
-          recordCount;
-
-        totalRevenue +=
-          recordRevenue;
-
-
-        /*
-          日別
-        */
-
-        const date =
-          record.date;
-
-
-        if (
-          !dailyMap[date]
-        ) {
-
-          dailyMap[date] = {
-
-            count: 0,
-
-            revenue: 0
-
-          };
-
-        }
-
-
-        dailyMap[date].count +=
-          recordCount;
-
-        dailyMap[date].revenue +=
-          recordRevenue;
-
-
-        /*
-          個人
-        */
-
-        const memberName =
-          record.memberNameSnapshot ||
-          "不明";
-
-
-        const memberKey =
-          record.uid ||
-          memberName;
-
-
-        if (
-          !individualMap[
-            memberKey
-          ]
-        ) {
-
-          individualMap[
-            memberKey
-          ] = {
-
-            name:
-              memberName,
-
-            teamName:
-              record.teamNameSnapshot ||
-              "所属なし",
-
-            count: 0,
-
-            revenue: 0
-
-          };
-
-        }
-
-
-        individualMap[
-          memberKey
-        ].count +=
-          recordCount;
-
-
-        individualMap[
-          memberKey
-        ].revenue +=
-          recordRevenue;
-
-
-        /*
-          班
-        */
-
-        const teamName =
-          record.teamNameSnapshot ||
-          "所属なし";
-
-
-        if (
-          !teamMap[
-            teamName
-          ]
-        ) {
-
-          teamMap[
-            teamName
-          ] = {
-
-            name:
-              teamName,
-
-            count: 0,
-
-            revenue: 0
-
-          };
-
-        }
-
-
-        teamMap[
-          teamName
-        ].count +=
-          recordCount;
-
-
-        teamMap[
-          teamName
-        ].revenue +=
-          recordRevenue;
-
-      }
-    );
-
-
-    monthlyCount.textContent =
-      `${totalCount}件`;
-
-
-    monthlyRevenue.textContent =
-      formatYen(
-        totalRevenue
-      );
-
-
-    monthlyWorkDays.textContent =
-      `${Object.keys(
-        dailyMap
-      ).length}日`;
-
-
-    renderIndividualRanking(
-      individualMap
-    );
-
-
-    renderTeamRanking(
-      teamMap
-    );
-
-
-    renderProductSummary(
-      productMap
-    );
-
-
-    renderDailySummary(
-      dailyMap
-    );
-
-
-    renderRecordHistory(
-      monthly
-    );
-
-  }
-
-
-  /* =====================================================
-     個人ランキング
-  ====================================================== */
-
-  function renderIndividualRanking(
-    individualMap
-  ) {
-
-    individualRankingList.innerHTML =
-      "";
-
-
-    const ranking =
-      Object.values(
-        individualMap
-      ).sort(
-        (a, b) => {
-
-          if (
-            b.count !==
-            a.count
-          ) {
-
-            return b.count -
-              a.count;
-
-          }
-
-          return b.revenue -
-            a.revenue;
-
-        }
-      );
-
-
-    if (
-      ranking.length === 0
-    ) {
-
-      individualRankingList.innerHTML = `
-        <div class="empty-message">
-          この月の個人実績はありません。
-        </div>
-      `;
-
-      return;
-
-    }
-
-
-    ranking.forEach(
-      (item, index) => {
-
-        const row =
-          document.createElement(
-            "div"
-          );
-
-        row.className =
-          "ranking-row";
-
-
-        const left =
-          document.createElement(
-            "div"
-          );
-
-        left.className =
-          "ranking-left";
-
-
-        const number =
-          document.createElement(
-            "div"
-          );
-
-        number.className =
-          "ranking-number";
-
-
-        if (
-          index === 0
-        ) {
-
-          number.classList.add(
-            "top1"
-          );
-
-        } else if (
-          index === 1
-        ) {
-
-          number.classList.add(
-            "top2"
-          );
-
-        } else if (
-          index === 2
-        ) {
-
-          number.classList.add(
-            "top3"
-          );
-
-        }
-
-
-        number.textContent =
-          index + 1;
-
-
-        const info =
-          document.createElement(
-            "div"
-          );
-
-
-        const name =
-          document.createElement(
-            "div"
-          );
-
-        name.className =
-          "ranking-name";
-
-        name.textContent =
-          item.name;
-
-
-        const sub =
-          document.createElement(
-            "div"
-          );
-
-        sub.className =
-          "ranking-sub";
-
-        sub.textContent =
-          item.teamName;
-
-
-        info.appendChild(
-          name
-        );
-
-        info.appendChild(
-          sub
-        );
-
-
-        left.appendChild(
-          number
-        );
-
-        left.appendChild(
-          info
-        );
-
-
-        const value =
-          document.createElement(
-            "div"
-          );
-
-        value.className =
-          "ranking-value";
-
-
-        value.innerHTML = `
-          <div class="ranking-count">
-            ${item.count}件
-          </div>
-          <div class="ranking-revenue">
-            ${formatYen(
-              item.revenue
-            )}
-          </div>
-        `;
-
-
-        row.appendChild(
-          left
-        );
-
-        row.appendChild(
-          value
-        );
-
-
-        individualRankingList.appendChild(
-          row
-        );
-
-      }
-    );
-
-  }
-
-
-  /* =====================================================
-     班ランキング
-  ====================================================== */
-
-  function renderTeamRanking(
-    teamMap
-  ) {
-
-    teamRankingList.innerHTML =
-      "";
-
-
-    const ranking =
-      Object.values(
-        teamMap
-      ).sort(
-        (a, b) => {
-
-          if (
-            b.count !==
-            a.count
-          ) {
-
-            return b.count -
-              a.count;
-
-          }
-
-          return b.revenue -
-            a.revenue;
-
-        }
-      );
-
-
-    if (
-      ranking.length === 0
-    ) {
-
-      teamRankingList.innerHTML = `
-        <div class="empty-message">
-          この月の班実績はありません。
-        </div>
-      `;
-
-      return;
-
-    }
-
-
-    ranking.forEach(
-      (item, index) => {
-
-        const row =
-          document.createElement(
-            "div"
-          );
-
-        row.className =
-          "ranking-row";
-
-
-        const left =
-          document.createElement(
-            "div"
-          );
-
-        left.className =
-          "ranking-left";
-
-
-        const number =
-          document.createElement(
-            "div"
-          );
-
-        number.className =
-          "ranking-number";
-
-
-        if (
-          index === 0
-        ) {
-
-          number.classList.add(
-            "top1"
-          );
-
-        } else if (
-          index === 1
-        ) {
-
-          number.classList.add(
-            "top2"
-          );
-
-        } else if (
-          index === 2
-        ) {
-
-          number.classList.add(
-            "top3"
-          );
-
-        }
-
-
-        number.textContent =
-          index + 1;
-
-
-        const info =
-          document.createElement(
-            "div"
-          );
-
-
-        const name =
-          document.createElement(
-            "div"
-          );
-
-        name.className =
-          "ranking-name";
-
-        name.textContent =
-          item.name;
-
-
-        info.appendChild(
-          name
-        );
-
-
-        left.appendChild(
-          number
-        );
-
-        left.appendChild(
-          info
-        );
-
-
-        const value =
-          document.createElement(
-            "div"
-          );
-
-        value.className =
-          "ranking-value";
-
-
-        value.innerHTML = `
-          <div class="ranking-count">
-            ${item.count}件
-          </div>
-          <div class="ranking-revenue">
-            ${formatYen(
-              item.revenue
-            )}
-          </div>
-        `;
-
-
-        row.appendChild(
-          left
-        );
-
-        row.appendChild(
-          value
-        );
-
-
-        teamRankingList.appendChild(
-          row
-        );
-
-      }
-    );
-
-  }
-
-
-  /* =====================================================
-     商材別
-  ====================================================== */
-
-  function renderProductSummary(
-    productMap
-  ) {
-
-    productSummaryList.innerHTML =
-      "";
-
-
-    const names =
-      Object.keys(
-        productMap
-      ).sort();
-
-
-    if (
-      names.length === 0
-    ) {
-
-      productSummaryList.innerHTML = `
-        <div class="empty-message">
-          この月の実績はありません。
-        </div>
-      `;
-
-      return;
-
-    }
-
-
-    names.forEach(
-      name => {
-
-        const data =
-          productMap[name];
-
-
-        const row =
-          document.createElement(
-            "div"
-          );
-
-        row.className =
-          "summary-row";
-
-
-        row.innerHTML = `
-          <div>
-            <div class="summary-row-name">
-              ${escapeHtml(
-                name
-              )}
-            </div>
-
-            <div style="font-size:12px;color:#6b7280;margin-top:3px;">
-              ${data.count}件
-            </div>
-          </div>
-
-          <div class="summary-row-value">
-            ${formatYen(
-              data.revenue
-            )}
-          </div>
-        `;
-
-
-        productSummaryList.appendChild(
-          row
-        );
-
-      }
-    );
-
-  }
-
-
-  /* =====================================================
-     日別
-  ====================================================== */
-
-  function renderDailySummary(
-    dailyMap
-  ) {
-
-    dailySummaryList.innerHTML =
-      "";
-
-
-    const dates =
-      Object.keys(
-        dailyMap
-      ).sort(
-        (a, b) =>
-          b.localeCompare(a)
-      );
-
-
-    if (
-      dates.length === 0
-    ) {
-
-      dailySummaryList.innerHTML = `
-        <div class="empty-message">
-          この月の実績はありません。
-        </div>
-      `;
-
-      return;
-
-    }
-
-
-    dates.forEach(
-      date => {
-
-        const data =
-          dailyMap[date];
-
-
-        const row =
-          document.createElement(
-            "div"
-          );
-
-        row.className =
-          "summary-row";
-
-
-        row.innerHTML = `
-          <div>
-            <div class="summary-row-name">
-              ${formatDateJapanese(
-                date
-              )}
-            </div>
-
-            <div style="font-size:12px;color:#6b7280;margin-top:3px;">
-              ${data.count}件
-            </div>
-          </div>
-
-          <div class="summary-row-value">
-            ${formatYen(
-              data.revenue
-            )}
-          </div>
-        `;
-
-
-        dailySummaryList.appendChild(
-          row
-        );
-
-      }
-    );
-
-  }
-
-
-  /* =====================================================
-     履歴
-  ====================================================== */
-
-  function renderRecordHistory(
-    monthly
-  ) {
-
-    recordHistoryList.innerHTML =
-      "";
-
-
-    if (
-      monthly.length === 0
-    ) {
-
-      recordHistoryList.innerHTML = `
-        <div class="empty-message">
-          登録履歴はありません。
-        </div>
-      `;
-
-      return;
-
-    }
-
-
-    monthly.forEach(
-      record => {
-
-        const item =
-          document.createElement(
-            "div"
-          );
-
-        item.className =
-          "history-item";
-
-
-        const results =
-          getRecordResults(
-            record
-          );
-
-
-        let totalCount =
-          0;
-
-        let totalRevenue =
-          0;
-
-
-        const productTexts =
-          [];
-
-
-        results.forEach(
-          result => {
-
-            const count =
-              Number(
-                result.count || 0
-              );
-
-            const revenue =
-              count *
-              Number(
-                result.revenuePerUnit || 0
-              );
-
-
-            totalCount +=
-              count;
-
-            totalRevenue +=
-              revenue;
-
-
-            if (
-              count > 0
-            ) {
-
-              productTexts.push(
-                `${result.productName || "不明"} ${count}件`
-              );
-
-            }
-
-          }
-        );
-
-
-        item.innerHTML = `
-          <div class="history-top">
-
-            <div>
-
-              <div class="history-date">
-                ${formatDateJapanese(
-                  record.date
-                )}
-              </div>
-
-              <div class="history-member">
-                ${escapeHtml(
-                  record.memberNameSnapshot ||
-                  "不明"
-                )}
-              </div>
-
-              <div class="history-product">
-                ${
-                  productTexts.length > 0
-                    ? productTexts
-                        .map(
-                          text =>
-                            escapeHtml(
-                              text
-                            )
-                        )
-                        .join(" / ")
-                    : "実績なし"
-                }
-              </div>
-
-            </div>
-
-            <div class="history-count">
-              ${totalCount}件
-            </div>
-
-          </div>
-
-          <div class="history-revenue">
-            ${formatYen(
-              totalRevenue
-            )}
-          </div>
-        `;
-
-
-        /*
-          現在のユーザーが
-          編集できるレコードだけ
-          削除ボタンを表示
-        */
-
-        const canEdit =
-          currentUserData?.role ===
-          "leader" ||
-          record.uid ===
-          currentUserData?.uid;
-
-
-        if (
-          canEdit
-        ) {
-
-          const actions =
-            document.createElement(
-              "div"
-            );
-
-          actions.className =
-            "history-actions";
-
-
-          const editButton =
-            document.createElement(
-              "button"
-            );
-
-          editButton.className =
-            "edit-product-button";
-
-          editButton.textContent =
-            "✏️ 編集";
-
-          editButton.onclick =
-            () =>
-              editRecord(
-                record
-              );
-
-
-          const deleteButton =
-            document.createElement(
-              "button"
-            );
-
-          deleteButton.className =
-            "history-delete";
-
-          deleteButton.textContent =
-            "🗑️ 削除";
-
-          deleteButton.onclick =
-            () =>
-              deleteRecord(
-                record
-              );
-
-
-          actions.appendChild(
-            editButton
-          );
-
-          actions.appendChild(
-            deleteButton
-          );
-
-
-          item.appendChild(
-            actions
-          );
-
-        }
-
-
-        recordHistoryList.appendChild(
-          item
-        );
-
-      }
-    );
-
-  }
-
-
-  /* =====================================================
-     実績編集
-  ====================================================== */
-
-  function editRecord(
-    record
-  ) {
-
-    recordDate.value =
-      record.date;
-
-
-    recordMember.value =
-      record.uid;
-
-
-    editingRecordId =
-      record.id;
-
-
-    prepareProductInputList(
-      record.results ||
-      null
-    );
-
-
-    saveRecordButton.textContent =
-      "実績を更新";
-
-
-    recordManagement.scrollIntoView({
-      behavior:
-        "smooth",
-      block:
-        "start"
-    });
+    await loadRecords();
 
 
     showSuccess(
-      `${formatDateJapanese(
-        record.date
-      )}の実績を編集しています。`
+      "実績を削除しました。"
+    );
+
+  } catch (error) {
+
+    console.error(
+      error
+    );
+
+
+    showError(
+      firebaseErrorMessage(
+        error
+      )
     );
 
   }
 
+}
 
-  /* =====================================================
-     実績削除
-  ====================================================== */
 
-  async function deleteRecord(
-    record
-  ) {
+/* =====================================================
+   日付
+===================================================== */
+
+function formatDateJapanese(
+  dateString
+) {
+
+  if (!dateString) {
+
+    return "";
+
+  }
+
+
+  const [
+    year,
+    month,
+    day
+  ] =
+    dateString.split("-");
+
+
+  return `${year}年${Number(
+    month
+  )}月${Number(
+    day
+  )}日`;
+
+}
+
+
+/* =====================================================
+   HTMLエスケープ
+===================================================== */
+
+function escapeHtml(
+  value
+) {
+
+  return String(
+    value || ""
+  )
+    .replaceAll(
+      "&",
+      "&amp;"
+    )
+    .replaceAll(
+      "<",
+      "&lt;"
+    )
+    .replaceAll(
+      ">",
+      "&gt;"
+    )
+    .replaceAll(
+      '"',
+      "&quot;"
+    )
+    .replaceAll(
+      "'",
+      "&#039;"
+    );
+
+}
+
+
+/* =====================================================
+   モーダル外クリック
+===================================================== */
+
+teamModal.onclick =
+  event => {
 
     if (
-      !confirm(
-        `${formatDateJapanese(
-          record.date
-        )} / ${
-          record.memberNameSnapshot ||
-          "不明"
-        }\n\nこの日の実績を削除しますか？`
-      )
+      event.target ===
+      teamModal
     ) {
 
-      return;
+      closeTeamModal();
 
     }
 
-
-    try {
-
-      await deleteDoc(
-        doc(
-          db,
-          "records",
-          record.id
-        )
-      );
+  };
 
 
-      if (
-        editingRecordId ===
-        record.id
-      ) {
+productModal.onclick =
+  event => {
 
-        editingRecordId =
-          null;
+    if (
+      event.target ===
+      productModal
+    ) {
 
-      }
-
-
-      await loadRecords();
-
-
-      showSuccess(
-        "実績を削除しました。"
-      );
-
-    } catch (error) {
-
-      console.error(
-        error
-      );
-
-
-      showError(
-        firebaseErrorMessage(
-          error
-        )
-      );
+      closeProductModal();
 
     }
 
-  }
+  };
 
 
-  /* =====================================================
-     日付表示
-  ====================================================== */
+memberTeamModal.onclick =
+  event => {
 
-  function formatDateJapanese(
-    dateString
-  ) {
+    if (
+      event.target ===
+      memberTeamModal
+    ) {
 
-    if (!dateString) {
-
-      return "";
+      closeMemberTeamModal();
 
     }
 
-
-    const [
-      year,
-      month,
-      day
-    ] =
-      dateString.split("-");
+  };
 
 
-    return `${year}年${Number(
-      month
-    )}月${Number(
-      day
-    )}日`;
+/* =====================================================
+   初期化
+===================================================== */
 
-  }
-
-
-  /* =====================================================
-     HTMLエスケープ
-  ====================================================== */
-
-  function escapeHtml(
-    value
-  ) {
-
-    return String(
-      value || ""
-    )
-      .replaceAll(
-        "&",
-        "&amp;"
-      )
-      .replaceAll(
-        "<",
-        "&lt;"
-      )
-      .replaceAll(
-        ">",
-        "&gt;"
-      )
-      .replaceAll(
-        '"',
-        "&quot;"
-      )
-      .replaceAll(
-        "'",
-        "&#039;"
-      );
-
-  }
-
-
-  /* =====================================================
-     モーダル外クリック
-  ====================================================== */
-
-  teamModal.onclick =
-    event => {
-
-      if (
-        event.target ===
-        teamModal
-      ) {
-
-        closeTeamModal();
-
-      }
-
-    };
-
-
-  productModal.onclick =
-    event => {
-
-      if (
-        event.target ===
-        productModal
-      ) {
-
-        closeProductModal();
-
-      }
-
-    };
-
-
-  memberTeamModal.onclick =
-    event => {
-
-      if (
-        event.target ===
-        memberTeamModal
-      ) {
-
-        closeMemberTeamModal();
-
-      }
-
-    };
+recordDate.value =
+  getTodayString();
 
 </script>
 
 </body>
-
 </html>
