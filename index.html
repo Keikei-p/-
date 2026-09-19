@@ -32,10 +32,6 @@
       min-height: 100vh;
     }
 
-    /* =========================
-       ヘッダー
-    ========================= */
-
     header {
       background: #111827;
       color: white;
@@ -58,19 +54,11 @@
       color: #9ca3af;
     }
 
-    /* =========================
-       メイン
-    ========================= */
-
     main {
       max-width: 1100px;
       margin: 0 auto;
       padding: 20px 16px 50px;
     }
-
-    /* =========================
-       ログイン画面
-    ========================= */
 
     .auth-wrapper {
       min-height: calc(100vh - 80px);
@@ -147,16 +135,9 @@
       opacity: 0.9;
     }
 
-    .secondary-button {
-      width: 100%;
-      border: 1px solid #d1d5db;
-      border-radius: 10px;
-      padding: 13px;
-      background: white;
-      color: #374151;
-      font-weight: 600;
-      cursor: pointer;
-      margin-top: 10px;
+    .primary-button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
     }
 
     .error-message {
@@ -168,6 +149,7 @@
       padding: 12px;
       margin-bottom: 16px;
       font-size: 13px;
+      line-height: 1.5;
     }
 
     .success-message {
@@ -179,6 +161,7 @@
       padding: 12px;
       margin-bottom: 16px;
       font-size: 13px;
+      line-height: 1.5;
     }
 
     .switch-text {
@@ -195,10 +178,6 @@
       cursor: pointer;
       font-weight: 600;
     }
-
-    /* =========================
-       アプリ画面
-    ========================= */
 
     #appScreen {
       display: none;
@@ -323,21 +302,12 @@
 
 <div class="app">
 
-  <!-- =========================
-       ヘッダー
-  ========================== -->
-
   <header>
     <div class="header-inner">
       <div class="title">営業実績管理</div>
       <div class="subtitle">Sales Management System</div>
     </div>
   </header>
-
-
-  <!-- =========================
-       ログイン画面
-  ========================== -->
 
   <main id="authScreen">
 
@@ -355,23 +325,15 @@
           営業実績管理システム
         </div>
 
-        <div
-          id="errorMessage"
-          class="error-message">
-        </div>
+        <div id="errorMessage" class="error-message"></div>
 
-        <div
-          id="successMessage"
-          class="success-message">
-        </div>
-
-
-        <!-- 名前 -->
+        <div id="successMessage" class="success-message"></div>
 
         <div
           class="form-group"
           id="nameGroup"
-          style="display:none;">
+          style="display:none;"
+        >
 
           <label for="name">
             名前
@@ -380,11 +342,10 @@
           <input
             id="name"
             type="text"
-            placeholder="例：山田太郎">
+            placeholder="例：山田太郎"
+          >
+
         </div>
-
-
-        <!-- メール -->
 
         <div class="form-group">
 
@@ -395,11 +356,10 @@
           <input
             id="email"
             type="email"
-            placeholder="example@gmail.com">
+            placeholder="example@gmail.com"
+          >
+
         </div>
-
-
-        <!-- パスワード -->
 
         <div class="form-group">
 
@@ -410,22 +370,17 @@
           <input
             id="password"
             type="password"
-            placeholder="6文字以上">
+            placeholder="6文字以上"
+          >
+
         </div>
-
-
-        <!-- メインボタン -->
 
         <button
           id="authButton"
-          class="primary-button">
-
+          class="primary-button"
+        >
           ログイン
-
         </button>
-
-
-        <!-- モード切替 -->
 
         <div class="switch-text">
 
@@ -435,10 +390,9 @@
 
           <button
             id="switchButton"
-            class="link-button">
-
+            class="link-button"
+          >
             新規登録
-
           </button>
 
         </div>
@@ -449,32 +403,21 @@
 
   </main>
 
-
-  <!-- =========================
-       アプリ画面
-  ========================== -->
-
   <main id="appScreen">
 
     <div class="user-bar">
 
       <div class="user-info">
 
-        <div
-          id="userName"
-          class="user-name">
+        <div id="userName" class="user-name">
           -
         </div>
 
-        <div
-          id="userEmail"
-          class="user-email">
+        <div id="userEmail" class="user-email">
           -
         </div>
 
-        <div
-          id="userRole"
-          class="role-badge">
+        <div id="userRole" class="role-badge">
           メンバー
         </div>
 
@@ -482,14 +425,12 @@
 
       <button
         id="logoutButton"
-        class="logout-button">
-
+        class="logout-button"
+      >
         ログアウト
-
       </button>
 
     </div>
-
 
     <div class="welcome-card">
 
@@ -503,7 +444,6 @@
       </div>
 
     </div>
-
 
     <div class="status-card">
 
@@ -534,11 +474,11 @@
 
       </div>
 
-
       <div
         id="setupWarning"
         class="setup-warning"
-        style="display:none;">
+        style="display:none;"
+      >
 
         現在、このアカウントは
         <strong>メンバー</strong>
@@ -555,15 +495,7 @@
 </div>
 
 
-<!-- =====================================================
-     Firebase
-===================================================== -->
-
 <script type="module">
-
-  /* =========================
-     Firebase SDK
-  ========================== */
 
   import {
     initializeApp
@@ -585,10 +517,6 @@
     serverTimestamp
   } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
-
-  /* =========================
-     Firebase設定
-  ========================== */
 
   const firebaseConfig = {
 
@@ -613,10 +541,6 @@
   };
 
 
-  /* =========================
-     Firebase初期化
-  ========================== */
-
   const app =
     initializeApp(firebaseConfig);
 
@@ -626,10 +550,6 @@
   const db =
     getFirestore(app);
 
-
-  /* =========================
-     HTML取得
-  ========================== */
 
   const authScreen =
     document.getElementById("authScreen");
@@ -689,10 +609,6 @@
     document.getElementById("setupWarning");
 
 
-  /* =========================
-     ログイン / 新規登録切替
-  ========================== */
-
   let isRegisterMode = false;
 
 
@@ -738,15 +654,12 @@
 
         nameGroup.style.display =
           "none";
+
       }
 
     }
   );
 
-
-  /* =========================
-     メッセージ
-  ========================== */
 
   function showError(message) {
 
@@ -787,16 +700,17 @@
   }
 
 
-  /* =========================
-     Firebaseエラー変換
-  ========================== */
-
   function firebaseErrorMessage(error) {
+
+    console.error(
+      "Firebase Error:",
+      error
+    );
 
     switch (error.code) {
 
       case "auth/email-already-in-use":
-        return "このメールアドレスはすでに登録されています。";
+        return "このメールアドレスはすでに登録されています。ログインしてください。";
 
       case "auth/invalid-email":
         return "メールアドレスの形式が正しくありません。";
@@ -813,6 +727,9 @@
       case "auth/wrong-password":
         return "パスワードが違います。";
 
+      case "permission-denied":
+        return "Firestoreへのアクセス権限がありません。";
+
       default:
         return "エラーが発生しました。もう一度試してください。";
 
@@ -821,9 +738,68 @@
   }
 
 
-  /* =========================
-     新規登録
-  ========================== */
+  async function createUserDocument(
+    user,
+    name = ""
+  ) {
+
+    const userRef =
+      doc(
+        db,
+        "users",
+        user.uid
+      );
+
+
+    const userSnap =
+      await getDoc(userRef);
+
+
+    if (userSnap.exists()) {
+
+      return userSnap.data();
+
+    }
+
+
+    const userData = {
+
+      uid:
+        user.uid,
+
+      name:
+        name ||
+        user.displayName ||
+        "名前未設定",
+
+      email:
+        user.email || "",
+
+      role:
+        "member",
+
+      teamId:
+        null,
+
+      active:
+        true,
+
+      createdAt:
+        serverTimestamp()
+
+    };
+
+
+    await setDoc(
+      userRef,
+      userData
+    );
+
+
+    return userData;
+
+  }
+
 
   async function registerUser() {
 
@@ -844,6 +820,7 @@
       );
 
       return;
+
     }
 
 
@@ -854,6 +831,7 @@
       );
 
       return;
+
     }
 
 
@@ -864,6 +842,7 @@
       );
 
       return;
+
     }
 
 
@@ -888,41 +867,23 @@
         result.user;
 
 
-      /* =========================
-         Firestoreにユーザー情報保存
-      ========================== */
-
-      await setDoc(
-        doc(db, "users", user.uid),
-        {
-
-          uid: user.uid,
-
-          name: name,
-
-          email: email,
-
-          role: "member",
-
-          teamId: null,
-
-          active: true,
-
-          createdAt:
-            serverTimestamp()
-
-        }
+      await createUserDocument(
+        user,
+        name
       );
 
 
       showSuccess(
-        "アカウントを作成しました。"
+        "アカウントを作成しました。Firestoreにも登録しました。"
       );
 
 
     } catch (error) {
 
-      console.error(error);
+      console.error(
+        "登録エラー:",
+        error
+      );
 
       showError(
         firebaseErrorMessage(error)
@@ -943,10 +904,6 @@
   }
 
 
-  /* =========================
-     ログイン
-  ========================== */
-
   async function loginUser() {
 
     const email =
@@ -963,6 +920,7 @@
       );
 
       return;
+
     }
 
 
@@ -973,6 +931,7 @@
       );
 
       return;
+
     }
 
 
@@ -994,7 +953,10 @@
 
     } catch (error) {
 
-      console.error(error);
+      console.error(
+        "ログインエラー:",
+        error
+      );
 
       showError(
         firebaseErrorMessage(error)
@@ -1012,10 +974,6 @@
 
   }
 
-
-  /* =========================
-     ボタン処理
-  ========================== */
 
   authButton.addEventListener(
     "click",
@@ -1037,23 +995,26 @@
   );
 
 
-  /* =========================
-     ログアウト
-  ========================== */
-
   logoutButton.addEventListener(
     "click",
     async () => {
 
-      await signOut(auth);
+      try {
+
+        await signOut(auth);
+
+      } catch (error) {
+
+        console.error(
+          "ログアウトエラー:",
+          error
+        );
+
+      }
 
     }
   );
 
-
-  /* =========================
-     ログイン状態監視
-  ========================== */
 
   onAuthStateChanged(
     auth,
@@ -1099,13 +1060,13 @@
   );
 
 
-  /* =========================
-     ユーザー情報取得
-  ========================== */
-
   async function loadUserData(user) {
 
     try {
+
+      databaseStatus.textContent =
+        "確認中...";
+
 
       const userRef =
         doc(
@@ -1115,8 +1076,26 @@
         );
 
 
-      const userSnap =
+      let userSnap =
         await getDoc(userRef);
+
+
+      if (!userSnap.exists()) {
+
+        console.log(
+          "Firestoreにユーザーがないため作成します"
+        );
+
+
+        await createUserDocument(
+          user
+        );
+
+
+        userSnap =
+          await getDoc(userRef);
+
+      }
 
 
       if (userSnap.exists()) {
@@ -1126,10 +1105,14 @@
 
 
         userName.textContent =
-          data.name || "名前未設定";
+          data.name ||
+          "名前未設定";
+
 
         userEmail.textContent =
-          data.email || user.email;
+          data.email ||
+          user.email ||
+          "";
 
 
         if (data.role === "leader") {
@@ -1161,30 +1144,35 @@
         }
 
 
-      } else {
-
-        userName.textContent =
-          "ユーザー情報未登録";
-
-        userRole.textContent =
-          "👤 メンバー";
-
-        setupWarning.style.display =
-          "block";
+        databaseStatus.textContent =
+          "接続済み";
 
       }
 
 
-      databaseStatus.textContent =
-        "接続済み";
-
-
     } catch (error) {
 
-      console.error(error);
+      console.error(
+        "ユーザー情報取得エラー:",
+        error
+      );
+
 
       databaseStatus.textContent =
         "接続エラー";
+
+
+      userName.textContent =
+        "データ取得エラー";
+
+
+      setupWarning.style.display =
+        "block";
+
+
+      showError(
+        "Firestoreへの接続に失敗しました。Firebaseのルールを確認してください。"
+      );
 
     }
 
