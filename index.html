@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#111827">
+
+  <title>営業実績管理</title>
+
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+  <header class="header">
+    <div>
+      <p class="header-subtitle">SALES MANAGEMENT</p>
+      <h1>営業実績管理</h1>
+    </div>
+
+    <button class="menu-button" id="menuButton">
+      ☰
+    </button>
+  </header>
+
+
+  <main class="container">
+
+    <!-- 月選択 -->
+    <section class="month-section">
+      <button id="prevMonth">‹</button>
+
+      <div class="month-display">
+        <span>2026年</span>
+        <strong>9月</strong>
+      </div>
+
+      <button id="nextMonth">›</button>
+    </section>
+
+
+    <!-- メイン実績 -->
+    <section class="main-card">
+
+      <div class="card-title">
+        <span>今月の実績</span>
+        <span class="status">CURRENT</span>
+      </div>
+
+      <div class="main-number">
+        <strong id="totalCount">0</strong>
+        <span>件</span>
+      </div>
+
+      <div class="progress-area">
+
+        <div class="progress-info">
+          <span>月間目標</span>
+          <strong>
+            <span id="targetCount">0</span>件
+          </strong>
+        </div>
+
+        <div class="progress-bar">
+          <div
+            class="progress-value"
+            id="progressBar"
+            style="width: 0%;">
+          </div>
+        </div>
+
+        <div class="achievement">
+          達成率 <strong id="achievementRate">0%</strong>
+        </div>
+
+      </div>
+
+    </section>
+
+
+    <!-- 収益 -->
+    <section class="stats-grid">
+
+      <div class="stat-card">
+        <span class="stat-label">今月の収益</span>
+        <strong id="totalRevenue">¥0</strong>
+      </div>
+
+      <div class="stat-card">
+        <span class="stat-label">残り目標</span>
+        <strong id="remainingCount">0件</strong>
+      </div>
+
+    </section>
+
+
+    <!-- 商材別 -->
+    <section class="section">
+
+      <div class="section-header">
+        <h2>商材別実績</h2>
+
+        <button class="add-button" id="addItemButton">
+          ＋ 商材追加
+        </button>
+      </div>
+
+
+      <div id="itemList" class="item-list">
+
+        <!-- JavaScriptで表示 -->
+
+        <div class="empty-state">
+          <div class="empty-icon">＋</div>
+
+          <h3>まだ商材がありません</h3>
+
+          <p>
+            商材を追加すると<br>
+            ここに実績が表示されます。
+          </p>
+
+          <button id="emptyAddButton">
+            商材を追加する
+          </button>
+        </div>
+
+      </div>
+
+    </section>
+
+
+    <!-- クイックメニュー -->
+    <section class="quick-section">
+
+      <h2>クイックメニュー</h2>
+
+      <div class="quick-grid">
+
+        <button class="quick-card" id="inputButton">
+          <span class="quick-icon">＋</span>
+          <span>実績を入力</span>
+        </button>
+
+        <button class="quick-card" id="performanceButton">
+          <span class="quick-icon">📊</span>
+          <span>個人実績</span>
+        </button>
+
+        <button class="quick-card" id="analysisButton">
+          <span class="quick-icon">📈</span>
+          <span>分析</span>
+        </button>
+
+        <button class="quick-card" id="settingsButton">
+          <span class="quick-icon">⚙</span>
+          <span>設定</span>
+        </button>
+
+      </div>
+
+    </section>
+
+  </main>
+
+
+  <!-- 商材追加モーダル -->
+  <div class="modal" id="itemModal">
+
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h2>商材を追加</h2>
+
+        <button id="closeModal">×</button>
+      </div>
+
+      <div class="form-group">
+
+        <label for="itemName">
+          商材名
+        </label>
+
+        <input
+          type="text"
+          id="itemName"
+          placeholder="例：NURO光"
+        >
+
+      </div>
+
+
+      <div class="form-group">
+
+        <label for="itemTarget">
+          月間目標
+        </label>
+
+        <div class="input-unit">
+
+          <input
+            type="number"
+            id="itemTarget"
+            min="0"
+            placeholder="例：10"
+          >
+
+          <span>件</span>
+
+        </div>
+
+      </div>
+
+
+      <div class="form-group">
+
+        <label for="itemRevenue">
+          1件あたりの収益
+        </label>
+
+        <div class="input-unit">
+
+          <input
+            type="number"
+            id="itemRevenue"
+            min="0"
+            placeholder="例：25000"
+          >
+
+          <span>円</span>
+
+        </div>
+
+      </div>
+
+
+      <button class="save-button" id="saveItem">
+        商材を追加する
+      </button>
+
+    </div>
+
+  </div>
+
+
+  <script src="script.js"></script>
+
+</body>
+</html>
