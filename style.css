@@ -1,28 +1,46 @@
 /* ========================================
    営業実績管理
-   共通スタイル
 ======================================== */
 
 :root {
+
   --bg: #f5f7fb;
+
   --card: #ffffff;
+
   --text: #111827;
+
   --sub-text: #6b7280;
+
   --border: #e5e7eb;
+
   --primary: #2563eb;
+
   --primary-dark: #1d4ed8;
+
   --success: #16a34a;
+
   --danger: #dc2626;
-  --shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+
+  --shadow:
+    0 4px 20px rgba(0, 0, 0, 0.06);
+
 }
+
 
 * {
+
   box-sizing: border-box;
+
   margin: 0;
+
   padding: 0;
+
 }
 
+
 body {
+
   font-family:
     -apple-system,
     BlinkMacSystemFont,
@@ -31,13 +49,20 @@ body {
     sans-serif;
 
   background: var(--bg);
+
   color: var(--text);
+
   min-height: 100vh;
+
 }
 
+
 button,
-input {
+input,
+select {
+
   font: inherit;
+
 }
 
 
@@ -46,39 +71,62 @@ input {
 ======================================== */
 
 .header {
+
   background: #111827;
+
   color: white;
 
   padding: 22px 20px;
 
   display: flex;
+
   justify-content: space-between;
+
   align-items: center;
+
 }
+
 
 .header-subtitle {
+
   font-size: 10px;
+
   letter-spacing: 2px;
+
   opacity: 0.6;
+
   margin-bottom: 4px;
+
 }
+
 
 .header h1 {
+
   font-size: 22px;
+
   font-weight: 700;
+
 }
 
+
 .menu-button {
+
   width: 42px;
+
   height: 42px;
 
-  border: 1px solid rgba(255,255,255,0.2);
-  background: rgba(255,255,255,0.08);
+  border: 1px solid
+    rgba(255,255,255,0.2);
+
+  background:
+    rgba(255,255,255,0.08);
 
   color: white;
+
   border-radius: 10px;
 
   cursor: pointer;
+
 }
 
 
@@ -87,10 +135,13 @@ input {
 ======================================== */
 
 .container {
+
   width: min(100%, 900px);
+
   margin: 0 auto;
 
   padding: 20px;
+
 }
 
 
@@ -99,20 +150,28 @@ input {
 ======================================== */
 
 .month-section {
+
   display: flex;
+
   align-items: center;
+
   justify-content: center;
 
   gap: 24px;
 
   margin-bottom: 20px;
+
 }
 
+
 .month-section button {
+
   width: 38px;
+
   height: 38px;
 
   border: none;
+
   background: white;
 
   border-radius: 50%;
@@ -120,23 +179,36 @@ input {
   box-shadow: var(--shadow);
 
   font-size: 24px;
+
   cursor: pointer;
+
 }
+
 
 .month-display {
+
   text-align: center;
+
   min-width: 120px;
+
 }
 
+
 .month-display span {
+
   display: block;
 
   font-size: 12px;
+
   color: var(--sub-text);
+
 }
 
+
 .month-display strong {
+
   font-size: 24px;
+
 }
 
 
@@ -145,6 +217,7 @@ input {
 ======================================== */
 
 .main-card {
+
   background: var(--card);
 
   border-radius: 18px;
@@ -154,43 +227,68 @@ input {
   box-shadow: var(--shadow);
 
   margin-bottom: 14px;
+
 }
 
+
 .card-title {
+
   display: flex;
+
   justify-content: space-between;
+
   align-items: center;
 
   font-size: 14px;
+
   font-weight: 600;
+
 }
 
+
 .status {
+
   font-size: 10px;
+
   color: var(--success);
 
   background: #ecfdf5;
 
   padding: 4px 8px;
+
   border-radius: 20px;
+
 }
 
+
 .main-number {
+
   margin-top: 12px;
 
   display: flex;
+
   align-items: baseline;
+
   gap: 5px;
+
 }
+
 
 .main-number strong {
+
   font-size: 54px;
+
   line-height: 1;
+
 }
 
+
 .main-number span {
+
   font-size: 16px;
+
   color: var(--sub-text);
+
 }
 
 
@@ -199,25 +297,38 @@ input {
 ======================================== */
 
 .progress-area {
+
   margin-top: 24px;
+
 }
 
+
 .progress-info {
+
   display: flex;
+
   justify-content: space-between;
 
   font-size: 13px;
+
   color: var(--sub-text);
 
   margin-bottom: 8px;
+
 }
+
 
 .progress-info strong {
+
   color: var(--text);
+
 }
 
+
 .progress-bar {
+
   width: 100%;
+
   height: 10px;
 
   background: #e5e7eb;
@@ -225,19 +336,28 @@ input {
   border-radius: 10px;
 
   overflow: hidden;
+
 }
 
+
 .progress-value {
+
   height: 100%;
+
+  width: 0;
 
   background: var(--primary);
 
   border-radius: 10px;
 
-  transition: width 0.4s ease;
+  transition:
+    width 0.4s ease;
+
 }
 
+
 .achievement {
+
   margin-top: 10px;
 
   text-align: right;
@@ -245,10 +365,14 @@ input {
   font-size: 12px;
 
   color: var(--sub-text);
+
 }
 
+
 .achievement strong {
+
   color: var(--primary);
+
 }
 
 
@@ -257,16 +381,21 @@ input {
 ======================================== */
 
 .stats-grid {
+
   display: grid;
 
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns:
+    repeat(2, 1fr);
 
   gap: 14px;
 
   margin-bottom: 28px;
+
 }
 
+
 .stat-card {
+
   background: white;
 
   border-radius: 16px;
@@ -274,9 +403,12 @@ input {
   padding: 20px;
 
   box-shadow: var(--shadow);
+
 }
 
+
 .stat-label {
+
   display: block;
 
   font-size: 12px;
@@ -284,10 +416,14 @@ input {
   color: var(--sub-text);
 
   margin-bottom: 8px;
+
 }
 
+
 .stat-card strong {
+
   font-size: 24px;
+
 }
 
 
@@ -296,32 +432,43 @@ input {
 ======================================== */
 
 .section {
+
   margin-bottom: 30px;
+
 }
 
+
 .section-header {
+
   display: flex;
 
   justify-content: space-between;
+
   align-items: center;
 
   margin-bottom: 14px;
+
 }
+
 
 .section-header h2,
 .quick-section h2 {
+
   font-size: 18px;
+
 }
 
 
 /* ========================================
-   Add Button
+   Buttons
 ======================================== */
 
 .add-button {
+
   border: none;
 
   background: var(--primary);
+
   color: white;
 
   padding: 9px 14px;
@@ -331,10 +478,14 @@ input {
   font-size: 12px;
 
   cursor: pointer;
+
 }
 
+
 .add-button:hover {
+
   background: var(--primary-dark);
+
 }
 
 
@@ -342,12 +493,19 @@ input {
    Item
 ======================================== */
 
-.item-list {
+#itemList,
+#memberList {
+
   display: grid;
+
   gap: 12px;
+
 }
 
-.item-card {
+
+.item-card,
+.member-card {
+
   background: white;
 
   padding: 18px;
@@ -355,25 +513,40 @@ input {
   border-radius: 14px;
 
   box-shadow: var(--shadow);
+
 }
 
+
 .item-top {
+
   display: flex;
+
   justify-content: space-between;
 
   margin-bottom: 12px;
+
 }
 
-.item-name {
+
+.item-name,
+.member-name {
+
   font-weight: 700;
+
 }
+
 
 .item-count {
+
   font-size: 13px;
+
   color: var(--sub-text);
+
 }
 
+
 .item-progress {
+
   height: 7px;
 
   background: #e5e7eb;
@@ -383,23 +556,61 @@ input {
   overflow: hidden;
 
   margin-bottom: 8px;
+
 }
 
+
 .item-progress-value {
+
   height: 100%;
 
   background: var(--primary);
 
   border-radius: 10px;
+
 }
 
+
 .item-bottom {
+
   display: flex;
+
   justify-content: space-between;
 
   font-size: 12px;
 
   color: var(--sub-text);
+
+}
+
+
+.member-card {
+
+  display: flex;
+
+  justify-content: space-between;
+
+  align-items: center;
+
+}
+
+
+.member-delete {
+
+  border: none;
+
+  background: #fef2f2;
+
+  color: var(--danger);
+
+  padding: 7px 10px;
+
+  border-radius: 8px;
+
+  font-size: 11px;
+
+  cursor: pointer;
+
 }
 
 
@@ -408,19 +619,25 @@ input {
 ======================================== */
 
 .empty-state {
+
   background: white;
 
-  border: 2px dashed var(--border);
+  border: 2px dashed
+    var(--border);
 
   border-radius: 16px;
 
   padding: 36px 20px;
 
   text-align: center;
+
 }
 
+
 .empty-icon {
+
   width: 48px;
+
   height: 48px;
 
   margin: 0 auto 12px;
@@ -432,19 +649,27 @@ input {
   color: var(--primary);
 
   display: flex;
+
   align-items: center;
+
   justify-content: center;
 
   font-size: 25px;
+
 }
 
+
 .empty-state h3 {
+
   font-size: 15px;
 
   margin-bottom: 7px;
+
 }
 
+
 .empty-state p {
+
   font-size: 12px;
 
   color: var(--sub-text);
@@ -452,12 +677,16 @@ input {
   line-height: 1.7;
 
   margin-bottom: 18px;
+
 }
 
+
 .empty-state button {
+
   border: none;
 
   background: var(--primary);
+
   color: white;
 
   padding: 10px 18px;
@@ -465,6 +694,96 @@ input {
   border-radius: 9px;
 
   cursor: pointer;
+
+}
+
+
+/* ========================================
+   Today's Summary
+======================================== */
+
+.today-person {
+
+  background: white;
+
+  border-radius: 14px;
+
+  padding: 18px;
+
+  margin-bottom: 12px;
+
+  box-shadow: var(--shadow);
+
+}
+
+
+.today-person-header {
+
+  display: flex;
+
+  justify-content: space-between;
+
+  align-items: center;
+
+  margin-bottom: 12px;
+
+}
+
+
+.today-person-name {
+
+  font-weight: 700;
+
+}
+
+
+.today-person-total {
+
+  font-size: 12px;
+
+  color: var(--primary);
+
+  font-weight: 600;
+
+}
+
+
+.today-items {
+
+  display: grid;
+
+  gap: 7px;
+
+}
+
+
+.today-item-row {
+
+  display: flex;
+
+  justify-content: space-between;
+
+  font-size: 13px;
+
+  padding-bottom: 7px;
+
+  border-bottom:
+    1px solid #f0f0f0;
+
+}
+
+
+.today-item-row:last-child {
+
+  border-bottom: none;
+
+}
+
+
+.today-item-count {
+
+  font-weight: 600;
+
 }
 
 
@@ -473,22 +792,33 @@ input {
 ======================================== */
 
 .quick-section {
+
   margin-bottom: 30px;
+
 }
+
 
 .quick-section h2 {
+
   margin-bottom: 14px;
+
 }
+
 
 .quick-grid {
+
   display: grid;
 
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns:
+    repeat(2, 1fr);
 
   gap: 12px;
+
 }
 
+
 .quick-card {
+
   background: white;
 
   border: none;
@@ -510,15 +840,23 @@ input {
   cursor: pointer;
 
   color: var(--text);
+
 }
+
 
 .quick-icon {
+
   font-size: 24px;
+
 }
 
+
 .quick-card span:last-child {
+
   font-size: 13px;
+
   font-weight: 600;
+
 }
 
 
@@ -527,28 +865,41 @@ input {
 ======================================== */
 
 .modal {
+
   position: fixed;
 
   inset: 0;
 
-  background: rgba(0, 0, 0, 0.45);
+  background:
+    rgba(0,0,0,0.45);
 
   display: none;
 
   align-items: center;
+
   justify-content: center;
 
   padding: 20px;
 
   z-index: 100;
+
 }
+
 
 .modal.active {
+
   display: flex;
+
 }
 
+
 .modal-content {
+
   width: min(100%, 420px);
+
+  max-height: 90vh;
+
+  overflow-y: auto;
 
   background: white;
 
@@ -556,24 +907,44 @@ input {
 
   padding: 24px;
 
-  box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+  box-shadow:
+    0 20px 50px
+    rgba(0,0,0,0.2);
+
 }
 
+
+.daily-modal {
+
+  max-height: 90vh;
+
+}
+
+
 .modal-header {
+
   display: flex;
 
   justify-content: space-between;
+
   align-items: center;
 
   margin-bottom: 24px;
+
 }
+
 
 .modal-header h2 {
+
   font-size: 20px;
+
 }
 
+
 .modal-header button {
+
   width: 34px;
+
   height: 34px;
 
   border: none;
@@ -585,6 +956,18 @@ input {
   font-size: 22px;
 
   cursor: pointer;
+
+}
+
+
+.modal-date {
+
+  margin-top: 4px;
+
+  font-size: 12px;
+
+  color: var(--sub-text);
+
 }
 
 
@@ -593,10 +976,14 @@ input {
 ======================================== */
 
 .form-group {
+
   margin-bottom: 18px;
+
 }
 
+
 .form-group label {
+
   display: block;
 
   font-size: 13px;
@@ -604,46 +991,150 @@ input {
   font-weight: 600;
 
   margin-bottom: 7px;
+
 }
 
-.form-group input {
+
+.form-group input,
+.form-group select {
+
   width: 100%;
 
-  border: 1px solid var(--border);
+  border: 1px solid
+    var(--border);
 
   border-radius: 9px;
 
   padding: 12px;
 
   outline: none;
+
+  background: white;
+
 }
 
-.form-group input:focus {
-  border-color: var(--primary);
+
+.form-group input:focus,
+.form-group select:focus {
+
+  border-color:
+    var(--primary);
+
 }
+
 
 .input-unit {
+
   display: flex;
 
   align-items: center;
 
   gap: 8px;
+
 }
+
 
 .input-unit input {
+
   flex: 1;
+
 }
+
 
 .input-unit span {
+
   color: var(--sub-text);
+
 }
 
+
+/* ========================================
+   Daily Input
+======================================== */
+
+.daily-item-inputs {
+
+  margin-top: 10px;
+
+  margin-bottom: 20px;
+
+}
+
+
+.daily-item-row {
+
+  display: flex;
+
+  justify-content: space-between;
+
+  align-items: center;
+
+  gap: 12px;
+
+  padding: 12px 0;
+
+  border-bottom:
+    1px solid var(--border);
+
+}
+
+
+.daily-item-row span {
+
+  font-size: 13px;
+
+  font-weight: 600;
+
+}
+
+
+.daily-item-row input {
+
+  width: 90px;
+
+  text-align: center;
+
+  border: 1px solid
+    var(--border);
+
+  border-radius: 8px;
+
+  padding: 9px;
+
+}
+
+
+.empty-input-message {
+
+  padding: 25px;
+
+  text-align: center;
+
+  background: #f9fafb;
+
+  border-radius: 10px;
+
+  color: var(--sub-text);
+
+  font-size: 12px;
+
+  line-height: 1.7;
+
+}
+
+
+/* ========================================
+   Save
+======================================== */
+
 .save-button {
+
   width: 100%;
 
   border: none;
 
   background: var(--primary);
+
   color: white;
 
   padding: 13px;
@@ -654,7 +1145,14 @@ input {
 
   cursor: pointer;
 
-  margin-top: 6px;
+}
+
+
+.save-button:hover {
+
+  background:
+    var(--primary-dark);
+
 }
 
 
@@ -665,35 +1163,65 @@ input {
 @media (max-width: 600px) {
 
   .container {
+
     padding: 16px;
+
   }
+
 
   .header {
+
     padding: 18px 16px;
+
   }
+
 
   .header h1 {
+
     font-size: 20px;
+
   }
+
 
   .main-card {
+
     padding: 20px;
+
   }
+
 
   .main-number strong {
+
     font-size: 48px;
+
   }
+
 
   .stats-grid {
+
     gap: 10px;
+
   }
+
 
   .stat-card {
+
     padding: 16px;
+
   }
 
+
   .stat-card strong {
+
     font-size: 20px;
+
+  }
+
+
+  .daily-item-row input {
+
+    width: 80px;
+
   }
 
 }
