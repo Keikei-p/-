@@ -43,10 +43,6 @@
       min-height: 100vh;
     }
 
-    /* =====================================================
-       ヘッダー
-    ===================================================== */
-
     header {
       background: #111827;
       color: white;
@@ -77,7 +73,7 @@
 
     /* =====================================================
        ログイン
-    ===================================================== */
+    ====================================================== */
 
     .auth-wrapper {
       min-height: calc(100vh - 80px);
@@ -197,7 +193,7 @@
 
     /* =====================================================
        アプリ
-    ===================================================== */
+    ====================================================== */
 
     #appScreen {
       display: none;
@@ -255,7 +251,7 @@
 
     /* =====================================================
        ウェルカム
-    ===================================================== */
+    ====================================================== */
 
     .welcome-card {
       background:
@@ -284,10 +280,12 @@
 
     /* =====================================================
        共通カード
-    ===================================================== */
+    ====================================================== */
 
     .status-card,
-    .management-card {
+    .management-card,
+    .record-card,
+    .dashboard-card {
       background: white;
       border-radius: 14px;
       padding: 20px;
@@ -331,8 +329,219 @@
     }
 
     /* =====================================================
+       実績管理
+    ====================================================== */
+
+    .record-card {
+      display: none;
+    }
+
+    .record-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .record-description {
+      color: #6b7280;
+      font-size: 13px;
+      line-height: 1.6;
+      margin-bottom: 20px;
+    }
+
+    .record-grid {
+      display: grid;
+      grid-template-columns:
+        repeat(2, 1fr);
+      gap: 14px;
+    }
+
+    .record-total {
+      margin-top: 18px;
+      padding: 16px;
+      border-radius: 12px;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+    }
+
+    .record-total-label {
+      color: #1d4ed8;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .record-total-value {
+      font-size: 24px;
+      font-weight: 800;
+      color: #1e40af;
+      margin-top: 4px;
+    }
+
+    .record-save-button {
+      width: 100%;
+      border: none;
+      border-radius: 10px;
+      padding: 14px;
+      margin-top: 18px;
+      background: #16a34a;
+      color: white;
+      font-weight: 700;
+    }
+
+    .record-save-button:disabled {
+      opacity: 0.6;
+    }
+
+    /* =====================================================
+       月間ダッシュボード
+    ====================================================== */
+
+    .dashboard-card {
+      display: none;
+    }
+
+    .dashboard-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .dashboard-title {
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .month-selector {
+      width: 180px;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns:
+        repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .summary-item {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 15px;
+    }
+
+    .summary-label {
+      font-size: 12px;
+      color: #6b7280;
+    }
+
+    .summary-value {
+      font-size: 22px;
+      font-weight: 800;
+      margin-top: 5px;
+    }
+
+    .summary-value.revenue {
+      color: #16a34a;
+    }
+
+    .section-title {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+
+    .product-summary-list,
+    .daily-summary-list {
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+    }
+
+    .summary-row {
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .summary-row-name {
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    .summary-row-value {
+      font-weight: 700;
+      color: #16a34a;
+      white-space: nowrap;
+    }
+
+    /* =====================================================
+       実績履歴
+    ====================================================== */
+
+    .record-history {
+      margin-top: 20px;
+    }
+
+    .history-item {
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 9px;
+    }
+
+    .history-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .history-date {
+      font-weight: 700;
+    }
+
+    .history-product {
+      color: #6b7280;
+      font-size: 12px;
+      margin-top: 4px;
+    }
+
+    .history-count {
+      font-weight: 800;
+      color: #2563eb;
+    }
+
+    .history-revenue {
+      color: #16a34a;
+      font-weight: 700;
+      margin-top: 7px;
+    }
+
+    .history-actions {
+      margin-top: 10px;
+      display: flex;
+      gap: 7px;
+    }
+
+    .history-delete {
+      border: none;
+      border-radius: 8px;
+      padding: 7px 10px;
+      background: #fef2f2;
+      color: #b91c1c;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    /* =====================================================
        班追加
-    ===================================================== */
+    ====================================================== */
 
     .team-add-area {
       display: flex;
@@ -354,17 +563,17 @@
       font-weight: 700;
     }
 
-    /* =====================================================
-       班一覧
-    ===================================================== */
-
-    .team-list {
+    .team-list,
+    .product-list,
+    .member-list {
       display: flex;
       flex-direction: column;
       gap: 10px;
     }
 
-    .team-item {
+    .team-item,
+    .product-item,
+    .member-item {
       border: 1px solid #e5e7eb;
       border-radius: 12px;
       padding: 14px;
@@ -374,11 +583,15 @@
       gap: 12px;
     }
 
-    .team-info {
+    .team-info,
+    .product-info,
+    .member-info {
       min-width: 0;
     }
 
-    .team-name {
+    .team-name,
+    .product-name,
+    .member-name {
       font-weight: 700;
       font-size: 15px;
     }
@@ -389,14 +602,20 @@
       margin-top: 4px;
     }
 
-    .team-actions {
+    .team-actions,
+    .product-actions,
+    .member-actions {
       display: flex;
       gap: 7px;
       flex-shrink: 0;
     }
 
     .edit-team-button,
-    .delete-team-button {
+    .delete-team-button,
+    .edit-product-button,
+    .delete-product-button,
+    .role-change-button,
+    .team-change-button {
       border: none;
       border-radius: 9px;
       padding: 9px 11px;
@@ -404,23 +623,26 @@
       font-weight: 700;
     }
 
-    .edit-team-button {
+    .edit-team-button,
+    .edit-product-button {
       background: #eff6ff;
       color: #1d4ed8;
     }
 
-    .delete-team-button {
+    .delete-team-button,
+    .delete-product-button {
       background: #fef2f2;
       color: #b91c1c;
     }
 
     /* =====================================================
        商材管理
-    ===================================================== */
+    ====================================================== */
 
     .product-add-area {
       display: grid;
-      grid-template-columns: 1fr 180px auto;
+      grid-template-columns:
+        1fr 180px auto;
       gap: 10px;
       margin-bottom: 18px;
     }
@@ -435,31 +657,6 @@
       white-space: nowrap;
     }
 
-    .product-list {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-
-    .product-item {
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
-      padding: 15px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .product-info {
-      min-width: 0;
-    }
-
-    .product-name {
-      font-size: 15px;
-      font-weight: 700;
-    }
-
     .product-revenue {
       margin-top: 5px;
       font-size: 13px;
@@ -467,60 +664,9 @@
       font-weight: 700;
     }
 
-    .product-actions {
-      display: flex;
-      gap: 7px;
-      flex-shrink: 0;
-    }
-
-    .edit-product-button,
-    .delete-product-button {
-      border: none;
-      border-radius: 9px;
-      padding: 9px 11px;
-      font-size: 12px;
-      font-weight: 700;
-    }
-
-    .edit-product-button {
-      background: #eff6ff;
-      color: #1d4ed8;
-    }
-
-    .delete-product-button {
-      background: #fef2f2;
-      color: #b91c1c;
-    }
-
     /* =====================================================
        メンバー
-    ===================================================== */
-
-    .member-list {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-
-    .member-item {
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
-      padding: 14px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .member-info {
-      min-width: 0;
-      flex: 1;
-    }
-
-    .member-name {
-      font-weight: 700;
-      font-size: 15px;
-    }
+    ====================================================== */
 
     .member-email {
       color: #6b7280;
@@ -529,13 +675,17 @@
       word-break: break-all;
     }
 
-    .member-role {
+    .member-role,
+    .member-team {
       display: inline-block;
       margin-top: 7px;
       padding: 4px 8px;
       border-radius: 999px;
       font-size: 11px;
       font-weight: 700;
+    }
+
+    .member-role {
       background: #f3f4f6;
       color: #374151;
     }
@@ -546,30 +696,9 @@
     }
 
     .member-team {
-      display: inline-block;
-      margin-top: 7px;
       margin-left: 4px;
-      padding: 4px 8px;
-      border-radius: 999px;
-      font-size: 11px;
-      font-weight: 700;
       background: #eff6ff;
       color: #1d4ed8;
-    }
-
-    .member-actions {
-      display: flex;
-      gap: 7px;
-      flex-shrink: 0;
-    }
-
-    .role-change-button,
-    .team-change-button {
-      border: none;
-      border-radius: 9px;
-      padding: 9px 11px;
-      font-size: 12px;
-      font-weight: 700;
     }
 
     .role-change-button {
@@ -589,7 +718,7 @@
 
     /* =====================================================
        モーダル
-    ===================================================== */
+    ====================================================== */
 
     .modal-overlay {
       display: none;
@@ -645,7 +774,7 @@
 
     /* =====================================================
        共通
-    ===================================================== */
+    ====================================================== */
 
     .empty-message,
     .loading-message {
@@ -657,7 +786,7 @@
 
     /* =====================================================
        スマホ
-    ===================================================== */
+    ====================================================== */
 
     @media (max-width: 700px) {
 
@@ -669,6 +798,23 @@
         align-items: flex-start;
       }
 
+      .record-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .summary-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .dashboard-header {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .month-selector {
+        width: 100%;
+      }
+
       .product-add-area {
         grid-template-columns: 1fr;
       }
@@ -677,19 +823,15 @@
         padding: 13px;
       }
 
-      .product-item {
+      .product-item,
+      .member-item,
+      .team-item {
         align-items: flex-start;
       }
 
-      .product-actions {
-        flex-direction: column;
-      }
-
-      .member-item {
-        align-items: flex-start;
-      }
-
-      .member-actions {
+      .product-actions,
+      .member-actions,
+      .team-actions {
         flex-direction: column;
       }
 
@@ -706,14 +848,6 @@
         padding: 13px;
       }
 
-      .team-item {
-        align-items: flex-start;
-      }
-
-      .team-actions {
-        flex-direction: column;
-      }
-
     }
 
   </style>
@@ -725,388 +859,587 @@
 
 <div class="app">
 
-  <header>
+<header>
 
-    <div class="header-inner">
+  <div class="header-inner">
 
-      <div class="title">
-        営業実績管理
-      </div>
-
-      <div class="subtitle">
-        Sales Management System
-      </div>
-
+    <div class="title">
+      営業実績管理
     </div>
 
-  </header>
+    <div class="subtitle">
+      Sales Management System
+    </div>
+
+  </div>
+
+</header>
 
 
-  <!-- =====================================================
-       ログイン
-  ====================================================== -->
+<!-- =====================================================
+     ログイン
+====================================================== -->
 
-  <main id="authScreen">
+<main id="authScreen">
 
-    <div class="auth-wrapper">
+  <div class="auth-wrapper">
 
-      <div class="auth-card">
+    <div class="auth-card">
 
-        <div class="auth-logo">
-          📊
-        </div>
+      <div class="auth-logo">
+        📊
+      </div>
 
-        <div
-          class="auth-title"
-          id="authTitle"
+      <div
+        class="auth-title"
+        id="authTitle"
+      >
+        ログイン
+      </div>
+
+      <div class="auth-description">
+        営業実績管理システム
+      </div>
+
+      <div
+        id="errorMessage"
+        class="error-message"
+      ></div>
+
+      <div
+        id="successMessage"
+        class="success-message"
+      ></div>
+
+      <div
+        class="form-group"
+        id="nameGroup"
+        style="display:none;"
+      >
+
+        <label for="name">
+          名前
+        </label>
+
+        <input
+          id="name"
+          type="text"
+          placeholder="例：山田太郎"
         >
-          ログイン
-        </div>
-
-        <div class="auth-description">
-          営業実績管理システム
-        </div>
-
-        <div
-          id="errorMessage"
-          class="error-message"
-        ></div>
-
-        <div
-          id="successMessage"
-          class="success-message"
-        ></div>
-
-        <div
-          class="form-group"
-          id="nameGroup"
-          style="display:none;"
-        >
-
-          <label for="name">
-            名前
-          </label>
-
-          <input
-            id="name"
-            type="text"
-            placeholder="例：山田太郎"
-          >
-
-        </div>
-
-        <div class="form-group">
-
-          <label for="email">
-            メールアドレス
-          </label>
-
-          <input
-            id="email"
-            type="email"
-            placeholder="example@gmail.com"
-          >
-
-        </div>
-
-        <div class="form-group">
-
-          <label for="password">
-            パスワード
-          </label>
-
-          <input
-            id="password"
-            type="password"
-            placeholder="6文字以上"
-          >
-
-        </div>
-
-        <button
-          id="authButton"
-          class="primary-button"
-        >
-          ログイン
-        </button>
-
-        <div class="switch-text">
-
-          <span id="switchDescription">
-            アカウントを持っていない？
-          </span>
-
-          <button
-            id="switchButton"
-            class="link-button"
-          >
-            新規登録
-          </button>
-
-        </div>
 
       </div>
 
-    </div>
+      <div class="form-group">
 
-  </main>
+        <label for="email">
+          メールアドレス
+        </label>
 
-
-  <!-- =====================================================
-       アプリ
-  ====================================================== -->
-
-  <main id="appScreen">
-
-    <div class="user-bar">
-
-      <div class="user-info">
-
-        <div
-          id="userName"
-          class="user-name"
+        <input
+          id="email"
+          type="email"
+          placeholder="example@gmail.com"
         >
-          -
-        </div>
 
-        <div
-          id="userEmail"
-          class="user-email"
-        >
-          -
-        </div>
+      </div>
 
-        <div
-          id="userRole"
-          class="role-badge"
+      <div class="form-group">
+
+        <label for="password">
+          パスワード
+        </label>
+
+        <input
+          id="password"
+          type="password"
+          placeholder="6文字以上"
         >
-          メンバー
-        </div>
 
       </div>
 
       <button
-        id="logoutButton"
-        class="logout-button"
+        id="authButton"
+        class="primary-button"
       >
-        ログアウト
+        ログイン
+      </button>
+
+      <div class="switch-text">
+
+        <span id="switchDescription">
+          アカウントを持っていない？
+        </span>
+
+        <button
+          id="switchButton"
+          class="link-button"
+        >
+          新規登録
+        </button>
+
+      </div>
+
+    </div>
+
+  </div>
+
+</main>
+
+
+<!-- =====================================================
+     アプリ
+====================================================== -->
+
+<main id="appScreen">
+
+  <div class="user-bar">
+
+    <div class="user-info">
+
+      <div
+        id="userName"
+        class="user-name"
+      >
+        -
+      </div>
+
+      <div
+        id="userEmail"
+        class="user-email"
+      >
+        -
+      </div>
+
+      <div
+        id="userRole"
+        class="role-badge"
+      >
+        メンバー
+      </div>
+
+    </div>
+
+    <button
+      id="logoutButton"
+      class="logout-button"
+    >
+      ログアウト
+    </button>
+
+  </div>
+
+
+  <div class="welcome-card">
+
+    <div class="welcome-title">
+      営業実績管理へようこそ
+    </div>
+
+    <div class="welcome-text">
+      班・メンバー・商材・実績を一元管理できます。
+    </div>
+
+  </div>
+
+
+  <div class="status-card">
+
+    <div class="status-title">
+      現在の状態
+    </div>
+
+    <div class="status-text">
+
+      ログイン：
+      <strong id="loginStatus">
+        確認中
+      </strong>
+
+      <br>
+
+      Firebase：
+      <strong>
+        接続済み
+      </strong>
+
+      <br>
+
+      データベース：
+      <strong id="databaseStatus">
+        接続確認中
+      </strong>
+
+    </div>
+
+    <div
+      id="setupWarning"
+      class="setup-warning"
+      style="display:none;"
+    >
+
+      現在、このアカウントは
+      <strong>メンバー</strong>
+      として登録されています。
+
+      <br><br>
+
+      リーダーから権限を変更してもらうことで、
+      管理機能を使用できるようになります。
+
+    </div>
+
+  </div>
+
+
+  <!-- =====================================================
+       実績入力
+  ====================================================== -->
+
+  <div
+    id="recordManagement"
+    class="record-card"
+  >
+
+    <div class="record-title">
+      📊 実績入力
+    </div>
+
+    <div class="record-description">
+      日付・担当者・商材・獲得件数を入力すると、
+      売上を自動計算して保存します。
+    </div>
+
+    <div class="record-grid">
+
+      <div class="form-group">
+
+        <label for="recordDate">
+          日付
+        </label>
+
+        <input
+          id="recordDate"
+          type="date"
+        >
+
+      </div>
+
+
+      <div class="form-group">
+
+        <label for="recordMember">
+          担当者
+        </label>
+
+        <select id="recordMember">
+
+          <option value="">
+            担当者を選択
+          </option>
+
+        </select>
+
+      </div>
+
+
+      <div class="form-group">
+
+        <label for="recordProduct">
+          商材
+        </label>
+
+        <select id="recordProduct">
+
+          <option value="">
+            商材を選択
+          </option>
+
+        </select>
+
+      </div>
+
+
+      <div class="form-group">
+
+        <label for="recordCount">
+          獲得件数
+        </label>
+
+        <input
+          id="recordCount"
+          type="number"
+          min="0"
+          step="1"
+          value="1"
+          placeholder="例：3"
+        >
+
+      </div>
+
+    </div>
+
+
+    <div class="record-total">
+
+      <div class="record-total-label">
+        今回の売上
+      </div>
+
+      <div
+        id="recordTotal"
+        class="record-total-value"
+      >
+        ¥0
+      </div>
+
+    </div>
+
+
+    <button
+      id="saveRecordButton"
+      class="record-save-button"
+    >
+      実績を登録
+    </button>
+
+  </div>
+
+
+  <!-- =====================================================
+       月間ダッシュボード
+  ====================================================== -->
+
+  <div
+    id="dashboard"
+    class="dashboard-card"
+  >
+
+    <div class="dashboard-header">
+
+      <div class="dashboard-title">
+        📈 月間実績
+      </div>
+
+      <select
+        id="dashboardMonth"
+        class="month-selector"
+      ></select>
+
+    </div>
+
+
+    <div class="summary-grid">
+
+      <div class="summary-item">
+
+        <div class="summary-label">
+          獲得件数
+        </div>
+
+        <div
+          id="monthlyCount"
+          class="summary-value"
+        >
+          0件
+        </div>
+
+      </div>
+
+
+      <div class="summary-item">
+
+        <div class="summary-label">
+          売上
+        </div>
+
+        <div
+          id="monthlyRevenue"
+          class="summary-value revenue"
+        >
+          ¥0
+        </div>
+
+      </div>
+
+
+      <div class="summary-item">
+
+        <div class="summary-label">
+          実績登録数
+        </div>
+
+        <div
+          id="monthlyRecords"
+          class="summary-value"
+        >
+          0件
+        </div>
+
+      </div>
+
+    </div>
+
+
+    <div class="section-title">
+      商材別
+    </div>
+
+    <div
+      id="productSummaryList"
+      class="product-summary-list"
+    ></div>
+
+
+    <div class="section-title record-history">
+      日別実績
+    </div>
+
+    <div
+      id="dailySummaryList"
+      class="daily-summary-list"
+    ></div>
+
+
+    <div class="section-title record-history">
+      登録履歴
+    </div>
+
+    <div
+      id="recordHistoryList"
+    ></div>
+
+  </div>
+
+
+  <!-- =====================================================
+       班管理
+  ====================================================== -->
+
+  <div
+    id="teamManagement"
+    class="management-card"
+  >
+
+    <div class="management-title">
+      🏢 班管理
+    </div>
+
+    <div class="management-description">
+
+      営業チームを作成・編集できます。
+
+    </div>
+
+    <div class="team-add-area">
+
+      <input
+        id="teamNameInput"
+        type="text"
+        placeholder="例：1班"
+      >
+
+      <button
+        id="addTeamButton"
+        class="team-add-button"
+      >
+        ＋ 班を追加
       </button>
 
     </div>
 
+    <div
+      id="teamList"
+      class="team-list"
+    ></div>
 
-    <div class="welcome-card">
+  </div>
 
-      <div class="welcome-title">
-        営業実績管理へようこそ
-      </div>
 
-      <div class="welcome-text">
-        Firebaseとの接続が完了しました。<br>
-        班・メンバー・商材・実績を一元管理できます。
-      </div>
+  <!-- =====================================================
+       商材管理
+  ====================================================== -->
+
+  <div
+    id="productManagement"
+    class="management-card"
+  >
+
+    <div class="management-title">
+      🛍️ 商材管理
+    </div>
+
+    <div class="management-description">
+
+      商材名と1件あたりの収益を設定できます。
 
     </div>
 
+    <div class="product-add-area">
 
-    <div class="status-card">
-
-      <div class="status-title">
-        現在の状態
-      </div>
-
-      <div class="status-text">
-
-        ログイン：
-        <strong id="loginStatus">
-          確認中
-        </strong>
-
-        <br>
-
-        Firebase：
-        <strong>
-          接続済み
-        </strong>
-
-        <br>
-
-        データベース：
-        <strong id="databaseStatus">
-          接続確認中
-        </strong>
-
-      </div>
-
-      <div
-        id="setupWarning"
-        class="setup-warning"
-        style="display:none;"
+      <input
+        id="productNameInput"
+        type="text"
+        placeholder="商材名 例：NURO光"
       >
 
-        現在、このアカウントは
-        <strong>メンバー</strong>
-        として登録されています。
+      <input
+        id="productRevenueInput"
+        type="number"
+        min="0"
+        step="1"
+        placeholder="1件あたり収益"
+      >
 
-        <br><br>
-
-        リーダーから権限を変更してもらうことで、
-        管理機能を使用できるようになります。
-
-      </div>
+      <button
+        id="addProductButton"
+        class="product-add-button"
+      >
+        ＋ 商材を追加
+      </button>
 
     </div>
-
-
-    <!-- =====================================================
-         班管理
-    ====================================================== -->
 
     <div
-      id="teamManagement"
-      class="management-card"
-    >
+      id="productList"
+      class="product-list"
+    ></div>
 
-      <div class="management-title">
-        🏢 班管理
-      </div>
+  </div>
 
-      <div class="management-description">
 
-        営業チームを作成・編集できます。<br>
-        作成した班はメンバーの所属先として使用します。
+  <!-- =====================================================
+       メンバー管理
+  ====================================================== -->
 
-      </div>
+  <div
+    id="memberManagement"
+    class="management-card"
+  >
 
-      <div class="team-add-area">
-
-        <input
-          id="teamNameInput"
-          type="text"
-          placeholder="例：1班"
-        >
-
-        <button
-          id="addTeamButton"
-          class="team-add-button"
-        >
-          ＋ 班を追加
-        </button>
-
-      </div>
-
-      <div
-        id="teamList"
-        class="team-list"
-      >
-
-        <div class="loading-message">
-          班情報を読み込み中...
-        </div>
-
-      </div>
-
+    <div class="management-title">
+      👑 メンバー管理
     </div>
 
+    <div class="management-description">
 
-    <!-- =====================================================
-         商材管理
-    ====================================================== -->
+      メンバーの権限と所属班を変更できます。
+
+    </div>
 
     <div
-      id="productManagement"
-      class="management-card"
-    >
+      id="memberList"
+      class="member-list"
+    ></div>
 
-      <div class="management-title">
-        🛍️ 商材管理
-      </div>
+  </div>
 
-      <div class="management-description">
-
-        商材名と1件あたりの収益を自由に設定できます。<br>
-        登録した商材は、後で実績入力に使用します。
-
-      </div>
-
-      <div class="product-add-area">
-
-        <input
-          id="productNameInput"
-          type="text"
-          placeholder="商材名 例：NURO光"
-        >
-
-        <input
-          id="productRevenueInput"
-          type="number"
-          min="0"
-          step="1"
-          placeholder="1件あたり収益"
-        >
-
-        <button
-          id="addProductButton"
-          class="product-add-button"
-        >
-          ＋ 商材を追加
-        </button>
-
-      </div>
-
-      <div
-        id="productList"
-        class="product-list"
-      >
-
-        <div class="loading-message">
-          商材情報を読み込み中...
-        </div>
-
-      </div>
-
-    </div>
-
-
-    <!-- =====================================================
-         メンバー管理
-    ====================================================== -->
-
-    <div
-      id="memberManagement"
-      class="management-card"
-    >
-
-      <div class="management-title">
-        👑 メンバー管理
-      </div>
-
-      <div class="management-description">
-
-        メンバーの権限と所属班を変更できます。
-
-      </div>
-
-      <div
-        id="memberList"
-        class="member-list"
-      >
-
-        <div class="loading-message">
-          メンバー情報を読み込み中...
-        </div>
-
-      </div>
-
-    </div>
-
-  </main>
+</main>
 
 </div>
 
 
 <!-- =====================================================
-     班名編集モーダル
+     班名編集
 ====================================================== -->
 
 <div
@@ -1122,14 +1455,13 @@
 
     <div class="form-group">
 
-      <label for="editTeamName">
+      <label>
         班名
       </label>
 
       <input
         id="editTeamName"
         type="text"
-        placeholder="例：1班"
       >
 
     </div>
@@ -1158,7 +1490,7 @@
 
 
 <!-- =====================================================
-     商材編集モーダル
+     商材編集
 ====================================================== -->
 
 <div
@@ -1174,21 +1506,20 @@
 
     <div class="form-group">
 
-      <label for="editProductName">
+      <label>
         商材名
       </label>
 
       <input
         id="editProductName"
         type="text"
-        placeholder="例：NURO光"
       >
 
     </div>
 
     <div class="form-group">
 
-      <label for="editProductRevenue">
+      <label>
         1件あたり収益
       </label>
 
@@ -1196,8 +1527,6 @@
         id="editProductRevenue"
         type="number"
         min="0"
-        step="1"
-        placeholder="25000"
       >
 
     </div>
@@ -1226,7 +1555,7 @@
 
 
 <!-- =====================================================
-     メンバー班変更モーダル
+     メンバー班変更
 ====================================================== -->
 
 <div
@@ -1242,7 +1571,7 @@
 
     <div class="form-group">
 
-      <label for="memberTeamSelect">
+      <label>
         班
       </label>
 
@@ -1279,10 +1608,6 @@
 </div>
 
 
-<!-- =====================================================
-     Firebase
-====================================================== -->
-
 <script type="module">
 
   import {
@@ -1310,14 +1635,17 @@
     deleteDoc,
     collection,
     getDocs,
-    serverTimestamp
+    serverTimestamp,
+    query,
+    where,
+    orderBy
   }
   from
     "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
 
   /* =====================================================
-     Firebase設定
+     Firebase
   ====================================================== */
 
   const firebaseConfig = {
@@ -1416,6 +1744,63 @@
   const setupWarning =
     document.getElementById("setupWarning");
 
+
+  /* 実績 */
+
+  const recordManagement =
+    document.getElementById("recordManagement");
+
+  const recordDate =
+    document.getElementById("recordDate");
+
+  const recordMember =
+    document.getElementById("recordMember");
+
+  const recordProduct =
+    document.getElementById("recordProduct");
+
+  const recordCount =
+    document.getElementById("recordCount");
+
+  const recordTotal =
+    document.getElementById("recordTotal");
+
+  const saveRecordButton =
+    document.getElementById("saveRecordButton");
+
+  const dashboard =
+    document.getElementById("dashboard");
+
+  const dashboardMonth =
+    document.getElementById("dashboardMonth");
+
+  const monthlyCount =
+    document.getElementById("monthlyCount");
+
+  const monthlyRevenue =
+    document.getElementById("monthlyRevenue");
+
+  const monthlyRecords =
+    document.getElementById("monthlyRecords");
+
+  const productSummaryList =
+    document.getElementById(
+      "productSummaryList"
+    );
+
+  const dailySummaryList =
+    document.getElementById(
+      "dailySummaryList"
+    );
+
+  const recordHistoryList =
+    document.getElementById(
+      "recordHistoryList"
+    );
+
+
+  /* 管理 */
+
   const teamManagement =
     document.getElementById("teamManagement");
 
@@ -1435,58 +1820,91 @@
     document.getElementById("productNameInput");
 
   const productRevenueInput =
-    document.getElementById("productRevenueInput");
+    document.getElementById(
+      "productRevenueInput"
+    );
 
   const addProductButton =
-    document.getElementById("addProductButton");
+    document.getElementById(
+      "addProductButton"
+    );
 
   const productList =
     document.getElementById("productList");
 
   const memberManagement =
-    document.getElementById("memberManagement");
+    document.getElementById(
+      "memberManagement"
+    );
 
   const memberList =
     document.getElementById("memberList");
+
+
+  /* モーダル */
 
   const teamModal =
     document.getElementById("teamModal");
 
   const editTeamName =
-    document.getElementById("editTeamName");
+    document.getElementById(
+      "editTeamName"
+    );
 
   const cancelTeamModal =
-    document.getElementById("cancelTeamModal");
+    document.getElementById(
+      "cancelTeamModal"
+    );
 
   const saveTeamModal =
-    document.getElementById("saveTeamModal");
+    document.getElementById(
+      "saveTeamModal"
+    );
 
   const productModal =
-    document.getElementById("productModal");
+    document.getElementById(
+      "productModal"
+    );
 
   const editProductName =
-    document.getElementById("editProductName");
+    document.getElementById(
+      "editProductName"
+    );
 
   const editProductRevenue =
-    document.getElementById("editProductRevenue");
+    document.getElementById(
+      "editProductRevenue"
+    );
 
   const cancelProductModal =
-    document.getElementById("cancelProductModal");
+    document.getElementById(
+      "cancelProductModal"
+    );
 
   const saveProductModal =
-    document.getElementById("saveProductModal");
+    document.getElementById(
+      "saveProductModal"
+    );
 
   const memberTeamModal =
-    document.getElementById("memberTeamModal");
+    document.getElementById(
+      "memberTeamModal"
+    );
 
   const memberTeamSelect =
-    document.getElementById("memberTeamSelect");
+    document.getElementById(
+      "memberTeamSelect"
+    );
 
   const cancelMemberTeamModal =
-    document.getElementById("cancelMemberTeamModal");
+    document.getElementById(
+      "cancelMemberTeamModal"
+    );
 
   const saveMemberTeamModal =
-    document.getElementById("saveMemberTeamModal");
+    document.getElementById(
+      "saveMemberTeamModal"
+    );
 
 
   /* =====================================================
@@ -1501,6 +1919,10 @@
 
   let members = [];
 
+  let records = [];
+
+  let currentUserData = null;
+
   let editingTeamId = null;
 
   let editingProductId = null;
@@ -1509,36 +1931,94 @@
 
 
   /* =====================================================
+     今日の日付
+  ====================================================== */
+
+  function getTodayString() {
+
+    const now =
+      new Date();
+
+    const year =
+      now.getFullYear();
+
+    const month =
+      String(
+        now.getMonth() + 1
+      ).padStart(2, "0");
+
+    const day =
+      String(
+        now.getDate()
+      ).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
+
+  }
+
+
+  recordDate.value =
+    getTodayString();
+
+
+  /* =====================================================
      メッセージ
   ====================================================== */
 
   function showError(message) {
 
-    errorMessage.textContent = message;
+    errorMessage.textContent =
+      message;
 
-    errorMessage.style.display = "block";
+    errorMessage.style.display =
+      "block";
+
+    successMessage.style.display =
+      "none";
 
   }
 
 
   function showSuccess(message) {
 
-    successMessage.textContent = message;
+    successMessage.textContent =
+      message;
 
-    successMessage.style.display = "block";
+    successMessage.style.display =
+      "block";
+
+    errorMessage.style.display =
+      "none";
 
   }
 
 
   function clearMessages() {
 
-    errorMessage.textContent = "";
+    errorMessage.textContent =
+      "";
 
-    successMessage.textContent = "";
+    successMessage.textContent =
+      "";
 
-    errorMessage.style.display = "none";
+    errorMessage.style.display =
+      "none";
 
-    successMessage.style.display = "none";
+    successMessage.style.display =
+      "none";
+
+  }
+
+
+  /* =====================================================
+     金額
+  ====================================================== */
+
+  function formatYen(value) {
+
+    return `¥${Number(
+      value || 0
+    ).toLocaleString("ja-JP")}`;
 
   }
 
@@ -1579,7 +2059,7 @@
 
       default:
         return error.message ||
-          "エラーが発生しました。もう一度試してください。";
+          "エラーが発生しました。";
 
     }
 
@@ -1587,7 +2067,7 @@
 
 
   /* =====================================================
-     ログイン / 新規登録 切り替え
+     ログイン切り替え
   ====================================================== */
 
   switchButton.addEventListener(
@@ -1750,7 +2230,8 @@
 
     try {
 
-      authButton.disabled = true;
+      authButton.disabled =
+        true;
 
       authButton.textContent =
         "登録中...";
@@ -1779,7 +2260,8 @@
 
     } finally {
 
-      authButton.disabled = false;
+      authButton.disabled =
+        false;
 
       authButton.textContent =
         isRegisterMode
@@ -1825,7 +2307,8 @@
 
     try {
 
-      authButton.disabled = true;
+      authButton.disabled =
+        true;
 
       authButton.textContent =
         "ログイン中...";
@@ -1844,7 +2327,8 @@
 
     } finally {
 
-      authButton.disabled = false;
+      authButton.disabled =
+        false;
 
       authButton.textContent =
         "ログイン";
@@ -1853,10 +2337,6 @@
 
   }
 
-
-  /* =====================================================
-     ログインボタン
-  ====================================================== */
 
   authButton.addEventListener(
     "click",
@@ -1878,10 +2358,6 @@
   );
 
 
-  /* =====================================================
-     Enterキーでもログイン
-  ====================================================== */
-
   passwordInput.addEventListener(
     "keydown",
     (event) => {
@@ -1898,30 +2374,18 @@
   );
 
 
-  /* =====================================================
-     ログアウト
-  ====================================================== */
-
   logoutButton.addEventListener(
     "click",
     async () => {
 
-      try {
-
-        await signOut(auth);
-
-      } catch (error) {
-
-        console.error(error);
-
-      }
+      await signOut(auth);
 
     }
   );
 
 
   /* =====================================================
-     ログイン状態監視
+     ログイン状態
   ====================================================== */
 
   onAuthStateChanged(
@@ -1949,18 +2413,6 @@
         appScreen.style.display =
           "none";
 
-        loginStatus.textContent =
-          "未ログイン";
-
-        teamManagement.style.display =
-          "none";
-
-        productManagement.style.display =
-          "none";
-
-        memberManagement.style.display =
-          "none";
-
       }
 
     }
@@ -1968,7 +2420,7 @@
 
 
   /* =====================================================
-     ユーザー情報取得
+     ユーザー情報
   ====================================================== */
 
   async function loadUserData(user) {
@@ -1986,7 +2438,9 @@
         );
 
       let userSnap =
-        await getDoc(userRef);
+        await getDoc(
+          userRef
+        );
 
       if (!userSnap.exists()) {
 
@@ -2001,16 +2455,13 @@
 
       }
 
-      if (!userSnap.exists()) {
-
-        throw new Error(
-          "ユーザーデータがありません"
-        );
-
-      }
-
       const data =
         userSnap.data();
+
+      currentUserData = {
+        ...data,
+        uid: user.uid
+      };
 
       userName.textContent =
         data.name ||
@@ -2020,6 +2471,15 @@
         data.email ||
         user.email ||
         "";
+
+      /* 全員に実績機能を表示 */
+
+      recordManagement.style.display =
+        "block";
+
+      dashboard.style.display =
+        "block";
+
 
       if (
         data.role === "leader"
@@ -2063,17 +2523,22 @@
         memberManagement.style.display =
           "none";
 
+        await loadTeams();
+
+        await loadProducts();
+
       }
+
+      await prepareRecordInputs();
+
+      await loadRecords();
 
       databaseStatus.textContent =
         "接続済み";
 
     } catch (error) {
 
-      console.error(
-        "ユーザー情報取得エラー:",
-        error
-      );
+      console.error(error);
 
       databaseStatus.textContent =
         "接続エラー";
@@ -2088,16 +2553,10 @@
 
 
   /* =====================================================
-     班一覧取得
+     班取得
   ====================================================== */
 
   async function loadTeams() {
-
-    teamList.innerHTML = `
-      <div class="loading-message">
-        班情報を読み込み中...
-      </div>
-    `;
 
     try {
 
@@ -2138,25 +2597,12 @@
 
     } catch (error) {
 
-      console.error(
-        "班取得エラー:",
-        error
-      );
-
-      teamList.innerHTML = `
-        <div class="empty-message">
-          班情報を取得できませんでした。
-        </div>
-      `;
+      console.error(error);
 
     }
 
   }
 
-
-  /* =====================================================
-     班表示
-  ====================================================== */
 
   function renderTeams() {
 
@@ -2166,8 +2612,7 @@
 
       teamList.innerHTML = `
         <div class="empty-message">
-          まだ班がありません。<br>
-          上の入力欄から班を追加してください。
+          まだ班がありません。
         </div>
       `;
 
@@ -2230,16 +2675,9 @@
         editButton.textContent =
           "✏️ 編集";
 
-        editButton.addEventListener(
-          "click",
-          () => {
-
-            openEditTeamModal(
-              team
-            );
-
-          }
-        );
+        editButton.onclick =
+          () =>
+            openEditTeamModal(team);
 
         const deleteButton =
           document.createElement("button");
@@ -2250,16 +2688,9 @@
         deleteButton.textContent =
           "🗑️ 削除";
 
-        deleteButton.addEventListener(
-          "click",
-          async () => {
-
-            await deleteTeam(
-              team
-            );
-
-          }
-        );
+        deleteButton.onclick =
+          () =>
+            deleteTeam(team);
 
         actions.appendChild(
           editButton
@@ -2286,10 +2717,6 @@
   }
 
 
-  /* =====================================================
-     班メンバー数
-  ====================================================== */
-
   async function countTeamMembers(
     teamId,
     element
@@ -2310,11 +2737,9 @@
       snapshot.forEach(
         (userDoc) => {
 
-          const data =
-            userDoc.data();
-
           if (
-            data.teamId === teamId
+            userDoc.data().teamId ===
+            teamId
           ) {
 
             count++;
@@ -2327,11 +2752,7 @@
       element.textContent =
         `メンバー ${count}人`;
 
-    } catch (error) {
-
-      console.error(
-        error
-      );
+    } catch {
 
       element.textContent =
         "人数取得エラー";
@@ -2367,9 +2788,6 @@
         addTeamButton.disabled =
           true;
 
-        addTeamButton.textContent =
-          "追加中...";
-
         const teamRef =
           doc(
             collection(
@@ -2382,14 +2800,11 @@
           teamRef,
           {
 
-            name:
-              name,
+            name,
 
-            leaderUids:
-              [],
+            leaderUids: [],
 
-            active:
-              true,
+            active: true,
 
             createdAt:
               serverTimestamp()
@@ -2408,10 +2823,6 @@
 
       } catch (error) {
 
-        console.error(
-          error
-        );
-
         showError(
           firebaseErrorMessage(error)
         );
@@ -2420,9 +2831,6 @@
 
         addTeamButton.disabled =
           false;
-
-        addTeamButton.textContent =
-          "＋ 班を追加";
 
       }
 
@@ -2453,51 +2861,32 @@
     editingTeamId =
       null;
 
-    editTeamName.value =
-      "";
-
     teamModal.style.display =
       "none";
 
   }
 
 
-  cancelTeamModal.addEventListener(
-    "click",
-    closeTeamModal
-  );
+  cancelTeamModal.onclick =
+    closeTeamModal;
 
 
-  saveTeamModal.addEventListener(
-    "click",
+  saveTeamModal.onclick =
     async () => {
+
+      if (!editingTeamId) {
+        return;
+      }
 
       const name =
         editTeamName.value.trim();
 
       if (!name) {
-
-        alert(
-          "班名を入力してください。"
-        );
-
+        alert("班名を入力してください。");
         return;
-
-      }
-
-      if (!editingTeamId) {
-
-        return;
-
       }
 
       try {
-
-        saveTeamModal.disabled =
-          true;
-
-        saveTeamModal.textContent =
-          "保存中...";
 
         await updateDoc(
           doc(
@@ -2506,13 +2895,9 @@
             editingTeamId
           ),
           {
-
-            name:
-              name,
-
+            name,
             updatedAt:
               serverTimestamp()
-
           }
         );
 
@@ -2526,43 +2911,23 @@
 
       } catch (error) {
 
-        console.error(
-          error
-        );
-
-        alert(
+        showError(
           firebaseErrorMessage(error)
         );
 
-      } finally {
-
-        saveTeamModal.disabled =
-          false;
-
-        saveTeamModal.textContent =
-          "保存";
-
       }
 
-    }
-  );
+    };
 
-
-  /* =====================================================
-     班削除
-  ====================================================== */
 
   async function deleteTeam(team) {
 
-    const confirmed =
-      window.confirm(
+    if (
+      !confirm(
         `「${team.name}」を削除しますか？`
-      );
-
-    if (!confirmed) {
-
+      )
+    ) {
       return;
-
     }
 
     try {
@@ -2575,9 +2940,7 @@
         )
       );
 
-      /* 所属メンバーの班を解除 */
-
-      const userSnapshot =
+      const snapshot =
         await getDocs(
           collection(
             db,
@@ -2587,14 +2950,12 @@
 
       const updates = [];
 
-      userSnapshot.forEach(
+      snapshot.forEach(
         (userDoc) => {
 
-          const data =
-            userDoc.data();
-
           if (
-            data.teamId === team.id
+            userDoc.data().teamId ===
+            team.id
           ) {
 
             updates.push(
@@ -2615,9 +2976,7 @@
         }
       );
 
-      await Promise.all(
-        updates
-      );
+      await Promise.all(updates);
 
       await loadTeams();
 
@@ -2629,10 +2988,6 @@
 
     } catch (error) {
 
-      console.error(
-        error
-      );
-
       showError(
         firebaseErrorMessage(error)
       );
@@ -2643,16 +2998,10 @@
 
 
   /* =====================================================
-     商材一覧取得
+     商材取得
   ====================================================== */
 
   async function loadProducts() {
-
-    productList.innerHTML = `
-      <div class="loading-message">
-        商材情報を読み込み中...
-      </div>
-    `;
 
     try {
 
@@ -2693,25 +3042,12 @@
 
     } catch (error) {
 
-      console.error(
-        "商材取得エラー:",
-        error
-      );
-
-      productList.innerHTML = `
-        <div class="empty-message">
-          商材情報を取得できませんでした。
-        </div>
-      `;
+      console.error(error);
 
     }
 
   }
 
-
-  /* =====================================================
-     商材表示
-  ====================================================== */
 
   function renderProducts() {
 
@@ -2721,8 +3057,7 @@
 
       productList.innerHTML = `
         <div class="empty-message">
-          まだ商材がありません。<br>
-          上の入力欄から商材を追加してください。
+          まだ商材がありません。
         </div>
       `;
 
@@ -2754,8 +3089,7 @@
           "product-name";
 
         name.textContent =
-          product.name ||
-          "名前未設定";
+          product.name;
 
         const revenue =
           document.createElement("div");
@@ -2764,9 +3098,9 @@
           "product-revenue";
 
         revenue.textContent =
-          `1件：¥${Number(
-            product.revenue || 0
-          ).toLocaleString("ja-JP")}`;
+          `1件：${formatYen(
+            product.revenue
+          )}`;
 
         info.appendChild(name);
 
@@ -2787,16 +3121,11 @@
         editButton.textContent =
           "✏️ 編集";
 
-        editButton.addEventListener(
-          "click",
-          () => {
-
+        editButton.onclick =
+          () =>
             openEditProductModal(
               product
             );
-
-          }
-        );
 
         const deleteButton =
           document.createElement("button");
@@ -2807,16 +3136,11 @@
         deleteButton.textContent =
           "🗑️ 削除";
 
-        deleteButton.addEventListener(
-          "click",
-          async () => {
-
-            await deleteProduct(
+        deleteButton.onclick =
+          () =>
+            deleteProduct(
               product
             );
-
-          }
-        );
 
         actions.appendChild(
           editButton
@@ -2842,15 +3166,16 @@
      商材追加
   ====================================================== */
 
-  addProductButton.addEventListener(
-    "click",
+  addProductButton.onclick =
     async () => {
 
       const name =
         productNameInput.value.trim();
 
-      const revenueValue =
-        productRevenueInput.value;
+      const revenue =
+        Number(
+          productRevenueInput.value
+        );
 
       if (!name) {
 
@@ -2863,8 +3188,9 @@
       }
 
       if (
-        revenueValue === "" ||
-        Number(revenueValue) < 0
+        productRevenueInput.value ===
+        "" ||
+        revenue < 0
       ) {
 
         showError(
@@ -2875,16 +3201,7 @@
 
       }
 
-      const revenue =
-        Number(revenueValue);
-
       try {
-
-        addProductButton.disabled =
-          true;
-
-        addProductButton.textContent =
-          "追加中...";
 
         const productRef =
           doc(
@@ -2898,14 +3215,11 @@
           productRef,
           {
 
-            name:
-              name,
+            name,
 
-            revenue:
-              revenue,
+            revenue,
 
-            active:
-              true,
+            active: true,
 
             createdAt:
               serverTimestamp(),
@@ -2924,32 +3238,21 @@
 
         await loadProducts();
 
+        await prepareRecordInputs();
+
         showSuccess(
           "商材を追加しました。"
         );
 
       } catch (error) {
 
-        console.error(
-          error
-        );
-
         showError(
           firebaseErrorMessage(error)
         );
 
-      } finally {
-
-        addProductButton.disabled =
-          false;
-
-        addProductButton.textContent =
-          "＋ 商材を追加";
-
       }
 
-    }
-  );
+    };
 
 
   /* =====================================================
@@ -2964,10 +3267,10 @@
       product.id;
 
     editProductName.value =
-      product.name || "";
+      product.name;
 
     editProductRevenue.value =
-      product.revenue ?? 0;
+      product.revenue;
 
     productModal.style.display =
       "flex";
@@ -2980,47 +3283,40 @@
     editingProductId =
       null;
 
-    editProductName.value =
-      "";
-
-    editProductRevenue.value =
-      "";
-
     productModal.style.display =
       "none";
 
   }
 
 
-  cancelProductModal.addEventListener(
-    "click",
-    closeProductModal
-  );
+  cancelProductModal.onclick =
+    closeProductModal;
 
 
-  saveProductModal.addEventListener(
-    "click",
+  saveProductModal.onclick =
     async () => {
+
+      if (!editingProductId) {
+        return;
+      }
 
       const name =
         editProductName.value.trim();
 
-      const revenueValue =
-        editProductRevenue.value;
-
-      if (!name) {
-
-        alert(
-          "商材名を入力してください。"
+      const revenue =
+        Number(
+          editProductRevenue.value
         );
 
+      if (!name) {
+        alert("商材名を入力してください。");
         return;
-
       }
 
       if (
-        revenueValue === "" ||
-        Number(revenueValue) < 0
+        editProductRevenue.value ===
+        "" ||
+        revenue < 0
       ) {
 
         alert(
@@ -3031,19 +3327,7 @@
 
       }
 
-      if (!editingProductId) {
-
-        return;
-
-      }
-
       try {
-
-        saveProductModal.disabled =
-          true;
-
-        saveProductModal.textContent =
-          "保存中...";
 
         await updateDoc(
           doc(
@@ -3053,11 +3337,9 @@
           ),
           {
 
-            name:
-              name,
+            name,
 
-            revenue:
-              Number(revenueValue),
+            revenue,
 
             updatedAt:
               serverTimestamp()
@@ -3069,51 +3351,31 @@
 
         await loadProducts();
 
+        await prepareRecordInputs();
+
         showSuccess(
           "商材を変更しました。"
         );
 
       } catch (error) {
 
-        console.error(
-          error
-        );
-
-        alert(
+        showError(
           firebaseErrorMessage(error)
         );
 
-      } finally {
-
-        saveProductModal.disabled =
-          false;
-
-        saveProductModal.textContent =
-          "保存";
-
       }
 
-    }
-  );
+    };
 
 
-  /* =====================================================
-     商材削除
-  ====================================================== */
+  async function deleteProduct(product) {
 
-  async function deleteProduct(
-    product
-  ) {
-
-    const confirmed =
-      window.confirm(
+    if (
+      !confirm(
         `「${product.name}」を削除しますか？`
-      );
-
-    if (!confirmed) {
-
+      )
+    ) {
       return;
-
     }
 
     try {
@@ -3128,15 +3390,13 @@
 
       await loadProducts();
 
+      await prepareRecordInputs();
+
       showSuccess(
         "商材を削除しました。"
       );
 
     } catch (error) {
-
-      console.error(
-        error
-      );
 
       showError(
         firebaseErrorMessage(error)
@@ -3148,16 +3408,10 @@
 
 
   /* =====================================================
-     メンバー一覧
+     メンバー取得
   ====================================================== */
 
   async function loadMembers() {
-
-    memberList.innerHTML = `
-      <div class="loading-message">
-        メンバー情報を読み込み中...
-      </div>
-    `;
 
     try {
 
@@ -3198,37 +3452,22 @@
 
     } catch (error) {
 
-      console.error(
-        "メンバー取得エラー:",
-        error
-      );
-
-      memberList.innerHTML = `
-        <div class="empty-message">
-          メンバー情報を取得できませんでした。
-        </div>
-      `;
+      console.error(error);
 
     }
 
   }
 
 
-  /* =====================================================
-     班名取得
-  ====================================================== */
-
   function getTeamName(teamId) {
 
     if (!teamId) {
-
       return "所属なし";
-
     }
 
     const team =
       teams.find(
-        (item) =>
+        item =>
           item.id === teamId
       );
 
@@ -3238,10 +3477,6 @@
 
   }
 
-
-  /* =====================================================
-     メンバー表示
-  ====================================================== */
 
   function renderMembers() {
 
@@ -3302,6 +3537,11 @@
         role.className =
           "member-role";
 
+        role.textContent =
+          member.role === "leader"
+            ? "👑 リーダー"
+            : "👤 メンバー";
+
         if (
           member.role === "leader"
         ) {
@@ -3309,14 +3549,6 @@
           role.classList.add(
             "leader"
           );
-
-          role.textContent =
-            "👑 リーダー";
-
-        } else {
-
-          role.textContent =
-            "👤 メンバー";
 
         }
 
@@ -3369,16 +3601,11 @@
 
         }
 
-        roleButton.addEventListener(
-          "click",
-          async () => {
-
-            await changeMemberRole(
+        roleButton.onclick =
+          () =>
+            changeMemberRole(
               member
             );
-
-          }
-        );
 
         const teamButton =
           document.createElement("button");
@@ -3389,16 +3616,11 @@
         teamButton.textContent =
           "班を変更";
 
-        teamButton.addEventListener(
-          "click",
-          () => {
-
+        teamButton.onclick =
+          () =>
             openMemberTeamModal(
               member
             );
-
-          }
-        );
 
         actions.appendChild(
           roleButton
@@ -3420,13 +3642,7 @@
   }
 
 
-  /* =====================================================
-     権限変更
-  ====================================================== */
-
-  async function changeMemberRole(
-    member
-  ) {
+  async function changeMemberRole(member) {
 
     const newRole =
       member.role === "leader"
@@ -3438,15 +3654,12 @@
         ? "リーダー"
         : "メンバー";
 
-    const confirmed =
-      window.confirm(
-        `「${member.name || "名前未設定"}」を${roleText}に変更しますか？`
-      );
-
-    if (!confirmed) {
-
+    if (
+      !confirm(
+        `「${member.name}」を${roleText}に変更しますか？`
+      )
+    ) {
       return;
-
     }
 
     try {
@@ -3458,13 +3671,11 @@
           member.id
         ),
         {
-
           role:
             newRole,
 
           updatedAt:
             serverTimestamp()
-
         }
       );
 
@@ -3476,10 +3687,6 @@
 
     } catch (error) {
 
-      console.error(
-        error
-      );
-
       showError(
         firebaseErrorMessage(error)
       );
@@ -3490,12 +3697,10 @@
 
 
   /* =====================================================
-     メンバー班変更モーダル
+     メンバー班変更
   ====================================================== */
 
-  function openMemberTeamModal(
-    member
-  ) {
+  function openMemberTeamModal(member) {
 
     editingMemberId =
       member.id;
@@ -3507,10 +3712,12 @@
     `;
 
     teams.forEach(
-      (team) => {
+      team => {
 
         const option =
-          document.createElement("option");
+          document.createElement(
+            "option"
+          );
 
         option.value =
           team.id;
@@ -3519,7 +3726,8 @@
           team.name;
 
         if (
-          member.teamId === team.id
+          member.teamId ===
+          team.id
         ) {
 
           option.selected =
@@ -3551,29 +3759,18 @@
   }
 
 
-  cancelMemberTeamModal.addEventListener(
-    "click",
-    closeMemberTeamModal
-  );
+  cancelMemberTeamModal.onclick =
+    closeMemberTeamModal;
 
 
-  saveMemberTeamModal.addEventListener(
-    "click",
+  saveMemberTeamModal.onclick =
     async () => {
 
       if (!editingMemberId) {
-
         return;
-
       }
 
       try {
-
-        saveMemberTeamModal.disabled =
-          true;
-
-        saveMemberTeamModal.textContent =
-          "保存中...";
 
         const teamId =
           memberTeamSelect.value ||
@@ -3587,8 +3784,7 @@
           ),
           {
 
-            teamId:
-              teamId,
+            teamId,
 
             updatedAt:
               serverTimestamp()
@@ -3608,79 +3804,1062 @@
 
       } catch (error) {
 
-        console.error(
-          error
+        showError(
+          firebaseErrorMessage(error)
         );
 
-        alert(
+      }
+
+    };
+
+
+  /* =====================================================
+     実績入力欄
+  ====================================================== */
+
+  async function prepareRecordInputs() {
+
+    recordMember.innerHTML = `
+      <option value="">
+        担当者を選択
+      </option>
+    `;
+
+    /*
+      リーダーは全員、
+      メンバーは自分だけ
+    */
+
+    if (
+      currentUserData?.role ===
+      "leader"
+    ) {
+
+      members.forEach(
+        member => {
+
+          const option =
+            document.createElement(
+              "option"
+            );
+
+          option.value =
+            member.id;
+
+          option.textContent =
+            member.name ||
+            "名前未設定";
+
+          recordMember.appendChild(
+            option
+          );
+
+        }
+      );
+
+    } else {
+
+      const option =
+        document.createElement(
+          "option"
+        );
+
+      option.value =
+        currentUserData.uid;
+
+      option.textContent =
+        currentUserData.name ||
+        "自分";
+
+      recordMember.appendChild(
+        option
+      );
+
+      recordMember.value =
+        currentUserData.uid;
+
+    }
+
+
+    recordProduct.innerHTML = `
+      <option value="">
+        商材を選択
+      </option>
+    `;
+
+    products.forEach(
+      product => {
+
+        const option =
+          document.createElement(
+            "option"
+          );
+
+        option.value =
+          product.id;
+
+        option.textContent =
+          `${product.name} / ${formatYen(
+            product.revenue
+          )}`;
+
+        recordProduct.appendChild(
+          option
+        );
+
+      }
+    );
+
+    updateRecordTotal();
+
+  }
+
+
+  /* =====================================================
+     実績売上計算
+  ====================================================== */
+
+  function updateRecordTotal() {
+
+    const product =
+      products.find(
+        item =>
+          item.id ===
+          recordProduct.value
+      );
+
+    const count =
+      Number(
+        recordCount.value || 0
+      );
+
+    const total =
+      product
+        ? product.revenue * count
+        : 0;
+
+    recordTotal.textContent =
+      formatYen(total);
+
+  }
+
+
+  recordProduct.addEventListener(
+    "change",
+    updateRecordTotal
+  );
+
+  recordCount.addEventListener(
+    "input",
+    updateRecordTotal
+  );
+
+
+  /* =====================================================
+     実績登録
+  ====================================================== */
+
+  saveRecordButton.onclick =
+    async () => {
+
+      const date =
+        recordDate.value;
+
+      const memberId =
+        recordMember.value;
+
+      const productId =
+        recordProduct.value;
+
+      const count =
+        Number(
+          recordCount.value
+        );
+
+      if (!date) {
+
+        showError(
+          "日付を選択してください。"
+        );
+
+        return;
+
+      }
+
+      if (!memberId) {
+
+        showError(
+          "担当者を選択してください。"
+        );
+
+        return;
+
+      }
+
+      if (!productId) {
+
+        showError(
+          "商材を選択してください。"
+        );
+
+        return;
+
+      }
+
+      if (
+        !Number.isInteger(count) ||
+        count <= 0
+      ) {
+
+        showError(
+          "獲得件数は1件以上で入力してください。"
+        );
+
+        return;
+
+      }
+
+      const member =
+        members.find(
+          item =>
+            item.id ===
+            memberId
+        ) ||
+        currentUserData;
+
+      const product =
+        products.find(
+          item =>
+            item.id ===
+            productId
+        );
+
+      if (!member || !product) {
+
+        showError(
+          "担当者または商材が見つかりません。"
+        );
+
+        return;
+
+      }
+
+      const team =
+        teams.find(
+          item =>
+            item.id ===
+            member.teamId
+        );
+
+      const revenuePerUnit =
+        Number(
+          product.revenue || 0
+        );
+
+      const totalRevenue =
+        count *
+        revenuePerUnit;
+
+      try {
+
+        saveRecordButton.disabled =
+          true;
+
+        saveRecordButton.textContent =
+          "登録中...";
+
+        const recordRef =
+          doc(
+            collection(
+              db,
+              "records"
+            )
+          );
+
+        await setDoc(
+          recordRef,
+          {
+
+            uid:
+              member.id,
+
+            memberNameSnapshot:
+              member.name ||
+              "名前未設定",
+
+            teamId:
+              member.teamId ||
+              null,
+
+            teamNameSnapshot:
+              team
+                ? team.name
+                : "所属なし",
+
+            date,
+
+            productId,
+
+            productNameSnapshot:
+              product.name,
+
+            count,
+
+            revenuePerUnit,
+
+            totalRevenue,
+
+            createdAt:
+              serverTimestamp(),
+
+            updatedAt:
+              serverTimestamp()
+
+          }
+        );
+
+        showSuccess(
+          `${date}の実績を登録しました。`
+        );
+
+        recordCount.value =
+          1;
+
+        await loadRecords();
+
+        updateRecordTotal();
+
+      } catch (error) {
+
+        console.error(error);
+
+        showError(
           firebaseErrorMessage(error)
         );
 
       } finally {
 
-        saveMemberTeamModal.disabled =
+        saveRecordButton.disabled =
           false;
 
-        saveMemberTeamModal.textContent =
-          "保存";
+        saveRecordButton.textContent =
+          "実績を登録";
 
       }
 
+    };
+
+
+  /* =====================================================
+     実績取得
+  ====================================================== */
+
+  async function loadRecords() {
+
+    try {
+
+      const snapshot =
+        await getDocs(
+          collection(
+            db,
+            "records"
+          )
+        );
+
+      records = [];
+
+      snapshot.forEach(
+        recordDoc => {
+
+          records.push({
+
+            id:
+              recordDoc.id,
+
+            ...recordDoc.data()
+
+          });
+
+        }
+      );
+
+      records.sort(
+        (a, b) =>
+          (b.date || "").localeCompare(
+            a.date || ""
+          )
+      );
+
+      createMonthOptions();
+
+      renderDashboard();
+
+    } catch (error) {
+
+      console.error(
+        "実績取得エラー:",
+        error
+      );
+
+      showError(
+        firebaseErrorMessage(error)
+      );
+
     }
+
+  }
+
+
+  /* =====================================================
+     月選択肢
+  ====================================================== */
+
+  function createMonthOptions() {
+
+    const months =
+      new Set();
+
+    records.forEach(
+      record => {
+
+        if (
+          record.date &&
+          record.date.length >= 7
+        ) {
+
+          months.add(
+            record.date.slice(
+              0,
+              7
+            )
+          );
+
+        }
+
+      }
+    );
+
+
+    const today =
+      getTodayString();
+
+    months.add(
+      today.slice(
+        0,
+        7
+      )
+    );
+
+
+    const sortedMonths =
+      Array.from(months).sort(
+        (a, b) =>
+          b.localeCompare(a)
+      );
+
+
+    const current =
+      dashboardMonth.value;
+
+
+    dashboardMonth.innerHTML =
+      "";
+
+
+    sortedMonths.forEach(
+      month => {
+
+        const option =
+          document.createElement(
+            "option"
+          );
+
+        option.value =
+          month;
+
+        const [
+          year,
+          monthNumber
+        ] =
+          month.split("-");
+
+        option.textContent =
+          `${year}年${Number(
+            monthNumber
+          )}月`;
+
+        dashboardMonth.appendChild(
+          option
+        );
+
+      }
+    );
+
+
+    if (
+      sortedMonths.includes(current)
+    ) {
+
+      dashboardMonth.value =
+        current;
+
+    } else {
+
+      dashboardMonth.value =
+        today.slice(
+          0,
+          7
+        );
+
+    }
+
+  }
+
+
+  dashboardMonth.addEventListener(
+    "change",
+    renderDashboard
   );
+
+
+  /* =====================================================
+     月間ダッシュボード
+  ====================================================== */
+
+  function renderDashboard() {
+
+    const selectedMonth =
+      dashboardMonth.value;
+
+    if (!selectedMonth) {
+
+      monthlyCount.textContent =
+        "0件";
+
+      monthlyRevenue.textContent =
+        "¥0";
+
+      monthlyRecords.textContent =
+        "0件";
+
+      return;
+
+    }
+
+
+    const monthly =
+      records.filter(
+        record =>
+          record.date &&
+          record.date.startsWith(
+            selectedMonth
+          )
+      );
+
+
+    let totalCount = 0;
+
+    let totalRevenue = 0;
+
+
+    const productMap =
+      {};
+
+    const dailyMap =
+      {};
+
+
+    monthly.forEach(
+      record => {
+
+        const count =
+          Number(
+            record.count || 0
+          );
+
+        const revenue =
+          Number(
+            record.totalRevenue || 0
+          );
+
+        totalCount +=
+          count;
+
+        totalRevenue +=
+          revenue;
+
+
+        const productName =
+          record.productNameSnapshot ||
+          "不明";
+
+        if (
+          !productMap[productName]
+        ) {
+
+          productMap[productName] = {
+            count: 0,
+            revenue: 0
+          };
+
+        }
+
+        productMap[
+          productName
+        ].count +=
+          count;
+
+        productMap[
+          productName
+        ].revenue +=
+          revenue;
+
+
+        const date =
+          record.date;
+
+        if (
+          !dailyMap[date]
+        ) {
+
+          dailyMap[date] = {
+            count: 0,
+            revenue: 0
+          };
+
+        }
+
+        dailyMap[date].count +=
+          count;
+
+        dailyMap[date].revenue +=
+          revenue;
+
+      }
+    );
+
+
+    monthlyCount.textContent =
+      `${totalCount}件`;
+
+    monthlyRevenue.textContent =
+      formatYen(
+        totalRevenue
+      );
+
+    monthlyRecords.textContent =
+      `${monthly.length}件`;
+
+
+    /* 商材別 */
+
+    productSummaryList.innerHTML =
+      "";
+
+    const productNames =
+      Object.keys(
+        productMap
+      ).sort();
+
+
+    if (
+      productNames.length === 0
+    ) {
+
+      productSummaryList.innerHTML = `
+        <div class="empty-message">
+          この月の実績はありません。
+        </div>
+      `;
+
+    } else {
+
+      productNames.forEach(
+        name => {
+
+          const data =
+            productMap[name];
+
+          const row =
+            document.createElement(
+              "div"
+            );
+
+          row.className =
+            "summary-row";
+
+          row.innerHTML = `
+            <div>
+              <div class="summary-row-name">
+                ${escapeHtml(name)}
+              </div>
+              <div style="font-size:12px;color:#6b7280;margin-top:3px;">
+                ${data.count}件
+              </div>
+            </div>
+
+            <div class="summary-row-value">
+              ${formatYen(
+                data.revenue
+              )}
+            </div>
+          `;
+
+          productSummaryList.appendChild(
+            row
+          );
+
+        }
+      );
+
+    }
+
+
+    /* 日別 */
+
+    dailySummaryList.innerHTML =
+      "";
+
+    const dates =
+      Object.keys(
+        dailyMap
+      ).sort(
+        (a, b) =>
+          b.localeCompare(a)
+      );
+
+
+    if (
+      dates.length === 0
+    ) {
+
+      dailySummaryList.innerHTML = `
+        <div class="empty-message">
+          この月の実績はありません。
+        </div>
+      `;
+
+    } else {
+
+      dates.forEach(
+        date => {
+
+          const data =
+            dailyMap[date];
+
+          const row =
+            document.createElement(
+              "div"
+            );
+
+          row.className =
+            "summary-row";
+
+          row.innerHTML = `
+            <div>
+              <div class="summary-row-name">
+                ${formatDateJapanese(
+                  date
+                )}
+              </div>
+              <div style="font-size:12px;color:#6b7280;margin-top:3px;">
+                ${data.count}件
+              </div>
+            </div>
+
+            <div class="summary-row-value">
+              ${formatYen(
+                data.revenue
+              )}
+            </div>
+          `;
+
+          dailySummaryList.appendChild(
+            row
+          );
+
+        }
+      );
+
+    }
+
+
+    /* 履歴 */
+
+    recordHistoryList.innerHTML =
+      "";
+
+    if (
+      monthly.length === 0
+    ) {
+
+      recordHistoryList.innerHTML = `
+        <div class="empty-message">
+          登録履歴はありません。
+        </div>
+      `;
+
+    } else {
+
+      monthly.forEach(
+        record => {
+
+          const item =
+            document.createElement(
+              "div"
+            );
+
+          item.className =
+            "history-item";
+
+          item.innerHTML = `
+            <div class="history-top">
+
+              <div>
+                <div class="history-date">
+                  ${formatDateJapanese(
+                    record.date
+                  )}
+                </div>
+
+                <div class="history-product">
+                  ${escapeHtml(
+                    record.memberNameSnapshot ||
+                    "不明"
+                  )}
+                  /
+                  ${escapeHtml(
+                    record.productNameSnapshot ||
+                    "不明"
+                  )}
+                </div>
+              </div>
+
+              <div class="history-count">
+                ${Number(
+                  record.count || 0
+                )}件
+              </div>
+
+            </div>
+
+            <div class="history-revenue">
+              ${formatYen(
+                record.totalRevenue
+              )}
+            </div>
+          `;
+
+
+          const actions =
+            document.createElement(
+              "div"
+            );
+
+          actions.className =
+            "history-actions";
+
+
+          const deleteButton =
+            document.createElement(
+              "button"
+            );
+
+          deleteButton.className =
+            "history-delete";
+
+          deleteButton.textContent =
+            "🗑️ 削除";
+
+          deleteButton.onclick =
+            () =>
+              deleteRecord(
+                record
+              );
+
+
+          actions.appendChild(
+            deleteButton
+          );
+
+          item.appendChild(
+            actions
+          );
+
+          recordHistoryList.appendChild(
+            item
+          );
+
+        }
+      );
+
+    }
+
+  }
+
+
+  /* =====================================================
+     実績削除
+  ====================================================== */
+
+  async function deleteRecord(record) {
+
+    if (
+      !confirm(
+        `${formatDateJapanese(
+          record.date
+        )} / ${
+          record.productNameSnapshot
+        } / ${
+          record.count
+        }件\n\nこの実績を削除しますか？`
+      )
+    ) {
+
+      return;
+
+    }
+
+
+    try {
+
+      await deleteDoc(
+        doc(
+          db,
+          "records",
+          record.id
+        )
+      );
+
+      await loadRecords();
+
+      showSuccess(
+        "実績を削除しました。"
+      );
+
+    } catch (error) {
+
+      console.error(error);
+
+      showError(
+        firebaseErrorMessage(error)
+      );
+
+    }
+
+  }
+
+
+  /* =====================================================
+     日付表示
+  ====================================================== */
+
+  function formatDateJapanese(
+    dateString
+  ) {
+
+    if (!dateString) {
+      return "";
+    }
+
+    const [
+      year,
+      month,
+      day
+    ] =
+      dateString.split("-");
+
+    return `${Number(
+      month
+    )}/${Number(
+      day
+    )}`;
+
+  }
+
+
+  /* =====================================================
+     HTMLエスケープ
+  ====================================================== */
+
+  function escapeHtml(
+    value
+  ) {
+
+    return String(
+      value || ""
+    )
+      .replaceAll(
+        "&",
+        "&amp;"
+      )
+      .replaceAll(
+        "<",
+        "&lt;"
+      )
+      .replaceAll(
+        ">",
+        "&gt;"
+      )
+      .replaceAll(
+        '"',
+        "&quot;"
+      )
+      .replaceAll(
+        "'",
+        "&#039;"
+      );
+
+  }
 
 
   /* =====================================================
      モーダル外クリック
   ====================================================== */
 
-  teamModal.addEventListener(
-    "click",
-    (event) => {
+  teamModal.onclick =
+    event => {
 
       if (
-        event.target === teamModal
+        event.target ===
+        teamModal
       ) {
 
         closeTeamModal();
 
       }
 
-    }
-  );
+    };
 
 
-  productModal.addEventListener(
-    "click",
-    (event) => {
+  productModal.onclick =
+    event => {
 
       if (
-        event.target === productModal
+        event.target ===
+        productModal
       ) {
 
         closeProductModal();
 
       }
 
-    }
-  );
+    };
 
 
-  memberTeamModal.addEventListener(
-    "click",
-    (event) => {
+  memberTeamModal.onclick =
+    event => {
 
       if (
-        event.target === memberTeamModal
+        event.target ===
+        memberTeamModal
       ) {
 
         closeMemberTeamModal();
 
       }
 
-    }
-  );
-
+    };
 
 </script>
 
