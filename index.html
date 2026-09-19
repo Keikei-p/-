@@ -885,6 +885,34 @@ header {
 
       </div>
 
+      <div
+        id="authRecoveryControls"
+        style="margin-top:14px;text-align:center;">
+
+        <button
+          id="forgotPasswordButton"
+          class="link-button">
+          パスワードを忘れた方
+        </button>
+
+        <span style="color:var(--border);">｜</span>
+
+        <button
+          id="forgotAccountButton"
+          class="link-button">
+          アカウントを忘れた方
+        </button>
+
+        <div
+          id="accountRecoveryHelp"
+          style="display:none;margin-top:12px;padding:12px;border-radius:10px;background:#f9fafb;color:var(--sub);font-size:12px;line-height:1.7;text-align:left;">
+          登録したメールアドレスが分からない場合は、会社オーナーに名前を伝えて確認してください。
+          オーナーのメンバー管理画面には登録メールアドレスが表示されます。
+          パスワードだけ分からない場合は「パスワードを忘れた方」から再設定できます。
+        </div>
+
+      </div>
+
     </div>
 
   </div>
@@ -1157,7 +1185,7 @@ header {
         style="display:none;margin-top:14px;">
 
         <div style="font-size:12px;color:var(--sub);margin-bottom:6px;">
-          このリンクを相手に送ってください（有効期限7日）
+          このリンクを相手に送ってください（有効期限30分）
         </div>
 
         <div class="management-input-row">
@@ -1217,6 +1245,43 @@ header {
       class="account-save-button">
       名前を保存
     </button>
+
+    <div
+      style="margin-top:28px;padding-top:22px;border-top:1px solid var(--border);">
+
+      <div style="font-weight:800;color:#b91c1c;">
+        アカウント削除
+      </div>
+
+      <div
+        id="deleteAccountDescription"
+        style="margin-top:7px;color:var(--sub);font-size:12px;line-height:1.7;">
+        自分のログインアカウントを削除します。過去の営業実績は会社の記録として残ります。
+        本人確認のため現在のパスワードを入力してください。
+      </div>
+
+      <div class="form-group">
+
+        <label for="deleteAccountPassword">
+          現在のパスワード
+        </label>
+
+        <input
+          id="deleteAccountPassword"
+          type="password"
+          autocomplete="current-password"
+          placeholder="現在のパスワード">
+
+      </div>
+
+      <button
+        id="deleteOwnAccountButton"
+        type="button"
+        style="width:100%;margin-top:12px;padding:12px;border:0;border-radius:10px;background:#dc2626;color:#fff;font-weight:700;">
+        自分のアカウントを削除
+      </button>
+
+    </div>
 
   </div>
 
@@ -1772,6 +1837,10 @@ import {
   signOut,
   onAuthStateChanged,
   sendEmailVerification,
+  sendPasswordResetEmail,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+  deleteUser,
   reload
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 
@@ -1808,6 +1877,9 @@ const app =
 
 const auth =
   getAuth(app);
+
+auth.languageCode =
+  "ja";
 
 const db =
   getFirestore(app);
@@ -1907,6 +1979,18 @@ const switchButton =
 const switchDescription =
   document.getElementById("switchDescription");
 
+const authRecoveryControls =
+  document.getElementById("authRecoveryControls");
+
+const forgotPasswordButton =
+  document.getElementById("forgotPasswordButton");
+
+const forgotAccountButton =
+  document.getElementById("forgotAccountButton");
+
+const accountRecoveryHelp =
+  document.getElementById("accountRecoveryHelp");
+
 const nameGroup =
   document.getElementById("nameGroup");
 
@@ -1959,6 +2043,21 @@ const accountNameInput =
 const saveAccountNameButton =
   document.getElementById(
     "saveAccountNameButton"
+  );
+
+const deleteAccountDescription =
+  document.getElementById(
+    "deleteAccountDescription"
+  );
+
+const deleteAccountPassword =
+  document.getElementById(
+    "deleteAccountPassword"
+  );
+
+const deleteOwnAccountButton =
+  document.getElementById(
+    "deleteOwnAccountButton"
   );
 
 
@@ -2366,6 +2465,12 @@ function firebaseErrorMessage(error) {
     "auth/too-many-requests":
       "操作回数が多すぎます。少し時間をおいてからもう一度お試しください。",
 
+    "auth/requires-recent-login":
+      "本人確認が必要です。もう一度ログインしてからお試しください。",
+
+    "auth/missing-password":
+      "現在のパスワードを入力してください。",
+
     "permission-denied":
       "Firestoreの権限がありません。",
 
@@ -2411,6 +2516,12 @@ switchButton.onclick =
       nameGroup.style.display =
         "block";
 
+      authRecoveryControls.style.display =
+        "none";
+
+      accountRecoveryHelp.style.display =
+        "none";
+
     } else {
 
       authTitle.textContent =
@@ -2428,7 +2539,91 @@ switchButton.onclick =
       nameGroup.style.display =
         "none";
 
+      authRecoveryControls.style.display =
+        "block";
+
     }
+
+  };
+
+
+forgotPasswordButton.onclick =
+  async () => {
+
+    clearMessages();
+
+    const email =
+      emailInput.value
+        .trim()
+        .toLowerCase();
+
+
+    if (!email) {
+
+      showError(
+        "登録したメールアドレスを入力してから押してください。"
+      );
+
+      return;
+
+    }
+
+
+    try {
+
+      forgotPasswordButton.disabled =
+        true;
+
+      await sendPasswordResetEmail(
+        auth,
+        email
+      );
+
+      showSuccess(
+        "入力したメールアドレスが登録されている場合、パスワード再設定メールが届きます。迷惑メールフォルダも確認してください。"
+      );
+
+    } catch (error) {
+
+      console.error(error);
+
+      if (
+        error?.code ===
+        "auth/user-not-found"
+      ) {
+
+        showSuccess(
+          "入力したメールアドレスが登録されている場合、パスワード再設定メールが届きます。迷惑メールフォルダも確認してください。"
+        );
+
+      } else {
+
+        showError(
+          firebaseErrorMessage(
+            error
+          )
+        );
+
+      }
+
+    } finally {
+
+      forgotPasswordButton.disabled =
+        false;
+
+    }
+
+  };
+
+
+forgotAccountButton.onclick =
+  () => {
+
+    accountRecoveryHelp.style.display =
+      accountRecoveryHelp.style.display ===
+      "none"
+        ? "block"
+        : "none";
 
   };
 
@@ -3693,7 +3888,7 @@ createInviteButton.onclick =
       const expiresAt =
         Timestamp.fromMillis(
           Date.now() +
-          7 * 24 * 60 * 60 * 1000
+          30 * 60 * 1000
         );
 
 
@@ -3741,7 +3936,7 @@ createInviteButton.onclick =
 
 
       showSuccess(
-        "招待リンクを作成しました。LINEやメールで送ってください。"
+        "招待リンクを作成しました。有効期限は30分です。LINEやメールで送ってください。"
       );
 
 
@@ -3928,6 +4123,33 @@ async function loadUserData(
 
 
     if (
+      currentUserData.active ===
+      false
+    ) {
+
+      await signOut(
+        auth
+      );
+
+      authScreen.style.display =
+        "block";
+
+      companySetupScreen.style.display =
+        "none";
+
+      appScreen.style.display =
+        "none";
+
+      showError(
+        "このアカウントは利用停止されています。会社オーナーに確認してください。"
+      );
+
+      return false;
+
+    }
+
+
+    if (
       !currentUserData.companyId
     ) {
 
@@ -4015,6 +4237,40 @@ function updateCurrentUserUI() {
 
   accountNameInput.value =
     name;
+
+
+  if (
+    currentUserData.companyRole ===
+    "owner"
+  ) {
+
+    deleteOwnAccountButton.disabled =
+      true;
+
+    deleteOwnAccountButton.style.opacity =
+      ".55";
+
+    deleteAccountPassword.disabled =
+      true;
+
+    deleteAccountDescription.textContent =
+      "会社オーナーのアカウントは、会社が管理不能になるためこの画面から削除できません。オーナー移譲機能を使ってから削除します。";
+
+  } else {
+
+    deleteOwnAccountButton.disabled =
+      false;
+
+    deleteOwnAccountButton.style.opacity =
+      "1";
+
+    deleteAccountPassword.disabled =
+      false;
+
+    deleteAccountDescription.textContent =
+      "自分のログインアカウントを削除します。過去の営業実績は会社の記録として残ります。本人確認のため現在のパスワードを入力してください。";
+
+  }
 
 
   companyInviteControls.style.display =
@@ -4234,6 +4490,184 @@ saveAccountNameButton.onclick =
 
 
 /* =====================================================
+   ★ 自分のアカウント削除
+===================================================== */
+
+deleteOwnAccountButton.onclick =
+  async () => {
+
+    if (
+      !currentUser ||
+      !currentUserData
+    ) {
+
+      showError(
+        "ログイン状態を確認できません。"
+      );
+
+      return;
+
+    }
+
+
+    if (
+      currentUserData.companyRole ===
+      "owner"
+    ) {
+
+      showError(
+        "会社オーナーは先にオーナー権限を別のメンバーへ移譲する必要があります。"
+      );
+
+      return;
+
+    }
+
+
+    const password =
+      deleteAccountPassword.value;
+
+
+    if (!password) {
+
+      showError(
+        "現在のパスワードを入力してください。"
+      );
+
+      return;
+
+    }
+
+
+    if (
+      !confirm(
+        "アカウントを削除しますか？\n\nログインできなくなります。過去の営業実績は会社の記録として残ります。"
+      )
+    ) {
+
+      return;
+
+    }
+
+
+    try {
+
+      deleteOwnAccountButton.disabled =
+        true;
+
+      deleteOwnAccountButton.textContent =
+        "削除中...";
+
+
+      const credential =
+        EmailAuthProvider.credential(
+          currentUser.email,
+          password
+        );
+
+
+      await reauthenticateWithCredential(
+        currentUser,
+        credential
+      );
+
+
+      const batch =
+        writeBatch(
+          db
+        );
+
+
+      batch.update(
+        doc(
+          db,
+          "users",
+          currentUser.uid
+        ),
+        {
+
+          active:
+            false,
+
+          updatedAt:
+            serverTimestamp()
+
+        }
+      );
+
+
+      batch.update(
+        doc(
+          db,
+          "companies",
+          currentUserData.companyId,
+          "members",
+          currentUser.uid
+        ),
+        {
+
+          active:
+            false,
+
+          updatedAt:
+            serverTimestamp()
+
+        }
+      );
+
+
+      await batch.commit();
+
+
+      await deleteUser(
+        currentUser
+      );
+
+
+      deleteAccountPassword.value =
+        "";
+
+      authScreen.style.display =
+        "block";
+
+      appScreen.style.display =
+        "none";
+
+      showSuccess(
+        "アカウントを削除しました。"
+      );
+
+
+    } catch (error) {
+
+      console.error(error);
+
+      showError(
+        firebaseErrorMessage(
+          error
+        )
+      );
+
+    } finally {
+
+      if (
+        auth.currentUser
+      ) {
+
+        deleteOwnAccountButton.disabled =
+          false;
+
+        deleteOwnAccountButton.textContent =
+          "自分のアカウントを削除";
+
+      }
+
+    }
+
+  };
+
+
+/* =====================================================
    ★ リアルタイム監視
 ===================================================== */
 
@@ -4245,102 +4679,233 @@ function startRealtimeListeners() {
   /*
     users監視
 
-    名前変更・権限変更・所属班変更を
-    全員の画面にリアルタイム反映
+    leader は会社メンバー一覧を監視する。
+    member は自分のドキュメントだけを監視し、
+    他メンバーのメールアドレスを取得しない。
   */
 
-  unsubscribeUsers =
-    onSnapshot(
-      companyCollectionQuery("users"),
-      snapshot => {
+  if (
+    currentUserData?.role ===
+    "leader"
+  ) {
 
-        members = [];
+    unsubscribeUsers =
+      onSnapshot(
+        companyCollectionQuery("users"),
+        snapshot => {
 
-        snapshot.forEach(
-          userDoc => {
+          members = [];
 
-            members.push({
+          snapshot.forEach(
+            userDoc => {
 
-              id:
-                userDoc.id,
+              const data =
+                userDoc.data();
 
-              ...userDoc.data()
 
-            });
+              if (
+                data.active ===
+                false
+              ) {
+
+                return;
+
+              }
+
+
+              members.push({
+
+                id:
+                  userDoc.id,
+
+                ...data
+
+              });
+
+            }
+          );
+
+
+          members.sort(
+            (a, b) =>
+              (
+                a.name ||
+                ""
+              ).localeCompare(
+                b.name ||
+                "",
+                "ja"
+              )
+          );
+
+
+          if (
+            currentUser
+          ) {
+
+            const latest =
+              members.find(
+                member =>
+                  member.id ===
+                  currentUser.uid
+              );
+
+
+            if (latest) {
+
+              const previousRole =
+                currentUserData?.role;
+
+
+              currentUserData = {
+
+                ...latest,
+
+                uid:
+                  currentUser.uid
+
+              };
+
+
+              updateCurrentUserUI();
+
+
+              if (
+                previousRole !==
+                currentUserData.role
+              ) {
+
+                loadMembers()
+                  .then(
+                    () =>
+                      startRealtimeListeners()
+                  );
+
+                return;
+
+              }
+
+            }
 
           }
-        );
 
 
-        members.sort(
-          (a, b) =>
-            (
-              a.name ||
-              ""
-            ).localeCompare(
-              b.name ||
-              "",
-              "ja"
-            )
-        );
+          renderMembers();
 
+          updateRecordMemberOptions();
 
-        /*
-          自分のユーザー情報を更新
-        */
+          renderDashboard();
 
-        if (
-          currentUser
-        ) {
+        },
+        error => {
 
-          const latest =
-            members.find(
-              member =>
-                member.id ===
-                currentUser.uid
-            );
-
-
-          if (latest) {
-
-            currentUserData = {
-
-              ...latest,
-
-              uid:
-                currentUser.uid
-
-            };
-
-
-            updateCurrentUserUI();
-
-          }
+          console.error(
+            "ユーザーリアルタイム監視エラー:",
+            error
+          );
 
         }
+      );
+
+  } else if (
+    currentUser
+  ) {
+
+    members = [
+      currentUserData
+    ];
 
 
-        renderMembers();
+    unsubscribeUsers =
+      onSnapshot(
+        doc(
+          db,
+          "users",
+          currentUser.uid
+        ),
+        async userSnap => {
 
-        /*
-          担当者選択欄の名前だけ更新
-          （実績の入力中の数値は保持）
-        */
+          if (
+            !userSnap.exists()
+          ) {
 
-        updateRecordMemberOptions();
+            return;
 
-        renderDashboard();
+          }
 
-      },
-      error => {
 
-        console.error(
-          "ユーザーリアルタイム監視エラー:",
-          error
-        );
+          const latest = {
 
-      }
-    );
+            ...userSnap.data(),
+
+            uid:
+              currentUser.uid
+
+          };
+
+
+          if (
+            latest.active ===
+            false
+          ) {
+
+            stopRealtimeListeners();
+
+            await signOut(
+              auth
+            );
+
+            showError(
+              "このアカウントは利用停止されています。会社オーナーに確認してください。"
+            );
+
+            return;
+
+          }
+
+
+          const previousRole =
+            currentUserData?.role;
+
+
+          currentUserData =
+            latest;
+
+          members = [
+            currentUserData
+          ];
+
+
+          updateCurrentUserUI();
+
+          updateRecordMemberOptions();
+
+          renderDashboard();
+
+
+          if (
+            previousRole !==
+            currentUserData.role
+          ) {
+
+            await loadMembers();
+
+            startRealtimeListeners();
+
+          }
+
+        },
+        error => {
+
+          console.error(
+            "ユーザー情報監視エラー:",
+            error
+          );
+
+        }
+      );
+
+  }
 
 
   /*
@@ -4764,6 +5329,19 @@ async function countTeamMembers(
   element
 ) {
 
+  if (
+    currentUserData?.role !==
+    "leader"
+  ) {
+
+    element.textContent =
+      "";
+
+    return;
+
+  }
+
+
   try {
 
     const snapshot =
@@ -4782,6 +5360,7 @@ async function countTeamMembers(
           userDoc.data();
 
         if (
+          data.active !== false &&
           data.teamId ===
           teamId
         ) {
@@ -5028,6 +5607,27 @@ async function deleteTeam(
               doc(
                 db,
                 "users",
+                userDoc.id
+              ),
+              {
+
+                teamId:
+                  null,
+
+                updatedAt:
+                  serverTimestamp()
+
+              }
+            )
+          );
+
+          updates.push(
+            updateDoc(
+              doc(
+                db,
+                "companies",
+                currentUserData.companyId,
+                "members",
                 userDoc.id
               ),
               {
@@ -5562,6 +6162,22 @@ async function deleteProduct(
 
 async function loadMembers() {
 
+  if (
+    currentUserData?.role !==
+    "leader"
+  ) {
+
+    members = currentUserData
+      ? [currentUserData]
+      : [];
+
+    renderMembers();
+
+    return;
+
+  }
+
+
   try {
 
     const snapshot =
@@ -5575,12 +6191,26 @@ async function loadMembers() {
     snapshot.forEach(
       userDoc => {
 
+        const data =
+          userDoc.data();
+
+
+        if (
+          data.active ===
+          false
+        ) {
+
+          return;
+
+        }
+
+
         members.push({
 
           id:
             userDoc.id,
 
-          ...userDoc.data()
+          ...data
 
         });
 
@@ -5816,6 +6446,39 @@ function renderMembers() {
       );
 
 
+      if (
+        currentUserData?.companyRole ===
+        "owner" &&
+        member.companyRole !==
+        "owner" &&
+        member.id !==
+        currentUser?.uid
+      ) {
+
+        const removeButton =
+          document.createElement(
+            "button"
+          );
+
+        removeButton.className =
+          "history-delete";
+
+        removeButton.textContent =
+          "会社から削除";
+
+        removeButton.onclick =
+          () =>
+            disableCompanyMember(
+              member
+            );
+
+        actions.appendChild(
+          removeButton
+        );
+
+      }
+
+
       item.appendChild(
         info
       );
@@ -5831,6 +6494,106 @@ function renderMembers() {
 
     }
   );
+
+}
+
+
+async function disableCompanyMember(
+  member
+) {
+
+  if (
+    currentUserData?.companyRole !==
+    "owner" ||
+    member.companyRole ===
+    "owner"
+  ) {
+
+    showError(
+      "この操作は会社オーナーだけが実行できます。"
+    );
+
+    return;
+
+  }
+
+
+  if (
+    !confirm(
+      `${member.name || "このメンバー"}を会社から削除しますか？\n\nログインしても会社データへアクセスできなくなります。過去の実績は残ります。`
+    )
+  ) {
+
+    return;
+
+  }
+
+
+  try {
+
+    const batch =
+      writeBatch(
+        db
+      );
+
+
+    batch.update(
+      doc(
+        db,
+        "users",
+        member.id
+      ),
+      {
+
+        active:
+          false,
+
+        updatedAt:
+          serverTimestamp()
+
+      }
+    );
+
+
+    batch.update(
+      doc(
+        db,
+        "companies",
+        currentUserData.companyId,
+        "members",
+        member.id
+      ),
+      {
+
+        active:
+          false,
+
+        updatedAt:
+          serverTimestamp()
+
+      }
+    );
+
+
+    await batch.commit();
+
+
+    showSuccess(
+      "メンバーを会社から削除しました。過去の実績は残っています。"
+    );
+
+
+  } catch (error) {
+
+    console.error(error);
+
+    showError(
+      firebaseErrorMessage(
+        error
+      )
+    );
+
+  }
 
 }
 

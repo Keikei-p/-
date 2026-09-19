@@ -1,47 +1,45 @@
 # 会社管理機能セットアップ
 
-このリポジトリには、既存画面を大きく作り直さずに会社単位の管理へ移行するための Cloud Functions が含まれています。
+現在の本番方針は **Firebase Spark プランのまま無料運用** です。
 
-## 追加済みのサーバー処理
+Cloud Functions は使わず、Firebase Authentication と Cloud Firestore Security Rules を組み合わせて会社単位のアクセス制御を行います。リポジトリ内の `functions/` は将来 Blaze プランへ移行する場合の参考実装として残していますが、現在の画面からは使用していません。
 
-- `createCompany`
-  - メール確認済みユーザーだけ会社を作成できます。
-  - Firestore が自動生成した companyId を使います。
-  - 作成者を owner / leader として所属登録します。
-  - users/{uid}.companyId はサーバー側で更新します。
+## 現在の会社管理
 
-- `createInvitation`
-  - 会社の owner / admin / leader が、宛先メールアドレスを指定して招待を作成します。
-  - 生の招待トークンは Firestore に保存せず、SHA-256 ハッシュだけ保存します。
-  - 有効期限は7日です。
+- メール確認済みユーザーだけ利用できます。
+- 会社未所属ユーザーは会社を作成できます。
+- 会社作成者は owner / leader になります。
+- メンバー追加は、会社側で招待先メールアドレスを指定して招待リンクを作成します。
+- 招待リンクの有効期限は **30分** です。
+- 招待リンクを転送されても、Firebase Authentication で確認済みのメールアドレスが招待先と一致しなければ参加できません。
+- users / teams / products / records は companyId ごとに取得します。
+- Firestore Security Rules 側でも他社データへのアクセスを拒否します。
 
-- `getInvitationPreview`
-  - ログイン中のメールアドレスと招待先メールアドレスが一致する場合だけ会社情報を返します。
+## アカウント管理
 
-- `acceptInvitation`
-  - 招待先メールアドレス本人だけ参加できます。
-  - 所属 companyId はサーバー側で設定します。
+- パスワードを忘れた場合は Firebase Authentication の再設定メールを利用します。
+- 再設定画面では、登録済みメールアドレスかどうかを利用者へ明示しない表示にしています。
+- 一般メンバーは現在のパスワードで再認証したうえで自分の Firebase Authentication アカウントを削除できます。
+- 退職者は会社 owner が利用停止できます。利用停止後は会社データへアクセスできません。
+- 過去の営業実績は会社の記録として残します。
+- owner 本人は会社の管理者がいなくなる事故を防ぐため、そのまま自己削除できません。将来 owner 移譲を追加した場合は、移譲後に削除できます。
 
-## デプロイ
+## セキュリティ方針
 
-Cloud Functions をデプロイするには Firebase プロジェクトを Blaze プランにする必要があります。
+Firestore Rules では次を検証します。
 
-Node.js 22 と Firebase CLI を使用します。
+- メール確認済みであること
+- users と companies/members の両方で active であること
+- companyId がログインユーザーの所属会社と一致すること
+- 会社作成・参加時の複数ドキュメント更新が整合していること
+- 招待の会社名、作成者、作成時刻、期限が正しいこと
+- 招待期限がサーバー時刻から30分以内であること
+- 主要ドキュメントに想定外のフィールドを追加できないこと
+- 役割、名前、金額、タイムスタンプなどの基本的な型・値が正しいこと
 
-```bash
-npm install -g firebase-tools
-firebase login
-git clone https://github.com/Keikei-p/-.git
-cd -
-npm --prefix functions install
-firebase deploy --only functions
-```
-
-プロジェクトIDは `.firebaserc` の `sales-management-cc116` に設定済みです。
+画面側のJavaScriptを書き換えても、Security Rules の条件を満たさない読み書きはFirestoreが拒否します。
 
 ## 既存データについて
 
-既存の users / teams / products / records には会社情報がないため、自動で会社へ割り当てません。
-既存IDを保ったまま、所属対応表を確認してから移行します。
-
-Cloud Functions のデプロイ後に、画面側へ会社作成・招待・会社別データ参照を接続します。
+会社機能追加前の users / teams / products / records には companyId がありません。
+これらは推測で会社へ割り当てず、既存IDを保ったまま、所属対応表を確認してから移行します。
