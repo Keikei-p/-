@@ -6,8 +6,19 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isLeader() {
+    function verifiedUser() {
       return signedIn()
+        && request.auth.token.email_verified == true;
+    }
+
+    function isCompanyMember(companyId) {
+      return verifiedUser()
+        && exists(/databases/$(database)/documents/companies/$(companyId)/members/$(request.auth.uid))
+        && get(/databases/$(database)/documents/companies/$(companyId)/members/$(request.auth.uid)).data.active == true;
+    }
+
+    function isLeader() {
+      return verifiedUser()
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'leader';
     }
 
@@ -17,13 +28,14 @@ service cloud.firestore {
 
     match /users/{userId} {
       // 現在の画面は担当者・ランキング表示のため、ログイン済みユーザー間の閲覧を許可する。
-      allow read: if signedIn();
+      allow read: if verifiedUser();
 
       // 新規登録者は自分自身を member としてだけ作成できる。
       allow create: if isSelf(userId)
         && request.resource.data.uid == userId
         && request.resource.data.role == 'member'
         && request.resource.data.teamId == null
+        && request.resource.data.companyId == null
         && request.resource.data.active == true;
 
       // 本人は表示名のみ変更可。班・権限・有効状態は leader のみ変更可。
@@ -36,40 +48,56 @@ service cloud.firestore {
     }
 
     match /teams/{teamId} {
-      allow read: if signedIn();
+      allow read: if verifiedUser();
       allow write: if isLeader();
     }
 
     match /products/{productId} {
-      allow read: if signedIn();
+      allow read: if verifiedUser();
       allow write: if isLeader();
     }
 
     match /records/{recordId} {
       // ダッシュボードとランキングは全員分の集計を行うため、ログイン済みの閲覧を許可する。
-      allow read: if signedIn();
+      allow read: if verifiedUser();
 
       // member は自分の uid + 日付形式の新規レコードだけを作成できる。
       allow create: if isLeader()
-        || (signedIn()
+        || (verifiedUser()
           && request.resource.data.uid == request.auth.uid
           && recordId == request.auth.uid + '_' + request.resource.data.date);
 
       // member は uid と日付を変更せず、自分のレコードだけを更新できる。
       allow update: if isLeader()
-        || (signedIn()
+        || (verifiedUser()
           && resource.data.uid == request.auth.uid
           && request.resource.data.uid == resource.data.uid
           && request.resource.data.date == resource.data.date);
 
       allow delete: if isLeader()
-        || (signedIn() && resource.data.uid == request.auth.uid);
+        || (verifiedUser() && resource.data.uid == request.auth.uid);
     }
 
     // 目標・今後追加する管理データは leader のみ更新可能にする。
     match /goals/{goalId} {
-      allow read: if signedIn();
+      allow read: if verifiedUser();
       allow write: if isLeader();
+    }
+
+    // 会社情報は次段階で Cloud Functions / Admin SDK から作成・更新する。
+    match /companies/{companyId} {
+      allow read: if isCompanyMember(companyId);
+      allow write: if false;
+
+      match /members/{memberId} {
+        allow read: if isCompanyMember(companyId);
+        allow write: if false;
+      }
+    }
+
+    // 招待情報はクライアントから直接アクセスさせない。
+    match /invitations/{inviteId} {
+      allow read, write: if false;
     }
   }
 }
