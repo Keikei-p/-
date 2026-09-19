@@ -8,96 +8,336 @@ service cloud.firestore {
 
     function verifiedUser() {
       return signedIn()
-        && request.auth.token.email_verified == true;
-    }
-
-    function isCompanyMember(companyId) {
-      return verifiedUser()
-        && exists(/databases/$(database)/documents/companies/$(companyId)/members/$(request.auth.uid))
-        && get(/databases/$(database)/documents/companies/$(companyId)/members/$(request.auth.uid)).data.active == true;
-    }
-
-    function isLeader() {
-      return verifiedUser()
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'leader';
+        && request.auth.token.email_verified == true
+        && request.auth.token.email != null;
     }
 
     function isSelf(userId) {
       return signedIn() && request.auth.uid == userId;
     }
 
-    match /users/{userId} {
-      // 現在の画面は担当者・ランキング表示のため、ログイン済みユーザー間の閲覧を許可する。
-      allow read: if verifiedUser();
+    function userPath(userId) {
+      return /databases/$(database)/documents/users/$(userId);
+    }
 
-      // 新規登録者は自分自身を member としてだけ作成できる。
+    function companyPath(companyId) {
+      return /databases/$(database)/documents/companies/$(companyId);
+    }
+
+    function memberPath(companyId, userId) {
+      return /databases/$(database)/documents/companies/$(companyId)/members/$(userId);
+    }
+
+    function invitationPath(inviteId) {
+      return /databases/$(database)/documents/invitations/$(inviteId);
+    }
+
+    function currentCompanyId() {
+      return get(userPath(request.auth.uid)).data.companyId;
+    }
+
+    function isCompanyMember(companyId) {
+      return verifiedUser()
+        && companyId != null
+        && exists(memberPath(companyId, request.auth.uid))
+        && get(memberPath(companyId, request.auth.uid)).data.active == true
+        && get(userPath(request.auth.uid)).data.companyId == companyId;
+    }
+
+    function isCompanyLeader(companyId) {
+      return isCompanyMember(companyId)
+        && get(memberPath(companyId, request.auth.uid)).data.role == 'leader';
+    }
+
+    function sameCompany(companyId) {
+      return companyId != null
+        && currentCompanyId() == companyId
+        && isCompanyMember(companyId);
+    }
+
+    function ownerBootstrap(companyId, memberId) {
+      return verifiedUser()
+        && memberId == request.auth.uid
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.role == 'leader'
+        && request.resource.data.companyRole == 'owner'
+        && request.resource.data.teamId == null
+        && request.resource.data.active == true
+        && existsAfter(companyPath(companyId))
+        && getAfter(companyPath(companyId)).data.ownerUid == request.auth.uid
+        && getAfter(userPath(request.auth.uid)).data.companyId == companyId;
+    }
+
+    function acceptedInvitation(companyId, memberId) {
+      return verifiedUser()
+        && memberId == request.auth.uid
+        && request.resource.data.invitationId is string
+        && existsAfter(invitationPath(request.resource.data.invitationId))
+        && getAfter(invitationPath(request.resource.data.invitationId)).data.companyId == companyId
+        && getAfter(invitationPath(request.resource.data.invitationId)).data.email == request.auth.token.email
+        && getAfter(invitationPath(request.resource.data.invitationId)).data.status == 'accepted'
+        && getAfter(invitationPath(request.resource.data.invitationId)).data.acceptedBy == request.auth.uid
+        && getAfter(invitationPath(request.resource.data.invitationId)).data.expiresAt > request.time
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.role == getAfter(invitationPath(request.resource.data.invitationId)).data.role
+        && request.resource.data.companyRole == 'member'
+        && request.resource.data.teamId == null
+        && request.resource.data.active == true
+        && getAfter(userPath(request.auth.uid)).data.companyId == companyId;
+    }
+
+    function joinsCompany(userId) {
+      return verifiedUser()
+        && isSelf(userId)
+        && resource.data.companyId == null
+        && request.resource.data.companyId is string
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.active == true
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly([
+            'companyId',
+            'companyRole',
+            'role',
+            'teamId',
+            'updatedAt'
+          ])
+        && existsAfter(memberPath(request.resource.data.companyId, userId))
+        && getAfter(memberPath(request.resource.data.companyId, userId)).data.uid == userId
+        && getAfter(memberPath(request.resource.data.companyId, userId)).data.email == request.auth.token.email
+        && getAfter(memberPath(request.resource.data.companyId, userId)).data.role == request.resource.data.role
+        && getAfter(memberPath(request.resource.data.companyId, userId)).data.companyRole == request.resource.data.companyRole
+        && getAfter(memberPath(request.resource.data.companyId, userId)).data.active == true;
+    }
+
+    match /users/{userId} {
+      allow get: if verifiedUser()
+        && (
+          isSelf(userId)
+          || (
+            resource.data.companyId != null
+            && sameCompany(resource.data.companyId)
+          )
+        );
+
+      allow list: if verifiedUser()
+        && resource.data.companyId != null
+        && sameCompany(resource.data.companyId);
+
       allow create: if isSelf(userId)
         && request.resource.data.uid == userId
+        && request.resource.data.email == request.auth.token.email
         && request.resource.data.role == 'member'
         && request.resource.data.teamId == null
         && request.resource.data.companyId == null
         && request.resource.data.active == true;
 
-      // 本人は表示名のみ変更可。班・権限・有効状態は leader のみ変更可。
-      allow update: if isLeader()
-        || (isSelf(userId)
+      allow update: if joinsCompany(userId)
+        || (
+          isSelf(userId)
           && request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['name', 'updatedAt']));
-
-      allow delete: if isLeader();
-    }
-
-    match /teams/{teamId} {
-      allow read: if verifiedUser();
-      allow write: if isLeader();
-    }
-
-    match /products/{productId} {
-      allow read: if verifiedUser();
-      allow write: if isLeader();
-    }
-
-    match /records/{recordId} {
-      // ダッシュボードとランキングは全員分の集計を行うため、ログイン済みの閲覧を許可する。
-      allow read: if verifiedUser();
-
-      // member は自分の uid + 日付形式の新規レコードだけを作成できる。
-      allow create: if isLeader()
-        || (verifiedUser()
-          && request.resource.data.uid == request.auth.uid
-          && recordId == request.auth.uid + '_' + request.resource.data.date);
-
-      // member は uid と日付を変更せず、自分のレコードだけを更新できる。
-      allow update: if isLeader()
-        || (verifiedUser()
-          && resource.data.uid == request.auth.uid
+            .hasOnly(['name', 'updatedAt'])
+        )
+        || (
+          resource.data.companyId != null
+          && isCompanyLeader(resource.data.companyId)
+          && request.resource.data.companyId == resource.data.companyId
           && request.resource.data.uid == resource.data.uid
-          && request.resource.data.date == resource.data.date);
+          && request.resource.data.email == resource.data.email
+          && request.resource.data.companyRole == resource.data.companyRole
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['name', 'role', 'teamId', 'active', 'updatedAt'])
+          && (
+            resource.data.companyRole != 'owner'
+            || (
+              request.resource.data.role == 'leader'
+              && request.resource.data.active == true
+            )
+          )
+        );
 
-      allow delete: if isLeader()
-        || (verifiedUser() && resource.data.uid == request.auth.uid);
+      allow delete: if false;
     }
 
-    // 目標・今後追加する管理データは leader のみ更新可能にする。
-    match /goals/{goalId} {
-      allow read: if verifiedUser();
-      allow write: if isLeader();
-    }
-
-    // 会社情報は次段階で Cloud Functions / Admin SDK から作成・更新する。
     match /companies/{companyId} {
-      allow read: if isCompanyMember(companyId);
-      allow write: if false;
+      allow get: if isCompanyMember(companyId);
+      allow list: if false;
+
+      allow create: if verifiedUser()
+        && get(userPath(request.auth.uid)).data.companyId == null
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 2
+        && request.resource.data.name.size() <= 80
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.active == true
+        && existsAfter(memberPath(companyId, request.auth.uid))
+        && getAfter(memberPath(companyId, request.auth.uid)).data.companyRole == 'owner'
+        && getAfter(memberPath(companyId, request.auth.uid)).data.role == 'leader'
+        && getAfter(memberPath(companyId, request.auth.uid)).data.active == true
+        && getAfter(userPath(request.auth.uid)).data.companyId == companyId;
+
+      allow update: if isCompanyLeader(companyId)
+        && resource.data.ownerUid == request.auth.uid
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['name', 'updatedAt'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 2
+        && request.resource.data.name.size() <= 80;
+
+      allow delete: if false;
 
       match /members/{memberId} {
         allow read: if isCompanyMember(companyId);
-        allow write: if false;
+
+        allow create: if ownerBootstrap(companyId, memberId)
+          || acceptedInvitation(companyId, memberId);
+
+        allow update: if (
+          isCompanyLeader(companyId)
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.email == resource.data.email
+          && request.resource.data.companyRole == resource.data.companyRole
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['name', 'role', 'teamId', 'active', 'updatedAt'])
+          && (
+            resource.data.companyRole != 'owner'
+            || (
+              request.resource.data.role == 'leader'
+              && request.resource.data.active == true
+            )
+          )
+        )
+        || (
+          memberId == request.auth.uid
+          && isCompanyMember(companyId)
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['name', 'updatedAt'])
+        );
+
+        allow delete: if false;
       }
     }
 
-    // 招待情報はクライアントから直接アクセスさせない。
     match /invitations/{inviteId} {
-      allow read, write: if false;
+      allow get: if verifiedUser()
+        && (
+          resource.data.email == request.auth.token.email
+          || isCompanyLeader(resource.data.companyId)
+        );
+
+      allow list: if false;
+
+      allow create: if verifiedUser()
+        && request.resource.data.companyId is string
+        && isCompanyLeader(request.resource.data.companyId)
+        && request.resource.data.companyName is string
+        && request.resource.data.email is string
+        && request.resource.data.email.size() >= 3
+        && request.resource.data.email.size() <= 254
+        && (
+          request.resource.data.role == 'member'
+          || request.resource.data.role == 'leader'
+        )
+        && request.resource.data.status == 'pending'
+        && request.resource.data.invitedBy == request.auth.uid
+        && request.resource.data.expiresAt > request.time;
+
+      allow update: if verifiedUser()
+        && resource.data.status == 'pending'
+        && resource.data.email == request.auth.token.email
+        && resource.data.expiresAt > request.time
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'acceptedBy', 'acceptedAt'])
+        && request.resource.data.status == 'accepted'
+        && request.resource.data.acceptedBy == request.auth.uid
+        && request.resource.data.acceptedAt == request.time
+        && existsAfter(memberPath(resource.data.companyId, request.auth.uid))
+        && getAfter(userPath(request.auth.uid)).data.companyId == resource.data.companyId;
+
+      allow delete: if isCompanyLeader(resource.data.companyId);
+    }
+
+    match /teams/{teamId} {
+      allow read: if resource.data.companyId != null
+        && sameCompany(resource.data.companyId);
+
+      allow create: if request.resource.data.companyId != null
+        && currentCompanyId() == request.resource.data.companyId
+        && isCompanyLeader(request.resource.data.companyId);
+
+      allow update: if resource.data.companyId != null
+        && isCompanyLeader(resource.data.companyId)
+        && request.resource.data.companyId == resource.data.companyId;
+
+      allow delete: if resource.data.companyId != null
+        && isCompanyLeader(resource.data.companyId);
+    }
+
+    match /products/{productId} {
+      allow read: if resource.data.companyId != null
+        && sameCompany(resource.data.companyId);
+
+      allow create: if request.resource.data.companyId != null
+        && currentCompanyId() == request.resource.data.companyId
+        && isCompanyLeader(request.resource.data.companyId);
+
+      allow update: if resource.data.companyId != null
+        && isCompanyLeader(resource.data.companyId)
+        && request.resource.data.companyId == resource.data.companyId;
+
+      allow delete: if resource.data.companyId != null
+        && isCompanyLeader(resource.data.companyId);
+    }
+
+    match /records/{recordId} {
+      allow read: if resource.data.companyId != null
+        && sameCompany(resource.data.companyId);
+
+      allow create: if request.resource.data.companyId != null
+        && currentCompanyId() == request.resource.data.companyId
+        && isCompanyMember(request.resource.data.companyId)
+        && (
+          isCompanyLeader(request.resource.data.companyId)
+          || (
+            request.resource.data.uid == request.auth.uid
+            && recordId == request.auth.uid + '_' + request.resource.data.date
+          )
+        );
+
+      allow update: if resource.data.companyId != null
+        && request.resource.data.companyId == resource.data.companyId
+        && sameCompany(resource.data.companyId)
+        && (
+          isCompanyLeader(resource.data.companyId)
+          || (
+            resource.data.uid == request.auth.uid
+            && request.resource.data.uid == resource.data.uid
+            && request.resource.data.date == resource.data.date
+          )
+        );
+
+      allow delete: if resource.data.companyId != null
+        && sameCompany(resource.data.companyId)
+        && (
+          isCompanyLeader(resource.data.companyId)
+          || resource.data.uid == request.auth.uid
+        );
+    }
+
+    match /goals/{goalId} {
+      allow read: if resource.data.companyId != null
+        && sameCompany(resource.data.companyId);
+
+      allow create: if request.resource.data.companyId != null
+        && currentCompanyId() == request.resource.data.companyId
+        && isCompanyLeader(request.resource.data.companyId);
+
+      allow update, delete: if resource.data.companyId != null
+        && isCompanyLeader(resource.data.companyId)
+        && request.resource.data.companyId == resource.data.companyId;
     }
   }
 }
