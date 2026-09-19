@@ -1,0 +1,75 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isLeader() {
+      return signedIn()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'leader';
+    }
+
+    function isSelf(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    match /users/{userId} {
+      // 現在の画面は担当者・ランキング表示のため、ログイン済みユーザー間の閲覧を許可する。
+      allow read: if signedIn();
+
+      // 新規登録者は自分自身を member としてだけ作成できる。
+      allow create: if isSelf(userId)
+        && request.resource.data.uid == userId
+        && request.resource.data.role == 'member'
+        && request.resource.data.teamId == null
+        && request.resource.data.active == true;
+
+      // 本人は表示名のみ変更可。班・権限・有効状態は leader のみ変更可。
+      allow update: if isLeader()
+        || (isSelf(userId)
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['name', 'updatedAt']));
+
+      allow delete: if isLeader();
+    }
+
+    match /teams/{teamId} {
+      allow read: if signedIn();
+      allow write: if isLeader();
+    }
+
+    match /products/{productId} {
+      allow read: if signedIn();
+      allow write: if isLeader();
+    }
+
+    match /records/{recordId} {
+      // ダッシュボードとランキングは全員分の集計を行うため、ログイン済みの閲覧を許可する。
+      allow read: if signedIn();
+
+      // member は自分の uid + 日付形式の新規レコードだけを作成できる。
+      allow create: if isLeader()
+        || (signedIn()
+          && request.resource.data.uid == request.auth.uid
+          && recordId == request.auth.uid + '_' + request.resource.data.date);
+
+      // member は uid と日付を変更せず、自分のレコードだけを更新できる。
+      allow update: if isLeader()
+        || (signedIn()
+          && resource.data.uid == request.auth.uid
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.date == resource.data.date);
+
+      allow delete: if isLeader()
+        || (signedIn() && resource.data.uid == request.auth.uid);
+    }
+
+    // 目標・今後追加する管理データは leader のみ更新可能にする。
+    match /goals/{goalId} {
+      allow read: if signedIn();
+      allow write: if isLeader();
+    }
+  }
+}
