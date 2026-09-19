@@ -1185,7 +1185,7 @@ header {
         style="display:none;margin-top:14px;">
 
         <div style="font-size:12px;color:var(--sub);margin-bottom:6px;">
-          このリンクを相手に送ってください（有効期限7日）
+          このリンクを相手に送ってください（有効期限30分）
         </div>
 
         <div class="management-input-row">
@@ -2580,18 +2580,31 @@ forgotPasswordButton.onclick =
       );
 
       showSuccess(
-        "パスワード再設定メールを送信しました。迷惑メールフォルダも確認してください。"
+        "入力したメールアドレスが登録されている場合、パスワード再設定メールが届きます。迷惑メールフォルダも確認してください。"
       );
 
     } catch (error) {
 
       console.error(error);
 
-      showError(
-        firebaseErrorMessage(
-          error
-        )
-      );
+      if (
+        error?.code ===
+        "auth/user-not-found"
+      ) {
+
+        showSuccess(
+          "入力したメールアドレスが登録されている場合、パスワード再設定メールが届きます。迷惑メールフォルダも確認してください。"
+        );
+
+      } else {
+
+        showError(
+          firebaseErrorMessage(
+            error
+          )
+        );
+
+      }
 
     } finally {
 
@@ -3875,7 +3888,7 @@ createInviteButton.onclick =
       const expiresAt =
         Timestamp.fromMillis(
           Date.now() +
-          7 * 24 * 60 * 60 * 1000
+          30 * 60 * 1000
         );
 
 
@@ -3923,7 +3936,7 @@ createInviteButton.onclick =
 
 
       showSuccess(
-        "招待リンクを作成しました。LINEやメールで送ってください。"
+        "招待リンクを作成しました。有効期限は30分です。LINEやメールで送ってください。"
       );
 
 
@@ -5217,6 +5230,7 @@ async function countTeamMembers(
           userDoc.data();
 
         if (
+          data.active !== false &&
           data.teamId ===
           teamId
         ) {
@@ -5463,6 +5477,27 @@ async function deleteTeam(
               doc(
                 db,
                 "users",
+                userDoc.id
+              ),
+              {
+
+                teamId:
+                  null,
+
+                updatedAt:
+                  serverTimestamp()
+
+              }
+            )
+          );
+
+          updates.push(
+            updateDoc(
+              doc(
+                db,
+                "companies",
+                currentUserData.companyId,
+                "members",
                 userDoc.id
               ),
               {
