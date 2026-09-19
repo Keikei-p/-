@@ -361,13 +361,24 @@ service cloud.firestore {
       allow read: if resource.data.companyId != null
         && sameCompany(resource.data.companyId);
 
-      allow create: if request.resource.data.companyId != null
+      allow create: if request.resource.data.keys().hasOnly([
+          'companyId', 'name', 'leaderUids', 'active', 'createdAt'
+        ])
+        && request.resource.data.companyId != null
         && currentCompanyId() == request.resource.data.companyId
-        && isCompanyLeader(request.resource.data.companyId);
+        && isCompanyLeader(request.resource.data.companyId)
+        && validShortName(request.resource.data.name, 30)
+        && request.resource.data.leaderUids is list
+        && request.resource.data.active == true
+        && request.resource.data.createdAt == request.time;
 
       allow update: if resource.data.companyId != null
         && isCompanyLeader(resource.data.companyId)
-        && request.resource.data.companyId == resource.data.companyId;
+        && request.resource.data.companyId == resource.data.companyId
+        && validShortName(request.resource.data.name, 30)
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['name', 'updatedAt']);
 
       allow delete: if resource.data.companyId != null
         && isCompanyLeader(resource.data.companyId);
@@ -377,13 +388,28 @@ service cloud.firestore {
       allow read: if resource.data.companyId != null
         && sameCompany(resource.data.companyId);
 
-      allow create: if request.resource.data.companyId != null
+      allow create: if request.resource.data.keys().hasOnly([
+          'companyId', 'name', 'revenue', 'active', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.companyId != null
         && currentCompanyId() == request.resource.data.companyId
-        && isCompanyLeader(request.resource.data.companyId);
+        && isCompanyLeader(request.resource.data.companyId)
+        && validShortName(request.resource.data.name, 50)
+        && request.resource.data.revenue is number
+        && request.resource.data.revenue >= 0
+        && request.resource.data.active == true
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
 
       allow update: if resource.data.companyId != null
         && isCompanyLeader(resource.data.companyId)
-        && request.resource.data.companyId == resource.data.companyId;
+        && request.resource.data.companyId == resource.data.companyId
+        && validShortName(request.resource.data.name, 50)
+        && request.resource.data.revenue is number
+        && request.resource.data.revenue >= 0
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['name', 'revenue', 'updatedAt']);
 
       allow delete: if resource.data.companyId != null
         && isCompanyLeader(resource.data.companyId);
@@ -393,9 +419,28 @@ service cloud.firestore {
       allow read: if resource.data.companyId != null
         && sameCompany(resource.data.companyId);
 
-      allow create: if request.resource.data.companyId != null
+      allow create: if request.resource.data.keys().hasOnly([
+          'companyId', 'uid', 'memberNameSnapshot', 'teamId',
+          'teamNameSnapshot', 'date', 'results', 'totalCount',
+          'totalRevenue', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.companyId != null
         && currentCompanyId() == request.resource.data.companyId
         && isCompanyMember(request.resource.data.companyId)
+        && exists(memberPath(request.resource.data.companyId, request.resource.data.uid))
+        && get(memberPath(request.resource.data.companyId, request.resource.data.uid)).data.active == true
+        && request.resource.data.memberNameSnapshot is string
+        && validTeamId(request.resource.data.teamId)
+        && request.resource.data.teamNameSnapshot is string
+        && request.resource.data.date is string
+        && request.resource.data.date.size() == 10
+        && request.resource.data.results is map
+        && request.resource.data.totalCount is number
+        && request.resource.data.totalCount >= 0
+        && request.resource.data.totalRevenue is number
+        && request.resource.data.totalRevenue >= 0
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
         && (
           isCompanyLeader(request.resource.data.companyId)
           || (
@@ -407,13 +452,26 @@ service cloud.firestore {
       allow update: if resource.data.companyId != null
         && request.resource.data.companyId == resource.data.companyId
         && sameCompany(resource.data.companyId)
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.date == resource.data.date
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.memberNameSnapshot is string
+        && validTeamId(request.resource.data.teamId)
+        && request.resource.data.teamNameSnapshot is string
+        && request.resource.data.results is map
+        && request.resource.data.totalCount is number
+        && request.resource.data.totalCount >= 0
+        && request.resource.data.totalRevenue is number
+        && request.resource.data.totalRevenue >= 0
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly([
+            'memberNameSnapshot', 'teamId', 'teamNameSnapshot',
+            'results', 'totalCount', 'totalRevenue', 'updatedAt'
+          ])
         && (
           isCompanyLeader(resource.data.companyId)
-          || (
-            resource.data.uid == request.auth.uid
-            && request.resource.data.uid == resource.data.uid
-            && request.resource.data.date == resource.data.date
-          )
+          || resource.data.uid == request.auth.uid
         );
 
       allow delete: if resource.data.companyId != null
