@@ -2,7 +2,10 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
   <title>営業実績管理</title>
   <style>
     * {
@@ -23,9 +26,15 @@
     select {
       font: inherit;
     }
+    button {
+      cursor: pointer;
+    }
     .app {
       min-height: 100vh;
     }
+    /* =====================================================
+       ヘッダー
+    ===================================================== */
     header {
       background: #111827;
       color: white;
@@ -47,8 +56,11 @@
     main {
       max-width: 1100px;
       margin: 0 auto;
-      padding: 20px 16px 50px;
+      padding: 20px 16px 60px;
     }
+    /* =====================================================
+       ログイン
+    ===================================================== */
     .auth-wrapper {
       min-height: calc(100vh - 80px);
       display: flex;
@@ -61,7 +73,8 @@
       background: white;
       border-radius: 18px;
       padding: 28px;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+      box-shadow:
+        0 10px 30px rgba(0,0,0,0.08);
     }
     .auth-logo {
       text-align: center;
@@ -89,7 +102,8 @@
       font-weight: 600;
       margin-bottom: 7px;
     }
-    input {
+    input,
+    select {
       width: 100%;
       border: 1px solid #d1d5db;
       border-radius: 10px;
@@ -97,7 +111,8 @@
       outline: none;
       background: white;
     }
-    input:focus {
+    input:focus,
+    select:focus {
       border-color: #2563eb;
     }
     .primary-button {
@@ -108,10 +123,6 @@
       background: #2563eb;
       color: white;
       font-weight: 700;
-      cursor: pointer;
-    }
-    .primary-button:hover {
-      opacity: 0.9;
     }
     .primary-button:disabled {
       opacity: 0.6;
@@ -149,9 +160,11 @@
       border: none;
       background: none;
       color: #2563eb;
-      cursor: pointer;
       font-weight: 600;
     }
+    /* =====================================================
+       アプリ
+    ===================================================== */
     #appScreen {
       display: none;
     }
@@ -164,7 +177,8 @@
       justify-content: space-between;
       align-items: center;
       gap: 10px;
-      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+      box-shadow:
+        0 4px 15px rgba(0,0,0,0.05);
     }
     .user-info {
       min-width: 0;
@@ -195,12 +209,19 @@
       color: #374151;
       padding: 9px 12px;
       border-radius: 9px;
-      cursor: pointer;
       font-size: 12px;
       font-weight: 600;
     }
+    /* =====================================================
+       ウェルカム
+    ===================================================== */
     .welcome-card {
-      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+      background:
+        linear-gradient(
+          135deg,
+          #2563eb,
+          #1d4ed8
+        );
       color: white;
       border-radius: 18px;
       padding: 24px;
@@ -216,12 +237,16 @@
       opacity: 0.9;
       line-height: 1.6;
     }
+    /* =====================================================
+       共通カード
+    ===================================================== */
     .status-card,
     .management-card {
       background: white;
       border-radius: 14px;
       padding: 20px;
-      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+      box-shadow:
+        0 4px 15px rgba(0,0,0,0.05);
       margin-bottom: 18px;
     }
     .status-title,
@@ -253,6 +278,79 @@
       margin-bottom: 16px;
       line-height: 1.6;
     }
+    /* =====================================================
+       班追加
+    ===================================================== */
+    .team-add-area {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+    .team-add-area input {
+      flex: 1;
+    }
+    .team-add-button {
+      flex-shrink: 0;
+      border: none;
+      border-radius: 10px;
+      padding: 0 18px;
+      background: #2563eb;
+      color: white;
+      font-weight: 700;
+    }
+    /* =====================================================
+       班一覧
+    ===================================================== */
+    .team-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .team-item {
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    .team-info {
+      min-width: 0;
+    }
+    .team-name {
+      font-weight: 700;
+      font-size: 15px;
+    }
+    .team-member-count {
+      color: #6b7280;
+      font-size: 12px;
+      margin-top: 4px;
+    }
+    .team-actions {
+      display: flex;
+      gap: 7px;
+      flex-shrink: 0;
+    }
+    .edit-team-button,
+    .delete-team-button {
+      border: none;
+      border-radius: 9px;
+      padding: 9px 11px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .edit-team-button {
+      background: #eff6ff;
+      color: #1d4ed8;
+    }
+    .delete-team-button {
+      background: #fef2f2;
+      color: #b91c1c;
+    }
+    /* =====================================================
+       メンバー
+    ===================================================== */
     .member-list {
       display: flex;
       flex-direction: column;
@@ -269,6 +367,7 @@
     }
     .member-info {
       min-width: 0;
+      flex: 1;
     }
     .member-name {
       font-weight: 700;
@@ -294,14 +393,31 @@
       background: #fef3c7;
       color: #92400e;
     }
-    .role-change-button {
+    .member-team {
+      display: inline-block;
+      margin-top: 7px;
+      margin-left: 4px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      background: #eff6ff;
+      color: #1d4ed8;
+    }
+    .member-actions {
+      display: flex;
+      gap: 7px;
       flex-shrink: 0;
+    }
+    .role-change-button,
+    .team-change-button {
       border: none;
       border-radius: 9px;
       padding: 9px 11px;
-      cursor: pointer;
       font-size: 12px;
       font-weight: 700;
+    }
+    .role-change-button {
       background: #2563eb;
       color: white;
     }
@@ -309,22 +425,76 @@
       background: #f3f4f6;
       color: #374151;
     }
+    .team-change-button {
+      background: #111827;
+      color: white;
+    }
     .role-change-button:disabled {
       opacity: 0.5;
       cursor: not-allowed;
     }
-    .empty-message {
-      text-align: center;
-      color: #9ca3af;
-      padding: 20px 10px;
-      font-size: 13px;
+    /* =====================================================
+       モーダル
+    ===================================================== */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background:
+        rgba(0,0,0,0.45);
+      z-index: 999;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
     }
+    .modal {
+      width: 100%;
+      max-width: 420px;
+      background: white;
+      border-radius: 18px;
+      padding: 24px;
+      box-shadow:
+        0 20px 50px rgba(0,0,0,0.2);
+    }
+    .modal-title {
+      font-size: 19px;
+      font-weight: 700;
+      margin-bottom: 18px;
+    }
+    .modal-buttons {
+      display: flex;
+      gap: 10px;
+      margin-top: 18px;
+    }
+    .modal-cancel,
+    .modal-confirm {
+      flex: 1;
+      border: none;
+      border-radius: 10px;
+      padding: 12px;
+      font-weight: 700;
+    }
+    .modal-cancel {
+      background: #f3f4f6;
+      color: #374151;
+    }
+    .modal-confirm {
+      background: #2563eb;
+      color: white;
+    }
+    /* =====================================================
+       共通
+    ===================================================== */
+    .empty-message,
     .loading-message {
       text-align: center;
       color: #6b7280;
       padding: 20px 10px;
       font-size: 13px;
     }
+    /* =====================================================
+       スマホ
+    ===================================================== */
     @media (max-width: 600px) {
       .auth-card {
         padding: 22px;
@@ -332,14 +502,27 @@
       .user-bar {
         align-items: flex-start;
       }
-      .logout-button {
-        margin-top: 2px;
-      }
       .member-item {
         align-items: flex-start;
       }
-      .role-change-button {
+      .member-actions {
+        flex-direction: column;
+      }
+      .role-change-button,
+      .team-change-button {
         width: 110px;
+      }
+      .team-add-area {
+        flex-direction: column;
+      }
+      .team-add-button {
+        padding: 13px;
+      }
+      .team-item {
+        align-items: flex-start;
+      }
+      .team-actions {
+        flex-direction: column;
       }
     }
   </style>
@@ -348,184 +531,302 @@
 <div class="app">
   <header>
     <div class="header-inner">
-      <div class="title">営業実績管理</div>
-      <div class="subtitle">Sales Management System</div>
+      <div class="title">
+        営業実績管理
+      </div>
+      <div class="subtitle">
+        Sales Management System
+      </div>
     </div>
   </header>
-  <!-- ログイン画面 -->
+  <!-- =====================================================
+       ログイン画面
+  ====================================================== -->
   <main id="authScreen">
-<div class="auth-wrapper">
-  <div class="auth-card">
-    <div class="auth-logo">📊</div>
-    <div class="auth-title" id="authTitle">
-      ログイン
+    <div class="auth-wrapper">
+      <div class="auth-card">
+        <div class="auth-logo">
+          📊
+        </div>
+        <div
+          class="auth-title"
+          id="authTitle"
+        >
+          ログイン
+        </div>
+        <div class="auth-description">
+          営業実績管理システム
+        </div>
+        <div
+          id="errorMessage"
+          class="error-message"
+        ></div>
+        <div
+          id="successMessage"
+          class="success-message"
+        ></div>
+        <div
+          class="form-group"
+          id="nameGroup"
+          style="display:none;"
+        >
+          <label for="name">
+            名前
+          </label>
+          <input
+            id="name"
+            type="text"
+            placeholder="例：山田太郎"
+          >
+        </div>
+        <div class="form-group">
+          <label for="email">
+            メールアドレス
+          </label>
+          <input
+            id="email"
+            type="email"
+            placeholder="example@gmail.com"
+          >
+        </div>
+        <div class="form-group">
+          <label for="password">
+            パスワード
+          </label>
+          <input
+            id="password"
+            type="password"
+            placeholder="6文字以上"
+          >
+        </div>
+        <button
+          id="authButton"
+          class="primary-button"
+        >
+          ログイン
+        </button>
+        <div class="switch-text">
+          <span id="switchDescription">
+            アカウントを持っていない？
+          </span>
+          <button
+            id="switchButton"
+            class="link-button"
+          >
+            新規登録
+          </button>
+        </div>
+      </div>
     </div>
-    <div class="auth-description">
-      営業実績管理システム
-    </div>
-    <div id="errorMessage" class="error-message"></div>
-    <div id="successMessage" class="success-message"></div>
-    <div
-      class="form-group"
-      id="nameGroup"
-      style="display:none;"
-    >
-      <label for="name">
-        名前
-      </label>
-      <input
-        id="name"
-        type="text"
-        placeholder="例：山田太郎"
-      >
-    </div>
-    <div class="form-group">
-      <label for="email">
-        メールアドレス
-      </label>
-      <input
-        id="email"
-        type="email"
-        placeholder="example@gmail.com"
-      >
-    </div>
-    <div class="form-group">
-      <label for="password">
-        パスワード
-      </label>
-      <input
-        id="password"
-        type="password"
-        placeholder="6文字以上"
-      >
-    </div>
-    <button
-      id="authButton"
-      class="primary-button"
-    >
-      ログイン
-    </button>
-    <div class="switch-text">
-      <span id="switchDescription">
-        アカウントを持っていない？
-      </span>
+  </main>
+  <!-- =====================================================
+       アプリ画面
+  ====================================================== -->
+  <main id="appScreen">
+    <!-- ユーザー情報 -->
+    <div class="user-bar">
+      <div class="user-info">
+        <div
+          id="userName"
+          class="user-name"
+        >
+          -
+        </div>
+        <div
+          id="userEmail"
+          class="user-email"
+        >
+          -
+        </div>
+        <div
+          id="userRole"
+          class="role-badge"
+        >
+          メンバー
+        </div>
+      </div>
       <button
-        id="switchButton"
-        class="link-button"
+        id="logoutButton"
+        class="logout-button"
       >
-        新規登録
+        ログアウト
+      </button>
+    </div>
+    <!-- ウェルカム -->
+    <div class="welcome-card">
+      <div class="welcome-title">
+        営業実績管理へようこそ
+      </div>
+      <div class="welcome-text">
+        Firebaseとの接続が完了しました。<br>
+        班・メンバー・実績を一元管理できます。
+      </div>
+    </div>
+    <!-- 状態 -->
+    <div class="status-card">
+      <div class="status-title">
+        現在の状態
+      </div>
+      <div class="status-text">
+        ログイン：
+        <strong id="loginStatus">
+          確認中
+        </strong>
+        <br>
+        Firebase：
+        <strong>
+          接続済み
+        </strong>
+        <br>
+        データベース：
+        <strong id="databaseStatus">
+          接続確認中
+        </strong>
+      </div>
+      <div
+        id="setupWarning"
+        class="setup-warning"
+        style="display:none;"
+      >
+        現在、このアカウントは
+        <strong>メンバー</strong>
+        として登録されています。
+        <br><br>
+        リーダーから権限を変更してもらうことで、
+        管理機能を使用できるようになります。
+      </div>
+    </div>
+    <!-- =====================================================
+         班管理
+    ====================================================== -->
+    <div
+      id="teamManagement"
+      class="management-card"
+    >
+      <div class="management-title">
+        🏢 班管理
+      </div>
+      <div class="management-description">
+        営業チームを作成・編集できます。<br>
+        作成した班はメンバーの所属先として使用します。
+      </div>
+      <div class="team-add-area">
+        <input
+          id="teamNameInput"
+          type="text"
+          placeholder="例：1班"
+        >
+        <button
+          id="addTeamButton"
+          class="team-add-button"
+        >
+          ＋ 班を追加
+        </button>
+      </div>
+      <div
+        id="teamList"
+        class="team-list"
+      >
+        <div class="loading-message">
+          班情報を読み込み中...
+        </div>
+      </div>
+    </div>
+    <!-- =====================================================
+         メンバー管理
+    ====================================================== -->
+    <div
+      id="memberManagement"
+      class="management-card"
+    >
+      <div class="management-title">
+        👑 メンバー管理
+      </div>
+      <div class="management-description">
+        メンバーの権限と所属班を変更できます。
+      </div>
+      <div
+        id="memberList"
+        class="member-list"
+      >
+        <div class="loading-message">
+          メンバー情報を読み込み中...
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<!-- =====================================================
+     班名編集モーダル
+====================================================== -->
+<div
+  id="teamModal"
+  class="modal-overlay"
+>
+  <div class="modal">
+    <div class="modal-title">
+      班名を変更
+    </div>
+    <div class="form-group">
+      <label for="editTeamName">
+        班名
+      </label>
+      <input
+        id="editTeamName"
+        type="text"
+        placeholder="例：1班"
+      >
+    </div>
+    <div class="modal-buttons">
+      <button
+        id="cancelTeamModal"
+        class="modal-cancel"
+      >
+        キャンセル
+      </button>
+      <button
+        id="saveTeamModal"
+        class="modal-confirm"
+      >
+        保存
       </button>
     </div>
   </div>
 </div>
-  </main>
-  <!-- アプリ画面 -->
-  <main id="appScreen">
-<div class="user-bar">
-  <div class="user-info">
-    <div id="userName" class="user-name">
-      -
-    </div>
-    <div id="userEmail" class="user-email">
-      -
-    </div>
-    <div id="userRole" class="role-badge">
-      メンバー
-    </div>
-  </div>
-  <button
-    id="logoutButton"
-    class="logout-button"
-  >
-    ログアウト
-  </button>
-</div>
-<div class="welcome-card">
-  <div class="welcome-title">
-    営業実績管理へようこそ
-  </div>
-  <div class="welcome-text">
-    Firebaseとの接続が完了しました。<br>
-    ここから班・メンバー・実績・全体ダッシュボードを追加していきます。
-  </div>
-</div>
-<!-- 現在の状態 -->
-<div class="status-card">
-  <div class="status-title">
-    現在の状態
-  </div>
-  <div class="status-text">
-    ログイン：
-    <strong id="loginStatus">
-      確認中
-    </strong>
-    <br>
-    Firebase：
-    <strong id="firebaseStatus">
-      接続済み
-    </strong>
-    <br>
-    データベース：
-    <strong id="databaseStatus">
-      接続確認中
-    </strong>
-  </div>
-  <div
-    id="setupWarning"
-    class="setup-warning"
-    style="display:none;"
-  >
-    現在、このアカウントは
-    <strong>メンバー</strong>
-    として登録されています。<br><br>
-    リーダーから権限を変更してもらうことで、
-    管理機能が使用できるようになります。
-  </div>
-</div>
-<!-- リーダー専用：メンバー管理 -->
-<div
-  id="memberManagement"
-  class="management-card"
->
-  <div class="management-title">
-    👑 メンバー管理
-  </div>
-  <div class="management-description">
-    メンバーの権限を変更できます。<br>
-    リーダーに変更すると、管理機能を使用できるようになります。
-  </div>
-  <div
-    id="memberList"
-    class="member-list"
-  >
-    <div class="loading-message">
-      メンバー情報を読み込み中...
-    </div>
-  </div>
-</div>
-  </main>
-</div>
+<!-- =====================================================
+     Firebase
+====================================================== -->
 <script type="module">
   import {
     initializeApp
-  } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
+  }
+  from
+    "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
   import {
     getAuth,
     createUserWithEmailAndPassword,
     signInWithEmailAndPassword,
     signOut,
     onAuthStateChanged
-  } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
+  }
+  from
+    "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
   import {
     getFirestore,
     doc,
     setDoc,
     getDoc,
     updateDoc,
+    deleteDoc,
     collection,
     getDocs,
     serverTimestamp
-  } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
+  }
+  from
+    "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
+  /* =====================================================
+     Firebase設定
+  ====================================================== */
   const firebaseConfig = {
     apiKey:
       "AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
@@ -541,65 +842,203 @@
       "1:904932511564:web:6583e8b0c585231b9049e"
   };
   const app =
-    initializeApp(firebaseConfig);
+    initializeApp(
+      firebaseConfig
+    );
   const auth =
     getAuth(app);
   const db =
     getFirestore(app);
+  /* =====================================================
+     DOM
+  ====================================================== */
   const authScreen =
-    document.getElementById("authScreen");
+    document.getElementById(
+      "authScreen"
+    );
   const appScreen =
-    document.getElementById("appScreen");
+    document.getElementById(
+      "appScreen"
+    );
   const authTitle =
-    document.getElementById("authTitle");
+    document.getElementById(
+      "authTitle"
+    );
   const authButton =
-    document.getElementById("authButton");
+    document.getElementById(
+      "authButton"
+    );
   const switchButton =
-    document.getElementById("switchButton");
+    document.getElementById(
+      "switchButton"
+    );
   const switchDescription =
-    document.getElementById("switchDescription");
+    document.getElementById(
+      "switchDescription"
+    );
   const nameGroup =
-    document.getElementById("nameGroup");
+    document.getElementById(
+      "nameGroup"
+    );
   const nameInput =
-    document.getElementById("name");
+    document.getElementById(
+      "name"
+    );
   const emailInput =
-    document.getElementById("email");
+    document.getElementById(
+      "email"
+    );
   const passwordInput =
-    document.getElementById("password");
+    document.getElementById(
+      "password"
+    );
   const errorMessage =
-    document.getElementById("errorMessage");
+    document.getElementById(
+      "errorMessage"
+    );
   const successMessage =
-    document.getElementById("successMessage");
+    document.getElementById(
+      "successMessage"
+    );
   const userName =
-    document.getElementById("userName");
+    document.getElementById(
+      "userName"
+    );
   const userEmail =
-    document.getElementById("userEmail");
+    document.getElementById(
+      "userEmail"
+    );
   const userRole =
-    document.getElementById("userRole");
+    document.getElementById(
+      "userRole"
+    );
   const logoutButton =
-    document.getElementById("logoutButton");
+    document.getElementById(
+      "logoutButton"
+    );
   const loginStatus =
-    document.getElementById("loginStatus");
+    document.getElementById(
+      "loginStatus"
+    );
   const databaseStatus =
-    document.getElementById("databaseStatus");
+    document.getElementById(
+      "databaseStatus"
+    );
   const setupWarning =
-    document.getElementById("setupWarning");
+    document.getElementById(
+      "setupWarning"
+    );
+  const teamManagement =
+    document.getElementById(
+      "teamManagement"
+    );
+  const teamNameInput =
+    document.getElementById(
+      "teamNameInput"
+    );
+  const addTeamButton =
+    document.getElementById(
+      "addTeamButton"
+    );
+  const teamList =
+    document.getElementById(
+      "teamList"
+    );
   const memberManagement =
-    document.getElementById("memberManagement");
+    document.getElementById(
+      "memberManagement"
+    );
   const memberList =
-    document.getElementById("memberList");
-  let isRegisterMode = false;
-  let currentUserData = null;
-  /* =========================================================
-     ログイン / 新規登録切り替え
-  ========================================================= */
+    document.getElementById(
+      "memberList"
+    );
+  const teamModal =
+    document.getElementById(
+      "teamModal"
+    );
+  const editTeamName =
+    document.getElementById(
+      "editTeamName"
+    );
+  const cancelTeamModal =
+    document.getElementById(
+      "cancelTeamModal"
+    );
+  const saveTeamModal =
+    document.getElementById(
+      "saveTeamModal"
+    );
+  let isRegisterMode =
+    false;
+  let teams =
+    [];
+  let editingTeamId =
+    null;
+  /* =====================================================
+     メッセージ
+  ====================================================== */
+  function showError(message) {
+    errorMessage.textContent =
+      message;
+    errorMessage.style.display =
+      "block";
+  }
+  function showSuccess(message) {
+    successMessage.textContent =
+      message;
+    successMessage.style.display =
+      "block";
+  }
+  function clearMessages() {
+    errorMessage.textContent =
+      "";
+    successMessage.textContent =
+      "";
+    errorMessage.style.display =
+      "none";
+    successMessage.style.display =
+      "none";
+  }
+  /* =====================================================
+     Firebaseエラー
+  ====================================================== */
+  function firebaseErrorMessage(error) {
+    console.error(
+      error
+    );
+    switch (
+      error.code
+    ) {
+      case "auth/email-already-in-use":
+        return "このメールアドレスはすでに登録されています。";
+      case "auth/invalid-email":
+        return "メールアドレスの形式が正しくありません。";
+      case "auth/weak-password":
+        return "パスワードは6文字以上にしてください。";
+      case "auth/invalid-credential":
+        return "メールアドレスまたはパスワードが違います。";
+      case "auth/user-not-found":
+        return "アカウントが見つかりません。";
+      case "auth/wrong-password":
+        return "パスワードが違います。";
+      case "permission-denied":
+        return "Firestoreへのアクセス権限がありません。";
+      default:
+        return "エラーが発生しました。もう一度試してください。";
+    }
+  }
+  /* =====================================================
+     ログイン切り替え
+  ====================================================== */
   switchButton.addEventListener(
     "click",
     () => {
       isRegisterMode =
         !isRegisterMode;
       clearMessages();
-      if (isRegisterMode) {
+      if (
+        isRegisterMode
+      ) {
         authTitle.textContent =
           "新規登録";
         authButton.textContent =
@@ -624,61 +1063,9 @@
       }
     }
   );
-  /* =========================================================
-     メッセージ
-  ========================================================= */
-  function showError(message) {
-    errorMessage.textContent =
-      message;
-    errorMessage.style.display =
-      "block";
-  }
-  function showSuccess(message) {
-    successMessage.textContent =
-      message;
-    successMessage.style.display =
-      "block";
-  }
-  function clearMessages() {
-    errorMessage.textContent =
-      "";
-    successMessage.textContent =
-      "";
-    errorMessage.style.display =
-      "none";
-    successMessage.style.display =
-      "none";
-  }
-  /* =========================================================
-     Firebaseエラー
-  ========================================================= */
-  function firebaseErrorMessage(error) {
-    console.error(
-      "Firebase Error:",
-      error
-    );
-    switch (error.code) {
-      case "auth/email-already-in-use":
-        return "このメールアドレスはすでに登録されています。ログインしてください。";
-      case "auth/invalid-email":
-        return "メールアドレスの形式が正しくありません。";
-      case "auth/weak-password":
-        return "パスワードは6文字以上にしてください。";
-      case "auth/invalid-credential":
-        return "メールアドレスまたはパスワードが違います。";
-      case "auth/user-not-found":
-        return "アカウントが見つかりません。";
-      case "auth/wrong-password":
-        return "パスワードが違います。";
-      case "permission-denied":
-        return "Firestoreへのアクセス権限がありません。";
-      default:
-        return "エラーが発生しました。もう一度試してください。";
-    }
-  }
-  /* =========================================================
+  /* =====================================================
      ユーザー作成
-  ========================================================= */
+  ====================================================== */
   async function createUserDocument(
     user,
     name = ""
@@ -690,8 +1077,12 @@
         user.uid
       );
     const userSnap =
-      await getDoc(userRef);
-    if (userSnap.exists()) {
+      await getDoc(
+        userRef
+      );
+    if (
+      userSnap.exists()
+    ) {
       return userSnap.data();
     }
     const userData = {
@@ -699,10 +1090,10 @@
         user.uid,
       name:
         name ||
-        user.displayName ||
         "名前未設定",
       email:
-        user.email || "",
+        user.email ||
+        "",
       role:
         "member",
       teamId:
@@ -718,9 +1109,9 @@
     );
     return userData;
   }
-  /* =========================================================
+  /* =====================================================
      新規登録
-  ========================================================= */
+  ====================================================== */
   async function registerUser() {
     const name =
       nameInput.value.trim();
@@ -740,7 +1131,9 @@
       );
       return;
     }
-    if (password.length < 6) {
+    if (
+      password.length < 6
+    ) {
       showError(
         "パスワードは6文字以上にしてください。"
       );
@@ -757,22 +1150,18 @@
           email,
           password
         );
-      const user =
-        result.user;
       await createUserDocument(
-        user,
+        result.user,
         name
       );
       showSuccess(
-        "アカウントを作成しました。Firestoreにも登録しました。"
+        "アカウントを作成しました。"
       );
     } catch (error) {
-      console.error(
-        "登録エラー:",
-        error
-      );
       showError(
-        firebaseErrorMessage(error)
+        firebaseErrorMessage(
+          error
+        )
       );
     } finally {
       authButton.disabled =
@@ -783,9 +1172,9 @@
           : "ログイン";
     }
   }
-  /* =========================================================
+  /* =====================================================
      ログイン
-  ========================================================= */
+  ====================================================== */
   async function loginUser() {
     const email =
       emailInput.value.trim();
@@ -814,12 +1203,10 @@
         password
       );
     } catch (error) {
-      console.error(
-        "ログインエラー:",
-        error
-      );
       showError(
-        firebaseErrorMessage(error)
+        firebaseErrorMessage(
+          error
+        )
       );
     } finally {
       authButton.disabled =
@@ -832,40 +1219,33 @@
     "click",
     async () => {
       clearMessages();
-      if (isRegisterMode) {
+      if (
+        isRegisterMode
+      ) {
         await registerUser();
       } else {
         await loginUser();
       }
     }
   );
-  /* =========================================================
+  /* =====================================================
      ログアウト
-  ========================================================= */
+  ====================================================== */
   logoutButton.addEventListener(
     "click",
     async () => {
-      try {
-        await signOut(auth);
-      } catch (error) {
-        console.error(
-          "ログアウトエラー:",
-          error
-        );
-      }
+      await signOut(
+        auth
+      );
     }
   );
-  /* =========================================================
-     ログイン状態監視
-  ========================================================= */
+  /* =====================================================
+     ログイン状態
+  ====================================================== */
   onAuthStateChanged(
     auth,
     async (user) => {
       if (user) {
-        console.log(
-          "ログイン中:",
-          user.uid
-        );
         authScreen.style.display =
           "none";
         appScreen.style.display =
@@ -882,15 +1262,19 @@
           "none";
         loginStatus.textContent =
           "未ログイン";
+        teamManagement.style.display =
+          "none";
         memberManagement.style.display =
           "none";
       }
     }
   );
-  /* =========================================================
-     ユーザー情報取得
-  ========================================================= */
-  async function loadUserData(user) {
+  /* =====================================================
+     ユーザー情報
+  ====================================================== */
+  async function loadUserData(
+    user
+  ) {
     try {
       databaseStatus.textContent =
         "確認中...";
@@ -901,81 +1285,430 @@
           user.uid
         );
       let userSnap =
-        await getDoc(userRef);
-      if (!userSnap.exists()) {
-        console.log(
-          "Firestoreにユーザーがないため作成します"
+        await getDoc(
+          userRef
         );
+      if (
+        !userSnap.exists()
+      ) {
         await createUserDocument(
           user
         );
         userSnap =
-          await getDoc(userRef);
-      }
-      if (userSnap.exists()) {
-        const data =
-          userSnap.data();
-        currentUserData =
-          data;
-        userName.textContent =
-          data.name ||
-          "名前未設定";
-        userEmail.textContent =
-          data.email ||
-          user.email ||
-          "";
-        if (data.role === "leader") {
-          userRole.textContent =
-            "👑 リーダー";
-          setupWarning.style.display =
-            "none";
-          memberManagement.style.display =
-            "block";
-          await loadMembers();
-        } else {
-          userRole.textContent =
-            "👤 メンバー";
-          setupWarning.style.display =
-            "block";
-          memberManagement.style.display =
-            "none";
-        }
-        if (data.teamId) {
-          console.log(
-            "所属班:",
-            data.teamId
+          await getDoc(
+            userRef
           );
-        }
-        databaseStatus.textContent =
-          "接続済み";
       }
+      if (
+        !userSnap.exists()
+      ) {
+        throw new Error(
+          "ユーザーデータがありません"
+        );
+      }
+      const data =
+        userSnap.data();
+      userName.textContent =
+        data.name ||
+        "名前未設定";
+      userEmail.textContent =
+        data.email ||
+        user.email ||
+        "";
+      if (
+        data.role === "leader"
+      ) {
+        userRole.textContent =
+          "👑 リーダー";
+        setupWarning.style.display =
+          "none";
+        teamManagement.style.display =
+          "block";
+        memberManagement.style.display =
+          "block";
+        await loadTeams();
+        await loadMembers();
+      } else {
+        userRole.textContent =
+          "👤 メンバー";
+        setupWarning.style.display =
+          "block";
+        teamManagement.style.display =
+          "none";
+        memberManagement.style.display =
+          "none";
+      }
+      databaseStatus.textContent =
+        "接続済み";
     } catch (error) {
       console.error(
-        "ユーザー情報取得エラー:",
         error
       );
       databaseStatus.textContent =
         "接続エラー";
-      userName.textContent =
-        "データ取得エラー";
-      setupWarning.style.display =
-        "block";
-      memberManagement.style.display =
-        "none";
       showError(
-        "Firestoreへの接続に失敗しました。Firebaseのルールを確認してください。"
+        "Firestoreへの接続に失敗しました。"
       );
     }
   }
-  /* =========================================================
-     メンバー一覧取得
-  ========================================================= */
-  async function loadMembers() {
-    memberList.innerHTML = `
+  /* =====================================================
+     班一覧取得
+  ====================================================== */
+  async function loadTeams() {
+    teamList.innerHTML = `
       <div class="loading-message">
-        メンバー情報を読み込み中...
+        班情報を読み込み中...
       </div>
     `;
+    try {
+      const snapshot =
+        await getDocs(
+          collection(
+            db,
+            "teams"
+          )
+        );
+      teams = [];
+      snapshot.forEach(
+        (teamDoc) => {
+          teams.push({
+            id:
+              teamDoc.id,
+            ...teamDoc.data()
+          });
+        }
+      );
+      renderTeams();
+    } catch (error) {
+      console.error(
+        "班取得エラー:",
+        error
+      );
+      teamList.innerHTML = `
+        <div class="empty-message">
+          班情報を取得できませんでした。
+        </div>
+      `;
+    }
+  }
+  /* =====================================================
+     班表示
+  ====================================================== */
+  function renderTeams() {
+    if (
+      teams.length === 0
+    ) {
+      teamList.innerHTML = `
+        <div class="empty-message">
+          まだ班がありません。<br>
+          上の入力欄から班を追加してください。
+        </div>
+      `;
+      return;
+    }
+    teamList.innerHTML =
+      "";
+    teams.forEach(
+      (team) => {
+        const item =
+          document.createElement(
+            "div"
+          );
+        item.className =
+          "team-item";
+        const info =
+          document.createElement(
+            "div"
+          );
+        info.className =
+          "team-info";
+        const name =
+          document.createElement(
+            "div"
+          );
+        name.className =
+          "team-name";
+        name.textContent =
+          team.name ||
+          "名前未設定";
+        const count =
+          document.createElement(
+            "div"
+          );
+        count.className =
+          "team-member-count";
+        count.textContent =
+          "メンバー数を確認中...";
+        info.appendChild(
+          name
+        );
+        info.appendChild(
+          count
+        );
+        const actions =
+          document.createElement(
+            "div"
+          );
+        actions.className =
+          "team-actions";
+        const editButton =
+          document.createElement(
+            "button"
+          );
+        editButton.className =
+          "edit-team-button";
+        editButton.textContent =
+          "✏️ 編集";
+        editButton.addEventListener(
+          "click",
+          () => {
+            openEditTeamModal(
+              team
+            );
+          }
+        );
+        const deleteButton =
+          document.createElement(
+            "button"
+          );
+        deleteButton.className =
+          "delete-team-button";
+        deleteButton.textContent =
+          "🗑️ 削除";
+        deleteButton.addEventListener(
+          "click",
+          async () => {
+            await deleteTeam(
+              team
+            );
+          }
+        );
+        actions.appendChild(
+          editButton
+        );
+        actions.appendChild(
+          deleteButton
+        );
+        item.appendChild(
+          info
+        );
+        item.appendChild(
+          actions
+        );
+        teamList.appendChild(
+          item
+        );
+        countTeamMembers(
+          team.id,
+          count
+        );
+      }
+    );
+  }
+  /* =====================================================
+     班人数
+  ====================================================== */
+  async function countTeamMembers(
+    teamId,
+    element
+  ) {
+    try {
+      const snapshot =
+        await getDocs(
+          collection(
+            db,
+            "users"
+          )
+        );
+      let count =
+        0;
+      snapshot.forEach(
+        (userDoc) => {
+          const data =
+            userDoc.data();
+          if (
+            data.teamId === teamId
+          ) {
+            count++;
+          }
+        }
+      );
+      element.textContent =
+        `メンバー ${count}人`;
+    } catch (error) {
+      element.textContent =
+        "人数取得エラー";
+    }
+  }
+  /* =====================================================
+     班追加
+  ====================================================== */
+  addTeamButton.addEventListener(
+    "click",
+    async () => {
+      const teamName =
+        teamNameInput.value.trim();
+      if (!teamName) {
+        alert(
+          "班名を入力してください。"
+        );
+        return;
+      }
+      try {
+        addTeamButton.disabled =
+          true;
+        addTeamButton.textContent =
+          "追加中...";
+        const teamRef =
+          doc(
+            collection(
+              db,
+              "teams"
+            )
+          );
+        await setDoc(
+          teamRef,
+          {
+            name:
+              teamName,
+            leaderUids:
+              [],
+            active:
+              true,
+            createdAt:
+              serverTimestamp()
+          }
+        );
+        teamNameInput.value =
+          "";
+        await loadTeams();
+        alert(
+          `${teamName} を作成しました。`
+        );
+      } catch (error) {
+        console.error(
+          error
+        );
+        alert(
+          "班の追加に失敗しました。"
+        );
+      } finally {
+        addTeamButton.disabled =
+          false;
+        addTeamButton.textContent =
+          "＋ 班を追加";
+      }
+    }
+  );
+  /* =====================================================
+     班編集
+  ====================================================== */
+  function openEditTeamModal(
+    team
+  ) {
+    editingTeamId =
+      team.id;
+    editTeamName.value =
+      team.name || "";
+    teamModal.style.display =
+      "flex";
+    setTimeout(
+      () => {
+        editTeamName.focus();
+      },
+      50
+    );
+  }
+  function closeTeamModal() {
+    editingTeamId =
+      null;
+    editTeamName.value =
+      "";
+    teamModal.style.display =
+      "none";
+  }
+  cancelTeamModal.addEventListener(
+    "click",
+    closeTeamModal
+  );
+  teamModal.addEventListener(
+    "click",
+    (event) => {
+      if (
+        event.target ===
+        teamModal
+      ) {
+        closeTeamModal();
+      }
+    }
+  );
+  /* =====================================================
+     班名保存
+  ====================================================== */
+  saveTeamModal.addEventListener(
+    "click",
+    async () => {
+      const newName =
+        editTeamName.value.trim();
+      if (!newName) {
+        alert(
+          "班名を入力してください。"
+        );
+        return;
+      }
+      if (!editingTeamId) {
+        return;
+      }
+      try {
+        saveTeamModal.disabled =
+          true;
+        saveTeamModal.textContent =
+          "保存中...";
+        await updateDoc(
+          doc(
+            db,
+            "teams",
+            editingTeamId
+          ),
+          {
+            name:
+              newName
+          }
+        );
+        closeTeamModal();
+        await loadTeams();
+        await loadMembers();
+        alert(
+          "班名を変更しました。"
+        );
+      } catch (error) {
+        console.error(
+          error
+        );
+        alert(
+          "班名の変更に失敗しました。"
+        );
+      } finally {
+        saveTeamModal.disabled =
+          false;
+        saveTeamModal.textContent =
+          "保存";
+      }
+    }
+  );
+  /* =====================================================
+     班削除
+  ====================================================== */
+  async function deleteTeam(
+    team
+  ) {
+    const confirmed =
+      window.confirm(
+        `${team.name} を削除しますか？\n\n所属しているメンバーは「所属なし」になります。`
+      );
+    if (!confirmed) {
+      return;
+    }
     try {
       const usersSnapshot =
         await getDocs(
@@ -984,7 +1717,76 @@
             "users"
           )
         );
-      if (usersSnapshot.empty) {
+      const promises =
+        [];
+      usersSnapshot.forEach(
+        (userDoc) => {
+          const data =
+            userDoc.data();
+          if (
+            data.teamId ===
+            team.id
+          ) {
+            promises.push(
+              updateDoc(
+                doc(
+                  db,
+                  "users",
+                  userDoc.id
+                ),
+                {
+                  teamId:
+                    null
+                }
+              )
+            );
+          }
+        }
+      );
+      await Promise.all(
+        promises
+      );
+      await deleteDoc(
+        doc(
+          db,
+          "teams",
+          team.id
+        )
+      );
+      await loadTeams();
+      await loadMembers();
+      alert(
+        `${team.name} を削除しました。`
+      );
+    } catch (error) {
+      console.error(
+        error
+      );
+      alert(
+        "班の削除に失敗しました。"
+      );
+    }
+  }
+  /* =====================================================
+     メンバー一覧
+  ====================================================== */
+  async function loadMembers() {
+    memberList.innerHTML = `
+      <div class="loading-message">
+        メンバー情報を読み込み中...
+      </div>
+    `;
+    try {
+      const snapshot =
+        await getDocs(
+          collection(
+            db,
+            "users"
+          )
+        );
+      if (
+        snapshot.empty
+      ) {
         memberList.innerHTML = `
           <div class="empty-message">
             まだメンバーが登録されていません。
@@ -992,8 +1794,9 @@
         `;
         return;
       }
-      memberList.innerHTML = "";
-      usersSnapshot.forEach(
+      memberList.innerHTML =
+        "";
+      snapshot.forEach(
         (userDoc) => {
           const data =
             userDoc.data();
@@ -1034,11 +1837,13 @@
               "span"
             );
           role.className =
-            data.role === "leader"
+            data.role ===
+            "leader"
               ? "member-role leader"
               : "member-role";
           role.textContent =
-            data.role === "leader"
+            data.role ===
+            "leader"
               ? "👑 リーダー"
               : "👤 メンバー";
           info.appendChild(
@@ -1050,48 +1855,101 @@
           info.appendChild(
             role
           );
-          const button =
+          /* 所属班 */
+          const teamBadge =
+            document.createElement(
+              "span"
+            );
+          teamBadge.className =
+            "member-team";
+          const memberTeam =
+            teams.find(
+              (team) =>
+                team.id ===
+                data.teamId
+            );
+          teamBadge.textContent =
+            memberTeam
+              ? `🏢 ${memberTeam.name}`
+              : "所属なし";
+          info.appendChild(
+            teamBadge
+          );
+          /* ボタン */
+          const actions =
+            document.createElement(
+              "div"
+            );
+          actions.className =
+            "member-actions";
+          const roleButton =
             document.createElement(
               "button"
             );
-          if (data.role === "leader") {
-            button.textContent =
+          if (
+            data.role ===
+            "leader"
+          ) {
+            roleButton.textContent =
               "メンバーに戻す";
-            button.className =
+            roleButton.className =
               "role-change-button demote";
           } else {
-            button.textContent =
+            roleButton.textContent =
               "👑 リーダーにする";
-            button.className =
+            roleButton.className =
               "role-change-button";
           }
-          /*
-           * 自分自身の権限変更ボタンは無効化
-           */
           if (
             auth.currentUser &&
-            uid === auth.currentUser.uid
+            uid ===
+            auth.currentUser.uid
           ) {
-            button.disabled =
+            roleButton.disabled =
               true;
-            button.textContent =
+            roleButton.textContent =
               "自分";
           }
-          button.addEventListener(
+          roleButton.addEventListener(
             "click",
             async () => {
               await changeUserRole(
                 uid,
-                data.name || "このユーザー",
+                data.name ||
+                  "このユーザー",
                 data.role
               );
             }
+          );
+          const teamButton =
+            document.createElement(
+              "button"
+            );
+          teamButton.className =
+            "team-change-button";
+          teamButton.textContent =
+            "🏢 班変更";
+          teamButton.addEventListener(
+            "click",
+            async () => {
+              await changeMemberTeam(
+                uid,
+                data.name ||
+                  "このユーザー"
+              );
+            }
+          );
+          actions.appendChild(
+            roleButton
+          );
+          actions.appendChild(
+            teamButton
           );
           item.appendChild(
             info
           );
           item.appendChild(
-            button
+            actions
           );
           memberList.appendChild(
             item
@@ -1100,67 +1958,159 @@
       );
     } catch (error) {
       console.error(
-        "メンバー取得エラー:",
         error
       );
       memberList.innerHTML = `
         <div class="empty-message">
-          メンバー情報を取得できませんでした。<br>
-          Firestoreのルールを確認してください。
+          メンバー情報を取得できませんでした。
         </div>
       `;
     }
   }
-  /* =========================================================
-     リーダー / メンバー変更
-  ========================================================= */
+  /* =====================================================
+     権限変更
+  ====================================================== */
   async function changeUserRole(
     uid,
     name,
     currentRole
   ) {
     const newRole =
-      currentRole === "leader"
+      currentRole ===
+      "leader"
         ? "member"
         : "leader";
     const message =
-      newRole === "leader"
+      newRole ===
+      "leader"
         ? `${name} さんをリーダーに変更しますか？`
         : `${name} さんをメンバーに戻しますか？`;
-    const confirmed =
-      window.confirm(
+    if (
+      !window.confirm(
         message
-      );
-    if (!confirmed) {
+      )
+    ) {
       return;
     }
     try {
-      const userRef =
+      await updateDoc(
         doc(
           db,
           "users",
           uid
-        );
-      await updateDoc(
-        userRef,
+        ),
         {
           role:
             newRole
         }
       );
+      await loadMembers();
       alert(
-        newRole === "leader"
+        newRole ===
+        "leader"
           ? `${name} さんをリーダーに変更しました。`
           : `${name} さんをメンバーに戻しました。`
       );
-      await loadMembers();
     } catch (error) {
       console.error(
-        "権限変更エラー:",
         error
       );
       alert(
-        "権限変更に失敗しました。\n\nFirestoreのセキュリティルールを確認してください。"
+        "権限変更に失敗しました。"
+      );
+    }
+  }
+  /* =====================================================
+     所属班変更
+  ====================================================== */
+  async function changeMemberTeam(
+    uid,
+    name
+  ) {
+    if (
+      teams.length === 0
+    ) {
+      alert(
+        "先に班を作成してください。"
+      );
+      return;
+    }
+    let message =
+      `${name} さんの所属班を選択してください。\n\n`;
+    teams.forEach(
+      (team, index) => {
+        message +=
+          `${index + 1}. ${team.name}\n`;
+      }
+    );
+    message +=
+      "\n0. 所属なし";
+    const answer =
+      window.prompt(
+        message
+      );
+    if (
+      answer === null
+    ) {
+      return;
+    }
+    const number =
+      Number(
+        answer
+      );
+    let selectedTeamId =
+      null;
+    if (
+      number >= 1 &&
+      number <=
+      teams.length
+    ) {
+      selectedTeamId =
+        teams[
+          number - 1
+        ].id;
+    } else if (
+      number === 0
+    ) {
+      selectedTeamId =
+        null;
+    } else {
+      alert(
+        "正しい番号を入力してください。"
+      );
+      return;
+    }
+    try {
+      await updateDoc(
+        doc(
+          db,
+          "users",
+          uid
+        ),
+        {
+          teamId:
+            selectedTeamId
+        }
+      );
+      await loadTeams();
+      await loadMembers();
+      const selectedTeam =
+        teams.find(
+          (team) =>
+            team.id ===
+            selectedTeamId
+        );
+      alert(
+        selectedTeam
+          ? `${name} さんを「${selectedTeam.name}」に所属させました。`
+          : `${name} さんを所属なしにしました。`
+      );
+    } catch (error) {
+      console.error(
+        error
+      );
+      alert(
+        "所属班の変更に失敗しました。"
       );
     }
   }
