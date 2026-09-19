@@ -303,7 +303,7 @@ service cloud.firestore {
           isCompanyLeader(request.resource.data.companyId)
           || (
             request.resource.data.uid == request.auth.uid
-            && recordId == request.auth.uid + '_' + request.resource.data.date
+            && recordId == request.resource.data.companyId + '_' + request.auth.uid + '_' + request.resource.data.date
           )
         );
 
@@ -335,9 +335,12 @@ service cloud.firestore {
         && currentCompanyId() == request.resource.data.companyId
         && isCompanyLeader(request.resource.data.companyId);
 
-      allow update, delete: if resource.data.companyId != null
+      allow update: if resource.data.companyId != null
         && isCompanyLeader(resource.data.companyId)
         && request.resource.data.companyId == resource.data.companyId;
+
+      allow delete: if resource.data.companyId != null
+        && isCompanyLeader(resource.data.companyId);
     }
   }
 }
