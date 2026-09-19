@@ -12,12 +12,60 @@ const state =
 
 function loadState() {
 
-  const saved =
-    localStorage.getItem(STORAGE_KEY);
+  let saved =
+    null;
 
-  if (saved) {
+  try {
 
-    return JSON.parse(saved);
+    saved =
+      localStorage.getItem(STORAGE_KEY);
+
+    if (saved) {
+
+      const parsed =
+        JSON.parse(saved);
+
+      if (
+        parsed &&
+        typeof parsed.months ===
+          "object" &&
+        parsed.months !== null
+      ) {
+
+        return parsed;
+
+      }
+
+    }
+
+  } catch (error) {
+
+    console.error(
+      "データの読み込みに失敗しました:",
+      error
+    );
+
+    /*
+      壊れたデータを上書きで失わないよう
+      別のキーに退避しておく
+    */
+
+    try {
+
+      if (saved) {
+
+        localStorage.setItem(
+          STORAGE_KEY + "_broken",
+          saved
+        );
+
+      }
+
+    } catch {
+
+      // 退避に失敗しても続行
+
+    }
 
   }
 
@@ -43,13 +91,26 @@ function loadState() {
 
 function saveState() {
 
-  localStorage.setItem(
+  try {
 
-    STORAGE_KEY,
+    localStorage.setItem(
 
-    JSON.stringify(state)
+      STORAGE_KEY,
 
-  );
+      JSON.stringify(state)
+
+    );
+
+  } catch (error) {
+
+    console.error(error);
+
+    alert(
+      "データを保存できませんでした。\n" +
+      "ブラウザの保存容量やプライベートモードの設定を確認してください。"
+    );
+
+  }
 
 }
 
@@ -87,6 +148,42 @@ function getToday() {
   )
     .toISOString()
     .slice(0, 10);
+
+}
+
+
+/*
+  実績の日付は今月の範囲だけ選べるようにする
+  （実績は今月のデータとして保存されるため）
+*/
+
+function setEntryDateRange() {
+
+  const now =
+    new Date();
+
+  const key =
+    getMonthKey(now);
+
+  const lastDay =
+    new Date(
+      now.getFullYear(),
+      now.getMonth() + 1,
+      0
+    ).getDate();
+
+  const input =
+    document.querySelector(
+      "#entryDate"
+    );
+
+  input.min =
+    `${key}-01`;
+
+  input.max =
+    `${key}-${String(
+      lastDay
+    ).padStart(2, "0")}`;
 
 }
 
@@ -510,6 +607,14 @@ function renderEntrySelect(
     );
 
 
+  /*
+    再描画しても選択中の商材を維持する
+  */
+
+  const selectedId =
+    select.value;
+
+
   select.innerHTML = "";
 
 
@@ -550,6 +655,18 @@ function renderEntrySelect(
     );
 
   });
+
+
+  if (
+    itemIds.includes(
+      selectedId
+    )
+  ) {
+
+    select.value =
+      selectedId;
+
+  }
 
 }
 
@@ -968,7 +1085,9 @@ document
 
       if (
         !name ||
+        !Number.isInteger(target) ||
         target < 0 ||
+        !Number.isFinite(unitRevenue) ||
         unitRevenue < 0
       ) {
 
@@ -1049,9 +1168,32 @@ document
 
       if (
         !itemId ||
+        !month.items[itemId] ||
+        !Number.isInteger(quantity) ||
         quantity < 1 ||
         !date
       ) {
+
+        return;
+
+      }
+
+
+      /*
+        実績は今月のデータとして保存されるため、
+        今月以外の日付は登録しない
+      */
+
+      if (
+        !date.startsWith(
+          getMonthKey()
+        )
+      ) {
+
+        alert(
+          "今月の日付を選択してください。\n" +
+          "実績は今月のデータとして保存されます。"
+        );
 
         return;
 
@@ -1257,6 +1399,9 @@ function escapeHtml(
 /* =========================
    初期化
 ========================= */
+
+setEntryDateRange();
+
 
 document
   .querySelector(
