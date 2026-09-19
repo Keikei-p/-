@@ -156,13 +156,13 @@ service cloud.firestore {
           isSelf(userId)
           || (
             resource.data.companyId != null
-            && sameCompany(resource.data.companyId)
+            && isCompanyLeader(resource.data.companyId)
           )
         );
 
       allow list: if verifiedUser()
         && resource.data.companyId != null
-        && sameCompany(resource.data.companyId);
+        && isCompanyLeader(resource.data.companyId);
 
       allow create: if isSelf(userId)
         && request.resource.data.keys().hasOnly([
@@ -263,7 +263,13 @@ service cloud.firestore {
       allow delete: if false;
 
       match /members/{memberId} {
-        allow read: if isCompanyMember(companyId);
+        allow get: if isCompanyLeader(companyId)
+          || (
+            memberId == request.auth.uid
+            && isCompanyMember(companyId)
+          );
+
+        allow list: if isCompanyLeader(companyId);
 
         allow create: if ownerBootstrap(companyId, memberId)
           || acceptedInvitation(companyId, memberId);
@@ -483,19 +489,7 @@ service cloud.firestore {
     }
 
     match /goals/{goalId} {
-      allow read: if resource.data.companyId != null
-        && sameCompany(resource.data.companyId);
-
-      allow create: if request.resource.data.companyId != null
-        && currentCompanyId() == request.resource.data.companyId
-        && isCompanyLeader(request.resource.data.companyId);
-
-      allow update: if resource.data.companyId != null
-        && isCompanyLeader(resource.data.companyId)
-        && request.resource.data.companyId == resource.data.companyId;
-
-      allow delete: if resource.data.companyId != null
-        && isCompanyLeader(resource.data.companyId);
+      allow read, write: if false;
     }
   }
 }
