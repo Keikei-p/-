@@ -1,2762 +1,1194 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>営業実績管理</title>
+  <title>営業実績管理</title>
 
-<style>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
 
-* {
-  box-sizing: border-box;
-}
+    body {
+      margin: 0;
+      font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+      background: #f4f6f8;
+      color: #222;
+    }
 
-body {
-  margin: 0;
-  font-family:
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
-  background: #f5f7fb;
-  color: #1f2937;
-}
+    button,
+    input,
+    select {
+      font: inherit;
+    }
 
-header {
-  background: #111827;
-  color: white;
-  padding: 20px;
-}
+    .app {
+      min-height: 100vh;
+    }
 
-header h1 {
-  margin: 0;
-  font-size: 22px;
-}
+    /* =========================
+       ヘッダー
+    ========================= */
 
-header p {
-  margin: 5px 0 0;
-  font-size: 13px;
-  opacity: .75;
-}
+    header {
+      background: #111827;
+      color: white;
+      padding: 18px 16px;
+    }
 
-main {
-  max-width: 900px;
-  margin: auto;
-  padding: 16px;
-  padding-bottom: 100px;
-}
+    .header-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
 
-.tabs {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 6px;
-  margin-bottom: 16px;
-}
+    .title {
+      font-size: 22px;
+      font-weight: 700;
+    }
 
-.tab {
-  border: none;
-  background: white;
-  padding: 12px 4px;
-  border-radius: 10px;
-  font-size: 12px;
-  cursor: pointer;
-  font-weight: 600;
-}
+    .subtitle {
+      margin-top: 4px;
+      font-size: 13px;
+      color: #9ca3af;
+    }
 
-.tab.active {
-  background: #111827;
-  color: white;
-}
+    /* =========================
+       メイン
+    ========================= */
 
-.page {
-  display: none;
-}
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 20px 16px 50px;
+    }
 
-.page.active {
-  display: block;
-}
+    /* =========================
+       ログイン画面
+    ========================= */
 
-.card {
-  background: white;
-  border-radius: 16px;
-  padding: 18px;
-  margin-bottom: 14px;
-  box-shadow: 0 3px 12px rgba(0,0,0,.05);
-}
+    .auth-wrapper {
+      min-height: calc(100vh - 80px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
 
-.card h2 {
-  margin: 0 0 15px;
-  font-size: 18px;
-}
+    .auth-card {
+      width: 100%;
+      max-width: 420px;
+      background: white;
+      border-radius: 18px;
+      padding: 28px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+    }
 
-.card h3 {
-  margin: 18px 0 12px;
-  font-size: 15px;
-}
+    .auth-logo {
+      text-align: center;
+      font-size: 42px;
+      margin-bottom: 8px;
+    }
 
-.form-group {
-  margin-bottom: 14px;
-}
+    .auth-title {
+      text-align: center;
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
 
-label {
-  display: block;
-  font-size: 13px;
-  font-weight: 600;
-  margin-bottom: 6px;
-}
+    .auth-description {
+      text-align: center;
+      color: #6b7280;
+      font-size: 14px;
+      margin-bottom: 24px;
+    }
 
-select,
-input {
-  width: 100%;
-  padding: 12px;
-  border: 1px solid #d1d5db;
-  border-radius: 10px;
-  font-size: 16px;
-  background: white;
-}
+    .form-group {
+      margin-bottom: 16px;
+    }
 
-.primary-btn {
-  width: 100%;
-  background: #111827;
-  color: white;
-  padding: 14px;
-  border-radius: 11px;
-  font-size: 15px;
-  font-weight: 700;
-  margin-top: 8px;
-  border: none;
-  cursor: pointer;
-}
+    .form-group label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 7px;
+    }
 
-.secondary-btn {
-  background: #e5e7eb;
-  color: #374151;
-  padding: 10px 12px;
-  border-radius: 9px;
-  font-size: 13px;
-  border: none;
-}
+    input {
+      width: 100%;
+      border: 1px solid #d1d5db;
+      border-radius: 10px;
+      padding: 13px;
+      outline: none;
+      background: white;
+    }
 
-.danger-btn {
-  background: #fee2e2;
-  color: #b91c1c;
-  padding: 8px 10px;
-  border-radius: 8px;
-  font-size: 12px;
-  border: none;
-  cursor: pointer;
-}
+    input:focus {
+      border-color: #2563eb;
+    }
 
-.product-row {
-  display: grid;
-  grid-template-columns: 1fr 44px 60px 44px;
-  gap: 6px;
-  align-items: center;
-  margin-bottom: 8px;
-}
+    .primary-button {
+      width: 100%;
+      border: none;
+      border-radius: 10px;
+      padding: 14px;
+      background: #2563eb;
+      color: white;
+      font-weight: 700;
+      cursor: pointer;
+    }
 
-.product-name {
-  font-size: 14px;
-  font-weight: 600;
-}
+    .primary-button:hover {
+      opacity: 0.9;
+    }
 
-.count {
-  text-align: center;
-  font-weight: 700;
-}
+    .secondary-button {
+      width: 100%;
+      border: 1px solid #d1d5db;
+      border-radius: 10px;
+      padding: 13px;
+      background: white;
+      color: #374151;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 10px;
+    }
 
-.count-btn {
-  height: 42px;
-  border: none;
-  border-radius: 10px;
-  background: #eef2f7;
-  font-size: 20px;
-  cursor: pointer;
-}
+    .error-message {
+      display: none;
+      background: #fef2f2;
+      color: #b91c1c;
+      border: 1px solid #fecaca;
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 16px;
+      font-size: 13px;
+    }
 
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
-}
+    .success-message {
+      display: none;
+      background: #ecfdf5;
+      color: #047857;
+      border: 1px solid #a7f3d0;
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 16px;
+      font-size: 13px;
+    }
 
-.summary-box {
-  background: #f8fafc;
-  border-radius: 12px;
-  padding: 14px;
-}
+    .switch-text {
+      text-align: center;
+      margin-top: 18px;
+      color: #6b7280;
+      font-size: 13px;
+    }
 
-.summary-box .name {
-  font-size: 12px;
-  color: #6b7280;
-}
+    .link-button {
+      border: none;
+      background: none;
+      color: #2563eb;
+      cursor: pointer;
+      font-weight: 600;
+    }
 
-.summary-box .number {
-  font-size: 24px;
-  font-weight: 800;
-  margin-top: 4px;
-}
+    /* =========================
+       アプリ画面
+    ========================= */
 
-.summary-box .sub {
-  font-size: 12px;
-  color: #6b7280;
-  margin-top: 3px;
-}
+    #appScreen {
+      display: none;
+    }
 
-.revenue-total {
-  background: #111827;
-  color: white;
-  border-radius: 14px;
-  padding: 18px;
-  margin-bottom: 14px;
-}
+    .user-bar {
+      background: white;
+      border-radius: 14px;
+      padding: 15px;
+      margin-bottom: 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+    }
 
-.revenue-total .label {
-  font-size: 12px;
-  opacity: .75;
-}
+    .user-info {
+      min-width: 0;
+    }
 
-.revenue-total .value {
-  font-size: 30px;
-  font-weight: 800;
-  margin-top: 5px;
-}
+    .user-name {
+      font-weight: 700;
+    }
 
-.member-card {
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  padding: 14px;
-  margin-bottom: 12px;
-}
+    .user-email {
+      font-size: 12px;
+      color: #6b7280;
+      margin-top: 3px;
+      word-break: break-all;
+    }
 
-.member-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
+    .role-badge {
+      display: inline-block;
+      margin-top: 5px;
+      background: #eff6ff;
+      color: #1d4ed8;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+    }
 
-.member-name {
-  font-weight: 800;
-  font-size: 17px;
-}
+    .logout-button {
+      flex-shrink: 0;
+      border: none;
+      background: #f3f4f6;
+      color: #374151;
+      padding: 9px 12px;
+      border-radius: 9px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+    }
 
-.member-total {
-  font-size: 13px;
-  font-weight: 700;
-}
+    .welcome-card {
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+      color: white;
+      border-radius: 18px;
+      padding: 24px;
+      margin-bottom: 18px;
+    }
 
-.result-line {
-  display: flex;
-  justify-content: space-between;
-  padding: 8px 0;
-  border-bottom: 1px solid #f0f0f0;
-  font-size: 14px;
-}
+    .welcome-title {
+      font-size: 22px;
+      font-weight: 700;
+    }
 
-.result-line:last-child {
-  border-bottom: none;
-}
+    .welcome-text {
+      margin-top: 8px;
+      font-size: 14px;
+      opacity: 0.9;
+      line-height: 1.6;
+    }
 
-.result-revenue {
-  color: #4b5563;
-  font-size: 12px;
-  margin-left: 8px;
-}
+    .status-card {
+      background: white;
+      border-radius: 14px;
+      padding: 20px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+    }
 
-.history-item {
-  border-bottom: 1px solid #e5e7eb;
-  padding: 12px 0;
-}
+    .status-title {
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
 
-.history-item:last-child {
-  border-bottom: none;
-}
+    .status-text {
+      color: #6b7280;
+      line-height: 1.7;
+      font-size: 14px;
+    }
 
-.history-top {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
+    .setup-warning {
+      margin-top: 15px;
+      padding: 14px;
+      background: #fff7ed;
+      border: 1px solid #fed7aa;
+      border-radius: 10px;
+      color: #9a3412;
+      font-size: 13px;
+      line-height: 1.6;
+    }
 
-.history-member {
-  font-weight: 700;
-}
+    @media (max-width: 600px) {
+      .auth-card {
+        padding: 22px;
+      }
 
-.history-date {
-  font-size: 12px;
-  color: #6b7280;
-}
+      .user-bar {
+        align-items: flex-start;
+      }
 
-.history-results {
-  font-size: 13px;
-  color: #4b5563;
-  line-height: 1.8;
-}
-
-.management-row {
-  display: grid;
-  grid-template-columns: 1fr 120px auto;
-  gap: 7px;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.management-row input {
-  min-width: 0;
-}
-
-.empty {
-  text-align: center;
-  color: #9ca3af;
-  padding: 30px 10px;
-  font-size: 14px;
-}
-
-.setup-message {
-  background: #f3f4f6;
-  border-radius: 12px;
-  padding: 16px;
-  text-align: center;
-  color: #4b5563;
-  font-size: 14px;
-  margin-bottom: 14px;
-}
-
-.setup-message strong {
-  display: block;
-  font-size: 16px;
-  color: #111827;
-  margin-bottom: 5px;
-}
-
-@media (min-width: 700px) {
-
-  .summary-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-
-}
-
-</style>
+      .logout-button {
+        margin-top: 2px;
+      }
+    }
+  </style>
 </head>
-
 
 <body>
 
-<header>
+<div class="app">
 
-  <h1>営業実績管理</h1>
+  <!-- =========================
+       ヘッダー
+  ========================== -->
 
-  <p>
-    件数・個人実績・チーム実績・収益を一括管理
-  </p>
-
-</header>
-
-
-<main>
-
-
-<!-- =========================
-     タブ
-========================= -->
-
-<div class="tabs">
-
-  <button
-    class="tab active"
-    onclick="showPage('input', this)">
-    ➕ 入力
-  </button>
-
-  <button
-    class="tab"
-    onclick="showPage('team', this)">
-    👥 チーム
-  </button>
-
-  <button
-    class="tab"
-    onclick="showPage('personal', this)">
-    👤 個人
-  </button>
-
-  <button
-    class="tab"
-    onclick="showPage('history', this)">
-    📋 履歴
-  </button>
-
-  <button
-    class="tab"
-    onclick="showPage('settings', this)">
-    ⚙️ 管理
-  </button>
-
-</div>
-
-
-<!-- =========================
-     入力
-========================= -->
-
-<section
-  id="input"
-  class="page active">
-
-  <div class="card">
-
-    <h2>実績を入力</h2>
-
-
-    <div
-      id="noMemberMessage"
-      class="setup-message"
-      style="display:none;">
-
-      <strong>
-        スタッフを登録してください
-      </strong>
-
-      「管理」からスタッフを追加すると
-      実績入力ができるようになります。
-
+  <header>
+    <div class="header-inner">
+      <div class="title">営業実績管理</div>
+      <div class="subtitle">Sales Management System</div>
     </div>
+  </header>
 
 
-    <div class="form-group">
+  <!-- =========================
+       ログイン画面
+  ========================== -->
 
-      <label>
-        担当者
-      </label>
+  <main id="authScreen">
 
-      <select id="inputMember"></select>
+    <div class="auth-wrapper">
 
-    </div>
+      <div class="auth-card">
 
+        <div class="auth-logo">📊</div>
 
-    <div class="form-group">
+        <div class="auth-title" id="authTitle">
+          ログイン
+        </div>
 
-      <label>
-        日付
-      </label>
+        <div class="auth-description">
+          営業実績管理システム
+        </div>
 
-      <input
-        type="date"
-        id="inputDate">
+        <div
+          id="errorMessage"
+          class="error-message">
+        </div>
 
-    </div>
-
-
-    <h3>
-      商材別実績
-    </h3>
-
-
-    <div id="inputProducts"></div>
-
-
-    <button
-      class="primary-btn"
-      onclick="saveRecord()">
-
-      実績を登録する
-
-    </button>
-
-  </div>
-
-</section>
-
-
-<!-- =========================
-     チーム
-========================= -->
-
-<section
-  id="team"
-  class="page">
-
-  <div class="card">
-
-    <h2>
-      チーム全体
-    </h2>
-
-
-    <div class="revenue-total">
-
-      <div class="label">
-        チーム総収益
-      </div>
-
-      <div
-        class="value"
-        id="teamRevenue">
-
-        0円
-
-      </div>
-
-    </div>
-
-
-    <div
-      id="teamSummary"
-      class="summary-grid">
-    </div>
-
-  </div>
-
-</section>
-
-
-<!-- =========================
-     個人
-========================= -->
-
-<section
-  id="personal"
-  class="page">
-
-  <div class="card">
-
-    <h2>
-      個人実績
-    </h2>
-
-    <div
-      id="personalResults">
-    </div>
-
-  </div>
-
-</section>
-
-
-<!-- =========================
-     履歴
-========================= -->
-
-<section
-  id="history"
-  class="page">
-
-  <div class="card">
-
-    <h2>
-      実績履歴
-    </h2>
-
-    <div
-      id="historyList">
-    </div>
-
-  </div>
-
-</section>
-
-
-<!-- =========================
-     管理
-========================= -->
-
-<section
-  id="settings"
-  class="page">
-
-
-  <!-- スタッフ -->
-
-  <div class="card">
-
-    <h2>
-      スタッフ管理
-    </h2>
-
-    <p
-      style="
-        font-size:12px;
-        color:#6b7280;
-      ">
-
-      このチームで働くスタッフを
-      自由に登録できます。
-
-    </p>
-
-
-    <div class="form-group">
-
-      <label>
-        スタッフ名
-      </label>
-
-      <input
-        id="newMemberName"
-        placeholder="例：山田">
-
-    </div>
-
-
-    <button
-      class="primary-btn"
-      onclick="addMember()">
-
-      ＋ スタッフを追加
-
-    </button>
-
-
-    <div
-      style="margin-top:18px"
-      id="memberList">
-    </div>
-
-  </div>
-
-
-  <!-- 商材 -->
-
-  <div class="card">
-
-    <h2>
-      商材管理
-    </h2>
-
-    <p
-      style="
-        font-size:12px;
-        color:#6b7280;
-      ">
-
-      商材名と1件あたりの収益を
-      自由に設定できます。
-
-    </p>
-
-
-    <div class="form-group">
-
-      <label>
-        商材名
-      </label>
-
-      <input
-        id="newProductName"
-        placeholder="例：NURO光">
-
-    </div>
-
-
-    <div class="form-group">
-
-      <label>
-        1件あたりの収益
-      </label>
-
-      <input
-        id="newProductRevenue"
-        type="number"
-        inputmode="numeric"
-        placeholder="例：25000">
-
-    </div>
-
-
-    <button
-      class="primary-btn"
-      onclick="addProduct()">
-
-      ＋ 商材を追加
-
-    </button>
-
-
-    <div
-      style="margin-top:18px"
-      id="productList">
-    </div>
-
-  </div>
-
-
-  <!-- データ管理 -->
-
-  <div class="card">
-
-    <h2>
-      データ管理
-    </h2>
-
-    <button
-      class="danger-btn"
-      onclick="resetAllData()">
-
-      全データを削除
-
-    </button>
-
-  </div>
-
-</section>
-
-
-</main>
-
-
-<script>
-
-/* =========================================================
-   初期データ
-   ========================================================= */
-
-/*
-   ここが今回の重要ポイント。
-
-   初期スタッフは「0人」。
-
-   誰が使っても、
-   自分でスタッフを追加して使える。
-*/
-
-const defaultProducts = [
-
-  {
-    id: Date.now(),
-    name: "MNP",
-    revenue: 20000
-  },
-
-  {
-    id: Date.now() + 1,
-    name: "NURO光",
-    revenue: 25000
-  },
-
-  {
-    id: Date.now() + 2,
-    name: "ウォーター",
-    revenue: 40000
-  },
-
-  {
-    id: Date.now() + 3,
-    name: "つばさ電気",
-    revenue: 20000
-  },
-
-  {
-    id: Date.now() + 4,
-    name: "HTBエナジー",
-    revenue: 10000
-  }
-
-];
-
-
-/*
-   スタッフは最初から存在しない。
-*/
-
-const defaultMembers = [];
-
-
-/* =========================================================
-   データ読み込み
-   ========================================================= */
-
-let products =
-  JSON.parse(
-    localStorage.getItem(
-      "sales_products"
-    )
-  ) || defaultProducts;
-
-
-let members =
-  JSON.parse(
-    localStorage.getItem(
-      "sales_members"
-    )
-  ) || defaultMembers;
-
-
-let records =
-  JSON.parse(
-    localStorage.getItem(
-      "sales_records"
-    )
-  ) || [];
-
-
-/* =========================================================
-   データ保存
-   ========================================================= */
-
-function saveData() {
-
-  localStorage.setItem(
-    "sales_products",
-    JSON.stringify(products)
-  );
-
-
-  localStorage.setItem(
-    "sales_members",
-    JSON.stringify(members)
-  );
-
-
-  localStorage.setItem(
-    "sales_records",
-    JSON.stringify(records)
-  );
-
-}
-
-
-/* =========================================================
-   起動
-   ========================================================= */
-
-document.addEventListener(
-  "DOMContentLoaded",
-  () => {
-
-    document.getElementById(
-      "inputDate"
-    ).value =
-      new Date()
-      .toISOString()
-      .split("T")[0];
-
-
-    renderAll();
-
-  }
-);
-
-
-/* =========================================================
-   ページ切り替え
-   ========================================================= */
-
-function showPage(
-  pageId,
-  button
-) {
-
-  document
-    .querySelectorAll(".page")
-    .forEach(page => {
-
-      page.classList.remove(
-        "active"
-      );
-
-    });
-
-
-  document
-    .querySelectorAll(".tab")
-    .forEach(tab => {
-
-      tab.classList.remove(
-        "active"
-      );
-
-    });
-
-
-  document
-    .getElementById(pageId)
-    .classList.add("active");
-
-
-  button.classList.add(
-    "active"
-  );
-
-
-  renderAll();
-
-}
-
-
-/* =========================================================
-   入力画面
-   ========================================================= */
-
-function renderInput() {
-
-  const memberSelect =
-    document.getElementById(
-      "inputMember"
-    );
-
-
-  const noMemberMessage =
-    document.getElementById(
-      "noMemberMessage"
-    );
-
-
-  memberSelect.innerHTML = "";
-
-
-  /*
-    スタッフが0人の場合
-  */
-
-  if (
-    members.length === 0
-  ) {
-
-    memberSelect.disabled =
-      true;
-
-    noMemberMessage.style.display =
-      "block";
-
-  } else {
-
-    memberSelect.disabled =
-      false;
-
-    noMemberMessage.style.display =
-      "none";
-
-
-    members.forEach(
-      member => {
-
-        const option =
-          document.createElement(
-            "option"
-          );
-
-
-        option.value =
-          member.id;
-
-
-        option.textContent =
-          member.name;
-
-
-        memberSelect.appendChild(
-          option
-        );
-
-      }
-    );
-
-  }
-
-
-  const container =
-    document.getElementById(
-      "inputProducts"
-    );
-
-
-  container.innerHTML = "";
-
-
-  if (
-    products.length === 0
-  ) {
-
-    container.innerHTML = `
-      <div class="empty">
-        商材が登録されていません。
-        「管理」から商材を追加してください。
-      </div>
-    `;
-
-    return;
-
-  }
-
-
-  products.forEach(
-    product => {
-
-      const row =
-        document.createElement(
-          "div"
-        );
-
-
-      row.className =
-        "product-row";
-
-
-      row.innerHTML = `
-
-        <div class="product-name">
-
-          ${escapeHtml(
-            product.name
-          )}
-
+        <div
+          id="successMessage"
+          class="success-message">
         </div>
 
 
-        <button
-          class="count-btn"
-          onclick="
-            changeCount(
-              '${product.id}',
-              -1
-            )
-          ">
+        <!-- 名前 -->
 
-          −
+        <div
+          class="form-group"
+          id="nameGroup"
+          style="display:none;">
+
+          <label for="name">
+            名前
+          </label>
+
+          <input
+            id="name"
+            type="text"
+            placeholder="例：山田太郎">
+        </div>
+
+
+        <!-- メール -->
+
+        <div class="form-group">
+
+          <label for="email">
+            メールアドレス
+          </label>
+
+          <input
+            id="email"
+            type="email"
+            placeholder="example@gmail.com">
+        </div>
+
+
+        <!-- パスワード -->
+
+        <div class="form-group">
+
+          <label for="password">
+            パスワード
+          </label>
+
+          <input
+            id="password"
+            type="password"
+            placeholder="6文字以上">
+        </div>
+
+
+        <!-- メインボタン -->
+
+        <button
+          id="authButton"
+          class="primary-button">
+
+          ログイン
 
         </button>
 
 
-        <div
-          class="count"
-          id="count-${product.id}">
+        <!-- モード切替 -->
 
-          0
+        <div class="switch-text">
 
-        </div>
-
-
-        <button
-          class="count-btn"
-          onclick="
-            changeCount(
-              '${product.id}',
-              1
-            )
-          ">
-
-          ＋
-
-        </button>
-
-      `;
-
-
-      container.appendChild(
-        row
-      );
-
-    }
-  );
-
-}
-
-
-/* =========================================================
-   件数変更
-   ========================================================= */
-
-function changeCount(
-  productId,
-  amount
-) {
-
-  const element =
-    document.getElementById(
-      `count-${productId}`
-    );
-
-
-  if (!element) return;
-
-
-  let count =
-    Number(
-      element.textContent
-    );
-
-
-  count += amount;
-
-
-  if (count < 0) {
-
-    count = 0;
-
-  }
-
-
-  element.textContent =
-    count;
-
-}
-
-
-/* =========================================================
-   実績登録
-   ========================================================= */
-
-function saveRecord() {
-
-  if (
-    members.length === 0
-  ) {
-
-    alert(
-      "先にスタッフを登録してください。"
-    );
-
-    return;
-
-  }
-
-
-  const memberId =
-    Number(
-      document.getElementById(
-        "inputMember"
-      ).value
-    );
-
-
-  const date =
-    document.getElementById(
-      "inputDate"
-    ).value;
-
-
-  if (!date) {
-
-    alert(
-      "日付を入力してください。"
-    );
-
-    return;
-
-  }
-
-
-  const results = {};
-
-
-  products.forEach(
-    product => {
-
-      const element =
-        document.getElementById(
-          `count-${product.id}`
-        );
-
-
-      if (!element) return;
-
-
-      const count =
-        Number(
-          element.textContent
-        );
-
-
-      if (count > 0) {
-
-        /*
-          実績登録時点の単価を保存。
-
-          後から商材単価を変更しても
-          過去の実績は変わらない。
-        */
-
-        results[product.id] = {
-
-          count: count,
-
-          revenuePerUnit:
-            Number(
-              product.revenue
-            )
-
-        };
-
-      }
-
-    }
-  );
-
-
-  if (
-    Object.keys(results).length === 0
-  ) {
-
-    alert(
-      "実績を1件以上入力してください。"
-    );
-
-    return;
-
-  }
-
-
-  records.push({
-
-    id: Date.now(),
-
-    date,
-
-    memberId,
-
-    results
-
-  });
-
-
-  saveData();
-
-
-  alert(
-    "実績を登録しました！"
-  );
-
-
-  renderAll();
-
-}
-
-
-/* =========================================================
-   チーム集計
-   ========================================================= */
-
-function getTeamResults() {
-
-  const totals = {};
-
-
-  products.forEach(
-    product => {
-
-      totals[product.id] = {
-
-        count: 0,
-
-        revenue: 0
-
-      };
-
-    }
-  );
-
-
-  records.forEach(
-    record => {
-
-      Object.entries(
-        record.results
-      ).forEach(
-        ([productId, data]) => {
-
-          if (
-            !totals[productId]
-          ) {
-
-            totals[productId] = {
-
-              count: 0,
-
-              revenue: 0
-
-            };
-
-          }
-
-
-          /*
-            古いデータにも対応
-          */
-
-          if (
-            typeof data === "number"
-          ) {
-
-            const product =
-              products.find(
-                p =>
-                  p.id == productId
-              );
-
-
-            const unitPrice =
-              product
-                ? Number(
-                    product.revenue
-                  )
-                : 0;
-
-
-            totals[productId].count +=
-              Number(data);
-
-
-            totals[productId].revenue +=
-              Number(data) *
-              unitPrice;
-
-          } else {
-
-            totals[productId].count +=
-              Number(data.count);
-
-
-            totals[productId].revenue +=
-              Number(data.count) *
-              Number(
-                data.revenuePerUnit
-              );
-
-          }
-
-        }
-      );
-
-    }
-  );
-
-
-  return totals;
-
-}
-
-
-/* =========================================================
-   チーム表示
-   ========================================================= */
-
-function renderTeam() {
-
-  const container =
-    document.getElementById(
-      "teamSummary"
-    );
-
-
-  container.innerHTML = "";
-
-
-  const totals =
-    getTeamResults();
-
-
-  let totalRevenue = 0;
-
-  let totalCount = 0;
-
-
-  products.forEach(
-    product => {
-
-      const data =
-        totals[product.id] || {
-
-          count: 0,
-
-          revenue: 0
-
-        };
-
-
-      totalCount +=
-        data.count;
-
-
-      totalRevenue +=
-        data.revenue;
-
-
-      const box =
-        document.createElement(
-          "div"
-        );
-
-
-      box.className =
-        "summary-box";
-
-
-      box.innerHTML = `
-
-        <div class="name">
-
-          ${escapeHtml(
-            product.name
-          )}
-
-        </div>
-
-
-        <div class="number">
-
-          ${data.count}件
-
-        </div>
-
-
-        <div class="sub">
-
-          収益
-          ${formatYen(
-            data.revenue
-          )}
-
-        </div>
-
-      `;
-
-
-      container.appendChild(
-        box
-      );
-
-    }
-  );
-
-
-  const totalBox =
-    document.createElement(
-      "div"
-    );
-
-
-  totalBox.className =
-    "summary-box";
-
-
-  totalBox.innerHTML = `
-
-    <div class="name">
-      全商材合計
-    </div>
-
-    <div class="number">
-      ${totalCount}件
-    </div>
-
-    <div class="sub">
-      収益
-      ${formatYen(
-        totalRevenue
-      )}
-    </div>
-
-  `;
-
-
-  container.prepend(
-    totalBox
-  );
-
-
-  document.getElementById(
-    "teamRevenue"
-  ).textContent =
-    formatYen(
-      totalRevenue
-    );
-
-}
-
-
-/* =========================================================
-   個人集計
-   ========================================================= */
-
-function getMemberResults(
-  memberId
-) {
-
-  const totals = {};
-
-
-  products.forEach(
-    product => {
-
-      totals[product.id] = {
-
-        count: 0,
-
-        revenue: 0
-
-      };
-
-    }
-  );
-
-
-  records
-    .filter(
-      record =>
-        record.memberId === memberId
-    )
-    .forEach(
-      record => {
-
-        Object.entries(
-          record.results
-        ).forEach(
-          ([productId, data]) => {
-
-            if (
-              !totals[productId]
-            ) {
-
-              totals[productId] = {
-
-                count: 0,
-
-                revenue: 0
-
-              };
-
-            }
-
-
-            if (
-              typeof data === "number"
-            ) {
-
-              const product =
-                products.find(
-                  p =>
-                    p.id == productId
-                );
-
-
-              const unitPrice =
-                product
-                  ? Number(
-                      product.revenue
-                    )
-                  : 0;
-
-
-              totals[productId].count +=
-                Number(data);
-
-
-              totals[productId].revenue +=
-                Number(data) *
-                unitPrice;
-
-            } else {
-
-              totals[productId].count +=
-                Number(data.count);
-
-
-              totals[productId].revenue +=
-                Number(data.count) *
-                Number(
-                  data.revenuePerUnit
-                );
-
-            }
-
-          }
-        );
-
-      }
-    );
-
-
-  return totals;
-
-}
-
-
-/* =========================================================
-   個人表示
-   ========================================================= */
-
-function renderPersonal() {
-
-  const container =
-    document.getElementById(
-      "personalResults"
-    );
-
-
-  container.innerHTML = "";
-
-
-  if (
-    members.length === 0
-  ) {
-
-    container.innerHTML = `
-
-      <div class="empty">
-
-        まだスタッフが登録されていません。
-
-        <br><br>
-
-        「管理」からスタッフを追加してください。
-
-      </div>
-
-    `;
-
-    return;
-
-  }
-
-
-  members.forEach(
-    member => {
-
-      const totals =
-        getMemberResults(
-          member.id
-        );
-
-
-      let totalCount = 0;
-
-      let totalRevenue = 0;
-
-
-      products.forEach(
-        product => {
-
-          totalCount +=
-            totals[product.id]?.count || 0;
-
-
-          totalRevenue +=
-            totals[product.id]?.revenue || 0;
-
-        }
-      );
-
-
-      const card =
-        document.createElement(
-          "div"
-        );
-
-
-      card.className =
-        "member-card";
-
-
-      let resultHtml = "";
-
-
-      products.forEach(
-        product => {
-
-          const data =
-            totals[product.id] || {
-
-              count: 0,
-
-              revenue: 0
-
-            };
-
-
-          resultHtml += `
-
-            <div class="result-line">
-
-              <span>
-
-                ${escapeHtml(
-                  product.name
-                )}
-
-              </span>
-
-
-              <span>
-
-                <strong>
-
-                  ${data.count}件
-
-                </strong>
-
-
-                <span
-                  class="result-revenue">
-
-                  ${formatYen(
-                    data.revenue
-                  )}
-
-                </span>
-
-              </span>
-
-            </div>
-
-          `;
-
-        }
-      );
-
-
-      card.innerHTML = `
-
-        <div class="member-header">
-
-          <div class="member-name">
-
-            ${escapeHtml(
-              member.name
-            )}
-
-          </div>
-
-
-          <div class="member-total">
-
-            ${totalCount}件
-            /
-            ${formatYen(
-              totalRevenue
-            )}
-
-          </div>
-
-        </div>
-
-
-        ${resultHtml}
-
-      `;
-
-
-      container.appendChild(
-        card
-      );
-
-    }
-  );
-
-}
-
-
-/* =========================================================
-   履歴
-   ========================================================= */
-
-function renderHistory() {
-
-  const container =
-    document.getElementById(
-      "historyList"
-    );
-
-
-  container.innerHTML = "";
-
-
-  if (
-    records.length === 0
-  ) {
-
-    container.innerHTML = `
-
-      <div class="empty">
-
-        まだ実績がありません。
-
-      </div>
-
-    `;
-
-    return;
-
-  }
-
-
-  const sorted =
-    [...records].sort(
-      (a, b) =>
-        b.id - a.id
-    );
-
-
-  sorted.forEach(
-    record => {
-
-      const member =
-        members.find(
-          m =>
-            m.id === record.memberId
-        );
-
-
-      const memberName =
-        member
-          ? member.name
-          : "削除されたスタッフ";
-
-
-      let resultHtml = "";
-
-      let totalRevenue = 0;
-
-
-      Object.entries(
-        record.results
-      ).forEach(
-        ([productId, data]) => {
-
-          const product =
-            products.find(
-              p =>
-                p.id == productId
-            );
-
-
-          if (!product) return;
-
-
-          let count;
-
-          let unitPrice;
-
-
-          if (
-            typeof data === "number"
-          ) {
-
-            count =
-              Number(data);
-
-
-            unitPrice =
-              Number(
-                product.revenue
-              );
-
-          } else {
-
-            count =
-              Number(
-                data.count
-              );
-
-
-            unitPrice =
-              Number(
-                data.revenuePerUnit
-              );
-
-          }
-
-
-          const revenue =
-            count * unitPrice;
-
-
-          totalRevenue +=
-            revenue;
-
-
-          resultHtml += `
-
-            ${escapeHtml(
-              product.name
-            )}
-
-            ${count}件
-
-            ×
-
-            ${formatYen(
-              unitPrice
-            )}
-
-            ＝
-
-            ${formatYen(
-              revenue
-            )}
-
-            <br>
-
-          `;
-
-        }
-      );
-
-
-      const item =
-        document.createElement(
-          "div"
-        );
-
-
-      item.className =
-        "history-item";
-
-
-      item.innerHTML = `
-
-        <div class="history-top">
-
-          <span class="history-member">
-
-            ${escapeHtml(
-              memberName
-            )}
-
+          <span id="switchDescription">
+            アカウントを持っていない？
           </span>
-
-
-          <span class="history-date">
-
-            ${record.date}
-
-          </span>
-
-        </div>
-
-
-        <div class="history-results">
-
-          ${resultHtml}
-
-          <strong>
-
-            合計
-            ${formatYen(
-              totalRevenue
-            )}
-
-          </strong>
-
-        </div>
-
-
-        <div
-          style="margin-top:8px">
 
           <button
-            class="danger-btn"
-            onclick="
-              deleteRecord(
-                ${record.id}
-              )
-            ">
+            id="switchButton"
+            class="link-button">
 
-            削除
+            新規登録
 
           </button>
 
         </div>
 
-      `;
+      </div>
+
+    </div>
+
+  </main>
 
 
-      container.appendChild(
-        item
-      );
+  <!-- =========================
+       アプリ画面
+  ========================== -->
 
-    }
-  );
+  <main id="appScreen">
 
-}
+    <div class="user-bar">
 
+      <div class="user-info">
 
-/* =========================================================
-   商材追加
-   ========================================================= */
+        <div
+          id="userName"
+          class="user-name">
+          -
+        </div>
 
-function addProduct() {
+        <div
+          id="userEmail"
+          class="user-email">
+          -
+        </div>
 
-  const name =
-    document
-      .getElementById(
-        "newProductName"
-      )
-      .value
-      .trim();
-
-
-  const revenue =
-    Number(
-      document.getElementById(
-        "newProductRevenue"
-      ).value
-    );
-
-
-  if (!name) {
-
-    alert(
-      "商材名を入力してください。"
-    );
-
-    return;
-
-  }
-
-
-  if (
-    !Number.isFinite(revenue) ||
-    revenue < 0
-  ) {
-
-    alert(
-      "1件あたりの収益を入力してください。"
-    );
-
-    return;
-
-  }
-
-
-  if (
-    products.some(
-      product =>
-        product.name === name
-    )
-  ) {
-
-    alert(
-      "同じ名前の商材があります。"
-    );
-
-    return;
-
-  }
-
-
-  products.push({
-
-    id: Date.now(),
-
-    name,
-
-    revenue
-
-  });
-
-
-  document.getElementById(
-    "newProductName"
-  ).value = "";
-
-
-  document.getElementById(
-    "newProductRevenue"
-  ).value = "";
-
-
-  saveData();
-
-  renderAll();
-
-
-  alert(
-    "商材を追加しました！"
-  );
-
-}
-
-
-/* =========================================================
-   商材一覧
-   ========================================================= */
-
-function renderProducts() {
-
-  const container =
-    document.getElementById(
-      "productList"
-    );
-
-
-  container.innerHTML = "";
-
-
-  if (
-    products.length === 0
-  ) {
-
-    container.innerHTML = `
-
-      <div class="empty">
-
-        商材が登録されていません。
+        <div
+          id="userRole"
+          class="role-badge">
+          メンバー
+        </div>
 
       </div>
 
-    `;
+      <button
+        id="logoutButton"
+        class="logout-button">
 
-    return;
+        ログアウト
 
-  }
+      </button>
 
+    </div>
 
-  products.forEach(
-    product => {
 
-      const row =
-        document.createElement(
-          "div"
-        );
+    <div class="welcome-card">
 
+      <div class="welcome-title">
+        営業実績管理へようこそ
+      </div>
 
-      row.className =
-        "management-row";
+      <div class="welcome-text">
+        Firebaseとの接続が完了しました。<br>
+        ここから班・メンバー・実績・全体ダッシュボードを追加していきます。
+      </div>
 
+    </div>
 
-      row.innerHTML = `
 
-        <input
-          value="${escapeAttribute(
-            product.name
-          )}"
-          onchange="
-            renameProduct(
-              ${product.id},
-              this.value
-            )
-          ">
+    <div class="status-card">
 
+      <div class="status-title">
+        現在の状態
+      </div>
 
-        <input
-          type="number"
-          value="${product.revenue}"
-          onchange="
-            changeProductRevenue(
-              ${product.id},
-              this.value
-            )
-          ">
+      <div class="status-text">
 
+        ログイン：
+        <strong id="loginStatus">
+          確認中
+        </strong>
 
-        <button
-          class="danger-btn"
-          onclick="
-            deleteProduct(
-              ${product.id}
-            )
-          ">
+        <br>
 
-          削除
+        Firebase：
+        <strong id="firebaseStatus">
+          接続済み
+        </strong>
 
-        </button>
+        <br>
 
-      `;
-
-
-      container.appendChild(
-        row
-      );
-
-    }
-  );
-
-}
-
-
-/* =========================================================
-   商材名変更
-   ========================================================= */
-
-function renameProduct(
-  id,
-  newName
-) {
-
-  newName =
-    newName.trim();
-
-
-  if (!newName) {
-
-    alert(
-      "商材名を空にできません。"
-    );
-
-    renderAll();
-
-    return;
-
-  }
-
-
-  if (
-    products.some(
-      product =>
-        product.id !== id &&
-        product.name === newName
-    )
-  ) {
-
-    alert(
-      "同じ名前の商材があります。"
-    );
-
-    renderAll();
-
-    return;
-
-  }
-
-
-  const product =
-    products.find(
-      product =>
-        product.id === id
-    );
-
-
-  if (product) {
-
-    product.name =
-      newName;
-
-  }
-
-
-  saveData();
-
-  renderAll();
-
-}
-
-
-/* =========================================================
-   商材単価変更
-   ========================================================= */
-
-function changeProductRevenue(
-  id,
-  value
-) {
-
-  const revenue =
-    Number(value);
-
-
-  if (
-    !Number.isFinite(revenue) ||
-    revenue < 0
-  ) {
-
-    alert(
-      "正しい収益を入力してください。"
-    );
-
-    renderAll();
-
-    return;
-
-  }
-
-
-  const product =
-    products.find(
-      product =>
-        product.id === id
-    );
-
-
-  if (product) {
-
-    product.revenue =
-      revenue;
-
-  }
-
-
-  saveData();
-
-  renderAll();
-
-}
-
-
-/* =========================================================
-   商材削除
-   ========================================================= */
-
-function deleteProduct(id) {
-
-  const product =
-    products.find(
-      product =>
-        product.id === id
-    );
-
-
-  if (!product) return;
-
-
-  if (
-    !confirm(
-      `「${product.name}」を削除しますか？`
-    )
-  ) {
-
-    return;
-
-  }
-
-
-  products =
-    products.filter(
-      product =>
-        product.id !== id
-    );
-
-
-  saveData();
-
-  renderAll();
-
-}
-
-
-/* =========================================================
-   スタッフ追加
-   ========================================================= */
-
-function addMember() {
-
-  const input =
-    document.getElementById(
-      "newMemberName"
-    );
-
-
-  const name =
-    input.value.trim();
-
-
-  if (!name) {
-
-    alert(
-      "スタッフ名を入力してください。"
-    );
-
-    return;
-
-  }
-
-
-  if (
-    members.some(
-      member =>
-        member.name === name
-    )
-  ) {
-
-    alert(
-      "同じ名前のスタッフがあります。"
-    );
-
-    return;
-
-  }
-
-
-  /*
-    新しいスタッフを追加
-  */
-
-  members.push({
-
-    id: Date.now(),
-
-    name
-
-  });
-
-
-  /*
-    localStorageに即保存
-  */
-
-  saveData();
-
-
-  input.value = "";
-
-
-  renderAll();
-
-
-  alert(
-    `${name}さんを追加しました！`
-  );
-
-}
-
-
-/* =========================================================
-   スタッフ一覧
-   ========================================================= */
-
-function renderMembers() {
-
-  const container =
-    document.getElementById(
-      "memberList"
-    );
-
-
-  container.innerHTML = "";
-
-
-  if (
-    members.length === 0
-  ) {
-
-    container.innerHTML = `
-
-      <div class="empty">
-
-        まだスタッフが登録されていません。
+        データベース：
+        <strong id="databaseStatus">
+          接続確認中
+        </strong>
 
       </div>
 
-    `;
 
-    return;
+      <div
+        id="setupWarning"
+        class="setup-warning"
+        style="display:none;">
 
-  }
+        現在、このアカウントは
+        <strong>メンバー</strong>
+        として登録されています。<br><br>
 
+        次の段階でリーダー設定・班設定を作ります。
 
-  members.forEach(
-    member => {
+      </div>
 
-      const row =
-        document.createElement(
-          "div"
-        );
+    </div>
 
+  </main>
 
-      row.className =
-        "management-row";
-
-
-      row.innerHTML = `
-
-        <input
-          value="${escapeAttribute(
-            member.name
-          )}"
-          onchange="
-            renameMember(
-              ${member.id},
-              this.value
-            )
-          ">
+</div>
 
 
-        <div></div>
+<!-- =====================================================
+     Firebase
+===================================================== -->
+
+<script type="module">
+
+  /* =========================
+     Firebase SDK
+  ========================== */
+
+  import {
+    initializeApp
+  } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
+
+  import {
+    getAuth,
+    createUserWithEmailAndPassword,
+    signInWithEmailAndPassword,
+    signOut,
+    onAuthStateChanged
+  } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
+
+  import {
+    getFirestore,
+    doc,
+    setDoc,
+    getDoc,
+    serverTimestamp
+  } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
 
-        <button
-          class="danger-btn"
-          onclick="
-            deleteMember(
-              ${member.id}
-            )
-          ">
+  /* =========================
+     Firebase設定
+  ========================== */
 
-          削除
+  const firebaseConfig = {
 
-        </button>
+    apiKey:
+      "AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
 
-      `;
+    authDomain:
+      "sales-management-cc116.firebaseapp.com",
+
+    projectId:
+      "sales-management-cc116",
+
+    storageBucket:
+      "sales-management-cc116.firebasestorage.app",
+
+    messagingSenderId:
+      "904932511564",
+
+    appId:
+      "1:904932511564:web:6583e8b0c585231b9049e"
+
+  };
 
 
-      container.appendChild(
-        row
-      );
+  /* =========================
+     Firebase初期化
+  ========================== */
+
+  const app =
+    initializeApp(firebaseConfig);
+
+  const auth =
+    getAuth(app);
+
+  const db =
+    getFirestore(app);
+
+
+  /* =========================
+     HTML取得
+  ========================== */
+
+  const authScreen =
+    document.getElementById("authScreen");
+
+  const appScreen =
+    document.getElementById("appScreen");
+
+  const authTitle =
+    document.getElementById("authTitle");
+
+  const authButton =
+    document.getElementById("authButton");
+
+  const switchButton =
+    document.getElementById("switchButton");
+
+  const switchDescription =
+    document.getElementById("switchDescription");
+
+  const nameGroup =
+    document.getElementById("nameGroup");
+
+  const nameInput =
+    document.getElementById("name");
+
+  const emailInput =
+    document.getElementById("email");
+
+  const passwordInput =
+    document.getElementById("password");
+
+  const errorMessage =
+    document.getElementById("errorMessage");
+
+  const successMessage =
+    document.getElementById("successMessage");
+
+  const userName =
+    document.getElementById("userName");
+
+  const userEmail =
+    document.getElementById("userEmail");
+
+  const userRole =
+    document.getElementById("userRole");
+
+  const logoutButton =
+    document.getElementById("logoutButton");
+
+  const loginStatus =
+    document.getElementById("loginStatus");
+
+  const databaseStatus =
+    document.getElementById("databaseStatus");
+
+  const setupWarning =
+    document.getElementById("setupWarning");
+
+
+  /* =========================
+     ログイン / 新規登録切替
+  ========================== */
+
+  let isRegisterMode = false;
+
+
+  switchButton.addEventListener(
+    "click",
+    () => {
+
+      isRegisterMode =
+        !isRegisterMode;
+
+      clearMessages();
+
+      if (isRegisterMode) {
+
+        authTitle.textContent =
+          "新規登録";
+
+        authButton.textContent =
+          "アカウントを作成";
+
+        switchDescription.textContent =
+          "すでにアカウントを持っている？";
+
+        switchButton.textContent =
+          "ログイン";
+
+        nameGroup.style.display =
+          "block";
+
+      } else {
+
+        authTitle.textContent =
+          "ログイン";
+
+        authButton.textContent =
+          "ログイン";
+
+        switchDescription.textContent =
+          "アカウントを持っていない？";
+
+        switchButton.textContent =
+          "新規登録";
+
+        nameGroup.style.display =
+          "none";
+      }
 
     }
   );
 
-}
 
+  /* =========================
+     メッセージ
+  ========================== */
 
-/* =========================================================
-   スタッフ名変更
-   ========================================================= */
+  function showError(message) {
 
-function renameMember(
-  id,
-  newName
-) {
+    errorMessage.textContent =
+      message;
 
-  newName =
-    newName.trim();
-
-
-  if (!newName) {
-
-    alert(
-      "名前を空にできません。"
-    );
-
-    renderAll();
-
-    return;
+    errorMessage.style.display =
+      "block";
 
   }
 
 
-  if (
-    members.some(
-      member =>
-        member.id !== id &&
-        member.name === newName
-    )
-  ) {
+  function showSuccess(message) {
 
-    alert(
-      "同じ名前のスタッフがあります。"
-    );
+    successMessage.textContent =
+      message;
 
-    renderAll();
-
-    return;
+    successMessage.style.display =
+      "block";
 
   }
 
 
-  const member =
-    members.find(
-      member =>
-        member.id === id
-    );
+  function clearMessages() {
 
+    errorMessage.textContent =
+      "";
 
-  if (member) {
+    successMessage.textContent =
+      "";
 
-    member.name =
-      newName;
+    errorMessage.style.display =
+      "none";
 
-  }
-
-
-  /*
-    変更した瞬間に保存
-  */
-
-  saveData();
-
-
-  renderAll();
-
-}
-
-
-/* =========================================================
-   スタッフ削除
-   ========================================================= */
-
-function deleteMember(id) {
-
-  const member =
-    members.find(
-      member =>
-        member.id === id
-    );
-
-
-  if (!member) return;
-
-
-  if (
-    !confirm(
-      `「${member.name}」を削除しますか？`
-    )
-  ) {
-
-    return;
+    successMessage.style.display =
+      "none";
 
   }
 
 
-  members =
-    members.filter(
-      member =>
-        member.id !== id
-    );
+  /* =========================
+     Firebaseエラー変換
+  ========================== */
 
+  function firebaseErrorMessage(error) {
 
-  saveData();
+    switch (error.code) {
 
-  renderAll();
+      case "auth/email-already-in-use":
+        return "このメールアドレスはすでに登録されています。";
 
-}
+      case "auth/invalid-email":
+        return "メールアドレスの形式が正しくありません。";
 
+      case "auth/weak-password":
+        return "パスワードは6文字以上にしてください。";
 
-/* =========================================================
-   履歴削除
-   ========================================================= */
+      case "auth/invalid-credential":
+        return "メールアドレスまたはパスワードが違います。";
 
-function deleteRecord(id) {
+      case "auth/user-not-found":
+        return "アカウントが見つかりません。";
 
-  if (
-    !confirm(
-      "この実績を削除しますか？"
-    )
-  ) {
+      case "auth/wrong-password":
+        return "パスワードが違います。";
 
-    return;
+      default:
+        return "エラーが発生しました。もう一度試してください。";
 
-  }
-
-
-  records =
-    records.filter(
-      record =>
-        record.id !== id
-    );
-
-
-  saveData();
-
-  renderAll();
-
-}
-
-
-/* =========================================================
-   全データ削除
-   ========================================================= */
-
-function resetAllData() {
-
-  const answer =
-    prompt(
-      "全データを削除します。\n確認のため「削除」と入力してください。"
-    );
-
-
-  if (
-    answer !== "削除"
-  ) {
-
-    return;
+    }
 
   }
 
 
-  localStorage.removeItem(
-    "sales_products"
+  /* =========================
+     新規登録
+  ========================== */
+
+  async function registerUser() {
+
+    const name =
+      nameInput.value.trim();
+
+    const email =
+      emailInput.value.trim();
+
+    const password =
+      passwordInput.value;
+
+
+    if (!name) {
+
+      showError(
+        "名前を入力してください。"
+      );
+
+      return;
+    }
+
+
+    if (!email) {
+
+      showError(
+        "メールアドレスを入力してください。"
+      );
+
+      return;
+    }
+
+
+    if (password.length < 6) {
+
+      showError(
+        "パスワードは6文字以上にしてください。"
+      );
+
+      return;
+    }
+
+
+    try {
+
+      authButton.disabled =
+        true;
+
+      authButton.textContent =
+        "登録中...";
+
+
+      const result =
+        await createUserWithEmailAndPassword(
+          auth,
+          email,
+          password
+        );
+
+
+      const user =
+        result.user;
+
+
+      /* =========================
+         Firestoreにユーザー情報保存
+      ========================== */
+
+      await setDoc(
+        doc(db, "users", user.uid),
+        {
+
+          uid: user.uid,
+
+          name: name,
+
+          email: email,
+
+          role: "member",
+
+          teamId: null,
+
+          active: true,
+
+          createdAt:
+            serverTimestamp()
+
+        }
+      );
+
+
+      showSuccess(
+        "アカウントを作成しました。"
+      );
+
+
+    } catch (error) {
+
+      console.error(error);
+
+      showError(
+        firebaseErrorMessage(error)
+      );
+
+    } finally {
+
+      authButton.disabled =
+        false;
+
+      authButton.textContent =
+        isRegisterMode
+          ? "アカウントを作成"
+          : "ログイン";
+
+    }
+
+  }
+
+
+  /* =========================
+     ログイン
+  ========================== */
+
+  async function loginUser() {
+
+    const email =
+      emailInput.value.trim();
+
+    const password =
+      passwordInput.value;
+
+
+    if (!email) {
+
+      showError(
+        "メールアドレスを入力してください。"
+      );
+
+      return;
+    }
+
+
+    if (!password) {
+
+      showError(
+        "パスワードを入力してください。"
+      );
+
+      return;
+    }
+
+
+    try {
+
+      authButton.disabled =
+        true;
+
+      authButton.textContent =
+        "ログイン中...";
+
+
+      await signInWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
+
+
+    } catch (error) {
+
+      console.error(error);
+
+      showError(
+        firebaseErrorMessage(error)
+      );
+
+    } finally {
+
+      authButton.disabled =
+        false;
+
+      authButton.textContent =
+        "ログイン";
+
+    }
+
+  }
+
+
+  /* =========================
+     ボタン処理
+  ========================== */
+
+  authButton.addEventListener(
+    "click",
+    async () => {
+
+      clearMessages();
+
+      if (isRegisterMode) {
+
+        await registerUser();
+
+      } else {
+
+        await loginUser();
+
+      }
+
+    }
   );
 
 
-  localStorage.removeItem(
-    "sales_members"
+  /* =========================
+     ログアウト
+  ========================== */
+
+  logoutButton.addEventListener(
+    "click",
+    async () => {
+
+      await signOut(auth);
+
+    }
   );
 
 
-  localStorage.removeItem(
-    "sales_records"
+  /* =========================
+     ログイン状態監視
+  ========================== */
+
+  onAuthStateChanged(
+    auth,
+    async (user) => {
+
+      if (user) {
+
+        console.log(
+          "ログイン中:",
+          user.uid
+        );
+
+
+        authScreen.style.display =
+          "none";
+
+        appScreen.style.display =
+          "block";
+
+        loginStatus.textContent =
+          "ログイン中";
+
+
+        await loadUserData(
+          user
+        );
+
+
+      } else {
+
+        authScreen.style.display =
+          "block";
+
+        appScreen.style.display =
+          "none";
+
+        loginStatus.textContent =
+          "未ログイン";
+
+      }
+
+    }
   );
 
 
-  location.reload();
+  /* =========================
+     ユーザー情報取得
+  ========================== */
 
-}
+  async function loadUserData(user) {
 
+    try {
 
-/* =========================================================
-   全体更新
-   ========================================================= */
-
-function renderAll() {
-
-  renderInput();
-
-  renderTeam();
-
-  renderPersonal();
-
-  renderHistory();
-
-  renderProducts();
-
-  renderMembers();
-
-}
+      const userRef =
+        doc(
+          db,
+          "users",
+          user.uid
+        );
 
 
-/* =========================================================
-   円表示
-   ========================================================= */
-
-function formatYen(
-  value
-) {
-
-  return Number(value)
-    .toLocaleString("ja-JP")
-    + "円";
-
-}
+      const userSnap =
+        await getDoc(userRef);
 
 
-/* =========================================================
-   HTMLエスケープ
-   ========================================================= */
+      if (userSnap.exists()) {
 
-function escapeHtml(
-  value
-) {
-
-  return String(value)
-
-    .replaceAll(
-      "&",
-      "&amp;"
-    )
-
-    .replaceAll(
-      "<",
-      "&lt;"
-    )
-
-    .replaceAll(
-      ">",
-      "&gt;"
-    )
-
-    .replaceAll(
-      '"',
-      "&quot;"
-    )
-
-    .replaceAll(
-      "'",
-      "&#039;"
-    );
-
-}
+        const data =
+          userSnap.data();
 
 
-function escapeAttribute(
-  value
-) {
+        userName.textContent =
+          data.name || "名前未設定";
 
-  return escapeHtml(value);
+        userEmail.textContent =
+          data.email || user.email;
 
-}
+
+        if (data.role === "leader") {
+
+          userRole.textContent =
+            "👑 リーダー";
+
+          setupWarning.style.display =
+            "none";
+
+        } else {
+
+          userRole.textContent =
+            "👤 メンバー";
+
+          setupWarning.style.display =
+            "block";
+
+        }
+
+
+        if (data.teamId) {
+
+          console.log(
+            "所属班:",
+            data.teamId
+          );
+
+        }
+
+
+      } else {
+
+        userName.textContent =
+          "ユーザー情報未登録";
+
+        userRole.textContent =
+          "👤 メンバー";
+
+        setupWarning.style.display =
+          "block";
+
+      }
+
+
+      databaseStatus.textContent =
+        "接続済み";
+
+
+    } catch (error) {
+
+      console.error(error);
+
+      databaseStatus.textContent =
+        "接続エラー";
+
+    }
+
+  }
 
 </script>
 
