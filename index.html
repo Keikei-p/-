@@ -896,6 +896,78 @@ header {
 }
 
 /* =====================================================
+   ようこそ / クイック管理
+===================================================== */
+
+.quick-menu {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.quick-menu-button {
+  min-height: 66px;
+  padding: 10px 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--text);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.quick-menu-button:hover {
+  background: #f8fafc;
+  border-color: #bfdbfe;
+}
+
+.quick-menu-button[aria-pressed="true"] {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.quick-menu-icon {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 20px;
+}
+
+.quick-panel {
+  margin-top: 12px;
+}
+
+.quick-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.quick-panel-close {
+  border: 0;
+  border-radius: 8px;
+  padding: 7px 10px;
+  background: #f3f4f6;
+  color: var(--sub);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+@media (max-width: 700px) {
+  .quick-menu {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .quick-menu-button {
+    min-height: 62px;
+  }
+}
+
+/* =====================================================
    折りたたみ / アコーディオン
 ===================================================== */
 
@@ -1462,6 +1534,48 @@ header {
       班・メンバー・商材・実績を一元管理できます。
     </div>
 
+    <div class="quick-menu">
+
+      <button
+        id="quickCompanyButton"
+        class="quick-menu-button"
+        type="button"
+        aria-pressed="false">
+        <span class="quick-menu-icon">🏢</span>
+        会社
+      </button>
+
+      <button
+        id="quickInviteButton"
+        class="quick-menu-button"
+        type="button"
+        aria-pressed="false"
+        style="display:none;">
+        <span class="quick-menu-icon">✉️</span>
+        招待リンク
+      </button>
+
+      <button
+        id="quickOwnerButton"
+        class="quick-menu-button"
+        type="button"
+        aria-pressed="false"
+        style="display:none;">
+        <span class="quick-menu-icon">👑</span>
+        オーナー変更
+      </button>
+
+      <button
+        id="quickAccountButton"
+        class="quick-menu-button"
+        type="button"
+        aria-pressed="false">
+        <span class="quick-menu-icon">⚙️</span>
+        アカウント設定
+      </button>
+
+    </div>
+
   </div>
 
 
@@ -1471,16 +1585,38 @@ header {
 
   <div
     id="companyManagement"
-    class="management-card">
+    class="management-card quick-panel"
+    style="display:none;">
 
-    <div class="management-title">
-      🏢 会社
+    <div class="quick-panel-header">
+
+      <div
+        id="companyManagementTitle"
+        class="management-title">
+        🏢 会社
+      </div>
+
+      <button
+        id="closeCompanyManagementButton"
+        class="quick-panel-close"
+        type="button">
+        閉じる
+      </button>
+
     </div>
 
-    <div
-      id="companyNameDisplay"
-      style="margin-top:8px;font-size:20px;font-weight:800;">
-      -
+    <div id="companyInfoPanel">
+
+      <div style="font-size:12px;color:var(--sub);">
+        所属会社
+      </div>
+
+      <div
+        id="companyNameDisplay"
+        style="margin-top:8px;font-size:20px;font-weight:800;">
+        -
+      </div>
+
     </div>
 
     <div
@@ -1576,10 +1712,22 @@ header {
 
   <div
     id="accountSettings"
-    class="account-card">
+    class="account-card quick-panel"
+    style="display:none;">
 
-    <div class="account-title">
-      👤 アカウント設定
+    <div class="quick-panel-header">
+
+      <div class="account-title">
+        👤 アカウント設定
+      </div>
+
+      <button
+        id="closeAccountSettingsButton"
+        class="quick-panel-close"
+        type="button">
+        閉じる
+      </button>
+
     </div>
 
     <div class="account-description">
@@ -2552,6 +2700,30 @@ const companySetupMessage =
 const companySetupLogoutButton =
   document.getElementById("companySetupLogoutButton");
 
+const quickCompanyButton =
+  document.getElementById("quickCompanyButton");
+
+const quickInviteButton =
+  document.getElementById("quickInviteButton");
+
+const quickOwnerButton =
+  document.getElementById("quickOwnerButton");
+
+const quickAccountButton =
+  document.getElementById("quickAccountButton");
+
+const companyManagement =
+  document.getElementById("companyManagement");
+
+const companyManagementTitle =
+  document.getElementById("companyManagementTitle");
+
+const closeCompanyManagementButton =
+  document.getElementById("closeCompanyManagementButton");
+
+const companyInfoPanel =
+  document.getElementById("companyInfoPanel");
+
 const companyNameDisplay =
   document.getElementById("companyNameDisplay");
 
@@ -2652,6 +2824,16 @@ const setupWarning =
 /* =====================================================
    アカウント設定
 ===================================================== */
+
+const accountSettings =
+  document.getElementById(
+    "accountSettings"
+  );
+
+const closeAccountSettingsButton =
+  document.getElementById(
+    "closeAccountSettingsButton"
+  );
 
 const accountNameInput =
   document.getElementById(
@@ -3088,6 +3270,186 @@ let unsubscribeUsers = null;
 let unsubscribeTeams = null;
 let unsubscribeProducts = null;
 let unsubscribeRecords = null;
+
+
+/* =====================================================
+   ようこそ / クイック管理
+===================================================== */
+
+const quickMenuButtons = [
+  quickCompanyButton,
+  quickInviteButton,
+  quickOwnerButton,
+  quickAccountButton
+];
+
+
+function resetQuickMenuButtons() {
+
+  quickMenuButtons.forEach(
+    button =>
+      button.setAttribute(
+        "aria-pressed",
+        "false"
+      )
+  );
+
+}
+
+
+function closeQuickPanels() {
+
+  companyManagement.style.display =
+    "none";
+
+  accountSettings.style.display =
+    "none";
+
+  resetQuickMenuButtons();
+
+}
+
+
+function openCompanyQuickPanel(
+  mode
+) {
+
+  const buttonMap = {
+    company:
+      quickCompanyButton,
+    invite:
+      quickInviteButton,
+    owner:
+      quickOwnerButton
+  };
+
+
+  const selectedButton =
+    buttonMap[mode];
+
+
+  if (
+    companyManagement.style.display !==
+      "none" &&
+    selectedButton?.getAttribute(
+      "aria-pressed"
+    ) ===
+      "true"
+  ) {
+
+    closeQuickPanels();
+
+    return;
+
+  }
+
+
+  closeQuickPanels();
+
+
+  companyManagement.style.display =
+    "block";
+
+  selectedButton?.setAttribute(
+    "aria-pressed",
+    "true"
+  );
+
+
+  companyInfoPanel.hidden =
+    mode !==
+    "company";
+
+  companyInviteControls.hidden =
+    mode !==
+    "invite";
+
+  ownerTransferPanel.hidden =
+    mode !==
+    "owner";
+
+
+  if (
+    mode ===
+    "invite"
+  ) {
+
+    companyManagementTitle.textContent =
+      "✉️ 招待リンク";
+
+  } else if (
+    mode ===
+    "owner"
+  ) {
+
+    companyManagementTitle.textContent =
+      "👑 オーナー変更";
+
+  } else {
+
+    companyManagementTitle.textContent =
+      "🏢 会社";
+
+  }
+
+}
+
+
+quickCompanyButton.onclick =
+  () =>
+    openCompanyQuickPanel(
+      "company"
+    );
+
+
+quickInviteButton.onclick =
+  () =>
+    openCompanyQuickPanel(
+      "invite"
+    );
+
+
+quickOwnerButton.onclick =
+  () =>
+    openCompanyQuickPanel(
+      "owner"
+    );
+
+
+quickAccountButton.onclick =
+  () => {
+
+    if (
+      accountSettings.style.display !==
+      "none"
+    ) {
+
+      closeQuickPanels();
+
+      return;
+
+    }
+
+
+    closeQuickPanels();
+
+    accountSettings.style.display =
+      "block";
+
+    quickAccountButton.setAttribute(
+      "aria-pressed",
+      "true"
+    );
+
+  };
+
+
+closeCompanyManagementButton.onclick =
+  closeQuickPanels;
+
+
+closeAccountSettingsButton.onclick =
+  closeQuickPanels;
 
 
 /* =====================================================
@@ -5176,18 +5538,62 @@ function updateCurrentUserUI() {
   }
 
 
-  companyInviteControls.style.display =
+  const canInvite =
     currentUserData.role ===
-    "leader"
+    "leader";
+
+  const isOwner =
+    currentUserData.companyRole ===
+    "owner";
+
+
+  companyInviteControls.style.display =
+    canInvite
+      ? "block"
+      : "none";
+
+  quickInviteButton.style.display =
+    canInvite
       ? "block"
       : "none";
 
 
   ownerTransferPanel.style.display =
-    currentUserData.companyRole ===
-    "owner"
+    isOwner
       ? "block"
       : "none";
+
+  quickOwnerButton.style.display =
+    isOwner
+      ? "block"
+      : "none";
+
+
+  if (
+    !canInvite &&
+    quickInviteButton.getAttribute(
+      "aria-pressed"
+    ) ===
+      "true"
+  ) {
+
+    closeQuickPanels();
+
+  }
+
+
+  if (
+    !isOwner &&
+    quickOwnerButton.getAttribute(
+      "aria-pressed"
+    ) ===
+      "true"
+  ) {
+
+    closeQuickPanels();
+
+  }
+
 
   renderOwnerTransferOptions();
 
