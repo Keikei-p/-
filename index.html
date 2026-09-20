@@ -2300,8 +2300,8 @@ header {
     </div>
 
     <div class="account-description">
-      自分の名前を変更できます。
-      変更した名前は、メンバー一覧・実績入力・ランキング・登録履歴などに反映されます。
+      自分の名前と所属班を変更できます。
+      班を変更した場合は、変更した日から新しい班の実績として集計されます。
     </div>
 
     <div class="form-group">
@@ -2324,6 +2324,34 @@ header {
       class="account-save-button">
       名前を保存
     </button>
+
+    <div
+      style="margin-top:22px;padding-top:18px;border-top:1px solid var(--border);">
+
+      <div style="font-size:13px;font-weight:800;">
+        所属班
+      </div>
+
+      <div
+        id="accountCurrentTeamName"
+        style="margin-top:7px;font-size:15px;font-weight:800;">
+        所属なし
+      </div>
+
+      <div
+        style="margin-top:6px;color:var(--sub);font-size:12px;line-height:1.6;">
+        自分で所属班を変更できます。変更前の実績は元の班に残ります。
+      </div>
+
+      <button
+        id="changeOwnTeamButton"
+        type="button"
+        class="account-save-button"
+        style="margin-top:12px;">
+        自分の班を変更
+      </button>
+
+    </div>
 
     <div
       style="margin-top:28px;padding-top:22px;border-top:1px solid var(--border);">
@@ -3458,6 +3486,16 @@ const accountNameInput =
 const saveAccountNameButton =
   document.getElementById(
     "saveAccountNameButton"
+  );
+
+const accountCurrentTeamName =
+  document.getElementById(
+    "accountCurrentTeamName"
+  );
+
+const changeOwnTeamButton =
+  document.getElementById(
+    "changeOwnTeamButton"
   );
 
 const deleteAccountDescription =
@@ -6438,6 +6476,11 @@ function updateCurrentUserUI() {
   accountNameInput.value =
     name;
 
+  accountCurrentTeamName.textContent =
+    getTeamName(
+      currentUserData.teamId
+    );
+
 
   if (
     currentUserData.companyRole ===
@@ -7437,6 +7480,18 @@ async function loadTeams() {
 
 
 function renderTeams() {
+
+  if (
+    currentUserData
+  ) {
+
+    accountCurrentTeamName.textContent =
+      getTeamName(
+        currentUserData.teamId
+      );
+
+  }
+
 
   teamManagementCount.textContent =
     `${teams.length}班`;
@@ -8816,6 +8871,32 @@ ownerTransferButton.onclick =
   };
 
 
+changeOwnTeamButton.onclick =
+  () => {
+
+    if (
+      !currentUser ||
+      !currentUserData
+    ) {
+
+      showError(
+        "ログイン状態を確認できません。"
+      );
+
+      return;
+
+    }
+
+
+    openMemberTeamModal({
+      ...currentUserData,
+      id:
+        currentUser.uid
+    });
+
+  };
+
+
 function getTeamName(
   teamId
 ) {
@@ -9481,7 +9562,8 @@ function openMemberTeamModal(
 ) {
 
   editingMemberId =
-    member.id;
+    member.id ||
+    member.uid;
 
 
   memberTeamSelect.innerHTML = `
@@ -9563,8 +9645,22 @@ saveMemberTeamModal.onclick =
       const member =
         members.find(
           item =>
-            item.id ===
+            (
+              item.id ||
+              item.uid
+            ) ===
             editingMemberId
+        ) ||
+        (
+          currentUser?.uid ===
+            editingMemberId &&
+          currentUserData
+            ? {
+                ...currentUserData,
+                id:
+                  currentUser.uid
+              }
+            : null
         );
 
 
