@@ -1914,7 +1914,7 @@ header {
       style="display:none;margin-top:22px;padding-top:20px;border-top:1px solid var(--border);">
 
       <div style="font-weight:800;">
-        オーナー移譲
+        オーナー変更（移譲）
       </div>
 
       <div style="margin-top:7px;font-size:12px;color:var(--sub);line-height:1.7;">
@@ -2152,7 +2152,7 @@ header {
         <div>
 
           <div class="record-total-label">
-            合計獲得
+            合計件数
           </div>
 
           <div
@@ -2193,6 +2193,11 @@ header {
       入力をクリア
     </button>
 
+    <div
+      id="recordSaveStatus"
+      style="display:none;margin-top:14px;padding:12px;border-radius:10px;background:#f0fdf4;color:#15803d;font-size:12px;font-weight:700;line-height:1.6;">
+    </div>
+
   </div>
 
 
@@ -2220,7 +2225,7 @@ header {
       <div class="summary-card">
 
         <div class="summary-label">
-          月間獲得
+          月間件数
         </div>
 
         <div
@@ -2758,7 +2763,9 @@ if (
             "./service-worker.js",
             {
               scope:
-                "./"
+                "./",
+              updateViaCache:
+                "none"
             }
           );
 
@@ -3102,6 +3109,11 @@ const saveRecordButton =
 const clearRecordButton =
   document.getElementById(
     "clearRecordButton"
+  );
+
+const recordSaveStatus =
+  document.getElementById(
+    "recordSaveStatus"
   );
 
 
@@ -5836,7 +5848,7 @@ function updateCurrentUserUI() {
       true;
 
     deleteAccountDescription.textContent =
-      "会社オーナーのアカウントは、会社が管理不能になるためこの画面から削除できません。オーナー移譲機能を使ってから削除します。";
+      "会社オーナーのアカウントは、会社が管理不能になるためこの画面から削除できません。先に「オーナー変更」から別のメンバーへ移譲してください。";
 
   } else {
 
@@ -9269,6 +9281,9 @@ recordDate.addEventListener(
   "change",
   async () => {
 
+    recordSaveStatus.style.display =
+      "none";
+
     await loadExistingRecordIntoForm();
 
   }
@@ -9278,6 +9293,9 @@ recordDate.addEventListener(
 recordMember.addEventListener(
   "change",
   async () => {
+
+    recordSaveStatus.style.display =
+      "none";
 
     await loadExistingRecordIntoForm();
 
@@ -9393,6 +9411,9 @@ clearRecordButton.onclick =
       "実績を一括登録";
 
 
+    recordSaveStatus.style.display =
+      "none";
+
     clearMessages();
 
   };
@@ -9404,6 +9425,12 @@ clearRecordButton.onclick =
 
 saveRecordButton.onclick =
   async () => {
+
+    recordSaveStatus.style.display =
+      "none";
+
+    clearMessages();
+
 
     const date =
       recordDate.value;
@@ -9445,7 +9472,12 @@ saveRecordButton.onclick =
           item.id ===
           memberId
       ) ||
-      currentUserData;
+      (
+        memberId ===
+          currentUserData?.uid
+          ? currentUserData
+          : null
+      );
 
 
     if (!member) {
@@ -9590,15 +9622,42 @@ saveRecordButton.onclick =
       );
 
 
+      /*
+        保存完了後に同じドキュメントを読み直し、
+        Firestoreへ実際に反映されたことを確認する。
+      */
+
+      const confirmedSnap =
+        await getDoc(
+          recordRef
+        );
+
+
+      if (
+        !confirmedSnap.exists()
+      ) {
+
+        throw new Error(
+          "保存確認に失敗しました。もう一度お試しください。"
+        );
+
+      }
+
+
       editingRecordId =
         recordRef.id;
 
 
+      const confirmedRecord = {
+        id:
+          recordRef.id,
+        ...confirmedSnap.data()
+      };
+
+
       /*
-        Firestore のリアルタイム監視を待つ前に
-        画面側へ即時反映する。
-        これで保存直後に月間ダッシュボードが
-        古い表示のまま残らない。
+        保存確認済みデータで画面を即時更新する。
+        onSnapshot の到着を待たなくても反映される。
       */
 
       const existingIndex =
@@ -9609,20 +9668,6 @@ saveRecordButton.onclick =
         );
 
 
-      const localRecord = {
-        ...(
-          existingIndex >= 0
-            ? records[
-                existingIndex
-              ]
-            : {}
-        ),
-        id:
-          recordRef.id,
-        ...data
-      };
-
-
       if (
         existingIndex >= 0
       ) {
@@ -9630,12 +9675,12 @@ saveRecordButton.onclick =
         records[
           existingIndex
         ] =
-          localRecord;
+          confirmedRecord;
 
       } else {
 
         records.push(
-          localRecord
+          confirmedRecord
         );
 
       }
@@ -9661,24 +9706,61 @@ saveRecordButton.onclick =
           7
         );
 
-      renderDashboard();
+
+      let dashboardRefreshError =
+        null;
 
 
-      showSuccess(
-        `${date}の実績を保存しました。ダッシュボードへ反映しました。`
-      );
+      try {
+
+        renderDashboard();
+
+      } catch (error) {
+
+        dashboardRefreshError =
+          error;
+
+        console.error(
+          "保存後の画面更新エラー:",
+          error
+        );
+
+      }
 
 
-      /*
-        最後に Firestore の確定データで同期する。
-      */
+      const memberLabel =
+        member.name ||
+        "名前未設定";
 
-      await loadRecords();
+
+      recordSaveStatus.textContent =
+        `保存済み：${date} / ${memberLabel} / ${totals.count}件 / ${formatYen(
+          totals.revenue
+        )}`;
+
+      recordSaveStatus.style.display =
+        "block";
+
+
+      if (
+        dashboardRefreshError
+      ) {
+
+        showSuccess(
+          "実績は保存できました。画面表示の更新に失敗したため、アプリを一度閉じて開き直してください。"
+        );
+
+      } else {
+
+        showSuccess(
+          `${date}の実績を保存し、ダッシュボードへ反映しました。`
+        );
+
+      }
 
 
       saveRecordButton.textContent =
         "実績を更新";
-
 
     } catch (error) {
 
@@ -9910,8 +9992,33 @@ function getRecordResults(
       "object"
   ) {
 
-    return Object.values(
+    if (
+      Array.isArray(
+        record.results
+      )
+    ) {
+
+      return record.results;
+
+    }
+
+
+    /*
+      results は productId をキーにした map。
+      Object.values だけだと productId が失われるため、
+      分析・商材集計で同名商材が混ざる可能性がある。
+    */
+
+    return Object.entries(
       record.results
+    ).map(
+      ([
+        productId,
+        result
+      ]) => ({
+        productId,
+        ...result
+      })
     );
 
   }
