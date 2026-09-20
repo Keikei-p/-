@@ -9649,11 +9649,12 @@ saveRecordButton.onclick =
         );
 
 
-      const existingSnap =
-        await getDoc(
-          recordRef
-        );
-
+      /*
+        新規実績ではまだドキュメントが存在しないため、
+        保存前の getDoc() は Firestore Rules の read 判定で
+        permission-denied になる。
+        既存判定は、すでに読み込み済みの records を使う。
+      */
 
       const data = {
 
@@ -9693,7 +9694,7 @@ saveRecordButton.onclick =
 
 
       if (
-        !existingSnap.exists()
+        !existingDailyRecord
       ) {
 
         data.createdAt =
