@@ -46,6 +46,11 @@ service cloud.firestore {
         && name.size() <= maxLength;
     }
 
+    function activeOrLegacy(data) {
+      return !data.keys().hasAny(['active'])
+        || data.active == true;
+    }
+
     function currentCompanyId() {
       return get(userPath(request.auth.uid)).data.companyId;
     }
@@ -54,9 +59,9 @@ service cloud.firestore {
       return verifiedUser()
         && companyId != null
         && exists(memberPath(companyId, request.auth.uid))
-        && get(memberPath(companyId, request.auth.uid)).data.active == true
+        && activeOrLegacy(get(memberPath(companyId, request.auth.uid)).data)
         && get(userPath(request.auth.uid)).data.companyId == companyId
-        && get(userPath(request.auth.uid)).data.active == true;
+        && activeOrLegacy(get(userPath(request.auth.uid)).data);
     }
 
     function isCompanyLeader(companyId) {
@@ -71,7 +76,7 @@ service cloud.firestore {
         && get(companyPath(companyId)).data.ownerUid == request.auth.uid
         && exists(userPath(request.auth.uid))
         && get(userPath(request.auth.uid)).data.companyId == companyId
-        && get(userPath(request.auth.uid)).data.active == true;
+        && activeOrLegacy(get(userPath(request.auth.uid)).data);
     }
 
     function isCompanyManager(companyId) {
@@ -529,7 +534,7 @@ service cloud.firestore {
         && (
           (
             exists(memberPath(request.resource.data.companyId, request.resource.data.uid))
-            && get(memberPath(request.resource.data.companyId, request.resource.data.uid)).data.active == true
+            && activeOrLegacy(get(memberPath(request.resource.data.companyId, request.resource.data.uid)).data)
           )
           || (
             request.resource.data.uid == request.auth.uid
