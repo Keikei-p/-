@@ -1356,104 +1356,72 @@ header {
   padding-bottom: 5px;
 }
 
-.revenue-chart-canvas {
-  min-width: 100%;
-  display: flex;
-  align-items: stretch;
-  gap: 8px;
+.revenue-line-wrap {
+  min-width: 860px;
 }
 
-.revenue-chart-axis {
-  width: 48px;
-  flex: 0 0 48px;
-  height: 246px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: 4px 0 28px;
-  color: var(--sub);
-  font-size: 9px;
-  text-align: right;
+.revenue-line-wrap.annual {
+  min-width: 680px;
 }
 
-.revenue-chart-bars {
-  min-width: max-content;
-  height: 246px;
-  display: flex;
-  align-items: flex-end;
-  gap: 7px;
-  padding: 4px 8px 0;
-  border-left: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
-  background:
-    linear-gradient(to top, rgba(148,163,184,.13) 1px, transparent 1px);
-  background-size: 100% 25%;
-}
-
-.revenue-chart-column {
-  width: 34px;
-  height: 238px;
-  flex: 0 0 34px;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  align-items: center;
-  border: 0;
-  padding: 0;
-  background: transparent;
-  color: inherit;
-}
-
-.revenue-chart-column.annual {
-  width: 54px;
-  flex-basis: 54px;
-}
-
-.revenue-chart-stack-wrap {
-  width: 24px;
-  height: 202px;
-  display: flex;
-  align-items: flex-end;
-}
-
-.revenue-chart-column.annual .revenue-chart-stack-wrap {
-  width: 34px;
-}
-
-.revenue-chart-stack {
+.revenue-line-svg {
   width: 100%;
-  min-height: 0;
-  display: flex;
-  flex-direction: column-reverse;
-  overflow: hidden;
-  border-radius: 6px 6px 2px 2px;
-  box-shadow: 0 1px 3px rgba(15,23,42,.12);
+  height: 300px;
+  display: block;
+  overflow: visible;
 }
 
-.revenue-chart-segment {
-  width: 100%;
-  min-height: 2px;
+.revenue-line-grid {
+  stroke: #e2e8f0;
+  stroke-width: 1;
 }
 
-.revenue-chart-label {
-  width: 100%;
-  margin-top: 7px;
-  color: var(--sub);
-  font-size: 9px;
-  line-height: 1;
-  text-align: center;
-  white-space: nowrap;
+.revenue-line-axis-label {
+  fill: #64748b;
+  font-size: 10px;
+  font-weight: 600;
 }
 
-.revenue-chart-column[aria-pressed="true"] .revenue-chart-stack-wrap {
-  outline: 2px solid #60a5fa;
-  outline-offset: 3px;
-  border-radius: 5px;
+.revenue-line-x-label {
+  fill: #64748b;
+  font-size: 10px;
+  font-weight: 600;
+  text-anchor: middle;
 }
 
-.revenue-chart-column[aria-pressed="true"] .revenue-chart-label {
-  color: #1d4ed8;
-  font-weight: 800;
+.revenue-line-path {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.revenue-line-point {
+  fill: #fff;
+  stroke-width: 2;
+}
+
+.revenue-line-point.selected {
+  stroke-width: 3;
+}
+
+.revenue-line-selector {
+  fill: transparent;
+  cursor: pointer;
+}
+
+.revenue-line-selector:hover {
+  fill: rgba(37,99,235,.04);
+}
+
+.revenue-line-selected-guide {
+  stroke: #60a5fa;
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+
+.revenue-line-selected-bg {
+  fill: rgba(219,234,254,.45);
 }
 
 .revenue-chart-detail {
@@ -2677,7 +2645,7 @@ header {
         aria-controls="revenueChartContent">
         <span class="dashboard-app-icon">📊</span>
         <span class="dashboard-app-title">収益グラフ</span>
-        <span class="dashboard-app-meta">月間・年間</span>
+        <span class="dashboard-app-meta">班別の推移</span>
       </button>
 
       <button
@@ -13130,8 +13098,8 @@ function renderRevenueChart() {
       <div class="revenue-chart-period">
         ${revenueChartMode ===
           "monthly"
-          ? "日別"
-          : "月別"}
+          ? "日別推移"
+          : "月別推移"}
       </div>
     </div>
   `;
@@ -13166,259 +13134,227 @@ function renderRevenueChart() {
         `;
 
 
-  const maxTotal =
+  const maxRevenue =
     Math.max(
       0,
-      ...chartData.buckets.map(
+      ...chartData.buckets.flatMap(
         bucket =>
-          bucket.total
+          chartData.teams.map(
+            team =>
+              bucket.teams[
+                team.key
+              ] ||
+              0
+          )
       )
     );
 
 
   const scaleMax =
-    maxTotal > 0
-      ? maxTotal
+    maxRevenue > 0
+      ? maxRevenue
       : 1;
 
-
   const axisMax =
-    maxTotal > 0
-      ? maxTotal
+    maxRevenue > 0
+      ? maxRevenue
       : 0;
 
-  const axisMid =
-    axisMax /
-    2;
+
+  const chartWidth =
+    revenueChartMode ===
+      "monthly"
+      ? 860
+      : 680;
+
+  const chartHeight =
+    300;
+
+  const margin = {
+    top: 18,
+    right: 20,
+    bottom: 42,
+    left: 58
+  };
+
+  const plotWidth =
+    chartWidth -
+    margin.left -
+    margin.right;
+
+  const plotHeight =
+    chartHeight -
+    margin.top -
+    margin.bottom;
 
 
-  const canvas =
+  const svgNs =
+    "http://www.w3.org/2000/svg";
+
+
+  const wrap =
     document.createElement(
       "div"
     );
 
-  canvas.className =
-    "revenue-chart-canvas";
+  wrap.className =
+    revenueChartMode ===
+      "annual"
+      ? "revenue-line-wrap annual"
+      : "revenue-line-wrap";
 
 
-  const axis =
-    document.createElement(
-      "div"
+  const svg =
+    document.createElementNS(
+      svgNs,
+      "svg"
     );
 
-  axis.className =
-    "revenue-chart-axis";
+  svg.classList.add(
+    "revenue-line-svg"
+  );
 
-  axis.innerHTML = `
-    <span>${formatCompactYen(
-      axisMax
-    )}</span>
-    <span>${formatCompactYen(
-      axisMid
-    )}</span>
-    <span>¥0</span>
-  `;
+  svg.setAttribute(
+    "viewBox",
+    `0 0 ${chartWidth} ${chartHeight}`
+  );
+
+  svg.setAttribute(
+    "role",
+    "img"
+  );
+
+  svg.setAttribute(
+    "aria-label",
+    `${chartData.periodLabel}の班別収益推移`
+  );
 
 
-  const bars =
-    document.createElement(
-      "div"
+  const bucketCount =
+    Math.max(
+      chartData.buckets.length,
+      1
     );
 
-  bars.className =
-    "revenue-chart-bars";
-
-
-  chartData.buckets.forEach(
-    bucket => {
-
-      const column =
-        document.createElement(
-          "button"
-        );
-
-      column.type =
-        "button";
-
-      column.className =
-        revenueChartMode ===
-          "annual"
-          ? "revenue-chart-column annual"
-          : "revenue-chart-column";
-
-      column.setAttribute(
-        "aria-pressed",
-        bucket.key ===
-          revenueChartSelectedKey
-          ? "true"
-          : "false"
-      );
-
-      column.title =
-        `${bucket.label} ${formatYen(
-          bucket.total
-        )}`;
-
-
-      const stackWrap =
-        document.createElement(
-          "div"
-        );
-
-      stackWrap.className =
-        "revenue-chart-stack-wrap";
-
-
-      const stack =
-        document.createElement(
-          "div"
-        );
-
-      stack.className =
-        "revenue-chart-stack";
-
-      stack.style.height =
-        bucket.total > 0
-          ? `${Math.max(
-              3,
-              bucket.total /
-                scaleMax *
-                100
-            )}%`
-          : "0";
-
-
-      chartData.teams.forEach(
-        team => {
-
-          const revenue =
-            bucket.teams[
-              team.key
-            ] ||
-            0;
-
-
-          if (
-            revenue <=
-            0
-          ) {
-
-            return;
-
-          }
-
-
-          const segment =
-            document.createElement(
-              "div"
-            );
-
-          segment.className =
-            "revenue-chart-segment";
-
-          segment.style.background =
-            team.color;
-
-          segment.style.flexGrow =
-            String(
-              revenue
-            );
-
-          segment.title =
-            `${team.name}: ${formatYen(
-              revenue
-            )}`;
-
-          stack.appendChild(
-            segment
+  const xForIndex =
+    index =>
+      chartData.buckets.length <=
+        1
+        ? margin.left +
+          plotWidth /
+          2
+        : margin.left +
+          plotWidth *
+          index /
+          (
+            chartData.buckets.length -
+            1
           );
 
-        }
+  const yForValue =
+    value =>
+      margin.top +
+      plotHeight *
+      (
+        1 -
+        Number(
+          value || 0
+        ) /
+        scaleMax
       );
 
 
-      stackWrap.appendChild(
-        stack
+  [
+    1,
+    0.75,
+    0.5,
+    0.25,
+    0
+  ].forEach(
+    ratio => {
+
+      const y =
+        margin.top +
+        plotHeight *
+        (
+          1 -
+          ratio
+        );
+
+
+      const line =
+        document.createElementNS(
+          svgNs,
+          "line"
+        );
+
+      line.classList.add(
+        "revenue-line-grid"
+      );
+
+      line.setAttribute(
+        "x1",
+        margin.left
+      );
+
+      line.setAttribute(
+        "x2",
+        chartWidth -
+        margin.right
+      );
+
+      line.setAttribute(
+        "y1",
+        y
+      );
+
+      line.setAttribute(
+        "y2",
+        y
+      );
+
+      svg.appendChild(
+        line
       );
 
 
       const label =
-        document.createElement(
-          "div"
+        document.createElementNS(
+          svgNs,
+          "text"
         );
 
-      label.className =
-        "revenue-chart-label";
-
-      label.textContent =
-        bucket.shortLabel;
-
-
-      column.appendChild(
-        stackWrap
+      label.classList.add(
+        "revenue-line-axis-label"
       );
 
-      column.appendChild(
+      label.setAttribute(
+        "x",
+        margin.left -
+        8
+      );
+
+      label.setAttribute(
+        "y",
+        y + 3
+      );
+
+      label.setAttribute(
+        "text-anchor",
+        "end"
+      );
+
+      label.textContent =
+        formatCompactYen(
+          axisMax *
+          ratio
+        );
+
+      svg.appendChild(
         label
       );
 
-
-      column.addEventListener(
-        "click",
-        () => {
-
-          revenueChartSelectedKey =
-            bucket.key;
-
-          Array.from(
-            bars.children
-          ).forEach(
-            item =>
-              item.setAttribute(
-                "aria-pressed",
-                "false"
-              )
-          );
-
-          column.setAttribute(
-            "aria-pressed",
-            "true"
-          );
-
-          renderRevenueChartDetail(
-            chartData,
-            bucket
-          );
-
-        }
-      );
-
-
-      bars.appendChild(
-        column
-      );
-
     }
-  );
-
-
-  canvas.appendChild(
-    axis
-  );
-
-  canvas.appendChild(
-    bars
-  );
-
-
-  revenueChartArea.className =
-    "revenue-chart-scroll";
-
-  revenueChartArea.innerHTML =
-    "";
-
-  revenueChartArea.appendChild(
-    canvas
   );
 
 
@@ -13440,7 +13376,10 @@ function renderRevenueChart() {
             bucket.total >
             0
         ) ||
-      chartData.buckets[0] ||
+      chartData.buckets[
+        chartData.buckets.length -
+        1
+      ] ||
       null;
 
     revenueChartSelectedKey =
@@ -13450,28 +13389,421 @@ function renderRevenueChart() {
   }
 
 
-  if (
+  const selectedIndex =
     selectedBucket
+      ? chartData.buckets.findIndex(
+          bucket =>
+            bucket.key ===
+            selectedBucket.key
+        )
+      : -1;
+
+
+  if (
+    selectedIndex >=
+    0
   ) {
 
-    const index =
-      chartData.buckets.findIndex(
-        bucket =>
-          bucket.key ===
-          selectedBucket.key
+    const selectedX =
+      xForIndex(
+        selectedIndex
       );
 
-    const selectedColumn =
-      bars.children[
-        index
-      ];
+    const step =
+      chartData.buckets.length >
+        1
+        ? plotWidth /
+          (
+            chartData.buckets.length -
+            1
+          )
+        : plotWidth;
 
-    selectedColumn?.setAttribute(
-      "aria-pressed",
-      "true"
+    const bg =
+      document.createElementNS(
+        svgNs,
+        "rect"
+      );
+
+    bg.classList.add(
+      "revenue-line-selected-bg"
+    );
+
+    bg.setAttribute(
+      "x",
+      Math.max(
+        margin.left,
+        selectedX -
+        step /
+        2
+      )
+    );
+
+    bg.setAttribute(
+      "y",
+      margin.top
+    );
+
+    bg.setAttribute(
+      "width",
+      Math.min(
+        step,
+        chartWidth -
+          margin.right -
+          Math.max(
+            margin.left,
+            selectedX -
+            step /
+            2
+          )
+      )
+    );
+
+    bg.setAttribute(
+      "height",
+      plotHeight
+    );
+
+    svg.appendChild(
+      bg
+    );
+
+
+    const guide =
+      document.createElementNS(
+        svgNs,
+        "line"
+      );
+
+    guide.classList.add(
+      "revenue-line-selected-guide"
+    );
+
+    guide.setAttribute(
+      "x1",
+      selectedX
+    );
+
+    guide.setAttribute(
+      "x2",
+      selectedX
+    );
+
+    guide.setAttribute(
+      "y1",
+      margin.top
+    );
+
+    guide.setAttribute(
+      "y2",
+      margin.top +
+      plotHeight
+    );
+
+    svg.appendChild(
+      guide
     );
 
   }
+
+
+  chartData.teams.forEach(
+    team => {
+
+      const points =
+        chartData.buckets.map(
+          (
+            bucket,
+            index
+          ) => {
+
+            const revenue =
+              bucket.teams[
+                team.key
+              ] ||
+              0;
+
+            return {
+              x:
+                xForIndex(
+                  index
+                ),
+              y:
+                yForValue(
+                  revenue
+                ),
+              revenue,
+              bucket
+            };
+
+          }
+        );
+
+
+      const path =
+        document.createElementNS(
+          svgNs,
+          "polyline"
+        );
+
+      path.classList.add(
+        "revenue-line-path"
+      );
+
+      path.setAttribute(
+        "stroke",
+        team.color
+      );
+
+      path.setAttribute(
+        "points",
+        points
+          .map(
+            point =>
+              `${point.x},${point.y}`
+          )
+          .join(" ")
+      );
+
+      svg.appendChild(
+        path
+      );
+
+
+      points.forEach(
+        (
+          point,
+          index
+        ) => {
+
+          const circle =
+            document.createElementNS(
+              svgNs,
+              "circle"
+            );
+
+          circle.classList.add(
+            "revenue-line-point"
+          );
+
+          if (
+            index ===
+            selectedIndex
+          ) {
+
+            circle.classList.add(
+              "selected"
+            );
+
+          }
+
+          circle.setAttribute(
+            "cx",
+            point.x
+          );
+
+          circle.setAttribute(
+            "cy",
+            point.y
+          );
+
+          circle.setAttribute(
+            "r",
+            index ===
+              selectedIndex
+              ? 5
+              : 3
+          );
+
+          circle.setAttribute(
+            "stroke",
+            team.color
+          );
+
+
+          const title =
+            document.createElementNS(
+              svgNs,
+              "title"
+            );
+
+          title.textContent =
+            `${team.name} / ${point.bucket.label}: ${formatYen(
+              point.revenue
+            )}`;
+
+          circle.appendChild(
+            title
+          );
+
+          svg.appendChild(
+            circle
+          );
+
+        }
+      );
+
+    }
+  );
+
+
+  chartData.buckets.forEach(
+    (
+      bucket,
+      index
+    ) => {
+
+      const x =
+        xForIndex(
+          index
+        );
+
+
+      const shouldShowLabel =
+        revenueChartMode ===
+          "annual" ||
+        index ===
+          0 ||
+        index ===
+          chartData.buckets.length -
+          1 ||
+        (
+          (
+            index +
+            1
+          ) %
+          5 ===
+          0
+        );
+
+
+      if (
+        shouldShowLabel
+      ) {
+
+        const label =
+          document.createElementNS(
+            svgNs,
+            "text"
+          );
+
+        label.classList.add(
+          "revenue-line-x-label"
+        );
+
+        label.setAttribute(
+          "x",
+          x
+        );
+
+        label.setAttribute(
+          "y",
+          chartHeight -
+          14
+        );
+
+        label.textContent =
+          bucket.shortLabel;
+
+        svg.appendChild(
+          label
+        );
+
+      }
+
+
+      const step =
+        bucketCount >
+          1
+          ? plotWidth /
+            (
+              bucketCount -
+              1
+            )
+          : plotWidth;
+
+      const selector =
+        document.createElementNS(
+          svgNs,
+          "rect"
+        );
+
+      selector.classList.add(
+        "revenue-line-selector"
+      );
+
+      selector.setAttribute(
+        "x",
+        Math.max(
+          margin.left,
+          x -
+          step /
+          2
+        )
+      );
+
+      selector.setAttribute(
+        "y",
+        margin.top
+      );
+
+      selector.setAttribute(
+        "width",
+        Math.max(
+          18,
+          Math.min(
+            step,
+            chartWidth -
+              margin.right -
+              Math.max(
+                margin.left,
+                x -
+                step /
+                2
+              )
+          )
+        )
+      );
+
+      selector.setAttribute(
+        "height",
+        plotHeight
+      );
+
+      selector.addEventListener(
+        "click",
+        () => {
+
+          revenueChartSelectedKey =
+            bucket.key;
+
+          renderRevenueChart();
+
+        }
+      );
+
+      svg.appendChild(
+        selector
+      );
+
+    }
+  );
+
+
+  wrap.appendChild(
+    svg
+  );
+
+
+  revenueChartArea.className =
+    "revenue-chart-scroll";
+
+  revenueChartArea.innerHTML =
+    "";
+
+  revenueChartArea.appendChild(
+    wrap
+  );
 
 
   renderRevenueChartDetail(
@@ -13480,7 +13812,6 @@ function renderRevenueChart() {
   );
 
 }
-
 
 revenueChartMonthlyButton.addEventListener(
   "click",
