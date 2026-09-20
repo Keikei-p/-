@@ -59,7 +59,7 @@ service cloud.firestore {
         && get(userPath(request.auth.uid)).data.active == true;
     }
 
-    function isCompanyManager(companyId) {
+    function isCompanyLeader(companyId) {
       return isCompanyMember(companyId)
         && get(memberPath(companyId, request.auth.uid)).data.role == 'leader';
     }
