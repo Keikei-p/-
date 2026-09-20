@@ -68,6 +68,14 @@ service cloud.firestore {
         && name.size() <= maxLength;
     }
 
+    function validWorkLocation(data) {
+      return !data.keys().hasAny(['workLocation'])
+        || (
+          data.workLocation is string
+          && data.workLocation.size() <= 100
+        );
+    }
+
     function activeOrLegacy(data) {
       return !data.keys().hasAny(['active'])
         || data.active == true;
@@ -675,7 +683,7 @@ service cloud.firestore {
 
       allow create: if request.resource.data.keys().hasOnly([
           'companyId', 'uid', 'memberNameSnapshot', 'teamId',
-          'teamNameSnapshot', 'date', 'results', 'totalCount',
+          'teamNameSnapshot', 'date', 'workLocation', 'results', 'totalCount',
           'totalRevenue', 'createdAt', 'updatedAt'
         ])
         && request.resource.data.companyId != null
@@ -699,6 +707,7 @@ service cloud.firestore {
         && request.resource.data.teamNameSnapshot is string
         && request.resource.data.date is string
         && request.resource.data.date.size() == 10
+        && validWorkLocation(request.resource.data)
         && request.resource.data.results is map
         && request.resource.data.totalCount is number
         && request.resource.data.totalCount >= 0
@@ -727,6 +736,7 @@ service cloud.firestore {
         && request.resource.data.memberNameSnapshot is string
         && validTeamId(request.resource.data.teamId)
         && request.resource.data.teamNameSnapshot is string
+        && validWorkLocation(request.resource.data)
         && request.resource.data.results is map
         && request.resource.data.totalCount is number
         && request.resource.data.totalCount >= 0
@@ -736,7 +746,7 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly([
             'memberNameSnapshot', 'teamId', 'teamNameSnapshot',
-            'results', 'totalCount', 'totalRevenue', 'updatedAt'
+            'workLocation', 'results', 'totalCount', 'totalRevenue', 'updatedAt'
           ])
         && (
           isCompanyOwner(resource.data.companyId)
