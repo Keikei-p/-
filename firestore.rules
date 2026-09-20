@@ -309,6 +309,11 @@ service cloud.firestore {
           && validRole(request.resource.data.role)
           && validTeamId(request.resource.data.teamId)
           && validTeamHistory(request.resource.data)
+          && (
+            request.resource.data.role != 'leader'
+            || request.resource.data.companyRole == 'owner'
+            || request.resource.data.teamId != null
+          )
           && request.resource.data.updatedAt == request.time
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['name', 'role', 'teamId', 'teamHistory', 'active', 'updatedAt'])
@@ -417,6 +422,11 @@ service cloud.firestore {
           && validRole(request.resource.data.role)
           && validTeamId(request.resource.data.teamId)
           && validTeamHistory(request.resource.data)
+          && (
+            request.resource.data.role != 'leader'
+            || request.resource.data.companyRole == 'owner'
+            || request.resource.data.teamId != null
+          )
           && request.resource.data.updatedAt == request.time
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['name', 'role', 'teamId', 'teamHistory', 'active', 'updatedAt'])
