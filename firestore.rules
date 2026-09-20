@@ -279,6 +279,10 @@ service cloud.firestore {
           isSelf(userId)
           && resource.data.companyId != null
           && activeOrLegacy(resource.data)
+          && (
+            resource.data.role != 'leader'
+            || resource.data.companyRole == 'owner'
+          )
           && request.resource.data.companyId == resource.data.companyId
           && request.resource.data.uid == resource.data.uid
           && request.resource.data.email == resource.data.email
@@ -303,6 +307,11 @@ service cloud.firestore {
           && isCompanyManager(resource.data.companyId)
           && request.resource.data.companyId == resource.data.companyId
           && request.resource.data.uid == resource.data.uid
+          && (
+            isCompanyOwner(resource.data.companyId)
+            || userId != request.auth.uid
+            || request.resource.data.teamId == resource.data.teamId
+          )
           && request.resource.data.email == resource.data.email
           && request.resource.data.companyRole == resource.data.companyRole
           && validShortName(request.resource.data.name, 30)
@@ -417,6 +426,11 @@ service cloud.firestore {
           isCompanyManager(companyId)
           && request.resource.data.uid == resource.data.uid
           && request.resource.data.email == resource.data.email
+          && (
+            isCompanyOwner(companyId)
+            || memberId != request.auth.uid
+            || request.resource.data.teamId == resource.data.teamId
+          )
           && request.resource.data.companyRole == resource.data.companyRole
           && validShortName(request.resource.data.name, 30)
           && validRole(request.resource.data.role)
@@ -445,6 +459,10 @@ service cloud.firestore {
         || (
           memberId == request.auth.uid
           && isCompanyMember(companyId)
+          && (
+            resource.data.role != 'leader'
+            || resource.data.companyRole == 'owner'
+          )
           && validSelectableTeam(
             companyId,
             request.resource.data.teamId
