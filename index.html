@@ -3972,7 +3972,9 @@ recordDate.value =
 function showError(message) {
 
   const inApp =
-    appScreen.style.display !==
+    getComputedStyle(
+      appScreen
+    ).display !==
     "none";
 
 
@@ -4001,7 +4003,9 @@ function showError(message) {
 function showSuccess(message) {
 
   const inApp =
-    appScreen.style.display !==
+    getComputedStyle(
+      appScreen
+    ).display !==
     "none";
 
 
