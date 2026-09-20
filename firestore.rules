@@ -65,9 +65,13 @@ service cloud.firestore {
     }
 
     function isCompanyOwner(companyId) {
-      return isCompanyMember(companyId)
+      return verifiedUser()
+        && companyId != null
         && exists(companyPath(companyId))
-        && get(companyPath(companyId)).data.ownerUid == request.auth.uid;
+        && get(companyPath(companyId)).data.ownerUid == request.auth.uid
+        && exists(userPath(request.auth.uid))
+        && get(userPath(request.auth.uid)).data.companyId == companyId
+        && get(userPath(request.auth.uid)).data.active == true;
     }
 
     function isCompanyManager(companyId) {
@@ -102,7 +106,10 @@ service cloud.firestore {
     function sameCompany(companyId) {
       return companyId != null
         && currentCompanyId() == companyId
-        && isCompanyMember(companyId);
+        && (
+          isCompanyMember(companyId)
+          || isCompanyOwner(companyId)
+        );
     }
 
     function ownerBootstrap(companyId, memberId) {
@@ -279,7 +286,8 @@ service cloud.firestore {
     }
 
     match /companies/{companyId} {
-      allow get: if isCompanyMember(companyId);
+      allow get: if isCompanyMember(companyId)
+        || isCompanyOwner(companyId);
       allow list: if false;
 
       allow create: if verifiedUser()
@@ -514,9 +522,20 @@ service cloud.firestore {
         ])
         && request.resource.data.companyId != null
         && currentCompanyId() == request.resource.data.companyId
-        && isCompanyMember(request.resource.data.companyId)
-        && exists(memberPath(request.resource.data.companyId, request.resource.data.uid))
-        && get(memberPath(request.resource.data.companyId, request.resource.data.uid)).data.active == true
+        && (
+          isCompanyMember(request.resource.data.companyId)
+          || isCompanyOwner(request.resource.data.companyId)
+        )
+        && (
+          (
+            exists(memberPath(request.resource.data.companyId, request.resource.data.uid))
+            && get(memberPath(request.resource.data.companyId, request.resource.data.uid)).data.active == true
+          )
+          || (
+            request.resource.data.uid == request.auth.uid
+            && isCompanyOwner(request.resource.data.companyId)
+          )
+        )
         && request.resource.data.memberNameSnapshot is string
         && validTeamId(request.resource.data.teamId)
         && request.resource.data.teamNameSnapshot is string
