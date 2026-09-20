@@ -66,7 +66,8 @@ service cloud.firestore {
 
     function isCompanyOwner(companyId) {
       return isCompanyMember(companyId)
-        && get(memberPath(companyId, request.auth.uid)).data.companyRole == 'owner';
+        && exists(companyPath(companyId))
+        && get(companyPath(companyId)).data.ownerUid == request.auth.uid;
     }
 
     function isCompanyManager(companyId) {
@@ -541,7 +542,6 @@ service cloud.firestore {
         && sameCompany(resource.data.companyId)
         && request.resource.data.uid == resource.data.uid
         && request.resource.data.date == resource.data.date
-        && request.resource.data.createdAt == resource.data.createdAt
         && request.resource.data.memberNameSnapshot is string
         && validTeamId(request.resource.data.teamId)
         && request.resource.data.teamNameSnapshot is string
