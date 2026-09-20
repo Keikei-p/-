@@ -129,11 +129,11 @@ service cloud.firestore {
         && getAfter(userPath(targetUid)).data.companyId == companyId
         && getAfter(userPath(targetUid)).data.companyRole == 'owner'
         && getAfter(userPath(targetUid)).data.role == 'leader'
-        && getAfter(userPath(targetUid)).data.active == true
+        && activeOrLegacy(getAfter(userPath(targetUid)).data)
         && existsAfter(memberPath(companyId, targetUid))
         && getAfter(memberPath(companyId, targetUid)).data.companyRole == 'owner'
         && getAfter(memberPath(companyId, targetUid)).data.role == 'leader'
-        && getAfter(memberPath(companyId, targetUid)).data.active == true;
+        && activeOrLegacy(getAfter(memberPath(companyId, targetUid)).data);
     }
 
     function validOwnerTransfer(companyId) {
@@ -146,18 +146,23 @@ service cloud.firestore {
         && getAfter(userPath(newOwnerUid)).data.companyId == companyId
         && getAfter(userPath(newOwnerUid)).data.companyRole == 'owner'
         && getAfter(userPath(newOwnerUid)).data.role == 'leader'
-        && getAfter(userPath(newOwnerUid)).data.active == true
+        && activeOrLegacy(getAfter(userPath(newOwnerUid)).data)
         && existsAfter(memberPath(companyId, newOwnerUid))
         && getAfter(memberPath(companyId, newOwnerUid)).data.companyRole == 'owner'
         && getAfter(memberPath(companyId, newOwnerUid)).data.role == 'leader'
-        && getAfter(memberPath(companyId, newOwnerUid)).data.active == true
+        && activeOrLegacy(getAfter(memberPath(companyId, newOwnerUid)).data)
         && getAfter(userPath(request.auth.uid)).data.companyId == companyId
         && getAfter(userPath(request.auth.uid)).data.companyRole == 'member'
-        && getAfter(userPath(request.auth.uid)).data.role == 'leader'
-        && getAfter(userPath(request.auth.uid)).data.active == true
+        && validRole(getAfter(userPath(request.auth.uid)).data.role)
+        && (
+          getAfter(userPath(request.auth.uid)).data.role != 'leader'
+          || getAfter(userPath(request.auth.uid)).data.teamId != null
+        )
+        && activeOrLegacy(getAfter(userPath(request.auth.uid)).data)
         && getAfter(memberPath(companyId, request.auth.uid)).data.companyRole == 'member'
-        && getAfter(memberPath(companyId, request.auth.uid)).data.role == 'leader'
-        && getAfter(memberPath(companyId, request.auth.uid)).data.active == true;
+        && getAfter(memberPath(companyId, request.auth.uid)).data.role
+          == getAfter(userPath(request.auth.uid)).data.role
+        && activeOrLegacy(getAfter(memberPath(companyId, request.auth.uid)).data);
     }
 
     function sameCompany(companyId) {
@@ -376,7 +381,11 @@ service cloud.firestore {
               userId == request.auth.uid
               && resource.data.companyRole == 'owner'
               && request.resource.data.companyRole == 'member'
-              && request.resource.data.role == 'leader'
+              && validRole(request.resource.data.role)
+              && (
+                request.resource.data.role != 'leader'
+                || request.resource.data.teamId != null
+              )
             )
             || (
               userId == getAfter(companyPath(resource.data.companyId)).data.ownerUid
@@ -541,7 +550,11 @@ service cloud.firestore {
               memberId == request.auth.uid
               && resource.data.companyRole == 'owner'
               && request.resource.data.companyRole == 'member'
-              && request.resource.data.role == 'leader'
+              && validRole(request.resource.data.role)
+              && (
+                request.resource.data.role != 'leader'
+                || request.resource.data.teamId != null
+              )
             )
             || (
               memberId == getAfter(companyPath(companyId)).data.ownerUid
