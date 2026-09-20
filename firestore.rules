@@ -106,6 +106,19 @@ service cloud.firestore {
         || isCompanyOwner(companyId);
     }
 
+    function isLeaderOfTeam(companyId, teamId) {
+      return isCompanyLeader(companyId)
+        && teamId != null
+        && get(memberPath(companyId, request.auth.uid)).data.teamId == teamId;
+    }
+
+    function canManageTeamMemberRecord(companyId, targetUid, teamId) {
+      return isLeaderOfTeam(companyId, teamId)
+        && exists(memberPath(companyId, targetUid))
+        && activeOrLegacy(get(memberPath(companyId, targetUid)).data)
+        && get(memberPath(companyId, targetUid)).data.teamId == teamId;
+    }
+
     function validOwnerTransfer(companyId) {
       let newOwnerUid = getAfter(companyPath(companyId)).data.ownerUid;
 
@@ -618,10 +631,15 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time
         && request.resource.data.updatedAt == request.time
         && (
-          isCompanyManager(request.resource.data.companyId)
+          isCompanyOwner(request.resource.data.companyId)
           || (
             request.resource.data.uid == request.auth.uid
             && recordId == request.resource.data.companyId + '_' + request.auth.uid + '_' + request.resource.data.date
+          )
+          || canManageTeamMemberRecord(
+            request.resource.data.companyId,
+            request.resource.data.uid,
+            request.resource.data.teamId
           )
         );
 
@@ -645,15 +663,25 @@ service cloud.firestore {
             'results', 'totalCount', 'totalRevenue', 'updatedAt'
           ])
         && (
-          isCompanyManager(resource.data.companyId)
+          isCompanyOwner(resource.data.companyId)
           || resource.data.uid == request.auth.uid
+          || canManageTeamMemberRecord(
+            resource.data.companyId,
+            resource.data.uid,
+            resource.data.teamId
+          )
         );
 
       allow delete: if resource.data.companyId != null
         && sameCompany(resource.data.companyId)
         && (
-          isCompanyManager(resource.data.companyId)
+          isCompanyOwner(resource.data.companyId)
           || resource.data.uid == request.auth.uid
+          || canManageTeamMemberRecord(
+            resource.data.companyId,
+            resource.data.uid,
+            resource.data.teamId
+          )
         );
     }
 
