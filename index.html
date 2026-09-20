@@ -9502,34 +9502,30 @@ saveRecordButton.onclick =
           : "登録中...";
 
 
-      let recordRef;
+      /*
+        保存先は「現在選択中の日付・担当者」から毎回確定する。
+        editingRecordId が前の操作から残っていても、
+        別の日付・別メンバーの実績を誤更新しない。
+      */
+
+      const existingDailyRecord =
+        findDailyRecord(
+          memberId,
+          date
+        );
 
 
-      if (
-        editingRecordId
-      ) {
-
-        recordRef =
-          doc(
-            db,
-            "records",
-            editingRecordId
-          );
-
-      } else {
-
-        const recordId =
-          `${currentUserData.companyId}_${memberId}_${date}`;
+      const recordId =
+        existingDailyRecord?.id ||
+        `${currentUserData.companyId}_${memberId}_${date}`;
 
 
-        recordRef =
-          doc(
-            db,
-            "records",
-            recordId
-          );
-
-      }
+      const recordRef =
+        doc(
+          db,
+          "records",
+          recordId
+        );
 
 
       const existingSnap =
@@ -9598,10 +9594,84 @@ saveRecordButton.onclick =
         recordRef.id;
 
 
-      showSuccess(
-        `${date}の実績を保存しました。`
+      /*
+        Firestore のリアルタイム監視を待つ前に
+        画面側へ即時反映する。
+        これで保存直後に月間ダッシュボードが
+        古い表示のまま残らない。
+      */
+
+      const existingIndex =
+        records.findIndex(
+          record =>
+            record.id ===
+            recordRef.id
+        );
+
+
+      const localRecord = {
+        ...(
+          existingIndex >= 0
+            ? records[
+                existingIndex
+              ]
+            : {}
+        ),
+        id:
+          recordRef.id,
+        ...data
+      };
+
+
+      if (
+        existingIndex >= 0
+      ) {
+
+        records[
+          existingIndex
+        ] =
+          localRecord;
+
+      } else {
+
+        records.push(
+          localRecord
+        );
+
+      }
+
+
+      records.sort(
+        (a, b) =>
+          (
+            b.date ||
+            ""
+          ).localeCompare(
+            a.date ||
+            ""
+          )
       );
 
+
+      createMonthOptions();
+
+      dashboardMonth.value =
+        date.slice(
+          0,
+          7
+        );
+
+      renderDashboard();
+
+
+      showSuccess(
+        `${date}の実績を保存しました。ダッシュボードへ反映しました。`
+      );
+
+
+      /*
+        最後に Firestore の確定データで同期する。
+      */
 
       await loadRecords();
 
