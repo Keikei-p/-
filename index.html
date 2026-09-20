@@ -2735,6 +2735,11 @@ header {
       <select id="memberTeamSelect">
       </select>
 
+      <div
+        style="margin-top:8px;color:var(--sub);font-size:12px;line-height:1.6;">
+        保存した日から新しい班として集計します。変更日前の実績は元の班に残ります。
+      </div>
+
     </div>
 
     <div class="modal-buttons">
@@ -8776,6 +8781,215 @@ async function changeMemberRole(
 }
 
 
+function getTeamSnapshotById(
+  teamId
+) {
+
+  if (!teamId) {
+
+    return {
+      teamId: null,
+      teamName: "所属なし"
+    };
+
+  }
+
+
+  const team =
+    teams.find(
+      item =>
+        item.id ===
+        teamId
+    );
+
+
+  return {
+    teamId,
+    teamName:
+      team?.name ||
+      "所属なし"
+  };
+
+}
+
+
+function buildNextTeamHistory(
+  member,
+  nextTeamId,
+  effectiveDate
+) {
+
+  const history =
+    Array.isArray(
+      member.teamHistory
+    )
+      ? member.teamHistory
+          .filter(
+            item =>
+              item &&
+              typeof item.effectiveDate ===
+                "string"
+          )
+          .map(
+            item => ({
+              ...item
+            })
+          )
+      : [];
+
+
+  const currentSnapshot =
+    getTeamSnapshotById(
+      member.teamId ||
+      null
+    );
+
+  const nextSnapshot =
+    getTeamSnapshotById(
+      nextTeamId ||
+      null
+    );
+
+
+  const sameDayIndex =
+    history.findIndex(
+      item =>
+        item.effectiveDate ===
+        effectiveDate
+    );
+
+
+  if (
+    sameDayIndex >= 0
+  ) {
+
+    const previous =
+      history[
+        sameDayIndex
+      ];
+
+
+    history[
+      sameDayIndex
+    ] = {
+      effectiveDate,
+      fromTeamId:
+        previous.fromTeamId ??
+        currentSnapshot.teamId,
+      fromTeamName:
+        previous.fromTeamName ||
+        currentSnapshot.teamName,
+      toTeamId:
+        nextSnapshot.teamId,
+      toTeamName:
+        nextSnapshot.teamName
+    };
+
+  } else {
+
+    history.push({
+      effectiveDate,
+      fromTeamId:
+        currentSnapshot.teamId,
+      fromTeamName:
+        currentSnapshot.teamName,
+      toTeamId:
+        nextSnapshot.teamId,
+      toTeamName:
+        nextSnapshot.teamName
+    });
+
+  }
+
+
+  history.sort(
+    (a, b) =>
+      a.effectiveDate.localeCompare(
+        b.effectiveDate
+      )
+  );
+
+
+  return history;
+
+}
+
+
+function getMemberTeamForDate(
+  member,
+  date
+) {
+
+  const history =
+    Array.isArray(
+      member?.teamHistory
+    )
+      ? member.teamHistory
+          .filter(
+            item =>
+              item &&
+              typeof item.effectiveDate ===
+                "string"
+          )
+          .sort(
+            (a, b) =>
+              a.effectiveDate.localeCompare(
+                b.effectiveDate
+              )
+          )
+      : [];
+
+
+  if (
+    history.length === 0
+  ) {
+
+    return getTeamSnapshotById(
+      member?.teamId ||
+      null
+    );
+
+  }
+
+
+  let assignment = {
+    teamId:
+      history[0].fromTeamId ??
+      null,
+    teamName:
+      history[0].fromTeamName ||
+      "所属なし"
+  };
+
+
+  history.forEach(
+    change => {
+
+      if (
+        change.effectiveDate <=
+        date
+      ) {
+
+        assignment = {
+          teamId:
+            change.toTeamId ??
+            null,
+          teamName:
+            change.toTeamName ||
+            "所属なし"
+        };
+
+      }
+
+    }
+  );
+
+
+  return assignment;
+
+}
+
+
 function openMemberTeamModal(
   member
 ) {
@@ -8860,9 +9074,78 @@ saveMemberTeamModal.onclick =
 
     try {
 
+      const member =
+        members.find(
+          item =>
+            item.id ===
+            editingMemberId
+        );
+
+
+      if (!member) {
+
+        showError(
+          "対象メンバーを確認できません。"
+        );
+
+        return;
+
+      }
+
+
       const teamId =
         memberTeamSelect.value ||
         null;
+
+
+      if (
+        teamId ===
+        (member.teamId || null)
+      ) {
+
+        closeMemberTeamModal();
+
+        showSuccess(
+          "所属班は変更されていません。"
+        );
+
+        return;
+
+      }
+
+
+      const effectiveDate =
+        getTodayString();
+
+
+      const nextHistory =
+        buildNextTeamHistory(
+          member,
+          teamId,
+          effectiveDate
+        );
+
+
+      const nextTeam =
+        getTeamSnapshotById(
+          teamId
+        );
+
+
+      /*
+        班変更日以降の既存実績も新しい班へ付け替える。
+        変更日前の実績は一切触らない。
+      */
+
+      const recordsToMove =
+        records.filter(
+          record =>
+            record.uid ===
+              editingMemberId &&
+            record.date &&
+            record.date >=
+              effectiveDate
+        );
 
 
       const batch =
@@ -8880,6 +9163,9 @@ saveMemberTeamModal.onclick =
         {
 
           teamId,
+
+          teamHistory:
+            nextHistory,
 
           updatedAt:
             serverTimestamp()
@@ -8900,8 +9186,38 @@ saveMemberTeamModal.onclick =
 
           teamId,
 
+          teamHistory:
+            nextHistory,
+
           updatedAt:
             serverTimestamp()
+
+        }
+      );
+
+
+      recordsToMove.forEach(
+        record => {
+
+          batch.update(
+            doc(
+              db,
+              "records",
+              record.id
+            ),
+            {
+
+              teamId:
+                nextTeam.teamId,
+
+              teamNameSnapshot:
+                nextTeam.teamName,
+
+              updatedAt:
+                serverTimestamp()
+
+            }
+          );
 
         }
       );
@@ -8916,8 +9232,10 @@ saveMemberTeamModal.onclick =
 
       await loadTeams();
 
+      await loadRecords();
+
       showSuccess(
-        "所属班を変更しました。"
+        `${effectiveDate}から${nextTeam.teamName}へ変更しました。変更日前の実績は元の班に残ります。`
       );
 
     } catch (error) {
@@ -9603,11 +9921,10 @@ saveRecordButton.onclick =
     }
 
 
-    const team =
-      teams.find(
-        item =>
-          item.id ===
-          member.teamId
+    const assignedTeam =
+      getMemberTeamForDate(
+        member,
+        date
       );
 
 
@@ -9669,13 +9986,22 @@ saveRecordButton.onclick =
           "名前未設定",
 
         teamId:
-          member.teamId ||
-          null,
+          existingDailyRecord
+            ? (
+                existingDailyRecord.teamId ??
+                null
+              )
+            : assignedTeam.teamId,
 
         teamNameSnapshot:
-          team
-            ? team.name
-            : "所属なし",
+          existingDailyRecord
+            ? (
+                existingDailyRecord.teamNameSnapshot ||
+                getCurrentTeamName(
+                  existingDailyRecord
+                )
+              )
+            : assignedTeam.teamName,
 
         date,
 
@@ -10218,6 +10544,15 @@ function getCurrentTeamName(
 ) {
 
   if (
+    record.teamNameSnapshot
+  ) {
+
+    return record.teamNameSnapshot;
+
+  }
+
+
+  if (
     record.teamId
   ) {
 
@@ -10241,10 +10576,7 @@ function getCurrentTeamName(
   }
 
 
-  return (
-    record.teamNameSnapshot ||
-    "所属なし"
-  );
+  return "所属なし";
 
 }
 
@@ -10519,12 +10851,10 @@ function renderDashboard() {
         memberName;
 
 
-      individualMap[
-        memberKey
-      ].teamName =
-        getCurrentTeamName(
-          record
-        );
+      /*
+        teamName は最初に入った最新実績の班を維持する。
+        月途中の班移動で古い班名に上書きしない。
+      */
 
 
       individualMap[
