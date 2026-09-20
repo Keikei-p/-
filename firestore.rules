@@ -95,10 +95,13 @@ service cloud.firestore {
       return verifiedUser()
         && companyId != null
         && exists(companyPath(companyId))
-        && get(companyPath(companyId)).data.ownerUid == request.auth.uid
         && exists(userPath(request.auth.uid))
         && get(userPath(request.auth.uid)).data.companyId == companyId
-        && activeOrLegacy(get(userPath(request.auth.uid)).data);
+        && activeOrLegacy(get(userPath(request.auth.uid)).data)
+        && get(userPath(request.auth.uid)).data.companyRole == 'owner'
+        && exists(memberPath(companyId, request.auth.uid))
+        && activeOrLegacy(get(memberPath(companyId, request.auth.uid)).data)
+        && get(memberPath(companyId, request.auth.uid)).data.companyRole == 'owner';
     }
 
     function isCompanyManager(companyId) {
@@ -117,6 +120,20 @@ service cloud.firestore {
         && exists(memberPath(companyId, targetUid))
         && activeOrLegacy(get(memberPath(companyId, targetUid)).data)
         && get(memberPath(companyId, targetUid)).data.teamId == teamId;
+    }
+
+    function validOwnerPromotion(companyId, targetUid) {
+      return isCompanyOwner(companyId)
+        && targetUid != request.auth.uid
+        && existsAfter(userPath(targetUid))
+        && getAfter(userPath(targetUid)).data.companyId == companyId
+        && getAfter(userPath(targetUid)).data.companyRole == 'owner'
+        && getAfter(userPath(targetUid)).data.role == 'leader'
+        && getAfter(userPath(targetUid)).data.active == true
+        && existsAfter(memberPath(companyId, targetUid))
+        && getAfter(memberPath(companyId, targetUid)).data.companyRole == 'owner'
+        && getAfter(memberPath(companyId, targetUid)).data.role == 'leader'
+        && getAfter(memberPath(companyId, targetUid)).data.active == true;
     }
 
     function validOwnerTransfer(companyId) {
@@ -340,6 +357,16 @@ service cloud.firestore {
         )
         || (
           resource.data.companyId != null
+          && resource.data.companyRole != 'owner'
+          && request.resource.data.companyRole == 'owner'
+          && request.resource.data.role == 'leader'
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['companyRole', 'role', 'updatedAt'])
+          && validOwnerPromotion(resource.data.companyId, userId)
+        )
+        || (
+          resource.data.companyId != null
           && validOwnerTransfer(resource.data.companyId)
           && request.resource.data.updatedAt == request.time
           && request.resource.data.diff(resource.data).affectedKeys()
@@ -389,7 +416,6 @@ service cloud.firestore {
 
       allow update: if (
         isCompanyOwner(companyId)
-        && resource.data.ownerUid == request.auth.uid
         && request.resource.data.ownerUid == resource.data.ownerUid
         && request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(['name', 'updatedAt'])
@@ -495,6 +521,15 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['active', 'updatedAt'])
           && getAfter(userPath(request.auth.uid)).data.active == false
+        )
+        || (
+          resource.data.companyRole != 'owner'
+          && request.resource.data.companyRole == 'owner'
+          && request.resource.data.role == 'leader'
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['companyRole', 'role', 'updatedAt'])
+          && validOwnerPromotion(companyId, memberId)
         )
         || (
           validOwnerTransfer(companyId)
