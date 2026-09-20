@@ -4619,36 +4619,11 @@ function companyCollectionQuery(
 function recordsCollectionQuery() {
 
   if (
-    !currentUserData?.companyId ||
-    !currentUser?.uid
+    !currentUserData?.companyId
   ) {
 
     throw new Error(
       "実績の取得条件を確認できません。"
-    );
-
-  }
-
-
-  const constraints = [
-    where(
-      "companyId",
-      "==",
-      currentUserData.companyId
-    )
-  ];
-
-
-  if (
-    !isCurrentCompanyManager()
-  ) {
-
-    constraints.push(
-      where(
-        "uid",
-        "==",
-        currentUser.uid
-      )
     );
 
   }
@@ -4659,7 +4634,11 @@ function recordsCollectionQuery() {
       db,
       "records"
     ),
-    ...constraints
+    where(
+      "companyId",
+      "==",
+      currentUserData.companyId
+    )
   );
 
 }
@@ -6576,14 +6555,10 @@ function updateCurrentUserUI() {
 
 
   revenueChartToggle.style.display =
-    isCurrentCompanyManager()
-      ? ""
-      : "none";
+    "";
 
   allTeamsOverviewToggle.style.display =
-    isCurrentCompanyManager()
-      ? ""
-      : "none";
+    "";
 
 
   if (
@@ -11435,20 +11410,6 @@ function renderDashboard() {
     );
 
 
-  if (
-    !isCurrentCompanyManager()
-  ) {
-
-    monthly =
-      monthly.filter(
-        record =>
-          record.uid ===
-          currentUserData?.uid
-      );
-
-  }
-
-
   let totalCount =
     0;
 
@@ -12683,17 +12644,9 @@ function renderSalesAnalysis(
     "none";
 
 
-  const isLeader =
-    isCurrentCompanyManager();
-
-
   salesAnalysisScope.textContent =
-    isLeader
-      ? (
-          currentCompanyData?.name ||
-          "会社全体"
-        )
-      : "自分の実績";
+    currentCompanyData?.name ||
+    "会社全体";
 
 
   companySalesAnalysis.className =
@@ -12757,21 +12710,10 @@ function renderSalesAnalysis(
 
 
   addScope(
-    isLeader
-      ? "会社全体"
-      : "自分の実績",
+    "会社全体",
     analysis,
-    isLeader
-      ? "🏢"
-      : "👤"
+    "🏢"
   );
-
-
-  if (!isLeader) {
-
-    return;
-
-  }
 
 
   const teamValues =
@@ -13324,18 +13266,6 @@ function renderRevenueChartDetail(
 
 
 function renderRevenueChart() {
-
-  if (
-    !isCurrentCompanyManager()
-  ) {
-
-    revenueChartToggle.style.display =
-      "none";
-
-    return;
-
-  }
-
 
   revenueChartToggle.style.display =
     "";
@@ -14137,21 +14067,6 @@ function renderAllTeamsOverview(
 
   allTeamsOverviewList.innerHTML =
     "";
-
-
-  if (
-    !isCurrentCompanyManager()
-  ) {
-
-    allTeamsOverviewToggle.style.display =
-      "none";
-
-    allTeamsOverviewCount.textContent =
-      "0班";
-
-    return;
-
-  }
 
 
   allTeamsOverviewToggle.style.display =
