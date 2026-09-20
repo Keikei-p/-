@@ -40,6 +40,14 @@ service cloud.firestore {
       return teamId == null || teamId is string;
     }
 
+    function validTeamHistory(data) {
+      return !data.keys().hasAny(['teamHistory'])
+        || (
+          data.teamHistory is list
+          && data.teamHistory.size() <= 100
+        );
+    }
+
     function validShortName(name, maxLength) {
       return name is string
         && name.size() >= 1
@@ -250,9 +258,10 @@ service cloud.firestore {
           && validShortName(request.resource.data.name, 30)
           && validRole(request.resource.data.role)
           && validTeamId(request.resource.data.teamId)
+          && validTeamHistory(request.resource.data)
           && request.resource.data.updatedAt == request.time
           && request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['name', 'role', 'teamId', 'active', 'updatedAt'])
+            .hasOnly(['name', 'role', 'teamId', 'teamHistory', 'active', 'updatedAt'])
           && (
             request.resource.data.active == resource.data.active
             || isCompanyOwner(resource.data.companyId)
@@ -357,9 +366,10 @@ service cloud.firestore {
           && validShortName(request.resource.data.name, 30)
           && validRole(request.resource.data.role)
           && validTeamId(request.resource.data.teamId)
+          && validTeamHistory(request.resource.data)
           && request.resource.data.updatedAt == request.time
           && request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['name', 'role', 'teamId', 'active', 'updatedAt'])
+            .hasOnly(['name', 'role', 'teamId', 'teamHistory', 'active', 'updatedAt'])
           && (
             request.resource.data.active == resource.data.active
             || isCompanyOwner(companyId)
