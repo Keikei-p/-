@@ -2513,7 +2513,7 @@ header {
 
     <div class="account-description">
       自分の名前と所属班を変更できます。
-      班を変更した場合は、変更した日から新しい班の実績として集計されます。
+      班を変更しても、すでに保存済みの実績は元の班の実績として残ります。
     </div>
 
     <div class="form-group">
@@ -2552,7 +2552,7 @@ header {
 
       <div
         style="margin-top:6px;color:var(--sub);font-size:12px;line-height:1.6;">
-        自分で所属班を変更できます。変更前の実績は元の班に残ります。
+        自分で所属班を変更できます。保存済みの実績は移動せず、元の班に残ります。
       </div>
 
       <button
@@ -3392,7 +3392,7 @@ header {
 
       <div
         style="margin-top:8px;color:var(--sub);font-size:12px;line-height:1.6;">
-        保存した日から新しい班として集計します。変更日前の実績は元の班に残ります。
+        班を変更しても保存済みの実績は書き換えません。変更後に新規保存する実績から新しい班で集計します。
       </div>
 
     </div>
@@ -10401,20 +10401,10 @@ saveMemberTeamModal.onclick =
 
 
       /*
-        班変更日以降の既存実績も新しい班へ付け替える。
-        変更日前の実績は一切触らない。
+        既存実績の班情報は履歴として固定する。
+        所属班を変更しても、保存済みrecordsは一切書き換えない。
+        新規実績だけがteamHistoryに従って新しい班へ入る。
       */
-
-      const recordsToMove =
-        records.filter(
-          record =>
-            record.uid ===
-              editingMemberId &&
-            record.date &&
-            record.date >=
-              effectiveDate
-        );
-
 
       const batch =
         writeBatch(
@@ -10464,33 +10454,6 @@ saveMemberTeamModal.onclick =
       );
 
 
-      recordsToMove.forEach(
-        record => {
-
-          batch.update(
-            doc(
-              db,
-              "records",
-              record.id
-            ),
-            {
-
-              teamId:
-                nextTeam.teamId,
-
-              teamNameSnapshot:
-                nextTeam.teamName,
-
-              updatedAt:
-                serverTimestamp()
-
-            }
-          );
-
-        }
-      );
-
-
       await batch.commit();
 
 
@@ -10501,7 +10464,7 @@ saveMemberTeamModal.onclick =
       await loadTeams();
 
       showSuccess(
-        `${effectiveDate}から${nextTeam.teamName}へ変更しました。変更日前の実績は元の班に残ります。`
+        `${effectiveDate}から${nextTeam.teamName}へ所属班を変更しました。保存済みの実績は元の班に残ります。`
       );
 
     } catch (error) {
