@@ -9426,6 +9426,12 @@ clearRecordButton.onclick =
 saveRecordButton.onclick =
   async () => {
 
+    recordSaveStatus.style.display =
+      "none";
+
+    clearMessages();
+
+
     const date =
       recordDate.value;
 
@@ -9466,7 +9472,12 @@ saveRecordButton.onclick =
           item.id ===
           memberId
       ) ||
-      currentUserData;
+      (
+        memberId ===
+          currentUserData?.uid
+          ? currentUserData
+          : null
+      );
 
 
     if (!member) {
