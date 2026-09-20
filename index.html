@@ -9981,8 +9981,33 @@ function getRecordResults(
       "object"
   ) {
 
-    return Object.values(
+    if (
+      Array.isArray(
+        record.results
+      )
+    ) {
+
+      return record.results;
+
+    }
+
+
+    /*
+      results は productId をキーにした map。
+      Object.values だけだと productId が失われるため、
+      分析・商材集計で同名商材が混ざる可能性がある。
+    */
+
+    return Object.entries(
       record.results
+    ).map(
+      ([
+        productId,
+        result
+      ]) => ({
+        productId,
+        ...result
+      })
     );
 
   }
