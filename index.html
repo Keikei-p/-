@@ -13155,6 +13155,11 @@ function renderRevenueChart() {
       ? maxRevenue
       : 1;
 
+  const axisMax =
+    maxRevenue > 0
+      ? maxRevenue
+      : 0;
+
 
   const chartWidth =
     revenueChartMode ===
@@ -13341,7 +13346,7 @@ function renderRevenueChart() {
 
       label.textContent =
         formatCompactYen(
-          scaleMax *
+          axisMax *
           ratio
         );
 
