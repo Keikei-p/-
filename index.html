@@ -3500,6 +3500,19 @@ let currentCompanyData = null;
 let pendingInvitationData = null;
 let currentUser = null;
 
+
+function isCurrentCompanyManager() {
+
+  return (
+    currentUserData?.role ===
+      "leader" ||
+    currentUserData?.companyRole ===
+      "owner"
+  );
+
+}
+
+
 let editingTeamId = null;
 let editingProductId = null;
 let editingMemberId = null;
@@ -5070,8 +5083,7 @@ async function loadCompanyData() {
     "会社名未設定";
 
   companyInviteControls.style.display =
-    currentUserData.role ===
-    "leader"
+    isCurrentCompanyManager()
       ? "block"
       : "none";
 
@@ -5486,8 +5498,7 @@ createInviteButton.onclick =
 
     if (
       !currentUserData?.companyId ||
-      currentUserData.role !==
-      "leader"
+      !isCurrentCompanyManager()
     ) {
 
       showError(
@@ -5933,8 +5944,7 @@ function updateCurrentUserUI() {
 
 
   const canInvite =
-    currentUserData.role ===
-    "leader";
+    isCurrentCompanyManager();
 
   const isOwner =
     currentUserData.companyRole ===
@@ -5993,12 +6003,14 @@ function updateCurrentUserUI() {
 
 
   if (
-    currentUserData.role ===
-    "leader"
+    isCurrentCompanyManager()
   ) {
 
     userRole.textContent =
-      "👑 リーダー";
+      currentUserData.companyRole ===
+        "owner"
+        ? "👑 オーナー"
+        : "👑 リーダー";
 
     setupWarning.style.display =
       "none";
@@ -6397,8 +6409,7 @@ function startRealtimeListeners() {
   */
 
   if (
-    currentUserData?.role ===
-    "leader"
+    isCurrentCompanyManager()
   ) {
 
     unsubscribeUsers =
@@ -7045,8 +7056,7 @@ async function countTeamMembers(
 ) {
 
   if (
-    currentUserData?.role !==
-    "leader"
+    !isCurrentCompanyManager()
   ) {
 
     element.textContent =
@@ -7881,8 +7891,7 @@ async function deleteProduct(
 async function loadMembers() {
 
   if (
-    currentUserData?.role !==
-    "leader"
+    !isCurrentCompanyManager()
   ) {
 
     members = currentUserData
@@ -8950,8 +8959,7 @@ function updateRecordMemberOptions() {
 
 
   if (
-    currentUserData?.role ===
-    "leader"
+    isCurrentCompanyManager()
   ) {
 
     members.forEach(
@@ -9453,8 +9461,7 @@ clearRecordButton.onclick =
 
 
     if (
-      currentUserData?.role ===
-      "leader"
+      isCurrentCompanyManager()
     ) {
 
       recordMember.value =
@@ -10275,8 +10282,7 @@ function renderDashboard() {
 
 
   if (
-    currentUserData?.role !==
-    "leader"
+    !isCurrentCompanyManager()
   ) {
 
     monthly =
@@ -11514,8 +11520,7 @@ function renderSalesAnalysis(
 
 
   const isLeader =
-    currentUserData?.role ===
-    "leader";
+    isCurrentCompanyManager();
 
 
   salesAnalysisScope.textContent =
@@ -12352,8 +12357,7 @@ function renderRecordHistory(
 
 
       const canEdit =
-        currentUserData?.role ===
-          "leader" ||
+        isCurrentCompanyManager() ||
         record.uid ===
           currentUserData?.uid;
 
