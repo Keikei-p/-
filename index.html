@@ -1445,6 +1445,12 @@ header {
   white-space: nowrap;
 }
 
+.revenue-chart-column[aria-pressed="true"] .revenue-chart-stack-wrap {
+  outline: 2px solid #60a5fa;
+  outline-offset: 3px;
+  border-radius: 5px;
+}
+
 .revenue-chart-column[aria-pressed="true"] .revenue-chart-label {
   color: #1d4ed8;
   font-weight: 800;
@@ -12596,6 +12602,65 @@ function revenueChartColor(
 }
 
 
+function formatCompactYen(
+  value
+) {
+
+  const amount =
+    Number(
+      value || 0
+    );
+
+
+  if (
+    amount >=
+    100000000
+  ) {
+
+    return `¥${(
+      amount /
+      100000000
+    ).toFixed(
+      amount >=
+        1000000000
+        ? 0
+        : 1
+    ).replace(
+      /.0$/,
+      ""
+    )}億`;
+
+  }
+
+
+  if (
+    amount >=
+    10000
+  ) {
+
+    return `¥${(
+      amount /
+      10000
+    ).toFixed(
+      amount >=
+        100000
+        ? 0
+        : 1
+    ).replace(
+      /.0$/,
+      ""
+    )}万`;
+
+  }
+
+
+  return formatYen(
+    amount
+  );
+
+}
+
+
 function revenueFromRecord(
   record
 ) {
@@ -13145,10 +13210,10 @@ function renderRevenueChart() {
     "revenue-chart-axis";
 
   axis.innerHTML = `
-    <span>${formatYen(
+    <span>${formatCompactYen(
       axisMax
     )}</span>
-    <span>${formatYen(
+    <span>${formatCompactYen(
       axisMid
     )}</span>
     <span>¥0</span>
