@@ -9836,6 +9836,70 @@ async function prepareRecordInputs() {
    全商材入力欄
 ===================================================== */
 
+function normalizeExistingResultMap(
+  existingResults
+) {
+
+  if (
+    !existingResults ||
+    typeof existingResults !==
+      "object"
+  ) {
+
+    return {};
+
+  }
+
+
+  if (
+    Array.isArray(
+      existingResults
+    )
+  ) {
+
+    const map = {};
+
+
+    existingResults.forEach(
+      (
+        result,
+        index
+      ) => {
+
+        if (!result) {
+
+          return;
+
+        }
+
+
+        const productId =
+          result.productId ||
+          `legacy_${index}`;
+
+
+        map[
+          productId
+        ] = {
+          ...result
+        };
+
+      }
+    );
+
+
+    return map;
+
+  }
+
+
+  return {
+    ...existingResults
+  };
+
+}
+
+
 function prepareProductInputList(
   existingResults = null
 ) {
@@ -9844,8 +9908,106 @@ function prepareProductInputList(
     "";
 
 
+  const existingMap =
+    normalizeExistingResultMap(
+      existingResults
+    );
+
+
+  const currentProductIds =
+    new Set(
+      products.map(
+        product =>
+          product.id
+      )
+    );
+
+
+  const inputProducts =
+    products.map(
+      product => {
+
+        const snapshot =
+          existingMap[
+            product.id
+          ];
+
+
+        return {
+          id:
+            product.id,
+          name:
+            snapshot?.productName ||
+            product.name,
+          revenuePerUnit:
+            snapshot
+              ? Number(
+                  snapshot.revenuePerUnit ||
+                  0
+                )
+              : Number(
+                  product.revenue ||
+                  0
+                ),
+          count:
+            Number(
+              snapshot?.count ||
+              0
+            ),
+          historicalOnly:
+            false
+        };
+
+      }
+    );
+
+
+  Object.entries(
+    existingMap
+  ).forEach(
+    ([
+      productId,
+      result
+    ]) => {
+
+      if (
+        currentProductIds.has(
+          productId
+        )
+      ) {
+
+        return;
+
+      }
+
+
+      inputProducts.push({
+        id:
+          productId,
+        name:
+          result?.productName ||
+          "削除済み商材",
+        revenuePerUnit:
+          Number(
+            result?.revenuePerUnit ||
+            0
+          ),
+        count:
+          Number(
+            result?.count ||
+            0
+          ),
+        historicalOnly:
+          true
+      });
+
+    }
+  );
+
+
   if (
-    products.length === 0
+    inputProducts.length ===
+    0
   ) {
 
     productInputList.innerHTML = `
@@ -9861,7 +10023,7 @@ function prepareProductInputList(
   }
 
 
-  products.forEach(
+  inputProducts.forEach(
     product => {
 
       const row =
@@ -9891,7 +10053,9 @@ function prepareProductInputList(
         "product-input-name";
 
       name.textContent =
-        product.name;
+        product.historicalOnly
+          ? `${product.name}（履歴）`
+          : product.name;
 
 
       const unit =
@@ -9904,7 +10068,7 @@ function prepareProductInputList(
 
       unit.textContent =
         `1件 ${formatYen(
-          product.revenue
+          product.revenuePerUnit
         )}`;
 
 
@@ -9941,27 +10105,21 @@ function prepareProductInputList(
         "1";
 
       input.value =
-        "0";
+        String(
+          product.count ||
+          0
+        );
 
       input.dataset.productId =
         product.id;
 
+      input.dataset.productName =
+        product.name;
 
-      if (
-        existingResults &&
-        existingResults[
-          product.id
-        ]
-      ) {
-
-        input.value =
-          Number(
-            existingResults[
-              product.id
-            ].count || 0
-          );
-
-      }
+      input.dataset.revenuePerUnit =
+        String(
+          product.revenuePerUnit
+        );
 
 
       input.addEventListener(
@@ -9996,7 +10154,6 @@ function prepareProductInputList(
 
 }
 
-
 /* =====================================================
    入力合計
 ===================================================== */
@@ -10026,37 +10183,31 @@ function getCurrentInputResults() {
 
 
       if (
-        Number.isInteger(count) &&
-        count > 0
+        productId &&
+        Number.isInteger(
+          count
+        ) &&
+        count >
+          0
       ) {
 
-        const product =
-          products.find(
-            item =>
-              item.id ===
-              productId
-          );
+        results[
+          productId
+        ] = {
 
+          productName:
+            input.dataset.productName ||
+            "不明",
 
-        if (product) {
+          count,
 
-          results[
-            productId
-          ] = {
+          revenuePerUnit:
+            Number(
+              input.dataset.revenuePerUnit ||
+              0
+            )
 
-            productName:
-              product.name,
-
-            count,
-
-            revenuePerUnit:
-              Number(
-                product.revenue || 0
-              )
-
-          };
-
-        }
+        };
 
       }
 
@@ -10067,7 +10218,6 @@ function getCurrentInputResults() {
   return results;
 
 }
-
 
 function calculateResultsTotals(
   results
@@ -14977,7 +15127,17 @@ async function deleteRecord(
     }
 
 
-    await loadRecords();
+    records =
+      records.filter(
+        item =>
+          item.id !==
+          record.id
+      );
+
+
+    createMonthOptions();
+
+    renderDashboard();
 
 
     showSuccess(
