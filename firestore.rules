@@ -528,7 +528,11 @@ service cloud.firestore {
 
     match /records/{recordId} {
       allow read: if resource.data.companyId != null
-        && sameCompany(resource.data.companyId);
+        && sameCompany(resource.data.companyId)
+        && (
+          isCompanyManager(resource.data.companyId)
+          || resource.data.uid == request.auth.uid
+        );
 
       allow create: if request.resource.data.keys().hasOnly([
           'companyId', 'uid', 'memberNameSnapshot', 'teamId',
