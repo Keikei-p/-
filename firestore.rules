@@ -28,6 +28,10 @@ service cloud.firestore {
       return /databases/$(database)/documents/companies/$(companyId)/members/$(userId);
     }
 
+    function teamPath(teamId) {
+      return /databases/$(database)/documents/teams/$(teamId);
+    }
+
     function invitationPath(inviteId) {
       return /databases/$(database)/documents/invitations/$(inviteId);
     }
@@ -38,6 +42,16 @@ service cloud.firestore {
 
     function validTeamId(teamId) {
       return teamId == null || teamId is string;
+    }
+
+    function validSelectableTeam(companyId, teamId) {
+      return teamId == null
+        || (
+          teamId is string
+          && exists(teamPath(teamId))
+          && get(teamPath(teamId)).data.companyId == companyId
+          && get(teamPath(teamId)).data.active == true
+        );
     }
 
     function validTeamHistory(data) {
@@ -249,6 +263,29 @@ service cloud.firestore {
           && getAfter(memberPath(resource.data.companyId, userId)).data.active == false
         )
         || (
+          isSelf(userId)
+          && resource.data.companyId != null
+          && activeOrLegacy(resource.data)
+          && request.resource.data.companyId == resource.data.companyId
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.email == resource.data.email
+          && request.resource.data.companyRole == resource.data.companyRole
+          && request.resource.data.role == resource.data.role
+          && validSelectableTeam(
+            resource.data.companyId,
+            request.resource.data.teamId
+          )
+          && validTeamHistory(request.resource.data)
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['teamId', 'teamHistory', 'updatedAt'])
+          && existsAfter(memberPath(resource.data.companyId, userId))
+          && getAfter(memberPath(resource.data.companyId, userId)).data.teamId
+            == request.resource.data.teamId
+          && getAfter(memberPath(resource.data.companyId, userId)).data.teamHistory
+            == request.resource.data.teamHistory
+        )
+        || (
           resource.data.companyId != null
           && isCompanyManager(resource.data.companyId)
           && request.resource.data.companyId == resource.data.companyId
@@ -381,6 +418,23 @@ service cloud.firestore {
               && request.resource.data.active == true
             )
           )
+        )
+        || (
+          memberId == request.auth.uid
+          && isCompanyMember(companyId)
+          && validSelectableTeam(
+            companyId,
+            request.resource.data.teamId
+          )
+          && validTeamHistory(request.resource.data)
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['teamId', 'teamHistory', 'updatedAt'])
+          && existsAfter(userPath(request.auth.uid))
+          && getAfter(userPath(request.auth.uid)).data.teamId
+            == request.resource.data.teamId
+          && getAfter(userPath(request.auth.uid)).data.teamHistory
+            == request.resource.data.teamHistory
         )
         || (
           memberId == request.auth.uid
