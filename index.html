@@ -769,6 +769,7 @@ header {
   font-weight: 800;
 }
 
+.history-location,
 .history-product {
   margin-top: 5px;
   color: var(--sub);
@@ -2530,6 +2531,20 @@ header {
 
         </select>
 
+        <label
+          for="recordLocation"
+          style="margin-top:14px;">
+          現場場所
+        </label>
+
+        <input
+          id="recordLocation"
+          type="text"
+          maxlength="100"
+          autocomplete="off"
+          placeholder="例：○○市 ○○店"
+        >
+
       </div>
 
     </div>
@@ -3582,6 +3597,11 @@ const recordDate =
 const recordMember =
   document.getElementById(
     "recordMember"
+  );
+
+const recordLocation =
+  document.getElementById(
+    "recordLocation"
   );
 
 const productInputList =
@@ -10965,6 +10985,11 @@ async function loadExistingRecordIntoForm() {
       record.id;
 
 
+    recordLocation.value =
+      record.workLocation ||
+      "";
+
+
     prepareProductInputList(
       record.results
     );
@@ -10980,6 +11005,9 @@ async function loadExistingRecordIntoForm() {
 
   editingRecordId =
     null;
+
+  recordLocation.value =
+    "";
 
   prepareProductInputList();
 
@@ -11019,6 +11047,10 @@ clearRecordButton.onclick =
 
     recordDate.value =
       getTodayString();
+
+
+    recordLocation.value =
+      "";
 
 
     if (
@@ -11071,6 +11103,9 @@ saveRecordButton.onclick =
 
     const memberId =
       recordMember.value;
+
+    const workLocation =
+      recordLocation.value.trim();
 
 
     if (!date) {
@@ -11284,6 +11319,8 @@ saveRecordButton.onclick =
 
         date,
 
+        workLocation,
+
         results,
 
         totalCount:
@@ -11429,7 +11466,7 @@ saveRecordButton.onclick =
 
 
       recordSaveStatus.textContent =
-        `保存済み：${date} / ${memberLabel} / ${totals.count}件 / ${formatYen(
+        `保存済み：${date} / ${memberLabel} / ${workLocation ? `📍${workLocation} / ` : ""}${totals.count}件 / ${formatYen(
           totals.revenue
         )}`;
 
@@ -15545,6 +15582,13 @@ function renderRecordHistory(
               )}
             </div>
 
+            <div class="history-location">
+              📍 ${escapeHtml(
+                record.workLocation ||
+                "場所未入力"
+              )}
+            </div>
+
             <div class="history-product">
               ${
                 productTexts.length > 0
@@ -15671,6 +15715,11 @@ function editRecord(
 
   recordMember.value =
     record.uid;
+
+
+  recordLocation.value =
+    record.workLocation ||
+    "";
 
 
   editingRecordId =
