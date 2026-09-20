@@ -467,6 +467,202 @@ header {
   font-weight: 800;
 }
 
+/* =====================================================
+   売上分析
+===================================================== */
+
+.sales-analysis-panel {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid #dbeafe;
+  border-radius: 14px;
+  background: #f8fbff;
+}
+
+.sales-analysis-heading,
+.sales-analysis-subheading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sales-analysis-title {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.sales-analysis-scope {
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.analysis-block {
+  margin-top: 14px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.analysis-block-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 15px;
+  border: 0;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.analysis-block-toggle:hover {
+  background: #f8fafc;
+}
+
+.analysis-block-title {
+  font-weight: 800;
+}
+
+.analysis-block-total {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.analysis-block-count {
+  font-weight: 800;
+}
+
+.analysis-block-revenue {
+  margin-top: 3px;
+  color: var(--sub);
+  font-size: 12px;
+}
+
+.analysis-block-content {
+  padding: 0 14px 14px;
+  border-top: 1px solid var(--border);
+}
+
+.analysis-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.analysis-column {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.analysis-column-title {
+  padding: 10px 12px;
+  background: #f8fafc;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.analysis-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-top: 1px solid #f3f4f6;
+}
+
+.analysis-line:first-child {
+  border-top: 0;
+}
+
+.analysis-line-name {
+  min-width: 0;
+  font-weight: 700;
+}
+
+.analysis-line-sub {
+  margin-top: 3px;
+  color: var(--sub);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.analysis-line-value {
+  flex: 0 0 auto;
+  text-align: right;
+  font-size: 12px;
+}
+
+.analysis-line-value strong {
+  display: block;
+  font-size: 14px;
+}
+
+.analysis-member {
+  border-top: 1px solid #f3f4f6;
+}
+
+.analysis-member:first-child {
+  border-top: 0;
+}
+
+.analysis-member-summary {
+  padding: 10px 12px;
+}
+
+.analysis-product-breakdown {
+  margin: 0 12px 10px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.analysis-empty {
+  padding: 14px;
+  color: var(--sub);
+  text-align: center;
+  font-size: 12px;
+}
+
+.analysis-team-list {
+  margin-top: 14px;
+}
+
+.analysis-team-label {
+  margin-top: 18px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+@media (max-width: 700px) {
+  .sales-analysis-panel {
+    padding: 14px;
+  }
+
+  .analysis-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .analysis-block-toggle {
+    padding: 13px;
+  }
+
+  .analysis-line {
+    padding: 10px;
+  }
+}
+
 .dashboard-section {
   margin-top: 25px;
 }
@@ -1680,6 +1876,41 @@ header {
     </div>
 
 
+    <div
+      id="salesAnalysisPanel"
+      class="sales-analysis-panel">
+
+      <div class="sales-analysis-heading">
+
+        <div class="sales-analysis-title">
+          💰 売上分析
+        </div>
+
+        <div
+          id="salesAnalysisScope"
+          class="sales-analysis-scope">
+          会社全体
+        </div>
+
+      </div>
+
+      <div id="companySalesAnalysis">
+      </div>
+
+      <div
+        id="teamSalesAnalysisLabel"
+        class="analysis-team-label">
+        班別
+      </div>
+
+      <div
+        id="teamSalesAnalysisList"
+        class="analysis-team-list">
+      </div>
+
+    </div>
+
+
     <div class="dashboard-section">
 
       <button
@@ -2520,6 +2751,31 @@ const monthlyRevenue =
 const monthlyWorkDays =
   document.getElementById(
     "monthlyWorkDays"
+  );
+
+const salesAnalysisPanel =
+  document.getElementById(
+    "salesAnalysisPanel"
+  );
+
+const salesAnalysisScope =
+  document.getElementById(
+    "salesAnalysisScope"
+  );
+
+const companySalesAnalysis =
+  document.getElementById(
+    "companySalesAnalysis"
+  );
+
+const teamSalesAnalysisLabel =
+  document.getElementById(
+    "teamSalesAnalysisLabel"
+  );
+
+const teamSalesAnalysisList =
+  document.getElementById(
+    "teamSalesAnalysisList"
   );
 
 const individualRankingList =
@@ -9032,6 +9288,12 @@ function renderDashboard() {
     recordHistoryCount.textContent =
       "0件";
 
+    companySalesAnalysis.innerHTML =
+      "";
+
+    teamSalesAnalysisList.innerHTML =
+      "";
+
     return;
 
   }
@@ -9340,6 +9602,13 @@ function renderDashboard() {
     ).length}日`;
 
 
+  renderSalesAnalysis(
+    buildSalesAnalysis(
+      monthly
+    )
+  );
+
+
   renderIndividualRanking(
     individualMap
   );
@@ -9362,6 +9631,696 @@ function renderDashboard() {
 
   renderRecordHistory(
     monthly
+  );
+
+}
+
+
+/* =====================================================
+   売上分析
+===================================================== */
+
+function addAnalysisValue(
+  map,
+  key,
+  name,
+  count,
+  revenue
+) {
+
+  if (!map[key]) {
+
+    map[key] = {
+      name,
+      count: 0,
+      revenue: 0
+    };
+
+  }
+
+
+  map[key].name =
+    name;
+
+  map[key].count +=
+    count;
+
+  map[key].revenue +=
+    revenue;
+
+}
+
+
+function buildSalesAnalysis(
+  monthly
+) {
+
+  const analysis = {
+    count: 0,
+    revenue: 0,
+    products: {},
+    members: {},
+    teams: {}
+  };
+
+
+  monthly.forEach(
+    record => {
+
+      const memberName =
+        getCurrentMemberName(
+          record
+        );
+
+      const memberKey =
+        record.uid ||
+        memberName;
+
+      const teamName =
+        getCurrentTeamName(
+          record
+        );
+
+      const teamKey =
+        record.teamId ||
+        teamName;
+
+
+      if (
+        !analysis.members[
+          memberKey
+        ]
+      ) {
+
+        analysis.members[
+          memberKey
+        ] = {
+          name:
+            memberName,
+          teamName,
+          count: 0,
+          revenue: 0,
+          products: {}
+        };
+
+      }
+
+
+      if (
+        !analysis.teams[
+          teamKey
+        ]
+      ) {
+
+        analysis.teams[
+          teamKey
+        ] = {
+          name:
+            teamName,
+          count: 0,
+          revenue: 0,
+          products: {},
+          members: {}
+        };
+
+      }
+
+
+      if (
+        !analysis.teams[
+          teamKey
+        ].members[
+          memberKey
+        ]
+      ) {
+
+        analysis.teams[
+          teamKey
+        ].members[
+          memberKey
+        ] = {
+          name:
+            memberName,
+          count: 0,
+          revenue: 0,
+          products: {}
+        };
+
+      }
+
+
+      const results =
+        getRecordResults(
+          record
+        );
+
+
+      results.forEach(
+        result => {
+
+          const count =
+            Number(
+              result.count || 0
+            );
+
+          const revenue =
+            count *
+            Number(
+              result.revenuePerUnit ||
+              0
+            );
+
+          const productName =
+            result.productName ||
+            "不明";
+
+          const productKey =
+            result.productId ||
+            productName;
+
+
+          analysis.count +=
+            count;
+
+          analysis.revenue +=
+            revenue;
+
+
+          addAnalysisValue(
+            analysis.products,
+            productKey,
+            productName,
+            count,
+            revenue
+          );
+
+
+          analysis.members[
+            memberKey
+          ].count +=
+            count;
+
+          analysis.members[
+            memberKey
+          ].revenue +=
+            revenue;
+
+          addAnalysisValue(
+            analysis.members[
+              memberKey
+            ].products,
+            productKey,
+            productName,
+            count,
+            revenue
+          );
+
+
+          analysis.teams[
+            teamKey
+          ].count +=
+            count;
+
+          analysis.teams[
+            teamKey
+          ].revenue +=
+            revenue;
+
+          addAnalysisValue(
+            analysis.teams[
+              teamKey
+            ].products,
+            productKey,
+            productName,
+            count,
+            revenue
+          );
+
+
+          analysis.teams[
+            teamKey
+          ].members[
+            memberKey
+          ].count +=
+            count;
+
+          analysis.teams[
+            teamKey
+          ].members[
+            memberKey
+          ].revenue +=
+            revenue;
+
+          addAnalysisValue(
+            analysis.teams[
+              teamKey
+            ].members[
+              memberKey
+            ].products,
+            productKey,
+            productName,
+            count,
+            revenue
+          );
+
+        }
+      );
+
+    }
+  );
+
+
+  return analysis;
+
+}
+
+
+function sortedAnalysisValues(
+  map
+) {
+
+  return Object.values(
+    map
+  ).sort(
+    (a, b) => {
+
+      if (
+        b.count !==
+        a.count
+      ) {
+
+        return (
+          b.count -
+          a.count
+        );
+
+      }
+
+
+      return (
+        b.revenue -
+        a.revenue
+      );
+
+    }
+  );
+
+}
+
+
+function analysisProductText(
+  products
+) {
+
+  const values =
+    sortedAnalysisValues(
+      products
+    ).filter(
+      item =>
+        item.count > 0 ||
+        item.revenue > 0
+    );
+
+
+  if (
+    values.length === 0
+  ) {
+
+    return "商材実績なし";
+
+  }
+
+
+  return values
+    .map(
+      item =>
+        `${escapeHtml(
+          item.name
+        )} ${item.count}件 / ${formatYen(
+          item.revenue
+        )}`
+    )
+    .join("　");
+
+}
+
+
+function renderAnalysisProducts(
+  products
+) {
+
+  const values =
+    sortedAnalysisValues(
+      products
+    );
+
+
+  if (
+    values.length === 0
+  ) {
+
+    return `
+      <div class="analysis-empty">
+        商材実績はありません。
+      </div>
+    `;
+
+  }
+
+
+  return values
+    .map(
+      item => `
+        <div class="analysis-line">
+          <div class="analysis-line-name">
+            ${escapeHtml(
+              item.name
+            )}
+          </div>
+          <div class="analysis-line-value">
+            <strong>${item.count}件</strong>
+            ${formatYen(
+              item.revenue
+            )}
+          </div>
+        </div>
+      `
+    )
+    .join("");
+
+}
+
+
+function renderAnalysisMembers(
+  membersMap,
+  showTeamName = false
+) {
+
+  const values =
+    sortedAnalysisValues(
+      membersMap
+    );
+
+
+  if (
+    values.length === 0
+  ) {
+
+    return `
+      <div class="analysis-empty">
+        メンバー実績はありません。
+      </div>
+    `;
+
+  }
+
+
+  return values
+    .map(
+      member => `
+        <div class="analysis-member">
+
+          <div class="analysis-line analysis-member-summary">
+
+            <div>
+              <div class="analysis-line-name">
+                ${escapeHtml(
+                  member.name
+                )}
+              </div>
+              ${
+                showTeamName &&
+                member.teamName
+                  ? `
+                    <div class="analysis-line-sub">
+                      ${escapeHtml(
+                        member.teamName
+                      )}
+                    </div>
+                  `
+                  : ""
+              }
+            </div>
+
+            <div class="analysis-line-value">
+              <strong>${member.count}件</strong>
+              ${formatYen(
+                member.revenue
+              )}
+            </div>
+
+          </div>
+
+          <div class="analysis-product-breakdown">
+            ${analysisProductText(
+              member.products
+            )}
+          </div>
+
+        </div>
+      `
+    )
+    .join("");
+
+}
+
+
+function createAnalysisBlock(
+  title,
+  count,
+  revenue,
+  products,
+  members,
+  options = {}
+) {
+
+  const block =
+    document.createElement(
+      "div"
+    );
+
+  block.className =
+    "analysis-block";
+
+
+  const toggle =
+    document.createElement(
+      "button"
+    );
+
+  toggle.type =
+    "button";
+
+  toggle.className =
+    "analysis-block-toggle";
+
+  toggle.setAttribute(
+    "aria-expanded",
+    options.open
+      ? "true"
+      : "false"
+  );
+
+
+  toggle.innerHTML = `
+    <div>
+      <div class="analysis-block-title">
+        ${escapeHtml(
+          title
+        )}
+      </div>
+      <div class="analysis-line-sub">
+        タップで内訳を表示
+      </div>
+    </div>
+
+    <div class="analysis-block-total">
+      <div class="analysis-block-count">
+        ${count}件
+      </div>
+      <div class="analysis-block-revenue">
+        ${formatYen(
+          revenue
+        )}
+      </div>
+    </div>
+  `;
+
+
+  const content =
+    document.createElement(
+      "div"
+    );
+
+  content.className =
+    "analysis-block-content";
+
+  content.hidden =
+    !options.open;
+
+
+  content.innerHTML = `
+    <div class="analysis-columns">
+
+      <div class="analysis-column">
+        <div class="analysis-column-title">
+          📦 商材別
+        </div>
+        ${renderAnalysisProducts(
+          products
+        )}
+      </div>
+
+      <div class="analysis-column">
+        <div class="analysis-column-title">
+          👤 メンバー別
+        </div>
+        ${renderAnalysisMembers(
+          members,
+          options.showTeamName ===
+            true
+        )}
+      </div>
+
+    </div>
+  `;
+
+
+  toggle.addEventListener(
+    "click",
+    () => {
+
+      const open =
+        toggle.getAttribute(
+          "aria-expanded"
+        ) !==
+        "true";
+
+      toggle.setAttribute(
+        "aria-expanded",
+        String(open)
+      );
+
+      content.hidden =
+        !open;
+
+    }
+  );
+
+
+  block.appendChild(
+    toggle
+  );
+
+  block.appendChild(
+    content
+  );
+
+
+  return block;
+
+}
+
+
+function renderSalesAnalysis(
+  analysis
+) {
+
+  companySalesAnalysis.innerHTML =
+    "";
+
+  teamSalesAnalysisList.innerHTML =
+    "";
+
+
+  const isLeader =
+    currentUserData?.role ===
+    "leader";
+
+
+  salesAnalysisScope.textContent =
+    isLeader
+      ? (
+          currentCompanyData?.name ||
+          "会社全体"
+        )
+      : "自分の実績";
+
+
+  const companyTitle =
+    isLeader
+      ? "会社全体"
+      : "自分の実績";
+
+
+  companySalesAnalysis.appendChild(
+    createAnalysisBlock(
+      companyTitle,
+      analysis.count,
+      analysis.revenue,
+      analysis.products,
+      analysis.members,
+      {
+        open: true,
+        showTeamName: isLeader
+      }
+    )
+  );
+
+
+  teamSalesAnalysisLabel.style.display =
+    isLeader
+      ? "block"
+      : "none";
+
+  teamSalesAnalysisList.style.display =
+    isLeader
+      ? "block"
+      : "none";
+
+
+  if (!isLeader) {
+
+    return;
+
+  }
+
+
+  const teamValues =
+    sortedAnalysisValues(
+      analysis.teams
+    );
+
+
+  if (
+    teamValues.length === 0
+  ) {
+
+    teamSalesAnalysisList.innerHTML = `
+      <div class="analysis-empty">
+        班実績はありません。
+      </div>
+    `;
+
+    return;
+
+  }
+
+
+  teamValues.forEach(
+    team => {
+
+      teamSalesAnalysisList.appendChild(
+        createAnalysisBlock(
+          team.name,
+          team.count,
+          team.revenue,
+          team.products,
+          team.members
+        )
+      );
+
+    }
   );
 
 }
