@@ -1280,6 +1280,246 @@ header {
   }
 }
 
+.revenue-chart-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.revenue-chart-toolbar {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.revenue-chart-mode {
+  min-height: 48px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--text);
+  font-weight: 800;
+}
+
+.revenue-chart-mode[aria-pressed="true"] {
+  border-color: #60a5fa;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.revenue-chart-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 14px;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.revenue-chart-period {
+  font-size: 12px;
+  color: var(--sub);
+  font-weight: 700;
+}
+
+.revenue-chart-total {
+  margin-top: 3px;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.revenue-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.revenue-chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.revenue-chart-legend-color {
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  flex: 0 0 auto;
+}
+
+.revenue-chart-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding-bottom: 5px;
+}
+
+.revenue-chart-canvas {
+  min-width: 100%;
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.revenue-chart-axis {
+  width: 48px;
+  flex: 0 0 48px;
+  height: 246px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 4px 0 28px;
+  color: var(--sub);
+  font-size: 9px;
+  text-align: right;
+}
+
+.revenue-chart-bars {
+  min-width: max-content;
+  height: 246px;
+  display: flex;
+  align-items: flex-end;
+  gap: 7px;
+  padding: 4px 8px 0;
+  border-left: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background:
+    linear-gradient(to top, rgba(148,163,184,.13) 1px, transparent 1px);
+  background-size: 100% 25%;
+}
+
+.revenue-chart-column {
+  width: 34px;
+  height: 238px;
+  flex: 0 0 34px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.revenue-chart-column.annual {
+  width: 54px;
+  flex-basis: 54px;
+}
+
+.revenue-chart-stack-wrap {
+  width: 24px;
+  height: 202px;
+  display: flex;
+  align-items: flex-end;
+}
+
+.revenue-chart-column.annual .revenue-chart-stack-wrap {
+  width: 34px;
+}
+
+.revenue-chart-stack {
+  width: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column-reverse;
+  overflow: hidden;
+  border-radius: 6px 6px 2px 2px;
+  box-shadow: 0 1px 3px rgba(15,23,42,.12);
+}
+
+.revenue-chart-segment {
+  width: 100%;
+  min-height: 2px;
+}
+
+.revenue-chart-label {
+  width: 100%;
+  margin-top: 7px;
+  color: var(--sub);
+  font-size: 9px;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.revenue-chart-column[aria-pressed="true"] .revenue-chart-stack-wrap {
+  outline: 2px solid #60a5fa;
+  outline-offset: 3px;
+  border-radius: 5px;
+}
+
+.revenue-chart-column[aria-pressed="true"] .revenue-chart-label {
+  color: #1d4ed8;
+  font-weight: 800;
+}
+
+.revenue-chart-detail {
+  padding: 13px 14px;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  background: #f8fbff;
+}
+
+.revenue-chart-detail-title {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.revenue-chart-detail-total {
+  margin-top: 4px;
+  color: #1e40af;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.revenue-chart-detail-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.revenue-chart-detail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.revenue-chart-detail-team {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 700;
+}
+
+.revenue-chart-detail-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+  .revenue-chart-axis {
+    width: 42px;
+    flex-basis: 42px;
+  }
+
+  .revenue-chart-column {
+    width: 31px;
+    flex-basis: 31px;
+  }
+
+  .revenue-chart-column.annual {
+    width: 50px;
+    flex-basis: 50px;
+  }
+}
+
 .all-teams-overview {
   display: grid;
   gap: 14px;
@@ -2429,6 +2669,18 @@ header {
       </button>
 
       <button
+        id="revenueChartToggle"
+        class="dashboard-app-button"
+        type="button"
+        aria-expanded="false"
+        aria-pressed="false"
+        aria-controls="revenueChartContent">
+        <span class="dashboard-app-icon">📊</span>
+        <span class="dashboard-app-title">収益グラフ</span>
+        <span class="dashboard-app-meta">月間・年間</span>
+      </button>
+
+      <button
         id="allTeamsOverviewToggle"
         class="dashboard-app-button"
         type="button"
@@ -2541,6 +2793,42 @@ header {
         class="dashboard-app-content"
         hidden>
         <div id="teamRankingList"></div>
+      </div>
+
+      <div
+        id="revenueChartContent"
+        class="dashboard-app-content"
+        hidden>
+
+        <div class="revenue-chart-panel">
+
+          <div class="revenue-chart-toolbar">
+
+            <button
+              id="revenueChartMonthlyButton"
+              class="revenue-chart-mode"
+              type="button"
+              aria-pressed="true">
+              月間
+            </button>
+
+            <button
+              id="revenueChartAnnualButton"
+              class="revenue-chart-mode"
+              type="button"
+              aria-pressed="false">
+              年間
+            </button>
+
+          </div>
+
+          <div id="revenueChartSummary"></div>
+          <div id="revenueChartLegend"></div>
+          <div id="revenueChartArea"></div>
+          <div id="revenueChartDetail"></div>
+
+        </div>
+
       </div>
 
       <div
@@ -3394,6 +3682,46 @@ const teamRankingCount =
     "teamRankingCount"
   );
 
+const revenueChartToggle =
+  document.getElementById(
+    "revenueChartToggle"
+  );
+
+const revenueChartContent =
+  document.getElementById(
+    "revenueChartContent"
+  );
+
+const revenueChartMonthlyButton =
+  document.getElementById(
+    "revenueChartMonthlyButton"
+  );
+
+const revenueChartAnnualButton =
+  document.getElementById(
+    "revenueChartAnnualButton"
+  );
+
+const revenueChartSummary =
+  document.getElementById(
+    "revenueChartSummary"
+  );
+
+const revenueChartLegend =
+  document.getElementById(
+    "revenueChartLegend"
+  );
+
+const revenueChartArea =
+  document.getElementById(
+    "revenueChartArea"
+  );
+
+const revenueChartDetail =
+  document.getElementById(
+    "revenueChartDetail"
+  );
+
 const allTeamsOverviewToggle =
   document.getElementById(
     "allTeamsOverviewToggle"
@@ -3672,6 +4000,12 @@ let editingTeamId = null;
 let editingProductId = null;
 let editingMemberId = null;
 let editingRecordId = null;
+
+let revenueChartMode =
+  "monthly";
+
+let revenueChartSelectedKey =
+  null;
 
 
 /*
@@ -4060,6 +4394,12 @@ setupDashboardMenu(
         teamRankingToggle,
       content:
         teamRankingContent
+    },
+    {
+      toggle:
+        revenueChartToggle,
+      content:
+        revenueChartContent
     },
     {
       toggle:
@@ -6162,6 +6502,11 @@ function updateCurrentUserUI() {
 
   renderOwnerTransferOptions();
 
+
+  revenueChartToggle.style.display =
+    isCurrentCompanyManager()
+      ? ""
+      : "none";
 
   allTeamsOverviewToggle.style.display =
     isCurrentCompanyManager()
@@ -10574,7 +10919,14 @@ function createMonthOptions() {
 
 dashboardMonth.addEventListener(
   "change",
-  renderDashboard
+  () => {
+
+    revenueChartSelectedKey =
+      null;
+
+    renderDashboard();
+
+  }
 );
 
 
@@ -10768,6 +11120,18 @@ function renderDashboard() {
       "";
 
     teamRankingList.innerHTML =
+      "";
+
+    revenueChartSummary.innerHTML =
+      "";
+
+    revenueChartLegend.innerHTML =
+      "";
+
+    revenueChartArea.innerHTML =
+      "";
+
+    revenueChartDetail.innerHTML =
       "";
 
     allTeamsOverviewList.innerHTML =
@@ -11125,6 +11489,9 @@ function renderDashboard() {
   renderAllTeamsOverview(
     salesAnalysis
   );
+
+
+  renderRevenueChart();
 
 
   renderIndividualRanking(
@@ -12173,6 +12540,978 @@ function renderSalesAnalysis(
   );
 
 }
+
+
+/* =====================================================
+   収益グラフ
+===================================================== */
+
+const REVENUE_CHART_COLORS = [
+  "#2563eb",
+  "#16a34a",
+  "#ea580c",
+  "#7c3aed",
+  "#0891b2",
+  "#db2777",
+  "#ca8a04",
+  "#4f46e5",
+  "#059669",
+  "#dc2626",
+  "#9333ea",
+  "#0f766e"
+];
+
+
+function revenueChartColor(
+  key
+) {
+
+  const text =
+    String(
+      key ||
+      "team"
+    );
+
+
+  let hash = 0;
+
+
+  for (
+    let index = 0;
+    index < text.length;
+    index++
+  ) {
+
+    hash =
+      (
+        hash *
+        31 +
+        text.charCodeAt(
+          index
+        )
+      ) >>> 0;
+
+  }
+
+
+  return REVENUE_CHART_COLORS[
+    hash %
+    REVENUE_CHART_COLORS.length
+  ];
+
+}
+
+
+function formatCompactYen(
+  value
+) {
+
+  const amount =
+    Number(
+      value || 0
+    );
+
+
+  if (
+    amount >=
+    100000000
+  ) {
+
+    return `¥${(
+      amount /
+      100000000
+    ).toFixed(
+      amount >=
+        1000000000
+        ? 0
+        : 1
+    ).replace(
+      /.0$/,
+      ""
+    )}億`;
+
+  }
+
+
+  if (
+    amount >=
+    10000
+  ) {
+
+    return `¥${(
+      amount /
+      10000
+    ).toFixed(
+      amount >=
+        100000
+        ? 0
+        : 1
+    ).replace(
+      /.0$/,
+      ""
+    )}万`;
+
+  }
+
+
+  return formatYen(
+    amount
+  );
+
+}
+
+
+function revenueFromRecord(
+  record
+) {
+
+  return getRecordResults(
+    record
+  ).reduce(
+    (
+      sum,
+      result
+    ) =>
+      sum +
+      Number(
+        result.count || 0
+      ) *
+      Number(
+        result.revenuePerUnit ||
+        0
+      ),
+    0
+  );
+
+}
+
+
+function buildRevenueChartData() {
+
+  const selectedMonth =
+    dashboardMonth.value;
+
+
+  if (!selectedMonth) {
+
+    return {
+      periodLabel: "",
+      totalRevenue: 0,
+      buckets: [],
+      teams: []
+    };
+
+  }
+
+
+  const selectedYear =
+    selectedMonth.slice(
+      0,
+      4
+    );
+
+
+  const relevantRecords =
+    records.filter(
+      record => {
+
+        if (
+          !record.date
+        ) {
+
+          return false;
+
+        }
+
+
+        if (
+          revenueChartMode ===
+          "monthly"
+        ) {
+
+          return record.date.startsWith(
+            selectedMonth
+          );
+
+        }
+
+
+        return record.date.startsWith(
+          `${selectedYear}-`
+        );
+
+      }
+    );
+
+
+  const teamMap = {};
+
+
+  relevantRecords.forEach(
+    record => {
+
+      const key =
+        record.teamId ||
+        getCurrentTeamName(
+          record
+        );
+
+      if (!teamMap[key]) {
+
+        teamMap[key] = {
+          key,
+          name:
+            getCurrentTeamName(
+              record
+            ),
+          color:
+            revenueChartColor(
+              key
+            )
+        };
+
+      }
+
+    }
+  );
+
+
+  const teams =
+    Object.values(
+      teamMap
+    ).sort(
+      (a, b) =>
+        a.name.localeCompare(
+          b.name,
+          "ja"
+        )
+    );
+
+
+  let buckets = [];
+
+
+  if (
+    revenueChartMode ===
+    "monthly"
+  ) {
+
+    const [
+      year,
+      month
+    ] =
+      selectedMonth
+        .split("-")
+        .map(Number);
+
+    const days =
+      new Date(
+        year,
+        month,
+        0
+      ).getDate();
+
+
+    buckets =
+      Array.from(
+        {
+          length:
+            days
+        },
+        (
+          _,
+          index
+        ) => {
+
+          const day =
+            index + 1;
+
+          const date =
+            `${selectedMonth}-${String(
+              day
+            ).padStart(
+              2,
+              "0"
+            )}`;
+
+
+          return {
+            key:
+              date,
+            label:
+              `${day}日`,
+            shortLabel:
+              String(day),
+            teams: {},
+            total: 0
+          };
+
+        }
+      );
+
+  } else {
+
+    buckets =
+      Array.from(
+        {
+          length: 12
+        },
+        (
+          _,
+          index
+        ) => {
+
+          const month =
+            index + 1;
+
+          return {
+            key:
+              `${selectedYear}-${String(
+                month
+              ).padStart(
+                2,
+                "0"
+              )}`,
+            label:
+              `${month}月`,
+            shortLabel:
+              `${month}月`,
+            teams: {},
+            total: 0
+          };
+
+        }
+      );
+
+  }
+
+
+  const bucketMap =
+    Object.fromEntries(
+      buckets.map(
+        bucket => [
+          bucket.key,
+          bucket
+        ]
+      )
+    );
+
+
+  relevantRecords.forEach(
+    record => {
+
+      const bucketKey =
+        revenueChartMode ===
+          "monthly"
+          ? record.date
+          : record.date.slice(
+              0,
+              7
+            );
+
+
+      const bucket =
+        bucketMap[
+          bucketKey
+        ];
+
+
+      if (!bucket) {
+
+        return;
+
+      }
+
+
+      const teamKey =
+        record.teamId ||
+        getCurrentTeamName(
+          record
+        );
+
+
+      const revenue =
+        revenueFromRecord(
+          record
+        );
+
+
+      bucket.teams[
+        teamKey
+      ] =
+        (
+          bucket.teams[
+            teamKey
+          ] ||
+          0
+        ) +
+        revenue;
+
+      bucket.total +=
+        revenue;
+
+    }
+  );
+
+
+  return {
+    periodLabel:
+      revenueChartMode ===
+        "monthly"
+        ? `${selectedMonth.replace(
+            "-",
+            "年"
+          )}月`
+        : `${selectedYear}年`,
+    totalRevenue:
+      buckets.reduce(
+        (
+          sum,
+          bucket
+        ) =>
+          sum +
+          bucket.total,
+        0
+      ),
+    buckets,
+    teams
+  };
+
+}
+
+
+function renderRevenueChartDetail(
+  chartData,
+  bucket
+) {
+
+  if (!bucket) {
+
+    revenueChartDetail.innerHTML =
+      "";
+
+    return;
+
+  }
+
+
+  const rows =
+    chartData.teams
+      .map(
+        team => ({
+          ...team,
+          revenue:
+            bucket.teams[
+              team.key
+            ] ||
+            0
+        })
+      )
+      .filter(
+        team =>
+          team.revenue >
+          0
+      )
+      .sort(
+        (a, b) =>
+          b.revenue -
+          a.revenue
+      );
+
+
+  const listHtml =
+    rows.length > 0
+      ? rows
+          .map(
+            team => `
+              <div class="revenue-chart-detail-row">
+                <div class="revenue-chart-detail-team">
+                  <span
+                    class="revenue-chart-legend-color"
+                    style="background:${team.color};">
+                  </span>
+                  <span class="revenue-chart-detail-name">
+                    ${escapeHtml(
+                      team.name
+                    )}
+                  </span>
+                </div>
+                <strong>
+                  ${formatYen(
+                    team.revenue
+                  )}
+                </strong>
+              </div>
+            `
+          )
+          .join("")
+      : `
+          <div class="empty-message">
+            この期間の売上はありません。
+          </div>
+        `;
+
+
+  revenueChartDetail.innerHTML = `
+    <div class="revenue-chart-detail">
+      <div class="revenue-chart-detail-title">
+        ${escapeHtml(
+          bucket.label
+        )}の班別売上
+      </div>
+      <div class="revenue-chart-detail-total">
+        合計 ${formatYen(
+          bucket.total
+        )}
+      </div>
+      <div class="revenue-chart-detail-list">
+        ${listHtml}
+      </div>
+    </div>
+  `;
+
+}
+
+
+function renderRevenueChart() {
+
+  if (
+    !isCurrentCompanyManager()
+  ) {
+
+    revenueChartToggle.style.display =
+      "none";
+
+    return;
+
+  }
+
+
+  revenueChartToggle.style.display =
+    "";
+
+
+  const chartData =
+    buildRevenueChartData();
+
+
+  revenueChartMonthlyButton.setAttribute(
+    "aria-pressed",
+    revenueChartMode ===
+      "monthly"
+      ? "true"
+      : "false"
+  );
+
+  revenueChartAnnualButton.setAttribute(
+    "aria-pressed",
+    revenueChartMode ===
+      "annual"
+      ? "true"
+      : "false"
+  );
+
+
+  revenueChartSummary.innerHTML = `
+    <div class="revenue-chart-summary">
+      <div>
+        <div class="revenue-chart-period">
+          ${escapeHtml(
+            chartData.periodLabel
+          )}
+          ・班別収益
+        </div>
+        <div class="revenue-chart-total">
+          ${formatYen(
+            chartData.totalRevenue
+          )}
+        </div>
+      </div>
+      <div class="revenue-chart-period">
+        ${revenueChartMode ===
+          "monthly"
+          ? "日別"
+          : "月別"}
+      </div>
+    </div>
+  `;
+
+
+  revenueChartLegend.className =
+    "revenue-chart-legend";
+
+  revenueChartLegend.innerHTML =
+    chartData.teams.length > 0
+      ? chartData.teams
+          .map(
+            team => `
+              <div class="revenue-chart-legend-item">
+                <span
+                  class="revenue-chart-legend-color"
+                  style="background:${team.color};">
+                </span>
+                <span>
+                  ${escapeHtml(
+                    team.name
+                  )}
+                </span>
+              </div>
+            `
+          )
+          .join("")
+      : `
+          <div class="empty-message">
+            この期間の班実績はありません。
+          </div>
+        `;
+
+
+  const maxTotal =
+    Math.max(
+      0,
+      ...chartData.buckets.map(
+        bucket =>
+          bucket.total
+      )
+    );
+
+
+  const scaleMax =
+    maxTotal > 0
+      ? maxTotal
+      : 1;
+
+
+  const axisMax =
+    maxTotal > 0
+      ? maxTotal
+      : 0;
+
+  const axisMid =
+    axisMax /
+    2;
+
+
+  const canvas =
+    document.createElement(
+      "div"
+    );
+
+  canvas.className =
+    "revenue-chart-canvas";
+
+
+  const axis =
+    document.createElement(
+      "div"
+    );
+
+  axis.className =
+    "revenue-chart-axis";
+
+  axis.innerHTML = `
+    <span>${formatCompactYen(
+      axisMax
+    )}</span>
+    <span>${formatCompactYen(
+      axisMid
+    )}</span>
+    <span>¥0</span>
+  `;
+
+
+  const bars =
+    document.createElement(
+      "div"
+    );
+
+  bars.className =
+    "revenue-chart-bars";
+
+
+  chartData.buckets.forEach(
+    bucket => {
+
+      const column =
+        document.createElement(
+          "button"
+        );
+
+      column.type =
+        "button";
+
+      column.className =
+        revenueChartMode ===
+          "annual"
+          ? "revenue-chart-column annual"
+          : "revenue-chart-column";
+
+      column.setAttribute(
+        "aria-pressed",
+        bucket.key ===
+          revenueChartSelectedKey
+          ? "true"
+          : "false"
+      );
+
+      column.title =
+        `${bucket.label} ${formatYen(
+          bucket.total
+        )}`;
+
+
+      const stackWrap =
+        document.createElement(
+          "div"
+        );
+
+      stackWrap.className =
+        "revenue-chart-stack-wrap";
+
+
+      const stack =
+        document.createElement(
+          "div"
+        );
+
+      stack.className =
+        "revenue-chart-stack";
+
+      stack.style.height =
+        bucket.total > 0
+          ? `${Math.max(
+              3,
+              bucket.total /
+                scaleMax *
+                100
+            )}%`
+          : "0";
+
+
+      chartData.teams.forEach(
+        team => {
+
+          const revenue =
+            bucket.teams[
+              team.key
+            ] ||
+            0;
+
+
+          if (
+            revenue <=
+            0
+          ) {
+
+            return;
+
+          }
+
+
+          const segment =
+            document.createElement(
+              "div"
+            );
+
+          segment.className =
+            "revenue-chart-segment";
+
+          segment.style.background =
+            team.color;
+
+          segment.style.flexGrow =
+            String(
+              revenue
+            );
+
+          segment.title =
+            `${team.name}: ${formatYen(
+              revenue
+            )}`;
+
+          stack.appendChild(
+            segment
+          );
+
+        }
+      );
+
+
+      stackWrap.appendChild(
+        stack
+      );
+
+
+      const label =
+        document.createElement(
+          "div"
+        );
+
+      label.className =
+        "revenue-chart-label";
+
+      label.textContent =
+        bucket.shortLabel;
+
+
+      column.appendChild(
+        stackWrap
+      );
+
+      column.appendChild(
+        label
+      );
+
+
+      column.addEventListener(
+        "click",
+        () => {
+
+          revenueChartSelectedKey =
+            bucket.key;
+
+          Array.from(
+            bars.children
+          ).forEach(
+            item =>
+              item.setAttribute(
+                "aria-pressed",
+                "false"
+              )
+          );
+
+          column.setAttribute(
+            "aria-pressed",
+            "true"
+          );
+
+          renderRevenueChartDetail(
+            chartData,
+            bucket
+          );
+
+        }
+      );
+
+
+      bars.appendChild(
+        column
+      );
+
+    }
+  );
+
+
+  canvas.appendChild(
+    axis
+  );
+
+  canvas.appendChild(
+    bars
+  );
+
+
+  revenueChartArea.className =
+    "revenue-chart-scroll";
+
+  revenueChartArea.innerHTML =
+    "";
+
+  revenueChartArea.appendChild(
+    canvas
+  );
+
+
+  let selectedBucket =
+    chartData.buckets.find(
+      bucket =>
+        bucket.key ===
+        revenueChartSelectedKey
+    );
+
+
+  if (!selectedBucket) {
+
+    selectedBucket =
+      [...chartData.buckets]
+        .reverse()
+        .find(
+          bucket =>
+            bucket.total >
+            0
+        ) ||
+      chartData.buckets[0] ||
+      null;
+
+    revenueChartSelectedKey =
+      selectedBucket?.key ||
+      null;
+
+  }
+
+
+  if (
+    selectedBucket
+  ) {
+
+    const index =
+      chartData.buckets.findIndex(
+        bucket =>
+          bucket.key ===
+          selectedBucket.key
+      );
+
+    const selectedColumn =
+      bars.children[
+        index
+      ];
+
+    selectedColumn?.setAttribute(
+      "aria-pressed",
+      "true"
+    );
+
+  }
+
+
+  renderRevenueChartDetail(
+    chartData,
+    selectedBucket
+  );
+
+}
+
+
+revenueChartMonthlyButton.addEventListener(
+  "click",
+  () => {
+
+    revenueChartMode =
+      "monthly";
+
+    revenueChartSelectedKey =
+      null;
+
+    renderRevenueChart();
+
+  }
+);
+
+
+revenueChartAnnualButton.addEventListener(
+  "click",
+  () => {
+
+    revenueChartMode =
+      "annual";
+
+    revenueChartSelectedKey =
+      null;
+
+    renderRevenueChart();
+
+  }
+);
 
 
 /* =====================================================
