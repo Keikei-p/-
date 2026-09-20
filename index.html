@@ -6549,6 +6549,16 @@ function updateCurrentUserUI() {
       currentUserData.teamId
     );
 
+  changeOwnTeamButton.style.display =
+    (
+      currentUserData.role ===
+        "leader" &&
+      currentUserData.companyRole !==
+        "owner"
+    )
+      ? "none"
+      : "";
+
 
   if (
     currentUserData.companyRole ===
@@ -9173,11 +9183,30 @@ function renderMembers() {
       teamButton.textContent =
         "班変更";
 
-      teamButton.onclick =
-        () =>
-          openMemberTeamModal(
-            member
-          );
+      if (
+        member.id ===
+          currentUser?.uid &&
+        currentUserData?.role ===
+          "leader" &&
+        currentUserData?.companyRole !==
+          "owner"
+      ) {
+
+        teamButton.disabled =
+          true;
+
+        teamButton.textContent =
+          "班変更はオーナー";
+
+      } else {
+
+        teamButton.onclick =
+          () =>
+            openMemberTeamModal(
+              member
+            );
+
+      }
 
 
       actions.appendChild(
