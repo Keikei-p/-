@@ -9092,7 +9092,7 @@ ownerTransferButton.onclick =
 
     if (
       !confirm(
-        `${newOwner.name || "このメンバー"}へ代表オーナーを移譲しますか？\n\nあなたはリーダーとして残ります。`
+        `${newOwner.name || "このメンバー"}へ代表オーナーを移譲しますか？\n\nあなたのオーナー権限は解除され、所属班があればリーダー、なければメンバーになります。`
       )
     ) {
 
@@ -9117,6 +9117,11 @@ ownerTransferButton.onclick =
 
       const companyId =
         currentUserData.companyId;
+
+      const formerOwnerRole =
+        currentUserData.teamId
+          ? "leader"
+          : "member";
 
 
       batch.update(
@@ -9149,7 +9154,7 @@ ownerTransferButton.onclick =
             "member",
 
           role:
-            "leader",
+            formerOwnerRole,
 
           updatedAt:
             serverTimestamp()
@@ -9172,7 +9177,7 @@ ownerTransferButton.onclick =
             "member",
 
           role:
-            "leader",
+            formerOwnerRole,
 
           updatedAt:
             serverTimestamp()
@@ -9243,7 +9248,7 @@ ownerTransferButton.onclick =
           "member",
 
         role:
-          "leader"
+          formerOwnerRole
 
       };
 
