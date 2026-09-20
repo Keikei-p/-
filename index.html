@@ -1759,6 +1759,18 @@ header {
 
   </div>
 
+  <div
+    id="appErrorMessage"
+    class="error-message"
+    role="alert">
+  </div>
+
+  <div
+    id="appSuccessMessage"
+    class="success-message"
+    role="status">
+  </div>
+
 
   <!-- ようこそ -->
 
@@ -3005,6 +3017,12 @@ const errorMessage =
 const successMessage =
   document.getElementById("successMessage");
 
+const appErrorMessage =
+  document.getElementById("appErrorMessage");
+
+const appSuccessMessage =
+  document.getElementById("appSuccessMessage");
+
 const userName =
   document.getElementById("userName");
 
@@ -3953,43 +3971,84 @@ recordDate.value =
 
 function showError(message) {
 
-  errorMessage.textContent =
+  const inApp =
+    getComputedStyle(
+      appScreen
+    ).display !==
+    "none";
+
+
+  const target =
+    inApp
+      ? appErrorMessage
+      : errorMessage;
+
+  const other =
+    inApp
+      ? appSuccessMessage
+      : successMessage;
+
+
+  target.textContent =
     message;
 
-  errorMessage.style.display =
+  target.style.display =
     "block";
 
-  successMessage.style.display =
+  other.style.display =
     "none";
 }
 
 
 function showSuccess(message) {
 
-  successMessage.textContent =
+  const inApp =
+    getComputedStyle(
+      appScreen
+    ).display !==
+    "none";
+
+
+  const target =
+    inApp
+      ? appSuccessMessage
+      : successMessage;
+
+  const other =
+    inApp
+      ? appErrorMessage
+      : errorMessage;
+
+
+  target.textContent =
     message;
 
-  successMessage.style.display =
+  target.style.display =
     "block";
 
-  errorMessage.style.display =
+  other.style.display =
     "none";
 }
 
 
 function clearMessages() {
 
-  errorMessage.textContent =
-    "";
+  [
+    errorMessage,
+    successMessage,
+    appErrorMessage,
+    appSuccessMessage
+  ].forEach(
+    element => {
 
-  successMessage.textContent =
-    "";
+      element.textContent =
+        "";
 
-  errorMessage.style.display =
-    "none";
+      element.style.display =
+        "none";
 
-  successMessage.style.display =
-    "none";
+    }
+  );
 }
 
 
@@ -4066,7 +4125,13 @@ function firebaseErrorMessage(error) {
       "現在のパスワードを入力してください。",
 
     "permission-denied":
-      "Firestoreの権限がありません。",
+      "保存する権限がありません。担当者・会社・ログイン状態を確認してください。",
+
+    "unavailable":
+      "通信できませんでした。ネット接続を確認して、もう一度お試しください。",
+
+    "failed-precondition":
+      "保存条件を満たしていません。画面を更新して、もう一度お試しください。",
 
     "not-found":
       "データが見つかりません。"
