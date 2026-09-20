@@ -1280,6 +1280,117 @@ header {
   }
 }
 
+.all-teams-overview {
+  display: grid;
+  gap: 14px;
+}
+
+.all-teams-summary {
+  padding: 14px;
+  border-radius: 12px;
+  background: #eff6ff;
+  color: #1e3a8a;
+}
+
+.all-teams-summary-title {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.all-teams-summary-values {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 7px;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.all-team-card {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.all-team-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  background: #f8fafc;
+  border-bottom: 1px solid var(--border);
+}
+
+.all-team-name {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.all-team-total {
+  text-align: right;
+}
+
+.all-team-count {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.all-team-revenue {
+  margin-top: 3px;
+  color: var(--sub);
+  font-size: 11px;
+}
+
+.all-team-products {
+  padding: 0 14px 8px;
+}
+
+.all-team-product-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 11px 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.all-team-product-row:last-child {
+  border-bottom: 0;
+}
+
+.all-team-product-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.all-team-product-count,
+.all-team-product-revenue {
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.all-team-product-revenue {
+  color: #475569;
+}
+
+@media (max-width: 700px) {
+  .all-team-product-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .all-team-product-revenue {
+    grid-column: 2;
+    font-size: 11px;
+  }
+}
+
 .dashboard-section {
   margin-top: 12px;
   border: 1px solid var(--border);
@@ -2318,6 +2429,18 @@ header {
       </button>
 
       <button
+        id="allTeamsOverviewToggle"
+        class="dashboard-app-button"
+        type="button"
+        aria-expanded="false"
+        aria-pressed="false"
+        aria-controls="allTeamsOverviewContent">
+        <span class="dashboard-app-icon">📋</span>
+        <span class="dashboard-app-title">全班一覧</span>
+        <span id="allTeamsOverviewCount" class="dashboard-app-meta">0班</span>
+      </button>
+
+      <button
         id="productSummaryToggle"
         class="dashboard-app-button"
         type="button"
@@ -2418,6 +2541,13 @@ header {
         class="dashboard-app-content"
         hidden>
         <div id="teamRankingList"></div>
+      </div>
+
+      <div
+        id="allTeamsOverviewContent"
+        class="dashboard-app-content"
+        hidden>
+        <div id="allTeamsOverviewList"></div>
       </div>
 
       <div
@@ -3264,6 +3394,26 @@ const teamRankingCount =
     "teamRankingCount"
   );
 
+const allTeamsOverviewToggle =
+  document.getElementById(
+    "allTeamsOverviewToggle"
+  );
+
+const allTeamsOverviewContent =
+  document.getElementById(
+    "allTeamsOverviewContent"
+  );
+
+const allTeamsOverviewCount =
+  document.getElementById(
+    "allTeamsOverviewCount"
+  );
+
+const allTeamsOverviewList =
+  document.getElementById(
+    "allTeamsOverviewList"
+  );
+
 const productSummaryToggle =
   document.getElementById(
     "productSummaryToggle"
@@ -3910,6 +4060,12 @@ setupDashboardMenu(
         teamRankingToggle,
       content:
         teamRankingContent
+    },
+    {
+      toggle:
+        allTeamsOverviewToggle,
+      content:
+        allTeamsOverviewContent
     },
     {
       toggle:
@@ -6005,6 +6161,12 @@ function updateCurrentUserUI() {
 
 
   renderOwnerTransferOptions();
+
+
+  allTeamsOverviewToggle.style.display =
+    isCurrentCompanyManager()
+      ? ""
+      : "none";
 
 
   if (
@@ -10608,6 +10770,9 @@ function renderDashboard() {
     teamRankingList.innerHTML =
       "";
 
+    allTeamsOverviewList.innerHTML =
+      "";
+
     productSummaryList.innerHTML =
       "";
 
@@ -10621,6 +10786,9 @@ function renderDashboard() {
       "0人";
 
     teamRankingCount.textContent =
+      "0班";
+
+    allTeamsOverviewCount.textContent =
       "0班";
 
     productSummaryCount.textContent =
@@ -10943,10 +11111,19 @@ function renderDashboard() {
     ).length}日`;
 
 
-  renderSalesAnalysis(
+  const salesAnalysis =
     buildSalesAnalysis(
       monthly
-    )
+    );
+
+
+  renderSalesAnalysis(
+    salesAnalysis
+  );
+
+
+  renderAllTeamsOverview(
+    salesAnalysis
   );
 
 
@@ -11993,6 +12170,238 @@ function renderSalesAnalysis(
         team,
         "👥"
       )
+  );
+
+}
+
+
+/* =====================================================
+   全班一覧
+===================================================== */
+
+function renderAllTeamsOverview(
+  analysis
+) {
+
+  allTeamsOverviewList.innerHTML =
+    "";
+
+
+  if (
+    !isCurrentCompanyManager()
+  ) {
+
+    allTeamsOverviewToggle.style.display =
+      "none";
+
+    allTeamsOverviewCount.textContent =
+      "0班";
+
+    return;
+
+  }
+
+
+  allTeamsOverviewToggle.style.display =
+    "";
+
+
+  const teamValues =
+    sortedAnalysisValues(
+      analysis.teams
+    );
+
+
+  allTeamsOverviewCount.textContent =
+    `${teamValues.length}班`;
+
+
+  const wrapper =
+    document.createElement(
+      "div"
+    );
+
+  wrapper.className =
+    "all-teams-overview";
+
+
+  const summary =
+    document.createElement(
+      "div"
+    );
+
+  summary.className =
+    "all-teams-summary";
+
+  summary.innerHTML = `
+    <div class="all-teams-summary-title">
+      全班合計
+    </div>
+    <div class="all-teams-summary-values">
+      <span>${analysis.count}件</span>
+      <span>${formatYen(
+        analysis.revenue
+      )}</span>
+    </div>
+  `;
+
+
+  wrapper.appendChild(
+    summary
+  );
+
+
+  if (
+    teamValues.length === 0
+  ) {
+
+    const empty =
+      document.createElement(
+        "div"
+      );
+
+    empty.className =
+      "empty-message";
+
+    empty.textContent =
+      "この月の班実績はありません。";
+
+    wrapper.appendChild(
+      empty
+    );
+
+    allTeamsOverviewList.appendChild(
+      wrapper
+    );
+
+    return;
+
+  }
+
+
+  teamValues.forEach(
+    team => {
+
+      const card =
+        document.createElement(
+          "div"
+        );
+
+      card.className =
+        "all-team-card";
+
+
+      const header =
+        document.createElement(
+          "div"
+        );
+
+      header.className =
+        "all-team-header";
+
+      header.innerHTML = `
+        <div class="all-team-name">
+          👥 ${escapeHtml(
+            team.name
+          )}
+        </div>
+        <div class="all-team-total">
+          <div class="all-team-count">
+            ${team.count}件
+          </div>
+          <div class="all-team-revenue">
+            ${formatYen(
+              team.revenue
+            )}
+          </div>
+        </div>
+      `;
+
+
+      card.appendChild(
+        header
+      );
+
+
+      const productArea =
+        document.createElement(
+          "div"
+        );
+
+      productArea.className =
+        "all-team-products";
+
+
+      const products =
+        sortedAnalysisValues(
+          team.products ||
+          {}
+        );
+
+
+      if (
+        products.length === 0
+      ) {
+
+        productArea.innerHTML = `
+          <div class="empty-message">
+            商材実績はありません。
+          </div>
+        `;
+
+      } else {
+
+        products.forEach(
+          product => {
+
+            const row =
+              document.createElement(
+                "div"
+              );
+
+            row.className =
+              "all-team-product-row";
+
+            row.innerHTML = `
+              <div class="all-team-product-name">
+                📦 ${escapeHtml(
+                  product.name
+                )}
+              </div>
+              <div class="all-team-product-count">
+                ${product.count}件
+              </div>
+              <div class="all-team-product-revenue">
+                ${formatYen(
+                  product.revenue
+                )}
+              </div>
+            `;
+
+            productArea.appendChild(
+              row
+            );
+
+          }
+        );
+
+      }
+
+
+      card.appendChild(
+        productArea
+      );
+
+      wrapper.appendChild(
+        card
+      );
+
+    }
+  );
+
+
+  allTeamsOverviewList.appendChild(
+    wrapper
   );
 
 }
