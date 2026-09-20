@@ -1042,6 +1042,116 @@ header {
   border-top: 1px solid #f3f4f6;
 }
 
+.dashboard-app-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.dashboard-app-button {
+  min-height: 104px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 14px 10px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: #fff;
+  color: var(--text);
+  text-align: center;
+  cursor: pointer;
+  box-shadow: 0 3px 10px rgba(15,23,42,.04);
+}
+
+.dashboard-app-button:hover {
+  background: #f8fafc;
+  border-color: #bfdbfe;
+}
+
+.dashboard-app-button[aria-pressed="true"] {
+  border-color: #60a5fa;
+  background: #eff6ff;
+  color: #1d4ed8;
+  box-shadow: 0 4px 14px rgba(37,99,235,.12);
+}
+
+.dashboard-app-icon {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.dashboard-app-title {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.dashboard-app-meta {
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.dashboard-app-button[aria-pressed="true"] .dashboard-app-meta {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.dashboard-detail-area {
+  margin-top: 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.dashboard-app-content {
+  padding: 14px;
+}
+
+.dashboard-app-content .sales-analysis-panel {
+  margin-top: 0;
+}
+
+.dashboard-app-content[hidden],
+.dashboard-detail-area[hidden] {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  .dashboard-app-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .dashboard-app-button {
+    min-height: 94px;
+    border-radius: 14px;
+    padding: 12px 8px;
+  }
+
+  .dashboard-app-icon {
+    font-size: 25px;
+  }
+
+  .dashboard-app-title {
+    font-size: 12px;
+  }
+
+  .dashboard-app-content {
+    padding: 10px;
+  }
+}
+
 .dashboard-section {
   margin-top: 12px;
   border: 1px solid var(--border);
@@ -2024,205 +2134,161 @@ header {
     </div>
 
 
-    <div
-      id="salesAnalysisPanel"
-      class="sales-analysis-panel">
+    <div class="dashboard-app-grid">
 
-      <div class="sales-analysis-heading">
-
-        <div class="sales-analysis-title">
-          💰 売上分析
-        </div>
-
-        <div
-          id="salesAnalysisScope"
-          class="sales-analysis-scope">
-          会社全体
-        </div>
-
-      </div>
-
-      <div id="companySalesAnalysis">
-      </div>
-
-      <div
-        id="teamSalesAnalysisLabel"
-        class="analysis-team-label">
-        班別
-      </div>
-
-      <div
-        id="teamSalesAnalysisList"
-        class="analysis-team-list">
-      </div>
-
-    </div>
-
-
-    <div class="dashboard-section">
+      <button
+        id="salesAnalysisToggle"
+        class="dashboard-app-button"
+        type="button"
+        aria-expanded="false"
+        aria-pressed="false"
+        aria-controls="salesAnalysisContent">
+        <span class="dashboard-app-icon">💰</span>
+        <span class="dashboard-app-title">売上分析</span>
+        <span class="dashboard-app-meta">全体・班・商材</span>
+      </button>
 
       <button
         id="individualRankingToggle"
-        class="accordion-toggle"
+        class="dashboard-app-button"
         type="button"
-        aria-expanded="true"
+        aria-expanded="false"
+        aria-pressed="false"
         aria-controls="individualRankingContent">
-
-        <span class="accordion-toggle-left">
-          <span>🏆</span>
-          <span class="accordion-toggle-title">個人ランキング</span>
-        </span>
-
-        <span class="accordion-toggle-right">
-          <span id="individualRankingCount" class="accordion-count">0人</span>
-          <span class="accordion-chevron">⌄</span>
-        </span>
-
+        <span class="dashboard-app-icon">🏆</span>
+        <span class="dashboard-app-title">個人ランキング</span>
+        <span id="individualRankingCount" class="dashboard-app-meta">0人</span>
       </button>
-
-      <div
-        id="individualRankingContent"
-        class="accordion-content">
-
-        <div id="individualRankingList">
-        </div>
-
-      </div>
-
-    </div>
-
-
-    <div class="dashboard-section">
 
       <button
         id="teamRankingToggle"
-        class="accordion-toggle"
+        class="dashboard-app-button"
         type="button"
         aria-expanded="false"
+        aria-pressed="false"
         aria-controls="teamRankingContent">
-
-        <span class="accordion-toggle-left">
-          <span>👥</span>
-          <span class="accordion-toggle-title">班ランキング</span>
-        </span>
-
-        <span class="accordion-toggle-right">
-          <span id="teamRankingCount" class="accordion-count">0班</span>
-          <span class="accordion-chevron">⌄</span>
-        </span>
-
+        <span class="dashboard-app-icon">👥</span>
+        <span class="dashboard-app-title">班ランキング</span>
+        <span id="teamRankingCount" class="dashboard-app-meta">0班</span>
       </button>
-
-      <div
-        id="teamRankingContent"
-        class="accordion-content"
-        hidden>
-
-        <div id="teamRankingList">
-        </div>
-
-      </div>
-
-    </div>
-
-
-    <div class="dashboard-section">
 
       <button
         id="productSummaryToggle"
-        class="accordion-toggle"
+        class="dashboard-app-button"
         type="button"
         aria-expanded="false"
+        aria-pressed="false"
         aria-controls="productSummaryContent">
-
-        <span class="accordion-toggle-left">
-          <span>📦</span>
-          <span class="accordion-toggle-title">商材別</span>
-        </span>
-
-        <span class="accordion-toggle-right">
-          <span id="productSummaryCount" class="accordion-count">0件</span>
-          <span class="accordion-chevron">⌄</span>
-        </span>
-
+        <span class="dashboard-app-icon">📦</span>
+        <span class="dashboard-app-title">商材別</span>
+        <span id="productSummaryCount" class="dashboard-app-meta">0件</span>
       </button>
-
-      <div
-        id="productSummaryContent"
-        class="accordion-content"
-        hidden>
-
-        <div id="productSummaryList">
-        </div>
-
-      </div>
-
-    </div>
-
-
-    <div class="dashboard-section">
 
       <button
         id="dailySummaryToggle"
-        class="accordion-toggle"
+        class="dashboard-app-button"
         type="button"
         aria-expanded="false"
+        aria-pressed="false"
         aria-controls="dailySummaryContent">
-
-        <span class="accordion-toggle-left">
-          <span>📅</span>
-          <span class="accordion-toggle-title">日別</span>
-        </span>
-
-        <span class="accordion-toggle-right">
-          <span id="dailySummaryCount" class="accordion-count">0日</span>
-          <span class="accordion-chevron">⌄</span>
-        </span>
-
+        <span class="dashboard-app-icon">📅</span>
+        <span class="dashboard-app-title">日別</span>
+        <span id="dailySummaryCount" class="dashboard-app-meta">0日</span>
       </button>
 
+      <button
+        id="recordHistoryToggle"
+        class="dashboard-app-button"
+        type="button"
+        aria-expanded="false"
+        aria-pressed="false"
+        aria-controls="recordHistoryContent">
+        <span class="dashboard-app-icon">📝</span>
+        <span class="dashboard-app-title">登録履歴</span>
+        <span id="recordHistoryCount" class="dashboard-app-meta">0件</span>
+      </button>
+
+    </div>
+
+    <div
+      id="dashboardDetailArea"
+      class="dashboard-detail-area"
+      hidden>
+
       <div
-        id="dailySummaryContent"
-        class="accordion-content"
+        id="salesAnalysisContent"
+        class="dashboard-app-content"
         hidden>
 
-        <div id="dailySummaryList">
+        <div
+          id="salesAnalysisPanel"
+          class="sales-analysis-panel">
+
+          <div class="sales-analysis-heading">
+
+            <div class="sales-analysis-title">
+              💰 売上分析
+            </div>
+
+            <div
+              id="salesAnalysisScope"
+              class="sales-analysis-scope">
+              会社全体
+            </div>
+
+          </div>
+
+          <div id="companySalesAnalysis">
+          </div>
+
+          <div
+            id="teamSalesAnalysisLabel"
+            class="analysis-team-label">
+            班別
+          </div>
+
+          <div
+            id="teamSalesAnalysisList"
+            class="analysis-team-list">
+          </div>
+
         </div>
 
       </div>
 
-    </div>
+      <div
+        id="individualRankingContent"
+        class="dashboard-app-content"
+        hidden>
+        <div id="individualRankingList"></div>
+      </div>
 
+      <div
+        id="teamRankingContent"
+        class="dashboard-app-content"
+        hidden>
+        <div id="teamRankingList"></div>
+      </div>
 
-    <div class="dashboard-section">
+      <div
+        id="productSummaryContent"
+        class="dashboard-app-content"
+        hidden>
+        <div id="productSummaryList"></div>
+      </div>
 
-      <button
-        id="recordHistoryToggle"
-        class="accordion-toggle"
-        type="button"
-        aria-expanded="false"
-        aria-controls="recordHistoryContent">
-
-        <span class="accordion-toggle-left">
-          <span>📝</span>
-          <span class="accordion-toggle-title">登録履歴</span>
-        </span>
-
-        <span class="accordion-toggle-right">
-          <span id="recordHistoryCount" class="accordion-count">0件</span>
-          <span class="accordion-chevron">⌄</span>
-        </span>
-
-      </button>
+      <div
+        id="dailySummaryContent"
+        class="dashboard-app-content"
+        hidden>
+        <div id="dailySummaryList"></div>
+      </div>
 
       <div
         id="recordHistoryContent"
-        class="accordion-content"
+        class="dashboard-app-content"
         hidden>
-
-        <div id="recordHistoryList">
-        </div>
-
+        <div id="recordHistoryList"></div>
       </div>
 
     </div>
@@ -2935,6 +3001,21 @@ const monthlyWorkDays =
     "monthlyWorkDays"
   );
 
+const salesAnalysisToggle =
+  document.getElementById(
+    "salesAnalysisToggle"
+  );
+
+const salesAnalysisContent =
+  document.getElementById(
+    "salesAnalysisContent"
+  );
+
+const dashboardDetailArea =
+  document.getElementById(
+    "dashboardDetailArea"
+  );
+
 const salesAnalysisPanel =
   document.getElementById(
     "salesAnalysisPanel"
@@ -3531,8 +3612,112 @@ function setupAccordionGroup(
 }
 
 
-setupAccordionGroup(
+function setupDashboardMenu(
+  items
+) {
+
+  items.forEach(
+    item => {
+
+      setAccordionState(
+        item.toggle,
+        item.content,
+        false
+      );
+
+      item.toggle.setAttribute(
+        "aria-pressed",
+        "false"
+      );
+
+
+      item.toggle.addEventListener(
+        "click",
+        () => {
+
+          const shouldOpen =
+            item.toggle.getAttribute(
+              "aria-expanded"
+            ) !==
+            "true";
+
+
+          items.forEach(
+            other => {
+
+              setAccordionState(
+                other.toggle,
+                other.content,
+                false
+              );
+
+              other.toggle.setAttribute(
+                "aria-pressed",
+                "false"
+              );
+
+            }
+          );
+
+
+          if (
+            shouldOpen
+          ) {
+
+            setAccordionState(
+              item.toggle,
+              item.content,
+              true
+            );
+
+            item.toggle.setAttribute(
+              "aria-pressed",
+              "true"
+            );
+
+            dashboardDetailArea.hidden =
+              false;
+
+            requestAnimationFrame(
+              () =>
+                dashboardDetailArea.scrollIntoView(
+                  {
+                    behavior:
+                      "smooth",
+                    block:
+                      "nearest"
+                  }
+                )
+            );
+
+          } else {
+
+            dashboardDetailArea.hidden =
+              true;
+
+          }
+
+        }
+      );
+
+    }
+  );
+
+
+  dashboardDetailArea.hidden =
+    true;
+
+}
+
+
+setupDashboardMenu(
   [
+    {
+      toggle:
+        salesAnalysisToggle,
+      content:
+        salesAnalysisContent
+    },
     {
       toggle:
         individualRankingToggle,
@@ -3563,8 +3748,7 @@ setupAccordionGroup(
       content:
         recordHistoryContent
     }
-  ],
-  0
+  ]
 );
 
 
