@@ -5498,8 +5498,7 @@ createInviteButton.onclick =
 
     if (
       !currentUserData?.companyId ||
-      currentUserData.role !==
-      "leader"
+      !isCurrentCompanyManager()
     ) {
 
       showError(
@@ -9462,8 +9461,7 @@ clearRecordButton.onclick =
 
 
     if (
-      currentUserData?.role ===
-      "leader"
+      isCurrentCompanyManager()
     ) {
 
       recordMember.value =
