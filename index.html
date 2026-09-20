@@ -1152,6 +1152,134 @@ header {
   }
 }
 
+.analysis-scope-grid,
+.analysis-action-grid,
+.analysis-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.analysis-scope-card,
+.analysis-action-button,
+.analysis-member-card {
+  min-height: 96px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 9px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fff;
+  color: var(--text);
+  text-align: center;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(15,23,42,.04);
+}
+
+.analysis-scope-card:hover,
+.analysis-action-button:hover,
+.analysis-member-card:hover {
+  background: #f8fafc;
+  border-color: #bfdbfe;
+}
+
+.analysis-scope-card[aria-pressed="true"],
+.analysis-action-button[aria-pressed="true"],
+.analysis-member-card[aria-pressed="true"] {
+  border-color: #60a5fa;
+  background: #eff6ff;
+  color: #1d4ed8;
+  box-shadow: 0 4px 12px rgba(37,99,235,.10);
+}
+
+.analysis-nav-icon {
+  font-size: 25px;
+  line-height: 1;
+}
+
+.analysis-nav-title {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.analysis-nav-count {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.analysis-nav-revenue,
+.analysis-nav-hint {
+  color: var(--sub);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.analysis-result-area {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.analysis-current-path {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #eff6ff;
+  color: #1e40af;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.analysis-product-card {
+  min-height: 92px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 12px 9px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fff;
+  text-align: center;
+}
+
+.analysis-member-detail {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  background: #f8fbff;
+}
+
+.analysis-member-detail-title {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+@media (max-width: 700px) {
+  .analysis-scope-grid,
+  .analysis-action-grid,
+  .analysis-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .analysis-scope-card,
+  .analysis-action-button,
+  .analysis-member-card,
+  .analysis-product-card {
+    min-height: 88px;
+  }
+}
+
 .dashboard-section {
   margin-top: 12px;
   border: 1px solid var(--border);
@@ -2238,13 +2366,18 @@ header {
 
           </div>
 
+          <div
+            style="margin-top:10px;color:var(--sub);font-size:12px;line-height:1.6;">
+            会社または班を選び、次に「商材別」「メンバー別」を選んでください。
+          </div>
+
           <div id="companySalesAnalysis">
           </div>
 
           <div
             id="teamSalesAnalysisLabel"
-            class="analysis-team-label">
-            班別
+            class="analysis-current-path"
+            style="display:none;">
           </div>
 
           <div
@@ -10675,139 +10808,451 @@ function renderAnalysisMembers(
 }
 
 
-function createAnalysisBlock(
+function createAnalysisScopeCard(
   title,
   count,
   revenue,
-  products,
-  members,
-  options = {}
+  icon
 ) {
 
-  const block =
-    document.createElement(
-      "div"
-    );
-
-  block.className =
-    "analysis-block";
-
-
-  const toggle =
+  const button =
     document.createElement(
       "button"
     );
 
-  toggle.type =
+  button.type =
     "button";
 
-  toggle.className =
-    "analysis-block-toggle";
+  button.className =
+    "analysis-scope-card";
 
-  toggle.setAttribute(
-    "aria-expanded",
-    options.open
-      ? "true"
-      : "false"
+  button.setAttribute(
+    "aria-pressed",
+    "false"
   );
 
+  button.innerHTML = `
+    <span class="analysis-nav-icon">
+      ${icon}
+    </span>
+    <span class="analysis-nav-title">
+      ${escapeHtml(title)}
+    </span>
+    <span class="analysis-nav-count">
+      ${count}件
+    </span>
+    <span class="analysis-nav-revenue">
+      ${formatYen(revenue)}
+    </span>
+  `;
 
-  toggle.innerHTML = `
-    <div>
-      <div class="analysis-block-title">
-        ${escapeHtml(
-          title
-        )}
-      </div>
-      <div class="analysis-line-sub">
-        タップで内訳を表示
-      </div>
-    </div>
+  return button;
 
-    <div class="analysis-block-total">
-      <div class="analysis-block-count">
-        ${count}件
+}
+
+
+function createAnalysisActionButton(
+  icon,
+  title,
+  meta
+) {
+
+  const button =
+    document.createElement(
+      "button"
+    );
+
+  button.type =
+    "button";
+
+  button.className =
+    "analysis-action-button";
+
+  button.setAttribute(
+    "aria-pressed",
+    "false"
+  );
+
+  button.innerHTML = `
+    <span class="analysis-nav-icon">
+      ${icon}
+    </span>
+    <span class="analysis-nav-title">
+      ${escapeHtml(title)}
+    </span>
+    <span class="analysis-nav-hint">
+      ${escapeHtml(meta)}
+    </span>
+  `;
+
+  return button;
+
+}
+
+
+function renderAnalysisProductCards(
+  products
+) {
+
+  const values =
+    sortedAnalysisValues(
+      products
+    );
+
+
+  if (
+    values.length === 0
+  ) {
+
+    return `
+      <div class="analysis-empty">
+        商材実績はありません。
       </div>
-      <div class="analysis-block-revenue">
-        ${formatYen(
-          revenue
-        )}
-      </div>
+    `;
+
+  }
+
+
+  return `
+    <div class="analysis-card-grid">
+      ${values
+        .map(
+          item => `
+            <div class="analysis-product-card">
+              <span class="analysis-nav-icon">
+                📦
+              </span>
+              <span class="analysis-nav-title">
+                ${escapeHtml(item.name)}
+              </span>
+              <span class="analysis-nav-count">
+                ${item.count}件
+              </span>
+              <span class="analysis-nav-revenue">
+                ${formatYen(item.revenue)}
+              </span>
+            </div>
+          `
+        )
+        .join("")}
     </div>
   `;
 
+}
 
-  const content =
+
+function renderAnalysisMemberNavigation(
+  membersMap,
+  target,
+  scopeTitle
+) {
+
+  const values =
+    sortedAnalysisValues(
+      membersMap
+    );
+
+
+  target.innerHTML =
+    "";
+
+
+  if (
+    values.length === 0
+  ) {
+
+    target.innerHTML = `
+      <div class="analysis-empty">
+        メンバー実績はありません。
+      </div>
+    `;
+
+    return;
+
+  }
+
+
+  const grid =
     document.createElement(
       "div"
     );
 
-  content.className =
-    "analysis-block-content";
-
-  content.hidden =
-    !options.open;
+  grid.className =
+    "analysis-card-grid";
 
 
-  content.innerHTML = `
-    <div class="analysis-columns">
+  const detail =
+    document.createElement(
+      "div"
+    );
 
-      <div class="analysis-column">
-        <div class="analysis-column-title">
-          📦 商材別
-        </div>
-        ${renderAnalysisProducts(
-          products
-        )}
-      </div>
+  detail.className =
+    "analysis-member-detail";
 
-      <div class="analysis-column">
-        <div class="analysis-column-title">
-          👤 メンバー別
-        </div>
-        ${renderAnalysisMembers(
-          members,
-          options.showTeamName ===
-            true
-        )}
-      </div>
-
-    </div>
-  `;
+  detail.style.display =
+    "none";
 
 
-  toggle.addEventListener(
-    "click",
-    () => {
+  const buttons = [];
 
-      const open =
-        toggle.getAttribute(
-          "aria-expanded"
-        ) !==
-        "true";
 
-      toggle.setAttribute(
-        "aria-expanded",
-        String(open)
+  values.forEach(
+    member => {
+
+      const button =
+        document.createElement(
+          "button"
+        );
+
+      button.type =
+        "button";
+
+      button.className =
+        "analysis-member-card";
+
+      button.setAttribute(
+        "aria-pressed",
+        "false"
       );
 
-      content.hidden =
-        !open;
+      button.innerHTML = `
+        <span class="analysis-nav-icon">
+          👤
+        </span>
+        <span class="analysis-nav-title">
+          ${escapeHtml(member.name)}
+        </span>
+        <span class="analysis-nav-count">
+          ${member.count}件
+        </span>
+        <span class="analysis-nav-revenue">
+          ${formatYen(member.revenue)}
+        </span>
+        <span class="analysis-nav-hint">
+          タップで商材内訳
+        </span>
+      `;
+
+
+      button.addEventListener(
+        "click",
+        () => {
+
+          buttons.forEach(
+            other =>
+              other.setAttribute(
+                "aria-pressed",
+                "false"
+              )
+          );
+
+          button.setAttribute(
+            "aria-pressed",
+            "true"
+          );
+
+          detail.style.display =
+            "block";
+
+          detail.innerHTML = `
+            <div class="analysis-member-detail-title">
+              📍 ${escapeHtml(scopeTitle)}
+              → ${escapeHtml(member.name)}
+              → 商材別
+            </div>
+
+            ${renderAnalysisProductCards(
+              member.products
+            )}
+          `;
+
+          requestAnimationFrame(
+            () =>
+              detail.scrollIntoView(
+                {
+                  behavior:
+                    "smooth",
+                  block:
+                    "nearest"
+                }
+              )
+          );
+
+        }
+      );
+
+
+      buttons.push(
+        button
+      );
+
+      grid.appendChild(
+        button
+      );
 
     }
   );
 
 
-  block.appendChild(
-    toggle
+  target.appendChild(
+    grid
   );
 
-  block.appendChild(
-    content
+  target.appendChild(
+    detail
+  );
+
+}
+
+
+function renderAnalysisScopeDetail(
+  scope,
+  title
+) {
+
+  teamSalesAnalysisLabel.style.display =
+    "block";
+
+  teamSalesAnalysisLabel.textContent =
+    `📍 ${title}`;
+
+
+  teamSalesAnalysisList.innerHTML =
+    "";
+
+
+  const actions =
+    document.createElement(
+      "div"
+    );
+
+  actions.className =
+    "analysis-action-grid";
+
+
+  const productsButton =
+    createAnalysisActionButton(
+      "📦",
+      "商材別",
+      `${Object.keys(
+        scope.products || {}
+      ).length}商材`
+    );
+
+  const membersButton =
+    createAnalysisActionButton(
+      "👤",
+      "メンバー別",
+      `${Object.keys(
+        scope.members || {}
+      ).length}人`
+    );
+
+
+  const resultArea =
+    document.createElement(
+      "div"
+    );
+
+  resultArea.className =
+    "analysis-result-area";
+
+
+  function resetActions() {
+
+    productsButton.setAttribute(
+      "aria-pressed",
+      "false"
+    );
+
+    membersButton.setAttribute(
+      "aria-pressed",
+      "false"
+    );
+
+  }
+
+
+  productsButton.addEventListener(
+    "click",
+    () => {
+
+      resetActions();
+
+      productsButton.setAttribute(
+        "aria-pressed",
+        "true"
+      );
+
+      resultArea.innerHTML = `
+        <div class="analysis-current-path">
+          📍 ${escapeHtml(title)}
+          → 商材別
+        </div>
+
+        ${renderAnalysisProductCards(
+          scope.products || {}
+        )}
+      `;
+
+    }
   );
 
 
-  return block;
+  membersButton.addEventListener(
+    "click",
+    () => {
+
+      resetActions();
+
+      membersButton.setAttribute(
+        "aria-pressed",
+        "true"
+      );
+
+      resultArea.innerHTML = `
+        <div class="analysis-current-path">
+          📍 ${escapeHtml(title)}
+          → メンバー別
+        </div>
+      `;
+
+
+      const memberArea =
+        document.createElement(
+          "div"
+        );
+
+      resultArea.appendChild(
+        memberArea
+      );
+
+      renderAnalysisMemberNavigation(
+        scope.members || {},
+        memberArea,
+        title
+      );
+
+    }
+  );
+
+
+  actions.appendChild(
+    productsButton
+  );
+
+  actions.appendChild(
+    membersButton
+  );
+
+
+  teamSalesAnalysisList.appendChild(
+    actions
+  );
+
+  teamSalesAnalysisList.appendChild(
+    resultArea
+  );
 
 }
 
@@ -10821,6 +11266,9 @@ function renderSalesAnalysis(
 
   teamSalesAnalysisList.innerHTML =
     "";
+
+  teamSalesAnalysisLabel.style.display =
+    "none";
 
 
   const isLeader =
@@ -10837,36 +11285,75 @@ function renderSalesAnalysis(
       : "自分の実績";
 
 
-  const companyTitle =
+  companySalesAnalysis.className =
+    "analysis-scope-grid";
+
+
+  const scopeButtons =
+    [];
+
+
+  function addScope(
+    title,
+    scope,
+    icon
+  ) {
+
+    const button =
+      createAnalysisScopeCard(
+        title,
+        scope.count,
+        scope.revenue,
+        icon
+      );
+
+
+    button.addEventListener(
+      "click",
+      () => {
+
+        scopeButtons.forEach(
+          other =>
+            other.setAttribute(
+              "aria-pressed",
+              "false"
+            )
+        );
+
+        button.setAttribute(
+          "aria-pressed",
+          "true"
+        );
+
+        renderAnalysisScopeDetail(
+          scope,
+          title
+        );
+
+      }
+    );
+
+
+    scopeButtons.push(
+      button
+    );
+
+    companySalesAnalysis.appendChild(
+      button
+    );
+
+  }
+
+
+  addScope(
     isLeader
       ? "会社全体"
-      : "自分の実績";
-
-
-  companySalesAnalysis.appendChild(
-    createAnalysisBlock(
-      companyTitle,
-      analysis.count,
-      analysis.revenue,
-      analysis.products,
-      analysis.members,
-      {
-        open: true,
-        showTeamName: isLeader
-      }
-    )
+      : "自分の実績",
+    analysis,
+    isLeader
+      ? "🏢"
+      : "👤"
   );
-
-
-  teamSalesAnalysisLabel.style.display =
-    isLeader
-      ? "block"
-      : "none";
-
-  teamSalesAnalysisList.style.display =
-    isLeader
-      ? "block"
-      : "none";
 
 
   if (!isLeader) {
@@ -10882,35 +11369,13 @@ function renderSalesAnalysis(
     );
 
 
-  if (
-    teamValues.length === 0
-  ) {
-
-    teamSalesAnalysisList.innerHTML = `
-      <div class="analysis-empty">
-        班実績はありません。
-      </div>
-    `;
-
-    return;
-
-  }
-
-
   teamValues.forEach(
-    team => {
-
-      teamSalesAnalysisList.appendChild(
-        createAnalysisBlock(
-          team.name,
-          team.count,
-          team.revenue,
-          team.products,
-          team.members
-        )
-      );
-
-    }
+    team =>
+      addScope(
+        team.name,
+        team,
+        "👥"
+      )
   );
 
 }
