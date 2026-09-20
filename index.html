@@ -4002,6 +4002,95 @@ function isCurrentCompanyManager() {
 }
 
 
+function isCurrentCompanyOwner() {
+
+  return (
+    currentUserData?.companyRole ===
+      "owner"
+  );
+
+}
+
+
+function isCurrentTeamLeader() {
+
+  return (
+    currentUserData?.role ===
+      "leader" &&
+    currentUserData?.companyRole !==
+      "owner" &&
+    !!currentUserData?.teamId
+  );
+
+}
+
+
+function canCurrentUserManageRecord(
+  record
+) {
+
+  if (
+    !record ||
+    !currentUser
+  ) {
+
+    return false;
+
+  }
+
+
+  if (
+    isCurrentCompanyOwner()
+  ) {
+
+    return true;
+
+  }
+
+
+  if (
+    record.uid ===
+    currentUser.uid
+  ) {
+
+    return true;
+
+  }
+
+
+  if (
+    !isCurrentTeamLeader() ||
+    record.teamId !==
+      currentUserData.teamId
+  ) {
+
+    return false;
+
+  }
+
+
+  const targetMember =
+    members.find(
+      member =>
+        (
+          member.id ||
+          member.uid
+        ) ===
+        record.uid
+    );
+
+
+  return (
+    !!targetMember &&
+    targetMember.active !==
+      false &&
+    targetMember.teamId ===
+      currentUserData.teamId
+  );
+
+}
+
+
 let editingTeamId = null;
 let editingProductId = null;
 let editingMemberId = null;
@@ -6569,7 +6658,9 @@ function updateCurrentUserUI() {
       currentUserData.companyRole ===
         "owner"
         ? "👑 オーナー"
-        : "👑 リーダー";
+        : `👑 ${getTeamName(
+            currentUserData.teamId
+          )} リーダー`;
 
     setupWarning.style.display =
       "none";
@@ -7464,6 +7555,21 @@ function renderTeams() {
       getTeamName(
         currentUserData.teamId
       );
+
+
+    if (
+      currentUserData.companyRole !==
+        "owner" &&
+      currentUserData.role ===
+        "leader"
+    ) {
+
+      userRole.textContent =
+        `👑 ${getTeamName(
+          currentUserData.teamId
+        )} リーダー`;
+
+    }
 
   }
 
@@ -8968,9 +9074,17 @@ function renderMembers() {
         "member-role";
 
       role.textContent =
-        member.role === "leader"
-          ? "👑 リーダー"
-          : "👤 メンバー";
+        member.companyRole ===
+          "owner"
+          ? "👑 オーナー"
+          : (
+              member.role ===
+                "leader"
+                ? `👑 ${getTeamName(
+                    member.teamId
+                  )} リーダー`
+                : "👤 メンバー"
+            );
 
 
       const team =
@@ -9238,6 +9352,21 @@ async function changeMemberRole(
     member.role === "leader"
       ? "member"
       : "leader";
+
+
+  if (
+    newRole ===
+      "leader" &&
+    !member.teamId
+  ) {
+
+    showError(
+      "先に所属班を設定してからリーダーに変更してください。"
+    );
+
+    return;
+
+  }
 
 
   if (
@@ -9832,7 +9961,7 @@ function updateRecordMemberOptions() {
 
 
   if (
-    isCurrentCompanyManager()
+    isCurrentCompanyOwner()
   ) {
 
     members.forEach(
@@ -9844,7 +9973,8 @@ function updateRecordMemberOptions() {
           );
 
         option.value =
-          member.id;
+          member.id ||
+          member.uid;
 
         option.textContent =
           member.name ||
@@ -9857,19 +9987,40 @@ function updateRecordMemberOptions() {
       }
     );
 
+  } else if (
+    isCurrentTeamLeader()
+  ) {
 
-    if (
-      members.some(
+    members
+      .filter(
         member =>
-          member.id ===
-          currentValue
+          member.active !==
+            false &&
+          member.teamId ===
+            currentUserData.teamId
       )
-    ) {
+      .forEach(
+        member => {
 
-      recordMember.value =
-        currentValue;
+          const option =
+            document.createElement(
+              "option"
+            );
 
-    }
+          option.value =
+            member.id ||
+            member.uid;
+
+          option.textContent =
+            member.name ||
+            "名前未設定";
+
+          recordMember.appendChild(
+            option
+          );
+
+        }
+      );
 
   } else {
 
@@ -9899,6 +10050,27 @@ function updateRecordMemberOptions() {
       option
     );
 
+  }
+
+
+  if (
+    Array.from(
+      recordMember.options
+    ).some(
+      option =>
+        option.value ===
+        currentValue
+    )
+  ) {
+
+    recordMember.value =
+      currentValue;
+
+  } else if (
+    !isCurrentCompanyOwner() &&
+    !isCurrentTeamLeader() &&
+    currentUserData?.uid
+  ) {
 
     recordMember.value =
       currentUserData.uid;
@@ -9906,7 +10078,6 @@ function updateRecordMemberOptions() {
   }
 
 }
-
 
 async function prepareRecordInputs() {
 
@@ -10484,7 +10655,8 @@ clearRecordButton.onclick =
 
 
     if (
-      isCurrentCompanyManager()
+      isCurrentCompanyOwner() ||
+      isCurrentTeamLeader()
     ) {
 
       recordMember.value =
@@ -10633,6 +10805,48 @@ saveRecordButton.onclick =
       );
 
 
+    const existingDailyRecord =
+      findDailyRecord(
+        targetUid,
+        date
+      );
+
+
+    const targetTeamId =
+      existingDailyRecord
+        ? (
+            existingDailyRecord.teamId ??
+            null
+          )
+        : assignedTeam.teamId;
+
+
+    const canManageTarget =
+      isCurrentCompanyOwner() ||
+      targetUid ===
+        currentUser?.uid ||
+      (
+        isCurrentTeamLeader() &&
+        member.teamId ===
+          currentUserData.teamId &&
+        targetTeamId ===
+          currentUserData.teamId
+      );
+
+
+    if (
+      !canManageTarget
+    ) {
+
+      showError(
+        "リーダーは自分の班員の実績だけ追加・修正できます。"
+      );
+
+      return;
+
+    }
+
+
     try {
 
       saveRecordButton.disabled =
@@ -10650,13 +10864,6 @@ saveRecordButton.onclick =
         editingRecordId が前の操作から残っていても、
         別の日付・別メンバーの実績を誤更新しない。
       */
-
-      const existingDailyRecord =
-        findDailyRecord(
-          targetUid,
-          date
-        );
-
 
       const recordId =
         existingDailyRecord?.id ||
@@ -15003,9 +15210,9 @@ function renderRecordHistory(
 
 
       const canEdit =
-        isCurrentCompanyManager() ||
-        record.uid ===
-          currentUserData?.uid;
+        canCurrentUserManageRecord(
+          record
+        );
 
 
       if (
