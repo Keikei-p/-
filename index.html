@@ -752,6 +752,32 @@ header {
    日別詳細
 ===================================================== */
 
+.daily-date-picker {
+  margin-bottom: 14px;
+}
+
+.daily-date-picker label {
+  display: block;
+  margin-bottom: 7px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.daily-date-picker input {
+  width: 100%;
+  max-width: 260px;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #fff;
+  outline: none;
+}
+
+.daily-date-picker input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(37,99,235,.1);
+}
+
 .daily-detail-card {
   margin-bottom: 12px;
   border: 1px solid var(--border);
@@ -3045,7 +3071,22 @@ header {
         id="dailySummaryContent"
         class="dashboard-app-content"
         hidden>
+
+        <div class="daily-date-picker">
+
+          <label for="dailySummaryDate">
+            表示する日付
+          </label>
+
+          <input
+            id="dailySummaryDate"
+            type="date"
+          >
+
+        </div>
+
         <div id="dailySummaryList"></div>
+
       </div>
 
       <div
@@ -3870,6 +3911,11 @@ const dailySummaryList =
     "dailySummaryList"
   );
 
+const dailySummaryDate =
+  document.getElementById(
+    "dailySummaryDate"
+  );
+
 const recordHistoryList =
   document.getElementById(
     "recordHistoryList"
@@ -4318,6 +4364,9 @@ let revenueChartMode =
 
 let revenueChartSelectedKey =
   null;
+
+let currentDailySummaryMap =
+  {};
 
 
 /*
@@ -11906,7 +11955,22 @@ dashboardMonth.addEventListener(
     revenueChartSelectedKey =
       null;
 
+    dailySummaryDate.value =
+      "";
+
     renderDashboard();
+
+  }
+);
+
+
+dailySummaryDate.addEventListener(
+  "change",
+  () => {
+
+    renderDailySummary(
+      currentDailySummaryMap
+    );
 
   }
 );
@@ -15708,13 +15772,18 @@ function renderDailySummary(
   dailyMap
 ) {
 
+  currentDailySummaryMap =
+    dailyMap ||
+    {};
+
+
   dailySummaryList.innerHTML =
     "";
 
 
   const dates =
     Object.keys(
-      dailyMap
+      currentDailySummaryMap
     ).sort(
       (a, b) =>
         b.localeCompare(a)
@@ -15725,9 +15794,71 @@ function renderDailySummary(
     `${dates.length}日`;
 
 
+  const selectedMonth =
+    dashboardMonth.value;
+
+
+  if (
+    selectedMonth
+  ) {
+
+    const [
+      year,
+      month
+    ] =
+      selectedMonth
+        .split("-")
+        .map(Number);
+
+
+    const lastDay =
+      new Date(
+        year,
+        month,
+        0
+      ).getDate();
+
+
+    dailySummaryDate.min =
+      `${selectedMonth}-01`;
+
+    dailySummaryDate.max =
+      `${selectedMonth}-${String(
+        lastDay
+      ).padStart(
+        2,
+        "0"
+      )}`;
+
+  } else {
+
+    dailySummaryDate.removeAttribute(
+      "min"
+    );
+
+    dailySummaryDate.removeAttribute(
+      "max"
+    );
+
+  }
+
+
   if (
     dates.length === 0
   ) {
+
+    if (
+      selectedMonth &&
+      !dailySummaryDate.value.startsWith(
+        selectedMonth
+      )
+    ) {
+
+      dailySummaryDate.value =
+        `${selectedMonth}-01`;
+
+    }
+
 
     dailySummaryList.innerHTML = `
       <div class="empty-message">
@@ -15740,59 +15871,178 @@ function renderDailySummary(
   }
 
 
-  dates.forEach(
-    date => {
+  if (
+    !dailySummaryDate.value ||
+    (
+      selectedMonth &&
+      !dailySummaryDate.value.startsWith(
+        selectedMonth
+      )
+    )
+  ) {
 
-      const data =
-        dailyMap[date];
+    dailySummaryDate.value =
+      dates[0];
+
+  }
 
 
-      const card =
+  const selectedDate =
+    dailySummaryDate.value;
+
+  const data =
+    currentDailySummaryMap[
+      selectedDate
+    ];
+
+
+  if (!data) {
+
+    dailySummaryList.innerHTML = `
+      <div class="empty-message">
+        ${formatDateJapanese(
+          selectedDate
+        )}の実績はありません。
+      </div>
+    `;
+
+    return;
+
+  }
+
+
+  const card =
+    document.createElement(
+      "div"
+    );
+
+  card.className =
+    "daily-detail-card";
+
+
+  const header =
+    document.createElement(
+      "div"
+    );
+
+  header.className =
+    "daily-detail-header";
+
+  header.innerHTML = `
+    <div class="daily-detail-date">
+      ${formatDateJapanese(
+        selectedDate
+      )}
+    </div>
+
+    <div class="daily-detail-total">
+      <div class="daily-detail-count">
+        全班合計 ${data.count}件
+      </div>
+
+      <div class="daily-detail-revenue">
+        ${formatYen(
+          data.revenue
+        )}
+      </div>
+    </div>
+  `;
+
+
+  card.appendChild(
+    header
+  );
+
+
+  const teamValues =
+    Object.values(
+      data.teams ||
+      {}
+    ).sort(
+      (a, b) =>
+        String(
+          a.name ||
+          ""
+        ).localeCompare(
+          String(
+            b.name ||
+            ""
+          ),
+          "ja"
+        )
+    );
+
+
+  if (
+    teamValues.length === 0
+  ) {
+
+    const empty =
+      document.createElement(
+        "div"
+      );
+
+    empty.className =
+      "empty-message";
+
+    empty.textContent =
+      "この日の班実績はありません。";
+
+    card.appendChild(
+      empty
+    );
+
+  }
+
+
+  teamValues.forEach(
+    team => {
+
+      const teamBlock =
         document.createElement(
           "div"
         );
 
-      card.className =
-        "daily-detail-card";
+      teamBlock.className =
+        "daily-team-block";
 
 
-      const header =
+      const teamHeader =
         document.createElement(
           "div"
         );
 
-      header.className =
-        "daily-detail-header";
+      teamHeader.className =
+        "daily-team-header";
 
-      header.innerHTML = `
-        <div class="daily-detail-date">
-          ${formatDateJapanese(
-            date
+      teamHeader.innerHTML = `
+        <div class="daily-team-name">
+          👥 ${escapeHtml(
+            team.name ||
+            "所属なし"
           )}
         </div>
 
-        <div class="daily-detail-total">
-          <div class="daily-detail-count">
-            ${data.count}件
-          </div>
-
-          <div class="daily-detail-revenue">
-            ${formatYen(
-              data.revenue
-            )}
-          </div>
+        <div class="daily-team-total">
+          <strong>
+            ${team.count}件
+          </strong>
+          <br>
+          ${formatYen(
+            team.revenue
+          )}
         </div>
       `;
 
 
-      card.appendChild(
-        header
+      teamBlock.appendChild(
+        teamHeader
       );
 
 
-      const teamValues =
+      const locationValues =
         Object.values(
-          data.teams ||
+          team.locations ||
           {}
         ).sort(
           (a, b) =>
@@ -15809,54 +16059,51 @@ function renderDailySummary(
         );
 
 
-      teamValues.forEach(
-        team => {
+      locationValues.forEach(
+        location => {
 
-          const teamBlock =
+          const locationBlock =
             document.createElement(
               "div"
             );
 
-          teamBlock.className =
-            "daily-team-block";
+          locationBlock.className =
+            "daily-location-block";
 
 
-          const teamHeader =
+          const locationHeader =
             document.createElement(
               "div"
             );
 
-          teamHeader.className =
-            "daily-team-header";
+          locationHeader.className =
+            "daily-location-header";
 
-          teamHeader.innerHTML = `
-            <div class="daily-team-name">
-              👥 ${escapeHtml(
-                team.name ||
-                "所属なし"
+          locationHeader.innerHTML = `
+            <div class="daily-location-name">
+              📍 ${escapeHtml(
+                location.name ||
+                "場所未入力"
               )}
             </div>
 
-            <div class="daily-team-total">
-              <strong>
-                ${team.count}件
-              </strong>
-              <br>
+            <div class="daily-location-total">
+              ${location.count}件 /
               ${formatYen(
-                team.revenue
+                location.revenue
               )}
             </div>
           `;
 
 
-          teamBlock.appendChild(
-            teamHeader
+          locationBlock.appendChild(
+            locationHeader
           );
 
 
-          const locationValues =
+          const productValues =
             Object.values(
-              team.locations ||
+              location.products ||
               {}
             ).sort(
               (a, b) =>
@@ -15873,127 +16120,63 @@ function renderDailySummary(
             );
 
 
-          locationValues.forEach(
-            location => {
+          productValues.forEach(
+            product => {
 
-              const locationBlock =
+              const productRow =
                 document.createElement(
                   "div"
                 );
 
-              locationBlock.className =
-                "daily-location-block";
+              productRow.className =
+                "daily-product-row";
 
-
-              const locationHeader =
-                document.createElement(
-                  "div"
-                );
-
-              locationHeader.className =
-                "daily-location-header";
-
-              locationHeader.innerHTML = `
-                <div class="daily-location-name">
-                  📍 ${escapeHtml(
-                    location.name ||
-                    "場所未入力"
+              productRow.innerHTML = `
+                <div class="daily-product-name">
+                  ${escapeHtml(
+                    product.name ||
+                    "不明"
                   )}
                 </div>
 
-                <div class="daily-location-total">
-                  ${location.count}件 /
+                <div class="daily-product-count">
+                  ${product.count}件
+                </div>
+
+                <div class="daily-product-revenue">
                   ${formatYen(
-                    location.revenue
+                    product.revenue
                   )}
                 </div>
               `;
 
 
               locationBlock.appendChild(
-                locationHeader
-              );
-
-
-              const productValues =
-                Object.values(
-                  location.products ||
-                  {}
-                ).sort(
-                  (a, b) =>
-                    String(
-                      a.name ||
-                      ""
-                    ).localeCompare(
-                      String(
-                        b.name ||
-                        ""
-                      ),
-                      "ja"
-                    )
-                );
-
-
-              productValues.forEach(
-                product => {
-
-                  const productRow =
-                    document.createElement(
-                      "div"
-                    );
-
-                  productRow.className =
-                    "daily-product-row";
-
-                  productRow.innerHTML = `
-                    <div class="daily-product-name">
-                      ${escapeHtml(
-                        product.name ||
-                        "不明"
-                      )}
-                    </div>
-
-                    <div class="daily-product-count">
-                      ${product.count}件
-                    </div>
-
-                    <div class="daily-product-revenue">
-                      ${formatYen(
-                        product.revenue
-                      )}
-                    </div>
-                  `;
-
-
-                  locationBlock.appendChild(
-                    productRow
-                  );
-
-                }
-              );
-
-
-              teamBlock.appendChild(
-                locationBlock
+                productRow
               );
 
             }
           );
 
 
-          card.appendChild(
-            teamBlock
+          teamBlock.appendChild(
+            locationBlock
           );
 
         }
       );
 
 
-      dailySummaryList.appendChild(
-        card
+      card.appendChild(
+        teamBlock
       );
 
     }
+  );
+
+
+  dailySummaryList.appendChild(
+    card
   );
 
 }
