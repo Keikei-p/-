@@ -3194,7 +3194,7 @@ if (
 
 import {
   initializeApp
-} from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
+} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
 
 import {
   getAuth,
@@ -3208,7 +3208,7 @@ import {
   reauthenticateWithCredential,
   deleteUser,
   reload
-} from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
+} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 
 import {
   getFirestore,
@@ -3225,7 +3225,7 @@ import {
   Timestamp,
   serverTimestamp,
   onSnapshot
-} from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
+} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
 
 const firebaseConfig = {
@@ -4427,23 +4427,37 @@ setupAccordionGroup(
 
 function getTodayString() {
 
-  const now =
-    new Date();
+  const parts =
+    new Intl.DateTimeFormat(
+      "ja-JP",
+      {
+        timeZone:
+          "Asia/Tokyo",
+        year:
+          "numeric",
+        month:
+          "2-digit",
+        day:
+          "2-digit"
+      }
+    ).formatToParts(
+      new Date()
+    );
 
-  const year =
-    now.getFullYear();
 
-  const month =
-    String(
-      now.getMonth() + 1
-    ).padStart(2, "0");
+  const values =
+    Object.fromEntries(
+      parts.map(
+        part => [
+          part.type,
+          part.value
+        ]
+      )
+    );
 
-  const day =
-    String(
-      now.getDate()
-    ).padStart(2, "0");
 
-  return `${year}-${month}-${day}`;
+  return `${values.year}-${values.month}-${values.day}`;
+
 }
 
 
@@ -4559,6 +4573,55 @@ function companyCollectionQuery(
       "==",
       currentUserData.companyId
     )
+  );
+
+}
+
+
+function recordsCollectionQuery() {
+
+  if (
+    !currentUserData?.companyId ||
+    !currentUser?.uid
+  ) {
+
+    throw new Error(
+      "実績の取得条件を確認できません。"
+    );
+
+  }
+
+
+  const constraints = [
+    where(
+      "companyId",
+      "==",
+      currentUserData.companyId
+    )
+  ];
+
+
+  if (
+    !isCurrentCompanyManager()
+  ) {
+
+    constraints.push(
+      where(
+        "uid",
+        "==",
+        currentUser.uid
+      )
+    );
+
+  }
+
+
+  return query(
+    collection(
+      db,
+      "records"
+    ),
+    ...constraints
   );
 
 }
@@ -6315,8 +6378,6 @@ async function loadUserData(
 
     await loadMembers();
 
-    await loadRecords();
-
 
     databaseStatus.textContent =
       "接続済み";
@@ -7218,7 +7279,7 @@ function startRealtimeListeners() {
 
   unsubscribeRecords =
     onSnapshot(
-      companyCollectionQuery("records"),
+      recordsCollectionQuery(),
       snapshot => {
 
         records = [];
@@ -7765,9 +7826,33 @@ async function deleteTeam(
   team
 ) {
 
+  const assignedMembers =
+    members.filter(
+      member =>
+        member.active !==
+          false &&
+        member.teamId ===
+          team.id
+    );
+
+
+  if (
+    assignedMembers.length >
+    0
+  ) {
+
+    showError(
+      `この班には${assignedMembers.length}人所属しています。先に全員を別の班または「所属なし」へ変更してから削除してください。`
+    );
+
+    return;
+
+  }
+
+
   if (
     !confirm(
-      `${team.name}を削除しますか？\n\n所属しているメンバーの班は「所属なし」になります。`
+      `${team.name}を削除しますか？\n\n過去の実績はこの班の実績として残ります。`
     )
   ) {
 
@@ -7787,83 +7872,10 @@ async function deleteTeam(
     );
 
 
-    const snapshot =
-      await getDocs(
-        companyCollectionQuery("users")
-      );
-
-
-    const updates = [];
-
-
-    snapshot.forEach(
-      userDoc => {
-
-        const data =
-          userDoc.data();
-
-        if (
-          data.teamId ===
-          team.id
-        ) {
-
-          updates.push(
-            updateDoc(
-              doc(
-                db,
-                "users",
-                userDoc.id
-              ),
-              {
-
-                teamId:
-                  null,
-
-                updatedAt:
-                  serverTimestamp()
-
-              }
-            )
-          );
-
-          updates.push(
-            updateDoc(
-              doc(
-                db,
-                "companies",
-                currentUserData.companyId,
-                "members",
-                userDoc.id
-              ),
-              {
-
-                teamId:
-                  null,
-
-                updatedAt:
-                  serverTimestamp()
-
-              }
-            )
-          );
-
-        }
-
-      }
-    );
-
-
-    await Promise.all(
-      updates
-    );
-
-
     await loadTeams();
 
-    await loadMembers();
-
     showSuccess(
-      "班を削除しました。"
+      "班を削除しました。過去の実績はそのまま残ります。"
     );
 
   } catch (error) {
@@ -7877,7 +7889,6 @@ async function deleteTeam(
   }
 
 }
-
 
 /* =====================================================
    商材
@@ -9707,8 +9718,6 @@ saveMemberTeamModal.onclick =
 
       await loadTeams();
 
-      await loadRecords();
-
       showSuccess(
         `${effectiveDate}から${nextTeam.teamName}へ変更しました。変更日前の実績は元の班に残ります。`
       );
@@ -9841,6 +9850,70 @@ async function prepareRecordInputs() {
    全商材入力欄
 ===================================================== */
 
+function normalizeExistingResultMap(
+  existingResults
+) {
+
+  if (
+    !existingResults ||
+    typeof existingResults !==
+      "object"
+  ) {
+
+    return {};
+
+  }
+
+
+  if (
+    Array.isArray(
+      existingResults
+    )
+  ) {
+
+    const map = {};
+
+
+    existingResults.forEach(
+      (
+        result,
+        index
+      ) => {
+
+        if (!result) {
+
+          return;
+
+        }
+
+
+        const productId =
+          result.productId ||
+          `legacy_${index}`;
+
+
+        map[
+          productId
+        ] = {
+          ...result
+        };
+
+      }
+    );
+
+
+    return map;
+
+  }
+
+
+  return {
+    ...existingResults
+  };
+
+}
+
+
 function prepareProductInputList(
   existingResults = null
 ) {
@@ -9849,8 +9922,106 @@ function prepareProductInputList(
     "";
 
 
+  const existingMap =
+    normalizeExistingResultMap(
+      existingResults
+    );
+
+
+  const currentProductIds =
+    new Set(
+      products.map(
+        product =>
+          product.id
+      )
+    );
+
+
+  const inputProducts =
+    products.map(
+      product => {
+
+        const snapshot =
+          existingMap[
+            product.id
+          ];
+
+
+        return {
+          id:
+            product.id,
+          name:
+            snapshot?.productName ||
+            product.name,
+          revenuePerUnit:
+            snapshot
+              ? Number(
+                  snapshot.revenuePerUnit ||
+                  0
+                )
+              : Number(
+                  product.revenue ||
+                  0
+                ),
+          count:
+            Number(
+              snapshot?.count ||
+              0
+            ),
+          historicalOnly:
+            false
+        };
+
+      }
+    );
+
+
+  Object.entries(
+    existingMap
+  ).forEach(
+    ([
+      productId,
+      result
+    ]) => {
+
+      if (
+        currentProductIds.has(
+          productId
+        )
+      ) {
+
+        return;
+
+      }
+
+
+      inputProducts.push({
+        id:
+          productId,
+        name:
+          result?.productName ||
+          "削除済み商材",
+        revenuePerUnit:
+          Number(
+            result?.revenuePerUnit ||
+            0
+          ),
+        count:
+          Number(
+            result?.count ||
+            0
+          ),
+        historicalOnly:
+          true
+      });
+
+    }
+  );
+
+
   if (
-    products.length === 0
+    inputProducts.length ===
+    0
   ) {
 
     productInputList.innerHTML = `
@@ -9866,7 +10037,7 @@ function prepareProductInputList(
   }
 
 
-  products.forEach(
+  inputProducts.forEach(
     product => {
 
       const row =
@@ -9896,7 +10067,9 @@ function prepareProductInputList(
         "product-input-name";
 
       name.textContent =
-        product.name;
+        product.historicalOnly
+          ? `${product.name}（履歴）`
+          : product.name;
 
 
       const unit =
@@ -9909,7 +10082,7 @@ function prepareProductInputList(
 
       unit.textContent =
         `1件 ${formatYen(
-          product.revenue
+          product.revenuePerUnit
         )}`;
 
 
@@ -9946,27 +10119,21 @@ function prepareProductInputList(
         "1";
 
       input.value =
-        "0";
+        String(
+          product.count ||
+          0
+        );
 
       input.dataset.productId =
         product.id;
 
+      input.dataset.productName =
+        product.name;
 
-      if (
-        existingResults &&
-        existingResults[
-          product.id
-        ]
-      ) {
-
-        input.value =
-          Number(
-            existingResults[
-              product.id
-            ].count || 0
-          );
-
-      }
+      input.dataset.revenuePerUnit =
+        String(
+          product.revenuePerUnit
+        );
 
 
       input.addEventListener(
@@ -10001,7 +10168,6 @@ function prepareProductInputList(
 
 }
 
-
 /* =====================================================
    入力合計
 ===================================================== */
@@ -10031,37 +10197,31 @@ function getCurrentInputResults() {
 
 
       if (
-        Number.isInteger(count) &&
-        count > 0
+        productId &&
+        Number.isInteger(
+          count
+        ) &&
+        count >
+          0
       ) {
 
-        const product =
-          products.find(
-            item =>
-              item.id ===
-              productId
-          );
+        results[
+          productId
+        ] = {
 
+          productName:
+            input.dataset.productName ||
+            "不明",
 
-        if (product) {
+          count,
 
-          results[
-            productId
-          ] = {
+          revenuePerUnit:
+            Number(
+              input.dataset.revenuePerUnit ||
+              0
+            )
 
-            productName:
-              product.name,
-
-            count,
-
-            revenuePerUnit:
-              Number(
-                product.revenue || 0
-              )
-
-          };
-
-        }
+        };
 
       }
 
@@ -10072,7 +10232,6 @@ function getCurrentInputResults() {
   return results;
 
 }
-
 
 function calculateResultsTotals(
   results
@@ -10710,7 +10869,7 @@ async function loadRecords() {
 
     const snapshot =
       await getDocs(
-        companyCollectionQuery("records")
+        recordsCollectionQuery()
       );
 
 
@@ -14982,7 +15141,17 @@ async function deleteRecord(
     }
 
 
-    await loadRecords();
+    records =
+      records.filter(
+        item =>
+          item.id !==
+          record.id
+      );
+
+
+    createMonthOptions();
+
+    renderDashboard();
 
 
     showSuccess(
