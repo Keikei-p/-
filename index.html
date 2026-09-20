@@ -4564,6 +4564,55 @@ function companyCollectionQuery(
 }
 
 
+function recordsCollectionQuery() {
+
+  if (
+    !currentUserData?.companyId ||
+    !currentUser?.uid
+  ) {
+
+    throw new Error(
+      "実績の取得条件を確認できません。"
+    );
+
+  }
+
+
+  const constraints = [
+    where(
+      "companyId",
+      "==",
+      currentUserData.companyId
+    )
+  ];
+
+
+  if (
+    !isCurrentCompanyManager()
+  ) {
+
+    constraints.push(
+      where(
+        "uid",
+        "==",
+        currentUser.uid
+      )
+    );
+
+  }
+
+
+  return query(
+    collection(
+      db,
+      "records"
+    ),
+    ...constraints
+  );
+
+}
+
+
 function formatYen(value) {
 
   return `¥${Number(
@@ -6315,8 +6364,6 @@ async function loadUserData(
 
     await loadMembers();
 
-    await loadRecords();
-
 
     databaseStatus.textContent =
       "接続済み";
@@ -7218,7 +7265,7 @@ function startRealtimeListeners() {
 
   unsubscribeRecords =
     onSnapshot(
-      companyCollectionQuery("records"),
+      recordsCollectionQuery(),
       snapshot => {
 
         records = [];
@@ -7765,9 +7812,33 @@ async function deleteTeam(
   team
 ) {
 
+  const assignedMembers =
+    members.filter(
+      member =>
+        member.active !==
+          false &&
+        member.teamId ===
+          team.id
+    );
+
+
+  if (
+    assignedMembers.length >
+    0
+  ) {
+
+    showError(
+      `この班には${assignedMembers.length}人所属しています。先に全員を別の班または「所属なし」へ変更してから削除してください。`
+    );
+
+    return;
+
+  }
+
+
   if (
     !confirm(
-      `${team.name}を削除しますか？\n\n所属しているメンバーの班は「所属なし」になります。`
+      `${team.name}を削除しますか？\n\n過去の実績はこの班の実績として残ります。`
     )
   ) {
 
@@ -7787,83 +7858,10 @@ async function deleteTeam(
     );
 
 
-    const snapshot =
-      await getDocs(
-        companyCollectionQuery("users")
-      );
-
-
-    const updates = [];
-
-
-    snapshot.forEach(
-      userDoc => {
-
-        const data =
-          userDoc.data();
-
-        if (
-          data.teamId ===
-          team.id
-        ) {
-
-          updates.push(
-            updateDoc(
-              doc(
-                db,
-                "users",
-                userDoc.id
-              ),
-              {
-
-                teamId:
-                  null,
-
-                updatedAt:
-                  serverTimestamp()
-
-              }
-            )
-          );
-
-          updates.push(
-            updateDoc(
-              doc(
-                db,
-                "companies",
-                currentUserData.companyId,
-                "members",
-                userDoc.id
-              ),
-              {
-
-                teamId:
-                  null,
-
-                updatedAt:
-                  serverTimestamp()
-
-              }
-            )
-          );
-
-        }
-
-      }
-    );
-
-
-    await Promise.all(
-      updates
-    );
-
-
     await loadTeams();
 
-    await loadMembers();
-
     showSuccess(
-      "班を削除しました。"
+      "班を削除しました。過去の実績はそのまま残ります。"
     );
 
   } catch (error) {
@@ -7877,7 +7875,6 @@ async function deleteTeam(
   }
 
 }
-
 
 /* =====================================================
    商材
@@ -9707,8 +9704,6 @@ saveMemberTeamModal.onclick =
 
       await loadTeams();
 
-      await loadRecords();
-
       showSuccess(
         `${effectiveDate}から${nextTeam.teamName}へ変更しました。変更日前の実績は元の班に残ります。`
       );
@@ -10710,7 +10705,7 @@ async function loadRecords() {
 
     const snapshot =
       await getDocs(
-        companyCollectionQuery("records")
+        recordsCollectionQuery()
       );
 
 
