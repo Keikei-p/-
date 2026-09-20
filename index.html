@@ -9586,6 +9586,23 @@ saveRecordButton.onclick =
     }
 
 
+    const targetUid =
+      member.id ||
+      member.uid ||
+      memberId;
+
+
+    if (!targetUid) {
+
+      showError(
+        "担当者IDを確認できません。画面を更新してもう一度お試しください。"
+      );
+
+      return;
+
+    }
+
+
     const team =
       teams.find(
         item =>
@@ -9614,14 +9631,14 @@ saveRecordButton.onclick =
 
       const existingDailyRecord =
         findDailyRecord(
-          memberId,
+          targetUid,
           date
         );
 
 
       const recordId =
         existingDailyRecord?.id ||
-        `${currentUserData.companyId}_${memberId}_${date}`;
+        `${currentUserData.companyId}_${targetUid}_${date}`;
 
 
       const recordRef =
@@ -9644,7 +9661,7 @@ saveRecordButton.onclick =
           currentUserData.companyId,
 
         uid:
-          member.id,
+          targetUid,
 
         memberNameSnapshot:
           member.name ||
@@ -9838,11 +9855,33 @@ saveRecordButton.onclick =
 
       console.error(error);
 
-      showError(
-        firebaseErrorMessage(
-          error
-        )
-      );
+
+      if (
+        error?.code ===
+        "permission-denied"
+      ) {
+
+        const ownerMatches =
+          currentCompanyData?.ownerUid ===
+          currentUser?.uid;
+
+        const isSelf =
+          targetUid ===
+          currentUser?.uid;
+
+        showError(
+          `保存権限エラー：${isSelf ? "自分の実績" : "他メンバーの実績"} / ${ownerMatches ? "会社オーナー確認済み" : "会社オーナー情報不一致"}。Firestore Rulesが最新版か確認してください。`
+        );
+
+      } else {
+
+        showError(
+          firebaseErrorMessage(
+            error
+          )
+        );
+
+      }
 
     } finally {
 
