@@ -2,7 +2,13 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="営業実績管理">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" sizes="180x180" href="./icon-180.png">
 
 <title>営業実績管理</title>
 
@@ -32,6 +38,9 @@
 
 body {
   margin: 0;
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
   background: var(--bg);
   color: var(--text);
   font-family:
@@ -63,7 +72,10 @@ button {
 header {
   background: #111827;
   color: #fff;
-  padding: 22px 20px;
+  padding:
+    calc(22px + env(safe-area-inset-top))
+    20px
+    22px;
 }
 
 .header-inner {
@@ -1853,6 +1865,41 @@ header {
 
 
 <script type="module">
+
+if (
+  "serviceWorker" in navigator
+) {
+
+  window.addEventListener(
+    "load",
+    async () => {
+
+      try {
+
+        const registration =
+          await navigator.serviceWorker.register(
+            "./service-worker.js",
+            {
+              scope:
+                "./"
+            }
+          );
+
+        registration.update();
+
+      } catch (error) {
+
+        console.error(
+          "Service Worker登録エラー:",
+          error
+        );
+
+      }
+
+    }
+  );
+
+}
 
 /* =====================================================
    Firebase
