@@ -748,6 +748,152 @@ header {
   font-weight: 800;
 }
 
+/* =====================================================
+   日別詳細
+===================================================== */
+
+.daily-detail-card {
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.daily-detail-card:last-child {
+  margin-bottom: 0;
+}
+
+.daily-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  background: #f8fafc;
+}
+
+.daily-detail-date {
+  font-weight: 800;
+}
+
+.daily-detail-total {
+  flex: 0 0 auto;
+  text-align: right;
+}
+
+.daily-detail-count {
+  font-weight: 800;
+}
+
+.daily-detail-revenue {
+  margin-top: 3px;
+  color: var(--sub);
+  font-size: 12px;
+}
+
+.daily-team-block {
+  border-top: 1px solid var(--border);
+}
+
+.daily-team-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #fff;
+}
+
+.daily-team-name {
+  font-weight: 800;
+}
+
+.daily-team-total {
+  flex: 0 0 auto;
+  text-align: right;
+  font-size: 12px;
+}
+
+.daily-location-block {
+  margin: 0 14px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.daily-location-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: #f8fafc;
+}
+
+.daily-location-name {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.daily-location-total {
+  flex: 0 0 auto;
+  color: var(--sub);
+  font-size: 11px;
+  text-align: right;
+}
+
+.daily-product-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border-top: 1px solid #f1f5f9;
+  font-size: 12px;
+}
+
+.daily-product-name {
+  min-width: 0;
+  font-weight: 700;
+}
+
+.daily-product-count,
+.daily-product-revenue {
+  white-space: nowrap;
+  text-align: right;
+}
+
+.daily-product-count {
+  font-weight: 800;
+}
+
+.daily-product-revenue {
+  min-width: 76px;
+  color: var(--sub);
+}
+
+@media (max-width: 700px) {
+  .daily-detail-header,
+  .daily-team-header {
+    padding: 11px 12px;
+  }
+
+  .daily-location-block {
+    margin: 0 10px 10px;
+  }
+
+  .daily-product-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .daily-product-revenue {
+    grid-column: 2;
+    min-width: 0;
+    font-size: 11px;
+  }
+}
+
 .history-item {
   padding: 15px;
   border-bottom: 1px solid var(--border);
@@ -12143,7 +12289,9 @@ function renderDashboard() {
 
           count: 0,
 
-          revenue: 0
+          revenue: 0,
+
+          teams: {}
 
         };
 
@@ -12155,6 +12303,187 @@ function renderDashboard() {
 
       dailyMap[date].revenue +=
         recordRevenue;
+
+
+      /*
+        日別の中で
+        班 → 現場 → 商材
+        の順に内訳をまとめる。
+      */
+
+      const dailyTeamName =
+        getCurrentTeamName(
+          record
+        );
+
+      const dailyTeamKey =
+        record.teamId ||
+        dailyTeamName;
+
+      const dailyLocationName =
+        (
+          record.workLocation ||
+          ""
+        ).trim() ||
+        "場所未入力";
+
+
+      if (
+        !dailyMap[
+          date
+        ].teams[
+          dailyTeamKey
+        ]
+      ) {
+
+        dailyMap[
+          date
+        ].teams[
+          dailyTeamKey
+        ] = {
+
+          name:
+            dailyTeamName,
+
+          count: 0,
+
+          revenue: 0,
+
+          locations: {}
+
+        };
+
+      }
+
+
+      const dailyTeam =
+        dailyMap[
+          date
+        ].teams[
+          dailyTeamKey
+        ];
+
+
+      dailyTeam.name =
+        dailyTeamName;
+
+      dailyTeam.count +=
+        recordCount;
+
+      dailyTeam.revenue +=
+        recordRevenue;
+
+
+      if (
+        !dailyTeam.locations[
+          dailyLocationName
+        ]
+      ) {
+
+        dailyTeam.locations[
+          dailyLocationName
+        ] = {
+
+          name:
+            dailyLocationName,
+
+          count: 0,
+
+          revenue: 0,
+
+          products: {}
+
+        };
+
+      }
+
+
+      const dailyLocation =
+        dailyTeam.locations[
+          dailyLocationName
+        ];
+
+
+      dailyLocation.count +=
+        recordCount;
+
+      dailyLocation.revenue +=
+        recordRevenue;
+
+
+      results.forEach(
+        result => {
+
+          const count =
+            Number(
+              result.count ||
+              0
+            );
+
+          if (
+            count <= 0
+          ) {
+
+            return;
+
+          }
+
+
+          const productName =
+            result.productName ||
+            "不明";
+
+          const productKey =
+            result.productId ||
+            productName;
+
+          const revenue =
+            count *
+            Number(
+              result.revenuePerUnit ||
+              0
+            );
+
+
+          if (
+            !dailyLocation.products[
+              productKey
+            ]
+          ) {
+
+            dailyLocation.products[
+              productKey
+            ] = {
+
+              name:
+                productName,
+
+              count: 0,
+
+              revenue: 0
+
+            };
+
+          }
+
+
+          dailyLocation.products[
+            productKey
+          ].name =
+            productName;
+
+          dailyLocation.products[
+            productKey
+          ].count +=
+            count;
+
+          dailyLocation.products[
+            productKey
+          ].revenue +=
+            revenue;
+
+        }
+      );
 
 
       /*
@@ -15418,38 +15747,250 @@ function renderDailySummary(
         dailyMap[date];
 
 
-      const row =
+      const card =
         document.createElement(
           "div"
         );
 
-      row.className =
-        "summary-row";
+      card.className =
+        "daily-detail-card";
 
 
-      row.innerHTML = `
-        <div>
-          <div class="summary-row-name">
-            ${formatDateJapanese(
-              date
-            )}
-          </div>
+      const header =
+        document.createElement(
+          "div"
+        );
 
-          <div style="font-size:12px;color:#6b7280;margin-top:3px;">
-            ${data.count}件
-          </div>
+      header.className =
+        "daily-detail-header";
+
+      header.innerHTML = `
+        <div class="daily-detail-date">
+          ${formatDateJapanese(
+            date
+          )}
         </div>
 
-        <div class="summary-row-value">
-          ${formatYen(
-            data.revenue
-          )}
+        <div class="daily-detail-total">
+          <div class="daily-detail-count">
+            ${data.count}件
+          </div>
+
+          <div class="daily-detail-revenue">
+            ${formatYen(
+              data.revenue
+            )}
+          </div>
         </div>
       `;
 
 
+      card.appendChild(
+        header
+      );
+
+
+      const teamValues =
+        Object.values(
+          data.teams ||
+          {}
+        ).sort(
+          (a, b) =>
+            String(
+              a.name ||
+              ""
+            ).localeCompare(
+              String(
+                b.name ||
+                ""
+              ),
+              "ja"
+            )
+        );
+
+
+      teamValues.forEach(
+        team => {
+
+          const teamBlock =
+            document.createElement(
+              "div"
+            );
+
+          teamBlock.className =
+            "daily-team-block";
+
+
+          const teamHeader =
+            document.createElement(
+              "div"
+            );
+
+          teamHeader.className =
+            "daily-team-header";
+
+          teamHeader.innerHTML = `
+            <div class="daily-team-name">
+              👥 ${escapeHtml(
+                team.name ||
+                "所属なし"
+              )}
+            </div>
+
+            <div class="daily-team-total">
+              <strong>
+                ${team.count}件
+              </strong>
+              <br>
+              ${formatYen(
+                team.revenue
+              )}
+            </div>
+          `;
+
+
+          teamBlock.appendChild(
+            teamHeader
+          );
+
+
+          const locationValues =
+            Object.values(
+              team.locations ||
+              {}
+            ).sort(
+              (a, b) =>
+                String(
+                  a.name ||
+                  ""
+                ).localeCompare(
+                  String(
+                    b.name ||
+                    ""
+                  ),
+                  "ja"
+                )
+            );
+
+
+          locationValues.forEach(
+            location => {
+
+              const locationBlock =
+                document.createElement(
+                  "div"
+                );
+
+              locationBlock.className =
+                "daily-location-block";
+
+
+              const locationHeader =
+                document.createElement(
+                  "div"
+                );
+
+              locationHeader.className =
+                "daily-location-header";
+
+              locationHeader.innerHTML = `
+                <div class="daily-location-name">
+                  📍 ${escapeHtml(
+                    location.name ||
+                    "場所未入力"
+                  )}
+                </div>
+
+                <div class="daily-location-total">
+                  ${location.count}件 /
+                  ${formatYen(
+                    location.revenue
+                  )}
+                </div>
+              `;
+
+
+              locationBlock.appendChild(
+                locationHeader
+              );
+
+
+              const productValues =
+                Object.values(
+                  location.products ||
+                  {}
+                ).sort(
+                  (a, b) =>
+                    String(
+                      a.name ||
+                      ""
+                    ).localeCompare(
+                      String(
+                        b.name ||
+                        ""
+                      ),
+                      "ja"
+                    )
+                );
+
+
+              productValues.forEach(
+                product => {
+
+                  const productRow =
+                    document.createElement(
+                      "div"
+                    );
+
+                  productRow.className =
+                    "daily-product-row";
+
+                  productRow.innerHTML = `
+                    <div class="daily-product-name">
+                      ${escapeHtml(
+                        product.name ||
+                        "不明"
+                      )}
+                    </div>
+
+                    <div class="daily-product-count">
+                      ${product.count}件
+                    </div>
+
+                    <div class="daily-product-revenue">
+                      ${formatYen(
+                        product.revenue
+                      )}
+                    </div>
+                  `;
+
+
+                  locationBlock.appendChild(
+                    productRow
+                  );
+
+                }
+              );
+
+
+              teamBlock.appendChild(
+                locationBlock
+              );
+
+            }
+          );
+
+
+          card.appendChild(
+            teamBlock
+          );
+
+        }
+      );
+
+
       dailySummaryList.appendChild(
-        row
+        card
       );
 
     }
