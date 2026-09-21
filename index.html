@@ -1758,6 +1758,206 @@ header {
   }
 }
 
+.team-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.team-overview-card {
+  min-width: 0;
+  padding: 14px 12px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: #fff;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(15,23,42,.04);
+}
+
+.team-overview-card:hover {
+  border-color: #93c5fd;
+  background: #f8fbff;
+}
+
+.team-overview-card[aria-pressed="true"] {
+  border-color: #60a5fa;
+  background: #eff6ff;
+  box-shadow: 0 4px 12px rgba(37,99,235,.10);
+}
+
+.team-overview-card-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.team-overview-card-members {
+  margin-top: 5px;
+  color: var(--sub);
+  font-size: 11px;
+}
+
+.team-overview-card-result {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 9px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.team-detail-panel {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.team-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.team-detail-title {
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.team-detail-meta {
+  margin-top: 4px;
+  color: var(--sub);
+  font-size: 11px;
+}
+
+.team-detail-total {
+  flex: 0 0 auto;
+  text-align: right;
+  font-size: 12px;
+}
+
+.team-detail-total strong {
+  display: block;
+  font-size: 17px;
+}
+
+.team-member-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+  gap: 10px;
+}
+
+.team-member-card {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.team-member-card-name {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.team-member-card-total {
+  margin-top: 4px;
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.member-product-list {
+  display: grid;
+  gap: 9px;
+  margin-top: 11px;
+}
+
+.member-product-block {
+  padding-top: 8px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.member-product-block:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.member-product-name {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.member-plan-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.member-plan-cell {
+  min-width: 0;
+  padding: 7px 4px;
+  border-radius: 8px;
+  background: #f8fafc;
+  text-align: center;
+}
+
+.member-plan-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--sub);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.member-plan-count {
+  margin-top: 3px;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.member-simple-product {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 5px;
+  font-size: 12px;
+}
+
+.member-simple-product strong {
+  white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+  .team-overview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .team-overview-card {
+    padding: 12px 10px;
+  }
+
+  .team-member-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .team-detail-header {
+    align-items: center;
+  }
+
+  .member-plan-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 .all-teams-overview {
   display: grid;
   gap: 14px;
@@ -4695,6 +4895,9 @@ let revenueChartSelectedKey =
 
 let currentDailySummaryMap =
   {};
+
+let selectedTeamOverviewId =
+  null;
 
 
 /*
@@ -14675,7 +14878,8 @@ function renderDashboard() {
 
 
   renderAllTeamsOverview(
-    salesAnalysis
+    salesAnalysis,
+    monthly
   );
 
 
@@ -17038,70 +17242,187 @@ revenueChartAnnualButton.addEventListener(
    全班一覧
 ===================================================== */
 
-function renderAllTeamsOverview(
-  analysis
+function recordBelongsToTeam(
+  record,
+  team
 ) {
 
-  allTeamsOverviewList.innerHTML =
-    "";
+  if (
+    record?.teamId
+  ) {
+
+    return (
+      record.teamId ===
+      team.id
+    );
+
+  }
 
 
-  allTeamsOverviewToggle.style.display =
-    "";
+  /*
+    古い実績でteamIdが無い場合だけ班名を互換用に使う。
+    通常の判定はteamIdを優先する。
+  */
+
+  return (
+    !!record?.teamNameSnapshot &&
+    record.teamNameSnapshot ===
+      team.name
+  );
+
+}
 
 
-  const teamValueMap =
+function buildMemberProductDisplayGroups(
+  memberRecords
+) {
+
+  const aggregated =
     {};
 
 
-  Object.entries(
-    analysis.teams ||
-    {}
-  ).forEach(
-    ([
-      key,
-      value
-    ]) => {
+  memberRecords.forEach(
+    record => {
 
-      teamValueMap[
-        key
-      ] = {
-        key,
-        ...value
-      };
+      getRecordResults(
+        record
+      ).forEach(
+        result => {
+
+          const count =
+            Number(
+              result.count ||
+              0
+            );
+
+
+          if (
+            count <= 0
+          ) {
+
+            return;
+
+          }
+
+
+          const cashback =
+            Number(
+              result.cashback ||
+              0
+            );
+
+          const productId =
+            result.productId ||
+            result.productName ||
+            "unknown";
+
+          const key =
+            resultVariantKey(
+              productId,
+              cashback
+            );
+
+
+          if (
+            !aggregated[
+              key
+            ]
+          ) {
+
+            aggregated[
+              key
+            ] = {
+              productId,
+              productName:
+                result.productName ||
+                "不明",
+              cashback,
+              count: 0,
+              revenuePerUnit:
+                Number(
+                  result.revenuePerUnit ||
+                  0
+                )
+            };
+
+          }
+
+
+          aggregated[
+            key
+          ].count +=
+            count;
+
+        }
+      );
 
     }
   );
 
 
-  teams.forEach(
-    team => {
+  return buildProductInputGroups(
+    aggregated
+  ).filter(
+    group =>
+      group.plans.some(
+        plan =>
+          Number(
+            plan.count ||
+            0
+          ) >
+          0
+      )
+  );
+
+}
+
+
+function renderSelectedTeamMemberDetail(
+  container,
+  team,
+  monthly
+) {
+
+  const teamRecords =
+    monthly.filter(
+      record =>
+        recordBelongsToTeam(
+          record,
+          team
+        )
+    );
+
+
+  const currentTeamMembers =
+    members.filter(
+      member =>
+        member.active !==
+          false &&
+        member.teamId ===
+          team.id
+    );
+
+
+  const memberIds =
+    new Set(
+      currentTeamMembers.map(
+        member =>
+          member.id ||
+          member.uid
+      ).filter(Boolean)
+    );
+
+
+  teamRecords.forEach(
+    record => {
 
       if (
-        !teamValueMap[
-          team.id
-        ]
+        record.uid
       ) {
 
-        teamValueMap[
-          team.id
-        ] = {
-          key:
-            team.id,
-          name:
-            team.name,
-          count: 0,
-          revenue: 0,
-          products: {},
-          members: {}
-        };
-
-      } else {
-
-        teamValueMap[
-          team.id
-        ].name =
-          team.name;
+        memberIds.add(
+          record.uid
+        );
 
       }
 
@@ -17109,46 +17430,131 @@ function renderAllTeamsOverview(
   );
 
 
-  const teamValues =
-    Object.values(
-      teamValueMap
-    ).sort(
+  const memberRows =
+    Array.from(
+      memberIds
+    ).map(
+      uid => {
+
+        const member =
+          currentTeamMembers.find(
+            item =>
+              (
+                item.id ||
+                item.uid
+              ) ===
+              uid
+          ) ||
+          members.find(
+            item =>
+              (
+                item.id ||
+                item.uid
+              ) ===
+              uid
+          );
+
+        const recordsForMember =
+          teamRecords.filter(
+            record =>
+              record.uid ===
+              uid
+          );
+
+        const latestRecord =
+          [...recordsForMember].sort(
+            (a, b) =>
+              String(
+                b.date ||
+                ""
+              ).localeCompare(
+                String(
+                  a.date ||
+                  ""
+                )
+              )
+          )[0];
+
+        const name =
+          member?.name ||
+          (
+            latestRecord
+              ? getCurrentMemberName(
+                  latestRecord
+                )
+              : "名前未設定"
+          );
+
+
+        let totalCount =
+          0;
+
+        let totalRevenue =
+          0;
+
+
+        recordsForMember.forEach(
+          record => {
+
+            getRecordResults(
+              record
+            ).forEach(
+              result => {
+
+                const count =
+                  Number(
+                    result.count ||
+                    0
+                  );
+
+                totalCount +=
+                  count;
+
+                totalRevenue +=
+                  count *
+                  Number(
+                    result.revenuePerUnit ||
+                    0
+                  );
+
+              }
+            );
+
+          }
+        );
+
+
+        return {
+          uid,
+          name,
+          totalCount,
+          totalRevenue,
+          productGroups:
+            buildMemberProductDisplayGroups(
+              recordsForMember
+            )
+        };
+
+      }
+    )
+    .sort(
       (a, b) => {
 
         if (
-          b.count !==
-          a.count
+          b.totalCount !==
+          a.totalCount
         ) {
 
           return (
-            b.count -
-            a.count
+            b.totalCount -
+            a.totalCount
           );
 
         }
 
 
-        if (
-          b.revenue !==
-          a.revenue
-        ) {
-
-          return (
-            b.revenue -
-            a.revenue
-          );
-
-        }
-
-
-        return String(
-          a.name ||
-          ""
-        ).localeCompare(
-          String(
-            b.name ||
-            ""
-          ),
+        return a.name.localeCompare(
+          b.name,
           "ja"
         );
 
@@ -17156,47 +17562,81 @@ function renderAllTeamsOverview(
     );
 
 
-  allTeamsOverviewCount.textContent =
-    `${teamValues.length}班`;
+  let teamCount =
+    0;
+
+  let teamRevenue =
+    0;
 
 
-  const wrapper =
+  teamRecords.forEach(
+    record => {
+
+      getRecordResults(
+        record
+      ).forEach(
+        result => {
+
+          const count =
+            Number(
+              result.count ||
+              0
+            );
+
+          teamCount +=
+            count;
+
+          teamRevenue +=
+            count *
+            Number(
+              result.revenuePerUnit ||
+              0
+            );
+
+        }
+      );
+
+    }
+  );
+
+
+  const header =
     document.createElement(
       "div"
     );
 
-  wrapper.className =
-    "all-teams-overview";
+  header.className =
+    "team-detail-header";
 
-
-  const summary =
-    document.createElement(
-      "div"
-    );
-
-  summary.className =
-    "all-teams-summary";
-
-  summary.innerHTML = `
-    <div class="all-teams-summary-title">
-      全班合計
+  header.innerHTML = `
+    <div>
+      <div class="team-detail-title">
+        ${escapeHtml(
+          team.name ||
+          "班名未設定"
+        )}
+      </div>
+      <div class="team-detail-meta">
+        現在の所属 ${currentTeamMembers.length}人
+      </div>
     </div>
-    <div class="all-teams-summary-values">
-      <span>${analysis.count}件</span>
-      <span>${formatYen(
-        analysis.revenue
-      )}</span>
+    <div class="team-detail-total">
+      <strong>${teamCount}件</strong>
+      ${formatYen(
+        teamRevenue
+      )}
     </div>
   `;
 
 
-  wrapper.appendChild(
-    summary
+  container.appendChild(
+    header
   );
 
 
   if (
-    teamValues.length === 0
+    memberRows.length ===
+    0
   ) {
 
     const empty =
@@ -17208,14 +17648,10 @@ function renderAllTeamsOverview(
       "empty-message";
 
     empty.textContent =
-      "班がありません。";
+      "この班のメンバー・実績はありません。";
 
-    wrapper.appendChild(
+    container.appendChild(
       empty
-    );
-
-    allTeamsOverviewList.appendChild(
-      wrapper
     );
 
     return;
@@ -17223,8 +17659,17 @@ function renderAllTeamsOverview(
   }
 
 
-  teamValues.forEach(
-    team => {
+  const grid =
+    document.createElement(
+      "div"
+    );
+
+  grid.className =
+    "team-member-grid";
+
+
+  memberRows.forEach(
+    member => {
 
       const card =
         document.createElement(
@@ -17232,352 +17677,232 @@ function renderAllTeamsOverview(
         );
 
       card.className =
-        "all-team-card";
+        "team-member-card";
 
 
-      const goal =
-        getTeamGoal(
-          team.key,
-          dashboardMonth.value
-        );
-
-      const targets =
-        goal?.targets ||
-        {};
-
-
-      const targetedActual =
-        Object.keys(
-          targets
-        ).reduce(
-          (
-            sum,
-            productKey
-          ) =>
-            sum +
-            Number(
-              team.products?.[
-                productKey
-              ]?.count ||
-              0
-            ),
-          0
-        );
-
-      const totalTarget =
-        Object.values(
-          targets
-        ).reduce(
-          (
-            sum,
-            value
-          ) =>
-            sum +
-            Number(
-              value ||
-              0
-            ),
-          0
-        );
-
-      const teamProgress =
-        totalTarget > 0
-          ? Math.round(
-              targetedActual /
-              totalTarget *
-              100
-            )
-          : 0;
-
-      const teamRemaining =
-        Math.max(
-          totalTarget -
-          targetedActual,
-          0
-        );
-
-
-      const header =
-        document.createElement(
-          "button"
-        );
-
-      header.type =
-        "button";
-
-      header.className =
-        "all-team-header all-team-header-button";
-
-      header.setAttribute(
-        "aria-expanded",
-        "false"
-      );
-
-      header.innerHTML = `
-        <div class="all-team-header-left">
-          <div class="all-team-name">
-            👥 ${escapeHtml(
-              team.name ||
-              "所属なし"
-            )}
-            <span class="all-team-chevron">⌄</span>
-          </div>
-          <div class="all-team-compact-goal">
-            ${
-              totalTarget > 0
-                ? `目標 ${totalTarget}件 / 残り ${teamRemaining}件 / ${teamProgress}%`
-                : "目標未設定"
-            }
-          </div>
-        </div>
-        <div class="all-team-total">
-          <div class="all-team-count">
-            ${team.count}件
-          </div>
-          <div class="all-team-revenue">
-            ${formatYen(
-              team.revenue
-            )}
-          </div>
-        </div>
-      `;
-
-
-      card.appendChild(
-        header
-      );
-
-
-      const productArea =
+      const title =
         document.createElement(
           "div"
         );
 
-      productArea.className =
-        "all-team-products";
+      title.className =
+        "team-member-card-name";
+
+      title.textContent =
+        member.name;
 
 
-      const productKeySet =
-        new Set([
-          ...Object.keys(
-            team.products ||
-            {}
-          ),
-          ...Object.keys(
-            targets
-          )
-        ]);
+      const total =
+        document.createElement(
+          "div"
+        );
+
+      total.className =
+        "team-member-card-total";
+
+      total.textContent =
+        `合計 ${member.totalCount}件 / ${formatYen(
+          member.totalRevenue
+        )}`;
 
 
-      const productRows =
-        Array.from(
-          productKeySet
-        )
-          .map(
-            productKey => {
+      card.appendChild(
+        title
+      );
 
-              const actual =
-                team.products?.[
-                  productKey
-                ] || {
-                  name: "",
-                  count: 0,
-                  revenue: 0
-                };
-
-              const currentProduct =
-                products.find(
-                  product =>
-                    product.id ===
-                    productKey
-                );
-
-              return {
-                key:
-                  productKey,
-                name:
-                  currentProduct?.name ||
-                  actual.name ||
-                  "削除済み商材",
-                count:
-                  Number(
-                    actual.count ||
-                    0
-                  ),
-                revenue:
-                  Number(
-                    actual.revenue ||
-                    0
-                  ),
-                target:
-                  Number(
-                    targets[
-                      productKey
-                    ] ||
-                    0
-                  ),
-                sortOrder:
-                  currentProduct
-                    ? products.indexOf(
-                        currentProduct
-                      )
-                    : 99999
-              };
-
-            }
-          )
-          .sort(
-            (a, b) => {
-
-              if (
-                a.sortOrder !==
-                b.sortOrder
-              ) {
-
-                return (
-                  a.sortOrder -
-                  b.sortOrder
-                );
-
-              }
-
-
-              return a.name.localeCompare(
-                b.name,
-                "ja"
-              );
-
-            }
-          );
+      card.appendChild(
+        total
+      );
 
 
       if (
-        productRows.length === 0
+        member.productGroups.length ===
+        0
       ) {
 
-        productArea.innerHTML = `
-          <div class="empty-message">
-            商材実績・目標はありません。
-          </div>
-        `;
+        const empty =
+          document.createElement(
+            "div"
+          );
+
+        empty.className =
+          "empty-message";
+
+        empty.style.padding =
+          "12px 0 0";
+
+        empty.textContent =
+          "この月の実績はありません。";
+
+        card.appendChild(
+          empty
+        );
 
       } else {
 
-        productRows.forEach(
-          product => {
+        const productList =
+          document.createElement(
+            "div"
+          );
 
-            const remaining =
-              Math.max(
-                product.target -
-                product.count,
-                0
-              );
-
-            const progress =
-              product.target > 0
-                ? Math.round(
-                    product.count /
-                    product.target *
-                    100
-                  )
-                : 0;
-
-            const barProgress =
-              Math.min(
-                progress,
-                100
-              );
+        productList.className =
+          "member-product-list";
 
 
-            const row =
+        member.productGroups.forEach(
+          group => {
+
+            const block =
               document.createElement(
                 "div"
               );
 
-            row.className =
-              "all-team-product-row";
+            block.className =
+              "member-product-block";
 
-            row.innerHTML = `
-              <div>
-                <div class="all-team-product-name">
-                  📦 ${escapeHtml(
-                    product.name
-                  )}
-                </div>
-                <div class="all-team-product-revenue">
-                  売上 ${formatYen(
-                    product.revenue
-                  )}
-                </div>
-              </div>
 
-              <div class="goal-progress-summary">
-                ${
-                  product.target > 0
-                    ? `
-                      <div class="goal-progress-main">
-                        実績 ${product.count}件 / 目標 ${product.target}件
-                      </div>
-                      <div class="goal-progress-sub">
-                        残り ${remaining}件 ・ 進捗 ${progress}%
-                      </div>
-                      <div class="goal-progress-track">
-                        <div
-                          class="goal-progress-bar"
-                          style="width:${barProgress}%;">
-                        </div>
-                      </div>
-                    `
-                    : `
-                      <div class="goal-progress-main">
-                        実績 ${product.count}件
-                      </div>
-                      <div class="goal-progress-sub">
-                        目標未設定
-                      </div>
-                    `
+            const activePlans =
+              group.plans.filter(
+                plan =>
+                  Number(
+                    plan.count ||
+                    0
+                  ) >
+                  0
+              );
+
+            const hasPlanStyle =
+              group.plans.some(
+                plan =>
+                  String(
+                    plan.label ||
+                    ""
+                  ).startsWith(
+                    "CB"
+                  )
+              );
+
+
+            if (
+              hasPlanStyle
+            ) {
+
+              const name =
+                document.createElement(
+                  "div"
+                );
+
+              name.className =
+                "member-product-name";
+
+              name.textContent =
+                group.name;
+
+
+              const planGrid =
+                document.createElement(
+                  "div"
+                );
+
+              planGrid.className =
+                "member-plan-grid";
+
+
+              /*
+                同じ親商材で実績が1つでもあれば、
+                登録済みのCBプランは0件も含めて表示する。
+              */
+
+              group.plans.forEach(
+                plan => {
+
+                  const cell =
+                    document.createElement(
+                      "div"
+                    );
+
+                  cell.className =
+                    "member-plan-cell";
+
+                  cell.innerHTML = `
+                    <div class="member-plan-label">
+                      ${escapeHtml(
+                        plan.label
+                      )}
+                    </div>
+                    <div class="member-plan-count">
+                      ${Number(
+                        plan.count ||
+                        0
+                      )}件
+                    </div>
+                  `;
+
+                  planGrid.appendChild(
+                    cell
+                  );
+
                 }
-              </div>
-            `;
+              );
 
-            productArea.appendChild(
-              row
+
+              block.appendChild(
+                name
+              );
+
+              block.appendChild(
+                planGrid
+              );
+
+            } else {
+
+              activePlans.forEach(
+                plan => {
+
+                  const row =
+                    document.createElement(
+                      "div"
+                    );
+
+                  row.className =
+                    "member-simple-product";
+
+                  row.innerHTML = `
+                    <span>${escapeHtml(
+                      group.name
+                    )}</span>
+                    <strong>${Number(
+                      plan.count ||
+                      0
+                    )}件</strong>
+                  `;
+
+                  block.appendChild(
+                    row
+                  );
+
+                }
+              );
+
+            }
+
+
+            productList.appendChild(
+              block
             );
 
           }
         );
 
+
+        card.appendChild(
+          productList
+        );
+
       }
 
 
-      productArea.hidden =
-        true;
-
-
-      header.onclick =
-        () => {
-
-          const open =
-            productArea.hidden;
-
-          productArea.hidden =
-            !open;
-
-          header.setAttribute(
-            "aria-expanded",
-            String(
-              open
-            )
-          );
-
-        };
-
-
-      card.appendChild(
-        productArea
-      );
-
-      wrapper.appendChild(
+      grid.appendChild(
         card
       );
 
@@ -17585,9 +17910,241 @@ function renderAllTeamsOverview(
   );
 
 
-  allTeamsOverviewList.appendChild(
-    wrapper
+  container.appendChild(
+    grid
   );
+
+}
+
+
+function renderAllTeamsOverview(
+  analysis,
+  monthly = []
+) {
+
+  allTeamsOverviewList.innerHTML =
+    "";
+
+
+  const activeTeams =
+    [...teams].filter(
+      team =>
+        team.active !==
+        false
+    );
+
+
+  allTeamsOverviewCount.textContent =
+    `${activeTeams.length}班`;
+
+
+  if (
+    activeTeams.length ===
+    0
+  ) {
+
+    allTeamsOverviewList.innerHTML = `
+      <div class="empty-message">
+        班がありません。
+      </div>
+    `;
+
+    return;
+
+  }
+
+
+  if (
+    selectedTeamOverviewId &&
+    !activeTeams.some(
+      team =>
+        team.id ===
+        selectedTeamOverviewId
+    )
+  ) {
+
+    selectedTeamOverviewId =
+      null;
+
+  }
+
+
+  const grid =
+    document.createElement(
+      "div"
+    );
+
+  grid.className =
+    "team-overview-grid";
+
+
+  const detail =
+    document.createElement(
+      "div"
+    );
+
+  detail.className =
+    "team-detail-panel";
+
+
+  const renderSelection =
+    () => {
+
+      detail.innerHTML =
+        "";
+
+
+      grid
+        .querySelectorAll(
+          ".team-overview-card"
+        )
+        .forEach(
+          button =>
+            button.setAttribute(
+              "aria-pressed",
+              String(
+                button.dataset.teamId ===
+                selectedTeamOverviewId
+              )
+            )
+        );
+
+
+      if (
+        !selectedTeamOverviewId
+      ) {
+
+        detail.innerHTML = `
+          <div class="empty-message">
+            上の班カードを選ぶと、メンバー別・商材別の実績を確認できます。
+          </div>
+        `;
+
+        return;
+
+      }
+
+
+      const team =
+        activeTeams.find(
+          item =>
+            item.id ===
+            selectedTeamOverviewId
+        );
+
+
+      if (!team) {
+
+        return;
+
+      }
+
+
+      renderSelectedTeamMemberDetail(
+        detail,
+        team,
+        monthly
+      );
+
+    };
+
+
+  activeTeams.forEach(
+    team => {
+
+      const currentMemberCount =
+        members.filter(
+          member =>
+            member.active !==
+              false &&
+            member.teamId ===
+              team.id
+        ).length;
+
+      const teamAnalysis =
+        analysis.teams?.[
+          team.id
+        ] ||
+        {
+          count: 0,
+          revenue: 0
+        };
+
+
+      const button =
+        document.createElement(
+          "button"
+        );
+
+      button.type =
+        "button";
+
+      button.className =
+        "team-overview-card";
+
+      button.dataset.teamId =
+        team.id;
+
+      button.setAttribute(
+        "aria-pressed",
+        String(
+          selectedTeamOverviewId ===
+          team.id
+        )
+      );
+
+      button.innerHTML = `
+        <div class="team-overview-card-name">
+          ${escapeHtml(
+            team.name ||
+            "班名未設定"
+          )}
+        </div>
+        <div class="team-overview-card-members">
+          ${currentMemberCount}人
+        </div>
+        <div class="team-overview-card-result">
+          <span>${Number(
+            teamAnalysis.count ||
+            0
+          )}件</span>
+          <span>${formatYen(
+            teamAnalysis.revenue ||
+            0
+          )}</span>
+        </div>
+      `;
+
+
+      button.onclick =
+        () => {
+
+          selectedTeamOverviewId =
+            team.id;
+
+          renderSelection();
+
+        };
+
+
+      grid.appendChild(
+        button
+      );
+
+    }
+  );
+
+
+  allTeamsOverviewList.appendChild(
+    grid
+  );
+
+  allTeamsOverviewList.appendChild(
+    detail
+  );
+
+
+  renderSelection();
 
 }
 
