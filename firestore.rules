@@ -803,6 +803,10 @@ service cloud.firestore {
         && request.resource.data.companyId != null
         && currentCompanyId() == request.resource.data.companyId
         && request.resource.data.teamId is string
+        && validSelectableTeam(
+          request.resource.data.companyId,
+          request.resource.data.teamId
+        )
         && request.resource.data.month is string
         && request.resource.data.month.size() == 7
         && request.resource.data.targets is map
