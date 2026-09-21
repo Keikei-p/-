@@ -369,38 +369,92 @@ header {
 }
 
 .product-input-list {
-  margin-top: 12px;
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
 }
 
-.product-input-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 15px;
-  padding: 13px;
+.product-input-group {
+  padding: 7px 0;
   border-bottom: 1px solid var(--border);
 }
 
-.product-input-row:last-child {
+.product-input-group:last-child {
   border-bottom: 0;
 }
 
+.product-input-group-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 4px 4px;
+}
+
 .product-input-name {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.product-input-base {
+  flex: 0 0 auto;
+  color: var(--sub);
+  font-size: 10px;
+}
+
+.product-input-variant-row {
+  display: grid;
+  grid-template-columns: minmax(72px, 1fr) auto 64px;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 3px 4px;
+}
+
+.product-input-cb {
+  font-size: 12px;
   font-weight: 700;
 }
 
 .product-input-unit {
-  margin-top: 3px;
   color: var(--sub);
-  font-size: 12px;
+  font-size: 10px;
+  white-space: nowrap;
 }
 
 .product-input-control input {
-  width: 100px;
-  padding: 9px;
+  width: 64px;
+  padding: 7px 5px;
   text-align: center;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 7px;
+  font-size: 16px;
+}
+
+.product-management-input-row {
+  flex-wrap: wrap;
+}
+
+.product-management-input-row input {
+  flex: 1 1 140px;
+}
+
+.product-cb-help {
+  margin-top: 7px;
+  color: var(--sub);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+@media (max-width: 430px) {
+  .product-input-variant-row {
+    grid-template-columns: minmax(64px, 1fr) auto 58px;
+    gap: 6px;
+  }
+
+  .product-input-control input {
+    width: 58px;
+  }
 }
 
 .record-total {
@@ -3187,7 +3241,7 @@ header {
       class="accordion-content"
       hidden>
 
-      <div class="management-input-row">
+      <div class="management-input-row product-management-input-row">
 
         <input
           id="productNameInput"
@@ -3199,12 +3253,22 @@ header {
           id="productRevenueInput"
           type="number"
           min="0"
-          placeholder="単価">
+          placeholder="CB前の1件売上">
+
+        <input
+          id="productCashbackInput"
+          type="text"
+          inputmode="numeric"
+          placeholder="CB例：0,20000">
 
         <button id="addProductButton">
           追加
         </button>
 
+      </div>
+
+      <div class="product-cb-help">
+        CBはカンマ区切りで登録できます。例：0,10000,20000
       </div>
 
       <div
@@ -3336,13 +3400,31 @@ header {
     <div class="form-group">
 
       <label for="editProductRevenue">
-        1件あたり売上
+        CB前の1件あたり売上
       </label>
 
       <input
         id="editProductRevenue"
         type="number"
         min="0">
+
+    </div>
+
+    <div class="form-group">
+
+      <label for="editProductCashback">
+        キャッシュバック
+      </label>
+
+      <input
+        id="editProductCashback"
+        type="text"
+        inputmode="numeric"
+        placeholder="例：0,10000,20000">
+
+      <div class="product-cb-help">
+        複数ある場合はカンマ区切りで入力してください。
+      </div>
 
     </div>
 
@@ -4112,6 +4194,11 @@ const productRevenueInput =
     "productRevenueInput"
   );
 
+const productCashbackInput =
+  document.getElementById(
+    "productCashbackInput"
+  );
+
 const addProductButton =
   document.getElementById(
     "addProductButton"
@@ -4202,6 +4289,11 @@ const editProductName =
 const editProductRevenue =
   document.getElementById(
     "editProductRevenue"
+  );
+
+const editProductCashback =
+  document.getElementById(
+    "editProductCashback"
   );
 
 const cancelProductModal =
@@ -7638,15 +7730,7 @@ function startRealtimeListeners() {
 
 
         products.sort(
-          (a, b) =>
-            (
-              a.name ||
-              ""
-            ).localeCompare(
-              b.name ||
-              "",
-              "ja"
-            )
+          compareProductsByOrder
         );
 
 
@@ -8306,6 +8390,184 @@ async function deleteTeam(
    商材
 ===================================================== */
 
+function normalizeCashbackOptions(
+  options
+) {
+
+  const values =
+    Array.isArray(
+      options
+    )
+      ? options
+      : [];
+
+
+  const normalized =
+    values
+      .map(
+        value =>
+          Number(
+            value
+          )
+      )
+      .filter(
+        value =>
+          Number.isFinite(
+            value
+          ) &&
+          value >= 0
+      )
+      .map(
+        value =>
+          Math.round(
+            value
+          )
+      );
+
+
+  if (
+    !normalized.includes(
+      0
+    )
+  ) {
+
+    normalized.push(
+      0
+    );
+
+  }
+
+
+  return Array.from(
+    new Set(
+      normalized
+    )
+  ).sort(
+    (a, b) =>
+      a - b
+  );
+
+}
+
+
+function parseCashbackInput(
+  value
+) {
+
+  if (
+    !String(
+      value ||
+      ""
+    ).trim()
+  ) {
+
+    return [0];
+
+  }
+
+
+  return normalizeCashbackOptions(
+    String(
+      value
+    )
+      .replace(
+        /，/g,
+        ","
+      )
+      .split(
+        /[,\s]+/
+      )
+      .filter(Boolean)
+  );
+
+}
+
+
+function cashbackOptionsText(
+  product
+) {
+
+  return normalizeCashbackOptions(
+    product?.cashbackOptions
+  )
+    .map(
+      value =>
+        value === 0
+          ? "CB0"
+          : `CB${formatYen(
+              value
+            )}`
+    )
+    .join(" / ");
+
+}
+
+
+function compareProductsByOrder(
+  a,
+  b
+) {
+
+  const aOrder =
+    Number(
+      a.sortOrder
+    );
+
+  const bOrder =
+    Number(
+      b.sortOrder
+    );
+
+  const aHasOrder =
+    Number.isFinite(
+      aOrder
+    );
+
+  const bHasOrder =
+    Number.isFinite(
+      bOrder
+    );
+
+
+  if (
+    aHasOrder &&
+    bHasOrder &&
+    aOrder !==
+      bOrder
+  ) {
+
+    return (
+      aOrder -
+      bOrder
+    );
+
+  }
+
+
+  if (
+    aHasOrder !==
+      bHasOrder
+  ) {
+
+    return aHasOrder
+      ? -1
+      : 1;
+
+  }
+
+
+  return (
+    a.name ||
+    ""
+  ).localeCompare(
+    b.name ||
+    "",
+    "ja"
+  );
+
+}
+
+
 async function loadProducts() {
 
   try {
@@ -8335,15 +8597,7 @@ async function loadProducts() {
 
 
     products.sort(
-      (a, b) =>
-        (
-          a.name ||
-          ""
-        ).localeCompare(
-          b.name ||
-          "",
-          "ja"
-        )
+      compareProductsByOrder
     );
 
 
@@ -8387,7 +8641,10 @@ function renderProducts() {
 
 
   products.forEach(
-    product => {
+    (
+      product,
+      index
+    ) => {
 
       const item =
         document.createElement(
@@ -8426,8 +8683,10 @@ function renderProducts() {
         "product-revenue";
 
       revenue.textContent =
-        `1件 ${formatYen(
+        `基準 ${formatYen(
           product.revenue
+        )} / ${cashbackOptionsText(
+          product
         )}`;
 
 
@@ -8447,6 +8706,57 @@ function renderProducts() {
 
       actions.className =
         "product-actions";
+
+
+      const up =
+        document.createElement(
+          "button"
+        );
+
+      up.className =
+        "team-action-button";
+
+      up.textContent =
+        "↑";
+
+      up.title =
+        "上へ移動";
+
+      up.disabled =
+        index === 0;
+
+      up.onclick =
+        () =>
+          moveProduct(
+            product.id,
+            -1
+          );
+
+
+      const down =
+        document.createElement(
+          "button"
+        );
+
+      down.className =
+        "team-action-button";
+
+      down.textContent =
+        "↓";
+
+      down.title =
+        "下へ移動";
+
+      down.disabled =
+        index ===
+        products.length - 1;
+
+      down.onclick =
+        () =>
+          moveProduct(
+            product.id,
+            1
+          );
 
 
       const edit =
@@ -8486,6 +8796,14 @@ function renderProducts() {
 
 
       actions.appendChild(
+        up
+      );
+
+      actions.appendChild(
+        down
+      );
+
+      actions.appendChild(
         edit
       );
 
@@ -8513,6 +8831,119 @@ function renderProducts() {
 }
 
 
+async function moveProduct(
+  productId,
+  direction
+) {
+
+  const currentIndex =
+    products.findIndex(
+      product =>
+        product.id ===
+        productId
+    );
+
+  const nextIndex =
+    currentIndex +
+    direction;
+
+
+  if (
+    currentIndex < 0 ||
+    nextIndex < 0 ||
+    nextIndex >=
+      products.length
+  ) {
+
+    return;
+
+  }
+
+
+  const reordered =
+    [...products];
+
+  const [
+    moved
+  ] =
+    reordered.splice(
+      currentIndex,
+      1
+    );
+
+  reordered.splice(
+    nextIndex,
+    0,
+    moved
+  );
+
+
+  try {
+
+    const batch =
+      writeBatch(
+        db
+      );
+
+
+    reordered.forEach(
+      (
+        product,
+        index
+      ) => {
+
+        batch.update(
+          doc(
+            db,
+            "products",
+            product.id
+          ),
+          {
+
+            sortOrder:
+              index,
+
+            updatedAt:
+              serverTimestamp()
+
+          }
+        );
+
+      }
+    );
+
+
+    await batch.commit();
+
+    products =
+      reordered.map(
+        (
+          product,
+          index
+        ) => ({
+          ...product,
+          sortOrder:
+            index
+        })
+      );
+
+    renderProducts();
+
+    prepareProductInputList();
+
+  } catch (error) {
+
+    showError(
+      firebaseErrorMessage(
+        error
+      )
+    );
+
+  }
+
+}
+
+
 addProductButton.onclick =
   async () => {
 
@@ -8522,6 +8953,11 @@ addProductButton.onclick =
     const revenue =
       Number(
         productRevenueInput.value
+      );
+
+    const cashbackOptions =
+      parseCashbackInput(
+        productCashbackInput.value
       );
 
 
@@ -8543,6 +8979,23 @@ addProductButton.onclick =
 
       showError(
         "売上単価を正しく入力してください。"
+      );
+
+      return;
+
+    }
+
+
+    if (
+      cashbackOptions.some(
+        cashback =>
+          cashback >
+          revenue
+      )
+    ) {
+
+      showError(
+        "キャッシュバックは1件売上以下で設定してください。"
       );
 
       return;
@@ -8572,6 +9025,11 @@ addProductButton.onclick =
 
           revenue,
 
+          cashbackOptions,
+
+          sortOrder:
+            products.length,
+
           active: true,
 
           createdAt:
@@ -8588,6 +9046,9 @@ addProductButton.onclick =
         "";
 
       productRevenueInput.value =
+        "";
+
+      productCashbackInput.value =
         "";
 
 
@@ -8628,6 +9089,11 @@ function openEditProductModal(
       product.revenue ||
       0
     );
+
+  editProductCashback.value =
+    normalizeCashbackOptions(
+      product.cashbackOptions
+    ).join(",");
 
   productModal.style.display =
     "flex";
@@ -8670,6 +9136,11 @@ saveProductModal.onclick =
         editProductRevenue.value
       );
 
+    const cashbackOptions =
+      parseCashbackInput(
+        editProductCashback.value
+      );
+
 
     if (!name) {
 
@@ -8696,6 +9167,23 @@ saveProductModal.onclick =
     }
 
 
+    if (
+      cashbackOptions.some(
+        cashback =>
+          cashback >
+          revenue
+      )
+    ) {
+
+      showError(
+        "キャッシュバックは1件売上以下で設定してください。"
+      );
+
+      return;
+
+    }
+
+
     try {
 
       await updateDoc(
@@ -8709,6 +9197,8 @@ saveProductModal.onclick =
           name,
 
           revenue,
+
+          cashbackOptions,
 
           updatedAt:
             serverTimestamp()
@@ -10637,9 +11127,25 @@ async function prepareRecordInputs() {
    全商材入力欄
 ===================================================== */
 
+function resultVariantKey(
+  productId,
+  cashback
+) {
+
+  return `${productId}__cb_${Number(
+    cashback ||
+    0
+  )}`;
+
+}
+
+
 function normalizeExistingResultMap(
   existingResults
 ) {
+
+  const map = {};
+
 
   if (
     !existingResults ||
@@ -10647,56 +11153,71 @@ function normalizeExistingResultMap(
       "object"
   ) {
 
-    return {};
-
-  }
-
-
-  if (
-    Array.isArray(
-      existingResults
-    )
-  ) {
-
-    const map = {};
-
-
-    existingResults.forEach(
-      (
-        result,
-        index
-      ) => {
-
-        if (!result) {
-
-          return;
-
-        }
-
-
-        const productId =
-          result.productId ||
-          `legacy_${index}`;
-
-
-        map[
-          productId
-        ] = {
-          ...result
-        };
-
-      }
-    );
-
-
     return map;
 
   }
 
 
-  return {
-    ...existingResults
-  };
+  const entries =
+    Array.isArray(
+      existingResults
+    )
+      ? existingResults.map(
+          (
+            result,
+            index
+          ) => [
+            result?.productId ||
+              `legacy_${index}`,
+            result
+          ]
+        )
+      : Object.entries(
+          existingResults
+        );
+
+
+  entries.forEach(
+    ([
+      storedKey,
+      result
+    ]) => {
+
+      if (!result) {
+
+        return;
+
+      }
+
+
+      const productId =
+        result.productId ||
+        storedKey;
+
+      const cashback =
+        Number(
+          result.cashback ||
+          0
+        );
+
+      const key =
+        resultVariantKey(
+          productId,
+          cashback
+        );
+
+
+      map[key] = {
+        ...result,
+        productId,
+        cashback
+      };
+
+    }
+  );
+
+
+  return map;
 
 }
 
@@ -10724,56 +11245,108 @@ function prepareProductInputList(
     );
 
 
-  const inputProducts =
+  const inputGroups =
     products.map(
       product => {
 
-        const snapshot =
-          existingMap[
-            product.id
-          ];
+        const historicalCashbacks =
+          Object.values(
+            existingMap
+          )
+            .filter(
+              result =>
+                result.productId ===
+                product.id
+            )
+            .map(
+              result =>
+                Number(
+                  result.cashback ||
+                  0
+                )
+            );
+
+
+        const cashbackOptions =
+          normalizeCashbackOptions([
+            ...normalizeCashbackOptions(
+              product.cashbackOptions
+            ),
+            ...historicalCashbacks
+          ]);
 
 
         return {
           id:
             product.id,
           name:
-            snapshot?.productName ||
             product.name,
-          revenuePerUnit:
-            snapshot
-              ? Number(
-                  snapshot.revenuePerUnit ||
-                  0
-                )
-              : Number(
-                  product.revenue ||
-                  0
-                ),
-          count:
+          baseRevenue:
             Number(
-              snapshot?.count ||
+              product.revenue ||
               0
             ),
           historicalOnly:
-            false
+            false,
+          variants:
+            cashbackOptions.map(
+              cashback => {
+
+                const key =
+                  resultVariantKey(
+                    product.id,
+                    cashback
+                  );
+
+                const snapshot =
+                  existingMap[
+                    key
+                  ];
+
+                return {
+                  key,
+                  cashback,
+                  revenuePerUnit:
+                    snapshot
+                      ? Number(
+                          snapshot.revenuePerUnit ||
+                          0
+                        )
+                      : Math.max(
+                          0,
+                          Number(
+                            product.revenue ||
+                            0
+                          ) -
+                          cashback
+                        ),
+                  count:
+                    Number(
+                      snapshot?.count ||
+                      0
+                    )
+                };
+
+              }
+            )
         };
 
       }
     );
 
 
-  Object.entries(
+  const historicalGroups =
+    {};
+
+
+  Object.values(
     existingMap
   ).forEach(
-    ([
-      productId,
-      result
-    ]) => {
+    result => {
 
       if (
         currentProductIds.has(
-          productId
+          result.productId
         )
       ) {
 
@@ -10782,32 +11355,75 @@ function prepareProductInputList(
       }
 
 
-      inputProducts.push({
-        id:
-          productId,
-        name:
-          result?.productName ||
-          "削除済み商材",
+      if (
+        !historicalGroups[
+          result.productId
+        ]
+      ) {
+
+        historicalGroups[
+          result.productId
+        ] = {
+          id:
+            result.productId,
+          name:
+            result.productName ||
+            "削除済み商材",
+          baseRevenue:
+            Number(
+              result.revenuePerUnit ||
+              0
+            ) +
+            Number(
+              result.cashback ||
+              0
+            ),
+          historicalOnly:
+            true,
+          variants: []
+        };
+
+      }
+
+
+      historicalGroups[
+        result.productId
+      ].variants.push({
+        key:
+          resultVariantKey(
+            result.productId,
+            result.cashback
+          ),
+        cashback:
+          Number(
+            result.cashback ||
+            0
+          ),
         revenuePerUnit:
           Number(
-            result?.revenuePerUnit ||
+            result.revenuePerUnit ||
             0
           ),
         count:
           Number(
-            result?.count ||
+            result.count ||
             0
-          ),
-        historicalOnly:
-          true
+          )
       });
 
     }
   );
 
 
+  inputGroups.push(
+    ...Object.values(
+      historicalGroups
+    )
+  );
+
+
   if (
-    inputProducts.length ===
+    inputGroups.length ===
     0
   ) {
 
@@ -10824,127 +11440,180 @@ function prepareProductInputList(
   }
 
 
-  inputProducts.forEach(
+  inputGroups.forEach(
     product => {
 
-      const row =
+      const group =
         document.createElement(
           "div"
         );
 
-      row.className =
-        "product-input-row";
+      group.className =
+        "product-input-group";
 
 
-      const info =
+      const title =
         document.createElement(
           "div"
         );
 
-      info.className =
-        "product-input-info";
+      title.className =
+        "product-input-group-title";
+
+      title.innerHTML = `
+        <div class="product-input-name">
+          ${escapeHtml(
+            product.historicalOnly
+              ? `${product.name}（履歴）`
+              : product.name
+          )}
+        </div>
+        <div class="product-input-base">
+          基準 ${formatYen(
+            product.baseRevenue
+          )}
+        </div>
+      `;
 
 
-      const name =
-        document.createElement(
-          "div"
-        );
-
-      name.className =
-        "product-input-name";
-
-      name.textContent =
-        product.historicalOnly
-          ? `${product.name}（履歴）`
-          : product.name;
-
-
-      const unit =
-        document.createElement(
-          "div"
-        );
-
-      unit.className =
-        "product-input-unit";
-
-      unit.textContent =
-        `1件 ${formatYen(
-          product.revenuePerUnit
-        )}`;
-
-
-      info.appendChild(
-        name
-      );
-
-      info.appendChild(
-        unit
+      group.appendChild(
+        title
       );
 
 
-      const control =
-        document.createElement(
-          "div"
+      product.variants
+        .sort(
+          (a, b) =>
+            a.cashback -
+            b.cashback
+        )
+        .forEach(
+          variant => {
+
+            const row =
+              document.createElement(
+                "div"
+              );
+
+            row.className =
+              "product-input-variant-row";
+
+
+            const cb =
+              document.createElement(
+                "div"
+              );
+
+            cb.className =
+              "product-input-cb";
+
+            cb.textContent =
+              variant.cashback ===
+                0
+                ? "CB 0円"
+                : `CB ${formatYen(
+                    variant.cashback
+                  )}`;
+
+
+            const unit =
+              document.createElement(
+                "div"
+              );
+
+            unit.className =
+              "product-input-unit";
+
+            unit.textContent =
+              `${formatYen(
+                variant.revenuePerUnit
+              )}/件`;
+
+
+            const control =
+              document.createElement(
+                "div"
+              );
+
+            control.className =
+              "product-input-control";
+
+
+            const input =
+              document.createElement(
+                "input"
+              );
+
+            input.type =
+              "number";
+
+            input.min =
+              "0";
+
+            input.step =
+              "1";
+
+            input.inputMode =
+              "numeric";
+
+            input.value =
+              String(
+                variant.count ||
+                0
+              );
+
+            input.dataset.resultKey =
+              variant.key;
+
+            input.dataset.productId =
+              product.id;
+
+            input.dataset.productName =
+              product.name;
+
+            input.dataset.cashback =
+              String(
+                variant.cashback
+              );
+
+            input.dataset.revenuePerUnit =
+              String(
+                variant.revenuePerUnit
+              );
+
+
+            input.addEventListener(
+              "input",
+              updateRecordTotals
+            );
+
+
+            control.appendChild(
+              input
+            );
+
+            row.appendChild(
+              cb
+            );
+
+            row.appendChild(
+              unit
+            );
+
+            row.appendChild(
+              control
+            );
+
+            group.appendChild(
+              row
+            );
+
+          }
         );
-
-      control.className =
-        "product-input-control";
-
-
-      const input =
-        document.createElement(
-          "input"
-        );
-
-      input.type =
-        "number";
-
-      input.min =
-        "0";
-
-      input.step =
-        "1";
-
-      input.value =
-        String(
-          product.count ||
-          0
-        );
-
-      input.dataset.productId =
-        product.id;
-
-      input.dataset.productName =
-        product.name;
-
-      input.dataset.revenuePerUnit =
-        String(
-          product.revenuePerUnit
-        );
-
-
-      input.addEventListener(
-        "input",
-        updateRecordTotals
-      );
-
-
-      control.appendChild(
-        input
-      );
-
-
-      row.appendChild(
-        info
-      );
-
-      row.appendChild(
-        control
-      );
 
 
       productInputList.appendChild(
-        row
+        group
       );
 
     }
@@ -10979,7 +11648,21 @@ function getCurrentInputResults() {
 
       const count =
         Number(
-          input.value || 0
+          input.value ||
+          0
+        );
+
+      const cashback =
+        Number(
+          input.dataset.cashback ||
+          0
+        );
+
+      const resultKey =
+        input.dataset.resultKey ||
+        resultVariantKey(
+          productId,
+          cashback
         );
 
 
@@ -10993,12 +11676,16 @@ function getCurrentInputResults() {
       ) {
 
         results[
-          productId
+          resultKey
         ] = {
+
+          productId,
 
           productName:
             input.dataset.productName ||
             "不明",
+
+          cashback,
 
           count,
 
