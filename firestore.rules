@@ -90,6 +90,14 @@ service cloud.firestore {
             data.cashbackOptions is list
             && data.cashbackOptions.size() <= 20
           )
+        )
+        && (
+          !data.keys().hasAny(['pricingOptions'])
+          || (
+            data.pricingOptions is list
+            && data.pricingOptions.size() >= 1
+            && data.pricingOptions.size() <= 15
+          )
         );
     }
 
@@ -668,8 +676,8 @@ service cloud.firestore {
         && sameCompany(resource.data.companyId);
 
       allow create: if request.resource.data.keys().hasOnly([
-          'companyId', 'name', 'revenue', 'cashbackOptions', 'sortOrder',
-          'active', 'createdAt', 'updatedAt'
+          'companyId', 'name', 'revenue', 'cashbackOptions', 'pricingOptions',
+          'sortOrder', 'active', 'createdAt', 'updatedAt'
         ])
         && request.resource.data.companyId != null
         && currentCompanyId() == request.resource.data.companyId
@@ -692,7 +700,8 @@ service cloud.firestore {
         && request.resource.data.updatedAt == request.time
         && request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly([
-            'name', 'revenue', 'cashbackOptions', 'sortOrder', 'updatedAt'
+            'name', 'revenue', 'cashbackOptions', 'pricingOptions',
+            'sortOrder', 'updatedAt'
           ]);
 
       allow delete: if resource.data.companyId != null
