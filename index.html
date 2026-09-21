@@ -967,6 +967,68 @@ header {
   margin-bottom: 0;
 }
 
+.daily-company-summary {
+  padding: 12px;
+  border-top: 1px solid var(--border);
+  background: #fff;
+}
+
+.daily-company-summary-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 9px;
+}
+
+.daily-company-summary-title strong {
+  font-size: 13px;
+}
+
+.daily-company-summary-title span {
+  color: var(--sub);
+  font-size: 10px;
+}
+
+.daily-company-product-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+  gap: 7px;
+}
+
+.daily-company-product-card {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.daily-company-product-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.daily-company-product-values {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 5px;
+  font-size: 11px;
+}
+
+.daily-company-product-count {
+  font-weight: 800;
+}
+
+.daily-company-product-revenue {
+  color: var(--sub);
+  white-space: nowrap;
+}
+
 .daily-team-card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
@@ -1154,6 +1216,28 @@ header {
     padding: 11px 12px;
   }
 
+  .daily-company-summary {
+    padding: 10px;
+  }
+
+  .daily-company-product-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .daily-company-product-card {
+    padding: 8px 7px;
+  }
+
+  .daily-company-product-values {
+    display: block;
+  }
+
+  .daily-company-product-revenue {
+    margin-top: 2px;
+    font-size: 9px;
+  }
+
   .daily-team-card-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     padding: 10px;
@@ -1182,15 +1266,72 @@ header {
   }
 }
 
+.history-date-picker {
+  margin-bottom: 12px;
+}
+
+.history-date-picker label {
+  display: block;
+  margin-bottom: 7px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.history-date-picker input {
+  width: 100%;
+  max-width: 260px;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #fff;
+  outline: none;
+}
+
+.history-date-picker input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(37,99,235,.1);
+}
+
+.history-day-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 9px;
+  padding: 10px 11px;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.history-day-summary-date {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.history-day-summary-value {
+  text-align: right;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.history-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .history-item {
-  padding: 15px;
-  border-bottom: 1px solid var(--border);
+  min-width: 0;
+  padding: 11px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: #fff;
 }
 
 .history-top {
   display: flex;
   justify-content: space-between;
-  gap: 15px;
+  gap: 8px;
 }
 
 .history-date {
@@ -1207,23 +1348,39 @@ header {
 .history-product {
   margin-top: 5px;
   color: var(--sub);
-  font-size: 12px;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.history-product {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .history-count {
-  font-size: 18px;
+  flex: 0 0 auto;
+  font-size: 16px;
   font-weight: 800;
 }
 
 .history-revenue {
-  margin-top: 8px;
+  margin-top: 6px;
+  font-size: 12px;
   font-weight: 700;
 }
 
 .history-actions {
-  display: flex;
-  gap: 7px;
-  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.history-actions button {
+  min-width: 0;
+  padding: 7px 5px;
 }
 
 .edit-product-button,
@@ -1246,6 +1403,34 @@ header {
 .history-delete {
   background: #fef2f2;
   color: #b91c1c;
+}
+
+@media (max-width: 430px) {
+  .history-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .history-item {
+    padding: 8px;
+  }
+
+  .history-member {
+    font-size: 11px;
+  }
+
+  .history-location,
+  .history-product {
+    font-size: 9px;
+  }
+
+  .history-count {
+    font-size: 14px;
+  }
+
+  .history-actions button {
+    font-size: 10px;
+  }
 }
 
 /* =====================================================
@@ -3759,6 +3944,20 @@ header {
         id="recordHistoryContent"
         class="dashboard-app-content"
         hidden>
+
+        <div class="history-date-picker">
+
+          <label for="recordHistoryDate">
+            表示する日付
+          </label>
+
+          <input
+            id="recordHistoryDate"
+            type="date"
+          >
+
+        </div>
+
         <div id="recordHistoryList"></div>
       </div>
 
@@ -4671,6 +4870,11 @@ const recordHistoryList =
     "recordHistoryList"
   );
 
+const recordHistoryDate =
+  document.getElementById(
+    "recordHistoryDate"
+  );
+
 const individualRankingToggle =
   document.getElementById(
     "individualRankingToggle"
@@ -5166,6 +5370,9 @@ let selectedTeamOverviewId =
 
 let selectedDailyTeamKey =
   null;
+
+let currentRecordHistoryMonthly =
+  [];
 
 
 /*
@@ -15071,6 +15278,9 @@ dashboardMonth.addEventListener(
     dailySummaryDate.value =
       "";
 
+    recordHistoryDate.value =
+      "";
+
     renderDashboard();
 
   }
@@ -15086,6 +15296,18 @@ dailySummaryDate.addEventListener(
 
     renderDailySummary(
       currentDailySummaryMap
+    );
+
+  }
+);
+
+
+recordHistoryDate.addEventListener(
+  "change",
+  () => {
+
+    renderRecordHistory(
+      currentRecordHistoryMonthly
     );
 
   }
@@ -19780,6 +20002,201 @@ function renderDailySummary(
   );
 
 
+  const companyProductMap =
+    {};
+
+
+  Object.values(
+    data.teams ||
+    {}
+  ).forEach(
+    team => {
+
+      Object.values(
+        team.locations ||
+        {}
+      ).forEach(
+        location => {
+
+          Object.values(
+            location.products ||
+            {}
+          ).forEach(
+            product => {
+
+              const parsed =
+                parseLegacyCashbackProductName(
+                  product.name ||
+                  "不明"
+                );
+
+              const displayName =
+                parsed.parentName ||
+                product.name ||
+                "不明";
+
+              const key =
+                displayName
+                  .trim()
+                  .toLocaleLowerCase(
+                    "ja"
+                  );
+
+
+              if (
+                !companyProductMap[
+                  key
+                ]
+              ) {
+
+                companyProductMap[
+                  key
+                ] = {
+                  name:
+                    displayName,
+                  count: 0,
+                  revenue: 0
+                };
+
+              }
+
+
+              companyProductMap[
+                key
+              ].count +=
+                Number(
+                  product.count ||
+                  0
+                );
+
+              companyProductMap[
+                key
+              ].revenue +=
+                Number(
+                  product.revenue ||
+                  0
+                );
+
+            }
+          );
+
+        }
+      );
+
+    }
+  );
+
+
+  const companyProducts =
+    Object.values(
+      companyProductMap
+    ).sort(
+      (a, b) => {
+
+        if (
+          b.count !==
+          a.count
+        ) {
+
+          return (
+            b.count -
+            a.count
+          );
+
+        }
+
+
+        return (
+          b.revenue -
+          a.revenue
+        );
+
+      }
+    );
+
+
+  const companySummary =
+    document.createElement(
+      "div"
+    );
+
+  companySummary.className =
+    "daily-company-summary";
+
+
+  const companySummaryTitle =
+    document.createElement(
+      "div"
+    );
+
+  companySummaryTitle.className =
+    "daily-company-summary-title";
+
+  companySummaryTitle.innerHTML = `
+    <strong>🏢 会社全体・商材総合</strong>
+    <span>${companyProducts.length}商材</span>
+  `;
+
+  companySummary.appendChild(
+    companySummaryTitle
+  );
+
+
+  const companyProductGrid =
+    document.createElement(
+      "div"
+    );
+
+  companyProductGrid.className =
+    "daily-company-product-grid";
+
+
+  companyProducts.forEach(
+    product => {
+
+      const productCard =
+        document.createElement(
+          "div"
+        );
+
+      productCard.className =
+        "daily-company-product-card";
+
+      productCard.innerHTML = `
+        <div class="daily-company-product-name">
+          ${escapeHtml(
+            product.name
+          )}
+        </div>
+        <div class="daily-company-product-values">
+          <span class="daily-company-product-count">
+            ${product.count}件
+          </span>
+          <span class="daily-company-product-revenue">
+            ${formatYen(
+              product.revenue
+            )}
+          </span>
+        </div>
+      `;
+
+      companyProductGrid.appendChild(
+        productCard
+      );
+
+    }
+  );
+
+
+  companySummary.appendChild(
+    companyProductGrid
+  );
+
+  card.appendChild(
+    companySummary
+  );
+
+
   const teamValues =
     Object.entries(
       data.teams ||
@@ -20205,16 +20622,102 @@ function renderRecordHistory(
   monthly
 ) {
 
-  recordHistoryCount.textContent =
-    `${monthly.length}件`;
+  currentRecordHistoryMonthly =
+    Array.isArray(
+      monthly
+    )
+      ? monthly
+      : [];
+
 
   recordHistoryList.innerHTML =
     "";
 
 
+  const selectedMonth =
+    dashboardMonth.value;
+
+  const dates =
+    Array.from(
+      new Set(
+        currentRecordHistoryMonthly
+          .map(
+            record =>
+              record.date
+          )
+          .filter(Boolean)
+      )
+    ).sort(
+      (a, b) =>
+        b.localeCompare(
+          a
+        )
+    );
+
+
   if (
-    monthly.length === 0
+    selectedMonth
   ) {
+
+    const [
+      year,
+      month
+    ] =
+      selectedMonth
+        .split("-")
+        .map(Number);
+
+    const lastDay =
+      new Date(
+        year,
+        month,
+        0
+      ).getDate();
+
+    recordHistoryDate.min =
+      `${selectedMonth}-01`;
+
+    recordHistoryDate.max =
+      `${selectedMonth}-${String(
+        lastDay
+      ).padStart(
+        2,
+        "0"
+      )}`;
+
+  } else {
+
+    recordHistoryDate.removeAttribute(
+      "min"
+    );
+
+    recordHistoryDate.removeAttribute(
+      "max"
+    );
+
+  }
+
+
+  if (
+    dates.length ===
+    0
+  ) {
+
+    recordHistoryCount.textContent =
+      "0件";
+
+    if (
+      selectedMonth &&
+      !recordHistoryDate.value.startsWith(
+        selectedMonth
+      )
+    ) {
+
+      recordHistoryDate.value =
+        `${selectedMonth}-01`;
+
+    }
+
 
     recordHistoryList.innerHTML = `
       <div class="empty-message">
@@ -20227,7 +20730,142 @@ function renderRecordHistory(
   }
 
 
-  monthly.forEach(
+  if (
+    !recordHistoryDate.value ||
+    (
+      selectedMonth &&
+      !recordHistoryDate.value.startsWith(
+        selectedMonth
+      )
+    )
+  ) {
+
+    recordHistoryDate.value =
+      dates[0];
+
+  }
+
+
+  const selectedDate =
+    recordHistoryDate.value;
+
+  const dailyRecords =
+    currentRecordHistoryMonthly
+      .filter(
+        record =>
+          record.date ===
+          selectedDate
+      )
+      .sort(
+        (a, b) =>
+          getCurrentMemberName(
+            a
+          ).localeCompare(
+            getCurrentMemberName(
+              b
+            ),
+            "ja"
+          )
+      );
+
+
+  recordHistoryCount.textContent =
+    `${dailyRecords.length}件`;
+
+
+  if (
+    dailyRecords.length ===
+    0
+  ) {
+
+    recordHistoryList.innerHTML = `
+      <div class="empty-message">
+        ${formatDateJapanese(
+          selectedDate
+        )}の登録履歴はありません。
+      </div>
+    `;
+
+    return;
+
+  }
+
+
+  let dayCount =
+    0;
+
+  let dayRevenue =
+    0;
+
+
+  dailyRecords.forEach(
+    record => {
+
+      getRecordResults(
+        record
+      ).forEach(
+        result => {
+
+          const count =
+            Number(
+              result.count ||
+              0
+            );
+
+          dayCount +=
+            count;
+
+          dayRevenue +=
+            count *
+            Number(
+              result.revenuePerUnit ||
+              0
+            );
+
+        }
+      );
+
+    }
+  );
+
+
+  const summary =
+    document.createElement(
+      "div"
+    );
+
+  summary.className =
+    "history-day-summary";
+
+  summary.innerHTML = `
+    <div class="history-day-summary-date">
+      ${formatDateJapanese(
+        selectedDate
+      )}
+    </div>
+    <div class="history-day-summary-value">
+      ${dailyRecords.length}人 / ${dayCount}件<br>
+      ${formatYen(
+        dayRevenue
+      )}
+    </div>
+  `;
+
+  recordHistoryList.appendChild(
+    summary
+  );
+
+
+  const grid =
+    document.createElement(
+      "div"
+    );
+
+  grid.className =
+    "history-grid";
+
+
+  dailyRecords.forEach(
     record => {
 
       const item =
@@ -20251,7 +20889,6 @@ function renderRecordHistory(
       let totalRevenue =
         0;
 
-
       const productTexts =
         [];
 
@@ -20261,9 +20898,9 @@ function renderRecordHistory(
 
           const count =
             Number(
-              result.count || 0
+              result.count ||
+              0
             );
-
 
           const revenue =
             count *
@@ -20305,10 +20942,6 @@ function renderRecordHistory(
       );
 
 
-      /*
-        ★ ここも現在の名前を表示
-      */
-
       const currentName =
         getCurrentMemberName(
           record
@@ -20319,12 +20952,6 @@ function renderRecordHistory(
         <div class="history-top">
 
           <div>
-
-            <div class="history-date">
-              ${formatDateJapanese(
-                record.date
-              )}
-            </div>
 
             <div class="history-member">
               ${escapeHtml(
@@ -20341,7 +20968,8 @@ function renderRecordHistory(
 
             <div class="history-product">
               ${
-                productTexts.length > 0
+                productTexts.length >
+                  0
                   ? productTexts
                       .map(
                         text =>
@@ -20441,11 +21069,16 @@ function renderRecordHistory(
       }
 
 
-      recordHistoryList.appendChild(
+      grid.appendChild(
         item
       );
 
     }
+  );
+
+
+  recordHistoryList.appendChild(
+    grid
   );
 
 }
