@@ -1621,6 +1621,48 @@ header {
    ようこそ / クイック管理
 ===================================================== */
 
+.management-tab-shell {
+  margin-top: 10px;
+}
+
+.management-tab-button {
+  min-height: 38px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  color: #374151;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 2px 7px rgba(15,23,42,.04);
+}
+
+.management-tab-button:hover,
+.management-tab-button[aria-expanded="true"] {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.management-tab-panel {
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--shadow);
+}
+
+.management-tab-panel[hidden] {
+  display: none;
+}
+
+.management-tab-panel .quick-menu {
+  margin-top: 0;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .quick-menu {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -1680,6 +1722,20 @@ header {
 }
 
 @media (max-width: 700px) {
+  .management-tab-shell {
+    margin-top: 8px;
+  }
+
+  .management-tab-button {
+    min-height: 36px;
+    padding: 7px 12px;
+  }
+
+  .management-tab-panel {
+    padding: 8px;
+  }
+
+  .management-tab-panel .quick-menu,
   .quick-menu {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -3102,6 +3158,65 @@ header {
 
   </div>
 
+  <div class="management-tab-shell">
+
+    <button
+      id="managementMenuButton"
+      class="management-tab-button"
+      type="button"
+      aria-expanded="false"
+      aria-controls="managementMenuPanel">
+      ⚙️ 管理
+    </button>
+
+    <div
+      id="managementMenuPanel"
+      class="management-tab-panel"
+      hidden>
+
+      <div class="quick-menu">
+
+        <button id="quickCompanyButton" class="quick-menu-button" type="button" aria-pressed="false">
+          <span class="quick-menu-icon">🏢</span>
+          会社
+        </button>
+
+        <button id="quickInviteButton" class="quick-menu-button" type="button" aria-pressed="false" style="display:none;">
+          <span class="quick-menu-icon">✉️</span>
+          招待リンク
+        </button>
+
+        <button id="quickOwnerButton" class="quick-menu-button" type="button" aria-pressed="false" style="display:none;">
+          <span class="quick-menu-icon">👑</span>
+          オーナー管理
+        </button>
+
+        <button id="quickAccountButton" class="quick-menu-button" type="button" aria-pressed="false">
+          <span class="quick-menu-icon">⚙️</span>
+          アカウント設定
+        </button>
+
+        <button id="managementProductButton" class="quick-menu-button" type="button" aria-pressed="false" style="display:none;">
+          <span class="quick-menu-icon">📦</span>
+          商材管理
+        </button>
+
+        <button id="managementTeamButton" class="quick-menu-button" type="button" aria-pressed="false" style="display:none;">
+          <span class="quick-menu-icon">👥</span>
+          班管理
+        </button>
+
+        <button id="managementMemberButton" class="quick-menu-button" type="button" aria-pressed="false" style="display:none;">
+          <span class="quick-menu-icon">👤</span>
+          メンバー管理
+        </button>
+
+      </div>
+
+    </div>
+
+  </div>
+
   <div
     id="appErrorMessage"
     class="error-message"
@@ -3127,47 +3242,6 @@ header {
       班・メンバー・商材・実績を一元管理できます。
     </div>
 
-    <div class="quick-menu">
-
-      <button
-        id="quickCompanyButton"
-        class="quick-menu-button"
-        type="button"
-        aria-pressed="false">
-        <span class="quick-menu-icon">🏢</span>
-        会社
-      </button>
-
-      <button
-        id="quickInviteButton"
-        class="quick-menu-button"
-        type="button"
-        aria-pressed="false"
-        style="display:none;">
-        <span class="quick-menu-icon">✉️</span>
-        招待リンク
-      </button>
-
-      <button
-        id="quickOwnerButton"
-        class="quick-menu-button"
-        type="button"
-        aria-pressed="false"
-        style="display:none;">
-        <span class="quick-menu-icon">👑</span>
-        オーナー管理
-      </button>
-
-      <button
-        id="quickAccountButton"
-        class="quick-menu-button"
-        type="button"
-        aria-pressed="false">
-        <span class="quick-menu-icon">⚙️</span>
-        アカウント設定
-      </button>
-
-    </div>
 
   </div>
 
@@ -4527,6 +4601,21 @@ const companySetupMessage =
 const companySetupLogoutButton =
   document.getElementById("companySetupLogoutButton");
 
+const managementMenuButton =
+  document.getElementById("managementMenuButton");
+
+const managementMenuPanel =
+  document.getElementById("managementMenuPanel");
+
+const managementProductButton =
+  document.getElementById("managementProductButton");
+
+const managementTeamButton =
+  document.getElementById("managementTeamButton");
+
+const managementMemberButton =
+  document.getElementById("managementMemberButton");
+
 const quickCompanyButton =
   document.getElementById("quickCompanyButton");
 
@@ -5374,6 +5463,9 @@ let selectedDailyTeamKey =
 let currentRecordHistoryMonthly =
   [];
 
+let activeManagementSection =
+  null;
+
 
 /*
   Firestoreリアルタイム監視
@@ -5394,8 +5486,120 @@ const quickMenuButtons = [
   quickCompanyButton,
   quickInviteButton,
   quickOwnerButton,
-  quickAccountButton
+  quickAccountButton,
+  managementProductButton,
+  managementTeamButton,
+  managementMemberButton
 ];
+
+
+function setManagementMenuOpen(
+  open
+) {
+
+  managementMenuButton.setAttribute(
+    "aria-expanded",
+    String(open)
+  );
+
+  managementMenuPanel.hidden =
+    !open;
+
+}
+
+
+function hideManagementCards() {
+
+  [
+    teamManagement,
+    productManagement,
+    memberManagement
+  ].forEach(
+    card => {
+
+      card.style.display =
+        "none";
+
+    }
+  );
+
+}
+
+
+function openManagementCard(
+  type
+) {
+
+  closeQuickPanels();
+
+  hideManagementCards();
+
+  activeManagementSection =
+    type;
+
+
+  const config = {
+    product: {
+      card: productManagement,
+      toggle: productManagementToggle,
+      content: productManagementContent,
+      button: managementProductButton
+    },
+    team: {
+      card: teamManagement,
+      toggle: teamManagementToggle,
+      content: teamManagementContent,
+      button: managementTeamButton
+    },
+    member: {
+      card: memberManagement,
+      toggle: memberManagementToggle,
+      content: memberManagementContent,
+      button: managementMemberButton
+    }
+  }[type];
+
+
+  if (!config) {
+
+    activeManagementSection =
+      null;
+
+    return;
+
+  }
+
+
+  resetQuickMenuButtons();
+
+  config.button.setAttribute(
+    "aria-pressed",
+    "true"
+  );
+
+  config.card.style.display =
+    "block";
+
+  setAccordionState(
+    config.toggle,
+    config.content,
+    true
+  );
+
+  setManagementMenuOpen(
+    false
+  );
+
+
+  requestAnimationFrame(
+    () =>
+      config.card.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      })
+  );
+
+}
 
 
 function resetQuickMenuButtons() {
@@ -5509,33 +5713,110 @@ function openCompanyQuickPanel(
 }
 
 
-quickCompanyButton.onclick =
+managementMenuButton.onclick =
+  () => {
+
+    setManagementMenuOpen(
+      managementMenuPanel.hidden
+    );
+
+  };
+
+
+managementProductButton.onclick =
   () =>
+    openManagementCard(
+      "product"
+    );
+
+
+managementTeamButton.onclick =
+  () =>
+    openManagementCard(
+      "team"
+    );
+
+
+managementMemberButton.onclick =
+  () =>
+    openManagementCard(
+      "member"
+    );
+
+
+quickCompanyButton.onclick =
+  () => {
+
+    activeManagementSection =
+      null;
+
+    hideManagementCards();
+
+    setManagementMenuOpen(
+      false
+    );
+
     openCompanyQuickPanel(
       "company"
     );
 
+  };
+
 
 quickInviteButton.onclick =
-  () =>
+  () => {
+
+    activeManagementSection =
+      null;
+
+    hideManagementCards();
+
+    setManagementMenuOpen(
+      false
+    );
+
     openCompanyQuickPanel(
       "invite"
     );
 
+  };
+
 
 quickOwnerButton.onclick =
-  () =>
+  () => {
+
+    activeManagementSection =
+      null;
+
+    hideManagementCards();
+
+    setManagementMenuOpen(
+      false
+    );
+
     openCompanyQuickPanel(
       "owner"
     );
+
+  };
 
 
 quickAccountButton.onclick =
   () => {
 
+    activeManagementSection =
+      null;
+
+    hideManagementCards();
+
+    setManagementMenuOpen(
+      false
+    );
+
+
     if (
       accountSettings.style.display !==
-      "none"
+        "none"
     ) {
 
       closeQuickPanels();
@@ -7948,14 +8229,62 @@ function updateCurrentUserUI() {
     setupWarning.style.display =
       "none";
 
-    teamManagement.style.display =
+    managementTeamButton.style.display =
       "block";
 
-    productManagement.style.display =
+    managementProductButton.style.display =
       "block";
 
-    memberManagement.style.display =
+    managementMemberButton.style.display =
       "block";
+
+
+    hideManagementCards();
+
+
+    if (
+      activeManagementSection
+    ) {
+
+      const activeCardMap = {
+        team: teamManagement,
+        product: productManagement,
+        member: memberManagement
+      };
+
+      const activeButtonMap = {
+        team: managementTeamButton,
+        product: managementProductButton,
+        member: managementMemberButton
+      };
+
+      const activeCard =
+        activeCardMap[
+          activeManagementSection
+        ];
+
+      const activeButton =
+        activeButtonMap[
+          activeManagementSection
+        ];
+
+
+      if (
+        activeCard &&
+        activeButton
+      ) {
+
+        activeCard.style.display =
+          "block";
+
+        activeButton.setAttribute(
+          "aria-pressed",
+          "true"
+        );
+
+      }
+
+    }
 
   } else {
 
@@ -7965,14 +8294,19 @@ function updateCurrentUserUI() {
     setupWarning.style.display =
       "block";
 
-    teamManagement.style.display =
+    activeManagementSection =
+      null;
+
+    managementTeamButton.style.display =
       "none";
 
-    productManagement.style.display =
+    managementProductButton.style.display =
       "none";
 
-    memberManagement.style.display =
+    managementMemberButton.style.display =
       "none";
+
+    hideManagementCards();
 
   }
 
