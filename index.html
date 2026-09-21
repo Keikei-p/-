@@ -887,6 +887,78 @@ header {
   margin-bottom: 0;
 }
 
+.daily-team-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 9px;
+  padding: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.daily-team-card {
+  min-width: 0;
+  padding: 12px 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--text);
+  text-align: center;
+  cursor: pointer;
+}
+
+.daily-team-card:hover {
+  border-color: #93c5fd;
+  background: #f8fbff;
+}
+
+.daily-team-card[aria-pressed="true"] {
+  border-color: #60a5fa;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.daily-team-card-icon {
+  font-size: 23px;
+  line-height: 1;
+}
+
+.daily-team-card-name {
+  margin-top: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.daily-team-card-count {
+  margin-top: 5px;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.daily-team-card-revenue {
+  margin-top: 2px;
+  color: var(--sub);
+  font-size: 10px;
+}
+
+.daily-selected-team-detail {
+  padding: 0 12px 12px;
+}
+
+.daily-selected-team-title {
+  margin: 2px 0 9px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.daily-location-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 9px;
+}
+
 .daily-detail-header {
   display: flex;
   justify-content: space-between;
@@ -1002,8 +1074,21 @@ header {
     padding: 11px 12px;
   }
 
+  .daily-team-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 10px;
+  }
+
+  .daily-selected-team-detail {
+    padding: 0 10px 10px;
+  }
+
+  .daily-location-grid {
+    grid-template-columns: 1fr;
+  }
+
   .daily-location-block {
-    margin: 0 10px 10px;
+    margin: 0;
   }
 
   .daily-product-row {
@@ -14893,6 +14978,9 @@ dashboardMonth.addEventListener(
     revenueChartSelectedKey =
       null;
 
+    selectedDailyTeamKey =
+      null;
+
     dailySummaryDate.value =
       "";
 
@@ -14905,6 +14993,9 @@ dashboardMonth.addEventListener(
 dailySummaryDate.addEventListener(
   "change",
   () => {
+
+    selectedDailyTeamKey =
+      null;
 
     renderDailySummary(
       currentDailySummaryMap
@@ -19488,6 +19579,10 @@ function renderDailySummary(
     dates.length === 0
   ) {
 
+    selectedDailyTeamKey =
+      null;
+
+
     if (
       selectedMonth &&
       !dailySummaryDate.value.startsWith(
@@ -19538,6 +19633,9 @@ function renderDailySummary(
 
 
   if (!data) {
+
+    selectedDailyTeamKey =
+      null;
 
     dailySummaryList.innerHTML = `
       <div class="empty-message">
@@ -19596,27 +19694,40 @@ function renderDailySummary(
 
 
   const teamValues =
-    Object.values(
+    Object.entries(
       data.teams ||
       {}
-    ).sort(
-      (a, b) =>
-        String(
-          a.name ||
-          ""
-        ).localeCompare(
+    )
+      .map(
+        ([
+          key,
+          value
+        ]) => ({
+          key,
+          ...value
+        })
+      )
+      .sort(
+        (a, b) =>
           String(
-            b.name ||
+            a.name ||
             ""
-          ),
-          "ja"
-        )
-    );
+          ).localeCompare(
+            String(
+              b.name ||
+              ""
+            ),
+            "ja"
+          )
+      );
 
 
   if (
     teamValues.length === 0
   ) {
+
+    selectedDailyTeamKey =
+      null;
 
     const empty =
       document.createElement(
@@ -19633,52 +19744,126 @@ function renderDailySummary(
       empty
     );
 
+    dailySummaryList.appendChild(
+      card
+    );
+
+    return;
+
   }
 
 
-  teamValues.forEach(
-    team => {
+  if (
+    selectedDailyTeamKey &&
+    !teamValues.some(
+      team =>
+        team.key ===
+        selectedDailyTeamKey
+    )
+  ) {
 
-      const teamBlock =
+    selectedDailyTeamKey =
+      null;
+
+  }
+
+
+  const teamGrid =
+    document.createElement(
+      "div"
+    );
+
+  teamGrid.className =
+    "daily-team-card-grid";
+
+
+  const detail =
+    document.createElement(
+      "div"
+    );
+
+  detail.className =
+    "daily-selected-team-detail";
+
+
+  const renderTeamDetail =
+    () => {
+
+      detail.innerHTML =
+        "";
+
+
+      teamGrid
+        .querySelectorAll(
+          ".daily-team-card"
+        )
+        .forEach(
+          button =>
+            button.setAttribute(
+              "aria-pressed",
+              String(
+                button.dataset.teamKey ===
+                selectedDailyTeamKey
+              )
+            )
+        );
+
+
+      if (
+        !selectedDailyTeamKey
+      ) {
+
+        detail.innerHTML = `
+          <div class="empty-message">
+            班を選ぶと現場・商材の詳細を表示します。
+          </div>
+        `;
+
+        return;
+
+      }
+
+
+      const team =
+        teamValues.find(
+          item =>
+            item.key ===
+            selectedDailyTeamKey
+        );
+
+
+      if (!team) {
+
+        return;
+
+      }
+
+
+      const title =
         document.createElement(
           "div"
         );
 
-      teamBlock.className =
-        "daily-team-block";
+      title.className =
+        "daily-selected-team-title";
 
+      title.textContent =
+        `👥 ${team.name || "所属なし"}　${team.count}件 / ${formatYen(
+          team.revenue
+        )}`;
 
-      const teamHeader =
-        document.createElement(
-          "div"
-        );
-
-      teamHeader.className =
-        "daily-team-header";
-
-      teamHeader.innerHTML = `
-        <div class="daily-team-name">
-          👥 ${escapeHtml(
-            team.name ||
-            "所属なし"
-          )}
-        </div>
-
-        <div class="daily-team-total">
-          <strong>
-            ${team.count}件
-          </strong>
-          <br>
-          ${formatYen(
-            team.revenue
-          )}
-        </div>
-      `;
-
-
-      teamBlock.appendChild(
-        teamHeader
+      detail.appendChild(
+        title
       );
+
+
+      const locationGrid =
+        document.createElement(
+          "div"
+        );
+
+      locationGrid.className =
+        "daily-location-grid";
 
 
       const locationValues =
@@ -19698,6 +19883,29 @@ function renderDailySummary(
               "ja"
             )
         );
+
+
+      if (
+        locationValues.length ===
+        0
+      ) {
+
+        const empty =
+          document.createElement(
+            "div"
+          );
+
+        empty.className =
+          "empty-message";
+
+        empty.textContent =
+          "現場別データはありません。";
+
+        locationGrid.appendChild(
+          empty
+        );
+
+      }
 
 
       locationValues.forEach(
@@ -19800,7 +20008,7 @@ function renderDailySummary(
           );
 
 
-          teamBlock.appendChild(
+          locationGrid.appendChild(
             locationBlock
           );
 
@@ -19808,12 +20016,91 @@ function renderDailySummary(
       );
 
 
-      card.appendChild(
-        teamBlock
+      detail.appendChild(
+        locationGrid
+      );
+
+    };
+
+
+  teamValues.forEach(
+    team => {
+
+      const button =
+        document.createElement(
+          "button"
+        );
+
+      button.type =
+        "button";
+
+      button.className =
+        "daily-team-card";
+
+      button.dataset.teamKey =
+        team.key;
+
+      button.setAttribute(
+        "aria-pressed",
+        String(
+          selectedDailyTeamKey ===
+          team.key
+        )
+      );
+
+      button.innerHTML = `
+        <div class="daily-team-card-icon">
+          👥
+        </div>
+        <div class="daily-team-card-name">
+          ${escapeHtml(
+            team.name ||
+            "所属なし"
+          )}
+        </div>
+        <div class="daily-team-card-count">
+          ${team.count}件
+        </div>
+        <div class="daily-team-card-revenue">
+          ${formatYen(
+            team.revenue
+          )}
+        </div>
+      `;
+
+
+      button.onclick =
+        () => {
+
+          selectedDailyTeamKey =
+            selectedDailyTeamKey ===
+              team.key
+              ? null
+              : team.key;
+
+          renderTeamDetail();
+
+        };
+
+
+      teamGrid.appendChild(
+        button
       );
 
     }
   );
+
+
+  card.appendChild(
+    teamGrid
+  );
+
+  card.appendChild(
+    detail
+  );
+
+
+  renderTeamDetail();
 
 
   dailySummaryList.appendChild(
