@@ -1784,8 +1784,8 @@ header {
 
 .all-team-product-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) minmax(170px, 240px);
+  gap: 12px;
   align-items: center;
   padding: 11px 0;
   border-bottom: 1px solid #f3f4f6;
@@ -1804,25 +1804,86 @@ header {
   font-weight: 700;
 }
 
-.all-team-product-count,
 .all-team-product-revenue {
-  white-space: nowrap;
+  margin-top: 3px;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.goal-progress-summary {
+  text-align: right;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.goal-progress-main {
   font-size: 12px;
   font-weight: 800;
 }
 
-.all-team-product-revenue {
-  color: #475569;
+.goal-progress-sub {
+  color: var(--sub);
+}
+
+.goal-progress-track {
+  height: 7px;
+  margin-top: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e5e7eb;
+}
+
+.goal-progress-bar {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--primary);
+}
+
+.goal-product-list {
+  max-height: 360px;
+  overflow: auto;
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.goal-product-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 90px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.goal-product-row:last-child {
+  border-bottom: 0;
+}
+
+.goal-product-row input {
+  width: 90px;
+  padding: 8px 7px;
+  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 16px;
+}
+
+.goal-team-label {
+  margin-top: 5px;
+  color: var(--sub);
+  font-size: 12px;
 }
 
 @media (max-width: 700px) {
   .all-team-product-row {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: 1fr;
+    gap: 7px;
   }
 
-  .all-team-product-revenue {
-    grid-column: 2;
-    font-size: 11px;
+  .goal-progress-summary {
+    text-align: left;
   }
 }
 
@@ -3371,6 +3432,63 @@ header {
 
 
 <!-- =====================================================
+     班別目標モーダル
+===================================================== -->
+
+<div
+  id="teamGoalModal"
+  class="modal-overlay">
+
+  <div class="modal">
+
+    <div class="modal-title">
+      班別 商材目標
+    </div>
+
+    <div
+      id="teamGoalTeamName"
+      class="goal-team-label">
+    </div>
+
+    <div class="form-group">
+
+      <label for="teamGoalMonth">
+        対象月
+      </label>
+
+      <input
+        id="teamGoalMonth"
+        type="month">
+
+    </div>
+
+    <div
+      id="teamGoalProductList"
+      class="goal-product-list">
+    </div>
+
+    <div class="modal-buttons">
+
+      <button
+        id="cancelTeamGoalModal"
+        class="modal-cancel">
+        キャンセル
+      </button>
+
+      <button
+        id="saveTeamGoalModal"
+        class="modal-confirm">
+        保存
+      </button>
+
+    </div>
+
+  </div>
+
+</div>
+
+
+<!-- =====================================================
      商材編集モーダル
 ===================================================== -->
 
@@ -4276,6 +4394,37 @@ const saveTeamModal =
   );
 
 
+const teamGoalModal =
+  document.getElementById(
+    "teamGoalModal"
+  );
+
+const teamGoalTeamName =
+  document.getElementById(
+    "teamGoalTeamName"
+  );
+
+const teamGoalMonth =
+  document.getElementById(
+    "teamGoalMonth"
+  );
+
+const teamGoalProductList =
+  document.getElementById(
+    "teamGoalProductList"
+  );
+
+const cancelTeamGoalModal =
+  document.getElementById(
+    "cancelTeamGoalModal"
+  );
+
+const saveTeamGoalModal =
+  document.getElementById(
+    "saveTeamGoalModal"
+  );
+
+
 const productModal =
   document.getElementById(
     "productModal"
@@ -4338,6 +4487,7 @@ let teams = [];
 let products = [];
 let members = [];
 let records = [];
+let goals = [];
 
 let currentUserData = null;
 let currentCompanyData = null;
@@ -4447,6 +4597,7 @@ function canCurrentUserManageRecord(
 
 
 let editingTeamId = null;
+let editingGoalTeamId = null;
 let editingProductId = null;
 let editingMemberId = null;
 let editingRecordId = null;
@@ -4469,6 +4620,7 @@ let unsubscribeUsers = null;
 let unsubscribeTeams = null;
 let unsubscribeProducts = null;
 let unsubscribeRecords = null;
+let unsubscribeGoals = null;
 
 
 /* =====================================================
@@ -8017,6 +8169,29 @@ function renderTeams() {
         "team-actions";
 
 
+      const goal =
+        document.createElement(
+          "button"
+        );
+
+      goal.className =
+        "team-action-button";
+
+      goal.textContent =
+        "目標";
+
+      goal.disabled =
+        !canEditTeamGoal(
+          team.id
+        );
+
+      goal.onclick =
+        () =>
+          openTeamGoalModal(
+            team
+          );
+
+
       const edit =
         document.createElement(
           "button"
@@ -8052,6 +8227,10 @@ function renderTeams() {
             team
           );
 
+
+      actions.appendChild(
+        goal
+      );
 
       actions.appendChild(
         edit
@@ -8303,6 +8482,359 @@ saveTeamModal.onclick =
 
       showSuccess(
         "班名を変更しました。"
+      );
+
+    } catch (error) {
+
+      showError(
+        firebaseErrorMessage(
+          error
+        )
+      );
+
+    }
+
+  };
+
+
+function canEditTeamGoal(
+  teamId
+) {
+
+  return (
+    isCurrentCompanyOwner() ||
+    (
+      isCurrentTeamLeader() &&
+      currentUserData?.teamId ===
+        teamId
+    )
+  );
+
+}
+
+
+function getTeamGoal(
+  teamId,
+  month
+) {
+
+  return goals.find(
+    goal =>
+      goal.teamId ===
+        teamId &&
+      goal.month ===
+        month
+  ) || null;
+
+}
+
+
+function renderTeamGoalInputs() {
+
+  teamGoalProductList.innerHTML =
+    "";
+
+
+  const goal =
+    getTeamGoal(
+      editingGoalTeamId,
+      teamGoalMonth.value
+    );
+
+  const targets =
+    goal?.targets ||
+    {};
+
+
+  if (
+    products.length === 0
+  ) {
+
+    teamGoalProductList.innerHTML = `
+      <div class="empty-message">
+        先に商材を登録してください。
+      </div>
+    `;
+
+    return;
+
+  }
+
+
+  products.forEach(
+    product => {
+
+      const row =
+        document.createElement(
+          "div"
+        );
+
+      row.className =
+        "goal-product-row";
+
+
+      const name =
+        document.createElement(
+          "div"
+        );
+
+      name.textContent =
+        product.name ||
+        "名前未設定";
+
+
+      const input =
+        document.createElement(
+          "input"
+        );
+
+      input.type =
+        "number";
+
+      input.min =
+        "0";
+
+      input.step =
+        "1";
+
+      input.inputMode =
+        "numeric";
+
+      input.placeholder =
+        "0";
+
+      input.value =
+        targets[
+          product.id
+        ] ?? "";
+
+      input.dataset.productId =
+        product.id;
+
+
+      row.appendChild(
+        name
+      );
+
+      row.appendChild(
+        input
+      );
+
+      teamGoalProductList.appendChild(
+        row
+      );
+
+    }
+  );
+
+}
+
+
+function openTeamGoalModal(
+  team
+) {
+
+  if (
+    !canEditTeamGoal(
+      team.id
+    )
+  ) {
+
+    showError(
+      "この班の目標を変更する権限がありません。"
+    );
+
+    return;
+
+  }
+
+
+  editingGoalTeamId =
+    team.id;
+
+  teamGoalTeamName.textContent =
+    team.name ||
+    "班名未設定";
+
+  teamGoalMonth.value =
+    dashboardMonth.value ||
+    getTodayString().slice(
+      0,
+      7
+    );
+
+  renderTeamGoalInputs();
+
+  teamGoalModal.style.display =
+    "flex";
+
+}
+
+
+function closeTeamGoalModal() {
+
+  editingGoalTeamId =
+    null;
+
+  teamGoalModal.style.display =
+    "none";
+
+}
+
+
+cancelTeamGoalModal.onclick =
+  closeTeamGoalModal;
+
+
+teamGoalMonth.addEventListener(
+  "change",
+  renderTeamGoalInputs
+);
+
+
+saveTeamGoalModal.onclick =
+  async () => {
+
+    if (
+      !editingGoalTeamId ||
+      !teamGoalMonth.value
+    ) {
+
+      return;
+
+    }
+
+
+    if (
+      !canEditTeamGoal(
+        editingGoalTeamId
+      )
+    ) {
+
+      showError(
+        "この班の目標を変更する権限がありません。"
+      );
+
+      return;
+
+    }
+
+
+    const targets =
+      {};
+
+    const inputs =
+      teamGoalProductList.querySelectorAll(
+        "input[data-product-id]"
+      );
+
+
+    for (
+      const input of inputs
+    ) {
+
+      const value =
+        Number(
+          input.value ||
+          0
+        );
+
+
+      if (
+        !Number.isInteger(
+          value
+        ) ||
+        value < 0
+      ) {
+
+        showError(
+          "目標件数は0以上の整数で入力してください。"
+        );
+
+        return;
+
+      }
+
+
+      if (
+        value > 0
+      ) {
+
+        targets[
+          input.dataset.productId
+        ] =
+          value;
+
+      }
+
+    }
+
+
+    const month =
+      teamGoalMonth.value;
+
+    const existing =
+      getTeamGoal(
+        editingGoalTeamId,
+        month
+      );
+
+    const goalId =
+      existing?.id ||
+      `${currentUserData.companyId}_${editingGoalTeamId}_${month}`;
+
+    const goalRef =
+      doc(
+        db,
+        "goals",
+        goalId
+      );
+
+
+    try {
+
+      const data = {
+
+        companyId:
+          currentUserData.companyId,
+
+        teamId:
+          editingGoalTeamId,
+
+        month,
+
+        targets,
+
+        updatedAt:
+          serverTimestamp()
+
+      };
+
+
+      if (!existing) {
+
+        data.createdAt =
+          serverTimestamp();
+
+      }
+
+
+      await setDoc(
+        goalRef,
+        data,
+        {
+          merge: true
+        }
+      );
+
+
+      closeTeamGoalModal();
+
+      showSuccess(
+        `${month.replace(
+          "-",
+          "年"
+        )}月の目標を保存しました。`
       );
 
     } catch (error) {
