@@ -402,18 +402,42 @@ header {
   font-size: 10px;
 }
 
-.product-input-variant-row {
+.product-input-variants {
   display: grid;
-  grid-template-columns: minmax(72px, 1fr) auto 64px;
-  align-items: center;
-  gap: 8px;
-  min-height: 38px;
-  padding: 3px 4px;
+  gap: 5px;
 }
 
-.product-input-cb {
-  font-size: 12px;
-  font-weight: 700;
+.product-input-variant-row {
+  display: grid;
+  grid-template-columns: 34px minmax(72px, 92px) 24px minmax(58px, 70px) auto auto;
+  align-items: center;
+  gap: 5px;
+  min-height: 36px;
+  padding: 2px 4px;
+}
+
+.product-input-variant-label {
+  color: var(--sub);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.product-input-cashback,
+.product-input-count {
+  min-width: 0;
+  padding: 6px 5px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  text-align: center;
+  font-size: 15px;
+}
+
+.product-input-cashback {
+  width: 92px;
+}
+
+.product-input-count {
+  width: 64px;
 }
 
 .product-input-unit {
@@ -422,13 +446,25 @@ header {
   white-space: nowrap;
 }
 
-.product-input-control input {
-  width: 64px;
-  padding: 7px 5px;
-  text-align: center;
-  border: 1px solid var(--border);
+.product-input-add,
+.product-input-remove {
+  border: 0;
   border-radius: 7px;
-  font-size: 16px;
+  padding: 6px 8px;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.product-input-add {
+  margin: 4px 4px 0;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.product-input-remove {
+  background: #fef2f2;
+  color: #b91c1c;
 }
 
 .product-management-input-row {
@@ -448,12 +484,20 @@ header {
 
 @media (max-width: 430px) {
   .product-input-variant-row {
-    grid-template-columns: minmax(64px, 1fr) auto 58px;
-    gap: 6px;
+    grid-template-columns: 28px minmax(66px, 82px) 20px minmax(52px, 62px) auto;
+    gap: 4px;
   }
 
-  .product-input-control input {
+  .product-input-cashback {
+    width: 82px;
+  }
+
+  .product-input-count {
     width: 58px;
+  }
+
+  .product-input-unit {
+    display: none;
   }
 }
 
@@ -1753,9 +1797,50 @@ header {
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  padding: 14px;
+  padding: 11px 12px;
   background: #f8fafc;
-  border-bottom: 1px solid var(--border);
+}
+
+.all-team-header-button {
+  width: 100%;
+  border: 0;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.all-team-header-button:hover {
+  background: #f1f5f9;
+}
+
+.all-team-header-left {
+  min-width: 0;
+}
+
+.all-team-compact-goal {
+  margin-top: 3px;
+  color: var(--sub);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.all-team-chevron {
+  margin-left: 8px;
+  color: var(--sub);
+  font-size: 15px;
+  transition: transform .15s ease;
+}
+
+.all-team-header-button[aria-expanded="true"] .all-team-chevron {
+  transform: rotate(180deg);
+}
+
+.all-team-products[hidden] {
+  display: none;
+}
+
+.all-team-products:not([hidden]) {
+  border-top: 1px solid var(--border);
 }
 
 .all-team-name {
@@ -3329,7 +3414,7 @@ header {
       </div>
 
       <div class="product-cb-help">
-        CBはカンマ区切りで登録できます。例：0,10000,20000
+        よく使うCBがあれば登録できます。実績入力時にはCB金額を自由に入力・追加できます。
       </div>
 
       <div
@@ -11795,6 +11880,264 @@ function normalizeExistingResultMap(
 }
 
 
+function addProductVariantRow(
+  variantsContainer,
+  product,
+  variant = null
+) {
+
+  const row =
+    document.createElement(
+      "div"
+    );
+
+  row.className =
+    "product-input-variant-row";
+
+
+  const cbLabel =
+    document.createElement(
+      "div"
+    );
+
+  cbLabel.className =
+    "product-input-variant-label";
+
+  cbLabel.textContent =
+    "CB";
+
+
+  const cashbackInput =
+    document.createElement(
+      "input"
+    );
+
+  cashbackInput.type =
+    "number";
+
+  cashbackInput.min =
+    "0";
+
+  cashbackInput.step =
+    "1000";
+
+  cashbackInput.inputMode =
+    "numeric";
+
+  cashbackInput.className =
+    "product-input-cashback";
+
+  cashbackInput.placeholder =
+    "0";
+
+  cashbackInput.value =
+    String(
+      Number(
+        variant?.cashback ||
+        0
+      )
+    );
+
+  cashbackInput.dataset.cashbackInput =
+    "true";
+
+
+  const countLabel =
+    document.createElement(
+      "div"
+    );
+
+  countLabel.className =
+    "product-input-variant-label";
+
+  countLabel.textContent =
+    "件";
+
+
+  const countInput =
+    document.createElement(
+      "input"
+    );
+
+  countInput.type =
+    "number";
+
+  countInput.min =
+    "0";
+
+  countInput.step =
+    "1";
+
+  countInput.inputMode =
+    "numeric";
+
+  countInput.className =
+    "product-input-count";
+
+  countInput.placeholder =
+    "0";
+
+  countInput.value =
+    String(
+      Number(
+        variant?.count ||
+        0
+      )
+    );
+
+  countInput.dataset.productId =
+    product.id;
+
+  countInput.dataset.productName =
+    product.name;
+
+  countInput.dataset.baseRevenue =
+    String(
+      product.baseRevenue
+    );
+
+
+  const unit =
+    document.createElement(
+      "div"
+    );
+
+  unit.className =
+    "product-input-unit";
+
+
+  const updateUnit =
+    () => {
+
+      const cashback =
+        Math.max(
+          0,
+          Number(
+            cashbackInput.value ||
+            0
+          )
+        );
+
+      const revenuePerUnit =
+        Math.max(
+          0,
+          Number(
+            product.baseRevenue ||
+            0
+          ) -
+          cashback
+        );
+
+
+      unit.textContent =
+        `${formatYen(
+          revenuePerUnit
+        )}/件`;
+
+      updateRecordTotals();
+
+    };
+
+
+  cashbackInput.addEventListener(
+    "input",
+    updateUnit
+  );
+
+  countInput.addEventListener(
+    "input",
+    updateRecordTotals
+  );
+
+
+  row.appendChild(
+    cbLabel
+  );
+
+  row.appendChild(
+    cashbackInput
+  );
+
+  row.appendChild(
+    countLabel
+  );
+
+  row.appendChild(
+    countInput
+  );
+
+  row.appendChild(
+    unit
+  );
+
+
+  if (
+    !product.historicalOnly
+  ) {
+
+    const remove =
+      document.createElement(
+        "button"
+      );
+
+    remove.type =
+      "button";
+
+    remove.className =
+      "product-input-remove";
+
+    remove.textContent =
+      "削除";
+
+    remove.onclick =
+      () => {
+
+        const rows =
+          variantsContainer.querySelectorAll(
+            ".product-input-variant-row"
+          );
+
+
+        if (
+          rows.length <= 1
+        ) {
+
+          cashbackInput.value =
+            "0";
+
+          countInput.value =
+            "0";
+
+          updateUnit();
+
+          return;
+
+        }
+
+
+        row.remove();
+
+        updateRecordTotals();
+
+      };
+
+
+    row.appendChild(
+      remove
+    );
+
+  }
+
+
+  variantsContainer.appendChild(
+    row
+  );
+
+  updateUnit();
+
+}
+
+
 function prepareProductInputList(
   existingResults = null
 ) {
@@ -11822,7 +12165,7 @@ function prepareProductInputList(
     products.map(
       product => {
 
-        const historicalCashbacks =
+        const existingVariants =
           Object.values(
             existingMap
           )
@@ -11832,21 +12175,37 @@ function prepareProductInputList(
                 product.id
             )
             .map(
-              result =>
-                Number(
-                  result.cashback ||
-                  0
-                )
+              result => ({
+                cashback:
+                  Number(
+                    result.cashback ||
+                    0
+                  ),
+                count:
+                  Number(
+                    result.count ||
+                    0
+                  ),
+                revenuePerUnit:
+                  Number(
+                    result.revenuePerUnit ||
+                    0
+                  )
+              })
             );
 
 
-        const cashbackOptions =
-          normalizeCashbackOptions([
-            ...normalizeCashbackOptions(
-              product.cashbackOptions
-            ),
-            ...historicalCashbacks
-          ]);
+        if (
+          existingVariants.length ===
+          0
+        ) {
+
+          existingVariants.push({
+            cashback: 0,
+            count: 0
+          });
+
+        }
 
 
         return {
@@ -11862,46 +12221,7 @@ function prepareProductInputList(
           historicalOnly:
             false,
           variants:
-            cashbackOptions.map(
-              cashback => {
-
-                const key =
-                  resultVariantKey(
-                    product.id,
-                    cashback
-                  );
-
-                const snapshot =
-                  existingMap[
-                    key
-                  ];
-
-                return {
-                  key,
-                  cashback,
-                  revenuePerUnit:
-                    snapshot
-                      ? Number(
-                          snapshot.revenuePerUnit ||
-                          0
-                        )
-                      : Math.max(
-                          0,
-                          Number(
-                            product.revenue ||
-                            0
-                          ) -
-                          cashback
-                        ),
-                  count:
-                    Number(
-                      snapshot?.count ||
-                      0
-                    )
-                };
-
-              }
-            )
+            existingVariants
         };
 
       }
@@ -11962,24 +12282,19 @@ function prepareProductInputList(
       historicalGroups[
         result.productId
       ].variants.push({
-        key:
-          resultVariantKey(
-            result.productId,
-            result.cashback
-          ),
         cashback:
           Number(
             result.cashback ||
             0
           ),
-        revenuePerUnit:
-          Number(
-            result.revenuePerUnit ||
-            0
-          ),
         count:
           Number(
             result.count ||
+            0
+          ),
+        revenuePerUnit:
+          Number(
+            result.revenuePerUnit ||
             0
           )
       });
@@ -12049,140 +12364,65 @@ function prepareProductInputList(
       `;
 
 
+      const variantsContainer =
+        document.createElement(
+          "div"
+        );
+
+      variantsContainer.className =
+        "product-input-variants";
+
+
+      product.variants.forEach(
+        variant =>
+          addProductVariantRow(
+            variantsContainer,
+            product,
+            variant
+          )
+      );
+
+
       group.appendChild(
         title
       );
 
-
-      product.variants
-        .sort(
-          (a, b) =>
-            a.cashback -
-            b.cashback
-        )
-        .forEach(
-          variant => {
-
-            const row =
-              document.createElement(
-                "div"
-              );
-
-            row.className =
-              "product-input-variant-row";
+      group.appendChild(
+        variantsContainer
+      );
 
 
-            const cb =
-              document.createElement(
-                "div"
-              );
+      if (
+        !product.historicalOnly
+      ) {
 
-            cb.className =
-              "product-input-cb";
+        const add =
+          document.createElement(
+            "button"
+          );
 
-            cb.textContent =
-              variant.cashback ===
-                0
-                ? "CB 0円"
-                : `CB ${formatYen(
-                    variant.cashback
-                  )}`;
+        add.type =
+          "button";
 
+        add.className =
+          "product-input-add";
 
-            const unit =
-              document.createElement(
-                "div"
-              );
+        add.textContent =
+          "＋ CB違いを追加";
 
-            unit.className =
-              "product-input-unit";
-
-            unit.textContent =
-              `${formatYen(
-                variant.revenuePerUnit
-              )}/件`;
-
-
-            const control =
-              document.createElement(
-                "div"
-              );
-
-            control.className =
-              "product-input-control";
-
-
-            const input =
-              document.createElement(
-                "input"
-              );
-
-            input.type =
-              "number";
-
-            input.min =
-              "0";
-
-            input.step =
-              "1";
-
-            input.inputMode =
-              "numeric";
-
-            input.value =
-              String(
-                variant.count ||
-                0
-              );
-
-            input.dataset.resultKey =
-              variant.key;
-
-            input.dataset.productId =
-              product.id;
-
-            input.dataset.productName =
-              product.name;
-
-            input.dataset.cashback =
-              String(
-                variant.cashback
-              );
-
-            input.dataset.revenuePerUnit =
-              String(
-                variant.revenuePerUnit
-              );
-
-
-            input.addEventListener(
-              "input",
-              updateRecordTotals
+        add.onclick =
+          () =>
+            addProductVariantRow(
+              variantsContainer,
+              product
             );
 
 
-            control.appendChild(
-              input
-            );
-
-            row.appendChild(
-              cb
-            );
-
-            row.appendChild(
-              unit
-            );
-
-            row.appendChild(
-              control
-            );
-
-            group.appendChild(
-              row
-            );
-
-          }
+        group.appendChild(
+          add
         );
+
+      }
 
 
       productInputList.appendChild(
@@ -12207,45 +12447,96 @@ function getCurrentInputResults() {
     {};
 
 
-  const inputs =
+  const rows =
     productInputList.querySelectorAll(
-      "input[data-product-id]"
+      ".product-input-variant-row"
     );
 
 
-  inputs.forEach(
-    input => {
+  rows.forEach(
+    row => {
+
+      const countInput =
+        row.querySelector(
+          "input[data-product-id]"
+        );
+
+      const cashbackInput =
+        row.querySelector(
+          "input[data-cashback-input]"
+        );
+
+
+      if (
+        !countInput ||
+        !cashbackInput
+      ) {
+
+        return;
+
+      }
+
 
       const productId =
-        input.dataset.productId;
+        countInput.dataset.productId;
+
+      const productName =
+        countInput.dataset.productName ||
+        "不明";
+
+      const baseRevenue =
+        Number(
+          countInput.dataset.baseRevenue ||
+          0
+        );
 
       const count =
         Number(
-          input.value ||
+          countInput.value ||
           0
         );
 
       const cashback =
-        Number(
-          input.dataset.cashback ||
-          0
+        Math.max(
+          0,
+          Number(
+            cashbackInput.value ||
+            0
+          )
         );
 
+
+      if (
+        !productId ||
+        !Number.isInteger(
+          count
+        ) ||
+        count <= 0
+      ) {
+
+        return;
+
+      }
+
+
       const resultKey =
-        input.dataset.resultKey ||
         resultVariantKey(
           productId,
           cashback
         );
 
+      const revenuePerUnit =
+        Math.max(
+          0,
+          baseRevenue -
+          cashback
+        );
+
 
       if (
-        productId &&
-        Number.isInteger(
-          count
-        ) &&
-        count >
-          0
+        !results[
+          resultKey
+        ]
       ) {
 
         results[
@@ -12254,29 +12545,123 @@ function getCurrentInputResults() {
 
           productId,
 
-          productName:
-            input.dataset.productName ||
-            "不明",
+          productName,
 
           cashback,
 
-          count,
+          count: 0,
 
-          revenuePerUnit:
-            Number(
-              input.dataset.revenuePerUnit ||
-              0
-            )
+          revenuePerUnit
 
         };
 
       }
+
+
+      results[
+        resultKey
+      ].count +=
+        count;
 
     }
   );
 
 
   return results;
+
+}
+
+
+function validateProductInputRows() {
+
+  const rows =
+    productInputList.querySelectorAll(
+      ".product-input-variant-row"
+    );
+
+
+  for (
+    const row of rows
+  ) {
+
+    const countInput =
+      row.querySelector(
+        "input[data-product-id]"
+      );
+
+    const cashbackInput =
+      row.querySelector(
+        "input[data-cashback-input]"
+      );
+
+
+    if (
+      !countInput ||
+      !cashbackInput
+    ) {
+
+      continue;
+
+    }
+
+
+    const count =
+      Number(
+        countInput.value ||
+        0
+      );
+
+    const cashback =
+      Number(
+        cashbackInput.value ||
+        0
+      );
+
+    const baseRevenue =
+      Number(
+        countInput.dataset.baseRevenue ||
+        0
+      );
+
+
+    if (
+      !Number.isInteger(
+        count
+      ) ||
+      count < 0
+    ) {
+
+      return "件数は0以上の整数で入力してください。";
+
+    }
+
+
+    if (
+      !Number.isFinite(
+        cashback
+      ) ||
+      cashback < 0
+    ) {
+
+      return "キャッシュバックは0円以上で入力してください。";
+
+    }
+
+
+    if (
+      count > 0 &&
+      cashback >
+        baseRevenue
+    ) {
+
+      return `${countInput.dataset.productName || "商材"}のCBが1件売上を超えています。`;
+
+    }
+
+  }
+
+
+  return "";
 
 }
 
@@ -12571,6 +12956,23 @@ saveRecordButton.onclick =
 
       showError(
         "担当者が見つかりません。"
+      );
+
+      return;
+
+    }
+
+
+    const inputError =
+      validateProductInputRows();
+
+
+    if (
+      inputError
+    ) {
+
+      showError(
+        inputError
       );
 
       return;
@@ -16485,20 +16887,89 @@ function renderAllTeamsOverview(
         "all-team-card";
 
 
-      const header =
-        document.createElement(
-          "div"
+      const targetedActual =
+        Object.keys(
+          targets
+        ).reduce(
+          (
+            sum,
+            productKey
+          ) =>
+            sum +
+            Number(
+              team.products?.[
+                productKey
+              ]?.count ||
+              0
+            ),
+          0
         );
 
+      const totalTarget =
+        Object.values(
+          targets
+        ).reduce(
+          (
+            sum,
+            value
+          ) =>
+            sum +
+            Number(
+              value ||
+              0
+            ),
+          0
+        );
+
+      const teamProgress =
+        totalTarget > 0
+          ? Math.round(
+              targetedActual /
+              totalTarget *
+              100
+            )
+          : 0;
+
+      const teamRemaining =
+        Math.max(
+          totalTarget -
+          targetedActual,
+          0
+        );
+
+
+      const header =
+        document.createElement(
+          "button"
+        );
+
+      header.type =
+        "button";
+
       header.className =
-        "all-team-header";
+        "all-team-header all-team-header-button";
+
+      header.setAttribute(
+        "aria-expanded",
+        "false"
+      );
 
       header.innerHTML = `
-        <div class="all-team-name">
-          👥 ${escapeHtml(
-            team.name ||
-            "所属なし"
-          )}
+        <div class="all-team-header-left">
+          <div class="all-team-name">
+            👥 ${escapeHtml(
+              team.name ||
+              "所属なし"
+            )}
+            <span class="all-team-chevron">⌄</span>
+          </div>
+          <div class="all-team-compact-goal">
+            ${
+              totalTarget > 0
+                ? `目標 ${totalTarget}件 / 残り ${teamRemaining}件 / ${teamProgress}%`
+                : "目標未設定"
+            }
+          </div>
         </div>
         <div class="all-team-total">
           <div class="all-team-count">
@@ -16729,6 +17200,29 @@ function renderAllTeamsOverview(
         );
 
       }
+
+
+      productArea.hidden =
+        true;
+
+
+      header.onclick =
+        () => {
+
+          const open =
+            productArea.hidden;
+
+          productArea.hidden =
+            !open;
+
+          header.setAttribute(
+            "aria-expanded",
+            String(
+              open
+            )
+          );
+
+        };
 
 
       card.appendChild(
