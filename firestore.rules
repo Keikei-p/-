@@ -76,6 +76,23 @@ service cloud.firestore {
         );
     }
 
+    function validProductExtras(data) {
+      return (
+          !data.keys().hasAny(['sortOrder'])
+          || (
+            data.sortOrder is number
+            && data.sortOrder >= 0
+          )
+        )
+        && (
+          !data.keys().hasAny(['cashbackOptions'])
+          || (
+            data.cashbackOptions is list
+            && data.cashbackOptions.size() <= 20
+          )
+        );
+    }
+
     function activeOrLegacy(data) {
       return !data.keys().hasAny(['active'])
         || data.active == true;
@@ -651,7 +668,8 @@ service cloud.firestore {
         && sameCompany(resource.data.companyId);
 
       allow create: if request.resource.data.keys().hasOnly([
-          'companyId', 'name', 'revenue', 'active', 'createdAt', 'updatedAt'
+          'companyId', 'name', 'revenue', 'cashbackOptions', 'sortOrder',
+          'active', 'createdAt', 'updatedAt'
         ])
         && request.resource.data.companyId != null
         && currentCompanyId() == request.resource.data.companyId
@@ -659,6 +677,7 @@ service cloud.firestore {
         && validShortName(request.resource.data.name, 50)
         && request.resource.data.revenue is number
         && request.resource.data.revenue >= 0
+        && validProductExtras(request.resource.data)
         && request.resource.data.active == true
         && request.resource.data.createdAt == request.time
         && request.resource.data.updatedAt == request.time;
@@ -669,9 +688,12 @@ service cloud.firestore {
         && validShortName(request.resource.data.name, 50)
         && request.resource.data.revenue is number
         && request.resource.data.revenue >= 0
+        && validProductExtras(request.resource.data)
         && request.resource.data.updatedAt == request.time
         && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['name', 'revenue', 'updatedAt']);
+          .hasOnly([
+            'name', 'revenue', 'cashbackOptions', 'sortOrder', 'updatedAt'
+          ]);
 
       allow delete: if resource.data.companyId != null
         && isCompanyManager(resource.data.companyId);
