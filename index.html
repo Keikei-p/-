@@ -370,8 +370,70 @@ header {
 
 .product-input-list {
   display: grid;
-  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
   margin-top: 10px;
+}
+
+.product-input-group--multi {
+  grid-column: 1 / -1;
+}
+
+.product-input-group--compact {
+  padding: 9px;
+}
+
+.product-input-group--compact .product-input-group-title {
+  margin-bottom: 6px;
+}
+
+.product-input-group--compact .product-input-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.product-input-group--compact .product-plan-grid {
+  display: block;
+}
+
+.product-input-group--compact .product-plan-cell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 64px;
+  grid-template-areas:
+    "unit input";
+  align-items: center;
+  gap: 6px;
+  padding: 6px 7px;
+  text-align: left;
+}
+
+.product-input-group--compact .product-plan-label {
+  display: none;
+}
+
+.product-input-group--compact .product-plan-unit {
+  grid-area: unit;
+  min-width: 0;
+  min-height: 0;
+  margin-top: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 9px;
+}
+
+.product-input-group--compact .product-plan-input {
+  grid-area: input;
+  margin-top: 0;
+  padding: 7px 3px;
+}
+
+.product-input-group--compact .product-input-group-total {
+  margin-top: 6px;
+  padding-top: 5px;
+  font-size: 10px;
 }
 
 .product-input-group {
@@ -473,8 +535,26 @@ header {
 }
 
 @media (max-width: 430px) {
+  .product-input-list {
+    gap: 6px;
+  }
+
   .product-input-group {
     padding: 9px;
+  }
+
+  .product-input-group--compact {
+    padding: 8px 7px;
+  }
+
+  .product-input-group--compact .product-plan-cell {
+    grid-template-columns: minmax(0, 1fr) 56px;
+    gap: 4px;
+    padding: 5px;
+  }
+
+  .product-input-group--compact .product-plan-input {
+    font-size: 14px;
   }
 
   .product-plan-grid {
@@ -13601,8 +13681,15 @@ function prepareProductInputList(
           "div"
         );
 
+      const isCompactGroup =
+        groupData.plans.length ===
+        1;
+
+
       group.className =
-        "product-input-group";
+        isCompactGroup
+          ? "product-input-group product-input-group--compact"
+          : "product-input-group product-input-group--multi";
 
       group.dataset.parentProduct =
         groupData.name;
