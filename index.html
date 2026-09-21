@@ -225,6 +225,7 @@ header {
 }
 
 .user-bar {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1621,21 +1622,31 @@ header {
    ようこそ / クイック管理
 ===================================================== */
 
+.user-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .management-tab-shell {
-  margin-top: 10px;
+  position: relative;
 }
 
 .management-tab-button {
-  min-height: 38px;
-  padding: 8px 14px;
+  width: 42px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: #fff;
   color: #374151;
-  font-size: 12px;
+  font-size: 25px;
+  line-height: 1;
   font-weight: 800;
   cursor: pointer;
-  box-shadow: 0 2px 7px rgba(15,23,42,.04);
 }
 
 .management-tab-button:hover,
@@ -1646,12 +1657,16 @@ header {
 }
 
 .management-tab-panel {
-  margin-top: 8px;
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 100;
+  width: min(330px, calc(100vw - 40px));
   padding: 10px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 14px;
   background: #fff;
-  box-shadow: var(--shadow);
+  box-shadow: 0 12px 30px rgba(15,23,42,.16);
 }
 
 .management-tab-panel[hidden] {
@@ -1660,7 +1675,7 @@ header {
 
 .management-tab-panel .quick-menu {
   margin-top: 0;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .quick-menu {
@@ -1722,16 +1737,27 @@ header {
 }
 
 @media (max-width: 700px) {
-  .management-tab-shell {
-    margin-top: 8px;
+  .user-bar {
+    align-items: flex-start;
+  }
+
+  .user-bar-actions {
+    gap: 6px;
+  }
+
+  .logout-button {
+    padding: 8px 9px;
+    font-size: 11px;
   }
 
   .management-tab-button {
-    min-height: 36px;
-    padding: 7px 12px;
+    width: 38px;
+    height: 38px;
+    font-size: 23px;
   }
 
   .management-tab-panel {
+    width: min(310px, calc(100vw - 32px));
     padding: 8px;
   }
 
@@ -3150,66 +3176,72 @@ header {
 
     </div>
 
-    <button
-      id="logoutButton"
-      class="logout-button">
-      ログアウト
-    </button>
+    <div class="user-bar-actions">
 
-  </div>
+      <button
+        id="logoutButton"
+        class="logout-button">
+        ログアウト
+      </button>
 
-  <div class="management-tab-shell">
+      <div class="management-tab-shell">
 
-    <button
-      id="managementMenuButton"
-      class="management-tab-button"
-      type="button"
-      aria-expanded="false"
-      aria-controls="managementMenuPanel">
-      ⚙️ 管理
-    </button>
-
-    <div
-      id="managementMenuPanel"
-      class="management-tab-panel"
-      hidden>
-
-      <div class="quick-menu">
-
-        <button id="quickCompanyButton" class="quick-menu-button" type="button" aria-pressed="false">
-          <span class="quick-menu-icon">🏢</span>
-          会社
+        <button
+          id="managementMenuButton"
+          class="management-tab-button"
+          type="button"
+          aria-label="管理メニュー"
+          title="メニュー"
+          aria-expanded="false"
+          aria-controls="managementMenuPanel">
+          ☰
         </button>
 
-        <button id="quickInviteButton" class="quick-menu-button" type="button" aria-pressed="false" style="display:none;">
-          <span class="quick-menu-icon">✉️</span>
-          招待リンク
-        </button>
+        <div
+          id="managementMenuPanel"
+          class="management-tab-panel"
+          hidden>
 
-        <button id="quickOwnerButton" class="quick-menu-button" type="button" aria-pressed="false" style="display:none;">
-          <span class="quick-menu-icon">👑</span>
-          オーナー管理
-        </button>
+          <div class="quick-menu">
 
-        <button id="quickAccountButton" class="quick-menu-button" type="button" aria-pressed="false">
-          <span class="quick-menu-icon">⚙️</span>
-          アカウント設定
-        </button>
+            <button id="quickCompanyButton" class="quick-menu-button" type="button" aria-pressed="false">
+              <span class="quick-menu-icon">🏢</span>
+              会社
+            </button>
 
-        <button id="managementProductButton" class="quick-menu-button" type="button" aria-pressed="false" style="display:none;">
-          <span class="quick-menu-icon">📦</span>
-          商材管理
-        </button>
+            <button id="quickInviteButton" class="quick-menu-button" type="button" aria-pressed="false" style="display:none;">
+              <span class="quick-menu-icon">✉️</span>
+              招待リンク
+            </button>
 
-        <button id="managementTeamButton" class="quick-menu-button" type="button" aria-pressed="false" style="display:none;">
-          <span class="quick-menu-icon">👥</span>
-          班管理
-        </button>
+            <button id="quickOwnerButton" class="quick-menu-button" type="button" aria-pressed="false" style="display:none;">
+              <span class="quick-menu-icon">👑</span>
+              オーナー管理
+            </button>
 
-        <button id="managementMemberButton" class="quick-menu-button" type="button" aria-pressed="false" style="display:none;">
-          <span class="quick-menu-icon">👤</span>
-          メンバー管理
-        </button>
+            <button id="quickAccountButton" class="quick-menu-button" type="button" aria-pressed="false">
+              <span class="quick-menu-icon">⚙️</span>
+              アカウント設定
+            </button>
+
+            <button id="managementProductButton" class="quick-menu-button" type="button" aria-pressed="false" style="display:none;">
+              <span class="quick-menu-icon">📦</span>
+              商材管理
+            </button>
+
+            <button id="managementTeamButton" class="quick-menu-button" type="button" aria-pressed="false" style="display:none;">
+              <span class="quick-menu-icon">👥</span>
+              班管理
+            </button>
+
+            <button id="managementMemberButton" class="quick-menu-button" type="button" aria-pressed="false" style="display:none;">
+              <span class="quick-menu-icon">👤</span>
+              メンバー管理
+            </button>
+
+          </div>
+
+        </div>
 
       </div>
 
@@ -5714,13 +5746,63 @@ function openCompanyQuickPanel(
 
 
 managementMenuButton.onclick =
-  () => {
+  event => {
+
+    event.stopPropagation();
 
     setManagementMenuOpen(
       managementMenuPanel.hidden
     );
 
   };
+
+
+managementMenuPanel.addEventListener(
+  "click",
+  event => {
+
+    event.stopPropagation();
+
+  }
+);
+
+
+document.addEventListener(
+  "click",
+  () => {
+
+    if (
+      !managementMenuPanel.hidden
+    ) {
+
+      setManagementMenuOpen(
+        false
+      );
+
+    }
+
+  }
+);
+
+
+document.addEventListener(
+  "keydown",
+  event => {
+
+    if (
+      event.key ===
+        "Escape" &&
+      !managementMenuPanel.hidden
+    ) {
+
+      setManagementMenuOpen(
+        false
+      );
+
+    }
+
+  }
+);
 
 
 managementProductButton.onclick =
