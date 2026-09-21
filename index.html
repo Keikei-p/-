@@ -11895,6 +11895,17 @@ function addProductVariantRow(
     "product-input-variant-row";
 
 
+  const rowBaseRevenue =
+    variant?.baseRevenue != null
+      ? Number(
+          variant.baseRevenue
+        )
+      : Number(
+          product.baseRevenue ||
+          0
+        );
+
+
   const cbLabel =
     document.createElement(
       "div"
@@ -11993,7 +12004,7 @@ function addProductVariantRow(
 
   countInput.dataset.baseRevenue =
     String(
-      product.baseRevenue
+      rowBaseRevenue
     );
 
 
@@ -12021,10 +12032,7 @@ function addProductVariantRow(
       const revenuePerUnit =
         Math.max(
           0,
-          Number(
-            product.baseRevenue ||
-            0
-          ) -
+          rowBaseRevenue -
           cashback
         );
 
@@ -12190,6 +12198,15 @@ function prepareProductInputList(
                   Number(
                     result.revenuePerUnit ||
                     0
+                  ),
+                baseRevenue:
+                  Number(
+                    result.revenuePerUnit ||
+                    0
+                  ) +
+                  Number(
+                    result.cashback ||
+                    0
                   )
               })
             );
@@ -12295,6 +12312,15 @@ function prepareProductInputList(
         revenuePerUnit:
           Number(
             result.revenuePerUnit ||
+            0
+          ),
+        baseRevenue:
+          Number(
+            result.revenuePerUnit ||
+            0
+          ) +
+          Number(
+            result.cashback ||
             0
           )
       });
@@ -16887,6 +16913,17 @@ function renderAllTeamsOverview(
         "all-team-card";
 
 
+      const goal =
+        getTeamGoal(
+          team.key,
+          dashboardMonth.value
+        );
+
+      const targets =
+        goal?.targets ||
+        {};
+
+
       const targetedActual =
         Object.keys(
           targets
@@ -16996,17 +17033,6 @@ function renderAllTeamsOverview(
 
       productArea.className =
         "all-team-products";
-
-
-      const goal =
-        getTeamGoal(
-          team.key,
-          dashboardMonth.value
-        );
-
-      const targets =
-        goal?.targets ||
-        {};
 
 
       const productKeySet =
