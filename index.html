@@ -9959,6 +9959,10 @@ async function moveProduct(
   direction
 ) {
 
+  const draftResults =
+    captureProductInputDraft();
+
+
   const currentIndex =
     products.findIndex(
       product =>
@@ -10052,7 +10056,9 @@ async function moveProduct(
 
     renderProducts();
 
-    prepareProductInputList();
+    prepareProductInputList(
+      draftResults
+    );
 
   } catch (error) {
 
@@ -10069,6 +10075,10 @@ async function moveProduct(
 
 addProductButton.onclick =
   async () => {
+
+    const draftResults =
+      captureProductInputDraft();
+
 
     const name =
       productNameInput.value.trim();
@@ -10160,7 +10170,9 @@ addProductButton.onclick =
 
       await loadProducts();
 
-      prepareProductInputList();
+      prepareProductInputList(
+        draftResults
+      );
 
       showSuccess(
         "商材を追加しました。"
@@ -10234,6 +10246,10 @@ saveProductModal.onclick =
     }
 
 
+    const draftResults =
+      captureProductInputDraft();
+
+
     const name =
       editProductName.value.trim();
 
@@ -10300,7 +10316,9 @@ saveProductModal.onclick =
 
       await loadProducts();
 
-      prepareProductInputList();
+      prepareProductInputList(
+        draftResults
+      );
 
       showSuccess(
         "商材を変更しました。"
@@ -10322,6 +10340,32 @@ saveProductModal.onclick =
 async function deleteProduct(
   product
 ) {
+
+  const draftResults =
+    captureProductInputDraft();
+
+
+  Object.keys(
+    draftResults
+  ).forEach(
+    key => {
+
+      if (
+        draftResults[
+          key
+        ]?.productId ===
+        product.id
+      ) {
+
+        delete draftResults[
+          key
+        ];
+
+      }
+
+    }
+  );
+
 
   if (
     !confirm(
@@ -10347,7 +10391,9 @@ async function deleteProduct(
 
     await loadProducts();
 
-    prepareProductInputList();
+    prepareProductInputList(
+      draftResults
+    );
 
     showSuccess(
       "商材を削除しました。"
@@ -18065,6 +18111,14 @@ function renderAllTeamsOverview(
         analysis.teams?.[
           team.id
         ] ||
+        Object.values(
+          analysis.teams ||
+          {}
+        ).find(
+          item =>
+            item.name ===
+            team.name
+        ) ||
         {
           count: 0,
           revenue: 0
@@ -19140,8 +19194,19 @@ function renderRecordHistory(
             count > 0
           ) {
 
+            const presentation =
+              getResultProductPresentation(
+                result
+              );
+
+            const displayName =
+              presentation.usesPlans
+                ? `${presentation.parentName} ${presentation.planLabel}`
+                : presentation.parentName;
+
+
             productTexts.push(
-              `${result.productName || "不明"} ${count}件`
+              `${displayName} ${count}件`
             );
 
           }
