@@ -369,17 +369,17 @@ header {
 }
 
 .product-input-list {
+  display: grid;
+  gap: 10px;
   margin-top: 10px;
-  border-top: 1px solid var(--border);
 }
 
 .product-input-group {
-  padding: 7px 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.product-input-group:last-child {
-  border-bottom: 0;
+  min-width: 0;
+  padding: 11px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
 }
 
 .product-input-group-title {
@@ -387,12 +387,12 @@ header {
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
-  padding: 0 4px 4px;
+  margin-bottom: 9px;
 }
 
 .product-input-name {
   min-width: 0;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 800;
 }
 
@@ -402,69 +402,59 @@ header {
   font-size: 10px;
 }
 
-.product-input-variants {
+.product-plan-grid {
   display: grid;
-  gap: 5px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
 }
 
-.product-input-variant-row {
-  display: grid;
-  grid-template-columns: 34px minmax(72px, 92px) 24px minmax(58px, 70px) auto auto;
-  align-items: center;
-  gap: 5px;
-  min-height: 36px;
-  padding: 2px 4px;
+.product-plan-cell {
+  min-width: 0;
+  padding: 8px 6px;
+  border: 1px solid #e5e7eb;
+  border-radius: 9px;
+  background: #f8fafc;
+  text-align: center;
 }
 
-.product-input-variant-label {
-  color: var(--sub);
+.product-plan-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #475569;
   font-size: 10px;
   font-weight: 800;
 }
 
-.product-input-cashback,
-.product-input-count {
+.product-plan-unit {
+  min-height: 14px;
+  margin-top: 2px;
+  color: var(--sub);
+  font-size: 9px;
+}
+
+.product-plan-input {
+  width: 100%;
   min-width: 0;
-  padding: 6px 5px;
+  margin-top: 5px;
+  padding: 7px 3px;
   border: 1px solid var(--border);
   border-radius: 7px;
+  background: #fff;
   text-align: center;
-  font-size: 15px;
+  font-size: 16px;
 }
 
-.product-input-cashback {
-  width: 92px;
-}
-
-.product-input-count {
-  width: 64px;
-}
-
-.product-input-unit {
-  color: var(--sub);
-  font-size: 10px;
-  white-space: nowrap;
-}
-
-.product-input-add,
-.product-input-remove {
-  border: 0;
-  border-radius: 7px;
-  padding: 6px 8px;
+.product-input-group-total {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid #eef2f7;
+  color: #475569;
   font-size: 11px;
   font-weight: 800;
-  cursor: pointer;
-}
-
-.product-input-add {
-  margin: 4px 4px 0;
-  background: #eff6ff;
-  color: #1d4ed8;
-}
-
-.product-input-remove {
-  background: #fef2f2;
-  color: #b91c1c;
 }
 
 .product-management-input-row {
@@ -483,21 +473,30 @@ header {
 }
 
 @media (max-width: 430px) {
-  .product-input-variant-row {
-    grid-template-columns: 28px minmax(66px, 82px) 20px minmax(52px, 62px) auto;
-    gap: 4px;
+  .product-input-group {
+    padding: 9px;
   }
 
-  .product-input-cashback {
-    width: 82px;
+  .product-plan-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 5px;
   }
 
-  .product-input-count {
-    width: 58px;
+  .product-plan-cell {
+    padding: 7px 4px;
   }
 
-  .product-input-unit {
-    display: none;
+  .product-plan-label {
+    font-size: 9px;
+  }
+
+  .product-plan-unit {
+    font-size: 8px;
+  }
+
+  .product-plan-input {
+    padding: 7px 2px;
+    font-size: 15px;
   }
 }
 
@@ -3110,7 +3109,7 @@ header {
         aria-pressed="false"
         aria-controls="allTeamsOverviewContent">
         <span class="dashboard-app-icon">📋</span>
-        <span class="dashboard-app-title">全班一覧</span>
+        <span class="dashboard-app-title">班別詳細</span>
         <span id="allTeamsOverviewCount" class="dashboard-app-meta">0班</span>
       </button>
 
@@ -3399,7 +3398,7 @@ header {
           id="productRevenueInput"
           type="number"
           min="0"
-          placeholder="CB前の1件売上">
+          placeholder="通常単価（CBなし商材）">
 
         <input
           id="productCashbackInput"
@@ -3414,7 +3413,8 @@ header {
       </div>
 
       <div class="product-cb-help">
-        よく使うCBがあれば登録できます。実績入力時にはCB金額を自由に入力・追加できます。
+        CBプランがある商材は「0,20000,40000」のように登録してください。
+        CBの金額をそのプランの1件単価として実績計算します。既存商材・過去実績はそのまま残ります。
       </div>
 
       <div
@@ -3603,7 +3603,7 @@ header {
     <div class="form-group">
 
       <label for="editProductRevenue">
-        CB前の1件あたり売上
+        通常単価（CBなし商材）
       </label>
 
       <input
@@ -7971,9 +7971,15 @@ function startRealtimeListeners() {
         );
 
 
+        const draftResults =
+          captureProductInputDraft();
+
+
         renderProducts();
 
-        prepareProductInputList();
+        prepareProductInputList(
+          draftResults
+        );
 
       }
     );
@@ -9161,6 +9167,262 @@ function cashbackOptionsText(
 }
 
 
+function toHalfWidthNumberText(
+  value
+) {
+
+  return String(
+    value ||
+    ""
+  )
+    .replace(
+      /[０-９]/g,
+      char =>
+        String.fromCharCode(
+          char.charCodeAt(0) -
+          0xFEE0
+        )
+    )
+    .replace(
+      /，/g,
+      ","
+    );
+
+}
+
+
+function parseLegacyCashbackProductName(
+  name
+) {
+
+  const originalName =
+    String(
+      name ||
+      ""
+    ).trim();
+
+
+  const match =
+    originalName.match(
+      /^(.*?)[\s　]*(?:CB|ＣＢ)[\s　]*([0-9０-９,，]+)[\s　]*(万円|万|円)?[\s　]*$/i
+    );
+
+
+  if (!match) {
+
+    return {
+      parentName:
+        originalName ||
+        "名前未設定",
+      hasCashbackPlan:
+        false,
+      cashback:
+        null
+    };
+
+  }
+
+
+  const numberText =
+    toHalfWidthNumberText(
+      match[2]
+    ).replace(
+      /,/g,
+      ""
+    );
+
+  let cashback =
+    Number(
+      numberText ||
+      0
+    );
+
+
+  if (
+    match[3] ===
+      "万円" ||
+    match[3] ===
+      "万"
+  ) {
+
+    cashback *=
+      10000;
+
+  }
+
+
+  return {
+    parentName:
+      String(
+        match[1] ||
+        originalName
+      ).trim() ||
+      originalName,
+    hasCashbackPlan:
+      true,
+    cashback:
+      Number.isFinite(
+        cashback
+      )
+        ? cashback
+        : 0
+  };
+
+}
+
+
+function formatCashbackPlanLabel(
+  cashback
+) {
+
+  const value =
+    Number(
+      cashback ||
+      0
+    );
+
+
+  if (
+    value === 0
+  ) {
+
+    return "CB0円";
+
+  }
+
+
+  if (
+    value % 10000 ===
+    0
+  ) {
+
+    return `CB${value / 10000}万円`;
+
+  }
+
+
+  return `CB${value.toLocaleString(
+    "ja-JP"
+  )}円`;
+
+}
+
+
+function productUsesCashbackPlans(
+  product
+) {
+
+  if (!product) {
+
+    return false;
+
+  }
+
+
+  const parsed =
+    parseLegacyCashbackProductName(
+      product.name
+    );
+
+
+  if (
+    parsed.hasCashbackPlan
+  ) {
+
+    return true;
+
+  }
+
+
+  const options =
+    normalizeCashbackOptions(
+      product.cashbackOptions
+    );
+
+
+  return (
+    options.length > 1 ||
+    options.some(
+      value =>
+        Number(
+          value
+        ) >
+        0
+    )
+  );
+
+}
+
+
+function getResultProductPresentation(
+  result
+) {
+
+  const product =
+    products.find(
+      item =>
+        item.id ===
+        result?.productId
+    );
+
+  const sourceName =
+    result?.productName ||
+    product?.name ||
+    "不明";
+
+  const parsed =
+    parseLegacyCashbackProductName(
+      sourceName
+    );
+
+  const usesPlans =
+    parsed.hasCashbackPlan ||
+    productUsesCashbackPlans(
+      product
+    ) ||
+    (
+      !product &&
+      Number(
+        result?.cashback ||
+        0
+      ) >
+        0
+    );
+
+  const cashback =
+    parsed.hasCashbackPlan
+      ? Number(
+          parsed.cashback ||
+          0
+        )
+      : Number(
+          result?.cashback ||
+          0
+        );
+
+
+  return {
+    parentName:
+      parsed.parentName,
+    usesPlans,
+    cashback,
+    planLabel:
+      usesPlans
+        ? formatCashbackPlanLabel(
+            cashback
+          )
+        : "",
+    revenuePerUnit:
+      Number(
+        result?.revenuePerUnit ||
+        product?.revenue ||
+        0
+      )
+  };
+
+}
+
+
 function compareProductsByOrder(
   a,
   b
@@ -9644,23 +9906,6 @@ addProductButton.onclick =
     }
 
 
-    if (
-      cashbackOptions.some(
-        cashback =>
-          cashback >
-          revenue
-      )
-    ) {
-
-      showError(
-        "キャッシュバックは1件売上以下で設定してください。"
-      );
-
-      return;
-
-    }
-
-
     try {
 
       const productRef =
@@ -9818,23 +10063,6 @@ saveProductModal.onclick =
 
       showError(
         "売上単価を正しく入力してください。"
-      );
-
-      return;
-
-    }
-
-
-    if (
-      cashbackOptions.some(
-        cashback =>
-          cashback >
-          revenue
-      )
-    ) {
-
-      showError(
-        "キャッシュバックは1件売上以下で設定してください。"
       );
 
       return;
@@ -11880,285 +12108,17 @@ function normalizeExistingResultMap(
 }
 
 
-function addProductVariantRow(
-  variantsContainer,
-  product,
-  variant = null
-) {
-
-  const row =
-    document.createElement(
-      "div"
-    );
-
-  row.className =
-    "product-input-variant-row";
-
-
-  const rowBaseRevenue =
-    variant?.baseRevenue != null
-      ? Number(
-          variant.baseRevenue
-        )
-      : Number(
-          product.baseRevenue ||
-          0
-        );
-
-
-  const cbLabel =
-    document.createElement(
-      "div"
-    );
-
-  cbLabel.className =
-    "product-input-variant-label";
-
-  cbLabel.textContent =
-    "CB";
-
-
-  const cashbackInput =
-    document.createElement(
-      "input"
-    );
-
-  cashbackInput.type =
-    "number";
-
-  cashbackInput.min =
-    "0";
-
-  cashbackInput.step =
-    "1000";
-
-  cashbackInput.inputMode =
-    "numeric";
-
-  cashbackInput.className =
-    "product-input-cashback";
-
-  cashbackInput.placeholder =
-    "0";
-
-  cashbackInput.value =
-    String(
-      Number(
-        variant?.cashback ||
-        0
-      )
-    );
-
-  cashbackInput.dataset.cashbackInput =
-    "true";
-
-
-  const countLabel =
-    document.createElement(
-      "div"
-    );
-
-  countLabel.className =
-    "product-input-variant-label";
-
-  countLabel.textContent =
-    "件";
-
-
-  const countInput =
-    document.createElement(
-      "input"
-    );
-
-  countInput.type =
-    "number";
-
-  countInput.min =
-    "0";
-
-  countInput.step =
-    "1";
-
-  countInput.inputMode =
-    "numeric";
-
-  countInput.className =
-    "product-input-count";
-
-  countInput.placeholder =
-    "0";
-
-  countInput.value =
-    String(
-      Number(
-        variant?.count ||
-        0
-      )
-    );
-
-  countInput.dataset.productId =
-    product.id;
-
-  countInput.dataset.productName =
-    product.name;
-
-  countInput.dataset.baseRevenue =
-    String(
-      rowBaseRevenue
-    );
-
-
-  const unit =
-    document.createElement(
-      "div"
-    );
-
-  unit.className =
-    "product-input-unit";
-
-
-  const updateUnit =
-    () => {
-
-      const cashback =
-        Math.max(
-          0,
-          Number(
-            cashbackInput.value ||
-            0
-          )
-        );
-
-      const revenuePerUnit =
-        Math.max(
-          0,
-          rowBaseRevenue -
-          cashback
-        );
-
-
-      unit.textContent =
-        `${formatYen(
-          revenuePerUnit
-        )}/件`;
-
-      updateRecordTotals();
-
-    };
-
-
-  cashbackInput.addEventListener(
-    "input",
-    updateUnit
-  );
-
-  countInput.addEventListener(
-    "input",
-    updateRecordTotals
-  );
-
-
-  row.appendChild(
-    cbLabel
-  );
-
-  row.appendChild(
-    cashbackInput
-  );
-
-  row.appendChild(
-    countLabel
-  );
-
-  row.appendChild(
-    countInput
-  );
-
-  row.appendChild(
-    unit
-  );
-
-
-  if (
-    !product.historicalOnly
-  ) {
-
-    const remove =
-      document.createElement(
-        "button"
-      );
-
-    remove.type =
-      "button";
-
-    remove.className =
-      "product-input-remove";
-
-    remove.textContent =
-      "削除";
-
-    remove.onclick =
-      () => {
-
-        const rows =
-          variantsContainer.querySelectorAll(
-            ".product-input-variant-row"
-          );
-
-
-        if (
-          rows.length <= 1
-        ) {
-
-          cashbackInput.value =
-            "0";
-
-          countInput.value =
-            "0";
-
-          updateUnit();
-
-          return;
-
-        }
-
-
-        row.remove();
-
-        updateRecordTotals();
-
-      };
-
-
-    row.appendChild(
-      remove
-    );
-
-  }
-
-
-  variantsContainer.appendChild(
-    row
-  );
-
-  updateUnit();
-
-}
-
-
-function prepareProductInputList(
+function buildProductInputGroups(
   existingResults = null
 ) {
-
-  productInputList.innerHTML =
-    "";
-
 
   const existingMap =
     normalizeExistingResultMap(
       existingResults
     );
 
+  const groups =
+    new Map();
 
   const currentProductIds =
     new Set(
@@ -12169,84 +12129,268 @@ function prepareProductInputList(
     );
 
 
-  const inputGroups =
-    products.map(
-      product => {
+  function ensureGroup(
+    key,
+    name,
+    order
+  ) {
 
-        const existingVariants =
-          Object.values(
-            existingMap
-          )
-            .filter(
-              result =>
-                result.productId ===
-                product.id
-            )
-            .map(
-              result => ({
-                cashback:
-                  Number(
-                    result.cashback ||
-                    0
-                  ),
-                count:
-                  Number(
-                    result.count ||
-                    0
-                  ),
-                revenuePerUnit:
-                  Number(
-                    result.revenuePerUnit ||
-                    0
-                  ),
-                baseRevenue:
-                  Number(
-                    result.revenuePerUnit ||
-                    0
-                  ) +
-                  Number(
-                    result.cashback ||
-                    0
-                  )
-              })
-            );
+    if (
+      !groups.has(
+        key
+      )
+    ) {
 
-
-        if (
-          existingVariants.length ===
-          0
-        ) {
-
-          existingVariants.push({
-            cashback: 0,
-            count: 0
-          });
-
+      groups.set(
+        key,
+        {
+          key,
+          name,
+          order,
+          plans: []
         }
+      );
+
+    }
 
 
-        return {
-          id:
-            product.id,
-          name:
-            product.name,
-          baseRevenue:
-            Number(
-              product.revenue ||
-              0
-            ),
-          historicalOnly:
-            false,
-          variants:
-            existingVariants
-        };
-
-      }
+    return groups.get(
+      key
     );
 
+  }
 
-  const historicalGroups =
-    {};
+
+  products.forEach(
+    (
+      product,
+      productIndex
+    ) => {
+
+      const parsed =
+        parseLegacyCashbackProductName(
+          product.name
+        );
+
+      const parentName =
+        parsed.parentName;
+
+      const groupKey =
+        parentName
+          .trim()
+          .toLocaleLowerCase(
+            "ja"
+          );
+
+      const group =
+        ensureGroup(
+          groupKey,
+          parentName,
+          productIndex
+        );
+
+
+      if (
+        parsed.hasCashbackPlan
+      ) {
+
+        const cashback =
+          Number(
+            parsed.cashback ||
+            0
+          );
+
+        const snapshot =
+          existingMap[
+            resultVariantKey(
+              product.id,
+              cashback
+            )
+          ] ||
+          existingMap[
+            resultVariantKey(
+              product.id,
+              0
+            )
+          ];
+
+        group.plans.push({
+          productId:
+            product.id,
+          productName:
+            product.name,
+          label:
+            formatCashbackPlanLabel(
+              cashback
+            ),
+          cashback,
+          count:
+            Number(
+              snapshot?.count ||
+              0
+            ),
+          revenuePerUnit:
+            snapshot
+              ? Number(
+                  snapshot.revenuePerUnit ||
+                  0
+                )
+              : Number(
+                  product.revenue ||
+                  0
+                ),
+          historicalOnly:
+            false,
+          planOrder:
+            cashback
+        });
+
+        return;
+
+      }
+
+
+      const configuredOptions =
+        normalizeCashbackOptions(
+          product.cashbackOptions
+        );
+
+      const historicalOptions =
+        Object.values(
+          existingMap
+        )
+          .filter(
+            result =>
+              result.productId ===
+              product.id
+          )
+          .map(
+            result =>
+              Number(
+                result.cashback ||
+                0
+              )
+          );
+
+      const hasPlans =
+        productUsesCashbackPlans(
+          product
+        ) ||
+        historicalOptions.some(
+          value =>
+            value > 0
+        );
+
+
+      if (hasPlans) {
+
+        const planValues =
+          normalizeCashbackOptions([
+            ...configuredOptions,
+            ...historicalOptions
+          ]);
+
+
+        planValues.forEach(
+          cashback => {
+
+            const snapshot =
+              existingMap[
+                resultVariantKey(
+                  product.id,
+                  cashback
+                )
+              ];
+
+            group.plans.push({
+              productId:
+                product.id,
+              productName:
+                product.name,
+              label:
+                formatCashbackPlanLabel(
+                  cashback
+                ),
+              cashback:
+                Number(
+                  cashback
+                ),
+              count:
+                Number(
+                  snapshot?.count ||
+                  0
+                ),
+              /*
+                新しい親商材＋CBプランは、
+                ユーザー指定どおりCB金額を1件単価として扱う。
+                既存実績を編集する場合は保存済み単価を優先する。
+              */
+              revenuePerUnit:
+                snapshot
+                  ? Number(
+                      snapshot.revenuePerUnit ||
+                      0
+                    )
+                  : Number(
+                      cashback ||
+                      0
+                    ),
+              historicalOnly:
+                false,
+              planOrder:
+                Number(
+                  cashback
+                )
+            });
+
+          }
+        );
+
+        return;
+
+      }
+
+
+      const snapshot =
+        existingMap[
+          resultVariantKey(
+            product.id,
+            0
+          )
+        ];
+
+      group.plans.push({
+        productId:
+          product.id,
+        productName:
+          product.name,
+        label:
+          "件数",
+        cashback:
+          0,
+        count:
+          Number(
+            snapshot?.count ||
+            0
+          ),
+        revenuePerUnit:
+          snapshot
+            ? Number(
+                snapshot.revenuePerUnit ||
+                0
+              )
+            : Number(
+                product.revenue ||
+                0
+              ),
+        historicalOnly:
+          false,
+        planOrder:
+          0
+      });
+
+    }
+  );
 
 
   Object.values(
@@ -12265,43 +12409,36 @@ function prepareProductInputList(
       }
 
 
-      if (
-        !historicalGroups[
-          result.productId
-        ]
-      ) {
+      const presentation =
+        getResultProductPresentation(
+          result
+        );
 
-        historicalGroups[
-          result.productId
-        ] = {
-          id:
-            result.productId,
-          name:
-            result.productName ||
-            "削除済み商材",
-          baseRevenue:
-            Number(
-              result.revenuePerUnit ||
-              0
-            ) +
-            Number(
-              result.cashback ||
-              0
-            ),
-          historicalOnly:
-            true,
-          variants: []
-        };
+      const groupKey =
+        `history_${presentation.parentName
+          .trim()
+          .toLocaleLowerCase("ja")}`;
 
-      }
+      const group =
+        ensureGroup(
+          groupKey,
+          `${presentation.parentName}（履歴）`,
+          99999
+        );
 
-
-      historicalGroups[
-        result.productId
-      ].variants.push({
+      group.plans.push({
+        productId:
+          result.productId,
+        productName:
+          result.productName ||
+          presentation.parentName,
+        label:
+          presentation.usesPlans
+            ? presentation.planLabel
+            : "件数",
         cashback:
           Number(
-            result.cashback ||
+            presentation.cashback ||
             0
           ),
         count:
@@ -12314,13 +12451,11 @@ function prepareProductInputList(
             result.revenuePerUnit ||
             0
           ),
-        baseRevenue:
+        historicalOnly:
+          true,
+        planOrder:
           Number(
-            result.revenuePerUnit ||
-            0
-          ) +
-          Number(
-            result.cashback ||
+            presentation.cashback ||
             0
           )
       });
@@ -12329,11 +12464,65 @@ function prepareProductInputList(
   );
 
 
-  inputGroups.push(
-    ...Object.values(
-      historicalGroups
+  return Array.from(
+    groups.values()
+  )
+    .map(
+      group => ({
+        ...group,
+        plans:
+          group.plans.sort(
+            (a, b) => {
+
+              if (
+                a.planOrder !==
+                b.planOrder
+              ) {
+
+                return (
+                  a.planOrder -
+                  b.planOrder
+                );
+
+              }
+
+
+              return String(
+                a.label ||
+                ""
+              ).localeCompare(
+                String(
+                  b.label ||
+                  ""
+                ),
+                "ja"
+              );
+
+            }
+          )
+      })
     )
-  );
+    .sort(
+      (a, b) =>
+        a.order -
+        b.order
+    );
+
+}
+
+
+function prepareProductInputList(
+  existingResults = null
+) {
+
+  productInputList.innerHTML =
+    "";
+
+
+  const inputGroups =
+    buildProductInputGroups(
+      existingResults
+    );
 
 
   if (
@@ -12355,7 +12544,7 @@ function prepareProductInputList(
 
 
   inputGroups.forEach(
-    product => {
+    groupData => {
 
       const group =
         document.createElement(
@@ -12364,6 +12553,9 @@ function prepareProductInputList(
 
       group.className =
         "product-input-group";
+
+      group.dataset.parentProduct =
+        groupData.name;
 
 
       const title =
@@ -12377,36 +12569,149 @@ function prepareProductInputList(
       title.innerHTML = `
         <div class="product-input-name">
           ${escapeHtml(
-            product.historicalOnly
-              ? `${product.name}（履歴）`
-              : product.name
-          )}
-        </div>
-        <div class="product-input-base">
-          基準 ${formatYen(
-            product.baseRevenue
+            groupData.name
           )}
         </div>
       `;
 
 
-      const variantsContainer =
+      const grid =
         document.createElement(
           "div"
         );
 
-      variantsContainer.className =
-        "product-input-variants";
+      grid.className =
+        "product-plan-grid";
 
 
-      product.variants.forEach(
-        variant =>
-          addProductVariantRow(
-            variantsContainer,
-            product,
-            variant
-          )
+      groupData.plans.forEach(
+        plan => {
+
+          const cell =
+            document.createElement(
+              "div"
+            );
+
+          cell.className =
+            "product-plan-cell";
+
+
+          const label =
+            document.createElement(
+              "div"
+            );
+
+          label.className =
+            "product-plan-label";
+
+          label.textContent =
+            plan.label;
+
+
+          const unit =
+            document.createElement(
+              "div"
+            );
+
+          unit.className =
+            "product-plan-unit";
+
+          unit.textContent =
+            `${formatYen(
+              plan.revenuePerUnit
+            )}/件`;
+
+
+          const input =
+            document.createElement(
+              "input"
+            );
+
+          input.type =
+            "number";
+
+          input.min =
+            "0";
+
+          input.step =
+            "1";
+
+          input.inputMode =
+            "numeric";
+
+          input.className =
+            "product-plan-input";
+
+          input.value =
+            String(
+              plan.count ||
+              0
+            );
+
+          input.dataset.productId =
+            plan.productId;
+
+          input.dataset.productName =
+            plan.productName;
+
+          input.dataset.parentProduct =
+            groupData.name;
+
+          input.dataset.cashback =
+            String(
+              plan.cashback
+            );
+
+          input.dataset.revenuePerUnit =
+            String(
+              plan.revenuePerUnit
+            );
+
+          input.dataset.resultKey =
+            resultVariantKey(
+              plan.productId,
+              plan.cashback
+            );
+
+
+          input.addEventListener(
+            "input",
+            updateRecordTotals
+          );
+
+
+          cell.appendChild(
+            label
+          );
+
+          cell.appendChild(
+            unit
+          );
+
+          cell.appendChild(
+            input
+          );
+
+          grid.appendChild(
+            cell
+          );
+
+        }
       );
+
+
+      const total =
+        document.createElement(
+          "div"
+        );
+
+      total.className =
+        "product-input-group-total";
+
+      total.innerHTML = `
+        <span>合計 0件</span>
+        <span>${formatYen(0)}</span>
+      `;
 
 
       group.appendChild(
@@ -12414,42 +12719,12 @@ function prepareProductInputList(
       );
 
       group.appendChild(
-        variantsContainer
+        grid
       );
 
-
-      if (
-        !product.historicalOnly
-      ) {
-
-        const add =
-          document.createElement(
-            "button"
-          );
-
-        add.type =
-          "button";
-
-        add.className =
-          "product-input-add";
-
-        add.textContent =
-          "＋ CB違いを追加";
-
-        add.onclick =
-          () =>
-            addProductVariantRow(
-              variantsContainer,
-              product
-            );
-
-
-        group.appendChild(
-          add
-        );
-
-      }
-
+      group.appendChild(
+        total
+      );
 
       productInputList.appendChild(
         group
@@ -12473,96 +12748,45 @@ function getCurrentInputResults() {
     {};
 
 
-  const rows =
+  const inputs =
     productInputList.querySelectorAll(
-      ".product-input-variant-row"
+      "input[data-product-id]"
     );
 
 
-  rows.forEach(
-    row => {
-
-      const countInput =
-        row.querySelector(
-          "input[data-product-id]"
-        );
-
-      const cashbackInput =
-        row.querySelector(
-          "input[data-cashback-input]"
-        );
-
-
-      if (
-        !countInput ||
-        !cashbackInput
-      ) {
-
-        return;
-
-      }
-
+  inputs.forEach(
+    input => {
 
       const productId =
-        countInput.dataset.productId;
-
-      const productName =
-        countInput.dataset.productName ||
-        "不明";
-
-      const baseRevenue =
-        Number(
-          countInput.dataset.baseRevenue ||
-          0
-        );
+        input.dataset.productId;
 
       const count =
         Number(
-          countInput.value ||
+          input.value ||
           0
         );
 
       const cashback =
-        Math.max(
-          0,
-          Number(
-            cashbackInput.value ||
-            0
-          )
+        Number(
+          input.dataset.cashback ||
+          0
         );
 
-
-      if (
-        !productId ||
-        !Number.isInteger(
-          count
-        ) ||
-        count <= 0
-      ) {
-
-        return;
-
-      }
-
-
       const resultKey =
+        input.dataset.resultKey ||
         resultVariantKey(
           productId,
           cashback
         );
 
-      const revenuePerUnit =
-        Math.max(
-          0,
-          baseRevenue -
-          cashback
-        );
-
 
       if (
-        !results[
-          resultKey
-        ]
+        productId &&
+        Number.isInteger(
+          count
+        ) &&
+        count >
+          0
       ) {
 
         results[
@@ -12571,23 +12795,24 @@ function getCurrentInputResults() {
 
           productId,
 
-          productName,
+          productName:
+            input.dataset.productName ||
+            input.dataset.parentProduct ||
+            "不明",
 
           cashback,
 
-          count: 0,
+          count,
 
-          revenuePerUnit
+          revenuePerUnit:
+            Number(
+              input.dataset.revenuePerUnit ||
+              0
+            )
 
         };
 
       }
-
-
-      results[
-        resultKey
-      ].count +=
-        count;
 
     }
   );
@@ -12598,54 +12823,171 @@ function getCurrentInputResults() {
 }
 
 
+function captureProductInputDraft() {
+
+  const draft =
+    {};
+
+
+  const inputs =
+    productInputList.querySelectorAll(
+      "input[data-product-id]"
+    );
+
+
+  inputs.forEach(
+    input => {
+
+      const productId =
+        input.dataset.productId;
+
+      const cashback =
+        Number(
+          input.dataset.cashback ||
+          0
+        );
+
+      const resultKey =
+        input.dataset.resultKey ||
+        resultVariantKey(
+          productId,
+          cashback
+        );
+
+
+      if (!productId) {
+
+        return;
+
+      }
+
+
+      draft[
+        resultKey
+      ] = {
+
+        productId,
+
+        productName:
+          input.dataset.productName ||
+          input.dataset.parentProduct ||
+          "不明",
+
+        cashback,
+
+        count:
+          Number(
+            input.value ||
+            0
+          ),
+
+        revenuePerUnit:
+          Number(
+            input.dataset.revenuePerUnit ||
+            0
+          )
+
+      };
+
+    }
+  );
+
+
+  return draft;
+
+}
+
+
+function updateProductGroupTotals() {
+
+  productInputList
+    .querySelectorAll(
+      ".product-input-group"
+    )
+    .forEach(
+      group => {
+
+        let count =
+          0;
+
+        let revenue =
+          0;
+
+
+        group
+          .querySelectorAll(
+            "input[data-product-id]"
+          )
+          .forEach(
+            input => {
+
+              const itemCount =
+                Number(
+                  input.value ||
+                  0
+                );
+
+              count +=
+                Number.isFinite(
+                  itemCount
+                )
+                  ? itemCount
+                  : 0;
+
+              revenue +=
+                (
+                  Number.isFinite(
+                    itemCount
+                  )
+                    ? itemCount
+                    : 0
+                ) *
+                Number(
+                  input.dataset.revenuePerUnit ||
+                  0
+                );
+
+            }
+          );
+
+
+        const total =
+          group.querySelector(
+            ".product-input-group-total"
+          );
+
+
+        if (total) {
+
+          total.innerHTML = `
+            <span>合計 ${count}件</span>
+            <span>${formatYen(
+              revenue
+            )}</span>
+          `;
+
+        }
+
+      }
+    );
+
+}
+
 function validateProductInputRows() {
 
-  const rows =
+  const inputs =
     productInputList.querySelectorAll(
-      ".product-input-variant-row"
+      "input[data-product-id]"
     );
 
 
   for (
-    const row of rows
+    const input of inputs
   ) {
-
-    const countInput =
-      row.querySelector(
-        "input[data-product-id]"
-      );
-
-    const cashbackInput =
-      row.querySelector(
-        "input[data-cashback-input]"
-      );
-
-
-    if (
-      !countInput ||
-      !cashbackInput
-    ) {
-
-      continue;
-
-    }
-
 
     const count =
       Number(
-        countInput.value ||
-        0
-      );
-
-    const cashback =
-      Number(
-        cashbackInput.value ||
-        0
-      );
-
-    const baseRevenue =
-      Number(
-        countInput.dataset.baseRevenue ||
+        input.value ||
         0
       );
 
@@ -12658,29 +13000,6 @@ function validateProductInputRows() {
     ) {
 
       return "件数は0以上の整数で入力してください。";
-
-    }
-
-
-    if (
-      !Number.isFinite(
-        cashback
-      ) ||
-      cashback < 0
-    ) {
-
-      return "キャッシュバックは0円以上で入力してください。";
-
-    }
-
-
-    if (
-      count > 0 &&
-      cashback >
-        baseRevenue
-    ) {
-
-      return `${countInput.dataset.productName || "商材"}のCBが1件売上を超えています。`;
 
     }
 
@@ -12733,6 +13052,9 @@ function calculateResultsTotals(
 
 
 function updateRecordTotals() {
+
+  updateProductGroupTotals();
+
 
   const results =
     getCurrentInputResults();
