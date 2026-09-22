@@ -369,6 +369,18 @@ header {
   gap: 15px;
 }
 
+.record-grid > .form-group {
+  min-width: 0;
+}
+
+.record-grid input,
+.record-grid select,
+#recordDate {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .product-input-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1671,6 +1683,19 @@ header {
 
 .management-tab-panel[hidden] {
   display: none;
+}
+
+.management-workspace[hidden] {
+  display: none;
+}
+
+.management-workspace {
+  scroll-margin-top: 12px;
+}
+
+.management-workspace > .management-card,
+.management-workspace > .account-card {
+  margin-top: 12px;
 }
 
 .management-tab-panel .quick-menu {
@@ -3261,6 +3286,12 @@ header {
     role="status">
   </div>
 
+  <div
+    id="managementWorkspace"
+    class="management-workspace"
+    hidden>
+  </div>
+
 
   <!-- ようこそ -->
 
@@ -4633,6 +4664,9 @@ const companySetupMessage =
 const companySetupLogoutButton =
   document.getElementById("companySetupLogoutButton");
 
+const managementWorkspace =
+  document.getElementById("managementWorkspace");
+
 const managementMenuButton =
   document.getElementById("managementMenuButton");
 
@@ -5514,6 +5548,75 @@ let unsubscribeGoals = null;
    ようこそ / クイック管理
 ===================================================== */
 
+const managementWorkspacePanels = [
+  companyManagement,
+  accountSettings,
+  teamManagement,
+  productManagement,
+  memberManagement
+];
+
+
+managementWorkspacePanels.forEach(
+  panel => {
+
+    managementWorkspace.appendChild(
+      panel
+    );
+
+  }
+);
+
+
+function showManagementWorkspace(
+  panel
+) {
+
+  managementWorkspacePanels.forEach(
+    item => {
+
+      item.style.display =
+        item === panel
+          ? "block"
+          : "none";
+
+    }
+  );
+
+  managementWorkspace.hidden =
+    false;
+
+
+  requestAnimationFrame(
+    () =>
+      managementWorkspace.scrollIntoView({
+        behavior:
+          "smooth",
+        block:
+          "start"
+      })
+  );
+
+}
+
+
+function hideManagementWorkspace() {
+
+  managementWorkspacePanels.forEach(
+    panel => {
+
+      panel.style.display =
+        "none";
+
+    }
+  );
+
+  managementWorkspace.hidden =
+    true;
+
+}
+
+
 const quickMenuButtons = [
   quickCompanyButton,
   quickInviteButton,
@@ -5609,8 +5712,9 @@ function openManagementCard(
     "true"
   );
 
-  config.card.style.display =
-    "block";
+  showManagementWorkspace(
+    config.card
+  );
 
   setAccordionState(
     config.toggle,
@@ -5620,15 +5724,6 @@ function openManagementCard(
 
   setManagementMenuOpen(
     false
-  );
-
-
-  requestAnimationFrame(
-    () =>
-      config.card.scrollIntoView({
-        behavior: "smooth",
-        block: "start"
-      })
   );
 
 }
@@ -5649,11 +5744,7 @@ function resetQuickMenuButtons() {
 
 function closeQuickPanels() {
 
-  companyManagement.style.display =
-    "none";
-
-  accountSettings.style.display =
-    "none";
+  hideManagementWorkspace();
 
   resetQuickMenuButtons();
 
@@ -5697,8 +5788,9 @@ function openCompanyQuickPanel(
   closeQuickPanels();
 
 
-  companyManagement.style.display =
-    "block";
+  showManagementWorkspace(
+    companyManagement
+  );
 
   selectedButton?.setAttribute(
     "aria-pressed",
@@ -5910,8 +6002,9 @@ quickAccountButton.onclick =
 
     closeQuickPanels();
 
-    accountSettings.style.display =
-      "block";
+    showManagementWorkspace(
+      accountSettings
+    );
 
     quickAccountButton.setAttribute(
       "aria-pressed",
@@ -8358,6 +8451,9 @@ function updateCurrentUserUI() {
 
         activeCard.style.display =
           "block";
+
+        managementWorkspace.hidden =
+          false;
 
         activeButton.setAttribute(
           "aria-pressed",
