@@ -3131,18 +3131,21 @@ header {
   }
 
   /*
-    日付・月選択をスマホ幅に統一。
-    機能やHTML構造は変えず、はみ出しだけ防ぐ。
+    スマホの日付・月選択は横いっぱいに広げず、
+    押しやすいコンパクトサイズで統一する。
   */
   input[type="date"],
   input[type="month"],
   .daily-date-picker input,
   .history-date-picker input,
-  .dashboard-select,
-  .dashboard-select select {
-    width: 100%;
+  #recordDate,
+  #teamGoalMonth {
+    display: block;
+    width: 190px;
     min-width: 0;
     max-width: 100%;
+    padding: 9px 10px;
+    font-size: 14px;
   }
 
   .daily-date-picker,
@@ -3151,15 +3154,17 @@ header {
     min-width: 0;
   }
 
-  .daily-date-picker input,
-  .history-date-picker input,
-  #recordDate,
-  #teamGoalMonth {
-    display: block;
+  .dashboard-select {
+    width: min(220px, 100%);
+    min-width: 0;
+    max-width: 100%;
+    margin-right: 0;
   }
 
-  .dashboard-select {
-    margin-right: 0;
+  .dashboard-select select {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
   }
 
   .modal {
