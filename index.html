@@ -10032,6 +10032,86 @@ resetThemeColorButton.addEventListener(
    現在ユーザーUI
 ===================================================== */
 
+
+function applyRevenueVisibility() {
+
+  const allowed =
+    canCurrentUserViewRevenue();
+
+  if (
+    monthlyRevenue?.closest(
+      ".summary-card"
+    )
+  ) {
+
+    monthlyRevenue.closest(
+      ".summary-card"
+    ).style.display =
+      allowed
+        ? ""
+        : "none";
+
+  }
+
+  if (
+    salesAnalysisToggle
+  ) {
+
+    salesAnalysisToggle.style.display =
+      allowed
+        ? ""
+        : "none";
+
+  }
+
+  if (
+    revenueChartToggle
+  ) {
+
+    revenueChartToggle.style.display =
+      allowed
+        ? ""
+        : "none";
+
+  }
+
+  if (
+    teamRankingRevenueButton
+  ) {
+
+    teamRankingRevenueButton.style.display =
+      allowed
+        ? ""
+        : "none";
+
+  }
+
+  if (
+    !allowed &&
+    teamRankingMode ===
+      "revenue"
+  ) {
+
+    teamRankingMode =
+      "progress";
+
+  }
+
+  if (
+    !allowed
+  ) {
+
+    salesAnalysisContent.hidden =
+      true;
+
+    revenueChartContent.hidden =
+      true;
+
+  }
+
+}
+
+
 function updateCurrentUserUI() {
 
   if (
@@ -10042,11 +10122,9 @@ function updateCurrentUserUI() {
 
   }
 
-
   const name =
     currentUserData.name ||
     "名前未設定";
-
 
   userName.textContent =
     name;
@@ -10076,10 +10154,9 @@ function updateCurrentUserUI() {
       ? "none"
       : "";
 
-
   if (
     currentUserData.companyRole ===
-    "owner"
+      "owner"
   ) {
 
     deleteOwnAccountButton.disabled =
@@ -10110,14 +10187,14 @@ function updateCurrentUserUI() {
 
   }
 
-
   const canInvite =
     isCurrentCompanyManager();
 
   const isOwner =
-    currentUserData.companyRole ===
-    "owner";
+    isCurrentCompanyOwner();
 
+  const canViewRevenue =
+    canCurrentUserViewRevenue();
 
   companyInviteControls.style.display =
     canInvite
@@ -10129,12 +10206,15 @@ function updateCurrentUserUI() {
       ? "block"
       : "none";
 
-
   reportBuilderToggle.style.display =
     canInvite
       ? ""
       : "none";
 
+  reportTemplateSettingsPanel.style.display =
+    isOwner
+      ? ""
+      : "none";
 
   ownerTransferPanel.style.display =
     isOwner
@@ -10145,7 +10225,6 @@ function updateCurrentUserUI() {
     isOwner
       ? "block"
       : "none";
-
 
   if (
     !canInvite &&
@@ -10159,7 +10238,6 @@ function updateCurrentUserUI() {
 
   }
 
-
   if (
     !isOwner &&
     quickOwnerButton.getAttribute(
@@ -10172,24 +10250,19 @@ function updateCurrentUserUI() {
 
   }
 
-
   renderOwnerTransferOptions();
-
-
-  revenueChartToggle.style.display =
-    "";
 
   allTeamsOverviewToggle.style.display =
     "";
 
+  applyRevenueVisibility();
 
   if (
     isCurrentCompanyManager()
   ) {
 
     userRole.textContent =
-      currentUserData.companyRole ===
-        "owner"
+      isOwner
         ? "👑 オーナー"
         : `👑 ${getTeamName(
             currentUserData.teamId
@@ -10202,14 +10275,25 @@ function updateCurrentUserUI() {
       "block";
 
     managementProductButton.style.display =
-      "block";
+      canViewRevenue
+        ? "block"
+        : "none";
 
     managementMemberButton.style.display =
       "block";
 
+    if (
+      !canViewRevenue &&
+      activeManagementSection ===
+        "product"
+    ) {
+
+      activeManagementSection =
+        null;
+
+    }
 
     hideManagementCards();
-
 
     if (
       activeManagementSection
@@ -10237,10 +10321,11 @@ function updateCurrentUserUI() {
           activeManagementSection
         ];
 
-
       if (
         activeCard &&
-        activeButton
+        activeButton &&
+        activeButton.style.display !==
+          "none"
       ) {
 
         activeCard.style.display =
@@ -15896,9 +15981,6 @@ function renderMembers() {
         isCurrentCompanyOwner() &&
         member.companyRole !==
           "owner" &&
-        !isManagedMember(
-          member
-        ) &&
         member.id !==
           currentUser?.uid
       ) {
@@ -19056,6 +19138,41 @@ dashboardMonth.addEventListener(
 );
 
 
+
+teamRankingProgressButton.onclick =
+  () => {
+
+    teamRankingMode =
+      "progress";
+
+    renderDashboard();
+
+  };
+
+
+teamRankingRevenueButton.onclick =
+  () => {
+
+    if (
+      !canCurrentUserViewRevenue()
+    ) {
+
+      showError(
+        "売上ランキングを見る権限がありません。"
+      );
+
+      return;
+
+    }
+
+    teamRankingMode =
+      "revenue";
+
+    renderDashboard();
+
+  };
+
+
 dailySummaryDate.addEventListener(
   "change",
   () => {
@@ -20279,6 +20396,8 @@ function getCurrentTeamName(
 
 function renderDashboard() {
 
+  applyRevenueVisibility();
+
   const selectedMonth =
     dashboardMonth.value;
 
@@ -20848,7 +20967,8 @@ function renderDashboard() {
 
 
   renderTeamRanking(
-    teamMap
+    teamMap,
+    monthly
   );
 
 
@@ -24720,44 +24840,170 @@ function renderIndividualRanking(
 ===================================================== */
 
 function renderTeamRanking(
-  teamMap
+  teamMap,
+  monthly = []
 ) {
 
   teamRankingList.innerHTML =
     "";
 
+  const canViewRevenue =
+    canCurrentUserViewRevenue();
+
+  if (
+    teamRankingMode ===
+      "revenue" &&
+    !canViewRevenue
+  ) {
+
+    teamRankingMode =
+      "progress";
+
+  }
+
+  teamRankingProgressButton.setAttribute(
+    "aria-pressed",
+    String(
+      teamRankingMode ===
+        "progress"
+    )
+  );
+
+  teamRankingRevenueButton.setAttribute(
+    "aria-pressed",
+    String(
+      teamRankingMode ===
+        "revenue"
+    )
+  );
+
+  teamRankingRevenueButton.style.display =
+    canViewRevenue
+      ? ""
+      : "none";
 
   const ranking =
-    Object.values(
-      teamMap
-    ).sort(
-      (a, b) => {
+    teams
+      .filter(
+        team =>
+          team.active !==
+            false
+      )
+      .map(
+        team => {
+
+          const result =
+            teamMap[
+              team.id
+            ] ||
+            Object.values(
+              teamMap
+            ).find(
+              item =>
+                item.name ===
+                  team.name
+            ) ||
+            {
+              count: 0,
+              revenue: 0
+            };
+
+          const goalProgress =
+            buildTeamGoalProgress(
+              team,
+              monthly
+            );
+
+          return {
+            id:
+              team.id,
+            name:
+              team.name ||
+              "班名未設定",
+            count:
+              Number(
+                result.count ||
+                0
+              ),
+            revenue:
+              Number(
+                result.revenue ||
+                0
+              ),
+            ...goalProgress
+          };
+
+        }
+      );
+
+  ranking.sort(
+    (a, b) => {
+
+      if (
+        teamRankingMode ===
+          "revenue"
+      ) {
 
         if (
-          b.count !==
-          a.count
+          b.revenue !==
+            a.revenue
         ) {
 
           return (
-            b.count -
-            a.count
+            b.revenue -
+            a.revenue
           );
 
         }
 
-
         return (
-          b.revenue -
-          a.revenue
+          b.count -
+          a.count
         );
 
       }
-    );
 
+      const aHasTarget =
+        a.totalTarget >
+          0;
+
+      const bHasTarget =
+        b.totalTarget >
+          0;
+
+      if (
+        aHasTarget !==
+          bHasTarget
+      ) {
+
+        return bHasTarget
+          ? 1
+          : -1;
+
+      }
+
+      if (
+        b.progress !==
+          a.progress
+      ) {
+
+        return (
+          b.progress -
+          a.progress
+        );
+
+      }
+
+      return (
+        b.totalActual -
+        a.totalActual
+      );
+
+    }
+  );
 
   teamRankingCount.textContent =
     `${ranking.length}班`;
-
 
   if (
     ranking.length === 0
@@ -24765,7 +25011,7 @@ function renderTeamRanking(
 
     teamRankingList.innerHTML = `
       <div class="empty-message">
-        この月の班実績はありません。
+        班がありません。
       </div>
     `;
 
@@ -24773,9 +25019,11 @@ function renderTeamRanking(
 
   }
 
-
   ranking.forEach(
-    (item, index) => {
+    (
+      item,
+      index
+    ) => {
 
       const row =
         document.createElement(
@@ -24785,7 +25033,6 @@ function renderTeamRanking(
       row.className =
         "ranking-row";
 
-
       const left =
         document.createElement(
           "div"
@@ -24794,7 +25041,6 @@ function renderTeamRanking(
       left.className =
         "ranking-left";
 
-
       const number =
         document.createElement(
           "div"
@@ -24802,7 +25048,6 @@ function renderTeamRanking(
 
       number.className =
         "ranking-number";
-
 
       if (
         index === 0
@@ -24830,16 +25075,13 @@ function renderTeamRanking(
 
       }
 
-
       number.textContent =
         index + 1;
-
 
       const info =
         document.createElement(
           "div"
         );
-
 
       const name =
         document.createElement(
@@ -24852,20 +25094,9 @@ function renderTeamRanking(
       name.textContent =
         item.name;
 
-
       info.appendChild(
         name
       );
-
-
-      left.appendChild(
-        number
-      );
-
-      left.appendChild(
-        info
-      );
-
 
       const value =
         document.createElement(
@@ -24875,19 +25106,56 @@ function renderTeamRanking(
       value.className =
         "ranking-value";
 
+      if (
+        teamRankingMode ===
+          "revenue"
+      ) {
 
-      value.innerHTML = `
-        <div class="ranking-count">
-          ${item.count}件
-        </div>
+        value.innerHTML = `
+          <div class="ranking-count">
+            ${item.count}件
+          </div>
+          <div class="ranking-revenue">
+            ${formatYen(
+              item.revenue
+            )}
+          </div>
+        `;
 
-        <div class="ranking-revenue">
-          ${formatYen(
-            item.revenue
-          )}
-        </div>
-      `;
+      } else if (
+        item.totalTarget >
+          0
+      ) {
 
+        value.innerHTML = `
+          <div class="ranking-count">
+            進捗 ${item.progress}%
+          </div>
+          <div class="ranking-revenue">
+            ${item.totalActual}/${item.totalTarget}件・残り${item.remaining}件
+          </div>
+        `;
+
+      } else {
+
+        value.innerHTML = `
+          <div class="ranking-count">
+            目標未設定
+          </div>
+          <div class="ranking-revenue">
+            実績 ${item.count}件
+          </div>
+        `;
+
+      }
+
+      left.appendChild(
+        number
+      );
+
+      left.appendChild(
+        info
+      );
 
       row.appendChild(
         left
@@ -24896,7 +25164,6 @@ function renderTeamRanking(
       row.appendChild(
         value
       );
-
 
       teamRankingList.appendChild(
         row
