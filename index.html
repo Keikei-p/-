@@ -2560,6 +2560,82 @@ header {
   font-weight: 800;
 }
 
+.team-overview-card-goal {
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid var(--border);
+  color: var(--sub);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.team-goal-summary {
+  margin-bottom: 12px;
+  padding: 11px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--card-soft);
+}
+
+.team-goal-summary-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.team-goal-summary-title {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.team-goal-summary-total {
+  color: var(--primary-text);
+  font-size: 11px;
+  font-weight: 800;
+  text-align: right;
+}
+
+.team-goal-product-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 9px;
+}
+
+.team-goal-product-card {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--card);
+}
+
+.team-goal-product-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.team-goal-product-values {
+  margin-top: 4px;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.team-goal-product-sub {
+  margin-top: 2px;
+  color: var(--sub);
+  font-size: 9px;
+}
+
+.team-goal-product-card .goal-progress-track {
+  margin-top: 5px;
+}
+
 .team-detail-panel {
   margin-top: 14px;
   padding-top: 14px;
@@ -2693,6 +2769,15 @@ header {
 
   .team-overview-card {
     padding: 12px 10px;
+  }
+
+  .team-goal-product-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .team-goal-product-card {
+    padding: 7px;
   }
 
   .team-member-grid {
@@ -20089,6 +20174,268 @@ function buildMemberProductDisplayGroups(
 }
 
 
+function buildTeamGoalProgress(
+  team,
+  monthly
+) {
+
+  const goal =
+    getTeamGoal(
+      team.id,
+      dashboardMonth.value
+    );
+
+  const targets =
+    goal?.targets ||
+    {};
+
+
+  const targetEntries =
+    Object.entries(
+      targets
+    )
+      .map(
+        ([
+          productId,
+          value
+        ]) => ({
+          productId,
+          target:
+            Math.max(
+              0,
+              Number(
+                value ||
+                0
+              )
+            )
+        })
+      )
+      .filter(
+        item =>
+          item.target >
+          0
+      );
+
+
+  if (
+    targetEntries.length ===
+    0
+  ) {
+
+    return {
+      totalTarget: 0,
+      totalActual: 0,
+      remaining: 0,
+      progress: 0,
+      rows: []
+    };
+
+  }
+
+
+  const actualMap =
+    {};
+
+  const nameMap =
+    {};
+
+
+  monthly
+    .filter(
+      record =>
+        recordBelongsToTeam(
+          record,
+          team
+        )
+    )
+    .forEach(
+      record => {
+
+        getRecordResults(
+          record
+        ).forEach(
+          result => {
+
+            const productId =
+              result.productId ||
+              result.productName ||
+              "unknown";
+
+            actualMap[
+              productId
+            ] =
+              (
+                actualMap[
+                  productId
+                ] ||
+                0
+              ) +
+              Number(
+                result.count ||
+                0
+              );
+
+            if (
+              result.productName
+            ) {
+
+              nameMap[
+                productId
+              ] =
+                result.productName;
+
+            }
+
+          }
+        );
+
+      }
+    );
+
+
+  const rows =
+    targetEntries
+      .map(
+        item => {
+
+          const currentProduct =
+            products.find(
+              product =>
+                product.id ===
+                item.productId
+            );
+
+          const actual =
+            Number(
+              actualMap[
+                item.productId
+              ] ||
+              0
+            );
+
+          const remaining =
+            Math.max(
+              item.target -
+                actual,
+              0
+            );
+
+          const progress =
+            item.target >
+              0
+              ? Math.round(
+                  actual /
+                    item.target *
+                    100
+                )
+              : 0;
+
+
+          return {
+            productId:
+              item.productId,
+            name:
+              currentProduct?.name ||
+              nameMap[
+                item.productId
+              ] ||
+              "削除済み商材",
+            actual,
+            target:
+              item.target,
+            remaining,
+            progress,
+            barProgress:
+              Math.min(
+                progress,
+                100
+              ),
+            sortOrder:
+              currentProduct
+                ? products.indexOf(
+                    currentProduct
+                  )
+                : 99999
+          };
+
+        }
+      )
+      .sort(
+        (a, b) => {
+
+          if (
+            a.sortOrder !==
+            b.sortOrder
+          ) {
+
+            return (
+              a.sortOrder -
+              b.sortOrder
+            );
+
+          }
+
+
+          return a.name.localeCompare(
+            b.name,
+            "ja"
+          );
+
+        }
+      );
+
+
+  const totalTarget =
+    rows.reduce(
+      (
+        sum,
+        row
+      ) =>
+        sum +
+        row.target,
+      0
+    );
+
+  const totalActual =
+    rows.reduce(
+      (
+        sum,
+        row
+      ) =>
+        sum +
+        row.actual,
+      0
+    );
+
+  const remaining =
+    Math.max(
+      totalTarget -
+        totalActual,
+      0
+    );
+
+  const progress =
+    totalTarget >
+      0
+      ? Math.round(
+          totalActual /
+            totalTarget *
+            100
+        )
+      : 0;
+
+
+  return {
+    totalTarget,
+    totalActual,
+    remaining,
+    progress,
+    rows
+  };
+
+}
+
+
 function renderSelectedTeamMemberDetail(
   container,
   team,
@@ -20343,6 +20690,122 @@ function renderSelectedTeamMemberDetail(
 
   container.appendChild(
     header
+  );
+
+
+  const goalProgress =
+    buildTeamGoalProgress(
+      team,
+      monthly
+    );
+
+  const goalSummary =
+    document.createElement(
+      "div"
+    );
+
+  goalSummary.className =
+    "team-goal-summary";
+
+
+  if (
+    goalProgress.totalTarget >
+    0
+  ) {
+
+    goalSummary.innerHTML = `
+      <div class="team-goal-summary-top">
+        <div class="team-goal-summary-title">
+          🎯 今月の目標進捗
+        </div>
+        <div class="team-goal-summary-total">
+          目標 ${goalProgress.totalTarget}件 /
+          残り ${goalProgress.remaining}件 /
+          進捗 ${goalProgress.progress}%
+        </div>
+      </div>
+      <div class="goal-progress-track">
+        <div
+          class="goal-progress-bar"
+          style="width:${Math.min(
+            goalProgress.progress,
+            100
+          )}%;">
+        </div>
+      </div>
+    `;
+
+
+    const goalGrid =
+      document.createElement(
+        "div"
+      );
+
+    goalGrid.className =
+      "team-goal-product-grid";
+
+
+    goalProgress.rows.forEach(
+      row => {
+
+        const goalCard =
+          document.createElement(
+            "div"
+          );
+
+        goalCard.className =
+          "team-goal-product-card";
+
+        goalCard.innerHTML = `
+          <div class="team-goal-product-name">
+            ${escapeHtml(
+              row.name
+            )}
+          </div>
+          <div class="team-goal-product-values">
+            実績 ${row.actual}件 / 目標 ${row.target}件
+          </div>
+          <div class="team-goal-product-sub">
+            残り ${row.remaining}件 ・ 進捗 ${row.progress}%
+          </div>
+          <div class="goal-progress-track">
+            <div
+              class="goal-progress-bar"
+              style="width:${row.barProgress}%;">
+            </div>
+          </div>
+        `;
+
+        goalGrid.appendChild(
+          goalCard
+        );
+
+      }
+    );
+
+
+    goalSummary.appendChild(
+      goalGrid
+    );
+
+  } else {
+
+    goalSummary.innerHTML = `
+      <div class="team-goal-summary-top">
+        <div class="team-goal-summary-title">
+          🎯 今月の目標進捗
+        </div>
+        <div class="team-goal-summary-total">
+          目標未設定
+        </div>
+      </div>
+    `;
+
+  }
+
+
+  container.appendChild(
+    goalSummary
   );
 
 
@@ -20813,6 +21276,13 @@ function renderAllTeamsOverview(
         )
       );
 
+      const goalProgress =
+        buildTeamGoalProgress(
+          team,
+          monthly
+        );
+
+
       button.innerHTML = `
         <div class="team-overview-card-name">
           ${escapeHtml(
@@ -20832,6 +21302,14 @@ function renderAllTeamsOverview(
             teamAnalysis.revenue ||
             0
           )}</span>
+        </div>
+        <div class="team-overview-card-goal">
+          ${
+            goalProgress.totalTarget >
+              0
+              ? `目標 ${goalProgress.totalTarget}件 / 残り ${goalProgress.remaining}件 / 進捗 ${goalProgress.progress}%`
+              : "目標未設定"
+          }
         </div>
       `;
 
