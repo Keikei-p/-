@@ -404,6 +404,17 @@ service cloud.firestore {
           && getAfter(memberPath(resource.data.companyId, userId)).data.active == false
         )
         || (
+          resource.data.companyId != null
+          && resource.data.companyRole != 'owner'
+          && activeOrLegacy(resource.data)
+          && request.resource.data.active == false
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['active', 'updatedAt'])
+          && isCompanyOwner(resource.data.companyId)
+          && getAfter(memberPath(resource.data.companyId, userId)).data.active == false
+        )
+        || (
           isSelf(userId)
           && resource.data.companyId != null
           && activeOrLegacy(resource.data)
@@ -657,6 +668,19 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['active', 'updatedAt'])
           && getAfter(userPath(request.auth.uid)).data.active == false
+        )
+        || (
+          resource.data.companyRole != 'owner'
+          && activeOrLegacy(resource.data)
+          && request.resource.data.active == false
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['active', 'updatedAt'])
+          && isCompanyOwner(companyId)
+          && (
+            !exists(userPath(memberId))
+            || getAfter(userPath(memberId)).data.active == false
+          )
         )
         || (
           resource.data.companyRole == 'owner'
