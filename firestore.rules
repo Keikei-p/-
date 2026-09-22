@@ -432,16 +432,17 @@ service cloud.firestore {
         )
         || (
           resource.data.companyId != null
+          && request.resource.data.companyRole == resource.data.companyRole
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['name', 'role', 'teamId', 'teamHistory', 'active', 'updatedAt'])
           && isCompanyOwner(resource.data.companyId)
           && request.resource.data.companyId == resource.data.companyId
           && request.resource.data.uid == resource.data.uid
           && (
-            isCompanyOwner(resource.data.companyId)
-            || userId != request.auth.uid
+            userId != request.auth.uid
             || request.resource.data.teamId == resource.data.teamId
           )
           && request.resource.data.email == resource.data.email
-          && request.resource.data.companyRole == resource.data.companyRole
           && validShortName(request.resource.data.name, 30)
           && validRole(request.resource.data.role)
           && validTeamId(request.resource.data.teamId)
@@ -452,12 +453,7 @@ service cloud.firestore {
             || request.resource.data.teamId != null
           )
           && request.resource.data.updatedAt == request.time
-          && request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['name', 'role', 'teamId', 'teamHistory', 'active', 'updatedAt'])
-          && (
-            request.resource.data.active == resource.data.active
-            || isCompanyOwner(resource.data.companyId)
-          )
+          && request.resource.data.active == resource.data.active
           && (
             resource.data.companyRole != 'owner'
             || (
@@ -468,29 +464,31 @@ service cloud.firestore {
         )
         || (
           resource.data.companyId != null
-          && validRevenuePermissionUpdate(resource.data.companyId, userId)
-          && request.resource.data.companyId == resource.data.companyId
-          && request.resource.data.uid == resource.data.uid
-          && request.resource.data.email == resource.data.email
-          && request.resource.data.companyRole == resource.data.companyRole
-          && request.resource.data.role == resource.data.role
-          && request.resource.data.teamId == resource.data.teamId
-          && request.resource.data.canViewRevenue is bool
-          && request.resource.data.updatedAt == request.time
+          && resource.data.companyRole == 'owner'
+          && request.resource.data.companyRole == 'member'
           && request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['canViewRevenue', 'updatedAt'])
-        )
-        || (
-          resource.data.companyId != null
+            .hasOnly(['companyRole', 'role', 'updatedAt'])
           && validSecondaryOwnerDemotion(resource.data.companyId, userId)
           && request.resource.data.companyId == resource.data.companyId
           && request.resource.data.uid == resource.data.uid
           && request.resource.data.email == resource.data.email
-          && request.resource.data.companyRole == 'member'
           && validRole(request.resource.data.role)
           && request.resource.data.updatedAt == request.time
+        )
+        || (
+          resource.data.companyId != null
+          && resource.data.companyRole != 'owner'
+          && request.resource.data.companyRole == resource.data.companyRole
           && request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['companyRole', 'role', 'updatedAt'])
+            .hasOnly(['canViewRevenue', 'updatedAt'])
+          && validRevenuePermissionUpdate(resource.data.companyId, userId)
+          && request.resource.data.companyId == resource.data.companyId
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.email == resource.data.email
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.teamId == resource.data.teamId
+          && request.resource.data.canViewRevenue is bool
+          && request.resource.data.updatedAt == request.time
         )
         || (
           resource.data.companyId != null
@@ -591,15 +589,16 @@ service cloud.firestore {
           || managedMemberCreate(companyId, memberId);
 
         allow update: if (
-          isCompanyOwner(companyId)
+          request.resource.data.companyRole == resource.data.companyRole
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['name', 'role', 'teamId', 'teamHistory', 'active', 'updatedAt'])
+          && isCompanyOwner(companyId)
           && request.resource.data.uid == resource.data.uid
           && request.resource.data.email == resource.data.email
           && (
-            isCompanyOwner(companyId)
-            || memberId != request.auth.uid
+            memberId != request.auth.uid
             || request.resource.data.teamId == resource.data.teamId
           )
-          && request.resource.data.companyRole == resource.data.companyRole
           && validShortName(request.resource.data.name, 30)
           && validRole(request.resource.data.role)
           && validTeamId(request.resource.data.teamId)
@@ -610,12 +609,7 @@ service cloud.firestore {
             || request.resource.data.teamId != null
           )
           && request.resource.data.updatedAt == request.time
-          && request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['name', 'role', 'teamId', 'teamHistory', 'active', 'updatedAt'])
-          && (
-            request.resource.data.active == resource.data.active
-            || isCompanyOwner(companyId)
-          )
+          && request.resource.data.active == resource.data.active
           && (
             resource.data.companyRole != 'owner'
             || (
@@ -665,26 +659,28 @@ service cloud.firestore {
           && getAfter(userPath(request.auth.uid)).data.active == false
         )
         || (
-          validRevenuePermissionUpdate(companyId, memberId)
+          resource.data.companyRole == 'owner'
+          && request.resource.data.companyRole == 'member'
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['companyRole', 'role', 'updatedAt'])
+          && validSecondaryOwnerDemotion(companyId, memberId)
           && request.resource.data.uid == resource.data.uid
           && request.resource.data.email == resource.data.email
+          && validRole(request.resource.data.role)
+          && request.resource.data.updatedAt == request.time
+        )
+        || (
+          resource.data.companyRole != 'owner'
           && request.resource.data.companyRole == resource.data.companyRole
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['canViewRevenue', 'updatedAt'])
+          && validRevenuePermissionUpdate(companyId, memberId)
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.email == resource.data.email
           && request.resource.data.role == resource.data.role
           && request.resource.data.teamId == resource.data.teamId
           && request.resource.data.canViewRevenue is bool
           && request.resource.data.updatedAt == request.time
-          && request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['canViewRevenue', 'updatedAt'])
-        )
-        || (
-          validSecondaryOwnerDemotion(companyId, memberId)
-          && request.resource.data.uid == resource.data.uid
-          && request.resource.data.email == resource.data.email
-          && request.resource.data.companyRole == 'member'
-          && validRole(request.resource.data.role)
-          && request.resource.data.updatedAt == request.time
-          && request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['companyRole', 'role', 'updatedAt'])
         )
         || (
           resource.data.companyRole != 'owner'
