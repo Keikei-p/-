@@ -1880,6 +1880,77 @@ body.product-reordering {
   justify-content: flex-end;
 }
 
+/* 商材管理：増えても縦長になりすぎないコンパクト2列 */
+.product-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.product-list .empty-message {
+  grid-column: 1 / -1;
+}
+
+.product-item {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  grid-template-areas:
+    "drag main"
+    "drag actions";
+  gap: 5px 8px;
+  align-items: center;
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--card);
+}
+
+.product-item-main {
+  grid-area: main;
+  min-width: 0;
+}
+
+.product-item .product-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.product-item .product-revenue {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 9px;
+}
+
+.product-item .product-drag-handle {
+  grid-area: drag;
+  align-self: stretch;
+  width: 36px;
+  height: auto;
+  min-height: 52px;
+  flex-basis: auto;
+}
+
+.product-item .product-actions {
+  grid-area: actions;
+  justify-content: flex-start;
+  gap: 5px;
+}
+
+.product-item .product-actions button {
+  padding: 6px 8px;
+  font-size: 10px;
+}
+
+@media (max-width: 360px) {
+  .product-list {
+    grid-template-columns: 1fr;
+  }
+}
+
 .empty-message {
   padding: 20px;
   color: var(--sub);
@@ -4740,7 +4811,7 @@ body.product-reordering {
       </div>
 
       <div class="product-sort-help">
-        ≡ を押したまま上下に動かすと、商材の表示順を変更できます。
+        ≡ を押したまま好きな位置へ動かすと、商材の表示順を変更できます。
       </div>
 
       <div
@@ -12582,40 +12653,110 @@ function moveProductDrag(
       )
     );
 
-  const before =
-    siblings.find(
-      sibling => {
 
-        const rect =
-          sibling.getBoundingClientRect();
+  if (
+    siblings.length ===
+    0
+  ) {
 
-        return (
-          event.clientY <
-          rect.top +
-            rect.height /
-              2
+    return;
+
+  }
+
+
+  let nearest =
+    null;
+
+  let nearestDistance =
+    Infinity;
+
+
+  siblings.forEach(
+    sibling => {
+
+      const rect =
+        sibling.getBoundingClientRect();
+
+      const centerX =
+        rect.left +
+        rect.width /
+          2;
+
+      const centerY =
+        rect.top +
+        rect.height /
+          2;
+
+      const distance =
+        Math.hypot(
+          event.clientX -
+            centerX,
+          event.clientY -
+            centerY
         );
 
+
+      if (
+        distance <
+        nearestDistance
+      ) {
+
+        nearest =
+          sibling;
+
+        nearestDistance =
+          distance;
+
       }
-    );
+
+    }
+  );
 
 
   if (
-    before
+    !nearest
   ) {
 
-    productList.insertBefore(
-      state.item,
-      before
-    );
-
-  } else {
-
-    productList.appendChild(
-      state.item
-    );
+    return;
 
   }
+
+
+  const rect =
+    nearest.getBoundingClientRect();
+
+  const centerX =
+    rect.left +
+    rect.width /
+      2;
+
+  const centerY =
+    rect.top +
+    rect.height /
+      2;
+
+  const sameRow =
+    Math.abs(
+      event.clientY -
+        centerY
+    ) <
+    rect.height *
+      0.45;
+
+  const before =
+    sameRow
+      ? event.clientX <
+          centerX
+      : event.clientY <
+          centerY;
+
+
+  productList.insertBefore(
+    state.item,
+    before
+      ? nearest
+      : nearest.nextSibling
+  );
 
 }
 
