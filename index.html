@@ -18203,11 +18203,11 @@ function reportDateLabel(
   }
 
 
-  return \`\${Number(
+  return `${Number(
     parts[1]
-  )}月\${Number(
+  )}月${Number(
     parts[2]
-  )}日\`;
+  )}日`;
 
 }
 
@@ -18238,7 +18238,7 @@ function getReportProductKey(
 
 
   return matched?.id ||
-    \`name:\${productName}\`;
+    `name:${productName}`;
 
 }
 
@@ -18743,7 +18743,7 @@ function buildGoalReportLines(
               : 0;
 
 
-          return \`\${product.name}：\${actual}/\${target}件（残り\${remaining}件・\${progress}%）\`;
+          return `${product.name}：${actual}/${target}件（残り${remaining}件・${progress}%）`;
 
         }
       )
@@ -18756,23 +18756,23 @@ function buildGoalReportLines(
     "【エントリー目標】",
     ...goalProducts.map(
       product =>
-        \`\${product.name}：\${Number(
+        `${product.name}：${Number(
           data.targetTotals[
             product.key
           ] ||
           0
-        )}件\`
+        )}件`
     ),
     "",
     "【現時点】",
     ...goalProducts.map(
       product =>
-        \`\${product.name}：\${Number(
+        `${product.name}：${Number(
           data.monthlyTotals[
             product.key
           ] ||
           0
-        )}件\`
+        )}件`
     )
   ];
 
@@ -18790,9 +18790,9 @@ function createFinalReportText(
 
   const lines = [
     "🌸本日最終報告🌸",
-    \`📅\${reportDateLabel(
+    `📅${reportDateLabel(
       date
-    )}\`,
+    )}`,
     ""
   ];
 
@@ -18807,7 +18807,7 @@ function createFinalReportText(
     );
 
     return lines.join(
-      "\\n"
+      "\n"
     );
 
   }
@@ -18817,7 +18817,7 @@ function createFinalReportText(
     team => {
 
       lines.push(
-        \`⭐️\${team.name}\`
+        `⭐️${team.name}`
       );
 
 
@@ -18825,12 +18825,12 @@ function createFinalReportText(
         product => {
 
           lines.push(
-            \`\${product.name}:\${Number(
+            `${product.name}:${Number(
               team.products[
                 product.key
               ] ||
               0
-            )}件\`
+            )}件`
           );
 
         }
@@ -18856,7 +18856,7 @@ function createFinalReportText(
 
     lines.push(
       "",
-      \`\${data.best.teamName}の\${data.best.productName}が\${data.best.count}件で好調でした👏✨️\`
+      `${data.best.teamName}の${data.best.productName}が${data.best.count}件で好調でした👏✨️`
     );
 
   }
@@ -18883,7 +18883,7 @@ function createFinalReportText(
 
 
   return lines.join(
-    "\\n"
+    "\n"
   );
 
 }
@@ -18900,9 +18900,9 @@ function createMorningReportText(
 
   const lines = [
     "🌅朝礼共有🌅",
-    \`📅\${reportDateLabel(
+    `📅${reportDateLabel(
       date
-    )}実績\`,
+    )}実績`,
     ""
   ];
 
@@ -18919,14 +18919,14 @@ function createMorningReportText(
     );
 
     return lines.join(
-      "\\n"
+      "\n"
     );
 
   }
 
 
   lines.push(
-    \`昨日実績は全体で\${data.dailyTotal}件でした！\`
+    `昨日実績は全体で${data.dailyTotal}件でした！`
   );
 
 
@@ -18935,7 +18935,7 @@ function createMorningReportText(
   ) {
 
     lines.push(
-      \`特に\${data.best.teamName}の\${data.best.productName}が\${data.best.count}件で好調でした👏✨️\`
+      `特に${data.best.teamName}の${data.best.productName}が${data.best.count}件で好調でした👏✨️`
     );
 
   }
@@ -18951,12 +18951,12 @@ function createMorningReportText(
     product => {
 
       lines.push(
-        \`\${product.name}：\${Number(
+        `${product.name}：${Number(
           data.dailyProductTotals[
             product.key
           ] ||
           0
-        )}件\`
+        )}件`
       );
 
     }
@@ -18990,7 +18990,7 @@ function createMorningReportText(
 
 
   return lines.join(
-    "\\n"
+    "\n"
   );
 
 }
