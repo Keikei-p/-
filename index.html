@@ -8189,6 +8189,8 @@ async function enterApplication(
     "block";
 
 
+  await loadReportTemplateSettings();
+
   startRealtimeListeners();
 
 }
@@ -19204,6 +19206,308 @@ recordHistoryDate.addEventListener(
    報告文作成
 ===================================================== */
 
+
+function reportSettingsDocRef() {
+
+  if (
+    !currentUserData?.companyId
+  ) {
+
+    throw new Error(
+      "会社情報が設定されていません。"
+    );
+
+  }
+
+  return doc(
+    db,
+    "companies",
+    currentUserData.companyId,
+    "settings",
+    "reporting"
+  );
+
+}
+
+
+function normalizeReportModeSettings(
+  value,
+  mode
+) {
+
+  const fallback =
+    mode ===
+      "morning"
+      ? {
+          intro:
+            "おはようございます！\n本日もよろしくお願いいたします！",
+          outro:
+            "本日も目標達成に向けて頑張っていきましょう👊🔥"
+        }
+      : {
+          intro:
+            "本日も一日お疲れさまでした！",
+          outro:
+            "本日もありがとうございました！\n明日もよろしくお願いいたします🙇‍♂️"
+        };
+
+  return {
+    ...defaultReportTemplateOptions,
+    ...fallback,
+    ...(
+      value &&
+      typeof value ===
+        "object"
+        ? value
+        : {}
+    )
+  };
+
+}
+
+
+function getReportModeSettings(
+  mode
+) {
+
+  return normalizeReportModeSettings(
+    reportTemplateSettings?.[
+      mode
+    ],
+    mode
+  );
+
+}
+
+
+async function loadReportTemplateSettings() {
+
+  reportTemplateSettings = {
+    morning:
+      normalizeReportModeSettings(
+        null,
+        "morning"
+      ),
+    final:
+      normalizeReportModeSettings(
+        null,
+        "final"
+      )
+  };
+
+  if (
+    !currentUserData?.companyId
+  ) {
+
+    return;
+
+  }
+
+  try {
+
+    const snap =
+      await getDoc(
+        reportSettingsDocRef()
+      );
+
+    if (
+      snap.exists()
+    ) {
+
+      const data =
+        snap.data();
+
+      reportTemplateSettings = {
+        morning:
+          normalizeReportModeSettings(
+            data.morning,
+            "morning"
+          ),
+        final:
+          normalizeReportModeSettings(
+            data.final,
+            "final"
+          )
+      };
+
+    }
+
+  } catch (error) {
+
+    console.error(
+      "報告テンプレート設定取得エラー:",
+      error
+    );
+
+  }
+
+  renderReportTemplateSettingsForm();
+
+}
+
+
+function renderReportTemplateSettingsForm() {
+
+  if (
+    !reportTemplateModeSelect ||
+    !reportTemplateOptionGrid
+  ) {
+
+    return;
+
+  }
+
+  const mode =
+    reportTemplateModeSelect.value ===
+      "final"
+      ? "final"
+      : "morning";
+
+  const settings =
+    getReportModeSettings(
+      mode
+    );
+
+  reportTemplateIntro.value =
+    settings.intro ||
+    "";
+
+  reportTemplateOutro.value =
+    settings.outro ||
+    "";
+
+  reportTemplateOptionGrid
+    .querySelectorAll(
+      "[data-report-option]"
+    )
+    .forEach(
+      input => {
+
+        input.checked =
+          settings[
+            input.dataset.reportOption
+          ] !==
+          false;
+
+      }
+    );
+
+}
+
+
+reportTemplateModeSelect.onchange =
+  renderReportTemplateSettingsForm;
+
+
+saveReportTemplateSettingsButton.onclick =
+  async () => {
+
+    if (
+      !isCurrentCompanyOwner()
+    ) {
+
+      showError(
+        "報告テンプレートを変更できるのはオーナーだけです。"
+      );
+
+      return;
+
+    }
+
+    const mode =
+      reportTemplateModeSelect.value ===
+        "final"
+        ? "final"
+        : "morning";
+
+    const next = {
+      ...getReportModeSettings(
+        mode
+      ),
+      intro:
+        reportTemplateIntro.value
+          .trim(),
+      outro:
+        reportTemplateOutro.value
+          .trim()
+    };
+
+    reportTemplateOptionGrid
+      .querySelectorAll(
+        "[data-report-option]"
+      )
+      .forEach(
+        input => {
+
+          next[
+            input.dataset.reportOption
+          ] =
+            input.checked;
+
+        }
+      );
+
+    reportTemplateSettings = {
+      ...reportTemplateSettings,
+      [mode]:
+        next
+    };
+
+    try {
+
+      saveReportTemplateSettingsButton.disabled =
+        true;
+
+      await setDoc(
+        reportSettingsDocRef(),
+        {
+          morning:
+            getReportModeSettings(
+              "morning"
+            ),
+          final:
+            getReportModeSettings(
+              "final"
+            ),
+          updatedBy:
+            currentUser?.uid ||
+            "",
+          updatedAt:
+            serverTimestamp()
+        },
+        {
+          merge:
+            true
+        }
+      );
+
+      showSuccess(
+        mode ===
+          "morning"
+          ? "朝礼用テンプレート設定を保存しました。"
+          : "最終報告テンプレート設定を保存しました。"
+      );
+
+    } catch (error) {
+
+      console.error(error);
+
+      showError(
+        firebaseErrorMessage(
+          error
+        )
+      );
+
+    } finally {
+
+      saveReportTemplateSettingsButton.disabled =
+        false;
+
+    }
+
+  };
+
+
 function previousDateString(
   date
 ) {
@@ -19437,13 +19741,6 @@ function buildReportData(
       allResults
     );
 
-  /*
-    報告文では「実績がある班だけ」ではなく、
-    現在登録されている全班を先に用意する。
-    これにより0件の班も必ず報告に表示される。
-    過去に削除された班の実績が選択日に存在する場合は、
-    実績スナップショットから追加して集計する。
-  */
   const reportTeams =
     {};
 
@@ -19741,46 +20038,159 @@ function buildReportData(
   const teamRows =
     Object.values(
       reportTeams
-    ).sort(
-      (a, b) => {
+    )
+      .map(
+        team => {
 
-        const aOrder =
-          currentTeamOrder.has(
-            a.teamId
-          )
-            ? currentTeamOrder.get(
-                a.teamId
-              )
-            : 99999;
+          const totalTarget =
+            Object.values(
+              team.targets
+            ).reduce(
+              (
+                sum,
+                value
+              ) =>
+                sum +
+                Number(
+                  value ||
+                  0
+                ),
+              0
+            );
 
-        const bOrder =
-          currentTeamOrder.has(
-            b.teamId
-          )
-            ? currentTeamOrder.get(
-                b.teamId
-              )
-            : 99999;
+          const totalActual =
+            Object.values(
+              team.monthlyProducts
+            ).reduce(
+              (
+                sum,
+                value
+              ) =>
+                sum +
+                Number(
+                  value ||
+                  0
+                ),
+              0
+            );
 
-        if (
-          aOrder !==
-          bOrder
-        ) {
+          return {
+            ...team,
+            totalTarget,
+            totalActual,
+            remaining:
+              Math.max(
+                totalTarget -
+                  totalActual,
+                0
+              ),
+            progress:
+              totalTarget >
+                0
+                ? Math.round(
+                    totalActual /
+                      totalTarget *
+                      100
+                  )
+                : null
+          };
 
-          return (
-            aOrder -
+        }
+      )
+      .sort(
+        (a, b) => {
+
+          const aOrder =
+            currentTeamOrder.has(
+              a.teamId
+            )
+              ? currentTeamOrder.get(
+                  a.teamId
+                )
+              : 99999;
+
+          const bOrder =
+            currentTeamOrder.has(
+              b.teamId
+            )
+              ? currentTeamOrder.get(
+                  b.teamId
+                )
+              : 99999;
+
+          if (
+            aOrder !==
             bOrder
+          ) {
+
+            return (
+              aOrder -
+              bOrder
+            );
+
+          }
+
+          return a.name.localeCompare(
+            b.name,
+            "ja"
           );
 
         }
+      );
 
-        return a.name.localeCompare(
-          b.name,
-          "ja"
-        );
-
-      }
+  const companyTarget =
+    Object.values(
+      targetTotals
+    ).reduce(
+      (
+        sum,
+        value
+      ) =>
+        sum +
+        Number(
+          value ||
+          0
+        ),
+      0
     );
+
+  const companyActual =
+    Object.values(
+      monthlyTotals
+    ).reduce(
+      (
+        sum,
+        value
+      ) =>
+        sum +
+        Number(
+          value ||
+          0
+        ),
+      0
+    );
+
+  const companySummary = {
+    target:
+      companyTarget,
+    actual:
+      companyActual,
+    remaining:
+      Math.max(
+        companyTarget -
+          companyActual,
+        0
+      ),
+    progress:
+      companyTarget >
+        0
+        ? Math.round(
+            companyActual /
+              companyTarget *
+              100
+          )
+        : null
+  };
 
   let best =
     null;
@@ -19834,6 +20244,7 @@ function buildReportData(
     dailyTotal,
     monthlyTotals,
     targetTotals,
+    companySummary,
     best
   };
 
@@ -19844,6 +20255,11 @@ function buildGoalReportLines(
   data,
   mode
 ) {
+
+  const settings =
+    getReportModeSettings(
+      mode
+    );
 
   const dailyLabel =
     mode ===
@@ -19857,20 +20273,95 @@ function buildGoalReportLines(
   data.teamRows.forEach(
     team => {
 
-      lines.push(
-        `⭐️${team.name}`
-      );
-
       if (
-        data.productRows.length ===
-        0
+        settings.showTeamName
       ) {
 
         lines.push(
-          "商材がまだ登録されていません。"
+          `⭐️${team.name}`
         );
 
-      } else {
+      }
+
+      const teamParts =
+        [];
+
+      if (
+        settings.showDailyCount
+      ) {
+
+        teamParts.push(
+          `${dailyLabel}${Number(
+            team.total ||
+            0
+          )}件`
+        );
+
+      }
+
+      if (
+        settings.showMonthlyActual
+      ) {
+
+        teamParts.push(
+          `月間実績${team.totalActual}件`
+        );
+
+      }
+
+      if (
+        settings.showMonthlyTarget
+      ) {
+
+        teamParts.push(
+          team.totalTarget >
+            0
+            ? `目標${team.totalTarget}件`
+            : "目標未設定"
+        );
+
+      }
+
+      if (
+        settings.showRemaining &&
+        team.totalTarget >
+          0
+      ) {
+
+        teamParts.push(
+          `残り${team.remaining}件`
+        );
+
+      }
+
+      if (
+        settings.showProgress &&
+        team.totalTarget >
+          0
+      ) {
+
+        teamParts.push(
+          `進捗${team.progress}%`
+        );
+
+      }
+
+      if (
+        teamParts.length >
+          0
+      ) {
+
+        lines.push(
+          teamParts.join(
+            "｜"
+          )
+        );
+
+      }
+
+      if (
+        settings.showProductRows
+      ) {
 
         data.productRows.forEach(
           product => {
@@ -19899,36 +20390,84 @@ function buildGoalReportLines(
                 0
               );
 
+            const parts = [
+              `${product.name}：`
+            ];
+
+            const values =
+              [];
+
             if (
-              target >
-              0
+              settings.showDailyCount
             ) {
 
-              const remaining =
-                Math.max(
-                  target -
-                    actual,
-                  0
-                );
-
-              const progress =
-                Math.round(
-                  actual /
-                    target *
-                    100
-                );
-
-              lines.push(
-                `${product.name}：${dailyLabel}${daily}件｜月間${actual}/${target}件｜残り${remaining}件｜進捗${progress}%`
-              );
-
-            } else {
-
-              lines.push(
-                `${product.name}：${dailyLabel}${daily}件｜月間${actual}件｜目標未設定`
+              values.push(
+                `${dailyLabel}${daily}件`
               );
 
             }
+
+            if (
+              settings.showMonthlyActual
+            ) {
+
+              values.push(
+                `月間${actual}件`
+              );
+
+            }
+
+            if (
+              settings.showMonthlyTarget
+            ) {
+
+              values.push(
+                target >
+                  0
+                  ? `目標${target}件`
+                  : "目標未設定"
+              );
+
+            }
+
+            if (
+              settings.showRemaining &&
+              target >
+                0
+            ) {
+
+              values.push(
+                `残り${Math.max(
+                  target -
+                    actual,
+                  0
+                )}件`
+              );
+
+            }
+
+            if (
+              settings.showProgress &&
+              target >
+                0
+            ) {
+
+              values.push(
+                `進捗${Math.round(
+                  actual /
+                    target *
+                    100
+                )}%`
+              );
+
+            }
+
+            lines.push(
+              parts[0] +
+              values.join(
+                "｜"
+              )
+            );
 
           }
         );
@@ -19959,6 +20498,125 @@ function buildGoalReportLines(
 }
 
 
+
+function buildCompanyReportLines(
+  data,
+  mode
+) {
+
+  const settings =
+    getReportModeSettings(
+      mode
+    );
+
+  const lines =
+    [];
+
+  if (
+    settings.showCompanySummary
+  ) {
+
+    lines.push(
+      "【会社全体進捗】"
+    );
+
+    if (
+      data.companySummary.target >
+        0
+    ) {
+
+      lines.push(
+        `目標：${data.companySummary.target}件`,
+        `実績：${data.companySummary.actual}件`,
+        `残り：${data.companySummary.remaining}件`,
+        `進捗率：${data.companySummary.progress}%`
+      );
+
+    } else {
+
+      lines.push(
+        `実績：${data.companySummary.actual}件`,
+        "目標：未設定",
+        "進捗率：目標未設定"
+      );
+
+    }
+
+  }
+
+  if (
+    settings.showCompanyProductSummary
+  ) {
+
+    if (
+      lines.length >
+        0
+    ) {
+
+      lines.push(
+        ""
+      );
+
+    }
+
+    lines.push(
+      "【会社全体 商材別進捗】"
+    );
+
+    data.productRows.forEach(
+      product => {
+
+        const target =
+          Number(
+            data.targetTotals[
+              product.key
+            ] ||
+            0
+          );
+
+        const actual =
+          Number(
+            data.monthlyTotals[
+              product.key
+            ] ||
+            0
+          );
+
+        if (
+          target >
+            0
+        ) {
+
+          lines.push(
+            `${product.name}：${actual}/${target}件｜残り${Math.max(
+              target -
+                actual,
+              0
+            )}件｜進捗${Math.round(
+              actual /
+                target *
+                100
+            )}%`
+          );
+
+        } else {
+
+          lines.push(
+            `${product.name}：${actual}件｜目標未設定`
+          );
+
+        }
+
+      }
+    );
+
+  }
+
+  return lines;
+
+}
+
+
 function createFinalReportText(
   date
 ) {
@@ -19968,22 +20626,45 @@ function createFinalReportText(
       date
     );
 
+  const settings =
+    getReportModeSettings(
+      "final"
+    );
+
   const lines = [
-    "🌸本日最終報告🌸",
-    `📅${reportDateLabel(
-      date
-    )}`,
-    "",
-    "本日も一日お疲れさまでした！",
-    ""
+    "🌸本日最終報告🌸"
   ];
 
   if (
-    data.teamRows.length ===
-    0
+    settings.showDate
   ) {
 
     lines.push(
+      `📅${reportDateLabel(
+        date
+      )}`
+    );
+
+  }
+
+  if (
+    settings.intro
+  ) {
+
+    lines.push(
+      "",
+      settings.intro
+    );
+
+  }
+
+  if (
+    data.teamRows.length ===
+      0
+  ) {
+
+    lines.push(
+      "",
       "班がまだ登録されていません。"
     );
 
@@ -19994,30 +20675,53 @@ function createFinalReportText(
   }
 
   lines.push(
+    "",
     ...buildGoalReportLines(
       data,
       "final"
-    ),
-    "",
-    `全体本日実績：${data.dailyTotal}件`
+    )
   );
 
   if (
+    settings.showBest &&
     data.best
   ) {
 
     lines.push(
       "",
-      `${data.best.teamName}の${data.best.productName}が${data.best.count}件で好調でした👏✨️`
+      `${data.best.teamName}の${data.best.productName}が本日${data.best.count}件で好調でした👏✨️`
     );
 
   }
 
-  lines.push(
-    "",
-    "本日もありがとうございました！",
-    "明日もよろしくお願いいたします🙇‍♂️"
-  );
+  const companyLines =
+    buildCompanyReportLines(
+      data,
+      "final"
+    );
+
+  if (
+    companyLines.length >
+      0
+  ) {
+
+    lines.push(
+      "",
+      ...companyLines
+    );
+
+  }
+
+  if (
+    settings.outro
+  ) {
+
+    lines.push(
+      "",
+      settings.outro
+    );
+
+  }
 
   return lines.join(
     "\n"
@@ -20035,23 +20739,45 @@ function createMorningReportText(
       date
     );
 
+  const settings =
+    getReportModeSettings(
+      "morning"
+    );
+
   const lines = [
-    "🌅朝礼共有🌅",
-    `📅${reportDateLabel(
-      date
-    )}実績`,
-    "",
-    "おはようございます！",
-    "本日もよろしくお願いいたします！",
-    ""
+    "🌅朝礼共有🌅"
   ];
 
   if (
-    data.teamRows.length ===
-    0
+    settings.showDate
   ) {
 
     lines.push(
+      `📅${reportDateLabel(
+        date
+      )}実績`
+    );
+
+  }
+
+  if (
+    settings.intro
+  ) {
+
+    lines.push(
+      "",
+      settings.intro
+    );
+
+  }
+
+  if (
+    data.teamRows.length ===
+      0
+  ) {
+
+    lines.push(
+      "",
       "班がまだ登録されていません。"
     );
 
@@ -20062,28 +20788,53 @@ function createMorningReportText(
   }
 
   lines.push(
-    `昨日実績は全体で${data.dailyTotal}件でした！`
-  );
-
-  if (
-    data.best
-  ) {
-
-    lines.push(
-      `特に${data.best.teamName}の${data.best.productName}が${data.best.count}件で好調でした👏✨️`
-    );
-
-  }
-
-  lines.push(
     "",
     ...buildGoalReportLines(
       data,
       "morning"
-    ),
-    "",
-    "本日も目標達成に向けて頑張っていきましょう👊🔥"
+    )
   );
+
+  if (
+    settings.showBest &&
+    data.best
+  ) {
+
+    lines.push(
+      "",
+      `特に${data.best.teamName}の${data.best.productName}が昨日${data.best.count}件で好調でした👏✨️`
+    );
+
+  }
+
+  const companyLines =
+    buildCompanyReportLines(
+      data,
+      "morning"
+    );
+
+  if (
+    companyLines.length >
+      0
+  ) {
+
+    lines.push(
+      "",
+      ...companyLines
+    );
+
+  }
+
+  if (
+    settings.outro
+  ) {
+
+    lines.push(
+      "",
+      settings.outro
+    );
+
+  }
 
   return lines.join(
     "\n"
