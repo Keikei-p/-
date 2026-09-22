@@ -67,6 +67,17 @@ select {
   font: inherit;
 }
 
+/*
+  スマホではdate/month入力がブラウザ固有の最小幅を持つことがあるため、
+  カード幅を押し広げないよう共通で制限する。
+*/
+input[type="date"],
+input[type="month"],
+select {
+  min-width: 0;
+  max-width: 100%;
+}
+
 button {
   cursor: pointer;
 }
@@ -3117,6 +3128,43 @@ header {
 
   .auth-card {
     padding: 25px 20px;
+  }
+
+  /*
+    日付・月選択をスマホ幅に統一。
+    機能やHTML構造は変えず、はみ出しだけ防ぐ。
+  */
+  input[type="date"],
+  input[type="month"],
+  .daily-date-picker input,
+  .history-date-picker input,
+  .dashboard-select,
+  .dashboard-select select {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .daily-date-picker,
+  .history-date-picker {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .daily-date-picker input,
+  .history-date-picker input,
+  #recordDate,
+  #teamGoalMonth {
+    display: block;
+  }
+
+  .dashboard-select {
+    margin-right: 0;
+  }
+
+  .modal {
+    max-width: 100%;
+    padding: 18px;
   }
 
   .record-grid,
