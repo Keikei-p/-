@@ -4695,6 +4695,25 @@ body.product-reordering .product-list {
         id="teamRankingContent"
         class="dashboard-app-content"
         hidden>
+
+        <div class="revenue-chart-toolbar" style="margin-bottom:12px;">
+          <button
+            id="teamRankingProgressButton"
+            class="revenue-chart-mode"
+            type="button"
+            aria-pressed="true">
+            目標進捗率
+          </button>
+
+          <button
+            id="teamRankingRevenueButton"
+            class="revenue-chart-mode"
+            type="button"
+            aria-pressed="false">
+            売上
+          </button>
+        </div>
+
         <div id="teamRankingList"></div>
       </div>
 
@@ -4837,6 +4856,62 @@ body.product-reordering .product-list {
 
           <div class="report-builder-help">
             登録済みの実績と班別目標から全班分を自動作成します。0件の班も表示し、残数・進捗率まで計算します。生成後の文章はそのまま編集できます。
+          </div>
+
+          <div
+            id="reportTemplateSettingsPanel"
+            style="display:none;margin-top:12px;padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--card-soft);">
+
+            <div style="font-weight:800;margin-bottom:8px;">
+              ⚙️ 報告テンプレート設定
+            </div>
+
+            <div style="font-size:11px;color:var(--sub);line-height:1.6;margin-bottom:12px;">
+              朝礼用・最終報告で、表示する内容と冒頭文・締め文を個別に保存できます。
+            </div>
+
+            <div class="form-group">
+              <label for="reportTemplateModeSelect">設定するテンプレート</label>
+              <select id="reportTemplateModeSelect">
+                <option value="morning">🌅 朝礼用</option>
+                <option value="final">🌸 最終報告</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="reportTemplateIntro">冒頭文</label>
+              <textarea id="reportTemplateIntro" rows="3" maxlength="500"></textarea>
+            </div>
+
+            <div class="form-group">
+              <label for="reportTemplateOutro">締め文</label>
+              <textarea id="reportTemplateOutro" rows="3" maxlength="500"></textarea>
+            </div>
+
+            <div
+              id="reportTemplateOptionGrid"
+              style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-top:10px;">
+
+              <label><input type="checkbox" data-report-option="showDate"> 日付</label>
+              <label><input type="checkbox" data-report-option="showTeamName"> 班名</label>
+              <label><input type="checkbox" data-report-option="showDailyCount"> 当日件数</label>
+              <label><input type="checkbox" data-report-option="showMonthlyActual"> 月間累計</label>
+              <label><input type="checkbox" data-report-option="showMonthlyTarget"> 月間目標</label>
+              <label><input type="checkbox" data-report-option="showRemaining"> 残数</label>
+              <label><input type="checkbox" data-report-option="showProgress"> 進捗率</label>
+              <label><input type="checkbox" data-report-option="showProductRows"> 商材別</label>
+              <label><input type="checkbox" data-report-option="showCompanySummary"> 会社全体進捗</label>
+              <label><input type="checkbox" data-report-option="showCompanyProductSummary"> 会社全体商材別進捗</label>
+              <label><input type="checkbox" data-report-option="showBest"> 好調な班・商材</label>
+            </div>
+
+            <button
+              id="saveReportTemplateSettingsButton"
+              class="account-save-button"
+              type="button"
+              style="margin-top:12px;">
+              テンプレート設定を保存
+            </button>
           </div>
 
           <textarea
@@ -5019,6 +5094,39 @@ body.product-reordering .product-list {
       id="memberManagementContent"
       class="accordion-content"
       hidden>
+
+      <div
+        id="managedMemberCreatePanel"
+        style="margin-bottom:14px;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--card-soft);">
+
+        <div style="font-weight:800;margin-bottom:8px;">
+          メールなしメンバーを追加
+        </div>
+
+        <div class="management-input-row">
+          <input
+            id="managedMemberNameInput"
+            type="text"
+            maxlength="30"
+            placeholder="メンバー名">
+
+          <select
+            id="managedMemberTeamSelect"
+            style="min-width:140px;padding:10px;border:1px solid var(--border);border-radius:8px;">
+            <option value="">所属班を選択</option>
+          </select>
+
+          <button
+            id="addManagedMemberButton"
+            type="button">
+            追加
+          </button>
+        </div>
+
+        <div style="margin-top:7px;font-size:11px;color:var(--sub);line-height:1.6;">
+          ログインアカウントは作成しません。実績入力・ランキング用の管理メンバーとして登録します。
+        </div>
+      </div>
 
       <div
         id="memberList"
@@ -5865,6 +5973,16 @@ const teamRankingCount =
     "teamRankingCount"
   );
 
+const teamRankingProgressButton =
+  document.getElementById(
+    "teamRankingProgressButton"
+  );
+
+const teamRankingRevenueButton =
+  document.getElementById(
+    "teamRankingRevenueButton"
+  );
+
 const revenueChartToggle =
   document.getElementById(
     "revenueChartToggle"
@@ -6006,6 +6124,36 @@ const reportBuilderText =
     "reportBuilderText"
   );
 
+const reportTemplateSettingsPanel =
+  document.getElementById(
+    "reportTemplateSettingsPanel"
+  );
+
+const reportTemplateModeSelect =
+  document.getElementById(
+    "reportTemplateModeSelect"
+  );
+
+const reportTemplateIntro =
+  document.getElementById(
+    "reportTemplateIntro"
+  );
+
+const reportTemplateOutro =
+  document.getElementById(
+    "reportTemplateOutro"
+  );
+
+const reportTemplateOptionGrid =
+  document.getElementById(
+    "reportTemplateOptionGrid"
+  );
+
+const saveReportTemplateSettingsButton =
+  document.getElementById(
+    "saveReportTemplateSettingsButton"
+  );
+
 
 /* =====================================================
    管理
@@ -6101,6 +6249,26 @@ const memberManagement =
 const memberList =
   document.getElementById(
     "memberList"
+  );
+
+const managedMemberCreatePanel =
+  document.getElementById(
+    "managedMemberCreatePanel"
+  );
+
+const managedMemberNameInput =
+  document.getElementById(
+    "managedMemberNameInput"
+  );
+
+const managedMemberTeamSelect =
+  document.getElementById(
+    "managedMemberTeamSelect"
+  );
+
+const addManagedMemberButton =
+  document.getElementById(
+    "addManagedMemberButton"
   );
 
 const memberManagementToggle =
@@ -6267,6 +6435,53 @@ function isCurrentCompanyOwner() {
 }
 
 
+function canCurrentUserViewRevenue() {
+
+  return (
+    isCurrentCompanyOwner() ||
+    currentUserData?.canViewRevenue ===
+      true
+  );
+
+}
+
+
+function isManagedMember(
+  member
+) {
+
+  return (
+    member?.memberType ===
+      "managed" ||
+    member?.hasAccount ===
+      false
+  );
+
+}
+
+
+function companyMembersCollectionRef() {
+
+  if (
+    !currentUserData?.companyId
+  ) {
+
+    throw new Error(
+      "会社情報が設定されていません。"
+    );
+
+  }
+
+  return collection(
+    db,
+    "companies",
+    currentUserData.companyId,
+    "members"
+  );
+
+}
+
+
 function isCurrentTeamLeader() {
 
   return (
@@ -6354,6 +6569,36 @@ let editingRecordId = null;
 
 let revenueChartMode =
   "monthly";
+
+let teamRankingMode =
+  "progress";
+
+const defaultReportTemplateOptions = {
+  showDate: true,
+  showTeamName: true,
+  showDailyCount: true,
+  showMonthlyActual: true,
+  showMonthlyTarget: true,
+  showRemaining: true,
+  showProgress: true,
+  showProductRows: true,
+  showCompanySummary: true,
+  showCompanyProductSummary: false,
+  showBest: true
+};
+
+let reportTemplateSettings = {
+  morning: {
+    intro: "おはようございます！\n本日もよろしくお願いいたします！",
+    outro: "本日も目標達成に向けて頑張っていきましょう👊🔥",
+    ...defaultReportTemplateOptions
+  },
+  final: {
+    intro: "本日も一日お疲れさまでした！",
+    outro: "本日もありがとうございました！\n明日もよろしくお願いいたします🙇‍♂️",
+    ...defaultReportTemplateOptions
+  }
+};
 
 let revenueChartSelectedKey =
   null;
@@ -7315,6 +7560,15 @@ function recordsCollectionQuery() {
 
 
 function formatYen(value) {
+
+  if (
+    currentUserData &&
+    !canCurrentUserViewRevenue()
+  ) {
+
+    return "—";
+
+  }
 
   return `¥${Number(
     value || 0
@@ -10399,7 +10653,7 @@ function startRealtimeListeners() {
 
     unsubscribeUsers =
       onSnapshot(
-        companyCollectionQuery("users"),
+        companyMembersCollectionRef(),
         snapshot => {
 
           members = [];
@@ -10425,6 +10679,9 @@ function startRealtimeListeners() {
 
                 id:
                   userDoc.id,
+
+                companyId:
+                  currentUserData.companyId,
 
                 ...data
 
@@ -11149,7 +11406,7 @@ async function countTeamMembers(
 
     const snapshot =
       await getDocs(
-        companyCollectionQuery("users")
+        companyMembersCollectionRef()
       );
 
 
@@ -14375,7 +14632,7 @@ async function loadMembers() {
 
     const snapshot =
       await getDocs(
-        companyCollectionQuery("users")
+        companyMembersCollectionRef()
       );
 
 
@@ -14402,6 +14659,9 @@ async function loadMembers() {
 
           id:
             userDoc.id,
+
+          companyId:
+            currentUserData.companyId,
 
           ...data
 
