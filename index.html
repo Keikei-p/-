@@ -1789,6 +1789,61 @@ header {
   margin-top: 15px;
 }
 
+.product-sort-help {
+  margin-top: 12px;
+  color: var(--sub);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.product-item-main {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.product-drag-handle {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--card-soft);
+  color: var(--sub);
+  font-size: 22px;
+  line-height: 1;
+  font-weight: 800;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.product-drag-handle:active {
+  cursor: grabbing;
+}
+
+.product-item--dragging {
+  position: relative;
+  z-index: 5;
+  border-radius: 10px;
+  background: var(--primary-soft);
+  box-shadow: 0 8px 22px rgba(15,23,42,.12);
+}
+
+.product-item--dragging .product-drag-handle {
+  border-color: var(--primary-border-strong);
+  color: var(--primary-text);
+}
+
+body.product-reordering {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 .team-item,
 .product-item,
 .member-item {
@@ -3190,9 +3245,23 @@ header {
   }
 
   .team-actions,
-  .product-actions,
   .member-actions {
     flex-direction: column;
+  }
+
+  .product-actions {
+    flex-direction: row;
+    flex: 0 0 auto;
+  }
+
+  .product-item {
+    gap: 8px;
+  }
+
+  .product-drag-handle {
+    width: 36px;
+    height: 36px;
+    flex-basis: 36px;
   }
 
   .record-clear-button {
@@ -4668,6 +4737,10 @@ header {
       <div class="product-cb-help">
         例：CB0円 → 収益25,000円 / CB2万円 → 収益22,500円。
         CBなし商材はCBを0円のまま使ってください。
+      </div>
+
+      <div class="product-sort-help">
+        ≡ を押したまま上下に動かすと、商材の表示順を変更できます。
       </div>
 
       <div
@@ -12449,6 +12522,398 @@ async function loadProducts() {
 }
 
 
+let activeProductDrag =
+  null;
+
+let productOrderSavePending =
+  false;
+
+
+function moveProductDrag(
+  event
+) {
+
+  const state =
+    activeProductDrag;
+
+
+  if (
+    !state ||
+    state.pointerId !==
+      event.pointerId
+  ) {
+
+    return;
+
+  }
+
+
+  event.preventDefault();
+
+
+  if (
+    event.clientY <
+    90
+  ) {
+
+    window.scrollBy(
+      0,
+      -12
+    );
+
+  } else if (
+    event.clientY >
+    window.innerHeight -
+      90
+  ) {
+
+    window.scrollBy(
+      0,
+      12
+    );
+
+  }
+
+
+  const siblings =
+    Array.from(
+      productList.querySelectorAll(
+        ".product-item:not(.product-item--dragging)"
+      )
+    );
+
+  const before =
+    siblings.find(
+      sibling => {
+
+        const rect =
+          sibling.getBoundingClientRect();
+
+        return (
+          event.clientY <
+          rect.top +
+            rect.height /
+              2
+        );
+
+      }
+    );
+
+
+  if (
+    before
+  ) {
+
+    productList.insertBefore(
+      state.item,
+      before
+    );
+
+  } else {
+
+    productList.appendChild(
+      state.item
+    );
+
+  }
+
+}
+
+
+async function saveProductOrder(
+  productIds,
+  draftResults
+) {
+
+  if (
+    productOrderSavePending
+  ) {
+
+    return;
+
+  }
+
+
+  const productMap =
+    new Map(
+      products.map(
+        product => [
+          product.id,
+          product
+        ]
+      )
+    );
+
+  const reordered =
+    productIds
+      .map(
+        productId =>
+          productMap.get(
+            productId
+          )
+      )
+      .filter(Boolean);
+
+
+  if (
+    reordered.length !==
+    products.length
+  ) {
+
+    renderProducts();
+
+    return;
+
+  }
+
+
+  try {
+
+    productOrderSavePending =
+      true;
+
+
+    const batch =
+      writeBatch(
+        db
+      );
+
+
+    reordered.forEach(
+      (
+        product,
+        index
+      ) => {
+
+        batch.update(
+          doc(
+            db,
+            "products",
+            product.id
+          ),
+          {
+            sortOrder:
+              index,
+            updatedAt:
+              serverTimestamp()
+          }
+        );
+
+      }
+    );
+
+
+    await batch.commit();
+
+
+    products =
+      reordered.map(
+        (
+          product,
+          index
+        ) => ({
+          ...product,
+          sortOrder:
+            index
+        })
+      );
+
+
+    renderProducts();
+
+    prepareProductInputList(
+      draftResults
+    );
+
+
+    showSuccess(
+      "商材の順番を変更しました。"
+    );
+
+  } catch (error) {
+
+    renderProducts();
+
+    prepareProductInputList(
+      draftResults
+    );
+
+    showError(
+      firebaseErrorMessage(
+        error
+      )
+    );
+
+  } finally {
+
+    productOrderSavePending =
+      false;
+
+  }
+
+}
+
+
+function startProductDrag(
+  event,
+  item,
+  handle
+) {
+
+  if (
+    activeProductDrag ||
+    productOrderSavePending ||
+    (
+      event.pointerType ===
+        "mouse" &&
+      event.button !==
+        0
+    )
+  ) {
+
+    return;
+
+  }
+
+
+  event.preventDefault();
+
+
+  activeProductDrag = {
+    pointerId:
+      event.pointerId,
+    item,
+    handle,
+    originalOrder:
+      products.map(
+        product =>
+          product.id
+      ),
+    draftResults:
+      captureProductInputDraft()
+  };
+
+
+  item.classList.add(
+    "product-item--dragging"
+  );
+
+  document.body.classList.add(
+    "product-reordering"
+  );
+
+
+  try {
+
+    handle.setPointerCapture(
+      event.pointerId
+    );
+
+  } catch {
+
+    /* pointer capture非対応時も並び替えは継続 */
+
+  }
+
+}
+
+
+async function finishProductDrag(
+  event,
+  shouldSave
+) {
+
+  const state =
+    activeProductDrag;
+
+
+  if (
+    !state ||
+    state.pointerId !==
+      event.pointerId
+  ) {
+
+    return;
+
+  }
+
+
+  state.item.classList.remove(
+    "product-item--dragging"
+  );
+
+  document.body.classList.remove(
+    "product-reordering"
+  );
+
+
+  try {
+
+    if (
+      state.handle.hasPointerCapture(
+        event.pointerId
+      )
+    ) {
+
+      state.handle.releasePointerCapture(
+        event.pointerId
+      );
+
+    }
+
+  } catch {
+
+    /* release失敗時はそのまま終了 */
+
+  }
+
+
+  activeProductDrag =
+    null;
+
+
+  if (
+    !shouldSave
+  ) {
+
+    renderProducts();
+
+    return;
+
+  }
+
+
+  const nextOrder =
+    Array.from(
+      productList.querySelectorAll(
+        ".product-item"
+      )
+    )
+      .map(
+        item =>
+          item.dataset.productId
+      )
+      .filter(Boolean);
+
+
+  if (
+    nextOrder.join("|") ===
+    state.originalOrder.join("|")
+  ) {
+
+    return;
+
+  }
+
+
+  await saveProductOrder(
+    nextOrder,
+    state.draftResults
+  );
+
+}
+
+
 function renderProducts() {
 
   productManagementCount.textContent =
@@ -12474,10 +12939,7 @@ function renderProducts() {
 
 
   products.forEach(
-    (
-      product,
-      index
-    ) => {
+    product => {
 
       const item =
         document.createElement(
@@ -12487,11 +12949,71 @@ function renderProducts() {
       item.className =
         "product-item";
 
+      item.dataset.productId =
+        product.id;
+
+
+      const dragHandle =
+        document.createElement(
+          "button"
+        );
+
+      dragHandle.type =
+        "button";
+
+      dragHandle.className =
+        "product-drag-handle";
+
+      dragHandle.textContent =
+        "≡";
+
+      dragHandle.title =
+        "ドラッグして並び替え";
+
+      dragHandle.setAttribute(
+        "aria-label",
+        `${product.name || "商材"}を並び替え`
+      );
+
+      dragHandle.onpointerdown =
+        event =>
+          startProductDrag(
+            event,
+            item,
+            dragHandle
+          );
+
+      dragHandle.onpointermove =
+        moveProductDrag;
+
+      dragHandle.onpointerup =
+        event => {
+
+          void finishProductDrag(
+            event,
+            true
+          );
+
+        };
+
+      dragHandle.onpointercancel =
+        event => {
+
+          void finishProductDrag(
+            event,
+            false
+          );
+
+        };
+
 
       const info =
         document.createElement(
           "div"
         );
+
+      info.className =
+        "product-item-main";
 
 
       const name =
@@ -12539,57 +13061,6 @@ function renderProducts() {
         "product-actions";
 
 
-      const up =
-        document.createElement(
-          "button"
-        );
-
-      up.className =
-        "team-action-button";
-
-      up.textContent =
-        "↑";
-
-      up.title =
-        "上へ移動";
-
-      up.disabled =
-        index === 0;
-
-      up.onclick =
-        () =>
-          moveProduct(
-            product.id,
-            -1
-          );
-
-
-      const down =
-        document.createElement(
-          "button"
-        );
-
-      down.className =
-        "team-action-button";
-
-      down.textContent =
-        "↓";
-
-      down.title =
-        "下へ移動";
-
-      down.disabled =
-        index ===
-        products.length - 1;
-
-      down.onclick =
-        () =>
-          moveProduct(
-            product.id,
-            1
-          );
-
-
       const edit =
         document.createElement(
           "button"
@@ -12627,14 +13098,6 @@ function renderProducts() {
 
 
       actions.appendChild(
-        up
-      );
-
-      actions.appendChild(
-        down
-      );
-
-      actions.appendChild(
         edit
       );
 
@@ -12642,6 +13105,10 @@ function renderProducts() {
         del
       );
 
+
+      item.appendChild(
+        dragHandle
+      );
 
       item.appendChild(
         info
@@ -12660,126 +13127,6 @@ function renderProducts() {
   );
 
 }
-
-
-async function moveProduct(
-  productId,
-  direction
-) {
-
-  const draftResults =
-    captureProductInputDraft();
-
-
-  const currentIndex =
-    products.findIndex(
-      product =>
-        product.id ===
-        productId
-    );
-
-  const nextIndex =
-    currentIndex +
-    direction;
-
-
-  if (
-    currentIndex < 0 ||
-    nextIndex < 0 ||
-    nextIndex >=
-      products.length
-  ) {
-
-    return;
-
-  }
-
-
-  const reordered =
-    [...products];
-
-  const [
-    moved
-  ] =
-    reordered.splice(
-      currentIndex,
-      1
-    );
-
-  reordered.splice(
-    nextIndex,
-    0,
-    moved
-  );
-
-
-  try {
-
-    const batch =
-      writeBatch(
-        db
-      );
-
-
-    reordered.forEach(
-      (
-        product,
-        index
-      ) => {
-
-        batch.update(
-          doc(
-            db,
-            "products",
-            product.id
-          ),
-          {
-
-            sortOrder:
-              index,
-
-            updatedAt:
-              serverTimestamp()
-
-          }
-        );
-
-      }
-    );
-
-
-    await batch.commit();
-
-    products =
-      reordered.map(
-        (
-          product,
-          index
-        ) => ({
-          ...product,
-          sortOrder:
-            index
-        })
-      );
-
-    renderProducts();
-
-    prepareProductInputList(
-      draftResults
-    );
-
-  } catch (error) {
-
-    showError(
-      firebaseErrorMessage(
-        error
-      )
-    );
-
-  }
-
-}
-
 
 addProductPricingOptionButton.onclick =
   () =>
