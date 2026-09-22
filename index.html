@@ -4900,7 +4900,11 @@ body.product-reordering .product-list {
               <label><input type="checkbox" data-report-option="showRemaining"> 残数</label>
               <label><input type="checkbox" data-report-option="showProgress"> 進捗率</label>
               <label><input type="checkbox" data-report-option="showProductRows"> 商材別</label>
-              <label><input type="checkbox" data-report-option="showCompanySummary"> 会社全体進捗</label>
+              <label><input type="checkbox" data-report-option="showCompanySummary"> 会社全体進捗を表示</label>
+              <label><input type="checkbox" data-report-option="showCompanyTarget"> 会社全体目標</label>
+              <label><input type="checkbox" data-report-option="showCompanyActual"> 会社全体実績</label>
+              <label><input type="checkbox" data-report-option="showCompanyRemaining"> 会社全体残数</label>
+              <label><input type="checkbox" data-report-option="showCompanyProgress"> 会社全体進捗率</label>
               <label><input type="checkbox" data-report-option="showCompanyProductSummary"> 会社全体商材別進捗</label>
               <label><input type="checkbox" data-report-option="showBest"> 好調な班・商材</label>
             </div>
@@ -6583,6 +6587,10 @@ const defaultReportTemplateOptions = {
   showProgress: true,
   showProductRows: true,
   showCompanySummary: true,
+  showCompanyTarget: true,
+  showCompanyActual: true,
+  showCompanyRemaining: true,
+  showCompanyProgress: true,
   showCompanyProductSummary: false,
   showBest: true
 };
@@ -20521,20 +20529,70 @@ function buildCompanyReportLines(
         0
     ) {
 
-      lines.push(
-        `目標：${data.companySummary.target}件`,
-        `実績：${data.companySummary.actual}件`,
-        `残り：${data.companySummary.remaining}件`,
-        `進捗率：${data.companySummary.progress}%`
-      );
+      if (
+        settings.showCompanyTarget !==
+          false
+      ) {
+        lines.push(
+          `目標：${data.companySummary.target}件`
+        );
+      }
+
+      if (
+        settings.showCompanyActual !==
+          false
+      ) {
+        lines.push(
+          `実績：${data.companySummary.actual}件`
+        );
+      }
+
+      if (
+        settings.showCompanyRemaining !==
+          false
+      ) {
+        lines.push(
+          `残り：${data.companySummary.remaining}件`
+        );
+      }
+
+      if (
+        settings.showCompanyProgress !==
+          false
+      ) {
+        lines.push(
+          `進捗率：${data.companySummary.progress}%`
+        );
+      }
 
     } else {
 
-      lines.push(
-        `実績：${data.companySummary.actual}件`,
-        "目標：未設定",
-        "進捗率：目標未設定"
-      );
+      if (
+        settings.showCompanyActual !==
+          false
+      ) {
+        lines.push(
+          `実績：${data.companySummary.actual}件`
+        );
+      }
+
+      if (
+        settings.showCompanyTarget !==
+          false
+      ) {
+        lines.push(
+          "目標：未設定"
+        );
+      }
+
+      if (
+        settings.showCompanyProgress !==
+          false
+      ) {
+        lines.push(
+          "進捗率：目標未設定"
+        );
+      }
 
     }
 
@@ -20548,11 +20606,9 @@ function buildCompanyReportLines(
       lines.length >
         0
     ) {
-
       lines.push(
         ""
       );
-
     }
 
     lines.push(
@@ -24423,13 +24479,18 @@ function buildTeamGoalProgress(
     );
 
   const totalActual =
-    rows.reduce(
+    Object.values(
+      actualMap
+    ).reduce(
       (
         sum,
-        row
+        value
       ) =>
         sum +
-        row.actual,
+        Number(
+          value ||
+          0
+        ),
       0
     );
 
