@@ -18181,6 +18181,60 @@ recordHistoryDate.addEventListener(
    報告文作成
 ===================================================== */
 
+function previousDateString(
+  date
+) {
+
+  const [
+    year,
+    month,
+    day
+  ] =
+    String(
+      date ||
+      ""
+    )
+      .split("-")
+      .map(Number);
+
+
+  if (
+    !year ||
+    !month ||
+    !day
+  ) {
+
+    return date ||
+      getTodayString();
+
+  }
+
+
+  const value =
+    new Date(
+      Date.UTC(
+        year,
+        month - 1,
+        day
+      )
+    );
+
+  value.setUTCDate(
+    value.getUTCDate() -
+      1
+  );
+
+
+  return value
+    .toISOString()
+    .slice(
+      0,
+      10
+    );
+
+}
+
+
 function reportDateLabel(
   date
 ) {
@@ -19025,7 +19079,7 @@ buildFinalReportButton.onclick =
 buildMorningReportButton.onclick =
   () => {
 
-    const date =
+    let date =
       reportBuilderDate.value;
 
 
@@ -19036,6 +19090,22 @@ buildMorningReportButton.onclick =
       );
 
       return;
+
+    }
+
+
+    if (
+      date ===
+      getTodayString()
+    ) {
+
+      date =
+        previousDateString(
+          date
+        );
+
+      reportBuilderDate.value =
+        date;
 
     }
 
