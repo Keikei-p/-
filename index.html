@@ -4826,13 +4826,6 @@ body.product-reordering .product-list {
               </button>
 
               <button
-                id="buildMidReportButton"
-                class="report-mode-button"
-                type="button">
-                📣 中間報告
-              </button>
-
-              <button
                 id="copyReportButton"
                 class="report-copy-button"
                 type="button">
@@ -4850,7 +4843,7 @@ body.product-reordering .product-list {
             id="reportBuilderText"
             class="report-output"
             spellcheck="false"
-            placeholder="「朝礼用」「中間報告」「最終報告」を押すと、ここに文章が作成されます。"></textarea>
+            placeholder="「朝礼用」または「最終報告」を押すと、ここに文章が作成されます。"></textarea>
 
         </div>
 
@@ -6001,11 +5994,6 @@ const buildFinalReportButton =
 const buildMorningReportButton =
   document.getElementById(
     "buildMorningReportButton"
-  );
-
-const buildMidReportButton =
-  document.getElementById(
-    "buildMidReportButton"
   );
 
 const copyReportButton =
@@ -19081,56 +19069,7 @@ function createMorningReportText(
 }
 
 
-function createMidReportText(
-  date
-) {
 
-  const data =
-    buildReportData(
-      date
-    );
-
-  const lines = [
-    "📣中間報告📣",
-    `📅${reportDateLabel(
-      date
-    )}`,
-    "",
-    "お疲れさまです！現在の進捗を共有します。",
-    ""
-  ];
-
-  if (
-    data.teamRows.length ===
-    0
-  ) {
-
-    lines.push(
-      "班がまだ登録されていません。"
-    );
-
-    return lines.join(
-      "\n"
-    );
-
-  }
-
-  lines.push(
-    ...buildGoalReportLines(
-      data,
-      "mid"
-    ),
-    "",
-    `全体本日実績：${data.dailyTotal}件`,
-    "",
-    "残り時間も目標達成に向けてよろしくお願いします🔥"
-  );
-
-  return lines.join(
-    "\n"
-  );
-
-}
 
 
 buildFinalReportButton.onclick =
@@ -19153,30 +19092,6 @@ buildFinalReportButton.onclick =
 
     reportBuilderText.value =
       createFinalReportText(
-        date
-      );
-
-  };
-
-
-buildMidReportButton.onclick =
-  () => {
-
-    const date =
-      reportBuilderDate.value;
-
-    if (!date) {
-
-      showError(
-        "集計する日付を選択してください。"
-      );
-
-      return;
-
-    }
-
-    reportBuilderText.value =
-      createMidReportText(
         date
       );
 
