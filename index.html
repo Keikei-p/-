@@ -1801,47 +1801,40 @@ header {
   flex: 1 1 auto;
 }
 
-.product-drag-handle {
-  width: 38px;
-  height: 38px;
-  flex: 0 0 38px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  background: var(--card-soft);
-  color: var(--sub);
-  font-size: 22px;
-  line-height: 1;
-  font-weight: 800;
+.product-item {
   cursor: grab;
-  touch-action: none;
   user-select: none;
   -webkit-user-select: none;
-}
-
-.product-drag-handle:active {
-  cursor: grabbing;
+  -webkit-touch-callout: none;
 }
 
 .product-item--dragging {
-  position: relative;
-  z-index: 5;
-  border-radius: 10px;
+  opacity: .28;
+  border-style: dashed;
+  border-color: var(--primary-border-strong);
   background: var(--primary-soft);
-  box-shadow: 0 8px 22px rgba(15,23,42,.12);
 }
 
-.product-item--dragging .product-drag-handle {
-  border-color: var(--primary-border-strong);
-  color: var(--primary-text);
+.product-drag-ghost {
+  position: fixed !important;
+  z-index: 3000;
+  margin: 0 !important;
+  pointer-events: none;
+  opacity: .98;
+  background: var(--card) !important;
+  border-color: var(--primary-border-strong) !important;
+  box-shadow: 0 14px 32px rgba(15,23,42,.22);
+  transform: scale(1.04);
+  transition: none !important;
 }
 
 body.product-reordering {
   user-select: none;
   -webkit-user-select: none;
+}
+
+body.product-reordering .product-list {
+  cursor: grabbing;
 }
 
 .team-item,
@@ -1894,15 +1887,15 @@ body.product-reordering {
 .product-item {
   min-width: 0;
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   grid-template-areas:
-    "drag main"
-    "drag actions";
-  gap: 5px 8px;
+    "main"
+    "actions";
+  gap: 6px;
   align-items: center;
-  padding: 9px;
+  padding: 11px;
   border: 1px solid var(--border);
-  border-radius: 11px;
+  border-radius: 12px;
   background: var(--card);
 }
 
@@ -1923,15 +1916,6 @@ body.product-reordering {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 9px;
-}
-
-.product-item .product-drag-handle {
-  grid-area: drag;
-  align-self: stretch;
-  width: 36px;
-  height: auto;
-  min-height: 52px;
-  flex-basis: auto;
 }
 
 .product-item .product-actions {
@@ -3326,13 +3310,7 @@ body.product-reordering {
   }
 
   .product-item {
-    gap: 8px;
-  }
-
-  .product-drag-handle {
-    width: 36px;
-    height: 36px;
-    flex-basis: 36px;
+    gap: 6px;
   }
 
   .record-clear-button {
@@ -4811,7 +4789,7 @@ body.product-reordering {
       </div>
 
       <div class="product-sort-help">
-        ≡ を押したまま好きな位置へ動かすと、商材の表示順を変更できます。
+        商材カードを長押しして、そのまま好きな位置へ動かすと並べ替えできます。
       </div>
 
       <div
@@ -12596,12 +12574,51 @@ async function loadProducts() {
 let activeProductDrag =
   null;
 
+let pendingProductLongPress =
+  null;
+
 let productOrderSavePending =
   false;
 
 
-function moveProductDrag(
-  event
+function clearProductLongPress() {
+
+  if (
+    pendingProductLongPress?.timer
+  ) {
+
+    clearTimeout(
+      pendingProductLongPress.timer
+    );
+
+  }
+
+
+  pendingProductLongPress =
+    null;
+
+}
+
+
+function findTouchById(
+  touchList,
+  identifier
+) {
+
+  return Array.from(
+    touchList || []
+  ).find(
+    touch =>
+      touch.identifier ===
+      identifier
+  ) || null;
+
+}
+
+
+function updateProductDragGhost(
+  clientX,
+  clientY
 ) {
 
   const state =
@@ -12609,9 +12626,7 @@ function moveProductDrag(
 
 
   if (
-    !state ||
-    state.pointerId !==
-      event.pointerId
+    !state?.ghost
   ) {
 
     return;
@@ -12619,11 +12634,41 @@ function moveProductDrag(
   }
 
 
-  event.preventDefault();
+  state.ghost.style.left =
+    `${clientX - state.offsetX}px`;
+
+  state.ghost.style.top =
+    `${clientY - state.offsetY}px`;
+
+}
+
+
+function moveProductDragToPoint(
+  clientX,
+  clientY
+) {
+
+  const state =
+    activeProductDrag;
 
 
   if (
-    event.clientY <
+    !state
+  ) {
+
+    return;
+
+  }
+
+
+  updateProductDragGhost(
+    clientX,
+    clientY
+  );
+
+
+  if (
+    clientY <
     90
   ) {
 
@@ -12633,7 +12678,7 @@ function moveProductDrag(
     );
 
   } else if (
-    event.clientY >
+    clientY >
     window.innerHeight -
       90
   ) {
@@ -12689,9 +12734,9 @@ function moveProductDrag(
 
       const distance =
         Math.hypot(
-          event.clientX -
+          clientX -
             centerX,
-          event.clientY -
+          clientY -
             centerY
         );
 
@@ -12737,7 +12782,7 @@ function moveProductDrag(
 
   const sameRow =
     Math.abs(
-      event.clientY -
+      clientY -
         centerY
     ) <
     rect.height *
@@ -12745,9 +12790,9 @@ function moveProductDrag(
 
   const before =
     sameRow
-      ? event.clientX <
+      ? clientX <
           centerX
-      : event.clientY <
+      : clientY <
           centerY;
 
 
@@ -12757,6 +12802,132 @@ function moveProductDrag(
       ? nearest
       : nearest.nextSibling
   );
+
+}
+
+
+function activateProductDrag(
+  item,
+  inputType,
+  inputId,
+  clientX,
+  clientY
+) {
+
+  if (
+    activeProductDrag ||
+    productOrderSavePending
+  ) {
+
+    return;
+
+  }
+
+
+  const rect =
+    item.getBoundingClientRect();
+
+  const ghost =
+    item.cloneNode(
+      true
+    );
+
+  ghost.classList.remove(
+    "product-item--dragging"
+  );
+
+  ghost.classList.add(
+    "product-drag-ghost"
+  );
+
+  ghost
+    .querySelectorAll(
+      "button"
+    )
+    .forEach(
+      button => {
+
+        button.disabled =
+          true;
+
+      }
+    );
+
+  ghost.style.width =
+    `${rect.width}px`;
+
+  ghost.style.height =
+    `${rect.height}px`;
+
+  ghost.style.left =
+    `${rect.left}px`;
+
+  ghost.style.top =
+    `${rect.top}px`;
+
+
+  document.body.appendChild(
+    ghost
+  );
+
+
+  activeProductDrag = {
+    inputType,
+    inputId,
+    item,
+    ghost,
+    offsetX:
+      Math.max(
+        0,
+        Math.min(
+          rect.width,
+          clientX -
+            rect.left
+        )
+      ),
+    offsetY:
+      Math.max(
+        0,
+        Math.min(
+          rect.height,
+          clientY -
+            rect.top
+        )
+      ),
+    originalOrder:
+      products.map(
+        product =>
+          product.id
+      ),
+    draftResults:
+      captureProductInputDraft()
+  };
+
+
+  item.classList.add(
+    "product-item--dragging"
+  );
+
+  document.body.classList.add(
+    "product-reordering"
+  );
+
+
+  updateProductDragGhost(
+    clientX,
+    clientY
+  );
+
+
+  if (
+    navigator.vibrate
+  ) {
+
+    navigator.vibrate(
+      20
+    );
+
+  }
 
 }
 
@@ -12895,72 +13066,7 @@ async function saveProductOrder(
 }
 
 
-function startProductDrag(
-  event,
-  item,
-  handle
-) {
-
-  if (
-    activeProductDrag ||
-    productOrderSavePending ||
-    (
-      event.pointerType ===
-        "mouse" &&
-      event.button !==
-        0
-    )
-  ) {
-
-    return;
-
-  }
-
-
-  event.preventDefault();
-
-
-  activeProductDrag = {
-    pointerId:
-      event.pointerId,
-    item,
-    handle,
-    originalOrder:
-      products.map(
-        product =>
-          product.id
-      ),
-    draftResults:
-      captureProductInputDraft()
-  };
-
-
-  item.classList.add(
-    "product-item--dragging"
-  );
-
-  document.body.classList.add(
-    "product-reordering"
-  );
-
-
-  try {
-
-    handle.setPointerCapture(
-      event.pointerId
-    );
-
-  } catch {
-
-    /* pointer capture非対応時も並び替えは継続 */
-
-  }
-
-}
-
-
 async function finishProductDrag(
-  event,
   shouldSave
 ) {
 
@@ -12969,9 +13075,7 @@ async function finishProductDrag(
 
 
   if (
-    !state ||
-    state.pointerId !==
-      event.pointerId
+    !state
   ) {
 
     return;
@@ -12983,30 +13087,11 @@ async function finishProductDrag(
     "product-item--dragging"
   );
 
+  state.ghost?.remove();
+
   document.body.classList.remove(
     "product-reordering"
   );
-
-
-  try {
-
-    if (
-      state.handle.hasPointerCapture(
-        event.pointerId
-      )
-    ) {
-
-      state.handle.releasePointerCapture(
-        event.pointerId
-      );
-
-    }
-
-  } catch {
-
-    /* release失敗時はそのまま終了 */
-
-  }
 
 
   activeProductDrag =
@@ -13055,6 +13140,419 @@ async function finishProductDrag(
 }
 
 
+function scheduleProductLongPress(
+  item,
+  inputType,
+  inputId,
+  clientX,
+  clientY
+) {
+
+  clearProductLongPress();
+
+
+  pendingProductLongPress = {
+    inputType,
+    inputId,
+    item,
+    startX:
+      clientX,
+    startY:
+      clientY,
+    timer:
+      setTimeout(
+        () => {
+
+          const pending =
+            pendingProductLongPress;
+
+
+          if (
+            !pending ||
+            pending.item !==
+              item ||
+            pending.inputType !==
+              inputType ||
+            pending.inputId !==
+              inputId
+          ) {
+
+            return;
+
+          }
+
+
+          pendingProductLongPress =
+            null;
+
+
+          activateProductDrag(
+            item,
+            inputType,
+            inputId,
+            clientX,
+            clientY
+          );
+
+        },
+        420
+      )
+  };
+
+}
+
+
+productList.addEventListener(
+  "touchstart",
+  event => {
+
+    if (
+      productOrderSavePending ||
+      event.touches.length !==
+        1
+    ) {
+
+      return;
+
+    }
+
+
+    const item =
+      event.target.closest(
+        ".product-item"
+      );
+
+
+    if (
+      !item ||
+      event.target.closest(
+        ".product-actions button"
+      )
+    ) {
+
+      return;
+
+    }
+
+
+    const touch =
+      event.touches[0];
+
+
+    scheduleProductLongPress(
+      item,
+      "touch",
+      touch.identifier,
+      touch.clientX,
+      touch.clientY
+    );
+
+  },
+  {
+    passive:
+      true
+  }
+);
+
+
+productList.addEventListener(
+  "touchmove",
+  event => {
+
+    if (
+      activeProductDrag?.inputType ===
+        "touch"
+    ) {
+
+      const touch =
+        findTouchById(
+          event.touches,
+          activeProductDrag.inputId
+        );
+
+
+      if (
+        !touch
+      ) {
+
+        return;
+
+      }
+
+
+      event.preventDefault();
+
+
+      moveProductDragToPoint(
+        touch.clientX,
+        touch.clientY
+      );
+
+      return;
+
+    }
+
+
+    const pending =
+      pendingProductLongPress;
+
+
+    if (
+      !pending ||
+      pending.inputType !==
+        "touch"
+    ) {
+
+      return;
+
+    }
+
+
+    const touch =
+      findTouchById(
+        event.touches,
+        pending.inputId
+      );
+
+
+    if (
+      !touch
+    ) {
+
+      clearProductLongPress();
+
+      return;
+
+    }
+
+
+    const distance =
+      Math.hypot(
+        touch.clientX -
+          pending.startX,
+        touch.clientY -
+          pending.startY
+      );
+
+
+    if (
+      distance >
+      9
+    ) {
+
+      clearProductLongPress();
+
+    }
+
+  },
+  {
+    passive:
+      false
+  }
+);
+
+
+productList.addEventListener(
+  "touchend",
+  event => {
+
+    const active =
+      activeProductDrag;
+
+
+    if (
+      active?.inputType ===
+        "touch" &&
+      findTouchById(
+        event.changedTouches,
+        active.inputId
+      )
+    ) {
+
+      void finishProductDrag(
+        true
+      );
+
+      return;
+
+    }
+
+
+    clearProductLongPress();
+
+  }
+);
+
+
+productList.addEventListener(
+  "touchcancel",
+  () => {
+
+    clearProductLongPress();
+
+
+    if (
+      activeProductDrag?.inputType ===
+        "touch"
+    ) {
+
+      void finishProductDrag(
+        false
+      );
+
+    }
+
+  }
+);
+
+
+productList.addEventListener(
+  "mousedown",
+  event => {
+
+    if (
+      event.button !==
+        0 ||
+      productOrderSavePending
+    ) {
+
+      return;
+
+    }
+
+
+    const item =
+      event.target.closest(
+        ".product-item"
+      );
+
+
+    if (
+      !item ||
+      event.target.closest(
+        ".product-actions button"
+      )
+    ) {
+
+      return;
+
+    }
+
+
+    scheduleProductLongPress(
+      item,
+      "mouse",
+      0,
+      event.clientX,
+      event.clientY
+    );
+
+  }
+);
+
+
+document.addEventListener(
+  "mousemove",
+  event => {
+
+    if (
+      activeProductDrag?.inputType ===
+        "mouse"
+    ) {
+
+      event.preventDefault();
+
+
+      moveProductDragToPoint(
+        event.clientX,
+        event.clientY
+      );
+
+      return;
+
+    }
+
+
+    const pending =
+      pendingProductLongPress;
+
+
+    if (
+      !pending ||
+      pending.inputType !==
+        "mouse"
+    ) {
+
+      return;
+
+    }
+
+
+    const distance =
+      Math.hypot(
+        event.clientX -
+          pending.startX,
+        event.clientY -
+          pending.startY
+      );
+
+
+    if (
+      distance >
+      7
+    ) {
+
+      clearProductLongPress();
+
+    }
+
+  }
+);
+
+
+document.addEventListener(
+  "mouseup",
+  () => {
+
+    clearProductLongPress();
+
+
+    if (
+      activeProductDrag?.inputType ===
+        "mouse"
+    ) {
+
+      void finishProductDrag(
+        true
+      );
+
+    }
+
+  }
+);
+
+
+productList.addEventListener(
+  "contextmenu",
+  event => {
+
+    if (
+      event.target.closest(
+        ".product-item"
+      ) &&
+      !event.target.closest(
+        ".product-actions button"
+      )
+    ) {
+
+      event.preventDefault();
+
+    }
+
+  }
+);
+
+
 function renderProducts() {
 
   productManagementCount.textContent =
@@ -13065,7 +13563,8 @@ function renderProducts() {
 
 
   if (
-    products.length === 0
+    products.length ===
+    0
   ) {
 
     productList.innerHTML = `
@@ -13093,59 +13592,8 @@ function renderProducts() {
       item.dataset.productId =
         product.id;
 
-
-      const dragHandle =
-        document.createElement(
-          "button"
-        );
-
-      dragHandle.type =
-        "button";
-
-      dragHandle.className =
-        "product-drag-handle";
-
-      dragHandle.textContent =
-        "≡";
-
-      dragHandle.title =
-        "ドラッグして並び替え";
-
-      dragHandle.setAttribute(
-        "aria-label",
-        `${product.name || "商材"}を並び替え`
-      );
-
-      dragHandle.onpointerdown =
-        event =>
-          startProductDrag(
-            event,
-            item,
-            dragHandle
-          );
-
-      dragHandle.onpointermove =
-        moveProductDrag;
-
-      dragHandle.onpointerup =
-        event => {
-
-          void finishProductDrag(
-            event,
-            true
-          );
-
-        };
-
-      dragHandle.onpointercancel =
-        event => {
-
-          void finishProductDrag(
-            event,
-            false
-          );
-
-        };
+      item.title =
+        "長押しして並べ替え";
 
 
       const info =
@@ -13248,10 +13696,6 @@ function renderProducts() {
 
 
       item.appendChild(
-        dragHandle
-      );
-
-      item.appendChild(
         info
       );
 
@@ -13268,6 +13712,7 @@ function renderProducts() {
   );
 
 }
+
 
 addProductPricingOptionButton.onclick =
   () =>
