@@ -1873,6 +1873,187 @@ body.product-reordering .product-list {
   justify-content: flex-end;
 }
 
+/* メンバー管理：一覧はコンパクト、詳細設定はタップで展開 */
+.member-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.member-list .empty-message {
+  grid-column: 1 / -1;
+}
+
+.member-compact-card {
+  min-width: 0;
+  display: block;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  overflow: hidden;
+}
+
+.member-compact-card > summary {
+  list-style: none;
+}
+
+.member-compact-card > summary::-webkit-details-marker {
+  display: none;
+}
+
+.member-compact-summary {
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 11px;
+  cursor: pointer;
+}
+
+.member-compact-summary:hover {
+  background: #f8fafc;
+}
+
+.member-compact-main {
+  min-width: 0;
+}
+
+.member-compact-main .member-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.member-compact-meta {
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--sub);
+  font-size: 10px;
+}
+
+.member-compact-open {
+  flex: 0 0 auto;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.member-compact-card[open] .member-compact-open {
+  background: var(--primary-soft);
+  color: var(--primary-text);
+}
+
+.member-compact-body {
+  padding: 10px 11px 11px;
+  border-top: 1px solid var(--border);
+  background: #fafafa;
+}
+
+.member-compact-body .member-email {
+  margin-top: 0;
+  margin-bottom: 8px;
+  overflow-wrap: anywhere;
+}
+
+.member-compact-body .member-actions {
+  justify-content: flex-start;
+}
+
+.member-compact-body .member-action-button,
+.member-compact-body .history-delete {
+  min-height: 34px;
+  padding: 6px 8px;
+  font-size: 10px;
+}
+
+.compact-settings-details {
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--card-soft);
+  overflow: hidden;
+}
+
+.compact-settings-details > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  list-style: none;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.compact-settings-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.compact-settings-details > summary span {
+  color: var(--sub);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.compact-settings-body {
+  padding: 0 12px 12px;
+  border-top: 1px solid var(--border);
+}
+
+.report-template-option-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.report-template-option-grid label {
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+@media (max-width: 520px) {
+  .member-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .member-compact-summary {
+    min-height: 54px;
+    padding: 8px 9px;
+  }
+
+  .member-compact-open {
+    padding: 3px 5px;
+    font-size: 8px;
+  }
+
+  .report-template-option-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 350px) {
+  .member-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+
 /* 商材管理：増えても縦長になりすぎないコンパクト2列 */
 .product-list {
   display: grid;
@@ -2344,7 +2525,7 @@ body.product-reordering .product-list {
 
 .report-output {
   width: 100%;
-  min-height: 420px;
+  min-height: 260px;
   resize: vertical;
   padding: 14px;
   border: 1px solid var(--border);
@@ -2380,7 +2561,7 @@ body.product-reordering .product-list {
   }
 
   .report-output {
-    min-height: 360px;
+    min-height: 230px;
     font-size: 12px;
   }
 }
@@ -4858,65 +5039,71 @@ body.product-reordering .product-list {
             登録済みの実績と班別目標から全班分を自動作成します。0件の班も表示し、残数・進捗率まで計算します。生成後の文章はそのまま編集できます。
           </div>
 
-          <div
+          <details
             id="reportTemplateSettingsPanel"
-            style="display:none;margin-top:12px;padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--card-soft);">
+            class="compact-settings-details"
+            style="display:none;margin-top:4px;">
 
-            <div style="font-weight:800;margin-bottom:8px;">
-              ⚙️ 報告テンプレート設定
+            <summary>
+              <span style="color:var(--text);font-size:12px;">⚙️ 報告テンプレート設定</span>
+              <span>タップして開く</span>
+            </summary>
+
+            <div class="compact-settings-body">
+
+              <div style="font-size:10px;color:var(--sub);line-height:1.5;margin:10px 0;">
+                朝礼用・最終報告で、表示内容と冒頭文・締め文を個別に保存できます。
+              </div>
+
+              <div class="form-group">
+                <label for="reportTemplateModeSelect">設定するテンプレート</label>
+                <select id="reportTemplateModeSelect">
+                  <option value="morning">🌅 朝礼用</option>
+                  <option value="final">🌸 最終報告</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="reportTemplateIntro">冒頭文</label>
+                <textarea id="reportTemplateIntro" rows="2" maxlength="500"></textarea>
+              </div>
+
+              <div class="form-group">
+                <label for="reportTemplateOutro">締め文</label>
+                <textarea id="reportTemplateOutro" rows="2" maxlength="500"></textarea>
+              </div>
+
+              <div
+                id="reportTemplateOptionGrid"
+                class="report-template-option-grid">
+
+                <label><input type="checkbox" data-report-option="showDate"> 日付</label>
+                <label><input type="checkbox" data-report-option="showTeamName"> 班名</label>
+                <label><input type="checkbox" data-report-option="showDailyCount"> 当日件数</label>
+                <label><input type="checkbox" data-report-option="showMonthlyActual"> 月間累計</label>
+                <label><input type="checkbox" data-report-option="showMonthlyTarget"> 月間目標</label>
+                <label><input type="checkbox" data-report-option="showRemaining"> 残数</label>
+                <label><input type="checkbox" data-report-option="showProgress"> 進捗率</label>
+                <label><input type="checkbox" data-report-option="showProductRows"> 班の商材別</label>
+                <label><input type="checkbox" data-report-option="showCompanySummary"> 会社全体</label>
+                <label><input type="checkbox" data-report-option="showCompanyTarget"> 全体目標</label>
+                <label><input type="checkbox" data-report-option="showCompanyActual"> 全体実績</label>
+                <label><input type="checkbox" data-report-option="showCompanyRemaining"> 全体残数</label>
+                <label><input type="checkbox" data-report-option="showCompanyProgress"> 全体進捗率</label>
+                <label><input type="checkbox" data-report-option="showCompanyProductSummary"> 全体の商材別</label>
+                <label><input type="checkbox" data-report-option="showBest"> 好調な班・商材</label>
+              </div>
+
+              <button
+                id="saveReportTemplateSettingsButton"
+                class="account-save-button"
+                type="button"
+                style="margin-top:10px;">
+                テンプレート設定を保存
+              </button>
+
             </div>
-
-            <div style="font-size:11px;color:var(--sub);line-height:1.6;margin-bottom:12px;">
-              朝礼用・最終報告で、表示する内容と冒頭文・締め文を個別に保存できます。
-            </div>
-
-            <div class="form-group">
-              <label for="reportTemplateModeSelect">設定するテンプレート</label>
-              <select id="reportTemplateModeSelect">
-                <option value="morning">🌅 朝礼用</option>
-                <option value="final">🌸 最終報告</option>
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label for="reportTemplateIntro">冒頭文</label>
-              <textarea id="reportTemplateIntro" rows="3" maxlength="500"></textarea>
-            </div>
-
-            <div class="form-group">
-              <label for="reportTemplateOutro">締め文</label>
-              <textarea id="reportTemplateOutro" rows="3" maxlength="500"></textarea>
-            </div>
-
-            <div
-              id="reportTemplateOptionGrid"
-              style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-top:10px;">
-
-              <label><input type="checkbox" data-report-option="showDate"> 日付</label>
-              <label><input type="checkbox" data-report-option="showTeamName"> 班名</label>
-              <label><input type="checkbox" data-report-option="showDailyCount"> 当日件数</label>
-              <label><input type="checkbox" data-report-option="showMonthlyActual"> 月間累計</label>
-              <label><input type="checkbox" data-report-option="showMonthlyTarget"> 月間目標</label>
-              <label><input type="checkbox" data-report-option="showRemaining"> 残数</label>
-              <label><input type="checkbox" data-report-option="showProgress"> 進捗率</label>
-              <label><input type="checkbox" data-report-option="showProductRows"> 商材別</label>
-              <label><input type="checkbox" data-report-option="showCompanySummary"> 会社全体進捗を表示</label>
-              <label><input type="checkbox" data-report-option="showCompanyTarget"> 会社全体目標</label>
-              <label><input type="checkbox" data-report-option="showCompanyActual"> 会社全体実績</label>
-              <label><input type="checkbox" data-report-option="showCompanyRemaining"> 会社全体残数</label>
-              <label><input type="checkbox" data-report-option="showCompanyProgress"> 会社全体進捗率</label>
-              <label><input type="checkbox" data-report-option="showCompanyProductSummary"> 会社全体商材別進捗</label>
-              <label><input type="checkbox" data-report-option="showBest"> 好調な班・商材</label>
-            </div>
-
-            <button
-              id="saveReportTemplateSettingsButton"
-              class="account-save-button"
-              type="button"
-              style="margin-top:12px;">
-              テンプレート設定を保存
-            </button>
-          </div>
+          </details>
 
           <textarea
             id="reportBuilderText"
@@ -5099,38 +5286,42 @@ body.product-reordering .product-list {
       class="accordion-content"
       hidden>
 
-      <div
+      <details
         id="managedMemberCreatePanel"
-        style="margin-bottom:14px;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--card-soft);">
+        class="compact-settings-details"
+        style="margin-bottom:10px;">
 
-        <div style="font-weight:800;margin-bottom:8px;">
-          メールなしメンバーを追加
+        <summary>
+          <span style="color:var(--text);font-size:12px;">＋ メールなしメンバーを追加</span>
+          <span>タップして開く</span>
+        </summary>
+
+        <div class="compact-settings-body">
+          <div class="management-input-row" style="margin-top:10px;">
+            <input
+              id="managedMemberNameInput"
+              type="text"
+              maxlength="30"
+              placeholder="メンバー名">
+
+            <select
+              id="managedMemberTeamSelect"
+              style="min-width:140px;padding:10px;border:1px solid var(--border);border-radius:8px;">
+              <option value="">所属班を選択</option>
+            </select>
+
+            <button
+              id="addManagedMemberButton"
+              type="button">
+              追加
+            </button>
+          </div>
+
+          <div style="margin-top:7px;font-size:10px;color:var(--sub);line-height:1.5;">
+            ログインアカウントは作成せず、実績入力用の管理メンバーとして登録します。
+          </div>
         </div>
-
-        <div class="management-input-row">
-          <input
-            id="managedMemberNameInput"
-            type="text"
-            maxlength="30"
-            placeholder="メンバー名">
-
-          <select
-            id="managedMemberTeamSelect"
-            style="min-width:140px;padding:10px;border:1px solid var(--border);border-radius:8px;">
-            <option value="">所属班を選択</option>
-          </select>
-
-          <button
-            id="addManagedMemberButton"
-            type="button">
-            追加
-          </button>
-        </div>
-
-        <div style="margin-top:7px;font-size:11px;color:var(--sub);line-height:1.6;">
-          ログインアカウントは作成しません。実績入力・ランキング用の管理メンバーとして登録します。
-        </div>
-      </div>
+      </details>
 
       <div
         id="memberList"
@@ -6591,7 +6782,8 @@ const defaultReportTemplateOptions = {
   showCompanyActual: true,
   showCompanyRemaining: true,
   showCompanyProgress: true,
-  showCompanyProductSummary: false,
+  showCompanyProductSummary: true,
+  companyProductSummaryV2: true,
   showBest: true
 };
 
@@ -15704,16 +15896,27 @@ function renderMembers() {
 
       const item =
         document.createElement(
-          "div"
+          "details"
         );
 
       item.className =
-        "member-item";
+        "member-item member-compact-card";
 
-      const info =
+      const summary =
+        document.createElement(
+          "summary"
+        );
+
+      summary.className =
+        "member-compact-summary";
+
+      const main =
         document.createElement(
           "div"
         );
+
+      main.className =
+        "member-compact-main";
 
       const name =
         document.createElement(
@@ -15726,6 +15929,65 @@ function renderMembers() {
       name.textContent =
         member.name ||
         "名前未設定";
+
+      const meta =
+        document.createElement(
+          "div"
+        );
+
+      meta.className =
+        "member-compact-meta";
+
+      const roleLabel =
+        member.companyRole ===
+          "owner"
+          ? "オーナー"
+          : (
+              member.role ===
+                "leader"
+                ? "リーダー"
+                : "メンバー"
+            );
+
+      meta.textContent =
+        `${roleLabel} ・ ${getTeamName(
+          member.teamId
+        )}`;
+
+      main.appendChild(
+        name
+      );
+
+      main.appendChild(
+        meta
+      );
+
+      const openLabel =
+        document.createElement(
+          "span"
+        );
+
+      openLabel.className =
+        "member-compact-open";
+
+      openLabel.textContent =
+        "設定";
+
+      summary.appendChild(
+        main
+      );
+
+      summary.appendChild(
+        openLabel
+      );
+
+      const body =
+        document.createElement(
+          "div"
+        );
+
+      body.className =
+        "member-compact-body";
 
       const email =
         document.createElement(
@@ -15742,57 +16004,11 @@ function renderMembers() {
           ? "管理メンバー（ログインなし）"
           : (
               member.email ||
-              ""
+              "メールアドレス未設定"
             );
 
-      const role =
-        document.createElement(
-          "div"
-        );
-
-      role.className =
-        "member-role";
-
-      role.textContent =
-        member.companyRole ===
-          "owner"
-          ? "👑 オーナー"
-          : (
-              member.role ===
-                "leader"
-                ? `👑 ${getTeamName(
-                    member.teamId
-                  )} リーダー`
-                : "👤 メンバー"
-            );
-
-      const team =
-        document.createElement(
-          "div"
-        );
-
-      team.className =
-        "member-team";
-
-      team.textContent =
-        getTeamName(
-          member.teamId
-        );
-
-      info.appendChild(
-        name
-      );
-
-      info.appendChild(
+      body.appendChild(
         email
-      );
-
-      info.appendChild(
-        role
-      );
-
-      info.appendChild(
-        team
       );
 
       const actions =
@@ -15922,7 +16138,7 @@ function renderMembers() {
             "center";
 
           revenueLabel.style.gap =
-            "6px";
+            "5px";
 
           const revenueToggle =
             document.createElement(
@@ -15959,28 +16175,16 @@ function renderMembers() {
 
         }
 
-      }
+        const teamButton =
+          document.createElement(
+            "button"
+          );
 
-      const teamButton =
-        document.createElement(
-          "button"
-        );
+        teamButton.className =
+          "member-action-button";
 
-      teamButton.className =
-        "member-action-button";
-
-      teamButton.textContent =
-        "班変更";
-
-      const canChangeTeam =
-        isCurrentCompanyOwner();
-
-      teamButton.disabled =
-        !canChangeTeam;
-
-      if (
-        canChangeTeam
-      ) {
+        teamButton.textContent =
+          "班変更";
 
         teamButton.onclick =
           () =>
@@ -15988,54 +16192,84 @@ function renderMembers() {
               member
             );
 
-      } else {
+        actions.appendChild(
+          teamButton
+        );
 
-        teamButton.textContent =
-          "班変更はオーナー";
+        if (
+          member.companyRole !==
+            "owner" &&
+          member.id !==
+            currentUser?.uid
+        ) {
+
+          const removeButton =
+            document.createElement(
+              "button"
+            );
+
+          removeButton.className =
+            "history-delete";
+
+          removeButton.textContent =
+            "会社から削除";
+
+          removeButton.onclick =
+            () =>
+              disableCompanyMember(
+                member
+              );
+
+          actions.appendChild(
+            removeButton
+          );
+
+        }
+
+      } else if (
+        isCurrentTeamLeader()
+      ) {
+
+        const hint =
+          document.createElement(
+            "div"
+          );
+
+        hint.style.color =
+          "var(--sub)";
+
+        hint.style.fontSize =
+          "10px";
+
+        hint.textContent =
+          member.teamId ===
+            currentUserData?.teamId
+            ? "自班メンバー"
+            : "閲覧のみ";
+
+        actions.appendChild(
+          hint
+        );
 
       }
 
-      actions.appendChild(
-        teamButton
-      );
-
       if (
-        isCurrentCompanyOwner() &&
-        member.companyRole !==
-          "owner" &&
-        member.id !==
-          currentUser?.uid
+        actions.childNodes.length >
+          0
       ) {
 
-        const removeButton =
-          document.createElement(
-            "button"
-          );
-
-        removeButton.className =
-          "history-delete";
-
-        removeButton.textContent =
-          "会社から削除";
-
-        removeButton.onclick =
-          () =>
-            disableCompanyMember(
-              member
-            );
-
-        actions.appendChild(
-          removeButton
+        body.appendChild(
+          actions
         );
 
       }
 
       item.appendChild(
-        info
+        summary
       );
 
       item.appendChild(
-        actions
+        body
       );
 
       memberList.appendChild(
@@ -19292,17 +19526,37 @@ function normalizeReportModeSettings(
             "本日もありがとうございました！\n明日もよろしくお願いいたします🙇‍♂️"
         };
 
-  return {
+  const stored =
+    value &&
+    typeof value ===
+      "object"
+      ? value
+      : {};
+
+  const normalized = {
     ...defaultReportTemplateOptions,
     ...fallback,
-    ...(
-      value &&
-      typeof value ===
-        "object"
-        ? value
-        : {}
-    )
+    ...stored
   };
+
+  /*
+    旧テンプレート設定では会社全体の商材別が初期OFFだったため、
+    新形式へ初回だけ移行する。以後はユーザーのON/OFF設定を尊重する。
+  */
+  if (
+    stored.companyProductSummaryV2 !==
+      true
+  ) {
+
+    normalized.showCompanyProductSummary =
+      true;
+
+    normalized.companyProductSummaryV2 =
+      true;
+
+  }
+
+  return normalized;
 
 }
 
@@ -20550,6 +20804,12 @@ function buildCompanyReportLines(
       mode
     );
 
+  const dailyLabel =
+    mode ===
+      "morning"
+      ? "昨日"
+      : "本日";
+
   const lines =
     [];
 
@@ -20561,77 +20821,78 @@ function buildCompanyReportLines(
       "【会社全体進捗】"
     );
 
+    const values =
+      [];
+
     if (
+      settings.showDailyCount
+    ) {
+
+      values.push(
+        `${dailyLabel}${Number(
+          data.dailyTotal ||
+          0
+        )}件`
+      );
+
+    }
+
+    if (
+      settings.showCompanyActual !==
+        false
+    ) {
+
+      values.push(
+        `月間実績${data.companySummary.actual}件`
+      );
+
+    }
+
+    if (
+      settings.showCompanyTarget !==
+        false
+    ) {
+
+      values.push(
+        data.companySummary.target >
+          0
+          ? `目標${data.companySummary.target}件`
+          : "目標未設定"
+      );
+
+    }
+
+    if (
+      settings.showCompanyRemaining !==
+        false &&
       data.companySummary.target >
         0
     ) {
 
-      if (
-        settings.showCompanyTarget !==
-          false
-      ) {
-        lines.push(
-          `目標：${data.companySummary.target}件`
-        );
-      }
-
-      if (
-        settings.showCompanyActual !==
-          false
-      ) {
-        lines.push(
-          `実績：${data.companySummary.actual}件`
-        );
-      }
-
-      if (
-        settings.showCompanyRemaining !==
-          false
-      ) {
-        lines.push(
-          `残り：${data.companySummary.remaining}件`
-        );
-      }
-
-      if (
-        settings.showCompanyProgress !==
-          false
-      ) {
-        lines.push(
-          `進捗率：${data.companySummary.progress}%`
-        );
-      }
-
-    } else {
-
-      if (
-        settings.showCompanyActual !==
-          false
-      ) {
-        lines.push(
-          `実績：${data.companySummary.actual}件`
-        );
-      }
-
-      if (
-        settings.showCompanyTarget !==
-          false
-      ) {
-        lines.push(
-          "目標：未設定"
-        );
-      }
-
-      if (
-        settings.showCompanyProgress !==
-          false
-      ) {
-        lines.push(
-          "進捗率：目標未設定"
-        );
-      }
+      values.push(
+        `残り${data.companySummary.remaining}件`
+      );
 
     }
+
+    if (
+      settings.showCompanyProgress !==
+        false &&
+      data.companySummary.target >
+        0
+    ) {
+
+      values.push(
+        `進捗${data.companySummary.progress}%`
+      );
+
+    }
+
+    lines.push(
+      `全体：${values.join(
+        "｜"
+      )}`
+    );
 
   }
 
@@ -20643,9 +20904,11 @@ function buildCompanyReportLines(
       lines.length >
         0
     ) {
+
       lines.push(
         ""
       );
+
     }
 
     lines.push(
@@ -20655,9 +20918,9 @@ function buildCompanyReportLines(
     data.productRows.forEach(
       product => {
 
-        const target =
+        const daily =
           Number(
-            data.targetTotals[
+            data.dailyProductTotals[
               product.key
             ] ||
             0
@@ -20671,30 +20934,87 @@ function buildCompanyReportLines(
             0
           );
 
+        const target =
+          Number(
+            data.targetTotals[
+              product.key
+            ] ||
+            0
+          );
+
+        const values =
+          [];
+
         if (
+          settings.showDailyCount
+        ) {
+
+          values.push(
+            `${dailyLabel}${daily}件`
+          );
+
+        }
+
+        if (
+          settings.showMonthlyActual
+        ) {
+
+          values.push(
+            `月間${actual}件`
+          );
+
+        }
+
+        if (
+          settings.showMonthlyTarget
+        ) {
+
+          values.push(
+            target >
+              0
+              ? `目標${target}件`
+              : "目標未設定"
+          );
+
+        }
+
+        if (
+          settings.showRemaining &&
           target >
             0
         ) {
 
-          lines.push(
-            `${product.name}：${actual}/${target}件｜残り${Math.max(
+          values.push(
+            `残り${Math.max(
               target -
                 actual,
               0
-            )}件｜進捗${Math.round(
+            )}件`
+          );
+
+        }
+
+        if (
+          settings.showProgress &&
+          target >
+            0
+        ) {
+
+          values.push(
+            `進捗${Math.round(
               actual /
                 target *
                 100
             )}%`
           );
 
-        } else {
-
-          lines.push(
-            `${product.name}：${actual}件｜目標未設定`
-          );
-
         }
+
+        lines.push(
+          `${product.name}：${values.join(
+            "｜"
+          )}`
+        );
 
       }
     );
