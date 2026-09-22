@@ -4695,6 +4695,25 @@ body.product-reordering .product-list {
         id="teamRankingContent"
         class="dashboard-app-content"
         hidden>
+
+        <div class="revenue-chart-toolbar" style="margin-bottom:12px;">
+          <button
+            id="teamRankingProgressButton"
+            class="revenue-chart-mode"
+            type="button"
+            aria-pressed="true">
+            目標進捗率
+          </button>
+
+          <button
+            id="teamRankingRevenueButton"
+            class="revenue-chart-mode"
+            type="button"
+            aria-pressed="false">
+            売上
+          </button>
+        </div>
+
         <div id="teamRankingList"></div>
       </div>
 
@@ -4837,6 +4856,66 @@ body.product-reordering .product-list {
 
           <div class="report-builder-help">
             登録済みの実績と班別目標から全班分を自動作成します。0件の班も表示し、残数・進捗率まで計算します。生成後の文章はそのまま編集できます。
+          </div>
+
+          <div
+            id="reportTemplateSettingsPanel"
+            style="display:none;margin-top:12px;padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--card-soft);">
+
+            <div style="font-weight:800;margin-bottom:8px;">
+              ⚙️ 報告テンプレート設定
+            </div>
+
+            <div style="font-size:11px;color:var(--sub);line-height:1.6;margin-bottom:12px;">
+              朝礼用・最終報告で、表示する内容と冒頭文・締め文を個別に保存できます。
+            </div>
+
+            <div class="form-group">
+              <label for="reportTemplateModeSelect">設定するテンプレート</label>
+              <select id="reportTemplateModeSelect">
+                <option value="morning">🌅 朝礼用</option>
+                <option value="final">🌸 最終報告</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="reportTemplateIntro">冒頭文</label>
+              <textarea id="reportTemplateIntro" rows="3" maxlength="500"></textarea>
+            </div>
+
+            <div class="form-group">
+              <label for="reportTemplateOutro">締め文</label>
+              <textarea id="reportTemplateOutro" rows="3" maxlength="500"></textarea>
+            </div>
+
+            <div
+              id="reportTemplateOptionGrid"
+              style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-top:10px;">
+
+              <label><input type="checkbox" data-report-option="showDate"> 日付</label>
+              <label><input type="checkbox" data-report-option="showTeamName"> 班名</label>
+              <label><input type="checkbox" data-report-option="showDailyCount"> 当日件数</label>
+              <label><input type="checkbox" data-report-option="showMonthlyActual"> 月間累計</label>
+              <label><input type="checkbox" data-report-option="showMonthlyTarget"> 月間目標</label>
+              <label><input type="checkbox" data-report-option="showRemaining"> 残数</label>
+              <label><input type="checkbox" data-report-option="showProgress"> 進捗率</label>
+              <label><input type="checkbox" data-report-option="showProductRows"> 商材別</label>
+              <label><input type="checkbox" data-report-option="showCompanySummary"> 会社全体進捗を表示</label>
+              <label><input type="checkbox" data-report-option="showCompanyTarget"> 会社全体目標</label>
+              <label><input type="checkbox" data-report-option="showCompanyActual"> 会社全体実績</label>
+              <label><input type="checkbox" data-report-option="showCompanyRemaining"> 会社全体残数</label>
+              <label><input type="checkbox" data-report-option="showCompanyProgress"> 会社全体進捗率</label>
+              <label><input type="checkbox" data-report-option="showCompanyProductSummary"> 会社全体商材別進捗</label>
+              <label><input type="checkbox" data-report-option="showBest"> 好調な班・商材</label>
+            </div>
+
+            <button
+              id="saveReportTemplateSettingsButton"
+              class="account-save-button"
+              type="button"
+              style="margin-top:12px;">
+              テンプレート設定を保存
+            </button>
           </div>
 
           <textarea
@@ -5019,6 +5098,39 @@ body.product-reordering .product-list {
       id="memberManagementContent"
       class="accordion-content"
       hidden>
+
+      <div
+        id="managedMemberCreatePanel"
+        style="margin-bottom:14px;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--card-soft);">
+
+        <div style="font-weight:800;margin-bottom:8px;">
+          メールなしメンバーを追加
+        </div>
+
+        <div class="management-input-row">
+          <input
+            id="managedMemberNameInput"
+            type="text"
+            maxlength="30"
+            placeholder="メンバー名">
+
+          <select
+            id="managedMemberTeamSelect"
+            style="min-width:140px;padding:10px;border:1px solid var(--border);border-radius:8px;">
+            <option value="">所属班を選択</option>
+          </select>
+
+          <button
+            id="addManagedMemberButton"
+            type="button">
+            追加
+          </button>
+        </div>
+
+        <div style="margin-top:7px;font-size:11px;color:var(--sub);line-height:1.6;">
+          ログインアカウントは作成しません。実績入力・ランキング用の管理メンバーとして登録します。
+        </div>
+      </div>
 
       <div
         id="memberList"
@@ -5865,6 +5977,16 @@ const teamRankingCount =
     "teamRankingCount"
   );
 
+const teamRankingProgressButton =
+  document.getElementById(
+    "teamRankingProgressButton"
+  );
+
+const teamRankingRevenueButton =
+  document.getElementById(
+    "teamRankingRevenueButton"
+  );
+
 const revenueChartToggle =
   document.getElementById(
     "revenueChartToggle"
@@ -6006,6 +6128,36 @@ const reportBuilderText =
     "reportBuilderText"
   );
 
+const reportTemplateSettingsPanel =
+  document.getElementById(
+    "reportTemplateSettingsPanel"
+  );
+
+const reportTemplateModeSelect =
+  document.getElementById(
+    "reportTemplateModeSelect"
+  );
+
+const reportTemplateIntro =
+  document.getElementById(
+    "reportTemplateIntro"
+  );
+
+const reportTemplateOutro =
+  document.getElementById(
+    "reportTemplateOutro"
+  );
+
+const reportTemplateOptionGrid =
+  document.getElementById(
+    "reportTemplateOptionGrid"
+  );
+
+const saveReportTemplateSettingsButton =
+  document.getElementById(
+    "saveReportTemplateSettingsButton"
+  );
+
 
 /* =====================================================
    管理
@@ -6101,6 +6253,26 @@ const memberManagement =
 const memberList =
   document.getElementById(
     "memberList"
+  );
+
+const managedMemberCreatePanel =
+  document.getElementById(
+    "managedMemberCreatePanel"
+  );
+
+const managedMemberNameInput =
+  document.getElementById(
+    "managedMemberNameInput"
+  );
+
+const managedMemberTeamSelect =
+  document.getElementById(
+    "managedMemberTeamSelect"
+  );
+
+const addManagedMemberButton =
+  document.getElementById(
+    "addManagedMemberButton"
   );
 
 const memberManagementToggle =
@@ -6267,6 +6439,53 @@ function isCurrentCompanyOwner() {
 }
 
 
+function canCurrentUserViewRevenue() {
+
+  return (
+    isCurrentCompanyOwner() ||
+    currentUserData?.canViewRevenue ===
+      true
+  );
+
+}
+
+
+function isManagedMember(
+  member
+) {
+
+  return (
+    member?.memberType ===
+      "managed" ||
+    member?.hasAccount ===
+      false
+  );
+
+}
+
+
+function companyMembersCollectionRef() {
+
+  if (
+    !currentUserData?.companyId
+  ) {
+
+    throw new Error(
+      "会社情報が設定されていません。"
+    );
+
+  }
+
+  return collection(
+    db,
+    "companies",
+    currentUserData.companyId,
+    "members"
+  );
+
+}
+
+
 function isCurrentTeamLeader() {
 
   return (
@@ -6354,6 +6573,40 @@ let editingRecordId = null;
 
 let revenueChartMode =
   "monthly";
+
+let teamRankingMode =
+  "progress";
+
+const defaultReportTemplateOptions = {
+  showDate: true,
+  showTeamName: true,
+  showDailyCount: true,
+  showMonthlyActual: true,
+  showMonthlyTarget: true,
+  showRemaining: true,
+  showProgress: true,
+  showProductRows: true,
+  showCompanySummary: true,
+  showCompanyTarget: true,
+  showCompanyActual: true,
+  showCompanyRemaining: true,
+  showCompanyProgress: true,
+  showCompanyProductSummary: false,
+  showBest: true
+};
+
+let reportTemplateSettings = {
+  morning: {
+    intro: "おはようございます！\n本日もよろしくお願いいたします！",
+    outro: "本日も目標達成に向けて頑張っていきましょう👊🔥",
+    ...defaultReportTemplateOptions
+  },
+  final: {
+    intro: "本日も一日お疲れさまでした！",
+    outro: "本日もありがとうございました！\n明日もよろしくお願いいたします🙇‍♂️",
+    ...defaultReportTemplateOptions
+  }
+};
 
 let revenueChartSelectedKey =
   null;
@@ -7316,6 +7569,15 @@ function recordsCollectionQuery() {
 
 function formatYen(value) {
 
+  if (
+    currentUserData &&
+    !canCurrentUserViewRevenue()
+  ) {
+
+    return "—";
+
+  }
+
   return `¥${Number(
     value || 0
   ).toLocaleString("ja-JP")}`;
@@ -7934,6 +8196,8 @@ async function enterApplication(
   appScreen.style.display =
     "block";
 
+
+  await loadReportTemplateSettings();
 
   startRealtimeListeners();
 
@@ -9778,6 +10042,86 @@ resetThemeColorButton.addEventListener(
    現在ユーザーUI
 ===================================================== */
 
+
+function applyRevenueVisibility() {
+
+  const allowed =
+    canCurrentUserViewRevenue();
+
+  if (
+    monthlyRevenue?.closest(
+      ".summary-card"
+    )
+  ) {
+
+    monthlyRevenue.closest(
+      ".summary-card"
+    ).style.display =
+      allowed
+        ? ""
+        : "none";
+
+  }
+
+  if (
+    salesAnalysisToggle
+  ) {
+
+    salesAnalysisToggle.style.display =
+      allowed
+        ? ""
+        : "none";
+
+  }
+
+  if (
+    revenueChartToggle
+  ) {
+
+    revenueChartToggle.style.display =
+      allowed
+        ? ""
+        : "none";
+
+  }
+
+  if (
+    teamRankingRevenueButton
+  ) {
+
+    teamRankingRevenueButton.style.display =
+      allowed
+        ? ""
+        : "none";
+
+  }
+
+  if (
+    !allowed &&
+    teamRankingMode ===
+      "revenue"
+  ) {
+
+    teamRankingMode =
+      "progress";
+
+  }
+
+  if (
+    !allowed
+  ) {
+
+    salesAnalysisContent.hidden =
+      true;
+
+    revenueChartContent.hidden =
+      true;
+
+  }
+
+}
+
+
 function updateCurrentUserUI() {
 
   if (
@@ -9788,11 +10132,9 @@ function updateCurrentUserUI() {
 
   }
 
-
   const name =
     currentUserData.name ||
     "名前未設定";
-
 
   userName.textContent =
     name;
@@ -9822,10 +10164,9 @@ function updateCurrentUserUI() {
       ? "none"
       : "";
 
-
   if (
     currentUserData.companyRole ===
-    "owner"
+      "owner"
   ) {
 
     deleteOwnAccountButton.disabled =
@@ -9856,14 +10197,14 @@ function updateCurrentUserUI() {
 
   }
 
-
   const canInvite =
     isCurrentCompanyManager();
 
   const isOwner =
-    currentUserData.companyRole ===
-    "owner";
+    isCurrentCompanyOwner();
 
+  const canViewRevenue =
+    canCurrentUserViewRevenue();
 
   companyInviteControls.style.display =
     canInvite
@@ -9875,12 +10216,15 @@ function updateCurrentUserUI() {
       ? "block"
       : "none";
 
-
   reportBuilderToggle.style.display =
     canInvite
       ? ""
       : "none";
 
+  reportTemplateSettingsPanel.style.display =
+    isOwner
+      ? ""
+      : "none";
 
   ownerTransferPanel.style.display =
     isOwner
@@ -9891,7 +10235,6 @@ function updateCurrentUserUI() {
     isOwner
       ? "block"
       : "none";
-
 
   if (
     !canInvite &&
@@ -9905,7 +10248,6 @@ function updateCurrentUserUI() {
 
   }
 
-
   if (
     !isOwner &&
     quickOwnerButton.getAttribute(
@@ -9918,24 +10260,19 @@ function updateCurrentUserUI() {
 
   }
 
-
   renderOwnerTransferOptions();
-
-
-  revenueChartToggle.style.display =
-    "";
 
   allTeamsOverviewToggle.style.display =
     "";
 
+  applyRevenueVisibility();
 
   if (
     isCurrentCompanyManager()
   ) {
 
     userRole.textContent =
-      currentUserData.companyRole ===
-        "owner"
+      isOwner
         ? "👑 オーナー"
         : `👑 ${getTeamName(
             currentUserData.teamId
@@ -9948,14 +10285,25 @@ function updateCurrentUserUI() {
       "block";
 
     managementProductButton.style.display =
-      "block";
+      canViewRevenue
+        ? "block"
+        : "none";
 
     managementMemberButton.style.display =
       "block";
 
+    if (
+      !canViewRevenue &&
+      activeManagementSection ===
+        "product"
+    ) {
+
+      activeManagementSection =
+        null;
+
+    }
 
     hideManagementCards();
-
 
     if (
       activeManagementSection
@@ -9983,10 +10331,11 @@ function updateCurrentUserUI() {
           activeManagementSection
         ];
 
-
       if (
         activeCard &&
-        activeButton
+        activeButton &&
+        activeButton.style.display !==
+          "none"
       ) {
 
         activeCard.style.display =
@@ -10399,7 +10748,7 @@ function startRealtimeListeners() {
 
     unsubscribeUsers =
       onSnapshot(
-        companyCollectionQuery("users"),
+        companyMembersCollectionRef(),
         snapshot => {
 
           members = [];
@@ -10425,6 +10774,9 @@ function startRealtimeListeners() {
 
                 id:
                   userDoc.id,
+
+                companyId:
+                  currentUserData.companyId,
 
                 ...data
 
@@ -11149,7 +11501,7 @@ async function countTeamMembers(
 
     const snapshot =
       await getDocs(
-        companyCollectionQuery("users")
+        companyMembersCollectionRef()
       );
 
 
@@ -14375,7 +14727,7 @@ async function loadMembers() {
 
     const snapshot =
       await getDocs(
-        companyCollectionQuery("users")
+        companyMembersCollectionRef()
       );
 
 
@@ -14402,6 +14754,9 @@ async function loadMembers() {
 
           id:
             userDoc.id,
+
+          companyId:
+            currentUserData.companyId,
 
           ...data
 
@@ -14521,7 +14876,10 @@ function renderOwnerTransferOptions() {
         member.active !==
           false &&
         member.companyRole !==
-          "owner"
+          "owner" &&
+        !isManagedMember(
+          member
+        )
     )
     .forEach(
       member => {
@@ -14605,7 +14963,10 @@ function renderOwnerTransferOptions() {
         member.id !==
           currentUser?.uid &&
         member.active !==
-          false
+          false &&
+        !isManagedMember(
+          member
+        )
     )
     .forEach(
       member => {
@@ -14693,7 +15054,10 @@ ownerAddButton.onclick =
           member.active !==
             false &&
           member.companyRole !==
-            "owner"
+            "owner" &&
+          !isManagedMember(
+            member
+          )
       );
 
 
@@ -14853,7 +15217,10 @@ ownerTransferButton.onclick =
           member.id ===
             ownerTransferSelect.value &&
           member.active !==
-            false
+            false &&
+          !isManagedMember(
+            member
+          )
       );
 
 
@@ -15123,6 +15490,180 @@ function getTeamName(
 }
 
 
+
+function renderManagedMemberTeamOptions() {
+
+  if (
+    !managedMemberTeamSelect
+  ) {
+
+    return;
+
+  }
+
+  const currentValue =
+    managedMemberTeamSelect.value;
+
+  managedMemberTeamSelect.innerHTML =
+    '<option value="">所属班を選択</option>';
+
+  const selectableTeams =
+    isCurrentCompanyOwner()
+      ? teams.filter(
+          team =>
+            team.active !==
+              false
+        )
+      : (
+          isCurrentTeamLeader()
+            ? teams.filter(
+                team =>
+                  team.id ===
+                    currentUserData?.teamId &&
+                  team.active !==
+                    false
+              )
+            : []
+        );
+
+  selectableTeams.forEach(
+    team => {
+
+      const option =
+        document.createElement(
+          "option"
+        );
+
+      option.value =
+        team.id;
+
+      option.textContent =
+        team.name ||
+        "班名未設定";
+
+      managedMemberTeamSelect.appendChild(
+        option
+      );
+
+    }
+  );
+
+  if (
+    Array.from(
+      managedMemberTeamSelect.options
+    ).some(
+      option =>
+        option.value ===
+          currentValue
+    )
+  ) {
+
+    managedMemberTeamSelect.value =
+      currentValue;
+
+  } else if (
+    isCurrentTeamLeader() &&
+    currentUserData?.teamId
+  ) {
+
+    managedMemberTeamSelect.value =
+      currentUserData.teamId;
+
+  }
+
+}
+
+
+async function setMemberRevenuePermission(
+  member,
+  allowed
+) {
+
+  if (
+    !isCurrentCompanyOwner() ||
+    !currentUserData?.companyId ||
+    member?.companyRole ===
+      "owner"
+  ) {
+
+    showError(
+      "売上閲覧権限はオーナーだけが変更できます。"
+    );
+
+    return;
+
+  }
+
+  try {
+
+    const batch =
+      writeBatch(
+        db
+      );
+
+    const memberId =
+      member.id ||
+      member.uid;
+
+    batch.update(
+      doc(
+        db,
+        "companies",
+        currentUserData.companyId,
+        "members",
+        memberId
+      ),
+      {
+        canViewRevenue:
+          allowed === true,
+        updatedAt:
+          serverTimestamp()
+      }
+    );
+
+    if (
+      !isManagedMember(
+        member
+      )
+    ) {
+
+      batch.update(
+        doc(
+          db,
+          "users",
+          memberId
+        ),
+        {
+          canViewRevenue:
+            allowed === true,
+          updatedAt:
+            serverTimestamp()
+        }
+      );
+
+    }
+
+    await batch.commit();
+
+    showSuccess(
+      `${member.name || "メンバー"}の売上閲覧権限を${allowed ? "許可" : "解除"}しました。`
+    );
+
+  } catch (error) {
+
+    console.error(error);
+
+    showError(
+      firebaseErrorMessage(
+        error
+      )
+    );
+
+  }
+
+}
+
+
 function renderMembers() {
 
   memberManagementCount.textContent =
@@ -15131,6 +15672,18 @@ function renderMembers() {
   memberList.innerHTML =
     "";
 
+  renderManagedMemberTeamOptions();
+
+  if (
+    managedMemberCreatePanel
+  ) {
+
+    managedMemberCreatePanel.style.display =
+      isCurrentCompanyManager()
+        ? ""
+        : "none";
+
+  }
 
   if (
     members.length === 0
@@ -15146,7 +15699,6 @@ function renderMembers() {
 
   }
 
-
   members.forEach(
     member => {
 
@@ -15158,12 +15710,10 @@ function renderMembers() {
       item.className =
         "member-item";
 
-
       const info =
         document.createElement(
           "div"
         );
-
 
       const name =
         document.createElement(
@@ -15177,7 +15727,6 @@ function renderMembers() {
         member.name ||
         "名前未設定";
 
-
       const email =
         document.createElement(
           "div"
@@ -15187,9 +15736,14 @@ function renderMembers() {
         "member-email";
 
       email.textContent =
-        member.email ||
-        "";
-
+        isManagedMember(
+          member
+        )
+          ? "管理メンバー（ログインなし）"
+          : (
+              member.email ||
+              ""
+            );
 
       const role =
         document.createElement(
@@ -15212,7 +15766,6 @@ function renderMembers() {
                 : "👤 メンバー"
             );
 
-
       const team =
         document.createElement(
           "div"
@@ -15225,7 +15778,6 @@ function renderMembers() {
         getTeamName(
           member.teamId
         );
-
 
       info.appendChild(
         name
@@ -15243,7 +15795,6 @@ function renderMembers() {
         team
       );
 
-
       const actions =
         document.createElement(
           "div"
@@ -15252,41 +15803,163 @@ function renderMembers() {
       actions.className =
         "member-actions";
 
-
-      const roleButton =
-        document.createElement(
-          "button"
-        );
-
-      roleButton.className =
-        "member-action-button";
-
       if (
-        member.companyRole ===
-        "owner"
+        isCurrentCompanyOwner()
       ) {
 
-        roleButton.textContent =
-          "オーナー";
+        const roleSelect =
+          document.createElement(
+            "select"
+          );
 
-        roleButton.disabled =
-          true;
+        roleSelect.className =
+          "member-action-button";
 
-      } else {
+        [
+          ["member", "メンバー"],
+          ["leader", "リーダー"],
+          ["owner", "オーナー"]
+        ].forEach(
+          ([
+            value,
+            label
+          ]) => {
 
-        roleButton.textContent =
-          member.role === "leader"
-            ? "メンバーに変更"
-            : "リーダーに変更";
+            if (
+              value ===
+                "owner" &&
+              isManagedMember(
+                member
+              )
+            ) {
 
-        roleButton.onclick =
-          () =>
-            changeMemberRole(
-              member
+              return;
+
+            }
+
+            const option =
+              document.createElement(
+                "option"
+              );
+
+            option.value =
+              value;
+
+            option.textContent =
+              label;
+
+            roleSelect.appendChild(
+              option
             );
 
-      }
+          }
+        );
 
+        roleSelect.value =
+          member.companyRole ===
+            "owner"
+            ? "owner"
+            : (
+                member.role ===
+                  "leader"
+                  ? "leader"
+                  : "member"
+              );
+
+        roleSelect.onchange =
+          async () => {
+
+            const nextValue =
+              roleSelect.value;
+
+            const ok =
+              await changeMemberRole(
+                member,
+                nextValue
+              );
+
+            if (!ok) {
+
+              roleSelect.value =
+                member.companyRole ===
+                  "owner"
+                  ? "owner"
+                  : (
+                      member.role ===
+                        "leader"
+                        ? "leader"
+                        : "member"
+                    );
+
+            }
+
+          };
+
+        actions.appendChild(
+          roleSelect
+        );
+
+        if (
+          member.companyRole !==
+            "owner" &&
+          !isManagedMember(
+            member
+          )
+        ) {
+
+          const revenueLabel =
+            document.createElement(
+              "label"
+            );
+
+          revenueLabel.className =
+            "member-action-button";
+
+          revenueLabel.style.display =
+            "inline-flex";
+
+          revenueLabel.style.alignItems =
+            "center";
+
+          revenueLabel.style.gap =
+            "6px";
+
+          const revenueToggle =
+            document.createElement(
+              "input"
+            );
+
+          revenueToggle.type =
+            "checkbox";
+
+          revenueToggle.checked =
+            member.canViewRevenue ===
+              true;
+
+          revenueToggle.onchange =
+            () =>
+              setMemberRevenuePermission(
+                member,
+                revenueToggle.checked
+              );
+
+          revenueLabel.appendChild(
+            revenueToggle
+          );
+
+          revenueLabel.appendChild(
+            document.createTextNode(
+              "売上閲覧"
+            )
+          );
+
+          actions.appendChild(
+            revenueLabel
+          );
+
+        }
+
+      }
 
       const teamButton =
         document.createElement(
@@ -15299,22 +15972,15 @@ function renderMembers() {
       teamButton.textContent =
         "班変更";
 
+      const canChangeTeam =
+        isCurrentCompanyOwner();
+
+      teamButton.disabled =
+        !canChangeTeam;
+
       if (
-        member.id ===
-          currentUser?.uid &&
-        currentUserData?.role ===
-          "leader" &&
-        currentUserData?.companyRole !==
-          "owner"
+        canChangeTeam
       ) {
-
-        teamButton.disabled =
-          true;
-
-        teamButton.textContent =
-          "班変更はオーナー";
-
-      } else {
 
         teamButton.onclick =
           () =>
@@ -15322,25 +15988,23 @@ function renderMembers() {
               member
             );
 
+      } else {
+
+        teamButton.textContent =
+          "班変更はオーナー";
+
       }
-
-
-      actions.appendChild(
-        roleButton
-      );
 
       actions.appendChild(
         teamButton
       );
 
-
       if (
-        currentUserData?.companyRole ===
-        "owner" &&
+        isCurrentCompanyOwner() &&
         member.companyRole !==
-        "owner" &&
+          "owner" &&
         member.id !==
-        currentUser?.uid
+          currentUser?.uid
       ) {
 
         const removeButton =
@@ -15366,7 +16030,6 @@ function renderMembers() {
 
       }
 
-
       item.appendChild(
         info
       );
@@ -15375,14 +16038,12 @@ function renderMembers() {
         actions
       );
 
-
       memberList.appendChild(
         item
       );
 
     }
   );
-
 
   renderOwnerTransferOptions();
 
@@ -15395,9 +16056,9 @@ async function disableCompanyMember(
 
   if (
     currentUserData?.companyRole !==
-    "owner" ||
+      "owner" ||
     member.companyRole ===
-    "owner"
+      "owner"
   ) {
 
     showError(
@@ -15408,17 +16069,15 @@ async function disableCompanyMember(
 
   }
 
-
   if (
     !confirm(
-      `${member.name || "このメンバー"}を会社から削除しますか？\n\nログインしても会社データへアクセスできなくなります。過去の実績は残ります。`
+      `${member.name || "このメンバー"}を会社から削除しますか？\n\n過去の実績は残ります。`
     )
   ) {
 
     return;
 
   }
-
 
   try {
 
@@ -15427,24 +16086,31 @@ async function disableCompanyMember(
         db
       );
 
+    const memberId =
+      member.id ||
+      member.uid;
 
-    batch.update(
-      doc(
-        db,
-        "users",
-        member.id
-      ),
-      {
+    if (
+      !isManagedMember(
+        member
+      )
+    ) {
 
-        active:
-          false,
+      batch.update(
+        doc(
+          db,
+          "users",
+          memberId
+        ),
+        {
+          active:
+            false,
+          updatedAt:
+            serverTimestamp()
+        }
+      );
 
-        updatedAt:
-          serverTimestamp()
-
-      }
-    );
-
+    }
 
     batch.update(
       doc(
@@ -15452,27 +16118,21 @@ async function disableCompanyMember(
         "companies",
         currentUserData.companyId,
         "members",
-        member.id
+        memberId
       ),
       {
-
         active:
           false,
-
         updatedAt:
           serverTimestamp()
-
       }
     );
 
-
     await batch.commit();
-
 
     showSuccess(
       "メンバーを会社から削除しました。過去の実績は残っています。"
     );
-
 
   } catch (error) {
 
@@ -15490,17 +16150,83 @@ async function disableCompanyMember(
 
 
 async function changeMemberRole(
-  member
+  member,
+  nextAccessRole = null
 ) {
 
-  const newRole =
-    member.role === "leader"
-      ? "member"
-      : "leader";
+  if (
+    !isCurrentCompanyOwner()
+  ) {
 
+    showError(
+      "役割を変更できるのはオーナーだけです。"
+    );
+
+    return false;
+
+  }
+
+  const currentAccessRole =
+    member.companyRole ===
+      "owner"
+      ? "owner"
+      : (
+          member.role ===
+            "leader"
+            ? "leader"
+            : "member"
+        );
+
+  const nextRole =
+    nextAccessRole ||
+    (
+      currentAccessRole ===
+        "leader"
+        ? "member"
+        : "leader"
+    );
 
   if (
-    newRole ===
+    ![
+      "owner",
+      "leader",
+      "member"
+    ].includes(
+      nextRole
+    )
+  ) {
+
+    return false;
+
+  }
+
+  if (
+    nextRole ===
+      currentAccessRole
+  ) {
+
+    return true;
+
+  }
+
+  if (
+    nextRole ===
+      "owner" &&
+    isManagedMember(
+      member
+    )
+  ) {
+
+    showError(
+      "ログインアカウントのない管理メンバーはオーナーに設定できません。"
+    );
+
+    return false;
+
+  }
+
+  if (
+    nextRole ===
       "leader" &&
     !member.teamId
   ) {
@@ -15509,25 +16235,80 @@ async function changeMemberRole(
       "先に所属班を設定してからリーダーに変更してください。"
     );
 
-    return;
+    return false;
 
   }
 
+  const memberId =
+    member.id ||
+    member.uid;
+
+  const isPrimaryOwner =
+    currentCompanyData?.ownerUid ===
+      memberId;
+
+  let replacementPrimaryOwner =
+    null;
+
+  if (
+    currentAccessRole ===
+      "owner" &&
+    nextRole !==
+      "owner" &&
+    isPrimaryOwner
+  ) {
+
+    replacementPrimaryOwner =
+      members.find(
+        item =>
+          item.id !==
+            memberId &&
+          item.active !==
+            false &&
+          item.companyRole ===
+            "owner" &&
+          !isManagedMember(
+            item
+          )
+      ) ||
+      null;
+
+    if (
+      !replacementPrimaryOwner
+    ) {
+
+      showError(
+        "最後のオーナーは降格できません。先に別のメンバーをオーナーにしてください。"
+      );
+
+      return false;
+
+    }
+
+    if (
+      currentUser?.uid !==
+        memberId
+    ) {
+
+      showError(
+        "代表オーナーの降格は、代表オーナー本人の画面から行ってください。"
+      );
+
+      return false;
+
+    }
+
+  }
 
   if (
     !confirm(
-      `${member.name || "このユーザー"}を${
-        newRole === "leader"
-          ? "リーダー"
-          : "メンバー"
-      }に変更しますか？`
+      `${member.name || "このユーザー"}を${nextRole === "owner" ? "オーナー" : nextRole === "leader" ? "リーダー" : "メンバー"}に変更しますか？`
     )
   ) {
 
-    return;
+    return false;
 
   }
-
 
   try {
 
@@ -15536,24 +16317,59 @@ async function changeMemberRole(
         db
       );
 
+    const companyRole =
+      nextRole ===
+        "owner"
+        ? "owner"
+        : "member";
 
-    batch.update(
-      doc(
-        db,
-        "users",
-        member.id
-      ),
-      {
+    const role =
+      nextRole ===
+        "owner"
+        ? "leader"
+        : nextRole;
 
-        role:
-          newRole,
+    if (
+      replacementPrimaryOwner
+    ) {
 
-        updatedAt:
-          serverTimestamp()
+      batch.update(
+        doc(
+          db,
+          "companies",
+          currentUserData.companyId
+        ),
+        {
+          ownerUid:
+            replacementPrimaryOwner.id,
+          updatedAt:
+            serverTimestamp()
+        }
+      );
 
-      }
-    );
+    }
 
+    if (
+      !isManagedMember(
+        member
+      )
+    ) {
+
+      batch.update(
+        doc(
+          db,
+          "users",
+          memberId
+        ),
+        {
+          companyRole,
+          role,
+          updatedAt:
+            serverTimestamp()
+        }
+      );
+
+    }
 
     batch.update(
       doc(
@@ -15561,36 +16377,50 @@ async function changeMemberRole(
         "companies",
         currentUserData.companyId,
         "members",
-        member.id
+        memberId
       ),
       {
-
-        role:
-          newRole,
-
+        companyRole,
+        role,
         updatedAt:
           serverTimestamp()
-
       }
     );
 
-
     await batch.commit();
 
+    if (
+      replacementPrimaryOwner &&
+      currentCompanyData
+    ) {
+
+      currentCompanyData = {
+        ...currentCompanyData,
+        ownerUid:
+          replacementPrimaryOwner.id
+      };
+
+    }
 
     await loadMembers();
 
     showSuccess(
-      "権限を変更しました。"
+      "役割を変更しました。"
     );
 
+    return true;
+
   } catch (error) {
+
+    console.error(error);
 
     showError(
       firebaseErrorMessage(
         error
       )
     );
+
+    return false;
 
   }
 
@@ -15975,24 +16805,32 @@ saveMemberTeamModal.onclick =
         );
 
 
-      batch.update(
-        doc(
-          db,
-          "users",
-          editingMemberId
-        ),
-        {
+      if (
+        !isManagedMember(
+          member
+        )
+      ) {
 
-          teamId,
+        batch.update(
+          doc(
+            db,
+            "users",
+            editingMemberId
+          ),
+          {
 
-          teamHistory:
-            nextHistory,
+            teamId,
 
-          updatedAt:
-            serverTimestamp()
+            teamHistory:
+              nextHistory,
 
-        }
-      );
+            updatedAt:
+              serverTimestamp()
+
+          }
+        );
+
+      }
 
 
       batch.update(
@@ -16037,6 +16875,154 @@ saveMemberTeamModal.onclick =
           error
         )
       );
+
+    }
+
+  };
+
+
+
+addManagedMemberButton.onclick =
+  async () => {
+
+    if (
+      !isCurrentCompanyManager() ||
+      !currentUserData?.companyId
+    ) {
+
+      showError(
+        "メンバーを追加する権限がありません。"
+      );
+
+      return;
+
+    }
+
+    const name =
+      managedMemberNameInput.value
+        .trim()
+        .replace(
+          /\s+/g,
+          " "
+        );
+
+    const teamId =
+      managedMemberTeamSelect.value ||
+      null;
+
+    if (
+      !name
+    ) {
+
+      showError(
+        "メンバー名を入力してください。"
+      );
+
+      return;
+
+    }
+
+    if (
+      !teamId
+    ) {
+
+      showError(
+        "所属班を選択してください。"
+      );
+
+      return;
+
+    }
+
+    if (
+      isCurrentTeamLeader() &&
+      teamId !==
+        currentUserData.teamId
+    ) {
+
+      showError(
+        "リーダーは自分の班にだけ管理メンバーを追加できます。"
+      );
+
+      return;
+
+    }
+
+    try {
+
+      addManagedMemberButton.disabled =
+        true;
+
+      const memberRef =
+        doc(
+          collection(
+            db,
+            "companies",
+            currentUserData.companyId,
+            "members"
+          )
+        );
+
+      await setDoc(
+        memberRef,
+        {
+          uid:
+            memberRef.id,
+          name,
+          email:
+            "",
+          role:
+            "member",
+          companyRole:
+            "member",
+          teamId,
+          active:
+            true,
+          memberType:
+            "managed",
+          hasAccount:
+            false,
+          canViewRevenue:
+            false,
+          createdBy:
+            currentUser.uid,
+          joinedAt:
+            serverTimestamp(),
+          updatedAt:
+            serverTimestamp()
+        }
+      );
+
+      managedMemberNameInput.value =
+        "";
+
+      if (
+        isCurrentCompanyOwner()
+      ) {
+
+        managedMemberTeamSelect.value =
+          "";
+
+      }
+
+      showSuccess(
+        `${name}を管理メンバーとして追加しました。`
+      );
+
+    } catch (error) {
+
+      console.error(error);
+
+      showError(
+        firebaseErrorMessage(
+          error
+        )
+      );
+
+    } finally {
+
+      addManagedMemberButton.disabled =
+        false;
 
     }
 
@@ -17704,6 +18690,10 @@ saveRecordButton.onclick =
         totalRevenue:
           totals.revenue,
 
+        updatedByUid:
+          currentUser?.uid ||
+          "",
+
         updatedAt:
           serverTimestamp()
 
@@ -17714,19 +18704,60 @@ saveRecordButton.onclick =
         !existingDailyRecord
       ) {
 
+        data.createdByUid =
+          currentUser?.uid ||
+          "";
+
         data.createdAt =
           serverTimestamp();
 
       }
 
 
-      await setDoc(
-        recordRef,
-        data,
-        {
-          merge: true
+      try {
+
+        await setDoc(
+          recordRef,
+          data,
+          {
+            merge: true
+          }
+        );
+
+      } catch (error) {
+
+        /*
+          旧Rulesは監査項目を許可しないため、未移行の通常実績だけ
+          従来の項目で一度再試行する。権限判定は引き続きRulesが行う。
+          新Rules適用後は最初の保存で監査項目も記録される。
+        */
+        if (
+          error?.code !== "permission-denied" ||
+          isManagedMember(member) ||
+          existingDailyRecord?.createdByUid ||
+          existingDailyRecord?.updatedByUid
+        ) {
+
+          throw error;
+
         }
-      );
+
+        const legacyData = {
+          ...data
+        };
+
+        delete legacyData.createdByUid;
+        delete legacyData.updatedByUid;
+
+        await setDoc(
+          recordRef,
+          legacyData,
+          {
+            merge: true
+          }
+        );
+
+      }
 
 
       /*
@@ -18150,6 +19181,41 @@ dashboardMonth.addEventListener(
 );
 
 
+
+teamRankingProgressButton.onclick =
+  () => {
+
+    teamRankingMode =
+      "progress";
+
+    renderDashboard();
+
+  };
+
+
+teamRankingRevenueButton.onclick =
+  () => {
+
+    if (
+      !canCurrentUserViewRevenue()
+    ) {
+
+      showError(
+        "売上ランキングを見る権限がありません。"
+      );
+
+      return;
+
+    }
+
+    teamRankingMode =
+      "revenue";
+
+    renderDashboard();
+
+  };
+
+
 dailySummaryDate.addEventListener(
   "change",
   () => {
@@ -18180,6 +19246,308 @@ recordHistoryDate.addEventListener(
 /* =====================================================
    報告文作成
 ===================================================== */
+
+
+function reportSettingsDocRef() {
+
+  if (
+    !currentUserData?.companyId
+  ) {
+
+    throw new Error(
+      "会社情報が設定されていません。"
+    );
+
+  }
+
+  return doc(
+    db,
+    "companies",
+    currentUserData.companyId,
+    "settings",
+    "reporting"
+  );
+
+}
+
+
+function normalizeReportModeSettings(
+  value,
+  mode
+) {
+
+  const fallback =
+    mode ===
+      "morning"
+      ? {
+          intro:
+            "おはようございます！\n本日もよろしくお願いいたします！",
+          outro:
+            "本日も目標達成に向けて頑張っていきましょう👊🔥"
+        }
+      : {
+          intro:
+            "本日も一日お疲れさまでした！",
+          outro:
+            "本日もありがとうございました！\n明日もよろしくお願いいたします🙇‍♂️"
+        };
+
+  return {
+    ...defaultReportTemplateOptions,
+    ...fallback,
+    ...(
+      value &&
+      typeof value ===
+        "object"
+        ? value
+        : {}
+    )
+  };
+
+}
+
+
+function getReportModeSettings(
+  mode
+) {
+
+  return normalizeReportModeSettings(
+    reportTemplateSettings?.[
+      mode
+    ],
+    mode
+  );
+
+}
+
+
+async function loadReportTemplateSettings() {
+
+  reportTemplateSettings = {
+    morning:
+      normalizeReportModeSettings(
+        null,
+        "morning"
+      ),
+    final:
+      normalizeReportModeSettings(
+        null,
+        "final"
+      )
+  };
+
+  if (
+    !currentUserData?.companyId
+  ) {
+
+    return;
+
+  }
+
+  try {
+
+    const snap =
+      await getDoc(
+        reportSettingsDocRef()
+      );
+
+    if (
+      snap.exists()
+    ) {
+
+      const data =
+        snap.data();
+
+      reportTemplateSettings = {
+        morning:
+          normalizeReportModeSettings(
+            data.morning,
+            "morning"
+          ),
+        final:
+          normalizeReportModeSettings(
+            data.final,
+            "final"
+          )
+      };
+
+    }
+
+  } catch (error) {
+
+    console.error(
+      "報告テンプレート設定取得エラー:",
+      error
+    );
+
+  }
+
+  renderReportTemplateSettingsForm();
+
+}
+
+
+function renderReportTemplateSettingsForm() {
+
+  if (
+    !reportTemplateModeSelect ||
+    !reportTemplateOptionGrid
+  ) {
+
+    return;
+
+  }
+
+  const mode =
+    reportTemplateModeSelect.value ===
+      "final"
+      ? "final"
+      : "morning";
+
+  const settings =
+    getReportModeSettings(
+      mode
+    );
+
+  reportTemplateIntro.value =
+    settings.intro ||
+    "";
+
+  reportTemplateOutro.value =
+    settings.outro ||
+    "";
+
+  reportTemplateOptionGrid
+    .querySelectorAll(
+      "[data-report-option]"
+    )
+    .forEach(
+      input => {
+
+        input.checked =
+          settings[
+            input.dataset.reportOption
+          ] !==
+          false;
+
+      }
+    );
+
+}
+
+
+reportTemplateModeSelect.onchange =
+  renderReportTemplateSettingsForm;
+
+
+saveReportTemplateSettingsButton.onclick =
+  async () => {
+
+    if (
+      !isCurrentCompanyOwner()
+    ) {
+
+      showError(
+        "報告テンプレートを変更できるのはオーナーだけです。"
+      );
+
+      return;
+
+    }
+
+    const mode =
+      reportTemplateModeSelect.value ===
+        "final"
+        ? "final"
+        : "morning";
+
+    const next = {
+      ...getReportModeSettings(
+        mode
+      ),
+      intro:
+        reportTemplateIntro.value
+          .trim(),
+      outro:
+        reportTemplateOutro.value
+          .trim()
+    };
+
+    reportTemplateOptionGrid
+      .querySelectorAll(
+        "[data-report-option]"
+      )
+      .forEach(
+        input => {
+
+          next[
+            input.dataset.reportOption
+          ] =
+            input.checked;
+
+        }
+      );
+
+    reportTemplateSettings = {
+      ...reportTemplateSettings,
+      [mode]:
+        next
+    };
+
+    try {
+
+      saveReportTemplateSettingsButton.disabled =
+        true;
+
+      await setDoc(
+        reportSettingsDocRef(),
+        {
+          morning:
+            getReportModeSettings(
+              "morning"
+            ),
+          final:
+            getReportModeSettings(
+              "final"
+            ),
+          updatedBy:
+            currentUser?.uid ||
+            "",
+          updatedAt:
+            serverTimestamp()
+        },
+        {
+          merge:
+            true
+        }
+      );
+
+      showSuccess(
+        mode ===
+          "morning"
+          ? "朝礼用テンプレート設定を保存しました。"
+          : "最終報告テンプレート設定を保存しました。"
+      );
+
+    } catch (error) {
+
+      console.error(error);
+
+      showError(
+        firebaseErrorMessage(
+          error
+        )
+      );
+
+    } finally {
+
+      saveReportTemplateSettingsButton.disabled =
+        false;
+
+    }
+
+  };
+
 
 function previousDateString(
   date
@@ -18414,13 +19782,6 @@ function buildReportData(
       allResults
     );
 
-  /*
-    報告文では「実績がある班だけ」ではなく、
-    現在登録されている全班を先に用意する。
-    これにより0件の班も必ず報告に表示される。
-    過去に削除された班の実績が選択日に存在する場合は、
-    実績スナップショットから追加して集計する。
-  */
   const reportTeams =
     {};
 
@@ -18718,46 +20079,159 @@ function buildReportData(
   const teamRows =
     Object.values(
       reportTeams
-    ).sort(
-      (a, b) => {
+    )
+      .map(
+        team => {
 
-        const aOrder =
-          currentTeamOrder.has(
-            a.teamId
-          )
-            ? currentTeamOrder.get(
-                a.teamId
-              )
-            : 99999;
+          const totalTarget =
+            Object.values(
+              team.targets
+            ).reduce(
+              (
+                sum,
+                value
+              ) =>
+                sum +
+                Number(
+                  value ||
+                  0
+                ),
+              0
+            );
 
-        const bOrder =
-          currentTeamOrder.has(
-            b.teamId
-          )
-            ? currentTeamOrder.get(
-                b.teamId
-              )
-            : 99999;
+          const totalActual =
+            Object.values(
+              team.monthlyProducts
+            ).reduce(
+              (
+                sum,
+                value
+              ) =>
+                sum +
+                Number(
+                  value ||
+                  0
+                ),
+              0
+            );
 
-        if (
-          aOrder !==
-          bOrder
-        ) {
+          return {
+            ...team,
+            totalTarget,
+            totalActual,
+            remaining:
+              Math.max(
+                totalTarget -
+                  totalActual,
+                0
+              ),
+            progress:
+              totalTarget >
+                0
+                ? Math.round(
+                    totalActual /
+                      totalTarget *
+                      100
+                  )
+                : null
+          };
 
-          return (
-            aOrder -
+        }
+      )
+      .sort(
+        (a, b) => {
+
+          const aOrder =
+            currentTeamOrder.has(
+              a.teamId
+            )
+              ? currentTeamOrder.get(
+                  a.teamId
+                )
+              : 99999;
+
+          const bOrder =
+            currentTeamOrder.has(
+              b.teamId
+            )
+              ? currentTeamOrder.get(
+                  b.teamId
+                )
+              : 99999;
+
+          if (
+            aOrder !==
             bOrder
+          ) {
+
+            return (
+              aOrder -
+              bOrder
+            );
+
+          }
+
+          return a.name.localeCompare(
+            b.name,
+            "ja"
           );
 
         }
+      );
 
-        return a.name.localeCompare(
-          b.name,
-          "ja"
-        );
-
-      }
+  const companyTarget =
+    Object.values(
+      targetTotals
+    ).reduce(
+      (
+        sum,
+        value
+      ) =>
+        sum +
+        Number(
+          value ||
+          0
+        ),
+      0
     );
+
+  const companyActual =
+    Object.values(
+      monthlyTotals
+    ).reduce(
+      (
+        sum,
+        value
+      ) =>
+        sum +
+        Number(
+          value ||
+          0
+        ),
+      0
+    );
+
+  const companySummary = {
+    target:
+      companyTarget,
+    actual:
+      companyActual,
+    remaining:
+      Math.max(
+        companyTarget -
+          companyActual,
+        0
+      ),
+    progress:
+      companyTarget >
+        0
+        ? Math.round(
+            companyActual /
+              companyTarget *
+              100
+          )
+        : null
+  };
 
   let best =
     null;
@@ -18811,6 +20285,7 @@ function buildReportData(
     dailyTotal,
     monthlyTotals,
     targetTotals,
+    companySummary,
     best
   };
 
@@ -18821,6 +20296,11 @@ function buildGoalReportLines(
   data,
   mode
 ) {
+
+  const settings =
+    getReportModeSettings(
+      mode
+    );
 
   const dailyLabel =
     mode ===
@@ -18834,20 +20314,95 @@ function buildGoalReportLines(
   data.teamRows.forEach(
     team => {
 
-      lines.push(
-        `⭐️${team.name}`
-      );
-
       if (
-        data.productRows.length ===
-        0
+        settings.showTeamName
       ) {
 
         lines.push(
-          "商材がまだ登録されていません。"
+          `⭐️${team.name}`
         );
 
-      } else {
+      }
+
+      const teamParts =
+        [];
+
+      if (
+        settings.showDailyCount
+      ) {
+
+        teamParts.push(
+          `${dailyLabel}${Number(
+            team.total ||
+            0
+          )}件`
+        );
+
+      }
+
+      if (
+        settings.showMonthlyActual
+      ) {
+
+        teamParts.push(
+          `月間実績${team.totalActual}件`
+        );
+
+      }
+
+      if (
+        settings.showMonthlyTarget
+      ) {
+
+        teamParts.push(
+          team.totalTarget >
+            0
+            ? `目標${team.totalTarget}件`
+            : "目標未設定"
+        );
+
+      }
+
+      if (
+        settings.showRemaining &&
+        team.totalTarget >
+          0
+      ) {
+
+        teamParts.push(
+          `残り${team.remaining}件`
+        );
+
+      }
+
+      if (
+        settings.showProgress &&
+        team.totalTarget >
+          0
+      ) {
+
+        teamParts.push(
+          `進捗${team.progress}%`
+        );
+
+      }
+
+      if (
+        teamParts.length >
+          0
+      ) {
+
+        lines.push(
+          teamParts.join(
+            "｜"
+          )
+        );
+
+      }
+
+      if (
+        settings.showProductRows
+      ) {
 
         data.productRows.forEach(
           product => {
@@ -18876,36 +20431,84 @@ function buildGoalReportLines(
                 0
               );
 
+            const parts = [
+              `${product.name}：`
+            ];
+
+            const values =
+              [];
+
             if (
-              target >
-              0
+              settings.showDailyCount
             ) {
 
-              const remaining =
-                Math.max(
-                  target -
-                    actual,
-                  0
-                );
-
-              const progress =
-                Math.round(
-                  actual /
-                    target *
-                    100
-                );
-
-              lines.push(
-                `${product.name}：${dailyLabel}${daily}件｜月間${actual}/${target}件｜残り${remaining}件｜進捗${progress}%`
-              );
-
-            } else {
-
-              lines.push(
-                `${product.name}：${dailyLabel}${daily}件｜月間${actual}件｜目標未設定`
+              values.push(
+                `${dailyLabel}${daily}件`
               );
 
             }
+
+            if (
+              settings.showMonthlyActual
+            ) {
+
+              values.push(
+                `月間${actual}件`
+              );
+
+            }
+
+            if (
+              settings.showMonthlyTarget
+            ) {
+
+              values.push(
+                target >
+                  0
+                  ? `目標${target}件`
+                  : "目標未設定"
+              );
+
+            }
+
+            if (
+              settings.showRemaining &&
+              target >
+                0
+            ) {
+
+              values.push(
+                `残り${Math.max(
+                  target -
+                    actual,
+                  0
+                )}件`
+              );
+
+            }
+
+            if (
+              settings.showProgress &&
+              target >
+                0
+            ) {
+
+              values.push(
+                `進捗${Math.round(
+                  actual /
+                    target *
+                    100
+                )}%`
+              );
+
+            }
+
+            lines.push(
+              parts[0] +
+              values.join(
+                "｜"
+              )
+            );
 
           }
         );
@@ -18936,6 +20539,173 @@ function buildGoalReportLines(
 }
 
 
+
+function buildCompanyReportLines(
+  data,
+  mode
+) {
+
+  const settings =
+    getReportModeSettings(
+      mode
+    );
+
+  const lines =
+    [];
+
+  if (
+    settings.showCompanySummary
+  ) {
+
+    lines.push(
+      "【会社全体進捗】"
+    );
+
+    if (
+      data.companySummary.target >
+        0
+    ) {
+
+      if (
+        settings.showCompanyTarget !==
+          false
+      ) {
+        lines.push(
+          `目標：${data.companySummary.target}件`
+        );
+      }
+
+      if (
+        settings.showCompanyActual !==
+          false
+      ) {
+        lines.push(
+          `実績：${data.companySummary.actual}件`
+        );
+      }
+
+      if (
+        settings.showCompanyRemaining !==
+          false
+      ) {
+        lines.push(
+          `残り：${data.companySummary.remaining}件`
+        );
+      }
+
+      if (
+        settings.showCompanyProgress !==
+          false
+      ) {
+        lines.push(
+          `進捗率：${data.companySummary.progress}%`
+        );
+      }
+
+    } else {
+
+      if (
+        settings.showCompanyActual !==
+          false
+      ) {
+        lines.push(
+          `実績：${data.companySummary.actual}件`
+        );
+      }
+
+      if (
+        settings.showCompanyTarget !==
+          false
+      ) {
+        lines.push(
+          "目標：未設定"
+        );
+      }
+
+      if (
+        settings.showCompanyProgress !==
+          false
+      ) {
+        lines.push(
+          "進捗率：目標未設定"
+        );
+      }
+
+    }
+
+  }
+
+  if (
+    settings.showCompanyProductSummary
+  ) {
+
+    if (
+      lines.length >
+        0
+    ) {
+      lines.push(
+        ""
+      );
+    }
+
+    lines.push(
+      "【会社全体 商材別進捗】"
+    );
+
+    data.productRows.forEach(
+      product => {
+
+        const target =
+          Number(
+            data.targetTotals[
+              product.key
+            ] ||
+            0
+          );
+
+        const actual =
+          Number(
+            data.monthlyTotals[
+              product.key
+            ] ||
+            0
+          );
+
+        if (
+          target >
+            0
+        ) {
+
+          lines.push(
+            `${product.name}：${actual}/${target}件｜残り${Math.max(
+              target -
+                actual,
+              0
+            )}件｜進捗${Math.round(
+              actual /
+                target *
+                100
+            )}%`
+          );
+
+        } else {
+
+          lines.push(
+            `${product.name}：${actual}件｜目標未設定`
+          );
+
+        }
+
+      }
+    );
+
+  }
+
+  return lines;
+
+}
+
+
 function createFinalReportText(
   date
 ) {
@@ -18945,22 +20715,45 @@ function createFinalReportText(
       date
     );
 
+  const settings =
+    getReportModeSettings(
+      "final"
+    );
+
   const lines = [
-    "🌸本日最終報告🌸",
-    `📅${reportDateLabel(
-      date
-    )}`,
-    "",
-    "本日も一日お疲れさまでした！",
-    ""
+    "🌸本日最終報告🌸"
   ];
 
   if (
-    data.teamRows.length ===
-    0
+    settings.showDate
   ) {
 
     lines.push(
+      `📅${reportDateLabel(
+        date
+      )}`
+    );
+
+  }
+
+  if (
+    settings.intro
+  ) {
+
+    lines.push(
+      "",
+      settings.intro
+    );
+
+  }
+
+  if (
+    data.teamRows.length ===
+      0
+  ) {
+
+    lines.push(
+      "",
       "班がまだ登録されていません。"
     );
 
@@ -18971,30 +20764,53 @@ function createFinalReportText(
   }
 
   lines.push(
+    "",
     ...buildGoalReportLines(
       data,
       "final"
-    ),
-    "",
-    `全体本日実績：${data.dailyTotal}件`
+    )
   );
 
   if (
+    settings.showBest &&
     data.best
   ) {
 
     lines.push(
       "",
-      `${data.best.teamName}の${data.best.productName}が${data.best.count}件で好調でした👏✨️`
+      `${data.best.teamName}の${data.best.productName}が本日${data.best.count}件で好調でした👏✨️`
     );
 
   }
 
-  lines.push(
-    "",
-    "本日もありがとうございました！",
-    "明日もよろしくお願いいたします🙇‍♂️"
-  );
+  const companyLines =
+    buildCompanyReportLines(
+      data,
+      "final"
+    );
+
+  if (
+    companyLines.length >
+      0
+  ) {
+
+    lines.push(
+      "",
+      ...companyLines
+    );
+
+  }
+
+  if (
+    settings.outro
+  ) {
+
+    lines.push(
+      "",
+      settings.outro
+    );
+
+  }
 
   return lines.join(
     "\n"
@@ -19012,23 +20828,45 @@ function createMorningReportText(
       date
     );
 
+  const settings =
+    getReportModeSettings(
+      "morning"
+    );
+
   const lines = [
-    "🌅朝礼共有🌅",
-    `📅${reportDateLabel(
-      date
-    )}実績`,
-    "",
-    "おはようございます！",
-    "本日もよろしくお願いいたします！",
-    ""
+    "🌅朝礼共有🌅"
   ];
 
   if (
-    data.teamRows.length ===
-    0
+    settings.showDate
   ) {
 
     lines.push(
+      `📅${reportDateLabel(
+        date
+      )}実績`
+    );
+
+  }
+
+  if (
+    settings.intro
+  ) {
+
+    lines.push(
+      "",
+      settings.intro
+    );
+
+  }
+
+  if (
+    data.teamRows.length ===
+      0
+  ) {
+
+    lines.push(
+      "",
       "班がまだ登録されていません。"
     );
 
@@ -19039,28 +20877,53 @@ function createMorningReportText(
   }
 
   lines.push(
-    `昨日実績は全体で${data.dailyTotal}件でした！`
-  );
-
-  if (
-    data.best
-  ) {
-
-    lines.push(
-      `特に${data.best.teamName}の${data.best.productName}が${data.best.count}件で好調でした👏✨️`
-    );
-
-  }
-
-  lines.push(
     "",
     ...buildGoalReportLines(
       data,
       "morning"
-    ),
-    "",
-    "本日も目標達成に向けて頑張っていきましょう👊🔥"
+    )
   );
+
+  if (
+    settings.showBest &&
+    data.best
+  ) {
+
+    lines.push(
+      "",
+      `特に${data.best.teamName}の${data.best.productName}が昨日${data.best.count}件で好調でした👏✨️`
+    );
+
+  }
+
+  const companyLines =
+    buildCompanyReportLines(
+      data,
+      "morning"
+    );
+
+  if (
+    companyLines.length >
+      0
+  ) {
+
+    lines.push(
+      "",
+      ...companyLines
+    );
+
+  }
+
+  if (
+    settings.outro
+  ) {
+
+    lines.push(
+      "",
+      settings.outro
+    );
+
+  }
 
   return lines.join(
     "\n"
@@ -19372,6 +21235,8 @@ function getCurrentTeamName(
 ===================================================== */
 
 function renderDashboard() {
+
+  applyRevenueVisibility();
 
   const selectedMonth =
     dashboardMonth.value;
@@ -19942,7 +21807,8 @@ function renderDashboard() {
 
 
   renderTeamRanking(
-    teamMap
+    teamMap,
+    monthly
   );
 
 
@@ -22650,13 +24516,18 @@ function buildTeamGoalProgress(
     );
 
   const totalActual =
-    rows.reduce(
+    Object.values(
+      actualMap
+    ).reduce(
       (
         sum,
-        row
+        value
       ) =>
         sum +
-        row.actual,
+        Number(
+          value ||
+          0
+        ),
       0
     );
 
@@ -23814,44 +25685,170 @@ function renderIndividualRanking(
 ===================================================== */
 
 function renderTeamRanking(
-  teamMap
+  teamMap,
+  monthly = []
 ) {
 
   teamRankingList.innerHTML =
     "";
 
+  const canViewRevenue =
+    canCurrentUserViewRevenue();
+
+  if (
+    teamRankingMode ===
+      "revenue" &&
+    !canViewRevenue
+  ) {
+
+    teamRankingMode =
+      "progress";
+
+  }
+
+  teamRankingProgressButton.setAttribute(
+    "aria-pressed",
+    String(
+      teamRankingMode ===
+        "progress"
+    )
+  );
+
+  teamRankingRevenueButton.setAttribute(
+    "aria-pressed",
+    String(
+      teamRankingMode ===
+        "revenue"
+    )
+  );
+
+  teamRankingRevenueButton.style.display =
+    canViewRevenue
+      ? ""
+      : "none";
 
   const ranking =
-    Object.values(
-      teamMap
-    ).sort(
-      (a, b) => {
+    teams
+      .filter(
+        team =>
+          team.active !==
+            false
+      )
+      .map(
+        team => {
+
+          const result =
+            teamMap[
+              team.id
+            ] ||
+            Object.values(
+              teamMap
+            ).find(
+              item =>
+                item.name ===
+                  team.name
+            ) ||
+            {
+              count: 0,
+              revenue: 0
+            };
+
+          const goalProgress =
+            buildTeamGoalProgress(
+              team,
+              monthly
+            );
+
+          return {
+            id:
+              team.id,
+            name:
+              team.name ||
+              "班名未設定",
+            count:
+              Number(
+                result.count ||
+                0
+              ),
+            revenue:
+              Number(
+                result.revenue ||
+                0
+              ),
+            ...goalProgress
+          };
+
+        }
+      );
+
+  ranking.sort(
+    (a, b) => {
+
+      if (
+        teamRankingMode ===
+          "revenue"
+      ) {
 
         if (
-          b.count !==
-          a.count
+          b.revenue !==
+            a.revenue
         ) {
 
           return (
-            b.count -
-            a.count
+            b.revenue -
+            a.revenue
           );
 
         }
 
-
         return (
-          b.revenue -
-          a.revenue
+          b.count -
+          a.count
         );
 
       }
-    );
 
+      const aHasTarget =
+        a.totalTarget >
+          0;
+
+      const bHasTarget =
+        b.totalTarget >
+          0;
+
+      if (
+        aHasTarget !==
+          bHasTarget
+      ) {
+
+        return bHasTarget
+          ? 1
+          : -1;
+
+      }
+
+      if (
+        b.progress !==
+          a.progress
+      ) {
+
+        return (
+          b.progress -
+          a.progress
+        );
+
+      }
+
+      return (
+        b.totalActual -
+        a.totalActual
+      );
+
+    }
+  );
 
   teamRankingCount.textContent =
     `${ranking.length}班`;
-
 
   if (
     ranking.length === 0
@@ -23859,7 +25856,7 @@ function renderTeamRanking(
 
     teamRankingList.innerHTML = `
       <div class="empty-message">
-        この月の班実績はありません。
+        班がありません。
       </div>
     `;
 
@@ -23867,9 +25864,11 @@ function renderTeamRanking(
 
   }
 
-
   ranking.forEach(
-    (item, index) => {
+    (
+      item,
+      index
+    ) => {
 
       const row =
         document.createElement(
@@ -23879,7 +25878,6 @@ function renderTeamRanking(
       row.className =
         "ranking-row";
 
-
       const left =
         document.createElement(
           "div"
@@ -23888,7 +25886,6 @@ function renderTeamRanking(
       left.className =
         "ranking-left";
 
-
       const number =
         document.createElement(
           "div"
@@ -23896,7 +25893,6 @@ function renderTeamRanking(
 
       number.className =
         "ranking-number";
-
 
       if (
         index === 0
@@ -23924,16 +25920,13 @@ function renderTeamRanking(
 
       }
 
-
       number.textContent =
         index + 1;
-
 
       const info =
         document.createElement(
           "div"
         );
-
 
       const name =
         document.createElement(
@@ -23946,20 +25939,9 @@ function renderTeamRanking(
       name.textContent =
         item.name;
 
-
       info.appendChild(
         name
       );
-
-
-      left.appendChild(
-        number
-      );
-
-      left.appendChild(
-        info
-      );
-
 
       const value =
         document.createElement(
@@ -23969,19 +25951,56 @@ function renderTeamRanking(
       value.className =
         "ranking-value";
 
+      if (
+        teamRankingMode ===
+          "revenue"
+      ) {
 
-      value.innerHTML = `
-        <div class="ranking-count">
-          ${item.count}件
-        </div>
+        value.innerHTML = `
+          <div class="ranking-count">
+            ${item.count}件
+          </div>
+          <div class="ranking-revenue">
+            ${formatYen(
+              item.revenue
+            )}
+          </div>
+        `;
 
-        <div class="ranking-revenue">
-          ${formatYen(
-            item.revenue
-          )}
-        </div>
-      `;
+      } else if (
+        item.totalTarget >
+          0
+      ) {
 
+        value.innerHTML = `
+          <div class="ranking-count">
+            進捗 ${item.progress}%
+          </div>
+          <div class="ranking-revenue">
+            ${item.totalActual}/${item.totalTarget}件・残り${item.remaining}件
+          </div>
+        `;
+
+      } else {
+
+        value.innerHTML = `
+          <div class="ranking-count">
+            目標未設定
+          </div>
+          <div class="ranking-revenue">
+            実績 ${item.count}件
+          </div>
+        `;
+
+      }
+
+      left.appendChild(
+        number
+      );
+
+      left.appendChild(
+        info
+      );
 
       row.appendChild(
         left
@@ -23990,7 +26009,6 @@ function renderTeamRanking(
       row.appendChild(
         value
       );
-
 
       teamRankingList.appendChild(
         row
