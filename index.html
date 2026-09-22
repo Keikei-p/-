@@ -16315,19 +16315,51 @@ async function disableCompanyMember(
 
   try {
 
-    const batch =
-      writeBatch(
-        db
-      );
-
     const memberId =
       member.id ||
       member.uid;
+
+    let rootUserExists =
+      false;
 
     if (
       !isManagedMember(
         member
       )
+    ) {
+
+      try {
+
+        const userSnap =
+          await getDoc(
+            doc(
+              db,
+              "users",
+              memberId
+            )
+          );
+
+        rootUserExists =
+          userSnap.exists();
+
+      } catch (error) {
+
+        console.warn(
+          "削除対象のusers確認に失敗しました。member側の無効化を続行します。",
+          error
+        );
+
+      }
+
+    }
+
+    const batch =
+      writeBatch(
+        db
+      );
+
+    if (
+      rootUserExists
     ) {
 
       batch.update(
@@ -16365,7 +16397,9 @@ async function disableCompanyMember(
     await batch.commit();
 
     showSuccess(
-      "メンバーを会社から削除しました。過去の実績は残っています。"
+      rootUserExists
+        ? "メンバーを会社から削除しました。過去の実績は残っています。"
+        : "古いメンバー情報を会社一覧から削除しました。過去の実績は残っています。"
     );
 
   } catch (error) {
