@@ -20,11 +20,15 @@
 :root {
   --bg: #f5f7fb;
   --card: #ffffff;
+  --card-soft: #f8fafc;
   --text: #111827;
   --sub: #6b7280;
   --border: #e5e7eb;
   --primary: #2563eb;
   --primary-dark: #1d4ed8;
+  --button-text: #ffffff;
+  --header: #1d4ed8;
+  --header-text: #ffffff;
   --primary-text: #1d4ed8;
   --primary-soft: #eff6ff;
   --primary-soft-strong: #dbeafe;
@@ -76,8 +80,8 @@ button {
 ===================================================== */
 
 header {
-  background: var(--primary-dark);
-  color: #fff;
+  background: var(--header);
+  color: var(--header-text);
   padding:
     calc(22px + env(safe-area-inset-top))
     20px
@@ -360,6 +364,37 @@ header {
     0 0 0 4px var(--text);
 }
 
+.theme-option-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 13px;
+}
+
+.theme-option-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 54px 78px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 9px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card-soft);
+}
+
+.theme-option-label {
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.theme-option-hint {
+  display: block;
+  margin-top: 2px;
+  color: var(--sub);
+  font-size: 9px;
+  font-weight: 600;
+}
+
 .theme-custom-row {
   display: flex;
   align-items: center;
@@ -405,6 +440,22 @@ header {
     height: 34px;
   }
 
+  .theme-option-row {
+    grid-template-columns: minmax(0, 1fr) 48px 68px;
+    gap: 6px;
+    padding: 7px;
+  }
+
+  .theme-color-input {
+    width: 48px;
+    height: 38px;
+  }
+
+  .theme-color-value {
+    min-width: 68px;
+    font-size: 10px;
+  }
+
   .theme-custom-row {
     gap: 7px;
   }
@@ -412,6 +463,45 @@ header {
   .theme-reset-button {
     padding: 8px;
   }
+}
+
+/* 個人テーマで変わる主要な面 */
+.user-bar,
+.welcome-card,
+.status-card,
+.account-card,
+.record-card,
+.dashboard-card,
+.management-card,
+.management-tab-panel,
+.quick-menu-button,
+.dashboard-app-button,
+.product-input-group,
+.daily-detail-card,
+.daily-team-card,
+.history-item,
+.all-team-card,
+.analysis-block {
+  background: var(--card);
+}
+
+.summary-card,
+.record-total,
+.daily-company-product-card,
+.history-day-summary,
+.product-editor-card,
+.analysis-column-title,
+.analysis-product-breakdown {
+  background: var(--card-soft);
+}
+
+.primary-button,
+.account-save-button,
+.record-save-button,
+.management-add-button,
+.product-save-button,
+.management-input-row button {
+  color: var(--button-text);
 }
 
 .account-save-button,
@@ -3650,28 +3740,93 @@ header {
 
       </div>
 
+      <div class="theme-option-list">
+
+        <div class="theme-option-row">
+          <div class="theme-option-label">
+            ボタン・選択色
+            <span class="theme-option-hint">主要ボタンや選択中の表示</span>
+          </div>
+          <input
+            id="themeColorInput"
+            class="theme-color-input"
+            type="color"
+            value="#2563eb"
+            aria-label="ボタン色">
+          <span
+            id="themeColorValue"
+            class="theme-color-value">
+            #2563EB
+          </span>
+        </div>
+
+        <div class="theme-option-row">
+          <div class="theme-option-label">
+            ヘッダー色
+            <span class="theme-option-hint">アプリ上部のタイトル部分</span>
+          </div>
+          <input
+            id="themeHeaderColorInput"
+            class="theme-color-input"
+            type="color"
+            value="#1d4ed8"
+            aria-label="ヘッダー色">
+          <span
+            id="themeHeaderColorValue"
+            class="theme-color-value">
+            #1D4ED8
+          </span>
+        </div>
+
+        <div class="theme-option-row">
+          <div class="theme-option-label">
+            背景色
+            <span class="theme-option-hint">アプリ全体の背景</span>
+          </div>
+          <input
+            id="themeBackgroundColorInput"
+            class="theme-color-input"
+            type="color"
+            value="#f5f7fb"
+            aria-label="背景色">
+          <span
+            id="themeBackgroundColorValue"
+            class="theme-color-value">
+            #F5F7FB
+          </span>
+        </div>
+
+        <div class="theme-option-row">
+          <div class="theme-option-label">
+            カード色
+            <span class="theme-option-hint">各機能の白いカード部分（淡く反映）</span>
+          </div>
+          <input
+            id="themeCardColorInput"
+            class="theme-color-input"
+            type="color"
+            value="#ffffff"
+            aria-label="カード色">
+          <span
+            id="themeCardColorValue"
+            class="theme-color-value">
+            #FFFFFF
+          </span>
+        </div>
+
+      </div>
+
       <div class="theme-custom-row">
-
-        <input
-          id="themeColorInput"
-          class="theme-color-input"
-          type="color"
-          value="#2563eb"
-          aria-label="自由に色を選ぶ">
-
-        <span
-          id="themeColorValue"
-          class="theme-color-value">
-          #2563EB
-        </span>
+        <div class="theme-setting-description" style="margin-top:0;">
+          色はこの端末・このアカウントだけに保存されます。
+        </div>
 
         <button
           id="resetThemeColorButton"
           class="theme-reset-button"
           type="button">
-          初期色に戻す
+          全部初期色に戻す
         </button>
-
       </div>
 
     </div>
@@ -5009,6 +5164,36 @@ const themeColorInput =
 const themeColorValue =
   document.getElementById(
     "themeColorValue"
+  );
+
+const themeHeaderColorInput =
+  document.getElementById(
+    "themeHeaderColorInput"
+  );
+
+const themeHeaderColorValue =
+  document.getElementById(
+    "themeHeaderColorValue"
+  );
+
+const themeBackgroundColorInput =
+  document.getElementById(
+    "themeBackgroundColorInput"
+  );
+
+const themeBackgroundColorValue =
+  document.getElementById(
+    "themeBackgroundColorValue"
+  );
+
+const themeCardColorInput =
+  document.getElementById(
+    "themeCardColorInput"
+  );
+
+const themeCardColorValue =
+  document.getElementById(
+    "themeCardColorValue"
   );
 
 const resetThemeColorButton =
@@ -8247,8 +8432,8 @@ onAuthStateChanged(
       currentUser =
         null;
 
-      applyThemeColor(
-        defaultThemeColor
+      applyThemeSettings(
+        defaultThemeSettings
       );
 
       currentUserData =
@@ -8421,12 +8606,22 @@ async function loadUserData(
    個人テーマ
 ===================================================== */
 
-const defaultThemeColor =
-  "#2563eb";
+const defaultThemeSettings = {
+  primary:
+    "#2563eb",
+  header:
+    "#1d4ed8",
+  background:
+    "#f5f7fb",
+  card:
+    "#ffffff"
+};
 
 
 function normalizeThemeColor(
-  value
+  value,
+  fallback =
+    defaultThemeSettings.primary
 ) {
 
   const color =
@@ -8442,7 +8637,7 @@ function normalizeThemeColor(
     color
   )
     ? color
-    : defaultThemeColor;
+    : fallback;
 
 }
 
@@ -8520,7 +8715,110 @@ function mixThemeColor(
 }
 
 
-function themeStorageKey() {
+function readableTextColor(
+  color
+) {
+
+  const normalized =
+    normalizeThemeColor(
+      color
+    );
+
+  const rgb = [
+    normalized.slice(1, 3),
+    normalized.slice(3, 5),
+    normalized.slice(5, 7)
+  ].map(
+    value =>
+      parseInt(
+        value,
+        16
+      ) /
+      255
+  );
+
+  const linear =
+    rgb.map(
+      value =>
+        value <=
+          0.03928
+          ? value /
+            12.92
+          : Math.pow(
+              (
+                value +
+                0.055
+              ) /
+                1.055,
+              2.4
+            )
+    );
+
+  const luminance =
+    0.2126 *
+      linear[0] +
+    0.7152 *
+      linear[1] +
+    0.0722 *
+      linear[2];
+
+
+  return luminance >
+    0.58
+      ? "#111827"
+      : "#ffffff";
+
+}
+
+
+function normalizeThemeSettings(
+  value
+) {
+
+  const source =
+    value &&
+    typeof value ===
+      "object"
+      ? value
+      : {};
+
+
+  return {
+    primary:
+      normalizeThemeColor(
+        source.primary,
+        defaultThemeSettings.primary
+      ),
+    header:
+      normalizeThemeColor(
+        source.header,
+        defaultThemeSettings.header
+      ),
+    background:
+      normalizeThemeColor(
+        source.background,
+        defaultThemeSettings.background
+      ),
+    card:
+      normalizeThemeColor(
+        source.card,
+        defaultThemeSettings.card
+      )
+  };
+
+}
+
+
+function themeSettingsStorageKey() {
+
+  return currentUser?.uid
+    ? `salesManagementThemeSettings:${currentUser.uid}`
+    : "";
+
+}
+
+
+function legacyThemeStorageKey() {
 
   return currentUser?.uid
     ? `salesManagementThemeColor:${currentUser.uid}`
@@ -8529,36 +8827,60 @@ function themeStorageKey() {
 }
 
 
-function applyThemeColor(
+function currentThemeSettingsFromInputs() {
+
+  return normalizeThemeSettings({
+    primary:
+      themeColorInput.value,
+    header:
+      themeHeaderColorInput.value,
+    background:
+      themeBackgroundColorInput.value,
+    card:
+      themeCardColorInput.value
+  });
+
+}
+
+
+function applyThemeSettings(
   value
 ) {
 
-  const color =
-    normalizeThemeColor(
+  const settings =
+    normalizeThemeSettings(
       value
     );
 
   const root =
     document.documentElement;
 
+
   root.style.setProperty(
     "--primary",
-    color
+    settings.primary
   );
 
   root.style.setProperty(
     "--primary-dark",
     mixThemeColor(
-      color,
+      settings.primary,
       "black",
       0.22
     )
   );
 
   root.style.setProperty(
+    "--button-text",
+    readableTextColor(
+      settings.primary
+    )
+  );
+
+  root.style.setProperty(
     "--primary-text",
     mixThemeColor(
-      color,
+      settings.primary,
       "black",
       0.16
     )
@@ -8567,7 +8889,7 @@ function applyThemeColor(
   root.style.setProperty(
     "--primary-soft",
     mixThemeColor(
-      color,
+      settings.primary,
       "white",
       0.92
     )
@@ -8576,7 +8898,7 @@ function applyThemeColor(
   root.style.setProperty(
     "--primary-soft-strong",
     mixThemeColor(
-      color,
+      settings.primary,
       "white",
       0.84
     )
@@ -8585,7 +8907,7 @@ function applyThemeColor(
   root.style.setProperty(
     "--primary-border",
     mixThemeColor(
-      color,
+      settings.primary,
       "white",
       0.58
     )
@@ -8594,7 +8916,7 @@ function applyThemeColor(
   root.style.setProperty(
     "--primary-border-strong",
     mixThemeColor(
-      color,
+      settings.primary,
       "white",
       0.38
     )
@@ -8603,9 +8925,53 @@ function applyThemeColor(
   root.style.setProperty(
     "--primary-faint",
     mixThemeColor(
-      color,
+      settings.primary,
       "white",
       0.97
+    )
+  );
+
+
+  root.style.setProperty(
+    "--header",
+    settings.header
+  );
+
+  root.style.setProperty(
+    "--header-text",
+    readableTextColor(
+      settings.header
+    )
+  );
+
+
+  root.style.setProperty(
+    "--bg",
+    settings.background
+  );
+
+
+  const safeCardColor =
+    settings.card ===
+      "#ffffff"
+      ? "#ffffff"
+      : mixThemeColor(
+          settings.card,
+          "white",
+          0.76
+        );
+
+  root.style.setProperty(
+    "--card",
+    safeCardColor
+  );
+
+  root.style.setProperty(
+    "--card-soft",
+    mixThemeColor(
+      settings.card,
+      "white",
+      0.88
     )
   );
 
@@ -8622,21 +8988,35 @@ function applyThemeColor(
 
     themeMeta.setAttribute(
       "content",
-      mixThemeColor(
-        color,
-        "black",
-        0.22
-      )
+      settings.header
     );
 
   }
 
 
   themeColorInput.value =
-    color;
+    settings.primary;
 
   themeColorValue.textContent =
-    color.toUpperCase();
+    settings.primary.toUpperCase();
+
+  themeHeaderColorInput.value =
+    settings.header;
+
+  themeHeaderColorValue.textContent =
+    settings.header.toUpperCase();
+
+  themeBackgroundColorInput.value =
+    settings.background;
+
+  themeBackgroundColorValue.textContent =
+    settings.background.toUpperCase();
+
+  themeCardColorInput.value =
+    settings.card;
+
+  themeCardColorValue.textContent =
+    settings.card.toUpperCase();
 
 
   themePresetGrid
@@ -8651,7 +9031,7 @@ function applyThemeColor(
           String(
             button.dataset.themeColor
               .toLowerCase() ===
-              color
+              settings.primary
           )
         );
 
@@ -8661,22 +9041,23 @@ function applyThemeColor(
 }
 
 
-function saveThemeColor(
+function saveThemeSettings(
   value
 ) {
 
-  const color =
-    normalizeThemeColor(
+  const settings =
+    normalizeThemeSettings(
       value
     );
 
-  applyThemeColor(
-    color
+
+  applyThemeSettings(
+    settings
   );
 
 
   const key =
-    themeStorageKey();
+    themeSettingsStorageKey();
 
 
   if (
@@ -8685,7 +9066,9 @@ function saveThemeColor(
 
     localStorage.setItem(
       key,
-      color
+      JSON.stringify(
+        settings
+      )
     );
 
   }
@@ -8696,18 +9079,86 @@ function saveThemeColor(
 function loadThemeColor() {
 
   const key =
-    themeStorageKey();
+    themeSettingsStorageKey();
 
-  const saved =
+  const legacyKey =
+    legacyThemeStorageKey();
+
+  let savedSettings =
+    null;
+
+
+  if (
     key
-      ? localStorage.getItem(
-          key
-        )
-      : null;
+  ) {
 
-  applyThemeColor(
-    saved ||
-    defaultThemeColor
+    const raw =
+      localStorage.getItem(
+        key
+      );
+
+
+    if (
+      raw
+    ) {
+
+      try {
+
+        savedSettings =
+          JSON.parse(
+            raw
+          );
+
+      } catch {
+
+        savedSettings =
+          null;
+
+      }
+
+    }
+
+  }
+
+
+  if (
+    !savedSettings &&
+    legacyKey
+  ) {
+
+    const oldColor =
+      localStorage.getItem(
+        legacyKey
+      );
+
+
+    if (
+      oldColor
+    ) {
+
+      savedSettings = {
+        ...defaultThemeSettings,
+        primary:
+          normalizeThemeColor(
+            oldColor,
+            defaultThemeSettings.primary
+          ),
+        header:
+          mixThemeColor(
+            oldColor,
+            "black",
+            0.22
+          )
+      };
+
+    }
+
+  }
+
+
+  applyThemeSettings(
+    savedSettings ||
+    defaultThemeSettings
   );
 
 }
@@ -8724,9 +9175,25 @@ themePresetGrid
         "click",
         () => {
 
-          saveThemeColor(
-            button.dataset.themeColor
-          );
+          const primary =
+            normalizeThemeColor(
+              button.dataset.themeColor
+            );
+
+          const current =
+            currentThemeSettingsFromInputs();
+
+
+          saveThemeSettings({
+            ...current,
+            primary,
+            header:
+              mixThemeColor(
+                primary,
+                "black",
+                0.22
+              )
+          });
 
         }
       );
@@ -8735,24 +9202,35 @@ themePresetGrid
   );
 
 
-themeColorInput.addEventListener(
-  "input",
-  () => {
+[
+  themeColorInput,
+  themeHeaderColorInput,
+  themeBackgroundColorInput,
+  themeCardColorInput
+].forEach(
+  input => {
 
-    applyThemeColor(
-      themeColorInput.value
+    input.addEventListener(
+      "input",
+      () => {
+
+        applyThemeSettings(
+          currentThemeSettingsFromInputs()
+        );
+
+      }
     );
 
-  }
-);
 
+    input.addEventListener(
+      "change",
+      () => {
 
-themeColorInput.addEventListener(
-  "change",
-  () => {
+        saveThemeSettings(
+          currentThemeSettingsFromInputs()
+        );
 
-    saveThemeColor(
-      themeColorInput.value
+      }
     );
 
   }
@@ -8764,7 +9242,10 @@ resetThemeColorButton.addEventListener(
   () => {
 
     const key =
-      themeStorageKey();
+      themeSettingsStorageKey();
+
+    const legacyKey =
+      legacyThemeStorageKey();
 
 
     if (
@@ -8778,8 +9259,19 @@ resetThemeColorButton.addEventListener(
     }
 
 
-    applyThemeColor(
-      defaultThemeColor
+    if (
+      legacyKey
+    ) {
+
+      localStorage.removeItem(
+        legacyKey
+      );
+
+    }
+
+
+    applyThemeSettings(
+      defaultThemeSettings
     );
 
   }
