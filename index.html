@@ -18714,13 +18714,50 @@ saveRecordButton.onclick =
       }
 
 
-      await setDoc(
-        recordRef,
-        data,
-        {
-          merge: true
+      try {
+
+        await setDoc(
+          recordRef,
+          data,
+          {
+            merge: true
+          }
+        );
+
+      } catch (error) {
+
+        /*
+          旧Rulesは監査項目を許可しないため、未移行の通常実績だけ
+          従来の項目で一度再試行する。権限判定は引き続きRulesが行う。
+          新Rules適用後は最初の保存で監査項目も記録される。
+        */
+        if (
+          error?.code !== "permission-denied" ||
+          isManagedMember(member) ||
+          existingDailyRecord?.createdByUid ||
+          existingDailyRecord?.updatedByUid
+        ) {
+
+          throw error;
+
         }
-      );
+
+        const legacyData = {
+          ...data
+        };
+
+        delete legacyData.createdByUid;
+        delete legacyData.updatedByUid;
+
+        await setDoc(
+          recordRef,
+          legacyData,
+          {
+            merge: true
+          }
+        );
+
+      }
 
 
       /*
