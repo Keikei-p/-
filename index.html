@@ -4826,6 +4826,13 @@ body.product-reordering .product-list {
               </button>
 
               <button
+                id="buildMidReportButton"
+                class="report-mode-button"
+                type="button">
+                📣 中間報告
+              </button>
+
+              <button
                 id="copyReportButton"
                 class="report-copy-button"
                 type="button">
@@ -4836,14 +4843,14 @@ body.product-reordering .product-list {
           </div>
 
           <div class="report-builder-help">
-            登録済みの実績と班別目標から自動作成します。生成後の文章はそのまま編集できます。
+            登録済みの実績と班別目標から全班分を自動作成します。0件の班も表示し、残数・進捗率まで計算します。生成後の文章はそのまま編集できます。
           </div>
 
           <textarea
             id="reportBuilderText"
             class="report-output"
             spellcheck="false"
-            placeholder="「最終報告」または「朝礼用」を押すと、ここに文章が作成されます。"></textarea>
+            placeholder="「朝礼用」「中間報告」「最終報告」を押すと、ここに文章が作成されます。"></textarea>
 
         </div>
 
@@ -5994,6 +6001,11 @@ const buildFinalReportButton =
 const buildMorningReportButton =
   document.getElementById(
     "buildMorningReportButton"
+  );
+
+const buildMidReportButton =
+  document.getElementById(
+    "buildMidReportButton"
   );
 
 const copyReportButton =
@@ -18414,15 +18426,98 @@ function buildReportData(
       allResults
     );
 
-  const dailyTeams =
+  /*
+    報告文では「実績がある班だけ」ではなく、
+    現在登録されている全班を先に用意する。
+    これにより0件の班も必ず報告に表示される。
+    過去に削除された班の実績が選択日に存在する場合は、
+    実績スナップショットから追加して集計する。
+  */
+  const reportTeams =
     {};
+
+  const currentTeamOrder =
+    new Map();
+
+  const ensureReportTeam =
+    (
+      teamKey,
+      teamId,
+      teamName
+    ) => {
+
+      const key =
+        teamKey ||
+        teamId ||
+        teamName ||
+        "所属なし";
+
+      if (
+        !reportTeams[
+          key
+        ]
+      ) {
+
+        reportTeams[
+          key
+        ] = {
+          key,
+          teamId:
+            teamId ||
+            "",
+          name:
+            teamName ||
+            "所属なし",
+          total:
+            0,
+          products:
+            {},
+          monthlyProducts:
+            {},
+          targets:
+            {}
+        };
+
+      }
+
+      return reportTeams[
+        key
+      ];
+
+    };
+
+  teams
+    .filter(
+      team =>
+        team.active !==
+        false
+    )
+    .forEach(
+      (
+        team,
+        index
+      ) => {
+
+        currentTeamOrder.set(
+          team.id,
+          index
+        );
+
+        ensureReportTeam(
+          team.id,
+          team.id,
+          team.name ||
+            "名前未設定"
+        );
+
+      }
+    );
 
   const dailyProductTotals =
     {};
 
   let dailyTotal =
     0;
-
 
   dailyRecords.forEach(
     record => {
@@ -18436,31 +18531,13 @@ function buildReportData(
         record.teamId ||
         teamName;
 
-
-      if (
-        !dailyTeams[
-          teamKey
-        ]
-      ) {
-
-        dailyTeams[
-          teamKey
-        ] = {
-          key:
-            teamKey,
-          teamId:
-            record.teamId ||
+      const team =
+        ensureReportTeam(
+          teamKey,
+          record.teamId ||
             "",
-          name:
-            teamName,
-          total:
-            0,
-          products:
-            {}
-        };
-
-      }
-
+          teamName
+        );
 
       getRecordResults(
         record
@@ -18478,25 +18555,18 @@ function buildReportData(
               result
             );
 
-
-          dailyTeams[
-            teamKey
-          ].products[
+          team.products[
             productKey
           ] =
             (
-              dailyTeams[
-                teamKey
-              ].products[
+              team.products[
                 productKey
               ] ||
               0
             ) +
             count;
 
-          dailyTeams[
-            teamKey
-          ].total +=
+          team.total +=
             count;
 
           dailyProductTotals[
@@ -18519,23 +18589,147 @@ function buildReportData(
     }
   );
 
+  const monthlyTotals =
+    {};
 
-  const currentTeamOrder =
-    new Map(
-      teams.map(
-        (
-          team,
-          index
-        ) => [
-          team.id,
-          index
-        ]
-      )
+  monthlyRecords.forEach(
+    record => {
+
+      const teamName =
+        getCurrentTeamName(
+          record
+        );
+
+      const teamKey =
+        record.teamId ||
+        teamName;
+
+      const team =
+        ensureReportTeam(
+          teamKey,
+          record.teamId ||
+            "",
+          teamName
+        );
+
+      getRecordResults(
+        record
+      ).forEach(
+        result => {
+
+          const productKey =
+            getReportProductKey(
+              result
+            );
+
+          const count =
+            Number(
+              result.count ||
+              0
+            );
+
+          team.monthlyProducts[
+            productKey
+          ] =
+            (
+              team.monthlyProducts[
+                productKey
+              ] ||
+              0
+            ) +
+            count;
+
+          monthlyTotals[
+            productKey
+          ] =
+            (
+              monthlyTotals[
+                productKey
+              ] ||
+              0
+            ) +
+            count;
+
+        }
+      );
+
+    }
+  );
+
+  const targetTotals =
+    {};
+
+  goals
+    .filter(
+      goal =>
+        goal.month ===
+        month
+    )
+    .forEach(
+      goal => {
+
+        const goalTeam =
+          goal.teamId
+            ? reportTeams[
+                goal.teamId
+              ]
+            : null;
+
+        Object.entries(
+          goal.targets ||
+          {}
+        ).forEach(
+          ([
+            productId,
+            value
+          ]) => {
+
+            const target =
+              Math.max(
+                0,
+                Number(
+                  value ||
+                  0
+                )
+              );
+
+            targetTotals[
+              productId
+            ] =
+              (
+                targetTotals[
+                  productId
+                ] ||
+                0
+              ) +
+              target;
+
+            if (
+              goalTeam
+            ) {
+
+              goalTeam.targets[
+                productId
+              ] =
+                (
+                  goalTeam.targets[
+                    productId
+                  ] ||
+                  0
+                ) +
+                target;
+
+            }
+
+          }
+        );
+
+      }
     );
 
   const teamRows =
     Object.values(
-      dailyTeams
+      reportTeams
     ).sort(
       (a, b) => {
 
@@ -18557,7 +18751,6 @@ function buildReportData(
               )
             : 99999;
 
-
         if (
           aOrder !==
           bOrder
@@ -18570,7 +18763,6 @@ function buildReportData(
 
         }
 
-
         return a.name.localeCompare(
           b.name,
           "ja"
@@ -18579,94 +18771,8 @@ function buildReportData(
       }
     );
 
-
-  const monthlyTotals =
-    {};
-
-
-  monthlyRecords.forEach(
-    record => {
-
-      getRecordResults(
-        record
-      ).forEach(
-        result => {
-
-          const productKey =
-            getReportProductKey(
-              result
-            );
-
-          monthlyTotals[
-            productKey
-          ] =
-            (
-              monthlyTotals[
-                productKey
-              ] ||
-              0
-            ) +
-            Number(
-              result.count ||
-              0
-            );
-
-        }
-      );
-
-    }
-  );
-
-
-  const targetTotals =
-    {};
-
-
-  goals
-    .filter(
-      goal =>
-        goal.month ===
-        month
-    )
-    .forEach(
-      goal => {
-
-        Object.entries(
-          goal.targets ||
-          {}
-        ).forEach(
-          ([
-            productId,
-            value
-          ]) => {
-
-            targetTotals[
-              productId
-            ] =
-              (
-                targetTotals[
-                  productId
-                ] ||
-                0
-              ) +
-              Math.max(
-                0,
-                Number(
-                  value ||
-                  0
-                )
-              );
-
-          }
-        );
-
-      }
-    );
-
-
   let best =
     null;
-
 
   teamRows.forEach(
     team => {
@@ -18682,10 +18788,9 @@ function buildReportData(
               0
             );
 
-
           if (
             count >
-            0 &&
+              0 &&
             (
               !best ||
               count >
@@ -18709,7 +18814,6 @@ function buildReportData(
     }
   );
 
-
   return {
     date,
     month,
@@ -18730,105 +18834,116 @@ function buildGoalReportLines(
   mode
 ) {
 
-  const goalProducts =
-    data.productRows.filter(
-      product =>
-        Number(
-          data.targetTotals[
-            product.key
-          ] ||
-          0
-        ) >
-        0
-    );
-
-
-  if (
-    goalProducts.length ===
-    0
-  ) {
-
-    return [];
-
-  }
-
-
-  if (
+  const dailyLabel =
     mode ===
-    "morning"
-  ) {
+      "morning"
+      ? "昨日"
+      : "本日";
 
-    return [
-      "【目標進捗】",
-      ...goalProducts.map(
-        product => {
+  const lines =
+    [];
 
-          const target =
-            Number(
-              data.targetTotals[
-                product.key
-              ] ||
+  data.teamRows.forEach(
+    team => {
+
+      lines.push(
+        `⭐️${team.name}`
+      );
+
+      if (
+        data.productRows.length ===
+        0
+      ) {
+
+        lines.push(
+          "商材がまだ登録されていません。"
+        );
+
+      } else {
+
+        data.productRows.forEach(
+          product => {
+
+            const daily =
+              Number(
+                team.products[
+                  product.key
+                ] ||
+                0
+              );
+
+            const actual =
+              Number(
+                team.monthlyProducts[
+                  product.key
+                ] ||
+                0
+              );
+
+            const target =
+              Number(
+                team.targets[
+                  product.key
+                ] ||
+                0
+              );
+
+            if (
+              target >
               0
-            );
+            ) {
 
-          const actual =
-            Number(
-              data.monthlyTotals[
-                product.key
-              ] ||
-              0
-            );
+              const remaining =
+                Math.max(
+                  target -
+                    actual,
+                  0
+                );
 
-          const remaining =
-            Math.max(
-              target -
-                actual,
-              0
-            );
-
-          const progress =
-            target >
-              0
-              ? Math.round(
+              const progress =
+                Math.round(
                   actual /
                     target *
                     100
-                )
-              : 0;
+                );
 
+              lines.push(
+                `${product.name}：${dailyLabel}${daily}件｜月間${actual}/${target}件｜残り${remaining}件｜進捗${progress}%`
+              );
 
-          return `${product.name}：${actual}/${target}件（残り${remaining}件・${progress}%）`;
+            } else {
 
-        }
-      )
-    ];
+              lines.push(
+                `${product.name}：${dailyLabel}${daily}件｜月間${actual}件｜目標未設定`
+              );
+
+            }
+
+          }
+        );
+
+      }
+
+      lines.push(
+        ""
+      );
+
+    }
+  );
+
+  if (
+    lines[
+      lines.length -
+      1
+    ] ===
+    ""
+  ) {
+
+    lines.pop();
 
   }
 
-
-  return [
-    "【エントリー目標】",
-    ...goalProducts.map(
-      product =>
-        `${product.name}：${Number(
-          data.targetTotals[
-            product.key
-          ] ||
-          0
-        )}件`
-    ),
-    "",
-    "【現時点】",
-    ...goalProducts.map(
-      product =>
-        `${product.name}：${Number(
-          data.monthlyTotals[
-            product.key
-          ] ||
-          0
-        )}件`
-    )
-  ];
+  return lines;
 
 }
 
@@ -18847,9 +18962,10 @@ function createFinalReportText(
     `📅${reportDateLabel(
       date
     )}`,
+    "",
+    "本日も一日お疲れさまでした！",
     ""
   ];
-
 
   if (
     data.teamRows.length ===
@@ -18857,7 +18973,7 @@ function createFinalReportText(
   ) {
 
     lines.push(
-      "この日の実績はまだ登録されていません。"
+      "班がまだ登録されていません。"
     );
 
     return lines.join(
@@ -18866,43 +18982,14 @@ function createFinalReportText(
 
   }
 
-
-  data.teamRows.forEach(
-    team => {
-
-      lines.push(
-        `⭐️${team.name}`
-      );
-
-
-      data.productRows.forEach(
-        product => {
-
-          lines.push(
-            `${product.name}:${Number(
-              team.products[
-                product.key
-              ] ||
-              0
-            )}件`
-          );
-
-        }
-      );
-
-
-      lines.push(
-        ""
-      );
-
-    }
-  );
-
-
   lines.push(
-    "本日もお疲れ様でした！！"
+    ...buildGoalReportLines(
+      data,
+      "final"
+    ),
+    "",
+    `全体本日実績：${data.dailyTotal}件`
   );
-
 
   if (
     data.best
@@ -18915,26 +19002,11 @@ function createFinalReportText(
 
   }
 
-
-  const goalLines =
-    buildGoalReportLines(
-      data,
-      "final"
-    );
-
-
-  if (
-    goalLines.length >
-    0
-  ) {
-
-    lines.push(
-      "",
-      ...goalLines
-    );
-
-  }
-
+  lines.push(
+    "",
+    "本日もありがとうございました！",
+    "明日もよろしくお願いいたします🙇‍♂️"
+  );
 
   return lines.join(
     "\n"
@@ -18957,9 +19029,11 @@ function createMorningReportText(
     `📅${reportDateLabel(
       date
     )}実績`,
+    "",
+    "おはようございます！",
+    "本日もよろしくお願いいたします！",
     ""
   ];
-
 
   if (
     data.teamRows.length ===
@@ -18967,9 +19041,7 @@ function createMorningReportText(
   ) {
 
     lines.push(
-      "選択した日の実績はまだ登録されていません。",
-      "",
-      "本日もよろしくお願いいたします👊🔥"
+      "班がまだ登録されていません。"
     );
 
     return lines.join(
@@ -18978,11 +19050,9 @@ function createMorningReportText(
 
   }
 
-
   lines.push(
     `昨日実績は全体で${data.dailyTotal}件でした！`
   );
-
 
   if (
     data.best
@@ -18994,54 +19064,67 @@ function createMorningReportText(
 
   }
 
-
   lines.push(
     "",
-    "【昨日の商材別実績】"
-  );
-
-
-  data.productRows.forEach(
-    product => {
-
-      lines.push(
-        `${product.name}：${Number(
-          data.dailyProductTotals[
-            product.key
-          ] ||
-          0
-        )}件`
-      );
-
-    }
-  );
-
-
-  const goalLines =
-    buildGoalReportLines(
+    ...buildGoalReportLines(
       data,
       "morning"
-    );
-
-
-  if (
-    goalLines.length >
-    0
-  ) {
-
-    lines.push(
-      "",
-      ...goalLines
-    );
-
-  }
-
-
-  lines.push(
+    ),
     "",
     "本日も目標達成に向けて頑張っていきましょう👊🔥"
   );
 
+  return lines.join(
+    "\n"
+  );
+
+}
+
+
+function createMidReportText(
+  date
+) {
+
+  const data =
+    buildReportData(
+      date
+    );
+
+  const lines = [
+    "📣中間報告📣",
+    `📅${reportDateLabel(
+      date
+    )}`,
+    "",
+    "お疲れさまです！現在の進捗を共有します。",
+    ""
+  ];
+
+  if (
+    data.teamRows.length ===
+    0
+  ) {
+
+    lines.push(
+      "班がまだ登録されていません。"
+    );
+
+    return lines.join(
+      "\n"
+    );
+
+  }
+
+  lines.push(
+    ...buildGoalReportLines(
+      data,
+      "mid"
+    ),
+    "",
+    `全体本日実績：${data.dailyTotal}件`,
+    "",
+    "残り時間も目標達成に向けてよろしくお願いします🔥"
+  );
 
   return lines.join(
     "\n"
@@ -19070,6 +19153,30 @@ buildFinalReportButton.onclick =
 
     reportBuilderText.value =
       createFinalReportText(
+        date
+      );
+
+  };
+
+
+buildMidReportButton.onclick =
+  () => {
+
+    const date =
+      reportBuilderDate.value;
+
+    if (!date) {
+
+      showError(
+        "集計する日付を選択してください。"
+      );
+
+      return;
+
+    }
+
+    reportBuilderText.value =
+      createMidReportText(
         date
       );
 
