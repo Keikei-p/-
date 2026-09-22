@@ -14955,7 +14955,10 @@ function renderOwnerTransferOptions() {
         member.id !==
           currentUser?.uid &&
         member.active !==
-          false
+          false &&
+        !isManagedMember(
+          member
+        )
     )
     .forEach(
       member => {
@@ -15043,7 +15046,10 @@ ownerAddButton.onclick =
           member.active !==
             false &&
           member.companyRole !==
-            "owner"
+            "owner" &&
+          !isManagedMember(
+            member
+          )
       );
 
 
@@ -15203,7 +15209,10 @@ ownerTransferButton.onclick =
           member.id ===
             ownerTransferSelect.value &&
           member.active !==
-            false
+            false &&
+          !isManagedMember(
+            member
+          )
       );
 
 
@@ -15884,7 +15893,10 @@ function renderMembers() {
 
         if (
           member.companyRole !==
-            "owner"
+            "owner" &&
+          !isManagedMember(
+            member
+          )
         ) {
 
           const revenueLabel =
@@ -16344,14 +16356,6 @@ async function changeMemberRole(
         {
           companyRole,
           role,
-          canViewRevenue:
-            companyRole ===
-              "owner"
-              ? true
-              : (
-                  member.canViewRevenue ===
-                    true
-                ),
           updatedAt:
             serverTimestamp()
         }
@@ -16370,14 +16374,6 @@ async function changeMemberRole(
       {
         companyRole,
         role,
-        canViewRevenue:
-          companyRole ===
-            "owner"
-            ? true
-            : (
-                member.canViewRevenue ===
-                  true
-              ),
         updatedAt:
           serverTimestamp()
       }
