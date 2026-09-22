@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 
 const { initializeApp } = require("firebase-admin/app");
+const { getAuth } = require("firebase-admin/auth");
 const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { setGlobalOptions } = require("firebase-functions/v2");
@@ -411,4 +412,121 @@ exports.acceptInvitation = onCall(async (request) => {
   });
 
   return result;
+});
+
+
+exports.deleteCompanyMemberAccount = onCall(async (request) => {
+  const { uid } = requireVerifiedUser(request);
+  const targetUid = String(request.data?.uid || "").trim();
+
+  if (!targetUid || targetUid.length > 128) {
+    throw new HttpsError(
+      "invalid-argument",
+      "削除対象のメンバーを確認できません。"
+    );
+  }
+
+  if (targetUid === uid) {
+    throw new HttpsError(
+      "failed-precondition",
+      "自分のアカウント削除はアカウント設定から行ってください。"
+    );
+  }
+
+  const context = await getCompanyContext(uid);
+
+  if (context.memberData.companyRole !== "owner") {
+    throw new HttpsError(
+      "permission-denied",
+      "メンバーを完全削除できるのはオーナーだけです。"
+    );
+  }
+
+  const targetMemberRef = db
+    .collection("companies")
+    .doc(context.companyId)
+    .collection("members")
+    .doc(targetUid);
+
+  const targetUserRef = db.collection("users").doc(targetUid);
+
+  const [targetMemberSnap, targetUserSnap] = await Promise.all([
+    targetMemberRef.get(),
+    targetUserRef.get(),
+  ]);
+
+  if (!targetMemberSnap.exists) {
+    throw new HttpsError(
+      "not-found",
+      "削除対象の会社メンバーが見つかりません。"
+    );
+  }
+
+  const targetMember = targetMemberSnap.data() || {};
+
+  if (targetMember.companyRole === "owner") {
+    throw new HttpsError(
+      "failed-precondition",
+      "オーナーはこの操作では削除できません。先に役割を変更してください。"
+    );
+  }
+
+  // 先に利用停止して、Auth削除途中でもアプリへ再アクセスできないようにする。
+  const disableBatch = db.batch();
+
+  disableBatch.set(
+    targetMemberRef,
+    {
+      active: false,
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  if (targetUserSnap.exists) {
+    disableBatch.set(
+      targetUserRef,
+      {
+        active: false,
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+  }
+
+  await disableBatch.commit();
+
+  let authDeleted = false;
+  let authAlreadyMissing = false;
+
+  try {
+    await getAuth().deleteUser(targetUid);
+    authDeleted = true;
+  } catch (error) {
+    if (error?.code === "auth/user-not-found") {
+      authAlreadyMissing = true;
+    } else {
+      throw new HttpsError(
+        "internal",
+        "Firebase Authenticationアカウントの削除に失敗しました。"
+      );
+    }
+  }
+
+  // 過去実績はrecords側に残す。メンバー/ユーザー本体だけ削除する。
+  const cleanupBatch = db.batch();
+
+  cleanupBatch.delete(targetMemberRef);
+
+  if (targetUserSnap.exists) {
+    cleanupBatch.delete(targetUserRef);
+  }
+
+  await cleanupBatch.commit();
+
+  return {
+    ok: true,
+    authDeleted,
+    authAlreadyMissing,
+  };
 });
