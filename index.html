@@ -14781,7 +14781,10 @@ function renderOwnerTransferOptions() {
         member.active !==
           false &&
         member.companyRole !==
-          "owner"
+          "owner" &&
+        !isManagedMember(
+          member
+        )
     )
     .forEach(
       member => {
@@ -15383,6 +15386,180 @@ function getTeamName(
 }
 
 
+
+function renderManagedMemberTeamOptions() {
+
+  if (
+    !managedMemberTeamSelect
+  ) {
+
+    return;
+
+  }
+
+  const currentValue =
+    managedMemberTeamSelect.value;
+
+  managedMemberTeamSelect.innerHTML =
+    '<option value="">所属班を選択</option>';
+
+  const selectableTeams =
+    isCurrentCompanyOwner()
+      ? teams.filter(
+          team =>
+            team.active !==
+              false
+        )
+      : (
+          isCurrentTeamLeader()
+            ? teams.filter(
+                team =>
+                  team.id ===
+                    currentUserData?.teamId &&
+                  team.active !==
+                    false
+              )
+            : []
+        );
+
+  selectableTeams.forEach(
+    team => {
+
+      const option =
+        document.createElement(
+          "option"
+        );
+
+      option.value =
+        team.id;
+
+      option.textContent =
+        team.name ||
+        "班名未設定";
+
+      managedMemberTeamSelect.appendChild(
+        option
+      );
+
+    }
+  );
+
+  if (
+    Array.from(
+      managedMemberTeamSelect.options
+    ).some(
+      option =>
+        option.value ===
+          currentValue
+    )
+  ) {
+
+    managedMemberTeamSelect.value =
+      currentValue;
+
+  } else if (
+    isCurrentTeamLeader() &&
+    currentUserData?.teamId
+  ) {
+
+    managedMemberTeamSelect.value =
+      currentUserData.teamId;
+
+  }
+
+}
+
+
+async function setMemberRevenuePermission(
+  member,
+  allowed
+) {
+
+  if (
+    !isCurrentCompanyOwner() ||
+    !currentUserData?.companyId ||
+    member?.companyRole ===
+      "owner"
+  ) {
+
+    showError(
+      "売上閲覧権限はオーナーだけが変更できます。"
+    );
+
+    return;
+
+  }
+
+  try {
+
+    const batch =
+      writeBatch(
+        db
+      );
+
+    const memberId =
+      member.id ||
+      member.uid;
+
+    batch.update(
+      doc(
+        db,
+        "companies",
+        currentUserData.companyId,
+        "members",
+        memberId
+      ),
+      {
+        canViewRevenue:
+          allowed === true,
+        updatedAt:
+          serverTimestamp()
+      }
+    );
+
+    if (
+      !isManagedMember(
+        member
+      )
+    ) {
+
+      batch.update(
+        doc(
+          db,
+          "users",
+          memberId
+        ),
+        {
+          canViewRevenue:
+            allowed === true,
+          updatedAt:
+            serverTimestamp()
+        }
+      );
+
+    }
+
+    await batch.commit();
+
+    showSuccess(
+      `${member.name || "メンバー"}の売上閲覧権限を${allowed ? "許可" : "解除"}しました。`
+    );
+
+  } catch (error) {
+
+    console.error(error);
+
+    showError(
+      firebaseErrorMessage(
+        error
+      )
+    );
+
+  }
+
+}
+
+
 function renderMembers() {
 
   memberManagementCount.textContent =
@@ -15391,6 +15568,18 @@ function renderMembers() {
   memberList.innerHTML =
     "";
 
+  renderManagedMemberTeamOptions();
+
+  if (
+    managedMemberCreatePanel
+  ) {
+
+    managedMemberCreatePanel.style.display =
+      isCurrentCompanyManager()
+        ? ""
+        : "none";
+
+  }
 
   if (
     members.length === 0
@@ -15406,7 +15595,6 @@ function renderMembers() {
 
   }
 
-
   members.forEach(
     member => {
 
@@ -15418,12 +15606,10 @@ function renderMembers() {
       item.className =
         "member-item";
 
-
       const info =
         document.createElement(
           "div"
         );
-
 
       const name =
         document.createElement(
@@ -15437,7 +15623,6 @@ function renderMembers() {
         member.name ||
         "名前未設定";
 
-
       const email =
         document.createElement(
           "div"
@@ -15447,9 +15632,14 @@ function renderMembers() {
         "member-email";
 
       email.textContent =
-        member.email ||
-        "";
-
+        isManagedMember(
+          member
+        )
+          ? "管理メンバー（ログインなし）"
+          : (
+              member.email ||
+              ""
+            );
 
       const role =
         document.createElement(
@@ -15472,7 +15662,6 @@ function renderMembers() {
                 : "👤 メンバー"
             );
 
-
       const team =
         document.createElement(
           "div"
@@ -15485,7 +15674,6 @@ function renderMembers() {
         getTeamName(
           member.teamId
         );
-
 
       info.appendChild(
         name
@@ -15503,7 +15691,6 @@ function renderMembers() {
         team
       );
 
-
       const actions =
         document.createElement(
           "div"
@@ -15512,41 +15699,160 @@ function renderMembers() {
       actions.className =
         "member-actions";
 
-
-      const roleButton =
-        document.createElement(
-          "button"
-        );
-
-      roleButton.className =
-        "member-action-button";
-
       if (
-        member.companyRole ===
-        "owner"
+        isCurrentCompanyOwner()
       ) {
 
-        roleButton.textContent =
-          "オーナー";
+        const roleSelect =
+          document.createElement(
+            "select"
+          );
 
-        roleButton.disabled =
-          true;
+        roleSelect.className =
+          "member-action-button";
 
-      } else {
+        [
+          ["member", "メンバー"],
+          ["leader", "リーダー"],
+          ["owner", "オーナー"]
+        ].forEach(
+          ([
+            value,
+            label
+          ]) => {
 
-        roleButton.textContent =
-          member.role === "leader"
-            ? "メンバーに変更"
-            : "リーダーに変更";
+            if (
+              value ===
+                "owner" &&
+              isManagedMember(
+                member
+              )
+            ) {
 
-        roleButton.onclick =
-          () =>
-            changeMemberRole(
-              member
+              return;
+
+            }
+
+            const option =
+              document.createElement(
+                "option"
+              );
+
+            option.value =
+              value;
+
+            option.textContent =
+              label;
+
+            roleSelect.appendChild(
+              option
             );
 
-      }
+          }
+        );
 
+        roleSelect.value =
+          member.companyRole ===
+            "owner"
+            ? "owner"
+            : (
+                member.role ===
+                  "leader"
+                  ? "leader"
+                  : "member"
+              );
+
+        roleSelect.onchange =
+          async () => {
+
+            const nextValue =
+              roleSelect.value;
+
+            const ok =
+              await changeMemberRole(
+                member,
+                nextValue
+              );
+
+            if (!ok) {
+
+              roleSelect.value =
+                member.companyRole ===
+                  "owner"
+                  ? "owner"
+                  : (
+                      member.role ===
+                        "leader"
+                        ? "leader"
+                        : "member"
+                    );
+
+            }
+
+          };
+
+        actions.appendChild(
+          roleSelect
+        );
+
+        if (
+          member.companyRole !==
+            "owner"
+        ) {
+
+          const revenueLabel =
+            document.createElement(
+              "label"
+            );
+
+          revenueLabel.className =
+            "member-action-button";
+
+          revenueLabel.style.display =
+            "inline-flex";
+
+          revenueLabel.style.alignItems =
+            "center";
+
+          revenueLabel.style.gap =
+            "6px";
+
+          const revenueToggle =
+            document.createElement(
+              "input"
+            );
+
+          revenueToggle.type =
+            "checkbox";
+
+          revenueToggle.checked =
+            member.canViewRevenue ===
+              true;
+
+          revenueToggle.onchange =
+            () =>
+              setMemberRevenuePermission(
+                member,
+                revenueToggle.checked
+              );
+
+          revenueLabel.appendChild(
+            revenueToggle
+          );
+
+          revenueLabel.appendChild(
+            document.createTextNode(
+              "売上閲覧"
+            )
+          );
+
+          actions.appendChild(
+            revenueLabel
+          );
+
+        }
+
+      }
 
       const teamButton =
         document.createElement(
@@ -15559,22 +15865,15 @@ function renderMembers() {
       teamButton.textContent =
         "班変更";
 
+      const canChangeTeam =
+        isCurrentCompanyOwner();
+
+      teamButton.disabled =
+        !canChangeTeam;
+
       if (
-        member.id ===
-          currentUser?.uid &&
-        currentUserData?.role ===
-          "leader" &&
-        currentUserData?.companyRole !==
-          "owner"
+        canChangeTeam
       ) {
-
-        teamButton.disabled =
-          true;
-
-        teamButton.textContent =
-          "班変更はオーナー";
-
-      } else {
 
         teamButton.onclick =
           () =>
@@ -15582,25 +15881,26 @@ function renderMembers() {
               member
             );
 
+      } else {
+
+        teamButton.textContent =
+          "班変更はオーナー";
+
       }
-
-
-      actions.appendChild(
-        roleButton
-      );
 
       actions.appendChild(
         teamButton
       );
 
-
       if (
-        currentUserData?.companyRole ===
-        "owner" &&
+        isCurrentCompanyOwner() &&
         member.companyRole !==
-        "owner" &&
+          "owner" &&
+        !isManagedMember(
+          member
+        ) &&
         member.id !==
-        currentUser?.uid
+          currentUser?.uid
       ) {
 
         const removeButton =
@@ -15626,7 +15926,6 @@ function renderMembers() {
 
       }
 
-
       item.appendChild(
         info
       );
@@ -15635,14 +15934,12 @@ function renderMembers() {
         actions
       );
 
-
       memberList.appendChild(
         item
       );
 
     }
   );
-
 
   renderOwnerTransferOptions();
 
@@ -15655,9 +15952,9 @@ async function disableCompanyMember(
 
   if (
     currentUserData?.companyRole !==
-    "owner" ||
+      "owner" ||
     member.companyRole ===
-    "owner"
+      "owner"
   ) {
 
     showError(
@@ -15668,17 +15965,15 @@ async function disableCompanyMember(
 
   }
 
-
   if (
     !confirm(
-      `${member.name || "このメンバー"}を会社から削除しますか？\n\nログインしても会社データへアクセスできなくなります。過去の実績は残ります。`
+      `${member.name || "このメンバー"}を会社から削除しますか？\n\n過去の実績は残ります。`
     )
   ) {
 
     return;
 
   }
-
 
   try {
 
@@ -15687,24 +15982,31 @@ async function disableCompanyMember(
         db
       );
 
+    const memberId =
+      member.id ||
+      member.uid;
 
-    batch.update(
-      doc(
-        db,
-        "users",
-        member.id
-      ),
-      {
+    if (
+      !isManagedMember(
+        member
+      )
+    ) {
 
-        active:
-          false,
+      batch.update(
+        doc(
+          db,
+          "users",
+          memberId
+        ),
+        {
+          active:
+            false,
+          updatedAt:
+            serverTimestamp()
+        }
+      );
 
-        updatedAt:
-          serverTimestamp()
-
-      }
-    );
-
+    }
 
     batch.update(
       doc(
@@ -15712,27 +16014,21 @@ async function disableCompanyMember(
         "companies",
         currentUserData.companyId,
         "members",
-        member.id
+        memberId
       ),
       {
-
         active:
           false,
-
         updatedAt:
           serverTimestamp()
-
       }
     );
 
-
     await batch.commit();
-
 
     showSuccess(
       "メンバーを会社から削除しました。過去の実績は残っています。"
     );
-
 
   } catch (error) {
 
@@ -15750,17 +16046,83 @@ async function disableCompanyMember(
 
 
 async function changeMemberRole(
-  member
+  member,
+  nextAccessRole = null
 ) {
 
-  const newRole =
-    member.role === "leader"
-      ? "member"
-      : "leader";
+  if (
+    !isCurrentCompanyOwner()
+  ) {
 
+    showError(
+      "役割を変更できるのはオーナーだけです。"
+    );
+
+    return false;
+
+  }
+
+  const currentAccessRole =
+    member.companyRole ===
+      "owner"
+      ? "owner"
+      : (
+          member.role ===
+            "leader"
+            ? "leader"
+            : "member"
+        );
+
+  const nextRole =
+    nextAccessRole ||
+    (
+      currentAccessRole ===
+        "leader"
+        ? "member"
+        : "leader"
+    );
 
   if (
-    newRole ===
+    ![
+      "owner",
+      "leader",
+      "member"
+    ].includes(
+      nextRole
+    )
+  ) {
+
+    return false;
+
+  }
+
+  if (
+    nextRole ===
+      currentAccessRole
+  ) {
+
+    return true;
+
+  }
+
+  if (
+    nextRole ===
+      "owner" &&
+    isManagedMember(
+      member
+    )
+  ) {
+
+    showError(
+      "ログインアカウントのない管理メンバーはオーナーに設定できません。"
+    );
+
+    return false;
+
+  }
+
+  if (
+    nextRole ===
       "leader" &&
     !member.teamId
   ) {
@@ -15769,25 +16131,80 @@ async function changeMemberRole(
       "先に所属班を設定してからリーダーに変更してください。"
     );
 
-    return;
+    return false;
 
   }
 
+  const memberId =
+    member.id ||
+    member.uid;
+
+  const isPrimaryOwner =
+    currentCompanyData?.ownerUid ===
+      memberId;
+
+  let replacementPrimaryOwner =
+    null;
+
+  if (
+    currentAccessRole ===
+      "owner" &&
+    nextRole !==
+      "owner" &&
+    isPrimaryOwner
+  ) {
+
+    replacementPrimaryOwner =
+      members.find(
+        item =>
+          item.id !==
+            memberId &&
+          item.active !==
+            false &&
+          item.companyRole ===
+            "owner" &&
+          !isManagedMember(
+            item
+          )
+      ) ||
+      null;
+
+    if (
+      !replacementPrimaryOwner
+    ) {
+
+      showError(
+        "最後のオーナーは降格できません。先に別のメンバーをオーナーにしてください。"
+      );
+
+      return false;
+
+    }
+
+    if (
+      currentUser?.uid !==
+        memberId
+    ) {
+
+      showError(
+        "代表オーナーの降格は、代表オーナー本人の画面から行ってください。"
+      );
+
+      return false;
+
+    }
+
+  }
 
   if (
     !confirm(
-      `${member.name || "このユーザー"}を${
-        newRole === "leader"
-          ? "リーダー"
-          : "メンバー"
-      }に変更しますか？`
+      `${member.name || "このユーザー"}を${nextRole === "owner" ? "オーナー" : nextRole === "leader" ? "リーダー" : "メンバー"}に変更しますか？`
     )
   ) {
 
-    return;
+    return false;
 
   }
-
 
   try {
 
@@ -15796,24 +16213,67 @@ async function changeMemberRole(
         db
       );
 
+    const companyRole =
+      nextRole ===
+        "owner"
+        ? "owner"
+        : "member";
 
-    batch.update(
-      doc(
-        db,
-        "users",
-        member.id
-      ),
-      {
+    const role =
+      nextRole ===
+        "owner"
+        ? "leader"
+        : nextRole;
 
-        role:
-          newRole,
+    if (
+      replacementPrimaryOwner
+    ) {
 
-        updatedAt:
-          serverTimestamp()
+      batch.update(
+        doc(
+          db,
+          "companies",
+          currentUserData.companyId
+        ),
+        {
+          ownerUid:
+            replacementPrimaryOwner.id,
+          updatedAt:
+            serverTimestamp()
+        }
+      );
 
-      }
-    );
+    }
 
+    if (
+      !isManagedMember(
+        member
+      )
+    ) {
+
+      batch.update(
+        doc(
+          db,
+          "users",
+          memberId
+        ),
+        {
+          companyRole,
+          role,
+          canViewRevenue:
+            companyRole ===
+              "owner"
+              ? true
+              : (
+                  member.canViewRevenue ===
+                    true
+                ),
+          updatedAt:
+            serverTimestamp()
+        }
+      );
+
+    }
 
     batch.update(
       doc(
@@ -15821,36 +16281,58 @@ async function changeMemberRole(
         "companies",
         currentUserData.companyId,
         "members",
-        member.id
+        memberId
       ),
       {
-
-        role:
-          newRole,
-
+        companyRole,
+        role,
+        canViewRevenue:
+          companyRole ===
+            "owner"
+            ? true
+            : (
+                member.canViewRevenue ===
+                  true
+              ),
         updatedAt:
           serverTimestamp()
-
       }
     );
 
-
     await batch.commit();
 
+    if (
+      replacementPrimaryOwner &&
+      currentCompanyData
+    ) {
+
+      currentCompanyData = {
+        ...currentCompanyData,
+        ownerUid:
+          replacementPrimaryOwner.id
+      };
+
+    }
 
     await loadMembers();
 
     showSuccess(
-      "権限を変更しました。"
+      "役割を変更しました。"
     );
 
+    return true;
+
   } catch (error) {
+
+    console.error(error);
 
     showError(
       firebaseErrorMessage(
         error
       )
     );
+
+    return false;
 
   }
 
@@ -16235,24 +16717,32 @@ saveMemberTeamModal.onclick =
         );
 
 
-      batch.update(
-        doc(
-          db,
-          "users",
-          editingMemberId
-        ),
-        {
+      if (
+        !isManagedMember(
+          member
+        )
+      ) {
 
-          teamId,
+        batch.update(
+          doc(
+            db,
+            "users",
+            editingMemberId
+          ),
+          {
 
-          teamHistory:
-            nextHistory,
+            teamId,
 
-          updatedAt:
-            serverTimestamp()
+            teamHistory:
+              nextHistory,
 
-        }
-      );
+            updatedAt:
+              serverTimestamp()
+
+          }
+        );
+
+      }
 
 
       batch.update(
@@ -16297,6 +16787,154 @@ saveMemberTeamModal.onclick =
           error
         )
       );
+
+    }
+
+  };
+
+
+
+addManagedMemberButton.onclick =
+  async () => {
+
+    if (
+      !isCurrentCompanyManager() ||
+      !currentUserData?.companyId
+    ) {
+
+      showError(
+        "メンバーを追加する権限がありません。"
+      );
+
+      return;
+
+    }
+
+    const name =
+      managedMemberNameInput.value
+        .trim()
+        .replace(
+          /\s+/g,
+          " "
+        );
+
+    const teamId =
+      managedMemberTeamSelect.value ||
+      null;
+
+    if (
+      !name
+    ) {
+
+      showError(
+        "メンバー名を入力してください。"
+      );
+
+      return;
+
+    }
+
+    if (
+      !teamId
+    ) {
+
+      showError(
+        "所属班を選択してください。"
+      );
+
+      return;
+
+    }
+
+    if (
+      isCurrentTeamLeader() &&
+      teamId !==
+        currentUserData.teamId
+    ) {
+
+      showError(
+        "リーダーは自分の班にだけ管理メンバーを追加できます。"
+      );
+
+      return;
+
+    }
+
+    try {
+
+      addManagedMemberButton.disabled =
+        true;
+
+      const memberRef =
+        doc(
+          collection(
+            db,
+            "companies",
+            currentUserData.companyId,
+            "members"
+          )
+        );
+
+      await setDoc(
+        memberRef,
+        {
+          uid:
+            memberRef.id,
+          name,
+          email:
+            "",
+          role:
+            "member",
+          companyRole:
+            "member",
+          teamId,
+          active:
+            true,
+          memberType:
+            "managed",
+          hasAccount:
+            false,
+          canViewRevenue:
+            false,
+          createdBy:
+            currentUser.uid,
+          joinedAt:
+            serverTimestamp(),
+          updatedAt:
+            serverTimestamp()
+        }
+      );
+
+      managedMemberNameInput.value =
+        "";
+
+      if (
+        isCurrentCompanyOwner()
+      ) {
+
+        managedMemberTeamSelect.value =
+          "";
+
+      }
+
+      showSuccess(
+        `${name}を管理メンバーとして追加しました。`
+      );
+
+    } catch (error) {
+
+      console.error(error);
+
+      showError(
+        firebaseErrorMessage(
+          error
+        )
+      );
+
+    } finally {
+
+      addManagedMemberButton.disabled =
+        false;
 
     }
 
@@ -17964,6 +18602,10 @@ saveRecordButton.onclick =
         totalRevenue:
           totals.revenue,
 
+        updatedByUid:
+          currentUser?.uid ||
+          "",
+
         updatedAt:
           serverTimestamp()
 
@@ -17973,6 +18615,10 @@ saveRecordButton.onclick =
       if (
         !existingDailyRecord
       ) {
+
+        data.createdByUid =
+          currentUser?.uid ||
+          "";
 
         data.createdAt =
           serverTimestamp();
