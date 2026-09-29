@@ -6862,29 +6862,38 @@ function canCurrentUserViewRevenueForRecord(
 
   }
 
-  const teamId =
-    currentUserData?.teamId ||
-    null;
-
   if (
-    !teamId ||
     !record ||
-    record.teamId !==
-      teamId
+    typeof record.date !==
+      "string" ||
+    !record.teamId ||
+    !currentUserData
   ) {
 
     return false;
 
   }
 
-  const startDate =
-    getCurrentRevenueScopeStartDate();
+  /*
+    売上は「現在の班」だけではなく、
+    その実績日の時点で本人が所属していた班だけ閲覧可能にする。
+
+    例:
+    8月まで1班 / 9月から2班
+    → 8月の1班売上は閲覧可
+    → 9月以降の1班売上は閲覧不可
+    → 9月以降の2班売上は閲覧可
+  */
+  const assignment =
+    getMemberTeamForDate(
+      currentUserData,
+      record.date
+    );
 
   return (
-    typeof record.date ===
-      "string" &&
-    record.date >=
-      startDate
+    !!assignment?.teamId &&
+    assignment.teamId ===
+      record.teamId
   );
 
 }
@@ -23978,21 +23987,36 @@ function buildRevenueChartData() {
 
         }
 
+        const inSelectedPeriod =
+          revenueChartMode ===
+            "monthly"
+            ? record.date.startsWith(
+                selectedMonth
+              )
+            : record.date.startsWith(
+                `${selectedYear}-`
+              );
 
         if (
-          revenueChartMode ===
-          "monthly"
+          !inSelectedPeriod
         ) {
 
-          return record.date.startsWith(
-            selectedMonth
-          );
+          return false;
 
         }
 
-
-        return record.date.startsWith(
-          `${selectedYear}-`
+        /*
+          売上専用グラフは、
+          Master以外はその実績日の時点で
+          本人が所属していた班の売上だけを対象にする。
+          過去の所属班は在籍期間中の売上だけ確認できる。
+          件数・進捗の全社表示には影響させない。
+        */
+        return (
+          isCurrentCompanyMaster() ||
+          canCurrentUserViewRevenueForRecord(
+            record
+          )
         );
 
       }
