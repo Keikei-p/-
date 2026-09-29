@@ -4156,7 +4156,7 @@ body.product-reordering .product-list {
 
       <div style="margin-top:7px;font-size:12px;color:var(--sub);line-height:1.7;">
         オーナーは複数人設定できます。
-        追加されたオーナーも、全班・招待・メンバー・実績を管理できます。
+        Masterは1人だけで、売上閲覧・招待権限を各メンバーへ設定できます。
       </div>
 
       <div
@@ -6632,10 +6632,289 @@ function isCurrentCompanyOwner() {
 
 function canCurrentUserViewRevenue() {
 
-  return (
-    isCurrentCompanyOwner() ||
+  if (
+    isCurrentCompanyMaster()
+  ) {
+
+    return true;
+
+  }
+
+  if (
     currentUserData?.canViewRevenue ===
       true
+  ) {
+
+    return true;
+
+  }
+
+  if (
+    currentUserData?.canViewRevenue ===
+      false
+  ) {
+
+    return false;
+
+  }
+
+  /*
+    既存データ互換:
+    これまで売上を見られていたOwner/Leaderは、
+    Masterが明示的にOFFにするまでは従来どおり許可する。
+  */
+  return (
+    currentUserData?.companyRole ===
+      "owner" ||
+    currentUserData?.role ===
+      "leader"
+  );
+
+}
+
+
+function getEffectiveMasterUid() {
+
+  return (
+    currentCompanyData?.masterUid ||
+    currentCompanyData?.ownerUid ||
+    null
+  );
+
+}
+
+
+function isCurrentCompanyMaster() {
+
+  return (
+    !!currentUser?.uid &&
+    getEffectiveMasterUid() ===
+      currentUser.uid
+  );
+
+}
+
+
+function isMemberMaster(
+  member
+) {
+
+  const memberId =
+    member?.id ||
+    member?.uid ||
+    null;
+
+  return (
+    !!memberId &&
+    memberId ===
+      getEffectiveMasterUid()
+  );
+
+}
+
+
+function memberRevenuePermissionEnabled(
+  member
+) {
+
+  if (
+    isMemberMaster(
+      member
+    )
+  ) {
+
+    return true;
+
+  }
+
+  if (
+    member?.canViewRevenue ===
+      true
+  ) {
+
+    return true;
+
+  }
+
+  if (
+    member?.canViewRevenue ===
+      false
+  ) {
+
+    return false;
+
+  }
+
+  return (
+    member?.companyRole ===
+      "owner" ||
+    member?.role ===
+      "leader"
+  );
+
+}
+
+
+function canCurrentUserCreateInvite() {
+
+  if (
+    isCurrentCompanyMaster()
+  ) {
+
+    return true;
+
+  }
+
+  return (
+    isCurrentCompanyManager() &&
+    currentUserData?.canCreateInvite ===
+      true
+  );
+
+}
+
+
+function getCurrentRevenueScopeStartDate() {
+
+  if (
+    isCurrentCompanyMaster()
+  ) {
+
+    return "";
+
+  }
+
+  const teamId =
+    currentUserData?.teamId ||
+    null;
+
+  if (!teamId) {
+
+    return getTodayString();
+
+  }
+
+  const today =
+    getTodayString();
+
+  const history =
+    Array.isArray(
+      currentUserData?.teamHistory
+    )
+      ? currentUserData.teamHistory
+          .filter(
+            item =>
+              item &&
+              typeof item.effectiveDate ===
+                "string" &&
+              item.effectiveDate <=
+                today &&
+              (
+                item.toTeamId ??
+                null
+              ) ===
+                teamId
+          )
+          .sort(
+            (a, b) =>
+              a.effectiveDate.localeCompare(
+                b.effectiveDate
+              )
+          )
+      : [];
+
+  if (
+    history.length > 0
+  ) {
+
+    return history[
+      history.length - 1
+    ].effectiveDate;
+
+  }
+
+  /*
+    teamHistory導入前の古いデータは開始日を断定できない。
+    過去班の売上漏えいを優先して防ぐため、本日を開始日にする。
+  */
+  return today;
+
+}
+
+
+function canCurrentUserViewRevenueForRecord(
+  record
+) {
+
+  if (
+    !canCurrentUserViewRevenue()
+  ) {
+
+    return false;
+
+  }
+
+  if (
+    isCurrentCompanyMaster()
+  ) {
+
+    return true;
+
+  }
+
+  const teamId =
+    currentUserData?.teamId ||
+    null;
+
+  if (
+    !teamId ||
+    !record ||
+    record.teamId !==
+      teamId
+  ) {
+
+    return false;
+
+  }
+
+  const startDate =
+    getCurrentRevenueScopeStartDate();
+
+  return (
+    typeof record.date ===
+      "string" &&
+    record.date >=
+      startDate
+  );
+
+}
+
+
+function getDisplayRecordResults(
+  record
+) {
+
+  const results =
+    getRecordResults(
+      record
+    );
+
+  if (
+    canCurrentUserViewRevenueForRecord(
+      record
+    )
+  ) {
+
+    return results;
+
+  }
+
+  return results.map(
+    result => ({
+      ...result,
+      revenuePerUnit:
+        0
+    })
   );
 
 }
@@ -8758,7 +9037,7 @@ async function loadCompanyData() {
     "会社名未設定";
 
   companyInviteControls.style.display =
-    isCurrentCompanyManager()
+    canCurrentUserCreateInvite()
       ? "block"
       : "none";
 
@@ -8855,6 +9134,9 @@ createCompanyButton.onclick =
           ownerUid:
             currentUser.uid,
 
+          masterUid:
+            currentUser.uid,
+
           active:
             true,
 
@@ -8895,6 +9177,12 @@ createCompanyButton.onclick =
           teamId:
             null,
 
+          canViewRevenue:
+            true,
+
+          canCreateInvite:
+            true,
+
           active:
             true,
 
@@ -8923,6 +9211,12 @@ createCompanyButton.onclick =
 
           teamId:
             null,
+
+          canViewRevenue:
+            true,
+
+          canCreateInvite:
+            true,
 
           updatedAt:
             serverTimestamp()
@@ -9077,6 +9371,12 @@ acceptInvitationButton.onclick =
           teamId:
             null,
 
+          canViewRevenue:
+            false,
+
+          canCreateInvite:
+            false,
+
           active:
             true,
 
@@ -9107,6 +9407,12 @@ acceptInvitationButton.onclick =
 
           teamId:
             null,
+
+          canViewRevenue:
+            false,
+
+          canCreateInvite:
+            false,
 
           updatedAt:
             serverTimestamp()
@@ -9173,11 +9479,11 @@ createInviteButton.onclick =
 
     if (
       !currentUserData?.companyId ||
-      !isCurrentCompanyManager()
+      !canCurrentUserCreateInvite()
     ) {
 
       showError(
-        "招待リンクを作成する権限がありません。"
+        "招待リンクの作成にはMasterの許可が必要です。"
       );
 
       return;
@@ -10390,7 +10696,7 @@ function updateCurrentUserUI() {
   }
 
   const canInvite =
-    isCurrentCompanyManager();
+    canCurrentUserCreateInvite();
 
   const isOwner =
     isCurrentCompanyOwner();
@@ -10409,7 +10715,7 @@ function updateCurrentUserUI() {
       : "none";
 
   reportBuilderToggle.style.display =
-    canInvite
+    isCurrentCompanyManager()
       ? ""
       : "none";
 
@@ -10464,11 +10770,15 @@ function updateCurrentUserUI() {
   ) {
 
     userRole.textContent =
-      isOwner
-        ? "👑 オーナー"
-        : `👑 ${getTeamName(
-            currentUserData.teamId
-          )} リーダー`;
+      isCurrentCompanyMaster()
+        ? "👑 MASTER"
+        : (
+            isOwner
+              ? "👑 オーナー"
+              : `👑 ${getTeamName(
+                  currentUserData.teamId
+                )} リーダー`
+          );
 
     setupWarning.style.display =
       "none";
@@ -15772,14 +16082,15 @@ async function setMemberRevenuePermission(
 ) {
 
   if (
-    !isCurrentCompanyOwner() ||
+    !isCurrentCompanyMaster() ||
     !currentUserData?.companyId ||
-    member?.companyRole ===
-      "owner"
+    isMemberMaster(
+      member
+    )
   ) {
 
     showError(
-      "売上閲覧権限はオーナーだけが変更できます。"
+      "売上閲覧権限はMasterだけが変更できます。"
     );
 
     return;
@@ -15850,6 +16161,186 @@ async function setMemberRevenuePermission(
         error
       )
     );
+
+  }
+
+}
+
+
+async function setMemberInvitePermission(
+  member,
+  allowed
+) {
+
+  if (
+    !isCurrentCompanyMaster() ||
+    !currentUserData?.companyId ||
+    isMemberMaster(
+      member
+    ) ||
+    isManagedMember(
+      member
+    ) ||
+    (
+      member?.companyRole !==
+        "owner" &&
+      member?.role !==
+        "leader"
+    )
+  ) {
+
+    showError(
+      "招待権限はMasterがOwnerまたはLeaderにだけ設定できます。"
+    );
+
+    return;
+
+  }
+
+  try {
+
+    const batch =
+      writeBatch(
+        db
+      );
+
+    const memberId =
+      member.id ||
+      member.uid;
+
+    batch.update(
+      doc(
+        db,
+        "companies",
+        currentUserData.companyId,
+        "members",
+        memberId
+      ),
+      {
+        canCreateInvite:
+          allowed === true,
+        updatedAt:
+          serverTimestamp()
+      }
+    );
+
+    batch.update(
+      doc(
+        db,
+        "users",
+        memberId
+      ),
+      {
+        canCreateInvite:
+          allowed === true,
+        updatedAt:
+          serverTimestamp()
+      }
+    );
+
+    await batch.commit();
+
+    showSuccess(
+      `${member.name || "メンバー"}の招待リンク作成権限を${allowed ? "許可" : "解除"}しました。`
+    );
+
+  } catch (error) {
+
+    console.error(error);
+
+    showError(
+      firebaseErrorMessage(
+        error
+      )
+    );
+
+  }
+
+}
+
+
+async function transferMasterToMember(
+  member
+) {
+
+  if (
+    !isCurrentCompanyMaster() ||
+    !currentUserData?.companyId ||
+    isMemberMaster(
+      member
+    ) ||
+    member?.companyRole !==
+      "owner" ||
+    isManagedMember(
+      member
+    )
+  ) {
+
+    showError(
+      "MasterはOwnerの中から1人だけ選択できます。"
+    );
+
+    return false;
+
+  }
+
+  const memberId =
+    member.id ||
+    member.uid;
+
+  if (
+    !confirm(
+      `${member.name || "このオーナー"}を新しいMasterに変更しますか？\n\n現在のMasterはOwnerとして残ります。`
+    )
+  ) {
+
+    return false;
+
+  }
+
+  try {
+
+    await updateDoc(
+      doc(
+        db,
+        "companies",
+        currentUserData.companyId
+      ),
+      {
+        masterUid:
+          memberId,
+        updatedAt:
+          serverTimestamp()
+      }
+    );
+
+    currentCompanyData = {
+      ...currentCompanyData,
+      masterUid:
+        memberId
+    };
+
+    await loadCompanyData();
+    await loadMembers();
+    updateCurrentUserUI();
+
+    showSuccess(
+      `${member.name || "オーナー"}をMasterに変更しました。`
+    );
+
+    return true;
+
+  } catch (error) {
+
+    console.error(error);
+
+    showError(
+      firebaseErrorMessage(
+        error
+      )
+    );
+
+    return false;
 
   }
 
@@ -15939,14 +16430,20 @@ function renderMembers() {
         "member-compact-meta";
 
       const roleLabel =
-        member.companyRole ===
-          "owner"
-          ? "オーナー"
+        isMemberMaster(
+          member
+        )
+          ? "MASTER"
           : (
-              member.role ===
-                "leader"
-                ? "リーダー"
-                : "メンバー"
+              member.companyRole ===
+                "owner"
+                ? "オーナー"
+                : (
+                    member.role ===
+                      "leader"
+                      ? "リーダー"
+                      : "メンバー"
+                  )
             );
 
       meta.textContent =
@@ -16082,6 +16579,11 @@ function renderMembers() {
                   : "member"
               );
 
+        roleSelect.disabled =
+          isMemberMaster(
+            member
+          );
+
         roleSelect.onchange =
           async () => {
 
@@ -16116,8 +16618,10 @@ function renderMembers() {
         );
 
         if (
-          member.companyRole !==
-            "owner" &&
+          isCurrentCompanyMaster() &&
+          !isMemberMaster(
+            member
+          ) &&
           !isManagedMember(
             member
           )
@@ -16149,8 +16653,9 @@ function renderMembers() {
             "checkbox";
 
           revenueToggle.checked =
-            member.canViewRevenue ===
-              true;
+            memberRevenuePermissionEnabled(
+              member
+            );
 
           revenueToggle.onchange =
             () =>
@@ -16171,6 +16676,109 @@ function renderMembers() {
 
           actions.appendChild(
             revenueLabel
+          );
+
+        }
+
+        if (
+          isCurrentCompanyMaster() &&
+          !isMemberMaster(
+            member
+          ) &&
+          !isManagedMember(
+            member
+          ) &&
+          (
+            member.companyRole ===
+              "owner" ||
+            member.role ===
+              "leader"
+          )
+        ) {
+
+          const inviteLabel =
+            document.createElement(
+              "label"
+            );
+
+          inviteLabel.className =
+            "member-action-button";
+
+          inviteLabel.style.display =
+            "inline-flex";
+
+          inviteLabel.style.alignItems =
+            "center";
+
+          inviteLabel.style.gap =
+            "5px";
+
+          const inviteToggle =
+            document.createElement(
+              "input"
+            );
+
+          inviteToggle.type =
+            "checkbox";
+
+          inviteToggle.checked =
+            member.canCreateInvite ===
+              true;
+
+          inviteToggle.onchange =
+            () =>
+              setMemberInvitePermission(
+                member,
+                inviteToggle.checked
+              );
+
+          inviteLabel.appendChild(
+            inviteToggle
+          );
+
+          inviteLabel.appendChild(
+            document.createTextNode(
+              "招待許可"
+            )
+          );
+
+          actions.appendChild(
+            inviteLabel
+          );
+
+        }
+
+        if (
+          isCurrentCompanyMaster() &&
+          member.companyRole ===
+            "owner" &&
+          !isMemberMaster(
+            member
+          ) &&
+          !isManagedMember(
+            member
+          )
+        ) {
+
+          const masterButton =
+            document.createElement(
+              "button"
+            );
+
+          masterButton.className =
+            "member-action-button";
+
+          masterButton.textContent =
+            "Masterへ変更";
+
+          masterButton.onclick =
+            () =>
+              transferMasterToMember(
+                member
+              );
+
+          actions.appendChild(
+            masterButton
           );
 
         }
@@ -16428,6 +17036,20 @@ async function changeMemberRole(
 
     showError(
       "役割を変更できるのはオーナーだけです。"
+    );
+
+    return false;
+
+  }
+
+  if (
+    isMemberMaster(
+      member
+    )
+  ) {
+
+    showError(
+      "Masterの役割は通常の役割変更では変更できません。先に別のOwnerへMasterを引き継いでください。"
     );
 
     return false;
@@ -17251,6 +17873,8 @@ addManagedMemberButton.onclick =
           hasAccount:
             false,
           canViewRevenue:
+            false,
+          canCreateInvite:
             false,
           createdBy:
             currentUser.uid,
@@ -20060,9 +20684,7 @@ function buildReportData(
       ...monthlyRecords
     ].flatMap(
       record =>
-        getRecordResults(
-          record
-        )
+        getDisplayRecordResults(record)
     );
 
   const productRows =
@@ -20176,9 +20798,7 @@ function buildReportData(
           teamName
         );
 
-      getRecordResults(
-        record
-      ).forEach(
+      getDisplayRecordResults(record).forEach(
         result => {
 
           const count =
@@ -20249,9 +20869,7 @@ function buildReportData(
           teamName
         );
 
-      getRecordResults(
-        record
-      ).forEach(
+      getDisplayRecordResults(record).forEach(
         result => {
 
           const productKey =
@@ -21700,9 +22318,7 @@ function renderDashboard() {
     record => {
 
       const results =
-        getRecordResults(
-          record
-        );
+        getDisplayRecordResults(record);
 
 
       let recordCount =
@@ -22317,9 +22933,7 @@ function buildSalesAnalysis(
 
 
       const results =
-        getRecordResults(
-          record
-        );
+        getDisplayRecordResults(record);
 
 
       results.forEach(
@@ -23308,9 +23922,7 @@ function revenueFromRecord(
   record
 ) {
 
-  return getRecordResults(
-    record
-  ).reduce(
+  return getDisplayRecordResults(record).reduce(
     (
       sum,
       result
@@ -24554,9 +25166,7 @@ function buildMemberProductDisplayGroups(
   memberRecords.forEach(
     record => {
 
-      getRecordResults(
-        record
-      ).forEach(
+      getDisplayRecordResults(record).forEach(
         result => {
 
           const count =
@@ -24724,9 +25334,7 @@ function buildTeamGoalProgress(
     .forEach(
       record => {
 
-        getRecordResults(
-          record
-        ).forEach(
+        getDisplayRecordResults(record).forEach(
           result => {
 
             const productId =
@@ -25033,9 +25641,7 @@ function renderSelectedTeamMemberDetail(
         recordsForMember.forEach(
           record => {
 
-            getRecordResults(
-              record
-            ).forEach(
+            getDisplayRecordResults(record).forEach(
               result => {
 
                 const count =
@@ -25109,9 +25715,7 @@ function renderSelectedTeamMemberDetail(
   teamRecords.forEach(
     record => {
 
-      getRecordResults(
-        record
-      ).forEach(
+      getDisplayRecordResults(record).forEach(
         result => {
 
           const count =
@@ -27454,9 +28058,7 @@ function renderRecordHistory(
   dailyRecords.forEach(
     record => {
 
-      getRecordResults(
-        record
-      ).forEach(
+      getDisplayRecordResults(record).forEach(
         result => {
 
           const count =
@@ -27531,9 +28133,7 @@ function renderRecordHistory(
 
 
       const results =
-        getRecordResults(
-          record
-        );
+        getDisplayRecordResults(record);
 
 
       let totalCount =
