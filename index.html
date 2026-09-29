@@ -23978,21 +23978,35 @@ function buildRevenueChartData() {
 
         }
 
+        const inSelectedPeriod =
+          revenueChartMode ===
+            "monthly"
+            ? record.date.startsWith(
+                selectedMonth
+              )
+            : record.date.startsWith(
+                `${selectedYear}-`
+              );
 
         if (
-          revenueChartMode ===
-          "monthly"
+          !inSelectedPeriod
         ) {
 
-          return record.date.startsWith(
-            selectedMonth
-          );
+          return false;
 
         }
 
-
-        return record.date.startsWith(
-          `${selectedYear}-`
+        /*
+          売上専用グラフは、
+          Master以外は現在所属している自班かつ
+          班移動日以降の実績だけを対象にする。
+          件数・進捗の全社表示には影響させない。
+        */
+        return (
+          isCurrentCompanyMaster() ||
+          canCurrentUserViewRevenueForRecord(
+            record
+          )
         );
 
       }
