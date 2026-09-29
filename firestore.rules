@@ -217,7 +217,7 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly([
           'uid', 'name', 'email', 'role', 'companyRole', 'teamId',
           'active', 'memberType', 'hasAccount', 'canViewRevenue',
-          'createdBy', 'joinedAt', 'updatedAt'
+          'canCreateInvite', 'createdBy', 'joinedAt', 'updatedAt'
         ])
         && request.resource.data.uid == memberId
         && validShortName(request.resource.data.name, 30)
@@ -230,6 +230,7 @@ service cloud.firestore {
         && request.resource.data.memberType == 'managed'
         && request.resource.data.hasAccount == false
         && request.resource.data.canViewRevenue == false
+        && request.resource.data.canCreateInvite == false
         && request.resource.data.createdBy == request.auth.uid
         && request.resource.data.joinedAt == request.time
         && request.resource.data.updatedAt == request.time
