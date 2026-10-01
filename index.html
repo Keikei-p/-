@@ -9895,13 +9895,25 @@ async function loadUserData(
 
     updateCurrentUserUI();
 
-    prepareRecordInputs();
+    /*
+      初回ログイン時は必要データを先にすべて読み込む。
+      空のmembers/productsで実績フォームを作ると、
+      担当者や商材が選べない半端な状態になるため、
+      班 → 商材 → メンバーの順で取得完了後に入力欄を初期化する。
+    */
+    await loadTeams(
+      true
+    );
 
-    await loadTeams();
+    await loadProducts(
+      true
+    );
 
-    await loadProducts();
+    await loadMembers(
+      true
+    );
 
-    await loadMembers();
+    await prepareRecordInputs();
 
 
     databaseStatus.textContent =
@@ -11656,11 +11668,29 @@ function startRealtimeListeners() {
         renderTeams();
 
         /*
+          班変更が反映された時も担当者候補を最新状態に保つ。
+          入力中の商材数値には触れない。
+        */
+        updateRecordMemberOptions();
+
+        /*
           班名変更を班ランキングに反映
           （実績の入力中の数値は保持）
         */
 
         renderDashboard();
+
+      },
+      error => {
+
+        console.error(
+          "班リアルタイム監視エラー:",
+          error
+        );
+
+        showError(
+          "班情報の更新に失敗しました。通信状態を確認してください。"
+        );
 
       }
     );
@@ -11706,6 +11736,18 @@ function startRealtimeListeners() {
 
         prepareProductInputList(
           draftResults
+        );
+
+      },
+      error => {
+
+        console.error(
+          "商材リアルタイム監視エラー:",
+          error
+        );
+
+        showError(
+          "商材情報の更新に失敗しました。通信状態を確認してください。"
         );
 
       }
@@ -11858,7 +11900,9 @@ function stopRealtimeListeners() {
    班
 ===================================================== */
 
-async function loadTeams() {
+async function loadTeams(
+  throwOnError = false
+) {
 
   try {
 
@@ -11901,15 +11945,30 @@ async function loadTeams() {
 
     renderTeams();
 
+    return true;
+
   } catch (error) {
 
-    console.error(error);
+    console.error(
+      "班情報読み込みエラー:",
+      error
+    );
+
+    if (
+      throwOnError
+    ) {
+
+      throw error;
+
+    }
 
     showError(
       firebaseErrorMessage(
         error
       )
     );
+
+    return false;
 
   }
 
@@ -13762,7 +13821,9 @@ function compareProductsByOrder(
 }
 
 
-async function loadProducts() {
+async function loadProducts(
+  throwOnError = false
+) {
 
   try {
 
@@ -13797,13 +13858,30 @@ async function loadProducts() {
 
     renderProducts();
 
+    return true;
+
   } catch (error) {
+
+    console.error(
+      "商材情報読み込みエラー:",
+      error
+    );
+
+    if (
+      throwOnError
+    ) {
+
+      throw error;
+
+    }
 
     showError(
       firebaseErrorMessage(
         error
       )
     );
+
+    return false;
 
   }
 
@@ -15351,7 +15429,9 @@ async function deleteProduct(
    メンバー
 ===================================================== */
 
-async function loadMembers() {
+async function loadMembers(
+  throwOnError = false
+) {
 
   if (
     !isCurrentCompanyManager()
@@ -15363,7 +15443,7 @@ async function loadMembers() {
 
     renderMembers();
 
-    return;
+    return true;
 
   }
 
@@ -15428,13 +15508,30 @@ async function loadMembers() {
 
     renderOwnerTransferOptions();
 
+    return true;
+
   } catch (error) {
+
+    console.error(
+      "メンバー情報読み込みエラー:",
+      error
+    );
+
+    if (
+      throwOnError
+    ) {
+
+      throw error;
+
+    }
 
     showError(
       firebaseErrorMessage(
         error
       )
     );
+
+    return false;
 
   }
 
@@ -18209,6 +18306,15 @@ function updateRecordMemberOptions() {
 }
 
 async function prepareRecordInputs() {
+
+  if (
+    !recordDate.value
+  ) {
+
+    recordDate.value =
+      getTodayString();
+
+  }
 
   updateRecordMemberOptions();
 
