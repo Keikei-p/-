@@ -3994,6 +3994,11 @@ body.product-reordering .product-list {
               アカウント設定
             </button>
 
+            <button id="quickNotifyButton" class="quick-menu-button" type="button" aria-pressed="false" style="display:none;">
+              <span class="quick-menu-icon">🔔</span>
+              通知
+            </button>
+
             <button id="managementProductButton" class="quick-menu-button" type="button" aria-pressed="false" style="display:none;">
               <span class="quick-menu-icon">📦</span>
               商材管理
@@ -4454,6 +4459,104 @@ body.product-reordering .product-list {
 
 
   <!-- =====================================================
+       通知
+  ===================================================== -->
+
+  <div
+    id="notificationManagement"
+    class="account-card quick-panel"
+    style="display:none;">
+
+    <div class="quick-panel-header">
+      <div class="account-title">🔔 通知</div>
+      <button
+        id="closeNotificationManagementButton"
+        class="quick-panel-close"
+        type="button">
+        閉じる
+      </button>
+    </div>
+
+    <div class="account-description">
+      指定した曜日・時刻に、その日の実績報告が揃っていない班を確認します。
+      0件でも「実績なし」で登録していれば報告済みとして扱います。
+    </div>
+
+    <div
+      id="notificationOwnerOnlyHint"
+      style="display:none;margin-top:12px;padding:10px;border-radius:10px;background:#f8fafc;color:var(--sub);font-size:12px;line-height:1.6;">
+      通知設定の変更はオーナーのみ可能です。現在の設定と未報告状況は確認できます。
+    </div>
+
+    <label style="display:flex;align-items:center;gap:8px;margin-top:18px;font-weight:800;">
+      <input id="notificationEnabled" type="checkbox">
+      未報告チェックを有効にする
+    </label>
+
+    <div class="form-group">
+      <label>通知する曜日</label>
+      <div id="notificationWeekdays" style="display:flex;gap:8px;flex-wrap:wrap;">
+        <label><input type="checkbox" data-notification-weekday="1"> 月</label>
+        <label><input type="checkbox" data-notification-weekday="2"> 火</label>
+        <label><input type="checkbox" data-notification-weekday="3"> 水</label>
+        <label><input type="checkbox" data-notification-weekday="4"> 木</label>
+        <label><input type="checkbox" data-notification-weekday="5"> 金</label>
+        <label><input type="checkbox" data-notification-weekday="6"> 土</label>
+        <label><input type="checkbox" data-notification-weekday="0"> 日</label>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label for="notificationTimeInput">通知時刻</label>
+      <input id="notificationTimeInput" type="time" step="60" value="19:30">
+    </div>
+
+    <label style="display:flex;align-items:center;gap:8px;margin-top:14px;font-weight:800;">
+      <input id="notificationLineEnabled" type="checkbox">
+      LINEグループへ自動通知
+    </label>
+
+    <div class="form-group">
+      <label for="notificationLineGroupId">LINEグループID</label>
+      <input
+        id="notificationLineGroupId"
+        type="text"
+        maxlength="200"
+        autocomplete="off"
+        placeholder="Cxxxxxxxx...">
+      <div style="margin-top:6px;color:var(--sub);font-size:11px;line-height:1.6;">
+        LINE公式アカウントを報告グループへ参加させ、Webhookで取得したgroupIdを設定します。
+        Channel Access Tokenは画面には保存せずFirebase Secretで管理します。
+      </div>
+    </div>
+
+    <button
+      id="saveNotificationSettingsButton"
+      class="account-save-button"
+      type="button">
+      通知設定を保存
+    </button>
+
+    <div style="margin-top:24px;padding-top:18px;border-top:1px solid var(--border);">
+      <div style="font-weight:800;">今日の未報告状況</div>
+      <div
+        id="notificationPreview"
+        style="margin-top:10px;padding:12px;border-radius:10px;background:#f8fafc;font-size:13px;line-height:1.8;">
+        確認中...
+      </div>
+      <button
+        id="refreshNotificationPreviewButton"
+        class="team-action-button"
+        type="button"
+        style="margin-top:10px;">
+        未報告を再確認
+      </button>
+    </div>
+
+  </div>
+
+
+  <!-- =====================================================
        状態
   ===================================================== -->
 
@@ -4565,6 +4668,16 @@ body.product-reordering .product-list {
           placeholder="例：○○市 ○○店"
         >
 
+        <div id="recordCorrectionTeamGroup" style="display:none;margin-top:14px;">
+          <label for="recordCorrectionTeam">訂正する班</label>
+          <select id="recordCorrectionTeam">
+            <option value="">所属なし</option>
+          </select>
+          <div style="margin-top:6px;color:var(--sub);font-size:11px;line-height:1.6;">
+            実績の班だけを訂正します。本人の班履歴は変更しません。
+          </div>
+        </div>
+
       </div>
 
     </div>
@@ -4618,6 +4731,14 @@ body.product-reordering .product-list {
       id="saveRecordButton"
       class="record-save-button">
       実績を一括登録
+    </button>
+
+    <button
+      id="noResultButton"
+      class="record-clear-button"
+      type="button"
+      style="margin-left:8px;">
+      実績なし（0件報告）
     </button>
 
     <button
@@ -5752,6 +5873,42 @@ const quickOwnerButton =
 const quickAccountButton =
   document.getElementById("quickAccountButton");
 
+const quickNotifyButton =
+  document.getElementById("quickNotifyButton");
+
+const notificationManagement =
+  document.getElementById("notificationManagement");
+
+const closeNotificationManagementButton =
+  document.getElementById("closeNotificationManagementButton");
+
+const notificationOwnerOnlyHint =
+  document.getElementById("notificationOwnerOnlyHint");
+
+const notificationEnabled =
+  document.getElementById("notificationEnabled");
+
+const notificationWeekdays =
+  document.getElementById("notificationWeekdays");
+
+const notificationTimeInput =
+  document.getElementById("notificationTimeInput");
+
+const notificationLineEnabled =
+  document.getElementById("notificationLineEnabled");
+
+const notificationLineGroupId =
+  document.getElementById("notificationLineGroupId");
+
+const saveNotificationSettingsButton =
+  document.getElementById("saveNotificationSettingsButton");
+
+const notificationPreview =
+  document.getElementById("notificationPreview");
+
+const refreshNotificationPreviewButton =
+  document.getElementById("refreshNotificationPreviewButton");
+
 const companyManagement =
   document.getElementById("companyManagement");
 
@@ -6003,6 +6160,16 @@ const recordLocation =
     "recordLocation"
   );
 
+const recordCorrectionTeamGroup =
+  document.getElementById(
+    "recordCorrectionTeamGroup"
+  );
+
+const recordCorrectionTeam =
+  document.getElementById(
+    "recordCorrectionTeam"
+  );
+
 const productInputList =
   document.getElementById(
     "productInputList"
@@ -6021,6 +6188,11 @@ const recordTotalRevenue =
 const saveRecordButton =
   document.getElementById(
     "saveRecordButton"
+  );
+
+const noResultButton =
+  document.getElementById(
+    "noResultButton"
   );
 
 const clearRecordButton =
@@ -7043,12 +7215,36 @@ function canCurrentUserManageRecord(
 
 }
 
+function canCurrentUserCorrectRecord(
+  record
+) {
+
+  return !!(
+    record &&
+    currentUser &&
+    currentUserData?.companyId &&
+    record.companyId ===
+      currentUserData.companyId
+  );
+
+}
+
+
 
 let editingTeamId = null;
 let editingGoalTeamId = null;
 let editingProductId = null;
 let editingMemberId = null;
 let editingRecordId = null;
+let zeroResultRequested = false;
+
+let notificationSettings = {
+  enabled: false,
+  weekdays: [1, 2, 3, 4, 5],
+  time: "19:30",
+  lineEnabled: false,
+  lineGroupId: ""
+};
 
 let revenueChartMode =
   "monthly";
@@ -7125,6 +7321,7 @@ let unsubscribeGoals = null;
 const managementWorkspacePanels = [
   companyManagement,
   accountSettings,
+  notificationManagement,
   teamManagement,
   productManagement,
   memberManagement
@@ -7196,6 +7393,7 @@ const quickMenuButtons = [
   quickInviteButton,
   quickOwnerButton,
   quickAccountButton,
+  quickNotifyButton,
   managementProductButton,
   managementTeamButton,
   managementMemberButton
@@ -7593,6 +7791,51 @@ closeCompanyManagementButton.onclick =
 
 
 closeAccountSettingsButton.onclick =
+  closeQuickPanels;
+
+
+quickNotifyButton.onclick =
+  () => {
+
+    activeManagementSection =
+      null;
+
+    hideManagementCards();
+
+    setManagementMenuOpen(
+      false
+    );
+
+    if (
+      notificationManagement.style.display !==
+        "none"
+    ) {
+
+      closeQuickPanels();
+
+      return;
+
+    }
+
+    closeQuickPanels();
+
+    showManagementWorkspace(
+      notificationManagement
+    );
+
+    quickNotifyButton.setAttribute(
+      "aria-pressed",
+      "true"
+    );
+
+    renderNotificationSettingsForm();
+
+    renderNotificationPreview();
+
+  };
+
+
+closeNotificationManagementButton.onclick =
   closeQuickPanels;
 
 
@@ -10949,6 +11192,9 @@ function updateCurrentUserUI() {
     managementMemberButton.style.display =
       "block";
 
+    quickNotifyButton.style.display =
+      "block";
+
     if (
       !canViewRevenue &&
       activeManagementSection ===
@@ -11029,6 +11275,20 @@ function updateCurrentUserUI() {
 
     managementMemberButton.style.display =
       "none";
+
+    quickNotifyButton.style.display =
+      "none";
+
+    if (
+      quickNotifyButton.getAttribute(
+        "aria-pressed"
+      ) ===
+        "true"
+    ) {
+
+      closeQuickPanels();
+
+    }
 
     hideManagementCards();
 
