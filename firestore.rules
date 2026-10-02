@@ -1088,6 +1088,13 @@ service cloud.firestore {
         && request.resource.data.date == resource.data.date
         && request.resource.data.memberNameSnapshot is string
         && validTeamId(request.resource.data.teamId)
+        && (
+          request.resource.data.teamId == resource.data.teamId
+          || validSelectableTeam(
+            resource.data.companyId,
+            request.resource.data.teamId
+          )
+        )
         && request.resource.data.teamNameSnapshot is string
         && validWorkLocation(request.resource.data)
         && request.resource.data.results is map
