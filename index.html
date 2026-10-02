@@ -20382,36 +20382,71 @@ saveRecordButton.onclick =
 
       } catch (error) {
 
-        /*
-          旧Rulesは監査項目を許可しないため、未移行の通常実績だけ
-          従来の項目で一度再試行する。権限判定は引き続きRulesが行う。
-          新Rules適用後は最初の保存で監査項目も記録される。
-        */
         if (
-          error?.code !== "permission-denied" ||
-          isManagedMember(member) ||
-          existingDailyRecord?.createdByUid ||
-          existingDailyRecord?.updatedByUid
+          error?.code !==
+            "permission-denied"
         ) {
 
           throw error;
 
         }
 
-        const legacyData = {
+        /*
+          Firestore Rulesの反映前でも通常入力と0件報告を止めない。
+          新しい報告状態フィールドだけ外して一度再試行する。
+          訂正権限そのものはRules側で判定されるため、権限を迂回しない。
+        */
+        const compatibleData = {
           ...data
         };
 
-        delete legacyData.createdByUid;
-        delete legacyData.updatedByUid;
+        delete compatibleData.reportStatus;
+        delete compatibleData.reportedAt;
 
-        await setDoc(
-          recordRef,
-          legacyData,
-          {
-            merge: true
+        try {
+
+          await setDoc(
+            recordRef,
+            compatibleData,
+            {
+              merge: true
+            }
+          );
+
+        } catch (compatibilityError) {
+
+          /*
+            さらに古いRules向けの既存互換処理。
+            監査UID項目を持たない旧データだけ従来形式で再試行する。
+          */
+          if (
+            compatibilityError?.code !==
+              "permission-denied" ||
+            isManagedMember(member) ||
+            existingDailyRecord?.createdByUid ||
+            existingDailyRecord?.updatedByUid
+          ) {
+
+            throw compatibilityError;
+
           }
-        );
+
+          const legacyData = {
+            ...compatibleData
+          };
+
+          delete legacyData.createdByUid;
+          delete legacyData.updatedByUid;
+
+          await setDoc(
+            recordRef,
+            legacyData,
+            {
+              merge: true
+            }
+          );
+
+        }
 
       }
 
