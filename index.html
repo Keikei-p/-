@@ -8945,6 +8945,9 @@ async function enterApplication(
     }
 
 
+    await loadNotificationSettings();
+
+
     startRealtimeListeners();
 
   } catch (error) {
@@ -12056,6 +12059,8 @@ function startRealtimeListeners() {
         createMonthOptions();
 
         renderDashboard();
+
+        renderNotificationPreview();
 
       }
     );
@@ -19332,6 +19337,110 @@ function prepareProductInputList(
 
 }
 
+function ensureRecordMemberOption(
+  record
+) {
+
+  if (
+    !record?.uid
+  ) {
+
+    return;
+
+  }
+
+  const exists =
+    Array.from(
+      recordMember.options
+    ).some(
+      option =>
+        option.value ===
+          record.uid
+    );
+
+  if (
+    exists
+  ) {
+
+    return;
+
+  }
+
+  const option =
+    document.createElement(
+      "option"
+    );
+
+  option.value =
+    record.uid;
+
+  option.textContent =
+    record.memberNameSnapshot ||
+    getCurrentMemberName(
+      record
+    ) ||
+    "名前未設定";
+
+  recordMember.appendChild(
+    option
+  );
+
+}
+
+
+function showRecordCorrectionTeam(
+  record
+) {
+
+  if (
+    !record
+  ) {
+
+    recordCorrectionTeamGroup.style.display =
+      "none";
+
+    recordCorrectionTeam.innerHTML =
+      '<option value="">所属なし</option>';
+
+    return;
+
+  }
+
+  recordCorrectionTeam.innerHTML =
+    '<option value="">所属なし</option>';
+
+  teams.forEach(
+    team => {
+
+      const option =
+        document.createElement(
+          "option"
+        );
+
+      option.value =
+        team.id;
+
+      option.textContent =
+        team.name ||
+        "班名未設定";
+
+      recordCorrectionTeam.appendChild(
+        option
+      );
+
+    }
+  );
+
+  recordCorrectionTeam.value =
+    record.teamId ||
+    "";
+
+  recordCorrectionTeamGroup.style.display =
+    "block";
+
+}
+
+
 /* =====================================================
    入力合計
 ===================================================== */
@@ -19729,6 +19838,14 @@ async function loadExistingRecordIntoForm() {
     editingRecordId =
       record.id;
 
+    ensureRecordMemberOption(
+      record
+    );
+
+    showRecordCorrectionTeam(
+      record
+    );
+
 
     recordLocation.value =
       record.workLocation ||
@@ -19750,6 +19867,10 @@ async function loadExistingRecordIntoForm() {
 
   editingRecordId =
     null;
+
+  showRecordCorrectionTeam(
+    null
+  );
 
   recordLocation.value =
     "";
@@ -19788,6 +19909,10 @@ clearRecordButton.onclick =
 
     editingRecordId =
       null;
+
+    showRecordCorrectionTeam(
+      null
+    );
 
 
     recordDate.value =
@@ -19834,6 +19959,53 @@ clearRecordButton.onclick =
    実績登録
 ===================================================== */
 
+noResultButton.onclick =
+  () => {
+
+    if (
+      !recordDate.value
+    ) {
+
+      showError(
+        "日付を選択してください。"
+      );
+
+      return;
+
+    }
+
+    if (
+      !recordMember.value
+    ) {
+
+      showError(
+        "担当者を選択してください。"
+      );
+
+      return;
+
+    }
+
+    if (
+      !confirm(
+        "この日を「実績なし（0件）」として報告しますか？"
+      )
+    ) {
+
+      return;
+
+    }
+
+    prepareProductInputList();
+
+    zeroResultRequested =
+      true;
+
+    saveRecordButton.click();
+
+  };
+
+
 saveRecordButton.onclick =
   async () => {
 
@@ -19841,6 +20013,12 @@ saveRecordButton.onclick =
       "none";
 
     clearMessages();
+
+    const zeroResultSubmission =
+      zeroResultRequested;
+
+    zeroResultRequested =
+      false;
 
 
     const date =
@@ -19880,17 +20058,48 @@ saveRecordButton.onclick =
       名前変更後も最新名を保存
     */
 
+    const selectedRecordFallback =
+      records.find(
+        record =>
+          record.uid ===
+            memberId &&
+          record.date ===
+            date
+      );
+
     const member =
       members.find(
         item =>
-          item.id ===
+          (
+            item.id ||
+            item.uid
+          ) ===
           memberId
       ) ||
       (
-        memberId ===
-          currentUserData?.uid
-          ? currentUserData
-          : null
+        selectedRecordFallback
+          ? {
+              id:
+                selectedRecordFallback.uid,
+              uid:
+                selectedRecordFallback.uid,
+              name:
+                selectedRecordFallback.memberNameSnapshot ||
+                getCurrentMemberName(
+                  selectedRecordFallback
+                ),
+              teamId:
+                selectedRecordFallback.teamId ||
+                null,
+              active:
+                true
+            }
+          : (
+              memberId ===
+                currentUserData?.uid
+                ? currentUserData
+                : null
+            )
       );
 
 
@@ -19922,22 +20131,33 @@ saveRecordButton.onclick =
     }
 
 
-    const results =
+    let results =
       getCurrentInputResults();
 
 
-    const totals =
+    let totals =
       calculateResultsTotals(
         results
       );
 
 
     if (
+      zeroResultSubmission
+    ) {
+
+      results = {};
+
+      totals = {
+        count: 0,
+        revenue: 0
+      };
+
+    } else if (
       totals.count <= 0
     ) {
 
       showError(
-        "少なくとも1つの商材に1件以上入力してください。"
+        "少なくとも1つの商材に1件以上入力するか、「実績なし」を押してください。"
       );
 
       return;
@@ -19976,26 +20196,44 @@ saveRecordButton.onclick =
       );
 
 
+    const isExistingCorrection =
+      !!existingDailyRecord;
+
     const targetTeamId =
-      existingDailyRecord
+      isExistingCorrection &&
+      editingRecordId ===
+        existingDailyRecord.id
         ? (
-            existingDailyRecord.teamId ??
+            recordCorrectionTeam.value ||
             null
           )
-        : assignedTeam.teamId;
+        : (
+            existingDailyRecord
+              ? (
+                  existingDailyRecord.teamId ??
+                  null
+                )
+              : assignedTeam.teamId
+          );
 
 
     const canManageTarget =
-      isCurrentCompanyOwner() ||
-      targetUid ===
-        currentUser?.uid ||
-      (
-        isCurrentTeamLeader() &&
-        member.teamId ===
-          currentUserData.teamId &&
-        targetTeamId ===
-          currentUserData.teamId
-      );
+      isExistingCorrection
+        ? canCurrentUserCorrectRecord(
+            existingDailyRecord
+          )
+        : (
+            isCurrentCompanyOwner() ||
+            targetUid ===
+              currentUser?.uid ||
+            (
+              isCurrentTeamLeader() &&
+              member.teamId ===
+                currentUserData.teamId &&
+              targetTeamId ===
+                currentUserData.teamId
+            )
+          );
 
 
     if (
@@ -20003,7 +20241,9 @@ saveRecordButton.onclick =
     ) {
 
       showError(
-        "リーダーは自分の班員の実績だけ追加・修正できます。"
+        isExistingCorrection
+          ? "この実績を訂正する権限がありません。"
+          : "新規実績は自分、オーナー、または担当班のリーダーが登録できます。"
       );
 
       return;
@@ -20062,22 +20302,29 @@ saveRecordButton.onclick =
           "名前未設定",
 
         teamId:
-          existingDailyRecord
-            ? (
-                existingDailyRecord.teamId ??
-                null
-              )
-            : assignedTeam.teamId,
+          targetTeamId,
 
         teamNameSnapshot:
-          existingDailyRecord
+          targetTeamId
             ? (
-                existingDailyRecord.teamNameSnapshot ||
-                getCurrentTeamName(
-                  existingDailyRecord
+                teams.find(
+                  team =>
+                    team.id ===
+                      targetTeamId
+                )?.name ||
+                (
+                  existingDailyRecord?.teamId ===
+                    targetTeamId
+                    ? (
+                        existingDailyRecord.teamNameSnapshot ||
+                        getCurrentTeamName(
+                          existingDailyRecord
+                        )
+                      )
+                    : "班名未設定"
                 )
               )
-            : assignedTeam.teamName,
+            : "所属なし",
 
         date,
 
@@ -20090,6 +20337,14 @@ saveRecordButton.onclick =
 
         totalRevenue:
           totals.revenue,
+
+        reportStatus:
+          zeroResultSubmission
+            ? "no_result"
+            : "submitted",
+
+        reportedAt:
+          serverTimestamp(),
 
         updatedByUid:
           currentUser?.uid ||
@@ -20157,6 +20412,108 @@ saveRecordButton.onclick =
             merge: true
           }
         );
+
+      }
+
+
+      let correctionAuditWarning =
+        false;
+
+      if (
+        existingDailyRecord
+      ) {
+
+        try {
+
+          const correctionRef =
+            doc(
+              collection(
+                db,
+                "recordCorrections"
+              )
+            );
+
+          await setDoc(
+            correctionRef,
+            {
+              companyId:
+                currentUserData.companyId,
+              recordId:
+                recordRef.id,
+              recordUid:
+                targetUid,
+              recordDate:
+                date,
+              changedByUid:
+                currentUser?.uid ||
+                "",
+              changedByName:
+                currentUserData?.name ||
+                "名前未設定",
+              before: {
+                memberNameSnapshot:
+                  existingDailyRecord.memberNameSnapshot ||
+                  "",
+                teamId:
+                  existingDailyRecord.teamId ||
+                  null,
+                teamNameSnapshot:
+                  existingDailyRecord.teamNameSnapshot ||
+                  "",
+                workLocation:
+                  existingDailyRecord.workLocation ||
+                  "",
+                results:
+                  existingDailyRecord.results ||
+                  {},
+                totalCount:
+                  Number(
+                    existingDailyRecord.totalCount ||
+                    0
+                  ),
+                totalRevenue:
+                  Number(
+                    existingDailyRecord.totalRevenue ||
+                    0
+                  ),
+                reportStatus:
+                  existingDailyRecord.reportStatus ||
+                  "submitted"
+              },
+              after: {
+                memberNameSnapshot:
+                  data.memberNameSnapshot,
+                teamId:
+                  data.teamId,
+                teamNameSnapshot:
+                  data.teamNameSnapshot,
+                workLocation:
+                  data.workLocation,
+                results:
+                  data.results,
+                totalCount:
+                  data.totalCount,
+                totalRevenue:
+                  data.totalRevenue,
+                reportStatus:
+                  data.reportStatus
+              },
+              createdAt:
+                serverTimestamp()
+            }
+          );
+
+        } catch (auditError) {
+
+          correctionAuditWarning =
+            true;
+
+          console.error(
+            "訂正履歴保存エラー:",
+            auditError
+          );
+
+        }
 
       }
 
@@ -20292,7 +20649,13 @@ saveRecordButton.onclick =
       } else {
 
         showSuccess(
-          `${date}の実績を保存し、ダッシュボードへ反映しました。`
+          correctionAuditWarning
+            ? `${date}の実績は保存できました。訂正履歴の保存だけ失敗したため管理者へ確認してください。`
+            : (
+                zeroResultSubmission
+                  ? `${date}を「実績なし（0件）」として報告しました。`
+                  : `${date}の実績を保存し、ダッシュボードへ反映しました。`
+              )
         );
 
       }
@@ -20642,6 +21005,527 @@ recordHistoryDate.addEventListener(
 
   }
 );
+
+
+/* =====================================================
+   未報告通知
+===================================================== */
+
+function notificationSettingsDocRef() {
+
+  if (
+    !currentUserData?.companyId
+  ) {
+
+    throw new Error(
+      "会社情報が設定されていません。"
+    );
+
+  }
+
+  return doc(
+    db,
+    "companies",
+    currentUserData.companyId,
+    "settings",
+    "notifications"
+  );
+
+}
+
+
+function normalizeNotificationSettings(
+  value
+) {
+
+  const data =
+    value &&
+    typeof value ===
+      "object"
+      ? value
+      : {};
+
+  const weekdays =
+    Array.isArray(
+      data.weekdays
+    )
+      ? data.weekdays
+          .map(Number)
+          .filter(
+            day =>
+              Number.isInteger(day) &&
+              day >= 0 &&
+              day <= 6
+          )
+      : [1, 2, 3, 4, 5];
+
+  return {
+    enabled:
+      data.enabled === true,
+    weekdays:
+      weekdays.length > 0
+        ? Array.from(
+            new Set(
+              weekdays
+            )
+          )
+        : [1, 2, 3, 4, 5],
+    time:
+      /^\d{2}:\d{2}$/.test(
+        data.time || ""
+      )
+        ? data.time
+        : "19:30",
+    lineEnabled:
+      data.lineEnabled === true,
+    lineGroupId:
+      String(
+        data.lineGroupId ||
+        ""
+      ).trim()
+  };
+
+}
+
+
+async function loadNotificationSettings() {
+
+  notificationSettings =
+    normalizeNotificationSettings(
+      null
+    );
+
+  if (
+    !currentUserData?.companyId
+  ) {
+
+    return;
+
+  }
+
+  try {
+
+    const snap =
+      await getDoc(
+        notificationSettingsDocRef()
+      );
+
+    if (
+      snap.exists()
+    ) {
+
+      notificationSettings =
+        normalizeNotificationSettings(
+          snap.data()
+        );
+
+    }
+
+  } catch (error) {
+
+    console.error(
+      "通知設定取得エラー:",
+      error
+    );
+
+  }
+
+  renderNotificationSettingsForm();
+
+  renderNotificationPreview();
+
+}
+
+
+function renderNotificationSettingsForm() {
+
+  const settings =
+    normalizeNotificationSettings(
+      notificationSettings
+    );
+
+  notificationEnabled.checked =
+    settings.enabled;
+
+  notificationTimeInput.value =
+    settings.time;
+
+  notificationLineEnabled.checked =
+    settings.lineEnabled;
+
+  notificationLineGroupId.value =
+    settings.lineGroupId;
+
+  notificationWeekdays
+    .querySelectorAll(
+      "[data-notification-weekday]"
+    )
+    .forEach(
+      input => {
+
+        input.checked =
+          settings.weekdays.includes(
+            Number(
+              input.dataset.notificationWeekday
+            )
+          );
+
+      }
+    );
+
+  const canEdit =
+    isCurrentCompanyOwner();
+
+  notificationOwnerOnlyHint.style.display =
+    canEdit
+      ? "none"
+      : "block";
+
+  [
+    notificationEnabled,
+    notificationTimeInput,
+    notificationLineEnabled,
+    notificationLineGroupId,
+    saveNotificationSettingsButton
+  ].forEach(
+    element => {
+
+      element.disabled =
+        !canEdit;
+
+    }
+  );
+
+  notificationWeekdays
+    .querySelectorAll(
+      "input"
+    )
+    .forEach(
+      input => {
+
+        input.disabled =
+          !canEdit;
+
+      }
+    );
+
+}
+
+
+function getUnreportedTeamSummary(
+  date = getTodayString()
+) {
+
+  const teamSummary =
+    new Map();
+
+  members
+    .filter(
+      member =>
+        member &&
+        member.active !==
+          false
+    )
+    .forEach(
+      member => {
+
+        const memberId =
+          member.id ||
+          member.uid;
+
+        if (
+          !memberId
+        ) {
+
+          return;
+
+        }
+
+        const assignment =
+          getMemberTeamForDate(
+            member,
+            date
+          );
+
+        const teamId =
+          assignment?.teamId ||
+          null;
+
+        if (
+          !teamId
+        ) {
+
+          return;
+
+        }
+
+        const key =
+          String(
+            teamId
+          );
+
+        if (
+          !teamSummary.has(
+            key
+          )
+        ) {
+
+          teamSummary.set(
+            key,
+            {
+              teamId,
+              teamName:
+                assignment.teamName ||
+                getTeamName(
+                  teamId
+                ) ||
+                "班",
+              expected: 0,
+              reported: 0,
+              missingNames: []
+            }
+          );
+
+        }
+
+        const summary =
+          teamSummary.get(
+            key
+          );
+
+        summary.expected +=
+          1;
+
+        const hasReport =
+          records.some(
+            record =>
+              record.uid ===
+                memberId &&
+              record.date ===
+                date
+          );
+
+        if (
+          hasReport
+        ) {
+
+          summary.reported +=
+            1;
+
+        } else {
+
+          summary.missingNames.push(
+            member.name ||
+            "名前未設定"
+          );
+
+        }
+
+      }
+    );
+
+  return Array.from(
+    teamSummary.values()
+  )
+    .filter(
+      summary =>
+        summary.expected >
+          0 &&
+        summary.reported <
+          summary.expected
+    )
+    .sort(
+      (a, b) =>
+        (
+          a.teamName ||
+          ""
+        ).localeCompare(
+          b.teamName ||
+          "",
+          "ja"
+        )
+    );
+
+}
+
+
+function renderNotificationPreview() {
+
+  const missing =
+    getUnreportedTeamSummary(
+      getTodayString()
+    );
+
+  if (
+    missing.length ===
+      0
+  ) {
+
+    notificationPreview.innerHTML =
+      "✅ 現在、未報告の班はありません。";
+
+    return;
+
+  }
+
+  notificationPreview.innerHTML =
+    missing
+      .map(
+        item =>
+          `⚠️ ${escapeHtml(
+            item.teamName
+          )}：${item.reported}/${item.expected}名 報告済み（未報告 ${item.expected - item.reported}名）`
+      )
+      .join(
+        "<br>"
+      );
+
+}
+
+
+saveNotificationSettingsButton.onclick =
+  async () => {
+
+    if (
+      !isCurrentCompanyOwner()
+    ) {
+
+      showError(
+        "通知設定を変更できるのはオーナーだけです。"
+      );
+
+      return;
+
+    }
+
+    const weekdays =
+      Array.from(
+        notificationWeekdays
+          .querySelectorAll(
+            "[data-notification-weekday]:checked"
+          )
+      ).map(
+        input =>
+          Number(
+            input.dataset.notificationWeekday
+          )
+      );
+
+    if (
+      weekdays.length ===
+        0
+    ) {
+
+      showError(
+        "通知する曜日を1つ以上選択してください。"
+      );
+
+      return;
+
+    }
+
+    const time =
+      notificationTimeInput.value;
+
+    if (
+      !/^\d{2}:\d{2}$/.test(
+        time
+      )
+    ) {
+
+      showError(
+        "通知時刻を選択してください。"
+      );
+
+      return;
+
+    }
+
+    const lineGroupId =
+      notificationLineGroupId.value
+        .trim();
+
+    if (
+      notificationLineEnabled.checked &&
+      !lineGroupId
+    ) {
+
+      showError(
+        "LINE自動通知を使う場合はLINEグループIDを設定してください。"
+      );
+
+      return;
+
+    }
+
+    const next =
+      normalizeNotificationSettings({
+        enabled:
+          notificationEnabled.checked,
+        weekdays,
+        time,
+        lineEnabled:
+          notificationLineEnabled.checked,
+        lineGroupId
+      });
+
+    try {
+
+      saveNotificationSettingsButton.disabled =
+        true;
+
+      await setDoc(
+        notificationSettingsDocRef(),
+        {
+          ...next,
+          updatedBy:
+            currentUser?.uid ||
+            "",
+          updatedAt:
+            serverTimestamp()
+        },
+        {
+          merge: true
+        }
+      );
+
+      notificationSettings =
+        next;
+
+      showSuccess(
+        "通知設定を保存しました。"
+      );
+
+    } catch (error) {
+
+      console.error(
+        "通知設定保存エラー:",
+        error
+      );
+
+      showError(
+        firebaseErrorMessage(
+          error
+        )
+      );
+
+    } finally {
+
+      saveNotificationSettingsButton.disabled =
+        false;
+
+      renderNotificationSettingsForm();
+
+      renderNotificationPreview();
+
+    }
+
+  };
+
+
+refreshNotificationPreviewButton.onclick =
+  () =>
+    renderNotificationPreview();
 
 
 /* =====================================================
@@ -28775,14 +29659,20 @@ function renderRecordHistory(
       `;
 
 
-      const canEdit =
+      const canCorrect =
+        canCurrentUserCorrectRecord(
+          record
+        );
+
+      const canDelete =
         canCurrentUserManageRecord(
           record
         );
 
 
       if (
-        canEdit
+        canCorrect ||
+        canDelete
       ) {
 
         const actions =
@@ -28794,49 +29684,60 @@ function renderRecordHistory(
           "history-actions";
 
 
-        const editButton =
-          document.createElement(
-            "button"
-          );
+        if (
+          canCorrect
+        ) {
 
-        editButton.className =
-          "edit-product-button";
-
-        editButton.textContent =
-          "✏️ 編集";
-
-        editButton.onclick =
-          () =>
-            editRecord(
-              record
+          const editButton =
+            document.createElement(
+              "button"
             );
 
+          editButton.className =
+            "edit-product-button";
 
-        const deleteButton =
-          document.createElement(
-            "button"
+          editButton.textContent =
+            "✏️ 訂正";
+
+          editButton.onclick =
+            () =>
+              editRecord(
+                record
+              );
+
+          actions.appendChild(
+            editButton
           );
 
-        deleteButton.className =
-          "history-delete";
+        }
 
-        deleteButton.textContent =
-          "🗑️ 削除";
 
-        deleteButton.onclick =
-          () =>
-            deleteRecord(
-              record
+        if (
+          canDelete
+        ) {
+
+          const deleteButton =
+            document.createElement(
+              "button"
             );
 
+          deleteButton.className =
+            "history-delete";
 
-        actions.appendChild(
-          editButton
-        );
+          deleteButton.textContent =
+            "🗑️ 削除";
 
-        actions.appendChild(
-          deleteButton
-        );
+          deleteButton.onclick =
+            () =>
+              deleteRecord(
+                record
+              );
+
+          actions.appendChild(
+            deleteButton
+          );
+
+        }
 
 
         item.appendChild(
@@ -28872,9 +29773,16 @@ function editRecord(
   recordDate.value =
     record.date;
 
+  ensureRecordMemberOption(
+    record
+  );
 
   recordMember.value =
     record.uid;
+
+  showRecordCorrectionTeam(
+    record
+  );
 
 
   recordLocation.value =
