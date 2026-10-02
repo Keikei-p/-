@@ -4,6 +4,7 @@ const { initializeApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
 const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { setGlobalOptions } = require("firebase-functions/v2");
 
 initializeApp();
@@ -530,3 +531,324 @@ exports.deleteCompanyMemberAccount = onCall(async (request) => {
     authAlreadyMissing,
   };
 });
+
+
+/* =====================================================
+   未報告班 LINE 自動通知
+===================================================== */
+
+function tokyoDateParts(date = new Date()) {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+
+  const parts = Object.fromEntries(
+    formatter
+      .formatToParts(date)
+      .map((part) => [part.type, part.value])
+  );
+
+  const weekdayMap = {
+    Sun: 0,
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
+  };
+
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    time: `${parts.hour}:${parts.minute}`,
+    weekday: weekdayMap[parts.weekday],
+  };
+}
+
+function memberTeamForDate(member, date) {
+  const history = Array.isArray(member?.teamHistory)
+    ? member.teamHistory
+        .filter(
+          (item) =>
+            item &&
+            typeof item.effectiveDate === "string"
+        )
+        .sort((a, b) =>
+          a.effectiveDate.localeCompare(b.effectiveDate)
+        )
+    : [];
+
+  if (history.length === 0) {
+    return member?.teamId || null;
+  }
+
+  let teamId = history[0].fromTeamId ?? null;
+
+  for (const change of history) {
+    if (change.effectiveDate <= date) {
+      teamId = change.toTeamId ?? null;
+    }
+  }
+
+  return teamId;
+}
+
+async function getMissingTeamReports(companyId, date) {
+  const [membersSnap, teamsSnap, recordsSnap] = await Promise.all([
+    db
+      .collection("companies")
+      .doc(companyId)
+      .collection("members")
+      .get(),
+    db
+      .collection("teams")
+      .where("companyId", "==", companyId)
+      .get(),
+    db
+      .collection("records")
+      .where("companyId", "==", companyId)
+      .where("date", "==", date)
+      .get(),
+  ]);
+
+  const teamNames = new Map();
+
+  teamsSnap.forEach((teamDoc) => {
+    const data = teamDoc.data() || {};
+    teamNames.set(
+      teamDoc.id,
+      String(data.name || "班")
+    );
+  });
+
+  const reportedUids = new Set();
+
+  recordsSnap.forEach((recordDoc) => {
+    const data = recordDoc.data() || {};
+    if (data.uid) {
+      reportedUids.add(String(data.uid));
+    }
+  });
+
+  const summary = new Map();
+
+  membersSnap.forEach((memberDoc) => {
+    const member = memberDoc.data() || {};
+
+    if (member.active === false) {
+      return;
+    }
+
+    const teamId = memberTeamForDate(member, date);
+
+    if (!teamId) {
+      return;
+    }
+
+    if (!summary.has(teamId)) {
+      summary.set(teamId, {
+        teamId,
+        teamName:
+          teamNames.get(teamId) ||
+          member.teamName ||
+          "班",
+        expected: 0,
+        reported: 0,
+      });
+    }
+
+    const item = summary.get(teamId);
+
+    item.expected += 1;
+
+    if (reportedUids.has(memberDoc.id)) {
+      item.reported += 1;
+    }
+  });
+
+  return Array.from(summary.values())
+    .filter(
+      (item) =>
+        item.expected > 0 &&
+        item.reported < item.expected
+    )
+    .sort((a, b) =>
+      a.teamName.localeCompare(b.teamName, "ja")
+    );
+}
+
+async function pushLineGroupMessage(groupId, text) {
+  const token =
+    process.env.LINE_CHANNEL_ACCESS_TOKEN || "";
+
+  if (!token) {
+    throw new Error(
+      "LINE_CHANNEL_ACCESS_TOKEN が設定されていません。"
+    );
+  }
+
+  const response = await fetch(
+    "https://api.line.me/v2/bot/message/push",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        to: groupId,
+        messages: [
+          {
+            type: "text",
+            text,
+          },
+        ],
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const detail = await response.text();
+
+    throw new Error(
+      `LINE送信失敗: ${response.status} ${detail}`
+    );
+  }
+}
+
+exports.sendMissingReportReminders = onSchedule(
+  {
+    schedule: "* * * * *",
+    timeZone: "Asia/Tokyo",
+    secrets: ["LINE_CHANNEL_ACCESS_TOKEN"],
+  },
+  async () => {
+    const now = tokyoDateParts();
+
+    const companiesSnap = await db
+      .collection("companies")
+      .where("active", "==", true)
+      .get();
+
+    for (const companyDoc of companiesSnap.docs) {
+      const companyId = companyDoc.id;
+
+      const settingsRef = db
+        .collection("companies")
+        .doc(companyId)
+        .collection("settings")
+        .doc("notifications");
+
+      const settingsSnap = await settingsRef.get();
+
+      if (!settingsSnap.exists) {
+        continue;
+      }
+
+      const settings = settingsSnap.data() || {};
+      const weekdays = Array.isArray(settings.weekdays)
+        ? settings.weekdays.map(Number)
+        : [];
+
+      if (
+        settings.enabled !== true ||
+        settings.lineEnabled !== true ||
+        !settings.lineGroupId ||
+        settings.time !== now.time ||
+        !weekdays.includes(now.weekday)
+      ) {
+        continue;
+      }
+
+      const missingTeams =
+        await getMissingTeamReports(
+          companyId,
+          now.date
+        );
+
+      if (missingTeams.length === 0) {
+        continue;
+      }
+
+      const dispatchKey = [
+        companyId,
+        now.date,
+        now.time.replace(":", ""),
+      ].join("_");
+
+      const dispatchRef = db
+        .collection("notificationDispatches")
+        .doc(dispatchKey);
+
+      try {
+        await dispatchRef.create({
+          companyId,
+          date: now.date,
+          time: now.time,
+          status: "processing",
+          createdAt: FieldValue.serverTimestamp(),
+        });
+      } catch (error) {
+        if (
+          error?.code === 6 ||
+          error?.code === "already-exists"
+        ) {
+          continue;
+        }
+
+        throw error;
+      }
+
+      const lines = missingTeams.map(
+        (item) =>
+          `${item.teamName}：未報告 ${item.expected - item.reported}名（${item.reported}/${item.expected}名 報告済み）`
+      );
+
+      const message = [
+        "⚠️ 本日の実績報告がまだ完了していません。",
+        "",
+        ...lines,
+        "",
+        "実績入力または「実績なし」の報告をお願いします。",
+      ].join("\n");
+
+      try {
+        await pushLineGroupMessage(
+          String(settings.lineGroupId),
+          message
+        );
+
+        await dispatchRef.set(
+          {
+            status: "sent",
+            message,
+            sentAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      } catch (error) {
+        console.error(
+          `LINE未報告通知エラー companyId=${companyId}`,
+          error
+        );
+
+        await dispatchRef.set(
+          {
+            status: "failed",
+            error:
+              String(error?.message || error).slice(0, 1000),
+            failedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+    }
+  }
+);
