@@ -219,22 +219,49 @@ function teamForDate(member,date){
   if(!h.length)return member?.teamId||null;
   let t=h[0].fromTeamId??null; for(const x of h)if(x.effectiveDate<=date)t=x.toTeamId??null; return t;
 }
-async function missing(env,cid,date){
+async function missing(env,cid,date,reportCompletionMode="individual"){
   const [members,teams,records]=await Promise.all([
     listCol(env,`companies/${cid}/members`),
     query(env,"teams",[strFilter("companyId",cid)]),
     query(env,"records",[strFilter("companyId",cid),strFilter("date",date)])
   ]);
   const names=new Map(teams.map(t=>[t.id,String(t.name||"班")]));
+  const membersById=new Map(members.map(m=>[String(m.id),m]));
   const reported=new Set(records.filter(r=>r.uid).map(r=>String(r.uid)));
+  const reportedTeams=new Set();
+
+  for(const record of records){
+    let tid=record?.teamId?String(record.teamId):"";
+    if(!tid&&record?.uid){
+      const member=membersById.get(String(record.uid));
+      tid=member?String(teamForDate(member,date)||""):"";
+    }
+    if(tid)reportedTeams.add(tid);
+  }
+
   const map=new Map();
   for(const m of members){
     if(m.active===false)continue;
-    const tid=teamForDate(m,date); if(!tid)continue;
-    if(!map.has(tid))map.set(tid,{teamId:tid,teamName:names.get(tid)||m.teamName||"班",expected:0,reported:0});
-    const x=map.get(tid);x.expected++;if(reported.has(m.id))x.reported++;
+    const tid=String(teamForDate(m,date)||""); if(!tid)continue;
+    if(!map.has(tid))map.set(tid,{
+      teamId:tid,
+      teamName:names.get(tid)||m.teamName||"班",
+      expected:0,
+      reported:0,
+      teamReported:reportedTeams.has(tid)
+    });
+    const x=map.get(tid);
+    x.expected++;
+    if(reported.has(String(m.id)))x.reported++;
   }
-  return [...map.values()].filter(x=>x.expected>0&&x.reported<x.expected).sort((a,b)=>a.teamName.localeCompare(b.teamName,"ja"));
+
+  return [...map.values()]
+    .filter(x=>{
+      if(x.expected<=0)return false;
+      if(reportCompletionMode==="team_any")return x.teamReported!==true;
+      return x.reported<x.expected;
+    })
+    .sort((a,b)=>a.teamName.localeCompare(b.teamName,"ja"));
 }
 async function reminders(env){
   if(String(env.AUTOMATION_ENABLED||"false").toLowerCase()!=="true")return;
@@ -247,7 +274,7 @@ async function reminders(env){
       const s=await getDoc(env,`companies/${c.id}/settings/notifications`);
       const days=Array.isArray(s?.weekdays)?s.weekdays.map(Number):[];
       if(!s||s.enabled!==true||s.lineEnabled!==true||!s.lineGroupId||s.time!==n.time||!days.includes(n.weekday))continue;
-      const miss=await missing(env,c.id,n.date); if(!miss.length)continue;
+      const miss=await missing(env,c.id,n.date,s.reportCompletionMode==="team_any"?"team_any":"individual"); if(!miss.length)continue;
       const key=[c.id,n.date,n.time.replace(":","")].join("_");
 
       let freeGuard;

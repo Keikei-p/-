@@ -4538,7 +4538,7 @@ body.product-reordering .product-list {
     </div>
 
     <div class="account-description">
-      指定した曜日・時刻に、その日の実績報告が揃っていない班を確認します。
+      指定した曜日・時刻に、その日の実績入力がない班を確認して、入力忘れを防ぐためのリマインドです。
       0件でも「実績なし」で登録していれば報告済みとして扱います。
     </div>
 
@@ -4550,8 +4550,21 @@ body.product-reordering .product-list {
 
     <label style="display:flex;align-items:center;gap:8px;margin-top:18px;font-weight:800;">
       <input id="notificationEnabled" type="checkbox">
-      未報告チェックを有効にする
+      未報告リマインドを有効にする
     </label>
+
+    <div class="form-group" style="margin-top:16px;">
+      <label style="font-weight:800;">報告完了の判定方法</label>
+      <label style="display:flex;align-items:flex-start;gap:8px;margin-top:8px;font-weight:700;line-height:1.5;">
+        <input id="notificationAnyMemberCompletesTeam" type="checkbox" style="margin-top:3px;">
+        <span>
+          班の誰か1人が報告していれば、この班は報告済みにする
+          <span style="display:block;margin-top:4px;color:var(--sub);font-size:11px;font-weight:500;">
+            班長・リーダーが班をまとめて報告する運用向けです。実績入力または「実績なし」が1件でもあれば、その班への未報告リマインドは出しません。
+          </span>
+        </span>
+      </label>
+    </div>
 
     <div class="form-group">
       <label>通知する曜日</label>
@@ -7422,6 +7435,7 @@ let notificationSettings = {
   enabled: false,
   weekdays: [1, 2, 3, 4, 5],
   time: "19:30",
+  reportCompletionMode: "individual",
   lineEnabled: false,
   lineGroupId: "",
   lineGroupName: ""
@@ -21301,6 +21315,11 @@ function normalizeNotificationSettings(
       )
         ? data.time
         : "19:30",
+    reportCompletionMode:
+      data.reportCompletionMode ===
+        "team_any"
+        ? "team_any"
+        : "individual",
     lineEnabled:
       data.lineEnabled === true,
     lineGroupId:
@@ -21380,6 +21399,10 @@ function renderNotificationSettingsForm() {
   notificationTimeInput.value =
     settings.time;
 
+  notificationAnyMemberCompletesTeam.checked =
+    settings.reportCompletionMode ===
+      "team_any";
+
   notificationLineEnabled.checked =
     settings.lineEnabled;
 
@@ -21419,6 +21442,7 @@ function renderNotificationSettingsForm() {
   [
     notificationEnabled,
     notificationTimeInput,
+    notificationAnyMemberCompletesTeam,
     notificationLineEnabled,
     saveNotificationSettingsButton,
     issueLinePairingCodeButton
@@ -21453,6 +21477,79 @@ function getUnreportedTeamSummary(
 
   const teamSummary =
     new Map();
+
+  const reportCompletionMode =
+    normalizeNotificationSettings(
+      notificationSettings
+    ).reportCompletionMode;
+
+  const reportedTeamIds =
+    new Set();
+
+  if (
+    reportCompletionMode ===
+      "team_any"
+  ) {
+
+    records
+      .filter(
+        record =>
+          record &&
+          record.date ===
+            date
+      )
+      .forEach(
+        record => {
+
+          let teamId =
+            record.teamId ||
+            null;
+
+          if (
+            !teamId &&
+            record.uid
+          ) {
+
+            const member =
+              members.find(
+                item =>
+                  (
+                    item?.id ||
+                    item?.uid
+                  ) ===
+                  record.uid
+              );
+
+            const assignment =
+              member
+                ? getMemberTeamForDate(
+                    member,
+                    date
+                  )
+                : null;
+
+            teamId =
+              assignment?.teamId ||
+              null;
+
+          }
+
+          if (
+            teamId
+          ) {
+
+            reportedTeamIds.add(
+              String(
+                teamId
+              )
+            );
+
+          }
+
+        }
+      );
+
+  }
 
   members
     .filter(
@@ -21517,6 +21614,10 @@ function getUnreportedTeamSummary(
                 "班",
               expected: 0,
               reported: 0,
+              teamReported:
+                reportedTeamIds.has(
+                  key
+                ),
               missingNames: []
             }
           );
@@ -21563,11 +21664,35 @@ function getUnreportedTeamSummary(
     teamSummary.values()
   )
     .filter(
-      summary =>
-        summary.expected >
-          0 &&
-        summary.reported <
-          summary.expected
+      summary => {
+
+        if (
+          summary.expected <=
+            0
+        ) {
+
+          return false;
+
+        }
+
+        if (
+          reportCompletionMode ===
+            "team_any"
+        ) {
+
+          return (
+            summary.teamReported !==
+              true
+          );
+
+        }
+
+        return (
+          summary.reported <
+            summary.expected
+        );
+
+      }
     )
     .sort(
       (a, b) =>
@@ -21582,7 +21707,6 @@ function getUnreportedTeamSummary(
     );
 
 }
-
 
 function renderNotificationPreview() {
 
@@ -21603,13 +21727,23 @@ function renderNotificationPreview() {
 
   }
 
+  const reportCompletionMode =
+    normalizeNotificationSettings(
+      notificationSettings
+    ).reportCompletionMode;
+
   notificationPreview.innerHTML =
     missing
       .map(
         item =>
-          `⚠️ ${escapeHtml(
-            item.teamName
-          )}：${item.reported}/${item.expected}名 報告済み（未報告 ${item.expected - item.reported}名）`
+          reportCompletionMode ===
+            "team_any"
+            ? `⚠️ ${escapeHtml(
+                item.teamName
+              )}：未報告`
+            : `⚠️ ${escapeHtml(
+                item.teamName
+              )}：${item.reported}/${item.expected}名 報告済み（未報告 ${item.expected - item.reported}名）`
       )
       .join(
         "<br>"
@@ -21968,6 +22102,10 @@ saveNotificationSettingsButton.onclick =
           notificationEnabled.checked,
         weekdays,
         time,
+        reportCompletionMode:
+          notificationAnyMemberCompletesTeam.checked
+            ? "team_any"
+            : "individual",
         lineEnabled:
           notificationLineEnabled.checked,
         lineGroupId,
