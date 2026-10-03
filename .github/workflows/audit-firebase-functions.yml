@@ -1,0 +1,36 @@
+name: Audit Firebase Functions
+
+on:
+  push:
+    branches:
+      - ops/audit-deployed-functions-20261003
+    paths:
+      - .github/workflows/audit-firebase-functions.yml
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+      - name: Configure credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="${RUNNER_TEMP}/firebase-service-account.json"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$tmp"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$tmp" >> "$GITHUB_ENV"
+      - name: List deployed functions
+        run: firebase functions:list --project "$FIREBASE_PROJECT_ID" --non-interactive
