@@ -3,7 +3,7 @@ const crypto = require("crypto");
 const { initializeApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
 const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { setGlobalOptions } = require("firebase-functions/v2");
 
@@ -531,6 +531,355 @@ exports.deleteCompanyMemberAccount = onCall(async (request) => {
     authAlreadyMissing,
   };
 });
+
+
+/* =====================================================
+   LINEグループ自動連携 Webhook
+===================================================== */
+
+function verifyLineWebhookSignature(rawBody, signature) {
+  const channelSecret =
+    process.env.LINE_CHANNEL_SECRET || "";
+
+  if (
+    !channelSecret ||
+    !signature ||
+    !Buffer.isBuffer(rawBody)
+  ) {
+    return false;
+  }
+
+  const expected = crypto
+    .createHmac("sha256", channelSecret)
+    .update(rawBody)
+    .digest("base64");
+
+  const expectedBuffer =
+    Buffer.from(expected);
+
+  const actualBuffer =
+    Buffer.from(String(signature));
+
+  if (
+    expectedBuffer.length !==
+    actualBuffer.length
+  ) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(
+    expectedBuffer,
+    actualBuffer
+  );
+}
+
+async function getLineGroupSummary(groupId) {
+  const token =
+    process.env.LINE_CHANNEL_ACCESS_TOKEN || "";
+
+  if (!token) {
+    throw new Error(
+      "LINE_CHANNEL_ACCESS_TOKEN が設定されていません。"
+    );
+  }
+
+  const response = await fetch(
+    `https://api.line.me/v2/bot/group/${encodeURIComponent(groupId)}/summary`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    const detail = await response.text();
+
+    throw new Error(
+      `LINEグループ情報取得失敗: ${response.status} ${detail}`
+    );
+  }
+
+  return response.json();
+}
+
+async function replyLineMessage(replyToken, text) {
+  const token =
+    process.env.LINE_CHANNEL_ACCESS_TOKEN || "";
+
+  if (
+    !token ||
+    !replyToken
+  ) {
+    return;
+  }
+
+  const response = await fetch(
+    "https://api.line.me/v2/bot/message/reply",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        replyToken,
+        messages: [
+          {
+            type: "text",
+            text,
+          },
+        ],
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const detail = await response.text();
+
+    throw new Error(
+      `LINE返信失敗: ${response.status} ${detail}`
+    );
+  }
+}
+
+async function handleLinePairingEvent(event) {
+  if (
+    event?.type !== "message" ||
+    event?.message?.type !== "text" ||
+    event?.source?.type !== "group" ||
+    !event?.source?.groupId
+  ) {
+    return;
+  }
+
+  const text =
+    String(
+      event.message.text || ""
+    ).trim();
+
+  const matched =
+    text.match(
+      /^連携\s+([A-Z0-9]{8})$/i
+    );
+
+  if (!matched) {
+    return;
+  }
+
+  const code =
+    matched[1].toUpperCase();
+
+  const pairingRef =
+    db
+      .collection("linePairingCodes")
+      .doc(code);
+
+  const pairingSnap =
+    await pairingRef.get();
+
+  if (!pairingSnap.exists) {
+    await replyLineMessage(
+      event.replyToken,
+      "連携コードが見つかりません。アプリの通知タブから新しいコードを発行してください。"
+    );
+    return;
+  }
+
+  const pairing =
+    pairingSnap.data() || {};
+
+  const expiresAtMs =
+    pairing.expiresAt?.toMillis
+      ? pairing.expiresAt.toMillis()
+      : 0;
+
+  if (
+    pairing.status !== "pending" ||
+    expiresAtMs <= Date.now() ||
+    !pairing.companyId
+  ) {
+    await replyLineMessage(
+      event.replyToken,
+      "この連携コードは使用済み、または期限切れです。アプリから新しいコードを発行してください。"
+    );
+    return;
+  }
+
+  const groupId =
+    String(
+      event.source.groupId
+    );
+
+  let groupName =
+    "LINEグループ";
+
+  try {
+    const summary =
+      await getLineGroupSummary(
+        groupId
+      );
+
+    groupName =
+      String(
+        summary?.groupName ||
+        groupName
+      ).slice(0, 100);
+  } catch (error) {
+    console.error(
+      "LINEグループ名取得エラー:",
+      error
+    );
+  }
+
+  const settingsRef =
+    db
+      .collection("companies")
+      .doc(pairing.companyId)
+      .collection("settings")
+      .doc("notifications");
+
+  await db.runTransaction(
+    async (transaction) => {
+      const latestPairingSnap =
+        await transaction.get(
+          pairingRef
+        );
+
+      if (
+        !latestPairingSnap.exists
+      ) {
+        throw new Error(
+          "LINE連携コードが見つかりません。"
+        );
+      }
+
+      const latest =
+        latestPairingSnap.data() || {};
+
+      const latestExpiry =
+        latest.expiresAt?.toMillis
+          ? latest.expiresAt.toMillis()
+          : 0;
+
+      if (
+        latest.status !== "pending" ||
+        latestExpiry <= Date.now()
+      ) {
+        throw new Error(
+          "LINE連携コードが使用済み、または期限切れです。"
+        );
+      }
+
+      transaction.set(
+        settingsRef,
+        {
+          lineGroupId:
+            groupId,
+          lineGroupName:
+            groupName,
+          lineConnectedAt:
+            FieldValue.serverTimestamp(),
+        },
+        {
+          merge: true,
+        }
+      );
+
+      transaction.set(
+        pairingRef,
+        {
+          status:
+            "connected",
+          groupId,
+          groupName,
+          connectedAt:
+            FieldValue.serverTimestamp(),
+        },
+        {
+          merge: true,
+        }
+      );
+    }
+  );
+
+  await replyLineMessage(
+    event.replyToken,
+    `✅ 営業実績アプリと「${groupName}」を連携しました。未報告通知の送信先として登録されています。`
+  );
+}
+
+exports.lineWebhook = onRequest(
+  {
+    secrets: [
+      "LINE_CHANNEL_SECRET",
+      "LINE_CHANNEL_ACCESS_TOKEN",
+    ],
+  },
+  async (request, response) => {
+    if (
+      request.method !== "POST"
+    ) {
+      response
+        .status(405)
+        .send("Method Not Allowed");
+      return;
+    }
+
+    const signature =
+      request.get(
+        "x-line-signature"
+      ) || "";
+
+    if (
+      !verifyLineWebhookSignature(
+        request.rawBody,
+        signature
+      )
+    ) {
+      response
+        .status(401)
+        .send("Invalid signature");
+      return;
+    }
+
+    const events =
+      Array.isArray(
+        request.body?.events
+      )
+        ? request.body.events
+        : [];
+
+    for (const event of events) {
+      try {
+        await handleLinePairingEvent(
+          event
+        );
+      } catch (error) {
+        console.error(
+          "LINE Webhook処理エラー:",
+          error
+        );
+
+        try {
+          await replyLineMessage(
+            event?.replyToken,
+            "LINE連携処理に失敗しました。アプリから新しい連携コードを発行して、もう一度お試しください。"
+          );
+        } catch (replyError) {
+          console.error(
+            "LINEエラー返信失敗:",
+            replyError
+          );
+        }
+      }
+    }
+
+    response
+      .status(200)
+      .send("OK");
+  }
+);
 
 
 /* =====================================================
