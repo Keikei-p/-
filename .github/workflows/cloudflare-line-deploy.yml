@@ -2,6 +2,11 @@ name: Deploy Zero-Cost LINE Worker
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - ops/deploy-reminder-only-20261003
+    paths:
+      - .github/workflows/cloudflare-line-deploy.yml
 
 permissions:
   contents: read
