@@ -2,6 +2,11 @@ name: Firebase Production Deploy
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - ops/run-firebase-deploy-20261003
+    paths:
+      - .github/workflows/firebase-production-deploy.yml
 
 permissions:
   contents: read
