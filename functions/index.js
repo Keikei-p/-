@@ -1160,7 +1160,6 @@ function buildReminderOnlyMessage(
       : "対象班があります。",
     "",
     "アプリを確認し、実績入力または「実績なし」の報告をお願いします。",
-    "※このLINEは売上・商材・実績件数の確定報告ではありません。数値はアプリで確認してください。",
   ].join("\n");
 
   const unsafeDetail =
