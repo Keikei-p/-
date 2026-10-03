@@ -1,4 +1,5 @@
 name: Deploy Zero-Cost LINE Worker
+# ops retry after Free-plan compatibility fix
 
 on:
   workflow_dispatch:
