@@ -67,6 +67,7 @@ jobs:
           const wrangler = fs.existsSync('cloudflare-line/wrangler.toml')
             ? fs.readFileSync('cloudflare-line/wrangler.toml', 'utf8')
             : '';
+          const firebaseDeploy = fs.readFileSync('.github/workflows/firebase-production-deploy.yml', 'utf8');
 
           const ids = [...html.matchAll(/\sid=["']([^"']+)["']/g)].map((m) => m[1]);
           const duplicateIds = [...new Set(ids.filter((id, index) => ids.indexOf(id) !== index))];
@@ -89,6 +90,7 @@ jobs:
             [html.includes('.form-group input:not([type="checkbox"]):not([type="radio"])'), 'checkbox-safe form CSS'],
             [duplicateIds.length === 0, 'no duplicate HTML ids'],
             [wrangler.includes('AUTOMATION_ENABLED = "true"'), 'Cloudflare reminder engine enabled'],
+            [!firebaseDeploy.includes('firebase deploy --only functions:'), 'Firebase production deploy is rules-only'],
           ];
 
           const failed = checks.filter(([ok]) => !ok);
