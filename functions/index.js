@@ -949,7 +949,11 @@ function memberTeamForDate(member, date) {
   return teamId;
 }
 
-async function getMissingTeamReports(companyId, date) {
+async function getMissingTeamReports(
+  companyId,
+  date,
+  reportCompletionMode = "individual"
+) {
   const [membersSnap, teamsSnap, recordsSnap] = await Promise.all([
     db
       .collection("companies")
@@ -977,12 +981,56 @@ async function getMissingTeamReports(companyId, date) {
     );
   });
 
+  const membersById = new Map();
+
+  membersSnap.forEach((memberDoc) => {
+    membersById.set(
+      memberDoc.id,
+      memberDoc.data() || {}
+    );
+  });
+
   const reportedUids = new Set();
+  const reportedTeamIds = new Set();
 
   recordsSnap.forEach((recordDoc) => {
     const data = recordDoc.data() || {};
+
     if (data.uid) {
-      reportedUids.add(String(data.uid));
+      reportedUids.add(
+        String(data.uid)
+      );
+    }
+
+    let teamId =
+      data.teamId
+        ? String(data.teamId)
+        : "";
+
+    if (
+      !teamId &&
+      data.uid
+    ) {
+      const member =
+        membersById.get(
+          String(data.uid)
+        );
+
+      teamId =
+        member
+          ? String(
+              memberTeamForDate(
+                member,
+                date
+              ) || ""
+            )
+          : "";
+    }
+
+    if (teamId) {
+      reportedTeamIds.add(
+        teamId
+      );
     }
   });
 
@@ -995,7 +1043,13 @@ async function getMissingTeamReports(companyId, date) {
       return;
     }
 
-    const teamId = memberTeamForDate(member, date);
+    const teamId =
+      String(
+        memberTeamForDate(
+          member,
+          date
+        ) || ""
+      );
 
     if (!teamId) {
       return;
@@ -1010,6 +1064,10 @@ async function getMissingTeamReports(companyId, date) {
           "班",
         expected: 0,
         reported: 0,
+        teamReported:
+          reportedTeamIds.has(
+            teamId
+          ),
       });
     }
 
@@ -1017,19 +1075,41 @@ async function getMissingTeamReports(companyId, date) {
 
     item.expected += 1;
 
-    if (reportedUids.has(memberDoc.id)) {
+    if (
+      reportedUids.has(
+        memberDoc.id
+      )
+    ) {
       item.reported += 1;
     }
   });
 
   return Array.from(summary.values())
-    .filter(
-      (item) =>
-        item.expected > 0 &&
-        item.reported < item.expected
-    )
+    .filter((item) => {
+      if (item.expected <= 0) {
+        return false;
+      }
+
+      if (
+        reportCompletionMode ===
+          "team_any"
+      ) {
+        return (
+          item.teamReported !==
+            true
+        );
+      }
+
+      return (
+        item.reported <
+          item.expected
+      );
+    })
     .sort((a, b) =>
-      a.teamName.localeCompare(b.teamName, "ja")
+      a.teamName.localeCompare(
+        b.teamName,
+        "ja"
+      )
     );
 }
 
@@ -1229,7 +1309,11 @@ exports.sendMissingReportReminders = onSchedule(
       const missingTeams =
         await getMissingTeamReports(
           companyId,
-          now.date
+          now.date,
+          settings.reportCompletionMode ===
+            "team_any"
+            ? "team_any"
+            : "individual"
         );
 
       if (missingTeams.length === 0) {
