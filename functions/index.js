@@ -1129,6 +1129,54 @@ async function pushLineGroupMessageWithRetry(
   throw lastError;
 }
 
+
+function buildReminderOnlyMessage(
+  missingTeams
+) {
+  const teamNames =
+    Array.from(
+      new Set(
+        (
+          Array.isArray(missingTeams)
+            ? missingTeams
+            : []
+        )
+          .map(
+            (item) =>
+              String(
+                item?.teamName || ""
+              ).trim()
+          )
+          .filter(Boolean)
+      )
+    );
+
+  const message = [
+    "⚠️ 実績入力リマインド",
+    "本日の実績入力がまだ完了していない班があります。",
+    teamNames.length > 0
+      ? "対象：" +
+        teamNames.join("・")
+      : "対象班があります。",
+    "",
+    "アプリを確認し、実績入力または「実績なし」の報告をお願いします。",
+    "※このLINEは売上・商材・実績件数の確定報告ではありません。数値はアプリで確認してください。",
+  ].join("\n");
+
+  const unsafeDetail =
+    /[¥￥]|\d[\d,]*(?:円|件)|売上金額|獲得商材|商材別|成約件数|粗利|利益|単価/i;
+
+  if (
+    unsafeDetail.test(message)
+  ) {
+    throw new Error(
+      "Reminder-only guard blocked a message containing sales/performance details"
+    );
+  }
+
+  return message;
+}
+
 exports.sendMissingReportReminders = onSchedule(
   {
     schedule: "* * * * *",
@@ -1218,18 +1266,10 @@ exports.sendMissingReportReminders = onSchedule(
         throw error;
       }
 
-      const lines = missingTeams.map(
-        (item) =>
-          `${item.teamName}：未報告 ${item.expected - item.reported}名（${item.reported}/${item.expected}名 報告済み）`
-      );
-
-      const message = [
-        "⚠️ 本日の実績報告がまだ完了していません。",
-        "",
-        ...lines,
-        "",
-        "実績入力または「実績なし」の報告をお願いします。",
-      ].join("\n");
+      const message =
+        buildReminderOnlyMessage(
+          missingTeams
+        );
 
       try {
         const sendAttempts =
