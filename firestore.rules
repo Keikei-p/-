@@ -885,8 +885,9 @@ service cloud.firestore {
             || (
               settingId == 'notifications'
               && request.resource.data.keys().hasOnly([
-                'enabled', 'weekdays', 'time', 'lineEnabled', 'lineGroupId',
-                'lineGroupName', 'lineConnectedAt', 'updatedBy', 'updatedAt'
+                'enabled', 'weekdays', 'time', 'reportCompletionMode',
+                'lineEnabled', 'lineGroupId', 'lineGroupName',
+                'lineConnectedAt', 'updatedBy', 'updatedAt'
               ])
               && request.resource.data.enabled is bool
               && request.resource.data.weekdays is list
@@ -894,6 +895,11 @@ service cloud.firestore {
               && request.resource.data.weekdays.size() <= 7
               && request.resource.data.time is string
               && request.resource.data.time.size() == 5
+              && request.resource.data.reportCompletionMode is string
+              && (
+                request.resource.data.reportCompletionMode == 'individual'
+                || request.resource.data.reportCompletionMode == 'team_any'
+              )
               && request.resource.data.lineEnabled is bool
               && request.resource.data.lineGroupId is string
               && request.resource.data.lineGroupId.size() <= 200

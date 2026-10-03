@@ -5,7 +5,7 @@ workers_dev = true
 
 [vars]
 FIREBASE_PROJECT_ID = "sales-management-cc116"
-AUTOMATION_ENABLED = "false"
+AUTOMATION_ENABLED = "true"
 
 [triggers]
 crons = ["*/5 * * * *"]

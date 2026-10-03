@@ -170,7 +170,7 @@ header {
   font-weight: 700;
 }
 
-.form-group input,
+.form-group input:not([type="checkbox"]):not([type="radio"]),
 .form-group select {
   width: 100%;
   padding: 13px 14px;
@@ -180,10 +180,91 @@ header {
   outline: none;
 }
 
-.form-group input:focus,
+.form-group input:not([type="checkbox"]):not([type="radio"]):focus,
 .form-group select:focus {
   border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(37,99,235,.1);
+}
+
+/* 通知設定：チェック項目をスマホでも崩さない */
+.notification-switch {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 16px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.notification-switch input[type="checkbox"],
+.notification-weekdays input[type="checkbox"] {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  padding: 0;
+  border: 0;
+  accent-color: var(--primary);
+}
+
+.notification-mode-card {
+  min-width: 0;
+  margin-top: 16px;
+  padding: 13px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-soft);
+}
+
+.notification-mode-title {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.notification-mode-description {
+  display: block;
+  min-width: 0;
+  margin-top: 4px;
+  color: var(--sub);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.notification-weekdays {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.notification-weekdays label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--card);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+#notificationManagement,
+#notificationManagement * {
+  min-width: 0;
+}
+
+#notificationLineConnectionStatus,
+#linePairingCommand {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .primary-button {
@@ -3594,6 +3675,23 @@ body.product-reordering .product-list {
     padding: 12px;
   }
 
+  #notificationManagement {
+    padding: 16px;
+  }
+
+  .notification-mode-card {
+    padding: 11px;
+  }
+
+  .notification-weekdays {
+    gap: 6px;
+  }
+
+  .notification-weekdays label {
+    flex: 0 0 auto;
+    padding: 7px 8px;
+  }
+
   .auth-card {
     padding: 25px 20px;
   }
@@ -4548,18 +4646,18 @@ body.product-reordering .product-list {
       通知設定の変更はオーナーのみ可能です。現在の設定と未報告状況は確認できます。
     </div>
 
-    <label style="display:flex;align-items:center;gap:8px;margin-top:18px;font-weight:800;">
+    <label class="notification-switch">
       <input id="notificationEnabled" type="checkbox">
-      未報告リマインドを有効にする
+      <span>未報告リマインドを有効にする</span>
     </label>
 
-    <div class="form-group" style="margin-top:16px;">
-      <label style="font-weight:800;">報告完了の判定方法</label>
-      <label style="display:flex;align-items:flex-start;gap:8px;margin-top:8px;font-weight:700;line-height:1.5;">
-        <input id="notificationAnyMemberCompletesTeam" type="checkbox" style="margin-top:3px;">
+    <div class="notification-mode-card">
+      <div class="notification-mode-title">報告完了の判定方法</div>
+      <label class="notification-switch" style="margin-top:9px;">
+        <input id="notificationAnyMemberCompletesTeam" type="checkbox">
         <span>
           班の誰か1人が報告していれば、この班は報告済みにする
-          <span style="display:block;margin-top:4px;color:var(--sub);font-size:11px;font-weight:500;">
+          <span class="notification-mode-description">
             班長・リーダーが班をまとめて報告する運用向けです。実績入力または「実績なし」が1件でもあれば、その班への未報告リマインドは出しません。
           </span>
         </span>
@@ -4568,7 +4666,7 @@ body.product-reordering .product-list {
 
     <div class="form-group">
       <label>通知する曜日</label>
-      <div id="notificationWeekdays" style="display:flex;gap:8px;flex-wrap:wrap;">
+      <div id="notificationWeekdays" class="notification-weekdays">
         <label><input type="checkbox" data-notification-weekday="1"> 月</label>
         <label><input type="checkbox" data-notification-weekday="2"> 火</label>
         <label><input type="checkbox" data-notification-weekday="3"> 水</label>
@@ -4585,9 +4683,9 @@ body.product-reordering .product-list {
       <div style="margin-top:6px;color:var(--sub);font-size:10px;">無料運用のため5分刻みで設定します。</div>
     </div>
 
-    <label style="display:flex;align-items:center;gap:8px;margin-top:14px;font-weight:800;">
+    <label class="notification-switch">
       <input id="notificationLineEnabled" type="checkbox">
-      LINEグループへ自動通知
+      <span>LINEグループへ自動通知</span>
     </label>
 
     <div class="form-group">
@@ -6002,6 +6100,9 @@ const notificationOwnerOnlyHint =
 
 const notificationEnabled =
   document.getElementById("notificationEnabled");
+
+const notificationAnyMemberCompletesTeam =
+  document.getElementById("notificationAnyMemberCompletesTeam");
 
 const notificationWeekdays =
   document.getElementById("notificationWeekdays");

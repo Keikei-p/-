@@ -64,6 +64,12 @@ jobs:
           const fn = fs.readFileSync('functions/index.js', 'utf8');
           const html = fs.readFileSync('index.html', 'utf8');
           const rules = fs.readFileSync('firestore.rules', 'utf8');
+          const wrangler = fs.existsSync('cloudflare-line/wrangler.toml')
+            ? fs.readFileSync('cloudflare-line/wrangler.toml', 'utf8')
+            : '';
+
+          const ids = [...html.matchAll(/\sid=["']([^"']+)["']/g)].map((m) => m[1]);
+          const duplicateIds = [...new Set(ids.filter((id, index) => ids.indexOf(id) !== index))];
 
           const checks = [
             [fn.includes('exports.lineWebhook = onRequest'), 'lineWebhook export'],
@@ -74,9 +80,15 @@ jobs:
             [fn.includes('memberTeamForDate'), 'historical team resolver'],
             [rules.includes('match /linePairingCodes/{pairingCode}'), 'LINE pairing rules'],
             [rules.includes('match /recordCorrections/{correctionId}'), 'correction audit rules'],
+            [rules.includes("'reportCompletionMode'"), 'notification completion mode rules'],
+            [rules.includes("reportCompletionMode == 'team_any'"), 'team-any mode validation'],
             [html.includes('recordCorrections'), 'correction audit write'],
             [html.includes('reportStatus'), 'zero-report status'],
             [html.includes('linePairingCodes'), 'LINE pairing UI'],
+            [html.includes('const notificationAnyMemberCompletesTeam ='), 'explicit notification mode DOM binding'],
+            [html.includes('.form-group input:not([type="checkbox"]):not([type="radio"])'), 'checkbox-safe form CSS'],
+            [duplicateIds.length === 0, 'no duplicate HTML ids'],
+            [wrangler.includes('AUTOMATION_ENABLED = "true"'), 'Cloudflare reminder engine enabled'],
           ];
 
           const failed = checks.filter(([ok]) => !ok);
