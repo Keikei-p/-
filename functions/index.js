@@ -1140,10 +1140,16 @@ exports.sendMissingReportReminders = onSchedule(
 
     const companiesSnap = await db
       .collection("companies")
-      .where("active", "==", true)
       .get();
 
     for (const companyDoc of companiesSnap.docs) {
+      const companyData =
+        companyDoc.data() || {};
+
+      if (companyData.active === false) {
+        continue;
+      }
+
       const companyId = companyDoc.id;
 
       const settingsRef = db
