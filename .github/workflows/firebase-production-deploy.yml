@@ -2,6 +2,11 @@ name: Firebase Rules Deploy (Zero-Cost)
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - ops/deploy-audit-fixes-rules-20261003
+    paths:
+      - .github/workflows/firebase-production-deploy.yml
 
 permissions:
   contents: read
