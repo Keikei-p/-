@@ -3994,6 +3994,11 @@ body.product-reordering .product-list {
               アカウント設定
             </button>
 
+            <button id="quickNotifyButton" class="quick-menu-button" type="button" aria-pressed="false" style="display:none;">
+              <span class="quick-menu-icon">🔔</span>
+              通知
+            </button>
+
             <button id="managementProductButton" class="quick-menu-button" type="button" aria-pressed="false" style="display:none;">
               <span class="quick-menu-icon">📦</span>
               商材管理
@@ -4454,6 +4459,140 @@ body.product-reordering .product-list {
 
 
   <!-- =====================================================
+       通知
+  ===================================================== -->
+
+  <div
+    id="notificationManagement"
+    class="account-card quick-panel"
+    style="display:none;">
+
+    <div class="quick-panel-header">
+      <div class="account-title">🔔 通知</div>
+      <button
+        id="closeNotificationManagementButton"
+        class="quick-panel-close"
+        type="button">
+        閉じる
+      </button>
+    </div>
+
+    <div class="account-description">
+      指定した曜日・時刻に、その日の実績報告が揃っていない班を確認します。
+      0件でも「実績なし」で登録していれば報告済みとして扱います。
+    </div>
+
+    <div
+      id="notificationOwnerOnlyHint"
+      style="display:none;margin-top:12px;padding:10px;border-radius:10px;background:#f8fafc;color:var(--sub);font-size:12px;line-height:1.6;">
+      通知設定の変更はオーナーのみ可能です。現在の設定と未報告状況は確認できます。
+    </div>
+
+    <label style="display:flex;align-items:center;gap:8px;margin-top:18px;font-weight:800;">
+      <input id="notificationEnabled" type="checkbox">
+      未報告チェックを有効にする
+    </label>
+
+    <div class="form-group">
+      <label>通知する曜日</label>
+      <div id="notificationWeekdays" style="display:flex;gap:8px;flex-wrap:wrap;">
+        <label><input type="checkbox" data-notification-weekday="1"> 月</label>
+        <label><input type="checkbox" data-notification-weekday="2"> 火</label>
+        <label><input type="checkbox" data-notification-weekday="3"> 水</label>
+        <label><input type="checkbox" data-notification-weekday="4"> 木</label>
+        <label><input type="checkbox" data-notification-weekday="5"> 金</label>
+        <label><input type="checkbox" data-notification-weekday="6"> 土</label>
+        <label><input type="checkbox" data-notification-weekday="0"> 日</label>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label for="notificationTimeInput">通知時刻</label>
+      <input id="notificationTimeInput" type="time" step="60" value="19:30">
+    </div>
+
+    <label style="display:flex;align-items:center;gap:8px;margin-top:14px;font-weight:800;">
+      <input id="notificationLineEnabled" type="checkbox">
+      LINEグループへ自動通知
+    </label>
+
+    <div class="form-group">
+      <label for="notificationLineGroupId">LINEグループ連携</label>
+      <input
+        id="notificationLineGroupId"
+        type="text"
+        maxlength="200"
+        readonly
+        placeholder="未連携">
+      <div
+        id="notificationLineConnectionStatus"
+        style="margin-top:8px;color:var(--sub);font-size:12px;line-height:1.6;">
+        LINEグループはまだ連携されていません。
+      </div>
+
+      <button
+        id="issueLinePairingCodeButton"
+        class="team-action-button"
+        type="button"
+        style="margin-top:10px;">
+        LINE連携コードを発行
+      </button>
+
+      <div
+        id="linePairingCodePanel"
+        style="display:none;margin-top:12px;padding:12px;border-radius:10px;background:#f8fafc;line-height:1.7;">
+        <div style="font-size:12px;font-weight:800;">
+          LINEグループで次のメッセージを送ってください
+        </div>
+        <div
+          id="linePairingCommand"
+          style="margin-top:8px;padding:10px;border-radius:8px;background:#fff;border:1px solid var(--border);font-size:16px;font-weight:800;letter-spacing:.04em;">
+        </div>
+        <div style="margin-top:7px;color:var(--sub);font-size:11px;">
+          有効期限は15分です。送信すると、この画面が自動で「連携済み」に変わります。
+        </div>
+        <button
+          id="copyLinePairingCommandButton"
+          class="team-action-button"
+          type="button"
+          style="margin-top:10px;">
+          連携メッセージをコピー
+        </button>
+      </div>
+
+      <div style="margin-top:8px;color:var(--sub);font-size:11px;line-height:1.6;">
+        LINE公式アカウントを報告グループへ参加させてから連携してください。
+        Channel Access TokenやChannel Secretは画面やGitHubには保存しません。
+      </div>
+    </div>
+
+    <button
+      id="saveNotificationSettingsButton"
+      class="account-save-button"
+      type="button">
+      通知設定を保存
+    </button>
+
+    <div style="margin-top:24px;padding-top:18px;border-top:1px solid var(--border);">
+      <div style="font-weight:800;">今日の未報告状況</div>
+      <div
+        id="notificationPreview"
+        style="margin-top:10px;padding:12px;border-radius:10px;background:#f8fafc;font-size:13px;line-height:1.8;">
+        確認中...
+      </div>
+      <button
+        id="refreshNotificationPreviewButton"
+        class="team-action-button"
+        type="button"
+        style="margin-top:10px;">
+        未報告を再確認
+      </button>
+    </div>
+
+  </div>
+
+
+  <!-- =====================================================
        状態
   ===================================================== -->
 
@@ -4565,6 +4704,16 @@ body.product-reordering .product-list {
           placeholder="例：○○市 ○○店"
         >
 
+        <div id="recordCorrectionTeamGroup" style="display:none;margin-top:14px;">
+          <label for="recordCorrectionTeam">訂正する班</label>
+          <select id="recordCorrectionTeam">
+            <option value="">所属なし</option>
+          </select>
+          <div style="margin-top:6px;color:var(--sub);font-size:11px;line-height:1.6;">
+            実績の班だけを訂正します。本人の班履歴は変更しません。
+          </div>
+        </div>
+
       </div>
 
     </div>
@@ -4618,6 +4767,14 @@ body.product-reordering .product-list {
       id="saveRecordButton"
       class="record-save-button">
       実績を一括登録
+    </button>
+
+    <button
+      id="noResultButton"
+      class="record-clear-button"
+      type="button"
+      style="margin-left:8px;">
+      実績なし（0件報告）
     </button>
 
     <button
@@ -5752,6 +5909,57 @@ const quickOwnerButton =
 const quickAccountButton =
   document.getElementById("quickAccountButton");
 
+const quickNotifyButton =
+  document.getElementById("quickNotifyButton");
+
+const notificationManagement =
+  document.getElementById("notificationManagement");
+
+const closeNotificationManagementButton =
+  document.getElementById("closeNotificationManagementButton");
+
+const notificationOwnerOnlyHint =
+  document.getElementById("notificationOwnerOnlyHint");
+
+const notificationEnabled =
+  document.getElementById("notificationEnabled");
+
+const notificationWeekdays =
+  document.getElementById("notificationWeekdays");
+
+const notificationTimeInput =
+  document.getElementById("notificationTimeInput");
+
+const notificationLineEnabled =
+  document.getElementById("notificationLineEnabled");
+
+const notificationLineGroupId =
+  document.getElementById("notificationLineGroupId");
+
+const notificationLineConnectionStatus =
+  document.getElementById("notificationLineConnectionStatus");
+
+const issueLinePairingCodeButton =
+  document.getElementById("issueLinePairingCodeButton");
+
+const linePairingCodePanel =
+  document.getElementById("linePairingCodePanel");
+
+const linePairingCommand =
+  document.getElementById("linePairingCommand");
+
+const copyLinePairingCommandButton =
+  document.getElementById("copyLinePairingCommandButton");
+
+const saveNotificationSettingsButton =
+  document.getElementById("saveNotificationSettingsButton");
+
+const notificationPreview =
+  document.getElementById("notificationPreview");
+
+const refreshNotificationPreviewButton =
+  document.getElementById("refreshNotificationPreviewButton");
+
 const companyManagement =
   document.getElementById("companyManagement");
 
@@ -6003,6 +6211,16 @@ const recordLocation =
     "recordLocation"
   );
 
+const recordCorrectionTeamGroup =
+  document.getElementById(
+    "recordCorrectionTeamGroup"
+  );
+
+const recordCorrectionTeam =
+  document.getElementById(
+    "recordCorrectionTeam"
+  );
+
 const productInputList =
   document.getElementById(
     "productInputList"
@@ -6021,6 +6239,11 @@ const recordTotalRevenue =
 const saveRecordButton =
   document.getElementById(
     "saveRecordButton"
+  );
+
+const noResultButton =
+  document.getElementById(
+    "noResultButton"
   );
 
 const clearRecordButton =
@@ -7043,12 +7266,40 @@ function canCurrentUserManageRecord(
 
 }
 
+function canCurrentUserCorrectRecord(
+  record
+) {
+
+  return !!(
+    record &&
+    currentUser &&
+    currentUserData?.companyId &&
+    record.companyId ===
+      currentUserData.companyId
+  );
+
+}
+
+
 
 let editingTeamId = null;
 let editingGoalTeamId = null;
 let editingProductId = null;
 let editingMemberId = null;
 let editingRecordId = null;
+let zeroResultRequested = false;
+
+let notificationSettings = {
+  enabled: false,
+  weekdays: [1, 2, 3, 4, 5],
+  time: "19:30",
+  lineEnabled: false,
+  lineGroupId: "",
+  lineGroupName: ""
+};
+
+let unsubscribeLinePairing = null;
+let currentLinePairingCommand = "";
 
 let revenueChartMode =
   "monthly";
@@ -7125,6 +7376,7 @@ let unsubscribeGoals = null;
 const managementWorkspacePanels = [
   companyManagement,
   accountSettings,
+  notificationManagement,
   teamManagement,
   productManagement,
   memberManagement
@@ -7196,6 +7448,7 @@ const quickMenuButtons = [
   quickInviteButton,
   quickOwnerButton,
   quickAccountButton,
+  quickNotifyButton,
   managementProductButton,
   managementTeamButton,
   managementMemberButton
@@ -7594,6 +7847,57 @@ closeCompanyManagementButton.onclick =
 
 closeAccountSettingsButton.onclick =
   closeQuickPanels;
+
+
+quickNotifyButton.onclick =
+  () => {
+
+    activeManagementSection =
+      null;
+
+    hideManagementCards();
+
+    setManagementMenuOpen(
+      false
+    );
+
+    if (
+      notificationManagement.style.display !==
+        "none"
+    ) {
+
+      closeQuickPanels();
+
+      return;
+
+    }
+
+    closeQuickPanels();
+
+    showManagementWorkspace(
+      notificationManagement
+    );
+
+    quickNotifyButton.setAttribute(
+      "aria-pressed",
+      "true"
+    );
+
+    renderNotificationSettingsForm();
+
+    renderNotificationPreview();
+
+  };
+
+
+closeNotificationManagementButton.onclick =
+  () => {
+
+    stopLinePairingListener();
+
+    closeQuickPanels();
+
+  };
 
 
 /* =====================================================
@@ -8700,6 +9004,9 @@ async function enterApplication(
       );
 
     }
+
+
+    await loadNotificationSettings();
 
 
     startRealtimeListeners();
@@ -10949,6 +11256,9 @@ function updateCurrentUserUI() {
     managementMemberButton.style.display =
       "block";
 
+    quickNotifyButton.style.display =
+      "block";
+
     if (
       !canViewRevenue &&
       activeManagementSection ===
@@ -11029,6 +11339,20 @@ function updateCurrentUserUI() {
 
     managementMemberButton.style.display =
       "none";
+
+    quickNotifyButton.style.display =
+      "none";
+
+    if (
+      quickNotifyButton.getAttribute(
+        "aria-pressed"
+      ) ===
+        "true"
+    ) {
+
+      closeQuickPanels();
+
+    }
 
     hideManagementCards();
 
@@ -11796,6 +12120,8 @@ function startRealtimeListeners() {
         createMonthOptions();
 
         renderDashboard();
+
+        renderNotificationPreview();
 
       }
     );
@@ -19072,6 +19398,110 @@ function prepareProductInputList(
 
 }
 
+function ensureRecordMemberOption(
+  record
+) {
+
+  if (
+    !record?.uid
+  ) {
+
+    return;
+
+  }
+
+  const exists =
+    Array.from(
+      recordMember.options
+    ).some(
+      option =>
+        option.value ===
+          record.uid
+    );
+
+  if (
+    exists
+  ) {
+
+    return;
+
+  }
+
+  const option =
+    document.createElement(
+      "option"
+    );
+
+  option.value =
+    record.uid;
+
+  option.textContent =
+    record.memberNameSnapshot ||
+    getCurrentMemberName(
+      record
+    ) ||
+    "名前未設定";
+
+  recordMember.appendChild(
+    option
+  );
+
+}
+
+
+function showRecordCorrectionTeam(
+  record
+) {
+
+  if (
+    !record
+  ) {
+
+    recordCorrectionTeamGroup.style.display =
+      "none";
+
+    recordCorrectionTeam.innerHTML =
+      '<option value="">所属なし</option>';
+
+    return;
+
+  }
+
+  recordCorrectionTeam.innerHTML =
+    '<option value="">所属なし</option>';
+
+  teams.forEach(
+    team => {
+
+      const option =
+        document.createElement(
+          "option"
+        );
+
+      option.value =
+        team.id;
+
+      option.textContent =
+        team.name ||
+        "班名未設定";
+
+      recordCorrectionTeam.appendChild(
+        option
+      );
+
+    }
+  );
+
+  recordCorrectionTeam.value =
+    record.teamId ||
+    "";
+
+  recordCorrectionTeamGroup.style.display =
+    "block";
+
+}
+
+
 /* =====================================================
    入力合計
 ===================================================== */
@@ -19469,6 +19899,14 @@ async function loadExistingRecordIntoForm() {
     editingRecordId =
       record.id;
 
+    ensureRecordMemberOption(
+      record
+    );
+
+    showRecordCorrectionTeam(
+      record
+    );
+
 
     recordLocation.value =
       record.workLocation ||
@@ -19490,6 +19928,10 @@ async function loadExistingRecordIntoForm() {
 
   editingRecordId =
     null;
+
+  showRecordCorrectionTeam(
+    null
+  );
 
   recordLocation.value =
     "";
@@ -19528,6 +19970,10 @@ clearRecordButton.onclick =
 
     editingRecordId =
       null;
+
+    showRecordCorrectionTeam(
+      null
+    );
 
 
     recordDate.value =
@@ -19574,6 +20020,53 @@ clearRecordButton.onclick =
    実績登録
 ===================================================== */
 
+noResultButton.onclick =
+  () => {
+
+    if (
+      !recordDate.value
+    ) {
+
+      showError(
+        "日付を選択してください。"
+      );
+
+      return;
+
+    }
+
+    if (
+      !recordMember.value
+    ) {
+
+      showError(
+        "担当者を選択してください。"
+      );
+
+      return;
+
+    }
+
+    if (
+      !confirm(
+        "この日を「実績なし（0件）」として報告しますか？"
+      )
+    ) {
+
+      return;
+
+    }
+
+    prepareProductInputList();
+
+    zeroResultRequested =
+      true;
+
+    saveRecordButton.click();
+
+  };
+
+
 saveRecordButton.onclick =
   async () => {
 
@@ -19581,6 +20074,12 @@ saveRecordButton.onclick =
       "none";
 
     clearMessages();
+
+    const zeroResultSubmission =
+      zeroResultRequested;
+
+    zeroResultRequested =
+      false;
 
 
     const date =
@@ -19620,17 +20119,48 @@ saveRecordButton.onclick =
       名前変更後も最新名を保存
     */
 
+    const selectedRecordFallback =
+      records.find(
+        record =>
+          record.uid ===
+            memberId &&
+          record.date ===
+            date
+      );
+
     const member =
       members.find(
         item =>
-          item.id ===
+          (
+            item.id ||
+            item.uid
+          ) ===
           memberId
       ) ||
       (
-        memberId ===
-          currentUserData?.uid
-          ? currentUserData
-          : null
+        selectedRecordFallback
+          ? {
+              id:
+                selectedRecordFallback.uid,
+              uid:
+                selectedRecordFallback.uid,
+              name:
+                selectedRecordFallback.memberNameSnapshot ||
+                getCurrentMemberName(
+                  selectedRecordFallback
+                ),
+              teamId:
+                selectedRecordFallback.teamId ||
+                null,
+              active:
+                true
+            }
+          : (
+              memberId ===
+                currentUserData?.uid
+                ? currentUserData
+                : null
+            )
       );
 
 
@@ -19662,22 +20192,33 @@ saveRecordButton.onclick =
     }
 
 
-    const results =
+    let results =
       getCurrentInputResults();
 
 
-    const totals =
+    let totals =
       calculateResultsTotals(
         results
       );
 
 
     if (
+      zeroResultSubmission
+    ) {
+
+      results = {};
+
+      totals = {
+        count: 0,
+        revenue: 0
+      };
+
+    } else if (
       totals.count <= 0
     ) {
 
       showError(
-        "少なくとも1つの商材に1件以上入力してください。"
+        "少なくとも1つの商材に1件以上入力するか、「実績なし」を押してください。"
       );
 
       return;
@@ -19716,26 +20257,44 @@ saveRecordButton.onclick =
       );
 
 
+    const isExistingCorrection =
+      !!existingDailyRecord;
+
     const targetTeamId =
-      existingDailyRecord
+      isExistingCorrection &&
+      editingRecordId ===
+        existingDailyRecord.id
         ? (
-            existingDailyRecord.teamId ??
+            recordCorrectionTeam.value ||
             null
           )
-        : assignedTeam.teamId;
+        : (
+            existingDailyRecord
+              ? (
+                  existingDailyRecord.teamId ??
+                  null
+                )
+              : assignedTeam.teamId
+          );
 
 
     const canManageTarget =
-      isCurrentCompanyOwner() ||
-      targetUid ===
-        currentUser?.uid ||
-      (
-        isCurrentTeamLeader() &&
-        member.teamId ===
-          currentUserData.teamId &&
-        targetTeamId ===
-          currentUserData.teamId
-      );
+      isExistingCorrection
+        ? canCurrentUserCorrectRecord(
+            existingDailyRecord
+          )
+        : (
+            isCurrentCompanyOwner() ||
+            targetUid ===
+              currentUser?.uid ||
+            (
+              isCurrentTeamLeader() &&
+              member.teamId ===
+                currentUserData.teamId &&
+              targetTeamId ===
+                currentUserData.teamId
+            )
+          );
 
 
     if (
@@ -19743,7 +20302,9 @@ saveRecordButton.onclick =
     ) {
 
       showError(
-        "リーダーは自分の班員の実績だけ追加・修正できます。"
+        isExistingCorrection
+          ? "この実績を訂正する権限がありません。"
+          : "新規実績は自分、オーナー、または担当班のリーダーが登録できます。"
       );
 
       return;
@@ -19802,22 +20363,29 @@ saveRecordButton.onclick =
           "名前未設定",
 
         teamId:
-          existingDailyRecord
-            ? (
-                existingDailyRecord.teamId ??
-                null
-              )
-            : assignedTeam.teamId,
+          targetTeamId,
 
         teamNameSnapshot:
-          existingDailyRecord
+          targetTeamId
             ? (
-                existingDailyRecord.teamNameSnapshot ||
-                getCurrentTeamName(
-                  existingDailyRecord
+                teams.find(
+                  team =>
+                    team.id ===
+                      targetTeamId
+                )?.name ||
+                (
+                  existingDailyRecord?.teamId ===
+                    targetTeamId
+                    ? (
+                        existingDailyRecord.teamNameSnapshot ||
+                        getCurrentTeamName(
+                          existingDailyRecord
+                        )
+                      )
+                    : "班名未設定"
                 )
               )
-            : assignedTeam.teamName,
+            : "所属なし",
 
         date,
 
@@ -19830,6 +20398,14 @@ saveRecordButton.onclick =
 
         totalRevenue:
           totals.revenue,
+
+        reportStatus:
+          zeroResultSubmission
+            ? "no_result"
+            : "submitted",
+
+        reportedAt:
+          serverTimestamp(),
 
         updatedByUid:
           currentUser?.uid ||
@@ -19867,36 +20443,173 @@ saveRecordButton.onclick =
 
       } catch (error) {
 
-        /*
-          旧Rulesは監査項目を許可しないため、未移行の通常実績だけ
-          従来の項目で一度再試行する。権限判定は引き続きRulesが行う。
-          新Rules適用後は最初の保存で監査項目も記録される。
-        */
         if (
-          error?.code !== "permission-denied" ||
-          isManagedMember(member) ||
-          existingDailyRecord?.createdByUid ||
-          existingDailyRecord?.updatedByUid
+          error?.code !==
+            "permission-denied"
         ) {
 
           throw error;
 
         }
 
-        const legacyData = {
+        /*
+          Firestore Rulesの反映前でも通常入力と0件報告を止めない。
+          新しい報告状態フィールドだけ外して一度再試行する。
+          訂正権限そのものはRules側で判定されるため、権限を迂回しない。
+        */
+        const compatibleData = {
           ...data
         };
 
-        delete legacyData.createdByUid;
-        delete legacyData.updatedByUid;
+        delete compatibleData.reportStatus;
+        delete compatibleData.reportedAt;
 
-        await setDoc(
-          recordRef,
-          legacyData,
-          {
-            merge: true
+        try {
+
+          await setDoc(
+            recordRef,
+            compatibleData,
+            {
+              merge: true
+            }
+          );
+
+        } catch (compatibilityError) {
+
+          /*
+            さらに古いRules向けの既存互換処理。
+            監査UID項目を持たない旧データだけ従来形式で再試行する。
+          */
+          if (
+            compatibilityError?.code !==
+              "permission-denied" ||
+            isManagedMember(member) ||
+            existingDailyRecord?.createdByUid ||
+            existingDailyRecord?.updatedByUid
+          ) {
+
+            throw compatibilityError;
+
           }
-        );
+
+          const legacyData = {
+            ...compatibleData
+          };
+
+          delete legacyData.createdByUid;
+          delete legacyData.updatedByUid;
+
+          await setDoc(
+            recordRef,
+            legacyData,
+            {
+              merge: true
+            }
+          );
+
+        }
+
+      }
+
+
+      let correctionAuditWarning =
+        false;
+
+      if (
+        existingDailyRecord
+      ) {
+
+        try {
+
+          const correctionRef =
+            doc(
+              collection(
+                db,
+                "recordCorrections"
+              )
+            );
+
+          await setDoc(
+            correctionRef,
+            {
+              companyId:
+                currentUserData.companyId,
+              recordId:
+                recordRef.id,
+              recordUid:
+                targetUid,
+              recordDate:
+                date,
+              changedByUid:
+                currentUser?.uid ||
+                "",
+              changedByName:
+                currentUserData?.name ||
+                "名前未設定",
+              before: {
+                memberNameSnapshot:
+                  existingDailyRecord.memberNameSnapshot ||
+                  "",
+                teamId:
+                  existingDailyRecord.teamId ||
+                  null,
+                teamNameSnapshot:
+                  existingDailyRecord.teamNameSnapshot ||
+                  "",
+                workLocation:
+                  existingDailyRecord.workLocation ||
+                  "",
+                results:
+                  existingDailyRecord.results ||
+                  {},
+                totalCount:
+                  Number(
+                    existingDailyRecord.totalCount ||
+                    0
+                  ),
+                totalRevenue:
+                  Number(
+                    existingDailyRecord.totalRevenue ||
+                    0
+                  ),
+                reportStatus:
+                  existingDailyRecord.reportStatus ||
+                  "submitted"
+              },
+              after: {
+                memberNameSnapshot:
+                  data.memberNameSnapshot,
+                teamId:
+                  data.teamId,
+                teamNameSnapshot:
+                  data.teamNameSnapshot,
+                workLocation:
+                  data.workLocation,
+                results:
+                  data.results,
+                totalCount:
+                  data.totalCount,
+                totalRevenue:
+                  data.totalRevenue,
+                reportStatus:
+                  data.reportStatus
+              },
+              createdAt:
+                serverTimestamp()
+            }
+          );
+
+        } catch (auditError) {
+
+          correctionAuditWarning =
+            true;
+
+          console.error(
+            "訂正履歴保存エラー:",
+            auditError
+          );
+
+        }
 
       }
 
@@ -20032,7 +20745,13 @@ saveRecordButton.onclick =
       } else {
 
         showSuccess(
-          `${date}の実績を保存し、ダッシュボードへ反映しました。`
+          correctionAuditWarning
+            ? `${date}の実績は保存できました。訂正履歴の保存だけ失敗したため管理者へ確認してください。`
+            : (
+                zeroResultSubmission
+                  ? `${date}を「実績なし（0件）」として報告しました。`
+                  : `${date}の実績を保存し、ダッシュボードへ反映しました。`
+              )
         );
 
       }
@@ -20382,6 +21101,788 @@ recordHistoryDate.addEventListener(
 
   }
 );
+
+
+/* =====================================================
+   未報告通知
+===================================================== */
+
+function notificationSettingsDocRef() {
+
+  if (
+    !currentUserData?.companyId
+  ) {
+
+    throw new Error(
+      "会社情報が設定されていません。"
+    );
+
+  }
+
+  return doc(
+    db,
+    "companies",
+    currentUserData.companyId,
+    "settings",
+    "notifications"
+  );
+
+}
+
+
+function normalizeNotificationSettings(
+  value
+) {
+
+  const data =
+    value &&
+    typeof value ===
+      "object"
+      ? value
+      : {};
+
+  const weekdays =
+    Array.isArray(
+      data.weekdays
+    )
+      ? data.weekdays
+          .map(Number)
+          .filter(
+            day =>
+              Number.isInteger(day) &&
+              day >= 0 &&
+              day <= 6
+          )
+      : [1, 2, 3, 4, 5];
+
+  return {
+    enabled:
+      data.enabled === true,
+    weekdays:
+      weekdays.length > 0
+        ? Array.from(
+            new Set(
+              weekdays
+            )
+          )
+        : [1, 2, 3, 4, 5],
+    time:
+      /^\d{2}:\d{2}$/.test(
+        data.time || ""
+      )
+        ? data.time
+        : "19:30",
+    lineEnabled:
+      data.lineEnabled === true,
+    lineGroupId:
+      String(
+        data.lineGroupId ||
+        ""
+      ).trim(),
+    lineGroupName:
+      String(
+        data.lineGroupName ||
+        ""
+      ).trim()
+  };
+
+}
+
+
+async function loadNotificationSettings() {
+
+  notificationSettings =
+    normalizeNotificationSettings(
+      null
+    );
+
+  if (
+    !currentUserData?.companyId
+  ) {
+
+    return;
+
+  }
+
+  try {
+
+    const snap =
+      await getDoc(
+        notificationSettingsDocRef()
+      );
+
+    if (
+      snap.exists()
+    ) {
+
+      notificationSettings =
+        normalizeNotificationSettings(
+          snap.data()
+        );
+
+    }
+
+  } catch (error) {
+
+    console.error(
+      "通知設定取得エラー:",
+      error
+    );
+
+  }
+
+  renderNotificationSettingsForm();
+
+  renderNotificationPreview();
+
+}
+
+
+function renderNotificationSettingsForm() {
+
+  const settings =
+    normalizeNotificationSettings(
+      notificationSettings
+    );
+
+  notificationEnabled.checked =
+    settings.enabled;
+
+  notificationTimeInput.value =
+    settings.time;
+
+  notificationLineEnabled.checked =
+    settings.lineEnabled;
+
+  notificationLineGroupId.value =
+    settings.lineGroupId;
+
+  notificationLineConnectionStatus.textContent =
+    settings.lineGroupId
+      ? `✅ 連携済み：${settings.lineGroupName || "LINEグループ"}`
+      : "LINEグループはまだ連携されていません。";
+
+  notificationWeekdays
+    .querySelectorAll(
+      "[data-notification-weekday]"
+    )
+    .forEach(
+      input => {
+
+        input.checked =
+          settings.weekdays.includes(
+            Number(
+              input.dataset.notificationWeekday
+            )
+          );
+
+      }
+    );
+
+  const canEdit =
+    isCurrentCompanyOwner();
+
+  notificationOwnerOnlyHint.style.display =
+    canEdit
+      ? "none"
+      : "block";
+
+  [
+    notificationEnabled,
+    notificationTimeInput,
+    notificationLineEnabled,
+    saveNotificationSettingsButton,
+    issueLinePairingCodeButton
+  ].forEach(
+    element => {
+
+      element.disabled =
+        !canEdit;
+
+    }
+  );
+
+  notificationWeekdays
+    .querySelectorAll(
+      "input"
+    )
+    .forEach(
+      input => {
+
+        input.disabled =
+          !canEdit;
+
+      }
+    );
+
+}
+
+
+function getUnreportedTeamSummary(
+  date = getTodayString()
+) {
+
+  const teamSummary =
+    new Map();
+
+  members
+    .filter(
+      member =>
+        member &&
+        member.active !==
+          false
+    )
+    .forEach(
+      member => {
+
+        const memberId =
+          member.id ||
+          member.uid;
+
+        if (
+          !memberId
+        ) {
+
+          return;
+
+        }
+
+        const assignment =
+          getMemberTeamForDate(
+            member,
+            date
+          );
+
+        const teamId =
+          assignment?.teamId ||
+          null;
+
+        if (
+          !teamId
+        ) {
+
+          return;
+
+        }
+
+        const key =
+          String(
+            teamId
+          );
+
+        if (
+          !teamSummary.has(
+            key
+          )
+        ) {
+
+          teamSummary.set(
+            key,
+            {
+              teamId,
+              teamName:
+                assignment.teamName ||
+                getTeamName(
+                  teamId
+                ) ||
+                "班",
+              expected: 0,
+              reported: 0,
+              missingNames: []
+            }
+          );
+
+        }
+
+        const summary =
+          teamSummary.get(
+            key
+          );
+
+        summary.expected +=
+          1;
+
+        const hasReport =
+          records.some(
+            record =>
+              record.uid ===
+                memberId &&
+              record.date ===
+                date
+          );
+
+        if (
+          hasReport
+        ) {
+
+          summary.reported +=
+            1;
+
+        } else {
+
+          summary.missingNames.push(
+            member.name ||
+            "名前未設定"
+          );
+
+        }
+
+      }
+    );
+
+  return Array.from(
+    teamSummary.values()
+  )
+    .filter(
+      summary =>
+        summary.expected >
+          0 &&
+        summary.reported <
+          summary.expected
+    )
+    .sort(
+      (a, b) =>
+        (
+          a.teamName ||
+          ""
+        ).localeCompare(
+          b.teamName ||
+          "",
+          "ja"
+        )
+    );
+
+}
+
+
+function renderNotificationPreview() {
+
+  const missing =
+    getUnreportedTeamSummary(
+      getTodayString()
+    );
+
+  if (
+    missing.length ===
+      0
+  ) {
+
+    notificationPreview.innerHTML =
+      "✅ 現在、未報告の班はありません。";
+
+    return;
+
+  }
+
+  notificationPreview.innerHTML =
+    missing
+      .map(
+        item =>
+          `⚠️ ${escapeHtml(
+            item.teamName
+          )}：${item.reported}/${item.expected}名 報告済み（未報告 ${item.expected - item.reported}名）`
+      )
+      .join(
+        "<br>"
+      );
+
+}
+
+
+function stopLinePairingListener() {
+
+  if (
+    unsubscribeLinePairing
+  ) {
+
+    unsubscribeLinePairing();
+
+    unsubscribeLinePairing =
+      null;
+
+  }
+
+}
+
+
+function createLinePairingCode() {
+
+  const alphabet =
+    "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+  const values =
+    new Uint32Array(
+      8
+    );
+
+  crypto.getRandomValues(
+    values
+  );
+
+  return Array.from(
+    values
+  )
+    .map(
+      value =>
+        alphabet[
+          value %
+            alphabet.length
+        ]
+    )
+    .join("");
+
+}
+
+
+function watchLinePairingCode(
+  code
+) {
+
+  stopLinePairingListener();
+
+  const pairingRef =
+    doc(
+      db,
+      "linePairingCodes",
+      code
+    );
+
+  unsubscribeLinePairing =
+    onSnapshot(
+      pairingRef,
+      async snap => {
+
+        if (
+          !snap.exists()
+        ) {
+
+          return;
+
+        }
+
+        const data =
+          snap.data();
+
+        if (
+          data.status !==
+            "connected"
+        ) {
+
+          return;
+
+        }
+
+        stopLinePairingListener();
+
+        currentLinePairingCommand =
+          "";
+
+        linePairingCodePanel.style.display =
+          "none";
+
+        notificationLineGroupId.value =
+          data.groupId ||
+          "";
+
+        notificationLineConnectionStatus.textContent =
+          `✅ 連携済み：${data.groupName || "LINEグループ"}`;
+
+        await loadNotificationSettings();
+
+        showSuccess(
+          `LINEグループ「${data.groupName || "LINEグループ"}」と連携しました。`
+        );
+
+      },
+      error => {
+
+        console.error(
+          "LINE連携コード監視エラー:",
+          error
+        );
+
+      }
+    );
+
+}
+
+
+issueLinePairingCodeButton.onclick =
+  async () => {
+
+    if (
+      !isCurrentCompanyOwner()
+    ) {
+
+      showError(
+        "LINE連携コードを発行できるのはオーナーだけです。"
+      );
+
+      return;
+
+    }
+
+    const code =
+      createLinePairingCode();
+
+    const command =
+      `連携 ${code}`;
+
+    const pairingRef =
+      doc(
+        db,
+        "linePairingCodes",
+        code
+      );
+
+    try {
+
+      issueLinePairingCodeButton.disabled =
+        true;
+
+      await setDoc(
+        pairingRef,
+        {
+          companyId:
+            currentUserData.companyId,
+          createdBy:
+            currentUser?.uid ||
+            "",
+          status:
+            "pending",
+          createdAt:
+            serverTimestamp(),
+          expiresAt:
+            Timestamp.fromMillis(
+              Date.now() +
+              15 * 60 * 1000
+            )
+        }
+      );
+
+      currentLinePairingCommand =
+        command;
+
+      linePairingCommand.textContent =
+        command;
+
+      linePairingCodePanel.style.display =
+        "block";
+
+      watchLinePairingCode(
+        code
+      );
+
+      showSuccess(
+        "LINE連携コードを発行しました。報告用LINEグループで表示されたメッセージを送ってください。"
+      );
+
+    } catch (error) {
+
+      console.error(
+        "LINE連携コード発行エラー:",
+        error
+      );
+
+      showError(
+        firebaseErrorMessage(
+          error
+        )
+      );
+
+    } finally {
+
+      issueLinePairingCodeButton.disabled =
+        false;
+
+    }
+
+  };
+
+
+copyLinePairingCommandButton.onclick =
+  async () => {
+
+    if (
+      !currentLinePairingCommand
+    ) {
+
+      return;
+
+    }
+
+    try {
+
+      await navigator.clipboard.writeText(
+        currentLinePairingCommand
+      );
+
+      showSuccess(
+        "LINE連携メッセージをコピーしました。"
+      );
+
+    } catch (error) {
+
+      console.error(
+        "LINE連携メッセージコピーエラー:",
+        error
+      );
+
+      showError(
+        "コピーできませんでした。表示されている連携メッセージをLINEへ入力してください。"
+      );
+
+    }
+
+  };
+
+
+saveNotificationSettingsButton.onclick =
+  async () => {
+
+    if (
+      !isCurrentCompanyOwner()
+    ) {
+
+      showError(
+        "通知設定を変更できるのはオーナーだけです。"
+      );
+
+      return;
+
+    }
+
+    const weekdays =
+      Array.from(
+        notificationWeekdays
+          .querySelectorAll(
+            "[data-notification-weekday]:checked"
+          )
+      ).map(
+        input =>
+          Number(
+            input.dataset.notificationWeekday
+          )
+      );
+
+    if (
+      weekdays.length ===
+        0
+    ) {
+
+      showError(
+        "通知する曜日を1つ以上選択してください。"
+      );
+
+      return;
+
+    }
+
+    const time =
+      notificationTimeInput.value;
+
+    if (
+      !/^\d{2}:\d{2}$/.test(
+        time
+      )
+    ) {
+
+      showError(
+        "通知時刻を選択してください。"
+      );
+
+      return;
+
+    }
+
+    const lineGroupId =
+      notificationLineGroupId.value
+        .trim();
+
+    if (
+      notificationLineEnabled.checked &&
+      !lineGroupId
+    ) {
+
+      showError(
+        "LINE自動通知を使う場合は、先にLINEグループを連携してください。"
+      );
+
+      return;
+
+    }
+
+    const next =
+      normalizeNotificationSettings({
+        enabled:
+          notificationEnabled.checked,
+        weekdays,
+        time,
+        lineEnabled:
+          notificationLineEnabled.checked,
+        lineGroupId,
+        lineGroupName:
+          notificationSettings.lineGroupName ||
+          ""
+      });
+
+    try {
+
+      saveNotificationSettingsButton.disabled =
+        true;
+
+      await setDoc(
+        notificationSettingsDocRef(),
+        {
+          ...next,
+          updatedBy:
+            currentUser?.uid ||
+            "",
+          updatedAt:
+            serverTimestamp()
+        },
+        {
+          merge: true
+        }
+      );
+
+      notificationSettings =
+        next;
+
+      showSuccess(
+        "通知設定を保存しました。"
+      );
+
+    } catch (error) {
+
+      console.error(
+        "通知設定保存エラー:",
+        error
+      );
+
+      showError(
+        firebaseErrorMessage(
+          error
+        )
+      );
+
+    } finally {
+
+      saveNotificationSettingsButton.disabled =
+        false;
+
+      renderNotificationSettingsForm();
+
+      renderNotificationPreview();
+
+    }
+
+  };
+
+
+refreshNotificationPreviewButton.onclick =
+  () =>
+    renderNotificationPreview();
 
 
 /* =====================================================
@@ -28515,14 +30016,20 @@ function renderRecordHistory(
       `;
 
 
-      const canEdit =
+      const canCorrect =
+        canCurrentUserCorrectRecord(
+          record
+        );
+
+      const canDelete =
         canCurrentUserManageRecord(
           record
         );
 
 
       if (
-        canEdit
+        canCorrect ||
+        canDelete
       ) {
 
         const actions =
@@ -28534,49 +30041,60 @@ function renderRecordHistory(
           "history-actions";
 
 
-        const editButton =
-          document.createElement(
-            "button"
-          );
+        if (
+          canCorrect
+        ) {
 
-        editButton.className =
-          "edit-product-button";
-
-        editButton.textContent =
-          "✏️ 編集";
-
-        editButton.onclick =
-          () =>
-            editRecord(
-              record
+          const editButton =
+            document.createElement(
+              "button"
             );
 
+          editButton.className =
+            "edit-product-button";
 
-        const deleteButton =
-          document.createElement(
-            "button"
+          editButton.textContent =
+            "✏️ 訂正";
+
+          editButton.onclick =
+            () =>
+              editRecord(
+                record
+              );
+
+          actions.appendChild(
+            editButton
           );
 
-        deleteButton.className =
-          "history-delete";
+        }
 
-        deleteButton.textContent =
-          "🗑️ 削除";
 
-        deleteButton.onclick =
-          () =>
-            deleteRecord(
-              record
+        if (
+          canDelete
+        ) {
+
+          const deleteButton =
+            document.createElement(
+              "button"
             );
 
+          deleteButton.className =
+            "history-delete";
 
-        actions.appendChild(
-          editButton
-        );
+          deleteButton.textContent =
+            "🗑️ 削除";
 
-        actions.appendChild(
-          deleteButton
-        );
+          deleteButton.onclick =
+            () =>
+              deleteRecord(
+                record
+              );
+
+          actions.appendChild(
+            deleteButton
+          );
+
+        }
 
 
         item.appendChild(
@@ -28612,9 +30130,16 @@ function editRecord(
   recordDate.value =
     record.date;
 
+  ensureRecordMemberOption(
+    record
+  );
 
   recordMember.value =
     record.uid;
+
+  showRecordCorrectionTeam(
+    record
+  );
 
 
   recordLocation.value =
