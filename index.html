@@ -4517,16 +4517,52 @@ body.product-reordering .product-list {
     </label>
 
     <div class="form-group">
-      <label for="notificationLineGroupId">LINEグループID</label>
+      <label for="notificationLineGroupId">LINEグループ連携</label>
       <input
         id="notificationLineGroupId"
         type="text"
         maxlength="200"
-        autocomplete="off"
-        placeholder="Cxxxxxxxx...">
-      <div style="margin-top:6px;color:var(--sub);font-size:11px;line-height:1.6;">
-        LINE公式アカウントを報告グループへ参加させ、Webhookで取得したgroupIdを設定します。
-        Channel Access Tokenは画面には保存せずFirebase Secretで管理します。
+        readonly
+        placeholder="未連携">
+      <div
+        id="notificationLineConnectionStatus"
+        style="margin-top:8px;color:var(--sub);font-size:12px;line-height:1.6;">
+        LINEグループはまだ連携されていません。
+      </div>
+
+      <button
+        id="issueLinePairingCodeButton"
+        class="team-action-button"
+        type="button"
+        style="margin-top:10px;">
+        LINE連携コードを発行
+      </button>
+
+      <div
+        id="linePairingCodePanel"
+        style="display:none;margin-top:12px;padding:12px;border-radius:10px;background:#f8fafc;line-height:1.7;">
+        <div style="font-size:12px;font-weight:800;">
+          LINEグループで次のメッセージを送ってください
+        </div>
+        <div
+          id="linePairingCommand"
+          style="margin-top:8px;padding:10px;border-radius:8px;background:#fff;border:1px solid var(--border);font-size:16px;font-weight:800;letter-spacing:.04em;">
+        </div>
+        <div style="margin-top:7px;color:var(--sub);font-size:11px;">
+          有効期限は15分です。送信すると、この画面が自動で「連携済み」に変わります。
+        </div>
+        <button
+          id="copyLinePairingCommandButton"
+          class="team-action-button"
+          type="button"
+          style="margin-top:10px;">
+          連携メッセージをコピー
+        </button>
+      </div>
+
+      <div style="margin-top:8px;color:var(--sub);font-size:11px;line-height:1.6;">
+        LINE公式アカウントを報告グループへ参加させてから連携してください。
+        Channel Access TokenやChannel Secretは画面やGitHubには保存しません。
       </div>
     </div>
 
@@ -5900,6 +5936,21 @@ const notificationLineEnabled =
 const notificationLineGroupId =
   document.getElementById("notificationLineGroupId");
 
+const notificationLineConnectionStatus =
+  document.getElementById("notificationLineConnectionStatus");
+
+const issueLinePairingCodeButton =
+  document.getElementById("issueLinePairingCodeButton");
+
+const linePairingCodePanel =
+  document.getElementById("linePairingCodePanel");
+
+const linePairingCommand =
+  document.getElementById("linePairingCommand");
+
+const copyLinePairingCommandButton =
+  document.getElementById("copyLinePairingCommandButton");
+
 const saveNotificationSettingsButton =
   document.getElementById("saveNotificationSettingsButton");
 
@@ -7243,8 +7294,12 @@ let notificationSettings = {
   weekdays: [1, 2, 3, 4, 5],
   time: "19:30",
   lineEnabled: false,
-  lineGroupId: ""
+  lineGroupId: "",
+  lineGroupName: ""
 };
+
+let unsubscribeLinePairing = null;
+let currentLinePairingCommand = "";
 
 let revenueChartMode =
   "monthly";
@@ -7836,7 +7891,13 @@ quickNotifyButton.onclick =
 
 
 closeNotificationManagementButton.onclick =
-  closeQuickPanels;
+  () => {
+
+    stopLinePairingListener();
+
+    closeQuickPanels();
+
+  };
 
 
 /* =====================================================
@@ -21117,6 +21178,11 @@ function normalizeNotificationSettings(
       String(
         data.lineGroupId ||
         ""
+      ).trim(),
+    lineGroupName:
+      String(
+        data.lineGroupName ||
+        ""
       ).trim()
   };
 
@@ -21191,6 +21257,11 @@ function renderNotificationSettingsForm() {
   notificationLineGroupId.value =
     settings.lineGroupId;
 
+  notificationLineConnectionStatus.textContent =
+    settings.lineGroupId
+      ? `✅ 連携済み：${settings.lineGroupName || "LINEグループ"}`
+      : "LINEグループはまだ連携されていません。";
+
   notificationWeekdays
     .querySelectorAll(
       "[data-notification-weekday]"
@@ -21220,8 +21291,8 @@ function renderNotificationSettingsForm() {
     notificationEnabled,
     notificationTimeInput,
     notificationLineEnabled,
-    notificationLineGroupId,
-    saveNotificationSettingsButton
+    saveNotificationSettingsButton,
+    issueLinePairingCodeButton
   ].forEach(
     element => {
 
@@ -21418,6 +21489,254 @@ function renderNotificationPreview() {
 }
 
 
+function stopLinePairingListener() {
+
+  if (
+    unsubscribeLinePairing
+  ) {
+
+    unsubscribeLinePairing();
+
+    unsubscribeLinePairing =
+      null;
+
+  }
+
+}
+
+
+function createLinePairingCode() {
+
+  const alphabet =
+    "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+  const values =
+    new Uint32Array(
+      8
+    );
+
+  crypto.getRandomValues(
+    values
+  );
+
+  return Array.from(
+    values
+  )
+    .map(
+      value =>
+        alphabet[
+          value %
+            alphabet.length
+        ]
+    )
+    .join("");
+
+}
+
+
+function watchLinePairingCode(
+  code
+) {
+
+  stopLinePairingListener();
+
+  const pairingRef =
+    doc(
+      db,
+      "linePairingCodes",
+      code
+    );
+
+  unsubscribeLinePairing =
+    onSnapshot(
+      pairingRef,
+      async snap => {
+
+        if (
+          !snap.exists()
+        ) {
+
+          return;
+
+        }
+
+        const data =
+          snap.data();
+
+        if (
+          data.status !==
+            "connected"
+        ) {
+
+          return;
+
+        }
+
+        stopLinePairingListener();
+
+        currentLinePairingCommand =
+          "";
+
+        linePairingCodePanel.style.display =
+          "none";
+
+        notificationLineGroupId.value =
+          data.groupId ||
+          "";
+
+        notificationLineConnectionStatus.textContent =
+          `✅ 連携済み：${data.groupName || "LINEグループ"}`;
+
+        await loadNotificationSettings();
+
+        showSuccess(
+          `LINEグループ「${data.groupName || "LINEグループ"}」と連携しました。`
+        );
+
+      },
+      error => {
+
+        console.error(
+          "LINE連携コード監視エラー:",
+          error
+        );
+
+      }
+    );
+
+}
+
+
+issueLinePairingCodeButton.onclick =
+  async () => {
+
+    if (
+      !isCurrentCompanyOwner()
+    ) {
+
+      showError(
+        "LINE連携コードを発行できるのはオーナーだけです。"
+      );
+
+      return;
+
+    }
+
+    const code =
+      createLinePairingCode();
+
+    const command =
+      `連携 ${code}`;
+
+    const pairingRef =
+      doc(
+        db,
+        "linePairingCodes",
+        code
+      );
+
+    try {
+
+      issueLinePairingCodeButton.disabled =
+        true;
+
+      await setDoc(
+        pairingRef,
+        {
+          companyId:
+            currentUserData.companyId,
+          createdBy:
+            currentUser?.uid ||
+            "",
+          status:
+            "pending",
+          createdAt:
+            serverTimestamp(),
+          expiresAt:
+            Timestamp.fromMillis(
+              Date.now() +
+              15 * 60 * 1000
+            )
+        }
+      );
+
+      currentLinePairingCommand =
+        command;
+
+      linePairingCommand.textContent =
+        command;
+
+      linePairingCodePanel.style.display =
+        "block";
+
+      watchLinePairingCode(
+        code
+      );
+
+      showSuccess(
+        "LINE連携コードを発行しました。報告用LINEグループで表示されたメッセージを送ってください。"
+      );
+
+    } catch (error) {
+
+      console.error(
+        "LINE連携コード発行エラー:",
+        error
+      );
+
+      showError(
+        firebaseErrorMessage(
+          error
+        )
+      );
+
+    } finally {
+
+      issueLinePairingCodeButton.disabled =
+        false;
+
+    }
+
+  };
+
+
+copyLinePairingCommandButton.onclick =
+  async () => {
+
+    if (
+      !currentLinePairingCommand
+    ) {
+
+      return;
+
+    }
+
+    try {
+
+      await navigator.clipboard.writeText(
+        currentLinePairingCommand
+      );
+
+      showSuccess(
+        "LINE連携メッセージをコピーしました。"
+      );
+
+    } catch (error) {
+
+      console.error(
+        "LINE連携メッセージコピーエラー:",
+        error
+      );
+
+      showError(
+        "コピーできませんでした。表示されている連携メッセージをLINEへ入力してください。"
+      );
+
+    }
+
+  };
+
+
 saveNotificationSettingsButton.onclick =
   async () => {
 
@@ -21486,7 +21805,7 @@ saveNotificationSettingsButton.onclick =
     ) {
 
       showError(
-        "LINE自動通知を使う場合はLINEグループIDを設定してください。"
+        "LINE自動通知を使う場合は、先にLINEグループを連携してください。"
       );
 
       return;
@@ -21501,7 +21820,10 @@ saveNotificationSettingsButton.onclick =
         time,
         lineEnabled:
           notificationLineEnabled.checked,
-        lineGroupId
+        lineGroupId,
+        lineGroupName:
+          notificationSettings.lineGroupName ||
+          ""
       });
 
     try {
