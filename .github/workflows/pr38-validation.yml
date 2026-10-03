@@ -1,0 +1,88 @@
+name: PR38 Validation
+
+on:
+  push:
+    branches:
+      - feature/notifications-and-universal-record-correction-20261002
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Check Functions JavaScript syntax
+        run: node --check functions/index.js
+
+      - name: Install Functions dependencies
+        working-directory: functions
+        run: npm install --ignore-scripts --package-lock=false
+
+      - name: Load Functions module
+        working-directory: functions
+        run: node -e "require('./index.js'); console.log('functions module loaded')"
+
+      - name: Extract and check browser module syntax
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const html = fs.readFileSync('index.html', 'utf8');
+          const modules = [...html.matchAll(/<script\b[^>]*type=["']module["'][^>]*>([\s\S]*?)<\/script>/gi)];
+          if (!modules.length) throw new Error('type=module script not found');
+          modules.forEach((m, i) => fs.writeFileSync(`/tmp/index-module-${i}.mjs`, m[1]));
+          console.log(`extracted ${modules.length} module script(s)`);
+          NODE
+          for file in /tmp/index-module-*.mjs; do
+            node --check "$file"
+          done
+
+      - name: Check PR38 structural invariants
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const fn = fs.readFileSync('functions/index.js', 'utf8');
+          const html = fs.readFileSync('index.html', 'utf8');
+          const rules = fs.readFileSync('firestore.rules', 'utf8');
+
+          const checks = [
+            [fn.includes('exports.lineWebhook = onRequest'), 'lineWebhook export'],
+            [fn.includes('LINE_CHANNEL_SECRET'), 'LINE channel secret'],
+            [fn.includes('LINE_CHANNEL_ACCESS_TOKEN'), 'LINE channel access token'],
+            [fn.includes('exports.sendMissingReportReminders = onSchedule'), 'scheduled reminder export'],
+            [fn.includes('notificationDispatches'), 'duplicate-dispatch guard'],
+            [fn.includes('memberTeamForDate'), 'historical team resolver'],
+            [rules.includes('match /linePairingCodes/{pairingCode}'), 'LINE pairing rules'],
+            [rules.includes('match /recordCorrections/{correctionId}'), 'correction audit rules'],
+            [html.includes('recordCorrections'), 'correction audit write'],
+            [html.includes('reportStatus'), 'zero-report status'],
+            [html.includes('linePairingCodes'), 'LINE pairing UI'],
+          ];
+
+          const failed = checks.filter(([ok]) => !ok);
+          for (const [ok, label] of checks) console.log(`${ok ? 'OK' : 'NG'}: ${label}`);
+          if (failed.length) throw new Error(`${failed.length} structural checks failed`);
+          NODE
+
+      - name: Setup Java for Firestore emulator
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Compile Firestore Rules in emulator
+        run: firebase emulators:exec --project demo-sales-management --only firestore "node -e \"console.log('Firestore rules loaded')\""
