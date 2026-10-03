@@ -1,0 +1,62 @@
+name: Audit Notification Settings
+
+on:
+  push:
+    branches:
+      - ops/audit-notification-settings-20261003
+    paths:
+      - .github/workflows/audit-notification-settings.yml
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Firebase Admin
+        working-directory: functions
+        run: npm install --ignore-scripts --package-lock=false
+      - name: Read notification settings safely
+        working-directory: functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const { initializeApp, cert } = require("firebase-admin/app");
+          const { getFirestore } = require("firebase-admin/firestore");
+          const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "{}");
+          initializeApp({ credential: cert(sa) });
+          const db = getFirestore();
+
+          (async () => {
+            const companies = await db.collection("companies").get();
+            const rows = [];
+            for (const company of companies.docs) {
+              const snap = await company.ref.collection("settings").doc("notifications").get();
+              if (!snap.exists) continue;
+              const d = snap.data() || {};
+              rows.push({
+                companyIdSuffix: company.id.slice(-6),
+                enabled: d.enabled === true,
+                lineEnabled: d.lineEnabled === true,
+                time: String(d.time || ""),
+                reportCompletionMode: String(d.reportCompletionMode || "legacy/individual"),
+                hasLineGroup: !!String(d.lineGroupId || "").trim(),
+                lineGroupName: String(d.lineGroupName || "").slice(0, 80),
+              });
+            }
+            console.log(JSON.stringify(rows, null, 2));
+          })().catch((e) => {
+            console.error(e);
+            process.exit(1);
+          });
+          NODE
