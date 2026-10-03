@@ -46,6 +46,9 @@ jobs:
       - name: Syntax check
         run: npm run check
 
+      - name: Bootstrap Worker safely
+        run: npm run deploy
+
       - name: Put LINE channel secret
         shell: bash
         run: printf '%s' "$LINE_CHANNEL_SECRET" | npx wrangler secret put LINE_CHANNEL_SECRET
@@ -58,5 +61,5 @@ jobs:
         shell: bash
         run: printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" | npx wrangler secret put FIREBASE_SERVICE_ACCOUNT_JSON
 
-      - name: Deploy Worker
+      - name: Deploy Worker with secrets
         run: npm run deploy
