@@ -9,7 +9,3 @@ AUTOMATION_ENABLED = "false"
 
 [triggers]
 crons = ["*/5 * * * *"]
-
-[limits]
-cpu_ms = 10
-subrequests = 50
