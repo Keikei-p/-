@@ -1066,10 +1066,67 @@ async function pushLineGroupMessage(groupId, text) {
   if (!response.ok) {
     const detail = await response.text();
 
-    throw new Error(
+    const error = new Error(
       `LINE送信失敗: ${response.status} ${detail}`
     );
+
+    error.status = response.status;
+
+    throw error;
   }
+}
+
+async function pushLineGroupMessageWithRetry(
+  groupId,
+  text,
+  maxAttempts = 3
+) {
+  let lastError = null;
+
+  for (
+    let attempt = 1;
+    attempt <= maxAttempts;
+    attempt++
+  ) {
+    try {
+      await pushLineGroupMessage(
+        groupId,
+        text
+      );
+
+      return attempt;
+    } catch (error) {
+      lastError = error;
+
+      const status =
+        Number(error?.status || 0);
+
+      const retryable =
+        status === 0 ||
+        status === 429 ||
+        status >= 500;
+
+      error.lineSendAttempts =
+        attempt;
+
+      if (
+        !retryable ||
+        attempt >= maxAttempts
+      ) {
+        throw error;
+      }
+
+      await new Promise(
+        (resolve) =>
+          setTimeout(
+            resolve,
+            500 * 2 ** (attempt - 1)
+          )
+      );
+    }
+  }
+
+  throw lastError;
 }
 
 exports.sendMissingReportReminders = onSchedule(
@@ -1169,15 +1226,17 @@ exports.sendMissingReportReminders = onSchedule(
       ].join("\n");
 
       try {
-        await pushLineGroupMessage(
-          String(settings.lineGroupId),
-          message
-        );
+        const sendAttempts =
+          await pushLineGroupMessageWithRetry(
+            String(settings.lineGroupId),
+            message
+          );
 
         await dispatchRef.set(
           {
             status: "sent",
             message,
+            sendAttempts,
             sentAt: FieldValue.serverTimestamp(),
           },
           { merge: true }
@@ -1191,6 +1250,11 @@ exports.sendMissingReportReminders = onSchedule(
         await dispatchRef.set(
           {
             status: "failed",
+            sendAttempts:
+              Number(
+                error?.lineSendAttempts ||
+                1
+              ),
             error:
               String(error?.message || error).slice(0, 1000),
             failedAt: FieldValue.serverTimestamp(),
