@@ -1,0 +1,11 @@
+name = "sales-line-worker"
+main = "src/index.js"
+compatibility_date = "2026-10-03"
+workers_dev = true
+
+[vars]
+FIREBASE_PROJECT_ID = "sales-management-cc116"
+AUTOMATION_ENABLED = "false"
+
+[triggers]
+crons = ["*/5 * * * *"]

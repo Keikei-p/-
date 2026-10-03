@@ -4568,7 +4568,8 @@ body.product-reordering .product-list {
 
     <div class="form-group">
       <label for="notificationTimeInput">通知時刻</label>
-      <input id="notificationTimeInput" type="time" step="60" value="19:30">
+      <input id="notificationTimeInput" type="time" step="300" value="19:30">
+      <div style="margin-top:6px;color:var(--sub);font-size:10px;">無料運用のため5分刻みで設定します。</div>
     </div>
 
     <label style="display:flex;align-items:center;gap:8px;margin-top:14px;font-weight:800;">
@@ -21912,6 +21913,27 @@ saveNotificationSettingsButton.onclick =
 
       showError(
         "通知時刻を選択してください。"
+      );
+
+      return;
+
+    }
+
+    const notificationMinute =
+      Number(
+        time.split(":")[1]
+      );
+
+    if (
+      !Number.isInteger(
+        notificationMinute
+      ) ||
+      notificationMinute % 5 !==
+        0
+    ) {
+
+      showError(
+        "無料運用のため、通知時刻は5分刻みで設定してください。"
       );
 
       return;

@@ -29,6 +29,12 @@ jobs:
       - name: Check Functions JavaScript syntax
         run: node --check functions/index.js
 
+      - name: Check Cloudflare LINE Worker syntax
+        run: |
+          if [ -f cloudflare-line/src/index.js ]; then
+            node --check cloudflare-line/src/index.js
+          fi
+
       - name: Install Functions dependencies
         working-directory: functions
         run: npm install --ignore-scripts --package-lock=false
