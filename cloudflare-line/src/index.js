@@ -1,5 +1,6 @@
 const SCOPE="https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/cloud-platform";
 let tokenCache={token:"",exp:0};
+const LINE_MONTHLY_HARD_CAP=180;
 
 const enc=s=>new TextEncoder().encode(s);
 const b64url=b=>{
@@ -123,6 +124,34 @@ async function groupName(env,id){
   if(!r.ok)throw new Error(`LINE group ${r.status}: ${await r.text()}`);
   return String((await r.json()).groupName||"LINEグループ").slice(0,100);
 }
+async function lineUsage(env){
+  const r=await line(env,"/v2/bot/message/quota/consumption");
+  if(!r.ok)throw new Error(`LINE quota consumption ${r.status}: ${await r.text()}`);
+  const j=await r.json();
+  const totalUsage=Number(j.totalUsage);
+  if(!Number.isFinite(totalUsage))throw new Error("LINE quota consumption returned invalid totalUsage");
+  return totalUsage;
+}
+async function groupMemberCount(env,id){
+  const r=await line(env,`/v2/bot/group/${encodeURIComponent(id)}/members/count`);
+  if(!r.ok)throw new Error(`LINE group member count ${r.status}: ${await r.text()}`);
+  const j=await r.json();
+  const count=Number(j.count);
+  if(!Number.isFinite(count)||count<0)throw new Error("LINE group member count returned invalid count");
+  return count;
+}
+async function freeLineGuard(env,groupId){
+  const [used,recipients]=await Promise.all([
+    lineUsage(env),
+    groupMemberCount(env,groupId)
+  ]);
+  return{
+    allowed:used+recipients<=LINE_MONTHLY_HARD_CAP,
+    used,
+    recipients,
+    cap:LINE_MONTHLY_HARD_CAP
+  };
+}
 async function push(env,to,text){
   const r=await line(env,"/v2/bot/message/push",{method:"POST",body:JSON.stringify({to,messages:[{type:"text",text}]})});
   if(!r.ok){const e=new Error(`LINE push ${r.status}: ${await r.text()}`);e.status=r.status;throw e;}
@@ -197,7 +226,49 @@ async function reminders(env){
       if(!s||s.enabled!==true||s.lineEnabled!==true||!s.lineGroupId||s.time!==n.time||!days.includes(n.weekday))continue;
       const miss=await missing(env,c.id,n.date); if(!miss.length)continue;
       const key=[c.id,n.date,n.time.replace(":","")].join("_");
-      if(!await create(env,"notificationDispatches",key,{companyId:c.id,date:n.date,time:n.time,status:"processing",createdAt:nowTs()}))continue;
+
+      let freeGuard;
+      try{
+        freeGuard=await freeLineGuard(env,String(s.lineGroupId));
+      }catch(e){
+        console.error("LINE free guard check failed; send blocked",c.id,e);
+        await create(env,"notificationDispatches",key,{
+          companyId:c.id,
+          date:n.date,
+          time:n.time,
+          status:"blocked_free_guard",
+          reason:"quota_check_failed",
+          error:String(e.message||e).slice(0,1000),
+          createdAt:nowTs()
+        });
+        continue;
+      }
+
+      if(!freeGuard.allowed){
+        await create(env,"notificationDispatches",key,{
+          companyId:c.id,
+          date:n.date,
+          time:n.time,
+          status:"blocked_free_guard",
+          reason:"monthly_line_cap",
+          lineUsage:freeGuard.used,
+          estimatedRecipients:freeGuard.recipients,
+          hardCap:freeGuard.cap,
+          createdAt:nowTs()
+        });
+        continue;
+      }
+
+      if(!await create(env,"notificationDispatches",key,{
+        companyId:c.id,
+        date:n.date,
+        time:n.time,
+        status:"processing",
+        lineUsageBeforeSend:freeGuard.used,
+        estimatedRecipients:freeGuard.recipients,
+        hardCap:freeGuard.cap,
+        createdAt:nowTs()
+      }))continue;
       const lines=miss.map(x=>`${x.teamName}：未報告 ${x.expected-x.reported}名（${x.reported}/${x.expected}名 報告済み）`);
       const msg=["⚠️ 本日の実績報告がまだ完了していません。","",...lines,"","実績入力または「実績なし」の報告をお願いします。"].join("\n");
       try{
