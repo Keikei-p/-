@@ -1,9 +1,12 @@
-name: PR38 Validation
+name: Sales App Validation
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
-      - feature/notifications-and-universal-record-correction-20261002
+      - main
   workflow_dispatch:
 
 permissions:
@@ -48,7 +51,7 @@ jobs:
             node --check "$file"
           done
 
-      - name: Check PR38 structural invariants
+      - name: Check production invariants
         run: |
           node <<'NODE'
           const fs = require('fs');
