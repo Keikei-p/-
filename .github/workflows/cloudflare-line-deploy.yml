@@ -69,3 +69,18 @@ jobs:
 
       - name: Deploy Worker with secrets
         run: npm run deploy
+
+      - name: Smoke test Worker health
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 5 --retry-delay 2 \
+            "https://sales-line-worker.jyhokei0124.workers.dev/health"
+
+      - name: Smoke test LINE webhook method
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            "https://sales-line-worker.jyhokei0124.workers.dev/line-webhook")"
+          test "$status" = "405"
