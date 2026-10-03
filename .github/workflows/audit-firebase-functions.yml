@@ -1,4 +1,5 @@
 name: Audit Firebase Functions
+# rerun after partial cleanup
 
 on:
   push:
