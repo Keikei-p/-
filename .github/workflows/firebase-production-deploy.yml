@@ -1,4 +1,4 @@
-name: Firebase Production Deploy
+name: Firebase Rules Deploy (Free Safe)
 
 on:
   workflow_dispatch:
@@ -7,19 +7,17 @@ permissions:
   contents: read
 
 concurrency:
-  group: firebase-production
+  group: firebase-rules-production
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  deploy-rules:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
 
     env:
       FIREBASE_PROJECT_ID: sales-management-cc116
       FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
-      LINE_CHANNEL_SECRET: ${{ secrets.LINE_CHANNEL_SECRET }}
-      LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
 
     steps:
       - name: Checkout main
@@ -27,32 +25,19 @@ jobs:
         with:
           ref: main
 
-      - name: Verify required secrets
+      - name: Verify Firebase secret
         shell: bash
         run: |
           set -euo pipefail
-          for name in FIREBASE_SERVICE_ACCOUNT_JSON LINE_CHANNEL_SECRET LINE_CHANNEL_ACCESS_TOKEN; do
-            if [ -z "${!name:-}" ]; then
-              echo "::error::GitHub Secret ${name} が未設定です。"
-              exit 1
-            fi
-          done
+          if [ -z "${FIREBASE_SERVICE_ACCOUNT_JSON:-}" ]; then
+            echo "::error::GitHub Secret FIREBASE_SERVICE_ACCOUNT_JSON が未設定です。"
+            exit 1
+          fi
 
       - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-
-      - name: Check Functions syntax
-        run: node --check functions/index.js
-
-      - name: Install Functions dependencies
-        working-directory: functions
-        run: npm install --ignore-scripts --package-lock=false
-
-      - name: Load Functions module
-        working-directory: functions
-        run: node -e "require('./index.js'); console.log('functions module loaded')"
 
       - name: Install Firebase CLI
         run: npm install -g firebase-tools
@@ -69,33 +54,8 @@ jobs:
       - name: Verify Firebase access
         run: firebase projects:list --non-interactive
 
-      - name: Set LINE Channel Secret
-        shell: bash
-        run: |
-          set -euo pipefail
-          printf '%s' "$LINE_CHANNEL_SECRET" | firebase functions:secrets:set LINE_CHANNEL_SECRET --project "$FIREBASE_PROJECT_ID"
+      - name: Compile Firestore Rules
+        run: firebase emulators:exec --project demo-sales-management --only firestore "node -e \"console.log('Firestore rules loaded')\""
 
-      - name: Set LINE Channel Access Token
-        shell: bash
-        run: |
-          set -euo pipefail
-          printf '%s' "$LINE_CHANNEL_ACCESS_TOKEN" | firebase functions:secrets:set LINE_CHANNEL_ACCESS_TOKEN --project "$FIREBASE_PROJECT_ID"
-
-      - name: Deploy Firestore Rules
+      - name: Deploy Firestore Rules only
         run: firebase deploy --only firestore:rules --project "$FIREBASE_PROJECT_ID" --non-interactive
-
-      - name: Deploy LINE Functions
-        run: firebase deploy --only functions:lineWebhook,functions:sendMissingReportReminders --project "$FIREBASE_PROJECT_ID" --non-interactive
-
-      - name: Smoke test LINE webhook endpoint
-        shell: bash
-        run: |
-          set -euo pipefail
-          WEBHOOK_URL="https://asia-northeast1-${FIREBASE_PROJECT_ID}.cloudfunctions.net/lineWebhook"
-          STATUS="$(curl -sS -o /tmp/line-webhook-response.txt -w '%{http_code}' "$WEBHOOK_URL")"
-          cat /tmp/line-webhook-response.txt || true
-          if [ "$STATUS" != "405" ]; then
-            echo "::error::lineWebhook smoke test expected HTTP 405 for GET, got $STATUS"
-            exit 1
-          fi
-          echo "lineWebhook smoke test passed: HTTP $STATUS"
