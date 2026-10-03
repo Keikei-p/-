@@ -886,7 +886,7 @@ service cloud.firestore {
               settingId == 'notifications'
               && request.resource.data.keys().hasOnly([
                 'enabled', 'weekdays', 'time', 'lineEnabled', 'lineGroupId',
-                'updatedBy', 'updatedAt'
+                'lineGroupName', 'lineConnectedAt', 'updatedBy', 'updatedAt'
               ])
               && request.resource.data.enabled is bool
               && request.resource.data.weekdays is list
@@ -897,6 +897,17 @@ service cloud.firestore {
               && request.resource.data.lineEnabled is bool
               && request.resource.data.lineGroupId is string
               && request.resource.data.lineGroupId.size() <= 200
+              && (
+                !request.resource.data.keys().hasAny(['lineGroupName'])
+                || (
+                  request.resource.data.lineGroupName is string
+                  && request.resource.data.lineGroupName.size() <= 100
+                )
+              )
+              && (
+                !request.resource.data.keys().hasAny(['lineConnectedAt'])
+                || request.resource.data.lineConnectedAt is timestamp
+              )
               && request.resource.data.updatedBy == request.auth.uid
               && request.resource.data.updatedAt == request.time
             )
@@ -905,6 +916,28 @@ service cloud.firestore {
         allow delete: if false;
       }
     }
+
+    match /linePairingCodes/{pairingCode} {
+      allow get: if resource.data.companyId != null
+        && sameCompany(resource.data.companyId);
+
+      allow list: if false;
+
+      allow create: if request.resource.data.keys().hasOnly([
+          'companyId', 'createdBy', 'status', 'createdAt', 'expiresAt'
+        ])
+        && pairingCode.size() == 8
+        && request.resource.data.companyId != null
+        && isCompanyOwner(request.resource.data.companyId)
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.expiresAt > request.time
+        && request.resource.data.expiresAt <= request.time + duration.value(15, 'm');
+
+      allow update, delete: if false;
+    }
+
 
     match /invitations/{inviteId} {
       allow get: if verifiedUser()
