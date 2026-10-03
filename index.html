@@ -7126,6 +7126,23 @@ function canCurrentUserViewRevenue() {
 
 }
 
+function canCurrentUserViewProductRevenue() {
+
+  /*
+    商材別の売上は厳格に扱う。
+    Ownerは常時表示し、それ以外は
+    売上閲覧権限(canViewRevenue=true)が明示された場合だけ表示する。
+    Leaderの既存互換フォールバックは商材売上には適用しない。
+  */
+  return (
+    isCurrentCompanyOwner() ||
+    currentUserData?.canViewRevenue ===
+      true
+  );
+
+}
+
+
 
 function getEffectiveMasterUid() {
 
@@ -25395,14 +25412,22 @@ function analysisProductText(
   }
 
 
+  const canViewProductRevenue =
+    canCurrentUserViewProductRevenue();
+
+
   return values
     .map(
       item =>
-        `${escapeHtml(
-          item.name
-        )} ${item.count}件 / ${formatYen(
-          item.revenue
-        )}`
+        canViewProductRevenue
+          ? `${escapeHtml(
+              item.name
+            )} ${item.count}件 / ${formatYen(
+              item.revenue
+            )}`
+          : `${escapeHtml(
+              item.name
+            )} ${item.count}件`
     )
     .join("　");
 
@@ -25432,6 +25457,10 @@ function renderAnalysisProducts(
   }
 
 
+  const canViewProductRevenue =
+    canCurrentUserViewProductRevenue();
+
+
   return values
     .map(
       item => `
@@ -25443,9 +25472,13 @@ function renderAnalysisProducts(
           </div>
           <div class="analysis-line-value">
             <strong>${item.count}件</strong>
-            ${formatYen(
-              item.revenue
-            )}
+            ${
+              canViewProductRevenue
+                ? formatYen(
+                    item.revenue
+                  )
+                : ""
+            }
           </div>
         </div>
       `
@@ -25634,6 +25667,10 @@ function renderAnalysisProductCards(
   }
 
 
+  const canViewProductRevenue =
+    canCurrentUserViewProductRevenue();
+
+
   return `
     <div class="analysis-card-grid">
       ${values
@@ -25649,9 +25686,15 @@ function renderAnalysisProductCards(
               <span class="analysis-nav-count">
                 ${item.count}件
               </span>
-              <span class="analysis-nav-revenue">
-                ${formatYen(item.revenue)}
-              </span>
+              ${
+                canViewProductRevenue
+                  ? `
+                    <span class="analysis-nav-revenue">
+                      ${formatYen(item.revenue)}
+                    </span>
+                  `
+                  : ""
+              }
             </div>
           `
         )
@@ -29329,6 +29372,10 @@ function renderProductSummary(
         "summary-row";
 
 
+      const canViewProductRevenue =
+        canCurrentUserViewProductRevenue();
+
+
       row.innerHTML = `
         <div>
           <div class="summary-row-name">
@@ -29342,11 +29389,17 @@ function renderProductSummary(
           </div>
         </div>
 
-        <div class="summary-row-value">
-          ${formatYen(
-            data.revenue
-          )}
-        </div>
+        ${
+          canViewProductRevenue
+            ? `
+              <div class="summary-row-value">
+                ${formatYen(
+                  data.revenue
+                )}
+              </div>
+            `
+            : ""
+        }
       `;
 
 
@@ -29723,6 +29776,10 @@ function renderDailySummary(
       productCard.className =
         "daily-company-product-card";
 
+      const canViewProductRevenue =
+        canCurrentUserViewProductRevenue();
+
+
       productCard.innerHTML = `
         <div class="daily-company-product-name">
           ${escapeHtml(
@@ -29733,11 +29790,17 @@ function renderDailySummary(
           <span class="daily-company-product-count">
             ${product.count}件
           </span>
-          <span class="daily-company-product-revenue">
-            ${formatYen(
-              product.revenue
-            )}
-          </span>
+          ${
+            canViewProductRevenue
+              ? `
+                <span class="daily-company-product-revenue">
+                  ${formatYen(
+                    product.revenue
+                  )}
+                </span>
+              `
+              : ""
+          }
         </div>
       `;
 
@@ -30311,6 +30374,11 @@ function renderDailySummary(
               productRow.className =
                 "daily-product-row";
 
+              const canViewProductRevenue =
+                canCurrentUserViewProductRevenue() &&
+                canViewSelectedTeamRevenue;
+
+
               productRow.innerHTML = `
                 <div class="daily-product-name">
                   ${escapeHtml(
@@ -30323,11 +30391,17 @@ function renderDailySummary(
                   ${product.count}件
                 </div>
 
-                <div class="daily-product-revenue">
-                  ${formatYen(
-                    product.revenue
-                  )}
-                </div>
+                ${
+                  canViewProductRevenue
+                    ? `
+                      <div class="daily-product-revenue">
+                        ${formatYen(
+                          product.revenue
+                        )}
+                      </div>
+                    `
+                    : ""
+                }
               `;
 
 
