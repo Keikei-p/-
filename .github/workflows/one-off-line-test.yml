@@ -45,18 +45,19 @@ jobs:
         run: |
           set -euo pipefail
           node <<'NODE'
-          const admin = require("firebase-admin");
+          const { initializeApp, cert } = require("firebase-admin/app");
+          const { getFirestore } = require("firebase-admin/firestore");
 
           const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "{}");
           if (!serviceAccount.project_id || !serviceAccount.client_email || !serviceAccount.private_key) {
             throw new Error("Invalid FIREBASE_SERVICE_ACCOUNT_JSON");
           }
 
-          admin.initializeApp({
-            credential: admin.credential.cert(serviceAccount),
+          initializeApp({
+            credential: cert(serviceAccount),
           });
 
-          const db = admin.firestore();
+          const db = getFirestore();
 
           async function line(path, options = {}) {
             return fetch("https://api.line.me" + path, {
