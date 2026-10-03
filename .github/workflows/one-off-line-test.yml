@@ -1,0 +1,131 @@
+name: One-off LINE test send
+
+on:
+  push:
+    branches:
+      - ops/send-line-test-20261003
+    paths:
+      - .github/workflows/one-off-line-test.yml
+
+permissions:
+  contents: read
+
+jobs:
+  send-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    defaults:
+      run:
+        working-directory: functions
+
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+      LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Verify required secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          test -n "${LINE_CHANNEL_ACCESS_TOKEN:-}"
+
+      - name: Install Functions dependencies
+        run: npm install --ignore-scripts
+
+      - name: Send exactly one safe test message
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const admin = require("firebase-admin");
+
+          const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "{}");
+          if (!serviceAccount.project_id || !serviceAccount.client_email || !serviceAccount.private_key) {
+            throw new Error("Invalid FIREBASE_SERVICE_ACCOUNT_JSON");
+          }
+
+          admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount),
+          });
+
+          const db = admin.firestore();
+
+          async function line(path, options = {}) {
+            return fetch("https://api.line.me" + path, {
+              ...options,
+              headers: {
+                Authorization: "Bearer " + process.env.LINE_CHANNEL_ACCESS_TOKEN,
+                "Content-Type": "application/json",
+                ...(options.headers || {}),
+              },
+            });
+          }
+
+          (async () => {
+            const companies = await db.collection("companies").get();
+            const groups = new Map();
+
+            for (const company of companies.docs) {
+              const snap = await company.ref.collection("settings").doc("notifications").get();
+              if (!snap.exists) continue;
+              const data = snap.data() || {};
+              const groupId = String(data.lineGroupId || "").trim();
+              if (!groupId) continue;
+              groups.set(groupId, String(data.lineGroupName || "LINEグループ"));
+            }
+
+            if (groups.size !== 1) {
+              throw new Error("Safety stop: expected exactly 1 connected LINE group, found " + groups.size);
+            }
+
+            const [[groupId]] = groups.entries();
+
+            const [usageRes, membersRes] = await Promise.all([
+              line("/v2/bot/message/quota/consumption"),
+              line("/v2/bot/group/" + encodeURIComponent(groupId) + "/members/count"),
+            ]);
+
+            if (!usageRes.ok) {
+              throw new Error("LINE quota check failed: " + usageRes.status + " " + await usageRes.text());
+            }
+            if (!membersRes.ok) {
+              throw new Error("LINE group member count failed: " + membersRes.status + " " + await membersRes.text());
+            }
+
+            const usage = Number((await usageRes.json()).totalUsage);
+            const members = Number((await membersRes.json()).count);
+
+            if (!Number.isFinite(usage) || !Number.isFinite(members)) {
+              throw new Error("Invalid LINE quota response");
+            }
+
+            if (usage + members > 180) {
+              throw new Error("Safety stop: test send would exceed the internal 180-message monthly cap");
+            }
+
+            const response = await line("/v2/bot/message/push", {
+              method: "POST",
+              body: JSON.stringify({
+                to: groupId,
+                messages: [{ type: "text", text: "テスト送信です。" }],
+              }),
+            });
+
+            if (!response.ok) {
+              throw new Error("LINE test push failed: " + response.status + " " + await response.text());
+            }
+
+            console.log("LINE test push succeeded.");
+          })().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
