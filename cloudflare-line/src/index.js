@@ -182,7 +182,6 @@ function buildReminderOnlyMessage(missingTeams){
     teamNames.length?("対象："+teamNames.join("・")):"対象班があります。",
     "",
     "アプリを確認し、実績入力または「実績なし」の報告をお願いします。",
-    "※このLINEは売上・商材・実績件数の確定報告ではありません。数値はアプリで確認してください。"
   ].join("\n");
 
   const unsafeDetail=/[¥￥]|\d[\d,]*(?:円|件)|売上金額|獲得商材|商材別|成約件数|粗利|利益|単価/i;
