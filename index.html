@@ -1407,20 +1407,25 @@ header {
 
 .daily-member-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
   gap: 7px;
 }
 
 .daily-member-row {
   min-width: 0;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 9px;
-  padding: 9px 10px;
+  gap: 10px;
+  padding: 10px;
   border: 1px solid #e2e8f0;
   border-radius: 9px;
   background: #fff;
+}
+
+.daily-member-main {
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .daily-member-name {
@@ -1430,6 +1435,44 @@ header {
   white-space: nowrap;
   font-size: 11px;
   font-weight: 800;
+}
+
+.daily-member-products {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 7px;
+}
+
+.daily-member-product {
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border-radius: 7px;
+  background: var(--primary-soft);
+  color: var(--primary-text);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.daily-member-product-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.daily-member-product-count {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  font-weight: 900;
+}
+
+.daily-member-product-empty {
+  margin-top: 6px;
+  color: var(--sub);
+  font-size: 9px;
 }
 
 .daily-member-values {
@@ -1601,6 +1644,14 @@ header {
 
   .daily-selected-team-detail {
     padding: 0 10px 10px;
+  }
+
+  .daily-member-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .daily-member-row {
+    padding: 10px;
   }
 
   .daily-location-grid {
@@ -24670,7 +24721,9 @@ function renderDashboard() {
 
           count: 0,
 
-          revenue: 0
+          revenue: 0,
+
+          products: {}
 
         };
 
@@ -24691,6 +24744,11 @@ function renderDashboard() {
         dailyMemberKey
       ].revenue +=
         recordRevenue;
+
+      const dailyMember =
+        dailyTeam.members[
+          dailyMemberKey
+        ];
 
 
       if (
@@ -24762,6 +24820,37 @@ function renderDashboard() {
               result.revenuePerUnit ||
               0
             );
+
+
+          if (
+            !dailyMember.products[
+              productKey
+            ]
+          ) {
+
+            dailyMember.products[
+              productKey
+            ] = {
+
+              name:
+                productName,
+
+              count: 0
+
+            };
+
+          }
+
+
+          dailyMember.products[
+            productKey
+          ].name =
+            productName;
+
+          dailyMember.products[
+            productKey
+          ].count +=
+            count;
 
 
           if (
@@ -29954,12 +30043,108 @@ function renderDailySummary(
             memberRow.className =
               "daily-member-row";
 
+
+            const memberProducts =
+              Object.values(
+                member.products ||
+                {}
+              )
+                .filter(
+                  product =>
+                    Number(
+                      product.count ||
+                      0
+                    ) >
+                    0
+                )
+                .sort(
+                  (a, b) => {
+
+                    const countDiff =
+                      Number(
+                        b.count ||
+                        0
+                      ) -
+                      Number(
+                        a.count ||
+                        0
+                      );
+
+                    if (
+                      countDiff !==
+                        0
+                    ) {
+
+                      return countDiff;
+
+                    }
+
+                    return String(
+                      a.name ||
+                      ""
+                    ).localeCompare(
+                      String(
+                        b.name ||
+                        ""
+                      ),
+                      "ja"
+                    );
+
+                  }
+                );
+
+
+            const productHtml =
+              memberProducts.length >
+                0
+                ? `
+                  <div class="daily-member-products">
+                    ${memberProducts
+                      .map(
+                        product => `
+                          <span class="daily-member-product">
+                            <span class="daily-member-product-name">
+                              ${escapeHtml(
+                                product.name ||
+                                "不明"
+                              )}
+                            </span>
+                            <span class="daily-member-product-count">
+                              ${Number(
+                                product.count ||
+                                0
+                              )}件
+                            </span>
+                          </span>
+                        `
+                      )
+                      .join("")}
+                  </div>
+                `
+                : `
+                  <div class="daily-member-product-empty">
+                    ${
+                      Number(
+                        member.count ||
+                        0
+                      ) >
+                      0
+                        ? "商材内訳なし"
+                        : "実績なし"
+                    }
+                  </div>
+                `;
+
+
             memberRow.innerHTML = `
-              <div class="daily-member-name">
-                ${escapeHtml(
-                  member.name ||
-                  "名前未設定"
-                )}
+              <div class="daily-member-main">
+                <div class="daily-member-name">
+                  ${escapeHtml(
+                    member.name ||
+                    "名前未設定"
+                  )}
+                </div>
+                ${productHtml}
               </div>
               <div class="daily-member-values">
                 <span class="daily-member-count">
