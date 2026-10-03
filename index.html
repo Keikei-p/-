@@ -1310,6 +1310,66 @@ header {
   font-weight: 800;
 }
 
+.daily-member-summary {
+  margin-bottom: 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.daily-member-summary-title {
+  margin-bottom: 7px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.daily-member-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 7px;
+}
+
+.daily-member-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 9px;
+  padding: 9px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.daily-member-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.daily-member-values {
+  flex: 0 0 auto;
+  text-align: right;
+  font-size: 10px;
+}
+
+.daily-member-count {
+  display: block;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.daily-member-revenue {
+  display: block;
+  margin-top: 1px;
+  color: var(--sub);
+  font-size: 9px;
+}
+
 .daily-location-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
@@ -7065,6 +7125,59 @@ function getCurrentRevenueScopeStartDate() {
 }
 
 
+function canCurrentUserViewRevenueForTeam(
+  teamId
+) {
+
+  if (
+    !canCurrentUserViewRevenue()
+  ) {
+
+    return false;
+
+  }
+
+  if (
+    isCurrentCompanyMaster() ||
+    isCurrentCompanyOwner()
+  ) {
+
+    return true;
+
+  }
+
+  if (
+    !teamId ||
+    !currentUserData?.teamId
+  ) {
+
+    return false;
+
+  }
+
+  /*
+    Leaderは現在所属している自班の売上だけ閲覧可能。
+    件数・進捗など売上以外の全社情報は従来どおり表示する。
+  */
+  if (
+    isCurrentTeamLeader()
+  ) {
+
+    return (
+      teamId ===
+      currentUserData.teamId
+    );
+
+  }
+
+  return (
+    teamId ===
+    currentUserData.teamId
+  );
+
+}
+
+
 function canCurrentUserViewRevenueForRecord(
   record
 ) {
@@ -7078,7 +7191,8 @@ function canCurrentUserViewRevenueForRecord(
   }
 
   if (
-    isCurrentCompanyMaster()
+    isCurrentCompanyMaster() ||
+    isCurrentCompanyOwner()
   ) {
 
     return true;
@@ -7098,14 +7212,23 @@ function canCurrentUserViewRevenueForRecord(
   }
 
   /*
-    売上は「現在の班」だけではなく、
-    その実績日の時点で本人が所属していた班だけ閲覧可能にする。
+    Leaderは現在所属している自班の売上だけ閲覧可能。
+    班を移動した後は、以前の班の売上は表示しない。
+  */
+  if (
+    isCurrentTeamLeader()
+  ) {
 
-    例:
-    8月まで1班 / 9月から2班
-    → 8月の1班売上は閲覧可
-    → 9月以降の1班売上は閲覧不可
-    → 9月以降の2班売上は閲覧可
+    return (
+      record.teamId ===
+      currentUserData.teamId
+    );
+
+  }
+
+  /*
+    Leader以外で個別に売上閲覧を許可された既存ユーザーは、
+    従来互換として実績日時点の所属班だけ閲覧可能。
   */
   const assignment =
     getMemberTeamForDate(
@@ -24224,6 +24347,8 @@ function renderDashboard() {
 
           revenue: 0,
 
+          members: {},
+
           locations: {}
 
         };
@@ -24246,6 +24371,59 @@ function renderDashboard() {
         recordCount;
 
       dailyTeam.revenue +=
+        recordRevenue;
+
+
+      /*
+        日別の班詳細で
+        個人ごとの当日件数を確認できるように集計する。
+      */
+
+      const dailyMemberName =
+        getCurrentMemberName(
+          record
+        );
+
+      const dailyMemberKey =
+        record.uid ||
+        dailyMemberName;
+
+
+      if (
+        !dailyTeam.members[
+          dailyMemberKey
+        ]
+      ) {
+
+        dailyTeam.members[
+          dailyMemberKey
+        ] = {
+
+          name:
+            dailyMemberName,
+
+          count: 0,
+
+          revenue: 0
+
+        };
+
+      }
+
+
+      dailyTeam.members[
+        dailyMemberKey
+      ].name =
+        dailyMemberName;
+
+      dailyTeam.members[
+        dailyMemberKey
+      ].count +=
+        recordCount;
+
+      dailyTeam.members[
+        dailyMemberKey
+      ].revenue +=
         recordRevenue;
 
 
@@ -29011,9 +29189,15 @@ function renderDailySummary(
       </div>
 
       <div class="daily-detail-revenue">
-        ${formatYen(
-          data.revenue
-        )}
+        ${
+          isCurrentTeamLeader()
+            ? `自班売上 ${formatYen(
+                data.revenue
+              )}`
+            : formatYen(
+                data.revenue
+              )
+        }
       </div>
     </div>
   `;
@@ -29341,7 +29525,7 @@ function renderDailySummary(
 
         detail.innerHTML = `
           <div class="empty-message">
-            班を選ぶと現場・商材の詳細を表示します。
+            班を選ぶと個人別・現場別・商材別の詳細を表示します。
           </div>
         `;
 
@@ -29373,13 +29557,183 @@ function renderDailySummary(
       title.className =
         "daily-selected-team-title";
 
+      const canViewSelectedTeamRevenue =
+        canCurrentUserViewRevenueForTeam(
+          team.key
+        );
+
+
       title.textContent =
-        `👥 ${team.name || "所属なし"}　${team.count}件 / ${formatYen(
-          team.revenue
-        )}`;
+        canViewSelectedTeamRevenue
+          ? `👥 ${team.name || "所属なし"}　${team.count}件 / ${formatYen(
+              team.revenue
+            )}`
+          : `👥 ${team.name || "所属なし"}　${team.count}件`;
 
       detail.appendChild(
         title
+      );
+
+
+      const memberValues =
+        Object.values(
+          team.members ||
+          {}
+        ).sort(
+          (a, b) => {
+
+            if (
+              Number(
+                b.count ||
+                0
+              ) !==
+              Number(
+                a.count ||
+                0
+              )
+            ) {
+
+              return (
+                Number(
+                  b.count ||
+                  0
+                ) -
+                Number(
+                  a.count ||
+                  0
+                )
+              );
+
+            }
+
+            return String(
+              a.name ||
+              ""
+            ).localeCompare(
+              String(
+                b.name ||
+                ""
+              ),
+              "ja"
+            );
+
+          }
+        );
+
+
+      const memberSummary =
+        document.createElement(
+          "div"
+        );
+
+      memberSummary.className =
+        "daily-member-summary";
+
+
+      const memberSummaryTitle =
+        document.createElement(
+          "div"
+        );
+
+      memberSummaryTitle.className =
+        "daily-member-summary-title";
+
+      memberSummaryTitle.textContent =
+        "👤 個人別・当日実績";
+
+      memberSummary.appendChild(
+        memberSummaryTitle
+      );
+
+
+      if (
+        memberValues.length ===
+        0
+      ) {
+
+        const memberEmpty =
+          document.createElement(
+            "div"
+          );
+
+        memberEmpty.className =
+          "empty-message";
+
+        memberEmpty.textContent =
+          "この日の個人実績はありません。";
+
+        memberSummary.appendChild(
+          memberEmpty
+        );
+
+      } else {
+
+        const memberGrid =
+          document.createElement(
+            "div"
+          );
+
+        memberGrid.className =
+          "daily-member-grid";
+
+
+        memberValues.forEach(
+          member => {
+
+            const memberRow =
+              document.createElement(
+                "div"
+              );
+
+            memberRow.className =
+              "daily-member-row";
+
+            memberRow.innerHTML = `
+              <div class="daily-member-name">
+                ${escapeHtml(
+                  member.name ||
+                  "名前未設定"
+                )}
+              </div>
+              <div class="daily-member-values">
+                <span class="daily-member-count">
+                  ${Number(
+                    member.count ||
+                    0
+                  )}件
+                </span>
+                ${
+                  canViewSelectedTeamRevenue
+                    ? `
+                      <span class="daily-member-revenue">
+                        ${formatYen(
+                          member.revenue ||
+                          0
+                        )}
+                      </span>
+                    `
+                    : ""
+                }
+              </div>
+            `;
+
+            memberGrid.appendChild(
+              memberRow
+            );
+
+          }
+        );
+
+
+        memberSummary.appendChild(
+          memberGrid
+        );
+
+      }
+
+
+      detail.appendChild(
+        memberSummary
       );
 
 
@@ -29588,9 +29942,15 @@ function renderDailySummary(
           ${team.count}件
         </div>
         <div class="daily-team-card-revenue">
-          ${formatYen(
-            team.revenue
-          )}
+          ${
+            canCurrentUserViewRevenueForTeam(
+              team.key
+            )
+              ? formatYen(
+                  team.revenue
+                )
+              : "売上非表示"
+          }
         </div>
       `;
 
