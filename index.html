@@ -2916,18 +2916,39 @@ body.product-reordering .product-list {
   gap: 14px;
 }
 
+.revenue-chart-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(160px, .9fr) minmax(0, 1fr);
+  gap: 10px;
+  align-items: end;
+}
+
+.revenue-chart-control-group {
+  min-width: 0;
+}
+
+.revenue-chart-control-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--sub);
+  font-size: 10px;
+  font-weight: 800;
+}
+
 .revenue-chart-toolbar {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 7px;
 }
 
 .revenue-chart-mode {
-  min-height: 48px;
+  min-height: 42px;
+  padding: 8px 10px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 11px;
   background: #fff;
   color: var(--text);
+  font-size: 12px;
   font-weight: 800;
 }
 
@@ -2937,14 +2958,52 @@ body.product-reordering .product-list {
   color: #1d4ed8;
 }
 
-.revenue-chart-summary {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  padding: 13px 14px;
+.revenue-chart-scope-select {
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 34px 8px 11px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: #fff;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.revenue-chart-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.revenue-chart-kpi {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
   border-radius: 12px;
   background: #f8fafc;
+}
+
+.revenue-chart-kpi-label {
+  color: var(--sub);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.revenue-chart-kpi-value {
+  margin-top: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.revenue-chart-kpi-sub {
+  margin-top: 3px;
+  color: var(--sub);
+  font-size: 9px;
+  line-height: 1.35;
 }
 
 .revenue-chart-period {
@@ -2957,6 +3016,40 @@ body.product-reordering .product-list {
   margin-top: 3px;
   font-size: 20px;
   font-weight: 800;
+}
+
+.revenue-chart-current-scope {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  background: #f8fbff;
+}
+
+.revenue-chart-current-scope-main {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #1e40af;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.revenue-chart-current-scope-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.revenue-chart-current-scope-hint {
+  flex: 0 0 auto;
+  color: var(--sub);
+  font-size: 9px;
 }
 
 .revenue-chart-legend {
@@ -2988,11 +3081,15 @@ body.product-reordering .product-list {
 }
 
 .revenue-line-wrap {
-  min-width: 860px;
+  min-width: 760px;
 }
 
 .revenue-line-wrap.annual {
-  min-width: 680px;
+  min-width: 560px;
+}
+
+.revenue-line-area {
+  opacity: .09;
 }
 
 .revenue-line-svg {
@@ -3103,6 +3200,32 @@ body.product-reordering .product-list {
 }
 
 @media (max-width: 700px) {
+  .revenue-chart-controls {
+    grid-template-columns: 1fr;
+    gap: 9px;
+  }
+
+  .revenue-chart-summary-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .revenue-chart-kpi {
+    padding: 9px 8px;
+  }
+
+  .revenue-chart-kpi-value {
+    font-size: 14px;
+  }
+
+  .revenue-chart-current-scope {
+    align-items: flex-start;
+  }
+
+  .revenue-chart-current-scope-hint {
+    display: none;
+  }
+
   .revenue-chart-axis {
     width: 42px;
     flex-basis: 42px;
@@ -5290,23 +5413,69 @@ body.product-reordering .product-list {
 
         <div class="revenue-chart-panel">
 
-          <div class="revenue-chart-toolbar">
+          <div class="revenue-chart-controls">
 
-            <button
-              id="revenueChartMonthlyButton"
-              class="revenue-chart-mode"
-              type="button"
-              aria-pressed="true">
-              月間
-            </button>
+            <div class="revenue-chart-control-group">
+              <div class="revenue-chart-control-label">
+                期間
+              </div>
 
-            <button
-              id="revenueChartAnnualButton"
-              class="revenue-chart-mode"
-              type="button"
-              aria-pressed="false">
-              年間
-            </button>
+              <div class="revenue-chart-toolbar">
+                <button
+                  id="revenueChartMonthlyButton"
+                  class="revenue-chart-mode"
+                  type="button"
+                  aria-pressed="true">
+                  月間
+                </button>
+
+                <button
+                  id="revenueChartAnnualButton"
+                  class="revenue-chart-mode"
+                  type="button"
+                  aria-pressed="false">
+                  年間
+                </button>
+              </div>
+            </div>
+
+            <div
+              id="revenueChartScopeWrap"
+              class="revenue-chart-control-group">
+              <label
+                class="revenue-chart-control-label"
+                for="revenueChartScopeSelect">
+                表示対象
+              </label>
+              <select
+                id="revenueChartScopeSelect"
+                class="revenue-chart-scope-select">
+              </select>
+            </div>
+
+            <div class="revenue-chart-control-group">
+              <div class="revenue-chart-control-label">
+                表示
+              </div>
+
+              <div class="revenue-chart-toolbar">
+                <button
+                  id="revenueChartPeriodButton"
+                  class="revenue-chart-mode"
+                  type="button"
+                  aria-pressed="true">
+                  日別売上
+                </button>
+
+                <button
+                  id="revenueChartCumulativeButton"
+                  class="revenue-chart-mode"
+                  type="button"
+                  aria-pressed="false">
+                  累計売上
+                </button>
+              </div>
+            </div>
 
           </div>
 
@@ -6652,6 +6821,26 @@ const revenueChartAnnualButton =
     "revenueChartAnnualButton"
   );
 
+const revenueChartScopeWrap =
+  document.getElementById(
+    "revenueChartScopeWrap"
+  );
+
+const revenueChartScopeSelect =
+  document.getElementById(
+    "revenueChartScopeSelect"
+  );
+
+const revenueChartPeriodButton =
+  document.getElementById(
+    "revenueChartPeriodButton"
+  );
+
+const revenueChartCumulativeButton =
+  document.getElementById(
+    "revenueChartCumulativeButton"
+  );
+
 const revenueChartSummary =
   document.getElementById(
     "revenueChartSummary"
@@ -7615,6 +7804,12 @@ let currentLinePairingCommand = "";
 
 let revenueChartMode =
   "monthly";
+
+let revenueChartValueMode =
+  "period";
+
+let revenueChartScopeKey =
+  "company";
 
 let teamRankingMode =
   "progress";
