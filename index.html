@@ -2965,6 +2965,105 @@ body.product-reordering .product-list {
   gap: 8px 12px;
 }
 
+.revenue-chart-controls {
+  display: grid;
+  gap: 10px;
+}
+
+.revenue-chart-control-block {
+  min-width: 0;
+}
+
+.revenue-chart-control-label {
+  margin-bottom: 6px;
+  color: var(--sub);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.revenue-chart-scope-scroll {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding: 1px 1px 5px;
+  scrollbar-width: thin;
+}
+
+.revenue-chart-scope-chip,
+.revenue-chart-value-chip {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 8px 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.revenue-chart-scope-chip[aria-pressed="true"],
+.revenue-chart-value-chip[aria-pressed="true"] {
+  border-color: var(--primary-border-strong);
+  background: var(--primary-soft);
+  color: var(--primary-text);
+}
+
+.revenue-chart-value-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.revenue-chart-value-chip {
+  border-radius: 10px;
+}
+
+.revenue-chart-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.revenue-chart-metric {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--card);
+}
+
+.revenue-chart-metric-label {
+  color: var(--sub);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.revenue-chart-metric-value {
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.revenue-chart-metric-sub {
+  margin-top: 2px;
+  color: var(--sub);
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.revenue-chart-compare-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 10px;
+}
+
 .revenue-chart-legend-item {
   display: inline-flex;
   align-items: center;
@@ -3103,6 +3202,34 @@ body.product-reordering .product-list {
 }
 
 @media (max-width: 700px) {
+  .revenue-chart-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .revenue-chart-metric {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .revenue-chart-metric-value {
+    margin-top: 0;
+    font-size: 14px;
+  }
+
+  .revenue-chart-metric-sub {
+    display: none;
+  }
+
+  .revenue-chart-summary {
+    align-items: flex-start;
+  }
+
+  .revenue-chart-total {
+    font-size: 18px;
+  }
+
   .revenue-chart-axis {
     width: 42px;
     flex-basis: 42px;
@@ -7615,6 +7742,12 @@ let currentLinePairingCommand = "";
 
 let revenueChartMode =
   "monthly";
+
+let revenueChartValueMode =
+  "period";
+
+let revenueChartScopeKey =
+  null;
 
 let teamRankingMode =
   "progress";
