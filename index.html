@@ -26723,12 +26723,438 @@ function buildRevenueChartData() {
 }
 
 
-function renderRevenueChartDetail(
-  chartData,
-  bucket
+function revenueChartPeriodValue(
+  bucket,
+  scopeKey
 ) {
 
-  if (!bucket) {
+  if (
+    scopeKey === "__all__" ||
+    scopeKey === "__compare__"
+  ) {
+
+    return Number(
+      bucket?.total ||
+      0
+    );
+
+  }
+
+  return Number(
+    bucket?.teams?.[
+      scopeKey
+    ] ||
+    0
+  );
+
+}
+
+
+function revenueChartScopeOptions(
+  chartData
+) {
+
+  const canViewAll =
+    isCurrentCompanyMaster() ||
+    isCurrentCompanyOwner();
+
+  const options = [];
+
+
+  if (
+    canViewAll
+  ) {
+
+    options.push({
+      key: "__all__",
+      name: "会社全体"
+    });
+
+  }
+
+
+  chartData.teams.forEach(
+    team => {
+
+      options.push({
+        key:
+          team.key,
+        name:
+          team.name
+      });
+
+    }
+  );
+
+
+  if (
+    canViewAll &&
+    chartData.teams.length >
+      1
+  ) {
+
+    options.push({
+      key: "__compare__",
+      name: "班比較"
+    });
+
+  }
+
+
+  return options;
+
+}
+
+
+function normalizeRevenueChartScope(
+  chartData
+) {
+
+  const options =
+    revenueChartScopeOptions(
+      chartData
+    );
+
+  const availableKeys =
+    new Set(
+      options.map(
+        option =>
+          option.key
+      )
+    );
+
+
+  if (
+    !revenueChartScopeKey ||
+    !availableKeys.has(
+      revenueChartScopeKey
+    )
+  ) {
+
+    if (
+      availableKeys.has(
+        "__all__"
+      )
+    ) {
+
+      revenueChartScopeKey =
+        "__all__";
+
+    } else if (
+      currentUserData?.teamId &&
+      availableKeys.has(
+        currentUserData.teamId
+      )
+    ) {
+
+      revenueChartScopeKey =
+        currentUserData.teamId;
+
+    } else {
+
+      revenueChartScopeKey =
+        options[0]?.key ||
+        null;
+
+    }
+
+  }
+
+
+  return options;
+
+}
+
+
+function buildVisibleRevenueSeries(
+  chartData
+) {
+
+  const makeValues =
+    key => {
+
+      let cumulative = 0;
+
+      return chartData.buckets.map(
+        bucket => {
+
+          const periodValue =
+            key === "__all__"
+              ? Number(
+                  bucket.total ||
+                  0
+                )
+              : Number(
+                  bucket.teams?.[
+                    key
+                  ] ||
+                  0
+                );
+
+          cumulative +=
+            periodValue;
+
+          return revenueChartValueMode ===
+            "cumulative"
+            ? cumulative
+            : periodValue;
+
+        }
+      );
+
+    };
+
+
+  if (
+    revenueChartScopeKey ===
+      "__compare__"
+  ) {
+
+    return chartData.teams.map(
+      team => ({
+        key:
+          team.key,
+        name:
+          team.name,
+        color:
+          team.color,
+        values:
+          makeValues(
+            team.key
+          )
+      })
+    );
+
+  }
+
+
+  if (
+    revenueChartScopeKey ===
+      "__all__"
+  ) {
+
+    return [{
+      key:
+        "__all__",
+      name:
+        "会社全体",
+      color:
+        revenueChartColor(
+          "company-total"
+        ),
+      values:
+        makeValues(
+          "__all__"
+        )
+    }];
+
+  }
+
+
+  const team =
+    chartData.teams.find(
+      item =>
+        item.key ===
+        revenueChartScopeKey
+    );
+
+
+  return team
+    ? [{
+        key:
+          team.key,
+        name:
+          team.name,
+        color:
+          team.color,
+        values:
+          makeValues(
+            team.key
+          )
+      }]
+    : [];
+
+}
+
+
+function renderRevenueChartControls(
+  chartData,
+  scopeOptions,
+  series
+) {
+
+  const periodLabel =
+    revenueChartMode ===
+      "monthly"
+      ? "日別"
+      : "月別";
+
+
+  revenueChartLegend.className =
+    "revenue-chart-controls";
+
+
+  revenueChartLegend.innerHTML = \`
+    <div class="revenue-chart-control-block">
+      <div class="revenue-chart-control-label">
+        表示対象
+      </div>
+      <div class="revenue-chart-scope-scroll">
+        \${scopeOptions
+          .map(
+            option => \`
+              <button
+                type="button"
+                class="revenue-chart-scope-chip"
+                data-revenue-scope="\${escapeHtml(
+                  option.key
+                )}"
+                aria-pressed="\${
+                  option.key ===
+                    revenueChartScopeKey
+                    ? "true"
+                    : "false"
+                }">
+                \${escapeHtml(
+                  option.name
+                )}
+              </button>
+            \`
+          )
+          .join("")}
+      </div>
+    </div>
+
+    <div class="revenue-chart-control-block">
+      <div class="revenue-chart-control-label">
+        グラフ表示
+      </div>
+      <div class="revenue-chart-value-switch">
+        <button
+          type="button"
+          class="revenue-chart-value-chip"
+          data-revenue-value-mode="period"
+          aria-pressed="\${
+            revenueChartValueMode ===
+              "period"
+              ? "true"
+              : "false"
+          }">
+          \${periodLabel}売上
+        </button>
+        <button
+          type="button"
+          class="revenue-chart-value-chip"
+          data-revenue-value-mode="cumulative"
+          aria-pressed="\${
+            revenueChartValueMode ===
+              "cumulative"
+              ? "true"
+              : "false"
+          }">
+          累計売上
+        </button>
+      </div>
+    </div>
+
+    \${
+      revenueChartScopeKey ===
+        "__compare__" &&
+      series.length >
+        0
+        ? \`
+          <div class="revenue-chart-compare-legend">
+            \${series
+              .map(
+                item => \`
+                  <div class="revenue-chart-legend-item">
+                    <span
+                      class="revenue-chart-legend-color"
+                      style="background:\${item.color};">
+                    </span>
+                    <span>
+                      \${escapeHtml(
+                        item.name
+                      )}
+                    </span>
+                  </div>
+                \`
+              )
+              .join("")}
+          </div>
+        \`
+        : ""
+    }
+  \`;
+
+
+  revenueChartLegend
+    .querySelectorAll(
+      "[data-revenue-scope]"
+    )
+    .forEach(
+      button => {
+
+        button.addEventListener(
+          "click",
+          () => {
+
+            revenueChartScopeKey =
+              button.dataset.revenueScope ||
+              null;
+
+            revenueChartSelectedKey =
+              null;
+
+            renderRevenueChart();
+
+          }
+        );
+
+      }
+    );
+
+
+  revenueChartLegend
+    .querySelectorAll(
+      "[data-revenue-value-mode]"
+    )
+    .forEach(
+      button => {
+
+        button.addEventListener(
+          "click",
+          () => {
+
+            revenueChartValueMode =
+              button.dataset.revenueValueMode ===
+                "cumulative"
+                ? "cumulative"
+                : "period";
+
+            renderRevenueChart();
+
+          }
+        );
+
+      }
+    );
+
+}
+
+
+function renderRevenueChartDetail(
+  chartData,
+  bucket,
+  bucketIndex,
+  series
+) {
+
+  if (
+    !bucket ||
+    bucketIndex <
+      0
+  ) {
 
     revenueChartDetail.innerHTML =
       "";
@@ -26738,85 +27164,180 @@ function renderRevenueChartDetail(
   }
 
 
-  const rows =
-    chartData.teams
-      .map(
-        team => ({
-          ...team,
-          revenue:
-            bucket.teams[
-              team.key
-            ] ||
-            0
-        })
-      )
-      .filter(
-        team =>
-          team.revenue >
-          0
-      )
-      .sort(
-        (a, b) =>
-          b.revenue -
-          a.revenue
-      );
+  const isCumulative =
+    revenueChartValueMode ===
+      "cumulative";
+
+  const periodWord =
+    revenueChartMode ===
+      "monthly"
+      ? "当日"
+      : "当月";
 
 
-  const listHtml =
-    rows.length > 0
-      ? rows
-          .map(
-            team => `
-              <div class="revenue-chart-detail-row">
-                <div class="revenue-chart-detail-team">
-                  <span
-                    class="revenue-chart-legend-color"
-                    style="background:${team.color};">
-                  </span>
-                  <span class="revenue-chart-detail-name">
-                    ${escapeHtml(
-                      team.name
+  if (
+    revenueChartScopeKey ===
+      "__compare__"
+  ) {
+
+    const rows =
+      series
+        .map(
+          item => ({
+            ...item,
+            revenue:
+              Number(
+                item.values[
+                  bucketIndex
+                ] ||
+                0
+              )
+          })
+        )
+        .sort(
+          (a, b) =>
+            b.revenue -
+            a.revenue
+        );
+
+
+    revenueChartDetail.innerHTML = \`
+      <div class="revenue-chart-detail">
+        <div class="revenue-chart-detail-title">
+          \${escapeHtml(
+            bucket.label
+          )}・班比較
+        </div>
+        <div class="revenue-chart-detail-total">
+          \${
+            isCumulative
+              ? "累計 "
+              : ""
+          }\${formatYen(
+            rows.reduce(
+              (
+                sum,
+                item
+              ) =>
+                sum +
+                item.revenue,
+              0
+            )
+          )}
+        </div>
+        <div class="revenue-chart-detail-list">
+          \${rows
+            .map(
+              item => \`
+                <div class="revenue-chart-detail-row">
+                  <div class="revenue-chart-detail-team">
+                    <span
+                      class="revenue-chart-legend-color"
+                      style="background:\${item.color};">
+                    </span>
+                    <span class="revenue-chart-detail-name">
+                      \${escapeHtml(
+                        item.name
+                      )}
+                    </span>
+                  </div>
+                  <strong>
+                    \${formatYen(
+                      item.revenue
                     )}
-                  </span>
+                  </strong>
                 </div>
-                <strong>
-                  ${formatYen(
-                    team.revenue
-                  )}
-                </strong>
-              </div>
-            `
-          )
-          .join("")
-      : `
-          <div class="empty-message">
-            この期間の売上はありません。
-          </div>
-        `;
+              \`
+            )
+            .join("")}
+        </div>
+      </div>
+    \`;
+
+    return;
+
+  }
 
 
-  revenueChartDetail.innerHTML = `
+  const currentSeries =
+    series[0];
+
+  const displayValue =
+    Number(
+      currentSeries?.values?.[
+        bucketIndex
+      ] ||
+      0
+    );
+
+  const periodValue =
+    revenueChartPeriodValue(
+      bucket,
+      revenueChartScopeKey
+    );
+
+
+  revenueChartDetail.innerHTML = \`
     <div class="revenue-chart-detail">
       <div class="revenue-chart-detail-title">
-        ${escapeHtml(
+        \${escapeHtml(
           bucket.label
-        )}の班別売上
-      </div>
-      <div class="revenue-chart-detail-total">
-        合計 ${formatYen(
-          bucket.total
+        )}・\${escapeHtml(
+          currentSeries?.name ||
+          "売上"
         )}
       </div>
-      <div class="revenue-chart-detail-list">
-        ${listHtml}
+      <div class="revenue-chart-detail-total">
+        \${
+          isCumulative
+            ? "累計 "
+            : ""
+        }\${formatYen(
+          displayValue
+        )}
       </div>
+      \${
+        isCumulative
+          ? \`
+            <div class="revenue-chart-period" style="margin-top:5px;">
+              \${periodWord}売上 \${formatYen(
+                periodValue
+              )}
+            </div>
+          \`
+          : ""
+      }
     </div>
-  `;
+  \`;
 
 }
 
 
 function renderRevenueChart() {
+
+  if (
+    !canCurrentUserViewRevenue()
+  ) {
+
+    revenueChartToggle.style.display =
+      "none";
+
+    revenueChartSummary.innerHTML =
+      "";
+
+    revenueChartLegend.innerHTML =
+      "";
+
+    revenueChartArea.innerHTML =
+      "";
+
+    revenueChartDetail.innerHTML =
+      "";
+
+    return;
+
+  }
+
 
   revenueChartToggle.style.display =
     "";
@@ -26824,6 +27345,16 @@ function renderRevenueChart() {
 
   const chartData =
     buildRevenueChartData();
+
+  const scopeOptions =
+    normalizeRevenueChartScope(
+      chartData
+    );
+
+  const series =
+    buildVisibleRevenueSeries(
+      chartData
+    );
 
 
   revenueChartMonthlyButton.setAttribute(
@@ -26843,83 +27374,190 @@ function renderRevenueChart() {
   );
 
 
-  revenueChartSummary.innerHTML = `
+  const scopeName =
+    revenueChartScopeKey ===
+      "__compare__"
+      ? "班比較"
+      : (
+          series[0]?.name ||
+          "売上"
+        );
+
+  const periodValues =
+    chartData.buckets.map(
+      bucket =>
+        revenueChartPeriodValue(
+          bucket,
+          revenueChartScopeKey
+        )
+    );
+
+  const totalRevenue =
+    periodValues.reduce(
+      (
+        sum,
+        value
+      ) =>
+        sum +
+        Number(
+          value ||
+          0
+        ),
+      0
+    );
+
+  const activeValues =
+    periodValues.filter(
+      value =>
+        value >
+        0
+    );
+
+  const averageRevenue =
+    activeValues.length >
+      0
+      ? totalRevenue /
+        activeValues.length
+      : 0;
+
+  const bestRevenue =
+    Math.max(
+      0,
+      ...periodValues
+    );
+
+  const bestIndex =
+    periodValues.indexOf(
+      bestRevenue
+    );
+
+  const bestBucket =
+    bestRevenue >
+      0 &&
+    bestIndex >=
+      0
+      ? chartData.buckets[
+          bestIndex
+        ]
+      : null;
+
+
+  revenueChartSummary.innerHTML = \`
     <div class="revenue-chart-summary">
       <div>
         <div class="revenue-chart-period">
-          ${escapeHtml(
+          \${escapeHtml(
             chartData.periodLabel
+          )}・\${escapeHtml(
+            scopeName
           )}
-          ・班別収益
         </div>
         <div class="revenue-chart-total">
-          ${formatYen(
-            chartData.totalRevenue
+          \${formatYen(
+            totalRevenue
           )}
         </div>
       </div>
       <div class="revenue-chart-period">
-        ${revenueChartMode ===
-          "monthly"
-          ? "日別推移"
-          : "月別推移"}
+        \${
+          revenueChartValueMode ===
+            "cumulative"
+            ? "累計推移"
+            : (
+                revenueChartMode ===
+                  "monthly"
+                  ? "日別推移"
+                  : "月別推移"
+              )
+        }
       </div>
     </div>
-  `;
 
-
-  revenueChartLegend.className =
-    "revenue-chart-legend";
-
-  revenueChartLegend.innerHTML =
-    chartData.teams.length > 0
-      ? chartData.teams
-          .map(
-            team => `
-              <div class="revenue-chart-legend-item">
-                <span
-                  class="revenue-chart-legend-color"
-                  style="background:${team.color};">
-                </span>
-                <span>
-                  ${escapeHtml(
-                    team.name
-                  )}
-                </span>
-              </div>
-            `
-          )
-          .join("")
-      : `
-          <div class="empty-message">
-            この期間の班実績はありません。
+    <div class="revenue-chart-metrics">
+      <div class="revenue-chart-metric">
+        <div>
+          <div class="revenue-chart-metric-label">
+            合計売上
           </div>
-        `;
+          <div class="revenue-chart-metric-sub">
+            選択期間
+          </div>
+        </div>
+        <div class="revenue-chart-metric-value">
+          \${formatCompactYen(
+            totalRevenue
+          )}
+        </div>
+      </div>
+
+      <div class="revenue-chart-metric">
+        <div>
+          <div class="revenue-chart-metric-label">
+            \${
+              revenueChartMode ===
+                "monthly"
+                ? "実績日平均"
+                : "実績月平均"
+            }
+          </div>
+          <div class="revenue-chart-metric-sub">
+            売上がある期間で計算
+          </div>
+        </div>
+        <div class="revenue-chart-metric-value">
+          \${formatCompactYen(
+            averageRevenue
+          )}
+        </div>
+      </div>
+
+      <div class="revenue-chart-metric">
+        <div>
+          <div class="revenue-chart-metric-label">
+            最高
+          </div>
+          <div class="revenue-chart-metric-sub">
+            \${escapeHtml(
+              bestBucket?.label ||
+              "実績なし"
+            )}
+          </div>
+        </div>
+        <div class="revenue-chart-metric-value">
+          \${formatCompactYen(
+            bestRevenue
+          )}
+        </div>
+      </div>
+    </div>
+  \`;
+
+
+  renderRevenueChartControls(
+    chartData,
+    scopeOptions,
+    series
+  );
 
 
   const maxRevenue =
     Math.max(
       0,
-      ...chartData.buckets.flatMap(
-        bucket =>
-          chartData.teams.map(
-            team =>
-              bucket.teams[
-                team.key
-              ] ||
-              0
-          )
+      ...series.flatMap(
+        item =>
+          item.values
       )
     );
 
-
   const scaleMax =
-    maxRevenue > 0
+    maxRevenue >
+      0
       ? maxRevenue
       : 1;
 
   const axisMax =
-    maxRevenue > 0
+    maxRevenue >
+      0
       ? maxRevenue
       : 0;
 
@@ -26979,7 +27617,7 @@ function renderRevenueChart() {
 
   svg.setAttribute(
     "viewBox",
-    `0 0 ${chartWidth} ${chartHeight}`
+    \`0 0 \${chartWidth} \${chartHeight}\`
   );
 
   svg.setAttribute(
@@ -26989,7 +27627,7 @@ function renderRevenueChart() {
 
   svg.setAttribute(
     "aria-label",
-    `${chartData.periodLabel}の班別収益推移`
+    \`\${chartData.periodLabel}の\${scopeName}収益推移\`
   );
 
 
@@ -27021,7 +27659,8 @@ function renderRevenueChart() {
       (
         1 -
         Number(
-          value || 0
+          value ||
+          0
         ) /
         scaleMax
       );
@@ -27099,7 +27738,8 @@ function renderRevenueChart() {
 
       label.setAttribute(
         "y",
-        y + 3
+        y +
+        3
       );
 
       label.setAttribute(
@@ -27129,14 +27769,19 @@ function renderRevenueChart() {
     );
 
 
-  if (!selectedBucket) {
+  if (
+    !selectedBucket
+  ) {
 
     selectedBucket =
       [...chartData.buckets]
         .reverse()
         .find(
           bucket =>
-            bucket.total >
+            revenueChartPeriodValue(
+              bucket,
+              revenueChartScopeKey
+            ) >
             0
         ) ||
       chartData.buckets[
@@ -27164,7 +27809,7 @@ function renderRevenueChart() {
 
   if (
     selectedIndex >=
-    0
+      0
   ) {
 
     const selectedX =
@@ -27270,36 +27915,35 @@ function renderRevenueChart() {
   }
 
 
-  chartData.teams.forEach(
-    team => {
+  series.forEach(
+    item => {
 
       const points =
         chartData.buckets.map(
           (
             bucket,
             index
-          ) => {
-
-            const revenue =
-              bucket.teams[
-                team.key
-              ] ||
-              0;
-
-            return {
-              x:
-                xForIndex(
+          ) => ({
+            x:
+              xForIndex(
+                index
+              ),
+            y:
+              yForValue(
+                item.values[
                   index
-                ),
-              y:
-                yForValue(
-                  revenue
-                ),
-              revenue,
-              bucket
-            };
-
-          }
+                ] ||
+                0
+              ),
+            revenue:
+              Number(
+                item.values[
+                  index
+                ] ||
+                0
+              ),
+            bucket
+          })
         );
 
 
@@ -27315,7 +27959,7 @@ function renderRevenueChart() {
 
       path.setAttribute(
         "stroke",
-        team.color
+        item.color
       );
 
       path.setAttribute(
@@ -27323,7 +27967,7 @@ function renderRevenueChart() {
         points
           .map(
             point =>
-              `${point.x},${point.y}`
+              \`\${point.x},\${point.y}\`
           )
           .join(" ")
       );
@@ -27351,7 +27995,7 @@ function renderRevenueChart() {
 
           if (
             index ===
-            selectedIndex
+              selectedIndex
           ) {
 
             circle.classList.add(
@@ -27380,7 +28024,7 @@ function renderRevenueChart() {
 
           circle.setAttribute(
             "stroke",
-            team.color
+            item.color
           );
 
 
@@ -27391,9 +28035,9 @@ function renderRevenueChart() {
             );
 
           title.textContent =
-            `${team.name} / ${point.bucket.label}: ${formatYen(
+            \`\${item.name} / \${point.bucket.label}: \${formatYen(
               point.revenue
-            )}`;
+            )}\`;
 
           circle.appendChild(
             title
@@ -27571,7 +28215,9 @@ function renderRevenueChart() {
 
   renderRevenueChartDetail(
     chartData,
-    selectedBucket
+    selectedBucket,
+    selectedIndex,
+    series
   );
 
 }
