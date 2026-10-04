@@ -5108,7 +5108,7 @@ body.product-reordering .product-list {
         aria-controls="individualRankingContent">
         <span class="dashboard-app-icon">🏆</span>
         <span class="dashboard-app-title">個人ランキング</span>
-        <span id="individualRankingCount" class="dashboard-app-meta">0人</span>
+        <span id="individualRankingCount" class="dashboard-app-meta">売上順</span>
       </button>
 
       <button
@@ -11347,6 +11347,17 @@ function applyRevenueVisibility() {
   }
 
   if (
+    individualRankingToggle
+  ) {
+
+    individualRankingToggle.style.display =
+      allowed
+        ? ""
+        : "none";
+
+  }
+
+  if (
     revenueChartToggle
   ) {
 
@@ -11384,6 +11395,9 @@ function applyRevenueVisibility() {
   ) {
 
     salesAnalysisContent.hidden =
+      true;
+
+    individualRankingContent.hidden =
       true;
 
     revenueChartContent.hidden =
@@ -28782,28 +28796,71 @@ function renderIndividualRanking(
     "";
 
 
+  if (
+    !canCurrentUserViewRevenue()
+  ) {
+
+    individualRankingCount.textContent =
+      "権限なし";
+
+    return;
+
+  }
+
+
   const ranking =
     Object.values(
       individualMap
     ).sort(
       (a, b) => {
 
+        const revenueDiff =
+          Number(
+            b.revenue ||
+            0
+          ) -
+          Number(
+            a.revenue ||
+            0
+          );
+
         if (
-          b.count !==
-          a.count
+          revenueDiff !==
+            0
         ) {
 
-          return (
-            b.count -
-            a.count
-          );
+          return revenueDiff;
 
         }
 
+        const countDiff =
+          Number(
+            b.count ||
+            0
+          ) -
+          Number(
+            a.count ||
+            0
+          );
 
-        return (
-          b.revenue -
-          a.revenue
+        if (
+          countDiff !==
+            0
+        ) {
+
+          return countDiff;
+
+        }
+
+        return String(
+          a.name ||
+          ""
+        ).localeCompare(
+          String(
+            b.name ||
+            ""
+          ),
+          "ja"
         );
 
       }
@@ -28811,7 +28868,7 @@ function renderIndividualRanking(
 
 
   individualRankingCount.textContent =
-    `${ranking.length}人`;
+    `${ranking.length}人・売上順`;
 
 
   if (
@@ -28949,13 +29006,13 @@ function renderIndividualRanking(
 
       value.innerHTML = `
         <div class="ranking-count">
-          ${item.count}件
-        </div>
-
-        <div class="ranking-revenue">
           ${formatYen(
             item.revenue
           )}
+        </div>
+
+        <div class="ranking-revenue">
+          ${item.count}件
         </div>
       `;
 
@@ -28977,7 +29034,6 @@ function renderIndividualRanking(
   );
 
 }
-
 
 /* =====================================================
    班ランキング
