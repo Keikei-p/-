@@ -7803,6 +7803,14 @@ let editingProductId = null;
 let editingMemberId = null;
 let editingRecordId = null;
 let zeroResultRequested = false;
+let recordSaveInProgress = false;
+
+function setRecordSaveInProgress(saving) {
+  recordSaveInProgress = saving;
+  recordManagement.inert = saving;
+  recordManagement.setAttribute("aria-busy", String(saving));
+  saveRecordButton.disabled = saving;
+}
 
 let notificationSettings = {
   enabled: false,
@@ -12659,6 +12667,11 @@ function startRealtimeListeners() {
 
         renderNotificationPreview();
 
+      },
+      error => {
+        console.error("実績リアルタイム監視エラー:", error);
+        databaseStatus.textContent = "実績の自動更新が停止";
+        showError("実績の自動更新が停止しました。表示が古い可能性があります。通信・権限を確認して画面を再読み込みしてください。");
       }
     );
 
@@ -12688,6 +12701,10 @@ function startRealtimeListeners() {
 
         renderDashboard();
 
+      },
+      error => {
+        console.error("目標リアルタイム監視エラー:", error);
+        showError("目標の自動更新が停止しました。進捗率が古い可能性があります。通信・権限を確認して画面を再読み込みしてください。");
       }
     );
 
@@ -19141,6 +19158,16 @@ function updateRecordMemberOptions() {
   }
 
 
+  // 訂正で一時追加した他班・退職済み担当者も監視更新後に維持する。
+  const correctionRecord = records.find(record =>
+    record.id === editingRecordId &&
+    record.uid === currentValue &&
+    record.date === recordDate.value
+  );
+  if (correctionRecord && canCurrentUserCorrectRecord(correctionRecord)) {
+    ensureRecordMemberOption(correctionRecord);
+  }
+
   if (
     Array.from(
       recordMember.options
@@ -20028,6 +20055,14 @@ function showRecordCorrectionTeam(
     }
   );
 
+  // 削除済みの班を空欄扱いにして、訂正時に「所属なし」へ変えない。
+  if (record.teamId && !teams.some(team => team.id === record.teamId)) {
+    const historicalOption = document.createElement("option");
+    historicalOption.value = record.teamId;
+    historicalOption.textContent = `${record.teamNameSnapshot || "過去の班"}（履歴）`;
+    recordCorrectionTeam.appendChild(historicalOption);
+  }
+
   recordCorrectionTeam.value =
     record.teamId ||
     "";
@@ -20504,6 +20539,8 @@ function findDailyRecord(
 clearRecordButton.onclick =
   () => {
 
+    if (recordSaveInProgress) return;
+
     editingRecordId =
       null;
 
@@ -20559,6 +20596,8 @@ clearRecordButton.onclick =
 noResultButton.onclick =
   () => {
 
+    if (recordSaveInProgress) return;
+
     if (
       !recordDate.value
     ) {
@@ -20593,8 +20632,7 @@ noResultButton.onclick =
 
     }
 
-    prepareProductInputList();
-
+    // 保存失敗時に入力を失わないよう、0件化は保存ペイロードだけに適用。
     zeroResultRequested =
       true;
 
@@ -20605,6 +20643,8 @@ noResultButton.onclick =
 
 saveRecordButton.onclick =
   async () => {
+
+    if (recordSaveInProgress) return;
 
     recordSaveStatus.style.display =
       "none";
@@ -20850,8 +20890,7 @@ saveRecordButton.onclick =
 
     try {
 
-      saveRecordButton.disabled =
-        true;
+      setRecordSaveInProgress(true);
 
 
       saveRecordButton.textContent =
@@ -21184,6 +21223,10 @@ saveRecordButton.onclick =
         ...confirmedSnap.data()
       };
 
+      if (zeroResultSubmission) {
+        prepareProductInputList(confirmedRecord.results || {});
+      }
+
 
       /*
         保存確認済みデータで画面を即時更新する。
@@ -21332,8 +21375,7 @@ saveRecordButton.onclick =
 
     } finally {
 
-      saveRecordButton.disabled =
-        false;
+      setRecordSaveInProgress(false);
 
       saveRecordButton.textContent =
         editingRecordId
@@ -28956,9 +28998,9 @@ function renderSelectedTeamMemberDetail(
     </div>
     <div class="team-detail-total">
       <strong>${teamCount}件</strong>
-      ${formatYen(
-        teamRevenue
-      )}
+      ${canCurrentUserViewRevenueForTeam(team.id)
+        ? formatYen(teamRevenue)
+        : "売上非表示"}
     </div>
   `;
 
@@ -29151,9 +29193,9 @@ function renderSelectedTeamMemberDetail(
         "team-member-card-total";
 
       total.textContent =
-        `合計 ${member.totalCount}件 / ${formatYen(
-          member.totalRevenue
-        )}`;
+        canCurrentUserViewRevenueForTeam(team.id)
+          ? `合計 ${member.totalCount}件 / ${formatYen(member.totalRevenue)}`
+          : `合計 ${member.totalCount}件 / 売上非表示`;
 
 
       card.appendChild(
@@ -29573,10 +29615,9 @@ function renderAllTeamsOverview(
             teamAnalysis.count ||
             0
           )}件</span>
-          <span>${formatYen(
-            teamAnalysis.revenue ||
-            0
-          )}</span>
+          <span>${canCurrentUserViewRevenueForTeam(team.id)
+            ? formatYen(teamAnalysis.revenue || 0)
+            : "売上非表示"}</span>
         </div>
         <div class="team-overview-card-goal">
           ${
@@ -31905,6 +31946,8 @@ function renderRecordHistory(
 function editRecord(
   record
 ) {
+
+    if (recordSaveInProgress) return;
 
   recordDate.value =
     record.date;

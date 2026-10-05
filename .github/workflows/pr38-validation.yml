@@ -29,6 +29,9 @@ jobs:
       - name: Check Functions JavaScript syntax
         run: node --check functions/index.js
 
+      - name: Check sales input and correction regressions
+        run: node --test tests/sales-regressions.cjs
+
       - name: Check Cloudflare LINE Worker syntax
         run: |
           if [ -f cloudflare-line/src/index.js ]; then
