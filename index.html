@@ -20967,13 +20967,15 @@ saveRecordButton.onclick =
       }
 
 
+      /* results は内訳全体を置き換える。再帰マージでは0件にした商材が残る。
+         指定外の作成情報・既存フィールドは維持する。互換保存も同じ方針。 */
       try {
 
         await setDoc(
           recordRef,
           data,
           {
-            merge: true
+            mergeFields: Object.keys(data)
           }
         );
 
@@ -21006,7 +21008,7 @@ saveRecordButton.onclick =
             recordRef,
             compatibleData,
             {
-              merge: true
+              mergeFields: Object.keys(compatibleData)
             }
           );
 
@@ -21039,7 +21041,7 @@ saveRecordButton.onclick =
             recordRef,
             legacyData,
             {
-              merge: true
+              mergeFields: Object.keys(legacyData)
             }
           );
 
