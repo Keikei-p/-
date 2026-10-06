@@ -5040,6 +5040,16 @@ body.product-reordering .product-list {
           type="date"
         >
 
+        <div id="recordCorrectionTeamGroup" style="display:none;margin-top:14px;">
+          <label for="recordCorrectionTeam">この日の稼働班</label>
+          <select id="recordCorrectionTeam">
+            <option value="">所属なし</option>
+          </select>
+          <div style="margin-top:6px;color:var(--sub);font-size:11px;line-height:1.6;">
+            この班に実績を計上します。1人1日1班。別班への訂正はオーナーへ。
+          </div>
+        </div>
+
       </div>
 
       <div class="form-group">
@@ -5055,6 +5065,13 @@ body.product-reordering .product-list {
           </option>
 
         </select>
+        <label id="recordSupportMembersLabel" style="display:none;margin-top:10px;">
+          <input id="recordSupportMembers" type="checkbox">
+          応援メンバーを表示（同じ会社）
+        </label>
+        <div style="font-size:12px;color:var(--sub);margin-top:8px;">
+          応援入力でも普段の所属班・過去の実績は変わりません。
+        </div>
 
         <label
           for="recordLocation"
@@ -5070,15 +5087,7 @@ body.product-reordering .product-list {
           placeholder="例：○○市 ○○店"
         >
 
-        <div id="recordCorrectionTeamGroup" style="display:none;margin-top:14px;">
-          <label for="recordCorrectionTeam">訂正する班</label>
-          <select id="recordCorrectionTeam">
-            <option value="">所属なし</option>
-          </select>
-          <div style="margin-top:6px;color:var(--sub);font-size:11px;line-height:1.6;">
-            実績の班だけを訂正します。本人の班履歴は変更しません。
-          </div>
-        </div>
+
 
       </div>
 
@@ -6201,6 +6210,8 @@ import {
   deleteDoc,
   collection,
   getDocs,
+  getDocsFromServer,
+  runTransaction,
   query,
   where,
   writeBatch,
@@ -6630,6 +6641,9 @@ const recordCorrectionTeamGroup =
   document.getElementById(
     "recordCorrectionTeamGroup"
   );
+
+const recordSupportMembers = document.getElementById("recordSupportMembers");
+const recordSupportMembersLabel = document.getElementById("recordSupportMembersLabel");
 
 const recordCorrectionTeam =
   document.getElementById(
@@ -7781,18 +7795,12 @@ function canCurrentUserManageRecord(
 
 }
 
-function canCurrentUserCorrectRecord(
-  record
-) {
-
-  return !!(
-    record &&
-    currentUser &&
-    currentUserData?.companyId &&
-    record.companyId ===
-      currentUserData.companyId
-  );
-
+function canCurrentUserCorrectRecord(record) {
+  if (!record || !currentUser || !currentUserData?.companyId ||
+      record.companyId !== currentUserData.companyId) return false;
+  if (isCurrentCompanyOwner()) return true;
+  if (isCurrentTeamLeader()) return record.teamId === currentUserData.teamId;
+  return record.uid === currentUser.uid;
 }
 
 
@@ -7802,6 +7810,7 @@ let editingGoalTeamId = null;
 let editingProductId = null;
 let editingMemberId = null;
 let editingRecordId = null;
+let editingRecordRevision = null;
 let zeroResultRequested = false;
 let recordSaveInProgress = false;
 
@@ -19053,6 +19062,8 @@ addManagedMemberButton.onclick =
 */
 
 function updateRecordMemberOptions() {
+  recordSupportMembersLabel.style.display = isCurrentTeamLeader() ? "block" : "none";
+
 
   const currentValue =
     recordMember.value;
@@ -19101,8 +19112,7 @@ function updateRecordMemberOptions() {
         member =>
           member.active !==
             false &&
-          member.teamId ===
-            currentUserData.teamId
+          (recordSupportMembers.checked || member.teamId === currentUserData.teamId)
       )
       .forEach(
         member => {
@@ -19116,9 +19126,9 @@ function updateRecordMemberOptions() {
             member.id ||
             member.uid;
 
-          option.textContent =
-            member.name ||
-            "名前未設定";
+          option.textContent = `${member.name || "名前未設定"}${
+            member.teamId !== currentUserData.teamId ? "（応援）" : ""
+          }`;
 
           recordMember.appendChild(
             option
@@ -19206,7 +19216,7 @@ async function prepareRecordInputs() {
   }
 
   updateRecordMemberOptions();
-
+  showRecordCorrectionTeam(null);
   prepareProductInputList();
 
 }
@@ -20012,64 +20022,33 @@ function ensureRecordMemberOption(
 }
 
 
-function showRecordCorrectionTeam(
-  record
-) {
-
-  if (
-    !record
-  ) {
-
-    recordCorrectionTeamGroup.style.display =
-      "none";
-
-    recordCorrectionTeam.innerHTML =
-      '<option value="">所属なし</option>';
-
-    return;
-
+function showRecordCorrectionTeam(record) {
+  const previousTeam = recordCorrectionTeam.value;
+  recordCorrectionTeam.innerHTML = '<option value="">所属なし</option>';
+  const leader = isCurrentTeamLeader();
+  const selectable = teams.filter(team => team.active !== false &&
+    (!leader || team.id === currentUserData.teamId));
+  for (const team of selectable) {
+    const option = document.createElement("option");
+    option.value = team.id;
+    option.textContent = team.name || "班名未設定";
+    recordCorrectionTeam.appendChild(option);
   }
-
-  recordCorrectionTeam.innerHTML =
-    '<option value="">所属なし</option>';
-
-  teams.forEach(
-    team => {
-
-      const option =
-        document.createElement(
-          "option"
-        );
-
-      option.value =
-        team.id;
-
-      option.textContent =
-        team.name ||
-        "班名未設定";
-
-      recordCorrectionTeam.appendChild(
-        option
-      );
-
-    }
-  );
-
-  // 削除済みの班を空欄扱いにして、訂正時に「所属なし」へ変えない。
-  if (record.teamId && !teams.some(team => team.id === record.teamId)) {
-    const historicalOption = document.createElement("option");
-    historicalOption.value = record.teamId;
-    historicalOption.textContent = `${record.teamNameSnapshot || "過去の班"}（履歴）`;
-    recordCorrectionTeam.appendChild(historicalOption);
+  if (record?.teamId && !selectable.some(team => team.id === record.teamId)) {
+    const option = document.createElement("option");
+    option.value = record.teamId;
+    option.textContent = `${record.teamNameSnapshot || "過去の班"}（履歴）`;
+    recordCorrectionTeam.appendChild(option);
   }
-
-  recordCorrectionTeam.value =
-    record.teamId ||
-    "";
-
-  recordCorrectionTeamGroup.style.display =
-    "block";
-
+  const member = members.find(item => (item.id || item.uid) === recordMember.value) || currentUserData;
+  const defaultTeam = getMemberTeamForDate(member, recordDate.value || getTodayString())?.teamId || "";
+  recordCorrectionTeam.value = record
+    ? (record.teamId || "")
+    : leader
+      ? (currentUserData.teamId || "")
+      : selectable.some(team => team.id === previousTeam) ? previousTeam : defaultTeam;
+  recordCorrectionTeam.disabled = !!record && !isCurrentCompanyOwner() || leader;
+  recordCorrectionTeamGroup.style.display = "block";
 }
 
 
@@ -20443,6 +20422,19 @@ recordMember.addEventListener(
 );
 
 
+recordSupportMembers.addEventListener("change", async () => {
+  if (recordSaveInProgress) return;
+  const previousMember = recordMember.value;
+  updateRecordMemberOptions();
+  if (recordMember.value !== previousMember) {
+    editingRecordId = null;
+    editingRecordRevision = null;
+    prepareProductInputList();
+    recordLocation.value = "";
+    showRecordCorrectionTeam(null);
+  }
+});
+
 async function loadExistingRecordIntoForm() {
 
   if (
@@ -20467,8 +20459,17 @@ async function loadExistingRecordIntoForm() {
     record.results
   ) {
 
-    editingRecordId =
-      record.id;
+    editingRecordId = record.id;
+    editingRecordRevision = recordRevision(record);
+    if (!canCurrentUserCorrectRecord(record)) {
+      editingRecordRevision = null;
+      recordLocation.value = "";
+      showRecordCorrectionTeam(record);
+      prepareProductInputList();
+      saveRecordButton.textContent = "オーナーへ訂正を依頼";
+      showError("この日の実績は別班で登録済みです。重複登録せず、オーナーへ訂正を依頼してください。");
+      return;
+    }
 
     ensureRecordMemberOption(
       record
@@ -20497,8 +20498,8 @@ async function loadExistingRecordIntoForm() {
   }
 
 
-  editingRecordId =
-    null;
+  editingRecordId = null;
+  editingRecordRevision = null;
 
   showRecordCorrectionTeam(
     null
@@ -20514,6 +20515,51 @@ async function loadExistingRecordIntoForm() {
 
 }
 
+
+function recordRevision(record) {
+  if (!record) return null;
+  const stable = value => {
+    if (Array.isArray(value)) return value.map(stable);
+    if (value && typeof value === "object") {
+      return Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])]));
+    }
+    return value;
+  };
+  return JSON.stringify(stable({
+    companyId: record.companyId, uid: record.uid, date: record.date,
+    teamId: record.teamId || null, workLocation: record.workLocation || "",
+    results: record.results || {}, totalCount: record.totalCount || 0,
+    totalRevenue: record.totalRevenue || 0, updatedAt: record.updatedAt || null
+  }));
+}
+
+function recordConflict(message) {
+  const error = new Error(message);
+  error.code = "record-conflict";
+  return error;
+}
+
+async function persistDailyRecord(recordRef, data, expectedRecord, expectedRevision) {
+  // サーバーで同日を確認。旧IDの実績もそのまま更新し、重複は推測で統合しない。
+  const daily = await getDocsFromServer(query(
+    recordsCollectionQuery(), where("uid", "==", data.uid), where("date", "==", data.date)
+  ));
+  if (daily.size > 1 || (daily.size === 1 && (!expectedRecord || daily.docs[0].id !== recordRef.id))) {
+    throw recordConflict("この担当者・日付の実績は登録済みです。日付・担当者を選び直してください。複数ある場合はオーナーへ確認してください。");
+  }
+  await runTransaction(db, async transaction => {
+    const snapshot = await transaction.get(recordRef);
+    const current = snapshot.exists() ? {id: snapshot.id, ...snapshot.data()} : null;
+    if (current && !expectedRecord) {
+      throw recordConflict("別の操作で同じ日の実績が登録されました。既存実績を読み直してください。");
+    }
+    if (expectedRecord && (!current || recordRevision(current) !== expectedRevision)) {
+      throw recordConflict("編集中に実績が変更・削除されました。上書きせず、日付・担当者を選び直してください。");
+    }
+    // resultsの削除済み商材が復活しないようマップ全体を置換。
+    transaction.set(recordRef, data, {mergeFields: Object.keys(data)});
+  });
+}
 
 function findDailyRecord(
   memberId,
@@ -20541,8 +20587,9 @@ clearRecordButton.onclick =
 
     if (recordSaveInProgress) return;
 
-    editingRecordId =
-      null;
+    editingRecordId = null;
+    editingRecordRevision = null;
+    recordSupportMembers.checked = false;
 
     showRecordCorrectionTeam(
       null
@@ -20581,9 +20628,9 @@ clearRecordButton.onclick =
       "実績を一括登録";
 
 
-    recordSaveStatus.style.display =
-      "none";
-
+    recordSaveStatus.style.display = "none";
+    updateRecordMemberOptions();
+    showRecordCorrectionTeam(null);
     clearMessages();
 
   };
@@ -20819,72 +20866,29 @@ saveRecordButton.onclick =
     }
 
 
-    const assignedTeam =
-      getMemberTeamForDate(
-        member,
-        date
-      );
-
-
-    const existingDailyRecord =
-      findDailyRecord(
-        targetUid,
-        date
-      );
-
-
-    const isExistingCorrection =
-      !!existingDailyRecord;
-
-    const targetTeamId =
-      isExistingCorrection &&
-      editingRecordId ===
-        existingDailyRecord.id
-        ? (
-            recordCorrectionTeam.value ||
-            null
-          )
-        : (
-            existingDailyRecord
-              ? (
-                  existingDailyRecord.teamId ??
-                  null
-                )
-              : assignedTeam.teamId
-          );
-
-
-    const canManageTarget =
-      isExistingCorrection
-        ? canCurrentUserCorrectRecord(
-            existingDailyRecord
-          )
-        : (
-            isCurrentCompanyOwner() ||
-            targetUid ===
-              currentUser?.uid ||
-            (
-              isCurrentTeamLeader() &&
-              member.teamId ===
-                currentUserData.teamId &&
-              targetTeamId ===
-                currentUserData.teamId
-            )
-          );
-
-
-    if (
-      !canManageTarget
-    ) {
-
-      showError(
-        isExistingCorrection
-          ? "この実績を訂正する権限がありません。"
-          : "新規実績は自分、オーナー、または担当班のリーダーが登録できます。"
-      );
-
+    const existingDailyRecord = findDailyRecord(targetUid, date);
+    const targetTeamId = recordCorrectionTeam.value || null;
+    const isOwner = isCurrentCompanyOwner();
+    const isLeader = isCurrentTeamLeader();
+    if (existingDailyRecord && (!canCurrentUserCorrectRecord(existingDailyRecord) ||
+        (!isOwner && targetTeamId !== (existingDailyRecord.teamId || null)))) {
+      showError("この日の実績は別班で登録済みか、訂正権限がありません。オーナーへ訂正を依頼してください。");
       return;
-
+    }
+    if (existingDailyRecord && (editingRecordId !== existingDailyRecord.id || editingRecordRevision === null)) {
+      showError("この日の実績は登録済みです。日付・担当者を選び直して既存実績を読み込んでください。");
+      return;
+    }
+    if (!existingDailyRecord && !(isOwner ||
+        (isLeader && targetTeamId === currentUserData.teamId && member.active !== false) ||
+        (!isLeader && targetUid === currentUser?.uid))) {
+      showError("応援実績は担当班のリーダーまたはオーナーが登録してください。");
+      return;
+    }
+    if ((!existingDailyRecord || targetTeamId !== (existingDailyRecord.teamId || null)) &&
+        targetTeamId && !teams.some(team => team.id === targetTeamId && team.active !== false)) {
+      showError("有効な稼働班を選択してください。");
+      return;
     }
 
 
@@ -20917,13 +20921,6 @@ saveRecordButton.onclick =
           recordId
         );
 
-
-      /*
-        新規実績ではまだドキュメントが存在しないため、
-        保存前の getDoc() は Firestore Rules の read 判定で
-        permission-denied になる。
-        既存判定は、すでに読み込み済みの records を使う。
-      */
 
       const data = {
 
@@ -21006,87 +21003,7 @@ saveRecordButton.onclick =
       }
 
 
-      /* results は内訳全体を置き換える。再帰マージでは0件にした商材が残る。
-         指定外の作成情報・既存フィールドは維持する。互換保存も同じ方針。 */
-      try {
-
-        await setDoc(
-          recordRef,
-          data,
-          {
-            mergeFields: Object.keys(data)
-          }
-        );
-
-      } catch (error) {
-
-        if (
-          error?.code !==
-            "permission-denied"
-        ) {
-
-          throw error;
-
-        }
-
-        /*
-          Firestore Rulesの反映前でも通常入力と0件報告を止めない。
-          新しい報告状態フィールドだけ外して一度再試行する。
-          訂正権限そのものはRules側で判定されるため、権限を迂回しない。
-        */
-        const compatibleData = {
-          ...data
-        };
-
-        delete compatibleData.reportStatus;
-        delete compatibleData.reportedAt;
-
-        try {
-
-          await setDoc(
-            recordRef,
-            compatibleData,
-            {
-              mergeFields: Object.keys(compatibleData)
-            }
-          );
-
-        } catch (compatibilityError) {
-
-          /*
-            さらに古いRules向けの既存互換処理。
-            監査UID項目を持たない旧データだけ従来形式で再試行する。
-          */
-          if (
-            compatibilityError?.code !==
-              "permission-denied" ||
-            isManagedMember(member) ||
-            existingDailyRecord?.createdByUid ||
-            existingDailyRecord?.updatedByUid
-          ) {
-
-            throw compatibilityError;
-
-          }
-
-          const legacyData = {
-            ...compatibleData
-          };
-
-          delete legacyData.createdByUid;
-          delete legacyData.updatedByUid;
-
-          await setDoc(
-            recordRef,
-            legacyData,
-            {
-              mergeFields: Object.keys(legacyData)
-            }
-          );
-
-        }
-
-      }
+      await persistDailyRecord(recordRef, data, existingDailyRecord, editingRecordRevision);
 
 
       let correctionAuditWarning =
@@ -21218,10 +21135,10 @@ saveRecordButton.onclick =
 
 
       const confirmedRecord = {
-        id:
-          recordRef.id,
+        id: recordRef.id,
         ...confirmedSnap.data()
       };
+      editingRecordRevision = recordRevision(confirmedRecord);
 
       if (zeroResultSubmission) {
         prepareProductInputList(confirmedRecord.results || {});
@@ -21346,7 +21263,9 @@ saveRecordButton.onclick =
       console.error(error);
 
 
-      if (
+      if (error?.code === "record-conflict") {
+        showError(error.message);
+      } else if (
         error?.code ===
         "permission-denied"
       ) {
@@ -31948,6 +31867,11 @@ function editRecord(
 ) {
 
     if (recordSaveInProgress) return;
+    if (!canCurrentUserCorrectRecord(record)) {
+      showError("この実績の訂正はオーナーへ依頼してください。");
+      return;
+    }
+    editingRecordRevision = recordRevision(record);
 
   recordDate.value =
     record.date;
