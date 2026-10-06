@@ -112,5 +112,5 @@ jobs:
         run: npm install --prefix tests --ignore-scripts --package-lock=false
 
       - name: Test Firestore permissions in emulator
-        run: RULES_ONLY=1 firebase emulators:exec --project demo-sales-support --only firestore "node --test tests/rules.test.cjs"
+        run: firebase emulators:exec --project demo-sales-support --only firestore "node --test tests/rules.test.cjs"
 

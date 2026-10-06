@@ -5,7 +5,8 @@ const { test } = require('node:test');
 const path = require('node:path');
 const html = fs.readFileSync(process.env.SALES_HTML || path.join(__dirname, '../index.html'), 'utf8');
 function source(name) {
-  const start = html.indexOf(`function ${name}(`);
+  let start = html.indexOf(`function ${name}(`);
+  if (html.slice(start - 6, start) === "async ") start -= 6;
   assert(start >= 0, `Missing function ${name}`);
   const end = html.indexOf('\n}', start);
   return html.slice(start, end + 2);
@@ -36,24 +37,24 @@ const document = { createElement: () => element() };
 test('Realtime member refresh retains an authorized correction target outside own team', () => {
   const select = element(); select.value = 'other';
   const ctx = context(['updateRecordMemberOptions', 'ensureRecordMemberOption', 'canCurrentUserCorrectRecord'], {
-    document, recordMember: select, recordDate: {value:'2026-10-05'}, editingRecordId:'r',
+    document, recordSupportMembersLabel:element(), recordSupportMembers:{checked:false}, recordMember: select, recordDate: {value:'2026-10-05'}, editingRecordId:'r',
     records:[{id:'r',uid:'other',date:'2026-10-05',companyId:'c',memberNameSnapshot:'過去の担当者'}],
     currentUser:{uid:'self'}, currentUserData:{uid:'self',companyId:'c',name:'自分'}, members:[],
-    isCurrentCompanyOwner:()=>false,isCurrentTeamLeader:()=>false
+    isCurrentCompanyOwner:()=>true,isCurrentTeamLeader:()=>false
   });
   ctx.updateRecordMemberOptions();
   assert.equal(select.value,'other');
   assert(select.options.some(o=>o.value==='other'));
   ctx.records[0].companyId='another-company';
   ctx.updateRecordMemberOptions();
-  assert.equal(select.value,'self');
   assert(!select.options.some(o=>o.value==='other'));
 });
 
 test('Deleted historical team remains selectable without changing membership history', () => {
   const select=element();
   const ctx=context(['showRecordCorrectionTeam'],{document,recordCorrectionTeam:select,
-    recordCorrectionTeamGroup:element(),teams:[{id:'new',name:'新班'}]});
+    recordCorrectionTeamGroup:element(),isCurrentTeamLeader:()=>false,isCurrentCompanyOwner:()=>true,
+    members:[], recordMember:{value:'self'}, recordDate:{value:'2026-10-06'}, currentUserData:{}, getMemberTeamForDate:()=>({teamId:'new'}),teams:[{id:'new',name:'新班'}]});
   const record={teamId:'old',teamNameSnapshot:'旧班',teamHistory:[{fromTeamId:'old'}]};
   const before=JSON.stringify(record);
   ctx.showRecordCorrectionTeam(record);
@@ -128,23 +129,74 @@ test('Hidden team revenue is labeled hidden instead of showing a false zero', ()
   assert(textOf(own).includes('¥0'));
 });
 
-test('Correction replaces result map across normal and compatibility saves, preserving metadata', async () => {
-  const start=html.indexOf('      try {\n\n        await setDoc(\n          recordRef,\n          data,');
-  const end=html.indexOf('      let correctionAuditWarning',start);
-  assert(start>0&&end>start);
-  const block=html.slice(start,end);
-  for(const failures of [0,1,2]) for(const results of [{A:{count:1,revenuePerUnit:100}},{C:{count:4,revenuePerUnit:300}},{}]) {
-    let stored={createdAt:'keep',createdByUid:'creator',custom:'keep',results:{A:{count:3},B:{count:2}}},calls=0;
-    const data={results,totalCount:Object.values(results).reduce((s,r)=>s+r.count,0),reportStatus:'submitted',reportedAt:'now',updatedByUid:'editor'};
-    const ctx=context(['getRecordResults','calculateResultsTotals'],{data,recordRef:{id:'r'},existingDailyRecord:{},member:{},isManagedMember:()=>false,
-      setDoc:async(ref,payload,options)=>{if(++calls<=failures)throw {code:'permission-denied'};
-        assert(options.mergeFields.includes('results'));
-        for(const key of options.mergeFields)stored[key]=structuredClone(payload[key]);}
+test('Transactional correction replaces results and preserves metadata', async () => {
+  for (const results of [{A:{count:1,revenuePerUnit:100}}, {C:{count:4,revenuePerUnit:300}}, {}]) {
+    let stored={companyId:'c',uid:'u',date:'2026-10-06',teamId:'a',createdAt:'keep',createdByUid:'creator',custom:'keep',results:{A:{count:3},B:{count:2}}};
+    const before=structuredClone(stored);
+    const data={results,totalCount:Object.values(results).reduce((n,r)=>n+r.count,0)};
+    const ctx=context(['persistDailyRecord','recordRevision','recordConflict','getRecordResults','calculateResultsTotals'],{
+      db:{},query:()=>{},where:()=>{},recordsCollectionQuery:()=>{},
+      getDocsFromServer:async()=>({size:1,docs:[{id:'r'}]}),
+      runTransaction:async(db,callback)=>callback({get:async()=>({exists:()=>true,id:'r',data:()=>stored}),
+        set:(ref,payload,options)=>{assert(options.mergeFields.includes('results'));for(const key of options.mergeFields)stored[key]=structuredClone(payload[key]);}})
     });
-    await vm.runInContext('(async()=>{'+block+'})()',ctx);
-    assert.deepEqual(stored.results,results);assert.equal(stored.createdAt,'keep');assert.equal(stored.createdByUid,'creator');assert.equal(stored.custom,'keep');
+    await ctx.persistDailyRecord({id:'r'},data,before,ctx.recordRevision(before));
+    assert.deepEqual(stored.results,results); assert.equal(stored.createdAt,'keep');assert.equal(stored.createdByUid,'creator');assert.equal(stored.custom,'keep');
     const totals=ctx.calculateResultsTotals(ctx.getRecordResults(stored));
     assert.equal(totals.count,data.totalCount);
-    assert.equal(totals.revenue,Object.values(results).reduce((s,r)=>s+r.count*r.revenuePerUnit,0));
+    assert.equal(totals.revenue,Object.values(results).reduce((n,r)=>n+r.count*r.revenuePerUnit,0));
   }
+});
+
+test('Support choices are opt-in and inactive people stay excluded',()=>{
+  const select=element();
+  const ctx=context(['updateRecordMemberOptions'],{document,recordMember:select,
+    recordSupportMembersLabel:element(),recordSupportMembers:{checked:false},
+    recordDate:{value:'2026-10-06'},editingRecordId:null,records:[],
+    currentUserData:{teamId:'a'},isCurrentCompanyOwner:()=>false,isCurrentTeamLeader:()=>true,
+    members:[{id:'own',name:'自班',teamId:'a'},{id:'helper',name:'応援',teamId:'b'},{id:'inactive',teamId:'b',active:false}]});
+  ctx.updateRecordMemberOptions();assert.deepEqual(select.options.map(o=>o.value),['own']);
+  ctx.recordSupportMembers.checked=true;ctx.updateRecordMemberOptions();
+  assert.deepEqual(select.options.map(o=>o.value),['own','helper']);
+  assert(select.options[1].textContent.includes('応援'));
+});
+
+test('Only owner can correct another team; self and own team remain editable',()=>{
+  const ctx=context(['canCurrentUserCorrectRecord'],{currentUser:{uid:'leader'},currentUserData:{companyId:'c',teamId:'a'},
+    isCurrentCompanyOwner:()=>false,isCurrentTeamLeader:()=>true});
+  assert.equal(ctx.canCurrentUserCorrectRecord({companyId:'c',teamId:'a',uid:'helper'}),true);
+  assert.equal(ctx.canCurrentUserCorrectRecord({companyId:'c',teamId:'b',uid:'helper'}),false);
+  ctx.isCurrentCompanyOwner=()=>true;
+  assert.equal(ctx.canCurrentUserCorrectRecord({companyId:'c',teamId:'b',uid:'helper'}),true);
+  assert.equal(ctx.canCurrentUserCorrectRecord({companyId:'foreign',teamId:'a',uid:'helper'}),false);
+  ctx.isCurrentCompanyOwner=()=>false;ctx.isCurrentTeamLeader=()=>false;
+  assert.equal(ctx.canCurrentUserCorrectRecord({companyId:'c',teamId:'b',uid:'leader'}),true);
+  assert.equal(ctx.canCurrentUserCorrectRecord({companyId:'c',teamId:'a',uid:'other'}),false);
+});
+
+test('Stale edits, deleted records and simultaneous same-day registration stop without writes',async()=>{
+  const initial={uid:'u',date:'2026-10-06',teamId:'a',results:{A:{count:1}}};
+  let current=structuredClone(initial),writes=0;
+  const ctx=context(['persistDailyRecord','recordRevision','recordConflict'],{db:{},query:()=>{},where:()=>{},recordsCollectionQuery:()=>{},
+    getDocsFromServer:async()=>({size:0,docs:[]}),
+    runTransaction:async(db,callback)=>callback({get:async()=>({exists:()=>!!current,id:'r',data:()=>current}),set:()=>writes++})});
+  await assert.rejects(ctx.persistDailyRecord({id:'r'},{},null,null),{code:'record-conflict'});
+  const rev=ctx.recordRevision(initial);current.results.A.count=2;
+  await assert.rejects(ctx.persistDailyRecord({id:'r'},{},initial,rev),{code:'record-conflict'});
+  current=null;await assert.rejects(ctx.persistDailyRecord({id:'r'},{},initial,rev),{code:'record-conflict'});
+  ctx.getDocsFromServer=async()=>({size:2,docs:[{id:'r'},{id:'legacy'}]});
+  await assert.rejects(ctx.persistDailyRecord({id:'r'},{},null,null),{code:'record-conflict'});
+  assert.equal(writes,0);
+});
+
+test('Choosing a helper with a different-team record does not load its historical revenue into the editor',async()=>{
+  let prepared='not-called',message='';
+  const ctx=context(['loadExistingRecordIntoForm','recordRevision'],{
+    recordDate:{value:'2026-10-06'},recordMember:{value:'helper'},recordLocation:{value:'old'},saveRecordButton:{},
+    findDailyRecord:()=>({id:'r',uid:'helper',date:'2026-10-06',teamId:'other',results:{A:{count:3,revenuePerUnit:999}}}),
+    canCurrentUserCorrectRecord:()=>false,showRecordCorrectionTeam:()=>{},prepareProductInputList:value=>prepared=value,showError:value=>message=value
+  });
+  await ctx.loadExistingRecordIntoForm();
+  assert.equal(prepared,undefined);assert.equal(ctx.editingRecordRevision,null);
+  assert(message.includes('オーナー'));assert.equal(ctx.recordLocation.value,'');
 });
