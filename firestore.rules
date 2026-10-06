@@ -175,6 +175,15 @@ service cloud.firestore {
         && get(memberPath(companyId, targetUid)).data.teamId == teamId;
     }
 
+    // recordsの会社・利用停止チェックを通った後だけ使用する。
+    function canWriteDailyRecord(companyId, targetUid, teamId) {
+      let actor = get(memberPath(companyId, request.auth.uid)).data;
+      return (actor.companyRole == 'owner' && isCompanyOwner(companyId))
+        || (actor.role == 'leader'
+          ? teamId != null && actor.teamId == teamId
+          : targetUid == request.auth.uid);
+    }
+
     function canViewRevenue(companyId) {
       return isCompanyMaster(companyId)
         || (
@@ -1058,7 +1067,14 @@ service cloud.firestore {
       allow read: if resource.data.companyId != null
         && sameCompany(resource.data.companyId);
 
-      allow create: if request.resource.data.keys().hasOnly([
+      // 新規登録のトランザクションで、未作成ドキュメントだけ読取を許可。
+      // 既存データの会社分離は上のreadルールを維持する。
+      allow get: if verifiedUser() && isCompanyMember(currentCompanyId())
+        && !exists(/databases/$(database)/documents/records/$(recordId));
+
+      allow create: if recordId == request.resource.data.companyId + '_' + request.resource.data.uid + '_' + request.resource.data.date
+        && validSelectableTeam(request.resource.data.companyId, request.resource.data.teamId)
+        && request.resource.data.keys().hasOnly([
           'companyId', 'uid', 'memberNameSnapshot', 'teamId',
           'teamNameSnapshot', 'date', 'workLocation', 'results', 'totalCount',
           'totalRevenue', 'reportStatus', 'reportedAt',
@@ -1066,10 +1082,7 @@ service cloud.firestore {
         ])
         && request.resource.data.companyId != null
         && currentCompanyId() == request.resource.data.companyId
-        && (
-          isCompanyMember(request.resource.data.companyId)
-          || isCompanyOwner(request.resource.data.companyId)
-        )
+        && isCompanyMember(request.resource.data.companyId)
         && (
           (
             exists(memberPath(request.resource.data.companyId, request.resource.data.uid))
@@ -1107,18 +1120,9 @@ service cloud.firestore {
         && request.resource.data.updatedByUid == request.auth.uid
         && request.resource.data.createdAt == request.time
         && request.resource.data.updatedAt == request.time
-        && (
-          isCompanyOwner(request.resource.data.companyId)
-          || (
-            request.resource.data.uid == request.auth.uid
-            && recordId == request.resource.data.companyId + '_' + request.auth.uid + '_' + request.resource.data.date
-          )
-          || canManageTeamMemberRecord(
-            request.resource.data.companyId,
-            request.resource.data.uid,
-            request.resource.data.teamId
-          )
-        );
+        && canWriteDailyRecord(request.resource.data.companyId,
+          request.resource.data.uid, request.resource.data.teamId);
+
 
       allow update: if resource.data.companyId != null
         && request.resource.data.companyId == resource.data.companyId
@@ -1161,7 +1165,10 @@ service cloud.firestore {
             && request.resource.data.reportedAt == request.time
           )
         )
-        && sameCompany(resource.data.companyId);
+        && canWriteDailyRecord(resource.data.companyId, resource.data.uid, resource.data.teamId)
+        && (request.resource.data.teamId == resource.data.teamId
+          || isCompanyOwner(resource.data.companyId));
+
 
       allow delete: if resource.data.companyId != null
         && sameCompany(resource.data.companyId)
@@ -1254,3 +1261,4 @@ service cloud.firestore {
     }
   }
 }
+
