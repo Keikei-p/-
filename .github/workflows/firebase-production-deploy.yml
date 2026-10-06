@@ -2,6 +2,9 @@ name: Firebase Rules Deploy (Zero-Cost)
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['firestore.rules']
 
 permissions:
   contents: read
@@ -23,7 +26,7 @@ jobs:
       - name: Checkout main
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
 
       - name: Verify Firebase credential
         shell: bash
@@ -38,6 +41,18 @@ jobs:
 
       - name: Install Firebase CLI
         run: npm install -g firebase-tools
+
+      - name: Setup Java for Firestore tests
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install Firestore test dependencies
+        run: npm install --prefix tests --ignore-scripts --package-lock=false
+
+      - name: Verify Firestore permissions before deploy
+        run: RULES_ONLY=1 firebase emulators:exec --project demo-sales-support --only firestore "node --test tests/rules.test.cjs"
 
       - name: Configure Firebase credentials
         shell: bash
