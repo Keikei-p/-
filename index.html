@@ -12822,13 +12822,18 @@ function startRealtimeListeners() {
     );
 
 
-  revenueGoals = [];
+  if (
+    typeof revenueGoalsCollectionQuery ===
+      "function"
+  ) {
 
-  const revenueGoalQuery =
-    revenueGoalsCollectionQuery();
+    revenueGoals = [];
+
+    const revenueGoalQuery =
+      revenueGoalsCollectionQuery();
 
 
-  if (revenueGoalQuery) {
+    if (revenueGoalQuery) {
 
     unsubscribeRevenueGoals =
       onSnapshot(
@@ -12869,6 +12874,8 @@ function startRealtimeListeners() {
 
         }
       );
+
+    }
 
   }
 
@@ -29508,7 +29515,9 @@ function renderSelectedTeamMemberDetail(
   if (
     canCurrentUserViewRevenueForTeam(
       team.id
-    )
+    ) &&
+    typeof buildTeamRevenueGoalProgress ===
+      "function"
   ) {
 
     const revenueGoalProgress =
