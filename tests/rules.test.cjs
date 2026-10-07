@@ -10,7 +10,7 @@ let env;
 const projectId='demo-sales-support';
 const company='company-a';
 const date='2026-10-06';
-const members={owner:{companyRole:'owner',role:'leader',teamId:'a'},leaderA:{role:'leader',teamId:'a'},leaderB:{role:'leader',teamId:'b'},helper:{role:'member',teamId:'b'},inactive:{role:'member',teamId:'b',active:false},foreign:{role:'member',teamId:'foreign-team',companyId:'company-b'}};
+const members={owner:{companyRole:'owner',role:'leader',teamId:'a',canViewRevenue:true},leaderA:{role:'leader',teamId:'a',canViewRevenue:true},leaderB:{role:'leader',teamId:'b',canViewRevenue:false},helper:{role:'member',teamId:'b',canViewRevenue:true},inactive:{role:'member',teamId:'b',active:false,canViewRevenue:true},foreign:{role:'member',teamId:'foreign-team',companyId:'company-b',canViewRevenue:true}};
 function dbFor(uid){return env.authenticatedContext(uid,{email:uid+'@example.test',email_verified:true}).firestore();}
 function key(uid='helper',day=date){return `${company}_${uid}_${day}`;}
 function payload(actor,uid='helper',teamId='a',day=date){return {companyId:company,uid,memberNameSnapshot:uid,teamId,teamNameSnapshot:teamId,date:day,workLocation:'テスト',results:{A:{productId:'A',count:2,revenuePerUnit:100}},totalCount:2,totalRevenue:200,reportStatus:'submitted',reportedAt:serverTimestamp(),createdByUid:actor,updatedByUid:actor,createdAt:serverTimestamp(),updatedAt:serverTimestamp()};}
@@ -125,4 +125,40 @@ test('transaction replacement removes deleted product and preserves creation met
  const before={id:ref.id,...(await getDoc(ref)).data()};
  await api.persistDailyRecord(ref,patch('owner',{companyId:company,uid:'helper',date,results:{B:{count:1,revenuePerUnit:50}},totalCount:1,totalRevenue:50}),before,api.recordRevision(before));
  const saved=(await getDoc(ref)).data();assert.deepEqual(saved.results,{B:{count:1,revenuePerUnit:50}});assert.deepEqual(saved.createdAt,before.createdAt);
+});
+
+
+function revenueGoalPayload(teamId='a',targetRevenue=3000000){
+ return {companyId:company,teamId,month:'2026-10',targetRevenue,createdAt:serverTimestamp(),updatedAt:serverTimestamp()};
+}
+
+test('owner can create and read revenue goals for any own-company team',async()=>{
+ const db=dbFor('owner');
+ await assertSucceeds(setDoc(doc(db,'revenueGoals','owner-a'),revenueGoalPayload('a')));
+ await assertSucceeds(setDoc(doc(db,'revenueGoals','owner-b'),revenueGoalPayload('b',2000000)));
+ assert.equal((await getDoc(doc(db,'revenueGoals','owner-a'))).data().targetRevenue,3000000);
+});
+
+test('revenue-enabled leader can manage own-team revenue goal but not another team',async()=>{
+ const db=dbFor('leaderA');
+ await assertSucceeds(setDoc(doc(db,'revenueGoals','leader-a'),revenueGoalPayload('a',1500000)));
+ await assertFails(setDoc(doc(db,'revenueGoals','leader-b'),revenueGoalPayload('b',1500000)));
+});
+
+test('revenue-enabled member can read own-team goal but cannot edit it',async()=>{
+ await env.withSecurityRulesDisabled(async c=>setDoc(doc(c.firestore(),'revenueGoals','team-b'),revenueGoalPayload('b',2200000)));
+ const db=dbFor('helper');
+ await assertSucceeds(getDoc(doc(db,'revenueGoals','team-b')));
+ await assertFails(updateDoc(doc(db,'revenueGoals','team-b'),{targetRevenue:2300000,updatedAt:serverTimestamp()}));
+});
+
+test('revenue goal stays hidden from users without permission and from other teams',async()=>{
+ await env.withSecurityRulesDisabled(async c=>{
+  const db=c.firestore();
+  await setDoc(doc(db,'revenueGoals','team-a'),revenueGoalPayload('a',1800000));
+  await setDoc(doc(db,'revenueGoals','team-b'),revenueGoalPayload('b',2200000));
+ });
+ await assertFails(getDoc(doc(dbFor('leaderB'),'revenueGoals','team-b')));
+ await assertFails(getDoc(doc(dbFor('helper'),'revenueGoals','team-a')));
+ await assertSucceeds(getDocsFromServer(query(collection(dbFor('helper'),'revenueGoals'),where('companyId','==',company),where('teamId','==','b'))));
 });
