@@ -91,6 +91,90 @@ test('missing-record read allowed only to active authenticated company members',
  await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(),'records','missing')));
 });
 
+
+test('revenue goals keep revenue permissions and team scope separate from count goals',async()=>{
+ const ownerDb=dbFor('owner');
+ const goalRef=doc(ownerDb,'revenueGoals','goal-a-2026-10');
+ const goalData={
+  companyId:company,
+  teamId:'a',
+  month:'2026-10',
+  targetRevenue:3000000,
+  createdAt:serverTimestamp(),
+  updatedAt:serverTimestamp()
+ };
+
+ await assertSucceeds(setDoc(goalRef,goalData));
+
+ const leaderADb=dbFor('leaderA');
+ const leaderBDb=dbFor('leaderB');
+ const helperDb=dbFor('helper');
+
+ await assertSucceeds(getDoc(doc(leaderADb,'revenueGoals','goal-a-2026-10')));
+ await assertFails(getDoc(doc(leaderBDb,'revenueGoals','goal-a-2026-10')));
+ await assertFails(getDoc(doc(helperDb,'revenueGoals','goal-a-2026-10')));
+
+ await assertSucceeds(updateDoc(
+  doc(leaderADb,'revenueGoals','goal-a-2026-10'),
+  {targetRevenue:3500000,updatedAt:serverTimestamp()}
+ ));
+
+ await assertFails(updateDoc(
+  doc(leaderBDb,'revenueGoals','goal-a-2026-10'),
+  {targetRevenue:9999999,updatedAt:serverTimestamp()}
+ ));
+
+ const saved=(await getDoc(goalRef)).data();
+ assert.equal(saved.targetRevenue,3500000);
+});
+
+test('explicit revenue-view member can read only own team revenue goal and cannot edit it',async()=>{
+ await env.withSecurityRulesDisabled(async c=>{
+  const db=c.firestore();
+  await updateDoc(doc(db,'users','helper'),{canViewRevenue:true});
+  await updateDoc(doc(db,'companies',company,'members','helper'),{canViewRevenue:true});
+  await setDoc(doc(db,'revenueGoals','goal-a'),{
+   companyId:company,teamId:'a',month:'2026-10',targetRevenue:1000000
+  });
+  await setDoc(doc(db,'revenueGoals','goal-b'),{
+   companyId:company,teamId:'b',month:'2026-10',targetRevenue:2000000
+  });
+ });
+
+ const db=dbFor('helper');
+
+ await assertSucceeds(getDoc(doc(db,'revenueGoals','goal-b')));
+ await assertFails(getDoc(doc(db,'revenueGoals','goal-a')));
+
+ await assertSucceeds(getDocsFromServer(query(
+  collection(db,'revenueGoals'),
+  where('companyId','==',company),
+  where('teamId','==','b')
+ )));
+
+ await assertFails(getDocsFromServer(query(
+  collection(db,'revenueGoals'),
+  where('companyId','==',company)
+ )));
+
+ await assertFails(updateDoc(
+  doc(db,'revenueGoals','goal-b'),
+  {targetRevenue:2500000,updatedAt:serverTimestamp()}
+ ));
+});
+
+test('revenue goal rejects negative targets',async()=>{
+ const db=dbFor('owner');
+ await assertFails(setDoc(doc(db,'revenueGoals','negative-goal'),{
+  companyId:company,
+  teamId:'a',
+  month:'2026-10',
+  targetRevenue:-1,
+  createdAt:serverTimestamp(),
+  updatedAt:serverTimestamp()
+ }));
+});
+
 function app(db){
  const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
  const source=name=>{let a=html.indexOf(`function ${name}(`);if(html.slice(a-6,a)==='async ')a-=6;return html.slice(a,html.indexOf('\n}',a)+2);};
