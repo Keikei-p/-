@@ -5993,6 +5993,30 @@ body.product-reordering .product-list {
     </div>
 
     <div
+      id="teamRevenueGoalSection"
+      class="form-group"
+      style="display:none;">
+
+      <label for="teamRevenueGoalInput">
+        売上目標
+      </label>
+
+      <input
+        id="teamRevenueGoalInput"
+        type="number"
+        min="0"
+        step="1000"
+        inputmode="numeric"
+        placeholder="例：3000000">
+
+      <div
+        style="margin-top:7px;color:var(--sub);font-size:11px;line-height:1.6;">
+        売上閲覧権限がある人だけ表示されます。件数目標とは別に保存します。
+      </div>
+
+    </div>
+
+    <div
       id="teamGoalProductList"
       class="goal-product-list">
     </div>
@@ -7194,6 +7218,16 @@ const teamGoalMonth =
     "teamGoalMonth"
   );
 
+const teamRevenueGoalSection =
+  document.getElementById(
+    "teamRevenueGoalSection"
+  );
+
+const teamRevenueGoalInput =
+  document.getElementById(
+    "teamRevenueGoalInput"
+  );
+
 const teamGoalProductList =
   document.getElementById(
     "teamGoalProductList"
@@ -7273,6 +7307,7 @@ let products = [];
 let members = [];
 let records = [];
 let goals = [];
+let revenueGoals = [];
 
 let currentUserData = null;
 let currentCompanyData = null;
@@ -7906,6 +7941,7 @@ let unsubscribeTeams = null;
 let unsubscribeProducts = null;
 let unsubscribeRecords = null;
 let unsubscribeGoals = null;
+let unsubscribeRevenueGoals = null;
 
 
 /* =====================================================
@@ -8856,6 +8892,74 @@ function companyCollectionQuery(
       "companyId",
       "==",
       currentUserData.companyId
+    )
+  );
+
+}
+
+
+function revenueGoalsCollectionQuery() {
+
+  if (
+    !currentUserData?.companyId ||
+    !canCurrentUserViewRevenue()
+  ) {
+
+    return null;
+
+  }
+
+
+  const companyId =
+    currentUserData.companyId;
+
+
+  if (
+    isCurrentCompanyMaster() ||
+    isCurrentCompanyOwner()
+  ) {
+
+    return query(
+      collection(
+        db,
+        "revenueGoals"
+      ),
+      where(
+        "companyId",
+        "==",
+        companyId
+      )
+    );
+
+  }
+
+
+  const teamId =
+    currentUserData?.teamId ||
+    null;
+
+
+  if (!teamId) {
+
+    return null;
+
+  }
+
+
+  return query(
+    collection(
+      db,
+      "revenueGoals"
+    ),
+    where(
+      "companyId",
+      "==",
+      companyId
+    ),
+    where(
+      "teamId",
+      "==",
+      teamId
     )
   );
 
@@ -12717,6 +12821,57 @@ function startRealtimeListeners() {
       }
     );
 
+
+  revenueGoals = [];
+
+  const revenueGoalQuery =
+    revenueGoalsCollectionQuery();
+
+
+  if (revenueGoalQuery) {
+
+    unsubscribeRevenueGoals =
+      onSnapshot(
+        revenueGoalQuery,
+        snapshot => {
+
+          revenueGoals = [];
+
+          snapshot.forEach(
+            goalDoc => {
+
+              revenueGoals.push({
+
+                id:
+                  goalDoc.id,
+
+                ...goalDoc.data()
+
+              });
+
+            }
+          );
+
+
+          renderDashboard();
+
+        },
+        error => {
+
+          revenueGoals = [];
+
+          console.error(
+            "売上目標リアルタイム監視エラー:",
+            error
+          );
+
+          renderDashboard();
+
+        }
+      );
+
+  }
+
 }
 
 
@@ -12777,6 +12932,18 @@ function stopRealtimeListeners() {
     unsubscribeGoals();
 
     unsubscribeGoals =
+      null;
+
+  }
+
+
+  if (
+    unsubscribeRevenueGoals
+  ) {
+
+    unsubscribeRevenueGoals();
+
+    unsubscribeRevenueGoals =
       null;
 
   }
@@ -13335,6 +13502,190 @@ function getTeamGoal(
 }
 
 
+function getTeamRevenueGoal(
+  teamId,
+  month
+) {
+
+  return revenueGoals.find(
+    goal =>
+      goal.teamId ===
+        teamId &&
+      goal.month ===
+        month
+  ) || null;
+
+}
+
+
+function canEditTeamRevenueGoal(
+  teamId
+) {
+
+  return (
+    canEditTeamGoal(
+      teamId
+    ) &&
+    canCurrentUserViewRevenueForTeam(
+      teamId
+    )
+  );
+
+}
+
+
+function renderTeamRevenueGoalInput() {
+
+  if (
+    !teamRevenueGoalSection ||
+    !teamRevenueGoalInput
+  ) {
+
+    return;
+
+  }
+
+
+  const allowed =
+    !!editingGoalTeamId &&
+    canEditTeamRevenueGoal(
+      editingGoalTeamId
+    );
+
+
+  teamRevenueGoalSection.style.display =
+    allowed
+      ? ""
+      : "none";
+
+
+  if (!allowed) {
+
+    teamRevenueGoalInput.value =
+      "";
+
+    return;
+
+  }
+
+
+  const revenueGoal =
+    getTeamRevenueGoal(
+      editingGoalTeamId,
+      teamGoalMonth.value
+    );
+
+
+  teamRevenueGoalInput.value =
+    Number(
+      revenueGoal?.targetRevenue ||
+      0
+    ) >
+      0
+      ? String(
+          Number(
+            revenueGoal.targetRevenue
+          )
+        )
+      : "";
+
+}
+
+
+function buildTeamRevenueGoalProgress(
+  team,
+  monthly
+) {
+
+  const goal =
+    getTeamRevenueGoal(
+      team.id,
+      dashboardMonth.value
+    );
+
+  const targetRevenue =
+    Math.max(
+      0,
+      Number(
+        goal?.targetRevenue ||
+        0
+      )
+    );
+
+
+  let actualRevenue =
+    0;
+
+
+  monthly
+    .filter(
+      record =>
+        recordBelongsToTeam(
+          record,
+          team
+        )
+    )
+    .forEach(
+      record => {
+
+        getDisplayRecordResults(
+          record
+        ).forEach(
+          result => {
+
+            const count =
+              Number(
+                result.count ||
+                0
+              );
+
+            actualRevenue +=
+              count *
+              Number(
+                result.revenuePerUnit ||
+                0
+              );
+
+          }
+        );
+
+      }
+    );
+
+
+  const remainingRevenue =
+    Math.max(
+      targetRevenue -
+        actualRevenue,
+      0
+    );
+
+  const revenueProgress =
+    targetRevenue >
+      0
+      ? Math.round(
+          actualRevenue /
+            targetRevenue *
+            100
+        )
+      : 0;
+
+
+  return {
+    targetRevenue,
+    actualRevenue,
+    remainingRevenue,
+    revenueProgress,
+    revenueBarProgress:
+      Math.min(
+        revenueProgress,
+        100
+      )
+  };
+
+}
+
+
 function renderTeamGoalInputs() {
 
   teamGoalProductList.innerHTML =
@@ -13471,6 +13822,8 @@ function openTeamGoalModal(
 
   renderTeamGoalInputs();
 
+  renderTeamRevenueGoalInput();
+
   teamGoalModal.style.display =
     "flex";
 
@@ -13494,7 +13847,13 @@ cancelTeamGoalModal.onclick =
 
 teamGoalMonth.addEventListener(
   "change",
-  renderTeamGoalInputs
+  () => {
+
+    renderTeamGoalInputs();
+
+    renderTeamRevenueGoalInput();
+
+  }
 );
 
 
@@ -13579,6 +13938,52 @@ saveTeamGoalModal.onclick =
     const month =
       teamGoalMonth.value;
 
+
+    let targetRevenue =
+      null;
+
+    let shouldSaveRevenueGoal =
+      false;
+
+
+    if (
+      canEditTeamRevenueGoal(
+        editingGoalTeamId
+      )
+    ) {
+
+      targetRevenue =
+        Number(
+          teamRevenueGoalInput.value ||
+          0
+        );
+
+
+      if (
+        !Number.isFinite(
+          targetRevenue
+        ) ||
+        !Number.isInteger(
+          targetRevenue
+        ) ||
+        targetRevenue < 0
+      ) {
+
+        showError(
+          "売上目標は0円以上の整数で入力してください。"
+        );
+
+        return;
+
+      }
+
+
+      shouldSaveRevenueGoal =
+        true;
+
+    }
+
+
     const existing =
       getTeamGoal(
         editingGoalTeamId,
@@ -13632,6 +14037,61 @@ saveTeamGoalModal.onclick =
           merge: true
         }
       );
+
+
+      if (
+        shouldSaveRevenueGoal
+      ) {
+
+        const existingRevenueGoal =
+          getTeamRevenueGoal(
+            editingGoalTeamId,
+            month
+          );
+
+        const revenueGoalId =
+          existingRevenueGoal?.id ||
+          `${currentUserData.companyId}_${editingGoalTeamId}_${month}`;
+
+        const revenueGoalData = {
+
+          companyId:
+            currentUserData.companyId,
+
+          teamId:
+            editingGoalTeamId,
+
+          month,
+
+          targetRevenue,
+
+          updatedAt:
+            serverTimestamp()
+
+        };
+
+
+        if (!existingRevenueGoal) {
+
+          revenueGoalData.createdAt =
+            serverTimestamp();
+
+        }
+
+
+        await setDoc(
+          doc(
+            db,
+            "revenueGoals",
+            revenueGoalId
+          ),
+          revenueGoalData,
+          {
+            merge: true
+          }
+        );
+
+      }
 
 
       closeTeamGoalModal();
@@ -29046,6 +29506,83 @@ function renderSelectedTeamMemberDetail(
 
 
   if (
+    canCurrentUserViewRevenueForTeam(
+      team.id
+    )
+  ) {
+
+    const revenueGoalProgress =
+      buildTeamRevenueGoalProgress(
+        team,
+        monthly
+      );
+
+    const revenueGoalSummary =
+      document.createElement(
+        "div"
+      );
+
+    revenueGoalSummary.className =
+      "team-goal-summary";
+
+
+    if (
+      revenueGoalProgress.targetRevenue >
+      0
+    ) {
+
+      revenueGoalSummary.innerHTML = `
+        <div class="team-goal-summary-top">
+          <div class="team-goal-summary-title">
+            💰 今月の売上目標進捗
+          </div>
+          <div class="team-goal-summary-total">
+            目標 ${formatYen(
+              revenueGoalProgress.targetRevenue
+            )} /
+            残り ${formatYen(
+              revenueGoalProgress.remainingRevenue
+            )} /
+            進捗 ${revenueGoalProgress.revenueProgress}%
+          </div>
+        </div>
+        <div class="goal-progress-track">
+          <div
+            class="goal-progress-bar"
+            style="width:${revenueGoalProgress.revenueBarProgress}%;">
+          </div>
+        </div>
+        <div class="team-goal-product-sub" style="margin-top:7px;">
+          現在売上 ${formatYen(
+            revenueGoalProgress.actualRevenue
+          )}
+        </div>
+      `;
+
+    } else {
+
+      revenueGoalSummary.innerHTML = `
+        <div class="team-goal-summary-top">
+          <div class="team-goal-summary-title">
+            💰 今月の売上目標進捗
+          </div>
+          <div class="team-goal-summary-total">
+            売上目標未設定
+          </div>
+        </div>
+      `;
+
+    }
+
+
+    container.appendChild(
+      revenueGoalSummary
+    );
+
+  }
+
+
+  if (
     memberRows.length ===
     0
   ) {
@@ -29518,6 +30055,19 @@ function renderAllTeamsOverview(
           monthly
         );
 
+      const canViewTeamRevenue =
+        canCurrentUserViewRevenueForTeam(
+          team.id
+        );
+
+      const revenueGoalProgress =
+        canViewTeamRevenue
+          ? buildTeamRevenueGoalProgress(
+              team,
+              monthly
+            )
+          : null;
+
 
       button.innerHTML = `
         <div class="team-overview-card-name">
@@ -29546,6 +30096,20 @@ function renderAllTeamsOverview(
               : "目標未設定"
           }
         </div>
+        ${
+          canViewTeamRevenue
+            ? `
+              <div class="team-overview-card-goal">
+                ${
+                  revenueGoalProgress.targetRevenue >
+                    0
+                    ? `売上目標 ${formatYen(revenueGoalProgress.targetRevenue)} / 残り ${formatYen(revenueGoalProgress.remainingRevenue)} / 進捗 ${revenueGoalProgress.revenueProgress}%`
+                    : "売上目標未設定"
+                }
+              </div>
+            `
+            : ""
+        }
       `;
 
 
