@@ -103,7 +103,7 @@ test('Records and goals listener failures visibly warn that values can be stale'
   const subscriptions=[];const warnings=[];
   const ctx=context(['startRealtimeListeners'],{
     stopRealtimeListeners:()=>{},isCurrentCompanyManager:()=>false,currentUser:null,
-    companyCollectionQuery:n=>n,recordsCollectionQuery:()=> 'records',
+    companyCollectionQuery:n=>n,recordsCollectionQuery:()=> 'records',revenueGoalsCollectionQuery:()=>null,
     onSnapshot:(query,next,error)=>{subscriptions.push({query,error});return ()=>{};},
     console:{error:()=>{}},databaseStatus:element(),showError:m=>warnings.push(m)
   });
@@ -121,6 +121,7 @@ function textOf(node) { return node.innerHTML + node.textContent + node.children
 test('Hidden team revenue is labeled hidden instead of showing a false zero', () => {
   const ctx=context(['renderSelectedTeamMemberDetail'],{document,members:[],
     recordBelongsToTeam:()=>false,buildTeamGoalProgress:()=>({totalTarget:0}),
+    buildTeamRevenueGoalProgress:()=>({targetRevenue:0,actualRevenue:0,remainingRevenue:0,progress:0,barProgress:0}),
     escapeHtml:s=>s,formatYen:v=>`¥${v}`,canCurrentUserViewRevenueForTeam:()=>false});
   const container=element();ctx.renderSelectedTeamMemberDetail(container,{id:'other',name:'他班'},[]);
   assert(textOf(container).includes('売上非表示'));assert(!textOf(container).includes('¥0'));

@@ -1259,6 +1259,79 @@ service cloud.firestore {
           )
         );
     }
+
+    match /revenueGoals/{goalId} {
+      allow read: if resource.data.companyId != null
+        && sameCompany(resource.data.companyId)
+        && (
+          isCompanyOwner(resource.data.companyId)
+          || (
+            canViewRevenue(resource.data.companyId)
+            && resource.data.teamId
+              == get(memberPath(resource.data.companyId, request.auth.uid)).data.teamId
+          )
+        );
+
+      allow create: if request.resource.data.keys().hasOnly([
+          'companyId', 'teamId', 'month', 'targetRevenue',
+          'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.companyId != null
+        && currentCompanyId() == request.resource.data.companyId
+        && request.resource.data.teamId is string
+        && validSelectableTeam(
+          request.resource.data.companyId,
+          request.resource.data.teamId
+        )
+        && request.resource.data.month is string
+        && request.resource.data.month.size() == 7
+        && request.resource.data.targetRevenue is number
+        && request.resource.data.targetRevenue >= 0
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && (
+          isCompanyOwner(request.resource.data.companyId)
+          || (
+            canViewRevenue(request.resource.data.companyId)
+            && isLeaderOfTeam(
+              request.resource.data.companyId,
+              request.resource.data.teamId
+            )
+          )
+        );
+
+      allow update: if resource.data.companyId != null
+        && request.resource.data.companyId == resource.data.companyId
+        && request.resource.data.teamId == resource.data.teamId
+        && request.resource.data.month == resource.data.month
+        && request.resource.data.targetRevenue is number
+        && request.resource.data.targetRevenue >= 0
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['targetRevenue', 'updatedAt'])
+        && (
+          isCompanyOwner(resource.data.companyId)
+          || (
+            canViewRevenue(resource.data.companyId)
+            && isLeaderOfTeam(
+              resource.data.companyId,
+              resource.data.teamId
+            )
+          )
+        );
+
+      allow delete: if resource.data.companyId != null
+        && (
+          isCompanyOwner(resource.data.companyId)
+          || (
+            canViewRevenue(resource.data.companyId)
+            && isLeaderOfTeam(
+              resource.data.companyId,
+              resource.data.teamId
+            )
+          )
+        );
+    }
   }
 }
 
