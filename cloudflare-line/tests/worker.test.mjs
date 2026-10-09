@@ -12,6 +12,7 @@ import {
 test('19:00 start repeats hourly on the same day and stops at midnight', () => {
   assert.equal(shouldSendReminderAt('19:00','18:55'),false);
   assert.equal(shouldSendReminderAt('19:00','19:00'),true);
+  assert.equal(shouldSendReminderAt('19:00','19:03'),true); // delayed Cron
   assert.equal(shouldSendReminderAt('19:00','19:05'),false);
   assert.equal(shouldSendReminderAt('19:00','19:30'),false);
   assert.equal(shouldSendReminderAt('19:00','20:00'),true);
