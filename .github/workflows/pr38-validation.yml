@@ -38,6 +38,9 @@ jobs:
             node --check cloudflare-line/src/index.js
           fi
 
+      - name: Test LINE reminder scheduling, completion and retry safety
+        run: node --test cloudflare-line/tests/worker.test.mjs
+
       - name: Install Functions dependencies
         working-directory: functions
         run: npm install --ignore-scripts --package-lock=false
