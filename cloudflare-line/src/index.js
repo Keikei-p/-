@@ -152,14 +152,22 @@ async function freeLineGuard(env,groupId){
     cap:LINE_MONTHLY_HARD_CAP
   };
 }
-async function push(env,to,text){
-  const r=await line(env,"/v2/bot/message/push",{method:"POST",body:JSON.stringify({to,messages:[{type:"text",text}]})});
+async function push(env,to,text,retryKey){
+  const r=await line(env,"/v2/bot/message/push",{
+    method:"POST",
+    headers:{"X-Line-Retry-Key":retryKey},
+    body:JSON.stringify({to,messages:[{type:"text",text}]})
+  });
+  // LINEが同じリトライキーで既に受理した場合、二重配信せず正常終了する。
+  if(r.status===409&&r.headers.get("x-line-accepted-request-id"))return;
   if(!r.ok){const e=new Error(`LINE push ${r.status}: ${await r.text()}`);e.status=r.status;throw e;}
 }
 async function pushRetry(env,to,text){
+  // タイムアウト後でも同じ通知を2通送らないため全試行で同一キーを使う。
+  const retryKey=crypto.randomUUID();
   let last;
   for(let n=1;n<=3;n++){
-    try{await push(env,to,text);return n;}catch(e){
+    try{await push(env,to,text,retryKey);return n;}catch(e){
       last=e;e.attempt=n;
       const s=Number(e.status||0), retry=s===0||s===429||s>=500;
       if(!retry||n===3)throw e;
@@ -213,6 +221,15 @@ function tokyo(){
   const p=Object.fromEntries(f.formatToParts(new Date()).map(x=>[x.type,x.value]));
   const w={Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6};
   return{date:`${p.year}-${p.month}-${p.day}`,time:`${p.hour}:${p.minute}`,weekday:w[p.weekday]};
+}
+function minutesOfDay(value){
+  const m=String(value||"").match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+  return m?Number(m[1])*60+Number(m[2]):null;
+}
+function shouldSendReminderAt(startTime,currentTime){
+  const start=minutesOfDay(startTime),current=minutesOfDay(currentTime);
+  // 5分刻みのCronを維持し、開始時刻以降は未報告なら1時間ごとに再確認。
+  return start!==null&&current!==null&&start%5===0&&current>=start&&(current-start)%60===0;
 }
 function teamForDate(member,date){
   const h=Array.isArray(member?.teamHistory)?member.teamHistory.filter(x=>x&&typeof x.effectiveDate==="string").sort((a,b)=>a.effectiveDate.localeCompare(b.effectiveDate)):[];
@@ -273,7 +290,7 @@ async function reminders(env){
       if(c.active===false)continue;
       const s=await getDoc(env,`companies/${c.id}/settings/notifications`);
       const days=Array.isArray(s?.weekdays)?s.weekdays.map(Number):[];
-      if(!s||s.enabled!==true||s.lineEnabled!==true||!s.lineGroupId||s.time!==n.time||!days.includes(n.weekday))continue;
+      if(!s||s.enabled!==true||s.lineEnabled!==true||!s.lineGroupId||!shouldSendReminderAt(s.time,n.time)||!days.includes(n.weekday))continue;
       const miss=await missing(env,c.id,n.date,s.reportCompletionMode==="team_any"?"team_any":"individual"); if(!miss.length)continue;
       const key=[c.id,n.date,n.time.replace(":","")].join("_");
 
@@ -348,3 +365,6 @@ export default{
   },
   async scheduled(_c,env,ctx){ctx.waitUntil(reminders(env));}
 };
+
+// Pure scheduling helpers and delivery wrapper exported for side-effect-free unit tests.
+export {shouldSendReminderAt,buildReminderOnlyMessage,teamForDate,missing,pushRetry,freeLineGuard};
