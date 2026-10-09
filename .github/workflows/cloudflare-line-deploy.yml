@@ -57,6 +57,9 @@ jobs:
       - name: Test notification safety before production deployment
         run: node --test tests/worker.test.mjs
 
+      - name: Validate Cloudflare Worker bundle without deploying
+        run: npx wrangler deploy --dry-run
+
       - name: Bootstrap Worker safely
         run: npm run deploy
 
