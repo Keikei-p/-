@@ -2,6 +2,14 @@ name: Deploy Zero-Cost LINE Worker
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "cloudflare-line/src/**"
+      - "cloudflare-line/tests/**"
+      - "cloudflare-line/wrangler.toml"
+      - "cloudflare-line/package.json"
+      - ".github/workflows/cloudflare-line-deploy.yml"
 
 permissions:
   contents: read
@@ -45,6 +53,12 @@ jobs:
 
       - name: Syntax check
         run: npm run check
+
+      - name: Test notification safety before production deployment
+        run: node --test tests/worker.test.mjs
+
+      - name: Validate Cloudflare Worker bundle without deploying
+        run: npx wrangler deploy --dry-run
 
       - name: Bootstrap Worker safely
         run: npm run deploy

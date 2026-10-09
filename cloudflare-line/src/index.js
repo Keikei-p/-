@@ -152,14 +152,22 @@ async function freeLineGuard(env,groupId){
     cap:LINE_MONTHLY_HARD_CAP
   };
 }
-async function push(env,to,text){
-  const r=await line(env,"/v2/bot/message/push",{method:"POST",body:JSON.stringify({to,messages:[{type:"text",text}]})});
+async function push(env,to,text,retryKey){
+  const r=await line(env,"/v2/bot/message/push",{
+    method:"POST",
+    headers:{"X-Line-Retry-Key":retryKey},
+    body:JSON.stringify({to,messages:[{type:"text",text}]})
+  });
+  // LINEが同じリトライキーで既に受理した場合、二重配信せず正常終了する。
+  if(r.status===409&&r.headers.get("x-line-accepted-request-id"))return;
   if(!r.ok){const e=new Error(`LINE push ${r.status}: ${await r.text()}`);e.status=r.status;throw e;}
 }
 async function pushRetry(env,to,text){
+  // タイムアウト後でも同じ通知を2通送らないため全試行で同一キーを使う。
+  const retryKey=crypto.randomUUID();
   let last;
   for(let n=1;n<=3;n++){
-    try{await push(env,to,text);return n;}catch(e){
+    try{await push(env,to,text,retryKey);return n;}catch(e){
       last=e;e.attempt=n;
       const s=Number(e.status||0), retry=s===0||s===429||s>=500;
       if(!retry||n===3)throw e;
@@ -214,6 +222,22 @@ function tokyo(){
   const w={Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6};
   return{date:`${p.year}-${p.month}-${p.day}`,time:`${p.hour}:${p.minute}`,weekday:w[p.weekday]};
 }
+function minutesOfDay(value){
+  const m=String(value||"").match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+  return m?Number(m[1])*60+Number(m[2]):null;
+}
+function reminderSlot(startTime,currentTime){
+  const start=minutesOfDay(startTime),current=minutesOfDay(currentTime);
+  if(start===null||current===null||start%5!==0||current<start)return null;
+  const elapsed=current-start,late=elapsed%60;
+  // Cloudflare Cronが数分遅れて起動しても、同じ時間枠に1回だけ送る。
+  if(late>=5)return null;
+  const planned=current-late;
+  return `${String(Math.floor(planned/60)).padStart(2,"0")}:${String(planned%60).padStart(2,"0")}`;
+}
+function shouldSendReminderAt(startTime,currentTime){
+  return reminderSlot(startTime,currentTime)!==null;
+}
 function teamForDate(member,date){
   const h=Array.isArray(member?.teamHistory)?member.teamHistory.filter(x=>x&&typeof x.effectiveDate==="string").sort((a,b)=>a.effectiveDate.localeCompare(b.effectiveDate)):[];
   if(!h.length)return member?.teamId||null;
@@ -225,6 +249,9 @@ async function missing(env,cid,date,reportCompletionMode="individual"){
     query(env,"teams",[strFilter("companyId",cid)]),
     query(env,"records",[strFilter("companyId",cid),strFilter("date",date)])
   ]);
+  return missingFromSnapshot(members,teams,records,date,reportCompletionMode);
+}
+function missingFromSnapshot(members,teams,records,date,reportCompletionMode="individual"){
   const names=new Map(teams.map(t=>[t.id,String(t.name||"班")]));
   const membersById=new Map(members.map(m=>[String(m.id),m]));
   const reported=new Set(records.filter(r=>r.uid).map(r=>String(r.uid)));
@@ -265,17 +292,17 @@ async function missing(env,cid,date,reportCompletionMode="individual"){
 }
 async function reminders(env){
   if(String(env.AUTOMATION_ENABLED||"false").toLowerCase()!=="true")return;
-  const n=tokyo(), minute=Number(n.time.split(":")[1]);
-  if(!Number.isInteger(minute)||minute%5!==0)return;
+  const n=tokyo();
   const companies=await listCol(env,"companies");
   for(const c of companies){
     try{
       if(c.active===false)continue;
       const s=await getDoc(env,`companies/${c.id}/settings/notifications`);
       const days=Array.isArray(s?.weekdays)?s.weekdays.map(Number):[];
-      if(!s||s.enabled!==true||s.lineEnabled!==true||!s.lineGroupId||s.time!==n.time||!days.includes(n.weekday))continue;
+      const slot=reminderSlot(s?.time,n.time);
+      if(!s||s.enabled!==true||s.lineEnabled!==true||!s.lineGroupId||!slot||!days.includes(n.weekday))continue;
       const miss=await missing(env,c.id,n.date,s.reportCompletionMode==="team_any"?"team_any":"individual"); if(!miss.length)continue;
-      const key=[c.id,n.date,n.time.replace(":","")].join("_");
+      const key=[c.id,n.date,slot.replace(":","")].join("_");
 
       let freeGuard;
       try{
@@ -285,7 +312,7 @@ async function reminders(env){
         await create(env,"notificationDispatches",key,{
           companyId:c.id,
           date:n.date,
-          time:n.time,
+          time:slot,
           status:"blocked_free_guard",
           reason:"quota_check_failed",
           error:String(e.message||e).slice(0,1000),
@@ -298,7 +325,7 @@ async function reminders(env){
         await create(env,"notificationDispatches",key,{
           companyId:c.id,
           date:n.date,
-          time:n.time,
+          time:slot,
           status:"blocked_free_guard",
           reason:"monthly_line_cap",
           lineUsage:freeGuard.used,
@@ -312,7 +339,7 @@ async function reminders(env){
       if(!await create(env,"notificationDispatches",key,{
         companyId:c.id,
         date:n.date,
-        time:n.time,
+        time:slot,
         status:"processing",
         lineUsageBeforeSend:freeGuard.used,
         estimatedRecipients:freeGuard.recipients,
@@ -348,3 +375,6 @@ export default{
   },
   async scheduled(_c,env,ctx){ctx.waitUntil(reminders(env));}
 };
+
+// Pure scheduling helpers and delivery wrapper exported for side-effect-free unit tests.
+export {shouldSendReminderAt,buildReminderOnlyMessage,teamForDate,missingFromSnapshot,missing,pushRetry,freeLineGuard};

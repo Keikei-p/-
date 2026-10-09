@@ -9,10 +9,10 @@ Cloudflare Workers Freeへ移行して「課金より停止を優先する」構
 
 - Webhook: `/line-webhook`
 - ヘルスチェック: `/health`
-- 未報告チェック: 5分ごと
+- 未報告チェック: 5分ごとのCron。設定開始時刻から当日中1時間ごとに未報告班のみ通知
 - Firestore: REST API + Service Account
 - LINE Secrets: Cloudflare Worker Secret
-- 初期状態: `AUTOMATION_ENABLED=false`
+- 本番設定: `AUTOMATION_ENABLED=true`（会社の通知設定やLINE連携がOFFなら送信しません）
 
 ## Worker Secrets
 
@@ -28,7 +28,7 @@ Cloudflare Workers Freeへ移行して「課金より停止を優先する」構
 2. `/health` が200になることを確認
 3. LINE DevelopersのWebhook URLをWorkerの `/line-webhook` に変更
 4. アプリから新しい連携コードを発行し、LINEグループで連携テスト
-5. `AUTOMATION_ENABLED=true` に変更してWorker再デプロイ
+5. `AUTOMATION_ENABLED=true` と会社側の通知設定・LINE連携を確認
 6. 未報告通知の実送信を確認
 7. Firebaseの `lineWebhook` と `sendMissingReportReminders` を削除
 8. FirebaseをSparkへ戻す
@@ -50,7 +50,7 @@ Sparkへ戻すのも最後です。
 - Reply APIによる連携確認はLINEの配信通数カウント対象外
 - Cloudflare WorkerはCPU 10ms / 50 subrequestsの上限
 - Cronは5分おき
-- 初期状態の自動通知はOFF
+- Workerは自動チェックON、会社側の通知設定は初期OFF（有効化・連携した会社のみ通知）
 
 ### 0円固定の最終条件
 
@@ -61,3 +61,13 @@ Sparkへ戻すのも最後です。
 5. 有料Google Cloudサービスを同じFirebaseプロジェクトで新たに有効化しない
 
 この条件を維持した場合、上限到達時は課金ではなく機能停止を優先します。
+
+## 未報告LINE通知の再確認（2026-10-10）
+
+- 新規の会社設定は19:00開始。既に保存されている通知時刻は勝手に変更しないため、既存の会社はアプリの「通知設定」で確認してください。
+- 当日中、開始時刻から1時間ごとに未報告を再評価します。全班の報告完了後は送信しません。
+- Cronの数分程度の遅延は同じ予定時刻として扱います。
+- LINEへの再試行は `X-Line-Retry-Key` を使い、二重送信を避けます。
+- 無料通数上限（月180通）を超えそうな場合や利用数が確認できない場合は送信せず、`notificationDispatches` にブロック状態を記録します。
+- サービス稼働（`/health` の200）とLINEの実着信は別です。LINEグループの実着信と `notificationDispatches` の `sent` / `failed` / `blocked_free_guard` を確認してください。
+- 以後、`main` にWorker関連コードがマージされるとGitHub Actionsが構文・単体テスト後に自動デプロイします。
