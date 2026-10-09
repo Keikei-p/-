@@ -4868,8 +4868,8 @@ body.product-reordering .product-list {
 
     <div class="form-group">
       <label for="notificationTimeInput">通知時刻</label>
-      <input id="notificationTimeInput" type="time" step="300" value="19:30">
-      <div style="margin-top:6px;color:var(--sub);font-size:10px;">無料運用のため5分刻みで設定します。</div>
+      <input id="notificationTimeInput" type="time" step="300" value="19:00">
+      <div style="margin-top:6px;color:var(--sub);font-size:10px;">無料運用のため5分刻み。未報告の場合、当日中は開始時刻から1時間ごとに再確認・通知します（通数上限到達時は停止）。</div>
     </div>
 
     <label class="notification-switch">
@@ -7863,7 +7863,7 @@ function setRecordSaveInProgress(saving) {
 let notificationSettings = {
   enabled: false,
   weekdays: [1, 2, 3, 4, 5],
-  time: "19:30",
+  time: "19:00",
   reportCompletionMode: "individual",
   lineEnabled: false,
   lineGroupId: "",
@@ -22032,7 +22032,7 @@ function normalizeNotificationSettings(
         data.time || ""
       )
         ? data.time
-        : "19:30",
+        : "19:00",
     reportCompletionMode:
       data.reportCompletionMode ===
         "team_any"
