@@ -242,6 +242,9 @@ async function missing(env,cid,date,reportCompletionMode="individual"){
     query(env,"teams",[strFilter("companyId",cid)]),
     query(env,"records",[strFilter("companyId",cid),strFilter("date",date)])
   ]);
+  return missingFromSnapshot(members,teams,records,date,reportCompletionMode);
+}
+function missingFromSnapshot(members,teams,records,date,reportCompletionMode="individual"){
   const names=new Map(teams.map(t=>[t.id,String(t.name||"班")]));
   const membersById=new Map(members.map(m=>[String(m.id),m]));
   const reported=new Set(records.filter(r=>r.uid).map(r=>String(r.uid)));
@@ -367,4 +370,4 @@ export default{
 };
 
 // Pure scheduling helpers and delivery wrapper exported for side-effect-free unit tests.
-export {shouldSendReminderAt,buildReminderOnlyMessage,teamForDate,missing,pushRetry,freeLineGuard};
+export {shouldSendReminderAt,buildReminderOnlyMessage,teamForDate,missingFromSnapshot,missing,pushRetry,freeLineGuard};
