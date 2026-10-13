@@ -2941,6 +2941,17 @@ body.product-reordering .product-list {
   gap: 7px;
 }
 
+/* 班ランキングの3モードのみ3列にし、既存の収益グラフUIを変えない */
+.team-ranking-toolbar {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.team-ranking-toolbar .revenue-chart-mode {
+  min-width: 0;
+  font-size: 11px;
+  padding: 8px 4px;
+  line-height: 1.4;
+}
+
 .revenue-chart-mode {
   min-height: 42px;
   padding: 8px 10px;
@@ -5409,21 +5420,29 @@ body.product-reordering .product-list {
         class="dashboard-app-content"
         hidden>
 
-        <div class="revenue-chart-toolbar" style="margin-bottom:12px;">
-          <button
-            id="teamRankingProgressButton"
-            class="revenue-chart-mode"
-            type="button"
-            aria-pressed="true">
-            目標進捗率
-          </button>
-
+        <div class="revenue-chart-toolbar team-ranking-toolbar" style="margin-bottom:12px;">
           <button
             id="teamRankingRevenueButton"
             class="revenue-chart-mode"
             type="button"
             aria-pressed="false">
             売上
+          </button>
+
+          <button
+            id="teamRankingRevenueProgressButton"
+            class="revenue-chart-mode"
+            type="button"
+            aria-pressed="false">
+            目標売上進捗
+          </button>
+
+          <button
+            id="teamRankingProgressButton"
+            class="revenue-chart-mode"
+            type="button"
+            aria-pressed="true">
+            目標件数進捗
           </button>
         </div>
 
@@ -6856,6 +6875,11 @@ const teamRankingProgressButton =
 const teamRankingRevenueButton =
   document.getElementById(
     "teamRankingRevenueButton"
+  );
+
+const teamRankingRevenueProgressButton =
+  document.getElementById(
+    "teamRankingRevenueProgressButton"
   );
 
 const revenueChartToggle =
@@ -11704,9 +11728,22 @@ function applyRevenueVisibility() {
   }
 
   if (
+    teamRankingRevenueProgressButton
+  ) {
+
+    teamRankingRevenueProgressButton.style.display =
+      allowed
+        ? ""
+        : "none";
+
+  }
+
+  if (
     !allowed &&
-    teamRankingMode ===
-      "revenue"
+    (
+      teamRankingMode === "revenue" ||
+      teamRankingMode === "revenueProgress"
+    )
   ) {
 
     teamRankingMode =
@@ -21914,6 +21951,29 @@ teamRankingProgressButton.onclick =
   };
 
 
+teamRankingRevenueProgressButton.onclick =
+  () => {
+
+    if (
+      !canCurrentUserViewRevenue()
+    ) {
+
+      showError(
+        "売上目標進捗ランキングを見る権限がありません。"
+      );
+
+      return;
+
+    }
+
+    teamRankingMode =
+      "revenueProgress";
+
+    renderDashboard();
+
+  };
+
+
 teamRankingRevenueButton.onclick =
   () => {
 
@@ -30399,179 +30459,170 @@ function renderIndividualRanking(
    班ランキング
 ===================================================== */
 
-function renderTeamRanking(
+function buildTeamRankingRows(
   teamMap,
-  monthly = []
+  monthly,
+  mode
 ) {
 
-  teamRankingList.innerHTML =
-    "";
+  const revenueMode =
+    mode === "revenue" ||
+    mode === "revenueProgress";
 
-  const canViewRevenue =
-    canCurrentUserViewRevenue();
-
-  if (
-    teamRankingMode ===
-      "revenue" &&
-    !canViewRevenue
-  ) {
-
-    teamRankingMode =
-      "progress";
-
-  }
-
-  teamRankingProgressButton.setAttribute(
-    "aria-pressed",
-    String(
-      teamRankingMode ===
-        "progress"
+  return teams
+    .filter(
+      team =>
+        team.active !== false &&
+        (
+          !revenueMode ||
+          canCurrentUserViewRevenueForTeam(team.id)
+        )
     )
-  );
+    .map(
+      team => {
 
-  teamRankingRevenueButton.setAttribute(
-    "aria-pressed",
-    String(
-      teamRankingMode ===
-        "revenue"
-    )
-  );
+        const result =
+          teamMap[team.id] ||
+          Object.values(teamMap).find(
+            item =>
+              item.name === team.name
+          ) ||
+          { count: 0, revenue: 0 };
 
-  teamRankingRevenueButton.style.display =
-    canViewRevenue
-      ? ""
-      : "none";
+        // 件数目標の既存計算を再利用し、売上目標とは別管理する。
+        const goalProgress =
+          buildTeamGoalProgress(team,monthly);
 
-  const ranking =
-    teams
-      .filter(
-        team =>
-          team.active !==
-            false
-      )
-      .map(
-        team => {
+        const revenueGoalProgress =
+          revenueMode
+            ? buildTeamRevenueGoalProgress(team,monthly)
+            : null;
 
-          const result =
-            teamMap[
-              team.id
-            ] ||
-            Object.values(
-              teamMap
-            ).find(
-              item =>
-                item.name ===
-                  team.name
-            ) ||
-            {
-              count: 0,
-              revenue: 0
-            };
+        return {
+          id: team.id,
+          name: team.name || "班名未設定",
+          count: Number(result.count || 0),
+          revenue: Number(result.revenue || 0),
+          ...goalProgress,
+          revenueTarget: revenueGoalProgress?.targetRevenue || 0,
+          revenueActual: revenueGoalProgress?.actualRevenue || 0,
+          revenueRemaining: revenueGoalProgress?.remainingRevenue || 0,
+          revenueProgress: revenueGoalProgress?.progress || 0
+        };
 
-          const goalProgress =
-            buildTeamGoalProgress(
-              team,
-              monthly
-            );
+      }
+    );
 
-          return {
-            id:
-              team.id,
-            name:
-              team.name ||
-              "班名未設定",
-            count:
-              Number(
-                result.count ||
-                0
-              ),
-            revenue:
-              Number(
-                result.revenue ||
-                0
-              ),
-            ...goalProgress
-          };
+}
 
-        }
-      );
 
-  ranking.sort(
-    (a, b) => {
+function sortTeamRankingRows(
+  ranking,
+  mode
+) {
 
-      if (
-        teamRankingMode ===
-          "revenue"
-      ) {
+  return ranking.sort(
+    (a,b) => {
 
-        if (
-          b.revenue !==
-            a.revenue
-        ) {
-
-          return (
-            b.revenue -
-            a.revenue
-          );
-
-        }
-
+      if (mode === "revenue") {
         return (
-          b.count -
-          a.count
+          b.revenue - a.revenue ||
+          b.count - a.count ||
+          a.name.localeCompare(b.name,"ja")
         );
-
       }
 
-      const aHasTarget =
-        a.totalTarget >
-          0;
-
-      const bHasTarget =
-        b.totalTarget >
-          0;
-
-      if (
-        aHasTarget !==
-          bHasTarget
-      ) {
-
-        return bHasTarget
-          ? 1
-          : -1;
-
-      }
-
-      if (
-        b.progress !==
-          a.progress
-      ) {
-
+      if (mode === "revenueProgress") {
+        const aHasTarget = a.revenueTarget > 0;
+        const bHasTarget = b.revenueTarget > 0;
+        if (aHasTarget !== bHasTarget) return bHasTarget ? 1 : -1;
         return (
-          b.progress -
-          a.progress
+          b.revenueProgress - a.revenueProgress ||
+          b.revenueActual - a.revenueActual ||
+          a.name.localeCompare(b.name,"ja")
         );
-
       }
+
+      // 既存の件数進捗順位を維持する。
+      const aHasTarget = a.totalTarget > 0;
+      const bHasTarget = b.totalTarget > 0;
+      if (aHasTarget !== bHasTarget) return bHasTarget ? 1 : -1;
 
       return (
-        b.totalActual -
-        a.totalActual
+        b.progress - a.progress ||
+        b.totalActual - a.totalActual ||
+        a.name.localeCompare(b.name,"ja")
       );
 
     }
   );
 
-  teamRankingCount.textContent =
-    `${ranking.length}班`;
+}
+
+
+function renderTeamRanking(
+  teamMap,
+  monthly = []
+) {
+
+  teamRankingList.innerHTML = "";
+
+  const canViewRevenue =
+    canCurrentUserViewRevenue();
 
   if (
-    ranking.length === 0
+    !canViewRevenue &&
+    (
+      teamRankingMode === "revenue" ||
+      teamRankingMode === "revenueProgress"
+    )
   ) {
+
+    teamRankingMode = "progress";
+
+  }
+
+  teamRankingRevenueButton.setAttribute(
+    "aria-pressed",
+    String(teamRankingMode === "revenue")
+  );
+  teamRankingRevenueProgressButton.setAttribute(
+    "aria-pressed",
+    String(teamRankingMode === "revenueProgress")
+  );
+  teamRankingProgressButton.setAttribute(
+    "aria-pressed",
+    String(teamRankingMode === "progress")
+  );
+
+  teamRankingRevenueButton.style.display =
+    canViewRevenue ? "" : "none";
+  teamRankingRevenueProgressButton.style.display =
+    canViewRevenue ? "" : "none";
+
+  const ranking =
+    sortTeamRankingRows(
+      buildTeamRankingRows(teamMap,monthly,teamRankingMode),
+      teamRankingMode
+    );
+
+  const modeLabel =
+    teamRankingMode === "revenue"
+      ? "売上順"
+      : teamRankingMode === "revenueProgress"
+        ? "売上目標進捗順"
+        : "件数目標進捗順";
+
+  teamRankingCount.textContent =
+    `${ranking.length}班・${modeLabel}`;
+
+  if (!ranking.length) {
 
     teamRankingList.innerHTML = `
       <div class="empty-message">
-        班がありません。
+        ${teamRankingMode !== "progress" && !canViewRevenue
+          ? "売上ランキングを表示する権限がありません。"
+          : "表示できる班がありません。"}
       </div>
     `;
 
@@ -30580,112 +30631,70 @@ function renderTeamRanking(
   }
 
   ranking.forEach(
-    (
-      item,
-      index
-    ) => {
+    (item,index) => {
 
       const row =
-        document.createElement(
-          "div"
-        );
-
-      row.className =
-        "ranking-row";
+        document.createElement("div");
+      row.className = "ranking-row";
 
       const left =
-        document.createElement(
-          "div"
-        );
-
-      left.className =
-        "ranking-left";
+        document.createElement("div");
+      left.className = "ranking-left";
 
       const number =
-        document.createElement(
-          "div"
-        );
-
-      number.className =
-        "ranking-number";
-
-      if (
-        index === 0
-      ) {
-
-        number.classList.add(
-          "top1"
-        );
-
-      } else if (
-        index === 1
-      ) {
-
-        number.classList.add(
-          "top2"
-        );
-
-      } else if (
-        index === 2
-      ) {
-
-        number.classList.add(
-          "top3"
-        );
-
-      }
-
-      number.textContent =
-        index + 1;
+        document.createElement("div");
+      number.className = "ranking-number";
+      if (index < 3) number.classList.add(`top${index+1}`);
+      number.textContent = index+1;
 
       const info =
-        document.createElement(
-          "div"
-        );
-
+        document.createElement("div");
       const name =
-        document.createElement(
-          "div"
-        );
-
-      name.className =
-        "ranking-name";
-
-      name.textContent =
-        item.name;
-
-      info.appendChild(
-        name
-      );
+        document.createElement("div");
+      name.className = "ranking-name";
+      name.textContent = item.name;
+      info.appendChild(name);
+      left.appendChild(number);
+      left.appendChild(info);
 
       const value =
-        document.createElement(
-          "div"
-        );
+        document.createElement("div");
+      value.className = "ranking-value";
 
-      value.className =
-        "ranking-value";
-
-      if (
-        teamRankingMode ===
-          "revenue"
-      ) {
+      if (teamRankingMode === "revenue") {
 
         value.innerHTML = `
           <div class="ranking-count">
-            ${item.count}件
+            ${formatYen(item.revenue)}
           </div>
           <div class="ranking-revenue">
-            ${formatYen(
-              item.revenue
-            )}
+            ${item.count}件
           </div>
         `;
 
-      } else if (
-        item.totalTarget >
-          0
-      ) {
+      } else if (teamRankingMode === "revenueProgress") {
+
+        value.innerHTML =
+          item.revenueTarget > 0
+            ? `
+              <div class="ranking-count">
+                進捗 ${item.revenueProgress}%
+              </div>
+              <div class="ranking-revenue">
+                ${formatYen(item.revenueActual)} / ${formatYen(item.revenueTarget)}
+                ・残り${formatYen(item.revenueRemaining)}
+              </div>
+            `
+            : `
+              <div class="ranking-count">
+                売上目標未設定
+              </div>
+              <div class="ranking-revenue">
+                実績 ${formatYen(item.revenueActual)}
+              </div>
+            `;
+
+      } else if (item.totalTarget > 0) {
 
         value.innerHTML = `
           <div class="ranking-count">
@@ -30709,25 +30718,9 @@ function renderTeamRanking(
 
       }
 
-      left.appendChild(
-        number
-      );
-
-      left.appendChild(
-        info
-      );
-
-      row.appendChild(
-        left
-      );
-
-      row.appendChild(
-        value
-      );
-
-      teamRankingList.appendChild(
-        row
-      );
+      row.appendChild(left);
+      row.appendChild(value);
+      teamRankingList.appendChild(row);
 
     }
   );
