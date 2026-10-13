@@ -201,3 +201,70 @@ test('Choosing a helper with a different-team record does not load its historica
   assert.equal(prepared,undefined);assert.equal(ctx.editingRecordRevision,null);
   assert(message.includes('オーナー'));assert.equal(ctx.recordLocation.value,'');
 });
+
+
+test('Team ranking has three independent tabs without removing the existing dashboard', () => {
+  for(const id of ['teamRankingRevenueButton','teamRankingRevenueProgressButton','teamRankingProgressButton']){
+    assert(html.includes(`id="${id}"`), `Missing ranking tab ${id}`);
+  }
+  assert(html.includes('目標売上進捗'));
+  assert(html.includes('目標件数進捗'));
+  assert(html.includes('売上'));
+  assert(html.includes('id="individualRankingContent"'));
+});
+
+test('Team ranking sorts revenue amount, revenue target ratio and count target ratio separately', () => {
+  const rows=[
+    {name:'A班',revenue:200000,count:12,revenueTarget:100000,revenueActual:200000,revenueProgress:200,totalTarget:60,totalActual:12,progress:20},
+    {name:'B班',revenue:150000,count:20,revenueTarget:50000,revenueActual:150000,revenueProgress:300,totalTarget:20,totalActual:20,progress:100},
+    {name:'C班',revenue:400000,count:30,revenueTarget:0,revenueActual:400000,revenueProgress:0,totalTarget:0,totalActual:30,progress:0},
+    {name:'D班',revenue:40000,count:4,revenueTarget:100000,revenueActual:40000,revenueProgress:40,totalTarget:4,totalActual:4,progress:100}
+  ];
+  const ctx=context(['sortTeamRankingRows']);
+  const names=mode=>Array.from(ctx.sortTeamRankingRows(structuredClone(rows),mode),r=>r.name);
+  assert.deepEqual(names('revenue'),['C班','A班','B班','D班']);
+  assert.deepEqual(names('revenueProgress'),['B班','A班','D班','C班']);
+  assert.deepEqual(names('progress'),['B班','D班','A班','C班']);
+});
+
+test('Revenue ranking modes do not include teams without revenue viewing permission',()=>{
+  const teams=[{id:'mine',name:'自班',active:true},{id:'other',name:'他班',active:true},
+    {id:'retired',name:'終了班',active:false}];
+  const teamMap={mine:{count:2,revenue:2000},other:{count:10,revenue:999999},retired:{count:10,revenue:999999}};
+  const monthly=[{teamId:'mine'}];
+  let revenueGoalCalls=0;
+  const ctx=context(['buildTeamRankingRows'],{
+    teams,
+    canCurrentUserViewRevenueForTeam:id=>id==='mine',
+    buildTeamGoalProgress:()=>({totalTarget:10,totalActual:2,remaining:8,progress:20}),
+    buildTeamRevenueGoalProgress:()=>{revenueGoalCalls++;return {targetRevenue:10000,actualRevenue:2000,remainingRevenue:8000,progress:20}}
+  });
+  const before=JSON.stringify([teamMap,monthly]);
+  assert.deepEqual(Array.from(ctx.buildTeamRankingRows(teamMap,monthly,'revenue'),r=>r.id),['mine']);
+  assert.deepEqual(Array.from(ctx.buildTeamRankingRows(teamMap,monthly,'revenueProgress'),r=>r.id),['mine']);
+  assert.deepEqual(Array.from(ctx.buildTeamRankingRows(teamMap,monthly,'progress'),r=>r.id),['mine','other']);
+  assert.equal(revenueGoalCalls,2);
+  assert.equal(JSON.stringify([teamMap,monthly]),before);
+});
+
+test('Revenue goal progress is calculated from existing target and record units',()=>{
+  const ctx=context(['getTeamRevenueGoal','buildTeamRevenueGoalProgress'],{
+    revenueGoals:[{id:'rg',teamId:'a',month:'2026-10',targetRevenue:40000}],
+    dashboardMonth:{value:'2026-10'},
+    canCurrentUserViewRevenueForTeam:id=>id==='a',
+    recordBelongsToTeam:(record,team)=>record.teamId===team.id,
+    getDisplayRecordResults:record=>record.results
+  });
+  const monthly=[{teamId:'a',results:[{count:5,revenuePerUnit:5000}]},
+    {teamId:'b',results:[{count:1,revenuePerUnit:999999}]}];
+  const goal=ctx.buildTeamRevenueGoalProgress({id:'a'},monthly);
+  assert.equal(goal.targetRevenue,40000);
+  assert.equal(goal.actualRevenue,25000);
+  assert.equal(goal.remainingRevenue,15000);
+  assert.equal(goal.progress,62.5);
+  assert.equal(ctx.buildTeamRevenueGoalProgress({id:'b'},monthly).progress,0);
+  ctx.revenueGoals=[];
+  const unconfigured=ctx.buildTeamRevenueGoalProgress({id:'a'},monthly);
+  assert.equal(unconfigured.targetRevenue,0);
+  assert.equal(unconfigured.progress,0);
+});
