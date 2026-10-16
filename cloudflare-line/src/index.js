@@ -362,8 +362,8 @@ async function reminders(env){
   }
 }
 async function webhook(req,env){
-  if(!firebaseFreePlanVerified(env))return new Response("Firestore paused for zero-charge mode",{status:503});
   if(req.method!=="POST")return new Response("Method Not Allowed",{status:405});
+  if(!firebaseFreePlanVerified(env))return new Response("Firestore paused for zero-charge mode",{status:503});
   const body=await req.arrayBuffer(), sig=req.headers.get("x-line-signature")||"";
   if(!await verifySig(body,sig,env.LINE_CHANNEL_SECRET||""))return new Response("Invalid signature",{status:401});
   let j; try{j=JSON.parse(new TextDecoder().decode(body));}catch{return new Response("Invalid JSON",{status:400});}
