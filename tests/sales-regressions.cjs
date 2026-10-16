@@ -313,7 +313,10 @@ test('Missing product ID or deleted product falls back to stored name, not a gue
 });
 
 test('Product summary groups by product IDs so equal old labels do not merge',()=>{
-  const source=html.slice(html.indexOf('function renderDashboard('),html.indexOf('/* =====================================================\n   売上分析'));
+  const start=html.indexOf('function renderDashboard(');
+  const finish=html.indexOf('function addAnalysisValue(',start);
+  assert(start>=0 && finish>start);
+  const source=html.slice(start,finish);
   assert.match(source,/const productKey =\s*result\.productId/);
   assert.match(source,/productMap\[productKey\]\.count/);
   assert.match(source,/productMap\[productKey\]\.revenue/);
