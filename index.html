@@ -7714,6 +7714,34 @@ function canCurrentUserViewRevenueForRecord(
 }
 
 
+/*
+  保存済みの productName は当時の履歴として保持し、
+  画面表示だけ現在の商材マスター名へ寄せる。
+  金額や件数は当時保存した実績をそのまま使う。
+  productId が現行マスターに存在しなければ推測せず旧名を維持する。
+*/
+function currentProductDisplayName(result) {
+
+  const id =
+    result?.productId;
+
+  const current =
+    id
+      ? products.find(
+          product =>
+            product.id === id
+        )
+      : null;
+
+  return (
+    current?.name ||
+    result?.productName ||
+    "不明"
+  );
+
+}
+
+
 function getDisplayRecordResults(
   record
 ) {
@@ -7723,21 +7751,21 @@ function getDisplayRecordResults(
       record
     );
 
-  if (
+  const canViewRevenue =
     canCurrentUserViewRevenueForRecord(
       record
-    )
-  ) {
-
-    return results;
-
-  }
+    );
 
   return results.map(
     result => ({
       ...result,
-      revenuePerUnit:
-        0
+      productName:
+        currentProductDisplayName(
+          result
+        ),
+      ...(canViewRevenue
+        ? {}
+        : {revenuePerUnit: 0})
     })
   );
 
@@ -25176,35 +25204,29 @@ function renderDashboard() {
             result.productName ||
             "不明";
 
+          // 別商材が同じ旧表示名でも混ざらないようIDで集計する。
+          const productKey =
+            result.productId
+              ? `id:${result.productId}`
+              : `name:${productName}`;
 
-          if (
-            !productMap[
-              productName
-            ]
-          ) {
+          if (!productMap[productKey]) {
 
-            productMap[
-              productName
-            ] = {
-
+            productMap[productKey] = {
+              name: productName,
               count: 0,
-
               revenue: 0
-
             };
 
           }
 
+          productMap[productKey].name =
+            productName;
 
-          productMap[
-            productName
-          ].count +=
+          productMap[productKey].count +=
             count;
 
-
-          productMap[
-            productName
-          ].revenue +=
+          productMap[productKey].revenue +=
             revenue;
 
         }
@@ -30766,10 +30788,13 @@ function renderProductSummary(
 
 
   names.forEach(
-    name => {
+    key => {
 
       const data =
-        productMap[name];
+        productMap[key];
+
+      const name =
+        data.name || key;
 
 
       const row =
