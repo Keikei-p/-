@@ -8,6 +8,7 @@ import {
   pushRetry,
   freeLineGuard
 } from '../src/index.js';
+import worker from '../src/index.js';
 
 test('19:00 start repeats hourly on the same day and stops at midnight', () => {
   assert.equal(shouldSendReminderAt('19:00','18:55'),false);
@@ -101,5 +102,25 @@ test('LINE send is blocked before the monthly free cap', async () => {
     assert.equal(guard.cap,180);
   } finally {
     globalThis.fetch=original;
+  }
+});
+
+
+test('unverified Firebase billing blocks LINE webhook and scheduled Firestore access', async () => {
+  const prev = globalThis.fetch;
+  let called = 0;
+  try {
+    globalThis.fetch = async () => { called++; throw Error('remote API must not be called'); };
+    const env = { AUTOMATION_ENABLED: 'true', FIREBASE_PROJECT_ID: 'sales-management-cc116' };
+    const health = await worker.fetch(new Request('https://example.com/health'), env);
+    const body = await health.json();
+    assert.equal(body.firebaseCostSafetyLocked, true);
+    assert.equal(body.automationEnabled, false);
+    const webhook = await worker.fetch(new Request('https://example.com/line-webhook', {method:'POST',body:'{}'}), env);
+    assert.equal(webhook.status, 503);
+    await worker.scheduled({}, env, { waitUntil: promise => promise });
+    assert.equal(called, 0);
+  } finally {
+    globalThis.fetch = prev;
   }
 });
