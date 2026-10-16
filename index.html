@@ -2650,6 +2650,35 @@ body.product-reordering .product-list {
 /* 日割り件数計算専用 */
 .daily-goal-calculator { display:grid; gap:13px; }
 .daily-goal-heading { color:var(--text); font-size:15px; font-weight:800; }
+.daily-goal-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.daily-goal-copy-button {
+  min-height: 42px;
+  flex-shrink: 0;
+  padding: 10px 14px;
+}
+.daily-goal-copy-button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+.daily-goal-copy-fallback {
+  width: 100%;
+  min-height: 160px;
+  resize: vertical;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.daily-goal-copy-fallback[hidden] { display: none; }
 .daily-goal-description,.daily-goal-note { color:var(--sub); font-size:11px; line-height:1.65; margin:0; }
 .daily-goal-controls { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(0,1fr); gap:10px; }
 .daily-goal-control { display:grid; gap:6px; min-width:0; color:var(--sub); font-size:12px; font-weight:800; }
@@ -5629,7 +5658,13 @@ body.product-reordering .product-list {
 
       <div id="dailyGoalCalculatorContent" class="dashboard-app-content" hidden>
         <section class="daily-goal-calculator" aria-label="目標件数の日割り計算">
-          <div class="daily-goal-heading">🎯 目標日割り計算</div>
+          <div class="daily-goal-heading-row">
+            <div class="daily-goal-heading">🎯 目標日割り計算</div>
+            <button id="copyDailyGoalButton" class="report-copy-button daily-goal-copy-button"
+              type="button" disabled aria-label="日割り計算の結果をコピー">
+              📋 結果をコピー
+            </button>
+          </div>
           <p class="daily-goal-description">班と残り稼働日数を指定すると、選択月の目標・実績から必要な件数を計算します。稼働日数は保存しません。</p>
           <div class="daily-goal-controls">
             <label class="daily-goal-control"><span>計算する班</span>
@@ -5640,6 +5675,8 @@ body.product-reordering .product-list {
             </label>
           </div>
           <div id="dailyGoalCalculatorResult" aria-live="polite" aria-atomic="true"></div>
+          <textarea id="dailyGoalCopyFallback" class="daily-goal-copy-fallback"
+            readonly hidden aria-label="日割り計算のコピー用文章"></textarea>
         </section>
       </div>
 
@@ -7072,6 +7109,8 @@ const dailyGoalCalculatorContent = document.getElementById("dailyGoalCalculatorC
 const dailyGoalTeamSelect = document.getElementById("dailyGoalTeamSelect");
 const dailyGoalDaysInput = document.getElementById("dailyGoalDaysInput");
 const dailyGoalCalculatorResult = document.getElementById("dailyGoalCalculatorResult");
+const copyDailyGoalButton = document.getElementById("copyDailyGoalButton");
+const dailyGoalCopyFallback = document.getElementById("dailyGoalCopyFallback");
 
 const reportBuilderContent =
   document.getElementById(
@@ -29217,8 +29256,55 @@ function buildDailyCountPlan(goalProgress, workingDays) {
   };
 }
 
+
+let dailyGoalCopyText = "";
+
+/*
+  表示済みの件数計画からコピー文を作成する。
+  単価・売上や別画面の集計値は一切参照しない。
+*/
+function dailyCountAllocationLabel(row, days) {
+  if (row.remaining === 0) return "目標達成済み";
+  if (row.extraDays === 0) return `${row.basic}件の日 × ${days}日`;
+  if (row.basic === 0) return `1件の日 × ${row.extraDays}日 / 0件の日 × ${days - row.extraDays}日`;
+  return `${row.basic + 1}件の日 × ${row.extraDays}日 / ${row.basic}件の日 × ${days - row.extraDays}日`;
+}
+
+function formatDailyCountPlanForCopy(teamName, month, plan) {
+  if (!plan || !Array.isArray(plan.rows) || !plan.rows.length) return "";
+
+  const lines = [
+    "🎯 目標日割り計算",
+    `${teamName}｜${month}`,
+    `残り稼働：${plan.days}日`,
+    "",
+    "【全体】",
+    `目標まで残り：${plan.remainingTotal}件`,
+    `1日平均：${plan.averagePerDay}件`,
+    "",
+    "【商材別】"
+  ];
+  for (const row of plan.rows) {
+    lines.push(
+      `■ ${row.name}`,
+      `目標${row.target}件 / 現在${row.actual}件 / 残り${row.remaining}件`,
+      row.remaining === 0
+        ? "達成済み"
+        : `1日平均${row.averagePerDay}件`,
+      `配分例：${dailyCountAllocationLabel(row, plan.days)}`,
+      ""
+    );
+  }
+  return lines.join("\n").trim();
+}
+
 function renderDailyGoalCalculator() {
   if (!dailyGoalTeamSelect || !dailyGoalDaysInput || !dailyGoalCalculatorResult) return;
+
+  // 入力が未完了・変更された際、古い結果をコピーできないようにする。
+  dailyGoalCopyText = "";
+  copyDailyGoalButton.disabled = true;
+  dailyGoalCopyFallback.hidden = true;
 
   const availableTeams = teams.filter(team => team.active !== false);
   const selected = dailyGoalTeamSelect.value;
@@ -29266,6 +29352,14 @@ function renderDailyGoalCalculator() {
     return;
   }
 
+  // 表示した件数だけをコピー文章にも利用する。
+  dailyGoalCopyText = formatDailyCountPlanForCopy(
+    team.name || "班名未設定",
+    dashboardMonth.value,
+    plan
+  );
+  copyDailyGoalButton.disabled = !dailyGoalCopyText;
+
   // 件数だけを表示し、金額と単価は画面へ渡さない。
   dailyGoalCalculatorResult.innerHTML = `
     <div class="daily-goal-summary">
@@ -29275,13 +29369,7 @@ function renderDailyGoalCalculator() {
     </div>
     <div class="daily-goal-rows">
       ${plan.rows.map(row => {
-        const pattern = row.remaining === 0
-          ? "目標達成済み"
-          : row.extraDays === 0
-            ? `${row.basic}件の日 × ${plan.days}日`
-            : row.basic === 0
-              ? `1件の日 × ${row.extraDays}日 / 0件の日 × ${plan.days - row.extraDays}日`
-              : `${row.basic + 1}件の日 × ${row.extraDays}日 / ${row.basic}件の日 × ${plan.days - row.extraDays}日`;
+        const pattern = dailyCountAllocationLabel(row, plan.days);
         return `
           <div class="daily-goal-row">
             <div class="daily-goal-row-top">
@@ -29300,6 +29388,56 @@ function renderDailyGoalCalculator() {
 
 dailyGoalTeamSelect.addEventListener("change", renderDailyGoalCalculator);
 dailyGoalDaysInput.addEventListener("input", renderDailyGoalCalculator);
+
+
+copyDailyGoalButton.addEventListener("click", async () => {
+  const text = dailyGoalCopyText;
+  if (!text) {
+    showError("班と残り稼働日数を選び、計算結果を表示してください。");
+    return;
+  }
+
+  try {
+    if (!navigator.clipboard?.writeText) throw new Error("Clipboard API unavailable");
+    await navigator.clipboard.writeText(text);
+    dailyGoalCopyFallback.hidden = true;
+    showSuccess("日割り計算の件数をコピーしました。LINEなどに貼り付けできます。");
+    return;
+  } catch (error) {
+    // Clipboard APIが使えない端末向けの代替手段。
+  }
+
+  const temporary = document.createElement("textarea");
+  temporary.value = text;
+  temporary.readOnly = true;
+  temporary.style.position = "fixed";
+  temporary.style.left = "-9999px";
+  document.body.appendChild(temporary);
+  temporary.focus();
+  temporary.select();
+  temporary.setSelectionRange(0, temporary.value.length);
+
+  let copied = false;
+  try {
+    copied = document.execCommand("copy");
+  } catch (error) {
+    copied = false;
+  }
+  temporary.remove();
+
+  if (copied) {
+    dailyGoalCopyFallback.hidden = true;
+    showSuccess("日割り計算の件数をコピーしました。LINEなどに貼り付けできます。");
+  } else {
+    // iOSなどでコピーが制限された場合、文章を見せて長押しコピーを案内。
+    dailyGoalCopyFallback.value = text;
+    dailyGoalCopyFallback.hidden = false;
+    dailyGoalCopyFallback.focus();
+    dailyGoalCopyFallback.select();
+    dailyGoalCopyFallback.setSelectionRange(0, text.length);
+    showError("自動コピーできませんでした。下に表示された文章を長押ししてコピーしてください。");
+  }
+});
 
 
 function buildTeamRevenueGoalProgress(
