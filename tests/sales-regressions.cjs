@@ -364,9 +364,15 @@ test('Calculator UI next to report uses counts only and never exposes revenue am
   const days=element();days.value='10';
   const result=element();
   let renderedMonth='',renderedTeam='';
-  const ctx=context(['buildDailyCountPlan','renderDailyGoalCalculator'],{
+  const copyButton={disabled:true};
+  const copyFallback={hidden:true};
+  const ctx=context([
+    'buildDailyCountPlan','dailyCountAllocationLabel',
+    'formatDailyCountPlanForCopy','renderDailyGoalCalculator'
+  ],{
     document,
     dailyGoalTeamSelect:selected,dailyGoalDaysInput:days,dailyGoalCalculatorResult:result,
+    copyDailyGoalButton:copyButton,dailyGoalCopyFallback:copyFallback,
     dashboardMonth:{value:'2026-10'},
     currentUserData:{teamId:'a'},
     teams:[{id:'a',name:'第1班',active:true},{id:'b',name:'第2班',active:true}],
@@ -393,9 +399,15 @@ test('Calculator UI next to report uses counts only and never exposes revenue am
   assert(result.innerHTML.includes('2件の日 × 2日'));
   assert(result.innerHTML.includes('1件の日 × 5日'));
   assert(!/¥|￥|円|売上|収益|単価|revenue/i.test(result.innerHTML));
+  assert.equal(copyButton.disabled,false);
+  assert.equal(copyFallback.hidden,true);
+  assert(ctx.dailyGoalCopyText.includes('NURO光'));
+  assert(!/¥|￥|円|売上|収益|単価|revenue/i.test(ctx.dailyGoalCopyText));
   days.value='0';
   ctx.renderDailyGoalCalculator();
   assert(result.textContent.includes('1〜366'));
+  assert.equal(copyButton.disabled,true);
+  assert.equal(ctx.dailyGoalCopyText,'');
 });
 
 test('Calculator has manager-only launcher and no Firestore persistence',()=>{
@@ -406,4 +418,92 @@ test('Calculator has manager-only launcher and no Firestore persistence',()=>{
   assert(!/setDoc|updateDoc|addDoc|writeBatch|runTransaction|formatYen/.test(segment));
   assert(html.includes('dailyGoalCalculatorToggle.style.display ='));
   assert(html.includes('renderDailyGoalCalculator();'));
+});
+
+
+test('One-tap daily goal copy includes team, month, operating days, product breakdown and integers only',()=>{
+  const ctx=context(['dailyCountAllocationLabel','formatDailyCountPlanForCopy']);
+  const plan={
+    days:10,remainingTotal:17,averagePerDay:1.7,
+    rows:[
+      {productId:'a',name:'NURO光',target:30,actual:18,remaining:12,averagePerDay:1.2,basic:1,extraDays:2},
+      {productId:'b',name:'エバーグリーン',target:20,actual:15,remaining:5,averagePerDay:0.5,basic:0,extraDays:5},
+      {productId:'c',name:'HTB',target:4,actual:4,remaining:0,averagePerDay:0,basic:0,extraDays:0}
+    ]
+  };
+  const original=JSON.stringify(plan);
+  const actual=ctx.formatDailyCountPlanForCopy('1班','2026-10',plan);
+  assert(actual.startsWith('🎯 目標日割り計算'));
+  for(const content of [
+    '1班｜2026-10','残り稼働：10日','目標まで残り：17件',
+    '1日平均：1.7件','NURO光','エバーグリーン','HTB',
+    '目標30件 / 現在18件 / 残り12件',
+    '1日平均1.2件','2件の日 × 2日 / 1件の日 × 8日',
+    '1件の日 × 5日 / 0件の日 × 5日','目標達成済み'
+  ]) assert(actual.includes(content),content);
+  assert(!/¥|￥|円|売上|収益|単価|revenue/i.test(actual));
+  assert.equal(JSON.stringify(plan),original);
+  assert.equal(ctx.formatDailyCountPlanForCopy('1班','2026-10',null),'');
+  assert.equal(ctx.formatDailyCountPlanForCopy('1班','2026-10',{rows:[]}), '');
+});
+
+test('Copy button writes the prepared text to the clipboard on user click',async()=>{
+  const copied=[],success=[],errors=[];
+  let clickHandler=null;
+  const button={addEventListener:(event,fn)=>{
+    assert.equal(event,'click');clickHandler=fn;
+  }};
+  const fallback={hidden:false};
+  const ctx=vm.createContext({
+    copyDailyGoalButton:button,dailyGoalCopyText:'1班｜残り10日｜NURO光 1日平均1.2件',
+    dailyGoalCopyFallback:fallback,
+    navigator:{clipboard:{writeText:async value=>copied.push(value)}},
+    showSuccess:message=>success.push(message),
+    showError:message=>errors.push(message),
+    document:{}
+  });
+  const start=html.indexOf('copyDailyGoalButton.addEventListener("click"');
+  const end=html.indexOf('\n});',start);
+  assert(start>=0 && end>start);
+  vm.runInContext(html.slice(start,end+4),ctx);
+  assert.equal(typeof clickHandler,'function');
+  await clickHandler();
+  assert.deepEqual(copied,['1班｜残り10日｜NURO光 1日平均1.2件']);
+  assert.equal(fallback.hidden,true);
+  assert(success[0].includes('コピーしました'));
+  assert.equal(errors.length,0);
+  ctx.dailyGoalCopyText='';
+  await clickHandler();
+  assert.equal(copied.length,1);
+  assert(errors[0].includes('残り稼働日数'));
+});
+
+test('When clipboard is blocked on iPhone, manual copy text is displayed without revenue',async()=>{
+  let handler;
+  const temporary={
+    style:{},value:'',readOnly:false,
+    focus:()=>{},select:()=>{},setSelectionRange:()=>{},remove:()=>{}
+  };
+  const fallback={
+    hidden:true,value:'',
+    focus:()=>{},select:()=>{},setSelectionRange:()=>{}
+  };
+  const errors=[];
+  const ctx=vm.createContext({
+    dailyGoalCopyText:'🎯 目標日割り計算\nNURO光｜残り5件',
+    copyDailyGoalButton:{addEventListener:(event,fn)=>handler=fn},
+    dailyGoalCopyFallback:fallback,
+    navigator:{clipboard:{writeText:async()=>{throw new Error('Denied')}}},
+    document:{createElement:()=>temporary,body:{appendChild:()=>{}},execCommand:()=>false},
+    showSuccess:()=>{throw Error('Must not claim copy succeeded')},
+    showError:message=>errors.push(message)
+  });
+  const start=html.indexOf('copyDailyGoalButton.addEventListener("click"');
+  const end=html.indexOf('\n});',start);
+  vm.runInContext(html.slice(start,end+4),ctx);
+  await handler();
+  assert.equal(fallback.hidden,false);
+  assert.equal(fallback.value,ctx.dailyGoalCopyText);
+  assert(errors[0].includes('長押し'));
+  assert(!/¥|￥|円|売上|収益|単価|revenue/i.test(fallback.value));
 });
