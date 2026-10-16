@@ -1,6 +1,9 @@
 const SCOPE="https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/cloud-platform";
 let tokenCache={token:"",exp:0};
 const LINE_MONTHLY_HARD_CAP=180;
+// Never access Firestore until billing has been detached and the project is
+// verified as Spark (no pay-as-you-go). Existing notification settings stay intact.
+const firebaseFreePlanVerified=env=>env?.FIREBASE_SPARK_VERIFIED==="I_VERIFIED_SPARK_NO_BILLING";
 
 const enc=s=>new TextEncoder().encode(s);
 const b64url=b=>{
@@ -34,6 +37,7 @@ async function googleToken(env){
 const base=env=>`https://firestore.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}/databases/(default)`;
 const pathUrl=p=>String(p).split("/").filter(Boolean).map(encodeURIComponent).join("/");
 async function fsFetch(env,url,opt={}){
+  if(!firebaseFreePlanVerified(env))throw Error("firebase_cost_guard_locked");
   const token=await googleToken(env);
   return fetch(url,{...opt,headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json",...(opt.headers||{})}});
 }
@@ -291,6 +295,7 @@ function missingFromSnapshot(members,teams,records,date,reportCompletionMode="in
     .sort((a,b)=>a.teamName.localeCompare(b.teamName,"ja"));
 }
 async function reminders(env){
+  if(!firebaseFreePlanVerified(env))return;
   if(String(env.AUTOMATION_ENABLED||"false").toLowerCase()!=="true")return;
   const n=tokyo();
   const companies=await listCol(env,"companies");
@@ -357,6 +362,7 @@ async function reminders(env){
   }
 }
 async function webhook(req,env){
+  if(!firebaseFreePlanVerified(env))return new Response("Firestore paused for zero-charge mode",{status:503});
   if(req.method!=="POST")return new Response("Method Not Allowed",{status:405});
   const body=await req.arrayBuffer(), sig=req.headers.get("x-line-signature")||"";
   if(!await verifySig(body,sig,env.LINE_CHANNEL_SECRET||""))return new Response("Invalid signature",{status:401});
@@ -369,7 +375,7 @@ async function webhook(req,env){
 export default{
   async fetch(req,env){
     const u=new URL(req.url);
-    if(u.pathname==="/health")return Response.json({ok:true,service:"sales-line-worker",automationEnabled:String(env.AUTOMATION_ENABLED||"false").toLowerCase()==="true"});
+    if(u.pathname==="/health")return Response.json({ok:true,service:"sales-line-worker",automationEnabled:firebaseFreePlanVerified(env)&&String(env.AUTOMATION_ENABLED||"false").toLowerCase()==="true",firebaseCostSafetyLocked:!firebaseFreePlanVerified(env)});
     if(u.pathname==="/line-webhook")return webhook(req,env);
     return new Response("Not Found",{status:404});
   },
