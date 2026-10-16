@@ -268,3 +268,55 @@ test('Revenue goal progress is calculated from existing target and record units'
   assert.equal(unconfigured.targetRevenue,0);
   assert.equal(unconfigured.progress,0);
 });
+
+
+test('Renamed product displays current master name by stable ID without rewriting historical values',()=>{
+  const sourceRecords=[
+    {id:'r1',companyId:'c',date:'2026-10-15',results:{
+      evergreen:{productName:'HTB',count:2,revenuePerUnit:10000},
+      htb:{productName:'HTB',count:2,revenuePerUnit:0}
+    }},
+    {id:'r2',companyId:'c',date:'2026-10-15',results:{
+      evergreen:{productName:'HTB',count:1,revenuePerUnit:10000}
+    }}
+  ];
+  const before=JSON.stringify(sourceRecords);
+  const ctx=context(['getRecordResults','currentProductDisplayName','getDisplayRecordResults'],{
+    products:[
+      {id:'evergreen',name:'エバーグリーン',revenue:20000},
+      {id:'htb',name:'HTB',revenue:0}
+    ],
+    canCurrentUserViewRevenueForRecord:()=>true
+  });
+  const first=Array.from(ctx.getDisplayRecordResults(sourceRecords[0]));
+  assert.equal(first[0].productName,'エバーグリーン');
+  assert.equal(first[1].productName,'HTB');
+  assert.equal(first[0].count,2);
+  assert.equal(first[0].revenuePerUnit,10000);
+  assert.equal(first[1].revenuePerUnit,0);
+  assert.equal(JSON.stringify(sourceRecords),before);
+  assert.equal(ctx.getRecordResults(sourceRecords[0])[0].productName,'HTB');
+  ctx.canCurrentUserViewRevenueForRecord=()=>false;
+  const masked=Array.from(ctx.getDisplayRecordResults(sourceRecords[0]));
+  assert.equal(masked[0].productName,'エバーグリーン');
+  assert.equal(masked[0].revenuePerUnit,0);
+  assert.equal(JSON.stringify(sourceRecords),before);
+});
+
+test('Missing product ID or deleted product falls back to stored name, not a guessed replacement',()=>{
+  const ctx=context(['currentProductDisplayName'],{
+    products:[{id:'evergreen',name:'エバーグリーン'}]
+  });
+  assert.equal(ctx.currentProductDisplayName({productId:'old-unknown',productName:'HTB'}),'HTB');
+  assert.equal(ctx.currentProductDisplayName({productName:'HTB'}),'HTB');
+  assert.equal(ctx.currentProductDisplayName({productId:'evergreen',productName:'HTB'}),'エバーグリーン');
+});
+
+test('Product summary groups by product IDs so equal old labels do not merge',()=>{
+  const source=html.slice(html.indexOf('function renderDashboard('),html.indexOf('/* =====================================================\n   売上分析'));
+  assert.match(source,/const productKey =\s*result\.productId/);
+  assert.match(source,/productMap\[productKey\]\.count/);
+  assert.match(source,/productMap\[productKey\]\.revenue/);
+  const summary=source.includes('renderProductSummary(');
+  assert.equal(summary,true);
+});
