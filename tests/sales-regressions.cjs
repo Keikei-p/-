@@ -323,3 +323,87 @@ test('Product summary groups by product IDs so equal old labels do not merge',()
   const summary=source.includes('renderProductSummary(');
   assert.equal(summary,true);
 });
+
+
+test('Count-only daily target calculator divides remaining product targets into realistic integer-day patterns',()=>{
+  const ctx=context(['buildDailyCountPlan']);
+  const goal={rows:[
+    {productId:'nuro',name:'NURO光',target:30,actual:18,remaining:12},
+    {productId:'ym',name:'YMNＰ',target:20,actual:15,remaining:5},
+    {productId:'done',name:'完了商材',target:4,actual:6,remaining:0}
+  ]};
+  const before=JSON.stringify(goal);
+  const plan=ctx.buildDailyCountPlan(goal,10);
+  assert.equal(plan.days,10);
+  assert.equal(plan.remainingTotal,17);
+  assert.equal(plan.averagePerDay,1.7);
+  assert.equal(plan.rows.length,3);
+  assert.equal(plan.rows[0].averagePerDay,1.2);
+  assert.equal(plan.rows[0].basic,1);
+  assert.equal(plan.rows[0].extraDays,2);
+  assert.equal(plan.rows[1].averagePerDay,0.5);
+  assert.equal(plan.rows[1].basic,0);
+  assert.equal(plan.rows[1].extraDays,5);
+  assert.equal(plan.rows[2].remaining,0);
+  for(const row of plan.rows) assert.equal(row.basic*plan.days + row.extraDays,row.remaining);
+  assert.equal(JSON.stringify(goal),before);
+  assert.equal(ctx.buildDailyCountPlan(goal,0),null);
+  assert.equal(ctx.buildDailyCountPlan(goal,-1),null);
+  assert.equal(ctx.buildDailyCountPlan(goal,2.5),null);
+  assert.equal(ctx.buildDailyCountPlan(goal,367),null);
+  assert.equal(ctx.buildDailyCountPlan(goal,'abc'),null);
+});
+
+test('Calculator UI next to report uses counts only and never exposes revenue amounts or product pricing',()=>{
+  const indexReport=html.indexOf('id="reportBuilderToggle"');
+  const indexCalc=html.indexOf('id="dailyGoalCalculatorToggle"');
+  assert(indexReport>=0 && indexCalc>indexReport && indexCalc-indexReport<1200);
+  const selected=element();
+  selected.replaceChildren=()=>{selected.children=[];};
+  selected.value='';
+  const days=element();days.value='10';
+  const result=element();
+  let renderedMonth='',renderedTeam='';
+  const ctx=context(['buildDailyCountPlan','renderDailyGoalCalculator'],{
+    document,
+    dailyGoalTeamSelect:selected,dailyGoalDaysInput:days,dailyGoalCalculatorResult:result,
+    dashboardMonth:{value:'2026-10'},
+    currentUserData:{teamId:'a'},
+    teams:[{id:'a',name:'第1班',active:true},{id:'b',name:'第2班',active:true}],
+    records:[{date:'2026-10-16',teamId:'a'}],
+    buildTeamGoalProgress:(team,monthly)=>{
+      renderedMonth=monthly[0].date;
+      renderedTeam=team.id;
+      return {rows:[
+        {productId:'p1',name:'NURO光',target:30,actual:18,remaining:12},
+        {productId:'p2',name:'エバーグリーン',target:20,actual:15,remaining:5}
+      ]};
+    },
+    escapeHtml:value=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')
+  });
+  ctx.renderDailyGoalCalculator();
+  assert.equal(renderedMonth,'2026-10-16');
+  assert.equal(renderedTeam,'a');
+  assert.equal(selected.value,'a');
+  assert.equal(selected.children.length,2);
+  assert(result.innerHTML.includes('残り目標件数'));
+  assert(result.innerHTML.includes('NURO光'));
+  assert(result.innerHTML.includes('エバーグリーン'));
+  assert(result.innerHTML.includes('1日平均 1.2件'));
+  assert(result.innerHTML.includes('2件の日 × 2日'));
+  assert(result.innerHTML.includes('1件の日 × 5日'));
+  assert(!/¥|￥|円|売上|収益|単価|revenue/i.test(result.innerHTML));
+  days.value='0';
+  ctx.renderDailyGoalCalculator();
+  assert(result.textContent.includes('1〜366'));
+});
+
+test('Calculator has manager-only launcher and no Firestore persistence',()=>{
+  const start=html.indexOf('function buildDailyCountPlan(');
+  const end=html.indexOf('function buildTeamRevenueGoalProgress(',start);
+  assert(start>=0 && end>start);
+  const segment=html.slice(start,end);
+  assert(!/setDoc|updateDoc|addDoc|writeBatch|runTransaction|formatYen/.test(segment));
+  assert(html.includes('dailyGoalCalculatorToggle.style.display ='));
+  assert(html.includes('renderDailyGoalCalculator();'));
+});
