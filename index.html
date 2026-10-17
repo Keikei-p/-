@@ -1248,7 +1248,7 @@ header {
     linear-gradient(137deg, #282a36 0%, #111827 49%, #24202a 100%);
   box-shadow: 0 14px 32px rgba(18,24,38,.22), inset 0 1px 0 rgba(255,234,172,.28);
   text-align: center;
-  animation: ranking-champion-entrance .65s cubic-bezier(.2,.75,.2,1) both;
+  /* 明示的に表示されたときだけ再生（非表示中の空振りを防ぐ）。 */
 }
 .ranking-grid > .ranking-row--champion::before {
   content: "";
@@ -1272,7 +1272,7 @@ header {
   width: 40%;
   background: linear-gradient(108deg, transparent 20%, rgba(255,243,198,.16) 48%, transparent 76%);
   transform: translateX(-280%) skewX(-17deg);
-  animation: ranking-champion-shine 1.25s ease-out .35s 1 both;
+  /* 開いた画面が見えた時だけ光の演出を開始する。 */
   pointer-events: none;
 }
 .ranking-grid .ranking-row--champion > * {
@@ -1385,6 +1385,13 @@ header {
   margin-top: 3px;
   font-size: 12px;
 }
+/* iOSでもランキングカードが画面内に現れてから一度だけ開始 */
+.ranking-grid[data-columns] > .ranking-row--champion.ranking-champion--animate {
+  animation: ranking-champion-entrance .85s cubic-bezier(.2,.75,.2,1) both;
+}
+.ranking-grid > .ranking-row--champion.ranking-champion--animate::after {
+  animation: ranking-champion-shine 1.5s ease-out .45s 1 both;
+}
 @keyframes ranking-champion-entrance {
   from { opacity: 0; transform: translateY(13px) scale(.985); }
   to { opacity: 1; transform: translateY(0) scale(1); }
@@ -1403,8 +1410,8 @@ header {
   .ranking-champion-eyebrow { font-size: 8px; letter-spacing: .16em; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .ranking-grid[data-columns] > .ranking-row--champion,
-  .ranking-grid > .ranking-row--champion::after {
+  .ranking-grid[data-columns] > .ranking-row--champion.ranking-champion--animate,
+  .ranking-grid > .ranking-row--champion.ranking-champion--animate::after {
     animation: none;
   }
   .ranking-grid > .ranking-row--champion::after { display: none; }
@@ -9101,7 +9108,7 @@ function setupDashboardMenu(
               false;
 
             requestAnimationFrame(
-              () =>
+              () => {
                 dashboardDetailArea.scrollIntoView(
                   {
                     behavior:
@@ -9109,7 +9116,17 @@ function setupDashboardMenu(
                     block:
                       "nearest"
                   }
-                )
+                );
+
+                // パネルが非表示の間にアニメーションが終わらないよう、
+                // ランキングの1位が実際に画面内へ来たら再生する。
+                if (
+                  item.content === individualRankingContent ||
+                  item.content === productRankingContent
+                ) {
+                  beginRankingChampionEntrance(item.content);
+                }
+              }
             );
 
           } else {
@@ -30893,6 +30910,52 @@ function renderAllTeamsOverview(
 
 
 /*
+  チャンピオン演出はランキング画面が実際に見えるときだけ再生する。
+  iPhoneの「視差効果を減らす」を尊重し、動きが苦手な人には静止表示。
+  画面外の場合はIntersectionObserverで表示まで待つ。
+*/
+let rankingChampionObserver = null;
+
+function beginRankingChampionEntrance(content) {
+  if (rankingChampionObserver) {
+    rankingChampionObserver.disconnect();
+    rankingChampionObserver = null;
+  }
+
+  if (!content || content.hidden) return;
+  if (window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) return;
+
+  const champions = Array.from(
+    content.querySelectorAll(".ranking-row--champion")
+  );
+  if (!champions.length) return;
+
+  function startAnimation(row) {
+    row.classList.remove("ranking-champion--animate");
+    // 同じパネルを再度開いた場合もCSSアニメーションを再起動する。
+    void row.offsetWidth;
+    row.classList.add("ranking-champion--animate");
+  }
+
+  if (typeof IntersectionObserver !== "function") {
+    champions.forEach(startAnimation);
+    return;
+  }
+
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (!entry.isIntersecting) return;
+      startAnimation(entry.target);
+      observer.unobserve(entry.target);
+    });
+  }, { threshold: 0.1 });
+
+  rankingChampionObserver = observer;
+  champions.forEach(row => observer.observe(row));
+}
+
+
+/*
   1位の外観だけを飾る共通UI。
   順位・件数・売上・権限・Firestoreの値は変更しない。
 */
@@ -31381,6 +31444,7 @@ function renderProductMemberRanking(monthly) {
       renderProductMemberRanking(
         records.filter(record => record.date?.startsWith(dashboardMonth.value))
       );
+      beginRankingChampionEntrance(productRankingContent);
     });
     productRankingProductList.appendChild(button);
   });
@@ -31444,6 +31508,7 @@ productRankingTeamSelect.addEventListener("change", () => {
   renderProductMemberRanking(
     records.filter(record => record.date?.startsWith(dashboardMonth.value))
   );
+  beginRankingChampionEntrance(productRankingContent);
 });
 
 

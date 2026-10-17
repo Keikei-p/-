@@ -710,3 +710,84 @@ test('Champion UI is exclusive to rank one and keeps existing 1/2/3-column grid 
   assert(html.includes('data-ranking-cols="3"'));
   assert(!source('renderTeamRanking').includes('decorateRankingChampion'));
 });
+
+
+test('iPhone Champion entrance waits until champion enters viewport and replays on reopening',()=>{
+  let observer=null;
+  class FakeObserver {
+    constructor(cb,options){this.cb=cb;this.options=options;this.observed=[];this.unobserved=[];this.disconnected=false;observer=this;}
+    observe(item){this.observed.push(item);}
+    unobserve(item){this.unobserved.push(item);}
+    disconnect(){this.disconnected=true;}
+    visible(item){this.cb([{target:item,isIntersecting:true}]);}
+  }
+  const classes=new Set();
+  const row={
+    offsetWidth:330,
+    classList:{add:value=>classes.add(value),remove:value=>classes.delete(value)}
+  };
+  const panel={
+    hidden:false,
+    querySelectorAll(selector){assert.equal(selector,'.ranking-row--champion');return [row];}
+  };
+  const ctx=context(['beginRankingChampionEntrance'],{
+    window:{matchMedia:()=>({matches:false})},
+    IntersectionObserver:FakeObserver,
+    rankingChampionObserver:null
+  });
+  ctx.beginRankingChampionEntrance(panel);
+  assert.equal(observer.observed.length,1);
+  assert.equal(observer.options.threshold,0.1);
+  assert.equal(classes.has('ranking-champion--animate'),false);
+  const first=observer;
+  observer.visible(row);
+  assert.equal(classes.has('ranking-champion--animate'),true);
+  assert.deepEqual(observer.unobserved,[row]);
+
+  // 次に開いた時は古い監視を止めてから新規登録する。
+  ctx.beginRankingChampionEntrance(panel);
+  assert.equal(first.disconnected,true);
+  assert.notEqual(observer,first);
+  assert.equal(observer.observed.length,1);
+});
+
+test('Reduced motion preference suppresses animation and hidden panels cannot animate',()=>{
+  const used=[];
+  const row={offsetWidth:20,classList:{add:name=>used.push(name),remove:name=>used.push('remove:'+name)}};
+  const panel={hidden:false,querySelectorAll:()=>[row]};
+  const ctx=context(['beginRankingChampionEntrance'],{
+    window:{matchMedia:()=>({matches:true})},
+    IntersectionObserver:undefined,
+    rankingChampionObserver:null
+  });
+  ctx.beginRankingChampionEntrance(panel);
+  assert.equal(used.length,0);
+  ctx.window.matchMedia=()=>({matches:false});
+  panel.hidden=true;
+  ctx.beginRankingChampionEntrance(panel);
+  assert.equal(used.length,0);
+  panel.hidden=false;
+  ctx.beginRankingChampionEntrance(panel);
+  assert.deepEqual(used,['remove:ranking-champion--animate','ranking-champion--animate']);
+});
+
+test('Champion Stage animates only on visible ranking openings and remains strictly decorative',()=>{
+  const start=html.indexOf('RANKING CHAMPION STAGE');
+  const end=html.indexOf('.ranking-row,\n.summary-row',start);
+  assert(start>=0 && end>start);
+  const css=html.slice(start,end);
+  assert(css.includes('ranking-champion--animate'));
+  assert(css.includes('@media (prefers-reduced-motion: reduce)'));
+  const base=css.slice(css.indexOf('.ranking-grid[data-columns] > .ranking-row--champion {'),css.indexOf('.ranking-grid > .ranking-row--champion::before {'));
+  assert(!base.includes('animation: ranking-champion-entrance'));
+  const baseShine=css.slice(css.indexOf('.ranking-grid > .ranking-row--champion::after {'),css.indexOf('.ranking-grid .ranking-row--champion > * {'));
+  assert(!baseShine.includes('animation: ranking-champion-shine'));
+  const menu=source('setupDashboardMenu');
+  assert(menu.includes('item.content === individualRankingContent'));
+  assert(menu.includes('item.content === productRankingContent'));
+  assert(menu.includes('beginRankingChampionEntrance(item.content)'));
+  const productRender=source('renderProductMemberRanking');
+  assert(productRender.includes('beginRankingChampionEntrance(productRankingContent)'));
+  assert(!/setDoc|updateDoc|addDoc|runTransaction|revenuePerUnit|formatYen/.test(source('beginRankingChampionEntrance')));
+  assert(!source('renderIndividualRanking').includes('beginRankingChampionEntrance'));
+});
