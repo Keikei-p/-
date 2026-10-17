@@ -1146,6 +1146,82 @@ header {
   margin-bottom: 10px;
 }
 
+
+/* 班別商材ランキング / 個人売上ランキング：独立した1〜3列設定 */
+.ranking-layout-toolbar {
+  display: flex; justify-content: flex-end; align-items: center;
+  gap: 10px; flex-wrap: wrap; margin-bottom: 12px;
+}
+.ranking-layout-caption { color: var(--sub); font-size: 11px; font-weight: 800; }
+.ranking-layout-choices { display:flex; gap: 5px; }
+.ranking-layout-choices button {
+  min-width: 44px; min-height: 40px; padding: 8px 10px;
+  color: var(--text); background: var(--card);
+  border: 1px solid var(--border); border-radius: 9px;
+  font-size: 12px; font-weight: 800;
+}
+.ranking-layout-choices button[aria-pressed="true"] {
+  border-color: var(--primary); background: var(--primary-soft);
+  color: var(--primary-text);
+}
+.ranking-grid, .ranking-product-grid { display:grid; gap: 8px; min-width:0; }
+.ranking-grid[data-columns="1"],.ranking-product-grid[data-columns="1"] { grid-template-columns: minmax(0,1fr); }
+.ranking-grid[data-columns="2"],.ranking-product-grid[data-columns="2"] { grid-template-columns: repeat(2,minmax(0,1fr)); }
+.ranking-grid[data-columns="3"],.ranking-product-grid[data-columns="3"] { grid-template-columns: repeat(3,minmax(0,1fr)); }
+.ranking-grid .ranking-row {
+  min-width:0; border:1px solid var(--border); border-radius:12px;
+  background:var(--card); gap:10px;
+}
+.ranking-grid .ranking-left { min-width:0; flex:1; }
+.ranking-grid .ranking-left > div:last-child { min-width:0; }
+.ranking-grid .ranking-name { overflow-wrap:anywhere; font-size:13px; }
+.ranking-grid .ranking-sub { overflow-wrap:anywhere; }
+.ranking-grid .ranking-value { min-width:0; overflow-wrap:anywhere; }
+.ranking-grid .ranking-count { font-size:14px; font-variant-numeric:tabular-nums; }
+.ranking-grid[data-columns="2"] .ranking-row,
+.ranking-grid[data-columns="3"] .ranking-row {
+  display:flex; flex-direction:column; align-items:stretch;
+  padding:11px 9px; gap:7px;
+}
+.ranking-grid[data-columns="2"] .ranking-left,
+.ranking-grid[data-columns="3"] .ranking-left { width:100%; gap:7px; }
+.ranking-grid[data-columns="2"] .ranking-value,
+.ranking-grid[data-columns="3"] .ranking-value { text-align:left; }
+.ranking-grid[data-columns="3"] .ranking-left { align-items:flex-start; flex-direction:column; gap:5px; }
+.ranking-grid[data-columns="3"] .ranking-count { font-size:12px; }
+.ranking-grid[data-columns="3"] .ranking-revenue { font-size:10px; }
+.ranking-grid[data-columns="3"] .ranking-number { width:24px; height:24px; font-size:11px; }
+.ranking-grid[data-columns="3"] .ranking-name { font-size:11px; }
+.ranking-product-scope { display:grid; max-width:270px; gap:6px; font-size:11px; font-weight:800; color:var(--sub); }
+.ranking-product-scope select {
+  width:100%; min-height:42px; border:1px solid var(--border);
+  border-radius:10px; padding:9px; color:var(--text);
+  background:var(--card); font-size:13px;
+}
+.ranking-product-help { color:var(--sub); font-size:11px; line-height:1.5; margin:10px 0; }
+.ranking-product-card {
+  min-width:0; min-height:80px; display:flex; flex-direction:column;
+  align-items:flex-start; justify-content:center; gap:6px; text-align:left;
+  padding:12px; border:1px solid var(--border);
+  border-radius:12px; background:var(--card); color:var(--text);
+}
+.ranking-product-card[aria-pressed="true"] {
+  border-color:var(--primary); background:var(--primary-soft); color:var(--primary-text);
+}
+.ranking-product-card-name { font-size:12px; font-weight:800; overflow-wrap:anywhere; }
+.ranking-product-card-count { font-size:12px; font-weight:800; }
+.ranking-product-result-header {
+  margin-top:18px; margin-bottom:12px; display:flex; justify-content:space-between;
+  gap:8px; flex-wrap:wrap; align-items:baseline; font-size:13px;
+}
+.ranking-product-result-header span { color:var(--sub); font-size:11px; }
+@media (max-width:380px) {
+  .ranking-grid[data-columns="3"] .ranking-row { padding:9px 6px; }
+  .ranking-grid[data-columns="3"] .ranking-name { font-size:10px; }
+  .ranking-grid[data-columns="3"] .ranking-count { font-size:11px; }
+  .ranking-product-grid[data-columns="3"] .ranking-product-card { padding:9px 6px; }
+}
+
 .ranking-row,
 .summary-row {
   display: flex;
@@ -5329,6 +5405,19 @@ body.product-reordering .product-list {
       </button>
 
       <button
+        id="productRankingToggle"
+        class="dashboard-app-button"
+        type="button"
+        aria-expanded="false"
+        aria-pressed="false"
+        aria-controls="productRankingContent"
+        style="display:none;">
+        <span class="dashboard-app-icon">📦</span>
+        <span class="dashboard-app-title">商材別ランキング</span>
+        <span id="productRankingCount" class="dashboard-app-meta">件数順</span>
+      </button>
+
+      <button
         id="teamRankingToggle"
         class="dashboard-app-button"
         type="button"
@@ -5479,7 +5568,39 @@ body.product-reordering .product-list {
         id="individualRankingContent"
         class="dashboard-app-content"
         hidden>
-        <div id="individualRankingList"></div>
+        <div class="ranking-layout-toolbar">
+          <span class="ranking-layout-caption">表示列数</span>
+          <div class="ranking-layout-choices" id="individualRankingLayout" role="group" aria-label="個人ランキングの表示列数">
+            <button type="button" data-ranking-cols="1" aria-pressed="true">1列</button>
+            <button type="button" data-ranking-cols="2" aria-pressed="false">2列</button>
+            <button type="button" data-ranking-cols="3" aria-pressed="false">3列</button>
+          </div>
+        </div>
+        <div id="individualRankingList" class="ranking-grid" data-columns="1"></div>
+      </div>
+
+      <div id="productRankingContent" class="dashboard-app-content" hidden>
+        <div class="ranking-layout-toolbar">
+          <span class="ranking-layout-caption">表示列数</span>
+          <div class="ranking-layout-choices" id="productRankingLayout" role="group" aria-label="商材別ランキングの表示列数">
+            <button type="button" data-ranking-cols="1" aria-pressed="true">1列</button>
+            <button type="button" data-ranking-cols="2" aria-pressed="false">2列</button>
+            <button type="button" data-ranking-cols="3" aria-pressed="false">3列</button>
+          </div>
+        </div>
+        <label class="ranking-product-scope">
+          班で絞り込む
+          <select id="productRankingTeamSelect">
+            <option value="">会社全体</option>
+          </select>
+        </label>
+        <p class="ranking-product-help">商材をタップすると、担当者ごとの獲得件数が表示されます（売上金額は表示しません）。</p>
+        <div id="productRankingProductList" class="ranking-product-grid" data-columns="1"></div>
+        <div class="ranking-product-result-header">
+          <strong id="productRankingSelectedLabel">商材を選択してください</strong>
+          <span id="productRankingMemberCount"></span>
+        </div>
+        <div id="productRankingMemberList" class="ranking-grid" data-columns="1"></div>
       </div>
 
       <div
@@ -6942,6 +7063,17 @@ const individualRankingCount =
   document.getElementById(
     "individualRankingCount"
   );
+
+const individualRankingLayout = document.getElementById("individualRankingLayout");
+const productRankingToggle = document.getElementById("productRankingToggle");
+const productRankingContent = document.getElementById("productRankingContent");
+const productRankingCount = document.getElementById("productRankingCount");
+const productRankingLayout = document.getElementById("productRankingLayout");
+const productRankingTeamSelect = document.getElementById("productRankingTeamSelect");
+const productRankingProductList = document.getElementById("productRankingProductList");
+const productRankingSelectedLabel = document.getElementById("productRankingSelectedLabel");
+const productRankingMemberCount = document.getElementById("productRankingMemberCount");
+const productRankingMemberList = document.getElementById("productRankingMemberList");
 
 const teamRankingToggle =
   document.getElementById(
@@ -8820,6 +8952,12 @@ setupDashboardMenu(
         individualRankingToggle,
       content:
         individualRankingContent
+    },
+    {
+      toggle:
+        productRankingToggle,
+      content:
+        productRankingContent
     },
     {
       toggle:
@@ -12000,6 +12138,9 @@ function updateCurrentUserUI() {
     isCurrentCompanyManager()
       ? ""
       : "none";
+
+  productRankingToggle.style.display =
+    isCurrentCompanyManager() ? "" : "none";
 
   dailyGoalCalculatorToggle.style.display =
     isCurrentCompanyManager() ? "" : "none";
@@ -25181,6 +25322,11 @@ function renderDashboard() {
     individualRankingList.innerHTML =
       "";
 
+    productRankingProductList.innerHTML = "";
+    productRankingMemberList.innerHTML = "";
+    productRankingCount.textContent = "0商材";
+    productRankingMemberCount.textContent = "";
+
     teamRankingList.innerHTML =
       "";
 
@@ -25815,6 +25961,7 @@ function renderDashboard() {
     individualMap
   );
 
+  renderProductMemberRanking(monthly);
 
   renderTeamRanking(
     teamMap,
