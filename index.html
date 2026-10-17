@@ -31084,12 +31084,13 @@ function rankProductMemberCounts(members) {
     String(a.name || "").localeCompare(String(b.name || ""),"ja") ||
     String(a.key || "").localeCompare(String(b.key || ""),"ja")
   );
-  return sorted.map((item,index) => ({
-    ...item,
-    rank: index > 0 && item.count === sorted[index - 1].count
-      ? sorted.findIndex(other => other.count === item.count) + 1
-      : index + 1
-  }));
+  let lastCount = null;
+  let lastRank = 0;
+  return sorted.map((item,index) => {
+    if (index === 0 || item.count !== lastCount) lastRank = index + 1;
+    lastCount = item.count;
+    return {...item, rank: lastRank};
+  });
 }
 
 function renderProductMemberRanking(monthly) {
@@ -31104,7 +31105,7 @@ function renderProductMemberRanking(monthly) {
     return;
   }
 
-  const previousTeam = productRankingTeamSelect.value || selectedProductRankingTeamId;
+  const previousTeam = productRankingTeamSelect.value;
   const teamId = teams.some(team => team.id === previousTeam) ? previousTeam : "";
   selectedProductRankingTeamId = teamId;
   productRankingTeamSelect.replaceChildren();
