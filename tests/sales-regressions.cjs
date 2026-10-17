@@ -642,3 +642,68 @@ test('Product ranking interface is count-only, manager-gated, and dashboard swit
   assert(html.includes('id="productRankingTeamSelect"'));
   assert(html.includes('productRankingTeamSelect.addEventListener("change"'));
 });
+
+
+test('Champion Stage only decorates an existing row and leaves ranking data unchanged', () => {
+  const created=[];
+  function node() {
+    return {
+      children:[],
+      attributes:{},
+      className:"",
+      textContent:"",
+      classes:[],
+      classList:{ add(name){this._owner.classes.push(name);} },
+      appendChild(child) { this.children.push(child); },
+      setAttribute(key,value){this.attributes[key]=value;}
+    };
+  }
+  const mockDocument={
+    createElement(tag){
+      const result=node();
+      result.tag=tag;
+      result.classList._owner=result;
+      created.push(result);
+      return result;
+    }
+  };
+  const ctx=context(['decorateRankingChampion'],{document:mockDocument});
+  for(const [scope,expected] of [
+    ['individual','MONTHLY CHAMPION'],
+    ['product','PRODUCT CHAMPION']
+  ]){
+    const card=node();
+    card.classList._owner=card;
+    const priorData={rank:1,count:12,revenue:999999};
+    const snapshot=JSON.stringify(priorData);
+    ctx.decorateRankingChampion(card,scope);
+    assert(card.classes.includes('ranking-row--champion'));
+    assert.equal(card.children.length,1);
+    const banner=card.children[0];
+    assert.equal(banner.className,'ranking-champion-banner');
+    assert.equal(banner.children[0].textContent,'👑');
+    assert.equal(banner.children[0].attributes['aria-hidden'],'true');
+    assert.equal(banner.children[1].children[0].textContent,expected);
+    assert.equal(banner.children[1].children[1].textContent,'今月のチャンピオン');
+    assert.equal(JSON.stringify(priorData),snapshot);
+    assert(!/¥|￥|円|revenue|price|売上|単価/.test(JSON.stringify(card)));
+  }
+});
+
+test('Champion UI is exclusive to rank one and keeps existing 1/2/3-column grid for others', () => {
+  const individual=source('renderIndividualRanking');
+  const product=source('renderProductMemberRanking');
+  const decoration=source('decorateRankingChampion');
+  assert(individual.includes('if (index === 0) {\n        decorateRankingChampion(row, "individual");'));
+  assert(product.includes('if (person.rank === 1) {\n      decorateRankingChampion(row, "product");'));
+  assert(!/setDoc|updateDoc|runTransaction|localStorage|revenuePerUnit|sort\(/.test(decoration));
+  const css=html.slice(html.indexOf('/* RANKING CHAMPION STAGE'),html.indexOf('.ranking-row,\n.summary-row'));
+  assert(css.includes('grid-column: 1 / -1'));
+  assert(css.includes('.ranking-grid[data-columns] > .ranking-row--champion'));
+  assert(css.includes('prefers-reduced-motion: reduce'));
+  assert(css.includes('ranking-champion-shine'));
+  assert(html.includes('data-columns="1"'));
+  assert(html.includes('data-ranking-cols="2"'));
+  assert(html.includes('data-ranking-cols="3"'));
+  assert(!source('renderTeamRanking').includes('decorateRankingChampion'));
+});
