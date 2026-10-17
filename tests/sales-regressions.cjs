@@ -772,7 +772,7 @@ test('Reduced motion preference suppresses animation and hidden panels cannot an
 });
 
 test('Champion Stage animates only on visible ranking openings and remains strictly decorative',()=>{
-  const start=html.indexOf('/* RANKING CHAMPION STAGE');
+  const start=html.indexOf('RANKING CHAMPION STAGE');
   const end=html.indexOf('.ranking-row,\n.summary-row',start);
   assert(start>=0 && end>start);
   const css=html.slice(start,end);
