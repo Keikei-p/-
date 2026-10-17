@@ -1222,6 +1222,194 @@ header {
   .ranking-product-grid[data-columns="3"] .ranking-product-card { padding:9px 6px; }
 }
 
+
+/* =====================================================
+   RANKING CHAMPION STAGE — 順位や計算には触れない装飾のみ
+   個人・商材別ランキングの1位だけ全幅に表示する。
+===================================================== */
+.ranking-grid[data-columns] > .ranking-row--champion {
+  grid-column: 1 / -1;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  min-height: 252px;
+  gap: 13px;
+  padding: 20px 18px 22px;
+  border: 1px solid #d2ac5d;
+  border-radius: 22px;
+  color: #fff8e5;
+  background:
+    radial-gradient(ellipse at 50% -38%, rgba(255,220,133,.33), transparent 65%),
+    radial-gradient(circle at 100% 75%, rgba(167,123,55,.19), transparent 45%),
+    linear-gradient(137deg, #282a36 0%, #111827 49%, #24202a 100%);
+  box-shadow: 0 14px 32px rgba(18,24,38,.22), inset 0 1px 0 rgba(255,234,172,.28);
+  text-align: center;
+  animation: ranking-champion-entrance .65s cubic-bezier(.2,.75,.2,1) both;
+}
+.ranking-grid > .ranking-row--champion::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  width: 220px;
+  height: 220px;
+  border: 1px solid rgba(255,221,153,.16);
+  border-radius: 50%;
+  left: 50%;
+  top: -110px;
+  transform: translateX(-50%);
+  box-shadow: 0 0 0 22px rgba(255,221,153,.025), 0 0 0 48px rgba(255,221,153,.025);
+  pointer-events: none;
+}
+.ranking-grid > .ranking-row--champion::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 40%;
+  background: linear-gradient(108deg, transparent 20%, rgba(255,243,198,.16) 48%, transparent 76%);
+  transform: translateX(-280%) skewX(-17deg);
+  animation: ranking-champion-shine 1.25s ease-out .35s 1 both;
+  pointer-events: none;
+}
+.ranking-grid .ranking-row--champion > * {
+  position: relative;
+  z-index: 1;
+}
+.ranking-champion-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #f7d88f;
+}
+.ranking-champion-crown {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border: 1px solid rgba(250,213,130,.72);
+  border-radius: 50%;
+  background: linear-gradient(155deg, rgba(192,144,63,.43), rgba(117,79,32,.14));
+  box-shadow: inset 0 0 15px rgba(255,211,112,.12), 0 0 25px rgba(218,166,70,.18);
+  font-size: 28px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.ranking-champion-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  text-align: left;
+}
+.ranking-champion-eyebrow {
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .22em;
+  color: #e7c47c;
+}
+.ranking-champion-title {
+  color: #fff1c5;
+  font-size: clamp(17px, 5vw, 22px);
+  font-weight: 900;
+  letter-spacing: .06em;
+  text-shadow: 0 1px 14px rgba(255,207,105,.22);
+}
+.ranking-grid .ranking-row--champion .ranking-left {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  flex: initial;
+  min-width: 0;
+}
+.ranking-grid .ranking-row--champion .ranking-left > div:last-child {
+  min-width: 0;
+}
+.ranking-grid .ranking-row--champion .ranking-number,
+.ranking-grid .ranking-row--champion .ranking-number.top1 {
+  width: auto;
+  min-width: 54px;
+  height: auto;
+  min-height: 26px;
+  padding: 3px 12px;
+  border: 1px solid rgba(235,187,102,.56);
+  border-radius: 999px;
+  color: #ffe4a6;
+  background: rgba(228,173,78,.16);
+  font-size: 12px;
+  line-height: 1.3;
+}
+.ranking-grid .ranking-row--champion .ranking-number::after {
+  content: "位";
+}
+.ranking-grid .ranking-row--champion .ranking-name {
+  color: #fff9ed;
+  font-size: clamp(23px, 6vw, 30px);
+  font-weight: 900;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  text-shadow: 0 2px 14px rgba(0,0,0,.22);
+}
+.ranking-grid .ranking-row--champion .ranking-sub {
+  color: #bcc6d7;
+  font-size: 12px;
+  margin-top: 5px;
+}
+.ranking-grid .ranking-row--champion .ranking-value {
+  width: 100%;
+  max-width: 410px;
+  min-width: 0;
+  padding: 11px 14px;
+  margin: 0 auto;
+  border: 1px solid rgba(244,209,142,.22);
+  border-radius: 13px;
+  background: rgba(255,255,255,.075);
+  text-align: center;
+}
+.ranking-grid .ranking-row--champion .ranking-count {
+  color: #ffe5a1;
+  font-size: clamp(23px, 6vw, 30px);
+  font-weight: 900;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+.ranking-grid .ranking-row--champion .ranking-revenue {
+  color: #d4d7e0;
+  margin-top: 3px;
+  font-size: 12px;
+}
+@keyframes ranking-champion-entrance {
+  from { opacity: 0; transform: translateY(13px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes ranking-champion-shine {
+  from { transform: translateX(-280%) skewX(-17deg); }
+  to { transform: translateX(880%) skewX(-17deg); }
+}
+@media (max-width: 460px) {
+  .ranking-grid[data-columns] > .ranking-row--champion {
+    min-height: 234px;
+    padding: 18px 12px 20px;
+    border-radius: 17px;
+  }
+  .ranking-champion-crown { width: 48px; height: 48px; font-size: 24px; }
+  .ranking-champion-eyebrow { font-size: 8px; letter-spacing: .16em; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ranking-grid[data-columns] > .ranking-row--champion,
+  .ranking-grid > .ranking-row--champion::after {
+    animation: none;
+  }
+  .ranking-grid > .ranking-row--champion::after { display: none; }
+}
+
 .ranking-row,
 .summary-row {
   display: flex;
@@ -30703,6 +30891,41 @@ function renderAllTeamsOverview(
    個人ランキング
 ===================================================== */
 
+
+/*
+  1位の外観だけを飾る共通UI。
+  順位・件数・売上・権限・Firestoreの値は変更しない。
+*/
+function decorateRankingChampion(row, category) {
+  row.classList.add("ranking-row--champion");
+
+  const banner = document.createElement("div");
+  banner.className = "ranking-champion-banner";
+
+  const crown = document.createElement("span");
+  crown.className = "ranking-champion-crown";
+  crown.setAttribute("aria-hidden", "true");
+  crown.textContent = "👑";
+
+  const copy = document.createElement("span");
+  copy.className = "ranking-champion-copy";
+
+  const eyebrow = document.createElement("span");
+  eyebrow.className = "ranking-champion-eyebrow";
+  eyebrow.textContent = category === "product"
+    ? "PRODUCT CHAMPION" : "MONTHLY CHAMPION";
+
+  const title = document.createElement("span");
+  title.className = "ranking-champion-title";
+  title.textContent = "今月のチャンピオン";
+
+  copy.appendChild(eyebrow);
+  copy.appendChild(title);
+  banner.appendChild(crown);
+  banner.appendChild(copy);
+  row.appendChild(banner);
+}
+
 function renderIndividualRanking(
   individualMap
 ) {
@@ -30813,6 +31036,10 @@ function renderIndividualRanking(
       row.className =
         "ranking-row";
 
+      // 個人売上ランキングで1位だけ特別な外観にする。
+      if (index === 0) {
+        decorateRankingChampion(row, "individual");
+      }
 
       const left =
         document.createElement(
@@ -31170,6 +31397,10 @@ function renderProductMemberRanking(monthly) {
   selected.members.forEach(person => {
     const row = document.createElement("div");
     row.className = "ranking-row";
+    // 商材別では同率1位の全員に同じ表彰デザインを付ける。
+    if (person.rank === 1) {
+      decorateRankingChampion(row, "product");
+    }
     const left = document.createElement("div");
     left.className = "ranking-left";
     const number = document.createElement("div");
