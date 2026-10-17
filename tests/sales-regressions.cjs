@@ -507,3 +507,138 @@ test('When clipboard is blocked on iPhone, manual copy text is displayed without
   assert(errors[0].includes('長押し'));
   assert(!/¥|￥|円|売上|収益|単価|revenue/i.test(fallback.value));
 });
+
+
+test('Product ranking uses stable product IDs and sums per UID across historical team transfers',()=>{
+  const ctx=context([
+    'getRecordResults','currentProductDisplayName',
+    'getCurrentMemberName','getCurrentTeamName',
+    'recordBelongsToTeam','productRankingRecordMatchesTeam',
+    'rankProductMemberCounts','buildProductMemberRanking'
+  ],{
+    products:[
+      {id:'nuro',name:'NURO光',active:true},
+      {id:'water',name:'ウォーター',active:true},
+      {id:'htb',name:'HTB',active:true}
+    ],
+    teams:[{id:'a',name:'1班'},{id:'b',name:'2班'}],
+    members:[{id:'alice',name:'田中さん',teamId:'b'}, {id:'bob',name:'佐藤さん',teamId:'b'}]
+  });
+  const records=[
+    {id:'r1',date:'2026-10-11',uid:'alice',teamId:'a',teamNameSnapshot:'1班',
+      results:{nuro:{productName:'HTB',count:2,revenuePerUnit:100000},water:{productName:'ウォーター',count:1,revenuePerUnit:50000}}},
+    {id:'r2',date:'2026-10-12',uid:'alice',teamId:'b',teamNameSnapshot:'2班',
+      results:{nuro:{productName:'HTB',count:2,revenuePerUnit:100000}}},
+    {id:'r3',date:'2026-10-13',uid:'bob',teamId:'b',teamNameSnapshot:'2班',
+      results:{nuro:{productName:'NURO光',count:3,revenuePerUnit:80000},htb:{productName:'HTB',count:1,revenuePerUnit:0}}},
+    {id:'r4',date:'2026-10-13',uid:'bob',teamId:'b',teamNameSnapshot:'2班',
+      results:{water:{productName:'ウォーター',count:1,revenuePerUnit:0}}}
+  ];
+  const before=JSON.stringify(records);
+  const all=ctx.buildProductMemberRanking(records,'');
+  const nuro=all.find(item=>item.key==='id:nuro');
+  assert.equal(nuro.name,'NURO光');
+  assert.equal(nuro.count,7);
+  assert.deepEqual(Array.from(nuro.members,p=>[p.name,p.count,p.rank,p.teamName]),
+    [['田中さん',4,1,'複数班で獲得'],['佐藤さん',3,2,'2班']]);
+  const water=all.find(item=>item.key==='id:water');
+  assert.equal(water.count,2);
+  const htb=all.find(item=>item.key==='id:htb');
+  assert.equal(htb.count,1);
+  assert(!all.some(item=>item.key==='legacy:HTB'));
+  assert.equal(ctx.buildProductMemberRanking(records,'a').find(item=>item.key==='id:nuro').count,2);
+  assert.equal(ctx.buildProductMemberRanking(records,'b').find(item=>item.key==='id:nuro').count,5);
+  assert.deepEqual(Array.from(ctx.buildProductMemberRanking(records,'a').find(item=>item.key==='id:nuro').members,p=>p.name),['田中さん']);
+  assert.equal(JSON.stringify(records),before);
+  assert(!/revenue|price|¥|￥|単価|売上/i.test(JSON.stringify(all)));
+});
+
+test('Product ranking sorts count descending and ties are assigned shared ranks (1,1,3)',()=>{
+  const ctx=context(['rankProductMemberCounts']);
+  const data=[
+    {key:'x1',name:'同名',count:3},
+    {key:'x2',name:'同名',count:3},
+    {key:'x3',name:'下位',count:1},
+    {key:'x4',name:'最高',count:5}
+  ];
+  const before=JSON.stringify(data);
+  const ranked=ctx.rankProductMemberCounts(data);
+  assert.deepEqual(Array.from(ranked,x=>[x.key,x.rank]),[['x4',1],['x1',2],['x2',2],['x3',4]]);
+  assert.equal(JSON.stringify(data),before);
+});
+
+test('Deleted product and no-productId historical records remain separate instead of guessing',()=>{
+  const ctx=context([
+    'getRecordResults','currentProductDisplayName',
+    'getCurrentMemberName','getCurrentTeamName',
+    'recordBelongsToTeam','productRankingRecordMatchesTeam',
+    'rankProductMemberCounts','buildProductMemberRanking'
+  ],{
+    products:[{id:'htb',name:'HTB',active:true}],
+    teams:[{id:'one',name:'1班'}],members:[]
+  });
+  const records=[
+    {id:'a',uid:'a',date:'2026-10-01',teamId:'one',teamNameSnapshot:'1班',
+      results:{htb:{productName:'HTB',count:2,revenuePerUnit:10000}}},
+    {id:'b',uid:'b',date:'2026-10-02',teamId:'one',teamNameSnapshot:'1班',
+      results:[{productName:'HTB',count:3,revenuePerUnit:40000}]},
+    {id:'c',uid:'c',date:'2026-10-03',teamId:'one',teamNameSnapshot:'1班',
+      results:{deleted:{productName:'旧商材',count:1,revenuePerUnit:0}}}
+  ];
+  const result=ctx.buildProductMemberRanking(records,'');
+  assert.equal(result.find(item=>item.key==='id:htb').count,2);
+  assert.equal(result.find(item=>item.key==='legacy:HTB').count,3);
+  assert.equal(result.find(item=>item.key==='id:deleted').count,1);
+  assert.equal(result.find(item=>item.key==='id:deleted').name,'旧商材');
+});
+
+test('Column controls are independent, persist as local preferences, and do not affect team ranking',()=>{
+  const written=[];
+  const makeButtons=()=>[1,2,3].map(count=>({
+    dataset:{rankingCols:String(count)},attributes:{},
+    setAttribute(key,value){this.attributes[key]=value;}
+  }));
+  const individualButtons=makeButtons(),productButtons=makeButtons();
+  const individual={querySelectorAll:()=>individualButtons},product={querySelectorAll:()=>productButtons};
+  const individualList={dataset:{}},productList={dataset:{}},productCatalog={dataset:{}};
+  const ctx=context([
+    'normalizeRankingColumnCount','rankingLayoutStorageKey',
+    'updateRankingLayoutControls','setRankingColumns'
+  ],{
+    individualRankingColumns:1,productRankingColumns:1,
+    individualRankingLayout:individual,productRankingLayout:product,
+    individualRankingList:individualList,productRankingMemberList:productList,
+    productRankingProductList:productCatalog,
+    safeLocalStorageSet:(key,value)=>{written.push([key,value]);return true;}
+  });
+  assert.equal(ctx.normalizeRankingColumnCount(3),3);
+  for(const bad of [0,4,'all',-1,2.5,null]) assert.equal(ctx.normalizeRankingColumnCount(bad),1);
+  ctx.setRankingColumns('individual',3);
+  assert.equal(individualList.dataset.columns,'3');
+  assert.equal(productList.dataset.columns,undefined);
+  assert.equal(individualButtons[2].attributes['aria-pressed'],'true');
+  ctx.setRankingColumns('product',2);
+  assert.equal(productList.dataset.columns,'2');
+  assert.equal(productCatalog.dataset.columns,'2');
+  assert.equal(individualList.dataset.columns,'3');
+  assert.equal(productButtons[1].attributes['aria-pressed'],'true');
+  assert.deepEqual(written,[
+    ['sales-ranking-layout-individual-v1','3'],
+    ['sales-ranking-layout-product-v1','2']
+  ]);
+});
+
+test('Product ranking interface is count-only, manager-gated, and dashboard switches current month',()=>{
+  const start=html.indexOf('function buildProductMemberRanking(');
+  const end=html.indexOf('/* =====================================================\n   班ランキング',start);
+  assert(start>=0 && end>start);
+  const code=html.slice(start,end);
+  assert(!/formatYen|revenuePerUnit|totalRevenue|\.revenue\b|\.price\b/.test(code));
+  assert(html.includes('productRankingToggle.style.display ='));
+  assert(html.includes('isCurrentCompanyManager() ? "" : "none"'));
+  assert(html.includes('renderProductMemberRanking(monthly)'));
+  assert(html.includes('data-columns="1"'));
+  assert(html.includes('data-ranking-cols="3"'));
+  assert(html.includes('id="productRankingTeamSelect"'));
+  assert(html.includes('productRankingTeamSelect.addEventListener("change"'));
+});
