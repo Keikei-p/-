@@ -681,8 +681,13 @@ test('Champion Stage only decorates an existing row and leaves ranking data unch
     assert.equal(card.children.length,1);
     const banner=card.children[0];
     assert.equal(banner.className,'ranking-champion-banner');
-    assert.equal(banner.children[0].textContent,'👑');
+    assert.match(banner.children[0].innerHTML,/<svg viewBox="0 0 96 96"/);
+    assert.match(banner.children[0].innerHTML,/<path d="M13 30/);
+    assert(!banner.children[0].innerHTML.includes('<image'));
     assert.equal(banner.children[0].attributes['aria-hidden'],'true');
+    assert.equal(banner.children.length,5);
+    assert.deepEqual(banner.children.slice(2).map(node=>node.textContent),['✦','✦','✦']);
+    assert(banner.children.slice(2).every(node=>node.attributes['aria-hidden']==='true'));
     assert.equal(banner.children[1].children[0].textContent,expected);
     assert.equal(banner.children[1].children[1].textContent,'今月のチャンピオン');
     assert.equal(JSON.stringify(priorData),snapshot);
@@ -790,4 +795,45 @@ test('Champion Stage animates only on visible ranking openings and remains stric
   assert(productRender.includes('beginRankingChampionEntrance(productRankingContent)'));
   assert(!/setDoc|updateDoc|addDoc|runTransaction|revenuePerUnit|formatYen/.test(source('beginRankingChampionEntrance')));
   assert(!source('renderIndividualRanking').includes('beginRankingChampionEntrance'));
+});
+
+
+test('Premium champion styling is one-shot transform/opacity animation without network imagery or timers',()=>{
+  const cssStart=html.indexOf('RANKING CHAMPION STAGE');
+  const cssEnd=html.indexOf('.ranking-row,\n.summary-row',cssStart);
+  const css=html.slice(cssStart,cssEnd);
+  assert(css.includes('ranking-champion-crown-rise'));
+  assert(css.includes('ranking-champion-halo'));
+  assert(css.includes('ranking-champion-twinkle'));
+  assert(css.includes('ranking-champion-shine'));
+  assert(css.includes('prefers-reduced-motion: reduce'));
+  for(const part of ['.ranking-champion-crown::before', '.ranking-champion-spark--a', '.ranking-champion-spark--b', '.ranking-champion-spark--c']){
+    assert(css.includes(part),part);
+  }
+  const animations=[...css.matchAll(/animation:\s*ranking-champion-[^;]+;/g)].map(match=>match[0]);
+  assert(animations.length>=5);
+  assert(animations.every(rule=>!/(\binfinite\b|\blinear\b)/i.test(rule)));
+  const keyframes=[...css.matchAll(/@keyframes\s+ranking-champion-[\w-]+\s*\{([\s\S]*?)\n\}/g)];
+  assert(keyframes.length>=5);
+  for(const match of keyframes){
+    assert(!/(background-position|box-shadow|filter|height|width|top|left):/i.test(match[1]),match[0].slice(0,120));
+    assert(/(opacity|transform):/.test(match[1]));
+  }
+  const crown=source('decorateRankingChampion');
+  assert(crown.includes('svg viewBox="0 0 96 96"'));
+  assert(crown.includes('"a", "b", "c"'));
+  assert(!/(fetch\(|XMLHttpRequest|setInterval|setTimeout|requestAnimationFrame|setDoc|updateDoc)/.test(crown));
+  const sourceAnimate=source('beginRankingChampionEntrance');
+  assert(sourceAnimate.includes('prefers-reduced-motion: reduce'));
+  assert(sourceAnimate.includes('IntersectionObserver'));
+  assert(!sourceAnimate.includes('setInterval'));
+});
+
+test('Champion styling does not alter original leader eligibility or non-champion ranks',()=>{
+  const individual=source('renderIndividualRanking');
+  const product=source('renderProductMemberRanking');
+  assert(individual.includes('if (index === 0) {\n        decorateRankingChampion(row, "individual");'));
+  assert(product.includes('if (person.rank === 1) {\n      decorateRankingChampion(row, "product");'));
+  const helper=source('decorateRankingChampion');
+  assert(!/\.count|\.revenue|\.rank\s*=|sort\(|canCurrentUser|Firestore/.test(helper));
 });
