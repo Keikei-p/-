@@ -1224,8 +1224,8 @@ header {
 
 
 /* =====================================================
-   RANKING CHAMPION STAGE — 順位や計算には触れない装飾のみ
-   個人・商材別ランキングの1位だけ全幅に表示する。
+   RANKING CHAMPION STAGE — 静的な豪華さ＋軽量な一回限りの演出
+   ランキングの表示・件数・順位・権限ロジックは変更しない。
 ===================================================== */
 .ranking-grid[data-columns] > .ranking-row--champion {
   grid-column: 1 / -1;
@@ -1236,32 +1236,32 @@ header {
   flex-direction: column;
   align-items: stretch;
   justify-content: center;
-  min-height: 252px;
-  gap: 13px;
-  padding: 20px 18px 22px;
-  border: 1px solid #d2ac5d;
+  min-height: 268px;
+  gap: 14px;
+  padding: 22px 18px 23px;
+  border: 1px solid #e6bb68;
   border-radius: 22px;
   color: #fff8e5;
   background:
-    radial-gradient(ellipse at 50% -38%, rgba(255,220,133,.33), transparent 65%),
-    radial-gradient(circle at 100% 75%, rgba(167,123,55,.19), transparent 45%),
-    linear-gradient(137deg, #282a36 0%, #111827 49%, #24202a 100%);
-  box-shadow: 0 14px 32px rgba(18,24,38,.22), inset 0 1px 0 rgba(255,234,172,.28);
+    radial-gradient(ellipse at 50% -35%, rgba(236,186,91,.29), transparent 62%),
+    radial-gradient(ellipse at 5% 105%, rgba(142,103,45,.24), transparent 54%),
+    radial-gradient(ellipse at 100% 85%, rgba(166,102,38,.19), transparent 52%),
+    linear-gradient(145deg, #252633 0%, #111521 46%, #26202a 100%);
+  box-shadow: 0 12px 28px rgba(20,22,35,.20), inset 0 1px 0 rgba(255,229,157,.3);
   text-align: center;
-  /* 明示的に表示されたときだけ再生（非表示中の空振りを防ぐ）。 */
 }
 .ranking-grid > .ranking-row--champion::before {
   content: "";
   position: absolute;
-  z-index: -1;
-  width: 220px;
-  height: 220px;
-  border: 1px solid rgba(255,221,153,.16);
-  border-radius: 50%;
+  z-index: 0;
+  width: min(85%, 270px);
+  aspect-ratio: 1;
   left: 50%;
-  top: -110px;
+  top: -172px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,215,124,.14);
+  box-shadow: 0 0 0 25px rgba(232,178,85,.035), 0 0 0 52px rgba(232,178,85,.025);
   transform: translateX(-50%);
-  box-shadow: 0 0 0 22px rgba(255,221,153,.025), 0 0 0 48px rgba(255,221,153,.025);
   pointer-events: none;
 }
 .ranking-grid > .ranking-row--champion::after {
@@ -1269,10 +1269,9 @@ header {
   position: absolute;
   inset: 0;
   z-index: 0;
-  width: 40%;
-  background: linear-gradient(108deg, transparent 20%, rgba(255,243,198,.16) 48%, transparent 76%);
-  transform: translateX(-280%) skewX(-17deg);
-  /* 開いた画面が見えた時だけ光の演出を開始する。 */
+  width: 34%;
+  background: linear-gradient(110deg, transparent 0%, rgba(255,235,184,.04) 25%, rgba(255,243,198,.24) 50%, rgba(255,235,184,.04) 72%, transparent 100%);
+  transform: translateX(-300%) skewX(-17deg);
   pointer-events: none;
 }
 .ranking-grid .ranking-row--champion > * {
@@ -1281,44 +1280,85 @@ header {
 }
 .ranking-champion-banner {
   display: flex;
+  position: relative;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 15px;
+  min-height: 82px;
   color: #f7d88f;
 }
 .ranking-champion-crown {
+  position: relative;
+  z-index: 1;
   display: grid;
   place-items: center;
-  width: 54px;
-  height: 54px;
-  border: 1px solid rgba(250,213,130,.72);
+  width: 82px;
+  height: 82px;
+  flex: 0 0 82px;
+  border: 1px solid rgba(253,218,145,.79);
   border-radius: 50%;
-  background: linear-gradient(155deg, rgba(192,144,63,.43), rgba(117,79,32,.14));
-  box-shadow: inset 0 0 15px rgba(255,211,112,.12), 0 0 25px rgba(218,166,70,.18);
-  font-size: 28px;
-  line-height: 1;
-  flex-shrink: 0;
+  background: radial-gradient(circle at 32% 24%, rgba(255,237,172,.23), rgba(193,143,60,.23) 43%, rgba(76,53,35,.23) 84%);
+  box-shadow: inset 0 0 0 4px rgba(244,192,103,.075), 0 3px 18px rgba(185,127,39,.14);
+}
+.ranking-champion-crown::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: -10px;
+  border: 1px solid rgba(255,211,128,.33);
+  border-radius: 50%;
+  opacity: .6;
+  pointer-events: none;
+}
+.ranking-champion-crown::after {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border: 1px solid rgba(255,229,160,.17);
+  border-radius: 50%;
+  pointer-events: none;
+}
+.ranking-champion-crown svg {
+  display: block;
+  width: 64px;
+  height: 64px;
 }
 .ranking-champion-copy {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 3px;
+  min-width: 0;
+  gap: 7px;
   text-align: left;
 }
 .ranking-champion-eyebrow {
+  color: #e7bd75;
   font-size: 9px;
   font-weight: 900;
-  letter-spacing: .22em;
-  color: #e7c47c;
+  letter-spacing: .24em;
+  line-height: 1.3;
 }
 .ranking-champion-title {
-  color: #fff1c5;
-  font-size: clamp(17px, 5vw, 22px);
+  color: #ffe6ad;
+  font-size: clamp(17px, 5vw, 23px);
   font-weight: 900;
   letter-spacing: .06em;
-  text-shadow: 0 1px 14px rgba(255,207,105,.22);
+  line-height: 1.35;
+  text-shadow: 0 1px 10px rgba(255,200,97,.12);
 }
+.ranking-champion-spark {
+  position: absolute;
+  z-index: 2;
+  font-size: 20px;
+  line-height: 1;
+  color: #ffe4a2;
+  opacity: .76;
+  pointer-events: none;
+  text-shadow: 0 0 10px rgba(254,207,102,.58);
+}
+.ranking-champion-spark--a { left: 5%; top: 7%; font-size: 23px; }
+.ranking-champion-spark--b { right: 7%; top: 10%; font-size: 16px; color: #fff4cf; }
+.ranking-champion-spark--c { right: 2%; bottom: 2%; font-size: 12px; color: #eab66b; }
 .ranking-grid .ranking-row--champion .ranking-left {
   display: flex;
   flex-direction: column;
@@ -1329,9 +1369,7 @@ header {
   flex: initial;
   min-width: 0;
 }
-.ranking-grid .ranking-row--champion .ranking-left > div:last-child {
-  min-width: 0;
-}
+.ranking-grid .ranking-row--champion .ranking-left > div:last-child { min-width: 0; }
 .ranking-grid .ranking-row--champion .ranking-number,
 .ranking-grid .ranking-row--champion .ranking-number.top1 {
   width: auto;
@@ -1346,16 +1384,14 @@ header {
   font-size: 12px;
   line-height: 1.3;
 }
-.ranking-grid .ranking-row--champion .ranking-number::after {
-  content: "位";
-}
+.ranking-grid .ranking-row--champion .ranking-number::after { content: "位"; }
 .ranking-grid .ranking-row--champion .ranking-name {
   color: #fff9ed;
   font-size: clamp(23px, 6vw, 30px);
   font-weight: 900;
   line-height: 1.3;
   overflow-wrap: anywhere;
-  text-shadow: 0 2px 14px rgba(0,0,0,.22);
+  text-shadow: 0 2px 12px rgba(0,0,0,.2);
 }
 .ranking-grid .ranking-row--champion .ranking-sub {
   color: #bcc6d7;
@@ -1368,13 +1404,13 @@ header {
   min-width: 0;
   padding: 11px 14px;
   margin: 0 auto;
-  border: 1px solid rgba(244,209,142,.22);
+  border: 1px solid rgba(244,209,142,.26);
   border-radius: 13px;
-  background: rgba(255,255,255,.075);
+  background: rgba(255,255,255,.08);
   text-align: center;
 }
 .ranking-grid .ranking-row--champion .ranking-count {
-  color: #ffe5a1;
+  color: #ffe6aa;
   font-size: clamp(23px, 6vw, 30px);
   font-weight: 900;
   line-height: 1.4;
@@ -1385,33 +1421,70 @@ header {
   margin-top: 3px;
   font-size: 12px;
 }
-/* iOSでもランキングカードが画面内に現れてから一度だけ開始 */
+
+/* 表示中の1位だけ起動する。transform / opacityのみを1回動かす。 */
 .ranking-grid[data-columns] > .ranking-row--champion.ranking-champion--animate {
-  animation: ranking-champion-entrance .85s cubic-bezier(.2,.75,.2,1) both;
+  animation: ranking-champion-entrance 850ms cubic-bezier(.17,.8,.24,1) both;
 }
 .ranking-grid > .ranking-row--champion.ranking-champion--animate::after {
-  animation: ranking-champion-shine 1.5s ease-out .45s 1 both;
+  animation: ranking-champion-shine 1600ms ease-out 350ms 1 both;
 }
+.ranking-row--champion.ranking-champion--animate .ranking-champion-crown {
+  animation: ranking-champion-crown-rise 1000ms cubic-bezier(.16,1,.3,1) 1 both;
+}
+.ranking-row--champion.ranking-champion--animate .ranking-champion-crown::before {
+  animation: ranking-champion-halo 1350ms ease-out 180ms 1 both;
+}
+.ranking-row--champion.ranking-champion--animate .ranking-champion-spark {
+  animation: ranking-champion-twinkle 1450ms ease-out 250ms 1 both;
+}
+.ranking-row--champion.ranking-champion--animate .ranking-champion-spark--b { animation-delay: 520ms; }
+.ranking-row--champion.ranking-champion--animate .ranking-champion-spark--c { animation-delay: 750ms; }
+
 @keyframes ranking-champion-entrance {
-  from { opacity: 0; transform: translateY(13px) scale(.985); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  0% { opacity: 0; transform: translateY(19px) scale(.985); }
+  65% { opacity: 1; transform: translateY(-3px) scale(1.005); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
 }
 @keyframes ranking-champion-shine {
-  from { transform: translateX(-280%) skewX(-17deg); }
-  to { transform: translateX(880%) skewX(-17deg); }
+  0% { opacity: 0; transform: translateX(-300%) skewX(-17deg); }
+  24% { opacity: 1; }
+  100% { opacity: 0; transform: translateX(980%) skewX(-17deg); }
+}
+@keyframes ranking-champion-crown-rise {
+  0% { opacity: 0; transform: translateY(10px) scale(.72) rotate(-9deg); }
+  62% { opacity: 1; transform: translateY(-5px) scale(1.1) rotate(3deg); }
+  100% { opacity: 1; transform: translateY(0) scale(1) rotate(0); }
+}
+@keyframes ranking-champion-halo {
+  0% { opacity: 0; transform: scale(.8); }
+  42% { opacity: .95; transform: scale(1.24); }
+  100% { opacity: .6; transform: scale(1); }
+}
+@keyframes ranking-champion-twinkle {
+  0% { opacity: 0; transform: translateY(9px) scale(.3) rotate(-50deg); }
+  55% { opacity: 1; transform: translateY(-5px) scale(1.4) rotate(12deg); }
+  100% { opacity: .76; transform: translateY(0) scale(1) rotate(0); }
 }
 @media (max-width: 460px) {
   .ranking-grid[data-columns] > .ranking-row--champion {
-    min-height: 234px;
+    min-height: 254px;
     padding: 18px 12px 20px;
     border-radius: 17px;
   }
-  .ranking-champion-crown { width: 48px; height: 48px; font-size: 24px; }
-  .ranking-champion-eyebrow { font-size: 8px; letter-spacing: .16em; }
+  .ranking-champion-banner { gap: 11px; min-height: 72px; }
+  .ranking-champion-crown { width: 70px; height: 70px; flex-basis: 70px; }
+  .ranking-champion-crown svg { width: 56px; height: 56px; }
+  .ranking-champion-eyebrow { font-size: 8px; letter-spacing: .13em; }
+  .ranking-champion-spark--a { left: 1%; }
+  .ranking-champion-spark--b { right: 1%; }
 }
 @media (prefers-reduced-motion: reduce) {
   .ranking-grid[data-columns] > .ranking-row--champion.ranking-champion--animate,
-  .ranking-grid > .ranking-row--champion.ranking-champion--animate::after {
+  .ranking-grid > .ranking-row--champion.ranking-champion--animate::after,
+  .ranking-row--champion.ranking-champion--animate .ranking-champion-crown,
+  .ranking-row--champion.ranking-champion--animate .ranking-champion-crown::before,
+  .ranking-row--champion.ranking-champion--animate .ranking-champion-spark {
     animation: none;
   }
   .ranking-grid > .ranking-row--champion::after { display: none; }
@@ -30968,7 +31041,23 @@ function decorateRankingChampion(row, category) {
   const crown = document.createElement("span");
   crown.className = "ranking-champion-crown";
   crown.setAttribute("aria-hidden", "true");
-  crown.textContent = "👑";
+  // 絵文字は機種によって見え方が変わるので、軽量な固定SVG王冠を使用する。
+  // SVG内の図形は固定文字列のみで、外部画像やネットワーク読み込みはない。
+  crown.innerHTML = `
+    <svg viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+      <path d="M13 30 L31 43 L48 15 L65 43 L83 30 L75 70 H21 Z" fill="#D99B3B" stroke="#FFE9B4" stroke-width="3.2" stroke-linejoin="round"/>
+      <path d="M19 38 L31 49 L48 25 L65 49 L77 38 L72 65 H24 Z" fill="#FFD982" opacity=".86"/>
+      <path d="M23 65 H73 V75 Q48 80 23 75 Z" fill="#B9792E" stroke="#FFE6A1" stroke-width="2.8" stroke-linejoin="round"/>
+      <path d="M28 69 H68" stroke="#FFF3C9" stroke-width="2.8" stroke-linecap="round" opacity=".84"/>
+      <path d="M31 46 L39 38 L48 22 L57 38 L65 46" stroke="#FFF0BC" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity=".92"/>
+      <path d="M48 40 L54 48 L48 57 L42 48 Z" fill="#F8F4E9" stroke="#C99846" stroke-width="1.6"/>
+      <circle cx="14" cy="29" r="4.2" fill="#FFF4D1" stroke="#DEB367" stroke-width="2"/>
+      <circle cx="48" cy="14" r="4.8" fill="#FFF4D1" stroke="#DEB367" stroke-width="2"/>
+      <circle cx="82" cy="29" r="4.2" fill="#FFF4D1" stroke="#DEB367" stroke-width="2"/>
+      <circle cx="30" cy="68" r="2.4" fill="#FFE7A0"/>
+      <circle cx="66" cy="68" r="2.4" fill="#FFE7A0"/>
+    </svg>
+  `;
 
   const copy = document.createElement("span");
   copy.className = "ranking-champion-copy";
@@ -30986,6 +31075,16 @@ function decorateRankingChampion(row, category) {
   copy.appendChild(title);
   banner.appendChild(crown);
   banner.appendChild(copy);
+
+  // 小さな光を3つだけ。描画時に追加し、登場時だけCSSで短く動かす。
+  ["a", "b", "c"].forEach(position => {
+    const sparkle = document.createElement("span");
+    sparkle.className = `ranking-champion-spark ranking-champion-spark--${position}`;
+    sparkle.setAttribute("aria-hidden", "true");
+    sparkle.textContent = "✦";
+    banner.appendChild(sparkle);
+  });
+
   row.appendChild(banner);
 }
 
