@@ -8168,6 +8168,11 @@ let revenueChartScopeKey =
 let teamRankingMode =
   "progress";
 
+let individualRankingColumns = 1;
+let productRankingColumns = 1;
+let selectedProductRankingKey = "";
+let selectedProductRankingTeamId = "";
+
 const defaultReportTemplateOptions = {
   showDate: true,
   showTeamName: true,
@@ -30705,6 +30710,7 @@ function renderIndividualRanking(
   individualRankingList.innerHTML =
     "";
 
+  updateRankingLayoutControls("individual");
 
   if (
     !canCurrentUserViewRevenue()
@@ -30944,6 +30950,270 @@ function renderIndividualRanking(
   );
 
 }
+
+
+/* =====================================================
+   商材別件数ランキング・列数切り替え（読取専用）
+===================================================== */
+
+function normalizeRankingColumnCount(value) {
+  const count = Number(value);
+  return Number.isInteger(count) && [1, 2, 3].includes(count)
+    ? count : 1;
+}
+
+function rankingLayoutStorageKey(scope) {
+  return `sales-ranking-layout-${scope}-v1`;
+}
+
+function updateRankingLayoutControls(scope) {
+  const columns = scope === "individual"
+    ? individualRankingColumns : productRankingColumns;
+  const toolbar = scope === "individual"
+    ? individualRankingLayout : productRankingLayout;
+  const rankingList = scope === "individual"
+    ? individualRankingList : productRankingMemberList;
+  if (!toolbar || !rankingList) return;
+
+  rankingList.dataset.columns = String(columns);
+  if (scope === "product") {
+    productRankingProductList.dataset.columns = String(columns);
+  }
+  toolbar.querySelectorAll("[data-ranking-cols]").forEach(button => {
+    button.setAttribute("aria-pressed", String(Number(button.dataset.rankingCols) === columns));
+  });
+}
+
+function setRankingColumns(scope, value) {
+  const columns = normalizeRankingColumnCount(value);
+  if (scope === "individual") {
+    individualRankingColumns = columns;
+  } else if (scope === "product") {
+    productRankingColumns = columns;
+  } else {
+    return;
+  }
+  safeLocalStorageSet(rankingLayoutStorageKey(scope), String(columns));
+  updateRankingLayoutControls(scope);
+}
+
+function bindRankingColumnSelection(toolbar, scope) {
+  toolbar.addEventListener("click", event => {
+    const button = event.target.closest("[data-ranking-cols]");
+    if (!button || !toolbar.contains(button)) return;
+    setRankingColumns(scope, button.dataset.rankingCols);
+  });
+}
+
+function productRankingRecordMatchesTeam(record, selectedTeamId) {
+  if (!selectedTeamId) return true;
+  const team = teams.find(item => item.id === selectedTeamId);
+  return Boolean(team && recordBelongsToTeam(record, team));
+}
+
+/*
+  商材はproductId、担当者はuidを優先して集計する。
+  uidのない古い記録はIDを推測せず、それぞれの履歴に保持する。
+  countのみ読み取り、金額・単価を集計したり表示しない。
+*/
+function buildProductMemberRanking(monthly, teamId = "") {
+  const productMap = new Map();
+  products.filter(product => product.active !== false).forEach(product => {
+    productMap.set(`id:${product.id}`, {
+      key: `id:${product.id}`, name: product.name || "名前未設定",
+      count: 0, members: new Map()
+    });
+  });
+
+  (monthly || []).forEach(record => {
+    if (!productRankingRecordMatchesTeam(record, teamId)) return;
+    const memberKey = record.uid
+      ? `uid:${record.uid}`
+      : `history:${record.id || [record.date, record.memberNameSnapshot, record.teamId].join("|")}`;
+    const memberName = getCurrentMemberName(record);
+    const teamName = getCurrentTeamName(record);
+
+    getRecordResults(record).forEach(result => {
+      const count = Number(result.count || 0);
+      if (!Number.isFinite(count) || count <= 0) return;
+      const productKey = result.productId
+        ? `id:${result.productId}`
+        : `legacy:${result.productName || "不明"}`;
+      let product = productMap.get(productKey);
+      if (!product) {
+        product = {
+          key: productKey,
+          name: currentProductDisplayName(result),
+          count: 0,
+          members: new Map()
+        };
+        productMap.set(productKey, product);
+      }
+      product.count += count;
+      let person = product.members.get(memberKey);
+      if (!person) {
+        person = {key: memberKey, name: memberName, count: 0, teamNames: new Set()};
+        product.members.set(memberKey, person);
+      }
+      person.count += count;
+      person.name = memberName;
+      person.teamNames.add(teamName);
+    });
+  });
+
+  return [...productMap.values()]
+    .map(product => ({
+      key: product.key,
+      name: product.name,
+      count: product.count,
+      members: rankProductMemberCounts([...product.members.values()].map(person => ({
+        key: person.key,
+        name: person.name,
+        count: person.count,
+        teamName: person.teamNames.size > 1
+          ? "複数班で獲得"
+          : [...person.teamNames][0] || "所属なし"
+      })))
+    }))
+    .sort((a,b) => b.count - a.count || a.name.localeCompare(b.name,"ja"));
+}
+
+function rankProductMemberCounts(members) {
+  const sorted = [...members].sort((a,b) =>
+    b.count - a.count ||
+    String(a.name || "").localeCompare(String(b.name || ""),"ja") ||
+    String(a.key || "").localeCompare(String(b.key || ""),"ja")
+  );
+  return sorted.map((item,index) => ({
+    ...item,
+    rank: index > 0 && item.count === sorted[index - 1].count
+      ? sorted.findIndex(other => other.count === item.count) + 1
+      : index + 1
+  }));
+}
+
+function renderProductMemberRanking(monthly) {
+  updateRankingLayoutControls("product");
+
+  // 売上に関係しない件数ランキングだが閲覧対象は会社管理者のみ。
+  if (!isCurrentCompanyManager()) {
+    productRankingToggle.style.display = "none";
+    productRankingProductList.replaceChildren();
+    productRankingMemberList.replaceChildren();
+    productRankingCount.textContent = "権限なし";
+    return;
+  }
+
+  const previousTeam = productRankingTeamSelect.value || selectedProductRankingTeamId;
+  const teamId = teams.some(team => team.id === previousTeam) ? previousTeam : "";
+  selectedProductRankingTeamId = teamId;
+  productRankingTeamSelect.replaceChildren();
+  const all = document.createElement("option");
+  all.value = "";
+  all.textContent = "会社全体";
+  productRankingTeamSelect.appendChild(all);
+  teams.forEach(team => {
+    const option = document.createElement("option");
+    option.value = team.id;
+    option.textContent = team.name || "班名未設定";
+    productRankingTeamSelect.appendChild(option);
+  });
+  productRankingTeamSelect.value = teamId;
+
+  const productsWithCounts = buildProductMemberRanking(monthly, teamId);
+  productRankingCount.textContent = `${productsWithCounts.length}商材`;
+  productRankingProductList.replaceChildren();
+  productRankingMemberList.replaceChildren();
+  if (!productsWithCounts.length) {
+    productRankingProductList.textContent = "表示できる商材がありません。";
+    productRankingMemberCount.textContent = "";
+    productRankingSelectedLabel.textContent = "商材を選択してください";
+    return;
+  }
+
+  if (!productsWithCounts.some(item => item.key === selectedProductRankingKey)) {
+    selectedProductRankingKey = productsWithCounts[0].key;
+  }
+  const selected = productsWithCounts.find(item => item.key === selectedProductRankingKey);
+  productsWithCounts.forEach(item => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ranking-product-card";
+    button.setAttribute("aria-pressed", String(item.key === selectedProductRankingKey));
+    const name = document.createElement("span");
+    name.className = "ranking-product-card-name";
+    name.textContent = item.name;
+    const count = document.createElement("span");
+    count.className = "ranking-product-card-count";
+    count.textContent = `${item.count}件`;
+    button.appendChild(name);
+    button.appendChild(count);
+    button.addEventListener("click", () => {
+      selectedProductRankingKey = item.key;
+      renderProductMemberRanking(
+        records.filter(record => record.date?.startsWith(dashboardMonth.value))
+      );
+    });
+    productRankingProductList.appendChild(button);
+  });
+
+  productRankingSelectedLabel.textContent = `${selected.name}｜個人獲得ランキング`;
+  productRankingMemberCount.textContent = `${selected.members.length}人・${selected.count}件`;
+
+  if (selected.members.length === 0) {
+    productRankingMemberList.innerHTML =
+      '<div class="empty-message">この月・選択班での獲得実績はありません。</div>';
+    return;
+  }
+
+  selected.members.forEach(person => {
+    const row = document.createElement("div");
+    row.className = "ranking-row";
+    const left = document.createElement("div");
+    left.className = "ranking-left";
+    const number = document.createElement("div");
+    number.className = "ranking-number";
+    if (person.rank <= 3) number.classList.add(`top${person.rank}`);
+    number.textContent = person.rank;
+    const info = document.createElement("div");
+    const name = document.createElement("div");
+    name.className = "ranking-name";
+    name.textContent = person.name;
+    const sub = document.createElement("div");
+    sub.className = "ranking-sub";
+    sub.textContent = person.teamName;
+    info.appendChild(name);
+    info.appendChild(sub);
+    left.appendChild(number);
+    left.appendChild(info);
+    const value = document.createElement("div");
+    value.className = "ranking-value";
+    const counts = document.createElement("div");
+    counts.className = "ranking-count";
+    counts.textContent = `${person.count}件`;
+    value.appendChild(counts);
+    row.appendChild(left);
+    row.appendChild(value);
+    productRankingMemberList.appendChild(row);
+  });
+}
+
+// 列数だけ端末内に保存し、Firestoreの実績や権限は変更しない。
+individualRankingColumns = normalizeRankingColumnCount(
+  safeLocalStorageGet(rankingLayoutStorageKey("individual"))
+);
+productRankingColumns = normalizeRankingColumnCount(
+  safeLocalStorageGet(rankingLayoutStorageKey("product"))
+);
+bindRankingColumnSelection(individualRankingLayout,"individual");
+bindRankingColumnSelection(productRankingLayout,"product");
+productRankingTeamSelect.addEventListener("change", () => {
+  selectedProductRankingTeamId = productRankingTeamSelect.value;
+  renderProductMemberRanking(
+    records.filter(record => record.date?.startsWith(dashboardMonth.value))
+  );
+});
+
 
 /* =====================================================
    班ランキング
