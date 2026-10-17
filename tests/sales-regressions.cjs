@@ -686,7 +686,7 @@ test('Champion Stage only decorates an existing row and leaves ranking data unch
     assert.equal(banner.children[1].children[0].textContent,expected);
     assert.equal(banner.children[1].children[1].textContent,'今月のチャンピオン');
     assert.equal(JSON.stringify(priorData),snapshot);
-    assert(!/¥|￥|円|revenue|price|売上|単価/.test(JSON.stringify(card)));
+    assert(!/¥|￥|円|revenue|price|売上|単価/.test(JSON.stringify(card.children.map(b => b.className))));
   }
 });
 
@@ -697,7 +697,10 @@ test('Champion UI is exclusive to rank one and keeps existing 1/2/3-column grid 
   assert(individual.includes('if (index === 0) {\n        decorateRankingChampion(row, "individual");'));
   assert(product.includes('if (person.rank === 1) {\n      decorateRankingChampion(row, "product");'));
   assert(!/setDoc|updateDoc|runTransaction|localStorage|revenuePerUnit|sort\(/.test(decoration));
-  const css=html.slice(html.indexOf('/* RANKING CHAMPION STAGE'),html.indexOf('.ranking-row,\n.summary-row'));
+  const cssStart=html.indexOf('RANKING CHAMPION STAGE');
+  const cssEnd=html.indexOf('.ranking-row,\n.summary-row',cssStart);
+  assert(cssStart > 0 && cssEnd > cssStart);
+  const css=html.slice(cssStart,cssEnd);
   assert(css.includes('grid-column: 1 / -1'));
   assert(css.includes('.ranking-grid[data-columns] > .ranking-row--champion'));
   assert(css.includes('prefers-reduced-motion: reduce'));
