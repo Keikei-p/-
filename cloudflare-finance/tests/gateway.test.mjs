@@ -121,6 +121,11 @@ test("No unapproved methods, worker is disabled by default and denies missing JW
     const response=await worker.fetch(new Request("https://sales-finance-gateway.example/v1/financial-view",{method}),{});
     check(404,response.status);
   }
+  const writeDisabled=await worker.fetch(new Request("https://sales-finance-gateway.example/v1/count-record",{
+    method:"POST",headers:{"Content-Type":"application/json"},body:"{}"
+  }),{FIREBASE_PROJECT_ID:"sales-management-cc116",FINANCE_GATEWAY_ENABLED:"enabled"});
+  check(503,writeDisabled.status);
+  assert.equal((await writeDisabled.json()).error,"safe_write_not_released");
   const off=await worker.fetch(new Request("https://sales-finance-gateway.example/v1/financial-view"),{FINANCE_GATEWAY_ENABLED:"disabled"});
   check(503,off.status);
   const unauthorized=await worker.fetch(new Request("https://sales-finance-gateway.example/v1/financial-view"),
