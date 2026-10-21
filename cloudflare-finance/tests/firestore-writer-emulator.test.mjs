@@ -68,7 +68,8 @@ test("real emulator correction preserves createdAt and stores before/after audit
   await store.runTransaction(async tx=>{
     const old=await tx.get("records/"+recId);
     assert.equal(old.__firestoreUpdateTime,oldVersion);
-    const revised={...old,totalCount:3,totalRevenue:30000,
+    const {id,__firestoreUpdateTime,...existingFields}=old;
+    const revised={...existingFields,totalCount:3,totalRevenue:30000,
       results:{sim__cb_0:{productId:"sim",count:3,
         cashback:0,revenuePerUnit:10000}},
       updatedAt:"not-client-controlled",reportedAt:"not-client-controlled"};
@@ -92,7 +93,8 @@ test("stale edits cannot rewrite history and cannot append invalid correction",a
   const prev=await get("records/"+recordId);
   await assert.rejects(store.runTransaction(async tx=>{
     const record=await tx.get("records/"+recordId);
-    tx.saveRecord(recordId,{...record,totalCount:777,totalRevenue:777000},
+    const {id,__firestoreUpdateTime,...fields}=record;
+    tx.saveRecord(recordId,{...fields,totalCount:777,totalRevenue:777000},
       "2000-01-01T00:00:00.000000Z");
     tx.addCorrection("c0ffee00-2222-4444-8888-abcdef012346",{
       companyId:"demo",recordId,recordUid:"staff",recordDate:"2026-10-22",
