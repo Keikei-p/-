@@ -1236,17 +1236,10 @@ service cloud.firestore {
           || isCompanyOwner(resource.data.companyId));
 
 
-      allow delete: if resource.data.companyId != null
-        && sameCompany(resource.data.companyId)
-        && (
-          isCompanyOwner(resource.data.companyId)
-          || resource.data.uid == request.auth.uid
-          || canManageTeamMemberRecord(
-            resource.data.companyId,
-            resource.data.uid,
-            resource.data.teamId
-          )
-        );
+      // Immutable sales history: neither staff nor Owner can permanently
+      // delete an existing daily record after financial-data cutover.
+      // Correct mistakes through a version-checked update + correction audit.
+      allow delete: if false;
     }
 
     match /recordCorrections/{correctionId} {
