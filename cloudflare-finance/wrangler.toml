@@ -6,6 +6,9 @@ workers_dev = true
 [vars]
 FIREBASE_PROJECT_ID = "sales-management-cc116"
 FINANCE_GATEWAY_ENABLED = "disabled"
+FINANCE_WRITE_ENABLED = "disabled"
+FINANCE_WRITE_APPROVAL = "NOT_APPROVED"
+FIREBASE_SPARK_VERIFIED = "NOT_VERIFIED"
 
 # SECURITY: Do not deploy this branch to production while legacy SDK listeners
 # read full money-bearing products/records documents. No credentials in repo.
