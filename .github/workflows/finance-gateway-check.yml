@@ -21,7 +21,10 @@ jobs:
       - name: Syntax check only
         run: node --check cloudflare-finance/src/index.js
       - name: Verify JWT, grants, projections and no mutation endpoints
-        run: node --test cloudflare-finance/tests/*.test.mjs
+        run: |
+          node --test cloudflare-finance/tests/gateway.test.mjs cloudflare-finance/tests/write-plan.test.mjs \
+            cloudflare-finance/tests/count-service.test.mjs cloudflare-finance/tests/firestore-writer.test.mjs \
+            cloudflare-finance/tests/dual-host-adapter.test.mjs
       - name: Install Firestore emulator test tools (no production credentials)
         run: |
           npm install -g firebase-tools
@@ -32,7 +35,7 @@ jobs:
           distribution: temurin
           java-version: "21"
       - name: Test proposed money-locked Firestore Rules in emulator ONLY
-        run: firebase emulators:exec --project demo-finance-staging --only firestore "node --test cloudflare-finance/tests/finance-locked-rules.test.cjs"
+        run: firebase emulators:exec --project demo-finance-staging --only firestore "node --test cloudflare-finance/tests/finance-locked-rules.test.cjs && node --test cloudflare-finance/tests/firestore-writer-emulator.test.mjs"
       - name: Verify both current public URLs match (HTTP GET only)
         shell: bash
         run: |
