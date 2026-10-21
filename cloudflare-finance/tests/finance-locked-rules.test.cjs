@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const {initializeTestEnvironment,assertSucceeds,assertFails}=require('@firebase/rules-unit-testing');
-const {doc,setDoc,getDoc,collection,query,where,getDocsFromServer,updateDoc,serverTimestamp}=require('firebase/firestore');
+const {doc,setDoc,getDoc,collection,query,where,getDocsFromServer,updateDoc,deleteDoc,serverTimestamp}=require('firebase/firestore');
 if(!process.env.FIRESTORE_EMULATOR_HOST)throw Error('Emulator only! Refusing production Firestore');
 const project='demo-finance-staging',company='test-company';
 let env;
@@ -83,4 +83,15 @@ test('counts-only team data remain readable even when money is blocked',async()=
 test('Leader can no longer forge monetary writes in RAW records',async()=>{
   const db=firebase('leaderGranted');
   await assertFails(updateDoc(doc(db,'records','record-1'),{totalRevenue:999999,updatedAt:serverTimestamp()}));
+});
+
+test('historical records and correction audits cannot be deleted by anyone, including Owner',async()=>{
+  for(const uid of ['ordinary','leaderGranted','master','owner']){
+    const db=firebase(uid);
+    await assertFails(deleteDoc(doc(db,'records','record-1')));
+    await assertFails(deleteDoc(doc(db,'recordCorrections','correction-1')));
+  }
+  const owner=firebase('owner');
+  assert.equal((await assertSucceeds(getDoc(doc(owner,'records','record-1')))).data().totalCount,2);
+  assert.equal((await assertSucceeds(getDoc(doc(owner,'recordCorrections','correction-1')))).data().before.totalRevenue,10000);
 });
