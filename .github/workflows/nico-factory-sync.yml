@@ -90,5 +90,7 @@ jobs:
         run: |
           set -euo pipefail
           for url in "https://nico-factory.web.app/" "https://keikei-p.github.io/-/"; do
-            curl --fail --silent --show-error --max-time 25 "$url" | grep -q '営業実績管理'
+            curl --fail --silent --show-error --retry 3 --max-time 25 \
+              --output "$RUNNER_TEMP/sales-smoke-index.html" "$url"
+            grep -Fq '営業実績管理' "$RUNNER_TEMP/sales-smoke-index.html"
           done
