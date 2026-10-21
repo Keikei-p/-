@@ -143,7 +143,7 @@ service cloud.firestore {
     }
 
     function isCompanyOwner(companyId) {
-      return isCompanyMaster(companyId) || (verifiedUser()
+      return verifiedUser()
         && companyId != null
         && exists(companyPath(companyId))
         && exists(userPath(request.auth.uid))
@@ -152,7 +152,7 @@ service cloud.firestore {
         && get(userPath(request.auth.uid)).data.companyRole == 'owner'
         && exists(memberPath(companyId, request.auth.uid))
         && activeOrLegacy(get(memberPath(companyId, request.auth.uid)).data)
-        && get(memberPath(companyId, request.auth.uid)).data.companyRole == 'owner');
+        && get(memberPath(companyId, request.auth.uid)).data.companyRole == 'owner';
     }
 
     function isCompanyManager(companyId) {
@@ -183,48 +183,47 @@ service cloud.firestore {
     }
 
     function canViewRevenue(companyId) {
-      return isCompanyOwner(companyId)
+      return isCompanyMaster(companyId)
         || (
           isCompanyMember(companyId)
           && (
-            (
-              get(memberPath(companyId, request.auth.uid)).data.keys()
-                .hasAny(['canViewRevenue'])
+            // オーナーの売上は、既存の個別フラグに関係なく表示する。
+            get(memberPath(companyId, request.auth.uid)).data.companyRole == 'owner'
+            || (
+              get(memberPath(companyId, request.auth.uid)).data.keys().hasAny(['canViewRevenue'])
               && get(memberPath(companyId, request.auth.uid)).data.canViewRevenue == true
             )
             || (
-              !get(memberPath(companyId, request.auth.uid)).data.keys()
-                .hasAny(['canViewRevenue'])
-              && (
-                get(memberPath(companyId, request.auth.uid)).data.companyRole == 'owner'
-                || get(memberPath(companyId, request.auth.uid)).data.role == 'leader'
-              )
+              !get(memberPath(companyId, request.auth.uid)).data.keys().hasAny(['canViewRevenue'])
+              && get(memberPath(companyId, request.auth.uid)).data.role == 'leader'
             )
           )
         );
     }
 
     function canViewUnitPrice(companyId) {
-      return isCompanyOwner(companyId)
+      return isCompanyMaster(companyId)
         || (
           canViewRevenue(companyId)
           && (
-            !get(memberPath(companyId, request.auth.uid)).data.keys().hasAny(['canViewUnitPrice'])
+            get(memberPath(companyId, request.auth.uid)).data.companyRole == 'owner'
+            || !get(memberPath(companyId, request.auth.uid)).data.keys().hasAny(['canViewUnitPrice'])
             || get(memberPath(companyId, request.auth.uid)).data.canViewUnitPrice == true
           )
         );
     }
 
     function canCreateInvite(companyId) {
-      return isCompanyOwner(companyId)
+      return isCompanyMaster(companyId)
         || (
           isCompanyMember(companyId)
-          && get(memberPath(companyId, request.auth.uid)).data.keys()
-            .hasAny(['canCreateInvite'])
-          && get(memberPath(companyId, request.auth.uid)).data.canCreateInvite == true
           && (
             get(memberPath(companyId, request.auth.uid)).data.companyRole == 'owner'
-            || get(memberPath(companyId, request.auth.uid)).data.role == 'leader'
+            || (
+              get(memberPath(companyId, request.auth.uid)).data.keys().hasAny(['canCreateInvite'])
+              && get(memberPath(companyId, request.auth.uid)).data.canCreateInvite == true
+              && get(memberPath(companyId, request.auth.uid)).data.role == 'leader'
+            )
           )
         );
     }
@@ -259,7 +258,7 @@ service cloud.firestore {
     }
 
     function validRevenuePermissionUpdate(companyId, targetUid) {
-      return isCompanyOwner(companyId)
+      return (isCompanyOwner(companyId) || isCompanyMaster(companyId))
         && get(memberPath(companyId, targetUid)).data.companyRole != 'owner'
         && get(userPath(targetUid)).data.companyRole != 'owner'
         && targetUid != effectiveMasterUid(companyId)
@@ -274,7 +273,7 @@ service cloud.firestore {
     }
 
     function validUnitPricePermissionUpdate(companyId, targetUid) {
-      return isCompanyOwner(companyId)
+      return (isCompanyOwner(companyId) || isCompanyMaster(companyId))
         && get(memberPath(companyId, targetUid)).data.companyRole != 'owner'
         && get(userPath(targetUid)).data.companyRole != 'owner'
         && targetUid != effectiveMasterUid(companyId)
@@ -289,7 +288,7 @@ service cloud.firestore {
     }
 
     function validInvitePermissionUpdate(companyId, targetUid) {
-      return isCompanyOwner(companyId)
+      return (isCompanyOwner(companyId) || isCompanyMaster(companyId))
         && get(memberPath(companyId, targetUid)).data.companyRole != 'owner'
         && get(userPath(targetUid)).data.companyRole != 'owner'
         && targetUid != effectiveMasterUid(companyId)
