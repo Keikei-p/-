@@ -137,15 +137,13 @@ service cloud.firestore {
         && exists(userPath(request.auth.uid))
         && get(userPath(request.auth.uid)).data.companyId == companyId
         && activeOrLegacy(get(userPath(request.auth.uid)).data)
-        && get(userPath(request.auth.uid)).data.companyRole == 'owner'
         && exists(memberPath(companyId, request.auth.uid))
         && activeOrLegacy(get(memberPath(companyId, request.auth.uid)).data)
-        && get(memberPath(companyId, request.auth.uid)).data.companyRole == 'owner'
         && effectiveMasterUid(companyId) == request.auth.uid;
     }
 
     function isCompanyOwner(companyId) {
-      return verifiedUser()
+      return isCompanyMaster(companyId) || (verifiedUser()
         && companyId != null
         && exists(companyPath(companyId))
         && exists(userPath(request.auth.uid))
@@ -154,7 +152,7 @@ service cloud.firestore {
         && get(userPath(request.auth.uid)).data.companyRole == 'owner'
         && exists(memberPath(companyId, request.auth.uid))
         && activeOrLegacy(get(memberPath(companyId, request.auth.uid)).data)
-        && get(memberPath(companyId, request.auth.uid)).data.companyRole == 'owner';
+        && get(memberPath(companyId, request.auth.uid)).data.companyRole == 'owner');
     }
 
     function isCompanyManager(companyId) {
@@ -202,6 +200,17 @@ service cloud.firestore {
                 || get(memberPath(companyId, request.auth.uid)).data.role == 'leader'
               )
             )
+          )
+        );
+    }
+
+    function canViewUnitPrice(companyId) {
+      return isCompanyMaster(companyId)
+        || (
+          canViewRevenue(companyId)
+          && (
+            !get(memberPath(companyId, request.auth.uid)).data.keys().hasAny(['canViewUnitPrice'])
+            || get(memberPath(companyId, request.auth.uid)).data.canViewUnitPrice == true
           )
         );
     }
@@ -260,6 +269,19 @@ service cloud.firestore {
         && getAfter(userPath(targetUid)).data.canViewRevenue is bool
         && getAfter(memberPath(companyId, targetUid)).data.canViewRevenue
           == getAfter(userPath(targetUid)).data.canViewRevenue;
+    }
+
+    function validUnitPricePermissionUpdate(companyId, targetUid) {
+      return isCompanyMaster(companyId)
+        && targetUid != effectiveMasterUid(companyId)
+        && exists(userPath(targetUid))
+        && existsAfter(userPath(targetUid))
+        && exists(memberPath(companyId, targetUid))
+        && existsAfter(memberPath(companyId, targetUid))
+        && get(userPath(targetUid)).data.companyId == companyId
+        && getAfter(userPath(targetUid)).data.canViewUnitPrice is bool
+        && getAfter(memberPath(companyId, targetUid)).data.canViewUnitPrice
+          == getAfter(userPath(targetUid)).data.canViewUnitPrice;
     }
 
     function validInvitePermissionUpdate(companyId, targetUid) {
@@ -593,6 +615,21 @@ service cloud.firestore {
           && userId != effectiveMasterUid(resource.data.companyId)
           && request.resource.data.companyRole == resource.data.companyRole
           && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['canViewUnitPrice', 'updatedAt'])
+          && validUnitPricePermissionUpdate(resource.data.companyId, userId)
+          && request.resource.data.companyId == resource.data.companyId
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.email == resource.data.email
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.teamId == resource.data.teamId
+          && request.resource.data.canViewUnitPrice is bool
+          && request.resource.data.updatedAt == request.time
+        )
+        || (
+          resource.data.companyId != null
+          && userId != effectiveMasterUid(resource.data.companyId)
+          && request.resource.data.companyRole == resource.data.companyRole
+          && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['canCreateInvite', 'updatedAt'])
           && validInvitePermissionUpdate(resource.data.companyId, userId)
           && request.resource.data.companyId == resource.data.companyId
@@ -829,6 +866,19 @@ service cloud.firestore {
           memberId != effectiveMasterUid(companyId)
           && request.resource.data.companyRole == resource.data.companyRole
           && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['canViewUnitPrice', 'updatedAt'])
+          && validUnitPricePermissionUpdate(companyId, memberId)
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.email == resource.data.email
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.teamId == resource.data.teamId
+          && request.resource.data.canViewUnitPrice is bool
+          && request.resource.data.updatedAt == request.time
+        )
+        || (
+          memberId != effectiveMasterUid(companyId)
+          && request.resource.data.companyRole == resource.data.companyRole
+          && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['canCreateInvite', 'updatedAt'])
           && validInvitePermissionUpdate(companyId, memberId)
           && request.resource.data.uid == resource.data.uid
@@ -1035,6 +1085,7 @@ service cloud.firestore {
         && currentCompanyId() == request.resource.data.companyId
         && isCompanyManager(request.resource.data.companyId)
         && canViewRevenue(request.resource.data.companyId)
+        && canViewUnitPrice(request.resource.data.companyId)
         && validShortName(request.resource.data.name, 50)
         && request.resource.data.revenue is number
         && request.resource.data.revenue >= 0
@@ -1046,6 +1097,7 @@ service cloud.firestore {
       allow update: if resource.data.companyId != null
         && isCompanyManager(resource.data.companyId)
         && canViewRevenue(resource.data.companyId)
+        && canViewUnitPrice(resource.data.companyId)
         && request.resource.data.companyId == resource.data.companyId
         && validShortName(request.resource.data.name, 50)
         && request.resource.data.revenue is number
@@ -1060,7 +1112,8 @@ service cloud.firestore {
 
       allow delete: if resource.data.companyId != null
         && isCompanyManager(resource.data.companyId)
-        && canViewRevenue(resource.data.companyId);
+        && canViewRevenue(resource.data.companyId)
+        && canViewUnitPrice(resource.data.companyId);
     }
 
     match /records/{recordId} {
