@@ -156,8 +156,8 @@ function active(obj) { return obj && obj.active !== false; }
 function approvedPolicy(user,member,company,uid,today="") {
   if(!user || !member || !company || !active(user) || !active(member) || !active(company) ||
       !user.companyId || member.uid!==uid ||
-      user.uid!==uid || member.companyRole!==user.companyRole ||
-      user.companyId!==member.companyId)throw httpError(403,"membership_denied");
+      (user.uid && user.uid!==uid) || member.companyRole!==user.companyRole ||
+      (member.companyId && user.companyId!==member.companyId))throw httpError(403,"membership_denied");
   const isMaster=(company.masterUid||company.ownerUid)===uid;
   const isOwner=isMaster || (user.companyRole==="owner" && member.companyRole==="owner");
   const revenue= isOwner || (user.canViewRevenue===true && member.canViewRevenue===true);
@@ -241,7 +241,9 @@ async function memberPolicy(env,principal,fetcher=fetch,now=new Date()) {
     firestoreGet(env,"companies/"+companyId+"/members/"+principal.uid,fetcher),
     firestoreGet(env,"companies/"+companyId,fetcher)
   ]);
-  const tokyo=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"}).format(now);
+  const parts=new Intl.DateTimeFormat("en-US",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(now);
+  const t=Object.fromEntries(parts.map(p=>[p.type,p.value]));
+  const tokyo=`${t.year}-${t.month}-${t.day}`;
   return approvedPolicy(user,member,company,principal.uid,tokyo);
 }
 async function financeView(env,principal,fetcher=fetch){
