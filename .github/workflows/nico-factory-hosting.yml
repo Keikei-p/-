@@ -1,0 +1,104 @@
+name: NICO Factory Hosting Only (one-time migration)
+on:
+  push:
+    branches:
+      - url-migration/nico-factory-20261022
+    paths:
+      - .github/workflows/nico-factory-hosting.yml
+permissions:
+  contents: read
+jobs:
+  hosting-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      HOSTING_SITE_ID: nico-factory
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+    steps:
+      - name: Checkout untouched application files
+        uses: actions/checkout@v4
+      - name: Check source identity and credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          node <<'NODE'
+          const fs=require('node:fs');
+          const p=JSON.parse(fs.readFileSync('.firebaserc','utf8')).projects.default;
+          if(p!=='sales-management-cc116')throw Error('Firebase project mismatch');
+          const h=fs.readFileSync('index.html','utf8');
+          if(!h.includes('projectId: "sales-management-cc116"'))throw Error('Unexpected SDK project');
+          if(h.includes('keikei-p.github.io'))throw Error('Legacy URL hardcoded');
+          for(const f of ['index.html','manifest.webmanifest','service-worker.js','icon-180.png','icon-192.png','icon-512.png']){
+            if(!fs.statSync(f).isFile())throw Error('Missing static asset '+f);
+          }
+          console.log('Source validated. Firestore and Firebase Auth are not modified.');
+          NODE
+      - name: Prepare temporary Firebase credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-hosting-credentials.json"
+          chmod 600 "$RUNNER_TEMP/nico-hosting-credentials.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-hosting-credentials.json" >> "$GITHUB_ENV"
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+      - name: Inspect existing Firebase Hosting sites
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase hosting:sites:list --project "$FIREBASE_PROJECT_ID" --json > "$RUNNER_TEMP/nico-sites.json"
+          SITES_FILE="$RUNNER_TEMP/nico-sites.json" node <<'NODE'
+          const fs=require('node:fs');
+          const parsed=JSON.parse(fs.readFileSync(process.env.SITES_FILE,'utf8'));
+          const result=parsed.result;
+          const sites=Array.isArray(result)?result:(result?.sites ?? parsed.sites ?? []);
+          if(!Array.isArray(sites))throw Error('Site list format unknown; no changes made');
+          if(sites.some(s=>s.siteId==='nico-factory'||s.name?.endsWith('/sites/nico-factory')||s.defaultUrl==='https://nico-factory.web.app')){
+            throw Error('nico-factory already used in this project: manual review required');
+          }
+          console.log('Site is not already present in this project.');
+          NODE
+      - name: Create only user-approved nico-factory site
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase hosting:sites:create "$HOSTING_SITE_ID" --project "$FIREBASE_PROJECT_ID" --non-interactive
+      - name: Stage unchanged static application in isolated directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .nico-hosting-staging
+          cp index.html manifest.webmanifest service-worker.js icon-180.png icon-192.png icon-512.png .nico-hosting-staging/
+          for f in index.html manifest.webmanifest service-worker.js icon-180.png icon-192.png icon-512.png; do cmp "$f" ".nico-hosting-staging/$f"; done
+          cat > .nico-hosting-config.json <<'JSON'
+          {
+            "hosting": {
+              "site": "nico-factory",
+              "public": ".nico-hosting-staging",
+              "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+              "headers": [
+                {"source":"/index.html", "headers":[{"key":"Cache-Control","value":"no-cache, no-store, must-revalidate"}]}
+              ]
+            }
+          }
+          JSON
+      - name: Deploy only static Firebase Hosting (NOT Firestore or Auth)
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase deploy --only hosting --config .nico-hosting-config.json --project "$FIREBASE_PROJECT_ID" --non-interactive
+      - name: Anonymous read-only smoke test on new AND old URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 3 --max-time 25 "https://nico-factory.web.app/" > "$RUNNER_TEMP/nico-index.html"
+          grep -Fq '営業実績管理' "$RUNNER_TEMP/nico-index.html"
+          grep -Fq 'sales-management-cc116' "$RUNNER_TEMP/nico-index.html"
+          curl --fail --silent --show-error --retry 3 --max-time 25 "https://nico-factory.web.app/manifest.webmanifest" > "$RUNNER_TEMP/nico-manifest.json"
+          node -e "JSON.parse(require('node:fs').readFileSync(process.env.RUNNER_TEMP+'/nico-manifest.json','utf8'))"
+          curl --fail --silent --show-error --retry 3 --max-time 25 "https://nico-factory.web.app/service-worker.js" > "$RUNNER_TEMP/nico-sw.js"
+          curl --fail --silent --show-error --retry 3 --max-time 25 "https://keikei-p.github.io/-/" > "$RUNNER_TEMP/legacy-index.html"
+          grep -Fq '営業実績管理' "$RUNNER_TEMP/legacy-index.html"
+          echo 'Host smoke tests passed. Auth and owner permissions have NOT been tested.'
