@@ -1,0 +1,73 @@
+name: Add nico-factory authorized login domain (append only)
+on:
+  push:
+    branches:
+      - url-migration/nico-factory-20261022
+    paths:
+      - .github/workflows/nico-factory-auth-domain.yml
+permissions:
+  contents: read
+jobs:
+  authorize-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+    steps:
+      - name: Check and authorize only nico-factory.web.app
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          node <<'NODE'
+          const fs=require('node:fs');
+          const crypto=require('node:crypto');
+          const key=JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+          const issuer=key.client_email;
+          if(!issuer || !key.private_key || !key.token_uri)throw Error('Invalid Firebase service account');
+          const now=Math.floor(Date.now()/1000);
+          const encode=o=>Buffer.from(JSON.stringify(o)).toString('base64url');
+          const head=encode({typ:'JWT',alg:'RS256'});
+          const body=encode({iss:issuer,scope:'https://www.googleapis.com/auth/identitytoolkit',
+            aud:key.token_uri,iat:now,exp:now+1800});
+          const unsigned=head+'.'+body;
+          const sig=crypto.sign('RSA-SHA256',Buffer.from(unsigned),key.private_key).toString('base64url');
+          const assertion=unsigned+'.'+sig;
+          (async()=>{
+            const tokenResponse=await fetch(key.token_uri,{
+              method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
+              body:new URLSearchParams({grant_type:'urn:ietf:params:oauth:grant-type:jwt-bearer',assertion})
+            });
+            if(!tokenResponse.ok)throw Error('OAuth token request status '+tokenResponse.status);
+            const token=(await tokenResponse.json()).access_token;
+            if(!token)throw Error('No OAuth token');
+            const endpoint='https://identitytoolkit.googleapis.com/admin/v2/projects/sales-management-cc116/config';
+            const opts={Authorization:'Bearer '+token};
+            const readResponse=await fetch(endpoint,{headers:opts});
+            if(!readResponse.ok)throw Error('Auth config read status '+readResponse.status);
+            const config=await readResponse.json();
+            const old=config.authorizedDomains;
+            if(!Array.isArray(old))throw Error('Cannot verify existing authorized domains; refusing update');
+            const desired='nico-factory.web.app';
+            if(old.includes(desired)){
+              console.log('Authorized domain already present; no changes.');
+              return;
+            }
+            // Preserve every existing authorized domain verbatim.
+            if(old.length===0||old.length>100)throw Error('Unexpected domain list; manual review required');
+            const domains=[...old,desired];
+            const patchResponse=await fetch(endpoint+'?updateMask=authorizedDomains',{
+              method:'PATCH',
+              headers:{...opts,'Content-Type':'application/json'},
+              body:JSON.stringify({authorizedDomains:domains})
+            });
+            if(!patchResponse.ok)throw Error('Auth domain-only PATCH status '+patchResponse.status);
+            const verifyResponse=await fetch(endpoint,{headers:opts});
+            if(!verifyResponse.ok)throw Error('Auth domain verification status '+verifyResponse.status);
+            const after=(await verifyResponse.json()).authorizedDomains;
+            if(!Array.isArray(after) || !domains.every(d=>after.includes(d))){
+              throw Error('Post-check did not confirm preservation of all domains.');
+            }
+            console.log('Added only '+desired+'; previous '+old.length+' domains retained.');
+          })().catch(error=>{console.error(error.message);process.exitCode=1});
+          NODE
