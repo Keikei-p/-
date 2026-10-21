@@ -31,7 +31,14 @@ export function securePricing(product){
     product.pricingOptions.slice(0,15).map(o=>({cashback:Number(o.cashback||0),revenuePerUnit:Number(o.revenuePerUnit)}))
       .sort((a,b)=>a.cashback-b.cashback) : null;
   const fromLegacy=legacyPricingName(product.name);
+  const legacyCashbacks=Array.isArray(product.cashbackOptions)?product.cashbackOptions:[];
+  // Match old on-screen pricing: CB0 uses master revenue; legacy CB>0 uses its CB value.
+  const backwards=legacyCashbacks.map(x=>Number(x));
+  const hasLegacyPlans=backwards.length>1||backwards.some(x=>x>0);
   const raw=explicit??(fromLegacy?[{cashback:fromLegacy.cashback,revenuePerUnit:Number(product.revenue)}]:
+    hasLegacyPlans?backwards.slice(0,15).map(cashback=>({
+      cashback,revenuePerUnit:cashback===0?Number(product.revenue):cashback
+    })):
     [{cashback:0,revenuePerUnit:Number(product.revenue)}]);
   const seen=new Set();
   return raw.map((x,i)=>{
@@ -79,10 +86,16 @@ export function validateCountIntent(input,policy){
   }
   return { ...input, reportStatus:input.reportStatus,recordId:input.recordId||newRecordId};
 }
-export function buildRecordFromCounts(intent,policy,products,targetMember,existing=null,nowISO="2026-10-22T00:00:00.000Z"){
+export function buildRecordFromCounts(intent,policy,products,targetMember,destinationTeam,existing=null,nowISO="2026-10-22T00:00:00.000Z"){
   const data=validateCountIntent(intent,policy);
   if(!targetMember || targetMember.uid!==data.uid||targetMember.active===false||
-    targetMember.companyId && targetMember.companyId!==policy.companyId)throw new ValidationError("Target member is not active in company");
+    (targetMember.companyId && targetMember.companyId!==policy.companyId)){
+    throw new ValidationError("Target member is not active in company");
+  }
+  if(!destinationTeam || destinationTeam.id!==data.teamId || destinationTeam.companyId!==policy.companyId ||
+     destinationTeam.active===false || !String(destinationTeam.name||"").trim()){
+    throw new ValidationError("Invalid or inactive target team");
+  }
   if(existing && (existing.companyId!==policy.companyId||existing.uid!==data.uid||existing.date!==data.date)){
     throw new ValidationError("Existing record identity cannot change");
   }
@@ -111,16 +124,17 @@ export function buildRecordFromCounts(intent,policy,products,targetMember,existi
   if(!Number.isSafeInteger(totalCount)||!Number.isSafeInteger(totalRevenue))throw new ValidationError("Unsafe financial sum");
   if(data.reportStatus==="no_result" && totalCount!==0)throw new ValidationError("No-result report has positive counts");
   const output={companyId:policy.companyId,uid:data.uid,date:data.date,teamId:data.teamId,
-    teamNameSnapshot:"",memberNameSnapshot:targetMember.name||"名前未設定",
+    teamNameSnapshot:destinationTeam.name,memberNameSnapshot:targetMember.name||"名前未設定",
     workLocation:data.workLocation,results,totalCount,totalRevenue,reportStatus:data.reportStatus,
     updatedByUid:policy.uid,updatedAt:nowISO,reportedAt:nowISO};
   if(existing){
     output.createdAt=existing.createdAt;
     output.createdByUid=existing.createdByUid;
-    output.teamNameSnapshot=existing.teamId===data.teamId?existing.teamNameSnapshot:"";
+    output.teamNameSnapshot=existing.teamId===data.teamId && existing.teamNameSnapshot?
+      existing.teamNameSnapshot:destinationTeam.name;
   }else{
     output.createdAt=nowISO;
     output.createdByUid=policy.uid;
   }
-  return {recordId:data.recordId,document:output,requiresTeamName:true};
+  return {recordId:data.recordId,document:output};
 }
