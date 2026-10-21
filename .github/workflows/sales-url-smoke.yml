@@ -1,0 +1,42 @@
+name: Verify company and legacy Pages without changing production data
+on:
+  push:
+    branches: [verify/nico-financial-visibility-20261022]
+    paths:
+      - .github/workflows/sales-url-smoke.yml
+permissions:
+  contents: read
+jobs:
+  read-only-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Compare deployed HTML and financial permission guards (HTTP GET only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 3 --max-time 30 \
+            --output "$RUNNER_TEMP/new.html" "https://nico-factory.web.app/"
+          curl --fail --silent --show-error --retry 3 --max-time 30 \
+            --output "$RUNNER_TEMP/old.html" "https://keikei-p.github.io/-/"
+          for f in "$RUNNER_TEMP/new.html" "$RUNNER_TEMP/old.html"; do
+            grep -Fq '営業実績管理' "$f"
+            grep -Fq 'projectId: "sales-management-cc116"' "$f"
+            grep -Fq 'canViewUnitPrice:' "$f"
+            grep -Fq 'return currentUserData?.canViewUnitPrice === true;' "$f"
+            grep -Fq 'リーダーを含め、明示許可がない人の売上は必ず非表示。' "$f"
+          done
+          echo "Both new and old URLs serve the fail-closed financial permission logic."
+          if cmp -s "$RUNNER_TEMP/new.html" "$RUNNER_TEMP/old.html"; then
+            echo "Both URLs have byte-identical HTML."
+          else
+            echo "HTML bytes differ (nonfatal). Permission guards confirmed independently."
+          fi
+      - name: Verify public PWA resources (no Auth/Firestore access)
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 3 --max-time 25 \
+            --output "$RUNNER_TEMP/manifest.json" "https://nico-factory.web.app/manifest.webmanifest"
+          node -e "JSON.parse(require('node:fs').readFileSync(process.env.RUNNER_TEMP+'/manifest.json','utf8'))"
+          echo "Static assets verified; no database or authentication tests performed."
