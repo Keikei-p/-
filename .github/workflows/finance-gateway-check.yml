@@ -21,7 +21,7 @@ jobs:
       - name: Syntax check only
         run: node --check cloudflare-finance/src/index.js
       - name: Verify JWT, grants, projections and no mutation endpoints
-        run: node --test cloudflare-finance/tests/gateway.test.mjs
+        run: node --test cloudflare-finance/tests/*.test.mjs
       - name: Install Firestore emulator test tools (no production credentials)
         run: |
           npm install -g firebase-tools
