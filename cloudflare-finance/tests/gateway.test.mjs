@@ -69,20 +69,44 @@ test("Unauthorized data projection exposes counts but NO amounts, pricing fields
   assert.equal(displayProduct.name,"HTB");
   assert.deepEqual(Object.keys(displayRecord.results),["item_0","item_1"]);
 });
-test("Authorized revenue member sees own-team revenue, not another team's or historical team revenue",()=>{
+test("Existing approved Leaders keep all dates for their CURRENT team; old teams stay hidden",()=>{
   const [u,m]=person("leader",{userGrants:{canViewRevenue:true},memberGrants:{canViewRevenue:true}});
-  m.teamHistory=[{effectiveDate:"2026-10-15",toTeamId:"A"}];
+  m.teamHistory=[{effectiveDate:"2026-10-15",fromTeamId:"B",toTeamId:"A"}];
   const p=approvedPolicy(u,m,company,"sample","2026-10-22");
   check(true,visibleMoney(p,record));
   const list=safeRecords([record,{...record,id:"r2",teamId:"B",totalRevenue:900000},
    {...record,id:"r3",date:"2026-10-14",totalRevenue:666666}],p);
   check(75000,list[0].totalRevenue);
   check(undefined,list[1].totalRevenue);
-  check(undefined,list[2].totalRevenue);
+  // Legacy screen never date-gated Leader record access: preserve their view.
+  check(666666,list[2].totalRevenue);
   const t=JSON.stringify(list);
   assert.equal(t.includes("35000"),false,"per-unit price leaked");
-  assert.equal(t.includes("900000"),false,"cross-team leaked");
-  assert.equal(t.includes("666666"),false,"historical team leaked");
+  assert.equal(t.includes("900000"),false,"old team leaked");
+});
+test("Granted ordinary member keeps historical team-by-date scope from users record",()=>{
+  const [u,m]=person("member",{teamId:"A",userGrants:{canViewRevenue:true},memberGrants:{canViewRevenue:true}});
+  u.teamHistory=[
+    {effectiveDate:"2026-10-10",fromTeamId:"B",toTeamId:"A"},
+    {effectiveDate:"2026-10-20",fromTeamId:"A",toTeamId:"B"},
+    {effectiveDate:"2026-10-22",fromTeamId:"B",toTeamId:"A"}
+  ];
+  const p=approvedPolicy(u,m,company,"sample","2026-10-22");
+  check(true,visibleMoney(p,{teamId:"B",date:"2026-10-09"}));
+  check(true,visibleMoney(p,{teamId:"A",date:"2026-10-12"}));
+  check(true,visibleMoney(p,{teamId:"B",date:"2026-10-21"}));
+  check(true,visibleMoney(p,{teamId:"A",date:"2026-10-22"}));
+  check(false,visibleMoney(p,{teamId:"B",date:"2026-10-22"}));
+  check(false,visibleMoney(p,{teamId:"A",date:"2026-10-21"}));
+  assert.deepEqual(safeGoals([{id:"goalB",teamId:"B",month:"2026-10",targetRevenue:100000},
+    {id:"goalA",teamId:"A",month:"2026-10",targetRevenue:200000}],p).map(x=>x.id),["goalA"]);
+});
+test("Granted member without team history keeps current-team older revenue, never another team",()=>{
+  const [u,m]=person("member",{userGrants:{canViewRevenue:true},memberGrants:{canViewRevenue:true}});
+  const p=approvedPolicy(u,m,company,"sample","2026-10-22");
+  check(true,visibleMoney(p,{teamId:"A",date:"2025-01-01"}));
+  check(false,visibleMoney(p,{teamId:"B",date:"2025-01-01"}));
+  check(false,visibleMoney({...p,canViewRevenue:false},{teamId:"A",date:"2025-01-01"}));
 });
 test("Revenue goal projection respects explicit permissions, team scope and Owner access",()=>{
   const g=[{id:"a",companyId:"company-A",teamId:"A",month:"2026-10",targetRevenue:100000},
