@@ -163,15 +163,39 @@ function approvedPolicy(user,member,company,uid,today="") {
   const isOwner=isMaster || (user.companyRole==="owner" && member.companyRole==="owner");
   const revenue= isOwner || (user.canViewRevenue===true && member.canViewRevenue===true);
   const unit= isOwner || (revenue && user.canViewUnitPrice===true && member.canViewUnitPrice===true);
-  const teamId = member.teamId ?? user.teamId ?? null;
-  const history=Array.isArray(member.teamHistory)?member.teamHistory:[];
-  const start=history.filter(x=>x&&x.toTeamId===teamId&&typeof x.effectiveDate==="string"&&x.effectiveDate<=(today||"9999-99-99")).map(x=>x.effectiveDate).sort().at(-1)??(today||"9999-99-99");
-  return {companyId:user.companyId,uid,isOwner,canViewRevenue:revenue,canViewUnitPrice:unit,teamId,revenueScopeStart:start,role:member.role};
+  // Browser uses companies/{id}/members as the source for Leaders, while
+  // ordinary members read their users/{uid} document. Keep those semantics
+  // during the cutover, without trusting roles or dates sent by the client.
+  const isLeader=member.role==="leader" && member.companyRole!=="owner";
+  const assignment=isLeader?member:user;
+  const teamId=assignment.teamId || null;
+  const history=(Array.isArray(assignment.teamHistory)?assignment.teamHistory:[])
+    .filter(x=>x && typeof x.effectiveDate==="string" && /^\d{4}-\d{2}-\d{2}$/.test(x.effectiveDate))
+    .slice().sort((a,b)=>a.effectiveDate.localeCompare(b.effectiveDate));
+  const lastArrival=history.filter(x=>x.toTeamId===teamId && x.effectiveDate<=today).at(-1);
+  const start=lastArrival?.effectiveDate ?? today;
+  return {companyId:user.companyId,uid,isOwner,canViewRevenue:revenue,canViewUnitPrice:unit,
+    teamId,revenueScopeStart:start,role:assignment.role,teamHistory:history,isLeader};
 }
+// This reproduces the existing browser's canCurrentUserViewRevenueForRecord:
+// - Leader: any date from the CURRENT team only
+// - Explicitly granted ordinary member: the team assigned ON the record date
+// The chart's stricter scope-start calculation must not replace record access.
 function visibleMoney(policy,record) {
-  return policy.canViewRevenue && (policy.isOwner ||
-    (record.teamId && policy.teamId && record.teamId===policy.teamId &&
-     typeof record.date==="string" && record.date>=policy.revenueScopeStart));
+  if(!policy.canViewRevenue)return false;
+  if(policy.isOwner)return true;
+  if(!record || !record.teamId || typeof record.date!=="string" ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(record.date))return false;
+  if(policy.isLeader)return Boolean(policy.teamId && record.teamId===policy.teamId);
+  const history=policy.teamHistory||[];
+  let assigned=policy.teamId;
+  if(history.length){
+    assigned=history[0].fromTeamId??null;
+    for(const change of history){
+      if(change.effectiveDate<=record.date)assigned=change.toTeamId??null;
+    }
+  }
+  return Boolean(assigned && assigned===record.teamId);
 }
 function withoutAmounts(str) {
   // Old product names can contain cashback amounts (e.g. "HTB CB5000").
@@ -229,7 +253,10 @@ function safeRecords(all,policy) {
   });
 }
 function safeGoals(all,policy) {
-  return all.filter(goal=>visibleMoney(policy,{teamId:goal.teamId,date:goal.month+"-31"}))
+  // Revenue-goal access is for the CURRENT team, unlike historical
+  // record access by explicitly granted ordinary members.
+  return all.filter(goal=>policy.canViewRevenue &&
+      (policy.isOwner || Boolean(policy.teamId && goal.teamId===policy.teamId)))
     .map(goal=>({id:goal.id,companyId:goal.companyId,teamId:goal.teamId,month:goal.month,targetRevenue:goal.targetRevenue}));
 }
 
