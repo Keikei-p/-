@@ -1,0 +1,22 @@
+name: Sales app protected change gate (read-only)
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  protected-change-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout PR merge for read-only inspection
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Pin Node.js version
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify monetary data and live deployment guardrails (no Firebase credentials)
+        run: node scripts/check-sales-safe-pr.mjs
