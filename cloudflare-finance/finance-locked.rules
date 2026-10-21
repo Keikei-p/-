@@ -1,0 +1,1405 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function verifiedUser() {
+      return signedIn()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email != null;
+    }
+
+    function isSelf(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function userPath(userId) {
+      return /databases/$(database)/documents/users/$(userId);
+    }
+
+    function companyPath(companyId) {
+      return /databases/$(database)/documents/companies/$(companyId);
+    }
+
+    function memberPath(companyId, userId) {
+      return /databases/$(database)/documents/companies/$(companyId)/members/$(userId);
+    }
+
+    function teamPath(teamId) {
+      return /databases/$(database)/documents/teams/$(teamId);
+    }
+
+    function invitationPath(inviteId) {
+      return /databases/$(database)/documents/invitations/$(inviteId);
+    }
+
+    function validRole(role) {
+      return role == 'member' || role == 'leader';
+    }
+
+    function validTeamId(teamId) {
+      return teamId == null || teamId is string;
+    }
+
+    function validSelectableTeam(companyId, teamId) {
+      return teamId == null
+        || (
+          teamId is string
+          && exists(teamPath(teamId))
+          && get(teamPath(teamId)).data.companyId == companyId
+          && get(teamPath(teamId)).data.active == true
+        );
+    }
+
+    function validTeamHistory(data) {
+      return !data.keys().hasAny(['teamHistory'])
+        || (
+          data.teamHistory is list
+          && data.teamHistory.size() <= 100
+        );
+    }
+
+    function validShortName(name, maxLength) {
+      return name is string
+        && name.size() >= 1
+        && name.size() <= maxLength;
+    }
+
+    function validWorkLocation(data) {
+      return !data.keys().hasAny(['workLocation'])
+        || (
+          data.workLocation is string
+          && data.workLocation.size() <= 100
+        );
+    }
+
+    function validProductExtras(data) {
+      return (
+          !data.keys().hasAny(['sortOrder'])
+          || (
+            data.sortOrder is number
+            && data.sortOrder >= 0
+          )
+        )
+        && (
+          !data.keys().hasAny(['cashbackOptions'])
+          || (
+            data.cashbackOptions is list
+            && data.cashbackOptions.size() <= 20
+          )
+        )
+        && (
+          !data.keys().hasAny(['pricingOptions'])
+          || (
+            data.pricingOptions is list
+            && data.pricingOptions.size() >= 1
+            && data.pricingOptions.size() <= 15
+          )
+        );
+    }
+
+    function activeOrLegacy(data) {
+      return !data.keys().hasAny(['active'])
+        || data.active == true;
+    }
+
+    function currentCompanyId() {
+      return get(userPath(request.auth.uid)).data.companyId;
+    }
+
+    function isCompanyMember(companyId) {
+      return verifiedUser()
+        && companyId != null
+        && exists(memberPath(companyId, request.auth.uid))
+        && activeOrLegacy(get(memberPath(companyId, request.auth.uid)).data)
+        && get(userPath(request.auth.uid)).data.companyId == companyId
+        && activeOrLegacy(get(userPath(request.auth.uid)).data);
+    }
+
+    function isCompanyLeader(companyId) {
+      return isCompanyMember(companyId)
+        && get(memberPath(companyId, request.auth.uid)).data.role == 'leader';
+    }
+
+    function effectiveMasterUid(companyId) {
+      return get(companyPath(companyId)).data.keys().hasAny(['masterUid'])
+        ? get(companyPath(companyId)).data.masterUid
+        : get(companyPath(companyId)).data.ownerUid;
+    }
+
+    function isCompanyMaster(companyId) {
+      return verifiedUser()
+        && companyId != null
+        && exists(companyPath(companyId))
+        && exists(userPath(request.auth.uid))
+        && get(userPath(request.auth.uid)).data.companyId == companyId
+        && activeOrLegacy(get(userPath(request.auth.uid)).data)
+        && exists(memberPath(companyId, request.auth.uid))
+        && activeOrLegacy(get(memberPath(companyId, request.auth.uid)).data)
+        && effectiveMasterUid(companyId) == request.auth.uid;
+    }
+
+    function isCompanyOwner(companyId) {
+      return verifiedUser()
+        && companyId != null
+        && exists(companyPath(companyId))
+        && exists(userPath(request.auth.uid))
+        && get(userPath(request.auth.uid)).data.companyId == companyId
+        && activeOrLegacy(get(userPath(request.auth.uid)).data)
+        && get(userPath(request.auth.uid)).data.companyRole == 'owner'
+        && exists(memberPath(companyId, request.auth.uid))
+        && activeOrLegacy(get(memberPath(companyId, request.auth.uid)).data)
+        && get(memberPath(companyId, request.auth.uid)).data.companyRole == 'owner';
+    }
+
+    function isCompanyManager(companyId) {
+      return isCompanyLeader(companyId)
+        || isCompanyOwner(companyId);
+    }
+
+    function isLeaderOfTeam(companyId, teamId) {
+      return isCompanyLeader(companyId)
+        && teamId != null
+        && get(memberPath(companyId, request.auth.uid)).data.teamId == teamId;
+    }
+
+    function canManageTeamMemberRecord(companyId, targetUid, teamId) {
+      return isLeaderOfTeam(companyId, teamId)
+        && exists(memberPath(companyId, targetUid))
+        && activeOrLegacy(get(memberPath(companyId, targetUid)).data)
+        && get(memberPath(companyId, targetUid)).data.teamId == teamId;
+    }
+
+    // recordsの会社・利用停止チェックを通った後だけ使用する。
+    function canWriteDailyRecord(companyId, targetUid, teamId) {
+      let actor = get(memberPath(companyId, request.auth.uid)).data;
+      return (actor.companyRole == 'owner' && isCompanyOwner(companyId))
+        || (actor.role == 'leader'
+          ? teamId != null && actor.teamId == teamId
+          : targetUid == request.auth.uid);
+    }
+
+    function canViewRevenue(companyId) {
+      return isCompanyMaster(companyId)
+        || (
+          isCompanyMember(companyId)
+          && (
+            // オーナーの売上は、既存の個別フラグに関係なく表示する。
+            get(memberPath(companyId, request.auth.uid)).data.companyRole == 'owner'
+            || (
+              get(memberPath(companyId, request.auth.uid)).data.keys().hasAny(['canViewRevenue'])
+              && get(memberPath(companyId, request.auth.uid)).data.canViewRevenue == true
+            )
+
+          )
+        );
+    }
+
+    function canViewUnitPrice(companyId) {
+      return isCompanyMaster(companyId)
+        || (
+          canViewRevenue(companyId)
+          && (
+            get(memberPath(companyId, request.auth.uid)).data.companyRole == 'owner'
+            || (
+              get(memberPath(companyId, request.auth.uid)).data.keys().hasAny(['canViewUnitPrice'])
+              && get(memberPath(companyId, request.auth.uid)).data.canViewUnitPrice == true
+            )
+          )
+        );
+    }
+
+    function canCreateInvite(companyId) {
+      return isCompanyMaster(companyId)
+        || (
+          isCompanyMember(companyId)
+          && (
+            get(memberPath(companyId, request.auth.uid)).data.companyRole == 'owner'
+            || (
+              get(memberPath(companyId, request.auth.uid)).data.keys().hasAny(['canCreateInvite'])
+              && get(memberPath(companyId, request.auth.uid)).data.canCreateInvite == true
+              && get(memberPath(companyId, request.auth.uid)).data.role == 'leader'
+            )
+          )
+        );
+    }
+
+    function managedMemberCreate(companyId, memberId) {
+      return verifiedUser()
+        && isCompanyManager(companyId)
+        && request.resource.data.keys().hasOnly([
+          'uid', 'name', 'email', 'role', 'companyRole', 'teamId',
+          'active', 'memberType', 'hasAccount', 'canViewRevenue',
+          'canCreateInvite', 'createdBy', 'joinedAt', 'updatedAt'
+        ])
+        && request.resource.data.uid == memberId
+        && validShortName(request.resource.data.name, 30)
+        && request.resource.data.email == ''
+        && request.resource.data.role == 'member'
+        && request.resource.data.companyRole == 'member'
+        && request.resource.data.teamId is string
+        && validSelectableTeam(companyId, request.resource.data.teamId)
+        && request.resource.data.active == true
+        && request.resource.data.memberType == 'managed'
+        && request.resource.data.hasAccount == false
+        && request.resource.data.canViewRevenue == false
+        && request.resource.data.canCreateInvite == false
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.joinedAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && (
+          isCompanyOwner(companyId)
+          || isLeaderOfTeam(companyId, request.resource.data.teamId)
+        );
+    }
+
+    function validRevenuePermissionUpdate(companyId, targetUid) {
+      return (isCompanyOwner(companyId) || isCompanyMaster(companyId))
+        && get(memberPath(companyId, targetUid)).data.companyRole != 'owner'
+        && get(userPath(targetUid)).data.companyRole != 'owner'
+        && targetUid != effectiveMasterUid(companyId)
+        && exists(userPath(targetUid))
+        && existsAfter(userPath(targetUid))
+        && exists(memberPath(companyId, targetUid))
+        && existsAfter(memberPath(companyId, targetUid))
+        && get(userPath(targetUid)).data.companyId == companyId
+        && getAfter(userPath(targetUid)).data.canViewRevenue is bool
+        && getAfter(memberPath(companyId, targetUid)).data.canViewRevenue
+          == getAfter(userPath(targetUid)).data.canViewRevenue;
+    }
+
+    function validUnitPricePermissionUpdate(companyId, targetUid) {
+      return (isCompanyOwner(companyId) || isCompanyMaster(companyId))
+        && get(memberPath(companyId, targetUid)).data.companyRole != 'owner'
+        && get(userPath(targetUid)).data.companyRole != 'owner'
+        && targetUid != effectiveMasterUid(companyId)
+        && exists(userPath(targetUid))
+        && existsAfter(userPath(targetUid))
+        && exists(memberPath(companyId, targetUid))
+        && existsAfter(memberPath(companyId, targetUid))
+        && get(userPath(targetUid)).data.companyId == companyId
+        && getAfter(userPath(targetUid)).data.canViewUnitPrice is bool
+        && getAfter(memberPath(companyId, targetUid)).data.canViewUnitPrice
+          == getAfter(userPath(targetUid)).data.canViewUnitPrice;
+    }
+
+    function validInvitePermissionUpdate(companyId, targetUid) {
+      return (isCompanyOwner(companyId) || isCompanyMaster(companyId))
+        && get(memberPath(companyId, targetUid)).data.companyRole != 'owner'
+        && get(userPath(targetUid)).data.companyRole != 'owner'
+        && targetUid != effectiveMasterUid(companyId)
+        && exists(userPath(targetUid))
+        && existsAfter(userPath(targetUid))
+        && exists(memberPath(companyId, targetUid))
+        && existsAfter(memberPath(companyId, targetUid))
+        && get(userPath(targetUid)).data.companyId == companyId
+        && (
+          get(memberPath(companyId, targetUid)).data.role == 'leader'
+          && get(memberPath(companyId, targetUid)).data.companyRole != 'owner'
+        )
+        && getAfter(userPath(targetUid)).data.canCreateInvite is bool
+        && getAfter(memberPath(companyId, targetUid)).data.canCreateInvite
+          == getAfter(userPath(targetUid)).data.canCreateInvite;
+    }
+
+    function validSecondaryOwnerDemotion(companyId, targetUid) {
+      return isCompanyOwner(companyId)
+        && targetUid != effectiveMasterUid(companyId)
+        && targetUid != get(companyPath(companyId)).data.ownerUid
+        && exists(userPath(targetUid))
+        && exists(memberPath(companyId, targetUid))
+        && get(userPath(targetUid)).data.companyId == companyId
+        && get(userPath(targetUid)).data.companyRole == 'owner'
+        && get(memberPath(companyId, targetUid)).data.companyRole == 'owner'
+        && existsAfter(userPath(targetUid))
+        && existsAfter(memberPath(companyId, targetUid))
+        && getAfter(userPath(targetUid)).data.companyRole == 'member'
+        && getAfter(memberPath(companyId, targetUid)).data.companyRole == 'member'
+        && getAfter(userPath(targetUid)).data.role
+          == getAfter(memberPath(companyId, targetUid)).data.role
+        && validRole(getAfter(userPath(targetUid)).data.role)
+        && (
+          getAfter(userPath(targetUid)).data.role != 'leader'
+          || getAfter(userPath(targetUid)).data.teamId != null
+        );
+    }
+
+    function validOwnerPromotion(companyId, targetUid) {
+      return isCompanyOwner(companyId)
+        && targetUid != request.auth.uid
+        && existsAfter(userPath(targetUid))
+        && getAfter(userPath(targetUid)).data.companyId == companyId
+        && getAfter(userPath(targetUid)).data.companyRole == 'owner'
+        && getAfter(userPath(targetUid)).data.role == 'leader'
+        && activeOrLegacy(getAfter(userPath(targetUid)).data)
+        && existsAfter(memberPath(companyId, targetUid))
+        && getAfter(memberPath(companyId, targetUid)).data.companyRole == 'owner'
+        && getAfter(memberPath(companyId, targetUid)).data.role == 'leader'
+        && activeOrLegacy(getAfter(memberPath(companyId, targetUid)).data);
+    }
+
+    function validOwnerTransfer(companyId) {
+      let newOwnerUid = getAfter(companyPath(companyId)).data.ownerUid;
+
+      return isCompanyOwner(companyId)
+        && newOwnerUid is string
+        && newOwnerUid != request.auth.uid
+        && existsAfter(userPath(newOwnerUid))
+        && getAfter(userPath(newOwnerUid)).data.companyId == companyId
+        && getAfter(userPath(newOwnerUid)).data.companyRole == 'owner'
+        && getAfter(userPath(newOwnerUid)).data.role == 'leader'
+        && activeOrLegacy(getAfter(userPath(newOwnerUid)).data)
+        && existsAfter(memberPath(companyId, newOwnerUid))
+        && getAfter(memberPath(companyId, newOwnerUid)).data.companyRole == 'owner'
+        && getAfter(memberPath(companyId, newOwnerUid)).data.role == 'leader'
+        && activeOrLegacy(getAfter(memberPath(companyId, newOwnerUid)).data)
+        && getAfter(userPath(request.auth.uid)).data.companyId == companyId
+        && getAfter(userPath(request.auth.uid)).data.companyRole == 'member'
+        && validRole(getAfter(userPath(request.auth.uid)).data.role)
+        && (
+          getAfter(userPath(request.auth.uid)).data.role != 'leader'
+          || getAfter(userPath(request.auth.uid)).data.teamId != null
+        )
+        && activeOrLegacy(getAfter(userPath(request.auth.uid)).data)
+        && getAfter(memberPath(companyId, request.auth.uid)).data.companyRole == 'member'
+        && getAfter(memberPath(companyId, request.auth.uid)).data.role
+          == getAfter(userPath(request.auth.uid)).data.role
+        && activeOrLegacy(getAfter(memberPath(companyId, request.auth.uid)).data);
+    }
+
+    function sameCompany(companyId) {
+      return companyId != null
+        && currentCompanyId() == companyId
+        && (
+          isCompanyMember(companyId)
+          || isCompanyOwner(companyId)
+        );
+    }
+
+    function ownerBootstrap(companyId, memberId) {
+      return verifiedUser()
+        && memberId == request.auth.uid
+        && request.resource.data.keys().hasOnly([
+          'uid', 'name', 'email', 'role', 'companyRole',
+          'teamId', 'active', 'canViewRevenue', 'canCreateInvite',
+          'joinedAt', 'updatedAt'
+        ])
+        && request.resource.data.uid == request.auth.uid
+        && validShortName(request.resource.data.name, 30)
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.role == 'leader'
+        && request.resource.data.companyRole == 'owner'
+        && request.resource.data.teamId == null
+        && request.resource.data.canViewRevenue == true
+        && request.resource.data.canCreateInvite == true
+        && request.resource.data.active == true
+        && request.resource.data.joinedAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && existsAfter(companyPath(companyId))
+        && getAfter(companyPath(companyId)).data.ownerUid == request.auth.uid
+        && getAfter(companyPath(companyId)).data.masterUid == request.auth.uid
+        && getAfter(userPath(request.auth.uid)).data.companyId == companyId;
+    }
+
+    function acceptedInvitation(companyId, memberId) {
+      return verifiedUser()
+        && memberId == request.auth.uid
+        && request.resource.data.keys().hasOnly([
+          'uid', 'name', 'email', 'role', 'companyRole',
+          'teamId', 'active', 'canViewRevenue', 'canViewUnitPrice', 'canCreateInvite',
+          'invitationId', 'joinedAt', 'updatedAt'
+        ])
+        && request.resource.data.invitationId is string
+        && existsAfter(invitationPath(request.resource.data.invitationId))
+        && getAfter(invitationPath(request.resource.data.invitationId)).data.companyId == companyId
+        && getAfter(invitationPath(request.resource.data.invitationId)).data.email == request.auth.token.email
+        && getAfter(invitationPath(request.resource.data.invitationId)).data.status == 'accepted'
+        && getAfter(invitationPath(request.resource.data.invitationId)).data.acceptedBy == request.auth.uid
+        && getAfter(invitationPath(request.resource.data.invitationId)).data.expiresAt > request.time
+        && request.resource.data.uid == request.auth.uid
+        && validShortName(request.resource.data.name, 30)
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.role == getAfter(invitationPath(request.resource.data.invitationId)).data.role
+        && validRole(request.resource.data.role)
+        && request.resource.data.companyRole == 'member'
+        && request.resource.data.teamId == null
+        && request.resource.data.canViewRevenue == false
+        && request.resource.data.canViewUnitPrice == false
+        && request.resource.data.canCreateInvite == false
+        && request.resource.data.active == true
+        && request.resource.data.joinedAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && getAfter(userPath(request.auth.uid)).data.companyId == companyId;
+    }
+
+    function joinsCompany(userId) {
+      return verifiedUser()
+        && isSelf(userId)
+        && resource.data.companyId == null
+        && request.resource.data.companyId is string
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.active == true
+        && validRole(request.resource.data.role)
+        && validTeamId(request.resource.data.teamId)
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly([
+            'companyId',
+            'companyRole',
+            'role',
+            'teamId',
+            'canViewRevenue',
+            'canViewUnitPrice',
+            'canCreateInvite',
+            'updatedAt'
+          ])
+        && existsAfter(memberPath(request.resource.data.companyId, userId))
+        && getAfter(memberPath(request.resource.data.companyId, userId)).data.uid == userId
+        && getAfter(memberPath(request.resource.data.companyId, userId)).data.email == request.auth.token.email
+        && getAfter(memberPath(request.resource.data.companyId, userId)).data.role == request.resource.data.role
+        && getAfter(memberPath(request.resource.data.companyId, userId)).data.companyRole == request.resource.data.companyRole
+        && getAfter(memberPath(request.resource.data.companyId, userId)).data.canViewRevenue
+          == request.resource.data.canViewRevenue
+        && request.resource.data.canViewUnitPrice == false
+        && getAfter(memberPath(request.resource.data.companyId, userId)).data.canViewUnitPrice
+          == request.resource.data.canViewUnitPrice
+        && getAfter(memberPath(request.resource.data.companyId, userId)).data.canCreateInvite
+          == request.resource.data.canCreateInvite
+        && getAfter(memberPath(request.resource.data.companyId, userId)).data.active == true;
+    }
+
+    match /users/{userId} {
+      allow get: if verifiedUser()
+        && (
+          isSelf(userId)
+          || (
+            resource.data.companyId != null
+            && isCompanyManager(resource.data.companyId)
+          )
+        );
+
+      allow list: if verifiedUser()
+        && resource.data.companyId != null
+        && isCompanyManager(resource.data.companyId);
+
+      allow create: if isSelf(userId)
+        && request.resource.data.keys().hasOnly([
+          'uid', 'name', 'email', 'companyId',
+          'role', 'teamId', 'active', 'createdAt'
+        ])
+        && request.resource.data.uid == userId
+        && validShortName(request.resource.data.name, 30)
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.role == 'member'
+        && request.resource.data.teamId == null
+        && request.resource.data.companyId == null
+        && request.resource.data.active == true
+        && request.resource.data.createdAt == request.time;
+
+      allow update: if (
+        resource.data.companyId != null
+        && resource.data.companyRole != 'owner'
+        && activeOrLegacy(resource.data)
+        && request.resource.data.active == false
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['active', 'updatedAt'])
+        && isCompanyOwner(resource.data.companyId)
+        && getAfter(memberPath(resource.data.companyId, userId)).data.active == false
+      )
+        || joinsCompany(userId)
+        || (
+          isSelf(userId)
+          && resource.data.active == true
+          && validShortName(request.resource.data.name, 30)
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['name', 'updatedAt'])
+        )
+        || (
+          isSelf(userId)
+          && resource.data.companyId != null
+          && resource.data.companyRole != 'owner'
+          && resource.data.active == true
+          && request.resource.data.active == false
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['active', 'updatedAt'])
+          && getAfter(memberPath(resource.data.companyId, userId)).data.active == false
+        )
+
+        || (
+          isSelf(userId)
+          && resource.data.companyId != null
+          && activeOrLegacy(resource.data)
+          && (
+            resource.data.role != 'leader'
+            || resource.data.companyRole == 'owner'
+          )
+          && request.resource.data.companyId == resource.data.companyId
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.email == resource.data.email
+          && request.resource.data.companyRole == resource.data.companyRole
+          && request.resource.data.role == resource.data.role
+          && validSelectableTeam(
+            resource.data.companyId,
+            request.resource.data.teamId
+          )
+          && validTeamHistory(request.resource.data)
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['teamId', 'teamHistory', 'updatedAt'])
+          && existsAfter(memberPath(resource.data.companyId, userId))
+          && getAfter(memberPath(resource.data.companyId, userId)).data.teamId
+            == request.resource.data.teamId
+          && getAfter(memberPath(resource.data.companyId, userId)).data.teamHistory
+            == request.resource.data.teamHistory
+        )
+        || (
+          resource.data.companyId != null
+          && request.resource.data.companyRole == resource.data.companyRole
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['name', 'role', 'teamId', 'teamHistory', 'active', 'updatedAt'])
+          && isCompanyOwner(resource.data.companyId)
+          && request.resource.data.companyId == resource.data.companyId
+          && request.resource.data.uid == resource.data.uid
+          && (
+            userId != request.auth.uid
+            || request.resource.data.teamId == resource.data.teamId
+          )
+          && request.resource.data.email == resource.data.email
+          && validShortName(request.resource.data.name, 30)
+          && validRole(request.resource.data.role)
+          && validTeamId(request.resource.data.teamId)
+          && validTeamHistory(request.resource.data)
+          && (
+            request.resource.data.role != 'leader'
+            || request.resource.data.companyRole == 'owner'
+            || request.resource.data.teamId != null
+          )
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.active == resource.data.active
+          && (
+            resource.data.companyRole != 'owner'
+            || (
+              request.resource.data.role == 'leader'
+              && request.resource.data.active == true
+            )
+          )
+        )
+        || (
+          resource.data.companyId != null
+          && resource.data.companyRole == 'owner'
+          && request.resource.data.companyRole == 'member'
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['companyRole', 'role', 'updatedAt'])
+          && validSecondaryOwnerDemotion(resource.data.companyId, userId)
+          && request.resource.data.companyId == resource.data.companyId
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.email == resource.data.email
+          && validRole(request.resource.data.role)
+          && request.resource.data.updatedAt == request.time
+        )
+        || (
+          resource.data.companyId != null
+          && userId != effectiveMasterUid(resource.data.companyId)
+          && request.resource.data.companyRole == resource.data.companyRole
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['canViewRevenue', 'updatedAt'])
+          && validRevenuePermissionUpdate(resource.data.companyId, userId)
+          && request.resource.data.companyId == resource.data.companyId
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.email == resource.data.email
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.teamId == resource.data.teamId
+          && request.resource.data.canViewRevenue is bool
+          && request.resource.data.updatedAt == request.time
+        )
+        || (
+          resource.data.companyId != null
+          && userId != effectiveMasterUid(resource.data.companyId)
+          && request.resource.data.companyRole == resource.data.companyRole
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['canViewUnitPrice', 'updatedAt'])
+          && validUnitPricePermissionUpdate(resource.data.companyId, userId)
+          && request.resource.data.companyId == resource.data.companyId
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.email == resource.data.email
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.teamId == resource.data.teamId
+          && request.resource.data.canViewUnitPrice is bool
+          && request.resource.data.updatedAt == request.time
+        )
+        || (
+          resource.data.companyId != null
+          && userId != effectiveMasterUid(resource.data.companyId)
+          && request.resource.data.companyRole == resource.data.companyRole
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['canCreateInvite', 'updatedAt'])
+          && validInvitePermissionUpdate(resource.data.companyId, userId)
+          && request.resource.data.companyId == resource.data.companyId
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.email == resource.data.email
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.teamId == resource.data.teamId
+          && request.resource.data.canCreateInvite is bool
+          && request.resource.data.updatedAt == request.time
+        )
+        || (
+          resource.data.companyId != null
+          && resource.data.companyRole != 'owner'
+          && request.resource.data.companyRole == 'owner'
+          && request.resource.data.role == 'leader'
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['companyRole', 'role', 'updatedAt'])
+          && validOwnerPromotion(resource.data.companyId, userId)
+        )
+        || (
+          resource.data.companyId != null
+          && validOwnerTransfer(resource.data.companyId)
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['companyRole', 'role', 'updatedAt'])
+          && (
+            (
+              userId == request.auth.uid
+              && resource.data.companyRole == 'owner'
+              && request.resource.data.companyRole == 'member'
+              && validRole(request.resource.data.role)
+              && (
+                request.resource.data.role != 'leader'
+                || request.resource.data.teamId != null
+              )
+            )
+            || (
+              userId == getAfter(companyPath(resource.data.companyId)).data.ownerUid
+              && resource.data.companyRole == 'member'
+              && request.resource.data.companyRole == 'owner'
+              && request.resource.data.role == 'leader'
+            )
+          )
+        );
+
+      allow delete: if false;
+    }
+
+    match /companies/{companyId} {
+      allow get: if isCompanyMember(companyId)
+        || isCompanyOwner(companyId);
+      allow list: if false;
+
+      allow create: if verifiedUser()
+        && request.resource.data.keys().hasOnly([
+          'name', 'ownerUid', 'masterUid', 'active', 'createdBy', 'createdAt', 'updatedAt'
+        ])
+        && get(userPath(request.auth.uid)).data.companyId == null
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 2
+        && request.resource.data.name.size() <= 80
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.masterUid == request.auth.uid
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.active == true
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && existsAfter(memberPath(companyId, request.auth.uid))
+        && getAfter(memberPath(companyId, request.auth.uid)).data.companyRole == 'owner'
+        && getAfter(memberPath(companyId, request.auth.uid)).data.role == 'leader'
+        && getAfter(memberPath(companyId, request.auth.uid)).data.active == true
+        && getAfter(userPath(request.auth.uid)).data.companyId == companyId;
+
+      allow update: if (
+        isCompanyOwner(companyId)
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['name', 'updatedAt'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 2
+        && request.resource.data.name.size() <= 80
+        && request.resource.data.updatedAt == request.time
+      )
+      || (
+        isCompanyOwner(companyId)
+        && resource.data.ownerUid == request.auth.uid
+        && request.resource.data.ownerUid != resource.data.ownerUid
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['ownerUid', 'updatedAt'])
+        && validOwnerTransfer(companyId)
+      )
+      || (
+        isCompanyMaster(companyId)
+        && request.resource.data.masterUid is string
+        && request.resource.data.masterUid != effectiveMasterUid(companyId)
+        && exists(userPath(request.resource.data.masterUid))
+        && get(userPath(request.resource.data.masterUid)).data.companyId == companyId
+        && get(userPath(request.resource.data.masterUid)).data.companyRole == 'owner'
+        && activeOrLegacy(get(userPath(request.resource.data.masterUid)).data)
+        && exists(memberPath(companyId, request.resource.data.masterUid))
+        && get(memberPath(companyId, request.resource.data.masterUid)).data.companyRole == 'owner'
+        && activeOrLegacy(get(memberPath(companyId, request.resource.data.masterUid)).data)
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['masterUid', 'updatedAt'])
+      );
+
+      allow delete: if false;
+
+      match /members/{memberId} {
+        allow get: if isCompanyManager(companyId)
+          || (
+            memberId == request.auth.uid
+            && isCompanyMember(companyId)
+          );
+
+        allow list: if isCompanyManager(companyId);
+
+        allow create: if ownerBootstrap(companyId, memberId)
+          || acceptedInvitation(companyId, memberId)
+          || managedMemberCreate(companyId, memberId);
+
+        allow update: if (
+          resource.data.companyRole != 'owner'
+          && activeOrLegacy(resource.data)
+          && request.resource.data.active == false
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['active', 'updatedAt'])
+          && isCompanyOwner(companyId)
+          && (
+            !exists(userPath(memberId))
+            || getAfter(userPath(memberId)).data.active == false
+          )
+        )
+        || (
+          request.resource.data.companyRole == resource.data.companyRole
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['name', 'role', 'teamId', 'teamHistory', 'active', 'updatedAt'])
+          && isCompanyOwner(companyId)
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.email == resource.data.email
+          && (
+            memberId != request.auth.uid
+            || request.resource.data.teamId == resource.data.teamId
+          )
+          && validShortName(request.resource.data.name, 30)
+          && validRole(request.resource.data.role)
+          && validTeamId(request.resource.data.teamId)
+          && validTeamHistory(request.resource.data)
+          && (
+            request.resource.data.role != 'leader'
+            || request.resource.data.companyRole == 'owner'
+            || request.resource.data.teamId != null
+          )
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.active == resource.data.active
+          && (
+            resource.data.companyRole != 'owner'
+            || (
+              request.resource.data.role == 'leader'
+              && request.resource.data.active == true
+            )
+          )
+        )
+        || (
+          memberId == request.auth.uid
+          && isCompanyMember(companyId)
+          && (
+            resource.data.role != 'leader'
+            || resource.data.companyRole == 'owner'
+          )
+          && validSelectableTeam(
+            companyId,
+            request.resource.data.teamId
+          )
+          && validTeamHistory(request.resource.data)
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['teamId', 'teamHistory', 'updatedAt'])
+          && existsAfter(userPath(request.auth.uid))
+          && getAfter(userPath(request.auth.uid)).data.teamId
+            == request.resource.data.teamId
+          && getAfter(userPath(request.auth.uid)).data.teamHistory
+            == request.resource.data.teamHistory
+        )
+        || (
+          memberId == request.auth.uid
+          && isCompanyMember(companyId)
+          && validShortName(request.resource.data.name, 30)
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['name', 'updatedAt'])
+        )
+        || (
+          memberId == request.auth.uid
+          && isCompanyMember(companyId)
+          && resource.data.companyRole != 'owner'
+          && resource.data.active == true
+          && request.resource.data.active == false
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['active', 'updatedAt'])
+          && getAfter(userPath(request.auth.uid)).data.active == false
+        )
+
+        || (
+          resource.data.companyRole == 'owner'
+          && request.resource.data.companyRole == 'member'
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['companyRole', 'role', 'updatedAt'])
+          && validSecondaryOwnerDemotion(companyId, memberId)
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.email == resource.data.email
+          && validRole(request.resource.data.role)
+          && request.resource.data.updatedAt == request.time
+        )
+        || (
+          memberId != effectiveMasterUid(companyId)
+          && request.resource.data.companyRole == resource.data.companyRole
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['canViewRevenue', 'updatedAt'])
+          && validRevenuePermissionUpdate(companyId, memberId)
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.email == resource.data.email
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.teamId == resource.data.teamId
+          && request.resource.data.canViewRevenue is bool
+          && request.resource.data.updatedAt == request.time
+        )
+        || (
+          memberId != effectiveMasterUid(companyId)
+          && request.resource.data.companyRole == resource.data.companyRole
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['canViewUnitPrice', 'updatedAt'])
+          && validUnitPricePermissionUpdate(companyId, memberId)
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.email == resource.data.email
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.teamId == resource.data.teamId
+          && request.resource.data.canViewUnitPrice is bool
+          && request.resource.data.updatedAt == request.time
+        )
+        || (
+          memberId != effectiveMasterUid(companyId)
+          && request.resource.data.companyRole == resource.data.companyRole
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['canCreateInvite', 'updatedAt'])
+          && validInvitePermissionUpdate(companyId, memberId)
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.email == resource.data.email
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.teamId == resource.data.teamId
+          && request.resource.data.canCreateInvite is bool
+          && request.resource.data.updatedAt == request.time
+        )
+        || (
+          resource.data.companyRole != 'owner'
+          && request.resource.data.companyRole == 'owner'
+          && request.resource.data.role == 'leader'
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['companyRole', 'role', 'updatedAt'])
+          && validOwnerPromotion(companyId, memberId)
+        )
+        || (
+          validOwnerTransfer(companyId)
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['companyRole', 'role', 'updatedAt'])
+          && (
+            (
+              memberId == request.auth.uid
+              && resource.data.companyRole == 'owner'
+              && request.resource.data.companyRole == 'member'
+              && validRole(request.resource.data.role)
+              && (
+                request.resource.data.role != 'leader'
+                || request.resource.data.teamId != null
+              )
+            )
+            || (
+              memberId == getAfter(companyPath(companyId)).data.ownerUid
+              && resource.data.companyRole == 'member'
+              && request.resource.data.companyRole == 'owner'
+              && request.resource.data.role == 'leader'
+            )
+          )
+        );
+
+        allow delete: if false;
+      }
+
+      match /settings/{settingId} {
+        allow read: if isCompanyMember(companyId)
+          || isCompanyOwner(companyId);
+
+        allow create, update: if isCompanyOwner(companyId)
+          && (
+            (
+              settingId == 'reporting'
+              && request.resource.data.keys().hasOnly([
+                'morning', 'final', 'updatedBy', 'updatedAt'
+              ])
+              && request.resource.data.morning is map
+              && request.resource.data.final is map
+              && request.resource.data.updatedBy == request.auth.uid
+              && request.resource.data.updatedAt == request.time
+            )
+            || (
+              settingId == 'notifications'
+              && request.resource.data.keys().hasOnly([
+                'enabled', 'weekdays', 'time', 'reportCompletionMode',
+                'lineEnabled', 'lineGroupId', 'lineGroupName',
+                'lineConnectedAt', 'updatedBy', 'updatedAt'
+              ])
+              && request.resource.data.enabled is bool
+              && request.resource.data.weekdays is list
+              && request.resource.data.weekdays.size() >= 1
+              && request.resource.data.weekdays.size() <= 7
+              && request.resource.data.time is string
+              && request.resource.data.time.size() == 5
+              && request.resource.data.reportCompletionMode is string
+              && (
+                request.resource.data.reportCompletionMode == 'individual'
+                || request.resource.data.reportCompletionMode == 'team_any'
+              )
+              && request.resource.data.lineEnabled is bool
+              && request.resource.data.lineGroupId is string
+              && request.resource.data.lineGroupId.size() <= 200
+              && (
+                !request.resource.data.keys().hasAny(['lineGroupName'])
+                || (
+                  request.resource.data.lineGroupName is string
+                  && request.resource.data.lineGroupName.size() <= 100
+                )
+              )
+              && (
+                !request.resource.data.keys().hasAny(['lineConnectedAt'])
+                || request.resource.data.lineConnectedAt is timestamp
+              )
+              && request.resource.data.updatedBy == request.auth.uid
+              && request.resource.data.updatedAt == request.time
+            )
+          );
+
+        allow delete: if false;
+      }
+    }
+
+    match /linePairingCodes/{pairingCode} {
+      allow get: if resource.data.companyId != null
+        && sameCompany(resource.data.companyId);
+
+      allow list: if false;
+
+      allow create: if request.resource.data.keys().hasOnly([
+          'companyId', 'createdBy', 'status', 'createdAt', 'expiresAt'
+        ])
+        && pairingCode.size() == 8
+        && request.resource.data.companyId != null
+        && isCompanyOwner(request.resource.data.companyId)
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.expiresAt > request.time
+        && request.resource.data.expiresAt <= request.time + duration.value(15, 'm');
+
+      allow update, delete: if false;
+    }
+
+
+    match /invitations/{inviteId} {
+      allow get: if verifiedUser()
+        && (
+          resource.data.email == request.auth.token.email
+          || canCreateInvite(resource.data.companyId)
+        );
+
+      allow list: if false;
+
+      allow create: if verifiedUser()
+        && request.resource.data.keys().hasOnly([
+          'companyId', 'companyName', 'email', 'role',
+          'status', 'invitedBy', 'createdAt', 'expiresAt'
+        ])
+        && request.resource.data.companyId is string
+        && canCreateInvite(request.resource.data.companyId)
+        && request.resource.data.companyName == get(companyPath(request.resource.data.companyId)).data.name
+        && request.resource.data.email is string
+        && request.resource.data.email.size() >= 3
+        && request.resource.data.email.size() <= 254
+        && validRole(request.resource.data.role)
+        && request.resource.data.status == 'pending'
+        && request.resource.data.invitedBy == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.expiresAt > request.time
+        && request.resource.data.expiresAt <= request.time + duration.value(30, 'm');
+
+      allow update: if verifiedUser()
+        && resource.data.status == 'pending'
+        && resource.data.email == request.auth.token.email
+        && resource.data.expiresAt > request.time
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'acceptedBy', 'acceptedAt'])
+        && request.resource.data.status == 'accepted'
+        && request.resource.data.acceptedBy == request.auth.uid
+        && request.resource.data.acceptedAt == request.time
+        && existsAfter(memberPath(resource.data.companyId, request.auth.uid))
+        && getAfter(userPath(request.auth.uid)).data.companyId == resource.data.companyId;
+
+      allow delete: if canCreateInvite(resource.data.companyId);
+    }
+
+    match /teams/{teamId} {
+      allow read: if resource.data.companyId != null
+        && sameCompany(resource.data.companyId);
+
+      allow create: if request.resource.data.keys().hasOnly([
+          'companyId', 'name', 'leaderUids', 'active', 'createdAt'
+        ])
+        && request.resource.data.companyId != null
+        && currentCompanyId() == request.resource.data.companyId
+        && isCompanyManager(request.resource.data.companyId)
+        && validShortName(request.resource.data.name, 30)
+        && request.resource.data.leaderUids is list
+        && request.resource.data.active == true
+        && request.resource.data.createdAt == request.time;
+
+      allow update: if resource.data.companyId != null
+        && isCompanyManager(resource.data.companyId)
+        && request.resource.data.companyId == resource.data.companyId
+        && validShortName(request.resource.data.name, 30)
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['name', 'updatedAt']);
+
+      allow delete: if resource.data.companyId != null
+        && isCompanyManager(resource.data.companyId);
+    }
+
+    match /products/{productId} {
+      allow read: if resource.data.companyId != null
+        && sameCompany(resource.data.companyId)
+        && (isCompanyOwner(resource.data.companyId) || isCompanyMaster(resource.data.companyId));
+
+      allow create: if (isCompanyOwner(request.resource.data.companyId) || isCompanyMaster(request.resource.data.companyId)) && request.resource.data.keys().hasOnly([
+          'companyId', 'name', 'revenue', 'cashbackOptions', 'pricingOptions',
+          'sortOrder', 'active', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.companyId != null
+        && currentCompanyId() == request.resource.data.companyId
+        && isCompanyManager(request.resource.data.companyId)
+        && canViewRevenue(request.resource.data.companyId)
+        && canViewUnitPrice(request.resource.data.companyId)
+        && validShortName(request.resource.data.name, 50)
+        && request.resource.data.revenue is number
+        && request.resource.data.revenue >= 0
+        && validProductExtras(request.resource.data)
+        && request.resource.data.active == true
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+
+      allow update: if (isCompanyOwner(resource.data.companyId) || isCompanyMaster(resource.data.companyId)) && resource.data.companyId != null
+        && isCompanyManager(resource.data.companyId)
+        && canViewRevenue(resource.data.companyId)
+        && canViewUnitPrice(resource.data.companyId)
+        && request.resource.data.companyId == resource.data.companyId
+        && validShortName(request.resource.data.name, 50)
+        && request.resource.data.revenue is number
+        && request.resource.data.revenue >= 0
+        && validProductExtras(request.resource.data)
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly([
+            'name', 'revenue', 'cashbackOptions', 'pricingOptions',
+            'sortOrder', 'updatedAt'
+          ]);
+
+      allow delete: if (isCompanyOwner(resource.data.companyId) || isCompanyMaster(resource.data.companyId)) && resource.data.companyId != null
+        && isCompanyManager(resource.data.companyId)
+        && canViewRevenue(resource.data.companyId)
+        && canViewUnitPrice(resource.data.companyId);
+    }
+
+    match /records/{recordId} {
+      allow read: if resource.data.companyId != null
+        && sameCompany(resource.data.companyId)
+        && (isCompanyOwner(resource.data.companyId) || isCompanyMaster(resource.data.companyId));
+
+      // 新規登録のトランザクションで、未作成ドキュメントだけ読取を許可。
+      // 既存データの会社分離は上のreadルールを維持する。
+      allow get: if verifiedUser() && isCompanyMember(currentCompanyId())
+        && !exists(/databases/$(database)/documents/records/$(recordId));
+
+      allow create: if (isCompanyOwner(request.resource.data.companyId) || isCompanyMaster(request.resource.data.companyId))
+        && recordId == request.resource.data.companyId + '_' + request.resource.data.uid + '_' + request.resource.data.date
+        && validSelectableTeam(request.resource.data.companyId, request.resource.data.teamId)
+        && request.resource.data.keys().hasOnly([
+          'companyId', 'uid', 'memberNameSnapshot', 'teamId',
+          'teamNameSnapshot', 'date', 'workLocation', 'results', 'totalCount',
+          'totalRevenue', 'reportStatus', 'reportedAt',
+          'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.companyId != null
+        && currentCompanyId() == request.resource.data.companyId
+        && isCompanyMember(request.resource.data.companyId)
+        && (
+          (
+            exists(memberPath(request.resource.data.companyId, request.resource.data.uid))
+            && activeOrLegacy(get(memberPath(request.resource.data.companyId, request.resource.data.uid)).data)
+          )
+          || (
+            request.resource.data.uid == request.auth.uid
+            && isCompanyOwner(request.resource.data.companyId)
+          )
+        )
+        && request.resource.data.memberNameSnapshot is string
+        && validTeamId(request.resource.data.teamId)
+        && request.resource.data.teamNameSnapshot is string
+        && request.resource.data.date is string
+        && request.resource.data.date.size() == 10
+        && validWorkLocation(request.resource.data)
+        && request.resource.data.results is map
+        && request.resource.data.totalCount is number
+        && request.resource.data.totalCount >= 0
+        && request.resource.data.totalRevenue is number
+        && request.resource.data.totalRevenue >= 0
+        && (
+          !request.resource.data.keys().hasAny(['reportStatus', 'reportedAt'])
+          || (
+            request.resource.data.keys().hasAll(['reportStatus', 'reportedAt'])
+            && request.resource.data.reportStatus is string
+            && (
+              request.resource.data.reportStatus == 'submitted'
+              || request.resource.data.reportStatus == 'no_result'
+            )
+            && request.resource.data.reportedAt == request.time
+          )
+        )
+        && request.resource.data.createdByUid == request.auth.uid
+        && request.resource.data.updatedByUid == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && canWriteDailyRecord(request.resource.data.companyId,
+          request.resource.data.uid, request.resource.data.teamId);
+
+
+      allow update: if resource.data.companyId != null
+        && (isCompanyOwner(resource.data.companyId) || isCompanyMaster(resource.data.companyId))
+        && request.resource.data.companyId == resource.data.companyId
+        && sameCompany(resource.data.companyId)
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.date == resource.data.date
+        && request.resource.data.memberNameSnapshot is string
+        && validTeamId(request.resource.data.teamId)
+        && (
+          request.resource.data.teamId == resource.data.teamId
+          || validSelectableTeam(
+            resource.data.companyId,
+            request.resource.data.teamId
+          )
+        )
+        && request.resource.data.teamNameSnapshot is string
+        && validWorkLocation(request.resource.data)
+        && request.resource.data.results is map
+        && request.resource.data.totalCount is number
+        && request.resource.data.totalCount >= 0
+        && request.resource.data.totalRevenue is number
+        && request.resource.data.totalRevenue >= 0
+        && request.resource.data.updatedByUid == request.auth.uid
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly([
+            'memberNameSnapshot', 'teamId', 'teamNameSnapshot',
+            'workLocation', 'results', 'totalCount', 'totalRevenue',
+            'reportStatus', 'reportedAt', 'updatedByUid', 'updatedAt'
+          ])
+        && (
+          !request.resource.data.keys().hasAny(['reportStatus', 'reportedAt'])
+          || (
+            request.resource.data.keys().hasAll(['reportStatus', 'reportedAt'])
+            && request.resource.data.reportStatus is string
+            && (
+              request.resource.data.reportStatus == 'submitted'
+              || request.resource.data.reportStatus == 'no_result'
+            )
+            && request.resource.data.reportedAt == request.time
+          )
+        )
+        && canWriteDailyRecord(resource.data.companyId, resource.data.uid, resource.data.teamId)
+        && (request.resource.data.teamId == resource.data.teamId
+          || isCompanyOwner(resource.data.companyId));
+
+
+      allow delete: if resource.data.companyId != null
+        && sameCompany(resource.data.companyId)
+        && (
+          isCompanyOwner(resource.data.companyId)
+          || resource.data.uid == request.auth.uid
+          || canManageTeamMemberRecord(
+            resource.data.companyId,
+            resource.data.uid,
+            resource.data.teamId
+          )
+        );
+    }
+
+    match /recordCorrections/{correctionId} {
+      allow read: if resource.data.companyId != null
+        && sameCompany(resource.data.companyId)
+        && (isCompanyOwner(resource.data.companyId) || isCompanyMaster(resource.data.companyId));
+
+      allow create: if (isCompanyOwner(request.resource.data.companyId) || isCompanyMaster(request.resource.data.companyId))
+        && request.resource.data.keys().hasOnly([
+          'companyId', 'recordId', 'recordUid', 'recordDate',
+          'changedByUid', 'changedByName', 'before', 'after', 'createdAt'
+        ])
+        && request.resource.data.companyId != null
+        && sameCompany(request.resource.data.companyId)
+        && request.resource.data.recordId is string
+        && request.resource.data.recordUid is string
+        && request.resource.data.recordDate is string
+        && request.resource.data.recordDate.size() == 10
+        && request.resource.data.changedByUid == request.auth.uid
+        && request.resource.data.changedByName is string
+        && request.resource.data.before is map
+        && request.resource.data.after is map
+        && request.resource.data.createdAt == request.time;
+
+      allow update, delete: if false;
+    }
+
+
+    match /goals/{goalId} {
+      allow read: if resource.data.companyId != null
+        && sameCompany(resource.data.companyId);
+
+      allow create: if request.resource.data.keys().hasOnly([
+          'companyId', 'teamId', 'month', 'targets', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.companyId != null
+        && currentCompanyId() == request.resource.data.companyId
+        && request.resource.data.teamId is string
+        && validSelectableTeam(
+          request.resource.data.companyId,
+          request.resource.data.teamId
+        )
+        && request.resource.data.month is string
+        && request.resource.data.month.size() == 7
+        && request.resource.data.targets is map
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && (
+          isCompanyOwner(request.resource.data.companyId)
+          || isLeaderOfTeam(
+            request.resource.data.companyId,
+            request.resource.data.teamId
+          )
+        );
+
+      allow update: if resource.data.companyId != null
+        && request.resource.data.companyId == resource.data.companyId
+        && request.resource.data.teamId == resource.data.teamId
+        && request.resource.data.month == resource.data.month
+        && request.resource.data.targets is map
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['targets', 'updatedAt'])
+        && (
+          isCompanyOwner(resource.data.companyId)
+          || isLeaderOfTeam(
+            resource.data.companyId,
+            resource.data.teamId
+          )
+        );
+
+      allow delete: if resource.data.companyId != null
+        && (
+          isCompanyOwner(resource.data.companyId)
+          || isLeaderOfTeam(
+            resource.data.companyId,
+            resource.data.teamId
+          )
+        );
+    }
+
+    match /revenueGoals/{goalId} {
+      allow read: if resource.data.companyId != null
+        && sameCompany(resource.data.companyId)
+        && (
+          isCompanyOwner(resource.data.companyId)
+          || (
+            canViewRevenue(resource.data.companyId)
+            && resource.data.teamId
+              == get(memberPath(resource.data.companyId, request.auth.uid)).data.teamId
+          )
+        );
+
+      allow create: if request.resource.data.keys().hasOnly([
+          'companyId', 'teamId', 'month', 'targetRevenue',
+          'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.companyId != null
+        && currentCompanyId() == request.resource.data.companyId
+        && request.resource.data.teamId is string
+        && validSelectableTeam(
+          request.resource.data.companyId,
+          request.resource.data.teamId
+        )
+        && request.resource.data.month is string
+        && request.resource.data.month.size() == 7
+        && request.resource.data.targetRevenue is number
+        && request.resource.data.targetRevenue >= 0
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && (
+          isCompanyOwner(request.resource.data.companyId)
+          || (
+            canViewRevenue(request.resource.data.companyId)
+            && isLeaderOfTeam(
+              request.resource.data.companyId,
+              request.resource.data.teamId
+            )
+          )
+        );
+
+      allow update: if resource.data.companyId != null
+        && request.resource.data.companyId == resource.data.companyId
+        && request.resource.data.teamId == resource.data.teamId
+        && request.resource.data.month == resource.data.month
+        && request.resource.data.targetRevenue is number
+        && request.resource.data.targetRevenue >= 0
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['targetRevenue', 'updatedAt'])
+        && (
+          isCompanyOwner(resource.data.companyId)
+          || (
+            canViewRevenue(resource.data.companyId)
+            && isLeaderOfTeam(
+              resource.data.companyId,
+              resource.data.teamId
+            )
+          )
+        );
+
+      allow delete: if resource.data.companyId != null
+        && (
+          isCompanyOwner(resource.data.companyId)
+          || (
+            canViewRevenue(resource.data.companyId)
+            && isLeaderOfTeam(
+              resource.data.companyId,
+              resource.data.teamId
+            )
+          )
+        );
+    }
+  }
+}
+
