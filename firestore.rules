@@ -183,7 +183,7 @@ service cloud.firestore {
     }
 
     function canViewRevenue(companyId) {
-      return isCompanyMaster(companyId)
+      return isCompanyOwner(companyId)
         || (
           isCompanyMember(companyId)
           && (
@@ -205,7 +205,7 @@ service cloud.firestore {
     }
 
     function canViewUnitPrice(companyId) {
-      return isCompanyMaster(companyId)
+      return isCompanyOwner(companyId)
         || (
           canViewRevenue(companyId)
           && (
@@ -216,7 +216,7 @@ service cloud.firestore {
     }
 
     function canCreateInvite(companyId) {
-      return isCompanyMaster(companyId)
+      return isCompanyOwner(companyId)
         || (
           isCompanyMember(companyId)
           && get(memberPath(companyId, request.auth.uid)).data.keys()
@@ -259,7 +259,9 @@ service cloud.firestore {
     }
 
     function validRevenuePermissionUpdate(companyId, targetUid) {
-      return isCompanyMaster(companyId)
+      return isCompanyOwner(companyId)
+        && get(memberPath(companyId, targetUid)).data.companyRole != 'owner'
+        && get(userPath(targetUid)).data.companyRole != 'owner'
         && targetUid != effectiveMasterUid(companyId)
         && exists(userPath(targetUid))
         && existsAfter(userPath(targetUid))
@@ -272,7 +274,9 @@ service cloud.firestore {
     }
 
     function validUnitPricePermissionUpdate(companyId, targetUid) {
-      return isCompanyMaster(companyId)
+      return isCompanyOwner(companyId)
+        && get(memberPath(companyId, targetUid)).data.companyRole != 'owner'
+        && get(userPath(targetUid)).data.companyRole != 'owner'
         && targetUid != effectiveMasterUid(companyId)
         && exists(userPath(targetUid))
         && existsAfter(userPath(targetUid))
@@ -285,7 +289,9 @@ service cloud.firestore {
     }
 
     function validInvitePermissionUpdate(companyId, targetUid) {
-      return isCompanyMaster(companyId)
+      return isCompanyOwner(companyId)
+        && get(memberPath(companyId, targetUid)).data.companyRole != 'owner'
+        && get(userPath(targetUid)).data.companyRole != 'owner'
         && targetUid != effectiveMasterUid(companyId)
         && exists(userPath(targetUid))
         && existsAfter(userPath(targetUid))
@@ -293,8 +299,8 @@ service cloud.firestore {
         && existsAfter(memberPath(companyId, targetUid))
         && get(userPath(targetUid)).data.companyId == companyId
         && (
-          get(memberPath(companyId, targetUid)).data.companyRole == 'owner'
-          || get(memberPath(companyId, targetUid)).data.role == 'leader'
+          get(memberPath(companyId, targetUid)).data.role == 'leader'
+          && get(memberPath(companyId, targetUid)).data.companyRole != 'owner'
         )
         && getAfter(userPath(targetUid)).data.canCreateInvite is bool
         && getAfter(memberPath(companyId, targetUid)).data.canCreateInvite
