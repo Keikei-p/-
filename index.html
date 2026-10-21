@@ -14902,6 +14902,12 @@ function parseLegacyCashbackProductName(
 function formatCashbackPlanLabel(
   cashback
 ) {
+  // 画面上にCB金額も出さない。保存データ・集計は変更しない。
+  if (typeof currentUserData !== "undefined" &&
+      currentUserData &&
+      !canCurrentUserViewUnitPrice()) {
+    return "プラン";
+  }
 
   const value =
     Number(
@@ -20807,7 +20813,7 @@ function prepareProductInputList(
 
 
       groupData.plans.forEach(
-        plan => {
+        (plan, planIndex) => {
 
           const cell =
             document.createElement(
@@ -20827,7 +20833,9 @@ function prepareProductInputList(
             "product-plan-label";
 
           label.textContent =
-            plan.label;
+            canCurrentUserViewUnitPrice()
+              ? plan.label
+              : `プラン${planIndex + 1}`;
 
 
           const unit =
