@@ -72,7 +72,9 @@ export function makeFirestoreRestStore(env,{token,fetcher=fetch}){
       const writes=[];
       let staged=false;
       const ensureReadable=()=>{if(staged)throw Error("read_after_write_staged");};
-      const name=path=>root+"/documents/"+segmentPath(path);
+      // Firestore Write.update.name requires a RESOURCE PATH (projects/...),
+      // never the complete HTTPS REST endpoint URL.
+      const name=path=>"projects/sales-management-cc116/databases/(default)/documents/"+segmentPath(path);
       async function lookup(path){
         ensureReadable();
         const raw=await send("/documents/"+segmentPath(path)+"?transaction="+encodeURIComponent(transaction),"GET",undefined,bearer);
