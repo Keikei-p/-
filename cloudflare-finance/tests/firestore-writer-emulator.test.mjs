@@ -34,7 +34,9 @@ test("real emulator commit creates exactly one daily record without changing oth
     createdAt:"fixture",updatedAt:"fixture",reportedAt:"fixture",
     createdByUid:"owner",updatedByUid:"owner",reportStatus:"submitted"};
   await store.runTransaction(async tx=>{
-    assert.equal(await tx.get("records/"+recId),null);
+    // New ID is protected by currentDocument.exists=false at COMMIT.
+    // Avoid Firestore Emulator's undefined GET-in-transaction path for
+    // nonexistent documents; the service queries uid/date beforehand.
     tx.saveRecord(recId,data,null);
   });
   const live=await get("records/"+recId);
