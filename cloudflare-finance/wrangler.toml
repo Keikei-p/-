@@ -1,0 +1,12 @@
+name = "sales-finance-gateway"
+main = "src/index.js"
+compatibility_date = "2026-10-22"
+workers_dev = true
+
+[vars]
+FIREBASE_PROJECT_ID = "sales-management-cc116"
+FINANCE_GATEWAY_ENABLED = "disabled"
+
+# SECURITY: Do not deploy this branch to production while legacy SDK listeners
+# read full money-bearing products/records documents. No credentials in repo.
+# Set FIREBASE_SERVICE_ACCOUNT_JSON only via Cloudflare secret when approved.
