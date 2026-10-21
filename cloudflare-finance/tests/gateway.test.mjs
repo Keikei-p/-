@@ -55,6 +55,15 @@ const record={id:"r1",companyId:"company-A",uid:"worker",date:"2026-10-22",teamI
   "p1_CB0":{productId:"p1",productName:"HTB CB5000円",cashback:0,count:1,revenuePerUnit:40000},
   "p1_CB5000":{productId:"p1",productName:"HTB CB5000円",cashback:5000,count:1,revenuePerUnit:35000}
  }};
+test("Unapproved product labels mask yen and half/fullwidth cashback variants",()=>{
+  const user=policy("member");
+  for(const [name,safe] of [
+    ["SIM ＣＢ５０００円","SIM"],["電気 単価30,000円","電気"],
+    ["光 ¥15,000","光"],["ネット 3万円","ネット"]
+  ]){
+    assert.equal(safeProducts([{...product,name}],user)[0].name,safe);
+  }
+});
 test("Unauthorized data projection exposes counts but NO amounts, pricing fields, CB labels or originals",()=>{
   const p=policy("leader");
   const [displayProduct]=safeProducts([product],p);
