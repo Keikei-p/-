@@ -200,8 +200,16 @@ function visibleMoney(policy,record) {
   return Boolean(assigned && assigned===record.teamId);
 }
 function withoutAmounts(str) {
-  // Old product names can contain cashback amounts (e.g. "HTB CB5000").
-  return String(str||"").replace(/(?:\s*[-–(（]?\s*)(?:CB|キャッシュバック)[\s:：-]*[￥¥]?\s*[\d,.]+(?:万|千)?(?:円)?[)）]?/gi,"").trim();
+  const original=String(str||"").normalize("NFKC");
+  const candidate=original
+    .replace(/(?:CB|キャッシュバック|単価|売上|粗利|価格)\s*[:：=\-]?\s*[¥￥]?\s*[0-9][0-9,.]*(?:万円|千円|万|千|円)?/gi,"")
+    .replace(/[¥￥]\s*[0-9][0-9,.]*(?:万円|千円|円)?/gi,"")
+    .replace(/[0-9][0-9,.]*\s*(?:万円|千円|円)/gi,"")
+    .trim().replace(/[-()\s]+$/g,"");
+  // Never publish a doubtful money-bearing label to an unapproved user.
+  if(/[¥￥]|[0-9][0-9,.]*\s*(?:円|万円|千円)/i.test(candidate))
+    return "商材";
+  return candidate || "商材";
 }
 function safeProducts(all,policy) {
   return all.map(p=>{
