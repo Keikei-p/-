@@ -220,7 +220,8 @@ function safeProducts(all,policy) {
     return safe;
   });
 }
-function safeRecords(all,policy) {
+function safeRecords(all,policy,products=[]) {
+  const productById=new Map(products.map(p=>[p.id,p]));
   return all.map(record=>{
     const out={
       id:record.id,companyId:record.companyId,uid:record.uid,
@@ -230,14 +231,27 @@ function safeRecords(all,policy) {
       totalCount:record.totalCount,reportStatus:record.reportStatus,
       reportedAt:record.reportedAt,createdByUid:record.createdByUid,
       updatedByUid:record.updatedByUid,createdAt:record.createdAt,
-      updatedAt:record.updatedAt
+      updatedAt:record.updatedAt,
+      // This is Firestore's server document version, not an editable price.
+      recordVersion:record.__firestoreUpdateTime||null
     };
     const permittedRevenue=visibleMoney(policy,record);
     if(permittedRevenue)out.totalRevenue=record.totalRevenue;
     const input=record.results && typeof record.results==="object"?record.results:{};
     out.results=Object.fromEntries(Object.entries(input).map(([k,v])=>{
       const result=v && typeof v==="object"?v:{};
-      const safe={productId:result.productId,productName:withoutAmounts(result.productName),
+      const productId=result.productId ||
+        products.find(p=>k===p.id || k.startsWith(p.id+"__cb_"))?.id || null;
+      const product=productById.get(productId);
+      let planId=null;
+      // Older snapshots can reference deleted/renamed plans. Their count
+      // remains visible but the line cannot be silently repriced.
+      if(product){
+        try{
+          planId=securePricing(product).find(p=>p.cashback===Number(result.cashback||0))?.planId||null;
+        }catch{planId=null;}
+      }
+      const safe={productId,planId,productName:withoutAmounts(result.productName),
         count:result.count};
       if(policy.canViewUnitPrice && permittedRevenue){
         safe.revenuePerUnit=result.revenuePerUnit;
@@ -285,7 +299,7 @@ async function financeView(env,principal,fetcher=fetch){
   const payload={policy:{
     canViewRevenue:policy.canViewRevenue,canViewUnitPrice:policy.canViewUnitPrice,isOwner:policy.isOwner,
     teamId:policy.teamId
-  },products:safeProducts(products,policy),records:safeRecords(records,policy),revenueGoals:safeGoals(revenueGoals,policy)};
+  },products:safeProducts(products,policy),records:safeRecords(records,policy,products),revenueGoals:safeGoals(revenueGoals,policy)};
   return payload;
 }
 export default {
