@@ -7,6 +7,7 @@
 const PROJECT_ID = "sales-management-cc116";
 const TOKEN_SCOPE = "https://www.googleapis.com/auth/datastore";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
+import {securePricing} from "./write-plan.js";
 const GOOGLE_KEYS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
 const ALLOWED_ORIGINS = new Set([
   "https://nico-factory.web.app",
@@ -188,8 +189,7 @@ function safeProducts(all,policy) {
       safe.cashbackOptions=p.cashbackOptions;
       safe.name=p.name;
     } else {
-      const variants=Array.isArray(p.pricingOptions)?p.pricingOptions:[];
-      safe.planIds=variants.map((_v,i)=>"plan_"+i);
+      safe.planIds=securePricing(p).map(v=>v.planId);
     }
     return safe;
   });
