@@ -7843,24 +7843,15 @@ let currentUser = null;
 
 
 function isCurrentCompanyManager() {
-
-  return (
-    currentUserData?.role ===
-      "leader" ||
-    currentUserData?.companyRole ===
-      "owner"
-  );
-
+  return isCurrentCompanyMaster() ||
+    currentUserData?.role === "leader" ||
+    currentUserData?.companyRole === "owner";
 }
 
 
 function isCurrentCompanyOwner() {
-
-  return (
-    currentUserData?.companyRole ===
-      "owner"
-  );
-
+  return isCurrentCompanyMaster() ||
+    currentUserData?.companyRole === "owner";
 }
 
 
@@ -7923,6 +7914,19 @@ function canCurrentUserViewProductRevenue() {
 }
 
 
+
+// 売上閲覧と商材単価表示は別設定。売上OFFの場合は単価もOFF。
+function canCurrentUserViewUnitPrice() {
+  if (isCurrentCompanyMaster()) return true;
+  if (!canCurrentUserViewRevenue()) return false;
+  // 未設定の既存ユーザーは、従来の表示を維持。
+  return currentUserData?.canViewUnitPrice !== false;
+}
+function memberUnitPricePermissionEnabled(member) {
+  if (isMemberMaster(member)) return true;
+  if (!memberRevenuePermissionEnabled(member)) return false;
+  return member?.canViewUnitPrice !== false;
+}
 
 function getEffectiveMasterUid() {
 
@@ -12496,7 +12500,7 @@ function updateCurrentUserUI() {
       "block";
 
     managementProductButton.style.display =
-      canViewRevenue
+      canViewRevenue && canCurrentUserViewUnitPrice()
         ? "block"
         : "none";
 
@@ -12507,7 +12511,7 @@ function updateCurrentUserUI() {
       "block";
 
     if (
-      !canViewRevenue &&
+      (!canViewRevenue || !canCurrentUserViewUnitPrice()) &&
       activeManagementSection ===
         "product"
     ) {
@@ -15147,6 +15151,7 @@ function getProductPricingOptions(
 function pricingOptionsText(
   product
 ) {
+  if (!canCurrentUserViewUnitPrice()) return "単価：非表示";
 
   const options =
     getProductPricingOptions(
@@ -17401,8 +17406,7 @@ function renderOwnerTransferOptions() {
 
 
   if (
-    currentUserData?.companyRole !==
-    "owner"
+    !isCurrentCompanyOwner()
   ) {
 
     ownerTransferPanel.style.display =
@@ -17621,8 +17625,7 @@ ownerAddButton.onclick =
   async () => {
 
     if (
-      currentUserData?.companyRole !==
-        "owner" ||
+      !isCurrentCompanyOwner() ||
       !currentUserData?.companyId
     ) {
 
@@ -18235,6 +18238,7 @@ async function setMemberRevenuePermission(
 
     await batch.commit();
 
+    await loadMembers();
     showSuccess(
       `${member.name || "メンバー"}の売上閲覧権限を${allowed ? "許可" : "解除"}しました。`
     );
@@ -18253,6 +18257,36 @@ async function setMemberRevenuePermission(
 
 }
 
+
+// マスターがメンバーの単価表示を切り替える（user/member同時更新）。
+async function setMemberUnitPricePermission(member, allowed) {
+  if (!isCurrentCompanyMaster() || !currentUserData?.companyId ||
+      isMemberMaster(member) || isManagedMember(member)) {
+    showError("単価表示権限を変更できるのはMasterだけです。");
+    return false;
+  }
+  const memberId = member.id || member.uid;
+  try {
+    const batch = writeBatch(db);
+    batch.update(
+      doc(db, "companies", currentUserData.companyId, "members", memberId),
+      { canViewUnitPrice: allowed === true, updatedAt: serverTimestamp() }
+    );
+    batch.update(
+      doc(db, "users", memberId),
+      { canViewUnitPrice: allowed === true, updatedAt: serverTimestamp() }
+    );
+    await batch.commit();
+    await loadMembers();
+    showSuccess(`${member.name || "メンバー"}の商材単価表示を${allowed ? "許可" : "非表示"}にしました。`);
+    return true;
+  } catch (error) {
+    console.error(error);
+    showError(firebaseErrorMessage(error));
+    await loadMembers();
+    return false;
+  }
+}
 
 async function setMemberInvitePermission(
   member,
@@ -18377,7 +18411,7 @@ async function transferMasterToMember(
 
   if (
     !confirm(
-      `${member.name || "このオーナー"}を新しいMasterに変更しますか？\n\n現在のMasterはOwnerとして残ります。`
+      `${member.name || "このオーナー"}を新しいMasterに変更しますか？\n\n現在のMasterの役割はそのままで、Master権限のみ移ります。`
     )
   ) {
 
@@ -18765,6 +18799,28 @@ function renderMembers() {
             revenueLabel
           );
 
+        }
+
+        // 売上閲覧とは別に単価の表示だけを制御。
+        if (isCurrentCompanyMaster() && !isMemberMaster(member) &&
+            !isManagedMember(member)) {
+          const unitPriceLabel = document.createElement("label");
+          unitPriceLabel.className = "member-action-button";
+          unitPriceLabel.style.display = "inline-flex";
+          unitPriceLabel.style.alignItems = "center";
+          unitPriceLabel.style.gap = "5px";
+          unitPriceLabel.title = "売上閲覧がOFFなら単価も非表示";
+          const unitPriceToggle = document.createElement("input");
+          unitPriceToggle.type = "checkbox";
+          unitPriceToggle.checked = memberUnitPricePermissionEnabled(member);
+          unitPriceToggle.disabled = !memberRevenuePermissionEnabled(member);
+          unitPriceToggle.onchange = async () => {
+            unitPriceToggle.disabled = true;
+            await setMemberUnitPricePermission(member, unitPriceToggle.checked);
+          };
+          unitPriceLabel.appendChild(unitPriceToggle);
+          unitPriceLabel.appendChild(document.createTextNode("商材単価表示"));
+          actions.appendChild(unitPriceLabel);
         }
 
         if (
@@ -20809,9 +20865,9 @@ function prepareProductInputList(
             "product-plan-unit";
 
           unit.textContent =
-            `${formatYen(
-              plan.revenuePerUnit
-            )}/件`;
+            canCurrentUserViewUnitPrice()
+              ? `${formatYen(plan.revenuePerUnit)}/件`
+              : "単価非表示";
 
 
           const input =
