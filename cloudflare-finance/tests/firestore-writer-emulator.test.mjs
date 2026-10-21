@@ -13,12 +13,13 @@ const controlledFetch=async (url,options)=>{
   // The transaction transport's production address is redirected to a DEMO
   // emulator database, with absolutely no live project credentials involved.
   const local=fakeRoot+url.slice(livePrefix.length);
-  return fetch(local,{...options,headers:{"Content-Type":"application/json"}});
+  return fetch(local,{...options,signal:AbortSignal.timeout(15000),
+    headers:{"Content-Type":"application/json"}});
 };
 const store=makeFirestoreRestStore({FIREBASE_PROJECT_ID:"sales-management-cc116"},
   {token:async()=>"emulator-fixture",fetcher:controlledFetch});
 const get=async relative=>{
-  const response=await fetch(fakeRoot+"/documents/"+relative);
+  const response=await fetch(fakeRoot+"/documents/"+relative,{signal:AbortSignal.timeout(15000)});
   assert.equal(response.status,200);
   return response.json();
 };
@@ -84,6 +85,7 @@ test("stale edits cannot rewrite history and cannot append invalid correction",a
   const after=await get("records/"+recordId);
   assert.equal(after.fields.totalRevenue.integerValue,"30000");
   assert.equal(after.updateTime,prev.updateTime);
-  const missing=await fetch(fakeRoot+"/documents/recordCorrections/c0ffee00-2222-4444-8888-abcdef012346");
+  const missing=await fetch(fakeRoot+"/documents/recordCorrections/c0ffee00-2222-4444-8888-abcdef012346",
+    {signal:AbortSignal.timeout(15000)});
   assert.equal(missing.status,404);
 });
