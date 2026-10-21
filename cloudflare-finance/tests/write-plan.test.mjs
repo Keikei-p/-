@@ -69,7 +69,13 @@ test("other-company, missing, or deactivated members and teams cannot be used",(
 test("daily record correction preserves creation and owner of personal history; mismatched version stops stale writes",()=>{
   const current={companyId:"c1",uid:"member",date:"2026-10-22",
     teamId:"team1",teamNameSnapshot:"旧班名",createdAt:"2026-10-22T00:00:00.000Z",
-    createdByUid:"oldCreator",updatedAt:"2026-10-22T02:00:00.000Z"};
+    createdByUid:"oldCreator",updatedAt:"2026-10-22T02:00:00.000Z",
+    totalRevenue:32000,
+    results:{
+      sim__cb_0:{productId:"sim",productName:"旧SIM",cashback:0,count:2,revenuePerUnit:11500},
+      sim__cb_2000:{productId:"sim",productName:"旧SIM",cashback:2000,count:1,revenuePerUnit:9000}
+    }
+  };
   const req={...first,recordId:"legacy-id",expectedRecordUpdateTime:current.updatedAt};
   const built=buildRecordFromCounts(req,member,[product],target,team,current,"2026-10-22T08:00:00.000Z");
   assert.equal(built.recordId,"legacy-id");
@@ -77,6 +83,14 @@ test("daily record correction preserves creation and owner of personal history; 
   assert.equal(built.document.createdByUid,current.createdByUid);
   assert.equal(built.document.teamNameSnapshot,"旧班名");
   assert.equal(built.document.totalCount,3);
+  assert.equal(built.document.totalRevenue,32000);
+  assert.equal(built.document.results.sim__cb_0.revenuePerUnit,11500);
+  assert.equal(built.document.results.sim__cb_0.productName,"旧SIM");
+  const changed=buildRecordFromCounts({...req,entries:[
+    {productId:"sim",planId:"plan_0",count:3},
+    {productId:"sim",planId:"plan_1",count:1}
+  ]},member,[product],target,team,current,"2026-10-22T09:00:00.000Z");
+  assert.equal(changed.document.totalRevenue,43500);
   assert.throws(()=>buildRecordFromCounts({...req,expectedRecordUpdateTime:"2026-10-22T01:00:00.000Z"},
     member,[product],target,team,current),ValidationError);
   assert.throws(()=>buildRecordFromCounts({...req,date:"2026-10-21"},member,[product],target,team,current),ValidationError);
