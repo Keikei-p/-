@@ -33,6 +33,18 @@ jobs:
           java-version: "21"
       - name: Test proposed money-locked Firestore Rules in emulator ONLY
         run: firebase emulators:exec --project demo-finance-staging --only firestore "node --test cloudflare-finance/tests/finance-locked-rules.test.cjs"
+      - name: Verify both current public URLs match (HTTP GET only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 3 --max-time 30             --output "$RUNNER_TEMP/finance-new-public.html" "https://nico-factory.web.app/"
+          curl --fail --silent --show-error --retry 3 --max-time 30             --output "$RUNNER_TEMP/finance-old-public.html" "https://keikei-p.github.io/-/"
+          for file in "$RUNNER_TEMP/finance-new-public.html" "$RUNNER_TEMP/finance-old-public.html"; do
+            grep -Fq 'projectId: "sales-management-cc116"' "$file"
+            grep -Fq '営業実績管理' "$file"
+          done
+          cmp "$RUNNER_TEMP/finance-new-public.html" "$RUNNER_TEMP/finance-old-public.html"
+          echo 'PASS: Both existing sales URLs serve matching application HTML'
       - name: Static cost and data protection assertions
         run: |
           node <<'NODE'
@@ -41,10 +53,16 @@ jobs:
           const cfg=fs.readFileSync('cloudflare-finance/wrangler.toml','utf8');
           const mainRules=fs.readFileSync('firestore.rules','utf8');
           const checks=[
-            [cfg.includes('FINANCE_GATEWAY_ENABLED = "disabled"'),'disabled unless explicitly cut over'],
-            [!source.includes('async function firestoreWrite'),'no server writing enabled'],
-            [!source.includes('method:"PATCH"')&&!source.includes('method:"PUT"')&&!source.includes('method:"DELETE"'),'no Firestore mutation methods'],
+            [cfg.includes('FINANCE_GATEWAY_ENABLED = "disabled"'),'read gateway disabled by default'],
+            [cfg.includes('FINANCE_WRITE_ENABLED = "disabled"'),'write API disabled by default'],
+            [cfg.includes('FINANCE_WRITE_APPROVAL = "NOT_APPROVED"'),'write release is not approved'],
+            [cfg.includes('FIREBASE_SPARK_VERIFIED = "NOT_VERIFIED"'),'billing guard enabled'],
+            [source.includes('FINANCE_WRITE_ENABLED!=="enabled"'),'write runtime gate enforced'],
+            [source.includes('FINANCE_WRITE_APPROVAL!=="DUAL_HOST_BACKUP_VERIFIED"'),'backups/dual-host approval required'],
+            [source.includes('FIREBASE_SPARK_VERIFIED!=="I_VERIFIED_SPARK_NO_BILLING"'),'zero-charge gate required'],
             [mainRules.includes('match /records/{recordId}'),'existing production rules retained'],
+            [!source.includes('method:"DELETE"'),'no delete endpoint'],
+            [fs.readFileSync('cloudflare-finance/finance-locked.rules','utf8').includes('allow delete: if false;'),'history deletion blocked in staged rules'],
           ];
           for(const [passed,name] of checks){if(!passed)throw Error(name);console.log("PASS",name);}
           NODE
