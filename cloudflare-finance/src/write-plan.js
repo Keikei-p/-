@@ -105,6 +105,8 @@ export function buildRecordFromCounts(intent,policy,products,targetMember,destin
   }
   if(!Number.isFinite(Date.parse(nowISO)))throw new ValidationError("Invalid server clock");
   const byId=new Map(products.map(p=>[p.id,p]));
+  const oldResults=existing?.results && typeof existing.results==="object"?existing.results:{};
+  const oldPairs=Object.entries(oldResults);
   const results={};
   let totalCount=0,totalRevenue=0;
   for(const entry of data.entries){
@@ -114,14 +116,38 @@ export function buildRecordFromCounts(intent,policy,products,targetMember,destin
     }
     const selected=securePricing(product).find(plan=>plan.planId===entry.planId);
     if(!selected)throw new ValidationError("Unknown plan ID");
-    const key=entry.productId+"__cb_"+selected.cashback;
+    const old=oldPairs.find(([oldKey,snapshot])=>
+      snapshot && (snapshot.productId===entry.productId || oldKey===entry.productId ||
+      oldKey===entry.productId+"__cb_"+selected.cashback) &&
+      Number(snapshot.cashback||0)===selected.cashback);
+    // Existing historical unit price must never be silently replaced by today's pricing.
+    const snapshot=old?.[1]||null;
+    const unit=snapshot?Number(snapshot.revenuePerUnit):selected.revenuePerUnit;
+    if(!Number.isSafeInteger(unit)||unit<0)throw new ValidationError("Historical unit price requires review");
+    const key=old?.[0]||entry.productId+"__cb_"+selected.cashback;
     if(Object.hasOwn(results,key))throw new ValidationError("Duplicate result key");
-    results[key]={productId:product.id,productName:product.name,
-      cashback:selected.cashback,count:entry.count,revenuePerUnit:selected.revenuePerUnit};
+    results[key]=snapshot?{...snapshot,count:entry.count}:{productId:product.id,productName:product.name,
+      cashback:selected.cashback,count:entry.count,revenuePerUnit:unit};
     totalCount+=entry.count;
-    totalRevenue+=entry.count*selected.revenuePerUnit;
+    totalRevenue+=entry.count*unit;
   }
   if(!Number.isSafeInteger(totalCount)||!Number.isSafeInteger(totalRevenue))throw new ValidationError("Unsafe financial sum");
+  if(existing){
+    const unchanged=oldPairs.length===Object.keys(results).length &&
+      oldPairs.every(([key,snapshot])=>results[key] && snapshot.count===results[key].count);
+    if(unchanged){
+      // Edits to location/status do not alter any pre-existing monetary calculation.
+      totalRevenue=existing.totalRevenue;
+      if(!Number.isSafeInteger(totalRevenue))throw new ValidationError("Legacy total revenue requires review");
+      Object.keys(results).forEach(key=>results[key]=oldResults[key]);
+    }else{
+      const legacySum=oldPairs.reduce((sum,[_key,v])=>
+        sum+Number(v?.count||0)*Number(v?.revenuePerUnit||0),0);
+      if(!Number.isSafeInteger(legacySum)||legacySum!==existing.totalRevenue){
+        throw new ValidationError("Historical totals are inconsistent; manual review required");
+      }
+    }
+  }
   if(data.reportStatus==="no_result" && totalCount!==0)throw new ValidationError("No-result report has positive counts");
   const output={companyId:policy.companyId,uid:data.uid,date:data.date,teamId:data.teamId,
     teamNameSnapshot:destinationTeam.name,memberNameSnapshot:targetMember.name||"名前未設定",
