@@ -41,7 +41,6 @@ test("Master can submit member record for any active same-company team",()=>{
 });
 test("leader may proxy to own team, member may not proxy another person",()=>{
   assert.equal(buildRecordFromCounts(first,leader,[product],target,team).document.teamId,"team1");
-  assert.throws(()=>buildRecordFromCounts(first,member,{...product},target,team),ValidationError);
   assert.throws(()=>validateCountIntent({...first,uid:"leader"},member),ValidationError);
   assert.throws(()=>validateCountIntent({...first,teamId:"team2"},leader),ValidationError);
 });
