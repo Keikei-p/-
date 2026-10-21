@@ -7883,17 +7883,8 @@ function canCurrentUserViewRevenue() {
 
   }
 
-  /*
-    既存データ互換:
-    これまで売上を見られていたOwner/Leaderは、
-    Masterが明示的にOFFにするまでは従来どおり許可する。
-  */
-  return (
-    currentUserData?.companyRole ===
-      "owner" ||
-    currentUserData?.role ===
-      "leader"
-  );
+  // リーダーを含め、明示許可がない人の売上は必ず非表示。
+  return false;
 
 }
 
@@ -7919,13 +7910,13 @@ function canCurrentUserViewProductRevenue() {
 function canCurrentUserViewUnitPrice() {
   if (isCurrentCompanyOwner()) return true;
   if (!canCurrentUserViewRevenue()) return false;
-  // 未設定の既存ユーザーは、従来の表示を維持。
-  return currentUserData?.canViewUnitPrice !== false;
+  // 未設定は拒否。売上と単価の両方に許可が必要。
+  return currentUserData?.canViewUnitPrice === true;
 }
 function memberUnitPricePermissionEnabled(member) {
   if (isMemberMaster(member) || member?.companyRole === "owner") return true;
   if (!memberRevenuePermissionEnabled(member)) return false;
-  return member?.canViewUnitPrice !== false;
+  return member?.canViewUnitPrice === true;
 }
 
 function getEffectiveMasterUid() {
@@ -7999,12 +7990,7 @@ function memberRevenuePermissionEnabled(
 
   }
 
-  return (
-    member?.companyRole ===
-      "owner" ||
-    member?.role ===
-      "leader"
-  );
+  return false;
 
 }
 
@@ -10970,6 +10956,9 @@ acceptInvitationButton.onclick =
           canViewRevenue:
             false,
 
+          canViewUnitPrice:
+            false,
+
           canCreateInvite:
             false,
 
@@ -11005,6 +10994,9 @@ acceptInvitationButton.onclick =
             null,
 
           canViewRevenue:
+            false,
+
+          canViewUnitPrice:
             false,
 
           canCreateInvite:
