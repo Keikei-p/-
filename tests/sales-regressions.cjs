@@ -837,3 +837,30 @@ test('Champion styling does not alter original leader eligibility or non-champio
   const helper=source('decorateRankingChampion');
   assert(!/\.count|\.revenue|\.rank\s*=|sort\(|canCurrentUser|Firestore/.test(helper));
 });
+
+
+test('financial screens are denied by default for invited members and leaders',()=>{
+  const names=['getEffectiveMasterUid','isCurrentCompanyMaster','isCurrentCompanyOwner',
+    'canCurrentUserViewRevenue','canCurrentUserViewUnitPrice','canCurrentUserViewProductRevenue',
+    'isMemberMaster','memberRevenuePermissionEnabled','memberUnitPricePermissionEnabled'];
+  function actual(role,grants={}){
+    const data={role,companyRole:role==='owner'?'owner':'member',...grants};
+    const ctx=context(names,{currentUser:{uid:'new-person'},
+      currentCompanyData:{ownerUid:'owner',masterUid:'master'},currentUserData:data});
+    return [ctx.canCurrentUserViewRevenue(),ctx.canCurrentUserViewProductRevenue(),
+      ctx.canCurrentUserViewUnitPrice(),
+      ctx.memberRevenuePermissionEnabled({role,companyRole:'member',...grants}),
+      ctx.memberUnitPricePermissionEnabled({role,companyRole:'member',...grants})];
+  }
+  for(const role of ['member','leader']){
+    assert.deepEqual(actual(role),[false,false,false,false,false]);
+    assert.deepEqual(actual(role,{canViewRevenue:false,canViewUnitPrice:false}),[false,false,false,false,false]);
+    assert.deepEqual(actual(role,{canViewRevenue:true,canViewUnitPrice:false}),[true,true,false,true,false]);
+    assert.deepEqual(actual(role,{canViewRevenue:false,canViewUnitPrice:true}),[false,false,false,false,false]);
+    assert.deepEqual(actual(role,{canViewRevenue:true,canViewUnitPrice:true}),[true,true,true,true,true]);
+  }
+  assert.deepEqual(actual('owner',{canViewRevenue:false,canViewUnitPrice:false}).slice(0,3),[true,true,true]);
+  const rules=fs.readFileSync(path.join(__dirname,'../firestore.rules'),'utf8');
+  assert(rules.includes("request.resource.data.canViewUnitPrice == false"));
+  assert(rules.includes("getAfter(memberPath(request.resource.data.companyId, userId)).data.canViewUnitPrice"));
+});

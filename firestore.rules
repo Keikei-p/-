@@ -193,10 +193,7 @@ service cloud.firestore {
               get(memberPath(companyId, request.auth.uid)).data.keys().hasAny(['canViewRevenue'])
               && get(memberPath(companyId, request.auth.uid)).data.canViewRevenue == true
             )
-            || (
-              !get(memberPath(companyId, request.auth.uid)).data.keys().hasAny(['canViewRevenue'])
-              && get(memberPath(companyId, request.auth.uid)).data.role == 'leader'
-            )
+
           )
         );
     }
@@ -207,8 +204,10 @@ service cloud.firestore {
           canViewRevenue(companyId)
           && (
             get(memberPath(companyId, request.auth.uid)).data.companyRole == 'owner'
-            || !get(memberPath(companyId, request.auth.uid)).data.keys().hasAny(['canViewUnitPrice'])
-            || get(memberPath(companyId, request.auth.uid)).data.canViewUnitPrice == true
+            || (
+              get(memberPath(companyId, request.auth.uid)).data.keys().hasAny(['canViewUnitPrice'])
+              && get(memberPath(companyId, request.auth.uid)).data.canViewUnitPrice == true
+            )
           )
         );
     }
@@ -410,7 +409,7 @@ service cloud.firestore {
         && memberId == request.auth.uid
         && request.resource.data.keys().hasOnly([
           'uid', 'name', 'email', 'role', 'companyRole',
-          'teamId', 'active', 'canViewRevenue', 'canCreateInvite',
+          'teamId', 'active', 'canViewRevenue', 'canViewUnitPrice', 'canCreateInvite',
           'invitationId', 'joinedAt', 'updatedAt'
         ])
         && request.resource.data.invitationId is string
@@ -428,6 +427,7 @@ service cloud.firestore {
         && request.resource.data.companyRole == 'member'
         && request.resource.data.teamId == null
         && request.resource.data.canViewRevenue == false
+        && request.resource.data.canViewUnitPrice == false
         && request.resource.data.canCreateInvite == false
         && request.resource.data.active == true
         && request.resource.data.joinedAt == request.time
@@ -453,6 +453,7 @@ service cloud.firestore {
             'role',
             'teamId',
             'canViewRevenue',
+            'canViewUnitPrice',
             'canCreateInvite',
             'updatedAt'
           ])
@@ -463,6 +464,9 @@ service cloud.firestore {
         && getAfter(memberPath(request.resource.data.companyId, userId)).data.companyRole == request.resource.data.companyRole
         && getAfter(memberPath(request.resource.data.companyId, userId)).data.canViewRevenue
           == request.resource.data.canViewRevenue
+        && request.resource.data.canViewUnitPrice == false
+        && getAfter(memberPath(request.resource.data.companyId, userId)).data.canViewUnitPrice
+          == request.resource.data.canViewUnitPrice
         && getAfter(memberPath(request.resource.data.companyId, userId)).data.canCreateInvite
           == request.resource.data.canCreateInvite
         && getAfter(memberPath(request.resource.data.companyId, userId)).data.active == true;

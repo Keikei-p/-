@@ -162,3 +162,22 @@ test('revenue goal stays hidden from users without permission and from other tea
  await assertFails(getDoc(doc(dbFor('helper'),'revenueGoals','team-a')));
  await assertSucceeds(getDocsFromServer(query(collection(dbFor('helper'),'revenueGoals'),where('companyId','==',company),where('teamId','==','b'))));
 });
+
+
+test('leader without explicit finance grants cannot read or edit revenue goals', async()=>{
+  await env.withSecurityRulesDisabled(async c=>{
+    const admin=c.firestore();
+    for(const ref of [doc(admin,'users','leaderA'),doc(admin,'companies',company,'members','leaderA')]){
+      const snap=await getDoc(ref), data=snap.data();
+      delete data.canViewRevenue;
+      delete data.canViewUnitPrice;
+      await setDoc(ref,data);
+    }
+    await setDoc(doc(admin,'revenueGoals','private-a'),revenueGoalPayload('a',990000));
+  });
+  const db=dbFor('leaderA');
+  await assertFails(getDoc(doc(db,'revenueGoals','private-a')));
+  await assertFails(setDoc(doc(db,'revenueGoals','leader-default-denied'),revenueGoalPayload('a',100000)));
+  const owner=dbFor('owner');
+  assert.equal((await getDoc(doc(owner,'revenueGoals','private-a'))).data().targetRevenue,990000);
+});
