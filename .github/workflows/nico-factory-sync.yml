@@ -1,0 +1,94 @@
+name: Sync NICO Factory Hosting (static assets only)
+on:
+  push:
+    branches: [main]
+    paths:
+      - index.html
+      - manifest.webmanifest
+      - service-worker.js
+      - icon-180.png
+      - icon-192.png
+      - icon-512.png
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: nico-factory-hosting
+  cancel-in-progress: false
+jobs:
+  static-hosting:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      HOSTING_SITE_ID: nico-factory
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify project and ensure complete public asset set
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          node <<'NODE'
+          const fs=require('node:fs');
+          if(JSON.parse(fs.readFileSync('.firebaserc','utf8')).projects.default!=='sales-management-cc116') throw Error('Unknown Firebase project');
+          const html=fs.readFileSync('index.html','utf8');
+          if(!html.includes('projectId: "sales-management-cc116"'))throw Error('Unexpected Firebase app');
+          for(const f of ['index.html','manifest.webmanifest','service-worker.js','icon-180.png','icon-192.png','icon-512.png'])if(!fs.statSync(f).isFile())throw Error('Missing '+f);
+          NODE
+      - name: Create ephemeral credentials file
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-firebase.json"
+          chmod 600 "$RUNNER_TEMP/nico-firebase.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-firebase.json" >> "$GITHUB_ENV"
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+      - name: Verify Hosting site belongs to existing project
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase hosting:sites:list --project "$FIREBASE_PROJECT_ID" --json > "$RUNNER_TEMP/sites.json"
+          SITES_FILE="$RUNNER_TEMP/sites.json" node <<'NODE'
+          const fs=require('node:fs');
+          const j=JSON.parse(fs.readFileSync(process.env.SITES_FILE,'utf8'));
+          const sites=Array.isArray(j.result)?j.result:j.result?.sites ?? j.sites ?? [];
+          if(!Array.isArray(sites)||!sites.some(s=>s.siteId==='nico-factory'||s.name?.endsWith('/sites/nico-factory')||s.defaultUrl==='https://nico-factory.web.app')){
+            throw Error('Approved Hosting site not found in configured project. Abort.');
+          }
+          NODE
+      - name: Copy original application files without modifications
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .nico-hosting-staging
+          for f in index.html manifest.webmanifest service-worker.js icon-180.png icon-192.png icon-512.png; do
+            cp "$f" .nico-hosting-staging/
+            cmp "$f" ".nico-hosting-staging/$f"
+          done
+          cat > .nico-only-hosting-config.json <<'JSON'
+          {
+            "hosting": {
+              "site": "nico-factory",
+              "public": ".nico-hosting-staging",
+              "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+              "headers": [
+                {"source":"/index.html","headers":[{"key":"Cache-Control","value":"no-cache, no-store, must-revalidate"}]}
+              ]
+            }
+          }
+          JSON
+      - name: Deploy ONLY public Hosting files, never Firebase Rules or Firestore
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase deploy --only hosting --config .nico-only-hosting-config.json --project "$FIREBASE_PROJECT_ID" --non-interactive
+      - name: Check both site entrypoints without signing in
+        shell: bash
+        run: |
+          set -euo pipefail
+          for url in "https://nico-factory.web.app/" "https://keikei-p.github.io/-/"; do
+            curl --fail --silent --show-error --max-time 25 "$url" | grep -q '営業実績管理'
+          done
