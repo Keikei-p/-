@@ -15,7 +15,9 @@ function allowedGateway(url){
   try{
     const parsed=new URL(url);
     return parsed.protocol==="https:" && parsed.username==="" && parsed.password==="" &&
-      parsed.search==="" && parsed.hash==="" && parsed.origin!=="null";
+      parsed.search==="" && parsed.hash==="" &&
+      parsed.pathname==="/" &&
+      /^sales-finance-gateway\.[a-z0-9-]+\.workers\.dev$/i.test(parsed.hostname);
   }catch{return false;}
 }
 export function makeCountIntent({uid,date,teamId,workLocation,reportStatus="submitted",
@@ -23,13 +25,15 @@ export function makeCountIntent({uid,date,teamId,workLocation,reportStatus="subm
   if(typeof uid!=="string"||typeof date!=="string"||typeof teamId!=="string")
     throw Error("invalid_selection");
   if(!Array.isArray(rows))throw Error("invalid_rows");
-  const entries=rows.filter(row=>Number(row.count)>0).map(row=>{
+  const validated=rows.map(row=>{
+    if(!row || typeof row!=="object" || Array.isArray(row))throw Error("invalid_count_row");
     const keys=Object.keys(row);
     if(keys.some(k=>!["productId","planId","count"].includes(k)) ||
       !row.productId || !row.planId || !Number.isSafeInteger(Number(row.count)) ||
       Number(row.count)<0)throw Error("invalid_count_row");
     return {productId:String(row.productId),planId:String(row.planId),count:Number(row.count)};
   });
+  const entries=validated.filter(row=>row.count>0);
   const total=entries.reduce((acc,x)=>acc+x.count,0);
   if(reportStatus==="submitted"&&total<=0)throw Error("no_sales_count");
   if(reportStatus==="no_result"&&total!==0)throw Error("zero_report_has_count");
