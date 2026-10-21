@@ -14,7 +14,20 @@ const controlledFetch=async (url,options)=>{
   // emulator database, with absolutely no live project credentials involved.
   const local=fakeRoot+url.slice(livePrefix.length);
   // Special local-emulator-only admin sentinel. No cloud service tokens exist.
-  return fetch(local,{...options,signal:AbortSignal.timeout(15000),
+  // A Firestore Write contains a resource name as well as its endpoint URL;
+  // point BOTH at the same disposable emulator project for the test.
+  let request=options;
+  if(local.endsWith("/documents:commit") && options?.body){
+    const payload=JSON.parse(options.body);
+    for(const item of payload.writes||[]){
+      const prod="projects/sales-management-cc116/databases/(default)/documents/";
+      const demo="projects/demo-finance-staging/databases/(default)/documents/";
+      if(!item.update?.name?.startsWith(prod))throw Error("unsafe_emulator_write_resource");
+      item.update.name=demo+item.update.name.slice(prod.length);
+    }
+    request={...options,body:JSON.stringify(payload)};
+  }
+  return fetch(local,{...request,signal:AbortSignal.timeout(15000),
     headers:{"Content-Type":"application/json","Authorization":"Bearer owner"}});
 };
 const store=makeFirestoreRestStore({FIREBASE_PROJECT_ID:"sales-management-cc116"},
