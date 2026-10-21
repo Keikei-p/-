@@ -17,7 +17,8 @@ function createStore({role="member",principal="staff",currentRecord=null,recordL
   const account={uid:principal,companyId,companyRole:role==="owner"?"owner":"member",
     teamId:"A",role:role==="owner"?"leader":role,active:true,canViewRevenue,canViewUnitPrice};
   const actorMember={...account,name:"操作者"};
-  const target={uid:"staff",companyId,companyRole:"member",role:"member",active:targetActive,name:"営業担当"};
+  const target={...(principal==="staff"?actorMember:{}),uid:"staff",companyId,
+    companyRole:"member",role:"member",active:targetActive,name:"営業担当"};
   const docs=new Map([["users/"+principal,account],
     ["companies/"+companyId+"/members/"+principal,actorMember],
     ["companies/"+companyId+"/members/staff",target],
