@@ -8,6 +8,8 @@ const PROJECT_ID = "sales-management-cc116";
 const TOKEN_SCOPE = "https://www.googleapis.com/auth/datastore";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 import {securePricing} from "./write-plan.js";
+import {submitCounts, SaveConflict, PermissionDenied} from "./count-service.js";
+import {makeFirestoreRestStore} from "./firestore-writer.js";
 const GOOGLE_KEYS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
 const ALLOWED_ORIGINS = new Set([
   "https://nico-factory.web.app",
@@ -298,6 +300,51 @@ export default {
     }
     if(url.pathname==="/health"&&request.method==="GET"){
       return safeJSON({ok:true,service:"finance-gateway",enabled:env.FINANCE_GATEWAY_ENABLED==="enabled",mode:"read_only"},200,origin);
+    }
+    if(url.pathname==="/v1/count-record" && request.method==="POST"){
+      // Three independent fail-closed switches. Never enable on an untested
+      // dual-host release or when no safe backup has been verified.
+      if(env.FINANCE_WRITE_ENABLED!=="enabled" ||
+         env.FINANCE_GATEWAY_ENABLED!=="enabled" ||
+         env.FINANCE_WRITE_APPROVAL!=="DUAL_HOST_BACKUP_VERIFIED" ||
+         env.FIREBASE_SPARK_VERIFIED!=="I_VERIFIED_SPARK_NO_BILLING"){
+        return safeJSON({error:"safe_write_not_released"},503,origin);
+      }
+      if(env.FIREBASE_PROJECT_ID!==PROJECT_ID)return safeJSON({error:"project_mismatch"},503,origin);
+      if(!request.headers.get("content-type")?.toLowerCase().startsWith("application/json"))
+        return safeJSON({error:"json_only"},415,origin);
+      const auth=request.headers.get("authorization")||"";
+      if(!auth.startsWith("Bearer "))return safeJSON({error:"authorization_required"},401,origin);
+      const length=Number(request.headers.get("content-length")||0);
+      if(length>20000)return safeJSON({error:"request_too_large"},413,origin);
+      try{
+        const principal=await verifiedToken(auth.slice(7));
+        const raw=await request.text();
+        if(raw.length>20000)return safeJSON({error:"request_too_large"},413,origin);
+        let payload;
+        try{payload=JSON.parse(raw);}catch{return safeJSON({error:"invalid_json"},400,origin);}
+        const timeParts=new Intl.DateTimeFormat("en-US",{
+          timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"
+        }).formatToParts(new Date());
+        const tokyo=Object.fromEntries(timeParts.map(p=>[p.type,p.value]));
+        const day=`${tokyo.year}-${tokyo.month}-${tokyo.day}`;
+        const store=makeFirestoreRestStore(env,{token:googleBearer});
+        const saved=await submitCounts(store,principal,payload,{
+          policyResolver:(user,member,company,uid)=>approvedPolicy(user,member,company,uid,day)
+        });
+        return safeJSON(saved,200,origin);
+      }catch(error){
+        if(error instanceof PermissionDenied || error.status===403)
+          return safeJSON({error:"forbidden"},403,origin);
+        if(error instanceof SaveConflict || error.status===409)
+          return safeJSON({error:"record_conflict_reload_required"},409,origin);
+        if(error.name==="ValidationError")
+          return safeJSON({error:"invalid_count_or_record"},400,origin);
+        if(error.status===401)return safeJSON({error:"unauthorized"},401,origin);
+        // Never print source Firestore data, money, names or tokens.
+        console.error("finance_count_submission_failed",error.name||"Error");
+        return safeJSON({error:"unavailable_retry_only_after_refresh"},503,origin);
+      }
     }
     if(url.pathname!=="/v1/financial-view"||request.method!=="GET")return safeJSON({error:"not_found"},404,origin);
     if(env.FINANCE_GATEWAY_ENABLED!=="enabled")return safeJSON({error:"cutover_not_authorized"},503,origin);
