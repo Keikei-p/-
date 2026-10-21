@@ -1,0 +1,39 @@
+name: Test protected-finance gateway (NO deployment)
+on:
+  push:
+    branches:
+      - feature/secure-finance-gateway-20261022
+    paths:
+      - cloudflare-finance/**
+      - .github/workflows/finance-gateway-check.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Syntax check only
+        run: node --check cloudflare-finance/src/index.js
+      - name: Verify JWT, grants, projections and no mutation endpoints
+        run: node --test cloudflare-finance/tests/gateway.test.mjs
+      - name: Static cost and data protection assertions
+        run: |
+          node <<'NODE'
+          const fs=require('node:fs');
+          const source=fs.readFileSync('cloudflare-finance/src/index.js','utf8');
+          const cfg=fs.readFileSync('cloudflare-finance/wrangler.toml','utf8');
+          const mainRules=fs.readFileSync('firestore.rules','utf8');
+          const checks=[
+            [cfg.includes('FINANCE_GATEWAY_ENABLED = "disabled"'),'disabled unless explicitly cut over'],
+            [!source.includes('async function firestoreWrite'),'no server writing enabled'],
+            [!source.includes('method:"PATCH"')&&!source.includes('method:"PUT"')&&!source.includes('method:"DELETE"'),'no Firestore mutation methods'],
+            [mainRules.includes('match /records/{recordId}'),'existing production rules retained'],
+          ];
+          for(const [passed,name] of checks){if(!passed)throw Error(name);console.log("PASS",name);}
+          NODE
