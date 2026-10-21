@@ -1,6 +1,5 @@
 // Sales app PR safety policy. No secrets, no network, no production writes.
 import fs from "node:fs";
-import path from "node:path";
 import {execFileSync} from "node:child_process";
 
 function fail(reason) {console.error("SAFETY BLOCK:",reason);process.exitCode=1;}
@@ -32,7 +31,7 @@ if(protectedChanges.length>0){
   if(!hasApproval)fail("Protected files require maintainer-applied label: sales-production-reviewed");
   if(!files.includes("docs/SALES_RELEASE_SIGNOFF.md"))fail("Protected files require a per-release signed review note: docs/SALES_RELEASE_SIGNOFF.md");
 }
-if(files.some(f=>/^\.github\/workflows\/.test(f)&&f.endsWith(".yml")) && !files.every(f=>!/^\.github\/workflows\/.test(f))){
+if(files.some(f=>f.startsWith(".github/workflows/") && f.endsWith(".yml"))){
   console.log("Workflow changes require manual review of job permissions and deployment triggers");
 }
 // The finance project is deliberately NOT wired to the production client yet.
