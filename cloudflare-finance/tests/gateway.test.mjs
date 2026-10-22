@@ -144,6 +144,60 @@ test("No unapproved methods, worker is disabled by default and denies missing JW
   check(403,forbiddenOrigin.status);
   const preflight=await worker.fetch(new Request("https://sales-finance-gateway.example/v1/financial-view",{method:"OPTIONS",headers:{origin:"https://nico-factory.web.app"}}),{});
   check(204,preflight.status);
+  assert.match(preflight.headers.get("access-control-allow-methods"),/\\bPOST\\b/);
+});
+
+test("New and old sales URLs can preflight count POST; other origins cannot",async()=>{
+  for(const origin of ["https://nico-factory.web.app","https://keikei-p.github.io"]){
+    const preflight=await worker.fetch(new Request("https://sales-finance-gateway.example/v1/count-record",{
+      method:"OPTIONS",
+      headers:{origin,"access-control-request-method":"POST",
+        "access-control-request-headers":"authorization, content-type"}
+    }),{FINANCE_GATEWAY_ENABLED:"disabled",FINANCE_WRITE_ENABLED:"disabled"});
+    assert.equal(preflight.status,204);
+    assert.equal(preflight.headers.get("access-control-allow-origin"),origin);
+    assert.match(preflight.headers.get("access-control-allow-methods"),/\\bPOST\\b/);
+    assert.match(preflight.headers.get("access-control-allow-headers"),/Authorization/);
+    // A successful preflight DOES NOT enable the write endpoint.
+    const blocked=await worker.fetch(new Request("https://sales-finance-gateway.example/v1/count-record",{
+      method:"POST",headers:{origin,"Content-Type":"application/json"},
+      body:JSON.stringify({uid:"example",entries:[]})
+    }),{FINANCE_GATEWAY_ENABLED:"disabled",FINANCE_WRITE_ENABLED:"disabled"});
+    assert.equal(blocked.status,503);
+    assert.equal((await blocked.json()).error,"safe_write_not_released");
+  }
+  const evil=await worker.fetch(new Request("https://sales-finance-gateway.example/v1/count-record",{
+    method:"OPTIONS",headers:{origin:"https://attacker.example",
+      "access-control-request-method":"POST"}}),{});
+  assert.equal(evil.status,403);
+  assert.equal(evil.headers.get("access-control-allow-origin"),null);
+});
+
+test("Blaze cost approval cannot be bypassed by enabling only the API and backup flags",async()=>{
+  const request=()=>new Request("https://sales-finance-gateway.example/v1/count-record",{
+    method:"POST",headers:{origin:"https://nico-factory.web.app","Content-Type":"application/json"},
+    body:"{}"
+  });
+  for(const value of [undefined,"NOT_APPROVED","I_VERIFIED_SPARK_NO_BILLING",true]){
+    const response=await worker.fetch(request(),{
+      FIREBASE_PROJECT_ID:"sales-management-cc116",
+      FINANCE_GATEWAY_ENABLED:"enabled",
+      FINANCE_WRITE_ENABLED:"enabled",
+      FINANCE_WRITE_APPROVAL:"DUAL_HOST_BACKUP_VERIFIED",
+      FINANCE_COST_APPROVAL:value
+    });
+    assert.equal(response.status,503);
+    assert.equal((await response.json()).error,"safe_write_not_released");
+  }
+  const approved=await worker.fetch(request(),{
+    FIREBASE_PROJECT_ID:"sales-management-cc116",
+    FINANCE_GATEWAY_ENABLED:"enabled",
+    FINANCE_WRITE_ENABLED:"enabled",
+    FINANCE_WRITE_APPROVAL:"DUAL_HOST_BACKUP_VERIFIED",
+    FINANCE_COST_APPROVAL:"OWNER_APPROVED_BLAZE_COSTS"
+  });
+  // Only once ALL release gates are approved does it begin authentication.
+  assert.equal(approved.status,401);
 });
 test("JWT verification checks signature and core claims, not just user-supplied roles",async()=>{
   const keys=generateKeyPairSync("rsa",{modulusLength:2048});
