@@ -26,6 +26,8 @@ jobs:
             cloudflare-finance/tests/count-service.test.mjs cloudflare-finance/tests/firestore-writer.test.mjs \
             cloudflare-finance/tests/dual-host-adapter.test.mjs cloudflare-finance/tests/finance-browser-contract.test.mjs \
             cloudflare-finance/tests/protected-view-runtime.test.mjs cloudflare-finance/tests/sales-integration.test.mjs
+      - name: Block incomplete production cutover and raw-money fallback (static)
+        run: node --test cloudflare-finance/tests/cutover-readiness.test.mjs
       - name: Syntax-check safe sales UI preview WITHOUT publishing it
         shell: bash
         run: |
