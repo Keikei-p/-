@@ -387,4 +387,4 @@ export default {
     }
   }
 };
-export {approvedPolicy,safeProducts,safeRecords,safeGoals,visibleMoney,withoutAmounts,verifiedToken,financeView};
+export {approvedPolicy,safeProducts,safeRecords,safeGoals,visibleMoney,withoutAmounts,verifiedToken,financeView,docData};
