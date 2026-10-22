@@ -132,7 +132,8 @@ test("existing record team changes cannot be made by a Leader; Owner can keep ol
     totalRevenue:0,totalCount:0,__firestoreUpdateTime:"2026-10-20T00:00:00.000Z",
     updatedAt:"2026-10-20T00:00:00.000Z",results:{}};
   const leader=createStore({role:"leader",principal:"leader1",currentRecord:current});
-  const input=intent({recordId:"legacy-one",expectedRecordUpdateTime:current.__firestoreUpdateTime,entries:[]});
+  const input=intent({recordId:"legacy-one",expectedRecordUpdateTime:current.__firestoreUpdateTime,
+    reportStatus:"no_result",entries:[]});
   await assert.rejects(submitCounts(leader.store,leader.principal,input,{policyResolver:leader.policyResolver}),PermissionDenied);
   const owner=createStore({role:"owner",principal:"master",currentRecord:current});
   const response=await submitCounts(owner.store,owner.principal,input,{policyResolver:owner.policyResolver,newAuditId:()=>"ffbbccdd-1122-4455-8899-aabbccddeeff"});
