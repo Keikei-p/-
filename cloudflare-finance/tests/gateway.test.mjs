@@ -144,7 +144,7 @@ test("No unapproved methods, worker is disabled by default and denies missing JW
   check(403,forbiddenOrigin.status);
   const preflight=await worker.fetch(new Request("https://sales-finance-gateway.example/v1/financial-view",{method:"OPTIONS",headers:{origin:"https://nico-factory.web.app"}}),{});
   check(204,preflight.status);
-  assert.match(preflight.headers.get("access-control-allow-methods"),/\\bPOST\\b/);
+  assert.ok(preflight.headers.get("access-control-allow-methods")?.split(",").map(x=>x.trim()).includes("POST"));
 });
 
 test("New and old sales URLs can preflight count POST; other origins cannot",async()=>{
@@ -156,7 +156,7 @@ test("New and old sales URLs can preflight count POST; other origins cannot",asy
     }),{FINANCE_GATEWAY_ENABLED:"disabled",FINANCE_WRITE_ENABLED:"disabled"});
     assert.equal(preflight.status,204);
     assert.equal(preflight.headers.get("access-control-allow-origin"),origin);
-    assert.match(preflight.headers.get("access-control-allow-methods"),/\\bPOST\\b/);
+    assert.ok(preflight.headers.get("access-control-allow-methods")?.split(",").map(x=>x.trim()).includes("POST"));
     assert.match(preflight.headers.get("access-control-allow-headers"),/Authorization/);
     // A successful preflight DOES NOT enable the write endpoint.
     const blocked=await worker.fetch(new Request("https://sales-finance-gateway.example/v1/count-record",{
