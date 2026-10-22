@@ -37,6 +37,7 @@ beforeEach(async()=>{
     await setDoc(doc(db,'revenueGoals','revenue-A'),{companyId:company,teamId:'A',month:'2026-10',targetRevenue:100000});
     await setDoc(doc(db,'revenueGoals','revenue-B'),{companyId:company,teamId:'B',month:'2026-10',targetRevenue:990000});
     await setDoc(doc(db,'teams','A'),{companyId:company,name:'A',active:true});
+    await setDoc(doc(db,'companies',company,'publicSync','state'),{companyId:company,updatedAt:'2026-10-22T00:00:00Z'});
   });
 });
 after(async()=>env?.cleanup());
@@ -94,4 +95,14 @@ test('historical records and correction audits cannot be deleted by anyone, incl
   const owner=firebase('owner');
   assert.equal((await assertSucceeds(getDoc(doc(owner,'records','record-1')))).data().totalCount,2);
   assert.equal((await assertSucceeds(getDoc(doc(owner,'recordCorrections','correction-1')))).data().before.totalRevenue,10000);
+});
+
+test('member can observe company sync but cannot write or read foreign sync',async()=>{
+  const db=firebase('ordinary');
+  const ref=doc(db,'companies',company,'publicSync','state');
+  const v=await assertSucceeds(getDoc(ref));
+  assert.equal(v.data().companyId,company);
+  await assertFails(setDoc(ref,{companyId:company,updatedAt:'attacker'}));
+  await assertFails(getDoc(doc(db,'companies','foreign-company','publicSync','state')));
+  await assertFails(getDocsFromServer(collection(db,'companies',company,'publicSync')));
 });
