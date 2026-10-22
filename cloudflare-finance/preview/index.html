@@ -33754,6 +33754,10 @@ function editRecord(
 async function deleteRecord(
   record
 ) {
+  if(SAFE_FINANCE_CUTOVER){
+    showError("履歴保護中のため、実績を削除できません。訂正はオーナーへ依頼してください。");
+    return;
+  }
 
   const currentName =
     getCurrentMemberName(
