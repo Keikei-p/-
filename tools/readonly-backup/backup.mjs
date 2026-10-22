@@ -34,7 +34,7 @@ export function validateSafeCall(method,uri,body){
   const u=new URL(uri);
   if(u.origin!=="https://firestore.googleapis.com" ||
     !u.pathname.startsWith("/v1/projects/"+PROJECT+"/databases/(default)/documents") ||
-    u.username || u.password || u.hash)throw Error("Blocked non-Firestore endpoint");
+    u.username || u.password || u.hash)return false;
   if(method==="GET"){
     if(u.pathname.includes(":") || body!==undefined)return false;
     if([...u.searchParams.keys()].some(k=>!["pageSize","pageToken","showMissing"].includes(k)))return false;
