@@ -384,6 +384,10 @@ export default {
     }
     if(url.pathname!=="/v1/financial-view"||request.method!=="GET")return safeJSON({error:"not_found"},404,origin);
     if(env.FINANCE_GATEWAY_ENABLED!=="enabled")return safeJSON({error:"cutover_not_authorized"},503,origin);
+    // Even read-only secure views incur Firestore reads on Blaze.
+    // Require explicit cost review before making ANY monetary-data query.
+    if(env.FINANCE_COST_APPROVAL!=="OWNER_APPROVED_BLAZE_COSTS")
+      return safeJSON({error:"billing_not_approved"},503,origin);
     if(env.FIREBASE_PROJECT_ID!==PROJECT_ID)return safeJSON({error:"project_mismatch"},503,origin);
     const auth=request.headers.get("authorization")||"";
     if(!auth.startsWith("Bearer "))return safeJSON({error:"authorization_required"},401,origin);
