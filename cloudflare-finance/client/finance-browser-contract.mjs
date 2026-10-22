@@ -48,14 +48,19 @@ export function projectSafeView(view) {
     let locked=!r.recordVersion;
     const items={};
     for(const [originalKey,v]of Object.entries(r.results)){
-      if(!v||!isId(v.productId)||!Number.isSafeInteger(v.count)||v.count<0)violation();
+      if(!v||!Number.isSafeInteger(v.count)||v.count<0)violation();
       ensureNoAmounts(v);
-      const allowed=planMap.get(v.productId)||[];
+      // Deleted or renamed legacy products may no longer have a valid ID.
+      // Display their historical counts, NEVER guess a new product/price.
+      const validProduct=isId(v.productId);
+      const allowed=validProduct?(planMap.get(v.productId)||[]):[];
       const idx=v.planId==null?-1:allowed.indexOf(v.planId);
       if(idx<0)locked=true;
-      const key=idx<0?"legacy_"+originalKey:v.productId+"__cb_"+idx;
+      // Do not copy a legacy raw key containing CB/price into a display key.
+      const key=idx<0?"legacy_item_"+Object.keys(items).length:v.productId+"__cb_"+idx;
       if(Object.hasOwn(items,key))violation();
-      items[key]={productId:v.productId,productName:v.productName||"商材",
+      items[key]={productId:validProduct?v.productId:null,
+        productName:v.productName||"過去の商材",
         count:v.count,cashback:Math.max(idx,0),revenuePerUnit:0,
         securePlanId:idx<0?null:v.planId};
     }
