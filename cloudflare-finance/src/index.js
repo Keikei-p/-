@@ -272,7 +272,9 @@ function safeRecords(all,policy,products=[]) {
     }));
     // Map keys can themselves contain monetary CB suffixes (old record keys).
     // Do NOT emit keys from the original result map in the non-price view.
-    if(!policy.canViewUnitPrice){
+    // Even an explicitly price-granted user must not learn cashback from
+    // result MAP KEYS belonging to another team/out-of-scope record.
+    if(!policy.canViewUnitPrice || !permittedRevenue){
       out.results=Object.fromEntries(Object.values(out.results).map((value,i)=>["item_"+i,value]));
     }
     return out;
