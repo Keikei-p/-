@@ -149,6 +149,7 @@ export function buildRecordFromCounts(intent,policy,products,targetMember,destin
     }
   }
   if(data.reportStatus==="no_result" && totalCount!==0)throw new ValidationError("No-result report has positive counts");
+  if(data.reportStatus==="submitted" && totalCount===0)throw new ValidationError("Submitted record cannot erase every count; use explicit no-result report");
   const output={companyId:policy.companyId,uid:data.uid,date:data.date,teamId:data.teamId,
     teamNameSnapshot:destinationTeam.name,memberNameSnapshot:targetMember.name||"名前未設定",
     workLocation:data.workLocation,results,totalCount,totalRevenue,reportStatus:data.reportStatus,
