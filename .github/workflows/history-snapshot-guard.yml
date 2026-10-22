@@ -8,6 +8,7 @@ on:
     paths:
       - scripts/verify-history-snapshots.mjs
       - tests/verify-history-snapshots.test.mjs
+      - tools/readonly-backup/**
       - .github/workflows/history-snapshot-guard.yml
 permissions:
   contents: read
@@ -22,5 +23,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Unit test with fictional data only
-        run: node --test tests/verify-history-snapshots.test.mjs
+      - name: Syntax checks (no credentials, no remote API)
+        run: |
+          node --check tools/readonly-backup/backup.mjs
+          node --check scripts/verify-history-snapshots.mjs
+      - name: Verify all local-only safety tests with synthetic data
+        run: node --test tests/verify-history-snapshots.test.mjs tools/readonly-backup/backup.test.mjs
