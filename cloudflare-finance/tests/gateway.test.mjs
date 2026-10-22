@@ -226,3 +226,22 @@ test("Legacy CB products show the same plans to permitted Owner, while staff get
   assert.equal(Object.hasOwn(masked,"revenue"),false);
   assert.equal(Object.hasOwn(masked,"pricingOptions"),false);
 });
+
+test("Conflicting old user/member grants are flagged, never automatically widened or rewritten",()=>{
+  const [u,m]=person("leader",{
+    userGrants:{canViewRevenue:true,canViewUnitPrice:true},
+    memberGrants:{canViewRevenue:false,canViewUnitPrice:true}
+  });
+  const p=approvedPolicy(u,m,company,"sample","2026-10-22");
+  assert.equal(p.needsPermissionReview,true);
+  assert.equal(p.canViewRevenue,false);
+  assert.equal(p.canViewUnitPrice,false);
+  const [u2,m2]=person("member",{
+    userGrants:{canViewRevenue:false,canViewUnitPrice:false},
+    memberGrants:{canViewRevenue:true,canViewUnitPrice:false}
+  });
+  const p2=approvedPolicy(u2,m2,company,"sample","2026-10-22");
+  assert.equal(p2.needsPermissionReview,true);
+  assert.equal(p2.canViewRevenue,false);
+  assert.equal(approvedPolicy(...person("member"),company,"sample","2026-10-22").needsPermissionReview,false);
+});
