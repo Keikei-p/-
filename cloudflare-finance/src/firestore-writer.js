@@ -56,9 +56,17 @@ export function makeFirestoreRestStore(env,{token,fetcher=fetch}){
     });
     if(res.status===404 && method==="GET")return null;
     if(!res.ok){
-      // Important: DO NOT echo Firestore response bodies; they may include
-      // confidential prices, identities or correction history.
-      if(res.status===409||res.status===412)throw new SaveConflict("concurrent_edit");
+      // Never echo Firestore response bodies: they can contain sensitive data.
+      // Firestore's REST emulator can send FAILED_PRECONDITION as HTTP 400
+      // when an updateTime constraint fails; production may return 409/412.
+      let rpcStatus="";
+      try{
+        const raw=await res.json();
+        rpcStatus=String(raw?.error?.status||"");
+      }catch{}
+      if(res.status===409||res.status===412 ||
+          ["ABORTED","FAILED_PRECONDITION","ALREADY_EXISTS"].includes(rpcStatus))
+        throw new SaveConflict("concurrent_edit_reload_required");
       throw abortErr("firestore_transaction_failed_"+res.status);
     }
     return await res.json();
