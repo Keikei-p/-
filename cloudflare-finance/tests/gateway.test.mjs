@@ -168,3 +168,21 @@ test("JWT verification checks signature and core claims, not just user-supplied 
   await assert.rejects(verifiedToken(signed({...claims,exp:now-1}),mock),/invalid_claims/);
   await assert.rejects(verifiedToken(signed({...claims,auth_time:now+3600}),mock),/invalid_claims/);
 });
+
+test("Price-granted Leader cannot learn old cashback plan IDs from other team record keys",()=>{
+  const allowed=policy("leader",{
+    userGrants:{canViewRevenue:true,canViewUnitPrice:true},
+    memberGrants:{canViewRevenue:true,canViewUnitPrice:true}
+  });
+  const raw={...record,id:"secret-team-record",teamId:"B",totalRevenue:900000,results:{
+    "p1_CB5000":{productId:"p1",productName:"HTB CB5000円",
+      count:1,cashback:5000,revenuePerUnit:900000}
+  }};
+  const [safe]=safeRecords([raw],allowed,[product]);
+  const data=JSON.stringify(safe);
+  assert.equal(safe.totalRevenue,undefined);
+  for(const token of ["5000","900000","CB","cashback","revenuePerUnit"]){
+    assert.equal(data.includes(token),false,"cross-team financial leak "+token);
+  }
+  assert.deepEqual(Object.keys(safe.results),["item_0"]);
+});
