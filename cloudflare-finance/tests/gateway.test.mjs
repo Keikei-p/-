@@ -1,7 +1,7 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {generateKeyPairSync, sign} from "node:crypto";
-import worker,{approvedPolicy,safeProducts,safeRecords,safeGoals,visibleMoney,verifiedToken} from "../src/index.js";
+import worker,{approvedPolicy,safeProducts,safeRecords,safeGoals,visibleMoney,verifiedToken,docData} from "../src/index.js";
 
 const company={id:"company-A",masterUid:"master-uid",ownerUid:"master-uid",active:true};
 function person(role,{uid="sample",userGrants={},memberGrants={},teamId="A",companyRole="member"}={}){
@@ -185,4 +185,24 @@ test("Price-granted Leader cannot learn old cashback plan IDs from other team re
     assert.equal(data.includes(token),false,"cross-team financial leak "+token);
   }
   assert.deepEqual(Object.keys(safe.results),["item_0"]);
+});
+
+test("Firestore updateTime metadata passes unchanged to editor's optimistic locking version",()=>{
+  const version="2026-10-22T01:02:03.123456Z";
+  const raw={name:"projects/sales-management-cc116/databases/(default)/documents/records/recA",
+    updateTime:version,fields:{
+      companyId:{stringValue:"company-A"},uid:{stringValue:"worker"},teamId:{stringValue:"A"},
+      date:{stringValue:"2026-10-22"},totalCount:{integerValue:"3"},
+      results:{mapValue:{fields:{sim:{mapValue:{fields:{
+        productId:{stringValue:"sim"},productName:{stringValue:"SIM"},
+        count:{integerValue:"3"},cashback:{integerValue:"0"},
+        revenuePerUnit:{integerValue:"13000"}
+      }}}}}}
+    }};
+  const record=docData(raw);
+  assert.equal(record.recordVersion,version);
+  const safe=safeRecords([record],policy("member"))[0];
+  assert.equal(safe.recordVersion,version);
+  assert.equal(safe.totalCount,3);
+  assert.equal(safe.totalRevenue,undefined);
 });
