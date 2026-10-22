@@ -218,12 +218,14 @@ function safeProducts(all,policy) {
       id:p.id, companyId:policy.companyId, name:withoutAmounts(p.name),
       sortOrder:p.sortOrder??0, active:p.active!==false
     };
-    // Even approved users use stable opaque indices for the future
-    // count-only writer; no caller can submit a monetary value.
-    safe.planIds=securePricing(p).map(v=>v.planId);
+    // One canonical plan resolver for granted and ungranted users.
+    // The legacy browser also synthesizes pricingOptions for old products.
+    // Omitting them here breaks older CB rows even for Owner/Leader.
+    const plans=securePricing(p);
+    safe.planIds=plans.map(v=>v.planId);
     if(policy.canViewUnitPrice){
       safe.revenue=p.revenue;
-      safe.pricingOptions=p.pricingOptions;
+      safe.pricingOptions=plans.map(({cashback,revenuePerUnit})=>({cashback,revenuePerUnit}));
       safe.cashbackOptions=p.cashbackOptions;
       safe.name=p.name;
     }
