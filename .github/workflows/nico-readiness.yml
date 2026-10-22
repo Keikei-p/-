@@ -1,0 +1,51 @@
+name: NICO and legacy URL parity - read-only
+on:
+  push:
+    branches:
+      - safety/nico-permanent-readiness-20261022
+    paths:
+      - scripts/check-nico-readiness.mjs
+      - tests/check-nico-readiness.test.mjs
+      - .github/workflows/nico-readiness.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - scripts/check-nico-readiness.mjs
+      - tests/check-nico-readiness.test.mjs
+      - docs/NICO_URL_SWITCH_RUNBOOK.md
+      - .github/workflows/nico-readiness.yml
+  schedule:
+    # UTC: 02:17/08:17/14:17/20:17 (JST: 11:17/17:17/23:17/05:17)
+    - cron: "17 2,8,14,20 * * *"
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Sync NICO Factory Hosting (static assets only)"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nico-readiness-readonly
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read production source only - no deploy or credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Use pinned Node major
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Test safety checker against fictional HTTP responses
+        run: node --test tests/check-nico-readiness.test.mjs
+      - name: Check six published static assets against repository
+        if: github.event_name != 'pull_request'
+        env:
+          NICO_PUBLIC_READONLY: "true"
+        run: node scripts/check-nico-readiness.mjs
