@@ -137,8 +137,13 @@ test("No unapproved methods, worker is disabled by default and denies missing JW
   assert.equal((await writeDisabled.json()).error,"safe_write_not_released");
   const off=await worker.fetch(new Request("https://sales-finance-gateway.example/v1/financial-view"),{FINANCE_GATEWAY_ENABLED:"disabled"});
   check(503,off.status);
-  const unauthorized=await worker.fetch(new Request("https://sales-finance-gateway.example/v1/financial-view"),
+  const unapprovedRead=await worker.fetch(new Request("https://sales-finance-gateway.example/v1/financial-view"),
     {FINANCE_GATEWAY_ENABLED:"enabled",FIREBASE_PROJECT_ID:"sales-management-cc116"});
+  check(503,unapprovedRead.status);
+  assert.equal((await unapprovedRead.json()).error,"billing_not_approved");
+  const unauthorized=await worker.fetch(new Request("https://sales-finance-gateway.example/v1/financial-view"),
+    {FINANCE_GATEWAY_ENABLED:"enabled",FINANCE_COST_APPROVAL:"OWNER_APPROVED_BLAZE_COSTS",
+      FIREBASE_PROJECT_ID:"sales-management-cc116"});
   check(401,unauthorized.status);
   const forbiddenOrigin=await worker.fetch(new Request("https://sales-finance-gateway.example/v1/financial-view",{headers:{origin:"https://evil.example"}}),{FINANCE_GATEWAY_ENABLED:"enabled"});
   check(403,forbiddenOrigin.status);
