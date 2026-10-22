@@ -206,3 +206,23 @@ test("Firestore updateTime metadata passes unchanged to editor's optimistic lock
   assert.equal(safe.totalCount,3);
   assert.equal(safe.totalRevenue,undefined);
 });
+
+test("Legacy CB products show the same plans to permitted Owner, while staff get opaque plan IDs",()=>{
+  const legacy={id:"legacy",companyId:"company-A",name:"HTB",active:true,revenue:12000,
+    cashbackOptions:[5000,2000]};
+  const granted=policy("member",{
+    userGrants:{canViewRevenue:true,canViewUnitPrice:true},
+    memberGrants:{canViewRevenue:true,canViewUnitPrice:true}
+  });
+  const [full]=safeProducts([legacy],granted);
+  assert.deepEqual(full.planIds,["plan_0","plan_1","plan_2"]);
+  assert.deepEqual(full.pricingOptions,[
+    {cashback:0,revenuePerUnit:12000},
+    {cashback:2000,revenuePerUnit:2000},
+    {cashback:5000,revenuePerUnit:5000}
+  ]);
+  const [masked]=safeProducts([legacy],policy("member"));
+  assert.deepEqual(masked.planIds,full.planIds);
+  assert.equal(Object.hasOwn(masked,"revenue"),false);
+  assert.equal(Object.hasOwn(masked,"pricingOptions"),false);
+});
