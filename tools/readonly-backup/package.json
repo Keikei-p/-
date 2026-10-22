@@ -1,0 +1,12 @@
+{
+  "name": "sales-readonly-local-backup",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "dependencies": {
+    "google-auth-library": "^10.0.0"
+  },
+  "scripts": {
+    "test": "node --test backup.test.mjs"
+  }
+}
