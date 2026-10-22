@@ -16,6 +16,13 @@ function mockServer({failCommit=false}={}){
         updateTime:"2026-10-01T00:00:00.000Z",
         fields:{uid:{stringValue:"worker"},companyId:{stringValue:"factory"},active:{booleanValue:true}}});
     }
+    if(path===root+"/documents:batchGet"){
+      const payload=JSON.parse(opts.body);
+      return response(payload.documents.map(name=>({
+        found:{name,updateTime:"2026-10-01T00:00:00.000Z",
+          fields:{uid:{stringValue:"worker"},companyId:{stringValue:"factory"},active:{booleanValue:true}}}
+      })));
+    }
     if(path===root+"/documents:runQuery"){
       return response([{document:{name:root+"/documents/products/sim",
         updateTime:"2026-10-02T00:00:00.000Z",
