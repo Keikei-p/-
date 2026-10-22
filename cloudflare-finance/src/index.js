@@ -130,7 +130,8 @@ function documentFields(fields) {
   return Object.fromEntries(Object.entries(fields||{}).map(([k,v])=>[k,firestoreValue(v)]));
 }
 function docData(raw) {
-  return raw?{id:String(raw.name||"").split("/").pop(),...documentFields(raw.fields||{})}:null;
+  return raw?{id:String(raw.name||"").split("/").pop(),...documentFields(raw.fields||{}),
+    recordVersion:raw.updateTime||null}:null;
 }
 async function firestoreGet(env, path, fetcher = fetch) {
   const bearer=await googleBearer(env,fetcher);
@@ -239,7 +240,7 @@ function safeRecords(all,policy,products=[]) {
       totalCount:record.totalCount,reportStatus:record.reportStatus,
       reportedAt:record.reportedAt,createdByUid:record.createdByUid,
       updatedByUid:record.updatedByUid,createdAt:record.createdAt,
-      updatedAt:record.updatedAt,
+      updatedAt:record.updatedAt,recordVersion:record.recordVersion||null,
       // This is Firestore's server document version, not an editable price.
       recordVersion:record.__firestoreUpdateTime||null
     };
