@@ -1,0 +1,26 @@
+name: Offline sales history safety tests (NO data access)
+on:
+  push:
+    branches:
+      - safety/history-snapshot-comparison-20261022
+  pull_request:
+    branches: [main]
+    paths:
+      - scripts/verify-history-snapshots.mjs
+      - tests/verify-history-snapshots.test.mjs
+      - .github/workflows/history-snapshot-guard.yml
+permissions:
+  contents: read
+jobs:
+  offline-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Unit test with fictional data only
+        run: node --test tests/verify-history-snapshots.test.mjs
