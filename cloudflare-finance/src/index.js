@@ -331,7 +331,7 @@ export default {
     if(origin && !ALLOWED_ORIGINS.has(origin))return safeJSON({error:"origin_denied"},403);
     if(request.method==="OPTIONS"){
       if(!ALLOWED_ORIGINS.has(origin))return safeJSON({error:"origin_denied"},403);
-      return new Response(null,{status:204,headers:{"Access-Control-Allow-Origin":origin,"Access-Control-Allow-Methods":"GET, OPTIONS",
+      return new Response(null,{status:204,headers:{"Access-Control-Allow-Origin":origin,"Access-Control-Allow-Methods":"GET, POST, OPTIONS",
         "Access-Control-Allow-Headers":"Authorization, Content-Type","Access-Control-Max-Age":"600","Vary":"Origin"}});
     }
     if(url.pathname==="/health"&&request.method==="GET"){
@@ -343,7 +343,7 @@ export default {
       if(env.FINANCE_WRITE_ENABLED!=="enabled" ||
          env.FINANCE_GATEWAY_ENABLED!=="enabled" ||
          env.FINANCE_WRITE_APPROVAL!=="DUAL_HOST_BACKUP_VERIFIED" ||
-         env.FIREBASE_SPARK_VERIFIED!=="I_VERIFIED_SPARK_NO_BILLING"){
+         env.FINANCE_COST_APPROVAL!=="OWNER_APPROVED_BLAZE_COSTS"){
         return safeJSON({error:"safe_write_not_released"},503,origin);
       }
       if(env.FIREBASE_PROJECT_ID!==PROJECT_ID)return safeJSON({error:"project_mismatch"},503,origin);
