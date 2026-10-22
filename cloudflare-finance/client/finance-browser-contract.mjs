@@ -77,3 +77,49 @@ export function secureCountRows(rows){
   }
   return out;
 }
+
+/**
+ * Convert existing on-screen input values into a server-safe intent.
+ * Caller must use a projected view from projectSafeView, never raw products.
+ * No sale amount, product title, cashback amount, or unit price is sent.
+ */
+export function buildSafeFormIntent(selection,inputs,products) {
+  if(!selection || !Array.isArray(products) || !Array.isArray(inputs))violation();
+  const allowedKeys=["uid","date","teamId","workLocation","reportStatus","existingRecord"];
+  if(Object.keys(selection).some(k=>!allowedKeys.includes(k)))violation();
+  const prior=selection.existingRecord;
+  if(prior?.secureReadOnly)throw Error("historical_plan_requires_owner_review");
+  const rows=[];
+  const map=new Map(products.map(p=>[p.id,p]));
+  for(const item of inputs){
+    if(!item || !item.dataset || !isId(item.dataset.productId))violation();
+    const product=map.get(item.dataset.productId);
+    if(!product || product.active===false || !Array.isArray(product.securePlanIds))violation();
+    const count=Number(item.value||0);
+    if(!Number.isSafeInteger(count)||count<0||count>9999)violation();
+    const selectedCashback=Number(item.dataset.cashback);
+    if(!Number.isSafeInteger(selectedCashback)||selectedCashback<0)violation();
+    let position;
+    if(product.pricingOptions?.length){
+      const options=product.pricingOptions.slice().sort((a,b)=>Number(a.cashback)-Number(b.cashback));
+      position=options.findIndex(x=>Number(x.cashback)===selectedCashback);
+    }else{
+      position=selectedCashback===0?0:-1;
+    }
+    if(position<0 || !product.securePlanIds[position])violation();
+    rows.push({productId:product.id,securePlanId:product.securePlanIds[position],count});
+  }
+  const entries=secureCountRows(rows);
+  if(selection.reportStatus==="submitted"&&!entries.length)violation();
+  if(selection.reportStatus==="no_result"&&entries.length)violation();
+  const body={uid:selection.uid,date:selection.date,
+    teamId:selection.teamId,workLocation:selection.workLocation||"",
+    reportStatus:selection.reportStatus,entries};
+  if(prior){
+    if(!isId(prior.id)||!prior.recordVersion)violation();
+    if(prior.uid!==body.uid||prior.date!==body.date)violation();
+    body.recordId=prior.id;
+    body.expectedRecordUpdateTime=prior.recordVersion;
+  }
+  return body;
+}
