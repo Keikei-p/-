@@ -26,6 +26,27 @@ jobs:
             cloudflare-finance/tests/count-service.test.mjs cloudflare-finance/tests/firestore-writer.test.mjs \
             cloudflare-finance/tests/dual-host-adapter.test.mjs cloudflare-finance/tests/finance-browser-contract.test.mjs \
             cloudflare-finance/tests/protected-view-runtime.test.mjs cloudflare-finance/tests/sales-integration.test.mjs
+      - name: Syntax-check safe sales UI preview WITHOUT publishing it
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs=require('node:fs');
+          const preview=fs.readFileSync('cloudflare-finance/preview/index.html','utf8');
+          const live=fs.readFileSync('index.html','utf8');
+          const mark='<script type="module">';
+          const start=preview.indexOf(mark);
+          const end=preview.indexOf('</script>',start);
+          if(start<0||end<0)throw Error('secure_preview_script_missing');
+          fs.writeFileSync('/tmp/sales-secure-preview.mjs',preview.slice(start+mark.length,end));
+          if(!preview.includes('const SAFE_FINANCE_CUTOVER = false') ||
+             !preview.includes('from "../client/sales-integration.mjs"') ||
+             !preview.includes('publicSync","state') ||
+             !preview.includes('safeFinanceBridge.submit'))
+            throw Error('preview_safe_cutover_contract_missing');
+          if(live.includes('SAFE_FINANCE_CUTOVER'))throw Error('production_page_accidentally_modified');
+          console.log('Staged preview only; original sales application HTML unchanged.');
+          NODE
+          node --check /tmp/sales-secure-preview.mjs
       - name: Install Firestore emulator test tools (no production credentials)
         run: |
           npm install -g firebase-tools
