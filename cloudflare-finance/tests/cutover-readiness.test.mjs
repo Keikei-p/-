@@ -38,15 +38,15 @@ test("Live sales UI remains untouched by protected-preview cutover",()=>{
 });
 
 test("Production cutover must not accidentally re-enable legacy raw financial listeners",()=>{
-  const listeners=sourceBlock(preview,"function startRealtimeListeners() {","/* =====================================================\n   班");
+  const listeners=sourceBlock(preview,"function startRealtimeListeners() {","function stopRealtimeListeners(");
   requireText(listeners,"if (SAFE_FINANCE_CUTOVER) {","secure data subscription branch");
   requireText(listeners,"makeProtectedSalesBridge({","secure gateway bridge");
   requireText(listeners,"if (!SAFE_FINANCE_CUTOVER) {","legacy records fenced when secure");
   requireText(listeners,"SAFE_FINANCE_CUTOVER ? null : revenueGoalsCollectionQuery()","legacy revenue goals fenced");
-  const load=sourceBlock(preview,"async function loadProducts(","/* =====================================================\n   商材");
+  const load=sourceBlock(preview,"async function loadProducts(","/* =====================================================\n   メンバー");
   requireText(load,"if(SAFE_FINANCE_CUTOVER)","secure initial product load");
   requireText(load,"projectSafeView(await getSafeFinancialView({","secure early-view projection");
-  const loadRecords=sourceBlock(preview,"async function loadRecords()","/* =====================================================\n   LINE");
+  const loadRecords=sourceBlock(preview,"async function loadRecords()","/* =====================================================\n   月選択肢");
   requireText(loadRecords,"if(SAFE_FINANCE_CUTOVER)","secure records refresh");
 });
 
