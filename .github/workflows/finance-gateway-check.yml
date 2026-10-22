@@ -24,7 +24,8 @@ jobs:
         run: |
           node --test cloudflare-finance/tests/gateway.test.mjs cloudflare-finance/tests/write-plan.test.mjs \
             cloudflare-finance/tests/count-service.test.mjs cloudflare-finance/tests/firestore-writer.test.mjs \
-            cloudflare-finance/tests/dual-host-adapter.test.mjs cloudflare-finance/tests/finance-browser-contract.test.mjs
+            cloudflare-finance/tests/dual-host-adapter.test.mjs cloudflare-finance/tests/finance-browser-contract.test.mjs \
+            cloudflare-finance/tests/protected-view-runtime.test.mjs cloudflare-finance/tests/sales-integration.test.mjs
       - name: Install Firestore emulator test tools (no production credentials)
         run: |
           npm install -g firebase-tools
