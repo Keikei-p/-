@@ -158,11 +158,24 @@ export function makeFirestoreRestStore(env,{token,fetcher=fetch}){
             currentDocument:{exists:false},
             updateTransforms:[{fieldPath:"createdAt",setToServerValue:"REQUEST_TIME"}]
           });
+        },
+        // The only extra write is a nonmonetary realtime signal shared by
+        // BOTH current URLs. It commits atomically with record + audit.
+        addSyncSignal(companyId){
+          if(!staged || !isId(companyId) || writes.length<1 || writes.length>2 ||
+            writes.some(w=>String(w.update?.name).includes("/publicSync/")))
+            throw Error("invalid_sync_stage");
+          writes.push({
+            update:{name:name("companies/"+companyId+"/publicSync/state"),
+              fields:fields({companyId})},
+            updateMask:{fieldPaths:["companyId"]},
+            updateTransforms:[{fieldPath:"updatedAt",setToServerValue:"REQUEST_TIME"}]
+          });
         }
       };
       try{
         const result=await job(context);
-        if(writes.length<1 || writes.length>2)throw Error("invalid_commit_write_count");
+        if(writes.length<1 || writes.length>3)throw Error("invalid_commit_write_count");
         const response=await send("/documents:commit","POST",{transaction,writes},bearer);
         if(!Array.isArray(response.writeResults)||response.writeResults.length!==writes.length)
           throw abortErr("commit_ack_unconfirmed");
