@@ -91,3 +91,17 @@ test("Submitted zero-count cannot clear saved history without explicitly choosin
     reportStatus:"no_result"},inputs,m.products);
   assert.deepEqual(zero.entries,[]);
 });
+
+test("Orphaned historical products retain counts and are view-only, never break the full page",()=>{
+  const v=sample();
+  v.records[0]={...rec,totalCount:6,results:{
+    item_0:{productId:null,planId:null,productName:"過去の商材",count:6}
+  }};
+  const projected=projectSafeView(v);
+  assert.equal(projected.records[0].secureReadOnly,true);
+  assert.equal(projected.records[0].totalCount,6);
+  assert.equal(Object.values(projected.records[0].results)[0].count,6);
+  assert.deepEqual(Object.keys(projected.records[0].results),["legacy_item_0"]);
+  assert.throws(()=>secureCountRows(Object.values(projected.records[0].results)),
+    /financial_view_contract_violation/);
+});
