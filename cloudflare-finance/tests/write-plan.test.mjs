@@ -33,7 +33,7 @@ test("legacy products keep old per-variant price interpretation; existing amount
 });
 test("Master can submit member record for any active same-company team",()=>{
   const dst={id:"team2",name:"2班",companyId:"c1",active:true};
-  const inp={...first,teamId:"team2",entries:[]};
+  const inp={...first,teamId:"team2",reportStatus:"no_result",entries:[]};
   const p=buildRecordFromCounts(inp,owner,[product],target,dst);
   assert.equal(p.document.totalCount,0);
   assert.equal(p.document.totalRevenue,0);
@@ -95,6 +95,10 @@ test("daily record correction preserves creation and owner of personal history; 
     member,[product],target,team,current),ValidationError);
   assert.throws(()=>buildRecordFromCounts({...req,date:"2026-10-21"},member,[product],target,team,current),ValidationError);
   assert.throws(()=>buildRecordFromCounts({...req,uid:"other"},owner,[product],target,team,current),ValidationError);
+});
+test("ordinary submitted reports cannot erase all counts accidentally",()=>{
+  assert.throws(()=>buildRecordFromCounts({...first,entries:[]},member,[product],target,team),
+    /Submitted record cannot erase every count/);
 });
 test("zero result reports always have exactly zero count and 0 revenue",()=>{
   assert.throws(()=>buildRecordFromCounts({...first,reportStatus:"no_result"},member,[product],target,team),ValidationError);
