@@ -6773,6 +6773,8 @@ const db =
 // PREVIEW ONLY: no production deployment or database migration.
 // Explicit release settings MUST be provided after backup and role tests.
 import {makeProtectedSalesBridge} from "../client/sales-integration.mjs";
+import {getSafeFinancialView} from "../client/dual-host-adapter.mjs";
+import {projectSafeView} from "../client/finance-browser-contract.mjs";
 const SAFE_FINANCE_CUTOVER = false;
 const SAFE_FINANCE_ENDPOINT = "";
 let safeFinanceBridge = null;
@@ -15713,8 +15715,20 @@ async function loadProducts(
   throwOnError = false
 ) {
   if(SAFE_FINANCE_CUTOVER) {
-    if(!safeFinanceBridge)throw Error("protected_sales_not_connected");
-    await safeFinanceBridge.refresh();
+    if(!currentUser?.emailVerified || !currentUserData?.companyId)
+      throw Error("protected_sales_not_authenticated");
+    // loadUserData needs product count rows before startRealtimeListeners().
+    // Fetch the scoped view directly for first render. Never fall back to
+    // fetching full price-bearing products or records on failure.
+    const view=projectSafeView(await getSafeFinancialView({
+      gatewayUrl:SAFE_FINANCE_ENDPOINT,
+      origin:window.location.origin,user:currentUser,
+      explicitCutover:true
+    }));
+    products=view.products.sort(compareProductsByOrder);
+    records=view.records.sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")));
+    revenueGoals=view.revenueGoals;
+    renderProducts();
     return true;
   }
   try {
