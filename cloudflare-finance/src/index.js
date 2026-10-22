@@ -164,6 +164,13 @@ function approvedPolicy(user,member,company,uid,today="") {
       (member.companyId && user.companyId!==member.companyId))throw httpError(403,"membership_denied");
   const isMaster=(company.masterUid||company.ownerUid)===uid;
   const isOwner=isMaster || (user.companyRole==="owner" && member.companyRole==="owner");
+  // Existing client roles are stored in BOTH user and company-member docs.
+  // If they disagree, NEVER infer extra permissions or silently migrate them.
+  // Expose an admin-review indicator; preserve strict dual-grant behavior.
+  const needsPermissionReview=!isOwner && (
+    (user.canViewRevenue===true)!==(member.canViewRevenue===true) ||
+    (user.canViewUnitPrice===true)!==(member.canViewUnitPrice===true)
+  );
   const revenue= isOwner || (user.canViewRevenue===true && member.canViewRevenue===true);
   const unit= isOwner || (revenue && user.canViewUnitPrice===true && member.canViewUnitPrice===true);
   // Browser uses companies/{id}/members as the source for Leaders, while
@@ -178,7 +185,8 @@ function approvedPolicy(user,member,company,uid,today="") {
   const lastArrival=history.filter(x=>x.toTeamId===teamId && x.effectiveDate<=today).at(-1);
   const start=lastArrival?.effectiveDate ?? today;
   return {companyId:user.companyId,uid,isOwner,canViewRevenue:revenue,canViewUnitPrice:unit,
-    teamId,revenueScopeStart:start,role:assignment.role,teamHistory:history,isLeader};
+    teamId,revenueScopeStart:start,role:assignment.role,teamHistory:history,isLeader,
+    needsPermissionReview};
 }
 // This reproduces the existing browser's canCurrentUserViewRevenueForRecord:
 // - Leader: any date from the CURRENT team only
@@ -312,7 +320,7 @@ async function financeView(env,principal,fetcher=fetch){
   ]);
   const payload={policy:{
     canViewRevenue:policy.canViewRevenue,canViewUnitPrice:policy.canViewUnitPrice,isOwner:policy.isOwner,
-    teamId:policy.teamId
+    needsPermissionReview:policy.needsPermissionReview,teamId:policy.teamId
   },products:safeProducts(products,policy),records:safeRecords(records,policy,products),revenueGoals:safeGoals(revenueGoals,policy)};
   return payload;
 }
