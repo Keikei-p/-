@@ -1055,6 +1055,17 @@ service cloud.firestore {
       allow delete: if canCreateInvite(resource.data.companyId);
     }
 
+    // Finance gateway's nonmonetary realtime signal for both URLs.
+    // Only trusted server writes it; clients can observe changes but cannot
+    // modify it or list other companies' data.
+    match /companies/{companyId}/publicSync/{signalId} {
+      allow get: if signalId == 'state'
+        && verifiedUser()
+        && isCompanyMember(companyId)
+        && resource.data.companyId == companyId;
+      allow list, create, update, delete: if false;
+    }
+
     match /teams/{teamId} {
       allow read: if resource.data.companyId != null
         && sameCompany(resource.data.companyId);
