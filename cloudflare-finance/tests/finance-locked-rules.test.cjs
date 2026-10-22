@@ -58,6 +58,29 @@ test('raw money-bearing collection queries are denied to all nonowner members',a
     }
   }
 });
+test('Newly registered user without company invitation cannot read monetary company data',async()=>{
+  // Verified e-mail alone must never imply membership.
+  const db=firebase('new-uninvited-account');
+  for(const [collectionName,id] of [
+    ['products','product-1'],['records','record-1'],
+    ['recordCorrections','correction-1'],['revenueGoals','revenue-A']
+  ])await assertFails(getDoc(doc(db,collectionName,id)));
+});
+
+test('New staff and Leader cannot grant themselves prices or sales by changing profile documents',async()=>{
+  for(const uid of ['ordinary','leaderNoGrant']){
+    const db=firebase(uid);
+    for(const p of ['users/'+uid,'companies/'+company+'/members/'+uid]){
+      const ref=doc(db,p);
+      await assertFails(updateDoc(ref,{canViewRevenue:true}));
+      await assertFails(updateDoc(ref,{canViewUnitPrice:true}));
+      await assertFails(updateDoc(ref,{companyRole:'owner'}));
+    }
+    await assertFails(getDoc(doc(db,'products','product-1')));
+    await assertFails(getDoc(doc(db,'records','record-1')));
+    await assertFails(getDoc(doc(db,'recordCorrections','correction-1')));
+  }
+});
 test('Master and Owner retain full raw access regardless of grants',async()=>{
   for(const uid of ['master','owner']){
     const db=firebase(uid);
