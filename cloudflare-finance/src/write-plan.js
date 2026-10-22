@@ -31,9 +31,16 @@ export function securePricing(product){
     product.pricingOptions.slice(0,15).map(o=>({cashback:Number(o.cashback||0),revenuePerUnit:Number(o.revenuePerUnit)}))
       .sort((a,b)=>a.cashback-b.cashback) : null;
   const fromLegacy=legacyPricingName(product.name);
-  const legacyCashbacks=Array.isArray(product.cashbackOptions)?product.cashbackOptions:[];
-  // Match old on-screen pricing: CB0 uses master revenue; legacy CB>0 uses its CB value.
-  const backwards=legacyCashbacks.map(x=>Number(x));
+  // Match production's normalizeCashbackOptions exactly: filter invalid
+  // values, round, insert CB0, dedupe, sort ASC, THEN truncate to 15.
+  // Otherwise an old [CB2000, CB5000] product sends a different plan_0
+  // and could silently rewrite counts with the wrong historical unit price.
+  const rawCashbacks=Array.isArray(product.cashbackOptions)?product.cashbackOptions:[];
+  const normalized=rawCashbacks.map(v=>Number(v))
+    .filter(v=>Number.isFinite(v)&&v>=0)
+    .map(v=>Math.round(v));
+  if(!normalized.includes(0))normalized.push(0);
+  const backwards=Array.from(new Set(normalized)).sort((a,b)=>a-b);
   const hasLegacyPlans=backwards.length>1||backwards.some(x=>x>0);
   const raw=explicit??(fromLegacy?[{cashback:fromLegacy.cashback,revenuePerUnit:Number(product.revenue)}]:
     hasLegacyPlans?backwards.slice(0,15).map(cashback=>({
