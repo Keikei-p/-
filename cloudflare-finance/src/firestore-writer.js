@@ -77,8 +77,37 @@ export function makeFirestoreRestStore(env,{token,fetcher=fetch}){
       const name=path=>"projects/sales-management-cc116/databases/(default)/documents/"+segmentPath(path);
       async function lookup(path){
         ensureReadable();
-        const raw=await send("/documents/"+segmentPath(path)+"?transaction="+encodeURIComponent(transaction),"GET",undefined,bearer);
-        return doc(raw);
+        // Firestore's documents.get?transaction endpoint is known to hang in
+        // some emulator releases. batchGet is a first-party transactional
+        // read API with the same snapshot semantics; never read outside tx.
+        const response=await fetcher(root+"/documents:batchGet",{
+          method:"POST",
+          headers:{"Authorization":"Bearer "+bearer,"Content-Type":"application/json"},
+          body:JSON.stringify({documents:[name(path)],transaction})
+        });
+        if(!response.ok){
+          if(response.status===409||response.status===412)
+            throw new SaveConflict("concurrent_transaction_read");
+          throw abortErr("firestore_batch_get_failed_"+response.status);
+        }
+        // Streaming JSON may be delivered as an array, a single object or
+        // NDJSON. Accept those encodings, but fail closed on anything else.
+        const body=(await response.text()).trim();
+        let entries;
+        try{
+          const parsed=JSON.parse(body);
+          entries=Array.isArray(parsed)?parsed:[parsed];
+        }catch{
+          try{
+            entries=body.split(/\r?\n/).filter(Boolean).map(row=>JSON.parse(row));
+          }catch{throw abortErr("invalid_batch_get_response");}
+        }
+        if(entries.length!==1)throw abortErr("unexpected_batch_get_count");
+        const item=entries[0];
+        if(item.missing===name(path))return null;
+        if(!item.found || item.found.name!==name(path))
+          throw abortErr("batch_get_document_mismatch");
+        return doc(item.found);
       }
       async function search(col,conditions){
         ensureReadable();
