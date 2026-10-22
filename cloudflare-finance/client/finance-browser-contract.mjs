@@ -25,7 +25,11 @@ export function projectSafeView(view) {
   const planMap=new Map();
   const products=view.products.map(p=>{
     if(!isId(p.id)||typeof p.name!=="string")violation();
-    if(unit)return {...p};
+    if(unit){
+      if(!Array.isArray(p.planIds))violation();
+      p.planIds.forEach((id,i)=>{if(planIndex(id)!==i)violation()});
+      return {...p,securePlanIds:p.planIds};
+    }
     ensureNoAmounts(p);
     if(!Array.isArray(p.planIds)||p.planIds.length<1)violation();
     const pseudo=p.planIds.map((v,i)=>{
