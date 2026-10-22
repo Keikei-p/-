@@ -1,9 +1,14 @@
 name: NICO and legacy URL parity - read-only
 on:
   push:
-    branches:
-      - safety/nico-permanent-readiness-20261022
+    branches: [main]
     paths:
+      - index.html
+      - manifest.webmanifest
+      - service-worker.js
+      - icon-180.png
+      - icon-192.png
+      - icon-512.png
       - scripts/check-nico-readiness.mjs
       - tests/check-nico-readiness.test.mjs
       - .github/workflows/nico-readiness.yml
@@ -32,7 +37,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - name: Read production source only - no deploy or credentials
         uses: actions/checkout@v4
@@ -46,6 +51,17 @@ jobs:
         run: node --test tests/check-nico-readiness.test.mjs
       - name: Check six published static assets against repository
         if: github.event_name != 'pull_request'
+        shell: bash
         env:
           NICO_PUBLIC_READONLY: "true"
-        run: node scripts/check-nico-readiness.mjs
+        run: |
+          # Both Hosting providers deploy asynchronously. Keep this read-only,
+          # and avoid a false failure during a legitimate publication overlap.
+          for attempt in 1 2 3 4; do
+            if node scripts/check-nico-readiness.mjs; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 4 ]; then sleep 20; fi
+          done
+          echo 'BLOCK: published sites still differ after bounded retries.'
+          exit 1

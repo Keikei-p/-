@@ -20,7 +20,7 @@
 - Firebase Hostingサイトとして新URLを作成し、静的ファイルだけを同じリポジトリのmainから同期するワークフロー `.github/workflows/nico-factory-sync.yml` を導入済み。
 - URLを使った実際のログイン・閲覧は依頼者の端末で一通り問題なしと報告あり。ただし全権限での実機検証は未了。
 - 新設の無認証・読取専用テストで、6つの公開ファイル（index.html、manifest、Service Worker、180/192/512pxアイコン）を、双方のURLおよびリポジトリのmainとSHA-256で一致チェックできる。**Firestoreデータには一切接続しない**。
-- `.github/workflows/nico-readiness.yml` は毎日4回とNICO Hosting同期完了後に無認証チェックし、差異が出るとActionsが失敗する。Actionsの実行遅延・通知設定の有無により、即時検知/自動復旧は保証されない。
+- `.github/workflows/nico-readiness.yml` は毎日4回、NICO Hosting同期完了後、アプリ画面・PWA等をmainに更新した直後に無認証チェックする。公開サービスの更新タイミングのずれは最大4回の短い再検査で吸収し、それでも差異が出るとGitHub Actionsを失敗にする。Actionsの実行遅延・通知設定の有無により、即時検知/自動復旧は保証されない。
 - ファイルを読み取って比較するだけ。Firebase/Google Cloudの秘密鍵は新ワークフローに一切渡さず、CloudflareやFirestoreにはデプロイしない。
 
 ## 利用前に手動で確認すること（本人の端末、実データ更新はしない）
@@ -47,6 +47,6 @@
 - 新旧URLの読取専用健康診断：GitHub Actions → `NICO and legacy URL parity - read-only`
 - Firebase Hostingの配信：GitHub Actions → `Sync NICO Factory Hosting (static assets only)`
 - 金額アクセス制御の開発PR： https://github.com/Keikei-p/-/pull/73
-- 暗号化バックアップの準備PR： https://github.com/Keikei-p/-/pull/75
+- 暗号化バックアップのツール導入： https://github.com/Keikei-p/-/pull/75 （プログラムのみマージ済み、実データ取得と復元テストは未実施）
 
 **停止条件**：どちらかの公開URLでファイル不一致、未許可者の実データ露出、別プロジェクトへの接続、履歴欠損、バックアップ未検証が発覚した場合、公開用新コードの切り替えは行わない。既存の本番アプリはそのまま残し、安全確保を優先。
