@@ -27,9 +27,22 @@ test("server resolvers use correct master price and sorted plan ID without trust
 });
 test("legacy products keep old per-variant price interpretation; existing amounts never guessed",()=>{
   assert.deepEqual(securePricing({id:"legacy",name:"HTB",revenue:10000,cashbackOptions:[2000,0]}),
-    [{planId:"plan_0",cashback:2000,revenuePerUnit:2000},{planId:"plan_1",cashback:0,revenuePerUnit:10000}]);
+    [{planId:"plan_0",cashback:0,revenuePerUnit:10000},{planId:"plan_1",cashback:2000,revenuePerUnit:2000}]);
   assert.deepEqual(securePricing({id:"htb-cb",name:"HTB CB2万円",revenue:20000}),
     [{planId:"plan_0",cashback:20000,revenuePerUnit:20000}]);
+});
+test("Legacy CB arrays always use the production UI's plan order and CB0 default",()=>{
+  const oldProduct={id:"legacy",name:"HTB",revenue:10000,cashbackOptions:[5000,2000,5000]};
+  assert.deepEqual(securePricing(oldProduct),[
+    {planId:"plan_0",cashback:0,revenuePerUnit:10000},
+    {planId:"plan_1",cashback:2000,revenuePerUnit:2000},
+    {planId:"plan_2",cashback:5000,revenuePerUnit:5000}
+  ]);
+  assert.deepEqual(securePricing({...oldProduct,cashbackOptions:[]}),
+    [{planId:"plan_0",cashback:0,revenuePerUnit:10000}]);
+  assert.deepEqual(securePricing({...oldProduct,cashbackOptions:[2500.2,2500.4,-1,"invalid"]}),
+    [{planId:"plan_0",cashback:0,revenuePerUnit:10000},
+     {planId:"plan_1",cashback:2500,revenuePerUnit:2500}]);
 });
 test("Master can submit member record for any active same-company team",()=>{
   const dst={id:"team2",name:"2班",companyId:"c1",active:true};
