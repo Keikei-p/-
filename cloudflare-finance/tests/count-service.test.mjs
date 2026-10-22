@@ -38,11 +38,15 @@ function createStore({role="member",principal="staff",currentRecord=null,recordL
         },
         async queryProducts(cid){return [product].filter(p=>p.companyId===cid);},
         saveRecord(id,data,oldVersion){changes.push({type:"record",id,data,oldVersion});},
-        addCorrection(id,data){changes.push({type:"audit",id,data});}
+        addCorrection(id,data){changes.push({type:"audit",id,data});},
+        addSyncSignal(cid){changes.push({type:"signal",id:cid,data:{companyId:cid}});}
       };
       const ret=await callback(tx);
       // Mimic an atomic commit: no persistence until the callback succeeds.
-      for(const c of changes){if(c.type==="record")saved.push(c);else audit.push(c);}
+      for(const c of changes){if(c.type==="record")saved.push(c);
+        else if(c.type==="audit")audit.push(c);
+        else if(c.type==="signal")observations.signals=(observations.signals||0)+1;
+      }
       observations.committed++;
       return ret;
     }
@@ -57,6 +61,7 @@ test("new member can submit counts without ever receiving company revenue or pri
   assert.equal(f.saved[0].data.results.sim__cb_0.revenuePerUnit,10000);
   assert.equal(f.audit.length,0);
   assert.equal(f.observations.committed,1);
+  assert.equal(f.observations.signals,1);
 });
 test("existing explicit revenue permission remains visible, but price is always derived server-side",async()=>{
   const f=createStore({grants:{revenue:true}});
