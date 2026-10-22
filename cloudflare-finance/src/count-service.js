@@ -118,6 +118,10 @@ export async function submitCounts(store,principal,input,options={}){
       tx.addCorrection(correctionId,auditPayload(stripInternal(existing),
         built.document,{uid:principal.uid,name:member?.name},recordId,input.date,cid));
     }
+    // Safe event-driven refresh across the two URLs. No amounts in this doc.
+    // Reject a missing atomic signal rather than silently losing synchronization.
+    if(typeof tx.addSyncSignal!=="function")throw Error("secure_sync_not_available");
+    tx.addSyncSignal(cid);
     return {recordId,totalCount:built.document.totalCount,
       totalRevenue:built.document.totalRevenue,canViewRevenue:policy.canViewRevenue,
       canViewUnitPrice:policy.canViewUnitPrice,corrected:Boolean(existing)};
