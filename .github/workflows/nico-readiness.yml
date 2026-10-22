@@ -65,3 +65,43 @@ jobs:
           done
           echo 'BLOCK: published sites still differ after bounded retries.'
           exit 1
+
+  notify-owner:
+    name: Alert owner when public URLs differ
+    needs: [verify]
+    # Never give a pull-request event an issue-writing token.
+    if: ${{ always() && needs.verify.result == 'failure' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Report read-only website incident without modifying Firebase
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            // Report to the existing owner-approved security release issue.
+            // Avoid creating a new issue or repeated comments on every retry.
+            const issue_number = 78;
+            const marker = '<!-- nico-sales-parity-failure -->';
+            const { data: comments } = await github.rest.issues.listComments({
+              owner, repo, issue_number, per_page: 100
+            });
+            const lastAlert = comments
+              .filter(c => (c.body || '').includes(marker))
+              .map(c => Date.parse(c.created_at))
+              .filter(Number.isFinite)
+              .sort((a, b) => b - a)[0];
+            if (lastAlert && Date.now() - lastAlert < 12 * 60 * 60 * 1000) {
+              core.info('Parity incident already reported recently; no duplicate comment.');
+              return;
+            }
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            await github.rest.issues.createComment({
+              owner, repo, issue_number,
+              body: `${marker}\n⚠️ 新旧URLの公開ファイル一致テストが失敗しました。利用者の実績データには触れず、URL公開状態のみを検査しています。\n\n[実行結果を確認](${runUrl})\n\n対応: 公開元のGitHub PagesとFirebase Hostingを確認し、ログイン・過去履歴が正常か調べてください。**自動でFirestore・Rules・実績を変更しないでください。**`
+            });
