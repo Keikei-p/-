@@ -241,9 +241,9 @@ function safeRecords(all,policy,products=[]) {
       totalCount:record.totalCount,reportStatus:record.reportStatus,
       reportedAt:record.reportedAt,createdByUid:record.createdByUid,
       updatedByUid:record.updatedByUid,createdAt:record.createdAt,
-      updatedAt:record.updatedAt,recordVersion:record.recordVersion||null,
-      // This is Firestore's server document version, not an editable price.
-      recordVersion:record.__firestoreUpdateTime||null
+      // The updateTime metadata comes from Firestore's server, not an
+      // app-stored field or an untrusted client-provided revision value.
+      updatedAt:record.updatedAt,recordVersion:record.recordVersion||null
     };
     const permittedRevenue=visibleMoney(policy,record);
     if(permittedRevenue)out.totalRevenue=record.totalRevenue;
