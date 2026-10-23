@@ -52,6 +52,19 @@ test("5 deals at 10000 make 50000 and have no reconciliation findings",()=>{
   const v=audit(),rec=record(entry(5,10000),50000);
   assert.equal(v.auditFinancialRecords([rec],catalog).length,0);
 });
+test("Legacy CB2000 revenue fallback is flagged for review without assuming an automatic 50000 correction",()=>{
+  const v=audit();
+  const oldProduct={id:"electric",name:"とくする電気",revenue:10000,cashbackOptions:[0,2000]};
+  const legacy=entry(5,2000);
+  legacy.cashback=2000;
+  const rec=record(legacy,10000);
+  const before=raw(rec);
+  const findings=v.auditFinancialRecords([rec],[oldProduct]);
+  assert(findings.some(item=>item.type==="legacy_cb_rate"));
+  assert(findings.some(item=>item.note.includes("旧CBプラン")));
+  assert.equal(rec.totalRevenue,10000);
+  assert.equal(raw(rec),before);
+});
 test("Saved record header and line-item calculation mismatches are reported without data modification",()=>{
   const v=audit(),rec=record(entry(5,10000),10000,4),before=raw(rec);
   const types=v.auditFinancialRecords([rec],catalog).map(x=>x.type);
