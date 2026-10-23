@@ -139,7 +139,20 @@ test('Owner-only price correction saves exact product count and before/after aud
     return html.slice(at,html.indexOf('\n}',at)+2);
   };
   const ctx=vm.createContext({
-    db,doc,collection,serverTimestamp,runTransaction,
+    db,doc,collection,serverTimestamp,
+    // VM produces cross-realm plain objects. Convert objects to the test host
+    // realm before calling Firebase SDK; production browser has one realm.
+    runTransaction:(database,callback)=>runTransaction(database,transaction=>callback({
+      get:ref=>transaction.get(ref),
+      update:(ref,data)=>transaction.update(ref,{
+        ...data,results:JSON.parse(JSON.stringify(data.results))
+      }),
+      set:(ref,data)=>transaction.set(ref,{
+        ...data,
+        before:{...data.before,results:JSON.parse(JSON.stringify(data.before.results))},
+        after:{...data.after,results:JSON.parse(JSON.stringify(data.after.results))}
+      })
+    })),
     getProductPricingOptions:null,
     currentUser:{uid:'owner'},
     currentUserData:{companyId:company,name:'owner'},
