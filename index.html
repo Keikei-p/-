@@ -31934,9 +31934,9 @@ function planFinancialCorrection(record, catalog, productId, cashback) {
     product.cashbackOptions.some(value => Number(value) > 0);
   // A known single-rate (non-CB) product may be corrected from its original
   // revenue master; CB-sensitive legacy products MUST have explicit tier prices.
-  const parsed = parseLegacyCashbackProductName(product.name);
+  const taggedCbName = /(?:CB|キャッシュバック)[\s（(:：]*[￥¥]?[0-9,]+/i.test(String(product.name || ""));
   const simpleLegacy = !explicit && !legacyCbTiers &&
-    !parsed.hasCashbackPlan && product.revenue != null &&
+    !taggedCbName && product.revenue != null &&
     product.revenue !== "" && Number(cashback) === 0;
   if (!explicit && !simpleLegacy) {
     throw recordConflict("CB別売上単価が未確認です。通常商材はマスター収益単価を確認してください。");
