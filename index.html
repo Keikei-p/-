@@ -6772,6 +6772,8 @@ import {
   onSnapshot
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
+import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js";
+
 
 const firebaseConfig = {
   apiKey: "AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
@@ -6794,6 +6796,11 @@ auth.languageCode =
 
 const db =
   getFirestore(app);
+
+// Uses Firebase Auth token and OWNER validation on the server.
+// Server callable is OFF until backup proof and explicit cost approval.
+const financeFunctions = getFunctions(app, "asia-northeast1");
+const correctRecordRevenueCall = httpsCallable(financeFunctions, "correctRecordRevenue");
 
 
 /* =====================================================
@@ -32156,60 +32163,27 @@ async function persistConfirmedFinancialCorrection(record,plan,reason) {
       reason.trim().length > 200) {
     throw recordConflict("訂正理由を5〜200文字で入力してください。");
   }
-  const recordRef = doc(db,"records",record.id);
-  const productRef = doc(db,"products",plan.productId);
-  const correctionRef = doc(collection(db,"recordCorrections"));
-  const oldRevision = recordRevision(record);
-  await runTransaction(db,async transaction => {
-    // Read BOTH source documents before any write. A concurrent change to
-    // the record or product price must abort the transaction, not reprice silently.
-    const snap = await transaction.get(recordRef);
-    const productSnap = await transaction.get(productRef);
-    if (!snap.exists()) throw recordConflict("訂正対象が存在しません。");
-    if (!productSnap.exists() || productSnap.data().companyId !== record.companyId)
-      throw recordConflict("商材設定が変更されました。画面を更新して確認してください。");
-    const current = {id:snap.id,...snap.data()};
-    if (current.companyId !== record.companyId ||
-        recordRevision(current) !== oldRevision) {
-      throw recordConflict("別の端末で実績が更新されています。履歴を読み直してください。");
-    }
-    const fresh = planFinancialCorrection(
-      current,[{id:productSnap.id,...productSnap.data()}],
-      plan.productId,plan.cashback);
-    if (fresh.oldUnit !== plan.oldUnit ||
-        fresh.oldCalculated !== plan.oldCalculated ||
-        fresh.newUnit !== plan.newUnit ||
-        fresh.selectedCount !== plan.selectedCount ||
-        fresh.newRevenue !== plan.newRevenue) {
-      throw recordConflict("商材単価が変更されました。再確認してください。");
-    }
-    const after = {
-      ...financialAuditSnapshot(current),
-      results:fresh.results,
-      totalCount:fresh.count,
-      totalRevenue:fresh.newRevenue
-    };
-    const now = serverTimestamp();
-    transaction.update(recordRef,{
-      results:fresh.results,
-      totalCount:fresh.count,
-      totalRevenue:fresh.newRevenue,
-      updatedByUid:currentUser.uid,
-      updatedAt:now
-    });
-    transaction.set(correctionRef,{
-      companyId:current.companyId,
-      recordId:record.id,
-      recordUid:current.uid,
-      recordDate:current.date,
-      changedByUid:currentUser.uid,
-      changedByName:currentUserData?.name || "オーナー",
-      before:financialAuditSnapshot(current),
-      after:{...after,financialCorrectionReason:reason.trim()},
-      createdAt:now
-    });
-  });
-  return {recordId:record.id,correctedRevenue:plan.newRevenue};
+  // Never issue a client-side Firestore write here. The current Rules cannot
+  // always evaluate the original-record write and correction-audit creation
+  // in one client transaction (1000-expression limit). The callable uses
+  // server-side Admin authorization and ONE atomic transaction.
+  const request = {
+    recordId:record.id,
+    productId:plan.productId,
+    cashback:plan.cashback,
+    expectedOldUnit:plan.oldUnit,
+    expectedSelectedCount:plan.selectedCount,
+    expectedTotalCount:Number(record.totalCount),
+    expectedTotalRevenue:Number(record.totalRevenue),
+    expectedUpdatedAtMillis:record.updatedAt?.toMillis?.() ?? null,
+    reason:reason.trim()
+  };
+  const response = await correctRecordRevenueCall(request);
+  if (response?.data?.recordId !== record.id ||
+      !Number.isSafeInteger(Number(response.data.totalRevenue))) {
+    throw recordConflict("訂正結果を確認できません。管理者に確認してください。");
+  }
+  return {recordId:record.id,correctedRevenue:Number(response.data.totalRevenue)};
 }
 
 function auditFinancialRecords(monthlyRecords, currentProducts) {
