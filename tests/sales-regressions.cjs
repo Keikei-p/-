@@ -1026,3 +1026,68 @@ test('Product price listener always re-renders the dashboard on catalogue change
   assert(htmlSource.indexOf('renderDashboard();') >
     htmlSource.indexOf('prepareProductInputList('));
 });
+
+
+// Startup optimization must never initialize an input form before both masters
+// and eligible members have loaded, nor alter financial / Firestore semantics.
+test('Startup runs independent catalog/member requests together after teams and preserves input readiness',()=>{
+  const loadUser = html.slice(html.indexOf('async function loadUserData('),
+    html.indexOf('const defaultThemeSettings'));
+  assert(loadUser.includes('await loadTeams('));
+  assert(loadUser.includes('await Promise.all([\n      loadProducts(true),\n      loadMembers(true)\n    ]);'));
+  assert(loadUser.indexOf('await loadTeams(') < loadUser.indexOf('await Promise.all(['));
+  assert(loadUser.indexOf('await Promise.all([') < loadUser.indexOf('await prepareRecordInputs();'));
+  const entry = html.slice(html.indexOf('async function enterApplication('),
+    html.indexOf('checkVerificationButton.onclick',html.indexOf('async function enterApplication(')));
+  assert(entry.includes('await Promise.all([\n        loadReportTemplateSettings(),\n        loadNotificationSettings()\n      ]);'));
+  assert(entry.indexOf('await Promise.all([') < entry.indexOf('startRealtimeListeners();'));
+});
+
+test('Realtime snapshot burst schedules just one redraw with latest data',()=>{
+  const frames=[];
+  let renderCount=0;
+  const c=context(['scheduleRealtimeDashboardRender'],{
+    realtimeDashboardFrame:0,
+    currentUser:{uid:'signed-in'},
+    appScreen:{style:{display:'block'}},
+    requestAnimationFrame:fn=>{frames.push(fn);return frames.length;},
+    renderDashboard:()=>{renderCount+=1;}
+  });
+  c.scheduleRealtimeDashboardRender();
+  c.scheduleRealtimeDashboardRender();
+  c.scheduleRealtimeDashboardRender();
+  assert.equal(frames.length,1,'initial snapshots should coalesce');
+  assert.equal(renderCount,0,'redraw happens at next paint');
+  frames[0]();
+  assert.equal(renderCount,1);
+  c.scheduleRealtimeDashboardRender();
+  assert.equal(frames.length,2,'later updates must still be rendered');
+  c.appScreen.style.display='none';
+  frames[1]();
+  assert.equal(renderCount,1,'never paint sensitive revenue in a hidden session');
+
+  const listeners=html.slice(html.indexOf('function startRealtimeListeners()'),
+    html.indexOf('function stopRealtimeListeners()'));
+  assert.equal((listeners.match(/renderDashboard\(\);/g)||[]).length,0);
+  assert((listeners.match(/scheduleRealtimeDashboardRender\(\);/g)||[]).length>=6);
+});
+
+test('Stopping listeners cancels queued paints without changing saved records',()=>{
+  const cancelled=[],unsubscribed=[];
+  const c=context(['stopRealtimeListeners'],{
+    realtimeDashboardFrame:17,
+    cancelAnimationFrame:id=>cancelled.push(id),
+    unsubscribeUsers:()=>unsubscribed.push('users'),
+    unsubscribeTeams:()=>unsubscribed.push('teams'),
+    unsubscribeProducts:()=>unsubscribed.push('products'),
+    unsubscribeRecords:()=>unsubscribed.push('records'),
+    unsubscribeGoals:()=>unsubscribed.push('goals'),
+    unsubscribeRevenueGoals:()=>unsubscribed.push('revenueGoals'),
+    revenueGoals:[{id:'dummy'}]
+  });
+  c.stopRealtimeListeners();
+  assert.deepEqual(cancelled,[17]);
+  assert.equal(unsubscribed.length,6);
+  assert.equal(c.realtimeDashboardFrame,0);
+  assert.equal(c.revenueGoals.length,0);
+});
