@@ -53,6 +53,37 @@ test("5 deals at 10000 make 50000 and have no reconciliation findings",()=>{
   const v=audit(),rec=record(entry(5,10000),50000);
   assert.equal(v.auditFinancialRecords([rec],catalog).length,0);
 });
+test("New entries automatically use selected NURO cashback-specific sales rate or refuse an outdated unit price",()=>{
+  const v=ctx(["verifyNewRecordPricing","getProductPricingOptions"],{
+    parseLegacyCashbackProductName:()=>({hasCashbackPlan:false})
+  });
+  const nuro={id:"nuro",name:"NURO光",pricingOptions:[
+    {cashback:0,revenuePerUnit:25000},
+    {cashback:20000,revenuePerUnit:22500}
+  ]};
+  const valid={base:{productId:"nuro",count:4,cashback:0,revenuePerUnit:25000},
+    cashback:{productId:"nuro",count:5,cashback:20000,revenuePerUnit:22500}};
+  assert.equal(v.verifyNewRecordPricing(valid,[nuro]),"");
+  const corrupted={...valid,cashback:{...valid.cashback,revenuePerUnit:25000}};
+  assert.match(v.verifyNewRecordPricing(corrupted,[nuro]),/単価/);
+  const wrongCB={...valid,cashback:{...valid.cashback,cashback:30000}};
+  assert.match(v.verifyNewRecordPricing(wrongCB,[nuro]),/CBプラン/);
+});
+test("New CB0 electricity entry with five deals rejects unit 2000 and accepts unit 10000",()=>{
+  const v=ctx(["verifyNewRecordPricing","getProductPricingOptions"],{});
+  const electric=catalog[0];
+  const bad={electric:{...entry(5,2000)}};
+  assert.match(v.verifyNewRecordPricing(bad,[electric]),/単価/);
+  bad.electric.revenuePerUnit=10000;
+  assert.equal(v.verifyNewRecordPricing(bad,[electric]),"");
+  const free={free:{productId:"zero",count:3,cashback:0,revenuePerUnit:0}};
+  assert.equal(v.verifyNewRecordPricing(free,[catalog[1]]),"");
+});
+test("Edit path only applies new price validation if no saved record exists",()=>{
+  const marker="if (!existingDailyRecord && !zeroResultSubmission)";
+  assert(html.includes(marker));
+  assert(html.includes("verifyNewRecordPricing(results, products)"));
+});
 test("NURO光: same product with different CB plans uses each plan price, never nine times one flat rate",()=>{
   const nuro={
     id:"nuro",name:"NURO光",
