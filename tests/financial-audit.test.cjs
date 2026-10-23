@@ -116,7 +116,7 @@ test("Audit panel is Owner-only and shows no sensitive error details to ordinary
     productSummaryList,productSummaryCount:summaryCount,document:{createElement:make},
     isCurrentCompanyOwner:()=>false,
     auditFinancialRecords:()=>{throw Error("must not access sensitive audit while not owner")},
-    canCurrentUserViewProductRevenue:()=>false,escapeHtml:s=>s,
+    canCurrentUserViewProductRevenue:()=>false,products:catalog,escapeHtml:s=>s,
     formatYen:n=>"¥"+n
   });
   const summary={electric:{name:"とくする電気",count:5,revenue:10000}};
