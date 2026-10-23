@@ -32231,15 +32231,13 @@ function renderProductSummary(
   if (
     names.length === 0
   ) {
-
-    productSummaryList.innerHTML = `
-      <div class="empty-message">
-        この月の実績はありません。
-      </div>
-    `;
-
+    // Preserve the owner's audit warning even when this month's product
+    // summary has no rows. Clearing innerHTML hid actionable discrepancies.
+    const empty = document.createElement("div");
+    empty.className = "empty-message";
+    empty.textContent = "この月の実績はありません。";
+    productSummaryList.appendChild(empty);
     return;
-
   }
 
 
