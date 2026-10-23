@@ -32,7 +32,7 @@ jobs:
           node --check functions/finance-correction.js
 
       - name: Check sales input and correction regressions
-        run: node --test tests/sales-regressions.cjs
+        run: node --test tests/sales-regressions.cjs tests/financial-audit.test.cjs
 
       - name: Verify private, atomic sales corrections (no production secrets)
         run: node --test functions/tests/finance-correction.test.cjs
