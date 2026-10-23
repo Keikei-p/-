@@ -180,3 +180,36 @@ test("Reject null and missing original unit prices without writing a guessed zer
     assert.equal(Object.keys(f.store).filter(k=>k.startsWith("privateRevenueCorrectionAudits/")).length,0);
   }
 });
+
+
+test("Legacy ordinary electric product without CB tiers can correct its stored five deals safely",async()=>{
+  const f=makeFixture();
+  f.store["products/electric"]={
+    companyId:"c",name:"とくする電気",revenue:10000
+  };
+  const before=structuredClone({count:f.store["records/r1"].results.electric.count,
+    teamId:f.store["records/r1"].teamId,uid:f.store["records/r1"].uid,
+    date:f.store["records/r1"].date});
+  const result=await f.run();
+  assert.equal(result.totalRevenue,50000);
+  assert.equal(f.store["records/r1"].results.electric.revenuePerUnit,10000);
+  assert.equal(f.store["records/r1"].results.electric.count,before.count);
+  assert.equal(f.store["records/r1"].teamId,before.teamId);
+  assert.equal(f.store["records/r1"].uid,before.uid);
+  assert.equal(f.store["records/r1"].date,before.date);
+  assert.equal(Object.keys(f.store).filter(x=>x.startsWith("privateRevenueCorrectionAudits/")).length,1);
+});
+
+test("Legacy CB-separated products are not automatically repriced from product.revenue",async()=>{
+  for(const value of [
+    {companyId:"c",name:"NURO光",revenue:10000,cashbackOptions:[0,20000]},
+    {companyId:"c",name:"NURO光 CB20000",revenue:10000},
+    {companyId:"c",name:"NURO光",revenue:null}
+  ]){
+    const f=makeFixture();
+    f.store["products/electric"]=value;
+    await assert.rejects(f.run(),{code:"failed-precondition"});
+    assert.equal(f.store["records/r1"].totalRevenue,10000);
+    assert.equal(Object.keys(f.store).filter(x=>x.startsWith("privateRevenueCorrectionAudits/")).length,0);
+  }
+});
