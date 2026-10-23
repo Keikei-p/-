@@ -32,7 +32,7 @@ function calculateOnePriceCorrection(record,product,input,ErrorType=Error){
   const explicit=Array.isArray(product.pricingOptions) && product.pricingOptions.length>0;
   const legacyCbTiers=Array.isArray(product.cashbackOptions) &&
     product.cashbackOptions.some(x=>Number(x)>0);
-  const taggedCbName=/(?:CB|キャッシュバック)[\\s（(:：]*[￥¥]?[0-9,]+/i.test(String(product.name||""));
+  const taggedCbName=/(?:CB|キャッシュバック)[\s（(:：]*[￥¥]?[0-9,]+/i.test(String(product.name||""));
   // Old non-CB products legitimately store one revenue number rather than
   // pricingOptions. Their known master price may be used for an OWNER-approved
   // correction, but never infer a price for a legacy cashback tier.
