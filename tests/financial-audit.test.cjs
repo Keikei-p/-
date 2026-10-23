@@ -103,6 +103,35 @@ test("NURO historical CB price is not retroactively replaced if the current prod
   assert.equal(raw(saved),before);
 });
 
+test("Old electric record without cashback field is compared against its only valid CB0 price",()=>{
+  const v=audit();
+  const old={id:"electric-legacy",date:"2026-10-22",
+    results:{electric:{productId:"electric",productName:"とくする電気",
+      count:5,revenuePerUnit:2000}},
+    totalCount:5,totalRevenue:10000
+  };
+  const saved=raw(old);
+  const findings=v.auditFinancialRecords([old],catalog);
+  assert(findings.some(f=>f.type==="master_price_difference"));
+  assert.equal(raw(old),saved);
+});
+
+test("Missing NURO cashback selection must be flagged, never default all deals to CB0 25000",()=>{
+  const v=audit();
+  const nuro={id:"nuro",name:"NURO光",pricingOptions:[
+    {cashback:0,revenuePerUnit:25000},
+    {cashback:20000,revenuePerUnit:22500}
+  ]};
+  const prior={id:"legacy-unknown",date:"2026-10-22",
+    results:{"nuro_legacy":{productId:"nuro",productName:"NURO光",count:9,revenuePerUnit:20000}},
+    totalCount:9,totalRevenue:180000};
+  const stored=raw(prior);
+  const findings=v.auditFinancialRecords([prior],[nuro]);
+  assert(findings.some(f=>f.type==="missing_cb_plan"));
+  assert(!findings.some(f=>f.type==="master_price_difference"));
+  assert.equal(raw(prior),stored);
+});
+
 test("Legacy CB2000 revenue fallback is flagged for review without assuming an automatic 50000 correction",()=>{
   const v=audit();
   const oldProduct={id:"electric",name:"とくする電気",revenue:10000,cashbackOptions:[0,2000]};
