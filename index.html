@@ -32014,12 +32014,23 @@ function auditFinancialRecords(monthlyRecords, currentProducts) {
 
       // A mismatch is NOT proof of an error: past approved prices may differ.
       // Comparing by productId + cashback avoids mixing unrelated plans.
-      if (units > 0 && row.productId && productById.has(row.productId) &&
-          row.cashback != null) {
+      if (units > 0 && row.productId && productById.has(row.productId)) {
         const product = productById.get(row.productId);
-        const cashback = Number(row.cashback);
         const options = getProductPricingOptions(product);
-        const matching = options.find(option => Number(option.cashback) === cashback);
+        const missingPlan = row.cashback == null;
+        // Legacy CB0-only records may have no cashback field at all.
+        // With multiple CB plans, do NOT guess which plan was contracted.
+        if (missingPlan && options.length > 1) {
+          add(record, "missing_cb_plan",
+            (row.productName || product.name || "商材") +
+            "：実績にCBプランが保存されていないため、単価を確定できません。");
+        }
+        const cashback = missingPlan && options.length === 1
+          ? Number(options[0].cashback)
+          : Number(row.cashback);
+        const matching = missingPlan && options.length > 1
+          ? null
+          : options.find(option => Number(option.cashback) === cashback);
         // Legacy parent products did not store explicit CB-specific prices.
         // The former compatibility rule substituted cashback amount as
         // "revenuePerUnit", which can result in 5 x CB2000 = ¥10,000
