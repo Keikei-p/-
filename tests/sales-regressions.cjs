@@ -864,3 +864,91 @@ test('financial screens are denied by default for invited members and leaders',(
   assert(rules.includes("request.resource.data.canViewUnitPrice == false"));
   assert(rules.includes("getAfter(memberPath(request.resource.data.companyId, userId)).data.canViewUnitPrice"));
 });
+
+
+test('CB amount is never used as sales revenue: approved unit rate times count only',()=>{
+  const ctx=context(['getProductPricingOptions','verifyNewRecordPricing','calculateResultsTotals'],{
+    parseLegacyCashbackProductName:()=>({hasCashbackPlan:false}),
+    normalizeCashbackOptions:values=>[...new Set([0,...(values||[])])].sort((a,b)=>a-b)
+  });
+  const legacy={id:'legacy',name:'旧CB商材',revenue:10000,cashbackOptions:[0,2000,20000]};
+  const options=ctx.getProductPricingOptions(legacy);
+  assert.equal(options.find(p=>p.cashback===0).revenuePerUnit,10000);
+  assert.equal(options.find(p=>p.cashback===2000).revenuePerUnit,null);
+  assert.equal(options.find(p=>p.cashback===20000).revenuePerUnit,null);
+  assert.match(ctx.verifyNewRecordPricing({x:{productId:'legacy',cashback:2000,count:5,revenuePerUnit:2000}},[legacy]),/旧形式/);
+
+  const electric={id:'electric',name:'とくする電気',pricingOptions:[{cashback:0,revenuePerUnit:10000}]};
+  const nuro={id:'nuro',name:'NURO光',pricingOptions:[
+    {cashback:0,revenuePerUnit:25000},{cashback:20000,revenuePerUnit:22500}]};
+  const rows={
+    electric:{productId:'electric',cashback:0,count:5,revenuePerUnit:10000},
+    nuroBase:{productId:'nuro',cashback:0,count:2,revenuePerUnit:25000},
+    nuroCB:{productId:'nuro',cashback:20000,count:3,revenuePerUnit:22500}
+  };
+  assert.equal(ctx.verifyNewRecordPricing(rows,[electric,nuro]),'');
+  assert.equal(ctx.calculateResultsTotals(rows).count,10);
+  assert.equal(ctx.calculateResultsTotals(rows).revenue,167500);
+  assert.match(ctx.verifyNewRecordPricing({
+    a:{productId:'electric',cashback:0,count:5,revenuePerUnit:2000}
+  },[electric]),/単価/);
+  assert.match(ctx.verifyNewRecordPricing({
+    a:{productId:'nuro',cashback:20000,count:1,revenuePerUnit:20000}
+  },[nuro]),/単価/);
+  const missing={id:'missing',pricingOptions:[{cashback:0,revenuePerUnit:null}]};
+  assert.match(ctx.verifyNewRecordPricing({
+    a:{productId:'missing',cashback:0,count:1,revenuePerUnit:0}
+  },[missing]),/単価/);
+});
+
+test('Product editor forbids blank, fractional and duplicate revenue prices',()=>{
+  const c=context(['readPricingOptions']);
+  const container=rows=>({querySelectorAll:()=>rows.map(([cb,rate])=>({
+    querySelector:selector=>({value:selector.includes('pricing-cashback')?cb:rate})
+  }))});
+  assert.equal(c.readPricingOptions(container([['0','10000']])).options[0].revenuePerUnit,10000);
+  for(const rows of [[['20000','']],[['0','']],[['0','100.1']],[['0','9007199254740992']],[['0','2000'],['0','3000']]]){
+    assert.notEqual(c.readPricingOptions(container(rows)).error,'');
+  }
+  assert.equal(c.readPricingOptions(container([['0','0']])).error,'');
+});
+
+test('Unverified CB rate displays as missing rather than falsely showing zero yen',()=>{
+  const ctx=context(['getProductPricingOptions','pricingOptionsText'],{
+    parseLegacyCashbackProductName:()=>({hasCashbackPlan:false}),
+    normalizeCashbackOptions:values=>[...new Set([0,...(values||[])])].sort((a,b)=>a-b),
+    canCurrentUserViewUnitPrice:()=>true,
+    formatCashbackPlanLabel:amount=>'CB'+amount,
+    formatYen:amount=>'¥'+amount
+  });
+  const text=ctx.pricingOptionsText({name:'架空',revenue:10000,cashbackOptions:[0,2000]});
+  assert.match(text,/CB2000 売上単価未設定/);
+  assert(!text.includes('CB2000 ¥2000'));
+});
+
+test('Existing unchanged prices are not overwritten; invalid new and changed counts stop saving',()=>{
+  const c=context(['getProductPricingOptions','verifyNewRecordPricing','verifyChangedRecordPricing',
+    'normalizeExistingResultMap','resultVariantKey','validateFinancialRecordForSave','recordConflict'],{
+    parseLegacyCashbackProductName:()=>({hasCashbackPlan:false}),
+    normalizeCashbackOptions:values=>[...new Set([0,...(values||[])])].sort((a,b)=>a-b)
+  });
+  const electric={id:'e',pricingOptions:[{cashback:0,revenuePerUnit:10000}]};
+  const old={e:{productId:'e',cashback:0,count:5,revenuePerUnit:2000}};
+  const untouched=JSON.stringify(old);
+  assert.equal(c.verifyChangedRecordPricing(old,old,[electric]),'');
+  assert.match(c.verifyChangedRecordPricing({
+    e:{productId:'e',cashback:0,count:6,revenuePerUnit:2000}
+  },old,[electric]),/単価/);
+  assert.equal(c.verifyChangedRecordPricing({
+    e:{productId:'e',cashback:0,count:6,revenuePerUnit:10000}
+  },old,[electric]),'');
+  assert.equal(JSON.stringify(old),untouched);
+  assert.equal(c.validateFinancialRecordForSave({
+    results:{e:{productId:'e',cashback:0,count:5,revenuePerUnit:10000}},
+    totalCount:5,totalRevenue:50000
+  }),true);
+  assert.throws(()=>c.validateFinancialRecordForSave({
+    results:{e:{productId:'e',cashback:0,count:5,revenuePerUnit:2000}},
+    totalCount:5,totalRevenue:50000
+  }),/合計/);
+});
