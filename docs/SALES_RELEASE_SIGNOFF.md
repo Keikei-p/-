@@ -1,29 +1,51 @@
-# 本番保護に関する変更のレビュー記録（2026-10-22）
+# 本番リリース審査：売上計算修正＋過去実績の個別訂正（2026-10-23）
 
-## 対象
-GitHub `Keikei-p/-`; Firebase `sales-management-cc116`。
-新URL `nico-factory.web.app` と旧URL `keikei-p.github.io/-/` を両方維持する。
+## 対象と範囲
+- PR: https://github.com/Keikei-p/-/pull/83
+- 対象: `Keikei-p/-` → `main` / Firebase `sales-management-cc116`
+- 新: https://nico-factory.web.app/
+- 旧: https://keikei-p.github.io/-/
+- **既存のFirestoreデータの一括変更・削除・自動売上再計算は行わない。**
 
-## 変更の目的
-CodexとAIが作業しても、金額・単価・件数・既存実績の保存値を書き換えず、未完成のFinance GatewayやSecurity Rulesを本番へ誤展開しないための管理基盤。
+## 実装済み（コードレビュー・エミュレータでの検証対象）
+1. CBを売上単価として流用しない。新規/件数変更分は商材ごとの明示的な収益単価で検算する。
+2. 単価が未確認の旧CB商品は推測で登録せず、オーナーへ確認を求める。
+3. 過去実績はオーナーが1件・1商材・1CBプランごとに、訂正前後の金額を確認して理由を入力。
+4. Firebase Callable Function `correctRecordRevenue` が署名済みログイン・オーナー権限・会社/商材/実績の所属・単価・保存時刻・件数を確認。
+5. Firestoreの原本レコード更新と、**金額を含む非公開監査/復旧スナップショットの作成を同一トランザクション**で実施。
+6. 元の`uid`、`date`、`teamId`、件数、作成日時、担当者および班の履歴は変更しない。
+7. 古い記録の件数を通常画面から変更するとき、誤単価を勝手に新単価に入れ替えない。
+8. 金額確認パネルはOwnerだけに表示。月の商材集計が0件でも監査警告を消さない。
+9. 原本が不整合、CB不明、商品単価不明、重複候補、履歴が先に変更された場合は書込みを拒否。
+10. `privateRevenueCorrectionAudits` はクライアントから拒否されるコレクション名（Firestoreルールの既定拒否）。**監査レコードを既存の一般読取り可能`recordCorrections`には記録しない**。
 
-## このPRの内容
-- `AGENTS.md`: Codexの変更禁止事項・両URLの維持・安全なリリース手順を規定。
-- `scripts/check-sales-safe-pr.mjs`: 保護対象ファイルの変更に対して管理者レビューの合図とリリース記録を要求。
-- `.github/workflows/sales-safety-guard.yml`: PR差分を秘密鍵なしで検査。
-- `.github/workflows/firebase-production-deploy.yml`: **本番Firestore Rulesのpushによる自動展開を停止し、mainからの明示入力付き手動実行のみに制限**。
-- `docs/SALES_SAFE_CUTOVER.md`: 両URL・旧ブラウザキャッシュ・実績保存・権限テストを本番切替前に義務化。
-- 本記録（将来の金額分離リリースで再作成すること）。
+## 自動検証記録
+- 最新HEADの `Sales App Validation` で構文、回帰テスト、Functions訂正テスト、Firestore Rulesエミュレータを必須合格させる。
+- `Sales app protected change gate` もラベル、署名付き本記録、レビュー後に合格を確認する。
+- 以前の検証成功は最新HEADの保証ではない。最新チェックURLを確認して記録する。
 
-## 本番データ
-Firestoreの `products`, `records`, `users`, `companies`, `teams`, `invitations` その他すべてのドキュメントに対して read/write/migration/delete を**行わない**。
-`index.html`, `firestore.rules`, `service-worker.js`, `manifest.webmanifest`, Firebase Hostingの設定値、Cloudflareの本番Workerコードにも変更なし。
+## 未確認事項・停止条件
+- [ ] Firebase/Google Cloudで実際に完了したバックアップを確認（実在・容量・復元可能性の検証）。
+- [ ] 別の環境への復元検証（全件数・日時・所属・ID・単価のハッシュ照合）。
+- [ ] 現行Firestoreの商材マスターで、対象商品・各NURO CBプランの正しい売上単価と有効日をオーナーが照合。
+- [ ] 旧URL/新URLのログイン動作を、オーナーと未許可ユーザーの実アカウントで確認（ブラウザ/旧PWA含む）。
+- [ ] 本番Firestoreルールの、売上閲覧未許可者への生データ漏洩対策を検証。**現在の`records`/`products`購読方式は画面非表示だけで金額を完全に隠せない**。
+- [ ] Cloud Billing/BlazeとCloud Functionsの利用料金・クォータを確認。
+- [ ] GitHub管理者が差分を確認し`sales-production-reviewed`を付与。
+- [ ] 管理者の実署名・日付、初回リリース時刻、切戻しプランの承認。
+- [ ] クライアント静的公開だけでなく、Callable Functionの**明示的な手動デプロイ**を別に行う。
+- [ ] バックアップ証跡とOwner承認後に限り、Cloud Functions実行環境に`FINANCE_CORRECTION_ENABLED=OWNER_APPROVED_WITH_VERIFIED_BACKUP`を設定。
+- [ ] まずバックアップ・単価・権限を確認した**対象1件**で訂正し、原本・非公開監査・ランキング/グラフの整合性を確認する。
 
-## 保護機構の限界
-- PR検査は**GitHubのmainブランチ保護でrequired statusに指定しない限り、直接pushを防げない**。GitHub管理画面でブランチ保護を有効にするまでは未完成。
-- `sales-production-reviewed` ラベルと変更ごとのレビュー記録は差分確認の合図に過ぎず、金額漏洩リスクを解消するものではない。
-- この変更は安全運用の基盤であり、Finance Gatewayの本番切替とは完全に別。
+### 今すぐ自動公開してはいけない理由
+`main`マージでは新URLのFirebase Hosting用静的アセットは自動デプロイされ得るが、上記Callable Functionは自動デプロイされない。**静的UIだけのマージは訂正ボタンが利用できない中途半端な状態になる。** またFirestore既存本番の全件照合と復元確認はGitHub Actionsエミュレータ検証では代替できない。
 
-## 人間の承認欄
-このファイルはAIが準備したレビュー用記録。**実際のOwner承認や本番データ照合済みの証明ではない**。
-管理者は差分・CI結果を確認してからPRに `sales-production-reviewed` ラベルを付け、マージを判断する。
+## オーナーによる承認欄（AIは代筆・捏造しない）
+- GitHub管理者署名: **未署名**
+- バックアップ/復元照合の証跡: **未確認**
+- 売上単価・有効日と誤売上の原本照合: **未確認**
+- 現場ユーザー向け新旧URLリリース許可: **未承認**
+- Callable Function本番デプロイ許可: **未承認**
+- 訂正機能の本番有効化許可: **未承認**
+
+オーナーは差分と単価を確認してから承認する。**この記録の作成は本番公開承認・バックアップ完了を意味しない。**

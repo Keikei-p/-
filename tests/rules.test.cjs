@@ -181,3 +181,21 @@ test('leader without explicit finance grants cannot read or edit revenue goals',
   const owner=dbFor('owner');
   assert.equal((await getDoc(doc(owner,'revenueGoals','private-a'))).data().targetRevenue,990000);
 });
+
+
+test('private correction recovery audit stays inaccessible to every client role',async()=>{
+  await env.withSecurityRulesDisabled(async c=>{
+    await setDoc(doc(c.firestore(),'privateRevenueCorrectionAudits','private-test'),{
+      companyId:company,recordId:'r1',originalRecordSnapshot:{
+        totalRevenue:10000,results:{electric:{count:5,revenuePerUnit:2000}}
+      },before:{totalRevenue:10000},after:{totalRevenue:50000}
+    });
+  });
+  for(const uid of ['owner','leaderA','leaderB','helper','foreign']){
+    const db=dbFor(uid);
+    const ref=doc(db,'privateRevenueCorrectionAudits','private-test');
+    await assertFails(getDoc(ref));
+    await assertFails(setDoc(doc(db,'privateRevenueCorrectionAudits','client-create-'+uid),{companyId:company}));
+    await assertFails(updateDoc(ref,{companyId:company}));
+  }
+});

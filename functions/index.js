@@ -6,6 +6,7 @@ const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestor
 const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { setGlobalOptions } = require("firebase-functions/v2");
+const { executeConfirmedCorrection } = require("./finance-correction");
 
 initializeApp();
 
@@ -86,6 +87,22 @@ async function getCompanyContext(uid) {
     memberData: memberSnap.data() || {},
   };
 }
+
+// OFF by default. Activating the OWNER-only callable requires an independent,
+// verified recovery copy and explicit production release sign-off. No automatic
+// recalculation is ever performed, not even after deploying this function.
+exports.correctRecordRevenue = onCall({maxInstances:2}, async request => {
+  const {uid}=requireVerifiedUser(request);
+  if(process.env.FINANCE_CORRECTION_ENABLED!=="OWNER_APPROVED_WITH_VERIFIED_BACKUP")
+    throw new HttpsError("failed-precondition","金額訂正は安全確認が完了するまで停止しています。");
+  const context=await getCompanyContext(uid);
+  if(context.memberData.companyRole!=="owner" ||
+     context.userData.companyRole!=="owner")
+    throw new HttpsError("permission-denied","金額訂正はオーナーのみ可能です。");
+  return executeConfirmedCorrection({
+    db,FieldValue,HttpsError,uid,companyId:context.companyId,input:request.data
+  });
+});
 
 exports.createCompany = onCall(async (request) => {
   const { uid, email } = requireVerifiedUser(request);
