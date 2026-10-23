@@ -8230,6 +8230,32 @@ function currentProductDisplayName(result) {
 }
 
 
+// Dashboard, ranking, graph and history must share ONE calculation rule.
+// Pricing changes intentionally apply to all displayed past deals, but the
+// stored Firestore record and its original unit-price snapshot are untouched.
+function currentCatalogRevenueUnitForDisplay(result) {
+  const saved = result?.revenuePerUnit;
+  const product = products.find(p => p.id === result?.productId);
+  if (!product) return saved;
+
+  const options = getProductPricingOptions(product);
+  const cbPresent = result?.cashback !== null &&
+    result?.cashback !== undefined && result?.cashback !== "";
+  const cashback = cbPresent ? Number(result.cashback) : null;
+  if (cbPresent && (!Number.isSafeInteger(cashback) || cashback < 0))
+    return saved;
+  // Do not guess the NURO price when legacy rows omit the CB tier.
+  const matches = cbPresent
+    ? options.filter(option => option.cashback === cashback)
+    : (options.length === 1 ? options : []);
+  if (matches.length !== 1) return saved;
+  const price = matches[0].revenuePerUnit;
+  if (price === null || price === undefined || price === "" ||
+      !Number.isSafeInteger(Number(price)) || Number(price) < 0)
+    return saved;
+  return Number(price);
+}
+
 function getDisplayRecordResults(
   record
 ) {
@@ -8251,9 +8277,10 @@ function getDisplayRecordResults(
         currentProductDisplayName(
           result
         ),
-      ...(canViewRevenue
-        ? {}
-        : {revenuePerUnit: 0})
+      // Display-only repricing; do NOT write rates or totals to Firestore.
+      revenuePerUnit: canViewRevenue
+        ? currentCatalogRevenueUnitForDisplay(result)
+        : 0
     })
   );
 
@@ -13303,6 +13330,10 @@ function startRealtimeListeners() {
         prepareProductInputList(
           draftResults
         );
+
+        // Product unit-price changes affect historical DISPLAY totals.
+        // Refresh without changing any stored records or the input draft.
+        renderDashboard();
 
       },
       error => {
