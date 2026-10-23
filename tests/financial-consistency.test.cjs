@@ -153,3 +153,23 @@ test("Archived zero unit price is never replaced by current product price",()=>{
   assert.equal(v.getResultProductPresentation({
     productId:"zero",count:3,revenuePerUnit:0}).revenuePerUnit,0);
 });
+
+test("Product editor rejects blank, fractional and unsafe amounts; preserves valid CB/yen values",()=>{
+  const v=context(["readPricingOptions"]);
+  const container=(rows)=>({querySelectorAll:()=>rows.map(([cb,rate])=>({
+    querySelector:selector=>({value:selector.includes("pricing-cashback")?cb:rate})
+  }))});
+  const good=v.readPricingOptions(container([["20000","22500"],["0","25000"]]));
+  assert.equal(good.error,"");
+  assert.equal(JSON.stringify(good.options),JSON.stringify([
+    {cashback:0,revenuePerUnit:25000},
+    {cashback:20000,revenuePerUnit:22500}
+  ]));
+  assert.equal(v.readPricingOptions(container([["0","0"]])).error,"",
+    "zero revenue can be intentional");
+  for(const [cb,rate] of [["","10000"],["0",""],["1.5","10000"],
+    ["0","10000.7"],["0","9007199254740992"],["NaN","10000"],["-1","10000"]]){
+    assert.notEqual(v.readPricingOptions(container([[cb,rate]])).error,"");
+  }
+  assert.match(v.readPricingOptions(container([["0","10000"],["0","20000"]])).error,/重複/);
+});
