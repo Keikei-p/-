@@ -134,8 +134,8 @@ test('Transactional correction replaces results and preserves metadata', async (
   for (const results of [{A:{count:1,revenuePerUnit:100}}, {C:{count:4,revenuePerUnit:300}}, {}]) {
     let stored={companyId:'c',uid:'u',date:'2026-10-06',teamId:'a',createdAt:'keep',createdByUid:'creator',custom:'keep',results:{A:{count:3},B:{count:2}}};
     const before=structuredClone(stored);
-    const data={results,totalCount:Object.values(results).reduce((n,r)=>n+r.count,0)};
-    const ctx=context(['persistDailyRecord','recordRevision','recordConflict','getRecordResults','calculateResultsTotals'],{
+    const data={results,totalCount:Object.values(results).reduce((n,r)=>n+r.count,0),totalRevenue:Object.values(results).reduce((n,r)=>n+r.count*r.revenuePerUnit,0)};
+    const ctx=context(['persistDailyRecord','validateFinancialRecordForSave','recordRevision','recordConflict','getRecordResults','calculateResultsTotals'],{
       db:{},query:()=>{},where:()=>{},recordsCollectionQuery:()=>{},
       getDocsFromServer:async()=>({size:1,docs:[{id:'r'}]}),
       runTransaction:async(db,callback)=>callback({get:async()=>({exists:()=>true,id:'r',data:()=>stored}),
@@ -178,7 +178,7 @@ test('Only owner can correct another team; self and own team remain editable',()
 test('Stale edits, deleted records and simultaneous same-day registration stop without writes',async()=>{
   const initial={uid:'u',date:'2026-10-06',teamId:'a',results:{A:{count:1}}};
   let current=structuredClone(initial),writes=0;
-  const ctx=context(['persistDailyRecord','recordRevision','recordConflict'],{db:{},query:()=>{},where:()=>{},recordsCollectionQuery:()=>{},
+  const ctx=context(['persistDailyRecord','validateFinancialRecordForSave','recordRevision','recordConflict'],{db:{},query:()=>{},where:()=>{},recordsCollectionQuery:()=>{},
     getDocsFromServer:async()=>({size:0,docs:[]}),
     runTransaction:async(db,callback)=>callback({get:async()=>({exists:()=>!!current,id:'r',data:()=>current}),set:()=>writes++})});
   await assert.rejects(ctx.persistDailyRecord({id:'r'},{},null,null),{code:'record-conflict'});

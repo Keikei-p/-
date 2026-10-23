@@ -4376,6 +4376,31 @@ body.product-reordering .product-list {
     margin-left: 0;
   }
 }
+  .financial-audit-alert {
+    margin: 0 0 12px;
+    padding: 12px 14px;
+    border: 1px solid #f59e0b;
+    border-radius: 12px;
+    background: #fffbeb;
+    color: #78350f;
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  .financial-audit-alert summary { cursor: pointer; font-weight: 800; }
+  .financial-audit-alert p { margin: 8px 0 0; overflow-wrap: anywhere; }
+  .financial-correction-button {
+    border: 1px solid #b45309;
+    border-radius: 9px;
+    padding: 10px 12px;
+    background: #fff;
+    color: #92400e;
+    font-size: 12px;
+    font-weight: 800;
+    text-align: left;
+    width: 100%;
+    cursor: pointer;
+  }
+  .financial-correction-button:disabled { opacity: .5; cursor: wait; }
 </style>
 </head>
 
@@ -6747,6 +6772,8 @@ import {
   onSnapshot
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
+import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js";
+
 
 const firebaseConfig = {
   apiKey: "AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
@@ -6769,6 +6796,11 @@ auth.languageCode =
 
 const db =
   getFirestore(app);
+
+// Uses Firebase Auth token and OWNER validation on the server.
+// Server callable is OFF until backup proof and explicit cost approval.
+const financeFunctions = getFunctions(app, "asia-northeast1");
+const correctRecordRevenueCall = httpsCallable(financeFunctions, "correctRecordRevenue");
 
 
 /* =====================================================
@@ -15002,8 +15034,8 @@ function getResultProductPresentation(
         : "",
     revenuePerUnit:
       Number(
-        result?.revenuePerUnit ||
-        product?.revenue ||
+        result?.revenuePerUnit ??
+        product?.revenue ??
         0
       )
   };
@@ -15113,18 +15145,15 @@ function getProductPricingOptions(
         cashback => ({
           cashback,
           /*
-            pricingOptions導入前の親商材は、
-            直前のアプリ仕様をそのまま再現して互換表示する。
+            CBはプランを識別する情報であり売上金額ではない。
+            旧形式のCB別売上単価が不明なら null のまま扱い、
+            絶対に CB 金額から収益単価を作らない。
+            既存の実績は保存時の revenuePerUnit を維持する。
           */
           revenuePerUnit:
-            cashback === 0
-              ? Number(
-                  product?.revenue ||
-                  0
-                )
-              : Number(
-                  cashback
-                )
+            cashback === 0 && product?.revenue != null
+              ? Number(product.revenue)
+              : null
         })
       );
 
@@ -15165,9 +15194,9 @@ function pricingOptionsText(
       option =>
         `${formatCashbackPlanLabel(
           option.cashback
-        )} ${formatYen(
-          option.revenuePerUnit
-        )}`
+        )} ${option.revenuePerUnit == null
+          ? "売上単価未設定"
+          : formatYen(option.revenuePerUnit)}`
     )
     .join(" / ") +
     (
@@ -15454,154 +15483,37 @@ function renderPricingOptionEditor(
 }
 
 
-function readPricingOptions(
-  container
-) {
-
-  const rows =
-    Array.from(
-      container.querySelectorAll(
-        ".pricing-option-row"
-      )
-    );
-
-
-  if (
-    rows.length === 0
-  ) {
-
-    return {
-      error:
-        "収益単価を1つ以上設定してください。",
-      options: []
-    };
-
-  }
-
-
-  if (
-    rows.length > 15
-  ) {
-
-    return {
-      error:
-        "単価違いは最大15項目までです。",
-      options: []
-    };
-
-  }
-
-
-  const options =
-    [];
-
-  const seenCashbacks =
-    new Set();
-
-
-  for (
-    const row of rows
-  ) {
-
-    const cashback =
-      Number(
-        row.querySelector(
-          "input[data-pricing-cashback]"
-        )?.value ||
-        0
-      );
-
-    const revenuePerUnit =
-      Number(
-        row.querySelector(
-          "input[data-pricing-revenue]"
-        )?.value ||
-        0
-      );
-
-
-    if (
-      !Number.isFinite(
-        cashback
-      ) ||
-      cashback < 0
-    ) {
-
-      return {
-        error:
-          "CB金額は0円以上で入力してください。",
-        options: []
-      };
-
+function readPricingOptions(container) {
+  const rows = Array.from(container.querySelectorAll(".pricing-option-row"));
+  if (!rows.length) return {error:"収益単価を1つ以上設定してください。",options:[]};
+  if (rows.length>15) return {error:"単価違いは最大15項目までです。",options:[]};
+  const options=[];
+  const seenCashbacks=new Set();
+  for (const row of rows) {
+    const cashbackRaw=row.querySelector("input[data-pricing-cashback]")?.value;
+    const revenueRaw=row.querySelector("input[data-pricing-revenue]")?.value;
+    // Money input left blank must never silently become 0 yen.
+    if (cashbackRaw==null || revenueRaw==null ||
+        !String(cashbackRaw).trim() || !String(revenueRaw).trim()) {
+      return {error:"CB金額と収益単価を両方入力してください。",options:[]};
     }
-
-
-    if (
-      !Number.isFinite(
-        revenuePerUnit
-      ) ||
-      revenuePerUnit < 0
-    ) {
-
-      return {
-        error:
-          "収益単価は0円以上で入力してください。",
-        options: []
-      };
-
+    const cashback=Number(cashbackRaw);
+    const revenuePerUnit=Number(revenueRaw);
+    // Reject fractions instead of silently rounding the customer's agreed amount.
+    if (!Number.isSafeInteger(cashback) || cashback<0) {
+      return {error:"CB金額は0円以上の整数で入力してください。",options:[]};
     }
-
-
-    const normalizedCashback =
-      Math.round(
-        cashback
-      );
-
-
-    if (
-      seenCashbacks.has(
-        normalizedCashback
-      )
-    ) {
-
-      return {
-        error:
-          "同じCB金額が重複しています。",
-        options: []
-      };
-
+    if (!Number.isSafeInteger(revenuePerUnit) || revenuePerUnit<0) {
+      return {error:"収益単価は0円以上の整数で入力してください。",options:[]};
     }
-
-
-    seenCashbacks.add(
-      normalizedCashback
-    );
-
-
-    options.push({
-      cashback:
-        normalizedCashback,
-      revenuePerUnit:
-        Math.round(
-          revenuePerUnit
-        )
-    });
-
+    if (seenCashbacks.has(cashback)) {
+      return {error:"同じCB金額が重複しています。",options:[]};
+    }
+    seenCashbacks.add(cashback);
+    options.push({cashback,revenuePerUnit});
   }
-
-
-  options.sort(
-    (a, b) =>
-      a.cashback -
-      b.cashback
-  );
-
-
-  return {
-    error: "",
-    options
-  };
-
+  options.sort((a,b)=>a.cashback-b.cashback);
+  return {error:"",options};
 }
 
 
@@ -17059,6 +16971,18 @@ function openEditProductModal(
       product
     )
   );
+
+  // In the old catalog, cashback money was sometimes mistaken for earnings.
+  // Never convert that guessed value into an explicit saved price on edit.
+  const needsVerifiedCashbackPrices =
+    (!Array.isArray(product.pricingOptions) || product.pricingOptions.length === 0) &&
+    Array.isArray(product.cashbackOptions) &&
+    product.cashbackOptions.some(value => Number(value) > 0);
+  if (needsVerifiedCashbackPrices) {
+    editProductPricingEditor.querySelectorAll("input[data-pricing-revenue]")
+      .forEach(input => { input.value = ""; });
+    showError("旧形式のCB別売上単価は未確認です。全CBプランの収益単価を確認して入力してください。");
+  }
 
   productModal.style.display =
     "flex";
@@ -20580,11 +20504,11 @@ function buildProductInputGroups(
             productName:
               product.name,
             label:
-              hasPlans
-                ? formatCashbackPlanLabel(
-                    cashback
-                  )
-                : "件数",
+              (option.revenuePerUnit == null && !snapshot)
+                ? formatCashbackPlanLabel(cashback) + "（売上単価未設定）"
+                : (hasPlans
+                  ? formatCashbackPlanLabel(cashback)
+                  : "件数"),
             cashback,
             count:
               Number(
@@ -21321,6 +21245,59 @@ function validateProductInputRows() {
 
 }
 
+/*
+  新規実績は、入力欄に含まれる価格を現在の商材のCB別価格と照合する。
+  訂正済み・過去の実績は当時の単価を維持するため照合対象外。
+  価格値はメンバー向けエラーメッセージに含めない。
+*/
+function verifyNewRecordPricing(results, productCatalog) {
+  const catalog = new Map((productCatalog || []).map(p => [p.id,p]));
+  for (const row of Object.values(results || {})) {
+    if (!row?.productId || !catalog.has(row.productId)) {
+      return "商材が更新・削除されています。再読み込みして管理者に確認してください。";
+    }
+    const product = catalog.get(row.productId);
+    // Old records may legitimately use a legacy CB rule, but new sales must
+    // never confuse the customer's cashback amount with our earned revenue.
+    const explicit = Array.isArray(product.pricingOptions) && product.pricingOptions.length > 0;
+    const oldCB = !explicit && Array.isArray(product.cashbackOptions) &&
+      product.cashbackOptions.some(value => Number(value) > 0);
+    if (oldCB || (!explicit && product.revenue == null)) {
+      return "旧形式の商材単価が未設定です。オーナーがCB別売上単価を確認するまで登録できません。";
+    }
+    const cb = Number(row.cashback ?? 0);
+    const price = Number(row.revenuePerUnit);
+    const plans = getProductPricingOptions(product);
+    const matching = plans.find(option => Number(option.cashback) === cb);
+    if (!matching || !Number.isSafeInteger(cb) || cb < 0) {
+      return "選択中のCBプランが現在の商材設定と一致しません。再読み込みしてください。";
+    }
+    if (!Number.isSafeInteger(price) || price < 0 ||
+        price !== Number(matching.revenuePerUnit)) {
+      return "商材の保存単価が現在の設定と一致しません。再読み込みしてから登録してください。";
+    }
+  }
+  return "";
+}
+
+/*
+  Adding a count to an old record must NOT silently multiply it by an old,
+  no-longer-approved unit price. Unchanged historical rows stay untouched.
+  A mismatch asks the Owner to review its previous unit price first.
+*/
+function verifyChangedRecordPricing(nextResults, storedResults, productCatalog) {
+  const oldMap = normalizeExistingResultMap(storedResults);
+  for (const row of Object.values(nextResults || {})) {
+    const key = resultVariantKey(row.productId,row.cashback ?? 0);
+    const previous = oldMap[key];
+    const previousCount = Number(previous?.count || 0);
+    if (Number(row.count) === previousCount) continue;
+    const problem = verifyNewRecordPricing({[key]:row},productCatalog);
+    if (problem) return "件数変更前に単価の再確認が必要です。"+problem;
+  }
+  return "";
+}
+
 function calculateResultsTotals(
   results
 ) {
@@ -21536,7 +21513,36 @@ function recordConflict(message) {
   return error;
 }
 
+function validateFinancialRecordForSave(data) {
+  const rows = data?.results;
+  if (!rows || typeof rows !== "object" || Array.isArray(rows)) {
+    throw recordConflict("商材明細を確認できません。履歴を変更せず、再読込してください。");
+  }
+  let count = 0;
+  let revenue = 0;
+  for (const item of Object.values(rows)) {
+    const n = Number(item?.count);
+    const rate = Number(item?.revenuePerUnit);
+    if (!Number.isSafeInteger(n) || n < 0 ||
+        !Number.isSafeInteger(rate) || rate < 0 ||
+        !Number.isSafeInteger(n * rate)) {
+      throw recordConflict("件数または単価が不正です。保存せず管理者に単価を確認してください。");
+    }
+    count += n;
+    revenue += n * rate;
+    if (!Number.isSafeInteger(count) || !Number.isSafeInteger(revenue)) {
+      throw recordConflict("売上合計の計算範囲を超えています。保存を中止しました。");
+    }
+  }
+  if (count !== Number(data.totalCount) || revenue !== Number(data.totalRevenue)) {
+    throw recordConflict("商材明細と売上合計が一致しません。保存を中止しました。");
+  }
+  return true;
+}
+
 async function persistDailyRecord(recordRef, data, expectedRecord, expectedRevision) {
+  // Fail closed before even attempting a write; never silently persist bad math.
+  validateFinancialRecordForSave(data);
   // サーバーで同日を確認。旧IDの実績もそのまま更新し、重複は推測で統合しない。
   const daily = await getDocsFromServer(query(
     recordsCollectionQuery(), where("uid", "==", data.uid), where("date", "==", data.date)
@@ -21864,6 +21870,17 @@ saveRecordButton.onclick =
 
 
     const existingDailyRecord = findDailyRecord(targetUid, date);
+    // Newly created records must use the product's current CB-dependent rate.
+    // Corrections of existing records must retain their historical snapshots.
+    if (!zeroResultSubmission) {
+      const priceProblem = existingDailyRecord
+        ? verifyChangedRecordPricing(results, existingDailyRecord.results, products)
+        : verifyNewRecordPricing(results, products);
+      if (priceProblem) {
+        showError(priceProblem);
+        return;
+      }
+    }
     const targetTeamId = recordCorrectionTeam.value || null;
     const isOwner = isCurrentCompanyOwner();
     const isLeader = isCurrentTeamLeader();
@@ -26291,7 +26308,8 @@ function renderDashboard() {
 
 
   renderProductSummary(
-    productMap
+    productMap,
+    monthly
   );
 
 
@@ -26900,6 +26918,9 @@ function renderAnalysisProductCards(
                     <span class="analysis-nav-revenue">
                       ${formatYen(item.revenue)}
                     </span>
+                    ${isCurrentCompanyOwner() && Number(item.count) > 0
+                      ? `<span class="analysis-nav-revenue" style="font-size:10px;color:#64748b;">保存額の平均：${formatYen(Math.round(Number(item.revenue) / Number(item.count)))}/件</span>`
+                      : ""}
                   `
                   : ""
               }
@@ -31926,13 +31947,326 @@ function renderTeamRanking(
    商材別
 ===================================================== */
 
+/*
+  金額監査は読み取り専用。保存済みの実績単価を現行単価で
+  再計算・上書きしてはいけない（改定前の正しい履歴を守るため）。
+  差異はオーナーにだけ「要確認」として表示する。
+*/
+/*
+  Produce a single-CB/single-product price correction candidate.
+  Never modify the original record, never guess which NURO CB was selected,
+  and never overwrite historical prices without Owner confirmation.
+*/
+function planFinancialCorrection(record, catalog, productId, cashback) {
+  if (!record || !record.id || !record.companyId ||
+      !record.results || Array.isArray(record.results) ||
+      typeof record.results !== "object") {
+    throw recordConflict("この履歴は金額訂正の対象にできません。管理者に確認してください。");
+  }
+  const product = (catalog || []).find(p => p.id === productId);
+  // Explicit per-CB price configuration is the only supported correction source.
+  if (!product || !Array.isArray(product.pricingOptions) || !product.pricingOptions.length) {
+    throw recordConflict("商材のCB別単価設定が未確認です。商材管理で確認してください。");
+  }
+  if (!Number.isSafeInteger(Number(cashback)) || Number(cashback) < 0) {
+    throw recordConflict("CBプランが不正です。");
+  }
+  const options = getProductPricingOptions(product);
+  const prices = options.filter(x => Number(x.cashback) === Number(cashback));
+  if (prices.length !== 1 || !Number.isSafeInteger(Number(prices[0].revenuePerUnit)) ||
+      Number(prices[0].revenuePerUnit) < 0) {
+    throw recordConflict("対応する単価が一意に決まらないため訂正できません。");
+  }
+  const target = Number(prices[0].revenuePerUnit);
+  const source = Object.entries(record.results);
+  const matches = source.filter(([,item])=>
+    item?.productId === productId &&
+    (item.cashback == null ? (options.length === 1 && Number(cashback) === 0) :
+      Number(item.cashback) === Number(cashback)));
+  if (matches.length !== 1) {
+    throw recordConflict("同一商材・CBの明細が複数または不明です。自動訂正を中止しました。");
+  }
+  const [resultKey,existing] = matches[0];
+  const oldUnit = Number(existing.revenuePerUnit);
+  const selectedCount = Number(existing.count);
+  if (!Number.isSafeInteger(oldUnit) || oldUnit < 0 ||
+      !Number.isSafeInteger(selectedCount) || selectedCount <= 0) {
+    throw recordConflict("保存済みの単価・件数を確認できません。");
+  }
+  if (oldUnit === target) {
+    throw recordConflict("この商材の売上単価はすでに一致しています。");
+  }
+  const resultRows = Object.fromEntries(source.map(([key,item])=>
+    [key,key === resultKey ? {...item,revenuePerUnit:target} : {...item}]));
+  let count = 0,revenue = 0;
+  for (const item of Object.values(resultRows)) {
+    const units = Number(item.count), rate = Number(item.revenuePerUnit);
+    if (!Number.isSafeInteger(units) || units < 0 ||
+        !Number.isSafeInteger(rate) || rate < 0 ||
+        !Number.isSafeInteger(units * rate)) {
+      throw recordConflict("別商材に不正な値があり、合計を安全に計算できません。");
+    }
+    count += units;
+    revenue += units * rate;
+    if (!Number.isSafeInteger(count) || !Number.isSafeInteger(revenue)) {
+      throw recordConflict("件数または金額が安全な計算範囲を超えています。");
+    }
+  }
+  if (record.totalCount != null && Number(record.totalCount) !== count) {
+    throw recordConflict("元の合計件数と明細が異なります。件数履歴の確認が必要です。");
+  }
+  const baseResults = Object.values(record.results);
+  const oldCalculated = baseResults.reduce((sum,row) =>
+    sum+Number(row.count)*Number(row.revenuePerUnit),0);
+  if (!Number.isSafeInteger(oldCalculated)) {
+    throw recordConflict("訂正前の売上合計を確認できません。");
+  }
+  return {
+    productName:product.name || existing.productName || "商材",
+    productId,cashback:Number(cashback),count,
+    selectedCount,oldUnit,newUnit:target,oldCalculated,
+    newRevenue:revenue,
+    oldHeaderRevenue:Number(record.totalRevenue || 0),
+    results:resultRows,
+    difference:revenue-oldCalculated
+  };
+}
+
+/* Audit records live independently of the original record and atomically with its update. */
+function financialAuditSnapshot(record) {
+  return {
+    memberNameSnapshot:record.memberNameSnapshot || "",
+    teamId:record.teamId || null,
+    teamNameSnapshot:record.teamNameSnapshot || "",
+    workLocation:record.workLocation || "",
+    results:record.results || {},
+    totalCount:Number(record.totalCount || 0),
+    totalRevenue:Number(record.totalRevenue || 0),
+    reportStatus:record.reportStatus || "submitted"
+  };
+}
+
+async function persistConfirmedFinancialCorrection(record,plan,reason) {
+  if (!isCurrentCompanyOwner() || !currentUser?.uid ||
+      record.companyId !== currentUserData?.companyId) {
+    throw recordConflict("この操作はオーナーのみ可能です。");
+  }
+  if (typeof reason !== "string" || reason.trim().length < 5 ||
+      reason.trim().length > 200) {
+    throw recordConflict("訂正理由を5〜200文字で入力してください。");
+  }
+  // Never issue a client-side Firestore write here. The current Rules cannot
+  // always evaluate the original-record write and correction-audit creation
+  // in one client transaction (1000-expression limit). The callable uses
+  // server-side Admin authorization and ONE atomic transaction.
+  const request = {
+    recordId:record.id,
+    productId:plan.productId,
+    cashback:plan.cashback,
+    expectedOldUnit:plan.oldUnit,
+    expectedSelectedCount:plan.selectedCount,
+    expectedTotalCount:Number(record.totalCount),
+    expectedTotalRevenue:Number(record.totalRevenue),
+    expectedUpdatedAtMillis:record.updatedAt?.toMillis?.() ?? null,
+    reason:reason.trim()
+  };
+  const response = await correctRecordRevenueCall(request);
+  if (response?.data?.recordId !== record.id ||
+      !Number.isSafeInteger(Number(response.data.totalRevenue))) {
+    throw recordConflict("訂正結果を確認できません。管理者に確認してください。");
+  }
+  return {recordId:record.id,correctedRevenue:Number(response.data.totalRevenue)};
+}
+
+function auditFinancialRecords(monthlyRecords, currentProducts) {
+  const findings = [];
+  const productById = new Map((currentProducts || []).map(product => [product.id, product]));
+  const add = (record, type, note, details = {}) => {
+    if (findings.length >= 100) return;
+    findings.push({
+      recordId: record?.id || "",
+      date: record?.date || "日付不明",
+      type,
+      note,
+      ...details
+    });
+  };
+
+  for (const record of monthlyRecords || []) {
+    const rows = getRecordResults(record);
+    let count = 0;
+    let revenue = 0;
+    let invalid = false;
+
+    for (const row of rows) {
+      const units = Number(row.count);
+      const unitPrice = Number(row.revenuePerUnit);
+      if (!Number.isSafeInteger(units) || units < 0 ||
+          !Number.isSafeInteger(unitPrice) || unitPrice < 0) {
+        add(record, "invalid_amount", "件数または保存単価が不正です。元データの訂正前に確認してください。");
+        invalid = true;
+        continue;
+      }
+      if (!Number.isSafeInteger(units * unitPrice)) {
+        add(record, "overflow", "売上計算が安全な数値範囲を超えています。");
+        invalid = true;
+        continue;
+      }
+      count += units;
+      revenue += units * unitPrice;
+
+      // A mismatch is NOT proof of an error: past approved prices may differ.
+      // Comparing by productId + cashback avoids mixing unrelated plans.
+      if (units > 0 && row.productId && productById.has(row.productId)) {
+        const product = productById.get(row.productId);
+        const options = getProductPricingOptions(product);
+        const missingPlan = row.cashback == null;
+        // Legacy CB0-only records may have no cashback field at all.
+        // With multiple CB plans, do NOT guess which plan was contracted.
+        if (missingPlan && options.length > 1) {
+          add(record, "missing_cb_plan",
+            (row.productName || product.name || "商材") +
+            "：実績にCBプランが保存されていないため、単価を確定できません。");
+        }
+        const cashback = missingPlan && options.length === 1
+          ? Number(options[0].cashback)
+          : Number(row.cashback);
+        const matching = missingPlan && options.length > 1
+          ? null
+          : options.find(option => Number(option.cashback) === cashback);
+        // Legacy parent products did not store explicit CB-specific prices.
+        // The former compatibility rule substituted cashback amount as
+        // "revenuePerUnit", which can result in 5 x CB2000 = ¥10,000
+        // even when the owner expected base revenue ¥10,000 per deal.
+        // Flag for review; NEVER assume the correct amount or rewrite history.
+        if (cashback > 0 &&
+            (!Array.isArray(product.pricingOptions) || !product.pricingOptions.length) &&
+            Array.isArray(product.cashbackOptions)) {
+          add(record, "legacy_cb_rate",
+            (row.productName || product.name || "商材") +
+            "：旧CBプラン" + formatYen(cashback) +
+            "の売上単価" + formatYen(unitPrice) +
+            "は旧互換計算の可能性があります。現行プラン単価を確認してください。");
+        }
+        if (matching && matching.revenuePerUnit != null &&
+            Number(matching.revenuePerUnit) !== unitPrice) {
+          add(record, "master_price_difference",
+            (row.productName || product.name || "商材") +
+            "：保存単価 " + formatYen(unitPrice) +
+            " / 現在設定 " + formatYen(Number(matching.revenuePerUnit)) +
+            "（過去の単価改定の可能性あり。自動修正しません）",
+            {productId:row.productId,cashback,proposedRate:Number(matching.revenuePerUnit)});
+        }
+      }
+    }
+
+    if (!invalid && !Number.isSafeInteger(revenue)) {
+      add(record, "overflow", "売上合計が安全な数値範囲を超えています。");
+      continue;
+    }
+    if (!invalid && record.totalCount != null &&
+        Number(record.totalCount) !== count) {
+      add(record, "count_mismatch",
+        "保存件数 " + String(record.totalCount) + " / 明細合計 " + count + "件");
+    }
+    if (!invalid && record.totalRevenue != null &&
+        Number(record.totalRevenue) !== revenue) {
+      add(record, "revenue_mismatch",
+        "保存売上 " + formatYen(Number(record.totalRevenue)) +
+        " / 明細計算 " + formatYen(revenue));
+    }
+  }
+  return findings;
+}
+
 function renderProductSummary(
-  productMap
+  productMap,
+  monthlyRecords = []
 ) {
 
   productSummaryList.innerHTML =
     "";
 
+  // Owner-only reconciliation; no database writes and no staff price leakage.
+  if (isCurrentCompanyOwner()) {
+    const findings = auditFinancialRecords(monthlyRecords, products);
+    if (findings.length) {
+      const panel = document.createElement("details");
+      panel.className = "financial-audit-alert";
+      const heading = document.createElement("summary");
+      heading.textContent = "⚠️ 金額要確認：" + findings.length + "項目（履歴は未変更）";
+      panel.appendChild(heading);
+      const description = document.createElement("p");
+      description.textContent = "保存時単価と現行設定の差は、過去の正しい単価改定の場合もあります。勝手に売上を再計算・修正しません。";
+      panel.appendChild(description);
+      for (const finding of findings.slice(0, 30)) {
+        const line = document.createElement("p");
+        line.textContent = finding.date + "｜" + finding.note;
+        panel.appendChild(line);
+        // A price mismatch may be a legitimate historical rate change.
+        // Only the Owner may explicitly correct ONE stored record and CB.
+        if (finding.type === "master_price_difference" &&
+            finding.productId && Number.isFinite(finding.proposedRate)) {
+          const record = monthlyRecords.find(item => item.id === finding.recordId);
+          if (record && record.companyId === currentUserData?.companyId) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "financial-correction-button";
+            button.textContent = "保存額と現在単価を照合して訂正";
+            button.addEventListener("click",async () => {
+              if (button.disabled || !isCurrentCompanyOwner()) return;
+              try {
+                const latest = records.find(item => item.id === record.id);
+                if (!latest) throw recordConflict("履歴が更新されました。画面を再読み込みしてください。");
+                const plan = planFinancialCorrection(
+                  latest,products,finding.productId,finding.cashback);
+                const question = [
+                  "【金額のみ訂正／件数・担当者・班・日付は維持】",
+                  "日付：" + latest.date,
+                  "担当者：" + (latest.memberNameSnapshot || "確認してください"),
+                  "商材：" + plan.productName + " / CB " + formatYen(plan.cashback),
+                  "対象：" + plan.selectedCount + "件",
+                  "旧単価：" + formatYen(plan.oldUnit) + " / 新単価：" + formatYen(plan.newUnit),
+                  "修正前の明細合計：" + formatYen(plan.oldCalculated),
+                  "修正後の明細合計：" + formatYen(plan.newRevenue),
+                  "",
+                  "正当な過去単価改定の場合は「キャンセル」を押してください。",
+                  "この実績に限って訂正する場合のみ「OK」を押してください。"
+                ].join("\n");
+                if (!window.confirm(question)) return;
+                const reason = window.prompt(
+                  "監査履歴に残す訂正理由を入力してください（5〜200文字）。\n例：10/23の承認単価10,000円に照合済み",
+                  "");
+                if (reason == null) return;
+                button.disabled = true;
+                await persistConfirmedFinancialCorrection(latest,plan,reason);
+                // Only a successful transaction updates the local dashboard.
+                const snap = await getDoc(doc(db,"records",latest.id));
+                if (!snap.exists()) throw new Error("訂正後の読込に失敗しました。");
+                const updated = {id:snap.id,...snap.data()};
+                const index = records.findIndex(item => item.id === latest.id);
+                if (index >= 0) records[index] = updated;
+                renderDashboard();
+                showSuccess("監査履歴を残して金額を訂正しました。件数・担当者・班は維持しています。");
+              } catch (error) {
+                showError(error?.message || "金額訂正を完了できませんでした。");
+                console.error("金額訂正エラー:",error);
+              } finally {
+                button.disabled = false;
+              }
+            });
+            panel.appendChild(button);
+          }
+        }
+      }
+      if (findings.length > 30) {
+        const more = document.createElement("p");
+        more.textContent = "表示は最初の30項目まで。管理者へ全件照合を依頼してください。";
+        panel.appendChild(more);
+      }
+      productSummaryList.appendChild(panel);
+    }
+  }
 
   const names =
     Object.keys(

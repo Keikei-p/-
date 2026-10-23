@@ -95,7 +95,7 @@ function app(db){
  const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
  const source=name=>{let a=html.indexOf(`function ${name}(`);if(html.slice(a-6,a)==='async ')a-=6;return html.slice(a,html.indexOf('\n}',a)+2);};
  const ctx=vm.createContext({db,query,where,getDocsFromServer,runTransaction,recordsCollectionQuery:()=>query(collection(db,'records'),where('companyId','==',company))});
- vm.runInContext(['recordRevision','recordConflict','persistDailyRecord'].map(source).join('\n'),ctx);return ctx;
+ vm.runInContext(['recordRevision','recordConflict','validateFinancialRecordForSave','persistDailyRecord'].map(source).join('\n'),ctx);return ctx;
 }
 test('concurrent leaders registering same day produce exactly one record',{skip:process.env.RULES_ONLY==='1'},async()=>{
  const a=dbFor('leaderA'),b=dbFor('leaderB');
@@ -126,6 +126,8 @@ test('transaction replacement removes deleted product and preserves creation met
  await api.persistDailyRecord(ref,patch('owner',{companyId:company,uid:'helper',date,results:{B:{count:1,revenuePerUnit:50}},totalCount:1,totalRevenue:50}),before,api.recordRevision(before));
  const saved=(await getDoc(ref)).data();assert.deepEqual(saved.results,{B:{count:1,revenuePerUnit:50}});assert.deepEqual(saved.createdAt,before.createdAt);
 });
+
+
 
 
 function revenueGoalPayload(teamId='a',targetRevenue=3000000){
