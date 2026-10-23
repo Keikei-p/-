@@ -26892,6 +26892,9 @@ function renderAnalysisProductCards(
                     <span class="analysis-nav-revenue">
                       ${formatYen(item.revenue)}
                     </span>
+                    ${isCurrentCompanyOwner() && Number(item.count) > 0
+                      ? `<span class="analysis-nav-revenue" style="font-size:10px;color:#64748b;">保存額の平均：${formatYen(Math.round(Number(item.revenue) / Number(item.count)))}/件</span>`
+                      : ""}
                   `
                   : ""
               }
