@@ -27,7 +27,9 @@ jobs:
           node-version: "22"
 
       - name: Check Functions JavaScript syntax
-        run: node --check functions/index.js
+        run: |
+          node --check functions/index.js
+          node --check functions/finance-correction.js
 
       - name: Check sales input, correction and finance auditing regressions
         run: node --test tests/sales-regressions.cjs tests/financial-audit.test.cjs
@@ -48,6 +50,9 @@ jobs:
       - name: Load Functions module
         working-directory: functions
         run: node -e "require('./index.js'); console.log('functions module loaded')"
+
+      - name: Verify server-side atomic financial correction and owner-only safeguards
+        run: node --test functions/tests/finance-correction.test.cjs
 
       - name: Extract and check browser module syntax
         run: |
