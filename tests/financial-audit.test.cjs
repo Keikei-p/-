@@ -370,7 +370,9 @@ test("Financial correction writes record and append-only before/after audit atom
   const before=raw(original),writes=[];
   let stored=structuredClone(original);
   const transaction={
-    get:async()=>({exists:()=>true,id:stored.id,data:()=>stored}),
+    get:async ref=>ref.path==="products/electric"
+      ? {exists:()=>true,id:"electric",data:()=>({...catalog[0],companyId:"c"})}
+      : {exists:()=>true,id:stored.id,data:()=>stored},
     update:(ref,fields)=>{writes.push({kind:"update",fields});
       for(const [k,v] of Object.entries(fields))stored[k]=v;},
     set:(ref,fields)=>{writes.push({kind:"audit",fields});}
