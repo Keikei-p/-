@@ -199,3 +199,42 @@ test("Editing legacy CB catalog requires confirmed earnings for every tier",()=>
   assert.deepEqual(inputs.map(input=>input.value),["25000","22500"]);
   assert.equal(warnings.length,0,"verified product edits should remain usable");
 });
+
+
+test("Cashback is ONLY a plan identifier, never a multiplier, discount or sales amount",()=>{
+  const v=context(["getProductPricingOptions","verifyNewRecordPricing",
+    "pricingOptionsText","calculateResultsTotals"],{
+      parseLegacyCashbackProductName:()=>({hasCashbackPlan:false}),
+      normalizeCashbackOptions:values=>[...new Set([0,...(values||[])])].sort((a,b)=>a-b),
+      canCurrentUserViewUnitPrice:()=>true,
+      formatCashbackPlanLabel:amount=>"CB"+amount,
+      formatYen:amount=>"¥"+amount
+    });
+  const old={id:"legacy",name:"旧形式",revenue:10000,cashbackOptions:[0,2000,20000]};
+  const oldOptions=v.getProductPricingOptions(old);
+  assert.equal(oldOptions.find(p=>p.cashback===0).revenuePerUnit,10000);
+  assert.equal(oldOptions.find(p=>p.cashback===2000).revenuePerUnit,null,
+    "CB2000 is not ¥2000 of sales revenue");
+  assert.equal(oldOptions.find(p=>p.cashback===20000).revenuePerUnit,null,
+    "CB20000 is not ¥20000 of sales revenue");
+  const shown=v.pricingOptionsText(old);
+  assert.match(shown,/CB2000 売上単価未設定/);
+  assert.match(shown,/CB20000 売上単価未設定/);
+  assert(!shown.includes("CB2000 ¥2000"));
+  assert.match(v.verifyNewRecordPricing({
+    one:{productId:"legacy",cashback:2000,count:5,revenuePerUnit:2000}
+  },[old]),/未設定/);
+  const named={id:"nuro",name:"NURO光",pricingOptions:[
+    {cashback:0,revenuePerUnit:22000},
+    {cashback:20000,revenuePerUnit:22000}
+  ]};
+  assert.equal(v.verifyNewRecordPricing({
+    first:{productId:"nuro",cashback:0,count:2,revenuePerUnit:22000},
+    second:{productId:"nuro",cashback:20000,count:3,revenuePerUnit:22000}
+  },[named]),"");
+  assert.equal(v.calculateResultsTotals({
+    first:{count:2,cashback:0,revenuePerUnit:22000},
+    second:{count:3,cashback:20000,revenuePerUnit:22000}
+  }).revenue,110000,
+    "same agreed revenue rate = same per-deal sales regardless of CB amount");
+});
