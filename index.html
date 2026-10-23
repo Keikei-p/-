@@ -21224,13 +21224,35 @@ function verifyNewRecordPricing(results, productCatalog) {
 
 function verifyChangedRecordPricing(nextResults, storedResults, productCatalog) {
   const oldMap = normalizeExistingResultMap(storedResults);
-  for (const row of Object.values(nextResults || {})) {
-    const key = resultVariantKey(row.productId,row.cashback ?? 0);
-    const previous = oldMap[key];
-    const previousCount = Number(previous?.count || 0);
-    if (Number(row.count) === previousCount) continue;
+  const nextMap = normalizeExistingResultMap(nextResults);
+  // Check both maps: a deleted historical line must not slip past price validation.
+  for (const [key, previous] of Object.entries(oldMap)) {
+    const next = nextMap[key];
+    const priorCount = Number(previous?.count ?? 0);
+    const nextCount = Number(next?.count ?? 0);
+    if (nextCount === priorCount) {
+      // Existing sales retain the saved unit price on an unchanged line.
+      if (next && Number(next.revenuePerUnit) !== Number(previous.revenuePerUnit))
+        return "既存の売上単価は通常の実績更新では変更できません。オーナーの金額訂正を利用してください。";
+      continue;
+    }
+    if (priorCount > 0) {
+      const current = (productCatalog || []).find(p => p.id === previous.productId);
+      const explicit = current && Array.isArray(current.pricingOptions) &&
+        current.pricingOptions.find(opt => Number(opt.cashback) === Number(previous.cashback ?? 0));
+      if (!explicit || !Number.isSafeInteger(Number(explicit.revenuePerUnit)) ||
+          Number(previous.revenuePerUnit) !== Number(explicit.revenuePerUnit))
+        return "過去実績の売上単価が現在と異なります。件数変更の前にオーナーが金額訂正を確認してください。";
+    }
+    if (next) {
+      const problem = verifyNewRecordPricing({[key]:next},productCatalog);
+      if (problem) return "件数変更前に単価の再確認が必要です。"+problem;
+    }
+  }
+  for (const [key, row] of Object.entries(nextMap)) {
+    if (Object.prototype.hasOwnProperty.call(oldMap,key)) continue;
     const problem = verifyNewRecordPricing({[key]:row},productCatalog);
-    if (problem) return "件数変更前に単価の再確認が必要です。"+problem;
+    if (problem) return problem;
   }
   return "";
 }
