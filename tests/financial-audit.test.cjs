@@ -255,3 +255,130 @@ test("Audit panel is Owner-only and shows no sensitive error details to ordinary
   assert(panel.children[0].textContent.includes("金額要確認：1項目"));
   assert(panel.children[2].textContent.includes("¥2,000"));
 });
+
+test("Owner plan corrects only 5 electric units from 2000 to 10000 without deleting the historical record",()=>{
+  const v=ctx(["planFinancialCorrection","getProductPricingOptions"],{
+    recordConflict:m=>Object.assign(new Error(m),{code:"record-conflict"})
+  });
+  const original={
+    id:"record-electric",companyId:"c",date:"2026-10-23",uid:"uid1",
+    teamId:"team4",teamNameSnapshot:"4班",memberNameSnapshot:"A",createdAt:"original",
+    results:{"electric__cb_0":{
+      productId:"electric",productName:"とくする電気",cashback:0,count:5,revenuePerUnit:2000
+    }},totalCount:5,totalRevenue:10000
+  };
+  const before=raw(original);
+  const p=v.planFinancialCorrection(original,catalog,"electric",0);
+  assert.equal(p.selectedCount,5);
+  assert.equal(p.oldUnit,2000);
+  assert.equal(p.newUnit,10000);
+  assert.equal(p.oldCalculated,10000);
+  assert.equal(p.newRevenue,50000);
+  assert.equal(p.difference,40000);
+  assert.equal(p.results["electric__cb_0"].count,5);
+  assert.equal(p.results["electric__cb_0"].revenuePerUnit,10000);
+  assert.equal(raw(original),before);
+});
+
+test("Owner plan changes one NURO cashback tier and preserves another tier and other product revenue",()=>{
+  const v=ctx(["planFinancialCorrection","getProductPricingOptions"],{
+    recordConflict:m=>Object.assign(new Error(m),{code:"record-conflict"})
+  });
+  const products=[{id:"nuro",name:"NURO光",pricingOptions:[
+    {cashback:0,revenuePerUnit:25000},
+    {cashback:20000,revenuePerUnit:22500}
+  ]}];
+  const original={
+    id:"record-nuro",companyId:"c",uid:"u",results:{
+      "nuro__cb_0":{productId:"nuro",cashback:0,count:4,revenuePerUnit:25000},
+      "nuro__cb_20000":{productId:"nuro",cashback:20000,count:5,revenuePerUnit:20000},
+      "unrelated":{productId:"other",cashback:0,count:2,revenuePerUnit:10000}
+    },totalCount:11,totalRevenue:220000
+  };
+  const old=raw(original);
+  const plan=v.planFinancialCorrection(original,products,"nuro",20000);
+  assert.equal(plan.newRevenue,232500);
+  assert.equal(plan.difference,12500);
+  assert.equal(plan.results["nuro__cb_0"].revenuePerUnit,25000);
+  assert.equal(plan.results.unrelated.revenuePerUnit,10000);
+  assert.equal(plan.results["nuro__cb_20000"].revenuePerUnit,22500);
+  assert.equal(raw(original),old);
+  assert.throws(()=>v.planFinancialCorrection(original,products,"nuro",30000),{code:"record-conflict"});
+  assert.throws(()=>v.planFinancialCorrection(original,products,"nuro",0),{code:"record-conflict"});
+});
+
+test("Owner corrections fail closed on missing master prices, legacy ambiguous CB, and mismatched original counts",()=>{
+  const v=ctx(["planFinancialCorrection","getProductPricingOptions"],{
+    recordConflict:m=>Object.assign(new Error(m),{code:"record-conflict"})
+  });
+  const base={
+    id:"r",companyId:"c",results:{
+      a:{productId:"nuro",count:9,revenuePerUnit:20000}
+    },totalCount:9,totalRevenue:180000
+  };
+  const nuro={id:"nuro",name:"NURO光",pricingOptions:[
+    {cashback:0,revenuePerUnit:25000},{cashback:20000,revenuePerUnit:22500}
+  ]};
+  assert.throws(()=>v.planFinancialCorrection(base,[nuro],"nuro",0),{code:"record-conflict"});
+  assert.throws(()=>v.planFinancialCorrection(base,[{id:"nuro",revenue:25000,cashbackOptions:[0,20000]}],"nuro",0),{code:"record-conflict"});
+  const electric={
+    id:"r2",companyId:"c",results:{a:{productId:"electric",count:5,revenuePerUnit:2000}},
+    totalCount:4,totalRevenue:10000
+  };
+  assert.throws(()=>v.planFinancialCorrection(electric,catalog,"electric",0),{code:"record-conflict"});
+});
+
+test("Financial correction writes record and append-only before/after audit atomically; rejects stale edits and missing reasons",async()=>{
+  const original={
+    id:"record-electric",companyId:"c",date:"2026-10-23",uid:"worker",
+    memberNameSnapshot:"A",teamId:"team4",teamNameSnapshot:"4班",
+    reportStatus:"submitted",workLocation:"店舗",createdByUid:"worker",createdAt:11,
+    results:{"electric__cb_0":{productId:"electric",productName:"とくする電気",
+      cashback:0,count:5,revenuePerUnit:2000}},totalCount:5,totalRevenue:10000,
+    updatedAt:12
+  };
+  const before=raw(original),writes=[];
+  let stored=structuredClone(original);
+  const transaction={
+    get:async()=>({exists:()=>true,id:stored.id,data:()=>stored}),
+    update:(ref,fields)=>{writes.push({kind:"update",fields});
+      for(const [k,v] of Object.entries(fields))stored[k]=v;},
+    set:(ref,fields)=>{writes.push({kind:"audit",fields});}
+  };
+  const v=ctx([
+    "recordRevision","recordConflict","getProductPricingOptions",
+    "planFinancialCorrection","financialAuditSnapshot","persistConfirmedFinancialCorrection"
+  ],{
+    isCurrentCompanyOwner:()=>true,currentUser:{uid:"owner"},
+    currentUserData:{companyId:"c",name:"オーナー"},products:catalog,
+    db:{},doc:(...args)=>({path:args.slice(1).join("/")}),collection:()=>({}),
+    serverTimestamp:()=>9876,
+    runTransaction:async (db,cb)=>cb(transaction)
+  });
+  const planned=v.planFinancialCorrection(original,catalog,"electric",0);
+  assert.equal(writes.length,0);
+  const result=await v.persistConfirmedFinancialCorrection(original,planned,
+    "当日の承認単価10000円で照合したため");
+  assert.equal(result.correctedRevenue,50000);
+  assert.equal(writes.length,2);
+  assert.equal(writes[0].kind,"update");
+  assert.equal(writes[1].kind,"audit");
+  assert.equal(stored.totalCount,5);
+  assert.equal(stored.totalRevenue,50000);
+  assert.equal(stored.teamId,"team4");
+  assert.equal(stored.createdAt,11);
+  assert.equal(stored.createdByUid,"worker");
+  assert.equal(writes[1].fields.before.totalRevenue,10000);
+  assert.equal(writes[1].fields.after.totalRevenue,50000);
+  assert.equal(writes[1].fields.after.financialCorrectionReason,"当日の承認単価10000円で照合したため");
+  assert.equal(raw(original),before);
+  assert.equal(writes[1].fields.recordUid,"worker");
+  assert.equal(writes[1].fields.recordDate,"2026-10-23");
+  const priorCount=writes.length;
+  await assert.rejects(v.persistConfirmedFinancialCorrection(original,planned,"理由短"),{code:"record-conflict"});
+  assert.equal(writes.length,priorCount);
+  await assert.rejects(v.persistConfirmedFinancialCorrection(original,planned,
+    "同じ金額を再び修正しようとした"),{code:"record-conflict"});
+  assert.equal(writes.length,priorCount);
+});
+
