@@ -32012,6 +32012,155 @@ function renderTeamRanking(
   再計算・上書きしてはいけない（改定前の正しい履歴を守るため）。
   差異はオーナーにだけ「要確認」として表示する。
 */
+/*
+  Produce a single-CB/single-product price correction candidate.
+  Never modify the original record, never guess which NURO CB was selected,
+  and never overwrite historical prices without Owner confirmation.
+*/
+function planFinancialCorrection(record, catalog, productId, cashback) {
+  if (!record || !record.id || !record.companyId ||
+      !record.results || Array.isArray(record.results) ||
+      typeof record.results !== "object") {
+    throw recordConflict("この履歴は金額訂正の対象にできません。管理者に確認してください。");
+  }
+  const product = (catalog || []).find(p => p.id === productId);
+  // Explicit per-CB price configuration is the only supported correction source.
+  if (!product || !Array.isArray(product.pricingOptions) || !product.pricingOptions.length) {
+    throw recordConflict("商材のCB別単価設定が未確認です。商材管理で確認してください。");
+  }
+  if (!Number.isSafeInteger(Number(cashback)) || Number(cashback) < 0) {
+    throw recordConflict("CBプランが不正です。");
+  }
+  const options = getProductPricingOptions(product);
+  const prices = options.filter(x => Number(x.cashback) === Number(cashback));
+  if (prices.length !== 1 || !Number.isSafeInteger(Number(prices[0].revenuePerUnit)) ||
+      Number(prices[0].revenuePerUnit) < 0) {
+    throw recordConflict("対応する単価が一意に決まらないため訂正できません。");
+  }
+  const target = Number(prices[0].revenuePerUnit);
+  const source = Object.entries(record.results);
+  const matches = source.filter(([,item])=>
+    item?.productId === productId &&
+    (item.cashback == null ? (options.length === 1 && Number(cashback) === 0) :
+      Number(item.cashback) === Number(cashback)));
+  if (matches.length !== 1) {
+    throw recordConflict("同一商材・CBの明細が複数または不明です。自動訂正を中止しました。");
+  }
+  const [resultKey,existing] = matches[0];
+  const oldUnit = Number(existing.revenuePerUnit);
+  const selectedCount = Number(existing.count);
+  if (!Number.isSafeInteger(oldUnit) || oldUnit < 0 ||
+      !Number.isSafeInteger(selectedCount) || selectedCount <= 0) {
+    throw recordConflict("保存済みの単価・件数を確認できません。");
+  }
+  if (oldUnit === target) {
+    throw recordConflict("この商材の売上単価はすでに一致しています。");
+  }
+  const resultRows = Object.fromEntries(source.map(([key,item])=>
+    [key,key === resultKey ? {...item,revenuePerUnit:target} : {...item}]));
+  let count = 0,revenue = 0;
+  for (const item of Object.values(resultRows)) {
+    const units = Number(item.count), rate = Number(item.revenuePerUnit);
+    if (!Number.isSafeInteger(units) || units < 0 ||
+        !Number.isSafeInteger(rate) || rate < 0 ||
+        !Number.isSafeInteger(units * rate)) {
+      throw recordConflict("別商材に不正な値があり、合計を安全に計算できません。");
+    }
+    count += units;
+    revenue += units * rate;
+    if (!Number.isSafeInteger(count) || !Number.isSafeInteger(revenue)) {
+      throw recordConflict("件数または金額が安全な計算範囲を超えています。");
+    }
+  }
+  if (record.totalCount != null && Number(record.totalCount) !== count) {
+    throw recordConflict("元の合計件数と明細が異なります。件数履歴の確認が必要です。");
+  }
+  const baseResults = Object.values(record.results);
+  const oldCalculated = baseResults.reduce((sum,row) =>
+    sum+Number(row.count)*Number(row.revenuePerUnit),0);
+  if (!Number.isSafeInteger(oldCalculated)) {
+    throw recordConflict("訂正前の売上合計を確認できません。");
+  }
+  return {
+    productName:product.name || existing.productName || "商材",
+    productId,cashback:Number(cashback),count,
+    selectedCount,oldUnit,newUnit:target,oldCalculated,
+    newRevenue:revenue,
+    oldHeaderRevenue:Number(record.totalRevenue || 0),
+    results:resultRows,
+    difference:revenue-oldCalculated
+  };
+}
+
+/* Audit records live independently of the original record and atomically with its update. */
+function financialAuditSnapshot(record) {
+  return {
+    memberNameSnapshot:record.memberNameSnapshot || "",
+    teamId:record.teamId || null,
+    teamNameSnapshot:record.teamNameSnapshot || "",
+    workLocation:record.workLocation || "",
+    results:record.results || {},
+    totalCount:Number(record.totalCount || 0),
+    totalRevenue:Number(record.totalRevenue || 0),
+    reportStatus:record.reportStatus || "submitted"
+  };
+}
+
+async function persistConfirmedFinancialCorrection(record,plan,reason) {
+  if (!isCurrentCompanyOwner() || !currentUser?.uid ||
+      record.companyId !== currentUserData?.companyId) {
+    throw recordConflict("この操作はオーナーのみ可能です。");
+  }
+  if (typeof reason !== "string" || reason.trim().length < 5 ||
+      reason.trim().length > 200) {
+    throw recordConflict("訂正理由を5〜200文字で入力してください。");
+  }
+  const recordRef = doc(db,"records",record.id);
+  const correctionRef = doc(collection(db,"recordCorrections"));
+  const oldRevision = recordRevision(record);
+  await runTransaction(db,async transaction => {
+    const snap = await transaction.get(recordRef);
+    if (!snap.exists()) throw recordConflict("訂正対象が存在しません。");
+    const current = {id:snap.id,...snap.data()};
+    if (current.companyId !== record.companyId ||
+        recordRevision(current) !== oldRevision) {
+      throw recordConflict("別の端末で実績が更新されています。履歴を読み直してください。");
+    }
+    const fresh = planFinancialCorrection(current,products,plan.productId,plan.cashback);
+    if (fresh.newUnit !== plan.newUnit ||
+        fresh.selectedCount !== plan.selectedCount ||
+        fresh.newRevenue !== plan.newRevenue) {
+      throw recordConflict("商材単価が変更されました。再確認してください。");
+    }
+    const after = {
+      ...financialAuditSnapshot(current),
+      results:fresh.results,
+      totalCount:fresh.count,
+      totalRevenue:fresh.newRevenue
+    };
+    const now = serverTimestamp();
+    transaction.update(recordRef,{
+      results:fresh.results,
+      totalCount:fresh.count,
+      totalRevenue:fresh.newRevenue,
+      updatedByUid:currentUser.uid,
+      updatedAt:now
+    });
+    transaction.set(correctionRef,{
+      companyId:current.companyId,
+      recordId:record.id,
+      recordUid:current.uid,
+      recordDate:current.date,
+      changedByUid:currentUser.uid,
+      changedByName:currentUserData?.name || "オーナー",
+      before:financialAuditSnapshot(current),
+      after,
+      createdAt:now
+    });
+  });
+  return {recordId:record.id,correctedRevenue:plan.newRevenue};
+}
+
 function auditFinancialRecords(monthlyRecords, currentProducts) {
   const findings = [];
   const productById = new Map((currentProducts || []).map(product => [product.id, product]));
