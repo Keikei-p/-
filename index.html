@@ -21536,7 +21536,36 @@ function recordConflict(message) {
   return error;
 }
 
+function validateFinancialRecordForSave(data) {
+  const rows = data?.results;
+  if (!rows || typeof rows !== "object" || Array.isArray(rows)) {
+    throw recordConflict("商材明細を確認できません。履歴を変更せず、再読込してください。");
+  }
+  let count = 0;
+  let revenue = 0;
+  for (const item of Object.values(rows)) {
+    const n = Number(item?.count);
+    const rate = Number(item?.revenuePerUnit);
+    if (!Number.isSafeInteger(n) || n < 0 ||
+        !Number.isSafeInteger(rate) || rate < 0 ||
+        !Number.isSafeInteger(n * rate)) {
+      throw recordConflict("件数または単価が不正です。保存せず管理者に単価を確認してください。");
+    }
+    count += n;
+    revenue += n * rate;
+    if (!Number.isSafeInteger(count) || !Number.isSafeInteger(revenue)) {
+      throw recordConflict("売上合計の計算範囲を超えています。保存を中止しました。");
+    }
+  }
+  if (count !== Number(data.totalCount) || revenue !== Number(data.totalRevenue)) {
+    throw recordConflict("商材明細と売上合計が一致しません。保存を中止しました。");
+  }
+  return true;
+}
+
 async function persistDailyRecord(recordRef, data, expectedRecord, expectedRevision) {
+  // Fail closed before even attempting a write; never silently persist bad math.
+  validateFinancialRecordForSave(data);
   // サーバーで同日を確認。旧IDの実績もそのまま更新し、重複は推測で統合しない。
   const daily = await getDocsFromServer(query(
     recordsCollectionQuery(), where("uid", "==", data.uid), where("date", "==", data.date)
