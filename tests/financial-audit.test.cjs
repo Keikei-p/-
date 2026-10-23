@@ -53,6 +53,56 @@ test("5 deals at 10000 make 50000 and have no reconciliation findings",()=>{
   const v=audit(),rec=record(entry(5,10000),50000);
   assert.equal(v.auditFinancialRecords([rec],catalog).length,0);
 });
+test("NURO光: same product with different CB plans uses each plan price, never nine times one flat rate",()=>{
+  const nuro={
+    id:"nuro",name:"NURO光",
+    pricingOptions:[
+      {cashback:0,revenuePerUnit:25000},
+      {cashback:20000,revenuePerUnit:22500}
+    ]
+  };
+  const v=ctx(["getProductPricingOptions","calculateResultsTotals","getRecordResults","validateFinancialRecordForSave","auditFinancialRecords"],{
+    recordConflict:m=>Object.assign(new Error(m),{code:"record-conflict"}),
+    formatYen:n=>"¥"+Number(n).toLocaleString("ja-JP")
+  });
+  const options=v.getProductPricingOptions(nuro);
+  assert.equal(options.length,2);
+  assert.equal(options[0].revenuePerUnit,25000);
+  assert.equal(options[1].revenuePerUnit,22500);
+  const results={
+    "nuro__cb_0":{productId:"nuro",productName:"NURO光",cashback:0,count:4,revenuePerUnit:25000},
+    "nuro__cb_20000":{productId:"nuro",productName:"NURO光",cashback:20000,count:5,revenuePerUnit:22500}
+  };
+  const totals=v.calculateResultsTotals(results);
+  assert.equal(totals.count,9);
+  assert.equal(totals.revenue,212500);
+  const data={id:"mixed-nuro",date:"2026-10-23",results,totalCount:9,totalRevenue:212500};
+  const original=raw(data);
+  assert.equal(v.validateFinancialRecordForSave(data),true);
+  assert.equal(v.getRecordResults(data).length,2);
+  assert.equal(v.auditFinancialRecords([data],[nuro]).length,0);
+  assert.equal(raw(data),original);
+});
+
+test("NURO historical CB price is not retroactively replaced if the current product pricing differs",()=>{
+  const v=audit();
+  const saved={
+    id:"old-nuro",date:"2026-10-01",
+    results:{"nuro__cb_20000":{
+      productId:"nuro",productName:"NURO光",cashback:20000,
+      count:2,revenuePerUnit:22500
+    }},totalCount:2,totalRevenue:45000
+  };
+  const before=raw(saved);
+  const nuroNow={id:"nuro",name:"NURO光",pricingOptions:[
+    {cashback:0,revenuePerUnit:25000},{cashback:20000,revenuePerUnit:23000}
+  ]};
+  const findings=v.auditFinancialRecords([saved],[nuroNow]);
+  assert(findings.some(f=>f.type==="master_price_difference"));
+  assert.equal(saved.totalRevenue,45000);
+  assert.equal(raw(saved),before);
+});
+
 test("Legacy CB2000 revenue fallback is flagged for review without assuming an automatic 50000 correction",()=>{
   const v=audit();
   const oldProduct={id:"electric",name:"とくする電気",revenue:10000,cashbackOptions:[0,2000]};
