@@ -21381,6 +21381,24 @@ function verifyNewRecordPricing(results, productCatalog) {
   return "";
 }
 
+/*
+  Adding a count to an old record must NOT silently multiply it by an old,
+  no-longer-approved unit price. Unchanged historical rows stay untouched.
+  A mismatch asks the Owner to review its previous unit price first.
+*/
+function verifyChangedRecordPricing(nextResults, storedResults, productCatalog) {
+  const oldMap = normalizeExistingResultMap(storedResults);
+  for (const row of Object.values(nextResults || {})) {
+    const key = resultVariantKey(row.productId,row.cashback ?? 0);
+    const previous = oldMap[key];
+    const previousCount = Number(previous?.count || 0);
+    if (Number(row.count) === previousCount) continue;
+    const problem = verifyNewRecordPricing({[key]:row},productCatalog);
+    if (problem) return "件数変更前に単価の再確認が必要です。"+problem;
+  }
+  return "";
+}
+
 function calculateResultsTotals(
   results
 ) {
@@ -21955,8 +21973,10 @@ saveRecordButton.onclick =
     const existingDailyRecord = findDailyRecord(targetUid, date);
     // Newly created records must use the product's current CB-dependent rate.
     // Corrections of existing records must retain their historical snapshots.
-    if (!existingDailyRecord && !zeroResultSubmission) {
-      const priceProblem = verifyNewRecordPricing(results, products);
+    if (!zeroResultSubmission) {
+      const priceProblem = existingDailyRecord
+        ? verifyChangedRecordPricing(results, existingDailyRecord.results, products)
+        : verifyNewRecordPricing(results, products);
       if (priceProblem) {
         showError(priceProblem);
         return;
