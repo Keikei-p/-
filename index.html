@@ -31993,7 +31993,7 @@ function planFinancialCorrection(record, catalog, productId, cashback) {
   };
 }
 
-function persistConfirmedFinancialCorrection(record,plan,reason) {
+async function persistConfirmedFinancialCorrection(record,plan,reason) {
   if (!isCurrentCompanyOwner() || !currentUser?.uid ||
       record.companyId !== currentUserData?.companyId) {
     throw recordConflict("この操作はオーナーのみ可能です。");
