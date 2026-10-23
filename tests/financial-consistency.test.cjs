@@ -173,3 +173,29 @@ test("Product editor rejects blank, fractional and unsafe amounts; preserves val
   }
   assert.match(v.readPricingOptions(container([["0","10000"],["0","20000"]])).error,/重複/);
 });
+
+test("Editing legacy CB catalog requires confirmed earnings for every tier",()=>{
+  const inputs=[{value:"25000"},{value:"20000"}],warnings=[];
+  const v=context(["openEditProductModal"],{
+    editProductName:{value:""},editProductPricingEditor:{
+      querySelectorAll:()=>inputs
+    },
+    productModal:{style:{display:"none"}},
+    getProductPricingOptions:()=>[
+      {cashback:0,revenuePerUnit:25000},{cashback:20000,revenuePerUnit:20000}],
+    renderPricingOptionEditor:()=>{},
+    showError:message=>warnings.push(message)
+  });
+  v.openEditProductModal({id:"legacy",name:"NURO光",revenue:25000,
+    cashbackOptions:[0,20000]});
+  assert(inputs.every(input=>input.value===""),
+    "legacy guessed cashback amounts may not be silently confirmed");
+  assert.match(warnings[0],/単価/);
+  assert.equal(v.productModal.style.display,"flex");
+  inputs[0].value="25000";inputs[1].value="22500";warnings.length=0;
+  v.openEditProductModal({id:"verified",name:"NURO光",
+    pricingOptions:[{cashback:0,revenuePerUnit:25000},
+      {cashback:20000,revenuePerUnit:22500}]});
+  assert.deepEqual(inputs.map(input=>input.value),["25000","22500"]);
+  assert.equal(warnings.length,0,"verified product edits should remain usable");
+});
