@@ -134,8 +134,9 @@ test('Transactional correction replaces results and preserves metadata', async (
   for (const results of [{A:{count:1,revenuePerUnit:100}}, {C:{count:4,revenuePerUnit:300}}, {}]) {
     let stored={companyId:'c',uid:'u',date:'2026-10-06',teamId:'a',createdAt:'keep',createdByUid:'creator',custom:'keep',results:{A:{count:3},B:{count:2}}};
     const before=structuredClone(stored);
-    const data={results,totalCount:Object.values(results).reduce((n,r)=>n+r.count,0)};
-    const ctx=context(['persistDailyRecord','recordRevision','recordConflict','getRecordResults','calculateResultsTotals'],{
+    const data={results,totalCount:Object.values(results).reduce((n,r)=>n+r.count,0),
+      totalRevenue:Object.values(results).reduce((n,r)=>n+r.count*r.revenuePerUnit,0)};
+    const ctx=context(['persistDailyRecord','recordRevision','recordConflict','validateFinancialRecordForSave','getRecordResults','calculateResultsTotals'],{
       db:{},query:()=>{},where:()=>{},recordsCollectionQuery:()=>{},
       getDocsFromServer:async()=>({size:1,docs:[{id:'r'}]}),
       runTransaction:async(db,callback)=>callback({get:async()=>({exists:()=>true,id:'r',data:()=>stored}),
@@ -178,15 +179,16 @@ test('Only owner can correct another team; self and own team remain editable',()
 test('Stale edits, deleted records and simultaneous same-day registration stop without writes',async()=>{
   const initial={uid:'u',date:'2026-10-06',teamId:'a',results:{A:{count:1}}};
   let current=structuredClone(initial),writes=0;
-  const ctx=context(['persistDailyRecord','recordRevision','recordConflict'],{db:{},query:()=>{},where:()=>{},recordsCollectionQuery:()=>{},
+  const ctx=context(['persistDailyRecord','recordRevision','recordConflict','validateFinancialRecordForSave'],{db:{},query:()=>{},where:()=>{},recordsCollectionQuery:()=>{},
     getDocsFromServer:async()=>({size:0,docs:[]}),
     runTransaction:async(db,callback)=>callback({get:async()=>({exists:()=>!!current,id:'r',data:()=>current}),set:()=>writes++})});
-  await assert.rejects(ctx.persistDailyRecord({id:'r'},{},null,null),{code:'record-conflict'});
+  const valid={results:{A:{count:1,revenuePerUnit:100}},totalCount:1,totalRevenue:100};
+  await assert.rejects(ctx.persistDailyRecord({id:'r'},valid,null,null),{code:'record-conflict'});
   const rev=ctx.recordRevision(initial);current.results.A.count=2;
-  await assert.rejects(ctx.persistDailyRecord({id:'r'},{},initial,rev),{code:'record-conflict'});
-  current=null;await assert.rejects(ctx.persistDailyRecord({id:'r'},{},initial,rev),{code:'record-conflict'});
+  await assert.rejects(ctx.persistDailyRecord({id:'r'},valid,initial,rev),{code:'record-conflict'});
+  current=null;await assert.rejects(ctx.persistDailyRecord({id:'r'},valid,initial,rev),{code:'record-conflict'});
   ctx.getDocsFromServer=async()=>({size:2,docs:[{id:'r'},{id:'legacy'}]});
-  await assert.rejects(ctx.persistDailyRecord({id:'r'},{},null,null),{code:'record-conflict'});
+  await assert.rejects(ctx.persistDailyRecord({id:'r'},valid,null,null),{code:'record-conflict'});
   assert.equal(writes,0);
 });
 
@@ -951,4 +953,8 @@ test('Existing unchanged prices are not overwritten; invalid new and changed cou
     results:{e:{productId:'e',cashback:0,count:5,revenuePerUnit:2000}},
     totalCount:5,totalRevenue:50000
   }),/合計/);
+  assert.throws(()=>c.validateFinancialRecordForSave({
+    results:{e:{productId:'e',cashback:0,count:5,revenuePerUnit:null}},
+    totalCount:5,totalRevenue:0
+  }),/未設定/);
 });
