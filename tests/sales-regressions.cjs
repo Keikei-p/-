@@ -1020,10 +1020,10 @@ test('Current price uses exact NURO CB tier; ambiguous or unknown legacy plans n
   assert.equal(JSON.stringify(selected),before);
 });
 
-test('Product price listener always re-renders the dashboard on catalogue change',()=>{
+test('Product price listener schedules a dashboard refresh on catalogue change',()=>{
   const htmlSource=html.slice(html.indexOf('unsubscribeProducts =\n    onSnapshot('),html.indexOf('\n\n  /*\n    実績\n  */',html.indexOf('unsubscribeProducts =\n    onSnapshot(')));
   assert(htmlSource.includes('prepareProductInputList('));
-  assert(htmlSource.indexOf('renderDashboard();') >
+  assert(htmlSource.indexOf('scheduleRealtimeDashboardRender();') >
     htmlSource.indexOf('prepareProductInputList('));
 });
 
