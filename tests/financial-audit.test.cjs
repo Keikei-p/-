@@ -29,6 +29,7 @@ const raw=rows=>JSON.stringify(rows);
 function audit(){
   return ctx(["auditFinancialRecords","getRecordResults","getProductPricingOptions"],{
     parseLegacyCashbackProductName:()=>({hasCashbackPlan:false}),
+    normalizeCashbackOptions:x=>[...new Set([0,...(x||[])])].sort((a,b)=>a-b),
     formatYen:n=>"¥"+Number(n).toLocaleString("en-US")
   });
 }
