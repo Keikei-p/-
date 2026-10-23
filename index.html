@@ -26291,7 +26291,8 @@ function renderDashboard() {
 
 
   renderProductSummary(
-    productMap
+    productMap,
+    monthly
   );
 
 
@@ -26900,6 +26901,9 @@ function renderAnalysisProductCards(
                     <span class="analysis-nav-revenue">
                       ${formatYen(item.revenue)}
                     </span>
+                    ${isCurrentCompanyOwner() && Number(item.count) > 0
+                      ? `<span class="analysis-nav-revenue" style="font-size:10px;color:#64748b;">保存額の平均：${formatYen(Math.round(Number(item.revenue) / Number(item.count)))}/件</span>`
+                      : ""}
                   `
                   : ""
               }
@@ -31926,13 +31930,117 @@ function renderTeamRanking(
    商材別
 ===================================================== */
 
+/*
+  金額監査は読み取り専用。保存済みの実績単価を現行単価で
+  再計算・上書きしてはいけない（改定前の正しい履歴を守るため）。
+  差異はオーナーにだけ「要確認」として表示する。
+*/
+function auditFinancialRecords(monthlyRecords, currentProducts) {
+  const findings = [];
+  const productById = new Map((currentProducts || []).map(product => [product.id, product]));
+  const add = (record, type, note) => {
+    if (findings.length >= 100) return;
+    findings.push({
+      recordId: record?.id || "",
+      date: record?.date || "日付不明",
+      type,
+      note
+    });
+  };
+
+  for (const record of monthlyRecords || []) {
+    const rows = getRecordResults(record);
+    let count = 0;
+    let revenue = 0;
+    let invalid = false;
+
+    for (const row of rows) {
+      const units = Number(row.count);
+      const unitPrice = Number(row.revenuePerUnit);
+      if (!Number.isSafeInteger(units) || units < 0 ||
+          !Number.isSafeInteger(unitPrice) || unitPrice < 0) {
+        add(record, "invalid_amount", "件数または保存単価が不正です。元データの訂正前に確認してください。");
+        invalid = true;
+        continue;
+      }
+      if (!Number.isSafeInteger(units * unitPrice)) {
+        add(record, "overflow", "売上計算が安全な数値範囲を超えています。");
+        invalid = true;
+        continue;
+      }
+      count += units;
+      revenue += units * unitPrice;
+
+      // A mismatch is NOT proof of an error: past approved prices may differ.
+      // Comparing by productId + cashback avoids mixing unrelated plans.
+      if (units > 0 && row.productId && productById.has(row.productId) &&
+          row.cashback != null) {
+        const product = productById.get(row.productId);
+        const cashback = Number(row.cashback);
+        const options = getProductPricingOptions(product);
+        const matching = options.find(option => Number(option.cashback) === cashback);
+        if (matching && Number(matching.revenuePerUnit) !== unitPrice) {
+          add(record, "master_price_difference",
+            (row.productName || product.name || "商材") +
+            "：保存単価 " + formatYen(unitPrice) +
+            " / 現在設定 " + formatYen(Number(matching.revenuePerUnit)) +
+            "（過去の単価改定の可能性あり。自動修正しません）");
+        }
+      }
+    }
+
+    if (!invalid && !Number.isSafeInteger(revenue)) {
+      add(record, "overflow", "売上合計が安全な数値範囲を超えています。");
+      continue;
+    }
+    if (!invalid && record.totalCount != null &&
+        Number(record.totalCount) !== count) {
+      add(record, "count_mismatch",
+        "保存件数 " + String(record.totalCount) + " / 明細合計 " + count + "件");
+    }
+    if (!invalid && record.totalRevenue != null &&
+        Number(record.totalRevenue) !== revenue) {
+      add(record, "revenue_mismatch",
+        "保存売上 " + formatYen(Number(record.totalRevenue)) +
+        " / 明細計算 " + formatYen(revenue));
+    }
+  }
+  return findings;
+}
+
 function renderProductSummary(
-  productMap
+  productMap,
+  monthlyRecords = []
 ) {
 
   productSummaryList.innerHTML =
     "";
 
+  // Owner-only reconciliation; no database writes and no staff price leakage.
+  if (isCurrentCompanyOwner()) {
+    const findings = auditFinancialRecords(monthlyRecords, products);
+    if (findings.length) {
+      const panel = document.createElement("details");
+      panel.className = "financial-audit-alert";
+      const heading = document.createElement("summary");
+      heading.textContent = "⚠️ 金額要確認：" + findings.length + "項目（履歴は未変更）";
+      panel.appendChild(heading);
+      const description = document.createElement("p");
+      description.textContent = "保存時単価と現行設定の差は、過去の正しい単価改定の場合もあります。勝手に売上を再計算・修正しません。";
+      panel.appendChild(description);
+      for (const finding of findings.slice(0, 30)) {
+        const line = document.createElement("p");
+        line.textContent = finding.date + "｜" + finding.note;
+        panel.appendChild(line);
+      }
+      if (findings.length > 30) {
+        const more = document.createElement("p");
+        more.textContent = "表示は最初の30項目まで。管理者へ全件照合を依頼してください。";
+        panel.appendChild(more);
+      }
+      productSummaryList.appendChild(panel);
+    }
+  }
 
   const names =
     Object.keys(
