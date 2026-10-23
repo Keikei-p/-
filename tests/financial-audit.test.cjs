@@ -80,6 +80,35 @@ test("New CB0 electricity entry with five deals rejects unit 2000 and accepts un
   const free={free:{productId:"zero",count:3,cashback:0,revenuePerUnit:0}};
   assert.equal(v.verifyNewRecordPricing(free,[catalog[1]]),"");
 });
+test("New sales reject legacy CB catalogs lacking explicit per-plan revenue instead of treating cashback as earnings",()=>{
+  const v=ctx(["verifyNewRecordPricing","getProductPricingOptions"],{
+    parseLegacyCashbackProductName:()=>({hasCashbackPlan:false}),
+    normalizeCashbackOptions:x=>[...new Set([0,...(x||[])])].sort((a,b)=>a-b)
+  });
+  const legacy={id:"nuro",name:"NURO光",revenue:25000,cashbackOptions:[0,20000]};
+  const invalid={s:{productId:"nuro",cashback:20000,count:1,revenuePerUnit:20000}};
+  assert.match(v.verifyNewRecordPricing(invalid,[legacy]),/旧形式の商材単価/);
+  const explicit={...legacy,pricingOptions:[
+    {cashback:0,revenuePerUnit:25000},{cashback:20000,revenuePerUnit:22500}
+  ]};
+  assert.match(v.verifyNewRecordPricing(invalid,[explicit]),/単価/);
+  invalid.s.revenuePerUnit=22500;
+  assert.equal(v.verifyNewRecordPricing(invalid,[explicit]),"");
+  assert.match(v.verifyNewRecordPricing({s:{productId:"missing-price",cashback:0,count:1,revenuePerUnit:0}},
+    [{id:"missing-price",name:"価格未登録"}]),/未設定/);
+});
+
+test("Saved zero unit price stays zero in presentation, never replaced by current master price",()=>{
+  const v=ctx(["getResultProductPresentation"],{
+    products:[{id:"zero",name:"U-NEXT & D+",revenue:10000}],
+    parseLegacyCashbackProductName:name=>({parentName:name,hasCashbackPlan:false}),
+    productUsesCashbackPlans:()=>false
+  });
+  const result={productId:"zero",productName:"U-NEXT & D+",count:3,revenuePerUnit:0};
+  assert.equal(v.getResultProductPresentation(result).revenuePerUnit,0);
+  assert.equal(v.getResultProductPresentation({...result,revenuePerUnit:undefined}).revenuePerUnit,10000);
+});
+
 test("Edit path only applies new price validation if no saved record exists",()=>{
   const marker="if (!existingDailyRecord && !zeroResultSubmission)";
   assert(html.includes(marker));
