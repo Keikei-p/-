@@ -21478,7 +21478,6 @@ function recordConflict(message) {
 }
 
 async function persistDailyRecord(recordRef, data, expectedRecord, expectedRevision) {
-  validateFinancialRecordForSave(data);
   // サーバーで同日を確認。旧IDの実績もそのまま更新し、重複は推測で統合しない。
   const daily = await getDocsFromServer(query(
     recordsCollectionQuery(), where("uid", "==", data.uid), where("date", "==", data.date)
@@ -21954,6 +21953,7 @@ saveRecordButton.onclick =
       }
 
 
+      validateFinancialRecordForSave(data);
       await persistDailyRecord(recordRef, data, existingDailyRecord, editingRecordRevision);
 
 
