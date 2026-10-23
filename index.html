@@ -21333,6 +21333,33 @@ function validateProductInputRows() {
 
 }
 
+/*
+  新規実績は、入力欄に含まれる価格を現在の商材のCB別価格と照合する。
+  訂正済み・過去の実績は当時の単価を維持するため照合対象外。
+  価格値はメンバー向けエラーメッセージに含めない。
+*/
+function verifyNewRecordPricing(results, productCatalog) {
+  const catalog = new Map((productCatalog || []).map(p => [p.id,p]));
+  for (const row of Object.values(results || {})) {
+    if (!row?.productId || !catalog.has(row.productId)) {
+      return "商材が更新・削除されています。再読み込みして管理者に確認してください。";
+    }
+    const product = catalog.get(row.productId);
+    const cb = Number(row.cashback ?? 0);
+    const price = Number(row.revenuePerUnit);
+    const plans = getProductPricingOptions(product);
+    const matching = plans.find(option => Number(option.cashback) === cb);
+    if (!matching || !Number.isSafeInteger(cb) || cb < 0) {
+      return "選択中のCBプランが現在の商材設定と一致しません。再読み込みしてください。";
+    }
+    if (!Number.isSafeInteger(price) || price < 0 ||
+        price !== Number(matching.revenuePerUnit)) {
+      return "商材の保存単価が現在の設定と一致しません。再読み込みしてから登録してください。";
+    }
+  }
+  return "";
+}
+
 function calculateResultsTotals(
   results
 ) {
@@ -21905,6 +21932,15 @@ saveRecordButton.onclick =
 
 
     const existingDailyRecord = findDailyRecord(targetUid, date);
+    // Newly created records must use the product's current CB-dependent rate.
+    // Corrections of existing records must retain their historical snapshots.
+    if (!existingDailyRecord && !zeroResultSubmission) {
+      const priceProblem = verifyNewRecordPricing(results, products);
+      if (priceProblem) {
+        showError(priceProblem);
+        return;
+      }
+    }
     const targetTeamId = recordCorrectionTeam.value || null;
     const isOwner = isCurrentCompanyOwner();
     const isLeader = isCurrentTeamLeader();
