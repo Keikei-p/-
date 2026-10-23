@@ -941,9 +941,14 @@ test('Existing unchanged prices are not overwritten; invalid new and changed cou
   assert.match(c.verifyChangedRecordPricing({
     e:{productId:'e',cashback:0,count:6,revenuePerUnit:2000}
   },old,[electric]),/単価/);
+  // Updating a stale snapshot and its count together would silently overwrite
+  // five historical prices; the owner must audit/correct the old price first.
+  assert.match(c.verifyChangedRecordPricing({
+    e:{productId:'e',cashback:0,count:6,revenuePerUnit:10000}
+  },old,[electric]),/金額訂正/);
   assert.equal(c.verifyChangedRecordPricing({
     e:{productId:'e',cashback:0,count:6,revenuePerUnit:10000}
-  },old,[electric]),'');
+  },{e:{productId:'e',cashback:0,count:5,revenuePerUnit:10000}},[electric]),'');
   assert.equal(JSON.stringify(old),untouched);
   assert.equal(c.validateFinancialRecordForSave({
     results:{e:{productId:'e',cashback:0,count:5,revenuePerUnit:10000}},
