@@ -32137,18 +32137,28 @@ async function persistConfirmedFinancialCorrection(record,plan,reason) {
     throw recordConflict("訂正理由を5〜200文字で入力してください。");
   }
   const recordRef = doc(db,"records",record.id);
+  const productRef = doc(db,"products",plan.productId);
   const correctionRef = doc(collection(db,"recordCorrections"));
   const oldRevision = recordRevision(record);
   await runTransaction(db,async transaction => {
+    // Read BOTH source documents before any write. A concurrent change to
+    // the record or product price must abort the transaction, not reprice silently.
     const snap = await transaction.get(recordRef);
+    const productSnap = await transaction.get(productRef);
     if (!snap.exists()) throw recordConflict("訂正対象が存在しません。");
+    if (!productSnap.exists() || productSnap.data().companyId !== record.companyId)
+      throw recordConflict("商材設定が変更されました。画面を更新して確認してください。");
     const current = {id:snap.id,...snap.data()};
     if (current.companyId !== record.companyId ||
         recordRevision(current) !== oldRevision) {
       throw recordConflict("別の端末で実績が更新されています。履歴を読み直してください。");
     }
-    const fresh = planFinancialCorrection(current,products,plan.productId,plan.cashback);
-    if (fresh.newUnit !== plan.newUnit ||
+    const fresh = planFinancialCorrection(
+      current,[{id:productSnap.id,...productSnap.data()}],
+      plan.productId,plan.cashback);
+    if (fresh.oldUnit !== plan.oldUnit ||
+        fresh.oldCalculated !== plan.oldCalculated ||
+        fresh.newUnit !== plan.newUnit ||
         fresh.selectedCount !== plan.selectedCount ||
         fresh.newRevenue !== plan.newRevenue) {
       throw recordConflict("商材単価が変更されました。再確認してください。");
