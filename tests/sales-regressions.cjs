@@ -963,3 +963,77 @@ test('Existing unchanged prices are not overwritten; invalid new and changed cou
     totalCount:5,totalRevenue:0
   }),/未設定/);
 });
+
+
+test('Historical displayed sales use latest electric and Evergreen prices without changing records',()=>{
+  const catalog=[
+    {id:'tok',name:'とくする電気',pricingOptions:[{cashback:0,revenuePerUnit:10000}]},
+    {id:'ever',name:'エバーグリーン',pricingOptions:[{cashback:0,revenuePerUnit:20000}]}
+  ];
+  const ctx=context(['getProductPricingOptions','getRecordResults',
+    'currentProductDisplayName','currentCatalogRevenueUnitForDisplay','getDisplayRecordResults'],{
+    products:catalog,
+    canCurrentUserViewRevenueForRecord:()=>true,
+    parseLegacyCashbackProductName:()=>({hasCashbackPlan:false}),
+    normalizeCashbackOptions:()=>[0]
+  });
+  const oldElectric={id:'r1',uid:'u',teamId:'a',date:'2026-10-22',
+    results:{tok:{productId:'tok',count:5,cashback:0,revenuePerUnit:2000}},
+    totalCount:5,totalRevenue:10000};
+  const oldEvergreen={id:'r2',uid:'u',teamId:'a',date:'2026-10-22',
+    results:{ever:{productId:'ever',count:5,cashback:0,revenuePerUnit:16000}},
+    totalCount:5,totalRevenue:80000};
+  const before=JSON.stringify([oldElectric,oldEvergreen]);
+  const el=ctx.getDisplayRecordResults(oldElectric);
+  const ev=ctx.getDisplayRecordResults(oldEvergreen);
+  assert.equal(el[0].count*el[0].revenuePerUnit,50000);
+  assert.equal(ev[0].count*ev[0].revenuePerUnit,100000);
+  assert.equal(JSON.stringify([oldElectric,oldEvergreen]),before,
+    'Firestore source values, team, member and original price must not change');
+  ctx.products=[{...catalog[0],pricingOptions:[{cashback:0,revenuePerUnit:11000}]},catalog[1]];
+  assert.equal(ctx.getDisplayRecordResults(oldElectric)[0].revenuePerUnit,11000,
+    'new master price must be reflected without any record writes');
+  ctx.canCurrentUserViewRevenueForRecord=()=>false;
+  assert.equal(ctx.getDisplayRecordResults(oldElectric)[0].revenuePerUnit,0,
+    'revenue permission remains enforced');
+});
+
+test('NURO cashback tiers are priced by current CB-specific revenue rate, never cashback value',()=>{
+  const catalog=[{id:'nuro',name:'NURO光',pricingOptions:[
+    {cashback:0,revenuePerUnit:25000},
+    {cashback:20000,revenuePerUnit:22500}
+  ]}];
+  const ctx=context(['getProductPricingOptions','getRecordResults',
+    'currentProductDisplayName','currentCatalogRevenueUnitForDisplay','getDisplayRecordResults'],{
+    products:catalog,
+    canCurrentUserViewRevenueForRecord:()=>true,
+    parseLegacyCashbackProductName:()=>({hasCashbackPlan:false}),
+    normalizeCashbackOptions:()=>[0,20000]
+  });
+  const record={id:'r3',uid:'u',teamId:'a',date:'2026-10-22',results:{
+    cb0:{productId:'nuro',cashback:0,count:2,revenuePerUnit:0},
+    cb20k:{productId:'nuro',cashback:20000,count:3,revenuePerUnit:20000},
+    unknown:{productId:'nuro',count:1,revenuePerUnit:15000},
+    noMatch:{productId:'nuro',cashback:30000,count:1,revenuePerUnit:13000}
+  }};
+  const before=JSON.stringify(record);
+  const rows=ctx.getDisplayRecordResults(record);
+  assert.equal(rows[0].revenuePerUnit,25000);
+  assert.equal(rows[1].revenuePerUnit,22500);
+  assert.equal(rows[2].revenuePerUnit,15000,'unknown CB must not be guessed');
+  assert.equal(rows[3].revenuePerUnit,13000,'unknown plan must not be guessed');
+  assert.equal(JSON.stringify(record),before);
+  // A pre-pricingOptions catalog with only legacy CB amounts cannot infer earnings.
+  ctx.products=[{id:'nuro',name:'NURO光',revenue:25000,cashbackOptions:[0,20000]}];
+  assert.equal(ctx.getDisplayRecordResults(record)[1].revenuePerUnit,20000);
+});
+
+test('Repricing a product refreshes dashboard without replacing the input draft',()=>{
+  const htmlSource=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
+  const listenerStart=htmlSource.indexOf('unsubscribeProducts =',htmlSource.indexOf('function startRealtimeListeners('));
+  const listenerEnd=htmlSource.indexOf('/*\n    実績',listenerStart);
+  assert(listenerStart>0 && listenerEnd>listenerStart);
+  const listener=htmlSource.slice(listenerStart,listenerEnd);
+  assert.match(listener,/prepareProductInputList\(\s*draftResults\s*\);[\s\S]*renderDashboard\(\)/);
+  assert(!/updateDoc\s*\(|setDoc\s*\(|deleteDoc\s*\(/.test(listener));
+});
