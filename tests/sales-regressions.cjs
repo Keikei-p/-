@@ -1091,3 +1091,13 @@ test('Stopping listeners cancels queued paints without changing saved records',(
   assert.equal(c.realtimeDashboardFrame,0);
   assert.equal(c.revenueGoals.length,0);
 });
+
+test('Head module preloads match the pinned Firebase imports and retain CORS',()=>{
+  const head=html.slice(0,html.indexOf('</head>'));
+  assert(head.includes('<link rel="preconnect" href="https://www.gstatic.com" crossorigin>'));
+  for(const entry of ['firebase-app','firebase-auth','firebase-firestore']){
+    const uri=`https://www.gstatic.com/firebasejs/12.19.0/${entry}.js`;
+    assert(head.includes(`<link rel="modulepreload" href="${uri}" crossorigin>`));
+    assert(html.includes(`from "${uri}";`));
+  }
+});
