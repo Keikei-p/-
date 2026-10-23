@@ -442,3 +442,25 @@ test("Client delegates Owner money correction to authenticated Callable and neve
 });
 
 
+
+
+test("Owner's revenue audit warning remains visible even when month has no sales-product summary",()=>{
+  const make=()=>({children:[],textContent:"",className:"",style:{},
+    _html:"",set innerHTML(x){this._html=x;this.children=[]},
+    get innerHTML(){return this._html},
+    appendChild(x){this.children.push(x);}
+  });
+  const productSummaryList=make();
+  const c=ctx(["renderProductSummary"],{
+    productSummaryList,productSummaryCount:make(),document:{createElement:make},
+    isCurrentCompanyOwner:()=>true,
+    auditFinancialRecords:()=>[{date:"2026-10-23",note:"以前の電気売上単価の確認が必要"}],
+    products:catalog,
+    canCurrentUserViewProductRevenue:()=>true,escapeHtml:s=>s,
+    formatYen:n=>"¥"+n
+  });
+  c.renderProductSummary({},[]);
+  assert.equal(productSummaryList.children.length,2);
+  assert(productSummaryList.children[0].children[0].textContent.includes("金額要確認"));
+  assert.equal(productSummaryList.children[1].className,"empty-message");
+});
