@@ -8230,33 +8230,42 @@ function currentProductDisplayName(result) {
 }
 
 
-function getDisplayRecordResults(
-  record
-) {
+// Reporting/view layer only. A change to the current approved selling price
+// must update every displayed historical deal without rewriting Firestore rows.
+// Cashback selects a plan; it is NEVER counted as revenue. Unknown or
+// ambiguous plans retain the saved price instead of guessing another tier.
+function currentCatalogRevenuePerUnit(result, catalog) {
+  const saved = Number(result?.revenuePerUnit ?? 0);
+  const original = Number.isSafeInteger(saved) && saved >= 0 ? saved : 0;
+  const product = (catalog || []).find(item => item.id === result?.productId);
+  if (!product) return original;
+  const options = getProductPricingOptions(product);
+  const hasCashback = result?.cashback !== undefined &&
+    result?.cashback !== null && result.cashback !== "";
+  if (!hasCashback && options.length !== 1) return original;
+  const cashback = hasCashback
+    ? Number(result.cashback)
+    : Number(options[0].cashback);
+  if (!Number.isSafeInteger(cashback) || cashback < 0) return original;
+  const matching = options.filter(option => Number(option.cashback) === cashback);
+  if (matching.length !== 1) return original;
+  const current = matching[0].revenuePerUnit;
+  if (current === null || current === undefined || current === "") return original;
+  const rate = Number(current);
+  return Number.isSafeInteger(rate) && rate >= 0 ? rate : original;
+}
 
-  const results =
-    getRecordResults(
-      record
-    );
-
-  const canViewRevenue =
-    canCurrentUserViewRevenueForRecord(
-      record
-    );
-
-  return results.map(
-    result => ({
-      ...result,
-      productName:
-        currentProductDisplayName(
-          result
-        ),
-      ...(canViewRevenue
-        ? {}
-        : {revenuePerUnit: 0})
-    })
-  );
-
+function getDisplayRecordResults(record) {
+  const results = getRecordResults(record);
+  const canViewRevenue = canCurrentUserViewRevenueForRecord(record);
+  return results.map(result => ({
+    ...result,
+    productName: currentProductDisplayName(result),
+    // Never reveal the current price to a viewer without revenue permission.
+    revenuePerUnit: canViewRevenue
+      ? currentCatalogRevenuePerUnit(result, products)
+      : 0
+  }));
 }
 
 
@@ -13303,6 +13312,10 @@ function startRealtimeListeners() {
         prepareProductInputList(
           draftResults
         );
+
+        // A price-master update changes the displayed revenue for ALL
+        // existing sales immediately; no Firestore record is mutated.
+        renderDashboard();
 
       },
       error => {

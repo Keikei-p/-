@@ -283,18 +283,21 @@ test('Renamed product displays current master name by stable ID without rewritin
     }}
   ];
   const before=JSON.stringify(sourceRecords);
-  const ctx=context(['getRecordResults','currentProductDisplayName','getDisplayRecordResults'],{
+  const ctx=context(['getRecordResults','currentProductDisplayName',
+    'getProductPricingOptions','currentCatalogRevenuePerUnit','getDisplayRecordResults'],{
     products:[
       {id:'evergreen',name:'エバーグリーン',revenue:20000},
       {id:'htb',name:'HTB',revenue:0}
     ],
+    parseLegacyCashbackProductName:()=>({hasCashbackPlan:false}),
+    normalizeCashbackOptions:()=>[0],
     canCurrentUserViewRevenueForRecord:()=>true
   });
   const first=Array.from(ctx.getDisplayRecordResults(sourceRecords[0]));
   assert.equal(first[0].productName,'エバーグリーン');
   assert.equal(first[1].productName,'HTB');
   assert.equal(first[0].count,2);
-  assert.equal(first[0].revenuePerUnit,10000);
+  assert.equal(first[0].revenuePerUnit,20000); // current price, saved history unchanged
   assert.equal(first[1].revenuePerUnit,0);
   assert.equal(JSON.stringify(sourceRecords),before);
   assert.equal(ctx.getRecordResults(sourceRecords[0])[0].productName,'HTB');
@@ -962,4 +965,64 @@ test('Existing unchanged prices are not overwritten; invalid new and changed cou
     results:{e:{productId:'e',cashback:0,count:5,revenuePerUnit:null}},
     totalCount:5,totalRevenue:0
   }),/未設定/);
+});
+
+
+test('Changing current product price recalculates ALL existing deals on screen, without touching Firestore history',()=>{
+  const catalog=[
+    {id:'electric',name:'とくする電気',pricingOptions:[{cashback:0,revenuePerUnit:10000}]},
+    {id:'evergreen',name:'エバーグリーン',pricingOptions:[{cashback:0,revenuePerUnit:20000}]}
+  ];
+  const c=context(['getRecordResults','getProductPricingOptions','currentCatalogRevenuePerUnit','getDisplayRecordResults'],{
+    products:catalog,
+    parseLegacyCashbackProductName:()=>({hasCashbackPlan:false}),
+    normalizeCashbackOptions:()=>[0],
+    currentProductDisplayName:row=>row.productName,
+    canCurrentUserViewRevenueForRecord:()=>true
+  });
+  const old=[
+    {id:'e1',date:'2026-10-01',uid:'u1',teamId:'a',results:{electric:{productId:'electric',cashback:0,count:3,revenuePerUnit:0}}},
+    {id:'e2',date:'2026-10-03',uid:'u2',teamId:'b',results:{electric:{productId:'electric',cashback:0,count:2,revenuePerUnit:5000}}},
+    {id:'g1',date:'2026-10-01',uid:'u3',teamId:'a',results:{evergreen:{productId:'evergreen',cashback:0,count:1,revenuePerUnit:0}}},
+    {id:'g2',date:'2026-10-10',uid:'u4',teamId:'b',results:{evergreen:{productId:'evergreen',cashback:0,count:4,revenuePerUnit:20000}}}
+  ];
+  const original=JSON.stringify(old);
+  const total=rows=>rows.reduce((v,r)=>v+c.getDisplayRecordResults(r).reduce((sum,item)=>sum+item.count*item.revenuePerUnit,0),0);
+  assert.equal(total(old),150000,'electric 5x10000 plus evergreen 5x20000');
+  assert.equal(c.getDisplayRecordResults(old[0])[0].revenuePerUnit,10000);
+  assert.equal(c.getDisplayRecordResults(old[2])[0].revenuePerUnit,20000);
+  assert.equal(JSON.stringify(old),original,'no count, team, date, saved price or row change');
+  // Future master price changes are reflected in both old and new rows.
+  catalog[0].pricingOptions[0].revenuePerUnit=12000;
+  assert.equal(total(old),160000);
+  assert.equal(JSON.stringify(old),original);
+  c.canCurrentUserViewRevenueForRecord=()=>false;
+  assert.equal(total(old),0,'read-only current price must not bypass revenue masking');
+});
+
+test('Current price uses exact NURO CB tier; ambiguous or unknown legacy plans never guess',()=>{
+  const nuro={id:'nuro',name:'NURO光',pricingOptions:[
+    {cashback:0,revenuePerUnit:25000},
+    {cashback:20000,revenuePerUnit:22000}
+  ]};
+  const c=context(['getProductPricingOptions','currentCatalogRevenuePerUnit'],{
+    parseLegacyCashbackProductName:()=>({hasCashbackPlan:false}),
+    normalizeCashbackOptions:()=>[0]
+  });
+  const selected={productId:'nuro',cashback:20000,count:3,revenuePerUnit:2000};
+  const before=JSON.stringify(selected);
+  assert.equal(c.currentCatalogRevenuePerUnit(selected,[nuro]),22000);
+  assert.equal(c.currentCatalogRevenuePerUnit({...selected,cashback:0},[nuro]),25000);
+  assert.equal(c.currentCatalogRevenuePerUnit({...selected,cashback:30000},[nuro]),2000);
+  assert.equal(c.currentCatalogRevenuePerUnit({productId:'nuro',count:3,revenuePerUnit:2000},[nuro]),2000);
+  assert.equal(c.currentCatalogRevenuePerUnit(selected,[{id:'nuro',cashbackOptions:[0,20000],revenue:25000}]),2000);
+  assert.equal(c.currentCatalogRevenuePerUnit({...selected,productId:'deleted'},[nuro]),2000);
+  assert.equal(JSON.stringify(selected),before);
+});
+
+test('Product price listener always re-renders the dashboard on catalogue change',()=>{
+  const htmlSource=html.slice(html.indexOf('unsubscribeProducts =\n    onSnapshot('),html.indexOf('\n\n  /*\n    実績\n  */',html.indexOf('unsubscribeProducts =\n    onSnapshot(')));
+  assert(htmlSource.includes('prepareProductInputList('));
+  assert(htmlSource.indexOf('renderDashboard();') >
+    htmlSource.indexOf('prepareProductInputList('));
 });
