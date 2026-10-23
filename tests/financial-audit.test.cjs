@@ -464,3 +464,26 @@ test("Owner's revenue audit warning remains visible even when month has no sales
   assert(productSummaryList.children[0].children[0].textContent.includes("金額要確認"));
   assert.equal(productSummaryList.children[1].className,"empty-message");
 });
+
+
+test("Owner's historical correction preview supports known legacy non-CB electric price and refuses unknown CB tier",()=>{
+  const c=ctx(["recordConflict","planFinancialCorrection","getProductPricingOptions"],{
+    parseLegacyCashbackProductName:(name)=>({
+      hasCashbackPlan:/CB\s*[\d,]+/i.test(name||""),parentName:name||""
+    }),
+    normalizeCashbackOptions:options=>[...new Set([0,...(options||[])])].sort((a,b)=>a-b)
+  });
+  const record={id:"r1",companyId:"c",totalCount:5,totalRevenue:10000,
+    results:{electric:{productId:"e",cashback:0,count:5,revenuePerUnit:2000}}};
+  const original=JSON.stringify(record);
+  const plan=c.planFinancialCorrection(record,[{id:"e",name:"とくする電気",revenue:10000}],"e",0);
+  assert.equal(plan.oldUnit,2000);
+  assert.equal(plan.newUnit,10000);
+  assert.equal(plan.newRevenue,50000);
+  assert.equal(plan.selectedCount,5);
+  assert.equal(JSON.stringify(record),original);
+  for(const product of [
+    {id:"e",name:"NURO光",revenue:10000,cashbackOptions:[0,20000]},
+    {id:"e",name:"NURO光 CB20000",revenue:10000}
+  ])assert.throws(()=>c.planFinancialCorrection(record,[product],"e",0),/未確認/);
+});
