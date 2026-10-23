@@ -1186,27 +1186,7 @@ service cloud.firestore {
           request.resource.data.uid, request.resource.data.teamId);
 
 
-      // Price correction only: Owner may atomically update a single record's
-      // monetary fields plus a new immutable recordCorrections document.
-      // The normal update policy below remains unchanged for all other edits.
-      // Count / date / member / team / report state / creation metadata
-      // cannot be altered through this narrow financial permission.
-      allow update: if (
-          resource.data.companyId != null
-          && isCompanyOwner(resource.data.companyId)
-          && request.resource.data.companyId == resource.data.companyId
-          && request.resource.data.uid == resource.data.uid
-          && request.resource.data.date == resource.data.date
-          && request.resource.data.totalCount == resource.data.totalCount
-          && request.resource.data.results is map
-          && request.resource.data.totalRevenue is number
-          && request.resource.data.totalRevenue >= 0
-          && request.resource.data.updatedByUid == request.auth.uid
-          && request.resource.data.updatedAt == request.time
-          && request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['results','totalRevenue','updatedByUid','updatedAt'])
-        ) || (
-          resource.data.companyId != null
+      allow update: if resource.data.companyId != null
         && request.resource.data.companyId == resource.data.companyId
         && sameCompany(resource.data.companyId)
         && request.resource.data.uid == resource.data.uid
@@ -1249,8 +1229,7 @@ service cloud.firestore {
         )
         && canWriteDailyRecord(resource.data.companyId, resource.data.uid, resource.data.teamId)
         && (request.resource.data.teamId == resource.data.teamId
-          || isCompanyOwner(resource.data.companyId))
-        );
+          || isCompanyOwner(resource.data.companyId));
 
 
       allow delete: if resource.data.companyId != null
