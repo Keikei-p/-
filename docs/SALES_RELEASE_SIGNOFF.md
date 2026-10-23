@@ -1,29 +1,51 @@
-# 本番保護に関する変更のレビュー記録（2026-10-22）
+# 売上計算コード修正 本番リリースレビュー記録（2026-10-23）
 
 ## 対象
-GitHub `Keikei-p/-`; Firebase `sales-management-cc116`。
-新URL `nico-factory.web.app` と旧URL `keikei-p.github.io/-/` を両方維持する。
+- Pull Request: #84（`fix/revenue-core-tested-release-20261023` → `main`）
+- Firebase project: `sales-management-cc116`
+- 旧URL: https://keikei-p.github.io/-/
+- 新URL: https://nico-factory.web.app/
 
-## 変更の目的
-CodexとAIが作業しても、金額・単価・件数・既存実績の保存値を書き換えず、未完成のFinance GatewayやSecurity Rulesを本番へ誤展開しないための管理基盤。
+## 依頼者からの指示
+2026-10-23、プロジェクト会話で売上計算の修正と本番反映を依頼された。ただし**この会話はGitHub上での管理者署名、Firebase実データ照合、公式バックアップの証拠の代わりにはならない**。
 
-## このPRの内容
-- `AGENTS.md`: Codexの変更禁止事項・両URLの維持・安全なリリース手順を規定。
-- `scripts/check-sales-safe-pr.mjs`: 保護対象ファイルの変更に対して管理者レビューの合図とリリース記録を要求。
-- `.github/workflows/sales-safety-guard.yml`: PR差分を秘密鍵なしで検査。
-- `.github/workflows/firebase-production-deploy.yml`: **本番Firestore Rulesのpushによる自動展開を停止し、mainからの明示入力付き手動実行のみに制限**。
-- `docs/SALES_SAFE_CUTOVER.md`: 両URL・旧ブラウザキャッシュ・実績保存・権限テストを本番切替前に義務化。
-- 本記録（将来の金額分離リリースで再作成すること）。
+## 今回の変更範囲
+- `index.html`: 過去のCB額を売上単価として扱う誤処理を削除。売上は件数×売上単価のみ。CB別単価未確認なら入力を止め、過去の保存済み単価を通常入力で勝手に上書きしない。明細合計を保存前に検算。
+- `tests/sales-regressions.cjs`: 電気5件×¥10,000＝¥50,000、NURO光のCB別単価、未設定、整数、履歴単価の不変性をテスト。
+- `docs/SALES_RELEASE_SIGNOFF.md`: 本レビュー記録。
+- Firestoreデータ、Firebase Security Rules、Cloud Functions、ユーザー、班、商材、金額スナップショット、両URLの設定は**このPRから一切書き換えない**。
 
-## 本番データ
-Firestoreの `products`, `records`, `users`, `companies`, `teams`, `invitations` その他すべてのドキュメントに対して read/write/migration/delete を**行わない**。
-`index.html`, `firestore.rules`, `service-worker.js`, `manifest.webmanifest`, Firebase Hostingの設定値、Cloudflareの本番Workerコードにも変更なし。
+## 自動検証
+- PR #84 変更前HEAD `fa01437b354f7d9265e52e840f83fee9ed98ace8` の検証：
+  - Sales App Validation: 成功 https://github.com/Keikei-p/-/actions/runs/39906810711
+  - sales-production-reviewed 未適用／リリース記録不足のため保護ゲートは意図どおり失敗 https://github.com/Keikei-p/-/actions/runs/39906810681
+- **本ファイル追加後のHEADで改めてCIおよび保護ゲート結果を確認すること。**
 
-## 保護機構の限界
-- PR検査は**GitHubのmainブランチ保護でrequired statusに指定しない限り、直接pushを防げない**。GitHub管理画面でブランチ保護を有効にするまでは未完成。
-- `sales-production-reviewed` ラベルと変更ごとのレビュー記録は差分確認の合図に過ぎず、金額漏洩リスクを解消するものではない。
-- この変更は安全運用の基盤であり、Finance Gatewayの本番切替とは完全に別。
+## 未完了事項（完了したことにしない）
+- [ ] 本番Firestore `records`, `products` の実データを照合（機密値はログに残さない）
+- [ ] 現行データの保護バックアップの実在と復元可能性を確認
+- [ ] 新旧URLの認証ユーザー別表示と既存PWAキャッシュの実機確認
+- [ ] GitHub 管理者が差分と本レビューを読んだ上で `sales-production-reviewed` ラベルを付与
+- [ ] GitHub 管理者が実際の署名と公開承認を記入
+- [ ] マージ後にGitHub PagesとNICO Hostingのデプロイ成功と両URLの動作確認
 
-## 人間の承認欄
-このファイルはAIが準備したレビュー用記録。**実際のOwner承認や本番データ照合済みの証明ではない**。
-管理者は差分・CI結果を確認してからPRに `sales-production-reviewed` ラベルを付け、マージを判断する。
+## 重要：旧保存レコードを自動訂正しない
+既存の「5件なのに¥10,000」は過去に保存した単価が誤っている可能性があり、この変更だけでは過去売上は¥50,000に変わらない。過去データの書換は別のオーナー権限付き履歴訂正の明示確認と、バックアップ／復旧確認が必要。絶対に自動一括修正しない。
+
+## 人間の管理者による公開サイン（未記入）
+- 承認者（GitHub管理者）: **未記入**
+- 承認日: **未記入**
+- 本番データ・両URL確認記録: **未記入**
+- リリース承認: **未承認**
+
+**このファイルをAIが作成したこと自体を、オーナーによる本番承認済みとは扱わない。**
+
+## 2026-10-23 追加：緊急公開の指示と制限（正確な記録）
+- ユーザーから「そもそも売上計算が間違っててそれさえ直せばいったんいい!」「あとは家帰ってほかの検証とかするからとりあえず急いで!」という**売上計算コードのみを早急に本番公開する指示**を受領した。
+- 本PRの`index.html`は画面・入力時の計算と保存直前の検算のみを変更する。`functions/`、`firestore.rules`、`firebase.json`、`service-worker.js`を変更しない。既存レコードへの再計算・上書き・一括修正はしない。
+- この指示を過去の誤売上を変更する許可や、安全でない移行・セキュリティ切替の許可として流用しない。
+- 依頼者はその他の実機・データ照合を帰宅後に実施すると申告。**未検証項目は引き続き未検証のままであり、検証完了と偽らない。**
+- フロントエンドだけの公開では過去の誤保存値は修正されない。旧CBプランの本当の売上単価がマスターに未設定なら、推測した金額で登録させず「単価未設定」で停止する。
+- フロントエンドを元に戻すにはPRマージ前の`main` commit `a0aae3e3cdf2b49fc9e06c1e47531203c259143b`の`index.html`を再公開する。**DB復元はロールバック方法ではない**。
+- 自動テスト：`Sales App Validation` 全合格 https://github.com/Keikei-p/-/actions/runs/39907147999 。
+- **管理者本人による独立したGitHub署名や本番実機確認の代筆・完了の主張はしない。** 公開の指示は上記ユーザーメッセージに限定して記録する。
