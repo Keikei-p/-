@@ -15027,8 +15027,8 @@ function getResultProductPresentation(
         : "",
     revenuePerUnit:
       Number(
-        result?.revenuePerUnit ||
-        product?.revenue ||
+        result?.revenuePerUnit ??
+        product?.revenue ??
         0
       )
   };
@@ -21358,6 +21358,14 @@ function verifyNewRecordPricing(results, productCatalog) {
       return "商材が更新・削除されています。再読み込みして管理者に確認してください。";
     }
     const product = catalog.get(row.productId);
+    // Old records may legitimately use a legacy CB rule, but new sales must
+    // never confuse the customer's cashback amount with our earned revenue.
+    const explicit = Array.isArray(product.pricingOptions) && product.pricingOptions.length > 0;
+    const oldCB = !explicit && Array.isArray(product.cashbackOptions) &&
+      product.cashbackOptions.some(value => Number(value) > 0);
+    if (oldCB || (!explicit && product.revenue == null)) {
+      return "旧形式の商材単価が未設定です。オーナーがCB別売上単価を確認するまで登録できません。";
+    }
     const cb = Number(row.cashback ?? 0);
     const price = Number(row.revenuePerUnit);
     const plans = getProductPricingOptions(product);
