@@ -32020,6 +32020,20 @@ function auditFinancialRecords(monthlyRecords, currentProducts) {
         const cashback = Number(row.cashback);
         const options = getProductPricingOptions(product);
         const matching = options.find(option => Number(option.cashback) === cashback);
+        // Legacy parent products did not store explicit CB-specific prices.
+        // The former compatibility rule substituted cashback amount as
+        // "revenuePerUnit", which can result in 5 x CB2000 = ¥10,000
+        // even when the owner expected base revenue ¥10,000 per deal.
+        // Flag for review; NEVER assume the correct amount or rewrite history.
+        if (cashback > 0 &&
+            (!Array.isArray(product.pricingOptions) || !product.pricingOptions.length) &&
+            Array.isArray(product.cashbackOptions)) {
+          add(record, "legacy_cb_rate",
+            (row.productName || product.name || "商材") +
+            "：旧CBプラン" + formatYen(cashback) +
+            "の売上単価" + formatYen(unitPrice) +
+            "は旧互換計算の可能性があります。現行プラン単価を確認してください。");
+        }
         if (matching && Number(matching.revenuePerUnit) !== unitPrice) {
           add(record, "master_price_difference",
             (row.productName || product.name || "商材") +
