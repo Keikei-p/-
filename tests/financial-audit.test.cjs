@@ -126,10 +126,13 @@ test("Increased deal counts never silently reuse an old incorrect unit price",()
   const original=raw(old);
   assert.equal(v.verifyChangedRecordPricing(old,old,catalog),"",
     "unchanged old prices must not cause automatic replacement");
-  assert.match(v.verifyChangedRecordPricing(changed,old,catalog),/単価の再確認/);
+  assert.match(v.verifyChangedRecordPricing(changed,old,catalog),/オーナー/);
+  assert.match(v.verifyChangedRecordPricing({
+    electric__cb_0:{...changed.electric__cb_0,revenuePerUnit:10000}
+  },old,catalog),/オーナー/);
   assert.equal(v.verifyChangedRecordPricing({
     electric__cb_0:{...changed.electric__cb_0,revenuePerUnit:10000}
-  },old,catalog),"");
+  },{electric__cb_0:{...old.electric__cb_0,revenuePerUnit:10000}},catalog),"");
   assert.equal(raw(old),original);
 });
 
