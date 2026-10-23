@@ -15145,18 +15145,15 @@ function getProductPricingOptions(
         cashback => ({
           cashback,
           /*
-            pricingOptions導入前の親商材は、
-            直前のアプリ仕様をそのまま再現して互換表示する。
+            CBはプランを識別する情報であり売上金額ではない。
+            旧形式のCB別売上単価が不明なら null のまま扱い、
+            絶対に CB 金額から収益単価を作らない。
+            既存の実績は保存時の revenuePerUnit を維持する。
           */
           revenuePerUnit:
-            cashback === 0
-              ? Number(
-                  product?.revenue ||
-                  0
-                )
-              : Number(
-                  cashback
-                )
+            cashback === 0 && product?.revenue != null
+              ? Number(product.revenue)
+              : null
         })
       );
 
@@ -15197,9 +15194,9 @@ function pricingOptionsText(
       option =>
         `${formatCashbackPlanLabel(
           option.cashback
-        )} ${formatYen(
-          option.revenuePerUnit
-        )}`
+        )} ${option.revenuePerUnit == null
+          ? "売上単価未設定"
+          : formatYen(option.revenuePerUnit)}`
     )
     .join(" / ") +
     (
@@ -20507,11 +20504,11 @@ function buildProductInputGroups(
             productName:
               product.name,
             label:
-              hasPlans
-                ? formatCashbackPlanLabel(
-                    cashback
-                  )
-                : "件数",
+              (option.revenuePerUnit == null && !snapshot)
+                ? formatCashbackPlanLabel(cashback) + "（売上単価未設定）"
+                : (hasPlans
+                  ? formatCashbackPlanLabel(cashback)
+                  : "件数"),
             cashback,
             count:
               Number(
@@ -32151,7 +32148,8 @@ function auditFinancialRecords(monthlyRecords, currentProducts) {
             "の売上単価" + formatYen(unitPrice) +
             "は旧互換計算の可能性があります。現行プラン単価を確認してください。");
         }
-        if (matching && Number(matching.revenuePerUnit) !== unitPrice) {
+        if (matching && matching.revenuePerUnit != null &&
+            Number(matching.revenuePerUnit) !== unitPrice) {
           add(record, "master_price_difference",
             (row.productName || product.name || "商材") +
             "：保存単価 " + formatYen(unitPrice) +
