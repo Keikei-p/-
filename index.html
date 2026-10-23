@@ -32154,7 +32154,7 @@ async function persistConfirmedFinancialCorrection(record,plan,reason) {
       changedByUid:currentUser.uid,
       changedByName:currentUserData?.name || "オーナー",
       before:financialAuditSnapshot(current),
-      after,
+      after:{...after,financialCorrectionReason:reason.trim()},
       createdAt:now
     });
   });
@@ -32164,13 +32164,14 @@ async function persistConfirmedFinancialCorrection(record,plan,reason) {
 function auditFinancialRecords(monthlyRecords, currentProducts) {
   const findings = [];
   const productById = new Map((currentProducts || []).map(product => [product.id, product]));
-  const add = (record, type, note) => {
+  const add = (record, type, note, details = {}) => {
     if (findings.length >= 100) return;
     findings.push({
       recordId: record?.id || "",
       date: record?.date || "日付不明",
       type,
-      note
+      note,
+      ...details
     });
   };
 
@@ -32235,7 +32236,8 @@ function auditFinancialRecords(monthlyRecords, currentProducts) {
             (row.productName || product.name || "商材") +
             "：保存単価 " + formatYen(unitPrice) +
             " / 現在設定 " + formatYen(Number(matching.revenuePerUnit)) +
-            "（過去の単価改定の可能性あり。自動修正しません）");
+            "（過去の単価改定の可能性あり。自動修正しません）",
+            {productId:row.productId,cashback,proposedRate:Number(matching.revenuePerUnit)});
         }
       }
     }
