@@ -31928,9 +31928,18 @@ function planFinancialCorrection(record, catalog, productId, cashback) {
     throw recordConflict("この履歴は金額訂正の対象にできません。管理者に確認してください。");
   }
   const product = (catalog || []).find(p => p.id === productId);
-  // Explicit per-CB price configuration is the only supported correction source.
-  if (!product || !Array.isArray(product.pricingOptions) || !product.pricingOptions.length) {
-    throw recordConflict("商材のCB別単価設定が未確認です。商材管理で確認してください。");
+  if (!product) throw recordConflict("対象の商材が見つかりません。");
+  const explicit = Array.isArray(product.pricingOptions) && product.pricingOptions.length > 0;
+  const legacyCbTiers = Array.isArray(product.cashbackOptions) &&
+    product.cashbackOptions.some(value => Number(value) > 0);
+  // A known single-rate (non-CB) product may be corrected from its original
+  // revenue master; CB-sensitive legacy products MUST have explicit tier prices.
+  const parsed = parseLegacyCashbackProductName(product.name);
+  const simpleLegacy = !explicit && !legacyCbTiers &&
+    !parsed.hasCashbackPlan && product.revenue != null &&
+    product.revenue !== "" && Number(cashback) === 0;
+  if (!explicit && !simpleLegacy) {
+    throw recordConflict("CB別売上単価が未確認です。通常商材はマスター収益単価を確認してください。");
   }
   if (!Number.isSafeInteger(Number(cashback)) || Number(cashback) < 0) {
     throw recordConflict("CBプランが不正です。");
