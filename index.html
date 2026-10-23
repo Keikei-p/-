@@ -15486,154 +15486,37 @@ function renderPricingOptionEditor(
 }
 
 
-function readPricingOptions(
-  container
-) {
-
-  const rows =
-    Array.from(
-      container.querySelectorAll(
-        ".pricing-option-row"
-      )
-    );
-
-
-  if (
-    rows.length === 0
-  ) {
-
-    return {
-      error:
-        "収益単価を1つ以上設定してください。",
-      options: []
-    };
-
-  }
-
-
-  if (
-    rows.length > 15
-  ) {
-
-    return {
-      error:
-        "単価違いは最大15項目までです。",
-      options: []
-    };
-
-  }
-
-
-  const options =
-    [];
-
-  const seenCashbacks =
-    new Set();
-
-
-  for (
-    const row of rows
-  ) {
-
-    const cashback =
-      Number(
-        row.querySelector(
-          "input[data-pricing-cashback]"
-        )?.value ||
-        0
-      );
-
-    const revenuePerUnit =
-      Number(
-        row.querySelector(
-          "input[data-pricing-revenue]"
-        )?.value ||
-        0
-      );
-
-
-    if (
-      !Number.isFinite(
-        cashback
-      ) ||
-      cashback < 0
-    ) {
-
-      return {
-        error:
-          "CB金額は0円以上で入力してください。",
-        options: []
-      };
-
+function readPricingOptions(container) {
+  const rows = Array.from(container.querySelectorAll(".pricing-option-row"));
+  if (!rows.length) return {error:"収益単価を1つ以上設定してください。",options:[]};
+  if (rows.length>15) return {error:"単価違いは最大15項目までです。",options:[]};
+  const options=[];
+  const seenCashbacks=new Set();
+  for (const row of rows) {
+    const cashbackRaw=row.querySelector("input[data-pricing-cashback]")?.value;
+    const revenueRaw=row.querySelector("input[data-pricing-revenue]")?.value;
+    // Money input left blank must never silently become 0 yen.
+    if (cashbackRaw==null || revenueRaw==null ||
+        !String(cashbackRaw).trim() || !String(revenueRaw).trim()) {
+      return {error:"CB金額と収益単価を両方入力してください。",options:[]};
     }
-
-
-    if (
-      !Number.isFinite(
-        revenuePerUnit
-      ) ||
-      revenuePerUnit < 0
-    ) {
-
-      return {
-        error:
-          "収益単価は0円以上で入力してください。",
-        options: []
-      };
-
+    const cashback=Number(cashbackRaw);
+    const revenuePerUnit=Number(revenueRaw);
+    // Reject fractions instead of silently rounding the customer's agreed amount.
+    if (!Number.isSafeInteger(cashback) || cashback<0) {
+      return {error:"CB金額は0円以上の整数で入力してください。",options:[]};
     }
-
-
-    const normalizedCashback =
-      Math.round(
-        cashback
-      );
-
-
-    if (
-      seenCashbacks.has(
-        normalizedCashback
-      )
-    ) {
-
-      return {
-        error:
-          "同じCB金額が重複しています。",
-        options: []
-      };
-
+    if (!Number.isSafeInteger(revenuePerUnit) || revenuePerUnit<0) {
+      return {error:"収益単価は0円以上の整数で入力してください。",options:[]};
     }
-
-
-    seenCashbacks.add(
-      normalizedCashback
-    );
-
-
-    options.push({
-      cashback:
-        normalizedCashback,
-      revenuePerUnit:
-        Math.round(
-          revenuePerUnit
-        )
-    });
-
+    if (seenCashbacks.has(cashback)) {
+      return {error:"同じCB金額が重複しています。",options:[]};
+    }
+    seenCashbacks.add(cashback);
+    options.push({cashback,revenuePerUnit});
   }
-
-
-  options.sort(
-    (a, b) =>
-      a.cashback -
-      b.cashback
-  );
-
-
-  return {
-    error: "",
-    options
-  };
-
+  options.sort((a,b)=>a.cashback-b.cashback);
+  return {error:"",options};
 }
 
 
