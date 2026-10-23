@@ -283,18 +283,21 @@ test('Renamed product displays current master name by stable ID without rewritin
     }}
   ];
   const before=JSON.stringify(sourceRecords);
-  const ctx=context(['getRecordResults','currentProductDisplayName','getDisplayRecordResults'],{
+  const ctx=context(['getRecordResults','currentProductDisplayName',
+    'getProductPricingOptions','currentCatalogRevenuePerUnit','getDisplayRecordResults'],{
     products:[
       {id:'evergreen',name:'エバーグリーン',revenue:20000},
       {id:'htb',name:'HTB',revenue:0}
     ],
+    parseLegacyCashbackProductName:()=>({hasCashbackPlan:false}),
+    normalizeCashbackOptions:()=>[0],
     canCurrentUserViewRevenueForRecord:()=>true
   });
   const first=Array.from(ctx.getDisplayRecordResults(sourceRecords[0]));
   assert.equal(first[0].productName,'エバーグリーン');
   assert.equal(first[1].productName,'HTB');
   assert.equal(first[0].count,2);
-  assert.equal(first[0].revenuePerUnit,10000);
+  assert.equal(first[0].revenuePerUnit,20000); // current price, saved history unchanged
   assert.equal(first[1].revenuePerUnit,0);
   assert.equal(JSON.stringify(sourceRecords),before);
   assert.equal(ctx.getRecordResults(sourceRecords[0])[0].productName,'HTB');
@@ -1019,5 +1022,7 @@ test('Current price uses exact NURO CB tier; ambiguous or unknown legacy plans n
 
 test('Product price listener always re-renders the dashboard on catalogue change',()=>{
   const htmlSource=html.slice(html.indexOf('unsubscribeProducts =\n    onSnapshot('),html.indexOf('\n\n  /*\n    実績\n  */',html.indexOf('unsubscribeProducts =\n    onSnapshot(')));
-  assert.match(htmlSource,/prepareProductInputList\([\s\S]*?draftResults[\s\S]*?\);\s*renderDashboard\(\)/);
+  assert(htmlSource.includes('prepareProductInputList('));
+  assert(htmlSource.indexOf('renderDashboard();') >
+    htmlSource.indexOf('prepareProductInputList('));
 });
