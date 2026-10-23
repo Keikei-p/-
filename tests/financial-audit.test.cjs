@@ -401,59 +401,41 @@ test("Owner corrections fail closed on missing master prices, legacy ambiguous C
   assert.throws(()=>v.planFinancialCorrection(electric,catalog,"electric",0),{code:"record-conflict"});
 });
 
-test("Financial correction writes record and append-only before/after audit atomically; rejects stale edits and missing reasons",async()=>{
+test("Client delegates Owner money correction to authenticated Callable and never performs direct Firestore dual writes",async()=>{
   const original={
     id:"record-electric",companyId:"c",date:"2026-10-23",uid:"worker",
-    memberNameSnapshot:"A",teamId:"team4",teamNameSnapshot:"4班",
-    reportStatus:"submitted",workLocation:"店舗",createdByUid:"worker",createdAt:11,
-    results:{"electric__cb_0":{productId:"electric",productName:"とくする電気",
-      cashback:0,count:5,revenuePerUnit:2000}},totalCount:5,totalRevenue:10000,
-    updatedAt:12
+    memberNameSnapshot:"A",teamId:"team4",createdAt:11,
+    results:{"electric__cb_0":{productId:"electric",cashback:0,count:5,revenuePerUnit:2000}},
+    totalCount:5,totalRevenue:10000,updatedAt:{toMillis:()=>12345}
   };
-  const before=raw(original),writes=[];
-  let stored=structuredClone(original);
-  const transaction={
-    get:async ref=>ref.path==="products/electric"
-      ? {exists:()=>true,id:"electric",data:()=>({...catalog[0],companyId:"c"})}
-      : {exists:()=>true,id:stored.id,data:()=>stored},
-    update:(ref,fields)=>{writes.push({kind:"update",fields});
-      for(const [k,v] of Object.entries(fields))stored[k]=v;},
-    set:(ref,fields)=>{writes.push({kind:"audit",fields});}
-  };
-  const v=ctx([
-    "recordRevision","recordConflict","getProductPricingOptions",
-    "planFinancialCorrection","financialAuditSnapshot","persistConfirmedFinancialCorrection"
-  ],{
-    isCurrentCompanyOwner:()=>true,currentUser:{uid:"owner"},
-    currentUserData:{companyId:"c",name:"オーナー"},products:catalog,
-    db:{},doc:(...args)=>({path:args.slice(1).join("/")}),collection:()=>({}),
-    serverTimestamp:()=>9876,
-    runTransaction:async (db,cb)=>cb(transaction)
+  let calls=[];
+  const v=ctx(["recordConflict","persistConfirmedFinancialCorrection"],{
+    isCurrentCompanyOwner:()=>true,currentUser:{uid:"owner"},currentUserData:{companyId:"c"},
+    correctRecordRevenueCall:async request=>{
+      calls.push(request);
+      return {data:{recordId:"record-electric",totalRevenue:50000}};
+    }
   });
-  const planned=v.planFinancialCorrection(original,catalog,"electric",0);
-  assert.equal(writes.length,0);
-  const result=await v.persistConfirmedFinancialCorrection(original,planned,
-    "当日の承認単価10000円で照合したため");
-  assert.equal(result.correctedRevenue,50000);
-  assert.equal(writes.length,2);
-  assert.equal(writes[0].kind,"update");
-  assert.equal(writes[1].kind,"audit");
-  assert.equal(stored.totalCount,5);
-  assert.equal(stored.totalRevenue,50000);
-  assert.equal(stored.teamId,"team4");
-  assert.equal(stored.createdAt,11);
-  assert.equal(stored.createdByUid,"worker");
-  assert.equal(writes[1].fields.before.totalRevenue,10000);
-  assert.equal(writes[1].fields.after.totalRevenue,50000);
-  assert.equal(writes[1].fields.after.financialCorrectionReason,"当日の承認単価10000円で照合したため");
+  const plan={productId:"electric",cashback:0,oldUnit:2000,selectedCount:5};
+  const before=raw(original);
+  const done=await v.persistConfirmedFinancialCorrection(original,plan,
+    "当日の承認単価を照合したため");
+  assert.equal(done.correctedRevenue,50000);
+  assert.equal(calls.length,1);
+  assert.equal(calls[0].recordId,"record-electric");
+  assert.equal(calls[0].productId,"electric");
+  assert.equal(calls[0].cashback,0);
+  assert.equal(calls[0].expectedTotalCount,5);
+  assert.equal(calls[0].expectedTotalRevenue,10000);
+  assert.equal(calls[0].expectedUpdatedAtMillis,12345);
+  assert.equal(calls[0].expectedOldUnit,2000);
   assert.equal(raw(original),before);
-  assert.equal(writes[1].fields.recordUid,"worker");
-  assert.equal(writes[1].fields.recordDate,"2026-10-23");
-  const priorCount=writes.length;
-  await assert.rejects(v.persistConfirmedFinancialCorrection(original,planned,"理由短"),{code:"record-conflict"});
-  assert.equal(writes.length,priorCount);
-  await assert.rejects(v.persistConfirmedFinancialCorrection(original,planned,
-    "同じ金額を再び修正しようとした"),{code:"record-conflict"});
-  assert.equal(writes.length,priorCount);
+  await assert.rejects(v.persistConfirmedFinancialCorrection(original,plan,"短い"),{code:"record-conflict"});
+  assert.equal(calls.length,1);
+  v.isCurrentCompanyOwner=()=>false;
+  await assert.rejects(v.persistConfirmedFinancialCorrection(original,plan,
+    "確認済みの訂正理由です"),{code:"record-conflict"});
+  assert.equal(calls.length,1);
 });
+
 
