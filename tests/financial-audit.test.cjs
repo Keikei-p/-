@@ -109,10 +109,53 @@ test("Saved zero unit price stays zero in presentation, never replaced by curren
   assert.equal(v.getResultProductPresentation({...result,revenuePerUnit:undefined}).revenuePerUnit,10000);
 });
 
-test("Edit path only applies new price validation if no saved record exists",()=>{
-  const marker="if (!existingDailyRecord && !zeroResultSubmission)";
-  assert(html.includes(marker));
+test("Edits keep historical prices when counts are unchanged, but new or changed counts are validated",()=>{
+  assert(html.includes("verifyChangedRecordPricing(results, existingDailyRecord.results, products)"));
   assert(html.includes("verifyNewRecordPricing(results, products)"));
+  assert(html.includes("if (!zeroResultSubmission)"));
+});
+test("Increased deal counts never silently reuse an old incorrect unit price",()=>{
+  const v=ctx(["getProductPricingOptions","resultVariantKey",
+    "normalizeExistingResultMap","verifyNewRecordPricing","verifyChangedRecordPricing"],{
+      parseLegacyCashbackProductName:()=>({hasCashbackPlan:false})
+    });
+  const old={electric__cb_0:{productId:"electric",cashback:0,
+    count:5,revenuePerUnit:2000}};
+  const changed={electric__cb_0:{productId:"electric",cashback:0,
+    count:6,revenuePerUnit:2000}};
+  const original=raw(old);
+  assert.equal(v.verifyChangedRecordPricing(old,old,catalog),"",
+    "unchanged old prices must not cause automatic replacement");
+  assert.match(v.verifyChangedRecordPricing(changed,old,catalog),/単価の再確認/);
+  assert.equal(v.verifyChangedRecordPricing({
+    electric__cb_0:{...changed.electric__cb_0,revenuePerUnit:10000}
+  },old,catalog),"");
+  assert.equal(raw(old),original);
+});
+
+test("NURO mixed-CB count increments use the selected CB plan, not a flat product rate",()=>{
+  const nuro={id:"nuro",name:"NURO光",pricingOptions:[
+    {cashback:0,revenuePerUnit:25000},
+    {cashback:20000,revenuePerUnit:22500}
+  ]};
+  const v=ctx(["getProductPricingOptions","resultVariantKey",
+    "normalizeExistingResultMap","verifyNewRecordPricing","verifyChangedRecordPricing"],{
+      parseLegacyCashbackProductName:()=>({hasCashbackPlan:false})
+    });
+  const old={
+    "nuro__cb_0":{productId:"nuro",cashback:0,count:4,revenuePerUnit:25000},
+    "nuro__cb_20000":{productId:"nuro",cashback:20000,count:5,revenuePerUnit:22500}
+  };
+  const changed={
+    ...old,
+    "nuro__cb_20000":{...old["nuro__cb_20000"],count:6}
+  };
+  assert.equal(v.verifyChangedRecordPricing(changed,old,[nuro]),"");
+  const invalid={
+    ...changed,
+    "nuro__cb_20000":{...changed["nuro__cb_20000"],revenuePerUnit:25000}
+  };
+  assert.match(v.verifyChangedRecordPricing(invalid,old,[nuro]),/単価/);
 });
 test("NURO光: same product with different CB plans uses each plan price, never nine times one flat rate",()=>{
   const nuro={
