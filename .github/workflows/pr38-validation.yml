@@ -32,7 +32,7 @@ jobs:
           node --check functions/finance-correction.js
 
       - name: Check sales input, correction and finance auditing regressions
-        run: node --test tests/sales-regressions.cjs tests/financial-audit.test.cjs
+        run: node --test tests/sales-regressions.cjs tests/financial-audit.test.cjs tests/financial-consistency.test.cjs
 
       - name: Check Cloudflare LINE Worker syntax
         run: |
