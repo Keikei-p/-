@@ -16975,6 +16975,18 @@ function openEditProductModal(
     )
   );
 
+  // In the old catalog, cashback money was sometimes mistaken for earnings.
+  // Never convert that guessed value into an explicit saved price on edit.
+  const needsVerifiedCashbackPrices =
+    (!Array.isArray(product.pricingOptions) || product.pricingOptions.length === 0) &&
+    Array.isArray(product.cashbackOptions) &&
+    product.cashbackOptions.some(value => Number(value) > 0);
+  if (needsVerifiedCashbackPrices) {
+    editProductPricingEditor.querySelectorAll("input[data-pricing-revenue]")
+      .forEach(input => { input.value = ""; });
+    showError("旧形式のCB別売上単価は未確認です。全CBプランの収益単価を確認して入力してください。");
+  }
+
   productModal.style.display =
     "flex";
 
