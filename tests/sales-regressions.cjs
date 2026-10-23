@@ -283,18 +283,20 @@ test('Renamed product displays current master name by stable ID without rewritin
     }}
   ];
   const before=JSON.stringify(sourceRecords);
-  const ctx=context(['getRecordResults','currentProductDisplayName','getDisplayRecordResults'],{
+  const ctx=context(['getRecordResults','currentProductDisplayName',
+    'currentCatalogRevenueUnitForDisplay','getDisplayRecordResults'],{
     products:[
       {id:'evergreen',name:'エバーグリーン',revenue:20000},
       {id:'htb',name:'HTB',revenue:0}
     ],
-    canCurrentUserViewRevenueForRecord:()=>true
+    canCurrentUserViewRevenueForRecord:()=>true,
+    getProductPricingOptions:p=>[{cashback:0,revenuePerUnit:p.revenue}]
   });
   const first=Array.from(ctx.getDisplayRecordResults(sourceRecords[0]));
   assert.equal(first[0].productName,'エバーグリーン');
   assert.equal(first[1].productName,'HTB');
   assert.equal(first[0].count,2);
-  assert.equal(first[0].revenuePerUnit,10000);
+  assert.equal(first[0].revenuePerUnit,20000);
   assert.equal(first[1].revenuePerUnit,0);
   assert.equal(JSON.stringify(sourceRecords),before);
   assert.equal(ctx.getRecordResults(sourceRecords[0])[0].productName,'HTB');
