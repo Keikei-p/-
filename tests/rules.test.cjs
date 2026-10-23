@@ -138,20 +138,32 @@ test('Owner-only price correction saves exact product count and before/after aud
     if(html.slice(at-6,at)==='async ') at-=6;
     return html.slice(at,html.indexOf('\n}',at)+2);
   };
+  // Only the isolated emulator is seeded, never production.
+  await env.withSecurityRulesDisabled(async admin=>{
+    await setDoc(doc(admin.firestore(),'products','A'),{
+      companyId:company,name:'電気テスト商材',
+      pricingOptions:[{cashback:0,revenuePerUnit:1000}],
+      revenue:1000,active:true
+    });
+  });
+  // The Firebase SDK runs in the host realm while extracted browser code
+  // executes in the VM realm. Rewrap only plain JSON-like maps so this
+  // integration test reaches real Firestore Rules; preserve SDK sentinels.
+  function nativeMap(value){
+    if(Array.isArray(value))return value.map(nativeMap);
+    if(value && typeof value==='object' &&
+       Object.prototype.toString.call(value)==='[object Object]' &&
+       Object.getPrototypeOf(value)?.constructor?.name==='Object'){
+      return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,nativeMap(v)]));
+    }
+    return value;
+  }
   const ctx=vm.createContext({
     db,doc,collection,serverTimestamp,
-    // VM produces cross-realm plain objects. Convert objects to the test host
-    // realm before calling Firebase SDK; production browser has one realm.
     runTransaction:(database,callback)=>runTransaction(database,transaction=>callback({
       get:ref=>transaction.get(ref),
-      update:(ref,data)=>transaction.update(ref,{
-        ...data,results:JSON.parse(JSON.stringify(data.results))
-      }),
-      set:(ref,data)=>transaction.set(ref,{
-        ...data,
-        before:{...data.before,results:JSON.parse(JSON.stringify(data.before.results))},
-        after:{...data.after,results:JSON.parse(JSON.stringify(data.after.results))}
-      })
+      update:(ref,data)=>transaction.update(ref,nativeMap(data)),
+      set:(ref,data)=>transaction.set(ref,nativeMap(data))
     })),
     getProductPricingOptions:null,
     currentUser:{uid:'owner'},
