@@ -115,14 +115,18 @@ test("Audit panel is Owner-only and shows no sensitive error details to ordinary
   const v=ctx(["renderProductSummary"],{
     productSummaryList,productSummaryCount:summaryCount,document:{createElement:make},
     isCurrentCompanyOwner:()=>false,
-    auditFinancialRecords:()=>{throw Error("must not access sensitive audit while not owner")}
+    auditFinancialRecords:()=>{throw Error("must not access sensitive audit while not owner")},
+    canCurrentUserViewProductRevenue:()=>false,escapeHtml:s=>s,
+    formatYen:n=>"¥"+n
   });
-  v.renderProductSummary({},[]);
-  assert.equal(productSummaryList.children.length,0);
+  const summary={electric:{name:"とくする電気",count:5,revenue:10000}};
+  v.renderProductSummary(summary,[]);
+  assert.equal(productSummaryList.children.length,1);
+  assert.equal(productSummaryList.children[0].className,"summary-row");
   v.isCurrentCompanyOwner=()=>true;
   v.auditFinancialRecords=()=>[{date:"2026-10-23",note:"保存単価 ¥2,000 / 現在設定 ¥10,000"}];
-  v.renderProductSummary({},[]);
-  assert.equal(productSummaryList.children.length,1);
+  v.renderProductSummary(summary,[]);
+  assert.equal(productSummaryList.children.length,2);
   const panel=productSummaryList.children[0];
   assert(panel.children[0].textContent.includes("金額要確認：1項目"));
   assert(panel.children[2].textContent.includes("¥2,000"));
