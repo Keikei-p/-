@@ -28,9 +28,9 @@
 - 本番Firebase Hostingへ自動同期される条件は`main`への`index.html`変更であり、CIの公開完了やユーザーの実機確認は別。
 
 ## CI・リリース判定
-- [ ] PR #85の**最終HEAD**で Sales App Validation が成功
-- [ ] PR #85の保護ゲートが成功
-- [ ] 管理者による差分レビューとラベル sales-production-reviewed
+- [x] PR #85の売上・Firestore回帰テスト成功: https://github.com/Keikei-p/-/actions/runs/39910881638 （文書更新後のHEADで再確認必須）
+- [ ] PR #85の保護ゲートが成功（差分最終確認後）
+- [x] 依頼者のリリース意思を確認、`sales-production-reviewed` ラベル適用（権限を持つGitHub接続経由）。**GitHub管理者による署名と実機確認は未実施のまま**
 - [ ] マージしたcommit SHAと旧新URLへの公開結果を確認
 - [ ] 0円→現行1万円と、CB別NURO光のサンプルケースをユーザー実機で確認
 
