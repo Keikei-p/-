@@ -21244,7 +21244,12 @@ function validateFinancialRecordForSave(data) {
   let revenue = 0;
   for (const item of Object.values(rows)) {
     const n = Number(item?.count);
-    const rate = Number(item?.revenuePerUnit);
+    // Null/blank/unset rates are UNKNOWN, never silently 0 yen.
+    if (item?.revenuePerUnit == null || item.revenuePerUnit === "" ||
+        item?.count == null || item.count === "") {
+      throw recordConflict("売上単価または件数が未設定です。保存を中止しました。");
+    }
+    const rate = Number(item.revenuePerUnit);
     if (!Number.isSafeInteger(n) || n < 0 ||
         !Number.isSafeInteger(rate) || rate < 0 ||
         !Number.isSafeInteger(n * rate)) {
