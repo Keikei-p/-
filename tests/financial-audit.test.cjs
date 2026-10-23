@@ -6,8 +6,9 @@ const {test}=require("node:test");
 const html=fs.readFileSync(path.join(__dirname,"../index.html"),"utf8");
 
 function source(name){
-  const start=html.indexOf("function "+name+"(");
+  let start=html.indexOf("function "+name+"(");
   assert(start>=0,"Missing "+name);
+  if (html.slice(start-6,start)==="async ") start-=6;
   const end=html.indexOf("\n}",start);
   assert(end>start,"Missing end "+name);
   return html.slice(start,end+2);
