@@ -27,16 +27,29 @@ function calculateOnePriceCorrection(record,product,input,ErrorType=Error){
   const issue=(code,msg)=>reject(ErrorType,code,msg);
   if(!record || !record.results || Array.isArray(record.results) ||
      typeof record.results!=="object")issue("failed-precondition","実績明細が見つかりません。");
-  if(!product || !Array.isArray(product.pricingOptions) || !product.pricingOptions.length)
-    issue("failed-precondition","商材のCB別単価が登録されていません。");
+  if(!product)issue("failed-precondition","商材が存在しません。");
   const cb=checkedInteger(input.cashback,ErrorType,"CBプラン");
-  const matches=product.pricingOptions.filter(p=>Number(p.cashback)===cb);
+  const explicit=Array.isArray(product.pricingOptions) && product.pricingOptions.length>0;
+  const legacyCbTiers=Array.isArray(product.cashbackOptions) &&
+    product.cashbackOptions.some(x=>Number(x)>0);
+  const taggedCbName=/(?:CB|キャッシュバック)[\\s（(:：]*[￥¥]?[0-9,]+/i.test(String(product.name||""));
+  // Old non-CB products legitimately store one revenue number rather than
+  // pricingOptions. Their known master price may be used for an OWNER-approved
+  // correction, but never infer a price for a legacy cashback tier.
+  const simpleLegacy=(!explicit && !legacyCbTiers && !taggedCbName &&
+    product.revenue!==null && product.revenue!==undefined &&
+    product.revenue!=="" && cb===0);
+  const priceOptions=explicit ? product.pricingOptions :
+    (simpleLegacy ? [{cashback:0,revenuePerUnit:product.revenue}] : []);
+  if(!priceOptions.length)
+    issue("failed-precondition","CB別売上単価が未確認です。通常商材はマスター収益単価を確認してください。");
+  const matches=priceOptions.filter(p=>Number(p.cashback)===cb);
   if(matches.length!==1)issue("failed-precondition","対象のCBプランを一意に特定できません。");
   const newUnit=checkedInteger(matches[0].revenuePerUnit,ErrorType,"商材単価");
   const rows=Object.entries(record.results);
   const selected=rows.filter(([,row])=>row?.productId===input.productId &&
       (row.cashback == null
-        ? product.pricingOptions.length===1 && cb===0
+        ? priceOptions.length===1 && cb===0
         : Number(row.cashback)===cb));
   if(selected.length!==1)issue("failed-precondition","対象の商材とCBを一意に特定できません。");
   const [key,row]=selected[0];
