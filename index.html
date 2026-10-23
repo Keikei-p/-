@@ -9,6 +9,11 @@
 <meta name="apple-mobile-web-app-title" content="営業実績管理">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="apple-touch-icon" sizes="180x180" href="./icon-180.png">
+<!-- Start Firebase module downloads while the large mobile HTML is parsing. -->
+<link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js" crossorigin>
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js" crossorigin>
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js" crossorigin>
 
 <title>営業実績管理</title>
 
@@ -10200,7 +10205,11 @@ async function enterApplication(
 
     try {
 
-      await loadReportTemplateSettings();
+      // These two read-only settings calls do not depend on each other.
+      await Promise.all([
+        loadReportTemplateSettings(),
+        loadNotificationSettings()
+      ]);
 
     } catch (error) {
 
@@ -10216,9 +10225,6 @@ async function enterApplication(
       );
 
     }
-
-
-    await loadNotificationSettings();
 
 
     startRealtimeListeners();
@@ -11430,13 +11436,12 @@ async function loadUserData(
       true
     );
 
-    await loadProducts(
-      true
-    );
-
-    await loadMembers(
-      true
-    );
+    // Teams have already loaded; product and member queries are independent.
+    // Fetch both together, then build forms only after BOTH have finished.
+    await Promise.all([
+      loadProducts(true),
+      loadMembers(true)
+    ]);
 
     await prepareRecordInputs();
 
@@ -12961,6 +12966,18 @@ deleteOwnAccountButton.onclick =
    ★ リアルタイム監視
 ===================================================== */
 
+// Merge near-simultaneous initial Firestore snapshots into a single screen
+// update. Real-time data remains untouched and always uses the latest arrays.
+let realtimeDashboardFrame = 0;
+function scheduleRealtimeDashboardRender() {
+  if (realtimeDashboardFrame) return;
+  realtimeDashboardFrame = requestAnimationFrame(() => {
+    realtimeDashboardFrame = 0;
+    if (!currentUser || appScreen.style.display !== "block") return;
+    renderDashboard();
+  });
+}
+
 function startRealtimeListeners() {
 
   stopRealtimeListeners();
@@ -13086,7 +13103,7 @@ function startRealtimeListeners() {
 
           updateRecordMemberOptions();
 
-          renderDashboard();
+          scheduleRealtimeDashboardRender();
 
         },
         error => {
@@ -13172,7 +13189,7 @@ function startRealtimeListeners() {
 
           updateRecordMemberOptions();
 
-          renderDashboard();
+          scheduleRealtimeDashboardRender();
 
 
           if (
@@ -13253,7 +13270,7 @@ function startRealtimeListeners() {
           （実績の入力中の数値は保持）
         */
 
-        renderDashboard();
+        scheduleRealtimeDashboardRender();
 
       },
       error => {
@@ -13315,7 +13332,7 @@ function startRealtimeListeners() {
 
         // A price-master update changes the displayed revenue for ALL
         // existing sales immediately; no Firestore record is mutated.
-        renderDashboard();
+        scheduleRealtimeDashboardRender();
 
       },
       error => {
@@ -13374,7 +13391,7 @@ function startRealtimeListeners() {
 
         createMonthOptions();
 
-        renderDashboard();
+        scheduleRealtimeDashboardRender();
 
         renderNotificationPreview();
 
@@ -13410,7 +13427,7 @@ function startRealtimeListeners() {
         );
 
 
-        renderDashboard();
+        scheduleRealtimeDashboardRender();
 
       },
       error => {
@@ -13456,7 +13473,7 @@ function startRealtimeListeners() {
           );
 
 
-          renderDashboard();
+          scheduleRealtimeDashboardRender();
 
           if (
             editingGoalTeamId
@@ -13491,6 +13508,11 @@ function startRealtimeListeners() {
 
 
 function stopRealtimeListeners() {
+
+  if (realtimeDashboardFrame) {
+    cancelAnimationFrame(realtimeDashboardFrame);
+    realtimeDashboardFrame = 0;
+  }
 
   if (
     unsubscribeUsers
