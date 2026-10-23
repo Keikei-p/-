@@ -941,9 +941,18 @@ test('Existing unchanged prices are not overwritten; invalid new and changed cou
   assert.match(c.verifyChangedRecordPricing({
     e:{productId:'e',cashback:0,count:6,revenuePerUnit:2000}
   },old,[electric]),/単価/);
+  assert.match(c.verifyChangedRecordPricing({
+    e:{productId:'e',cashback:0,count:6,revenuePerUnit:10000}
+  },old,[electric]),/オーナー/,
+    'cannot rewrite five historical ¥2000 sales by adding one new ¥10000 sale');
+  assert.match(c.verifyChangedRecordPricing({
+    e:{productId:'e',cashback:0,count:5,revenuePerUnit:10000}
+  },old,[electric]),/通常の実績更新/);
+  const corrected={e:{productId:'e',cashback:0,count:5,revenuePerUnit:10000}};
   assert.equal(c.verifyChangedRecordPricing({
     e:{productId:'e',cashback:0,count:6,revenuePerUnit:10000}
-  },old,[electric]),'');
+  },corrected,[electric]),'');
+  assert.match(c.verifyChangedRecordPricing({},old,[electric]),/オーナー/);
   assert.equal(JSON.stringify(old),untouched);
   assert.equal(c.validateFinancialRecordForSave({
     results:{e:{productId:'e',cashback:0,count:5,revenuePerUnit:10000}},
