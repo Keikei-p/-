@@ -4388,6 +4388,19 @@ body.product-reordering .product-list {
   }
   .financial-audit-alert summary { cursor: pointer; font-weight: 800; }
   .financial-audit-alert p { margin: 8px 0 0; overflow-wrap: anywhere; }
+  .financial-correction-button {
+    border: 1px solid #b45309;
+    border-radius: 9px;
+    padding: 10px 12px;
+    background: #fff;
+    color: #92400e;
+    font-size: 12px;
+    font-weight: 800;
+    text-align: left;
+    width: 100%;
+    cursor: pointer;
+  }
+  .financial-correction-button:disabled { opacity: .5; cursor: wait; }
 </style>
 </head>
 
@@ -32285,6 +32298,61 @@ function renderProductSummary(
         const line = document.createElement("p");
         line.textContent = finding.date + "｜" + finding.note;
         panel.appendChild(line);
+        // A price mismatch may be a legitimate historical rate change.
+        // Only the Owner may explicitly correct ONE stored record and CB.
+        if (finding.type === "master_price_difference" &&
+            finding.productId && Number.isFinite(finding.proposedRate)) {
+          const record = monthlyRecords.find(item => item.id === finding.recordId);
+          if (record && record.companyId === currentUserData?.companyId) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "financial-correction-button";
+            button.textContent = "保存額と現在単価を照合して訂正";
+            button.addEventListener("click",async () => {
+              if (button.disabled || !isCurrentCompanyOwner()) return;
+              try {
+                const latest = records.find(item => item.id === record.id);
+                if (!latest) throw recordConflict("履歴が更新されました。画面を再読み込みしてください。");
+                const plan = planFinancialCorrection(
+                  latest,products,finding.productId,finding.cashback);
+                const question = [
+                  "【金額のみ訂正／件数・担当者・班・日付は維持】",
+                  "日付：" + latest.date,
+                  "担当者：" + (latest.memberNameSnapshot || "確認してください"),
+                  "商材：" + plan.productName + " / CB " + formatYen(plan.cashback),
+                  "対象：" + plan.selectedCount + "件",
+                  "旧単価：" + formatYen(plan.oldUnit) + " / 新単価：" + formatYen(plan.newUnit),
+                  "修正前の明細合計：" + formatYen(plan.oldCalculated),
+                  "修正後の明細合計：" + formatYen(plan.newRevenue),
+                  "",
+                  "正当な過去単価改定の場合は「キャンセル」を押してください。",
+                  "この実績に限って訂正する場合のみ「OK」を押してください。"
+                ].join("\n");
+                if (!window.confirm(question)) return;
+                const reason = window.prompt(
+                  "監査履歴に残す訂正理由を入力してください（5〜200文字）。\n例：10/23の承認単価10,000円に照合済み",
+                  "");
+                if (reason == null) return;
+                button.disabled = true;
+                await persistConfirmedFinancialCorrection(latest,plan,reason);
+                // Only a successful transaction updates the local dashboard.
+                const snap = await getDoc(doc(db,"records",latest.id));
+                if (!snap.exists()) throw new Error("訂正後の読込に失敗しました。");
+                const updated = {id:snap.id,...snap.data()};
+                const index = records.findIndex(item => item.id === latest.id);
+                if (index >= 0) records[index] = updated;
+                renderDashboard();
+                showSuccess("監査履歴を残して金額を訂正しました。件数・担当者・班は維持しています。");
+              } catch (error) {
+                showError(error?.message || "金額訂正を完了できませんでした。");
+                console.error("金額訂正エラー:",error);
+              } finally {
+                button.disabled = false;
+              }
+            });
+            panel.appendChild(button);
+          }
+        }
       }
       if (findings.length > 30) {
         const more = document.createElement("p");
