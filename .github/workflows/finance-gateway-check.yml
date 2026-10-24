@@ -1,0 +1,95 @@
+name: Test protected-finance gateway (NO deployment)
+on:
+  push:
+    branches:
+      - feature/secure-finance-gateway-20261022
+    paths:
+      - cloudflare-finance/**
+      - .github/workflows/finance-gateway-check.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Syntax check only
+        run: node --check cloudflare-finance/src/index.js
+      - name: Verify JWT, grants, projections and no mutation endpoints
+        run: |
+          node --test cloudflare-finance/tests/gateway.test.mjs cloudflare-finance/tests/write-plan.test.mjs \
+            cloudflare-finance/tests/count-service.test.mjs cloudflare-finance/tests/firestore-writer.test.mjs \
+            cloudflare-finance/tests/dual-host-adapter.test.mjs cloudflare-finance/tests/finance-browser-contract.test.mjs \
+            cloudflare-finance/tests/protected-view-runtime.test.mjs cloudflare-finance/tests/sales-integration.test.mjs
+      - name: Block incomplete production cutover and raw-money fallback (static)
+        run: node --test cloudflare-finance/tests/cutover-readiness.test.mjs
+      - name: Syntax-check safe sales UI preview WITHOUT publishing it
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs=require('node:fs');
+          const preview=fs.readFileSync('cloudflare-finance/preview/index.html','utf8');
+          const live=fs.readFileSync('index.html','utf8');
+          const mark='<script type="module">';
+          const start=preview.indexOf(mark);
+          const end=preview.indexOf('</script>',start);
+          if(start<0||end<0)throw Error('secure_preview_script_missing');
+          fs.writeFileSync('/tmp/sales-secure-preview.mjs',preview.slice(start+mark.length,end));
+          if(!preview.includes('const SAFE_FINANCE_CUTOVER = false') ||
+             !preview.includes('from "../client/sales-integration.mjs"') ||
+             !preview.includes('publicSync","state') ||
+             !preview.includes('safeFinanceBridge.submit'))
+            throw Error('preview_safe_cutover_contract_missing');
+          if(live.includes('SAFE_FINANCE_CUTOVER'))throw Error('production_page_accidentally_modified');
+          console.log('Staged preview only; original sales application HTML unchanged.');
+          NODE
+          node --check /tmp/sales-secure-preview.mjs
+      - name: Install Firestore emulator test tools (no production credentials)
+        run: |
+          npm install -g firebase-tools
+          npm install --prefix cloudflare-finance/tests --ignore-scripts --no-save --package-lock=false firebase@12.19.0 @firebase/rules-unit-testing@5.0.1
+      - name: Setup Java for emulator
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Test proposed money-locked Firestore Rules in emulator ONLY
+        run: firebase emulators:exec --project demo-finance-staging --only firestore "node --test cloudflare-finance/tests/finance-locked-rules.test.cjs && node --test cloudflare-finance/tests/firestore-writer-emulator.test.mjs"
+      - name: Verify both current public URLs match (HTTP GET only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 3 --max-time 30             --output "$RUNNER_TEMP/finance-new-public.html" "https://nico-factory.web.app/"
+          curl --fail --silent --show-error --retry 3 --max-time 30             --output "$RUNNER_TEMP/finance-old-public.html" "https://keikei-p.github.io/-/"
+          for file in "$RUNNER_TEMP/finance-new-public.html" "$RUNNER_TEMP/finance-old-public.html"; do
+            grep -Fq 'projectId: "sales-management-cc116"' "$file"
+            grep -Fq '営業実績管理' "$file"
+          done
+          cmp "$RUNNER_TEMP/finance-new-public.html" "$RUNNER_TEMP/finance-old-public.html"
+          echo 'PASS: Both existing sales URLs serve matching application HTML'
+      - name: Static cost and data protection assertions
+        run: |
+          node <<'NODE'
+          const fs=require('node:fs');
+          const source=fs.readFileSync('cloudflare-finance/src/index.js','utf8');
+          const cfg=fs.readFileSync('cloudflare-finance/wrangler.toml','utf8');
+          const mainRules=fs.readFileSync('firestore.rules','utf8');
+          const checks=[
+            [cfg.includes('FINANCE_GATEWAY_ENABLED = "disabled"'),'read gateway disabled by default'],
+            [cfg.includes('FINANCE_WRITE_ENABLED = "disabled"'),'write API disabled by default'],
+            [cfg.includes('FINANCE_WRITE_APPROVAL = "NOT_APPROVED"'),'write release is not approved'],
+            [cfg.includes('FINANCE_COST_APPROVAL = "NOT_APPROVED"'),'Blaze cost approval disabled by default'],
+            [source.includes('FINANCE_WRITE_ENABLED!=="enabled"'),'write runtime gate enforced'],
+            [source.includes('FINANCE_WRITE_APPROVAL!=="DUAL_HOST_BACKUP_VERIFIED"'),'backups/dual-host approval required'],
+            [source.includes('FINANCE_COST_APPROVAL!=="OWNER_APPROVED_BLAZE_COSTS"'),'explicit Blaze billing review required'],
+            [mainRules.includes('match /records/{recordId}'),'existing production rules retained'],
+            [!source.includes('method:"DELETE"'),'no delete endpoint'],
+            [fs.readFileSync('cloudflare-finance/finance-locked.rules','utf8').includes('allow delete: if false;'),'history deletion blocked in staged rules'],
+          ];
+          for(const [passed,name] of checks){if(!passed)throw Error(name);console.log("PASS",name);}
+          NODE
