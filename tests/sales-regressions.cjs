@@ -1159,3 +1159,114 @@ test('Catalog handlers distinguish confirmed save from a subsequent refresh fail
   assert(create.includes('重複登録せず'));
   assert(update.includes('再度保存せず'));
 });
+
+
+// COUNT-PRESERVATION GATE: read-only tests. No production IDs or data are used.
+// Every later access-control or finance refactor must keep these tests passing.
+test('Count-preservation: repricing cannot rewrite or change daily, team, person, product and CB counts',()=>{
+  const products=[
+    {id:'fiber',name:'NURO光',pricingOptions:[
+      {cashback:0,revenuePerUnit:8000},{cashback:10000,revenuePerUnit:6000}
+    ]},
+    {id:'electric',name:'とくするでんき',pricingOptions:[
+      {cashback:0,revenuePerUnit:2000}
+    ]}
+  ];
+  const saved=[
+    {id:'r1',companyId:'c',date:'2026-10-25',uid:'alice',teamId:'one',
+      totalCount:3,totalRevenue:300,results:{
+        zero:{productId:'fiber',productName:'NURO光',cashback:0,count:2,revenuePerUnit:100},
+        bonus:{productId:'fiber',productName:'NURO光',cashback:10000,count:1,revenuePerUnit:100}
+      }},
+    {id:'r2',companyId:'c',date:'2026-10-25',uid:'bob',teamId:'two',
+      totalCount:5,totalRevenue:0,results:{
+        electric:{productId:'electric',productName:'とくするでんき',cashback:0,count:5,revenuePerUnit:0}
+      }},
+    {id:'r3',companyId:'c',date:'2026-10-24',uid:'alice',teamId:'two',
+      totalCount:4,totalRevenue:0,results:{
+        electric:{productId:'electric',productName:'とくするでんき',cashback:0,count:4,revenuePerUnit:0}
+      }}
+  ];
+  const baseline=JSON.stringify(saved);
+  const c=context(['getRecordResults','getProductPricingOptions',
+    'currentCatalogRevenuePerUnit','currentProductDisplayName','getDisplayRecordResults'],{
+    products,canCurrentUserViewRevenueForRecord:()=>true
+  });
+  const display=()=>saved.flatMap(record=>c.getDisplayRecordResults(record)
+    .map(row=>({date:record.date,uid:record.uid,teamId:record.teamId,
+      productId:row.productId,cashback:row.cashback,count:row.count,
+      revenuePerUnit:row.revenuePerUnit})));
+  function countIndex(rows,fields){
+    const out={};
+    for(const row of rows){
+      const key=fields.map(field=>String(row[field]??'')).join('|');
+      out[key]=(out[key]||0)+row.count;
+    }
+    return out;
+  }
+  const oldRows=display();
+  assert.equal(oldRows.reduce((sum,row)=>sum+row.count,0),12);
+  assert.equal(oldRows.find(row=>row.productId==='fiber'&&row.cashback===0).revenuePerUnit,8000);
+  const axes=[
+    ['date'],['uid'],['teamId'],['productId'],['cashback','productId'],
+    ['date','teamId','uid','productId','cashback']
+  ];
+  const baselineIndices=axes.map(fields=>countIndex(oldRows,fields));
+  products[0].pricingOptions=[
+    {cashback:0,revenuePerUnit:11000},{cashback:10000,revenuePerUnit:5000}
+  ];
+  products[1].pricingOptions=[{cashback:0,revenuePerUnit:10000}];
+  const newRows=display();
+  assert.equal(newRows.reduce((sum,row)=>sum+row.count,0),12);
+  assert.equal(newRows.find(row=>row.productId==='fiber'&&row.cashback===0).revenuePerUnit,11000);
+  axes.forEach((fields,i)=>assert.deepEqual(countIndex(newRows,fields),baselineIndices[i]));
+  assert.equal(JSON.stringify(saved),baseline,'saved records, IDs and totals remain byte-for-byte unchanged');
+});
+
+test('Count-preservation: hiding revenue from members must not hide their sales counts',()=>{
+  const products=[{id:'water',name:'ウォーター',pricingOptions:[{cashback:0,revenuePerUnit:17000}]}];
+  const original={
+    companyId:'c',date:'2026-10-26',teamId:'one',uid:'member',
+    totalCount:7,totalRevenue:700,
+    results:{water:{productId:'water',cashback:0,count:7,revenuePerUnit:100}}
+  };
+  const unchanged=JSON.stringify(original);
+  const c=context(['getRecordResults','getProductPricingOptions',
+    'currentCatalogRevenuePerUnit','currentProductDisplayName','getDisplayRecordResults'],{
+    products,canCurrentUserViewRevenueForRecord:()=>false
+  });
+  const visible=c.getDisplayRecordResults(original);
+  assert.equal(visible.length,1);
+  assert.equal(visible[0].count,7);
+  assert.equal(visible[0].productId,'water');
+  assert.equal(visible[0].revenuePerUnit,0);
+  assert.equal(JSON.stringify(original),unchanged);
+});
+
+test('Count-preservation: missing or ambiguous current CB price never guesses a new result or deletes count',()=>{
+  const record={id:'old-sale',date:'2026-10-24',uid:'alice',teamId:'one',
+    results:{old:{productId:'nuro',cashback:15000,count:6,revenuePerUnit:2500}}};
+  const saved=JSON.stringify(record);
+  const products=[{id:'nuro',name:'NURO',pricingOptions:[
+    {cashback:0,revenuePerUnit:7000},{cashback:10000,revenuePerUnit:4000}
+  ]}];
+  const c=context(['getRecordResults','getProductPricingOptions',
+    'currentCatalogRevenuePerUnit','currentProductDisplayName','getDisplayRecordResults'],{
+    products,canCurrentUserViewRevenueForRecord:()=>true
+  });
+  const rows=c.getDisplayRecordResults(record);
+  assert.equal(rows.length,1);
+  assert.equal(rows[0].count,6);
+  assert.equal(rows[0].revenuePerUnit,2500);
+  assert.equal(JSON.stringify(record),saved);
+});
+
+test('Count-preservation: display-only revenue helpers cannot write or delete Firestore records',()=>{
+  for(const name of ['currentCatalogRevenuePerUnit','getDisplayRecordResults','getRecordResults']){
+    const code=source(name);
+    assert(!/\b(?:setDoc|updateDoc|deleteDoc|writeBatch|runTransaction|addDoc)\s*\(/.test(code),name);
+  }
+  const priceChangePath=source('currentCatalogRevenuePerUnit');
+  assert(priceChangePath.includes('return original'));
+  assert(priceChangePath.includes('getProductPricingOptions'));
+});
