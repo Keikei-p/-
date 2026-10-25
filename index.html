@@ -31562,6 +31562,187 @@ function rankProductMemberCounts(members) {
   });
 }
 
+// Company-level ranking groups are explicit user selections. Never infer defaults
+// or mutate a product, record, cashback tier, revenue, or historical snapshot.
+function normalizeRankingGroups(value) {
+  if (!Array.isArray(value)) return [];
+  const usedKeys = new Set();
+  const ids = new Set();
+  const names = new Set();
+  const out = [];
+  for (const item of value.slice(0, 30)) {
+    if (!item || typeof item !== "object") continue;
+    const id = typeof item.id === "string" ? item.id.trim() : "";
+    const name = typeof item.name === "string" ? item.name.trim() : "";
+    if (!id || id.length > 80 || !name || name.length > 40 ||
+        ids.has(id) || names.has(name) || !Array.isArray(item.keys)) continue;
+    const keys = [];
+    for (const key of item.keys.slice(0, 100)) {
+      if (typeof key !== "string" || key.length > 160 ||
+          !(key.startsWith("id:") || key.startsWith("legacy:")) ||
+          key.length < 4 || usedKeys.has(key) || keys.includes(key)) continue;
+      keys.push(key);
+    }
+    if (!keys.length) continue;
+    keys.forEach(key => usedKeys.add(key));
+    ids.add(id);
+    names.add(name);
+    out.push({id, name, keys});
+  }
+  return out;
+}
+
+function buildGroupedProductMemberRanking(monthly, teamId = "", groups = rankingGroups) {
+  const byKey = new Map(buildProductMemberRanking(monthly, teamId)
+    .map(product => [product.key, product]));
+  return groups.map(group => {
+    const people = new Map();
+    let count = 0;
+    for (const key of group.keys) {
+      const product = byKey.get(key);
+      if (!product) continue;
+      count += product.count;
+      product.members.forEach(person => {
+        let existing = people.get(person.key);
+        if (!existing) {
+          existing = {key: person.key, name: person.name, count: 0, teamNames: new Set()};
+          people.set(person.key, existing);
+        }
+        existing.count += person.count;
+        existing.name = person.name;
+        existing.teamNames.add(person.teamName);
+      });
+    }
+    return {
+      key: "group:" + group.id,
+      name: group.name,
+      count,
+      members: rankProductMemberCounts([...people.values()].map(person => ({
+        key: person.key,
+        name: person.name,
+        count: person.count,
+        teamName: person.teamNames.has("複数班で獲得") || person.teamNames.size > 1
+          ? "複数班で獲得" : [...person.teamNames][0] || "所属なし"
+      })))
+    };
+  }).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "ja"));
+}
+
+// Active and archived catalog IDs stay distinct; snapshots without IDs are
+// selectable only by their explicit historical names, never guessed from text.
+function availableRankingProductChoices() {
+  const found = new Map();
+  products.forEach(product => {
+    const key = "id:" + product.id;
+    if (key.length <= 160) found.set(key, {key, name: product.name || "名前未設定"});
+  });
+  records.forEach(record => {
+    getRecordResults(record).forEach(result => {
+      const key = result.productId
+        ? "id:" + result.productId
+        : "legacy:" + (result.productName || "不明");
+      if (!found.has(key) && key.length <= 160) {
+        found.set(key, {key, name: currentProductDisplayName(result)});
+      }
+    });
+  });
+  return [...found.values()].sort((a,b) => a.name.localeCompare(b.name, "ja"));
+}
+
+function renderRankingGroupEditor() {
+  rankingGroupEditor.hidden = !isCurrentCompanyOwner();
+  if (rankingGroupEditor.hidden || !rankingGroupEditor.open) return;
+  rankingGroupAdd.disabled = !rankingGroupsLoaded || rankingGroupSaveBusy;
+  const taken = new Set(rankingGroups.flatMap(group => group.keys));
+  rankingGroupProducts.replaceChildren();
+  const choices = availableRankingProductChoices().filter(item => !taken.has(item.key));
+  choices.forEach(item => {
+    const label = document.createElement("label");
+    label.style.cssText = "display:flex;align-items:center;gap:9px;padding:8px;background:var(--card,#fff);border-radius:8px;";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.value = item.key;
+    input.checked = rankingGroupDraftSelectedKeys.has(item.key);
+    input.disabled = rankingGroupSaveBusy || !rankingGroupsLoaded;
+    input.addEventListener("change", () => {
+      if (input.checked) rankingGroupDraftSelectedKeys.add(item.key);
+      else rankingGroupDraftSelectedKeys.delete(item.key);
+    });
+    const title = document.createElement("span");
+    title.textContent = item.name;
+    label.append(input, title);
+    rankingGroupProducts.appendChild(label);
+  });
+  if (!choices.length) {
+    rankingGroupProducts.textContent = "選べる商材がありません。";
+  }
+  rankingGroupExisting.replaceChildren();
+  rankingGroups.forEach(group => {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px;border-bottom:1px solid #e5e7eb;";
+    const name = document.createElement("span");
+    name.textContent = group.name + "（" + group.keys.length + "商材）";
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "解除";
+    remove.className = "team-action-button";
+    remove.disabled = rankingGroupSaveBusy || !rankingGroupsLoaded;
+    remove.addEventListener("click", async () => {
+      if (!isCurrentCompanyOwner() || !confirm("「" + group.name + "」をランキングから解除しますか？実績は消えません。")) return;
+      await saveRankingGroups(rankingGroups.filter(item => item.id !== group.id));
+    });
+    row.append(name, remove);
+    rankingGroupExisting.appendChild(row);
+  });
+}
+
+async function saveRankingGroups(next) {
+  if (!isCurrentCompanyOwner() || rankingGroupSaveBusy || !rankingGroupsLoaded) return false;
+  const normalized = normalizeRankingGroups(next);
+  if (normalized.length !== next.length) {
+    showError("グループ名か商材の選択が重複しています。");
+    return false;
+  }
+  rankingGroupSaveBusy = true;
+  renderRankingGroupEditor();
+  try {
+    await setDoc(
+      doc(db, "companies", currentUserData.companyId, "settings", "ranking"),
+      {groups: normalized, updatedBy: currentUser.uid, updatedAt: serverTimestamp()}
+    );
+    rankingGroupDraftSelectedKeys.clear();
+    rankingGroupName.value = "";
+    showSuccess("ランキンググループを保存しました。");
+    return true;
+  } catch (error) {
+    console.error("ランキンググループ保存エラー:", error);
+    showError(firebaseErrorMessage(error));
+    return false;
+  } finally {
+    rankingGroupSaveBusy = false;
+    renderRankingGroupEditor();
+  }
+}
+
+rankingGroupEditor.addEventListener("toggle", renderRankingGroupEditor);
+rankingGroupAdd.addEventListener("click", async () => {
+  const name = rankingGroupName.value.trim();
+  const taken = new Set(rankingGroups.flatMap(group => group.keys));
+  const available = new Set(availableRankingProductChoices().map(item => item.key));
+  const keys = [...rankingGroupDraftSelectedKeys].filter(key =>
+    available.has(key) && !taken.has(key)
+  );
+  if (!name || name.length > 40) return showError("グループ名を40文字以内で入力してください。");
+  if (!keys.length) return showError("まとめる商材を1つ以上選んでください。");
+  if (rankingGroups.length >= 30) return showError("グループは最大30件です。");
+  if (rankingGroups.some(group => group.name === name)) return showError("同じ名前のグループがあります。");
+  await saveRankingGroups([...rankingGroups, {
+    id: "group_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2,10),
+    name,
+    keys
+  }]);
+});
+
 function renderProductMemberRanking(monthly) {
   updateRankingLayoutControls("product");
 
@@ -31590,12 +31771,21 @@ function renderProductMemberRanking(monthly) {
   });
   productRankingTeamSelect.value = teamId;
 
-  const productsWithCounts = buildProductMemberRanking(monthly, teamId);
-  productRankingCount.textContent = `${productsWithCounts.length}商材`;
+  renderRankingGroupEditor();
+  if (!rankingGroupsLoaded) {
+    productRankingCount.textContent = "設定読込中";
+    productRankingProductList.replaceChildren();
+    productRankingMemberList.replaceChildren();
+    productRankingSelectedLabel.textContent = "ランキング設定を読み込んでいます";
+    productRankingMemberCount.textContent = "";
+    return;
+  }
+  const productsWithCounts = buildGroupedProductMemberRanking(monthly, teamId);
+  productRankingCount.textContent = `${productsWithCounts.length}グループ`;
   productRankingProductList.replaceChildren();
   productRankingMemberList.replaceChildren();
   if (!productsWithCounts.length) {
-    productRankingProductList.textContent = "表示できる商材がありません。";
+    productRankingProductList.textContent = "表示するグループがありません。オーナーが設定できます。";
     productRankingMemberCount.textContent = "";
     productRankingSelectedLabel.textContent = "商材を選択してください";
     return;
