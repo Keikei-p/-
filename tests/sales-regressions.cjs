@@ -105,6 +105,8 @@ test('Records and goals listener failures visibly warn that values can be stale'
     stopRealtimeListeners:()=>{},isCurrentCompanyManager:()=>false,currentUser:null,
     companyCollectionQuery:n=>n,recordsCollectionQuery:()=> 'records',revenueGoalsCollectionQuery:()=>null,
     onSnapshot:(query,next,error)=>{subscriptions.push({query,error});return ()=>{};},
+    doc:(...parts)=>parts.join('/'), db:'mock', currentUserData:{companyId:'company-test'},
+    rankingGroups:[],rankingGroupsLoaded:false,rankingGroupDraftSelectedKeys:new Set(),
     console:{error:()=>{}},databaseStatus:element(),showError:m=>warnings.push(m)
   });
   ctx.startRealtimeListeners();
@@ -1025,4 +1027,65 @@ test('Product price listener always re-renders the dashboard on catalogue change
   assert(htmlSource.includes('prepareProductInputList('));
   assert(htmlSource.indexOf('renderDashboard();') >
     htmlSource.indexOf('prepareProductInputList('));
+});
+
+
+test('Ranking groups require explicit selection; no default groups or inferred name merges',()=>{
+  const c=context(['normalizeRankingGroups']);
+  assert.equal(c.normalizeRankingGroups(null).length,0);
+  assert.equal(c.normalizeRankingGroups([]).length,0);
+  const configured=c.normalizeRankingGroups([
+    {id:'mnp',name:'乗り換え',keys:['id:ym','id:sb']},
+    {id:'electric',name:'新電力',keys:['id:ev','id:ym']},
+    {id:'empty',name:'未指定',keys:[]}
+  ]);
+  assert.equal(configured.length,2);
+  assert.deepEqual(Array.from(configured[0].keys),['id:ym','id:sb']);
+  assert.deepEqual(Array.from(configured[1].keys),['id:ev']);
+  const ui=html.slice(html.indexOf('<details id="rankingGroupEditor"'),html.indexOf('</details>',html.indexOf('<details id="rankingGroupEditor"')));
+  assert(ui.includes('rankingGroupName'));
+  assert(ui.includes('rankingGroupProducts'));
+  assert(ui.includes('rankingGroupAdd'));
+  assert(!ui.includes('defaultChecked'));
+});
+
+test('Manual groups sum source products and people; count ties are rank 1, 1, 3',()=>{
+  const sourceProducts=[
+    {key:'id:ym',name:'YMMNP',count:5,members:[
+      {key:'uid:a',name:'A',count:4,teamName:'1班'},
+      {key:'uid:b',name:'B',count:1,teamName:'1班'}]},
+    {key:'id:sb',name:'SBMNP',count:6,members:[
+      {key:'uid:b',name:'B',count:3,teamName:'2班'},
+      {key:'uid:a',name:'A',count:0,teamName:'1班'},
+      {key:'uid:c',name:'C',count:2,teamName:'2班'},
+      {key:'uid:d',name:'D',count:1,teamName:'2班'}]},
+    {key:'id:ev',name:'Electric',count:10,members:[
+      {key:'uid:c',name:'C',count:10,teamName:'2班'}]}
+  ];
+  const c=context(['rankProductMemberCounts','buildGroupedProductMemberRanking'],{
+    buildProductMemberRanking:()=>sourceProducts
+  });
+  const groups=[{id:'m',name:'乗り換え',keys:['id:ym','id:sb']}];
+  const r=JSON.parse(JSON.stringify(c.buildGroupedProductMemberRanking([],'',groups)));
+  assert.equal(r.length,1);
+  assert.equal(r[0].count,11);
+  assert.deepEqual(r[0].members.map(m=>[m.name,m.count,m.rank]),[
+    ['A',4,1],['B',4,1],['C',2,3],['D',1,4]
+  ]);
+  assert.equal(r[0].members.find(x=>x.key==='uid:b').teamName,'複数班で獲得');
+  assert(!r.some(x=>x.name==='Electric'));
+});
+
+test('Ranking group persistence writes only company settings/ranking, and not sales, products or prices',()=>{
+  const code=source('saveRankingGroups');
+  assert(code.includes('"companies", currentUserData.companyId, "settings", "ranking"'));
+  assert(code.includes('isCurrentCompanyOwner()'));
+  assert(code.includes('normalizeRankingGroups(next)'));
+  assert(!/["'](?:records|products|goals|revenueGoals)["']/.test(code));
+  assert(!/deleteDoc|updateDoc|writeBatch/.test(code));
+  const render=source('renderProductMemberRanking');
+  assert(render.includes('buildGroupedProductMemberRanking(monthly, teamId)'));
+  assert(render.includes('rankingGroupsLoaded'));
+  assert(render.includes('renderRankingGroupEditor()'));
+  assert(html.includes('ランキンググループを設定'));
 });
