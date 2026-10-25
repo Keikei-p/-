@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const vm=require('node:vm');
 const path=require('node:path');
 const {initializeTestEnvironment,assertSucceeds,assertFails}=require('@firebase/rules-unit-testing');
-const {doc,setDoc,getDoc,getDocsFromServer,collection,query,where,updateDoc,serverTimestamp,runTransaction}=require('firebase/firestore');
+const {doc,setDoc,getDoc,getDocsFromServer,collection,query,where,updateDoc,deleteDoc,serverTimestamp,runTransaction}=require('firebase/firestore');
 if(!process.env.FIRESTORE_EMULATOR_HOST) throw Error('Emulator required: refusing any production connection');
 let env;
 const projectId='demo-sales-support';
@@ -180,4 +180,53 @@ test('leader without explicit finance grants cannot read or edit revenue goals',
   await assertFails(setDoc(doc(db,'revenueGoals','leader-default-denied'),revenueGoalPayload('a',100000)));
   const owner=dbFor('owner');
   assert.equal((await getDoc(doc(owner,'revenueGoals','private-a'))).data().targetRevenue,990000);
+});
+
+
+test('authenticated master shown as owner can add, edit and delete products even if membership role is member',async()=>{
+  // Reproduce the UI/server mismatch: client isCurrentCompanyMaster() shows
+  // owner controls, but prior products rules used only isCompanyManager().
+  await env.withSecurityRulesDisabled(async c=>{
+    const admin=c.firestore();
+    await setDoc(doc(admin,'companies',company),{ownerUid:'owner',masterUid:'catalogMaster'});
+    const master={uid:'catalogMaster',name:'catalogMaster',companyId:company,
+      companyRole:'member',role:'member',teamId:'a',active:true,
+      canViewRevenue:false,canViewUnitPrice:false};
+    await setDoc(doc(admin,'users','catalogMaster'),master);
+    await setDoc(doc(admin,'companies',company,'members','catalogMaster'),master);
+  });
+  const db=dbFor('catalogMaster');
+  const ref=doc(db,'products','master-new-product');
+  await assertSucceeds(setDoc(ref,{
+    companyId:company,name:'新規商品',revenue:5000,
+    cashbackOptions:[0],pricingOptions:[{cashback:0,revenuePerUnit:5000}],
+    sortOrder:13,active:true,createdAt:serverTimestamp(),updatedAt:serverTimestamp()
+  }));
+  assert.equal((await assertSucceeds(getDoc(ref))).data().revenue,5000);
+  await assertSucceeds(updateDoc(ref,{name:'更新した商材',updatedAt:serverTimestamp()}));
+  assert.equal((await assertSucceeds(getDoc(ref))).data().name,'更新した商材');
+  await assertSucceeds(deleteDoc(ref));
+  // Existing rules intentionally disallow a client read of missing products.
+  await env.withSecurityRulesDisabled(async c=>{
+    assert.equal((await getDoc(doc(c.firestore(),'products','master-new-product'))).exists(),false);
+  });
+});
+
+test('product catalog permissions still reject ordinary members and foreign members',async()=>{
+  const product={companyId:company,name:'未許可の商材',revenue:5000,
+    cashbackOptions:[0],pricingOptions:[{cashback:0,revenuePerUnit:5000}],
+    sortOrder:0,active:true,createdAt:serverTimestamp(),updatedAt:serverTimestamp()};
+  for(const uid of ['helper','foreign','leaderB']){
+    const ref=doc(dbFor(uid),'products',uid+'-denied');
+    await assertFails(setDoc(ref,product));
+  }
+});
+
+test('existing owner retains product create permission',async()=>{
+  const ref=doc(dbFor('owner'),'products','owner-new-product');
+  await assertSucceeds(setDoc(ref,{
+    companyId:company,name:'オーナー追加商品',revenue:5000,
+    cashbackOptions:[0],pricingOptions:[{cashback:0,revenuePerUnit:5000}],
+    sortOrder:13,active:true,createdAt:serverTimestamp(),updatedAt:serverTimestamp()
+  }));
 });

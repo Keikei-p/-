@@ -80,3 +80,40 @@
 - [ ] ラベルを含む最新のpull_requestイベントでProtected Change Gate再評価。
 - [ ] 本番新旧URLへの実際の静的同期確認と起動確認。
 - 署名は自動では生成せず、**管理者本人の署名は未記入**。本PRはFirebase RulesやFirestoreデータの公開/書換を伴わない。
+
+---
+
+# 商材追加の permission-denied 修正（2026-10-25、公開前・管理者未署名）
+
+## 利用者の報告と切り分け
+- iPhoneスクリーンショットで「オーナー」表示中、商材追加を行うと「保存する権限がありません。担当者・会社・ログイン状態を確認してください。」の赤いエラー。
+- 直前のランキングPR #90は `index.html`、販売テスト、記録のみ変更し、商材追加処理・Firebaseルールは変更していない。
+- **再現可能な権限判定の不整合**: クライアント `isCurrentCompanyOwner()` はマスターIDもOwnerとして扱うが、Firestore `products` の create/update/delete は `isCompanyManager` のみ。マスターIDが会社メンバーとして `role: member`, `companyRole: member` に設定されているとUIはOwner表示なのに商材操作だけ拒否。
+- **注意**: 本番データへの直接アクセスがないため、スクリーンショットの本人がこの条件であるかは未確認。他の拒否原因（メール未確認、ユーザーデータと所属情報の不整合、実際の公開ルールの差分）も可能性として残る。
+
+## 修正範囲と安全性
+- `firestore.rules`: **productsのcreate/update/delete条件にのみ**、既存 `isCompanyManager(companyId)` に加えて `isCompanyMaster(companyId)` を許可。会社のマスターUID一致、メール認証済み、`users/{uid}` と `companies/{companyId}/members/{uid}` の両方が有効、会社一致が必須。元々のcanViewRevenue、canViewUnitPrice、価格形式、会社一致チェックは残す。
+- `tests/rules.test.cjs`: マスターだがmember権限の人物で商材作成・編集・削除が成功する、既存Ownerも成功、一般社員・他社・売上権限なしリーダーは拒否することをエミュレータで検証。
+- `index.html`、`products`、`records`、金額、CB、その他Security Rules、Auth、メンバー構成は変更しない。
+- **本番データの書換・マイグレーション・権限昇格の書込は一切含まない**。
+
+## 本番ルール適用の手順
+- [ ] CIでのSales App Validation、Firestore Emulator権限検証が全件成功
+- [ ] GitHub protected-change-guard が最新PR headで成功
+- [ ] 本番Firestoreのバックアップ/別環境復元が確認済み
+- [ ] GitHub管理者がレビュー・署名し `sales-production-reviewed` ラベル適用
+- [ ] **Rules PRのmainマージ後、Github Actions「Firebase Rules Deploy (Zero-Cost)」を`main`で手動実行**（GitHubの通常pushによってRulesはデプロイされない）
+- [ ] 新旧URLでオーナー実アカウントの商材追加と編集が実際に可能か再確認。テスト用に登録するなら本番データへの影響や削除について管理者判断が必要であり、AIが勝手に本番データ操作しない。
+
+署名: 未取得
+Rulesの本番デプロイ: 未実施
+
+## GitHubレビューゲートの処理状況（2026-10-25 追記）
+- [x] ユーザー本人は本チャットで「じゃあなおして!」と修正を明示依頼。コードの変更範囲を商材権限判定だけに限定した。
+- [x] GitHub接続はリポジトリ `Keikei-p/-` の管理者 `Keikei-p` と確認。
+- [x] 当該管理者接続でPR #91に `sales-production-reviewed` を付与し、レビュー可能な状態へ切替。
+- [x] 前回の最新HEAD `489fb18eeb17f1ab0aa89f6875215fa621422c25` のSales App Validation: https://github.com/Keikei-p/-/actions/runs/40170988835 **成功**
+- [ ] 新しいPRの最新HEADに対する保護ゲート合格確認（ラベル付与後、CIを再実行する）。
+- [ ] Firebase本番データのバックアップ/復元テスト結果は取得できていない。
+- [ ] Firebase本番デプロイは本チャットでは実行不能、適用未済。GitHubのmainに反映してもFirestoreの権限は変わらない。
+- 管理者の署名（本人が自ら署名したもの）：**未取得**。この記録は署名ではない。
