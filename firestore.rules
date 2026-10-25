@@ -1092,10 +1092,14 @@ service cloud.firestore {
         ])
         && request.resource.data.companyId != null
         && currentCompanyId() == request.resource.data.companyId
-        && (isCompanyManager(request.resource.data.companyId)
-          || isCompanyMaster(request.resource.data.companyId))
-        && canViewRevenue(request.resource.data.companyId)
-        && canViewUnitPrice(request.resource.data.companyId)
+        && (
+          isCompanyMaster(request.resource.data.companyId)
+          || (
+            isCompanyManager(request.resource.data.companyId)
+            && canViewRevenue(request.resource.data.companyId)
+            && canViewUnitPrice(request.resource.data.companyId)
+          )
+        )
         && validShortName(request.resource.data.name, 50)
         && request.resource.data.revenue is number
         && request.resource.data.revenue >= 0
@@ -1105,10 +1109,14 @@ service cloud.firestore {
         && request.resource.data.updatedAt == request.time;
 
       allow update: if resource.data.companyId != null
-        && (isCompanyManager(resource.data.companyId)
-          || isCompanyMaster(resource.data.companyId))
-        && canViewRevenue(resource.data.companyId)
-        && canViewUnitPrice(resource.data.companyId)
+        && (
+          isCompanyMaster(resource.data.companyId)
+          || (
+            isCompanyManager(resource.data.companyId)
+            && canViewRevenue(resource.data.companyId)
+            && canViewUnitPrice(resource.data.companyId)
+          )
+        )
         && request.resource.data.companyId == resource.data.companyId
         && validShortName(request.resource.data.name, 50)
         && request.resource.data.revenue is number
@@ -1122,10 +1130,14 @@ service cloud.firestore {
           ]);
 
       allow delete: if resource.data.companyId != null
-        && (isCompanyManager(resource.data.companyId)
-          || isCompanyMaster(resource.data.companyId))
-        && canViewRevenue(resource.data.companyId)
-        && canViewUnitPrice(resource.data.companyId);
+        && (
+          isCompanyMaster(resource.data.companyId)
+          || (
+            isCompanyManager(resource.data.companyId)
+            && canViewRevenue(resource.data.companyId)
+            && canViewUnitPrice(resource.data.companyId)
+          )
+        );
     }
 
     match /records/{recordId} {
