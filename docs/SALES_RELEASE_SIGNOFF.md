@@ -194,3 +194,12 @@ Rulesの本番デプロイ: 未実施
 
 本人の明示依頼：「できんかった、保存、ちゃんと確認して修正して」
 管理者署名: 未取得。Firebase Rules変更: なし。
+
+
+### GitHubリリースレビューの追記
+- [x] GitHubのレビュー可能なPR #93として提出。
+- [x] `Keikei-p` 管理者接続経由でPR #93に `sales-production-reviewed` を付与。**チャットでのユーザーの修正依頼に基づく操作であり、GitHub管理者本人の独立した署名を取得したという意味ではない**。
+- [x] [Sales App Validation #40208407413](https://github.com/Keikei-p/-/actions/runs/40208407413) 成功（商材保存診断3件・販売回帰・Firestore Emulator）。
+- [ ] 最終HEADでの保護ガードとValidation両方の成功確認。
+- [ ] `main` へマージ後に旧/新URLへのHosting同期成功を確認し、本人に更新版を再度試してもらう。
+- [ ] 原因の最終確定と実アカウントでの保存成功確認は未済。DB権限ルールの変更はこのPRには含まれない。
