@@ -144,3 +144,16 @@ Rulesの本番デプロイ: 未実施
 - [ ] 新旧URLで実ユーザーの権限・読み込みを確認（本番書込テストは行わない）
 
 管理者署名: 未取得。新しいRulesの本番反映: 未実施。実ユーザーの復旧: 未確認。
+
+
+### リリース準備・事前確認追記（2026-10-26）
+- [x] PR #92の修正対象は `firestore.rules` の `products` 書き込み判定のみ（`tests/rules.test.cjs` と本記録を除く）。`index.html`、既存 `products`、`records`、価格・売上・CB・ユーザー所属は書き換えない。
+- [x] PR #92 / commit `23f8e6d2e71040647f1c30828ffc7f16d4377caa` でSales App Validation https://github.com/Keikei-p/-/actions/runs/40204311005 成功。
+- [x] 2026-10-25に共有されたGoogle Cloud「障害復旧」の画面では**日次バックアップ有効・7日保持**、10/25・10/24・10/23のスナップショットが表示された。画面のプロジェクトIDは見切れているため**目的DBのバックアップであることを未確認**。
+- [ ] 上記バックアップが `sales-management-cc116` の Firestore `(default)` に属するか管理者が照合し、復元手順/実際の復元検証と対象データ保全を確認する（「復元」操作を本番DBで行わない）。
+- [ ] 管理者本人がPR #92の権限拡大範囲をレビューし署名する。AIは署名を代筆しない。
+- [ ] 管理者レビュー後、GitHub上で `sales-production-reviewed` ラベルを付与し、最新HEADで `protected-change-guard` と `Sales App Validation` が両方成功することを確認する。
+- [ ] マージ後、**main** の `Firebase Rules Deploy (Zero-Cost)` を手動実行し、対象プロジェクト `sales-management-cc116` をログで照合、`Deploy complete!` を確認する。
+- [ ] 最後に本人が既存のログインで実際の商材追加を確認。会社所属/メール認証/実アカウントの拒否原因が別に残る可能性もあるため、Successだけを復旧完了扱いにはしない。
+
+状況: **技術的修正・自動テスト済み／本番適用前。管理者承認・保護ラベル・バックアップDB照合・手動Rulesデプロイ・実機確認が未済**。
