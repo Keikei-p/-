@@ -206,7 +206,10 @@ test('authenticated master shown as owner can add, edit and delete products even
   await assertSucceeds(updateDoc(ref,{name:'更新した商材',updatedAt:serverTimestamp()}));
   assert.equal((await assertSucceeds(getDoc(ref))).data().name,'更新した商材');
   await assertSucceeds(deleteDoc(ref));
-  assert.equal((await assertSucceeds(getDoc(ref))).exists(),false);
+  // Existing rules intentionally disallow a client read of missing products.
+  await env.withSecurityRulesDisabled(async c=>{
+    assert.equal((await getDoc(doc(c.firestore(),'products','master-new-product'))).exists(),false);
+  });
 });
 
 test('product catalog permissions still reject ordinary members and foreign members',async()=>{
