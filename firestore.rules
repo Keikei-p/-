@@ -160,6 +160,27 @@ service cloud.firestore {
         || isCompanyOwner(companyId);
     }
 
+    // Product writes previously re-entered master/member checks through both
+    // finance helpers, exceeding the 1,000-expression limit for non-masters.
+    // Keep the same grants, but evaluate membership and finance flags once.
+    function canManageProducts(companyId) {
+      return isCompanyMaster(companyId)
+        || (
+          isCompanyMember(companyId)
+          && (
+            isCompanyOwner(companyId)
+            || get(memberPath(companyId, request.auth.uid)).data.role == 'leader'
+          )
+          && (
+            get(memberPath(companyId, request.auth.uid)).data.companyRole == 'owner'
+            || (
+              get(memberPath(companyId, request.auth.uid)).data.get('canViewRevenue', false) == true
+              && get(memberPath(companyId, request.auth.uid)).data.get('canViewUnitPrice', false) == true
+            )
+          )
+        );
+    }
+
     function isLeaderOfTeam(companyId, teamId) {
       return isCompanyLeader(companyId)
         && teamId != null
@@ -1092,14 +1113,7 @@ service cloud.firestore {
         ])
         && request.resource.data.companyId != null
         && currentCompanyId() == request.resource.data.companyId
-        && (
-          isCompanyMaster(request.resource.data.companyId)
-          || (
-            isCompanyManager(request.resource.data.companyId)
-            && canViewRevenue(request.resource.data.companyId)
-            && canViewUnitPrice(request.resource.data.companyId)
-          )
-        )
+        && canManageProducts(request.resource.data.companyId)
         && validShortName(request.resource.data.name, 50)
         && request.resource.data.revenue is number
         && request.resource.data.revenue >= 0
@@ -1109,14 +1123,7 @@ service cloud.firestore {
         && request.resource.data.updatedAt == request.time;
 
       allow update: if resource.data.companyId != null
-        && (
-          isCompanyMaster(resource.data.companyId)
-          || (
-            isCompanyManager(resource.data.companyId)
-            && canViewRevenue(resource.data.companyId)
-            && canViewUnitPrice(resource.data.companyId)
-          )
-        )
+        && canManageProducts(resource.data.companyId)
         && request.resource.data.companyId == resource.data.companyId
         && validShortName(request.resource.data.name, 50)
         && request.resource.data.revenue is number
@@ -1130,14 +1137,7 @@ service cloud.firestore {
           ]);
 
       allow delete: if resource.data.companyId != null
-        && (
-          isCompanyMaster(resource.data.companyId)
-          || (
-            isCompanyManager(resource.data.companyId)
-            && canViewRevenue(resource.data.companyId)
-            && canViewUnitPrice(resource.data.companyId)
-          )
-        );
+        && canManageProducts(resource.data.companyId);
     }
 
     match /records/{recordId} {
