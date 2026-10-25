@@ -181,3 +181,39 @@ test('leader without explicit finance grants cannot read or edit revenue goals',
   const owner=dbFor('owner');
   assert.equal((await getDoc(doc(owner,'revenueGoals','private-a'))).data().targetRevenue,990000);
 });
+
+
+test('Ranking groups: only owner saves company-wide preferences; everyone else reads but cannot edit',async()=>{
+  const ref=(db,companyId=company)=>doc(db,'companies',companyId,'settings','ranking');
+  const owner=dbFor('owner');
+  const payload={groups:[{id:'g1',name:'任意の名称',keys:['id:ym','id:sb']}],
+    updatedBy:'owner',updatedAt:serverTimestamp()};
+  await assertSucceeds(setDoc(ref(owner),payload));
+  const snap=await assertSucceeds(getDoc(ref(dbFor('leaderA'))));
+  assert.equal(snap.data().groups[0].name,'任意の名称');
+  for(const uid of ['leaderA','leaderB','helper']){
+    await assertFails(setDoc(ref(dbFor(uid)),{
+      groups:[{id:'other',name:'無断変更',keys:['id:ym']}],
+      updatedBy:uid,updatedAt:serverTimestamp()
+    }));
+  }
+  await assertFails(getDoc(ref(dbFor('foreign'))));
+  await assertFails(setDoc(ref(dbFor('foreign')),payload));
+  const snapshot=await assertSucceeds(getDoc(ref(owner)));
+  assert.equal(snapshot.data().groups[0].name,'任意の名称');
+});
+
+test('Ranking settings reject unexpected financial fields and unsupported group sizes',async()=>{
+  const owner=dbFor('owner');
+  const ref=doc(owner,'companies',company,'settings','ranking');
+  await assertFails(setDoc(ref,{
+    groups:[],totalRevenue:10000,updatedBy:'owner',updatedAt:serverTimestamp()
+  }));
+  await assertFails(setDoc(ref,{
+    groups:Array.from({length:31},(_,i)=>({id:'g'+i,name:'Group '+i,keys:['id:p'+i]})),
+    updatedBy:'owner',updatedAt:serverTimestamp()
+  }));
+  await assertSucceeds(setDoc(ref,{
+    groups:[],updatedBy:'owner',updatedAt:serverTimestamp()
+  }));
+});

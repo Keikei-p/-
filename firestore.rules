@@ -951,6 +951,21 @@ service cloud.firestore {
               && request.resource.data.updatedAt == request.time
             )
             || (
+              // Separate owner-only ranking display configuration.
+              // No products, sales records, finance or existing settings change.
+              settingId == 'ranking'
+              && request.resource.data.keys().hasOnly([
+                'groups', 'updatedBy', 'updatedAt'
+              ])
+              && request.resource.data.keys().hasAll([
+                'groups', 'updatedBy', 'updatedAt'
+              ])
+              && request.resource.data.groups is list
+              && request.resource.data.groups.size() <= 30
+              && request.resource.data.updatedBy == request.auth.uid
+              && request.resource.data.updatedAt == request.time
+            )
+            || (
               settingId == 'notifications'
               && request.resource.data.keys().hasOnly([
                 'enabled', 'weekdays', 'time', 'reportCompletionMode',
