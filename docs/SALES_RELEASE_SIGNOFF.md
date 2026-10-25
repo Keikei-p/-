@@ -72,3 +72,11 @@
 - [ ] 管理者署名: 未取得（会話での公開意思表明とは別）
 
 **ステータス：自動テストと保護条件・URL確認に依存。未完了項目は完了扱いにしない。**
+
+## 自動検査結果の追記（2026-10-25）
+- [x] Sales App Validation: https://github.com/Keikei-p/-/actions/runs/40158652169 成功。ブラウザ構文・販売回帰・Firestore Emulator合格。
+- [x] Connected GitHub maintainer（Keikei-p）権限により `sales-production-reviewed` ラベルをPR #90へ付与。依頼者からの繰り返しの本番公開指示に対応した操作として記録。
+- [x] 変更ファイルは `index.html`、`tests/sales-regressions.cjs`、本リリース記録のみ。
+- [ ] ラベルを含む最新のpull_requestイベントでProtected Change Gate再評価。
+- [ ] 本番新旧URLへの実際の静的同期確認と起動確認。
+- 署名は自動では生成せず、**管理者本人の署名は未記入**。本PRはFirebase RulesやFirestoreデータの公開/書換を伴わない。
