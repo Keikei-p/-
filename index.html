@@ -5862,7 +5862,18 @@ body.product-reordering .product-list {
             <option value="">会社全体</option>
           </select>
         </label>
-        <p class="ranking-product-help">商材をタップすると、担当者ごとの獲得件数が表示されます（売上金額は表示しません）。</p>
+        <details id="rankingGroupEditor" hidden style="margin:12px 0;padding:14px;border:1px solid var(--border,#e5e7eb);border-radius:14px;">
+          <summary style="cursor:pointer;font-weight:700;">ランキンググループを設定</summary>
+          <p class="ranking-product-help">名前を入力し、まとめる商材を選んで追加。最初から決まったグループはありません。</p>
+          <label style="display:block;margin:12px 0;font-weight:600;">グループ名
+            <input id="rankingGroupName" type="text" maxlength="40" autocomplete="off" placeholder="好きなグループ名" style="display:block;width:100%;padding:11px;border:1px solid #cbd5e1;border-radius:10px;margin-top:5px;">
+          </label>
+          <div id="rankingGroupProducts" style="display:grid;gap:8px;max-height:240px;overflow:auto;"></div>
+          <button id="rankingGroupAdd" type="button" class="team-action-button" style="margin:12px 0;">選んだ商材でグループを追加</button>
+          <div id="rankingGroupExisting" style="display:grid;gap:8px;"></div>
+          <p class="ranking-product-help">設定は会社共通。履歴・元の商材・売上は変更しません。</p>
+        </details>
+        <p class="ranking-product-help">グループをタップすると、担当者ごとの合計獲得件数が表示されます（売上金額は表示しません）。</p>
         <div id="productRankingProductList" class="ranking-product-grid" data-columns="1"></div>
         <div class="ranking-product-result-header">
           <strong id="productRankingSelectedLabel">商材を選択してください</strong>
@@ -7342,6 +7353,11 @@ const productRankingProductList = document.getElementById("productRankingProduct
 const productRankingSelectedLabel = document.getElementById("productRankingSelectedLabel");
 const productRankingMemberCount = document.getElementById("productRankingMemberCount");
 const productRankingMemberList = document.getElementById("productRankingMemberList");
+const rankingGroupEditor = document.getElementById("rankingGroupEditor");
+const rankingGroupName = document.getElementById("rankingGroupName");
+const rankingGroupProducts = document.getElementById("rankingGroupProducts");
+const rankingGroupAdd = document.getElementById("rankingGroupAdd");
+const rankingGroupExisting = document.getElementById("rankingGroupExisting");
 
 const teamRankingToggle =
   document.getElementById(
@@ -8438,6 +8454,11 @@ let individualRankingColumns = 1;
 let productRankingColumns = 1;
 let selectedProductRankingKey = "";
 let selectedProductRankingTeamId = "";
+// A company has NO pre-defined groups. This is separate display-only ranking state.
+let rankingGroups = [];
+let rankingGroupsLoaded = false;
+let rankingGroupSaveBusy = false;
+let rankingGroupDraftSelectedKeys = new Set();
 
 const defaultReportTemplateOptions = {
   showDate: true,
@@ -8500,6 +8521,7 @@ let unsubscribeProducts = null;
 let unsubscribeRecords = null;
 let unsubscribeGoals = null;
 let unsubscribeRevenueGoals = null;
+let unsubscribeRankingGroups = null;
 
 
 /* =====================================================
@@ -12964,6 +12986,25 @@ deleteOwnAccountButton.onclick =
 function startRealtimeListeners() {
 
   stopRealtimeListeners();
+  rankingGroups = [];
+  rankingGroupsLoaded = false;
+  rankingGroupDraftSelectedKeys.clear();
+  // Company-scoped, owner-written display settings only; no records are updated.
+  unsubscribeRankingGroups = onSnapshot(
+    doc(db, "companies", currentUserData.companyId, "settings", "ranking"),
+    snap => {
+      rankingGroups = normalizeRankingGroups(snap.exists() ? snap.data().groups : []);
+      rankingGroupsLoaded = true;
+      renderProductMemberRanking(
+        records.filter(record => record.date?.startsWith(dashboardMonth.value))
+      );
+    },
+    error => {
+      rankingGroupsLoaded = false;
+      console.error("ランキンググループ設定読込エラー:", error);
+      showError("ランキンググループ設定を読み込めませんでした。通信状態を確認してください。");
+    }
+  );
 
 
   /*
@@ -13491,6 +13532,13 @@ function startRealtimeListeners() {
 
 
 function stopRealtimeListeners() {
+
+  if (unsubscribeRankingGroups) {
+    unsubscribeRankingGroups();
+    unsubscribeRankingGroups = null;
+  }
+  rankingGroups = [];
+  rankingGroupsLoaded = false;
 
   if (
     unsubscribeUsers
