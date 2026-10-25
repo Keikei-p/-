@@ -31745,6 +31745,8 @@ rankingGroupAdd.addEventListener("click", async () => {
 
 function renderProductMemberRanking(monthly) {
   updateRankingLayoutControls("product");
+  // Never leave an owner-only editor exposed after the active account changes.
+  rankingGroupEditor.hidden = !isCurrentCompanyOwner();
 
   // 売上に関係しない件数ランキングだが閲覧対象は会社管理者のみ。
   if (!isCurrentCompanyManager()) {
