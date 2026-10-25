@@ -39,3 +39,26 @@
 - Firebase本番バックアップ・別環境への復元・実機ログイン検証: **未実施／未確認**
 - GitHub管理者の署名: **未記入**。この文書の作成はGitHub管理者署名の代わりではない。
 - 本番履歴の自動修正許可: **なし**（当該PRはそもそも書込みを行わない）
+
+
+---
+
+# 手動商材ランキング｜第1段階 Firestore Rules先行リリース（2026-10-25・管理者未署名）
+
+関連: https://github.com/Keikei-p/-/pull/88
+目的: 新ランキング画面公開前に、会社Ownerだけが \`companies/{companyId}/settings/ranking\` の「表示グループ設定」を書き込めるよう準備する。既存records/products/teams/単価/CB/既存settingのアクセス権は変更しない。
+
+- [x] Firestoreルール差分はsettings/rankingに対するowner-only create/update許可15行のみと機械照合済み
+- [x] 追加予定のエミュレータテストに、owner書込・その他ロール拒否・他社拒否・余計な金額フィールド拒否を含む
+- [ ] このRules単独PRの最新HEADで Sales App Validation / Firestore Emulator 成功を確認
+- [ ] 実データの暗号化バックアップと検証済み復元手順・データ全件保護証拠
+- [ ] Firestoreの利用枠・料金条件、前後の権限・新旧URLの互換性確認
+- [ ] 管理者による差分レビュー、**本人署名**と \`sales-production-reviewed\` ラベル
+- [ ] 本PRをmainへマージした後、管理者が「Firebase Rules Deploy (Zero-Cost)」を明示実行、成功確認
+- [ ] 新旧URLの既存機能と商材実績入力に影響がないことを確認
+- [ ] これら完了後、**別PR #88の画面部分のみ**の公開準備と確認へ進む
+
+この記録は管理者署名ではなく、未確認条件を合格扱いしない。**本番デプロイ承認前はDraft・マージ禁止**。
+
+署名者: 未署名
+公開ステータス: 未反映
