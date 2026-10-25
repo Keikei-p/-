@@ -230,3 +230,103 @@ test('existing owner retains product create permission',async()=>{
     sortOrder:13,active:true,createdAt:serverTimestamp(),updatedAt:serverTimestamp()
   }));
 });
+
+test('secondary owner (not master) can create, edit and delete SBMNP with zero cashback',async()=>{
+  await env.withSecurityRulesDisabled(async c=>{
+    await updateDoc(doc(c.firestore(),'companies',company),{masterUid:'another-master'});
+  });
+  const ref=doc(dbFor('owner'),'products','secondary-owner-sbmnp');
+  await assertSucceeds(setDoc(ref,{
+    companyId:company,name:'SBMNP',revenue:5000,
+    cashbackOptions:[0],pricingOptions:[{cashback:0,revenuePerUnit:5000}],
+    sortOrder:13,active:true,createdAt:serverTimestamp(),updatedAt:serverTimestamp()
+  }));
+  await assertSucceeds(updateDoc(ref,{name:'SBMNP edited',updatedAt:serverTimestamp()}));
+  await assertSucceeds(deleteDoc(ref));
+});
+
+test('leader with both explicit finance grants can create, edit and delete SBMNP',async()=>{
+  await env.withSecurityRulesDisabled(async c=>{
+    const db=c.firestore();
+    await updateDoc(doc(db,'users','leaderA'),{canViewUnitPrice:true});
+    await updateDoc(doc(db,'companies',company,'members','leaderA'),{canViewUnitPrice:true});
+  });
+  const ref=doc(dbFor('leaderA'),'products','leader-sbmnp');
+  await assertSucceeds(setDoc(ref,{
+    companyId:company,name:'SBMNP',revenue:5000,
+    cashbackOptions:[0],pricingOptions:[{cashback:0,revenuePerUnit:5000}],
+    sortOrder:13,active:true,createdAt:serverTimestamp(),updatedAt:serverTimestamp()
+  }));
+  await assertSucceeds(updateDoc(ref,{name:'SBMNP edited',updatedAt:serverTimestamp()}));
+  await assertSucceeds(deleteDoc(ref));
+});
+
+function catalogPayload(extra={}) {
+  return {companyId:company,name:'SBMNP',revenue:5000,
+    cashbackOptions:[0],pricingOptions:[{cashback:0,revenuePerUnit:5000}],
+    sortOrder:13,active:true,createdAt:serverTimestamp(),updatedAt:serverTimestamp(),...extra};
+}
+
+test('product create/update/delete reject inactive, inconsistent, unverified and underprivileged actors',async()=>{
+  const cases=[
+    {id:'member',role:'member',grants:true},
+    {id:'leader-no-unit',role:'leader',revenue:true},
+    {id:'leader-no-revenue',role:'leader',unit:true},
+    {id:'leader-no-flags',role:'leader'},
+    {id:'inactive-user',owner:true,userActive:false},
+    {id:'inactive-member',owner:true,memberActive:false},
+    {id:'missing-member',owner:true,missingMember:true},
+    {id:'missing-user',owner:true,missingUser:true},
+    {id:'wrong-company',owner:true,wrongCompany:true},
+    {id:'ui-only-owner',userOwner:true},
+    {id:'member-only-owner',memberOwner:true},
+    {id:'unverified-owner',owner:true,unverified:true},
+    {id:'master-inactive',master:true,userActive:false},
+    {id:'master-missing-member',master:true,missingMember:true},
+    {id:'master-wrong-company',master:true,wrongCompany:true}
+  ];
+  for(const item of cases){
+    await env.withSecurityRulesDisabled(async c=>{
+      const db=c.firestore();
+      await updateDoc(doc(db,'companies',company),{masterUid:item.master?item.id:'owner'});
+      const common={uid:item.id,companyId:item.wrongCompany?'company-b':company,
+        role:item.role||'member',companyRole:'member',active:true,
+        ...(item.grants||item.revenue?{canViewRevenue:true}:{}),
+        ...(item.grants||item.unit?{canViewUnitPrice:true}:{})};
+      if(!item.missingUser)await setDoc(doc(db,'users',item.id),{
+        ...common,companyRole:item.owner||item.userOwner?'owner':'member',active:item.userActive!==false});
+      if(!item.missingMember)await setDoc(doc(db,'companies',company,'members',item.id),{
+        ...common,companyRole:item.owner||item.memberOwner?'owner':'member',active:item.memberActive!==false});
+      await setDoc(doc(db,'products','existing-'+item.id),catalogPayload());
+    });
+    const db=env.authenticatedContext(item.id,{email:item.id+'@example.test',email_verified:!item.unverified}).firestore();
+    await assertFails(setDoc(doc(db,'products','new-'+item.id),catalogPayload()));
+    const ref=doc(db,'products','existing-'+item.id);
+    await assertFails(updateDoc(ref,{name:'denied',updatedAt:serverTimestamp()}));
+    await assertFails(deleteDoc(ref));
+  }
+  const anon=env.unauthenticatedContext().firestore();
+  await assertFails(setDoc(doc(anon,'products','anonymous'),catalogPayload()));
+  await assertFails(updateDoc(doc(anon,'products','existing-member'),{name:'denied',updatedAt:serverTimestamp()}));
+  await assertFails(deleteDoc(doc(anon,'products','existing-member')));
+});
+
+test('product validation and cross-company protections remain enforced for secondary owner',async()=>{
+  await env.withSecurityRulesDisabled(async c=>{
+    const db=c.firestore();
+    await updateDoc(doc(db,'companies',company),{masterUid:'another-master'});
+    await setDoc(doc(db,'products','foreign-product'),catalogPayload({companyId:'company-b'}));
+  });
+  const db=dbFor('owner');
+  const invalid=[{revenue:-1},{revenue:'5000'},{active:false},{name:''},
+    {pricingOptions:[]},{sortOrder:-1},{unexpected:true},{createdAt:null},
+    {updatedAt:null},{companyId:'company-b'}];
+  for(let i=0;i<invalid.length;i++)await assertFails(setDoc(doc(db,'products','invalid-'+i),catalogPayload(invalid[i])));
+  const ref=doc(db,'products','valid-product');
+  await assertSucceeds(setDoc(ref,catalogPayload()));
+  await assertFails(updateDoc(ref,{companyId:'company-b',updatedAt:serverTimestamp()}));
+  await assertFails(updateDoc(ref,{revenue:-1,updatedAt:serverTimestamp()}));
+  await assertFails(updateDoc(ref,{active:false,updatedAt:serverTimestamp()}));
+  await assertFails(updateDoc(doc(db,'products','foreign-product'),{name:'denied',updatedAt:serverTimestamp()}));
+  await assertFails(deleteDoc(doc(db,'products','foreign-product')));
+});

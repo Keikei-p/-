@@ -117,3 +117,30 @@ Rulesの本番デプロイ: 未実施
 - [ ] Firebase本番データのバックアップ/復元テスト結果は取得できていない。
 - [ ] Firebase本番デプロイは本チャットでは実行不能、適用未済。GitHubのmainに反映してもFirestoreの権限は変わらない。
 - 管理者の署名（本人が自ら署名したもの）：**未取得**。この記録は署名ではない。
+
+---
+
+## 商材の権限評価上限の修正候補（2026-10-25、Draft・本番未反映）
+
+- 対象main: `257b2e3ef9074681d3536c495893e73c9f335649`。
+- Rules Deploy run `40203244331` / job `121198688986` のログで、既存プロジェクト `sales-management-cc116` に2026-10-25 23:40 JSTにRulesがreleaseされたことを確認。これは実ユーザーの保存成功や現在のRules全文取得の証明ではない。
+- `nico-factory.web.app` と `keikei-p.github.io/-/` は匿名GET成功。HTMLは改行正規化後mainと一致。商材保存payloadも同一で、SBMNP・CB0・収益単価5000の形式はRulesの検証に適合。
+- 本人のAuth UID、メール確認状態、users・members・companyの実データは未照合。Codex内ブラウザーはログイン画面。実データのコピーや秘密情報取得は行っていない。
+
+### 再現と変更
+- 未変更mainのRulesに追加した2テスト（非マスターowner、売上/単価許可済leader）で `permission-denied` と `maximum of 1000 expressions` を再現。26件中24成功、2失敗。
+- 従来のownerテストは `ownerUid == masterUid == actor UID` で、master分岐の短絡成功しか確認していなかった。
+- 商材のcreate/update/deleteだけに `canManageProducts` を適用し、重複するmaster・member・finance関数評価を減らす。既存の会社所属、有効状態、メール確認、master UID、ownerの二重確認、leaderの明示finance許可、payload検証は維持する。
+- `index.html`、他コレクションのRules、デプロイ/保護ワークフロー、ユーザー権限、本番データは変更しない。
+- 修正後ローカル: Firestore Emulator **28/28成功**、販売回帰 **49/49成功**。owner/leaderの追加・編集・削除、一般member、未許可leader、停止、欠損所属、会社不一致、未認証/メール未確認、owner不整合、価格不正・他社操作の拒否を検証。デモプロジェクトのみ使用。
+- 既存recordsの拒否テストにも評価上限ログは残るが、この修正はproductsのみを対象とし、他の権限判定は変更しない。
+
+### 未完了の本番ゲート
+- [ ] 管理者本人のレビュー・署名（未取得。この調査記録は署名ではない）
+- [ ] 管理者が保護ラベル `sales-production-reviewed` を付与し、最新PR headで保護ゲート成功
+- [ ] バックアップ・別環境復元と保全対象の全件照合
+- [ ] 実アカウントのUIDを外部に記録せず、Auth/所属/owner/masterの条件を実環境で照合
+- [ ] 本番切替の明示承認後に既存の手動Rules配信手順を実施
+- [ ] 新旧URLで実ユーザーの権限・読み込みを確認（本番書込テストは行わない）
+
+管理者署名: 未取得。新しいRulesの本番反映: 未実施。実ユーザーの復旧: 未確認。
