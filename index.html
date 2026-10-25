@@ -16791,6 +16791,48 @@ function renderProducts() {
 }
 
 
+// Report a failed catalog write without logging UID, email, or finance amounts.
+// A visible Owner badge alone does not prove the server-side membership agrees.
+async function productWriteFailureMessage(action, error) {
+  const base = firebaseErrorMessage(error);
+  if (error?.code !== "permission-denied") return `商材${action}失敗：${base}`;
+
+  const user = auth.currentUser;
+  const companyId = currentUserData?.companyId;
+  const state = [];
+  if (!user || !companyId) {
+    return `商材${action}が拒否されました。ログインまたは所属会社を確認できません。再ログインしてください。`;
+  }
+  try {
+    const token = await user.getIdTokenResult(true);
+    state.push(`認証メール確認=${token.claims.email_verified === true ? "OK" : "未反映"}`);
+  } catch (_) {
+    state.push("認証トークン=確認不可");
+  }
+  state.push(`ユーザーOwner=${currentUserData?.companyRole === "owner" ? "はい" : "いいえ"}`);
+  state.push(`MASTER=${getEffectiveMasterUid() === user.uid ? "本人" : "別ユーザー"}`);
+
+  let member = null;
+  try {
+    const memberSnap = await getDoc(doc(db, "companies", companyId, "members", user.uid));
+    member = memberSnap.exists() ? memberSnap.data() : null;
+    state.push(`会社所属=${member ? (member.active === false ? "停止中" : "あり") : "未登録"}`);
+  } catch (_) {
+    state.push("会社所属=読取不可");
+  }
+
+  if (member) {
+    state.push(`所属側Owner=${member.companyRole === "owner" ? "はい" : "いいえ"}`);
+    if (member.role === "leader" && member.companyRole !== "owner") {
+      state.push(`リーダー売上許可=${member.canViewRevenue === true ? "あり" : "なし"}`);
+      state.push(`リーダー単価許可=${member.canViewUnitPrice === true ? "あり" : "なし"}`);
+    }
+  }
+  console.warn("product-write-denied", {action, code:error?.code, diagnostic:state.join(" / ")});
+  return `商材${action}がFirebaseに拒否されました（permission-denied）。診断：${state.join(" / ")}。この表示をスクリーンショットで共有してください。元の商材・実績は変更していません。`;
+}
+
+
 addProductPricingOptionButton.onclick =
   () =>
     createPricingOptionRow(
@@ -16874,6 +16916,8 @@ addProductButton.onclick =
       );
 
 
+    let savedOnServer = false;
+
     try {
 
       const productRef =
@@ -16916,6 +16960,8 @@ addProductButton.onclick =
       );
 
 
+      savedOnServer = true;
+
       productNameInput.value =
         "";
 
@@ -16930,7 +16976,7 @@ addProductButton.onclick =
       );
 
 
-      await loadProducts();
+      await loadProducts(true);
 
       prepareProductInputList(
         draftResults
@@ -16942,11 +16988,11 @@ addProductButton.onclick =
 
     } catch (error) {
 
-      showError(
-        firebaseErrorMessage(
-          error
-        )
-      );
+      if (savedOnServer) {
+        showError("商材はFirebaseに保存されていますが、一覧の再読み込みに失敗しました。重複登録せず画面を更新して確認してください。");
+      } else {
+        showError(await productWriteFailureMessage("追加", error));
+      }
 
     }
 
@@ -17071,6 +17117,8 @@ saveProductModal.onclick =
       );
 
 
+    let savedOnServer = false;
+
     try {
 
       await updateDoc(
@@ -17097,9 +17145,11 @@ saveProductModal.onclick =
       );
 
 
+      savedOnServer = true;
+
       closeProductModal();
 
-      await loadProducts();
+      await loadProducts(true);
 
       prepareProductInputList(
         draftResults
@@ -17111,11 +17161,11 @@ saveProductModal.onclick =
 
     } catch (error) {
 
-      showError(
-        firebaseErrorMessage(
-          error
-        )
-      );
+      if (savedOnServer) {
+        showError("商材の変更はFirebaseに保存されていますが、一覧の再読み込みに失敗しました。再度保存せず、画面を更新して確認してください。");
+      } else {
+        showError(await productWriteFailureMessage("変更", error));
+      }
 
     }
 

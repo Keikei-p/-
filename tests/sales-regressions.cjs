@@ -1098,3 +1098,64 @@ test('Ranking settings cannot change Firestore rules or stored finance data',()=
     assert(!code.includes(prop));
   }
 });
+
+
+test('Catalog save failure diagnostic identifies mismatched company-member Owner without leaking identifiers',async()=>{
+  const warnings=[];
+  const ctx=context(['productWriteFailureMessage'],{
+    auth:{currentUser:{uid:'private-uid',getIdTokenResult:async()=>({claims:{email_verified:true}})}},
+    currentUserData:{companyId:'private-company',companyRole:'owner'},
+    getEffectiveMasterUid:()=> 'a-different-master',
+    getDoc:async()=>({exists:()=>true,data:()=>({companyRole:'member',role:'member',active:true})}),
+    doc:()=>({}), db:{},
+    firebaseErrorMessage:()=> 'generic',
+    console:{warn:(...args)=>warnings.push(args)}
+  });
+  const diagnostic=await ctx.productWriteFailureMessage('追加',{code:'permission-denied'});
+  assert(diagnostic.includes('ユーザーOwner=はい'));
+  assert(diagnostic.includes('所属側Owner=いいえ'));
+  assert(diagnostic.includes('MASTER=別ユーザー'));
+  assert(diagnostic.includes('会社所属=あり'));
+  assert(diagnostic.includes('認証メール確認=OK'));
+  assert(!diagnostic.includes('private-uid'));
+  assert(!diagnostic.includes('private-company'));
+  assert(!JSON.stringify(warnings).includes('private-uid'));
+});
+
+test('Catalog diagnosis can report missing member or stale email token and does not mutate Firestore',async()=>{
+  let calls=0;
+  const ctx=context(['productWriteFailureMessage'],{
+    auth:{currentUser:{uid:'private-uid',getIdTokenResult:async()=>({claims:{email_verified:false}})}},
+    currentUserData:{companyId:'private-company',companyRole:'owner'},
+    getEffectiveMasterUid:()=> 'a-different-master',
+    getDoc:async()=>{calls++;return {exists:()=>false};},
+    doc:()=>({}), db:{},console:{warn:()=>{}},
+    firebaseErrorMessage:()=> 'generic'
+  });
+  const diagnostic=await ctx.productWriteFailureMessage('変更',{code:'permission-denied'});
+  assert(diagnostic.includes('認証メール確認=未反映'));
+  assert(diagnostic.includes('会社所属=未登録'));
+  assert.equal(calls,1);
+  const ordinary=await ctx.productWriteFailureMessage('変更',{code:'unavailable'});
+  assert(ordinary.includes('generic'));
+  assert.equal(calls,1);
+  const sourceCode=source('productWriteFailureMessage');
+  assert(!/setDoc\(|updateDoc\(|deleteDoc\(|writeBatch\(|runTransaction\(/.test(sourceCode));
+});
+
+test('Catalog handlers distinguish confirmed save from a subsequent refresh failure',()=>{
+  const create=handler('addProductButton');
+  const update=handler('saveProductModal');
+  for(const code of [create,update]){
+    assert(code.includes('let savedOnServer = false'));
+    assert(code.includes('savedOnServer = true'));
+    assert(code.includes('await loadProducts(true)'));
+    assert(code.includes('if (savedOnServer)'));
+    assert(code.includes('productWriteFailureMessage('));
+    assert(code.indexOf('savedOnServer = true')<code.indexOf('await loadProducts(true)'));
+  }
+  assert(create.includes('await setDoc('));
+  assert(update.includes('await updateDoc('));
+  assert(create.includes('重複登録せず'));
+  assert(update.includes('再度保存せず'));
+});

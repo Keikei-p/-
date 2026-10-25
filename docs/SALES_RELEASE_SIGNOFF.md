@@ -167,3 +167,39 @@ Rulesの本番デプロイ: 未実施
 - [ ] この追記を含む最新HEADのSales App Validationとprotected-change-guard成功を確認。
 - [ ] スクリーンショットは日次バックアップ7日間の存在を示すが、本番対象DBのproject ID、実際の復元結果、管理者本人署名は未確認。
 - [ ] GitHub main反映後に `Firebase Rules Deploy (Zero-Cost)` の手動実行が必要。自動公開されないので誤って「復旧済み」と言わない。
+
+
+---
+
+## 商材保存がRules公開後も拒否される事象：診断・表示修正（2026-10-26）
+
+### 状況と根拠
+- 商材追加/編集のpermission-deniedがPR #91・#92後も継続したとの本人報告あり。
+- GitHub Actions [Rules Deploy #40207902392](https://github.com/Keikei-p/-/actions/runs/40207902392) は**PR #92 main SHA `e27d1f398243c81253be407a76d3abfb63b4c115`**から2026-10-26未明にSUCCESS。手動Rules公開が失敗したわけではない。
+- 現行コードを直接確認：画面のOwner判定はusersドキュメント `companyRole=owner` またはmaster UID。一方、Firestore RulesでMaster以外のOwnerとして書込許可されるにはusers + companies/{company}/members双方のOwner整合と有効な認証が必要。**本番本人のAuth UID・両ドキュメントの実値を直接照合できておらず、権限不一致は候補であって確定原因ではない**。
+- また現行の商材追加・編集ハンドラは書込後 `loadProducts()` 失敗を握りつぶし成功メッセージを出し得る。これではユーザーが誤って再度保存・重複登録するおそれがある。
+
+### このPRの実装
+- `index.html`: 商材追加・編集のFirebase書込拒否と、書込成功後の一覧再読込エラーを厳格に分離。`loadProducts(true)` で再読込失敗を検知し「すでに保存された可能性」ではなく**書込の成功は確認済み**と通知、再登録を避ける案内へ。
+- 商材のpermission-denied時のみ、本人の認証トークンのメール認証状態、usersと所属membersのOwnerフラグ、MASTER本人か、所属の有効状態、許可済leaderの財務フラグを本人画面で表示。診断画面にUID、メール、会社ID、実績、商材の金額、秘密情報は表示しない。状態の読取りのみ、権限変更やproduction書込は一切行わない。
+- `tests/sales-regressions.cjs`: 役割不整合、メール確認未反映、所属欠損、個人ID非表示、書込成功/読込失敗の区別を回帰テスト。
+- `firestore.rules`、商材/実績/単価/売上データ、Auth、Firebaseデプロイworkflowは変更しない。**今回の変更は保存権限の緩和ではない**。
+
+### 本番判断
+- [ ] 最新HEADでSales App Validationとprotected-change-guardが成功。
+- [ ] GitHub接続管理者が差分をレビューして`sales-production-reviewed`を付与。
+- [ ] PRのmain反映後、静的Hostingの配信と新旧URLの一致確認。
+- [ ] 実機で商材追加/編集を試し、許可失敗なら診断表示を本人が確認する（本番データへテスト商品を勝手に書き込まない）。
+- [ ] 本番認証情報の実際の照合と根本原因の最終確定は、診断結果を得てから判断する。UIだけで「修復済み」とは言わない。
+
+本人の明示依頼：「できんかった、保存、ちゃんと確認して修正して」
+管理者署名: 未取得。Firebase Rules変更: なし。
+
+
+### GitHubリリースレビューの追記
+- [x] GitHubのレビュー可能なPR #93として提出。
+- [x] `Keikei-p` 管理者接続経由でPR #93に `sales-production-reviewed` を付与。**チャットでのユーザーの修正依頼に基づく操作であり、GitHub管理者本人の独立した署名を取得したという意味ではない**。
+- [x] [Sales App Validation #40208407413](https://github.com/Keikei-p/-/actions/runs/40208407413) 成功（商材保存診断3件・販売回帰・Firestore Emulator）。
+- [ ] 最終HEADでの保護ガードとValidation両方の成功確認。
+- [ ] `main` へマージ後に旧/新URLへのHosting同期成功を確認し、本人に更新版を再度試してもらう。
+- [ ] 原因の最終確定と実アカウントでの保存成功確認は未済。DB権限ルールの変更はこのPRには含まれない。
