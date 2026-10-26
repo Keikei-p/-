@@ -33,6 +33,45 @@ test("Existing explicitly granted revenue remains visible for member/leader; pri
     check(false,onlyPrice.canViewUnitPrice);
   }
 });
+test("External partner receives ONLY own-team counts and never financial details even if finance flags are true",()=>{
+  const partner=policy("leader",{uid:"partner",userGrants:{
+    accessKind:"partner",canViewRevenue:true,canViewUnitPrice:true
+  },memberGrants:{accessKind:"partner",canViewRevenue:true,canViewUnitPrice:true}});
+  assert.equal(partner.isPartner,true);
+  assert.equal(partner.isOwner,false);
+  assert.equal(partner.canViewRevenue,false);
+  assert.equal(partner.canViewUnitPrice,false);
+  const products=[{id:"p1",companyId:"company-A",name:"電気 CB5000円",revenue:10000,
+    pricingOptions:[{cashback:5000,revenuePerUnit:10000}],active:true}];
+  const records=[
+    {id:"team-A-record",companyId:"company-A",teamId:"A",uid:"staff-A",
+      memberNameSnapshot:"A担当",date:"2026-10-22",totalCount:2,totalRevenue:20000,
+      results:{p1__cb_5000:{productId:"p1",productName:"電気 CB5000円",
+        cashback:5000,revenuePerUnit:10000,count:2}}},
+    {id:"other-team-secret",companyId:"company-A",teamId:"B",uid:"staff-B",
+      memberNameSnapshot:"他班秘匿",date:"2026-10-22",totalCount:99,totalRevenue:990000,
+      results:{p1__cb_5000:{productId:"p1",cashback:5000,revenuePerUnit:10000,count:99}}}
+  ];
+  const view={products:safeProducts(products,partner),records:safeRecords(records,partner,products),
+    goals:safeGoals([{id:"goal-1",teamId:"A",targetRevenue:500000}],partner)};
+  assert.equal(view.records.length,1);
+  assert.equal(view.records[0].uid,"staff-A");
+  assert.equal(view.records[0].totalCount,2);
+  assert.deepEqual(view.goals,[]);
+  const output=JSON.stringify(view);
+  for(const secret of ["totalRevenue","revenuePerUnit","canViewRevenue","990000","other-team-secret","staff-B","他班秘匿","5000","10000","20000"]){
+    assert.equal(output.includes(secret),false,"leaked "+secret);
+  }
+  // Either document being stamped is enough to DENY finance while onboarding.
+  const oneSided=policy("leader",{userGrants:{accessKind:"partner",canViewRevenue:true},
+    memberGrants:{canViewRevenue:true}});
+  assert.equal(oneSided.isPartner,true);
+  assert.equal(oneSided.canViewRevenue,false);
+  assert.throws(()=>policy("leader",{userGrants:{accessKind:"partner",teamId:"B"},
+    memberGrants:{accessKind:"partner"}}),/partner_assignment_invalid/);
+  assert.throws(()=>policy("leader",{uid:"master-uid",
+    userGrants:{accessKind:"partner"},memberGrants:{accessKind:"partner"}}),/partner_assignment_invalid/);
+});
 test("Company and disabled members are never authorized",()=>{
   const [u,m]=person("member");
   assert.throws(()=>approvedPolicy({...u,active:false},m,company,"sample"),/membership_denied/);
