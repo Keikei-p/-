@@ -15,6 +15,8 @@ const people={
   leaderRevenue:{companyRole:'member',role:'leader',teamId:'A',canViewRevenue:true,canViewUnitPrice:false},
   leaderNoGrant:{companyRole:'member',role:'leader',teamId:'A',canViewRevenue:false,canViewUnitPrice:false},
   ordinary:{companyRole:'member',role:'member',teamId:'A',canViewRevenue:false,canViewUnitPrice:false},
+  partner:{companyRole:'member',role:'leader',teamId:'A',accessKind:'partner',canViewRevenue:true,canViewUnitPrice:true,canCreateInvite:true},
+  partnerOwner:{companyRole:'owner',role:'leader',teamId:'A',accessKind:'partner',canViewRevenue:true,canViewUnitPrice:true},
   inactive:{companyRole:'member',role:'member',teamId:'A',canViewRevenue:true,canViewUnitPrice:true,active:false},
   foreign:{companyRole:'member',role:'member',teamId:'B',canViewRevenue:true,canViewUnitPrice:true,companyId:'foreign-company'}
 };
@@ -128,4 +130,16 @@ test('member can observe company sync but cannot write or read foreign sync',asy
   await assertFails(setDoc(ref,{companyId:company,updatedAt:'attacker'}));
   await assertFails(getDoc(doc(db,'companies','foreign-company','publicSync','state')));
   await assertFails(getDocsFromServer(collection(db,'companies',company,'publicSync')));
+});
+
+test('Partner markers block raw finance reads even after mistaken owner or finance grants',async()=>{
+  for(const uid of ['partner','partnerOwner']){
+    const db=firebase(uid);
+    for(const [name,id] of [['products','product-1'],['records','record-1'],
+      ['recordCorrections','correction-1'],['revenueGoals','revenue-A']]){
+      await assertFails(getDoc(doc(db,name,id)));
+    }
+    await assertFails(getDocsFromServer(collection(db,'companies',company,'members')));
+    await assertFails(updateDoc(doc(db,'teams','A'),{name:'Malicious rename',updatedAt:serverTimestamp()}));
+  }
 });
