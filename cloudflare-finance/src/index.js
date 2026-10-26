@@ -162,7 +162,15 @@ function approvedPolicy(user,member,company,uid,today="") {
       !user.companyId || member.uid!==uid ||
       (user.uid && user.uid!==uid) || member.companyRole!==user.companyRole ||
       (member.companyId && user.companyId!==member.companyId))throw httpError(403,"membership_denied");
+  // Any partner marker is restrictive, even if its twin record has not yet
+  // been stamped. Only a company administrator may provision accessKind.
+  const isPartner=user.accessKind==="partner" || member.accessKind==="partner";
   const isMaster=(company.masterUid||company.ownerUid)===uid;
+  if(isPartner && (isMaster || user.companyRole!=="member" || member.companyRole!=="member" ||
+      user.role!=="leader" || member.role!=="leader" ||
+      !user.teamId || user.teamId!==member.teamId)){
+    throw httpError(403,"partner_assignment_invalid");
+  }
   const isOwner=isMaster || (user.companyRole==="owner" && member.companyRole==="owner");
   // Existing client roles are stored in BOTH user and company-member docs.
   // If they disagree, NEVER infer extra permissions or silently migrate them.
@@ -171,7 +179,7 @@ function approvedPolicy(user,member,company,uid,today="") {
     (user.canViewRevenue===true)!==(member.canViewRevenue===true) ||
     (user.canViewUnitPrice===true)!==(member.canViewUnitPrice===true)
   );
-  const revenue= isOwner || (user.canViewRevenue===true && member.canViewRevenue===true);
+  const revenue=!isPartner && (isOwner || (user.canViewRevenue===true && member.canViewRevenue===true));
   const unit= isOwner || (revenue && user.canViewUnitPrice===true && member.canViewUnitPrice===true);
   // Browser uses companies/{id}/members as the source for Leaders, while
   // ordinary members read their users/{uid} document. Keep those semantics
@@ -184,7 +192,7 @@ function approvedPolicy(user,member,company,uid,today="") {
     .slice().sort((a,b)=>a.effectiveDate.localeCompare(b.effectiveDate));
   const lastArrival=history.filter(x=>x.toTeamId===teamId && x.effectiveDate<=today).at(-1);
   const start=lastArrival?.effectiveDate ?? today;
-  return {companyId:user.companyId,uid,isOwner,canViewRevenue:revenue,canViewUnitPrice:unit,
+  return {companyId:user.companyId,uid,isOwner,isPartner,canViewRevenue:revenue,canViewUnitPrice:unit,
     teamId,revenueScopeStart:start,role:assignment.role,teamHistory:history,isLeader,
     needsPermissionReview};
 }
@@ -242,7 +250,10 @@ function safeProducts(all,policy) {
 }
 function safeRecords(all,policy,products=[]) {
   const productById=new Map(products.map(p=>[p.id,p]));
-  return all.map(record=>{
+  // Partners never receive other teams' identities, record IDs or counts.
+  // Apply scope BEFORE converting records to client-facing objects.
+  return all.filter(record=>!policy.isPartner ||
+      (policy.teamId && record.teamId===policy.teamId)).map(record=>{
     const out={
       id:record.id,companyId:record.companyId,uid:record.uid,
       memberNameSnapshot:record.memberNameSnapshot,
@@ -319,7 +330,7 @@ async function financeView(env,principal,fetcher=fetch){
     policy.canViewRevenue?firestoreQuery(env,"revenueGoals",policy.companyId,fetcher):Promise.resolve([])
   ]);
   const payload={policy:{
-    canViewRevenue:policy.canViewRevenue,canViewUnitPrice:policy.canViewUnitPrice,isOwner:policy.isOwner,
+    canViewRevenue:policy.canViewRevenue,canViewUnitPrice:policy.canViewUnitPrice,isOwner:policy.isOwner,isPartner:policy.isPartner,
     needsPermissionReview:policy.needsPermissionReview,teamId:policy.teamId
   },products:safeProducts(products,policy),records:safeRecords(records,policy,products),revenueGoals:safeGoals(revenueGoals,policy)};
   return payload;
