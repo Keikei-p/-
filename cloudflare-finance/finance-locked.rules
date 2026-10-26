@@ -212,8 +212,7 @@ service cloud.firestore {
             )
 
           )
-        );
-        );
+        ));
     }
     function canViewUnitPrice(companyId) {
       return isCompanyMaster(companyId)
@@ -242,8 +241,7 @@ service cloud.firestore {
               && get(memberPath(companyId, request.auth.uid)).data.role == 'leader'
             )
           )
-        );
-        );
+        ));
     }
     function managedMemberCreate(companyId, memberId) {
       return verifiedUser()
