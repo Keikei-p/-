@@ -110,7 +110,11 @@ export async function submitCounts(store,principal,input,options={}){
     // substitution of productId, cashback, price or company ownership.
     const products=await tx.queryProducts(cid);
     const now=clock();
-    const built=buildRecordFromCounts(input,policy,products,target,team,
+    // Count-only corrections must not overwrite old location metadata with
+    // a redacted value returned to the partner browser.
+    const trustedIntent=policy.isPartner && existing?
+      {...input,workLocation:existing.workLocation||""}:input;
+    const built=buildRecordFromCounts(trustedIntent,policy,products,target,team,
       existing?{...existing,updatedAt:currentVersion}:null,now);
     // Do not rewrite any old financial values on unchanged line items.
     const recordId=existing?.id||canonicalId;
