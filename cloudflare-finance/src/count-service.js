@@ -73,6 +73,11 @@ export async function submitCounts(store,principal,input,options={}){
     const target=await tx.get("companies/"+cid+"/members/"+input.uid);
     const team=await tx.get("teams/"+input.teamId);
     if(!target || target.active===false)throw new PermissionDenied();
+    // External partners can proxy only for current members assigned to
+    // their team; a forged UID for another team must never be accepted.
+    if(policy.isPartner && (policy.role!=="leader" || target.teamId!==policy.teamId)){
+      throw new PermissionDenied();
+    }
     // This is an intentional fail-closed restriction until proxy-eligibility
     // tests of historical team assignments cover every currently used flow.
     if(!policy.isOwner && policy.role!=="leader" && principal.uid!==input.uid){
