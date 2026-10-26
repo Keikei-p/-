@@ -164,7 +164,7 @@ function safePartnerMembers(all,policy) {
   return all.filter(m=>active(m) && m.teamId===policy.teamId &&
       (!m.companyId || m.companyId===policy.companyId) &&
       typeof m.uid==="string" && /^[A-Za-z0-9_-]{1,150}$/.test(m.uid))
-    .map(m=>({uid:m.uid,name:String(m.name||"担当者").slice(0,30),teamId:policy.teamId}))
+    .map(m=>({uid:m.uid,name:withoutAmounts(String(m.name||"担当者")).slice(0,30),teamId:policy.teamId}))
     .sort((a,b)=>a.name.localeCompare(b.name,"ja"));
 }
 async function partnerMemberList(env,policy,fetcher=fetch) {
@@ -279,9 +279,9 @@ function safeRecords(all,policy,products=[]) {
       (policy.teamId && record.teamId===policy.teamId)).map(record=>{
     const out={
       id:record.id,companyId:record.companyId,uid:record.uid,
-      memberNameSnapshot:record.memberNameSnapshot,
-      teamId:record.teamId,teamNameSnapshot:record.teamNameSnapshot,
-      date:record.date,workLocation:record.workLocation,
+      memberNameSnapshot:policy.isPartner?withoutAmounts(record.memberNameSnapshot):record.memberNameSnapshot,
+      teamId:record.teamId,teamNameSnapshot:policy.isPartner?withoutAmounts(record.teamNameSnapshot):record.teamNameSnapshot,
+      date:record.date,workLocation:policy.isPartner?withoutAmounts(record.workLocation):record.workLocation,
       totalCount:record.totalCount,reportStatus:record.reportStatus,
       reportedAt:record.reportedAt,createdByUid:record.createdByUid,
       updatedByUid:record.updatedByUid,createdAt:record.createdAt,
