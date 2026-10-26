@@ -152,6 +152,8 @@ function renderInputs(){
     }
   }
   $("location").value=record?.workLocation||"";
+  $("location").disabled=Boolean(record);
+  $("location").title=record?"過去の稼働場所はそのまま保持されます。":"";
   const unknown=entries.some(v=>!v?.productId||!v.planId||!known.has(v.productId+"/"+v.planId));
   const hasDuplicates=recordsAtDate().filter(r=>r.uid===$("member").value).length>1;
   const invalid=unknown||hasDuplicates||Boolean(record&&!record.recordVersion);
