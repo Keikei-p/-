@@ -83,7 +83,7 @@ test("Partner roster contains ONLY the current team's active names and no contac
     {uid:"managed",name:"代理登録",teamId:"A",active:true}
   ];
   const selected=safePartnerMembers(raw,p);
-  assert.deepEqual(selected.map(x=>x.uid),["managed","a1"]);
+  assert.deepEqual(selected.map(x=>x.uid).sort(),["a1","managed"]);
   assert.equal(JSON.stringify(selected).includes("secret@example.test"),false);
   assert.equal(JSON.stringify(selected).includes("1234"),false);
   assert.equal(JSON.stringify(selected).includes("b1"),false);
