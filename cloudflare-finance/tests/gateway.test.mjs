@@ -1,7 +1,7 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {generateKeyPairSync, sign} from "node:crypto";
-import worker,{approvedPolicy,safeProducts,safeRecords,safeGoals,visibleMoney,verifiedToken,docData} from "../src/index.js";
+import worker,{approvedPolicy,safeProducts,safeRecords,safeGoals,safePartnerMembers,visibleMoney,verifiedToken,docData} from "../src/index.js";
 
 const company={id:"company-A",masterUid:"master-uid",ownerUid:"master-uid",active:true};
 function person(role,{uid="sample",userGrants={},memberGrants={},teamId="A",companyRole="member"}={}){
@@ -71,6 +71,23 @@ test("External partner receives ONLY own-team counts and never financial details
     memberGrants:{accessKind:"partner"}}),/partner_assignment_invalid/);
   assert.throws(()=>policy("leader",{uid:"master-uid",
     userGrants:{accessKind:"partner"},memberGrants:{accessKind:"partner"}}),/partner_assignment_invalid/);
+});
+test("Partner roster contains ONLY the current team's active names and no contact or finance fields",()=>{
+  const p=policy("leader",{uid:"partner",userGrants:{accessKind:"partner"},
+    memberGrants:{accessKind:"partner"}});
+  const raw=[
+    {uid:"a1",name:"山田",companyId:"company-A",teamId:"A",email:"secret@example.test",revenue:1234,active:true},
+    {uid:"b1",name:"別班",companyId:"company-A",teamId:"B",email:"other@example.test",active:true},
+    {uid:"inactive",name:"停止済",companyId:"company-A",teamId:"A",active:false},
+    {uid:"foreign",name:"他社",companyId:"company-B",teamId:"A",active:true},
+    {uid:"managed",name:"代理登録",teamId:"A",active:true}
+  ];
+  const selected=safePartnerMembers(raw,p);
+  assert.deepEqual(selected.map(x=>x.uid),["managed","a1"]);
+  assert.equal(JSON.stringify(selected).includes("secret@example.test"),false);
+  assert.equal(JSON.stringify(selected).includes("1234"),false);
+  assert.equal(JSON.stringify(selected).includes("b1"),false);
+  assert.throws(()=>safePartnerMembers(raw,policy("leader")),/partner_only/);
 });
 test("Company and disabled members are never authorized",()=>{
   const [u,m]=person("member");
