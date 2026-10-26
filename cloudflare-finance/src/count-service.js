@@ -73,6 +73,11 @@ export async function submitCounts(store,principal,input,options={}){
     const target=await tx.get("companies/"+cid+"/members/"+input.uid);
     const team=await tx.get("teams/"+input.teamId);
     if(!target || target.active===false)throw new PermissionDenied();
+    // External partners can proxy only for current members assigned to
+    // their team; a forged UID for another team must never be accepted.
+    if(policy.isPartner && (policy.role!=="leader" || target.teamId!==policy.teamId)){
+      throw new PermissionDenied();
+    }
     // This is an intentional fail-closed restriction until proxy-eligibility
     // tests of historical team assignments cover every currently used flow.
     if(!policy.isOwner && policy.role!=="leader" && principal.uid!==input.uid){
@@ -105,7 +110,11 @@ export async function submitCounts(store,principal,input,options={}){
     // substitution of productId, cashback, price or company ownership.
     const products=await tx.queryProducts(cid);
     const now=clock();
-    const built=buildRecordFromCounts(input,policy,products,target,team,
+    // Count-only corrections must not overwrite old location metadata with
+    // a redacted value returned to the partner browser.
+    const trustedIntent=policy.isPartner && existing?
+      {...input,workLocation:existing.workLocation||""}:input;
+    const built=buildRecordFromCounts(trustedIntent,policy,products,target,team,
       existing?{...existing,updatedAt:currentVersion}:null,now);
     // Do not rewrite any old financial values on unchanged line items.
     const recordId=existing?.id||canonicalId;

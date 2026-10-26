@@ -119,6 +119,20 @@ service cloud.firestore {
         && activeOrLegacy(get(userPath(request.auth.uid)).data);
     }
 
+    // Partner designation is restrictive and may be present in either
+    // document during a staged administrator-controlled enrollment.
+    // It cannot be added or cleared by the ordinary user/member update Rules.
+    function isPartnerAccount(companyId) {
+      return verifiedUser()
+        && companyId != null
+        && exists(userPath(request.auth.uid))
+        && exists(memberPath(companyId, request.auth.uid))
+        && (
+          get(userPath(request.auth.uid)).data.get('accessKind', '') == 'partner'
+          || get(memberPath(companyId, request.auth.uid)).data.get('accessKind', '') == 'partner'
+        );
+    }
+
     function isCompanyLeader(companyId) {
       return isCompanyMember(companyId)
         && get(memberPath(companyId, request.auth.uid)).data.role == 'leader';
@@ -132,6 +146,7 @@ service cloud.firestore {
 
     function isCompanyMaster(companyId) {
       return verifiedUser()
+        && !isPartnerAccount(companyId)
         && companyId != null
         && exists(companyPath(companyId))
         && exists(userPath(request.auth.uid))
@@ -144,6 +159,7 @@ service cloud.firestore {
 
     function isCompanyOwner(companyId) {
       return verifiedUser()
+        && !isPartnerAccount(companyId)
         && companyId != null
         && exists(companyPath(companyId))
         && exists(userPath(request.auth.uid))
@@ -156,8 +172,8 @@ service cloud.firestore {
     }
 
     function isCompanyManager(companyId) {
-      return isCompanyLeader(companyId)
-        || isCompanyOwner(companyId);
+      return !isPartnerAccount(companyId)
+        && (isCompanyLeader(companyId) || isCompanyOwner(companyId));
     }
 
     function isLeaderOfTeam(companyId, teamId) {
@@ -183,7 +199,8 @@ service cloud.firestore {
     }
 
     function canViewRevenue(companyId) {
-      return isCompanyMaster(companyId)
+      return !isPartnerAccount(companyId)
+        && (isCompanyMaster(companyId)
         || (
           isCompanyMember(companyId)
           && (
@@ -195,9 +212,8 @@ service cloud.firestore {
             )
 
           )
-        );
+        ));
     }
-
     function canViewUnitPrice(companyId) {
       return isCompanyMaster(companyId)
         || (
@@ -213,7 +229,8 @@ service cloud.firestore {
     }
 
     function canCreateInvite(companyId) {
-      return isCompanyMaster(companyId)
+      return !isPartnerAccount(companyId)
+        && (isCompanyMaster(companyId)
         || (
           isCompanyMember(companyId)
           && (
@@ -224,9 +241,8 @@ service cloud.firestore {
               && get(memberPath(companyId, request.auth.uid)).data.role == 'leader'
             )
           )
-        );
+        ));
     }
-
     function managedMemberCreate(companyId, memberId) {
       return verifiedUser()
         && isCompanyManager(companyId)

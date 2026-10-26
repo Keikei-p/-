@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#172a46">
+<title>協力店｜営業件数管理（安全版プレビュー）</title>
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans JP",sans-serif;color:#192536;background:#f2f5f9}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(circle at 90% 0%,#dfebff,#f2f5f9 45%);min-height:100vh}
+header{background:linear-gradient(125deg,#142742,#2e5786);color:white;padding:25px 18px 27px}
+.wrap{width:min(100%,720px);margin:auto;padding:0 15px}
+header .wrap{padding:0}
+h1{margin:5px 0;font-size:22px;letter-spacing:.02em}
+.subtitle{opacity:.85;font-size:12px}
+main{padding:18px 15px 60px}
+.panel{background:rgba(255,255,255,.94);border:1px solid #e4eaf3;border-radius:19px;padding:18px;margin:0 0 14px;box-shadow:0 9px 35px #213a5d0c}
+h2{font-size:17px;margin:0 0 14px}
+label{font-weight:650;font-size:13px;display:block;margin-bottom:6px}
+input,select,button{font:inherit}
+input,select{width:100%;height:44px;border:1px solid #cbd5e2;background:white;border-radius:10px;padding:0 12px;color:#172a46}
+input:focus,select:focus{outline:2px solid #a9c6ee;outline-offset:0}
+.field{margin-bottom:13px}
+.btn{border:0;background:#1d4e87;color:white;padding:12px 16px;border-radius:11px;font-weight:750;cursor:pointer}
+.btn.secondary{background:#e7eef7;color:#23446b}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.actions{display:flex;gap:9px;flex-wrap:wrap}
+.pill{display:inline-block;border:1px solid #c8d7ea;color:#315780;padding:4px 8px;border-radius:999px;font-size:11px;font-weight:700}
+.big{font-size:34px;font-weight:850;line-height:1.2}
+.muted{color:#68798e;font-size:12px;line-height:1.6}
+.message{padding:11px 13px;background:#e9f0f9;border-radius:9px;font-size:13px;margin-bottom:15px;white-space:pre-wrap}
+.message.error{background:#fce8e8;color:#9b2020}
+.rows{display:grid;gap:10px}
+.product{display:flex;justify-content:space-between;align-items:center;gap:14px;border-bottom:1px solid #edf1f6;padding-bottom:10px}
+.product label{font-size:14px;margin:0;overflow-wrap:anywhere}
+.product input{width:90px;flex:none;text-align:center;font-size:18px;font-weight:700}
+.record{padding:12px 0;border-bottom:1px solid #edf1f6;font-size:14px}
+.record:last-child{border-bottom:0}
+.record strong{float:right}
+.kpi{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.kpi>div{border-radius:13px;background:#f2f6fb;padding:15px}
+[hidden]{display:none!important}
+@media(max-width:350px){.panel{padding:13px}.product input{width:75px}}
+</style>
+</head>
+<body>
+<header><div class="wrap"><span class="pill" style="color:white;border-color:#8aaad3">協力店向け</span>
+<h1>営業件数管理</h1><div class="subtitle">自班の件数のみ表示・売上と単価は取り扱いません</div></div></header>
+<main class="wrap">
+<div id="message" role="status" aria-live="polite" class="message">安全版プレビューです。本番の協力店招待はまだ開始していません。</div>
+<section id="loginPanel" class="panel">
+<h2>ログイン</h2>
+<form id="loginForm">
+<div class="field"><label for="email">招待されたメールアドレス</label><input id="email" type="email" autocomplete="username" required></div>
+<div class="field"><label for="password">パスワード</label><input id="password" type="password" autocomplete="current-password" required></div>
+<button id="loginButton" type="submit" class="btn">ログイン</button>
+</form>
+<p class="muted">メール確認と会社側の協力店登録が完了したアカウント専用です。一般ユーザーの新規登録はできません。</p>
+</section>
+<div id="appPanel" hidden>
+<section class="panel"><div class="actions" style="justify-content:space-between;align-items:center">
+<div><strong id="teamLabel">所属班</strong><div class="muted" id="userLabel"></div></div>
+<div class="actions"><button id="reloadButton" class="btn secondary">更新</button><button id="logoutButton" class="btn secondary">退出</button></div>
+</div></section>
+<section class="panel"><h2>本日の状況</h2><div class="kpi"><div><div class="muted">選択日の班件数</div><div id="teamCount" class="big">—</div></div><div><div class="muted">報告済み人数</div><div id="reportedCount" class="big">—</div></div></div></section>
+<section class="panel"><h2>件数を登録・訂正</h2>
+<div class="field"><label for="recordDate">日付</label><input id="recordDate" type="date" required></div>
+<div class="field"><label for="member">担当者（自班のみ）</label><select id="member"></select></div>
+<div class="field"><label for="location">稼働場所</label><input id="location" maxlength="100" placeholder="例：イベント会場"></div>
+<div id="entryState" class="muted" style="margin-bottom:12px"></div>
+<div id="productRows" class="rows"></div>
+<p class="muted">数字は件数です。売上・単価・キャッシュバック金額は表示・送信しません。</p>
+<div class="actions"><button id="saveButton" class="btn">件数を保存</button></div></section>
+<section class="panel"><h2>選択日の班別実績</h2><div id="recordList"></div></section>
+</div>
+<footer class="muted">このページは独立した安全版です。元の営業実績データを削除・移行しません。</footer>
+</main>
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+import {getAuth,signInWithEmailAndPassword,onAuthStateChanged,signOut} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+
+// Disabled until the protected Worker, locked Firestore Rules, backup and
+// dual-host/old-PWA checks are approved. Never fall back to raw Firestore SDK.
+const PARTNER_GATEWAY_URL = "";
+const firebaseConfig={
+  apiKey:"AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
+  authDomain:"sales-management-cc116.firebaseapp.com",
+  projectId:"sales-management-cc116",
+  appId:"1:904932511564:web:6583e8b0c585231b9049e"
+};
+const app=initializeApp(firebaseConfig),auth=getAuth(app);
+auth.languageCode="ja";
+const $=id=>document.getElementById(id);
+const state={data:null,loading:false};
+const jst=Object.fromEntries(new Intl.DateTimeFormat("en-US",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date()).map(p=>[p.type,p.value]));
+const today=jst.year+"-"+jst.month+"-"+jst.day;
+$("recordDate").value=today;
+function notice(msg,err=false){$("message").textContent=msg;$("message").className="message"+(err?" error":"");}
+function validGateway(){
+  if(!PARTNER_GATEWAY_URL || !/^https:\/\//.test(PARTNER_GATEWAY_URL))
+    throw Error("協力店専用サービスは公開準備中です。現在はログイン・登録できません。");
+}
+async function callGateway(route,method="GET",body=null){
+  validGateway();
+  const user=auth.currentUser;
+  if(!user||!user.emailVerified)throw Error("メール確認済みのログインが必要です。");
+  const headers={Authorization:"Bearer "+await user.getIdToken()};
+  if(body)headers["Content-Type"]="application/json";
+  const response=await fetch(PARTNER_GATEWAY_URL+route,{
+    method,headers,cache:"no-store",body:body?JSON.stringify(body):undefined
+  });
+  if(!response.ok){
+    if(response.status===403)throw Error("協力店の所属班・権限を確認できません。管理者へお問い合わせください。");
+    if(response.status===409)throw Error("ほかの端末で実績が更新されています。画面を更新してから登録してください。");
+    throw Error("安全な通信を完了できませんでした（"+response.status+"）。");
+  }
+  return response.json();
+}
+const text=(tag,value,cls)=>{const el=document.createElement(tag);el.textContent=String(value??"");if(cls)el.className=cls;return el;};
+const recordsAtDate=()=>state.data?.records?.filter(r=>r.date===$("recordDate").value)||[];
+const selectedRecord=()=>recordsAtDate().find(r=>r.uid===$("member").value)||null;
+function renderSummary(){
+  const rows=recordsAtDate();
+  $("teamCount").textContent=String(rows.reduce((v,r)=>v+Number(r.totalCount||0),0));
+  $("reportedCount").textContent=String(rows.filter(r=>r.reportStatus==="submitted"||r.reportStatus==="no_result").length);
+  $("recordList").replaceChildren();
+  if(!rows.length)$("recordList").append(text("p","まだ報告がありません","muted"));
+  rows.forEach(r=>{
+    const item=text("div",r.memberNameSnapshot||"担当者","record");
+    item.append(text("strong",Number(r.totalCount||0)+"件"));
+    $("recordList").append(item);
+  });
+}
+function renderInputs(){
+  const box=$("productRows");box.replaceChildren();
+  const record=selectedRecord(),entries=Object.values(record?.results||{});
+  const known=new Set();
+  for(const product of state.data?.products||[]){
+    for(const [idx,planId] of (product.planIds||[]).entries()){
+      const key=product.id+"/"+planId;
+      known.add(key);
+      const line=document.createElement("div");line.className="product";
+      const lab=text("label",product.name+((product.planIds||[]).length>1?"・プラン"+(idx+1):""));
+      const input=document.createElement("input");
+      input.type="number";input.min="0";input.max="9999";input.step="1";input.inputMode="numeric";
+      input.dataset.productId=product.id;input.dataset.planId=planId;input.setAttribute("aria-label",lab.textContent+"の件数");
+      const old=entries.find(v=>v.productId===product.id&&v.planId===planId);
+      input.value=String(Number(old?.count||0));
+      line.append(lab,input);box.append(line);
+    }
+  }
+  $("location").value=record?.workLocation||"";
+  $("location").disabled=Boolean(record);
+  $("location").title=record?"過去の稼働場所はそのまま保持されます。":"";
+  const unknown=entries.some(v=>!v?.productId||!v.planId||!known.has(v.productId+"/"+v.planId));
+  const hasDuplicates=recordsAtDate().filter(r=>r.uid===$("member").value).length>1;
+  const invalid=unknown||hasDuplicates||Boolean(record&&!record.recordVersion);
+  $("saveButton").disabled=invalid || state.loading || !state.data?.members?.length;
+  $("entryState").textContent=invalid?
+    "過去の商材プランまたは実績が安全に照合できません。既存件数を守るため、この行の訂正は停止しています。オーナーに連絡してください。":
+    record?"登録済み：保存すると同じ実績IDを訂正します。":"新しい日別実績として登録します。";
+}
+function renderAll(){
+  const data=state.data;
+  $("teamLabel").textContent="担当班："+String(data.policy.teamId||"未設定");
+  $("userLabel").textContent=auth.currentUser?.email||"";
+  const previous=$("member").value;
+  $("member").replaceChildren();
+  for(const m of data.members||[]){
+    const opt=document.createElement("option");opt.value=m.uid;opt.textContent=m.name;$("member").append(opt);
+  }
+  if((data.members||[]).some(m=>m.uid===previous))$("member").value=previous;
+  renderSummary();renderInputs();
+}
+async function refresh(){
+  if(state.loading)return;
+  state.loading=true;$("reloadButton").disabled=true;$("saveButton").disabled=true;
+  try{
+    const data=await callGateway("/v1/partner-dashboard");
+    if(!data?.policy?.isPartner||!data.policy.teamId||!Array.isArray(data.members)||
+      !Array.isArray(data.products)||!Array.isArray(data.records)){
+      throw Error("協力店として安全なデータ形式を受信できませんでした。");
+    }
+    state.data=data;renderAll();
+    notice("自班の最新データを読み込みました。");
+  }catch(err){notice(err.message,true);state.data=null;$("saveButton").disabled=true;}
+  finally{state.loading=false;$("reloadButton").disabled=false;if(state.data)renderInputs();}
+}
+$("loginForm").addEventListener("submit",async e=>{
+  e.preventDefault();$("loginButton").disabled=true;
+  try{
+    validGateway();
+    await signInWithEmailAndPassword(auth,$("email").value,$("password").value);
+    $("password").value="";
+  }catch(err){notice(err.message.startsWith("協力店専用")?err.message:"ログインできません。招待・メール確認・パスワードを確認してください。",true);}
+  finally{$("loginButton").disabled=false;}
+});
+onAuthStateChanged(auth,async user=>{
+  $("loginPanel").hidden=Boolean(user);
+  $("appPanel").hidden=!user;
+  state.data=null;
+  if(user){
+    if(!user.emailVerified)notice("メールアドレスの確認が必要です。",true);
+    else await refresh();
+  }
+});
+$("recordDate").addEventListener("change",()=>{if(state.data){renderSummary();renderInputs();}});
+$("member").addEventListener("change",()=>{if(state.data)renderInputs();});
+$("reloadButton").addEventListener("click",refresh);
+$("logoutButton").addEventListener("click",async()=>{await signOut(auth);notice("退出しました。");});
+$("saveButton").addEventListener("click",async()=>{
+  if(state.loading||!state.data)return;
+  const record=selectedRecord(),counts=[...document.querySelectorAll("#productRows input")];
+  const entries=[];
+  for(const field of counts){
+    const value=Number(field.value);
+    if(!Number.isSafeInteger(value)||value<0||value>9999){notice("件数は0～9999の整数で入力してください。",true);return;}
+    if(value>0)entries.push({productId:field.dataset.productId,planId:field.dataset.planId,count:value});
+  }
+  const payload={uid:$("member").value,date:$("recordDate").value,
+    teamId:state.data.policy.teamId,workLocation:$("location").value.trim(),
+    reportStatus:entries.length?"submitted":"no_result",entries};
+  if(record){payload.recordId=record.id;payload.expectedRecordUpdateTime=record.recordVersion;}
+  state.loading=true;$("saveButton").disabled=true;
+  try{
+    await callGateway("/v1/count-record","POST",payload);
+    notice("件数を保存しました。");
+  }catch(err){notice(err.message,true);}
+  finally{state.loading=false;await refresh();}
+});
+</script>
+</body>
+</html>

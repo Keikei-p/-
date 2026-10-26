@@ -1,7 +1,7 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {generateKeyPairSync, sign} from "node:crypto";
-import worker,{approvedPolicy,safeProducts,safeRecords,safeGoals,visibleMoney,verifiedToken,docData} from "../src/index.js";
+import worker,{approvedPolicy,safeProducts,safeRecords,safeGoals,safePartnerMembers,visibleMoney,verifiedToken,docData} from "../src/index.js";
 
 const company={id:"company-A",masterUid:"master-uid",ownerUid:"master-uid",active:true};
 function person(role,{uid="sample",userGrants={},memberGrants={},teamId="A",companyRole="member"}={}){
@@ -32,6 +32,62 @@ test("Existing explicitly granted revenue remains visible for member/leader; pri
     const onlyPrice=policy(role,{userGrants:{canViewRevenue:false,canViewUnitPrice:true},memberGrants:{canViewRevenue:false,canViewUnitPrice:true}});
     check(false,onlyPrice.canViewUnitPrice);
   }
+});
+test("External partner receives ONLY own-team counts and never financial details even if finance flags are true",()=>{
+  const partner=policy("leader",{uid:"partner",userGrants:{
+    accessKind:"partner",canViewRevenue:true,canViewUnitPrice:true
+  },memberGrants:{accessKind:"partner",canViewRevenue:true,canViewUnitPrice:true}});
+  assert.equal(partner.isPartner,true);
+  assert.equal(partner.isOwner,false);
+  assert.equal(partner.canViewRevenue,false);
+  assert.equal(partner.canViewUnitPrice,false);
+  const products=[{id:"p1",companyId:"company-A",name:"電気 CB5000円",revenue:10000,
+    pricingOptions:[{cashback:5000,revenuePerUnit:10000}],active:true}];
+  const records=[
+    {id:"team-A-record",companyId:"company-A",teamId:"A",uid:"staff-A",
+      memberNameSnapshot:"A担当",date:"2026-10-22",totalCount:2,totalRevenue:20000,
+      results:{p1__cb_5000:{productId:"p1",productName:"電気 CB5000円",
+        cashback:5000,revenuePerUnit:10000,count:2}}},
+    {id:"other-team-secret",companyId:"company-A",teamId:"B",uid:"staff-B",
+      memberNameSnapshot:"他班秘匿",date:"2026-10-22",totalCount:99,totalRevenue:990000,
+      results:{p1__cb_5000:{productId:"p1",cashback:5000,revenuePerUnit:10000,count:99}}}
+  ];
+  const view={products:safeProducts(products,partner),records:safeRecords(records,partner,products),
+    goals:safeGoals([{id:"goal-1",teamId:"A",targetRevenue:500000}],partner)};
+  assert.equal(view.records.length,1);
+  assert.equal(view.records[0].uid,"staff-A");
+  assert.equal(view.records[0].totalCount,2);
+  assert.deepEqual(view.goals,[]);
+  const output=JSON.stringify(view);
+  for(const secret of ["totalRevenue","revenuePerUnit","canViewRevenue","990000","other-team-secret","staff-B","他班秘匿","5000","10000","20000"]){
+    assert.equal(output.includes(secret),false,"leaked "+secret);
+  }
+  // Either document being stamped is enough to DENY finance while onboarding.
+  const oneSided=policy("leader",{userGrants:{accessKind:"partner",canViewRevenue:true},
+    memberGrants:{canViewRevenue:true}});
+  assert.equal(oneSided.isPartner,true);
+  assert.equal(oneSided.canViewRevenue,false);
+  assert.throws(()=>policy("leader",{userGrants:{accessKind:"partner",teamId:"B"},
+    memberGrants:{accessKind:"partner"}}),/partner_assignment_invalid/);
+  assert.throws(()=>policy("leader",{uid:"master-uid",
+    userGrants:{accessKind:"partner"},memberGrants:{accessKind:"partner"}}),/partner_assignment_invalid/);
+});
+test("Partner roster contains ONLY the current team's active names and no contact or finance fields",()=>{
+  const p=policy("leader",{uid:"partner",userGrants:{accessKind:"partner"},
+    memberGrants:{accessKind:"partner"}});
+  const raw=[
+    {uid:"a1",name:"山田",companyId:"company-A",teamId:"A",email:"secret@example.test",revenue:1234,active:true},
+    {uid:"b1",name:"別班",companyId:"company-A",teamId:"B",email:"other@example.test",active:true},
+    {uid:"inactive",name:"停止済",companyId:"company-A",teamId:"A",active:false},
+    {uid:"foreign",name:"他社",companyId:"company-B",teamId:"A",active:true},
+    {uid:"managed",name:"代理登録",teamId:"A",active:true}
+  ];
+  const selected=safePartnerMembers(raw,p);
+  assert.deepEqual(selected.map(x=>x.uid).sort(),["a1","managed"]);
+  assert.equal(JSON.stringify(selected).includes("secret@example.test"),false);
+  assert.equal(JSON.stringify(selected).includes("1234"),false);
+  assert.equal(JSON.stringify(selected).includes("b1"),false);
+  assert.throws(()=>safePartnerMembers(raw,policy("leader")),/partner_only/);
 });
 test("Company and disabled members are never authorized",()=>{
   const [u,m]=person("member");

@@ -11,14 +11,15 @@ function intent(overrides={}){
     entries:[{productId:"sim",planId:"plan_0",count:2}],...overrides};
 }
 function createStore({role="member",principal="staff",currentRecord=null,recordList=null,
-  grants={},targetActive=true,recordsName="factory_staff_2026-10-22"}={}){
+  grants={},targetActive=true,targetTeam="A",partner=false,recordsName="factory_staff_2026-10-22"}={}){
   const company={id:companyId,ownerUid:"master",masterUid:"master",active:true};
   const canViewRevenue=grants.revenue===true, canViewUnitPrice=grants.unit===true;
   const account={uid:principal,companyId,companyRole:role==="owner"?"owner":"member",
-    teamId:"A",role:role==="owner"?"leader":role,active:true,canViewRevenue,canViewUnitPrice};
+    teamId:"A",role:role==="owner"?"leader":role,active:true,canViewRevenue,canViewUnitPrice,
+    ...(partner?{accessKind:"partner"}:{})};
   const actorMember={...account,name:"操作者"};
   const target={...(principal==="staff"?actorMember:{}),uid:"staff",companyId,
-    companyRole:"member",role:"member",active:targetActive,name:"営業担当"};
+    companyRole:"member",role:"member",teamId:targetTeam,active:targetActive,name:"営業担当"};
   const docs=new Map([["users/"+principal,account],
     ["companies/"+companyId+"/members/"+principal,actorMember],
     ["companies/"+companyId+"/members/staff",target],
@@ -145,4 +146,20 @@ test("existing record team changes cannot be made by a Leader; Owner can keep ol
   assert.equal(response.saved,true);
   assert.equal(owner.saved[0].id,"legacy-one");
   assert.equal(owner.saved[0].data.teamId,"A");
+});
+
+test("Partner leader can submit own-team counts but cannot view money or proxy for other-team staff",async()=>{
+  const f=createStore({role:"leader",principal:"external-leader",partner:true,
+    grants:{revenue:true,unit:true}});
+  const saved=await submitCounts(f.store,f.principal,intent(),{policyResolver:f.policyResolver});
+  assert.equal(saved.saved,true);
+  assert.equal(saved.totalCount,2);
+  assert.equal("totalRevenue" in saved,false);
+  assert.equal(f.saved[0].data.totalCount,2);
+  await assert.rejects(submitCounts(f.store,f.principal,intent({teamId:"B"}),
+    {policyResolver:f.policyResolver}),PermissionDenied);
+  const otherTeam=createStore({role:"leader",principal:"external-leader",partner:true,targetTeam:"B"});
+  await assert.rejects(submitCounts(otherTeam.store,otherTeam.principal,intent(),
+    {policyResolver:otherTeam.policyResolver}),PermissionDenied);
+  assert.equal(otherTeam.saved.length,0);
 });

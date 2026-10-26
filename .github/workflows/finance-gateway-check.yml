@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - feature/secure-finance-gateway-20261022
+      - feature/partner-count-scope-20261027
     paths:
       - cloudflare-finance/**
       - .github/workflows/finance-gateway-check.yml
@@ -20,6 +21,8 @@ jobs:
           node-version: "22"
       - name: Syntax check only
         run: node --check cloudflare-finance/src/index.js
+      - name: Verify partner mobile preview is parseable and never uses raw Firestore
+        run: node --test cloudflare-finance/tests/partner-portal.test.mjs
       - name: Verify JWT, grants, projections and no mutation endpoints
         run: |
           node --test cloudflare-finance/tests/gateway.test.mjs cloudflare-finance/tests/write-plan.test.mjs \
