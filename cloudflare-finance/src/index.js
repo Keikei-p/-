@@ -157,6 +157,29 @@ async function firestoreQuery(env, collectionId, companyId, fetcher = fetch) {
   return all;
 }
 function active(obj) { return obj && obj.active !== false; }
+// Server-side selection must precede serialization. Never send raw
+// company member objects or any other team's names/emails to partners.
+function safePartnerMembers(all,policy) {
+  if(!policy.isPartner || !policy.teamId)throw httpError(403,"partner_only");
+  return all.filter(m=>active(m) && m.teamId===policy.teamId &&
+      (!m.companyId || m.companyId===policy.companyId) &&
+      typeof m.uid==="string" && /^[A-Za-z0-9_-]{1,150}$/.test(m.uid))
+    .map(m=>({uid:m.uid,name:String(m.name||"担当者").slice(0,30),teamId:policy.teamId}))
+    .sort((a,b)=>a.name.localeCompare(b.name,"ja"));
+}
+async function partnerMemberList(env,policy,fetcher=fetch) {
+  if(!policy.isPartner)throw httpError(403,"partner_only");
+  const bearer=await googleBearer(env,fetcher);
+  const path="companies/"+policy.companyId+"/members";
+  const response=await fetcher(base+"/documents/"+documentPath(path)+"?pageSize=500",
+    {headers:{Authorization:"Bearer "+bearer}});
+  if(!response.ok)throw httpError(503,"partner_members_unavailable");
+  const page=await response.json();
+  // Truncation is worse than explicit refusal: missing a member might cause
+  // duplicate entries or a false 'no report' in the partner's daily sheet.
+  if(page.nextPageToken)throw httpError(503,"partner_members_page_limit");
+  return safePartnerMembers(Array.isArray(page.documents)?page.documents.map(docData):[],policy);
+}
 function approvedPolicy(user,member,company,uid,today="") {
   if(!user || !member || !company || !active(user) || !active(member) || !active(company) ||
       !user.companyId || member.uid!==uid ||
@@ -322,17 +345,20 @@ async function memberPolicy(env,principal,fetcher=fetch,now=new Date()) {
   const tokyo=`${t.year}-${t.month}-${t.day}`;
   return approvedPolicy(user,member,company,principal.uid,tokyo);
 }
-async function financeView(env,principal,fetcher=fetch){
+async function financeView(env,principal,fetcher=fetch,{partnerOnly=false}={}){
   const policy=await memberPolicy(env,principal,fetcher);
-  const [products,records,revenueGoals]=await Promise.all([
+  if(partnerOnly && !policy.isPartner)throw httpError(403,"partner_only");
+  const [products,records,revenueGoals,members]=await Promise.all([
     firestoreQuery(env,"products",policy.companyId,fetcher),
     firestoreQuery(env,"records",policy.companyId,fetcher),
-    policy.canViewRevenue?firestoreQuery(env,"revenueGoals",policy.companyId,fetcher):Promise.resolve([])
+    policy.canViewRevenue?firestoreQuery(env,"revenueGoals",policy.companyId,fetcher):Promise.resolve([]),
+    partnerOnly?partnerMemberList(env,policy,fetcher):Promise.resolve([])
   ]);
   const payload={policy:{
     canViewRevenue:policy.canViewRevenue,canViewUnitPrice:policy.canViewUnitPrice,isOwner:policy.isOwner,isPartner:policy.isPartner,
     needsPermissionReview:policy.needsPermissionReview,teamId:policy.teamId
   },products:safeProducts(products,policy),records:safeRecords(records,policy,products),revenueGoals:safeGoals(revenueGoals,policy)};
+  if(partnerOnly)payload.members=members;
   return payload;
 }
 export default {
@@ -393,7 +419,9 @@ export default {
         return safeJSON({error:"unavailable_retry_only_after_refresh"},503,origin);
       }
     }
-    if(url.pathname!=="/v1/financial-view"||request.method!=="GET")return safeJSON({error:"not_found"},404,origin);
+    const partnerOnly=url.pathname==="/v1/partner-dashboard";
+    if((url.pathname!=="/v1/financial-view" && !partnerOnly)||request.method!=="GET")
+      return safeJSON({error:"not_found"},404,origin);
     if(env.FINANCE_GATEWAY_ENABLED!=="enabled")return safeJSON({error:"cutover_not_authorized"},503,origin);
     // Even read-only secure views incur Firestore reads on Blaze.
     // Require explicit cost review before making ANY monetary-data query.
@@ -404,7 +432,7 @@ export default {
     if(!auth.startsWith("Bearer "))return safeJSON({error:"authorization_required"},401,origin);
     try{
       const principal=await verifiedToken(auth.slice(7));
-      const answer=await financeView(env,principal);
+      const answer=await financeView(env,principal,fetch,{partnerOnly});
       return safeJSON(answer,200,origin);
     }catch(error){
       if(error.status!==401&&error.status!==403)console.error("finance_gateway_failed",error.message);
@@ -412,4 +440,4 @@ export default {
     }
   }
 };
-export {approvedPolicy,safeProducts,safeRecords,safeGoals,visibleMoney,withoutAmounts,verifiedToken,financeView,docData};
+export {approvedPolicy,safeProducts,safeRecords,safeGoals,safePartnerMembers,visibleMoney,withoutAmounts,verifiedToken,financeView,docData};
