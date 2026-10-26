@@ -94,7 +94,8 @@ const app=initializeApp(firebaseConfig),auth=getAuth(app);
 auth.languageCode="ja";
 const $=id=>document.getElementById(id);
 const state={data:null,loading:false};
-const today=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+const jst=Object.fromEntries(new Intl.DateTimeFormat("en-US",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date()).map(p=>[p.type,p.value]));
+const today=jst.year+"-"+jst.month+"-"+jst.day;
 $("recordDate").value=today;
 function notice(msg,err=false){$("message").textContent=msg;$("message").className="message"+(err?" error":"");}
 function validGateway(){
@@ -183,7 +184,7 @@ async function refresh(){
     state.data=data;renderAll();
     notice("自班の最新データを読み込みました。");
   }catch(err){notice(err.message,true);state.data=null;$("saveButton").disabled=true;}
-  finally{state.loading=false;$("reloadButton").disabled=false;}
+  finally{state.loading=false;$("reloadButton").disabled=false;if(state.data)renderInputs();}
 }
 $("loginForm").addEventListener("submit",async e=>{
   e.preventDefault();$("loginButton").disabled=true;
