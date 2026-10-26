@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - feature/secure-finance-gateway-20261022
+      - feature/partner-count-scope-20261027
     paths:
       - cloudflare-finance/**
       - .github/workflows/finance-gateway-check.yml
