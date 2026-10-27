@@ -6,6 +6,7 @@ workers_dev = true
 [vars]
 FIREBASE_PROJECT_ID = "sales-management-cc116"
 AUTOMATION_ENABLED = "true"
+AUTO_REPORTS_ENABLED = "disabled" # OWNER + billing + dual-host safety checks required
 
 [triggers]
 crons = ["*/5 * * * *"]

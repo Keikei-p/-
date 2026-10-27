@@ -976,12 +976,15 @@ service cloud.firestore {
               && request.resource.data.keys().hasOnly([
                 'enabled', 'weekdays', 'time', 'reportCompletionMode',
                 'lineEnabled', 'lineGroupId', 'lineGroupName',
-                'lineConnectedAt', 'updatedBy', 'updatedAt'
+                'lineConnectedAt', 'updatedBy', 'updatedAt',
+                'morningAutoReportEnabled', 'morningAutoReportTime',
+                'eveningAutoReportEnabled', 'eveningAutoReportTime'
               ])
               && request.resource.data.enabled is bool
               && request.resource.data.weekdays is list
               && request.resource.data.weekdays.size() >= 1
               && request.resource.data.weekdays.size() <= 7
+              && request.resource.data.weekdays.hasOnly([0, 1, 2, 3, 4, 5, 6])
               && request.resource.data.time is string
               && request.resource.data.time.size() == 5
               && request.resource.data.reportCompletionMode is string
@@ -990,6 +993,43 @@ service cloud.firestore {
                 || request.resource.data.reportCompletionMode == 'team_any'
               )
               && request.resource.data.lineEnabled is bool
+              && (
+                !request.resource.data.keys().hasAny(['morningAutoReportEnabled'])
+                || request.resource.data.morningAutoReportEnabled is bool
+              )
+              && (
+                !request.resource.data.keys().hasAny(['eveningAutoReportEnabled'])
+                || request.resource.data.eveningAutoReportEnabled is bool
+              )
+              && (
+                !request.resource.data.keys().hasAny(['morningAutoReportTime'])
+                || (
+                  request.resource.data.morningAutoReportTime is string
+                  && request.resource.data.morningAutoReportTime.matches(
+                    '^([01][0-9]|2[0-3]):[0-5][05]$'
+                  )
+                )
+              )
+              && (
+                !request.resource.data.keys().hasAny(['eveningAutoReportTime'])
+                || (
+                  request.resource.data.eveningAutoReportTime is string
+                  && request.resource.data.eveningAutoReportTime.matches(
+                    '^([01][0-9]|2[0-3]):[0-5][05]$'
+                  )
+                )
+              )
+              && (
+                !(request.resource.data.get('morningAutoReportEnabled', false)
+                  || request.resource.data.get('eveningAutoReportEnabled', false))
+                || (
+                  request.resource.data.get('lineEnabled', false) == true
+                  && request.resource.data.get('lineGroupId', '') != ''
+                  && request.resource.data.weekdays.size() > 0
+                  && request.resource.data.get('morningAutoReportTime', '') != ''
+                  && request.resource.data.get('eveningAutoReportTime', '') != ''
+                )
+              )
               && request.resource.data.lineGroupId is string
               && request.resource.data.lineGroupId.size() <= 200
               && (

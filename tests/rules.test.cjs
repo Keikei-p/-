@@ -330,3 +330,37 @@ test('product validation and cross-company protections remain enforced for secon
   await assertFails(updateDoc(doc(db,'products','foreign-product'),{name:'denied',updatedAt:serverTimestamp()}));
   await assertFails(deleteDoc(doc(db,'products','foreign-product')));
 });
+
+
+test('Owner alone manages independent LINE morning/evening opt-ins; time/day/source guards enforced',async()=>{
+ const pathParts=['companies',company,'settings','notifications'];
+ const docFor=uid=>doc(dbFor(uid),...pathParts);
+ const setting=(extra={})=>({
+  enabled:false,weekdays:[1,2,3,4,5],time:'19:00',
+  reportCompletionMode:'team_any',lineEnabled:true,
+  lineGroupId:'test-line-group',lineGroupName:'社内報告',
+  morningAutoReportEnabled:true,morningAutoReportTime:'09:00',
+  eveningAutoReportEnabled:false,eveningAutoReportTime:'20:00',
+
+  updatedBy:'owner',updatedAt:serverTimestamp(),...extra
+ });
+ await assertSucceeds(setDoc(docFor('owner'),setting()));
+ const saved=(await getDoc(docFor('owner'))).data();
+ assert.equal(saved.morningAutoReportEnabled,true);
+ assert.equal(saved.eveningAutoReportEnabled,false);
+ await assertSucceeds(updateDoc(docFor('owner'),{
+  morningAutoReportEnabled:false,eveningAutoReportEnabled:true,
+  eveningAutoReportTime:'20:35',updatedAt:serverTimestamp()
+ }));
+ await assertFails(setDoc(docFor('leaderA'),setting({...{updatedBy:'leaderA'}})));
+ await assertFails(setDoc(docFor('helper'),setting({updatedBy:'helper'})));
+ await assertFails(setDoc(docFor('foreign'),setting({updatedBy:'foreign'})));
+ for(const extra of [
+  {eveningAutoReportTime:'20:17'},
+  {morningAutoReportTime:'09:04'},
+  {weekdays:[1,8]},
+  {eveningAutoReportEnabled:true,lineEnabled:false},
+  {eveningAutoReportEnabled:true,weekdays:[]},
+  {morningAutoReportEnabled:true,lineGroupId:''}
+ ])await assertFails(setDoc(docFor('owner'),setting(extra)));
+});
