@@ -14,7 +14,7 @@ function safeProductName(value){
  const original=text(value,80);
  // Legacy product labels can embed financial tiers (CB or Yen amounts).
  // Fail closed instead of trying to guess and inadvertently exposing a tier.
- return /(?:CB|キャッシュバック|単価|売上|[¥￥]|[0-9０-９]+\\s*(?:万|千)?円)/i.test(original)
+ return /(?:CB|キャッシュバック|単価|売上|[¥￥]|[0-9０-９]+\s*(?:万|千)?円)/i.test(original)
   ? "商材名はオーナー確認中" : original;
 }
 function id(value){const s=text(value,200);if(!s)throw Error("Missing required ID");return s;}
