@@ -71,13 +71,15 @@ export function buildPrivateRevenueRanking(records,products,members,companyId,mo
     throw Error("revenue_overflow");
   values.set(record.uid,before);
  }
- const ranked=[...values.values()].sort((a,b)=>b.total-a.total||b.count-a.count||
+ // Ranks depend ONLY on total sales. Equal sales share the same rank;
+ // UID is a stable display order, never a count-based tie-breaker.
+ const ranked=[...values.values()].sort((a,b)=>b.total-a.total||
       a.uid.localeCompare(b.uid));
  let last=null,rank=0;
- // Deliberate allowlist projection: never serialize total or unit prices.
+ // The API returns ONLY rank, uid and name. Never serialize sales, unit prices OR counts.
  return ranked.map((v,i)=>{
    if(v.total!==last){rank=i+1;last=v.total;}
    const member=directory.get(v.uid);
-   return {rank,uid:v.uid,name:String(member.name).slice(0,30),count:v.count};
+   return {rank,uid:v.uid,name:String(member.name).slice(0,30)};
  });
 }
