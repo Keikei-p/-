@@ -31,3 +31,14 @@ test("cross-company data are excluded and historical data do not change",()=>{
  assert.equal(actual.totalCount,1);
  assert.equal(JSON.stringify([old,other]),original);
 });
+
+test("Owner ranking also shows active zero-count direct and partner teams",()=>{
+ const r=buildCompanyCountRanking([record("a","u1","directA",2)],companyId,"2026-10",[
+  {id:"directA",companyId,active:true},
+  {id:"partnerB",companyId,active:true},
+  {id:"disabled",companyId,active:false},
+  {id:"other",companyId:"foreign",active:true}
+ ]);
+ assert.deepEqual(r.ranking.map(x=>[x.teamId,x.totalCount]),[["directA",2],["partnerB",0]]);
+ assert.equal(r.totalCount,2);
+});
