@@ -1346,3 +1346,26 @@ test('Individual ranking and all other dashboard feature IDs remain present',()=
  assert(html.includes('renderIndividualRanking(individualMap)') ||
    html.includes('renderIndividualRanking(\n    individualMap'));
 });
+
+
+test('Individual count ranking scopes partner and ordinary users without revealing other teams',()=>{
+ const c=context(['canIncludeInIndividualRanking'],{
+  currentUser:{uid:'mine'},
+  currentUserData:{companyId:'co',companyRole:'member',role:'leader',teamId:'A'},
+  canCurrentUserViewRevenue:()=>false,
+  isCurrentTeamLeader:()=>true
+ });
+ assert.equal(c.canIncludeInIndividualRanking({companyId:'co',teamId:'A',uid:'another'}),true);
+ assert.equal(c.canIncludeInIndividualRanking({companyId:'co',teamId:'B',uid:'another'}),false);
+ assert.equal(c.canIncludeInIndividualRanking({companyId:'other',teamId:'A',uid:'another'}),false);
+ c.isCurrentTeamLeader=()=>false;
+ c.currentUserData={companyId:'co',companyRole:'member',role:'member',teamId:'A'};
+ assert.equal(c.canIncludeInIndividualRanking({companyId:'co',teamId:'A',uid:'mine'}),true);
+ assert.equal(c.canIncludeInIndividualRanking({companyId:'co',teamId:'A',uid:'other'}),false);
+ c.canCurrentUserViewRevenue=()=>true;
+ assert.equal(c.canIncludeInIndividualRanking({companyId:'co',teamId:'B',uid:'other'}),true,
+   'retain former revenue-visible ranking when explicit permission exists');
+ assert.equal(c.canIncludeInIndividualRanking({companyId:'other',teamId:'B',uid:'other'}),false);
+ const dash=source('renderDashboard');
+ assert(dash.includes('if (canIncludeInIndividualRanking(record))'));
+});
