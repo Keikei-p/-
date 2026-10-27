@@ -1,0 +1,28 @@
+name: Record Audit Preflight
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Parse embedded application module
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          const html = fs.readFileSync("index.html","utf8");
+          const match = html.match(/<script type="module">([\s\S]*?)<\/script>/);
+          if (!match) throw new Error("Main module is missing");
+          const source = match[1].replace(/import\s*\{[\s\S]*?\}\s*from\s*"[^"]+";/g,"");
+          new Function(source);
+          if (!source.includes("if (writeCorrection) writeCorrection(transaction)")) throw new Error("Correction is not within the transaction");
+          if (source.includes("correctionAuditWarning")) throw new Error("Non-atomic warning branch remains");
+          process.stdout.write("PASS: syntax and transaction write hook\n");
+          NODE
