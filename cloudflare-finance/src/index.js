@@ -1,5 +1,6 @@
 import {visibleMoney} from "./revenue-scope.js";
 import {buildCompanyCountRanking} from "./company-count-ranking.mjs";
+import {partnerActivationWrites} from "./partner-provision.mjs";
 /**
  * Protected financial-view gateway (read-only foundation).
  * No production data changes: GET only. There is NO record-write endpoint.
@@ -374,6 +375,66 @@ export default {
     }
     if(url.pathname==="/health"&&request.method==="GET"){
       return safeJSON({ok:true,service:"finance-gateway",enabled:env.FINANCE_GATEWAY_ENABLED==="enabled",mode:"read_only"},200,origin);
+    }
+    // Owner activation is separate from invitations: only already invited,
+    // already assigned, active Leaders can be marked as partner accounts.
+    if(url.pathname==="/v1/partner-activate" && request.method==="POST"){
+      if(env.FINANCE_GATEWAY_ENABLED!=="enabled" || env.FINANCE_WRITE_ENABLED!=="enabled" ||
+         env.FINANCE_WRITE_APPROVAL!=="DUAL_HOST_BACKUP_VERIFIED" ||
+         env.FINANCE_COST_APPROVAL!=="OWNER_APPROVED_BLAZE_COSTS" ||
+         env.FINANCE_PARTNER_APPROVAL!=="OWNER_APPROVED_PARTNER_ONBOARDING")
+        return safeJSON({error:"partner_activation_not_released"},503,origin);
+      if(env.FIREBASE_PROJECT_ID!==PROJECT_ID)return safeJSON({error:"project_mismatch"},503,origin);
+      if(!request.headers.get("content-type")?.toLowerCase().startsWith("application/json"))
+        return safeJSON({error:"json_only"},415,origin);
+      const auth=request.headers.get("authorization")||"";
+      if(!auth.startsWith("Bearer "))return safeJSON({error:"authorization_required"},401,origin);
+      try{
+        const principal=await verifiedToken(auth.slice(7));
+        const raw=await request.text();
+        if(raw.length>2500)return safeJSON({error:"request_too_large"},413,origin);
+        let data;
+        try{data=JSON.parse(raw);}catch{return safeJSON({error:"invalid_json"},400,origin);}
+        if(!data || Object.keys(data).length!==1 || typeof data.uid!=="string" ||
+            !/^[A-Za-z0-9_-]{1,128}$/.test(data.uid))
+          return safeJSON({error:"invalid_partner_uid"},400,origin);
+        const policy=await memberPolicy(env,principal);
+        if(!policy.isOwner || policy.isPartner)return safeJSON({error:"forbidden"},403,origin);
+        const [user,member]=await Promise.all([
+          firestoreGet(env,"users/"+data.uid),
+          firestoreGet(env,"companies/"+policy.companyId+"/members/"+data.uid)
+        ]);
+        const team=user?.teamId && /^[A-Za-z0-9_-]{1,128}$/.test(user.teamId)?
+          await firestoreGet(env,"teams/"+user.teamId):null;
+        let writes;
+        try{writes=partnerActivationWrites({policy,targetUid:data.uid,user,member,team});}
+        catch{return safeJSON({error:"partner_leader_not_ready"},409,origin);}
+        if(!writes.length)return safeJSON({active:true,alreadyActivated:true},200,origin);
+        const auditId=crypto.randomUUID();
+        writes.push({
+          update:{name:"projects/"+PROJECT_ID+"/databases/(default)/documents/companies/"+
+            policy.companyId+"/partnerActivationAudits/"+auditId,
+            fields:{activatedUid:{stringValue:data.uid},activatedByUid:{stringValue:principal.uid},
+              teamId:{stringValue:user.teamId}}},
+          currentDocument:{exists:false},
+          updateTransforms:[{fieldPath:"createdAt",setToServerValue:"REQUEST_TIME"}]
+        });
+        const bearer=await googleBearer(env);
+        const res=await fetch(base+"/documents:commit",{
+          method:"POST",headers:{"Authorization":"Bearer "+bearer,"Content-Type":"application/json"},
+          body:JSON.stringify({writes})
+        });
+        if(res.status===409||res.status===412)return safeJSON({error:"partner_activation_conflict"},409,origin);
+        if(!res.ok)return safeJSON({error:"partner_activation_unavailable"},503,origin);
+        const reply=await res.json();
+        if(!Array.isArray(reply.writeResults)||reply.writeResults.length!==writes.length)
+          return safeJSON({error:"activation_confirmation_unknown"},503,origin);
+        return safeJSON({active:true},200,origin);
+      }catch(error){
+        if(error.status===401||error.status===403)
+          return safeJSON({error:"unauthorized"},error.status,origin);
+        return safeJSON({error:"partner_activation_unavailable"},503,origin);
+      }
     }
     if(url.pathname==="/v1/count-record" && request.method==="POST"){
       // Three independent fail-closed switches. Never enable on an untested
