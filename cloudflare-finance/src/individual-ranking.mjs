@@ -12,7 +12,7 @@ export function rankingAccess(policy,grant){
 export function validateViewerChange(policy,viewer,uid,allowed){
  if(!policy?.isOwner || policy.isPartner || !idOk(policy.companyId) ||
     !idOk(uid) || typeof allowed!=="boolean" || !viewer ||
-    viewer.uid!==uid || viewer.companyId!==policy.companyId ||
+    viewer.uid!==uid || (viewer.companyId && viewer.companyId!==policy.companyId) ||
     viewer.active===false || viewer.accessKind==="partner" ||
     viewer.companyRole!=="member" || viewer.hasAccount===false ||
     viewer.memberType==="managed")throw Error("ranking_viewer_forbidden");
@@ -22,7 +22,7 @@ export function buildPrivateRevenueRanking(records,products,members,companyId,mo
  if(!idOk(companyId)||typeof month!=="string"||!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)||
     !Array.isArray(records)||!Array.isArray(products)||!Array.isArray(members))
     throw Error("invalid_ranking_request");
- const directory=new Map(members.filter(m=>m && m.companyId===companyId && m.active!==false &&
+ const directory=new Map(members.filter(m=>m && (!m.companyId || m.companyId===companyId) && m.active!==false &&
      m.accessKind!=="partner" && idOk(m.uid) && m.name).map(m=>[m.uid,m]));
  const catalog=new Map(products.filter(p=>p.companyId===companyId).map(p=>[p.id,p]));
  const values=new Map(), seenDaily=new Set();
