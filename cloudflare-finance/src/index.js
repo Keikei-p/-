@@ -233,17 +233,12 @@ function safePartnerMembers(all,policy) {
 // Only called by the authenticated ranking routes. Do NOT send raw member
 // documents or company finance data to the browser.
 async function rankingMembers(env,policy,fetcher=fetch){
-  const bearer=await googleBearer(env,fetcher);
-  const response=await fetcher(base+"/documents/"+documentPath("companies/"+policy.companyId+"/members")+"?pageSize=500",{
-    headers:{Authorization:"Bearer "+bearer}
-  });
-  if(!response.ok)throw httpError(503,"ranking_members_unavailable");
-  const page=await response.json();
-  if(page.nextPageToken)throw httpError(503,"ranking_member_limit");
-  return (Array.isArray(page.documents)?page.documents.map(docData):[])
-   .filter(m=>m && (!m.companyId || m.companyId===policy.companyId)&&m.active!==false
-     && m.accessKind!=="partner" && typeof m.uid==="string"
-     && /^[A-Za-z0-9_-]{1,150}$/.test(m.uid));
+  // Use the SAME cursor-safe roster loader as partner and owner portals.
+  // Ranking must never silently omit an employee beyond the first 500.
+  const all=await companyMemberPages(env,policy,fetcher);
+  return all.filter(m=>m && (!m.companyId || m.companyId===policy.companyId) &&
+    m.active!==false && m.accessKind!=="partner" &&
+    typeof m.uid==="string" && /^[A-Za-z0-9_-]{1,150}$/.test(m.uid));
 }
 // Page-aware company member loading. Never return a truncated roster.
 async function collectFirestoreMemberPages(pageReader){
