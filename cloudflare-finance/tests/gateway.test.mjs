@@ -184,6 +184,28 @@ test("Revenue goal projection respects explicit permissions, team scope and Owne
   assert.deepEqual(safeGoals(g,authorized).map(x=>x.id),["a"]);
   assert.equal(safeGoals(g,policy("leader",{uid:"master-uid"})).length,2);
 });
+test("Owner count overview and partner sync require release and verified identity",async()=>{
+ for(const path of ["/v1/owner-count-overview","/v1/partner-sync"]){
+  const u="https://sales-finance-gateway.example"+path;
+  let r=await worker.fetch(new Request(u),{FINANCE_GATEWAY_ENABLED:"disabled"});
+  assert.equal(r.status,503);
+  r=await worker.fetch(new Request(u),{FINANCE_GATEWAY_ENABLED:"enabled",
+    FIREBASE_PROJECT_ID:"sales-management-cc116"});
+  assert.equal(r.status,503);
+  r=await worker.fetch(new Request(u),{FINANCE_GATEWAY_ENABLED:"enabled",
+    FINANCE_COST_APPROVAL:"OWNER_APPROVED_BLAZE_COSTS",
+    FIREBASE_PROJECT_ID:"sales-management-cc116"});
+  assert.equal(r.status,401);
+ }
+ const activation=await worker.fetch(new Request("https://sales-finance-gateway.example/v1/partner-activate",{
+  method:"POST",headers:{"Content-Type":"application/json"},body:'{"uid":"external"}'
+ }),{FINANCE_GATEWAY_ENABLED:"enabled",FINANCE_WRITE_ENABLED:"enabled",
+    FINANCE_WRITE_APPROVAL:"DUAL_HOST_BACKUP_VERIFIED",
+    FINANCE_COST_APPROVAL:"OWNER_APPROVED_BLAZE_COSTS",
+    FIREBASE_PROJECT_ID:"sales-management-cc116"});
+ assert.equal(activation.status,503);
+ assert.equal((await activation.json()).error,"partner_activation_not_released");
+});
 test("No unapproved methods, worker is disabled by default and denies missing JWT",async()=>{
   for(const method of ["POST","PUT","PATCH","DELETE"]){
     const response=await worker.fetch(new Request("https://sales-finance-gateway.example/v1/financial-view",{method}),{});
