@@ -55,6 +55,16 @@ button.secondary{background:#e7eff9;color:#25527b}
 <section class="panel"><h2>全社の獲得件数</h2><div id="total" class="big">—</div>
 <p class="muted">月間の同一実績から集計します。直営班・協力店とも同じランキング対象です。</p></section>
 <section class="panel"><h2>直営班＋協力店のランキング</h2><div id="rankingList"></div></section>
+<section class="panel" id="individualRankPanel">
+<h2>🏆 個人ランキング（総合売上順・金額は非表示）</h2>
+<p class="muted">順位は承認済み売上単価をサーバーで計算。順位・名前・件数のみ表示します。金額はマスター・オーナーの画面にも表示しません。</p>
+<div class="actions">
+<button id="loadIndividualRank" type="button">今月の個人ランキングを確認</button>
+<button id="loadRankingViewers" class="secondary" type="button">閲覧許可を設定</button>
+</div>
+<div id="individualRankRows"></div>
+<div id="rankingViewerRows"></div>
+</section>
 <section class="panel">
 <h2>協力店区分の設定（オーナーのみ）</h2>
 <p class="muted">すでに会社へ正式招待され、班が設定済みのリーダーのみ対象です。この画面は新規招待やメンバー移動を行いません。</p>
@@ -174,6 +184,66 @@ $("activate").addEventListener("click",async()=>{
   status("協力店区分を設定しました。権限が再確認されます。");
  }catch(e){if(generation===state.generation)status(e.message,true);}
  finally{if(generation===state.generation){state.loading=false;await reload();}}
+});
+
+function rankRow(parent,items){
+ parent.replaceChildren();
+ if(!items.length){
+  const none=document.createElement("p");none.className="muted";
+  none.textContent="対象の個人実績はありません。";parent.append(none);return;
+ }
+ for(const item of items){
+  const row=document.createElement("div");row.className="row";
+  const left=document.createElement("strong");
+  left.textContent=item.rank+"位  "+item.name;
+  const count=document.createElement("span");count.textContent=item.count+" 件";
+  row.append(left,count);parent.append(row);
+ }
+}
+$("loadIndividualRank").addEventListener("click",async()=>{
+ const gen=state.generation,button=$("loadIndividualRank");button.disabled=true;
+ try{
+  const month=$("month").value;
+  if(!/^\d{4}-\d{2}$/.test(month))throw Error("集計月を確認してください。");
+  const data=await call("/v1/individual-ranking?month="+encodeURIComponent(month));
+  if(gen!==state.generation)return;
+  if(!Array.isArray(data.ranking)||data.amountsIncluded!==false)throw Error("安全な順位データではありません。");
+  rankRow($("individualRankRows"),data.ranking);
+  status("総合売上順の個人ランキングを取得しました。金額は非表示です。");
+ }catch(e){if(gen===state.generation){
+  $("individualRankRows").replaceChildren();status(e.message,true);
+ }}finally{if(gen===state.generation)button.disabled=false;}
+});
+$("loadRankingViewers").addEventListener("click",async()=>{
+ const gen=state.generation,button=$("loadRankingViewers");button.disabled=true;
+ try{
+  const data=await call("/v1/individual-rank-viewers");
+  if(gen!==state.generation)return;
+  const parent=$("rankingViewerRows");parent.replaceChildren();
+  for(const viewer of data.viewers||[]){
+   const row=document.createElement("div");row.className="row";
+   const name=document.createElement("span");name.textContent=viewer.name;
+   const toggle=document.createElement("button");toggle.type="button";
+   toggle.className="secondary";
+   toggle.textContent=viewer.eligible?(viewer.allowed?"閲覧許可を解除":"個人ランキングの閲覧を許可"):"変更不可";
+   toggle.disabled=!viewer.eligible;
+   toggle.addEventListener("click",async()=>{
+    if(!confirm(viewer.name+"の個人ランキング閲覧を"+(viewer.allowed?"解除":"許可")+"しますか？"))return;
+    toggle.disabled=true;
+    try{
+     await call("/v1/individual-rank-grant","POST",{uid:viewer.uid,allowed:!viewer.allowed});
+     if(gen!==state.generation)return;
+     viewer.allowed=!viewer.allowed;
+     toggle.textContent=viewer.allowed?"閲覧許可を解除":"個人ランキングの閲覧を許可";
+     status(viewer.name+"の閲覧設定を更新しました。");
+    }catch(e){if(gen===state.generation)status(e.message,true);}
+    finally{if(gen===state.generation)toggle.disabled=false;}
+   });
+   row.append(name,toggle);parent.append(row);
+  }
+ }catch(e){if(gen===state.generation){
+  $("rankingViewerRows").replaceChildren();status(e.message,true);
+ }}finally{if(gen===state.generation)button.disabled=false;}
 });
 </script>
 </body>
