@@ -49,10 +49,14 @@ export function buildAnnualSalesReport({year,companyId,records,products,teams}){
   if(seenDoc.has(r.id)||seenDaily.has(r.uid+"|"+r.date))
     throw Error("sales_duplicate_daily_record");
   seenDoc.add(r.id);seenDaily.add(r.uid+"|"+r.date);totalRecords++;
-  if(!r.results || typeof r.results!=="object"||Array.isArray(r.results))
+  if(!r.results || typeof r.results!=="object")
     throw Error("sales_unreadable_results");
+  // Old application versions also stored results as an array. Do not
+  // discard or mutate these historic records when producing legal evidence.
+  const entries=Array.isArray(r.results)?
+    r.results.map((line,index)=>[String(index),line]):Object.entries(r.results);
   let dayCount=0,dayRevenue=0,recorded=0;
-  for(const [key,line] of Object.entries(r.results)){
+  for(const [key,line] of entries){
     if(!line || typeof line!=="object"||Array.isArray(line))throw Error("sales_invalid_line");
     const n=count(line.count);if(!n)continue;
     const productId=line.productId||key.split("__cb_")[0];
@@ -92,8 +96,8 @@ export function buildAnnualSalesReport({year,companyId,records,products,teams}){
     storedMismatchCount++;
   const month=r.date.slice(0,7);
   tally(byMonth,month,{month},dayCount,dayRevenue,recorded);
-  tally(byTeam,r.teamId,{teamId:r.teamId,name:nameByTeam.get(r.teamId)||
-    short(r.teamNameSnapshot,"旧班")},dayCount,dayRevenue,recorded);
+  tally(byTeam,r.teamId,{teamId:r.teamId,name:short(r.teamNameSnapshot||
+    nameByTeam.get(r.teamId),"旧班")},dayCount,dayRevenue,recorded);
   tally(byPerson,r.uid,{uid:r.uid,name:short(r.memberNameSnapshot||r.memberName||r.uid,"担当者")},dayCount,dayRevenue,recorded);
  }
  const monthly=Object.values(totals("month",byMonth));
