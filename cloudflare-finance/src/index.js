@@ -1,6 +1,7 @@
 import {visibleMoney} from "./revenue-scope.js";
 import {buildCompanyCountRanking} from "./company-count-ranking.mjs";
 import {rankingAccess,validateViewerChange,buildPrivateRevenueRanking} from "./individual-ranking.mjs";
+import {buildAnnualSalesReport,makeArchivePackage,writeImmutableArchive,readImmutableArchive} from "./sales-archive.mjs";
 import {partnerActivationWrites} from "./partner-provision.mjs";
 /**
  * Protected financial-view gateway (read-only foundation).
@@ -491,6 +492,98 @@ export default {
     if(url.pathname==="/health"&&request.method==="GET"){
       return safeJSON({ok:true,service:"finance-gateway",enabled:env.FINANCE_GATEWAY_ENABLED==="enabled",mode:"read_only"},200,origin);
     }
+    // OWNER-ONLY financial archive and annual report; separate from the
+    // amount-hidden personal ranking and partner dashboard.
+    // No Firestore record DELETE, UPDATE or transformation is present here.
+    if(["/v1/owner-annual-report","/v1/owner-annual-archive",
+        "/v1/owner-annual-archive-list"].includes(url.pathname)){
+      const route=url.pathname;
+      if(env.FINANCE_GATEWAY_ENABLED!=="enabled" ||
+         env.FINANCE_COST_APPROVAL!=="OWNER_APPROVED_BLAZE_COSTS" ||
+         env.FINANCE_ARCHIVE_APPROVAL!=="OWNER_APPROVED_ARCHIVE_READS" ||
+         env.FIREBASE_PROJECT_ID!==PROJECT_ID)
+        return safeJSON({error:"annual_archive_not_released"},503,origin);
+      if(request.method!==(route==="/v1/owner-annual-archive"?"GET":
+         "GET") && !(route==="/v1/owner-annual-archive"&&request.method==="POST"))
+        return safeJSON({error:"method_not_allowed"},405,origin);
+      const archiveYear=url.searchParams.get("year")||"";
+      if(!/^20\\d{2}$/.test(archiveYear))
+        return safeJSON({error:"invalid_year"},400,origin);
+      const auth=request.headers.get("authorization")||"";
+      if(!auth.startsWith("Bearer "))
+        return safeJSON({error:"authorization_required"},401,origin);
+      try{
+        const principal=await verifiedToken(auth.slice(7));
+        const policy=await memberPolicy(env,principal);
+        if(!policy.isOwner||policy.isPartner || policy.canViewRevenue!==true)
+          throw httpError(403,"owner_only");
+        // Archive bucket is private and NOT exposed as an R2 public domain.
+        const bucket=env.SALES_PRIVATE_ARCHIVES;
+        if(route==="/v1/owner-annual-archive-list"){
+          if(!bucket?.list)throw httpError(503,"archive_bucket_not_configured");
+          const prefix="v1/"+policy.companyId+"/"+archiveYear+"/";
+          let cursor,files=[];
+          for(let i=0;i<20;i++){
+            const page=await bucket.list({prefix,limit:500,...(cursor?{cursor}:{})});
+            if(!page || !Array.isArray(page.objects))throw httpError(503,"archive_index_corrupt");
+            files.push(...page.objects.filter(o=>/^v1\/[A-Za-z0-9_-]+\/20\\d{2}\/[a-f0-9]{64}\\.json$/.test(o.key) &&
+              o.key.startsWith(prefix)).map(o=>({
+                sha256:o.key.slice(prefix.length,-5),savedAt:o.uploaded?.toISOString?.()||null,
+                bytes:o.size
+              })));
+            if(!page.truncated)return safeJSON({year:archiveYear,files},200,origin);
+            if(!page.cursor||page.cursor===cursor)throw httpError(503,"archive_page_stalled");
+            cursor=page.cursor;
+          }
+          throw httpError(503,"archive_index_limit");
+        }
+        if(route==="/v1/owner-annual-archive" && request.method==="GET"){
+          if(!bucket?.get)throw httpError(503,"archive_bucket_not_configured");
+          const digest=url.searchParams.get("sha256")||"";
+          if(!/^[a-f0-9]{64}$/.test(digest))
+            return safeJSON({error:"invalid_archive_checksum"},400,origin);
+          const saved=await readImmutableArchive(bucket,policy.companyId,archiveYear,digest);
+          if(!saved)return safeJSON({error:"archive_not_found"},404,origin);
+          return new Response(saved.raw,{
+            headers:{"Content-Type":"application/json; charset=utf-8",
+              "Content-Disposition":"attachment; filename=\"sales-"+archiveYear+"-"+digest.slice(0,10)+".json\"",
+              "Cache-Control":"no-store,private","X-Content-Type-Options":"nosniff"},
+          });
+        }
+        // Read-only preparation requires Firestore page pagination and
+        // original records, tariff plan and team ID to reconcile strictly.
+        const [records,products,teams,goals]=await Promise.all([
+          firestoreQuery(env,"records",policy.companyId),
+          firestoreQuery(env,"products",policy.companyId),
+          firestoreQuery(env,"teams",policy.companyId),
+          firestoreQuery(env,"goals",policy.companyId)
+        ]);
+        const report=buildAnnualSalesReport({
+          year:archiveYear,companyId:policy.companyId,records,products,teams
+        });
+        if(route==="/v1/owner-annual-report")
+          return safeJSON({report,stored:false,sourceProtected:true},200,origin);
+        // Never archive an unfinished calendar year.
+        const nowYear=new Intl.DateTimeFormat("en-US",{timeZone:"Asia/Tokyo",year:"numeric"})
+          .format(new Date());
+        if(Number(archiveYear)>=Number(nowYear))
+          return safeJSON({error:"year_not_closed"},409,origin);
+        if(env.FINANCE_ARCHIVE_WRITE_APPROVAL!=="OWNER_APPROVED_IMMUTABLE_R2"||
+           !bucket?.put || !bucket?.get)
+          return safeJSON({error:"archive_storage_not_released"},503,origin);
+        const bundle=makeArchivePackage({report,records,products,teams,goals,
+          createdAt:new Date().toISOString()});
+        const result=await writeImmutableArchive(bucket,bundle);
+        return safeJSON({saved:true,deletedFirestoreDocuments:0,...result},201,origin);
+      }catch(e){
+        if(e.status===403||e.status===401)
+          return safeJSON({error:"forbidden"},e.status,origin);
+        // Never print raw financial data, names, file content or token.
+        return safeJSON({error:e.message==="archive_too_large_for_safe_worker"?
+          "archive_too_large_review_required":"annual_report_review_required"},503,origin);
+      }
+    }
+
     // Strictly server-side SALES-ORDERED individual ranking. All financial
     // calculations remain in this Worker. The browser receives rank/name/count.
     if(["/v1/individual-ranking","/v1/individual-rank-viewers",
