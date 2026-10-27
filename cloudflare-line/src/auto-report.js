@@ -50,14 +50,6 @@ export function buildCountOnlyReport({companyId,mode,date,records,teams,products
     idMap.set(team.id,{id:team.id,name:safeReportLabel(team.name,"班"),daily:0,monthly:0,
       target:0,perProduct:new Map()});
   }
-  for(const goal of goals){
-    if(goal?.companyId!==companyId||goal.month!==month||!idMap.has(goal.teamId))continue;
-    let target=0;
-    if(!goal.targets || typeof goal.targets!=="object" || Array.isArray(goal.targets))
-      throw Error("invalid_goal");
-    for(const n of Object.values(goal.targets))target+=count(Number(n));
-    idMap.get(goal.teamId).target+=target;
-  }
   const dailySeen=new Set();
   for(const record of records){
     if(record?.companyId!==companyId||typeof record.date!=="string"||
@@ -89,6 +81,15 @@ export function buildCountOnlyReport({companyId,mode,date,records,teams,products
         team.perProduct.set(id,(team.perProduct.get(id)||0)+item.count);
       }
     }
+  }
+  // Historical teams with monthly records are discovered before applying goals.
+  for(const goal of goals){
+    if(goal?.companyId!==companyId||goal.month!==month||!idMap.has(goal.teamId))continue;
+    let target=0;
+    if(!goal.targets || typeof goal.targets!=="object" || Array.isArray(goal.targets))
+      throw Error("invalid_goal");
+    for(const n of Object.values(goal.targets))target+=count(Number(n));
+    idMap.get(goal.teamId).target+=target;
   }
   const sorted=[...idMap.values()].sort((a,b)=>a.name.localeCompare(b.name,"ja")||a.id.localeCompare(b.id));
   const head=mode==="morning"?"🌅朝礼共有🌅":"🌸本日最終報告🌸";
