@@ -1,4 +1,5 @@
 import {buildCountOnlyReport,previousDay,reportTimeDue} from "./auto-report.js";
+import {collectLineQueryPages} from "./query-pages.js";
 const SCOPE="https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/cloud-platform";
 let tokenCache={token:"",exp:0};
 const LINE_MONTHLY_HARD_CAP=180;
@@ -86,12 +87,27 @@ async function listCol(env,p){
 }
 const strFilter=(field,value)=>({fieldFilter:{field:{fieldPath:field},op:"EQUAL",value:{stringValue:String(value)}}});
 async function query(env,col,filters){
-  const sq={from:[{collectionId:col}]};
+  const scope=filters.find(x=>x?.fieldFilter?.field?.fieldPath==="companyId"
+    && x.fieldFilter.op==="EQUAL")?.fieldFilter?.value?.stringValue;
+  if(!scope || !/^[A-Za-z0-9_-]{1,150}$/.test(scope) ||
+     !/^[A-Za-z0-9_-]{1,120}$/.test(col))
+    throw Error("line_query_requires_company_scope");
+  const sq={from:[{collectionId:col}],
+    orderBy:[{field:{fieldPath:"__name__"},direction:"ASCENDING"}]};
   if(filters.length===1)sq.where=filters[0];
   if(filters.length>1)sq.where={compositeFilter:{op:"AND",filters}};
-  const r=await fsFetch(env,`${base(env)}/documents:runQuery`,{method:"POST",body:JSON.stringify({structuredQuery:sq})});
-  if(!r.ok)throw new Error(`QUERY ${col} ${r.status}: ${await r.text()}`);
-  return (await r.json()).filter(x=>x.document).map(x=>docObj(x.document));
+  const root=`projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/${col}/`;
+  const rows=await collectLineQueryPages(async ({cursor,readTime,pageSize})=>{
+    const struct={...sq,limit:pageSize};
+    if(cursor)struct.startAt={values:[{referenceValue:cursor}],before:false};
+    const body={structuredQuery:struct};
+    if(readTime)body.readTime=readTime;
+    const r=await fsFetch(env,`${base(env)}/documents:runQuery`,{
+      method:"POST",body:JSON.stringify(body)});
+    if(!r.ok)throw new Error(`QUERY ${col} ${r.status}: ${await r.text()}`);
+    return r.json();
+  },{root,companyId:scope});
+  return rows.map(docObj);
 }
 async function patch(env,p,values){
   const q=new URLSearchParams(); Object.keys(values).forEach(k=>q.append("updateMask.fieldPaths",k));
