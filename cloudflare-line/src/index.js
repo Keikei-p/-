@@ -1,3 +1,4 @@
+import {buildCountOnlyReport,previousDay,reportTimeDue} from "./auto-report.js";
 const SCOPE="https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/cloud-platform";
 let tokenCache={token:"",exp:0};
 const LINE_MONTHLY_HARD_CAP=180;
@@ -361,6 +362,78 @@ async function reminders(env){
     }catch(e){console.error("company reminder failed",c.id,e);}
   }
 }
+// Independent opt-in: existing incomplete-report reminders do not activate
+// scheduled morning/evening summaries and vice versa. Kill switch defaults OFF.
+async function scheduledReports(env){
+  if(!firebaseFreePlanVerified(env) ||
+     String(env.AUTOMATION_ENABLED||"false").toLowerCase()!=="true" ||
+     env.AUTO_REPORTS_ENABLED!=="OWNER_APPROVED_REPORT_SENDING")return;
+  const n=tokyo();
+  const companies=await listCol(env,"companies");
+  for(const company of companies){
+    try{
+      if(company.active===false)continue;
+      const cfg=await getDoc(env,`companies/${company.id}/settings/notifications`);
+      if(!cfg?.lineGroupId || !Array.isArray(cfg.reportAutoWeekdays) ||
+         !cfg.reportAutoWeekdays.includes(n.weekday))continue;
+      const modes=[
+        {key:"morning",enabled:cfg.morningAutoReportEnabled,time:cfg.morningAutoReportTime},
+        {key:"evening",enabled:cfg.eveningAutoReportEnabled,time:cfg.eveningAutoReportTime}
+      ];
+      for(const mode of modes){
+        if(mode.enabled!==true || !reportTimeDue(mode.time,n.time))continue;
+        const date=mode.key==="morning"?previousDay(n.date):n.date;
+        // Company-wide query (not other companies). Old record snapshots remain unchanged.
+        // Fail-closed if the source is unexpectedly too large to verify completely.
+        const [records,teams,products,goals]=await Promise.all([
+          query(env,"records",[strFilter("companyId",company.id)]),
+          query(env,"teams",[strFilter("companyId",company.id)]),
+          query(env,"products",[strFilter("companyId",company.id)]),
+          query(env,"goals",[strFilter("companyId",company.id)])
+        ]);
+        if(records.length>=2000 || teams.length>=500 || products.length>=500 ||
+           goals.length>=2000 || !teams.some(t=>t.active!==false))
+          throw Error("report_source_limit_or_no_teams");
+        const msg=buildCountOnlyReport({
+          companyId:company.id,mode:mode.key,date,records,teams,products,goals
+        });
+        const dispatchId="autoreport_"+company.id+"_"+mode.key+"_"+n.date;
+        // Verify LINE's current free quota prior to reserving. If unknown,
+        // block rather than incur a bill. Per-company/per-day id is immutable.
+        let guard;
+        try{guard=await freeLineGuard(env,String(cfg.lineGroupId));}
+        catch(e){
+          console.error("report quota check blocked",company.id,mode.key);
+          continue;
+        }
+        if(!guard.allowed){
+          console.error("report free cap blocked",company.id,mode.key);
+          continue;
+        }
+        const reserved=await create(env,"notificationDispatches",dispatchId,{
+          companyId:company.id,date:n.date,reportDate:date,
+          mode:mode.key,kind:"scheduled_report",status:"processing",
+          lineUsageBeforeSend:guard.used,estimatedRecipients:guard.recipients,
+          hardCap:guard.cap,createdAt:nowTs()
+        });
+        if(!reserved)continue; // Completed, failed or in-flight: never send twice.
+        try{
+          const attempts=await pushRetry(env,String(cfg.lineGroupId),msg);
+          await patch(env,"notificationDispatches/"+dispatchId,{
+            status:"sent",sendAttempts:attempts,sentAt:nowTs()
+          });
+        }catch(e){
+          await patch(env,"notificationDispatches/"+dispatchId,{
+            status:"failed",sendAttempts:Number(e.attempt||1),
+            error:String(e.message||e).slice(0,200),failedAt:nowTs()
+          });
+        }
+      }
+    }catch(e){
+      console.error("scheduled report blocked",company.id,String(e?.message||e).slice(0,140));
+    }
+  }
+}
 async function webhook(req,env){
   if(req.method!=="POST")return new Response("Method Not Allowed",{status:405});
   if(!firebaseFreePlanVerified(env))return new Response("Firestore paused for zero-charge mode",{status:503});
@@ -375,12 +448,12 @@ async function webhook(req,env){
 export default{
   async fetch(req,env){
     const u=new URL(req.url);
-    if(u.pathname==="/health")return Response.json({ok:true,service:"sales-line-worker",automationEnabled:firebaseFreePlanVerified(env)&&String(env.AUTOMATION_ENABLED||"false").toLowerCase()==="true",firebaseCostSafetyLocked:!firebaseFreePlanVerified(env)});
+    if(u.pathname==="/health")return Response.json({ok:true,service:"sales-line-worker",automationEnabled:firebaseFreePlanVerified(env)&&String(env.AUTOMATION_ENABLED||"false").toLowerCase()==="true",firebaseCostSafetyLocked:!firebaseFreePlanVerified(env),scheduledReportsEnabled:env.AUTO_REPORTS_ENABLED==="OWNER_APPROVED_REPORT_SENDING"});
     if(u.pathname==="/line-webhook")return webhook(req,env);
     return new Response("Not Found",{status:404});
   },
-  async scheduled(_c,env,ctx){ctx.waitUntil(reminders(env));}
+  async scheduled(_c,env,ctx){ctx.waitUntil((async()=>{await reminders(env);await scheduledReports(env);})());}
 };
 
 // Pure scheduling helpers and delivery wrapper exported for side-effect-free unit tests.
-export {shouldSendReminderAt,buildReminderOnlyMessage,teamForDate,missingFromSnapshot,missing,pushRetry,freeLineGuard};
+export {shouldSendReminderAt,buildReminderOnlyMessage,teamForDate,missingFromSnapshot,missing,pushRetry,freeLineGuard,scheduledReports};
