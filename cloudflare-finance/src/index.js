@@ -170,17 +170,48 @@ function safePartnerMembers(all,policy) {
     .map(m=>({uid:m.uid,name:withoutAmounts(String(m.name||"担当者")).slice(0,30),teamId:policy.teamId}))
     .sort((a,b)=>a.name.localeCompare(b.name,"ja"));
 }
-async function ownerMemberList(env,policy,fetcher=fetch) {
-  if(!policy.isOwner || policy.isPartner)throw httpError(403,"owner_only");
+// Page-aware company member loading. Never return a truncated roster.
+async function collectFirestoreMemberPages(pageReader){
+  const members=[],seenDocs=new Set(),seenTokens=new Set();
+  let token="";
+  for(let pageIndex=0;pageIndex<20;pageIndex++){
+    const page=await pageReader(token);
+    if(!page || typeof page!=="object" ||
+       (page.documents!==undefined && !Array.isArray(page.documents)))
+      throw httpError(503,"members_invalid_page");
+    for(const doc of page.documents||[]){
+      if(!doc || typeof doc.name!=="string" || seenDocs.has(doc.name))
+        throw httpError(503,"members_duplicated_page");
+      seenDocs.add(doc.name);
+      members.push(docData(doc));
+    }
+    if(members.length>10000)throw httpError(503,"members_exceed_safety_limit");
+    const next=page.nextPageToken;
+    if(!next)return members;
+    if(typeof next!=="string" || next.length>3000 || seenTokens.has(next))
+      throw httpError(503,"members_invalid_page_token");
+    seenTokens.add(next);
+    token=next;
+  }
+  throw httpError(503,"members_exceed_page_limit");
+}
+async function companyMemberPages(env,policy,fetcher=fetch){
   const bearer=await googleBearer(env,fetcher);
   const path="companies/"+policy.companyId+"/members";
-  const response=await fetcher(base+"/documents/"+documentPath(path)+"?pageSize=500",
-    {headers:{Authorization:"Bearer "+bearer}});
-  if(!response.ok)throw httpError(503,"owner_members_unavailable");
-  const page=await response.json();
-  if(page.nextPageToken)throw httpError(503,"owner_members_page_limit");
-  return (Array.isArray(page.documents)?page.documents.map(docData):[])
-    .filter(m=>active(m) && (!m.companyId || m.companyId===policy.companyId)
+  return collectFirestoreMemberPages(async token=>{
+    const args=new URLSearchParams({pageSize:"500"});
+    if(token)args.set("pageToken",token);
+    const response=await fetcher(base+"/documents/"+documentPath(path)+"?"+args,{
+      headers:{Authorization:"Bearer "+bearer}
+    });
+    if(!response.ok)throw httpError(503,"company_members_unavailable");
+    return response.json();
+  });
+}
+async function ownerMemberList(env,policy,fetcher=fetch) {
+  if(!policy.isOwner || policy.isPartner)throw httpError(403,"owner_only");
+  const list=await companyMemberPages(env,policy,fetcher);
+  return list.filter(m=>active(m) && (!m.companyId || m.companyId===policy.companyId)
       && typeof m.uid==="string" && /^[A-Za-z0-9_-]{1,150}$/.test(m.uid)
       && m.companyRole==="member" && m.role==="leader")
     .map(m=>({uid:m.uid,name:withoutAmounts(m.name||"担当者").slice(0,30),
@@ -189,16 +220,7 @@ async function ownerMemberList(env,policy,fetcher=fetch) {
 }
 async function partnerMemberList(env,policy,fetcher=fetch) {
   if(!policy.isPartner)throw httpError(403,"partner_only");
-  const bearer=await googleBearer(env,fetcher);
-  const path="companies/"+policy.companyId+"/members";
-  const response=await fetcher(base+"/documents/"+documentPath(path)+"?pageSize=500",
-    {headers:{Authorization:"Bearer "+bearer}});
-  if(!response.ok)throw httpError(503,"partner_members_unavailable");
-  const page=await response.json();
-  // Truncation is worse than explicit refusal: missing a member might cause
-  // duplicate entries or a false 'no report' in the partner's daily sheet.
-  if(page.nextPageToken)throw httpError(503,"partner_members_page_limit");
-  return safePartnerMembers(Array.isArray(page.documents)?page.documents.map(docData):[],policy);
+  return safePartnerMembers(await companyMemberPages(env,policy,fetcher),policy);
 }
 function approvedPolicy(user,member,company,uid,today="") {
   if(!user || !member || !company || !active(user) || !active(member) || !active(company) ||
@@ -581,4 +603,4 @@ export default {
     }
   }
 };
-export {approvedPolicy,safeProducts,safeRecords,safeGoals,safePartnerMembers,visibleMoney,withoutAmounts,verifiedToken,financeView,docData};
+export {approvedPolicy,safeProducts,safeRecords,safeGoals,safePartnerMembers,visibleMoney,withoutAmounts,verifiedToken,financeView,docData,collectFirestoreMemberPages};
