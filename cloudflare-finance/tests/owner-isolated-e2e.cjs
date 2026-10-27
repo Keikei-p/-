@@ -43,7 +43,7 @@ const assert=require("node:assert/strict");
  assert.equal(await page.locator("#activate").isDisabled(),false);
  console.log("PASS Owner sees one combined DIRECT+PARTNER count ranking without prices");
  await page.locator("#activate").click();
- await page.waitForFunction(()=>document.querySelector("#activate").disabled);
+ await page.waitForFunction(()=>document.querySelector("#leader").selectedOptions[0]?.textContent.includes("協力店登録済み"));
  assert.deepEqual(activations,[{uid:"partner1"}]);
  assert.equal(await page.locator("#leader").inputValue(),"partner1");
  console.log("PASS activation posts only selected pre-invited leader UID");
