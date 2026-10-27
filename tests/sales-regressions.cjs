@@ -1369,3 +1369,34 @@ test('Individual count ranking scopes partner and ordinary users without reveali
  const dash=source('renderDashboard');
  assert(dash.includes('if (canIncludeInIndividualRanking(record))'));
 });
+
+
+test('Dashboard ranking buttons still open and switch panels; Champion render hook is retained',()=>{
+ const createToggle=()=>{
+  const attrs={};let click;
+  return {setAttribute:(k,v)=>attrs[k]=v,getAttribute:k=>attrs[k],
+    addEventListener:(k,fn)=>{if(k==='click')click=fn;},click:()=>click()};
+ };
+ const individualToggle=createToggle(),teamToggle=createToggle();
+ const individual={hidden:true},team={hidden:true},detail={hidden:true,scrollIntoView(){}};
+ let championRuns=0;
+ const ctx=context(['setAccordionState','setupDashboardMenu'],{
+  requestAnimationFrame:fn=>fn(),
+  individualRankingContent:individual,productRankingContent:{hidden:true},
+  dashboardDetailArea:detail,beginRankingChampionEntrance:()=>{championRuns++;}
+ });
+ ctx.setupDashboardMenu([{toggle:individualToggle,content:individual},{toggle:teamToggle,content:team}]);
+ assert.equal(detail.hidden,true);
+ individualToggle.click();
+ assert.equal(individual.hidden,false);
+ assert.equal(detail.hidden,false);
+ assert.equal(individualToggle.getAttribute('aria-expanded'),'true');
+ assert.equal(championRuns,1);
+ teamToggle.click();
+ assert.equal(individual.hidden,true);
+ assert.equal(team.hidden,false);
+ assert.equal(detail.hidden,false);
+ teamToggle.click();
+ assert.equal(team.hidden,true);
+ assert.equal(detail.hidden,true);
+});
