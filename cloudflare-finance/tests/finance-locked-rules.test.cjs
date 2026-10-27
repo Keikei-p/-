@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const {initializeTestEnvironment,assertSucceeds,assertFails}=require('@firebase/rules-unit-testing');
-const {doc,setDoc,getDoc,collection,query,where,getDocsFromServer,updateDoc,deleteDoc,serverTimestamp}=require('firebase/firestore');
+const {doc,setDoc,getDoc,collection,query,where,getDocsFromServer,updateDoc,deleteDoc,serverTimestamp,writeBatch}=require('firebase/firestore');
 if(!process.env.FIRESTORE_EMULATOR_HOST)throw Error('Emulator only! Refusing production Firestore');
 const project='demo-finance-staging',company='test-company';
 let env;
@@ -142,4 +142,25 @@ test('Partner markers block raw finance reads even after mistaken owner or finan
     await assertFails(getDocsFromServer(collection(db,'companies',company,'members')));
     await assertFails(updateDoc(doc(db,'teams','A'),{name:'Malicious rename',updatedAt:serverTimestamp()}));
   }
+});
+
+test('ordinary staff cannot forge own historical team scope, even in paired user/member write',async()=>{
+  const db=firebase('ordinary'),stamp={teamId:'A',teamHistory:[
+    {effectiveDate:'2026-01-01',fromTeamId:'B',toTeamId:'A'}
+  ],updatedAt:serverTimestamp()};
+  const batch=writeBatch(db);
+  batch.update(doc(db,'users','ordinary'),stamp);
+  batch.update(doc(db,'companies',company,'members','ordinary'),stamp);
+  await assertFails(batch.commit());
+});
+test('owner cannot edit own historical team scope in either account document',async()=>{
+  const db=firebase('owner');
+  await assertFails(updateDoc(doc(db,'users','owner'),{
+    teamHistory:[{effectiveDate:'2025-01-01',fromTeamId:'B',toTeamId:'A'}],
+    updatedAt:serverTimestamp()
+  }));
+  await assertFails(updateDoc(doc(db,'companies',company,'members','owner'),{
+    teamHistory:[{effectiveDate:'2025-01-01',fromTeamId:'B',toTeamId:'A'}],
+    updatedAt:serverTimestamp()
+  }));
 });

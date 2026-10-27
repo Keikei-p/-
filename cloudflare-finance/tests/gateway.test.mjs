@@ -54,12 +54,15 @@ test("External partner receives ONLY own-team counts and never financial details
   ];
   const view={products:safeProducts(products,partner),records:safeRecords(records,partner,products),
     goals:safeGoals([{id:"goal-1",teamId:"A",targetRevenue:500000}],partner)};
+  // CB 5000 is intentionally visible to partners; sales price is not.
+  assert.deepEqual(view.products[0].cashbackPlans,[{planId:"cb_5000",cashback:5000}]);
+  assert.equal(view.records[0].results.item_0.planId,"cb_5000");
   assert.equal(view.records.length,1);
   assert.equal(view.records[0].uid,"staff-A");
   assert.equal(view.records[0].totalCount,2);
   assert.deepEqual(view.goals,[]);
   const output=JSON.stringify(view);
-  for(const secret of ["totalRevenue","revenuePerUnit","canViewRevenue","990000","other-team-secret","staff-B","他班秘匿","5000","10000","20000"]){
+  for(const secret of ["totalRevenue","revenuePerUnit","canViewRevenue","990000","other-team-secret","staff-B","他班秘匿","10000","20000"]){
     assert.equal(output.includes(secret),false,"leaked "+secret);
   }
   // Either document being stamped is enough to DENY finance while onboarding.
@@ -180,6 +183,28 @@ test("Revenue goal projection respects explicit permissions, team scope and Owne
   const authorized=policy("leader",{userGrants:{canViewRevenue:true},memberGrants:{canViewRevenue:true}});
   assert.deepEqual(safeGoals(g,authorized).map(x=>x.id),["a"]);
   assert.equal(safeGoals(g,policy("leader",{uid:"master-uid"})).length,2);
+});
+test("Owner count overview and partner sync require release and verified identity",async()=>{
+ for(const path of ["/v1/owner-count-overview","/v1/partner-sync"]){
+  const u="https://sales-finance-gateway.example"+path;
+  let r=await worker.fetch(new Request(u),{FINANCE_GATEWAY_ENABLED:"disabled"});
+  assert.equal(r.status,503);
+  r=await worker.fetch(new Request(u),{FINANCE_GATEWAY_ENABLED:"enabled",
+    FIREBASE_PROJECT_ID:"sales-management-cc116"});
+  assert.equal(r.status,503);
+  r=await worker.fetch(new Request(u),{FINANCE_GATEWAY_ENABLED:"enabled",
+    FINANCE_COST_APPROVAL:"OWNER_APPROVED_BLAZE_COSTS",
+    FIREBASE_PROJECT_ID:"sales-management-cc116"});
+  assert.equal(r.status,401);
+ }
+ const activation=await worker.fetch(new Request("https://sales-finance-gateway.example/v1/partner-activate",{
+  method:"POST",headers:{"Content-Type":"application/json"},body:'{"uid":"external"}'
+ }),{FINANCE_GATEWAY_ENABLED:"enabled",FINANCE_WRITE_ENABLED:"enabled",
+    FINANCE_WRITE_APPROVAL:"DUAL_HOST_BACKUP_VERIFIED",
+    FINANCE_COST_APPROVAL:"OWNER_APPROVED_BLAZE_COSTS",
+    FIREBASE_PROJECT_ID:"sales-management-cc116"});
+ assert.equal(activation.status,503);
+ assert.equal((await activation.json()).error,"partner_activation_not_released");
 });
 test("No unapproved methods, worker is disabled by default and denies missing JWT",async()=>{
   for(const method of ["POST","PUT","PATCH","DELETE"]){

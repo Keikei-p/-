@@ -1,4 +1,6 @@
 import {visibleMoney} from "./revenue-scope.js";
+import {buildCompanyCountRanking} from "./company-count-ranking.mjs";
+import {partnerActivationWrites} from "./partner-provision.mjs";
 /**
  * Protected financial-view gateway (read-only foundation).
  * No production data changes: GET only. There is NO record-write endpoint.
@@ -168,18 +170,57 @@ function safePartnerMembers(all,policy) {
     .map(m=>({uid:m.uid,name:withoutAmounts(String(m.name||"担当者")).slice(0,30),teamId:policy.teamId}))
     .sort((a,b)=>a.name.localeCompare(b.name,"ja"));
 }
-async function partnerMemberList(env,policy,fetcher=fetch) {
-  if(!policy.isPartner)throw httpError(403,"partner_only");
+// Page-aware company member loading. Never return a truncated roster.
+async function collectFirestoreMemberPages(pageReader){
+  const members=[],seenDocs=new Set(),seenTokens=new Set();
+  let token="";
+  for(let pageIndex=0;pageIndex<20;pageIndex++){
+    const page=await pageReader(token);
+    if(!page || typeof page!=="object" ||
+       (page.documents!==undefined && !Array.isArray(page.documents)))
+      throw httpError(503,"members_invalid_page");
+    for(const doc of page.documents||[]){
+      if(!doc || typeof doc.name!=="string" || seenDocs.has(doc.name))
+        throw httpError(503,"members_duplicated_page");
+      seenDocs.add(doc.name);
+      members.push(docData(doc));
+    }
+    if(members.length>10000)throw httpError(503,"members_exceed_safety_limit");
+    const next=page.nextPageToken;
+    if(!next)return members;
+    if(typeof next!=="string" || next.length>3000 || seenTokens.has(next))
+      throw httpError(503,"members_invalid_page_token");
+    seenTokens.add(next);
+    token=next;
+  }
+  throw httpError(503,"members_exceed_page_limit");
+}
+async function companyMemberPages(env,policy,fetcher=fetch){
   const bearer=await googleBearer(env,fetcher);
   const path="companies/"+policy.companyId+"/members";
-  const response=await fetcher(base+"/documents/"+documentPath(path)+"?pageSize=500",
-    {headers:{Authorization:"Bearer "+bearer}});
-  if(!response.ok)throw httpError(503,"partner_members_unavailable");
-  const page=await response.json();
-  // Truncation is worse than explicit refusal: missing a member might cause
-  // duplicate entries or a false 'no report' in the partner's daily sheet.
-  if(page.nextPageToken)throw httpError(503,"partner_members_page_limit");
-  return safePartnerMembers(Array.isArray(page.documents)?page.documents.map(docData):[],policy);
+  return collectFirestoreMemberPages(async token=>{
+    const args=new URLSearchParams({pageSize:"500"});
+    if(token)args.set("pageToken",token);
+    const response=await fetcher(base+"/documents/"+documentPath(path)+"?"+args,{
+      headers:{Authorization:"Bearer "+bearer}
+    });
+    if(!response.ok)throw httpError(503,"company_members_unavailable");
+    return response.json();
+  });
+}
+async function ownerMemberList(env,policy,fetcher=fetch) {
+  if(!policy.isOwner || policy.isPartner)throw httpError(403,"owner_only");
+  const list=await companyMemberPages(env,policy,fetcher);
+  return list.filter(m=>active(m) && (!m.companyId || m.companyId===policy.companyId)
+      && typeof m.uid==="string" && /^[A-Za-z0-9_-]{1,150}$/.test(m.uid)
+      && m.companyRole==="member" && m.role==="leader")
+    .map(m=>({uid:m.uid,name:withoutAmounts(m.name||"担当者").slice(0,30),
+      teamId:m.teamId||null,accessKind:m.accessKind==="partner"?"partner":"direct"}))
+    .sort((a,b)=>a.name.localeCompare(b.name,"ja"));
+}
+async function partnerMemberList(env,policy,fetcher=fetch) {
+  if(!policy.isPartner)throw httpError(403,"partner_only");
+  return safePartnerMembers(await companyMemberPages(env,policy,fetcher),policy);
 }
 function approvedPolicy(user,member,company,uid,today="") {
   if(!user || !member || !company || !active(user) || !active(member) || !active(company) ||
@@ -227,6 +268,9 @@ function withoutAmounts(str) {
     .replace(/[¥￥]\s*[0-9][0-9,.]*(?:万円|千円|円)?/gi,"")
     .replace(/[0-9][0-9,.]*\s*(?:万円|千円|円)/gi,"")
     .trim().replace(/[-()\s]+$/g,"");
+  // Free text such as 単価一万円 must never be treated as harmless.
+  if(/(?:単価|売上|粗利|利益|報酬|原価|卸値|手数料|収益|売価|価格|税込|税抜|[一二三四五六七八九十百千万壱弐参拾]+円)/.test(candidate))
+    return "商材";
   // Never publish a doubtful money-bearing label to an unapproved user.
   if(/[¥￥]|[0-9][0-9,.]*\s*(?:円|万円|千円)/i.test(candidate))
     return "商材";
@@ -243,6 +287,8 @@ function safeProducts(all,policy) {
     // Omitting them here breaks older CB rows even for Owner/Leader.
     const plans=securePricing(p);
     safe.planIds=plans.map(v=>v.planId);
+    // Cashback is customer-facing; never disclose internal price or sales data.
+    if(policy.isPartner) safe.cashbackPlans=plans.map(v=>({planId:"cb_"+v.cashback,cashback:v.cashback}));
     if(policy.canViewUnitPrice){
       safe.revenue=p.revenue;
       safe.pricingOptions=plans.map(({cashback,revenuePerUnit})=>({cashback,revenuePerUnit}));
@@ -285,6 +331,10 @@ function safeRecords(all,policy,products=[]) {
         try{
           planId=securePricing(product).find(p=>p.cashback===Number(result.cashback||0))?.planId||null;
         }catch{planId=null;}
+      }
+      if(policy.isPartner && planId!==null){
+        const cb=securePricing(product).find(p=>p.planId===planId)?.cashback;
+        planId=Number.isSafeInteger(cb)?"cb_"+cb:null;
       }
       const safe={productId,planId,productName:withoutAmounts(result.productName),
         count:result.count};
@@ -339,6 +389,22 @@ async function financeView(env,principal,fetcher=fetch,{partnerOnly=false}={}){
     canViewRevenue:policy.canViewRevenue,canViewUnitPrice:policy.canViewUnitPrice,isOwner:policy.isOwner,isPartner:policy.isPartner,
     needsPermissionReview:policy.needsPermissionReview,teamId:policy.teamId
   },products:safeProducts(products,policy),records:safeRecords(records,policy,products),revenueGoals:safeGoals(revenueGoals,policy)};
+  // Count-only monthly leaderboard uses the same records for internal teams
+  // and external partner teams, avoiding a second registration or double count.
+  // Only owners receive whole-company ranking data.
+  if(policy.isOwner){
+    const parts=new Intl.DateTimeFormat("en-US",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit"})
+      .formatToParts(new Date());
+    const y=parts.find(p=>p.type==="year")?.value;
+    const m=parts.find(p=>p.type==="month")?.value;
+    try{
+      payload.companyCountRanking=buildCompanyCountRanking(records,policy.companyId,y+"-"+m);
+    }catch{
+      // Legacy duplicate daily documents require review. Never let an
+      // optional leaderboard disable the Owner's existing finance view.
+      payload.companyCountRankingError="duplicate_or_inconsistent_records";
+    }
+  }
   if(partnerOnly)payload.members=members;
   return payload;
 }
@@ -354,6 +420,122 @@ export default {
     }
     if(url.pathname==="/health"&&request.method==="GET"){
       return safeJSON({ok:true,service:"finance-gateway",enabled:env.FINANCE_GATEWAY_ENABLED==="enabled",mode:"read_only"},200,origin);
+    }
+    // Lightweight partner update signal; never returns sales, prices, or
+    // other teams' records. Re-check membership on every poll.
+    if(url.pathname==="/v1/partner-sync" && request.method==="GET"){
+      if(env.FINANCE_GATEWAY_ENABLED!=="enabled")
+        return safeJSON({error:"cutover_not_authorized"},503,origin);
+      if(env.FINANCE_COST_APPROVAL!=="OWNER_APPROVED_BLAZE_COSTS")
+        return safeJSON({error:"billing_not_approved"},503,origin);
+      if(env.FIREBASE_PROJECT_ID!==PROJECT_ID)
+        return safeJSON({error:"project_mismatch"},503,origin);
+      const auth=request.headers.get("authorization")||"";
+      if(!auth.startsWith("Bearer "))return safeJSON({error:"authorization_required"},401,origin);
+      try{
+        const principal=await verifiedToken(auth.slice(7));
+        const policy=await memberPolicy(env,principal);
+        if(!policy.isPartner)throw httpError(403,"partner_only");
+        const sync=await firestoreGet(env,"companies/"+policy.companyId+"/publicSync/state");
+        return safeJSON({version:sync?.recordVersion||null},200,origin);
+      }catch(error){
+        if(error.status===401 || error.status===403)
+          return safeJSON({error:"forbidden"},error.status,origin);
+        return safeJSON({error:"partner_sync_unavailable"},503,origin);
+      }
+    }
+    if(url.pathname==="/v1/owner-count-overview" && request.method==="GET"){
+      if(env.FINANCE_GATEWAY_ENABLED!=="enabled")
+        return safeJSON({error:"cutover_not_authorized"},503,origin);
+      if(env.FINANCE_COST_APPROVAL!=="OWNER_APPROVED_BLAZE_COSTS")
+        return safeJSON({error:"billing_not_approved"},503,origin);
+      if(env.FIREBASE_PROJECT_ID!==PROJECT_ID)
+        return safeJSON({error:"project_mismatch"},503,origin);
+      const auth=request.headers.get("authorization")||"";
+      if(!auth.startsWith("Bearer "))return safeJSON({error:"authorization_required"},401,origin);
+      try{
+        const principal=await verifiedToken(auth.slice(7));
+        const policy=await memberPolicy(env,principal);
+        if(!policy.isOwner || policy.isPartner)throw httpError(403,"owner_only");
+        const month=url.searchParams.get("month")||
+          new Intl.DateTimeFormat("sv-SE",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit"}).format(new Date());
+        if(!/^\d{4}-\d{2}$/.test(month))
+          return safeJSON({error:"invalid_month"},400,origin);
+        const [records,teams,leaders]=await Promise.all([
+          firestoreQuery(env,"records",policy.companyId),
+          firestoreQuery(env,"teams",policy.companyId),
+          ownerMemberList(env,policy)
+        ]);
+        const ranking=buildCompanyCountRanking(records,policy.companyId,month,teams);
+        const names=new Map(teams.map(t=>[t.id,withoutAmounts(t.name||t.id)]));
+        return safeJSON({month,ranking:ranking.ranking.map(row=>({...row,
+          teamName:names.get(row.teamId)||row.teamId})),
+          totalCount:ranking.totalCount,leaders},200,origin);
+      }catch(error){
+        if(error.status===401||error.status===403)
+          return safeJSON({error:"forbidden"},error.status,origin);
+        return safeJSON({error:"owner_overview_unavailable"},503,origin);
+      }
+    }
+    // Owner activation is separate from invitations: only already invited,
+    // already assigned, active Leaders can be marked as partner accounts.
+    if(url.pathname==="/v1/partner-activate" && request.method==="POST"){
+      if(env.FINANCE_GATEWAY_ENABLED!=="enabled" || env.FINANCE_WRITE_ENABLED!=="enabled" ||
+         env.FINANCE_WRITE_APPROVAL!=="DUAL_HOST_BACKUP_VERIFIED" ||
+         env.FINANCE_COST_APPROVAL!=="OWNER_APPROVED_BLAZE_COSTS" ||
+         env.FINANCE_PARTNER_APPROVAL!=="OWNER_APPROVED_PARTNER_ONBOARDING")
+        return safeJSON({error:"partner_activation_not_released"},503,origin);
+      if(env.FIREBASE_PROJECT_ID!==PROJECT_ID)return safeJSON({error:"project_mismatch"},503,origin);
+      if(!request.headers.get("content-type")?.toLowerCase().startsWith("application/json"))
+        return safeJSON({error:"json_only"},415,origin);
+      const auth=request.headers.get("authorization")||"";
+      if(!auth.startsWith("Bearer "))return safeJSON({error:"authorization_required"},401,origin);
+      try{
+        const principal=await verifiedToken(auth.slice(7));
+        const raw=await request.text();
+        if(raw.length>2500)return safeJSON({error:"request_too_large"},413,origin);
+        let data;
+        try{data=JSON.parse(raw);}catch{return safeJSON({error:"invalid_json"},400,origin);}
+        if(!data || Object.keys(data).length!==1 || typeof data.uid!=="string" ||
+            !/^[A-Za-z0-9_-]{1,128}$/.test(data.uid))
+          return safeJSON({error:"invalid_partner_uid"},400,origin);
+        const policy=await memberPolicy(env,principal);
+        if(!policy.isOwner || policy.isPartner)return safeJSON({error:"forbidden"},403,origin);
+        const [user,member]=await Promise.all([
+          firestoreGet(env,"users/"+data.uid),
+          firestoreGet(env,"companies/"+policy.companyId+"/members/"+data.uid)
+        ]);
+        const team=user?.teamId && /^[A-Za-z0-9_-]{1,128}$/.test(user.teamId)?
+          await firestoreGet(env,"teams/"+user.teamId):null;
+        let writes;
+        try{writes=partnerActivationWrites({policy,targetUid:data.uid,user,member,team});}
+        catch{return safeJSON({error:"partner_leader_not_ready"},409,origin);}
+        if(!writes.length)return safeJSON({active:true,alreadyActivated:true},200,origin);
+        const auditId=crypto.randomUUID();
+        writes.push({
+          update:{name:"projects/"+PROJECT_ID+"/databases/(default)/documents/companies/"+
+            policy.companyId+"/partnerActivationAudits/"+auditId,
+            fields:{activatedUid:{stringValue:data.uid},activatedByUid:{stringValue:principal.uid},
+              teamId:{stringValue:user.teamId}}},
+          currentDocument:{exists:false},
+          updateTransforms:[{fieldPath:"createdAt",setToServerValue:"REQUEST_TIME"}]
+        });
+        const bearer=await googleBearer(env);
+        const res=await fetch(base+"/documents:commit",{
+          method:"POST",headers:{"Authorization":"Bearer "+bearer,"Content-Type":"application/json"},
+          body:JSON.stringify({writes})
+        });
+        if(res.status===409||res.status===412)return safeJSON({error:"partner_activation_conflict"},409,origin);
+        if(!res.ok)return safeJSON({error:"partner_activation_unavailable"},503,origin);
+        const reply=await res.json();
+        if(!Array.isArray(reply.writeResults)||reply.writeResults.length!==writes.length)
+          return safeJSON({error:"activation_confirmation_unknown"},503,origin);
+        return safeJSON({active:true},200,origin);
+      }catch(error){
+        if(error.status===401||error.status===403)
+          return safeJSON({error:"unauthorized"},error.status,origin);
+        return safeJSON({error:"partner_activation_unavailable"},503,origin);
+      }
     }
     if(url.pathname==="/v1/count-record" && request.method==="POST"){
       // Three independent fail-closed switches. Never enable on an untested
@@ -421,4 +603,4 @@ export default {
     }
   }
 };
-export {approvedPolicy,safeProducts,safeRecords,safeGoals,safePartnerMembers,visibleMoney,withoutAmounts,verifiedToken,financeView,docData};
+export {approvedPolicy,safeProducts,safeRecords,safeGoals,safePartnerMembers,visibleMoney,withoutAmounts,verifiedToken,financeView,docData,collectFirestoreMemberPages};

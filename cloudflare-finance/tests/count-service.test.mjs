@@ -151,15 +151,18 @@ test("existing record team changes cannot be made by a Leader; Owner can keep ol
 test("Partner leader can submit own-team counts but cannot view money or proxy for other-team staff",async()=>{
   const f=createStore({role:"leader",principal:"external-leader",partner:true,
     grants:{revenue:true,unit:true}});
-  const saved=await submitCounts(f.store,f.principal,intent(),{policyResolver:f.policyResolver});
+  const partnerIntent=intent({entries:[{productId:"sim",planId:"cb_0",count:2}]});
+  const saved=await submitCounts(f.store,f.principal,partnerIntent,{policyResolver:f.policyResolver});
   assert.equal(saved.saved,true);
   assert.equal(saved.totalCount,2);
   assert.equal("totalRevenue" in saved,false);
   assert.equal(f.saved[0].data.totalCount,2);
-  await assert.rejects(submitCounts(f.store,f.principal,intent({teamId:"B"}),
+  await assert.rejects(submitCounts(f.store,f.principal,intent({teamId:"B",entries:partnerIntent.entries}),
     {policyResolver:f.policyResolver}),PermissionDenied);
   const otherTeam=createStore({role:"leader",principal:"external-leader",partner:true,targetTeam:"B"});
-  await assert.rejects(submitCounts(otherTeam.store,otherTeam.principal,intent(),
+  await assert.rejects(submitCounts(otherTeam.store,otherTeam.principal,partnerIntent,
     {policyResolver:otherTeam.policyResolver}),PermissionDenied);
   assert.equal(otherTeam.saved.length,0);
+  await assert.rejects(submitCounts(f.store,f.principal,intent(),{policyResolver:f.policyResolver}),/stable cashback/);
+
 });

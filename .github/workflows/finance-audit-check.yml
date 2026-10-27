@@ -1,9 +1,9 @@
 name: Finance audit regression (isolated, NO deployment)
 on:
   pull_request:
-    branches: [feature/partner-count-scope-20261027]
+    branches: [feature/partner-count-scope-20261027, safety/finance-audit-20261027]
   push:
-    branches: [safety/finance-audit-20261027]
+    branches: [safety/finance-audit-20261027, safety/partner-missing-features-20261027]
 permissions:
   contents: read
 jobs:
@@ -37,4 +37,6 @@ jobs:
       - name: Install Chromium for isolated fixtures
         run: cloudflare-finance/tests/node_modules/.bin/playwright install --with-deps chromium
       - name: Browser checks with all requests intercepted
-        run: node cloudflare-finance/tests/partner-isolated-e2e.cjs
+        run: |
+          node cloudflare-finance/tests/partner-isolated-e2e.cjs
+          node cloudflare-finance/tests/owner-isolated-e2e.cjs

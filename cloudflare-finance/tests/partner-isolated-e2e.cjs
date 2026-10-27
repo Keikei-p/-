@@ -7,7 +7,7 @@ const assert=require('node:assert/strict');
  const page=await context.newPage();
  const source=fs.readFileSync(require('node:path').join(__dirname,'../preview/partner.html'),'utf8');
  let records=[],posts=[],denied=false,external=0,hold=false,release=null;
- const fixture=()=>({policy:{isPartner:true,teamId:'A',canViewRevenue:false,canViewUnitPrice:false},members:[{uid:'fixture',name:'Fixture Person',teamId:'A'}],products:[{id:'sim',name:'Fixture SIM',planIds:['plan_0']}],records});
+ const fixture=()=>({policy:{isPartner:true,teamId:'A',canViewRevenue:false,canViewUnitPrice:false},members:[{uid:'fixture',name:'Fixture Person',teamId:'A'}],products:[{id:'sim',name:'Fixture SIM',planIds:['plan_0'],cashbackPlans:[{planId:'cb_0',cashback:0}]}],records});
  await page.route('**/*',async route=>{
   const req=route.request(),url=new URL(req.url());
   if(url.hostname==='isolated.test')return route.fulfill({contentType:'text/html',body:source.replace('const PARTNER_GATEWAY_URL = "";','const PARTNER_GATEWAY_URL = "https://gateway.test";')});
@@ -17,7 +17,7 @@ const assert=require('node:assert/strict');
    if(denied)return route.fulfill({status:403,contentType:'application/json',body:'{}'});
    if(req.method()==='POST'){
     const body=req.postDataJSON();posts.push(body);
-    records=[{id:'fixture-record',uid:body.uid,teamId:'A',date:body.date,memberNameSnapshot:'Fixture Person',totalCount:body.entries[0]?.count||0,reportStatus:body.reportStatus,recordVersion:'2026-10-27T00:00:00Z',results:{item_0:{productId:'sim',planId:'plan_0',count:body.entries[0]?.count||0}}}];
+    records=[{id:'fixture-record',uid:body.uid,teamId:'A',date:body.date,memberNameSnapshot:'Fixture Person',totalCount:body.entries[0]?.count||0,reportStatus:body.reportStatus,recordVersion:'2026-10-27T00:00:00Z',results:{item_0:{productId:'sim',planId:'cb_0',count:body.entries[0]?.count||0}}}];
     return route.fulfill({contentType:'application/json',body:'{"saved":true}'});
    }
    if(hold)await new Promise(resolve=>{release=resolve;});
@@ -28,6 +28,7 @@ const assert=require('node:assert/strict');
  await page.goto('https://isolated.test/');
  await page.locator('#productRows input').waitFor();
  assert.equal(await page.locator('#teamCount').innerText(),'0');
+ assert.match(await page.locator('#productRows label').first().innerText(),/CB 0円/);
  console.log('PASS isolated partner dashboard renders at mobile viewport');
  await page.locator('#productRows input').fill('2');
  await page.locator('#saveButton').click();
