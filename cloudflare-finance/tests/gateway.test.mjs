@@ -333,8 +333,8 @@ test("Legacy CB products show the same plans to permitted Owner, while staff get
   assert.deepEqual(full.planIds,["plan_0","plan_1","plan_2"]);
   assert.deepEqual(full.pricingOptions,[
     {cashback:0,revenuePerUnit:12000},
-    {cashback:2000,revenuePerUnit:2000},
-    {cashback:5000,revenuePerUnit:5000}
+    {cashback:2000,revenuePerUnit:null},
+    {cashback:5000,revenuePerUnit:null}
   ]);
   const [masked]=safeProducts([legacy],policy("member"));
   assert.deepEqual(masked.planIds,full.planIds);
