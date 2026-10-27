@@ -227,6 +227,9 @@ function withoutAmounts(str) {
     .replace(/[¥￥]\s*[0-9][0-9,.]*(?:万円|千円|円)?/gi,"")
     .replace(/[0-9][0-9,.]*\s*(?:万円|千円|円)/gi,"")
     .trim().replace(/[-()\s]+$/g,"");
+  // Free text such as 単価一万円 must never be treated as harmless.
+  if(/(?:単価|売上|粗利|利益|報酬|原価|卸値|手数料|収益|売価|価格|税込|税抜|[一二三四五六七八九十百千万壱弐参拾]+円)/.test(original))
+    return "商材";
   // Never publish a doubtful money-bearing label to an unapproved user.
   if(/[¥￥]|[0-9][0-9,.]*\s*(?:円|万円|千円)/i.test(candidate))
     return "商材";
@@ -243,6 +246,8 @@ function safeProducts(all,policy) {
     // Omitting them here breaks older CB rows even for Owner/Leader.
     const plans=securePricing(p);
     safe.planIds=plans.map(v=>v.planId);
+    // Cashback is customer-facing; never disclose internal price or sales data.
+    if(policy.isPartner) safe.cashbackPlans=plans.map(v=>({planId:"cb_"+v.cashback,cashback:v.cashback}));
     if(policy.canViewUnitPrice){
       safe.revenue=p.revenue;
       safe.pricingOptions=plans.map(({cashback,revenuePerUnit})=>({cashback,revenuePerUnit}));
@@ -285,6 +290,10 @@ function safeRecords(all,policy,products=[]) {
         try{
           planId=securePricing(product).find(p=>p.cashback===Number(result.cashback||0))?.planId||null;
         }catch{planId=null;}
+      }
+      if(policy.isPartner && planId!==null){
+        const cb=securePricing(product).find(p=>p.planId===planId)?.cashback;
+        planId=Number.isSafeInteger(cb)?"cb_"+cb:null;
       }
       const safe={productId,planId,productName:withoutAmounts(result.productName),
         count:result.count};
