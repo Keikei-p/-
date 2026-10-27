@@ -6,7 +6,7 @@
 **このブランチは計画と移行準備のみ。Firestore 本番ルール、実績、料金、ユーザー情報は一切変更していない。**
 
 ## 作成したもの
-- `security/public-projection.mjs`: 保存実績・商材・訂正履歴から、売上・単価・CB情報を一切含まない別ドキュメントを生成（許可したキーだけを構築）
+- `security/public-projection.mjs`: 保存実績・商材・訂正履歴から、売上・単価・CB情報を一切含まない別ドキュメントを生成（許可したキーだけを構築）。加えて金額スコアで並べ替えても公開結果は**順位・名前だけ**となるランキング投影を追加
 - `security/prepare-projection.mjs`: オーナーの保存JSONをSHA-256検証し、会社ID・件数をチェック。ローカルに会社内共有用投影データだけを書き出す（Firestoreへ書き込まない）
 - `security/firestore.phase1.rules`: 新しい分離コレクションのための**未適用**ルール。既存ルールへ直接反映せず保管
 - `tests/public-projection.test.mjs`: ネストした結果の金額混入防止など7項目
@@ -14,7 +14,7 @@
 ## 段階移行の必須手順
 1. **既存データの確定バックアップ**：月別・年別のJSONをオーナーが書き出し、2か所で保管・検証
 2. **検証環境**：実本番データを直接使用せず、匿名化したテスト会社・メンバー・売上をエミュレータに用意
-3. **新しい安全なコレクション作成**：`publicRecords`, `publicProducts`, `publicRecordCorrections`。完全な過去件数を確認し、比較表を保存
+3. **新しい安全なコレクション作成**：`publicRecords`, `publicProducts`, `publicRecordCorrections`, `publicRankings`。完全な過去件数を確認し、比較表を保存
 4. **アプリの参照先を分離**：協力店・一般メンバーは public 側のみ参照。売上承認権限は finance 側のみ参照。非権限者は原本参照APIを呼ばない
 5. **書込み先を分離**：全メンバーの通常登録は件数/報告を public に書く。売上金額は別の管理用データとしてサーバーまたは権限があるオーナーだけが承認・確定。過去単価履歴を別保存し、一般メンバーに配布しない
 6. **安全性試験**：別会社ユーザー、一般メンバー、協力店リーダー、売上許可ありリーダー、オーナーで、読み込み・作成・更新・削除を全パターン実行
@@ -33,3 +33,6 @@ node --test tests/public-projection.test.mjs
 node security/prepare-projection.mjs ./sales-archive.json ./projection-preview
 ```
 出力先フォルダは個人情報を含むのでGitHubへコミットしない。
+
+## 順位だけの公開設計
+`projectRankOnly` はオーナー/サーバー上で金額に基づく順位を計算するが、公開データは `id`, `name`, `rank` のみ。件数・売上金額・単価・計算元のscoreは出力しない。全社/班/商材別のフィルタリングは安全なスコープを定めてから実装し、旧ランキング画面を改修して初めて公開できる。
