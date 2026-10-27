@@ -88,7 +88,7 @@ export function projectRankOnly({companyId,period,kind,participants}){
   const key=id(p.id),name=text(p.name,80),score=Number(p.score);
   if(seen.has(key))throw Error("Duplicate rank ID");
   seen.add(key);
-  if(!Number.isSafeInteger(score)||score<0)throw Error("Invalid rank score");
+  if(p.score==null||p.score===""||!Number.isSafeInteger(score)||score<0)throw Error("Invalid rank score");
   return {id:key,name,score};
  }).sort((a,b)=>b.score-a.score||a.id.localeCompare(b.id));
  const ranks=sorted.map((p,i)=>({
