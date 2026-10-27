@@ -39,7 +39,7 @@ jobs:
           fi
 
       - name: Test LINE reminder scheduling, completion and retry safety
-        run: node --test cloudflare-line/tests/worker.test.mjs
+        run: node --test cloudflare-line/tests/*.test.mjs
 
       - name: Install Functions dependencies
         working-directory: functions
