@@ -508,6 +508,11 @@ export default {
       const archiveYear=url.searchParams.get("year")||"";
       if(!/^20\d{2}$/.test(archiveYear))
         return safeJSON({error:"invalid_year"},400,origin);
+      // A disabled archive write must not even read money from Firestore.
+      if(route==="/v1/owner-annual-archive" && request.method==="POST" &&
+         (env.FINANCE_ARCHIVE_WRITE_APPROVAL!=="OWNER_APPROVED_IMMUTABLE_R2" ||
+          !env.SALES_PRIVATE_ARCHIVES?.put || !env.SALES_PRIVATE_ARCHIVES?.get))
+        return safeJSON({error:"archive_storage_not_released"},503,origin);
       const auth=request.headers.get("authorization")||"";
       if(!auth.startsWith("Bearer "))
         return safeJSON({error:"authorization_required"},401,origin);
