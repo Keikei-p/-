@@ -22822,10 +22822,10 @@ function normalizeNotificationSettings(
     eveningAutoReportEnabled:
       data.eveningAutoReportEnabled === true,
     morningAutoReportTime:
-      /^([01]\\d|2[0-3]):[0-5]\\d$/.test(data.morningAutoReportTime || "")
+      /^([01]\d|2[0-3]):[0-5]\d$/.test(data.morningAutoReportTime || "")
         ? data.morningAutoReportTime : "09:00",
     eveningAutoReportTime:
-      /^([01]\\d|2[0-3]):[0-5]\\d$/.test(data.eveningAutoReportTime || "")
+      /^([01]\d|2[0-3]):[0-5]\d$/.test(data.eveningAutoReportTime || "")
         ? data.eveningAutoReportTime : "20:00",
     reportAutoWeekdays:
       Array.isArray(data.reportAutoWeekdays)
@@ -23627,7 +23627,7 @@ saveNotificationSettingsButton.onclick =
       notificationReportWeekdays.querySelectorAll("[data-report-weekday]:checked")
     ).map(input => Number(input.dataset.reportWeekday));
     const reportTimeValid = value => {
-      const match = String(value || "").match(/^([01]\\d|2[0-3]):([0-5]\\d)$/);
+      const match = String(value || "").match(/^([01]\d|2[0-3]):([0-5]\d)$/);
       return !!match && Number(match[2]) % 5 === 0;
     };
     if (reportsEnabled && !lineGroupId) {
