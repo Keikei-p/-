@@ -73,3 +73,29 @@ export function auditNoFinancialKeys(output){
  };
  visit(output,"projection");return true;
 }
+
+/**
+ * Compute a rank-only view in a trusted owner/server context.
+ * Monetary scores are used for sorting in memory but NEVER serialized.
+ */
+export function projectRankOnly({companyId,period,kind,participants}){
+ const company=id(companyId),dateMonth=text(period,7),category=text(kind,30);
+ if(!/^\d{4}-\d{2}$/.test(dateMonth))throw Error("Invalid month");
+ if(!["member","team","product"].includes(category))throw Error("Invalid ranking type");
+ if(!Array.isArray(participants)||participants.length>2000)throw Error("Invalid ranking source");
+ const seen=new Set();
+ const sorted=participants.map(p=>{
+  const key=id(p.id),name=text(p.name,80),score=Number(p.score);
+  if(seen.has(key))throw Error("Duplicate rank ID");
+  seen.add(key);
+  if(!Number.isSafeInteger(score)||score<0)throw Error("Invalid rank score");
+  return {id:key,name,score};
+ }).sort((a,b)=>b.score-a.score||a.id.localeCompare(b.id));
+ const ranks=sorted.map((p,i)=>({
+  id:p.id,name:p.name,rank:i===0||p.score!==sorted[i-1].score?i+1:0
+ }));
+ let rank=0;
+ for(const p of ranks){if(p.rank!==0)rank=p.rank;else p.rank=rank;}
+ const published={companyId:company,period:dateMonth,kind:category,ranks};
+ auditNoFinancialKeys(published);return published;
+}
