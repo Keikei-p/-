@@ -375,7 +375,13 @@ async function financeView(env,principal,fetcher=fetch,{partnerOnly=false}={}){
       .formatToParts(new Date());
     const y=parts.find(p=>p.type==="year")?.value;
     const m=parts.find(p=>p.type==="month")?.value;
-    payload.companyCountRanking=buildCompanyCountRanking(records,policy.companyId,y+"-"+m);
+    try{
+      payload.companyCountRanking=buildCompanyCountRanking(records,policy.companyId,y+"-"+m);
+    }catch{
+      // Legacy duplicate daily documents require review. Never let an
+      // optional leaderboard disable the Owner's existing finance view.
+      payload.companyCountRankingError="duplicate_or_inconsistent_records";
+    }
   }
   if(partnerOnly)payload.members=members;
   return payload;
@@ -438,7 +444,7 @@ export default {
           firestoreQuery(env,"teams",policy.companyId),
           ownerMemberList(env,policy)
         ]);
-        const ranking=buildCompanyCountRanking(records,policy.companyId,month);
+        const ranking=buildCompanyCountRanking(records,policy.companyId,month,teams);
         const names=new Map(teams.map(t=>[t.id,withoutAmounts(t.name||t.id)]));
         return safeJSON({month,ranking:ranking.ranking.map(row=>({...row,
           teamName:names.get(row.teamId)||row.teamId})),
