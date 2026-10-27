@@ -60,3 +60,10 @@ test("rank-only publication strips money and counts while preserving ordering",(
 test("invalid numeric ranking inputs fail closed",()=>{
  assert.throws(()=>projectRankOnly({companyId:"c1",period:"2026-10",kind:"member",participants:[{id:"x",score:""}]}));
 });
+
+test("legacy product names never expose CB or yen-denominated tiers",()=>{
+ const p=projectPublicProduct({...product,name:"電気 CB20000円"});
+ assert.equal(p.name,"商材名はオーナー確認中");
+ const r=projectCountRecord({...record,results:{p1:{productId:"p1",productName:"光 2万円CB",count:5,revenuePerUnit:20000}}});
+ assert.equal(r.results[0].productName,"商材名はオーナー確認中");
+});
