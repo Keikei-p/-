@@ -12,6 +12,9 @@ test("Partner UI is OFF by default, has no raw Firestore SDK and uses protected 
   assert.match(html,/\/v1\/partner-dashboard/);
   assert.match(html,/\/v1\/count-record/);
   assert.match(html,/\.getIdToken\(/);
+  assert.match(html,/product\.cashbackPlans/);
+  assert.match(html,/CB /);
+  assert.doesNotMatch(html,/option\.revenuePerUnit|option\.totalRevenue/);
   assert.match(html,/\.emailVerified/);
   assert.match(html,/record\.recordVersion/);
   assert.match(html,/\bpartner-dashboard/);
