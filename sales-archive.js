@@ -141,7 +141,7 @@ function makePdf(){
  '<p>'+esc(p.company.name)+" / "+esc(p.period)+'</p><div class="metric">獲得件数 '+esc(p.summary.count)+'件 ／ 売上総額 '+esc(money(p.summary.revenue))+'</div>'+
  '<p class="note">日別実績：'+p.summary.dailyRecords+'件　/　出力：'+esc(p.exportedAt)+'</p>'+
  table(p.byTeam,"班別実績")+table(p.byProduct,"商材別実績")+table(p.byMember,"個人別実績")+
- '<p class="note">計算基準：保存された単価×件数。現在の単価を使う画面と金額が異なる場合があります。'+(p.warnings.length?" ⚠ 要確認："+p.warnings.length+"件":"")+" 詳細・訂正履歴は復元用JSONを参照。</p></body></html>';
+ '<p class="note">計算基準：保存された単価×件数。現在の単価を使う画面と金額が異なる場合があります。'+(p.warnings.length?" ⚠ 要確認："+p.warnings.length+"件":"")+" 詳細・訂正履歴は復元用JSONを参照。</p></body></html>";
  printWindow.document.open();printWindow.document.write(html);printWindow.document.close();printWindow.focus();
 }
 button.addEventListener("click",()=>{
