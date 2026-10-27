@@ -443,7 +443,7 @@ export default {
           const stored=policy.isOwner?null:await firestoreGet(env,"individualRankingAccess/"+grantId);
           if(!rankingAccess(policy,stored))throw httpError(403,"ranking_not_permitted");
           const month=url.searchParams.get("month");
-          if(!/^\\d{4}-(0[1-9]|1[0-2])$/.test(month||""))
+          if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month||""))
             return safeJSON({error:"invalid_month"},400,origin);
           const [records,products,members]=await Promise.all([
             firestoreQuery(env,"records",policy.companyId),
