@@ -404,6 +404,30 @@ $("listAnnual").addEventListener("click",async()=>{
    const row=document.createElement("div");row.className="row";
    const desc=document.createElement("span");
    desc.textContent=(item.savedAt||"保存済み")+" ／ SHA-256 "+item.sha256.slice(0,12);
+   const show=document.createElement("button");show.type="button";
+   show.className="secondary";show.textContent="保存資料を開く";
+   show.addEventListener("click",async()=>{
+    show.disabled=true;
+    try{
+     requireGateway();
+     const user=auth.currentUser;
+     if(!user?.emailVerified)throw Error("オーナーとして再ログインしてください。");
+     const response=await fetch(OWNER_GATEWAY_URL+"/v1/owner-annual-archive?year="+
+      encodeURIComponent(year)+"&sha256="+encodeURIComponent(item.sha256),{
+       headers:{Authorization:"Bearer "+await user.getIdToken()},cache:"no-store"});
+     if(!response.ok)throw Error("保存資料を読み込めません。");
+     const raw=await response.text();
+     const hash=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(raw));
+     const actual=[...new Uint8Array(hash)].map(x=>x.toString(16).padStart(2,"0")).join("");
+     if(actual!==item.sha256)throw Error("保管データの整合性が確認できません。");
+     const packageData=JSON.parse(raw);
+     if(packageData.year!==year||packageData.schema!=="sales-annual-archive-v1")
+       throw Error("保存資料の形式が不正です。");
+     if(gen!==annualState.generation)return;
+     renderAnnual(packageData.report);
+     status(year+"年度の保存済み資料を復元表示しました。");
+    }catch(e){status(e.message,true);}finally{show.disabled=false;}
+   });
    const download=document.createElement("button");download.type="button";
    download.className="secondary";download.textContent="原本コピーを保存";
    download.addEventListener("click",async()=>{
@@ -421,7 +445,8 @@ $("listAnnual").addEventListener("click",async()=>{
      a.click();URL.revokeObjectURL(blobUrl);
     }catch(e){status(e.message,true);}finally{download.disabled=false;}
    });
-   row.append(desc,download);parent.append(row);
+   const actions=document.createElement("div");actions.className="actions";
+   actions.append(show,download);row.append(desc,actions);parent.append(row);
   }
   if(!(result.files||[]).length)parent.textContent="まだ保存済み資料はありません。";
  }catch(e){if(gen===annualState.generation)status(e.message,true);}
