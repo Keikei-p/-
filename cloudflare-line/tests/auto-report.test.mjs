@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
+import vm from "node:vm";
 import {buildCountOnlyReport,reportTimeDue,previousDay,safeReportLabel} from "../src/auto-report.js";
 const id="companyA";
 const teams=[
@@ -107,4 +108,27 @@ test("Owner notice tab has independent default-OFF switches; worker kill switch 
  assert.match(rules,/'morningAutoReportEnabled'/);
  assert.match(rules,/'eveningAutoReportEnabled'/);
  assert.match(toml,/AUTO_REPORTS_ENABLED = "disabled"/);
+});
+
+test("Notification settings load actual selected times; default OFF survives reload",()=>{
+ const html=readFileSync(new URL("../../index.html",import.meta.url),"utf8");
+ const start=html.indexOf("function normalizeNotificationSettings(");
+ const end=html.indexOf("async function loadNotificationSettings(",start);
+ assert.ok(start>0&&end>start,"source extractor found exact normalization boundaries");
+ const code=html.slice(start,end);
+ const actual=vm.runInNewContext(code+"; normalizeNotificationSettings({morningAutoReportEnabled:true,morningAutoReportTime:'09:15',eveningAutoReportTime:'20:45',reportAutoWeekdays:[0,6]});");
+ assert.equal(actual.morningAutoReportEnabled,true);
+ assert.equal(actual.eveningAutoReportEnabled,false);
+ assert.equal(actual.morningAutoReportTime,"09:15");
+ assert.equal(actual.eveningAutoReportTime,"20:45");
+ assert.deepEqual(Array.from(actual.reportAutoWeekdays),[0,6]);
+ const defaults=vm.runInNewContext(code+";normalizeNotificationSettings(null);");
+ assert.equal(defaults.morningAutoReportEnabled,false);
+ assert.equal(defaults.eveningAutoReportEnabled,false);
+ assert.equal(defaults.morningAutoReportTime,"09:00");
+ assert.equal(defaults.eveningAutoReportTime,"20:00");
+});
+test("Cashback codes inside catalog labels cannot leak through automatic LINE report",()=>{
+ assert.equal(safeReportLabel("NURO CB20000","商材"),"商材");
+ assert.equal(safeReportLabel("キャッシュバック5000","商材"),"商材");
 });
