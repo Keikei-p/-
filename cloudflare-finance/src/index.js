@@ -228,7 +228,7 @@ function withoutAmounts(str) {
     .replace(/[0-9][0-9,.]*\s*(?:万円|千円|円)/gi,"")
     .trim().replace(/[-()\s]+$/g,"");
   // Free text such as 単価一万円 must never be treated as harmless.
-  if(/(?:単価|売上|粗利|利益|報酬|原価|卸値|手数料|収益|売価|価格|税込|税抜|[一二三四五六七八九十百千万壱弐参拾]+円)/.test(original))
+  if(/(?:単価|売上|粗利|利益|報酬|原価|卸値|手数料|収益|売価|価格|税込|税抜|[一二三四五六七八九十百千万壱弐参拾]+円)/.test(candidate))
     return "商材";
   // Never publish a doubtful money-bearing label to an unapproved user.
   if(/[¥￥]|[0-9][0-9,.]*\s*(?:円|万円|千円)/i.test(candidate))
