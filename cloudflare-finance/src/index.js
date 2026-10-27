@@ -1,4 +1,5 @@
 import {visibleMoney} from "./revenue-scope.js";
+import {buildCompanyCountRanking} from "./company-count-ranking.mjs";
 /**
  * Protected financial-view gateway (read-only foundation).
  * No production data changes: GET only. There is NO record-write endpoint.
@@ -348,6 +349,16 @@ async function financeView(env,principal,fetcher=fetch,{partnerOnly=false}={}){
     canViewRevenue:policy.canViewRevenue,canViewUnitPrice:policy.canViewUnitPrice,isOwner:policy.isOwner,isPartner:policy.isPartner,
     needsPermissionReview:policy.needsPermissionReview,teamId:policy.teamId
   },products:safeProducts(products,policy),records:safeRecords(records,policy,products),revenueGoals:safeGoals(revenueGoals,policy)};
+  // Count-only monthly leaderboard uses the same records for internal teams
+  // and external partner teams, avoiding a second registration or double count.
+  // Only owners receive whole-company ranking data.
+  if(policy.isOwner){
+    const parts=new Intl.DateTimeFormat("en-US",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit"})
+      .formatToParts(new Date());
+    const y=parts.find(p=>p.type==="year")?.value;
+    const m=parts.find(p=>p.type==="month")?.value;
+    payload.companyCountRanking=buildCompanyCountRanking(records,policy.companyId,y+"-"+m);
+  }
   if(partnerOnly)payload.members=members;
   return payload;
 }
