@@ -83,6 +83,35 @@ function decodeRecord(r,warnings){
  if(r.totalCount!=null&&cnt!==Number(r.totalCount))warnings.push("実績 "+r.id+"：明細件数と保存件数が不一致");
  return rows;
 }
+function approvedCurrentUnit(row,products){
+ const product=(products||[]).find(x=>x.id===row.productId);
+ if(!product)return null;
+ const options=Array.isArray(product.pricingOptions)?product.pricingOptions:[];
+ const hasCB=row.cashback!==null&&row.cashback!==undefined&&row.cashback!=="";
+ if(options.length){
+  if(!hasCB&&options.length!==1)return null;
+  const cb=hasCB?Number(row.cashback):Number(options[0].cashback??0);
+  const matches=options.filter(x=>Number(x.cashback??0)===cb);
+  if(matches.length!==1)return null;
+  const rate=matches[0].revenuePerUnit;
+  if(rate==null||rate==="")return null;
+  const n=Number(rate);return Number.isSafeInteger(n)&&n>=0?n:null;
+ }
+ // Legacy catalog plans may hide multiple price tiers. Never guess their current price.
+ if(Array.isArray(product.cashbackOptions)&&
+    (product.cashbackOptions.length>1||product.cashbackOptions.some(x=>Number(x)>0)))return null;
+ const n=Number(product.revenue);
+ return product.revenue!=null&&Number.isSafeInteger(n)&&n>=0?n:null;
+}
+function appendRevaluation(rows,products){
+ return rows.map(row=>{
+  const currentUnit=approvedCurrentUnit(row,products);
+  const hasAmount=Number.isSafeInteger(row.count)&&row.count>=0&&currentUnit!==null&&Number.isSafeInteger(row.count*currentUnit);
+  const currentAmount=hasAmount?row.count*currentUnit:null;
+  return {...row,currentApprovedUnit:currentUnit,currentApprovedAmount:currentAmount,
+   difference:currentAmount!==null&&row.amount!==null?currentAmount-row.amount:null};
+ });
+}
 async function sha(payload){
  if(!crypto?.subtle)throw Error("この環境は整合性検証（SHA-256）に対応していません。");
  const h=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(JSON.stringify(payload)));
@@ -109,15 +138,18 @@ async function load(){
  const collections=snaps.map(s=>s.docs.map(d=>({id:d.id,...d.data()})));
  const records=collections[0].filter(r=>p.contains(r.date)).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
  const corrections=collections[2].filter(r=>p.contains(r.recordDate));
- const warnings=[],rows=records.flatMap(r=>decodeRecord(r,warnings));
+ const warnings=[],rows=appendRevaluation(records.flatMap(r=>decodeRecord(r,warnings)),collections[1]);
  const summary={dailyRecords:records.length,productRows:rows.length,count:rows.reduce((n,r)=>n+(r.count||0),0),
-  revenue:rows.reduce((n,r)=>n+(r.amount||0),0),warningCount:warnings.length};
+  revenue:rows.reduce((n,r)=>n+(r.amount||0),0),warningCount:warnings.length,
+  currentPriceComparableRevenue:rows.reduce((n,r)=>n+(r.currentApprovedAmount??0),0),
+  savedComparableRevenue:rows.reduce((n,r)=>n+(r.currentApprovedAmount===null?0:(r.amount||0)),0),
+  unresolvedCurrentPrices:rows.filter(r=>r.currentApprovedAmount===null).length};
  const payload={schemaVersion:1,exportedAt:new Date().toISOString(),company:owned,period:p.value,periodMode:p.mode,
-  moneyBasis:"saved_unit_price",summary,warnings,rows,
+  moneyBasis:"saved_unit_price",revaluationBasis:"current_approved_catalog_where_unambiguous",summary,warnings,rows,
   byTeam:group(rows,"teamId","teamName"),byMember:group(rows,"memberUid","memberName"),byProduct:group(rows,"productId","productName"),
   original:{records,products:collections[1],recordCorrections:corrections,teams:collections[3]}};
  bundle={kind:"sales-archive",version:1,checksumAlgorithm:"SHA-256",checksum:await sha(payload),payload};
- $("archiveSummary").textContent=p.value+" ｜ 日別実績 "+summary.dailyRecords+"件 ｜ 獲得 "+summary.count+"件 ｜ 保存単価ベース "+money(summary.revenue)+" ｜ 訂正 "+corrections.length+"件 ｜ 照合："+(warnings.length?"要確認 "+warnings.length+"件":"警告なし");
+ $("archiveSummary").textContent=p.value+" ｜ 日別実績 "+summary.dailyRecords+"件 ｜ 獲得 "+summary.count+"件 ｜ 保存単価ベース "+money(summary.revenue)+" ｜ 現行単価との比較差額 "+money(summary.currentPriceComparableRevenue-summary.savedComparableRevenue)+"（比較不能 "+summary.unresolvedCurrentPrices+"行） ｜ 訂正 "+corrections.length+"件 ｜ 照合："+(warnings.length?"要確認 "+warnings.length+"件":"警告なし");
  status(warnings.length?"⚠ 不一致や未設定があります。確定資料として使う前に原票を確認してください。\n"+warnings.slice(0,10).join("\n"):"読取専用で取得しました。元データに変更はありません。");
  outputButtons.forEach(id=>$(id).disabled=false);
 }
@@ -133,7 +165,7 @@ function csvCell(v){
 }
 function makeCsv(){
  const cols=[["date","日付"],["recordId","実績ID"],["teamName","班"],["memberName","担当者"],["workLocation","現場"],
-  ["productId","商材ID"],["productName","商材"],["cashback","CB"],["count","件数"],["revenuePerUnit","保存単価"],["amount","売上"]];
+  ["productId","商材ID"],["productName","商材"],["cashback","CB"],["count","件数"],["revenuePerUnit","保存単価"],["amount","売上"],["currentApprovedUnit","現在承認単価"],["currentApprovedAmount","現在単価による再評価額"],["difference","差額"]];
  const lines=[cols.map(c=>csvCell(c[1])).join(",")];
  for(const row of bundle.payload.rows)lines.push(cols.map(c=>csvCell(row[c[0]])).join(","));
  download(fileBase()+".csv","\ufeff"+lines.join("\r\n"),"text/csv;charset=utf-8");
@@ -153,7 +185,7 @@ function makePdf(){
  '@media print{button{display:none}body{margin:0;padding:8mm}tr{break-inside:avoid}}</style></head><body>'+
  '<button onclick="window.print()">印刷 / PDFとして保存</button><h1>営業実績報告書</h1>'+
  '<p>'+esc(p.company.name)+" / "+esc(p.period)+'</p><div class="metric">獲得件数 '+esc(p.summary.count)+'件 ／ 売上総額 '+esc(money(p.summary.revenue))+'</div>'+
- '<p class="note">日別実績：'+p.summary.dailyRecords+'件　/　出力：'+esc(p.exportedAt)+'</p>'+
+ '<p class="note">日別実績：'+p.summary.dailyRecords+'件　/　現行単価との差額（比較可能な行のみ）：'+esc(money(p.summary.currentPriceComparableRevenue-p.summary.savedComparableRevenue))+' / 比較不能な行：'+p.summary.unresolvedCurrentPrices+'　/　出力：'+esc(p.exportedAt)+'</p>'+
  table(p.byTeam,"班別実績")+table(p.byProduct,"商材別実績")+table(p.byMember,"個人別実績")+
  '<p class="note">計算基準：保存された単価×件数。現在の単価を使う画面と金額が異なる場合があります。'+(p.warnings.length?" ⚠ 要確認："+p.warnings.length+"件":"")+" 詳細・訂正履歴は復元用JSONを参照。</p></body></html>";
  printWindow.document.open();printWindow.document.write(html);printWindow.document.close();printWindow.focus();
