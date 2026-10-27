@@ -54,12 +54,15 @@ test("External partner receives ONLY own-team counts and never financial details
   ];
   const view={products:safeProducts(products,partner),records:safeRecords(records,partner,products),
     goals:safeGoals([{id:"goal-1",teamId:"A",targetRevenue:500000}],partner)};
+  // CB 5000 is intentionally visible to partners; sales price is not.
+  assert.deepEqual(view.products[0].cashbackPlans,[{planId:"cb_5000",cashback:5000}]);
+  assert.equal(view.records[0].results.item_0.planId,"cb_5000");
   assert.equal(view.records.length,1);
   assert.equal(view.records[0].uid,"staff-A");
   assert.equal(view.records[0].totalCount,2);
   assert.deepEqual(view.goals,[]);
   const output=JSON.stringify(view);
-  for(const secret of ["totalRevenue","revenuePerUnit","canViewRevenue","990000","other-team-secret","staff-B","他班秘匿","5000","10000","20000"]){
+  for(const secret of ["totalRevenue","revenuePerUnit","canViewRevenue","990000","other-team-secret","staff-B","他班秘匿","10000","20000"]){
     assert.equal(output.includes(secret),false,"leaked "+secret);
   }
   // Either document being stamped is enough to DENY finance while onboarding.
