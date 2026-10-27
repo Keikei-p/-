@@ -24,9 +24,7 @@ const ids=new Set();
 for(const r of original.records){
  if(!r||r.companyId!==companyId||!r.id||ids.has(r.id))die("Duplicate record ID or wrong company");
  ids.add(r.id);
- if(typeof r.date!=="string"||!r.date.startsWith(p.period+"-")&&!(p.periodMode==="month"&&r.date.startsWith(p.period+"-"))) {
-  if(!(p.periodMode==="year"&&r.date.startsWith(p.period+"-")))die("Date outside archive period");
- }
+ if(typeof r.date!=="string"||!r.date.startsWith(p.period+"-"))die("Date outside archive period");
  let countOne=0,amountOne=0;
  const entries=r.results&&typeof r.results==="object"?Object.values(r.results):r.productId?[r]:[];
  for(const item of entries){
