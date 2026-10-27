@@ -115,7 +115,7 @@ test("R2 immutable package is checksum-verified and contains original records fo
  const key=[...db.store.keys()][0];
  db.store.set(key,db.store.get(key).replace('"revenue":267500','"revenue":267501'));
  await assert.rejects(readImmutableArchive(db,cid,"2025",put.sha256),/archive_checksum_mismatch/);
- await assert.rejects(readImmutableArchive(db,"companyB","2025",put.sha256),/invalid_archive_read|^$/);
+ assert.equal(await readImmutableArchive(db,"companyB","2025",put.sha256),null);
 });
 test("Missing bucket or too-large backup returns explicit safe refusal",async()=>{
  const r=buildAnnualSalesReport(args),pkg=makeArchivePackage({...args,report:r,createdAt:"2026-10-28T00:00:00Z"});
