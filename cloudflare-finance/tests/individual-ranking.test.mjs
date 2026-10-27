@@ -31,12 +31,14 @@ test("Company sales-ranked list has NO price or revenue fields, incl. CB and rep
  ];
  const before=JSON.stringify([records,products,members]);
  const ranks=buildPrivateRevenueRanking(records,products,members,cid,month);
- assert.deepEqual(ranks.map(x=>[x.uid,x.rank,x.count]),[
-  ["three",1,5],["two",2,5],["one",3,5]
+ assert.deepEqual(ranks.map(x=>[x.uid,x.rank]),[
+  ["three",1],["two",2],["one",3]
  ]);
  assert.equal(JSON.stringify([records,products,members]),before);
- assert.deepEqual(Object.keys(ranks[0]).sort(),["count","name","rank","uid"]);
- assert.doesNotMatch(JSON.stringify(ranks),/totalRevenue|revenue|price|unit|22500|20000|10000|267500/i);
+ assert.deepEqual(Object.keys(ranks[0]).sort(),["name","rank","uid"]);
+ assert.equal("count" in ranks[0],false);
+ assert.equal("revenue" in ranks[0],false);
+ assert.doesNotMatch(JSON.stringify(ranks),/totalRevenue|revenue|price|unit|count|22500|20000|10000|267500/i);
 });
 test("Rank access is independent of canViewRevenue, owner override, partner deny",()=>{
  const p={companyId:cid,uid:"one",isOwner:false,isPartner:false,canViewRevenue:false};
