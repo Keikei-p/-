@@ -26,7 +26,7 @@ dialog.innerHTML='<div class="body"><div style="display:flex;justify-content:spa
  '<button type="button" id="archiveLoad">サーバーの実績を確認</button></div>'+
  '<div id="archiveSummary" aria-live="polite">期間を選んでデータを確認してください。</div>'+
  '<div class="actions"><button id="archivePdf" disabled>📄 PDF印刷</button><button id="archiveCsv" disabled>📊 Excel用CSV</button><button id="archiveJson" disabled>🔐 復元用JSON</button>'+
- '<button id="archiveVerify">✓ 保存JSONを検証</button><input type="file" id="archiveFile" accept=".json,application/json" hidden></div>'+
+ '<button id="archiveVerify">📂 保存JSONを再表示・検証</button><input type="file" id="archiveFile" accept=".json,application/json" hidden></div>'+
  '<div id="archiveStatus" aria-live="polite"></div>'+
  '<p><small>集計金額は「実績に保存された単価×件数」で算出します。現在の商材マスターで再計算する画面とは異なる場合があります。JSONには訂正履歴・当時の実績原票・取得時点の商材情報を含みます。自動削除・Firestoreへの復元は未実装です。ファイルは金額と個人情報を含むため、厳重に保管してください。</small></p></div>';
 document.body.appendChild(dialog);
@@ -50,7 +50,11 @@ function period(){
  const value=mode==="month"?$("archiveMonth").value:String($("archiveYear").value);
  if(mode==="month"&&!/^\d{4}-(0[1-9]|1[0-2])$/.test(value)||mode==="year"&&!/^\d{4}$/.test(value))throw Error("対象年月が正しくありません。");
  const prefix=value;
- return {mode,value,contains:d=>typeof d==="string"&&(mode==="year"?d.startsWith(prefix+"-"):d.startsWith(prefix+"-"))};
+ const start=mode==="year"?value+"-01-01":value+"-01";
+ const finish=mode==="year"?(Number(value)+1)+"-01-01":
+    value.slice(5)==="12"?(Number(value.slice(0,4))+1)+"-01-01":
+    value.slice(0,4)+"-"+String(Number(value.slice(5))+1).padStart(2,"0")+"-01";
+ return {mode,value,start,finish,contains:d=>typeof d==="string"&&d>=start&&d<finish};
 }
 function group(rows,idKey,nameKey){
  const map=new Map();
@@ -62,7 +66,7 @@ function decodeRecord(r,warnings){
  const entries=Array.isArray(r.results)?r.results:
   r.results&&typeof r.results==="object"?Object.entries(r.results).map(([productId,row])=>({productId,...row})):
   r.productId?[{productId:r.productId,productName:r.productNameSnapshot,count:r.count,revenuePerUnit:r.revenuePerUnit}]:[];
- if(!entries.length)warnings.push("実績 "+r.id+" の商材明細なし");
+ if(!entries.length&&Number(r.totalCount||0)!==0)warnings.push("実績 "+r.id+" の商材明細なし");
  let subtotal=0,cnt=0,valid=true;
  const rows=entries.map(entry=>{
   const n=Number(entry.count),raw=entry.revenuePerUnit,price=raw===null||raw===undefined||raw===""?null:Number(raw);
@@ -89,8 +93,18 @@ async function load(){
  const owned=await companyForOwner(currentUser);
  if(!owned||!ownerCompany||owned.id!==ownerCompany.id)throw Error("オーナー権限がありません。");
  const names=["records","products","recordCorrections","teams"];
- const queries=names.map(n=>getDocsFromServer(query(collection(db,n),where("companyId","==",owned.id))));
- const snaps=await Promise.all(queries);
+ // Read only the requested range; the two compound indexes in firestore.indexes.json must be deployed first.
+ const makeQuery=n=>n==="records"
+   ?query(collection(db,n),where("companyId","==",owned.id),where("date",">=",p.start),where("date","<",p.finish))
+   :n==="recordCorrections"
+    ?query(collection(db,n),where("companyId","==",owned.id),where("recordDate",">=",p.start),where("recordDate","<",p.finish))
+    :query(collection(db,n),where("companyId","==",owned.id));
+ let snaps;
+ try{snaps=await Promise.all(names.map(n=>getDocsFromServer(makeQuery(n))));}
+ catch(e){
+  if(e?.code==="failed-precondition")throw Error("期間別取得に必要なFirestore複合インデックスが未作成です。管理者がインデックスを公開してから実行してください。全件読込による自動代替は行いません。");
+  throw e;
+ }
  if(auth.currentUser?.uid!==currentUser.uid)throw Error("ログインが変更されました。");
  const collections=snaps.map(s=>s.docs.map(d=>({id:d.id,...d.data()})));
  const records=collections[0].filter(r=>p.contains(r.date)).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
@@ -170,9 +184,13 @@ $("archiveFile").addEventListener("change",async()=>{
  const f=$("archiveFile").files?.[0];if(!f)return;
  try{
   const data=JSON.parse(await f.text());
+  if(!ownerCompany||data?.payload?.company?.id!==ownerCompany.id)throw Error("現在の会社のオーナーが作成した資料のみ表示できます。");
   if(data.kind!=="sales-archive"||data.version!==1||!data.payload||!data.checksum)throw Error("正しい売上保存JSONではありません。");
   if(await sha(data.payload)!==data.checksum)throw Error("内容の整合性確認に失敗しました。破損や改変の可能性があります。");
-  status("✓ JSONの整合性検証OK："+data.payload.period+" / "+data.payload.summary.dailyRecords+"件（Firestoreへの復元は未実施）");
+  bundle=data;outputButtons.forEach(id=>$(id).disabled=false);
+  $("archiveSummary").textContent="📂 保存済み資料を表示中 ／ "+data.payload.period+" ／ 日別実績 "+
+   data.payload.summary.dailyRecords+"件 ／ 獲得 "+data.payload.summary.count+"件 ／ 売上 "+money(data.payload.summary.revenue);
+  status("✓ JSONの整合性検証OK：保存済みファイルを再表示しています。Firestoreのデータと同期・上書き・復元はしていません。");
  }catch(err){status("✕ "+String(err?.message||err));}
  $("archiveFile").value="";
 });
