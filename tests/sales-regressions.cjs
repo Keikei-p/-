@@ -1270,3 +1270,25 @@ test('Count-preservation: display-only revenue helpers cannot write or delete Fi
   assert(priceChangePath.includes('return original'));
   assert(priceChangePath.includes('getProductPricingOptions'));
 });
+
+
+test('Same-name teams never inherit each other financial ranking amounts',()=>{
+ const teams=[{id:'one',name:'合同班',active:true},{id:'two',name:'合同班',active:true},
+  {id:'old',name:'旧班',active:false},{id:'current',name:'旧班',active:true},
+  {id:'unique',name:'唯一班',active:true}];
+ const teamMap={one:{name:'合同班',count:3,revenue:30000},
+  '旧班':{name:'旧班',count:6,revenue:60000},
+  '唯一班':{name:'唯一班',count:4,revenue:40000}};
+ const ctx=context(['buildTeamRankingRows'],{teams,
+  canCurrentUserViewRevenueForTeam:()=>true,
+  buildTeamGoalProgress:()=>({totalTarget:0,totalActual:0,progress:0}),
+  buildTeamRevenueGoalProgress:()=>({targetRevenue:0,actualRevenue:0,progress:0})});
+ const rows=Array.from(ctx.buildTeamRankingRows(teamMap,[],'revenue'));
+ const byId=id=>rows.find(r=>r.id===id);
+ assert.equal(byId('one').revenue,30000);
+ assert.equal(byId('two').revenue,0);
+ assert.equal(byId('two').count,0);
+ assert.equal(byId('current').revenue,0);
+ assert.equal(byId('unique').revenue,40000);
+ assert.equal(rows.reduce((sum,row)=>sum+row.revenue,0),70000);
+});
