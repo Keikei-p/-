@@ -93,13 +93,13 @@ const firebaseConfig={
 const app=initializeApp(firebaseConfig),auth=getAuth(app);
 auth.languageCode="ja";
 const $=id=>document.getElementById(id);
-const state={data:null,loading:false,generation:0,pendingEdit:false,lastSyncVersion:undefined,checkingSignal:false};
+const state={data:null,loading:false,generation:0,pendingEdit:false,lastSyncVersion:undefined,checkingSignal:false,lastDate:null,lastMember:null};
 const jst=Object.fromEntries(new Intl.DateTimeFormat("en-US",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date()).map(p=>[p.type,p.value]));
 const today=jst.year+"-"+jst.month+"-"+jst.day;
 $("recordDate").value=today;
 function notice(msg,err=false){$("message").textContent=msg;$("message").className="message"+(err?" error":"");}
 function clearView(){
-  state.data=null;state.pendingEdit=false;state.lastSyncVersion=undefined;
+  state.data=null;state.pendingEdit=false;state.lastSyncVersion=undefined;state.lastDate=null;state.lastMember=null;
   for(const id of ["member","productRows","recordList"])$(id).replaceChildren();
   for(const id of ["teamLabel","userLabel","entryState"])$(id).textContent="";
   for(const id of ["teamCount","reportedCount"])$(id).textContent="—";
@@ -120,9 +120,10 @@ async function callGateway(route,method="GET",body=null){
     method,headers,cache:"no-store",body:body?JSON.stringify(body):undefined
   });
   if(!response.ok){
-    if(response.status===403)throw Error("協力店の所属班・権限を確認できません。管理者へお問い合わせください。");
-    if(response.status===409)throw Error("ほかの端末で実績が更新されています。画面を更新してから登録してください。");
-    throw Error("安全な通信を完了できませんでした（"+response.status+"）。");
+    const err=Error(response.status===403?"協力店の所属班・権限を確認できません。管理者へお問い合わせください。":
+      response.status===409?"ほかの端末で実績が更新されています。画面を更新してから登録してください。":
+      "安全な通信を完了できませんでした（"+response.status+"）。");
+    err.status=response.status;throw err;
   }
   return response.json();
 }
@@ -187,6 +188,7 @@ function renderAll(){
   }
   if((data.members||[]).some(m=>m.uid===previous))$("member").value=previous;
   renderSummary();renderInputs();
+  state.lastDate=$("recordDate").value;state.lastMember=$("member").value;
 }
 async function refresh(){
   if(state.loading)return;
@@ -223,8 +225,22 @@ onAuthStateChanged(auth,async user=>{
     else await refresh();
   }
 });
-$("recordDate").addEventListener("change",()=>{if(state.data){renderSummary();renderInputs();}});
-$("member").addEventListener("change",()=>{if(state.data)renderInputs();});
+$("recordDate").addEventListener("change",()=>{
+  if(!state.data)return;
+  if(state.pendingEdit && !confirm("編集中の件数を破棄して日付を変更しますか？")){
+    $("recordDate").value=state.lastDate;return;
+  }
+  state.pendingEdit=false;state.lastDate=$("recordDate").value;
+  renderSummary();renderInputs();
+});
+$("member").addEventListener("change",()=>{
+  if(!state.data)return;
+  if(state.pendingEdit && !confirm("編集中の件数を破棄して担当者を変更しますか？")){
+    $("member").value=state.lastMember;return;
+  }
+  state.pendingEdit=false;state.lastMember=$("member").value;
+  renderInputs();
+});
 $("reloadButton").addEventListener("click",()=>{
   if(state.pendingEdit && !confirm("編集中の件数があります。入力内容を破棄して最新データを読み込みますか？"))return;
   refresh();
@@ -284,7 +300,14 @@ async function checkForUpdates(){
       }
     }
   }catch(e){
-    if(generation===state.generation){clearView();notice("権限または更新状態の確認に失敗しました。再読み込みして確認してください。",true);}
+    if(generation===state.generation){
+      if(e.status===401||e.status===403){
+        clearView();
+        notice("閲覧権限が変更されました。オーナーへ確認してください。",true);
+      }else{
+        notice("最新状態の確認に失敗しました。入力途中の件数は保持されています。更新ボタンで再確認してください。",true);
+      }
+    }
   }finally{if(generation===state.generation)state.checkingSignal=false;}
 }
 setInterval(checkForUpdates,60000);
