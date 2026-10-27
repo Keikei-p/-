@@ -12273,15 +12273,10 @@ function applyRevenueVisibility() {
 
   }
 
-  if (
-    individualRankingToggle
-  ) {
-
-    individualRankingToggle.style.display =
-      allowed
-        ? ""
-        : "none";
-
+  // A personal COUNT ranking must remain available without monetary access.
+  // Financial figures inside the ranking are separately protected at render.
+  if (individualRankingToggle) {
+    individualRankingToggle.style.display = "";
   }
 
   if (
@@ -12335,9 +12330,6 @@ function applyRevenueVisibility() {
   ) {
 
     salesAnalysisContent.hidden =
-      true;
-
-    individualRankingContent.hidden =
       true;
 
     revenueChartContent.hidden =
@@ -31204,16 +31196,9 @@ function renderIndividualRanking(
 
   updateRankingLayoutControls("individual");
 
-  if (
-    !canCurrentUserViewRevenue()
-  ) {
-
-    individualRankingCount.textContent =
-      "権限なし";
-
-    return;
-
-  }
+  // Preserve the former revenue ranking for authorized viewers.
+  // Unapproved users see counts only: no amount formatting or revenue sorting.
+  const showRevenue = canCurrentUserViewRevenue();
 
 
   const ranking =
@@ -31222,15 +31207,9 @@ function renderIndividualRanking(
     ).sort(
       (a, b) => {
 
-        const revenueDiff =
-          Number(
-            b.revenue ||
-            0
-          ) -
-          Number(
-            a.revenue ||
-            0
-          );
+        const revenueDiff = showRevenue
+          ? Number(b.revenue || 0) - Number(a.revenue || 0)
+          : 0;
 
         if (
           revenueDiff !==
@@ -31276,7 +31255,7 @@ function renderIndividualRanking(
 
 
   individualRankingCount.textContent =
-    `${ranking.length}人・売上順`;
+    `${ranking.length}人・${showRevenue ? "売上順" : "件数順"}`;
 
 
   if (
@@ -31416,17 +31395,23 @@ function renderIndividualRanking(
         "ranking-value";
 
 
-      value.innerHTML = `
-        <div class="ranking-count">
-          ${formatYen(
-            item.revenue
-          )}
-        </div>
-
-        <div class="ranking-revenue">
-          ${item.count}件
-        </div>
-      `;
+      if (showRevenue) {
+        // Keep the existing Owner/explicit-permission revenue presentation.
+        value.innerHTML = `
+          <div class="ranking-count">
+            ${formatYen(item.revenue)}
+          </div>
+          <div class="ranking-revenue">
+            ${item.count}件
+          </div>
+        `;
+      } else {
+        // Counts only. Do not serialize, calculate or format any money.
+        const countOnly = document.createElement("div");
+        countOnly.className = "ranking-count";
+        countOnly.textContent = `${item.count}件`;
+        value.appendChild(countOnly);
+      }
 
 
       row.appendChild(
