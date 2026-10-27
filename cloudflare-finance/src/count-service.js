@@ -5,6 +5,7 @@
  * record or correction can be deleted by this module.
  */
 import {buildRecordFromCounts,ValidationError} from "./write-plan.js";
+import {visibleMoney} from "./revenue-scope.js";
 
 export class SaveConflict extends Error {
   constructor(reason){super(reason);this.name="SaveConflict";this.status=409;}
@@ -132,7 +133,7 @@ export async function submitCounts(store,principal,input,options={}){
     if(typeof tx.addSyncSignal!=="function")throw Error("secure_sync_not_available");
     tx.addSyncSignal(cid);
     return {recordId,totalCount:built.document.totalCount,
-      totalRevenue:built.document.totalRevenue,canViewRevenue:policy.canViewRevenue,
+      totalRevenue:built.document.totalRevenue,canViewRevenue:visibleMoney(policy,built.document),
       canViewUnitPrice:policy.canViewUnitPrice,corrected:Boolean(existing)};
   });
   // No monetary value in unapproved responses, even when the trusted server

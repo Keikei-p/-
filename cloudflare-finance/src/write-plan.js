@@ -17,6 +17,9 @@ function validDate(value){
 function stripValue(x){
   return String(x||"").replace(/[０-９]/g,n=>String(n.charCodeAt(0)-65296)).replace(/[，]/g,",");
 }
+function unitPrice(value){
+  return value == null || value === '' ? null : Number(value);
+}
 function legacyPricingName(name){
   const original=String(name||"").trim();
   const m=original.match(/^(.*?)[\s　]*(?:CB|ＣＢ)[\s　]*([0-9０-９,，]+)[\s　]*(万円|万|円)?[\s　]*$/i);
@@ -28,7 +31,7 @@ function legacyPricingName(name){
 export function securePricing(product){
   if(!product || !validId(product.id))throw new ValidationError("Unknown product");
   const explicit=Array.isArray(product.pricingOptions)&&product.pricingOptions.length?
-    product.pricingOptions.slice(0,15).map(o=>({cashback:Number(o.cashback||0),revenuePerUnit:Number(o.revenuePerUnit)}))
+    product.pricingOptions.slice(0,15).map(o=>({cashback:Number(o.cashback||0),revenuePerUnit:unitPrice(o.revenuePerUnit)}))
       .sort((a,b)=>a.cashback-b.cashback) : null;
   const fromLegacy=legacyPricingName(product.name);
   // Match production's normalizeCashbackOptions exactly: filter invalid
@@ -42,15 +45,15 @@ export function securePricing(product){
   if(!normalized.includes(0))normalized.push(0);
   const backwards=Array.from(new Set(normalized)).sort((a,b)=>a-b);
   const hasLegacyPlans=backwards.length>1||backwards.some(x=>x>0);
-  const raw=explicit??(fromLegacy?[{cashback:fromLegacy.cashback,revenuePerUnit:Number(product.revenue)}]:
+  const raw=explicit??(fromLegacy?[{cashback:fromLegacy.cashback,revenuePerUnit:unitPrice(product.revenue)}]:
     hasLegacyPlans?backwards.slice(0,15).map(cashback=>({
-      cashback,revenuePerUnit:cashback===0?Number(product.revenue):cashback
+      cashback,revenuePerUnit:cashback===0?unitPrice(product.revenue):null
     })):
-    [{cashback:0,revenuePerUnit:Number(product.revenue)}]);
+    [{cashback:0,revenuePerUnit:unitPrice(product.revenue)}]);
   const seen=new Set();
   return raw.map((x,i)=>{
-    if(!Number.isSafeInteger(x.cashback)||x.cashback<0||!Number.isSafeInteger(x.revenuePerUnit)||x.revenuePerUnit<0 ||
-      x.revenuePerUnit>999999999 || seen.has(x.cashback)){
+    if(!Number.isSafeInteger(x.cashback)||x.cashback<0||
+      (x.revenuePerUnit!==null && (!Number.isSafeInteger(x.revenuePerUnit)||x.revenuePerUnit<0||x.revenuePerUnit>999999999)) || seen.has(x.cashback)){
       throw new ValidationError("Invalid product pricing. Requires manual review.");
     }
     seen.add(x.cashback);
@@ -114,6 +117,15 @@ export function buildRecordFromCounts(intent,policy,products,targetMember,destin
   const byId=new Map(products.map(p=>[p.id,p]));
   const oldResults=existing?.results && typeof existing.results==="object"?existing.results:{};
   const oldPairs=Object.entries(oldResults);
+  // A browser guard is not authorization: direct API callers must also be
+  // unable to discard an old line whose product/plan can no longer be mapped.
+  for(const [key,snapshot] of oldPairs){
+    const product=byId.get(snapshot?.productId)||products.find(p=>key===p.id||key.startsWith(p.id+'__cb_'));
+    if(!product || product.active===false || product.companyId!==policy.companyId ||
+      !securePricing(product).some(p=>p.cashback===Number(snapshot?.cashback||0))){
+      throw new ValidationError('Historical product plan requires review');
+    }
+  }
   const results={};
   let totalCount=0,totalRevenue=0;
   for(const entry of data.entries){
@@ -129,7 +141,7 @@ export function buildRecordFromCounts(intent,policy,products,targetMember,destin
       Number(snapshot.cashback||0)===selected.cashback);
     // Existing historical unit price must never be silently replaced by today's pricing.
     const snapshot=old?.[1]||null;
-    const unit=snapshot?Number(snapshot.revenuePerUnit):selected.revenuePerUnit;
+    const unit=snapshot?unitPrice(snapshot.revenuePerUnit):selected.revenuePerUnit;
     if(!Number.isSafeInteger(unit)||unit<0)throw new ValidationError("Historical unit price requires review");
     const key=old?.[0]||entry.productId+"__cb_"+selected.cashback;
     if(Object.hasOwn(results,key))throw new ValidationError("Duplicate result key");
@@ -164,6 +176,7 @@ export function buildRecordFromCounts(intent,policy,products,targetMember,destin
   if(existing){
     output.createdAt=existing.createdAt;
     output.createdByUid=existing.createdByUid;
+    if(Object.hasOwn(existing,'memberNameSnapshot'))output.memberNameSnapshot=existing.memberNameSnapshot;
     output.teamNameSnapshot=existing.teamId===data.teamId && existing.teamNameSnapshot?
       existing.teamNameSnapshot:destinationTeam.name;
   }else{

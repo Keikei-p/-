@@ -93,11 +93,19 @@ const firebaseConfig={
 const app=initializeApp(firebaseConfig),auth=getAuth(app);
 auth.languageCode="ja";
 const $=id=>document.getElementById(id);
-const state={data:null,loading:false};
+const state={data:null,loading:false,generation:0};
 const jst=Object.fromEntries(new Intl.DateTimeFormat("en-US",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date()).map(p=>[p.type,p.value]));
 const today=jst.year+"-"+jst.month+"-"+jst.day;
 $("recordDate").value=today;
 function notice(msg,err=false){$("message").textContent=msg;$("message").className="message"+(err?" error":"");}
+function clearView(){
+  state.data=null;
+  for(const id of ["member","productRows","recordList"])$(id).replaceChildren();
+  for(const id of ["teamLabel","userLabel","entryState"])$(id).textContent="";
+  for(const id of ["teamCount","reportedCount"])$(id).textContent="—";
+  $("location").value="";
+  $("saveButton").disabled=true;
+}
 function validGateway(){
   if(!PARTNER_GATEWAY_URL || !/^https:\/\//.test(PARTNER_GATEWAY_URL))
     throw Error("協力店専用サービスは公開準備中です。現在はログイン・登録できません。");
@@ -176,17 +184,19 @@ function renderAll(){
 }
 async function refresh(){
   if(state.loading)return;
+  const generation=state.generation;
   state.loading=true;$("reloadButton").disabled=true;$("saveButton").disabled=true;
   try{
     const data=await callGateway("/v1/partner-dashboard");
+    if(generation!==state.generation)return;
     if(!data?.policy?.isPartner||!data.policy.teamId||!Array.isArray(data.members)||
       !Array.isArray(data.products)||!Array.isArray(data.records)){
       throw Error("協力店として安全なデータ形式を受信できませんでした。");
     }
     state.data=data;renderAll();
     notice("自班の最新データを読み込みました。");
-  }catch(err){notice(err.message,true);state.data=null;$("saveButton").disabled=true;}
-  finally{state.loading=false;$("reloadButton").disabled=false;if(state.data)renderInputs();}
+  }catch(err){if(generation===state.generation){clearView();notice(err.message,true);}}
+  finally{if(generation===state.generation){state.loading=false;$("reloadButton").disabled=false;if(state.data)renderInputs();}}
 }
 $("loginForm").addEventListener("submit",async e=>{
   e.preventDefault();$("loginButton").disabled=true;
@@ -198,9 +208,10 @@ $("loginForm").addEventListener("submit",async e=>{
   finally{$("loginButton").disabled=false;}
 });
 onAuthStateChanged(auth,async user=>{
+  state.generation++;state.loading=false;
+  clearView();
   $("loginPanel").hidden=Boolean(user);
   $("appPanel").hidden=!user;
-  state.data=null;
   if(user){
     if(!user.emailVerified)notice("メールアドレスの確認が必要です。",true);
     else await refresh();
@@ -212,6 +223,7 @@ $("reloadButton").addEventListener("click",refresh);
 $("logoutButton").addEventListener("click",async()=>{await signOut(auth);notice("退出しました。");});
 $("saveButton").addEventListener("click",async()=>{
   if(state.loading||!state.data)return;
+  const generation=state.generation;
   const record=selectedRecord(),counts=[...document.querySelectorAll("#productRows input")];
   const entries=[];
   for(const field of counts){
@@ -226,9 +238,10 @@ $("saveButton").addEventListener("click",async()=>{
   state.loading=true;$("saveButton").disabled=true;
   try{
     await callGateway("/v1/count-record","POST",payload);
+    if(generation!==state.generation)return;
     notice("件数を保存しました。");
-  }catch(err){notice(err.message,true);}
-  finally{state.loading=false;await refresh();}
+  }catch(err){if(generation===state.generation)notice(err.message,true);}
+  finally{if(generation===state.generation){state.loading=false;await refresh();}}
 });
 </script>
 </body>
