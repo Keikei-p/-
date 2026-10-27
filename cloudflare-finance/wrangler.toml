@@ -10,6 +10,7 @@ FINANCE_WRITE_ENABLED = "disabled"
 FINANCE_WRITE_APPROVAL = "NOT_APPROVED"
 FINANCE_COST_APPROVAL = "NOT_APPROVED"
 FINANCE_PARTNER_APPROVAL = "NOT_APPROVED"
+FINANCE_RANKING_APPROVAL = "NOT_APPROVED"
 
 # SECURITY: Do not deploy this branch to production while legacy SDK listeners
 # read full money-bearing products/records documents. No credentials in repo.
