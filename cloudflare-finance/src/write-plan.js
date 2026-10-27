@@ -72,6 +72,10 @@ export function validateCountIntent(input,policy){
     !validId(x.productId)||!/^(?:plan_(?:0|[1-9]\\d{0,2})|cb_(?:0|[1-9]\\d{0,9}))$/.test(x.planId)||!Number.isSafeInteger(x.count)||x.count<0||x.count>9999)){
     throw new ValidationError("Invalid count-only entries");
   }
+  // Partners may submit only stable cashback IDs, never order-based plan_0/1.
+  // This prevents inserting a new CB tier from silently remapping their choice.
+  if(policy?.isPartner && input.entries.some(row=>!/^cb_(?:0|[1-9]\d{0,9})$/.test(row.planId)))
+    throw new ValidationError("Partner requires stable cashback plan ID");
   const duplicates=new Set();
   for(const x of input.entries){
     const key=x.productId+"/"+x.planId;
