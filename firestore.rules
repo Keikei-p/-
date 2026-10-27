@@ -978,8 +978,7 @@ service cloud.firestore {
                 'lineEnabled', 'lineGroupId', 'lineGroupName',
                 'lineConnectedAt', 'updatedBy', 'updatedAt',
                 'morningAutoReportEnabled', 'morningAutoReportTime',
-                'eveningAutoReportEnabled', 'eveningAutoReportTime',
-                'reportAutoWeekdays'
+                'eveningAutoReportEnabled', 'eveningAutoReportTime'
               ])
               && request.resource.data.enabled is bool
               && request.resource.data.weekdays is list
@@ -1020,19 +1019,12 @@ service cloud.firestore {
                 )
               )
               && (
-                !request.resource.data.keys().hasAny(['reportAutoWeekdays'])
-                || (
-                  request.resource.data.reportAutoWeekdays is list
-                  && request.resource.data.reportAutoWeekdays.size() <= 7
-                  && request.resource.data.reportAutoWeekdays.hasOnly([0,1,2,3,4,5,6])
-                )
-              )
-              && (
                 !(request.resource.data.get('morningAutoReportEnabled', false)
                   || request.resource.data.get('eveningAutoReportEnabled', false))
                 || (
-                  request.resource.data.get('lineGroupId', '') != ''
-                  && request.resource.data.get('reportAutoWeekdays', []).size() > 0
+                  request.resource.data.get('lineEnabled', false) == true
+                  && request.resource.data.get('lineGroupId', '') != ''
+                  && request.resource.data.weekdays.size() > 0
                   && request.resource.data.get('morningAutoReportTime', '') != ''
                   && request.resource.data.get('eveningAutoReportTime', '') != ''
                 )
