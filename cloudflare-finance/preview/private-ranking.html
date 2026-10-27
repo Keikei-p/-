@@ -63,9 +63,12 @@ async function refresh(){
   const rows=$("rankRows");rows.replaceChildren();
   for(const item of data.ranking){
    const row=document.createElement("div");row.className="row";
-   const left=document.createElement("strong");left.textContent=item.rank+"位　"+item.name;
-   const count=document.createElement("span");count.textContent=item.count+" 件";
-   row.append(left,count);rows.append(row);
+   if(!Number.isSafeInteger(item.rank)||item.rank<1||typeof item.name!=="string"||
+      Object.keys(item).some(key=>!["rank","uid","name"].includes(key)))
+     throw Error("順位以外のデータが含まれる応答は拒否します。");
+   const left=document.createElement("strong");
+   left.textContent=(item.rank===1?"👑 ":"")+item.rank+"位　"+item.name;
+   row.append(left);rows.append(row);
   }
   if(!data.ranking.length)message("対象月の実績はありません。");
   else message("総合売上順で表示中です。売上金額は非公開です。");
