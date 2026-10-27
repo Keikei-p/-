@@ -1270,3 +1270,133 @@ test('Count-preservation: display-only revenue helpers cannot write or delete Fi
   assert(priceChangePath.includes('return original'));
   assert(priceChangePath.includes('getProductPricingOptions'));
 });
+
+
+test('Individual ranking menu is not hidden when revenue permission is absent',()=>{
+ const toggle={style:{display:'none'}},panel={hidden:false};
+ const vars={
+  canCurrentUserViewRevenue:()=>false,
+  monthlyRevenue:null,
+  salesAnalysisToggle:{style:{}},
+  individualRankingToggle:toggle,
+  revenueChartToggle:{style:{}},
+  teamRankingRevenueButton:{style:{}},
+  teamRankingRevenueProgressButton:{style:{}},
+  teamRankingMode:'revenue',
+  salesAnalysisContent:{hidden:false},
+  individualRankingContent:panel,
+  revenueChartContent:{hidden:false}
+ };
+ const c=context(['applyRevenueVisibility'],vars);
+ c.applyRevenueVisibility();
+ assert.equal(toggle.style.display,'');
+ assert.equal(panel.hidden,false);
+ assert.equal(vars.salesAnalysisToggle.style.display,'none');
+ assert.equal(vars.teamRankingRevenueButton.style.display,'none');
+ assert.equal(c.teamRankingMode,'progress');
+});
+
+test('Individual ranking is count-only without money permission, while Owner retains revenue ranking',()=>{
+ const make=()=>Object.assign(element(),{classList:{add(){},remove(){}}});
+ const list=make(),title=make();
+ const c=context(['renderIndividualRanking'],{
+  document:{createElement:make},
+  individualRankingList:list,
+  individualRankingCount:title,
+  updateRankingLayoutControls:()=>{},
+  canCurrentUserViewRevenue:()=>false,
+  formatYen:()=>{throw Error('money cannot be formatted for a count-only viewer')},
+  decorateRankingChampion:()=>{}
+ });
+ const rankings={
+  alpha:{name:'Aさん',teamName:'1班',count:2,revenue:99999999},
+  bravo:{name:'Bさん',teamName:'2班',count:5,revenue:12345678}
+ };
+ const baseline=JSON.stringify(rankings);
+ c.renderIndividualRanking(rankings);
+ assert.equal(title.textContent,'2人・件数順');
+ assert.equal(list.children.length,2);
+ assert.equal(list.children[0].children[0].children[1].children[0].textContent,'Bさん');
+ for(const row of list.children){
+  const value=row.children[1];
+  assert.equal(value.children.length,1,'render only a count node');
+  assert.match(value.children[0].textContent,/件$/);
+  assert.doesNotMatch(JSON.stringify(value),/99999999|12345678|¥|売上/);
+ }
+ assert.equal(JSON.stringify(rankings),baseline,'ranking never mutates records');
+ c.canCurrentUserViewRevenue=()=>true;
+ c.formatYen=number=>'¥'+number;
+ c.renderIndividualRanking(rankings);
+ assert.equal(title.textContent,'2人・売上順');
+ assert.equal(list.children[0].children[0].children[1].children[0].textContent,'Aさん');
+ assert.match(list.children[0].children[1].innerHTML,/¥99999999/);
+ c.canCurrentUserViewRevenue=()=>false;
+ c.formatYen=()=>{throw Error('hidden money formatted')};
+ c.renderIndividualRanking(rankings);
+ assert.equal(list.children.length,2,'revocation clears stale revenue ranking');
+ assert.doesNotMatch(JSON.stringify(list.children.map(x=>x.children[1])),/99999999|12345678|¥/);
+});
+
+test('Individual ranking and all other dashboard feature IDs remain present',()=>{
+ for(const id of ['individualRankingToggle','individualRankingContent','individualRankingList',
+  'productRankingToggle','productRankingContent','teamRankingToggle','teamRankingContent',
+  'reportBuilderToggle','dailyGoalCalculatorToggle','revenueChartToggle','recordHistoryToggle']){
+  assert(html.includes('id="'+id+'"'),'missing existing feature: '+id);
+ }
+ assert(html.includes('renderIndividualRanking(individualMap)') ||
+   html.includes('renderIndividualRanking(\n    individualMap'));
+});
+
+
+test('Individual count ranking scopes partner and ordinary users without revealing other teams',()=>{
+ const c=context(['canIncludeInIndividualRanking'],{
+  currentUser:{uid:'mine'},
+  currentUserData:{companyId:'co',companyRole:'member',role:'leader',teamId:'A'},
+  canCurrentUserViewRevenue:()=>false,
+  isCurrentTeamLeader:()=>true
+ });
+ assert.equal(c.canIncludeInIndividualRanking({companyId:'co',teamId:'A',uid:'another'}),true);
+ assert.equal(c.canIncludeInIndividualRanking({companyId:'co',teamId:'B',uid:'another'}),false);
+ assert.equal(c.canIncludeInIndividualRanking({companyId:'other',teamId:'A',uid:'another'}),false);
+ c.isCurrentTeamLeader=()=>false;
+ c.currentUserData={companyId:'co',companyRole:'member',role:'member',teamId:'A'};
+ assert.equal(c.canIncludeInIndividualRanking({companyId:'co',teamId:'A',uid:'mine'}),true);
+ assert.equal(c.canIncludeInIndividualRanking({companyId:'co',teamId:'A',uid:'other'}),false);
+ c.canCurrentUserViewRevenue=()=>true;
+ assert.equal(c.canIncludeInIndividualRanking({companyId:'co',teamId:'B',uid:'other'}),true,
+   'retain former revenue-visible ranking when explicit permission exists');
+ assert.equal(c.canIncludeInIndividualRanking({companyId:'other',teamId:'B',uid:'other'}),false);
+ const dash=source('renderDashboard');
+ assert(dash.includes('if (canIncludeInIndividualRanking(record))'));
+});
+
+
+test('Dashboard ranking buttons still open and switch panels; Champion render hook is retained',()=>{
+ const createToggle=()=>{
+  const attrs={};let click;
+  return {setAttribute:(k,v)=>attrs[k]=v,getAttribute:k=>attrs[k],
+    addEventListener:(k,fn)=>{if(k==='click')click=fn;},click:()=>click()};
+ };
+ const individualToggle=createToggle(),teamToggle=createToggle();
+ const individual={hidden:true},team={hidden:true},detail={hidden:true,scrollIntoView(){}};
+ let championRuns=0;
+ const ctx=context(['setAccordionState','setupDashboardMenu'],{
+  requestAnimationFrame:fn=>fn(),
+  individualRankingContent:individual,productRankingContent:{hidden:true},
+  dashboardDetailArea:detail,beginRankingChampionEntrance:()=>{championRuns++;}
+ });
+ ctx.setupDashboardMenu([{toggle:individualToggle,content:individual},{toggle:teamToggle,content:team}]);
+ assert.equal(detail.hidden,true);
+ individualToggle.click();
+ assert.equal(individual.hidden,false);
+ assert.equal(detail.hidden,false);
+ assert.equal(individualToggle.getAttribute('aria-expanded'),'true');
+ assert.equal(championRuns,1);
+ teamToggle.click();
+ assert.equal(individual.hidden,true);
+ assert.equal(team.hidden,false);
+ assert.equal(detail.hidden,false);
+ teamToggle.click();
+ assert.equal(team.hidden,true);
+ assert.equal(detail.hidden,true);
+});
