@@ -1,0 +1,92 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>個人ランキング｜総合売上順</title>
+<style>
+:root{font-family:system-ui,-apple-system,sans-serif;color:#1b314b;background:#f2f6fa}
+*{box-sizing:border-box}body{margin:0}header{background:#18385f;color:white;padding:20px 16px}
+main{max-width:690px;margin:auto;padding:16px}.card{background:white;border:1px solid #dde6ef;border-radius:16px;padding:18px;margin-bottom:14px}
+h1{font-size:22px;margin:0}h2{font-size:16px;margin:0 0 12px}
+label{display:block;margin:12px 0 5px;font-weight:700}input,button{font:inherit;padding:12px;border-radius:9px}
+input{width:100%;border:1px solid #bccadb}button{background:#235d98;border:0;color:white;font-weight:700}
+button:disabled{opacity:.55}.tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.row{display:flex;justify-content:space-between;gap:12px;padding:13px 0;border-bottom:1px solid #e8edf3}
+.row:last-child{border:0}.small{color:#627992;font-size:13px}#message{white-space:pre-wrap}
+[hidden]{display:none!important}
+</style></head><body>
+<header><h1>🏆 個人ランキング</h1><div class="small" style="color:#deebff">総合売上順／金額と単価は非表示</div></header>
+<main>
+<p id="message" role="status" aria-live="polite">閲覧には会社のオーナーによる個別許可が必要です。</p>
+<section class="card" id="login"><h2>ログイン</h2><form id="loginForm">
+<label for="email">メールアドレス</label><input id="email" autocomplete="username" type="email" required>
+<label for="password">パスワード</label><input id="password" autocomplete="current-password" type="password" required>
+<p><button type="submit" id="loginButton">ログイン</button></p></form></section>
+<section class="card" id="rankingPanel" hidden><h2>今月の個人ランキング</h2>
+<div class="tools"><label for="month">対象月</label><input id="month" type="month" style="width:160px">
+<button id="refresh" type="button">更新</button><button id="logout" type="button">退出</button></div>
+<p class="small">同じ会社の社員だけを集計します。金額はこのページへ送信しません。</p>
+<div id="rankRows"></div></section>
+</main>
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+import {getAuth,signInWithEmailAndPassword,onAuthStateChanged,signOut} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+const PRIVATE_RANKING_GATEWAY_URL="";
+const app=initializeApp({apiKey:"AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
+ authDomain:"sales-management-cc116.firebaseapp.com",projectId:"sales-management-cc116",
+ appId:"1:904932511564:web:6583e8b0c585231b9049e"});
+const auth=getAuth(app);
+const $=id=>document.getElementById(id);
+let version=0;
+const parts=Object.fromEntries(new Intl.DateTimeFormat("en-US",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit"})
+ .formatToParts(new Date()).map(x=>[x.type,x.value]));
+$("month").value=parts.year+"-"+parts.month;
+function message(value){$("message").textContent=value;}
+function clear(){version++;$("rankRows").replaceChildren();}
+async function refresh(){
+ const current=version,user=auth.currentUser;
+ if(!user||!user.emailVerified){clear();message("メール認証が必要です。");return;}
+ if(!PRIVATE_RANKING_GATEWAY_URL||!PRIVATE_RANKING_GATEWAY_URL.startsWith("https://")){
+  message("個人ランキング機能は安全確認待ちです。");return;
+ }
+ const month=$("month").value;
+ if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)){message("年月を確認してください。");return;}
+ $("refresh").disabled=true;
+ try{
+  const res=await fetch(PRIVATE_RANKING_GATEWAY_URL+"/v1/individual-ranking?month="+encodeURIComponent(month),{
+   headers:{Authorization:"Bearer "+await user.getIdToken()},cache:"no-store"
+  });
+  if(!res.ok)throw Error(res.status===403?"オーナーから閲覧許可を受けていません。":
+      "ランキングが利用できません（"+res.status+"）。");
+  const data=await res.json();
+  if(!Array.isArray(data.ranking)||data.amountsIncluded!==false)throw Error("安全でない応答を拒否しました。");
+  if(current!==version)return;
+  const rows=$("rankRows");rows.replaceChildren();
+  for(const item of data.ranking){
+   const row=document.createElement("div");row.className="row";
+   if(!Number.isSafeInteger(item.rank)||item.rank<1||typeof item.name!=="string"||
+      Object.keys(item).some(key=>!["rank","uid","name"].includes(key)))
+     throw Error("順位以外のデータが含まれる応答は拒否します。");
+   const left=document.createElement("strong");
+   left.textContent=(item.rank===1?"👑 ":"")+item.rank+"位　"+item.name;
+   row.append(left);rows.append(row);
+  }
+  if(!data.ranking.length)message("対象月の実績はありません。");
+  else message("総合売上順で表示中です。売上金額は非公開です。");
+ }catch(e){if(current===version){clear();message(e.message);}}
+ finally{if(current===version)$("refresh").disabled=false;}
+}
+$("loginForm").addEventListener("submit",async e=>{
+ e.preventDefault();$("loginButton").disabled=true;
+ try{await signInWithEmailAndPassword(auth,$("email").value,$("password").value);}
+ catch{message("認証できませんでした。");}
+ finally{$("loginButton").disabled=false;$("password").value="";}
+});
+onAuthStateChanged(auth,user=>{
+ clear();$("login").hidden=!!user;$("rankingPanel").hidden=!user;
+ if(user)refresh();
+});
+$("month").addEventListener("change",refresh);
+$("refresh").addEventListener("click",refresh);
+$("logout").addEventListener("click",()=>signOut(auth));
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&auth.currentUser)refresh();});
+</script></body></html>

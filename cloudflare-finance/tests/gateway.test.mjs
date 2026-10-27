@@ -385,3 +385,40 @@ test("Conflicting old user/member grants are flagged, never automatically widene
   assert.equal(p2.canViewRevenue,false);
   assert.equal(approvedPolicy(...person("member"),company,"sample","2026-10-22").needsPermissionReview,false);
 });
+
+
+test("Individual ranking and grants are disabled by default and require verified identity",async()=>{
+ for(const route of ["/v1/individual-ranking?month=2026-10","/v1/individual-rank-viewers"]){
+  const url="https://sales-finance-gateway.example"+route;
+  let res=await worker.fetch(new Request(url),{
+   FINANCE_GATEWAY_ENABLED:"disabled",FINANCE_RANKING_APPROVAL:"NOT_APPROVED"
+  });
+  assert.equal(res.status,503);
+  res=await worker.fetch(new Request(url),{
+   FINANCE_GATEWAY_ENABLED:"enabled",
+   FINANCE_RANKING_APPROVAL:"OWNER_APPROVED_RANK_ONLY",
+   FINANCE_COST_APPROVAL:"OWNER_APPROVED_BLAZE_COSTS",
+   FIREBASE_PROJECT_ID:"sales-management-cc116"
+  });
+  assert.equal(res.status,401);
+ }
+ const endpoint="https://sales-finance-gateway.example/v1/individual-rank-grant";
+ const req=new Request(endpoint,{method:"POST",headers:{"content-type":"application/json"},
+  body:JSON.stringify({uid:"member",allowed:true})});
+ let res=await worker.fetch(req,{
+  FINANCE_GATEWAY_ENABLED:"enabled",FINANCE_RANKING_APPROVAL:"OWNER_APPROVED_RANK_ONLY",
+  FINANCE_COST_APPROVAL:"OWNER_APPROVED_BLAZE_COSTS",
+  FIREBASE_PROJECT_ID:"sales-management-cc116",
+  FINANCE_WRITE_ENABLED:"disabled"
+ });
+ assert.equal(res.status,503,"read approval alone cannot enable rank permission writes");
+ const req2=new Request(endpoint,{method:"POST",headers:{"content-type":"application/json"},
+  body:JSON.stringify({uid:"member",allowed:true})});
+ res=await worker.fetch(req2,{
+  FINANCE_GATEWAY_ENABLED:"enabled",FINANCE_RANKING_APPROVAL:"OWNER_APPROVED_RANK_ONLY",
+  FINANCE_COST_APPROVAL:"OWNER_APPROVED_BLAZE_COSTS",
+  FIREBASE_PROJECT_ID:"sales-management-cc116",
+  FINANCE_WRITE_ENABLED:"enabled",FINANCE_WRITE_APPROVAL:"DUAL_HOST_BACKUP_VERIFIED"
+ });
+ assert.equal(res.status,401);
+});
