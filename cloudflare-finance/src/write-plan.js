@@ -69,7 +69,7 @@ export function validateCountIntent(input,policy){
   if(input.reportStatus!=="submitted" && input.reportStatus!=="no_result")throw new ValidationError("Invalid report status");
   if(!Array.isArray(input.entries)||input.entries.length>80)throw new ValidationError("Invalid entries");
   if(input.entries.some(x=>!x||Object.keys(x).some(k=>!["productId","planId","count"].includes(k))||
-    !validId(x.productId)||!/^(?:plan_(?:0|[1-9]\\d{0,2})|cb_(?:0|[1-9]\\d{0,9}))$/.test(x.planId)||!Number.isSafeInteger(x.count)||x.count<0||x.count>9999)){
+    !validId(x.productId)||!/^(?:plan_(?:0|[1-9]\d{0,2})|cb_(?:0|[1-9]\d{0,9}))$/.test(x.planId)||!Number.isSafeInteger(x.count)||x.count<0||x.count>9999)){
     throw new ValidationError("Invalid count-only entries");
   }
   // Partners may submit only stable cashback IDs, never order-based plan_0/1.
