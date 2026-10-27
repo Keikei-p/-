@@ -23,8 +23,7 @@ export function buildPrivateRevenueRanking(records,products,members,companyId,mo
     !Array.isArray(records)||!Array.isArray(products)||!Array.isArray(members))
     throw Error("invalid_ranking_request");
  const directory=new Map(members.filter(m=>m && m.companyId===companyId && m.active!==false &&
-     m.accessKind!=="partner" && idOk(m.uid) && m.name && m.hasAccount!==false &&
-     m.memberType!=="managed").map(m=>[m.uid,m]));
+     m.accessKind!=="partner" && idOk(m.uid) && m.name).map(m=>[m.uid,m]));
  const catalog=new Map(products.filter(p=>p.companyId===companyId).map(p=>[p.id,p]));
  const values=new Map(), seenDaily=new Set();
  for(const record of records){
