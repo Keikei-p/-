@@ -1,5 +1,6 @@
 import {visibleMoney} from "./revenue-scope.js";
 import {buildCompanyCountRanking} from "./company-count-ranking.mjs";
+import {rankingAccess,validateViewerChange,buildPrivateRevenueRanking} from "./individual-ranking.mjs";
 import {partnerActivationWrites} from "./partner-provision.mjs";
 /**
  * Protected financial-view gateway (read-only foundation).
@@ -169,6 +170,21 @@ function safePartnerMembers(all,policy) {
       typeof m.uid==="string" && /^[A-Za-z0-9_-]{1,150}$/.test(m.uid))
     .map(m=>({uid:m.uid,name:withoutAmounts(String(m.name||"担当者")).slice(0,30),teamId:policy.teamId}))
     .sort((a,b)=>a.name.localeCompare(b.name,"ja"));
+}
+// Only called by the authenticated ranking routes. Do NOT send raw member
+// documents or company finance data to the browser.
+async function rankingMembers(env,policy,fetcher=fetch){
+  const bearer=await googleBearer(env,fetcher);
+  const response=await fetcher(base+"/documents/"+documentPath("companies/"+policy.companyId+"/members")+"?pageSize=500",{
+    headers:{Authorization:"Bearer "+bearer}
+  });
+  if(!response.ok)throw httpError(503,"ranking_members_unavailable");
+  const page=await response.json();
+  if(page.nextPageToken)throw httpError(503,"ranking_member_limit");
+  return (Array.isArray(page.documents)?page.documents.map(docData):[])
+   .filter(m=>m && m.companyId===policy.companyId&&m.active!==false
+     && m.accessKind!=="partner" && typeof m.uid==="string"
+     && /^[A-Za-z0-9_-]{1,150}$/.test(m.uid));
 }
 async function ownerMemberList(env,policy,fetcher=fetch) {
   if(!policy.isOwner || policy.isPartner)throw httpError(403,"owner_only");
@@ -398,6 +414,105 @@ export default {
     }
     if(url.pathname==="/health"&&request.method==="GET"){
       return safeJSON({ok:true,service:"finance-gateway",enabled:env.FINANCE_GATEWAY_ENABLED==="enabled",mode:"read_only"},200,origin);
+    }
+    // Strictly server-side SALES-ORDERED individual ranking. All financial
+    // calculations remain in this Worker. The browser receives rank/name/count.
+    if(["/v1/individual-ranking","/v1/individual-rank-viewers",
+        "/v1/individual-rank-grant"].includes(url.pathname)){
+      const rankRoute=url.pathname,adminRoute=rankRoute!=="/v1/individual-ranking";
+      if(env.FINANCE_GATEWAY_ENABLED!=="enabled" ||
+         env.FINANCE_RANKING_APPROVAL!=="OWNER_APPROVED_RANK_ONLY" ||
+         env.FINANCE_COST_APPROVAL!=="OWNER_APPROVED_BLAZE_COSTS" ||
+         env.FIREBASE_PROJECT_ID!==PROJECT_ID)
+        return safeJSON({error:"ranking_not_released"},503,origin);
+      if(adminRoute && rankRoute==="/v1/individual-rank-grant" &&
+         (env.FINANCE_WRITE_ENABLED!=="enabled" ||
+          env.FINANCE_WRITE_APPROVAL!=="DUAL_HOST_BACKUP_VERIFIED"))
+        return safeJSON({error:"ranking_write_not_released"},503,origin);
+      if(request.method!==(rankRoute==="/v1/individual-rank-grant"?"POST":"GET"))
+        return safeJSON({error:"method_not_allowed"},405,origin);
+      const auth=request.headers.get("authorization")||"";
+      if(!auth.startsWith("Bearer "))return safeJSON({error:"authorization_required"},401,origin);
+      try{
+        const principal=await verifiedToken(auth.slice(7));
+        const policy=await memberPolicy(env,principal);
+        if(policy.isPartner || (adminRoute&&!policy.isOwner))
+          throw httpError(403,"ranking_access_forbidden");
+        const grantId=policy.companyId+"_"+policy.uid;
+        if(rankRoute==="/v1/individual-ranking"){
+          const stored=policy.isOwner?null:await firestoreGet(env,"individualRankingAccess/"+grantId);
+          if(!rankingAccess(policy,stored))throw httpError(403,"ranking_not_permitted");
+          const month=url.searchParams.get("month");
+          if(!/^\\d{4}-(0[1-9]|1[0-2])$/.test(month||""))
+            return safeJSON({error:"invalid_month"},400,origin);
+          const [records,products,members]=await Promise.all([
+            firestoreQuery(env,"records",policy.companyId),
+            firestoreQuery(env,"products",policy.companyId),
+            rankingMembers(env,policy)
+          ]);
+          const ranked=buildPrivateRevenueRanking(records,products,members,policy.companyId,month);
+          const output=ranked.map(v=>({...v,name:withoutAmounts(v.name)}));
+          return safeJSON({month,ranking:output,sort:"overall_revenue_desc",
+            amountsIncluded:false},200,origin);
+        }
+        const members=await rankingMembers(env,policy);
+        if(rankRoute==="/v1/individual-rank-viewers"){
+          const existing=await firestoreQuery(env,"individualRankingAccess",policy.companyId);
+          const grants=new Map(existing.map(a=>[a.uid,a.allowed===true]));
+          return safeJSON({viewers:members.filter(m=>m.memberType!=="managed"&&m.hasAccount!==false)
+            .map(m=>({uid:m.uid,name:withoutAmounts(m.name||"担当者").slice(0,30),
+              allowed:grants.get(m.uid)===true,
+              eligible:m.companyRole==="member"}))},200,origin);
+        }
+        if(!request.headers.get("content-type")?.toLowerCase().startsWith("application/json"))
+          return safeJSON({error:"json_only"},415,origin);
+        const body=await request.text();
+        if(body.length>1200)return safeJSON({error:"request_too_large"},413,origin);
+        let data;
+        try{data=JSON.parse(body);}catch{return safeJSON({error:"invalid_json"},400,origin);}
+        if(!data || Object.keys(data).sort().join(",")!=="allowed,uid")
+          return safeJSON({error:"invalid_grant"},400,origin);
+        const viewer=members.find(m=>m.uid===data.uid);
+        const account=viewer?await firestoreGet(env,"users/"+data.uid):null;
+        if(!account || account.companyId!==policy.companyId||
+           account.accessKind==="partner" || account.active===false ||
+           account.companyRole!=="member" || account.uid!==data.uid)
+          throw httpError(403,"not_internal_account");
+        let validated;
+        try{validated=validateViewerChange(policy,viewer,data.uid,data.allowed);}
+        catch{throw httpError(403,"ranking_viewer_forbidden");}
+        const documentId=policy.companyId+"_"+validated.uid;
+        const old=await firestoreGet(env,"individualRankingAccess/"+documentId);
+        if(old && (old.uid!==validated.uid||old.companyId!==validated.companyId))
+          throw httpError(409,"conflicting_grant");
+        if(old?.allowed===validated.allowed)
+          return safeJSON({uid:validated.uid,allowed:validated.allowed,unchanged:true},200,origin);
+        const auditor=crypto.randomUUID();
+        const full="projects/"+PROJECT_ID+"/databases/(default)/documents/";
+        const writes=[{update:{name:full+"individualRankingAccess/"+documentId,
+          fields:{companyId:{stringValue:policy.companyId},
+           uid:{stringValue:validated.uid},allowed:{booleanValue:validated.allowed},
+           updatedByUid:{stringValue:principal.uid}}},
+          currentDocument:old?{updateTime:old.recordVersion}:{exists:false}},
+          {update:{name:full+"companies/"+policy.companyId+"/individualRankingAudits/"+auditor,
+            fields:{targetUid:{stringValue:validated.uid},
+              allowed:{booleanValue:validated.allowed},
+              actorUid:{stringValue:principal.uid}}},
+           currentDocument:{exists:false},
+           updateTransforms:[{fieldPath:"createdAt",setToServerValue:"REQUEST_TIME"}]}];
+        const bearer=await googleBearer(env);
+        const result=await fetch(base+"/documents:commit",{
+          method:"POST",headers:{"Authorization":"Bearer "+bearer,"Content-Type":"application/json"},
+          body:JSON.stringify({writes})
+        });
+        if(result.status===409||result.status===412)return safeJSON({error:"grant_stale"},409,origin);
+        if(!result.ok)return safeJSON({error:"grant_unavailable"},503,origin);
+        return safeJSON({uid:validated.uid,allowed:validated.allowed},200,origin);
+      }catch(err){
+        if(err.status===401||err.status===403)
+          return safeJSON({error:"forbidden"},err.status,origin);
+        return safeJSON({error:"private_ranking_unavailable"},503,origin);
+      }
     }
     // Lightweight partner update signal; never returns sales, prices, or
     // other teams' records. Re-check membership on every poll.
