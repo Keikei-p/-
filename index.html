@@ -31954,12 +31954,17 @@ function buildTeamRankingRows(
     .map(
       team => {
 
+        // Records with a teamId are keyed by ID. Never copy another team's
+        // sales merely because two teams have the same display name.
+        // Only a uniquely identifiable, legacy NAME-keyed record may fall back.
+        const canUseLegacyName = !!team.name &&
+          teams.filter(item => item.name === team.name).length === 1 &&
+          !teams.some(item => item.id === team.name && item.id !== team.id);
         const result =
           teamMap[team.id] ||
-          Object.values(teamMap).find(
-            item =>
-              item.name === team.name
-          ) ||
+          (canUseLegacyName && teamMap[team.name] &&
+            teamMap[team.name].name === team.name
+              ? teamMap[team.name] : null) ||
           { count: 0, revenue: 0 };
 
         // 件数目標の既存計算を再利用し、売上目標とは別管理する。
