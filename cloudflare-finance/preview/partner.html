@@ -71,7 +71,7 @@ input:focus,select:focus{outline:2px solid #a9c6ee;outline-offset:0}
 <div class="field"><label for="location">稼働場所</label><input id="location" maxlength="100" placeholder="例：イベント会場"></div>
 <div id="entryState" class="muted" style="margin-bottom:12px"></div>
 <div id="productRows" class="rows"></div>
-<p class="muted">数字は件数です。売上・単価・キャッシュバック金額は表示・送信しません。</p>
+<p class="muted">CBの種類・金額は選択できます。会社の売上・単価・利益は表示しません。</p>
 <div class="actions"><button id="saveButton" class="btn">件数を保存</button></div></section>
 <section class="panel"><h2>選択日の班別実績</h2><div id="recordList"></div></section>
 </div>
@@ -93,13 +93,13 @@ const firebaseConfig={
 const app=initializeApp(firebaseConfig),auth=getAuth(app);
 auth.languageCode="ja";
 const $=id=>document.getElementById(id);
-const state={data:null,loading:false,generation:0};
+const state={data:null,loading:false,generation:0,pendingEdit:false,lastSyncVersion:undefined,checkingSignal:false};
 const jst=Object.fromEntries(new Intl.DateTimeFormat("en-US",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date()).map(p=>[p.type,p.value]));
 const today=jst.year+"-"+jst.month+"-"+jst.day;
 $("recordDate").value=today;
 function notice(msg,err=false){$("message").textContent=msg;$("message").className="message"+(err?" error":"");}
 function clearView(){
-  state.data=null;
+  state.data=null;state.pendingEdit=false;state.lastSyncVersion=undefined;
   for(const id of ["member","productRows","recordList"])$(id).replaceChildren();
   for(const id of ["teamLabel","userLabel","entryState"])$(id).textContent="";
   for(const id of ["teamCount","reportedCount"])$(id).textContent="—";
@@ -199,7 +199,7 @@ async function refresh(){
       !Array.isArray(data.products)||!Array.isArray(data.records)){
       throw Error("協力店として安全なデータ形式を受信できませんでした。");
     }
-    state.data=data;renderAll();
+    state.data=data;state.pendingEdit=false;renderAll();
     notice("自班の最新データを読み込みました。");
   }catch(err){if(generation===state.generation){clearView();notice(err.message,true);}}
   finally{if(generation===state.generation){state.loading=false;$("reloadButton").disabled=false;if(state.data)renderInputs();}}
@@ -225,7 +225,10 @@ onAuthStateChanged(auth,async user=>{
 });
 $("recordDate").addEventListener("change",()=>{if(state.data){renderSummary();renderInputs();}});
 $("member").addEventListener("change",()=>{if(state.data)renderInputs();});
-$("reloadButton").addEventListener("click",refresh);
+$("reloadButton").addEventListener("click",()=>{
+  if(state.pendingEdit && !confirm("編集中の件数があります。入力内容を破棄して最新データを読み込みますか？"))return;
+  refresh();
+});
 $("logoutButton").addEventListener("click",async()=>{await signOut(auth);notice("退出しました。");});
 $("saveButton").addEventListener("click",async()=>{
   if(state.loading||!state.data)return;
@@ -242,13 +245,50 @@ $("saveButton").addEventListener("click",async()=>{
     reportStatus:entries.length?"submitted":"no_result",entries};
   if(record){payload.recordId=record.id;payload.expectedRecordUpdateTime=record.recordVersion;}
   state.loading=true;$("saveButton").disabled=true;
+  let persisted=false;
   try{
     await callGateway("/v1/count-record","POST",payload);
+    persisted=true;
     if(generation!==state.generation)return;
+    state.pendingEdit=false;
     notice("件数を保存しました。");
   }catch(err){if(generation===state.generation)notice(err.message,true);}
-  finally{if(generation===state.generation){state.loading=false;await refresh();}}
+  finally{if(generation===state.generation){state.loading=false;
+    if(persisted)await refresh();
+    else $("saveButton").disabled=false;
+  }}
 });
+
+// Updating the form creates an unsaved draft. Never auto-refresh over it.
+$("productRows").addEventListener("input",()=>{state.pendingEdit=true;});
+$("location").addEventListener("input",()=>{state.pendingEdit=true;});
+async function checkForUpdates(){
+  if(state.checkingSignal||state.loading||!state.data||!auth.currentUser ||
+     document.visibilityState!=="visible")return;
+  const generation=state.generation;
+  state.checkingSignal=true;
+  try{
+    const value=await callGateway("/v1/partner-sync");
+    if(generation!==state.generation)return;
+    if(!value || !(value.version===null || typeof value.version==="string"))
+      throw Error("更新情報の形式が正しくありません。");
+    const next=value.version;
+    if(state.lastSyncVersion===undefined){
+      state.lastSyncVersion=next;
+    }else if(next!==state.lastSyncVersion){
+      if(state.pendingEdit){
+        notice("ほかの端末で更新されました。編集中の件数を確認してから「更新」を押してください。");
+      }else{
+        await refresh();
+        if(state.data && generation===state.generation)state.lastSyncVersion=next;
+      }
+    }
+  }catch(e){
+    if(generation===state.generation){clearView();notice("権限または更新状態の確認に失敗しました。再読み込みして確認してください。",true);}
+  }finally{if(generation===state.generation)state.checkingSignal=false;}
+}
+setInterval(checkForUpdates,60000);
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")checkForUpdates();});
 </script>
 </body>
 </html>
