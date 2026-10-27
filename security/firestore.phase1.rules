@@ -1470,6 +1470,31 @@ service cloud.firestore {
       allow delete: if false;
     }
     
+
+    match /publicRankings/{rankingId} {
+      allow read: if resource.data.companyId != null
+        && sameCompany(resource.data.companyId);
+      allow create: if request.resource.data.companyId != null
+        && isCompanyOwner(request.resource.data.companyId)
+        && request.resource.data.keys().hasOnly([
+          'companyId','period','kind','ranks','createdAt','updatedAt'
+        ])
+        && request.resource.data.period is string
+        && request.resource.data.ranks is list
+        && request.resource.data.ranks.size() <= 2000
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+      allow update: if resource.data.companyId != null
+        && isCompanyOwner(resource.data.companyId)
+        && request.resource.data.companyId == resource.data.companyId
+        && request.resource.data.keys().hasOnly([
+          'companyId','period','kind','ranks','createdAt','updatedAt'
+        ])
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if false;
+    }
+
     match /publicRecordCorrections/{correctionId} {
       allow read: if resource.data.companyId != null
         && sameCompany(resource.data.companyId);
