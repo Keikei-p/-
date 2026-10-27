@@ -1,0 +1,21 @@
+name: Finance Boundary Preflight
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Test finance-free projections and rank-only results
+        run: node --test tests/public-projection.test.mjs
+      - name: Parse staged source
+        run: |
+          node --check security/public-projection.mjs
+          node --check security/prepare-projection.mjs
