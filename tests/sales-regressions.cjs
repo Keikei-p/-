@@ -1292,3 +1292,39 @@ test('Same-name teams never inherit each other financial ranking amounts',()=>{
  assert.equal(byId('unique').revenue,40000);
  assert.equal(rows.reduce((sum,row)=>sum+row.revenue,0),70000);
 });
+
+
+test('Financial totals reconcile across CB plans, products and teams without rewriting history',()=>{
+ const products=[
+  {id:'tok',pricingOptions:[{cashback:0,revenuePerUnit:10000}]},
+  {id:'ever',pricingOptions:[{cashback:0,revenuePerUnit:20000}]},
+  {id:'nuro',pricingOptions:[
+   {cashback:0,revenuePerUnit:25000},{cashback:20000,revenuePerUnit:22500}
+  ]}
+ ];
+ const records=[
+  {uid:'u1',teamId:'one',results:{
+   tok:{productId:'tok',cashback:0,count:5,revenuePerUnit:2000},
+   n0:{productId:'nuro',cashback:0,count:2,revenuePerUnit:1000}}},
+  {uid:'u2',teamId:'two',results:{
+   ever:{productId:'ever',cashback:0,count:5,revenuePerUnit:16000},
+   n20:{productId:'nuro',cashback:20000,count:3,revenuePerUnit:2000}}}
+ ];
+ const original=JSON.stringify(records);
+ const c=context(['getProductPricingOptions','getRecordResults','currentCatalogRevenuePerUnit',
+   'getDisplayRecordResults','calculateResultsTotals'],{
+  products,canCurrentUserViewRevenueForRecord:()=>true,
+  parseLegacyCashbackProductName:()=>({hasCashbackPlan:false}),
+  normalizeCashbackOptions:()=>[0],currentProductDisplayName:x=>x.productId
+ });
+ const amounts=records.map(x=>c.calculateResultsTotals(c.getDisplayRecordResults(x)));
+ assert.equal(amounts[0].revenue,100000);
+ assert.equal(amounts[1].revenue,167500);
+ assert.equal(amounts.reduce((s,x)=>s+x.revenue,0),267500);
+ assert.equal(amounts.reduce((s,x)=>s+x.count,0),15);
+ assert.equal(JSON.stringify(records),original);
+ assert.equal(c.currentCatalogRevenuePerUnit({
+  productId:'nuro',cashback:99999,count:1,revenuePerUnit:7500},products),7500);
+ assert.equal(c.currentCatalogRevenuePerUnit({
+  productId:'nuro',count:1,revenuePerUnit:7500},products),7500);
+});
