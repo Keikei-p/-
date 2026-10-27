@@ -16,7 +16,7 @@ export function previousDay(today){
 }
 export function safeReportLabel(raw,fallback){
   const value=String(raw||"").normalize("NFKC").trim();
-  if(!value||value.length>55||/[\n\r\t]|[¥￥$]|(?:円|万円|売上|単価|粗利|利益|原価|報酬|価格|収益|手数料)/i.test(value))
+  if(!value||value.length>55||/[\n\r\t]|[¥￥$]|(?:円|万円|売上|単価|粗利|利益|原価|報酬|価格|収益|手数料|CB\s*[0-9]|キャッシュバック\s*[0-9])/i.test(value))
     return fallback;
   return value;
 }
