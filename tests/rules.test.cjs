@@ -337,11 +337,11 @@ test('Owner alone manages independent LINE morning/evening opt-ins; time/day/sou
  const docFor=uid=>doc(dbFor(uid),...pathParts);
  const setting=(extra={})=>({
   enabled:false,weekdays:[1,2,3,4,5],time:'19:00',
-  reportCompletionMode:'team_any',lineEnabled:false,
+  reportCompletionMode:'team_any',lineEnabled:true,
   lineGroupId:'test-line-group',lineGroupName:'社内報告',
   morningAutoReportEnabled:true,morningAutoReportTime:'09:00',
   eveningAutoReportEnabled:false,eveningAutoReportTime:'20:00',
-  reportAutoWeekdays:[1,2,3,4,5],
+
   updatedBy:'owner',updatedAt:serverTimestamp(),...extra
  });
  await assertSucceeds(setDoc(docFor('owner'),setting()));
@@ -358,8 +358,9 @@ test('Owner alone manages independent LINE morning/evening opt-ins; time/day/sou
  for(const extra of [
   {eveningAutoReportTime:'20:17'},
   {morningAutoReportTime:'09:04'},
-  {reportAutoWeekdays:[1,8]},
-  {eveningAutoReportEnabled:true,reportAutoWeekdays:[]},
+  {weekdays:[1,8]},
+  {eveningAutoReportEnabled:true,lineEnabled:false},
+  {eveningAutoReportEnabled:true,weekdays:[]},
   {morningAutoReportEnabled:true,lineGroupId:''}
  ])await assertFails(setDoc(docFor('owner'),setting(extra)));
 });
