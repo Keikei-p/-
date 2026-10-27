@@ -40,6 +40,20 @@ test("Company sales-ranked list has NO price or revenue fields, incl. CB and rep
  assert.equal("revenue" in ranks[0],false);
  assert.doesNotMatch(JSON.stringify(ranks),/totalRevenue|revenue|price|unit|count|22500|20000|10000|267500/i);
 });
+test("Equal sales share a rank regardless of different counts; response has no numeric metrics",()=>{
+ const records=[
+  rec("one","2026-10-23",{a:{productId:"tok",count:2,cashback:0,revenuePerUnit:3}}),
+  rec("two","2026-10-24",{a:{productId:"ever",count:1,cashback:0,revenuePerUnit:4}}),
+  rec("three","2026-10-24",{a:{productId:"tok",count:1,cashback:0,revenuePerUnit:1}})
+ ];
+ const list=buildPrivateRevenueRanking(records,products,members,cid,month);
+ assert.deepEqual(list.map(x=>[x.uid,x.rank]),[["one",1],["two",1],["three",3]]);
+ for(const person of list){
+  assert.deepEqual(Object.keys(person).sort(),["name","rank","uid"]);
+  assert.equal("count" in person,false);
+ }
+});
+
 test("Rank access is independent of canViewRevenue, owner override, partner deny",()=>{
  const p={companyId:cid,uid:"one",isOwner:false,isPartner:false,canViewRevenue:false};
  assert.equal(rankingAccess(p,{companyId:cid,uid:"one",allowed:true}),true);
