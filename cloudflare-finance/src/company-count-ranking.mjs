@@ -5,7 +5,7 @@
  */
 export function buildCompanyCountRanking(records,companyId,month){
   if(!Array.isArray(records)||typeof companyId!=="string"||
-      !/^\\d{4}-\\d{2}$/.test(month))throw Error("invalid_count_ranking_request");
+      !/^\d{4}-\d{2}$/.test(month))throw Error("invalid_count_ranking_request");
   const teams=new Map(),daily=new Set();
   for(const record of records){
     if(record.companyId!==companyId || !String(record.date||"").startsWith(month+"-"))continue;
