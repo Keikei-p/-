@@ -393,6 +393,29 @@ export default {
     if(url.pathname==="/health"&&request.method==="GET"){
       return safeJSON({ok:true,service:"finance-gateway",enabled:env.FINANCE_GATEWAY_ENABLED==="enabled",mode:"read_only"},200,origin);
     }
+    // Lightweight partner update signal; never returns sales, prices, or
+    // other teams' records. Re-check membership on every poll.
+    if(url.pathname==="/v1/partner-sync" && request.method==="GET"){
+      if(env.FINANCE_GATEWAY_ENABLED!=="enabled")
+        return safeJSON({error:"cutover_not_authorized"},503,origin);
+      if(env.FINANCE_COST_APPROVAL!=="OWNER_APPROVED_BLAZE_COSTS")
+        return safeJSON({error:"billing_not_approved"},503,origin);
+      if(env.FIREBASE_PROJECT_ID!==PROJECT_ID)
+        return safeJSON({error:"project_mismatch"},503,origin);
+      const auth=request.headers.get("authorization")||"";
+      if(!auth.startsWith("Bearer "))return safeJSON({error:"authorization_required"},401,origin);
+      try{
+        const principal=await verifiedToken(auth.slice(7));
+        const policy=await memberPolicy(env,principal);
+        if(!policy.isPartner)throw httpError(403,"partner_only");
+        const sync=await firestoreGet(env,"companies/"+policy.companyId+"/publicSync/state");
+        return safeJSON({version:sync?.recordVersion||null},200,origin);
+      }catch(error){
+        if(error.status===401 || error.status===403)
+          return safeJSON({error:"forbidden"},error.status,origin);
+        return safeJSON({error:"partner_sync_unavailable"},503,origin);
+      }
+    }
     if(url.pathname==="/v1/owner-count-overview" && request.method==="GET"){
       if(env.FINANCE_GATEWAY_ENABLED!=="enabled")
         return safeJSON({error:"cutover_not_authorized"},503,origin);
