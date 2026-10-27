@@ -182,7 +182,7 @@ async function rankingMembers(env,policy,fetcher=fetch){
   const page=await response.json();
   if(page.nextPageToken)throw httpError(503,"ranking_member_limit");
   return (Array.isArray(page.documents)?page.documents.map(docData):[])
-   .filter(m=>m && m.companyId===policy.companyId&&m.active!==false
+   .filter(m=>m && (!m.companyId || m.companyId===policy.companyId)&&m.active!==false
      && m.accessKind!=="partner" && typeof m.uid==="string"
      && /^[A-Za-z0-9_-]{1,150}$/.test(m.uid));
 }
