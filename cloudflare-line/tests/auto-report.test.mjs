@@ -97,13 +97,19 @@ test("Owner notice tab has independent default-OFF switches; worker kill switch 
  const toml=readFileSync(new URL("../wrangler.toml",import.meta.url),"utf8");
  for(const id of ["notificationMorningAutoReportEnabled","notificationMorningAutoReportTime",
   "notificationEveningAutoReportEnabled","notificationEveningAutoReportTime",
-  "notificationReportWeekdays"]){
+  "notificationWeekdays"]){
   assert.match(html,new RegExp('id="'+id+'"'));
   assert.match(html,new RegExp('const '+id+'\\s*='));
  }
  assert.doesNotMatch(html,/id="notificationMorningAutoReportEnabled"[^>]*checked/);
  assert.doesNotMatch(html,/id="notificationEveningAutoReportEnabled"[^>]*checked/);
  assert.match(html,/reportsEnabled && !lineGroupId/);
+ assert.match(html,/reportsEnabled && !notificationLineEnabled\.checked/);
+ assert.doesNotMatch(html,/id="notificationReportWeekdays"/);
+ const worker=readFileSync(new URL("../src/index.js",import.meta.url),"utf8");
+ assert.match(worker,/!cfg\?\.lineEnabled/);
+ assert.match(worker,/cfg\.weekdays\.map\(Number\)\.includes\(n\.weekday\)/);
+ assert.doesNotMatch(worker,/cfg\.reportAutoWeekdays/);
  assert.match(html,/isCurrentCompanyOwner\(\)/);
  assert.match(rules,/'morningAutoReportEnabled'/);
  assert.match(rules,/'eveningAutoReportEnabled'/);
@@ -116,12 +122,12 @@ test("Notification settings load actual selected times; default OFF survives rel
  const end=html.indexOf("async function loadNotificationSettings(",start);
  assert.ok(start>0&&end>start,"source extractor found exact normalization boundaries");
  const code=html.slice(start,end);
- const actual=vm.runInNewContext(code+"; normalizeNotificationSettings({morningAutoReportEnabled:true,morningAutoReportTime:'09:15',eveningAutoReportTime:'20:45',reportAutoWeekdays:[0,6]});");
+ const actual=vm.runInNewContext(code+"; normalizeNotificationSettings({morningAutoReportEnabled:true,morningAutoReportTime:'09:15',eveningAutoReportTime:'20:45',weekdays:[0,6]});");
  assert.equal(actual.morningAutoReportEnabled,true);
  assert.equal(actual.eveningAutoReportEnabled,false);
  assert.equal(actual.morningAutoReportTime,"09:15");
  assert.equal(actual.eveningAutoReportTime,"20:45");
- assert.deepEqual(Array.from(actual.reportAutoWeekdays),[0,6]);
+ assert.deepEqual(Array.from(actual.weekdays),[0,6]);
  const defaults=vm.runInNewContext(code+";normalizeNotificationSettings(null);");
  assert.equal(defaults.morningAutoReportEnabled,false);
  assert.equal(defaults.eveningAutoReportEnabled,false);
