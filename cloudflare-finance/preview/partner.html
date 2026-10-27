@@ -146,11 +146,17 @@ function renderInputs(){
   const record=selectedRecord(),entries=Object.values(record?.results||{});
   const known=new Set();
   for(const product of state.data?.products||[]){
-    for(const [idx,planId] of (product.planIds||[]).entries()){
+    // Never render internal revenue per unit: these are CB-only options.
+    const options=product.cashbackPlans||((product.planIds||[]).map((planId,i)=>({planId,cashback:null,idx:i})));
+    for(const [idx,option] of options.entries()){
+      const planId=option.planId;
       const key=product.id+"/"+planId;
       known.add(key);
       const line=document.createElement("div");line.className="product";
-      const lab=text("label",product.name+((product.planIds||[]).length>1?"・プラン"+(idx+1):""));
+      const cbLabel=Number.isSafeInteger(option.cashback)
+        ? "・CB "+option.cashback.toLocaleString("ja-JP")+"円"
+        : ((options.length>1)?"・プラン"+(idx+1):"");
+      const lab=text("label",product.name+cbLabel);
       const input=document.createElement("input");
       input.type="number";input.min="0";input.max="9999";input.step="1";input.inputMode="numeric";
       input.dataset.productId=product.id;input.dataset.planId=planId;input.setAttribute("aria-label",lab.textContent+"の件数");
