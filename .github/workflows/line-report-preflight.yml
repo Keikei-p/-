@@ -1,0 +1,23 @@
+name: Sales LINE Report Preflight
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify revenue-free templates
+        run: node --test tests/report-format.test.mjs
+      - name: Parse Cloudflare Worker
+        run: |
+          node --check reports/worker.mjs
+          node --check reports/format.mjs
+      - name: Ensure live delivery disabled by default
+        run: node -e "const f=require('fs').readFileSync('wrangler.sales-reports.toml','utf8'); if(!f.includes('REPORT_DELIVERY_ENABLED = \"false\"'))process.exit(1);"
