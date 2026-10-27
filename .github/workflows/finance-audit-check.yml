@@ -3,7 +3,7 @@ on:
   pull_request:
     branches: [feature/partner-count-scope-20261027, safety/finance-audit-20261027]
   push:
-    branches: [safety/finance-audit-20261027, safety/partner-missing-features-20261027, feature/individual-revenue-rank-private-20261027]
+    branches: [safety/finance-audit-20261027, safety/partner-missing-features-20261027, feature/individual-revenue-rank-private-20261027, feature/annual-sales-archive-reports-20261028]
 permissions:
   contents: read
 jobs:
