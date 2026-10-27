@@ -5346,6 +5346,46 @@ body.product-reordering .product-list {
       </div>
     </div>
 
+    <div class="notification-mode-card" id="autoReportSettingsPanel" style="margin-top:18px;">
+      <div class="notification-mode-title">📨 朝・夜の実績報告をLINEへ自動送信</div>
+      <div class="notification-mode-description" style="margin-top:6px;">
+        初期設定は両方OFFです。未報告リマインドとは別に、実績管理アプリの件数と目標から報告を作成します。会社の売上・単価は送信しません。
+      </div>
+      <label class="notification-switch" style="margin-top:12px;">
+        <input type="checkbox" id="notificationMorningAutoReportEnabled">
+        <span>🌅 朝礼報告の自動送信をON</span>
+      </label>
+      <div class="form-group">
+        <label for="notificationMorningAutoReportTime">朝の送信時刻</label>
+        <input id="notificationMorningAutoReportTime" type="time" step="300" value="09:00">
+        <div class="notification-mode-description">前日の班別実績と目標を送ります。</div>
+      </div>
+      <label class="notification-switch">
+        <input type="checkbox" id="notificationEveningAutoReportEnabled">
+        <span>🌸 最終報告の自動送信をON</span>
+      </label>
+      <div class="form-group">
+        <label for="notificationEveningAutoReportTime">夜の送信時刻</label>
+        <input id="notificationEveningAutoReportTime" type="time" step="300" value="20:00">
+        <div class="notification-mode-description">当日の班別実績と目標を送ります。</div>
+      </div>
+      <div class="form-group">
+        <label>自動報告を送信する曜日</label>
+        <div id="notificationReportWeekdays" class="notification-weekdays">
+          <label><input type="checkbox" data-report-weekday="1"> 月</label>
+          <label><input type="checkbox" data-report-weekday="2"> 火</label>
+          <label><input type="checkbox" data-report-weekday="3"> 水</label>
+          <label><input type="checkbox" data-report-weekday="4"> 木</label>
+          <label><input type="checkbox" data-report-weekday="5"> 金</label>
+          <label><input type="checkbox" data-report-weekday="6"> 土</label>
+          <label><input type="checkbox" data-report-weekday="0"> 日</label>
+        </div>
+      </div>
+      <div class="notification-mode-description">
+        LINEグループ連携が必要です。送信失敗・無料通数上限の場合は再送を繰り返しません。時刻は5分刻み。システム側の安全承認が終わるまでONにしても実送信されません。
+      </div>
+    </div>
+
     <button
       id="saveNotificationSettingsButton"
       class="account-save-button"
@@ -6896,6 +6936,16 @@ const notificationTimeInput =
 
 const notificationLineEnabled =
   document.getElementById("notificationLineEnabled");
+const notificationMorningAutoReportEnabled =
+  document.getElementById("notificationMorningAutoReportEnabled");
+const notificationMorningAutoReportTime =
+  document.getElementById("notificationMorningAutoReportTime");
+const notificationEveningAutoReportEnabled =
+  document.getElementById("notificationEveningAutoReportEnabled");
+const notificationEveningAutoReportTime =
+  document.getElementById("notificationEveningAutoReportTime");
+const notificationReportWeekdays =
+  document.getElementById("notificationReportWeekdays");
 
 const notificationLineGroupId =
   document.getElementById("notificationLineGroupId");
@@ -22767,6 +22817,21 @@ function normalizeNotificationSettings(
         : "individual",
     lineEnabled:
       data.lineEnabled === true,
+    morningAutoReportEnabled:
+      data.morningAutoReportEnabled === true,
+    eveningAutoReportEnabled:
+      data.eveningAutoReportEnabled === true,
+    morningAutoReportTime:
+      /^([01]\\d|2[0-3]):[0-5]\\d$/.test(data.morningAutoReportTime || "")
+        ? data.morningAutoReportTime : "09:00",
+    eveningAutoReportTime:
+      /^([01]\\d|2[0-3]):[0-5]\\d$/.test(data.eveningAutoReportTime || "")
+        ? data.eveningAutoReportTime : "20:00",
+    reportAutoWeekdays:
+      Array.isArray(data.reportAutoWeekdays)
+        ? Array.from(new Set(data.reportAutoWeekdays.map(Number)
+          .filter(day => Number.isInteger(day) && day >= 0 && day <= 6)))
+        : [1, 2, 3, 4, 5],
     lineGroupId:
       String(
         data.lineGroupId ||
@@ -22850,6 +22915,13 @@ function renderNotificationSettingsForm() {
 
   notificationLineEnabled.checked =
     settings.lineEnabled;
+  notificationMorningAutoReportEnabled.checked = settings.morningAutoReportEnabled;
+  notificationEveningAutoReportEnabled.checked = settings.eveningAutoReportEnabled;
+  notificationMorningAutoReportTime.value = settings.morningAutoReportTime;
+  notificationEveningAutoReportTime.value = settings.eveningAutoReportTime;
+  notificationReportWeekdays.querySelectorAll("[data-report-weekday]").forEach(input => {
+    input.checked = settings.reportAutoWeekdays.includes(Number(input.dataset.reportWeekday));
+  });
 
   notificationLineGroupId.value =
     settings.lineGroupId;
@@ -22889,6 +22961,10 @@ function renderNotificationSettingsForm() {
     notificationTimeInput,
     notificationAnyMemberCompletesTeam,
     notificationLineEnabled,
+    notificationMorningAutoReportEnabled,
+    notificationMorningAutoReportTime,
+    notificationEveningAutoReportEnabled,
+    notificationEveningAutoReportTime,
     saveNotificationSettingsButton,
     issueLinePairingCodeButton
   ].forEach(
@@ -22912,6 +22988,9 @@ function renderNotificationSettingsForm() {
 
       }
     );
+  notificationReportWeekdays.querySelectorAll("input").forEach(input => {
+    input.disabled = !canEdit;
+  });
 
 }
 
@@ -23541,6 +23620,30 @@ saveNotificationSettingsButton.onclick =
 
     }
 
+
+    const reportsEnabled = notificationMorningAutoReportEnabled.checked ||
+      notificationEveningAutoReportEnabled.checked;
+    const reportWeekdays = Array.from(
+      notificationReportWeekdays.querySelectorAll("[data-report-weekday]:checked")
+    ).map(input => Number(input.dataset.reportWeekday));
+    const reportTimeValid = value => {
+      const match = String(value || "").match(/^([01]\\d|2[0-3]):([0-5]\\d)$/);
+      return !!match && Number(match[2]) % 5 === 0;
+    };
+    if (reportsEnabled && !lineGroupId) {
+      showError("朝・夜の自動報告を使うにはLINEグループ連携が必要です。");
+      return;
+    }
+    if (reportsEnabled && !reportWeekdays.length) {
+      showError("朝・夜の自動報告の曜日を選択してください。");
+      return;
+    }
+    if (!reportTimeValid(notificationMorningAutoReportTime.value) ||
+        !reportTimeValid(notificationEveningAutoReportTime.value)) {
+      showError("朝・夜の送信時刻は5分刻みで設定してください。");
+      return;
+    }
+
     const next =
       normalizeNotificationSettings({
         enabled:
@@ -23553,6 +23656,11 @@ saveNotificationSettingsButton.onclick =
             : "individual",
         lineEnabled:
           notificationLineEnabled.checked,
+        morningAutoReportEnabled: notificationMorningAutoReportEnabled.checked,
+        morningAutoReportTime: notificationMorningAutoReportTime.value,
+        eveningAutoReportEnabled: notificationEveningAutoReportEnabled.checked,
+        eveningAutoReportTime: notificationEveningAutoReportTime.value,
+        reportAutoWeekdays: reportWeekdays,
         lineGroupId,
         lineGroupName:
           notificationSettings.lineGroupName ||
