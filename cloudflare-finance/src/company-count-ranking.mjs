@@ -3,7 +3,7 @@
  * Never include unit prices, sales, or financial totals in the response.
  * All valid teams (direct and partner) are treated identically.
  */
-export function buildCompanyCountRanking(records,companyId,month){
+export function buildCompanyCountRanking(records,companyId,month,allTeams=[]){
   if(!Array.isArray(records)||typeof companyId!=="string"||
       !/^\d{4}-\d{2}$/.test(month))throw Error("invalid_count_ranking_request");
   const teams=new Map(),daily=new Set();
@@ -19,6 +19,10 @@ export function buildCompanyCountRanking(records,companyId,month){
     current.reportedMembers++;
     if(!Number.isSafeInteger(current.totalCount))throw Error("invalid_count_ranking_sum");
     teams.set(record.teamId,current);
+  }
+  for(const team of allTeams){
+    if(team && team.companyId===companyId && team.active!==false && typeof team.id==="string" &&
+        !teams.has(team.id))teams.set(team.id,{teamId:team.id,totalCount:0,reportedMembers:0});
   }
   const ranking=[...teams.values()].sort((a,b)=>b.totalCount-a.totalCount || a.teamId.localeCompare(b.teamId,"ja"))
     .map((r,i)=>({...r,rank:i+1}));
