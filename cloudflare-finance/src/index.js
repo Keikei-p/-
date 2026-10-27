@@ -408,7 +408,7 @@ export default {
         if(!policy.isOwner || policy.isPartner)throw httpError(403,"owner_only");
         const month=url.searchParams.get("month")||
           new Intl.DateTimeFormat("sv-SE",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit"}).format(new Date());
-        if(!/^\\d{4}-\\d{2}$/.test(month))
+        if(!/^\d{4}-\d{2}$/.test(month))
           return safeJSON({error:"invalid_month"},400,origin);
         const [records,teams,leaders]=await Promise.all([
           firestoreQuery(env,"records",policy.companyId),
