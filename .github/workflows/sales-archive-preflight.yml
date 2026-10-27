@@ -1,0 +1,23 @@
+name: Sales Archive Preflight
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check archive JavaScript syntax
+        run: |
+          cp sales-archive.js /tmp/sales-archive.mjs
+          node --check /tmp/sales-archive.mjs
+      - name: Run archive regression suite
+        run: node --test tests/sales-archive-unit.test.mjs
+      - name: Validate index manifest
+        run: node -e "const f=require('./firestore.indexes.json'); if(!f.indexes.some(x=>x.collectionGroup==='records' && x.fields.some(v=>v.fieldPath==='date')))process.exit(1);"
