@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {projectCountRecord,projectPublicProduct,projectCountCorrection,auditNoFinancialKeys} from "../security/public-projection.mjs";
+import {projectCountRecord,projectPublicProduct,projectCountCorrection,projectRankOnly,auditNoFinancialKeys} from "../security/public-projection.mjs";
 
 const record={
  id:"c1_u1_2026-10-27",companyId:"c1",uid:"u1",date:"2026-10-27",
@@ -44,4 +44,19 @@ test("zero-count report remains valid",()=>{
  const projected=projectCountRecord({...record,totalCount:0,totalRevenue:0,results:{},reportStatus:"no_result"});
  assert.equal(projected.totalCount,0);
  assert.equal(projected.reportStatus,"no_result");
+});
+
+test("rank-only publication strips money and counts while preserving ordering",()=>{
+ const ranks=projectRankOnly({companyId:"c1",period:"2026-10",kind:"member",participants:[
+  {id:"a",name:"A",score:80000,count:3,revenue:80000},
+  {id:"b",name:"B",score:100000,count:5,revenue:100000},
+  {id:"c",name:"C",score:80000,count:3,revenue:80000}
+ ]});
+ assert.deepEqual(ranks.ranks.map(x=>x.rank),[1,2,2]);
+ assert.deepEqual(ranks.ranks.map(x=>x.name),["B","A","C"]);
+ assert.equal(JSON.stringify(ranks).includes("100000"),false);
+ assert.ok(auditNoFinancialKeys(ranks));
+});
+test("invalid numeric ranking inputs fail closed",()=>{
+ assert.throws(()=>projectRankOnly({companyId:"c1",period:"2026-10",kind:"member",participants:[{id:"x",score:""}]}));
 });
