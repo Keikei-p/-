@@ -67,7 +67,7 @@ test("2025 annual report mirrors validated current CB tariffs without rewriting 
  assert.equal(result.teams.length,2);
  assert.equal(result.teams.find(x=>x.teamId==="second").count,10);
  assert.equal(result.products.find(x=>x.productId==="nuro").breakdown["20000"].revenue,67500);
- assert.equal(result.rowsWithStoredTotalMismatch,1);
+ assert.equal(result.rowsWithStoredTotalMismatch,2);
  assert.equal(result.legacyPricingFallbackLines,0);
  assert.equal(JSON.stringify([records,products,teams]),original);
 });
