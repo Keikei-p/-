@@ -503,11 +503,10 @@ export default {
          env.FINANCE_ARCHIVE_APPROVAL!=="OWNER_APPROVED_ARCHIVE_READS" ||
          env.FIREBASE_PROJECT_ID!==PROJECT_ID)
         return safeJSON({error:"annual_archive_not_released"},503,origin);
-      if(request.method!==(route==="/v1/owner-annual-archive"?"GET":
-         "GET") && !(route==="/v1/owner-annual-archive"&&request.method==="POST"))
+      if(request.method!=="GET" && !(route==="/v1/owner-annual-archive" && request.method==="POST"))
         return safeJSON({error:"method_not_allowed"},405,origin);
       const archiveYear=url.searchParams.get("year")||"";
-      if(!/^20\\d{2}$/.test(archiveYear))
+      if(!/^20\d{2}$/.test(archiveYear))
         return safeJSON({error:"invalid_year"},400,origin);
       const auth=request.headers.get("authorization")||"";
       if(!auth.startsWith("Bearer "))
@@ -526,7 +525,7 @@ export default {
           for(let i=0;i<20;i++){
             const page=await bucket.list({prefix,limit:500,...(cursor?{cursor}:{})});
             if(!page || !Array.isArray(page.objects))throw httpError(503,"archive_index_corrupt");
-            files.push(...page.objects.filter(o=>/^v1\/[A-Za-z0-9_-]+\/20\\d{2}\/[a-f0-9]{64}\\.json$/.test(o.key) &&
+            files.push(...page.objects.filter(o=>/^v1\/[A-Za-z0-9_-]+\/20\d{2}\/[a-f0-9]{64}\\.json$/.test(o.key) &&
               o.key.startsWith(prefix)).map(o=>({
                 sha256:o.key.slice(prefix.length,-5),savedAt:o.uploaded?.toISOString?.()||null,
                 bytes:o.size
@@ -547,7 +546,8 @@ export default {
           return new Response(saved.raw,{
             headers:{"Content-Type":"application/json; charset=utf-8",
               "Content-Disposition":"attachment; filename=\"sales-"+archiveYear+"-"+digest.slice(0,10)+".json\"",
-              "Cache-Control":"no-store,private","X-Content-Type-Options":"nosniff"},
+              "Cache-Control":"no-store,private","X-Content-Type-Options":"nosniff",
+              ...(ALLOWED_ORIGINS.has(origin)?{"Access-Control-Allow-Origin":origin,"Vary":"Origin"}:{})},
           });
         }
         // Read-only preparation requires Firestore page pagination and
