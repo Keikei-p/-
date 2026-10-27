@@ -57,7 +57,7 @@ button.secondary{background:#e7eff9;color:#25527b}
 <section class="panel"><h2>直営班＋協力店のランキング</h2><div id="rankingList"></div></section>
 <section class="panel" id="individualRankPanel">
 <h2>🏆 個人ランキング（総合売上順・金額は非表示）</h2>
-<p class="muted">順位は承認済み売上単価をサーバーで計算。順位・名前・件数のみ表示します。金額はマスター・オーナーの画面にも表示しません。</p>
+<p class="muted">順位は承認済み売上単価をサーバーで計算。表示は順位・名前だけ。獲得件数・売上金額・単価はマスター・オーナーにも表示しません。</p>
 <div class="actions">
 <button id="loadIndividualRank" type="button">今月の個人ランキングを確認</button>
 <button id="loadRankingViewers" class="secondary" type="button">閲覧許可を設定</button>
@@ -195,9 +195,11 @@ function rankRow(parent,items){
  for(const item of items){
   const row=document.createElement("div");row.className="row";
   const left=document.createElement("strong");
-  left.textContent=item.rank+"位  "+item.name;
-  const count=document.createElement("span");count.textContent=item.count+" 件";
-  row.append(left,count);parent.append(row);
+  if(!Number.isSafeInteger(item.rank)||item.rank<1||typeof item.name!=="string"||
+     Object.keys(item).some(key=>!["rank","uid","name"].includes(key)))
+    throw Error("順位以外のデータが含まれる応答は拒否します。");
+  left.textContent=(item.rank===1?"👑 ":"")+item.rank+"位  "+item.name;
+  row.append(left);parent.append(row);
  }
 }
 $("loadIndividualRank").addEventListener("click",async()=>{
