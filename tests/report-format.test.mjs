@@ -26,3 +26,10 @@ test("no unreported team means no reminder",()=>{
 test("invalid numbers cannot silently become zero",()=>{
  assert.throws(()=>formatCountsReport({date:"2026-10-28",period:"final",teams:[{id:"t",name:"t",goalCount:5,currentCount:-2}]}));
 });
+
+test("team labels containing disguised prices are redacted",()=>{
+ const text=formatCountsReport({date:"2026-10-28",period:"morning",
+  teams:[{id:"x",name:"1班 CB20000円",goalCount:4,currentCount:2,reported:true}]});
+ assert.match(text,/名称は管理者確認中/);
+ assert.doesNotMatch(text,/20000|CB|円/);
+});
