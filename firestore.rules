@@ -984,6 +984,7 @@ service cloud.firestore {
               && request.resource.data.weekdays is list
               && request.resource.data.weekdays.size() >= 1
               && request.resource.data.weekdays.size() <= 7
+              && request.resource.data.weekdays.hasOnly([0, 1, 2, 3, 4, 5, 6])
               && request.resource.data.time is string
               && request.resource.data.time.size() == 5
               && request.resource.data.reportCompletionMode is string
