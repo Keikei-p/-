@@ -1,6 +1,9 @@
 // Pure formatter; contains no tokens, network access or financial values.
 function safeLabel(value){
- return String(value??"").replace(/[\r\n\t]/g," ").replace(/[¥￥$€]/g,"").trim().slice(0,60)||"名称未設定";
+ const raw=String(value??"").replace(/[\r
+\t]/g," ").trim().slice(0,60);
+ if(/(?:売上|単価|キャッシュバック|CB|[¥￥$€]|[0-9０-９]+\\s*(?:万|千)?円)/i.test(raw))return "名称は管理者確認中";
+ return raw||"名称未設定";
 }
 function nonnegativeInt(value){
  const n=Number(value);
