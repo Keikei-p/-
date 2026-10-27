@@ -5239,7 +5239,7 @@ body.product-reordering .product-list {
     </div>
 
     <div class="account-description">
-      指定した曜日・時刻に、その日の実績入力がない班を確認して、入力忘れを防ぐためのリマインドです。
+      朝・夜の件数報告と未報告リマインドを一括で設定します。クラウド自動送信は送信システムの導入・接続確認後に有効になります。
       0件でも「実績なし」で登録していれば報告済みとして扱います。
     </div>
 
@@ -5251,7 +5251,7 @@ body.product-reordering .product-list {
 
     <label class="notification-switch">
       <input id="notificationEnabled" type="checkbox">
-      <span>未報告リマインドを有効にする</span>
+      <span>朝・夜・未報告の自動送信を一括でON/OFF</span>
     </label>
 
     <div class="notification-mode-card">
@@ -5281,9 +5281,9 @@ body.product-reordering .product-list {
     </div>
 
     <div class="form-group">
-      <label for="notificationTimeInput">通知時刻</label>
+      <label for="notificationTimeInput">未報告通知時刻（従来設定）</label>
       <input id="notificationTimeInput" type="time" step="300" value="19:00">
-      <div style="margin-top:6px;color:var(--sub);font-size:10px;">無料運用のため5分刻み。未報告の場合、当日中は開始時刻から1時間ごとに再確認・通知します（通数上限到達時は停止）。</div>
+      <div style="margin-top:6px;color:var(--sub);font-size:10px;">新しいクラウド版の送信時刻は朝09:00、夜19:00、未報告19:05（日本時間）で固定です。稼働にはクラウド側の設定・検証が必要です。</div>
     </div>
 
     <label class="notification-switch">
@@ -5307,7 +5307,7 @@ body.product-reordering .product-list {
 
       <div
         style="margin-top:8px;padding:9px 10px;border-radius:8px;background:#f8fafc;color:var(--sub);font-size:11px;line-height:1.6;">
-        LINE通知は「実績入力の忘れ防止」専用です。売上金額・商材・実績件数は送信しません。
+        LINEの朝夜報告は班別の目標件数・獲得件数のみを送信します。未報告通知では金額・件数を送信しません。売上・単価・キャッシュバックは送信しません。
       </div>
 
       <button
