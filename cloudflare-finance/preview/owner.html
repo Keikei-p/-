@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>全社件数ランキング｜オーナー安全版プレビュー</title>
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans JP",sans-serif;color:#17283f;background:#f3f6fa}
+*{box-sizing:border-box}
+body{margin:0;background:#f3f6fa}
+header{background:linear-gradient(120deg,#172a4a,#315d90);color:white;padding:20px 18px}
+header h1{font-size:21px;margin:6px 0}
+.wrap{max-width:790px;margin:auto;padding:15px}
+.panel{background:white;border:1px solid #e2e8f0;border-radius:16px;padding:18px;margin-bottom:14px;box-shadow:0 8px 22px #1322390a}
+h2{font-size:16px;margin:0 0 15px}
+label{display:block;font-weight:700;margin:10px 0 5px}
+input,select,button{font:inherit}
+input,select{width:100%;min-width:0;padding:10px;border:1px solid #c6d3e4;border-radius:8px}
+button{background:#20568e;color:white;border:0;border-radius:9px;padding:11px 16px;font-weight:700}
+button:disabled{opacity:.45}
+button.secondary{background:#e7eff9;color:#25527b}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.muted{color:#667a90;font-size:12px;line-height:1.6}
+.big{font-size:32px;font-weight:800}
+.row{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid #edf2f7}
+.row:last-child{border:0}
+.row .rank{font-weight:800;color:#28548b;min-width:30px}
+.flex{display:flex;align-items:center;gap:12px}
+.note{background:#e6f0fd;border-radius:9px;padding:11px;margin-bottom:12px;font-size:13px}
+.note.error{background:#ffefed;color:#9b3332}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><div class="wrap"><h1>全社件数ランキング</h1><div class="muted" style="color:#dae6f5">直営班＋協力店｜売上と単価の集計とは分離</div></div></header>
+<main class="wrap">
+<p id="status" class="note" role="status" aria-live="polite">安全版プレビューです。本番の協力店登録はまだできません。</p>
+<section class="panel" id="loginPanel">
+<h2>オーナーログイン</h2>
+<form id="loginForm">
+<label for="email">メールアドレス</label><input id="email" type="email" autocomplete="username" required>
+<label for="password">パスワード</label><input id="password" type="password" autocomplete="current-password" required>
+<div class="actions"><button id="loginButton" type="submit">ログイン</button></div>
+</form>
+</section>
+<div id="mainPanel" hidden>
+<section class="panel">
+<div class="actions" style="justify-content:space-between;align-items:center">
+<strong>会社全体の件数管理</strong>
+<button id="logoutButton" class="secondary" type="button">退出</button></div>
+<label for="month">集計月</label><input id="month" type="month">
+<div class="actions"><button id="reloadButton" type="button">ランキング更新</button></div>
+</section>
+<section class="panel"><h2>全社の獲得件数</h2><div id="total" class="big">—</div>
+<p class="muted">月間の同一実績から集計します。直営班・協力店とも同じランキング対象です。</p></section>
+<section class="panel"><h2>直営班＋協力店のランキング</h2><div id="rankingList"></div></section>
+<section class="panel">
+<h2>協力店区分の設定（オーナーのみ）</h2>
+<p class="muted">すでに会社へ正式招待され、班が設定済みのリーダーのみ対象です。この画面は新規招待やメンバー移動を行いません。</p>
+<label for="leader">対象リーダー</label><select id="leader"></select>
+<div class="actions"><button id="activate" type="button">このリーダーを協力店に設定</button></div>
+<p class="muted">本番データの変更は行いません。Gateway、費用、バックアップ、協力店専用承認がすべて完了するまで登録機能は無効です。</p>
+</section>
+</div>
+</main>
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+import {getAuth,signInWithEmailAndPassword,onAuthStateChanged,signOut} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+// Release guard: do not change until secured gateway and dual-host migration are approved.
+const OWNER_GATEWAY_URL="";
+const firebaseConfig={apiKey:"AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
+ authDomain:"sales-management-cc116.firebaseapp.com",
+ projectId:"sales-management-cc116",
+ appId:"1:904932511564:web:6583e8b0c585231b9049e"};
+const app=initializeApp(firebaseConfig),auth=getAuth(app);
+auth.languageCode="ja";
+const $=id=>document.getElementById(id);
+const state={generation:0,loading:false,data:null};
+const yearMonthParts=Object.fromEntries(new Intl.DateTimeFormat("en-US",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit"})
+ .formatToParts(new Date()).map(p=>[p.type,p.value]));
+$("month").value=yearMonthParts.year+"-"+yearMonthParts.month;
+function status(message,error=false){$("status").textContent=message;$("status").className="note"+(error?" error":"");}
+function clear(){
+ state.data=null;
+ $("rankingList").replaceChildren();$("leader").replaceChildren();$("total").textContent="—";
+ $("activate").disabled=true;
+}
+function requireGateway(){
+ if(!OWNER_GATEWAY_URL||!/^https:\/\//.test(OWNER_GATEWAY_URL))
+  throw Error("オーナー専用サービスは準備中です。本番設定はできません。");
+}
+async function call(path,method="GET",value=null){
+ requireGateway();
+ const user=auth.currentUser;
+ if(!user?.emailVerified)throw Error("メール認証済みのログインが必要です。");
+ const headers={Authorization:"Bearer "+await user.getIdToken()};
+ if(value)headers["Content-Type"]="application/json";
+ const response=await fetch(OWNER_GATEWAY_URL+path,{
+  method,headers,cache:"no-store",body:value?JSON.stringify(value):undefined
+ });
+ if(!response.ok)throw Error(response.status===403?"オーナー権限がありません。":
+   "安全な通信に失敗しました（"+response.status+"）。");
+ return response.json();
+}
+function leaderChoice(){
+ const selected=state.data?.leaders?.find(m=>m.uid===$("leader").value);
+ $("activate").disabled=state.loading||!selected||selected.accessKind==="partner";
+}
+function render(data){
+ $("total").textContent=Number(data.totalCount).toLocaleString("ja-JP")+" 件";
+ $("rankingList").replaceChildren();
+ if(!data.ranking.length)$("rankingList").append(Object.assign(document.createElement("p"),{
+  textContent:"対象月の獲得実績はまだありません。"
+ }));
+ data.ranking.forEach(item=>{
+  const row=document.createElement("div");row.className="row";
+  const left=document.createElement("div");left.className="flex";
+  const rank=document.createElement("span");rank.className="rank";rank.textContent=item.rank+"位";
+  const name=document.createElement("span");name.textContent=item.teamName||item.teamId;
+  const count=document.createElement("strong");count.textContent=item.totalCount+" 件";
+  left.append(rank,name);row.append(left,count);$("rankingList").append(row);
+ });
+ const old=$("leader").value;$("leader").replaceChildren();
+ for(const m of data.leaders){
+  const opt=document.createElement("option");opt.value=m.uid;
+  opt.textContent=m.name+"／"+(m.teamId||"未割当")+"／"+
+   (m.accessKind==="partner"?"協力店登録済み":"直営リーダー");
+  $("leader").append(opt);
+ }
+ if(data.leaders.some(m=>m.uid===old))$("leader").value=old;
+ state.data=data;leaderChoice();
+}
+async function reload(){
+ if(state.loading)return;
+ const generation=state.generation;
+ state.loading=true;$("reloadButton").disabled=true;$("activate").disabled=true;
+ try{
+  const month=$("month").value;
+  if(!/^\d{4}-\d{2}$/.test(month))throw Error("対象月が不正です。");
+  const data=await call("/v1/owner-count-overview?month="+encodeURIComponent(month));
+  if(generation!==state.generation)return;
+  if(!Array.isArray(data?.ranking)||!Array.isArray(data?.leaders)||
+     !Number.isSafeInteger(data?.totalCount))throw Error("集計データの形式が不正です。");
+  render(data);status("全社の件数ランキングを更新しました。");
+ }catch(e){if(generation===state.generation){clear();status(e.message,true);}}
+ finally{if(generation===state.generation){state.loading=false;$("reloadButton").disabled=false;leaderChoice();}}
+}
+$("loginForm").addEventListener("submit",async event=>{
+ event.preventDefault();$("loginButton").disabled=true;
+ try{requireGateway();await signInWithEmailAndPassword(auth,$("email").value,$("password").value);
+  $("password").value="";
+ }catch(e){status(e.message,true);}finally{$("loginButton").disabled=false;}
+});
+onAuthStateChanged(auth,async user=>{
+ state.generation++;state.loading=false;clear();
+ $("loginPanel").hidden=!!user;$("mainPanel").hidden=!user;
+ if(user){if(!user.emailVerified)status("メール確認が必要です。",true);else await reload();}
+});
+$("month").addEventListener("change",reload);
+$("reloadButton").addEventListener("click",reload);
+$("leader").addEventListener("change",leaderChoice);
+$("logoutButton").addEventListener("click",async()=>{await signOut(auth);status("退出しました。");});
+$("activate").addEventListener("click",async()=>{
+ if(state.loading||!state.data)return;
+ const item=state.data.leaders.find(m=>m.uid===$("leader").value);
+ if(!item||item.accessKind==="partner"||!item.teamId)return;
+ if(!confirm(item.name+"を協力店リーダーとして登録しますか？\n登録後は売上・単価の閲覧が禁止されます。"))return;
+ const generation=state.generation;
+ state.loading=true;$("activate").disabled=true;
+ try{
+  await call("/v1/partner-activate","POST",{uid:item.uid});
+  if(generation!==state.generation)return;
+  status("協力店区分を設定しました。権限が再確認されます。");
+ }catch(e){if(generation===state.generation)status(e.message,true);}
+ finally{if(generation===state.generation){state.loading=false;await reload();}}
+});
+</script>
+</body>
+</html>
