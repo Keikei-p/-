@@ -144,21 +144,80 @@ async function firestoreGet(env, path, fetcher = fetch) {
   if(!result.ok)throw httpError(503,"firestore_read_unavailable");
   return docData(await result.json());
 }
-async function firestoreQuery(env, collectionId, companyId, fetcher = fetch) {
+// Snapshot-pinned, name-cursor Firestore pagination. Unlike OFFSET,
+// startAt reads each qualifying document only once and is stable across pages.
+// Crucially: NEVER return only the first N records and silently undercount.
+// The 100k hard ceiling is a resource safety guard, not a 2,000-record limit.
+async function collectFirestoreQueryPages(pageReader,{collectionId,companyId,pageSize=500,maxPages=201}){
+  if(!/^[A-Za-z0-9_-]{1,120}$/.test(collectionId||"") ||
+      !/^[A-Za-z0-9_-]{1,150}$/.test(companyId||"") ||
+      !Number.isInteger(pageSize) || pageSize<1 || pageSize>500 ||
+      !Number.isInteger(maxPages) || maxPages<1 || maxPages>201)
+    throw httpError(400,"invalid_query_args");
+  const root="projects/"+PROJECT_ID+"/databases/(default)/documents/"+collectionId+"/";
+  let cursor="",readTime="",lastName="";
+  const all=[];
+  const names=new Set();
+  for(let page=0;page<maxPages;page++){
+    const rows=await pageReader({cursor,readTime,pageSize});
+    if(!Array.isArray(rows))throw httpError(503,"firestore_query_invalid_page");
+    const documented=rows.filter(row=>row&&row.document);
+    if(documented.length>pageSize)
+      throw httpError(503,"firestore_query_excess_page");
+    const stamp=rows.find(row=>typeof row?.readTime==="string")?.readTime;
+    if(!stamp || !/^\d{4}-\d{2}-\d{2}T/.test(stamp))
+      throw httpError(503,"firestore_snapshot_unavailable");
+    if(!readTime)readTime=stamp;
+    // Reject a shifting first-page snapshot instead of reporting incorrect totals.
+    if(rows.some(row=>row?.readTime && row.readTime!==readTime))
+      throw httpError(503,"firestore_snapshot_changed");
+    if(rows.some(row=>row?.skippedResults>0))
+      throw httpError(503,"firestore_query_skipped_results");
+    for(const row of documented){
+      const doc=row.document,name=doc.name;
+      if(typeof name!=="string" || !name.startsWith(root) ||
+         !/^[^/]+$/.test(name.slice(root.length)) || name<=lastName ||
+         names.has(name))
+        throw httpError(503,"firestore_query_invalid_cursor");
+      if(!doc.fields || doc.fields.companyId?.stringValue!==companyId)
+        throw httpError(503,"firestore_query_company_mismatch");
+      const converted=docData(doc);
+      if(converted.companyId!==companyId)
+        throw httpError(503,"firestore_query_company_mismatch");
+      names.add(name);
+      all.push(converted);
+      lastName=name;
+      if(all.length>100000)throw httpError(503,"firestore_query_resource_limit");
+    }
+    if(documented.length<pageSize)return all;
+    if(!lastName || lastName===cursor)
+      throw httpError(503,"firestore_query_stalled");
+    cursor=lastName;
+  }
+  throw httpError(503,"firestore_query_resource_limit");
+}
+async function firestoreQuery(env, collectionId, companyId, fetcher=fetch){
   const bearer=await googleBearer(env,fetcher);
-  const sq={structuredQuery:{
-    from:[{collectionId}],
-    where:{fieldFilter:{field:{fieldPath:"companyId"},op:"EQUAL",value:{stringValue:companyId}}},
-    limit:2000
-  }};
-  const result=await fetcher(base+"/documents:runQuery",{method:"POST",headers:{"Authorization":"Bearer "+bearer,"Content-Type":"application/json"},
-    body:JSON.stringify(sq)});
-  if(!result.ok)throw httpError(503,"firestore_query_unavailable");
-  const rows=await result.json();
-  if(!Array.isArray(rows))throw httpError(503,"firestore_query_invalid");
-  const all=rows.filter(row=>row.document).map(row=>docData(row.document));
-  if(all.length>=2000)throw httpError(503,"records_exceed_safety_limit");
-  return all;
+  return collectFirestoreQueryPages(async ({cursor,readTime,pageSize})=>{
+    const sq={structuredQuery:{
+      from:[{collectionId}],
+      where:{fieldFilter:{field:{fieldPath:"companyId"},op:"EQUAL",
+        value:{stringValue:companyId}}},
+      orderBy:[{field:{fieldPath:"__name__"},direction:"ASCENDING"}],
+      limit:pageSize
+    }};
+    if(cursor)sq.structuredQuery.startAt={
+      values:[{referenceValue:cursor}],before:false
+    };
+    if(readTime)sq.readTime=readTime;
+    const result=await fetcher(base+"/documents:runQuery",{
+      method:"POST",
+      headers:{Authorization:"Bearer "+bearer,"Content-Type":"application/json"},
+      body:JSON.stringify(sq)
+    });
+    if(!result.ok)throw httpError(503,"firestore_query_unavailable");
+    return result.json();
+  },{collectionId,companyId});
 }
 function active(obj) { return obj && obj.active !== false; }
 // Server-side selection must precede serialization. Never send raw
@@ -718,4 +777,4 @@ export default {
     }
   }
 };
-export {approvedPolicy,safeProducts,safeRecords,safeGoals,safePartnerMembers,visibleMoney,withoutAmounts,verifiedToken,financeView,docData,collectFirestoreMemberPages};
+export {approvedPolicy,safeProducts,safeRecords,safeGoals,safePartnerMembers,visibleMoney,withoutAmounts,verifiedToken,financeView,docData,collectFirestoreMemberPages,collectFirestoreQueryPages,firestoreQuery};
