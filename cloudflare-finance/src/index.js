@@ -170,6 +170,23 @@ function safePartnerMembers(all,policy) {
     .map(m=>({uid:m.uid,name:withoutAmounts(String(m.name||"担当者")).slice(0,30),teamId:policy.teamId}))
     .sort((a,b)=>a.name.localeCompare(b.name,"ja"));
 }
+async function ownerMemberList(env,policy,fetcher=fetch) {
+  if(!policy.isOwner || policy.isPartner)throw httpError(403,"owner_only");
+  const bearer=await googleBearer(env,fetcher);
+  const path="companies/"+policy.companyId+"/members";
+  const response=await fetcher(base+"/documents/"+documentPath(path)+"?pageSize=500",
+    {headers:{Authorization:"Bearer "+bearer}});
+  if(!response.ok)throw httpError(503,"owner_members_unavailable");
+  const page=await response.json();
+  if(page.nextPageToken)throw httpError(503,"owner_members_page_limit");
+  return (Array.isArray(page.documents)?page.documents.map(docData):[])
+    .filter(m=>active(m) && (!m.companyId || m.companyId===policy.companyId)
+      && typeof m.uid==="string" && /^[A-Za-z0-9_-]{1,150}$/.test(m.uid)
+      && m.companyRole==="member" && m.role==="leader")
+    .map(m=>({uid:m.uid,name:withoutAmounts(m.name||"担当者").slice(0,30),
+      teamId:m.teamId||null,accessKind:m.accessKind==="partner"?"partner":"direct"}))
+    .sort((a,b)=>a.name.localeCompare(b.name,"ja"));
+}
 async function partnerMemberList(env,policy,fetcher=fetch) {
   if(!policy.isPartner)throw httpError(403,"partner_only");
   const bearer=await googleBearer(env,fetcher);
@@ -375,6 +392,39 @@ export default {
     }
     if(url.pathname==="/health"&&request.method==="GET"){
       return safeJSON({ok:true,service:"finance-gateway",enabled:env.FINANCE_GATEWAY_ENABLED==="enabled",mode:"read_only"},200,origin);
+    }
+    if(url.pathname==="/v1/owner-count-overview" && request.method==="GET"){
+      if(env.FINANCE_GATEWAY_ENABLED!=="enabled")
+        return safeJSON({error:"cutover_not_authorized"},503,origin);
+      if(env.FINANCE_COST_APPROVAL!=="OWNER_APPROVED_BLAZE_COSTS")
+        return safeJSON({error:"billing_not_approved"},503,origin);
+      if(env.FIREBASE_PROJECT_ID!==PROJECT_ID)
+        return safeJSON({error:"project_mismatch"},503,origin);
+      const auth=request.headers.get("authorization")||"";
+      if(!auth.startsWith("Bearer "))return safeJSON({error:"authorization_required"},401,origin);
+      try{
+        const principal=await verifiedToken(auth.slice(7));
+        const policy=await memberPolicy(env,principal);
+        if(!policy.isOwner || policy.isPartner)throw httpError(403,"owner_only");
+        const month=url.searchParams.get("month")||
+          new Intl.DateTimeFormat("sv-SE",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit"}).format(new Date());
+        if(!/^\\d{4}-\\d{2}$/.test(month))
+          return safeJSON({error:"invalid_month"},400,origin);
+        const [records,teams,leaders]=await Promise.all([
+          firestoreQuery(env,"records",policy.companyId),
+          firestoreQuery(env,"teams",policy.companyId),
+          ownerMemberList(env,policy)
+        ]);
+        const ranking=buildCompanyCountRanking(records,policy.companyId,month);
+        const names=new Map(teams.map(t=>[t.id,withoutAmounts(t.name||t.id)]));
+        return safeJSON({month,ranking:ranking.ranking.map(row=>({...row,
+          teamName:names.get(row.teamId)||row.teamId})),
+          totalCount:ranking.totalCount,leaders},200,origin);
+      }catch(error){
+        if(error.status===401||error.status===403)
+          return safeJSON({error:"forbidden"},error.status,origin);
+        return safeJSON({error:"owner_overview_unavailable"},503,origin);
+      }
     }
     // Owner activation is separate from invitations: only already invited,
     // already assigned, active Leaders can be marked as partner accounts.
