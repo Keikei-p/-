@@ -374,8 +374,9 @@ async function scheduledReports(env){
     try{
       if(company.active===false)continue;
       const cfg=await getDoc(env,`companies/${company.id}/settings/notifications`);
-      if(!cfg?.lineGroupId || !Array.isArray(cfg.reportAutoWeekdays) ||
-         !cfg.reportAutoWeekdays.includes(n.weekday))continue;
+      // Three notification types share LINE connection and selected weekdays.
+      if(!cfg?.lineEnabled || !cfg.lineGroupId || !Array.isArray(cfg.weekdays) ||
+         !cfg.weekdays.map(Number).includes(n.weekday))continue;
       const modes=[
         {key:"morning",enabled:cfg.morningAutoReportEnabled,time:cfg.morningAutoReportTime},
         {key:"evening",enabled:cfg.eveningAutoReportEnabled,time:cfg.eveningAutoReportTime}
