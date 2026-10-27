@@ -132,3 +132,18 @@ test("Cashback codes inside catalog labels cannot leak through automatic LINE re
  assert.equal(safeReportLabel("NURO CB20000","商材"),"商材");
  assert.equal(safeReportLabel("キャッシュバック5000","商材"),"商材");
 });
+
+test("Historical inactive team retains its own recorded counts and monthly target",()=>{
+ const legacy={companyId:id,id:"retired",name:"旧1班",active:false};
+ const history={companyId:id,uid:"archivedUser",date:"2026-10-27",
+   teamId:"retired",teamNameSnapshot:"旧1班",totalCount:2,
+   results:{nuro:{productId:"nuro",count:2,revenuePerUnit:1}}};
+ const text=buildCountOnlyReport({
+  companyId:id,mode:"evening",date:"2026-10-27",
+  records:[...records,history],teams:[...teams,legacy],products,
+  goals:[...goals,{companyId:id,teamId:"retired",month:"2026-10",targets:{nuro:10}}]
+ });
+ assert.match(text,/⭐️旧1班/);
+ assert.match(text,/月間:2件｜目標:10件｜残り:8件/);
+ assert.match(text,/本日:7件｜月間:8件/);
+});
