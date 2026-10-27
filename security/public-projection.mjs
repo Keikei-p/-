@@ -10,13 +10,20 @@ function count(value){
  if(value==null||value===""||!Number.isSafeInteger(n)||n<0||n>1000000)throw Error("Invalid count");
  return n;
 }
+function safeProductName(value){
+ const original=text(value,80);
+ // Legacy product labels can embed financial tiers (CB or Yen amounts).
+ // Fail closed instead of trying to guess and inadvertently exposing a tier.
+ return /(?:CB|キャッシュバック|単価|売上|[¥￥]|[0-9０-９]+\\s*(?:万|千)?円)/i.test(original)
+  ? "商材名はオーナー確認中" : original;
+}
 function id(value){const s=text(value,200);if(!s)throw Error("Missing required ID");return s;}
 function date(value){const s=text(value,10);if(!/^\d{4}-\d{2}-\d{2}$/.test(s))throw Error("Invalid date");return s;}
 function safeResult(productId,r){
  if(!r||typeof r!=="object")throw Error("Invalid result");
  return {
   productId:id(r.productId||productId),
-  productName:text(r.productName||r.productNameSnapshot,80),
+  productName:safeProductName(r.productName||r.productNameSnapshot),
   count:count(r.count)
  };
 }
@@ -46,7 +53,7 @@ export function projectPublicProduct(product){
  if(!product||typeof product!=="object")throw Error("Invalid product");
  return {
   companyId:id(product.companyId),sourceId:id(product.id),
-  name:text(product.name,80),active:product.active!==false,
+  name:safeProductName(product.name),active:product.active!==false,
   sortOrder:Number.isSafeInteger(Number(product.sortOrder))&&Number(product.sortOrder)>=0?Number(product.sortOrder):0
  };
 }
