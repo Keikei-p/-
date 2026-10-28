@@ -13750,8 +13750,8 @@ function renderTeams() {
         "team-name";
 
       name.textContent =
-        team.name ||
-        "名前未設定";
+        (team.name || "名前未設定") +
+        (team.active === false ? "（利用終了）" : "");
 
 
       const count =
@@ -13825,7 +13825,15 @@ function renderTeams() {
           );
 
 
-      // 班名や所属の過去の参照を保護するため、物理削除ボタンは表示しない。
+      // Only reversible retirement. No historical team or member ID deletion.
+      if (isCurrentCompanyOwner()) {
+        const toggle = document.createElement("button");
+        toggle.className = "team-action-button";
+        toggle.type = "button";
+        toggle.textContent = team.active === false ? "再開" : "利用終了";
+        toggle.onclick = () => setTeamActive(team, team.active === false);
+        actions.appendChild(toggle);
+      }
       actions.appendChild(
         goal
       );
@@ -13859,6 +13867,31 @@ function renderTeams() {
 
 }
 
+
+async function setTeamActive(team, active) {
+  if (!isCurrentCompanyOwner() || !team?.id) return;
+  const currentAssigned = members.filter(item =>
+    item.active !== false && item.teamId === team.id
+  ).length;
+  if (!active && currentAssigned > 0) {
+    showError("この班には稼働中のメンバーがいます。先に所属を移してから利用終了してください。過去実績は変更しません。");
+    return;
+  }
+  const label = team.name || "この班";
+  if (!confirm(active
+    ? `${label}の利用を再開しますか？過去実績は変更しません。`
+    : `${label}を今後の入力候補から外しますか？過去実績と班履歴は残ります。`)) return;
+  try {
+    await updateDoc(doc(db, "teams", team.id), {
+      active, updatedAt: serverTimestamp()
+    });
+    // Existing snapshots keep the original team ID and name.
+    showSuccess(active ? "班を再開しました。" : "班を利用終了にしました。履歴は保存されています。");
+    await loadTeams();
+  } catch(error) {
+    showError(firebaseErrorMessage(error));
+  }
+}
 
 async function countTeamMembers(
   teamId,
@@ -14249,8 +14282,8 @@ function renderTeamGoalInputs() {
         );
 
       name.textContent =
-        product.name ||
-        "名前未設定";
+        (product.name || "名前未設定") +
+        (product.active === false ? "（利用終了）" : "");
 
 
       const input =
@@ -16656,8 +16689,15 @@ function renderProducts() {
           );
 
 
-      // 商材マスターと当時の価格参照を保護するため、物理削除は不可。
-
+      // The catalog stays stored for historical price matching.
+      if (isCurrentCompanyOwner()) {
+        const toggle = document.createElement("button");
+        toggle.className = "team-action-button";
+        toggle.type = "button";
+        toggle.textContent = product.active === false ? "再開" : "利用終了";
+        toggle.onclick = () => setProductActive(product, product.active === false);
+        actions.appendChild(toggle);
+      }
       actions.appendChild(
         edit
       );
@@ -16681,6 +16721,25 @@ function renderProducts() {
 
 }
 
+
+async function setProductActive(product, active) {
+  if (!isCurrentCompanyOwner() || !product?.id) return;
+  const label = product.name || "この商材";
+  if (!confirm(active
+    ? `${label}を入力候補に戻しますか？過去実績は変更しません。`
+    : `${label}を今後の入力候補から外しますか？過去件数・売上・単価履歴は残ります。`)) return;
+  const draft = captureProductInputDraft();
+  try {
+    await updateDoc(doc(db, "products", product.id), {
+      active, updatedAt: serverTimestamp()
+    });
+    await loadProducts();
+    prepareProductInputList(draft);
+    showSuccess(active ? "商材を再開しました。" : "商材を利用終了にしました。過去実績は残ります。");
+  } catch(error) {
+    showError(firebaseErrorMessage(error));
+  }
+}
 
 // Report a failed catalog write without logging UID, email, or finance amounts.
 // A visible Owner badge alone does not prove the server-side membership agrees.
