@@ -9,8 +9,8 @@ const record={
           p2:{productId:"p2",count:1,revenuePerUnit:30000,cashback:0}},
  sensitiveCustomerData:{phone:"000000"},
 };
-const user={uid:"user",companyId:"companyA",active:true,companyRole:"member"};
-const member={uid:"user",companyId:"companyA",active:true,companyRole:"member",canViewRevenue:false,canViewUnitPrice:false};
+const user={uid:"user",companyId:"companyA",active:true,companyRole:"member",accessKind:"internal"};
+const member={uid:"user",companyId:"companyA",active:true,companyRole:"member",accessKind:"internal",canViewRevenue:false,canViewUnitPrice:false};
 const principal={
  uid:"user",companyId:"companyA",user,member,
  firebaseIdTokenVerified:true,emailVerified:true,serverVerifiedOwner:false,
@@ -82,4 +82,32 @@ test("missing or invalid saved price and revenue deny rather than silently estim
 test("financial denial messages contain no customer IDs, company names or prices",()=>{
  try{get({...record,companyId:"private-other-company"},grant({canViewRevenue:true}));assert.fail();}
  catch(e){assert.equal(e.message,"Financial view denied or incomplete");}
+});
+
+
+test("partner leaders are denied all finance even with accidentally enabled flags",()=>{
+ const partner={...principal,
+  user:{...user,role:"leader",accessKind:"partner"},
+  member:{...member,role:"leader",accessKind:"partner",
+   canViewRevenue:true,canViewUnitPrice:true}};
+ assert.throws(()=>get(record,partner),/Financial view denied/);
+ for(const corrupt of [
+   {...partner,user:{...user,accessKind:"internal"}},
+   {...partner,member:{...member,accessKind:"internal",canViewRevenue:true}},
+   {...principal,user:{...user,memberType:"partner"},
+    member:{...member,canViewRevenue:true}},
+   {...principal,user:{...user,accessKind:undefined},
+    member:{...member,canViewRevenue:true}},
+   {...principal,member:{...member,accessKind:undefined,canViewUnitPrice:true}},
+   {...principal,user:{...user,accessKind:"unknown"},
+    member:{...member,canViewRevenue:true}}
+ ]){
+  assert.throws(()=>get(record,corrupt),/Financial view denied/);
+ }
+});
+test("revoked internal/partner label cannot be overridden by self-reported owner role",()=>{
+ const bad={...principal,serverVerifiedOwner:true,
+   user:{...user,companyRole:"owner",accessKind:"partner"},
+   member:{...member,companyRole:"owner",accessKind:"partner",canViewRevenue:true,canViewUnitPrice:true}};
+ assert.throws(()=>get(record,bad),/Financial view denied/);
 });
