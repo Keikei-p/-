@@ -276,3 +276,38 @@ test("partner custom product names containing money are rejected before database
   ...invited,data:{name:"NURO CB20000"}
  }),/金額を含む商材名/);
 });
+
+
+test("partner owner cannot see finance UI even with both grants set true",()=>{
+ const fn=name=>{
+  const start=html.indexOf("function "+name+"(");
+  assert(start>=0,name+" missing");
+  const end=html.indexOf("\n}",start);
+  assert(end>start);
+  return html.slice(start,end+2);
+ };
+ const snippet=[
+  "isPartnerFinanciallyRestricted",
+  "canCurrentUserViewRevenue","canCurrentUserViewProductRevenue",
+  "canCurrentUserViewUnitPrice",
+  "memberRevenuePermissionEnabled","memberUnitPricePermissionEnabled"
+ ].map(fn).join("\n");
+ const scenario={
+  currentUserData:{accessKind:"partner",companyRole:"owner",
+    canViewRevenue:true,canViewUnitPrice:true},
+  currentCompanyData:{companyKind:"partner"},
+  isCurrentCompanyOwner:()=>true,
+  isMemberMaster:()=>true
+ };
+ const evaluation="({"+
+   "revenue:canCurrentUserViewRevenue(),"+
+   "productRevenue:canCurrentUserViewProductRevenue(),"+
+   "price:canCurrentUserViewUnitPrice(),"+
+   "memberRevenue:memberRevenuePermissionEnabled({companyRole:'owner',accessKind:'partner',canViewRevenue:true}),"+
+   "memberPrice:memberUnitPricePermissionEnabled({companyRole:'owner',accessKind:'partner',canViewUnitPrice:true})"+
+   "})";
+ const check=vm.runInNewContext(snippet+"\n"+evaluation,scenario);
+ assert(Object.values(check).every(v=>v===false));
+ assert(html.includes("legacyEditor.hidden = isPartner"));
+ assert(html.includes("legacyList.hidden = isPartner"));
+});
