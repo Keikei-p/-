@@ -66,3 +66,12 @@ node scripts/verify-sales-archive.mjs "C:\\path\\to\\営業実績_2026-10_compan
 ```
 
 この検証は**JSONの改変、企業IDと期間の整合、実績IDの重複、明細件数・保存単価・売上合計、資料内の必要な原票をチェックするだけ**。Firebaseへの書込み・復元・削除は一切行わない。実際の復元試験と2か所バックアップが確認できるまで元データを削除してはいけない。
+
+## Firestoreエミュレータによる復元リハーサル（追加）
+- `functions/rehearse-sales-restore.mjs` は、`FIRESTORE_EMULATOR_HOST` が **localhost / 127.0.0.1**、`GCLOUD_PROJECT` が **demo-sales-archive-rehearsal**、明示の `--confirm-emulator` 指定、かつアーカイブのオフライン整合性検査が合格した場合にのみ実行する。
+- これ以外では書き込みは拒否する。会社の実本番プロジェクトへの復元は、このスクリプトではできない。
+- 同じドキュメントIDを保って実績・商材・班・訂正履歴を復元し、取得し直した値を各原票と照合する。既存データがあるコレクションへの上書きは禁止。
+- `.github/workflows/archive-emulator-rehearsal.yml` は**架空のテスト会社・架空データ**を作成し、GitHub上でエミュレータに復元する。実利用者のFirestoreデータは触らない。
+- 実データのバックアップJSONに対するテストは、ファイルをGitHubへアップロードせず管理者PC内だけで実施する。
+
+手元で試す際は Node.js 22+、Java 21、Firebase CLI と `functions` の依存パッケージを用意し、プロジェクトIDとホストのガードを解除しないこと。実データの復元テストが未実施なら、既存原本の削除は必ず禁止。
