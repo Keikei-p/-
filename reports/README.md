@@ -74,7 +74,7 @@ node --check reports/worker.mjs
 }
 \`\`\`
 
-**重要**: 現在公開されている本番Firestoreの \`settings/notifications\` はキー許可リスト方式で、上の追加フィールドはまだ通常のアプリから保存できません。**本番Rulesを書き換えたり、Firebaseコンソールでこれらを直接入力したりしないでください。** 双方の所有者が安全に設定できる画面と、対応するSecurity Rulesのテスト/本番公開は別途必要です。
+**重要**: 開発版PR #107にはオーナー専用の設定画面と、`reports/report-sharing-rules.mjs` による対応Security Rules候補を追加し、Firestoreエミュレータでオーナー以外の変更拒否を確認しました。ただし、**現在公開されている本番のアプリとFirestore Rulesは未変更**です。追加フィールドはまだ本番では通常保存できません。バックアップ・復元・権限・旧新URLの検証を終えるまで、Firebaseコンソールで直接書き込んだり、本番Rulesを手動で切り替えたりしないでください。
 
 ### 送信例（件数のみ）
 
@@ -112,3 +112,10 @@ node --check reports/worker.mjs
 - 実績登録・訂正・班変更の履歴を改変せずに、件数だけを合算。目標や件数の異常・漏れがあれば送信停止。**勝手に0件へ修正しない**。
 - 送信元は今は開発版。LINEの資格情報・実グループ・本番会員・新旧URLの端末で検証完了するまで**本番デプロイ・実LINE送信は禁止**。既存のバックアップも削除しない。
 - クラウドの無料枠は上限があるため、会社数・班数に応じてFireStore読取とLINE Push量を運用前に評価する。
+
+
+## 最新の開発版テスト
+- `tests/report-combine.test.mjs`: 自社・協力店の目標/件数をまとめ、金額を除外、同意が無い場合は停止。
+- `tests/report-worker.integration.test.mjs`: 合成Firestore＋LINEで**本当に1通だけ送られる**ことを検証。送信OFFのときはLINE送信・Firestore予約書込ゼロ。
+- `tests/report-sharing-ui.test.mjs`: オーナー専用設定画面と既存通知設定の保持。
+- `tests/report-sharing-rules.test.mjs`: ステージング用Firestore Rulesでオーナーの保存・取り消しを許可し、一般社員・協力店リーダー・他社からの変更を拒否。実本番ルールには未適用。
