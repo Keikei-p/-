@@ -310,3 +310,18 @@ test("partner owner cannot see finance UI even with both grants set true",()=>{
  assert(html.includes("legacyEditor.hidden = isPartner"));
  assert(html.includes("legacyList.hidden = isPartner"));
 });
+
+
+test("partner owner cannot create a nested partner organization or inherit hub ownership",async()=>{
+ const {handlers,store,caller}=setup();
+ const founder=caller("owner","owner@example.com");
+ founder.data={email:"receiver@example.com",partnerCompanyName:"協力店A"};
+ const {token}=await handlers.createPartnerCompanyInvitation(founder);
+ const receiver=caller("receiver","receiver@example.com");receiver.data={token};
+ const accepted=await handlers.acceptPartnerCompanyInvitation(receiver);
+ const attempt=caller("receiver","receiver@example.com");
+ attempt.data={email:"next@example.com",partnerCompanyName:"別の協力店"};
+ await assert.rejects(handlers.createPartnerCompanyInvitation(attempt),/代表オーナーのみ/);
+ assert.equal(store.get("companies/hub").ownerUid,"owner");
+ assert.equal(store.get("companies/"+accepted.companyId).companyKind,"partner");
+});
