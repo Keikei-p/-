@@ -1,0 +1,91 @@
+name: Manual member-history retention release (no database writes)
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_id:
+        description: "Type the existing Firebase project ID"
+        required: true
+        type: string
+      release_confirmation:
+        description: "Type VERIFIED_BACKUP_RESTORE_COUNTS_AND_BOTH_URLS"
+        required: true
+        type: string
+      reviewed_commit:
+        description: "Exact 40-character main commit SHA reviewed for this production release"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sales-member-function-production
+  cancel-in-progress: false
+
+jobs:
+  deploy-member-suspension:
+    # Never run for PR, push, other branches/projects, or unconfirmed releases.
+    if: ${{ github.ref == 'refs/heads/main' && inputs.project_id == 'sales-management-cc116' && inputs.release_confirmation == 'VERIFIED_BACKUP_RESTORE_COUNTS_AND_BOTH_URLS' && inputs.reviewed_commit == github.sha }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+    steps:
+      - name: Check out the approved main commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Preflight - project identity and deletion-safe Function
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_SERVICE_ACCOUNT_JSON:-}" || { echo "Missing Firebase deployment credentials"; exit 1; }
+          node --check functions/index.js
+          node --test tests/sales-regressions.cjs
+          node <<'NODE'
+          const fs = require('node:fs');
+          const project = JSON.parse(fs.readFileSync('.firebaserc','utf8')).projects.default;
+          if(project !== 'sales-management-cc116') throw Error('Production Firebase project mismatch');
+          const src=fs.readFileSync('functions/index.js','utf8');
+          const start=src.indexOf('exports.deleteCompanyMemberAccount = onCall(async (request) => {');
+          const end=src.indexOf('\n});',start);
+          if(start<0||end<0) throw Error('Suspension function missing');
+          const f=src.slice(start,end);
+          if(!f.includes('getAuth().updateUser(targetUid, { disabled: true })')) throw Error('Auth suspension missing');
+          if(/getAuth\(\)\.deleteUser\s*\(|(?:cleanupBatch|disableBatch)\.delete\s*\(/.test(f)) throw Error('Destructive member deletion detected');
+          if(!f.includes('targetUser.companyId !== context.companyId')) throw Error('Company-target validation missing');
+          if(!f.includes('historicalMemberDocumentRetained: true')) throw Error('Historical member retention missing');
+          console.log('PASS: member suspension only; no Firestore data migration');
+          NODE
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Install exact Functions dependencies
+        run: npm install --prefix functions --ignore-scripts --package-lock=false
+
+      - name: Authenticate for this deployment only
+        shell: bash
+        run: |
+          set -euo pipefail
+          CREDS="$RUNNER_TEMP/firebase-service-account.json"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$CREDS"
+          chmod 600 "$CREDS"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$CREDS" >> "$GITHUB_ENV"
+
+      - name: Deploy only the already approved member-suspension Cloud Function
+        run: firebase deploy --only functions:deleteCompanyMemberAccount --project "$FIREBASE_PROJECT_ID" --non-interactive
+
+      - name: Release limitation
+        run: |
+          echo "Cloud Function deployment alone does not confirm Firestore backup restoration, Rules cutover, partner financial isolation, or live record counts."
+          echo "Do not claim full sales-app release completion without independent live validation."
