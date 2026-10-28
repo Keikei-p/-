@@ -14,7 +14,7 @@ jobs:
         with:
           node-version: "22"
       - name: Verify revenue-free templates
-        run: node --test tests/report-format.test.mjs tests/report-combine.test.mjs tests/report-worker.integration.test.mjs
+        run: node --test tests/report-format.test.mjs tests/report-combine.test.mjs tests/report-worker.integration.test.mjs tests/report-sharing-ui.test.mjs
       - name: Parse Cloudflare Worker
         run: |
           node --check reports/worker.mjs
