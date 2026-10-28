@@ -1338,5 +1338,5 @@ test('Owner member removal is suspension-only and preserves stored history', asy
     'companies/company-A/members/former-uid','users/former-uid'
   ]);
   assert(writes.every((w)=>w.patch.active===false && w.opts.merge===true));
-  assert(writes.every((w)=>!('teamHistory' in w.patch) && !('records' in w.path)));
+  assert(writes.every((w)=>!('teamHistory' in w.patch) && !w.path.startsWith('records/')));
 });
