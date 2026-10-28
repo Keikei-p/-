@@ -205,7 +205,8 @@ test('authenticated master shown as owner can add, edit and delete products even
   assert.equal((await assertSucceeds(getDoc(ref))).data().revenue,5000);
   await assertSucceeds(updateDoc(ref,{name:'更新した商材',updatedAt:serverTimestamp()}));
   assert.equal((await assertSucceeds(getDoc(ref))).data().name,'更新した商材');
-  await assertSucceeds(deleteDoc(ref));
+  await assertFails(deleteDoc(ref));
+   assert.equal((await getDoc(ref)).exists(),true);
   // Existing rules intentionally disallow a client read of missing products.
   await env.withSecurityRulesDisabled(async c=>{
     assert.equal((await getDoc(doc(c.firestore(),'products','master-new-product'))).exists(),false);
@@ -242,7 +243,8 @@ test('secondary owner (not master) can create, edit and delete SBMNP with zero c
     sortOrder:13,active:true,createdAt:serverTimestamp(),updatedAt:serverTimestamp()
   }));
   await assertSucceeds(updateDoc(ref,{name:'SBMNP edited',updatedAt:serverTimestamp()}));
-  await assertSucceeds(deleteDoc(ref));
+  await assertFails(deleteDoc(ref));
+   assert.equal((await getDoc(ref)).exists(),true);
 });
 
 test('leader with both explicit finance grants can create, edit and delete SBMNP',async()=>{
@@ -258,7 +260,8 @@ test('leader with both explicit finance grants can create, edit and delete SBMNP
     sortOrder:13,active:true,createdAt:serverTimestamp(),updatedAt:serverTimestamp()
   }));
   await assertSucceeds(updateDoc(ref,{name:'SBMNP edited',updatedAt:serverTimestamp()}));
-  await assertSucceeds(deleteDoc(ref));
+  await assertFails(deleteDoc(ref));
+   assert.equal((await getDoc(ref)).exists(),true);
 });
 
 function catalogPayload(extra={}) {
@@ -329,4 +332,54 @@ test('product validation and cross-company protections remain enforced for secon
   await assertFails(updateDoc(ref,{active:false,updatedAt:serverTimestamp()}));
   await assertFails(updateDoc(doc(db,'products','foreign-product'),{name:'denied',updatedAt:serverTimestamp()}));
   await assertFails(deleteDoc(doc(db,'products','foreign-product')));
+});
+
+
+// Business-history retention contract: no mobile client may destroy any
+// past record, product, team, monthly target or revenue target.
+test('sales records survive attempted deletion by owner, leader and owner of the record',async()=>{
+ await seedRecord();
+ for(const uid of ['owner','leaderA','helper']){
+   await assertFails(deleteDoc(doc(dbFor(uid),'records',key())));
+   assert.equal((await getDoc(doc(dbFor('owner'),'records',key()))).data().totalCount,2);
+ }
+});
+test('teams cannot be physically removed, but the existing name remains editable',async()=>{
+ for(const uid of ['owner','leaderA']){
+   await assertFails(deleteDoc(doc(dbFor(uid),'teams','a')));
+   assert.equal((await getDoc(doc(dbFor('owner'),'teams','a'))).exists(),true);
+ }
+ await assertSucceeds(updateDoc(doc(dbFor('owner'),'teams','a'),{name:'更新後の班名',updatedAt:serverTimestamp()}));
+ assert.equal((await getDoc(doc(dbFor('owner'),'teams','a'))).data().name,'更新後の班名');
+});
+test('catalog products cannot be physically removed, but owners may still edit',async()=>{
+ const ref=doc(dbFor('owner'),'products','retain-product');
+ await assertSucceeds(setDoc(ref,catalogPayload()));
+ await assertFails(deleteDoc(ref));
+ await assertSucceeds(updateDoc(ref,{name:'新しい表示名',updatedAt:serverTimestamp()}));
+ assert.equal((await getDoc(ref)).data().revenue,5000);
+});
+test('monthly count and revenue targets cannot be physically removed',async()=>{
+ const db=dbFor('owner');
+ const countsRef=doc(db,'goals','retain-count-goal');
+ const salesRef=doc(db,'revenueGoals','retain-revenue-goal');
+ await assertSucceeds(setDoc(countsRef,{
+  companyId:company,teamId:'a',month:'2026-10',targets:{A:10},
+  createdAt:serverTimestamp(),updatedAt:serverTimestamp()
+ }));
+ await assertSucceeds(setDoc(salesRef,revenueGoalPayload('a',2500000)));
+ await assertFails(deleteDoc(countsRef));
+ await assertFails(deleteDoc(salesRef));
+ assert.equal((await getDoc(countsRef)).data().targets.A,10);
+ assert.equal((await getDoc(salesRef)).data().targetRevenue,2500000);
+});
+test('history correction logs are append-only and cannot be deleted',async()=>{
+ await env.withSecurityRulesDisabled(async c=>{
+  await setDoc(doc(c.firestore(),'recordCorrections','old-correction'),{
+   companyId:company,recordId:key(),recordDate:date,recordUid:'helper',
+   changedByUid:'owner',changedByName:'owner',before:{totalCount:1},after:{totalCount:2}
+  });
+ });
+ await assertFails(deleteDoc(doc(dbFor('owner'),'recordCorrections','old-correction')));
+ assert.equal((await getDoc(doc(dbFor('owner'),'recordCorrections','old-correction'))).exists(),true);
 });
