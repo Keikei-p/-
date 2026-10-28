@@ -5871,7 +5871,7 @@ body.product-reordering .product-list {
           <div id="rankingGroupProducts" style="display:grid;gap:8px;max-height:240px;overflow:auto;"></div>
           <button id="rankingGroupAdd" type="button" class="team-action-button" style="margin:12px 0;">選んだ商材でグループを追加</button>
           <div id="rankingGroupExisting" style="display:grid;gap:8px;"></div>
-          <p class="ranking-product-help">この設定は、この端末・このアカウント・このURLだけに保存されます。ほかの端末や旧URLとは同期しません。実績・商材・売上は変更しません。</p>
+          <p class="ranking-product-help">オーナーが保存すると会社共通で同期されます。既存の端末別設定は、共通設定が保存されるまで残します。実績・商材・売上は変更しません。</p>
         </details>
         <p class="ranking-product-help">グループをタップすると、担当者ごとの合計獲得件数が表示されます（売上金額は表示しません）。</p>
         <div id="productRankingProductList" class="ranking-product-grid" data-columns="1"></div>
@@ -31644,7 +31644,7 @@ rankingGroupAdd.addEventListener("click", async () => {
 });
 
 function renderProductMemberRanking(monthly) {
-  rankingGroupEditor.hidden = !isCurrentCompanyManager();
+  rankingGroupEditor.hidden = !isCurrentCompanyOwner();
   updateRankingLayoutControls("product");
 
   // 売上に関係しない件数ランキングだが閲覧対象は会社管理者のみ。
