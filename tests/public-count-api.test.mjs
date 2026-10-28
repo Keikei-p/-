@@ -4,6 +4,7 @@ import {createCountOnlyReadHandler} from "../security/public-count-api.mjs";
 
 const TOKEN="synthetic-auth-token-that-cannot-be-used";
 const URL_BASE="https://nico-factory.web.app/v1/public-counts";
+const SNAPSHOT="2026-10-28T14:00:00.000000Z";
 const companyId="companyA",teamId="team1";
 const userIdentity={
  uid:"partner",companyId,userCompanyId:companyId,memberCompanyId:companyId,
@@ -30,8 +31,8 @@ function fixture({rows=[makeRow("row0001")],identity=userIdentity,
  }),
  queryPublicDocuments:query??(async ({collection,companyId:cid,teamId:team,startAfter,limit})=>{
    calls.push({phase:"query",collection,companyId:cid,teamId:team,startAfter,limit});
-   return rows.filter(x=>x.companyId===cid&&(!team||x.teamId===team)&&x.sourceId>startAfter)
-     .slice(0,limit);
+   return {items:rows.filter(x=>x.companyId===cid&&(!team||x.teamId===team)&&x.sourceId>startAfter)
+     .slice(0,limit),readTime:SNAPSHOT};
  })
  };
  return {handle:createCountOnlyReadHandler(adapter),calls};
@@ -62,6 +63,8 @@ test("only valid GET, explicitly allowlisted origins and safe parameters",async(
   ["collection=publicRecords&teamId=team1&limit=0",{},400],
   ["collection=publicRecords&teamId=team1&limit=01",{},400],
   ["collection=publicRecords&teamId=team1&cursor=uid/../../x",{},400],
+  ["collection=publicRecords&teamId=team1&cursor=row0001",{},400],
+  ["collection=publicRecords&teamId=team1&snapshot="+SNAPSHOT,{},400],
   ["collection=publicRecords&teamId=team1&teamId=team2",{},400],
   ["collection=publicProducts&teamId=team1",{},400],
   ["collection=publicRecords",{},400],
@@ -118,14 +121,16 @@ test("multi-page 125 rows read once each with cursor, no 2000 hard limit",async(
  const rows=Array.from({length:125},(_,i)=>makeRow("row"+String(i).padStart(4,"0")));
  const f=fixture({rows});
  const seen=[];
- let cursor="";
+ let cursor="",snapshot="";
  for(let page=0;page<3;page++){
-  const param="collection=publicRecords&teamId=team1&limit=50"+(cursor?"&cursor="+cursor:"");
+  const param="collection=publicRecords&teamId=team1&limit=50"+(cursor?"&cursor="+cursor+"&snapshot="+encodeURIComponent(snapshot):"");
   const r=await get(f.handle,param);
   assert.equal(r.status,200);
   seen.push(...r.body.items);
   if(page<2){assert.equal(r.body.items.length,50);assert.ok(r.body.nextCursor);}
   cursor=r.body.nextCursor??"";
+  snapshot=r.body.snapshotTime;
+  assert.equal(snapshot,SNAPSHOT);
  }
  assert.equal(seen.length,125);
  assert.equal(new Set(seen.map(x=>x.sourceId)).size,125);
@@ -169,7 +174,7 @@ test("mis-scoped or out-of-order datastore results cannot leak financial or othe
    [makeRow("row0002"),makeRow("row0001")],
    [makeRow("row0001"),makeRow("row0001")],
  ]){
-   const f=fixture({query:async()=>rows});
+   const f=fixture({query:async()=>({items:rows,readTime:SNAPSHOT})});
    const result=await get(f.handle,"collection=publicRecords&teamId=team1&limit=2");
    assert.equal(result.status,503);
    assert.deepEqual(result.body,{error:"request_blocked"});
@@ -189,7 +194,7 @@ test("no arbitrary Firestore source: rank view exposes rank only, products expos
      assert.equal(scope.collection,c.collection);
      assert.equal(scope.teamId,null);
      assert.equal(scope.companyId,companyId);
-     return [c.row];
+     return {items:[c.row],readTime:SNAPSHOT};
    }});
    const r=await get(f.handle,"collection="+c.collection);
    assert.equal(r.status,200);
@@ -204,4 +209,35 @@ test("all backend errors are generic and do not leak user identity, prices or Fi
  assert.equal(result.status,503);
  assert.deepEqual(result.body,{error:"request_blocked"});
  assert.equal(JSON.stringify(result.body).includes("10000"),false);
+});
+
+
+test("snapshot-pinned pagination rejects a changing readTime or missing snapshot token",async()=>{
+ const rows=Array.from({length:3},(_,i)=>makeRow("row"+String(i).padStart(4,"0")));
+ const f=fixture({rows,query:async ({startAfter})=>({
+   items:rows.filter(x=>x.sourceId>startAfter).slice(0,2),
+   readTime:startAfter?"2026-10-28T14:01:00.000000Z":SNAPSHOT
+ })});
+ const first=await get(f.handle,"collection=publicRecords&teamId=team1&limit=2");
+ assert.equal(first.status,200);
+ assert.equal(first.body.nextCursor,"row0001");
+ const noSnapshot=await get(f.handle,"collection=publicRecords&teamId=team1&limit=2&cursor=row0001");
+ assert.equal(noSnapshot.status,400);
+ const second=await get(f.handle,
+   "collection=publicRecords&teamId=team1&limit=2&cursor=row0001&snapshot="+encodeURIComponent(SNAPSHOT));
+ assert.equal(second.status,503);
+ assert.deepEqual(second.body,{error:"request_blocked"});
+});
+
+test("missing or malformed read timestamp fails closed before returning counts",async()=>{
+ const rows=[makeRow("row0001")];
+ for(const result of [rows,{items:rows},{items:rows,readTime:"not-a-timestamp"},{
+   items:rows,readTime:"2026-10-28T14:00:00Z",extra:"ignored"
+ }]){
+  const f=fixture({query:async()=>result});
+  const res=await get(f.handle);
+  if(result?.readTime==="2026-10-28T14:00:00Z")
+    assert.equal(res.status,200);
+  else assert.equal(res.status,503);
+ }
 });
