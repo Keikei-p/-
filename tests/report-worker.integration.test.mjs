@@ -151,3 +151,14 @@ test("DRY RUN produces no LINE sends and no Firestore notification writes",async
  assert.equal(data.sent.length,0);
  assert.equal(data.dispatches.length,0);
 });
+
+
+test("revoked cross-company consent never sends partner data to the main hub",async()=>{
+ const data=await run({live:true,consent:false});
+ assert.equal(data.sent.some(x=>x.to==="group_test"),false);
+ assert(data.sent.every(x=>x.to!=="group_test"));
+ for(const item of data.sent){
+  const text=item.messages[0].text;
+  assert.doesNotMatch(text,/自社1班|自社所属協力店/);
+ }
+});
