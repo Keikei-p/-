@@ -7947,7 +7947,13 @@ function isCurrentCompanyOwner() {
 }
 
 
+function isPartnerFinanciallyRestricted() {
+  return currentUserData?.accessKind === "partner" ||
+    currentCompanyData?.companyKind === "partner";
+}
+
 function canCurrentUserViewRevenue() {
+  if (isPartnerFinanciallyRestricted()) return false;
 
   if (
     isCurrentCompanyOwner()
@@ -7981,6 +7987,7 @@ function canCurrentUserViewRevenue() {
 }
 
 function canCurrentUserViewProductRevenue() {
+  if (isPartnerFinanciallyRestricted()) return false;
 
   /*
     商材別の売上は厳格に扱う。
@@ -8000,12 +8007,14 @@ function canCurrentUserViewProductRevenue() {
 
 // 売上閲覧と商材単価表示は別設定。売上OFFの場合は単価もOFF。
 function canCurrentUserViewUnitPrice() {
+  if (isPartnerFinanciallyRestricted()) return false;
   if (isCurrentCompanyOwner()) return true;
   if (!canCurrentUserViewRevenue()) return false;
   // 未設定は拒否。売上と単価の両方に許可が必要。
   return currentUserData?.canViewUnitPrice === true;
 }
 function memberUnitPricePermissionEnabled(member) {
+  if (isPartnerFinanciallyRestricted() || member?.accessKind === "partner") return false;
   if (isMemberMaster(member) || member?.companyRole === "owner") return true;
   if (!memberRevenuePermissionEnabled(member)) return false;
   return member?.canViewUnitPrice === true;
@@ -8054,6 +8063,7 @@ function isMemberMaster(
 function memberRevenuePermissionEnabled(
   member
 ) {
+  if (isPartnerFinanciallyRestricted() || member?.accessKind === "partner") return false;
 
   if (
     isMemberMaster(member) ||
@@ -16688,6 +16698,12 @@ productList.addEventListener(
 async function refreshSafePartnerCatalog() {
   const isPartner = currentUserData?.accessKind === "partner";
   partnerCatalogPanel.hidden = !isPartner;
+  const legacyEditor = productManagementContent.querySelector(".product-editor-card");
+  if (legacyEditor) legacyEditor.hidden = isPartner;
+  const legacyList = document.getElementById("productList");
+  if (legacyList) legacyList.hidden = isPartner;
+  productManagementContent.querySelectorAll(".product-cb-help, .product-sort-help")
+    .forEach(node => { node.hidden = isPartner; });
   if (!isPartner) return;
   partnerCatalogStatus.textContent = "共通商材を確認しています…";
   partnerCatalogList.replaceChildren();
