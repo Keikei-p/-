@@ -62,6 +62,36 @@ service cloud.firestore {
         );
     }
 
+    // For self-service transfers, all old entries are immutable.
+    // Same-day changes to an existing entry require an owner correction.
+    function appendOnlySelfTeamHistory(previous, next) {
+      let oldHistory = previous.get('teamHistory', []);
+      let newHistory = next.get('teamHistory', []);
+      return oldHistory is list
+        && newHistory is list
+        && oldHistory.size() < 100
+        && newHistory.size() == oldHistory.size() + 1
+        && newHistory == oldHistory.concat([newHistory[newHistory.size() - 1]])
+        && newHistory[newHistory.size() - 1] is map
+        && newHistory[newHistory.size() - 1].keys().hasOnly([
+          'effectiveDate', 'fromTeamId', 'fromTeamName', 'toTeamId', 'toTeamName'
+        ])
+        && newHistory[newHistory.size() - 1].keys().hasAll([
+          'effectiveDate', 'fromTeamId', 'fromTeamName', 'toTeamId', 'toTeamName'
+        ])
+        && newHistory[newHistory.size() - 1].effectiveDate is string
+        && newHistory[newHistory.size() - 1].effectiveDate.size() == 10
+        && newHistory[newHistory.size() - 1].fromTeamId == previous.teamId
+        && newHistory[newHistory.size() - 1].toTeamId == next.teamId
+        && newHistory[newHistory.size() - 1].fromTeamName is string
+        && newHistory[newHistory.size() - 1].toTeamName is string
+        && (
+          oldHistory.size() == 0
+          || newHistory[newHistory.size() - 1].effectiveDate
+            > oldHistory[oldHistory.size() - 1].effectiveDate
+        );
+    }
+
     function validShortName(name, maxLength) {
       return name is string
         && name.size() >= 1
@@ -570,7 +600,7 @@ service cloud.firestore {
             resource.data.companyId,
             request.resource.data.teamId
           )
-          && validTeamHistory(request.resource.data)
+          && appendOnlySelfTeamHistory(resource.data, request.resource.data)
           && request.resource.data.updatedAt == request.time
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['teamId', 'teamHistory', 'updatedAt'])
@@ -838,7 +868,7 @@ service cloud.firestore {
             companyId,
             request.resource.data.teamId
           )
-          && validTeamHistory(request.resource.data)
+          && appendOnlySelfTeamHistory(resource.data, request.resource.data)
           && request.resource.data.updatedAt == request.time
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['teamId', 'teamHistory', 'updatedAt'])
