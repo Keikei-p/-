@@ -13,7 +13,11 @@ class HttpsError extends Error{
 function makeDb(){
  const store=new Map(),pending=[];
  let seq=0;
- const clone=x=>x===undefined?undefined:structuredClone(x);
+ const clone=x=>{
+   if(x===null||typeof x!=="object")return x;
+   if(Array.isArray(x))return x.map(clone);
+   return Object.fromEntries(Object.entries(x).map(([key,value])=>[key,clone(value)]));
+ };
  const snapshot=(ref)=>{
   const value=store.get(ref.path);
   return {id:ref.id,ref,exists:value!==undefined,data:()=>clone(value)};
