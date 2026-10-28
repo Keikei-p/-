@@ -1,0 +1,33 @@
+name: Partner company invitation and private shared catalog (offline)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "partner/**"
+      - "tests/partner-*.test.mjs"
+      - ".github/workflows/partner-company-catalog-safety.yml"
+      - "docs/PARTNER_CATALOG_INVITE_RELEASE.md"
+  push:
+    branches: [main]
+    paths:
+      - "partner/**"
+      - "tests/partner-*.test.mjs"
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate syntax without Firebase credentials
+        run: |
+          node --check partner/invite-contract.mjs
+          node --check partner/shared-catalog.mjs
+      - name: Verify immutable invitation and partner-owned private catalog
+        run: node --test tests/partner-invite-contract.test.mjs tests/partner-shared-catalog.test.mjs
