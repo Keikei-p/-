@@ -1,0 +1,27 @@
+name: Partner invite/currency-free catalog staged integration
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "functions/index.js"
+      - "index.html"
+      - "tests/partner-company-functions.test.cjs"
+      - ".github/workflows/partner-invite-integration-preflight.yml"
+      - "docs/PARTNER_INVITE_STAGING_STATUS.md"
+permissions:
+  contents: read
+jobs:
+  synthetic-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate Firebase Functions syntax without cloud calls
+        run: node --check functions/index.js
+      - name: Exercise actual callable functions in isolated synthetic Firestore (no Firebase credentials)
+        run: node --test tests/partner-company-functions.test.cjs
