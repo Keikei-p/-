@@ -35,6 +35,32 @@ Remove-Item Env:SALES_BACKUP_PASSPHRASE
 - Firebase Authentication・Cloud Functions・Cloudflare・Storageの設定は含みません。
 - **実データの最新READYバックアップ確認、全データを読み出せたこと、同一時点の整合性、隔離復元の成功を証明するものではありません**。これらの条件なしにFirestore Rules変更やSpark移行の本番切替はしません。
 
+## 無料・完全隔離の復元リハーサル（ローカルFirebaseエミュレータのみ）
+
+**本番データベースに書き込む復元機能ではありません。** 復元用コードは Firestore エミュレータの \`127.0.0.1\` とテスト専用の \`demo-sales-restore\` プロジェクトにしか接続できず、本番プロジェクト \`sales-management-cc116\` を引数にすると拒否します。
+
+PCに作った暗号化済み \`.salesbak\` がある場合、以下で**保存フィールド・元文書ID・サブコレクションの親子パス**をローカルに書き戻して、全件読み直して照合できます。Firebase課金や実本番の書き込みは発生しません。
+
+~~~powershell
+# Node.js 22以上 / Firebase CLI をPCにインストール済みが前提
+$env:GCLOUD_PROJECT = "demo-sales-restore"
+$secure = Read-Host "暗号化バックアップのパスフレーズ" -AsSecureString
+$env:SALES_BACKUP_PASSPHRASE = (New-Object System.Net.NetworkCredential("", $secure)).Password
+
+# コマンドはこのリポジトリのルートで実行。
+# Firebase CLIが自動で立ち上げる127.0.0.1の一時エミュレータだけに復元する。
+npx firebase-tools emulators:exec --only firestore --project demo-sales-restore 'node tools/readonly-backup/restore-emulator.mjs --file "C:\PRIVATE\sales-backup.salesbak" --confirm LOCAL_EMULATOR_ONLY'
+
+Remove-Item Env:SALES_BACKUP_PASSPHRASE
+Remove-Item Env:GCLOUD_PROJECT
+~~~
+
+- 実行時に個別の人名、会社名、単価、顧客情報、実績ID、アーカイブパスを出力しません。
+- **復元対象は元ドキュメントのフィールドとIDのみ。** Firestoreが管理する \`createTime\`/\`updateTime\` は復元時に再発行され、元の時刻に戻せません。Auth・Cloud Functions・Security Rules・Cloudflare設定も対象外。
+- 準備済み暗号化アーカイブそのものがFirestore本番を**漏れなく**保存した証拠にはなりません。新旧URL/PWAで実数・金額・役割別アクセスを別途全件確認する必要があります。
+- 本機能はエミュレータのデータしか書き込めませんが、PC上のバックアップは機密資料。GitHubにアップロードしたり、パスフレーズや鍵をチャットに貼り付けたりしないでください。
+- GitHub Actionsでは **本人の実アーカイブを一切使わず**、架空の2件を立てたエミュレータに実復元して検証します。
+
 ## 重要な限界
 1. これは暗号化した**読み取り用保管コピー**であり、Firebase公式の復元可能なマネージドバックアップと同じものではありません。自動復元は実装していません。
 2. データはページ順に読みます。更新が続く運用中は**厳密な同一時刻のスナップショットではありません**。更新の少ない時間帯に実施し、前後の照合、復元テストは別途必要です。
