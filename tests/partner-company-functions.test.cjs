@@ -173,7 +173,7 @@ test("acceptance creates separate partner company with owner-only relation and n
  assert.equal(store.get("partnerRelations/"+registered.companyId).ownProductDefaultVisibility,"private");
  const invitation=[...store.values()].find(v=>v?.kind==="partner_company");
  assert.equal(invitation.status,"accepted");
- await assert.rejects(handlers.acceptPartnerCompanyInvitation(recipient),/この協力店の招待は利用できません/);
+ await assert.rejects(handlers.acceptPartnerCompanyInvitation(recipient),/協力店の招待は利用できません/);
  assert.equal([...store.keys()].filter(x=>x.startsWith("partnerRelations/")).length,1);
 });
 test("invitation creation denied for a leader even when they can invite own staff",async()=>{
