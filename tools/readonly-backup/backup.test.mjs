@@ -1,6 +1,6 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
-import {collect,canonical,fingerprint,seal,unseal,PROJECT,validateSafeCall} from "./backup.mjs";
+import {collect,canonical,fingerprint,seal,unseal,PROJECT,validateSafeCall,auditSummary} from "./backup.mjs";
 
 const root="projects/"+PROJECT+"/databases/(default)/documents";
 const valid=(path,fields={count:{integerValue:"2"}})=>({
@@ -82,4 +82,52 @@ test("tampering or wrong passphrase always fails",()=>{
 test("fingerprint is stable for object field order, not array order",()=>{
   assert.equal(canonical({y:2,x:1}),canonical({x:1,y:2}));
   assert.notEqual(canonical([2,1]),canonical([1,2]));
+});
+
+
+test("offline audit counts sales groups without exposing document IDs, people or prices",()=>{
+  const paths=[
+    "records/record-private-uid",
+    "records/record-other",
+    "recordCorrections/audit1",
+    "products/pricing-private",
+    "companies/private-company",
+    "companies/private-company/members/private-user",
+    "companies/private-company/settings/ranking",
+    "users/private-user"
+  ];
+  const docs=paths.map(path=>({
+    path,value:{fields:{privateName:{stringValue:"REDACT_ME_PERSON"},
+      revenue:{integerValue:"987654321"}},
+      createTime:"2026-10-28T00:00:00Z",updateTime:"2026-10-28T00:00:00Z"}
+  }));
+  const snap={projectId:PROJECT,format:"firestore-rest-typed-v1",documents:docs};
+  const before=JSON.stringify(snap);
+  const result=auditSummary(snap);
+  assert.equal(result.totalDocuments,8);
+  assert.equal(result.groupCounts.records,2);
+  assert.equal(result.groupCounts.recordCorrections,1);
+  assert.equal(result.groupCounts.products,1);
+  assert.equal(result.groupCounts.companies,1);
+  assert.equal(result.groupCounts.members,1);
+  assert.equal(result.groupCounts.users,1);
+  assert.equal(result.groupCounts.other,1);
+  assert.equal(result.groupCounts.goals,0);
+  assert.match(result.pathDigest,/^[a-f0-9]{64}$/);
+  assert.match(result.contentsDigest,/^[a-f0-9]{64}$/);
+  assert.equal(JSON.stringify(snap),before,"audit must never mutate the source snapshot");
+  const printed=JSON.stringify(result);
+  for(const secret of ["private-user","private-company","REDACT_ME_PERSON","987654321","record-private-uid"])
+    assert.equal(printed.includes(secret),false,"audit summary must never expose "+secret);
+  const reordered={...snap,documents:docs.slice().reverse()};
+  assert.deepEqual(auditSummary(reordered),result,"input document order must not change summary");
+});
+
+test("offline audit rejects wrong project, duplicate IDs and invalid paths",()=>{
+  const doc={path:"records/test",value:{fields:{}}};
+  const source={projectId:PROJECT,format:"firestore-rest-typed-v1",documents:[doc]};
+  assert.throws(()=>auditSummary({...source,projectId:"another-project"}),/Unknown archive/);
+  assert.throws(()=>auditSummary({...source,documents:[doc,doc]}),/duplicate/i);
+  assert.throws(()=>auditSummary({...source,documents:[{...doc,path:"records/test/deep"}]}),/Malformed document path/);
+  assert.throws(()=>auditSummary({...source,documents:[{...doc,path:"records/../bad/item"}]}),/Malformed document path/);
 });
