@@ -4876,10 +4876,19 @@ body.product-reordering .product-list {
           type="email"
           placeholder="招待するメールアドレス">
 
+        <select id="inviteTypeSelect" aria-label="招待種別">
+          <option value="internal_member">自社メンバーを招待</option>
+          <option value="partner_company">協力店（別会社）を招待</option>
+        </select>
         <select id="inviteRoleSelect">
           <option value="member">メンバー</option>
           <option value="leader">リーダー</option>
         </select>
+        <input id="invitePartnerCompanyNameInput" type="text" maxlength="80"
+          placeholder="協力店の会社名" style="display:none;">
+        <small id="inviteTypeDescription" style="color:var(--sub);line-height:1.6;">
+          自社メンバーは今までと同じ会社に参加します。
+        </small>
 
         <button id="createInviteButton">
           招待リンク作成
@@ -6740,6 +6749,11 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 
 import {
+  getFunctions,
+  httpsCallable
+} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js";
+
+import {
   getFirestore,
   doc,
   setDoc,
@@ -6779,6 +6793,11 @@ auth.languageCode =
 
 const db =
   getFirestore(app);
+
+// Partner invitation callable functions are STAGING ONLY until approved
+// deployment. Never fall back to the legacy same-company invite if unavailable.
+const partnerInviteFunctions =
+  getFunctions(app, "asia-northeast1");
 
 
 /* =====================================================
@@ -6946,6 +6965,26 @@ const inviteEmailInput =
 
 const inviteRoleSelect =
   document.getElementById("inviteRoleSelect");
+
+const inviteTypeSelect =
+  document.getElementById("inviteTypeSelect");
+
+const invitePartnerCompanyNameInput =
+  document.getElementById("invitePartnerCompanyNameInput");
+
+const inviteTypeDescription =
+  document.getElementById("inviteTypeDescription");
+
+function updateInviteTypeControls() {
+  const partner = inviteTypeSelect.value === "partner_company";
+  inviteRoleSelect.disabled = partner;
+  invitePartnerCompanyNameInput.style.display = partner ? "" : "none";
+  inviteTypeDescription.textContent = partner
+    ? "協力店は別会社として参加。自社の商材名・件数のみ共有し、単価・売上・CBは渡しません。招待は代表オーナー限定です。"
+    : "自社メンバーは今までと同じ会社に参加します。";
+}
+inviteTypeSelect.addEventListener("change", updateInviteTypeControls);
+updateInviteTypeControls();
 
 const createInviteButton =
   document.getElementById("createInviteButton");
@@ -10495,6 +10534,32 @@ async function showCompanySetupScreen() {
   );
 
 
+  const partnerInviteToken = new URLSearchParams(window.location.search)
+    .get("partnerInvite");
+  if (partnerInviteToken) {
+    try {
+      if (!/^[A-Za-z0-9_-]{40,100}$/.test(partnerInviteToken)) {
+        throw new Error("協力店招待リンクの形式が正しくありません。");
+      }
+      const preview = await httpsCallable(
+        partnerInviteFunctions,"previewPartnerCompanyInvitation"
+      )({token:partnerInviteToken});
+      if (preview.data?.inviteType !== "partner_company") {
+        throw new Error("協力店の招待情報を確認できません。");
+      }
+      pendingInvitationData = {kind:"partner_company",token:partnerInviteToken,
+        ...preview.data};
+      invitationCompanyName.textContent = preview.data.companyName || "協力店";
+      invitationRole.textContent =
+        "別会社として登録・共通商材を利用（自社の単価と売上は非公開）";
+      invitationPanel.style.display = "block";
+      companyCreatePanel.style.display = "none";
+    } catch (error) {
+      setCompanySetupMessage(firebaseErrorMessage(error),true);
+    }
+    return;
+  }
+
   const inviteId =
     getInviteIdFromUrl();
 
@@ -10907,6 +10972,19 @@ acceptInvitationButton.onclick =
       const invite =
         pendingInvitationData;
 
+      if (invite.kind === "partner_company") {
+        const result = await httpsCallable(
+          partnerInviteFunctions,"acceptPartnerCompanyInvitation"
+        )({token:invite.token});
+        if (!result.data?.companyId || result.data?.accessKind !== "partner") {
+          throw new Error("協力店の会社登録を完了できませんでした。");
+        }
+        window.history.replaceState({},document.title,window.location.pathname);
+        pendingInvitationData = null;
+        await enterApplication(currentUser);
+        return;
+      }
+
       const inviteRef =
         doc(
           db,
@@ -11144,6 +11222,29 @@ createInviteButton.onclick =
       createInviteButton.textContent =
         "作成中...";
 
+      if (inviteTypeSelect.value === "partner_company") {
+        if (!isCurrentCompanyOwner()) {
+          throw new Error("協力店の招待は代表オーナーだけが作成できます。");
+        }
+        const partnerCompanyName = invitePartnerCompanyNameInput.value.trim();
+        if (partnerCompanyName.length < 2 || partnerCompanyName.length > 80) {
+          throw new Error("協力店の会社名を2〜80文字で入力してください。");
+        }
+        const created = await httpsCallable(
+          partnerInviteFunctions,"createPartnerCompanyInvitation"
+        )({email,partnerCompanyName});
+        const token = created.data?.token;
+        if (!/^[A-Za-z0-9_-]{40,100}$/.test(token||"")) {
+          throw new Error("安全な協力店招待リンクを作成できませんでした。");
+        }
+        const url = new URL(window.location.href);
+        url.search = "";
+        url.searchParams.set("partnerInvite",token);
+        inviteLinkOutput.value = url.toString();
+        inviteResult.style.display = "block";
+        showSuccess("協力店用の招待リンクを作成しました。有効期限30分、指定メール限定です。");
+        return;
+      }
 
       const inviteRef =
         doc(
