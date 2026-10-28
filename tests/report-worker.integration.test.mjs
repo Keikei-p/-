@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {generateKeyPairSync,webcrypto} from "node:crypto";
+import {generateKeyPairSync} from "node:crypto";
 import reporter from "../reports/worker.mjs";
 
 const project="sales-management-cc116";
@@ -115,16 +115,14 @@ function fixture({live=true,consent=true}={}){
 }
 async function run(opts){
  const fixtureData=fixture(opts);
- const previousFetch=globalThis.fetch,previousCrypto=globalThis.crypto;
+ const previousFetch=globalThis.fetch;
  try{
   globalThis.fetch=fixtureData.fetchMock;
-  globalThis.crypto=webcrypto;
   await reporter.scheduled({
    cron:"0 0 * * *",scheduledTime:Date.parse("2026-10-29T00:00:00Z")
   },fixtureData.env);
  }finally{
   globalThis.fetch=previousFetch;
-  globalThis.crypto=previousCrypto;
  }
  return fixtureData;
 }
