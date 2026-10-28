@@ -156,6 +156,23 @@ export function fingerprint(snapshot){
  * The only input is a decrypted *local* archive. This is NOT an independent
  * proof of production completeness or restorability.
  */
+// Firestore REST stores integer fields as decimal strings, not JS floats.
+// Never invent a missing totalCount or silently treat it as zero.
+function savedUnitCount(doc){
+  const field=doc?.value?.fields?.totalCount;
+  if(field===undefined)return null;
+  let v;
+  if(typeof field?.integerValue==="string" && /^\d+$/.test(field.integerValue)){
+    v=Number(field.integerValue);
+  }else if(typeof field?.doubleValue==="number"){
+    v=field.doubleValue;
+  }else{
+    throw Error("Invalid saved record totalCount; audit cannot prove counts");
+  }
+  if(!Number.isSafeInteger(v)||v<0)throw Error("Invalid saved record totalCount");
+  return v;
+}
+
 export function auditSummary(snapshot){
   const allDigest=fingerprint(snapshot);
   const counts=Object.fromEntries([
@@ -163,6 +180,7 @@ export function auditSummary(snapshot){
     "revenueGoals","users","companies","members","invitations","other"
   ].map(key=>[key,0]));
   const paths=[];
+  const registeredUnits={savedTotalCount:0,verifiedFields:0,missingFields:0,independentResultChecks:0};
   for(const item of snapshot.documents){
     const parts=item.path.split("/");
     if(parts.length<2 || parts.length%2!==0 ||
@@ -173,6 +191,16 @@ export function auditSummary(snapshot){
       ?"members":(parts.length===2 && Object.hasOwn(counts,root) && root!=="members" && root!=="other"
         ?root:"other");
     counts[group]++;
+    if(group==="records"){
+      const n=savedUnitCount(item);
+      if(n===null)registeredUnits.missingFields++;
+      else{
+        registeredUnits.verifiedFields++;
+        registeredUnits.savedTotalCount+=n;
+        if(!Number.isSafeInteger(registeredUnits.savedTotalCount))
+          throw Error("Record count total exceeds safe integer precision");
+      }
+    }
     paths.push(item.path);
   }
   return {
@@ -180,6 +208,9 @@ export function auditSummary(snapshot){
     databaseId:"(default)",
     totalDocuments:snapshot.documents.length,
     groupCounts:counts,
+    // This is only the sum of stored totalCount fields, not a
+    // product-by-product reconciliation or proof that backup is complete.
+    registeredUnits,
     pathDigest:hash(canonical(paths.sort())),
     contentsDigest:allDigest
   };
@@ -238,6 +269,12 @@ async function main(args){
     console.log("Total documents:",summary.totalDocuments);
     for(const [category,count] of Object.entries(summary.groupCounts))
       console.log(category+":",count);
+    console.log("Stored totalCount sum (only readable record fields):",summary.registeredUnits.savedTotalCount);
+    console.log("Records with totalCount:",summary.registeredUnits.verifiedFields);
+    console.log("Records without totalCount:",summary.registeredUnits.missingFields);
+    console.log("Independent results-count verification: NOT PERFORMED");
+    if(summary.registeredUnits.missingFields)
+      console.log("WARNING: totals are incomplete because some records lack totalCount");
     console.log("All document IDs SHA-256:",summary.pathDigest);
     console.log("All document contents SHA-256:",summary.contentsDigest);
     console.log("NOT VERIFIED: live production completeness, Firebase Auth, backup restore or point-in-time consistency");

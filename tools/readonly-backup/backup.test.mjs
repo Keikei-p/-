@@ -131,3 +131,40 @@ test("offline audit rejects wrong project, duplicate IDs and invalid paths",()=>
   assert.throws(()=>auditSummary({...source,documents:[{...doc,path:"records/test/deep"}]}),/Malformed document path/);
   assert.throws(()=>auditSummary({...source,documents:[{...doc,path:"records/../bad/item"}]}),/Malformed document path/);
 });
+
+
+test("registered units use saved Firestore totalCount, not record-document count",()=>{
+  const mk=(path,field)=>({
+    path,
+    value:{fields:field === null ? {} : {totalCount:field},
+      createTime:"2026-10-01T00:00:00Z",updateTime:"2026-10-28T00:00:00Z"}
+  });
+  const snap={projectId:PROJECT,format:"firestore-rest-typed-v1",documents:[
+    mk("records/private-one",{integerValue:"5"}),
+    mk("records/private-two",{integerValue:"7"}),
+    mk("records/private-three",null),
+    mk("products/product-private",{integerValue:"999"})
+  ]};
+  const before=JSON.stringify(snap);
+  const report=auditSummary(snap);
+  assert.equal(report.groupCounts.records,3);
+  assert.equal(report.registeredUnits.savedTotalCount,12);
+  assert.equal(report.registeredUnits.verifiedFields,2);
+  assert.equal(report.registeredUnits.missingFields,1);
+  assert.equal(report.registeredUnits.independentResultChecks,0);
+  assert.equal(JSON.stringify(snap),before);
+  assert.equal(JSON.stringify(report).includes("private-one"),false);
+});
+
+test("registered unit audit blocks invalid or unsafe totals",()=>{
+  const base={path:"records/unique",value:{fields:{},createTime:"2026-10-01T00:00:00Z",updateTime:"2026-10-28T00:00:00Z"}};
+  const audit=field=>auditSummary({projectId:PROJECT,format:"firestore-rest-typed-v1",documents:[
+    {...base,value:{...base.value,fields:{totalCount:field}}}
+  ]});
+  assert.throws(()=>audit({integerValue:"-1"}),/Invalid saved record/);
+  assert.throws(()=>audit({integerValue:"9007199254740993"}),/Invalid saved record/);
+  assert.throws(()=>audit({stringValue:"100"}),/Invalid saved record/);
+  assert.throws(()=>audit({integerValue:"2.5"}),/Invalid saved record/);
+  assert.equal(audit({integerValue:"0"}).registeredUnits.savedTotalCount,0);
+  assert.equal(audit({doubleValue:5}).registeredUnits.savedTotalCount,5);
+});
