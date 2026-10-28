@@ -1409,108 +1409,97 @@ service cloud.firestore {
           )
         );
     }
-    // Phase 1 count-only projections. NOT DEPLOYED by firebase.json.
-    // Existing finance-containing collections must be migrated and restricted separately.
+    // DRAFT ONLY. A trusted server must create these data projections.
+    // No Firebase client (owner included) can write or delete projections.
+    // Every readable document MUST consist entirely of approved flat fields.
+    function safeFlatRecord(data) {
+      return data.keys().hasOnly([
+        'companyId','sourceId','uid','date','teamId','totalCount',
+        'reportStatus','memberNameSnapshot','teamNameSnapshot','workLocation'
+      ])
+        && data.companyId is string && data.sourceId is string
+        && data.uid is string && data.date is string
+        && data.teamId is string && data.totalCount is int
+        && data.totalCount >= 0 && data.totalCount <= 1000000
+        && data.reportStatus in ['submitted','no_result']
+        && data.memberNameSnapshot is string
+        && data.teamNameSnapshot is string
+        && data.workLocation is string;
+    }
+    function safeFlatLine(data) {
+      return data.keys().hasOnly([
+        'companyId','recordId','sourceId','date','uid','teamId','productId','count'
+      ])
+        && data.companyId is string && data.recordId is string
+        && data.sourceId is string && data.date is string
+        && data.uid is string && data.teamId is string
+        && data.productId is string && data.count is int
+        && data.count >= 0 && data.count <= 1000000;
+    }
+    function safeFlatProduct(data) {
+      return data.keys().hasOnly([
+        'companyId','sourceId','name','active','sortOrder'
+      ])
+        && data.companyId is string && data.sourceId is string
+        && data.name is string && data.active is bool
+        && data.sortOrder is number && data.sortOrder >= 0;
+    }
+    function safeFlatCorrection(data) {
+      return data.keys().hasOnly([
+        'companyId','sourceId','recordId','recordDate','changedByUid',
+        'beforeTeamId','beforeTotalCount','afterTeamId','afterTotalCount'
+      ])
+        && data.companyId is string && data.sourceId is string
+        && data.recordId is string && data.recordDate is string
+        && data.changedByUid is string
+        && data.beforeTeamId is string && data.afterTeamId is string
+        && data.beforeTotalCount is int && data.beforeTotalCount >= 0
+        && data.afterTotalCount is int && data.afterTotalCount >= 0;
+    }
+    function safeFlatRank(data) {
+      return data.keys().hasOnly([
+        'companyId','period','kind','sourceId','displayName','rank'
+      ])
+        && data.companyId is string && data.period is string
+        && data.kind in ['member','team','product']
+        && data.sourceId is string && data.displayName is string
+        && data.rank is int && data.rank >= 1;
+    }
+
     match /publicRecords/{recordId} {
-      allow read: if resource.data.companyId != null
-        && sameCompany(resource.data.companyId);
-      allow create: if request.resource.data.companyId != null
-        && isCompanyOwner(request.resource.data.companyId)
-        && recordId == request.resource.data.sourceId
-        && request.resource.data.keys().hasOnly([
-          'companyId','sourceId','uid','date','memberNameSnapshot',
-          'teamId','teamNameSnapshot','workLocation','results','totalCount',
-          'reportStatus','createdAt','updatedAt'
-        ])
-        && request.resource.data.results is list
-        && request.resource.data.results.size() <= 200
-        && request.resource.data.totalCount is int
-        && request.resource.data.totalCount >= 0
-        && request.resource.data.createdAt == request.time
-        && request.resource.data.updatedAt == request.time;
-      allow update: if resource.data.companyId != null
-        && isCompanyOwner(resource.data.companyId)
-        && request.resource.data.companyId == resource.data.companyId
-        && request.resource.data.sourceId == resource.data.sourceId
-        && request.resource.data.keys().hasOnly([
-          'companyId','sourceId','uid','date','memberNameSnapshot',
-          'teamId','teamNameSnapshot','workLocation','results','totalCount',
-          'reportStatus','createdAt','updatedAt'
-        ])
-        && request.resource.data.results is list
-        && request.resource.data.results.size() <= 200
-        && request.resource.data.totalCount is int
-        && request.resource.data.totalCount >= 0
-        && request.resource.data.createdAt == resource.data.createdAt
-        && request.resource.data.updatedAt == request.time;
-      allow delete: if false;
+      allow get: if resource.data.companyId != null
+        && sameCompany(resource.data.companyId)
+        && safeFlatRecord(resource.data);
+      allow list: if false; // Keep disabled until emulator query/security test succeeds.
+      allow create, update, delete: if false;
     }
-
+    match /publicRecordLines/{lineId} {
+      allow get: if resource.data.companyId != null
+        && sameCompany(resource.data.companyId)
+        && safeFlatLine(resource.data);
+      allow list: if false;
+      allow create, update, delete: if false;
+    }
     match /publicProducts/{productId} {
-      allow read: if resource.data.companyId != null
-        && sameCompany(resource.data.companyId);
-      allow create: if request.resource.data.companyId != null
-        && isCompanyOwner(request.resource.data.companyId)
-        && productId == request.resource.data.sourceId
-        && request.resource.data.keys().hasOnly([
-          'companyId','sourceId','name','active','sortOrder','createdAt','updatedAt'
-        ])
-        && request.resource.data.name is string
-        && request.resource.data.createdAt == request.time
-        && request.resource.data.updatedAt == request.time;
-      allow update: if resource.data.companyId != null
-        && isCompanyOwner(resource.data.companyId)
-        && request.resource.data.companyId == resource.data.companyId
-        && request.resource.data.sourceId == resource.data.sourceId
-        && request.resource.data.keys().hasOnly([
-          'companyId','sourceId','name','active','sortOrder','createdAt','updatedAt'
-        ])
-        && request.resource.data.createdAt == resource.data.createdAt
-        && request.resource.data.updatedAt == request.time;
-      allow delete: if false;
+      allow get: if resource.data.companyId != null
+        && sameCompany(resource.data.companyId)
+        && safeFlatProduct(resource.data);
+      allow list: if false;
+      allow create, update, delete: if false;
     }
-    
-
-    match /publicRankings/{rankingId} {
-      allow read: if resource.data.companyId != null
-        && sameCompany(resource.data.companyId);
-      allow create: if request.resource.data.companyId != null
-        && isCompanyOwner(request.resource.data.companyId)
-        && request.resource.data.keys().hasOnly([
-          'companyId','period','kind','ranks','createdAt','updatedAt'
-        ])
-        && request.resource.data.period is string
-        && request.resource.data.ranks is list
-        && request.resource.data.ranks.size() <= 2000
-        && request.resource.data.createdAt == request.time
-        && request.resource.data.updatedAt == request.time;
-      allow update: if resource.data.companyId != null
-        && isCompanyOwner(resource.data.companyId)
-        && request.resource.data.companyId == resource.data.companyId
-        && request.resource.data.keys().hasOnly([
-          'companyId','period','kind','ranks','createdAt','updatedAt'
-        ])
-        && request.resource.data.createdAt == resource.data.createdAt
-        && request.resource.data.updatedAt == request.time;
-      allow delete: if false;
-    }
-
     match /publicRecordCorrections/{correctionId} {
-      allow read: if resource.data.companyId != null
-        && sameCompany(resource.data.companyId);
-      allow create: if request.resource.data.companyId != null
-        && isCompanyOwner(request.resource.data.companyId)
-        && correctionId == request.resource.data.sourceId
-        && request.resource.data.keys().hasOnly([
-          'companyId','sourceId','recordId','recordDate','changedByUid',
-          'before','after','createdAt'
-        ])
-        && request.resource.data.before is map
-        && request.resource.data.after is map
-        && request.resource.data.before.keys().hasOnly(['teamId','totalCount'])
-        && request.resource.data.after.keys().hasOnly(['teamId','totalCount'])
-        && request.resource.data.createdAt == request.time;
-      allow update, delete: if false;
+      allow get: if resource.data.companyId != null
+        && sameCompany(resource.data.companyId)
+        && safeFlatCorrection(resource.data);
+      allow list: if false;
+      allow create, update, delete: if false;
+    }
+    match /publicRankEntries/{entryId} {
+      allow get: if resource.data.companyId != null
+        && sameCompany(resource.data.companyId)
+        && safeFlatRank(resource.data);
+      allow list: if false;
+      allow create, update, delete: if false;
     }
 
   }
