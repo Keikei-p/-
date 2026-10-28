@@ -224,3 +224,55 @@ test("partner catalog callable never returns raw hub price or cashback; custom c
  assert.equal(changed.visibility,"shared_counts");
  assert.equal(store.get("companies/"+accepted.companyId+"/partnerCustomProducts/"+custom.productId).visibility,"shared_counts");
 });
+
+
+test("hub never sees partner PRIVATE custom product, even through owner-only view",async()=>{
+ const {handlers,caller}=setup();
+ const c=caller("owner","owner@example.com");
+ c.data={email:"receiver@example.com",partnerCompanyName:"協力店A"};
+ const {token}=await handlers.createPartnerCompanyInvitation(c);
+ const invited=caller("receiver","receiver@example.com");invited.data={token};
+ const {companyId}=await handlers.acceptPartnerCompanyInvitation(invited);
+ const custom=await handlers.createPartnerCustomProduct({
+  ...invited,data:{name:"協力店の秘密商材"}
+ });
+ const first=await handlers.listLinkedPartnerProducts({...c,data:{}});
+ assert.equal(first.products.length,0,"private product must not reach hub");
+ await handlers.updatePartnerCustomProductVisibility({...invited,data:{
+  productId:custom.productId,visibility:"shared_counts"
+ }});
+ const shown=await handlers.listLinkedPartnerProducts({...c,data:{}});
+ assert.equal(shown.products.length,1);
+ assert.equal(shown.products[0].name,"協力店の秘密商材");
+ assert.equal(shown.products[0].sourceCompanyId,companyId);
+ assert(!("price" in shown.products[0]));
+ await handlers.updatePartnerCustomProductVisibility({...invited,data:{
+  productId:custom.productId,visibility:"private"
+ }});
+ const hidden=await handlers.listLinkedPartnerProducts({...c,data:{}});
+ assert.equal(hidden.products.length,0,"revoked sharing must immediately stop");
+});
+test("different email cannot accept a partner invite; missing email confirmation denied",async()=>{
+ const {handlers,caller}=setup();
+ const c=caller("owner","owner@example.com");
+ c.data={email:"receiver@example.com",partnerCompanyName:"協力店A"};
+ const {token}=await handlers.createPartnerCompanyInvitation(c);
+ await assert.rejects(handlers.acceptPartnerCompanyInvitation({
+  ...caller("receiver","wrong@example.com"),data:{token}
+ }),/この協力店の招待は利用できません|協力店の招待は利用できません/);
+ await assert.rejects(handlers.acceptPartnerCompanyInvitation({
+  auth:{uid:"receiver",token:{email:"receiver@example.com",email_verified:false}},
+  data:{token}
+ }),/メールアドレスの確認が必要/);
+});
+test("partner custom product names containing money are rejected before database insert",async()=>{
+ const {handlers,caller}=setup();
+ const c=caller("owner","owner@example.com");
+ c.data={email:"receiver@example.com",partnerCompanyName:"協力店A"};
+ const {token}=await handlers.createPartnerCompanyInvitation(c);
+ const invited=caller("receiver","receiver@example.com");invited.data={token};
+ await handlers.acceptPartnerCompanyInvitation(invited);
+ await assert.rejects(handlers.createPartnerCustomProduct({
+  ...invited,data:{name:"NURO CB20000"}
+ }),/金額を含む商材名/);
+});
