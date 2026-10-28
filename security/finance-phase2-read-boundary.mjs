@@ -26,6 +26,23 @@ export function modelOwnerOnlyFinanceRules(phase1){
       "        && (isCompanyMaster(resource.data.companyId) || isCompanyOwner(resource.data.companyId));");
     next=next.slice(0,start)+closed+next.slice(start+region.length);
   }
+  // Revenue goals store monetary targets too. They cannot remain directly
+  // readable by a partner just because an incorrect canViewRevenue flag exists.
+  const revenueGroup="match /revenueGoals/{goalId} {";
+  const revenuePos=next.indexOf(revenueGroup);
+  if(revenuePos<0||next.indexOf(revenueGroup,revenuePos+revenueGroup.length)>=0)
+    throw Error("Missing or repeated revenueGoals rule");
+  const readStart=next.indexOf("allow read:",revenuePos+revenueGroup.length);
+  const createStart=next.indexOf("allow create:",readStart);
+  if(readStart<0||createStart<0)throw Error("Invalid revenueGoals rule");
+  const previous=next.slice(readStart,createStart);
+  if(!previous.includes("sameCompany(resource.data.companyId)") ||
+     !previous.includes("canViewRevenue(resource.data.companyId)"))
+    throw Error("Unexpected revenue goals read boundary");
+  next=next.slice(0,readStart)+
+    "allow read: if resource.data.companyId != null\n"+
+    "        && (isCompanyMaster(resource.data.companyId) || isCompanyOwner(resource.data.companyId));\n\n      "+
+    next.slice(createStart);
   if(next===phase1)throw Error("No finance rules changed in staging model");
   return next;
 }
