@@ -464,15 +464,32 @@ exports.deleteCompanyMemberAccount = onCall(async (request) => {
   }
 
   const targetMember = targetMemberSnap.data() || {};
+  const targetUser = targetUserSnap.exists ? (targetUserSnap.data() || {}) : null;
 
-  if (targetMember.companyRole === "owner") {
+  // Fail closed on inconsistent company/UID references. A company owner
+  // must never be able to disable an Auth account belonging to another
+  // company or overwrite a mismatched users/{uid} profile.
+  if (
+    !targetUser
+    || targetUser.companyId !== context.companyId
+    || (targetUser.uid != null && targetUser.uid !== targetUid)
+    || (targetMember.uid != null && targetMember.uid !== targetUid)
+    || (targetMember.companyId != null && targetMember.companyId !== context.companyId)
+  ) {
+    throw new HttpsError(
+      "failed-precondition",
+      "社員の所属情報が一致しないため、安全のため利用停止を中断しました。"
+    );
+  }
+
+  if (targetUser.companyRole === "owner" || targetMember.companyRole === "owner") {
     throw new HttpsError(
       "failed-precondition",
       "オーナーはこの操作では利用停止できません。先に役割を変更してください。"
     );
   }
 
-  // 先に利用停止して、Auth削除途中でもアプリへ再アクセスできないようにする。
+  // 先に有効フラグを停止する。Authが一時失敗しても、会社所属は停止済みとして保持する。
   const disableBatch = db.batch();
 
   disableBatch.set(
