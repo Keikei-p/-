@@ -20,8 +20,8 @@ before(async()=>{
   const db=context.firestore();
   for(const [cid,uid] of [[company,"partner"],[other,"outsider"]]){
    await setDoc(doc(db,"companies",cid),{name:"test",ownerUid:"owner-"+cid,masterUid:"owner-"+cid,active:true});
-   await setDoc(doc(db,"users",uid),{companyId:cid,active:true,role:"leader",companyRole:"member",canViewRevenue:false});
-   await setDoc(doc(db,"companies",cid,"members",uid),{uid,companyId:cid,role:"leader",companyRole:"member",active:true,canViewRevenue:false});
+   await setDoc(doc(db,"users",uid),{companyId:cid,active:true,role:"leader",companyRole:"member",teamId:"t1",canViewRevenue:false});
+   await setDoc(doc(db,"companies",cid,"members",uid),{uid,companyId:cid,role:"leader",companyRole:"member",teamId:"t1",active:true,canViewRevenue:false});
   }
   await setDoc(doc(db,"publicRecords","r1"),good);
   await setDoc(doc(db,"publicRecords","leak"),{...good,sourceId:"leak",revenuePerUnit:10000});
@@ -30,6 +30,14 @@ before(async()=>{
   });
   await setDoc(doc(db,"publicProducts","p1"),{companyId:company,sourceId:"p1",name:"光回線",active:true,sortOrder:0});
   await setDoc(doc(db,"publicRankEntries","entry1"),{companyId:company,period:"2026-10",kind:"member",sourceId:"partner",displayName:"担当者",rank:1});
+  await setDoc(doc(db,"publicRecords","other-team"),{...good,sourceId:"other-team",teamId:"t2"});
+  await setDoc(doc(db,"publicRecordLines","other-line"),{
+   companyId:company,recordId:"other-team",sourceId:"other-line",uid:"other",date:"2026-10-27",teamId:"t2",productId:"p1",count:4
+  });
+  await setDoc(doc(db,"publicRecordCorrections","cross-team"),{
+   companyId:company,sourceId:"cross-team",recordId:"r1",recordDate:"2026-10-27",
+   changedByUid:"owner",beforeTeamId:"t1",afterTeamId:"t2",beforeTotalCount:5,afterTotalCount:4
+  });
   // Explicit legacy-data test fixture. The existing rules still expose
   // revenue-bearing records within a company: cannot ship phase1 alone.
   await setDoc(doc(db,"records","legacy"),{
@@ -68,4 +76,13 @@ test("known blocker: existing raw financial records still readable by partner",a
  const docRef=doc(db,"records","legacy");
  const snap=await assertSucceeds(getDoc(docRef));
  if(!snap.exists()||snap.data().totalRevenue!==50000)throw Error("Legacy exposure no longer matches known policy; revisit cutover plan");
+});
+
+
+test("partner is denied other-team public record, line and cross-team correction",async()=>{
+ const db=context("partner",company);
+ await assertFails(getDoc(doc(db,"publicRecords","other-team")));
+ await assertFails(getDoc(doc(db,"publicRecordLines","other-line")));
+ await assertFails(getDoc(doc(db,"publicRecordCorrections","cross-team")));
+ await assertSucceeds(getDoc(doc(db,"publicRankEntries","entry1")));
 });
