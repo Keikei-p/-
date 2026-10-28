@@ -38,7 +38,7 @@ export function projectCountRecord(record){
  const results=entries.map(([key,r])=>safeResult(key,r));
  const totalCount=results.reduce((n,r)=>n+r.count,0);
  if(!Number.isSafeInteger(totalCount))throw Error("Invalid total");
- if(record.totalCount!=null&&Number(record.totalCount)!==totalCount)throw Error("Saved total count mismatch");
+ if(record.totalCount==null||record.totalCount===""||!Number.isSafeInteger(Number(record.totalCount))||Number(record.totalCount)!==totalCount)throw Error("Saved total count missing or mismatch");
  return {
   companyId:id(record.companyId),sourceId:id(record.id),
   uid:id(record.uid),date:date(record.date),
@@ -65,8 +65,8 @@ export function projectCountCorrection(correction){
   recordId:id(correction.recordId),
   recordDate:date(correction.recordDate),
   changedByUid:id(correction.changedByUid),
-  before:{teamId:text(before.teamId,200),totalCount:count(before.totalCount||0)},
-  after:{teamId:text(after.teamId,200),totalCount:count(after.totalCount||0)}
+  before:{teamId:text(before.teamId,200),totalCount:count(before.totalCount)},
+  after:{teamId:text(after.teamId,200),totalCount:count(after.totalCount)}
  };
 }
 export function auditNoFinancialKeys(output){
