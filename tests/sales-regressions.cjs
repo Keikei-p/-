@@ -1289,3 +1289,54 @@ test('published security-rule proposal denies physical deletion of 5 historical 
   assert.match(section,/allow delete:\s*if false\s*;/,name+' deletion must be forbidden');
  }
 });
+
+test('Owner member removal is suspension-only and preserves stored history', async () => {
+  const fn = fs.readFileSync(path.join(__dirname, '../functions/index.js'), 'utf8');
+  const start = fn.indexOf('exports.deleteCompanyMemberAccount = onCall(async (request) => {');
+  assert(start >= 0, 'legacy member-removal callable must exist');
+  const end = fn.indexOf('\n});', start);
+  assert(end > start, 'callable must have a closed body');
+  const source = fn.slice(start, end + 4);
+  assert(!/\\.delete\\s*\\(|deleteUser\\s*\\(|deleteDoc\\s*\\(/.test(source),
+    'member retirement must never physically delete Auth, user, or membership documents');
+  const writes = [];
+  const authOps = [];
+  const ref = (name) => ({
+    name,
+    collection: (child) => ({ doc: (id) => ref(name + '/' + child + '/' + id) }),
+    get: async () => ({ exists: true, data: () => ({companyRole:'member',teamHistory:[{teamId:'historical'}]}) })
+  });
+  const db = {
+    collection: (name) => ({ doc: (id) => ref(name + '/' + id) }),
+    batch: () => ({
+      set: (document, patch, opts) => writes.push({path:document.name, patch, opts}),
+      commit: async () => {}
+    })
+  };
+  const scope = vm.createContext({
+    exports: {},
+    onCall: (callback) => callback,
+    requireVerifiedUser: () => ({uid:'owner-uid'}),
+    getCompanyContext: async () => ({ companyId:'company-A', memberData:{companyRole:'owner'} }),
+    getAuth: () => ({
+      updateUser: async (uid, patch) => { authOps.push({uid, patch}); },
+      deleteUser: async () => { throw Error('Auth hard delete must never run'); }
+    }),
+    db,
+    FieldValue:{serverTimestamp:()=>'server-timestamp'},
+    HttpsError: class HttpsError extends Error { constructor(code,message){super(message);this.code=code;} }
+  });
+  vm.runInContext(source, scope);
+  const result = await scope.exports.deleteCompanyMemberAccount({data:{uid:'former-uid'}});
+  assert.equal(result.ok,true);
+  assert.equal(result.authDeleted,false);
+  assert.equal(result.authDisabled,true);
+  assert.equal(result.historicalUserDocumentRetained,true);
+  assert.equal(result.historicalMemberDocumentRetained,true);
+  assert.deepEqual(JSON.parse(JSON.stringify(authOps)), [{uid:'former-uid',patch:{disabled:true}}]);
+  assert.deepEqual(writes.map((w)=>w.path).sort(),[
+    'companies/company-A/members/former-uid','users/former-uid'
+  ]);
+  assert(writes.every((w)=>w.patch.active===false && w.opts.merge===true));
+  assert(writes.every((w)=>!('teamHistory' in w.patch) && !('records' in w.path)));
+});
