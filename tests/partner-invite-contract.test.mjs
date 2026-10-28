@@ -44,7 +44,7 @@ test("partner invite requires verified company owner even when leader can invite
 });
 test("new partner acceptance creates a separate company with count-only privileges",()=>{
  const p=planInviteAcceptance({
-  contract:draft(INVITE_KINDS.PARTNER),recipient,nowMs:now+1000,newPartnerCompanyId:"partner123"
+  contract:draft(INVITE_KINDS.PARTNER),recipient,verifiedToken:true,nowMs:now+1000,newPartnerCompanyId:"partner123"
  });
  assert.equal(p.operation,"create_isolated_partner_company");
  assert.equal(p.companyId,"partner123");assert.equal(p.hubCompanyId,"hub");
@@ -55,7 +55,7 @@ test("new partner acceptance creates a separate company with count-only privileg
  assert.equal(p.ownProductDefaultVisibility,"private");
 });
 test("self invite never creates a new company or financial grant",()=>{
- const p=planInviteAcceptance({contract:draft(),recipient,nowMs:now+1000});
+ const p=planInviteAcceptance({contract:draft(),recipient,verifiedToken:true,nowMs:now+1000});
  assert.equal(p.operation,"join_existing_company");
  assert.equal(p.targetCompanyId,"hub");assert.equal(p.canViewRevenue,false);
 });
