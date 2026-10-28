@@ -101,6 +101,7 @@ test("financial text and embedded raw monetary fields never reach a rank",()=>{
 });
 test("2,101 records do not trigger the previous 2,000-document boundary",()=>{
  const d=make();d.approvedCompanyIds=["own"];d.sources=d.sources.slice(0,1);
+ d.productGroups=d.productGroups.filter(x=>x.companyId==="own");
  const s=d.sources[0];s.records=[];s.lines=[];
  for(let i=0;i<2101;i++){
    const r=record("own","a"+String(i).padStart(5,"0"),"person","t1",1);
