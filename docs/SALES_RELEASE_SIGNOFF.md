@@ -203,3 +203,24 @@ Rulesの本番デプロイ: 未実施
 - [ ] 最終HEADでの保護ガードとValidation両方の成功確認。
 - [ ] `main` へマージ後に旧/新URLへのHosting同期成功を確認し、本人に更新版を再度試してもらう。
 - [ ] 原因の最終確定と実アカウントでの保存成功確認は未済。DB権限ルールの変更はこのPRには含まれない。
+
+---
+
+# 過去データ物理削除の防止｜2026-10-28 開発審査（未承認）
+
+対象: `safety/retain-sales-history-no-hard-delete-20261028`。既存の実績・班・商材・件数目標・売上目標を壊さず保存する目的。
+
+- [x] 既存の本番データを読む/書く/消す操作は実施していない。
+- [x] Firestore `records`, `products`, `teams`, `goals`, `revenueGoals` の `delete` を拒否する開発版ルールを追加。
+- [x] Web画面から実績・班・商材の物理削除操作を除去。登録・訂正処理は変更なし。
+- [ ] GitHub Actions の最新HEADで全件テスト成功を確認。
+- [ ] 実本番バックアップの存在、別環境での復元、金額・件数・日別班の照合。
+- [ ] Firebase Consoleへ実際に配備されているSecurity Rulesとの差分確認。
+- [ ] 新旧URL・古いPWA・Owner/Leader/Member/協力店の実機操作を確認。
+- [ ] GitHub管理者本人のレビュー・署名。
+- [ ] `sales-production-reviewed` ラベルと保護ゲート成功の確認。
+- [ ] Firebase Rulesの手動デプロイと確認。
+
+**署名：未取得。公開承認：未取得。本番反映：未実施。**
+
+特に、クライアント経由の削除禁止はCloudflare/Firebase Adminの特権削除、既存データ内の売上上書き、過去データのバックアップ喪失まで防ぐものではない。詳細は `docs/HISTORY_RETENTION_NO_DELETE.md`。
