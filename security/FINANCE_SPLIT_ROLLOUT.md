@@ -62,3 +62,22 @@ node security/prepare-projection.mjs ./sales-archive.json ./projection-preview
 - **注意：この関数はまだ本番のAPIに接続していない。** `principal` をユーザーから受け取ることは絶対禁止。Cloudflare Workers等の信頼されたゲートウェイがID tokenの署名と最新Firestoreの権限・履歴を照合する必要がある。
 - フィールド別の読み出しはFirestore Security Rulesでは実現できないため、**単に `canViewRevenue` を追加するだけで原票を読ませない**。https://firebase.google.com/docs/firestore/security/rules-fields
 - 本番旧URL/PWAが元の `records/products` を読んでいる間は、原票遮断ルールを適用しない。
+
+## 2026-10-28 協力店用件数API（開発版、まだ本番接続なし）
+
+- `security/public-count-api.mjs`: **GET `/v1/public-counts`** の件数専用HTTPハンドラーを追加。初期状態は `enabled=false` のため、呼び出しても停止（503）。Cloudflareへの本番配備はしない。
+- 公開対象は `publicRecords`、`publicRecordLines`、`publicProducts`、`publicRankEntries` **のみ**。`records` / `products` / `recordCorrections` の金額付き原票は、このAPIから取得できない。
+- 許可した2ドメイン（nico-factory.web.app・旧GitHub Pages）以外のブラウザOriginを拒否。署名検証済みFirebase IDトークン、会社所属、在籍/停止状態、本人の班所属を毎リクエスト確認。クライアントが指定する会社IDや役職を信用しない。
+- 記録と商材別件数は **認可された班IDが必須**。非オーナーの他班指定を禁止する。商品名と順位だけは会社内の専用公開コレクションから取得。返却は必要な件数・商材ID・日付・順位だけ。氏名等の余分な値やraw原票のフィールドは一括で出力禁止。
+- ページサイズの上限は **50件**。読み取り時刻 `snapshot` を初回応答から引き継ぎ、次ページも同じFirestoreスナップショットでの取得を**バックエンド側に必須**とする。異なる読取時刻や重複・他社/他班混入は**部分件数すら返さず失敗**とする。大量件数・2,000件超でも固定の読み切り上限をつけずページ単位で取得する方式。
+- `tests/public-count-api.test.mjs` で無効状態、別会社、停止中、無認証、Origin/パラメータ攻撃、50件ページ送り、タイムスタンプ不一致、金額混入、商品/ランキングの非公開値排除を架空データで確認。
+
+### 本番へ接続する前に必ず必要なアダプター
+
+`createCountOnlyReadHandler` に渡す次の3機能は、**信頼されたサーバー側**で実装するまで利用開始できません。
+
+1. `authenticateBearer(token)`: Firebase署名/Issuer/Audience/期限/確認済みメールを検証。**ブラウザのJWT payloadを自己申告として受け付けない**。
+2. `loadMembership(uid)`: Firestoreから**毎回**最新 `users/{uid}` と `companies/{companyId}/members/{uid}`、会社Owner/班履歴を読取り、ユーザーの入力ではない権限情報を構築する。
+3. `queryPublicDocuments({collection,companyId,teamId,startAfter,snapshotTime,limit})`: Firestore RESTの公開コレクションだけを、会社と班でサーバー側絞込・文書名でソートし、**同一readTime固定**でページ返却する。Firestoreの原票コレクションは使用しない。
+
+**本番Rulesを原票遮断に変更する前に**、旧新URLのWebアプリが件数取得・登録・訂正をこの新しい信頼済み経路で成功し、退職者・班移動・金額許可ありの人にも互換性があることを確認してください。このAPIが開発版で動いてもそれだけで公開可能にはならない。
