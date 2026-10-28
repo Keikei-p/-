@@ -1405,3 +1405,21 @@ test('Cloud Functions source must not revive destructive removal of sales or emp
   assert.doesNotMatch(fn, /(?:targetMemberRef|targetUserRef|recordRef|productRef|teamRef)\s*\.delete\s*\(/,
     'historical user, membership, record, product or team deletion must not be called');
 });
+
+
+test('Manual suspension release can only deploy the approved Cloud Function, never Firestore data', () => {
+  const workflow = fs.readFileSync(path.join(__dirname, '../.github/workflows/member-retention-manual-release.yml'), 'utf8');
+  assert.match(workflow, /workflow_dispatch:/, 'no automatic release triggers');
+  assert.doesNotMatch(workflow, /^\s+(push|pull_request|schedule|repository_dispatch):/m,
+    'no push, PR, schedule or remote-dispatch release triggers');
+  assert.match(workflow, /github\.ref == 'refs\/heads\/main'/, 'must run on main');
+  assert.match(workflow, /inputs\.reviewed_commit == github\.sha/, 'must match reviewed commit');
+  assert.match(workflow, /VERIFIED_BACKUP_RESTORE_COUNTS_AND_BOTH_URLS/,
+    'requires typed confirmation of data protection verification');
+  assert.match(workflow, /firebase deploy --only functions:deleteCompanyMemberAccount/,
+    'must deploy only the fixed suspension Function');
+  assert.doesNotMatch(workflow, /firebase deploy --only (?:firestore|hosting)/,
+    'must not modify Firestore Rules or Hosting as part of this release');
+  assert.doesNotMatch(workflow, /(?:firebase firestore:delete|gcloud firestore (?:databases|backups) delete)/,
+    'must never delete a production database');
+});
