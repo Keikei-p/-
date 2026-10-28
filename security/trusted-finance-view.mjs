@@ -43,7 +43,7 @@ export function projectTrustedFinancialView({record,principal}){
   const output={
     recordId:safeId(record.id),
     date:safeId(record.date),
-    teamId:safeId(record.teamId),
+    teamId:record.teamId==null?null:safeId(record.teamId),
     companyId,
   };
   if(revenueAllowed) output.totalRevenue=money(record.totalRevenue);
