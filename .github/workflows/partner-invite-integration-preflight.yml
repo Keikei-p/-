@@ -7,6 +7,8 @@ on:
       - "index.html"
       - "tests/partner-company-functions.test.cjs"
       - "security/partner-company-finance-lock.mjs"
+      - "partner/canonical-ranking-groups.mjs"
+      - "tests/partner-canonical-ranking-groups.test.mjs"
       - "tests/partner-finance-lock-emulator.test.mjs"
       - ".github/workflows/partner-invite-integration-preflight.yml"
       - "docs/PARTNER_INVITE_STAGING_STATUS.md"
@@ -25,8 +27,10 @@ jobs:
           node-version: "22"
       - name: Validate Firebase Functions syntax without cloud calls
         run: node --check functions/index.js
+      - name: Check canonical partner mapping syntax
+        run: node --check partner/canonical-ranking-groups.mjs
       - name: Exercise actual callable functions in isolated synthetic Firestore (no Firebase credentials)
-        run: node --test tests/partner-company-functions.test.cjs
+        run: node --test tests/partner-company-functions.test.cjs tests/partner-canonical-ranking-groups.test.mjs
 
   finance-rules-emulator:
     runs-on: ubuntu-latest
