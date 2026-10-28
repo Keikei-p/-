@@ -53,7 +53,7 @@ export function projectPublicProduct(product){
  if(!product||typeof product!=="object")throw Error("Invalid product");
  return {
   companyId:id(product.companyId),sourceId:id(product.id),
-  name:safeProductName(product.name),active:product.active!==false,
+  name:safePublicLabel(product.name),active:product.active!==false,
   sortOrder:Number.isSafeInteger(Number(product.sortOrder))&&Number(product.sortOrder)>=0?Number(product.sortOrder):0
  };
 }
