@@ -444,6 +444,7 @@ async function assertCompanyOwner(uid,companyId) {
   ]);
   if (!companySnap.exists || companySnap.data()?.active !== true ||
       companySnap.data()?.ownerUid !== uid ||
+      companySnap.data()?.companyKind === "partner" ||
       !memberSnap.exists || memberSnap.data()?.active !== true ||
       memberSnap.data()?.companyRole !== "owner") {
     throw new HttpsError("permission-denied",
@@ -541,6 +542,7 @@ exports.acceptPartnerCompanyInvitation = onCall(async (request) => {
     const [hubSnap,inviterSnap] = await Promise.all([tx.get(hubRef),tx.get(inviterRef)]);
     if (!hubSnap.exists||hubSnap.data()?.active!==true||
         hubSnap.data()?.ownerUid!==invite.invitedBy||
+        hubSnap.data()?.companyKind==="partner"||
         !inviterSnap.exists||inviterSnap.data()?.active!==true||
         inviterSnap.data()?.companyRole!=="owner") {
       throw new HttpsError("permission-denied","招待元の承認が無効になりました。");
