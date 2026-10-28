@@ -62,32 +62,6 @@ service cloud.firestore {
         );
     }
 
-    // All self-service membership changes must begin today in Japan;
-    // date strings are padded to yyyy-mm-dd for exact comparison.
-    function todayJstString() {
-      let local = request.time + duration.value(9, 'h');
-      let month = string(local.month());
-      let day = string(local.day());
-      return string(local.year()) + '-' +
-        (month.size() == 1 ? '0' + month : month) + '-' +
-        (day.size() == 1 ? '0' + day : day);
-    }
-
-    // For self-service transfers, all old entries are immutable.
-    // Same-day changes to an existing entry require an owner correction.
-    function appendOnlySelfTeamHistory(previous, next) {
-      let oldEntries = previous.get('teamHistory', []);
-      let nextEntries = next.get('teamHistory', []);
-      return oldEntries is list
-        && nextEntries is list
-        && oldEntries.size() < 100
-        && nextEntries.size() == oldEntries.size() + 1
-        && nextEntries == oldEntries.concat([nextEntries[nextEntries.size() - 1]])
-        && nextEntries[nextEntries.size() - 1].fromTeamId == previous.teamId
-        && nextEntries[nextEntries.size() - 1].toTeamId == next.teamId
-        && nextEntries[nextEntries.size() - 1].effectiveDate == todayJstString();
-    }
-
     function validShortName(name, maxLength) {
       return name is string
         && name.size() >= 1
@@ -596,7 +570,7 @@ service cloud.firestore {
             resource.data.companyId,
             request.resource.data.teamId
           )
-          && appendOnlySelfTeamHistory(resource.data, request.resource.data)
+          && validTeamHistory(request.resource.data)
           && request.resource.data.updatedAt == request.time
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['teamId', 'teamHistory', 'updatedAt'])
@@ -864,7 +838,7 @@ service cloud.firestore {
             companyId,
             request.resource.data.teamId
           )
-          && appendOnlySelfTeamHistory(resource.data, request.resource.data)
+          && validTeamHistory(request.resource.data)
           && request.resource.data.updatedAt == request.time
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['teamId', 'teamHistory', 'updatedAt'])
