@@ -593,6 +593,159 @@ exports.acceptPartnerCompanyInvitation = onCall(async (request) => {
   return result;
 });
 
+/*
+ * SAFE PARTNER PRODUCT CATALOG (STAGING ONLY).
+ * Partners read central product names/IDs/order via a SERVER whitelist, never
+ * central raw products. Own custom products are a separate price-free dataset.
+ * Do not deploy before partner financial Security Rules and old-PWA cutover.
+ */
+const catalogIdPattern=/^[A-Za-z0-9_:-]{1,200}$/;
+const priceInLabel=/(?:売上|単価|利益|報酬|キャッシュバック|[¥￥$€]|(?:CB|revenue|unitPrice|cashback|commission)[ :_=-]*[0-9０-９]|[0-9０-９][0-9０-９.,，]*\s*(?:万円|千円|円))/i;
+function safeCatalogName(value){
+ const n=String(value||"").replace(/[\r\n\t]/g," ").trim();
+ if(!n||n.length>80||priceInLabel.test(n))
+   throw new HttpsError("failed-precondition",
+     "金額を含む商材名を公開できません。元の商材を変更せず管理者確認をしてください。");
+ return n;
+}
+function safeCatalogId(value){
+ if(typeof value!=="string"||!catalogIdPattern.test(value)||priceInLabel.test(value))
+   throw new HttpsError("failed-precondition",
+     "金額を含む商材IDを公開できません。管理者によるID対応表が必要です。");
+ return value;
+}
+async function currentPartnerContext(uid){
+ const context=await getCompanyContext(uid);
+ const companySnap=await db.collection("companies").doc(context.companyId).get();
+ if(!companySnap.exists||companySnap.data()?.active!==true||
+    companySnap.data()?.companyKind!=="partner"||
+    context.memberData.accessKind!=="partner"||
+    context.userData.accessKind!=="partner"){
+   throw new HttpsError("permission-denied","協力店の有効な所属が必要です。");
+ }
+ const relationSnap=await db.collection("partnerRelations").doc(context.companyId).get();
+ const rel=relationSnap.data()||{};
+ if(!relationSnap.exists||rel.active!==true||
+    rel.partnerCompanyId!==context.companyId ||
+    rel.hubCompanyId!==companySnap.data().hubCompanyId ||
+    rel.catalogAccessApproved!==true||rel.countSharingApproved!==true){
+   throw new HttpsError("permission-denied","協力店の共通商材連携が無効です。");
+ }
+ return {...context,companyData:companySnap.data(),relation:rel};
+}
+exports.listPartnerCatalog = onCall(async(request)=>{
+ const {uid}=requireVerifiedUser(request);
+ const context=await currentPartnerContext(uid);
+ const hubId=safeCatalogId(context.relation.hubCompanyId);
+ const [hubProducts,ownProducts]=await Promise.all([
+   db.collection("products").where("companyId","==",hubId).get(),
+   db.collection("companies").doc(context.companyId)
+     .collection("partnerCustomProducts").get()
+ ]);
+ if(hubProducts.size>10000||ownProducts.size>10000)
+   throw new HttpsError("resource-exhausted","商材件数が多すぎます。");
+ const products=[];
+ const seen=new Set();
+ for(const doc of hubProducts.docs){
+   const data=doc.data()||{},pid=safeCatalogId(doc.id);
+   if(data.companyId!==hubId)throw new HttpsError("failed-precondition","商材の会社情報が不正です。");
+   if(data.active===false)continue;
+   const key="shared:"+hubId+":"+pid;
+   if(seen.has(key))throw new HttpsError("failed-precondition","重複する商材があります。");
+   seen.add(key);
+   products.push({
+     catalogId:key,sourceCompanyId:hubId,sourceProductId:pid,
+     name:safeCatalogName(data.name),
+     active:true,sortOrder:Number.isSafeInteger(data.sortOrder)&&data.sortOrder>=0?data.sortOrder:0,
+     scope:"shared",visibility:"shared_counts"
+   });
+ }
+ for(const doc of ownProducts.docs){
+   const data=doc.data()||{},pid=safeCatalogId(doc.id);
+   if(data.companyId!==context.companyId)throw new HttpsError("failed-precondition","独自商材の会社情報が不正です。");
+   if(!["private","shared_counts"].includes(data.visibility))
+     throw new HttpsError("failed-precondition","独自商材の公開設定が不正です。");
+   if(data.active===false)continue;
+   products.push({
+     catalogId:"custom:"+context.companyId+":"+pid,
+     sourceCompanyId:context.companyId,sourceProductId:pid,
+     name:safeCatalogName(data.name),
+     active:true,sortOrder:Number.isSafeInteger(data.sortOrder)&&data.sortOrder>=0?data.sortOrder:0,
+     scope:"partner_custom",visibility:data.visibility
+   });
+ }
+ products.sort((a,b)=>a.sortOrder-b.sortOrder||a.catalogId.localeCompare(b.catalogId));
+ return {catalogSourceCompanyId:hubId,products};
+});
+exports.createPartnerCustomProduct = onCall(async(request)=>{
+ const {uid}=requireVerifiedUser(request);
+ const context=await currentPartnerContext(uid);
+ if(context.memberData.companyRole!=="owner"||
+    context.companyData.ownerUid!==uid)
+   throw new HttpsError("permission-denied","独自商材を追加できるのは代表オーナーのみです。");
+ const name=safeCatalogName(request.data?.name);
+ const ownRef=db.collection("companies").doc(context.companyId)
+   .collection("partnerCustomProducts").doc();
+ await ownRef.create({
+   companyId:context.companyId,name,sortOrder:0,active:true,
+   visibility:"private",createdBy:uid,
+   createdAt:FieldValue.serverTimestamp(),
+   updatedAt:FieldValue.serverTimestamp()
+ });
+ return {productId:ownRef.id,visibility:"private"};
+});
+exports.updatePartnerCustomProductVisibility = onCall(async(request)=>{
+ const {uid}=requireVerifiedUser(request);
+ const context=await currentPartnerContext(uid);
+ if(context.memberData.companyRole!=="owner"||
+    context.companyData.ownerUid!==uid)
+   throw new HttpsError("permission-denied","独自商材の共有設定は代表オーナーのみ変更できます。");
+ const productId=safeCatalogId(request.data?.productId);
+ const visibility=request.data?.visibility;
+ if(!["private","shared_counts"].includes(visibility))
+   throw new HttpsError("invalid-argument","公開設定が不正です。");
+ const ref=db.collection("companies").doc(context.companyId)
+   .collection("partnerCustomProducts").doc(productId);
+ await db.runTransaction(async tx=>{
+   const doc=await tx.get(ref);
+   if(!doc.exists||doc.data()?.companyId!==context.companyId)
+     throw new HttpsError("not-found","対象の独自商材が存在しません。");
+   tx.update(ref,{visibility,updatedAt:FieldValue.serverTimestamp()});
+ });
+ return {productId,visibility};
+});
+exports.listLinkedPartnerProducts = onCall(async(request)=>{
+ const {uid}=requireVerifiedUser(request);
+ const context=await getCompanyContext(uid);
+ const hub=await db.collection("companies").doc(context.companyId).get();
+ if(!hub.exists||hub.data()?.active!==true||
+    hub.data()?.ownerUid!==uid||
+    context.memberData.companyRole!=="owner")
+   throw new HttpsError("permission-denied","代表オーナーだけが他社公開商材を閲覧できます。");
+ const relations=await db.collection("partnerRelations")
+   .where("hubCompanyId","==",context.companyId).get();
+ if(relations.size>100)throw new HttpsError("resource-exhausted","連携会社数が多すぎます。");
+ const products=[];
+ for(const relSnap of relations.docs){
+   const link=relSnap.data()||{};
+   if(link.active!==true||link.catalogAccessApproved!==true||
+      link.countSharingApproved!==true)continue;
+   const partnerId=safeCatalogId(link.partnerCompanyId);
+   const snap=await db.collection("companies").doc(partnerId)
+     .collection("partnerCustomProducts").where("visibility","==","shared_counts").get();
+   for(const item of snap.docs){
+     const fields=item.data()||{};
+     if(fields.companyId!==partnerId||fields.active!==true)continue;
+     products.push({
+       sourceCompanyId:partnerId,sourceProductId:safeCatalogId(item.id),
+       name:safeCatalogName(fields.name),
+       scope:"partner_custom",visibility:"shared_counts"
+     });
+   }
+ }
+ return {products};
+});
+
 exports.deleteCompanyMemberAccount = onCall(async (request) => {
   const { uid } = requireVerifiedUser(request);
   const targetUid = String(request.data?.uid || "").trim();
