@@ -1,4 +1,4 @@
-import {formatCountsReport,formatMissingReminder} from "./format.mjs";
+import {buildCombinedReportPlan,buildCombinedReportData,formatCombinedCountsReport,formatCombinedMissingReminder} from "./combine.mjs";
 
 // Cloudflare Workers (staging only). No public HTTP endpoint.
 // Default is DRY RUN: no LINE messages or Firestore writes unless two independent switches are enabled.
@@ -186,30 +186,80 @@ export default {
   const enabled=env.REPORT_DELIVERY_ENABLED==="true";
   const token=await googleToken(env);
   const companies=await listDocuments(env,token,"companies");
+  // All settings are read by this server from Firestore, NOT from a client.
+  // Missing settings fail closed for the relevant hub/partner.
+  const entries=[];
   for(const company of companies){
+   if(company.active===false)continue;
    try{
-    if(company.active===false)continue;
-    const settings=await getDocument(env,token,"companies/"+encodeURIComponent(company.id)+"/settings/notifications");
-    if(!settings||settings.enabled!==true||settings.lineEnabled!==true||!settings.lineGroupId)continue;
-    if(!Array.isArray(settings.weekdays)||!settings.weekdays.map(Number).includes(clock.weekday))continue;
-    const teams=await prepareTeamRows(env,token,company.id,clock,kind,settings);
-    const message=kind==="missing"?formatMissingReminder({date:clock.date,teams}):
-      formatCountsReport({date:clock.date,period:kind,teams});
-    if(!message)continue;
-    if(!enabled){
-     console.log("DRY-RUN: one "+kind+" report prepared; no send or Firestore write");
-     continue;
-    }
-    const id=company.id+"_"+clock.date+"_"+kind;
-    if(!await reserveDispatch(env,token,id,company.id,clock,kind))continue;
-    try{
-     await pushLine(env,String(settings.lineGroupId),message,await lineIdempotencyKey(id));
-     await updateDispatch(env,token,id,"sent");
-    }catch(error){
-     await updateDispatch(env,token,id,"failed").catch(()=>{});
-     throw error;
-    }
-   }catch(error){console.error("Company report skipped: "+kind+" "+String(error?.message||error));}
+    const settings=await getDocument(env,token,
+      "companies/"+encodeURIComponent(company.id)+"/settings/notifications");
+    if(settings)entries.push({id:company.id,name:company.name,active:true,settings});
+   }catch(_error){
+    console.error("Failed to load company report settings (no data disclosed)");
+   }
   }
+  const byId=new Map(entries.map(entry=>[entry.id,entry]));
+  const plans=[];
+  for(const hub of entries){
+   const settings=hub.settings;
+   if(settings.enabled!==true||settings.lineEnabled!==true||!settings.lineGroupId)continue;
+   if(!Array.isArray(settings.weekdays)||!settings.weekdays.map(Number).includes(clock.weekday))continue;
+   try{
+    const plan=buildCombinedReportPlan({hub,companies:entries});
+    // Each linked partner must approve this weekday too; never infer consent.
+    for(const id of plan.partnerCompanyIds){
+     const p=byId.get(id);
+     if(!Array.isArray(p.settings.weekdays) ||
+        !p.settings.weekdays.map(Number).includes(clock.weekday))
+       throw Error("Partner weekday sharing not approved");
+    }
+    plans.push({hub,plan});
+   }catch(_error){
+    // Incomplete cross-company agreement cannot silently degrade to
+    // a partial report that appears to contain every partner.
+    console.error("Company report plan blocked: invalid consent or settings");
+   }
+  }
+  const includedPartners=new Set(plans.flatMap(x=>x.plan.partnerCompanyIds));
+  for(const {hub,plan} of plans){
+   try{
+    if(includedPartners.has(hub.id))continue; // No duplicate sends for partner companies.
+    const hubTeams=await prepareTeamRows(env,token,hub.id,clock,kind,hub.settings);
+    const partnerSources=await Promise.all(plan.partnerCompanyIds.map(async id=>{
+      const partner=byId.get(id);
+      return {
+        companyId:id,companyName:partner.name,
+        teams:await prepareTeamRows(env,token,id,clock,kind,partner.settings)
+      };
+    }));
+    const report=buildCombinedReportData({
+      plan,hubTeams,partnerSources,mode:kind
+    });
+    const message=kind==="missing"
+      ?formatCombinedMissingReminder({date:clock.date,report})
+      :formatCombinedCountsReport({date:clock.date,period:kind,report});
+    if(!message)continue;
+    if(message.length>4800)throw Error("Combined LINE report exceeds limit");
+    if(!enabled){
+      console.log("DRY-RUN: combined "+kind+" report validated; no send or Firestore write");
+      continue;
+    }
+    const id=hub.id+"_"+clock.date+"_"+kind;
+    if(!await reserveDispatch(env,token,id,hub.id,clock,kind))continue;
+    try{
+      await pushLine(env,String(hub.settings.lineGroupId),message,
+        await lineIdempotencyKey(id));
+      await updateDispatch(env,token,id,"sent");
+    }catch(_error){
+      await updateDispatch(env,token,id,"failed").catch(()=>{});
+      throw Error("Combined report sending failed");
+    }
+   }catch(_error){
+    // Avoid company IDs, names, prices, record details in logs.
+    console.error("Combined report skipped: invalid count, consent or delivery");
+   }
+  }
+
  }
 };
