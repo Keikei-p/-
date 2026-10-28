@@ -62,6 +62,17 @@ service cloud.firestore {
         );
     }
 
+    // All self-service membership changes must begin today in Japan;
+    // date strings are padded to yyyy-mm-dd for exact comparison.
+    function todayJstString() {
+      let local = request.time + duration.value(9, 'h');
+      let month = string(local.month());
+      let day = string(local.day());
+      return string(local.year()) + '-' +
+        (month.size() == 1 ? '0' + month : month) + '-' +
+        (day.size() == 1 ? '0' + day : day);
+    }
+
     // For self-service transfers, all old entries are immutable.
     // Same-day changes to an existing entry require an owner correction.
     function appendOnlySelfTeamHistory(previous, next) {
@@ -81,6 +92,7 @@ service cloud.firestore {
         ])
         && newHistory[newHistory.size() - 1].effectiveDate is string
         && newHistory[newHistory.size() - 1].effectiveDate.size() == 10
+        && newHistory[newHistory.size() - 1].effectiveDate == todayJstString()
         && newHistory[newHistory.size() - 1].fromTeamId == previous.teamId
         && newHistory[newHistory.size() - 1].toTeamId == next.teamId
         && newHistory[newHistory.size() - 1].fromTeamName is string
