@@ -1097,7 +1097,8 @@ test('Ranking groups are synced to company settings, with local-only fallback un
 test('Shared ranking group settings cannot write sales documents or price data',()=>{
  const code=source('saveRankingGroups');
  for(const prop of ['totalRevenue','revenuePerUnit','cashbackOptions','pricingOptions'])assert(!code.includes(prop));
- assert(!/\b(?:records|products|revenueGoals|recordCorrections)\b/.test(code));
+ // Existing records are read only to refresh the preview; writes target only company settings.
+ assert(!/\b(?:setDoc|updateDoc|addDoc|deleteDoc)\s*\(\s*(?:record|product|revenueGoal|correction)/.test(code));
  assert(!/deleteDoc|writeBatch|runTransaction/.test(code));
 });
 test('Catalog save failure diagnostic identifies mismatched company-member Owner without leaking identifiers',async()=>{
