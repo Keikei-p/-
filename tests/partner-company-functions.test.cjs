@@ -31,16 +31,24 @@ function makeDb(){
   };
  }
  function coll(prefix){
+  const documents=()=>[...store.keys()].filter(key=>
+    key.startsWith(prefix+"/")&&
+    key.split("/").length===prefix.split("/").length+1).map(ref);
   return {
    doc(id){return ref(prefix+"/"+(id??"fixture-"+(++seq)));},
+   async get(){const docs=documents();return {empty:!docs.length,size:docs.length,docs};},
    where(field,op,value){
     assert.equal(op,"==");
-    return {limit(n){return {async get(){
-     const docs=[...store.keys()].filter(key=>key.startsWith(prefix+"/")&&
-      key.split("/").length===prefix.split("/").length+1&&
-      store.get(key)?.[field]===value).slice(0,n).map(ref);
-     return {empty:docs.length===0,docs};
-    }}};
+    const fetchDocs=limit=>documents().filter(x=>
+      store.get(x.path)?.[field]===value).slice(0,limit);
+    return {
+      async get(){const docs=fetchDocs(Infinity);
+        return {empty:!docs.length,size:docs.length,docs};},
+      limit(n){return {async get(){
+        const docs=fetchDocs(n);
+        return {empty:!docs.length,size:docs.length,docs};
+      }};}
+    };
    }
   };
  }
