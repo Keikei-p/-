@@ -1331,3 +1331,19 @@ test('Sales form always delegates the correction audit to the transaction, never
  assert(!/await\s+setDoc\s*\(\s*correctionRef/.test(saveHandler));
  assert(!saveHandler.includes('correctionAuditWarning'));
 });
+
+
+test('departing member accounts are disabled without deleting past company and team records',()=>{
+ const fn=fs.readFileSync(path.join(__dirname,'../functions/index.js'),'utf8');
+ const start=fn.indexOf('exports.deleteCompanyMemberAccount = onCall(');
+ const end=fn.indexOf('\n});',start);
+ assert(start>=0&&end>start);
+ const code=fn.slice(start,end);
+ assert.match(code,/disableBatch\.set\(/);
+ assert.match(code,/getAuth\(\)\.updateUser\(targetUid, \{ disabled: true \}\)/);
+ assert(!/getAuth\(\)\.deleteUser\(/.test(code));
+ assert(!/\.delete\(/.test(code));
+ assert.match(code,/historicalMemberDocumentRetained: true/);
+ assert.match(code,/historicalUserDocumentRetained: true/);
+ assert.match(code,/authDeleted: false/);
+});
