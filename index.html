@@ -8520,6 +8520,7 @@ let unsubscribeProducts = null;
 let unsubscribeRecords = null;
 let unsubscribeGoals = null;
 let unsubscribeRevenueGoals = null;
+let unsubscribeRankingGroups = null;
 
 
 /* =====================================================
@@ -12984,7 +12985,26 @@ deleteOwnAccountButton.onclick =
 function startRealtimeListeners() {
 
   stopRealtimeListeners();
+  // Preserve existing per-device preferences as a safe fallback until the
+  // company owner explicitly publishes shared ranking groups.
   loadLocalRankingGroups();
+  unsubscribeRankingGroups = onSnapshot(
+    doc(db, "companies", currentUserData.companyId, "settings", "ranking"),
+    snap => {
+      if (!snap.exists()) return; // Old local groups remain usable, never erased.
+      rankingGroups = normalizeRankingGroups(snap.data().groups);
+      rankingGroupsLoaded = true;
+      rankingGroupDraftSelectedKeys.clear();
+      renderProductMemberRanking(records.filter(record =>
+        record.date?.startsWith(dashboardMonth.value)
+      ));
+    },
+    error => {
+      // Do not reset existing local groups when shared setting read fails.
+      console.error("会社共通ランキング設定読取エラー:", error);
+      showError("会社共通ランキングを確認できません。現在の端末設定を表示しています。");
+    }
+  );
 
 
   /*
@@ -13512,6 +13532,10 @@ function startRealtimeListeners() {
 
 
 function stopRealtimeListeners() {
+  if (unsubscribeRankingGroups) {
+    unsubscribeRankingGroups();
+    unsubscribeRankingGroups = null;
+  }
   rankingGroups = [];
   rankingGroupsLoaded = false;
   rankingGroupDraftSelectedKeys.clear();
@@ -31517,7 +31541,7 @@ function availableRankingProductChoices() {
 }
 
 function renderRankingGroupEditor() {
-  rankingGroupEditor.hidden = !isCurrentCompanyManager();
+  rankingGroupEditor.hidden = !isCurrentCompanyOwner();
   if (rankingGroupEditor.hidden || !rankingGroupEditor.open) return;
   rankingGroupAdd.disabled = !rankingGroupsLoaded || rankingGroupSaveBusy;
   const taken = new Set(rankingGroups.flatMap(group => group.keys));
@@ -31555,7 +31579,7 @@ function renderRankingGroupEditor() {
     remove.className = "team-action-button";
     remove.disabled = rankingGroupSaveBusy || !rankingGroupsLoaded;
     remove.addEventListener("click", async () => {
-      if (!isCurrentCompanyManager() || !confirm("「" + group.name + "」をランキングから解除しますか？実績は消えません。")) return;
+      if (!isCurrentCompanyOwner() || !confirm("「" + group.name + "」をランキングから解除しますか？実績は消えません。")) return;
       await saveRankingGroups(rankingGroups.filter(item => item.id !== group.id));
     });
     row.append(name, remove);
@@ -31564,7 +31588,7 @@ function renderRankingGroupEditor() {
 }
 
 async function saveRankingGroups(next) {
-  if (!isCurrentCompanyManager() || rankingGroupSaveBusy || !rankingGroupsLoaded) return false;
+  if (!isCurrentCompanyOwner() || rankingGroupSaveBusy || !rankingGroupsLoaded) return false;
   const normalized = normalizeRankingGroups(next);
   if (normalized.length !== next.length) {
     showError("グループ名か商材の選択が重複しています。");
@@ -31573,18 +31597,22 @@ async function saveRankingGroups(next) {
   rankingGroupSaveBusy = true;
   renderRankingGroupEditor();
   try {
-    const storageKey = rankingGroupsStorageKey();
-    if (!storageKey || !safeLocalStorageSet(storageKey, JSON.stringify(normalized))) {
-      showError("この端末に設定を保存できませんでした。ブラウザの保存設定を確認してください。");
-      return false;
-    }
+    // Shared company setting only: no records, prices, member access or
+    // historical sales are changed by this write.
+    await setDoc(
+      doc(db, "companies", currentUserData.companyId, "settings", "ranking"),
+      {groups: normalized, updatedBy: currentUser.uid, updatedAt: serverTimestamp()}
+    );
+    // Keep a local non-authoritative copy for offline display/rollback.
+    const localKey = rankingGroupsStorageKey();
+    if (localKey) safeLocalStorageSet(localKey, JSON.stringify(normalized));
     rankingGroups = normalized;
     rankingGroupDraftSelectedKeys.clear();
     rankingGroupName.value = "";
     renderProductMemberRanking(records.filter(record =>
       record.date?.startsWith(dashboardMonth.value)
     ));
-    showSuccess("ランキンググループをこの端末に保存しました。");
+    showSuccess("会社共通の商材グループ設定を保存しました。ほかの端末にも反映されます。");
     return true;
   } catch (error) {
     console.error("ランキンググループ保存エラー:", error);
