@@ -6745,7 +6745,6 @@ import {
   setDoc,
   getDoc,
   updateDoc,
-  deleteDoc,
   collection,
   getDocs,
   getDocsFromServer,
@@ -13826,34 +13825,13 @@ function renderTeams() {
           );
 
 
-      const del =
-        document.createElement(
-          "button"
-        );
-
-      del.className =
-        "history-delete";
-
-      del.textContent =
-        "削除";
-
-      del.onclick =
-        () =>
-          deleteTeam(
-            team
-          );
-
-
+      // 班名や所属の過去の参照を保護するため、物理削除ボタンは表示しない。
       actions.appendChild(
         goal
       );
 
       actions.appendChild(
         edit
-      );
-
-      actions.appendChild(
-        del
       );
 
 
@@ -14648,73 +14626,6 @@ saveTeamGoalModal.onclick =
   };
 
 
-async function deleteTeam(
-  team
-) {
-
-  const assignedMembers =
-    members.filter(
-      member =>
-        member.active !==
-          false &&
-        member.teamId ===
-          team.id
-    );
-
-
-  if (
-    assignedMembers.length >
-    0
-  ) {
-
-    showError(
-      `この班には${assignedMembers.length}人所属しています。先に全員を別の班または「所属なし」へ変更してから削除してください。`
-    );
-
-    return;
-
-  }
-
-
-  if (
-    !confirm(
-      `${team.name}を削除しますか？\n\n過去の実績はこの班の実績として残ります。`
-    )
-  ) {
-
-    return;
-
-  }
-
-
-  try {
-
-    await deleteDoc(
-      doc(
-        db,
-        "teams",
-        team.id
-      )
-    );
-
-
-    await loadTeams();
-
-    showSuccess(
-      "班を削除しました。過去の実績はそのまま残ります。"
-    );
-
-  } catch (error) {
-
-    showError(
-      firebaseErrorMessage(
-        error
-      )
-    );
-
-  }
-
-}
 
 /* =====================================================
    商材
@@ -16745,30 +16656,10 @@ function renderProducts() {
           );
 
 
-      const del =
-        document.createElement(
-          "button"
-        );
-
-      del.className =
-        "history-delete";
-
-      del.textContent =
-        "削除";
-
-      del.onclick =
-        () =>
-          deleteProduct(
-            product
-          );
-
+      // 商材マスターと当時の価格参照を保護するため、物理削除は不可。
 
       actions.appendChild(
         edit
-      );
-
-      actions.appendChild(
-        del
       );
 
 
@@ -17172,79 +17063,6 @@ saveProductModal.onclick =
   };
 
 
-async function deleteProduct(
-  product
-) {
-
-  const draftResults =
-    captureProductInputDraft();
-
-
-  Object.keys(
-    draftResults
-  ).forEach(
-    key => {
-
-      if (
-        draftResults[
-          key
-        ]?.productId ===
-        product.id
-      ) {
-
-        delete draftResults[
-          key
-        ];
-
-      }
-
-    }
-  );
-
-
-  if (
-    !confirm(
-      `${product.name}を削除しますか？`
-    )
-  ) {
-
-    return;
-
-  }
-
-
-  try {
-
-    await deleteDoc(
-      doc(
-        db,
-        "products",
-        product.id
-      )
-    );
-
-
-    await loadProducts();
-
-    prepareProductInputList(
-      draftResults
-    );
-
-    showSuccess(
-      "商材を削除しました。"
-    );
-
-  } catch (error) {
-
-    showError(
-      firebaseErrorMessage(
-        error
-      )
-    );
-
-  }
-
-}
 
 
 /* =====================================================
@@ -33791,15 +33609,11 @@ function renderRecordHistory(
           record
         );
 
-      const canDelete =
-        canCurrentUserManageRecord(
-          record
-        );
+      // No historical delete action is displayed; authorized correction remains possible.
 
 
       if (
-        canCorrect ||
-        canDelete
+        canCorrect
       ) {
 
         const actions =
@@ -33838,33 +33652,6 @@ function renderRecordHistory(
 
         }
 
-
-        if (
-          canDelete
-        ) {
-
-          const deleteButton =
-            document.createElement(
-              "button"
-            );
-
-          deleteButton.className =
-            "history-delete";
-
-          deleteButton.textContent =
-            "🗑️ 削除";
-
-          deleteButton.onclick =
-            () =>
-              deleteRecord(
-                record
-              );
-
-          actions.appendChild(
-            deleteButton
-          );
-
-        }
 
 
         item.appendChild(
@@ -33959,84 +33746,6 @@ function editRecord(
    実績削除
 ===================================================== */
 
-async function deleteRecord(
-  record
-) {
-
-  const currentName =
-    getCurrentMemberName(
-      record
-    );
-
-
-  if (
-    !confirm(
-      `${formatDateJapanese(
-        record.date
-      )} / ${currentName}\n\nこの日の実績を削除しますか？`
-    )
-  ) {
-
-    return;
-
-  }
-
-
-  try {
-
-    await deleteDoc(
-      doc(
-        db,
-        "records",
-        record.id
-      )
-    );
-
-
-    if (
-      editingRecordId ===
-      record.id
-    ) {
-
-      editingRecordId =
-        null;
-
-    }
-
-
-    records =
-      records.filter(
-        item =>
-          item.id !==
-          record.id
-      );
-
-
-    createMonthOptions();
-
-    renderDashboard();
-
-
-    showSuccess(
-      "実績を削除しました。"
-    );
-
-  } catch (error) {
-
-    console.error(
-      error
-    );
-
-
-    showError(
-      firebaseErrorMessage(
-        error
-      )
-    );
-
-  }
-
-}
 
 
 /* =====================================================
