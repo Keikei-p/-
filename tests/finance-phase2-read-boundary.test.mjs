@@ -34,6 +34,7 @@ before(async()=>{
    await setDoc(doc(db,"products","legacy"),{companyId:company,name:"商材",revenue:25000,pricingOptions:[]});
    await setDoc(doc(db,"recordCorrections","legacy"),{companyId:company,recordId:"legacy",
      before:{totalRevenue:25000},after:{totalRevenue:35000}});
+   await setDoc(doc(db,"revenueGoals","legacy"),{companyId:company,teamId:"t1",month:"2026-10",targetRevenue:100000});
    await setDoc(doc(db,"publicRecords","safe"),{companyId:company,sourceId:"safe",uid:"partner",
      date:"2026-10-28",teamId:"t1",totalCount:1,reportStatus:"submitted",
      memberNameSnapshot:"担当者",teamNameSnapshot:"一班",workLocation:"会場"});
@@ -44,7 +45,7 @@ after(async()=>{if(env)await env.cleanup();});
 test("phase2 candidate is emulator-only and never wired to production firebase.json",()=>{
  assert.equal(prodFirebaseConfig.firestore.rules,"firestore.rules");
  assert.notEqual(candidate,baseRules);
- for(const name of ["records","products","recordCorrections"]){
+ for(const name of ["records","products","recordCorrections","revenueGoals"]){
    const begin=candidate.indexOf("match /"+name+"/{");
    assert(begin>=0);
    const rule=candidate.slice(begin,candidate.indexOf("allow create:",begin));
@@ -56,13 +57,13 @@ test("phase2 candidate is emulator-only and never wired to production firebase.j
 
 test("same-company partner is denied raw finance even with BOTH monetary grants mistakenly enabled",async()=>{
  const db=dbFor("partner");
- for(const collection of ["records","products","recordCorrections"])
+ for(const collection of ["records","products","recordCorrections","revenueGoals"])
    await assertFails(getDoc(doc(db,collection,"legacy")));
 });
 
 test("same-company owner can read all original documents after rules closure",async()=>{
  const db=dbFor("owner");
- for(const collection of ["records","products","recordCorrections"])
+ for(const collection of ["records","products","recordCorrections","revenueGoals"])
    await assertSucceeds(getDoc(doc(db,collection,"legacy")));
 });
 
@@ -75,7 +76,7 @@ test("partner retains access to sanitized same-team counts, not financial source
 
 test("other company cannot read original financial data or public counts",async()=>{
  const db=dbFor("outsider");
- for(const collection of ["records","products","recordCorrections"])
+ for(const collection of ["records","products","recordCorrections","revenueGoals"])
    await assertFails(getDoc(doc(db,collection,"legacy")));
  await assertFails(getDoc(doc(db,"publicRecords","safe")));
 });
