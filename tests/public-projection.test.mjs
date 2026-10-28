@@ -63,7 +63,7 @@ test("invalid numeric ranking inputs fail closed",()=>{
 
 test("legacy product names never expose CB or yen-denominated tiers",()=>{
  const p=projectPublicProduct({...product,name:"電気 CB20000円"});
- assert.equal(p.name,"商材名はオーナー確認中");
+ assert.equal(p.name,"名称は管理者確認中");
  const r=projectCountRecord({...record,results:{p1:{productId:"p1",productName:"光 2万円CB",count:5,revenuePerUnit:20000}}});
  assert.equal(r.results[0].productName,"商材名はオーナー確認中");
 });
