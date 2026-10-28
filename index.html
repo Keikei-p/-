@@ -6349,6 +6349,30 @@ body.product-reordering .product-list {
         class="product-list">
       </div>
 
+      <section id="partnerCatalogPanel" hidden
+        style="margin:16px 0;padding:14px;border:1px solid var(--border);border-radius:12px;">
+        <div style="font-weight:800;">🤝 協力店の商材管理</div>
+        <p style="font-size:12px;color:var(--sub);line-height:1.6;">
+          自社が使用する共通商材と同じ名前・順序で表示します。
+          連携元の売上・単価・キャッシュバックは取得しません。
+          協力店独自の商材は「他社に非公開」が初期設定です。
+        </p>
+        <div id="partnerCatalogStatus" role="status" style="font-size:12px;color:var(--sub);"></div>
+        <div id="partnerCatalogList" style="display:grid;gap:8px;margin:12px 0;"></div>
+        <div id="partnerCustomEditor" style="display:none;gap:8px;">
+          <label for="partnerCustomProductName" style="font-weight:700;">独自商材の追加</label>
+          <div class="management-input-row">
+            <input id="partnerCustomProductName" type="text" maxlength="80"
+              placeholder="例：協力店限定オプション">
+            <button id="partnerCustomProductCreateButton" type="button">非公開で追加</button>
+          </div>
+          <p style="font-size:11px;color:var(--sub);">
+            「他社へ共有」をONにしても、公開されるのは商材名と共有対象の件数のみです。
+          </p>
+        </div>
+        <button id="partnerCatalogRefreshButton" type="button" class="team-action-button">商材を更新</button>
+      </section>
+
     </div>
 
   </div>
@@ -7706,6 +7730,20 @@ const productManagementContent =
   document.getElementById(
     "productManagementContent"
   );
+const partnerCatalogPanel =
+  document.getElementById("partnerCatalogPanel");
+const partnerCatalogStatus =
+  document.getElementById("partnerCatalogStatus");
+const partnerCatalogList =
+  document.getElementById("partnerCatalogList");
+const partnerCustomEditor =
+  document.getElementById("partnerCustomEditor");
+const partnerCustomProductName =
+  document.getElementById("partnerCustomProductName");
+const partnerCustomProductCreateButton =
+  document.getElementById("partnerCustomProductCreateButton");
+const partnerCatalogRefreshButton =
+  document.getElementById("partnerCatalogRefreshButton");
 
 const productManagementCount =
   document.getElementById(
@@ -16641,6 +16679,113 @@ productList.addEventListener(
   }
 );
 
+
+/**
+ * Partner-only UI. No raw financial document is fetched here. All returned
+ * fields are the sanitized output of trusted callable listPartnerCatalog.
+ * The existing sales form and legacy records remain completely unchanged.
+ */
+async function refreshSafePartnerCatalog() {
+  const isPartner = currentUserData?.accessKind === "partner";
+  partnerCatalogPanel.hidden = !isPartner;
+  if (!isPartner) return;
+  partnerCatalogStatus.textContent = "共通商材を確認しています…";
+  partnerCatalogList.replaceChildren();
+  partnerCustomEditor.style.display =
+    isCurrentCompanyOwner() ? "grid" : "none";
+  try {
+    const response = await httpsCallable(
+      partnerInviteFunctions,"listPartnerCatalog"
+    )({});
+    if (currentUserData?.accessKind !== "partner") return;
+    const rows = response.data?.products;
+    if (!Array.isArray(rows)) {
+      throw new Error("商材の取得結果が不正です。");
+    }
+    for (const item of rows) {
+      if (!["shared","partner_custom"].includes(item.scope) ||
+          typeof item.name !== "string" ||
+          !["private","shared_counts"].includes(item.visibility)) {
+        throw new Error("公開対象の商材情報が不正です。");
+      }
+      const wrapper = document.createElement("div");
+      wrapper.style.cssText = "padding:10px;border:1px solid var(--border);border-radius:9px;";
+      const title = document.createElement("strong");
+      title.textContent = item.name;
+      wrapper.appendChild(title);
+      const info = document.createElement("div");
+      info.style.cssText = "font-size:11px;color:var(--sub);margin-top:4px;";
+      info.textContent = item.scope === "shared"
+        ? "自社の共通商材（価格非公開）"
+        : item.visibility === "private"
+          ? "独自商材・他社非公開"
+          : "独自商材・連携先へ商材名と件数のみ共有";
+      wrapper.appendChild(info);
+      if (item.scope === "partner_custom" && isCurrentCompanyOwner()) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "team-action-button";
+        button.style.marginTop = "7px";
+        button.textContent = item.visibility === "private"
+          ? "他社へ件数だけ共有：OFF" : "他社へ件数だけ共有：ON";
+        button.onclick = async () => {
+          const next = item.visibility === "private"?"shared_counts":"private";
+          if (!window.confirm(next === "shared_counts"
+            ? "この商材名と件数を連携会社へ共有しますか？ 単価・売上は共有しません。"
+            : "この商材を他社から非公開に戻しますか？")) return;
+          button.disabled = true;
+          try {
+            await httpsCallable(partnerInviteFunctions,
+              "updatePartnerCustomProductVisibility")({
+                productId:item.sourceProductId,visibility:next
+              });
+            await refreshSafePartnerCatalog();
+          } catch(error) {
+            partnerCatalogStatus.textContent = firebaseErrorMessage(error);
+            button.disabled = false;
+          }
+        };
+        wrapper.appendChild(button);
+      }
+      partnerCatalogList.appendChild(wrapper);
+    }
+    partnerCatalogStatus.textContent = rows.length
+      ? "共通商材と独自商材の一覧（連携先の金額情報はありません）"
+      : "まだ商材がありません。";
+  } catch(error) {
+    partnerCatalogStatus.textContent =
+      "商材の連携が未完了か、アクセス権を確認できません。管理者に確認してください。";
+  }
+}
+partnerCustomProductCreateButton.onclick = async () => {
+  if (!isCurrentCompanyOwner() || currentUserData?.accessKind !== "partner") {
+    showError("独自商材の追加は協力店の代表オーナーのみ行えます。");
+    return;
+  }
+  const name = partnerCustomProductName.value.trim();
+  if (!name || name.length > 80) {
+    showError("商材名を入力してください。");
+    return;
+  }
+  partnerCustomProductCreateButton.disabled = true;
+  try {
+    await httpsCallable(partnerInviteFunctions,
+      "createPartnerCustomProduct")({name});
+    partnerCustomProductName.value = "";
+    await refreshSafePartnerCatalog();
+    showSuccess("独自商材を他社非公開で追加しました。");
+  } catch(error) {
+    showError(firebaseErrorMessage(error));
+  } finally {
+    partnerCustomProductCreateButton.disabled = false;
+  }
+};
+partnerCatalogRefreshButton.onclick = () => refreshSafePartnerCatalog();
+productManagementToggle.addEventListener("click", () => {
+  if (currentUserData?.accessKind === "partner") {
+    void refreshSafePartnerCatalog();
+  }
+});
 
 function renderProducts() {
 
