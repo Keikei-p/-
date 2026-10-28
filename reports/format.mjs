@@ -5,6 +5,7 @@ function safeLabel(value){
  return raw||"名称未設定";
 }
 function nonnegativeInt(value){
+ if(value==null || value==="" || typeof value==="boolean")return null;
  const n=Number(value);
  if(!Number.isSafeInteger(n)||n<0)return null;
  return n;
