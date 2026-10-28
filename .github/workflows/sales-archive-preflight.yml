@@ -18,6 +18,6 @@ jobs:
           cp sales-archive.js /tmp/sales-archive.mjs
           node --check /tmp/sales-archive.mjs
       - name: Run archive regression suite
-        run: node --test tests/sales-archive-unit.test.mjs tests/archive-verifier.test.mjs
+        run: node --test tests/sales-archive-unit.test.mjs tests/archive-verifier.test.mjs tests/restore-guard.test.mjs
       - name: Validate index manifest
         run: node -e "const f=require('./firestore.indexes.json'); if(!f.indexes.some(x=>x.collectionGroup==='records' && x.fields.some(v=>v.fieldPath==='date')))process.exit(1);"
