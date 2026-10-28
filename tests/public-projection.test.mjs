@@ -98,3 +98,29 @@ test("unexpected nested fields are rejected by public schema",()=>{
  assert.throws(()=>assertPublicSchema("publicRecords",[{...doc,revenue:99999}]),/schema mismatch/);
  assert.throws(()=>assertPublicSchema("publicRecords",[{...doc,results:{revenue:10000}}]),/schema mismatch/);
 });
+
+
+test("money embedded in product IDs, record IDs, employee labels and locations blocks publication",()=>{
+ const cases=[
+  ["publicRecordLines",projectPublicRecordLines(record)[0],"productId","NURO_CB20000"],
+  ["publicRecordLines",projectPublicRecordLines(record)[0],"sourceId","record-CB:10000"],
+  ["publicRecords",projectPublicRecordHeader(record),"teamId","team-売上20000"],
+  ["publicRecords",projectPublicRecordHeader(record),"sourceId","2026-10-27_¥20000"],
+  ["publicRecords",projectPublicRecordHeader(record),"workLocation","会場 2万円"],
+  ["publicRankEntries",projectPublicRankEntries({
+   companyId:"c1",period:"2026-10",kind:"member",participants:[{id:"u",name:"正常",score:10}]
+  })[0],"sourceId","uid-commission5000"],
+  ["publicProducts",projectPublicProduct(product),"sourceId","product-単価:12000"]
+ ];
+ for(const [collection,row,key,secret] of cases){
+   assert.throws(()=>assertPublicSchema(collection,[{...row,[key]:secret}]),
+     /monetary details/,collection+" "+key+" must be blocked");
+ }
+});
+
+test("legitimate IDs with numbers and numeric-looking team labels remain intact",()=>{
+ const row=projectPublicRecordHeader(record);
+ assert.ok(assertPublicSchema("publicRecords",[
+   {...row,sourceId:"company2026_user123_2026-10-28",teamId:"team04",teamNameSnapshot:"第2班"}
+ ]));
+});
