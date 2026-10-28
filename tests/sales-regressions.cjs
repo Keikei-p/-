@@ -103,6 +103,7 @@ test('Records and goals listener failures visibly warn that values can be stale'
   const subscriptions=[];const warnings=[];
   const ctx=context(['startRealtimeListeners'],{
     stopRealtimeListeners:()=>{},loadLocalRankingGroups:()=>{},isCurrentCompanyManager:()=>false,currentUser:null,
+    doc:()=> 'ranking-groups',db:{},currentUserData:{companyId:'c'},
     companyCollectionQuery:n=>n,recordsCollectionQuery:()=> 'records',revenueGoalsCollectionQuery:()=>null,
     onSnapshot:(query,next,error)=>{subscriptions.push({query,error});return ()=>{};},
     console:{error:()=>{}},databaseStatus:element(),showError:m=>warnings.push(m)
@@ -1073,33 +1074,34 @@ test('Manual groups sum source products and people; count ties are rank 1, 1, 3'
   assert(!r.some(x=>x.name==='Electric'));
 });
 
-test('Ranking groups save to this user browser only and never touch Firebase',()=> {
-  const code=source('saveRankingGroups');
-  assert(code.includes('safeLocalStorageSet(storageKey, JSON.stringify(normalized))'));
-  assert(code.includes('isCurrentCompanyManager()'));
-  assert(code.includes('normalizeRankingGroups(next)'));
-  assert(!/setDoc|updateDoc|addDoc|deleteDoc|writeBatch|runTransaction/.test(code));
-  const boot=source('loadLocalRankingGroups');
-  assert(boot.includes('safeLocalStorageGet(key)'));
-  const key=source('rankingGroupsStorageKey');
-  assert(key.includes('currentUserData.companyId'));
-  assert(key.includes('currentUser.uid'));
-  assert(html.includes('この端末・このアカウント・このURLだけに保存'));
-  const render=source('renderProductMemberRanking');
-  assert(render.includes('buildGroupedProductMemberRanking(monthly, teamId)'));
-  assert(render.includes('renderRankingGroupEditor()'));
-  assert(html.includes('ランキンググループを設定'));
+test('Ranking groups are synced to company settings, with local-only fallback until owner publishes',()=>{
+ const code=source('saveRankingGroups');
+ assert(code.includes('isCurrentCompanyOwner()'));
+ assert(code.includes('normalizeRankingGroups(next)'));
+ assert(code.includes('await setDoc('));
+ assert(code.includes('"companies", currentUserData.companyId, "settings", "ranking"'));
+ assert(code.includes('groups: normalized'));
+ assert(!code.includes('updateDoc('));
+ assert(!code.includes('deleteDoc('));
+ const boot=source('loadLocalRankingGroups');
+ assert(boot.includes('safeLocalStorageGet(key)'));
+ const listener=html.slice(html.indexOf('function startRealtimeListeners()'),html.indexOf('function stopRealtimeListeners()'));
+ assert(listener.includes('unsubscribeRankingGroups = onSnapshot('));
+ assert(listener.includes('if (!snap.exists()) return'));
+ assert(listener.includes('rankingGroups = normalizeRankingGroups(snap.data().groups)'));
+ assert(listener.includes('renderProductMemberRanking('));
+ const render=source('renderProductMemberRanking');
+ assert(render.includes('buildGroupedProductMemberRanking(monthly, teamId)'));
+ assert(render.includes('rankingGroupEditor.hidden = !isCurrentCompanyOwner()'));
+ assert(html.includes('会社共通で同期されます'));
 });
-
-test('Ranking settings cannot change Firestore rules or stored finance data',()=>{
-  assert(!html.includes('settings", "ranking"'));
-  const code=source('saveRankingGroups');
-  for (const prop of ['totalRevenue','revenuePerUnit','cashbackOptions','pricingOptions']) {
-    assert(!code.includes(prop));
-  }
+test('Shared ranking group settings cannot write sales documents or price data',()=>{
+ const code=source('saveRankingGroups');
+ for(const prop of ['totalRevenue','revenuePerUnit','cashbackOptions','pricingOptions'])assert(!code.includes(prop));
+ // Existing records are read only to refresh the preview; writes target only company settings.
+ assert(!/\b(?:setDoc|updateDoc|addDoc|deleteDoc)\s*\(\s*(?:record|product|revenueGoal|correction)/.test(code));
+ assert(!/deleteDoc|writeBatch|runTransaction/.test(code));
 });
-
-
 test('Catalog save failure diagnostic identifies mismatched company-member Owner without leaking identifiers',async()=>{
   const warnings=[];
   const ctx=context(['productWriteFailureMessage'],{

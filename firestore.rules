@@ -962,6 +962,16 @@ service cloud.firestore {
         allow create, update: if isCompanyOwner(companyId)
           && (
             (
+              settingId == 'ranking'
+              // Ranking groups contain only labels and source product IDs, no finance.
+              && request.resource.data.keys().hasOnly(['groups', 'updatedBy', 'updatedAt'])
+              && request.resource.data.keys().hasAll(['groups', 'updatedBy', 'updatedAt'])
+              && request.resource.data.groups is list
+              && request.resource.data.groups.size() <= 30
+              && request.resource.data.updatedBy == request.auth.uid
+              && request.resource.data.updatedAt == request.time
+            )
+            ||             (
               settingId == 'reporting'
               && request.resource.data.keys().hasOnly([
                 'morning', 'final', 'updatedBy', 'updatedAt'

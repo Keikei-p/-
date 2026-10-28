@@ -383,3 +383,28 @@ test('history correction logs are append-only and cannot be deleted',async()=>{
  await assertFails(deleteDoc(doc(dbFor('owner'),'recordCorrections','old-correction')));
  assert.equal((await getDoc(doc(dbFor('owner'),'recordCorrections','old-correction'))).exists(),true);
 });
+
+
+test('company-wide non-financial ranking settings are owner-written and visible to active members',async()=>{
+ const owner=dbFor('owner'),member=dbFor('helper'),leader=dbFor('leaderA'),foreign=dbFor('foreign');
+ const ref=doc(owner,'companies',company,'settings','ranking');
+ const sample={groups:[{id:'migration',name:'乗り換え',keys:['id:ym','id:sb']}],updatedBy:'owner',updatedAt:serverTimestamp()};
+ await assertSucceeds(setDoc(ref,sample));
+ const stored=(await assertSucceeds(getDoc(doc(member,'companies',company,'settings','ranking')))).data();
+ assert.equal(stored.groups[0].name,'乗り換え');
+ assert.equal(stored.groups[0].keys.length,2);
+ await assertFails(updateDoc(doc(leader,'companies',company,'settings','ranking'),{groups:[],updatedBy:'leaderA',updatedAt:serverTimestamp()}));
+ await assertFails(getDoc(doc(foreign,'companies',company,'settings','ranking')));
+ await assertSucceeds(updateDoc(ref,{groups:[{id:'renewal',name:'新電力',keys:['id:electric']}],updatedBy:'owner',updatedAt:serverTimestamp()}));
+ assert.equal((await getDoc(ref)).data().groups[0].name,'新電力');
+ await assertFails(deleteDoc(ref));
+});
+test('ranking settings cannot store whole sales documents or prices',async()=>{
+ const owner=dbFor('owner');
+ const ref=doc(owner,'companies',company,'settings','ranking');
+ const base={groups:[],updatedBy:'owner',updatedAt:serverTimestamp()};
+ await assertFails(setDoc(ref,{...base,totalRevenue:100000}));
+ await assertFails(setDoc(ref,{...base,unitPrices:{fiber:5000}}));
+ await assertFails(setDoc(ref,{...base,results:{member:2}}));
+ await assertSucceeds(setDoc(ref,base));
+});
