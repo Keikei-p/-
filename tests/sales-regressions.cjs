@@ -1270,3 +1270,22 @@ test('Count-preservation: display-only revenue helpers cannot write or delete Fi
   assert(priceChangePath.includes('return original'));
   assert(priceChangePath.includes('getProductPricingOptions'));
 });
+
+
+test('business history cannot be hard-deleted from the browser module',()=>{
+ const protectedDeletes=['deleteTeam(','deleteProduct(','deleteRecord(','deleteDoc('];
+ for(const needle of protectedDeletes)
+   assert.equal(html.includes(needle),false,needle+' must never be callable in the production browser module');
+ assert.ok(html.includes('function editRecord('),'history correction must remain available');
+ assert.ok(html.includes('persistDailyRecord('),'normal record save must remain available');
+});
+test('published security-rule proposal denies physical deletion of 5 historical collections',()=>{
+ const rules=fs.readFileSync(path.join(__dirname,'../firestore.rules'),'utf8');
+ for(const name of ['records','teams','products','goals','revenueGoals']){
+  const start=rules.indexOf('match /'+name+'/{');
+  assert.ok(start>=0,name+' collection must exist');
+  const end=rules.indexOf('\n    match /',start+1);
+  const section=rules.slice(start,end<0?undefined:end);
+  assert.match(section,/allow delete:\s*if false\s*;/,name+' deletion must be forbidden');
+ }
+});
