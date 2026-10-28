@@ -1099,6 +1099,16 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(['name', 'updatedAt']);
 
+      // Owner-only reversible deactivation; IDs and historical references stay intact.
+      allow update: if resource.data.companyId != null
+        && isCompanyOwner(resource.data.companyId)
+        && request.resource.data.companyId == resource.data.companyId
+        && request.resource.data.active is bool
+        && request.resource.data.active != resource.data.active
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['active', 'updatedAt']);
+
       // Historical business documents are retained: client hard-delete is forbidden.
       allow delete: if false;
     }
@@ -1135,6 +1145,16 @@ service cloud.firestore {
             'name', 'revenue', 'cashbackOptions', 'pricingOptions',
             'sortOrder', 'updatedAt'
           ]);
+
+      // Owner-only reversible deactivation; IDs and historical references stay intact.
+      allow update: if resource.data.companyId != null
+        && isCompanyOwner(resource.data.companyId)
+        && request.resource.data.companyId == resource.data.companyId
+        && request.resource.data.active is bool
+        && request.resource.data.active != resource.data.active
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['active', 'updatedAt']);
 
       // Historical business documents are retained: client hard-delete is forbidden.
       allow delete: if false;
