@@ -168,3 +168,64 @@ test("registered unit audit blocks invalid or unsafe totals",()=>{
   assert.equal(audit({integerValue:"0"}).registeredUnits.savedTotalCount,0);
   assert.equal(audit({doubleValue:5}).registeredUnits.savedTotalCount,5);
 });
+
+
+test("offline archive cross-checks independent product results, without touching original data",()=>{
+  const mkField=(n)=>({integerValue:String(n)});
+  const row=(count)=>({mapValue:{fields:{count:mkField(count),revenuePerUnit:mkField(99999999)}}});
+  const mkDoc=(path,total,results)=>({
+    path,value:{fields:{totalCount:mkField(total),results}},
+    createTime:"2026-10-01T00:00:00Z",updateTime:"2026-10-28T00:00:00Z"
+  });
+  const snapshot={projectId:PROJECT,format:"firestore-rest-typed-v1",documents:[
+    mkDoc("records/private-uid-a",12,{mapValue:{fields:{nuro:row(5),electric:row(7)}}}),
+    mkDoc("records/private-uid-b",0,{arrayValue:{values:[]}}),
+    mkDoc("records/private-uid-c",3,{arrayValue:{values:[row(3)]}})
+  ]};
+  const before=JSON.stringify(snapshot);
+  const report=auditSummary(snapshot);
+  assert.equal(report.registeredUnits.savedTotalCount,15);
+  assert.equal(report.registeredUnits.resultsDerivedTotalCount,15);
+  assert.equal(report.registeredUnits.independentResultChecks,3);
+  assert.equal(report.registeredUnits.matchedResultTotals,3);
+  assert.equal(report.registeredUnits.mismatchedResultTotals,0);
+  assert.equal(report.registeredUnits.resultsMissingOrUnverifiable,0);
+  assert.equal(JSON.stringify(snapshot),before,"audit must be read-only");
+  assert.ok(!JSON.stringify(report).includes("private-uid"));
+  assert.ok(!JSON.stringify(report).includes("99999999"));
+});
+
+test("offline archive marks mismatched totals and unverified legacy results rather than silently agreeing",()=>{
+  const mk=(path,fields)=>({path,value:{fields}});
+  const snapshot={projectId:PROJECT,format:"firestore-rest-typed-v1",documents:[
+    mk("records/mismatch",{totalCount:{integerValue:"5"},results:{mapValue:{fields:{
+      first:{mapValue:{fields:{count:{integerValue:"4"}}}}
+    }}}}),
+    mk("records/legacy",{totalCount:{integerValue:"7"},results:{stringValue:"unknown legacy format"}}),
+    mk("records/missing-total",{results:{mapValue:{fields:{
+      one:{mapValue:{fields:{count:{integerValue:"3"}}}}
+    }}}})
+  ]};
+  const report=auditSummary(snapshot);
+  assert.equal(report.registeredUnits.savedTotalCount,12);
+  assert.equal(report.registeredUnits.missingFields,1);
+  assert.equal(report.registeredUnits.independentResultChecks,1);
+  assert.equal(report.registeredUnits.mismatchedResultTotals,1);
+  assert.equal(report.registeredUnits.matchedResultTotals,0);
+  assert.equal(report.registeredUnits.resultsMissingOrUnverifiable,1);
+  assert.equal(report.registeredUnits.resultsDerivedTotalCount,7);
+});
+
+test("invalid results counts fail closed and never count missing product rows as zero",()=>{
+  const fields=(count)=>({totalCount:{integerValue:"0"},results:{mapValue:{fields:{
+    key:{mapValue:{fields:{count}}}
+  }}}});
+  const audit=(obj)=>auditSummary({projectId:PROJECT,format:"firestore-rest-typed-v1",
+    documents:[{path:"records/private",value:{fields:obj}}]});
+  assert.throws(()=>audit(fields({integerValue:"-1"})),/Invalid stored results count/);
+  assert.throws(()=>audit(fields({integerValue:"9007199254740993"})),/Invalid stored results count/);
+  assert.throws(()=>audit(fields({doubleValue:1.2})),/Invalid stored results count/);
+  const unchecked=audit(fields(undefined));
+  assert.equal(unchecked.registeredUnits.independentResultChecks,0);
+  assert.equal(unchecked.registeredUnits.resultsMissingOrUnverifiable,1);
+});
