@@ -133,7 +133,7 @@ export function createCountOnlyReadHandler({
       const identity=await loadMembership(auth.uid);
       const scope=checkIdentity(identity,auth);
       if(teamId&&!scope.owner&&!scope.teams.includes(teamId))throw new Reject();
-      const items=await queryPublicDocuments({
+      const page=await queryPublicDocuments({
         collection,companyId:scope.companyId,teamId:teamId??null,
         startAfter:cursor,snapshotTime:snapshot||null,limit
       });
