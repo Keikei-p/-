@@ -103,11 +103,17 @@ export function createCountOnlyReadHandler({
       if(url.pathname!==PUBLIC_PATH)throw new Reject(404);
       const params=url.searchParams;
       const keys=[...params.keys()];
-      if(keys.some(k=>!["collection","teamId","cursor","limit"].includes(k))
+      if(keys.some(k=>!["collection","teamId","cursor","limit","snapshot"].includes(k))
         || new Set(keys).size!==keys.length)throw new Reject(400);
       const collection=params.get("collection");
       if(!COLLECTIONS.has(collection))throw new Reject(400);
       const teamId=params.get("teamId"),cursor=params.get("cursor")??"";
+      const snapshot=params.get("snapshot")??"";
+      // Multi-page list must use one consistent Firestore read timestamp.
+      // A backend that cannot pin snapshots must refuse, not show partial totals.
+      if(Boolean(cursor)!==Boolean(snapshot) ||
+        (snapshot&&!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/.test(snapshot)))
+        throw new Reject(400);
       if(cursor&&!validId(cursor,MAX_CURSOR))throw new Reject(400);
       if(TEAM_SCOPED.has(collection)!==Boolean(teamId) ||
         (teamId&&!validId(teamId,128)))throw new Reject(400);
@@ -129,9 +135,13 @@ export function createCountOnlyReadHandler({
       if(teamId&&!scope.owner&&!scope.teams.includes(teamId))throw new Reject();
       const items=await queryPublicDocuments({
         collection,companyId:scope.companyId,teamId:teamId??null,
-        startAfter:cursor,limit
+        startAfter:cursor,snapshotTime:snapshot||null,limit
       });
-      if(!Array.isArray(items)||items.length>limit)throw new Reject(503);
+      if(!page||typeof page!=="object"||!Array.isArray(page.items)||page.items.length>limit ||
+        typeof page.readTime!=="string" ||
+        !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/.test(page.readTime) ||
+        (snapshot && snapshot!==page.readTime))throw new Reject(503);
+      const items=page.items;
       let last=cursor;
       const projected=[];
       for(const item of items){
@@ -145,7 +155,8 @@ export function createCountOnlyReadHandler({
       // Return no partial pages if any entry violates schema/scope.
       return response(200,{
         collection,teamId:teamId??null,items:projected,
-        nextCursor:items.length===limit?last:null
+        nextCursor:items.length===limit?last:null,
+        snapshotTime:page.readTime
       },origin);
     }catch(err){
       // No error messages / backend responses containing PII, paths or money.
