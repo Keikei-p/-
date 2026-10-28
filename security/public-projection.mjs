@@ -151,6 +151,20 @@ export function projectPublicRankEntries(params){
   sourceId:item.id,displayName:safePublicLabel(item.name),rank:item.rank
  }));
 }
+/**
+ * Stored free-text and legacy IDs may themselves embed financial information
+ * (e.g. a product ID "NURO_CB20000", not only the visible product label).
+ * Source IDs must never be silently rewritten: that would break record links.
+ * Instead stop publication and require an owner-reviewed safe ID mapping.
+ */
+const moneyLikeText=/(?:[¥￥$€]|(?:\d|[０-９])[\d０-９,.，]*\s*(?:万円|千円|円)|(?:\d|[０-９])[\d０-９,.，]*\s*万(?:\D|$)|(?:CB|cashback|キャッシュバック|売上|単価|報酬|利益|commission|unitprice|revenue)[\s:_=－-]*(?:\d|[０-９]))/i;
+function assertNoMoneyEmbeddedInStrings(item){
+  for(const value of Object.values(item)){
+    if(typeof value==="string" && moneyLikeText.test(value))
+      throw Error("Public document may embed monetary details in text or IDs");
+  }
+}
+
 export function assertPublicSchema(collection,items){
  const fields={
   publicRecords:["companyId","sourceId","uid","date","teamId","totalCount","reportStatus","memberNameSnapshot","teamNameSnapshot","workLocation"],
@@ -167,6 +181,7 @@ export function assertPublicSchema(collection,items){
   if(actual!==expected)throw Error("Public document schema mismatch: "+collection);
   if(Object.values(item).some(value=>value!==null&&typeof value==="object"))throw Error("Nested public fields are forbidden");
   auditNoFinancialKeys(item);
+  assertNoMoneyEmbeddedInStrings(item);
  }
  return true;
 }
