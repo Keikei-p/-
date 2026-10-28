@@ -23,7 +23,8 @@ export function buildPartnerFinanceLockCandidate(base){
  for(let i=0;i<collections.length;i++){
    const name=collections[i],match="    match /"+name+"/{"+matches[i]+"} {";
    const start=transformed.indexOf(match);
-   const end=transformed.indexOf("\n    match /",start+match.length);
+   const nextMatch=transformed.indexOf("\n    match /",start+match.length);
+   const end=nextMatch>=0?nextMatch:transformed.lastIndexOf("\n  }\n}");
    if(start<0||end<0||transformed.indexOf(match,start+match.length)>=0)
      throw Error("Raw financial rule changed: "+name);
    let region=transformed.slice(start,end);
