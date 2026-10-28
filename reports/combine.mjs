@@ -71,21 +71,22 @@ export function buildCombinedReportPlan({hub,companies}){
   return {hubCompanyId:hub.id,lineGroupId:settings.lineGroupId,
     partnerCompanyIds:partnerIds,ownPartnerTeamIds};
 }
-function classifyRows(rows,partnerTeamIds){
+function classifyRows(rows,partnerTeamIds,mode){
   const all=safeTeams(rows);
   const partnerIds=new Set(partnerTeamIds);
   const present=new Set(all.map(t=>t.id));
-  if([...partnerIds].some(id=>!present.has(id)))
+  if(mode!=="missing"&&[...partnerIds].some(id=>!present.has(id)))
     throw Error("Configured partner team not found");
   return {own:all.filter(t=>!partnerIds.has(t.id)),
     partner:all.filter(t=>partnerIds.has(t.id))};
 }
-export function buildCombinedReportData({plan,hubTeams,partnerSources}){
+export function buildCombinedReportData({plan,hubTeams,partnerSources,mode="final"}){
   if(!plan||!ID.test(plan.hubCompanyId??"")||
      !Array.isArray(plan.partnerCompanyIds)||!Array.isArray(plan.ownPartnerTeamIds) ||
      !Array.isArray(partnerSources))
     throw Error("Invalid combined report input");
-  const sections=classifyRows(hubTeams,plan.ownPartnerTeamIds);
+  if(!["morning","final","missing"].includes(mode))throw Error("Invalid report mode");
+  const sections=classifyRows(hubTeams,plan.ownPartnerTeamIds,mode);
   const byId=new Map();
   for(const p of partnerSources){
     if(!p||!ID.test(p.companyId??"")||byId.has(p.companyId))
