@@ -1347,3 +1347,18 @@ test('departing member accounts are disabled without deleting past company and t
  assert.match(code,/historicalUserDocumentRetained: true/);
  assert.match(code,/authDeleted: false/);
 });
+
+
+test('team and product retirement are reversible and cannot delete historical objects',()=>{
+ for(const name of ['setTeamActive','setProductActive']){
+  const code=source(name);
+  assert(code.includes('isCurrentCompanyOwner()'));
+  assert(code.includes('active, updatedAt: serverTimestamp()'));
+  assert(!/deleteDoc|deleteField|batch\.delete|\.delete\s*\(/.test(code));
+  assert(!/totalRevenue|revenuePerUnit|pricingOptions|cashbackOptions/.test(code));
+ }
+ assert(source('renderTeams').includes('利用終了'));
+ assert(source('renderProducts').includes('利用終了'));
+ const team=source('setTeamActive');
+ assert(team.includes('currentAssigned > 0'),'cannot retire team with active members');
+});
