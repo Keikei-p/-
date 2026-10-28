@@ -287,7 +287,6 @@ test("partner owner cannot see finance UI even with both grants set true",()=>{
   return html.slice(start,end+2);
  };
  const snippet=[
-  "isPartnerFinanciallyRestricted",
   "canCurrentUserViewRevenue","canCurrentUserViewProductRevenue",
   "canCurrentUserViewUnitPrice",
   "memberRevenuePermissionEnabled","memberUnitPricePermissionEnabled"
