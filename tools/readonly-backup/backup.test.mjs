@@ -225,7 +225,9 @@ test("invalid results counts fail closed and never count missing product rows as
   assert.throws(()=>audit(fields({integerValue:"-1"})),/Invalid stored results count/);
   assert.throws(()=>audit(fields({integerValue:"9007199254740993"})),/Invalid stored results count/);
   assert.throws(()=>audit(fields({doubleValue:1.2})),/Invalid stored results count/);
-  const unchecked=audit(fields(undefined));
+  const unchecked=audit({totalCount:{integerValue:"0"},results:{mapValue:{fields:{
+    key:{mapValue:{fields:{}}}
+  }}}});
   assert.equal(unchecked.registeredUnits.independentResultChecks,0);
   assert.equal(unchecked.registeredUnits.resultsMissingOrUnverifiable,1);
 });
