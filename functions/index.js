@@ -416,6 +416,183 @@ exports.acceptInvitation = onCall(async (request) => {
 });
 
 
+/*
+ * Partner-company invitations are separate from the legacy same-company link.
+ * No partner invite can reuse the existing browser-writable invitations flow.
+ * These callable functions MUST NOT be deployed until partner finance Rules,
+ * account compatibility, catalog source and rollback checks have passed.
+ */
+const partnerInviteTokenHash = (token) => crypto.createHash("sha256")
+  .update(String(token)).digest("hex");
+
+async function findPartnerCompanyInvite(token) {
+  if (typeof token !== "string" || !/^[A-Za-z0-9_-]{40,100}$/.test(token)) {
+    throw new HttpsError("invalid-argument", "協力店の招待リンクが正しくありません。");
+  }
+  const query = await db.collection("invitations")
+    .where("tokenHash", "==", partnerInviteTokenHash(token))
+    .limit(1).get();
+  if (query.empty || query.docs[0].data()?.kind !== "partner_company") {
+    throw new HttpsError("not-found", "協力店の招待リンクが見つかりません。");
+  }
+  return query.docs[0];
+}
+async function assertCompanyOwner(uid,companyId) {
+  const [companySnap,memberSnap] = await Promise.all([
+    db.collection("companies").doc(companyId).get(),
+    db.collection("companies").doc(companyId).collection("members").doc(uid).get()
+  ]);
+  if (!companySnap.exists || companySnap.data()?.active !== true ||
+      companySnap.data()?.ownerUid !== uid ||
+      !memberSnap.exists || memberSnap.data()?.active !== true ||
+      memberSnap.data()?.companyRole !== "owner") {
+    throw new HttpsError("permission-denied",
+      "協力店の招待は自社の代表オーナーのみ作成できます。");
+  }
+  return companySnap;
+}
+exports.createPartnerCompanyInvitation = onCall(async (request) => {
+  const {uid,email:actorEmail} = requireVerifiedUser(request);
+  const context = await getCompanyContext(uid);
+  if (context.userData.active === false) {
+    throw new HttpsError("permission-denied", "無効なアカウントです。");
+  }
+  await assertCompanyOwner(uid,context.companyId);
+  const email = normalizeEmail(request.data?.email);
+  const companyName = normalizeCompanyName(request.data?.partnerCompanyName);
+  if (!email || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
+      email === actorEmail || companyName.length < 2 || companyName.length > 80 ||
+      /[¥￥$€]/.test(companyName)) {
+    throw new HttpsError("invalid-argument",
+      "協力店名または招待するメールアドレスを確認してください。");
+  }
+  const token = crypto.randomBytes(32).toString("base64url");
+  const inviteRef = db.collection("invitations").doc();
+  const expiresAt = Timestamp.fromMillis(Date.now() + 30*60*1000);
+  await inviteRef.create({
+    kind:"partner_company",
+    hubCompanyId:context.companyId,
+    partnerCompanyName:companyName,
+    emailLower:email,
+    tokenHash:partnerInviteTokenHash(token),
+    accessKind:"partner",
+    canViewRevenue:false,
+    canViewUnitPrice:false,
+    countOnly:true,
+    status:"pending",
+    invitedBy:uid,
+    createdAt:FieldValue.serverTimestamp(),
+    expiresAt
+  });
+  return {token,expiresAt:expiresAt.toMillis(),inviteType:"partner_company"};
+});
+exports.previewPartnerCompanyInvitation = onCall(async (request) => {
+  const {email} = requireVerifiedUser(request);
+  const snap = await findPartnerCompanyInvite(request.data?.token);
+  const data = snap.data() || {};
+  if (data.emailLower !== email || data.status !== "pending" ||
+      !data.expiresAt || data.expiresAt.toMillis() <= Date.now()) {
+    throw new HttpsError("permission-denied",
+      "この協力店の招待は利用できません。");
+  }
+  const hub = await db.collection("companies").doc(data.hubCompanyId).get();
+  if (!hub.exists || hub.data()?.active !== true) {
+    throw new HttpsError("failed-precondition","招待元の会社は利用できません。");
+  }
+  return {
+    companyName:data.partnerCompanyName,
+    inviterCompanyName:hub.data().name||"招待元会社",
+    inviteType:"partner_company",
+    role:"leader",
+    // Do not expose source product prices, owner IDs or financial fields.
+    financialAccess:false,
+    expiresAt:data.expiresAt.toMillis()
+  };
+});
+exports.acceptPartnerCompanyInvitation = onCall(async (request) => {
+  const {uid,email} = requireVerifiedUser(request);
+  const inviteDoc = await findPartnerCompanyInvite(request.data?.token);
+  const companyRef = db.collection("companies").doc();
+  const memberRef = companyRef.collection("members").doc(uid);
+  const userRef = db.collection("users").doc(uid);
+  const partnerRelationRef = db.collection("partnerRelations").doc(companyRef.id);
+  let result;
+  await db.runTransaction(async tx => {
+    const [inviteSnap,userSnap,companySnap] = await Promise.all([
+      tx.get(inviteDoc.ref),
+      tx.get(userRef),
+      tx.get(companyRef)
+    ]);
+    if (!inviteSnap.exists || !userSnap.exists || companySnap.exists) {
+      throw new HttpsError("failed-precondition","招待またはアカウントを確認できません。");
+    }
+    const invite = inviteSnap.data() || {},user = userSnap.data()||{};
+    if (invite.kind!=="partner_company"||invite.status!=="pending"||
+        invite.emailLower!==email||!invite.expiresAt||
+        invite.expiresAt.toMillis()<=Date.now()||
+        invite.canViewRevenue!==false||invite.canViewUnitPrice!==false||
+        invite.countOnly!==true||
+        user.companyId || user.active===false) {
+      throw new HttpsError("failed-precondition",
+        "協力店の招待は利用できません。既存の会社所属は変更しません。");
+    }
+    const hubRef=db.collection("companies").doc(invite.hubCompanyId);
+    const inviterRef=hubRef.collection("members").doc(invite.invitedBy);
+    const [hubSnap,inviterSnap] = await Promise.all([tx.get(hubRef),tx.get(inviterRef)]);
+    if (!hubSnap.exists||hubSnap.data()?.active!==true||
+        hubSnap.data()?.ownerUid!==invite.invitedBy||
+        !inviterSnap.exists||inviterSnap.data()?.active!==true||
+        inviterSnap.data()?.companyRole!=="owner") {
+      throw new HttpsError("permission-denied","招待元の承認が無効になりました。");
+    }
+    const name=normalizeCompanyName(invite.partnerCompanyName);
+    if(name.length<2||name.length>80) {
+      throw new HttpsError("invalid-argument","協力店名が正しくありません。");
+    }
+    const displayName=String(user.name||request.auth.token.name||"名前未設定").trim();
+    tx.create(companyRef,{
+      name,ownerUid:uid,masterUid:uid,companyKind:"partner",
+      hubCompanyId:invite.hubCompanyId,
+      catalogSourceCompanyId:invite.hubCompanyId,
+      accessKind:"partner",active:true,
+      createdBy:uid,createdAt:FieldValue.serverTimestamp(),
+      updatedAt:FieldValue.serverTimestamp()
+    });
+    tx.create(memberRef,{
+      uid,name:displayName||"名前未設定",email,role:"leader",
+      companyRole:"owner",accessKind:"partner",companyId:companyRef.id,
+      teamId:null,active:true,canViewRevenue:false,
+      canViewUnitPrice:false,canCreateInvite:false,
+      joinedAt:FieldValue.serverTimestamp(),
+      updatedAt:FieldValue.serverTimestamp()
+    });
+    tx.update(userRef,{
+      companyId:companyRef.id,companyRole:"owner",role:"leader",
+      accessKind:"partner",canViewRevenue:false,
+      canViewUnitPrice:false,canCreateInvite:false,
+      teamId:null,companySetupVersion:1,
+      updatedAt:FieldValue.serverTimestamp()
+    });
+    tx.create(partnerRelationRef,{
+      hubCompanyId:invite.hubCompanyId,partnerCompanyId:companyRef.id,
+      invitedBy:invite.invitedBy,acceptedBy:uid,
+      originInviteId:inviteDoc.id,
+      active:true,catalogAccessApproved:true,
+      countSharingApproved:true,
+      ownProductDefaultVisibility:"private",
+      createdAt:FieldValue.serverTimestamp(),
+      updatedAt:FieldValue.serverTimestamp()
+    });
+    tx.update(inviteDoc.ref,{
+      status:"accepted",acceptedBy:uid,
+      acceptedAt:FieldValue.serverTimestamp()
+    });
+    result={companyId:companyRef.id,companyName:name,
+      accessKind:"partner",catalogSourceCompanyId:invite.hubCompanyId};
+  });
+  return result;
+});
+
 exports.deleteCompanyMemberAccount = onCall(async (request) => {
   const { uid } = requireVerifiedUser(request);
   const targetUid = String(request.data?.uid || "").trim();
