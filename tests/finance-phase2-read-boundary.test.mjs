@@ -23,9 +23,9 @@ before(async()=>{
    ]){
      await setDoc(doc(db,"companies",cid),{name:"TEST",ownerUid:cid===company?"owner":"other-owner",
        masterUid:cid===company?"owner":"other-owner",active:true});
-     await setDoc(doc(db,"users",uid),{uid,companyId:cid,role:"leader",companyRole:role,active:true,teamId:"t1"});
+     await setDoc(doc(db,"users",uid),{uid,companyId:cid,role:"leader",companyRole:role,active:true,teamId:"t1",accessKind:uid==="partner"?"partner":"internal"});
      await setDoc(doc(db,"companies",cid,"members",uid),
-       {uid,companyId:cid,role:"leader",companyRole:role,active:true,teamId:"t1",canViewRevenue:false,canViewUnitPrice:false});
+       {uid,companyId:cid,role:"leader",companyRole:role,active:true,teamId:"t1",accessKind:uid==="partner"?"partner":"internal",canViewRevenue:uid==="partner",canViewUnitPrice:uid==="partner"});
    }
    await setDoc(doc(db,"records","legacy"),{
      companyId:company,uid:"partner",date:"2026-10-28",teamId:"t1",totalCount:1,
@@ -54,7 +54,7 @@ test("phase2 candidate is emulator-only and never wired to production firebase.j
  }
 });
 
-test("same-company partner is denied all three money-bearing original collections",async()=>{
+test("same-company partner is denied raw finance even with BOTH monetary grants mistakenly enabled",async()=>{
  const db=dbFor("partner");
  for(const collection of ["records","products","recordCorrections"])
    await assertFails(getDoc(doc(db,collection,"legacy")));
