@@ -81,7 +81,7 @@ function validateSource(source,hubCompanyId,approvedCompanyIds,period){
  for(const r of source.records){
    if(r.companyId!==source.companyId||!validId(r.sourceId)||!validId(r.uid)||
      !r.date.startsWith(period+"-") ||
-     (r.teamId && !validId(r.teamId)) ||
+     !validId(r.teamId) ||
      !["submitted","no_result"].includes(r.reportStatus))fail();
    unit(r.totalCount);
    recordMap.set(r.sourceId,r);
@@ -133,6 +133,7 @@ export function buildCombinedCountLeaderboard({
    productLabelMap.set(map.groupId,name);
  }
  const checked=sources.map(s=>validateSource(s,hubCompanyId,approvedCompanyIds,period));
+ if(checked.some(x=>x.source.readTime!==checked[0].source.readTime))fail();
  const teamRows=[],memberRows=[],productTotals=new Map(),productMembers=new Map();
  const unknownProducts=[];
  let combinedCount=0,combinedGoal=0,goalsComplete=true;
@@ -199,7 +200,7 @@ export function buildCombinedCountLeaderboard({
      return {...row,individual};
    });
  const result={
-   period,companyCount:checked.length,combinedCount,
+   period,readTime:checked[0].source.readTime,companyCount:checked.length,combinedCount,
    combinedGoalCount:goalsComplete?combinedGoal:null,
    targetComplete:goalsComplete,
    teamCountRanking:countRanking,
