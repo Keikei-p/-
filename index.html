@@ -23644,7 +23644,7 @@ saveNotificationSettingsButton.onclick =
     }
 
     const splitCompanyIds = notificationLinkedCompanyIds.value
-      .split(/[\\n,]+/).map(x => x.trim()).filter(Boolean);
+      .split(/[\n,]+/).map(x => x.trim()).filter(Boolean);
     const validCompanyId = x => /^[A-Za-z0-9_-]{1,128}$/.test(x);
     const partnerTeamIds = [...notificationPartnerTeamOptions.querySelectorAll("input:checked")]
       .map(input => input.value);
