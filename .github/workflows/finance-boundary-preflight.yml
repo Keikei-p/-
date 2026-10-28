@@ -14,8 +14,9 @@ jobs:
         with:
           node-version: "22"
       - name: Test finance-free projections and rank-only results
-        run: node --test tests/public-projection.test.mjs
+        run: node --test tests/public-projection.test.mjs tests/reconcile-projections.test.mjs
       - name: Parse staged source
         run: |
           node --check security/public-projection.mjs
           node --check security/prepare-projection.mjs
+          node --check security/reconcile-projections.mjs
