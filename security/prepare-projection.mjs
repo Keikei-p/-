@@ -5,7 +5,7 @@
 import {readFile,mkdir,writeFile} from "node:fs/promises";
 import {resolve,join} from "node:path";
 import {createHash} from "node:crypto";
-import {projectCountRecord,projectPublicProduct,projectCountCorrection,auditNoFinancialKeys} from "./public-projection.mjs";
+import {projectPublicRecordHeader,projectPublicRecordLines,projectPublicProduct,projectPublicCorrectionFlat,assertPublicSchema} from "./public-projection.mjs";
 
 const [input,output]=process.argv.slice(2);
 if(!input||!output)throw Error("Usage: node security/prepare-projection.mjs <archive.json> <output-directory>");
@@ -16,15 +16,19 @@ if(hash(archive.payload)!==archive.checksum)throw Error("Archive checksum mismat
 const companyId=archive.payload.company?.id;
 if(typeof companyId!=="string"||!companyId)throw Error("Company ID missing");
 const original=archive.payload.original||{};
+if(!Array.isArray(original.records)||!Array.isArray(original.products)||!Array.isArray(original.recordCorrections)){
+ throw Error("Archive source collections are incomplete");
+}
 const collections={
- publicRecords:(original.records||[]).map(projectCountRecord),
- publicProducts:(original.products||[]).map(projectPublicProduct),
- publicRecordCorrections:(original.recordCorrections||[]).map(projectCountCorrection)
+ publicRecords:original.records.map(projectPublicRecordHeader),
+ publicRecordLines:original.records.flatMap(projectPublicRecordLines),
+ publicProducts:original.products.map(projectPublicProduct),
+ publicRecordCorrections:original.recordCorrections.map(projectPublicCorrectionFlat)
 };
 for(const [name,items] of Object.entries(collections)){
  if(items.some(item=>item.companyId!==companyId))throw Error(name+" belongs to another company");
  if(new Set(items.map(item=>item.sourceId)).size!==items.length)throw Error("Duplicate "+name+" IDs");
- auditNoFinancialKeys(items);
+ assertPublicSchema(name,items);
 }
 if(collections.publicRecords.length!==archive.payload.summary?.dailyRecords)throw Error("Source count mismatch");
 await mkdir(resolve(output),{recursive:true});
