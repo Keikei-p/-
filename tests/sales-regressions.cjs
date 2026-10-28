@@ -1391,3 +1391,17 @@ test('Member suspension rejects inconsistent company or owner identity before an
   await attempt({...baseMember,companyRole:'owner'},baseUser);
   await attempt(baseMember,baseUser,false);
 });
+
+
+test('Cloud Functions source must not revive destructive removal of sales or employee history', () => {
+  const fn = fs.readFileSync(path.join(__dirname, '../functions/index.js'), 'utf8');
+  // These admin-side calls bypass Firestore client Security Rules.
+  // Explicit code review and a separate retention design are required before
+  // introducing any new destructive server path.
+  assert.doesNotMatch(fn, /getAuth\s*\(\s*\)\s*\.deleteUser\s*\(/,
+    'Firebase Auth hard deletion must not be reintroduced in the existing functions');
+  assert.doesNotMatch(fn, /(?:batch|cleanupBatch|transaction|db)\s*\.delete\s*\(/,
+    'Admin SDK batch/transaction deletion is disallowed for this sales app');
+  assert.doesNotMatch(fn, /(?:targetMemberRef|targetUserRef|recordRef|productRef|teamRef)\s*\.delete\s*\(/,
+    'historical user, membership, record, product or team deletion must not be called');
+});
