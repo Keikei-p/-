@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const vm=require('node:vm');
 const path=require('node:path');
 const {initializeTestEnvironment,assertSucceeds,assertFails}=require('@firebase/rules-unit-testing');
-const {doc,setDoc,getDoc,getDocsFromServer,collection,query,where,updateDoc,deleteDoc,serverTimestamp,runTransaction}=require('firebase/firestore');
+const {doc,setDoc,getDoc,getDocsFromServer,collection,query,where,updateDoc,deleteDoc,serverTimestamp,runTransaction,writeBatch}=require('firebase/firestore');
 if(!process.env.FIRESTORE_EMULATOR_HOST) throw Error('Emulator required: refusing any production connection');
 let env;
 const projectId='demo-sales-support';
@@ -411,4 +411,42 @@ test('product retirement preserves catalog price and historical ID',async()=>{
  assert.deepEqual(after.pricingOptions,before.pricingOptions);
  await assertFails(deleteDoc(ref));
  await assertSucceeds(updateDoc(ref,{active:true,updatedAt:serverTimestamp()}));
+});
+
+
+test('self transfers can append new team history without altering prior assignments',async()=>{
+ const db=dbFor('helper'),user=doc(db,'users','helper'),
+   member=doc(db,'companies',company,'members','helper');
+ const before=(await getDoc(user)).data();
+ const oldHistory=before.teamHistory;
+ const history=[...oldHistory,{
+   effectiveDate:'2026-10-28',
+   fromTeamId:'b',fromTeamName:'b',toTeamId:'a',toTeamName:'a'
+ }];
+ const transfer=writeBatch(db);
+ transfer.update(user,{teamId:'a',teamHistory:history,updatedAt:serverTimestamp()});
+ transfer.update(member,{teamId:'a',teamHistory:history,updatedAt:serverTimestamp()});
+ await assertSucceeds(transfer.commit());
+ const afterUser=(await getDoc(user)).data();
+ const afterMember=(await getDoc(member)).data();
+ assert.deepEqual(afterUser.teamHistory[0],oldHistory[0]);
+ assert.deepEqual(afterMember.teamHistory,history);
+ assert.equal(afterUser.teamId,'a');
+});
+test('self transfers cannot rewrite, remove or backdate historical team entries',async()=>{
+ const db=dbFor('helper'),user=doc(db,'users','helper'),
+   member=doc(db,'companies',company,'members','helper');
+ const before=(await getDoc(user)).data();
+ const newEntry={effectiveDate:'2026-10-28',fromTeamId:'b',fromTeamName:'b',toTeamId:'a',toTeamName:'a'};
+ const attempt=async history=>{
+   const batch=writeBatch(db);
+   batch.update(user,{teamId:'a',teamHistory:history,updatedAt:serverTimestamp()});
+   batch.update(member,{teamId:'a',teamHistory:history,updatedAt:serverTimestamp()});
+   await assertFails(batch.commit());
+   assert.deepEqual((await getDoc(user)).data().teamHistory,before.teamHistory);
+ };
+ await attempt([newEntry]); // dropped all previous history
+ await attempt([{...before.teamHistory[0],toTeamId:'other'},newEntry]);
+ await attempt([...before.teamHistory,{...newEntry,effectiveDate:'2026-09-01'}]);
+ await attempt([...before.teamHistory,{...newEntry,fromTeamId:'another'}]);
 });
