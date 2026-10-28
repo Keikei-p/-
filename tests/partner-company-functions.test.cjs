@@ -37,14 +37,14 @@ function makeDb(){
  function coll(prefix){
   const documents=()=>[...store.keys()].filter(key=>
     key.startsWith(prefix+"/")&&
-    key.split("/").length===prefix.split("/").length+1).map(ref);
+    key.split("/").length===prefix.split("/").length+1).map(key=>snapshot(ref(key)));
   return {
    doc(id){return ref(prefix+"/"+(id??"fixture-"+(++seq)));},
    async get(){const docs=documents();return {empty:!docs.length,size:docs.length,docs};},
    where(field,op,value){
     assert.equal(op,"==");
     const fetchDocs=limit=>documents().filter(x=>
-      store.get(x.path)?.[field]===value).slice(0,limit);
+      store.get(x.ref.path)?.[field]===value).slice(0,limit);
     return {
       async get(){const docs=fetchDocs(Infinity);
         return {empty:!docs.length,size:docs.length,docs};},
