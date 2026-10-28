@@ -26,6 +26,13 @@ export function projectTrustedFinancialView({record,principal}){
     user.active!==true || member.active!==true ||
     record.companyId!==companyId)
     fail();
+  // Partner stores are always count-only. Even if a stale owner UI or an
+  // erroneous permission write sets both money flags to true, reject them.
+  // For ordinary non-owner financial access, require BOTH server-read records
+  // explicitly marked internal. Legacy unclassified accounts require an
+  // owner-reviewed migration before financial API access; never guess.
+  const partnerFlags=[user.accessKind,member.accessKind,user.memberType,member.memberType];
+  if(partnerFlags.some(x=>x==="partner"||x==="cooperator"))fail();
   const owner=principal.serverVerifiedOwner===true &&
     user.companyRole==="owner" && member.companyRole==="owner";
   const teams=allowedHistoricalTeamIds;
@@ -33,6 +40,7 @@ export function projectTrustedFinancialView({record,principal}){
     typeof record.teamId==="string" && record.teamId &&
     teams.includes(record.teamId);
   if(!owner&&!permittedTeam)fail();
+  if(!owner && (user.accessKind!=="internal" || member.accessKind!=="internal"))fail();
 
   // Permission flags come ONLY from freshly read Firestore member document.
   // Owners are independently verified against the company owner document.
