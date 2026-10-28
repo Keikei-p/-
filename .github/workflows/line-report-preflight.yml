@@ -20,5 +20,25 @@ jobs:
           node --check reports/worker.mjs
           node --check reports/format.mjs
           node --check reports/combine.mjs
+          node --check reports/report-sharing-rules.mjs
       - name: Ensure live delivery disabled by default
         run: node -e "const f=require('fs').readFileSync('wrangler.sales-reports.toml','utf8'); if(!f.includes('REPORT_DELIVERY_ENABLED = \"false\"'))process.exit(1);"
+
+  sharing-rules-emulator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Install emulator test dependencies
+        run: npm install --prefix tests --ignore-scripts --no-audit --no-fund
+      - name: Verify owner-only sharing changes in isolated Firestore emulator
+        run: npx --yes firebase-tools emulators:exec --only firestore --project demo-sales-report-sharing "node --test tests/report-sharing-rules.test.mjs"
