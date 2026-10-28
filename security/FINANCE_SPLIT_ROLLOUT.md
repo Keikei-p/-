@@ -81,3 +81,12 @@ node security/prepare-projection.mjs ./sales-archive.json ./projection-preview
 3. `queryPublicDocuments({collection,companyId,teamId,startAfter,snapshotTime,limit})`: Firestore RESTの公開コレクションだけを、会社と班でサーバー側絞込・文書名でソートし、**同一readTime固定**でページ返却する。Firestoreの原票コレクションは使用しない。
 
 **本番Rulesを原票遮断に変更する前に**、旧新URLのWebアプリが件数取得・登録・訂正をこの新しい信頼済み経路で成功し、退職者・班移動・金額許可ありの人にも互換性があることを確認してください。このAPIが開発版で動いてもそれだけで公開可能にはならない。
+
+### 件数専用Firestoreクエリアダプター（追加実装）
+
+- `security/public-count-firestore-reader.mjs`：Firebase REST `documents:runQuery` へ渡す **公開用コレクションだけの固定クエリ** を構築。すべてのクエリで `companyId` をサーバー側条件に加え、記録と明細は `teamId` も必須。元データの `records/products/recordCorrections` を問い合わせることはできない。
+- `__name__` 昇順・カーソル・読込時刻 `readTime` 固定で最大50件ずつ読み込む。レスポンスの会社/班/元ID/並び/時刻/値の型を照合してから、`public-count-api.mjs` 側で最終的に金額のない許可フィールドだけを返す。
+- `tests/public-count-firestore-reader.test.mjs`：API+RESTクエリアダプターの連結テストで合成 **2,501件を51ページ** で重複/欠落なし、会社/班を強制、時刻変更・金額混入・不正なREST型を拒否。
+- **現在も未接続**：本番のサービスアカウント認証済みFirestore REST通信、Firebase IDトークン署名検証と権限更新、既存画面の実績登録処理、既存コレクションから公開用コレクションへのバックフィル/継続同期は別の実装が必要。バックアップ完全照合・隔離復元が終わるまで本番Firestoreに書き込まない。
+- 現行の `index.html` は `recordsCollectionQuery()` から `collection(db,"records")` を呼び出している。この参照と旧PWAキャッシュを安全に切り替える前に財務原票の本番読取を遮断すると**既存アプリが壊れる**。強制切替は禁止。
+
