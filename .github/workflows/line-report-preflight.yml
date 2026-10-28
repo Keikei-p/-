@@ -14,10 +14,11 @@ jobs:
         with:
           node-version: "22"
       - name: Verify revenue-free templates
-        run: node --test tests/report-format.test.mjs
+        run: node --test tests/report-format.test.mjs tests/report-combine.test.mjs
       - name: Parse Cloudflare Worker
         run: |
           node --check reports/worker.mjs
           node --check reports/format.mjs
+          node --check reports/combine.mjs
       - name: Ensure live delivery disabled by default
         run: node -e "const f=require('fs').readFileSync('wrangler.sales-reports.toml','utf8'); if(!f.includes('REPORT_DELIVERY_ENABLED = \"false\"'))process.exit(1);"
