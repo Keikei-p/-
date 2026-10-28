@@ -1304,7 +1304,7 @@ test('Owner member removal is suspension-only and preserves stored history', asy
   const ref = (name) => ({
     name,
     collection: (child) => ({ doc: (id) => ref(name + '/' + child + '/' + id) }),
-    get: async () => ({ exists: true, data: () => ({companyRole:'member',teamHistory:[{teamId:'historical'}]}) })
+    get: async () => ({ exists: true, data: () => ({uid:'former-uid',companyId:'company-A',companyRole:'member',teamHistory:[{teamId:'historical'}]}) })
   });
   const db = {
     collection: (name) => ({ doc: (id) => ref(name + '/' + id) }),
@@ -1339,4 +1339,55 @@ test('Owner member removal is suspension-only and preserves stored history', asy
   ]);
   assert(writes.every((w)=>w.patch.active===false && w.opts.merge===true));
   assert(writes.every((w)=>!('teamHistory' in w.patch) && !w.path.startsWith('records/')));
+});
+
+
+test('Member suspension rejects inconsistent company or owner identity before any writes', async () => {
+  const fn = fs.readFileSync(path.join(__dirname, '../functions/index.js'), 'utf8');
+  const start = fn.indexOf('exports.deleteCompanyMemberAccount = onCall(async (request) => {');
+  assert(start >= 0);
+  const end = fn.indexOf('\n});', start);
+  assert(end > start);
+  const source = fn.slice(start, end + 4);
+
+  async function attempt(member, user, present=true) {
+    const calls=[];
+    const ref = (name) => ({
+      name,
+      collection: (child) => ({doc: (id) => ref(name+'/'+child+'/'+id)}),
+      get: async () => ({
+        exists: name.startsWith('users/') ? present : true,
+        data: () => name.startsWith('users/') ? user : member
+      })
+    });
+    const ctx=vm.createContext({
+      exports: {},
+      onCall: callback => callback,
+      requireVerifiedUser: () => ({uid:'owner'}),
+      getCompanyContext: async () => ({companyId:'company-A',memberData:{companyRole:'owner'}}),
+      getAuth: () => ({updateUser: async () => calls.push('auth-disable')}),
+      db: {
+        collection: name => ({doc: id => ref(name+'/'+id)}),
+        batch: () => ({
+          set: () => calls.push('write'),
+          delete: () => calls.push('delete'),
+          commit: async () => calls.push('commit')
+        })
+      },
+      FieldValue: {serverTimestamp: () => 1},
+      HttpsError: class HttpsError extends Error {constructor(code,message){super(message);this.code=code;}}
+    });
+    vm.runInContext(source,ctx);
+    await assert.rejects(() => ctx.exports.deleteCompanyMemberAccount({data:{uid:'former-uid'}}),
+      err => err.code==='failed-precondition');
+    assert.deepEqual(calls,[], 'invalid identity must not be modified');
+  }
+  const baseMember={uid:'former-uid',companyRole:'member',teamHistory:[{teamId:'old-team'}]};
+  const baseUser={uid:'former-uid',companyId:'company-A',companyRole:'member'};
+  await attempt(baseMember,{...baseUser,companyId:'company-B'});
+  await attempt({...baseMember,uid:'another-user'},baseUser);
+  await attempt(baseMember,{...baseUser,uid:'another-user'});
+  await attempt(baseMember,{...baseUser,companyRole:'owner'});
+  await attempt({...baseMember,companyRole:'owner'},baseUser);
+  await attempt(baseMember,baseUser,false);
 });
