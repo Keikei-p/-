@@ -27,3 +27,14 @@
 6. 明示的な本番公開レビューと承認が通るまでGitHub main/Functions/Rulesへ配備しない
 
 開発版のテスト：\`node --test tests/partner-company-functions.test.cjs\` と既存のSales App Validation。トークンや個別売上額はログに出さず、Firestoreモックの架空データで実際のCallable実装を呼ぶ。
+
+
+## 追加検査と安全対策
+
+- **直接原票への金融権限遮断**: \`security/partner-company-finance-lock.mjs\` は実行環境に適用しない**エミュレータ専用候補ルール**。会社 \`companyKind=partner\` をサーバーが発行し、協力店Owner/Leaderに誤って \`canViewRevenue=true\` と \`canViewUnitPrice=true\` があっても、金額付き \`records/products/recordCorrections/revenueGoals\` のFirestore直接GET/LIST/書込を拒否。既存の一般会社が読める仕様を変えない。
+- **画面側の補助防御**: \`index.html\` の \`canCurrentUserViewRevenue\`、\`canCurrentUserViewProductRevenue\`、\`canCurrentUserViewUnitPrice\` とメンバー権限判定でも協力店種別を優先拒否。旧商品のCB/価格エディタを協力店パネルでは非表示（ただし画面非表示だけでは完全防御ではない）。
+- **実際のCallable結合テスト**: \`tests/partner-company-functions.test.cjs\` が本物の \`functions/index.js\` を読み込み、Firestoreを全てメモリモックに入替えた上で、トークン・会社作成・再使用拒否・他社会員の所属保持・共通商材の価格ゼロ漏洩・非公開商材・共有ON/OFF・公開取り消し・協力店による孫会社招待拒否を検査。
+- **ルールの独立検査**: \`tests/partner-finance-lock-emulator.test.mjs\` を実Firebaseの秘密鍵を使わない \`demo-partner-finance-lock\` エミュレータで実行。
+- **商材の自動対応**: \`partner/canonical-ranking-groups.mjs\` は自社の元の商品IDを元に複数の協力店の同一商材をランキンググループへ自動対応。商材名が似ているだけで統合せず、協力店独自商品は名前・件数の共有許可がある場合のみランキングに対応付けする。
+- **重要な集計制約**: 非公開商材の個別件数とその合計は他社向け合同ランキングに混ぜない。自社・協力店が共有を承認した商材の件数のみ合同集計。非公開商材を含む売上や件数を相手側へ推測させないよう、総数の表現も「共有対象の合計」とする。
+- **依然未完了**: 協力店の既存の登録画面から共通商品IDを使って件数だけを安全に登録・訂正するサーバー経路、公開ビューのトランザクション同期、古いPWA/旧URLの移行、会社間合同ランキング/LINE本番配線、実本番のバックアップ独立復元。ルール候補はこれらが終わるまで絶対に公開しない。
