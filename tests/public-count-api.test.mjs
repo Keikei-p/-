@@ -194,7 +194,7 @@ test("no arbitrary Firestore source: rank view exposes rank only, products expos
    const r=await get(f.handle,"collection="+c.collection);
    assert.equal(r.status,200);
    assert.deepEqual(r.body.items[0],c.expected);
-   assert.equal(JSON.stringify(r.body).includes("count"),true); // endpoint name only
+   assert.equal(JSON.stringify(r.body).includes("totalCount"),false); // rank and product views do not reveal counts
    assert.equal(JSON.stringify(r.body).includes("totalRevenue"),false);
  }
 });
