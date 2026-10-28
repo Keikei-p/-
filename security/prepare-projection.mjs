@@ -6,6 +6,7 @@ import {readFile,mkdir,writeFile} from "node:fs/promises";
 import {resolve,join} from "node:path";
 import {createHash} from "node:crypto";
 import {projectPublicRecordHeader,projectPublicRecordLines,projectPublicProduct,projectPublicCorrectionFlat,assertPublicSchema} from "./public-projection.mjs";
+import {verifyPreparedCountProjections} from "./reconcile-projections.mjs";
 
 const [input,output]=process.argv.slice(2);
 if(!input||!output)throw Error("Usage: node security/prepare-projection.mjs <archive.json> <output-directory>");
@@ -31,6 +32,11 @@ for(const [name,items] of Object.entries(collections)){
  assertPublicSchema(name,items);
 }
 if(collections.publicRecords.length!==archive.payload.summary?.dailyRecords)throw Error("Source count mismatch");
+// Before writing even local preview files, prove 1:1 document, line, product
+// and correction parity. Unknown/missing legacy totals require owner review.
+verifyPreparedCountProjections({companyId,source:{
+ records:original.records,products:original.products,recordCorrections:original.recordCorrections
+},publicView:collections});
 await mkdir(resolve(output),{recursive:true});
 for(const [name,items] of Object.entries(collections)){
  await writeFile(join(resolve(output),name+".json"),JSON.stringify({companyId,items},null,2)+"\n",{mode:0o600,flag:"wx"});
