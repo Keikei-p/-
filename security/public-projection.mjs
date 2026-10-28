@@ -106,3 +106,67 @@ export function projectRankOnly({companyId,period,kind,participants}){
  const published={companyId:company,period:dateMonth,kind:category,ranks};
  auditNoFinancialKeys(published);return published;
 }
+
+
+/**
+ * Strict, flat, Firestore-rules-verifiable public documents.
+ * Records do not contain nested 'results'. Each per-product count is a
+ * separate publicRecordLines document. No arbitrary maps/lists are exposed.
+ * Only a trusted backend should publish these after verifying source data.
+ */
+const safePublicLabel=(value,max=80)=>{
+ const candidate=text(value,max);
+ if(/(?:売上|単価|キャッシュバック|CB|税込|税抜|報酬|[¥￥$€]|[0-9０-９]+\s*(?:万|千)?円)/i.test(candidate))return "名称は管理者確認中";
+ return candidate.replace(/[\r\n\t]/g," ").trim();
+};
+export function projectPublicRecordHeader(record){
+ const internal=projectCountRecord(record);
+ const {companyId,sourceId,uid,date,teamId,totalCount,reportStatus}=internal;
+ return {companyId,sourceId,uid,date,teamId,totalCount,reportStatus,
+  memberNameSnapshot:safePublicLabel(internal.memberNameSnapshot),
+  teamNameSnapshot:safePublicLabel(internal.teamNameSnapshot),
+  workLocation:safePublicLabel(internal.workLocation,120)};
+}
+export function projectPublicRecordLines(record){
+ const internal=projectCountRecord(record);
+ return internal.results.map((r,index)=>({
+  companyId:internal.companyId,recordId:internal.sourceId,
+  sourceId:internal.sourceId+"__"+String(index).padStart(4,"0"),
+  date:internal.date,uid:internal.uid,teamId:internal.teamId,
+  productId:id(r.productId),count:r.count
+ }));
+}
+export function projectPublicCorrectionFlat(correction){
+ const projected=projectCountCorrection(correction);
+ return {companyId:projected.companyId,sourceId:projected.sourceId,
+  recordId:projected.recordId,recordDate:projected.recordDate,
+  changedByUid:projected.changedByUid,
+  beforeTeamId:projected.before.teamId,beforeTotalCount:projected.before.totalCount,
+  afterTeamId:projected.after.teamId,afterTotalCount:projected.after.totalCount};
+}
+export function projectPublicRankEntries(params){
+ const ranked=projectRankOnly(params);
+ return ranked.ranks.map(item=>({
+  companyId:ranked.companyId,period:ranked.period,kind:ranked.kind,
+  sourceId:item.id,displayName:safePublicLabel(item.name),rank:item.rank
+ }));
+}
+export function assertPublicSchema(collection,items){
+ const fields={
+  publicRecords:["companyId","sourceId","uid","date","teamId","totalCount","reportStatus","memberNameSnapshot","teamNameSnapshot","workLocation"],
+  publicRecordLines:["companyId","recordId","sourceId","date","uid","teamId","productId","count"],
+  publicProducts:["companyId","sourceId","name","active","sortOrder"],
+  publicRecordCorrections:["companyId","sourceId","recordId","recordDate","changedByUid","beforeTeamId","beforeTotalCount","afterTeamId","afterTotalCount"],
+  publicRankEntries:["companyId","period","kind","sourceId","displayName","rank"]
+ };
+ if(!fields[collection])throw Error("Unknown public collection: "+collection);
+ for(const item of items){
+  if(!item||typeof item!=="object"||Array.isArray(item))throw Error("Invalid public document");
+  const actual=Object.keys(item).sort().join(",");
+  const expected=[...fields[collection]].sort().join(",");
+  if(actual!==expected)throw Error("Public document schema mismatch: "+collection);
+  if(Object.values(item).some(value=>value!==null&&typeof value==="object"))throw Error("Nested public fields are forbidden");
+  auditNoFinancialKeys(item);
+ }
+ return true;
+}
