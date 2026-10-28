@@ -1466,17 +1466,29 @@ service cloud.firestore {
         && data.rank is int && data.rank >= 1;
     }
 
+    // Privacy boundary for partner and member read access: company alone is
+    // insufficient because the private record's team must stay scoped.
+    // Owner/master may inspect all teams. No client may write projections.
+    function canReadPublicTeam(companyId, teamId) {
+      return isCompanyOwner(companyId) || isCompanyMaster(companyId)
+        || (isCompanyMember(companyId)
+          && teamId is string
+          && get(memberPath(companyId, request.auth.uid)).data.teamId == teamId);
+    }
+
     match /publicRecords/{recordId} {
       allow get: if resource.data.companyId != null
         && sameCompany(resource.data.companyId)
-        && safeFlatRecord(resource.data);
+        && safeFlatRecord(resource.data)
+        && canReadPublicTeam(resource.data.companyId, resource.data.teamId);
       allow list: if false; // Keep disabled until emulator query/security test succeeds.
       allow create, update, delete: if false;
     }
     match /publicRecordLines/{lineId} {
       allow get: if resource.data.companyId != null
         && sameCompany(resource.data.companyId)
-        && safeFlatLine(resource.data);
+        && safeFlatLine(resource.data)
+        && canReadPublicTeam(resource.data.companyId, resource.data.teamId);
       allow list: if false;
       allow create, update, delete: if false;
     }
@@ -1490,7 +1502,9 @@ service cloud.firestore {
     match /publicRecordCorrections/{correctionId} {
       allow get: if resource.data.companyId != null
         && sameCompany(resource.data.companyId)
-        && safeFlatCorrection(resource.data);
+        && safeFlatCorrection(resource.data)
+        && canReadPublicTeam(resource.data.companyId, resource.data.beforeTeamId)
+        && canReadPublicTeam(resource.data.companyId, resource.data.afterTeamId);
       allow list: if false;
       allow create, update, delete: if false;
     }
