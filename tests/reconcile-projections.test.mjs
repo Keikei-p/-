@@ -1,5 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import {mkdtempSync,writeFileSync,readFileSync,existsSync,rmSync} from "node:fs";
+import {tmpdir} from "node:os";
+import {join} from "node:path";
+import {createHash} from "node:crypto";
+import {spawnSync} from "node:child_process";
 import {verifyPreparedCountProjections} from "../security/reconcile-projections.mjs";
 import {
   projectPublicRecordHeader,projectPublicRecordLines,projectPublicProduct,
@@ -118,4 +123,47 @@ test("all sensitive identifiers and prices are absent from error messages",()=>{
     for(const secret of ["private-r1","担当者A","100000","20000"])
       assert.equal(e.message.includes(secret),false,"sensitive data leaked");
   }
+});
+
+
+test("offline prepare command builds exactly matched finance-free files without modifying original input",()=>{
+  const temp=mkdtempSync(join(tmpdir(),"sales-partner-preview-"));
+  try{
+    const {source}=make(),payload={company:{id:companyId},original:source,
+      period:"2026-10",summary:{dailyRecords:source.records.length}};
+    const checksum=createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+    const archive=join(temp,"owner-archive.json"),destination=join(temp,"preview");
+    const snapshot=JSON.stringify({kind:"sales-archive",version:1,payload,checksum});
+    writeFileSync(archive,snapshot);
+    const command=new URL("../security/prepare-projection.mjs",import.meta.url).pathname;
+    const run=spawnSync(process.execPath,[command,archive,destination],{encoding:"utf8"});
+    assert.equal(run.status,0,run.stderr);
+    const recordsOutput=JSON.parse(readFileSync(join(destination,"publicRecords.json"),"utf8"));
+    assert.equal(recordsOutput.items.length,2);
+    assert.equal(recordsOutput.items[0].totalCount,5);
+    assert.equal(readFileSync(archive,"utf8"),snapshot,"archive source cannot change");
+    const serialized=JSON.stringify(recordsOutput);
+    for(const secret of ['"totalRevenue"','"revenuePerUnit"','"cashback"'])
+      assert(!serialized.includes(secret),"financial metadata leaked");
+    const manifest=JSON.parse(readFileSync(join(destination,"manifest.json"),"utf8"));
+    assert.equal(manifest.containsFinancialData,false);
+    assert.equal(manifest.counts.publicRecordLines,2);
+  }finally{rmSync(temp,{force:true,recursive:true});}
+});
+
+test("offline prepare command refuses to create preview if original stored counts are missing",()=>{
+  const temp=mkdtempSync(join(tmpdir(),"sales-partner-guard-"));
+  try{
+    const {source}=make();
+    delete source.records[0].totalCount;
+    const payload={company:{id:companyId},original:source,
+      summary:{dailyRecords:source.records.length}};
+    const checksum=createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+    const archive=join(temp,"owner-archive.json"),destination=join(temp,"not-created");
+    writeFileSync(archive,JSON.stringify({kind:"sales-archive",version:1,payload,checksum}));
+    const command=new URL("../security/prepare-projection.mjs",import.meta.url).pathname;
+    const run=spawnSync(process.execPath,[command,archive,destination],{encoding:"utf8"});
+    assert.notEqual(run.status,0);
+    assert.equal(existsSync(destination),false,"bad count must stop before writing");
+  }finally{rmSync(temp,{force:true,recursive:true});}
 });
