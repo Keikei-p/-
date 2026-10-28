@@ -420,7 +420,7 @@ test('self transfers can append new team history without altering prior assignme
  const before=(await getDoc(user)).data();
  const oldHistory=before.teamHistory;
  const history=[...oldHistory,{
-   effectiveDate:'2026-10-28',
+   effectiveDate:new Date(Date.now()+9*3600000).toISOString().slice(0,10),
    fromTeamId:'b',fromTeamName:'b',toTeamId:'a',toTeamName:'a'
  }];
  const transfer=writeBatch(db);
@@ -437,7 +437,7 @@ test('self transfers cannot rewrite, remove or backdate historical team entries'
  const db=dbFor('helper'),user=doc(db,'users','helper'),
    member=doc(db,'companies',company,'members','helper');
  const before=(await getDoc(user)).data();
- const newEntry={effectiveDate:'2026-10-28',fromTeamId:'b',fromTeamName:'b',toTeamId:'a',toTeamName:'a'};
+ const newEntry={effectiveDate:new Date(Date.now()+9*3600000).toISOString().slice(0,10),fromTeamId:'b',fromTeamName:'b',toTeamId:'a',toTeamName:'a'};
  const attempt=async history=>{
    const batch=writeBatch(db);
    batch.update(user,{teamId:'a',teamHistory:history,updatedAt:serverTimestamp()});
@@ -449,4 +449,5 @@ test('self transfers cannot rewrite, remove or backdate historical team entries'
  await attempt([{...before.teamHistory[0],toTeamId:'other'},newEntry]);
  await attempt([...before.teamHistory,{...newEntry,effectiveDate:'2026-09-01'}]);
  await attempt([...before.teamHistory,{...newEntry,fromTeamId:'another'}]);
+ await attempt([...before.teamHistory,{...newEntry,effectiveDate:'2099-01-01'}]);
 });
