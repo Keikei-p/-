@@ -423,14 +423,14 @@ exports.deleteCompanyMemberAccount = onCall(async (request) => {
   if (!targetUid || targetUid.length > 128) {
     throw new HttpsError(
       "invalid-argument",
-      "削除対象のメンバーを確認できません。"
+      "利用停止対象のメンバーを確認できません。"
     );
   }
 
   if (targetUid === uid) {
     throw new HttpsError(
       "failed-precondition",
-      "自分のアカウント削除はアカウント設定から行ってください。"
+      "自分のアカウントの利用停止はこの操作ではできません。"
     );
   }
 
@@ -439,7 +439,7 @@ exports.deleteCompanyMemberAccount = onCall(async (request) => {
   if (context.memberData.companyRole !== "owner") {
     throw new HttpsError(
       "permission-denied",
-      "メンバーを完全削除できるのはオーナーだけです。"
+      "メンバーを利用停止できるのはオーナーだけです。"
     );
   }
 
@@ -459,7 +459,7 @@ exports.deleteCompanyMemberAccount = onCall(async (request) => {
   if (!targetMemberSnap.exists) {
     throw new HttpsError(
       "not-found",
-      "削除対象の会社メンバーが見つかりません。"
+      "利用停止対象の会社メンバーが見つかりません。"
     );
   }
 
@@ -468,7 +468,7 @@ exports.deleteCompanyMemberAccount = onCall(async (request) => {
   if (targetMember.companyRole === "owner") {
     throw new HttpsError(
       "failed-precondition",
-      "オーナーはこの操作では削除できません。先に役割を変更してください。"
+      "オーナーはこの操作では利用停止できません。先に役割を変更してください。"
     );
   }
 
@@ -497,38 +497,33 @@ exports.deleteCompanyMemberAccount = onCall(async (request) => {
 
   await disableBatch.commit();
 
-  let authDeleted = false;
+  // Suspension only: preserve user/member documents, UID, names, teamHistory,
+  // sales references and all saved record counts. The legacy callable name
+  // remains for older clients; no physical deletion is performed.
+  let authDisabled = false;
   let authAlreadyMissing = false;
-
   try {
-    await getAuth().deleteUser(targetUid);
-    authDeleted = true;
+    await getAuth().updateUser(targetUid, { disabled: true });
+    authDisabled = true;
   } catch (error) {
     if (error?.code === "auth/user-not-found") {
       authAlreadyMissing = true;
     } else {
       throw new HttpsError(
         "internal",
-        "Firebase Authenticationアカウントの削除に失敗しました。"
+        "認証アカウントの利用停止に失敗しました。社員と実績の履歴は保持されています。"
       );
     }
   }
 
-  // 過去実績はrecords側に残す。メンバー/ユーザー本体だけ削除する。
-  const cleanupBatch = db.batch();
-
-  cleanupBatch.delete(targetMemberRef);
-
-  if (targetUserSnap.exists) {
-    cleanupBatch.delete(targetUserRef);
-  }
-
-  await cleanupBatch.commit();
-
   return {
     ok: true,
-    authDeleted,
+    mode: "retained_deactivated",
+    authDeleted: false,
+    authDisabled,
     authAlreadyMissing,
+    historicalMemberDocumentRetained: true,
+    historicalUserDocumentRetained: true,
   };
 });
 
