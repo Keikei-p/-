@@ -53,3 +53,12 @@ node security/prepare-projection.mjs ./sales-archive.json ./projection-preview
 - `security/prepare-projection.mjs` は、この照合に通らない限り**ローカルの公開準備ファイルさえ出力しない**。件数が欠けた旧実績や訂正ログは0件と推測せず作業停止し、オーナーが元データを確認する。
 - 欠損・重複・別会社の混入・改ざん・余分な財務フィールド・商材別行の欠落を拒否する合成テストを追加。検証結果は文書数と保存契約件数だけで、氏名、ID、売上や価格をログに出さない。
 - **重要**: これは同一時点の完全な原票が既に手元にあることを前提にしたオフライン照合。実際のFirestore全件読み出し、公開用コレクションへの書込み、リアルタイム同期、ユーザー権限の移行、バックアップの完全復元の代わりにはならない。旧PWA/旧SDKの切替前に財務原票の本番Rulesを先に閉じることは禁止。
+
+## 2026-10-28 売上と単価の閲覧許可を別々に保護（安全APIへの移行準備）
+- `security/trusted-finance-view.mjs` を開発版へ追加。**認証済みトークン・最新の `users/{uid}` と `companies/{companyId}/members/{uid}`・管理者確認・班履歴**をサーバーが独立に確認した場合にだけ使える純粋なフィールド投影関数。
+- `canViewRevenue` は保存済み総売上のみを許可し、単価やCB、財務原票全体は返さない。`canViewUnitPrice` は商材別単価だけを許可し、総売上を返さない。両方明示許可ならそれぞれ表示。オーナーは別途会社のオーナーをサーバーで検証する必要あり。
+- 未許可、他社所属、現在または過去の班割当が無い、アカウント利用停止、未確認メール、価格/売上不正値の場合は**金額ゼロを捏造せず処理拒否**。例外に実UID・個別売上額を出さない。
+- `tests/trusted-finance-view.test.mjs` は架空データだけで閲覧権限を検証。
+- **注意：この関数はまだ本番のAPIに接続していない。** `principal` をユーザーから受け取ることは絶対禁止。Cloudflare Workers等の信頼されたゲートウェイがID tokenの署名と最新Firestoreの権限・履歴を照合する必要がある。
+- フィールド別の読み出しはFirestore Security Rulesでは実現できないため、**単に `canViewRevenue` を追加するだけで原票を読ませない**。https://firebase.google.com/docs/firestore/security/rules-fields
+- 本番旧URL/PWAが元の `records/products` を読んでいる間は、原票遮断ルールを適用しない。
