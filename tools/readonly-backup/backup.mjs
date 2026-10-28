@@ -149,6 +149,42 @@ export function fingerprint(snapshot){
   }
   return hash(canonical(snapshot.documents.slice().sort((a,b)=>a.path.localeCompare(b.path))));
 }
+/**
+ * Offline inventory report; no PII, raw document path, monetary amount or
+ * individual hash is ever included in the returned summary.
+ *
+ * The only input is a decrypted *local* archive. This is NOT an independent
+ * proof of production completeness or restorability.
+ */
+export function auditSummary(snapshot){
+  const allDigest=fingerprint(snapshot);
+  const counts=Object.fromEntries([
+    "records","recordCorrections","teams","products","goals",
+    "revenueGoals","users","companies","members","invitations","other"
+  ].map(key=>[key,0]));
+  const paths=[];
+  for(const item of snapshot.documents){
+    const parts=item.path.split("/");
+    if(parts.length<2 || parts.length%2!==0 ||
+       parts.some(part=>!part || part==="." || part===".."))
+      throw Error("Malformed document path in archive");
+    const root=parts[0];
+    const group=(root==="companies" && parts.length===4 && parts[2]==="members")
+      ?"members":(parts.length===2 && Object.hasOwn(counts,root) && root!=="members" && root!=="other"
+        ?root:"other");
+    counts[group]++;
+    paths.push(item.path);
+  }
+  return {
+    projectId:PROJECT,
+    databaseId:"(default)",
+    totalDocuments:snapshot.documents.length,
+    groupCounts:counts,
+    pathDigest:hash(canonical(paths.sort())),
+    contentsDigest:allDigest
+  };
+}
+
 function requirePassphrase(){
   const pass=process.env.SALES_BACKUP_PASSPHRASE;
   if(!pass || pass.length<20)throw Error("SALES_BACKUP_PASSPHRASE needs at least 20 characters");
@@ -193,6 +229,20 @@ async function main(args){
     console.log("SHA-256:",fingerprint(snap));
     return;
   }
+  if(command==="audit"){
+    const file=argValue(args,"--file");
+    if(!file)throw Error("Specify --file");
+    const summary=auditSummary(archiveFile(file));
+    console.log("OFFLINE INVENTORY (encrypted local archive only)");
+    console.log("Project:",summary.projectId,"Database:",summary.databaseId);
+    console.log("Total documents:",summary.totalDocuments);
+    for(const [category,count] of Object.entries(summary.groupCounts))
+      console.log(category+":",count);
+    console.log("All document IDs SHA-256:",summary.pathDigest);
+    console.log("All document contents SHA-256:",summary.contentsDigest);
+    console.log("NOT VERIFIED: live production completeness, Firebase Auth, backup restore or point-in-time consistency");
+    return;
+  }
   if(command==="compare"){
     const before=argValue(args,"--before"),after=argValue(args,"--after");
     if(!before||!after)throw Error("Specify --before and --after");
@@ -204,7 +254,7 @@ async function main(args){
     console.log("PASS: supplied backups match; live database completeness is NOT proven");
     return;
   }
-  if(command!=="backup")throw Error("Use: backup, verify or compare");
+  if(command!=="backup")throw Error("Use: backup, verify, audit or compare");
   if(argValue(args,"--project")!==PROJECT ||
     argValue(args,"--confirm")!=="READ_ONLY_LOCAL_BACKUP")
     throw Error("Explicit project and confirmation required; nothing executed");
