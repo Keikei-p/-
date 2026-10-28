@@ -183,7 +183,7 @@ test('leader without explicit finance grants cannot read or edit revenue goals',
 });
 
 
-test('authenticated master shown as owner can add, edit and delete products even if membership role is member',async()=>{
+test('authenticated master shown as owner can add and edit products but cannot delete historical catalog even if membership role is member',async()=>{
   // Reproduce the UI/server mismatch: client isCurrentCompanyMaster() shows
   // owner controls, but prior products rules used only isCompanyManager().
   await env.withSecurityRulesDisabled(async c=>{
@@ -207,9 +207,9 @@ test('authenticated master shown as owner can add, edit and delete products even
   assert.equal((await assertSucceeds(getDoc(ref))).data().name,'更新した商材');
   await assertFails(deleteDoc(ref));
    assert.equal((await getDoc(ref)).exists(),true);
-  // Existing rules intentionally disallow a client read of missing products.
+  // Rejected deletes must not erase the existing price master.
   await env.withSecurityRulesDisabled(async c=>{
-    assert.equal((await getDoc(doc(c.firestore(),'products','master-new-product'))).exists(),false);
+    assert.equal((await getDoc(doc(c.firestore(),'products','master-new-product'))).exists(),true);
   });
 });
 
@@ -232,7 +232,7 @@ test('existing owner retains product create permission',async()=>{
   }));
 });
 
-test('secondary owner (not master) can create, edit and delete SBMNP with zero cashback',async()=>{
+test('secondary owner (not master) can create and edit SBMNP but cannot delete its catalog history with zero cashback',async()=>{
   await env.withSecurityRulesDisabled(async c=>{
     await updateDoc(doc(c.firestore(),'companies',company),{masterUid:'another-master'});
   });
