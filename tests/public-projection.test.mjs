@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {projectCountRecord,projectPublicProduct,projectCountCorrection,projectRankOnly,auditNoFinancialKeys} from "../security/public-projection.mjs";
+import {projectCountRecord,projectPublicProduct,projectCountCorrection,projectRankOnly,projectPublicRecordHeader,projectPublicRecordLines,projectPublicCorrectionFlat,projectPublicRankEntries,assertPublicSchema,auditNoFinancialKeys} from "../security/public-projection.mjs";
 
 const record={
  id:"c1_u1_2026-10-27",companyId:"c1",uid:"u1",date:"2026-10-27",
@@ -66,4 +66,35 @@ test("legacy product names never expose CB or yen-denominated tiers",()=>{
  assert.equal(p.name,"商材名はオーナー確認中");
  const r=projectCountRecord({...record,results:{p1:{productId:"p1",productName:"光 2万円CB",count:5,revenuePerUnit:20000}}});
  assert.equal(r.results[0].productName,"商材名はオーナー確認中");
+});
+
+test("publishable record header contains no nested results or money",()=>{
+ const doc=projectPublicRecordHeader(record);
+ assert.equal(doc.totalCount,5);
+ assert.equal("results" in doc,false);
+ assert.ok(assertPublicSchema("publicRecords",[doc]));
+});
+test("product counts are separate flat documents without price",()=>{
+ const lines=projectPublicRecordLines(record);
+ assert.equal(lines.length,1);
+ assert.equal(lines[0].count,5);
+ assert.equal(lines[0].productId,"p1");
+ assert.ok(assertPublicSchema("publicRecordLines",lines));
+});
+test("flat correction drops before/after financial maps",()=>{
+ const doc=projectPublicCorrectionFlat(correction);
+ assert.equal("before" in doc,false);
+ assert.equal(doc.afterTotalCount,5);
+ assert.ok(assertPublicSchema("publicRecordCorrections",[doc]));
+});
+test("rank entries contain neither monetary score nor count",()=>{
+ const entries=projectPublicRankEntries({companyId:"c1",period:"2026-10",kind:"member",participants:[{id:"u",name:"User",score:1000000,count:22}]});
+ assert.deepEqual(entries.map(x=>x.rank),[1]);
+ assert.ok(assertPublicSchema("publicRankEntries",entries));
+ assert.equal(JSON.stringify(entries).includes("1000000"),false);
+});
+test("unexpected nested fields are rejected by public schema",()=>{
+ const doc=projectPublicRecordHeader(record);
+ assert.throws(()=>assertPublicSchema("publicRecords",[{...doc,revenue:99999}]),/schema mismatch/);
+ assert.throws(()=>assertPublicSchema("publicRecords",[{...doc,results:{revenue:10000}}]),/schema mismatch/);
 });
