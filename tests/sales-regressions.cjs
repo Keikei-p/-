@@ -103,6 +103,7 @@ test('Records and goals listener failures visibly warn that values can be stale'
   const subscriptions=[];const warnings=[];
   const ctx=context(['startRealtimeListeners'],{
     stopRealtimeListeners:()=>{},loadLocalRankingGroups:()=>{},isCurrentCompanyManager:()=>false,currentUser:null,
+    doc:()=> 'ranking-groups',db:{},currentUserData:{companyId:'c'},
     companyCollectionQuery:n=>n,recordsCollectionQuery:()=> 'records',revenueGoalsCollectionQuery:()=>null,
     onSnapshot:(query,next,error)=>{subscriptions.push({query,error});return ()=>{};},
     console:{error:()=>{}},databaseStatus:element(),showError:m=>warnings.push(m)
