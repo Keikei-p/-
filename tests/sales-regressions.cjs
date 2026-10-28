@@ -1297,7 +1297,7 @@ test('Owner member removal is suspension-only and preserves stored history', asy
   const end = fn.indexOf('\n});', start);
   assert(end > start, 'callable must have a closed body');
   const source = fn.slice(start, end + 4);
-  assert(!/\\.delete\\s*\\(|deleteUser\\s*\\(|deleteDoc\\s*\\(/.test(source),
+  assert(!/\.delete\s*\(|deleteUser\s*\(|deleteDoc\s*\(/.test(source),
     'member retirement must never physically delete Auth, user, or membership documents');
   const writes = [];
   const authOps = [];
