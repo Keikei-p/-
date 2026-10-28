@@ -497,38 +497,34 @@ exports.deleteCompanyMemberAccount = onCall(async (request) => {
 
   await disableBatch.commit();
 
-  let authDeleted = false;
+  // Historical member and user documents are never physically removed:
+  // teamHistory and name references must survive employee departure.
+  // The legacy callable name is retained for backward compatibility,
+  // but this endpoint now performs a reversible account suspension only.
+  let authDisabled = false;
   let authAlreadyMissing = false;
-
   try {
-    await getAuth().deleteUser(targetUid);
-    authDeleted = true;
+    await getAuth().updateUser(targetUid, { disabled: true });
+    authDisabled = true;
   } catch (error) {
     if (error?.code === "auth/user-not-found") {
       authAlreadyMissing = true;
     } else {
       throw new HttpsError(
         "internal",
-        "Firebase Authenticationアカウントの削除に失敗しました。"
+        "Firebase Authenticationアカウントの利用停止に失敗しました。会社情報は保持したままです。"
       );
     }
   }
 
-  // 過去実績はrecords側に残す。メンバー/ユーザー本体だけ削除する。
-  const cleanupBatch = db.batch();
-
-  cleanupBatch.delete(targetMemberRef);
-
-  if (targetUserSnap.exists) {
-    cleanupBatch.delete(targetUserRef);
-  }
-
-  await cleanupBatch.commit();
-
   return {
     ok: true,
-    authDeleted,
+    mode: "retained_deactivated",
+    authDeleted: false,
+    authDisabled,
     authAlreadyMissing,
+    historicalMemberDocumentRetained: true,
+    historicalUserDocumentRetained: true,
   };
 });
 

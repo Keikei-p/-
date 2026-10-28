@@ -329,7 +329,11 @@ test('product validation and cross-company protections remain enforced for secon
   await assertSucceeds(setDoc(ref,catalogPayload()));
   await assertFails(updateDoc(ref,{companyId:'company-b',updatedAt:serverTimestamp()}));
   await assertFails(updateDoc(ref,{revenue:-1,updatedAt:serverTimestamp()}));
-  await assertFails(updateDoc(ref,{active:false,updatedAt:serverTimestamp()}));
+  await assertSucceeds(updateDoc(ref,{active:false,updatedAt:serverTimestamp()}));
+  assert.equal((await getDoc(ref)).data().active,false);
+  await assertSucceeds(updateDoc(ref,{active:true,updatedAt:serverTimestamp()}));
+  assert.equal((await getDoc(ref)).data().revenue,5000);
+  await assertFails(updateDoc(doc(dbFor('leaderA'),'products','valid-product'),{active:false,updatedAt:serverTimestamp()}));
   await assertFails(updateDoc(doc(db,'products','foreign-product'),{name:'denied',updatedAt:serverTimestamp()}));
   await assertFails(deleteDoc(doc(db,'products','foreign-product')));
 });
@@ -382,4 +386,29 @@ test('history correction logs are append-only and cannot be deleted',async()=>{
  });
  await assertFails(deleteDoc(doc(dbFor('owner'),'recordCorrections','old-correction')));
  assert.equal((await getDoc(doc(dbFor('owner'),'recordCorrections','old-correction'))).exists(),true);
+});
+
+
+test('team retirement is owner-only, reversible and never deletes historical teams',async()=>{
+ const owner=dbFor('owner'),leader=dbFor('leaderA');
+ const ref=doc(owner,'teams','a');
+ await assertFails(updateDoc(doc(leader,'teams','a'),{active:false,updatedAt:serverTimestamp()}));
+ await assertSucceeds(updateDoc(ref,{active:false,updatedAt:serverTimestamp()}));
+ const disabled=(await getDoc(ref)).data();
+ assert.equal(disabled.active,false);
+ assert.equal(disabled.name,'a');
+ await assertSucceeds(updateDoc(ref,{active:true,updatedAt:serverTimestamp()}));
+ assert.equal((await getDoc(ref)).data().active,true);
+ await assertFails(deleteDoc(ref));
+});
+test('product retirement preserves catalog price and historical ID',async()=>{
+ const ref=doc(dbFor('owner'),'products','retirable-product');
+ await assertSucceeds(setDoc(ref,catalogPayload()));
+ const before=(await getDoc(ref)).data();
+ await assertSucceeds(updateDoc(ref,{active:false,updatedAt:serverTimestamp()}));
+ const after=(await getDoc(ref)).data();
+ assert.equal(after.revenue,before.revenue);
+ assert.deepEqual(after.pricingOptions,before.pricingOptions);
+ await assertFails(deleteDoc(ref));
+ await assertSucceeds(updateDoc(ref,{active:true,updatedAt:serverTimestamp()}));
 });
