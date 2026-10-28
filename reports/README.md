@@ -43,3 +43,72 @@
 node --test tests/report-format.test.mjs
 node --check reports/worker.mjs
 ```
+
+
+## 自社＋協力店の一括報告（2026-10-29追加、現在は開発版のみ）
+
+\`reports/combine.mjs\` と \`reports/worker.mjs\` では、次の2形態をどちらも**朝9:00・夜19:00に1通のLINEへまとめる**。
+
+1. **自社と同じ会社にある協力店班**: 自社会社の \`notifications.partnerTeamIds\` に登録された班IDだけを「協力店」欄へ分類。それ以外は自社欄へ載せる。商材別売上・単価・CBは集計文に含めない。
+2. **別会社として登録された協力店**: 受け取り側（自社）の \`notifications.aggregatePartnerReports === true\` と \`linkedCompanyIds\` 明示許可、協力店側の \`linkedHubCompanyId\`・\`countsShareApproved === true\`・\`countsShareLineGroupId === 自社lineGroupId\` の**双方の意思表示**がある場合だけ、協力店を集約する。曜日も双方の通知設定で許可が必要。どちらかが同意を取り消したら集約送信を止める。条件不足の場合、途中までの「合計」を誤って送らない。
+
+### 通知設定に必要な追加フィールド（新しい本番設定ではない）
+
+自社オーナーが管理する \`companies/自社ID/settings/notifications\` に、既存の通知フィールドはすべて残したまま次を追加する設計。
+
+\`\`\`json
+{
+  "aggregatePartnerReports": true,
+  "linkedCompanyIds": ["partner-company-id"],
+  "partnerTeamIds": ["existing-partner-team-id"]
+}
+\`\`\`
+
+協力店の**その会社のオーナー**が管理する \`companies/協力店ID/settings/notifications\` に追加する設計。
+
+\`\`\`json
+{
+  "linkedHubCompanyId": "own-company-id",
+  "countsShareApproved": true,
+  "countsShareLineGroupId": "own-company-line-group-id"
+}
+\`\`\`
+
+**重要**: 現在公開されている本番Firestoreの \`settings/notifications\` はキー許可リスト方式で、上の追加フィールドはまだ通常のアプリから保存できません。**本番Rulesを書き換えたり、Firebaseコンソールでこれらを直接入力したりしないでください。** 双方の所有者が安全に設定できる画面と、対応するSecurity Rulesのテスト/本番公開は別途必要です。
+
+### 送信例（件数のみ）
+
+\`\`\`text
+@All
+🌸本日最終報告🌸
+📅 2026-10-29
+
+🏢自社
+⭐️1班
+🎯目標：10件
+✅現在：5件
+
+🤝協力店
+【自社登録の協力店】
+⭐️2班
+🎯目標：8件
+✅現在：3件
+
+【協力店A】
+⭐️1班
+🎯目標：12件
+✅現在：7件
+
+📊合計目標：30件
+📊合計実績：15件
+\`\`\`
+
+未報告通知は未報告の班だけ。アプリの通知 ON/OFF は今までと同じひとつの設定を使う。LIVE送信は \`REPORT_DELIVERY_ENABLED = "false"\` が初期値のまま。
+
+### 本番安全条件
+
+- 同じ会社にいる協力店リーダーは **\`accessKind=partner\` の両方の所属データ**が確認されることを必須にし、売上許可や単価許可の値が誤ってtrueでも金融情報を返さないサーバー設計（PR #105）。ただし、**本番の \`records/products/recordCorrections\` の原票閲覧Rulesは依然として同社会員による読み取りを許しているため、現段階で「完全非公開」を保証しない**。
+- 会社をまたいだ件数共有は、単にリーダー権限を与えただけでは許可しない。双方のowner承認とLINE送信先の一致確認を必須にする。
+- 実績登録・訂正・班変更の履歴を改変せずに、件数だけを合算。目標や件数の異常・漏れがあれば送信停止。**勝手に0件へ修正しない**。
+- 送信元は今は開発版。LINEの資格情報・実グループ・本番会員・新旧URLの端末で検証完了するまで**本番デプロイ・実LINE送信は禁止**。既存のバックアップも削除しない。
+- クラウドの無料枠は上限があるため、会社数・班数に応じてFireStore読取とLINE Push量を運用前に評価する。
