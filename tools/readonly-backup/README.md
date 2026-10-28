@@ -10,6 +10,30 @@
 - 保存済みファイルの上書き、リポジトリ内保存、別Firebaseプロジェクトへの接続、バックアップ件数上限超過は停止します。
 - 既存Firebaseデータを実際に読める認証情報がこちらにないため、**2026-10-22時点では本番バックアップを実行していません**。
 
+## 暗号化済みバックアップの件数・内容をオフライン点検（0円・書込みなし）
+
+本ツールで既に作成した `.salesbak` ファイルがある場合、PC上で復号して、原本データの内容を書き換えずに、**件数の内訳と全件のID/内容ハッシュ**を確認できます。実行中にFirestoreの読取料金・通信・APIアクセスは発生しません。
+
+~~~powershell
+# すでにローカルに保管した暗号化バックアップ用のパスフレーズを設定
+$secure = Read-Host "バックアップの暗号化パスフレーズ" -AsSecureString
+$env:SALES_BACKUP_PASSPHRASE = (New-Object System.Net.NetworkCredential("", $secure)).Password
+
+# records・products・users・membersなどの件数と照合ハッシュだけを表示
+node tools/readonly-backup/backup.mjs audit --file "C:\PRIVATE\sales-backup.salesbak"
+
+# 二つの保管ファイルが完全に同じ状態かを照合
+node tools/readonly-backup/backup.mjs compare --before "C:\PRIVATE\before.salesbak" --after "C:\PRIVATE\after.salesbak"
+
+Remove-Item Env:SALES_BACKUP_PASSPHRASE
+~~~
+
+- 画面に個別レコードID、氏名、単価、売上金額や顧客データを出力しません。
+- `records` は文書の数であり、**商材の契約件数（`totalCount` や各商材数量の合計）と同義ではありません**。契約件数の正確性には現行アプリの集計結果との別途照合が必要です。
+- 完全一致は**指定された2つのファイルが一致したこと**のみを意味します。稼働中に正当な営業入力があれば別時刻のバックアップが不一致になるのは正常です。
+- Firebase Authentication・Cloud Functions・Cloudflare・Storageの設定は含みません。
+- **実データの最新READYバックアップ確認、全データを読み出せたこと、同一時点の整合性、隔離復元の成功を証明するものではありません**。これらの条件なしにFirestore Rules変更やSpark移行の本番切替はしません。
+
 ## 重要な限界
 1. これは暗号化した**読み取り用保管コピー**であり、Firebase公式の復元可能なマネージドバックアップと同じものではありません。自動復元は実装していません。
 2. データはページ順に読みます。更新が続く運用中は**厳密な同一時刻のスナップショットではありません**。更新の少ない時間帯に実施し、前後の照合、復元テストは別途必要です。
