@@ -5346,6 +5346,47 @@ body.product-reordering .product-list {
       </div>
     </div>
 
+    <section id="notificationSharingSection" hidden
+      style="margin:14px 0;padding:14px;border:1px solid var(--border);border-radius:12px;">
+      <div style="font-size:14px;font-weight:800;">🤝 自社・協力店を一括で報告</div>
+      <div style="font-size:12px;color:var(--sub);margin:8px 0;line-height:1.7;">
+        自社の班と協力店の班を朝9時・夜19時に件数だけまとめます。
+        協力店への売上・単価・キャッシュバックは送信しません。
+        別会社との共有は双方のオーナーが承認した場合のみ有効です。
+      </div>
+      <div class="form-group">
+        <label>協力店として扱う班（同じ会社内）</label>
+        <div id="notificationPartnerTeamOptions" style="display:grid;gap:8px;font-size:13px;"></div>
+      </div>
+      <label class="notification-switch">
+        <input type="checkbox" id="notificationAggregatePartnerReports">
+        <span>別会社の協力店をこのLINE報告へまとめる</span>
+      </label>
+      <div class="form-group">
+        <label for="notificationLinkedCompanyIds">共有を許可する協力店の会社ID（改行区切り）</label>
+        <textarea id="notificationLinkedCompanyIds" rows="2"
+          style="width:100%;max-width:100%;border:1px solid var(--border);border-radius:8px;padding:8px;"
+          placeholder="協力店の会社ID"></textarea>
+      </div>
+      <div style="margin:12px 0 5px;font-size:13px;font-weight:700;">協力店として他社の報告に参加する場合</div>
+      <label class="notification-switch">
+        <input type="checkbox" id="notificationCountsShareApproved">
+        <span>自社の件数を連携先のLINEへ共有することを承認</span>
+      </label>
+      <div class="form-group">
+        <label for="notificationLinkedHubCompanyId">報告を取りまとめる会社ID</label>
+        <input id="notificationLinkedHubCompanyId" type="text" maxlength="128">
+      </div>
+      <div class="form-group">
+        <label for="notificationCountsShareLineGroupId">共有先のLINEグループID（相手のIDと一致）</label>
+        <input id="notificationCountsShareLineGroupId" type="text" maxlength="200">
+      </div>
+      <div style="font-size:11px;color:var(--sub);line-height:1.7;">
+        会社ID・共有先はオーナー同士で確認してください。未確認の相手には共有しません。
+        この機能の実送信はサーバー側の安全確認が完了するまで停止しています。
+      </div>
+    </section>
+
     <button
       id="saveNotificationSettingsButton"
       class="account-save-button"
@@ -6918,6 +6959,21 @@ const copyLinePairingCommandButton =
 const saveNotificationSettingsButton =
   document.getElementById("saveNotificationSettingsButton");
 
+const notificationSharingSection =
+  document.getElementById("notificationSharingSection");
+const notificationPartnerTeamOptions =
+  document.getElementById("notificationPartnerTeamOptions");
+const notificationAggregatePartnerReports =
+  document.getElementById("notificationAggregatePartnerReports");
+const notificationLinkedCompanyIds =
+  document.getElementById("notificationLinkedCompanyIds");
+const notificationCountsShareApproved =
+  document.getElementById("notificationCountsShareApproved");
+const notificationLinkedHubCompanyId =
+  document.getElementById("notificationLinkedHubCompanyId");
+const notificationCountsShareLineGroupId =
+  document.getElementById("notificationCountsShareLineGroupId");
+
 const notificationPreview =
   document.getElementById("notificationPreview");
 
@@ -8432,7 +8488,13 @@ let notificationSettings = {
   reportCompletionMode: "individual",
   lineEnabled: false,
   lineGroupId: "",
-  lineGroupName: ""
+  lineGroupName: "",
+  aggregatePartnerReports: false,
+  linkedCompanyIds: [],
+  partnerTeamIds: [],
+  linkedHubCompanyId: "",
+  countsShareApproved: false,
+  countsShareLineGroupId: ""
 };
 
 let unsubscribeLinePairing = null;
@@ -22776,7 +22838,19 @@ function normalizeNotificationSettings(
       String(
         data.lineGroupName ||
         ""
-      ).trim()
+      ).trim(),
+    aggregatePartnerReports: data.aggregatePartnerReports === true,
+    linkedCompanyIds: Array.isArray(data.linkedCompanyIds)
+      ? data.linkedCompanyIds.filter(x => typeof x === "string")
+      : [],
+    partnerTeamIds: Array.isArray(data.partnerTeamIds)
+      ? data.partnerTeamIds.filter(x => typeof x === "string")
+      : [],
+    linkedHubCompanyId: typeof data.linkedHubCompanyId === "string"
+      ? data.linkedHubCompanyId.trim() : "",
+    countsShareApproved: data.countsShareApproved === true,
+    countsShareLineGroupId: typeof data.countsShareLineGroupId === "string"
+      ? data.countsShareLineGroupId.trim() : ""
   };
 
 }
@@ -22878,6 +22952,29 @@ function renderNotificationSettingsForm() {
 
   const canEdit =
     isCurrentCompanyOwner();
+  notificationSharingSection.hidden = !canEdit;
+  notificationAggregatePartnerReports.checked = settings.aggregatePartnerReports;
+  notificationLinkedCompanyIds.value = settings.linkedCompanyIds.join("\n");
+  notificationCountsShareApproved.checked = settings.countsShareApproved;
+  notificationLinkedHubCompanyId.value = settings.linkedHubCompanyId;
+  notificationCountsShareLineGroupId.value = settings.countsShareLineGroupId;
+  notificationPartnerTeamOptions.replaceChildren();
+  if (canEdit) {
+    const known = new Map(teams.map(t => [t.id, t.name || t.id]));
+    for (const id of settings.partnerTeamIds) {
+      if (!known.has(id)) known.set(id, "班ID：" + id + "（現在の一覧にありません）");
+    }
+    for (const [id, name] of known) {
+      const label = document.createElement("label");
+      label.style.cssText = "display:flex;gap:8px;align-items:center;";
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.value = id;
+      input.checked = settings.partnerTeamIds.includes(id);
+      label.append(input, document.createTextNode(name));
+      notificationPartnerTeamOptions.append(label);
+    }
+  }
 
   notificationOwnerOnlyHint.style.display =
     canEdit
@@ -22889,6 +22986,11 @@ function renderNotificationSettingsForm() {
     notificationTimeInput,
     notificationAnyMemberCompletesTeam,
     notificationLineEnabled,
+    notificationAggregatePartnerReports,
+    notificationLinkedCompanyIds,
+    notificationCountsShareApproved,
+    notificationLinkedHubCompanyId,
+    notificationCountsShareLineGroupId,
     saveNotificationSettingsButton,
     issueLinePairingCodeButton
   ].forEach(
@@ -23541,6 +23643,32 @@ saveNotificationSettingsButton.onclick =
 
     }
 
+    const splitCompanyIds = notificationLinkedCompanyIds.value
+      .split(/[\\n,]+/).map(x => x.trim()).filter(Boolean);
+    const validCompanyId = x => /^[A-Za-z0-9_-]{1,128}$/.test(x);
+    const partnerTeamIds = [...notificationPartnerTeamOptions.querySelectorAll("input:checked")]
+      .map(input => input.value);
+    const sharedCompanyId = notificationLinkedHubCompanyId.value.trim();
+    const sharedLineGroupId = notificationCountsShareLineGroupId.value.trim();
+    if (
+      splitCompanyIds.length > 30 ||
+      new Set(splitCompanyIds).size !== splitCompanyIds.length ||
+      splitCompanyIds.some(id => !validCompanyId(id) || id === currentUserData.companyId) ||
+      partnerTeamIds.length > 100 ||
+      new Set(partnerTeamIds).size !== partnerTeamIds.length ||
+      (notificationCountsShareApproved.checked &&
+        (!validCompanyId(sharedCompanyId) || !sharedLineGroupId)) ||
+      sharedLineGroupId.length > 200 ||
+      (sharedCompanyId && !validCompanyId(sharedCompanyId))
+    ) {
+      showError("協力店の会社ID・班・共有先の設定を確認してください。");
+      return;
+    }
+    if (notificationAggregatePartnerReports.checked && splitCompanyIds.length === 0) {
+      showError("取りまとめる協力店の会社IDを入力してください。");
+      return;
+    }
+
     const next =
       normalizeNotificationSettings({
         enabled:
@@ -23556,7 +23684,14 @@ saveNotificationSettingsButton.onclick =
         lineGroupId,
         lineGroupName:
           notificationSettings.lineGroupName ||
-          ""
+          "",
+        aggregatePartnerReports:
+          notificationAggregatePartnerReports.checked,
+        linkedCompanyIds: splitCompanyIds,
+        partnerTeamIds,
+        linkedHubCompanyId: sharedCompanyId,
+        countsShareApproved: notificationCountsShareApproved.checked,
+        countsShareLineGroupId: sharedLineGroupId
       });
 
     try {
