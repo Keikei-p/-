@@ -4376,6 +4376,11 @@ body.product-reordering .product-list {
     margin-left: 0;
   }
 }
+/* Do not expose stale revenue/rankings while the new month is loading. */
+#dashboard.monthly-records-pending > :not(.dashboard-title):not(.dashboard-select):not(#monthlyRecordsStatus) {
+  display:none !important;
+}
+#dashboard .dashboard-select input[type="month"] {width:100%;max-width:320px;padding:10px;}
 </style>
 </head>
 
@@ -5594,10 +5599,11 @@ body.product-reordering .product-list {
 
     <div class="dashboard-select">
 
-      <select id="dashboardMonth">
-      </select>
+      <input id="dashboardMonth" type="month" aria-label="実績表示月" required>
 
     </div>
+
+    <div id="monthlyRecordsStatus" role="status" aria-live="polite" style="display:none;padding:12px;border-radius:10px;margin-bottom:12px;background:var(--card-soft);color:var(--sub);font-size:13px;font-weight:700"></div>
 
     <div class="dashboard-summary">
 
@@ -7848,6 +7854,16 @@ let teams = [];
 let products = [];
 let members = [];
 let records = [];
+// Only a complete server-confirmed selected month can drive monthly totals.
+let recordQueryGeneration = 0;
+let recordsReady = false;
+let recordsSubscribedMonth = "";
+let annualChartRecords = null;
+let annualChartYear = "";
+let annualChartGeneration = 0;
+let annualChartRequestedKey = "";
+let annualChartErrorKey = "";
+let recordFormLookupGeneration = 0;
 let goals = [];
 let revenueGoals = [];
 
@@ -9582,6 +9598,111 @@ function recordsCollectionQuery() {
 
 }
 
+
+
+function monthRecordRange(month) {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error("実績の表示月が不正です。");
+  const y=Number(month.slice(0,4)),m=Number(month.slice(5,7));
+  const next=(m===12?y+1:y)+"-"+String(m===12?1:m+1).padStart(2,"0");
+  return {start:month+"-01",end:next+"-01"};
+}
+function scopedRecordsQuery(month) {
+  const range=monthRecordRange(month);
+  return query(recordsCollectionQuery(),where("date",">=",range.start),where("date","<",range.end));
+}
+function showMonthlyRecordsState(message,pending) {
+  const target=document.getElementById("monthlyRecordsStatus");
+  if(target){target.textContent=message;target.style.display=message?"block":"none";}
+  dashboard.classList.toggle("monthly-records-pending",Boolean(pending));
+}
+function subscribeSelectedMonthRecords() {
+  if(unsubscribeRecords){unsubscribeRecords();unsubscribeRecords=null;}
+  const generation=++recordQueryGeneration;
+  const month=dashboardMonth.value||getTodayString().slice(0,7);
+  const companyId=currentUserData?.companyId;
+  recordsReady=false;
+  recordsSubscribedMonth="";
+  records=[];
+  showMonthlyRecordsState("選択月の実績を取得中です。全件の確認後に集計を表示します。",true);
+  try {
+    const scoped=scopedRecordsQuery(month);
+    if(!companyId)throw new Error("会社の確認ができません。");
+    unsubscribeRecords=onSnapshot(scoped,{includeMetadataChanges:true},snapshot=>{
+      if(generation!==recordQueryGeneration||
+         dashboardMonth.value!==month||currentUserData?.companyId!==companyId)return;
+      if(snapshot.metadata.fromCache||snapshot.metadata.hasPendingWrites){
+        recordsReady=false;
+        recordsSubscribedMonth="";
+        showMonthlyRecordsState("通信・同期確認中のため、件数と売上を確定表示しません。",true);
+        return;
+      }
+      const nextRecords=[];
+      let mismatch=false;
+      snapshot.forEach(item=>{
+        const value=item.data();
+        if(value.companyId!==companyId||typeof value.date!=="string"||
+           !value.date.startsWith(month))mismatch=true;
+        else nextRecords.push({id:item.id,...value});
+      });
+      if(mismatch){
+        recordsReady=false;
+        recordsSubscribedMonth="";
+        showMonthlyRecordsState("所属会社または日付が一致しません。集計を停止しました。",true);
+        return;
+      }
+      nextRecords.sort((a,b)=>(b.date||"").localeCompare(a.date||"")||a.id.localeCompare(b.id));
+      records=nextRecords;
+      recordsSubscribedMonth=month;
+      recordsReady=true;
+      annualChartRecords=null;
+      annualChartYear="";
+      annualChartRequestedKey="";
+      annualChartErrorKey="";
+      ++annualChartGeneration;
+      showMonthlyRecordsState("",false);
+      createMonthOptions();
+      renderDashboard();
+      renderNotificationPreview();
+    },error=>{
+      if(generation!==recordQueryGeneration)return;
+      recordsReady=false;
+      recordsSubscribedMonth="";
+      showMonthlyRecordsState("選択月を読み込めません。集計は未確定です。接続・権限・Firestore索引を確認してください。",true);
+      console.error("月別実績の取得失敗",error?.code||"unknown");
+    });
+  } catch(error) {
+    recordsReady=false;
+    recordsSubscribedMonth="";
+    showMonthlyRecordsState("月別実績を表示できません。",true);
+    console.error("月別実績の開始失敗",error?.code||"invalid");
+  }
+}
+async function findDailyRecordFromServer(memberId,date) {
+  // Correcting a day outside the selected month must still find the original.
+  const result=await getDocsFromServer(query(recordsCollectionQuery(),
+    where("uid","==",memberId),where("date","==",date)));
+  if(result.size>1)throw new Error("同じ担当者と日付の実績が複数あります。オーナーへ確認してください。");
+  return result.empty?null:{id:result.docs[0].id,...result.docs[0].data()};
+}
+async function loadAnnualChartRecords(year) {
+  // Annual chart is requested on demand, not during every monthly dashboard visit.
+  // One server query returns a complete year snapshot, never a partial page.
+  if(!canCurrentUserViewRevenue())throw new Error("年間売上を見る権限がありません。");
+  const start=year+"-01-01",end=String(Number(year)+1)+"-01-01";
+  const result=await getDocsFromServer(query(recordsCollectionQuery(),
+    where("date",">=",start),where("date","<",end)));
+  const rows=[];
+  let mismatch=false;
+  result.forEach(item=>{
+    const data=item.data();
+    if(data.companyId!==currentUserData?.companyId||
+       typeof data.date!=="string"||
+       data.date<start||data.date>=end)mismatch=true;
+    else rows.push({id:item.id,...data});
+  });
+  if(mismatch)throw new Error("年間データの整合性確認に失敗しました。");
+  return rows;
+}
 
 function formatYen(value) {
 
@@ -13354,59 +13475,9 @@ function startRealtimeListeners() {
     );
 
 
-  /*
-    実績
-  */
-
-  unsubscribeRecords =
-    onSnapshot(
-      recordsCollectionQuery(),
-      snapshot => {
-
-        records = [];
-
-        snapshot.forEach(
-          recordDoc => {
-
-            records.push({
-
-              id:
-                recordDoc.id,
-
-              ...recordDoc.data()
-
-            });
-
-          }
-        );
-
-
-        records.sort(
-          (a, b) =>
-            (
-              b.date ||
-              ""
-            ).localeCompare(
-              a.date ||
-              ""
-            )
-        );
-
-
-        createMonthOptions();
-
-        renderDashboard();
-
-        renderNotificationPreview();
-
-      },
-      error => {
-        console.error("実績リアルタイム監視エラー:", error);
-        databaseStatus.textContent = "実績の自動更新が停止";
-        showError("実績の自動更新が停止しました。表示が古い可能性があります。通信・権限を確認して画面を再読み込みしてください。");
-      }
-    );
-
+  /* 実績：会社の全履歴ではなく、選択した月だけをリアルタイム監視する。 */
+  createMonthOptions();
+  subscribeSelectedMonthRecords();
 
   unsubscribeGoals =
     onSnapshot(
@@ -13512,6 +13583,17 @@ function startRealtimeListeners() {
 
 
 function stopRealtimeListeners() {
+  ++recordQueryGeneration;
+  ++annualChartGeneration;
+  ++recordFormLookupGeneration;
+  recordsReady=false;
+  recordsSubscribedMonth="";
+  annualChartRecords=null;
+  annualChartYear="";
+  annualChartRequestedKey="";
+  annualChartErrorKey="";
+  records=[];
+  showMonthlyRecordsState("",false);
   rankingGroups = [];
   rankingGroupsLoaded = false;
   rankingGroupDraftSelectedKeys.clear();
@@ -21318,11 +21400,27 @@ async function loadExistingRecordIntoForm() {
   }
 
 
-  const record =
-    findDailyRecord(
-      recordMember.value,
-      recordDate.value
-    );
+  const lookup=++recordFormLookupGeneration;
+  const memberId=recordMember.value;
+  const date=recordDate.value;
+  let record=findDailyRecord(memberId,date);
+  if(!record) {
+    // Do not guess that a past day is empty just because another month is loaded.
+    try {
+      saveRecordButton.disabled=true;
+      record=await findDailyRecordFromServer(memberId,date);
+      if(lookup!==recordFormLookupGeneration||
+         memberId!==recordMember.value||date!==recordDate.value)return;
+    } catch(error) {
+      if(lookup!==recordFormLookupGeneration)return;
+      editingRecordId=null;
+      editingRecordRevision=null;
+      showError("元の実績を確認できません。二重登録を避けるため、通信を確認して再選択してください。");
+      return;
+    } finally {
+      if(lookup===recordFormLookupGeneration)saveRecordButton.disabled=false;
+    }
+  }
 
 
   if (
@@ -22040,10 +22138,11 @@ saveRecordButton.onclick =
             record.id ===
             recordRef.id
         );
+      const isSelectedMonth=confirmedRecord.date.slice(0,7)===dashboardMonth.value;
 
 
       if (
-        existingIndex >= 0
+        isSelectedMonth && existingIndex >= 0
       ) {
 
         records[
@@ -22051,7 +22150,7 @@ saveRecordButton.onclick =
         ] =
           confirmedRecord;
 
-      } else {
+      } else if (isSelectedMonth) {
 
         records.push(
           confirmedRecord
@@ -22079,6 +22178,7 @@ saveRecordButton.onclick =
           0,
           7
         );
+      if(recordsSubscribedMonth!==dashboardMonth.value)subscribeSelectedMonthRecords();
 
 
       let dashboardRefreshError =
@@ -22195,212 +22295,20 @@ saveRecordButton.onclick =
 ===================================================== */
 
 async function loadRecords() {
-
-  try {
-
-    const snapshot =
-      await getDocs(
-        recordsCollectionQuery()
-      );
-
-
-    records = [];
-
-
-    snapshot.forEach(
-      recordDoc => {
-
-        records.push({
-
-          id:
-            recordDoc.id,
-
-          ...recordDoc.data()
-
-        });
-
-      }
-    );
-
-
-    records.sort(
-      (a, b) =>
-        (
-          b.date ||
-          ""
-        ).localeCompare(
-          a.date ||
-          ""
-        )
-    );
-
-
-    createMonthOptions();
-
-    renderDashboard();
-
-
-  } catch (error) {
-
-    console.error(
-      "実績取得エラー:",
-      error
-    );
-
-
-    showError(
-      firebaseErrorMessage(
-        error
-      )
-    );
-
-  }
-
+  // Full-history getDocs is deliberately removed. Do not show partial results.
+  subscribeSelectedMonthRecords();
 }
-
 
 /* =====================================================
    月選択肢
 ===================================================== */
 
 function createMonthOptions() {
-
-  const today =
-    getTodayString();
-
-  const currentYear =
-    today.slice(
-      0,
-      4
-    );
-
-  const years =
-    new Set([
-      currentYear
-    ]);
-
-
-  records.forEach(
-    record => {
-
-      if (
-        record.date &&
-        record.date.length >= 4
-      ) {
-
-        years.add(
-          record.date.slice(
-            0,
-            4
-          )
-        );
-
-      }
-
-    }
-  );
-
-
-  const sortedYears =
-    Array.from(
-      years
-    ).sort(
-      (a, b) =>
-        b.localeCompare(a)
-    );
-
-
-  const months =
-    [];
-
-
-  sortedYears.forEach(
-    year => {
-
-      for (
-        let month = 12;
-        month >= 1;
-        month--
-      ) {
-
-        months.push(
-          `${year}-${String(
-            month
-          ).padStart(
-            2,
-            "0"
-          )}`
-        );
-
-      }
-
-    }
-  );
-
-
-  const current =
-    dashboardMonth.value;
-
-
-  dashboardMonth.innerHTML =
-    "";
-
-
-  months.forEach(
-    month => {
-
-      const option =
-        document.createElement(
-          "option"
-        );
-
-
-      option.value =
-        month;
-
-
-      const [
-        year,
-        monthNumber
-      ] =
-        month.split("-");
-
-
-      option.textContent =
-        `${year}年${Number(
-          monthNumber
-        )}月`;
-
-
-      dashboardMonth.appendChild(
-        option
-      );
-
-    }
-  );
-
-
-  if (
-    months.includes(
-      current
-    )
-  ) {
-
-    dashboardMonth.value =
-      current;
-
-  } else {
-
-    dashboardMonth.value =
-      today.slice(
-        0,
-        7
-      );
-
+  // Native month input can access old years without an all-history lookup.
+  if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(dashboardMonth.value)) {
+    dashboardMonth.value=getTodayString().slice(0,7);
   }
-
 }
-
 
 dashboardMonth.addEventListener(
   "change",
@@ -22418,7 +22326,7 @@ dashboardMonth.addEventListener(
     recordHistoryDate.value =
       "";
 
-    renderDashboard();
+    subscribeSelectedMonthRecords();
 
   }
 );
@@ -25508,6 +25416,10 @@ function getCurrentTeamName(
 ===================================================== */
 
 function renderDashboard() {
+  if(!recordsReady||recordsSubscribedMonth!==dashboardMonth.value) {
+    showMonthlyRecordsState("全件確認後に集計を表示します。",true);
+    return;
+  }
 
   applyRevenueVisibility();
   renderDailyGoalCalculator();
@@ -27388,7 +27300,7 @@ function buildRevenueChartData() {
 
 
   const relevantRecords =
-    records.filter(
+    (revenueChartMode === "annual" ? (annualChartRecords || []) : records).filter(
       record => {
 
         if (
@@ -28101,6 +28013,40 @@ function renderRevenueChart() {
 
   revenueChartToggle.style.display =
     "";
+
+  if(revenueChartMode==="annual") {
+    const year=dashboardMonth.value.slice(0,4);
+    const key=(currentUserData?.companyId||"")+":"+year;
+    if(annualChartYear!==key||!annualChartRecords) {
+      revenueChartSummary.innerHTML="";
+      revenueChartLegend.innerHTML="";
+      revenueChartArea.textContent=annualChartErrorKey===key
+        ?"年間実績の取得に失敗しました。月間表示へ戻し、通信・権限を確認してください。"
+        :"対象年の実績を確認中です。確定するまで年間売上を表示しません。";
+      revenueChartDetail.innerHTML="";
+      if(annualChartErrorKey!==key && annualChartRequestedKey!==key) {
+        annualChartRequestedKey=key;
+        const gen=++annualChartGeneration;
+        loadAnnualChartRecords(year).then(result=>{
+          if(gen!==annualChartGeneration||
+             revenueChartMode!=="annual"||
+             currentUserData?.companyId+":"+dashboardMonth.value.slice(0,4)!==key)return;
+          annualChartRecords=result;
+          annualChartYear=key;
+          annualChartRequestedKey="";
+          annualChartErrorKey="";
+          renderRevenueChart();
+        }).catch(error=>{
+          if(gen!==annualChartGeneration)return;
+          annualChartErrorKey=key;
+          annualChartRequestedKey="";
+          console.error("年間売上確認エラー",error?.code||"unavailable");
+          renderRevenueChart();
+        });
+      }
+      return;
+    }
+  }
 
 
   const chartData =
@@ -29126,7 +29072,8 @@ revenueChartMonthlyButton.addEventListener(
 revenueChartAnnualButton.addEventListener(
   "click",
   () => {
-
+    annualChartErrorKey="";
+    annualChartRequestedKey="";
     revenueChartMode =
       "annual";
 
