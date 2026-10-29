@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {archiveExportPolicy} from "../archive-output-policy.mjs";
 
-const records=[{id:"record1",date:"2026-10-27"}];
+const records=[{id:"record1",date:"2026-10-27",totalCount:5,totalRevenue:50000}];
 const rows=[{recordId:"record1",count:5,amount:50000}];
 const check=o=>archiveExportPolicy({
  warnings:[],rows,records,companyVerified:true,...o
@@ -53,4 +53,25 @@ test("historical report UI runs this policy before enabling any output button",(
  assert.match(source,/\$\("archiveCsv"\)\.disabled=!policy\.canExportCsv/);
  assert.match(source,/\$\("archiveJson"\)\.disabled=!policy\.canExportEvidenceJson/);
  assert(!source.includes("outputButtons.forEach(id=>$(id).disabled=false)"));
+});
+
+test("missing or mismatched original saved totals prevent unverified annual reports",()=>{
+ for(const original of [
+  [{id:"record1",date:"2026-10-27"}],
+  [{id:"record1",totalCount:5,totalRevenue:10000}],
+  [{id:"record1",totalCount:6,totalRevenue:50000}],
+  [{id:"record1",totalCount:5,totalRevenue:null}],
+  [{id:"record1",totalCount:5,totalRevenue:50000},
+   {id:"record1",totalCount:5,totalRevenue:50000}],
+  [{id:"wrongRecord",totalCount:5,totalRevenue:50000}]
+ ]){
+  const p=check({records:original});
+  assert.equal(p.canExportPdf,false);
+  assert.equal(p.canExportCsv,false);
+  assert.equal(p.canExportEvidenceJson,true);
+ }
+});
+test("zero-contract original is valid only with exact saved zero count and revenue",()=>{
+ const p=check({records:[{id:"empty",totalCount:0,totalRevenue:0}],rows:[]});
+ assert.equal(p.canExportPdf,false); // no detail rows with an original is flagged
 });
