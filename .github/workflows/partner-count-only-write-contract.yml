@@ -6,7 +6,9 @@ on:
       - "partner/count-only-write-contract.mjs"
       - "tests/partner-count-only-write-contract.test.mjs"
       - "partner/count-only-ledger.mjs"
+      - "partner/firestore-admin-count-store.mjs"
       - "tests/partner-count-only-ledger.test.mjs"
+      - "tests/partner-firestore-admin-count-store.test.mjs"
       - "docs/TODAY_SALES_SAFETY_20261029.md"
       - ".github/workflows/partner-count-only-write-contract.yml"
   push:
@@ -14,6 +16,8 @@ on:
     paths:
       - "partner/count-only-write-contract.mjs"
       - "tests/partner-count-only-write-contract.test.mjs"
+      - "partner/firestore-admin-count-store.mjs"
+      - "tests/partner-firestore-admin-count-store.test.mjs"
 permissions:
   contents: read
 jobs:
@@ -31,5 +35,6 @@ jobs:
         run: |
           node --check partner/count-only-write-contract.mjs
           node --check partner/count-only-ledger.mjs
+          node --check partner/firestore-admin-count-store.mjs
       - name: Safe count registration and correction tests
-        run: node --test tests/partner-count-only-write-contract.test.mjs tests/partner-count-only-ledger.test.mjs
+        run: node --test tests/partner-count-only-write-contract.test.mjs tests/partner-count-only-ledger.test.mjs tests/partner-firestore-admin-count-store.test.mjs
