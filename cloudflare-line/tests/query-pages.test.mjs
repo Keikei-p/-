@@ -64,7 +64,8 @@ test("month-to-date report pages date then document ID, not global historical ID
  const result=await collectLineMonthQueryPages(async({cursor,readTime,pageSize})=>{
   requests.push({cursor,readTime,pageSize});
   const idx=cursor?docs.findIndex(d=>d.name===cursor.documentName)+1:0;
-  return docs.slice(idx,idx+pageSize).map(document=>({document,readTime:time}));
+  const page=docs.slice(idx,idx+pageSize);
+  return page.length?page.map(document=>({document,readTime:time})):[{readTime:time}];
  },{root,companyId,monthStart,throughDate,pageSize:2});
  assert.deepEqual(result.map(d=>d.fields.date.stringValue),[
   "2026-10-01","2026-10-02","2026-10-03","2026-10-30"]);
