@@ -31,12 +31,14 @@ try {
       (Join-Path $HOME "OneDrive\Documents")
     ) | Select-Object -Unique
     $candidates = @(
-      foreach ($folder in $folders) {
-        if (Test-Path -LiteralPath $folder -PathType Container) {
-          Get-ChildItem -LiteralPath $folder -Filter "*.salesbak" -File -Recurse -ErrorAction SilentlyContinue
+      @(
+        foreach ($folder in $folders) {
+          if (Test-Path -LiteralPath $folder -PathType Container) {
+            Get-ChildItem -LiteralPath $folder -Filter "*.salesbak" -File -Recurse -ErrorAction SilentlyContinue
+          }
         }
-      }
-    ) | Sort-Object FullName -Unique
+      ) | Sort-Object FullName -Unique
+    )
     if ($candidates.Count -gt 0) {
       Write-Host "FOUND: existing .salesbak files (newest first):"
       $candidates | Sort-Object LastWriteTime -Descending | ForEach-Object { Write-Host $_.FullName }
