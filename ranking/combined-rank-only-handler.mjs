@@ -20,7 +20,8 @@ function send(status,payload,origin){
 function contextValid(ctx,uid){
  if(!ctx||ctx.serverVerified!==true||ctx.userActive!==true||
     ctx.memberActive!==true||ctx.companyActive!==true||
-    ctx.reciprocalOwnersApproved!==true||ctx.completeSnapshotBudgetApproved!==true||
+    ctx.reciprocalOwnersApproved!==true||ctx.individualNamesApproved!==true||
+    ctx.completeSnapshotBudgetApproved!==true||
     ctx.viewerUid!==uid||!UID.test(ctx.hubCompanyId||"")||
     !UID.test(ctx.viewerCompanyId||"")||
     !Array.isArray(ctx.approvedCompanyIds)||
