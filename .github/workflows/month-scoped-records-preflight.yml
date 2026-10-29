@@ -7,8 +7,7 @@ on:
       - firestore.indexes.json
       - tests/month-scoped-records-ui.test.mjs
       - .github/workflows/month-scoped-records-preflight.yml
-  push:
-    branches: [fix/month-scoped-records-ui-20261029]
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
