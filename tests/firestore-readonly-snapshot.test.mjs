@@ -43,7 +43,7 @@ function reader(){
   listRootCollections:async()=>{calls.push(["root"]);return collections[""];},
   listDocuments:async p=>{calls.push(["docs",p]);return lists[p]??[];},
   getDocument:async p=>{calls.push(["get",p]);return docs.has(p)
-    ?{exists:true,data:structuredClone(docs.get(p))}
+    ?{exists:true,data:docs.get(p)}
     :{exists:false};},
   listSubcollections:async p=>{calls.push(["sub",p]);return collections[p]??[];}
  };
