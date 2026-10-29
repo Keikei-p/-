@@ -64,3 +64,13 @@ node --test tests/partner-canonical-ranking-groups.test.mjs
 node scripts/production-readiness-audit.mjs
 ```
 最後の監査は**全ての実機・復元確認なしでは常にSTOPで非ゼロ終了**する安全仕様。「STOPだからデータが消えた」の意味ではない。Firestoreの実データを読む・変更・削除するコマンドではない。
+
+
+## 2026-10-29 / 件数専用Firestore Adminアダプター（本番未公開）
+
+- `partner/firestore-admin-count-store.mjs` に、既存 `partner/count-only-ledger.mjs` 用のFirestore Adminトランザクションアダプターを追加した開発ブランチ。
+- `partnerCountRecords` / `partnerCountRevisions` / `partnerCountPublicRevisions` / `partnerCountCorrections` / `partnerCountIdempotencyKeys` / `partnerCountDailyClaims` のみ作成でき、訂正更新は `partnerCountRecords` に限定。Firestore原本 `records/products/users/companies` などへの書込/削除APIは公開しない。
+- 最新の所属と商材を同じトランザクションで読み込むため、必要な一部の管理用ドキュメントに対して読取専用 `getTrustedDocument` を用意した。認証済みの本人確認と権限・同社/班/協力関係は、このアダプターでは完了しない。
+- Nodeの架空データで新規・訂正・読取・禁止されたパス/金額混入・エラー時非コミットを検証する専用テストを追加。**GitHub CIの合格・本番Firebase実認証/エミュレータ実証は別途確認。**
+- **本番接続はしていない**。Cloud Functions/APIへの公開配線、本番データの更新、デプロイ、権限ルール変更はなし。リアル環境でのバックアップ・隔離復元も未実施。したがって本番判定は引き続き **NO-GO**。
+- 次段階はサーバーが確認したFirebase IDトークン→新鮮な会社/班/会員/商材を同一トランザクションで取得→このアダプター経由で件数書込→金額なしの一覧/画面接続。API実装より先に実データ保全・権限マトリクスの確認が必要。
