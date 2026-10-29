@@ -10,6 +10,12 @@ import {assertPublicSchema,auditNoFinancialKeys} from "../security/public-projec
 
 const IDENTIFIER=/^[A-Za-z0-9_:-]{1,128}$/;
 const DATE=/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+const validCalendarDate=value=>{
+ if(typeof value!=="string"||!DATE.test(value))return false;
+ const parsed=new Date(value+"T00:00:00.000Z");
+ return !Number.isNaN(parsed.getTime())&&
+   parsed.toISOString().slice(0,10)===value;
+};
 const MONEY=/(?:[¥￥$€]|(?:\d|[０-９])[\d０-９,.，]*\s*(?:万円|千円|円)|(?:CB|cashback|revenue|unitprice|単価|売上|報酬|利益)[\s:_=-]*(?:\d|[０-９]))/i;
 const deny=()=>{throw Error("Count-only submission denied or incomplete");};
 const safeId=x=>typeof x==="string"&&IDENTIFIER.test(x)&&!MONEY.test(x);
@@ -56,7 +62,7 @@ function catalogEntries(catalog,companyId){
 }
 function parseRequest(request,scope,catalog){
  exact(request,["date","teamId","status","lines"]);
- if(!DATE.test(request.date)||!safeId(request.teamId)||
+ if(!validCalendarDate(request.date)||!safeId(request.teamId)||
    !scope.teamIds.includes(request.teamId)||
    !["submitted","no_result"].includes(request.status)||
    !Array.isArray(request.lines)||request.lines.length>200)deny();
