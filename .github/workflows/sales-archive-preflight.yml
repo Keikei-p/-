@@ -19,6 +19,6 @@ jobs:
           node --check /tmp/sales-archive.mjs
           node --check archive-output-policy.mjs
       - name: Run archive regression suite
-        run: node --test tests/sales-archive-unit.test.mjs tests/archive-verifier.test.mjs tests/restore-guard.test.mjs tests/year-archive.test.mjs tests/archive-output-policy.test.mjs tests/archive-pair.test.mjs
+        run: node --test tests/sales-archive-unit.test.mjs tests/archive-verifier.test.mjs tests/restore-guard.test.mjs tests/year-archive.test.mjs tests/archive-output-policy.test.mjs tests/archive-pair.test.mjs tests/archive-pair-verifier.test.mjs
       - name: Validate index manifest
         run: node -e "const f=require('./firestore.indexes.json'); if(!f.indexes.some(x=>x.collectionGroup==='records' && x.fields.some(v=>v.fieldPath==='date')))process.exit(1);"
