@@ -38,8 +38,10 @@ test("production Firebase rules remain unchanged and new rules must pass emulato
  assert(candidate.includes("function isInternalFinanceReader("));
 });
 test("unexpected legacy permissions are refused instead of silently creating insecure candidate",()=>{
- assert.throws(()=>modelOwnerOnlyFinanceRules(
-  original.replace("allow read: if resource.data.companyId != null\n        && sameCompany(resource.data.companyId);",
-   "allow read: if true;")
- ),/Unexpected legacy/);
+ const broken=original.replace(
+   /(match \/products\/\{productId\} \{\s*allow read: if )resource\.data\.companyId != null\s*&& sameCompany\(resource\.data\.companyId\);/,
+   "$1true;"
+ );
+ assert.notEqual(broken,original,"test must mutate the actual product Rules");
+ assert.throws(()=>modelOwnerOnlyFinanceRules(broken),/Unexpected legacy/);
 });
