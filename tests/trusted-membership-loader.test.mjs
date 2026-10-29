@@ -71,6 +71,9 @@ test("expired/revoked or disabled Auth account is rejected independently of Fire
  await assert.rejects(f.loader("partnerLeader",auth),/not authorized/);
  f.updateAuth({disabled:false,tokensValidAfterTime:"2026-10-29T09:01:00.000Z"});
  await assert.rejects(f.loader("partnerLeader",auth),/not authorized/);
+ f.updateAuth({tokensValidAfterTime:"2026-10-29T09:00:00.000Z"});
+ await assert.rejects(f.loader("partnerLeader",auth),/not authorized/,
+   "same-second revocations are conservatively rejected");
  f.updateAuth({tokensValidAfterTime:"invalid"});
  await assert.rejects(f.loader("partnerLeader",auth),/not authorized/);
  f.updateAuth({tokensValidAfterTime:"2026-10-01T00:00:00.000Z",emailVerified:false});
