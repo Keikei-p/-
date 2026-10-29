@@ -48,6 +48,12 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Refuse unsafe direct money collection reads BEFORE touching Firebase
+        run: |
+          node --check scripts/check-finance-read-boundary-before-deploy.mjs
+          node --test tests/finance-release-gate.test.mjs
+          node scripts/check-finance-read-boundary-before-deploy.mjs
+
       - name: Install Firebase CLI
         run: npm install -g firebase-tools
 
