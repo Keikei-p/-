@@ -1,3 +1,11 @@
+# フェーズ1: LINE自動送信の安全なバックエンドだけを準備（2026-10-29）
+
+本番の `index.html`、Firestore Rules、通知設定、ユーザー/班/実績データは変更しない。以下の文面生成・契約検証・Cloudflare Cronコードは **`REPORT_DELIVERY_ENABLED = "false"`、`REPORT_DRY_RUN_VALIDATE = "false"` で無効化したまま** mainへ保管する。実際のLINE投稿・Workersデプロイ・Secrets登録・有料プラン変更・Firestore読み書きはしない。
+
+既存の通知タブへのON/OFF画面統合と協力店との共有許可ルール反映は、協力店金融原票の完全分離、全件バックアップ/隔離復元と実機試験が完了してから別途実施する。手動承認なしにONにしない。
+
+---
+
 # 朝・夜・未報告 LINE自動報告 — クラウド試験仕様
 
 ## 概要
