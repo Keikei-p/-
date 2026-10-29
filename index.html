@@ -4376,6 +4376,11 @@ body.product-reordering .product-list {
     margin-left: 0;
   }
 }
+/* Do not expose stale revenue/rankings while the new month is loading. */
+#dashboard.monthly-records-pending > :not(.dashboard-title):not(.dashboard-select):not(#monthlyRecordsStatus) {
+  display:none !important;
+}
+#dashboard .dashboard-select input[type="month"] {width:100%;max-width:320px;padding:10px;}
 </style>
 </head>
 
@@ -5594,10 +5599,11 @@ body.product-reordering .product-list {
 
     <div class="dashboard-select">
 
-      <select id="dashboardMonth">
-      </select>
+      <input id="dashboardMonth" type="month" aria-label="実績表示月" required>
 
     </div>
+
+    <div id="monthlyRecordsStatus" role="status" aria-live="polite" style="display:none;padding:12px;border-radius:10px;margin-bottom:12px;background:var(--card-soft);color:var(--sub);font-size:13px;font-weight:700"></div>
 
     <div class="dashboard-summary">
 
@@ -6745,7 +6751,6 @@ import {
   setDoc,
   getDoc,
   updateDoc,
-  deleteDoc,
   collection,
   getDocs,
   getDocsFromServer,
@@ -7849,6 +7854,18 @@ let teams = [];
 let products = [];
 let members = [];
 let records = [];
+// Only a complete server-confirmed selected month can drive monthly totals.
+let recordQueryGeneration = 0;
+let recordsReady = false;
+let recordsSubscribedMonth = "";
+let annualChartRecords = null;
+let annualChartYear = "";
+let annualChartGeneration = 0;
+let annualChartRequestedKey = "";
+let annualChartErrorKey = "";
+let recordFormLookupGeneration = 0;
+let notificationPreviewGeneration = 0;
+let reportBuildGeneration = 0;
 let goals = [];
 let revenueGoals = [];
 
@@ -9583,6 +9600,157 @@ function recordsCollectionQuery() {
 
 }
 
+
+
+function monthRecordRange(month) {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error("実績の表示月が不正です。");
+  const y=Number(month.slice(0,4)),m=Number(month.slice(5,7));
+  const next=(m===12?y+1:y)+"-"+String(m===12?1:m+1).padStart(2,"0");
+  return {start:month+"-01",end:next+"-01"};
+}
+function scopedRecordsQuery(month) {
+  const range=monthRecordRange(month);
+  return query(recordsCollectionQuery(),where("date",">=",range.start),where("date","<",range.end));
+}
+function showMonthlyRecordsState(message,pending) {
+  const target=document.getElementById("monthlyRecordsStatus");
+  if(target){target.textContent=message;target.style.display=message?"block":"none";}
+  dashboard.classList.toggle("monthly-records-pending",Boolean(pending));
+}
+function subscribeSelectedMonthRecords() {
+  if(unsubscribeRecords){unsubscribeRecords();unsubscribeRecords=null;}
+  const generation=++recordQueryGeneration;
+  const month=dashboardMonth.value||getTodayString().slice(0,7);
+  const companyId=currentUserData?.companyId;
+  recordsReady=false;
+  recordsSubscribedMonth="";
+  records=[];
+  showMonthlyRecordsState("選択月の実績を取得中です。全件の確認後に集計を表示します。",true);
+  try {
+    const scoped=scopedRecordsQuery(month);
+    if(!companyId)throw new Error("会社の確認ができません。");
+    unsubscribeRecords=onSnapshot(scoped,{includeMetadataChanges:true},snapshot=>{
+      if(generation!==recordQueryGeneration||
+         dashboardMonth.value!==month||currentUserData?.companyId!==companyId)return;
+      if(snapshot.metadata.fromCache||snapshot.metadata.hasPendingWrites){
+        recordsReady=false;
+        recordsSubscribedMonth="";
+        showMonthlyRecordsState("通信・同期確認中のため、件数と売上を確定表示しません。",true);
+        return;
+      }
+      const nextRecords=[];
+      let mismatch=false;
+      snapshot.forEach(item=>{
+        const value=item.data();
+        if(value.companyId!==companyId||typeof value.date!=="string"||
+           !value.date.startsWith(month))mismatch=true;
+        else nextRecords.push({id:item.id,...value});
+      });
+      if(mismatch){
+        recordsReady=false;
+        recordsSubscribedMonth="";
+        showMonthlyRecordsState("所属会社または日付が一致しません。集計を停止しました。",true);
+        return;
+      }
+      nextRecords.sort((a,b)=>(b.date||"").localeCompare(a.date||"")||a.id.localeCompare(b.id));
+      records=nextRecords;
+      recordsSubscribedMonth=month;
+      recordsReady=true;
+      // Refresh an already verified annual chart from this month's confirmed
+      // rows, rather than re-reading every day of the year on every snapshot.
+      if(annualChartRecords&&
+         annualChartYear===companyId+":"+month.slice(0,4)){
+        try {
+          annualChartRecords=mergeVerifiedMonthIntoAnnual(
+            annualChartRecords,month,nextRecords,companyId);
+        } catch(error) {
+          annualChartRecords=null;
+          annualChartYear="";
+          annualChartErrorKey=companyId+":"+month.slice(0,4);
+          console.error("年間データ同期エラー",error?.code||"invalid");
+        }
+      }
+      showMonthlyRecordsState("",false);
+      createMonthOptions();
+      renderDashboard();
+      renderNotificationPreview();
+    },error=>{
+      if(generation!==recordQueryGeneration)return;
+      recordsReady=false;
+      recordsSubscribedMonth="";
+      showMonthlyRecordsState("選択月を読み込めません。集計は未確定です。接続・権限・Firestore索引を確認してください。",true);
+      console.error("月別実績の取得失敗",error?.code||"unknown");
+    });
+  } catch(error) {
+    recordsReady=false;
+    recordsSubscribedMonth="";
+    showMonthlyRecordsState("月別実績を表示できません。",true);
+    console.error("月別実績の開始失敗",error?.code||"invalid");
+  }
+}
+
+async function readVerifiedMonthForReport(month) {
+  // Explicit report generation may target a different month from dashboard.
+  // Never infer a missing daily count from the currently selected records.
+  const company=currentUserData?.companyId;
+  if(!company)throw new Error("会社の情報を確認できません。");
+  if(recordsReady&&recordsSubscribedMonth===month){
+    return records.filter(row=>row?.companyId===company&&row.date?.startsWith(month));
+  }
+  const snap=await getDocsFromServer(scopedRecordsQuery(month));
+  const all=[];let invalid=false;
+  snap.forEach(item=>{
+    const value=item.data();
+    if(value.companyId!==company||!value.date?.startsWith(month))invalid=true;
+    else all.push({id:item.id,...value});
+  });
+  if(invalid||company!==currentUserData?.companyId)
+    throw new Error("会社・日付の照合に失敗しました。");
+  return all;
+}
+
+async function findDailyRecordFromServer(memberId,date) {
+  // Correcting a day outside the selected month must still find the original.
+  const result=await getDocsFromServer(query(recordsCollectionQuery(),
+    where("uid","==",memberId),where("date","==",date)));
+  if(result.size>1)throw new Error("同じ担当者と日付の実績が複数あります。オーナーへ確認してください。");
+  return result.empty?null:{id:result.docs[0].id,...result.docs[0].data()};
+}
+function mergeVerifiedMonthIntoAnnual(annualRows,month,monthRows,companyId) {
+  monthRecordRange(month); // Validate month before touching cached annual data.
+  if(!Array.isArray(annualRows)||!Array.isArray(monthRows)||!companyId)
+    throw new Error("年間データの照合に失敗しました。");
+  if(annualRows.some(row=>row?.companyId!==companyId||
+       typeof row.date!=="string"||!row.id||!row.date.startsWith(month.slice(0,4)))||
+     monthRows.some(row=>row?.companyId!==companyId||
+       typeof row.date!=="string"||!row.id||!row.date.startsWith(month)))
+    throw new Error("年間・月間データの会社または期間が一致しません。");
+  const existing=annualRows.filter(row=>!row.date.startsWith(month));
+  const next=[...existing,...monthRows];
+  if(new Set(next.map(row=>row.id)).size!==next.length)
+    throw new Error("年間データに重複した実績IDがあります。");
+  return next;
+}
+
+async function loadAnnualChartRecords(year) {
+  // Annual chart is requested on demand, not during every monthly dashboard visit.
+  // One server query returns a complete year snapshot, never a partial page.
+  if(!canCurrentUserViewRevenue())throw new Error("年間売上を見る権限がありません。");
+  const start=year+"-01-01",end=String(Number(year)+1)+"-01-01";
+  const result=await getDocsFromServer(query(recordsCollectionQuery(),
+    where("date",">=",start),where("date","<",end)));
+  const rows=[];
+  let mismatch=false;
+  result.forEach(item=>{
+    const data=item.data();
+    if(data.companyId!==currentUserData?.companyId||
+       typeof data.date!=="string"||
+       data.date<start||data.date>=end)mismatch=true;
+    else rows.push({id:item.id,...data});
+  });
+  if(mismatch)throw new Error("年間データの整合性確認に失敗しました。");
+  return rows;
+}
 
 function formatYen(value) {
 
@@ -13355,59 +13523,9 @@ function startRealtimeListeners() {
     );
 
 
-  /*
-    実績
-  */
-
-  unsubscribeRecords =
-    onSnapshot(
-      recordsCollectionQuery(),
-      snapshot => {
-
-        records = [];
-
-        snapshot.forEach(
-          recordDoc => {
-
-            records.push({
-
-              id:
-                recordDoc.id,
-
-              ...recordDoc.data()
-
-            });
-
-          }
-        );
-
-
-        records.sort(
-          (a, b) =>
-            (
-              b.date ||
-              ""
-            ).localeCompare(
-              a.date ||
-              ""
-            )
-        );
-
-
-        createMonthOptions();
-
-        renderDashboard();
-
-        renderNotificationPreview();
-
-      },
-      error => {
-        console.error("実績リアルタイム監視エラー:", error);
-        databaseStatus.textContent = "実績の自動更新が停止";
-        showError("実績の自動更新が停止しました。表示が古い可能性があります。通信・権限を確認して画面を再読み込みしてください。");
-      }
-    );
-
+  /* 実績：会社の全履歴ではなく、選択した月だけをリアルタイム監視する。 */
+  createMonthOptions();
+  subscribeSelectedMonthRecords();
 
   unsubscribeGoals =
     onSnapshot(
@@ -13513,6 +13631,19 @@ function startRealtimeListeners() {
 
 
 function stopRealtimeListeners() {
+  ++recordQueryGeneration;
+  ++annualChartGeneration;
+  ++recordFormLookupGeneration;
+  ++notificationPreviewGeneration;
+  ++reportBuildGeneration;
+  recordsReady=false;
+  recordsSubscribedMonth="";
+  annualChartRecords=null;
+  annualChartYear="";
+  annualChartRequestedKey="";
+  annualChartErrorKey="";
+  records=[];
+  showMonthlyRecordsState("",false);
   rankingGroups = [];
   rankingGroupsLoaded = false;
   rankingGroupDraftSelectedKeys.clear();
@@ -13826,34 +13957,13 @@ function renderTeams() {
           );
 
 
-      const del =
-        document.createElement(
-          "button"
-        );
-
-      del.className =
-        "history-delete";
-
-      del.textContent =
-        "削除";
-
-      del.onclick =
-        () =>
-          deleteTeam(
-            team
-          );
-
-
+      // 班名や所属の過去の参照を保護するため、物理削除ボタンは表示しない。
       actions.appendChild(
         goal
       );
 
       actions.appendChild(
         edit
-      );
-
-      actions.appendChild(
-        del
       );
 
 
@@ -14648,73 +14758,6 @@ saveTeamGoalModal.onclick =
   };
 
 
-async function deleteTeam(
-  team
-) {
-
-  const assignedMembers =
-    members.filter(
-      member =>
-        member.active !==
-          false &&
-        member.teamId ===
-          team.id
-    );
-
-
-  if (
-    assignedMembers.length >
-    0
-  ) {
-
-    showError(
-      `この班には${assignedMembers.length}人所属しています。先に全員を別の班または「所属なし」へ変更してから削除してください。`
-    );
-
-    return;
-
-  }
-
-
-  if (
-    !confirm(
-      `${team.name}を削除しますか？\n\n過去の実績はこの班の実績として残ります。`
-    )
-  ) {
-
-    return;
-
-  }
-
-
-  try {
-
-    await deleteDoc(
-      doc(
-        db,
-        "teams",
-        team.id
-      )
-    );
-
-
-    await loadTeams();
-
-    showSuccess(
-      "班を削除しました。過去の実績はそのまま残ります。"
-    );
-
-  } catch (error) {
-
-    showError(
-      firebaseErrorMessage(
-        error
-      )
-    );
-
-  }
-
-}
 
 /* =====================================================
    商材
@@ -16745,30 +16788,10 @@ function renderProducts() {
           );
 
 
-      const del =
-        document.createElement(
-          "button"
-        );
-
-      del.className =
-        "history-delete";
-
-      del.textContent =
-        "削除";
-
-      del.onclick =
-        () =>
-          deleteProduct(
-            product
-          );
-
+      // 商材マスターと当時の価格参照を保護するため、物理削除は不可。
 
       actions.appendChild(
         edit
-      );
-
-      actions.appendChild(
-        del
       );
 
 
@@ -17172,79 +17195,6 @@ saveProductModal.onclick =
   };
 
 
-async function deleteProduct(
-  product
-) {
-
-  const draftResults =
-    captureProductInputDraft();
-
-
-  Object.keys(
-    draftResults
-  ).forEach(
-    key => {
-
-      if (
-        draftResults[
-          key
-        ]?.productId ===
-        product.id
-      ) {
-
-        delete draftResults[
-          key
-        ];
-
-      }
-
-    }
-  );
-
-
-  if (
-    !confirm(
-      `${product.name}を削除しますか？`
-    )
-  ) {
-
-    return;
-
-  }
-
-
-  try {
-
-    await deleteDoc(
-      doc(
-        db,
-        "products",
-        product.id
-      )
-    );
-
-
-    await loadProducts();
-
-    prepareProductInputList(
-      draftResults
-    );
-
-    showSuccess(
-      "商材を削除しました。"
-    );
-
-  } catch (error) {
-
-    showError(
-      firebaseErrorMessage(
-        error
-      )
-    );
-
-  }
-
-}
 
 
 /* =====================================================
@@ -21500,11 +21450,27 @@ async function loadExistingRecordIntoForm() {
   }
 
 
-  const record =
-    findDailyRecord(
-      recordMember.value,
-      recordDate.value
-    );
+  const lookup=++recordFormLookupGeneration;
+  const memberId=recordMember.value;
+  const date=recordDate.value;
+  let record=findDailyRecord(memberId,date);
+  if(!record) {
+    // Do not guess that a past day is empty just because another month is loaded.
+    try {
+      saveRecordButton.disabled=true;
+      record=await findDailyRecordFromServer(memberId,date);
+      if(lookup!==recordFormLookupGeneration||
+         memberId!==recordMember.value||date!==recordDate.value)return;
+    } catch(error) {
+      if(lookup!==recordFormLookupGeneration)return;
+      editingRecordId=null;
+      editingRecordRevision=null;
+      showError("元の実績を確認できません。二重登録を避けるため、通信を確認して再選択してください。");
+      return;
+    } finally {
+      if(lookup===recordFormLookupGeneration)saveRecordButton.disabled=false;
+    }
+  }
 
 
   if (
@@ -21592,7 +21558,7 @@ function recordConflict(message) {
   return error;
 }
 
-async function persistDailyRecord(recordRef, data, expectedRecord, expectedRevision) {
+async function persistDailyRecord(recordRef, data, expectedRecord, expectedRevision, writeCorrection = null) {
   // サーバーで同日を確認。旧IDの実績もそのまま更新し、重複は推測で統合しない。
   const daily = await getDocsFromServer(query(
     recordsCollectionQuery(), where("uid", "==", data.uid), where("date", "==", data.date)
@@ -21611,6 +21577,7 @@ async function persistDailyRecord(recordRef, data, expectedRecord, expectedRevis
     }
     // resultsの削除済み商材が復活しないようマップ全体を置換。
     transaction.set(recordRef, data, {mergeFields: Object.keys(data)});
+    if (writeCorrection) writeCorrection(transaction);
   });
 }
 
@@ -22069,18 +22036,10 @@ saveRecordButton.onclick =
 
 
       validateFinancialRecordForSave(data);
-      await persistDailyRecord(recordRef, data, existingDailyRecord, editingRecordRevision);
 
-
-      let correctionAuditWarning =
-        false;
-
-      if (
-        existingDailyRecord
-      ) {
-
-        try {
-
+      // One atomic transaction: an audit failure must roll back the sales edit.
+      const writeCorrection = existingDailyRecord
+        ? transaction => {
           const correctionRef =
             doc(
               collection(
@@ -22089,7 +22048,7 @@ saveRecordButton.onclick =
               )
             );
 
-          await setDoc(
+          transaction.set(
             correctionRef,
             {
               companyId:
@@ -22159,19 +22118,10 @@ saveRecordButton.onclick =
             }
           );
 
-        } catch (auditError) {
-
-          correctionAuditWarning =
-            true;
-
-          console.error(
-            "訂正履歴保存エラー:",
-            auditError
-          );
-
         }
+        : null;
+      await persistDailyRecord(recordRef, data, existingDailyRecord, editingRecordRevision, writeCorrection);
 
-      }
 
 
       /*
@@ -22222,10 +22172,11 @@ saveRecordButton.onclick =
             record.id ===
             recordRef.id
         );
+      const isSelectedMonth=confirmedRecord.date.slice(0,7)===dashboardMonth.value;
 
 
       if (
-        existingIndex >= 0
+        isSelectedMonth && existingIndex >= 0
       ) {
 
         records[
@@ -22233,7 +22184,7 @@ saveRecordButton.onclick =
         ] =
           confirmedRecord;
 
-      } else {
+      } else if (isSelectedMonth) {
 
         records.push(
           confirmedRecord
@@ -22261,6 +22212,7 @@ saveRecordButton.onclick =
           0,
           7
         );
+      if(recordsSubscribedMonth!==dashboardMonth.value)subscribeSelectedMonthRecords();
 
 
       let dashboardRefreshError =
@@ -22309,13 +22261,9 @@ saveRecordButton.onclick =
       } else {
 
         showSuccess(
-          correctionAuditWarning
-            ? `${date}の実績は保存できました。訂正履歴の保存だけ失敗したため管理者へ確認してください。`
-            : (
-                zeroResultSubmission
-                  ? `${date}を「実績なし（0件）」として報告しました。`
-                  : `${date}の実績を保存し、ダッシュボードへ反映しました。`
-              )
+          zeroResultSubmission
+            ? `${date}を「実績なし（0件）」として報告しました。`
+            : `${date}の実績を保存し、ダッシュボードへ反映しました。`
         );
 
       }
@@ -22377,212 +22325,20 @@ saveRecordButton.onclick =
 ===================================================== */
 
 async function loadRecords() {
-
-  try {
-
-    const snapshot =
-      await getDocs(
-        recordsCollectionQuery()
-      );
-
-
-    records = [];
-
-
-    snapshot.forEach(
-      recordDoc => {
-
-        records.push({
-
-          id:
-            recordDoc.id,
-
-          ...recordDoc.data()
-
-        });
-
-      }
-    );
-
-
-    records.sort(
-      (a, b) =>
-        (
-          b.date ||
-          ""
-        ).localeCompare(
-          a.date ||
-          ""
-        )
-    );
-
-
-    createMonthOptions();
-
-    renderDashboard();
-
-
-  } catch (error) {
-
-    console.error(
-      "実績取得エラー:",
-      error
-    );
-
-
-    showError(
-      firebaseErrorMessage(
-        error
-      )
-    );
-
-  }
-
+  // Full-history getDocs is deliberately removed. Do not show partial results.
+  subscribeSelectedMonthRecords();
 }
-
 
 /* =====================================================
    月選択肢
 ===================================================== */
 
 function createMonthOptions() {
-
-  const today =
-    getTodayString();
-
-  const currentYear =
-    today.slice(
-      0,
-      4
-    );
-
-  const years =
-    new Set([
-      currentYear
-    ]);
-
-
-  records.forEach(
-    record => {
-
-      if (
-        record.date &&
-        record.date.length >= 4
-      ) {
-
-        years.add(
-          record.date.slice(
-            0,
-            4
-          )
-        );
-
-      }
-
-    }
-  );
-
-
-  const sortedYears =
-    Array.from(
-      years
-    ).sort(
-      (a, b) =>
-        b.localeCompare(a)
-    );
-
-
-  const months =
-    [];
-
-
-  sortedYears.forEach(
-    year => {
-
-      for (
-        let month = 12;
-        month >= 1;
-        month--
-      ) {
-
-        months.push(
-          `${year}-${String(
-            month
-          ).padStart(
-            2,
-            "0"
-          )}`
-        );
-
-      }
-
-    }
-  );
-
-
-  const current =
-    dashboardMonth.value;
-
-
-  dashboardMonth.innerHTML =
-    "";
-
-
-  months.forEach(
-    month => {
-
-      const option =
-        document.createElement(
-          "option"
-        );
-
-
-      option.value =
-        month;
-
-
-      const [
-        year,
-        monthNumber
-      ] =
-        month.split("-");
-
-
-      option.textContent =
-        `${year}年${Number(
-          monthNumber
-        )}月`;
-
-
-      dashboardMonth.appendChild(
-        option
-      );
-
-    }
-  );
-
-
-  if (
-    months.includes(
-      current
-    )
-  ) {
-
-    dashboardMonth.value =
-      current;
-
-  } else {
-
-    dashboardMonth.value =
-      today.slice(
-        0,
-        7
-      );
-
+  // Native month input can access old years without an all-history lookup.
+  if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(dashboardMonth.value)) {
+    dashboardMonth.value=getTodayString().slice(0,7);
   }
-
 }
-
 
 dashboardMonth.addEventListener(
   "change",
@@ -22600,7 +22356,7 @@ dashboardMonth.addEventListener(
     recordHistoryDate.value =
       "";
 
-    renderDashboard();
+    subscribeSelectedMonthRecords();
 
   }
 );
@@ -22917,7 +22673,8 @@ function renderNotificationSettingsForm() {
 
 
 function getUnreportedTeamSummary(
-  date = getTodayString()
+  date = getTodayString(),
+  sourceRecords = records
 ) {
 
   const teamSummary =
@@ -22936,7 +22693,7 @@ function getUnreportedTeamSummary(
       "team_any"
   ) {
 
-    records
+    sourceRecords
       .filter(
         record =>
           record &&
@@ -23078,7 +22835,7 @@ function getUnreportedTeamSummary(
           1;
 
         const hasReport =
-          records.some(
+          sourceRecords.some(
             record =>
               record.uid ===
                 memberId &&
@@ -23153,49 +22910,50 @@ function getUnreportedTeamSummary(
 
 }
 
-function renderNotificationPreview() {
-
-  const missing =
-    getUnreportedTeamSummary(
-      getTodayString()
-    );
-
-  if (
-    missing.length ===
-      0
-  ) {
-
-    notificationPreview.innerHTML =
-      "✅ 現在、未報告の班はありません。";
-
+async function renderNotificationPreview() {
+  const gen=++notificationPreviewGeneration;
+  const today=getTodayString();
+  const company=currentUserData?.companyId;
+  if(!company||!members.length) {
+    notificationPreview.textContent="報告状況を確認できません。ログイン・所属情報を確認してください。";
     return;
-
   }
-
-  const reportCompletionMode =
-    normalizeNotificationSettings(
-      notificationSettings
-    ).reportCompletionMode;
-
-  notificationPreview.innerHTML =
-    missing
-      .map(
-        item =>
-          reportCompletionMode ===
-            "team_any"
-            ? `⚠️ ${escapeHtml(
-                item.teamName
-              )}：未報告`
-            : `⚠️ ${escapeHtml(
-                item.teamName
-              )}：${item.reported}/${item.expected}名 報告済み（未報告 ${item.expected - item.reported}名）`
-      )
-      .join(
-        "<br>"
-      );
-
+  notificationPreview.textContent="本日の報告状況を確認中です。";
+  try {
+    const todayMonth=today.slice(0,7);
+    let daily;
+    if(recordsReady&&recordsSubscribedMonth===todayMonth) {
+      daily=records.filter(row=>row.date===today);
+    } else {
+      // Single-day bounded query instead of scanning past history.
+      const snap=await getDocsFromServer(query(recordsCollectionQuery(),where("date","==",today)));
+      if(gen!==notificationPreviewGeneration||company!==currentUserData?.companyId)return;
+      daily=[];let invalid=false;
+      snap.forEach(item=>{
+        const data=item.data();
+        if(data.companyId!==company||data.date!==today)invalid=true;
+        else daily.push({id:item.id,...data});
+      });
+      if(invalid)throw new Error("report_source_mismatch");
+    }
+    if(gen!==notificationPreviewGeneration||company!==currentUserData?.companyId)return;
+    const missing=getUnreportedTeamSummary(today,daily);
+    if(missing.length===0) {
+      notificationPreview.textContent="✅ 現在、未報告の班はありません。";
+      return;
+    }
+    const mode=normalizeNotificationSettings(notificationSettings).reportCompletionMode;
+    notificationPreview.innerHTML=missing.map(item=>mode==="team_any"
+      ? "⚠️ "+escapeHtml(item.teamName)+"：未報告"
+      : "⚠️ "+escapeHtml(item.teamName)+"："+
+        item.reported+"/"+item.expected+"名 報告済み（未報告 "+
+        (item.expected-item.reported)+"名）").join("<br>");
+  } catch(error) {
+    if(gen!==notificationPreviewGeneration)return;
+    notificationPreview.textContent="⚠️ 本日の報告状況を確認できません。未報告ゼロとは判断しないでください。";
+    console.error("未報告の確認失敗",error?.code||"unavailable");
+  }
 }
-
 
 function stopLinePairingListener() {
 
@@ -24131,7 +23889,8 @@ function getReportProductCatalog(
 
 
 function buildReportData(
-  date
+  date,
+  sourceRecords = records
 ) {
 
   const month =
@@ -24144,14 +23903,14 @@ function buildReportData(
     );
 
   const dailyRecords =
-    records.filter(
+    sourceRecords.filter(
       record =>
         record.date ===
         date
     );
 
   const monthlyRecords =
-    records.filter(
+    sourceRecords.filter(
       record =>
         record.date &&
         record.date.startsWith(
@@ -25162,12 +24921,14 @@ function buildCompanyReportLines(
 
 
 function createFinalReportText(
-  date
+  date,
+  sourceRecords = records
 ) {
 
   const data =
     buildReportData(
-      date
+      date,
+      sourceRecords
     );
 
   const settings =
@@ -25275,12 +25036,14 @@ function createFinalReportText(
 
 
 function createMorningReportText(
-  date
+  date,
+  sourceRecords = records
 ) {
 
   const data =
     buildReportData(
-      date
+      date,
+      sourceRecords
     );
 
   const settings =
@@ -25390,73 +25153,53 @@ function createMorningReportText(
 
 
 
-buildFinalReportButton.onclick =
-  () => {
-
-    const date =
-      reportBuilderDate.value;
-
-
-    if (!date) {
-
-      showError(
-        "集計する日付を選択してください。"
-      );
-
-      return;
-
+async function buildVerifiedReport(date,mode) {
+  const gen=++reportBuildGeneration;
+  const company=currentUserData?.companyId;
+  reportBuilderText.value="";
+  if(!/^\d{4}-(0[1-9]|1[0-2])-[0-3]\d$/.test(date)) {
+    showError("集計する日付を正しく選択してください。");
+    return;
+  }
+  buildFinalReportButton.disabled=true;
+  buildMorningReportButton.disabled=true;
+  copyReportButton.disabled=true;
+  try {
+    const verified=await readVerifiedMonthForReport(date.slice(0,7));
+    if(gen!==reportBuildGeneration||company!==currentUserData?.companyId||
+       date!==reportBuilderDate.value)return;
+    reportBuilderText.value=mode==="final"
+      ? createFinalReportText(date,verified)
+      : createMorningReportText(date,verified);
+  } catch(error) {
+    if(gen!==reportBuildGeneration)return;
+    reportBuilderText.value="";
+    showError("報告対象月の全件確認ができません。件数が誤るため報告文の生成を中止しました。");
+    console.error("報告文の件数確認失敗",error?.code||"unavailable");
+  } finally {
+    if(gen===reportBuildGeneration) {
+      buildFinalReportButton.disabled=false;
+      buildMorningReportButton.disabled=false;
+      copyReportButton.disabled=false;
     }
-
-
-    reportBuilderText.value =
-      createFinalReportText(
-        date
-      );
-
-  };
-
-
-buildMorningReportButton.onclick =
-  () => {
-
-    let date =
-      reportBuilderDate.value;
-
-
-    if (!date) {
-
-      showError(
-        "集計する日付を選択してください。"
-      );
-
-      return;
-
-    }
-
-
-    if (
-      date ===
-      getTodayString()
-    ) {
-
-      date =
-        previousDateString(
-          date
-        );
-
-      reportBuilderDate.value =
-        date;
-
-    }
-
-
-    reportBuilderText.value =
-      createMorningReportText(
-        date
-      );
-
-  };
-
+  }
+}
+reportBuilderDate.addEventListener("change",()=>{
+  ++reportBuildGeneration;
+  reportBuilderText.value="";
+  buildFinalReportButton.disabled=false;
+  buildMorningReportButton.disabled=false;
+  copyReportButton.disabled=false;
+});
+buildFinalReportButton.onclick=()=>buildVerifiedReport(reportBuilderDate.value,"final");
+buildMorningReportButton.onclick=()=>{
+  let date=reportBuilderDate.value;
+  if(date===getTodayString()) {
+    date=previousDateString(date);
+    reportBuilderDate.value=date;
+  }
+  return buildVerifiedReport(date,"morning");
+};
 
 copyReportButton.onclick =
   async () => {
@@ -25690,6 +25433,10 @@ function getCurrentTeamName(
 ===================================================== */
 
 function renderDashboard() {
+  if(!recordsReady||recordsSubscribedMonth!==dashboardMonth.value) {
+    showMonthlyRecordsState("全件確認後に集計を表示します。",true);
+    return;
+  }
 
   applyRevenueVisibility();
   renderDailyGoalCalculator();
@@ -27570,7 +27317,7 @@ function buildRevenueChartData() {
 
 
   const relevantRecords =
-    records.filter(
+    (revenueChartMode === "annual" ? (annualChartRecords || []) : records).filter(
       record => {
 
         if (
@@ -28283,6 +28030,45 @@ function renderRevenueChart() {
 
   revenueChartToggle.style.display =
     "";
+
+  if(revenueChartMode==="annual") {
+    const year=dashboardMonth.value.slice(0,4);
+    const key=(currentUserData?.companyId||"")+":"+year;
+    if(annualChartYear!==key||!annualChartRecords) {
+      revenueChartSummary.innerHTML="";
+      revenueChartLegend.innerHTML="";
+      revenueChartArea.textContent=annualChartErrorKey===key
+        ?"年間実績の取得に失敗しました。月間表示へ戻し、通信・権限を確認してください。"
+        :"対象年の実績を確認中です。確定するまで年間売上を表示しません。";
+      revenueChartDetail.innerHTML="";
+      if(annualChartErrorKey!==key && annualChartRequestedKey!==key) {
+        annualChartRequestedKey=key;
+        const gen=++annualChartGeneration;
+        loadAnnualChartRecords(year).then(result=>{
+          if(gen!==annualChartGeneration||
+             revenueChartMode!=="annual"||
+             currentUserData?.companyId+":"+dashboardMonth.value.slice(0,4)!==key)return;
+          // An in-flight yearly request may finish after the live month
+          // changed. Reconcile only verified, same-company and same-year rows.
+          if(recordsReady&&recordsSubscribedMonth.startsWith(year))
+            result=mergeVerifiedMonthIntoAnnual(
+              result,recordsSubscribedMonth,records,currentUserData.companyId);
+          annualChartRecords=result;
+          annualChartYear=key;
+          annualChartRequestedKey="";
+          annualChartErrorKey="";
+          renderRevenueChart();
+        }).catch(error=>{
+          if(gen!==annualChartGeneration)return;
+          annualChartErrorKey=key;
+          annualChartRequestedKey="";
+          console.error("年間売上確認エラー",error?.code||"unavailable");
+          renderRevenueChart();
+        });
+      }
+      return;
+    }
+  }
 
 
   const chartData =
@@ -29308,7 +29094,8 @@ revenueChartMonthlyButton.addEventListener(
 revenueChartAnnualButton.addEventListener(
   "click",
   () => {
-
+    annualChartErrorKey="";
+    annualChartRequestedKey="";
     revenueChartMode =
       "annual";
 
@@ -31954,9 +31741,8 @@ function buildTeamRankingRows(
     .map(
       team => {
 
-        // Records with a teamId are keyed by ID. Never copy another team's
-        // sales merely because two teams have the same display name.
-        // Only a uniquely identifiable, legacy NAME-keyed record may fall back.
+        // Never attribute another team's sales using a duplicated display
+        // name. Legacy NAME-only summaries may be matched if unambiguous.
         const canUseLegacyName = !!team.name &&
           teams.filter(item => item.name === team.name).length === 1 &&
           !teams.some(item => item.id === team.name && item.id !== team.id);
@@ -33796,15 +33582,11 @@ function renderRecordHistory(
           record
         );
 
-      const canDelete =
-        canCurrentUserManageRecord(
-          record
-        );
+      // No historical delete action is displayed; authorized correction remains possible.
 
 
       if (
-        canCorrect ||
-        canDelete
+        canCorrect
       ) {
 
         const actions =
@@ -33843,33 +33625,6 @@ function renderRecordHistory(
 
         }
 
-
-        if (
-          canDelete
-        ) {
-
-          const deleteButton =
-            document.createElement(
-              "button"
-            );
-
-          deleteButton.className =
-            "history-delete";
-
-          deleteButton.textContent =
-            "🗑️ 削除";
-
-          deleteButton.onclick =
-            () =>
-              deleteRecord(
-                record
-              );
-
-          actions.appendChild(
-            deleteButton
-          );
-
-        }
 
 
         item.appendChild(
@@ -33964,84 +33719,6 @@ function editRecord(
    実績削除
 ===================================================== */
 
-async function deleteRecord(
-  record
-) {
-
-  const currentName =
-    getCurrentMemberName(
-      record
-    );
-
-
-  if (
-    !confirm(
-      `${formatDateJapanese(
-        record.date
-      )} / ${currentName}\n\nこの日の実績を削除しますか？`
-    )
-  ) {
-
-    return;
-
-  }
-
-
-  try {
-
-    await deleteDoc(
-      doc(
-        db,
-        "records",
-        record.id
-      )
-    );
-
-
-    if (
-      editingRecordId ===
-      record.id
-    ) {
-
-      editingRecordId =
-        null;
-
-    }
-
-
-    records =
-      records.filter(
-        item =>
-          item.id !==
-          record.id
-      );
-
-
-    createMonthOptions();
-
-    renderDashboard();
-
-
-    showSuccess(
-      "実績を削除しました。"
-    );
-
-  } catch (error) {
-
-    console.error(
-      error
-    );
-
-
-    showError(
-      firebaseErrorMessage(
-        error
-      )
-    );
-
-  }
-
-}
 
 
 /* =====================================================
