@@ -312,3 +312,16 @@ Rulesの本番デプロイ: 未実施
 - 署名: 管理者本人の署名未取得。バックアップの隔離復元未確認。協力店の財務遮断未完了。アプリ本番公開完了ではない。
 
 - PR #112にGitHub管理者接続から `sales-production-reviewed` ラベルを付与（旧コードの物理削除除去と任意・未実行のFunctions配備設定の範囲のみ）。これは本人の自筆署名ではなく、本番Firebase実行の承認でもない。ラベル後の最新HEADについて保護ゲート・アプリ検証を再確認する。
+
+
+---
+
+## 2026-10-29｜PR #106 日別訂正と監査履歴の同時保存（本番未反映）
+
+- 対象: 最新mainの `index.html` の `persistDailyRecord` と保存時訂正処理だけ、`tests/sales-regressions.cjs` の架空データ回帰とPR専用検証、資料。
+- 既存実績の修正と `recordCorrections` への追記を同じトランザクションにする。監査ログ保存失敗/競合の際に実績だけ更新しない。既存ドキュメントID/件数/CB/売上/価格/チーム履歴は一括変更・削除しない。
+- 本番 `firestore.rules`、`firebase.json`、Firebase/Hosting/Cloudflare/LINEのデプロイやAuthへの操作なし。現在の本番とは別のコード審査段階。
+- GitHub保護ラベルと最新HEADのテストが成功しても、本番データ復元/実機の証明にはならない。バックアップの隔離復元・協力店権限・本番URLでの正常な訂正/編集競合テストが未確認なら公開しない。
+- 利用者本人の署名: **未取得**。この記録は開発上の確認記録であり、本人署名の代用ではない。
+
+- 2026-10-29: 接続済みGitHub管理者権限でPR #106に `sales-production-reviewed` を適用（コードをmainへ統合する範囲の技術審査。実Firebaseの本番配備・既存実績操作・本人署名の代わりではない）。この追記を含む最新HEADの `Sales App Validation`、`Record Audit Preflight` と保護ゲートが成功するまでマージしない。

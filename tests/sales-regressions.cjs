@@ -1423,3 +1423,47 @@ test('Manual suspension release can only deploy the approved Cloud Function, nev
   assert.doesNotMatch(workflow, /(?:firebase firestore:delete|gcloud firestore (?:databases|backups) delete)/,
     'must never delete a production database');
 });
+
+
+test('Sales correction and its audit must be written in one atomic transaction',async()=>{
+  const old={companyId:'c',uid:'u',date:'2026-10-06',teamId:'a',totalCount:2,totalRevenue:200,results:{x:{count:2,revenuePerUnit:100}}};
+  const next={...old,totalCount:3,totalRevenue:300,results:{x:{count:3,revenuePerUnit:100}}};
+  let committed=[],readRecord=structuredClone(old);
+  const transactions=[];
+  const ctx=context(['persistDailyRecord','recordRevision','recordConflict'],{
+    db:{},recordsCollectionQuery:()=>({}),query:()=>({}),where:()=>({}),
+    getDocsFromServer:async()=>({size:1,docs:[{id:'r'}]}),
+    runTransaction:async(_db,cb)=>{
+      const pending=[];
+      const transaction={
+        get:async()=>({exists:()=>!!readRecord,id:'r',data:()=>structuredClone(readRecord)}),
+        set:(ref,data,options)=>pending.push({id:ref.id,data,options})
+      };
+      await cb(transaction);
+      committed=pending; transactions.push(pending);
+    }
+  });
+  const writeAudit=txn=>txn.set({id:'audit1'},{before:old,after:next});
+  await ctx.persistDailyRecord({id:'r'},next,old,ctx.recordRevision(old),writeAudit);
+  assert.deepEqual(committed.map(x=>x.id),['r','audit1']);
+  committed=[];
+  const brokenAudit=()=>{throw Error('audit permission denied')};
+  await assert.rejects(ctx.persistDailyRecord({id:'r'},next,old,ctx.recordRevision(old),brokenAudit),/audit permission denied/);
+  assert.deepEqual(committed,[],'no writes commit when correction log fails');
+  readRecord={...old,totalCount:99};
+  await assert.rejects(ctx.persistDailyRecord({id:'r'},next,old,ctx.recordRevision(old),writeAudit),{code:'record-conflict'});
+  assert.deepEqual(committed,[],'no stale overwrite when source record changed');
+});
+test('Sales form always delegates the correction audit to the transaction, never separate setDoc',()=>{
+ const begin=html.indexOf('validateFinancialRecordForSave(data);');
+ const end=html.indexOf('保存完了後に同じドキュメントを読み直し',begin);
+ assert(begin>=0&&end>begin);
+ const saveHandler=html.slice(begin,end);
+ assert(saveHandler.includes('const writeCorrection = existingDailyRecord'));
+ assert(saveHandler.includes('transaction.set('));
+ assert(saveHandler.includes('persistDailyRecord(recordRef, data, existingDailyRecord, editingRecordRevision, writeCorrection)'));
+ assert(!/await\s+setDoc\s*\(\s*correctionRef/.test(saveHandler));
+ assert(!saveHandler.includes('correctionAuditWarning'));
+});
+
+

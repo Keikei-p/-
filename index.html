@@ -21410,7 +21410,7 @@ function recordConflict(message) {
   return error;
 }
 
-async function persistDailyRecord(recordRef, data, expectedRecord, expectedRevision) {
+async function persistDailyRecord(recordRef, data, expectedRecord, expectedRevision, writeCorrection = null) {
   // サーバーで同日を確認。旧IDの実績もそのまま更新し、重複は推測で統合しない。
   const daily = await getDocsFromServer(query(
     recordsCollectionQuery(), where("uid", "==", data.uid), where("date", "==", data.date)
@@ -21429,6 +21429,7 @@ async function persistDailyRecord(recordRef, data, expectedRecord, expectedRevis
     }
     // resultsの削除済み商材が復活しないようマップ全体を置換。
     transaction.set(recordRef, data, {mergeFields: Object.keys(data)});
+    if (writeCorrection) writeCorrection(transaction);
   });
 }
 
@@ -21887,18 +21888,10 @@ saveRecordButton.onclick =
 
 
       validateFinancialRecordForSave(data);
-      await persistDailyRecord(recordRef, data, existingDailyRecord, editingRecordRevision);
 
-
-      let correctionAuditWarning =
-        false;
-
-      if (
-        existingDailyRecord
-      ) {
-
-        try {
-
+      // One atomic transaction: an audit failure must roll back the sales edit.
+      const writeCorrection = existingDailyRecord
+        ? transaction => {
           const correctionRef =
             doc(
               collection(
@@ -21907,7 +21900,7 @@ saveRecordButton.onclick =
               )
             );
 
-          await setDoc(
+          transaction.set(
             correctionRef,
             {
               companyId:
@@ -21977,19 +21970,10 @@ saveRecordButton.onclick =
             }
           );
 
-        } catch (auditError) {
-
-          correctionAuditWarning =
-            true;
-
-          console.error(
-            "訂正履歴保存エラー:",
-            auditError
-          );
-
         }
+        : null;
+      await persistDailyRecord(recordRef, data, existingDailyRecord, editingRecordRevision, writeCorrection);
 
-      }
 
 
       /*
@@ -22127,13 +22111,9 @@ saveRecordButton.onclick =
       } else {
 
         showSuccess(
-          correctionAuditWarning
-            ? `${date}の実績は保存できました。訂正履歴の保存だけ失敗したため管理者へ確認してください。`
-            : (
-                zeroResultSubmission
-                  ? `${date}を「実績なし（0件）」として報告しました。`
-                  : `${date}の実績を保存し、ダッシュボードへ反映しました。`
-              )
+          zeroResultSubmission
+            ? `${date}を「実績なし（0件）」として報告しました。`
+            : `${date}の実績を保存し、ダッシュボードへ反映しました。`
         );
 
       }
