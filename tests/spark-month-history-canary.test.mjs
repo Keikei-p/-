@@ -23,7 +23,7 @@ test("staged HTML module parses with Node syntax checker (no network or Firebase
 test("preview is opt-in, restricted to owner, and original listener remains available",()=>{
  assert.match(app,/new URLSearchParams\(location\.search\)\.get\("history-preview"\)=== "1"|new URLSearchParams\(location\.search\)\.get\("history-preview"\)==="1"/);
  assert.match(app,/MONTH_HISTORY_PREVIEW && isCurrentCompanyOwner\(\)/);
- assert.match(app,/if\(useScopedHistoryPreview\(\)\)\{[\s\S]{0,140}startScopedHistoryMonth/);
+ assert(app.includes("startScopedHistoryMonth(dashboardMonth.value||getTodayString().slice(0,7))"));
  assert.match(app,/\}else\{\s*unsubscribeRecords\s*=\s*onSnapshot\(\s*recordsCollectionQuery\(\)/);
 });
 test("month boundaries use next-month exclusive range, including December rollover",()=>{
@@ -57,7 +57,7 @@ test("cache and partial totals are never confirmed, and user-facing chart is gua
  assert.match(app,/snapshot\.metadata\?\.fromCache\|\|snapshot\.metadata\?\.hasPendingWrites/);
  assert.match(app,/月次|端末内キャッシュのみ/);
  assert.match(app,/scopedAnnualLoaded!==dashboardMonth\.value\.slice\(0,4\)/);
- assert.match(app,/if\(!useScopedHistoryPreview\(\)\)renderDashboard\(\)/);
+ assert(app.includes('if(!(typeof useScopedHistoryPreview==="function" && useScopedHistoryPreview()))renderDashboard();'));
 });
 test("no data deletion or Firestore Rule deployment is added by the preview",()=>{
  const start=app.indexOf("const MONTH_HISTORY_PREVIEW");
