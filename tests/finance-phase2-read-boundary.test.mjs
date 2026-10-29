@@ -2,7 +2,7 @@ import test,{before,after} from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {initializeTestEnvironment,assertFails,assertSucceeds} from "@firebase/rules-unit-testing";
-import {doc,getDoc,setDoc} from "firebase/firestore";
+import {doc,getDoc,setDoc,deleteDoc} from "firebase/firestore";
 import {modelOwnerOnlyFinanceRules} from "../security/finance-phase2-read-boundary.mjs";
 
 const baseRules=readFileSync(new URL("../security/firestore.phase1.rules",import.meta.url),"utf8");
@@ -105,4 +105,28 @@ test("partner-company OWNER/master never reads ANY finance collection even if bo
  const db=dbFor("partnerOwner");
  for(const collection of ["records","products","recordCorrections","revenueGoals"])
    await assertFails(getDoc(doc(db,collection,"partner-legacy")));
+});
+
+test("partner-company owner cannot CREATE financial documents even with owner/master rights",async()=>{
+ const db=dbFor("partnerOwner");
+ for(const table of ["records","products","recordCorrections","revenueGoals"]){
+   await assertFails(setDoc(doc(db,table,"partner-new"),{
+     companyId:partnerCompany,uid:"partnerOwner",teamId:"t1",
+     totalRevenue:100000,revenuePerUnit:50000,price:50000
+   }));
+ }
+});
+test("partner-company owner cannot UPDATE or DELETE money-bearing originals",async()=>{
+ const db=dbFor("partnerOwner");
+ for(const table of ["records","products","recordCorrections","revenueGoals"]){
+   await assertFails(setDoc(doc(db,table,"partner-legacy"),{
+     companyId:partnerCompany,totalRevenue:999999
+   },{merge:true}));
+   await assertFails(deleteDoc(doc(db,table,"partner-legacy")));
+ }
+});
+test("hard delete of finance originals is disabled even for an internal owner",async()=>{
+ const db=dbFor("owner");
+ for(const table of ["records","products","recordCorrections","revenueGoals"])
+   await assertFails(deleteDoc(doc(db,table,"legacy")));
 });
