@@ -1,6 +1,6 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
-import {HOSTS,FILES,audit,verifyStatic,readHost} from "../scripts/check-nico-readiness.mjs";
+import {HOSTS,FILES,audit,auditPublished,verifyStatic,readHost} from "../scripts/check-nico-readiness.mjs";
 
 const fixture={
   "index.html":Buffer.from('<title>営業実績管理</title> projectId: "sales-management-cc116" authDomain: "sales-management-cc116.firebaseapp.com" signInWithEmailAndPassword recordCorrections canCurrentUserCorrectRecord service-worker.js manifest.webmanifest getFirestore(app)'),
@@ -23,12 +23,12 @@ function fetcher(override={}){
     };
   };
 }
-test("all required files and both pinned origins",()=>{
-  assert.deepEqual(Object.keys(HOSTS),["company","legacy"]);
+test("all required files and canonical NICO origin",()=>{
+  assert.deepEqual(Object.keys(HOSTS),["company"]);
   assert.equal(FILES.length,6);
   assert.equal(Object.keys(verifyStatic(fixture)).length,6);
 });
-test("both hosts exactly matching source passes",async()=>{
+test("explicit main/publication parity passes when canonical NICO site matches",async()=>{
   const result=await audit({load:fetcher(),readLocal:locals});
   assert.equal(result.assetCount,6);
   assert.equal(result.digest.length,64);
@@ -53,4 +53,28 @@ test("unauthorized URL blocks before any request",async()=>{
   let invoked=false;
   await assert.rejects(readHost("https://untrusted.test/",async()=>{invoked=true;}),/Unapproved/);
   assert.equal(invoked,false);
+});
+
+
+test("scheduled health monitoring verifies published NICO site even when main is newer",async()=>{
+  const oldIndex=Buffer.from("unreleased main update");
+  const remote=await auditPublished({load:fetcher()});
+  assert.equal(remote.assetCount,6);
+  assert.equal(remote.digest.length,64);
+  await assert.rejects(audit({load:fetcher(),readLocal:async name=>
+    name==="index.html"?oldIndex:locals(name)}),/contract/);
+});
+
+test("legacy GitHub Pages is not an authorized origin",async()=>{
+  let called=false;
+  await assert.rejects(readHost("https://keikei-p.github.io/-/",async()=>{
+    called=true;
+  }),/Unapproved/);
+  assert.equal(called,false);
+});
+
+test("remote health check rejects damaged live published app",async()=>{
+  await assert.rejects(auditPublished({load:fetcher({
+    "index.html":Buffer.from("stale unexpected app")
+  })}),/contract/);
 });
