@@ -39,3 +39,16 @@ node functions/export-firestore-readonly.mjs `
 - 会社側の財務権限・金額遮断Rulesと、新URL `https://nico-factory.web.app/` の実機動作が検証されていない。
 
 **本開発版に本番データの書込み／削除処理は存在せず、本番データのバックアップ取得も実施していない。**
+
+## 2コピー独立検証（ファイルのみ、Firebaseアクセスなし）
+
+管理者が**同じ保存済みJSON**を2つの別媒体に保管できた場合だけ、以下のオフライン検証を実施する。
+
+```powershell
+node scripts/verify-firestore-snapshot-pair.mjs "D:\encrypted-backups\snapshot.json" "E:\encrypted-backups\snapshot.json"
+```
+
+- 2ファイルを独立して開き、双方の型/パス/ハッシュ/件数を検査。同一実体ファイルやハードリンクを拒否。
+- 別の日に取得した2つの版を、同一バックアップと誤認しない。保存内容が違えば停止する。
+- **異なるパスであっても物理媒体が別である保証はない**。SSD/USB等の保存先を人間が確認する。
+- チェックのPASSは「バイト・原票形式の整合」を示すだけ。Firebase Auth/Storageや実際の復元に成功したわけではない。**Firestoreの元データは削除禁止**。
