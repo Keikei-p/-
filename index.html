@@ -28194,6 +28194,15 @@ function renderRevenueChartDetail(
 
 function renderRevenueChart() {
 
+  if(useScopedHistoryPreview() && revenueChartMode==="annual" &&
+     scopedAnnualLoaded!==dashboardMonth.value.slice(0,4)){
+    revenueChartSummary.textContent="年次集計は未確定です。年次表示ボタンから再取得してください。";
+    revenueChartArea.textContent="年次集計を読み込み中、または再取得が必要です";
+    revenueChartLegend.textContent="";
+    revenueChartDetail.textContent="";
+    return;
+  }
+
   if (
     !canCurrentUserViewRevenue()
   ) {
