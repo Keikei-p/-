@@ -136,7 +136,8 @@ test("annual mode requests a full year with permission checks",async()=>{
 test("legacy whole-company listener and whole-company getDocs removed from dashboard",()=>{
  assert(!html.includes("onSnapshot(\n      recordsCollectionQuery()"));
  assert(!html.includes("await getDocs(\n        recordsCollectionQuery()"));
- assert(html.includes("async function persistDailyRecord(recordRef, data, expectedRecord, expectedRevision)"));
+ assert(html.includes("async function persistDailyRecord(recordRef, data, expectedRecord, expectedRevision, writeCorrection = null)"));
+ assert(html.includes("if (writeCorrection) writeCorrection(transaction);"));
  assert(html.includes("if(!recordsReady||recordsSubscribedMonth!==dashboardMonth.value)"));
  assert(html.includes("findDailyRecordFromServer(memberId,date)"));
 });
