@@ -31741,12 +31741,16 @@ function buildTeamRankingRows(
     .map(
       team => {
 
+        // Never attribute another team's sales using a duplicated display
+        // name. Legacy NAME-only summaries may be matched if unambiguous.
+        const canUseLegacyName = !!team.name &&
+          teams.filter(item => item.name === team.name).length === 1 &&
+          !teams.some(item => item.id === team.name && item.id !== team.id);
         const result =
           teamMap[team.id] ||
-          Object.values(teamMap).find(
-            item =>
-              item.name === team.name
-          ) ||
+          (canUseLegacyName && teamMap[team.name] &&
+            teamMap[team.name].name === team.name
+              ? teamMap[team.name] : null) ||
           { count: 0, revenue: 0 };
 
         // 件数目標の既存計算を再利用し、売上目標とは別管理する。

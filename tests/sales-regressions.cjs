@@ -1467,4 +1467,93 @@ test('Sales form always delegates the correction audit to the transaction, never
  assert(!saveHandler.includes('correctionAuditWarning'));
 });
 
+test('Same-name teams never inherit each other financial ranking amounts',()=>{
+ const teams=[{id:'one',name:'合同班',active:true},{id:'two',name:'合同班',active:true},
+  {id:'old',name:'旧班',active:false},{id:'current',name:'旧班',active:true},
+  {id:'unique',name:'唯一班',active:true}];
+ const teamMap={one:{name:'合同班',count:3,revenue:30000},
+  '旧班':{name:'旧班',count:6,revenue:60000},
+  '唯一班':{name:'唯一班',count:4,revenue:40000}};
+ const ctx=context(['buildTeamRankingRows'],{teams,
+  canCurrentUserViewRevenueForTeam:()=>true,
+  buildTeamGoalProgress:()=>({totalTarget:0,totalActual:0,progress:0}),
+  buildTeamRevenueGoalProgress:()=>({targetRevenue:0,actualRevenue:0,progress:0})});
+ const rows=Array.from(ctx.buildTeamRankingRows(teamMap,[],'revenue'));
+ const byId=id=>rows.find(r=>r.id===id);
+ assert.equal(byId('one').revenue,30000);
+ assert.equal(byId('two').revenue,0);
+ assert.equal(byId('two').count,0);
+ assert.equal(byId('current').revenue,0);
+ assert.equal(byId('unique').revenue,40000);
+ assert.equal(rows.reduce((sum,row)=>sum+row.revenue,0),70000);
+});
 
+
+test('Financial totals reconcile across CB plans, products and teams without rewriting history',()=>{
+ const products=[
+  {id:'tok',pricingOptions:[{cashback:0,revenuePerUnit:10000}]},
+  {id:'ever',pricingOptions:[{cashback:0,revenuePerUnit:20000}]},
+  {id:'nuro',pricingOptions:[
+   {cashback:0,revenuePerUnit:25000},{cashback:20000,revenuePerUnit:22500}
+  ]}
+ ];
+ const records=[
+  {uid:'u1',teamId:'one',results:{
+   tok:{productId:'tok',cashback:0,count:5,revenuePerUnit:2000},
+   n0:{productId:'nuro',cashback:0,count:2,revenuePerUnit:1000}}},
+  {uid:'u2',teamId:'two',results:{
+   ever:{productId:'ever',cashback:0,count:5,revenuePerUnit:16000},
+   n20:{productId:'nuro',cashback:20000,count:3,revenuePerUnit:2000}}}
+ ];
+ const original=JSON.stringify(records);
+ const c=context(['getProductPricingOptions','getRecordResults','currentCatalogRevenuePerUnit',
+   'getDisplayRecordResults','calculateResultsTotals'],{
+  products,canCurrentUserViewRevenueForRecord:()=>true,
+  parseLegacyCashbackProductName:()=>({hasCashbackPlan:false}),
+  normalizeCashbackOptions:()=>[0],currentProductDisplayName:x=>x.productId
+ });
+ const amounts=records.map(x=>c.calculateResultsTotals(c.getDisplayRecordResults(x)));
+ assert.equal(amounts[0].revenue,100000);
+ assert.equal(amounts[1].revenue,167500);
+ assert.equal(amounts.reduce((s,x)=>s+x.revenue,0),267500);
+ assert.equal(amounts.reduce((s,x)=>s+x.count,0),15);
+ assert.equal(JSON.stringify(records),original);
+ assert.equal(c.currentCatalogRevenuePerUnit({
+  productId:'nuro',cashback:99999,count:1,revenuePerUnit:7500},products),7500);
+ assert.equal(c.currentCatalogRevenuePerUnit({
+  productId:'nuro',count:1,revenuePerUnit:7500},products),7500);
+});
+
+
+test('Past team rankings retain the recorded team ID after a member moves teams',()=>{
+ const entries=[
+  {id:'historic',uid:'sales1',teamId:'oldTeam',teamNameSnapshot:'旧班',count:3,revenue:30000},
+  {id:'today',uid:'sales1',teamId:'newTeam',teamNameSnapshot:'新班',count:2,revenue:20000}
+ ];
+ const member={uid:'sales1',teamId:'newTeam',teamHistory:[
+   {effectiveDate:'2026-09-01',toTeamId:'oldTeam'},
+   {effectiveDate:'2026-10-01',toTeamId:'newTeam'}
+ ]};
+ const original=JSON.stringify(entries);
+ const teamMap=Object.create(null);
+ for(const record of entries){
+   const teamId=record.teamId; // The immutable record, not current membership.
+   if(!teamMap[teamId])teamMap[teamId]={name:record.teamNameSnapshot,count:0,revenue:0};
+   teamMap[teamId].count+=record.count;teamMap[teamId].revenue+=record.revenue;
+ }
+ const ctx=context(['buildTeamRankingRows'],{
+   teams:[{id:'oldTeam',name:'旧班',active:true},{id:'newTeam',name:'新班',active:true}],
+   canCurrentUserViewRevenueForTeam:()=>true,
+   buildTeamGoalProgress:()=>({totalTarget:0,totalActual:0,progress:0}),
+   buildTeamRevenueGoalProgress:()=>({targetRevenue:0,actualRevenue:0,progress:0})
+ });
+ const before=Array.from(ctx.buildTeamRankingRows(teamMap,[],'revenue'));
+ member.teamId='oldTeam'; // Another reassignment never rewrites old record IDs.
+ const after=Array.from(ctx.buildTeamRankingRows(teamMap,[],'revenue'));
+ assert.deepEqual(after,before);
+ assert.equal(after.find(x=>x.id==='oldTeam').revenue,30000);
+ assert.equal(after.find(x=>x.id==='newTeam').revenue,20000);
+ assert.equal(JSON.stringify(entries),original);
+ // Guard the actual production aggregate path, not just this fixture.
+ assert.match(html,/const teamKey\s*=\s*record\.teamId\s*\|\|\s*teamName/);
+});
