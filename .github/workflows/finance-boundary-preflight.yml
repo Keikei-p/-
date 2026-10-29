@@ -1,8 +1,16 @@
 name: Finance Boundary Preflight
 on:
   pull_request:
-  push:
-    branches: [feat/finance-privacy-projection-20261028]
+    branches: [main]
+    paths:
+      - 'security/**'
+      - 'tests/public-*.test.mjs'
+      - 'tests/finance-*.test.mjs'
+      - 'tests/firebase-id-token-verifier.test.mjs'
+      - 'tests/staged-count-gateway.test.mjs'
+      - 'tests/trusted-*.test.mjs'
+      - 'tests/reconcile-projections.test.mjs'
+      - '.github/workflows/finance-boundary-preflight.yml'
   workflow_dispatch:
 permissions:
   contents: read
