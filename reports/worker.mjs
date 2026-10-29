@@ -90,8 +90,11 @@ async function queryDocs(env,token,table,filters){
  return resp.filter(x=>x.document).map(x=>parseDoc(x.document));
 }
 function validateQuantity(n){
- if(!Number.isSafeInteger(Number(n))||Number(n)<0)throw Error("Invalid quantity");
- return Number(n);
+ // Firestore REST integerValue has already been converted by parseValue().
+ // null, absent and text "0" must not silently become a zero contract.
+ if(typeof n!=="number"||!Number.isSafeInteger(n)||n<0)
+   throw Error("Invalid quantity");
+ return n;
 }
 function countRecord(record){
  const v=validateQuantity(record.totalCount);
@@ -100,6 +103,21 @@ function countRecord(record){
  for(const row of rows)counted+=validateQuantity(row?.count);
  if(counted!==v)throw Error("Record totals did not reconcile");
  return v;
+}
+function checkedReportRecords(records,companyId,clock,kind,teams){
+ if(!Array.isArray(records))throw Error("Invalid report record set");
+ const ids=new Set(),validTeams=new Set(teams.map(t=>t.id));
+ const monthStart=clock.month+"-",day=clock.date;
+ for(const row of records){
+  if(!row||typeof row.id!=="string"||!row.id||ids.has(row.id)||
+     row.companyId!==companyId||typeof row.date!=="string"||
+     (kind==="missing"?row.date!==day:!row.date.startsWith(monthStart))||
+     typeof row.teamId!=="string"||!validTeams.has(row.teamId))
+    throw Error("Invalid company, period, duplicate ID or team in report source");
+  ids.add(row.id);
+  countRecord(row);
+ }
+ return records;
 }
 function goalValue(targets){
  const values=Object.values(targets||{});
@@ -126,8 +144,13 @@ async function prepareTeamRows(env,token,companyId,clock,kind,settings){
    ?queryDocs(env,token,"records",[eq("companyId",companyId),eq("date",clock.date)])
    :queryDocs(env,token,"records",[eq("companyId",companyId),range("date","GREATER_THAN_OR_EQUAL",start),range("date","LESS_THAN",finish)])
  ]);
+ const verified=checkedReportRecords(records,companyId,clock,kind,teams);
  const totals=new Map();
- for(const r of records)totals.set(r.teamId,(totals.get(r.teamId)||0)+countRecord(r));
+ for(const r of verified){
+  const next=(totals.get(r.teamId)||0)+countRecord(r);
+  if(!Number.isSafeInteger(next))throw Error("Report total overflow");
+  totals.set(r.teamId,next);
+ }
  if(kind==="missing"){
   const [members]=await Promise.all([listDocuments(env,token,"companies/"+encodeURIComponent(companyId)+"/members")]);
   const reported=new Map(),expected=new Map();
@@ -145,6 +168,13 @@ async function prepareTeamRows(env,token,companyId,clock,kind,settings){
    reported:settings.reportCompletionMode==="team_any"
     ?(reported.get(t.id)||0)>0:(reported.get(t.id)||0)>=(expected.get(t.id)||0)
   }));
+ }
+ const seenGoalTeams=new Set();
+ for(const goal of goals){
+  if(goal.companyId!==companyId||goal.month!==clock.month||
+     typeof goal.teamId!=="string"||seenGoalTeams.has(goal.teamId))
+    throw Error("Report targets are duplicated or outside selected company/month");
+  seenGoalTeams.add(goal.teamId);
  }
  return teams.map(t=>{
   const goal=goals.find(g=>g.teamId===t.id);
