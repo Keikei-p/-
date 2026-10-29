@@ -1,6 +1,8 @@
 name: Finance Boundary Preflight
 on:
   pull_request:
+  push:
+    branches: [feat/finance-privacy-projection-20261028]
   workflow_dispatch:
 permissions:
   contents: read
