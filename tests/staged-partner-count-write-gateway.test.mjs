@@ -19,7 +19,7 @@ function makeServer(){
    active:true,accessKind:"partner",canSubmit:true,companyRole:"member"},
   "companies/partnerA":{active:true,companyKind:"partner",
    hubCompanyId:"hub",ownerUid:"partnerOwner"},
-  "companies/partnerA/members/"+uid:{uid,companyId:"partnerA",
+  ["companies/partnerA/members/"+uid]:{uid,companyId:"partnerA",
    active:true,teamId:"team1",name:"協力店担当",role:"leader",
    accessKind:"partner",canSubmit:true,companyRole:"member"},
   "teams/team1":{name:"1班",companyId:"partnerA",active:true},
