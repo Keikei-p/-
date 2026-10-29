@@ -99,22 +99,23 @@ test('Zero report keeps input draft until persistence succeeds; cancel does not 
   assert.equal(clicks,1);assert.equal(ctx.zeroResultRequested,false);
 });
 
-test('Records and goals listener failures visibly warn that values can be stale', () => {
-  const subscriptions=[];const warnings=[];
+test('Goal listener failures warn while monthly record subscription starts without all-history listener', () => {
+  const subscriptions=[];const warnings=[];let selectedMonthStarts=0;
   const ctx=context(['startRealtimeListeners'],{
     stopRealtimeListeners:()=>{},loadLocalRankingGroups:()=>{},isCurrentCompanyManager:()=>false,currentUser:null,
-    companyCollectionQuery:n=>n,recordsCollectionQuery:()=> 'records',revenueGoalsCollectionQuery:()=>null,
+    companyCollectionQuery:n=>n,revenueGoalsCollectionQuery:()=>null,
+    createMonthOptions:()=>{},subscribeSelectedMonthRecords:()=>{selectedMonthStarts++;},
     onSnapshot:(query,next,error)=>{subscriptions.push({query,error});return ()=>{};},
     console:{error:()=>{}},databaseStatus:element(),showError:m=>warnings.push(m)
   });
   ctx.startRealtimeListeners();
-  for(const query of ['records','goals']) {
-    const sub=subscriptions.find(s=>s.query===query);
-    assert.equal(typeof sub.error,'function');sub.error({code:'permission-denied'});
-  }
-  assert.equal(warnings.length,2);
-  assert(warnings.every(m=>m.includes('再読み込み')));
-  assert(ctx.databaseStatus.textContent.includes('停止'));
+  assert.equal(selectedMonthStarts,1);
+  assert(!subscriptions.some(x=>x.query==='records'));
+  const goals=subscriptions.find(x=>x.query==='goals');
+  assert.equal(typeof goals.error,'function');
+  goals.error({code:'permission-denied'});
+  assert.equal(warnings.length,1);
+  assert(warnings[0].includes('再読み込み'));
 });
 
 function textOf(node) { return node.innerHTML + node.textContent + node.children.map(textOf).join(''); }
@@ -195,7 +196,7 @@ test('Stale edits, deleted records and simultaneous same-day registration stop w
 test('Choosing a helper with a different-team record does not load its historical revenue into the editor',async()=>{
   let prepared='not-called',message='';
   const ctx=context(['loadExistingRecordIntoForm','recordRevision'],{
-    recordDate:{value:'2026-10-06'},recordMember:{value:'helper'},recordLocation:{value:'old'},saveRecordButton:{},
+    recordDate:{value:'2026-10-06'},recordMember:{value:'helper'},recordLocation:{value:'old'},saveRecordButton:{},recordFormLookupGeneration:0,
     findDailyRecord:()=>({id:'r',uid:'helper',date:'2026-10-06',teamId:'other',results:{A:{count:3,revenuePerUnit:999}}}),
     canCurrentUserCorrectRecord:()=>false,showRecordCorrectionTeam:()=>{},prepareProductInputList:value=>prepared=value,showError:value=>message=value
   });
@@ -1271,6 +1272,200 @@ test('Count-preservation: display-only revenue helpers cannot write or delete Fi
   assert(priceChangePath.includes('getProductPricingOptions'));
 });
 
+
+test('business history cannot be hard-deleted from the browser module',()=>{
+ const protectedDeletes=['deleteTeam(','deleteProduct(','deleteRecord(','deleteDoc('];
+ for(const needle of protectedDeletes)
+   assert.equal(html.includes(needle),false,needle+' must never be callable in the production browser module');
+ assert.ok(html.includes('function editRecord('),'history correction must remain available');
+ assert.ok(html.includes('persistDailyRecord('),'normal record save must remain available');
+});
+test('published security-rule proposal denies physical deletion of 5 historical collections',()=>{
+ const rules=fs.readFileSync(path.join(__dirname,'../firestore.rules'),'utf8');
+ for(const name of ['records','teams','products','goals','revenueGoals']){
+  const start=rules.indexOf('match /'+name+'/{');
+  assert.ok(start>=0,name+' collection must exist');
+  const end=rules.indexOf('\n    match /',start+1);
+  const section=rules.slice(start,end<0?undefined:end);
+  assert.match(section,/allow delete:\s*if false\s*;/,name+' deletion must be forbidden');
+ }
+});
+
+test('Owner member removal is suspension-only and preserves stored history', async () => {
+  const fn = fs.readFileSync(path.join(__dirname, '../functions/index.js'), 'utf8');
+  const start = fn.indexOf('exports.deleteCompanyMemberAccount = onCall(async (request) => {');
+  assert(start >= 0, 'legacy member-removal callable must exist');
+  const end = fn.indexOf('\n});', start);
+  assert(end > start, 'callable must have a closed body');
+  const source = fn.slice(start, end + 4);
+  assert(!/\.delete\s*\(|deleteUser\s*\(|deleteDoc\s*\(/.test(source),
+    'member retirement must never physically delete Auth, user, or membership documents');
+  const writes = [];
+  const authOps = [];
+  const ref = (name) => ({
+    name,
+    collection: (child) => ({ doc: (id) => ref(name + '/' + child + '/' + id) }),
+    get: async () => ({ exists: true, data: () => ({uid:'former-uid',companyId:'company-A',companyRole:'member',teamHistory:[{teamId:'historical'}]}) })
+  });
+  const db = {
+    collection: (name) => ({ doc: (id) => ref(name + '/' + id) }),
+    batch: () => ({
+      set: (document, patch, opts) => writes.push({path:document.name, patch, opts}),
+      commit: async () => {}
+    })
+  };
+  const scope = vm.createContext({
+    exports: {},
+    onCall: (callback) => callback,
+    requireVerifiedUser: () => ({uid:'owner-uid'}),
+    getCompanyContext: async () => ({ companyId:'company-A', memberData:{companyRole:'owner'} }),
+    getAuth: () => ({
+      updateUser: async (uid, patch) => { authOps.push({uid, patch}); },
+      deleteUser: async () => { throw Error('Auth hard delete must never run'); }
+    }),
+    db,
+    FieldValue:{serverTimestamp:()=>'server-timestamp'},
+    HttpsError: class HttpsError extends Error { constructor(code,message){super(message);this.code=code;} }
+  });
+  vm.runInContext(source, scope);
+  const result = await scope.exports.deleteCompanyMemberAccount({data:{uid:'former-uid'}});
+  assert.equal(result.ok,true);
+  assert.equal(result.authDeleted,false);
+  assert.equal(result.authDisabled,true);
+  assert.equal(result.historicalUserDocumentRetained,true);
+  assert.equal(result.historicalMemberDocumentRetained,true);
+  assert.deepEqual(JSON.parse(JSON.stringify(authOps)), [{uid:'former-uid',patch:{disabled:true}}]);
+  assert.deepEqual(writes.map((w)=>w.path).sort(),[
+    'companies/company-A/members/former-uid','users/former-uid'
+  ]);
+  assert(writes.every((w)=>w.patch.active===false && w.opts.merge===true));
+  assert(writes.every((w)=>!('teamHistory' in w.patch) && !w.path.startsWith('records/')));
+});
+
+
+test('Member suspension rejects inconsistent company or owner identity before any writes', async () => {
+  const fn = fs.readFileSync(path.join(__dirname, '../functions/index.js'), 'utf8');
+  const start = fn.indexOf('exports.deleteCompanyMemberAccount = onCall(async (request) => {');
+  assert(start >= 0);
+  const end = fn.indexOf('\n});', start);
+  assert(end > start);
+  const source = fn.slice(start, end + 4);
+
+  async function attempt(member, user, present=true) {
+    const calls=[];
+    const ref = (name) => ({
+      name,
+      collection: (child) => ({doc: (id) => ref(name+'/'+child+'/'+id)}),
+      get: async () => ({
+        exists: name.startsWith('users/') ? present : true,
+        data: () => name.startsWith('users/') ? user : member
+      })
+    });
+    const ctx=vm.createContext({
+      exports: {},
+      onCall: callback => callback,
+      requireVerifiedUser: () => ({uid:'owner'}),
+      getCompanyContext: async () => ({companyId:'company-A',memberData:{companyRole:'owner'}}),
+      getAuth: () => ({updateUser: async () => calls.push('auth-disable')}),
+      db: {
+        collection: name => ({doc: id => ref(name+'/'+id)}),
+        batch: () => ({
+          set: () => calls.push('write'),
+          delete: () => calls.push('delete'),
+          commit: async () => calls.push('commit')
+        })
+      },
+      FieldValue: {serverTimestamp: () => 1},
+      HttpsError: class HttpsError extends Error {constructor(code,message){super(message);this.code=code;}}
+    });
+    vm.runInContext(source,ctx);
+    await assert.rejects(() => ctx.exports.deleteCompanyMemberAccount({data:{uid:'former-uid'}}),
+      err => err.code==='failed-precondition');
+    assert.deepEqual(calls,[], 'invalid identity must not be modified');
+  }
+  const baseMember={uid:'former-uid',companyRole:'member',teamHistory:[{teamId:'old-team'}]};
+  const baseUser={uid:'former-uid',companyId:'company-A',companyRole:'member'};
+  await attempt(baseMember,{...baseUser,companyId:'company-B'});
+  await attempt({...baseMember,uid:'another-user'},baseUser);
+  await attempt(baseMember,{...baseUser,uid:'another-user'});
+  await attempt(baseMember,{...baseUser,companyRole:'owner'});
+  await attempt({...baseMember,companyRole:'owner'},baseUser);
+  await attempt(baseMember,baseUser,false);
+});
+
+
+test('Cloud Functions source must not revive destructive removal of sales or employee history', () => {
+  const fn = fs.readFileSync(path.join(__dirname, '../functions/index.js'), 'utf8');
+  // These admin-side calls bypass Firestore client Security Rules.
+  // Explicit code review and a separate retention design are required before
+  // introducing any new destructive server path.
+  assert.doesNotMatch(fn, /getAuth\s*\(\s*\)\s*\.deleteUser\s*\(/,
+    'Firebase Auth hard deletion must not be reintroduced in the existing functions');
+  assert.doesNotMatch(fn, /(?:batch|cleanupBatch|transaction|db)\s*\.delete\s*\(/,
+    'Admin SDK batch/transaction deletion is disallowed for this sales app');
+  assert.doesNotMatch(fn, /(?:targetMemberRef|targetUserRef|recordRef|productRef|teamRef)\s*\.delete\s*\(/,
+    'historical user, membership, record, product or team deletion must not be called');
+});
+
+
+test('Manual suspension release can only deploy the approved Cloud Function, never Firestore data', () => {
+  const workflow = fs.readFileSync(path.join(__dirname, '../.github/workflows/member-retention-manual-release.yml'), 'utf8');
+  assert.match(workflow, /workflow_dispatch:/, 'no automatic release triggers');
+  assert.doesNotMatch(workflow, /^\s+(push|pull_request|schedule|repository_dispatch):/m,
+    'no push, PR, schedule or remote-dispatch release triggers');
+  assert.match(workflow, /github\.ref == 'refs\/heads\/main'/, 'must run on main');
+  assert.match(workflow, /inputs\.reviewed_commit == github\.sha/, 'must match reviewed commit');
+  assert.match(workflow, /VERIFIED_BACKUP_RESTORE_COUNTS_AND_NICO_URL/,
+    'requires typed confirmation of data protection verification');
+  assert.match(workflow, /firebase deploy --only functions:deleteCompanyMemberAccount/,
+    'must deploy only the fixed suspension Function');
+  assert.doesNotMatch(workflow, /firebase deploy --only (?:firestore|hosting)/,
+    'must not modify Firestore Rules or Hosting as part of this release');
+  assert.doesNotMatch(workflow, /(?:firebase firestore:delete|gcloud firestore (?:databases|backups) delete)/,
+    'must never delete a production database');
+});
+
+
+test('Sales correction and its audit must be written in one atomic transaction',async()=>{
+  const old={companyId:'c',uid:'u',date:'2026-10-06',teamId:'a',totalCount:2,totalRevenue:200,results:{x:{count:2,revenuePerUnit:100}}};
+  const next={...old,totalCount:3,totalRevenue:300,results:{x:{count:3,revenuePerUnit:100}}};
+  let committed=[],readRecord=structuredClone(old);
+  const transactions=[];
+  const ctx=context(['persistDailyRecord','recordRevision','recordConflict'],{
+    db:{},recordsCollectionQuery:()=>({}),query:()=>({}),where:()=>({}),
+    getDocsFromServer:async()=>({size:1,docs:[{id:'r'}]}),
+    runTransaction:async(_db,cb)=>{
+      const pending=[];
+      const transaction={
+        get:async()=>({exists:()=>!!readRecord,id:'r',data:()=>structuredClone(readRecord)}),
+        set:(ref,data,options)=>pending.push({id:ref.id,data,options})
+      };
+      await cb(transaction);
+      committed=pending; transactions.push(pending);
+    }
+  });
+  const writeAudit=txn=>txn.set({id:'audit1'},{before:old,after:next});
+  await ctx.persistDailyRecord({id:'r'},next,old,ctx.recordRevision(old),writeAudit);
+  assert.deepEqual(committed.map(x=>x.id),['r','audit1']);
+  committed=[];
+  const brokenAudit=()=>{throw Error('audit permission denied')};
+  await assert.rejects(ctx.persistDailyRecord({id:'r'},next,old,ctx.recordRevision(old),brokenAudit),/audit permission denied/);
+  assert.deepEqual(committed,[],'no writes commit when correction log fails');
+  readRecord={...old,totalCount:99};
+  await assert.rejects(ctx.persistDailyRecord({id:'r'},next,old,ctx.recordRevision(old),writeAudit),{code:'record-conflict'});
+  assert.deepEqual(committed,[],'no stale overwrite when source record changed');
+});
+test('Sales form always delegates the correction audit to the transaction, never separate setDoc',()=>{
+ const begin=html.indexOf('validateFinancialRecordForSave(data);');
+ const end=html.indexOf('保存完了後に同じドキュメントを読み直し',begin);
+ assert(begin>=0&&end>begin);
+ const saveHandler=html.slice(begin,end);
+ assert(saveHandler.includes('const writeCorrection = existingDailyRecord'));
+ assert(saveHandler.includes('transaction.set('));
+ assert(saveHandler.includes('persistDailyRecord(recordRef, data, existingDailyRecord, editingRecordRevision, writeCorrection)'));
+ assert(!/await\s+setDoc\s*\(\s*correctionRef/.test(saveHandler));
+ assert(!saveHandler.includes('correctionAuditWarning'));
+});
 
 test('Same-name teams never inherit each other financial ranking amounts',()=>{
  const teams=[{id:'one',name:'合同班',active:true},{id:'two',name:'合同班',active:true},
