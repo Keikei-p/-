@@ -6,6 +6,8 @@ compatibility_date = "2026-10-01"
 [vars]
 FIREBASE_PROJECT_ID = "sales-management-cc116"
 REPORT_DELIVERY_ENABLED = "false"
+# OFF by default: zero Firestore reads/LINE sends; temporary testing only.
+REPORT_DRY_RUN_VALIDATE = "false"
 
 [triggers]
 crons = ["0 0 * * *", "0 10 * * *", "5 10 * * *"]
