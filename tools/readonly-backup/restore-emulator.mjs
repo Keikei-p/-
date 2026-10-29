@@ -73,7 +73,7 @@ export async function restoreToLocalEmulator(snapshot,{
           // No actual document fields, names, personal details or money in errors.
           failed=Error(method==="PATCH"?
             "BLOCK: emulator restore write/verification failed":
-            "BLOCK: emulator restore readback fields differ from archive");
+            "BLOCK: emulator readback fields differ from archive");
         }
       }
     });
