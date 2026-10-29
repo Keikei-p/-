@@ -1,13 +1,7 @@
 name: Finance Boundary Firestore Emulator
+# Run expensive Firebase emulators only on an explicit human-triggered review.
+# Offline no-credential synthetic checks run automatically in finance-boundary-preflight.yml.
 on:
-  pull_request:
-    paths:
-      - "security/firestore.phase1.rules"
-      - "security/finance-phase2-read-boundary.mjs"
-      - "tests/public-rules.test.mjs"
-      - "tests/finance-phase2-read-boundary.test.mjs"
-      - "tests/finance-rule-generation.test.mjs"
-      - ".github/workflows/finance-rules-emulator.yml"
   workflow_dispatch:
 permissions:
   contents: read

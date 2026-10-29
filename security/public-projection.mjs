@@ -17,10 +17,25 @@ function safeProductName(value){
  return /(?:CB|キャッシュバック|単価|売上|[¥￥]|[0-9０-９]+\s*(?:万|千)?円)/i.test(original)
   ? "商材名はオーナー確認中" : original;
 }
-function id(value){const s=text(value,200);if(!s)throw Error("Missing required ID");return s;}
-function date(value){const s=text(value,10);if(!/^\d{4}-\d{2}-\d{2}$/.test(s))throw Error("Invalid date");return s;}
+function id(value){
+ // Silent truncation can collapse two original IDs into one public record.
+ if(typeof value!=="string"||value.length<1||value.length>200)
+   throw Error("Missing or oversized required ID");
+ return value;
+}
+function date(value){
+ if(typeof value!=="string"||!/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(value))
+   throw Error("Invalid date");
+ const [year,month,day]=value.split("-").map(Number);
+ const d=new Date(0);d.setUTCHours(0,0,0,0);d.setUTCFullYear(year,month-1,day);
+ if(d.getUTCFullYear()!==year||d.getUTCMonth()+1!==month||
+    d.getUTCDate()!==day)throw Error("Invalid date");
+ return value;
+}
 function safeResult(productId,r){
  if(!r||typeof r!=="object")throw Error("Invalid result");
+ if(r.productId!=null&&r.productId!==productId)
+   throw Error("Product ID mismatch in saved result");
  return {
   productId:id(r.productId||productId),
   productName:safeProductName(r.productName||r.productNameSnapshot),
@@ -86,13 +101,13 @@ export function auditNoFinancialKeys(output){
  * Monetary scores are used for sorting in memory but NEVER serialized.
  */
 export function projectRankOnly({companyId,period,kind,participants}){
- const company=id(companyId),dateMonth=text(period,7),category=text(kind,30);
- if(!/^\d{4}-\d{2}$/.test(dateMonth))throw Error("Invalid month");
+ const company=id(companyId),dateMonth=period,category=kind;
+ if(typeof dateMonth!=="string"||!/^\d{4}-(0[1-9]|1[0-2])$/.test(dateMonth))throw Error("Invalid month");
  if(!["member","team","product"].includes(category))throw Error("Invalid ranking type");
- if(!Array.isArray(participants)||participants.length>2000)throw Error("Invalid ranking source");
+ if(!Array.isArray(participants)||participants.length>100000)throw Error("Invalid ranking source");
  const seen=new Set();
  const sorted=participants.map(p=>{
-  const key=id(p.id),name=text(p.name,80),score=Number(p.score);
+  const key=id(p.id),name=safePublicLabel(p.name),score=Number(p.score);
   if(seen.has(key))throw Error("Duplicate rank ID");
   seen.add(key);
   if(p.score==null||p.score===""||!Number.isSafeInteger(score)||score<0)throw Error("Invalid rank score");
@@ -104,7 +119,9 @@ export function projectRankOnly({companyId,period,kind,participants}){
  let rank=0;
  for(const p of ranks){if(p.rank!==0)rank=p.rank;else p.rank=rank;}
  const published={companyId:company,period:dateMonth,kind:category,ranks};
- auditNoFinancialKeys(published);return published;
+ auditNoFinancialKeys(published);
+ for(const rank of ranks)assertNoMoneyEmbeddedInStrings(rank);
+ return published;
 }
 
 
