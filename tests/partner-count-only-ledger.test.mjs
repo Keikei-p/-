@@ -54,6 +54,10 @@ function makeStore(){
 }
 const trusted=()=>({principal:{...principal},catalog:structuredClone(catalog),
  memberName:"協力店A",teamName:"1班"});
+const reader=async()=>({
+ serverVerified:true,tokenVerified:true,active:true,
+ allowedCompanyIds:["partnerA"]
+});
 const idempotencyKey="repeat_once_20261029";
 function makeArgs(db){
  return {store:db.store,loadTrustedContext:trusted,request:input,
@@ -69,7 +73,7 @@ test("new record is atomic across private current + immutable revision + publica
  assert(db.map.has("partnerCountRevisions/partnerA_pc_ledgerA_v000001"));
  assert(db.map.has("partnerCountPublicRevisions/partnerA_pc_ledgerA_v000001"));
  const publication=await readCurrentPartnerPublication({
-  store:db.store,companyId:"partnerA",recordId:"pc_ledgerA"
+  store:db.store,companyId:"partnerA",recordId:"pc_ledgerA",loadAuthorizedReader:reader
  });
  assert.equal(publication.version,1);
  assert.equal(publication.header.totalCount,2);
@@ -114,7 +118,7 @@ test("corrections append history and change only the new partner count pointer",
  assert.deepEqual(db.map.get("partnerCountPublicRevisions/partnerA_pc_ledgerA_v000001"),firstPublic);
  assert.equal(db.map.get("partnerCountCorrections/partnerA_pcfix_edit001").beforeSharedCount,2);
  const read=await readCurrentPartnerPublication({
-  store:db.store,companyId:"partnerA",recordId:"pc_ledgerA"
+  store:db.store,companyId:"partnerA",recordId:"pc_ledgerA",loadAuthorizedReader:reader
  });
  assert.equal(read.version,2);
  assert.equal(read.header.totalCount,4);
@@ -152,7 +156,7 @@ test("private-only correction removes all public count visibility without deleti
   request:privateOnly,recordId:"pc_ledgerA",expectedVersion:1,
   correctionId:"pcfix_privacy"});
  const current=await readCurrentPartnerPublication({
-  store:db.store,companyId:"partnerA",recordId:"pc_ledgerA"
+  store:db.store,companyId:"partnerA",recordId:"pc_ledgerA",loadAuthorizedReader:reader
  });
  assert.equal(current.published,false);
  assert.equal(current.header,null);
@@ -172,7 +176,7 @@ test("server rejection or injected transaction write failure cannot create half 
  const before=JSON.stringify([...db.map]);
  await assert.rejects(stageNewPartnerCount({
   ...makeArgs(db),idempotencyKey:"another_unique_20261029"
- }),/create conflict/);
+ }),/Count-only transaction refused/);
  assert.equal(JSON.stringify([...db.map]),before);
 });
 test("publication rejects missing version or corrupted private counts without changing data",async()=>{
@@ -183,12 +187,12 @@ test("publication rejects missing version or corrupted private counts without ch
  const pub=db.map.get(pubRef);
  db.map.delete(pubRef);
  await assert.rejects(readCurrentPartnerPublication({
-  store:db.store,companyId:"partnerA",recordId:"pc_ledgerA"
+  store:db.store,companyId:"partnerA",recordId:"pc_ledgerA",loadAuthorizedReader:reader
  }),/Count-only/);
  db.map.set(pubRef,pub);
  db.map.set(current,{...db.map.get(current),latestPublicRevision:2});
  await assert.rejects(readCurrentPartnerPublication({
-  store:db.store,companyId:"partnerA",recordId:"pc_ledgerA"
+  store:db.store,companyId:"partnerA",recordId:"pc_ledgerA",loadAuthorizedReader:reader
  }),/Count-only/);
 });
 test("only append-only custom collections are ever touched; old finance source remains absent",async()=>{
@@ -198,4 +202,33 @@ test("only append-only custom collections are ever touched; old finance source r
  const paths=[...db.map.keys()];
  assert(paths.every(x=>/^(partnerCountRecords|partnerCountRevisions|partnerCountPublicRevisions|partnerCountCorrections|partnerCountIdempotencyKeys)\//.test(x)));
  assert(paths.every(x=>!/^records\/|^products\/|^recordCorrections\/|^revenueGoals\//.test(x)));
+});
+
+test("revoked reader cannot use a browser-controlled company ID to read published counts",async()=>{
+ const db=makeStore();
+ await stageNewPartnerCount(makeArgs(db));
+ const before=JSON.stringify([...db.map]);
+ for(const attempt of [
+  async()=>({...await reader(),allowedCompanyIds:[]}),
+  async()=>({...await reader(),active:false}),
+  async()=>({...await reader(),serverVerified:false}),
+  async()=>({...await reader(),tokenVerified:false}),
+  null
+ ]){
+  await assert.rejects(readCurrentPartnerPublication({
+   store:db.store,companyId:"partnerA",recordId:"pc_ledgerA",
+   loadAuthorizedReader:attempt
+  }),/Count-only transaction refused/);
+  assert.equal(JSON.stringify([...db.map]),before);
+ }
+});
+test("revoked membership blocks even idempotent retried register",async()=>{
+ const db=makeStore();
+ await stageNewPartnerCount(makeArgs(db));
+ await assert.rejects(stageNewPartnerCount({...makeArgs(db),
+  loadTrustedContext:async()=>({...trusted(),principal:{
+   ...principal,memberActive:false
+  }})
+ }),/Count-only transaction refused/);
+ assert.equal(db.map.size,4);
 });
