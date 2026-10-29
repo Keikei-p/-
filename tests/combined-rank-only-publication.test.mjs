@@ -32,7 +32,8 @@ function server(){
  const calls={token:0,permission:0,source:0};
  const context={
   serverVerified:true,userActive:true,memberActive:true,companyActive:true,
-  reciprocalOwnersApproved:true,completeSnapshotBudgetApproved:true,
+  reciprocalOwnersApproved:true,individualNamesApproved:true,
+  completeSnapshotBudgetApproved:true,
   viewerUid:"member",hubCompanyId:"own",viewerCompanyId:"partner",
   approvedCompanyIds:["own","partner"]
  };
@@ -82,7 +83,8 @@ test("incomplete approval or snapshots never produce leaderboard",()=>{
   d=>{d.sources[1].consentVerified=false;},
   d=>{d.sources[1].readTime="2026-10-29T01:00:01Z";},
   d=>{d.sources[1].records[0].totalRevenue=99999;},
-  d=>{d.sources[1].lines[0].count=4;}
+  d=>{d.sources[1].lines[0].count=4;},
+  d=>{d.sources[1].teams[0].name="協力店5件";}
  ]){
   const d=sample();mutate(d);
   assert.throws(()=>createRankOnlyPublication(d));
@@ -129,7 +131,8 @@ test("revoked company, no cross-company owner approval and invalid snapshots fai
  const s=server();
  for(const bad of [
   {memberActive:false},{companyActive:false},
-  {reciprocalOwnersApproved:false},{completeSnapshotBudgetApproved:false},
+  {reciprocalOwnersApproved:false},{individualNamesApproved:false},
+  {completeSnapshotBudgetApproved:false},
   {viewerCompanyId:"unknown"},{viewerUid:"unknown"},
   {approvedCompanyIds:["own"]},{approvedCompanyIds:["own","partner","partner"]}
  ]){
