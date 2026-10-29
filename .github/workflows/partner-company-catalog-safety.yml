@@ -29,5 +29,6 @@ jobs:
         run: |
           node --check partner/invite-contract.mjs
           node --check partner/shared-catalog.mjs
+          node --check partner/canonical-ranking-groups.mjs
       - name: Verify immutable invitation and partner-owned private catalog
-        run: node --test tests/partner-invite-contract.test.mjs tests/partner-shared-catalog.test.mjs
+        run: node --test tests/partner-invite-contract.test.mjs tests/partner-shared-catalog.test.mjs tests/partner-canonical-ranking-groups.test.mjs
