@@ -31,7 +31,7 @@ const settings={
   weekdays,linkedHubCompanyId:"hub",countsShareApproved:true,
   countsShareLineGroupId:"group_test"}
 };
-function fixture({live=true,consent=true,mutate=undefined}={}){
+function fixture({live=true,consent=true,mutate=undefined,dryRunValidate=false}={}){
  const calls=[],sent=[],dispatches=[];
  const companyDocs=[
   firestoreDoc("companies/hub",{name:"自社",active:true}),
@@ -109,6 +109,7 @@ function fixture({live=true,consent=true,mutate=undefined}={}){
  };
  return {fetchMock,calls,sent,dispatches,env:{
    REPORT_DELIVERY_ENABLED:live?"true":"false",
+   REPORT_DRY_RUN_VALIDATE:dryRunValidate?"true":"false",
    FIREBASE_PROJECT_ID:project,
    FIREBASE_SERVICE_ACCOUNT_JSON:secret,
    LINE_CHANNEL_ACCESS_TOKEN:"synthetic-line-token"
@@ -181,4 +182,24 @@ test("dry-run never writes to Firestore or sends to LINE, even when reports are 
  const result=await run({live:false});
  assert.equal(result.sent.length,0);
  assert.equal(result.dispatches.length,0);
+});
+
+test("disabled delivery consumes zero privileged Firebase reads and needs no secrets",async()=>{
+ const f=fixture({live:false});
+ delete f.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+ delete f.env.LINE_CHANNEL_ACCESS_TOKEN;
+ const saved=globalThis.fetch;
+ try{
+  globalThis.fetch=async()=>{throw Error("network must not be accessed when OFF");};
+  await reporter.scheduled({cron:"0 0 * * *",scheduledTime:Date.parse("2026-10-29T00:00:00Z")},f.env);
+  assert.equal(f.calls.length,0);
+  assert.equal(f.sent.length,0);
+  assert.equal(f.dispatches.length,0);
+ }finally{globalThis.fetch=saved;}
+});
+test("explicit dry-run verification may read counts but cannot send or create dispatches",async()=>{
+ const f=await run({live:false,dryRunValidate:true});
+ assert.ok(f.calls.some(x=>x.path.includes("/documents:runQuery")));
+ assert.equal(f.sent.length,0);
+ assert.equal(f.dispatches.length,0);
 });
