@@ -151,3 +151,12 @@ test("new/saved record paths never include raw products/records/recordCorrection
   assert(JSON.stringify(plan).includes("publicHeader"));
  }
 });
+
+test("invalid dates never create count records (leap year guarded)",()=>{
+ for(const date of ["2026-02-29","2026-02-30","2026-04-31",
+                    "2026-13-01","not-a-date"]){
+  denied({request:{...request,date}});
+ }
+ const allowed=create({...base,request:{...request,date:"2028-02-29"}});
+ assert.equal(allowed.privateRecord.date,"2028-02-29");
+});
