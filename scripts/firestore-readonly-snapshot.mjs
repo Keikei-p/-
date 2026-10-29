@@ -3,6 +3,9 @@
  * Recurses every exposed root collection and subcollection, including
  * descendants of missing parent documents. Never calls Firestore writes.
  *
+ * Note: Admin SDK numeric values may not distinguish original integer and
+ * integral double wire types. This snapshot is not declared restoration-ready.
+ * The traversal is also NOT a single point-in-time database snapshot.
  * This is a FIRESTORE-DOCUMENTS snapshot, NOT an all-Firebase backup:
  * Firebase Auth accounts, Cloud Storage, Rules, Indexes, Secrets and Hosting
  * are excluded. It NEVER authorizes deletion of a live record.
@@ -126,6 +129,7 @@ export async function captureReadOnlyFirestore({
   schemaVersion:1,projectId,
   capturedAt:now(),coverage:"firestore_document_data_only",
   completeFirebaseBackup:false,productionDeletionEligible:denyDelete(),
+  pointInTimeConsistent:false,fullTypedRestorationVerified:false,
   missingServices:["Firebase Authentication users","Cloud Storage files",
    "Security Rules","Firestore indexes","Hosting","Secrets"],
   scannedCollections:visitedCollections.size,scannedDocumentReferences:readCount,
@@ -149,6 +153,7 @@ export function verifyReadOnlyFirestore(snapshot){
  if(p.schemaVersion!==1||p.projectId!=="sales-management-cc116"||
     p.coverage!=="firestore_document_data_only"||
     p.completeFirebaseBackup!==false||p.productionDeletionEligible!==false||
+    p.pointInTimeConsistent!==false||p.fullTypedRestorationVerified!==false||
     !Array.isArray(p.missingServices)||
     !p.missingServices.includes("Firebase Authentication users")||
     !Number.isSafeInteger(p.scannedCollections)||
@@ -165,5 +170,6 @@ export function verifyReadOnlyFirestore(snapshot){
   scannedDocumentReferences:p.scannedDocumentReferences,
   scannedCollections:p.scannedCollections,
   checksum:snapshot.checksum,fullFirebaseBackup:false,
+  pointInTimeConsistent:false,restorationVerified:false,
   deletionAllowed:false};
 }
