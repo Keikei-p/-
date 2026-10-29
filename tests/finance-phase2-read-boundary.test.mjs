@@ -8,7 +8,7 @@ import {modelOwnerOnlyFinanceRules} from "../security/finance-phase2-read-bounda
 const baseRules=readFileSync(new URL("../security/firestore.phase1.rules",import.meta.url),"utf8");
 const candidate=modelOwnerOnlyFinanceRules(baseRules);
 const prodFirebaseConfig=JSON.parse(readFileSync(new URL("../firebase.json",import.meta.url),"utf8"));
-const company="finance-stage2-a",other="finance-stage2-b";
+const company="finance-stage2-a",other="finance-stage2-b",partnerCompany="finance-partner-c";
 let env;
 const dbFor=uid=>env.authenticatedContext(uid,{email:uid+"@example.test",email_verified:true}).firestore();
 
@@ -19,13 +19,15 @@ before(async()=>{
    for(const [cid,uid,role] of [
      [company,"owner","owner"],
      [company,"partner","member"],
-     [other,"outsider","member"]
+     [other,"outsider","member"],
+     [partnerCompany,"partnerOwner","owner"]
    ]){
-     await setDoc(doc(db,"companies",cid),{name:"TEST",ownerUid:cid===company?"owner":"other-owner",
-       masterUid:cid===company?"owner":"other-owner",active:true});
-     await setDoc(doc(db,"users",uid),{uid,companyId:cid,role:"leader",companyRole:role,active:true,teamId:"t1",accessKind:uid==="partner"?"partner":"internal"});
+     await setDoc(doc(db,"companies",cid),{name:"TEST",ownerUid:cid===company?"owner":cid===partnerCompany?"partnerOwner":"other-owner",
+       masterUid:cid===company?"owner":cid===partnerCompany?"partnerOwner":"other-owner",
+       companyKind:cid===partnerCompany?"partner":"internal",active:true});
+     await setDoc(doc(db,"users",uid),{uid,companyId:cid,role:"leader",companyRole:role,active:true,teamId:"t1",accessKind:(uid==="partner"||uid==="partnerOwner")?"partner":"internal"});
      await setDoc(doc(db,"companies",cid,"members",uid),
-       {uid,companyId:cid,role:"leader",companyRole:role,active:true,teamId:"t1",accessKind:uid==="partner"?"partner":"internal",canViewRevenue:uid==="partner",canViewUnitPrice:uid==="partner"});
+       {uid,companyId:cid,role:"leader",companyRole:role,active:true,teamId:"t1",accessKind:(uid==="partner"||uid==="partnerOwner")?"partner":"internal",canViewRevenue:uid==="partner",canViewUnitPrice:uid==="partner"});
    }
    await setDoc(doc(db,"records","legacy"),{
      companyId:company,uid:"partner",date:"2026-10-28",teamId:"t1",totalCount:1,
@@ -35,6 +37,14 @@ before(async()=>{
    await setDoc(doc(db,"recordCorrections","legacy"),{companyId:company,recordId:"legacy",
      before:{totalRevenue:25000},after:{totalRevenue:35000}});
    await setDoc(doc(db,"revenueGoals","legacy"),{companyId:company,teamId:"t1",month:"2026-10",targetRevenue:100000});
+   for(const [table,fields] of [
+     ["records",{companyId:partnerCompany,uid:"partnerOwner",date:"2026-10-28",teamId:"t1",
+       totalRevenue:150000,totalCount:2,results:{p1:{count:2,revenuePerUnit:75000}}}],
+     ["products",{companyId:partnerCompany,name:"高額商材",revenue:75000}],
+     ["recordCorrections",{companyId:partnerCompany,before:{totalRevenue:30000},
+       after:{totalRevenue:150000}}],
+     ["revenueGoals",{companyId:partnerCompany,targetRevenue:500000,teamId:"t1"}]
+   ])await setDoc(doc(db,table,"partner-legacy"),fields);
    await setDoc(doc(db,"publicRecords","safe"),{companyId:company,sourceId:"safe",uid:"partner",
      date:"2026-10-28",teamId:"t1",totalCount:1,reportStatus:"submitted",
      memberNameSnapshot:"担当者",teamNameSnapshot:"一班",workLocation:"会場"});
@@ -51,6 +61,7 @@ test("phase2 candidate is emulator-only and never wired to production firebase.j
    const rule=candidate.slice(begin,candidate.indexOf("allow create:",begin));
    assert.match(rule,/isCompanyMaster\(resource\.data\.companyId\)/);
    assert.match(rule,/isCompanyOwner\(resource\.data\.companyId\)/);
+   assert.match(rule,/isInternalFinanceReader\(resource\.data\.companyId\)/);
    assert.doesNotMatch(rule,/&& sameCompany\(resource\.data\.companyId\);/);
  }
 });
@@ -88,4 +99,10 @@ test("phase2 model fails closed if source finance rules are unexpectedly changed
  );
  assert.notEqual(broken,baseRules);
  assert.throws(()=>modelOwnerOnlyFinanceRules(broken),/Unexpected legacy finance rule/);
+});
+
+test("partner-company OWNER/master never reads ANY finance collection even if both price grants are true",async()=>{
+ const db=dbFor("partnerOwner");
+ for(const collection of ["records","products","recordCorrections","revenueGoals"])
+   await assertFails(getDoc(doc(db,collection,"partner-legacy")));
 });
