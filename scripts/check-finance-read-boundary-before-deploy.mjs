@@ -35,8 +35,9 @@ export function checkFinanceRulesBeforeDeploy(source){
  for(const group of roots){
    const body=ruleBody(source,group);
    const condition=checkAction(body,"read",group);
+   // Require the restrictive AND before any owner/leader OR branch.
    if(/sameCompany\s*\(/.test(condition)||
-      !condition.includes("isInternalFinanceReader(resource.data.companyId)")||
+      !/^\s*resource\.data\.companyId\s*!=\s*null\s*&&\s*isInternalFinanceReader\(resource\.data\.companyId\)\s*&&\s*\(\s*isCompany(?:Master|Owner)\(/.test(condition)||
       !/isCompanyOwner\(resource\.data\.companyId\)|isCompanyMaster\(resource\.data\.companyId\)/.test(condition))
      block("RAW_READ_"+group);
    // A separate Firestore allow get/list OR-grant can bypass allow read.
@@ -49,14 +50,14 @@ export function checkFinanceRulesBeforeDeploy(source){
        gets[0][1].includes("records/$(recordId)"))))
      block("ADDITIVE_GET_"+group);
    const create=checkAction(body,"create",group);
-   if(!create.includes("isInternalFinanceReader(request.resource.data.companyId)"))
+   if(!/^\s*isInternalFinanceReader\(request\.resource\.data\.companyId\)\s*&&\s*\(/.test(create))
      block("RAW_CREATE_"+group);
    if(group==="recordCorrections"){
      if(!/allow update,\s*delete:\s*if false;/.test(body))
        block("CORRECTION_IMMUTABILITY");
    }else{
      const update=checkAction(body,"update",group);
-     if(!update.includes("isInternalFinanceReader(resource.data.companyId)"))
+     if(!/^\s*isInternalFinanceReader\(resource\.data\.companyId\)\s*&&\s*\(/.test(update))
        block("RAW_UPDATE_"+group);
      const deletion=checkAction(body,"delete",group);
      if(deletion.trim()!=="false")block("RAW_DELETE_"+group);
