@@ -26,6 +26,39 @@ export function archiveExportPolicy({warnings,rows,records,companyVerified}={}){
    }
  }
  if(records.length>0&&!rows.length)reasons.push("保存済みの実績明細がありません");
+ // Never infer missing saved totals from the displayed rows. The original
+ // record and its lines must independently agree before a report is final.
+ const sourceIds=new Set(),byRecord=new Map();
+ for(const source of records){
+   if(typeof source.id!=="string"||!source.id||sourceIds.has(source.id)){
+     reasons.push("原票IDが欠損または重複");continue;
+   }
+   sourceIds.add(source.id);
+   const storedCount=source.totalCount,storedRevenue=source.totalRevenue;
+   if(typeof storedCount!=="number"||!Number.isSafeInteger(storedCount)||
+      storedCount<0||typeof storedRevenue!=="number"||
+      !Number.isSafeInteger(storedRevenue)||storedRevenue<0){
+     reasons.push("原票の保存件数・保存売上が未設定または不正");
+   }
+   byRecord.set(source.id,{storedCount,storedRevenue,count:0,revenue:0});
+ }
+ for(const row of rows){
+   if(typeof row.recordId!=="string"||!byRecord.has(row.recordId)){
+     reasons.push("実績明細の元原票がありません");continue;
+   }
+   const totals=byRecord.get(row.recordId);
+   if(Number.isSafeInteger(row.count)&&row.count>=0&&
+      Number.isSafeInteger(row.amount)&&row.amount>=0){
+     totals.count+=row.count;totals.revenue+=row.amount;
+   }
+ }
+ for(const totals of byRecord.values()){
+   if(!Number.isSafeInteger(totals.count)||
+      !Number.isSafeInteger(totals.revenue)||
+      totals.count!==totals.storedCount||
+      totals.revenue!==totals.storedRevenue)
+     reasons.push("原票保存値と明細の集計に不一致");
+ }
  const isReady=reasons.length===0;
  return Object.freeze({
   canExportPdf:isReady,
