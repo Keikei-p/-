@@ -11,8 +11,8 @@ export async function verifySnapshotPair(aPath,bPath,{maxBytes=150*1024*1024}={}
  if(!aPath||!bPath||typeof aPath!=="string"||typeof bPath!=="string")
   throw Error("Two independent local paths are required");
  const paths=[resolve(aPath),resolve(bPath)];
- const [pa,pb]=await Promise.all(paths.map(realpath));
- const [a,b]=await Promise.all(paths.map(stat));
+ const [pa,pb]=await Promise.all(paths.map(p=>realpath(p)));
+ const [a,b]=await Promise.all(paths.map(p=>stat(p)));
  if(pa===pb||(a.dev===b.dev&&a.ino===b.ino))
   throw Error("These are the same underlying backup file");
  if(!a.isFile()||!b.isFile()||a.size>maxBytes||b.size>maxBytes)
