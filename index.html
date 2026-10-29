@@ -9656,11 +9656,13 @@ function subscribeSelectedMonthRecords() {
       records=nextRecords;
       recordsSubscribedMonth=month;
       recordsReady=true;
-      annualChartRecords=null;
-      annualChartYear="";
-      annualChartRequestedKey="";
-      annualChartErrorKey="";
-      ++annualChartGeneration;
+      // Refresh an already verified annual chart from this month's confirmed
+      // rows, rather than re-reading every day of the year on every snapshot.
+      if(annualChartRecords&&
+         annualChartYear===companyId+":"+month.slice(0,4)){
+        annualChartRecords=mergeVerifiedMonthIntoAnnual(
+          annualChartRecords,month,nextRecords,companyId);
+      }
       showMonthlyRecordsState("",false);
       createMonthOptions();
       renderDashboard();
@@ -9707,6 +9709,22 @@ async function findDailyRecordFromServer(memberId,date) {
   if(result.size>1)throw new Error("同じ担当者と日付の実績が複数あります。オーナーへ確認してください。");
   return result.empty?null:{id:result.docs[0].id,...result.docs[0].data()};
 }
+function mergeVerifiedMonthIntoAnnual(annualRows,month,monthRows,companyId) {
+  monthRecordRange(month); // Validate month before touching cached annual data.
+  if(!Array.isArray(annualRows)||!Array.isArray(monthRows)||!companyId)
+    throw new Error("年間データの照合に失敗しました。");
+  if(annualRows.some(row=>row?.companyId!==companyId||
+       typeof row.date!=="string"||!row.id||!row.date.startsWith(month.slice(0,4)))||
+     monthRows.some(row=>row?.companyId!==companyId||
+       typeof row.date!=="string"||!row.id||!row.date.startsWith(month)))
+    throw new Error("年間・月間データの会社または期間が一致しません。");
+  const existing=annualRows.filter(row=>!row.date.startsWith(month));
+  const next=[...existing,...monthRows];
+  if(new Set(next.map(row=>row.id)).size!==next.length)
+    throw new Error("年間データに重複した実績IDがあります。");
+  return next;
+}
+
 async function loadAnnualChartRecords(year) {
   // Annual chart is requested on demand, not during every monthly dashboard visit.
   // One server query returns a complete year snapshot, never a partial page.
@@ -28043,6 +28061,11 @@ function renderRevenueChart() {
           if(gen!==annualChartGeneration||
              revenueChartMode!=="annual"||
              currentUserData?.companyId+":"+dashboardMonth.value.slice(0,4)!==key)return;
+          // An in-flight yearly request may finish after the live month
+          // changed. Reconcile only verified, same-company and same-year rows.
+          if(recordsReady&&recordsSubscribedMonth.startsWith(year))
+            result=mergeVerifiedMonthIntoAnnual(
+              result,recordsSubscribedMonth,records,currentUserData.companyId);
           annualChartRecords=result;
           annualChartYear=key;
           annualChartRequestedKey="";
