@@ -53,7 +53,7 @@ export function encodeFirestoreValue(v,depth=0,seen=new WeakSet()){
   if(isPlain(v)){
    const keys=Object.keys(v).sort();
    return {t:"map",entries:keys.map(k=>{
-    if(!validSegment(k))reject("invalid Firestore field key");
+    if(typeof k!=="string"||Buffer.byteLength(k,"utf8")>1500)reject("invalid Firestore field key");
     return [k,encodeFirestoreValue(v[k],depth+1,seen)];
    })};
   }
@@ -98,6 +98,7 @@ export async function captureReadOnlyFirestore({
    const path=collectionPath+"/"+docId;
    if(!validDocumentPath(path)||visitedDocs.has(path))reject("repeated document");
    visitedDocs.add(path);
+   if(readCount>=maxDocuments)reject("backup read budget reached");
    const snap=await reader.getDocument(path);
    readCount++;
    if(!snap||typeof snap.exists!=="boolean")reject("missing document response");
@@ -132,6 +133,8 @@ export async function captureReadOnlyFirestore({
  };
  if(typeof payload.capturedAt!=="string"||!Number.isFinite(Date.parse(payload.capturedAt)))
   reject("invalid capture time");
+ if(Buffer.byteLength(JSON.stringify(payload),"utf8")>maxBytes)
+   reject("backup output size budget reached");
  return {
   kind:"firestore-readonly-project-snapshot",version:1,algorithm:"SHA-256",
   checksum:sha(JSON.stringify(payload)),payload
