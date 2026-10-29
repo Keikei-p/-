@@ -100,3 +100,31 @@ test("report line must match preserved original and annual stored amount",()=>ex
  assert.notEqual(result.status,0);
  assert.match(result.stderr,/report lines/);
 }));
+
+test("archives with missing original totals are rejected instead of inferring them",()=>exercise(({a,validate})=>{
+ const file=archive("2026","year");
+ delete file.payload.original.records[0].totalRevenue;
+ file.checksum=createHash("sha256").update(JSON.stringify(file.payload)).digest("hex");
+ writeFileSync(a,JSON.stringify(file));
+ const result=validate(a);
+ assert.notEqual(result.status,0);
+ assert.match(result.stderr,/Original daily record totals/);
+}));
+test("false per-person reports are blocked even when the company grand total matches",()=>exercise(({a,validate})=>{
+ const file=archive("2026","year");
+ const second=structuredClone(file.payload.original.records[0]);
+ second.id="second-record";second.uid="second-person";second.date="2026-12-10";
+ file.payload.original.records.push(second);
+ file.payload.summary.dailyRecords=2;
+ file.payload.summary.count=4;
+ file.payload.summary.revenue=24000;
+ file.payload.rows=[
+  {date:"2026-01-05",recordId:"row-2026-01-05",count:1,amount:6000},
+  {date:"2026-12-10",recordId:"second-record",count:3,amount:18000}
+ ];
+ file.checksum=createHash("sha256").update(JSON.stringify(file.payload)).digest("hex");
+ writeFileSync(a,JSON.stringify(file));
+ const out=validate(a);
+ assert.notEqual(out.status,0);
+ assert.match(out.stderr,/Archive report lines differ/);
+}));
