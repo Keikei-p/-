@@ -416,338 +416,6 @@ exports.acceptInvitation = onCall(async (request) => {
 });
 
 
-/*
- * Partner-company invitations are separate from the legacy same-company link.
- * No partner invite can reuse the existing browser-writable invitations flow.
- * These callable functions MUST NOT be deployed until partner finance Rules,
- * account compatibility, catalog source and rollback checks have passed.
- */
-const partnerInviteTokenHash = (token) => crypto.createHash("sha256")
-  .update(String(token)).digest("hex");
-
-async function findPartnerCompanyInvite(token) {
-  if (typeof token !== "string" || !/^[A-Za-z0-9_-]{40,100}$/.test(token)) {
-    throw new HttpsError("invalid-argument", "協力店の招待リンクが正しくありません。");
-  }
-  const query = await db.collection("invitations")
-    .where("tokenHash", "==", partnerInviteTokenHash(token))
-    .limit(1).get();
-  if (query.empty || query.docs[0].data()?.kind !== "partner_company") {
-    throw new HttpsError("not-found", "協力店の招待リンクが見つかりません。");
-  }
-  return query.docs[0];
-}
-async function assertCompanyOwner(uid,companyId) {
-  const [companySnap,memberSnap] = await Promise.all([
-    db.collection("companies").doc(companyId).get(),
-    db.collection("companies").doc(companyId).collection("members").doc(uid).get()
-  ]);
-  if (!companySnap.exists || companySnap.data()?.active !== true ||
-      companySnap.data()?.ownerUid !== uid ||
-      companySnap.data()?.companyKind === "partner" ||
-      !memberSnap.exists || memberSnap.data()?.active !== true ||
-      memberSnap.data()?.companyRole !== "owner") {
-    throw new HttpsError("permission-denied",
-      "協力店の招待は自社の代表オーナーのみ作成できます。");
-  }
-  return companySnap;
-}
-exports.createPartnerCompanyInvitation = onCall(async (request) => {
-  const {uid,email:actorEmail} = requireVerifiedUser(request);
-  const context = await getCompanyContext(uid);
-  if (context.userData.active === false) {
-    throw new HttpsError("permission-denied", "無効なアカウントです。");
-  }
-  await assertCompanyOwner(uid,context.companyId);
-  const email = normalizeEmail(request.data?.email);
-  const companyName = normalizeCompanyName(request.data?.partnerCompanyName);
-  if (!email || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
-      email === actorEmail || companyName.length < 2 || companyName.length > 80 ||
-      /[¥￥$€]/.test(companyName)) {
-    throw new HttpsError("invalid-argument",
-      "協力店名または招待するメールアドレスを確認してください。");
-  }
-  const token = crypto.randomBytes(32).toString("base64url");
-  const inviteRef = db.collection("invitations").doc();
-  const expiresAt = Timestamp.fromMillis(Date.now() + 30*60*1000);
-  await inviteRef.create({
-    kind:"partner_company",
-    hubCompanyId:context.companyId,
-    partnerCompanyName:companyName,
-    emailLower:email,
-    tokenHash:partnerInviteTokenHash(token),
-    accessKind:"partner",
-    canViewRevenue:false,
-    canViewUnitPrice:false,
-    countOnly:true,
-    status:"pending",
-    invitedBy:uid,
-    createdAt:FieldValue.serverTimestamp(),
-    expiresAt
-  });
-  return {token,expiresAt:expiresAt.toMillis(),inviteType:"partner_company"};
-});
-exports.previewPartnerCompanyInvitation = onCall(async (request) => {
-  const {email} = requireVerifiedUser(request);
-  const snap = await findPartnerCompanyInvite(request.data?.token);
-  const data = snap.data() || {};
-  if (data.emailLower !== email || data.status !== "pending" ||
-      !data.expiresAt || data.expiresAt.toMillis() <= Date.now()) {
-    throw new HttpsError("permission-denied",
-      "この協力店の招待は利用できません。");
-  }
-  const hub = await db.collection("companies").doc(data.hubCompanyId).get();
-  if (!hub.exists || hub.data()?.active !== true) {
-    throw new HttpsError("failed-precondition","招待元の会社は利用できません。");
-  }
-  return {
-    companyName:data.partnerCompanyName,
-    inviterCompanyName:hub.data().name||"招待元会社",
-    inviteType:"partner_company",
-    role:"leader",
-    // Do not expose source product prices, owner IDs or financial fields.
-    financialAccess:false,
-    expiresAt:data.expiresAt.toMillis()
-  };
-});
-exports.acceptPartnerCompanyInvitation = onCall(async (request) => {
-  const {uid,email} = requireVerifiedUser(request);
-  const inviteDoc = await findPartnerCompanyInvite(request.data?.token);
-  const companyRef = db.collection("companies").doc();
-  const memberRef = companyRef.collection("members").doc(uid);
-  const userRef = db.collection("users").doc(uid);
-  const partnerRelationRef = db.collection("partnerRelations").doc(companyRef.id);
-  let result;
-  await db.runTransaction(async tx => {
-    const [inviteSnap,userSnap,companySnap] = await Promise.all([
-      tx.get(inviteDoc.ref),
-      tx.get(userRef),
-      tx.get(companyRef)
-    ]);
-    if (!inviteSnap.exists || !userSnap.exists || companySnap.exists) {
-      throw new HttpsError("failed-precondition","招待またはアカウントを確認できません。");
-    }
-    const invite = inviteSnap.data() || {},user = userSnap.data()||{};
-    if (invite.kind!=="partner_company"||invite.status!=="pending"||
-        invite.emailLower!==email||!invite.expiresAt||
-        invite.expiresAt.toMillis()<=Date.now()||
-        invite.canViewRevenue!==false||invite.canViewUnitPrice!==false||
-        invite.countOnly!==true||
-        user.companyId || user.active===false) {
-      throw new HttpsError("failed-precondition",
-        "協力店の招待は利用できません。既存の会社所属は変更しません。");
-    }
-    const hubRef=db.collection("companies").doc(invite.hubCompanyId);
-    const inviterRef=hubRef.collection("members").doc(invite.invitedBy);
-    const [hubSnap,inviterSnap] = await Promise.all([tx.get(hubRef),tx.get(inviterRef)]);
-    if (!hubSnap.exists||hubSnap.data()?.active!==true||
-        hubSnap.data()?.ownerUid!==invite.invitedBy||
-        hubSnap.data()?.companyKind==="partner"||
-        !inviterSnap.exists||inviterSnap.data()?.active!==true||
-        inviterSnap.data()?.companyRole!=="owner") {
-      throw new HttpsError("permission-denied","招待元の承認が無効になりました。");
-    }
-    const name=normalizeCompanyName(invite.partnerCompanyName);
-    if(name.length<2||name.length>80) {
-      throw new HttpsError("invalid-argument","協力店名が正しくありません。");
-    }
-    const displayName=String(user.name||request.auth.token.name||"名前未設定").trim();
-    tx.create(companyRef,{
-      name,ownerUid:uid,masterUid:uid,companyKind:"partner",
-      hubCompanyId:invite.hubCompanyId,
-      catalogSourceCompanyId:invite.hubCompanyId,
-      accessKind:"partner",active:true,
-      createdBy:uid,createdAt:FieldValue.serverTimestamp(),
-      updatedAt:FieldValue.serverTimestamp()
-    });
-    tx.create(memberRef,{
-      uid,name:displayName||"名前未設定",email,role:"leader",
-      companyRole:"owner",accessKind:"partner",companyId:companyRef.id,
-      teamId:null,active:true,canViewRevenue:false,
-      canViewUnitPrice:false,canCreateInvite:false,
-      joinedAt:FieldValue.serverTimestamp(),
-      updatedAt:FieldValue.serverTimestamp()
-    });
-    tx.update(userRef,{
-      companyId:companyRef.id,companyRole:"owner",role:"leader",
-      accessKind:"partner",canViewRevenue:false,
-      canViewUnitPrice:false,canCreateInvite:false,
-      teamId:null,companySetupVersion:1,
-      updatedAt:FieldValue.serverTimestamp()
-    });
-    tx.create(partnerRelationRef,{
-      hubCompanyId:invite.hubCompanyId,partnerCompanyId:companyRef.id,
-      invitedBy:invite.invitedBy,acceptedBy:uid,
-      originInviteId:inviteDoc.id,
-      active:true,catalogAccessApproved:true,
-      countSharingApproved:true,
-      ownProductDefaultVisibility:"private",
-      createdAt:FieldValue.serverTimestamp(),
-      updatedAt:FieldValue.serverTimestamp()
-    });
-    tx.update(inviteDoc.ref,{
-      status:"accepted",acceptedBy:uid,
-      acceptedAt:FieldValue.serverTimestamp()
-    });
-    result={companyId:companyRef.id,companyName:name,
-      accessKind:"partner",catalogSourceCompanyId:invite.hubCompanyId};
-  });
-  return result;
-});
-
-/*
- * SAFE PARTNER PRODUCT CATALOG (STAGING ONLY).
- * Partners read central product names/IDs/order via a SERVER whitelist, never
- * central raw products. Own custom products are a separate price-free dataset.
- * Do not deploy before partner financial Security Rules and old-PWA cutover.
- */
-const catalogIdPattern=/^[A-Za-z0-9_:-]{1,200}$/;
-const priceInLabel=/(?:売上|単価|利益|報酬|キャッシュバック|[¥￥$€]|(?:CB|revenue|unitPrice|cashback|commission)[ :_=-]*[0-9０-９]|[0-9０-９][0-9０-９.,，]*\s*(?:万円|千円|円))/i;
-function safeCatalogName(value){
- const n=String(value||"").replace(/[\r\n\t]/g," ").trim();
- if(!n||n.length>80||priceInLabel.test(n))
-   throw new HttpsError("failed-precondition",
-     "金額を含む商材名を公開できません。元の商材を変更せず管理者確認をしてください。");
- return n;
-}
-function safeCatalogId(value){
- if(typeof value!=="string"||!catalogIdPattern.test(value)||priceInLabel.test(value))
-   throw new HttpsError("failed-precondition",
-     "金額を含む商材IDを公開できません。管理者によるID対応表が必要です。");
- return value;
-}
-async function currentPartnerContext(uid){
- const context=await getCompanyContext(uid);
- const companySnap=await db.collection("companies").doc(context.companyId).get();
- if(!companySnap.exists||companySnap.data()?.active!==true||
-    companySnap.data()?.companyKind!=="partner"||
-    context.memberData.accessKind!=="partner"||
-    context.userData.accessKind!=="partner"){
-   throw new HttpsError("permission-denied","協力店の有効な所属が必要です。");
- }
- const relationSnap=await db.collection("partnerRelations").doc(context.companyId).get();
- const rel=relationSnap.data()||{};
- if(!relationSnap.exists||rel.active!==true||
-    rel.partnerCompanyId!==context.companyId ||
-    rel.hubCompanyId!==companySnap.data().hubCompanyId ||
-    rel.catalogAccessApproved!==true||rel.countSharingApproved!==true){
-   throw new HttpsError("permission-denied","協力店の共通商材連携が無効です。");
- }
- return {...context,companyData:companySnap.data(),relation:rel};
-}
-exports.listPartnerCatalog = onCall(async(request)=>{
- const {uid}=requireVerifiedUser(request);
- const context=await currentPartnerContext(uid);
- const hubId=safeCatalogId(context.relation.hubCompanyId);
- const [hubProducts,ownProducts]=await Promise.all([
-   db.collection("products").where("companyId","==",hubId).get(),
-   db.collection("companies").doc(context.companyId)
-     .collection("partnerCustomProducts").get()
- ]);
- if(hubProducts.size>10000||ownProducts.size>10000)
-   throw new HttpsError("resource-exhausted","商材件数が多すぎます。");
- const products=[];
- const seen=new Set();
- for(const doc of hubProducts.docs){
-   const data=doc.data()||{},pid=safeCatalogId(doc.id);
-   if(data.companyId!==hubId)throw new HttpsError("failed-precondition","商材の会社情報が不正です。");
-   if(data.active===false)continue;
-   const key="shared:"+hubId+":"+pid;
-   if(seen.has(key))throw new HttpsError("failed-precondition","重複する商材があります。");
-   seen.add(key);
-   products.push({
-     catalogId:key,sourceCompanyId:hubId,sourceProductId:pid,
-     name:safeCatalogName(data.name),
-     active:true,sortOrder:Number.isSafeInteger(data.sortOrder)&&data.sortOrder>=0?data.sortOrder:0,
-     scope:"shared",visibility:"shared_counts"
-   });
- }
- for(const doc of ownProducts.docs){
-   const data=doc.data()||{},pid=safeCatalogId(doc.id);
-   if(data.companyId!==context.companyId)throw new HttpsError("failed-precondition","独自商材の会社情報が不正です。");
-   if(!["private","shared_counts"].includes(data.visibility))
-     throw new HttpsError("failed-precondition","独自商材の公開設定が不正です。");
-   if(data.active===false)continue;
-   products.push({
-     catalogId:"custom:"+context.companyId+":"+pid,
-     sourceCompanyId:context.companyId,sourceProductId:pid,
-     name:safeCatalogName(data.name),
-     active:true,sortOrder:Number.isSafeInteger(data.sortOrder)&&data.sortOrder>=0?data.sortOrder:0,
-     scope:"partner_custom",visibility:data.visibility
-   });
- }
- products.sort((a,b)=>a.sortOrder-b.sortOrder||a.catalogId.localeCompare(b.catalogId));
- return {catalogSourceCompanyId:hubId,products};
-});
-exports.createPartnerCustomProduct = onCall(async(request)=>{
- const {uid}=requireVerifiedUser(request);
- const context=await currentPartnerContext(uid);
- if(context.memberData.companyRole!=="owner"||
-    context.companyData.ownerUid!==uid)
-   throw new HttpsError("permission-denied","独自商材を追加できるのは代表オーナーのみです。");
- const name=safeCatalogName(request.data?.name);
- const ownRef=db.collection("companies").doc(context.companyId)
-   .collection("partnerCustomProducts").doc();
- await ownRef.create({
-   companyId:context.companyId,name,sortOrder:0,active:true,
-   visibility:"private",createdBy:uid,
-   createdAt:FieldValue.serverTimestamp(),
-   updatedAt:FieldValue.serverTimestamp()
- });
- return {productId:ownRef.id,visibility:"private"};
-});
-exports.updatePartnerCustomProductVisibility = onCall(async(request)=>{
- const {uid}=requireVerifiedUser(request);
- const context=await currentPartnerContext(uid);
- if(context.memberData.companyRole!=="owner"||
-    context.companyData.ownerUid!==uid)
-   throw new HttpsError("permission-denied","独自商材の共有設定は代表オーナーのみ変更できます。");
- const productId=safeCatalogId(request.data?.productId);
- const visibility=request.data?.visibility;
- if(!["private","shared_counts"].includes(visibility))
-   throw new HttpsError("invalid-argument","公開設定が不正です。");
- const ref=db.collection("companies").doc(context.companyId)
-   .collection("partnerCustomProducts").doc(productId);
- await db.runTransaction(async tx=>{
-   const doc=await tx.get(ref);
-   if(!doc.exists||doc.data()?.companyId!==context.companyId)
-     throw new HttpsError("not-found","対象の独自商材が存在しません。");
-   tx.update(ref,{visibility,updatedAt:FieldValue.serverTimestamp()});
- });
- return {productId,visibility};
-});
-exports.listLinkedPartnerProducts = onCall(async(request)=>{
- const {uid}=requireVerifiedUser(request);
- const context=await getCompanyContext(uid);
- const hub=await db.collection("companies").doc(context.companyId).get();
- if(!hub.exists||hub.data()?.active!==true||
-    hub.data()?.ownerUid!==uid||
-    context.memberData.companyRole!=="owner")
-   throw new HttpsError("permission-denied","代表オーナーだけが他社公開商材を閲覧できます。");
- const relations=await db.collection("partnerRelations")
-   .where("hubCompanyId","==",context.companyId).get();
- if(relations.size>100)throw new HttpsError("resource-exhausted","連携会社数が多すぎます。");
- const products=[];
- for(const relSnap of relations.docs){
-   const link=relSnap.data()||{};
-   if(link.active!==true||link.catalogAccessApproved!==true||
-      link.countSharingApproved!==true)continue;
-   const partnerId=safeCatalogId(link.partnerCompanyId);
-   const snap=await db.collection("companies").doc(partnerId)
-     .collection("partnerCustomProducts").where("visibility","==","shared_counts").get();
-   for(const item of snap.docs){
-     const fields=item.data()||{};
-     if(fields.companyId!==partnerId||fields.active!==true)continue;
-     products.push({
-       sourceCompanyId:partnerId,sourceProductId:safeCatalogId(item.id),
-       name:safeCatalogName(fields.name),
-       scope:"partner_custom",visibility:"shared_counts"
-     });
-   }
- }
- return {products};
-});
-
 exports.deleteCompanyMemberAccount = onCall(async (request) => {
   const { uid } = requireVerifiedUser(request);
   const targetUid = String(request.data?.uid || "").trim();
@@ -755,14 +423,14 @@ exports.deleteCompanyMemberAccount = onCall(async (request) => {
   if (!targetUid || targetUid.length > 128) {
     throw new HttpsError(
       "invalid-argument",
-      "削除対象のメンバーを確認できません。"
+      "利用停止対象のメンバーを確認できません。"
     );
   }
 
   if (targetUid === uid) {
     throw new HttpsError(
       "failed-precondition",
-      "自分のアカウント削除はアカウント設定から行ってください。"
+      "自分のアカウントの利用停止はこの操作ではできません。"
     );
   }
 
@@ -771,7 +439,7 @@ exports.deleteCompanyMemberAccount = onCall(async (request) => {
   if (context.memberData.companyRole !== "owner") {
     throw new HttpsError(
       "permission-denied",
-      "メンバーを完全削除できるのはオーナーだけです。"
+      "メンバーを利用停止できるのはオーナーだけです。"
     );
   }
 
@@ -791,20 +459,37 @@ exports.deleteCompanyMemberAccount = onCall(async (request) => {
   if (!targetMemberSnap.exists) {
     throw new HttpsError(
       "not-found",
-      "削除対象の会社メンバーが見つかりません。"
+      "利用停止対象の会社メンバーが見つかりません。"
     );
   }
 
   const targetMember = targetMemberSnap.data() || {};
+  const targetUser = targetUserSnap.exists ? (targetUserSnap.data() || {}) : null;
 
-  if (targetMember.companyRole === "owner") {
+  // Fail closed on inconsistent company/UID references. A company owner
+  // must never be able to disable an Auth account belonging to another
+  // company or overwrite a mismatched users/{uid} profile.
+  if (
+    !targetUser
+    || targetUser.companyId !== context.companyId
+    || (targetUser.uid != null && targetUser.uid !== targetUid)
+    || (targetMember.uid != null && targetMember.uid !== targetUid)
+    || (targetMember.companyId != null && targetMember.companyId !== context.companyId)
+  ) {
     throw new HttpsError(
       "failed-precondition",
-      "オーナーはこの操作では削除できません。先に役割を変更してください。"
+      "社員の所属情報が一致しないため、安全のため利用停止を中断しました。"
     );
   }
 
-  // 先に利用停止して、Auth削除途中でもアプリへ再アクセスできないようにする。
+  if (targetUser.companyRole === "owner" || targetMember.companyRole === "owner") {
+    throw new HttpsError(
+      "failed-precondition",
+      "オーナーはこの操作では利用停止できません。先に役割を変更してください。"
+    );
+  }
+
+  // 先に有効フラグを停止する。Authが一時失敗しても、会社所属は停止済みとして保持する。
   const disableBatch = db.batch();
 
   disableBatch.set(
@@ -829,38 +514,33 @@ exports.deleteCompanyMemberAccount = onCall(async (request) => {
 
   await disableBatch.commit();
 
-  let authDeleted = false;
+  // Suspension only: preserve user/member documents, UID, names, teamHistory,
+  // sales references and all saved record counts. The legacy callable name
+  // remains for older clients; no physical deletion is performed.
+  let authDisabled = false;
   let authAlreadyMissing = false;
-
   try {
-    await getAuth().deleteUser(targetUid);
-    authDeleted = true;
+    await getAuth().updateUser(targetUid, { disabled: true });
+    authDisabled = true;
   } catch (error) {
     if (error?.code === "auth/user-not-found") {
       authAlreadyMissing = true;
     } else {
       throw new HttpsError(
         "internal",
-        "Firebase Authenticationアカウントの削除に失敗しました。"
+        "認証アカウントの利用停止に失敗しました。社員と実績の履歴は保持されています。"
       );
     }
   }
 
-  // 過去実績はrecords側に残す。メンバー/ユーザー本体だけ削除する。
-  const cleanupBatch = db.batch();
-
-  cleanupBatch.delete(targetMemberRef);
-
-  if (targetUserSnap.exists) {
-    cleanupBatch.delete(targetUserRef);
-  }
-
-  await cleanupBatch.commit();
-
   return {
     ok: true,
-    authDeleted,
+    mode: "retained_deactivated",
+    authDeleted: false,
+    authDisabled,
     authAlreadyMissing,
+    historicalMemberDocumentRetained: true,
+    historicalUserDocumentRetained: true,
   };
 });
 

@@ -81,6 +81,21 @@ test("only valid GET, explicitly allowlisted origins and safe parameters",async(
  assert.equal(valid.status,200);
  assert.equal(valid.headers.get("Access-Control-Allow-Origin"),"https://nico-factory.web.app");
 });
+test("retired legacy GitHub Pages origin cannot read partner counts even with a valid token",async()=>{
+ const f=fixture();
+ const blocked=await get(f.handle,"collection=publicRecords&teamId=team1",{
+   origin:"https://keikei-p.github.io"
+ });
+ assert.equal(blocked.status,403);
+ assert.deepEqual(blocked.body,{error:"request_blocked"});
+ assert.equal(blocked.headers.get("Access-Control-Allow-Origin"),null);
+ const official=await get(f.handle,"collection=publicRecords&teamId=team1",{
+   origin:"https://nico-factory.web.app"
+ });
+ assert.equal(official.status,200);
+ assert.equal(official.headers.get("Access-Control-Allow-Origin"),
+   "https://nico-factory.web.app");
+});
 test("denies unsigned identity, missing membership, suspended user or other-company membership",async()=>{
  const alternatives=[
   {auth:{uid:"partner",emailVerified:false}},

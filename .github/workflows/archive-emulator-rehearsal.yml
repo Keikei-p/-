@@ -1,0 +1,32 @@
+name: Sales Archive Emulator Restore Rehearsal
+on:
+  pull_request:
+    paths:
+      - "functions/rehearse-sales-restore.mjs"
+      - "tests/generate-synthetic-archive.mjs"
+      - ".github/workflows/archive-emulator-rehearsal.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  restore-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GCLOUD_PROJECT: demo-sales-archive-rehearsal
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Install emulator test dependencies
+        run: npm install --prefix functions --ignore-scripts --no-audit --no-fund
+      - name: Generate only synthetic historical records
+        run: node tests/generate-synthetic-archive.mjs /tmp/sales-archive-test.json
+      - name: Run isolated emulator import and full read-back check
+        run: |
+          npx --yes firebase-tools emulators:exec --only firestore --project demo-sales-archive-rehearsal "node functions/rehearse-sales-restore.mjs /tmp/sales-archive-test.json --confirm-emulator"

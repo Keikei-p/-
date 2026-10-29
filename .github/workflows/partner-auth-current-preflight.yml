@@ -1,0 +1,43 @@
+name: Partner Authentication Boundary (staging, no Firebase access)
+on:
+  pull_request:
+    paths:
+      - 'security/firebase-id-token-verifier.mjs'
+      - 'security/trusted-membership-loader.mjs'
+      - 'security/staged-count-gateway.mjs'
+      - 'security/trusted-partner-write-context.mjs'
+      - 'security/public-count-api.mjs'
+      - 'tests/firebase-id-token-verifier.test.mjs'
+      - 'tests/trusted-membership-loader.test.mjs'
+      - 'tests/staged-count-gateway.test.mjs'
+      - 'tests/trusted-partner-write-context.test.mjs'
+      - '.github/workflows/partner-auth-current-preflight.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  auth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Parse trusted auth and counting modules
+        run: |
+          node --check security/firebase-id-token-verifier.mjs
+          node --check security/trusted-membership-loader.mjs
+          node --check security/staged-count-gateway.mjs
+          node --check security/trusted-partner-write-context.mjs
+          node --check security/public-count-api.mjs
+      - name: Run isolated signed-token, revocation, partner and team authorization tests
+        run: |
+          node --test tests/firebase-id-token-verifier.test.mjs tests/trusted-membership-loader.test.mjs tests/staged-count-gateway.test.mjs tests/trusted-partner-write-context.test.mjs tests/public-count-api.test.mjs tests/public-count-firestore-reader.test.mjs
+      - name: Ensure no production credentials are supplied
+        run: |
+          test -z "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          test -z "${GOOGLE_APPLICATION_CREDENTIALS:-}"
+          test -z "${CLOUDFLARE_API_TOKEN:-}"
