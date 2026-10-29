@@ -1,6 +1,11 @@
 name: Record Audit Preflight
 on:
   pull_request:
+    branches: [main]
+    paths:
+      - index.html
+      - tests/sales-regressions.cjs
+      - .github/workflows/record-audit-preflight.yml
   workflow_dispatch:
 permissions:
   contents: read
@@ -26,3 +31,5 @@ jobs:
           if (source.includes("correctionAuditWarning")) throw new Error("Non-atomic warning branch remains");
           process.stdout.write("PASS: syntax and transaction write hook\n");
           NODE
+      - name: Confirm audit failure rolls back record write
+        run: node --test tests/sales-regressions.cjs
