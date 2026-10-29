@@ -153,20 +153,31 @@ async function prepareTeamRows(env,token,companyId,clock,kind,settings){
  }
  if(kind==="missing"){
   const [members]=await Promise.all([listDocuments(env,token,"companies/"+encodeURIComponent(companyId)+"/members")]);
-  const reported=new Map(),expected=new Map();
+  // A single member can accidentally submit more than once. Count distinct
+  // expected employee IDs, never the number of document submissions.
+  const expected=new Map(),reported=new Map(),knownTeams=new Set(teams.map(t=>t.id));
   for(const member of members){
    if(member.active===false||member.companyRole==="owner"&&!member.teamId)continue;
-   const teamId=teamForDate(member,clock.date);if(!teamId)continue;
-   expected.set(teamId,(expected.get(teamId)||0)+1);
+   const teamId=teamForDate(member,clock.date);
+   if(!teamId)continue;
+   if(!knownTeams.has(teamId))throw Error("Member is assigned to an unknown report team");
+   const uid=typeof member.uid==="string"&&member.uid?member.uid:member.id;
+   if(typeof uid!=="string"||!uid)throw Error("Expected member ID is missing");
+   if(!expected.has(teamId))expected.set(teamId,new Set());
+   expected.get(teamId).add(uid);
   }
   for(const r of records)if(r.reportStatus==="submitted"||r.reportStatus==="no_result"){
-   const teamId=r.teamId;if(!teamId)continue;
-   reported.set(teamId,(reported.get(teamId)||0)+1);
+   const teamId=r.teamId,uid=r.uid;
+   if(typeof uid!=="string"||!uid)throw Error("Submitted member ID is missing");
+   if(!expected.get(teamId)?.has(uid))continue;
+   if(!reported.has(teamId))reported.set(teamId,new Set());
+   reported.get(teamId).add(uid);
   }
-  return teams.filter(t=>(expected.get(t.id)||0)>0).map(t=>({
+  return teams.filter(t=>(expected.get(t.id)?.size||0)>0).map(t=>({
    id:t.id,name:t.name,goalCount:0,currentCount:totals.get(t.id)||0,
    reported:settings.reportCompletionMode==="team_any"
-    ?(reported.get(t.id)||0)>0:(reported.get(t.id)||0)>=(expected.get(t.id)||0)
+    ?(reported.get(t.id)?.size||0)>0:
+      (reported.get(t.id)?.size||0)===(expected.get(t.id)?.size||0)
   }));
  }
  const seenGoalTeams=new Set();
