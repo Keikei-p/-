@@ -21246,11 +21246,14 @@ function verifyNewRecordPricing(results, productCatalog) {
     const cb = Number(row.cashback ?? 0);
     const price = Number(row.revenuePerUnit);
     const plans = getProductPricingOptions(product);
-    const matching = plans.find(option => Number(option.cashback) === cb);
+    // A duplicate cashback plan is ambiguous: never pick a random price.
+    const matchingPlans = plans.filter(option => Number(option.cashback) === cb);
+    const matching = matchingPlans.length === 1 ? matchingPlans[0] : null;
     if (!matching || !Number.isSafeInteger(cb) || cb < 0) {
       return "選択中のCBプランが現在の商材設定と一致しません。再読み込みしてください。";
     }
     if (matching.revenuePerUnit == null ||
+        row.revenuePerUnit == null || row.revenuePerUnit === "" ||
         !Number.isSafeInteger(price) || price < 0 ||
         !Number.isSafeInteger(Number(matching.revenuePerUnit)) ||
         price !== Number(matching.revenuePerUnit)) {
@@ -31996,12 +31999,132 @@ function renderTeamRanking(
    商材別
 ===================================================== */
 
+function auditSavedRevenueRates(monthlyRecords, productCatalog) {
+  const findings = [];
+  const productsById = new Map((productCatalog || []).map(p => [p.id,p]));
+  const report = (date, name, message) => {
+    if (findings.length < 100) findings.push({date, name, message});
+  };
+  for (const product of productCatalog || []) {
+    const hasExplicit = Array.isArray(product.pricingOptions) && product.pricingOptions.length > 0;
+    const oldCB = !hasExplicit && Array.isArray(product.cashbackOptions)
+      && product.cashbackOptions.some(value => Number(value) > 0);
+    if (oldCB) report("商材設定", product.name || "不明",
+      "CB別の売上単価が未設定です。登録前に商材管理で確認してください。");
+    if (hasExplicit) {
+      const seen = new Set();
+      for (const option of product.pricingOptions) {
+        const cb = Number(option?.cashback), price = Number(option?.revenuePerUnit);
+        if (!Number.isSafeInteger(cb) || cb < 0 ||
+            !Number.isSafeInteger(price) || price < 0 || seen.has(cb)) {
+          report("商材設定",product.name || "不明","CB・単価に重複または不正値があります。");
+          break;
+        }
+        seen.add(cb);
+      }
+    }
+  }
+  for (const record of monthlyRecords || []) {
+    const rows = getRecordResults(record);
+    let count = 0, revenue = 0, valid = true;
+    for (const row of rows) {
+      const product = productsById.get(row.productId);
+      const name = row.productName || product?.name || "不明";
+      const qty = Number(row.count), price = Number(row.revenuePerUnit);
+      if (row.count == null || row.count === "" ||
+          row.revenuePerUnit == null || row.revenuePerUnit === "" ||
+          !Number.isSafeInteger(qty) || qty < 0 ||
+          !Number.isSafeInteger(price) || price < 0 ||
+          !Number.isSafeInteger(qty * price)) {
+        report(record.date || "日付不明",name,"保存済み件数または単価が不正です。");
+        valid = false;
+        continue;
+      }
+      count += qty;
+      revenue += qty * price;
+      if (!Number.isSafeInteger(count) || !Number.isSafeInteger(revenue)) {
+        valid = false;
+        report(record.date || "日付不明",name,"合計金額が安全な数値範囲を超えています。");
+        break;
+      }
+      if (!qty) continue;
+      if (!product) {
+        report(record.date || "日付不明",name,"商材マスターの参照がありません。過去の単価を確認してください。");
+        continue;
+      }
+      const explicit = Array.isArray(product.pricingOptions) && product.pricingOptions.length > 0;
+      const oldCB = !explicit && Array.isArray(product.cashbackOptions) &&
+        product.cashbackOptions.some(value => Number(value) > 0);
+      if (oldCB) {
+        report(record.date || "日付不明",name,
+          "旧CB形式の商材です。保存単価と承認単価を確認してください。");
+        continue;
+      }
+      const opts = getProductPricingOptions(product);
+      if (row.cashback == null && opts.length > 1) {
+        report(record.date || "日付不明",name,
+          "保存済みCBが不明のためプラン単価を確定できません。");
+        continue;
+      }
+      const cb = row.cashback == null ? Number(opts[0]?.cashback) : Number(row.cashback);
+      const matches = opts.filter(option => Number(option.cashback) === cb);
+      if (matches.length !== 1) {
+        report(record.date || "日付不明",name,"CBプランが現在の商材設定と一致しません。");
+        continue;
+      }
+      if (matches[0].revenuePerUnit == null ||
+          !Number.isSafeInteger(Number(matches[0].revenuePerUnit))) {
+        report(record.date || "日付不明",name,"現在のCB別売上単価を確認できません。");
+        continue;
+      }
+      if (price !== Number(matches[0].revenuePerUnit)) {
+        report(record.date || "日付不明",name,
+          "保存単価 " + formatYen(price) + " / 現在設定 " +
+          formatYen(matches[0].revenuePerUnit) + "（単価改定の可能性あり）");
+      }
+    }
+    if (valid && ((record.totalCount != null && Number(record.totalCount) !== count) ||
+        (record.totalRevenue != null && Number(record.totalRevenue) !== revenue))) {
+      report(record.date || "日付不明","実績合計","保存済み明細と合計が一致しません。");
+    }
+  }
+  return findings;
+}
+
 function renderProductSummary(
   productMap
 ) {
 
   productSummaryList.innerHTML =
     "";
+
+  // Read-only integrity warning: owner only. No database read, write or auto-repricing.
+  // Price changes over time are flagged for review, never corrected silently.
+  if (isCurrentCompanyOwner() && canCurrentUserViewProductRevenue()) {
+    const month = dashboardMonth?.value;
+    if (month && /^\d{4}-\d{2}$/.test(month)) {
+      const currentRows = (records || []).filter(row =>
+        typeof row.date === "string" && row.date.startsWith(month + "-"));
+      const warnings = auditSavedRevenueRates(currentRows, products);
+      if (warnings.length) {
+        const panel = document.createElement("div");
+        panel.className = "summary-row";
+        panel.style.display = "block";
+        const heading = document.createElement("strong");
+        heading.textContent = "⚠️ 売上・保存単価 要確認：" + warnings.length +
+          "件（表示月のみ・原票は未変更）";
+        panel.appendChild(heading);
+        for (const warning of warnings.slice(0,20)) {
+          const item = document.createElement("div");
+          item.style.marginTop = "6px";
+          item.style.fontSize = "12px";
+          item.textContent = warning.date + "｜" + warning.name + "：" + warning.message;
+          panel.appendChild(item);
+        }
+        productSummaryList.appendChild(panel);
+      }
+    }
+  }
 
 
   const names =
@@ -32018,11 +32141,10 @@ function renderProductSummary(
     names.length === 0
   ) {
 
-    productSummaryList.innerHTML = `
-      <div class="empty-message">
-        この月の実績はありません。
-      </div>
-    `;
+    const empty = document.createElement("div");
+    empty.className = "empty-message";
+    empty.textContent = "この月の実績はありません。";
+    productSummaryList.appendChild(empty);
 
     return;
 
