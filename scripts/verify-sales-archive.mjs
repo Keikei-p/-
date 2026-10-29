@@ -6,6 +6,7 @@
 import {readFile} from "node:fs/promises";
 import {createHash} from "node:crypto";
 import {resolve} from "node:path";
+import {checkArchiveCoverage} from "../archive-coverage.mjs";
 const filename=process.argv[2];
 if(!filename){console.error("Usage: node scripts/verify-sales-archive.mjs <saved-archive.json>");process.exit(2);}
 function die(msg){console.error("FAIL: "+msg);process.exit(1);}
@@ -33,6 +34,7 @@ const withinPeriod=date=>validArchivedDay(date)&&
  (periodMode==="year"?date.slice(0,4)===p.period:date.slice(0,7)===p.period);
 
 if(!Array.isArray(original.records)||!Array.isArray(original.products)||!Array.isArray(original.teams)||!Array.isArray(original.recordCorrections))die("Original source records are incomplete");
+try{checkArchiveCoverage(p);}catch{die("Archive coverage manifest differs from preserved history");}
 if(original.records.length!==p.summary?.dailyRecords)die("Summary daily-record count differs from saved source");
 if((p.warnings||[]).length||(p.summary?.warningCount||0)>0)die("Unresolved financial-data validation warnings must be reviewed");
 let count=0,amount=0;
@@ -89,4 +91,6 @@ for(const [name,items] of [["products",original.products],["teams",original.team
 }
 console.log("PASS archive checksum, company scope, source IDs, counts and saved financial totals");
 console.log("Records:",original.records.length,"Count:",count,"Revenue:",amount,"Period:",p.period);
+console.log("LIMITATION: only 4 sales-history collections captured; NOT a full-company backup.");
+console.log("NEVER delete original records based on this export.");
 console.log("No Firestore write, import, restore, or deletion was performed.");
