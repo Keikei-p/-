@@ -1,5 +1,6 @@
 // Sales archive module: READ-ONLY. Does not write or delete Firestore documents.
 import {archiveExportPolicy} from "./archive-output-policy.mjs";
+import {makeArchiveCoverage} from "./archive-coverage.mjs";
 import {getApp} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
 import {getAuth,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 import {getFirestore,getDoc,doc,collection,query,where,getDocsFromServer} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
@@ -20,14 +21,14 @@ menu?.appendChild(button);
 const dialog=document.createElement("div");
 dialog.id="archiveDialog";dialog.hidden=true;dialog.setAttribute("role","dialog");dialog.setAttribute("aria-modal","true");
 dialog.innerHTML='<div class="body"><div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><h2 style="font-size:20px">📚 売上資料・保管庫</h2><button type="button" id="archiveClose">閉じる</button></div>'+
- '<p>過去の実績を年別・月別に集計し、PDF・Excel用CSV・JSONとして保存できます。<b>元の履歴は絶対に変更・削除しません。</b></p>'+
+ '<p>過去の実績を年別・月別に集計し、PDF・Excel用CSV・JSONとして保存できます。<b>元の履歴は変更・削除しません。</b> <strong>この資料は4種類の営業履歴のみで、会員・会社設定などを含む全体バックアップではありません。</strong></p>'+
  '<div class="toolbar"><label>期間単位<br><select id="archiveMode"><option value="month">月別</option><option value="year">年別</option></select></label>'+
  '<label id="archiveMonthWrap">対象月<br><input type="month" id="archiveMonth"></label>'+
  '<label id="archiveYearWrap" hidden>対象年<br><input type="number" min="2000" max="2100" id="archiveYear"></label>'+
  '<button type="button" id="archiveLoad">サーバーの実績を確認</button></div>'+
  '<div id="archiveSummary" aria-live="polite">期間を選んでデータを確認してください。</div>'+
- '<div class="actions"><button id="archivePdf" disabled>📄 PDF印刷</button><button id="archiveCsv" disabled>📊 Excel用CSV</button><button id="archiveJson" disabled>🔐 復元用JSON</button>'+
- '<button id="archiveVerify">📂 保存JSONを再表示・検証</button><input type="file" id="archiveFile" accept=".json,application/json" hidden></div>'+
+ '<div class="actions"><button id="archivePdf" disabled>📄 PDF印刷</button><button id="archiveCsv" disabled>📊 Excel用CSV</button><button id="archiveJson" disabled>🔐 営業履歴JSON（全社バックアップではない）</button>'+
+ '<button id="archiveVerify">📂 営業履歴JSONを再表示・検証</button><input type="file" id="archiveFile" accept=".json,application/json" hidden></div>'+
  '<div id="archiveStatus" aria-live="polite"></div>'+
  '<p><small>集計金額は「実績に保存された単価×件数」で算出します。現在の商材マスターで再計算する画面とは異なる場合があります。JSONには訂正履歴・当時の実績原票・取得時点の商材情報を含みます。自動削除・Firestoreへの復元は未実装です。ファイルは金額と個人情報を含むため、厳重に保管してください。</small></p></div>';
 document.body.appendChild(dialog);
@@ -43,6 +44,11 @@ async function companyForOwner(user){
  const [co,member]=await Promise.all([getDoc(doc(db,"companies",companyId)),getDoc(doc(db,"companies",companyId,"members",user.uid))]);
  if(!co.exists()||!member.exists()||member.data().active===false)return null;
  const c=co.data(),m=member.data();
+ // Finance archives must never be shown to a partner-company owner or a
+ // partner leader whose accessKind flags were mistakenly granted revenue.
+ if(c.active===false||c.companyKind==="partner"||c.accessKind==="partner"||
+    ud.accessKind==="partner"||m.accessKind==="partner"||
+    ud.memberType==="cooperator"||m.memberType==="cooperator")return null;
  const owner=c.ownerUid===user.uid||c.masterUid===user.uid||(ud.companyRole==="owner"&&m.companyRole==="owner");
  return owner?{id:companyId,name:c.name||"会社名未設定"}:null;
 }
@@ -149,6 +155,7 @@ async function load(){
   moneyBasis:"saved_unit_price",revaluationBasis:"current_approved_catalog_where_unambiguous",summary,warnings,rows,
   byTeam:group(rows,"teamId","teamName"),byMember:group(rows,"memberUid","memberName"),byProduct:group(rows,"productId","productName"),
   original:{records,products:collections[1],recordCorrections:corrections,teams:collections[3]}};
+ payload.coverage=makeArchiveCoverage(payload);
  bundle={kind:"sales-archive",version:1,checksumAlgorithm:"SHA-256",checksum:await sha(payload),payload};
  $("archiveSummary").textContent=p.value+" ｜ 日別実績 "+summary.dailyRecords+"件 ｜ 獲得 "+summary.count+"件 ｜ 保存単価ベース "+money(summary.revenue)+" ｜ 現行単価との比較差額 "+money(summary.currentPriceComparableRevenue-summary.savedComparableRevenue)+"（比較不能 "+summary.unresolvedCurrentPrices+"行） ｜ 訂正 "+corrections.length+"件 ｜ 照合："+(warnings.length?"要確認 "+warnings.length+"件":"警告なし");
  const policy=archiveExportPolicy({warnings,rows,records,companyVerified:true});
