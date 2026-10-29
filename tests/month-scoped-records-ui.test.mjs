@@ -259,8 +259,8 @@ test("annual cache rejects month, company, and duplicate record ids",()=>{
   [{id:"2",companyId:"companyA",date:"2026-09-01"}],
   [{id:"1",companyId:"companyA",date:"2026-10-01"}]
  ];
- assert.throws(()=>api.mergeVerifiedMonthIntoAnnual(old,"2026-10",months[0],"companyA"),/照合/);
- assert.throws(()=>api.mergeVerifiedMonthIntoAnnual(old,"2026-10",months[1],"companyA"),/照合/);
+ assert.throws(()=>api.mergeVerifiedMonthIntoAnnual(old,"2026-10",months[0],"companyA"),/会社または期間/);
+ assert.throws(()=>api.mergeVerifiedMonthIntoAnnual(old,"2026-10",months[1],"companyA"),/会社または期間/);
  assert.throws(()=>api.mergeVerifiedMonthIntoAnnual(old,"2026-10",months[2],"companyA"),/重複/);
 });
 test("annual cache for another year remains untouched on a monthly change",()=>{
