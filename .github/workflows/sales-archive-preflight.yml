@@ -1,6 +1,18 @@
 name: Sales Archive Preflight
 on:
   pull_request:
+    paths:
+      - "sales-archive.js"
+      - "archive-*.mjs"
+      - "scripts/verify-sales-*.mjs"
+      - "scripts/firestore-readonly-snapshot.mjs"
+      - "scripts/verify-firestore-snapshot-pair.mjs"
+      - "functions/export-firestore-readonly.mjs"
+      - "functions/rehearse-sales-restore.mjs"
+      - "tests/archive-*.test.mjs"
+      - "tests/sales-archive-unit.test.mjs"
+      - "tests/firestore-*.test.mjs"
+      - ".github/workflows/sales-archive-preflight.yml"
   workflow_dispatch:
 permissions:
   contents: read
