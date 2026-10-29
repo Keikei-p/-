@@ -35,9 +35,8 @@ test("partner raw finance write, update, and delete bypasses are rejected",()=>{
   "allow create: if isInternalFinanceReader(request.resource.data.companyId)",
   "allow create: if true || isInternalFinanceReader(request.resource.data.companyId)"
  );
- // The static guard is necessary, NOT semantic proof of the entire boolean
- // expression. The Firebase emulator and a second review must catch OR bypasses.
- assert.equal(checkFinanceRulesBeforeDeploy(create).productionDeploymentApproved,false);
+ // A guard appended after an OR must never be accepted as protection.
+ assert.throws(()=>checkFinanceRulesBeforeDeploy(create),/RAW_CREATE/);
  const update=stage2.replace(
   "allow update: if isInternalFinanceReader(resource.data.companyId)",
   "allow update: if true");
