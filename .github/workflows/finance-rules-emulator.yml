@@ -6,6 +6,7 @@ on:
       - "security/finance-phase2-read-boundary.mjs"
       - "tests/public-rules.test.mjs"
       - "tests/finance-phase2-read-boundary.test.mjs"
+      - "tests/finance-rule-generation.test.mjs"
       - ".github/workflows/finance-rules-emulator.yml"
   workflow_dispatch:
 permissions:
@@ -25,6 +26,8 @@ jobs:
           java-version: "21"
       - name: Install test dependencies
         run: npm install --prefix tests --ignore-scripts --no-audit --no-fund
+      - name: Check financial read and write guard generation before emulator
+        run: node --test tests/finance-rule-generation.test.mjs
       - name: Run Firestore security model in isolated emulator
         run: |
           npx --yes firebase-tools emulators:exec --only firestore --project demo-sales-public-boundary "node --test tests/public-rules.test.mjs && node --test tests/finance-phase2-read-boundary.test.mjs"
