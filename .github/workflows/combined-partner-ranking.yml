@@ -4,7 +4,12 @@ on:
     branches: [main]
     paths:
       - "ranking/combined-count-leaderboard.mjs"
+      - "ranking/rank-only-publication.mjs"
+      - "ranking/combined-rank-only-handler.mjs"
+      - "ranking/rank-only-view.mjs"
+      - "ranking/rank-only-view.css"
       - "tests/combined-count-leaderboard.test.mjs"
+      - "tests/combined-rank-only-publication.test.mjs"
       - "docs/COMBINED_PARTNER_RANKING_PLAN.md"
       - ".github/workflows/combined-partner-ranking.yml"
   push:
@@ -27,6 +32,10 @@ jobs:
         with:
           node-version: "22"
       - name: Syntax check - no Firebase credentials or network
-        run: node --check ranking/combined-count-leaderboard.mjs
+        run: |
+          node --check ranking/combined-count-leaderboard.mjs
+          node --check ranking/rank-only-publication.mjs
+          node --check ranking/combined-rank-only-handler.mjs
+          node --check ranking/rank-only-view.mjs
       - name: Combined count and privacy synthetic test
-        run: node --test tests/combined-count-leaderboard.test.mjs
+        run: node --test tests/combined-count-leaderboard.test.mjs tests/combined-rank-only-publication.test.mjs
