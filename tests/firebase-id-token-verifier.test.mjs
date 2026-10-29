@@ -126,6 +126,6 @@ test("finance-free read gateway accepts verified token and rechecks live team pe
  assert.equal(queries,1);
  const bad=await handler(req("https://nico-factory.web.app/v1/public-counts?collection=publicRecords&teamId=team1",
    mint({...claims,aud:"malicious-project"})));
- assert.equal(bad.status,503,"invalid cryptographic tokens must fail closed");
+ assert.equal(bad.status,401,"invalid cryptographic tokens must be unauthenticated");
  assert.equal(queries,1);
 });
