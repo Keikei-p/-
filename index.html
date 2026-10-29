@@ -12981,6 +12981,104 @@ deleteOwnAccountButton.onclick =
    ★ リアルタイム監視
 ===================================================== */
 
+
+/* TEST ONLY: ?history-preview=1 for owner. The default production input path stays untouched. */
+const MONTH_HISTORY_PREVIEW = new URLSearchParams(location.search).get("history-preview")==="1";
+let scopedHistoryGeneration=0;
+let scopedHistoryMonth="";
+let scopedAnnualRecords=[];
+let scopedAnnualLoaded="";
+function useScopedHistoryPreview(){
+ return MONTH_HISTORY_PREVIEW && isCurrentCompanyOwner() &&
+   currentUserData?.accessKind!=="partner" &&
+   currentUserData?.memberType!=="partner" &&
+   currentCompanyData?.companyKind!=="partner";
+}
+function scopedHistoryBounds(month){
+ if(typeof month!=="string"||!/^[0-9]{4}-(0[1-9]|1[0-2])$/.test(month))
+   throw new Error("Invalid history month");
+ const y=Number(month.slice(0,4)),m=Number(month.slice(5));
+ return {start:month+"-01",
+  end:(m===12?y+1:y)+"-"+String(m===12?1:m+1).padStart(2,"0")+"-01"};
+}
+function scopedHistoryQuery(start,end){
+ return query(recordsCollectionQuery(),where("date",">=",start),where("date","<",end));
+}
+function startScopedHistoryMonth(month){
+ if(!(typeof useScopedHistoryPreview==="function" && useScopedHistoryPreview()))return;
+ if(unsubscribeRecords){unsubscribeRecords();unsubscribeRecords=null;}
+ const bounds=scopedHistoryBounds(month),sequence=++scopedHistoryGeneration;
+ const companyId=currentUserData.companyId;
+ scopedHistoryMonth=month;
+ // Clear stale totals and rankings before starting a different month's read.
+ // Never display last month's counts as this month's results.
+ records=[];
+ currentRecordHistoryMonthly=[];
+ databaseStatus.textContent="選択月を取得中（集計未確定）";
+ monthlyCount.textContent="読込中";
+ monthlyRevenue.textContent="読込中";
+ monthlyWorkDays.textContent="—";
+ individualRankingList.textContent="読み込み中";
+ teamRankingList.textContent="読み込み中";
+ productRankingMemberList.textContent="読み込み中";
+ productRankingProductList.textContent="読み込み中";
+ recordHistoryList.textContent="読み込み中";
+ dailySummaryList.textContent="読み込み中";
+ revenueChartArea.textContent="読み込み中";
+ unsubscribeRecords=onSnapshot(scopedHistoryQuery(bounds.start,bounds.end),snapshot=>{
+  if(sequence!==scopedHistoryGeneration||!(typeof useScopedHistoryPreview==="function" && useScopedHistoryPreview())||
+    currentUserData?.companyId!==companyId||scopedHistoryMonth!==month)return;
+  try {
+   if(snapshot.metadata?.fromCache||snapshot.metadata?.hasPendingWrites){
+     databaseStatus.textContent="端末内キャッシュのみ：サーバー集計未確定";
+     return;
+   }
+   const next=[],seen=new Set();
+   snapshot.forEach(item=>{
+    const value=item.data();
+    if(value.companyId!==companyId||typeof value.date!=="string"||
+       value.date<bounds.start||value.date>=bounds.end||seen.has(item.id))
+      throw new Error("Scope or duplicate validation failed");
+    seen.add(item.id);next.push({id:item.id,...value});
+   });
+   next.sort((a,b)=>b.date.localeCompare(a.date)||a.id.localeCompare(b.id));
+   records=next;
+   scopedAnnualLoaded="";
+   scopedAnnualRecords=[];
+   createMonthOptions();
+   dashboardMonth.value=month;
+   renderDashboard();
+   renderNotificationPreview();
+   databaseStatus.textContent="選択月の実績を取得済み";
+  }catch(error){
+   console.error("Monthly preview rejected",error);
+   databaseStatus.textContent="集計を検証できません";
+   showError("選択月の実績を安全に表示できません。");
+  }
+ },error=>{
+  if(sequence!==scopedHistoryGeneration)return;
+  console.error("Monthly query failed",error);
+  databaseStatus.textContent="集計未確定";
+  showError("選択月の読み込みに失敗しました。Firestoreの索引・権限を確認してください。");
+ });
+}
+async function loadScopedAnnualRecords(year){
+ if(!(typeof useScopedHistoryPreview==="function" && useScopedHistoryPreview())||scopedAnnualLoaded===year)return;
+ if(!/^[0-9]{4}$/.test(year))throw Error("Invalid history year");
+ const companyId=currentUserData.companyId;
+ const snapshot=await getDocsFromServer(scopedHistoryQuery(year+"-01-01",
+    String(Number(year)+1)+"-01-01"));
+ const output=[],seen=new Set();
+ snapshot.forEach(docSnap=>{
+  const value=docSnap.data();
+  if(value.companyId!==companyId||!value.date?.startsWith(year+"-")||
+     seen.has(docSnap.id))throw Error("Invalid yearly history");
+  seen.add(docSnap.id);output.push({id:docSnap.id,...value});
+ });
+ if(currentUserData?.companyId!==companyId)throw Error("Company changed during read");
+ scopedAnnualRecords=output;scopedAnnualLoaded=year;
+}
+
 function startRealtimeListeners() {
 
   stopRealtimeListeners();
@@ -13358,6 +13456,9 @@ function startRealtimeListeners() {
     実績
   */
 
+  if((typeof useScopedHistoryPreview==="function" && useScopedHistoryPreview())){
+    startScopedHistoryMonth(dashboardMonth.value||getTodayString().slice(0,7));
+  }else{
   unsubscribeRecords =
     onSnapshot(
       recordsCollectionQuery(),
@@ -13406,6 +13507,7 @@ function startRealtimeListeners() {
         showError("実績の自動更新が停止しました。表示が古い可能性があります。通信・権限を確認して画面を再読み込みしてください。");
       }
     );
+  }
 
 
   unsubscribeGoals =
@@ -21318,11 +21420,32 @@ async function loadExistingRecordIntoForm() {
   }
 
 
-  const record =
+  let record =
     findDailyRecord(
       recordMember.value,
       recordDate.value
     );
+  if((typeof useScopedHistoryPreview==="function" && useScopedHistoryPreview())&&!record){
+    try{
+      const result=await getDocsFromServer(query(recordsCollectionQuery(),
+        where("uid","==",recordMember.value),
+        where("date","==",recordDate.value)));
+      if(result.size>1){
+        showError("同じ日付の実績が重複しています。オーナーへ確認してください。");
+        return;
+      }
+      if(result.size===1){
+        const item=result.docs[0];
+        if(item.data().companyId!==currentUserData.companyId)
+          throw Error("Wrong company");
+        record={id:item.id,...item.data()};
+      }
+    }catch(error){
+      console.error("Existing daily record failed",error);
+      showError("日付の既存実績を確認できません。二重登録せずに再確認してください。");
+      return;
+    }
+  }
 
 
   if (
@@ -22079,6 +22202,11 @@ saveRecordButton.onclick =
           0,
           7
         );
+      if((typeof useScopedHistoryPreview==="function" && useScopedHistoryPreview())){
+        scopedAnnualLoaded="";
+        scopedAnnualRecords=[];
+        startScopedHistoryMonth(dashboardMonth.value);
+      }
 
 
       let dashboardRefreshError =
@@ -22087,7 +22215,7 @@ saveRecordButton.onclick =
 
       try {
 
-        renderDashboard();
+        if(!(typeof useScopedHistoryPreview==="function" && useScopedHistoryPreview()))renderDashboard();
 
       } catch (error) {
 
@@ -22278,6 +22406,10 @@ function createMonthOptions() {
     new Set([
       currentYear
     ]);
+  if((typeof useScopedHistoryPreview==="function" && useScopedHistoryPreview())){
+    for(let year=2020;year<=Number(currentYear);year++)years.add(String(year));
+    if(recordDate.value)years.add(recordDate.value.slice(0,4));
+  }
 
 
   records.forEach(
@@ -22404,22 +22536,26 @@ function createMonthOptions() {
 
 dashboardMonth.addEventListener(
   "change",
-  () => {
-
-    revenueChartSelectedKey =
-      null;
-
-    selectedDailyTeamKey =
-      null;
-
-    dailySummaryDate.value =
-      "";
-
-    recordHistoryDate.value =
-      "";
-
-    renderDashboard();
-
+  async () => {
+    revenueChartSelectedKey=null;
+    selectedDailyTeamKey=null;
+    dailySummaryDate.value="";
+    recordHistoryDate.value="";
+    if((typeof useScopedHistoryPreview==="function" && useScopedHistoryPreview())){
+      const selected=dashboardMonth.value;
+      startScopedHistoryMonth(selected);
+      if(revenueChartMode==="annual"){
+        try{
+          await loadScopedAnnualRecords(selected.slice(0,4));
+          renderRevenueChart();
+        }catch(error){
+          console.error("Yearly history unavailable",error);
+          showError("年次データを取得できません。集計は未確定です。");
+        }
+      }
+    }else{
+      renderDashboard();
+    }
   }
 );
 
@@ -27388,7 +27524,9 @@ function buildRevenueChartData() {
 
 
   const relevantRecords =
-    records.filter(
+    ((typeof useScopedHistoryPreview==="function" && useScopedHistoryPreview()) && revenueChartMode==="annual"
+      ? (scopedAnnualLoaded===selectedYear?scopedAnnualRecords:[])
+      : records).filter(
       record => {
 
         if (
@@ -28074,6 +28212,15 @@ function renderRevenueChartDetail(
 
 
 function renderRevenueChart() {
+
+  if((typeof useScopedHistoryPreview==="function" && useScopedHistoryPreview()) && revenueChartMode==="annual" &&
+     scopedAnnualLoaded!==dashboardMonth.value.slice(0,4)){
+    revenueChartSummary.textContent="年次集計は未確定です。年次表示ボタンから再取得してください。";
+    revenueChartArea.textContent="年次集計を読み込み中、または再取得が必要です";
+    revenueChartLegend.textContent="";
+    revenueChartDetail.textContent="";
+    return;
+  }
 
   if (
     !canCurrentUserViewRevenue()
@@ -29125,16 +29272,22 @@ revenueChartMonthlyButton.addEventListener(
 
 revenueChartAnnualButton.addEventListener(
   "click",
-  () => {
-
-    revenueChartMode =
-      "annual";
-
-    revenueChartSelectedKey =
-      null;
-
+  async () => {
+    if((typeof useScopedHistoryPreview==="function" && useScopedHistoryPreview())){
+      try{
+        databaseStatus.textContent="年次データを取得中（集計未確定）";
+        await loadScopedAnnualRecords(dashboardMonth.value.slice(0,4));
+        databaseStatus.textContent="年次データを取得済み";
+      }catch(error){
+        console.error("Annual snapshot unavailable",error);
+        databaseStatus.textContent="年次集計は未確定";
+        showError("年次実績を完全に取得できません。金額を確定表示しません。");
+        return;
+      }
+    }
+    revenueChartMode = "annual";
+    revenueChartSelectedKey = null;
     renderRevenueChart();
-
   }
 );
 
