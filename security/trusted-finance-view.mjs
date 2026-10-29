@@ -31,8 +31,14 @@ export function projectTrustedFinancialView({record,principal}){
   // For ordinary non-owner financial access, require BOTH server-read records
   // explicitly marked internal. Legacy unclassified accounts require an
   // owner-reviewed migration before financial API access; never guess.
+  // The company type must be loaded from companies/{companyId} by the trusted
+  // server, never from a browser option or a stale membership flag.
+  if(principal.companyKind!=="internal")fail();
   const partnerFlags=[user.accessKind,member.accessKind,user.memberType,member.memberType];
   if(partnerFlags.some(x=>x==="partner"||x==="cooperator"))fail();
+  // Even an owner must be explicitly classified as internal by BOTH
+  // currently stored accounts; an old unclassified owner is not auto-trusted.
+  if(user.accessKind!=="internal"||member.accessKind!=="internal")fail();
   const owner=principal.serverVerifiedOwner===true &&
     user.companyRole==="owner" && member.companyRole==="owner";
   const teams=allowedHistoricalTeamIds;
@@ -40,7 +46,6 @@ export function projectTrustedFinancialView({record,principal}){
     typeof record.teamId==="string" && record.teamId &&
     teams.includes(record.teamId);
   if(!owner&&!permittedTeam)fail();
-  if(!owner && (user.accessKind!=="internal" || member.accessKind!=="internal"))fail();
 
   // Permission flags come ONLY from freshly read Firestore member document.
   // Owners are independently verified against the company owner document.
