@@ -16,9 +16,10 @@
  */
 import {assertPublicSchema} from "./public-projection.mjs";
 
+// The legacy GitHub Pages app is retired. Only the canonical NICO origin
+// may receive browser CORS headers; authorization is always checked separately.
 const ALLOWED_ORIGINS=new Set([
-  "https://nico-factory.web.app",
-  "https://keikei-p.github.io"
+  "https://nico-factory.web.app"
 ]);
 const COLLECTIONS=new Set([
   "publicRecords","publicRecordLines","publicProducts","publicRankEntries"
