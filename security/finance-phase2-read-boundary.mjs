@@ -101,7 +101,7 @@ export function modelOwnerOnlyFinanceRules(phase1){
     if(action==="delete")return "allow delete: if false;";
     const source=action==="create"
       ?"request.resource.data.companyId":"resource.data.companyId";
-    return "allow "+action+": if isInternalFinanceReader("+source)+
+    return "allow "+action+": if isInternalFinanceReader("+source+")"+
       "\n        && ("+original.trim()+");";
   });
   next=next.slice(0,revStart)+hardened+
