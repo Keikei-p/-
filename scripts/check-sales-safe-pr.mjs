@@ -15,6 +15,7 @@ const files=gitDiff(base,head);
 const protectedFiles=new Set(["index.html","firestore.rules","firebase.json",".firebaserc",
   "service-worker.js","manifest.webmanifest",
   ".github/workflows/firebase-production-deploy.yml",
+  ".github/workflows/member-retention-manual-release.yml",
   ".github/workflows/nico-factory-sync.yml",
   ".github/workflows/pr38-validation.yml",
   ".github/workflows/sales-safety-guard.yml",
