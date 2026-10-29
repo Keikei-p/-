@@ -7,6 +7,8 @@ on:
       - "scripts/verify-sales-*.mjs"
       - "scripts/verify-sales-backup.ps1"
       - "scripts/restore-sales-from-env.mjs"
+      - "tools/readonly-backup/restore-emulator.mjs"
+      - "tools/readonly-backup/restore-emulator.test.mjs"
       - "tests/restore-sales-from-env.test.mjs"
       - "scripts/firestore-readonly-snapshot.mjs"
       - "scripts/verify-firestore-snapshot-pair.mjs"
@@ -38,8 +40,11 @@ jobs:
           node --check functions/export-firestore-readonly.mjs
           node --check scripts/verify-firestore-snapshot-pair.mjs
           node --check scripts/restore-sales-from-env.mjs
+          node --check tools/readonly-backup/restore-emulator.mjs
       - name: Run archive regression suite
         run: node --test tests/sales-archive-unit.test.mjs tests/archive-verifier.test.mjs tests/restore-guard.test.mjs tests/year-archive.test.mjs tests/archive-output-policy.test.mjs tests/archive-pair.test.mjs tests/archive-pair-verifier.test.mjs tests/archive-coverage.test.mjs tests/firestore-readonly-snapshot.test.mjs tests/firestore-snapshot-pair.test.mjs
+      - name: Restore 25,001 synthetic documents only through localhost mock (no Firebase access)
+        run: node --test tools/readonly-backup/restore-emulator.test.mjs
       - name: Refuse production environment in local backup restore launcher
         run: node --test tests/restore-sales-from-env.test.mjs
       - name: Validate index manifest
