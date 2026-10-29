@@ -36,7 +36,7 @@ if(!Array.isArray(original.records)||!Array.isArray(original.products)||!Array.i
 if(original.records.length!==p.summary?.dailyRecords)die("Summary daily-record count differs from saved source");
 if((p.warnings||[]).length||(p.summary?.warningCount||0)>0)die("Unresolved financial-data validation warnings must be reviewed");
 let count=0,amount=0;
-const ids=new Set();
+const ids=new Set(),savedPerRecord=new Map();
 for(const r of original.records){
  if(!r||r.companyId!==companyId||!r.id||ids.has(r.id))die("Duplicate record ID or wrong company");
  ids.add(r.id);
@@ -50,22 +50,37 @@ for(const r of original.records){
   if(!Number.isSafeInteger(n)||n<0||!Number.isSafeInteger(rate)||rate<0||!Number.isSafeInteger(n*rate))die("Invalid count or saved price");
   countOne+=n;amountOne+=n*rate;
  }
- if(countOne!==Number(r.totalCount??countOne)||amountOne!==Number(r.totalRevenue??amountOne))die("Original daily record totals do not match line detail");
+ if(!Number.isSafeInteger(r.totalCount)||r.totalCount<0||
+    !Number.isSafeInteger(r.totalRevenue)||r.totalRevenue<0||
+    countOne!==r.totalCount||amountOne!==r.totalRevenue)
+    die("Original daily record totals do not match line detail");
+ savedPerRecord.set(r.id,{count:countOne,revenue:amountOne});
  count+=countOne;amount+=amountOne;
 }
 if(!Number.isSafeInteger(count)||!Number.isSafeInteger(amount)||
    count!==p.summary.count||amount!==p.summary.revenue)
   die("Archive aggregates do not reconcile with original documents");
 if(Array.isArray(p.rows)){
- let rowsCount=0,rowsAmount=0;
+ const actualRows=new Map();
  for(const row of p.rows){
   if(!row||!withinPeriod(row.date)||!ids.has(row.recordId)||
      !Number.isSafeInteger(row.count)||row.count<0||
      !Number.isSafeInteger(row.amount)||row.amount<0)
      die("Invalid or unmatched archive report line");
-  rowsCount+=row.count;rowsAmount+=row.amount;
+  const source=original.records.find(r=>r.id===row.recordId);
+  if(!source||row.date!==source.date)
+    die("Archive report line has wrong original date");
+  const sums=actualRows.get(row.recordId)||{count:0,revenue:0};
+  sums.count+=row.count;sums.revenue+=row.amount;
+  if(!Number.isSafeInteger(sums.count)||!Number.isSafeInteger(sums.revenue))
+    die("Unsafe archive report line totals");
+  actualRows.set(row.recordId,sums);
  }
- if(rowsCount!==count||rowsAmount!==amount)die("Archive report lines differ from original documents");
+ for(const [id,saved] of savedPerRecord){
+   const rendered=actualRows.get(id)||{count:0,revenue:0};
+   if(saved.count!==rendered.count||saved.revenue!==rendered.revenue)
+     die("Archive report lines differ from preserved daily documents");
+ }
 }
 
 for(const [name,items] of [["products",original.products],["teams",original.teams],["recordCorrections",original.recordCorrections]]){
