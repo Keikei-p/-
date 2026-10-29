@@ -49,9 +49,9 @@ function fixture({live=true,consent=true,mutate=undefined,dryRunValidate=false}=
    ],
    records:[
     firestoreDoc("records/hub-r1",{companyId:"hub",date:"2026-10-29",teamId:"hub-team",
-      totalCount:4,totalRevenue:150000,results:{a:{count:4,revenuePerUnit:10000,cashback:40000}}}),
+      uid:"hub-u1",totalCount:4,totalRevenue:150000,results:{a:{count:4,revenuePerUnit:10000,cashback:40000}}}),
     firestoreDoc("records/hub-r2",{companyId:"hub",date:"2026-10-29",teamId:"hub-partner",
-      totalCount:2,totalRevenue:50000,results:{a:{count:2,revenuePerUnit:8000,cashback:20000}}})
+      uid:"hub-partner-u1",totalCount:2,totalRevenue:50000,results:{a:{count:2,revenuePerUnit:8000,cashback:20000}}})
    ]
   },
   partner:{
@@ -59,7 +59,7 @@ function fixture({live=true,consent=true,mutate=undefined,dryRunValidate=false}=
    goals:[firestoreDoc("goals/goal-p1",{companyId:"partner",month:"2026-10",
      teamId:"p1",targets:{a:12}})],
    records:[firestoreDoc("records/p-r1",{companyId:"partner",date:"2026-10-29",teamId:"p1",
-     totalCount:3,totalRevenue:90000,results:{a:{count:3,revenuePerUnit:30000}}})]
+     uid:"partner-u1",totalCount:3,totalRevenue:90000,results:{a:{count:3,revenuePerUnit:30000}}})]
   }
  };
  if(typeof mutate==="function")mutate(byCompany);
@@ -87,6 +87,16 @@ function fixture({live=true,consent=true,mutate=undefined,dryRunValidate=false}=
     return ok(firestoreDoc("companies/"+cid+"/settings/notifications",s));
    }
   }
+  if(method==="GET"&&u.pathname.endsWith("/documents/companies/hub/members"))
+   return ok({documents:[
+    firestoreDoc("companies/hub/members/hub-u1",{uid:"hub-u1",active:true,teamId:"hub-team"}),
+    firestoreDoc("companies/hub/members/hub-u2",{uid:"hub-u2",active:true,teamId:"hub-team"}),
+    firestoreDoc("companies/hub/members/hub-partner-u1",{uid:"hub-partner-u1",active:true,teamId:"hub-partner"})
+   ]});
+  if(method==="GET"&&u.pathname.endsWith("/documents/companies/partner/members"))
+   return ok({documents:[
+    firestoreDoc("companies/partner/members/partner-u1",{uid:"partner-u1",active:true,teamId:"p1"})
+   ]});
   if(method==="POST"&&u.pathname.endsWith("/documents:runQuery")){
    const q=JSON.parse(init.body).structuredQuery;
    const collection=q.from[0].collectionId;
@@ -121,7 +131,9 @@ async function run(opts){
  try{
   globalThis.fetch=fixtureData.fetchMock;
   await reporter.scheduled({
-   cron:"0 0 * * *",scheduledTime:Date.parse("2026-10-29T00:00:00Z")
+   cron:opts?.cron??"0 0 * * *",
+   scheduledTime:Date.parse(opts?.cron==="5 10 * * *"
+     ?"2026-10-29T10:05:00Z":"2026-10-29T00:00:00Z")
   },fixtureData.env);
  }finally{
   globalThis.fetch=previousFetch;
@@ -202,4 +214,30 @@ test("explicit dry-run verification may read counts but cannot send or create di
  assert.ok(f.calls.some(x=>x.path.includes("/documents:runQuery")));
  assert.equal(f.sent.length,0);
  assert.equal(f.dispatches.length,0);
+});
+
+test("same employee submitting two separate documents cannot hide another unreported employee",async()=>{
+ const result=await run({
+  live:true,cron:"5 10 * * *",mutate:by=>{
+   const duplicate=structuredClone(by.hub.records[0]);
+   duplicate.name=duplicate.name.replace("/hub-r1","/hub-r1-duplicate");
+   by.hub.records.push(duplicate);
+  }
+ });
+ assert.equal(result.sent.length,1);
+ const message=result.sent[0].messages[0].text;
+ assert.match(message,/自社1班/,"unreported coworker must remain in the reminder");
+ assert.match(message,/未報告/);
+ assert.equal(message.includes("totalRevenue"),false);
+});
+test("no missing reminder when distinct expected employees each submitted",async()=>{
+ const result=await run({
+  live:true,cron:"5 10 * * *",mutate:by=>{
+   const another=structuredClone(by.hub.records[0]);
+   another.name=another.name.replace("/hub-r1","/hub-r1-other");
+   another.fields.uid={stringValue:"hub-u2"};
+   by.hub.records.push(another);
+  }
+ });
+ assert.equal(result.sent.length,0,"all real members have reported: no message");
 });
