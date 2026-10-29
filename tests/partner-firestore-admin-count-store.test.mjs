@@ -109,7 +109,7 @@ test("write paths are strictly count-only; no raw/financial/deletion escape",asy
   await tx.getTrustedDocument("users/partnerMember");
   assert.throws(()=>tx.getTrustedDocument("records/raw1"),
     /Partner count adapter refused/);
-  await assert.rejects(tx.get({path:"partnerCountRecords/forged"}),
+  assert.throws(()=>tx.get({path:"partnerCountRecords/forged"}),
     /Partner count adapter refused/);
   const ref=store.ref("partnerCountRecords/test");
   tx.create(ref,{companyId:"partnerA",results:[{count:1,totalRevenue:99999}]});
