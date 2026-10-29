@@ -2,7 +2,7 @@ name: Firebase Rules Deploy (Zero-Cost)
 
 on:
   # Prevent accidental Firestore access-rule cutover from a normal push to main.
-  # Requires explicit manual production release after dual-URL and data checks.
+  # Requires explicit manual production release after canonical NICO URL and real-data checks.
   workflow_dispatch:
     inputs:
       project_id:
@@ -10,7 +10,7 @@ on:
         required: true
         type: string
       release_confirmation:
-        description: 'Type VERIFIED_BOTH_URLS_AND_DATA'
+        description: 'Type VERIFIED_NICO_URL_AND_DATA'
         required: true
         type: string
 
@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   deploy-rules:
-    if: ${{ github.ref == 'refs/heads/main' && inputs.project_id == 'sales-management-cc116' && inputs.release_confirmation == 'VERIFIED_BOTH_URLS_AND_DATA' }}
+    if: ${{ github.ref == 'refs/heads/main' && inputs.project_id == 'sales-management-cc116' && inputs.release_confirmation == 'VERIFIED_NICO_URL_AND_DATA' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
 

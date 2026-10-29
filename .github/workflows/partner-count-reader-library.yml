@@ -1,0 +1,45 @@
+name: Partner count-only reader library (offline only)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "security/**"
+      - "tests/public-projection.test.mjs"
+      - "tests/reconcile-projections.test.mjs"
+      - "tests/trusted-finance-view.test.mjs"
+      - "tests/public-count-api.test.mjs"
+      - "tests/public-count-firestore-reader.test.mjs"
+      - ".github/workflows/partner-count-reader-library.yml"
+  push:
+    branches: [main]
+    paths:
+      - "security/**"
+      - "tests/public-projection.test.mjs"
+      - "tests/reconcile-projections.test.mjs"
+      - "tests/trusted-finance-view.test.mjs"
+      - "tests/public-count-api.test.mjs"
+      - "tests/public-count-firestore-reader.test.mjs"
+permissions:
+  contents: read
+jobs:
+  safe-read-only-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check syntax (no Firebase secrets or network)
+        run: |
+          node --check security/public-projection.mjs
+          node --check security/reconcile-projections.mjs
+          node --check security/prepare-projection.mjs
+          node --check security/trusted-finance-view.mjs
+          node --check security/public-count-api.mjs
+          node --check security/public-count-firestore-reader.mjs
+      - name: Verify count-only security with synthetic records
+        run: |
+          node --test tests/public-projection.test.mjs tests/reconcile-projections.test.mjs tests/trusted-finance-view.test.mjs tests/public-count-api.test.mjs tests/public-count-firestore-reader.test.mjs

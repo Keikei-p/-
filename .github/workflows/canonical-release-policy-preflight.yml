@@ -1,0 +1,24 @@
+name: NICO canonical release safety preflight (no deployment)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/nico-factory-sync.yml"
+      - ".github/workflows/firebase-production-deploy.yml"
+      - ".github/workflows/canonical-release-policy-preflight.yml"
+      - "docs/SALES_SAFE_CUTOVER.md"
+      - "tests/canonical-release-policy.test.mjs"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  canonical-release-policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Static-only safety tests, no Firebase access
+        run: node --test tests/canonical-release-policy.test.mjs
