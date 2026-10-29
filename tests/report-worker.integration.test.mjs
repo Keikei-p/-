@@ -31,7 +31,7 @@ const settings={
   weekdays,linkedHubCompanyId:"hub",countsShareApproved:true,
   countsShareLineGroupId:"group_test"}
 };
-function fixture({live=true,consent=true}={}){
+function fixture({live=true,consent=true,mutate=undefined}={}){
  const calls=[],sent=[],dispatches=[];
  const companyDocs=[
   firestoreDoc("companies/hub",{name:"自社",active:true}),
@@ -62,6 +62,7 @@ function fixture({live=true,consent=true}={}){
      totalCount:3,totalRevenue:90000,results:{a:{count:3,revenuePerUnit:30000}}})]
   }
  };
+ if(typeof mutate==="function")mutate(byCompany);
  const fetchMock=async(url,init={})=>{
   const u=new URL(url),method=init.method??"GET";
   calls.push({path:u.pathname,method});
@@ -159,4 +160,25 @@ test("revoked cross-company consent never sends partner data to the main hub",as
   const text=item.messages[0].text;
   assert.doesNotMatch(text,/自社1班|自社所属協力店/);
  }
+});
+
+test("LINE report refuses corrupted or cross-company source instead of sending a plausible total",async()=>{
+ const cases=[
+  by=>{by.hub.records[0].fields.companyId={stringValue:"other"};},
+  by=>{by.hub.records[0].fields.date={stringValue:"2026-09-29"};},
+  by=>{by.hub.records[0].fields.totalCount={nullValue:null};},
+  by=>{by.hub.records[0].fields.teamId={stringValue:"missing-team"};},
+  by=>{by.hub.records.push(structuredClone(by.hub.records[0]));},
+  by=>{by.hub.goals.push(structuredClone(by.hub.goals[0]));}
+ ];
+ for(const mutate of cases){
+  const result=await run({live:true,mutate});
+  assert.equal(result.sent.length,0,"corrupt reports must not reach LINE");
+  assert.equal(result.dispatches.length,0,"corrupt reports must not reserve sends");
+ }
+});
+test("dry-run never writes to Firestore or sends to LINE, even when reports are valid",async()=>{
+ const result=await run({live:false});
+ assert.equal(result.sent.length,0);
+ assert.equal(result.dispatches.length,0);
 });
