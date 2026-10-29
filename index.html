@@ -13007,9 +13007,21 @@ function startScopedHistoryMonth(month){
  const bounds=scopedHistoryBounds(month),sequence=++scopedHistoryGeneration;
  const companyId=currentUserData.companyId;
  scopedHistoryMonth=month;
+ // Clear stale totals and rankings before starting a different month's read.
+ // Never display last month's counts as this month's results.
+ records=[];
+ currentRecordHistoryMonthly=[];
  databaseStatus.textContent="選択月を取得中（集計未確定）";
  monthlyCount.textContent="読込中";
  monthlyRevenue.textContent="読込中";
+ monthlyWorkDays.textContent="—";
+ individualRankingList.textContent="読み込み中";
+ teamRankingList.textContent="読み込み中";
+ productRankingMemberList.textContent="読み込み中";
+ productRankingProductList.textContent="読み込み中";
+ recordHistoryList.textContent="読み込み中";
+ dailySummaryList.textContent="読み込み中";
+ revenueChartArea.textContent="読み込み中";
  unsubscribeRecords=onSnapshot(scopedHistoryQuery(bounds.start,bounds.end),snapshot=>{
   if(sequence!==scopedHistoryGeneration||!useScopedHistoryPreview()||
     currentUserData?.companyId!==companyId||scopedHistoryMonth!==month)return;
