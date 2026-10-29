@@ -1,0 +1,19 @@
+/* Optional styling for the server-authorized combined rank-only view.
+   No hidden monetary data, images, network resources or heavy animation. */
+.rank-only-board{font-family:inherit;color:var(--text,#172033);max-width:980px;margin:0 auto}
+.rank-only-heading{font-size:1.4rem;margin:0 0 .35rem;font-weight:800}
+.rank-only-meta{color:var(--sub,#64748b);font-size:.82rem;margin:0 0 1rem}
+.rank-only-section{background:var(--card,#fff);border:1px solid var(--border,#e2e8f0);border-radius:16px;margin:0 0 16px;padding:16px;box-shadow:0 3px 15px rgba(0,0,0,.04)}
+.rank-only-section-title{font-weight:800;font-size:1.05rem;margin:0 0 12px}
+.rank-only-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.rank-only-item{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 14px;min-height:50px;border:1px solid #e5e7eb;border-radius:12px;background:#f8fafc}
+.rank-only-place{font-weight:900;min-width:62px;font-variant-numeric:tabular-nums}
+.rank-only-name{font-weight:800;flex:1;min-width:100px;overflow-wrap:anywhere}
+.rank-only-company{color:#64748b;font-size:.75rem}
+.rank-only-item.champion{border:1px solid #eab308;background:linear-gradient(110deg,#fff8db,#fff,#fffae7);box-shadow:0 0 0 1px #fde68a;color:#6f4d04}
+.rank-only-item.champion .rank-only-place{font-size:1.15rem}
+.rank-only-product-people{padding:2px 0 10px 22px;list-style:none}
+.rank-only-label{display:block;font-size:.78rem;color:var(--sub,#64748b);padding:8px 2px}
+.rank-only-empty{font-size:.85rem;color:var(--sub,#64748b)}
+@media(max-width:560px){.rank-only-board{padding:0 2px}.rank-only-section{padding:12px}.rank-only-item{gap:8px;padding:10px}.rank-only-place{min-width:52px;font-size:.9rem}.rank-only-name{font-size:.9rem}.rank-only-product-people{padding-left:9px}}
+@media(prefers-reduced-motion:reduce){.rank-only-board *{animation:none!important;transition:none!important}}
