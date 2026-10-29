@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - 'security/**'
+      - 'tests/historical-price-audit.test.mjs'
       - 'tests/public-*.test.mjs'
       - 'tests/finance-*.test.mjs'
       - 'tests/firebase-id-token-verifier.test.mjs'
@@ -25,6 +26,8 @@ jobs:
           node-version: "22"
       - name: Test finance-free projections and rank-only results
         run: node --test tests/public-projection.test.mjs tests/reconcile-projections.test.mjs tests/trusted-finance-view.test.mjs tests/public-count-api.test.mjs tests/public-count-firestore-reader.test.mjs tests/firebase-id-token-verifier.test.mjs tests/trusted-membership-loader.test.mjs tests/staged-count-gateway.test.mjs tests/trusted-partner-write-context.test.mjs tests/finance-rule-generation.test.mjs
+      - name: Check historic CB and saved tariff drift without touching Firebase
+        run: node --test tests/historical-price-audit.test.mjs
       - name: Parse staged source
         run: |
           node --check security/public-projection.mjs
@@ -38,3 +41,4 @@ jobs:
           node --check security/staged-count-gateway.mjs
           node --check security/trusted-partner-write-context.mjs
           node --check security/finance-phase2-read-boundary.mjs
+          node --check security/historical-price-audit.mjs
