@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import {createHash} from "node:crypto";
 import {mkdtempSync,writeFileSync,readFileSync,rmSync,copyFileSync} from "node:fs";
 import {tmpdir} from "node:os";
-import {join,fileURLToPath} from "node:path";
+import {join} from "node:path";
+import {fileURLToPath} from "node:url";
 import {spawnSync} from "node:child_process";
 
 const work=fileURLToPath(new URL("../",import.meta.url));
