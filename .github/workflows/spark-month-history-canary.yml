@@ -1,0 +1,27 @@
+name: Sales month-only Spark preview (isolated, no deployment)
+on:
+  push:
+    branches: [fix/spark-month-history-canary-20261029]
+  pull_request:
+    branches: [main]
+    paths:
+      - index.html
+      - tests/spark-month-history-canary.test.mjs
+      - .github/workflows/spark-month-history-canary.yml
+permissions:
+  contents: read
+jobs:
+  read-only-preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate owner-only preview, compatibility and module syntax
+        run: node --test tests/spark-month-history-canary.test.mjs
+      - name: Existing sales regressions (synthetic only)
+        run: node --test tests/sales-regressions.cjs
