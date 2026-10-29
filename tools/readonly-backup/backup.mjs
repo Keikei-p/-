@@ -158,19 +158,47 @@ export function fingerprint(snapshot){
  */
 // Firestore REST stores integer fields as decimal strings, not JS floats.
 // Never invent a missing totalCount or silently treat it as zero.
-function savedUnitCount(doc){
-  const field=doc?.value?.fields?.totalCount;
+function typedNonnegativeCount(field,label){
   if(field===undefined)return null;
-  let v;
+  let value;
   if(typeof field?.integerValue==="string" && /^\d+$/.test(field.integerValue)){
-    v=Number(field.integerValue);
+    value=Number(field.integerValue);
   }else if(typeof field?.doubleValue==="number"){
-    v=field.doubleValue;
+    value=field.doubleValue;
   }else{
-    throw Error("Invalid saved record totalCount; audit cannot prove counts");
+    throw Error("Invalid "+label+"; audit cannot prove counts");
   }
-  if(!Number.isSafeInteger(v)||v<0)throw Error("Invalid saved record totalCount");
-  return v;
+  if(!Number.isSafeInteger(value)||value<0)
+    throw Error("Invalid "+label+"; unsafe count precision");
+  return value;
+}
+function savedUnitCount(doc){
+  return typedNonnegativeCount(doc?.value?.fields?.totalCount,"saved record totalCount");
+}
+// Independent check using only stored, typed Firestore results. Unknown legacy
+// shapes are reported as unverifiable, NEVER silently treated as zero.
+function resultsUnitCount(doc){
+  const field=doc?.value?.fields?.results;
+  if(field===undefined)return null;
+  let rows;
+  if(field?.mapValue && typeof field.mapValue==="object" && !Array.isArray(field.mapValue)){
+    const entries=field.mapValue.fields??{};
+    if(!entries || typeof entries!=="object" || Array.isArray(entries))return null;
+    rows=Object.values(entries);
+  }else if(field?.arrayValue && typeof field.arrayValue==="object" && !Array.isArray(field.arrayValue)){
+    rows=field.arrayValue.values??[];
+    if(!Array.isArray(rows))return null;
+  }else return null;
+  let units=0;
+  for(const row of rows){
+    const values=row?.mapValue?.fields;
+    if(!values || typeof values!=="object" || Array.isArray(values))return null;
+    const count=typedNonnegativeCount(values.count,"stored results count");
+    if(count===null)return null;
+    units+=count;
+    if(!Number.isSafeInteger(units))throw Error("Results count total exceeds safe integer precision");
+  }
+  return units;
 }
 
 export function auditSummary(snapshot){
@@ -180,7 +208,9 @@ export function auditSummary(snapshot){
     "revenueGoals","users","companies","members","invitations","other"
   ].map(key=>[key,0]));
   const paths=[];
-  const registeredUnits={savedTotalCount:0,verifiedFields:0,missingFields:0,independentResultChecks:0};
+  const registeredUnits={savedTotalCount:0,verifiedFields:0,missingFields:0,
+    independentResultChecks:0,matchedResultTotals:0,mismatchedResultTotals:0,
+    resultsMissingOrUnverifiable:0,resultsDerivedTotalCount:0};
   for(const item of snapshot.documents){
     const parts=item.path.split("/");
     if(parts.length<2 || parts.length%2!==0 ||
@@ -199,6 +229,18 @@ export function auditSummary(snapshot){
         registeredUnits.savedTotalCount+=n;
         if(!Number.isSafeInteger(registeredUnits.savedTotalCount))
           throw Error("Record count total exceeds safe integer precision");
+      }
+      const derived=resultsUnitCount(item);
+      if(derived===null)registeredUnits.resultsMissingOrUnverifiable++;
+      else{
+        registeredUnits.resultsDerivedTotalCount+=derived;
+        if(!Number.isSafeInteger(registeredUnits.resultsDerivedTotalCount))
+          throw Error("Derived results count exceeds safe integer precision");
+        if(n!==null){
+          registeredUnits.independentResultChecks++;
+          if(derived===n)registeredUnits.matchedResultTotals++;
+          else registeredUnits.mismatchedResultTotals++;
+        }
       }
     }
     paths.push(item.path);
@@ -272,9 +314,15 @@ async function main(args){
     console.log("Stored totalCount sum (only readable record fields):",summary.registeredUnits.savedTotalCount);
     console.log("Records with totalCount:",summary.registeredUnits.verifiedFields);
     console.log("Records without totalCount:",summary.registeredUnits.missingFields);
-    console.log("Independent results-count verification: NOT PERFORMED");
-    if(summary.registeredUnits.missingFields)
-      console.log("WARNING: totals are incomplete because some records lack totalCount");
+    console.log("Records cross-checked against results:",summary.registeredUnits.independentResultChecks);
+    console.log("Records matching stored results:",summary.registeredUnits.matchedResultTotals);
+    console.log("Records with results mismatch:",summary.registeredUnits.mismatchedResultTotals);
+    console.log("Records without verifiable results:",summary.registeredUnits.resultsMissingOrUnverifiable);
+    console.log("Independent results count sum (verifiable rows only):",summary.registeredUnits.resultsDerivedTotalCount);
+    if(summary.registeredUnits.missingFields || summary.registeredUnits.resultsMissingOrUnverifiable)
+      console.log("WARNING: not every record has both independently verifiable counts");
+    if(summary.registeredUnits.mismatchedResultTotals)
+      throw Error("BLOCK: offline archive contains inconsistent saved and results counts");
     console.log("All document IDs SHA-256:",summary.pathDigest);
     console.log("All document contents SHA-256:",summary.contentsDigest);
     console.log("NOT VERIFIED: live production completeness, Firebase Auth, backup restore or point-in-time consistency");
