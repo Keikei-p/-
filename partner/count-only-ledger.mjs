@@ -9,6 +9,7 @@
  * All record versions and public projections are preserved. No delete, even
  * when a correction reduces a reported count or hides a custom product.
  * The current pointer is atomically updated to the new immutable revision.
+ * A daily uniqueness claim prevents a second record with a new retry key.
  * Read consumers MUST follow the current pointer, not scan all revisions.
  */
 import {planNewPartnerCount,planPartnerCountCorrection}
@@ -128,6 +129,13 @@ export async function stageNewPartnerCount({
    const currentRef=store.ref(p.current);
    const current=await tx.get(currentRef);
    if(current.exists)fail();
+   // A new retry key must NOT be able to produce a second daily entry.
+   // This immutable per-company/per-person/per-day claim is created in the
+   // SAME transaction as the count source and public projection.
+   const dailyRef=store.ref("partnerCountDailyClaims/"+
+     composite(principal.companyId,principal.uid,request.date));
+   const priorDay=await tx.get(dailyRef);
+   if(priorDay.exists)fail();
    const publication=immutablePublic(plan,principal.companyId,recordId,1);
    tx.create(currentRef,{...plan.privateRecord,revision:1,
      latestPublicRevision:1});
@@ -136,6 +144,8 @@ export async function stageNewPartnerCount({
    tx.create(store.ref(p.publicRevision),publication);
    tx.create(idemRef,{companyId:principal.companyId,uid:principal.uid,
      requestJson,recordId,version:1});
+   tx.create(dailyRef,{companyId:principal.companyId,uid:principal.uid,
+     date:request.date,teamId:request.teamId,recordId});
    return {status:"registered",recordId,version:1,
      ownCount:plan.privateRecord.totalCount,
      sharedCount:plan.privateRecord.sharedCount};

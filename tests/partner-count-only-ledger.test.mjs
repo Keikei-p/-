@@ -22,7 +22,7 @@ function makeStore(){
  const clone=x=>x===undefined?undefined:structuredClone(x);
  const store={
    ref(path){
-     if(typeof path!=="string"||!/^(partnerCountRecords|partnerCountRevisions|partnerCountPublicRevisions|partnerCountCorrections|partnerCountIdempotencyKeys)\/[a-zA-Z0-9_:-]+$/.test(path))
+     if(typeof path!=="string"||!/^(partnerCountRecords|partnerCountRevisions|partnerCountPublicRevisions|partnerCountCorrections|partnerCountIdempotencyKeys|partnerCountDailyClaims)\/[a-zA-Z0-9_:-]+$/.test(path))
        throw Error("Blocked unexpected storage path");
      return {path};
    },
@@ -68,7 +68,7 @@ test("new record is atomic across private current + immutable revision + publica
  const result=await stageNewPartnerCount(makeArgs(db));
  assert.deepEqual(result,{status:"registered",recordId:"pc_ledgerA",version:1,
    ownCount:5,sharedCount:2});
- assert.equal(db.map.size,4);
+ assert.equal(db.map.size,5);
  assert(db.map.has("partnerCountRecords/8-partnerA-10-pc_ledgerA"));
  assert(db.map.has("partnerCountRevisions/8-partnerA-10-pc_ledgerA_v000001"));
  assert(db.map.has("partnerCountPublicRevisions/8-partnerA-10-pc_ledgerA_v000001"));
@@ -113,7 +113,7 @@ test("corrections append history and change only the new partner count pointer",
  assert.equal(result.version,2);
  assert.equal(result.ownCount,5);
  assert.equal(result.sharedCount,4);
- assert.equal(db.map.size,7);
+ assert.equal(db.map.size,8);
  assert.deepEqual(db.map.get("partnerCountRevisions/8-partnerA-10-pc_ledgerA_v000001"),first);
  assert.deepEqual(db.map.get("partnerCountPublicRevisions/8-partnerA-10-pc_ledgerA_v000001"),firstPublic);
  assert.equal(db.map.get("partnerCountCorrections/8-partnerA-13-pcfix_edit001").beforeSharedCount,2);
@@ -200,7 +200,7 @@ test("only append-only custom collections are ever touched; old finance source r
  const result=await stageNewPartnerCount(makeArgs(db));
  assert.equal(result.status,"registered");
  const paths=[...db.map.keys()];
- assert(paths.every(x=>/^(partnerCountRecords|partnerCountRevisions|partnerCountPublicRevisions|partnerCountCorrections|partnerCountIdempotencyKeys)\//.test(x)));
+ assert(paths.every(x=>/^(partnerCountRecords|partnerCountRevisions|partnerCountPublicRevisions|partnerCountCorrections|partnerCountIdempotencyKeys|partnerCountDailyClaims)\//.test(x)));
  assert(paths.every(x=>!/^records\/|^products\/|^recordCorrections\/|^revenueGoals\//.test(x)));
 });
 
@@ -230,7 +230,7 @@ test("revoked membership blocks even idempotent retried register",async()=>{
    ...principal,memberActive:false
   }})
  }),/Count-only transaction refused/);
- assert.equal(db.map.size,4);
+ assert.equal(db.map.size,5);
 });
 
 test("composite IDs cannot collide across two companies with underscores",async()=>{
@@ -245,7 +245,7 @@ test("composite IDs cannot collide across two companies with underscores",async(
    idempotencyKey:"collision_test_20261029"});
   assert.equal(res.status,"registered");
  }
- assert.equal(db.map.size,8);
+ assert.equal(db.map.size,10);
  const currents=[...db.map.keys()].filter(x=>x.startsWith("partnerCountRecords/"));
  assert.equal(new Set(currents).size,2);
 });
@@ -292,4 +292,51 @@ test("corrupted public projections cannot launder another company or team's coun
   store:db.store,companyId:"partnerA",recordId:"pc_ledgerA",
   loadAuthorizedReader:reader
  })).header.totalCount,2);
+});
+
+test("a different retry key cannot register the same person and date twice",async()=>{
+ const db=makeStore();
+ await stageNewPartnerCount(makeArgs(db));
+ const before=JSON.stringify([...db.map]);
+ await assert.rejects(stageNewPartnerCount({
+  ...makeArgs(db),
+  idempotencyKey:"completely_new_key_20261029",
+  mintRecordId:async()=> "pc_another_record"
+ }),/Count-only transaction refused/);
+ assert.equal(JSON.stringify([...db.map]),before);
+ const daily=[...db.map.keys()].filter(key=>key.startsWith("partnerCountDailyClaims/"));
+ assert.equal(daily.length,1);
+ assert.equal(db.map.get(daily[0]).recordId,"pc_ledgerA");
+});
+test("a same-day duplicate cannot bypass uniqueness by selecting a different team",async()=>{
+ const db=makeStore();
+ await stageNewPartnerCount(makeArgs(db));
+ const start=JSON.stringify([...db.map]);
+ const newContext=async()=>({
+  ...trusted(),
+  principal:{...principal,teamIds:["team1","team2"]}
+ });
+ await assert.rejects(stageNewPartnerCount({
+   ...makeArgs(db),loadTrustedContext:newContext,
+   idempotencyKey:"another_unique_key_20261029",
+   request:{...input,teamId:"team2"},
+   mintRecordId:async()=> "pc_different_team"
+ }),/Count-only transaction refused/);
+ assert.equal(JSON.stringify([...db.map]),start);
+});
+test("next calendar day is allowed without changing yesterday's team and totals",async()=>{
+ const db=makeStore();
+ await stageNewPartnerCount(makeArgs(db));
+ const next=await stageNewPartnerCount({
+  ...makeArgs(db),idempotencyKey:"following_day_key_20261030",
+  mintRecordId:async()=> "pc_next_day",
+  request:{...input,date:"2026-10-30"}
+ });
+ assert.equal(next.status,"registered");
+ assert.equal(db.map.size,10);
+ const daily=[...db.map.entries()].filter(([id])=>id.startsWith("partnerCountDailyClaims/"));
+ assert.equal(daily.length,2);
+ assert.deepEqual(daily.map(([,row])=>row.date).sort(),["2026-10-29","2026-10-30"]);
+ const old=[...db.map.values()].find(x=>x.sourceId==="pc_ledgerA"&&x.version===1);
+ assert.equal(old.teamId,"team1");
 });
