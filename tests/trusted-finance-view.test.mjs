@@ -12,7 +12,7 @@ const record={
 const user={uid:"user",companyId:"companyA",active:true,companyRole:"member",accessKind:"internal"};
 const member={uid:"user",companyId:"companyA",active:true,companyRole:"member",accessKind:"internal",canViewRevenue:false,canViewUnitPrice:false};
 const principal={
- uid:"user",companyId:"companyA",user,member,
+ uid:"user",companyId:"companyA",companyKind:"internal",user,member,
  firebaseIdTokenVerified:true,emailVerified:true,serverVerifiedOwner:false,
  allowedHistoricalTeamIds:["team1"]
 };
@@ -110,4 +110,24 @@ test("revoked internal/partner label cannot be overridden by self-reported owner
    user:{...user,companyRole:"owner",accessKind:"partner"},
    member:{...member,companyRole:"owner",accessKind:"partner",canViewRevenue:true,canViewUnitPrice:true}};
  assert.throws(()=>get(record,bad),/Financial view denied/);
+});
+
+test("partner company owner never receives revenue or unit prices despite internal-looking member flags",()=>{
+ const owner={...principal,companyKind:"partner",serverVerifiedOwner:true,
+  user:{...user,companyRole:"owner",accessKind:"internal"},
+  member:{...member,companyRole:"owner",accessKind:"internal",
+    canViewRevenue:true,canViewUnitPrice:true},
+  allowedHistoricalTeamIds:[]};
+ assert.throws(()=>get({...record,teamId:null},owner),/Financial view denied/);
+ for(const invalid of [undefined,"partner","unknown",""]){
+  assert.throws(()=>get(record,{...grant({canViewRevenue:true}),companyKind:invalid}),
+    /Financial view denied/);
+ }
+});
+test("unclassified owner accounts are denied until verified company classification",()=>{
+ const owner={...principal,serverVerifiedOwner:true,
+  user:{...user,companyRole:"owner",accessKind:undefined},
+  member:{...member,companyRole:"owner",accessKind:"internal",canViewRevenue:true},
+  allowedHistoricalTeamIds:[]};
+ assert.throws(()=>get({...record,teamId:null},owner),/Financial view denied/);
 });
