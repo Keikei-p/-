@@ -1,4 +1,4 @@
-name: NICO and legacy URL parity - read-only
+name: NICO canonical site health and manual-release parity (read-only)
 on:
   push:
     branches: [main]
@@ -20,8 +20,8 @@ on:
       - docs/NICO_URL_SWITCH_RUNBOOK.md
       - .github/workflows/nico-readiness.yml
   schedule:
-    # UTC: 02:17/08:17/14:17/20:17 (JST: 11:17/17:17/23:17/05:17)
-    - cron: "17 2,8,14,20 * * *"
+    # Once daily to preserve GitHub Actions free quota (JST 11:17).
+    - cron: "17 2 * * *"
   workflow_dispatch:
   workflow_run:
     workflows: ["Sync NICO Factory Hosting (static assets only)"]
@@ -49,25 +49,26 @@ jobs:
           node-version: "22"
       - name: Test safety checker against fictional HTTP responses
         run: node --test tests/check-nico-readiness.test.mjs
-      - name: Check six published static assets against repository
+      - name: Check canonical NICO published assets (strict parity only after manual release)
         if: github.event_name != 'pull_request'
         shell: bash
         env:
           NICO_PUBLIC_READONLY: "true"
+          NICO_CHECK_MODE: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_run' && 'parity' || 'remote' }}
         run: |
-          # Both Hosting providers deploy asynchronously. Keep this read-only,
-          # and avoid a false failure during a legitimate publication overlap.
+          # Scheduled/main-push health checks inspect the public NICO URL only.
+          # Strict parity is reserved for after an explicit manual deployment.
           for attempt in 1 2 3 4; do
             if node scripts/check-nico-readiness.mjs; then
               exit 0
             fi
             if [ "$attempt" -lt 4 ]; then sleep 20; fi
           done
-          echo 'BLOCK: published sites still differ after bounded retries.'
+          echo 'BLOCK: canonical NICO site failed read-only health/parity checks.'
           exit 1
 
   notify-owner:
-    name: Alert owner when public URLs differ
+    name: Alert owner when canonical NICO app fails read-only checks
     needs: [verify]
     # Never give a pull-request event an issue-writing token.
     if: ${{ always() && needs.verify.result == 'failure' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
@@ -87,7 +88,7 @@ jobs:
             // Report to the existing owner-approved security release issue.
             // Avoid creating a new issue or repeated comments on every retry.
             const issue_number = 78;
-            const marker = '<!-- nico-sales-parity-failure -->';
+            const marker = '<!-- nico-sales-canonical-health-failure -->';
             const { data: comments } = await github.rest.issues.listComments({
               owner, repo, issue_number, per_page: 100
             });
@@ -103,5 +104,5 @@ jobs:
             const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
             await github.rest.issues.createComment({
               owner, repo, issue_number,
-              body: `${marker}\n⚠️ 新旧URLの公開ファイル一致テストが失敗しました。利用者の実績データには触れず、URL公開状態のみを検査しています。\n\n[実行結果を確認](${runUrl})\n\n対応: 公開元のGitHub PagesとFirebase Hostingを確認し、ログイン・過去履歴が正常か調べてください。**自動でFirestore・Rules・実績を変更しないでください。**`
+              body: `${marker}\n⚠️ NICO公式URLの公開状態検査に失敗しました。通常の定期点検は公開中のNICOサイトだけを検査し、手動公開完了後はmainとの版一致も確認します。Firestore/実績には触れていません。\n\n[実行結果を確認](${runUrl})\n\n対応: NICO Firebase Hostingの状態と当該公開履歴を確認。**自動でFirestore・Rules・実績を変更しないでください。**`
             });
