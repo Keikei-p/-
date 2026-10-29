@@ -20,6 +20,12 @@ const ID=/^[A-Za-z0-9_:-]{1,128}$/;
 const REPLAY=/^[A-Za-z0-9_-]{16,96}$/;
 const fail=()=>{throw Error("Count-only transaction refused");};
 const valid=x=>typeof x==="string"&&ID.test(x);
+// Unambiguous composite key: underscores inside company IDs and generated IDs
+// must never cause two companies to share a Firestore document path.
+const composite=(...parts)=>parts.map(value=>{
+ if(!valid(value))fail();
+ return String(value.length)+"-"+value;
+}).join("-");
 function requiredFunctions(store){
  if(!store||typeof store.ref!=="function"||
     typeof store.runTransaction!=="function")fail();
@@ -41,7 +47,7 @@ function needsTrustedServer(ctx){
 function paths(companyId,recordId,version){
  if(!valid(companyId)||!valid(recordId)||
     !Number.isSafeInteger(version)||version<1||version>999999)fail();
- const root=companyId+"_"+recordId;
+ const root=composite(companyId,recordId);
  const suffix=String(version).padStart(6,"0");
  return {
    current:"partnerCountRecords/"+root,
@@ -99,7 +105,7 @@ export async function stageNewPartnerCount({
  return store.runTransaction(async tx=>{
    const {principal,catalog,memberName,teamName}
      =await getTrustedContext(loadTrustedContext,tx);
-   const key=principal.companyId+"_"+principal.uid+"_"+idempotencyKey;
+   const key=composite(principal.companyId,principal.uid,idempotencyKey);
    if(!valid(principal.companyId)||!valid(principal.uid)||
       key.length>400)fail();
    const idemRef=store.ref("partnerCountIdempotencyKeys/"+key);
@@ -168,7 +174,7 @@ export async function stageCorrectPartnerCount({
    const publicRevision=immutablePublic(plan,principal.companyId,
      recordId,expectedVersion+1);
    const correctionRef=store.ref(p.corrections+
-     principal.companyId+"_"+correctionId);
+     composite(principal.companyId,correctionId));
    // Read in advance so a replay fails without changing the pointer.
    const correctionSnap=await tx.get(correctionRef);
    if(correctionSnap.exists)fail();
@@ -202,12 +208,17 @@ export async function readCurrentPartnerPublication({
       reader.tokenVerified!==true||
       reader.active!==true||
       !Array.isArray(reader.allowedCompanyIds)||
-      !reader.allowedCompanyIds.includes(companyId))fail();
+      !reader.allowedCompanyIds.includes(companyId)||
+      (reader.canViewAllTeams!==true&&
+        (!Array.isArray(reader.allowedTeamIds)||
+         !reader.allowedTeamIds.every(valid))))fail();
    const head=await tx.get(store.ref(paths(companyId,recordId,1).current));
    if(!head.exists)fail();
    const h=head.data();
    if(h.companyId!==companyId||h.sourceId!==recordId||
-      h.version!==h.latestPublicRevision)fail();
+      h.version!==h.latestPublicRevision||
+      (reader.canViewAllTeams!==true&&
+       !reader.allowedTeamIds.includes(h.teamId)))fail();
    const p=paths(companyId,recordId,h.latestPublicRevision);
    const snapshot=await tx.get(store.ref(p.publicRevision));
    if(!snapshot.exists)fail();
@@ -219,6 +230,24 @@ export async function readCurrentPartnerPublication({
       publicData.published!==(publicData.header!==null))fail();
    if(publicData.header)assertPublicSchema("publicRecords",[publicData.header]);
    assertPublicSchema("publicRecordLines",publicData.lines);
+   // Do not trust a projection just because its schema is money-free.
+   // Its identity and totals must match the current authorized record.
+   if(publicData.header&&(
+     publicData.header.companyId!==companyId||
+     publicData.header.sourceId!==recordId||
+     publicData.header.uid!==h.uid||
+     publicData.header.teamId!==h.teamId||
+     publicData.header.date!==h.date))fail();
+   let total=0;
+   for(const line of publicData.lines){
+     if(line.companyId!==companyId||line.recordId!==recordId||
+       line.uid!==h.uid||line.teamId!==h.teamId||line.date!==h.date)fail();
+     total+=line.count;
+     if(!Number.isSafeInteger(total))fail();
+   }
+   if(total!==h.sharedCount||
+      (publicData.header?publicData.header.totalCount!==total:total!==0)||
+      (publicData.published!==Boolean(publicData.header)))fail();
    auditNoFinancialKeys(publicData);
    return {version:h.version,published:publicData.published,
      header:publicData.header,lines:publicData.lines};
