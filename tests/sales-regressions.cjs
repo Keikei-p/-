@@ -99,22 +99,23 @@ test('Zero report keeps input draft until persistence succeeds; cancel does not 
   assert.equal(clicks,1);assert.equal(ctx.zeroResultRequested,false);
 });
 
-test('Records and goals listener failures visibly warn that values can be stale', () => {
-  const subscriptions=[];const warnings=[];
+test('Goal listener failures warn while monthly record subscription starts without all-history listener', () => {
+  const subscriptions=[];const warnings=[];let selectedMonthStarts=0;
   const ctx=context(['startRealtimeListeners'],{
-    stopRealtimeListeners:()=>{},isCurrentCompanyManager:()=>false,currentUser:null,
-    companyCollectionQuery:n=>n,recordsCollectionQuery:()=> 'records',revenueGoalsCollectionQuery:()=>null,
+    stopRealtimeListeners:()=>{},loadLocalRankingGroups:()=>{},isCurrentCompanyManager:()=>false,currentUser:null,
+    companyCollectionQuery:n=>n,revenueGoalsCollectionQuery:()=>null,
+    createMonthOptions:()=>{},subscribeSelectedMonthRecords:()=>{selectedMonthStarts++;},
     onSnapshot:(query,next,error)=>{subscriptions.push({query,error});return ()=>{};},
     console:{error:()=>{}},databaseStatus:element(),showError:m=>warnings.push(m)
   });
   ctx.startRealtimeListeners();
-  for(const query of ['records','goals']) {
-    const sub=subscriptions.find(s=>s.query===query);
-    assert.equal(typeof sub.error,'function');sub.error({code:'permission-denied'});
-  }
-  assert.equal(warnings.length,2);
-  assert(warnings.every(m=>m.includes('再読み込み')));
-  assert(ctx.databaseStatus.textContent.includes('停止'));
+  assert.equal(selectedMonthStarts,1);
+  assert(!subscriptions.some(x=>x.query==='records'));
+  const goals=subscriptions.find(x=>x.query==='goals');
+  assert.equal(typeof goals.error,'function');
+  goals.error({code:'permission-denied'});
+  assert.equal(warnings.length,1);
+  assert(warnings[0].includes('再読み込み'));
 });
 
 function textOf(node) { return node.innerHTML + node.textContent + node.children.map(textOf).join(''); }
@@ -134,8 +135,9 @@ test('Transactional correction replaces results and preserves metadata', async (
   for (const results of [{A:{count:1,revenuePerUnit:100}}, {C:{count:4,revenuePerUnit:300}}, {}]) {
     let stored={companyId:'c',uid:'u',date:'2026-10-06',teamId:'a',createdAt:'keep',createdByUid:'creator',custom:'keep',results:{A:{count:3},B:{count:2}}};
     const before=structuredClone(stored);
-    const data={results,totalCount:Object.values(results).reduce((n,r)=>n+r.count,0)};
-    const ctx=context(['persistDailyRecord','recordRevision','recordConflict','getRecordResults','calculateResultsTotals'],{
+    const data={results,totalCount:Object.values(results).reduce((n,r)=>n+r.count,0),
+      totalRevenue:Object.values(results).reduce((n,r)=>n+r.count*r.revenuePerUnit,0)};
+    const ctx=context(['persistDailyRecord','recordRevision','recordConflict','validateFinancialRecordForSave','getRecordResults','calculateResultsTotals'],{
       db:{},query:()=>{},where:()=>{},recordsCollectionQuery:()=>{},
       getDocsFromServer:async()=>({size:1,docs:[{id:'r'}]}),
       runTransaction:async(db,callback)=>callback({get:async()=>({exists:()=>true,id:'r',data:()=>stored}),
@@ -178,22 +180,23 @@ test('Only owner can correct another team; self and own team remain editable',()
 test('Stale edits, deleted records and simultaneous same-day registration stop without writes',async()=>{
   const initial={uid:'u',date:'2026-10-06',teamId:'a',results:{A:{count:1}}};
   let current=structuredClone(initial),writes=0;
-  const ctx=context(['persistDailyRecord','recordRevision','recordConflict'],{db:{},query:()=>{},where:()=>{},recordsCollectionQuery:()=>{},
+  const ctx=context(['persistDailyRecord','recordRevision','recordConflict','validateFinancialRecordForSave'],{db:{},query:()=>{},where:()=>{},recordsCollectionQuery:()=>{},
     getDocsFromServer:async()=>({size:0,docs:[]}),
     runTransaction:async(db,callback)=>callback({get:async()=>({exists:()=>!!current,id:'r',data:()=>current}),set:()=>writes++})});
-  await assert.rejects(ctx.persistDailyRecord({id:'r'},{},null,null),{code:'record-conflict'});
+  const valid={results:{A:{count:1,revenuePerUnit:100}},totalCount:1,totalRevenue:100};
+  await assert.rejects(ctx.persistDailyRecord({id:'r'},valid,null,null),{code:'record-conflict'});
   const rev=ctx.recordRevision(initial);current.results.A.count=2;
-  await assert.rejects(ctx.persistDailyRecord({id:'r'},{},initial,rev),{code:'record-conflict'});
-  current=null;await assert.rejects(ctx.persistDailyRecord({id:'r'},{},initial,rev),{code:'record-conflict'});
+  await assert.rejects(ctx.persistDailyRecord({id:'r'},valid,initial,rev),{code:'record-conflict'});
+  current=null;await assert.rejects(ctx.persistDailyRecord({id:'r'},valid,initial,rev),{code:'record-conflict'});
   ctx.getDocsFromServer=async()=>({size:2,docs:[{id:'r'},{id:'legacy'}]});
-  await assert.rejects(ctx.persistDailyRecord({id:'r'},{},null,null),{code:'record-conflict'});
+  await assert.rejects(ctx.persistDailyRecord({id:'r'},valid,null,null),{code:'record-conflict'});
   assert.equal(writes,0);
 });
 
 test('Choosing a helper with a different-team record does not load its historical revenue into the editor',async()=>{
   let prepared='not-called',message='';
   const ctx=context(['loadExistingRecordIntoForm','recordRevision'],{
-    recordDate:{value:'2026-10-06'},recordMember:{value:'helper'},recordLocation:{value:'old'},saveRecordButton:{},
+    recordDate:{value:'2026-10-06'},recordMember:{value:'helper'},recordLocation:{value:'old'},saveRecordButton:{},recordFormLookupGeneration:0,
     findDailyRecord:()=>({id:'r',uid:'helper',date:'2026-10-06',teamId:'other',results:{A:{count:3,revenuePerUnit:999}}}),
     canCurrentUserCorrectRecord:()=>false,showRecordCorrectionTeam:()=>{},prepareProductInputList:value=>prepared=value,showError:value=>message=value
   });
@@ -281,18 +284,21 @@ test('Renamed product displays current master name by stable ID without rewritin
     }}
   ];
   const before=JSON.stringify(sourceRecords);
-  const ctx=context(['getRecordResults','currentProductDisplayName','getDisplayRecordResults'],{
+  const ctx=context(['getRecordResults','currentProductDisplayName',
+    'getProductPricingOptions','currentCatalogRevenuePerUnit','getDisplayRecordResults'],{
     products:[
       {id:'evergreen',name:'エバーグリーン',revenue:20000},
       {id:'htb',name:'HTB',revenue:0}
     ],
+    parseLegacyCashbackProductName:()=>({hasCashbackPlan:false}),
+    normalizeCashbackOptions:()=>[0],
     canCurrentUserViewRevenueForRecord:()=>true
   });
   const first=Array.from(ctx.getDisplayRecordResults(sourceRecords[0]));
   assert.equal(first[0].productName,'エバーグリーン');
   assert.equal(first[1].productName,'HTB');
   assert.equal(first[0].count,2);
-  assert.equal(first[0].revenuePerUnit,10000);
+  assert.equal(first[0].revenuePerUnit,20000); // current price, saved history unchanged
   assert.equal(first[1].revenuePerUnit,0);
   assert.equal(JSON.stringify(sourceRecords),before);
   assert.equal(ctx.getRecordResults(sourceRecords[0])[0].productName,'HTB');
@@ -865,7 +871,693 @@ test('financial screens are denied by default for invited members and leaders',(
   assert(rules.includes("getAfter(memberPath(request.resource.data.companyId, userId)).data.canViewUnitPrice"));
 });
 
-/* All-product revenue hotfix regression cases (fictional records only). */
+
+test('CB amount is never used as sales revenue: approved unit rate times count only',()=>{
+  const ctx=context(['getProductPricingOptions','verifyNewRecordPricing','calculateResultsTotals'],{
+    parseLegacyCashbackProductName:()=>({hasCashbackPlan:false}),
+    normalizeCashbackOptions:values=>[...new Set([0,...(values||[])])].sort((a,b)=>a-b)
+  });
+  const legacy={id:'legacy',name:'旧CB商材',revenue:10000,cashbackOptions:[0,2000,20000]};
+  const options=ctx.getProductPricingOptions(legacy);
+  assert.equal(options.find(p=>p.cashback===0).revenuePerUnit,10000);
+  assert.equal(options.find(p=>p.cashback===2000).revenuePerUnit,null);
+  assert.equal(options.find(p=>p.cashback===20000).revenuePerUnit,null);
+  assert.match(ctx.verifyNewRecordPricing({x:{productId:'legacy',cashback:2000,count:5,revenuePerUnit:2000}},[legacy]),/旧形式/);
+
+  const electric={id:'electric',name:'とくする電気',pricingOptions:[{cashback:0,revenuePerUnit:10000}]};
+  const nuro={id:'nuro',name:'NURO光',pricingOptions:[
+    {cashback:0,revenuePerUnit:25000},{cashback:20000,revenuePerUnit:22500}]};
+  const rows={
+    electric:{productId:'electric',cashback:0,count:5,revenuePerUnit:10000},
+    nuroBase:{productId:'nuro',cashback:0,count:2,revenuePerUnit:25000},
+    nuroCB:{productId:'nuro',cashback:20000,count:3,revenuePerUnit:22500}
+  };
+  assert.equal(ctx.verifyNewRecordPricing(rows,[electric,nuro]),'');
+  assert.equal(ctx.calculateResultsTotals(rows).count,10);
+  assert.equal(ctx.calculateResultsTotals(rows).revenue,167500);
+  assert.match(ctx.verifyNewRecordPricing({
+    a:{productId:'electric',cashback:0,count:5,revenuePerUnit:2000}
+  },[electric]),/単価/);
+  assert.match(ctx.verifyNewRecordPricing({
+    a:{productId:'nuro',cashback:20000,count:1,revenuePerUnit:20000}
+  },[nuro]),/単価/);
+  const missing={id:'missing',pricingOptions:[{cashback:0,revenuePerUnit:null}]};
+  assert.match(ctx.verifyNewRecordPricing({
+    a:{productId:'missing',cashback:0,count:1,revenuePerUnit:0}
+  },[missing]),/単価/);
+});
+
+test('Product editor forbids blank, fractional and duplicate revenue prices',()=>{
+  const c=context(['readPricingOptions']);
+  const container=rows=>({querySelectorAll:()=>rows.map(([cb,rate])=>({
+    querySelector:selector=>({value:selector.includes('pricing-cashback')?cb:rate})
+  }))});
+  assert.equal(c.readPricingOptions(container([['0','10000']])).options[0].revenuePerUnit,10000);
+  for(const rows of [[['20000','']],[['0','']],[['0','100.1']],[['0','9007199254740992']],[['0','2000'],['0','3000']]]){
+    assert.notEqual(c.readPricingOptions(container(rows)).error,'');
+  }
+  assert.equal(c.readPricingOptions(container([['0','0']])).error,'');
+});
+
+test('Unverified CB rate displays as missing rather than falsely showing zero yen',()=>{
+  const ctx=context(['getProductPricingOptions','pricingOptionsText'],{
+    parseLegacyCashbackProductName:()=>({hasCashbackPlan:false}),
+    normalizeCashbackOptions:values=>[...new Set([0,...(values||[])])].sort((a,b)=>a-b),
+    canCurrentUserViewUnitPrice:()=>true,
+    formatCashbackPlanLabel:amount=>'CB'+amount,
+    formatYen:amount=>'¥'+amount
+  });
+  const text=ctx.pricingOptionsText({name:'架空',revenue:10000,cashbackOptions:[0,2000]});
+  assert.match(text,/CB2000 売上単価未設定/);
+  assert(!text.includes('CB2000 ¥2000'));
+});
+
+test('Existing unchanged prices are not overwritten; invalid new and changed counts stop saving',()=>{
+  const c=context(['getProductPricingOptions','verifyNewRecordPricing','verifyChangedRecordPricing',
+    'normalizeExistingResultMap','resultVariantKey','validateFinancialRecordForSave','recordConflict'],{
+    parseLegacyCashbackProductName:()=>({hasCashbackPlan:false}),
+    normalizeCashbackOptions:values=>[...new Set([0,...(values||[])])].sort((a,b)=>a-b)
+  });
+  const electric={id:'e',pricingOptions:[{cashback:0,revenuePerUnit:10000}]};
+  const old={e:{productId:'e',cashback:0,count:5,revenuePerUnit:2000}};
+  const untouched=JSON.stringify(old);
+  assert.equal(c.verifyChangedRecordPricing(old,old,[electric]),'');
+  assert.match(c.verifyChangedRecordPricing({
+    e:{productId:'e',cashback:0,count:6,revenuePerUnit:2000}
+  },old,[electric]),/単価/);
+  // Updating a stale snapshot and its count together would silently overwrite
+  // five historical prices; the owner must audit/correct the old price first.
+  assert.match(c.verifyChangedRecordPricing({
+    e:{productId:'e',cashback:0,count:6,revenuePerUnit:10000}
+  },old,[electric]),/金額訂正/);
+  assert.equal(c.verifyChangedRecordPricing({
+    e:{productId:'e',cashback:0,count:6,revenuePerUnit:10000}
+  },{e:{productId:'e',cashback:0,count:5,revenuePerUnit:10000}},[electric]),'');
+  assert.equal(JSON.stringify(old),untouched);
+  assert.equal(c.validateFinancialRecordForSave({
+    results:{e:{productId:'e',cashback:0,count:5,revenuePerUnit:10000}},
+    totalCount:5,totalRevenue:50000
+  }),true);
+  assert.throws(()=>c.validateFinancialRecordForSave({
+    results:{e:{productId:'e',cashback:0,count:5,revenuePerUnit:2000}},
+    totalCount:5,totalRevenue:50000
+  }),/合計/);
+  assert.throws(()=>c.validateFinancialRecordForSave({
+    results:{e:{productId:'e',cashback:0,count:5,revenuePerUnit:null}},
+    totalCount:5,totalRevenue:0
+  }),/未設定/);
+});
+
+
+test('Changing current product price recalculates ALL existing deals on screen, without touching Firestore history',()=>{
+  const catalog=[
+    {id:'electric',name:'とくする電気',pricingOptions:[{cashback:0,revenuePerUnit:10000}]},
+    {id:'evergreen',name:'エバーグリーン',pricingOptions:[{cashback:0,revenuePerUnit:20000}]}
+  ];
+  const c=context(['getRecordResults','getProductPricingOptions','currentCatalogRevenuePerUnit','getDisplayRecordResults'],{
+    products:catalog,
+    parseLegacyCashbackProductName:()=>({hasCashbackPlan:false}),
+    normalizeCashbackOptions:()=>[0],
+    currentProductDisplayName:row=>row.productName,
+    canCurrentUserViewRevenueForRecord:()=>true
+  });
+  const old=[
+    {id:'e1',date:'2026-10-01',uid:'u1',teamId:'a',results:{electric:{productId:'electric',cashback:0,count:3,revenuePerUnit:0}}},
+    {id:'e2',date:'2026-10-03',uid:'u2',teamId:'b',results:{electric:{productId:'electric',cashback:0,count:2,revenuePerUnit:5000}}},
+    {id:'g1',date:'2026-10-01',uid:'u3',teamId:'a',results:{evergreen:{productId:'evergreen',cashback:0,count:1,revenuePerUnit:0}}},
+    {id:'g2',date:'2026-10-10',uid:'u4',teamId:'b',results:{evergreen:{productId:'evergreen',cashback:0,count:4,revenuePerUnit:20000}}}
+  ];
+  const original=JSON.stringify(old);
+  const total=rows=>rows.reduce((v,r)=>v+c.getDisplayRecordResults(r).reduce((sum,item)=>sum+item.count*item.revenuePerUnit,0),0);
+  assert.equal(total(old),150000,'electric 5x10000 plus evergreen 5x20000');
+  assert.equal(c.getDisplayRecordResults(old[0])[0].revenuePerUnit,10000);
+  assert.equal(c.getDisplayRecordResults(old[2])[0].revenuePerUnit,20000);
+  assert.equal(JSON.stringify(old),original,'no count, team, date, saved price or row change');
+  // Future master price changes are reflected in both old and new rows.
+  catalog[0].pricingOptions[0].revenuePerUnit=12000;
+  assert.equal(total(old),160000);
+  assert.equal(JSON.stringify(old),original);
+  c.canCurrentUserViewRevenueForRecord=()=>false;
+  assert.equal(total(old),0,'read-only current price must not bypass revenue masking');
+});
+
+test('Current price uses exact NURO CB tier; ambiguous or unknown legacy plans never guess',()=>{
+  const nuro={id:'nuro',name:'NURO光',pricingOptions:[
+    {cashback:0,revenuePerUnit:25000},
+    {cashback:20000,revenuePerUnit:22000}
+  ]};
+  const c=context(['getProductPricingOptions','currentCatalogRevenuePerUnit'],{
+    parseLegacyCashbackProductName:()=>({hasCashbackPlan:false}),
+    normalizeCashbackOptions:()=>[0]
+  });
+  const selected={productId:'nuro',cashback:20000,count:3,revenuePerUnit:2000};
+  const before=JSON.stringify(selected);
+  assert.equal(c.currentCatalogRevenuePerUnit(selected,[nuro]),22000);
+  assert.equal(c.currentCatalogRevenuePerUnit({...selected,cashback:0},[nuro]),25000);
+  assert.equal(c.currentCatalogRevenuePerUnit({...selected,cashback:30000},[nuro]),2000);
+  assert.equal(c.currentCatalogRevenuePerUnit({productId:'nuro',count:3,revenuePerUnit:2000},[nuro]),2000);
+  assert.equal(c.currentCatalogRevenuePerUnit(selected,[{id:'nuro',cashbackOptions:[0,20000],revenue:25000}]),2000);
+  assert.equal(c.currentCatalogRevenuePerUnit({...selected,productId:'deleted'},[nuro]),2000);
+  assert.equal(JSON.stringify(selected),before);
+});
+
+test('Product price listener always re-renders the dashboard on catalogue change',()=>{
+  const htmlSource=html.slice(html.indexOf('unsubscribeProducts =\n    onSnapshot('),html.indexOf('\n\n  /*\n    実績\n  */',html.indexOf('unsubscribeProducts =\n    onSnapshot(')));
+  assert(htmlSource.includes('prepareProductInputList('));
+  assert(htmlSource.indexOf('renderDashboard();') >
+    htmlSource.indexOf('prepareProductInputList('));
+});
+
+test('Ranking groups require explicit selection; no default groups or inferred name merges',()=>{
+  const c=context(['normalizeRankingGroups']);
+  assert.equal(c.normalizeRankingGroups(null).length,0);
+  assert.equal(c.normalizeRankingGroups([]).length,0);
+  const configured=c.normalizeRankingGroups([
+    {id:'mnp',name:'乗り換え',keys:['id:ym','id:sb']},
+    {id:'electric',name:'新電力',keys:['id:ev','id:ym']},
+    {id:'empty',name:'未指定',keys:[]}
+  ]);
+  assert.equal(configured.length,2);
+  assert.deepEqual(Array.from(configured[0].keys),['id:ym','id:sb']);
+  assert.deepEqual(Array.from(configured[1].keys),['id:ev']);
+  const ui=html.slice(html.indexOf('<details id="rankingGroupEditor"'),html.indexOf('</details>',html.indexOf('<details id="rankingGroupEditor"')));
+  assert(ui.includes('rankingGroupName'));
+  assert(ui.includes('rankingGroupProducts'));
+  assert(ui.includes('rankingGroupAdd'));
+  assert(!ui.includes('defaultChecked'));
+});
+
+test('Manual groups sum source products and people; count ties are rank 1, 1, 3',()=>{
+  const sourceProducts=[
+    {key:'id:ym',name:'YMMNP',count:5,members:[
+      {key:'uid:a',name:'A',count:4,teamName:'1班'},
+      {key:'uid:b',name:'B',count:1,teamName:'1班'}]},
+    {key:'id:sb',name:'SBMNP',count:6,members:[
+      {key:'uid:b',name:'B',count:3,teamName:'2班'},
+      {key:'uid:a',name:'A',count:0,teamName:'1班'},
+      {key:'uid:c',name:'C',count:2,teamName:'2班'},
+      {key:'uid:d',name:'D',count:1,teamName:'2班'}]},
+    {key:'id:ev',name:'Electric',count:10,members:[
+      {key:'uid:c',name:'C',count:10,teamName:'2班'}]}
+  ];
+  const c=context(['rankProductMemberCounts','buildGroupedProductMemberRanking'],{
+    buildProductMemberRanking:()=>sourceProducts
+  });
+  const groups=[{id:'m',name:'乗り換え',keys:['id:ym','id:sb']}];
+  const r=JSON.parse(JSON.stringify(c.buildGroupedProductMemberRanking([],'',groups)));
+  assert.equal(r.length,1);
+  assert.equal(r[0].count,11);
+  assert.deepEqual(r[0].members.map(m=>[m.name,m.count,m.rank]),[
+    ['A',4,1],['B',4,1],['C',2,3],['D',1,4]
+  ]);
+  assert.equal(r[0].members.find(x=>x.key==='uid:b').teamName,'複数班で獲得');
+  assert(!r.some(x=>x.name==='Electric'));
+});
+
+test('Ranking groups save to this user browser only and never touch Firebase',()=> {
+  const code=source('saveRankingGroups');
+  assert(code.includes('safeLocalStorageSet(storageKey, JSON.stringify(normalized))'));
+  assert(code.includes('isCurrentCompanyManager()'));
+  assert(code.includes('normalizeRankingGroups(next)'));
+  assert(!/setDoc|updateDoc|addDoc|deleteDoc|writeBatch|runTransaction/.test(code));
+  const boot=source('loadLocalRankingGroups');
+  assert(boot.includes('safeLocalStorageGet(key)'));
+  const key=source('rankingGroupsStorageKey');
+  assert(key.includes('currentUserData.companyId'));
+  assert(key.includes('currentUser.uid'));
+  assert(html.includes('この端末・このアカウント・このURLだけに保存'));
+  const render=source('renderProductMemberRanking');
+  assert(render.includes('buildGroupedProductMemberRanking(monthly, teamId)'));
+  assert(render.includes('renderRankingGroupEditor()'));
+  assert(html.includes('ランキンググループを設定'));
+});
+
+test('Ranking settings cannot change Firestore rules or stored finance data',()=>{
+  assert(!html.includes('settings", "ranking"'));
+  const code=source('saveRankingGroups');
+  for (const prop of ['totalRevenue','revenuePerUnit','cashbackOptions','pricingOptions']) {
+    assert(!code.includes(prop));
+  }
+});
+
+
+test('Catalog save failure diagnostic identifies mismatched company-member Owner without leaking identifiers',async()=>{
+  const warnings=[];
+  const ctx=context(['productWriteFailureMessage'],{
+    auth:{currentUser:{uid:'private-uid',getIdTokenResult:async()=>({claims:{email_verified:true}})}},
+    currentUserData:{companyId:'private-company',companyRole:'owner'},
+    getEffectiveMasterUid:()=> 'a-different-master',
+    getDoc:async()=>({exists:()=>true,data:()=>({companyRole:'member',role:'member',active:true})}),
+    doc:()=>({}), db:{},
+    firebaseErrorMessage:()=> 'generic',
+    console:{warn:(...args)=>warnings.push(args)}
+  });
+  const diagnostic=await ctx.productWriteFailureMessage('追加',{code:'permission-denied'});
+  assert(diagnostic.includes('ユーザーOwner=はい'));
+  assert(diagnostic.includes('所属側Owner=いいえ'));
+  assert(diagnostic.includes('MASTER=別ユーザー'));
+  assert(diagnostic.includes('会社所属=あり'));
+  assert(diagnostic.includes('認証メール確認=OK'));
+  assert(!diagnostic.includes('private-uid'));
+  assert(!diagnostic.includes('private-company'));
+  assert(!JSON.stringify(warnings).includes('private-uid'));
+});
+
+test('Catalog diagnosis can report missing member or stale email token and does not mutate Firestore',async()=>{
+  let calls=0;
+  const ctx=context(['productWriteFailureMessage'],{
+    auth:{currentUser:{uid:'private-uid',getIdTokenResult:async()=>({claims:{email_verified:false}})}},
+    currentUserData:{companyId:'private-company',companyRole:'owner'},
+    getEffectiveMasterUid:()=> 'a-different-master',
+    getDoc:async()=>{calls++;return {exists:()=>false};},
+    doc:()=>({}), db:{},console:{warn:()=>{}},
+    firebaseErrorMessage:()=> 'generic'
+  });
+  const diagnostic=await ctx.productWriteFailureMessage('変更',{code:'permission-denied'});
+  assert(diagnostic.includes('認証メール確認=未反映'));
+  assert(diagnostic.includes('会社所属=未登録'));
+  assert.equal(calls,1);
+  const ordinary=await ctx.productWriteFailureMessage('変更',{code:'unavailable'});
+  assert(ordinary.includes('generic'));
+  assert.equal(calls,1);
+  const sourceCode=source('productWriteFailureMessage');
+  assert(!/setDoc\(|updateDoc\(|deleteDoc\(|writeBatch\(|runTransaction\(/.test(sourceCode));
+});
+
+test('Catalog handlers distinguish confirmed save from a subsequent refresh failure',()=>{
+  const create=handler('addProductButton');
+  const update=handler('saveProductModal');
+  for(const code of [create,update]){
+    assert(code.includes('let savedOnServer = false'));
+    assert(code.includes('savedOnServer = true'));
+    assert(code.includes('await loadProducts(true)'));
+    assert(code.includes('if (savedOnServer)'));
+    assert(code.includes('productWriteFailureMessage('));
+    assert(code.indexOf('savedOnServer = true')<code.indexOf('await loadProducts(true)'));
+  }
+  assert(create.includes('await setDoc('));
+  assert(update.includes('await updateDoc('));
+  assert(create.includes('重複登録せず'));
+  assert(update.includes('再度保存せず'));
+});
+
+
+// COUNT-PRESERVATION GATE: read-only tests. No production IDs or data are used.
+// Every later access-control or finance refactor must keep these tests passing.
+test('Count-preservation: repricing cannot rewrite or change daily, team, person, product and CB counts',()=>{
+  const products=[
+    {id:'fiber',name:'NURO光',pricingOptions:[
+      {cashback:0,revenuePerUnit:8000},{cashback:10000,revenuePerUnit:6000}
+    ]},
+    {id:'electric',name:'とくするでんき',pricingOptions:[
+      {cashback:0,revenuePerUnit:2000}
+    ]}
+  ];
+  const saved=[
+    {id:'r1',companyId:'c',date:'2026-10-25',uid:'alice',teamId:'one',
+      totalCount:3,totalRevenue:300,results:{
+        zero:{productId:'fiber',productName:'NURO光',cashback:0,count:2,revenuePerUnit:100},
+        bonus:{productId:'fiber',productName:'NURO光',cashback:10000,count:1,revenuePerUnit:100}
+      }},
+    {id:'r2',companyId:'c',date:'2026-10-25',uid:'bob',teamId:'two',
+      totalCount:5,totalRevenue:0,results:{
+        electric:{productId:'electric',productName:'とくするでんき',cashback:0,count:5,revenuePerUnit:0}
+      }},
+    {id:'r3',companyId:'c',date:'2026-10-24',uid:'alice',teamId:'two',
+      totalCount:4,totalRevenue:0,results:{
+        electric:{productId:'electric',productName:'とくするでんき',cashback:0,count:4,revenuePerUnit:0}
+      }}
+  ];
+  const baseline=JSON.stringify(saved);
+  const c=context(['getRecordResults','getProductPricingOptions',
+    'currentCatalogRevenuePerUnit','currentProductDisplayName','getDisplayRecordResults'],{
+    products,canCurrentUserViewRevenueForRecord:()=>true
+  });
+  const display=()=>saved.flatMap(record=>c.getDisplayRecordResults(record)
+    .map(row=>({date:record.date,uid:record.uid,teamId:record.teamId,
+      productId:row.productId,cashback:row.cashback,count:row.count,
+      revenuePerUnit:row.revenuePerUnit})));
+  function countIndex(rows,fields){
+    const out={};
+    for(const row of rows){
+      const key=fields.map(field=>String(row[field]??'')).join('|');
+      out[key]=(out[key]||0)+row.count;
+    }
+    return out;
+  }
+  const oldRows=display();
+  assert.equal(oldRows.reduce((sum,row)=>sum+row.count,0),12);
+  assert.equal(oldRows.find(row=>row.productId==='fiber'&&row.cashback===0).revenuePerUnit,8000);
+  const axes=[
+    ['date'],['uid'],['teamId'],['productId'],['cashback','productId'],
+    ['date','teamId','uid','productId','cashback']
+  ];
+  const baselineIndices=axes.map(fields=>countIndex(oldRows,fields));
+  products[0].pricingOptions=[
+    {cashback:0,revenuePerUnit:11000},{cashback:10000,revenuePerUnit:5000}
+  ];
+  products[1].pricingOptions=[{cashback:0,revenuePerUnit:10000}];
+  const newRows=display();
+  assert.equal(newRows.reduce((sum,row)=>sum+row.count,0),12);
+  assert.equal(newRows.find(row=>row.productId==='fiber'&&row.cashback===0).revenuePerUnit,11000);
+  axes.forEach((fields,i)=>assert.deepEqual(countIndex(newRows,fields),baselineIndices[i]));
+  assert.equal(JSON.stringify(saved),baseline,'saved records, IDs and totals remain byte-for-byte unchanged');
+});
+
+test('Count-preservation: hiding revenue from members must not hide their sales counts',()=>{
+  const products=[{id:'water',name:'ウォーター',pricingOptions:[{cashback:0,revenuePerUnit:17000}]}];
+  const original={
+    companyId:'c',date:'2026-10-26',teamId:'one',uid:'member',
+    totalCount:7,totalRevenue:700,
+    results:{water:{productId:'water',cashback:0,count:7,revenuePerUnit:100}}
+  };
+  const unchanged=JSON.stringify(original);
+  const c=context(['getRecordResults','getProductPricingOptions',
+    'currentCatalogRevenuePerUnit','currentProductDisplayName','getDisplayRecordResults'],{
+    products,canCurrentUserViewRevenueForRecord:()=>false
+  });
+  const visible=c.getDisplayRecordResults(original);
+  assert.equal(visible.length,1);
+  assert.equal(visible[0].count,7);
+  assert.equal(visible[0].productId,'water');
+  assert.equal(visible[0].revenuePerUnit,0);
+  assert.equal(JSON.stringify(original),unchanged);
+});
+
+test('Count-preservation: missing or ambiguous current CB price never guesses a new result or deletes count',()=>{
+  const record={id:'old-sale',date:'2026-10-24',uid:'alice',teamId:'one',
+    results:{old:{productId:'nuro',cashback:15000,count:6,revenuePerUnit:2500}}};
+  const saved=JSON.stringify(record);
+  const products=[{id:'nuro',name:'NURO',pricingOptions:[
+    {cashback:0,revenuePerUnit:7000},{cashback:10000,revenuePerUnit:4000}
+  ]}];
+  const c=context(['getRecordResults','getProductPricingOptions',
+    'currentCatalogRevenuePerUnit','currentProductDisplayName','getDisplayRecordResults'],{
+    products,canCurrentUserViewRevenueForRecord:()=>true
+  });
+  const rows=c.getDisplayRecordResults(record);
+  assert.equal(rows.length,1);
+  assert.equal(rows[0].count,6);
+  assert.equal(rows[0].revenuePerUnit,2500);
+  assert.equal(JSON.stringify(record),saved);
+});
+
+test('Count-preservation: display-only revenue helpers cannot write or delete Firestore records',()=>{
+  for(const name of ['currentCatalogRevenuePerUnit','getDisplayRecordResults','getRecordResults']){
+    const code=source(name);
+    assert(!/\b(?:setDoc|updateDoc|deleteDoc|writeBatch|runTransaction|addDoc)\s*\(/.test(code),name);
+  }
+  const priceChangePath=source('currentCatalogRevenuePerUnit');
+  assert(priceChangePath.includes('return original'));
+  assert(priceChangePath.includes('getProductPricingOptions'));
+});
+
+
+test('business history cannot be hard-deleted from the browser module',()=>{
+ const protectedDeletes=['deleteTeam(','deleteProduct(','deleteRecord(','deleteDoc('];
+ for(const needle of protectedDeletes)
+   assert.equal(html.includes(needle),false,needle+' must never be callable in the production browser module');
+ assert.ok(html.includes('function editRecord('),'history correction must remain available');
+ assert.ok(html.includes('persistDailyRecord('),'normal record save must remain available');
+});
+test('published security-rule proposal denies physical deletion of 5 historical collections',()=>{
+ const rules=fs.readFileSync(path.join(__dirname,'../firestore.rules'),'utf8');
+ for(const name of ['records','teams','products','goals','revenueGoals']){
+  const start=rules.indexOf('match /'+name+'/{');
+  assert.ok(start>=0,name+' collection must exist');
+  const end=rules.indexOf('\n    match /',start+1);
+  const section=rules.slice(start,end<0?undefined:end);
+  assert.match(section,/allow delete:\s*if false\s*;/,name+' deletion must be forbidden');
+ }
+});
+
+test('Owner member removal is suspension-only and preserves stored history', async () => {
+  const fn = fs.readFileSync(path.join(__dirname, '../functions/index.js'), 'utf8');
+  const start = fn.indexOf('exports.deleteCompanyMemberAccount = onCall(async (request) => {');
+  assert(start >= 0, 'legacy member-removal callable must exist');
+  const end = fn.indexOf('\n});', start);
+  assert(end > start, 'callable must have a closed body');
+  const source = fn.slice(start, end + 4);
+  assert(!/\.delete\s*\(|deleteUser\s*\(|deleteDoc\s*\(/.test(source),
+    'member retirement must never physically delete Auth, user, or membership documents');
+  const writes = [];
+  const authOps = [];
+  const ref = (name) => ({
+    name,
+    collection: (child) => ({ doc: (id) => ref(name + '/' + child + '/' + id) }),
+    get: async () => ({ exists: true, data: () => ({uid:'former-uid',companyId:'company-A',companyRole:'member',teamHistory:[{teamId:'historical'}]}) })
+  });
+  const db = {
+    collection: (name) => ({ doc: (id) => ref(name + '/' + id) }),
+    batch: () => ({
+      set: (document, patch, opts) => writes.push({path:document.name, patch, opts}),
+      commit: async () => {}
+    })
+  };
+  const scope = vm.createContext({
+    exports: {},
+    onCall: (callback) => callback,
+    requireVerifiedUser: () => ({uid:'owner-uid'}),
+    getCompanyContext: async () => ({ companyId:'company-A', memberData:{companyRole:'owner'} }),
+    getAuth: () => ({
+      updateUser: async (uid, patch) => { authOps.push({uid, patch}); },
+      deleteUser: async () => { throw Error('Auth hard delete must never run'); }
+    }),
+    db,
+    FieldValue:{serverTimestamp:()=>'server-timestamp'},
+    HttpsError: class HttpsError extends Error { constructor(code,message){super(message);this.code=code;} }
+  });
+  vm.runInContext(source, scope);
+  const result = await scope.exports.deleteCompanyMemberAccount({data:{uid:'former-uid'}});
+  assert.equal(result.ok,true);
+  assert.equal(result.authDeleted,false);
+  assert.equal(result.authDisabled,true);
+  assert.equal(result.historicalUserDocumentRetained,true);
+  assert.equal(result.historicalMemberDocumentRetained,true);
+  assert.deepEqual(JSON.parse(JSON.stringify(authOps)), [{uid:'former-uid',patch:{disabled:true}}]);
+  assert.deepEqual(writes.map((w)=>w.path).sort(),[
+    'companies/company-A/members/former-uid','users/former-uid'
+  ]);
+  assert(writes.every((w)=>w.patch.active===false && w.opts.merge===true));
+  assert(writes.every((w)=>!('teamHistory' in w.patch) && !w.path.startsWith('records/')));
+});
+
+
+test('Member suspension rejects inconsistent company or owner identity before any writes', async () => {
+  const fn = fs.readFileSync(path.join(__dirname, '../functions/index.js'), 'utf8');
+  const start = fn.indexOf('exports.deleteCompanyMemberAccount = onCall(async (request) => {');
+  assert(start >= 0);
+  const end = fn.indexOf('\n});', start);
+  assert(end > start);
+  const source = fn.slice(start, end + 4);
+
+  async function attempt(member, user, present=true) {
+    const calls=[];
+    const ref = (name) => ({
+      name,
+      collection: (child) => ({doc: (id) => ref(name+'/'+child+'/'+id)}),
+      get: async () => ({
+        exists: name.startsWith('users/') ? present : true,
+        data: () => name.startsWith('users/') ? user : member
+      })
+    });
+    const ctx=vm.createContext({
+      exports: {},
+      onCall: callback => callback,
+      requireVerifiedUser: () => ({uid:'owner'}),
+      getCompanyContext: async () => ({companyId:'company-A',memberData:{companyRole:'owner'}}),
+      getAuth: () => ({updateUser: async () => calls.push('auth-disable')}),
+      db: {
+        collection: name => ({doc: id => ref(name+'/'+id)}),
+        batch: () => ({
+          set: () => calls.push('write'),
+          delete: () => calls.push('delete'),
+          commit: async () => calls.push('commit')
+        })
+      },
+      FieldValue: {serverTimestamp: () => 1},
+      HttpsError: class HttpsError extends Error {constructor(code,message){super(message);this.code=code;}}
+    });
+    vm.runInContext(source,ctx);
+    await assert.rejects(() => ctx.exports.deleteCompanyMemberAccount({data:{uid:'former-uid'}}),
+      err => err.code==='failed-precondition');
+    assert.deepEqual(calls,[], 'invalid identity must not be modified');
+  }
+  const baseMember={uid:'former-uid',companyRole:'member',teamHistory:[{teamId:'old-team'}]};
+  const baseUser={uid:'former-uid',companyId:'company-A',companyRole:'member'};
+  await attempt(baseMember,{...baseUser,companyId:'company-B'});
+  await attempt({...baseMember,uid:'another-user'},baseUser);
+  await attempt(baseMember,{...baseUser,uid:'another-user'});
+  await attempt(baseMember,{...baseUser,companyRole:'owner'});
+  await attempt({...baseMember,companyRole:'owner'},baseUser);
+  await attempt(baseMember,baseUser,false);
+});
+
+
+test('Cloud Functions source must not revive destructive removal of sales or employee history', () => {
+  const fn = fs.readFileSync(path.join(__dirname, '../functions/index.js'), 'utf8');
+  // These admin-side calls bypass Firestore client Security Rules.
+  // Explicit code review and a separate retention design are required before
+  // introducing any new destructive server path.
+  assert.doesNotMatch(fn, /getAuth\s*\(\s*\)\s*\.deleteUser\s*\(/,
+    'Firebase Auth hard deletion must not be reintroduced in the existing functions');
+  assert.doesNotMatch(fn, /(?:batch|cleanupBatch|transaction|db)\s*\.delete\s*\(/,
+    'Admin SDK batch/transaction deletion is disallowed for this sales app');
+  assert.doesNotMatch(fn, /(?:targetMemberRef|targetUserRef|recordRef|productRef|teamRef)\s*\.delete\s*\(/,
+    'historical user, membership, record, product or team deletion must not be called');
+});
+
+
+test('Manual suspension release can only deploy the approved Cloud Function, never Firestore data', () => {
+  const workflow = fs.readFileSync(path.join(__dirname, '../.github/workflows/member-retention-manual-release.yml'), 'utf8');
+  assert.match(workflow, /workflow_dispatch:/, 'no automatic release triggers');
+  assert.doesNotMatch(workflow, /^\s+(push|pull_request|schedule|repository_dispatch):/m,
+    'no push, PR, schedule or remote-dispatch release triggers');
+  assert.match(workflow, /github\.ref == 'refs\/heads\/main'/, 'must run on main');
+  assert.match(workflow, /inputs\.reviewed_commit == github\.sha/, 'must match reviewed commit');
+  assert.match(workflow, /VERIFIED_BACKUP_RESTORE_COUNTS_AND_NICO_URL/,
+    'requires typed confirmation of data protection verification');
+  assert.match(workflow, /firebase deploy --only functions:deleteCompanyMemberAccount/,
+    'must deploy only the fixed suspension Function');
+  assert.doesNotMatch(workflow, /firebase deploy --only (?:firestore|hosting)/,
+    'must not modify Firestore Rules or Hosting as part of this release');
+  assert.doesNotMatch(workflow, /(?:firebase firestore:delete|gcloud firestore (?:databases|backups) delete)/,
+    'must never delete a production database');
+});
+
+
+test('Sales correction and its audit must be written in one atomic transaction',async()=>{
+  const old={companyId:'c',uid:'u',date:'2026-10-06',teamId:'a',totalCount:2,totalRevenue:200,results:{x:{count:2,revenuePerUnit:100}}};
+  const next={...old,totalCount:3,totalRevenue:300,results:{x:{count:3,revenuePerUnit:100}}};
+  let committed=[],readRecord=structuredClone(old);
+  const transactions=[];
+  const ctx=context(['persistDailyRecord','recordRevision','recordConflict'],{
+    db:{},recordsCollectionQuery:()=>({}),query:()=>({}),where:()=>({}),
+    getDocsFromServer:async()=>({size:1,docs:[{id:'r'}]}),
+    runTransaction:async(_db,cb)=>{
+      const pending=[];
+      const transaction={
+        get:async()=>({exists:()=>!!readRecord,id:'r',data:()=>structuredClone(readRecord)}),
+        set:(ref,data,options)=>pending.push({id:ref.id,data,options})
+      };
+      await cb(transaction);
+      committed=pending; transactions.push(pending);
+    }
+  });
+  const writeAudit=txn=>txn.set({id:'audit1'},{before:old,after:next});
+  await ctx.persistDailyRecord({id:'r'},next,old,ctx.recordRevision(old),writeAudit);
+  assert.deepEqual(committed.map(x=>x.id),['r','audit1']);
+  committed=[];
+  const brokenAudit=()=>{throw Error('audit permission denied')};
+  await assert.rejects(ctx.persistDailyRecord({id:'r'},next,old,ctx.recordRevision(old),brokenAudit),/audit permission denied/);
+  assert.deepEqual(committed,[],'no writes commit when correction log fails');
+  readRecord={...old,totalCount:99};
+  await assert.rejects(ctx.persistDailyRecord({id:'r'},next,old,ctx.recordRevision(old),writeAudit),{code:'record-conflict'});
+  assert.deepEqual(committed,[],'no stale overwrite when source record changed');
+});
+test('Sales form always delegates the correction audit to the transaction, never separate setDoc',()=>{
+ const begin=html.indexOf('validateFinancialRecordForSave(data);');
+ const end=html.indexOf('保存完了後に同じドキュメントを読み直し',begin);
+ assert(begin>=0&&end>begin);
+ const saveHandler=html.slice(begin,end);
+ assert(saveHandler.includes('const writeCorrection = existingDailyRecord'));
+ assert(saveHandler.includes('transaction.set('));
+ assert(saveHandler.includes('persistDailyRecord(recordRef, data, existingDailyRecord, editingRecordRevision, writeCorrection)'));
+ assert(!/await\s+setDoc\s*\(\s*correctionRef/.test(saveHandler));
+ assert(!saveHandler.includes('correctionAuditWarning'));
+});
+
+test('Same-name teams never inherit each other financial ranking amounts',()=>{
+ const teams=[{id:'one',name:'合同班',active:true},{id:'two',name:'合同班',active:true},
+  {id:'old',name:'旧班',active:false},{id:'current',name:'旧班',active:true},
+  {id:'unique',name:'唯一班',active:true}];
+ const teamMap={one:{name:'合同班',count:3,revenue:30000},
+  '旧班':{name:'旧班',count:6,revenue:60000},
+  '唯一班':{name:'唯一班',count:4,revenue:40000}};
+ const ctx=context(['buildTeamRankingRows'],{teams,
+  canCurrentUserViewRevenueForTeam:()=>true,
+  buildTeamGoalProgress:()=>({totalTarget:0,totalActual:0,progress:0}),
+  buildTeamRevenueGoalProgress:()=>({targetRevenue:0,actualRevenue:0,progress:0})});
+ const rows=Array.from(ctx.buildTeamRankingRows(teamMap,[],'revenue'));
+ const byId=id=>rows.find(r=>r.id===id);
+ assert.equal(byId('one').revenue,30000);
+ assert.equal(byId('two').revenue,0);
+ assert.equal(byId('two').count,0);
+ assert.equal(byId('current').revenue,0);
+ assert.equal(byId('unique').revenue,40000);
+ assert.equal(rows.reduce((sum,row)=>sum+row.revenue,0),70000);
+});
+
+
+test('Financial totals reconcile across CB plans, products and teams without rewriting history',()=>{
+ const products=[
+  {id:'tok',pricingOptions:[{cashback:0,revenuePerUnit:10000}]},
+  {id:'ever',pricingOptions:[{cashback:0,revenuePerUnit:20000}]},
+  {id:'nuro',pricingOptions:[
+   {cashback:0,revenuePerUnit:25000},{cashback:20000,revenuePerUnit:22500}
+  ]}
+ ];
+ const records=[
+  {uid:'u1',teamId:'one',results:{
+   tok:{productId:'tok',cashback:0,count:5,revenuePerUnit:2000},
+   n0:{productId:'nuro',cashback:0,count:2,revenuePerUnit:1000}}},
+  {uid:'u2',teamId:'two',results:{
+   ever:{productId:'ever',cashback:0,count:5,revenuePerUnit:16000},
+   n20:{productId:'nuro',cashback:20000,count:3,revenuePerUnit:2000}}}
+ ];
+ const original=JSON.stringify(records);
+ const c=context(['getProductPricingOptions','getRecordResults','currentCatalogRevenuePerUnit',
+   'getDisplayRecordResults','calculateResultsTotals'],{
+  products,canCurrentUserViewRevenueForRecord:()=>true,
+  parseLegacyCashbackProductName:()=>({hasCashbackPlan:false}),
+  normalizeCashbackOptions:()=>[0],currentProductDisplayName:x=>x.productId
+ });
+ const amounts=records.map(x=>c.calculateResultsTotals(c.getDisplayRecordResults(x)));
+ assert.equal(amounts[0].revenue,100000);
+ assert.equal(amounts[1].revenue,167500);
+ assert.equal(amounts.reduce((s,x)=>s+x.revenue,0),267500);
+ assert.equal(amounts.reduce((s,x)=>s+x.count,0),15);
+ assert.equal(JSON.stringify(records),original);
+ assert.equal(c.currentCatalogRevenuePerUnit({
+  productId:'nuro',cashback:99999,count:1,revenuePerUnit:7500},products),7500);
+ assert.equal(c.currentCatalogRevenuePerUnit({
+  productId:'nuro',count:1,revenuePerUnit:7500},products),7500);
+});
+
+
+test('Past team rankings retain the recorded team ID after a member moves teams',()=>{
+ const entries=[
+  {id:'historic',uid:'sales1',teamId:'oldTeam',teamNameSnapshot:'旧班',count:3,revenue:30000},
+  {id:'today',uid:'sales1',teamId:'newTeam',teamNameSnapshot:'新班',count:2,revenue:20000}
+ ];
+ const member={uid:'sales1',teamId:'newTeam',teamHistory:[
+   {effectiveDate:'2026-09-01',toTeamId:'oldTeam'},
+   {effectiveDate:'2026-10-01',toTeamId:'newTeam'}
+ ]};
+ const original=JSON.stringify(entries);
+ const teamMap=Object.create(null);
+ for(const record of entries){
+   const teamId=record.teamId; // The immutable record, not current membership.
+   if(!teamMap[teamId])teamMap[teamId]={name:record.teamNameSnapshot,count:0,revenue:0};
+   teamMap[teamId].count+=record.count;teamMap[teamId].revenue+=record.revenue;
+ }
+ const ctx=context(['buildTeamRankingRows'],{
+   teams:[{id:'oldTeam',name:'旧班',active:true},{id:'newTeam',name:'新班',active:true}],
+   canCurrentUserViewRevenueForTeam:()=>true,
+   buildTeamGoalProgress:()=>({totalTarget:0,totalActual:0,progress:0}),
+   buildTeamRevenueGoalProgress:()=>({targetRevenue:0,actualRevenue:0,progress:0})
+ });
+ const before=Array.from(ctx.buildTeamRankingRows(teamMap,[],'revenue'));
+ member.teamId='oldTeam'; // Another reassignment never rewrites old record IDs.
+ const after=Array.from(ctx.buildTeamRankingRows(teamMap,[],'revenue'));
+ assert.deepEqual(after,before);
+ assert.equal(after.find(x=>x.id==='oldTeam').revenue,30000);
+ assert.equal(after.find(x=>x.id==='newTeam').revenue,20000);
+ assert.equal(JSON.stringify(entries),original);
+ // Guard the actual production aggregate path, not just this fixture.
+ assert.match(html,/const teamKey\s*=\s*record\.teamId\s*\|\|\s*teamName/);
+});
+
 test('all products: selected cashback plan determines sale rate; no cashback amount substitution',()=>{
   const electric={id:'electric',name:'とくする電気',pricingOptions:[{cashback:0,revenuePerUnit:10000}]};
   const nuro={id:'nuro',name:'NURO光',pricingOptions:[
@@ -904,20 +1596,6 @@ test('existing records: adding one deal at an obsolete price is stopped, unchang
   assert.equal(JSON.stringify(old),original);
 });
 
-test('financial totals refuse mismatched amount before writing and accept approved 5x10000',()=>{
-  const mock=context(['recordConflict','validateFinancialRecordForSave']);
-  assert.equal(mock.validateFinancialRecordForSave({
-    results:{a:{count:5,revenuePerUnit:10000}},totalCount:5,totalRevenue:50000}),true);
-  assert.throws(()=>mock.validateFinancialRecordForSave({
-    results:{a:{count:5,revenuePerUnit:2000}},totalCount:5,totalRevenue:50000}),{code:'record-conflict'});
-  assert.throws(()=>mock.validateFinancialRecordForSave({
-    results:{a:{count:1,revenuePerUnit:-50}},totalCount:1,totalRevenue:-50}),{code:'record-conflict'});
-  const save=html.slice(html.indexOf('saveRecordButton.onclick ='),html.indexOf('let correctionAuditWarning',html.indexOf('saveRecordButton.onclick =')));
-  assert(save.includes('verifyChangedRecordPricing(results, existingDailyRecord.results, products)'));
-  assert(save.includes('verifyNewRecordPricing(results, products)'));
-  assert(html.includes('validateFinancialRecordForSave(data);'));
-});
-
 test('owner read-only audit includes every suspicious product, does not rewrite stored history',()=>{
   const mock=context(['getProductPricingOptions','getRecordResults','auditSavedRevenueRates'],{
     parseLegacyCashbackProductName:()=>({hasCashbackPlan:false}),
@@ -943,7 +1621,7 @@ test('owner read-only audit includes every suspicious product, does not rewrite 
   assert(!warnings.some(x=>x.name==='NURO光'));
   assert.equal(JSON.stringify({products,records}),before);
   const render=source('renderProductSummary');
-  assert(render.includes('if (isCurrentCompanyOwner())'));
+  assert(render.includes('if (isCurrentCompanyOwner() && canCurrentUserViewProductRevenue())'));
   assert(!/await\s+(setDoc|updateDoc|deleteDoc)|runTransaction/.test(render));
 });
 
@@ -956,4 +1634,26 @@ test('stored zero-yen sale is never replaced with current master price in presen
   assert.equal(mock.getResultProductPresentation({
     productId:'free',productName:'無料商材',count:1,revenuePerUnit:0
   }).revenuePerUnit,0);
+});
+
+
+test('Owner-only audit refuses unknown prices, missing catalog and ambiguous CB without updating snapshots',()=>{
+ const mock=context(['getProductPricingOptions','getRecordResults','auditSavedRevenueRates'],{
+   parseLegacyCashbackProductName:()=>({hasCashbackPlan:false}),
+   normalizeCashbackOptions:x=>[...new Set([0,...(x||[])])],
+   formatYen:x=>'¥'+String(x)
+ });
+ const product={id:'electric',name:'電気',pricingOptions:[{cashback:0,revenuePerUnit:10000}]};
+ const records=[
+   {id:'missing',date:'2026-10-29',results:{x:{productId:'gone',count:1,revenuePerUnit:1000}},totalCount:1,totalRevenue:1000},
+   {id:'empty',date:'2026-10-29',results:{x:{productId:'electric',count:1,revenuePerUnit:null}},totalCount:1,totalRevenue:0}
+ ];
+ const before=JSON.stringify(records);
+ const warnings=mock.auditSavedRevenueRates(records,[product]);
+ assert(warnings.some(x=>x.message.includes('商材マスター')));
+ assert(warnings.some(x=>x.message.includes('保存済み件数または単価')));
+ assert.equal(JSON.stringify(records),before);
+ const ambiguous={...product,pricingOptions:[{cashback:0,revenuePerUnit:10000},{cashback:0,revenuePerUnit:20000}]};
+ const w=mock.auditSavedRevenueRates([records[0]],[ambiguous]);
+ assert(w.some(x=>x.message.includes('重複')));
 });
