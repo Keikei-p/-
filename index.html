@@ -12989,7 +12989,10 @@ let scopedHistoryMonth="";
 let scopedAnnualRecords=[];
 let scopedAnnualLoaded="";
 function useScopedHistoryPreview(){
- return MONTH_HISTORY_PREVIEW && isCurrentCompanyOwner();
+ return MONTH_HISTORY_PREVIEW && isCurrentCompanyOwner() &&
+   currentUserData?.accessKind!=="partner" &&
+   currentUserData?.memberType!=="partner" &&
+   currentCompanyData?.companyKind!=="partner";
 }
 function scopedHistoryBounds(month){
  if(typeof month!=="string"||!/^[0-9]{4}-(0[1-9]|1[0-2])$/.test(month))
