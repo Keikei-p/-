@@ -12,8 +12,8 @@ test("unchanged input forms can map to only COUNT intent without money fields",(
     reportStatus:"submitted",entries:[{productId:"sim",planId:"plan_0",count:2}]});
   assert.equal(JSON.stringify(p).includes("revenue"),false);
 });
-test("both legacy and NICO Factory origins use the same secure API adapter",async()=>{
-  assert.equal(SALES_HOST_ORIGINS.length,2);
+test("NICO official URL uses the secure API adapter",async()=>{
+  assert.equal(SALES_HOST_ORIGINS.length,1);
   for(const origin of SALES_HOST_ORIGINS){
     let calls=0;
     const res=await submitCountIntent({gatewayUrl:gateway,origin,user,input:makeCountIntent(input),
@@ -58,7 +58,7 @@ test("disabled clients do not send ID token, access remote API or fallback to un
   await assert.rejects(submitCountIntent({gatewayUrl:gateway,origin:SALES_HOST_ORIGINS[0],
     user,input:makeCountIntent(input),fetcher:async()=>{calls++;throw Error("unexpected")}}),/safe_write_not_released/);
   assert.equal(calls,0);
-  await assert.rejects(getSafeFinancialView({gatewayUrl:gateway,origin:SALES_HOST_ORIGINS[1],
+  await assert.rejects(getSafeFinancialView({gatewayUrl:gateway,origin:SALES_HOST_ORIGINS[0],
     user,fetcher:async()=>{calls++;throw Error("unexpected")}}),/safe_gateway_not_released/);
   assert.equal(calls,0);
 });

@@ -233,8 +233,8 @@ test("No unapproved methods, worker is disabled by default and denies missing JW
   assert.ok(preflight.headers.get("access-control-allow-methods")?.split(",").map(x=>x.trim()).includes("POST"));
 });
 
-test("New and old sales URLs can preflight count POST; other origins cannot",async()=>{
-  for(const origin of ["https://nico-factory.web.app","https://keikei-p.github.io"]){
+test("NICO official URL can preflight count POST; legacy and other origins cannot",async()=>{
+  for(const origin of ["https://nico-factory.web.app"]){
     const preflight=await worker.fetch(new Request("https://sales-finance-gateway.example/v1/count-record",{
       method:"OPTIONS",
       headers:{origin,"access-control-request-method":"POST",
@@ -251,6 +251,12 @@ test("New and old sales URLs can preflight count POST; other origins cannot",asy
     }),{FINANCE_GATEWAY_ENABLED:"disabled",FINANCE_WRITE_ENABLED:"disabled"});
     assert.equal(blocked.status,503);
     assert.equal((await blocked.json()).error,"safe_write_not_released");
+  }
+  for(const forbidden of ["https://keikei-p.github.io","https://attacker.example"]){
+    const rejected=await worker.fetch(new Request("https://sales-finance-gateway.example/v1/count-record",{
+      method:"OPTIONS",headers:{origin:forbidden,"access-control-request-method":"POST"}}),{});
+    assert.equal(rejected.status,403);
+    assert.equal(rejected.headers.get("access-control-allow-origin"),null);
   }
   const evil=await worker.fetch(new Request("https://sales-finance-gateway.example/v1/count-record",{
     method:"OPTIONS",headers:{origin:"https://attacker.example",
@@ -384,41 +390,4 @@ test("Conflicting old user/member grants are flagged, never automatically widene
   assert.equal(p2.needsPermissionReview,true);
   assert.equal(p2.canViewRevenue,false);
   assert.equal(approvedPolicy(...person("member"),company,"sample","2026-10-22").needsPermissionReview,false);
-});
-
-
-test("Individual ranking and grants are disabled by default and require verified identity",async()=>{
- for(const route of ["/v1/individual-ranking?month=2026-10","/v1/individual-rank-viewers"]){
-  const url="https://sales-finance-gateway.example"+route;
-  let res=await worker.fetch(new Request(url),{
-   FINANCE_GATEWAY_ENABLED:"disabled",FINANCE_RANKING_APPROVAL:"NOT_APPROVED"
-  });
-  assert.equal(res.status,503);
-  res=await worker.fetch(new Request(url),{
-   FINANCE_GATEWAY_ENABLED:"enabled",
-   FINANCE_RANKING_APPROVAL:"OWNER_APPROVED_RANK_ONLY",
-   FINANCE_COST_APPROVAL:"OWNER_APPROVED_BLAZE_COSTS",
-   FIREBASE_PROJECT_ID:"sales-management-cc116"
-  });
-  assert.equal(res.status,401);
- }
- const endpoint="https://sales-finance-gateway.example/v1/individual-rank-grant";
- const req=new Request(endpoint,{method:"POST",headers:{"content-type":"application/json"},
-  body:JSON.stringify({uid:"member",allowed:true})});
- let res=await worker.fetch(req,{
-  FINANCE_GATEWAY_ENABLED:"enabled",FINANCE_RANKING_APPROVAL:"OWNER_APPROVED_RANK_ONLY",
-  FINANCE_COST_APPROVAL:"OWNER_APPROVED_BLAZE_COSTS",
-  FIREBASE_PROJECT_ID:"sales-management-cc116",
-  FINANCE_WRITE_ENABLED:"disabled"
- });
- assert.equal(res.status,503,"read approval alone cannot enable rank permission writes");
- const req2=new Request(endpoint,{method:"POST",headers:{"content-type":"application/json"},
-  body:JSON.stringify({uid:"member",allowed:true})});
- res=await worker.fetch(req2,{
-  FINANCE_GATEWAY_ENABLED:"enabled",FINANCE_RANKING_APPROVAL:"OWNER_APPROVED_RANK_ONLY",
-  FINANCE_COST_APPROVAL:"OWNER_APPROVED_BLAZE_COSTS",
-  FIREBASE_PROJECT_ID:"sales-management-cc116",
-  FINANCE_WRITE_ENABLED:"enabled",FINANCE_WRITE_APPROVAL:"DUAL_HOST_BACKUP_VERIFIED"
- });
- assert.equal(res.status,401);
 });

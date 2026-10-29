@@ -1,0 +1,55 @@
+name: Offline sales history safety tests (NO data access)
+on:
+  push:
+    branches:
+      - safety/history-snapshot-comparison-20261022
+  pull_request:
+    branches: [main]
+    paths:
+      - scripts/verify-history-snapshots.mjs
+      - tests/verify-history-snapshots.test.mjs
+      - tools/readonly-backup/**
+      - .github/workflows/history-snapshot-guard.yml
+permissions:
+  contents: read
+jobs:
+  offline-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Syntax checks (no credentials, no remote API)
+        run: |
+          node --check tools/readonly-backup/backup.mjs
+          node --check tools/readonly-backup/restore-emulator.mjs
+          node --check scripts/verify-history-snapshots.mjs
+      - name: Verify all local-only safety tests with synthetic data
+        run: node --test tests/verify-history-snapshots.test.mjs tools/readonly-backup/backup.test.mjs tools/readonly-backup/restore-emulator.test.mjs
+
+  emulator-roundtrip:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # This job has no Firebase secrets or token. The CLI project starts with
+    # demo- and the restore script rejects any non-loopback host/project.
+    env:
+      GCLOUD_PROJECT: demo-sales-restore
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Install emulator CLI (no production credentials)
+        run: npm install --global firebase-tools --ignore-scripts --no-audit --no-fund
+      - name: Restore and read back synthetic data in local emulator only
+        run: firebase emulators:exec --only firestore --project demo-sales-restore "node --test tools/readonly-backup/restore-emulator.integration.test.mjs"

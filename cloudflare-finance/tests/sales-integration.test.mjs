@@ -1,9 +1,9 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {makeProtectedSalesBridge} from "../client/sales-integration.mjs";
-const liveURLs=["https://nico-factory.web.app","https://keikei-p.github.io"];
+const liveURLs=["https://nico-factory.web.app"];
 const gateway="https://sales-finance-gateway.owner-preview.workers.dev";
-test("new and old URLs fetch protected view and submit ONLY counts",async()=>{
+test("NICO official URL fetches protected view and submits ONLY counts",async()=>{
   for(const origin of liveURLs){
     let syncTrigger,errors=0;
     const calls=[];

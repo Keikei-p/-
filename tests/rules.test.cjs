@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const vm=require('node:vm');
 const path=require('node:path');
 const {initializeTestEnvironment,assertSucceeds,assertFails}=require('@firebase/rules-unit-testing');
-const {doc,setDoc,getDoc,getDocsFromServer,collection,query,where,updateDoc,serverTimestamp,runTransaction}=require('firebase/firestore');
+const {doc,setDoc,getDoc,getDocsFromServer,collection,query,where,updateDoc,deleteDoc,serverTimestamp,runTransaction}=require('firebase/firestore');
 if(!process.env.FIRESTORE_EMULATOR_HOST) throw Error('Emulator required: refusing any production connection');
 let env;
 const projectId='demo-sales-support';
@@ -180,4 +180,206 @@ test('leader without explicit finance grants cannot read or edit revenue goals',
   await assertFails(setDoc(doc(db,'revenueGoals','leader-default-denied'),revenueGoalPayload('a',100000)));
   const owner=dbFor('owner');
   assert.equal((await getDoc(doc(owner,'revenueGoals','private-a'))).data().targetRevenue,990000);
+});
+
+
+test('authenticated master shown as owner can add and edit products but cannot delete historical catalog even if membership role is member',async()=>{
+  // Reproduce the UI/server mismatch: client isCurrentCompanyMaster() shows
+  // owner controls, but prior products rules used only isCompanyManager().
+  await env.withSecurityRulesDisabled(async c=>{
+    const admin=c.firestore();
+    await setDoc(doc(admin,'companies',company),{ownerUid:'owner',masterUid:'catalogMaster'});
+    const master={uid:'catalogMaster',name:'catalogMaster',companyId:company,
+      companyRole:'member',role:'member',teamId:'a',active:true,
+      canViewRevenue:false,canViewUnitPrice:false};
+    await setDoc(doc(admin,'users','catalogMaster'),master);
+    await setDoc(doc(admin,'companies',company,'members','catalogMaster'),master);
+  });
+  const db=dbFor('catalogMaster');
+  const ref=doc(db,'products','master-new-product');
+  await assertSucceeds(setDoc(ref,{
+    companyId:company,name:'新規商品',revenue:5000,
+    cashbackOptions:[0],pricingOptions:[{cashback:0,revenuePerUnit:5000}],
+    sortOrder:13,active:true,createdAt:serverTimestamp(),updatedAt:serverTimestamp()
+  }));
+  assert.equal((await assertSucceeds(getDoc(ref))).data().revenue,5000);
+  await assertSucceeds(updateDoc(ref,{name:'更新した商材',updatedAt:serverTimestamp()}));
+  assert.equal((await assertSucceeds(getDoc(ref))).data().name,'更新した商材');
+  await assertFails(deleteDoc(ref));
+   assert.equal((await getDoc(ref)).exists(),true);
+  // Rejected deletes must not erase the existing price master.
+  await env.withSecurityRulesDisabled(async c=>{
+    assert.equal((await getDoc(doc(c.firestore(),'products','master-new-product'))).exists(),true);
+  });
+});
+
+test('product catalog permissions still reject ordinary members and foreign members',async()=>{
+  const product={companyId:company,name:'未許可の商材',revenue:5000,
+    cashbackOptions:[0],pricingOptions:[{cashback:0,revenuePerUnit:5000}],
+    sortOrder:0,active:true,createdAt:serverTimestamp(),updatedAt:serverTimestamp()};
+  for(const uid of ['helper','foreign','leaderB']){
+    const ref=doc(dbFor(uid),'products',uid+'-denied');
+    await assertFails(setDoc(ref,product));
+  }
+});
+
+test('existing owner retains product create permission',async()=>{
+  const ref=doc(dbFor('owner'),'products','owner-new-product');
+  await assertSucceeds(setDoc(ref,{
+    companyId:company,name:'オーナー追加商品',revenue:5000,
+    cashbackOptions:[0],pricingOptions:[{cashback:0,revenuePerUnit:5000}],
+    sortOrder:13,active:true,createdAt:serverTimestamp(),updatedAt:serverTimestamp()
+  }));
+});
+
+test('secondary owner (not master) can create and edit SBMNP but cannot delete its catalog history with zero cashback',async()=>{
+  await env.withSecurityRulesDisabled(async c=>{
+    await updateDoc(doc(c.firestore(),'companies',company),{masterUid:'another-master'});
+  });
+  const ref=doc(dbFor('owner'),'products','secondary-owner-sbmnp');
+  await assertSucceeds(setDoc(ref,{
+    companyId:company,name:'SBMNP',revenue:5000,
+    cashbackOptions:[0],pricingOptions:[{cashback:0,revenuePerUnit:5000}],
+    sortOrder:13,active:true,createdAt:serverTimestamp(),updatedAt:serverTimestamp()
+  }));
+  await assertSucceeds(updateDoc(ref,{name:'SBMNP edited',updatedAt:serverTimestamp()}));
+  await assertFails(deleteDoc(ref));
+   assert.equal((await getDoc(ref)).exists(),true);
+});
+
+test('leader with both explicit finance grants can create, edit and delete SBMNP',async()=>{
+  await env.withSecurityRulesDisabled(async c=>{
+    const db=c.firestore();
+    await updateDoc(doc(db,'users','leaderA'),{canViewUnitPrice:true});
+    await updateDoc(doc(db,'companies',company,'members','leaderA'),{canViewUnitPrice:true});
+  });
+  const ref=doc(dbFor('leaderA'),'products','leader-sbmnp');
+  await assertSucceeds(setDoc(ref,{
+    companyId:company,name:'SBMNP',revenue:5000,
+    cashbackOptions:[0],pricingOptions:[{cashback:0,revenuePerUnit:5000}],
+    sortOrder:13,active:true,createdAt:serverTimestamp(),updatedAt:serverTimestamp()
+  }));
+  await assertSucceeds(updateDoc(ref,{name:'SBMNP edited',updatedAt:serverTimestamp()}));
+  await assertFails(deleteDoc(ref));
+   assert.equal((await getDoc(ref)).exists(),true);
+});
+
+function catalogPayload(extra={}) {
+  return {companyId:company,name:'SBMNP',revenue:5000,
+    cashbackOptions:[0],pricingOptions:[{cashback:0,revenuePerUnit:5000}],
+    sortOrder:13,active:true,createdAt:serverTimestamp(),updatedAt:serverTimestamp(),...extra};
+}
+
+test('product create/update/delete reject inactive, inconsistent, unverified and underprivileged actors',async()=>{
+  const cases=[
+    {id:'member',role:'member',grants:true},
+    {id:'leader-no-unit',role:'leader',revenue:true},
+    {id:'leader-no-revenue',role:'leader',unit:true},
+    {id:'leader-no-flags',role:'leader'},
+    {id:'inactive-user',owner:true,userActive:false},
+    {id:'inactive-member',owner:true,memberActive:false},
+    {id:'missing-member',owner:true,missingMember:true},
+    {id:'missing-user',owner:true,missingUser:true},
+    {id:'wrong-company',owner:true,wrongCompany:true},
+    {id:'ui-only-owner',userOwner:true},
+    {id:'member-only-owner',memberOwner:true},
+    {id:'unverified-owner',owner:true,unverified:true},
+    {id:'master-inactive',master:true,userActive:false},
+    {id:'master-missing-member',master:true,missingMember:true},
+    {id:'master-wrong-company',master:true,wrongCompany:true}
+  ];
+  for(const item of cases){
+    await env.withSecurityRulesDisabled(async c=>{
+      const db=c.firestore();
+      await updateDoc(doc(db,'companies',company),{masterUid:item.master?item.id:'owner'});
+      const common={uid:item.id,companyId:item.wrongCompany?'company-b':company,
+        role:item.role||'member',companyRole:'member',active:true,
+        ...(item.grants||item.revenue?{canViewRevenue:true}:{}),
+        ...(item.grants||item.unit?{canViewUnitPrice:true}:{})};
+      if(!item.missingUser)await setDoc(doc(db,'users',item.id),{
+        ...common,companyRole:item.owner||item.userOwner?'owner':'member',active:item.userActive!==false});
+      if(!item.missingMember)await setDoc(doc(db,'companies',company,'members',item.id),{
+        ...common,companyRole:item.owner||item.memberOwner?'owner':'member',active:item.memberActive!==false});
+      await setDoc(doc(db,'products','existing-'+item.id),catalogPayload());
+    });
+    const db=env.authenticatedContext(item.id,{email:item.id+'@example.test',email_verified:!item.unverified}).firestore();
+    await assertFails(setDoc(doc(db,'products','new-'+item.id),catalogPayload()));
+    const ref=doc(db,'products','existing-'+item.id);
+    await assertFails(updateDoc(ref,{name:'denied',updatedAt:serverTimestamp()}));
+    await assertFails(deleteDoc(ref));
+  }
+  const anon=env.unauthenticatedContext().firestore();
+  await assertFails(setDoc(doc(anon,'products','anonymous'),catalogPayload()));
+  await assertFails(updateDoc(doc(anon,'products','existing-member'),{name:'denied',updatedAt:serverTimestamp()}));
+  await assertFails(deleteDoc(doc(anon,'products','existing-member')));
+});
+
+test('product validation and cross-company protections remain enforced for secondary owner',async()=>{
+  await env.withSecurityRulesDisabled(async c=>{
+    const db=c.firestore();
+    await updateDoc(doc(db,'companies',company),{masterUid:'another-master'});
+    await setDoc(doc(db,'products','foreign-product'),catalogPayload({companyId:'company-b'}));
+  });
+  const db=dbFor('owner');
+  const invalid=[{revenue:-1},{revenue:'5000'},{active:false},{name:''},
+    {pricingOptions:[]},{sortOrder:-1},{unexpected:true},{createdAt:null},
+    {updatedAt:null},{companyId:'company-b'}];
+  for(let i=0;i<invalid.length;i++)await assertFails(setDoc(doc(db,'products','invalid-'+i),catalogPayload(invalid[i])));
+  const ref=doc(db,'products','valid-product');
+  await assertSucceeds(setDoc(ref,catalogPayload()));
+  await assertFails(updateDoc(ref,{companyId:'company-b',updatedAt:serverTimestamp()}));
+  await assertFails(updateDoc(ref,{revenue:-1,updatedAt:serverTimestamp()}));
+  await assertFails(updateDoc(ref,{active:false,updatedAt:serverTimestamp()}));
+  await assertFails(updateDoc(doc(db,'products','foreign-product'),{name:'denied',updatedAt:serverTimestamp()}));
+  await assertFails(deleteDoc(doc(db,'products','foreign-product')));
+});
+
+
+// Business-history retention contract: no mobile client may destroy any
+// past record, product, team, monthly target or revenue target.
+test('sales records survive attempted deletion by owner, leader and owner of the record',async()=>{
+ await seedRecord();
+ for(const uid of ['owner','leaderA','helper']){
+   await assertFails(deleteDoc(doc(dbFor(uid),'records',key())));
+   assert.equal((await getDoc(doc(dbFor('owner'),'records',key()))).data().totalCount,2);
+ }
+});
+test('teams cannot be physically removed, but the existing name remains editable',async()=>{
+ for(const uid of ['owner','leaderA']){
+   await assertFails(deleteDoc(doc(dbFor(uid),'teams','a')));
+   assert.equal((await getDoc(doc(dbFor('owner'),'teams','a'))).exists(),true);
+ }
+ await assertSucceeds(updateDoc(doc(dbFor('owner'),'teams','a'),{name:'更新後の班名',updatedAt:serverTimestamp()}));
+ assert.equal((await getDoc(doc(dbFor('owner'),'teams','a'))).data().name,'更新後の班名');
+});
+test('catalog products cannot be physically removed, but owners may still edit',async()=>{
+ const ref=doc(dbFor('owner'),'products','retain-product');
+ await assertSucceeds(setDoc(ref,catalogPayload()));
+ await assertFails(deleteDoc(ref));
+ await assertSucceeds(updateDoc(ref,{name:'新しい表示名',updatedAt:serverTimestamp()}));
+ assert.equal((await getDoc(ref)).data().revenue,5000);
+});
+test('monthly count and revenue targets cannot be physically removed',async()=>{
+ const db=dbFor('owner');
+ const countsRef=doc(db,'goals','retain-count-goal');
+ const salesRef=doc(db,'revenueGoals','retain-revenue-goal');
+ await assertSucceeds(setDoc(countsRef,{
+  companyId:company,teamId:'a',month:'2026-10',targets:{A:10},
+  createdAt:serverTimestamp(),updatedAt:serverTimestamp()
+ }));
+ await assertSucceeds(setDoc(salesRef,revenueGoalPayload('a',2500000)));
+ await assertFails(deleteDoc(countsRef));
+ await assertFails(deleteDoc(salesRef));
+ assert.equal((await getDoc(countsRef)).data().targets.A,10);
+ assert.equal((await getDoc(salesRef)).data().targetRevenue,2500000);
+});
+test('history correction logs are append-only and cannot be deleted',async()=>{
+ await env.withSecurityRulesDisabled(async c=>{
+  await setDoc(doc(c.firestore(),'recordCorrections','old-correction'),{
+   companyId:company,recordId:key(),recordDate:date,recordUid:'helper',
+   changedByUid:'owner',changedByName:'owner',before:{totalCount:1},after:{totalCount:2}
+  });
+ });
+ await assertFails(deleteDoc(doc(dbFor('owner'),'recordCorrections','old-correction')));
+ assert.equal((await getDoc(doc(dbFor('owner'),'recordCorrections','old-correction'))).exists(),true);
 });

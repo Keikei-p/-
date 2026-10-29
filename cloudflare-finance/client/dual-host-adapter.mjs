@@ -1,11 +1,10 @@
 /**
- * Shared browser adapter for BOTH existing sales URLs.
+ * Browser adapter for canonical NICO URL only.
  * Staged only: it is deliberately not imported by production index.html.
  * Must not silently fall back to the insecure legacy Firestore writer.
  */
 export const SALES_HOST_ORIGINS=Object.freeze([
-  "https://nico-factory.web.app",
-  "https://keikei-p.github.io"
+  "https://nico-factory.web.app"
 ]);
 export class CountEntryConflict extends Error {
   constructor(){super("Existing daily record changed. Reload before submitting.");this.name="CountEntryConflict";}

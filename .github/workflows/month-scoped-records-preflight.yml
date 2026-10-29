@@ -1,0 +1,44 @@
+name: Month-scoped sales history preflight (no production deployment)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - index.html
+      - firestore.indexes.json
+      - tests/month-scoped-records-ui.test.mjs
+      - tests/monthly-aggregate-preview.test.mjs
+      - security/monthly-aggregate-preview.mjs
+      - .github/workflows/month-scoped-records-preflight.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline-monthly-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Parse the actual browser module without running Firebase
+        run: |
+          node -e 'const fs=require("fs");const html=fs.readFileSync("index.html","utf8");const m=html.match(/<script type="module">([\s\S]*?)<\/script>/);if(!m)process.exit(2);fs.writeFileSync("/tmp/sales-month-module.mjs",m[1]);'
+          node --check /tmp/sales-month-module.mjs
+      - name: Synthetic month, multi-year history, totals, stale-cache and edit protection
+        run: node --test tests/month-scoped-records-ui.test.mjs
+      - name: Offline 25k month summary, finance separation and fail-closed integrity
+        run: |
+          node --check security/monthly-aggregate-preview.mjs
+          node --test tests/monthly-aggregate-preview.test.mjs
+      - name: Existing sales regression tests
+        run: node --test tests/sales-regressions.cjs
+      - name: Validate index shape
+        run: |
+          node -e 'const j=require("./firebase.json");const f=require("./firestore.indexes.json");if(j.firestore?.rules!=="firestore.rules"||j.firestore?.indexes!=="firestore.indexes.json"||!f.indexes.some(i=>i.collectionGroup==="records"&&i.queryScope==="COLLECTION"&&i.fields?.[0]?.fieldPath==="companyId"&&i.fields?.[1]?.fieldPath==="date")||!f.indexes.some(i=>i.collectionGroup==="records"&&i.queryScope==="COLLECTION"&&i.fields?.[0]?.fieldPath==="companyId"&&i.fields?.[1]?.fieldPath==="uid"&&i.fields?.[2]?.fieldPath==="date"))process.exit(1)'
+      - name: Ensure no production credentials are passed to tests
+        run: |
+          test -z "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          test -z "${CLOUDFLARE_API_TOKEN:-}"

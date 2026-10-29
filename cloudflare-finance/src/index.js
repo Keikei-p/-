@@ -1,7 +1,5 @@
 import {visibleMoney} from "./revenue-scope.js";
 import {buildCompanyCountRanking} from "./company-count-ranking.mjs";
-import {rankingAccess,validateViewerChange,buildPrivateRevenueRanking} from "./individual-ranking.mjs";
-import {buildAnnualSalesReport,makeArchivePackage,writeImmutableArchive,readImmutableArchive} from "./sales-archive.mjs";
 import {partnerActivationWrites} from "./partner-provision.mjs";
 /**
  * Protected financial-view gateway (read-only foundation).
@@ -17,8 +15,7 @@ import {submitCounts, SaveConflict, PermissionDenied} from "./count-service.js";
 import {makeFirestoreRestStore} from "./firestore-writer.js";
 const GOOGLE_KEYS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
 const ALLOWED_ORIGINS = new Set([
-  "https://nico-factory.web.app",
-  "https://keikei-p.github.io"
+  "https://nico-factory.web.app"
 ]);
 const encoder = new TextEncoder();
 let googleCache = {token: "",expires:0};
@@ -220,6 +217,93 @@ async function firestoreQuery(env, collectionId, companyId, fetcher=fetch){
     return result.json();
   },{collectionId,companyId});
 }
+/**
+ * STAGING ONLY: bounded month-scoped Firestore pagination.
+ * The ordering is (date, document name), never document name alone because
+ * a date inequality requires the first orderBy to be date.
+ * No subset can be used for a sales total: all pages either pass or throw.
+ */
+function validQueryMonth(month){
+ if(typeof month!=="string"||!/^(?:19|20|21)\d{2}-(0[1-9]|1[0-2])$/.test(month))
+   throw httpError(400,"invalid_month");
+ const [year,mm]=month.split("-").map(Number);
+ return {start:month+"-01",end:(mm===12?year+1:year)+"-"+String(mm===12?1:mm+1).padStart(2,"0")+"-01"};
+}
+async function collectFirestoreMonthPages(pageReader,{companyId,month,pageSize=250,maxPages=401}={}){
+ const {start,end}=validQueryMonth(month);
+ if(!/^[A-Za-z0-9_-]{1,150}$/.test(companyId||"")||
+    typeof pageReader!=="function"||
+    !Number.isSafeInteger(pageSize)||pageSize<1||pageSize>500||
+    !Number.isSafeInteger(maxPages)||maxPages<1||maxPages>401)
+   throw httpError(400,"invalid_month_query");
+ const root="projects/"+PROJECT_ID+"/databases/(default)/documents/records/";
+ const seen=new Set(), all=[];
+ let readTime="",cursor=null;
+ for(let pageIndex=0;pageIndex<maxPages;pageIndex++){
+   const rows=await pageReader({cursor,readTime,pageSize,start,end});
+   if(!Array.isArray(rows))throw httpError(503,"month_invalid_page");
+   const docs=rows.filter(x=>x&&x.document);
+   if(docs.length>pageSize)throw httpError(503,"month_excess_page");
+   const stamps=rows.map(x=>x?.readTime).filter(x=>typeof x==="string");
+   if(!stamps.length||stamps.some(x=>!/^\d{4}-\d{2}-\d{2}T/.test(x)))
+     throw httpError(503,"month_snapshot_unavailable");
+   if(!readTime)readTime=stamps[0];
+   if(stamps.some(x=>x!==readTime)||rows.some(x=>x?.skippedResults>0))
+     throw httpError(503,"month_snapshot_changed");
+   for(const row of docs){
+     const doc=row.document,name=doc.name, date=doc?.fields?.date?.stringValue;
+     if(typeof name!=="string"||!name.startsWith(root)||
+        !/^[^/]+$/.test(name.slice(root.length))||seen.has(name)||
+        typeof date!=="string"||date<start||date>=end||
+        !doc.fields||doc.fields.companyId?.stringValue!==companyId)
+       throw httpError(503,"month_company_date_or_document_mismatch");
+     if(cursor && (date<cursor.date||(date===cursor.date&&name<=cursor.name)))
+       throw httpError(503,"month_invalid_cursor");
+     const parsed=docData(doc);
+     if(parsed.companyId!==companyId||parsed.date!==date)
+       throw httpError(503,"month_parsed_record_mismatch");
+     seen.add(name);
+     all.push(parsed);
+     cursor={date,name};
+     if(all.length>100000)throw httpError(503,"month_resource_limit");
+   }
+   if(docs.length<pageSize)return all;
+   if(!cursor)throw httpError(503,"month_stalled");
+ }
+ throw httpError(503,"month_resource_limit");
+}
+async function firestoreMonthlyRecords(env,companyId,month,fetcher=fetch){
+ const {start,end}=validQueryMonth(month);
+ const bearer=await googleBearer(env,fetcher);
+ return collectFirestoreMonthPages(async ({cursor,readTime,pageSize})=>{
+  const filters=[
+   {fieldFilter:{field:{fieldPath:"companyId"},op:"EQUAL",value:{stringValue:companyId}}},
+   {fieldFilter:{field:{fieldPath:"date"},op:"GREATER_THAN_OR_EQUAL",value:{stringValue:start}}},
+   {fieldFilter:{field:{fieldPath:"date"},op:"LESS_THAN",value:{stringValue:end}}}
+  ];
+  const sq={structuredQuery:{
+    from:[{collectionId:"records"}],
+    where:{compositeFilter:{op:"AND",filters}},
+    orderBy:[
+     {field:{fieldPath:"date"},direction:"ASCENDING"},
+     {field:{fieldPath:"__name__"},direction:"ASCENDING"}
+    ],
+    limit:pageSize
+  }};
+  if(cursor)sq.structuredQuery.startAt={
+    values:[{stringValue:cursor.date},{referenceValue:cursor.name}],before:false
+  };
+  if(readTime)sq.readTime=readTime;
+  const result=await fetcher(base+"/documents:runQuery",{
+   method:"POST",
+   headers:{Authorization:"Bearer "+bearer,"Content-Type":"application/json"},
+   body:JSON.stringify(sq)
+  });
+  if(!result.ok)throw httpError(503,"month_query_unavailable");
+  return result.json();
+ },{companyId,month});
+}
+
 function active(obj) { return obj && obj.active !== false; }
 // Server-side selection must precede serialization. Never send raw
 // company member objects or any other team's names/emails to partners.
@@ -230,16 +314,6 @@ function safePartnerMembers(all,policy) {
       typeof m.uid==="string" && /^[A-Za-z0-9_-]{1,150}$/.test(m.uid))
     .map(m=>({uid:m.uid,name:withoutAmounts(String(m.name||"担当者")).slice(0,30),teamId:policy.teamId}))
     .sort((a,b)=>a.name.localeCompare(b.name,"ja"));
-}
-// Only called by the authenticated ranking routes. Do NOT send raw member
-// documents or company finance data to the browser.
-async function rankingMembers(env,policy,fetcher=fetch){
-  // Use the SAME cursor-safe roster loader as partner and owner portals.
-  // Ranking must never silently omit an employee beyond the first 500.
-  const all=await companyMemberPages(env,policy,fetcher);
-  return all.filter(m=>m && (!m.companyId || m.companyId===policy.companyId) &&
-    m.active!==false && m.accessKind!=="partner" &&
-    typeof m.uid==="string" && /^[A-Za-z0-9_-]{1,150}$/.test(m.uid));
 }
 // Page-aware company member loading. Never return a truncated roster.
 async function collectFirestoreMemberPages(pageReader){
@@ -492,202 +566,6 @@ export default {
     if(url.pathname==="/health"&&request.method==="GET"){
       return safeJSON({ok:true,service:"finance-gateway",enabled:env.FINANCE_GATEWAY_ENABLED==="enabled",mode:"read_only"},200,origin);
     }
-    // OWNER-ONLY financial archive and annual report; separate from the
-    // amount-hidden personal ranking and partner dashboard.
-    // No Firestore record DELETE, UPDATE or transformation is present here.
-    if(["/v1/owner-annual-report","/v1/owner-annual-archive",
-        "/v1/owner-annual-archive-list"].includes(url.pathname)){
-      const route=url.pathname;
-      if(env.FINANCE_GATEWAY_ENABLED!=="enabled" ||
-         env.FINANCE_COST_APPROVAL!=="OWNER_APPROVED_BLAZE_COSTS" ||
-         env.FINANCE_ARCHIVE_APPROVAL!=="OWNER_APPROVED_ARCHIVE_READS" ||
-         env.FIREBASE_PROJECT_ID!==PROJECT_ID)
-        return safeJSON({error:"annual_archive_not_released"},503,origin);
-      if(request.method!=="GET" && !(route==="/v1/owner-annual-archive" && request.method==="POST"))
-        return safeJSON({error:"method_not_allowed"},405,origin);
-      const archiveYear=url.searchParams.get("year")||"";
-      if(!/^20\d{2}$/.test(archiveYear))
-        return safeJSON({error:"invalid_year"},400,origin);
-      // A disabled archive write must not even read money from Firestore.
-      if(route==="/v1/owner-annual-archive" && request.method==="POST" &&
-         (env.FINANCE_ARCHIVE_WRITE_APPROVAL!=="OWNER_APPROVED_IMMUTABLE_R2" ||
-          !env.SALES_PRIVATE_ARCHIVES?.put || !env.SALES_PRIVATE_ARCHIVES?.get))
-        return safeJSON({error:"archive_storage_not_released"},503,origin);
-      const auth=request.headers.get("authorization")||"";
-      if(!auth.startsWith("Bearer "))
-        return safeJSON({error:"authorization_required"},401,origin);
-      try{
-        const principal=await verifiedToken(auth.slice(7));
-        const policy=await memberPolicy(env,principal);
-        if(!policy.isOwner||policy.isPartner || policy.canViewRevenue!==true)
-          throw httpError(403,"owner_only");
-        // Archive bucket is private and NOT exposed as an R2 public domain.
-        const bucket=env.SALES_PRIVATE_ARCHIVES;
-        if(route==="/v1/owner-annual-archive-list"){
-          if(!bucket?.list)throw httpError(503,"archive_bucket_not_configured");
-          const prefix="v1/"+policy.companyId+"/"+archiveYear+"/";
-          let cursor,files=[];
-          for(let i=0;i<20;i++){
-            const page=await bucket.list({prefix,limit:500,...(cursor?{cursor}:{})});
-            if(!page || !Array.isArray(page.objects))throw httpError(503,"archive_index_corrupt");
-            files.push(...page.objects.filter(o=>/^v1\/[A-Za-z0-9_-]+\/20\d{2}\/[a-f0-9]{64}\\.json$/.test(o.key) &&
-              o.key.startsWith(prefix)).map(o=>({
-                sha256:o.key.slice(prefix.length,-5),savedAt:o.uploaded?.toISOString?.()||null,
-                bytes:o.size
-              })));
-            if(!page.truncated)return safeJSON({year:archiveYear,files},200,origin);
-            if(!page.cursor||page.cursor===cursor)throw httpError(503,"archive_page_stalled");
-            cursor=page.cursor;
-          }
-          throw httpError(503,"archive_index_limit");
-        }
-        if(route==="/v1/owner-annual-archive" && request.method==="GET"){
-          if(!bucket?.get)throw httpError(503,"archive_bucket_not_configured");
-          const digest=url.searchParams.get("sha256")||"";
-          if(!/^[a-f0-9]{64}$/.test(digest))
-            return safeJSON({error:"invalid_archive_checksum"},400,origin);
-          const saved=await readImmutableArchive(bucket,policy.companyId,archiveYear,digest);
-          if(!saved)return safeJSON({error:"archive_not_found"},404,origin);
-          return new Response(saved.raw,{
-            headers:{"Content-Type":"application/json; charset=utf-8",
-              "Content-Disposition":"attachment; filename=\"sales-"+archiveYear+"-"+digest.slice(0,10)+".json\"",
-              "Cache-Control":"no-store,private","X-Content-Type-Options":"nosniff",
-              ...(ALLOWED_ORIGINS.has(origin)?{"Access-Control-Allow-Origin":origin,"Vary":"Origin"}:{})},
-          });
-        }
-        // Read-only preparation requires Firestore page pagination and
-        // original records, tariff plan and team ID to reconcile strictly.
-        const [records,products,teams,goals]=await Promise.all([
-          firestoreQuery(env,"records",policy.companyId),
-          firestoreQuery(env,"products",policy.companyId),
-          firestoreQuery(env,"teams",policy.companyId),
-          firestoreQuery(env,"goals",policy.companyId)
-        ]);
-        const report=buildAnnualSalesReport({
-          year:archiveYear,companyId:policy.companyId,records,products,teams
-        });
-        if(route==="/v1/owner-annual-report")
-          return safeJSON({report,stored:false,sourceProtected:true},200,origin);
-        // Never archive an unfinished calendar year.
-        const nowYear=new Intl.DateTimeFormat("en-US",{timeZone:"Asia/Tokyo",year:"numeric"})
-          .format(new Date());
-        if(Number(archiveYear)>=Number(nowYear))
-          return safeJSON({error:"year_not_closed"},409,origin);
-        if(env.FINANCE_ARCHIVE_WRITE_APPROVAL!=="OWNER_APPROVED_IMMUTABLE_R2"||
-           !bucket?.put || !bucket?.get)
-          return safeJSON({error:"archive_storage_not_released"},503,origin);
-        const bundle=makeArchivePackage({report,records,products,teams,goals,
-          createdAt:new Date().toISOString()});
-        const result=await writeImmutableArchive(bucket,bundle);
-        return safeJSON({saved:true,deletedFirestoreDocuments:0,...result},201,origin);
-      }catch(e){
-        if(e.status===403||e.status===401)
-          return safeJSON({error:"forbidden"},e.status,origin);
-        // Never print raw financial data, names, file content or token.
-        return safeJSON({error:e.message==="archive_too_large_for_safe_worker"?
-          "archive_too_large_review_required":"annual_report_review_required"},503,origin);
-      }
-    }
-
-    // Strictly server-side SALES-ORDERED individual ranking. All financial
-    // calculations remain in this Worker. The browser receives rank/name/count.
-    if(["/v1/individual-ranking","/v1/individual-rank-viewers",
-        "/v1/individual-rank-grant"].includes(url.pathname)){
-      const rankRoute=url.pathname,adminRoute=rankRoute!=="/v1/individual-ranking";
-      if(env.FINANCE_GATEWAY_ENABLED!=="enabled" ||
-         env.FINANCE_RANKING_APPROVAL!=="OWNER_APPROVED_RANK_ONLY" ||
-         env.FINANCE_COST_APPROVAL!=="OWNER_APPROVED_BLAZE_COSTS" ||
-         env.FIREBASE_PROJECT_ID!==PROJECT_ID)
-        return safeJSON({error:"ranking_not_released"},503,origin);
-      if(adminRoute && rankRoute==="/v1/individual-rank-grant" &&
-         (env.FINANCE_WRITE_ENABLED!=="enabled" ||
-          env.FINANCE_WRITE_APPROVAL!=="DUAL_HOST_BACKUP_VERIFIED"))
-        return safeJSON({error:"ranking_write_not_released"},503,origin);
-      if(request.method!==(rankRoute==="/v1/individual-rank-grant"?"POST":"GET"))
-        return safeJSON({error:"method_not_allowed"},405,origin);
-      const auth=request.headers.get("authorization")||"";
-      if(!auth.startsWith("Bearer "))return safeJSON({error:"authorization_required"},401,origin);
-      try{
-        const principal=await verifiedToken(auth.slice(7));
-        const policy=await memberPolicy(env,principal);
-        if(policy.isPartner || (adminRoute&&!policy.isOwner))
-          throw httpError(403,"ranking_access_forbidden");
-        const grantId=policy.companyId+"_"+policy.uid;
-        if(rankRoute==="/v1/individual-ranking"){
-          const stored=policy.isOwner?null:await firestoreGet(env,"individualRankingAccess/"+grantId);
-          if(!rankingAccess(policy,stored))throw httpError(403,"ranking_not_permitted");
-          const month=url.searchParams.get("month");
-          if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month||""))
-            return safeJSON({error:"invalid_month"},400,origin);
-          const [records,products,members]=await Promise.all([
-            firestoreQuery(env,"records",policy.companyId),
-            firestoreQuery(env,"products",policy.companyId),
-            rankingMembers(env,policy)
-          ]);
-          const ranked=buildPrivateRevenueRanking(records,products,members,policy.companyId,month);
-          const output=ranked.map(v=>({...v,name:withoutAmounts(v.name)}));
-          return safeJSON({month,ranking:output,sort:"overall_revenue_desc",
-            amountsIncluded:false},200,origin);
-        }
-        const members=await rankingMembers(env,policy);
-        if(rankRoute==="/v1/individual-rank-viewers"){
-          const existing=await firestoreQuery(env,"individualRankingAccess",policy.companyId);
-          const grants=new Map(existing.map(a=>[a.uid,a.allowed===true]));
-          return safeJSON({viewers:members.filter(m=>m.memberType!=="managed"&&m.hasAccount!==false)
-            .map(m=>({uid:m.uid,name:withoutAmounts(m.name||"担当者").slice(0,30),
-              allowed:grants.get(m.uid)===true,
-              eligible:m.companyRole==="member"}))},200,origin);
-        }
-        if(!request.headers.get("content-type")?.toLowerCase().startsWith("application/json"))
-          return safeJSON({error:"json_only"},415,origin);
-        const body=await request.text();
-        if(body.length>1200)return safeJSON({error:"request_too_large"},413,origin);
-        let data;
-        try{data=JSON.parse(body);}catch{return safeJSON({error:"invalid_json"},400,origin);}
-        if(!data || Object.keys(data).sort().join(",")!=="allowed,uid")
-          return safeJSON({error:"invalid_grant"},400,origin);
-        const viewer=members.find(m=>m.uid===data.uid);
-        const account=viewer?await firestoreGet(env,"users/"+data.uid):null;
-        if(!account || account.companyId!==policy.companyId||
-           account.accessKind==="partner" || account.active===false ||
-           account.companyRole!=="member" || account.uid!==data.uid)
-          throw httpError(403,"not_internal_account");
-        let validated;
-        try{validated=validateViewerChange(policy,viewer,data.uid,data.allowed);}
-        catch{throw httpError(403,"ranking_viewer_forbidden");}
-        const documentId=policy.companyId+"_"+validated.uid;
-        const old=await firestoreGet(env,"individualRankingAccess/"+documentId);
-        if(old && (old.uid!==validated.uid||old.companyId!==validated.companyId))
-          throw httpError(409,"conflicting_grant");
-        if(old?.allowed===validated.allowed)
-          return safeJSON({uid:validated.uid,allowed:validated.allowed,unchanged:true},200,origin);
-        const auditor=crypto.randomUUID();
-        const full="projects/"+PROJECT_ID+"/databases/(default)/documents/";
-        const writes=[{update:{name:full+"individualRankingAccess/"+documentId,
-          fields:{companyId:{stringValue:policy.companyId},
-           uid:{stringValue:validated.uid},allowed:{booleanValue:validated.allowed},
-           updatedByUid:{stringValue:principal.uid}}},
-          currentDocument:old?{updateTime:old.recordVersion}:{exists:false}},
-          {update:{name:full+"companies/"+policy.companyId+"/individualRankingAudits/"+auditor,
-            fields:{targetUid:{stringValue:validated.uid},
-              allowed:{booleanValue:validated.allowed},
-              actorUid:{stringValue:principal.uid}}},
-           currentDocument:{exists:false},
-           updateTransforms:[{fieldPath:"createdAt",setToServerValue:"REQUEST_TIME"}]}];
-        const bearer=await googleBearer(env);
-        const result=await fetch(base+"/documents:commit",{
-          method:"POST",headers:{"Authorization":"Bearer "+bearer,"Content-Type":"application/json"},
-          body:JSON.stringify({writes})
-        });
-        if(result.status===409||result.status===412)return safeJSON({error:"grant_stale"},409,origin);
-        if(!result.ok)return safeJSON({error:"grant_unavailable"},503,origin);
-        return safeJSON({uid:validated.uid,allowed:validated.allowed},200,origin);
-      }catch(err){
-        if(err.status===401||err.status===403)
-          return safeJSON({error:"forbidden"},err.status,origin);
-        return safeJSON({error:"private_ranking_unavailable"},503,origin);
-      }
-    }
     // Lightweight partner update signal; never returns sales, prices, or
     // other teams' records. Re-check membership on every poll.
     if(url.pathname==="/v1/partner-sync" && request.method==="GET"){
@@ -729,7 +607,7 @@ export default {
         if(!/^\d{4}-\d{2}$/.test(month))
           return safeJSON({error:"invalid_month"},400,origin);
         const [records,teams,leaders]=await Promise.all([
-          firestoreQuery(env,"records",policy.companyId),
+          firestoreMonthlyRecords(env,policy.companyId,month),
           firestoreQuery(env,"teams",policy.companyId),
           ownerMemberList(env,policy)
         ]);
@@ -870,4 +748,4 @@ export default {
     }
   }
 };
-export {approvedPolicy,safeProducts,safeRecords,safeGoals,safePartnerMembers,visibleMoney,withoutAmounts,verifiedToken,financeView,docData,collectFirestoreMemberPages,collectFirestoreQueryPages,firestoreQuery};
+export {approvedPolicy,safeProducts,safeRecords,safeGoals,safePartnerMembers,visibleMoney,withoutAmounts,verifiedToken,financeView,docData,collectFirestoreMemberPages,collectFirestoreQueryPages,firestoreQuery,validQueryMonth,collectFirestoreMonthPages,firestoreMonthlyRecords};
