@@ -124,3 +124,45 @@ test("legitimate IDs with numbers and numeric-looking team labels remain intact"
    {...row,sourceId:"company2026_user123_2026-10-28",teamId:"team04",teamNameSnapshot:"第2班"}
  ]));
 });
+
+test("stored date is never silently truncated and impossible dates are rejected",()=>{
+ for(const bad of ["2026-02-30","2026-13-01","2026-10-27-extra","2026-00-01","not-a-date"]){
+   assert.throws(()=>projectCountRecord({...record,date:bad}),/Invalid date/,bad);
+   assert.throws(()=>projectCountCorrection({...correction,recordDate:bad}),/Invalid date/,bad);
+ }
+ assert.equal(projectCountRecord({...record,date:"2028-02-29"}).date,"2028-02-29");
+});
+test("oversized original IDs fail instead of colliding after truncation",()=>{
+ const id="x".repeat(201);
+ assert.throws(()=>projectCountRecord({...record,id}),/oversized/);
+ assert.throws(()=>projectPublicProduct({...product,id}),/oversized/);
+ assert.throws(()=>projectRankOnly({companyId:"c1",period:"2026-10",kind:"member",
+   participants:[{id,score:1}]}),/oversized/);
+});
+test("saved product ID mismatches must not be silently reassigned",()=>{
+ assert.throws(()=>projectPublicRecordLines({...record,results:{
+   p1:{productId:"wrongProduct",count:5,revenuePerUnit:20000}
+ }}),/Product ID mismatch/);
+});
+test("rank-only participants can exceed 2,000 without exposing amounts",()=>{
+ const participants=Array.from({length:25001},(_,i)=>({
+   id:"u"+String(i).padStart(5,"0"),name:"担当"+i,score:i+1,count:5,
+   revenuePerUnit:1000000
+ }));
+ const ranked=projectRankOnly({companyId:"c1",period:"2026-10",kind:"member",participants});
+ assert.equal(ranked.ranks.length,25001);
+ assert.equal(ranked.ranks[0].id,"u25000");
+ assert.equal(ranked.ranks[0].rank,1);
+ assert.equal(ranked.ranks.at(-1).rank,25001);
+ assert.equal(JSON.stringify(ranked).includes("revenuePerUnit"),false);
+ assert.equal(JSON.stringify(ranked).includes("score"),false);
+});
+test("rank-only view sanitizes money-bearing names and blocks money-bearing IDs",()=>{
+ const rank=projectRankOnly({companyId:"c1",period:"2026-10",kind:"member",
+  participants:[{id:"u1",name:"担当A CB20000円",score:100000}]});
+ assert.equal(rank.ranks[0].name,"名称は管理者確認中");
+ assert.throws(()=>projectRankOnly({companyId:"c1",period:"2026-10",kind:"member",
+  participants:[{id:"NURO_CB20000",name:"担当B",score:1}]}),/monetary details/);
+ assert.throws(()=>projectRankOnly({companyId:"c1",period:"2026-10-hidden",kind:"member",
+  participants:[]}),/Invalid month/);
+});
