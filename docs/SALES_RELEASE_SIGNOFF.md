@@ -325,3 +325,20 @@ Rulesの本番デプロイ: 未実施
 - 利用者本人の署名: **未取得**。この記録は開発上の確認記録であり、本人署名の代用ではない。
 
 - 2026-10-29: 接続済みGitHub管理者権限でPR #106に `sales-production-reviewed` を適用（コードをmainへ統合する範囲の技術審査。実Firebaseの本番配備・既存実績操作・本人署名の代わりではない）。この追記を含む最新HEADの `Sales App Validation`、`Record Audit Preflight` と保護ゲートが成功するまでマージしない。
+
+
+---
+
+## 2026-10-29 | PR #125 月別履歴・2,000件超対応（コード審査、**未配備**）
+
+- 利用者はデータ消失を絶対禁止し、NICO公式URLだけを使い、履歴2,000件を超えても使える状態を希望。
+- `index.html`の全履歴 `onSnapshot(recordsCollectionQuery())` と全量 `getDocs` を、表示中の月だけ購読する方式へ置き換える候補。別日の訂正はその日と担当者をサーバー照会して元ドキュメントを特定。未確認の場合は新規登録で上書きせず停止する。
+- 月切替の途中・Firestoreキャッシュ・権限エラーでは売上/件数ランキングを隠し、**古い月の数字を現在月の結果と誤認させない**。
+- `firestore.indexes.json` は既存の資料化用 `records(companyId,date)` と `recordCorrections(companyId,recordDate)` を維持し、月別+日別補正用 `records(companyId,uid,date)` を追加。自動でFirebase本番インデックスをデプロイするものではない。
+- 今回の確認はコード/匿名合成テストのみ。旧PWAログイン利用者・iPhone/Android・実Firebaseの索引とインデックス費用、過去実績の件数/単価/CB/班履歴・会社別アクセスは**未検証**。
+- 既存Firestore/Auth/実績/商材/単価/CB/履歴/売上への一括書込み・再計算・削除を行わない。GitHub mainへのコード統合と、本番Hosting/Rulesの公開は別操作。
+- 管理者本人の署名を代筆しない。実データ全件バックアップ+隔離復元、権限別実機確認、管理者の手動リリース確認が揃うまで、NICOの画面新版を配備しない。
+
+レビュー対象: PR #125 のHTML, Firebase index候補, 既存全件読み込み削減, tests。**本番公開: 未承認／未実施**。
+
+- 2026-10-29: 実装版PR #125に管理者接続から `sales-production-reviewed` を適用（対象はGitHub mainへのコード統合審査に限定）。既存ユーザーの実Firestore・Hosting本番変更や本人の電子署名を意味しない。ラベル適用前に起動した検査ではラベル無し判定で停止したため、**本更新後HEADの保護ゲートとアプリ検証の成功を確認するまでマージしない**。
