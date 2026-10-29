@@ -41,7 +41,11 @@ test("partner raw finance write, update, and delete bypasses are rejected",()=>{
   "allow update: if isInternalFinanceReader(resource.data.companyId)",
   "allow update: if true");
  assert.throws(()=>checkFinanceRulesBeforeDeploy(update),/RAW_UPDATE/);
- const deletion=stage2.replace("allow delete: if false;","allow delete: if true;");
+ const productOffset=stage2.indexOf("match /products/{productId} {");
+ assert(productOffset>=0);
+ const deletion=stage2.slice(0,productOffset)+
+   stage2.slice(productOffset).replace("allow delete: if false;","allow delete: if true;");
+ assert.notEqual(deletion,stage2,"test must change the product deletion rule");
  assert.throws(()=>checkFinanceRulesBeforeDeploy(deletion),/RAW_DELETE/);
 });
 test("replacing another collection's read guard with sameCompany is not approved",()=>{
