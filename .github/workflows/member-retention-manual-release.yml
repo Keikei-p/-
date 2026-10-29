@@ -1,4 +1,4 @@
-name: Manual member-history retention release (no database writes)
+name: Manual member-suspension Function release (disabled without explicit approval)
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       release_confirmation:
-        description: "Type VERIFIED_BACKUP_RESTORE_COUNTS_AND_BOTH_URLS"
+        description: "Type VERIFIED_BACKUP_RESTORE_COUNTS_AND_NICO_URL"
         required: true
         type: string
       reviewed_commit:
@@ -26,7 +26,7 @@ concurrency:
 jobs:
   deploy-member-suspension:
     # Never run for PR, push, other branches/projects, or unconfirmed releases.
-    if: ${{ github.ref == 'refs/heads/main' && inputs.project_id == 'sales-management-cc116' && inputs.release_confirmation == 'VERIFIED_BACKUP_RESTORE_COUNTS_AND_BOTH_URLS' && inputs.reviewed_commit == github.sha }}
+    if: ${{ github.ref == 'refs/heads/main' && inputs.project_id == 'sales-management-cc116' && inputs.release_confirmation == 'VERIFIED_BACKUP_RESTORE_COUNTS_AND_NICO_URL' && inputs.reviewed_commit == github.sha }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
