@@ -10,7 +10,7 @@ const MONTH=/^\d{4}-(0[1-9]|1[0-2])$/;
 const TIME=/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,9})?Z$/;
 const refuse=()=>{throw Error("Rank-only publication is incomplete or unauthorized");};
 function publicName(x){
- if(typeof x!=="string"||x.length<1||x.length>100||!NAME.test(x))refuse();
+ if(typeof x!=="string"||x.length<1||x.length>100||!NAME.test(x)||\n    /[0-9０-９][0-9０-９,，]*\\s*件/.test(x))refuse();
  return x;
 }
 function rows(items,groupLabel=false){
