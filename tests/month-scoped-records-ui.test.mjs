@@ -30,7 +30,7 @@ function setup(){
  };
  const ctx=vm.createContext(state);
  vm.runInContext(helper,ctx);
- const api=vm.runInContext('({monthRecordRange,scopedRecordsQuery,subscribeSelectedMonthRecords,findDailyRecordFromServer,loadAnnualChartRecords,readVerifiedMonthForReport})',ctx);
+ const api=vm.runInContext('({monthRecordRange,scopedRecordsQuery,subscribeSelectedMonthRecords,findDailyRecordFromServer,loadAnnualChartRecords,readVerifiedMonthForReport,mergeVerifiedMonthIntoAnnual})',ctx);
  return {state,api,subs,status,css,ctx};
 }
 const doc=(i,date="2026-10-29",companyId="companyA")=>({
@@ -233,4 +233,42 @@ test("report generation clears old text and aborts when source month cannot be f
  assert.equal(reportText.value,"");
  assert.match(state.lastError,/中止/);
  assert.equal(state.copyReportButton.disabled,false);
+});
+
+test("annual cache replaces only the verified changed month without rereading another 11 months",()=>{
+ const {api,state,subs}=setup();
+ const october={id:"oct",companyId:"companyA",uid:"u1",date:"2026-10-01",totalRevenue:100};
+ const september={id:"sep",companyId:"companyA",uid:"u2",date:"2026-09-01",totalRevenue:300};
+ state.annualChartRecords=[october,september];
+ state.annualChartYear="companyA:2026";
+ state.annualChartGeneration=7;
+ api.subscribeSelectedMonthRecords();
+ subs[0].fn(snapshot([{
+    id:"oct",data:()=>({companyId:"companyA",uid:"u1",date:"2026-10-01",totalRevenue:200})
+ }]));
+ assert.equal(state.annualChartRecords.length,2);
+ assert.equal(state.annualChartRecords.find(row=>row.id==="oct").totalRevenue,200);
+ assert.equal(state.annualChartRecords.find(row=>row.id==="sep").totalRevenue,300);
+ assert.equal(state.annualChartGeneration,7,"no full year request is invalidated");
+});
+test("annual cache rejects month, company, and duplicate record ids",()=>{
+ const {api}=setup();
+ const old=[{id:"1",companyId:"companyA",date:"2026-01-01"}];
+ const months=[
+  [{id:"2",companyId:"other",date:"2026-10-01"}],
+  [{id:"2",companyId:"companyA",date:"2026-09-01"}],
+  [{id:"1",companyId:"companyA",date:"2026-10-01"}]
+ ];
+ assert.throws(()=>api.mergeVerifiedMonthIntoAnnual(old,"2026-10",months[0],"companyA"),/照合/);
+ assert.throws(()=>api.mergeVerifiedMonthIntoAnnual(old,"2026-10",months[1],"companyA"),/照合/);
+ assert.throws(()=>api.mergeVerifiedMonthIntoAnnual(old,"2026-10",months[2],"companyA"),/重複/);
+});
+test("annual cache for another year remains untouched on a monthly change",()=>{
+ const {api,state,subs}=setup();
+ state.annualChartRecords=[{id:"jan",companyId:"companyA",date:"2025-01-01"}];
+ state.annualChartYear="companyA:2025";
+ api.subscribeSelectedMonthRecords();
+ subs[0].fn(snapshot([doc(0)]));
+ assert.equal(state.annualChartYear,"companyA:2025");
+ assert.equal(state.annualChartRecords.length,1);
 });
