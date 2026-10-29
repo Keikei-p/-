@@ -29,7 +29,7 @@ function verifiedAuthAccount(account,uid,auth){
     auth.authTime<=0||typeof account.tokensValidAfterTime!=="string")deny();
  const validAfterMs=Date.parse(account.tokensValidAfterTime);
  if(!Number.isFinite(validAfterMs)||
-    Math.floor(validAfterMs/1000)>auth.authTime)deny();
+    Math.floor(validAfterMs/1000)>=auth.authTime)deny();
 }
 function teamScope(user,member,companyId){
  // A recent team transfer must be reflected in BOTH authoritative documents.
