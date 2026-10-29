@@ -1,0 +1,32 @@
+name: Partner Count Daily Uniqueness Preflight (no production writes)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "partner/count-only-ledger.mjs"
+      - "tests/partner-count-only-ledger.test.mjs"
+      - ".github/workflows/partner-daily-uniqueness-preflight.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify count-only ledger and daily-claim syntax
+        run: |
+          node --check partner/count-only-ledger.mjs
+          node --check tests/partner-count-only-ledger.test.mjs
+      - name: Test no duplicate member/day even with new retry key or changed team
+        run: node --test tests/partner-count-only-ledger.test.mjs tests/partner-count-only-write-contract.test.mjs
+      - name: No production credentials or deletions are needed
+        run: |
+          test -z "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          test -z "${CLOUDFLARE_API_TOKEN:-}"
