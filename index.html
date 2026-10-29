@@ -27479,7 +27479,9 @@ function buildRevenueChartData() {
 
 
   const relevantRecords =
-    records.filter(
+    (useScopedHistoryPreview() && revenueChartMode==="annual"
+      ? (scopedAnnualLoaded===selectedYear?scopedAnnualRecords:[])
+      : records).filter(
       record => {
 
         if (
@@ -29216,16 +29218,22 @@ revenueChartMonthlyButton.addEventListener(
 
 revenueChartAnnualButton.addEventListener(
   "click",
-  () => {
-
-    revenueChartMode =
-      "annual";
-
-    revenueChartSelectedKey =
-      null;
-
+  async () => {
+    if(useScopedHistoryPreview()){
+      try{
+        databaseStatus.textContent="年次データを取得中（集計未確定）";
+        await loadScopedAnnualRecords(dashboardMonth.value.slice(0,4));
+        databaseStatus.textContent="年次データを取得済み";
+      }catch(error){
+        console.error("Annual snapshot unavailable",error);
+        databaseStatus.textContent="年次集計は未確定";
+        showError("年次実績を完全に取得できません。金額を確定表示しません。");
+        return;
+      }
+    }
+    revenueChartMode = "annual";
+    revenueChartSelectedKey = null;
     renderRevenueChart();
-
   }
 );
 
