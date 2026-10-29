@@ -99,22 +99,24 @@ test('Zero report keeps input draft until persistence succeeds; cancel does not 
   assert.equal(clicks,1);assert.equal(ctx.zeroResultRequested,false);
 });
 
-test('Records and goals listener failures visibly warn that values can be stale', () => {
-  const subscriptions=[];const warnings=[];
+test('Goal listener errors warn and month-scoped record subscription is initialized', () => {
+  const subscriptions=[];const warnings=[];let selectedMonthStarts=0;
   const ctx=context(['startRealtimeListeners'],{
     stopRealtimeListeners:()=>{},loadLocalRankingGroups:()=>{},isCurrentCompanyManager:()=>false,currentUser:null,
-    companyCollectionQuery:n=>n,recordsCollectionQuery:()=> 'records',revenueGoalsCollectionQuery:()=>null,
+    companyCollectionQuery:n=>n,revenueGoalsCollectionQuery:()=>null,
+    createMonthOptions:()=>{},subscribeSelectedMonthRecords:()=>{selectedMonthStarts++;},
     onSnapshot:(query,next,error)=>{subscriptions.push({query,error});return ()=>{};},
     console:{error:()=>{}},databaseStatus:element(),showError:m=>warnings.push(m)
   });
   ctx.startRealtimeListeners();
-  for(const query of ['records','goals']) {
-    const sub=subscriptions.find(s=>s.query===query);
-    assert.equal(typeof sub.error,'function');sub.error({code:'permission-denied'});
-  }
-  assert.equal(warnings.length,2);
-  assert(warnings.every(m=>m.includes('再読み込み')));
-  assert(ctx.databaseStatus.textContent.includes('停止'));
+  assert.equal(selectedMonthStarts,1, 'must start month-scoped subscription, not all-history listener');
+  assert(!subscriptions.some(s=>s.query==='records'));
+  const goal=subscriptions.find(s=>s.query==='goals');
+  assert.equal(typeof goal.error,'function');
+  goal.error({code:'permission-denied'});
+  assert.equal(warnings.length,1);
+  assert(warnings[0].includes('再読み込み'));
+  // Month listener errors are independently tested in month-scoped-records-ui.test.mjs.
 });
 
 function textOf(node) { return node.innerHTML + node.textContent + node.children.map(textOf).join(''); }
@@ -195,7 +197,7 @@ test('Stale edits, deleted records and simultaneous same-day registration stop w
 test('Choosing a helper with a different-team record does not load its historical revenue into the editor',async()=>{
   let prepared='not-called',message='';
   const ctx=context(['loadExistingRecordIntoForm','recordRevision'],{
-    recordDate:{value:'2026-10-06'},recordMember:{value:'helper'},recordLocation:{value:'old'},saveRecordButton:{},
+    recordDate:{value:'2026-10-06'},recordMember:{value:'helper'},recordLocation:{value:'old'},saveRecordButton:{},recordFormLookupGeneration:0,
     findDailyRecord:()=>({id:'r',uid:'helper',date:'2026-10-06',teamId:'other',results:{A:{count:3,revenuePerUnit:999}}}),
     canCurrentUserCorrectRecord:()=>false,showRecordCorrectionTeam:()=>{},prepareProductInputList:value=>prepared=value,showError:value=>message=value
   });
