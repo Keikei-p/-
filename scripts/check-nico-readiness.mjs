@@ -2,7 +2,7 @@
 /**
  * Anonymous, read-only NICO migration readiness check.
  * No Firebase credentials, no token, no document reads or writes.
- * Checks both published origins against main's current static app artifacts.
+ * Checks the canonical NICO site. Optional parity mode compares the published site to main.\n * Scheduled checks do not require unshipped main commits to have deployed.
  */
 import {readFile} from "node:fs/promises";
 import {createHash} from "node:crypto";
@@ -11,8 +11,7 @@ import path from "node:path";
 
 export const PROJECT_ID = "sales-management-cc116";
 export const HOSTS = Object.freeze({
-  company: "https://nico-factory.web.app/",
-  legacy: "https://keikei-p.github.io/-/"
+  company: "https://nico-factory.web.app/"
 });
 export const FILES = Object.freeze([
   "index.html",
@@ -106,21 +105,28 @@ export async function audit({load=globalThis.fetch,readLocal=async name=>readFil
     if(mismatches.length)throw Error(kind+": published artifacts differ from repository: "+mismatches.join(", "));
     perHost[kind]=digest;
   }
-  if(FILES.some(f=>perHost.company[f]!==perHost.legacy[f]))
-    throw Error("Company and legacy sites serve different app versions");
   return {assetCount:FILES.length,digest:want["index.html"]};
 }
+// Remote-only checks protect the LIVE site while main is intentionally ahead of
+// production under a manual release policy. They cannot prove version parity.
+export async function auditPublished({load=globalThis.fetch}={}){
+  const remote=await readHost(HOSTS.company,load);
+  const digests=verifyStatic(remote);
+  return {assetCount:FILES.length,digest:digests["index.html"]};
+}
 if(process.argv[1] && fileURLToPath(import.meta.url)===path.resolve(process.argv[1])){
-  audit({load:(url)=>fetch(url,{method:"GET",redirect:"manual",cache:"no-store",
+  const check=process.env.NICO_CHECK_MODE==="parity"?audit:auditPublished;
+  check({load:(url)=>fetch(url,{method:"GET",redirect:"manual",cache:"no-store",
     headers:{"User-Agent":"nico-sales-readonly-health/1.0"},
     signal:AbortSignal.timeout(20000)})}).then(({assetCount,digest})=>{
-      console.log("PASS: both URLs serve the exact checked-in production app.");
+      console.log("PASS: canonical NICO URL serves the expected application contract.");
       console.log("PASS: Firebase project and PWA contracts match; checked "+assetCount+" static assets.");
+      console.log("CHECK MODE: "+(process.env.NICO_CHECK_MODE==="parity"?"strict main/publication parity":"published site health only"));
       console.log("Production HTML SHA-256: "+digest);
       console.log("READ-ONLY: no login, Firestore, user data, paid services or deployment touched.");
       console.log("LIMITATION: cannot prove login, role-specific security or current Firestore document integrity.");
     }).catch(err=>{
-      console.error("BLOCK: dual-URL readiness failed: "+String(err?.message||err));
+      console.error("BLOCK: canonical NICO readiness failed: "+String(err?.message||err));
       process.exitCode=1;
     });
 }

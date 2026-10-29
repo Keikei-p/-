@@ -1,15 +1,13 @@
 name: Sync NICO Factory Hosting (static assets only)
 on:
-  push:
-    branches: [main]
-    paths:
-      - index.html
-      - manifest.webmanifest
-      - service-worker.js
-      - icon-180.png
-      - icon-192.png
-      - icon-512.png
+  # Never deploy an unreviewed main push. Publishing requires the operator's
+  # explicit confirmation after backups, privacy and version checks.
   workflow_dispatch:
+    inputs:
+      release_confirmation:
+        description: 'Type CONFIRM_NICO_HOSTING_RELEASE after final review'
+        required: true
+        type: string
 permissions:
   contents: read
 concurrency:
@@ -17,6 +15,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   static-hosting:
+    if: ${{ github.ref == 'refs/heads/main' && inputs.release_confirmation == 'CONFIRM_NICO_HOSTING_RELEASE' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -85,12 +84,10 @@ jobs:
         run: |
           set -euo pipefail
           firebase deploy --only hosting --config .nico-only-hosting-config.json --project "$FIREBASE_PROJECT_ID" --non-interactive
-      - name: Check both site entrypoints without signing in
+      - name: Check canonical NICO Factory hosting without signing in
         shell: bash
         run: |
           set -euo pipefail
-          for url in "https://nico-factory.web.app/" "https://keikei-p.github.io/-/"; do
-            curl --fail --silent --show-error --retry 3 --max-time 25 \
-              --output "$RUNNER_TEMP/sales-smoke-index.html" "$url"
-            grep -Fq '営業実績管理' "$RUNNER_TEMP/sales-smoke-index.html"
-          done
+          curl --fail --silent --show-error --retry 3 --max-time 25 \
+            --output "$RUNNER_TEMP/sales-smoke-index.html" "https://nico-factory.web.app/"
+          grep -Fq '営業実績管理' "$RUNNER_TEMP/sales-smoke-index.html"
