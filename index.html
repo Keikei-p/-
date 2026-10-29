@@ -13026,6 +13026,10 @@ function startScopedHistoryMonth(month){
   if(sequence!==scopedHistoryGeneration||!useScopedHistoryPreview()||
     currentUserData?.companyId!==companyId||scopedHistoryMonth!==month)return;
   try {
+   if(snapshot.metadata?.fromCache||snapshot.metadata?.hasPendingWrites){
+     databaseStatus.textContent="端末内キャッシュのみ：サーバー集計未確定";
+     return;
+   }
    const next=[],seen=new Set();
    snapshot.forEach(item=>{
     const value=item.data();
