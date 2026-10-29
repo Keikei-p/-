@@ -375,3 +375,19 @@ Rulesの本番デプロイ: 未実施
 **本番リリース可否: NO-GO**。本番データへの書込・削除・新画面のデプロイは行わない。
 
 - 2026-10-29: GitHub管理者接続のコード技術レビューでPR #82に `sales-production-reviewed` ラベルを適用。**対象はオーナー向け読取専用警告と重複CBの登録拒否コードのmain統合のみ**。ユーザー本人の電子署名、本番デプロイ、既存履歴の一括変更は未承認。本追記後の最新HEADでSales App Validationと保護ゲートを再確認する。
+
+---
+
+## 2026-10-29 PR #132 金額付きFirestore原票を誤公開しないための限定審査
+
+- 利用者の「過去データを一切消さずに、本番安全になるまで改善を続ける」という開発依頼に対応するリリース安全ゲート。**本番Firestore Rules、データ、Auth、Hostingは変更しない**。
+- 差分: `scripts/check-finance-read-boundary-before-deploy.mjs` / `tests/finance-release-gate.test.mjs` / `.github/workflows/finance-boundary-preflight.yml` / `.github/workflows/firebase-production-deploy.yml` / `docs/FINANCE_RULES_DEPLOY_STOP_20261029.md` / 本審査記録のみ。
+- 主な検証: 金額付き4原票コレクションの会社全員向けread、追加get/list、ownerだけのように見せかけたOR、書込や削除の危険条件をCIで検出。現行Rulesでは意図的に**STOP**とし、静的合格してもデプロイ承認にしない。
+- `firebase-production-deploy.yml` の人間による明示確認・main限定の公開制限を維持し、Firebase認証情報やデプロイ操作を起動する前に新ゲートを実行。
+- 既存の販売実績、件数、単価、CB、社員UID、班履歴、商材設定、Firebase料金情報、LINE設定は一切変更・削除・一括移行しない。
+- 今回の限定審査は開発者のコード/テストレビュー記録。**GitHub管理者本人の署名・本番公開承認・実データバックアップ復元済みの証明ではない。**
+- 本番許可条件: 旧PWAを安全なAPIへ移行、協力店/未許可社員の金額原票読取拒否、全件保全/隔離復元、エミュレータ・端末・料金の検証、オーナーの本番最終承認。全部揃うまでNO-GO。
+
+判定: 上記ワークフロー変更だけ限定コード統合可能。**本番Rules/Hosting新規公開は禁止**。
+
+- 2026-10-29: GitHub管理者接続からPR #132へ `sales-production-reviewed` を適用。対象は**危険なRulesの手動デプロイを止めるワークフローの変更と読取専用検証のみ**。利用者本人の電子署名ではない。ラベル付与後の最新HEADのCI成功が必要で、本番Firebaseへのデプロイ承認ではない。
