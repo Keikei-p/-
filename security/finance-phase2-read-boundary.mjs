@@ -22,11 +22,15 @@ export function modelOwnerOnlyFinanceRules(phase1){
     "        && exists(companyPath(companyId))",
     "        && exists(userPath(request.auth.uid))",
     "        && exists(memberPath(companyId, request.auth.uid))",
+    "        && get(companyPath(companyId)).data.get('active', true) == true",
     "        && get(companyPath(companyId)).data.get('companyKind', 'internal') != 'partner'",
+    "        && get(companyPath(companyId)).data.get('companyKind', 'internal') != 'cooperator'",
     "        && get(userPath(request.auth.uid)).data.get('accessKind', 'internal') != 'partner'",
     "        && get(memberPath(companyId, request.auth.uid)).data.get('accessKind', 'internal') != 'partner'",
     "        && get(userPath(request.auth.uid)).data.get('memberType', 'internal') != 'cooperator'",
-    "        && get(memberPath(companyId, request.auth.uid)).data.get('memberType', 'internal') != 'cooperator';",
+    "        && get(memberPath(companyId, request.auth.uid)).data.get('memberType', 'internal') != 'cooperator'",
+    "        && get(userPath(request.auth.uid)).data.get('memberType', 'internal') != 'partner'",
+    "        && get(memberPath(companyId, request.auth.uid)).data.get('memberType', 'internal') != 'partner';",
     "    }",
     ""
   ].join("\n");
