@@ -31,7 +31,7 @@ const settings={
   weekdays,linkedHubCompanyId:"hub",countsShareApproved:true,
   countsShareLineGroupId:"group_test"}
 };
-function fixture({live=true,consent=true,mutate=undefined,dryRunValidate=false}={}){
+function fixture({live=true,consent=true,mutate=undefined,dryRunValidate=false,notificationEnabled=true,lineEnabled=true}={}){
  const calls=[],sent=[],dispatches=[];
  const companyDocs=[
   firestoreDoc("companies/hub",{name:"自社",active:true}),
@@ -82,8 +82,9 @@ function fixture({live=true,consent=true,mutate=undefined,dryRunValidate=false}=
    if(method==="GET"&&u.pathname.endsWith(
      "/documents/companies/"+cid+"/settings/notifications"
    )){
-    const s=cid==="partner"&&!consent
+    const original=cid==="partner"&&!consent
       ?{...settings.partner,countsShareApproved:false}:settings[cid];
+    const s={...original,enabled:notificationEnabled,lineEnabled};
     return ok(firestoreDoc("companies/"+cid+"/settings/notifications",s));
    }
   }
@@ -133,7 +134,8 @@ async function run(opts){
   await reporter.scheduled({
    cron:opts?.cron??"0 0 * * *",
    scheduledTime:Date.parse(opts?.cron==="5 10 * * *"
-     ?"2026-10-29T10:05:00Z":"2026-10-29T00:00:00Z")
+     ?"2026-10-29T10:05:00Z":opts?.cron==="0 10 * * *"
+       ?"2026-10-29T10:00:00Z":"2026-10-29T00:00:00Z")
   },fixtureData.env);
  }finally{
   globalThis.fetch=previousFetch;
@@ -240,4 +242,31 @@ test("no missing reminder when distinct expected employees each submitted",async
   }
  });
  assert.equal(result.sent.length,0,"all real members have reported: no message");
+});
+
+test("the SAME notification ON/OFF controls morning, final and unreported LINE sends",async()=>{
+ const crons=["0 0 * * *","0 10 * * *","5 10 * * *"];
+ for(const cron of crons){
+  const muted=await run({live:true,cron,notificationEnabled:false});
+  assert.equal(muted.sent.length,0,"disabled main notification switch: "+cron);
+  assert.equal(muted.dispatches.length,0,"disabled notification never reserves: "+cron);
+  assert.equal(muted.calls.some(x=>x.path.includes("/documents:runQuery")),false,
+   "no costly sales/goal Firestore queries on OFF: "+cron);
+  const unlinked=await run({live:true,cron,lineEnabled:false});
+  assert.equal(unlinked.sent.length,0,"LINE not enabled: "+cron);
+  assert.equal(unlinked.dispatches.length,0,"no reserve if LINE off: "+cron);
+ }
+});
+test("morning/final/missing all use a single approved LINE destination",async()=>{
+ const crons=["0 0 * * *","0 10 * * *","5 10 * * *"];
+ for(const cron of crons){
+  const runData=await run({live:true,cron});
+  assert(runData.sent.length<=1,"never duplicate grouped company dispatches");
+  for(const delivery of runData.sent){
+   assert.equal(delivery.to,"group_test");
+   const message=delivery.messages[0].text;
+   for(const privateTerm of ["totalRevenue","revenuePerUnit","cashback","単価","売上"])
+    assert.equal(message.includes(privateTerm),false);
+  }
+ }
 });
