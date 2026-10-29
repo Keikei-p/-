@@ -16,9 +16,10 @@
  */
 import {assertPublicSchema} from "./public-projection.mjs";
 
+// The legacy GitHub Pages app is retired. Only the canonical NICO origin
+// may receive browser CORS headers; authorization is always checked separately.
 const ALLOWED_ORIGINS=new Set([
-  "https://nico-factory.web.app",
-  "https://keikei-p.github.io"
+  "https://nico-factory.web.app"
 ]);
 const COLLECTIONS=new Set([
   "publicRecords","publicRecordLines","publicProducts","publicRankEntries"
@@ -128,9 +129,17 @@ export function createCountOnlyReadHandler({
 
       // No claim from caller is accepted: adapters must prove identity and
       // load current membership directly from Firestore every request.
-      const auth=await authenticateBearer(token);
+      let auth;
+      try {
+        auth=await authenticateBearer(token);
+      } catch {
+        // Reject an invalid or unverifiable signed token as unauthenticated,
+        // not as a data-store error. Never send verifier details to callers.
+        throw new Reject(401);
+      }
       if(!auth||auth.emailVerified!==true)throw new Reject(401);
-      const identity=await loadMembership(auth.uid);
+      // Pass ONLY signature-verified authentication facts to fresh ACL reader.
+      const identity=await loadMembership(auth.uid,auth);
       const scope=checkIdentity(identity,auth);
       if(teamId&&!scope.owner&&!scope.teams.includes(teamId))throw new Reject();
       const page=await queryPublicDocuments({
