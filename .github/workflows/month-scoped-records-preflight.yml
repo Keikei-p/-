@@ -6,6 +6,8 @@ on:
       - index.html
       - firestore.indexes.json
       - tests/month-scoped-records-ui.test.mjs
+      - tests/monthly-aggregate-preview.test.mjs
+      - security/monthly-aggregate-preview.mjs
       - .github/workflows/month-scoped-records-preflight.yml
   workflow_dispatch:
 permissions:
@@ -27,6 +29,10 @@ jobs:
           node --check /tmp/sales-month-module.mjs
       - name: Synthetic month, multi-year history, totals, stale-cache and edit protection
         run: node --test tests/month-scoped-records-ui.test.mjs
+      - name: Offline 25k month summary, finance separation and fail-closed integrity
+        run: |
+          node --check security/monthly-aggregate-preview.mjs
+          node --test tests/monthly-aggregate-preview.test.mjs
       - name: Existing sales regression tests
         run: node --test tests/sales-regressions.cjs
       - name: Validate index shape
