@@ -12,7 +12,7 @@ export function assertLocalRestoreEnvironment(env){
   if(typeof path!=="string"||!isAbsolute(path)||!path.endsWith(".salesbak"))
     throw Error("Local absolute encrypted backup path required");
   if(env?.GCLOUD_PROJECT!=="demo-sales-restore"||
-     !/^127\\.0\\.0\\.1:[1-9][0-9]{0,4}$/.test(env?.FIRESTORE_EMULATOR_HOST||""))
+     !/^127\.0\.0\.1:[1-9][0-9]{0,4}$/.test(env?.FIRESTORE_EMULATOR_HOST||""))
     throw Error("Local demo project and localhost Firestore emulator required");
   if(Number(env.FIRESTORE_EMULATOR_HOST.split(":")[1])>65535)
     throw Error("Invalid local port");
