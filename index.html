@@ -9660,8 +9660,15 @@ function subscribeSelectedMonthRecords() {
       // rows, rather than re-reading every day of the year on every snapshot.
       if(annualChartRecords&&
          annualChartYear===companyId+":"+month.slice(0,4)){
-        annualChartRecords=mergeVerifiedMonthIntoAnnual(
-          annualChartRecords,month,nextRecords,companyId);
+        try {
+          annualChartRecords=mergeVerifiedMonthIntoAnnual(
+            annualChartRecords,month,nextRecords,companyId);
+        } catch(error) {
+          annualChartRecords=null;
+          annualChartYear="";
+          annualChartErrorKey=companyId+":"+month.slice(0,4);
+          console.error("年間データ同期エラー",error?.code||"invalid");
+        }
       }
       showMonthlyRecordsState("",false);
       createMonthOptions();
