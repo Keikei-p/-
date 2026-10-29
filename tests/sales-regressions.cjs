@@ -1557,3 +1557,103 @@ test('Past team rankings retain the recorded team ID after a member moves teams'
  // Guard the actual production aggregate path, not just this fixture.
  assert.match(html,/const teamKey\s*=\s*record\.teamId\s*\|\|\s*teamName/);
 });
+
+test('all products: selected cashback plan determines sale rate; no cashback amount substitution',()=>{
+  const electric={id:'electric',name:'とくする電気',pricingOptions:[{cashback:0,revenuePerUnit:10000}]};
+  const nuro={id:'nuro',name:'NURO光',pricingOptions:[
+    {cashback:0,revenuePerUnit:25000},{cashback:20000,revenuePerUnit:22500}]};
+  const mock=context(['getProductPricingOptions','verifyNewRecordPricing'],{
+    parseLegacyCashbackProductName:()=>({hasCashbackPlan:false}),
+    normalizeCashbackOptions:x=>[...new Set([0,...(x||[])])]
+  });
+  const good={
+    a:{productId:'electric',count:5,cashback:0,revenuePerUnit:10000},
+    b:{productId:'nuro',count:4,cashback:0,revenuePerUnit:25000},
+    c:{productId:'nuro',count:5,cashback:20000,revenuePerUnit:22500}
+  };
+  assert.equal(mock.verifyNewRecordPricing(good,[electric,nuro]),'');
+  assert.match(mock.verifyNewRecordPricing({...good,a:{...good.a,revenuePerUnit:2000}},[electric,nuro]),/単価/);
+  assert.match(mock.verifyNewRecordPricing({...good,c:{...good.c,revenuePerUnit:20000}},[electric,nuro]),/単価/);
+  assert.match(mock.verifyNewRecordPricing({...good,c:{...good.c,cashback:30000}},[electric,nuro]),/CB/);
+  assert.match(mock.verifyNewRecordPricing(good,[electric,{...nuro,pricingOptions:[...nuro.pricingOptions,{cashback:20000,revenuePerUnit:20000}]}]),/CB/);
+  const legacy={id:'legacy',name:'旧プラン',revenue:25000,cashbackOptions:[0,20000]};
+  assert.match(mock.verifyNewRecordPricing({l:{productId:'legacy',cashback:20000,count:1,revenuePerUnit:20000}},[legacy]),/旧形式/);
+});
+
+test('existing records: adding one deal at an obsolete price is stopped, unchanged old snapshots remain untouched',()=>{
+  const mock=context(['resultVariantKey','normalizeExistingResultMap','getProductPricingOptions',
+    'verifyNewRecordPricing','verifyChangedRecordPricing'],{
+    parseLegacyCashbackProductName:()=>({hasCashbackPlan:false})
+  });
+  const product={id:'electric',name:'とくする電気',pricingOptions:[{cashback:0,revenuePerUnit:10000}]};
+  const old={electric__cb_0:{productId:'electric',cashback:0,count:5,revenuePerUnit:2000}};
+  const original=JSON.stringify(old);
+  const same={electric__cb_0:{...old.electric__cb_0}};
+  assert.equal(mock.verifyChangedRecordPricing(same,old,[product]),'');
+  assert.match(mock.verifyChangedRecordPricing({
+    electric__cb_0:{...old.electric__cb_0,count:6}
+  },old,[product]),/単価/);
+  assert.equal(JSON.stringify(old),original);
+});
+
+test('owner read-only audit includes every suspicious product, does not rewrite stored history',()=>{
+  const mock=context(['getProductPricingOptions','getRecordResults','auditSavedRevenueRates'],{
+    parseLegacyCashbackProductName:()=>({hasCashbackPlan:false}),
+    normalizeCashbackOptions:x=>[...new Set([0,...(x||[])])],
+    formatYen:x=>'¥'+Number(x).toLocaleString('en-US')
+  });
+  const products=[
+    {id:'electric',name:'とくする電気',pricingOptions:[{cashback:0,revenuePerUnit:10000}]},
+    {id:'nuro',name:'NURO光',pricingOptions:[{cashback:0,revenuePerUnit:25000},{cashback:20000,revenuePerUnit:22500}]},
+    {id:'legacy',name:'旧CB商材',revenue:25000,cashbackOptions:[0,20000]}
+  ];
+  const records=[
+    {id:'one',date:'2026-10-23',totalCount:5,totalRevenue:10000,
+      results:{e:{productId:'electric',productName:'とくする電気',count:5,cashback:0,revenuePerUnit:2000}}},
+    {id:'two',date:'2026-10-23',totalCount:9,totalRevenue:212500,
+      results:{a:{productId:'nuro',count:4,cashback:0,revenuePerUnit:25000},
+        b:{productId:'nuro',count:5,cashback:20000,revenuePerUnit:22500}}}
+  ];
+  const before=JSON.stringify({products,records});
+  const warnings=mock.auditSavedRevenueRates(records,products);
+  assert(warnings.some(x=>x.name==='とくする電気' && x.message.includes('¥2,000') && x.message.includes('¥10,000')));
+  assert(warnings.some(x=>x.name==='旧CB商材'));
+  assert(!warnings.some(x=>x.name==='NURO光'));
+  assert.equal(JSON.stringify({products,records}),before);
+  const render=source('renderProductSummary');
+  assert(render.includes('if (isCurrentCompanyOwner() && canCurrentUserViewProductRevenue())'));
+  assert(!/await\s+(setDoc|updateDoc|deleteDoc)|runTransaction/.test(render));
+});
+
+test('stored zero-yen sale is never replaced with current master price in presentation',()=>{
+  const mock=context(['getResultProductPresentation'],{
+    products:[{id:'free',name:'無料商材',revenue:10000}],
+    parseLegacyCashbackProductName:name=>({parentName:name,hasCashbackPlan:false}),
+    productUsesCashbackPlans:()=>false
+  });
+  assert.equal(mock.getResultProductPresentation({
+    productId:'free',productName:'無料商材',count:1,revenuePerUnit:0
+  }).revenuePerUnit,0);
+});
+
+
+test('Owner-only audit refuses unknown prices, missing catalog and ambiguous CB without updating snapshots',()=>{
+ const mock=context(['getProductPricingOptions','getRecordResults','auditSavedRevenueRates'],{
+   parseLegacyCashbackProductName:()=>({hasCashbackPlan:false}),
+   normalizeCashbackOptions:x=>[...new Set([0,...(x||[])])],
+   formatYen:x=>'¥'+String(x)
+ });
+ const product={id:'electric',name:'電気',pricingOptions:[{cashback:0,revenuePerUnit:10000}]};
+ const records=[
+   {id:'missing',date:'2026-10-29',results:{x:{productId:'gone',count:1,revenuePerUnit:1000}},totalCount:1,totalRevenue:1000},
+   {id:'empty',date:'2026-10-29',results:{x:{productId:'electric',count:1,revenuePerUnit:null}},totalCount:1,totalRevenue:0}
+ ];
+ const before=JSON.stringify(records);
+ const warnings=mock.auditSavedRevenueRates(records,[product]);
+ assert(warnings.some(x=>x.message.includes('商材マスター')));
+ assert(warnings.some(x=>x.message.includes('保存済み件数または単価')));
+ assert.equal(JSON.stringify(records),before);
+ const ambiguous={...product,pricingOptions:[{cashback:0,revenuePerUnit:10000},{cashback:0,revenuePerUnit:20000}]};
+ const w=mock.auditSavedRevenueRates([records[0]],[ambiguous]);
+ assert(w.some(x=>x.message.includes('重複')));
+});
