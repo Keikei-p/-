@@ -23,6 +23,9 @@ try {
   if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
     throw "Node.js 22+ is required."
   }
+  $versionString = (& node --version)
+  $nodeMajor = [int]($versionString -replace "^v([0-9]+)\\..*$", '$1')
+  if ($nodeMajor -lt 22) { throw "BLOCK: Node.js 22 or newer is required." }
   if (-not $BackupFile) {
     $BackupFile = Read-Host "既存の暗号化バックアップ(.salesbak)の絶対パス"
   }
@@ -38,6 +41,10 @@ try {
     $env:SALES_BACKUP_PASSPHRASE = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)
   } finally {
     [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)
+  }
+  if (-not $env:SALES_BACKUP_PASSPHRASE -or
+      $env:SALES_BACKUP_PASSPHRASE.Length -lt 20) {
+    throw "BLOCK: backup passphrase must have at least 20 characters."
   }
   # Offline verify and audit MUST NOT inherit credentials to production.
   [Environment]::SetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS", $null, "Process")
