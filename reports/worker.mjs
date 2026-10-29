@@ -214,6 +214,13 @@ export default {
   if(!kind)return;
   const clock=todayTokyo(event.scheduledTime||Date.now());
   const enabled=env.REPORT_DELIVERY_ENABLED==="true";
+  // With both switches OFF, do not request privileged Firebase credentials,
+  // query Firestore, or consume free-tier reads just to say "dry run".
+  // An explicit second switch allows read-only staging verification.
+  if(!enabled&&env.REPORT_DRY_RUN_VALIDATE!=="true"){
+    console.log("LINE report disabled: no Firebase read, write or LINE send");
+    return;
+  }
   const token=await googleToken(env);
   const companies=await listDocuments(env,token,"companies");
   // All settings are read by this server from Firestore, NOT from a client.
