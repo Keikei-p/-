@@ -1,5 +1,5 @@
 import {buildCountOnlyReport,previousDay,reportTimeDue} from "./auto-report.js";
-import {collectLineQueryPages} from "./query-pages.js";
+import {collectLineQueryPages,collectLineMonthQueryPages} from "./query-pages.js";
 const SCOPE="https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/cloud-platform";
 let tokenCache={token:"",exp:0};
 const LINE_MONTHLY_HARD_CAP=180;
@@ -109,6 +109,46 @@ async function query(env,col,filters){
   },{root,companyId:scope});
   return rows.map(docObj);
 }
+// Requires a Firestore composite index for (companyId ASC, date ASC, __name__ ASC).
+// A missing index is a hard stop: never fall back to an all-history scan.
+async function queryMonthRecords(env,companyId,date){
+ if(!/^[A-Za-z0-9_-]{1,150}$/.test(companyId||"") ||
+    typeof date!=="string" || !/^\d{4}-\d{2}-\d{2}$/.test(date))
+   throw Error("line_month_invalid_request");
+ const monthStart=date.slice(0,7)+"-01";
+ const root="projects/"+env.FIREBASE_PROJECT_ID+"/databases/(default)/documents/records/";
+ const monthField=(op,value)=>({
+  fieldFilter:{field:{fieldPath:"date"},op,value:{stringValue:value}}
+ });
+ const structuredQuery={
+  from:[{collectionId:"records"}],
+  where:{compositeFilter:{op:"AND",filters:[
+   strFilter("companyId",companyId),
+   monthField("GREATER_THAN_OR_EQUAL",monthStart),
+   monthField("LESS_THAN_OR_EQUAL",date)
+  ]}},
+  orderBy:[
+   {field:{fieldPath:"date"},direction:"ASCENDING"},
+   {field:{fieldPath:"__name__"},direction:"ASCENDING"}
+  ]
+ };
+ const rows=await collectLineMonthQueryPages(async ({cursor,readTime,pageSize})=>{
+  const q={...structuredQuery,limit:pageSize};
+  if(cursor)q.startAt={
+   values:[{stringValue:cursor.date},{referenceValue:cursor.documentName}],
+   before:false
+  };
+  const body={structuredQuery:q};
+  if(readTime)body.readTime=readTime;
+  const res=await fsFetch(env,base(env)+"/documents:runQuery",{
+   method:"POST",body:JSON.stringify(body)
+  });
+  if(!res.ok)throw Error("LINE MONTH QUERY "+res.status);
+  return res.json();
+ },{root,companyId,monthStart,throughDate:date});
+ return rows.map(docObj);
+}
+
 async function patch(env,p,values){
   const q=new URLSearchParams(); Object.keys(values).forEach(k=>q.append("updateMask.fieldPaths",k));
   const r=await fsFetch(env,`${base(env)}/documents/${pathUrl(p)}?${q}`,{method:"PATCH",body:JSON.stringify({fields:toF(values)})});
@@ -400,15 +440,15 @@ async function scheduledReports(env){
       for(const mode of modes){
         if(mode.enabled!==true || !reportTimeDue(mode.time,n.time))continue;
         const date=mode.key==="morning"?previousDay(n.date):n.date;
-        // Company-wide query (not other companies). Old record snapshots remain unchanged.
-        // Fail-closed if the source is unexpectedly too large to verify completely.
+        // Read only this report month, never all historical sales records.
+        // Monthly pagination has one snapshot and a strict read-budget stop.
         const [records,teams,products,goals]=await Promise.all([
-          query(env,"records",[strFilter("companyId",company.id)]),
+          queryMonthRecords(env,company.id,date),
           query(env,"teams",[strFilter("companyId",company.id)]),
           query(env,"products",[strFilter("companyId",company.id)]),
           query(env,"goals",[strFilter("companyId",company.id)])
         ]);
-        if(records.length>=2000 || teams.length>=500 || products.length>=500 ||
+        if(teams.length>=500 || products.length>=500 ||
            goals.length>=2000 || !teams.some(t=>t.active!==false))
           throw Error("report_source_limit_or_no_teams");
         const msg=buildCountOnlyReport({
