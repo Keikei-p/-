@@ -1414,7 +1414,7 @@ test('Manual suspension release can only deploy the approved Cloud Function, nev
     'no push, PR, schedule or remote-dispatch release triggers');
   assert.match(workflow, /github\.ref == 'refs\/heads\/main'/, 'must run on main');
   assert.match(workflow, /inputs\.reviewed_commit == github\.sha/, 'must match reviewed commit');
-  assert.match(workflow, /VERIFIED_BACKUP_RESTORE_COUNTS_AND_BOTH_URLS/,
+  assert.match(workflow, /VERIFIED_BACKUP_RESTORE_COUNTS_AND_NICO_URL/,
     'requires typed confirmation of data protection verification');
   assert.match(workflow, /firebase deploy --only functions:deleteCompanyMemberAccount/,
     'must deploy only the fixed suspension Function');
