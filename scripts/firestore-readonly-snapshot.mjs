@@ -25,7 +25,8 @@ export function encodeFirestoreValue(v,depth=0,seen=new WeakSet()){
  if(typeof v==="boolean")return {t:"boolean",v};
  if(typeof v==="number"){
   if(Number.isSafeInteger(v))return {t:"integer",v};
-  if(Number.isFinite(v))return {t:"double",v};
+  // Never silently reinterpret an unsafe integer-valued money/count as a double.
+  if(Number.isFinite(v)&&!Number.isInteger(v))return {t:"double",v};
   if(Number.isNaN(v))return {t:"doubleSpecial",v:"NaN"};
   if(v===Infinity||v===-Infinity)return {t:"doubleSpecial",v:v>0?"Infinity":"-Infinity"};
   reject("unsupported numeric value");
