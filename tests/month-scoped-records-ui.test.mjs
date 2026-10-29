@@ -30,8 +30,8 @@ function setup(){
  };
  const ctx=vm.createContext(state);
  vm.runInContext(helper,ctx);
- const api=vm.runInContext('({monthRecordRange,scopedRecordsQuery,subscribeSelectedMonthRecords,findDailyRecordFromServer,loadAnnualChartRecords})',ctx);
- return {state,api,subs,status,css};
+ const api=vm.runInContext('({monthRecordRange,scopedRecordsQuery,subscribeSelectedMonthRecords,findDailyRecordFromServer,loadAnnualChartRecords,readVerifiedMonthForReport})',ctx);
+ return {state,api,subs,status,css,ctx};
 }
 const doc=(i,date="2026-10-29",companyId="companyA")=>({
  id:"row"+i,data:()=>({companyId,date,uid:"u"+i,totalCount:1,totalRevenue:10000})
@@ -139,4 +139,98 @@ test("legacy whole-company listener and whole-company getDocs removed from dashb
  assert(html.includes("async function persistDailyRecord(recordRef, data, expectedRecord, expectedRevision)"));
  assert(html.includes("if(!recordsReady||recordsSubscribedMonth!==dashboardMonth.value)"));
  assert(html.includes("findDailyRecordFromServer(memberId,date)"));
+});
+
+test("reporting on a different month verifies that month instead of using displayed month",async()=>{
+ const {api,state}=setup();
+ state.recordsReady=true;
+ state.recordsSubscribedMonth="2026-10";
+ state.records=[{companyId:"companyA",date:"2026-10-29",uid:"current"}];
+ let queryMonth=null;
+ state.getDocsFromServer=async q=>{
+   queryMonth=q.filters.map(f=>f.value);
+   return {forEach(cb){cb(doc(123,"2026-09-10"));}};
+ };
+ const result=await api.readVerifiedMonthForReport("2026-09");
+ assert.equal(result.length,1);
+ assert.equal(result[0].date,"2026-09-10");
+ assert.deepEqual(queryMonth,["2026-09-01","2026-10-01"]);
+ assert.equal(state.records[0].date,"2026-10-29","dashboard remains unchanged");
+});
+test("reporting request fails on another company's records rather than creating false zero",async()=>{
+ const {api,state}=setup();
+ state.getDocsFromServer=async()=>({forEach(cb){cb(doc(123,"2026-09-10","anotherCompany"));}});
+ await assert.rejects(api.readVerifiedMonthForReport("2026-09"),/照合/);
+});
+test("today's unreported preview queries today even if the dashboard shows last month",async()=>{
+ const {state,ctx}=setup();
+ const a=html.indexOf("async function renderNotificationPreview() {");
+ const b=html.indexOf("\n\nfunction stopLinePairingListener()",a);
+ assert(a>=0&&b>a);
+ const preview={textContent:"",innerHTML:""};
+ state.notificationPreview=preview;
+ state.notificationPreviewGeneration=0;
+ state.members=[{id:"u1"}];
+ state.notificationSettings={reportCompletionMode:"all"};
+ state.normalizeNotificationSettings=s=>s;
+ state.escapeHtml=s=>s;
+ state.recordsReady=true;
+ state.recordsSubscribedMonth="2026-09";
+ state.getUnreportedTeamSummary=(date,rows)=>{
+   assert.equal(date,"2026-10-29");
+   assert.equal(rows.length,1);
+   assert.equal(rows[0].date,"2026-10-29");
+   return [];
+ };
+ let calls=0;
+ state.getDocsFromServer=async q=>{
+   calls++;
+   assert.deepEqual(Array.from(q.filters,x=>({...x})),[
+    {field:"date",op:"==",value:"2026-10-29"}]);
+   return {forEach(cb){cb(doc(1,"2026-10-29"));}};
+ };
+ vm.runInContext(html.slice(a,b),ctx);
+ await ctx.renderNotificationPreview();
+ assert.equal(calls,1);
+ assert.match(preview.textContent,/✅/);
+});
+test("failed today's report query cannot be presented as all staff reported",async()=>{
+ const {state,ctx}=setup();
+ const a=html.indexOf("async function renderNotificationPreview() {");
+ const b=html.indexOf("\n\nfunction stopLinePairingListener()",a);
+ const preview={textContent:"",innerHTML:""};
+ state.notificationPreview=preview;
+ state.notificationPreviewGeneration=0;
+ state.members=[{id:"u1"}];
+ state.recordsReady=true;
+ state.recordsSubscribedMonth="2026-09";
+ state.getDocsFromServer=async()=>{throw Error("permission-denied");};
+ vm.runInContext(html.slice(a,b),ctx);
+ await ctx.renderNotificationPreview();
+ assert.match(preview.textContent,/確認できません/);
+ assert.doesNotMatch(preview.textContent,/✅/);
+});
+test("report generation clears old text and aborts when source month cannot be fetched",async()=>{
+ const {state,ctx}=setup();
+ const a=html.indexOf("async function buildVerifiedReport(date,mode) {");
+ const b=html.indexOf("\n\ncopyReportButton.onclick =",a);
+ assert(a>=0&&b>a);
+ const reportText={value:"stale previous month's report"};
+ state.reportBuilderText=reportText;
+ state.reportBuildGeneration=0;
+ state.reportBuilderDate={value:"2026-09-29",addEventListener(){}};
+ state.buildFinalReportButton={disabled:false};
+ state.buildMorningReportButton={disabled:false};
+ state.copyReportButton={disabled:false};
+ state.showError=msg=>state.lastError=msg;
+ state.createFinalReportText=(date,records)=>"verified="+records.length;
+ state.createMorningReportText=()=> "morning";
+ state.getDocsFromServer=async()=>{throw Error("permission-denied");};
+ state.getTodayString=()=> "2026-10-29";
+ state.previousDateString=x=>x;
+ vm.runInContext(html.slice(a,b),ctx);
+ await ctx.buildVerifiedReport("2026-09-29","final");
+ assert.equal(reportText.value,"");
+ assert.match(state.lastError,/中止/);
+ assert.equal(state.copyReportButton.disabled,false);
 });
