@@ -24,7 +24,7 @@ try {
     throw "Node.js 22+ is required."
   }
   $versionString = (& node --version)
-  $nodeMajor = [int]($versionString -replace "^v([0-9]+)\\..*$", '$1')
+  $nodeMajor = [int]($versionString -replace "^v([0-9]+)\..*$", '$1')
   if ($nodeMajor -lt 22) { throw "BLOCK: Node.js 22 or newer is required." }
   if (-not $BackupFile) {
     $BackupFile = Read-Host "既存の暗号化バックアップ(.salesbak)の絶対パス"
