@@ -10,6 +10,27 @@ export function modelOwnerOnlyFinanceRules(phase1){
   if(typeof phase1!=="string"||!phase1.includes("rules_version = '2'"))
     throw Error("Invalid staging rules");
   let next=phase1;
+  const databaseMatch="match /databases/{database}/documents {";
+  if(next.split(databaseMatch).length!==2 ||
+     next.includes("function isInternalFinanceReader("))
+    throw Error("Unexpected candidate rules structure");
+  // A partner company's owner/master is a partner, regardless of owner role.
+  const helper=[
+    "",
+    "    function isInternalFinanceReader(companyId) {",
+    "      return companyId != null",
+    "        && exists(companyPath(companyId))",
+    "        && exists(userPath(request.auth.uid))",
+    "        && exists(memberPath(companyId, request.auth.uid))",
+    "        && get(companyPath(companyId)).data.get('companyKind', 'internal') != 'partner'",
+    "        && get(userPath(request.auth.uid)).data.get('accessKind', 'internal') != 'partner'",
+    "        && get(memberPath(companyId, request.auth.uid)).data.get('accessKind', 'internal') != 'partner'",
+    "        && get(userPath(request.auth.uid)).data.get('memberType', 'internal') != 'cooperator'",
+    "        && get(memberPath(companyId, request.auth.uid)).data.get('memberType', 'internal') != 'cooperator';",
+    "    }",
+    ""
+  ].join("\n");
+  next=next.replace(databaseMatch,databaseMatch+helper);
   for(const group of GROUPS){
     const marker="match /"+group+"/{";
     const pos=next.indexOf(marker);
@@ -23,6 +44,7 @@ export function modelOwnerOnlyFinanceRules(phase1){
     if(count!==1)throw Error("Unexpected legacy finance rule for "+group);
     const closed=region.replace(open,
       "allow read: if resource.data.companyId != null\n"+
+      "        && isInternalFinanceReader(resource.data.companyId)\n"+
       "        && (isCompanyMaster(resource.data.companyId) || isCompanyOwner(resource.data.companyId));");
     next=next.slice(0,start)+closed+next.slice(start+region.length);
   }
@@ -41,6 +63,7 @@ export function modelOwnerOnlyFinanceRules(phase1){
     throw Error("Unexpected revenue goals read boundary");
   next=next.slice(0,readStart)+
     "allow read: if resource.data.companyId != null\n"+
+    "        && isInternalFinanceReader(resource.data.companyId)\n"+
     "        && (isCompanyMaster(resource.data.companyId) || isCompanyOwner(resource.data.companyId));\n\n      "+
     next.slice(createStart);
   if(next===phase1)throw Error("No finance rules changed in staging model");
