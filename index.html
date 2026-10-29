@@ -13005,7 +13005,7 @@ function scopedHistoryQuery(start,end){
  return query(recordsCollectionQuery(),where("date",">=",start),where("date","<",end));
 }
 function startScopedHistoryMonth(month){
- if(!useScopedHistoryPreview())return;
+ if(!(typeof useScopedHistoryPreview==="function" && useScopedHistoryPreview()))return;
  if(unsubscribeRecords){unsubscribeRecords();unsubscribeRecords=null;}
  const bounds=scopedHistoryBounds(month),sequence=++scopedHistoryGeneration;
  const companyId=currentUserData.companyId;
@@ -13026,7 +13026,7 @@ function startScopedHistoryMonth(month){
  dailySummaryList.textContent="読み込み中";
  revenueChartArea.textContent="読み込み中";
  unsubscribeRecords=onSnapshot(scopedHistoryQuery(bounds.start,bounds.end),snapshot=>{
-  if(sequence!==scopedHistoryGeneration||!useScopedHistoryPreview()||
+  if(sequence!==scopedHistoryGeneration||!(typeof useScopedHistoryPreview==="function" && useScopedHistoryPreview())||
     currentUserData?.companyId!==companyId||scopedHistoryMonth!==month)return;
   try {
    if(snapshot.metadata?.fromCache||snapshot.metadata?.hasPendingWrites){
@@ -13063,7 +13063,7 @@ function startScopedHistoryMonth(month){
  });
 }
 async function loadScopedAnnualRecords(year){
- if(!useScopedHistoryPreview()||scopedAnnualLoaded===year)return;
+ if(!(typeof useScopedHistoryPreview==="function" && useScopedHistoryPreview())||scopedAnnualLoaded===year)return;
  if(!/^[0-9]{4}$/.test(year))throw Error("Invalid history year");
  const companyId=currentUserData.companyId;
  const snapshot=await getDocsFromServer(scopedHistoryQuery(year+"-01-01",
@@ -13456,7 +13456,7 @@ function startRealtimeListeners() {
     実績
   */
 
-  if(useScopedHistoryPreview()){
+  if((typeof useScopedHistoryPreview==="function" && useScopedHistoryPreview())){
     startScopedHistoryMonth(dashboardMonth.value||getTodayString().slice(0,7));
   }else{
   unsubscribeRecords =
@@ -21425,7 +21425,7 @@ async function loadExistingRecordIntoForm() {
       recordMember.value,
       recordDate.value
     );
-  if(useScopedHistoryPreview()&&!record){
+  if((typeof useScopedHistoryPreview==="function" && useScopedHistoryPreview())&&!record){
     try{
       const result=await getDocsFromServer(query(recordsCollectionQuery(),
         where("uid","==",recordMember.value),
@@ -22202,7 +22202,7 @@ saveRecordButton.onclick =
           0,
           7
         );
-      if(useScopedHistoryPreview()){
+      if((typeof useScopedHistoryPreview==="function" && useScopedHistoryPreview())){
         scopedAnnualLoaded="";
         scopedAnnualRecords=[];
         startScopedHistoryMonth(dashboardMonth.value);
@@ -22215,7 +22215,7 @@ saveRecordButton.onclick =
 
       try {
 
-        if(!useScopedHistoryPreview())renderDashboard();
+        if(!(typeof useScopedHistoryPreview==="function" && useScopedHistoryPreview()))renderDashboard();
 
       } catch (error) {
 
@@ -22406,7 +22406,7 @@ function createMonthOptions() {
     new Set([
       currentYear
     ]);
-  if(useScopedHistoryPreview()){
+  if((typeof useScopedHistoryPreview==="function" && useScopedHistoryPreview())){
     for(let year=2020;year<=Number(currentYear);year++)years.add(String(year));
     if(recordDate.value)years.add(recordDate.value.slice(0,4));
   }
@@ -22541,7 +22541,7 @@ dashboardMonth.addEventListener(
     selectedDailyTeamKey=null;
     dailySummaryDate.value="";
     recordHistoryDate.value="";
-    if(useScopedHistoryPreview()){
+    if((typeof useScopedHistoryPreview==="function" && useScopedHistoryPreview())){
       const selected=dashboardMonth.value;
       startScopedHistoryMonth(selected);
       if(revenueChartMode==="annual"){
@@ -27524,7 +27524,7 @@ function buildRevenueChartData() {
 
 
   const relevantRecords =
-    (useScopedHistoryPreview() && revenueChartMode==="annual"
+    ((typeof useScopedHistoryPreview==="function" && useScopedHistoryPreview()) && revenueChartMode==="annual"
       ? (scopedAnnualLoaded===selectedYear?scopedAnnualRecords:[])
       : records).filter(
       record => {
@@ -28213,7 +28213,7 @@ function renderRevenueChartDetail(
 
 function renderRevenueChart() {
 
-  if(useScopedHistoryPreview() && revenueChartMode==="annual" &&
+  if((typeof useScopedHistoryPreview==="function" && useScopedHistoryPreview()) && revenueChartMode==="annual" &&
      scopedAnnualLoaded!==dashboardMonth.value.slice(0,4)){
     revenueChartSummary.textContent="年次集計は未確定です。年次表示ボタンから再取得してください。";
     revenueChartArea.textContent="年次集計を読み込み中、または再取得が必要です";
@@ -29273,7 +29273,7 @@ revenueChartMonthlyButton.addEventListener(
 revenueChartAnnualButton.addEventListener(
   "click",
   async () => {
-    if(useScopedHistoryPreview()){
+    if((typeof useScopedHistoryPreview==="function" && useScopedHistoryPreview())){
       try{
         databaseStatus.textContent="年次データを取得中（集計未確定）";
         await loadScopedAnnualRecords(dashboardMonth.value.slice(0,4));
