@@ -16,6 +16,22 @@ const actual=createHash("sha256").update(JSON.stringify(src.payload),"utf8").dig
 if(actual!==src.checksum)die("Archive JSON integrity failure");
 const {payload:p}=src,original=p.original||{},companyId=p.company?.id;
 if(typeof companyId!=="string"||!companyId)die("Company ID is missing");
+// The archive UI emits both YYYY-MM (month) and YYYY (year) periods.
+// Neither mode may silently accept a different year or an impossible date.
+const periodMode=p.periodMode;
+if(periodMode==="month"&&!/^\\d{4}-(0[1-9]|1[0-2])$/.test(p.period)||
+   periodMode==="year"&&!/^\\d{4}$/.test(p.period)||
+   !["month","year"].includes(periodMode))
+  die("Invalid archive period/mode");
+function validArchivedDay(date){
+ if(typeof date!=="string"||!/^\\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$/.test(date))return false;
+ const [year,month,day]=date.split("-").map(Number);
+ const utc=new Date(Date.UTC(year,month-1,day));
+ return utc.getUTCFullYear()===year&&utc.getUTCMonth()+1===month&&utc.getUTCDate()===day;
+}
+const withinPeriod=date=>validArchivedDay(date)&&
+ (periodMode==="year"?date.slice(0,4)===p.period:date.slice(0,7)===p.period);
+
 if(!Array.isArray(original.records)||!Array.isArray(original.products)||!Array.isArray(original.teams)||!Array.isArray(original.recordCorrections))die("Original source records are incomplete");
 if(original.records.length!==p.summary?.dailyRecords)die("Summary daily-record count differs from saved source");
 if((p.warnings||[]).length||(p.summary?.warningCount||0)>0)die("Unresolved financial-data validation warnings must be reviewed");
@@ -24,7 +40,7 @@ const ids=new Set();
 for(const r of original.records){
  if(!r||r.companyId!==companyId||!r.id||ids.has(r.id))die("Duplicate record ID or wrong company");
  ids.add(r.id);
- if(typeof r.date!=="string"||!r.date.startsWith(p.period+"-"))die("Date outside archive period");
+ if(!withinPeriod(r.date))die("Date outside archive period");
  let countOne=0,amountOne=0;
  const entries=r.results&&typeof r.results==="object"?Object.values(r.results):r.productId?[r]:[];
  for(const item of entries){
@@ -37,7 +53,21 @@ for(const r of original.records){
  if(countOne!==Number(r.totalCount??countOne)||amountOne!==Number(r.totalRevenue??amountOne))die("Original daily record totals do not match line detail");
  count+=countOne;amount+=amountOne;
 }
-if(count!==p.summary.count||amount!==p.summary.revenue)die("Archive aggregates do not reconcile with original documents");
+if(!Number.isSafeInteger(count)||!Number.isSafeInteger(amount)||
+   count!==p.summary.count||amount!==p.summary.revenue)
+  die("Archive aggregates do not reconcile with original documents");
+if(Array.isArray(p.rows)){
+ let rowsCount=0,rowsAmount=0;
+ for(const row of p.rows){
+  if(!row||!withinPeriod(row.date)||!ids.has(row.recordId)||
+     !Number.isSafeInteger(row.count)||row.count<0||
+     !Number.isSafeInteger(row.amount)||row.amount<0)
+     die("Invalid or unmatched archive report line");
+  rowsCount+=row.count;rowsAmount+=row.amount;
+ }
+ if(rowsCount!==count||rowsAmount!==amount)die("Archive report lines differ from original documents");
+}
+
 for(const [name,items] of [["products",original.products],["teams",original.teams],["recordCorrections",original.recordCorrections]]){
  const seen=new Set();
  for(const item of items)if(item.companyId!==companyId||!item.id||seen.has(item.id))die("Wrong company or duplicate source ID in "+name);else seen.add(item.id);
