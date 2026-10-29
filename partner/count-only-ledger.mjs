@@ -54,7 +54,8 @@ function paths(companyId,recordId,version){
    revision:"partnerCountRevisions/"+root+"_v"+suffix,
    publicRevision:"partnerCountPublicRevisions/"+root+"_v"+suffix,
    corrections:"partnerCountCorrections/",
-   idempotency:"partnerCountIdempotencyKeys/"
+   idempotency:"partnerCountIdempotencyKeys/",
+   daily:"partnerCountDailyKeys/"
  };
 }
 function immutablePublic(plan,companyId,recordId,version){
@@ -125,9 +126,14 @@ export async function stageNewPartnerCount({
    });
    noHistoryTouched(plan);
    const p=paths(principal.companyId,recordId,1);
+   const dailyRef=store.ref(p.daily+composite(
+     principal.companyId,principal.uid,request.date));
    const currentRef=store.ref(p.current);
+   const daily=await tx.get(dailyRef);
    const current=await tx.get(currentRef);
-   if(current.exists)fail();
+   // A different replay key must not create a second record for this person/day.
+   // Firestore's atomic create guarantees only one concurrent transaction wins.
+   if(daily.exists||current.exists)fail();
    const publication=immutablePublic(plan,principal.companyId,recordId,1);
    tx.create(currentRef,{...plan.privateRecord,revision:1,
      latestPublicRevision:1});
@@ -136,6 +142,8 @@ export async function stageNewPartnerCount({
    tx.create(store.ref(p.publicRevision),publication);
    tx.create(idemRef,{companyId:principal.companyId,uid:principal.uid,
      requestJson,recordId,version:1});
+   tx.create(dailyRef,{companyId:principal.companyId,uid:principal.uid,
+     date:request.date,teamId:request.teamId,recordId});
    return {status:"registered",recordId,version:1,
      ownCount:plan.privateRecord.totalCount,
      sharedCount:plan.privateRecord.sharedCount};
