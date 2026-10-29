@@ -56,7 +56,7 @@ const trusted=()=>({principal:{...principal},catalog:structuredClone(catalog),
  memberName:"協力店A",teamName:"1班"});
 const reader=async()=>({
  serverVerified:true,tokenVerified:true,active:true,
- allowedCompanyIds:["partnerA"]
+ allowedCompanyIds:["partnerA"],allowedTeamIds:["team1"]
 });
 const idempotencyKey="repeat_once_20261029";
 function makeArgs(db){
@@ -69,9 +69,9 @@ test("new record is atomic across private current + immutable revision + publica
  assert.deepEqual(result,{status:"registered",recordId:"pc_ledgerA",version:1,
    ownCount:5,sharedCount:2});
  assert.equal(db.map.size,4);
- assert(db.map.has("partnerCountRecords/partnerA_pc_ledgerA"));
- assert(db.map.has("partnerCountRevisions/partnerA_pc_ledgerA_v000001"));
- assert(db.map.has("partnerCountPublicRevisions/partnerA_pc_ledgerA_v000001"));
+ assert(db.map.has("partnerCountRecords/8-partnerA-10-pc_ledgerA"));
+ assert(db.map.has("partnerCountRevisions/8-partnerA-10-pc_ledgerA_v000001"));
+ assert(db.map.has("partnerCountPublicRevisions/8-partnerA-10-pc_ledgerA_v000001"));
  const publication=await readCurrentPartnerPublication({
   store:db.store,companyId:"partnerA",recordId:"pc_ledgerA",loadAuthorizedReader:reader
  });
@@ -102,8 +102,8 @@ test("same retry key returns same ID without a second record",async()=>{
 test("corrections append history and change only the new partner count pointer",async()=>{
  const db=makeStore();
  await stageNewPartnerCount(makeArgs(db));
- const first=structuredClone(db.map.get("partnerCountRevisions/partnerA_pc_ledgerA_v000001"));
- const firstPublic=structuredClone(db.map.get("partnerCountPublicRevisions/partnerA_pc_ledgerA_v000001"));
+ const first=structuredClone(db.map.get("partnerCountRevisions/8-partnerA-10-pc_ledgerA_v000001"));
+ const firstPublic=structuredClone(db.map.get("partnerCountPublicRevisions/8-partnerA-10-pc_ledgerA_v000001"));
  const changed={...input,lines:[{catalogId:"shared:hub:NURO",count:4},
   {catalogId:"custom:partnerA:own",count:1}]};
  const result=await stageCorrectPartnerCount({store:db.store,loadTrustedContext:trusted,
@@ -114,16 +114,16 @@ test("corrections append history and change only the new partner count pointer",
  assert.equal(result.ownCount,5);
  assert.equal(result.sharedCount,4);
  assert.equal(db.map.size,7);
- assert.deepEqual(db.map.get("partnerCountRevisions/partnerA_pc_ledgerA_v000001"),first);
- assert.deepEqual(db.map.get("partnerCountPublicRevisions/partnerA_pc_ledgerA_v000001"),firstPublic);
- assert.equal(db.map.get("partnerCountCorrections/partnerA_pcfix_edit001").beforeSharedCount,2);
+ assert.deepEqual(db.map.get("partnerCountRevisions/8-partnerA-10-pc_ledgerA_v000001"),first);
+ assert.deepEqual(db.map.get("partnerCountPublicRevisions/8-partnerA-10-pc_ledgerA_v000001"),firstPublic);
+ assert.equal(db.map.get("partnerCountCorrections/8-partnerA-13-pcfix_edit001").beforeSharedCount,2);
  const read=await readCurrentPartnerPublication({
   store:db.store,companyId:"partnerA",recordId:"pc_ledgerA",loadAuthorizedReader:reader
  });
  assert.equal(read.version,2);
  assert.equal(read.header.totalCount,4);
  assert.equal(read.lines[0].count,4);
- assert.equal(db.map.get("partnerCountRecords/partnerA_pc_ledgerA").teamId,"team1");
+ assert.equal(db.map.get("partnerCountRecords/8-partnerA-10-pc_ledgerA").teamId,"team1");
 });
 test("stale edit, reused correction ID, no-op and different member all leave storage unchanged",async()=>{
  const db=makeStore();
@@ -161,8 +161,8 @@ test("private-only correction removes all public count visibility without deleti
  assert.equal(current.published,false);
  assert.equal(current.header,null);
  assert.deepEqual(current.lines,[]);
- assert(db.map.has("partnerCountPublicRevisions/partnerA_pc_ledgerA_v000001"));
- assert(db.map.has("partnerCountPublicRevisions/partnerA_pc_ledgerA_v000002"));
+ assert(db.map.has("partnerCountPublicRevisions/8-partnerA-10-pc_ledgerA_v000001"));
+ assert(db.map.has("partnerCountPublicRevisions/8-partnerA-10-pc_ledgerA_v000002"));
 });
 test("server rejection or injected transaction write failure cannot create half a record",async()=>{
  const db=makeStore();
@@ -182,8 +182,8 @@ test("server rejection or injected transaction write failure cannot create half 
 test("publication rejects missing version or corrupted private counts without changing data",async()=>{
  const db=makeStore();
  await stageNewPartnerCount(makeArgs(db));
- const pubRef="partnerCountPublicRevisions/partnerA_pc_ledgerA_v000001";
- const current="partnerCountRecords/partnerA_pc_ledgerA";
+ const pubRef="partnerCountPublicRevisions/8-partnerA-10-pc_ledgerA_v000001";
+ const current="partnerCountRecords/8-partnerA-10-pc_ledgerA";
  const pub=db.map.get(pubRef);
  db.map.delete(pubRef);
  await assert.rejects(readCurrentPartnerPublication({
@@ -231,4 +231,65 @@ test("revoked membership blocks even idempotent retried register",async()=>{
   }})
  }),/Count-only transaction refused/);
  assert.equal(db.map.size,4);
+});
+
+test("composite IDs cannot collide across two companies with underscores",async()=>{
+ const db=makeStore();
+ const req={date:"2026-10-29",teamId:"team1",status:"submitted",
+  lines:[{catalogId:"shared:hub:NURO",count:1}]};
+ for(const [companyId,recordId] of [["a_pc_b","pc_c"],["a","pc_b_pc_c"]]){
+  const ctx=async()=>({principal:{...principal,companyId},
+   catalog:[catalog[0]],memberName:"担当",teamName:"1班"});
+  const res=await stageNewPartnerCount({store:db.store,
+   loadTrustedContext:ctx,request:req,mintRecordId:async()=>recordId,
+   idempotencyKey:"collision_test_20261029"});
+  assert.equal(res.status,"registered");
+ }
+ assert.equal(db.map.size,8);
+ const currents=[...db.map.keys()].filter(x=>x.startsWith("partnerCountRecords/"));
+ assert.equal(new Set(currents).size,2);
+});
+
+test("authorized company reader without team access is denied",async()=>{
+ const db=makeStore();
+ await stageNewPartnerCount(makeArgs(db));
+ const before=JSON.stringify([...db.map]);
+ for(const readerFn of [
+  async()=>({...await reader(),allowedTeamIds:[]}),
+  async()=>({...await reader(),allowedTeamIds:["different_team"]}),
+  async()=>({...await reader(),allowedTeamIds:"team1"})
+ ]){
+  await assert.rejects(readCurrentPartnerPublication({
+   store:db.store,companyId:"partnerA",recordId:"pc_ledgerA",
+   loadAuthorizedReader:readerFn
+  }),/Count-only transaction refused/);
+ }
+ assert.equal(JSON.stringify([...db.map]),before);
+});
+
+test("corrupted public projections cannot launder another company or team's counts",async()=>{
+ const db=makeStore();
+ await stageNewPartnerCount(makeArgs(db));
+ const key=[...db.map.keys()].find(x=>x.startsWith("partnerCountPublicRevisions/"));
+ const original=structuredClone(db.map.get(key));
+ const attempts=[
+  x=>{x.header.companyId="otherCompany";},
+  x=>{x.header.totalCount=999;},
+  x=>{x.lines[0].uid="other_member";},
+  x=>{x.lines[0].teamId="other_team";},
+  x=>{x.lines[0].count=123;},
+  x=>{x.lines[0].recordId="anotherRecord";}
+ ];
+ for(const corrupt of attempts){
+  const copy=structuredClone(original);corrupt(copy);db.map.set(key,copy);
+  await assert.rejects(readCurrentPartnerPublication({
+   store:db.store,companyId:"partnerA",recordId:"pc_ledgerA",
+   loadAuthorizedReader:reader
+  }),/Count-only transaction refused/);
+ }
+ db.map.set(key,original);
+ assert.equal((await readCurrentPartnerPublication({
+  store:db.store,companyId:"partnerA",recordId:"pc_ledgerA",
+  loadAuthorizedReader:reader
+ })).header.totalCount,2);
 });
