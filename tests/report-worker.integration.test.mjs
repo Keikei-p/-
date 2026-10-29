@@ -49,9 +49,9 @@ function fixture({live=true,consent=true,mutate=undefined,dryRunValidate=false}=
    ],
    records:[
     firestoreDoc("records/hub-r1",{companyId:"hub",date:"2026-10-29",teamId:"hub-team",
-      uid:"hub-u1",totalCount:4,totalRevenue:150000,results:{a:{count:4,revenuePerUnit:10000,cashback:40000}}}),
+      uid:"hub-u1",reportStatus:"submitted",totalCount:4,totalRevenue:150000,results:{a:{count:4,revenuePerUnit:10000,cashback:40000}}}),
     firestoreDoc("records/hub-r2",{companyId:"hub",date:"2026-10-29",teamId:"hub-partner",
-      uid:"hub-partner-u1",totalCount:2,totalRevenue:50000,results:{a:{count:2,revenuePerUnit:8000,cashback:20000}}})
+      uid:"hub-partner-u1",reportStatus:"submitted",totalCount:2,totalRevenue:50000,results:{a:{count:2,revenuePerUnit:8000,cashback:20000}}})
    ]
   },
   partner:{
@@ -59,7 +59,7 @@ function fixture({live=true,consent=true,mutate=undefined,dryRunValidate=false}=
    goals:[firestoreDoc("goals/goal-p1",{companyId:"partner",month:"2026-10",
      teamId:"p1",targets:{a:12}})],
    records:[firestoreDoc("records/p-r1",{companyId:"partner",date:"2026-10-29",teamId:"p1",
-     uid:"partner-u1",totalCount:3,totalRevenue:90000,results:{a:{count:3,revenuePerUnit:30000}}})]
+     uid:"partner-u1",reportStatus:"submitted",totalCount:3,totalRevenue:90000,results:{a:{count:3,revenuePerUnit:30000}}})]
   }
  };
  if(typeof mutate==="function")mutate(byCompany);
