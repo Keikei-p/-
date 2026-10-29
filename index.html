@@ -22361,6 +22361,10 @@ function createMonthOptions() {
     new Set([
       currentYear
     ]);
+  if(useScopedHistoryPreview()){
+    for(let year=2020;year<=Number(currentYear);year++)years.add(String(year));
+    if(recordDate.value)years.add(recordDate.value.slice(0,4));
+  }
 
 
   records.forEach(
@@ -22487,22 +22491,26 @@ function createMonthOptions() {
 
 dashboardMonth.addEventListener(
   "change",
-  () => {
-
-    revenueChartSelectedKey =
-      null;
-
-    selectedDailyTeamKey =
-      null;
-
-    dailySummaryDate.value =
-      "";
-
-    recordHistoryDate.value =
-      "";
-
-    renderDashboard();
-
+  async () => {
+    revenueChartSelectedKey=null;
+    selectedDailyTeamKey=null;
+    dailySummaryDate.value="";
+    recordHistoryDate.value="";
+    if(useScopedHistoryPreview()){
+      const selected=dashboardMonth.value;
+      startScopedHistoryMonth(selected);
+      if(revenueChartMode==="annual"){
+        try{
+          await loadScopedAnnualRecords(selected.slice(0,4));
+          renderRevenueChart();
+        }catch(error){
+          console.error("Yearly history unavailable",error);
+          showError("年次データを取得できません。集計は未確定です。");
+        }
+      }
+    }else{
+      renderDashboard();
+    }
   }
 );
 
