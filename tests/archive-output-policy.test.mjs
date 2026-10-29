@@ -73,5 +73,5 @@ test("missing or mismatched original saved totals prevent unverified annual repo
 });
 test("zero-contract original is valid only with exact saved zero count and revenue",()=>{
  const p=check({records:[{id:"empty",totalCount:0,totalRevenue:0}],rows:[]});
- assert.equal(p.canExportPdf,false); // no detail rows with an original is flagged
+ assert.equal(p.canExportPdf,true); // explicit no-result records reconcile to zero
 });
