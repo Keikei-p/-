@@ -138,7 +138,8 @@ export function createCountOnlyReadHandler({
         throw new Reject(401);
       }
       if(!auth||auth.emailVerified!==true)throw new Reject(401);
-      const identity=await loadMembership(auth.uid);
+      // Pass ONLY signature-verified authentication facts to fresh ACL reader.
+      const identity=await loadMembership(auth.uid,auth);
       const scope=checkIdentity(identity,auth);
       if(teamId&&!scope.owner&&!scope.teams.includes(teamId))throw new Reject();
       const page=await queryPublicDocuments({
