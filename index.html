@@ -21401,11 +21401,32 @@ async function loadExistingRecordIntoForm() {
   }
 
 
-  const record =
+  let record =
     findDailyRecord(
       recordMember.value,
       recordDate.value
     );
+  if(useScopedHistoryPreview()&&!record){
+    try{
+      const result=await getDocsFromServer(query(recordsCollectionQuery(),
+        where("uid","==",recordMember.value),
+        where("date","==",recordDate.value)));
+      if(result.size>1){
+        showError("同じ日付の実績が重複しています。オーナーへ確認してください。");
+        return;
+      }
+      if(result.size===1){
+        const item=result.docs[0];
+        if(item.data().companyId!==currentUserData.companyId)
+          throw Error("Wrong company");
+        record={id:item.id,...item.data()};
+      }
+    }catch(error){
+      console.error("Existing daily record failed",error);
+      showError("日付の既存実績を確認できません。二重登録せずに再確認してください。");
+      return;
+    }
+  }
 
 
   if (
@@ -22162,6 +22183,11 @@ saveRecordButton.onclick =
           0,
           7
         );
+      if(useScopedHistoryPreview()){
+        scopedAnnualLoaded="";
+        scopedAnnualRecords=[];
+        startScopedHistoryMonth(dashboardMonth.value);
+      }
 
 
       let dashboardRefreshError =
@@ -22170,7 +22196,7 @@ saveRecordButton.onclick =
 
       try {
 
-        renderDashboard();
+        if(!useScopedHistoryPreview())renderDashboard();
 
       } catch (error) {
 
