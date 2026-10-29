@@ -27,6 +27,14 @@ function requiredFunctions(store){
 function needsTrustedServer(ctx){
  if(!ctx||!ctx.principal||ctx.principal.serverVerified!==true||
     ctx.principal.tokenVerified!==true||
+    ctx.principal.memberActive!==true||
+    ctx.principal.userActive!==true||
+    ctx.principal.companyActive!==true||
+    ctx.principal.companyKind!=="partner"||
+    ctx.principal.accessKind!=="partner"||
+    ctx.principal.partnerRelationApproved!==true||
+    ctx.principal.canSubmit!==true||
+    !valid(ctx.principal.companyId)||!valid(ctx.principal.uid)||
     !Array.isArray(ctx.catalog)||typeof ctx.memberName!=="string"||
     typeof ctx.teamName!=="string")fail();
 }
@@ -180,10 +188,21 @@ export async function stageCorrectPartnerCount({
  * Public reader helper: get current pointer and matching immutable
  * projection in one transaction. Never return the private record itself.
  */
-export async function readCurrentPartnerPublication({store,companyId,recordId}={}){
+export async function readCurrentPartnerPublication({
+ store,companyId,recordId,loadAuthorizedReader
+}={}){
  requiredFunctions(store);
- if(!valid(companyId)||!valid(recordId))fail();
+ if(!valid(companyId)||!valid(recordId)||
+    typeof loadAuthorizedReader!=="function")fail();
  return store.runTransaction(async tx=>{
+   // Re-check a fresh server-verified reader relationship on every read.
+   // A browser-provided companyId or permit cannot authorize this method.
+   const reader=await loadAuthorizedReader(tx);
+   if(!reader||reader.serverVerified!==true||
+      reader.tokenVerified!==true||
+      reader.active!==true||
+      !Array.isArray(reader.allowedCompanyIds)||
+      !reader.allowedCompanyIds.includes(companyId))fail();
    const head=await tx.get(store.ref(paths(companyId,recordId,1).current));
    if(!head.exists)fail();
    const h=head.data();
