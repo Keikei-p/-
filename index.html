@@ -4376,6 +4376,11 @@ body.product-reordering .product-list {
     margin-left: 0;
   }
 }
+/* Do not expose stale revenue/rankings while the new month is loading. */
+#dashboard.monthly-records-pending > :not(.dashboard-title):not(.dashboard-select):not(#monthlyRecordsStatus) {
+  display:none !important;
+}
+#dashboard .dashboard-select input[type="month"] {width:100%;max-width:320px;padding:10px;}
 </style>
 </head>
 
@@ -5594,10 +5599,11 @@ body.product-reordering .product-list {
 
     <div class="dashboard-select">
 
-      <select id="dashboardMonth">
-      </select>
+      <input id="dashboardMonth" type="month" aria-label="実績表示月" required>
 
     </div>
+
+    <div id="monthlyRecordsStatus" role="status" aria-live="polite" style="display:none;padding:12px;border-radius:10px;margin-bottom:12px;background:var(--card-soft);color:var(--sub);font-size:13px;font-weight:700"></div>
 
     <div class="dashboard-summary">
 
@@ -5862,7 +5868,18 @@ body.product-reordering .product-list {
             <option value="">会社全体</option>
           </select>
         </label>
-        <p class="ranking-product-help">商材をタップすると、担当者ごとの獲得件数が表示されます（売上金額は表示しません）。</p>
+        <details id="rankingGroupEditor" hidden style="margin:12px 0;padding:14px;border:1px solid var(--border,#e5e7eb);border-radius:14px;">
+          <summary style="cursor:pointer;font-weight:700;">ランキンググループを設定</summary>
+          <p class="ranking-product-help">名前を入力し、まとめる商材を選んで追加。初期設定は空です。商材を自由に選択してください。</p>
+          <label style="display:block;margin:12px 0;font-weight:600;">グループ名
+            <input id="rankingGroupName" type="text" maxlength="40" autocomplete="off" placeholder="好きなグループ名" style="display:block;width:100%;padding:11px;border:1px solid #cbd5e1;border-radius:10px;margin-top:5px;">
+          </label>
+          <div id="rankingGroupProducts" style="display:grid;gap:8px;max-height:240px;overflow:auto;"></div>
+          <button id="rankingGroupAdd" type="button" class="team-action-button" style="margin:12px 0;">選んだ商材でグループを追加</button>
+          <div id="rankingGroupExisting" style="display:grid;gap:8px;"></div>
+          <p class="ranking-product-help">この設定は、この端末・このアカウント・このURLだけに保存されます。ほかの端末や旧URLとは同期しません。実績・商材・売上は変更しません。</p>
+        </details>
+        <p class="ranking-product-help">グループをタップすると、担当者ごとの合計獲得件数が表示されます（売上金額は表示しません）。</p>
         <div id="productRankingProductList" class="ranking-product-grid" data-columns="1"></div>
         <div class="ranking-product-result-header">
           <strong id="productRankingSelectedLabel">商材を選択してください</strong>
@@ -6734,7 +6751,6 @@ import {
   setDoc,
   getDoc,
   updateDoc,
-  deleteDoc,
   collection,
   getDocs,
   getDocsFromServer,
@@ -7342,6 +7358,11 @@ const productRankingProductList = document.getElementById("productRankingProduct
 const productRankingSelectedLabel = document.getElementById("productRankingSelectedLabel");
 const productRankingMemberCount = document.getElementById("productRankingMemberCount");
 const productRankingMemberList = document.getElementById("productRankingMemberList");
+const rankingGroupEditor = document.getElementById("rankingGroupEditor");
+const rankingGroupName = document.getElementById("rankingGroupName");
+const rankingGroupProducts = document.getElementById("rankingGroupProducts");
+const rankingGroupAdd = document.getElementById("rankingGroupAdd");
+const rankingGroupExisting = document.getElementById("rankingGroupExisting");
 
 const teamRankingToggle =
   document.getElementById(
@@ -7833,6 +7854,18 @@ let teams = [];
 let products = [];
 let members = [];
 let records = [];
+// Only a complete server-confirmed selected month can drive monthly totals.
+let recordQueryGeneration = 0;
+let recordsReady = false;
+let recordsSubscribedMonth = "";
+let annualChartRecords = null;
+let annualChartYear = "";
+let annualChartGeneration = 0;
+let annualChartRequestedKey = "";
+let annualChartErrorKey = "";
+let recordFormLookupGeneration = 0;
+let notificationPreviewGeneration = 0;
+let reportBuildGeneration = 0;
 let goals = [];
 let revenueGoals = [];
 
@@ -8230,33 +8263,42 @@ function currentProductDisplayName(result) {
 }
 
 
-function getDisplayRecordResults(
-  record
-) {
+// Reporting/view layer only. A change to the current approved selling price
+// must update every displayed historical deal without rewriting Firestore rows.
+// Cashback selects a plan; it is NEVER counted as revenue. Unknown or
+// ambiguous plans retain the saved price instead of guessing another tier.
+function currentCatalogRevenuePerUnit(result, catalog) {
+  const saved = Number(result?.revenuePerUnit ?? 0);
+  const original = Number.isSafeInteger(saved) && saved >= 0 ? saved : 0;
+  const product = (catalog || []).find(item => item.id === result?.productId);
+  if (!product) return original;
+  const options = getProductPricingOptions(product);
+  const hasCashback = result?.cashback !== undefined &&
+    result?.cashback !== null && result.cashback !== "";
+  if (!hasCashback && options.length !== 1) return original;
+  const cashback = hasCashback
+    ? Number(result.cashback)
+    : Number(options[0].cashback);
+  if (!Number.isSafeInteger(cashback) || cashback < 0) return original;
+  const matching = options.filter(option => Number(option.cashback) === cashback);
+  if (matching.length !== 1) return original;
+  const current = matching[0].revenuePerUnit;
+  if (current === null || current === undefined || current === "") return original;
+  const rate = Number(current);
+  return Number.isSafeInteger(rate) && rate >= 0 ? rate : original;
+}
 
-  const results =
-    getRecordResults(
-      record
-    );
-
-  const canViewRevenue =
-    canCurrentUserViewRevenueForRecord(
-      record
-    );
-
-  return results.map(
-    result => ({
-      ...result,
-      productName:
-        currentProductDisplayName(
-          result
-        ),
-      ...(canViewRevenue
-        ? {}
-        : {revenuePerUnit: 0})
-    })
-  );
-
+function getDisplayRecordResults(record) {
+  const results = getRecordResults(record);
+  const canViewRevenue = canCurrentUserViewRevenueForRecord(record);
+  return results.map(result => ({
+    ...result,
+    productName: currentProductDisplayName(result),
+    // Never reveal the current price to a viewer without revenue permission.
+    revenuePerUnit: canViewRevenue
+      ? currentCatalogRevenuePerUnit(result, products)
+      : 0
+  }));
 }
 
 
@@ -8429,6 +8471,11 @@ let individualRankingColumns = 1;
 let productRankingColumns = 1;
 let selectedProductRankingKey = "";
 let selectedProductRankingTeamId = "";
+// A company has NO pre-defined groups. This is separate display-only ranking state.
+let rankingGroups = [];
+let rankingGroupsLoaded = false;
+let rankingGroupSaveBusy = false;
+let rankingGroupDraftSelectedKeys = new Set();
 
 const defaultReportTemplateOptions = {
   showDate: true,
@@ -9553,6 +9600,157 @@ function recordsCollectionQuery() {
 
 }
 
+
+
+function monthRecordRange(month) {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error("実績の表示月が不正です。");
+  const y=Number(month.slice(0,4)),m=Number(month.slice(5,7));
+  const next=(m===12?y+1:y)+"-"+String(m===12?1:m+1).padStart(2,"0");
+  return {start:month+"-01",end:next+"-01"};
+}
+function scopedRecordsQuery(month) {
+  const range=monthRecordRange(month);
+  return query(recordsCollectionQuery(),where("date",">=",range.start),where("date","<",range.end));
+}
+function showMonthlyRecordsState(message,pending) {
+  const target=document.getElementById("monthlyRecordsStatus");
+  if(target){target.textContent=message;target.style.display=message?"block":"none";}
+  dashboard.classList.toggle("monthly-records-pending",Boolean(pending));
+}
+function subscribeSelectedMonthRecords() {
+  if(unsubscribeRecords){unsubscribeRecords();unsubscribeRecords=null;}
+  const generation=++recordQueryGeneration;
+  const month=dashboardMonth.value||getTodayString().slice(0,7);
+  const companyId=currentUserData?.companyId;
+  recordsReady=false;
+  recordsSubscribedMonth="";
+  records=[];
+  showMonthlyRecordsState("選択月の実績を取得中です。全件の確認後に集計を表示します。",true);
+  try {
+    const scoped=scopedRecordsQuery(month);
+    if(!companyId)throw new Error("会社の確認ができません。");
+    unsubscribeRecords=onSnapshot(scoped,{includeMetadataChanges:true},snapshot=>{
+      if(generation!==recordQueryGeneration||
+         dashboardMonth.value!==month||currentUserData?.companyId!==companyId)return;
+      if(snapshot.metadata.fromCache||snapshot.metadata.hasPendingWrites){
+        recordsReady=false;
+        recordsSubscribedMonth="";
+        showMonthlyRecordsState("通信・同期確認中のため、件数と売上を確定表示しません。",true);
+        return;
+      }
+      const nextRecords=[];
+      let mismatch=false;
+      snapshot.forEach(item=>{
+        const value=item.data();
+        if(value.companyId!==companyId||typeof value.date!=="string"||
+           !value.date.startsWith(month))mismatch=true;
+        else nextRecords.push({id:item.id,...value});
+      });
+      if(mismatch){
+        recordsReady=false;
+        recordsSubscribedMonth="";
+        showMonthlyRecordsState("所属会社または日付が一致しません。集計を停止しました。",true);
+        return;
+      }
+      nextRecords.sort((a,b)=>(b.date||"").localeCompare(a.date||"")||a.id.localeCompare(b.id));
+      records=nextRecords;
+      recordsSubscribedMonth=month;
+      recordsReady=true;
+      // Refresh an already verified annual chart from this month's confirmed
+      // rows, rather than re-reading every day of the year on every snapshot.
+      if(annualChartRecords&&
+         annualChartYear===companyId+":"+month.slice(0,4)){
+        try {
+          annualChartRecords=mergeVerifiedMonthIntoAnnual(
+            annualChartRecords,month,nextRecords,companyId);
+        } catch(error) {
+          annualChartRecords=null;
+          annualChartYear="";
+          annualChartErrorKey=companyId+":"+month.slice(0,4);
+          console.error("年間データ同期エラー",error?.code||"invalid");
+        }
+      }
+      showMonthlyRecordsState("",false);
+      createMonthOptions();
+      renderDashboard();
+      renderNotificationPreview();
+    },error=>{
+      if(generation!==recordQueryGeneration)return;
+      recordsReady=false;
+      recordsSubscribedMonth="";
+      showMonthlyRecordsState("選択月を読み込めません。集計は未確定です。接続・権限・Firestore索引を確認してください。",true);
+      console.error("月別実績の取得失敗",error?.code||"unknown");
+    });
+  } catch(error) {
+    recordsReady=false;
+    recordsSubscribedMonth="";
+    showMonthlyRecordsState("月別実績を表示できません。",true);
+    console.error("月別実績の開始失敗",error?.code||"invalid");
+  }
+}
+
+async function readVerifiedMonthForReport(month) {
+  // Explicit report generation may target a different month from dashboard.
+  // Never infer a missing daily count from the currently selected records.
+  const company=currentUserData?.companyId;
+  if(!company)throw new Error("会社の情報を確認できません。");
+  if(recordsReady&&recordsSubscribedMonth===month){
+    return records.filter(row=>row?.companyId===company&&row.date?.startsWith(month));
+  }
+  const snap=await getDocsFromServer(scopedRecordsQuery(month));
+  const all=[];let invalid=false;
+  snap.forEach(item=>{
+    const value=item.data();
+    if(value.companyId!==company||!value.date?.startsWith(month))invalid=true;
+    else all.push({id:item.id,...value});
+  });
+  if(invalid||company!==currentUserData?.companyId)
+    throw new Error("会社・日付の照合に失敗しました。");
+  return all;
+}
+
+async function findDailyRecordFromServer(memberId,date) {
+  // Correcting a day outside the selected month must still find the original.
+  const result=await getDocsFromServer(query(recordsCollectionQuery(),
+    where("uid","==",memberId),where("date","==",date)));
+  if(result.size>1)throw new Error("同じ担当者と日付の実績が複数あります。オーナーへ確認してください。");
+  return result.empty?null:{id:result.docs[0].id,...result.docs[0].data()};
+}
+function mergeVerifiedMonthIntoAnnual(annualRows,month,monthRows,companyId) {
+  monthRecordRange(month); // Validate month before touching cached annual data.
+  if(!Array.isArray(annualRows)||!Array.isArray(monthRows)||!companyId)
+    throw new Error("年間データの照合に失敗しました。");
+  if(annualRows.some(row=>row?.companyId!==companyId||
+       typeof row.date!=="string"||!row.id||!row.date.startsWith(month.slice(0,4)))||
+     monthRows.some(row=>row?.companyId!==companyId||
+       typeof row.date!=="string"||!row.id||!row.date.startsWith(month)))
+    throw new Error("年間・月間データの会社または期間が一致しません。");
+  const existing=annualRows.filter(row=>!row.date.startsWith(month));
+  const next=[...existing,...monthRows];
+  if(new Set(next.map(row=>row.id)).size!==next.length)
+    throw new Error("年間データに重複した実績IDがあります。");
+  return next;
+}
+
+async function loadAnnualChartRecords(year) {
+  // Annual chart is requested on demand, not during every monthly dashboard visit.
+  // One server query returns a complete year snapshot, never a partial page.
+  if(!canCurrentUserViewRevenue())throw new Error("年間売上を見る権限がありません。");
+  const start=year+"-01-01",end=String(Number(year)+1)+"-01-01";
+  const result=await getDocsFromServer(query(recordsCollectionQuery(),
+    where("date",">=",start),where("date","<",end)));
+  const rows=[];
+  let mismatch=false;
+  result.forEach(item=>{
+    const data=item.data();
+    if(data.companyId!==currentUserData?.companyId||
+       typeof data.date!=="string"||
+       data.date<start||data.date>=end)mismatch=true;
+    else rows.push({id:item.id,...data});
+  });
+  if(mismatch)throw new Error("年間データの整合性確認に失敗しました。");
+  return rows;
+}
 
 function formatYen(value) {
 
@@ -12955,6 +13153,7 @@ deleteOwnAccountButton.onclick =
 function startRealtimeListeners() {
 
   stopRealtimeListeners();
+  loadLocalRankingGroups();
 
 
   /*
@@ -13304,6 +13503,10 @@ function startRealtimeListeners() {
           draftResults
         );
 
+        // A price-master update changes the displayed revenue for ALL
+        // existing sales immediately; no Firestore record is mutated.
+        renderDashboard();
+
       },
       error => {
 
@@ -13320,59 +13523,9 @@ function startRealtimeListeners() {
     );
 
 
-  /*
-    実績
-  */
-
-  unsubscribeRecords =
-    onSnapshot(
-      recordsCollectionQuery(),
-      snapshot => {
-
-        records = [];
-
-        snapshot.forEach(
-          recordDoc => {
-
-            records.push({
-
-              id:
-                recordDoc.id,
-
-              ...recordDoc.data()
-
-            });
-
-          }
-        );
-
-
-        records.sort(
-          (a, b) =>
-            (
-              b.date ||
-              ""
-            ).localeCompare(
-              a.date ||
-              ""
-            )
-        );
-
-
-        createMonthOptions();
-
-        renderDashboard();
-
-        renderNotificationPreview();
-
-      },
-      error => {
-        console.error("実績リアルタイム監視エラー:", error);
-        databaseStatus.textContent = "実績の自動更新が停止";
-        showError("実績の自動更新が停止しました。表示が古い可能性があります。通信・権限を確認して画面を再読み込みしてください。");
-      }
-    );
-
+  /* 実績：会社の全履歴ではなく、選択した月だけをリアルタイム監視する。 */
+  createMonthOptions();
+  subscribeSelectedMonthRecords();
 
   unsubscribeGoals =
     onSnapshot(
@@ -13478,6 +13631,22 @@ function startRealtimeListeners() {
 
 
 function stopRealtimeListeners() {
+  ++recordQueryGeneration;
+  ++annualChartGeneration;
+  ++recordFormLookupGeneration;
+  ++notificationPreviewGeneration;
+  ++reportBuildGeneration;
+  recordsReady=false;
+  recordsSubscribedMonth="";
+  annualChartRecords=null;
+  annualChartYear="";
+  annualChartRequestedKey="";
+  annualChartErrorKey="";
+  records=[];
+  showMonthlyRecordsState("",false);
+  rankingGroups = [];
+  rankingGroupsLoaded = false;
+  rankingGroupDraftSelectedKeys.clear();
 
   if (
     unsubscribeUsers
@@ -13788,34 +13957,13 @@ function renderTeams() {
           );
 
 
-      const del =
-        document.createElement(
-          "button"
-        );
-
-      del.className =
-        "history-delete";
-
-      del.textContent =
-        "削除";
-
-      del.onclick =
-        () =>
-          deleteTeam(
-            team
-          );
-
-
+      // 班名や所属の過去の参照を保護するため、物理削除ボタンは表示しない。
       actions.appendChild(
         goal
       );
 
       actions.appendChild(
         edit
-      );
-
-      actions.appendChild(
-        del
       );
 
 
@@ -14610,73 +14758,6 @@ saveTeamGoalModal.onclick =
   };
 
 
-async function deleteTeam(
-  team
-) {
-
-  const assignedMembers =
-    members.filter(
-      member =>
-        member.active !==
-          false &&
-        member.teamId ===
-          team.id
-    );
-
-
-  if (
-    assignedMembers.length >
-    0
-  ) {
-
-    showError(
-      `この班には${assignedMembers.length}人所属しています。先に全員を別の班または「所属なし」へ変更してから削除してください。`
-    );
-
-    return;
-
-  }
-
-
-  if (
-    !confirm(
-      `${team.name}を削除しますか？\n\n過去の実績はこの班の実績として残ります。`
-    )
-  ) {
-
-    return;
-
-  }
-
-
-  try {
-
-    await deleteDoc(
-      doc(
-        db,
-        "teams",
-        team.id
-      )
-    );
-
-
-    await loadTeams();
-
-    showSuccess(
-      "班を削除しました。過去の実績はそのまま残ります。"
-    );
-
-  } catch (error) {
-
-    showError(
-      firebaseErrorMessage(
-        error
-      )
-    );
-
-  }
-
-}
 
 /* =====================================================
    商材
@@ -15039,13 +15120,9 @@ function getProductPricingOptions(
               )
             ),
           revenuePerUnit:
-            Math.max(
-              0,
-              Number(
-                option?.revenuePerUnit ||
-                0
-              )
-            )
+            option?.revenuePerUnit == null
+              ? null
+              : Number(option.revenuePerUnit)
         })
       )
       .sort(
@@ -15113,18 +15190,15 @@ function getProductPricingOptions(
         cashback => ({
           cashback,
           /*
-            pricingOptions導入前の親商材は、
-            直前のアプリ仕様をそのまま再現して互換表示する。
+            CBはプランを識別する情報であり売上金額ではない。
+            旧形式のCB別売上単価が不明なら null のまま扱い、
+            絶対に CB 金額から収益単価を作らない。
+            既存の実績は保存時の revenuePerUnit を維持する。
           */
           revenuePerUnit:
-            cashback === 0
-              ? Number(
-                  product?.revenue ||
-                  0
-                )
-              : Number(
-                  cashback
-                )
+            cashback === 0 && product?.revenue != null
+              ? Number(product.revenue)
+              : null
         })
       );
 
@@ -15165,9 +15239,9 @@ function pricingOptionsText(
       option =>
         `${formatCashbackPlanLabel(
           option.cashback
-        )} ${formatYen(
-          option.revenuePerUnit
-        )}`
+        )} ${option.revenuePerUnit == null
+          ? "売上単価未設定"
+          : formatYen(option.revenuePerUnit)}`
     )
     .join(" / ") +
     (
@@ -15344,12 +15418,9 @@ function createPricingOptionRow(
     "例：22500";
 
   revenueInput.value =
-    String(
-      Number(
-        option.revenuePerUnit ||
-        0
-      )
-    );
+    option.revenuePerUnit == null
+      ? ""
+      : String(option.revenuePerUnit);
 
   revenueInput.dataset.pricingRevenue =
     "true";
@@ -15454,154 +15525,37 @@ function renderPricingOptionEditor(
 }
 
 
-function readPricingOptions(
-  container
-) {
-
-  const rows =
-    Array.from(
-      container.querySelectorAll(
-        ".pricing-option-row"
-      )
-    );
-
-
-  if (
-    rows.length === 0
-  ) {
-
-    return {
-      error:
-        "収益単価を1つ以上設定してください。",
-      options: []
-    };
-
-  }
-
-
-  if (
-    rows.length > 15
-  ) {
-
-    return {
-      error:
-        "単価違いは最大15項目までです。",
-      options: []
-    };
-
-  }
-
-
-  const options =
-    [];
-
-  const seenCashbacks =
-    new Set();
-
-
-  for (
-    const row of rows
-  ) {
-
-    const cashback =
-      Number(
-        row.querySelector(
-          "input[data-pricing-cashback]"
-        )?.value ||
-        0
-      );
-
-    const revenuePerUnit =
-      Number(
-        row.querySelector(
-          "input[data-pricing-revenue]"
-        )?.value ||
-        0
-      );
-
-
-    if (
-      !Number.isFinite(
-        cashback
-      ) ||
-      cashback < 0
-    ) {
-
-      return {
-        error:
-          "CB金額は0円以上で入力してください。",
-        options: []
-      };
-
+function readPricingOptions(container) {
+  const rows = Array.from(container.querySelectorAll(".pricing-option-row"));
+  if (!rows.length) return {error:"収益単価を1つ以上設定してください。",options:[]};
+  if (rows.length>15) return {error:"単価違いは最大15項目までです。",options:[]};
+  const options=[];
+  const seenCashbacks=new Set();
+  for (const row of rows) {
+    const cashbackRaw=row.querySelector("input[data-pricing-cashback]")?.value;
+    const revenueRaw=row.querySelector("input[data-pricing-revenue]")?.value;
+    // Money input left blank must never silently become 0 yen.
+    if (cashbackRaw==null || revenueRaw==null ||
+        !String(cashbackRaw).trim() || !String(revenueRaw).trim()) {
+      return {error:"CB金額と収益単価を両方入力してください。",options:[]};
     }
-
-
-    if (
-      !Number.isFinite(
-        revenuePerUnit
-      ) ||
-      revenuePerUnit < 0
-    ) {
-
-      return {
-        error:
-          "収益単価は0円以上で入力してください。",
-        options: []
-      };
-
+    const cashback=Number(cashbackRaw);
+    const revenuePerUnit=Number(revenueRaw);
+    // Reject fractions instead of silently rounding the customer's agreed amount.
+    if (!Number.isSafeInteger(cashback) || cashback<0) {
+      return {error:"CB金額は0円以上の整数で入力してください。",options:[]};
     }
-
-
-    const normalizedCashback =
-      Math.round(
-        cashback
-      );
-
-
-    if (
-      seenCashbacks.has(
-        normalizedCashback
-      )
-    ) {
-
-      return {
-        error:
-          "同じCB金額が重複しています。",
-        options: []
-      };
-
+    if (!Number.isSafeInteger(revenuePerUnit) || revenuePerUnit<0) {
+      return {error:"収益単価は0円以上の整数で入力してください。",options:[]};
     }
-
-
-    seenCashbacks.add(
-      normalizedCashback
-    );
-
-
-    options.push({
-      cashback:
-        normalizedCashback,
-      revenuePerUnit:
-        Math.round(
-          revenuePerUnit
-        )
-    });
-
+    if (seenCashbacks.has(cashback)) {
+      return {error:"同じCB金額が重複しています。",options:[]};
+    }
+    seenCashbacks.add(cashback);
+    options.push({cashback,revenuePerUnit});
   }
-
-
-  options.sort(
-    (a, b) =>
-      a.cashback -
-      b.cashback
-  );
-
-
-  return {
-    error: "",
-    options
-  };
-
+  options.sort((a,b)=>a.cashback-b.cashback);
+  return {error:"",options};
 }
 
 
@@ -16834,30 +16788,10 @@ function renderProducts() {
           );
 
 
-      const del =
-        document.createElement(
-          "button"
-        );
-
-      del.className =
-        "history-delete";
-
-      del.textContent =
-        "削除";
-
-      del.onclick =
-        () =>
-          deleteProduct(
-            product
-          );
-
+      // 商材マスターと当時の価格参照を保護するため、物理削除は不可。
 
       actions.appendChild(
         edit
-      );
-
-      actions.appendChild(
-        del
       );
 
 
@@ -16877,6 +16811,48 @@ function renderProducts() {
     }
   );
 
+}
+
+
+// Report a failed catalog write without logging UID, email, or finance amounts.
+// A visible Owner badge alone does not prove the server-side membership agrees.
+async function productWriteFailureMessage(action, error) {
+  const base = firebaseErrorMessage(error);
+  if (error?.code !== "permission-denied") return `商材${action}失敗：${base}`;
+
+  const user = auth.currentUser;
+  const companyId = currentUserData?.companyId;
+  const state = [];
+  if (!user || !companyId) {
+    return `商材${action}が拒否されました。ログインまたは所属会社を確認できません。再ログインしてください。`;
+  }
+  try {
+    const token = await user.getIdTokenResult(true);
+    state.push(`認証メール確認=${token.claims.email_verified === true ? "OK" : "未反映"}`);
+  } catch (_) {
+    state.push("認証トークン=確認不可");
+  }
+  state.push(`ユーザーOwner=${currentUserData?.companyRole === "owner" ? "はい" : "いいえ"}`);
+  state.push(`MASTER=${getEffectiveMasterUid() === user.uid ? "本人" : "別ユーザー"}`);
+
+  let member = null;
+  try {
+    const memberSnap = await getDoc(doc(db, "companies", companyId, "members", user.uid));
+    member = memberSnap.exists() ? memberSnap.data() : null;
+    state.push(`会社所属=${member ? (member.active === false ? "停止中" : "あり") : "未登録"}`);
+  } catch (_) {
+    state.push("会社所属=読取不可");
+  }
+
+  if (member) {
+    state.push(`所属側Owner=${member.companyRole === "owner" ? "はい" : "いいえ"}`);
+    if (member.role === "leader" && member.companyRole !== "owner") {
+      state.push(`リーダー売上許可=${member.canViewRevenue === true ? "あり" : "なし"}`);
+      state.push(`リーダー単価許可=${member.canViewUnitPrice === true ? "あり" : "なし"}`);
+    }
+  }
+  console.warn("product-write-denied", {action, code:error?.code, diagnostic:state.join(" / ")});
+  return `商材${action}がFirebaseに拒否されました（permission-denied）。診断：${state.join(" / ")}。この表示をスクリーンショットで共有してください。元の商材・実績は変更していません。`;
 }
 
 
@@ -16963,6 +16939,8 @@ addProductButton.onclick =
       );
 
 
+    let savedOnServer = false;
+
     try {
 
       const productRef =
@@ -17005,6 +16983,8 @@ addProductButton.onclick =
       );
 
 
+      savedOnServer = true;
+
       productNameInput.value =
         "";
 
@@ -17019,7 +16999,7 @@ addProductButton.onclick =
       );
 
 
-      await loadProducts();
+      await loadProducts(true);
 
       prepareProductInputList(
         draftResults
@@ -17031,11 +17011,11 @@ addProductButton.onclick =
 
     } catch (error) {
 
-      showError(
-        firebaseErrorMessage(
-          error
-        )
-      );
+      if (savedOnServer) {
+        showError("商材はFirebaseに保存されていますが、一覧の再読み込みに失敗しました。重複登録せず画面を更新して確認してください。");
+      } else {
+        showError(await productWriteFailureMessage("追加", error));
+      }
 
     }
 
@@ -17059,6 +17039,18 @@ function openEditProductModal(
       product
     )
   );
+
+  // In the old catalog, cashback money was sometimes mistaken for earnings.
+  // Never convert that guessed value into an explicit saved price on edit.
+  const needsVerifiedCashbackPrices =
+    (!Array.isArray(product.pricingOptions) || product.pricingOptions.length === 0) &&
+    Array.isArray(product.cashbackOptions) &&
+    product.cashbackOptions.some(value => Number(value) > 0);
+  if (needsVerifiedCashbackPrices) {
+    editProductPricingEditor.querySelectorAll("input[data-pricing-revenue]")
+      .forEach(input => { input.value = ""; });
+    showError("旧形式のCB別売上単価は未確認です。全CBプランの収益単価を確認して入力してください。");
+  }
 
   productModal.style.display =
     "flex";
@@ -17148,6 +17140,8 @@ saveProductModal.onclick =
       );
 
 
+    let savedOnServer = false;
+
     try {
 
       await updateDoc(
@@ -17174,9 +17168,11 @@ saveProductModal.onclick =
       );
 
 
+      savedOnServer = true;
+
       closeProductModal();
 
-      await loadProducts();
+      await loadProducts(true);
 
       prepareProductInputList(
         draftResults
@@ -17188,90 +17184,17 @@ saveProductModal.onclick =
 
     } catch (error) {
 
-      showError(
-        firebaseErrorMessage(
-          error
-        )
-      );
+      if (savedOnServer) {
+        showError("商材の変更はFirebaseに保存されていますが、一覧の再読み込みに失敗しました。再度保存せず、画面を更新して確認してください。");
+      } else {
+        showError(await productWriteFailureMessage("変更", error));
+      }
 
     }
 
   };
 
 
-async function deleteProduct(
-  product
-) {
-
-  const draftResults =
-    captureProductInputDraft();
-
-
-  Object.keys(
-    draftResults
-  ).forEach(
-    key => {
-
-      if (
-        draftResults[
-          key
-        ]?.productId ===
-        product.id
-      ) {
-
-        delete draftResults[
-          key
-        ];
-
-      }
-
-    }
-  );
-
-
-  if (
-    !confirm(
-      `${product.name}を削除しますか？`
-    )
-  ) {
-
-    return;
-
-  }
-
-
-  try {
-
-    await deleteDoc(
-      doc(
-        db,
-        "products",
-        product.id
-      )
-    );
-
-
-    await loadProducts();
-
-    prepareProductInputList(
-      draftResults
-    );
-
-    showSuccess(
-      "商材を削除しました。"
-    );
-
-  } catch (error) {
-
-    showError(
-      firebaseErrorMessage(
-        error
-      )
-    );
-
-  }
-
-}
 
 
 /* =====================================================
@@ -20493,10 +20416,9 @@ function buildProductInputGroups(
                   0
                 ),
               revenuePerUnit:
-                Number(
-                  option.revenuePerUnit ||
-                  0
-                )
+                option.revenuePerUnit == null
+                  ? null
+                  : Number(option.revenuePerUnit)
             }
           );
 
@@ -20593,14 +20515,8 @@ function buildProductInputGroups(
               ),
             revenuePerUnit:
               snapshot
-                ? Number(
-                    snapshot.revenuePerUnit ||
-                    0
-                  )
-                : Number(
-                    option.revenuePerUnit ||
-                    0
-                  ),
+                ? Number(snapshot.revenuePerUnit ?? 0)
+                : (option.revenuePerUnit == null ? null : Number(option.revenuePerUnit)),
             historicalOnly:
               false,
             planOrder:
@@ -20848,7 +20764,7 @@ function prepareProductInputList(
 
           unit.textContent =
             canCurrentUserViewUnitPrice()
-              ? `${formatYen(plan.revenuePerUnit)}/件`
+              ? (plan.revenuePerUnit == null ? "売上単価未設定" : `${formatYen(plan.revenuePerUnit)}/件`)
               : "単価非表示";
 
 
@@ -20893,9 +20809,7 @@ function prepareProductInputList(
             );
 
           input.dataset.revenuePerUnit =
-            String(
-              plan.revenuePerUnit
-            );
+            plan.revenuePerUnit == null ? "" : String(plan.revenuePerUnit);
 
           input.dataset.resultKey =
             resultVariantKey(
@@ -21116,10 +21030,9 @@ function getCurrentInputResults() {
           count,
 
           revenuePerUnit:
-            Number(
-              input.dataset.revenuePerUnit ||
-              0
-            )
+            input.dataset.revenuePerUnit === ""
+              ? null
+              : Number(input.dataset.revenuePerUnit)
 
         };
 
@@ -21223,6 +21136,7 @@ function updateProductGroupTotals() {
 
         let revenue =
           0;
+        let missingUnitPrice = false;
 
 
         group
@@ -21245,18 +21159,13 @@ function updateProductGroupTotals() {
                   ? itemCount
                   : 0;
 
-              revenue +=
-                (
-                  Number.isFinite(
-                    itemCount
-                  )
-                    ? itemCount
-                    : 0
-                ) *
-                Number(
-                  input.dataset.revenuePerUnit ||
-                  0
-                );
+              if (itemCount > 0 && input.dataset.revenuePerUnit === "") {
+                missingUnitPrice = true;
+              } else {
+                revenue +=
+                  (Number.isFinite(itemCount) ? itemCount : 0) *
+                  Number(input.dataset.revenuePerUnit || 0);
+              }
 
             }
           );
@@ -21272,9 +21181,7 @@ function updateProductGroupTotals() {
 
           total.innerHTML = `
             <span>合計 ${count}件</span>
-            <span>${formatYen(
-              revenue
-            )}</span>
+            <span>${missingUnitPrice ? "売上単価未設定" : formatYen(revenue)}</span>
           `;
 
         }
@@ -21339,12 +21246,16 @@ function verifyNewRecordPricing(results, productCatalog) {
     const cb = Number(row.cashback ?? 0);
     const price = Number(row.revenuePerUnit);
     const plans = getProductPricingOptions(product);
+    // A duplicate cashback plan is ambiguous: never pick a random price.
     const matchingPlans = plans.filter(option => Number(option.cashback) === cb);
     const matching = matchingPlans.length === 1 ? matchingPlans[0] : null;
     if (!matching || !Number.isSafeInteger(cb) || cb < 0) {
       return "選択中のCBプランが現在の商材設定と一致しません。再読み込みしてください。";
     }
-    if (!Number.isSafeInteger(price) || price < 0 ||
+    if (matching.revenuePerUnit == null ||
+        row.revenuePerUnit == null || row.revenuePerUnit === "" ||
+        !Number.isSafeInteger(price) || price < 0 ||
+        !Number.isSafeInteger(Number(matching.revenuePerUnit)) ||
         price !== Number(matching.revenuePerUnit)) {
       return "商材の保存単価が現在の設定と一致しません。再読み込みしてから登録してください。";
     }
@@ -21354,15 +21265,69 @@ function verifyNewRecordPricing(results, productCatalog) {
 
 function verifyChangedRecordPricing(nextResults, storedResults, productCatalog) {
   const oldMap = normalizeExistingResultMap(storedResults);
-  for (const row of Object.values(nextResults || {})) {
-    const key = resultVariantKey(row.productId,row.cashback ?? 0);
-    const previous = oldMap[key];
-    const previousCount = Number(previous?.count || 0);
-    if (Number(row.count) === previousCount) continue;
+  const nextMap = normalizeExistingResultMap(nextResults);
+  // Check both maps: a deleted historical line must not slip past price validation.
+  for (const [key, previous] of Object.entries(oldMap)) {
+    const next = nextMap[key];
+    const priorCount = Number(previous?.count ?? 0);
+    const nextCount = Number(next?.count ?? 0);
+    if (nextCount === priorCount) {
+      // Existing sales retain the saved unit price on an unchanged line.
+      if (next && Number(next.revenuePerUnit) !== Number(previous.revenuePerUnit))
+        return "既存の売上単価は通常の実績更新では変更できません。オーナーの金額訂正を利用してください。";
+      continue;
+    }
+    if (priorCount > 0) {
+      const current = (productCatalog || []).find(p => p.id === previous.productId);
+      const explicit = current && Array.isArray(current.pricingOptions) &&
+        current.pricingOptions.find(opt => Number(opt.cashback) === Number(previous.cashback ?? 0));
+      if (!explicit || !Number.isSafeInteger(Number(explicit.revenuePerUnit)) ||
+          Number(previous.revenuePerUnit) !== Number(explicit.revenuePerUnit))
+        return "過去実績の売上単価が現在と異なります。件数変更の前にオーナーが金額訂正を確認してください。";
+    }
+    if (next) {
+      const problem = verifyNewRecordPricing({[key]:next},productCatalog);
+      if (problem) return "件数変更前に単価の再確認が必要です。"+problem;
+    }
+  }
+  for (const [key, row] of Object.entries(nextMap)) {
+    if (Object.prototype.hasOwnProperty.call(oldMap,key)) continue;
     const problem = verifyNewRecordPricing({[key]:row},productCatalog);
-    if (problem) return "件数変更前に単価の再確認が必要です。"+problem;
+    if (problem) return problem;
   }
   return "";
+}
+
+function validateFinancialRecordForSave(data) {
+  const rows = data?.results;
+  if (!rows || typeof rows !== "object" || Array.isArray(rows)) {
+    throw recordConflict("商材明細を確認できません。履歴を変更せず、再読込してください。");
+  }
+  let count = 0;
+  let revenue = 0;
+  for (const item of Object.values(rows)) {
+    const n = Number(item?.count);
+    // Null/blank/unset rates are UNKNOWN, never silently 0 yen.
+    if (item?.revenuePerUnit == null || item.revenuePerUnit === "" ||
+        item?.count == null || item.count === "") {
+      throw recordConflict("売上単価または件数が未設定です。保存を中止しました。");
+    }
+    const rate = Number(item.revenuePerUnit);
+    if (!Number.isSafeInteger(n) || n < 0 ||
+        !Number.isSafeInteger(rate) || rate < 0 ||
+        !Number.isSafeInteger(n * rate)) {
+      throw recordConflict("件数または単価が不正です。保存せず管理者に単価を確認してください。");
+    }
+    count += n;
+    revenue += n * rate;
+    if (!Number.isSafeInteger(count) || !Number.isSafeInteger(revenue)) {
+      throw recordConflict("売上合計の計算範囲を超えています。保存を中止しました。");
+    }
+  }
+  if (count !== Number(data.totalCount) || revenue !== Number(data.totalRevenue)) {
+    throw recordConflict("商材明細と売上合計が一致しません。保存を中止しました。");
+  }
+  return true;
 }
 
 function calculateResultsTotals(
@@ -21426,9 +21391,9 @@ function updateRecordTotals() {
 
 
   recordTotalRevenue.textContent =
-    formatYen(
-      totals.revenue
-    );
+    Object.values(results).some(row => row.count > 0 && row.revenuePerUnit == null)
+      ? "売上単価未設定"
+      : formatYen(totals.revenue);
 
 }
 
@@ -21488,11 +21453,27 @@ async function loadExistingRecordIntoForm() {
   }
 
 
-  const record =
-    findDailyRecord(
-      recordMember.value,
-      recordDate.value
-    );
+  const lookup=++recordFormLookupGeneration;
+  const memberId=recordMember.value;
+  const date=recordDate.value;
+  let record=findDailyRecord(memberId,date);
+  if(!record) {
+    // Do not guess that a past day is empty just because another month is loaded.
+    try {
+      saveRecordButton.disabled=true;
+      record=await findDailyRecordFromServer(memberId,date);
+      if(lookup!==recordFormLookupGeneration||
+         memberId!==recordMember.value||date!==recordDate.value)return;
+    } catch(error) {
+      if(lookup!==recordFormLookupGeneration)return;
+      editingRecordId=null;
+      editingRecordRevision=null;
+      showError("元の実績を確認できません。二重登録を避けるため、通信を確認して再選択してください。");
+      return;
+    } finally {
+      if(lookup===recordFormLookupGeneration)saveRecordButton.disabled=false;
+    }
+  }
 
 
   if (
@@ -21580,39 +21561,7 @@ function recordConflict(message) {
   return error;
 }
 
-function validateFinancialRecordForSave(data) {
-  const rows = data?.results;
-  if (!rows || typeof rows !== "object" || Array.isArray(rows)) {
-    throw recordConflict("商材明細を確認できません。履歴を変更せず、再読込してください。");
-  }
-  let count = 0;
-  let revenue = 0;
-  for (const item of Object.values(rows)) {
-    const n = Number(item?.count);
-    const rate = Number(item?.revenuePerUnit);
-    if (!Number.isSafeInteger(n) || n < 0 ||
-        !Number.isSafeInteger(rate) || rate < 0 ||
-        !Number.isSafeInteger(n * rate)) {
-      throw recordConflict("件数または単価が不正です。保存せず管理者に単価を確認してください。");
-    }
-    count += n;
-    revenue += n * rate;
-    if (!Number.isSafeInteger(count) || !Number.isSafeInteger(revenue)) {
-      throw recordConflict("売上合計の計算範囲を超えています。保存を中止しました。");
-    }
-  }
-  if (count !== Number(data.totalCount) || revenue !== Number(data.totalRevenue)) {
-    throw recordConflict("商材明細と売上合計が一致しません。保存を中止しました。");
-  }
-  return true;
-}
-
-async function persistDailyRecord(recordRef, data, expectedRecord, expectedRevision) {
-  // Protect new/edited financial records from mismatched totals. Legacy
-  // fixtures without both totals are read-only compatibility inputs.
-  if (data && data.totalCount != null && data.totalRevenue != null) {
-    validateFinancialRecordForSave(data);
-  }
+async function persistDailyRecord(recordRef, data, expectedRecord, expectedRevision, writeCorrection = null) {
   // サーバーで同日を確認。旧IDの実績もそのまま更新し、重複は推測で統合しない。
   const daily = await getDocsFromServer(query(
     recordsCollectionQuery(), where("uid", "==", data.uid), where("date", "==", data.date)
@@ -21631,6 +21580,7 @@ async function persistDailyRecord(recordRef, data, expectedRecord, expectedRevis
     }
     // resultsの削除済み商材が復活しないようマップ全体を置換。
     transaction.set(recordRef, data, {mergeFields: Object.keys(data)});
+    if (writeCorrection) writeCorrection(transaction);
   });
 }
 
@@ -21940,9 +21890,9 @@ saveRecordButton.onclick =
 
 
     const existingDailyRecord = findDailyRecord(targetUid, date);
-
-    // All active products: compare the selected CB plan's sale rate with
-    // the current catalog; don't reprice unchanged historical snapshots.
+    // CB is a selector only; sales are quantity * approved revenuePerUnit.
+    // Never overwrite unchanged historical rates, but block new/incremented counts
+    // whose unit rate no longer matches the catalog.
     if (!zeroResultSubmission) {
       const priceProblem = existingDailyRecord
         ? verifyChangedRecordPricing(results, existingDailyRecord.results, products)
@@ -21952,7 +21902,6 @@ saveRecordButton.onclick =
         return;
       }
     }
-
     const targetTeamId = recordCorrectionTeam.value || null;
     const isOwner = isCurrentCompanyOwner();
     const isLeader = isCurrentTeamLeader();
@@ -22089,18 +22038,11 @@ saveRecordButton.onclick =
       }
 
 
-      await persistDailyRecord(recordRef, data, existingDailyRecord, editingRecordRevision);
+      validateFinancialRecordForSave(data);
 
-
-      let correctionAuditWarning =
-        false;
-
-      if (
-        existingDailyRecord
-      ) {
-
-        try {
-
+      // One atomic transaction: an audit failure must roll back the sales edit.
+      const writeCorrection = existingDailyRecord
+        ? transaction => {
           const correctionRef =
             doc(
               collection(
@@ -22109,7 +22051,7 @@ saveRecordButton.onclick =
               )
             );
 
-          await setDoc(
+          transaction.set(
             correctionRef,
             {
               companyId:
@@ -22179,19 +22121,10 @@ saveRecordButton.onclick =
             }
           );
 
-        } catch (auditError) {
-
-          correctionAuditWarning =
-            true;
-
-          console.error(
-            "訂正履歴保存エラー:",
-            auditError
-          );
-
         }
+        : null;
+      await persistDailyRecord(recordRef, data, existingDailyRecord, editingRecordRevision, writeCorrection);
 
-      }
 
 
       /*
@@ -22242,10 +22175,11 @@ saveRecordButton.onclick =
             record.id ===
             recordRef.id
         );
+      const isSelectedMonth=confirmedRecord.date.slice(0,7)===dashboardMonth.value;
 
 
       if (
-        existingIndex >= 0
+        isSelectedMonth && existingIndex >= 0
       ) {
 
         records[
@@ -22253,7 +22187,7 @@ saveRecordButton.onclick =
         ] =
           confirmedRecord;
 
-      } else {
+      } else if (isSelectedMonth) {
 
         records.push(
           confirmedRecord
@@ -22281,6 +22215,7 @@ saveRecordButton.onclick =
           0,
           7
         );
+      if(recordsSubscribedMonth!==dashboardMonth.value)subscribeSelectedMonthRecords();
 
 
       let dashboardRefreshError =
@@ -22329,13 +22264,9 @@ saveRecordButton.onclick =
       } else {
 
         showSuccess(
-          correctionAuditWarning
-            ? `${date}の実績は保存できました。訂正履歴の保存だけ失敗したため管理者へ確認してください。`
-            : (
-                zeroResultSubmission
-                  ? `${date}を「実績なし（0件）」として報告しました。`
-                  : `${date}の実績を保存し、ダッシュボードへ反映しました。`
-              )
+          zeroResultSubmission
+            ? `${date}を「実績なし（0件）」として報告しました。`
+            : `${date}の実績を保存し、ダッシュボードへ反映しました。`
         );
 
       }
@@ -22397,212 +22328,20 @@ saveRecordButton.onclick =
 ===================================================== */
 
 async function loadRecords() {
-
-  try {
-
-    const snapshot =
-      await getDocs(
-        recordsCollectionQuery()
-      );
-
-
-    records = [];
-
-
-    snapshot.forEach(
-      recordDoc => {
-
-        records.push({
-
-          id:
-            recordDoc.id,
-
-          ...recordDoc.data()
-
-        });
-
-      }
-    );
-
-
-    records.sort(
-      (a, b) =>
-        (
-          b.date ||
-          ""
-        ).localeCompare(
-          a.date ||
-          ""
-        )
-    );
-
-
-    createMonthOptions();
-
-    renderDashboard();
-
-
-  } catch (error) {
-
-    console.error(
-      "実績取得エラー:",
-      error
-    );
-
-
-    showError(
-      firebaseErrorMessage(
-        error
-      )
-    );
-
-  }
-
+  // Full-history getDocs is deliberately removed. Do not show partial results.
+  subscribeSelectedMonthRecords();
 }
-
 
 /* =====================================================
    月選択肢
 ===================================================== */
 
 function createMonthOptions() {
-
-  const today =
-    getTodayString();
-
-  const currentYear =
-    today.slice(
-      0,
-      4
-    );
-
-  const years =
-    new Set([
-      currentYear
-    ]);
-
-
-  records.forEach(
-    record => {
-
-      if (
-        record.date &&
-        record.date.length >= 4
-      ) {
-
-        years.add(
-          record.date.slice(
-            0,
-            4
-          )
-        );
-
-      }
-
-    }
-  );
-
-
-  const sortedYears =
-    Array.from(
-      years
-    ).sort(
-      (a, b) =>
-        b.localeCompare(a)
-    );
-
-
-  const months =
-    [];
-
-
-  sortedYears.forEach(
-    year => {
-
-      for (
-        let month = 12;
-        month >= 1;
-        month--
-      ) {
-
-        months.push(
-          `${year}-${String(
-            month
-          ).padStart(
-            2,
-            "0"
-          )}`
-        );
-
-      }
-
-    }
-  );
-
-
-  const current =
-    dashboardMonth.value;
-
-
-  dashboardMonth.innerHTML =
-    "";
-
-
-  months.forEach(
-    month => {
-
-      const option =
-        document.createElement(
-          "option"
-        );
-
-
-      option.value =
-        month;
-
-
-      const [
-        year,
-        monthNumber
-      ] =
-        month.split("-");
-
-
-      option.textContent =
-        `${year}年${Number(
-          monthNumber
-        )}月`;
-
-
-      dashboardMonth.appendChild(
-        option
-      );
-
-    }
-  );
-
-
-  if (
-    months.includes(
-      current
-    )
-  ) {
-
-    dashboardMonth.value =
-      current;
-
-  } else {
-
-    dashboardMonth.value =
-      today.slice(
-        0,
-        7
-      );
-
+  // Native month input can access old years without an all-history lookup.
+  if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(dashboardMonth.value)) {
+    dashboardMonth.value=getTodayString().slice(0,7);
   }
-
 }
-
 
 dashboardMonth.addEventListener(
   "change",
@@ -22620,7 +22359,7 @@ dashboardMonth.addEventListener(
     recordHistoryDate.value =
       "";
 
-    renderDashboard();
+    subscribeSelectedMonthRecords();
 
   }
 );
@@ -22937,7 +22676,8 @@ function renderNotificationSettingsForm() {
 
 
 function getUnreportedTeamSummary(
-  date = getTodayString()
+  date = getTodayString(),
+  sourceRecords = records
 ) {
 
   const teamSummary =
@@ -22956,7 +22696,7 @@ function getUnreportedTeamSummary(
       "team_any"
   ) {
 
-    records
+    sourceRecords
       .filter(
         record =>
           record &&
@@ -23098,7 +22838,7 @@ function getUnreportedTeamSummary(
           1;
 
         const hasReport =
-          records.some(
+          sourceRecords.some(
             record =>
               record.uid ===
                 memberId &&
@@ -23173,49 +22913,50 @@ function getUnreportedTeamSummary(
 
 }
 
-function renderNotificationPreview() {
-
-  const missing =
-    getUnreportedTeamSummary(
-      getTodayString()
-    );
-
-  if (
-    missing.length ===
-      0
-  ) {
-
-    notificationPreview.innerHTML =
-      "✅ 現在、未報告の班はありません。";
-
+async function renderNotificationPreview() {
+  const gen=++notificationPreviewGeneration;
+  const today=getTodayString();
+  const company=currentUserData?.companyId;
+  if(!company||!members.length) {
+    notificationPreview.textContent="報告状況を確認できません。ログイン・所属情報を確認してください。";
     return;
-
   }
-
-  const reportCompletionMode =
-    normalizeNotificationSettings(
-      notificationSettings
-    ).reportCompletionMode;
-
-  notificationPreview.innerHTML =
-    missing
-      .map(
-        item =>
-          reportCompletionMode ===
-            "team_any"
-            ? `⚠️ ${escapeHtml(
-                item.teamName
-              )}：未報告`
-            : `⚠️ ${escapeHtml(
-                item.teamName
-              )}：${item.reported}/${item.expected}名 報告済み（未報告 ${item.expected - item.reported}名）`
-      )
-      .join(
-        "<br>"
-      );
-
+  notificationPreview.textContent="本日の報告状況を確認中です。";
+  try {
+    const todayMonth=today.slice(0,7);
+    let daily;
+    if(recordsReady&&recordsSubscribedMonth===todayMonth) {
+      daily=records.filter(row=>row.date===today);
+    } else {
+      // Single-day bounded query instead of scanning past history.
+      const snap=await getDocsFromServer(query(recordsCollectionQuery(),where("date","==",today)));
+      if(gen!==notificationPreviewGeneration||company!==currentUserData?.companyId)return;
+      daily=[];let invalid=false;
+      snap.forEach(item=>{
+        const data=item.data();
+        if(data.companyId!==company||data.date!==today)invalid=true;
+        else daily.push({id:item.id,...data});
+      });
+      if(invalid)throw new Error("report_source_mismatch");
+    }
+    if(gen!==notificationPreviewGeneration||company!==currentUserData?.companyId)return;
+    const missing=getUnreportedTeamSummary(today,daily);
+    if(missing.length===0) {
+      notificationPreview.textContent="✅ 現在、未報告の班はありません。";
+      return;
+    }
+    const mode=normalizeNotificationSettings(notificationSettings).reportCompletionMode;
+    notificationPreview.innerHTML=missing.map(item=>mode==="team_any"
+      ? "⚠️ "+escapeHtml(item.teamName)+"：未報告"
+      : "⚠️ "+escapeHtml(item.teamName)+"："+
+        item.reported+"/"+item.expected+"名 報告済み（未報告 "+
+        (item.expected-item.reported)+"名）").join("<br>");
+  } catch(error) {
+    if(gen!==notificationPreviewGeneration)return;
+    notificationPreview.textContent="⚠️ 本日の報告状況を確認できません。未報告ゼロとは判断しないでください。";
+    console.error("未報告の確認失敗",error?.code||"unavailable");
+  }
 }
-
 
 function stopLinePairingListener() {
 
@@ -24151,7 +23892,8 @@ function getReportProductCatalog(
 
 
 function buildReportData(
-  date
+  date,
+  sourceRecords = records
 ) {
 
   const month =
@@ -24164,14 +23906,14 @@ function buildReportData(
     );
 
   const dailyRecords =
-    records.filter(
+    sourceRecords.filter(
       record =>
         record.date ===
         date
     );
 
   const monthlyRecords =
-    records.filter(
+    sourceRecords.filter(
       record =>
         record.date &&
         record.date.startsWith(
@@ -25182,12 +24924,14 @@ function buildCompanyReportLines(
 
 
 function createFinalReportText(
-  date
+  date,
+  sourceRecords = records
 ) {
 
   const data =
     buildReportData(
-      date
+      date,
+      sourceRecords
     );
 
   const settings =
@@ -25295,12 +25039,14 @@ function createFinalReportText(
 
 
 function createMorningReportText(
-  date
+  date,
+  sourceRecords = records
 ) {
 
   const data =
     buildReportData(
-      date
+      date,
+      sourceRecords
     );
 
   const settings =
@@ -25410,73 +25156,53 @@ function createMorningReportText(
 
 
 
-buildFinalReportButton.onclick =
-  () => {
-
-    const date =
-      reportBuilderDate.value;
-
-
-    if (!date) {
-
-      showError(
-        "集計する日付を選択してください。"
-      );
-
-      return;
-
+async function buildVerifiedReport(date,mode) {
+  const gen=++reportBuildGeneration;
+  const company=currentUserData?.companyId;
+  reportBuilderText.value="";
+  if(!/^\d{4}-(0[1-9]|1[0-2])-[0-3]\d$/.test(date)) {
+    showError("集計する日付を正しく選択してください。");
+    return;
+  }
+  buildFinalReportButton.disabled=true;
+  buildMorningReportButton.disabled=true;
+  copyReportButton.disabled=true;
+  try {
+    const verified=await readVerifiedMonthForReport(date.slice(0,7));
+    if(gen!==reportBuildGeneration||company!==currentUserData?.companyId||
+       date!==reportBuilderDate.value)return;
+    reportBuilderText.value=mode==="final"
+      ? createFinalReportText(date,verified)
+      : createMorningReportText(date,verified);
+  } catch(error) {
+    if(gen!==reportBuildGeneration)return;
+    reportBuilderText.value="";
+    showError("報告対象月の全件確認ができません。件数が誤るため報告文の生成を中止しました。");
+    console.error("報告文の件数確認失敗",error?.code||"unavailable");
+  } finally {
+    if(gen===reportBuildGeneration) {
+      buildFinalReportButton.disabled=false;
+      buildMorningReportButton.disabled=false;
+      copyReportButton.disabled=false;
     }
-
-
-    reportBuilderText.value =
-      createFinalReportText(
-        date
-      );
-
-  };
-
-
-buildMorningReportButton.onclick =
-  () => {
-
-    let date =
-      reportBuilderDate.value;
-
-
-    if (!date) {
-
-      showError(
-        "集計する日付を選択してください。"
-      );
-
-      return;
-
-    }
-
-
-    if (
-      date ===
-      getTodayString()
-    ) {
-
-      date =
-        previousDateString(
-          date
-        );
-
-      reportBuilderDate.value =
-        date;
-
-    }
-
-
-    reportBuilderText.value =
-      createMorningReportText(
-        date
-      );
-
-  };
-
+  }
+}
+reportBuilderDate.addEventListener("change",()=>{
+  ++reportBuildGeneration;
+  reportBuilderText.value="";
+  buildFinalReportButton.disabled=false;
+  buildMorningReportButton.disabled=false;
+  copyReportButton.disabled=false;
+});
+buildFinalReportButton.onclick=()=>buildVerifiedReport(reportBuilderDate.value,"final");
+buildMorningReportButton.onclick=()=>{
+  let date=reportBuilderDate.value;
+  if(date===getTodayString()) {
+    date=previousDateString(date);
+    reportBuilderDate.value=date;
+  }
+  return buildVerifiedReport(date,"morning");
+};
 
 copyReportButton.onclick =
   async () => {
@@ -25710,6 +25436,10 @@ function getCurrentTeamName(
 ===================================================== */
 
 function renderDashboard() {
+  if(!recordsReady||recordsSubscribedMonth!==dashboardMonth.value) {
+    showMonthlyRecordsState("全件確認後に集計を表示します。",true);
+    return;
+  }
 
   applyRevenueVisibility();
   renderDailyGoalCalculator();
@@ -27590,7 +27320,7 @@ function buildRevenueChartData() {
 
 
   const relevantRecords =
-    records.filter(
+    (revenueChartMode === "annual" ? (annualChartRecords || []) : records).filter(
       record => {
 
         if (
@@ -28303,6 +28033,45 @@ function renderRevenueChart() {
 
   revenueChartToggle.style.display =
     "";
+
+  if(revenueChartMode==="annual") {
+    const year=dashboardMonth.value.slice(0,4);
+    const key=(currentUserData?.companyId||"")+":"+year;
+    if(annualChartYear!==key||!annualChartRecords) {
+      revenueChartSummary.innerHTML="";
+      revenueChartLegend.innerHTML="";
+      revenueChartArea.textContent=annualChartErrorKey===key
+        ?"年間実績の取得に失敗しました。月間表示へ戻し、通信・権限を確認してください。"
+        :"対象年の実績を確認中です。確定するまで年間売上を表示しません。";
+      revenueChartDetail.innerHTML="";
+      if(annualChartErrorKey!==key && annualChartRequestedKey!==key) {
+        annualChartRequestedKey=key;
+        const gen=++annualChartGeneration;
+        loadAnnualChartRecords(year).then(result=>{
+          if(gen!==annualChartGeneration||
+             revenueChartMode!=="annual"||
+             currentUserData?.companyId+":"+dashboardMonth.value.slice(0,4)!==key)return;
+          // An in-flight yearly request may finish after the live month
+          // changed. Reconcile only verified, same-company and same-year rows.
+          if(recordsReady&&recordsSubscribedMonth.startsWith(year))
+            result=mergeVerifiedMonthIntoAnnual(
+              result,recordsSubscribedMonth,records,currentUserData.companyId);
+          annualChartRecords=result;
+          annualChartYear=key;
+          annualChartRequestedKey="";
+          annualChartErrorKey="";
+          renderRevenueChart();
+        }).catch(error=>{
+          if(gen!==annualChartGeneration)return;
+          annualChartErrorKey=key;
+          annualChartRequestedKey="";
+          console.error("年間売上確認エラー",error?.code||"unavailable");
+          renderRevenueChart();
+        });
+      }
+      return;
+    }
+  }
 
 
   const chartData =
@@ -29328,7 +29097,8 @@ revenueChartMonthlyButton.addEventListener(
 revenueChartAnnualButton.addEventListener(
   "click",
   () => {
-
+    annualChartErrorKey="";
+    annualChartRequestedKey="";
     revenueChartMode =
       "annual";
 
@@ -31609,7 +31379,216 @@ function rankProductMemberCounts(members) {
   });
 }
 
+// Ranking presentation only: no new Firestore reads or writes, no new permissions.
+function rankingGroupsStorageKey() {
+  if (!currentUser?.uid || !currentUserData?.companyId) return "";
+  return "sales-ranking-groups-v1-" +
+    encodeURIComponent(currentUserData.companyId) + "-" +
+    encodeURIComponent(currentUser.uid);
+}
+
+function loadLocalRankingGroups() {
+  rankingGroups = [];
+  rankingGroupsLoaded = true;
+  rankingGroupDraftSelectedKeys.clear();
+  const key = rankingGroupsStorageKey();
+  if (!key) return;
+  const raw = safeLocalStorageGet(key);
+  if (!raw) return;
+  try {
+    rankingGroups = normalizeRankingGroups(JSON.parse(raw));
+  } catch {
+    // If settings are damaged, show an empty ranking instead of impacting sales.
+    rankingGroups = [];
+  }
+}
+
+function normalizeRankingGroups(value) {
+  if (!Array.isArray(value)) return [];
+  const usedKeys = new Set();
+  const ids = new Set();
+  const names = new Set();
+  const out = [];
+  for (const item of value.slice(0, 30)) {
+    if (!item || typeof item !== "object") continue;
+    const id = typeof item.id === "string" ? item.id.trim() : "";
+    const name = typeof item.name === "string" ? item.name.trim() : "";
+    if (!id || id.length > 80 || !name || name.length > 40 ||
+        ids.has(id) || names.has(name) || !Array.isArray(item.keys)) continue;
+    const keys = [];
+    for (const key of item.keys.slice(0, 100)) {
+      if (typeof key !== "string" || key.length > 160 ||
+          !(key.startsWith("id:") || key.startsWith("legacy:")) ||
+          key.length < 4 || usedKeys.has(key) || keys.includes(key)) continue;
+      keys.push(key);
+    }
+    if (!keys.length) continue;
+    keys.forEach(key => usedKeys.add(key));
+    ids.add(id);
+    names.add(name);
+    out.push({id, name, keys});
+  }
+  return out;
+}
+
+function buildGroupedProductMemberRanking(monthly, teamId = "", groups = rankingGroups) {
+  const byKey = new Map(buildProductMemberRanking(monthly, teamId)
+    .map(product => [product.key, product]));
+  return groups.map(group => {
+    const people = new Map();
+    let count = 0;
+    for (const key of group.keys) {
+      const product = byKey.get(key);
+      if (!product) continue;
+      count += product.count;
+      product.members.forEach(person => {
+        let existing = people.get(person.key);
+        if (!existing) {
+          existing = {key: person.key, name: person.name, count: 0, teamNames: new Set()};
+          people.set(person.key, existing);
+        }
+        existing.count += person.count;
+        existing.name = person.name;
+        existing.teamNames.add(person.teamName);
+      });
+    }
+    return {
+      key: "group:" + group.id,
+      name: group.name,
+      count,
+      members: rankProductMemberCounts([...people.values()].map(person => ({
+        key: person.key,
+        name: person.name,
+        count: person.count,
+        teamName: person.teamNames.has("複数班で獲得") || person.teamNames.size > 1
+          ? "複数班で獲得" : [...person.teamNames][0] || "所属なし"
+      })))
+    };
+  }).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "ja"));
+}
+
+// Active and archived catalog IDs stay distinct; snapshots without IDs are
+// selectable only by their explicit historical names, never guessed from text.
+function availableRankingProductChoices() {
+  const found = new Map();
+  products.forEach(product => {
+    const key = "id:" + product.id;
+    if (key.length <= 160) found.set(key, {key, name: product.name || "名前未設定"});
+  });
+  records.forEach(record => {
+    getRecordResults(record).forEach(result => {
+      const key = result.productId
+        ? "id:" + result.productId
+        : "legacy:" + (result.productName || "不明");
+      if (!found.has(key) && key.length <= 160) {
+        found.set(key, {key, name: currentProductDisplayName(result)});
+      }
+    });
+  });
+  return [...found.values()].sort((a,b) => a.name.localeCompare(b.name, "ja"));
+}
+
+function renderRankingGroupEditor() {
+  rankingGroupEditor.hidden = !isCurrentCompanyManager();
+  if (rankingGroupEditor.hidden || !rankingGroupEditor.open) return;
+  rankingGroupAdd.disabled = !rankingGroupsLoaded || rankingGroupSaveBusy;
+  const taken = new Set(rankingGroups.flatMap(group => group.keys));
+  rankingGroupProducts.replaceChildren();
+  const choices = availableRankingProductChoices().filter(item => !taken.has(item.key));
+  choices.forEach(item => {
+    const label = document.createElement("label");
+    label.style.cssText = "display:flex;align-items:center;gap:9px;padding:8px;background:var(--card,#fff);border-radius:8px;";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.value = item.key;
+    input.checked = rankingGroupDraftSelectedKeys.has(item.key);
+    input.disabled = rankingGroupSaveBusy || !rankingGroupsLoaded;
+    input.addEventListener("change", () => {
+      if (input.checked) rankingGroupDraftSelectedKeys.add(item.key);
+      else rankingGroupDraftSelectedKeys.delete(item.key);
+    });
+    const title = document.createElement("span");
+    title.textContent = item.name;
+    label.append(input, title);
+    rankingGroupProducts.appendChild(label);
+  });
+  if (!choices.length) {
+    rankingGroupProducts.textContent = "選べる商材がありません。";
+  }
+  rankingGroupExisting.replaceChildren();
+  rankingGroups.forEach(group => {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px;border-bottom:1px solid #e5e7eb;";
+    const name = document.createElement("span");
+    name.textContent = group.name + "（" + group.keys.length + "商材）";
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "解除";
+    remove.className = "team-action-button";
+    remove.disabled = rankingGroupSaveBusy || !rankingGroupsLoaded;
+    remove.addEventListener("click", async () => {
+      if (!isCurrentCompanyManager() || !confirm("「" + group.name + "」をランキングから解除しますか？実績は消えません。")) return;
+      await saveRankingGroups(rankingGroups.filter(item => item.id !== group.id));
+    });
+    row.append(name, remove);
+    rankingGroupExisting.appendChild(row);
+  });
+}
+
+async function saveRankingGroups(next) {
+  if (!isCurrentCompanyManager() || rankingGroupSaveBusy || !rankingGroupsLoaded) return false;
+  const normalized = normalizeRankingGroups(next);
+  if (normalized.length !== next.length) {
+    showError("グループ名か商材の選択が重複しています。");
+    return false;
+  }
+  rankingGroupSaveBusy = true;
+  renderRankingGroupEditor();
+  try {
+    const storageKey = rankingGroupsStorageKey();
+    if (!storageKey || !safeLocalStorageSet(storageKey, JSON.stringify(normalized))) {
+      showError("この端末に設定を保存できませんでした。ブラウザの保存設定を確認してください。");
+      return false;
+    }
+    rankingGroups = normalized;
+    rankingGroupDraftSelectedKeys.clear();
+    rankingGroupName.value = "";
+    renderProductMemberRanking(records.filter(record =>
+      record.date?.startsWith(dashboardMonth.value)
+    ));
+    showSuccess("ランキンググループをこの端末に保存しました。");
+    return true;
+  } catch (error) {
+    console.error("ランキンググループ保存エラー:", error);
+    showError(firebaseErrorMessage(error));
+    return false;
+  } finally {
+    rankingGroupSaveBusy = false;
+    renderRankingGroupEditor();
+  }
+}
+
+rankingGroupEditor.addEventListener("toggle", renderRankingGroupEditor);
+rankingGroupAdd.addEventListener("click", async () => {
+  const name = rankingGroupName.value.trim();
+  const taken = new Set(rankingGroups.flatMap(group => group.keys));
+  const available = new Set(availableRankingProductChoices().map(item => item.key));
+  const keys = [...rankingGroupDraftSelectedKeys].filter(key =>
+    available.has(key) && !taken.has(key)
+  );
+  if (!name || name.length > 40) return showError("グループ名を40文字以内で入力してください。");
+  if (!keys.length) return showError("まとめる商材を1つ以上選んでください。");
+  if (rankingGroups.length >= 30) return showError("グループは最大30件です。");
+  if (rankingGroups.some(group => group.name === name)) return showError("同じ名前のグループがあります。");
+  await saveRankingGroups([...rankingGroups, {
+    id: "group_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2,10),
+    name,
+    keys
+  }]);
+});
+
 function renderProductMemberRanking(monthly) {
+  rankingGroupEditor.hidden = !isCurrentCompanyManager();
   updateRankingLayoutControls("product");
 
   // 売上に関係しない件数ランキングだが閲覧対象は会社管理者のみ。
@@ -31637,14 +31616,15 @@ function renderProductMemberRanking(monthly) {
   });
   productRankingTeamSelect.value = teamId;
 
-  const productsWithCounts = buildProductMemberRanking(monthly, teamId);
-  productRankingCount.textContent = `${productsWithCounts.length}商材`;
+  renderRankingGroupEditor();
+  const productsWithCounts = buildGroupedProductMemberRanking(monthly, teamId);
+  productRankingCount.textContent = `${productsWithCounts.length}グループ`;
   productRankingProductList.replaceChildren();
   productRankingMemberList.replaceChildren();
   if (!productsWithCounts.length) {
-    productRankingProductList.textContent = "表示できる商材がありません。";
+    productRankingProductList.textContent = "ランキンググループがありません。「ランキンググループを設定」から追加してください。";
     productRankingMemberCount.textContent = "";
-    productRankingSelectedLabel.textContent = "商材を選択してください";
+    productRankingSelectedLabel.textContent = "グループを選択してください";
     return;
   }
 
@@ -31764,12 +31744,16 @@ function buildTeamRankingRows(
     .map(
       team => {
 
+        // Never attribute another team's sales using a duplicated display
+        // name. Legacy NAME-only summaries may be matched if unambiguous.
+        const canUseLegacyName = !!team.name &&
+          teams.filter(item => item.name === team.name).length === 1 &&
+          !teams.some(item => item.id === team.name && item.id !== team.id);
         const result =
           teamMap[team.id] ||
-          Object.values(teamMap).find(
-            item =>
-              item.name === team.name
-          ) ||
+          (canUseLegacyName && teamMap[team.name] &&
+            teamMap[team.name].name === team.name
+              ? teamMap[team.name] : null) ||
           { count: 0, revenue: 0 };
 
         // 件数目標の既存計算を再利用し、売上目標とは別管理する。
@@ -32015,11 +31999,6 @@ function renderTeamRanking(
    商材別
 ===================================================== */
 
-
-/*
- * READ ONLY: flag suspicious saved amounts for OWNER, across ALL products,
- * without silently applying today's prices to historical sales.
- */
 function auditSavedRevenueRates(monthlyRecords, productCatalog) {
   const findings = [];
   const productsById = new Map((productCatalog || []).map(p => [p.id,p]));
@@ -32052,7 +32031,9 @@ function auditSavedRevenueRates(monthlyRecords, productCatalog) {
       const product = productsById.get(row.productId);
       const name = row.productName || product?.name || "不明";
       const qty = Number(row.count), price = Number(row.revenuePerUnit);
-      if (!Number.isSafeInteger(qty) || qty < 0 ||
+      if (row.count == null || row.count === "" ||
+          row.revenuePerUnit == null || row.revenuePerUnit === "" ||
+          !Number.isSafeInteger(qty) || qty < 0 ||
           !Number.isSafeInteger(price) || price < 0 ||
           !Number.isSafeInteger(qty * price)) {
         report(record.date || "日付不明",name,"保存済み件数または単価が不正です。");
@@ -32066,7 +32047,11 @@ function auditSavedRevenueRates(monthlyRecords, productCatalog) {
         report(record.date || "日付不明",name,"合計金額が安全な数値範囲を超えています。");
         break;
       }
-      if (!qty || !product) continue;
+      if (!qty) continue;
+      if (!product) {
+        report(record.date || "日付不明",name,"商材マスターの参照がありません。過去の単価を確認してください。");
+        continue;
+      }
       const explicit = Array.isArray(product.pricingOptions) && product.pricingOptions.length > 0;
       const oldCB = !explicit && Array.isArray(product.cashbackOptions) &&
         product.cashbackOptions.some(value => Number(value) > 0);
@@ -32085,6 +32070,11 @@ function auditSavedRevenueRates(monthlyRecords, productCatalog) {
       const matches = opts.filter(option => Number(option.cashback) === cb);
       if (matches.length !== 1) {
         report(record.date || "日付不明",name,"CBプランが現在の商材設定と一致しません。");
+        continue;
+      }
+      if (matches[0].revenuePerUnit == null ||
+          !Number.isSafeInteger(Number(matches[0].revenuePerUnit))) {
+        report(record.date || "日付不明",name,"現在のCB別売上単価を確認できません。");
         continue;
       }
       if (price !== Number(matches[0].revenuePerUnit)) {
@@ -32108,26 +32098,31 @@ function renderProductSummary(
   productSummaryList.innerHTML =
     "";
 
-  // Owner-only read-only audit: never write/recalculate stored records.
-  if (isCurrentCompanyOwner()) {
+  // Read-only integrity warning: owner only. No database read, write or auto-repricing.
+  // Price changes over time are flagged for review, never corrected silently.
+  if (isCurrentCompanyOwner() && canCurrentUserViewProductRevenue()) {
     const month = dashboardMonth?.value;
-    const selected = (records || []).filter(record => month && record.date?.startsWith(month));
-    const warnings = auditSavedRevenueRates(selected,products);
-    if (warnings.length) {
-      const panel = document.createElement("div");
-      panel.className = "summary-row";
-      panel.style.display = "block";
-      const heading = document.createElement("strong");
-      heading.textContent = "⚠️ 売上・商材単価 要確認：" + warnings.length + "件（過去データは未変更）";
-      panel.appendChild(heading);
-      for (const warning of warnings.slice(0,20)) {
-        const item = document.createElement("div");
-        item.style.marginTop = "6px";
-        item.style.fontSize = "12px";
-        item.textContent = warning.date + "｜" + warning.name + "：" + warning.message;
-        panel.appendChild(item);
+    if (month && /^\\d{4}-\\d{2}$/.test(month)) {
+      const currentRows = (records || []).filter(row =>
+        typeof row.date === "string" && row.date.startsWith(month + "-"));
+      const warnings = auditSavedRevenueRates(currentRows, products);
+      if (warnings.length) {
+        const panel = document.createElement("div");
+        panel.className = "summary-row";
+        panel.style.display = "block";
+        const heading = document.createElement("strong");
+        heading.textContent = "⚠️ 売上・保存単価 要確認：" + warnings.length +
+          "件（表示月のみ・原票は未変更）";
+        panel.appendChild(heading);
+        for (const warning of warnings.slice(0,20)) {
+          const item = document.createElement("div");
+          item.style.marginTop = "6px";
+          item.style.fontSize = "12px";
+          item.textContent = warning.date + "｜" + warning.name + "：" + warning.message;
+          panel.appendChild(item);
+        }
+        productSummaryList.appendChild(panel);
       }
-      productSummaryList.appendChild(panel);
     }
   }
 
@@ -32146,11 +32141,10 @@ function renderProductSummary(
     names.length === 0
   ) {
 
-    productSummaryList.innerHTML = `
-      <div class="empty-message">
-        この月の実績はありません。
-      </div>
-    `;
+    const empty = document.createElement("div");
+    empty.className = "empty-message";
+    empty.textContent = "この月の実績はありません。";
+    productSummaryList.appendChild(empty);
 
     return;
 
@@ -33710,15 +33704,11 @@ function renderRecordHistory(
           record
         );
 
-      const canDelete =
-        canCurrentUserManageRecord(
-          record
-        );
+      // No historical delete action is displayed; authorized correction remains possible.
 
 
       if (
-        canCorrect ||
-        canDelete
+        canCorrect
       ) {
 
         const actions =
@@ -33757,33 +33747,6 @@ function renderRecordHistory(
 
         }
 
-
-        if (
-          canDelete
-        ) {
-
-          const deleteButton =
-            document.createElement(
-              "button"
-            );
-
-          deleteButton.className =
-            "history-delete";
-
-          deleteButton.textContent =
-            "🗑️ 削除";
-
-          deleteButton.onclick =
-            () =>
-              deleteRecord(
-                record
-              );
-
-          actions.appendChild(
-            deleteButton
-          );
-
-        }
 
 
         item.appendChild(
@@ -33878,84 +33841,6 @@ function editRecord(
    実績削除
 ===================================================== */
 
-async function deleteRecord(
-  record
-) {
-
-  const currentName =
-    getCurrentMemberName(
-      record
-    );
-
-
-  if (
-    !confirm(
-      `${formatDateJapanese(
-        record.date
-      )} / ${currentName}\n\nこの日の実績を削除しますか？`
-    )
-  ) {
-
-    return;
-
-  }
-
-
-  try {
-
-    await deleteDoc(
-      doc(
-        db,
-        "records",
-        record.id
-      )
-    );
-
-
-    if (
-      editingRecordId ===
-      record.id
-    ) {
-
-      editingRecordId =
-        null;
-
-    }
-
-
-    records =
-      records.filter(
-        item =>
-          item.id !==
-          record.id
-      );
-
-
-    createMonthOptions();
-
-    renderDashboard();
-
-
-    showSuccess(
-      "実績を削除しました。"
-    );
-
-  } catch (error) {
-
-    console.error(
-      error
-    );
-
-
-    showError(
-      firebaseErrorMessage(
-        error
-      )
-    );
-
-  }
-
-}
 
 
 /* =====================================================
