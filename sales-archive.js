@@ -1,4 +1,5 @@
 // Sales archive module: READ-ONLY. Does not write or delete Firestore documents.
+import {archiveExportPolicy} from "./archive-output-policy.mjs";
 import {getApp} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
 import {getAuth,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 import {getFirestore,getDoc,doc,collection,query,where,getDocsFromServer} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
@@ -150,8 +151,13 @@ async function load(){
   original:{records,products:collections[1],recordCorrections:corrections,teams:collections[3]}};
  bundle={kind:"sales-archive",version:1,checksumAlgorithm:"SHA-256",checksum:await sha(payload),payload};
  $("archiveSummary").textContent=p.value+" ｜ 日別実績 "+summary.dailyRecords+"件 ｜ 獲得 "+summary.count+"件 ｜ 保存単価ベース "+money(summary.revenue)+" ｜ 現行単価との比較差額 "+money(summary.currentPriceComparableRevenue-summary.savedComparableRevenue)+"（比較不能 "+summary.unresolvedCurrentPrices+"行） ｜ 訂正 "+corrections.length+"件 ｜ 照合："+(warnings.length?"要確認 "+warnings.length+"件":"警告なし");
- status(warnings.length?"⚠ 不一致や未設定があります。確定資料として使う前に原票を確認してください。\n"+warnings.slice(0,10).join("\n"):"読取専用で取得しました。元データに変更はありません。");
- outputButtons.forEach(id=>$(id).disabled=false);
+ const policy=archiveExportPolicy({warnings,rows,records,companyVerified:true});
+ status(policy.isVerifiedFinancialReport
+   ?"読取専用で取得しました。元データに変更はありません。"
+   :"⚠ 保存単価・件数に不一致または未確認があります。PDF/CSVの確定資料出力を禁止しました。照合用JSONのみ保存できます。元の記録を修正せず、オーナーが確認してください。\n"+warnings.slice(0,10).join("\n"));
+ $("archivePdf").disabled=!policy.canExportPdf;
+ $("archiveCsv").disabled=!policy.canExportCsv;
+ $("archiveJson").disabled=!policy.canExportEvidenceJson;
 }
 function fileBase(){const a=bundle.payload;return "営業実績_"+a.period+"_"+a.company.id.replace(/[^a-zA-Z0-9_-]/g,"_");}
 function download(name,content,type){
@@ -219,10 +225,18 @@ $("archiveFile").addEventListener("change",async()=>{
   if(!ownerCompany||data?.payload?.company?.id!==ownerCompany.id)throw Error("現在の会社のオーナーが作成した資料のみ表示できます。");
   if(data.kind!=="sales-archive"||data.version!==1||!data.payload||!data.checksum)throw Error("正しい売上保存JSONではありません。");
   if(await sha(data.payload)!==data.checksum)throw Error("内容の整合性確認に失敗しました。破損や改変の可能性があります。");
-  bundle=data;outputButtons.forEach(id=>$(id).disabled=false);
+  const saved=data.payload;
+  const policy=archiveExportPolicy({
+    warnings:saved.warnings,rows:saved.rows,
+    records:saved.original?.records,companyVerified:true
+  });
+  bundle=data;
+  $("archivePdf").disabled=!policy.canExportPdf;
+  $("archiveCsv").disabled=!policy.canExportCsv;
+  $("archiveJson").disabled=!policy.canExportEvidenceJson;
   $("archiveSummary").textContent="📂 保存済み資料を表示中 ／ "+data.payload.period+" ／ 日別実績 "+
    data.payload.summary.dailyRecords+"件 ／ 獲得 "+data.payload.summary.count+"件 ／ 売上 "+money(data.payload.summary.revenue);
-  status("✓ JSONの整合性検証OK：保存済みファイルを再表示しています。Firestoreのデータと同期・上書き・復元はしていません。");
+  status("✓ JSONハッシュ照合完了。ただし金額の確定には元帳との確認が必要です。警告がある資料のPDF/CSV出力は停止。Firestoreのデータ変更・上書き・復元はしていません。");
  }catch(err){status("✕ "+String(err?.message||err));}
  $("archiveFile").value="";
 });
