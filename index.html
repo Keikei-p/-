@@ -32102,7 +32102,7 @@ function renderProductSummary(
   // Price changes over time are flagged for review, never corrected silently.
   if (isCurrentCompanyOwner() && canCurrentUserViewProductRevenue()) {
     const month = dashboardMonth?.value;
-    if (month && /^\\d{4}-\\d{2}$/.test(month)) {
+    if (month && /^\d{4}-\d{2}$/.test(month)) {
       const currentRows = (records || []).filter(row =>
         typeof row.date === "string" && row.date.startsWith(month + "-"));
       const warnings = auditSavedRevenueRates(currentRows, products);
