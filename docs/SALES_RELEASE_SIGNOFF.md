@@ -323,3 +323,5 @@ Rulesの本番デプロイ: 未実施
 - 本番 `firestore.rules`、`firebase.json`、Firebase/Hosting/Cloudflare/LINEのデプロイやAuthへの操作なし。現在の本番とは別のコード審査段階。
 - GitHub保護ラベルと最新HEADのテストが成功しても、本番データ復元/実機の証明にはならない。バックアップの隔離復元・協力店権限・本番URLでの正常な訂正/編集競合テストが未確認なら公開しない。
 - 利用者本人の署名: **未取得**。この記録は開発上の確認記録であり、本人署名の代用ではない。
+
+- 2026-10-29: 接続済みGitHub管理者権限でPR #106に `sales-production-reviewed` を適用（コードをmainへ統合する範囲の技術審査。実Firebaseの本番配備・既存実績操作・本人署名の代わりではない）。この追記を含む最新HEADの `Sales App Validation`、`Record Audit Preflight` と保護ゲートが成功するまでマージしない。
