@@ -4,6 +4,9 @@ on:
     branches: [main]
     paths:
       - 'security/**'
+      - 'scripts/check-finance-read-boundary-before-deploy.mjs'
+      - 'tests/finance-release-gate.test.mjs'
+      - '.github/workflows/firebase-production-deploy.yml'
       - 'tests/historical-price-audit.test.mjs'
       - 'tests/public-*.test.mjs'
       - 'tests/finance-*.test.mjs'
@@ -28,6 +31,10 @@ jobs:
         run: node --test tests/public-projection.test.mjs tests/reconcile-projections.test.mjs tests/trusted-finance-view.test.mjs tests/public-count-api.test.mjs tests/public-count-firestore-reader.test.mjs tests/firebase-id-token-verifier.test.mjs tests/trusted-membership-loader.test.mjs tests/staged-count-gateway.test.mjs tests/trusted-partner-write-context.test.mjs tests/finance-rule-generation.test.mjs
       - name: Check historic CB and saved tariff drift without touching Firebase
         run: node --test tests/historical-price-audit.test.mjs
+      - name: Confirm unsafe current money Rules remain blocked from deployment
+        run: |
+          node --check scripts/check-finance-read-boundary-before-deploy.mjs
+          node --test tests/finance-release-gate.test.mjs
       - name: Parse staged source
         run: |
           node --check security/public-projection.mjs
