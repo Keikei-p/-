@@ -67,7 +67,7 @@ node security/prepare-projection.mjs ./sales-archive.json ./projection-preview
 
 - `security/public-count-api.mjs`: **GET `/v1/public-counts`** の件数専用HTTPハンドラーを追加。初期状態は `enabled=false` のため、呼び出しても停止（503）。Cloudflareへの本番配備はしない。
 - 公開対象は `publicRecords`、`publicRecordLines`、`publicProducts`、`publicRankEntries` **のみ**。`records` / `products` / `recordCorrections` の金額付き原票は、このAPIから取得できない。
-- 許可した2ドメイン（nico-factory.web.app・旧GitHub Pages）以外のブラウザOriginを拒否。署名検証済みFirebase IDトークン、会社所属、在籍/停止状態、本人の班所属を毎リクエスト確認。クライアントが指定する会社IDや役職を信用しない。
+- **NICO公式サイト（nico-factory.web.app）のOriginだけ**をCORSで許可し、旧GitHub PagesのOriginは403で拒否。署名検証済みFirebase IDトークン、会社所属、在籍/停止状態、本人の班所属を毎リクエスト確認。クライアントが指定する会社IDや役職を信用しない。
 - 記録と商材別件数は **認可された班IDが必須**。非オーナーの他班指定を禁止する。商品名と順位だけは会社内の専用公開コレクションから取得。返却は必要な件数・商材ID・日付・順位だけ。氏名等の余分な値やraw原票のフィールドは一括で出力禁止。
 - ページサイズの上限は **50件**。読み取り時刻 `snapshot` を初回応答から引き継ぎ、次ページも同じFirestoreスナップショットでの取得を**バックエンド側に必須**とする。異なる読取時刻や重複・他社/他班混入は**部分件数すら返さず失敗**とする。大量件数・2,000件超でも固定の読み切り上限をつけずページ単位で取得する方式。
 - `tests/public-count-api.test.mjs` で無効状態、別会社、停止中、無認証、Origin/パラメータ攻撃、50件ページ送り、タイムスタンプ不一致、金額混入、商品/ランキングの非公開値排除を架空データで確認。
@@ -90,3 +90,9 @@ node security/prepare-projection.mjs ./sales-archive.json ./projection-preview
 - **現在も未接続**：本番のサービスアカウント認証済みFirestore REST通信、Firebase IDトークン署名検証と権限更新、既存画面の実績登録処理、既存コレクションから公開用コレクションへのバックフィル/継続同期は別の実装が必要。バックアップ完全照合・隔離復元が終わるまで本番Firestoreに書き込まない。
 - 現行の `index.html` は `recordsCollectionQuery()` から `collection(db,"records")` を呼び出している。この参照と旧PWAキャッシュを安全に切り替える前に財務原票の本番読取を遮断すると**既存アプリが壊れる**。強制切替は禁止。
 
+
+## 2026-10-29 追加: 旧URLの件数APIアクセス禁止（Draftのみ）
+- ユーザーの新運用方針に従い、金額なし専用件数APIのCORS許可Originを `https://nico-factory.web.app` のみに限定。旧GitHub Pages Originは許可しない。認証なし/他社も引き続き拒否。
+- **CORSはブラウザ向けの制御であって認証の代わりではない**。Authorizationのトークン署名・最新所属・班ACL検証はサーバー側必須。
+- **現在の本番Firestoreの旧 `records` の読み取り漏えいはこの変更だけでは塞がらない**。新クライアントの件数専用化と金融原票のServer Rules閉鎖が必要。
+- この変更はPR #105のみに適用。実本番のFirestore Rules/データ/Hosting/Cloudflare Worker/認証ドメインは未変更。
