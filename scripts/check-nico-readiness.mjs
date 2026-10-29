@@ -120,7 +120,8 @@ if(process.argv[1] && fileURLToPath(import.meta.url)===path.resolve(process.argv
     headers:{"User-Agent":"nico-sales-readonly-health/1.0"},
     signal:AbortSignal.timeout(20000)})}).then(({assetCount,digest})=>{
       console.log("PASS: canonical NICO URL serves the expected application contract.");
-      console.log("PASS: Firebase project and PWA contracts match; checked "+assetCount+" static assets.");\n      console.log("CHECK MODE: "+(process.env.NICO_CHECK_MODE==="parity"?"strict main/publication parity":"published site health only"));
+      console.log("PASS: Firebase project and PWA contracts match; checked "+assetCount+" static assets.");
+      console.log("CHECK MODE: "+(process.env.NICO_CHECK_MODE==="parity"?"strict main/publication parity":"published site health only"));
       console.log("Production HTML SHA-256: "+digest);
       console.log("READ-ONLY: no login, Firestore, user data, paid services or deployment touched.");
       console.log("LIMITATION: cannot prove login, role-specific security or current Firestore document integrity.");
