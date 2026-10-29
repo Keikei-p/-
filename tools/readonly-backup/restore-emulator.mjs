@@ -11,7 +11,8 @@ import path from "node:path";
 import {canonical,fingerprint,unseal,PROJECT} from "./backup.mjs";
 
 export const TEST_PROJECT="demo-sales-restore";
-const MAX_DOCS=10000;
+const MAX_DOCS=50000;
+const EMULATOR_WORKERS=8; // bounded, localhost-only parallelism
 
 export function emulatorBase(host,projectId){
   // Fail closed: no user-supplied hostname, cloud endpoint, or real project ID.
@@ -48,30 +49,41 @@ export async function restoreToLocalEmulator(snapshot,{
   // Complete preflight before the first emulator write.
   const docs=checkedDocuments(snapshot,maxDocuments);
   const digest=fingerprint(snapshot);
-  for(const row of docs){
-    const endpoint=base+row.segments.map(encodeURIComponent).join("/");
-    // A production Firestore endpoint cannot be constructed by this function.
-    const response=await send(endpoint,{
-      method:"PATCH",
-      headers:{"Content-Type":"application/json","Authorization":"Bearer owner"},
-      body:JSON.stringify({fields:row.fields})
+  // Preflight has validated EVERY document before any writes. Limit all
+  // traffic to the demo emulator; run bounded work pools for large archives.
+  async function runPhase(method){
+    let index=0,verified=0,failed=null;
+    const workers=Array.from({length:Math.min(EMULATOR_WORKERS,docs.length)},async()=>{
+      while(index<docs.length && !failed){
+        const row=docs[index++];
+        const endpoint=base+row.segments.map(encodeURIComponent).join("/");
+        try{
+          const options=method==="PATCH"?{
+            method:"PATCH",headers:{
+              "Content-Type":"application/json","Authorization":"Bearer owner"},
+            body:JSON.stringify({fields:row.fields})
+          }:{method:"GET",headers:{"Authorization":"Bearer owner"}};
+          const response=await send(endpoint,options);
+          if(!response?.ok)throw Error("emulator response failed");
+          const saved=await response.json();
+          if(canonical(saved.fields??{})!==canonical(row.fields))
+            throw Error("emulator fields differ from archive");
+          verified++;
+        }catch{
+          // No actual document fields, names, personal details or money in errors.
+          failed=Error(method==="PATCH"?
+            "BLOCK: emulator restore write/verification failed":
+            "BLOCK: emulator restore readback fields differ from archive");
+        }
+      }
     });
-    if(!response?.ok)throw Error("BLOCK: emulator restore write failed");
-    const saved=await response.json();
-    if(canonical(saved.fields??{})!==canonical(row.fields))
-      throw Error("BLOCK: emulator stored fields differ from archive");
+    await Promise.all(workers);
+    if(failed)throw failed;
+    if(verified!==docs.length)throw Error("BLOCK: incomplete emulator check");
+    return verified;
   }
-  let verified=0;
-  for(const row of docs){
-    const endpoint=base+row.segments.map(encodeURIComponent).join("/");
-    const response=await send(endpoint,{method:"GET",
-      headers:{"Authorization":"Bearer owner"}});
-    if(!response?.ok)throw Error("BLOCK: emulator restore readback failed");
-    const saved=await response.json();
-    if(canonical(saved.fields??{})!==canonical(row.fields))
-      throw Error("BLOCK: emulator readback fields differ from archive");
-    verified++;
-  }
+  await runPhase("PATCH");
+  const verified=await runPhase("GET");
   return {destinationProject:TEST_PROJECT,documentCount:verified,
     sourceInventoryFingerprint:digest,fieldsAndIdsVerified:true,
     metadataTimestampsPreserved:false,productionTouched:false};
@@ -91,7 +103,7 @@ async function main(args){
   const result=await restoreToLocalEmulator(input,{
     emulatorHost:process.env.FIRESTORE_EMULATOR_HOST,
     projectId:process.env.GCLOUD_PROJECT,
-    maxDocuments:Number(flag("--max-documents")??"10000")
+    maxDocuments:Number(flag("--max-documents")??"50000")
   });
   console.log("PASS: isolated local emulator fields and document IDs checked");
   console.log("Number of documents:",result.documentCount);
