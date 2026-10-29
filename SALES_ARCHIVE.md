@@ -97,3 +97,13 @@ node scripts/verify-sales-archive-pair.mjs "D:\\sales-backup\\2025.json" "E:\\sa
 - GitHub Actionsは架空アーカイブで照合を試験する。本物の顧客データ/ファイル/鍵はGitHubにアップロードしない。
 - PASSでも、2か所の**物理的に独立した保存先かは機械的に保証されず**、本番の最新データと一致したかも確認できない。実データの隔離復元・保存義務・未決済修正の確認までは**本番実績の削除禁止**。
 - PDFとCSVは閲覧・分析用。正式な復元のためには原本JSONが必要。元実績/単価/履歴を変更しない。
+
+## 2026-10-29: 正式な「全社バックアップ」ではないことを明示
+
+- 年次JSONは `records`、`products`、`recordCorrections`、`teams` の**4コレクションの営業履歴**を保存する。これだけでFirebase/Firestore全社の復旧を保証できない。
+- `archive-coverage.mjs` を導入し、原票のコレクション数・資料の対象範囲・未収録の会社情報/会員/設定/目標/提携情報を記録する。保存版に偽の完全バックアップ宣言や削除許可が入れば検証を拒否する。
+- `completeCompanyBackup:false`、`productionDeletionEligible:false`、`sameTimestampAcrossCollections:false` を常に明示。対象4コレクションの整合がPASSでも**Firestoreの原票は一切削除しない**。
+- 新規保存JSONにはカバレッジ情報を追加し、旧JSONには同じ保守的な非完全評価を適用。顧客/スタッフ情報を含むファイルをGitHubにアップロードしない。
+- 開発版のオーナー向けアーカイブ入口は、会社種別・ユーザー・会員のいずれかが協力店である場合は拒否。**これはブラウザでの追加予防策であり、本番Security Rulesでの財務遮断を代替しない。**
+- 年度末に正本の削除を検討する前には、会社単位の**全コレクション＋サブコレクション**の型・IDを保持した取得、別媒体2コピー、実データを使用した隔離復元が必須。現状は未実施。
+- 今回はDraft PRのコード・テストのみ変更。本番サイト、Firestore、Rules、会社情報、歴史的単価は変更なし。
