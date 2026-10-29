@@ -87,3 +87,32 @@ test("REST write or readback mismatches are always reported without exposing pri
     !err.message.includes("revenuePerUnit")&&!err.message.includes("20000"));
   assert.equal(m.calls.every(c=>!c.url.includes("sales-management-cc116")),true);
 });
+
+test("25,001 synthetic documents roundtrip without the old 10,000 limit",async()=>{
+  const documents=Array.from({length:25001},(_,i)=>({
+    path:"records/synthetic-"+String(i).padStart(6,"0"),
+    value:{fields:{totalCount:{integerValue:String(i%10)}},
+      createTime:"2026-10-01T00:00:00Z",
+      updateTime:"2026-10-28T00:00:00Z"}
+  }));
+  const large={projectId:PROJECT,format:"firestore-rest-typed-v1",documents};
+  const m=mock();
+  const result=await restoreToLocalEmulator(large,{...params,send:m.send});
+  assert.equal(result.documentCount,25001);
+  assert.equal(result.fieldsAndIdsVerified,true);
+  assert.equal(m.calls.length,50002);
+  assert(m.calls.slice(0,25001).every(c=>c.method==="PATCH"));
+  assert(m.calls.slice(25001).every(c=>c.method==="GET"));
+  assert(m.calls.every(c=>c.url.includes("/demo-sales-restore/")));
+  assert.equal(result.productionTouched,false);
+});
+test("a 50,001 document archive is blocked before any writes",async()=>{
+  const value={fields:{totalCount:{integerValue:"0"}}};
+  const base={projectId:PROJECT,format:"firestore-rest-typed-v1"};
+  const tooMany={...base,documents:Array.from({length:50001},(_,i)=>({
+    path:"records/overflow-"+i,value
+  }))};
+  const m=mock();
+  await assert.rejects(restoreToLocalEmulator(tooMany,{...params,send:m.send}),/BLOCK/);
+  assert.equal(m.calls.length,0);
+});
