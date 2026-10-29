@@ -25,7 +25,8 @@ export function archiveExportPolicy({warnings,rows,records,companyVerified}={}){
      break;
    }
  }
- if(records.length>0&&!rows.length)reasons.push("保存済みの実績明細がありません");
+ if(records.length>0&&!rows.length&&records.some(r=>r.totalCount!==0||r.totalRevenue!==0))
+   reasons.push("保存済みの実績明細がありません");
  // Never infer missing saved totals from the displayed rows. The original
  // record and its lines must independently agree before a report is final.
  const sourceIds=new Set(),byRecord=new Map();
