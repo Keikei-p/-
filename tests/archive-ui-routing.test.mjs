@@ -44,3 +44,29 @@ test("archive uses server-only queries, budget check, owner recheck and no write
    /firebase\s+deploy/,/wrangler\s+deploy/])
   assert.doesNotMatch(module,pattern);
 });
+
+
+test("partner/cooperator owner cannot pass the archival UI gate, even with owner role",()=>{
+ assert.match(module,/banned=new Set\(\["partner","cooperator"\]\)/);
+ for(const boundary of ["c.companyKind","c.accessKind","ud.accessKind","m.accessKind",
+                        "ud.memberType","m.memberType"]){
+  assert(module.includes("banned.has("+boundary+")"),"missing partner boundary: "+boundary);
+ }
+});
+test("all three sensitive exports recheck current owner, and revocation during load stops exports",()=>{
+ assert.match(module,/async function exportOwnerStillAuthorized\(\)/);
+ assert.match(module,/const fresh=await companyForOwner\(current\)/);
+ assert.match(module,/revision===epoch&&auth\.currentUser\?\.uid===current\.uid/);
+ assert.match(module,/stillOwner\?\.id!==owned\.id/);
+ assert.match(module,/if\(await exportOwnerStillAuthorized\(\)\)makeCsv\(\)/);
+ assert.match(module,/if\(await exportOwnerStillAuthorized\(\)\)makePdf\(printWindow\)/);
+ assert.match(module,/if\(await exportOwnerStillAuthorized\(\)\)\s*download\(fileBase\(\)\+"\.json"/);
+});
+test("imported unsigned JSON never authorizes a fresh certified PDF or CSV",()=>{
+ const importBlock=module.slice(module.indexOf('$("archiveFile").addEventListener("change"'));
+ assert(importBlock.length>400);
+ assert.match(importBlock,/\$\("archivePdf"\)\.disabled=true/);
+ assert.match(importBlock,/\$\("archiveCsv"\)\.disabled=true/);
+ assert.match(importBlock,/SHA-256/);
+ assert.match(importBlock,/companyForOwner\(auth\.currentUser\)/);
+});
