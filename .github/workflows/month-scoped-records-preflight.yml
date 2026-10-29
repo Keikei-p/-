@@ -33,6 +33,7 @@ jobs:
       - name: Validate index shape
         run: |
           node -e 'const f=require("./firestore.indexes.json");if(!f.indexes.some(i=>i.collectionGroup==="records"&&i.queryScope==="COLLECTION"&&i.fields?.[0]?.fieldPath==="companyId"&&i.fields?.[1]?.fieldPath==="date"))process.exit(1)'
-      - name: Prove no deployment commands
+      - name: Ensure no production credentials are passed to tests
         run: |
-          if grep -E 'firebase deploy|wrangler deploy|gh pr merge' .github/workflows/month-scoped-records-preflight.yml; then exit 1; fi
+          test -z "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          test -z "${CLOUDFLARE_API_TOKEN:-}"
