@@ -1,0 +1,17 @@
+# STAGING ONLY. Do not deploy until credentials, LINE destination and Firestore indexes are verified.
+name = "nico-sales-line-reports"
+main = "reports/worker.mjs"
+compatibility_date = "2026-10-01"
+
+[vars]
+FIREBASE_PROJECT_ID = "sales-management-cc116"
+REPORT_DELIVERY_ENABLED = "false"
+# OFF by default: zero Firestore reads/LINE sends; temporary testing only.
+REPORT_DRY_RUN_VALIDATE = "false"
+
+[triggers]
+crons = ["0 0 * * *", "0 10 * * *", "5 10 * * *"]
+
+# Add via 'wrangler secret put', NEVER in source files:
+# FIREBASE_SERVICE_ACCOUNT_JSON
+# LINE_CHANNEL_ACCESS_TOKEN

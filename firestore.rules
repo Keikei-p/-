@@ -1099,8 +1099,8 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(['name', 'updatedAt']);
 
-      allow delete: if resource.data.companyId != null
-        && isCompanyManager(resource.data.companyId);
+      // Historical business documents are retained: client hard-delete is forbidden.
+      allow delete: if false;
     }
 
     match /products/{productId} {
@@ -1136,8 +1136,8 @@ service cloud.firestore {
             'sortOrder', 'updatedAt'
           ]);
 
-      allow delete: if resource.data.companyId != null
-        && canManageProducts(resource.data.companyId);
+      // Historical business documents are retained: client hard-delete is forbidden.
+      allow delete: if false;
     }
 
     match /records/{recordId} {
@@ -1247,17 +1247,8 @@ service cloud.firestore {
           || isCompanyOwner(resource.data.companyId));
 
 
-      allow delete: if resource.data.companyId != null
-        && sameCompany(resource.data.companyId)
-        && (
-          isCompanyOwner(resource.data.companyId)
-          || resource.data.uid == request.auth.uid
-          || canManageTeamMemberRecord(
-            resource.data.companyId,
-            resource.data.uid,
-            resource.data.teamId
-          )
-        );
+      // Historical business documents are retained: client hard-delete is forbidden.
+      allow delete: if false;
     }
 
     match /recordCorrections/{correctionId} {
@@ -1327,14 +1318,8 @@ service cloud.firestore {
           )
         );
 
-      allow delete: if resource.data.companyId != null
-        && (
-          isCompanyOwner(resource.data.companyId)
-          || isLeaderOfTeam(
-            resource.data.companyId,
-            resource.data.teamId
-          )
-        );
+      // Historical business documents are retained: client hard-delete is forbidden.
+      allow delete: if false;
     }
 
     match /revenueGoals/{goalId} {
@@ -1397,17 +1382,8 @@ service cloud.firestore {
           )
         );
 
-      allow delete: if resource.data.companyId != null
-        && (
-          isCompanyOwner(resource.data.companyId)
-          || (
-            canViewRevenue(resource.data.companyId)
-            && isLeaderOfTeam(
-              resource.data.companyId,
-              resource.data.teamId
-            )
-          )
-        );
+      // Historical business documents are retained: client hard-delete is forbidden.
+      allow delete: if false;
     }
   }
 }
