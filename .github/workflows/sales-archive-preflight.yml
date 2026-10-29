@@ -3,6 +3,11 @@ on:
   pull_request:
     paths:
       - "sales-archive.js"
+      - "index.html"
+      - "archive-read-budget.mjs"
+      - "tests/archive-read-budget.test.mjs"
+      - "tests/archive-ui-routing.test.mjs"
+      - ".github/workflows/nico-factory-sync.yml"
       - "archive-*.mjs"
       - "scripts/verify-sales-*.mjs"
       - "scripts/verify-sales-backup.ps1"
@@ -35,6 +40,7 @@ jobs:
           cp sales-archive.js /tmp/sales-archive.mjs
           node --check /tmp/sales-archive.mjs
           node --check archive-output-policy.mjs
+          node --check archive-read-budget.mjs
           node --check archive-coverage.mjs
           node --check scripts/firestore-readonly-snapshot.mjs
           node --check functions/export-firestore-readonly.mjs
@@ -42,7 +48,7 @@ jobs:
           node --check scripts/restore-sales-from-env.mjs
           node --check tools/readonly-backup/restore-emulator.mjs
       - name: Run archive regression suite
-        run: node --test tests/sales-archive-unit.test.mjs tests/archive-verifier.test.mjs tests/restore-guard.test.mjs tests/year-archive.test.mjs tests/archive-output-policy.test.mjs tests/archive-pair.test.mjs tests/archive-pair-verifier.test.mjs tests/archive-coverage.test.mjs tests/firestore-readonly-snapshot.test.mjs tests/firestore-snapshot-pair.test.mjs
+        run: node --test tests/archive-ui-routing.test.mjs tests/archive-read-budget.test.mjs tests/sales-archive-unit.test.mjs tests/archive-verifier.test.mjs tests/restore-guard.test.mjs tests/year-archive.test.mjs tests/archive-output-policy.test.mjs tests/archive-pair.test.mjs tests/archive-pair-verifier.test.mjs tests/archive-coverage.test.mjs tests/firestore-readonly-snapshot.test.mjs tests/firestore-snapshot-pair.test.mjs
       - name: Restore 25,001 synthetic documents only through localhost mock (no Firebase access)
         run: node --test tools/readonly-backup/restore-emulator.test.mjs
       - name: Refuse production environment in local backup restore launcher
