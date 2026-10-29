@@ -7864,6 +7864,8 @@ let annualChartGeneration = 0;
 let annualChartRequestedKey = "";
 let annualChartErrorKey = "";
 let recordFormLookupGeneration = 0;
+let notificationPreviewGeneration = 0;
+let reportBuildGeneration = 0;
 let goals = [];
 let revenueGoals = [];
 
@@ -9677,6 +9679,27 @@ function subscribeSelectedMonthRecords() {
     console.error("月別実績の開始失敗",error?.code||"invalid");
   }
 }
+
+async function readVerifiedMonthForReport(month) {
+  // Explicit report generation may target a different month from dashboard.
+  // Never infer a missing daily count from the currently selected records.
+  const company=currentUserData?.companyId;
+  if(!company)throw new Error("会社の情報を確認できません。");
+  if(recordsReady&&recordsSubscribedMonth===month){
+    return records.filter(row=>row?.companyId===company&&row.date?.startsWith(month));
+  }
+  const snap=await getDocsFromServer(scopedRecordsQuery(month));
+  const all=[];let invalid=false;
+  snap.forEach(item=>{
+    const value=item.data();
+    if(value.companyId!==company||!value.date?.startsWith(month))invalid=true;
+    else all.push({id:item.id,...value});
+  });
+  if(invalid||company!==currentUserData?.companyId)
+    throw new Error("会社・日付の照合に失敗しました。");
+  return all;
+}
+
 async function findDailyRecordFromServer(memberId,date) {
   // Correcting a day outside the selected month must still find the original.
   const result=await getDocsFromServer(query(recordsCollectionQuery(),
@@ -13586,6 +13609,8 @@ function stopRealtimeListeners() {
   ++recordQueryGeneration;
   ++annualChartGeneration;
   ++recordFormLookupGeneration;
+  ++notificationPreviewGeneration;
+  ++reportBuildGeneration;
   recordsReady=false;
   recordsSubscribedMonth="";
   annualChartRecords=null;
@@ -22643,7 +22668,8 @@ function renderNotificationSettingsForm() {
 
 
 function getUnreportedTeamSummary(
-  date = getTodayString()
+  date = getTodayString(),
+  sourceRecords = records
 ) {
 
   const teamSummary =
@@ -22662,7 +22688,7 @@ function getUnreportedTeamSummary(
       "team_any"
   ) {
 
-    records
+    sourceRecords
       .filter(
         record =>
           record &&
@@ -22804,7 +22830,7 @@ function getUnreportedTeamSummary(
           1;
 
         const hasReport =
-          records.some(
+          sourceRecords.some(
             record =>
               record.uid ===
                 memberId &&
@@ -22879,49 +22905,50 @@ function getUnreportedTeamSummary(
 
 }
 
-function renderNotificationPreview() {
-
-  const missing =
-    getUnreportedTeamSummary(
-      getTodayString()
-    );
-
-  if (
-    missing.length ===
-      0
-  ) {
-
-    notificationPreview.innerHTML =
-      "✅ 現在、未報告の班はありません。";
-
+async function renderNotificationPreview() {
+  const gen=++notificationPreviewGeneration;
+  const today=getTodayString();
+  const company=currentUserData?.companyId;
+  if(!company||!members.length) {
+    notificationPreview.textContent="報告状況を確認できません。ログイン・所属情報を確認してください。";
     return;
-
   }
-
-  const reportCompletionMode =
-    normalizeNotificationSettings(
-      notificationSettings
-    ).reportCompletionMode;
-
-  notificationPreview.innerHTML =
-    missing
-      .map(
-        item =>
-          reportCompletionMode ===
-            "team_any"
-            ? `⚠️ ${escapeHtml(
-                item.teamName
-              )}：未報告`
-            : `⚠️ ${escapeHtml(
-                item.teamName
-              )}：${item.reported}/${item.expected}名 報告済み（未報告 ${item.expected - item.reported}名）`
-      )
-      .join(
-        "<br>"
-      );
-
+  notificationPreview.textContent="本日の報告状況を確認中です。";
+  try {
+    const todayMonth=today.slice(0,7);
+    let daily;
+    if(recordsReady&&recordsSubscribedMonth===todayMonth) {
+      daily=records.filter(row=>row.date===today);
+    } else {
+      // Single-day bounded query instead of scanning past history.
+      const snap=await getDocsFromServer(query(recordsCollectionQuery(),where("date","==",today)));
+      if(gen!==notificationPreviewGeneration||company!==currentUserData?.companyId)return;
+      daily=[];let invalid=false;
+      snap.forEach(item=>{
+        const data=item.data();
+        if(data.companyId!==company||data.date!==today)invalid=true;
+        else daily.push({id:item.id,...data});
+      });
+      if(invalid)throw new Error("report_source_mismatch");
+    }
+    if(gen!==notificationPreviewGeneration||company!==currentUserData?.companyId)return;
+    const missing=getUnreportedTeamSummary(today,daily);
+    if(missing.length===0) {
+      notificationPreview.textContent="✅ 現在、未報告の班はありません。";
+      return;
+    }
+    const mode=normalizeNotificationSettings(notificationSettings).reportCompletionMode;
+    notificationPreview.innerHTML=missing.map(item=>mode==="team_any"
+      ? "⚠️ "+escapeHtml(item.teamName)+"：未報告"
+      : "⚠️ "+escapeHtml(item.teamName)+"："+
+        item.reported+"/"+item.expected+"名 報告済み（未報告 "+
+        (item.expected-item.reported)+"名）").join("<br>");
+  } catch(error) {
+    if(gen!==notificationPreviewGeneration)return;
+    notificationPreview.textContent="⚠️ 本日の報告状況を確認できません。未報告ゼロとは判断しないでください。";
+    console.error("未報告の確認失敗",error?.code||"unavailable");
+  }
 }
-
 
 function stopLinePairingListener() {
 
@@ -23857,7 +23884,8 @@ function getReportProductCatalog(
 
 
 function buildReportData(
-  date
+  date,
+  sourceRecords = records
 ) {
 
   const month =
@@ -23870,14 +23898,14 @@ function buildReportData(
     );
 
   const dailyRecords =
-    records.filter(
+    sourceRecords.filter(
       record =>
         record.date ===
         date
     );
 
   const monthlyRecords =
-    records.filter(
+    sourceRecords.filter(
       record =>
         record.date &&
         record.date.startsWith(
@@ -24888,12 +24916,14 @@ function buildCompanyReportLines(
 
 
 function createFinalReportText(
-  date
+  date,
+  sourceRecords = records
 ) {
 
   const data =
     buildReportData(
-      date
+      date,
+      sourceRecords
     );
 
   const settings =
@@ -25001,12 +25031,14 @@ function createFinalReportText(
 
 
 function createMorningReportText(
-  date
+  date,
+  sourceRecords = records
 ) {
 
   const data =
     buildReportData(
-      date
+      date,
+      sourceRecords
     );
 
   const settings =
@@ -25116,73 +25148,53 @@ function createMorningReportText(
 
 
 
-buildFinalReportButton.onclick =
-  () => {
-
-    const date =
-      reportBuilderDate.value;
-
-
-    if (!date) {
-
-      showError(
-        "集計する日付を選択してください。"
-      );
-
-      return;
-
+async function buildVerifiedReport(date,mode) {
+  const gen=++reportBuildGeneration;
+  const company=currentUserData?.companyId;
+  reportBuilderText.value="";
+  if(!/^\d{4}-(0[1-9]|1[0-2])-[0-3]\d$/.test(date)) {
+    showError("集計する日付を正しく選択してください。");
+    return;
+  }
+  buildFinalReportButton.disabled=true;
+  buildMorningReportButton.disabled=true;
+  copyReportButton.disabled=true;
+  try {
+    const verified=await readVerifiedMonthForReport(date.slice(0,7));
+    if(gen!==reportBuildGeneration||company!==currentUserData?.companyId||
+       date!==reportBuilderDate.value)return;
+    reportBuilderText.value=mode==="final"
+      ? createFinalReportText(date,verified)
+      : createMorningReportText(date,verified);
+  } catch(error) {
+    if(gen!==reportBuildGeneration)return;
+    reportBuilderText.value="";
+    showError("報告対象月の全件確認ができません。件数が誤るため報告文の生成を中止しました。");
+    console.error("報告文の件数確認失敗",error?.code||"unavailable");
+  } finally {
+    if(gen===reportBuildGeneration) {
+      buildFinalReportButton.disabled=false;
+      buildMorningReportButton.disabled=false;
+      copyReportButton.disabled=false;
     }
-
-
-    reportBuilderText.value =
-      createFinalReportText(
-        date
-      );
-
-  };
-
-
-buildMorningReportButton.onclick =
-  () => {
-
-    let date =
-      reportBuilderDate.value;
-
-
-    if (!date) {
-
-      showError(
-        "集計する日付を選択してください。"
-      );
-
-      return;
-
-    }
-
-
-    if (
-      date ===
-      getTodayString()
-    ) {
-
-      date =
-        previousDateString(
-          date
-        );
-
-      reportBuilderDate.value =
-        date;
-
-    }
-
-
-    reportBuilderText.value =
-      createMorningReportText(
-        date
-      );
-
-  };
-
+  }
+}
+reportBuilderDate.addEventListener("change",()=>{
+  ++reportBuildGeneration;
+  reportBuilderText.value="";
+  buildFinalReportButton.disabled=false;
+  buildMorningReportButton.disabled=false;
+  copyReportButton.disabled=false;
+});
+buildFinalReportButton.onclick=()=>buildVerifiedReport(reportBuilderDate.value,"final");
+buildMorningReportButton.onclick=()=>{
+  let date=reportBuilderDate.value;
+  if(date===getTodayString()) {
+    date=previousDateString(date);
+    reportBuilderDate.value=date;
+  }
+  return buildVerifiedReport(date,"morning");
+};
 
 copyReportButton.onclick =
   async () => {
