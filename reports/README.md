@@ -119,3 +119,10 @@ node --check reports/worker.mjs
 - `tests/report-worker.integration.test.mjs`: 合成Firestore＋LINEで**本当に1通だけ送られる**ことを検証。送信OFFのときはLINE送信・Firestore予約書込ゼロ。
 - `tests/report-sharing-ui.test.mjs`: オーナー専用設定画面と既存通知設定の保持。
 - `tests/report-sharing-rules.test.mjs`: ステージング用Firestore Rulesでオーナーの保存・取り消しを許可し、一般社員・協力店リーダー・他社からの変更を拒否。実本番ルールには未適用。
+
+## 2026-10-29 追加：無料枠・誤集計保護（Draftのまま）
+- `REPORT_DELIVERY_ENABLED="false"` かつ `REPORT_DRY_RUN_VALIDATE="false"` では、Cronが起動しても**サービスアカウント認証／Firestoreクエリ／LINE送信／送信予約を一切しない**。初期設定では無料読み取り枠を消費しない。
+- 検証したい場合のみ `REPORT_DRY_RUN_VALIDATE="true"` を一時設定する。その場合はFirestoreの**読み取りを行う**が、`REPORT_DELIVERY_ENABLED="false"` ならLINE送信や予約書込みはしない。無料枠を確認し、検証後はOFFに戻す。
+- 取得した実績について、会社ID・対象日または対象月・所属班・実績IDの重複・保存件数と商材別件数が一致するか検査し、異常があれば**全送信を抑止**する。目標が他社・別月または同じ班で重複していた場合も送信を止める。
+- `tests/report-worker.integration.test.mjs` で偽のFirestore応答に別会社・別月・重複・件数不正を注入し、LINE送信・予約ゼロを確認する。
+- 設定変更・本番Cloudflare配備・Firestoreの実データ変更・LINE実送信は行っていない。
