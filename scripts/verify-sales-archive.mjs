@@ -19,12 +19,12 @@ if(typeof companyId!=="string"||!companyId)die("Company ID is missing");
 // The archive UI emits both YYYY-MM (month) and YYYY (year) periods.
 // Neither mode may silently accept a different year or an impossible date.
 const periodMode=p.periodMode;
-if(periodMode==="month"&&!/^\\d{4}-(0[1-9]|1[0-2])$/.test(p.period)||
-   periodMode==="year"&&!/^\\d{4}$/.test(p.period)||
+if(periodMode==="month"&&!/^\d{4}-(0[1-9]|1[0-2])$/.test(p.period)||
+   periodMode==="year"&&!/^\d{4}$/.test(p.period)||
    !["month","year"].includes(periodMode))
   die("Invalid archive period/mode");
 function validArchivedDay(date){
- if(typeof date!=="string"||!/^\\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$/.test(date))return false;
+ if(typeof date!=="string"||!/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(date))return false;
  const [year,month,day]=date.split("-").map(Number);
  const utc=new Date(Date.UTC(year,month-1,day));
  return utc.getUTCFullYear()===year&&utc.getUTCMonth()+1===month&&utc.getUTCDate()===day;
