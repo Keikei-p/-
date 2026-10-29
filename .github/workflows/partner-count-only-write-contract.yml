@@ -1,0 +1,31 @@
+name: Partner count-only write contract (synthetic only)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "partner/count-only-write-contract.mjs"
+      - "tests/partner-count-only-write-contract.test.mjs"
+      - "docs/TODAY_SALES_SAFETY_20261029.md"
+      - ".github/workflows/partner-count-only-write-contract.yml"
+  push:
+    branches: [main]
+    paths:
+      - "partner/count-only-write-contract.mjs"
+      - "tests/partner-count-only-write-contract.test.mjs"
+permissions:
+  contents: read
+jobs:
+  immutable-count-only-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Syntax (no Firebase credentials and no network access)
+        run: node --check partner/count-only-write-contract.mjs
+      - name: Safe count registration and correction tests
+        run: node --test tests/partner-count-only-write-contract.test.mjs
