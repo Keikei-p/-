@@ -1,9 +1,11 @@
 // Sales archive module: READ-ONLY. Does not write or delete Firestore documents.
 import {archiveExportPolicy} from "./archive-output-policy.mjs";
 import {makeArchiveCoverage} from "./archive-coverage.mjs";
+import {checkArchivePreflightCounts,assertArchiveQueryCountsMatch}
+  from "./archive-read-budget.mjs";
 import {getApp} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
 import {getAuth,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
-import {getFirestore,getDoc,doc,collection,query,where,getDocsFromServer} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+import {getFirestore,getDoc,doc,collection,query,where,getDocsFromServer,getCountFromServer} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
 const app=getApp(),auth=getAuth(app),db=getFirestore(app);
 const $=id=>document.getElementById(id);
@@ -135,8 +137,18 @@ async function load(){
    :n==="recordCorrections"
     ?query(collection(db,n),where("companyId","==",owned.id),where("recordDate",">=",p.start),where("recordDate","<",p.finish))
     :query(collection(db,n),where("companyId","==",owned.id));
+ // Query counts first. An oversized or changing archive must never silently
+ // export a partial fiscal report or consume an unbounded Firestore read quota.
+ const queries=names.map(makeQuery);
  let snaps;
- try{snaps=await Promise.all(names.map(n=>getDocsFromServer(makeQuery(n))));}
+ try{
+  const aggregate=await Promise.all(queries.map(q=>getCountFromServer(q)));
+  const preflight=checkArchivePreflightCounts(
+    aggregate.map(s=>s.data()?.count)
+  );
+  snaps=await Promise.all(queries.map(q=>getDocsFromServer(q)));
+  assertArchiveQueryCountsMatch(preflight,snaps);
+ }
  catch(e){
   if(e?.code==="failed-precondition")throw Error("期間別取得に必要なFirestore複合インデックスが未作成です。管理者がインデックスを公開してから実行してください。全件読込による自動代替は行いません。");
   throw e;
@@ -227,7 +239,11 @@ $("archiveJson").addEventListener("click",()=>{if(bundle)download(fileBase()+".j
 $("archiveVerify").addEventListener("click",()=>$("archiveFile").click());
 $("archiveFile").addEventListener("change",async()=>{
  const f=$("archiveFile").files?.[0];if(!f)return;
+ reset(); // Never retain a previous export when a new file is invalid.
  try{
+  const authorized=await companyForOwner(auth.currentUser);
+  if(!authorized||!ownerCompany||authorized.id!==ownerCompany.id)
+   throw Error("売上資料を開く権限がありません。");
   const data=JSON.parse(await f.text());
   if(!ownerCompany||data?.payload?.company?.id!==ownerCompany.id)throw Error("現在の会社のオーナーが作成した資料のみ表示できます。");
   if(data.kind!=="sales-archive"||data.version!==1||!data.payload||!data.checksum)throw Error("正しい売上保存JSONではありません。");
