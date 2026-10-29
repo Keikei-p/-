@@ -54,7 +54,7 @@ jobs:
         shell: bash
         env:
           NICO_PUBLIC_READONLY: "true"
-          NICO_CHECK_MODE: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_run' && 'parity' || 'remote' }}
+          NICO_CHECK_MODE: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_run') && 'parity' || 'remote' }}
         run: |
           # Scheduled/main-push health checks inspect the public NICO URL only.
           # Strict parity is reserved for after an explicit manual deployment.
