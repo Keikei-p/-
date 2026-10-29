@@ -16,7 +16,7 @@ jobs:
         with:
           node-version: "22"
       - name: Test finance-free projections and rank-only results
-        run: node --test tests/public-projection.test.mjs tests/reconcile-projections.test.mjs tests/trusted-finance-view.test.mjs tests/public-count-api.test.mjs tests/public-count-firestore-reader.test.mjs tests/firebase-id-token-verifier.test.mjs
+        run: node --test tests/public-projection.test.mjs tests/reconcile-projections.test.mjs tests/trusted-finance-view.test.mjs tests/public-count-api.test.mjs tests/public-count-firestore-reader.test.mjs tests/firebase-id-token-verifier.test.mjs tests/trusted-membership-loader.test.mjs
       - name: Parse staged source
         run: |
           node --check security/public-projection.mjs
@@ -26,3 +26,4 @@ jobs:
           node --check security/public-count-api.mjs
           node --check security/public-count-firestore-reader.mjs
           node --check security/firebase-id-token-verifier.mjs
+          node --check security/trusted-membership-loader.mjs
