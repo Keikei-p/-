@@ -310,3 +310,5 @@ Rulesの本番デプロイ: 未実施
 - 会社所属不一致・別会社・ownerを拒否し、停止時はAuth disabledとFirestore active=falseのみ。社員と班履歴・実績の物理削除をしない。
 - 新規リリースWorkflowはmainとNICO単独URLを確認する**手動実行限定**。現段階では**デプロイ禁止**。Firestore、実績、Auth、本番Hostingには一切アクセスしない。
 - 署名: 管理者本人の署名未取得。バックアップの隔離復元未確認。協力店の財務遮断未完了。アプリ本番公開完了ではない。
+
+- PR #112にGitHub管理者接続から `sales-production-reviewed` ラベルを付与（旧コードの物理削除除去と任意・未実行のFunctions配備設定の範囲のみ）。これは本人の自筆署名ではなく、本番Firebase実行の承認でもない。ラベル後の最新HEADについて保護ゲート・アプリ検証を再確認する。
