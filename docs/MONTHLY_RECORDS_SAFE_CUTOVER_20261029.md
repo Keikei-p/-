@@ -23,7 +23,7 @@
 - [ ] ownerが本番Firestoreの**全会社**の `records`、`products`、`teams`、`users`、`goals`、`revenueGoals`、`recordCorrections` 等を、原文書ID・更新時刻・型・メタデータを保って2か所へバックアップ。権限外会社へのアクセス禁止。
 - [ ] 2コピーそれぞれの SHA-256/件数/会社ID別・月別・人別・商材別・班別件数と売上、NURO CB区分と当時単価を突合。独立Firestoreエミュレータまたはテストプロジェクトに**隔離復元して読戻し**。本番データを試験的に上書きしない。
 - [ ] 本番ルールを変更する前に「協力店は単価・売上取得不可／権限あるownerは取得可／**新公式URLの認証・件数登録・訂正が動く**」を実認証で確認。
-- [ ] `firebase.json` の索引参照と `firestore.indexes.json` の条件を確認し、ownerが**索引だけ**を構築。作成完了と失敗時の戻し方を記録。コスト発生があるなら事前承認。
+- [ ] `firebase.json` の索引参照と `firestore.indexes.json` の `records(companyId,date)` と `records(companyId,uid,date)` の両条件を確認し、ownerが**索引だけ**を構築。作成完了と失敗時の戻し方を記録。コスト発生があるなら事前承認。
 - [ ] 変更前後で同じ年/月/商材・班を比較し、件数・表示売上・目標・報告文章が一致。特に旧月に異なる単価やCBがあるケースを含める。
 - [ ] 2,000/2,001/25,001件を模した隔離環境で日付変更・読み込み中・再接続・複数ユーザー同時登録・夜間の通知を検証。月に極端な件数がある会社は大容量分割読取の導入前に切替しない。
 - [ ] GitHub Actionsの「Sales App Validation」「Month-scoped sales history preflight」が緑、保護ゲートの承認ラベル `sales-production-reviewed` とリリース署名書 `docs/SALES_RELEASE_SIGNOFF.md` が管理者承認で揃う。
@@ -39,3 +39,8 @@ Firestoreは**1日2,000件の保存制限ではない**が、リアルタイム�
 - 旧URLは今後使用しない。旧URLでの互換テストはリリース条件から除外する。ただしアクセスできる状態の旧アプリが残っている可能性は別途点検する。
 - 1年単位のPDF・CSV・復元用JSONは、読取専用の Draft PR #104 で別開発中。PDF保存だけでは元の履歴を削除しない。削除候補の安全仕様: `docs/ANNUAL_EXPORT_AND_RETENTION_POLICY_20261029.md` （PR #104）。
 - 今回のPR #125は元データの**削除・改変なし**。
+
+## 2026-10-29 追加：過去月の実績訂正に必要な複合インデックス
+- `findDailyRecordFromServer(uid,date)` は `companyId == ...`, `uid == ...`, `date == ...` を同時に指定する。管理者の索引がまだ有効化されていないと過去月の訂正照会が失敗する可能性がある。
+- Draftに `records(companyId ASC, uid ASC, date ASC)` を追加し、専用CIでも索引があることを確認。索引は本番未デプロイ。
+- **索引エラーは実績がゼロであることを意味しない**。重複作成や過去の原票上書きはせず、確認可能になるまで編集を止める。
