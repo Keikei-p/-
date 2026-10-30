@@ -1,9 +1,11 @@
 // Sales archive module: READ-ONLY. Does not write or delete Firestore documents.
 import {archiveExportPolicy} from "./archive-output-policy.mjs";
 import {makeArchiveCoverage} from "./archive-coverage.mjs";
+import {checkArchivePreflightCounts,assertArchiveQueryCountsMatch}
+  from "./archive-read-budget.mjs";
 import {getApp} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
 import {getAuth,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
-import {getFirestore,getDoc,doc,collection,query,where,getDocsFromServer} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+import {getFirestore,getDocFromServer,doc,collection,query,where,getDocsFromServer,getCountFromServer} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
 const app=getApp(),auth=getAuth(app),db=getFirestore(app);
 const $=id=>document.getElementById(id);
@@ -38,19 +40,40 @@ function reset(){bundle=null;outputButtons.forEach(id=>$(id).disabled=true);}
 function close(){dialog.hidden=true;reset();}
 async function companyForOwner(user){
  if(!user?.emailVerified)return null;
- const u=await getDoc(doc(db,"users",user.uid));if(!u.exists())return null;
+ const u=await getDocFromServer(doc(db,"users",user.uid));if(!u.exists())return null;
  const ud=u.data();if(ud.active===false||!ud.companyId)return null;
  const companyId=ud.companyId;
- const [co,member]=await Promise.all([getDoc(doc(db,"companies",companyId)),getDoc(doc(db,"companies",companyId,"members",user.uid))]);
+ const [co,member]=await Promise.all([getDocFromServer(doc(db,"companies",companyId)),getDocFromServer(doc(db,"companies",companyId,"members",user.uid))]);
  if(!co.exists()||!member.exists()||member.data().active===false)return null;
  const c=co.data(),m=member.data();
  // Finance archives must never be shown to a partner-company owner or a
  // partner leader whose accessKind flags were mistakenly granted revenue.
- if(c.active===false||c.companyKind==="partner"||c.accessKind==="partner"||
-    ud.accessKind==="partner"||m.accessKind==="partner"||
-    ud.memberType==="cooperator"||m.memberType==="cooperator")return null;
+ // Only explicitly internal or legacy-unclassified accounts can read
+ // finance archives. Unknown classifications fail closed, including owner.
+ const internal=v=>v==null||v==="internal"||v==="direct";
+ const internalMemberType=v=>v==null||["internal","direct","managed"].includes(v);
+ if(c.active===false||m.companyId!==companyId||
+    !internal(c.companyKind)||!internal(c.accessKind)||
+    !internal(ud.accessKind)||!internal(m.accessKind)||
+    !internalMemberType(ud.memberType)||!internalMemberType(m.memberType))return null;
  const owner=c.ownerUid===user.uid||c.masterUid===user.uid||(ud.companyRole==="owner"&&m.companyRole==="owner");
  return owner?{id:companyId,name:c.name||"会社名未設定"}:null;
+}
+// Recheck live Firestore membership before exporting a money-bearing file.
+ // A cached owner screen or a valid old SHA-256 file is not authorization.
+async function exportOwnerStillAuthorized(){
+ const current=auth.currentUser,company=ownerCompany?.id,epoch=revision;
+ if(!bundle||!current||!company||bundle.payload?.company?.id!==company){
+  reset();status("オーナー権限または資料の所属を確認できません。");return false;
+ }
+ try{
+  const fresh=await companyForOwner(current);
+  if(revision===epoch&&auth.currentUser?.uid===current.uid&&
+     fresh?.id===company)return true;
+ }catch{ /* Fail closed on lost network, permission error, or removed membership. */ }
+ reset();ownerCompany=null;button.style.display="none";
+ status("権限を再確認できないため出力を停止しました。再ログインして確認してください。");
+ return false;
 }
 function period(){
  const mode=$("archiveMode").value;
@@ -125,7 +148,7 @@ async function sha(payload){
  return Array.from(new Uint8Array(h),x=>x.toString(16).padStart(2,"0")).join("");
 }
 async function load(){
- reset();status("");const p=period(),currentUser=auth.currentUser;
+ reset();status("");const p=period(),currentUser=auth.currentUser,loadRevision=revision;
  const owned=await companyForOwner(currentUser);
  if(!owned||!ownerCompany||owned.id!==ownerCompany.id)throw Error("オーナー権限がありません。");
  const names=["records","products","recordCorrections","teams"];
@@ -135,13 +158,27 @@ async function load(){
    :n==="recordCorrections"
     ?query(collection(db,n),where("companyId","==",owned.id),where("recordDate",">=",p.start),where("recordDate","<",p.finish))
     :query(collection(db,n),where("companyId","==",owned.id));
+ // Query counts first. An oversized or changing archive must never silently
+ // export a partial fiscal report or consume an unbounded Firestore read quota.
+ const queries=names.map(makeQuery);
  let snaps;
- try{snaps=await Promise.all(names.map(n=>getDocsFromServer(makeQuery(n))));}
+ try{
+  const aggregate=await Promise.all(queries.map(q=>getCountFromServer(q)));
+  const preflight=checkArchivePreflightCounts(
+    aggregate.map(s=>s.data()?.count)
+  );
+  snaps=await Promise.all(queries.map(q=>getDocsFromServer(q)));
+  assertArchiveQueryCountsMatch(preflight,snaps);
+ }
  catch(e){
   if(e?.code==="failed-precondition")throw Error("期間別取得に必要なFirestore複合インデックスが未作成です。管理者がインデックスを公開してから実行してください。全件読込による自動代替は行いません。");
   throw e;
  }
- if(auth.currentUser?.uid!==currentUser.uid)throw Error("ログインが変更されました。");
+ // Membership can be revoked while the four queries are running.
+ const stillOwner=await companyForOwner(auth.currentUser);
+ if(revision!==loadRevision||auth.currentUser?.uid!==currentUser.uid||
+    stillOwner?.id!==owned.id)
+   throw Error("データ取得中にオーナー権限が変更されました。出力を停止します。");
  const collections=snaps.map(s=>s.docs.map(d=>({id:d.id,...d.data()})));
  const records=collections[0].filter(r=>p.contains(r.date)).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
  const corrections=collections[2].filter(r=>p.contains(r.recordDate));
@@ -187,9 +224,8 @@ function table(items,title){
  return "<h3>"+esc(title)+"</h3><table><thead><tr><th>名称</th><th>件数</th><th>売上</th></tr></thead><tbody>"+
  items.map(x=>"<tr><td>"+esc(x.name)+"</td><td>"+esc(x.count)+"</td><td>"+esc(money(x.revenue))+"</td></tr>").join("")+"</tbody></table>";
 }
-function makePdf(){
+function makePdf(printWindow=window.open("","_blank")){
  const p=bundle.payload;
- const printWindow=window.open("","_blank");
  if(!printWindow){status("ブラウザのポップアップ許可が必要です。");return;}
  const html='<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>営業実績報告書</title>'+
  '<style>body{font-family:sans-serif;max-width:860px;margin:auto;padding:30px;color:#1f2937}h1{color:#1d4ed8;border-bottom:3px solid #3b82f6;padding-bottom:14px}'+
@@ -221,13 +257,29 @@ $("archiveLoad").addEventListener("click",async()=>{
  try{await load();}catch(err){reset();$("archiveSummary").textContent="資料を生成できませんでした。";status(String(err?.message||err));}
  finally{$("archiveLoad").disabled=false;}
 });
-$("archiveCsv").addEventListener("click",()=>{if(bundle)makeCsv();});
-$("archivePdf").addEventListener("click",()=>{if(bundle)makePdf();});
-$("archiveJson").addEventListener("click",()=>{if(bundle)download(fileBase()+".json",JSON.stringify(bundle,null,2),"application/json;charset=utf-8");});
+$("archiveCsv").addEventListener("click",async()=>{
+ if(await exportOwnerStillAuthorized())makeCsv();
+});
+$("archivePdf").addEventListener("click",async()=>{
+ if(!bundle)return;
+ // Open synchronously for iPhone/Safari popup policies, then verify privileges.
+ const printWindow=window.open("","_blank");
+ if(!printWindow){status("ブラウザのポップアップ許可が必要です。");return;}
+ if(await exportOwnerStillAuthorized())makePdf(printWindow);
+ else printWindow.close();
+});
+$("archiveJson").addEventListener("click",async()=>{
+ if(await exportOwnerStillAuthorized())
+  download(fileBase()+".json",JSON.stringify(bundle,null,2),"application/json;charset=utf-8");
+});
 $("archiveVerify").addEventListener("click",()=>$("archiveFile").click());
 $("archiveFile").addEventListener("change",async()=>{
  const f=$("archiveFile").files?.[0];if(!f)return;
+ reset(); // Never retain a previous export when a new file is invalid.
  try{
+  const authorized=await companyForOwner(auth.currentUser);
+  if(!authorized||!ownerCompany||authorized.id!==ownerCompany.id)
+   throw Error("売上資料を開く権限がありません。");
   const data=JSON.parse(await f.text());
   if(!ownerCompany||data?.payload?.company?.id!==ownerCompany.id)throw Error("現在の会社のオーナーが作成した資料のみ表示できます。");
   if(data.kind!=="sales-archive"||data.version!==1||!data.payload||!data.checksum)throw Error("正しい売上保存JSONではありません。");
@@ -238,18 +290,22 @@ $("archiveFile").addEventListener("change",async()=>{
     records:saved.original?.records,companyVerified:true
   });
   bundle=data;
-  $("archivePdf").disabled=!policy.canExportPdf;
-  $("archiveCsv").disabled=!policy.canExportCsv;
+  // SHA-256 checks accidental corruption, not authorship or server truth:
+  // anyone holding a JSON file can rewrite both its contents and hash.
+  // Never certify/reprint a saved file as a current, official PDF/CSV.
+  $("archivePdf").disabled=true;
+  $("archiveCsv").disabled=true;
   $("archiveJson").disabled=!policy.canExportEvidenceJson;
   $("archiveSummary").textContent="📂 保存済み資料を表示中 ／ "+data.payload.period+" ／ 日別実績 "+
    data.payload.summary.dailyRecords+"件 ／ 獲得 "+data.payload.summary.count+"件 ／ 売上 "+money(data.payload.summary.revenue);
-  status("✓ JSONハッシュ照合完了。ただし金額の確定には元帳との確認が必要です。警告がある資料のPDF/CSV出力は停止。Firestoreのデータ変更・上書き・復元はしていません。");
+  status("✓ JSONの破損検査は完了しました。ただしSHA-256は発行者・実データの正しさを保証しません。保存済みJSONからの確定PDF/CSV出力は停止しました。現在の原票を再確認して出力してください。Firestoreの変更・復元はしていません。");
  }catch(err){status("✕ "+String(err?.message||err));}
  $("archiveFile").value="";
 });
 onAuthStateChanged(auth,async user=>{
  const id=++revision;ownerCompany=null;button.style.display="none";close();
- if(!user)return;
+ // Old GitHub Pages URL is retired. Do not enable the owner archive there.
+ if(!user||window.location.origin!=="https://nico-factory.web.app")return;
  try{
   const c=await companyForOwner(user);
   if(id!==revision||auth.currentUser?.uid!==user.uid)return;

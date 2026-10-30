@@ -56,7 +56,7 @@ function ownerEvaluator(){
        b=js.indexOf("function period(",a);
  assert(a>=0&&b>a);
  // Inject fake server responses; never connect to Firebase.
- return new Function("getDoc","doc","db",js.slice(a,b)+"\nreturn companyForOwner;")(
+ return new Function("getDocFromServer","doc","db",js.slice(a,b)+"\nreturn companyForOwner;")(
   async ref=>ref.kind==="user"?{exists:()=>true,data:()=>structuredClone(ref.user)}:
     ref.kind==="company"?{exists:()=>true,data:()=>structuredClone(ref.company)}:
     {exists:()=>true,data:()=>structuredClone(ref.member)},
@@ -71,13 +71,16 @@ function fixture(){
  return {
   user:{uid:"u1",active:true,companyId:"c1",companyRole:"owner",accessKind:"internal"},
   company:{ownerUid:"u1",masterUid:"u1",active:true,companyKind:"internal",name:"内製会社"},
-  member:{companyRole:"owner",active:true,accessKind:"internal"}
+  member:{companyId:"c1",companyRole:"owner",active:true,accessKind:"internal"}
  };
 }
 test("staged archive owner check excludes partner-company owner even with finance flags",async()=>{
  const owner=ownerEvaluator();
  for(const mutation of [
   x=>{x.company.companyKind="partner";},
+  x=>{x.company.companyKind="external";},
+  x=>{x.user.accessKind="unknown";},
+  x=>{x.member.memberType="vendor";},
   x=>{x.user.accessKind="partner";},
   x=>{x.member.accessKind="partner";},
   x=>{x.user.memberType="cooperator";},
