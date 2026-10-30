@@ -144,6 +144,63 @@ test('Partner markers block raw finance reads even after mistaken owner or finan
   }
 });
 
+test('partner COMPANY kind blocks even unmarked Owner/Master accounts from all monetary originals',async()=>{
+  // Both legacy users have no accessKind. Their inherited Owner/Master grants
+  // must not override the company's authoritative partner classification.
+  await env.withSecurityRulesDisabled(async ctx=>{
+    await updateDoc(doc(ctx.firestore(),'companies',company),{
+      companyKind:'partner',hubCompanyId:'hub-test'
+    });
+  });
+  for(const uid of ['master','owner']){
+    const db=firebase(uid);
+    for(const [name,id] of [
+      ['products','product-1'],['records','record-1'],
+      ['recordCorrections','correction-1'],['revenueGoals','revenue-A']
+    ])await assertFails(getDoc(doc(db,name,id)));
+    for(const name of ['products','records','recordCorrections','revenueGoals'])
+      await assertFails(getDocsFromServer(query(collection(db,name),where('companyId','==',company))));
+    await assertFails(updateDoc(doc(db,'records','record-1'),{totalRevenue:777777,updatedAt:serverTimestamp()}));
+    await assertFails(deleteDoc(doc(db,'records','record-1')));
+  }
+  assert.equal((await assertSucceeds(getDoc(doc(firebase('owner'),'teams','A')))).data().name,'A',
+   'finance guard does not delete/hide ordinary team data');
+});
+
+test('one-sided partner and unknown account/member markers block Owner finance despite old grants',async()=>{
+  const markers=[
+    {on:'user',field:'accessKind',value:'partner'},
+    {on:'member',field:'accessKind',value:'partner'},
+    {on:'user',field:'accessKind',value:'cooperator'},
+    {on:'member',field:'accessKind',value:'unrecognized-future-type'},
+    {on:'user',field:'memberType',value:'partner'},
+    {on:'member',field:'memberType',value:'partner'},
+    {on:'user',field:'memberType',value:'cooperator'},
+    {on:'member',field:'memberType',value:'cooperator'},
+    {on:'user',field:'memberType',value:'unknown-provider'}
+  ];
+  for(const item of markers){
+    await env.withSecurityRulesDisabled(async ctx=>{
+      const db=ctx.firestore();
+      const base={uid:'owner',companyId:company,active:true,...people.owner};
+      await setDoc(doc(db,'users','owner'),{
+        ...base,...(item.on==='user'?{[item.field]:item.value}:{})
+      });
+      await setDoc(doc(db,'companies',company,'members','owner'),{
+        ...base,...(item.on==='member'?{[item.field]:item.value}:{})
+      });
+    });
+    const db=firebase('owner');
+    for(const [name,id] of [
+      ['products','product-1'],['records','record-1'],
+      ['recordCorrections','correction-1'],['revenueGoals','revenue-A']
+    ])await assertFails(getDoc(doc(db,name,id)));
+    await assertFails(updateDoc(doc(db,'products','product-1'),{
+      revenue:999999,updatedAt:serverTimestamp()
+    }));
+  }
+});
+
 test('ordinary staff cannot forge own historical team scope, even in paired user/member write',async()=>{
   const db=firebase('ordinary'),stamp={teamId:'A',teamHistory:[
     {effectiveDate:'2026-01-01',fromTeamId:'B',toTeamId:'A'}
