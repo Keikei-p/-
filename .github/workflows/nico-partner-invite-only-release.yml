@@ -1,0 +1,94 @@
+name: NICO partner invite only — controlled live release
+on:
+  workflow_dispatch:
+    inputs:
+      release_confirmation:
+        description: 'Type CONFIRM_PARTNER_INVITE_ONLY to release only 3 new Functions and 1 HTML file'
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: nico-partner-invite-production
+  cancel-in-progress: false
+jobs:
+  invite-only:
+    if: ${{ github.ref == 'refs/heads/main' && inputs.release_confirmation == 'CONFIRM_PARTNER_INVITE_ONLY' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      NICO_PARTNER_RELEASE_CONFIRMATION: CONFIRM_ADD_INVITE_ONLY
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate non-destructive deployment scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check tools/hosting/additive-partner-invite.mjs
+          node --test tests/additive-partner-invite-hosting.test.mjs
+          node --test tests/partner-company-invitations.test.cjs
+          node --test tests/sales-regressions.cjs
+          node --check functions/index.js
+          node -e "let c=require('./firebase.partner-invites.json');if(Object.keys(c).length!==1||c.functions.source!=='functions')throw Error('unsafe config')"
+      - name: Install Functions and CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix functions --ignore-scripts --package-lock=false
+          npm install -g firebase-tools@15.34.1
+          node -e "require('./functions/index.js')"
+      - name: Prepare temporary service identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-partner-credential.json"
+          chmod 600 "$RUNNER_TEMP/nico-partner-credential.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-partner-credential.json" >> "$GITHUB_ENV"
+      - name: READ ONLY live site parity check
+        run: node tools/hosting/additive-partner-invite.mjs --dry-run
+      - name: Enable only new invitation Functions in temporary checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e functions/.env.sales-management-cc116
+          printf 'PARTNER_INVITES_ENABLED=enabled\n' > functions/.env.sales-management-cc116
+          chmod 600 functions/.env.sales-management-cc116
+      - name: Deploy only 3 new callables (never scheduled LINE)
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase deploy --non-interactive --project "$FIREBASE_PROJECT_ID" \
+            --config firebase.partner-invites.json \
+            --only functions:createPartnerCompanyInvitation,functions:previewPartnerCompanyInvitation,functions:acceptPartnerCompanyInvitation
+      - name: Verify all four Functions remain deployed
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase functions:list --project "$FIREBASE_PROJECT_ID" --json > "$RUNNER_TEMP/functions.json"
+          FUNCTION_LIST="$RUNNER_TEMP/functions.json" node <<'NODE'
+          const a=JSON.parse(require('fs').readFileSync(process.env.FUNCTION_LIST,'utf8'));
+          const names=(Array.isArray(a.result)?a.result:[]).map(x=>x.id||x.name||x.function||'');
+          for(const n of ['sendMissingReportReminders','createPartnerCompanyInvitation','previewPartnerCompanyInvitation','acceptPartnerCompanyInvitation'])
+            if(!names.some(s=>s===n||s.endsWith('/'+n)))throw Error('Function missing: '+n);
+          NODE
+      - name: Publish ONLY invite page (live contents and config unchanged)
+        run: node tools/hosting/additive-partner-invite.mjs --release
+      - name: Verify official HTML and existing homepage
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --max-time 30 https://nico-factory.web.app/partner-invite.html > "$RUNNER_TEMP/invite.html"
+          grep -Fq 'NICO FACTORY | 協力店招待' "$RUNNER_TEMP/invite.html"
+          curl -fsSL --retry 3 --max-time 30 https://nico-factory.web.app/ > "$RUNNER_TEMP/index.html"
+          grep -Fq '営業実績管理' "$RUNNER_TEMP/index.html"
+      - name: Remove temporary credential and opt-in flag
+        if: always()
+        shell: bash
+        run: |
+          rm -f functions/.env.sales-management-cc116 "$RUNNER_TEMP/nico-partner-credential.json"
