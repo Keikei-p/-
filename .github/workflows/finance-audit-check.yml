@@ -4,6 +4,8 @@ on:
     branches: [main]
     paths:
       - 'cloudflare-finance/**'
+      - 'security/verified-count-projection-plan.mjs'
+      - 'tests/verified-count-projection-plan.test.mjs'
       - '.github/workflows/finance-audit-check.yml'
   workflow_dispatch:
 permissions:
@@ -25,6 +27,8 @@ jobs:
           distribution: temurin
           java-version: '21'
       # PR mode: cheap offline unit tests only. Full emulator/Chromium on explicit manual dispatch.
+      - name: Verify finance-free projected counts and >2,000 daily rows (no external services)
+        run: node --test tests/verified-count-projection-plan.test.mjs
       - name: Existing sales regressions
         run: node --test tests/sales-regressions.cjs
       - name: Unit regressions without production services
