@@ -4915,6 +4915,38 @@ body.product-reordering .product-list {
 
       </div>
 
+      <div id="partnerInviteInline"
+           hidden
+           style="margin-top:18px;padding:15px;border:1px solid var(--border);border-radius:12px;">
+        <div style="font-weight:800;margin-bottom:6px;">🤝 協力店を招待</div>
+        <p style="font-size:12px;line-height:1.6;color:var(--sub);">
+          自社スタッフとは別会社として招待します。協力店には売上・単価を付与しません。
+          招待リンクは30分間有効です。
+        </p>
+        <div class="management-input-row">
+          <input id="partnerInviteCompanyName" type="text"
+                 maxlength="80" autocomplete="organization"
+                 placeholder="協力店の会社名" aria-label="協力店の会社名">
+          <input id="partnerInviteEmail" type="email" autocomplete="off"
+                 placeholder="協力店のメールアドレス" aria-label="協力店のメールアドレス">
+          <button id="partnerInviteCreateButton" type="button">
+            協力店の招待リンク作成
+          </button>
+        </div>
+        <div id="partnerInviteResult" hidden style="margin-top:12px;">
+          <label for="partnerInviteLinkOutput" style="font-size:12px;font-weight:700;">
+            協力店に送るリンク
+          </label>
+          <div class="management-input-row">
+            <input id="partnerInviteLinkOutput" type="text" readonly>
+            <button id="partnerInviteCopyButton" type="button">コピー</button>
+          </div>
+        </div>
+        <a href="/partner-invite.html" style="display:inline-block;margin-top:10px;">
+          専用の協力店招待画面を開く
+        </a>
+      </div>
+
     </div>
 
     <div
@@ -6748,6 +6780,10 @@ import {
 import {classifyLegacySalesEntrypoint}
  from "./legacy-finance-entry-guard.mjs";
 
+// Partner quick-count APIs are called only by verified hub-owner views.
+import {getFunctions,httpsCallable}
+ from "https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js";
+
 import {
   getFirestore,
   doc,
@@ -6789,6 +6825,10 @@ auth.languageCode =
 
 const db =
   getFirestore(app);
+
+const partnerCountFunctions = getFunctions(app,"asia-northeast1");
+const readPartnerQuickDay = httpsCallable(partnerCountFunctions,"getPartnerQuickCounts");
+const createPartnerCompanyInvite = httpsCallable(partnerCountFunctions,"createPartnerCompanyInvitation");
 
 
 /* =====================================================
@@ -8807,6 +8847,12 @@ function openCompanyQuickPanel(
   companyInviteControls.hidden =
     mode !==
     "invite";
+  // This button is shown to the original hub owner, not a partner owner.
+  const partnerInviteBox=document.getElementById("partnerInviteInline");
+  if(partnerInviteBox)partnerInviteBox.hidden = mode !== "invite" ||
+    !currentUser?.uid || currentCompanyData?.ownerUid !== currentUser.uid ||
+    currentCompanyData?.companyKind === "partner" ||
+    currentUserData?.accessKind === "partner";
 
   ownerTransferPanel.hidden =
     mode !==
@@ -11402,6 +11448,55 @@ createInviteButton.onclick =
     }
 
   };
+
+
+const partnerInviteCreateButton = document.getElementById("partnerInviteCreateButton");
+partnerInviteCreateButton.onclick = async () => {
+  if (!currentUser?.emailVerified ||
+      currentCompanyData?.ownerUid !== currentUser.uid ||
+      currentCompanyData?.companyKind === "partner" ||
+      currentUserData?.accessKind === "partner") {
+    showError("協力店招待は自社のオーナーだけが作成できます。");
+    return;
+  }
+  const companyName=document.getElementById("partnerInviteCompanyName").value.trim();
+  const email=document.getElementById("partnerInviteEmail").value.trim().toLowerCase();
+  if(companyName.length<2 || companyName.length>80 ||
+     !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+    showError("協力店名と招待メールアドレスを確認してください。");
+    return;
+  }
+  partnerInviteCreateButton.disabled=true;
+  try {
+    const response=await createPartnerCompanyInvite({companyName,email});
+    const token=response?.data?.token;
+    if(typeof token!=="string"||!/^[A-Za-z0-9_-]{43}$/.test(token))
+      throw Error("invalid_invite_response");
+    const url=new URL("/partner-invite.html",location.origin);
+    url.searchParams.set("token",token);
+    document.getElementById("partnerInviteLinkOutput").value=url.href;
+    document.getElementById("partnerInviteResult").hidden=false;
+    showSuccess("協力店の招待リンクを作成しました。30分以内に送ってください。");
+  } catch (error) {
+    // Never log or expose invitation secrets.
+    console.error("協力店招待を作成できません",error?.code||"unknown");
+    showError("協力店の招待を作成できません。ログインとオーナー権限を確認してください。");
+  } finally {
+    partnerInviteCreateButton.disabled=false;
+  }
+};
+document.getElementById("partnerInviteCopyButton").onclick=async()=>{
+  const input=document.getElementById("partnerInviteLinkOutput");
+  if(!input.value)return;
+  try {
+    await navigator.clipboard.writeText(input.value);
+    showSuccess("協力店招待リンクをコピーしました。");
+  } catch {
+    input.select();
+    if(!document.execCommand("copy"))showError("コピーできません。リンクを手動でコピーしてください。");
+    else showSuccess("協力店招待リンクをコピーしました。");
+  }
+};
 
 
 copyInviteButton.onclick =
