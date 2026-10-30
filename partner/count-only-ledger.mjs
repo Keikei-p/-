@@ -263,3 +263,68 @@ export async function readCurrentPartnerPublication({
      header:publicData.header,lines:publicData.lines};
  });
 }
+
+/**
+ * Read ONE actor's own day from the same append-only partner ledger.
+ * Auth + active membership must be verified in the SAME transaction.
+ * No queries over another user's records, no raw sales, and no deletion.
+ * This intentionally does not claim to include legacy records before cutover.
+ */
+export async function readOwnPartnerCountDay({
+ store,loadTrustedReader,date,teamId
+}={}){
+ requiredFunctions(store);
+ if(typeof loadTrustedReader!=="function"||!valid(teamId)||
+    typeof date!=="string"||
+    !/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(date)||
+    !Number.isFinite(Date.parse(date+"T00:00:00Z"))||
+    new Date(date+"T00:00:00Z").toISOString().slice(0,10)!==date)fail();
+ return store.runTransaction(async tx=>{
+   const reader=await loadTrustedReader(tx);
+   if(!reader||reader.serverVerified!==true||
+      reader.tokenVerified!==true||
+      reader.companyKind!=="partner"||
+      !valid(reader.companyId)||!valid(reader.uid)||
+      !Array.isArray(reader.teamIds)||
+      !reader.teamIds.includes(teamId))fail();
+   const claimRef=store.ref("partnerCountDailyClaims/"+
+     composite(reader.companyId,reader.uid,date));
+   const claim=await tx.get(claimRef);
+   if(!claim.exists)return {found:false,date,teamId};
+   const daily=claim.data();
+   if(!daily||daily.companyId!==reader.companyId||
+      daily.uid!==reader.uid||daily.date!==date||
+      daily.teamId!==teamId||!valid(daily.recordId))fail();
+   const recordRef=store.ref(paths(reader.companyId,daily.recordId,1).current);
+   const snap=await tx.get(recordRef);
+   if(!snap.exists)fail();
+   const doc=snap.data();
+   if(!doc||doc.companyId!==reader.companyId||
+      doc.sourceId!==daily.recordId||doc.uid!==reader.uid||
+      doc.teamId!==teamId||doc.date!==date||
+      !Number.isSafeInteger(doc.version)||doc.version<1||
+      doc.version!==doc.revision||doc.version!==doc.latestPublicRevision||
+      !Number.isSafeInteger(doc.totalCount)||doc.totalCount<0||
+      !Number.isSafeInteger(doc.sharedCount)||doc.sharedCount<0||
+      doc.sharedCount>doc.totalCount||
+      !["submitted","no_result"].includes(doc.status)||
+      !Array.isArray(doc.lines)||doc.lines.length>200)fail();
+   let total=0;
+   const lines=[];
+   for(const line of doc.lines){
+     if(!line||!valid(line.catalogId)||
+        !Number.isSafeInteger(line.count)||line.count<=0)fail();
+     total+=line.count;
+     if(!Number.isSafeInteger(total))fail();
+     lines.push({catalogId:line.catalogId,count:line.count});
+   }
+   if(total!==doc.totalCount||
+      (doc.status==="no_result"&&total!==0)||
+      (doc.status==="submitted"&&total===0))fail();
+   const result={found:true,date,teamId,recordId:daily.recordId,
+     version:doc.version,status:doc.status,
+     ownCount:doc.totalCount,sharedCount:doc.sharedCount,lines};
+   auditNoFinancialKeys(result);
+   return result;
+ });
+}
