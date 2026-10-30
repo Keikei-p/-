@@ -260,3 +260,13 @@ test("new activation module never queries money-bearing collections or deletes",
  assert.doesNotMatch(src,/\.collection\s*\(\s*["'](?:records|products|recordCorrections|revenueGoals)["']\s*\)/);
  assert.doesNotMatch(src,/\.set\s*\(.*\{merge\s*:\s*false/);
 });
+
+test("onboarding callable must remain disabled by default and never be part of invite-only deploy",()=>{
+ const fs=require("node:fs"),path=require("node:path");
+ const source=fs.readFileSync(path.join(__dirname,"../functions/index.js"),"utf8");
+ const workflow=fs.readFileSync(path.join(__dirname,"../.github/workflows/nico-partner-invite-only-release.yml"),"utf8");
+ assert.match(source,/exports\\.activatePartnerCountCompany\\s*=\\s*onCall/);
+ assert.match(source,/process\\.env\\.PARTNER_COUNT_ONBOARDING_ENABLED\\s*===\\s*"enabled"/);
+ assert.match(source,/process\\.env\\.PARTNER_COUNT_REVIEW_ID/);
+ assert.doesNotMatch(workflow,/functions:activatePartnerCountCompany/);
+});
