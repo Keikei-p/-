@@ -60,7 +60,39 @@ jobs:
           test ! -e functions/.env.sales-management-cc116
           printf 'PARTNER_INVITES_ENABLED=enabled\n' > functions/.env.sales-management-cc116
           chmod 600 functions/.env.sales-management-cc116
+      - name: Configure one-day Artifact Registry image cleanup (never Firestore data)
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase functions:artifacts:setpolicy --days 1 --location asia-northeast1 \
+            --project "$FIREBASE_PROJECT_ID" --non-interactive
+      - name: Check whether the three already-created Functions can be reused without rebuilding
+        id: existing
+        shell: bash
+        run: |
+          set -euo pipefail
+          # This is the precise Git blob SHA of the code already created by
+          # approved live run 41081599252, not a guessed version or date.
+          test "$(git hash-object functions/index.js)" = "dfb4c48ada6fa89a24c898cd4a2f911bcede822f"
+          test "$(git hash-object functions/partner-company-invitations.cjs)" = "4da83f98cd6f033d8ce8bda532aef39859db9c09"
+          firebase functions:list --project "$FIREBASE_PROJECT_ID" --json > "$RUNNER_TEMP/previous-functions.json"
+          FUNCTION_LIST="$RUNNER_TEMP/previous-functions.json" node <<'NODE'
+          const data=JSON.parse(require('fs').readFileSync(process.env.FUNCTION_LIST,'utf8'));
+          const names=(Array.isArray(data.result)?data.result:[]).map(x=>x.id||x.name||x.function||'');
+          if(!names.some(s=>s==='sendMissingReportReminders'||s.endsWith('/sendMissingReportReminders')))
+            throw Error('Original scheduled LINE function missing: abort');
+          const newNames=['createPartnerCompanyInvitation','previewPartnerCompanyInvitation','acceptPartnerCompanyInvitation'];
+          const present=newNames.filter(n=>names.some(s=>s===n||s.endsWith('/'+n)));
+          if(present.length>0&&present.length<3)
+            throw Error('Partially created invitation Functions: stop for manual audit');
+          require('fs').appendFileSync(process.env.GITHUB_OUTPUT,
+            'already_deployed='+(present.length===3?'true':'false')+'\n');
+          console.log(present.length===3?
+            'PASS: three unchanged partner Functions already created; skip extra rebuild':
+            'No partner Functions created; deploy exactly three');
+          NODE
       - name: Deploy only 3 new callables (never scheduled LINE)
+        if: ${{ steps.existing.outputs.already_deployed != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
