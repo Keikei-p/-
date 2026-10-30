@@ -5,7 +5,7 @@ import {checkArchivePreflightCounts,assertArchiveQueryCountsMatch}
   from "./archive-read-budget.mjs";
 import {getApp} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
 import {getAuth,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
-import {getFirestore,getDoc,doc,collection,query,where,getDocsFromServer,getCountFromServer} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+import {getFirestore,getDocFromServer,doc,collection,query,where,getDocsFromServer,getCountFromServer} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
 const app=getApp(),auth=getAuth(app),db=getFirestore(app);
 const $=id=>document.getElementById(id);
@@ -40,7 +40,7 @@ function reset(){bundle=null;outputButtons.forEach(id=>$(id).disabled=true);}
 function close(){dialog.hidden=true;reset();}
 async function companyForOwner(user){
  if(!user?.emailVerified)return null;
- const u=await getDoc(doc(db,"users",user.uid));if(!u.exists())return null;
+ const u=await getDocFromServer(doc(db,"users",user.uid));if(!u.exists())return null;
  const ud=u.data();if(ud.active===false||!ud.companyId)return null;
  const companyId=ud.companyId;
  const [co,member]=await Promise.all([getDoc(doc(db,"companies",companyId)),getDoc(doc(db,"companies",companyId,"members",user.uid))]);
@@ -48,10 +48,14 @@ async function companyForOwner(user){
  const c=co.data(),m=member.data();
  // Finance archives must never be shown to a partner-company owner or a
  // partner leader whose accessKind flags were mistakenly granted revenue.
- const banned=new Set(["partner","cooperator"]);
- if(c.active===false||banned.has(c.companyKind)||banned.has(c.accessKind)||
-    banned.has(ud.accessKind)||banned.has(m.accessKind)||
-    banned.has(ud.memberType)||banned.has(m.memberType))return null;
+ // Only explicitly internal or legacy-unclassified accounts can read
+ // finance archives. Unknown classifications fail closed, including owner.
+ const internal=v=>v==null||v==="internal"||v==="direct";
+ const internalMemberType=v=>v==null||["internal","direct","managed"].includes(v);
+ if(c.active===false||m.companyId!==companyId||
+    !internal(c.companyKind)||!internal(c.accessKind)||
+    !internal(ud.accessKind)||!internal(m.accessKind)||
+    !internalMemberType(ud.memberType)||!internalMemberType(m.memberType))return null;
  const owner=c.ownerUid===user.uid||c.masterUid===user.uid||(ud.companyRole==="owner"&&m.companyRole==="owner");
  return owner?{id:companyId,name:c.name||"会社名未設定"}:null;
 }
