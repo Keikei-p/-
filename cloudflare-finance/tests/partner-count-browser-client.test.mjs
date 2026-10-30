@@ -10,7 +10,7 @@ const key="retry_safe_partner_20261030";
 const report={date:"2026-10-30",teamId:"team1",status:"submitted",
  lines:[{catalogId:"shared:hub:NURO",count:2},
   {catalogId:"custom:partnerA:own",count:1}]};
-function fixture({dropFirstReply=false,corruptRead=false}={}){
+function fixture({dropFirstReply=false,dropReplyOnPost=0,corruptRead=false}={}){
  let current={found:false,date:report.date,teamId:report.teamId};
  let calls=[],posts=0,reads=0;
  let dropped=false;
@@ -51,7 +51,7 @@ function fixture({dropFirstReply=false,corruptRead=false}={}){
       sharedCount:body.request.lines.filter(r=>r.catalogId.startsWith("shared:"))
        .reduce((n,r)=>n+r.count,0)};
    }
-   if(dropFirstReply&&!dropped){
+   if((dropFirstReply||dropReplyOnPost===posts)&&!dropped){
     dropped=true;throw Error("Simulated lost connection AFTER server commit");
    }
    return ok({saved:true,status:body.action==="create"?"registered":"corrected",
@@ -135,4 +135,18 @@ test("source never imports raw Firestore SDK or stores credentials/financial fie
  assert.match(src,/\/v1\/partner-own-day/);
  assert.match(src,/\/v1\/partner-counts/);
  assert.match(src,/credentials:"omit"/);
+});
+
+test("lost correction ACK never overwrites a divergent subsequent record",async()=>{
+ const f=fixture({dropReplyOnPost:2}),api=f.make();
+ await api.saveDay(report);
+ const correction={...report,lines:[{catalogId:"shared:hub:NURO",count:5}]};
+ await assert.rejects(api.saveDay(correction),/Simulated lost connection/);
+ // A concurrent edit from another device must not be silently overwritten.
+ f.setCurrent({...f.current,version:3,
+  lines:[{catalogId:"shared:hub:NURO",count:8}],
+  ownCount:8,sharedCount:8});
+ await assert.rejects(api.saveDay(correction),
+   /partner_count_uncertain_prior_save_refresh_required/);
+ assert.equal(f.posts,2,"never issue a third write after unknown outcome");
 });
