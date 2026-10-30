@@ -8,6 +8,8 @@ on:
       - ".github/workflows/canonical-release-policy-preflight.yml"
       - "docs/SALES_SAFE_CUTOVER.md"
       - "tests/canonical-release-policy.test.mjs"
+      - "tests/nico-production-cutover-preflight.test.mjs"
+      - "scripts/nico-production-cutover-preflight.mjs"
   workflow_dispatch:
 permissions:
   contents: read
@@ -21,4 +23,4 @@ jobs:
         with:
           node-version: "22"
       - name: Static-only safety tests, no Firebase access
-        run: node --test tests/canonical-release-policy.test.mjs
+        run: node --test tests/canonical-release-policy.test.mjs tests/nico-production-cutover-preflight.test.mjs
