@@ -65,7 +65,7 @@ jobs:
           distribution: temurin
           java-version: "21"
       - name: Install isolated Firestore emulator test packages
-        run: npm ci --prefix tests --ignore-scripts --no-audit --no-fund
+        run: npm install --prefix tests --ignore-scripts --no-audit --no-fund --package-lock=false
       - name: Verify candidate Rules deny every partner and unknown marker
         run: npx --yes firebase-tools emulators:exec --only firestore --project demo-sales-public-boundary "node --test tests/finance-phase2-read-boundary.test.mjs"
       - name: Confirm production Rules path was not changed by staging tests
