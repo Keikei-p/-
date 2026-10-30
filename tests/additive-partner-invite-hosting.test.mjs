@@ -119,7 +119,7 @@ test("failed post-create deployment recovery configures cheap cleanup and reuses
  assert.match(yaml,/git hash-object functions\/index\.js/);
  assert.match(yaml,/dfb4c48ada6fa89a24c898cd4a2f911bcede822f/);
  assert.match(yaml,/4da83f98cd6f033d8ce8bda532aef39859db9c09/);
- assert.match(yaml,/already_deployed='+(present\.length===3/);
+ assert.ok(yaml.includes("already_deployed='+(present.length===3"));
  assert.match(yaml,/if: \$\{\{ steps\.existing\.outputs\.already_deployed != 'true' \}\}/);
  assert.match(yaml,/function.*sendMissingReportReminders/i);
  assert.match(yaml,/--only functions:createPartnerCompanyInvitation,functions:previewPartnerCompanyInvitation,functions:acceptPartnerCompanyInvitation/);
