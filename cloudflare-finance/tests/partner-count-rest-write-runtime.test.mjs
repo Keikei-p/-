@@ -140,7 +140,7 @@ test("default OFF blocks POST before any Auth, Firestore read or write",async()=
 test("partner count create/replay/correction are atomic, count-only and append immutable history",async()=>{
  const f=fixture(),handler=f.handle();
  const created=await handler(request());
- assert.equal(created.status,200);
+ assert.equal(created.status,200,JSON.stringify(f.calls.map(c=>c.url)));
  assert.deepEqual(await created.json(),{saved:true,status:"registered",
   recordId:"pc_test_r1",version:1,ownCount:3,sharedCount:2});
  assert.equal(f.commits,1);
