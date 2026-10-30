@@ -16,6 +16,7 @@ test("archive module is wired after existing app initialization, not a second ap
  assert.match(module,/getApp\(\)/);
  assert.match(module,/companyForOwner\(currentUser\)/);
  assert.match(module,/onAuthStateChanged\(auth/);
+ assert.match(module,/window\.location\.origin!=="https:\/\/nico-factory\.web\.app"/);
 });
 test("manual NICO hosting includes four archive dependencies with safe cache policy",()=>{
  for(const file of files){
