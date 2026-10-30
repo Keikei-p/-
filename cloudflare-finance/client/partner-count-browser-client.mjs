@@ -11,7 +11,7 @@ const ID=/^[A-Za-z0-9_:-]{1,128}$/;
 const RETRY=/^[A-Za-z0-9_-]{16,96}$/;
 const DATE=/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const deny=()=>{throw Error("partner_count_client_blocked");};
-const MONEY=/(?:[¥￥$€]|(?:\\d|[０-９])[\\d０-９,.，]*\\s*(?:万|千)?円|(?:\\d|[０-９])[\\d０-９,.，]*\\s*万(?:\\D|$)|(?:CB|cashback|revenue|unitprice|単価|売上|報酬|利益)[\\s:_=-]*(?:\\d|[０-９]))/i;
+const MONEY=/(?:[¥￥$€]|(?:\d|[０-９])[\d０-９,.，]*\s*(?:万|千)?円|(?:\d|[０-９])[\d０-９,.，]*\s*万(?:\D|$)|(?:CB|cashback|revenue|unitprice|単価|売上|報酬|利益)[\s:_=-]*(?:\d|[０-９]))/i;
 const exact=(value,keys)=>{
  if(!value||typeof value!=="object"||Array.isArray(value)||
     Object.keys(value).sort().join(",")!==[...keys].sort().join(","))deny();
