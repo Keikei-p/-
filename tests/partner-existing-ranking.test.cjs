@@ -41,6 +41,7 @@ test("validated count-only partner month aggregates and refuses partial old snap
   "normalizedPartnerRankingLabel","partnerCategoriesForExistingGroup",
   "existingGroupsWithPartnerCounts","productRankingRecordMatchesTeam"],{
     PARTNER_QUICK_RANK_KEYS:keys,getTodayString:()=>"2026-10-31",
+    currentPartnerRankingKey:date=>date,partnerRankingDailyCache:new Map(),
     readPartnerQuickDay:async({date})=>{
       requests.push(date);
       return {data:date==="2026-10-31"?response(date,{NURO:2,SBMNP:1}):
@@ -60,6 +61,9 @@ test("validated count-only partner month aggregates and refuses partial old snap
  assert.equal(october.rows[0].counts.SBMNP,1);
  assert.equal((await ctx.readPartnerRankingMonth("2026-09")).complete,false);
  assert.equal(requests.length,31);
+ const cached=await ctx.readPartnerRankingMonth("2026-10");
+ assert.equal(cached.rows[0].totalCount,7);
+ assert.equal(requests.length,31,"cached historical rows must not be re-fetched");
  const groups=[
   {id:"nuro",name:"NURO光",keys:["id:nuro-id"]},
   {id:"mnp",name:"乗り換え丸件",keys:["id:s"]},
