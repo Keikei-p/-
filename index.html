@@ -8520,6 +8520,7 @@ const PARTNER_QUICK_RANK_KEYS=Object.freeze([
 let partnerRankingState={key:"",rows:[],complete:false,checkedAt:0,reason:""};
 let partnerRankingActiveKey="";
 let partnerRankingRequestGeneration=0;
+const partnerRankingDailyCache=new Map();
 
 let individualRankingColumns = 1;
 let productRankingColumns = 1;
@@ -25587,9 +25588,19 @@ async function readPartnerRankingMonth(month){
   // Bounded network concurrency; never request all 31 Functions at once.
   for(let i=0;i<days.length;i+=4){
     const dates=days.slice(i,i+4);
-    const responses=await Promise.all(dates.map(date=>
-      readPartnerQuickDay({date}).then(result=>
-        validatedPartnerRankingDay(result.data,date))));
+    const responses=await Promise.all(dates.map(async date=>{
+      const key=currentPartnerRankingKey(date);
+      const cached=partnerRankingDailyCache.get(key);
+      const ttl=date===getTodayString()?180000:3600000;
+      if(cached&&Date.now()-cached.checkedAt<ttl)return cached.rows;
+      const result=await readPartnerQuickDay({date});
+      const rows=validatedPartnerRankingDay(result.data,date);
+      partnerRankingDailyCache.set(key,{rows,checkedAt:Date.now()});
+      // Bounded memory for private count-only rows; never persist in storage.
+      if(partnerRankingDailyCache.size>100)
+        partnerRankingDailyCache.delete(partnerRankingDailyCache.keys().next().value);
+      return rows;
+    }));
     responses.forEach((rows,index)=>{
       for(const item of rows){
         const old=map.get(item.id)||{
