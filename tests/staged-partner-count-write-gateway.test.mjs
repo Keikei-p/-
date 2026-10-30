@@ -69,10 +69,13 @@ function makeServer(){
  });
  return {docs,handle,get writes(){return writes;},get verified(){return verified;}};
 }
-function request(body,{token="a".repeat(60),contentType="application/json"}={}){
- return new Request("https://staging.invalid/counts",{
-  method:"POST",headers:{
-   "Authorization":"Bearer "+token,"Content-Type":contentType
+function request(body,{token="a".repeat(60),contentType="application/json",
+ origin="https://nico-factory.web.app",url="https://staging.invalid/v1/partner-counts",
+ method="POST",extraHeaders={}}={}){
+ return new Request(url,{
+  method,headers:{
+   "Authorization":"Bearer "+token,"Content-Type":contentType,
+   Origin:origin,...extraHeaders
   },body:JSON.stringify(body)
  });
 }
@@ -151,4 +154,48 @@ test("revoked, unlinked or inactive partners cannot register; no partial writes"
   assert.equal(result.status,403);
   assert.equal(service.writes,0);
  }
+});
+
+test("only the canonical NICO origin and exact count API route may write",async()=>{
+ const service=makeServer();
+ for(const args of [
+  {origin:"https://keikei-p.github.io"},
+  {origin:"https://evil.example"},
+  {origin:""},
+  {url:"https://staging.invalid/v1/financial-view"},
+  {url:"https://staging.invalid/v1/partner-counts?companyId=hub"},
+  {url:"http://staging.invalid/v1/partner-counts"},
+  {extraHeaders:{"Content-Length":"999999999"}}
+ ]){
+  const response=await service.handle(request(create,args));
+  assert.equal(response.status,403,"rejected "+JSON.stringify(args));
+  assert.equal(service.writes,0);
+  assert.equal(service.verified,0);
+  assert.notEqual(response.headers.get("Cache-Control"),null);
+  if(args.origin&&args.origin!=="https://nico-factory.web.app")
+   assert.equal(response.headers.get("Access-Control-Allow-Origin"),null);
+ }
+});
+test("CORS preflight accepts only POST with canonical authorization/content-type",async()=>{
+ const service=makeServer();
+ const make=(origin,method,headers)=>new Request("https://staging.invalid/v1/partner-counts",{
+  method:"OPTIONS",headers:{
+   Origin:origin,"Access-Control-Request-Method":method,
+   "Access-Control-Request-Headers":headers
+  }
+ });
+ const good=await service.handle(make("https://nico-factory.web.app","POST","authorization,content-type"));
+ assert.equal(good.status,204);
+ assert.equal(good.headers.get("Access-Control-Allow-Origin"),"https://nico-factory.web.app");
+ assert.equal(good.headers.get("Access-Control-Allow-Methods"),"POST");
+ for(const [origin,method,headers] of [
+  ["https://keikei-p.github.io","POST","authorization,content-type"],
+  ["https://nico-factory.web.app","DELETE","authorization,content-type"],
+  ["https://nico-factory.web.app","POST","authorization,x-firebase-admin"]
+ ]){
+  const bad=await service.handle(make(origin,method,headers));
+  assert.equal(bad.status,403);
+ }
+ assert.equal(service.verified,0);
+ assert.equal(service.writes,0);
 });
