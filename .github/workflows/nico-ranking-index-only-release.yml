@@ -1,0 +1,94 @@
+name: NICO existing ranking and invite tab — surgical index-only release
+on:
+  pull_request:
+    branches: [main]
+    paths: ['index.html','tests/sales-regressions.cjs','tests/partner-existing-ranking.test.cjs','tests/surgical-existing-index.test.mjs','tools/hosting/surgical-existing-index.mjs','.github/workflows/nico-ranking-index-only-release.yml']
+  push:
+    branches: [main]
+    paths: ['index.html','tests/sales-regressions.cjs','tests/partner-existing-ranking.test.cjs','tests/surgical-existing-index.test.mjs','tools/hosting/surgical-existing-index.mjs','.github/workflows/nico-ranking-index-only-release.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: nico-surgical-index-release
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Existing sales regressions and single-file Hosting safety
+        run: |
+          set -euo pipefail
+          node --check tools/hosting/surgical-existing-index.mjs
+          node --test tests/surgical-existing-index.test.mjs
+          node --test tests/partner-existing-ranking.test.cjs
+          node --test tests/sales-regressions.cjs
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const html=fs.readFileSync('index.html','utf8');
+          if(!html.includes('mergedPartnerRankingDay')||!html.includes('partnerInviteInline')||
+             !html.includes('getPartnerWorkspace'))throw Error('missing_partner_bridge');
+          const modules=[...html.matchAll(/<script\b[^>]*type=["']module["'][^>]*>([\s\S]*?)<\/script>/g)];
+          if(!modules.length)throw Error('no_browser_module');
+          modules.forEach((m,i)=>fs.writeFileSync('/tmp/old-sales-index-module-'+i+'.mjs',m[1]));
+          NODE
+          for file in /tmp/old-sales-index-module-*.mjs; do node --check "$file"; done
+  release:
+    needs: validate
+    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.validate.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      NICO_PARTNER_RELEASE_CONFIRMATION: CONFIRM_ADD_PARTNER_RANKING_INDEX_ONLY
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Confirm existing partner workspace API is live and securely requires authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          (async()=>{
+            for(const name of ['getPartnerWorkspace','managePartnerWorkspace',
+              'acceptPartnerWorkspaceInvite','submitPartnerWorkspaceCounts']){
+              const url='https://asia-northeast1-sales-management-cc116.cloudfunctions.net/'+name;
+              const response=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:'{"data":{}}'});
+              if(![401,403].includes(response.status))
+                throw Error('partner_workspace_not_ready '+name+' '+response.status);
+              console.log('AUTH_DENIAL_OK '+name+' '+response.status);
+            }
+          })().catch(e=>{console.error(e.message);process.exitCode=1});
+          NODE
+      - name: Prepare protected credentials for Hosting REST API only
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          node -e "if(require('./.firebaserc').projects.default!=='sales-management-cc116')process.exit(1)"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-ranking-identity.json"
+          chmod 600 "$RUNNER_TEMP/nico-ranking-identity.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-ranking-identity.json" >> "$GITHUB_ENV"
+      - name: Install only auth dependencies (no legacy Firebase builds)
+        run: npm install --prefix functions --ignore-scripts --package-lock=false
+      - name: Read-only current production Hosting manifest
+        run: node tools/hosting/surgical-existing-index.mjs --dry-run
+      - name: Release ONLY index.html with exact preservation of every other live file
+        run: node tools/hosting/surgical-existing-index.mjs --release
+      - name: Verify original invite, independent counts and partner workspace still live
+        shell: bash
+        run: |
+          set -euo pipefail
+          for route in / /partner-invite.html /partner-counts.html /partner-workspace.html; do
+            code=$(curl --silent --location --output /dev/null --write-out '%{http_code}' --max-time 25 "https://nico-factory.web.app$route")
+            test "$code" = 200
+            echo "PASS $route HTTP 200"
+          done

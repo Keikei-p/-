@@ -1,0 +1,23 @@
+name: Partner counts in existing rankings and invitation tab (no deployment)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'tests/partner-existing-ranking.test.cjs'
+      - '.github/workflows/partner-existing-ranking-tests.yml'
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify existing dashboard counts and inline partner invitation
+        run: node --test tests/partner-existing-ranking.test.cjs

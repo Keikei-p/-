@@ -4915,6 +4915,38 @@ body.product-reordering .product-list {
 
       </div>
 
+      <div id="partnerInviteInline"
+           hidden
+           style="margin-top:18px;padding:15px;border:1px solid var(--border);border-radius:12px;">
+        <div style="font-weight:800;margin-bottom:6px;">🤝 協力店を招待</div>
+        <p style="font-size:12px;line-height:1.6;color:var(--sub);">
+          自社スタッフとは別会社として招待します。協力店には売上・単価を付与しません。
+          招待リンクは30分間有効です。
+        </p>
+        <div class="management-input-row">
+          <input id="partnerInviteCompanyName" type="text"
+                 maxlength="80" autocomplete="organization"
+                 placeholder="協力店の会社名" aria-label="協力店の会社名">
+          <input id="partnerInviteEmail" type="email" autocomplete="off"
+                 placeholder="協力店のメールアドレス" aria-label="協力店のメールアドレス">
+          <button id="partnerInviteCreateButton" type="button">
+            協力店の招待リンク作成
+          </button>
+        </div>
+        <div id="partnerInviteResult" hidden style="margin-top:12px;">
+          <label for="partnerInviteLinkOutput" style="font-size:12px;font-weight:700;">
+            協力店に送るリンク
+          </label>
+          <div class="management-input-row">
+            <input id="partnerInviteLinkOutput" type="text" readonly>
+            <button id="partnerInviteCopyButton" type="button">コピー</button>
+          </div>
+        </div>
+        <a href="/partner-invite.html" style="display:inline-block;margin-top:10px;">
+          専用の協力店招待画面を開く
+        </a>
+      </div>
+
     </div>
 
     <div
@@ -6748,6 +6780,10 @@ import {
 import {classifyLegacySalesEntrypoint}
  from "./legacy-finance-entry-guard.mjs";
 
+// Partner quick-count APIs are called only by verified hub-owner views.
+import {getFunctions,httpsCallable}
+ from "https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js";
+
 import {
   getFirestore,
   doc,
@@ -6789,6 +6825,11 @@ auth.languageCode =
 
 const db =
   getFirestore(app);
+
+const partnerCountFunctions = getFunctions(app,"asia-northeast1");
+const readPartnerQuickDay = httpsCallable(partnerCountFunctions,"getPartnerQuickCounts");
+const readPartnerWorkDay = httpsCallable(partnerCountFunctions,"getPartnerWorkspace");
+const createPartnerCompanyInvite = httpsCallable(partnerCountFunctions,"createPartnerCompanyInvitation");
 
 
 /* =====================================================
@@ -8471,6 +8512,17 @@ let revenueChartScopeKey =
 let teamRankingMode =
   "progress";
 
+// The canonical direct-company monthly data and revenue always remain intact.
+// These rows are read through the count-only callable, never Firestore SDK.
+const PARTNER_QUICK_RANK_KEYS=Object.freeze([
+  "NURO","SBMNP","YMMNP","YM純新規","SB光・AIR",
+  "ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"
+]);
+let partnerRankingState={key:"",rows:[],complete:false,checkedAt:0,reason:""};
+let partnerRankingActiveKey="";
+let partnerRankingRequestGeneration=0;
+const partnerRankingDailyCache=new Map();
+
 let individualRankingColumns = 1;
 let productRankingColumns = 1;
 let selectedProductRankingKey = "";
@@ -8807,6 +8859,12 @@ function openCompanyQuickPanel(
   companyInviteControls.hidden =
     mode !==
     "invite";
+  // This button is shown to the original hub owner, not a partner owner.
+  const partnerInviteBox=document.getElementById("partnerInviteInline");
+  if(partnerInviteBox)partnerInviteBox.hidden = mode !== "invite" ||
+    !currentUser?.uid || currentCompanyData?.ownerUid !== currentUser.uid ||
+    currentCompanyData?.companyKind === "partner" ||
+    currentUserData?.accessKind === "partner";
 
   ownerTransferPanel.hidden =
     mode !==
@@ -9677,6 +9735,9 @@ function subscribeSelectedMonthRecords() {
       showMonthlyRecordsState("",false);
       createMonthOptions();
       renderDashboard();
+      // Refresh only after a full, server-verified internal month snapshot.
+      if (typeof refreshExistingPartnerRanking === "function")
+        void refreshExistingPartnerRanking();
       renderNotificationPreview();
     },error=>{
       if(generation!==recordQueryGeneration)return;
@@ -11404,6 +11465,59 @@ createInviteButton.onclick =
   };
 
 
+const partnerInviteCreateButton = document.getElementById("partnerInviteCreateButton");
+partnerInviteCreateButton.onclick = async () => {
+  if (!currentUser?.emailVerified ||
+      currentCompanyData?.ownerUid !== currentUser.uid ||
+      currentCompanyData?.companyKind === "partner" ||
+      currentUserData?.accessKind === "partner") {
+    showError("協力店招待は自社のオーナーだけが作成できます。");
+    return;
+  }
+  const companyName=document.getElementById("partnerInviteCompanyName").value.trim();
+  const email=document.getElementById("partnerInviteEmail").value.trim().toLowerCase();
+  if(companyName.length<2 || companyName.length>80 ||
+     !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    showError("協力店名と招待メールアドレスを確認してください。");
+    return;
+  }
+  const inviteCreatorUid=currentUser.uid;
+  partnerInviteCreateButton.disabled=true;
+  try {
+    const response=await createPartnerCompanyInvite({companyName,email});
+    if(currentUser?.uid!==inviteCreatorUid ||
+       currentCompanyData?.ownerUid!==inviteCreatorUid)
+      throw Error("stale_invite_creator");
+    const token=response?.data?.token;
+    if(typeof token!=="string"||!/^[A-Za-z0-9_-]{43}$/.test(token))
+      throw Error("invalid_invite_response");
+    const url=new URL("/partner-invite.html",location.origin);
+    url.searchParams.set("token",token);
+    document.getElementById("partnerInviteLinkOutput").value=url.href;
+    document.getElementById("partnerInviteResult").hidden=false;
+    showSuccess("協力店の招待リンクを作成しました。30分以内に送ってください。");
+  } catch (error) {
+    // Never log or expose invitation secrets.
+    console.error("協力店招待を作成できません",error?.code||"unknown");
+    showError("協力店の招待を作成できません。ログインとオーナー権限を確認してください。");
+  } finally {
+    partnerInviteCreateButton.disabled=false;
+  }
+};
+document.getElementById("partnerInviteCopyButton").onclick=async()=>{
+  const input=document.getElementById("partnerInviteLinkOutput");
+  if(!input.value)return;
+  try {
+    await navigator.clipboard.writeText(input.value);
+    showSuccess("協力店招待リンクをコピーしました。");
+  } catch {
+    input.select();
+    if(!document.execCommand("copy"))showError("コピーできません。リンクを手動でコピーしてください。");
+    else showSuccess("協力店招待リンクをコピーしました。");
+  }
+};
+
+
 copyInviteButton.onclick =
   async () => {
 
@@ -11476,6 +11590,16 @@ onAuthStateChanged(
       );
 
     } else {
+
+      // Never keep another company's count-only ranking in memory after logout.
+      ++partnerRankingRequestGeneration;
+      partnerRankingDailyCache.clear();
+      partnerRankingState={key:"",rows:[],complete:false,checkedAt:0,reason:""};
+      partnerRankingActiveKey="";
+      const link=document.getElementById("partnerInviteLinkOutput");
+      const inviteResultElement=document.getElementById("partnerInviteResult");
+      if(link)link.value="";
+      if(inviteResultElement)inviteResultElement.hidden=true;
 
       currentUser =
         null;
@@ -25417,6 +25541,214 @@ function getRecordResults(
 }
 
 
+
+/*
+ * Existing ranking bridge: do not add new ranking cards or alter financial
+ * records. The quick-report API is only readable by the original hub owner.
+ * It returns company-level count lines and never prices or sales.
+ */
+function currentPartnerRankingKey(month=dashboardMonth.value){
+  return (currentUser?.uid||"")+"|"+(currentUserData?.companyId||"")+"|"+month;
+}
+function canLoadPartnerRanking(){
+  return !!currentUser?.emailVerified &&
+    !!currentUserData?.companyId &&
+    currentCompanyData?.ownerUid===currentUser.uid &&
+    currentCompanyData?.companyKind!=="partner" &&
+    currentUserData?.accessKind!=="partner" &&
+    currentUserData?.memberType!=="cooperator";
+}
+function validatedPartnerRankingDay(value,expectedDate){
+  if(!value||value.role!=="hub"||value.date!==expectedDate||
+     !Array.isArray(value.partners)||value.partners.length>200)
+    throw Error("partner_quick_day_invalid");
+  const seen=new Set();
+  return value.partners.map(row=>{
+    if(!row||typeof row.partnerCompanyId!=="string"||
+       !/^[A-Za-z0-9_-]{1,128}$/.test(row.partnerCompanyId)||
+       seen.has(row.partnerCompanyId)||
+       typeof row.name!=="string"||!row.name.trim()||row.name.length>80||
+       /(?:単価|売上|収益|報酬|利益|[¥￥$€])/.test(row.name)||
+       !row.counts||typeof row.counts!=="object"||
+       Object.keys(row.counts).sort().join("|")!==
+       [...PARTNER_QUICK_RANK_KEYS].sort().join("|"))
+      throw Error("partner_quick_row_invalid");
+    seen.add(row.partnerCompanyId);
+    const counts={};let total=0;
+    for(const key of PARTNER_QUICK_RANK_KEYS){
+      const n=row.counts[key];
+      if(!Number.isInteger(n)||n<0||n>9999)
+        throw Error("partner_quick_count_invalid");
+      counts[key]=n;total+=n;
+    }
+    if(total!==row.totalCount)throw Error("partner_quick_sum_mismatch");
+    return {id:row.partnerCompanyId,name:row.name,counts,totalCount:total};
+  });
+}
+// Merge the earlier one-total-per-partner report and the new staff-ledger
+// report at the same date, preferring verified staff-ledger data per partner.
+// Never add both amounts from the same partner/day: that double-counts people.
+async function mergedPartnerRankingDay(date){
+  const [legacy,staff]=await Promise.all([
+    readPartnerQuickDay({date}),readPartnerWorkDay({date})
+  ]);
+  const oldRows=validatedPartnerRankingDay(legacy.data,date);
+  const newRows=validatedPartnerRankingDay(staff.data,date);
+  const selected=new Map(oldRows.map(row=>[row.id,row]));
+  for(const row of newRows)selected.set(row.id,row);
+  return [...selected.values()];
+}
+async function readPartnerRankingMonth(month){
+  if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month))
+    throw Error("partner_month_invalid");
+  const now=new Date(getTodayString()+"T00:00:00Z");
+  const first=new Date(month+"-01T00:00:00Z");
+  const oldest=new Date(now.getTime()-31*86400000);
+  // Daily API only supports the last 31 days. Never present a partial
+  // previous-month snapshot as a completed combined ranking.
+  if(first<oldest)
+    return {complete:false,rows:[],reason:"協力店の前月以前の全件数は未照合です"};
+  const days=[];
+  // Freeze caller identity for every request: a logout mid-fetch must not
+  // populate a new company's in-memory cache with old partner counts.
+  const identityKey=currentPartnerRankingKey(month);
+  const end=new Date(Date.UTC(first.getUTCFullYear(),first.getUTCMonth()+1,1));
+  for(let cursor=new Date(first);cursor<end&&cursor<=now;
+      cursor=new Date(cursor.getTime()+86400000))
+    days.push(cursor.toISOString().slice(0,10));
+  const map=new Map();
+  // Bounded network concurrency; never request all 31 Functions at once.
+  for(let i=0;i<days.length;i+=4){
+    const dates=days.slice(i,i+4);
+    const responses=await Promise.all(dates.map(async date=>{
+      const key=identityKey+"|"+date;
+      const cached=partnerRankingDailyCache.get(key);
+      const ttl=date===getTodayString()?180000:3600000;
+      if(cached&&Date.now()-cached.checkedAt<ttl)return cached.rows;
+      const rows=typeof mergedPartnerRankingDay==="function"
+        ? await mergedPartnerRankingDay(date)
+        : validatedPartnerRankingDay((await readPartnerQuickDay({date})).data,date);
+      partnerRankingDailyCache.set(key,{rows,checkedAt:Date.now()});
+      // Bounded memory for private count-only rows; never persist in storage.
+      if(partnerRankingDailyCache.size>100)
+        partnerRankingDailyCache.delete(partnerRankingDailyCache.keys().next().value);
+      return rows;
+    }));
+    responses.forEach((rows,index)=>{
+      for(const item of rows){
+        const old=map.get(item.id)||{
+          id:item.id,name:item.name,totalCount:0,
+          counts:Object.fromEntries(PARTNER_QUICK_RANK_KEYS.map(key=>[key,0]))
+        };
+        old.name=item.name;
+        for(const key of PARTNER_QUICK_RANK_KEYS)
+          old.counts[key]+=item.counts[key];
+        old.totalCount+=item.totalCount;
+        if(!Number.isSafeInteger(old.totalCount))
+          throw Error("partner_quick_month_overflow");
+        map.set(item.id,old);
+      }
+    });
+  }
+  return {complete:true,rows:[...map.values()],reason:""};
+}
+function currentPartnerRankingRows(){
+  if(!canLoadPartnerRanking()||
+     partnerRankingState.key!==currentPartnerRankingKey()||
+     !partnerRankingState.complete)return [];
+  return partnerRankingState.rows;
+}
+async function refreshExistingPartnerRanking(){
+  if(!canLoadPartnerRanking()||!recordsReady||
+     dashboardMonth.value!==recordsSubscribedMonth)return;
+  const key=currentPartnerRankingKey();
+  if(partnerRankingActiveKey===key ||
+     (partnerRankingState.key===key&&
+      Date.now()-partnerRankingState.checkedAt<180000))return;
+  partnerRankingActiveKey=key;
+  const gen=++partnerRankingRequestGeneration;
+  const month=dashboardMonth.value;
+  try{
+    const data=await readPartnerRankingMonth(month);
+    if(gen!==partnerRankingRequestGeneration||
+       !canLoadPartnerRanking()||currentPartnerRankingKey()!==key)return;
+    partnerRankingState={key,rows:data.rows,complete:data.complete,
+      checkedAt:Date.now(),reason:data.reason};
+    if(recordsReady&&recordsSubscribedMonth===month)renderDashboard();
+  }catch(error){
+    if(gen!==partnerRankingRequestGeneration||
+       currentPartnerRankingKey()!==key)return;
+    // Fail closed: never substitute partial rank or a guessed zero.
+    partnerRankingState={key,rows:[],complete:false,
+      checkedAt:Date.now(),reason:"協力店の件数が未照合です"};
+    console.error("協力店ランキング件数取得失敗",error?.code||"unknown");
+    if(recordsReady&&recordsSubscribedMonth===month)renderDashboard();
+  }finally{
+    if(gen===partnerRankingRequestGeneration)partnerRankingActiveKey="";
+  }
+}
+function partnerRankingVirtualRecords(){
+  return currentPartnerRankingRows().map(row=>({
+    id:"quick-partner:"+row.id,
+    uid:"quick-partner:"+row.id,
+    teamId:"quick-partner:"+row.id,
+    teamNameSnapshot:"協力店｜"+row.name,
+    memberNameSnapshot:row.name,
+    date:dashboardMonth.value+"-01",
+    __partnerQuickOnly:true,
+    results:PARTNER_QUICK_RANK_KEYS.map(category=>({
+      productName:category,count:row.counts[category],revenuePerUnit:0
+    }))
+  }));
+}
+function normalizedPartnerRankingLabel(value){
+  return String(value||"").normalize("NFKC").toUpperCase()
+    .replace(/[\s　・、，,./／+＋_\-]/g,"");
+}
+function partnerCategoriesForExistingGroup(group){
+  const aliases={
+    "NURO":["NURO","NURO光","ニューロ","ニューロ光"],
+    "SBMNP":["SBMNP"],
+    "YMMNP":["YMMNP"],
+    "YM純新規":["YM純新規"],
+    "SB光・AIR":["SB光・AIR","SB光AIR","SB光・AIR合算"],
+    "ウォーター":["ウォーター","ウォーターサーバー"],
+    "つばさ・HTB":["つばさ・HTB","つばさHTB"],
+    "太陽光・蓄電池AP":["太陽光・蓄電池AP"],
+    "U-NEXT":["U-NEXT","UNEXT"]
+  };
+  const label=normalizedPartnerRankingLabel(group.name);
+  if(label===normalizedPartnerRankingLabel("乗り換え丸件"))
+    return ["SBMNP","YMMNP"];
+  const direct=Object.keys(aliases).filter(cat=>
+    aliases[cat].some(alias=>normalizedPartnerRankingLabel(alias)===label));
+  if(direct.length) return direct;
+  // Composite buckets cannot safely be mapped to an individual product ID.
+  const individual=new Set(["NURO","SBMNP","YMMNP","YM純新規","ウォーター","U-NEXT"]);
+  const keys=new Set((group.keys||[]).map(key=>{
+    if(key.startsWith("legacy:"))return key.slice(7);
+    if(!key.startsWith("id:"))return "";
+    return products.find(product=>product.id===key.slice(3))?.name||"";
+  }).map(normalizedPartnerRankingLabel));
+  return Object.keys(aliases).filter(cat=>individual.has(cat)&&
+    aliases[cat].some(alias=>keys.has(normalizedPartnerRankingLabel(alias))));
+}
+function existingGroupsWithPartnerCounts(groups){
+  if(!currentPartnerRankingRows().length)return groups;
+  const matches=new Map();
+  for(const group of groups)
+    for(const cat of partnerCategoriesForExistingGroup(group))
+      matches.set(cat,[...(matches.get(cat)||[]),group.id]);
+  // A partner category may join exactly one already configured group.
+  // Ambiguous labels do not duplicate company counts across multiple groups.
+  return groups.map(group=>({
+    ...group,keys:[...new Set([...(group.keys||[]),
+      ...PARTNER_QUICK_RANK_KEYS.filter(cat=>
+        matches.get(cat)?.length===1&&matches.get(cat)[0]===group.id)
+        .map(cat=>"legacy:"+cat)])]
+  }));
+}
+
 /* =====================================================
    ★ 現在のメンバー名を取得
 ===================================================== */
@@ -26169,6 +26501,8 @@ function renderDashboard() {
     individualMap
   );
 
+  // Existing product and team ranking UIs receive count-only partner
+  // candidates; monthly revenue and original records are never modified.
   renderProductMemberRanking(monthly);
 
   renderTeamRanking(
@@ -31361,6 +31695,8 @@ function bindRankingColumnSelection(toolbar, scope) {
 
 function productRankingRecordMatchesTeam(record, selectedTeamId) {
   if (!selectedTeamId) return true;
+  if (record?.__partnerQuickOnly)
+    return record.teamId===selectedTeamId;
   const team = teams.find(item => item.id === selectedTeamId);
   return Boolean(team && recordBelongsToTeam(record, team));
 }
@@ -31553,6 +31889,16 @@ function availableRankingProductChoices() {
       }
     });
   });
+  // Use the EXISTING group editor to manually assign any partner-only category
+  // whose registered product name cannot be safely mapped automatically.
+  if(canLoadPartnerRanking()){
+    PARTNER_QUICK_RANK_KEYS.forEach(category=>{
+      const key="legacy:"+category;
+      if(!found.has(key)) found.set(key,{
+        key,name:category+"（協力店件数）"
+      });
+    });
+  }
   return [...found.values()].sort((a,b) => a.name.localeCompare(b.name, "ja"));
 }
 
@@ -31669,7 +32015,10 @@ function renderProductMemberRanking(monthly) {
   }
 
   const previousTeam = productRankingTeamSelect.value;
-  const teamId = teams.some(team => team.id === previousTeam) ? previousTeam : "";
+  const partnerOptions=currentPartnerRankingRows();
+  const teamId = (teams.some(team => team.id === previousTeam) ||
+    partnerOptions.some(row=>"quick-partner:"+row.id===previousTeam))
+      ? previousTeam : "";
   selectedProductRankingTeamId = teamId;
   productRankingTeamSelect.replaceChildren();
   const all = document.createElement("option");
@@ -31682,10 +32031,19 @@ function renderProductMemberRanking(monthly) {
     option.textContent = team.name || "班名未設定";
     productRankingTeamSelect.appendChild(option);
   });
+  partnerOptions.forEach(row=>{
+    const option=document.createElement("option");
+    option.value="quick-partner:"+row.id;
+    option.textContent="🤝 "+row.name;
+    productRankingTeamSelect.appendChild(option);
+  });
   productRankingTeamSelect.value = teamId;
 
   renderRankingGroupEditor();
-  const productsWithCounts = buildGroupedProductMemberRanking(monthly, teamId);
+  const augmentedRows=[...monthly,...partnerRankingVirtualRecords()];
+  const joinedGroups=existingGroupsWithPartnerCounts(rankingGroups);
+  const productsWithCounts=buildGroupedProductMemberRanking(
+    augmentedRows,teamId,joinedGroups);
   productRankingCount.textContent = `${productsWithCounts.length}グループ`;
   productRankingProductList.replaceChildren();
   productRankingMemberList.replaceChildren();
@@ -31935,11 +32293,17 @@ function renderTeamRanking(
   teamRankingRevenueProgressButton.style.display =
     canViewRevenue ? "" : "none";
 
-  const ranking =
-    sortTeamRankingRows(
-      buildTeamRankingRows(teamMap,monthly,teamRankingMode),
-      teamRankingMode
-    );
+  const originalRows=buildTeamRankingRows(teamMap,monthly,teamRankingMode);
+  const partnerRows=teamRankingMode==="progress"
+    ? currentPartnerRankingRows().map(row=>({
+        id:"quick-partner:"+row.id,name:"🤝 "+row.name,
+        count:row.totalCount,revenue:0,totalTarget:0,totalActual:row.totalCount,
+        remaining:0,progress:0
+      }))
+    : [];
+  const ranking = sortTeamRankingRows(
+    [...originalRows,...partnerRows],teamRankingMode
+  );
 
   const modeLabel =
     teamRankingMode === "revenue"
@@ -31949,7 +32313,10 @@ function renderTeamRanking(
         : "件数目標進捗順";
 
   teamRankingCount.textContent =
-    `${ranking.length}班・${modeLabel}`;
+    `${ranking.length}班・${modeLabel}` +
+    (partnerRankingState.key===currentPartnerRankingKey() &&
+     !partnerRankingState.complete && canLoadPartnerRanking()
+       ? "（協力店の件数は未反映）" : "");
 
   if (!ranking.length) {
 

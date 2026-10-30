@@ -1087,7 +1087,7 @@ test('Ranking groups save to this user browser only and never touch Firebase',()
   assert(key.includes('currentUser.uid'));
   assert(html.includes('この端末・このアカウント・このURLだけに保存'));
   const render=source('renderProductMemberRanking');
-  assert(render.includes('buildGroupedProductMemberRanking(monthly, teamId)'));
+  assert(render.includes('buildGroupedProductMemberRanking(') && render.includes('augmentedRows,teamId,joinedGroups'));
   assert(render.includes('renderRankingGroupEditor()'));
   assert(html.includes('ランキンググループを設定'));
 });
