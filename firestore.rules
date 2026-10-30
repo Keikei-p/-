@@ -188,10 +188,22 @@ service cloud.firestore {
     // recordsの会社・利用停止チェックを通った後だけ使用する。
     function canWriteDailyRecord(companyId, targetUid, teamId) {
       let actor = get(memberPath(companyId, request.auth.uid)).data;
-      return (actor.companyRole == 'owner' && isCompanyOwner(companyId))
+      // Caller is already an active verified company member in both record
+      // write rules. Do not recursively repeat heavy identity checks.
+      return (actor.companyRole == 'owner'
+          && get(userPath(request.auth.uid)).data.companyRole == 'owner')
         || (actor.role == 'leader'
           ? teamId != null && actor.teamId == teamId
           : targetUid == request.auth.uid);
+    }
+
+    // Optimized grant for paths that have already checked isCompanyMember().
+    // Preserve the historical owner, explicit-revenue and master grants.
+    function revenueGrantedAfterMembership(companyId) {
+      let member = get(memberPath(companyId, request.auth.uid)).data;
+      return member.companyRole == 'owner'
+        || member.get('canViewRevenue', false) == true
+        || effectiveMasterUid(companyId) == request.auth.uid;
     }
 
     function canViewRevenue(companyId) {
@@ -1314,11 +1326,14 @@ service cloud.firestore {
       allow read: if resource.data.companyId != null
         && sameCompany(resource.data.companyId)
         && (
-          isCompanyOwner(resource.data.companyId)
+          (
+            get(memberPath(resource.data.companyId, request.auth.uid)).data.companyRole == 'owner'
+            && get(userPath(request.auth.uid)).data.companyRole == 'owner'
+          )
           || (
-            canViewRevenue(resource.data.companyId)
-            && resource.data.teamId
-              == get(memberPath(resource.data.companyId, request.auth.uid)).data.teamId
+            revenueGrantedAfterMembership(resource.data.companyId)
+            && resource.data.teamId ==
+              get(memberPath(resource.data.companyId, request.auth.uid)).data.teamId
           )
         );
 
@@ -1328,6 +1343,7 @@ service cloud.firestore {
         ])
         && request.resource.data.companyId != null
         && currentCompanyId() == request.resource.data.companyId
+        && isCompanyMember(request.resource.data.companyId)
         && request.resource.data.teamId is string
         && validSelectableTeam(
           request.resource.data.companyId,
@@ -1340,17 +1356,19 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time
         && request.resource.data.updatedAt == request.time
         && (
-          isCompanyOwner(request.resource.data.companyId)
+          (
+            get(memberPath(request.resource.data.companyId, request.auth.uid)).data.companyRole == 'owner'
+            && get(userPath(request.auth.uid)).data.companyRole == 'owner'
+          )
           || (
-            canViewRevenue(request.resource.data.companyId)
-            && isLeaderOfTeam(
-              request.resource.data.companyId,
-              request.resource.data.teamId
-            )
+            revenueGrantedAfterMembership(request.resource.data.companyId)
+            && get(memberPath(request.resource.data.companyId, request.auth.uid)).data.role == 'leader'
+            && get(memberPath(request.resource.data.companyId, request.auth.uid)).data.teamId == request.resource.data.teamId
           )
         );
 
       allow update: if resource.data.companyId != null
+        && isCompanyMember(resource.data.companyId)
         && request.resource.data.companyId == resource.data.companyId
         && request.resource.data.teamId == resource.data.teamId
         && request.resource.data.month == resource.data.month
@@ -1360,13 +1378,14 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(['targetRevenue', 'updatedAt'])
         && (
-          isCompanyOwner(resource.data.companyId)
+          (
+            get(memberPath(resource.data.companyId, request.auth.uid)).data.companyRole == 'owner'
+            && get(userPath(request.auth.uid)).data.companyRole == 'owner'
+          )
           || (
-            canViewRevenue(resource.data.companyId)
-            && isLeaderOfTeam(
-              resource.data.companyId,
-              resource.data.teamId
-            )
+            revenueGrantedAfterMembership(resource.data.companyId)
+            && get(memberPath(resource.data.companyId, request.auth.uid)).data.role == 'leader'
+            && get(memberPath(resource.data.companyId, request.auth.uid)).data.teamId == resource.data.teamId
           )
         );
 
