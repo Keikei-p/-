@@ -8,11 +8,12 @@ import {partnerActivationWrites} from "./partner-provision.mjs";
  * and explicit grants, never request parameters or client-side role flags.
  */
 const PROJECT_ID = "sales-management-cc116";
-const TOKEN_SCOPE = "https://www.googleapis.com/auth/datastore";
+const TOKEN_SCOPE = "https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/identitytoolkit";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 import {securePricing} from "./write-plan.js";
 import {submitCounts, SaveConflict, PermissionDenied} from "./count-service.js";
 import {makeFirestoreRestStore} from "./firestore-writer.js";
+import {makePublicCountRestHandler} from "./public-count-live-adapter.mjs";
 const GOOGLE_KEYS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
 const ALLOWED_ORIGINS = new Set([
   "https://nico-factory.web.app"
@@ -574,6 +575,20 @@ export default {
     }
     if(url.pathname==="/health"&&request.method==="GET"){
       return safeJSON({ok:true,service:"finance-gateway",enabled:env.FINANCE_GATEWAY_ENABLED==="enabled",mode:"read_only"},200,origin);
+    }
+    if(url.pathname==="/v1/public-counts"){
+      // Independent OFF-by-default switches. No REST, OAuth or certificate
+      // traffic at all until the projection data and cost are signed off.
+      const enabled=env.FIREBASE_PROJECT_ID===PROJECT_ID &&
+        env.FINANCE_GATEWAY_ENABLED==="enabled" &&
+        env.PUBLIC_COUNT_GATEWAY_ENABLED==="enabled" &&
+        env.FINANCE_COST_APPROVAL==="OWNER_APPROVED_BLAZE_COSTS" &&
+        env.PUBLIC_COUNT_PROJECTION_APPROVAL==="EXACT_COUNTS_RECONCILED";
+      const handler=makePublicCountRestHandler({
+        enabled,fetcher:fetch,
+        getServiceToken:()=>googleBearer(env)
+      });
+      return handler(request);
     }
     // Lightweight partner update signal; never returns sales, prices, or
     // other teams' records. Re-check membership on every poll.
