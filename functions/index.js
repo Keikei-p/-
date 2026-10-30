@@ -16,6 +16,18 @@ setGlobalOptions({
 
 const db = getFirestore();
 
+// Separate, opt-in partner company onboarding; NEVER reuse employee invitations.
+const { requireFactory: makePartnerCompanyInvitations } =
+  require("./partner-company-invitations.cjs");
+const partnerCompanyInvitations = makePartnerCompanyInvitations({
+  db, getAuth, Timestamp, FieldValue, HttpsError,
+  enabled: () => process.env.PARTNER_INVITES_ENABLED === "enabled",
+  now: () => Date.now(),
+});
+exports.createPartnerCompanyInvitation = onCall(partnerCompanyInvitations.create);
+exports.previewPartnerCompanyInvitation = onCall(partnerCompanyInvitations.preview);
+exports.acceptPartnerCompanyInvitation = onCall(partnerCompanyInvitations.accept);
+
 function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
 }

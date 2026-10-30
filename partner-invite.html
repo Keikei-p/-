@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#183a6b">
+<title>NICO | 協力店の招待</title>
+<style>
+:root{font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif;color:#192c45;background:#f3f6fa}
+*{box-sizing:border-box}body{margin:0}header{background:#183a6b;color:white;padding:21px 18px}h1{font-size:21px;margin:0}
+main{max-width:570px;margin:22px auto;padding:0 14px 40px}section{background:#fff;padding:22px 18px;border-radius:16px;margin:0 0 15px;border:1px solid #dce3ec}
+h2{font-size:17px;margin:0 0 16px}label{display:block;margin:14px 0 7px;font-size:14px;font-weight:700}
+input,button{font:inherit}input{width:100%;min-height:44px;padding:10px;border:1px solid #bdc9d7;border-radius:9px}
+button{border:0;background:#224d91;color:#fff;padding:12px 16px;border-radius:9px;margin:12px 8px 0 0;cursor:pointer;min-height:44px}
+button.secondary{background:#e6ecf4;color:#1b3356}button:disabled{opacity:.55;cursor:default}
+p{line-height:1.6;font-size:14px}#notice{white-space:pre-wrap;min-height:25px;font-weight:600}
+[hidden]{display:none!important}input[readonly]{background:#f3f6fa}
+small{color:#5e6d82}#info{font-weight:650}
+</style>
+</head>
+<body>
+<header><h1>NICO FACTORY | 協力店招待</h1></header>
+<main>
+<section>
+ <p>協力店は別会社として登録します。売上・単価・収益原票の閲覧権限は付けません。件数報告は別の安全確認が終わるまで利用できません。</p>
+ <p id="notice" role="status" aria-live="polite"></p>
+</section>
+<section id="loginBox">
+ <h2>ログイン・メール認証</h2>
+ <form id="signIn">
+  <label for="email">メールアドレス</label><input id="email" type="email" autocomplete="email" required>
+  <label for="password">パスワード</label><input id="password" type="password" autocomplete="current-password" required minlength="6">
+  <button type="submit">ログイン</button>
+  <button id="signUp" class="secondary" type="button">新規アカウント作成</button>
+ </form>
+ <button id="sendVerify" class="secondary" type="button" hidden>確認メールを再送</button>
+ <button id="checkVerify" class="secondary" type="button" hidden>メール確認後に再チェック</button>
+ <button id="logout" class="secondary" type="button" hidden>ログアウト</button>
+ <p id="signedAs"></p>
+</section>
+<section id="createBox" hidden>
+ <h2>協力店を招待する（会社オーナー専用）</h2>
+ <form id="inviteForm">
+  <label for="companyName">協力店の会社名</label><input id="companyName" required minlength="2" maxlength="80">
+  <label for="inviteEmail">招待先のメールアドレス</label><input id="inviteEmail" type="email" required>
+  <button type="submit">30分間有効な招待リンクを作成</button>
+ </form>
+ <label for="inviteLink">招待リンク</label><input id="inviteLink" readonly>
+ <button id="copyLink" class="secondary" type="button">リンクをコピー</button>
+ <p><small>発行先メールアドレス以外では受け取れません。既存の社員招待とは別の処理です。</small></p>
+</section>
+<section id="acceptBox" hidden>
+ <h2>協力店招待を受け取る</h2>
+ <p id="info">招待の確認中</p>
+ <button id="accept" type="button" disabled>協力店として参加</button>
+ <p><small>既に別会社に所属するアカウントは使用できません。自社の会社ID・既存実績は変更しません。</small></p>
+</section>
+</main>
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+import {getAuth,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,sendEmailVerification,reload,getIdToken} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js";
+
+const app=initializeApp({apiKey:"AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
+ authDomain:"sales-management-cc116.firebaseapp.com",projectId:"sales-management-cc116",
+ appId:"1:904932511564:web:6583e8b0c585231b9049e"});
+const auth=getAuth(app);
+const functions=getFunctions(app,"asia-northeast1");
+const createInvite=httpsCallable(functions,"createPartnerCompanyInvitation");
+const previewInvite=httpsCallable(functions,"previewPartnerCompanyInvitation");
+const acceptInvite=httpsCallable(functions,"acceptPartnerCompanyInvitation");
+const $=id=>document.getElementById(id);
+const token=new URL(location.href).searchParams.get("token")||"";
+const validToken=/^[A-Za-z0-9_-]{43}$/.test(token);
+const busy=async(button,task)=>{
+ button.disabled=true;try{await task();}catch(error){
+  console.error("Partner invitation operation failed",error?.code||"unknown");
+  $("notice").textContent=(error?.code==="functions/unavailable"?
+   "招待サービスはまだ有効になっていません。管理者へ確認してください。":
+   "操作を完了できません。メール・招待期限・ログイン状態を確認してください。");
+ }finally{button.disabled=false;}
+};
+const message=x=>{$("notice").textContent=x;};
+const refresh=async()=>{
+ const user=auth.currentUser;
+ $("logout").hidden=!user;
+ $("signIn").hidden=!!user;
+ $("sendVerify").hidden=!user||user.emailVerified;
+ $("checkVerify").hidden=!user||user.emailVerified;
+ $("signedAs").textContent=user?"ログイン中："+user.email:"";
+ $("createBox").hidden=!!token||!user||!user.emailVerified;
+ $("acceptBox").hidden=!token||!user||!user.emailVerified;
+ $("accept").disabled=true;
+ if(user&&!user.emailVerified){message("メールの確認を完了してから操作してください。");return;}
+ if(!user||!token)return;
+ if(!validToken){message("招待リンクが正しくありません。");return;}
+ try{
+  await getIdToken(user,true);
+  const data=(await previewInvite({token})).data;
+  $("info").textContent=(data.fromCompanyName||"会社")+" から "+(data.partnerCompanyName||"協力店")+" への招待です。";
+  $("accept").disabled=false;
+  message("招待内容を確認してください。");
+ }catch{message("招待を確認できません。期限・宛先メール・利用状態をご確認ください。");}
+};
+onAuthStateChanged(auth,()=>refresh());
+$("signIn").addEventListener("submit",async event=>{
+ event.preventDefault();
+ await busy($("signIn").querySelector("button"),async()=>{
+  await signInWithEmailAndPassword(auth,$("email").value,$("password").value);
+  $("password").value="";message("ログインしました。");await refresh();
+ });
+});
+$("signUp").addEventListener("click",async()=>busy($("signUp"),async()=>{
+ const credential=await createUserWithEmailAndPassword(auth,$("email").value,$("password").value);
+ $("password").value="";
+ await sendEmailVerification(credential.user);message("確認メールを送りました。確認後に再チェックしてください。");
+ await refresh();
+}));
+$("sendVerify").addEventListener("click",async()=>busy($("sendVerify"),async()=>{
+ await sendEmailVerification(auth.currentUser);message("確認メールを再送しました。");
+}));
+$("checkVerify").addEventListener("click",async()=>busy($("checkVerify"),async()=>{
+ await reload(auth.currentUser);await refresh();
+}));
+$("logout").addEventListener("click",async()=>{await signOut(auth);message("ログアウトしました。");});
+$("inviteForm").addEventListener("submit",async event=>{
+ event.preventDefault();
+ await busy($("inviteForm").querySelector("button"),async()=>{
+  const data=(await createInvite({email:$("inviteEmail").value,companyName:$("companyName").value})).data;
+  const url=new URL("/partner-invite.html",location.origin);
+  url.searchParams.set("token",data.token);
+  $("inviteLink").value=url.href;
+  message("招待リンクを作成しました。30分以内に宛先の方へ送ってください。");
+ });
+});
+$("copyLink").addEventListener("click",async()=>busy($("copyLink"),async()=>{
+ if(!$("inviteLink").value)throw Error("no link");
+ await navigator.clipboard.writeText($("inviteLink").value);message("リンクをコピーしました。");
+}));
+$("accept").addEventListener("click",async()=>busy($("accept"),async()=>{
+ const data=(await acceptInvite({token})).data;
+ $("info").textContent="協力店としての会社登録が完了しました。";
+ $("accept").disabled=true;message("招待の承諾が完了しました。件数報告は管理者の安全確認後に有効になります。");
+}));
+</script>
+</body></html>
