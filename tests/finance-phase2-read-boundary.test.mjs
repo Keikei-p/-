@@ -45,6 +45,32 @@ before(async()=>{
        after:{totalRevenue:150000}}],
      ["revenueGoals",{companyId:partnerCompany,targetRevenue:500000,teamId:"t1"}]
    ])await setDoc(doc(db,table,"partner-legacy"),fields);
+   // Isolated legacy/ambiguous marker fixtures. An unexpected accessKind
+   // must never inherit the finance privileges of a misconfigured owner.
+   for(const [uid,kind,userExtra,memberExtra] of [
+     ["cooperatorUser","internal",{accessKind:"cooperator"},{}],
+     ["cooperatorMember","internal",{}, {accessKind:"cooperator"}],
+     ["unknownUser","internal",{accessKind:"external"},{}],
+     ["unknownMember","internal",{}, {accessKind:"vendor"}],
+     ["unknownCompany","affiliate",{},{}],
+     ["cooperatorCompany","cooperator",{},{}],
+     ["partnerMemberType","internal",{memberType:"partner"},{}],
+     ["cooperatorMemberType","internal",{}, {memberType:"cooperator"}]
+   ]){
+     const cid="denied-"+uid;
+     const base={uid,companyId:cid,role:"leader",companyRole:"owner",
+       active:true,teamId:"teamA",canViewRevenue:true,canViewUnitPrice:true};
+     await setDoc(doc(db,"companies",cid),{
+       name:"TEST",ownerUid:uid,masterUid:uid,companyKind:kind,active:true
+     });
+     await setDoc(doc(db,"users",uid),{...base,...userExtra});
+     await setDoc(doc(db,"companies",cid,"members",uid),{...base,...memberExtra});
+     for(const table of ["records","products","recordCorrections","revenueGoals"]){
+       await setDoc(doc(db,table,"raw-"+uid),{
+         companyId:cid,totalRevenue:987654,unitPrice:50000
+       });
+     }
+   }
    await setDoc(doc(db,"publicRecords","safe"),{companyId:company,sourceId:"safe",uid:"partner",
      date:"2026-10-28",teamId:"t1",totalCount:1,reportStatus:"submitted",
      memberNameSnapshot:"担当者",teamNameSnapshot:"一班",workLocation:"会場"});
@@ -129,4 +155,34 @@ test("hard delete of finance originals is disabled even for an internal owner",a
  const db=dbFor("owner");
  for(const table of ["records","products","recordCorrections","revenueGoals"])
    await assertFails(deleteDoc(doc(db,table,"legacy")));
+});
+
+test("cooperator/unknown company and account markers cannot bypass finance closure through Owner/Master",async()=>{
+  // Each fixture has its OWN company, both monetary grants and master rights.
+  // In particular accessKind="cooperator" and accessKind="external" must NOT
+  // pass just because older rules only compared with "partner".
+  const ids=[
+    "cooperatorUser","cooperatorMember","unknownUser","unknownMember",
+    "unknownCompany","cooperatorCompany",
+    "partnerMemberType","cooperatorMemberType"
+  ];
+  for(const uid of ids){
+    const db=dbFor(uid);
+    for(const collection of ["records","products","recordCorrections","revenueGoals"]){
+      await assertFails(getDoc(doc(db,collection,"raw-"+uid)));
+    }
+  }
+});
+
+test("the candidate explicitly accepts internal markers, not unknown marker values",()=>{
+  const helper=candidate.slice(candidate.indexOf("function isInternalFinanceReader("),
+    candidate.indexOf("function isInternalFinanceReader(")+1600);
+  for(const fragment of [
+    "get('companyKind', 'internal') == 'internal'",
+    "get('accessKind', 'internal') == 'internal'",
+    "get('memberType', 'internal') != 'cooperator'",
+    "get('memberType', 'internal') != 'partner'"
+  ])assert.ok(helper.includes(fragment),"Missing finance deny by default: "+fragment);
+  // Never accidentally deploy the generated candidate as default Rules.
+  assert.equal(prodFirebaseConfig.firestore.rules,"firestore.rules");
 });

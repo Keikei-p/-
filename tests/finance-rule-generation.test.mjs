@@ -23,9 +23,9 @@ test("staged-only rules deny finance reads and raw writes for partner owner/mast
 });
 test("guard checks independent partner company, account and member flags",()=>{
  const required=[
-  "get(companyPath(companyId)).data.get('companyKind', 'internal') != 'partner'",
-  "get(userPath(request.auth.uid)).data.get('accessKind', 'internal') != 'partner'",
-  "get(memberPath(companyId, request.auth.uid)).data.get('accessKind', 'internal') != 'partner'",
+  "get(companyPath(companyId)).data.get('companyKind', 'internal') == 'internal'",
+  "get(userPath(request.auth.uid)).data.get('accessKind', 'internal') == 'internal'",
+  "get(memberPath(companyId, request.auth.uid)).data.get('accessKind', 'internal') == 'internal'",
   "get(userPath(request.auth.uid)).data.get('memberType', 'internal') != 'partner'",
   "get(memberPath(companyId, request.auth.uid)).data.get('memberType', 'internal') != 'partner'"
  ];
