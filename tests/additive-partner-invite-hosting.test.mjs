@@ -75,3 +75,21 @@ test("fail-closed on a concurrent live version change",async()=>{
  await assert.rejects(uploadAdditiveInvite({assetBytes:asset,request:x.request,release:true,log:()=>{}}),/LIVE_CHANGED/);
  assert.ok(!x.seen.some(v=>v.url.includes("/releases?versionName")));
 });
+
+
+test("CLI accepts --dry-run and fails closed before credentials (regression for live run)",async()=>{
+ const {spawnSync}=await import("node:child_process");
+ const {fileURLToPath}=await import("node:url");
+ const path= fileURLToPath(new URL("../tools/hosting/additive-partner-invite.mjs",import.meta.url));
+ const env={...process.env,GOOGLE_APPLICATION_CREDENTIALS:""};
+ const dry=spawnSync(process.execPath,[path,"--dry-run"],{encoding:"utf8",env});
+ assert.equal(dry.status,1);
+ assert.match(dry.stderr,/GOOGLE_APPLICATION_CREDENTIALS_REQUIRED/);
+ assert.doesNotMatch(dry.stderr,/UNKNOWN_ARGUMENT/);
+ const unknown=spawnSync(process.execPath,[path,"--danger"],{encoding:"utf8",env});
+ assert.match(unknown.stderr,/UNKNOWN_ARGUMENT/);
+ const live=spawnSync(process.execPath,[path,"--release"],{encoding:"utf8",env:{...env,NICO_PARTNER_RELEASE_CONFIRMATION:""}});
+ assert.match(live.stderr,/RELEASE_CONFIRMATION_REQUIRED/);
+ const both=spawnSync(process.execPath,[path,"--release","--dry-run"],{encoding:"utf8",env});
+ assert.match(both.stderr,/CONFLICTING_FLAGS/);
+});
