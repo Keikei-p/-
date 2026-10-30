@@ -490,3 +490,15 @@ Rulesの本番デプロイ: 未実施
 - 本PRは再公開を自動で始めない。追加した一度だけの橋渡しは、元の失敗ジョブに管理者が明示的にリトライ操作したときだけ起動し、元の失敗試行は既知の引数バグで再度STOPする。新規公開の本体は従来どおり `workflow_dispatch` の手動確認条件・3 Functionsのみ・新規HTML1ファイルのみ・既存サイト全ハッシュ一致の公開ゲートを引き続き実行。
 - 本番Firestore、Auth、既存Functions、Hosting、LINE、実績原本、単価・売上・CB・履歴に対する変更は本レビュー時点でゼロ。協力店件数登録・会社合算ランキングの実運用は別途NO-GOのまま。公開Run実績で検証するまで完了と見なさない。
 - 重要: 成功してもこの一時救済Workflowを削除/無効化する。保護ゲートの技術レビュー記録は**バックアップやFinance Rulesの承認ではない**。
+
+
+---
+
+## 2026-10-31 — 協力店招待3 Functions作成後のArtifact Registry保存期間エラーを修正
+
+- 手動本番リリースRun `41081599252` は、`createPartnerCompanyInvitation`, `previewPartnerCompanyInvitation`, `acceptPartnerCompanyInvitation` すべて **asia-northeast1, Node.js 22, 2nd Genで `Successful create operation`** をログ確認。
+- ただしFirebase CLIの終了処理で `Functions successfully deployed but could not set up cleanup policy` のため終了コード1。従来のLINE通知は配備対象外。本番Hosting招待ページは公開されていない。既存Firestore、Auth、売上、当時単価、CB、実績件数、履歴、旧LINEのデータ変更/削除は未実施。
+- Firebase公式 `https://firebase.google.com/docs/functions/manage-functions` を確認。Artifact Registryに貯まるデプロイ用コンテナイメージは実行中Functionsに不要で、`firebase functions:artifacts:setpolicy --days 1 --location asia-northeast1` の設定により1日超の**ビルド用イメージのみ**が自動削除される。Firestore原本/利用者データや稼働中のFunctionsは削除対象ではない。無料枠利用費用を抑えるために指定。
+- デプロイ済み招待3件のコード（Git blob `functions/index.js=dfb4c48ada6fa89a24c898cd4a2f911bcede822f`, `functions/partner-company-invitations.cjs=4da83f98cd6f033d8ce8bda532aef39859db9c09`）と再公開元コードが同一であることを検査し、`functions:list` で3件と従来 `sendMissingReportReminders` を確認できた場合は**追加のCloud Build/再配備を行わない**。
+- ポリシー設定/既存4件の照合/未認証のCallable拒否が合格した場合のみ、従来Hostファイルのハッシュを全保護して新規招待ページだけ追加する。途中で相違や権限不足があれば即STOP。現時点でHTML公開と実協力店操作はまだ完了していない。
+- `firebase deploy --force` でエラーを無理やり無視したり、`--only functions` で既存LINE通知まで更新しない。元の制限付きデプロイ条件、手動承認、Auth/Finance Rules移行の本番NO-GOは維持する。
