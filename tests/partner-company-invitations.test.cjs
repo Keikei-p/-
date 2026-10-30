@@ -256,7 +256,7 @@ test("partner count activation cannot be performed by the invite recipient",asyn
 });
 test("new activation module never queries money-bearing collections or deletes",()=>{
  const src=require("node:fs").readFileSync(require.resolve("../functions/partner-count-onboarding.cjs"),"utf8");
- assert.doesNotMatch(src,/\\.delete\\s*\\(/);
- assert.doesNotMatch(src,/\\.collection\\s*\\(\\s*["'](?:records|products|recordCorrections|revenueGoals)["']\\s*\\)/);
- assert.doesNotMatch(src,/\\.set\\s*\\(.*\\{merge\\s*:\\s*false/);
+ assert.doesNotMatch(src,/\.delete\s*\(/);
+ assert.doesNotMatch(src,/\.collection\s*\(\s*["'](?:records|products|recordCorrections|revenueGoals)["']\s*\)/);
+ assert.doesNotMatch(src,/\.set\s*\(.*\{merge\s*:\s*false/);
 });
