@@ -43,8 +43,10 @@ const data=new Map([
  ["partnerRelations/partnerA",{active:true,partnerCompanyId:"partnerA",
    hubCompanyId:"hub",countSharingApproved:true,catalogAccessApproved:true}]
 ]);
-function setup({disabled=false,money=false,tooMany=false,foreign=false}={}){
+function setup({disabled=false,money=false,tooMany=false,foreign=false,teamMoney=false}={}){
  const calls=[];
+ const docs=new Map([...data].map(([key,value])=>[key,{...value}]));
+ if(teamMoney)docs.get("teams/team1").name="1班 20万";
  const ok=x=>new Response(JSON.stringify(x),{status:200,
   headers:{"Cache-Control":"max-age=300"}});
  const fetcher=async(url,opts={})=>{
@@ -78,7 +80,7 @@ function setup({disabled=false,money=false,tooMany=false,foreign=false}={}){
   if(target.includes("/documents/")&&opts.method==="GET"){
    const path=decodeURIComponent(target.split("/documents/")[1]??"");
    assert(!["records/","products/","recordCorrections/"].some(p=>path.startsWith(p)));
-   const item=data.get(path);
+   const item=docs.get(path);
    return item?ok(doc(path,item)):new Response(null,{status:404});
   }
   throw Error("Mock refuses unapproved backend: "+target);
@@ -112,7 +114,7 @@ test("verified partner sees only own current team and hub/custom nonfinancial ca
  assert(f.calls.every(c=>!c.url.includes("/records/")&&!c.url.includes("/products/")));
 });
 test("disabled account, wrong origin, injected finance and wrong owner never return catalog",async()=>{
- for(const opt of [{disabled:true},{money:true},{foreign:true},{tooMany:true}]){
+ for(const opt of [{disabled:true},{money:true},{foreign:true},{tooMany:true},{teamMoney:true}]){
   const f=setup(opt);
   const response=await f.handler(f.request());
   assert.equal(response.status,403);
@@ -162,6 +164,14 @@ test("browser client validates catalog schema and does not transmit money or app
     unitPrice:11000}]}),{status:200})
  });
  await assert.rejects(invalid.readCatalog(),/partner_count_client_blocked/);
+ const unsafeTeam=createPartnerCountBrowserClient({
+  enabled:true,origin:"https://nico-factory.web.app",
+  gatewayBase:"https://worker.example",getIdToken:async()=>jwt(),
+  fetcher:async()=>new Response(JSON.stringify({
+   teams:[{teamId:"team1",name:"1班 20万"}],products:[]
+  }),{status:200})
+ });
+ await assert.rejects(unsafeTeam.readCatalog(),/partner_count_client_blocked/);
 });
 test("Worker catalog requires separate OFF-by-default release flag",()=>{
  const src=readFileSync(new URL("../src/index.js",import.meta.url),"utf8");
