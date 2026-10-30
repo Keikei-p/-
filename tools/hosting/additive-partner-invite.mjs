@@ -112,8 +112,13 @@ export async function uploadAdditiveInvite({assetBytes,request,release=false,log
 }
 
 async function run(){
- const release=process.argv.includes("--release");
- if(process.argv.some(a=>!["--dry-run","--release"].includes(a)))throw Error("UNKNOWN_ARGUMENT");
+ // argv[0] is the Node binary and argv[1] is this script path.
+ // Treat only user supplied flags as arguments (the live release previously
+ // stopped at dry-run because it incorrectly rejected these two).
+ const args=process.argv.slice(2);
+ const release=args.includes("--release");
+ if(args.some(a=>!["--dry-run","--release"].includes(a)))throw Error("UNKNOWN_ARGUMENT");
+ if(args.includes("--dry-run")&&release)throw Error("CONFLICTING_FLAGS");
  if(release&&process.env.NICO_PARTNER_RELEASE_CONFIRMATION!=="CONFIRM_ADD_INVITE_ONLY")
   throw Error("RELEASE_CONFIRMATION_REQUIRED");
  if(!process.env.GOOGLE_APPLICATION_CREDENTIALS)
