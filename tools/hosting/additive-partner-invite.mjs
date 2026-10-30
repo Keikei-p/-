@@ -1,0 +1,150 @@
+#!/usr/bin/env node
+/**
+ * Surgical, additive release of /partner-invite.html onto the existing NICO Hosting
+ * live site. Never replace the existing index.html, PWA, scripts, routes or headers.
+ * Strictly requires explicit --release and live version recheck immediately before
+ * publishing. Dry-run is read-only.
+ *
+ * Requires GOOGLE_APPLICATION_CREDENTIALS from a protected runner secret.
+ * Firebase Hosting REST API is the only remote write path; Firestore, Auth,
+ * Functions, Rules and LINE are never accessed.
+ */
+import {readFileSync} from "node:fs";
+import {createHash} from "node:crypto";
+import {gzipSync} from "node:zlib";
+import {createRequire} from "node:module";
+import {fileURLToPath} from "node:url";
+import path from "node:path";
+
+export const SITE="nico-factory", PROJECT="sales-management-cc116";
+export const ASSET="/partner-invite.html";
+const BASE="https://firebasehosting.googleapis.com/v1beta1";
+const allowedVersion=/^sites\/nico-factory\/versions\/[A-Za-z0-9_-]+$/;
+
+export function validateManifest(oldFiles, additions, expectedCount) {
+ if(!Array.isArray(oldFiles)||!Number.isSafeInteger(expectedCount)||expectedCount<1||
+   oldFiles.length!==expectedCount)throw Error("SOURCE_FILE_COUNT_MISMATCH");
+ const original=new Map();
+ for(const f of oldFiles){
+  if(typeof f.path!=="string"||!f.path.startsWith("/")||
+     typeof f.hash!=="string"||!/^[0-9a-f]{64}$/i.test(f.hash)||
+     original.has(f.path))throw Error("INVALID_SOURCE_MANIFEST");
+  original.set(f.path,f.hash.toLowerCase());
+ }
+ if(!original.has("/index.html"))throw Error("LIVE_INDEX_MISSING");
+ if(original.has(ASSET))throw Error("EXISTING_PARTNER_INVITE: do not overwrite without version review");
+ if(!(additions instanceof Map)||additions.size!==1||
+    !additions.has(ASSET)||!/^[0-9a-f]{64}$/.test(additions.get(ASSET)))
+   throw Error("ONLY_ONE_NEW_INVITE_FILE_ALLOWED");
+ const next=new Map(original);
+ for(const [k,v] of additions)next.set(k,v);
+ for(const [k,v] of original)if(next.get(k)!==v)throw Error("ORIGINAL_FILE_MODIFIED");
+ if(next.size!==expectedCount+1)throw Error("UNEXPECTED_ADDITIONAL_FILES");
+ return {original,next};
+}
+
+export async function uploadAdditiveInvite({assetBytes,request,release=false,log=console.log}){
+ if(!Buffer.isBuffer(assetBytes)||assetBytes.length<500||
+   !assetBytes.toString("utf8").includes("createPartnerCompanyInvitation")||
+   !assetBytes.toString("utf8").includes("acceptPartnerCompanyInvitation"))
+   throw Error("INVALID_INVITE_ASSET");
+ const gz=gzipSync(assetBytes,{mtime:0});
+ const hash=createHash("sha256").update(gz).digest("hex");
+ const url=s=>BASE+s;
+ const latest=async()=>{
+  const response=await request("GET",url("/sites/"+SITE+"/releases?pageSize=1"));
+  const releases=response.releases;
+  if(!Array.isArray(releases)||releases.length!==1||
+     !allowedVersion.test(releases[0]?.version?.name))
+   throw Error("LIVE_HOSTING_RELEASE_NOT_VERIFIABLE");
+  return releases[0].version.name;
+ };
+ const sourceName=await latest();
+ const source=await request("GET",url("/"+sourceName));
+ if(source.status!=="FINALIZED"||source.name!==sourceName||
+    !source.config||typeof source.config!=="object"||
+    !Number.isSafeInteger(Number(source.fileCount)))throw Error("BAD_LIVE_VERSION");
+ const files=[];let pageToken="";
+ do{
+  const qs=new URLSearchParams({pageSize:"1000"});
+  if(pageToken)qs.set("pageToken",pageToken);
+  const page=await request("GET",url("/"+sourceName+"/files?"+qs));
+  if(!Array.isArray(page.files))throw Error("SOURCE_FILE_LIST_UNAVAILABLE");
+  files.push(...page.files);
+  pageToken=page.nextPageToken||"";
+  if(files.length>30000)throw Error("TOO_MANY_LIVE_ASSETS");
+ }while(pageToken);
+ const {next,original}=validateManifest(files,new Map([[ASSET,hash]]),Number(source.fileCount));
+ log("Verified live version and original files: "+sourceName+" / "+original.size);
+ log("Only new path: "+ASSET+" (no existing paths replaced)");
+ if(!release) return {released:false,sourceName,originalCount:original.size,newHash:hash};
+ if(await latest()!==sourceName)throw Error("LIVE_CHANGED_BEFORE_CREATE");
+ const created=await request("POST",url("/sites/"+SITE+"/versions"),{config:source.config});
+ if(!allowedVersion.test(created?.name)||created.status!=="CREATED")
+  throw Error("UNEXPECTED_NEW_VERSION");
+ const entries=[...next.entries()];
+ let uploadUrl=null,needed=new Set();
+ for(let i=0;i<entries.length;i+=800){
+  const resp=await request("POST",url("/"+created.name+":populateFiles"),
+   {files:Object.fromEntries(entries.slice(i,i+800))});
+  if(!Array.isArray(resp.uploadRequiredHashes))throw Error("BAD_POPULATE_RESULT");
+  for(const h of resp.uploadRequiredHashes)needed.add(h);
+  if(resp.uploadUrl){ if(uploadUrl&&uploadUrl!==resp.uploadUrl)throw Error("UPLOAD_URL_MISMATCH");uploadUrl=resp.uploadUrl; }
+ }
+ if([...needed].some(h=>h!==hash)||needed.size>1)throw Error("OLD_LIVE_BLOB_NOT_REUSABLE: abort");
+ if(needed.has(hash)){
+  if(typeof uploadUrl!=="string"||!uploadUrl.startsWith("https://upload-firebasehosting.googleapis.com/"))
+   throw Error("UNTRUSTED_UPLOAD_URL");
+  await request("POST",uploadUrl+"/"+hash,gz,"application/octet-stream");
+ }
+ const finalized=await request("PATCH",url("/"+created.name+"?update_mask=status"),{status:"FINALIZED"});
+ if(finalized?.status!=="FINALIZED"||Number(finalized.fileCount)!==next.size)
+  throw Error("FINAL_ASSET_COUNT_MISMATCH");
+ if(JSON.stringify(finalized.config)!==JSON.stringify(source.config))
+  throw Error("LIVE_HOSTING_CONFIG_CHANGED");
+ // Most important guard: no one may have replaced live since this run began.
+ if(await latest()!==sourceName)throw Error("LIVE_CHANGED_BEFORE_RELEASE");
+ const released=await request("POST",url("/sites/"+SITE+"/releases?versionName="+
+  encodeURIComponent(created.name)),{});
+ if(released?.version?.name!==created.name)throw Error("LIVE_RELEASE_NOT_CONFIRMED");
+ log("Released additive invite only: "+created.name);
+ return {released:true,sourceName,releaseName:released.name,newVersion:created.name,originalCount:original.size};
+}
+
+async function run(){
+ const release=process.argv.includes("--release");
+ if(process.argv.some(a=>!["--dry-run","--release"].includes(a)))throw Error("UNKNOWN_ARGUMENT");
+ if(release&&process.env.NICO_PARTNER_RELEASE_CONFIRMATION!=="CONFIRM_ADD_INVITE_ONLY")
+  throw Error("RELEASE_CONFIRMATION_REQUIRED");
+ if(!process.env.GOOGLE_APPLICATION_CREDENTIALS)
+  throw Error("GOOGLE_APPLICATION_CREDENTIALS_REQUIRED");
+ const require=createRequire(new URL("../../functions/package.json",import.meta.url));
+ const {applicationDefault}=require("firebase-admin/app");
+ const credential=applicationDefault();
+ const request=async(method,url,body=null,type="application/json")=>{
+  if(!(url.startsWith(BASE+"/sites/"+SITE+"/")||
+        url.startsWith("https://upload-firebasehosting.googleapis.com/upload/sites/"+SITE+"/versions/")))
+   throw Error("UNAPPROVED_HOSTING_ENDPOINT");
+  const {access_token}=await credential.getAccessToken();
+  const headers={Authorization:"Bearer "+access_token};
+  if(body!==null)headers["Content-Type"]=type;
+  const opts={method,headers};
+  if(body!==null)opts.body=type==="application/octet-stream"?body:JSON.stringify(body);
+  const result=await fetch(url,opts);
+  if(!result.ok)throw Error("HOSTING_API_FAILURE "+method+" HTTP "+result.status);
+  const txt=await result.text();
+  return txt?JSON.parse(txt):{};
+ };
+ const asset=readFileSync(new URL("../../partner-invite.html",import.meta.url));
+ const output=await uploadAdditiveInvite({assetBytes:asset,request,release});
+ console.log(JSON.stringify({outcome:output.released?"RELEASED":"DRY_RUN_OK",oldVersion:output.sourceName,keptOriginalFiles:output.originalCount}));
+ if(output.released){
+  const page=await fetch("https://"+SITE+".web.app"+ASSET,{redirect:"manual",cache:"no-store"});
+  if(!page.ok||!((await page.text()).includes("協力店招待")))
+    throw Error("POST_DEPLOY_INVITE_PAGE_UNVERIFIED");
+  console.log("POST_DEPLOY_HTTP_OK "+ASSET);
+ }
+}
+if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
+ run().catch(e=>{console.error("STOP "+e.message);process.exitCode=1;});
+}
