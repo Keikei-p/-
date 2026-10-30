@@ -478,3 +478,15 @@ Rulesの本番デプロイ: 未実施
 - GitHub接続ユーザー `Keikei-p` の管理権限を取得して、PRの実差分9ファイルを確認。 `functions/index.js` は新Callable3件の追加のみ、従来 `sendMissingReportReminders` と社員招待は無変更。 `.github/workflows/nico-factory-sync.yml` の起動条件や本番ゲートは無変更。
 - 本チャットの「今日中に協力店招待を使いたい」という依頼を根拠として、管理者接続で `sales-production-reviewed` を**この限定コード変更の審査用ラベルとして適用**した。これは独立した本人署名・本番デプロイ許可ではない。
 - 依然として `PARTNER_INVITES_ENABLED` は本番未設定で機能OFF。Firebase Hosting・Functions・Firestore・LINE本番変更は未実施。保護ゲート通過とGitHub main統合は本番利用可能の意味ではない。
+
+
+---
+
+## 2026-10-31 — 手動公開失敗 #41080213061 の1回限定自動再試行（コードレビュー）
+
+- 元の公開実行 `41080213061` は `workflow_dispatch`、ブランチ `main`、Owner `Keikei-p`、コミット `a135ee56375248b88ee6d02ecdac160a2de83b37`、試行1回目。静的検証とCLI準備・保護用Secret導入は成功したが、`READ ONLY live site parity check` で `STOP UNKNOWN_ARGUMENT`。既存Functions配備/Hostingリリース/Firestore更新に進む前に失敗。ユーザーの再実行承認は本会話内で明示。
+- 原因は `process.argv` 全体を不正なCLIフラグとして検査し、Node実行ファイルとスクリプト名まで拒否していたこと。PR #155で `process.argv.slice(2)` のみに修正し、実Nodeプロセスを起動する失敗再現テストを追加。本番変更なし。
+- 本PRの一時救済 `.github/workflows/nico-partner-approved-recovery-once.yml` は、**元の手動実行ID、実行者、対象旧SHA、元イベントworkflow_dispatch、結果failure、再試行回数が厳密に2**のときだけ、**同じ手動確認トークン**を添えて現行mainで既存 `nico-partner-invite-only-release.yml` を再度Dispatchする。通常push／任意PR／通常schedule／別の手動操作からの本番リリースは不可。
+- 本PRは再公開を自動で始めない。追加した一度だけの橋渡しは、元の失敗ジョブに管理者が明示的にリトライ操作したときだけ起動し、元の失敗試行は既知の引数バグで再度STOPする。新規公開の本体は従来どおり `workflow_dispatch` の手動確認条件・3 Functionsのみ・新規HTML1ファイルのみ・既存サイト全ハッシュ一致の公開ゲートを引き続き実行。
+- 本番Firestore、Auth、既存Functions、Hosting、LINE、実績原本、単価・売上・CB・履歴に対する変更は本レビュー時点でゼロ。協力店件数登録・会社合算ランキングの実運用は別途NO-GOのまま。公開Run実績で検証するまで完了と見なさない。
+- 重要: 成功してもこの一時救済Workflowを削除/無効化する。保護ゲートの技術レビュー記録は**バックアップやFinance Rulesの承認ではない**。
