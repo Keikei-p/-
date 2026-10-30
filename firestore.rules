@@ -113,17 +113,11 @@ service cloud.firestore {
     function isCompanyMember(companyId) {
       return verifiedUser()
         && companyId != null
-        && exists(companyPath(companyId))
-        && get(companyPath(companyId)).data.get('companyKind', 'internal') in ['internal', 'direct']
         && exists(memberPath(companyId, request.auth.uid))
         && activeOrLegacy(get(memberPath(companyId, request.auth.uid)).data)
-        && get(memberPath(companyId, request.auth.uid)).data.get('accessKind', 'internal') != 'partner'
-        && get(memberPath(companyId, request.auth.uid)).data.get('memberType', 'internal') != 'cooperator'
-        && exists(userPath(request.auth.uid))
         && get(userPath(request.auth.uid)).data.companyId == companyId
-        && activeOrLegacy(get(userPath(request.auth.uid)).data)
-        && get(userPath(request.auth.uid)).data.get('accessKind', 'internal') != 'partner'
-        && get(userPath(request.auth.uid)).data.get('memberType', 'internal') != 'cooperator';
+        && activeOrLegacy(get(userPath(request.auth.uid)).data) 
+        && get(userPath(request.auth.uid)).data.get('accessKind', 'internal') != 'partner';
     }
 
     function isCompanyLeader(companyId) {
@@ -138,14 +132,30 @@ service cloud.firestore {
     }
 
     function isCompanyMaster(companyId) {
-      return isCompanyMember(companyId)
-        && effectiveMasterUid(companyId) == request.auth.uid;
+      return verifiedUser()
+        && companyId != null
+        && exists(companyPath(companyId))
+        && exists(userPath(request.auth.uid))
+        && get(userPath(request.auth.uid)).data.companyId == companyId
+        && activeOrLegacy(get(userPath(request.auth.uid)).data)
+        && exists(memberPath(companyId, request.auth.uid))
+        && activeOrLegacy(get(memberPath(companyId, request.auth.uid)).data)
+        && effectiveMasterUid(companyId) == request.auth.uid 
+        && get(userPath(request.auth.uid)).data.get('accessKind', 'internal') != 'partner';
     }
 
     function isCompanyOwner(companyId) {
-      return isCompanyMember(companyId)
+      return verifiedUser()
+        && companyId != null
+        && exists(companyPath(companyId))
+        && exists(userPath(request.auth.uid))
+        && get(userPath(request.auth.uid)).data.companyId == companyId
+        && activeOrLegacy(get(userPath(request.auth.uid)).data)
         && get(userPath(request.auth.uid)).data.companyRole == 'owner'
-        && get(memberPath(companyId, request.auth.uid)).data.companyRole == 'owner';
+        && exists(memberPath(companyId, request.auth.uid))
+        && activeOrLegacy(get(memberPath(companyId, request.auth.uid)).data)
+        && get(memberPath(companyId, request.auth.uid)).data.companyRole == 'owner' 
+        && get(userPath(request.auth.uid)).data.get('accessKind', 'internal') != 'partner';
     }
 
     function isCompanyManager(companyId) {
