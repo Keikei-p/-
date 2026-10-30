@@ -114,12 +114,35 @@ jobs:
           set -euo pipefail
           test ! -e functions-partner-workspace/.env.sales-management-cc116
           printf 'PARTNER_WORKSPACE_ENABLED=enabled\n' > functions-partner-workspace/.env.sales-management-cc116
-      - name: Deploy ONLY new partner workspace codebase (never legacy)
+      - name: Check whether all four partner workspace functions are already live
+        id: existing_workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase functions:list --project "$FIREBASE_PROJECT_ID" --json > "$RUNNER_TEMP/existing-partner-workspace.json"
+          FILE="$RUNNER_TEMP/existing-partner-workspace.json" node <<'NODE'
+          const fs=require('node:fs');
+          const j=JSON.parse(fs.readFileSync(process.env.FILE,'utf8'));
+          const ids=(j.result||[]).map(x=>x.id||x.name||'');
+          const wanted=['getPartnerWorkspace','managePartnerWorkspace',
+            'acceptPartnerWorkspaceInvite','submitPartnerWorkspaceCounts'];
+          const found=wanted.filter(n=>ids.some(id=>id===n||id.endsWith('/'+n)));
+          if(found.length>0 && found.length!==wanted.length)throw Error('PARTIAL_WORKSPACE_DEPLOY_STOP');
+          fs.appendFileSync(process.env.GITHUB_OUTPUT,
+            'all_live='+(found.length===wanted.length?'true':'false')+'\n');
+          console.log(found.length===wanted.length?'REUSE_EXISTING_FOUR_NO_BUILD':'NEW_WORKSPACE_BUILD_REQUIRED');
+          NODE
+      - name: Deploy only new workspace codebase if missing (no repeated builds)
+        if: ${{ steps.existing_workspace.outputs.all_live != 'true' }}
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
           firebase deploy --non-interactive --project "$FIREBASE_PROJECT_ID" \
             --config firebase.partner-workspace.json --only functions:partner-workspace
+      # If Firebase CLI returns failure solely on Artifact Registry cleanup,
+      # the Functions may still be live. Never infer success from CLI exit status:
+      # require all four actual deployments and anonymous auth-denial checks below.
       - name: Reconfirm original and all workspace Functions
         shell: bash
         run: |
@@ -152,8 +175,16 @@ jobs:
             }
           })().catch(e=>{console.error(e.message);process.exitCode=1});
           NODE
-      - name: Add ONLY partner-workspace.html to live Hosting without touching previous assets
-        run: node tools/hosting/additive-partner-workspace.mjs --release
+      - name: Add ONLY partner-workspace.html, or reuse already-verified live page
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=$(curl --silent --location --output "$RUNNER_TEMP/current-partner-workspace.html" --write-out '%{http_code}' --max-time 25 https://nico-factory.web.app/partner-workspace.html)
+          if [ "$status" = 200 ] && grep -Fq 'submitPartnerWorkspaceCounts' "$RUNNER_TEMP/current-partner-workspace.html"; then
+            echo "Existing partner workspace HTML verified: skip Hosting version creation"
+          else
+            node tools/hosting/additive-partner-workspace.mjs --release
+          fi
       - name: Verify actual public page, original app, counts and invite unchanged
         run: |
           set -euo pipefail
