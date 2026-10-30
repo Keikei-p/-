@@ -113,7 +113,7 @@ export function createStagedPartnerCountWriteGateway({
      const snapshot=await tx.getTrustedDocument(path);
      return snapshot.exists?snapshot.data():null;
     },
-    loadCountCatalog
+    loadCountCatalog:(tx,scope)=>loadCountCatalog(tx,scope,command.request)
    });
    if(action==="create"){
     const result=await stageNewPartnerCount({
