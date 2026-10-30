@@ -27,7 +27,8 @@ const TRUSTED_READ=[
  /^partnerRelations\/[A-Za-z0-9_:-]{1,128}$/,
  /^products\/[A-Za-z0-9_:-]{1,128}$/,
  /^partnerCustomProducts\/[A-Za-z0-9_:-]{1,128}$/,
- /^publicProducts\/[A-Za-z0-9_:-]{1,128}$/
+ /^publicProducts\/[A-Za-z0-9_:-]{1,128}$/,
+ /^partnerCountCatalog\/[A-Za-z0-9_:-]{1,128}$/
 ];
 const deny=()=>{throw Error("Partner count adapter refused");};
 const good=x=>typeof x==="string"&&ID.test(x);
