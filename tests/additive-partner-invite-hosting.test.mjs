@@ -110,3 +110,19 @@ test("one-time recovery only accepts manually confirmed original run, never push
  assert.doesNotMatch(text,/^\s+push:/m);
  assert.doesNotMatch(text,/firebase deploy|firebase firestore|hosting deploy/);
 });
+
+
+test("failed post-create deployment recovery configures cheap cleanup and reuses unchanged 3 Functions",async()=>{
+ const fs=await import("node:fs");
+ const yaml=fs.readFileSync(new URL("../.github/workflows/nico-partner-invite-only-release.yml",import.meta.url),"utf8");
+ assert.match(yaml,/functions:artifacts:setpolicy --days 1 --location asia-northeast1/);
+ assert.match(yaml,/git hash-object functions\/index\.js/);
+ assert.match(yaml,/dfb4c48ada6fa89a24c898cd4a2f911bcede822f/);
+ assert.match(yaml,/4da83f98cd6f033d8ce8bda532aef39859db9c09/);
+ assert.match(yaml,/already_deployed='+(present\.length===3/);
+ assert.match(yaml,/if: \$\{\{ steps\.existing\.outputs\.already_deployed != 'true' \}\}/);
+ assert.match(yaml,/function.*sendMissingReportReminders/i);
+ assert.match(yaml,/--only functions:createPartnerCompanyInvitation,functions:previewPartnerCompanyInvitation,functions:acceptPartnerCompanyInvitation/);
+ assert.doesNotMatch(yaml,/^\s+push:/m);
+ assert.match(yaml,/workflow_dispatch:/);
+});
