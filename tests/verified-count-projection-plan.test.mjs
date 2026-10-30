@@ -60,6 +60,30 @@ test("more than 2,000 records on one day are planned without truncation",()=>{
  assert.equal(result.collections.publicRecords[0].sourceId,"r00000");
  assert.equal(result.collections.publicRecords.at(-1).sourceId,"r02500");
 });
+test("missing referenced product refuses projection even when record counts match",()=>{
+ const recordWithMissing={
+  ...record("r1"),results:{missing:{productId:"missing",productName:"未登録商材",
+   count:1,revenuePerUnit:80000}}
+ };
+ assert.throws(
+  ()=>build({records:[recordWithMissing]}),
+  /count_projection_reconciliation_failed/,
+  "existing saved counts alone cannot certify a complete count-only catalog"
+ );
+ assert.throws(
+  ()=>build({products:[],expectedProductCount:0}),
+  /count_projection_reconciliation_failed/,
+  "an empty partial product export must not be treated as valid"
+ );
+});
+test("inactive archived product stays available for historical count projection",()=>{
+ const archived={...product,active:false};
+ const data=build({products:[archived]});
+ assert.equal(data.manifest.checkedTotalCount,1);
+ assert.equal(data.collections.publicProducts[0].active,false);
+ assert.equal(data.collections.publicRecordLines[0].productId,"nuro");
+ assert.equal(archived.revenue,10000,"do not mutate historical price");
+});
 test("0件報告 preserves status and creates zero count lines",()=>{
  const report={...record("zero"),totalCount:0,totalRevenue:0,results:{},reportStatus:"no_result"};
  const data=build({records:[report]});
