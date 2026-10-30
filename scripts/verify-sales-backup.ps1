@@ -7,7 +7,8 @@ Usage: powershell -NoProfile -File .\scripts\verify-sales-backup.ps1
 #>
 param(
   [string]$BackupFile = "",
-  [switch]$RunLocalRestore
+  [switch]$RunLocalRestore,
+  [switch]$FindBackups
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
@@ -20,6 +21,35 @@ foreach ($key in $envNames) {
 }
 Push-Location $repoRoot
 try {
+  if ($FindBackups) {
+    # Local filesystem search ONLY; no credentials, Firebase API or network calls.
+    $folders = @(
+      (Join-Path $HOME "Downloads"),
+      (Join-Path $HOME "Documents"),
+      (Join-Path $HOME "Desktop"),
+      (Join-Path $HOME "OneDrive"),
+      (Join-Path $HOME "OneDrive\Documents")
+    ) | Select-Object -Unique
+    $candidates = @(
+      @(
+        foreach ($folder in $folders) {
+          if (Test-Path -LiteralPath $folder -PathType Container) {
+            Get-ChildItem -LiteralPath $folder -Filter "*.salesbak" -File -Recurse -ErrorAction SilentlyContinue
+          }
+        }
+      ) | Sort-Object FullName -Unique
+    )
+    if ($candidates.Count -gt 0) {
+      Write-Host "FOUND: existing .salesbak files (newest first):"
+      $candidates | Sort-Object LastWriteTime -Descending | ForEach-Object { Write-Host $_.FullName }
+    } else {
+      Write-Host "NOT FOUND: no .salesbak file in the common Downloads/Documents/Desktop/OneDrive folders."
+      Write-Host "This does NOT mean your Firestore data or other backups were deleted."
+      Write-Host "Check other drives/external storage; a Firebase export or ZIP is NOT an encrypted .salesbak."
+      Write-Host "Do NOT run the restore verifier without an existing .salesbak file."
+    }
+    return
+  }
   if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
     throw "Node.js 22+ is required."
   }
@@ -27,15 +57,21 @@ try {
   $nodeMajor = [int]($versionString -replace "^v([0-9]+)\..*$", '$1')
   if ($nodeMajor -lt 22) { throw "BLOCK: Node.js 22 or newer is required." }
   if (-not $BackupFile) {
-    $BackupFile = Read-Host "既存の暗号化バックアップ(.salesbak)の絶対パス"
+    $BackupFile = Read-Host "Absolute path of an existing encrypted backup file (.salesbak)"
   }
-  if (-not $BackupFile -or -not [IO.Path]::IsPathRooted($BackupFile) -or
+  # Pasting a command into the path prompt must fail cleanly, not with an
+  # unhandled Windows Path.IsPathRooted invalid-character exception.
+  $BackupFile = [string]$BackupFile
+  $BackupFile = $BackupFile.Trim().Trim('"').Trim("'")
+  $isAbsolute = $false
+  try { $isAbsolute = [IO.Path]::IsPathRooted($BackupFile) } catch { $isAbsolute = $false }
+  if (-not $BackupFile -or -not $isAbsolute -or
       -not $BackupFile.EndsWith(".salesbak", [StringComparison]::OrdinalIgnoreCase) -or
       -not (Test-Path -LiteralPath $BackupFile -PathType Leaf)) {
-    throw "BLOCK: existing absolute .salesbak backup file required."
+    throw "BLOCK: paste an existing full .salesbak file path, NOT a PowerShell command. Use -FindBackups to search common folders."
   }
   $file = (Resolve-Path -LiteralPath $BackupFile).Path
-  $secure = Read-Host "暗号化バックアップのパスフレーズ" -AsSecureString
+  $secure = Read-Host "Encrypted backup passphrase (hidden)" -AsSecureString
   $ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
   try {
     $env:SALES_BACKUP_PASSPHRASE = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)

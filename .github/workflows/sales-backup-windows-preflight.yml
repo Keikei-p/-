@@ -1,0 +1,48 @@
+name: Windows Backup Script Read-Only Regression
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "scripts/verify-sales-backup.ps1"
+      - ".github/workflows/sales-backup-windows-preflight.yml"
+permissions:
+  contents: read
+jobs:
+  powershell51:
+    runs-on: windows-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify script finds no backup without touching Firebase
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $file = Join-Path $HOME "Downloads\ci-synthetic.salesbak"
+          New-Item -ItemType Directory -Force -Path (Split-Path $file) | Out-Null
+          try {
+            Set-Content -LiteralPath $file -Value "NOT_A_REAL_BACKUP" -Encoding ascii
+            $output = & powershell.exe -NoProfile -File .\scripts\verify-sales-backup.ps1 -FindBackups 2>&1 | Out-String
+            if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne $null) { throw "Search script exit code failed" }
+            if (-not $output.Contains("ci-synthetic.salesbak")) { throw "Read-only discovery did not find test file" }
+            if (-not $output.Contains("FOUND")) { throw "Discovery did not report file found" }
+            Remove-Item -LiteralPath $file -Force
+            $empty = & powershell.exe -NoProfile -File .\scripts\verify-sales-backup.ps1 -FindBackups 2>&1 | Out-String
+            if ($empty.Contains("ci-synthetic.salesbak")) { throw "Deleted test file still advertised" }
+            Write-Host "PASS: read-only path discovery with PowerShell 5.1"
+          }
+          finally { if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file -Force } }
+      - name: Refuse a pasted command instead of a file path
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Continue"
+          $output = & powershell.exe -NoProfile -File .\scripts\verify-sales-backup.ps1 -BackupFile 'powershell -NoProfile -File .\scripts\verify-sales-backup.ps1' 2>&1 | Out-String
+          if (-not $output.Contains("BLOCK:")) { throw "Pasted command was not safely rejected" }
+          if ($output.Contains("Path.IsPathRooted") -or $output.Contains("System.ArgumentException")) {
+            throw "Pasted command caused an unhandled path exception"
+          }
+          Write-Host "PASS: bad path rejected without Firebase access"
+          # The intentionally rejected child exits 1. The assertions above PASS,
+          # so reset this validation step's process exit code explicitly.
+          exit 0
