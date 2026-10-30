@@ -49,7 +49,9 @@ export function createPartnerCountRestWriteHandler({
    // cannot choose a Firestore collection or request the raw product master.
    if(!scope||!ID.test(scope.companyId)||!ID.test(scope.hubCompanyId)||
       !request||!Array.isArray(request.lines)||
-      request.lines.length<1||request.lines.length>50)deny();
+      request.lines.length>50||
+      (request.status==="submitted"&&request.lines.length===0)||
+      (request.status==="no_result"&&request.lines.length!==0))deny();
    const ids=request.lines.map(x=>x?.catalogId);
    if(ids.some(x=>typeof x!=="string"||!ID.test(x))||
       new Set(ids).size!==ids.length)deny();
