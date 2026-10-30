@@ -46,12 +46,19 @@ test("archive uses server-only queries, budget check, owner recheck and no write
 });
 
 
-test("partner/cooperator owner cannot pass the archival UI gate, even with owner role",()=>{
- assert.match(module,/banned=new Set\(\["partner","cooperator"\]\)/);
- for(const boundary of ["c.companyKind","c.accessKind","ud.accessKind","m.accessKind",
-                        "ud.memberType","m.memberType"]){
-  assert(module.includes("banned.has("+boundary+")"),"missing partner boundary: "+boundary);
+test("only legacy or explicitly internal owner markers can read archive",()=>{
+ assert.match(module,/const internal=v=>v==null\|\|v==="internal"\|\|v==="direct"/);
+ assert.match(module,/const internalMemberType=v=>v==null/);
+ for(const boundary of ["c.companyKind","c.accessKind","ud.accessKind","m.accessKind"]){
+  assert(module.includes("!internal("+boundary+")"),"missing internal-only boundary: "+boundary);
  }
+ for(const boundary of ["ud.memberType","m.memberType"]){
+  assert(module.includes("!internalMemberType("+boundary+")"),
+    "missing external member-type boundary: "+boundary);
+ }
+ assert.match(module,/m.companyId!==companyId/);
+ assert.match(module,/getDocFromServer\(/);
+ assert.doesNotMatch(module,/await getDoc\(/);
 });
 test("all three sensitive exports recheck current owner, and revocation during load stops exports",()=>{
  assert.match(module,/async function exportOwnerStillAuthorized\(\)/);
