@@ -94,5 +94,5 @@ test("existing ranking UIs reused, not a new ranking screen or money blending",(
  const start=html.indexOf("function refreshExistingPartnerRanking()");
  const end=html.indexOf("function partnerRankingVirtualRecords()",start);
  const scope=html.slice(start,end);
- assert(!/\\b(?:setDoc|updateDoc|addDoc|deleteDoc)\\(/.test(scope));
+ assert(!["setDoc(","updateDoc(","addDoc(","deleteDoc("].some(k=>scope.includes(k)));
 });
