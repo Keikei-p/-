@@ -440,3 +440,35 @@ Rulesの本番デプロイ: 未実施
 - GitHub保護ラベル/本記録は **コードの限定技術審査** であり、ユーザー本人によるリリース承認・本番実データの復元照合・公開確認を代理するものではない。
 
 **最終判定: 本番未公開・NO-GO。**
+
+
+---
+
+## 2026-10-30 — PR #153 協力店の独立会社招待（限定開発コードレビュー、本番OFF）
+
+### 確認した現在のFirebase状態
+- 依頼者のPCから `firebase functions:list --project sales-management-cc116` に成功。デプロイ済みは `sendMissingReportReminders`（asia-northeast1, v2, Node.js 22）のみ。新しい招待用3 Functionsは未配備。
+- CLIログインは成功。認証メール・トークンなど秘密情報をGitHubには保存しない。
+
+### PR変更と動作範囲
+- `functions/index.js` は新しい `createPartnerCompanyInvitation`, `previewPartnerCompanyInvitation`, `acceptPartnerCompanyInvitation` の3つだけを追加。既存社員招待、既存LINEスケジュールとそのトリガーは無変更。
+- `functions/partner-company-invitations.cjs` は検証済みユーザー、最新Firebase Auth・Owner所属、30分・一回・指定先メール限定の招待を処理。受入先は別 `companyId`、`companyKind=partner`、`accessKind=partner`、売上・単価禁止、連携/件数報告初期OFF。
+- `partner-invite.html` は既存の営業実績旧画面とは別ページ。公開用既存 `index.html` は変更しない。
+- `firebase.partner-invites.json` はFirebase Functionsソースのみを指定し、Firestore/Hosting配備対象を含めない。正式展開時は**必ず3つの `--only functions:<exact-name>` を指定**。汎用 `firebase deploy`、`--only functions` は使用しない。
+- `.github/workflows/nico-factory-sync.yml` の新ページ複製リストだけを追加。既存の安全STOPゲートと手動Hostingリリース条件は解除しない。
+- Functionsに `PARTNER_INVITES_ENABLED=enabled` が明示的に設定されない限り、新規招待・プレビュー・承諾は拒否する。
+- `records`、`products`、`recordCorrections`、`revenueGoals`、既存 `users/companies/teams`・CB・実績・売上・招待履歴・バックアップに対する本番書込・削除・再計算は一切していない。
+
+### 自動検証と保護の範囲
+- PR #153の `Sales App Validation`、`Sales Archive Preflight`、`NICO canonical release safety preflight` を最新HEADで確認する。デモFirestoreエミュレータで別会社の作成・一度だけの承諾・元会社無変更・Hub金額原票への直接読取拒否を検査。
+- 本番の会社単位金額原票Security Rulesは未完成。承諾直後の協力店は件数入力・合同ランキングを使用できない設定で停止する。招待APIを独立公開しても**協力店の実運用全体が完成した意味ではない**。
+
+### 本番リリース前に必要
+- [ ] 本番DBバックアップ2媒体と隔離復元の最新全件照合（UID・件数・価格・CB・履歴）
+- [ ] 既存のAuth・会社/班/商品と新会社権限の実環境試験、停止/不正アカウントと旧PWA試験
+- [ ] Cloud Functions Blaze請求・上限、呼び出し防御、招待件数/料金の管理者確認
+- [ ] Hostingの停止ゲートを**解消する実際の安全なFinance APIクライアント移行**。ゲート迂回はしない
+- [ ] 明示的な本番配備承認後に3 Functionだけを手動配備し、公開後の実アカウント確認
+- [ ] 管理者本人の署名（現時点未取得）
+
+**この記録は限定コードレビューの証跡であり、本人署名・本番データ検証・公開承認の代わりではない。本番公開はNO-GO、実績と既存Functionは無変更。**
