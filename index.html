@@ -31873,6 +31873,16 @@ function availableRankingProductChoices() {
       }
     });
   });
+  // Use the EXISTING group editor to manually assign any partner-only category
+  // whose registered product name cannot be safely mapped automatically.
+  if(canLoadPartnerRanking()){
+    PARTNER_QUICK_RANK_KEYS.forEach(category=>{
+      const key="legacy:"+category;
+      if(!found.has(key)) found.set(key,{
+        key,name:category+"（協力店件数）"
+      });
+    });
+  }
   return [...found.values()].sort((a,b) => a.name.localeCompare(b.name, "ja"));
 }
 
