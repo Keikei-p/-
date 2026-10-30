@@ -28,6 +28,18 @@ exports.createPartnerCompanyInvitation = onCall(partnerCompanyInvitations.create
 exports.previewPartnerCompanyInvitation = onCall(partnerCompanyInvitations.preview);
 exports.acceptPartnerCompanyInvitation = onCall(partnerCompanyInvitations.accept);
 
+// Partner count activation is a SEPARATE production operation. Exporting the
+// callable does not enable it: explicit admin-approved review ID and opt-in
+// environment gate are mandatory. Never deploy with the invite-only workflow.
+const {makePartnerCountActivation}=require("./partner-count-onboarding.cjs");
+const partnerCountActivation=makePartnerCountActivation({
+  db,getAuth,FieldValue,HttpsError,
+  enabled:()=>process.env.PARTNER_COUNT_ONBOARDING_ENABLED==="enabled",
+  releaseId:()=>process.env.PARTNER_COUNT_REVIEW_ID||""
+});
+exports.activatePartnerCountCompany=onCall(partnerCountActivation.activate);
+
+
 function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
