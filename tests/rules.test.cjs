@@ -401,6 +401,10 @@ for(const marker of ['companyKind','user-accessKind','member-accessKind','member
     changedByUid:'owner',changedByName:'owner',before:{totalRevenue:500},
     after:{totalRevenue:1000},createdAt:serverTimestamp()});
    await setDoc(doc(admin,'revenueGoals','partner-finance'),revenueGoalPayload());
+   // The server-issued partner owner always has accessKind=partner.
+   // Additional markers may be present, but they are not a replacement for
+   // that canonical identity flag in the current low-cost read rules.
+   await updateDoc(doc(admin,'users','owner'),{accessKind:'partner'});
    if(marker==='companyKind') {
     await updateDoc(doc(admin,'companies',company),{companyKind:'partner'});
    } else {
