@@ -47,7 +47,7 @@ test("all money-bearing collections require internal Owner/Master before returni
  }
  assert.match(locked,/function isCompanyOwner\(companyId\)\s*\{\s*return verifiedUser\(\)\s*&& !isPartnerAccount\(companyId\)/);
  assert.match(locked,/function isCompanyMaster\(companyId\)\s*\{\s*return verifiedUser\(\)\s*&& !isPartnerAccount\(companyId\)/);
- assert.match(locked,/function canViewRevenue\(companyId\)\s*\{\s*return !isPartnerAccount\(companyId\)/);
+ assert.match(locked,/function canViewRevenue\(companyId\)[\s\S]*?return isCompanyMember\(companyId\)\s*&& !isPartnerAccount\(companyId\)/);
 });
 test("financial corrections and raw records cannot be deleted; production Rules were not replaced",()=>{
  assert.match(body("records"),/allow delete: if false;/);
