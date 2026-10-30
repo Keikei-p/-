@@ -74,6 +74,12 @@ export function prepareVerifiedCountProjection({
  sortedUnique(headers,"publicRecords");
  sortedUnique(lines,"publicRecordLines");
  sortedUnique(catalog,"publicProducts");
+ // A partial product snapshot may look count-correct while leaving historic
+ // record lines without a corresponding public catalog entry. Refuse to
+ // publish rather than silently dropping a product or inventing a mapping.
+ // Inactive historical products remain valid as long as their IDs are present.
+ const catalogIds=new Set(catalog.map(item=>item.sourceId));
+ if(lines.some(line=>!catalogIds.has(line.productId)))deny();
  if(sourceCount!==publicCount)deny();
  // Do not embed original records, snapshots or monetary fields in the result.
  const output={
