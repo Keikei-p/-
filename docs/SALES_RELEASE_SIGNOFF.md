@@ -513,3 +513,18 @@ Rulesの本番デプロイ: 未実施
 - ポリシー設定が失敗していて3 Functionsが既配備と確かめられない場合は新Cloud Buildを**厳禁**として終了1。ポリシー設定成功なら必要な3 Functions限定再配備を許可する。
 - この取り扱いは既存売上・単価・CB・実績原票・班/社員履歴・LINEには変更・削除なし。自動ポリシー設定失敗は発生コストと権限の未解決問題として記録し、同時に「無料運用検証完了」と報告しない。
 - 手動確認 `CONFIRM_PARTNER_INVITE_ONLY` と公式URLの差分1ページのみの保全を維持。他のFirebase Hosting/Firestore Rules移行は依然NO-GO。実協力店の件数登録や合同ランキングは現状未稼働。
+
+
+---
+
+## 2026-10-31 — 協力店招待の限定本番公開成功・暫定再実行Workflow停止
+
+- 実行証拠：[GitHub Actions Run #41085404597](https://github.com/Keikei-p/-/actions/runs/41085404597) **SUCCESS**。
+- `functions:list` により3件の協力店招待API `createPartnerCompanyInvitation`, `previewPartnerCompanyInvitation`, `acceptPartnerCompanyInvitation` と、既存通知 `sendMissingReportReminders` の4件を確認。以前に本番追加した3件を再ビルド・再配備せず維持。
+- 未ログインで `createPartnerCompanyInvitation` を呼ぶと401/UNAUTHENTICATEDを返すことを本番APIで確認。
+- 公式Hostingサイト `nico-factory` で旧ライブVersion `40f089558edceff8` の既存8ファイルのパスとSHA256を保存、新Version `481949c0ea28971f` に旧8ファイル完全同一＋新規 `/partner-invite.html` 1件の計9ファイルの一致を確認。ライブの並行変更がないことを検証してリリース成功。
+- GitHub Actionsにより `https://nico-factory.web.app/partner-invite.html` と従来トップページの公開後HTTP GETチェック成功。元の `index.html`、既存PWA/JSおよびHosting設定を変更しない差分公開。
+- 本番Firestore Rules/売上・単価・CB・実績・班履歴/ユーザーデータの更新・削除・再計算は実施していない。
+- 誤再実行防止のため、既に役割を終えた `.github/workflows/nico-partner-approved-recovery-once.yml` を削除し、存在しないことを自動テストする。
+- **残件**：本番の実Owner→協力店宛の招待リンク発行・受取・有効期限・二重承認はまだ実アカウント検査がないため完了扱いしない。協力店件数登録・共有商材・合同ランキング・旧画面のFinance移行は**未公開**。
+- Artifact Registryのコンテナイメージ1日cleanup policyは`Failed to set up artifact registry cleanup policy`のまま。費用が発生する可能性があり、GitHubサービスアカウントのArtifact Registry更新権限と課金確認が残る。次回に無承認再ビルドを行わない。
