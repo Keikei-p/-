@@ -2,7 +2,8 @@ import {buildCombinedReportPlan,buildCombinedReportData,formatCombinedCountsRepo
 
 // Cloudflare Workers (staging only). No public HTTP endpoint.
 // Default is DRY RUN: no LINE messages or Firestore writes unless two independent switches are enabled.
-const TASKS={"0 0 * * *":"morning","0 10 * * *":"final","5 10 * * *":"missing"};
+// Cloudflare cron is UTC; JST is UTC+9 with no daylight-saving changes.
+const TASKS={"30 0 * * *":"morning","0 12 * * *":"final","5 10 * * *":"missing"};
 const BASE="https://firestore.googleapis.com/v1/projects/";
 function todayTokyo(ms){
  const parts=new Intl.DateTimeFormat("en-US",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit",weekday:"short"}).formatToParts(new Date(ms));
