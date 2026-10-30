@@ -29,6 +29,11 @@ jobs:
       - name: Check Functions JavaScript syntax
         run: node --check functions/index.js
 
+      - name: Check finance role boundary before legacy browser data access (offline)
+        run: |
+          node --check legacy-finance-entry-guard.mjs
+          node --test tests/legacy-finance-entry-guard.test.mjs
+
       - name: Check sales input and correction regressions
         run: node --test tests/sales-regressions.cjs
 

@@ -426,3 +426,17 @@ Rulesの本番デプロイ: 未実施
 - 静的チェックの合格だけではFirebase実機の権限・バックアップ復元/照合・旧PWA・大量件数の無料枠・本番ゲートウェイの認証を証明しない。実Firebase Rules変更、LINE送信、原票更新/削除、Hosting公開は**未実施**。
 - `sales-production-reviewed` は**危険なリリースを拒否する保護コードの技術レビュー記録**。ユーザー本人の電子署名や、全本番要件を満たした承認を代理で作成するものではない。
 - 認証情報の追加・ログへの資格情報出力・実Firestore読み書き、データの破棄/再計算はなし。既存履歴・当時単価・売上・バックアップは無変更。
+
+
+---
+
+## 2026-10-30 — 旧ブラウザへの金融原票アクセス前に本人・会社の最新権限を検査（開発コード技術レビュー）
+
+- 対象: `legacy-finance-entry-guard.mjs`, `index.html`, `tests/legacy-finance-entry-guard.test.mjs`, `.github/workflows/pr38-validation.yml`, `.github/workflows/nico-factory-sync.yml`。保存済み実績・収益・単価・CB・退職者・班履歴・会社データに書込/削除/再計算なし。
+- 対策: 認証済み本人の現行 `users/{uid}`、`companies/{companyId}/members/{uid}`、`companies/{companyId}` の3文書を **getDocFromServer** で取得し、UID・会社・有効状態・会員種別を判定。協力店会社・本人/会社会員の協力店指定、未知のアクセス/会員種別、会社・班・役職不一致は、旧ブラウザで `products` を読む**前**に停止。ログアウト導線を残す。旧社内アカウントの既知内部属性は保持。
+- `getDocFromServer` が失敗した場合も金融原票は読み取らず、再確認の案内に停止する。Firestore SDKはブラウザが改変可能なので、**これは多層防御の一部でありFirestore Rulesの代替ではない。**
+- 旧 `index.html` には金額付き `products` / `records` 直接読取・書込がまだ存在する。保護済みRules候補と旧ブラウザの切替を済ませるまで、本番HostingとFirestore Rulesの公開は引き続き **NO-GO**。一部協力店の入力を一時停止させ得るため、実権限テスト/専用ポータル稼働が必要。
+- 手動Hosting用ファイル複製リストに上記ガードモジュールを追加し、パッケージ漏れで画面が壊れることを防止。認証情報・本番Firebaseへのコマンドは実行しない。
+- GitHub保護ラベル/本記録は **コードの限定技術審査** であり、ユーザー本人によるリリース承認・本番実データの復元照合・公開確認を代理するものではない。
+
+**最終判定: 本番未公開・NO-GO。**
