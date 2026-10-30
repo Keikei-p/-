@@ -10,7 +10,8 @@ REPORT_DELIVERY_ENABLED = "false"
 REPORT_DRY_RUN_VALIDATE = "false"
 
 [triggers]
-crons = ["0 0 * * *", "0 10 * * *", "5 10 * * *"]
+crons = ["30 0 * * *", "0 12 * * *", "5 10 * * *"]
+# UTC: 00:30 => JST 09:30, 12:00 => JST 21:00, 10:05 => JST 19:05
 
 # Add via 'wrangler secret put', NEVER in source files:
 # FIREBASE_SERVICE_ACCOUNT_JSON
