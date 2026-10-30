@@ -14,7 +14,9 @@ export function modelOwnerOnlyFinanceRules(phase1){
   if(next.split(databaseMatch).length!==2 ||
      next.includes("function isInternalFinanceReader("))
     throw Error("Unexpected candidate rules structure");
-  // A partner company's owner/master is a partner, regardless of owner role.
+  // Partner/cooperator and UNKNOWN company/access markers must be denied,
+  // including if a mistaken Owner/Master finance flag is present. Keep the
+  // legacy absent-marker default for already established internal accounts.
   const helper=[
     "",
     "    function isInternalFinanceReader(companyId) {",
@@ -23,10 +25,9 @@ export function modelOwnerOnlyFinanceRules(phase1){
     "        && exists(userPath(request.auth.uid))",
     "        && exists(memberPath(companyId, request.auth.uid))",
     "        && get(companyPath(companyId)).data.get('active', true) == true",
-    "        && get(companyPath(companyId)).data.get('companyKind', 'internal') != 'partner'",
-    "        && get(companyPath(companyId)).data.get('companyKind', 'internal') != 'cooperator'",
-    "        && get(userPath(request.auth.uid)).data.get('accessKind', 'internal') != 'partner'",
-    "        && get(memberPath(companyId, request.auth.uid)).data.get('accessKind', 'internal') != 'partner'",
+    "        && get(companyPath(companyId)).data.get('companyKind', 'internal') == 'internal'",
+    "        && get(userPath(request.auth.uid)).data.get('accessKind', 'internal') == 'internal'",
+    "        && get(memberPath(companyId, request.auth.uid)).data.get('accessKind', 'internal') == 'internal'",
     "        && get(userPath(request.auth.uid)).data.get('memberType', 'internal') != 'cooperator'",
     "        && get(memberPath(companyId, request.auth.uid)).data.get('memberType', 'internal') != 'cooperator'",
     "        && get(userPath(request.auth.uid)).data.get('memberType', 'internal') != 'partner'",
