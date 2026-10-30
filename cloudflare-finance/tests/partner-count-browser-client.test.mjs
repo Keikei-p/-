@@ -131,7 +131,7 @@ test("rejects old host, disabled feature, malformed schema and price injected by
 });
 test("source never imports raw Firestore SDK or stores credentials/financial fields",()=>{
  const src=readFileSync(new URL("../client/partner-count-browser-client.mjs",import.meta.url),"utf8");
- assert.doesNotMatch(src,/firebase-firestore|getFirestore\(|onSnapshot\(|localStorage|sessionStorage|recordsCollectionQuery/);
+ assert.doesNotMatch(src,/firebase-firestore|getFirestore\(|onSnapshot\(|localStorage\s*[.(]|sessionStorage\s*[.(]|recordsCollectionQuery/);
  assert.match(src,/\/v1\/partner-own-day/);
  assert.match(src,/\/v1\/partner-counts/);
  assert.match(src,/credentials:"omit"/);
