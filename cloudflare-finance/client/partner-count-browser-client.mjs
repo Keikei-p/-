@@ -106,6 +106,37 @@ export function createPartnerCountBrowserClient({
   if(!content||typeof content!=="object"||Array.isArray(content))deny();
   return content;
  }
+ async function readCatalog(){
+  const payload=await send("/v1/partner-count-catalog","GET");
+  exact(payload,["teams","products"]);
+  if(!Array.isArray(payload.teams)||payload.teams.length>100||
+     !Array.isArray(payload.products)||payload.products.length>100)deny();
+  const teamIds=new Set(),productIds=new Set();
+  const teams=payload.teams.map(team=>{
+   exact(team,["teamId","name"]);
+   if(!ID.test(team.teamId)||teamIds.has(team.teamId)||
+      typeof team.name!=="string"||!team.name.trim()||
+      team.name.length>80)deny();
+   teamIds.add(team.teamId);
+   return Object.freeze({teamId:team.teamId,name:team.name});
+  });
+  const products=payload.products.map(product=>{
+   exact(product,["catalogId","name","visibility"]);
+   if(!ID.test(product.catalogId)||productIds.has(product.catalogId)||
+      !["shared_counts","private"].includes(product.visibility)||
+      typeof product.name!=="string"||!product.name.trim()||
+      product.name.length>80||
+      /(?:[¥￥$€]|(?:\\d|[０-９])[\\d０-９,.，]*\\s*(?:万|千)?円|(?:CB|cashback|revenue|unitprice|単価|売上|報酬|利益)[\\s:_=-]*(?:\\d|[０-９]))/i.test(product.name))deny();
+   productIds.add(product.catalogId);
+   return Object.freeze({
+    catalogId:product.catalogId,name:product.name,
+    visibility:product.visibility
+   });
+  });
+  return Object.freeze({
+   teams:Object.freeze(teams),products:Object.freeze(products)
+  });
+ }
  async function readDay({date,teamId}={}){
   if(!isValidDay(date)||typeof teamId!=="string"||!ID.test(teamId))deny();
   const q=new URLSearchParams({date,teamId});
@@ -155,5 +186,5 @@ export function createPartnerCountBrowserClient({
    version:check.version,ownCount:check.ownCount,
    sharedCount:check.sharedCount};
  }
- return Object.freeze({readDay,saveDay});
+ return Object.freeze({readDay,saveDay,readCatalog});
 }
