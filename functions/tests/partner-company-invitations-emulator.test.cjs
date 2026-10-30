@@ -68,6 +68,29 @@ test("Firestore emulator: accept once, separate company, preserve existing hub a
  assert.equal(relation.countSharingApproved,false);
  assert.deepEqual((await hubRef.get()).data(),beforeHub);
  assert.deepEqual((await ownerRef.get()).data(),beforeOwner);
+ // Test real production-candidate Rules in the emulator as the newly
+ // provisioned partner. The raw Hub financial originals must be denied.
+ const fs=require("node:fs"),path=require("node:path");
+ const {initializeTestEnvironment,assertFails}=
+   require("../../tests/node_modules/@firebase/rules-unit-testing");
+ const {doc,getDoc}=require("../../tests/node_modules/firebase/firestore");
+ const env=await initializeTestEnvironment({
+  projectId:project,firestore:{
+   rules:fs.readFileSync(path.resolve(__dirname,"../../firestore.rules"),"utf8")
+  }
+ });
+ try{
+  for(const kind of ["products","records","recordCorrections","revenueGoals"]){
+   await db.doc(kind+"/hubOriginal_"+unique).set({
+    companyId:hub,name:"private",totalRevenue:100000,unitPrice:15000
+   });
+   const partnerClient=env.authenticatedContext(guest,{
+    email:users[guest].email,email_verified:true
+   }).firestore();
+   await assertFails(getDoc(doc(partnerClient,kind,"hubOriginal_"+unique)),
+     "partner must never fetch the hub's "+kind);
+  }
+ }finally{await env.cleanup();}
  await assert.rejects(routes.accept(req(guest,{token:invitation.token})));
  await assert.rejects(routes.preview(req(guest,{token:invitation.token})));
 });
