@@ -128,17 +128,20 @@ export function createPartnerCountBrowserClient({
   }
   let cmd;
   if(current.found){
-   // A previous unknown POST may have committed a DIFFERENT payload;
-   // never silently overwrite it by treating this as a fresh edit.
+   // A prior uncertain write may have been superseded on another device.
+   // Never silently overwrite it as a new correction.
    if(previous)throw Error("partner_count_uncertain_prior_save_refresh_required");
    cmd={action:"correct",request:clean,
     recordId:current.recordId,expectedVersion:current.version};
+   pending.set(key,{kind:"correct",payload});
   }else{
+   if(previous?.kind==="correct")
+    throw Error("partner_count_uncertain_prior_save_refresh_required");
    let retryKey=previous?.retryKey;
    if(!retryKey){
     retryKey=mintRetryKey();
     if(typeof retryKey!=="string"||!RETRY.test(retryKey))deny();
-    pending.set(key,{payload,retryKey});
+    pending.set(key,{kind:"create",payload,retryKey});
    }
    cmd={action:"create",request:clean,retryKey};
   }
