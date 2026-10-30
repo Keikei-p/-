@@ -472,3 +472,9 @@ Rulesの本番デプロイ: 未実施
 - [ ] 管理者本人の署名（現時点未取得）
 
 **この記録は限定コードレビューの証跡であり、本人署名・本番データ検証・公開承認の代わりではない。本番公開はNO-GO、実績と既存Functionは無変更。**
+
+
+### PR #153 review-label note (2026-10-30)
+- GitHub接続ユーザー `Keikei-p` の管理権限を取得して、PRの実差分9ファイルを確認。 `functions/index.js` は新Callable3件の追加のみ、従来 `sendMissingReportReminders` と社員招待は無変更。 `.github/workflows/nico-factory-sync.yml` の起動条件や本番ゲートは無変更。
+- 本チャットの「今日中に協力店招待を使いたい」という依頼を根拠として、管理者接続で `sales-production-reviewed` を**この限定コード変更の審査用ラベルとして適用**した。これは独立した本人署名・本番デプロイ許可ではない。
+- 依然として `PARTNER_INVITES_ENABLED` は本番未設定で機能OFF。Firebase Hosting・Functions・Firestore・LINE本番変更は未実施。保護ゲート通過とGitHub main統合は本番利用可能の意味ではない。
