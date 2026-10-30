@@ -360,7 +360,7 @@ async function ownerMemberList(env,policy,fetcher=fetch) {
       && typeof m.uid==="string" && /^[A-Za-z0-9_-]{1,150}$/.test(m.uid)
       && m.companyRole==="member" && m.role==="leader")
     .map(m=>({uid:m.uid,name:withoutAmounts(m.name||"担当者").slice(0,30),
-      teamId:m.teamId||null,accessKind:m.accessKind==="partner"?"partner":"direct"}))
+      teamId:m.teamId||null,accessKind:[m.accessKind,m.memberType].some(x=>x==="partner"||x==="cooperator")?"partner":"direct"}))
     .sort((a,b)=>a.name.localeCompare(b.name,"ja"));
 }
 async function partnerMemberList(env,policy,fetcher=fetch) {
@@ -374,7 +374,16 @@ function approvedPolicy(user,member,company,uid,today="") {
       (member.companyId && user.companyId!==member.companyId))throw httpError(403,"membership_denied");
   // Any partner marker is restrictive, even if its twin record has not yet
   // been stamped. Only a company administrator may provision accessKind.
-  const isPartner=user.accessKind==="partner" || member.accessKind==="partner";
+  // Company, account and membership may be marked at different times.
+  // Deny raw finance when ANY authoritative marker denotes an external party.
+  // Unknown company/access classifications cannot silently inherit Owner pay access.
+  const kinds=[company.companyKind,user.accessKind,member.accessKind];
+  if(company.companyKind!=null && !["internal","partner","cooperator"].includes(company.companyKind) ||
+     [user.accessKind,member.accessKind].some(kind=>kind!=null &&
+       !["internal","direct","partner","cooperator"].includes(kind)))
+    throw httpError(403,"membership_kind_unknown");
+  const isPartner=[...kinds,user.memberType,member.memberType]
+    .some(value=>value==="partner"||value==="cooperator");
   const isMaster=(company.masterUid||company.ownerUid)===uid;
   if(isPartner && (isMaster || user.companyRole!=="member" || member.companyRole!=="member" ||
       user.role!=="leader" || member.role!=="leader" ||
