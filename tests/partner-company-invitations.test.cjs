@@ -178,3 +178,85 @@ test("partner invitation page is isolated from legacy records and prices",()=>{
  assert.ok(!html.includes("firebase-firestore.js"));
  assert.ok(!html.includes("sendMissingReportReminders"));
 });
+
+
+const {makePartnerCountActivation}=require("../functions/partner-count-onboarding.cjs");
+async function activationFixture(){
+ const x=setup();
+ const invited=await x.handlers.create(x.request("owner",createInput));
+ const partner=await x.handlers.accept(x.request("recipient",{token:invited.token}));
+ return {...x,partnerId:partner.partnerCompanyId};
+}
+function activation(db,{enabled=true,releaseId="release_review_20261031"}={}){
+ const account={uid:"owner",email:"owner@example.com",
+  emailVerified:true,disabled:false};
+ return makePartnerCountActivation({
+  db,getAuth:()=>({
+   getUser:async uid=>({...account,uid}),
+   verifyIdToken:async token=>{
+    if(token!=="o".repeat(30))throw Error("invalid bearer");
+    return {uid:"owner",email:account.email,email_verified:true};
+   }
+  }),
+  FieldValue:{serverTimestamp:()=>({seconds:NOW/1000})},
+  HttpsError:CallError,enabled:()=>enabled,releaseId:()=>releaseId
+ });
+}
+function stampApproval(db,id,{restore=true}={}){
+ db.seed("partnerCountOnboardingApprovals/"+id,{
+  partnerCompanyId:id,hubCompanyId:"hub",approvedByUid:"owner",
+  releaseId:"release_review_20261031",
+  restoreVerified:restore,financeRulesVerified:true,
+  catalogVerified:true,projectionVerified:true,
+  backupDigest:"a".repeat(64),projectionDigest:"b".repeat(64)
+ });
+}
+test("partner count activation requires independent real-world approval and never changes the original sales",async()=>{
+ const x=await activationFixture(),fn=activation(x.db);
+ x.db.seed("products/old-financial",{companyId:"hub",revenue:10000});
+ x.db.seed("records/old-financial",{companyId:"hub",totalRevenue:120000,totalCount:12});
+ const beforeProducts=clone(x.db.data.get("products/old-financial"));
+ const beforeRecords=clone(x.db.data.get("records/old-financial"));
+ const input=x.request("owner",{partnerCompanyId:x.partnerId,teamName:"協力店第1班"});
+ await assert.rejects(fn.activate(input),err=>err.code==="failed-precondition");
+ assert.equal(x.db.data.get("partnerRelations/"+x.partnerId).active,false);
+ assert.equal(x.db.data.get("users/recipient").teamId,null);
+ stampApproval(x.db,x.partnerId);
+ const out=await fn.activate(input);
+ assert.equal(out.countReportingEnabled,true);
+ assert.equal(out.teamId,"partner_"+x.partnerId);
+ assert.equal(x.db.data.get("teams/"+out.teamId).companyId,x.partnerId);
+ assert.equal(x.db.data.get("users/recipient").teamId,out.teamId);
+ assert.equal(x.db.data.get("companies/"+x.partnerId+"/members/recipient").teamId,out.teamId);
+ assert.equal(x.db.data.get("partnerRelations/"+x.partnerId).active,true);
+ assert.equal(x.db.data.get("partnerRelations/"+x.partnerId).catalogAccessApproved,true);
+ assert.deepEqual(x.db.data.get("products/old-financial"),beforeProducts);
+ assert.deepEqual(x.db.data.get("records/old-financial"),beforeRecords);
+ assert.equal(x.db.data.get("users/recipient").canViewRevenue,false);
+ assert.equal(x.db.data.get("users/recipient").canViewUnitPrice,false);
+ assert.equal(x.db.data.get("partnerCountActivationAudits/"+x.partnerId).releaseId,"release_review_20261031");
+ await assert.rejects(fn.activate(input),err=>err.code==="failed-precondition");
+});
+test("partner count activation cannot bypass disabled flag or unverified backup",async()=>{
+ const x=await activationFixture();
+ const before=JSON.stringify([...x.db.data]);
+ const input=x.request("owner",{partnerCompanyId:x.partnerId,teamName:"協力店第1班"});
+ await assert.rejects(activation(x.db,{enabled:false}).activate(input),err=>err.code==="unavailable");
+ assert.equal(JSON.stringify([...x.db.data]),before);
+ stampApproval(x.db,x.partnerId,{restore:false});
+ await assert.rejects(activation(x.db).activate(input),err=>err.code==="failed-precondition");
+ assert.equal(x.db.data.get("partnerRelations/"+x.partnerId).active,false);
+});
+test("partner count activation cannot be performed by the invite recipient",async()=>{
+ const x=await activationFixture();
+ stampApproval(x.db,x.partnerId);
+ const input=x.request("recipient",{partnerCompanyId:x.partnerId,teamName:"協力店第1班"});
+ await assert.rejects(activation(x.db).activate(input),err=>["permission-denied","unauthenticated"].includes(err.code));
+ assert.equal(x.db.data.get("partnerRelations/"+x.partnerId).active,false);
+});
+test("new activation module never queries money-bearing collections or deletes",()=>{
+ const src=require("node:fs").readFileSync(require.resolve("../functions/partner-count-onboarding.cjs"),"utf8");
+ assert.doesNotMatch(src,/\.delete\s*\(/);
+ assert.doesNotMatch(src,/\.collection\s*\(\s*["'](?:records|products|recordCorrections|revenueGoals)["']\s*\)/);
+ assert.doesNotMatch(src,/\.set\s*\(.*\{merge\s*:\s*false/);
+});
