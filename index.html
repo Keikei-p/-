@@ -11479,9 +11479,13 @@ partnerInviteCreateButton.onclick = async () => {
     showError("協力店名と招待メールアドレスを確認してください。");
     return;
   }
+  const inviteCreatorUid=currentUser.uid;
   partnerInviteCreateButton.disabled=true;
   try {
     const response=await createPartnerCompanyInvite({companyName,email});
+    if(currentUser?.uid!==inviteCreatorUid ||
+       currentCompanyData?.ownerUid!==inviteCreatorUid)
+      throw Error("stale_invite_creator");
     const token=response?.data?.token;
     if(typeof token!=="string"||!/^[A-Za-z0-9_-]{43}$/.test(token))
       throw Error("invalid_invite_response");
@@ -11590,6 +11594,10 @@ onAuthStateChanged(
       partnerRankingDailyCache.clear();
       partnerRankingState={key:"",rows:[],complete:false,checkedAt:0,reason:""};
       partnerRankingActiveKey="";
+      const link=document.getElementById("partnerInviteLinkOutput");
+      const inviteResultElement=document.getElementById("partnerInviteResult");
+      if(link)link.value="";
+      if(inviteResultElement)inviteResultElement.hidden=true;
 
       currentUser =
         null;
@@ -25586,6 +25594,9 @@ async function readPartnerRankingMonth(month){
   if(first<oldest)
     return {complete:false,rows:[],reason:"協力店の前月以前の全件数は未照合です"};
   const days=[];
+  // Freeze caller identity for every request: a logout mid-fetch must not
+  // populate a new company's in-memory cache with old partner counts.
+  const identityKey=currentPartnerRankingKey(month);
   const end=new Date(Date.UTC(first.getUTCFullYear(),first.getUTCMonth()+1,1));
   for(let cursor=new Date(first);cursor<end&&cursor<=now;
       cursor=new Date(cursor.getTime()+86400000))
@@ -25595,7 +25606,7 @@ async function readPartnerRankingMonth(month){
   for(let i=0;i<days.length;i+=4){
     const dates=days.slice(i,i+4);
     const responses=await Promise.all(dates.map(async date=>{
-      const key=currentPartnerRankingKey(date);
+      const key=identityKey+"|"+date;
       const cached=partnerRankingDailyCache.get(key);
       const ttl=date===getTodayString()?180000:3600000;
       if(cached&&Date.now()-cached.checkedAt<ttl)return cached.rows;
