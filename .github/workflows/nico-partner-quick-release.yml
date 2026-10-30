@@ -99,10 +99,42 @@ jobs:
           set -euo pipefail
           test ! -e functions-partner-quick/.env.sales-management-cc116
           printf 'PARTNER_QUICK_COUNTS_ENABLED=enabled\n' > functions-partner-quick/.env.sales-management-cc116
-      - name: Enable isolated count-only functions, never existing finance or LINE functions
+      - name: Detect already-created count-only pair (no redundant build)
+        id: existing
         shell: bash
         run: |
           set -euo pipefail
+          firebase functions:list --project "$FIREBASE_PROJECT_ID" --json > "$RUNNER_TEMP/current-functions.json"
+          FILE="$RUNNER_TEMP/current-functions.json" node <<'NODE'
+          const data=JSON.parse(require('node:fs').readFileSync(process.env.FILE,'utf8'));
+          const entries=Array.isArray(data.result)?data.result:[];
+          const names=entries.map(x=>x.id||x.name||x.function||'');
+          const present=['submitPartnerQuickCounts','getPartnerQuickCounts'].filter(
+            n=>names.some(v=>v===n||v.endsWith('/'+n))
+          );
+          if(present.length===1)throw Error('PARTIAL_COUNT_DEPLOY_STOP');
+          for(const n of ['sendMissingReportReminders','createPartnerCompanyInvitation',
+                          'previewPartnerCompanyInvitation','acceptPartnerCompanyInvitation'])
+            if(!names.some(v=>v===n||v.endsWith('/'+n)))
+              throw Error('ORIGINAL_FUNCTION_MISSING '+n);
+          require('node:fs').appendFileSync(process.env.GITHUB_OUTPUT,
+            'already_deployed='+(present.length===2?'true':'false')+'\n');
+          console.log('COUNT_FUNCTIONS '+(present.length===2?'REUSED_EXISTING_PAIR':'NO_PAIR_YET'));
+          NODE
+      - name: Repair one-day Artifact Registry cleanup (separate noncritical task)
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase functions:artifacts:setpolicy --days 1 --location asia-northeast1 \
+            --project "$FIREBASE_PROJECT_ID" --non-interactive
+      - name: Enable isolated count-only functions only if not already created
+        if: ${{ steps.existing.outputs.already_deployed != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Only the new isolated codebase. A prior successful create should
+          # never be rebuilt merely because Artifact Registry policy failed.
           firebase deploy --non-interactive --project "$FIREBASE_PROJECT_ID" \
             --config firebase.partner-quick.json --only functions:partner-quick
       - name: Verify new pair and existing 4 Functions remain deployed
