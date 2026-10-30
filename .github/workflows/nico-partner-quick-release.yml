@@ -1,0 +1,146 @@
+name: NICO isolated partner daily counts — additive same-day release
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "functions-partner-quick/**"
+      - "firebase.partner-quick.json"
+      - "partner-counts.html"
+      - "tests/partner-quick-counts.test.cjs"
+      - "tools/hosting/additive-partner-counts.mjs"
+      - ".github/workflows/nico-partner-quick-release.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions-partner-quick/**"
+      - "firebase.partner-quick.json"
+      - "partner-counts.html"
+      - "tests/partner-quick-counts.test.cjs"
+      - "tools/hosting/additive-partner-counts.mjs"
+      - ".github/workflows/nico-partner-quick-release.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: nico-partner-quick-isolated-release
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check isolated source & original finance Function fingerprints
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(git hash-object functions/partner-company-invitations.cjs)" = 4da83f98cd6f033d8ce8bda532aef39859db9c09
+          node --check functions-partner-quick/quick-counts.cjs
+          node --check functions-partner-quick/index.js
+          node --check tools/hosting/additive-partner-counts.mjs
+          node --test tests/partner-quick-counts.test.cjs
+          node --test tests/partner-company-invitations.test.cjs
+          node --test tests/additive-partner-invite-hosting.test.mjs
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const cfg=JSON.parse(fs.readFileSync('firebase.partner-quick.json','utf8'));
+          if(Object.keys(cfg).join(',')!=='functions'||cfg.functions.source!=='functions-partner-quick'||cfg.functions.codebase!=='partner-quick')throw Error('unsafe config scope');
+          const html=fs.readFileSync('partner-counts.html','utf8');
+          if(!html.includes('submitPartnerQuickCounts')||!html.includes('getPartnerQuickCounts')||
+             /firebase-firestore\.js|\.deleteDoc\(|\bgetFirestore\(|\bcollection\(/.test(html))
+            throw Error('unapproved browser access to Firestore');
+          const js=html.match(/<script type="module">([\s\S]+?)<\/script>/)?.[1];
+          if(!js)throw Error('module script missing');
+          fs.writeFileSync('/tmp/partner-quick-inline.mjs',js);
+          NODE
+          node --check /tmp/partner-quick-inline.mjs
+  release:
+    needs: validate
+    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.validate.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      NICO_PARTNER_RELEASE_CONFIRMATION: CONFIRM_ADD_PARTNER_COUNTS_ONLY
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify credentials and exact production target (no database changes)
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          node -e "const x=JSON.parse(require('node:fs').readFileSync('.firebaserc','utf8'));if(x.projects.default!=='sales-management-cc116')process.exit(1)"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/partner-quick-credentials.json"
+          chmod 600 "$RUNNER_TEMP/partner-quick-credentials.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/partner-quick-credentials.json" >> "$GITHUB_ENV"
+      - name: Install Firebase CLI and isolated Functions dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix functions-partner-quick --ignore-scripts --package-lock=false
+          npm install --prefix functions --ignore-scripts --package-lock=false
+          npm install -g firebase-tools@15.34.1
+      - name: Check actual existing Hosting release without writing
+        run: node tools/hosting/additive-partner-counts.mjs --dry-run
+      - name: Prepare only count-specific Functions environmental switch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e functions-partner-quick/.env.sales-management-cc116
+          printf 'PARTNER_QUICK_COUNTS_ENABLED=enabled\n' > functions-partner-quick/.env.sales-management-cc116
+      - name: Enable isolated count-only functions, never existing finance or LINE functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase deploy --non-interactive --project "$FIREBASE_PROJECT_ID" \
+            --config firebase.partner-quick.json --only functions:partner-quick
+      - name: Verify new pair and existing 4 Functions remain deployed
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase functions:list --project "$FIREBASE_PROJECT_ID" --json > "$RUNNER_TEMP/partner-quick-functions.json"
+          FILE="$RUNNER_TEMP/partner-quick-functions.json" node <<'NODE'
+          const data=JSON.parse(require('node:fs').readFileSync(process.env.FILE,'utf8'));
+          const names=(Array.isArray(data.result)?data.result:[]).map(x=>x.id||x.name||x.function||'');
+          for(const n of ['submitPartnerQuickCounts','getPartnerQuickCounts','sendMissingReportReminders',
+            'createPartnerCompanyInvitation','previewPartnerCompanyInvitation','acceptPartnerCompanyInvitation'])
+            if(!names.some(s=>s===n||s.endsWith('/'+n)))throw Error('missing '+n);
+          console.log('PASS: two count Functions and existing four preserved');
+          NODE
+      - name: Read-only unauthenticated count API denial check
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          (async()=>{
+            for(const name of ['submitPartnerQuickCounts','getPartnerQuickCounts']){
+              const url='https://asia-northeast1-sales-management-cc116.cloudfunctions.net/'+name;
+              const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({data:{}})});
+              if(r.status!==401&&r.status!==403)throw Error('anonymous_access_failure '+name+' '+r.status);
+              console.log('PASS anonymous rejected '+name+' '+r.status);
+            }
+          })().catch(e=>{console.error(e.message);process.exit(1)});
+          NODE
+      - name: Publish only new partner-counts.html preserving all existing live Hosting assets
+        run: node tools/hosting/additive-partner-counts.mjs --release
+      - name: Verify old app, invite, and new report page are all public
+        shell: bash
+        run: |
+          set -euo pipefail
+          for route in / /partner-invite.html /partner-counts.html; do
+            code=$(curl --silent --location --output /dev/null --write-out '%{http_code}' --max-time 25 "https://nico-factory.web.app$route")
+            test "$code" = 200
+            echo "PASS canonical Hosting $route HTTP $code"
+          done

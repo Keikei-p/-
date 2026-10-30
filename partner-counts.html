@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex,nofollow,noarchive"><meta name="referrer" content="no-referrer"><meta name="theme-color" content="#163a69"><title>NICO｜協力店 件数報告</title>
+<style>
+:root{font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif;color:#223146;background:#eef2f8;color-scheme:light}*{box-sizing:border-box}body{margin:0}header{background:linear-gradient(115deg,#173b6c,#386fab);padding:24px 18px;color:white}header h1{font-size:22px;margin:0 0 6px}header p{margin:0;font-size:13px}main{max-width:760px;margin:16px auto 56px;padding:0 13px}section{background:#fff;border:1px solid #dce4ef;border-radius:16px;padding:19px;margin-bottom:14px;box-shadow:0 6px 20px #2244660a}h2{font-size:17px;margin:0 0 13px}label{font-weight:700;font-size:14px;display:block;margin-bottom:6px}input,button{font:inherit}input{border-radius:9px;border:1px solid #c6d0df;padding:10px;width:100%;min-height:45px}button{min-height:45px;border:0;border-radius:9px;background:#185b9e;color:white;padding:11px 17px;font-weight:700;cursor:pointer}button.secondary{background:#e9f0f8;color:#23456b}button:disabled{opacity:.5;cursor:default}form{display:grid;gap:14px}.row{display:flex;gap:11px;align-items:center;flex-wrap:wrap}.row>*{flex:1}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}.item{border:1px solid #e2e8f1;border-radius:12px;padding:10px}.item input{text-align:center;font-size:19px;font-weight:800}.muted{font-size:12px;line-height:1.7;color:#68778b}.notice{border-radius:10px;background:#e5effa;color:#224670;padding:12px;font-size:14px;white-space:pre-wrap;line-height:1.6}.notice.error{background:#fff0ed;color:#9c3030}[hidden]{display:none!important}#total{font-size:24px;font-weight:800}.scroll{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:13px;min-width:450px}td,th{border-bottom:1px solid #e5eaf3;padding:11px 7px;text-align:left}th{color:#50647f}strong{font-weight:800}@media(max-width:400px){.grid{grid-template-columns:1fr}.row>*{flex-basis:100%}}
+</style></head><body>
+<header><h1>NICO FACTORY｜協力店 件数報告</h1><p>件数だけの専用入力。自社オーナーが当日の協力店合計を確認できます。</p></header>
+<main><div id="notice" class="notice" role="status" aria-live="polite">接続状態を確認しています。</div>
+<section id="loginSection"><h2>ログイン</h2><form id="loginForm"><div><label for="email">メールアドレス</label><input type="email" id="email" autocomplete="username" required></div><div><label for="password">パスワード</label><input type="password" id="password" autocomplete="current-password" required></div><button type="submit">ログイン</button></form><p class="muted">協力店招待を承諾したアカウントか、招待元会社のオーナーでログインしてください。<a href="/partner-invite.html">協力店招待はこちら</a></p></section>
+<section id="workSection" hidden><div class="row"><strong id="signedIn"></strong><button class="secondary" id="logout" type="button">ログアウト</button></div><p class="muted">旧実績・過去の売上・商材の単価は変更しません。件数はこの専用画面内で別管理します。</p></section>
+<section id="reportSection" hidden><h2>件数を入力・訂正</h2><p class="muted">登録した件数は招待元の自社オーナーが確認できます。同日修正は履歴を残します。</p><div class="row"><div><label for="date">報告日</label><input id="date" type="date" required></div><div><label>合計</label><span id="total">0 件</span></div></div><div id="countGrid" class="grid" style="margin:15px 0"></div><div class="row"><button id="save" disabled>件数を保存</button><button class="secondary" id="reload">最新を読み込む</button></div><p id="version" class="muted"></p></section>
+<section id="ownerSection" hidden><h2>協力店の当日報告（自社用）</h2><div class="row"><strong id="hubTotal">合計 0件</strong><button id="copyReport" type="button" class="secondary">件数報告をコピー</button></div><div class="scroll"><table><thead><tr><th>協力店</th><th>件数</th><th>更新版</th></tr></thead><tbody id="partnerRows"></tbody></table></div><p class="muted">こちらの件数は暫定専用報告です。既存の売上・ランキングのデータにはまだ合算されません。</p></section>
+</main>
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+import {getAuth,onAuthStateChanged,signInWithEmailAndPassword,signOut,setPersistence,browserSessionPersistence} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js";
+const CATEGORIES=["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"];
+const app=initializeApp({apiKey:"AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",authDomain:"sales-management-cc116.firebaseapp.com",projectId:"sales-management-cc116",appId:"1:904932511564:web:6583e8b0c585231b9049e"});
+const auth=getAuth(app),functions=getFunctions(app,"asia-northeast1");
+const readCounts=httpsCallable(functions,"getPartnerQuickCounts");
+const submitCounts=httpsCallable(functions,"submitPartnerQuickCounts");
+const $=id=>document.getElementById(id);
+let current=null,version=null,busy=false,epoch=0;
+const parts=Object.fromEntries(new Intl.DateTimeFormat("en-US",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date()).map(x=>[x.type,x.value]));
+$("date").value=parts.year+"-"+parts.month+"-"+parts.day;
+const text=(msg,err=false)=>{$("notice").textContent=msg;$("notice").className="notice"+(err?" error":"")};
+const grid=$("countGrid");
+for(const name of CATEGORIES){const d=document.createElement("div");d.className="item";const l=document.createElement("label");l.textContent=name;const i=document.createElement("input");i.type="number";i.inputMode="numeric";i.min="0";i.max="9999";i.step="1";i.value="0";i.dataset.category=name;i.addEventListener("input",updateTotal);d.append(l,i);grid.append(d)}
+function updateTotal(){let total=0;for(const input of grid.querySelectorAll("input")){const n=Number(input.value);if(Number.isSafeInteger(n)&&n>=0&&n<=9999)total+=n;}$("total").textContent=total+" 件";}
+function values(){const data={};for(const input of grid.querySelectorAll("input")){const value=input.value.trim();if(!/^(?:0|[1-9]\d{0,3})$/.test(value))throw Error("件数は0〜9999の整数で入力してください。");data[input.dataset.category]=Number(value)}return data;}
+function lock(on){busy=on;$("save").disabled=on||version===null;$("reload").disabled=on;$("date").disabled=on;for(const input of grid.querySelectorAll("input"))input.disabled=on;}
+function hide(){current=null;version=null;$("loginSection").hidden=false;$("workSection").hidden=true;$("reportSection").hidden=true;$("ownerSection").hidden=true;$("save").disabled=true;}
+async function refresh(){if(!auth.currentUser)return;const id=++epoch;version=null;lock(true);try{const date=$("date").value;const {data}=await readCounts({date});if(id!==epoch)return;if(data?.role==="partner"){
+ current="partner";version=data.report?.version??0;const counts=data.report?.counts||{};
+ for(const input of grid.querySelectorAll("input"))input.value=String(counts[input.dataset.category]??0);
+ updateTotal();$("version").textContent=data.report?"登録済み・第"+version+"版":"未登録（0件報告も保存できます）";
+ $("reportSection").hidden=false;$("ownerSection").hidden=true;
+ }else if(data?.role==="hub"&&Array.isArray(data.partners)){
+ current="hub";$("reportSection").hidden=true;$("ownerSection").hidden=false;
+ $("hubTotal").textContent="協力店合計 "+data.totalCount+"件";
+ const tbody=$("partnerRows");tbody.replaceChildren();
+ for(const item of data.partners){const tr=document.createElement("tr");for(const value of [item.name,String(item.totalCount)+" 件","第"+item.version+"版"]){const td=document.createElement("td");td.textContent=value;tr.append(td)}tbody.append(tr)}
+ window.__partnerQuickOwnerView={date,partners:data.partners,totalCount:data.totalCount};
+ }else throw Error("unexpected_view");
+ $("loginSection").hidden=true;$("workSection").hidden=false;
+ text("最新の報告を確認しました。");
+ }catch{if(id===epoch){$("save").disabled=true;text("認証・会社権限または接続を確認できませんでした。保存は実行していません。",true)}}finally{if(id===epoch)lock(false)}}
+$("date").addEventListener("change",()=>{version=null;$("save").disabled=true;refresh()});
+$("reload").addEventListener("click",()=>refresh());
+$("save").addEventListener("click",async()=>{if(current!=="partner"||busy||version===null)return;let counts;try{counts=values()}catch(e){text(e.message,true);return}const day=$("date").value;lock(true);try{const {data}=await submitCounts({date:day,counts,expectedVersion:version});version=null;const check=(await readCounts({date:day})).data;
+ if(check?.role!=="partner"||check.report?.version!==data.version||CATEGORIES.some(k=>check.report.counts[k]!==counts[k]))throw Error("save_not_verified");
+ version=data.version;$("version").textContent="保存・照合済み：第"+version+"版";text("保存・再取得の照合が完了しました。自社オーナーの画面に反映されます。");
+ }catch{text("保存結果を確定できません。二重登録を防ぐため、最新を再取得して確認してください。",true);version=null}finally{lock(false)}});
+$("copyReport").addEventListener("click",async()=>{const v=window.__partnerQuickOwnerView;if(!v)return;let lines=["🌸協力店 件数報告 ("+v.date+")"];for(const item of v.partners){lines.push("⭐"+item.name+" 合計:"+item.totalCount+"件");for(const k of CATEGORIES)lines.push(k+":"+item.counts[k]+"件")}lines.push("協力店合計:"+v.totalCount+"件");try{await navigator.clipboard.writeText(lines.join("\n"));text("件数報告をコピーしました。")}catch{text("コピーできませんでした。ブラウザの権限を確認してください。",true)}});
+$("loginForm").addEventListener("submit",async e=>{e.preventDefault();try{await setPersistence(auth,browserSessionPersistence);await signInWithEmailAndPassword(auth,$("email").value,$("password").value);$("password").value="";}catch{text("ログインできませんでした。メール・パスワード・確認状態を確認してください。",true)}});
+$("logout").addEventListener("click",async()=>{++epoch;hide();await signOut(auth);text("ログアウトしました。")});
+onAuthStateChanged(auth,user=>{++epoch;hide();if(user){$("signedIn").textContent=user.email||"ログイン済み";if(!user.emailVerified){text("メールアドレスの確認が必要です。",true);return}refresh()}else text("協力店または自社オーナーのアカウントでログインしてください。")});
+</script></body></html>
