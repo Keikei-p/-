@@ -74,7 +74,7 @@ function fixture({disabled=false,revoked=false,malformedCatalog=false}={}){
  const ok=x=>new Response(JSON.stringify(x),{status:200});
  const fetcher=async(input,init={})=>{
   const url=String(input),body=init.body?JSON.parse(init.body):null;
-  calls.push({url,method:init.method??"GET"});
+  calls.push({url,method:init.method??"GET",body});
   if(url.includes("/service_accounts/v1/jwk/"))
    return new Response(JSON.stringify({keys:[jwk]}),{status:200,headers:{"Cache-Control":"max-age=300"}});
   if(url.endsWith("/accounts:lookup")){
@@ -140,7 +140,7 @@ test("default OFF blocks POST before any Auth, Firestore read or write",async()=
 test("partner count create/replay/correction are atomic, count-only and append immutable history",async()=>{
  const f=fixture(),handler=f.handle();
  const created=await handler(request());
- assert.equal(created.status,200,JSON.stringify(f.calls.map(c=>c.url)));
+ assert.equal(created.status,200,JSON.stringify(f.calls.map(c=>c.body?.documents?.[0]||c.url)));
  assert.deepEqual(await created.json(),{saved:true,status:"registered",
   recordId:"pc_test_r1",version:1,ownCount:3,sharedCount:2});
  assert.equal(f.commits,1);
