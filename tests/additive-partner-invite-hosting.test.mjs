@@ -18,7 +18,7 @@ test("rejects existing invite, missing index, bad count or duplicate source",()=
  assert.throws(()=>validateManifest([samples[0],samples[0]],new Map([[ASSET,h("c")]]),2),/INVALID_SOURCE/);
  assert.throws(()=>validateManifest(samples,new Map([[ASSET,h("c")],["/index.html",h("d")]]),2),/ONLY_ONE/);
 });
-function mock({mutateLive=false,missingOldBlob=false,configMismatch=false,metadataCountMismatch=false,finalMissing=false,finalWrongHash=false}={}){
+function mock({mutateLive=false,missingOldBlob=false,configMismatch=false,metadataCountMismatch=false,finalMissing=false,finalWrongHash=false,omittedRequiredHashes=false,malformedRequiredHashes=false}={}){
  const seen=[];
  let current="sites/nico-factory/versions/111",releaseCount=0;
  const base="https://firebasehosting.googleapis.com/v1beta1";
@@ -48,7 +48,8 @@ function mock({mutateLive=false,missingOldBlob=false,configMismatch=false,metada
    return {files};
   }
   if(method==="POST"&&suffix==="/sites/nico-factory/versions/222:populateFiles")
-   return {uploadRequiredHashes:missingOldBlob?[h("a")]:[],
+   return {
+    ...(omittedRequiredHashes?{}:{uploadRequiredHashes:malformedRequiredHashes?"bogus":missingOldBlob?[h("a")]:[]}),
     uploadUrl:"https://upload-firebasehosting.googleapis.com/upload/sites/nico-factory/versions/222/files"};
   if(method==="PATCH"&&suffix.startsWith("/sites/nico-factory/versions/222?"))
    return {name:"sites/nico-factory/versions/222",status:"FINALIZED",fileCount:metadataCountMismatch?"2":"3",config:configMismatch?{}:cfg};
@@ -165,4 +166,17 @@ test("fail closed on actual finalized file loss or hash mismatch despite healthy
    /FINAL_ASSET_COUNT_MISMATCH|FINAL_ASSET_HASH_MISMATCH/);
   assert.ok(!x.seen.some(v=>v.url.includes("/releases?versionName")));
  }
+});
+
+test("previously uploaded invite HTML requires no reupload and Firebase may omit uploadRequiredHashes",async()=>{
+ const x=mock({omittedRequiredHashes:true});
+ const r=await uploadAdditiveInvite({assetBytes:asset,request:x.request,release:true,log:()=>{}});
+ assert.equal(r.released,true);
+ assert.equal(x.seen.filter(z=>z.url.includes("upload-firebasehosting.googleapis.com/")).length,0);
+ assert.ok(x.seen.some(z=>z.url.includes("/releases?versionName")));
+});
+test("bad populate hashes stop before ever releasing a version",async()=>{
+ const x=mock({malformedRequiredHashes:true});
+ await assert.rejects(uploadAdditiveInvite({assetBytes:asset,request:x.request,release:true,log:()=>{}}),/BAD_POPULATE_RESULT/);
+ assert.equal(x.seen.filter(z=>z.url.includes("/releases?versionName")).length,0);
 });
