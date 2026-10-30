@@ -1,3 +1,4 @@
+# Recheck after successful codebase reuse release fix #168
 name: NICO partner counts deployment status (read-only)
 on:
   pull_request:
