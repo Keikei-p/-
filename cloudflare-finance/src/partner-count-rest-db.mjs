@@ -71,7 +71,9 @@ function allowedPath(path){
  if(TRUSTED.test(path))return path;
  deny();
 }
-const resource=p=>ROOT+"/"+p.split("/").map(encodeURIComponent).join("/");
+// Firestore document resource names are canonical raw names; URL encoding is
+// for HTTP URL components only. Colon-bearing catalog IDs stay unescaped.
+const resource=p=>ROOT+"/"+allowedPath(p);
 export function makePartnerCountRestDb({
  projectId=PROJECT,getServiceToken,fetcher=fetch
 }={}){
@@ -97,11 +99,6 @@ export function makePartnerCountRestDb({
    if(typeof tx!=="string"||!tx)deny();
    let reads=0,staged=false,committed=false;
    const writes=[];
-   const refs=new WeakSet();
-   const ref=path=>{
-    const item=Object.freeze({path:allowedPath(path)});
-    refs.add(item);return item;
-   };
    const raw={
     async get(documentRef){
      // Store constructs and tracks references with its own WeakMap;
