@@ -28,6 +28,22 @@ service cloud.firestore {
       return /databases/$(database)/documents/companies/$(companyId)/members/$(userId);
     }
 
+    // Restrict financial ORIGINALS, including partner company owners/masters.
+    // Legacy company/member documents without accessKind remain internal.
+    // This is independent of display flags or companyRole privileges.
+    function financeRestricted(companyId) {
+      return !verifiedUser()
+        || companyId == null
+        || !exists(companyPath(companyId))
+        || !(get(companyPath(companyId)).data.get('companyKind', 'internal') in ['internal', 'direct'])
+        || (exists(userPath(request.auth.uid))
+          && (get(userPath(request.auth.uid)).data.get('accessKind', 'internal') == 'partner'
+            || get(userPath(request.auth.uid)).data.get('memberType', 'internal') == 'cooperator'))
+        || (exists(memberPath(companyId, request.auth.uid))
+          && (get(memberPath(companyId, request.auth.uid)).data.get('accessKind', 'internal') == 'partner'
+            || get(memberPath(companyId, request.auth.uid)).data.get('memberType', 'internal') == 'cooperator'));
+    }
+
     function teamPath(teamId) {
       return /databases/$(database)/documents/teams/$(teamId);
     }
@@ -1105,13 +1121,15 @@ service cloud.firestore {
 
     match /products/{productId} {
       allow read: if resource.data.companyId != null
-        && sameCompany(resource.data.companyId);
+        && sameCompany(resource.data.companyId)
+        && !financeRestricted(resource.data.companyId);
 
       allow create: if request.resource.data.keys().hasOnly([
           'companyId', 'name', 'revenue', 'cashbackOptions', 'pricingOptions',
           'sortOrder', 'active', 'createdAt', 'updatedAt'
         ])
         && request.resource.data.companyId != null
+        && !financeRestricted(request.resource.data.companyId)
         && currentCompanyId() == request.resource.data.companyId
         && canManageProducts(request.resource.data.companyId)
         && validShortName(request.resource.data.name, 50)
@@ -1123,6 +1141,7 @@ service cloud.firestore {
         && request.resource.data.updatedAt == request.time;
 
       allow update: if resource.data.companyId != null
+        && !financeRestricted(resource.data.companyId)
         && canManageProducts(resource.data.companyId)
         && request.resource.data.companyId == resource.data.companyId
         && validShortName(request.resource.data.name, 50)
@@ -1142,7 +1161,8 @@ service cloud.firestore {
 
     match /records/{recordId} {
       allow read: if resource.data.companyId != null
-        && sameCompany(resource.data.companyId);
+        && sameCompany(resource.data.companyId)
+        && !financeRestricted(resource.data.companyId);
 
       // 新規登録のトランザクションで、未作成ドキュメントだけ読取を許可。
       // 既存データの会社分離は上のreadルールを維持する。
@@ -1158,6 +1178,7 @@ service cloud.firestore {
           'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt'
         ])
         && request.resource.data.companyId != null
+        && !financeRestricted(request.resource.data.companyId)
         && currentCompanyId() == request.resource.data.companyId
         && isCompanyMember(request.resource.data.companyId)
         && (
@@ -1202,6 +1223,7 @@ service cloud.firestore {
 
 
       allow update: if resource.data.companyId != null
+        && !financeRestricted(resource.data.companyId)
         && request.resource.data.companyId == resource.data.companyId
         && sameCompany(resource.data.companyId)
         && request.resource.data.uid == resource.data.uid
@@ -1253,13 +1275,15 @@ service cloud.firestore {
 
     match /recordCorrections/{correctionId} {
       allow read: if resource.data.companyId != null
-        && sameCompany(resource.data.companyId);
+        && sameCompany(resource.data.companyId)
+        && !financeRestricted(resource.data.companyId);
 
       allow create: if request.resource.data.keys().hasOnly([
           'companyId', 'recordId', 'recordUid', 'recordDate',
           'changedByUid', 'changedByName', 'before', 'after', 'createdAt'
         ])
         && request.resource.data.companyId != null
+        && !financeRestricted(request.resource.data.companyId)
         && sameCompany(request.resource.data.companyId)
         && request.resource.data.recordId is string
         && request.resource.data.recordUid is string
@@ -1325,6 +1349,7 @@ service cloud.firestore {
     match /revenueGoals/{goalId} {
       allow read: if resource.data.companyId != null
         && sameCompany(resource.data.companyId)
+        && !financeRestricted(resource.data.companyId)
         && (
           isCompanyOwner(resource.data.companyId)
           || (
@@ -1339,6 +1364,7 @@ service cloud.firestore {
           'createdAt', 'updatedAt'
         ])
         && request.resource.data.companyId != null
+        && !financeRestricted(request.resource.data.companyId)
         && currentCompanyId() == request.resource.data.companyId
         && request.resource.data.teamId is string
         && validSelectableTeam(
@@ -1363,6 +1389,7 @@ service cloud.firestore {
         );
 
       allow update: if resource.data.companyId != null
+        && !financeRestricted(resource.data.companyId)
         && request.resource.data.companyId == resource.data.companyId
         && request.resource.data.teamId == resource.data.teamId
         && request.resource.data.month == resource.data.month
