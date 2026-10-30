@@ -22,12 +22,16 @@ const verifiedAccess=(user,member)=>{
  // An old internal accessKind must not override a recently assigned partner
  // memberType (or any unknown accessKind). No finance fields are returned here.
  const u=user.accessKind??"internal",m=member.accessKind??"internal";
- const allowedTypes=new Set(["internal","direct","managed"]);
+ if(u!==m||!["internal","partner"].includes(u))deny();
  for(const row of [user,member]){
   const kind=row.memberType;
-  if(kind!=null&&!allowedTypes.has(kind))deny();
+  // On real partner accounts these explicit markers are EXPECTED; denying
+  // them would break legitimate partner count registration.
+  if(u==="internal"&&kind!=null&&
+     !["internal","direct","managed","member"].includes(kind))deny();
+  if(u==="partner"&&kind!=null&&
+     !["partner","cooperator","internal","member"].includes(kind))deny();
  }
- if(u!==m||!["internal","partner"].includes(u))deny();
  return u;
 };
 function verifiedAuthAccount(account,uid,auth){
