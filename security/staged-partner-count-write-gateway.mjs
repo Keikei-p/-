@@ -84,7 +84,7 @@ export function createStagedPartnerCountWriteGateway({
       request.headers?.get?.("content-type")?.split(";")[0]?.trim().toLowerCase()
        !=="application/json")return no(origin);
    const declaredLength=request.headers?.get?.("content-length");
-   if(declaredLength!=null&&(!/^\\d+$/.test(declaredLength)||
+   if(declaredLength!=null&&(!/^\d+$/.test(declaredLength)||
       Number(declaredLength)>16384))return no(origin);
    const authorization=request.headers?.get?.("authorization")||"";
    const token=authorization.match(/^Bearer ([A-Za-z0-9._-]{20,12000})$/)?.[1];
