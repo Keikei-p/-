@@ -13,6 +13,12 @@ import {makePublicCountRestAdapters}
  from "./public-count-live-adapter.mjs";
 import {makePartnerCountRestDb}
  from "./partner-count-rest-db.mjs";
+import {readOwnPartnerCountDay}
+ from "../../partner/count-only-ledger.mjs";
+import {makePartnerCountAdminStore}
+ from "../../partner/firestore-admin-count-store.mjs";
+import {createTrustedMembershipLoader}
+ from "../../security/trusted-membership-loader.mjs";
 
 const ID=/^[A-Za-z0-9_:-]{1,128}$/;
 const deny=()=>{throw Error("partner_catalog_unavailable");};
@@ -49,7 +55,9 @@ export function createPartnerCountRestWriteHandler({
    // cannot choose a Firestore collection or request the raw product master.
    if(!scope||!ID.test(scope.companyId)||!ID.test(scope.hubCompanyId)||
       !request||!Array.isArray(request.lines)||
-      request.lines.length<1||request.lines.length>50)deny();
+      request.lines.length>50||
+      (request.status==="submitted"&&request.lines.length===0)||
+      (request.status==="no_result"&&request.lines.length!==0))deny();
    const ids=request.lines.map(x=>x?.catalogId);
    if(ids.some(x=>typeof x!=="string"||!ID.test(x))||
       new Set(ids).size!==ids.length)deny();
@@ -62,4 +70,67 @@ export function createPartnerCountRestWriteHandler({
    return output;
   }
  });
+}
+
+/**
+ * Resolve only the CURRENT daily report of the cryptographically signed
+ * caller. No caller-chosen UID/company or cross-team scans.
+ */
+export function createPartnerOwnDayRestHandler({
+ enabled=false,projectId="sales-management-cc116",
+ fetcher=fetch,getServiceToken,subtle=globalThis.crypto?.subtle,nowSeconds
+}={}){
+ const response=(status,value,origin)=>new Response(JSON.stringify(value),{
+  status,headers:{"Content-Type":"application/json; charset=utf-8",
+   "Cache-Control":"no-store","Vary":"Origin",
+   ...(origin==="https://nico-factory.web.app"?
+     {"Access-Control-Allow-Origin":origin}:{})}
+ });
+ if(enabled!==true)return async()=>response(503,{error:"service_disabled"},"");
+ if(typeof getServiceToken!=="function")deny();
+ const db=makePartnerCountRestDb({projectId,getServiceToken,fetcher});
+ const store=makePartnerCountAdminStore(db);
+ const api=makePublicCountRestAdapters({projectId,getServiceToken,fetcher});
+ const verify=createFirebaseIdTokenVerifier({
+  projectId,fetchKeys:fetcher,subtle,nowSeconds
+ });
+ return async request=>{
+  const origin=request?.headers?.get?.("origin")??"";
+  try{
+   const url=new URL(request.url);
+   if(origin!=="https://nico-factory.web.app"||
+      url.pathname!=="/v1/partner-own-day"||
+      url.protocol!=="https:"||request.method!=="GET"||
+      [...url.searchParams.keys()].sort().join(",")!=="date,teamId"||
+      !ID.test(url.searchParams.get("teamId")||""))
+      return response(403,{error:"request_blocked"},origin);
+   const token=request.headers.get("authorization")?.match(
+     /^Bearer ([A-Za-z0-9._-]{20,12000})$/)?.[1];
+   if(!token)return response(401,{error:"unauthorized"},origin);
+   const date=url.searchParams.get("date");
+   const teamId=url.searchParams.get("teamId");
+   const result=await readOwnPartnerCountDay({
+    store,date,teamId,
+    loadTrustedReader:async tx=>{
+     const verified=await verify(token);
+     const loader=createTrustedMembershipLoader({
+      loadAuthUser:api.loadAuthUser,
+      readDocument:async path=>{
+       const snap=await tx.getTrustedDocument(path);
+       return snap.exists?snap.data():null;
+      }
+     });
+     const scope=await loader(verified.uid,verified);
+     const company=await tx.getTrustedDocument("companies/"+scope.companyId);
+     if(!company.exists||company.data().companyKind!=="partner")deny();
+     return {serverVerified:true,tokenVerified:true,
+      companyKind:"partner",companyId:scope.companyId,
+      uid:scope.uid,teamIds:scope.teamIds};
+    }
+   });
+   return response(200,result,origin);
+  }catch{
+   return response(403,{error:"request_blocked"},origin);
+  }
+ };
 }

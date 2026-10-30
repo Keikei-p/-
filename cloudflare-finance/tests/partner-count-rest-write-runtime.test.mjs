@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {generateKeyPairSync,sign,webcrypto} from "node:crypto";
 import {readFileSync} from "node:fs";
-import {createPartnerCountRestWriteHandler}
+import {createPartnerCountRestWriteHandler,createPartnerOwnDayRestHandler}
  from "../src/partner-count-live-writer.mjs";
 import {makePartnerCountRestDb} from "../src/partner-count-rest-db.mjs";
 import worker from "../src/index.js";
@@ -197,4 +197,78 @@ test("every Worker count write approval is independent and disabled by default",
  ])assert(source.includes(guard));
  assert(conf.includes('PARTNER_COUNT_WRITE_ENABLED = "disabled"'));
  assert(conf.includes('PUBLIC_COUNT_PROJECTION_APPROVAL = "NOT_APPROVED"'));
+});
+
+const ownDayRequest=(date="2026-10-30",teamId="team1",origin="https://nico-factory.web.app")=>
+ new Request("https://worker.example/v1/partner-own-day?date="+date+"&teamId="+teamId,{
+  method:"GET",headers:{Origin:origin,Authorization:"Bearer "+token()}
+ });
+const ownDayHandler=f=>createPartnerOwnDayRestHandler({
+ enabled:true,fetcher:f.fetcher,getServiceToken:async()=>"trusted-oauth-token",
+ subtle:webcrypto.subtle,nowSeconds:()=>now
+});
+test("new partner 0件/no_result is a valid report with no product catalog read",async()=>{
+ const f=fixture();
+ const zero={action:"create",retryKey:"zero_report_20261030",
+  request:{date:"2026-10-30",teamId:"team1",status:"no_result",lines:[]}};
+ const saved=await f.handle()(request(zero));
+ assert.equal(saved.status,200);
+ assert.deepEqual(await saved.json(),{saved:true,status:"registered",
+  recordId:"pc_test_r1",version:1,ownCount:0,sharedCount:0});
+ assert(!f.calls.some(x=>x.body?.documents?.[0]?.includes("partnerCountCatalog")));
+ const current=await ownDayHandler(f)(ownDayRequest());
+ assert.equal(current.status,200);
+ assert.deepEqual(await current.json(),{found:true,date:"2026-10-30",
+  teamId:"team1",recordId:"pc_test_r1",version:1,
+  status:"no_result",ownCount:0,sharedCount:0,lines:[]});
+ assert.equal(f.commits,1);
+});
+test("own day read reflects correction without leaking other teams or legacy sales",async()=>{
+ const f=fixture();
+ assert.equal((await f.handle()(request())).status,200);
+ const before=await ownDayHandler(f)(ownDayRequest());
+ assert.equal(before.status,200);
+ assert.deepEqual(await before.json(),{found:true,date:"2026-10-30",
+  teamId:"team1",recordId:"pc_test_r1",version:1,status:"submitted",
+  ownCount:3,sharedCount:2,lines:[
+   {catalogId:"shared:hub:NURO",count:2},
+   {catalogId:"custom:partnerA:own",count:1}
+  ]});
+ const changed=await f.handle()(request({action:"correct",recordId:"pc_test_r1",
+  expectedVersion:1,request:{...entry,lines:[
+   {catalogId:"shared:hub:NURO",count:4}
+  ]}}));
+ assert.equal(changed.status,200);
+ const after=await ownDayHandler(f)(ownDayRequest());
+ assert.equal(after.status,200);
+ const body=await after.json();
+ assert.equal(body.version,2);
+ assert.equal(body.ownCount,4);
+ assert.equal(body.sharedCount,4);
+ assert.deepEqual(body.lines,[{catalogId:"shared:hub:NURO",count:4}]);
+ assert(f.docs.has("partnerCountRevisions/8-partnerA-10-pc_test_r1_v000001"),
+  "original immutable report is retained");
+ const other=await ownDayHandler(f)(ownDayRequest("2026-10-30","team2"));
+ assert.equal(other.status,403);
+ const missing=await ownDayHandler(f)(ownDayRequest("2026-10-29"));
+ assert.equal(missing.status,200);
+ assert.deepEqual(await missing.json(),{found:false,date:"2026-10-29",teamId:"team1"});
+ assert.equal(f.commits,2,"only create and correction cause writes");
+ for(const c of f.calls){
+  assert(!c.url.includes("/records/")&&!c.url.includes("/products/"),
+   "the partner own-day route never accesses legacy raw money documents");
+ }
+});
+test("own-day route rejects old origin, revoked account and malformed dates without releasing counts",async()=>{
+ const f=fixture();
+ assert.equal((await f.handle()(request())).status,200);
+ assert.equal((await ownDayHandler(f)(ownDayRequest("2026-10-30","team1",
+  "https://keikei-p.github.io"))).status,403);
+ assert.equal((await ownDayHandler(f)(ownDayRequest("2026-02-30"))).status,403);
+ const suspended=fixture({disabled:true});
+ assert.equal((await ownDayHandler(suspended)(ownDayRequest())).status,403);
+ const revoked=fixture({revoked:true});
+ assert.equal((await ownDayHandler(revoked)(ownDayRequest())).status,403);
+ const off=createPartnerOwnDayRestHandler({enabled:false});
+ assert.equal((await off(ownDayRequest())).status,503);
 });
