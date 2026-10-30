@@ -1,0 +1,3 @@
+{
+ "functions":{"source":"functions-partner-quick","codebase":"partner-quick", "ignore":["node_modules",".git","firebase-debug.log"]}
+}
