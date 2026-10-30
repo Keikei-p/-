@@ -61,6 +61,8 @@ jobs:
           printf 'PARTNER_INVITES_ENABLED=enabled\n' > functions/.env.sales-management-cc116
           chmod 600 functions/.env.sales-management-cc116
       - name: Configure one-day Artifact Registry image cleanup (never Firestore data)
+        id: artifact_cleanup
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
@@ -91,8 +93,19 @@ jobs:
             'PASS: three unchanged partner Functions already created; skip extra rebuild':
             'No partner Functions created; deploy exactly three');
           NODE
+      - name: Never create a new build while Artifact Registry cleanup remains unresolved
+        if: ${{ steps.artifact_cleanup.outcome == 'failure' && steps.existing.outputs.already_deployed != 'true' }}
+        shell: bash
+        run: |
+          echo "STOP: missing 3 Functions and artifact cleanup policy failed; no new builds allowed"
+          exit 1
+      - name: Record pending low-cost image cleanup separately from existing app release
+        if: ${{ steps.artifact_cleanup.outcome == 'failure' && steps.existing.outputs.already_deployed == 'true' }}
+        shell: bash
+        run: |
+          echo "::warning::Artifact Registry cleanup policy could not be installed. Three Functions are already deployed unchanged; skipping all new builds. IAM cleanup remains a separate operator task."
       - name: Deploy only 3 new callables (never scheduled LINE)
-        if: ${{ steps.existing.outputs.already_deployed != 'true' }}
+        if: ${{ steps.existing.outputs.already_deployed != 'true' && steps.artifact_cleanup.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail

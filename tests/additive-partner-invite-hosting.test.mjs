@@ -120,9 +120,21 @@ test("failed post-create deployment recovery configures cheap cleanup and reuses
  assert.match(yaml,/dfb4c48ada6fa89a24c898cd4a2f911bcede822f/);
  assert.match(yaml,/4da83f98cd6f033d8ce8bda532aef39859db9c09/);
  assert.ok(yaml.includes("already_deployed='+(present.length===3"));
- assert.match(yaml,/if: \$\{\{ steps\.existing\.outputs\.already_deployed != 'true' \}\}/);
+ assert.ok(yaml.includes("steps.existing.outputs.already_deployed != 'true' && steps.artifact_cleanup.outcome == 'success'"));
  assert.ok(yaml.includes("sendMissingReportReminders"));
  assert.match(yaml,/--only functions:createPartnerCompanyInvitation,functions:previewPartnerCompanyInvitation,functions:acceptPartnerCompanyInvitation/);
  assert.doesNotMatch(yaml,/^\s+push:/m);
  assert.match(yaml,/workflow_dispatch:/);
+});
+
+test("artifact cleanup IAM failure cannot trigger Cloud Build; live previously-created Functions can be verified",async()=>{
+ const fs=await import("node:fs");
+ const yaml=fs.readFileSync(new URL("../.github/workflows/nico-partner-invite-only-release.yml",import.meta.url),"utf8");
+ assert.match(yaml,/id: artifact_cleanup/);
+ assert.match(yaml,/continue-on-error: true/);
+ assert.match(yaml,/steps\.artifact_cleanup\.outcome == 'failure' && steps\.existing\.outputs\.already_deployed != 'true'/);
+ assert.match(yaml,/exit 1/);
+ assert.match(yaml,/steps\.artifact_cleanup\.outcome == 'failure' && steps\.existing\.outputs\.already_deployed == 'true'/);
+ assert.match(yaml,/no new builds/i);
+ assert.match(yaml,/steps\.existing\.outputs\.already_deployed != 'true' && steps\.artifact_cleanup\.outcome == 'success'/);
 });

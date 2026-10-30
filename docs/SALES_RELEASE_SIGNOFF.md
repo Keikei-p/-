@@ -502,3 +502,14 @@ Rulesの本番デプロイ: 未実施
 - デプロイ済み招待3件のコード（Git blob `functions/index.js=dfb4c48ada6fa89a24c898cd4a2f911bcede822f`, `functions/partner-company-invitations.cjs=4da83f98cd6f033d8ce8bda532aef39859db9c09`）と再公開元コードが同一であることを検査し、`functions:list` で3件と従来 `sendMissingReportReminders` を確認できた場合は**追加のCloud Build/再配備を行わない**。
 - ポリシー設定/既存4件の照合/未認証のCallable拒否が合格した場合のみ、従来Hostファイルのハッシュを全保護して新規招待ページだけ追加する。途中で相違や権限不足があれば即STOP。現時点でHTML公開と実協力店操作はまだ完了していない。
 - `firebase deploy --force` でエラーを無理やり無視したり、`--only functions` で既存LINE通知まで更新しない。元の制限付きデプロイ条件、手動承認、Auth/Finance Rules移行の本番NO-GOは維持する。
+
+
+---
+
+## 2026-10-31 — 招待3 Functions既配備のため、Artifact cleanup権限失敗でも新ビルドを行わずHTML公開のみ継続
+
+- 本番実ログ `41083053284`：`firebase functions:artifacts:setpolicy --days 1 --location asia-northeast1` が `Failed to set up artifact registry cleanup policy`。GitHub専用サービスアカウントの当該ポリシー変更の権限・状態は未検証。自動削除設定は**未完了**で、少額のArtifact Registry課金が発生し得る。
+- 本番実ログ `41081599252`：招待3 Functionsの作成がすべて成功済み。現在の2コードGit blob SHA一致、`functions:list` でLINE既存+招待3件すべての存在を確認した場合**のみ**、新ビルドを一切行わず、認証なし拒否試験→既存ファイルの完全ハッシュ保全→招待HTML1ページのみを公開可能とする。
+- ポリシー設定が失敗していて3 Functionsが既配備と確かめられない場合は新Cloud Buildを**厳禁**として終了1。ポリシー設定成功なら必要な3 Functions限定再配備を許可する。
+- この取り扱いは既存売上・単価・CB・実績原票・班/社員履歴・LINEには変更・削除なし。自動ポリシー設定失敗は発生コストと権限の未解決問題として記録し、同時に「無料運用検証完了」と報告しない。
+- 手動確認 `CONFIRM_PARTNER_INVITE_ONLY` と公式URLの差分1ページのみの保全を維持。他のFirebase Hosting/Firestore Rules移行は依然NO-GO。実協力店の件数登録や合同ランキングは現状未稼働。
