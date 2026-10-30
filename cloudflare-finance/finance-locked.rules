@@ -119,18 +119,25 @@ service cloud.firestore {
         && activeOrLegacy(get(userPath(request.auth.uid)).data);
     }
 
-    // Partner designation is restrictive and may be present in either
-    // document during a staged administrator-controlled enrollment.
-    // It cannot be added or cleared by the ordinary user/member update Rules.
+    // Default DENY finance if any of the three authoritative documents
+    // identifies a partner (or has an unrecognized/contradictory marker).
+    // A company-owned partner account cannot become a financial Owner by
+    // missing the old accessKind field, being a Master, or getting a grant.
+    // Missing markers are allowed ONLY for pre-partner legacy INTERNAL users.
+    // Keep this strict check on the server; never trust UI/ID-token role flags.
     function isPartnerAccount(companyId) {
-      return verifiedUser()
-        && companyId != null
-        && exists(userPath(request.auth.uid))
-        && exists(memberPath(companyId, request.auth.uid))
-        && (
-          get(userPath(request.auth.uid)).data.get('accessKind', '') == 'partner'
-          || get(memberPath(companyId, request.auth.uid)).data.get('accessKind', '') == 'partner'
-        );
+      return !verifiedUser()
+        || companyId == null
+        || !exists(companyPath(companyId))
+        || !exists(userPath(request.auth.uid))
+        || !exists(memberPath(companyId, request.auth.uid))
+        || get(companyPath(companyId)).data.get('companyKind', 'internal') != 'internal'
+        || get(userPath(request.auth.uid)).data.get('accessKind', 'internal') != 'internal'
+        || get(memberPath(companyId, request.auth.uid)).data.get('accessKind', 'internal') != 'internal'
+        || !(get(userPath(request.auth.uid)).data.get('memberType', 'internal')
+             in ['internal', 'direct', 'member', 'managed'])
+        || !(get(memberPath(companyId, request.auth.uid)).data.get('memberType', 'internal')
+             in ['internal', 'direct', 'member', 'managed']);
     }
 
     function isCompanyLeader(companyId) {
