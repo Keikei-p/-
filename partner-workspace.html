@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow,noarchive"><meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#182f5c"><title>NICO FACTORY｜協力店実績管理</title>
+<style>
+:root{font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif;background:#f1f4f9;color:#21334f;color-scheme:light}
+*{box-sizing:border-box}body{margin:0}header{background:linear-gradient(115deg,#18335f,#2664aa);color:white;padding:22px 16px}
+header h1{font-size:21px;margin:0 0 5px}header p{font-size:12px;margin:0;line-height:1.5}
+main{max-width:900px;margin:16px auto 54px;padding:0 12px}section{background:#fff;border:1px solid #dfe6f1;padding:17px;border-radius:14px;margin:0 0 15px}
+h2{font-size:17px;margin:0 0 12px}h3{font-size:15px}p,small{line-height:1.55}
+label{font-weight:700;font-size:13px;display:block;margin:10px 0 5px}
+input,select,button{font:inherit;min-height:43px;border-radius:9px}input,select{border:1px solid #bccad9;background:white;padding:9px;width:100%;min-width:0}
+button{border:0;background:#175899;color:white;padding:9px 14px;font-weight:700;cursor:pointer}
+button:disabled{opacity:.52;cursor:default}.secondary{background:#e6eef9;color:#264268}
+.row{display:flex;gap:10px;align-items:end;flex-wrap:wrap}.row>*{flex:1 1 150px}
+.tabs{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}.tabs button{background:#eaf0f8;color:#1f486e}
+.tabs button[aria-pressed=true]{background:#175899;color:white}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.item{border:1px solid #dce6f0;border-radius:10px;padding:9px}.item input{text-align:center;font-size:19px;font-weight:800}
+.notice{background:#e5f0ff;border-radius:11px;padding:12px;font-size:13px;line-height:1.7;white-space:pre-wrap;margin:14px 0}
+.notice.error{background:#fff0ed;color:#933}table{border-collapse:collapse;min-width:470px;width:100%;font-size:13px}
+td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
+.scroll{overflow:auto}.muted{font-size:12px;color:#607186}
+[hidden]{display:none!important}@media(max-width:420px){.grid{grid-template-columns:1fr}.row>*{flex-basis:100%}}
+</style></head><body>
+<header><h1>NICO FACTORY｜協力店 実績管理</h1>
+<p>会社・班・メンバーごとの件数を管理。売上・単価は表示しません。</p></header>
+<main><div id="notice" class="notice" role="status" aria-live="polite">認証を確認しています。</div>
+<section id="loginBox"><h2>ログイン・新規登録</h2><form id="loginForm">
+<label for="email">メールアドレス</label><input id="email" type="email" autocomplete="email" required>
+<label for="pass">パスワード（6文字以上）</label><input id="pass" type="password" autocomplete="current-password" minlength="6" required>
+<div class="row"><button type="submit">ログイン</button><button id="signup" type="button" class="secondary">アカウント作成</button></div>
+</form><p class="muted">既存の協力店代表は招待承諾時のアカウントを利用します。リーダー・メンバーは受け取った招待リンクから参加します。</p>
+<button class="secondary" id="verify" type="button" hidden>確認メールを送信・再送</button></section>
+<section id="inviteAccept" hidden><h2>協力店のスタッフ招待を承諾</h2><p>メール認証済みの招待先本人だけが参加できます。</p>
+<label for="joinName">表示名</label><input id="joinName" placeholder="例：田中 太郎" maxlength="60">
+<button id="join" type="button">この会社に参加する</button></section>
+<section id="appBox" hidden><div class="row"><strong id="who"></strong><button id="logout" class="secondary" type="button">ログアウト</button></div>
+<div class="row"><div><label for="date">実績日</label><input id="date" type="date"></div>
+<button id="refresh" type="button" class="secondary">最新情報を再取得</button></div>
+<div class="tabs"><button type="button" id="tabRecords" aria-pressed="true">実績を入力</button>
+<button type="button" id="tabPeople" aria-pressed="false">班・スタッフ管理</button>
+<button type="button" id="tabView" aria-pressed="false">実績一覧</button></div></section>
+<section id="recordsBox" hidden><h2>件数登録・訂正</h2>
+<p class="muted">スタッフ本人・所属リーダー・協力店代表が登録できます。名前だけのスタッフはリーダーか代表が代理入力します。修正履歴は残ります。</p>
+<label for="staffSelect">担当者</label><select id="staffSelect"></select>
+<div id="countGrid" class="grid" style="margin:14px 0"></div>
+<div class="row"><strong id="total">0 件</strong><button id="save" type="button">実績を保存</button></div>
+<p class="muted" id="revision">未登録</p></section>
+<section id="peopleBox" hidden><h2>班・スタッフ管理</h2>
+<div id="makeTeam"><h3>班を追加（代表者のみ）</h3><div class="row"><input id="teamName" placeholder="例：1班" maxlength="60">
+<button id="createTeam" type="button">班を追加</button></div></div>
+<h3>名前だけのスタッフを登録</h3>
+<div class="row"><input id="managedName" placeholder="スタッフ名" maxlength="60">
+<select id="managedTeam"></select><button id="addManaged" type="button">名前のみ登録</button></div>
+<h3>リーダー・メンバーを招待</h3><p class="muted">本人のメール認証で参加。協力店代表のみリーダーを招待できます。</p>
+<div class="row"><input id="inviteEmail" type="email" placeholder="招待先メールアドレス">
+<select id="inviteTeam"></select><select id="inviteRole"><option value="member">メンバー</option><option value="leader">リーダー</option></select>
+<button id="makeInvite" type="button">招待リンクを作成</button></div>
+<div id="inviteOut" hidden><label for="inviteUrl">送信する招待リンク（30分）</label><div class="row">
+<input id="inviteUrl" readonly><button id="copy" type="button">コピー</button></div></div>
+<h3>登録済みスタッフ</h3><div id="peopleList" class="scroll"></div></section>
+<section id="listBox" hidden><h2>今日の実績一覧</h2><div id="recordsList" class="scroll"></div></section>
+<section id="hubBox" hidden><h2>協力店の件数報告（自社オーナー用）</h2>
+<div id="hubList" class="scroll"></div><p class="muted">新しいスタッフ別入力の集計です。旧暫定会社一括報告と合算せず、重複を防ぎます。</p></section>
+</main>
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+import {getAuth,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,sendEmailVerification,setPersistence,browserSessionPersistence} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js";
+const app=initializeApp({apiKey:"AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
+authDomain:"sales-management-cc116.firebaseapp.com",projectId:"sales-management-cc116",
+appId:"1:904932511564:web:6583e8b0c585231b9049e"});
+const auth=getAuth(app),functions=getFunctions(app,"asia-northeast1");
+const call=name=>httpsCallable(functions,name);
+const get=call("getPartnerWorkspace"),manage=call("managePartnerWorkspace"),
+ accept=call("acceptPartnerWorkspaceInvite"),save=call("submitPartnerWorkspaceCounts");
+const $=id=>document.getElementById(id);
+const KEYS=["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"];
+const inviteToken=new URL(location.href).searchParams.get("invite")||"";
+const dateParts=Object.fromEntries(new Intl.DateTimeFormat("en-US",
+{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"})
+.formatToParts(new Date()).map(p=>[p.type,p.value]));
+$("date").value=[dateParts.year,dateParts.month,dateParts.day].join("-");
+let data=null,loading=false,nonce=0;
+const notice=(s,bad=false)=>{$("notice").textContent=s;$("notice").className="notice"+(bad?" error":"")};
+const fail=e=>{const code=String(e?.code||"unknown").split("/").pop();
+notice("操作できませんでした（"+code+"）。認証・招待期限・入力権限を確認し、最新情報を読み直してください。",true)};
+const grid=$("countGrid");
+for(const k of KEYS){const box=document.createElement("div");box.className="item";
+const lab=document.createElement("label");lab.textContent=k;const inp=document.createElement("input");
+inp.type="number";inp.min="0";inp.max="9999";inp.step="1";inp.inputMode="numeric";inp.value="0";inp.dataset.key=k;
+inp.addEventListener("input",updateTotal);box.append(lab,inp);grid.append(box)}
+function values(){const o={};for(const x of grid.querySelectorAll("input")){
+ if(!/^(?:0|[1-9]\d{0,3})$/.test(x.value.trim()))throw Error("invalid count");
+ o[x.dataset.key]=Number(x.value)}return o}
+function updateTotal(){let n=0;for(const x of grid.querySelectorAll("input")){const k=Number(x.value);if(Number.isSafeInteger(k)&&k>=0&&k<=9999)n+=k} $("total").textContent=n+" 件"}
+function activeTab(name){
+ for(const x of ["Records","People","View"])$("tab"+x).setAttribute("aria-pressed",String(x===name));
+ $("recordsBox").hidden=name!=="Records"||data?.role==="hub";
+ $("peopleBox").hidden=name!=="People"||!data||data.role==="hub"||data.role==="member";
+ $("listBox").hidden=name!=="View"||!data||data.role==="hub";
+ $("hubBox").hidden=data?.role!=="hub";
+}
+for(const x of ["Records","People","View"])$("tab"+x).onclick=()=>activeTab(x);
+function cell(row,value){const td=document.createElement("td");td.textContent=String(value);row.append(td)}
+function draw(){
+ const hub=data?.role==="hub";
+ $("appBox").hidden=false;$("loginBox").hidden=true;$("inviteAccept").hidden=true;
+ $("who").textContent=hub?"自社オーナー・協力店報告":(data.companyName||"協力店")+"｜"+(data.role||"");
+ $("tabRecords").hidden=hub;$("tabPeople").hidden=hub||data.role==="member";$("tabView").hidden=hub;
+ if(hub){
+  activeTab("View");const table=document.createElement("table");
+  const head=document.createElement("tr");for(const x of ["協力店","件数"])cell(head,x);table.append(head);
+  for(const p of data.partners){const row=document.createElement("tr");cell(row,p.name);cell(row,p.totalCount+" 件");table.append(row)}
+  $("hubList").replaceChildren(table);return;
+ }
+ $("makeTeam").hidden=data.role!=="owner";
+ $("inviteRole").querySelector('option[value="leader"]').disabled=data.role!=="owner";
+ const teams=data.teams.filter(t=>t.active),staff=data.staff.filter(s=>s.active);
+ for(const id of ["managedTeam","inviteTeam"]){const sel=$(id),old=sel.value;sel.replaceChildren();
+ for(const t of teams){const op=document.createElement("option");op.value=t.id;op.textContent=t.name;sel.append(op)}
+ if(teams.some(t=>t.id===old))sel.value=old;}
+ if(data.role==="leader"){$("managedTeam").value=data.teamId;$("managedTeam").disabled=true;$("inviteTeam").value=data.teamId;$("inviteTeam").disabled=true}
+ const select=$("staffSelect"),prev=select.value;select.replaceChildren();
+ for(const person of staff){const op=document.createElement("option");op.value=person.id;
+ op.textContent=person.name+"（"+(teams.find(t=>t.id===person.teamId)?.name||"班なし")+"）";select.append(op)}
+ if(staff.some(s=>s.id===prev))select.value=prev;
+ const people=document.createElement("table"),heading=document.createElement("tr");
+ for(const v of ["氏名","班","種類"])cell(heading,v);people.append(heading);
+ for(const person of staff){const r=document.createElement("tr");cell(r,person.name);
+ cell(r,teams.find(t=>t.id===person.teamId)?.name||"未設定");
+ cell(r,person.kind==="managed"?"名前のみ":person.role==="leader"?"リーダー":"メンバー");people.append(r)}
+ $("peopleList").replaceChildren(people);
+ const byId=new Map(data.records.map(r=>[r.staffId,r]));
+ const entries=document.createElement("table"),title=document.createElement("tr");
+ for(const v of ["担当者","件数","訂正版"])cell(title,v);entries.append(title);
+ for(const p of staff){const entry=byId.get(p.id);const r=document.createElement("tr");
+ cell(r,p.name);cell(r,entry?entry.totalCount+" 件":"未登録");cell(r,entry?"第"+entry.version+"版":"—");entries.append(r)}
+ $("recordsList").replaceChildren(entries);
+ renderSelected();activeTab($("tabPeople").getAttribute("aria-pressed")==="true"?"People":
+ $("tabView").getAttribute("aria-pressed")==="true"?"View":"Records");
+}
+function renderSelected(){if(!data||data.role==="hub")return;const rec=data.records.find(x=>x.staffId===$("staffSelect").value);
+ for(const x of grid.querySelectorAll("input"))x.value=String(rec?.counts?.[x.dataset.key]??0);
+ $("revision").textContent=rec?"第"+rec.version+"版・訂正可能":"未登録（0件報告も保存可能）";
+ $("save").disabled=!$("staffSelect").value;updateTotal()}
+$("staffSelect").onchange=renderSelected;
+async function refresh(){if(!auth.currentUser||!auth.currentUser.emailVerified)return;
+ const current=++nonce;loading=true;$("save").disabled=true;try{
+ const res=(await get({date:$("date").value})).data;if(current!==nonce)return;
+ if(!res||!Array.isArray(res.categories)||res.categories.join("|")!==KEYS.join("|"))throw Error("schema");
+ data=res;draw();notice("最新の件数を読み込みました。");
+ }catch(e){data=null;$("appBox").hidden=true;fail(e)}finally{if(current===nonce)loading=false}}
+$("date").onchange=refresh;$("refresh").onclick=refresh;
+async function action(task){if(loading)return;loading=true;try{await task();await refresh()}catch(e){fail(e)}finally{loading=false}}
+$("createTeam").onclick=()=>action(async()=>{await manage({action:"addTeam",name:$("teamName").value});$("teamName").value=""});
+$("addManaged").onclick=()=>action(async()=>{await manage({action:"addManaged",name:$("managedName").value,teamId:$("managedTeam").value});$("managedName").value=""});
+$("makeInvite").onclick=()=>action(async()=>{
+ const result=(await manage({action:"createInvite",email:$("inviteEmail").value,
+  teamId:$("inviteTeam").value,role:$("inviteRole").value})).data;
+ const url=new URL("/partner-workspace.html",location.origin);url.searchParams.set("invite",result.token);
+ $("inviteUrl").value=url.href;$("inviteOut").hidden=false;
+ notice("招待リンクを作成しました。30分以内に招待先の本人に送ってください。");
+});
+$("copy").onclick=async()=>{try{await navigator.clipboard.writeText($("inviteUrl").value);notice("招待リンクをコピーしました")}catch{ $("inviteUrl").select();notice("リンクを選択しました。コピーしてください。")}};
+$("save").onclick=()=>action(async()=>{
+ const staffId=$("staffSelect").value,record=data.records.find(r=>r.staffId===staffId),counts=values();
+ const result=(await save({date:$("date").value,staffId,counts,
+  expectedVersion:record?.version??0})).data;
+ // Verify after actual API write, never show confirmation based on optimistic state.
+ const verified=(await get({date:$("date").value})).data;
+ const check=verified?.records?.find(r=>r.staffId===staffId);
+ if(!check||check.version!==result.version||KEYS.some(k=>check.counts[k]!==counts[k]))
+  throw Error("save_not_verified");
+ notice("保存・再取得照合が成功しました。第"+result.version+"版");
+});
+$("loginForm").onsubmit=async e=>{e.preventDefault();try{
+ await setPersistence(auth,browserSessionPersistence);
+ await signInWithEmailAndPassword(auth,$("email").value,$("pass").value);
+ $("pass").value="";}catch(e){fail(e)}};
+$("signup").onclick=async()=>{try{
+ const cred=await createUserWithEmailAndPassword(auth,$("email").value,$("pass").value);
+ $("pass").value="";await sendEmailVerification(cred.user);
+ notice("確認メールを送信しました。確認完了後、画面を再読込してください。");
+ }catch(e){fail(e)}};
+$("verify").onclick=async()=>{try{await sendEmailVerification(auth.currentUser);notice("確認メールを再送しました。")}catch(e){fail(e)}};
+$("join").onclick=async()=>{if(!inviteToken)return;await action(async()=>{
+ await accept({token:inviteToken,name:$("joinName").value});
+ history.replaceState(null,"","/partner-workspace.html");
+ $("inviteAccept").hidden=true;notice("協力店へ参加しました。");
+})};
+$("logout").onclick=()=>signOut(auth);
+onAuthStateChanged(auth,u=>{
+ ++nonce;data=null;$("appBox").hidden=true;$("loginBox").hidden=!!u;
+ $("inviteAccept").hidden=true;$("verify").hidden=!u||u.emailVerified;
+ $("inviteUrl").value="";$("inviteOut").hidden=true;
+ if(!u){notice("招待されたアカウント、または自社オーナーでログインしてください。");return}
+ if(!u.emailVerified){notice("メール確認を済ませて、画面を再読込してください。",true);return}
+ if(inviteToken){$("inviteAccept").hidden=false;notice("招待リンクを確認しました。表示名を入力して参加してください。");return}
+ refresh();
+});
+</script></body></html>
