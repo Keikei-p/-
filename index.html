@@ -11558,6 +11558,18 @@ function showLegacyFinanceEntryBlocked(mode) {
     ? "協力店の方は売上・単価を含む旧画面を利用できません。件数専用画面の本番切替まで、オーナーへご確認ください。"
     : "会社・所属・権限をサーバーで安全に確認できません。オーナーへご確認ください。";
   showError(message);
+  // A rejected signed-in partner must still be able to switch accounts.
+  // Do not accidentally route them into a finance-capable workspace.
+  let signout=document.getElementById("legacyFinanceSafeSignout");
+  if(!signout){
+    signout=document.createElement("button");
+    signout.id="legacyFinanceSafeSignout";
+    signout.type="button";
+    signout.textContent="ログアウトして別のアカウントを使う";
+    signout.onclick=()=>signOut(auth).catch(()=>showError("ログアウトに失敗しました。画面を更新してお試しください。"));
+    authScreen.appendChild(signout);
+  }
+  signout.style.display="block";
 }
 
 async function loadUserData(
