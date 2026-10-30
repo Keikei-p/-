@@ -88,7 +88,7 @@ test("worker default OFF refuses public-count route without Auth, Firestore or n
     PUBLIC_COUNT_PROJECTION_APPROVAL:"NOT_APPROVED"};
   const res=await worker.fetch(request(),env);
   assert.equal(res.status,503);
-  assert.deepEqual(await res.json(),{error:"service_disabled"});
+  assert.deepEqual(await res.json(),{error:"request_blocked"});
  }finally{globalThis.fetch=old;}
 });
 test("real REST adapter verifies admin Auth and serves only whitelisted public projections",async()=>{
@@ -101,7 +101,8 @@ test("real REST adapter verifies admin Auth and serves only whitelisted public p
   totalCount:2,reportStatus:"submitted"}]);
  assert(f.calls.some(c=>c.url.includes("/accounts:lookup")));
  assert(f.calls.some(c=>c.url.includes("publicRecords")===false&&c.url.includes("/documents/users/")));
- assert(f.calls.some(c=>c.url.includes("publicRecords")&&c.method==="POST"));
+ assert(f.calls.some(c=>c.url.includes("/documents:runQuery")&&c.method==="POST"&&
+   c.body?.structuredQuery?.from?.[0]?.collectionId==="publicRecords"));
  assert(!JSON.stringify(payload).includes("powner"));
  assert(!JSON.stringify(payload).includes("revenue"));
 });
