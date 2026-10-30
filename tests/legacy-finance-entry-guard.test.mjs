@@ -84,6 +84,10 @@ test("legacy UI requests three fresh server Firestore docs before any price cata
  assert.match(source,/getDocFromServer\(doc\(db,"companies",profile\.companyId\)\)/);
  assert.match(source,/auth\.currentUser\?\.uid!==user\.uid/);
  assert.match(html,/if \(checkedEntry\.mode!=="internal"\) \{\s*showLegacyFinanceEntryBlocked\(checkedEntry\.mode\);\s*return false;/);
+ assert(html.includes('signout.id="legacyFinanceSafeSignout"'),
+   "blocked authenticated partner must retain an explicit logout action");
+ assert(html.includes('signout.onclick=()=>signOut(auth)'),
+   "partner safety stop cannot trap user in a signed-in state");
  assert(job.includes("'legacy-finance-entry-guard.mjs'"));
  assert(job.includes("legacy-finance-entry-guard.mjs archive-output-policy.mjs"));
  const prod=readFileSync(new URL("../firestore.rules",import.meta.url),"utf8");
