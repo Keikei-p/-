@@ -43,7 +43,7 @@ async function companyForOwner(user){
  const u=await getDocFromServer(doc(db,"users",user.uid));if(!u.exists())return null;
  const ud=u.data();if(ud.active===false||!ud.companyId)return null;
  const companyId=ud.companyId;
- const [co,member]=await Promise.all([getDoc(doc(db,"companies",companyId)),getDoc(doc(db,"companies",companyId,"members",user.uid))]);
+ const [co,member]=await Promise.all([getDocFromServer(doc(db,"companies",companyId)),getDocFromServer(doc(db,"companies",companyId,"members",user.uid))]);
  if(!co.exists()||!member.exists()||member.data().active===false)return null;
  const c=co.data(),m=member.data();
  // Finance archives must never be shown to a partner-company owner or a
