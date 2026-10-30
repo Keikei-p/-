@@ -18,9 +18,16 @@ const valid=x=>typeof x==="string"&&ID.test(x);
 const obj=x=>x!==null&&typeof x==="object"&&!Array.isArray(x);
 const active=x=>obj(x)&&x.active===true;
 const verifiedAccess=(user,member)=>{
+ // Partner/cooperator markers in EITHER authoritative record are restrictive.
+ // An old internal accessKind must not override a recently assigned partner
+ // memberType (or any unknown accessKind). No finance fields are returned here.
  const u=user.accessKind??"internal",m=member.accessKind??"internal";
- if(u!==m||!["internal","partner"].includes(u)||
-    user.memberType==="cooperator"||member.memberType==="cooperator")deny();
+ const allowedTypes=new Set(["internal","direct","managed"]);
+ for(const row of [user,member]){
+  const kind=row.memberType;
+  if(kind!=null&&!allowedTypes.has(kind))deny();
+ }
+ if(u!==m||!["internal","partner"].includes(u))deny();
  return u;
 };
 function verifiedAuthAccount(account,uid,auth){
@@ -85,7 +92,8 @@ export function createTrustedMembershipLoader({readDocument,loadAuthUser}={}){
       relation.hubCompanyId!==company.hubCompanyId||
       relation.countSharingApproved!==true||
       relation.catalogAccessApproved!==true||
-      hub.companyKind==="partner")deny();
+      hub.companyKind!=="internal"||
+      hub.active!==true)deny();
   }
   // Never return raw Firestore documents, money or product catalogs.
   return {
