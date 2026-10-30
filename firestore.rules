@@ -116,8 +116,12 @@ service cloud.firestore {
         && exists(memberPath(companyId, request.auth.uid))
         && activeOrLegacy(get(memberPath(companyId, request.auth.uid)).data)
         && get(userPath(request.auth.uid)).data.companyId == companyId
-        && activeOrLegacy(get(userPath(request.auth.uid)).data) 
-        && get(userPath(request.auth.uid)).data.get('accessKind', 'internal') != 'partner';
+        && activeOrLegacy(get(userPath(request.auth.uid)).data)
+        && get(companyPath(companyId)).data.get('companyKind', 'internal') != 'partner'
+        && get(userPath(request.auth.uid)).data.get('accessKind', 'internal') != 'partner'
+        && get(memberPath(companyId, request.auth.uid)).data.get('accessKind', 'internal') != 'partner'
+        && get(userPath(request.auth.uid)).data.get('memberType', 'internal') != 'cooperator'
+        && get(memberPath(companyId, request.auth.uid)).data.get('memberType', 'internal') != 'cooperator';
     }
 
     function isCompanyLeader(companyId) {
@@ -132,30 +136,14 @@ service cloud.firestore {
     }
 
     function isCompanyMaster(companyId) {
-      return verifiedUser()
-        && companyId != null
-        && exists(companyPath(companyId))
-        && exists(userPath(request.auth.uid))
-        && get(userPath(request.auth.uid)).data.companyId == companyId
-        && activeOrLegacy(get(userPath(request.auth.uid)).data)
-        && exists(memberPath(companyId, request.auth.uid))
-        && activeOrLegacy(get(memberPath(companyId, request.auth.uid)).data)
-        && effectiveMasterUid(companyId) == request.auth.uid 
-        && get(userPath(request.auth.uid)).data.get('accessKind', 'internal') != 'partner';
+      return isCompanyMember(companyId)
+        && effectiveMasterUid(companyId) == request.auth.uid;
     }
 
     function isCompanyOwner(companyId) {
-      return verifiedUser()
-        && companyId != null
-        && exists(companyPath(companyId))
-        && exists(userPath(request.auth.uid))
-        && get(userPath(request.auth.uid)).data.companyId == companyId
-        && activeOrLegacy(get(userPath(request.auth.uid)).data)
+      return isCompanyMember(companyId)
         && get(userPath(request.auth.uid)).data.companyRole == 'owner'
-        && exists(memberPath(companyId, request.auth.uid))
-        && activeOrLegacy(get(memberPath(companyId, request.auth.uid)).data)
-        && get(memberPath(companyId, request.auth.uid)).data.companyRole == 'owner' 
-        && get(userPath(request.auth.uid)).data.get('accessKind', 'internal') != 'partner';
+        && get(memberPath(companyId, request.auth.uid)).data.companyRole == 'owner';
     }
 
     function isCompanyManager(companyId) {
@@ -397,10 +385,7 @@ service cloud.firestore {
     function sameCompany(companyId) {
       return companyId != null
         && currentCompanyId() == companyId
-        && (
-          isCompanyMember(companyId)
-          || isCompanyOwner(companyId)
-        );
+        && isCompanyMember(companyId);
     }
 
     function ownerBootstrap(companyId, memberId) {
