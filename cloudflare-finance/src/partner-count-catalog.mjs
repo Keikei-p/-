@@ -18,7 +18,7 @@ const RUN_QUERY="https://firestore.googleapis.com/v1/projects/"+PROJECT+
  "/databases/(default)/documents:runQuery";
 const PREFIX="projects/"+PROJECT+"/databases/(default)/documents/partnerCountCatalog/";
 const ID=/^[A-Za-z0-9_:-]{1,128}$/;
-const MONEY=/(?:[¥￥$€]|(?:\d|[０-９])[\d０-９,.，]*\s*(?:万|千)?円|(?:\\d|[０-９])[\\d０-９,.，]*\\s*万(?:\\D|$)|(?:CB|cashback|revenue|unitprice|単価|売上|報酬|利益)[\s:_=-]*(?:\d|[０-９]))/i;
+const MONEY=/(?:[¥￥$€]|(?:\d|[０-９])[\d０-９,.，]*\s*(?:万|千)?円|(?:\d|[０-９])[\d０-９,.，]*\s*万(?:\D|$)|(?:CB|cashback|revenue|unitprice|単価|売上|報酬|利益)[\s:_=-]*(?:\d|[０-９]))/i;
 const deny=()=>{throw Error("partner_catalog_denied");};
 function reply(status,data,origin=""){
  const headers={"Content-Type":"application/json; charset=utf-8",
