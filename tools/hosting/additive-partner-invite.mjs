@@ -98,10 +98,49 @@ export async function uploadAdditiveInvite({assetBytes,request,release=false,log
   await request("POST",uploadUrl+"/"+hash,gz,"application/octet-stream");
  }
  const finalized=await request("PATCH",url("/"+created.name+"?update_mask=status"),{status:"FINALIZED"});
- if(finalized?.status!=="FINALIZED"||Number(finalized.fileCount)!==next.size)
-  throw Error("FINAL_ASSET_COUNT_MISMATCH");
+ if(finalized?.status!=="FINALIZED"||finalized.name!==created.name)
+  throw Error("FINAL_VERSION_NOT_CONFIRMED");
  if(JSON.stringify(finalized.config)!==JSON.stringify(source.config))
   throw Error("LIVE_HOSTING_CONFIG_CHANGED");
+ // The Hosting API's version.fileCount can temporarily disagree with the
+ // visible final file manifest. Never publish based on metadata alone:
+ // fetch every finalized path and hash, and enforce exact full equality.
+ const finalFiles=[];
+ let finalPageToken="";
+ const finalTokens=new Set();
+ do{
+  if(finalTokens.has(finalPageToken))throw Error("FINAL_FILE_PAGE_LOOP");
+  finalTokens.add(finalPageToken);
+  const qs=new URLSearchParams({pageSize:"1000"});
+  if(finalPageToken)qs.set("pageToken",finalPageToken);
+  const response=await request("GET",url("/"+created.name+"/files?"+qs));
+  if(!Array.isArray(response.files))throw Error("FINAL_FILE_LIST_UNAVAILABLE");
+  finalFiles.push(...response.files);
+  if(finalFiles.length>30000)throw Error("FINAL_TOO_MANY_FILES");
+  finalPageToken=response.nextPageToken||"";
+ }while(finalPageToken);
+ const finalMap=new Map();
+ for(const file of finalFiles){
+  if(typeof file.path!=="string"||typeof file.hash!=="string"||
+     !/^[0-9a-f]{64}$/i.test(file.hash)||finalMap.has(file.path))
+    throw Error("FINAL_INVALID_FILE_MANIFEST");
+  finalMap.set(file.path,file.hash.toLowerCase());
+ }
+ if(finalMap.size!==next.size)
+  throw Error("FINAL_ASSET_COUNT_MISMATCH expected="+next.size+
+    " api="+String(finalized.fileCount??"unreported")+
+    " enumerated="+finalMap.size);
+ for(const [filePath,expectedHash] of next)
+  if(finalMap.get(filePath)!==expectedHash)
+   throw Error("FINAL_ASSET_HASH_MISMATCH for "+filePath);
+ if(Number(finalized.fileCount)!==next.size)
+  log("Metadata count differs; safely validated all "+next.size+
+   " finalized file paths and hashes individually");
+ // Only the previously confirmed on-site configuration is permitted.
+ const finalRead=await request("GET",url("/"+created.name));
+ if(finalRead?.status!=="FINALIZED"||finalRead.name!==created.name||
+    JSON.stringify(finalRead.config)!==JSON.stringify(source.config))
+  throw Error("FINAL_VERSION_CONFIG_UNVERIFIED");
  // Most important guard: no one may have replaced live since this run began.
  if(await latest()!==sourceName)throw Error("LIVE_CHANGED_BEFORE_RELEASE");
  const released=await request("POST",url("/sites/"+SITE+"/releases?versionName="+
