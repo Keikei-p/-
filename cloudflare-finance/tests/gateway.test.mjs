@@ -75,6 +75,42 @@ test("External partner receives ONLY own-team counts and never financial details
   assert.throws(()=>policy("leader",{uid:"master-uid",
     userGrants:{accessKind:"partner"},memberGrants:{accessKind:"partner"}}),/partner_assignment_invalid/);
 });
+test("partner or cooperator marker on company/user/member denies even a misconfigured Master",()=>{
+  const [user,member]=person("leader",{uid:"master-uid",companyRole:"owner",
+    userGrants:{canViewRevenue:true,canViewUnitPrice:true},
+    memberGrants:{canViewRevenue:true,canViewUnitPrice:true}});
+  // Classified direct/internal owners keep existing revenue access.
+  const direct=approvedPolicy({...user,accessKind:"internal"},
+    {...member,accessKind:"internal"},
+    {...company,companyKind:"internal"},"master-uid","2026-10-30");
+  assert.equal(direct.canViewRevenue,true);
+  assert.equal(direct.canViewUnitPrice,true);
+  for(const variation of [
+    [{accessKind:"cooperator"},{},{}],
+    [{},{accessKind:"cooperator"},{}],
+    [{memberType:"cooperator"},{},{}],
+    [{},{memberType:"partner"},{}],
+    [{},{},{companyKind:"partner"}],
+    [{},{},{companyKind:"cooperator"}],
+    [{accessKind:"partner"},{},{}]
+  ]){
+    const [u,m,c]=variation;
+    assert.throws(()=>approvedPolicy({...user,...u},{...member,...m},
+      {...company,...c},"master-uid","2026-10-30"),/partner_assignment_invalid/);
+  }
+});
+test("unknown company/access markers cannot get raw finance by pretending to be internal",()=>{
+  const [user,member]=person("leader",{uid:"master-uid",companyRole:"owner"});
+  for(const [u,m,c] of [
+    [{accessKind:"affiliate"},{},{}],
+    [{},{accessKind:"vendor"},{}],
+    [{},{},{companyKind:"external"}],
+    [{},{},{companyKind:"test"}]
+  ]){
+    assert.throws(()=>approvedPolicy({...user,...u},{...member,...m},
+      {...company,...c},"master-uid"),/membership_kind_unknown/);
+  }
+});
 test("Partner roster contains ONLY the current team's active names and no contact or finance fields",()=>{
   const p=policy("leader",{uid:"partner",userGrants:{accessKind:"partner"},
     memberGrants:{accessKind:"partner"}});
