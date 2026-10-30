@@ -7,7 +7,7 @@
  */
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const HEX=/^[0-9a-f]{64}$/i;
-const NAME=/^[\\p{L}\\p{N} 　・ー（）()_-]{2,40}$/u;
+const NAME=/^[\p{L}\p{N} 　・ー（）()_-]{2,40}$/u;
 const clean=x=>typeof x==="string"?x.trim():"";
 const fail=(HttpsError,reason="permission-denied")=>{
  throw new HttpsError(reason,"協力店の件数利用設定を確認できません。");
@@ -44,7 +44,7 @@ function makePartnerCountActivation({
   const partnerId=clean(request?.data?.partnerCompanyId);
   const teamName=clean(request?.data?.teamName);
   if(!ID.test(partnerId)||!NAME.test(teamName)||
-    /(?:[¥￥$€]|\\d[\\d,]*円|単価|売上|報酬|利益)/i.test(teamName))
+    /(?:[¥￥$€]|\d[\d,]*円|単価|売上|報酬|利益)/i.test(teamName))
     fail(HttpsError,"invalid-argument");
   const userRef=db.collection("users").doc(uid);
   const partnerRef=db.collection("companies").doc(partnerId);
