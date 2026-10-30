@@ -1,0 +1,25 @@
+name: Partner additive Hosting safety tests (no deployment)
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [feat/partner-live-additive-hosting-20261030]
+permissions:
+  contents: read
+jobs:
+  additive-parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax and fail-closed mock release scenarios
+        run: |
+          node --check tools/hosting/additive-partner-invite.mjs
+          node --test tests/additive-partner-invite-hosting.test.mjs
+          node --test tests/partner-company-invitations.test.cjs
+      - name: Verify release is never triggered by push
+        run: |
+          node -e "let s=require('fs').readFileSync('.github/workflows/nico-partner-invite-only-release.yml','utf8');if(!s.includes('workflow_dispatch:')||s.includes('  push:')||!s.includes('CONFIRM_PARTNER_INVITE_ONLY'))throw Error('unsafe trigger')"
