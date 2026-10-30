@@ -78,6 +78,20 @@ jobs:
           for(const n of ['sendMissingReportReminders','createPartnerCompanyInvitation','previewPartnerCompanyInvitation','acceptPartnerCompanyInvitation'])
             if(!names.some(s=>s===n||s.endsWith('/'+n)))throw Error('Function missing: '+n);
           NODE
+      - name: Public endpoint must reject unauthenticated caller
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const url="https://asia-northeast1-sales-management-cc116.cloudfunctions.net/createPartnerCompanyInvitation";
+          (async()=>{
+            const res=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({data:{companyName:"TEST",email:"nobody@example.invalid"}})});
+            const result=await res.json();
+            if(res.status!==401||result?.error?.status!=="UNAUTHENTICATED")
+              throw Error("Unauthenticated invite endpoint not rejected as expected; abort public HTML release");
+            console.log("PASS: anonymous caller rejected by deployed invite Function");
+          })().catch(e=>{console.error(e.message);process.exitCode=1});
+          NODE
       - name: Publish ONLY invite page (live contents and config unchanged)
         run: node tools/hosting/additive-partner-invite.mjs --release
       - name: Verify official HTML and existing homepage
