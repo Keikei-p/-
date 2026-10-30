@@ -11,6 +11,7 @@ const ID=/^[A-Za-z0-9_:-]{1,128}$/;
 const RETRY=/^[A-Za-z0-9_-]{16,96}$/;
 const DATE=/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const deny=()=>{throw Error("partner_count_client_blocked");};
+const MONEY=/(?:[¥￥$€]|(?:\\d|[０-９])[\\d０-９,.，]*\\s*(?:万|千)?円|(?:\\d|[０-９])[\\d０-９,.，]*\\s*万(?:\\D|$)|(?:CB|cashback|revenue|unitprice|単価|売上|報酬|利益)[\\s:_=-]*(?:\\d|[０-９]))/i;
 const exact=(value,keys)=>{
  if(!value||typeof value!=="object"||Array.isArray(value)||
     Object.keys(value).sort().join(",")!==[...keys].sort().join(","))deny();
@@ -116,7 +117,7 @@ export function createPartnerCountBrowserClient({
    exact(team,["teamId","name"]);
    if(!ID.test(team.teamId)||teamIds.has(team.teamId)||
       typeof team.name!=="string"||!team.name.trim()||
-      team.name.length>80)deny();
+      team.name.length>80||MONEY.test(team.name))deny();
    teamIds.add(team.teamId);
    return Object.freeze({teamId:team.teamId,name:team.name});
   });
@@ -126,7 +127,7 @@ export function createPartnerCountBrowserClient({
       !["shared_counts","private"].includes(product.visibility)||
       typeof product.name!=="string"||!product.name.trim()||
       product.name.length>80||
-      /(?:[¥￥$€]|(?:\\d|[０-９])[\\d０-９,.，]*\\s*(?:万|千)?円|(?:CB|cashback|revenue|unitprice|単価|売上|報酬|利益)[\\s:_=-]*(?:\\d|[０-９]))/i.test(product.name))deny();
+      MONEY.test(product.name))deny();
    productIds.add(product.catalogId);
    return Object.freeze({
     catalogId:product.catalogId,name:product.name,
