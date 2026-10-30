@@ -36,7 +36,12 @@ test("all money-bearing collections require internal Owner/Master before returni
   const condition=found[0][1];
   assert(condition.includes("sameCompany(resource.data.companyId)"));
   assert(condition.includes("isCompanyOwner(resource.data.companyId)"));
-  assert(condition.includes("isCompanyMaster(resource.data.companyId)"));
+  if(collection==="revenueGoals"){
+   // Goal read is granted through canViewRevenue, which itself rejects partners.
+   assert(condition.includes("canViewRevenue(resource.data.companyId)"));
+  }else{
+   assert(condition.includes("isCompanyMaster(resource.data.companyId)"));
+  }
   assert(!section.includes("allow list:"),collection+" cannot grant additional list");
   if(collection!=="records")assert(!section.includes("allow get:"),collection+" cannot grant additional get");
  }
