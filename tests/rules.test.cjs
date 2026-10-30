@@ -450,3 +450,38 @@ test('partner cannot downgrade its server-owned identity to access legacy financ
   assert.equal((await getDoc(doc(admin,'companies',company))).data().companyKind,'partner');
  });
 });
+
+
+// A damaged partially migrated principal must remain finance-restricted even
+// if one or both canonical partner flags are absent. This checks every source.
+for(const source of ['company-kind','user-access','member-access','user-type','member-type']) {
+ test('isolated marker never permits finance read: '+source,async()=>{
+  await env.withSecurityRulesDisabled(async c=>{
+   const db=c.firestore();
+   await setDoc(doc(db,'products','one-price'),{
+    companyId:company,name:'priced',revenue:9900,
+    cashbackOptions:[0],pricingOptions:[{cashback:0,revenuePerUnit:9900}],
+    active:true,createdAt:serverTimestamp(),updatedAt:serverTimestamp()
+   });
+   await setDoc(doc(db,'records',key()),payload('owner'));
+   await setDoc(doc(db,'recordCorrections','finance-history'),{
+     companyId:company,recordId:key(),recordUid:'helper',recordDate:date,
+     changedByUid:'owner',changedByName:'owner',before:{totalRevenue:100},
+     after:{totalRevenue:200},createdAt:serverTimestamp()
+   });
+   await setDoc(doc(db,'revenueGoals','private-goal'),revenueGoalPayload());
+   if(source==='company-kind') await updateDoc(doc(db,'companies',company),{companyKind:'partner'});
+   if(source==='user-access') await updateDoc(doc(db,'users','owner'),{accessKind:'partner'});
+   if(source==='member-access') await updateDoc(doc(db,'companies',company,'members','owner'),{accessKind:'partner'});
+   if(source==='user-type') await updateDoc(doc(db,'users','owner'),{memberType:'cooperator'});
+   if(source==='member-type') await updateDoc(doc(db,'companies',company,'members','owner'),{memberType:'cooperator'});
+  });
+  const db=dbFor('owner');
+  for(const [coll,id] of [
+   ['products','one-price'],['records',key()],
+   ['recordCorrections','finance-history'],['revenueGoals','private-goal']
+  ])await assertFails(getDoc(doc(db,coll,id)));
+  await assertFails(setDoc(doc(db,'records',key('owner')),payload('owner','owner','a')));
+  await assertFails(setDoc(doc(db,'revenueGoals','new-private-goal'),revenueGoalPayload()));
+ });
+}
