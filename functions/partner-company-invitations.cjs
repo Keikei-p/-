@@ -138,7 +138,8 @@ function requireFactory({db,getAuth,Timestamp,FieldValue,HttpsError,enabled,now}
     createdBy:actor.uid,createdAt:time,updatedAt:time
    });
    tx.create(memberRef,{
-    uid:actor.uid,name:clean(user.name).slice(0,70)||actor.displayName,
+    uid:actor.uid,companyId:newRef.id,
+    name:clean(user.name).slice(0,70)||actor.displayName,
     email:actor.email,role:"leader",companyRole:"owner",teamId:null,
     memberType:"cooperator",accessKind:"partner",active:true,
     canViewRevenue:false,canViewUnitPrice:false,canCreateInvite:false,
