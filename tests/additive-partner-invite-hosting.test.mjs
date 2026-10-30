@@ -18,7 +18,7 @@ test("rejects existing invite, missing index, bad count or duplicate source",()=
  assert.throws(()=>validateManifest([samples[0],samples[0]],new Map([[ASSET,h("c")]]),2),/INVALID_SOURCE/);
  assert.throws(()=>validateManifest(samples,new Map([[ASSET,h("c")],["/index.html",h("d")]]),2),/ONLY_ONE/);
 });
-function mock({mutateLive=false,missingOldBlob=false,configMismatch=false}={}){
+function mock({mutateLive=false,missingOldBlob=false,configMismatch=false,metadataCountMismatch=false,finalMissing=false,finalWrongHash=false}={}){
  const seen=[];
  let current="sites/nico-factory/versions/111",releaseCount=0;
  const base="https://firebasehosting.googleapis.com/v1beta1";
@@ -37,11 +37,21 @@ function mock({mutateLive=false,missingOldBlob=false,configMismatch=false}={}){
    return {files:samples};
   if(method==="POST"&&suffix==="/sites/nico-factory/versions")
    return {name:"sites/nico-factory/versions/222",status:"CREATED"};
+  if(method==="GET"&&suffix==="/sites/nico-factory/versions/222")
+   return {name:"sites/nico-factory/versions/222",status:"FINALIZED",config:configMismatch?{}:cfg,fileCount:metadataCountMismatch?"2":"3"};
+  if(method==="GET"&&suffix.startsWith("/sites/nico-factory/versions/222/files?")){
+   const populated=seen.find(x=>x.method==="POST"&&x.url.endsWith(":populateFiles"));
+   if(!populated)throw Error("NO_POPULATE");
+   let files=Object.entries(populated.body.files).map(([path,hash])=>({path,hash}));
+   if(finalMissing)files=files.filter(f=>f.path!=="/index.html");
+   if(finalWrongHash)files=files.map(f=>f.path==="/index.html"?{...f,hash:h("f")}:f);
+   return {files};
+  }
   if(method==="POST"&&suffix==="/sites/nico-factory/versions/222:populateFiles")
    return {uploadRequiredHashes:missingOldBlob?[h("a")]:[],
     uploadUrl:"https://upload-firebasehosting.googleapis.com/upload/sites/nico-factory/versions/222/files"};
   if(method==="PATCH"&&suffix.startsWith("/sites/nico-factory/versions/222?"))
-   return {name:"sites/nico-factory/versions/222",status:"FINALIZED",fileCount:"3",config:configMismatch?{}:cfg};
+   return {name:"sites/nico-factory/versions/222",status:"FINALIZED",fileCount:metadataCountMismatch?"2":"3",config:configMismatch?{}:cfg};
   if(method==="POST"&&suffix.startsWith("/sites/nico-factory/releases?"))
    return {name:"sites/nico-factory/releases/777",version:{name:"sites/nico-factory/versions/222"}};
   throw Error("UNMOCKED "+method+" "+url);
@@ -137,4 +147,22 @@ test("artifact cleanup IAM failure cannot trigger Cloud Build; live previously-c
  assert.match(yaml,/steps\.artifact_cleanup\.outcome == 'failure' && steps\.existing\.outputs\.already_deployed == 'true'/);
  assert.match(yaml,/no new builds/i);
  assert.match(yaml,/steps\.existing\.outputs\.already_deployed != 'true' && steps\.artifact_cleanup\.outcome == 'success'/);
+});
+
+
+test("live final parity: metadata count lag is tolerated only after every original hash and added path match",async()=>{
+ const x=mock({metadataCountMismatch:true});
+ const seen=[];
+ const result=await uploadAdditiveInvite({assetBytes:asset,request:x.request,release:true,log:x=>seen.push(x)});
+ assert.equal(result.released,true);
+ assert.ok(seen.some(s=>s.includes("validated all 3 finalized file paths and hashes")));
+ assert.ok(x.seen.some(x=>x.url.includes("/versions/222/files?")));
+});
+test("fail closed on actual finalized file loss or hash mismatch despite healthy metadata count",async()=>{
+ for(const flags of [{finalMissing:true},{finalWrongHash:true}]){
+  const x=mock(flags);
+  await assert.rejects(uploadAdditiveInvite({assetBytes:asset,request:x.request,release:true,log:()=>{}}),
+   /FINAL_ASSET_COUNT_MISMATCH|FINAL_ASSET_HASH_MISMATCH/);
+  assert.ok(!x.seen.some(v=>v.url.includes("/releases?versionName")));
+ }
 });
