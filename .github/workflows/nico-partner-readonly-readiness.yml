@@ -1,0 +1,25 @@
+name: NICO partner public readiness (read-only)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/production/partner-live-readiness.mjs'
+      - '.github/workflows/nico-partner-readonly-readiness.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check-public-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check syntax and production public endpoints (NO secrets)
+        run: |
+          node --check tools/production/partner-live-readiness.mjs
+          node tools/production/partner-live-readiness.mjs
