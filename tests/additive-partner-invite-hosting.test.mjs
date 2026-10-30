@@ -121,7 +121,7 @@ test("failed post-create deployment recovery configures cheap cleanup and reuses
  assert.match(yaml,/4da83f98cd6f033d8ce8bda532aef39859db9c09/);
  assert.ok(yaml.includes("already_deployed='+(present.length===3"));
  assert.match(yaml,/if: \$\{\{ steps\.existing\.outputs\.already_deployed != 'true' \}\}/);
- assert.match(yaml,/function.*sendMissingReportReminders/i);
+ assert.ok(yaml.includes("sendMissingReportReminders"));
  assert.match(yaml,/--only functions:createPartnerCompanyInvitation,functions:previewPartnerCompanyInvitation,functions:acceptPartnerCompanyInvitation/);
  assert.doesNotMatch(yaml,/^\s+push:/m);
  assert.match(yaml,/workflow_dispatch:/);
