@@ -23,12 +23,12 @@ jobs:
           New-Item -ItemType Directory -Force -Path (Split-Path $file) | Out-Null
           try {
             Set-Content -LiteralPath $file -Value "NOT_A_REAL_BACKUP" -Encoding ascii
-            $output = & .\scripts\verify-sales-backup.ps1 -FindBackups 2>&1 | Out-String
+            $output = & powershell.exe -NoProfile -File .\scripts\verify-sales-backup.ps1 -FindBackups 2>&1 | Out-String
             if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne $null) { throw "Search script exit code failed" }
             if (-not $output.Contains("ci-synthetic.salesbak")) { throw "Read-only discovery did not find test file" }
             if (-not $output.Contains("FOUND")) { throw "Discovery did not report file found" }
             Remove-Item -LiteralPath $file -Force
-            $empty = & .\scripts\verify-sales-backup.ps1 -FindBackups 2>&1 | Out-String
+            $empty = & powershell.exe -NoProfile -File .\scripts\verify-sales-backup.ps1 -FindBackups 2>&1 | Out-String
             if ($empty.Contains("ci-synthetic.salesbak")) { throw "Deleted test file still advertised" }
             Write-Host "PASS: read-only path discovery with PowerShell 5.1"
           }
@@ -37,7 +37,7 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = "Continue"
-          $output = & .\scripts\verify-sales-backup.ps1 -BackupFile 'powershell -NoProfile -File .\scripts\verify-sales-backup.ps1' 2>&1 | Out-String
+          $output = & powershell.exe -NoProfile -File .\scripts\verify-sales-backup.ps1 -BackupFile 'powershell -NoProfile -File .\scripts\verify-sales-backup.ps1' 2>&1 | Out-String
           if (-not $output.Contains("BLOCK:")) { throw "Pasted command was not safely rejected" }
           if ($output.Contains("Path.IsPathRooted") -or $output.Contains("System.ArgumentException")) {
             throw "Pasted command caused an unhandled path exception"
