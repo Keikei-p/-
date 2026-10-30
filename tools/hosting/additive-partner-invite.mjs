@@ -87,8 +87,17 @@ export async function uploadAdditiveInvite({assetBytes,request,release=false,log
  for(let i=0;i<entries.length;i+=800){
   const resp=await request("POST",url("/"+created.name+":populateFiles"),
    {files:Object.fromEntries(entries.slice(i,i+800))});
-  if(!Array.isArray(resp.uploadRequiredHashes))throw Error("BAD_POPULATE_RESULT");
-  for(const h of resp.uploadRequiredHashes)needed.add(h);
+  // Hosting omits uploadRequiredHashes when every asset hash is already stored
+  // (e.g. after a prior finalized-but-unreleased attempt). It is optional.
+  if(resp===null||typeof resp!=="object"||
+     (resp.uploadRequiredHashes!==undefined&&
+      !Array.isArray(resp.uploadRequiredHashes)))
+   throw Error("BAD_POPULATE_RESULT");
+  for(const h of (resp.uploadRequiredHashes??[])){
+   if(typeof h!=="string"||!/^[0-9a-f]{64}$/i.test(h))
+    throw Error("BAD_REQUIRED_UPLOAD_HASH");
+   needed.add(h.toLowerCase());
+  }
   if(resp.uploadUrl){ if(uploadUrl&&uploadUrl!==resp.uploadUrl)throw Error("UPLOAD_URL_MISMATCH");uploadUrl=resp.uploadUrl; }
  }
  if([...needed].some(h=>h!==hash)||needed.size>1)throw Error("OLD_LIVE_BLOB_NOT_REUSABLE: abort");
