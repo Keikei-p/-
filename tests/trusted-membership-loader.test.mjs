@@ -142,3 +142,42 @@ test("count-only API refuses cross-team requests, revoked partner access and nev
  assert.notEqual((await handler(authorization)).status,200);
  assert.equal(queried.length,1);
 });
+
+test("internal marker cannot conceal partner/cooperator memberType in either authoritative record",async()=>{
+ const f=setup();
+ const user=f.doc.get("users/partnerLeader");
+ const member=f.doc.get("companies/partnerCo/members/partnerLeader");
+ const company=f.doc.get("companies/partnerCo");
+ // Synthetic internal organization with partner marker accidentally inherited.
+ user.accessKind="internal";member.accessKind="internal";
+ company.companyKind="internal";
+ const original=[user.memberType,member.memberType];
+ for(const kind of ["partner","cooperator","vendor","unknown"]){
+  for(const row of [user,member]){
+   row.memberType=kind;
+   await assert.rejects(f.loader("partnerLeader",auth),/not authorized/);
+   delete row.memberType;
+  }
+ }
+ [user.memberType,member.memberType]=original;
+});
+test("legitimate partner memberType partner/cooperator still sees count-only scope",async()=>{
+ const f=setup();
+ const user=f.doc.get("users/partnerLeader");
+ const member=f.doc.get("companies/partnerCo/members/partnerLeader");
+ user.memberType="partner";member.memberType="cooperator";
+ const scoped=await f.loader("partnerLeader",auth);
+ assert.deepEqual(scoped.teamIds,["teamA"]);
+ assert.equal(JSON.stringify(scoped).includes("Revenue"),false);
+});
+test("linked hub must be an active internal company and unknown classification is denied",async()=>{
+ const f=setup();
+ const hub=f.doc.get("companies/hub");
+ for(const kind of ["partner","cooperator","affiliate","unknown"]){
+  hub.companyKind=kind;
+  await assert.rejects(f.loader("partnerLeader",auth),/not authorized/);
+ }
+ hub.companyKind="internal";
+ hub.active=false;
+ await assert.rejects(f.loader("partnerLeader",auth),/not authorized/);
+});
