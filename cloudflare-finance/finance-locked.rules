@@ -119,18 +119,25 @@ service cloud.firestore {
         && activeOrLegacy(get(userPath(request.auth.uid)).data);
     }
 
-    // Partner designation is restrictive and may be present in either
-    // document during a staged administrator-controlled enrollment.
-    // It cannot be added or cleared by the ordinary user/member update Rules.
+    // Default DENY finance if any of the three authoritative documents
+    // identifies a partner (or has an unrecognized/contradictory marker).
+    // A company-owned partner account cannot become a financial Owner by
+    // missing the old accessKind field, being a Master, or getting a grant.
+    // Missing markers are allowed ONLY for pre-partner legacy INTERNAL users.
+    // Keep this strict check on the server; never trust UI/ID-token role flags.
     function isPartnerAccount(companyId) {
-      return verifiedUser()
-        && companyId != null
-        && exists(userPath(request.auth.uid))
-        && exists(memberPath(companyId, request.auth.uid))
-        && (
-          get(userPath(request.auth.uid)).data.get('accessKind', '') == 'partner'
-          || get(memberPath(companyId, request.auth.uid)).data.get('accessKind', '') == 'partner'
-        );
+      return !verifiedUser()
+        || companyId == null
+        || !exists(companyPath(companyId))
+        || !exists(userPath(request.auth.uid))
+        || !exists(memberPath(companyId, request.auth.uid))
+        || get(companyPath(companyId)).data.get('companyKind', 'internal') != 'internal'
+        || get(userPath(request.auth.uid)).data.get('accessKind', 'internal') != 'internal'
+        || get(memberPath(companyId, request.auth.uid)).data.get('accessKind', 'internal') != 'internal'
+        || !(get(userPath(request.auth.uid)).data.get('memberType', 'internal')
+             in ['internal', 'direct', 'member', 'managed'])
+        || !(get(memberPath(companyId, request.auth.uid)).data.get('memberType', 'internal')
+             in ['internal', 'direct', 'member', 'managed']);
     }
 
     function isCompanyLeader(companyId) {
@@ -199,20 +206,18 @@ service cloud.firestore {
     }
 
     function canViewRevenue(companyId) {
-      return !isPartnerAccount(companyId)
-        && (isCompanyMaster(companyId)
-        || (
-          isCompanyMember(companyId)
-          && (
-            // オーナーの売上は、既存の個別フラグに関係なく表示する。
-            get(memberPath(companyId, request.auth.uid)).data.companyRole == 'owner'
-            || (
-              get(memberPath(companyId, request.auth.uid)).data.keys().hasAny(['canViewRevenue'])
-              && get(memberPath(companyId, request.auth.uid)).data.canViewRevenue == true
-            )
-
-          )
-        ));
+      // Avoid repeatedly re-entering the expensive Owner/Master partner
+      // checks: a formerly granted internal Leader must still see own-team
+      // targets without hitting the Firestore 1,000-expression limit.
+      // Every branch shares the same positive membership + negative partner
+      // boundary. Never accept the caller's company or role from the browser.
+      return isCompanyMember(companyId)
+        && !isPartnerAccount(companyId)
+        && (
+          get(memberPath(companyId, request.auth.uid)).data.companyRole == 'owner'
+          || effectiveMasterUid(companyId) == request.auth.uid
+          || get(memberPath(companyId, request.auth.uid)).data.get('canViewRevenue', false) == true
+        );
     }
     function canViewUnitPrice(companyId) {
       return isCompanyMaster(companyId)
