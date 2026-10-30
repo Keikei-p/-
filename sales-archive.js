@@ -304,7 +304,8 @@ $("archiveFile").addEventListener("change",async()=>{
 });
 onAuthStateChanged(auth,async user=>{
  const id=++revision;ownerCompany=null;button.style.display="none";close();
- if(!user)return;
+ // Old GitHub Pages URL is retired. Do not enable the owner archive there.
+ if(!user||window.location.origin!=="https://nico-factory.web.app")return;
  try{
   const c=await companyForOwner(user);
   if(id!==revision||auth.currentUser?.uid!==user.uid)return;
