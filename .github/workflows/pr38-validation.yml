@@ -27,7 +27,12 @@ jobs:
           node-version: "22"
 
       - name: Check Functions JavaScript syntax
-        run: node --check functions/index.js
+        run: |
+          node --check functions/index.js
+          node --check functions/partner-company-invitations.cjs
+
+      - name: Test isolated partner invitations before any production deployment
+        run: node --test tests/partner-company-invitations.test.cjs
 
       - name: Check finance role boundary before legacy browser data access (offline)
         run: |
