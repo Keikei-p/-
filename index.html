@@ -11585,6 +11585,12 @@ onAuthStateChanged(
 
     } else {
 
+      // Never keep another company's count-only ranking in memory after logout.
+      ++partnerRankingRequestGeneration;
+      partnerRankingDailyCache.clear();
+      partnerRankingState={key:"",rows:[],complete:false,checkedAt:0,reason:""};
+      partnerRankingActiveKey="";
+
       currentUser =
         null;
 
