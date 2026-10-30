@@ -40,7 +40,7 @@ jobs:
           if(JSON.parse(fs.readFileSync('.firebaserc','utf8')).projects.default!=='sales-management-cc116') throw Error('Unknown Firebase project');
           const html=fs.readFileSync('index.html','utf8');
           if(!html.includes('projectId: "sales-management-cc116"'))throw Error('Unexpected Firebase app');
-          for(const f of ['index.html','manifest.webmanifest','service-worker.js','icon-180.png','icon-192.png','icon-512.png','sales-archive.js','archive-output-policy.mjs','archive-coverage.mjs','archive-read-budget.mjs'])if(!fs.statSync(f).isFile())throw Error('Missing '+f);
+          for(const f of ['index.html','manifest.webmanifest','service-worker.js','icon-180.png','icon-192.png','icon-512.png','sales-archive.js','legacy-finance-entry-guard.mjs','archive-output-policy.mjs','archive-coverage.mjs','archive-read-budget.mjs'])if(!fs.statSync(f).isFile())throw Error('Missing '+f);
           NODE
       - name: Create ephemeral credentials file
         shell: bash
@@ -69,7 +69,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .nico-hosting-staging
-          for f in index.html manifest.webmanifest service-worker.js icon-180.png icon-192.png icon-512.png sales-archive.js archive-output-policy.mjs archive-coverage.mjs archive-read-budget.mjs; do
+          for f in index.html manifest.webmanifest service-worker.js icon-180.png icon-192.png icon-512.png sales-archive.js legacy-finance-entry-guard.mjs archive-output-policy.mjs archive-coverage.mjs archive-read-budget.mjs; do
             cp "$f" .nico-hosting-staging/
             cmp "$f" ".nico-hosting-staging/$f"
           done
