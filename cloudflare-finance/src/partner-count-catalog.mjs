@@ -130,10 +130,19 @@ export function createPartnerCountCatalogHandler({
     forOwner(company.hubCompanyId,company.hubCompanyId,scope.companyId),
     forOwner(scope.companyId,company.hubCompanyId,scope.companyId)
    ]);
+   const teams=[];
+   for(const teamId of scope.teamIds){
+    if(!ID.test(teamId))deny();
+    const team=await adapters.readDocument("teams/"+teamId);
+    if(!team||team.active!==true||team.companyId!==scope.companyId||
+       typeof team.name!=="string"||team.name.length<1||
+       team.name.length>80||MONEY.test(team.name))deny();
+    teams.push({teamId,name:team.name});
+   }
    const products=[...shared,...custom].sort((a,b)=>a.name.localeCompare(b.name,"ja")||
     a.catalogId.localeCompare(b.catalogId));
    if(new Set(products.map(x=>x.catalogId)).size!==products.length)deny();
-   return reply(200,{products},origin);
+   return reply(200,{teams,products},origin);
   }catch{
    // Never leak company UIDs, Firestore response bodies or amounts.
    return reply(403,{error:"request_blocked"},origin);
