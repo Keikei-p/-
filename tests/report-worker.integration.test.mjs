@@ -132,10 +132,10 @@ async function run(opts){
  try{
   globalThis.fetch=fixtureData.fetchMock;
   await reporter.scheduled({
-   cron:opts?.cron??"0 0 * * *",
+   cron:opts?.cron??"30 0 * * *",
    scheduledTime:Date.parse(opts?.cron==="5 10 * * *"
-     ?"2026-10-29T10:05:00Z":opts?.cron==="0 10 * * *"
-       ?"2026-10-29T10:00:00Z":"2026-10-29T00:00:00Z")
+     ?"2026-10-29T10:05:00Z":opts?.cron==="0 12 * * *"
+       ?"2026-10-29T12:00:00Z":"2026-10-29T00:30:00Z")
   },fixtureData.env);
  }finally{
   globalThis.fetch=previousFetch;
@@ -205,7 +205,7 @@ test("disabled delivery consumes zero privileged Firebase reads and needs no sec
  const saved=globalThis.fetch;
  try{
   globalThis.fetch=async()=>{throw Error("network must not be accessed when OFF");};
-  await reporter.scheduled({cron:"0 0 * * *",scheduledTime:Date.parse("2026-10-29T00:00:00Z")},f.env);
+  await reporter.scheduled({cron:"30 0 * * *",scheduledTime:Date.parse("2026-10-29T00:30:00Z")},f.env);
   assert.equal(f.calls.length,0);
   assert.equal(f.sent.length,0);
   assert.equal(f.dispatches.length,0);
@@ -244,8 +244,32 @@ test("no missing reminder when distinct expected employees each submitted",async
  assert.equal(result.sent.length,0,"all real members have reported: no message");
 });
 
+test("the official JST schedule maps correctly from Cloudflare UTC and rejects retired cron",async()=>{
+ const settings=(await import("node:fs")).readFileSync(new URL("../wrangler.sales-reports.toml",import.meta.url),"utf8");
+ const workerSource=(await import("node:fs")).readFileSync(new URL("../reports/worker.mjs",import.meta.url),"utf8");
+ const expected=[
+  ["30 0 * * *","09:30"],["0 12 * * *","21:00"],["5 10 * * *","19:05"]
+ ];
+ for(const [cron,time] of expected){
+  assert(settings.includes('"'+cron+'"'),"deployment trigger missing: "+time);
+  assert(workerSource.includes('"'+cron+'"'),"worker task missing: "+time);
+ }
+ assert(!settings.includes('"0 0 * * *"'));
+ assert(!settings.includes('"0 10 * * *"'));
+ const retired=fixture({live:true});
+ const before=globalThis.fetch;
+ try{
+  globalThis.fetch=async()=>{throw Error("retired UTC cron caused network access");};
+  await reporter.scheduled({cron:"0 0 * * *",
+   scheduledTime:Date.parse("2026-10-29T00:00:00Z")},retired.env);
+  await reporter.scheduled({cron:"0 10 * * *",
+   scheduledTime:Date.parse("2026-10-29T10:00:00Z")},retired.env);
+ }finally{globalThis.fetch=before;}
+ assert.equal(retired.calls.length,0);
+});
+
 test("the SAME notification ON/OFF controls morning, final and unreported LINE sends",async()=>{
- const crons=["0 0 * * *","0 10 * * *","5 10 * * *"];
+ const crons=["30 0 * * *","0 12 * * *","5 10 * * *"];
  for(const cron of crons){
   const muted=await run({live:true,cron,notificationEnabled:false});
   assert.equal(muted.sent.length,0,"disabled main notification switch: "+cron);
@@ -258,7 +282,7 @@ test("the SAME notification ON/OFF controls morning, final and unreported LINE s
  }
 });
 test("morning/final/missing all use a single approved LINE destination",async()=>{
- const crons=["0 0 * * *","0 10 * * *","5 10 * * *"];
+ const crons=["30 0 * * *","0 12 * * *","5 10 * * *"];
  for(const cron of crons){
   const runData=await run({live:true,cron});
   assert(runData.sent.length<=1,"never duplicate grouped company dispatches");
