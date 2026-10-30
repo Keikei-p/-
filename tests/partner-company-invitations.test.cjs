@@ -4,10 +4,12 @@ const assert=require("node:assert/strict");
 const {requireFactory}=require("../functions/partner-company-invitations.cjs");
 
 const NOW=Date.parse("2026-10-30T12:00:00Z");
+const clone=value=>Array.isArray(value)?value.map(clone):
+ value&&typeof value==="object"?Object.fromEntries(Object.entries(value).map(([k,v])=>[k,clone(v)])):value;
 class Ref {
  constructor(db,path){this.db=db;this.path=path;this.id=path.split("/").at(-1);}
  collection(name){return new Collection(this.db,this.path+"/"+name);}
- async get(){const v=this.db.data.get(this.path);return {exists:v!==undefined,data:()=>structuredClone(v),ref:this};}
+ async get(){const v=this.db.data.get(this.path);return {exists:v!==undefined,data:()=>clone(v),ref:this};}
 }
 class Collection {
  constructor(db,path){this.db=db;this.path=path;}
@@ -18,7 +20,7 @@ class Collection {
    const docs=[];
    for(const [path,data] of this.db.data){
     if(path.startsWith(this.path+"/")&&path.slice(this.path.length+1).indexOf("/")<0&&data[key]===value)
-     docs.push({ref:new Ref(this.db,path),data:()=>structuredClone(data)});
+     docs.push({ref:new Ref(this.db,path),data:()=>clone(data)});
    }
    return {size:docs.slice(0,max).length,docs:docs.slice(0,max)};
   }})};
@@ -27,7 +29,7 @@ class Collection {
 class MemoryDB {
  constructor(){this.data=new Map();this.serial=0;}
  collection(name){return new Collection(this,name);}
- seed(path,data){this.data.set(path,structuredClone(data));}
+ seed(path,data){this.data.set(path,clone(data));}
  async runTransaction(fn){
   const writes=[],tx={
    get:ref=>ref.get(),
@@ -40,7 +42,7 @@ class MemoryDB {
    throw Error("must not overwrite existing record");
   for(const {kind,ref,value} of writes){
    const prev=this.data.get(ref.path)||{};
-   this.data.set(ref.path,kind==="create"?structuredClone(value):{...prev,...structuredClone(value)});
+   this.data.set(ref.path,kind==="create"?clone(value):{...prev,...clone(value)});
   }
   return result;
  }
