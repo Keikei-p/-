@@ -12,6 +12,8 @@ FINANCE_COST_APPROVAL = "NOT_APPROVED"
 FINANCE_PARTNER_APPROVAL = "NOT_APPROVED"
 # Count-only read API is independent, and stays OFF until public data is reconciled.
 PUBLIC_COUNT_GATEWAY_ENABLED = "disabled"
+# Separate, default-OFF registration and correction route (independent count ledger).
+PARTNER_COUNT_WRITE_ENABLED = "disabled"
 PUBLIC_COUNT_PROJECTION_APPROVAL = "NOT_APPROVED"
 
 # SECURITY: Do not deploy this branch to production while legacy SDK listeners

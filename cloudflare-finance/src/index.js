@@ -14,6 +14,7 @@ import {securePricing} from "./write-plan.js";
 import {submitCounts, SaveConflict, PermissionDenied} from "./count-service.js";
 import {makeFirestoreRestStore} from "./firestore-writer.js";
 import {makePublicCountRestHandler} from "./public-count-live-adapter.mjs";
+import {createPartnerCountRestWriteHandler} from "./partner-count-live-writer.mjs";
 const GOOGLE_KEYS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
 const ALLOWED_ORIGINS = new Set([
   "https://nico-factory.web.app"
@@ -575,6 +576,20 @@ export default {
     }
     if(url.pathname==="/health"&&request.method==="GET"){
       return safeJSON({ok:true,service:"finance-gateway",enabled:env.FINANCE_GATEWAY_ENABLED==="enabled",mode:"read_only"},200,origin);
+    }
+    if(url.pathname==="/v1/partner-counts"){
+      // All independent gates must be approved. Existing user sales remain
+      // entirely separate; partner writes use only partnerCount* collections.
+      const enabled=env.FIREBASE_PROJECT_ID===PROJECT_ID &&
+        env.FINANCE_GATEWAY_ENABLED==="enabled" &&
+        env.PARTNER_COUNT_WRITE_ENABLED==="enabled" &&
+        env.FINANCE_WRITE_APPROVAL==="DUAL_HOST_BACKUP_VERIFIED" &&
+        env.FINANCE_COST_APPROVAL==="OWNER_APPROVED_BLAZE_COSTS" &&
+        env.PUBLIC_COUNT_PROJECTION_APPROVAL==="EXACT_COUNTS_RECONCILED";
+      const handler=createPartnerCountRestWriteHandler({
+        enabled,fetcher:fetch,getServiceToken:()=>googleBearer(env)
+      });
+      return handler(request);
     }
     if(url.pathname==="/v1/public-counts"){
       // Independent OFF-by-default switches. No REST, OAuth or certificate
