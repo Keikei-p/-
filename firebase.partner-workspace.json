@@ -1,0 +1,11 @@
+{
+  "functions": {
+    "source": "functions-partner-workspace",
+    "codebase": "partner-workspace",
+    "ignore": [
+      "node_modules",
+      ".git",
+      "firebase-debug.log"
+    ]
+  }
+}
