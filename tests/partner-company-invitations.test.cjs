@@ -156,3 +156,25 @@ test("source must not delete, migrate, recalculate, or access financial original
  assert.match(src,/partnerCompanyInvitations/);
  assert.match(src,/partnerRelations/);
 });
+
+test("deployment config must have no Firestore, Hosting or other deployment targets",()=>{
+ const fs=require("node:fs"),path=require("node:path");
+ const cfg=JSON.parse(fs.readFileSync(path.join(__dirname,"../firebase.partner-invites.json"),"utf8"));
+ assert.deepEqual(Object.keys(cfg),["functions"]);
+ assert.equal(cfg.functions.source,"functions");
+ assert.equal(cfg.functions.codebase,"default");
+ assert.equal(cfg.hosting,undefined);
+ assert.equal(cfg.firestore,undefined);
+ const source=fs.readFileSync(path.join(__dirname,"../functions/index.js"),"utf8");
+ for(const name of ["createPartnerCompanyInvitation","previewPartnerCompanyInvitation","acceptPartnerCompanyInvitation"])
+  assert.match(source,new RegExp("exports\\."+name+"\\s*=\\s*onCall"));
+ assert.match(source,/process\.env\.PARTNER_INVITES_ENABLED\s*===\s*"enabled"/);
+});
+test("partner invitation page is isolated from legacy records and prices",()=>{
+ const fs=require("node:fs"),path=require("node:path");
+ const html=fs.readFileSync(path.join(__dirname,"../partner-invite.html"),"utf8");
+ for(const name of ["createPartnerCompanyInvitation","previewPartnerCompanyInvitation","acceptPartnerCompanyInvitation"])
+  assert.ok(html.includes(name));
+ assert.ok(!html.includes("firebase-firestore.js"));
+ assert.ok(!html.includes("sendMissingReportReminders"));
+});
