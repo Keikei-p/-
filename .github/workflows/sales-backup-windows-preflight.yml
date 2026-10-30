@@ -43,3 +43,6 @@ jobs:
             throw "Pasted command caused an unhandled path exception"
           }
           Write-Host "PASS: bad path rejected without Firebase access"
+          # The intentionally rejected child exits 1. The assertions above PASS,
+          # so reset this validation step's process exit code explicitly.
+          exit 0
