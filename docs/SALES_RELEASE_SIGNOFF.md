@@ -416,3 +416,13 @@ Rulesの本番デプロイ: 未実施
 - この審査記録とGitHub保護ラベルは、**開発コードだけをmainへ統合する技術審査**。本人の電子署名や手動Hosting公開、Firestore原票の閲覧権限切替、既存会員への影響ゼロを証明するものではない。本番判定NO-GOを維持する。
 
 - GitHub接続の管理権限によりPR #136へ `sales-production-reviewed` を付与。これは現時点で完成した**コード差分の技術審査用**。実バックアップ照合の署名/本番Hosting公開・Firestore Rules切替の許可ではなく、公開作業は引き続き別承認。
+
+
+## 2026-10-30 PR #143: 公式Hostingの危険な財務データ公開を遮断するコードレビュー
+
+- 対象: `scripts/nico-production-cutover-preflight.mjs`、`tests/nico-production-cutover-preflight.test.mjs`、公式Hostingの手動Workflow、静的CI、実施手順。
+- 改善: 既存の危険な金額原票Firestore Rulesと、旧画面の金額原票の直接読取/書込が残る場合、**本番Firebase資格情報を利用してデプロイする前に**自動STOPする。
+- 現行mainは意図的にSTOP: `records/products`等の権限境界とブラウザ移行は未完了。本PRはシステムを本番へ無理に切り替えるものではない。
+- 静的チェックの合格だけではFirebase実機の権限・バックアップ復元/照合・旧PWA・大量件数の無料枠・本番ゲートウェイの認証を証明しない。実Firebase Rules変更、LINE送信、原票更新/削除、Hosting公開は**未実施**。
+- `sales-production-reviewed` は**危険なリリースを拒否する保護コードの技術レビュー記録**。ユーザー本人の電子署名や、全本番要件を満たした承認を代理で作成するものではない。
+- 認証情報の追加・ログへの資格情報出力・実Firestore読み書き、データの破棄/再計算はなし。既存履歴・当時単価・売上・バックアップは無変更。
