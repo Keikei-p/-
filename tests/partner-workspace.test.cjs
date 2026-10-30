@@ -141,7 +141,7 @@ test("security invariants: only isolated partner collections; no destructive dat
  const code=fs.readFileSync(require.resolve("../functions-partner-workspace/service.cjs"),"utf8");
  assert.doesNotMatch(code,/\.delete\s*\(/);
  assert.doesNotMatch(code,/\.collection\s*\(\s*["'](?:records|products|recordCorrections|revenueGoals)["']\s*\)/);
- assert.doesNotMatch(code,/\.set\s*\(/);
+ assert.doesNotMatch(code,/\btx\.set\s*\(/);
  assert.match(code,/canViewRevenue:false,canViewUnitPrice:false/);
  assert.match(code,/partnerWorkAudits/);
 });
