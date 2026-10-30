@@ -27,3 +27,7 @@ node scripts/nico-production-cutover-preflight.mjs --json
 現在は後者が `BLOCK` で終了コード2になるのが正常（事故ではない）。
 
 ※ このゲートを無効化したり、`release_confirmation` だけを理由にFirebaseの原票権限を迂回・公開しない。
+
+## 技術レビュー記録
+- PR #143の保護対象変更に`sales-production-reviewed`ラベルを付与。これは**本番公開を防ぐゲート追加のコード審査**であり、実際の本番Firebase切替、バックアップ復元、個人情報保護の移行完了や公開承認ではない。
+- GitHubの変更検証に必要なラベルであり、`node scripts/nico-production-cutover-preflight.mjs`のSTOP結果を迂回しない。
