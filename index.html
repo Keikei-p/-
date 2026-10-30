@@ -11474,7 +11474,7 @@ partnerInviteCreateButton.onclick = async () => {
   const companyName=document.getElementById("partnerInviteCompanyName").value.trim();
   const email=document.getElementById("partnerInviteEmail").value.trim().toLowerCase();
   if(companyName.length<2 || companyName.length>80 ||
-     !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+     !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     showError("協力店名と招待メールアドレスを確認してください。");
     return;
   }
@@ -25569,7 +25569,7 @@ function validatedPartnerRankingDay(value,expectedDate){
   });
 }
 async function readPartnerRankingMonth(month){
-  if(!/^\\d{4}-(0[1-9]|1[0-2])$/.test(month))
+  if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month))
     throw Error("partner_month_invalid");
   const now=new Date(getTodayString()+"T00:00:00Z");
   const first=new Date(month+"-01T00:00:00Z");
@@ -25659,7 +25659,7 @@ function partnerRankingVirtualRecords(){
 }
 function normalizedPartnerRankingLabel(value){
   return String(value||"").normalize("NFKC").toUpperCase()
-    .replace(/[\\s　・、，,./／+＋_\\-]/g,"");
+    .replace(/[\s　・、，,./／+＋_\-]/g,"");
 }
 function partnerCategoriesForExistingGroup(group){
   const aliases={
