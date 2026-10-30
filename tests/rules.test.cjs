@@ -383,3 +383,45 @@ test('history correction logs are append-only and cannot be deleted',async()=>{
  await assertFails(deleteDoc(doc(dbFor('owner'),'recordCorrections','old-correction')));
  assert.equal((await getDoc(doc(dbFor('owner'),'recordCorrections','old-correction'))).exists(),true);
 });
+
+
+// All financial originals must be denied to a partner even when the partner
+// is its own company Owner/master. These are synthetic emulator-only fixtures.
+for(const marker of ['companyKind','user-accessKind','member-accessKind','memberType']) {
+ test('finance-restricted partner: owner cannot read/write original price, records, corrections or revenue goals ('+marker+')',async()=>{
+  const financeProduct={companyId:company,name:'価格つき商品',revenue:1000,
+   cashbackOptions:[0],pricingOptions:[{cashback:0,revenuePerUnit:1000}],
+   active:true,createdAt:serverTimestamp(),updatedAt:serverTimestamp()};
+  await env.withSecurityRulesDisabled(async c=>{
+   const admin=c.firestore();
+   await setDoc(doc(admin,'products','partner-finance'),financeProduct);
+   await setDoc(doc(admin,'records',key()),payload('owner'));
+   await setDoc(doc(admin,'recordCorrections','partner-finance'),{
+    companyId:company,recordId:key(),recordUid:'helper',recordDate:date,
+    changedByUid:'owner',changedByName:'owner',before:{totalRevenue:500},
+    after:{totalRevenue:1000},createdAt:serverTimestamp()});
+   await setDoc(doc(admin,'revenueGoals','partner-finance'),revenueGoalPayload());
+   if(marker==='companyKind') {
+    await updateDoc(doc(admin,'companies',company),{companyKind:'partner'});
+   } else {
+    const where=marker==='user-accessKind'?'users/owner':'companies/'+company+'/members/owner';
+    await updateDoc(doc(admin,where),marker==='memberType'?{memberType:'cooperator'}:{accessKind:'partner'});
+   }
+  });
+  const db=dbFor('owner');
+  for(const [coll,id] of [
+    ['products','partner-finance'],
+    ['records',key()],
+    ['recordCorrections','partner-finance'],
+    ['revenueGoals','partner-finance']
+  ]) await assertFails(getDoc(doc(db,coll,id)));
+  await assertFails(setDoc(doc(db,'products','partner-created-finance'),financeProduct));
+  await assertFails(setDoc(doc(db,'records',key('owner')),payload('owner','owner','a')));
+  await assertFails(setDoc(doc(db,'revenueGoals','partner-created-finance'),revenueGoalPayload()));
+  await assertFails(setDoc(doc(db,'recordCorrections','partner-created-finance'),{
+   companyId:company,recordId:key(),recordUid:'helper',recordDate:date,
+   changedByUid:'owner',changedByName:'owner',before:{totalRevenue:100},
+   after:{totalRevenue:200},createdAt:serverTimestamp()
+  }));
+ });
+}
