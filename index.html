@@ -6828,6 +6828,7 @@ const db =
 
 const partnerCountFunctions = getFunctions(app,"asia-northeast1");
 const readPartnerQuickDay = httpsCallable(partnerCountFunctions,"getPartnerQuickCounts");
+const readPartnerWorkDay = httpsCallable(partnerCountFunctions,"getPartnerWorkspace");
 const createPartnerCompanyInvite = httpsCallable(partnerCountFunctions,"createPartnerCompanyInvitation");
 
 
@@ -9735,7 +9736,8 @@ function subscribeSelectedMonthRecords() {
       createMonthOptions();
       renderDashboard();
       // Refresh only after a full, server-verified internal month snapshot.
-      void refreshExistingPartnerRanking();
+      if (typeof refreshExistingPartnerRanking === "function")
+        void refreshExistingPartnerRanking();
       renderNotificationPreview();
     },error=>{
       if(generation!==recordQueryGeneration)return;
@@ -25583,6 +25585,19 @@ function validatedPartnerRankingDay(value,expectedDate){
     return {id:row.partnerCompanyId,name:row.name,counts,totalCount:total};
   });
 }
+// Merge the earlier one-total-per-partner report and the new staff-ledger
+// report at the same date, preferring verified staff-ledger data per partner.
+// Never add both amounts from the same partner/day: that double-counts people.
+async function mergedPartnerRankingDay(date){
+  const [legacy,staff]=await Promise.all([
+    readPartnerQuickDay({date}),readPartnerWorkDay({date})
+  ]);
+  const oldRows=validatedPartnerRankingDay(legacy.data,date);
+  const newRows=validatedPartnerRankingDay(staff.data,date);
+  const selected=new Map(oldRows.map(row=>[row.id,row]));
+  for(const row of newRows)selected.set(row.id,row);
+  return [...selected.values()];
+}
 async function readPartnerRankingMonth(month){
   if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month))
     throw Error("partner_month_invalid");
@@ -25610,8 +25625,9 @@ async function readPartnerRankingMonth(month){
       const cached=partnerRankingDailyCache.get(key);
       const ttl=date===getTodayString()?180000:3600000;
       if(cached&&Date.now()-cached.checkedAt<ttl)return cached.rows;
-      const result=await readPartnerQuickDay({date});
-      const rows=validatedPartnerRankingDay(result.data,date);
+      const rows=typeof mergedPartnerRankingDay==="function"
+        ? await mergedPartnerRankingDay(date)
+        : validatedPartnerRankingDay((await readPartnerQuickDay({date})).data,date);
       partnerRankingDailyCache.set(key,{rows,checkedAt:Date.now()});
       // Bounded memory for private count-only rows; never persist in storage.
       if(partnerRankingDailyCache.size>100)
