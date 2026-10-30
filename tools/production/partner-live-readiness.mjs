@@ -8,6 +8,9 @@ const urls={
   invite:"https://nico-factory.web.app/partner-invite.html",
   home:"https://nico-factory.web.app/",
   partnerForm:"https://nico-factory.web.app/partner-counts-v2.html",
+  quickCountForm:"https://nico-factory.web.app/partner-counts.html",
+  quickCountRead:"https://asia-northeast1-sales-management-cc116.cloudfunctions.net/getPartnerQuickCounts",
+  quickCountSave:"https://asia-northeast1-sales-management-cc116.cloudfunctions.net/submitPartnerQuickCounts",
   workerHealth:"https://sales-finance-gateway.jyhokei0124.workers.dev/health",
   workerCatalog:"https://sales-finance-gateway.jyhokei0124.workers.dev/v1/partner-count-catalog",
   inviteCallable:"https://asia-northeast1-sales-management-cc116.cloudfunctions.net/createPartnerCompanyInvitation"
@@ -22,7 +25,7 @@ export async function probe(fetcher=fetch,timeoutMs=12000){
   const ctrl=new AbortController();
   const time=setTimeout(()=>ctrl.abort(),timeoutMs);
   try{
-   const isCallable=name==="inviteCallable";
+   const isCallable=["inviteCallable","quickCountRead","quickCountSave"].includes(name);
    // Callable POST contains an invalid/anonymous empty payload. It MUST fail.
    const result=await fetcher(link,{
     method:isCallable?"POST":"GET",
@@ -38,13 +41,17 @@ export async function probe(fetcher=fetch,timeoutMs=12000){
   }finally{clearTimeout(time);}
  }
  const inviteReady=findings.home.status===200&&findings.invite.status===200;
+ const quickCountFormReady=findings.quickCountForm.status===200;
+ const quickCountReadAuthSafe=[401,403].includes(findings.quickCountRead.status);
+ const quickCountSaveAuthSafe=[401,403].includes(findings.quickCountSave.status);
  const partnerUiReady=findings.partnerForm.status===200;
  const countBackendReady=findings.workerHealth.status===200;
  const unauthenticatedApiSafe=[401,403,404,503].includes(findings.workerCatalog.status);
  const inviteAuthSafe=[401,403].includes(findings.inviteCallable.status);
  // Healthy homepage and invite do NOT imply count registration is enabled.
  return {project:"sales-management-cc116",canonicalHost:"nico-factory.web.app",
-  inviteReady,partnerUiReady,countBackendReady,unauthenticatedApiSafe,
+  inviteReady,quickCountFormReady,quickCountReadAuthSafe,quickCountSaveAuthSafe,
+  partnerUiReady,countBackendReady,unauthenticatedApiSafe,
   inviteAuthSafe,productionCountReleaseApproved:false,
   findings};
 }
