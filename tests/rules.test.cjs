@@ -429,3 +429,24 @@ for(const marker of ['companyKind','user-accessKind','member-accessKind','member
   }));
  });
 }
+
+
+test('partner cannot downgrade its server-owned identity to access legacy financial originals',async()=>{
+ await env.withSecurityRulesDisabled(async c=>{
+  const admin=c.firestore();
+  await updateDoc(doc(admin,'companies',company),{companyKind:'partner'});
+  await updateDoc(doc(admin,'users','owner'),{accessKind:'partner',memberType:'cooperator'});
+  await updateDoc(doc(admin,'companies',company,'members','owner'),{accessKind:'partner',memberType:'cooperator'});
+ });
+ const db=dbFor('owner');
+ await assertFails(updateDoc(doc(db,'users','owner'),{accessKind:'internal',updatedAt:serverTimestamp()}));
+ await assertFails(updateDoc(doc(db,'users','owner'),{memberType:'internal',updatedAt:serverTimestamp()}));
+ await assertFails(updateDoc(doc(db,'companies',company,'members','owner'),{accessKind:'internal',updatedAt:serverTimestamp()}));
+ await assertFails(updateDoc(doc(db,'companies',company),{companyKind:'internal',updatedAt:serverTimestamp()}));
+ await assertFails(getDoc(doc(db,'products','partner-finance')));
+ await env.withSecurityRulesDisabled(async c=>{
+  const admin=c.firestore();
+  assert.equal((await getDoc(doc(admin,'users','owner'))).data().accessKind,'partner');
+  assert.equal((await getDoc(doc(admin,'companies',company))).data().companyKind,'partner');
+ });
+});
