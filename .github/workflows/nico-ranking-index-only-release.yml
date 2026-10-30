@@ -66,6 +66,24 @@ jobs:
             }
           })().catch(e=>{console.error(e.message);process.exitCode=1});
           NODE
+      - name: Verify partner workspace HTML is published before changing existing main page
+        shell: bash
+        run: |
+          set -euo pipefail
+          available=false
+          for attempt in $(seq 1 40); do
+            status=$(curl --silent --location --output "$RUNNER_TEMP/partner-workspace-page.html" --write-out '%{http_code}' --max-time 20 https://nico-factory.web.app/partner-workspace.html || true)
+            if [ "$status" = 200 ] && grep -Fq 'submitPartnerWorkspaceCounts' "$RUNNER_TEMP/partner-workspace-page.html"; then
+              available=true
+              break
+            fi
+            sleep 10
+          done
+          if [ "$available" != true ]; then
+            echo 'Partner workspace is not published. Keep existing index unchanged.'
+            exit 1
+          fi
+          echo 'Partner workspace confirmed before updating main app'
       - name: Prepare protected credentials for Hosting REST API only
         env:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
@@ -79,9 +97,23 @@ jobs:
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-ranking-identity.json" >> "$GITHUB_ENV"
       - name: Install only auth dependencies (no legacy Firebase builds)
         run: npm install --prefix functions --ignore-scripts --package-lock=false
+      - name: Determine whether reviewed existing index has already been published
+        id: index_live
+        shell: bash
+        run: |
+          set -euo pipefail
+          code=$(curl --silent --location --output "$RUNNER_TEMP/current-nico-index.html" --write-out '%{http_code}' --max-time 25 https://nico-factory.web.app/)
+          if [ "$code" = 200 ] && grep -Fq 'partnerInviteInline' "$RUNNER_TEMP/current-nico-index.html" && grep -Fq 'mergedPartnerRankingDay' "$RUNNER_TEMP/current-nico-index.html"; then
+            echo 'already_live=true' >> "$GITHUB_OUTPUT"
+            echo 'Main ranking/invite HTML already published: skip a second release'
+          else
+            echo 'already_live=false' >> "$GITHUB_OUTPUT"
+          fi
       - name: Read-only current production Hosting manifest
+        if: ${{ steps.index_live.outputs.already_live != 'true' }}
         run: node tools/hosting/surgical-existing-index.mjs --dry-run
       - name: Release ONLY index.html with exact preservation of every other live file
+        if: ${{ steps.index_live.outputs.already_live != 'true' }}
         run: node tools/hosting/surgical-existing-index.mjs --release
       - name: Verify original invite, independent counts and partner workspace still live
         shell: bash
