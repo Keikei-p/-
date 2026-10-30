@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
  * Public readiness probe. Only GET/unauthenticated HEAD/POST denied tests.
+ * This rerun verifies deployed Hosting version 2207a4addf94700b.
  * Never obtains credentials, sends real user data, signs in, writes Firestore,
  * changes Hosting/Cloudflare, or attempts a production release.
  */
