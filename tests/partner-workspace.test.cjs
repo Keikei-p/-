@@ -2,7 +2,9 @@
 const test=require("node:test");
 const assert=require("node:assert/strict");
 const {makeWorkspace,KEYS}=require("../functions-partner-workspace/service.cjs");
-const clone=x=>x===undefined?x:JSON.parse(JSON.stringify(x));
+const clone=x=>x==null?x:Array.isArray(x)?x.map(clone):
+ typeof x==="object"?(typeof x.toMillis==="function"?{toMillis:x.toMillis}:
+ Object.fromEntries(Object.entries(x).map(([key,value])=>[key,clone(value)]))):x;
 const NOW=Date.parse("2026-10-31T02:00:00+09:00");
 class Ref {
  constructor(db,path){this.db=db;this.path=path;this.id=path.split("/").at(-1);}
