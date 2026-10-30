@@ -30,7 +30,7 @@ const verifiedAccess=(user,member)=>{
   if(u==="internal"&&kind!=null&&
      !["internal","direct","managed","member"].includes(kind))deny();
   if(u==="partner"&&kind!=null&&
-     !["partner","cooperator","internal","member"].includes(kind))deny();
+     !["partner","cooperator","internal","member","managed"].includes(kind))deny();
  }
  return u;
 };
@@ -96,8 +96,7 @@ export function createTrustedMembershipLoader({readDocument,loadAuthUser}={}){
       relation.hubCompanyId!==company.hubCompanyId||
       relation.countSharingApproved!==true||
       relation.catalogAccessApproved!==true||
-      hub.companyKind!=="internal"||
-      hub.active!==true)deny();
+      (hub.companyKind??"internal")!=="internal")deny();
   }
   // Never return raw Firestore documents, money or product catalogs.
   return {
