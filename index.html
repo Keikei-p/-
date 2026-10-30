@@ -6745,11 +6745,15 @@ import {
   reload
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 
+import {classifyLegacySalesEntrypoint}
+ from "./legacy-finance-entry-guard.mjs";
+
 import {
   getFirestore,
   doc,
   setDoc,
   getDoc,
+  getDocFromServer,
   updateDoc,
   collection,
   getDocs,
@@ -11514,6 +11518,48 @@ onAuthStateChanged(
    ユーザー情報読み込み
 ===================================================== */
 
+async function checkLegacyEntryAgainstServer(user) {
+  // A cached profile is NOT proof of internal financial entitlement.
+  // Check the authoritative user, company and member files every login.
+  if (!user?.emailVerified || !user?.uid)
+    return {mode:"blocked",reason:"unverified"};
+  const freshUser = await getDocFromServer(doc(db,"users",user.uid));
+  if (!freshUser.exists())
+    return {mode:"blocked",reason:"unverified"};
+  const profile = freshUser.data();
+  if (typeof profile?.companyId!=="string"||
+      !/^[A-Za-z0-9_:-]{1,128}$/.test(profile.companyId))
+    return {mode:"blocked",reason:"membership_mismatch"};
+  const [freshMember,freshCompany]=await Promise.all([
+    getDocFromServer(doc(db,"companies",profile.companyId,"members",user.uid)),
+    getDocFromServer(doc(db,"companies",profile.companyId))
+  ]);
+  if (!freshMember.exists() || !freshCompany.exists())
+    return {mode:"blocked",reason:"membership_mismatch"};
+  // Ignore a profile that raced with a sign-out or a different login.
+  if (auth.currentUser?.uid!==user.uid)
+    return {mode:"blocked",reason:"session_changed"};
+  const result=classifyLegacySalesEntrypoint({
+    uid:user.uid,user:profile,member:freshMember.data(),
+    company:freshCompany.data(),authEmailVerified:user.emailVerified
+  });
+  return {...result,profile};
+}
+
+function showLegacyFinanceEntryBlocked(mode) {
+  stopRealtimeListeners();
+  appScreen.style.display="none";
+  companySetupScreen.style.display="none";
+  verificationScreen.style.display="none";
+  authScreen.style.display="block";
+  databaseStatus.textContent="安全確認が必要";
+  loginStatus.textContent="件数専用画面へ移行待ち";
+  const message=mode==="partner"
+    ? "協力店の方は売上・単価を含む旧画面を利用できません。件数専用画面の本番切替まで、オーナーへご確認ください。"
+    : "会社・所属・権限をサーバーで安全に確認できません。オーナーへご確認ください。";
+  showError(message);
+}
+
 async function loadUserData(
   user
 ) {
@@ -11603,6 +11649,16 @@ async function loadUserData(
 
     }
 
+
+    // CRITICAL: prevent an explicitly designated partner from entering
+    // any legacy product price / raw record subscription or write path.
+    // Rules still MUST deny partner reads server-side before production use.
+    const checkedEntry=await checkLegacyEntryAgainstServer(user);
+    if (checkedEntry.mode!=="internal") {
+      showLegacyFinanceEntryBlocked(checkedEntry.mode);
+      return false;
+    }
+    currentUserData={...checkedEntry.profile,uid:user.uid};
 
     await loadCompanyData();
 
