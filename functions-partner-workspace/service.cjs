@@ -7,6 +7,8 @@ const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const NAME=/^[\p{L}\p{N} 　・ー（）()_.-]{1,60}$/u;
 const DATE=/^\d{4}-\d{2}-\d{2}$/;
 const money=/(?:単価|売上|収益|利益|報酬|[¥￥$€]|\d[\d,]*円)/;
+const validCompanyName=x=>typeof x==="string"&&x.trim().length>0&&
+ x.trim().length<=80&&!money.test(x);
 const clean=x=>typeof x==="string"?x.trim():"";
 function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>false,now=()=>Date.now()}={}){
  if(!db||!getAuth||!FieldValue||!Timestamp||!HttpsError)throw Error("missing_partner_workspace_dependency");
@@ -57,7 +59,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   ]);
   const c=cs.data()||{},m=ms.data()||{};
   if(!cs.exists||!ms.exists||c.active!==true||m.active!==true||
-     m.uid!==uid||m.companyId!==cid||m.companyRole!==u.companyRole||m.role!==u.role)fail();
+     m.uid!==uid||m.companyId!==cid||m.companyRole!==u.companyRole)fail();
   if(c.companyKind==="partner"){
    if(!ID.test(c.hubCompanyId||"")||c.hubCompanyId===cid||
       u.accessKind!=="partner"||m.accessKind!=="partner"||
@@ -125,14 +127,15 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     await checkTeam(tx,fresh,d.teamId);
     const ref=staffRef(fresh.cid,d.staffId),sn=await tx.get(ref);
     if(!sn.exists||sn.data()?.active!==true||sn.data()?.companyId!==s.cid)fail();
-    tx.update(ref,{teamId:d.teamId,updatedAt:FieldValue.serverTimestamp()});
     if(sn.data().kind==="account"&&ID.test(sn.data().uid||"")){
       const targetUid=sn.data().uid;
       const ur=db.collection("users").doc(targetUid),mr=collection(s.cid,"members").doc(targetUid);
+      // Firestore requires all transaction reads BEFORE the first write.
       const [us,ms]=await Promise.all([tx.get(ur),tx.get(mr)]);
       if(!us.exists||!ms.exists||us.data()?.companyId!==s.cid||ms.data()?.companyId!==s.cid)fail();
       tx.update(ur,{teamId:d.teamId});tx.update(mr,{teamId:d.teamId});
     }
+    tx.update(ref,{teamId:d.teamId,updatedAt:FieldValue.serverTimestamp()});
    });
    return {moved:true};
   }
@@ -196,7 +199,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    for(const sn of qs.docs){
     const x=sn.data()||{};
     if(x.hubCompanyId!==s.cid||x.partnerCompanyId!==sn.id||
-       !ID.test(sn.id)||!validName(x.partnerName)||!Number.isSafeInteger(x.totalCount)||
+       !ID.test(sn.id)||!validCompanyName(x.partnerName)||!Number.isSafeInteger(x.totalCount)||
        x.totalCount<0)fail("data-loss");
     const {counts,total}=validateCounts(x.counts);
     if(total!==x.totalCount)fail("data-loss");
@@ -273,7 +276,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    const sum={source:"staff-entries-v1",hubCompanyId:s.hubId,partnerCompanyId:s.cid,
      partnerName:clean(s.companyName),date,counts:aggregate,totalCount:aggregateTotal,
      updatedAt:nowStamp};
-   if(!validName(sum.partnerName))fail();
+   if(!validCompanyName(sum.partnerName))fail();
    if(totalSnap.exists)tx.update(summary,sum);else tx.create(summary,{...sum,createdAt:nowStamp});
    const audit=collection(s.cid,"partnerWorkAudits").doc(date+"__"+staffId+"__v"+nextVersion);
    tx.create(audit,{...row,previousCounts:prior,createdAt:nowStamp});
