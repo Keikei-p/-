@@ -93,3 +93,20 @@ test("CLI accepts --dry-run and fails closed before credentials (regression for 
  const both=spawnSync(process.execPath,[path,"--release","--dry-run"],{encoding:"utf8",env});
  assert.match(both.stderr,/CONFLICTING_FLAGS/);
 });
+
+
+test("one-time recovery only accepts manually confirmed original run, never push or arbitrary retry",async()=>{
+ const fs=await import("node:fs");
+ const text=fs.readFileSync(new URL("../.github/workflows/nico-partner-approved-recovery-once.yml",import.meta.url),"utf8");
+ assert.match(text,/workflow_run:\s*\n\s+workflows:/);
+ assert.match(text,/workflow_run\.id == 41080213061/);
+ assert.match(text,/workflow_run\.head_sha == 'a135ee56375248b88ee6d02ecdac160a2de83b37'/);
+ assert.match(text,/workflow_run\.run_attempt == 2/);
+ assert.match(text,/workflow_run\.event == 'workflow_dispatch'/);
+ assert.match(text,/workflow_run\.conclusion == 'failure'/);
+ assert.match(text,/workflow_run\.actor\.login == 'Keikei-p'/);
+ assert.match(text,/workflow run nico-partner-invite-only-release\.yml/);
+ assert.match(text,/release_confirmation=CONFIRM_PARTNER_INVITE_ONLY/);
+ assert.doesNotMatch(text,/^\s+push:/m);
+ assert.doesNotMatch(text,/firebase deploy|firebase firestore|hosting deploy/);
+});
