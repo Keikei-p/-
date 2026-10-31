@@ -1,0 +1,119 @@
+name: 'NICO production: surgical Firestore Rules finance fix (owner-confirmed only)'
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_id:
+        description: 'Type sales-management-cc116'
+        required: true
+        type: string
+      production_confirmation:
+        description: 'Type OWNER_LOGIN_AND_REVENUE_VERIFIED to confirm current owner login, internal revenue/prices and backups'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firebase-rules-production
+  cancel-in-progress: false
+
+jobs:
+  production-rules-only:
+    if: ${{ github.ref == 'refs/heads/main' && inputs.project_id == 'sales-management-cc116' && inputs.production_confirmation == 'OWNER_LOGIN_AND_REVENUE_VERIFIED' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 34
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      NICO_PARTNER_AUDIT_MODE: READ_ONLY
+      EXPECTED_OLD_RULES_SHA256: 9d186b9ff763e010373e5c239ec80f53bac168b61ddb2877b38338c73ba43a91
+      EXPECTED_PATCH_RULES_SHA256: 5aa0b4ca03a50123c68d5ad4eb86ff0e8a037ef294c61ca76d3b766bf8ac4514
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Refuse any unexpected project, source, or requested operation
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check tools/production/preview-live-finance-rules.mjs
+          node --check tools/production/verify-live-finance-rules.mjs
+          node - <<'NODE'
+          const f=require('node:fs');
+          if(JSON.parse(f.readFileSync('.firebaserc','utf8')).projects.default!=='sales-management-cc116')throw Error('wrong_project');
+          const c=JSON.parse(f.readFileSync('firebase.json','utf8'));
+          if(c.firestore?.rules!=='firestore.rules'||Object.keys(c).join(',')!=='firestore')throw Error('broad_firebase_target');
+          NODE
+          curl --fail --silent --show-error --location --max-time 30 --output /dev/null https://nico-factory.web.app/
+          curl --fail --silent --show-error --location --max-time 30 --output /dev/null https://nico-factory.web.app/partner-workspace.html
+      - name: Load existing owner-controlled Firebase release identity
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-rules-release-identity.json"
+          chmod 600 "$RUNNER_TEMP/nico-rules-release-identity.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-rules-release-identity.json" >> "$GITHUB_ENV"
+      - name: Install isolated tooling (no data mutation)
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+          npm install --prefix tests --ignore-scripts --no-audit --no-fund
+          npm install --global firebase-tools@15.34.1 --no-audit --no-fund
+      - name: Read current production Rules and create minimal candidate ONLY in runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/verify-live-finance-rules.mjs "$EXPECTED_OLD_RULES_SHA256"
+          node tools/production/preview-live-finance-rules.mjs
+          node - <<'NODE'
+          const fs=require('node:fs'),crypto=require('node:crypto');
+          const hash=s=>crypto.createHash('sha256').update(s.replace(/\r\n/g,'\n').trim()).digest('hex');
+          const old=fs.readFileSync(process.env.RUNNER_TEMP+'/nico-original-live-firestore.rules','utf8');
+          const next=fs.readFileSync(process.env.RUNNER_TEMP+'/nico-proposed-live-firestore.rules','utf8');
+          if(hash(old)!==process.env.EXPECTED_OLD_RULES_SHA256||
+             hash(next)!==process.env.EXPECTED_PATCH_RULES_SHA256||
+             hash(fs.readFileSync('firestore.rules','utf8'))!==process.env.EXPECTED_PATCH_RULES_SHA256)
+            throw Error('STOP_UNREVIEWED_RULES_BYTES');
+          console.log('PASS exact original and candidate byte hashes, no data changes');
+          NODE
+      - name: Retain exact live rollback source privately
+        uses: actions/upload-artifact@v4
+        with:
+          name: nico-production-rules-before-surgical-release
+          path: ${{ runner.temp }}/nico-original-live-firestore.rules
+          retention-days: 7
+          if-no-files-found: error
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '21'}
+      - name: Run FULL 44 actual-live owner, partner, data/history and concurrency permission tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase emulators:exec --project demo-sales-support --only firestore "node --test tests/rules.test.cjs"
+      - name: Refuse race with another Rules deploy
+        run: node tools/production/verify-live-finance-rules.mjs "$EXPECTED_OLD_RULES_SHA256"
+      - name: Deploy Firestore Rules ONLY, then verify; auto-restore source on failure
+        shell: bash
+        run: |
+          set -euo pipefail
+          rollback() {
+            echo 'WARNING: Rules release did not verify; trying verified original rollback'
+            cp "$RUNNER_TEMP/nico-original-live-firestore.rules" firestore.rules
+            firebase deploy --only firestore:rules --project "$FIREBASE_PROJECT_ID" --non-interactive || true
+            node tools/production/verify-live-finance-rules.mjs "$EXPECTED_OLD_RULES_SHA256" || true
+            echo 'STOP: review live Rules and owner rights immediately'
+          }
+          trap rollback ERR
+          firebase deploy --only firestore:rules --project "$FIREBASE_PROJECT_ID" --non-interactive
+          node tools/production/verify-live-finance-rules.mjs "$EXPECTED_PATCH_RULES_SHA256"
+          trap - ERR
+          echo 'PRODUCTION_RULES_ONLY_RELEASE_VERIFIED=true'
+          echo 'Production data, Hosting, Functions, Auth and sales records were NOT migrated or deleted.'
