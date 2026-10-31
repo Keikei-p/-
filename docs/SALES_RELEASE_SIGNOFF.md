@@ -590,3 +590,8 @@ Rulesの本番デプロイ: 未実施
 **本番安全ゲート**: 最新の全回帰・権限制御テストとSales protected change gate合格が必要。既存の`nico-ranking-index-only-release.yml`を本番Main/Owner/指定コミット一度限りで再実行し、旧Hosting全ファイルパス・ハッシュ・元設定の維持、indexだけ変更、協力店招待と件数/スタッフ各ページの存続、実際の公式URLで選択肢とボタンIDが表示されることを検証する。失敗時は全面公開とは報告しない。
 
 **未実施**: 実アカウントでの招待発行から協力店承諾までの操作・協力店Ownerを含む旧Firestore金融原票の完全遮断の本番検証（別PR）。Artifact Registryの整理IAMも別問題として未完了。管理者本人の手書き署名・本番データ復元検証を代行したとは扱わない。
+
+
+### GitHub管理者によるUI/公開経路レビュー
+- PR #178 の差分は旧 `index.html` の招待先セレクタと既存の協力店Callable UI、単一index公開ワークフロー・専用テスト・本記録のみであることを確認。Firebase Function、Rules、社員データ、売上等に書き込む新処理はない。
+- 認証済みリポジトリ管理者 `Keikei-p` 接続で `sales-production-reviewed` ラベルを付けた。初回の保護ゲート実行はラベル適用前のGitHub event snapshotを参照したため再実行でもFAIL。そこで本レビュー追記commitから最新eventの保護ゲートを再検査する。これは独立した本番オーナー実アカウント操作試験・本人の手書き署名ではない。
