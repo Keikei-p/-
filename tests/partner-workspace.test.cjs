@@ -145,3 +145,41 @@ test("security invariants: only isolated partner collections; no destructive dat
  assert.match(code,/canViewRevenue:false,canViewUnitPrice:false/);
  assert.match(code,/partnerWorkAudits/);
 });
+
+test("partner team ranking reads saved original team at registration; staff move never rewrites previous results",async()=>{
+ const {db,api,req,zero}=setup();
+ const firstTeam=(await api.manage(req("p",{action:"addTeam",name:"旧1班"}))).teamId;
+ const secondTeam=(await api.manage(req("p",{action:"addTeam",name:"新2班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"担当A",teamId:firstTeam}))).staffId;
+ await api.submit(req("p",{date:"2026-10-30",staffId:staff,counts:{...zero(),NURO:4},expectedVersion:0}));
+ const oldKey="companies/partner/partnerWorkEntries/2026-10-30__"+staff;
+ const before=clone(db.store.get(oldKey));
+ assert.equal(before.teamIdSnapshot,firstTeam);
+ await api.manage(req("p",{action:"moveStaff",staffId:staff,teamId:secondTeam}));
+ const old=await api.view(req("p",{date:"2026-10-30"}));
+ assert.equal(old.records[0].totalCount,4);
+ assert.equal(old.records[0].teamIdSnapshot,firstTeam,"old record remains with historical team");
+ assert.equal(old.staff[0].teamId,secondTeam,"current placement may change without rewriting history");
+ await api.submit(req("p",{date:"2026-10-31",staffId:staff,counts:{...zero(),YMMNP:2},expectedVersion:0}));
+ const latest=await api.view(req("p",{date:"2026-10-31"}));
+ assert.equal(latest.records[0].teamIdSnapshot,secondTeam);
+ assert.equal(latest.records[0].totalCount,2);
+ assert.deepEqual(db.store.get(oldKey),before,"historical counts and at-time team never edited");
+ assert.equal(JSON.stringify(old).includes("totalRevenue"),false);
+ assert.equal(JSON.stringify(old).includes("revenuePerUnit"),false);
+ assert.equal(JSON.stringify(latest).includes("unitPrice"),false);
+});
+test("legacy partner entries missing a historical team snapshot are unverified, never assigned to current team",async()=>{
+ const {db,api,req,zero}=setup();
+ const team=(await api.manage(req("p",{action:"addTeam",name:"第1班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"担当B",teamId:team}))).staffId;
+ await api.submit(req("p",{date:"2026-10-31",staffId:staff,counts:{...zero(),NURO:1},expectedVersion:0}));
+ const ref="companies/partner/partnerWorkEntries/2026-10-31__"+staff;
+ const saved=clone(db.store.get(ref));
+ delete saved.teamIdSnapshot;
+ db.seed(ref,saved);
+ const result=await api.view(req("p",{date:"2026-10-31"}));
+ assert.equal(result.records[0].teamIdSnapshot,null);
+ assert.equal(result.records[0].totalCount,1);
+ assert.deepEqual(db.store.get(ref),saved,"no repair or data writes during read");
+});

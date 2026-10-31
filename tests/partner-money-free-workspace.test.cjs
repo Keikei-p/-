@@ -34,7 +34,8 @@ test("staff count API never returns monetary fields, accesses money originals or
  assert.doesNotMatch(service,/\.collection\(["'](?:products|records|recordCorrections|revenueGoals)["']\)/);
  assert.doesNotMatch(service,/\b(revenuePerUnit|totalRevenue|unitPrice|pricingOptions|targetRevenue)\s*:/);
  assert.match(service,/partners\.push\(\{partnerCompanyId:sn\.id,name:x\.partnerName,totalCount:total,counts\}\)/);
- assert.match(service,/rows\.push\(\{staffId:x\.staffId,counts,totalCount:total,version:x\.version\}\)/);
+ assert.match(service,/rows\.push\(\{staffId:x\.staffId,counts,totalCount:total,version:x\.version,\s*teamIdSnapshot\}\)/);
+ assert.match(service,/const teamIdSnapshot=ID\.test\(x\.teamIdSnapshot\|\|""\)\?x\.teamIdSnapshot:null/);
  assert.match(service,/if\(totalSnap\.exists&&existing\.source!=="staff-entries-v1"\)fail/);
  assert.match(service,/existing\.totalCount!==Object\.values\(previous\)/);
 });

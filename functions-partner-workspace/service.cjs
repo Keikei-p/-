@@ -229,7 +229,12 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    if(!allowed.has(x.staffId))continue;
    const {counts,total}=validateCounts(x.counts);
    if(total!==x.totalCount)fail("data-loss");
-   rows.push({staffId:x.staffId,counts,totalCount:total,version:x.version});
+   // Return only saved, immutable attribution metadata from the original entry.
+   // Never infer a historical team from the member's current teamId.
+   // Old entries without a snapshot stay unverified in the dashboard.
+   const teamIdSnapshot=ID.test(x.teamIdSnapshot||"")?x.teamIdSnapshot:null;
+   rows.push({staffId:x.staffId,counts,totalCount:total,version:x.version,
+     teamIdSnapshot});
   }
   const visibleTeams=teams.docs.map(sn=>({id:sn.id,name:clean(sn.data().name),active:sn.data().active===true}))
    .filter(team=>s.role==="owner"||team.id===s.teamId);
