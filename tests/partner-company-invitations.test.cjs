@@ -309,3 +309,41 @@ test("new activation module never queries money-bearing collections or deletes",
  assert.doesNotMatch(src,/\.collection\s*\(\s*["'](?:records|products|recordCorrections|revenueGoals)["']\s*\)/);
  assert.doesNotMatch(src,/\.set\s*\(.*\{merge\s*:\s*false/);
 });
+test("fully reviewed activation of existing email keeps original profile, historic sales and unit prices",async()=>{
+ const x=setup({recipientCompany:"existing"});
+ x.db.seed("companies/existing",{name:"旧所属",companyKind:"internal",active:true});
+ x.db.seed("companies/existing/members/recipient",{uid:"recipient",
+  companyId:"existing",companyRole:"member",role:"member",accessKind:"internal",active:true});
+ x.db.seed("records/old",{companyId:"existing",uid:"recipient",
+  totalRevenue:120000,results:{old:{count:8,revenuePerUnit:15000}}});
+ const {token}=await x.handlers.create(x.request("owner",createInput));
+ const p=await x.handlers.accept(x.request("recipient",{token}));
+ const baseline=new Map(x.db.data);
+ stampApproval(x.db,p.partnerCompanyId);
+ const result=await activation(x.db).activate(x.request("owner",{
+  partnerCompanyId:p.partnerCompanyId,teamName:"協力店テスト班"
+ }));
+ assert.equal(result.countReportingEnabled,true);
+ assert.equal(x.db.data.get("partnerRelations/"+p.partnerCompanyId).active,true);
+ assert.equal(x.db.data.get("partnerRelations/"+p.partnerCompanyId).countSharingApproved,true);
+ for(const k of ["users/recipient","companies/existing/members/recipient","records/old",
+   "companies/"+p.partnerCompanyId+"/members/recipient"])
+  assert.deepEqual(x.db.data.get(k),baseline.get(k),k+" changed during activation");
+});
+test("same registered hub Owner may activate an isolated self-test partner tenant only after approval",async()=>{
+ const x=setup();
+ const {token}=await x.handlers.create(x.request("owner",{
+  email:"owner@example.com",companyName:"試験用協力店"
+ }));
+ const p=await x.handlers.accept(x.request("owner",{token}));
+ const original=clone(x.db.data.get("users/owner"));
+ const teamBefore=clone(x.db.data.get("companies/hub/members/owner"));
+ stampApproval(x.db,p.partnerCompanyId);
+ const out=await activation(x.db).activate(x.request("owner",{
+  partnerCompanyId:p.partnerCompanyId,teamName:"試験班"
+ }));
+ assert.equal(out.countReportingEnabled,true);
+ assert.deepEqual(x.db.data.get("users/owner"),original);
+ assert.deepEqual(x.db.data.get("companies/hub/members/owner"),teamBefore);
+ assert.equal(x.db.data.get("companies/"+p.partnerCompanyId+"/members/owner").teamId,null);
+});
