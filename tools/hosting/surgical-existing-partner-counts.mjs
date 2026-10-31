@@ -47,8 +47,8 @@ export function validateManifest(oldFiles, additions, expectedCount) {
 
 export async function uploadSingleExistingCounts({assetBytes,request,release=false,log=console.log}){
  if(!Buffer.isBuffer(assetBytes)||assetBytes.length<500||
-   !assetBytes.toString("utf8").includes("getPartnerCounts")||
-   !assetBytes.toString("utf8").includes("submitPartnerCountsCounts")||
+   !assetBytes.toString("utf8").includes("getPartnerQuickCounts")||
+   !assetBytes.toString("utf8").includes("submitPartnerQuickCounts")||
    !assetBytes.toString("utf8").includes("NICO FACTORY"))
    throw Error("INVALID_COUNTS_ASSET");
  const gz=gzipSync(assetBytes,{mtime:0});
@@ -244,8 +244,8 @@ async function run(){
  if(output.released){
   const page=await fetch("https://"+SITE+".web.app"+ASSET,{redirect:"manual",cache:"no-store"});
   const published=await page.text();
-  if(!page.ok||!published.includes("getPartnerCounts")||
-     !published.includes("submitPartnerCountsCounts"))
+  if(!page.ok||!published.includes("getPartnerQuickCounts")||
+     !published.includes("submitPartnerQuickCounts"))
     throw Error("POST_DEPLOY_PARTNER_COUNTS_UNVERIFIED");
   console.log("POST_DEPLOY_HTTP_OK "+ASSET);
  }
