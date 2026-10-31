@@ -1,0 +1,37 @@
+name: NICO Owner report omission log - no write
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'tests/owner-missing-report-tab.test.cjs'
+      - '.github/workflows/nico-owner-missing-report-tab.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'tests/owner-missing-report-tab.test.cjs'
+      - '.github/workflows/nico-owner-missing-report-tab.yml'
+permissions:
+  contents: read
+jobs:
+  verify-log-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Missing report log date, 0-count submitted, partner scope and fail-closed
+        run: |
+          set -euo pipefail
+          node --check tests/owner-missing-report-tab.test.cjs
+          node --test tests/owner-missing-report-tab.test.cjs
+          node --test tests/internal-owner-finance-visibility.test.cjs
+          node --test tests/partner-money-free-workspace.test.cjs
+      - name: No production credentials or Firebase deployment
+        run: |
+          test -z "${GOOGLE_APPLICATION_CREDENTIALS:-}"
+          test -z "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          echo 'READ-ONLY_CODE_TEST_ONLY_NO_FIREBASE_DEPLOY'

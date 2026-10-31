@@ -1,0 +1,45 @@
+name: NICO missing report Owner tab safety (no deployment)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - index.html
+      - tests/sales-missing-report-log.test.mjs
+      - .github/workflows/nico-missing-report-log.yml
+  push:
+    branches: [main]
+    paths:
+      - index.html
+      - tests/sales-missing-report-log.test.mjs
+      - .github/workflows/nico-missing-report-log.yml
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate missing-report log against the existing app and role isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/sales-missing-report-log.test.mjs
+          node --test tests/internal-owner-finance-visibility.test.cjs
+          node --test tests/partner-money-free-workspace.test.cjs
+          node --test tests/partner-existing-ranking.test.cjs
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const html=fs.readFileSync('index.html','utf8');
+          const code=html.match(/<script type="module">([\s\S]*?)<\/script>/)?.[1];
+          if(!code)throw Error('missing_application_module');
+          fs.writeFileSync('/tmp/nico-missing-safety-module.mjs',code);
+          NODE
+          node --check /tmp/nico-missing-safety-module.mjs
+      - name: No Firebase or Hosting deployment from this workflow
+        run: echo "READ_ONLY_TESTS_PASSING_DOES_NOT_RELEASE"

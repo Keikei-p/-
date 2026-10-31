@@ -4764,6 +4764,9 @@ body.product-reordering .product-list {
               <span class="quick-menu-icon">🔔</span>
               通知
             </button>
+            <button id="quickMissingButton" class="quick-menu-button" type="button" aria-pressed="false" style="display:none;">
+              <span class="quick-menu-icon">📋</span>報告漏れ
+            </button>
 
             <button id="managementProductButton" class="quick-menu-button" type="button" aria-pressed="false" style="display:none;">
               <span class="quick-menu-icon">📦</span>
@@ -5457,6 +5460,25 @@ body.product-reordering .product-list {
 
   </div>
 
+
+  <!-- =====================================================
+       報告漏れ：読み取り専用ログ
+  ===================================================== -->
+  <div id="missingReportsManagement" class="account-card quick-panel" style="display:none;">
+    <div class="quick-panel-header">
+      <div class="account-title">📋 報告漏れ</div>
+      <button id="closeMissingReportsButton" class="quick-panel-close" type="button">閉じる</button>
+    </div>
+    <p class="account-description">自社の班と協力店会社の未報告だけを日付別で表示。
+      「実績なし」の0件登録は報告済み扱い。稼働予定のない班は別途確認してください。</p>
+    <label for="missingReportsDate">確認日</label>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <input id="missingReportsDate" type="date" style="min-width:175px;flex:1">
+      <button id="refreshMissingReportsButton" class="team-action-button" type="button">再確認</button>
+    </div>
+    <p id="missingReportsStatus" role="status" aria-live="polite"></p>
+    <div id="missingReportsList" style="display:grid;gap:10px"></div>
+  </div>
 
   <!-- =====================================================
        状態
@@ -7033,6 +7055,11 @@ const quickAccountButton =
 
 const quickNotifyButton =
   document.getElementById("quickNotifyButton");
+const quickMissingButton=document.getElementById("quickMissingButton");
+const missingReportsManagement=document.getElementById("missingReportsManagement");
+const missingReportsDate=document.getElementById("missingReportsDate");
+const missingReportsList=document.getElementById("missingReportsList");
+const missingReportsStatus=document.getElementById("missingReportsStatus");
 
 const notificationManagement =
   document.getElementById("notificationManagement");
@@ -8715,6 +8742,7 @@ const managementWorkspacePanels = [
   companyManagement,
   accountSettings,
   notificationManagement,
+  missingReportsManagement,
   teamManagement,
   productManagement,
   memberManagement
@@ -8787,6 +8815,7 @@ const quickMenuButtons = [
   quickOwnerButton,
   quickAccountButton,
   quickNotifyButton,
+  quickMissingButton,
   managementProductButton,
   managementTeamButton,
   managementMemberButton
@@ -8802,8 +8831,8 @@ function setManagementMenuOpen(
     String(open)
   );
 
-  managementMenuPanel.hidden =
-    !open;
+  managementMenuPanel.hidden=!open;
+  quickMissingButton.style.display=isCurrentCompanyOwner()?"":"none";
 
 }
 
@@ -9265,6 +9294,25 @@ closeNotificationManagementButton.onclick =
 
   };
 
+
+let missingReportRequestGeneration=0;
+quickMissingButton.onclick=()=>{
+  if(!isCurrentCompanyOwner())return;
+  hideManagementCards();
+  closeQuickPanels();
+  setManagementMenuOpen(false);
+  showManagementWorkspace(missingReportsManagement);
+  quickMissingButton.setAttribute("aria-pressed","true");
+  missingReportsDate.max=getTodayString();
+  if(!missingReportsDate.value)missingReportsDate.value=getTodayString();
+  void renderMissingReportLog();
+};
+document.getElementById("closeMissingReportsButton").onclick=()=>{
+  missingReportRequestGeneration++;
+  closeQuickPanels();
+};
+document.getElementById("refreshMissingReportsButton").onclick=()=>void renderMissingReportLog();
+missingReportsDate.onchange=()=>void renderMissingReportLog();
 
 /* =====================================================
    折りたたみ
@@ -23317,6 +23365,71 @@ function getUnreportedTeamSummary(
         )
     );
 
+}
+
+// One-day, read-only log. The Owner's existing authorized Firestore query
+// is independent of the isolated count-only partner callable.
+async function renderMissingReportLog(){
+  const generation=++missingReportRequestGeneration;
+  const date=missingReportsDate.value,today=getTodayString();
+  const uid=currentUser?.uid,companyId=currentUserData?.companyId;
+  missingReportsList.replaceChildren();
+  if(!isCurrentCompanyOwner()||!uid||!companyId){
+    missingReportsStatus.textContent="自社Ownerのみ確認できます。";return;
+  }
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||date>today||
+     !Number.isFinite(Date.parse(date+"T00:00:00Z"))||
+     new Date(date+"T00:00:00Z").toISOString().slice(0,10)!==date){
+    missingReportsStatus.textContent="正しい過去の日付を選んでください。";return;
+  }
+  const line=(name,description)=>{
+    const card=document.createElement("div");
+    card.style.cssText="padding:12px;border:1px solid var(--border);border-radius:10px";
+    const heading=document.createElement("strong");heading.textContent=date+"　"+name;
+    const detail=document.createElement("div");detail.style.cssText="margin-top:5px;color:var(--sub);font-size:12px";
+    detail.textContent=description;card.append(heading,detail);missingReportsList.append(card);
+  };
+  missingReportsStatus.textContent="報告漏れを確認しています…";
+  const internalRead=async()=>{
+    const snapshot=await getDocsFromServer(query(recordsCollectionQuery(),where("date","==",date)));
+    const rows=[];let invalid=false;
+    snapshot.forEach(d=>{
+      const row=d.data();
+      if(row.companyId!==companyId||row.date!==date)invalid=true;
+      else rows.push({uid:row.uid,date:row.date,teamId:row.teamId,reportStatus:row.reportStatus,totalCount:row.totalCount});
+    });
+    if(invalid)throw Error("unexpected_company_records");
+    return getUnreportedTeamSummary(date,rows);
+  };
+  const [internal,partner]=await Promise.allSettled([internalRead(),readPartnerWorkDay({date})]);
+  if(generation!==missingReportRequestGeneration||
+     currentUser?.uid!==uid||currentUserData?.companyId!==companyId||
+     missingReportsManagement.style.display==="none")return;
+  let count=0,failed=0;
+  if(internal.status==="fulfilled"){
+    for(const row of internal.value){
+      line("自社："+row.teamName+" 未報告",
+        row.reported+"/"+row.expected+"名 報告済み"+
+        (row.missingNames?.length?"｜未報告："+row.missingNames.join("、"):""));
+      count++;
+    }
+  }else{failed++;line("自社：照合できません","読み込み失敗。未報告ゼロとは判断しないでください。");}
+  if(partner.status==="fulfilled"){
+    const data=partner.value?.data||{};
+    if(data.role!=="hub"||!Array.isArray(data.registeredCompanies)||!Array.isArray(data.partners)){
+      failed++;line("協力店：照合できません","会社一覧が未取得。未報告ゼロとは判断しないでください。");
+    }else{
+      const submitted=new Set(data.partners.map(x=>x.partnerCompanyId));
+      for(const company of data.registeredCompanies){
+        if(company.active!==true||submitted.has(company.partnerCompanyId))continue;
+        line("協力店："+company.name+" 未報告","協力店会社としての日次件数報告なし。稼働予定は未確認。");
+        count++;
+      }
+    }
+  }else{failed++;line("協力店：照合できません","読み込み失敗。未報告ゼロとは判断しないでください。");}
+  missingReportsStatus.textContent=failed?
+    "未報告 "+count+"件｜未確認 "+failed+"項目":
+    count?"未報告 "+count+"件":"確認できた未報告はありません。";
 }
 
 async function renderNotificationPreview() {
