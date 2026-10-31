@@ -113,9 +113,12 @@ function makeQuickCounts({db,getAuth,FieldValue,HttpsError,enabled,now=()=>Date.
    ]);
    const relation=relationSnap.data()||{},company=companySnap.data()||{},
      grant=grantSnap.data()||{};
+   // Unknown and other-hub company IDs must not expose whether they exist.
    if(!relationSnap.exists||!companySnap.exists||
-      relation.partnerCompanyId!==partnerId||relation.hubCompanyId!==actor.hubId||
-      company.companyKind!=="partner"||company.hubCompanyId!==actor.hubId||
+      relation.hubCompanyId!==actor.hubId||company.hubCompanyId!==actor.hubId)
+      fail(HttpsError);
+   if(relation.partnerCompanyId!==partnerId||
+      company.companyKind!=="partner"||
       company.active!==true||!ID.test(company.ownerUid||"")||
       !clean(company.name)||BLOCKED_LABEL.test(company.name)||
       relation.active!==false||relation.countSharingApproved!==false||
