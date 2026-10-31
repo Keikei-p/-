@@ -14,8 +14,8 @@ function source(name){
  assert(end>start);
  return page.slice(start,end+2);
 }
-const ctx=vm.createContext({Date,Number,Object,Map,Set});
-vm.runInContext(["periodDatesForCounts","summarizeCountOnlyResponses","groupedProductCounts"].map(source).join("\n"),ctx);
+const ctx=vm.createContext({Date,Number,Object,Map,Set,KEYS});
+vm.runInContext(["periodDatesForCounts","summarizeCountOnlyResponses","groupedProductCounts","companyPortalStats"].map(source).join("\n"),ctx);
 const counts=changes=>Object.fromEntries(KEYS.map(k=>[k,changes[k]||0]));
 const staff=[{id:"a",name:"佐藤",teamId:"t1"},{id:"b",name:"田中",teamId:"t2"}];
 const record=(id,changes,teamId)=>({staffId:id,counts:counts(changes),
@@ -124,4 +124,50 @@ test("goals are only browser-local visual settings and cannot write to Firebase"
  assert.match(page,/countPeriod!=="month"/);
  assert.match(page,/countExportRows=\{summary,days\}/);
  assert.doesNotMatch(page,/setDoc\(|updateDoc\(|addDoc\(|deleteDoc\(/);
+});
+
+test("partner company home displays per-company team/staff/record totals without money",()=>{
+ const person=[
+  {id:"a",name:"佐藤",teamId:"t1",active:true},
+  {id:"b",name:"田中",teamId:"t2",active:true},
+  {id:"inactive",name:"過去担当",teamId:"t1",active:false}
+ ];
+ const rows=[record("a",{NURO:2},"t1"),record("inactive",{SBMNP:3},"t1")];
+ const source={role:"owner",date:"2026-10-31",companyName:"協力店A",
+  categories:KEYS,teams:[{id:"t1",active:true},{id:"t2",active:true}],
+  staff:person,records:rows};
+ const original=JSON.stringify(source);
+ const v=ctx.companyPortalStats(source);
+ assert.equal(v.name,"協力店A");
+ assert.deepEqual([...v.stats].map(x=>x[1]),["5件","1/2人","2班","2人"]);
+ assert.equal(JSON.stringify(source),original);
+ assert.doesNotMatch(JSON.stringify(v),/totalRevenue|unitPrice|revenuePerUnit|pricingOptions|targetRevenue/i);
+ const leader=ctx.companyPortalStats({...source,role:"leader",staff:[person[0]],records:[rows[0]],teams:[source.teams[0]]});
+ assert.match(leader.scope,/所属班/);
+ assert.deepEqual([...leader.stats].map(x=>x[1]),["2件","1/1人","1班","1人"]);
+ assert.throws(()=>ctx.companyPortalStats({...source,records:[...rows,...rows]}),/invalid count record/);
+});
+test("hub company overview reports only submitted partner companies and exact category counts",()=>{
+ const source={role:"hub",date:"2026-10-31",categories:KEYS,
+  partners:[{partnerCompanyId:"a",name:"協力店A",counts:counts({NURO:2}),totalCount:2},
+            {partnerCompanyId:"b",name:"協力店B",counts:counts({YMMNP:3}),totalCount:3}]};
+ const v=ctx.companyPortalStats(source);
+ assert.deepEqual([...v.stats].map(x=>x[1]),["2社","5件"]);
+ assert.match(v.scope,/報告済み/);
+ assert.deepEqual([...ctx.companyPortalStats({...source,partners:[]}).stats].map(x=>x[1]),["0社","0件"]);
+ assert.throws(()=>ctx.companyPortalStats({...source,partners:[{...source.partners[0],totalCount:999}]}),/mismatch/);
+ assert.throws(()=>ctx.companyPortalStats({...source,partners:[{...source.partners[0],counts:{...counts({NURO:1}),NURO:-1}}]}),/invalid partner count/);
+});
+test("company names and detail are visible only after authentication and existing owner finance is untouched",()=>{
+ for(const id of ["workspaceTitle","companyOverview","companyHeading","companyScope",
+  "companyOverviewStats","hubCompanyDetail","hubCompanyProducts","hubCompanySelect"])
+  assert(page.includes('id="'+id+'"'),id);
+ assert.match(page,/renderCompanyOverview\(\)/);
+ assert.match(page,/renderHubCompanyDetail\(\)/);
+ assert.match(page,/\$\("companyOverview"\)\.hidden=true/);
+ assert.match(page,/if\(data\?\.role!=="hub"\)return/);
+ assert.match(page,/\$\("workspaceTitle"\)\.textContent="NICO FACTORY/);
+ assert.doesNotMatch(page,/firebase-firestore\.js|getFirestore\(|\brevenuePerUnit\b|\btotalRevenue\b|\bunitPrice\b|\bpricingOptions\b/);
+ assert.match(original,/function canCurrentUserViewRevenue\(\)/);
+ assert.match(original,/function canCurrentUserViewUnitPrice\(\)/);
 });

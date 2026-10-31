@@ -38,9 +38,18 @@ td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 .count-meter i{display:block;height:100%;background:#2a76bf;border-radius:10px}
 .count-rank{font-weight:750;color:#1d538d}.count-subnav{font-size:12px;color:#506782;margin:4px 0 8px}
 #countDashboardStatus{white-space:pre-wrap;min-height:22px}
+.company-panel{background:#fff;border:1px solid #e2e9f2;border-radius:14px;padding:13px;margin:13px 0}
+.company-panel h2{font-size:20px;margin:4px 0}
+.company-kicker{color:#53708d;font-weight:700;font-size:12px}
+.company-note{font-size:12px;color:#4d6681;margin:4px 0 12px}
+.company-stat{background:#f5f9fe;border:1px solid #dce6f3;border-radius:11px;padding:11px}
+.company-stat strong{display:block;font-size:21px;color:#164d89;font-variant-numeric:tabular-nums}
+.company-stat small{color:#516780}
+#companyOverviewStats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+#hubCompanyDetail{margin-top:13px}
 @media(max-width:420px){.count-menu{grid-template-columns:repeat(2,minmax(0,1fr))}.count-kpi strong{font-size:22px}}
 </style></head><body>
-<header><h1>NICO FACTORY｜協力店 実績管理</h1>
+<header><h1 id="workspaceTitle">NICO FACTORY｜協力店 実績管理</h1>
 <p>会社・班・メンバーごとの件数を管理。売上・単価は表示しません。</p></header>
 <main><div id="notice" class="notice" role="status" aria-live="polite">認証を確認しています。</div>
 <section id="loginBox"><h2>ログイン・新規登録</h2><form id="loginForm">
@@ -53,6 +62,11 @@ td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 <label for="joinName">表示名</label><input id="joinName" placeholder="例：田中 太郎" maxlength="60">
 <button id="join" type="button">この会社に参加する</button></section>
 <section id="appBox" hidden><div class="row"><strong id="who"></strong><button id="logout" class="secondary" type="button">ログアウト</button></div>
+<div id="companyOverview" class="company-panel" hidden>
+<div class="company-kicker" id="companyKicker">会社別実績</div>
+<h2 id="companyHeading"></h2>
+<p class="company-note" id="companyScope"></p>
+<div id="companyOverviewStats" aria-label="会社実績の概要"></div></div>
 <div class="row"><div><label for="date">実績日</label><input id="date" type="date"></div>
 <button id="refresh" type="button" class="secondary">最新情報を再取得</button></div>
 <div class="count-menu" aria-label="実績管理メニュー">
@@ -105,8 +119,13 @@ td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 <div id="moveStaffBox" hidden><h3>スタッフの所属班を変更（代表者のみ）</h3><p class="muted">過去の登録件数は変更しません。過去実績の班集計は、元の保存時点の所属情報が確認できない場合は未分類で扱います。</p>
 <div class="row"><select id="moveStaffSelect" aria-label="移動するスタッフ"></select><select id="moveTeamSelect" aria-label="新しい所属班"></select><button type="button" id="moveStaffAction">所属班を変更</button></div></div></section>
 <section id="listBox" hidden><h2>今日の実績一覧</h2><div id="recordsList" class="scroll"></div></section>
-<section id="hubBox" hidden><h2>協力店の件数報告（自社オーナー用）</h2>
-<div id="hubList" class="scroll"></div><p class="muted">新しいスタッフ別入力の集計です。旧暫定会社一括報告と合算せず、重複を防ぎます。</p></section>
+<section id="hubBox" hidden><h2>🤝 協力店会社別の実績</h2>
+<p class="muted">選択した日の報告済み協力店のみ表示します。未報告の会社を0件として扱いません。金額情報はありません。</p>
+<div id="hubList" class="scroll"></div>
+<div id="hubCompanyDetail" class="company-panel" hidden><h3>協力店ごとの商材実績</h3>
+<label for="hubCompanySelect">会社を選ぶ</label><select id="hubCompanySelect"></select>
+<div id="hubCompanyProducts" class="scroll"></div></div>
+<p class="muted">新しいスタッフ別入力の集計です。旧暫定会社一括報告と合算せず、重複を防ぎます。</p></section>
 </main>
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
@@ -392,6 +411,64 @@ $("countCsv").onclick=()=>{
  notice("件数のみのCSVを出力しました。売上・単価は含まれません。");
 };
 
+function companyPortalStats(response){
+ if(!response||response.categories?.join("|")!==KEYS.join("|"))throw Error("company schema");
+ if(response.role==="hub"){
+  if(!Array.isArray(response.partners))throw Error("company list");
+  let count=0;
+  for(const p of response.partners){
+   if(!p||!p.counts||Object.keys(p.counts).sort().join("|")!==[...KEYS].sort().join("|"))
+    throw Error("invalid partner report");
+   let n=0;
+   for(const key of KEYS){const k=p.counts[key];if(!Number.isSafeInteger(k)||k<0)throw Error("invalid partner count");n+=k}
+   if(n!==p.totalCount)throw Error("partner total mismatch");count+=n;
+  }
+  return {name:"協力店会社別の報告",scope:"自社オーナー専用｜選択日に報告済みの協力店のみ（未報告会社は含まれません）",
+   stats:[["報告済み会社",response.partners.length+"社"],["報告済み件数",count+"件"]]};
+ }
+ if(!Array.isArray(response.teams)||!Array.isArray(response.staff)||!Array.isArray(response.records))
+  throw Error("company staff schema");
+ const teams=response.teams.filter(t=>t.active),staff=response.staff.filter(p=>p.active);
+ const allIds=new Set(response.staff.map(p=>p.id)),activeIds=new Set(staff.map(p=>p.id));
+ if(allIds.size!==response.staff.length)throw Error("duplicate staff");
+ let count=0,registered=0;const visited=new Set();
+ for(const r of response.records){
+  if(!allIds.has(r.staffId)||visited.has(r.staffId)||!Number.isSafeInteger(r.totalCount)||r.totalCount<0)
+   throw Error("invalid count record");
+  visited.add(r.staffId);
+  if(activeIds.has(r.staffId))registered++;
+  count+=r.totalCount;
+ }
+ const roleLabel=response.role==="owner"?"会社オーナー":response.role==="leader"?"班リーダー":"メンバー";
+ const scope=response.role==="owner"?"自社の全班・全スタッフの件数を管理できます":
+   response.role==="leader"?"所属班の閲覧可能なスタッフと実績を表示しています":
+   "本人が閲覧できるスタッフと実績だけを表示しています";
+ return {name:String(response.companyName||"協力店"),scope:roleLabel+"｜"+scope,
+  stats:[["選択日の件数",count+"件"],["登録済み",registered+"/"+staff.length+"人"],
+   ["表示対象の班",teams.length+"班"],["表示対象のスタッフ",staff.length+"人"]]};
+}
+function renderCompanyOverview(){
+ const summary=companyPortalStats(data);
+ $("companyOverview").hidden=false;
+ $("companyKicker").textContent=data.role==="hub"?"協力店会社の件数報告":"会社の実績管理｜件数専用";
+ $("companyHeading").textContent=summary.name;
+ $("companyScope").textContent=summary.scope;
+ const stats=$("companyOverviewStats");stats.replaceChildren();
+ for(const [label,value] of summary.stats){
+  const box=document.createElement("div");box.className="company-stat";
+  const small=document.createElement("small"),strong=document.createElement("strong");
+  small.textContent=label;strong.textContent=value;box.append(small,strong);stats.append(box);
+ }
+ $("workspaceTitle").textContent=data.role==="hub"?"NICO FACTORY｜協力店会社別報告":
+    summary.name+"｜実績管理";
+}
+function renderHubCompanyDetail(){
+ if(data?.role!=="hub")return;
+ const select=$("hubCompanySelect"),selected=data.partners.find(p=>p.partnerCompanyId===select.value);
+ $("hubCompanyDetail").hidden=!selected;
+ $("hubCompanyProducts").replaceChildren(selected?
+  countTable(["商材","報告件数"],KEYS.map(k=>[k,selected.counts[k]+"件"])):countTable(["商材","報告件数"],[]));
+}
 function activeTab(name){
  for(const x of ["Dashboard","Records","People","View"])$("tab"+x).setAttribute("aria-pressed",String(x===name));
  $("dashboardBox").hidden=name!=="Dashboard"||!data||data.role==="hub";
@@ -408,12 +485,21 @@ function draw(){
  const hub=data?.role==="hub";
  $("appBox").hidden=false;$("loginBox").hidden=true;$("inviteAccept").hidden=true;
  $("who").textContent=hub?"自社オーナー・協力店報告":(data.companyName||"協力店")+"｜"+(data.role||"");
+ renderCompanyOverview();
  $("tabDashboard").hidden=hub;$("tabRecords").hidden=hub;$("tabPeople").hidden=hub||data.role==="member";$("tabView").hidden=hub;
  if(hub){
   activeTab("View");const table=document.createElement("table");
   const head=document.createElement("tr");for(const x of ["協力店","件数"])cell(head,x);table.append(head);
   for(const p of data.partners){const row=document.createElement("tr");cell(row,p.name);cell(row,p.totalCount+" 件");table.append(row)}
-  $("hubList").replaceChildren(table);return;
+  $("hubList").replaceChildren(table);
+  const select=$("hubCompanySelect"),prior=select.value;select.replaceChildren();
+  for(const company of data.partners){
+   const option=document.createElement("option");option.value=company.partnerCompanyId;
+   option.textContent=company.name+"（"+company.totalCount+"件）";select.append(option);
+  }
+  if(data.partners.some(p=>p.partnerCompanyId===prior))select.value=prior;
+  renderHubCompanyDetail();
+  return;
  }
  $("makeTeam").hidden=data.role!=="owner";
  $("inviteRole").querySelector('option[value="leader"]').disabled=data.role!=="owner";
@@ -460,6 +546,7 @@ function renderSelected(){if(!data||data.role==="hub")return;const rec=data.reco
  for(const x of grid.querySelectorAll("input"))x.value=String(rec?.counts?.[x.dataset.key]??0);
  $("revision").textContent=rec?"第"+rec.version+"版・訂正可能":"未登録（0件報告も保存可能）";
  $("save").disabled=!$("staffSelect").value;updateTotal()}
+$("hubCompanySelect").onchange=renderHubCompanyDetail;
 $("staffSelect").onchange=renderSelected;
 async function refresh(){if(!auth.currentUser||!auth.currentUser.emailVerified)return;
  const current=++nonce;loading=true;$("save").disabled=true;try{
@@ -513,7 +600,7 @@ $("join").onclick=async()=>{if(!inviteToken)return;await action(async()=>{
 })};
 $("logout").onclick=()=>signOut(auth);
 onAuthStateChanged(auth,u=>{
- ++nonce;++countLoadId;data=null;countDayCache.clear();clearCountOnlyDashboard();$("appBox").hidden=true;$("loginBox").hidden=!!u;
+ ++nonce;++countLoadId;data=null;countDayCache.clear();clearCountOnlyDashboard();$("companyOverview").hidden=true;$("workspaceTitle").textContent="NICO FACTORY｜協力店 実績管理";$("appBox").hidden=true;$("loginBox").hidden=!!u;
  $("inviteAccept").hidden=true;$("verify").hidden=!u||u.emailVerified;
  $("inviteUrl").value="";$("inviteOut").hidden=true;
  if(!u){notice("招待されたアカウント、または自社オーナーでログインしてください。");return}
