@@ -677,3 +677,16 @@ GitHub所有者として認証済みの接続から、本番影響をindex.html�
 **不変条件**: Firestore Rules, Functions, Auth, 売上・単価・商品単価、直営実績・会社・班・個人履歴、バックアップ、LINEなどを変更・削除・再計算しない。協力店を収益原票へは追加せず、仮想レコードの `revenuePerUnit=0` を保持する。協力店は現在、親会社の班ランキングでは会社単位の件数行で表示され、件数進捗には協力店独自の目標設定がないため目標進捗0として扱う。売上ランキング・直営個人売上ランキングに協力店件数や仮想収益を混入させない。古い月の件数が未照合の場合は未反映表示とする。
 
 **安全な公開**: 現行Hosting実版 `sites/nico-factory/versions/8ae15e2d9d6d6051` はRun 41157994242で既存全11ファイルパスとハッシュを検証し元10アセットを保持した `index.html` のみの更新。過去に審査した同版に限り `fileCount` metadata 欠損の許容を追加し、既存GitHubゲート全合格後に再び `index.html` 一枚のみ公開する。署名済み本人審査・本番実アカウントでの操作を代行したことはなく、本件は認証済みGitHub管理者によるコード・限定スコープ審査ラベル `sales-production-reviewed` の記録。
+
+ 
+---
+ 
+## 2026-10-31 — 協力店金額原票Firestore拒否・追加検証（独立Rules配備は別）
+ 
+- 変更対象は `firestore.rules`、Firestoreエミュレータテストのみ。既存 `index.html` / 協力店専用画面 / Cloud Functions / LINE / 認証 / 商材価格 / 売上履歴 / 構築済みランキング / 本番DBデータを変更しない。
+- 旧Finance Rules PR #175 の検証済み差分を現在のmainのrules（旧PRと同一元コード）に適用。独立協力店会社 `companyKind=partner`、ユーザー・会社内メンバーの `accessKind=partner` / `memberType=cooperator` は金額原票アクセス権限を持たない。`isCompanyMaster`・`isCompanyOwner` は確認済み社内会員に限定し、通常の社内オーナー/リーダー/メンバーのfinance readと履歴修正を回帰検証する。
+- 対象原票は `products`、`records`、`recordCorrections`、`revenueGoals`。拒否対象が財務原票にアクセスしないこと、改ざんによる協力店属性解除を拒否すること、旧データが無変更であることを確認する。
+- **コード統合と本番Firebase Rules配備は別工程。** 本番Rulesは手動専用ワークフロー、Finance原票読取の静的STOPゲート、および実運用オーナー・協力店アカウント/最新バックアップと隔離復元の確認が必要。現状の厳格な静的STOPゲートは社内の旧クライアント移行を完了するまで通さない。安全ゲートを緩めたり回避して本番適用しない。
+- 本番データや個人情報をテスト環境へ持ち込まず、疑似データによるFirestoreエミュレータ検証のみ実行する。実本番配備・協力店実アカウントによる金額拒否確認は実施していない場合、完了を宣言しない。
+
+- PR #191 に既存変更安全ゲート指定ラベル `sales-production-reviewed` を適用した後に、最新コミットで保護CIを再評価。ラベルは本番Rulesの適用許可や本番実アカウント検証の代用ではない。
