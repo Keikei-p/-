@@ -27,20 +27,14 @@ function make(){
   records:[a,b,c],products:[product("nu","NURO"),product("sim","SIM")],
   lines:[line(a,"nu",2),line(b,"nu",1),line(c,"sim",1)]};
 }
-test("verified team and product totals use saved team snapshots, rank is number+name ONLY",()=>{
+test("verified team and product totals use historical team snapshots, while revenue ranks stay server-only",()=>{
  const result=project(make());
  assert.equal(result.companyCount,4);
  assert.equal(result.dayCount,28);
  assert.deepEqual(result.teamCounts,[{name:"第一班",count:3},{name:"第二班",count:1}]);
  assert.deepEqual(result.productCounts,[{name:"NURO",count:3},{name:"SIM",count:1}]);
- assert.deepEqual(result.individualRanks,[
-  {name:"佐藤",rank:1,champion:true},
-  {name:"山田",rank:2,champion:false},
-  {name:"田中",rank:2,champion:false}
- ]);
- for(const person of result.individualRanks){
-  assert.deepEqual(Object.keys(person).sort(),["champion","name","rank"]);
- }
+ assert.equal(result.individualRankingSource,"server_revenue_rank_only_required");
+ assert.equal(Object.hasOwn(result,"individualRanks"),false);
  assert.doesNotMatch(JSON.stringify(result),/totalRevenue|unitPrice|cashback|revenuePerUnit|staff1|staff2|staff3/);
 });
 test("a missing day stops the whole month, never turns an unavailable day into zero",()=>{
@@ -77,7 +71,7 @@ test("money hidden in a name, brand or location is refused",()=>{
 test("empty month has explicit, verified 28 days and no guessed identities",()=>{
  const v=make();v.records=[];v.lines=[];v.totalCount=0;
  const p=project(v);
- assert.equal(p.companyCount,0);assert.equal(p.individualRanks.length,0);
+ assert.equal(p.companyCount,0);assert.equal(p.individualRankingSource,"server_revenue_rank_only_required");
  assert.equal(p.dayCount,28);
 });
 test("this is an additive, browser-only transformation, no raw Firestore or deployment",async()=>{

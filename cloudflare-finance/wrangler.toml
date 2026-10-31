@@ -14,6 +14,8 @@ FINANCE_PARTNER_APPROVAL = "NOT_APPROVED"
 PUBLIC_COUNT_GATEWAY_ENABLED = "disabled"
 # Legacy direct-company count paging remains OFF until full client/Rules cutover.
 INTERNAL_COUNT_PAGE_ENABLED = "disabled"
+# Individual ranking endpoint never exposes a person's score or UID.
+INTERNAL_RANKS_ENABLED = "disabled"
 # Separate, default-OFF registration and correction route (independent count ledger).
 PARTNER_COUNT_WRITE_ENABLED = "disabled"
 # User-facing finance-free product labels; never enables without verified count ledger.

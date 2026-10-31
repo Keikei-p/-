@@ -15,6 +15,7 @@ import {submitCounts, SaveConflict, PermissionDenied} from "./count-service.js";
 import {makeFirestoreRestStore} from "./firestore-writer.js";
 import {makePublicCountRestHandler} from "./public-count-live-adapter.mjs";
 import {createInternalCountPage} from "./internal-count-page.mjs";
+import {buildInternalRankOnly} from "./internal-rank-only.mjs";
 import {makeCountDayFirestoreReader} from "./internal-count-rest-reader.mjs";
 import {normalizeInternalCountMembership} from "./internal-count-membership.mjs";
 import {createPartnerCountCatalogHandler} from "./partner-count-catalog.mjs";
@@ -580,6 +581,40 @@ export default {
     }
     if(url.pathname==="/health"&&request.method==="GET"){
       return safeJSON({ok:true,service:"finance-gateway",enabled:env.FINANCE_GATEWAY_ENABLED==="enabled",mode:"read_only"},200,origin);
+    }
+    if(url.pathname==="/v1/internal-ranks"){
+      // Dedicated rank-only endpoint. The browser never receives a raw
+      // individual's count, source ID, UID, price or revenue.
+      // All independently approved switches default to OFF.
+      const enabled=env.FIREBASE_PROJECT_ID===PROJECT_ID &&
+        env.FINANCE_GATEWAY_ENABLED==="enabled" &&
+        env.INTERNAL_RANKS_ENABLED==="enabled" &&
+        env.FINANCE_COST_APPROVAL==="OWNER_APPROVED_BLAZE_COSTS";
+      if(!enabled)return safeJSON({error:"internal_ranks_not_released"},503,origin);
+      if(request.method!=="GET")return safeJSON({error:"method_not_allowed"},405,origin);
+      if([...url.searchParams.keys()].join(",")!=="month"||
+         !/^\\d{4}-(0[1-9]|1[0-2])$/.test(url.searchParams.get("month")||""))
+        return safeJSON({error:"invalid_month"},400,origin);
+      const auth=request.headers.get("authorization")||"";
+      if(!auth.startsWith("Bearer "))return safeJSON({error:"unauthorized"},401,origin);
+      try{
+        const principal=await verifiedToken(auth.slice(7));
+        const policy=await memberPolicy(env,principal);
+        // Individual rank-only views are for current, active direct staff.
+        if(policy.isPartner||!policy.companyId)throw httpError(403,"internal_only");
+        // The month reader rejects missing, duplicate or changed pages.
+        // Never publish a rank from a partial first-2000 query.
+        const records=await firestoreMonthlyRecords(env,policy.companyId,url.searchParams.get("month"));
+        const result=buildInternalRankOnly({
+          companyId:policy.companyId,month:url.searchParams.get("month"),
+          records,complete:true
+        });
+        return safeJSON(result,200,origin);
+      }catch(error){
+        if(error.status===401||error.status===403)
+          return safeJSON({error:"forbidden"},error.status,origin);
+        return safeJSON({error:"ranks_unavailable"},503,origin);
+      }
     }
     if(url.pathname==="/v1/partner-count-catalog"){
       // Release only together with the approved finance-free partner ledger.
