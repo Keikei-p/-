@@ -613,6 +613,9 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     ...(partnerTeamDetails?{partnerTeamDetails}:{}),
     ...(teamReports?{teamReports,teamStatusComplete:true}:{})};
   }
+  // Company-wide partner breakdown is reserved for a verified internal hub
+  // Owner; do not silently ignore forged hub options in a partner session.
+  if(d.includeTeamStatus===true||d.partnerCompanyId!=null)fail();
   const [teams,staff,entries,privateProducts]=await Promise.all([
     collection(s.cid,"partnerWorkTeams").limit(151).get(),
     collection(s.cid,"partnerWorkStaff").limit(151).get(),
