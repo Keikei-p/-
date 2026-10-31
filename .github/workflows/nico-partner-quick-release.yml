@@ -99,6 +99,30 @@ jobs:
           set -euo pipefail
           test ! -e functions-partner-quick/.env.sales-management-cc116
           printf 'PARTNER_QUICK_COUNTS_ENABLED=enabled\n' > functions-partner-quick/.env.sales-management-cc116
+      - name: Wait for separately approved invitation Functions without modifying originals
+        shell: bash
+        run: |
+          set -euo pipefail
+          ready=false
+          for attempt in $(seq 1 45); do
+            if firebase functions:list --project "$FIREBASE_PROJECT_ID" --json > "$RUNNER_TEMP/partner-quick-invite-prereq.json"; then
+              if FILE="$RUNNER_TEMP/partner-quick-invite-prereq.json" node <<'NODE'
+          const data=JSON.parse(require('node:fs').readFileSync(process.env.FILE,'utf8'));
+          const names=(Array.isArray(data.result)?data.result:[]).map(x=>x.id||x.name||x.function||'');
+          for(const n of ['sendMissingReportReminders','createPartnerCompanyInvitation',
+                           'previewPartnerCompanyInvitation','acceptPartnerCompanyInvitation'])
+            if(!names.some(x=>x===n||x.endsWith('/'+n)))process.exit(1);
+          NODE
+              then
+                ready=true; break
+              fi
+            fi
+            sleep 10
+          done
+          if [ "$ready" != true ]; then
+            echo "STOP: invitation Function prerequisites are not live; no count deploy attempted"
+            exit 1
+          fi
       - name: Detect already-created count-only pair (no redundant build)
         id: existing
         shell: bash
