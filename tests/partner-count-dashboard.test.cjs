@@ -172,21 +172,12 @@ test("company names and detail are visible only after authentication and existin
  assert.match(original,/function canCurrentUserViewUnitPrice\(\)/);
 });
 
-test("existing internal Owner may inspect partner screen; partner markers and ordinary staff cannot",()=>{
- const view=vm.createContext({});
- vm.runInContext(source("isVerifiedOwnerPreviewIdentity"),view);
- const can=view.isVerifiedOwnerPreviewIdentity;
- const person={uid:"owner",companyId:"internal",active:true,accessKind:"internal"};
- const company={ownerUid:"owner",companyKind:"internal",active:true};
- const member={uid:"owner",companyId:"internal",active:true,accessKind:"internal"};
- assert.equal(can("owner",person,company,member),true);
- assert.equal(can("other",person,company,member),false);
- assert.equal(can("owner",{...person,memberType:"partner"},company,member),false);
- assert.equal(can("owner",person,company,{...member,memberType:"cooperator"}),false);
- assert.equal(can("owner",person,{...company,companyKind:"partner"},member),false);
- assert.equal(can("owner",person,{...company,ownerUid:"someone-else"},member),false);
- assert.equal(can("owner",person,company,{...member,companyId:"other"}),false);
- assert.equal(can("owner",person,{...company,active:false},member),false);
+test("preview is available only after sign-in and verified email, with no raw Firestore import",()=>{
+ assert.match(page,/if\(!u\)\{notice\(/);
+ assert.match(page,/if\(!u\.emailVerified\)\{notice\(/);
+ assert.match(page,/if\(previewMode\)\{/);
+ assert.match(page,/id="ownerPreviewBanner" hidden/);
+ assert.doesNotMatch(page,/firebase-firestore\.js|getFirestore\(/);
 });
 test("sample preview uses the real partner dashboard contract without finance or remote API calls",async()=>{
  const scope=vm.createContext({
@@ -220,9 +211,9 @@ test("Owner preview has a return link and cannot write any counts or change prod
  assert.match(index,/quickPartnerPreviewButton\.onclick=\(\)=>\{/);
  assert.match(page,/id="ownerPreviewBanner" hidden/);
  assert.match(page,/id="previewReturnLink"/);
- assert.match(page,/getDocFromServer\(doc\(previewDb,"users",account.uid\)\)/);
+ assert.match(page,/const previewMode=previewQuery\.get\("preview"\)==="1"/);
  assert.match(page,/if\(previewMode\)\{notice\("閲覧プレビューでは保存・招待を行いません。"/);
- assert.match(page,/async function verifyOwnerPreviewAccount/);
+ assert.match(page,/if\(!u\.emailVerified\)/);
  assert.match(page,/if\(previewMode\)return async args=>/);
  assert.match(page,/if\(previewMode\)return;/);
  assert.match(page,/\$\("logout"\)\.onclick=\(\)=>previewMode\?window\.location\.assign\("\/"\)/);
