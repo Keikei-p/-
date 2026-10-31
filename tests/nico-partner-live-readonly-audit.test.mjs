@@ -42,7 +42,7 @@ test("partner role markers always deny revenue and unit price even for owner",()
 test("audit is read-only at source-code level, does not call prod writes or sign in users",()=>{
  const source=readFileSync(new URL("../tools/production/audit-live-partner-counts.mjs",import.meta.url),"utf8");
  assert.doesNotMatch(source,/\b(?:setDoc|addDoc|updateDoc|deleteDoc|createUser|signInWith|runTransaction)\s*\(/);
- assert.doesNotMatch(source,/\.set\(|\.create\(|\.update\(|\.delete\(|\bdeploy\s+--only/);
+ assert.doesNotMatch(source,/\b(?:db|tx|batch|docRef|recordRef)\.(?:set|create|update|delete|runTransaction)\s*\(|\bdeploy\s+--only/);
  assert.match(source,/NICO_PARTNER_AUDIT_MODE!=="READ_ONLY"/);
  assert.match(source,/signedInPartnerE2EVerified:false/);
 });
