@@ -735,9 +735,23 @@ main{max-width:1200px;margin:0 auto;padding:20px}header{background:var(--header)
  @media(max-width:600px){main{padding:12px}section{padding:16px}.dashboard-app-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.ranking-grid[data-columns="2"]{grid-template-columns:1fr}}
 </style>
 <!-- canonical-presentation:end -->
+<style id="partner-count-only-parity">
+/* The canonical shell, summary and menu classes are inherited from index.html. */
+.partner-count-only-app .partner-mode-label{margin:5px 0 0;font-size:12px;opacity:.84;font-weight:700}
+.partner-count-only-app #countKpis.dashboard-summary{grid-template-columns:repeat(2,minmax(0,1fr))}
+.partner-count-only-app #countKpis .summary-card{min-width:0}
+.partner-count-only-app #countKpis .summary-value{overflow-wrap:anywhere}
+@media(max-width:420px){.partner-count-only-app #countKpis.dashboard-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>
 </head><body>
-<header><h1 id="workspaceTitle">NICO FACTORY｜協力店 実績管理</h1>
-<p>会社・班・メンバーごとの件数を管理。売上・単価は表示しません。</p></header>
+<div class="app partner-count-only-app">
+<header>
+ <div class="header-inner">
+  <div class="title" id="workspaceTitle">営業実績管理</div>
+  <div class="subtitle">Sales Management System</div>
+  <p class="partner-mode-label">協力店｜件数管理モード</p>
+ </div>
+</header>
 <div id="ownerPreviewBanner" hidden role="status">🧪 協力店の確認用プレビューです。会社・班・スタッフ・件数はすべて架空のサンプル。保存や招待送信はできません。 <a href="/" id="previewReturnLink">← 自社画面へ戻る</a></div>
 <main><div id="notice" class="notice" role="status" aria-live="polite">認証を確認しています。</div>
 <section id="loginBox"><h2>ログイン・新規登録</h2><form id="loginForm">
@@ -776,7 +790,7 @@ main{max-width:1200px;margin:0 auto;padding:20px}header{background:var(--header)
 <p class="muted">会社・班・個人・商材の実績を比較できます。売上と単価は一切扱いません。</p>
 <div class="period-menu" aria-label="集計期間"><button id="periodDay" type="button" aria-pressed="true">日別</button><button id="periodWeek" type="button" aria-pressed="false">週別</button><button id="periodMonth" type="button" aria-pressed="false">月別</button></div>
 <p id="countDashboardStatus" role="status" aria-live="polite"></p>
-<div id="countKpis" class="count-kpis"></div>
+<div id="countKpis" class="count-kpis dashboard-summary"></div>
 <div id="countGoalBox" class="count-section" hidden><h3>🎯 月間目標件数</h3>
 <p class="muted">この端末のログイン者専用の目標です。会社全員には同期しません。実績データは変更しません。</p>
 <div class="row"><div><label for="countGoal">月間目標</label><input id="countGoal" type="number" inputmode="numeric" min="1" max="999999" step="1" placeholder="例：100"></div>
@@ -875,6 +889,7 @@ main{max-width:1200px;margin:0 auto;padding:20px}header{background:var(--header)
 </div>
 <p class="muted">新しいスタッフ別入力の集計です。旧暫定会社一括報告と合算せず、重複を防ぎます。</p></section>
 </main>
+</div>
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
 import {getAuth,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,sendEmailVerification,sendPasswordResetEmail,reload,getIdToken,setPersistence,browserSessionPersistence} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
@@ -1217,9 +1232,12 @@ function renderCountOnlyDashboard(summary,days){
   ["実績のある担当者",summary.people.filter(p=>p.count>0).length+"人"],
   ["1日平均",Math.round(count/days.length*10)/10+"件"]];
  const kpis=$("countKpis");kpis.replaceChildren();
- for(const [name,value] of cards){const box=document.createElement("div");box.className="count-kpi";
-  const lab=document.createElement("small"),val=document.createElement("strong");
-  lab.textContent=name;val.textContent=value;box.append(lab,val);kpis.append(box)}
+ for(const [name,value] of cards){
+  const box=document.createElement("div");box.className="count-kpi summary-card";
+  const lab=document.createElement("div"),val=document.createElement("div");
+  lab.className="summary-label";val.className="summary-value";
+  lab.textContent=name;val.textContent=value;box.append(lab,val);kpis.append(box)
+ }
  $("countTeamHint").textContent=summary.hasUnverifiedTeams?
   "過去の班所属を推測しないため、保存時点の班情報をAPIから取得できない実績は「所属班未確認」として表示します。":
   "保存時の所属班で集計しています。";
