@@ -88,7 +88,9 @@ export async function uploadSingleExistingIndex({assetBytes,request,release=fals
    "sites/nico-factory/versions/1c4aa6910478bd42",
    "sites/nico-factory/versions/b52abc1a8a8a1d78",
    // #41157372250 released v937d with 11 full assets verified.
-   "sites/nico-factory/versions/937d59028669a5d0"
+   "sites/nico-factory/versions/937d59028669a5d0",
+   // 2026-10-31 #41157994242 protected eleven-file index-only release.
+   "sites/nico-factory/versions/8ae15e2d9d6d6051"
  ]);
  const files=[];let pageToken="";
  do{
