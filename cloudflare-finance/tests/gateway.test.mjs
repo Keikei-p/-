@@ -437,7 +437,7 @@ test("enabled financial views require one valid month and never accept a user-su
    "?month=2026-10&uid=forged"]){
    for(const route of ["financial-view","partner-dashboard"]){
      const response=await worker.fetch(new Request("https://sales-finance-gateway.example/v1/"+
-       route+q),env);
+       route+q,{headers:{authorization:"Bearer invalid-fixture"}}),env);
      assert.equal(response.status,400,route+q);
      assert.equal((await response.json()).error,"invalid_month");
    }
