@@ -497,7 +497,7 @@ async function loadCountDashboard(){
   renderCountOnlyDashboard(summary,dates);
   $("countDashboardStatus").textContent=dates[0]+" 〜 "+dates.at(-1)+
     " の集計完了（"+dates.length+"日分・件数のみ）";
-  $("countCsv").disabled=false;
+  $("countCsv").disabled=previewMode;
  }catch(error){
   if(gen!==countLoadId)return;
   clearCountOnlyDashboard();
@@ -508,6 +508,7 @@ async function loadCountDashboard(){
 $("countProductMode").onchange=renderProductRankMode;
 $("countTeamSelect").onchange=renderTeamCountDetail;
 $("countGoalSave").onclick=()=>{
+ if(previewMode)return;
  if(!countExportRows||countPeriod!=="month"||!auth.currentUser)return;
  const raw=$("countGoal").value.trim();
  if(!/^[1-9][0-9]{0,5}$/.test(raw)){
@@ -516,6 +517,7 @@ $("countGoalSave").onclick=()=>{
  catch{$("countGoalStatus").textContent="端末に保存できませんでした。"}
 };
 $("countGoalClear").onclick=()=>{
+ if(previewMode)return;
  if(!countExportRows||countPeriod!=="month"||!auth.currentUser)return;
  try{localStorage.removeItem(countGoalKey());renderCountGoal()}
  catch{$("countGoalStatus").textContent="目標を解除できませんでした。"}
@@ -843,10 +845,14 @@ async function refresh(){if(!auth.currentUser||!auth.currentUser.emailVerified)r
  const current=++nonce;loading=true;$("save").disabled=true;try{
  const res=(await get({date:$("date").value})).data;if(current!==nonce)return;
  if(!res||!Array.isArray(res.categories)||res.categories.join("|")!==KEYS.join("|"))throw Error("schema");
- data=res;countDayCache.set(auth.currentUser.uid+"|"+res.date,{savedAt:Date.now(),response:res});draw();notice("最新の件数を読み込みました。");
+ data=res;countDayCache.set(auth.currentUser.uid+"|"+res.date,{savedAt:Date.now(),response:res});draw();
+ if(previewMode){disablePreviewWrites();notice("確認用の架空データです。実績・招待・設定は保存されません。");}
+ else notice("最新の件数を読み込みました。");
  }catch(e){data=null;$("appBox").hidden=true;fail(e)}finally{if(current===nonce)loading=false}}
 $("date").onchange=refresh;$("refresh").onclick=()=>{countDayCache.clear();refresh()};
-async function action(task){if(loading)return;loading=true;try{
+async function action(task){
+ if(previewMode){notice("閲覧プレビューでは保存・招待を行いません。");return;}
+ if(loading)return;loading=true;try{
  countDayCache.clear();
  const message=await task();await refresh();
  // A successful re-read must not overwrite the actual save confirmation.
@@ -919,14 +925,28 @@ $("join").onclick=async()=>{if(!inviteToken)return;await action(async()=>{
  history.replaceState(null,"",next.pathname+next.search);
  inviteToken="";$("inviteAccept").hidden=true;return "協力店へ参加しました。";
 })};
-$("logout").onclick=()=>signOut(auth);
+$("logout").onclick=()=>previewMode?window.location.assign("/"):signOut(auth);
 onAuthStateChanged(auth,u=>{
  ++nonce;++countLoadId;data=null;countDayCache.clear();clearCountOnlyDashboard();$("companyOverview").hidden=true;$("workspaceTitle").textContent="NICO FACTORY｜協力店 実績管理";$("appBox").hidden=true;$("loginBox").hidden=!!u;
  $("inviteAccept").hidden=true;$("verify").hidden=!u||u.emailVerified;
+ $("signup").hidden=previewMode;
  $("inviteUrl").value="";$("inviteOut").hidden=true;
  $("hubInviteUrl").value="";$("hubInviteOut").hidden=true;
  if(!u){notice("招待されたアカウント、または自社オーナーでログインしてください。");return}
  if(!u.emailVerified){notice("メール確認を済ませて、画面を再読込してください。",true);return}
+ if(previewMode){
+  const generation=nonce;
+  void verifyOwnerPreviewAccount(u).then(allowed=>{
+   if(generation!==nonce||auth.currentUser?.uid!==u.uid)return;
+   if(!allowed){notice("自社Owner/Masterの本人確認ができないため、プレビューを表示できません。自社アプリに戻ってください。",true);return;}
+   $("ownerPreviewBanner").hidden=false;
+   $("logout").textContent="自社画面へ戻る";
+   void refresh();
+  }).catch(()=>{
+   if(generation===nonce)notice("自社Ownerの所属を確認できませんでした。自社アプリに戻ってください。",true);
+  });
+  return;
+ }
  if(inviteToken){$("inviteAccept").hidden=false;notice("招待リンクを確認しました。表示名を入力して参加してください。");return}
  refresh();
 });
