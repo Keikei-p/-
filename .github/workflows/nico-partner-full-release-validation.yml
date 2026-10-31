@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/nico-partner-full-sequenced-once.yml'
       - '.github/workflows/nico-partner-quick-release.yml'
+      - '.github/workflows/nico-partner-workspace-release.yml'
       - 'tests/partner-production-sequenced.test.cjs'
   push:
     branches: [release/nico-partner-full-verified-20261031]
