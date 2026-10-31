@@ -133,7 +133,11 @@ jobs:
           }
           console.log('Protected existing 5 Functions confirmed.');
           NODE
-          node tools/hosting/additive-partner-workspace.mjs --dry-run
+          if [ "$(curl --silent --location --output "$RUNNER_TEMP/live-workspace-page.html" --write-out '%{http_code}' --max-time 25 https://nico-factory.web.app/partner-workspace.html || true)" = 200 ] && grep -Fq 'submitPartnerWorkspaceCounts' "$RUNNER_TEMP/live-workspace-page.html"; then
+            echo "REUSE verified existing partner workspace page; no changes to current Hosting"
+          else
+            node tools/hosting/additive-partner-workspace.mjs --dry-run
+          fi
       - name: Set explicit isolated count-only feature flag
         run: |
           set -euo pipefail
