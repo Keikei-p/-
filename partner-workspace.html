@@ -749,6 +749,7 @@ onAuthStateChanged(auth,u=>{
  ++nonce;++countLoadId;data=null;countDayCache.clear();clearCountOnlyDashboard();$("companyOverview").hidden=true;$("workspaceTitle").textContent="NICO FACTORY｜協力店 実績管理";$("appBox").hidden=true;$("loginBox").hidden=!!u;
  $("inviteAccept").hidden=true;$("verify").hidden=!u||u.emailVerified;
  $("inviteUrl").value="";$("inviteOut").hidden=true;
+ $("hubInviteUrl").value="";$("hubInviteOut").hidden=true;
  if(!u){notice("招待されたアカウント、または自社オーナーでログインしてください。");return}
  if(!u.emailVerified){notice("メール確認を済ませて、画面を再読込してください。",true);return}
  if(inviteToken){$("inviteAccept").hidden=false;notice("招待リンクを確認しました。表示名を入力して参加してください。");return}
