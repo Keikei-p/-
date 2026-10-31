@@ -697,3 +697,60 @@ test("invalid old-company identities and duplicate context cannot accept a partn
   assert.deepEqual([...db.store],before);
  }
 });
+test("hub can inspect partner-company per-team shared product counts without finance or private products",async()=>{
+ const {db,api,req,zero}=setup();
+ const t1=(await api.manage(req("p",{action:"addTeam",name:"協力店1班"}))).teamId;
+ const t2=(await api.manage(req("p",{action:"addTeam",name:"協力店2班"}))).teamId;
+ const a=(await api.manage(req("p",{action:"addManaged",name:"担当1",teamId:t1}))).staffId;
+ const b=(await api.manage(req("p",{action:"addManaged",name:"担当2",teamId:t2}))).staffId;
+ const date="2026-10-31";
+ await api.submit(req("p",{date,staffId:a,counts:{...zero(),NURO:2,YMMNP:1},expectedVersion:0}));
+ await api.submit(req("p",{date,staffId:b,counts:zero(),expectedVersion:0}));
+ const rawBefore=clone(db.store.get("records/old"));
+ const totals=(await api.view(req("h",{date,partnerCompanyId:"partner"})));
+ assert.equal(totals.role,"hub");
+ assert.equal(totals.partnerTeamDetails.partnerCompanyId,"partner");
+ assert.equal(totals.partnerTeamDetails.scope,"shared_counts_only");
+ const rows=totals.partnerTeamDetails.teams;
+ assert.equal(rows.length,2);
+ assert.equal(rows.find(x=>x.teamId===t1).totalCount,3);
+ assert.equal(rows.find(x=>x.teamId===t1).counts.NURO,2);
+ assert.equal(rows.find(x=>x.teamId===t2).totalCount,0);
+ assert.equal(rows.find(x=>x.teamId===t2).reportedStaffCount,1,
+   "zero count is a submitted report, not a missing report");
+ assert.equal(totals.partnerTeamDetails.unverifiedTeamCount,0);
+ assert.equal(totals.partnerTeamDetails.unreconciledWithCompanyReport,false);
+ const payload=JSON.stringify(totals.partnerTeamDetails);
+ for(const key of ["revenuePerUnit","totalRevenue","privateProducts","privateCounts",
+  "email","unitPrice","staffId"])assert.equal(payload.includes(key),false,key+" leaked");
+ assert.deepEqual(db.store.get("records/old"),rawBefore);
+});
+test("hub team counts cannot silently attribute legacy or moved staff to their current team",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ const t=(await api.manage(req("p",{action:"addTeam",name:"班A"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"担当者A",teamId:t}))).staffId;
+ await api.submit(req("p",{date,staffId:staff,
+  counts:{...zero(),NURO:5},expectedVersion:0}));
+ const key="companies/partner/partnerWorkEntries/"+date+"__"+staff;
+ db.seed(key,{...db.store.get(key),teamIdSnapshot:null});
+ const view=await api.view(req("h",{date,partnerCompanyId:"partner"}));
+ assert.equal(view.partnerTeamDetails.teams[0].totalCount,0);
+ assert.equal(view.partnerTeamDetails.teams[0].reportedStaffCount,0);
+ assert.equal(view.partnerTeamDetails.unverifiedTeamCount,5);
+ assert.equal(view.partnerTeamDetails.unreconciledWithCompanyReport,false);
+});
+test("hub cannot query other hub's, pending, revoked or forged partner team details",async()=>{
+ const {db,api,req}=setup(),date="2026-10-31";
+ const before=JSON.stringify([...db.store]);
+ for(const id of ["unknown","other-company","__proto__"]){
+  await assert.rejects(api.view(req("h",{date,partnerCompanyId:id})),
+   e=>e.code==="permission-denied"||e.code==="invalid-argument");
+ }
+ assert.equal(JSON.stringify([...db.store]),before);
+ db.seed("partnerRelations/partner",{partnerCompanyId:"partner",hubCompanyId:"hub",
+  active:false,countSharingApproved:false});
+ await assert.rejects(api.view(req("h",{date,partnerCompanyId:"partner"})),
+  e=>e.code==="permission-denied");
+ await assert.rejects(api.view(req("p",{date,partnerCompanyId:"other-company"})),
+  e=>e.code==="permission-denied");
+});
