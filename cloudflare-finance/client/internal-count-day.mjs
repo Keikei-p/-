@@ -28,7 +28,7 @@ const props=x=>x&&typeof x==="object"&&!Array.isArray(x)?
  Object.keys(x).sort().join(","):null;
 const boundedCount=x=>Number.isSafeInteger(x)&&x>=0&&x<=1e6;
 const embedsMoney=s=>typeof s==="string" &&
- /(?:[¥￥$€]|(?:\\d|[０-９])[\\d０-９,.，]*\\s*(?:万円|千円|円)|(?:CB|cashback|キャッシュバック|売上|単価|報酬|利益|commission|unitprice|revenue)[\\s:_=－-]*(?:\\d|[０-９]))/i.test(s);
+ /(?:[¥￥$€]|(?:\d|[０-９])[\d０-９,.，]*\s*(?:万円|千円|円)|(?:CB|cashback|キャッシュバック|売上|単価|報酬|利益|commission|unitprice|revenue)[\s:_=－-]*(?:\d|[０-９]))/i.test(s);
 const validDate=s=>{
  if(typeof s!=="string"||!DATE.test(s))fail("invalid_day");
  const x=new Date(s+"T00:00:00Z");
