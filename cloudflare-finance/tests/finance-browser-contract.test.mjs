@@ -105,3 +105,58 @@ test("Orphaned historical products retain counts and are view-only, never break 
   assert.throws(()=>secureCountRows(Object.values(projected.records[0].results)),
     /financial_view_contract_violation/);
 });
+
+test("Unrecognized financial and customer fields NEVER pass into projected browser records",()=>{
+  for(const extra of [
+    {grossProfit:300000}, {unitPrice:90000}, {customerPhone:"090-secret"},
+    {confidential:{revenue:5000}},{recordCorrections:[{cashback:5000}]}
+  ]){
+    const v=sample();
+    v.records=[{...rec,...extra}];
+    assert.throws(()=>projectSafeView(v),/financial_view_contract_violation/);
+  }
+  const revenue=sample({canViewRevenue:true,canViewUnitPrice:false});
+  revenue.records=[{...rec,totalRevenue:30000,staffPrivateEmail:"secret@example.test"}];
+  assert.throws(()=>projectSafeView(revenue),/financial_view_contract_violation/);
+  const owner=sample({canViewRevenue:true,canViewUnitPrice:true});
+  owner.records=[{...rec,totalRevenue:30000,personalNotes:"private"}];
+  assert.throws(()=>projectSafeView(owner),/financial_view_contract_violation/);
+});
+
+test("Nested future price keys and unauthorized product fields fail closed",()=>{
+  const v=sample();
+  v.records=[{...rec,results:{item_0:{...rec.results.item_0,grossPrice:80000}}}];
+  assert.throws(()=>projectSafeView(v),/financial_view_contract_violation/);
+  const p=sample();
+  p.products=[{...prod,secretInvoiceAmount:12345}];
+  assert.throws(()=>projectSafeView(p),/financial_view_contract_violation/);
+  const r=sample({canViewRevenue:true,canViewUnitPrice:false});
+  r.revenueGoals=[{id:"goal",companyId:"c",teamId:"A",month:"2026-10",
+    targetRevenue:100000,internalBankAccount:"secret"}];
+  assert.throws(()=>projectSafeView(r),/financial_view_contract_violation/);
+});
+
+test("Canonical approved Owner revenue and unit prices stay visible without raw extra keys",()=>{
+  const v=sample({canViewRevenue:true,canViewUnitPrice:true});
+  v.records=[{...rec,totalRevenue:30000,results:{
+    item_0:{...rec.results.item_0,revenuePerUnit:10000,cashback:2000}
+  }}];
+  v.products=[{...prod,revenue:20000,cashbackOptions:[0,2000],
+    pricingOptions:[{cashback:0,revenuePerUnit:20000},
+      {cashback:2000,revenuePerUnit:18000}]}];
+  v.revenueGoals=[{id:"goal",companyId:"c",teamId:"A",month:"2026-10",targetRevenue:100000}];
+  const view=projectSafeView(v);
+  assert.equal(view.records[0].totalRevenue,30000);
+  assert.equal(view.records[0].results.item_0.revenuePerUnit,10000);
+  assert.equal(view.products[0].pricingOptions[1].revenuePerUnit,18000);
+  assert.equal(view.revenueGoals[0].targetRevenue,100000);
+});
+test("Contradictory permission flags are rejected, legitimate partner cashback envelope accepted",()=>{
+  const conflicting=sample({canViewRevenue:false,canViewUnitPrice:true});
+  assert.throws(()=>projectSafeView(conflicting),/financial_view_contract_violation/);
+  const partner=sample({canViewRevenue:false,canViewUnitPrice:false,isPartner:true});
+  partner.products=[{...prod,cashbackPlans:[{planId:"cb_5000",cashback:5000}]}];
+  const view=projectSafeView(partner);
+  assert.equal(view.records[0].totalCount,3);
+  assert.equal(view.records[0].totalRevenue,undefined);
+});
