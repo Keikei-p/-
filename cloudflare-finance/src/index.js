@@ -315,11 +315,16 @@ function active(obj) { return obj && obj.active !== false; }
 // Server-side selection must precede serialization. Never send raw
 // company member objects or any other team's names/emails to partners.
 function safePartnerMembers(all,policy) {
-  if(!policy.isPartner || !policy.teamId)throw httpError(403,"partner_only");
-  return all.filter(m=>active(m) && m.teamId===policy.teamId &&
+  // A partner-company Owner has no teamId and can manage ONLY its own
+  // company's roster; an ordinary partner Leader remains team-scoped.
+  if(!policy.isPartner || (!policy.isPartnerCompanyOwner && !policy.teamId))
+    throw httpError(403,"partner_only");
+  return all.filter(m=>active(m) &&
+      (policy.isPartnerCompanyOwner || m.teamId===policy.teamId) &&
       (!m.companyId || m.companyId===policy.companyId) &&
       typeof m.uid==="string" && /^[A-Za-z0-9_-]{1,150}$/.test(m.uid))
-    .map(m=>({uid:m.uid,name:withoutAmounts(String(m.name||"担当者")).slice(0,30),teamId:policy.teamId}))
+    .map(m=>({uid:m.uid,name:withoutAmounts(String(m.name||"担当者")).slice(0,30),
+      teamId:m.teamId||null}))
     .sort((a,b)=>a.name.localeCompare(b.name,"ja"));
 }
 // Page-aware company member loading. Never return a truncated roster.
@@ -392,12 +397,32 @@ function approvedPolicy(user,member,company,uid,today="") {
   const isPartner=[...kinds,user.memberType,member.memberType]
     .some(value=>value==="partner"||value==="cooperator");
   const isMaster=(company.masterUid||company.ownerUid)===uid;
-  if(isPartner && (isMaster || user.companyRole!=="member" || member.companyRole!=="member" ||
-      user.role!=="leader" || member.role!=="leader" ||
-      !user.teamId || user.teamId!==member.teamId)){
+  // Partner company registration creates a company Owner with role=leader,
+  // teamId=null. This role is not an internal finance-capable Owner.
+  // A lone partner marker on an internal Master must still be rejected.
+  const isPartnerCompanyOwner=isPartner &&
+    company.companyKind==="partner" &&
+    company.ownerUid===uid && company.masterUid===uid &&
+    typeof company.hubCompanyId==="string" &&
+    /^[A-Za-z0-9_-]{1,128}$/.test(company.hubCompanyId) &&
+    company.hubCompanyId!==user.companyId &&
+    user.accessKind==="partner" && member.accessKind==="partner" &&
+    user.memberType==="cooperator" && member.memberType==="cooperator" &&
+    user.companyRole==="owner" && member.companyRole==="owner" &&
+    user.role==="leader" && member.role==="leader" &&
+    user.teamId==null && member.teamId==null &&
+    user.canViewRevenue===false && member.canViewRevenue===false &&
+    user.canViewUnitPrice===false && member.canViewUnitPrice===false;
+  const isPartnerTeamLeader=isPartner &&
+    user.companyRole==="member" && member.companyRole==="member" &&
+    user.role==="leader" && member.role==="leader" &&
+    typeof user.teamId==="string" && user.teamId.length>0 &&
+    user.teamId===member.teamId && !isMaster;
+  if(isPartner && !isPartnerCompanyOwner && !isPartnerTeamLeader){
     throw httpError(403,"partner_assignment_invalid");
   }
-  const isOwner=isMaster || (user.companyRole==="owner" && member.companyRole==="owner");
+  const isOwner=isPartnerCompanyOwner || (!isPartner &&
+    (isMaster || (user.companyRole==="owner" && member.companyRole==="owner")));
   // Existing client roles are stored in BOTH user and company-member docs.
   // If they disagree, NEVER infer extra permissions or silently migrate them.
   // Expose an admin-review indicator; preserve strict dual-grant behavior.
@@ -406,7 +431,8 @@ function approvedPolicy(user,member,company,uid,today="") {
     (user.canViewUnitPrice===true)!==(member.canViewUnitPrice===true)
   );
   const revenue=!isPartner && (isOwner || (user.canViewRevenue===true && member.canViewRevenue===true));
-  const unit= isOwner || (revenue && user.canViewUnitPrice===true && member.canViewUnitPrice===true);
+  const unit=!isPartner && (isOwner ||
+    (revenue && user.canViewUnitPrice===true && member.canViewUnitPrice===true));
   // Browser uses companies/{id}/members as the source for Leaders, while
   // ordinary members read their users/{uid} document. Keep those semantics
   // during the cutover, without trusting roles or dates sent by the client.
@@ -418,7 +444,8 @@ function approvedPolicy(user,member,company,uid,today="") {
     .slice().sort((a,b)=>a.effectiveDate.localeCompare(b.effectiveDate));
   const lastArrival=history.filter(x=>x.toTeamId===teamId && x.effectiveDate<=today).at(-1);
   const start=lastArrival?.effectiveDate ?? today;
-  return {companyId:user.companyId,uid,isOwner,isPartner,canViewRevenue:revenue,canViewUnitPrice:unit,
+  return {companyId:user.companyId,uid,isOwner,isPartner,isPartnerCompanyOwner,
+    canViewRevenue:revenue,canViewUnitPrice:unit,
     teamId,revenueScopeStart:start,role:assignment.role,teamHistory:history,isLeader,
     needsPermissionReview};
 }
@@ -464,7 +491,9 @@ function safeRecords(all,policy,products=[]) {
   // Partners never receive other teams' identities, record IDs or counts.
   // Apply scope BEFORE converting records to client-facing objects.
   return all.filter(record=>!policy.isPartner ||
-      (policy.teamId && record.teamId===policy.teamId)).map(record=>{
+      (record.companyId===policy.companyId &&
+       (policy.isPartnerCompanyOwner ||
+        (policy.teamId && record.teamId===policy.teamId)))).map(record=>{
     const out={
       id:record.id,companyId:record.companyId,uid:record.uid,
       memberNameSnapshot:policy.isPartner?withoutAmounts(record.memberNameSnapshot):record.memberNameSnapshot,
