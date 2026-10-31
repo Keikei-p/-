@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
+import {execFileSync} from "node:child_process";
+import {fileURLToPath} from "node:url";
 const file=x=>readFileSync(new URL("../"+x,import.meta.url),"utf8");
 const old=file(".github/workflows/nico-partner-team-snapshot-readonly-api.yml");
 const page=file(".github/workflows/nico-partner-workspace-page-only.yml");
@@ -45,4 +47,22 @@ test("release updates 4 isolated APIs before publishing 1 page, without main sal
  assert.match(release,/node tools\/hosting\/surgical-existing-partner-workspace\.mjs --dry-run/);
  assert.match(release,/cmp -s "\$RUNNER_TEMP\/partner-live.html" partner-workspace.html/);
  assert.match(release,/functions\/index.js.*dfb4c48/);
+});
+
+test("manual release pins exactly the currently merged sources, without changing the finance cutover gate",()=>{
+ const cwd=fileURLToPath(new URL("../",import.meta.url));
+ for(const path of [
+  "functions-partner-workspace/service.cjs",
+  "partner-workspace.html",
+  "functions-partner-workspace/index.js",
+  "functions/index.js"
+ ]){
+  // git hash-object computes the blob ID without writing any Git object.
+  const digest=execFileSync("git",["hash-object",path],{cwd,encoding:"utf8"}).trim();
+  assert.match(digest,/^[0-9a-f]{40}$/);
+  assert.ok(release.includes('test "$(git hash-object '+path+')" = "'+digest+'"'),
+   "Manual release must refuse stale or unreviewed "+path);
+ }
+ assert.match(release,/node scripts\/check-finance-read-boundary-before-deploy\.mjs/);
+ assert.match(release,/node scripts\/nico-production-cutover-preflight\.mjs/);
 });
