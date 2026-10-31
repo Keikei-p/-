@@ -92,7 +92,9 @@ export async function uploadSingleExistingPartnerInvite({assetBytes,request,rele
    // 2026-10-31 #41157994242 protected eleven-file index-only release.
    "sites/nico-factory/versions/8ae15e2d9d6d6051",
    // #41158716684 verified the next 11-file index-only production version.
-   "sites/nico-factory/versions/8a6f3ca799112677",\n   // Verified partner-workspace-only release on 2026-10-31, run 41163296813.\n   "sites/nico-factory/versions/b0f723150d84c176"
+   "sites/nico-factory/versions/8a6f3ca799112677",
+   // Verified partner-workspace-only release on 2026-10-31, run 41163296813.
+   "sites/nico-factory/versions/b0f723150d84c176"
  ]);
  const files=[];let pageToken="";
  do{
@@ -108,7 +110,7 @@ export async function uploadSingleExistingPartnerInvite({assetBytes,request,rele
   if(!knownIncompleteCountVersions.has(sourceName))
    throw Error("UNREVIEWED_LIVE_VERSION_MISSING_COUNT");
   // Known 11-file release must still list all existing pages before any write.
-  for(const required of ["/index.html","/partner-invite.html","/partner-counts.html","/partner-invite.html"])
+  for(const required of ["/index.html","/partner-invite.html","/partner-counts.html","/partner-workspace.html"])
    if(!files.some(f=>f.path===required))
     throw Error("SOURCE_REQUIRED_FILE_MISSING "+required);
   if(files.length<11)throw Error("SOURCE_KNOWN_VERSION_TOO_FEW_FILES");
