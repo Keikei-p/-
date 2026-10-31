@@ -381,7 +381,8 @@ async function refresh(){if(!auth.currentUser||!auth.currentUser.emailVerified)r
  }catch(e){data=null;$("appBox").hidden=true;fail(e)}finally{if(current===nonce)loading=false}}
 $("date").onchange=refresh;$("refresh").onclick=()=>{countDayCache.clear();refresh()};
 async function action(task){if(loading)return;loading=true;try{
- const message=await task();countDayCache.clear();await refresh();
+ countDayCache.clear();
+ const message=await task();await refresh();
  // A successful re-read must not overwrite the actual save confirmation.
  if(typeof message==="string"&&data)notice(message);
  }catch(e){fail(e)}finally{loading=false}}
