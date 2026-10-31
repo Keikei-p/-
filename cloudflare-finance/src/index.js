@@ -564,7 +564,18 @@ async function memberPolicy(env,principal,fetcher=fetch,now=new Date()) {
   const parts=new Intl.DateTimeFormat("en-US",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(now);
   const t=Object.fromEntries(parts.map(p=>[p.type,p.value]));
   const tokyo=`${t.year}-${t.month}-${t.day}`;
-  return approvedPolicy(user,member,company,principal.uid,tokyo);
+  const policy=approvedPolicy(user,member,company,principal.uid,tokyo);
+  // A newly registered partner tenant is inactive until the existing hub
+  // explicitly approves counts. Neither a forged client flag nor company
+  // Owner status bypasses this server-held revocable partner relation.
+  if(company.companyKind==="partner"){
+    const relation=await firestoreGet(env,"partnerRelations/"+companyId,fetcher);
+    if(!relation || relation.partnerCompanyId!==companyId ||
+       relation.hubCompanyId!==company.hubCompanyId ||
+       relation.active!==true || relation.countSharingApproved!==true)
+      throw httpError(403,"partner_relation_not_approved");
+  }
+  return policy;
 }
 async function financeView(env,principal,fetcher=fetch,{partnerOnly=false,month=null}={}){
   const policy=await memberPolicy(env,principal,fetcher);
