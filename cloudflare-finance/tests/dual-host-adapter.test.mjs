@@ -81,12 +81,30 @@ test("409 edit collision is a hard failure requiring refresh and does not overwr
 });
 test("read endpoint returns only validated view shape; does not add monetary values",async()=>{
   const data=await getSafeFinancialView({gatewayUrl:gateway,origin:SALES_HOST_ORIGINS[0],
-    user,explicitCutover:true,
+    user,month:"2026-10",explicitCutover:true,
     fetcher:async(url,options)=>{
-      assert.equal(url,gateway+"/v1/financial-view");
+      assert.equal(url,gateway+"/v1/financial-view?month=2026-10");
       assert.equal(options.method,"GET");
-      return Response.json({products:[{id:"sim",name:"SIM",planIds:["plan_0"]}],
-        records:[{id:"record",results:{item_0:{productId:"sim",planId:"plan_0",count:2}}}]});
+      return Response.json({month:"2026-10",products:[{id:"sim",name:"SIM",planIds:["plan_0"]}],
+        records:[{id:"record",date:"2026-10-22",results:{item_0:{productId:"sim",planId:"plan_0",count:2}}}]});
     }});
   assert.equal(data.records[0].results.item_0.count,2);
+});
+
+test("protect month-scoped read from invalid date, duplicate and stale API payload",async()=>{
+ let network=0;
+ for(const month of ["","2026-00","2026-13","2026-1","2026-10&companyId=other",undefined]){
+   await assert.rejects(getSafeFinancialView({gatewayUrl:gateway,origin:SALES_HOST_ORIGINS[0],
+     user,month,explicitCutover:true,fetcher:async()=>{network++;throw Error("network");}}),
+     /invalid_finance_month/);
+ }
+ assert.equal(network,0,"bad month must fail before transmitting ID token");
+ for(const [body,mismatch] of [
+   [{month:"2026-09",products:[],records:[]},"month"],
+   [{month:"2026-10",products:[],records:[{id:"r",date:"2025-10-01"}]},"record"]
+ ]){
+   await assert.rejects(getSafeFinancialView({gatewayUrl:gateway,origin:SALES_HOST_ORIGINS[0],
+     user,month:"2026-10",explicitCutover:true,fetcher:async()=>Response.json(body)}),
+     /invalid_secure_month_view/,mismatch);
+ }
 });
