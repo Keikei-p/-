@@ -63,6 +63,19 @@ jobs:
         with: {persist-credentials: false}
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
+      - name: Determine whether actual API source changed in this commit
+        id: source_delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff-tree --no-commit-id --name-only -r HEAD > "$RUNNER_TEMP/changed-files.txt"
+          if grep -Fxq 'functions-partner-workspace/service.cjs' "$RUNNER_TEMP/changed-files.txt"; then
+            echo 'needs_deploy=true' >> "$GITHUB_OUTPUT"
+            echo 'Read-only API source changed; targeted deployment permitted after tests'
+          else
+            echo 'needs_deploy=false' >> "$GITHUB_OUTPUT"
+            echo 'Read-only verification only: do not deploy existing Functions again'
+          fi
       - name: Verify production identity without printing secrets
         shell: bash
         env:
@@ -105,12 +118,33 @@ jobs:
           printf 'PARTNER_WORKSPACE_ENABLED=enabled\n' > functions-partner-workspace/.env.sales-management-cc116
           chmod 600 functions-partner-workspace/.env.sales-management-cc116
       - name: Deploy ONLY existing count-read callable, no other Functions or database
+        if: ${{ steps.source_delta.outputs.needs_deploy == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
+          # The Gen2 function update can succeed while firebase-tools returns
+          # 1 only because Artifact Registry cleanup policy setup was denied.
+          # Never retry a potentially completed deployment automatically.
+          set +e
           firebase deploy --non-interactive --project "$FIREBASE_PROJECT_ID" \
             --config firebase.partner-workspace.json \
-            --only functions:partner-workspace:getPartnerWorkspace
+            --only functions:partner-workspace:getPartnerWorkspace \
+            > "$RUNNER_TEMP/targeted-functions-deploy.log" 2>&1
+          result=$?
+          set -e
+          # Do not print service identities, tokens or unrelated config.
+          if [ "$result" -ne 0 ]; then
+            if grep -Fq 'Functions successfully deployed but could not set up cleanup policy' "$RUNNER_TEMP/targeted-functions-deploy.log" &&
+               grep -Fq 'functions[partner-workspace:getPartnerWorkspace(asia-northeast1)] Successful update operation' "$RUNNER_TEMP/targeted-functions-deploy.log"; then
+              echo 'WARN: targeted Function update succeeded; Artifact Registry cleanup policy needs separate maintenance'
+            else
+              echo 'STOP: targeted Function deploy failed for an unverified reason'
+              tail -n 20 "$RUNNER_TEMP/targeted-functions-deploy.log" | sed -E 's/(token|key|secret|password)[=: ][^ ]+/\\1=REDACTED/gI'
+              exit "$result"
+            fi
+          else
+            echo 'PASS: targeted existing getPartnerWorkspace update succeeded'
+          fi
       - name: Confirm existing callable and anonymous denial, all other Functions preserved
         shell: bash
         run: |
