@@ -52,13 +52,12 @@ function makePartnerCountActivation({
   const approvalRef=db.collection("partnerCountOnboardingApprovals").doc(partnerId);
   const teamRef=db.collection("teams").doc("partner_"+partnerId);
   const auditRef=db.collection("partnerCountActivationAudits").doc(partnerId);
-  const secondaryRef=db.collection("partnerWorkspaceContexts").doc(uid);
   let output;
   await db.runTransaction(async tx=>{
-   const [actorSnap,pSnap,relSnap,approvalSnap,teamSnap,auditSnap,secondarySnap]=
+   const [actorSnap,pSnap,relSnap,approvalSnap,teamSnap,auditSnap]=
      await Promise.all([
       tx.get(userRef),tx.get(partnerRef),tx.get(relationRef),
-      tx.get(approvalRef),tx.get(teamRef),tx.get(auditRef),tx.get(secondaryRef)
+      tx.get(approvalRef),tx.get(teamRef),tx.get(auditRef)
      ]);
    if(!actorSnap.exists||!pSnap.exists||!relSnap.exists||
       !approvalSnap.exists||teamSnap.exists||auditSnap.exists)
@@ -80,22 +79,25 @@ function makePartnerCountActivation({
    const actorMemberRef=hubRef.collection("members").doc(uid);
    const partnerOwnerRef=db.collection("users").doc(partner.ownerUid);
    const partnerMemberRef=partnerRef.collection("members").doc(partner.ownerUid);
-   const [hubSnap,actorMemberSnap,ownerSnap,ownerMemberSnap]=
+   const [hubSnap,actorMemberSnap,ownerSnap,ownerMemberSnap,secondarySnap]=
      await Promise.all([
       tx.get(hubRef),tx.get(actorMemberRef),
-      tx.get(partnerOwnerRef),tx.get(partnerMemberRef)
+      tx.get(partnerOwnerRef),tx.get(partnerMemberRef),
+       tx.get(db.collection("partnerWorkspaceContexts").doc(partner.ownerUid))
      ]);
    const hub=hubSnap.data()||{},am=actorMemberSnap.data()||{},
      owner=ownerSnap.data()||{},om=ownerMemberSnap.data()||{},
       secondary=secondarySnap.data()||{};
-    const secondaryOwner=partner.ownerUid===uid;
+    const secondaryOwner=secondarySnap.exists;
     const secondaryValid=secondaryOwner&&secondarySnap.exists&&
       secondary.kind==="partner_secondary"&&secondary.active===true&&
-      secondary.uid===uid&&secondary.primaryCompanyId===actor.companyId&&
+      secondary.uid===partner.ownerUid&&
+      ID.test(secondary.primaryCompanyId)&&
       secondary.partnerCompanyId===partnerId&&
       secondary.hubCompanyId===actor.companyId&&secondary.role==="owner"&&
-      secondary.emailLower===clean(request.auth.token.email).toLowerCase()&&
-      owner.uid===uid&&owner.companyId===actor.companyId;
+      secondary.emailLower===clean(owner.email).toLowerCase()&&
+      owner.uid===partner.ownerUid&&owner.companyId===secondary.primaryCompanyId&&
+      owner.accessKind!=="partner"&&owner.memberType!=="cooperator";
    if(!hubSnap.exists||hub.active!==true||
       (hub.companyKind!=null&&!["internal","direct"].includes(hub.companyKind))||
       hub.ownerUid!==uid||!actorMemberSnap.exists||
