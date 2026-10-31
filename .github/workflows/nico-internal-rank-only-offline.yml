@@ -1,0 +1,43 @@
+name: "NICO internal individual rank-only gateway (OFF, offline tests)"
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "cloudflare-finance/src/internal-rank-only.mjs"
+      - "cloudflare-finance/src/index.js"
+      - "cloudflare-finance/wrangler.toml"
+      - "cloudflare-finance/tests/internal-rank-only.test.mjs"
+      - ".github/workflows/nico-internal-rank-only-offline.yml"
+  push:
+    branches: [main]
+    paths:
+      - "cloudflare-finance/src/internal-rank-only.mjs"
+      - "cloudflare-finance/src/index.js"
+      - "cloudflare-finance/wrangler.toml"
+      - "cloudflare-finance/tests/internal-rank-only.test.mjs"
+permissions:
+  contents: read
+jobs:
+  rank-only-safe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Financially protected rank-only response, fail closed
+        run: |
+          set -euo pipefail
+          node --check cloudflare-finance/src/internal-rank-only.mjs
+          node --check cloudflare-finance/src/index.js
+          node --test cloudflare-finance/tests/internal-rank-only.test.mjs
+          node --test cloudflare-finance/tests/gateway.test.mjs
+          node --test cloudflare-finance/tests/internal-count-page.test.mjs
+      - name: Maintain legacy owner sale visibility and cutover safety
+        run: |
+          set -euo pipefail
+          node --test tests/internal-owner-finance-visibility.test.cjs
+          node --test tests/nico-production-cutover-preflight.test.mjs
