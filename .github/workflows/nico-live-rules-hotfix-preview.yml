@@ -101,5 +101,5 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          RULES_ONLY=1 firebase emulators:exec --project demo-sales-support --only firestore "node --test tests/rules.test.cjs"
+          firebase emulators:exec --project demo-sales-support --only firestore "node --test tests/rules.test.cjs"
           echo 'PASS: actual-live minimal patch verified offline. NO PRODUCTION DEPLOYMENT.'
