@@ -95,6 +95,46 @@ test("out-of-month or other-company rows block all totals",()=>{
  subs[0].fn(snapshot([doc(1,"2026-10-29","otherCompany")]));
  assert.equal(state.renders,0);
 });
+test("missing production company/date index falls back only to full verified same-company server records",()=>{
+ const {api,state,subs,css,status}=setup();
+ state.console.warn=()=>{};
+ api.subscribeSelectedMonthRecords();
+ assert.equal(subs.length,1);
+ subs[0].err({code:"failed-precondition",message:"The query requires an index. You can create it here..."});
+ assert.equal(subs.length,2,"index missing enables exactly one legacy company-only listener");
+ assert.equal(subs[1].q.collection,"records");
+ assert.equal(subs[1].q.companyId,"companyA");
+ assert.equal(state.recordsReady,false);
+ subs[1].fn(snapshot([doc(1),doc(2,"2026-09-30")],{fromCache:true,hasPendingWrites:false}));
+ assert.equal(state.recordsReady,false,"cache must never drive final count or revenue");
+ subs[1].fn(snapshot([doc(1),doc(2,"2026-09-30"),doc(3,"2026-10-01")]));
+ assert.equal(state.recordsReady,true);
+ assert.equal(state.recordsSubscribedMonth,"2026-10");
+ assert.equal(state.records.length,2);
+ assert.equal(state.records.reduce((sum,row)=>sum+row.totalCount,0),2);
+ assert.equal(state.records.reduce((sum,row)=>sum+row.totalRevenue,0),20000);
+ assert.equal(css.loading,false);
+ assert.equal(state.renders,1);
+ assert.equal(status.textContent,"");
+});
+test("recovery never runs on permission errors, invalid documents, wrong company or month change",()=>{
+ const {api,state,subs,css}=setup();
+ state.console.warn=()=>{};
+ api.subscribeSelectedMonthRecords();
+ subs[0].err({code:"permission-denied",message:"Missing or insufficient permissions"});
+ assert.equal(subs.length,1,"permission-denied must never fall back to wider query");
+ api.subscribeSelectedMonthRecords();
+ subs[1].err({code:"failed-precondition",message:"The query requires an index"});
+ assert.equal(subs.length,3);
+ subs[2].fn(snapshot([doc(1,"2026-10-29","anotherCompany")]));
+ assert.equal(state.recordsReady,false,"cross-company data must not be used");
+ assert.equal(css.loading,true);
+ state.dashboardMonth.value="2026-09";
+ api.subscribeSelectedMonthRecords();
+ assert(subs[2].closed,"stale full-company listener must be removed on month switch");
+ subs[2].fn(snapshot([doc(2)]));
+ assert.equal(state.recordsReady,false);
+});
 test("permissions and index errors block display instead of showing zero",()=>{
  const {api,state,subs,css,status}=setup();
  api.subscribeSelectedMonthRecords();
