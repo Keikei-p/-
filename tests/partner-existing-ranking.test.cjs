@@ -72,7 +72,7 @@ test("validated count-only partner month aggregates and refuses partial old snap
  const mapped=ctx.existingGroupsWithPartnerCounts(groups);
  assert.equal(JSON.stringify([...mapped[0].keys]),JSON.stringify(["id:nuro-id","legacy:NURO"]));
  assert.equal(JSON.stringify([...mapped[1].keys]),JSON.stringify(["id:s","legacy:SBMNP","legacy:YMMNP"]));
- assert.equal(JSON.stringify([...mapped[2].keys]),JSON.stringify(["id:unknown"]));
+ assert.equal(JSON.stringify([...mapped[2].keys]),JSON.stringify(["id:unknown","legacy:つばさ・HTB"]));
  assert.equal(ctx.productRankingRecordMatchesTeam({__partnerQuickOnly:true,teamId:"quick-partner:partner_a"},"quick-partner:partner_a"),true);
  assert.equal(ctx.productRankingRecordMatchesTeam({__partnerQuickOnly:true,teamId:"quick-partner:partner_a"},"else"),false);
  const malformed=response("2026-10-31",{NURO:1});
@@ -120,4 +120,76 @@ test("visible invitation destination selector preserves employee invite and swit
  assert.ok(html.includes('if (mode === "invite") syncInviteDestinationPanel()'));
  assert.ok(html.includes("createPartnerCompanyInvite({companyName,email})"));
  assert.ok(html.includes("currentCompanyData?.companyKind === \"partner\""));
+});
+
+test("actual quick + staff count API merge prioritizes staff ledger without doubling a company",async()=>{
+ const KEYS=["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"];
+ const zero=()=>Object.fromEntries(KEYS.map(k=>[k,0]));
+ const row=(id,name,changes)=>{
+  const counts={...zero(),...changes};
+  return {partnerCompanyId:id,name,counts,totalCount:Object.values(counts).reduce((a,b)=>a+b,0)};
+ };
+ const calls=[];
+ const ctx=make(["validatedPartnerRankingDay","mergedPartnerRankingDay","readPartnerRankingMonth",
+  "normalizedPartnerRankingLabel","partnerCategoriesForExistingGroup",
+  "existingGroupsWithPartnerCounts","partnerRankingVirtualRecords",
+  "productRankingRecordMatchesTeam","getRecordResults","buildProductMemberRanking",
+  "rankProductMemberCounts","buildGroupedProductMemberRanking"],{
+   PARTNER_QUICK_RANK_KEYS:KEYS,getTodayString:()=>"2026-10-31",
+   currentPartnerRankingKey:m=>"test|hub|"+m,partnerRankingDailyCache:new Map(),
+   readPartnerQuickDay:async({date})=>{
+    calls.push(["quick",date]);
+    return {data:{role:"hub",date,partners:date==="2026-10-31"?
+     [row("partnerA","協力店A",{NURO:9}),row("partnerB","協力店B",{SBMNP:2})]:[]}};
+   },
+   readPartnerWorkDay:async({date})=>{
+    calls.push(["staff",date]);
+    return {data:{role:"hub",date,partners:date==="2026-10-31"?
+     [row("partnerA","協力店A",{NURO:2,"つばさ・HTB":3})]:[]}};
+   },
+   dashboardMonth:{value:"2026-10"},
+   currentPartnerRankingRows:()=>ctx.monthRows,
+   monthRows:[],
+   products:[{id:"nuro",name:"NURO光"},{id:"evergreen",name:"エバーグリーン"},
+     {id:"sbmnp",name:"SBMNP"}],
+   teams:[],recordBelongsToTeam:()=>false,
+   getCurrentMemberName:rec=>rec.memberNameSnapshot,
+   getCurrentTeamName:rec=>rec.teamNameSnapshot,
+   currentProductDisplayName:res=>res.productName,
+   rankingGroups:[]
+ });
+ const merged=await ctx.mergedPartnerRankingDay("2026-10-31");
+ assert.equal(merged.length,2,"new staff-ledger replaces only the same company's quick report");
+ assert.equal(merged.find(x=>x.id==="partnerA").totalCount,5);
+ assert.equal(merged.find(x=>x.id==="partnerB").totalCount,2);
+ assert.equal(merged.reduce((n,x)=>n+x.totalCount,0),7,
+  "legacy 9 NURO must not be added again to staff-ledger 5");
+ const month=await ctx.readPartnerRankingMonth("2026-10");
+ assert.equal(month.complete,true);
+ assert.equal(month.rows.reduce((n,x)=>n+x.totalCount,0),7);
+ assert.equal(calls.length,64,"daywise reads both services for each of 31 days, plus first direct check");
+ ctx.monthRows=month.rows;
+ const virtual=ctx.partnerRankingVirtualRecords();
+ assert.equal(virtual.length,2);
+ assert.ok(virtual.every(x=>x.results.every(y=>y.revenuePerUnit===0)));
+ const internal=[{uid:"direct",id:"existing",teamId:"direct-team",date:"2026-10-31",
+  memberNameSnapshot:"直営A",teamNameSnapshot:"直営",
+  results:[{productId:"nuro",productName:"NURO光",count:4,revenuePerUnit:0}]}];
+ const groups=[
+  {id:"nuro",name:"NURO光",keys:["id:nuro"]},
+  {id:"electric",name:"新電力",keys:["id:evergreen"]},
+  {id:"mnp",name:"乗り換え丸件",keys:["id:sbmnp"]}
+ ];
+ const joined=ctx.existingGroupsWithPartnerCounts(groups);
+ const ranked=ctx.buildGroupedProductMemberRanking([...internal,...virtual],"",joined);
+ assert.equal(ranked.find(x=>x.name==="NURO光").count,6,
+  "direct NURO 4 plus partner staff NURO 2");
+ assert.equal(ranked.find(x=>x.name==="新電力").count,3,
+  "partner combined electricity entries counted in existing new-electricity group");
+ assert.equal(ranked.find(x=>x.name==="乗り換え丸件").count,2,
+  "legacy-only partner retains its two SBMNP counts");
+ const own=ctx.buildGroupedProductMemberRanking([...internal,...virtual],
+  "quick-partner:partnerA",joined);
+ assert.equal(own.find(x=>x.name==="NURO光").count,2);
+ assert.equal(own.find(x=>x.name==="新電力").count,3);
 });
