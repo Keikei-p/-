@@ -31,7 +31,7 @@ const settings={
   weekdays,linkedHubCompanyId:"hub",countsShareApproved:true,
   countsShareLineGroupId:"group_test"}
 };
-function fixture({live=true,consent=true,mutate=undefined,dryRunValidate=false,notificationEnabled=true,lineEnabled=true}={}){
+function fixture({live=true,consent=true,relationState=undefined,mutate=undefined,dryRunValidate=false,notificationEnabled=true,lineEnabled=true}={}){
  const calls=[],sent=[],dispatches=[];
  const companyDocs=[
   firestoreDoc("companies/hub",{name:"自社",active:true}),
@@ -87,6 +87,12 @@ function fixture({live=true,consent=true,mutate=undefined,dryRunValidate=false,n
     const s={...original,enabled:notificationEnabled,lineEnabled};
     return ok(firestoreDoc("companies/"+cid+"/settings/notifications",s));
    }
+  }
+  if(method==="GET"&&u.pathname.endsWith("/documents/partnerRelations/partner")){
+   if(relationState===null)return {ok:false,status:404,json:async()=>({})};
+   const relation={partnerCompanyId:"partner",hubCompanyId:"hub",
+     active:true,countSharingApproved:true,...(relationState||{})};
+   return ok(firestoreDoc("partnerRelations/partner",relation));
   }
   if(method==="GET"&&u.pathname.endsWith("/documents/companies/hub/members"))
    return ok({documents:[
@@ -293,4 +299,35 @@ test("morning/final/missing all use a single approved LINE destination",async()=
     assert.equal(message.includes(privateTerm),false);
   }
  }
+});
+
+test("revoked or absent server-side partner relation blocks combined LINE even if settings still allow sharing",async()=>{
+ const scenarios=[
+  {active:false,countSharingApproved:true},
+  {active:true,countSharingApproved:false},
+  {active:false,countSharingApproved:false},
+  {active:true,countSharingApproved:true,hubCompanyId:"another-hub"},
+  {active:true,countSharingApproved:true,partnerCompanyId:"other-partner"},
+  null
+ ];
+ for(const relationState of scenarios){
+  for(const cron of ["30 0 * * *","0 12 * * *","5 10 * * *"]){
+   const data=await run({live:true,cron,relationState});
+   assert.equal(data.sent.some(msg=>msg.to==="group_test"),false,
+     "revoked link may not receive hub+partner LINE report "+cron);
+   assert.equal(data.dispatches.some(x=>x.doc?.startsWith("hub_")),false,
+     "revoked link may not reserve combined dispatch "+cron);
+   assert.equal(data.calls.some(x=>x.path.includes("/documents/partnerRelations/partner")),true,
+     "authorization relation must be checked for every linked report");
+  }
+ }
+});
+test("valid relation permits exactly one combined message; OFF mode never fetches relation",async()=>{
+ const accepted=await run({live:true});
+ assert.equal(accepted.sent.length,1);
+ assert.equal(accepted.sent[0].to,"group_test");
+ assert.equal(accepted.calls.filter(x=>x.path.endsWith("/documents/partnerRelations/partner")).length,1);
+ const disabled=await run({live:false});
+ assert.equal(disabled.calls.some(x=>x.path.includes("partnerRelations")),false);
+ assert.equal(disabled.sent.length,0);
 });
