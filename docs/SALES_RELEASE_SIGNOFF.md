@@ -595,3 +595,20 @@ Rulesの本番デプロイ: 未実施
 ### GitHub管理者によるUI/公開経路レビュー
 - PR #178 の差分は旧 `index.html` の招待先セレクタと既存の協力店Callable UI、単一index公開ワークフロー・専用テスト・本記録のみであることを確認。Firebase Function、Rules、社員データ、売上等に書き込む新処理はない。
 - 認証済みリポジトリ管理者 `Keikei-p` 接続で `sales-production-reviewed` ラベルを付けた。初回の保護ゲート実行はラベル適用前のGitHub event snapshotを参照したため再実行でもFAIL。そこで本レビュー追記commitから最新eventの保護ゲートを再検査する。これは独立した本番オーナー実アカウント操作試験・本人の手書き署名ではない。
+
+
+---
+
+## 2026-10-31 — PR #180: 緊急・既存アカウントログイン復旧 / index.html限定
+
+**依頼者の明示指示**: 「いまPowerShell使えのんと ログインでんきなった」。PC操作を依頼せず本番ログインの修復を最優先とする。GitHub認証済みの管理者リポジトリ接続で本件を審査する。
+
+**コードから確認した事故原因**: 既存会社作成・会社招待の双方は `companies/{companyId}/members/{uid}` の文書に `uid` 等を保存するが、メンバー文書内には `companyId` フィールドを保存していない。一方、既存indexの `checkLegacyEntryAgainstServer` が呼ぶ `classifyLegacySalesEntrypoint` は `member.companyId===user.companyId` を必須にしており、正規ユーザーでもブロックされる設計矛盾があった。
+
+**修復**: Firestoreサーバーから `companies/{user.companyId}/members/{user.uid}` を実際に取得して存在確認した場合に限り、欠落している冗長な `member.companyId` をその認証済みパスの会社IDで補う。明示的に別の `companyId` がある場合は上書きせず拒否。既存の会社・メンバー・アクセス種別・協力店判定、`getDocFromServer`、金融データ制限を維持し、サーバ側Rulesには手を入れない。
+
+**検証**: 実際のindexから抽出したログイン認証関数を模擬Firestoreに対して実行する後方互換の新テストを追加。旧メンバーの欠落companyId、明示的な会社不一致、別UID、文書なし、partner access/companyKind拒否の全ケースをCIで検査する。既存Sales App、Hosting全ファイルハッシュ保全、保護ゲートの合格が条件。
+
+**本番公開**: 新しい限定GitHub Actionsをmainへのレビュー済みマージ時だけ発動。Firebase Hostingで `index.html` 1ファイルのみを変更し、他の全ファイル・Hosting設定を現行ライブ版からSHA256照合で継承する。事前に独立した `legacy-finance-entry-guard.mjs` が本番で取得できることを確認する。**Firestore Rules, Cloud Functions, Firebase Auth, sales records, users, team, prices, revenue, historical records, backups はいっさい書き換えない**。本番ページが修正コードを配信したことを確かめる。実アカウントのログイン試験はこのリリースだけでは代行不可であり、公開成功と実ログイン成功を区別する。
+
+**署名・審査の正確性**: 本人の手書き・電子署名は取得していない。記載は会話上の緊急復旧指示と、GitHub管理者の審査ラベルを組み合わせた変更記録であり、本人署名を偽装しない。データの破壊的変更は承認対象外。
