@@ -1,0 +1,108 @@
+name: NICO existing partner invitation - count workspace link only
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'partner-invite.html'
+      - 'tools/hosting/surgical-existing-partner-invite.mjs'
+      - 'tests/surgical-existing-partner-invite.test.mjs'
+      - '.github/workflows/nico-partner-invite-page-only.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'partner-invite.html'
+      - 'tools/hosting/surgical-existing-partner-invite.mjs'
+      - 'tests/surgical-existing-partner-invite.test.mjs'
+      - '.github/workflows/nico-partner-invite-page-only.yml'
+permissions:
+  contents: read
+concurrency:
+  group: nico-surgical-index-release
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify invitation, partner signup and count-only route remain isolated
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check tools/hosting/surgical-existing-partner-invite.mjs
+          node --test tests/surgical-existing-partner-invite.test.mjs
+          node --test tests/partner-company-invitations.test.cjs
+          node --test tests/partner-workspace.test.cjs
+          node --test tests/partner-existing-ranking.test.cjs
+          node --test tests/partner-money-free-workspace.test.cjs
+          node <<'NODE'
+          const fs=require('node:fs');
+          const html=fs.readFileSync('partner-invite.html','utf8');
+          if(!html.includes('createPartnerCompanyInvitation')||
+             !html.includes('acceptPartnerCompanyInvitation')||
+             /firebase-firestore\.js|\bgetFirestore\(|\bgetDoc\(/.test(html))
+            throw Error('UNSAFE_INVITATION_BROWSER');
+          const src=html.match(/<script type="module">([\s\S]*?)<\/script>/)?.[1];
+          if(!src)throw Error('INVITATION_SCRIPT_NOT_FOUND');
+          fs.writeFileSync('/tmp/nico-safe-partner-invite.mjs',src);
+          NODE
+          node --check /tmp/nico-safe-partner-invite.mjs
+  release:
+    needs: validate
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.validate.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      NICO_PARTNER_RELEASE_CONFIRMATION: CONFIRM_REPLACE_PARTNER_INVITE_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Confirm current invitation matches existing reviewed version
+        shell: bash
+        run: |
+          set -euo pipefail
+          git show 81181507282d8dd0af998894d24969012118f84b:partner-invite.html > "$RUNNER_TEMP/nico-old-invite.html"
+          curl -fsSL --retry 3 --max-time 30 'https://nico-factory.web.app/partner-invite.html?source_check=20261031' > "$RUNNER_TEMP/nico-live-invite.html"
+          cmp -s "$RUNNER_TEMP/nico-old-invite.html" "$RUNNER_TEMP/nico-live-invite.html" || {
+             echo 'STOP UNKNOWN_INVITE_LIVE_STATE; site unchanged'
+             exit 1
+          }
+      - name: Read existing service identity, without printing credentials
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          node -e "const fs=require('node:fs');if(JSON.parse(fs.readFileSync('.firebaserc','utf8')).projects.default!=='sales-management-cc116')process.exit(1)"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-invite-rest-identity.json"
+          chmod 600 "$RUNNER_TEMP/nico-invite-rest-identity.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-invite-rest-identity.json" >> "$GITHUB_ENV"
+      - name: Install only existing Hosting REST authentication dependencies
+        run: npm install --prefix functions --ignore-scripts --package-lock=false
+      - name: Verify full live manifest and preserve 10 unchanged assets
+        run: node tools/hosting/surgical-existing-partner-invite.mjs --dry-run
+      - name: Publish one invitation page (no Firestore, Auth, Functions, Rules or LINE changes)
+        run: node tools/hosting/surgical-existing-partner-invite.mjs --release
+      - name: Compare exact new invitation and verify all original routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          ready=false
+          for n in 1 2 3; do
+            curl -fsSL --max-time 30 "https://nico-factory.web.app/partner-invite.html?post_release=${GITHUB_SHA}-${n}" > "$RUNNER_TEMP/nico-updated-invite.html"
+            if cmp -s "$RUNNER_TEMP/nico-updated-invite.html" partner-invite.html; then ready=true;break;fi
+            sleep 3
+          done
+          test "$ready" = true
+          for route in / /partner-counts.html /partner-workspace.html; do
+            code=$(curl -sSL -o /dev/null -w '%{http_code}' --max-time 30 "https://nico-factory.web.app$route")
+            test "$code" = 200
+          done
+          echo 'PASS: existing application retained, only partner invitation destination improved'
