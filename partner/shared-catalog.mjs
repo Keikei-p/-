@@ -2,7 +2,7 @@
  * Server-only partner catalog boundary, PURE (no Firestore calls or writes).
  * "Current company" products are the canonical source for partner selling.
  * Prices/revenue/cashback NEVER cross the company boundary. Partner-custom
- * products start PRIVATE and can be shared as *labels/counts only* on opt-in.
+ * products are permanently PRIVATE, including their names and counts.
  */
 import {projectPublicProduct,assertPublicSchema} from "../security/public-projection.mjs";
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
@@ -27,7 +27,7 @@ function customProduct(input,partnerCompanyId){
      "companyId","productId","name","active","sortOrder","visibility"
    ].includes(k))||
    input.companyId!==partnerCompanyId||!valid(input.productId)||
-   !["private","shared_counts"].includes(input.visibility)||input.active!==true&&input.active!==false||
+   input.visibility!=="private"||input.active!==true&&input.active!==false||
    !Number.isSafeInteger(input.sortOrder)||input.sortOrder<0)deny();
  name(input.name);
  return input;
@@ -56,7 +56,7 @@ export function buildPartnerCatalog({
     !Array.isArray(hubProducts)||!Array.isArray(localCustomProducts)||
     hubProducts.length>10000||localCustomProducts.length>10000)deny();
  verifyRelation(relation,hubCompanyId,partnerCompanyId);
- const merged=[],external=[];
+ const merged=[];
  const seen=new Set();
  if(audience==="partner"){
   for(const raw of hubProducts){
@@ -77,7 +77,8 @@ export function buildPartnerCatalog({
   const key="custom:"+partnerCompanyId+":"+item.productId;
   if(seen.has(key))deny();seen.add(key);
   if(item.active!==true)continue;
-  if(audience==="hub"&&item.visibility==="private")continue;
+  // Partner custom products never reach the internal hub, even as names.
+  if(audience==="hub")continue;
   const row={
     catalogId:key,canonicalCompanyId:partnerCompanyId,
     canonicalProductId:item.productId,name:name(item.name),
@@ -85,14 +86,13 @@ export function buildPartnerCatalog({
     visibility:item.visibility
   };
   merged.push(row);
-  if(item.visibility==="shared_counts")external.push(row);
  }
  const catalog=merged.sort((a,b)=>a.sortOrder-b.sortOrder||a.catalogId.localeCompare(b.catalogId));
  for(const row of catalog){
   if(Object.keys(row).some(k=>/price|revenue|cashback|unitPrice|amount/i.test(k)))deny();
  }
  return {hubCompanyId,partnerCompanyId,audience,
-  products:catalog,sharedCustomProductIds:external.map(x=>x.catalogId)};
+  products:catalog,sharedCustomProductIds:[]};
 }
 /**
  * New custom products always have NO price fields, remain private by default,
@@ -111,7 +111,7 @@ export function planCreatePartnerProduct({actor,partnerCompanyId,productId,produ
 export function planChangePartnerProduct({actor,existing,partnerCompanyId,nextVisibility}){
  if(!actor||actor.serverVerified!==true||actor.companyId!==partnerCompanyId ||
     !valid(partnerCompanyId)||actor.partnerCatalogRole!=="owner"||
-    !["private","shared_counts"].includes(nextVisibility))deny();
+    nextVisibility!=="private")deny();
  const item=customProduct(existing,partnerCompanyId);
  return {
   ...item,visibility:nextVisibility
@@ -137,7 +137,8 @@ export function filterPartnerCountLines({partnerCompanyId,customProducts,lines,a
     !valid(line.productId)||!Number.isSafeInteger(line.count)||line.count<0)deny();
   const item=catalog.get(line.productId);
   if(!item)deny();
-  if(item.visibility==="private" && audience==="hub")continue;
+  // No partner-custom count reaches the hub, regardless of caller flags.
+  if(audience==="hub")continue;
   result.push({productId:line.productId,count:line.count});
  }
  return result;
