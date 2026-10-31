@@ -84,6 +84,17 @@ jobs:
             throw Error('STOP_UNREVIEWED_RULES_BYTES');
           console.log('PASS exact original and candidate byte hashes, no data changes');
           NODE
+      - name: Mandatory independent money-origin finance security gate (never bypass)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check scripts/check-finance-read-boundary-before-deploy.mjs
+          node --test tests/finance-release-gate.test.mjs
+          # This script MUST validate the ACTUAL CANDIDATE swapped into firestore.rules.
+          # All 44 emulator tests passing is necessary but not sufficient.
+          # The current partial patch is expected to be BLOCKED here until
+          # record/product/correction raw finance boundaries are reviewed.
+          node scripts/check-finance-read-boundary-before-deploy.mjs
       - name: Retain exact live rollback source privately
         uses: actions/upload-artifact@v4
         with:
