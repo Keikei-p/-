@@ -71,6 +71,11 @@ export function prepareMonthActivation({plan,jstDate,people,validTeamIds}){
  const d=new Date(jstDate+"T00:00:00Z");
  if(!Number.isFinite(d.valueOf())||d.toISOString().slice(0,10)!==jstDate)
    stop("CLOCK_INVALID");
+ // A serialized plan must retain its original company and canonical month ID.
+ // Do not generate foreign company patches from a forged confirmed plan.
+ if(typeof plan.companyId!=="string"||!ID.test(plan.companyId)||
+    plan.planId!==plan.companyId+"_"+plan.month||!Array.isArray(plan.items))
+   stop("PLAN_SCOPE");
  const since=plan.month+"-01";
  if(jstDate<since)stop("TOO_EARLY");
  // This schedule is effective on the first of its month. Allowing a later
@@ -86,6 +91,10 @@ export function prepareMonthActivation({plan,jstDate,people,validTeamIds}){
   const person=byId.get(item.uid);
   if(!person||person.active!==true||person.companyRole==="owner")
     stop("MISSING_OR_OWNER_PERSON");
+  // Older member snapshots may omit companyId, but any explicit foreign
+  // company identifier is a hard stop; never rewrite their team history.
+  if(person.companyId!=null&&person.companyId!==plan.companyId)
+    stop("FOREIGN_COMPANY_PERSON");
   const teamId=has(item,"teamId")?item.teamId:(person.teamId??null);
   if(teamId!==null&&!available.has(teamId))stop("NONEXISTENT_TEAM");
   const role=has(item,"role")?item.role:person.role;
@@ -189,8 +198,14 @@ export function prepareFutureGoalReservations({
  plan,jstDate,activeTeamIds,existingGoals=[],existingRevenueGoals=[]
 }){
  if(!plan||plan.kind!=="team-goals"||plan.state!=="confirmed"||
-   !Array.isArray(plan.items)||!ID.test(plan.companyId||""))stop("GOALS_NOT_CONFIRMED");
+   !Array.isArray(plan.items)||typeof plan.companyId!=="string"||
+   !ID.test(plan.companyId))stop("GOALS_NOT_CONFIRMED");
  validMonth(plan.month);
+ // Fail closed on fabricated/rebound confirmed plans before building any
+ // future goal documents. Owner still MUST be reverified by the server.
+ if(plan.planId!==plan.companyId+"_"+plan.month||
+    typeof plan.ownerUid!=="string"||!ID.test(plan.ownerUid))
+   stop("GOAL_PLAN_SCOPE");
  if(typeof jstDate!=="string"||!/^\d{4}-\d{2}-\d{2}$/.test(jstDate)||
    !Number.isFinite(Date.parse(jstDate+"T00:00:00Z"))||
    new Date(jstDate+"T00:00:00Z").toISOString().slice(0,10)!==jstDate)
