@@ -31,7 +31,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git hash-object cloudflare-finance/src/index.js)" = "5f05b404d724b796efd43d8acb68035d78e1f76d"
+          test "$(git hash-object cloudflare-finance/src/index.js)" = "ae200796a1a0fc86230839f825ceb40fbf3e1b64"
           test "$(git hash-object cloudflare-finance/wrangler.toml)" = "7909dffc664928ce9d751b34c44f9bdd5eab45c2"
           node <<'NODE'
           const fs=require('node:fs');
@@ -83,7 +83,7 @@ jobs:
           test -n "$CLOUDFLARE_API_TOKEN" || { echo STOP_CLOUDFLARE_TOKEN_MISSING; exit 1; }
           test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo STOP_CLOUDFLARE_ACCOUNT_MISSING; exit 1; }
           test "$(git rev-parse HEAD)" = "${{ github.sha }}"
-          test "$(git hash-object cloudflare-finance/src/index.js)" = "5f05b404d724b796efd43d8acb68035d78e1f76d"
+          test "$(git hash-object cloudflare-finance/src/index.js)" = "ae200796a1a0fc86230839f825ceb40fbf3e1b64"
           test "$(git hash-object cloudflare-finance/wrangler.toml)" = "7909dffc664928ce9d751b34c44f9bdd5eab45c2"
           echo "PASS only disabled gateway, no Firebase Service Account supplied"
       - name: Deploy ONLY isolated disabled gateway
