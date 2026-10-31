@@ -58,8 +58,8 @@ function makeFakeDb({variant="base"}={}){
  const m={...u};
  const docs={
   companies:[{id:cid,...c}],
-  "users/"+owner:[{id:owner,...u}],
-  "companies/"+cid+"/members/"+owner:[{id:owner,...m}],
+  ["users/"+owner]:[{id:owner,...u}],
+  ["companies/"+cid+"/members/"+owner]:[{id:owner,...m}],
   products:[product],
   records:[record],
   revenueGoals:[goal]
