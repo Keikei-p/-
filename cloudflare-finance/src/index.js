@@ -537,19 +537,19 @@ async function memberPolicy(env,principal,fetcher=fetch,now=new Date()) {
   const tokyo=`${t.year}-${t.month}-${t.day}`;
   return approvedPolicy(user,member,company,principal.uid,tokyo);
 }
-async function financeView(env,principal,fetcher=fetch,{partnerOnly=false}={}){
+async function financeView(env,principal,fetcher=fetch,{partnerOnly=false,month=null}={}){
   const policy=await memberPolicy(env,principal,fetcher);
   if(partnerOnly && !policy.isPartner)throw httpError(403,"partner_only");
   const [products,records,revenueGoals,members]=await Promise.all([
     firestoreQuery(env,"products",policy.companyId,fetcher),
-    firestoreQuery(env,"records",policy.companyId,fetcher),
+    month?firestoreMonthlyRecords(env,policy.companyId,month,fetcher):firestoreQuery(env,"records",policy.companyId,fetcher),
     policy.canViewRevenue?firestoreQuery(env,"revenueGoals",policy.companyId,fetcher):Promise.resolve([]),
     partnerOnly?partnerMemberList(env,policy,fetcher):Promise.resolve([])
   ]);
   const payload={policy:{
     canViewRevenue:policy.canViewRevenue,canViewUnitPrice:policy.canViewUnitPrice,isOwner:policy.isOwner,isPartner:policy.isPartner,
     needsPermissionReview:policy.needsPermissionReview,teamId:policy.teamId
-  },products:safeProducts(products,policy),records:safeRecords(records,policy,products),revenueGoals:safeGoals(revenueGoals,policy)};
+  },...(month?{month}:{}),products:safeProducts(products,policy),records:safeRecords(records,policy,products),revenueGoals:safeGoals(revenueGoals,policy)};
   // Count-only monthly leaderboard uses the same records for internal teams
   // and external partner teams, avoiding a second registration or double count.
   // Only owners receive whole-company ranking data.
@@ -559,7 +559,7 @@ async function financeView(env,principal,fetcher=fetch,{partnerOnly=false}={}){
     const y=parts.find(p=>p.type==="year")?.value;
     const m=parts.find(p=>p.type==="month")?.value;
     try{
-      payload.companyCountRanking=buildCompanyCountRanking(records,policy.companyId,y+"-"+m);
+      payload.companyCountRanking=buildCompanyCountRanking(records,policy.companyId,month||y+"-"+m);
     }catch{
       // Legacy duplicate daily documents require review. Never let an
       // optional leaderboard disable the Owner's existing finance view.
@@ -894,11 +894,16 @@ export default {
     if(env.FINANCE_COST_APPROVAL!=="OWNER_APPROVED_BLAZE_COSTS")
       return safeJSON({error:"billing_not_approved"},503,origin);
     if(env.FIREBASE_PROJECT_ID!==PROJECT_ID)return safeJSON({error:"project_mismatch"},503,origin);
+    // All financial views are bounded to one whole month; never read the
+    // full historical company ledger and silently truncate after 100k rows.
+    // Company and role come ONLY from verified membership, not query params.
+    if(!validInternalRankMonthQuery(url.searchParams))
+      return safeJSON({error:"invalid_month"},400,origin);
     const auth=request.headers.get("authorization")||"";
     if(!auth.startsWith("Bearer "))return safeJSON({error:"authorization_required"},401,origin);
     try{
       const principal=await verifiedToken(auth.slice(7));
-      const answer=await financeView(env,principal,fetch,{partnerOnly});
+      const answer=await financeView(env,principal,fetch,{partnerOnly,month:url.searchParams.get("month")});
       return safeJSON(answer,200,origin);
     }catch(error){
       if(error.status!==401&&error.status!==403)console.error("finance_gateway_failed",error.message);
