@@ -88,34 +88,52 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   // company, revenue flags, financial originals, or stored user document.
   if(workspaceCompanyId){
    if(!ID.test(workspaceCompanyId)||workspaceCompanyId===cid||
-      u.accessKind==="partner"||u.memberType==="cooperator")fail();
-   const [ctxSnap,partnerSnap,memberSnap,relationSnap]=await Promise.all([
+      (u.accessKind!=null&&u.accessKind!=="internal")||
+      (u.memberType!=null&&!["internal","direct","member","managed"].includes(u.memberType)))fail();
+   const [ctxSnap,partnerSnap,memberSnap,relationSnap,primaryCompanySnap,primaryMemberSnap]=await Promise.all([
      read(db.collection("partnerWorkspaceContexts").doc(uid)),
      read(db.collection("companies").doc(workspaceCompanyId)),
      read(collection(workspaceCompanyId,"members").doc(uid)),
-     read(db.collection("partnerRelations").doc(workspaceCompanyId))
+     read(db.collection("partnerRelations").doc(workspaceCompanyId)),
+     read(db.collection("companies").doc(cid)),
+     read(collection(cid,"members").doc(uid))
    ]);
    const ctx=ctxSnap.data()||{},pc=partnerSnap.data()||{},
-     pm=memberSnap.data()||{},rel=relationSnap.data()||{};
+     pm=memberSnap.data()||{},rel=relationSnap.data()||{},
+     originalCompany=primaryCompanySnap.data()||{},originalMember=primaryMemberSnap.data()||{};
+   // The original identity must still be current and internally verified.
+   if(!primaryCompanySnap.exists||!primaryMemberSnap.exists||
+      originalCompany.active===false||
+      (originalCompany.companyKind!=null&&!["internal","direct"].includes(originalCompany.companyKind))||
+      originalMember.active===false||
+      (originalMember.uid!=null&&originalMember.uid!==uid)||
+      (originalMember.companyId!=null&&originalMember.companyId!==cid)||
+      (originalMember.accessKind!=null&&originalMember.accessKind!=="internal")||
+      ["partner","cooperator"].includes(originalMember.memberType))fail();
+   const partnerOwner=ctx.role==="owner"&&pc.ownerUid===uid&&pc.masterUid===uid&&
+      pm.companyRole==="owner"&&pm.role==="leader"&&pm.teamId==null;
+   const partnerWorker=["leader","member"].includes(ctx.role)&&
+      pm.companyRole==="member"&&pm.role===ctx.role&&
+      ID.test(ctx.teamId||"")&&pm.teamId===ctx.teamId&&pc.ownerUid!==uid;
+   if(!partnerOwner&&!partnerWorker)fail();
    if(!ctxSnap.exists||!partnerSnap.exists||!memberSnap.exists||
       !relationSnap.exists||ctx.active!==true||
       ctx.kind!=="partner_secondary"||ctx.uid!==uid||
       ctx.primaryCompanyId!==cid||ctx.partnerCompanyId!==workspaceCompanyId||
       ctx.hubCompanyId!==pc.hubCompanyId||
       (u.email&&ctx.emailLower!==clean(u.email).toLowerCase())||
-      ctx.role!=="owner"||pc.active!==true||
-      pc.companyKind!=="partner"||pc.ownerUid!==uid||
-      pc.masterUid!==uid||!ID.test(pc.hubCompanyId||"")||
+      pc.active!==true||
+      pc.companyKind!=="partner"||!ID.test(pc.hubCompanyId||"")||
       pm.active!==true||pm.uid!==uid||
-      pm.companyId!==workspaceCompanyId||pm.companyRole!=="owner"||
-      pm.role!=="leader"||pm.teamId!=null||
+      pm.companyId!==workspaceCompanyId||
       pm.accessKind!=="partner"||pm.memberType!=="cooperator"||
       pm.canViewRevenue!==false||pm.canViewUnitPrice!==false||
       rel.hubCompanyId!==pc.hubCompanyId||
       rel.partnerCompanyId!==workspaceCompanyId||
       rel.active!==true||rel.countSharingApproved!==true)fail();
    return {kind:"partner",uid,cid:workspaceCompanyId,
-     hubId:pc.hubCompanyId,companyName:pc.name,role:"owner",teamId:null};
+     hubId:pc.hubCompanyId,companyName:pc.name,
+     role:partnerOwner?"owner":ctx.role,teamId:partnerOwner?null:ctx.teamId};
   }
   const [cs,ms]=await Promise.all([
     read(db.collection("companies").doc(cid)),
@@ -327,7 +345,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   const a=await actor(request),d=request?.data||{},token=clean(d.token);
   if(!/^[A-Za-z0-9_-]{43}$/.test(token))fail("invalid-argument");
   const hash=crypto.createHash("sha256").update(token).digest("hex"),ref=db.collection("partnerWorkInvites").doc(hash);
-  await db.runTransaction(async tx=>{
+  const joined=await db.runTransaction(async tx=>{
    const inviteSnap=await tx.get(ref),i=inviteSnap.data()||{};
    if(!inviteSnap.exists||i.status!=="pending"||i.emailLower!==a.email||
       !ID.test(i.companyId||"")||!ID.test(i.teamId||"")||
@@ -336,14 +354,38 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    const cr=db.collection("companies").doc(i.companyId),ur=db.collection("users").doc(a.uid),
     mr=collection(i.companyId,"members").doc(a.uid),sr=staffRef(i.companyId,a.uid);
    const relationRef=db.collection("partnerRelations").doc(i.companyId);
-   const [cs,us,ms,ss,rs]=await Promise.all([tx.get(cr),tx.get(ur),tx.get(mr),tx.get(sr),tx.get(relationRef)]);
+   const ctxRef=db.collection("partnerWorkspaceContexts").doc(a.uid);
+   const [cs,us,ms,ss,rs,ctxSnap]=await Promise.all([
+     tx.get(cr),tx.get(ur),tx.get(mr),tx.get(sr),tx.get(relationRef),tx.get(ctxRef)
+   ]);
    if(!cs.exists||cs.data()?.companyKind!=="partner"||cs.data()?.active!==true||
       cs.data()?.hubCompanyId!==i.hubCompanyId||
       !rs.exists||rs.data()?.partnerCompanyId!==i.companyId||
       rs.data()?.hubCompanyId!==i.hubCompanyId||
       rs.data()?.active!==true||rs.data()?.countSharingApproved!==true||
-      ms.exists||ss.exists||
-      us.data()?.companyId||us.data()?.active===false)fail("failed-precondition");
+      ms.exists||ss.exists||ctxSnap.exists||
+      us.data()?.active===false)fail("failed-precondition");
+   const original=us.data()||{},primaryCid=clean(original.companyId);
+   if(primaryCid){
+     if(!ID.test(primaryCid)||primaryCid===i.companyId||
+        original.uid!==a.uid||clean(original.email).toLowerCase()!==a.email||
+        (original.accessKind!=null&&original.accessKind!=="internal")||
+        (original.memberType!=null&&!["internal","direct","member","managed"].includes(original.memberType)))
+       fail("failed-precondition");
+     const [pcSnap,pmSnap]=await Promise.all([
+       tx.get(db.collection("companies").doc(primaryCid)),
+       tx.get(collection(primaryCid,"members").doc(a.uid))
+     ]);
+     const pc=pcSnap.data()||{},pm=pmSnap.data()||{};
+     if(!pcSnap.exists||!pmSnap.exists||pc.active===false||
+        (pc.companyKind!=null&&!["internal","direct"].includes(pc.companyKind))||
+        pm.active===false||
+        (pm.uid!=null&&pm.uid!==a.uid)||
+        (pm.companyId!=null&&pm.companyId!==primaryCid)||
+        (pm.accessKind!=null&&pm.accessKind!=="internal")||
+        ["partner","cooperator"].includes(pm.memberType))
+       fail("failed-precondition");
+   }
    await checkTeam(tx,{cid:i.companyId},i.teamId);
    const name=clean(d.name);
    if(!validName(name))fail("invalid-argument");
@@ -352,13 +394,19 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      accessKind:"partner",memberType:"cooperator",
      canViewRevenue:false,canViewUnitPrice:false,canCreateInvite:false,
      updatedAt:FieldValue.serverTimestamp()};
-   if(us.exists)tx.update(ur,profile);else tx.create(ur,profile);
+   if(primaryCid){
+     tx.create(ctxRef,{uid:a.uid,primaryCompanyId:primaryCid,
+       partnerCompanyId:i.companyId,hubCompanyId:i.hubCompanyId,
+       emailLower:a.email,role:i.role,teamId:i.teamId,
+       kind:"partner_secondary",active:true,createdAt:FieldValue.serverTimestamp()});
+   }else if(us.exists)tx.update(ur,profile);else tx.create(ur,profile);
    tx.create(mr,{...profile,joinedAt:FieldValue.serverTimestamp()});
    tx.create(sr,{uid:a.uid,name,kind:"account",role:i.role,teamId:i.teamId,
      companyId:i.companyId,active:true,createdAt:FieldValue.serverTimestamp()});
    tx.update(ref,{status:"accepted",acceptedByUid:a.uid,acceptedAt:FieldValue.serverTimestamp()});
+   return {secondaryMembership:Boolean(primaryCid),partnerCompanyId:i.companyId};
   });
-  return {joined:true};
+  return {joined:true,...joined};
  }
  async function view(request){
   const a=await actor(request),d=request?.data||{},date=validDate(d.date);
