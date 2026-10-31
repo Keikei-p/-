@@ -42,13 +42,13 @@ test("company, team, individual and product counts are exact and never incorpora
  const summary=ctx.summarizeCountOnlyResponses(data,
   [{id:"t1",name:"1班"},{id:"t2",name:"2班"}],KEYS);
  assert.equal(summary.total,11);
- assert.deepEqual(summary.groups.map(x=>x.count),[6,5]);
- assert.deepEqual(summary.people.map(x=>x.count),[6,5]);
+ assert.deepEqual([...summary.groups.map(x=>x.count)],[6,5]);
+ assert.deepEqual([...summary.people.map(x=>x.count)],[6,5]);
  assert.equal(summary.products.NURO,3);
  assert.equal(summary.products.SBMNP,3);
  assert.equal(summary.products.YMMNP,1);
  assert.equal(summary.products["つばさ・HTB"],4);
- assert.deepEqual(summary.days.map(x=>x.count),[5,6]);
+ assert.deepEqual([...summary.days.map(x=>x.count)],[5,6]);
  assert.equal(summary.hasUnverifiedTeams,false);
  assert.equal(JSON.stringify(data),originalRecords,"no original count/price or history modification");
  assert.doesNotMatch(JSON.stringify(summary),/revenue|price|unitPrice|totalRevenue|pricingOptions/i);
