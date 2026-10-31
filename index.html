@@ -9844,6 +9844,69 @@ function subscribeSelectedMonthRecords() {
       renderNotificationPreview();
     },error=>{
       if(generation!==recordQueryGeneration)return;
+      // Emergency read-only compatibility: the company/date range index is
+      // defined in source but may not exist in the live Firestore project.
+      // On INDEX REQUIRED only, reuse the original one-company snapshot query.
+      // Never use this fallback for permission-denied or offline errors.
+      const indexMissing=(error?.code==="failed-precondition"||
+        error?.code==="firestore/failed-precondition")&&
+        /index|索引/i.test(String(error?.message||""));
+      if(indexMissing) {
+        recordsReady=false;
+        recordsSubscribedMonth="";
+        showMonthlyRecordsState("月別索引の準備待ちです。会社の実績を確認し、選択月の全件を集計しています。",true);
+        try {
+          unsubscribeRecords=onSnapshot(recordsCollectionQuery(),{includeMetadataChanges:true},full=>{
+            if(generation!==recordQueryGeneration||
+              dashboardMonth.value!==month||currentUserData?.companyId!==companyId)return;
+            if(full.metadata.fromCache||full.metadata.hasPendingWrites){
+              recordsReady=false;
+              recordsSubscribedMonth="";
+              showMonthlyRecordsState("通信・同期確認中のため、件数と売上を確定表示しません。",true);
+              return;
+            }
+            const monthRecords=[];
+            let mismatch=false;
+            full.forEach(item=>{
+              const value=item.data();
+              if(value.companyId!==companyId||typeof value.date!=="string"||
+                !/^\d{4}-\d{2}-\d{2}$/.test(value.date)){
+                mismatch=true;
+              }else if(value.date.startsWith(month)){
+                monthRecords.push({id:item.id,...value});
+              }
+            });
+            if(mismatch){
+              recordsReady=false;
+              recordsSubscribedMonth="";
+              showMonthlyRecordsState("実績の会社・日付が一致しません。集計を停止しました。",true);
+              return;
+            }
+            monthRecords.sort((a,b)=>(b.date||"").localeCompare(a.date||"")||a.id.localeCompare(b.id));
+            records=monthRecords;
+            recordsReady=true;
+            recordsSubscribedMonth=month;
+            annualChartRecords=null;
+            annualChartYear="";
+            showMonthlyRecordsState("",false);
+            createMonthOptions();
+            renderDashboard();
+            if(typeof refreshExistingPartnerRanking==="function")
+              void refreshExistingPartnerRanking();
+            renderNotificationPreview();
+          },fallbackError=>{
+            if(generation!==recordQueryGeneration)return;
+            recordsReady=false;
+            recordsSubscribedMonth="";
+            showMonthlyRecordsState("会社の実績を読み込めません。管理者へお問い合わせください。",true);
+            console.error("会社別実績の復旧取得失敗",fallbackError?.code||"unknown");
+          });
+          console.warn("月別索引が未準備のため、従来の会社単位読取へ安全に切替");
+          return;
+        }catch(fallbackError){
+          console.error("会社別実績の復旧開始失敗",fallbackError?.code||"unknown");
+        }
+      }
       recordsReady=false;
       recordsSubscribedMonth="";
       showMonthlyRecordsState("選択月を読み込めません。集計は未確定です。接続・権限・Firestore索引を確認してください。",true);

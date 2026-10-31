@@ -62,3 +62,11 @@ test("known version missing one mandatory partner page is rejected without a rel
   /SOURCE_REQUIRED_FILE_MISSING/);
  assert.ok(x.seen.every(s=>s.method==="GET"));
 });
+
+test("latest audited production login release can be read-only inspected before monthly display restore",async()=>{
+ const x=live("sites/nico-factory/versions/b52abc1a8a8a1d78",true,false);
+ const r=await uploadSingleExistingIndex({assetBytes:fakeIndex,request:x.request,release:false,log:()=>{}});
+ assert.equal(r.released,false);
+ assert.equal(r.originalCount,11);
+ assert(x.seen.every(a=>a.method==="GET"));
+});
