@@ -8,6 +8,20 @@ function planIndex(v){
   if(typeof v!=="string"||!/^plan_(0|[1-9]\d{0,2})$/.test(v))violation();
   return Number(v.slice(5));
 }
+// These are the ONLY fields emitted by the protected server gateway.
+// Refuse unknown fields rather than spreading a future finance/customer secret
+// into a no-price or Owner browser model. This client is staging-only.
+const PRODUCT_FIELDS=new Set(["id","companyId","name","sortOrder","active","planIds","revenue","pricingOptions","cashbackOptions"]);
+const RECORD_FIELDS=new Set(["id","companyId","uid","memberNameSnapshot","teamId","teamNameSnapshot",
+  "date","workLocation","totalCount","reportStatus","reportedAt","createdByUid",
+  "updatedByUid","createdAt","updatedAt","recordVersion","results","totalRevenue"]);
+const RESULT_FIELDS=new Set(["productId","planId","productName","count","revenuePerUnit","cashback"]);
+const GOAL_FIELDS=new Set(["id","companyId","teamId","month","targetRevenue"]);
+const PRICE_FIELDS=new Set(["cashback","revenuePerUnit"]);
+function strictFields(value,allowed){
+  if(!value||typeof value!=="object"||Array.isArray(value)||
+      Object.keys(value).some(key=>!allowed.has(key)))violation();
+}
 function ensureNoAmounts(v){
   if(!v||typeof v!=="object")violation();
   for(const k of ["revenue","revenuePerUnit","cashback","cashbackOptions","totalRevenue","price","unitPrice","pricingOptions"]){
@@ -21,11 +35,19 @@ export function projectSafeView(view) {
       typeof view.policy.canViewUnitPrice!=="boolean")violation();
   const revenue=view.policy.canViewRevenue===true;
   const unit=revenue&&view.policy.canViewUnitPrice===true;
+  if(!revenue&&view.policy.canViewUnitPrice===true)violation();
+  for(const goal of view.revenueGoals)strictFields(goal,GOAL_FIELDS);
   if(!revenue&&view.revenueGoals.length)violation();
   const planMap=new Map();
   const products=view.products.map(p=>{
+    strictFields(p,PRODUCT_FIELDS);
     if(!isId(p.id)||typeof p.name!=="string")violation();
+    if(!unit&&(Object.hasOwn(p,"revenue")||Object.hasOwn(p,"pricingOptions")||
+        Object.hasOwn(p,"cashbackOptions")))violation();
     if(unit){
+      if(!Array.isArray(p.pricingOptions)||
+         p.pricingOptions.some(option=>{try{strictFields(option,PRICE_FIELDS);return false;}catch{return true;}}))
+        violation();
       if(!Array.isArray(p.planIds))violation();
       p.planIds.forEach((id,i)=>{if(planIndex(id)!==i)violation()});
       return {...p,securePlanIds:p.planIds};
@@ -42,8 +64,13 @@ export function projectSafeView(view) {
       securePlanIds:p.planIds};
   });
   const records=view.records.map(r=>{
+    strictFields(r,RECORD_FIELDS);
     if(!isId(r.id)||!r.results||typeof r.results!=="object"||Array.isArray(r.results))violation();
     if(!revenue&&Object.hasOwn(r,"totalRevenue"))violation();
+    for(const v of Object.values(r.results)){
+      strictFields(v,RESULT_FIELDS);
+      if(!unit)ensureNoAmounts(v);
+    }
     if(unit)return {...r,secureReadOnly:!r.recordVersion};
     let locked=!r.recordVersion;
     const items={};
