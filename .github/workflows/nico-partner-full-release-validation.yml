@@ -1,0 +1,29 @@
+name: NICO sequenced production rollout safety (no deployment)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-partner-full-sequenced-once.yml'
+      - '.github/workflows/nico-partner-quick-release.yml'
+      - 'tests/partner-production-sequenced.test.cjs'
+  push:
+    branches: [release/nico-partner-full-verified-20261031]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify no production credential paths, endpoint and exact dependencies
+        run: |
+          set -euo pipefail
+          node --test tests/partner-production-sequenced.test.cjs
+          node --test tests/partner-quick-counts.test.cjs tests/partner-workspace.test.cjs
+          node --test tests/partner-existing-ranking.test.cjs
