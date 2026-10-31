@@ -84,7 +84,9 @@ jobs:
           node <<'NODE'
           const fs=require('node:fs');
           const crypto=require('node:crypto');
-          const {applicationDefault}=require('./functions/node_modules/firebase-admin/app');
+          const {createRequire}=require('node:module');
+          const fromFunctions=createRequire(process.cwd()+'/functions/package.json');
+          const {applicationDefault}=fromFunctions('firebase-admin/app');
           (async()=>{
             const project='sales-management-cc116';
             if(JSON.parse(fs.readFileSync('.firebaserc','utf8')).projects.default!==project)throw Error('PROJECT_NOT_APPROVED');
