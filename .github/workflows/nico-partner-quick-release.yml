@@ -44,7 +44,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
-          test "$(git hash-object functions/partner-company-invitations.cjs)" = 4da83f98cd6f033d8ce8bda532aef39859db9c09
+          test "$(git hash-object functions/partner-company-invitations.cjs)" = 575865469f68c6a1c1a24b4d32c9150cb42178fe
           node --check functions-partner-quick/quick-counts.cjs
           node --check functions-partner-quick/index.js
           node --check tools/hosting/additive-partner-counts.mjs
