@@ -10,7 +10,7 @@ const money=/(?:単価|売上|収益|利益|報酬|[¥￥$€]|\d[\d,]*円)/;
 const validCompanyName=x=>typeof x==="string"&&x.trim().length>0&&
  x.trim().length<=80&&!money.test(x);
 const clean=x=>typeof x==="string"?x.trim():"";
-function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>false,now=()=>Date.now()}={}){
+function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>false,sharingApprovalEnabled=()=>false,now=()=>Date.now()}={}){
  if(!db||!getAuth||!FieldValue||!Timestamp||!HttpsError)throw Error("missing_partner_workspace_dependency");
  const fail=(code="permission-denied",reason)=>{throw new HttpsError(code,"権限・入力内容を確認できません。",reason?{reason}:undefined);};
  const validName=x=>typeof x==="string"&&NAME.test(x)&&!money.test(x);
@@ -200,6 +200,10 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    "hubAddTeam","hubCreateInvite","hubSetSharingApproval"].includes(op))fail("invalid-argument");
   const s=await scope(uid,null,d.workspaceCompanyId);
   if(op==="hubSetSharingApproval"){
+   // Revocation stays available. Activation is fail-closed until finance Rules
+   // and the canonical client pass the independently reviewed production gate.
+   if(d.approved===true&&sharingApprovalEnabled()!==true)
+    fail("failed-precondition","finance-boundary-not-approved");
    // Explicit, authenticated hub Owner approval. Never auto-enable on invitation acceptance.
    if(s.kind!=="hub"||s.role!=="owner"||!ID.test(d.partnerCompanyId||"")||
       typeof d.approved!=="boolean"||typeof d.expectedActive!=="boolean"||
