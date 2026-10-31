@@ -91,8 +91,22 @@ jobs:
           npm install --prefix functions-partner-quick --ignore-scripts --package-lock=false
           npm install --prefix functions --ignore-scripts --package-lock=false
           npm install -g firebase-tools@15.34.1
-      - name: Check actual existing Hosting release without writing
-        run: node tools/hosting/additive-partner-counts.mjs --dry-run
+      - name: Verify existing live count page without replacing it
+        id: count_page
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=$(curl --silent --location --output "$RUNNER_TEMP/existing-count-page.html" --write-out '%{http_code}' --max-time 25 https://nico-factory.web.app/partner-counts.html || true)
+          if [ "$status" = 200 ] && cmp -s "$RUNNER_TEMP/existing-count-page.html" partner-counts.html; then
+            echo 'already_live=true' >> "$GITHUB_OUTPUT"
+            echo 'PASS: existing count page matches repository byte-for-byte'
+          elif [ "$status" = 200 ] && grep -Fq 'submitPartnerQuickCounts' "$RUNNER_TEMP/existing-count-page.html"; then
+            echo 'STOP: different count page is already live; no overwrite without review'
+            exit 1
+          else
+            echo 'already_live=false' >> "$GITHUB_OUTPUT"
+            node tools/hosting/additive-partner-counts.mjs --dry-run
+          fi
       - name: Prepare only count-specific Functions environmental switch
         shell: bash
         run: |
@@ -197,7 +211,14 @@ jobs:
           })().catch(e=>{console.error(e.message);process.exit(1)});
           NODE
       - name: Publish only new partner-counts.html preserving all existing live Hosting assets
+        if: ${{ steps.count_page.outputs.already_live != 'true' }}
         run: node tools/hosting/additive-partner-counts.mjs --release
+      - name: Verify published count page matches the reviewed source exactly
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --max-time 25 https://nico-factory.web.app/partner-counts.html > "$RUNNER_TEMP/final-partner-counts.html"
+          cmp -s "$RUNNER_TEMP/final-partner-counts.html" partner-counts.html
       - name: Verify old app, invite, and new report page are all public
         shell: bash
         run: |
