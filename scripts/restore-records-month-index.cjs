@@ -16,7 +16,7 @@ async function ensureMonthlyIndex({request,log=console.log,wait=async()=>{},poll
  const indexes=[];let token="",pageCount=0;
  do{
   if(++pageCount>50)throw Error("INDEX_LIST_TOO_MANY_PAGES");
-  const url=ENDPOINT+"?pageSize=100"+(token?"&pageToken="+encodeURIComponent(token):"");
+  const url=ENDPOINT+(token?"?pageToken="+encodeURIComponent(token):"");
   const response=await request("GET",url);
   if(!response||!Array.isArray(response.indexes??[]))throw Error("INDEX_LIST_INVALID");
   indexes.push(...(response.indexes??[]));
@@ -40,7 +40,7 @@ async function ensureMonthlyIndex({request,log=console.log,wait=async()=>{},poll
  }
  for(let i=0;i<polls;i++){
   await wait();
-  const j=await request("GET",ENDPOINT+"?pageSize=100");
+  const j=await request("GET",ENDPOINT);
   if(!Array.isArray(j.indexes??[]))throw Error("INDEX_STATUS_INVALID");
   current=(j.indexes??[]).find(isMonthlyIndex);
   if(!current)throw Error("INDEX_MISSING_AFTER_CREATION");
