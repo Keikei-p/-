@@ -32,7 +32,7 @@ function setup({who={uid:"u",emailVerified:true},member=p,source=rows,enabled=tr
    return {records:out,readTime:snapshot,hasMore:after+pageSize<source.length,
     nextCursor:after+pageSize<source.length?out.at(-1).id:null};
   },
-  queryProducts:async ({companyId})=>{assert.equal(companyId,"direct");return [product];}
+  queryProducts:async ({companyId})=>{traces.push(["catalog",companyId]);assert.equal(companyId,"direct");return [product];}
  });
  return {api,traces};
 }
@@ -42,7 +42,13 @@ test("paginates >50 and >100 records without losing any day count, never returns
  for(let page=0;page<4;page++){
   const r=await api({bearer:"a".repeat(30),day:"2026-10-31",cursor,readTime});
   assert.equal(r.companyId,"direct");
-  assert.equal(r.products[0].name,"NURO");
+  if(cursor===""){
+   assert.equal(r.products[0].name,"NURO");
+   assert.equal(r.catalogIncluded,true);
+  }else{
+   assert.deepEqual(r.products,[]);
+   assert.equal(r.catalogIncluded,false);
+  }
   for(const x of r.records)all.push(x);
   const content=JSON.stringify(r);
   for(const forbidden of ["100000","99999","revenuePerUnit","pricingOptions",
@@ -56,6 +62,7 @@ test("paginates >50 and >100 records without losing any day count, never returns
  assert.equal(new Set(all.map(r=>r.sourceId)).size,123);
  assert.equal(all.reduce((sum,r)=>sum+r.totalCount,0),123);
  assert.equal(traces.filter(x=>x[0]==="page").length,3);
+ assert.equal(traces.filter(x=>x[0]==="catalog").length,1);
 });
 test("disabled by default, no calls to any authentication or backing Firestore adapter",async()=>{
  const {api,traces}=setup({enabled:false});
@@ -110,4 +117,5 @@ test("2,501 daily records are paged without a 2,000-document truncation",async()
  assert.equal(ids.size,2501);
  assert.equal(pages,51);
  assert.equal(traces.filter(x=>x[0]==="page").length,51);
+ assert.equal(traces.filter(x=>x[0]==="catalog").length,1);
 });
