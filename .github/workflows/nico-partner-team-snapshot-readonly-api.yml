@@ -46,7 +46,7 @@ jobs:
           # private-count extension, or the verified existing-email secondary-company\n          # scope regression suite. Never make a partial single-function release.
           source_sha="$(git hash-object functions-partner-workspace/service.cjs)"
           case "$source_sha" in
-            42b44a0a1fb25e174d9de942e0d79ca191a0ce32|d17ceb37c9d7acbdd41f36bab2de3c8f21fbd85d|eb7f2305da94916c0a999ad81b6435eabae7297a|8ce41f3f9c21823520d6b3be1c5d2b104a93ab58|99a26ad2c57e2f4ba483722a1545bf64fa69df7f|a773643eccc0c27956510e35dd501d348366a020|47d3600d3f6f0d9214bae908922fd17a93e76fb9|3267550a775355896e4ca2bd70622a6b5587ebd6|dc0981489487aa81559cf522c5311d4377878c60|41d59e5dcde09d43fe04de5c35307459893c3475) ;;
+            42b44a0a1fb25e174d9de942e0d79ca191a0ce32|d17ceb37c9d7acbdd41f36bab2de3c8f21fbd85d|eb7f2305da94916c0a999ad81b6435eabae7297a|8ce41f3f9c21823520d6b3be1c5d2b104a93ab58|99a26ad2c57e2f4ba483722a1545bf64fa69df7f|a773643eccc0c27956510e35dd501d348366a020|47d3600d3f6f0d9214bae908922fd17a93e76fb9|3267550a775355896e4ca2bd70622a6b5587ebd6|dc0981489487aa81559cf522c5311d4377878c60|41d59e5dcde09d43fe04de5c35307459893c3475|1488e4c68d24e2b62560610e195a4ac9dbf5ae57) ;;
             *) echo "STOP_UNREVIEWED_WORKSPACE_CODE"; exit 1 ;;
           esac
           node <<'NODE'
