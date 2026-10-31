@@ -71,7 +71,12 @@ test("unknown markers, partial membership, invalid email and stale role/team con
 test("legacy UI requests three fresh server Firestore docs before any price catalogue or live records subscription",()=>{
  const html=readFileSync(new URL("../index.html",import.meta.url),"utf8");
  const job=readFileSync(new URL("../.github/workflows/nico-factory-sync.yml",import.meta.url),"utf8");
- assert.match(html,/import \{classifyLegacySalesEntrypoint\}\s*from "\.\/legacy-finance-entry-guard\.mjs";/);
+ const canonicalGuard=readFileSync(new URL("../legacy-finance-entry-guard.mjs",import.meta.url),"utf8")
+   .replace("export function classifyLegacySalesEntrypoint","function classifyLegacySalesEntrypoint");
+ assert(html.includes(canonicalGuard),
+   "production index must contain the full unmodified partner-safe finance guard");
+ assert(!html.includes('from "./legacy-finance-entry-guard.mjs"'),
+   "production login may not depend on a missing external guard module");
  assert.match(html,/\bgetDocFromServer\b/);
  const load=html.indexOf("async function loadUserData(");
  const read=html.indexOf("const checkedEntry=await checkLegacyEntryAgainstServer(user);",load);
