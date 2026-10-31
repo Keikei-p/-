@@ -4767,6 +4767,9 @@ body.product-reordering .product-list {
             <button id="quickMissingButton" class="quick-menu-button" type="button" aria-pressed="false" style="display:none;">
               <span class="quick-menu-icon">📋</span>報告漏れ
             </button>
+            <button id="quickPartnerPreviewButton" class="quick-menu-button" type="button" aria-pressed="false" style="display:none;">
+              <span class="quick-menu-icon">🤝</span>協力店画面を確認
+            </button>
 
             <button id="managementProductButton" class="quick-menu-button" type="button" aria-pressed="false" style="display:none;">
               <span class="quick-menu-icon">📦</span>
@@ -4995,6 +4998,11 @@ body.product-reordering .product-list {
           <a id="partnerCountWorkspaceLink" href="/partner-workspace.html"
              style="display:inline-block;min-height:44px;padding:11px 16px;border-radius:9px;background:var(--primary);color:#fff;font-weight:750;">
             協力店の件数入力画面を開く
+          </a>
+          <p style="font-size:12px;margin:12px 0 6px;color:var(--sub);">自社オーナーなら、既存アカウントのまま架空データで協力店画面を確認できます。実績保存や招待は行いません。</p>
+          <a href="/partner-workspace.html?preview=1" id="partnerOwnerPreviewLink"
+             style="display:inline-block;padding:11px 16px;border-radius:9px;border:1px solid var(--primary);color:var(--primary);font-weight:750;">
+            🧪 協力店画面を確認（閲覧のみ）
           </a>
         </div>
       </div>
@@ -7056,6 +7064,7 @@ const quickAccountButton =
 const quickNotifyButton =
   document.getElementById("quickNotifyButton");
 const quickMissingButton=document.getElementById("quickMissingButton");
+const quickPartnerPreviewButton=document.getElementById("quickPartnerPreviewButton");
 const missingReportsManagement=document.getElementById("missingReportsManagement");
 const missingReportsDate=document.getElementById("missingReportsDate");
 const missingReportsList=document.getElementById("missingReportsList");
@@ -8816,6 +8825,7 @@ const quickMenuButtons = [
   quickAccountButton,
   quickNotifyButton,
   quickMissingButton,
+  quickPartnerPreviewButton,
   managementProductButton,
   managementTeamButton,
   managementMemberButton
@@ -8833,6 +8843,7 @@ function setManagementMenuOpen(
 
   managementMenuPanel.hidden=!open;
   quickMissingButton.style.display=isCurrentCompanyOwner()?"":"none";
+  quickPartnerPreviewButton.style.display=isCurrentCompanyOwner()?"":"none";
 
 }
 
@@ -9295,6 +9306,10 @@ closeNotificationManagementButton.onclick =
   };
 
 
+quickPartnerPreviewButton.onclick=()=>{
+  if(!isCurrentCompanyOwner()||!currentUser?.emailVerified)return;
+  window.location.assign("/partner-workspace.html?preview=1");
+};
 let missingReportRequestGeneration=0;
 quickMissingButton.onclick=()=>{
   if(!isCurrentCompanyOwner())return;
