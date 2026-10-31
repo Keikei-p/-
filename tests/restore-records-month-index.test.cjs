@@ -14,6 +14,7 @@ test("existing READY index causes zero writes and no polling",async()=>{
  const calls=[];
  const value=await ensureMonthlyIndex({request:async(method,url)=>{calls.push([method,url]);return {indexes:[exact]};},log:()=>{}});
  assert.equal(value,"READY");assert.equal(calls.length,1);assert.equal(calls[0][0],"GET");
+ assert.equal(calls[0][1],ENDPOINT,"Firestore index list must not specify unsupported pageSize");
 });
 test("missing index creates just one exact additive index and never deletes documents",async()=>{
  const calls=[];
