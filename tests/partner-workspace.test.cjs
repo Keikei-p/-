@@ -430,3 +430,96 @@ test("approval revocation removes saved reports from hub view without modifying 
  assert.deepEqual(db.store.get(key),old);
  assert.equal(db.store.get("records/old").totalRevenue,808080);
 });
+
+test("hub lists registered partner companies even before any count report; pending ones cannot be invited",async()=>{
+ const {db,api,req}=setup(),date="2026-10-31";
+ db.seed("companies/pending",{name:"未稼働協力店",ownerUid:"q",companyKind:"partner",
+  hubCompanyId:"hub",active:true});
+ db.seed("partnerRelations/pending",{partnerCompanyId:"pending",hubCompanyId:"hub",
+  active:false,countSharingApproved:false});
+ const result=await api.view(req("h",{date}));
+ assert.equal(result.partners.length,0,"unreported partner is NOT a zero-count report");
+ assert.deepEqual(result.registeredCompanies.map(x=>[x.partnerCompanyId,x.name,x.active]),[
+  ["partner","協力店",true],["pending","未稼働協力店",false]
+ ]);
+ assert.deepEqual(result.registeredCompanies[1].teams,[]);
+ await assert.rejects(api.manage(req("h",{action:"hubCreateInvite",partnerCompanyId:"pending",
+  teamId:"any",email:"x@example.com",role:"leader"})),e=>e.code==="failed-precondition");
+ await assert.rejects(api.manage(req("h",{action:"hubAddTeam",partnerCompanyId:"pending",
+  name:"第1班"})),e=>e.code==="failed-precondition");
+ assert.deepEqual([...db.store.keys()].filter(x=>x.includes("partnerWorkInvites/")),[]);
+ assert.equal(db.store.get("records/old").totalRevenue,808080);
+});
+test("hub can add partner team and invite both leader and member using company-first selector",async()=>{
+ const {db,api,req}=setup();
+ const originalProduct=clone(db.store.get("products/money")),originalSales=clone(db.store.get("records/old"));
+ const team=(await api.manage(req("h",{action:"hubAddTeam",partnerCompanyId:"partner",
+  name:"協力店 1班"}))).teamId;
+ let hub=await api.view(req("h",{date:"2026-10-31"}));
+ assert.equal(hub.partners.length,0,"new registered partner does not fake a report");
+ assert.deepEqual(hub.registeredCompanies[0].teams,[{id:team,name:"協力店 1班"}]);
+ for(const [uid,role] of [["l","leader"],["m","member"]]){
+  const result=await api.manage(req("h",{action:"hubCreateInvite",partnerCompanyId:"partner",
+   teamId:team,email:uid+"@example.com",role}));
+  assert.equal(result.token.length,43);
+  const out=await api.accept(req(uid,{token:result.token,name:role==="leader"?"紹介リーダー":"紹介メンバー"}));
+  assert.equal(out.joined,true);
+  const user=db.store.get("users/"+uid),membership=db.store.get("companies/partner/members/"+uid);
+  assert.equal(user.companyId,"partner");
+  assert.equal(user.role,role);
+  assert.equal(membership.teamId,team);
+  for(const data of [user,membership]){
+   assert.equal(data.accessKind,"partner");
+   assert.equal(data.memberType,"cooperator");
+   assert.equal(data.canViewRevenue,false);
+   assert.equal(data.canViewUnitPrice,false);
+   assert.equal(data.canCreateInvite,false);
+  }
+  await assert.rejects(api.accept(req(uid,{token:result.token,name:"重複"})),e=>e.code==="failed-precondition");
+ }
+ assert.deepEqual(db.store.get("products/money"),originalProduct);
+ assert.deepEqual(db.store.get("records/old"),originalSales);
+ assert.equal(db.store.has("companies/hub/members/l"),false,"hub must not own invited partner member");
+});
+test("hub cannot invite across companies, impersonate an internal owner or accept after revocation",async()=>{
+ const {db,api,req}=setup();
+ const team=(await api.manage(req("h",{action:"hubAddTeam",partnerCompanyId:"partner",
+  name:"協力店 1班"}))).teamId;
+ for(const who of ["p","h"]){
+  if(who==="h")continue;
+  await assert.rejects(api.manage(req(who,{action:"hubCreateInvite",partnerCompanyId:"partner",
+   teamId:team,email:"l@example.com",role:"leader"})),e=>e.code==="permission-denied");
+ }
+ db.seed("companies/foreign-partner",{name:"別会社",ownerUid:"f",companyKind:"partner",hubCompanyId:"else",active:true});
+ db.seed("partnerRelations/foreign-partner",{partnerCompanyId:"foreign-partner",
+  hubCompanyId:"else",active:true,countSharingApproved:true});
+ await assert.rejects(api.manage(req("h",{action:"hubCreateInvite",partnerCompanyId:"foreign-partner",
+  teamId:team,email:"l@example.com",role:"leader"})),e=>e.code==="failed-precondition");
+ await assert.rejects(api.manage(req("h",{action:"hubCreateInvite",partnerCompanyId:"partner",
+  teamId:"missing",email:"l@example.com",role:"leader"})),e=>e.code==="failed-precondition");
+ const valid=await api.manage(req("h",{action:"hubCreateInvite",partnerCompanyId:"partner",
+  teamId:team,email:"l@example.com",role:"leader"}));
+ db.seed("partnerRelations/partner",{partnerCompanyId:"partner",hubCompanyId:"hub",
+  active:false,countSharingApproved:false});
+ await assert.rejects(api.accept(req("l",{token:valid.token,name:"止められた招待"})),
+  e=>e.code==="failed-precondition");
+ assert.equal(db.store.has("users/l"),false);
+ assert.equal(db.store.has("companies/partner/members/l"),false);
+ db.seed("users/h",{...db.store.get("users/h"),memberType:"cooperator"});
+ await assert.rejects(api.view(req("h",{date:"2026-10-31"})),e=>e.code==="permission-denied");
+ await assert.rejects(api.manage(req("h",{action:"hubAddTeam",partnerCompanyId:"partner",
+  name:"不正な班"})),e=>e.code==="permission-denied");
+});
+test("partner invitation panel contains company, team, role and email with no raw finance SDK",()=>{
+ const fs=require("node:fs"),html=fs.readFileSync(require("node:path").join(__dirname,"../partner-workspace.html"),"utf8");
+ for(const id of ["hubInvitePanel","hubInviteCompanySelect","hubInviteState",
+  "hubInviteTeamSelect","hubInviteRoleSelect","hubInviteEmail","hubMakeInvite",
+  "hubCreateTeam","hubInviteUrl","hubInviteCopy"])
+  assert.ok(html.includes('id="'+id+'"'),id);
+ assert.match(html,/action:"hubCreateInvite"/);
+ assert.match(html,/action:"hubAddTeam"/);
+ assert.match(html,/renderHubInvitePanel\(\)/);
+ assert.match(html,/<option value="leader">リーダー<\/option>/);
+ assert.match(html,/<option value="member">メンバー<\/option>/);
+ assert.doesNotMatch(html,/firebase-firestore\.js|getFirestore\(|\.collection\(["'](?:products|records)["']\)/);
+});
