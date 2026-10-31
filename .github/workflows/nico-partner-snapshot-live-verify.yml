@@ -1,0 +1,84 @@
+name: NICO partner count snapshot post-release verification (read only)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-partner-snapshot-live-verify.yml'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-partner-snapshot-live-verify.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify the reviewed code is count-only and unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 42b44a0a1fb25e174d9de942e0d79ca191a0ce32
+          test "$(git hash-object functions-partner-workspace/index.js)" = a2bffd167b8804a0372c7a00465c04a63d96e919
+          node --test tests/partner-workspace.test.cjs
+          node --test tests/partner-money-free-workspace.test.cjs
+          node --test tests/partner-count-dashboard.test.cjs
+          node --test tests/internal-owner-finance-visibility.test.cjs
+      - name: Load existing read-only Firebase service identity
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          node -e "const p=JSON.parse(require('fs').readFileSync('.firebaserc','utf8')).projects.default;if(p!=='sales-management-cc116')process.exit(1)"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/partner-live-read-credentials.json"
+          chmod 600 "$RUNNER_TEMP/partner-live-read-credentials.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/partner-live-read-credentials.json" >> "$GITHUB_ENV"
+      - name: Install existing CLI only to list production Functions
+        run: npm install -g firebase-tools@15.34.1
+      - name: Confirm all original company and partner APIs are still deployed
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase functions:list --project "$FIREBASE_PROJECT_ID" --json > "$RUNNER_TEMP/nico-partner-read-functions.json"
+          FILE="$RUNNER_TEMP/nico-partner-read-functions.json" node <<'NODE'
+          const fs=require('node:fs');
+          const j=JSON.parse(fs.readFileSync(process.env.FILE,'utf8'));
+          const list=(j.result||[]).map(x=>x.id||x.name||'');
+          for(const name of ['getPartnerWorkspace','managePartnerWorkspace',
+            'acceptPartnerWorkspaceInvite','submitPartnerWorkspaceCounts',
+            'createPartnerCompanyInvitation','previewPartnerCompanyInvitation',
+            'acceptPartnerCompanyInvitation','getPartnerQuickCounts','submitPartnerQuickCounts',
+            'sendMissingReportReminders']){
+            if(!list.some(x=>x===name||x.endsWith('/'+name)))throw Error('STOP_EXISTING_API_UNAVAILABLE_'+name);
+            console.log('PASS EXISTING_API '+name);
+          }
+          NODE
+      - name: Verify updated partner UI, unchanged login entry and anonymous API access denial
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --max-time 30 'https://nico-factory.web.app/partner-workspace.html' > "$RUNNER_TEMP/current-partner-ui.html"
+          cmp -s "$RUNNER_TEMP/current-partner-ui.html" partner-workspace.html
+          for route in / /partner-invite.html /partner-counts.html; do
+            test "$(curl -sSL -o /dev/null -w '%{http_code}' --max-time 25 "https://nico-factory.web.app$route")" = 200
+          done
+          node <<'NODE'
+          (async()=>{
+            const endpoint='https://asia-northeast1-sales-management-cc116.cloudfunctions.net/getPartnerWorkspace';
+            const res=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},
+              body:JSON.stringify({data:{date:'2026-10-31'}})});
+            if(![401,403].includes(res.status))throw Error('STOP_ANONYMOUS_ACCESS_NOT_DENIED_'+res.status);
+            console.log('PASS anonymous getPartnerWorkspace denied HTTP '+res.status);
+            console.log('NOTE: current signed-in partner E2E cannot be verified without a real invited company');
+          })().catch(e=>{console.error(e.message);process.exitCode=1});
+          NODE
+          echo 'PASS POST_RELEASE_READ_ONLY_NO_DATABASE_WRITES'
