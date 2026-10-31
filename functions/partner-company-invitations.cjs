@@ -82,7 +82,7 @@ function requireFactory({db,getAuth,Timestamp,FieldValue,HttpsError,enabled,now}
   const recipientEmail=normalizeEmail(request?.data?.email);
   const partnerName=clean(request?.data?.companyName).replace(/\s+/g," ");
   if(!EMAIL.test(recipientEmail)||recipientEmail.length>254||
-     recipientEmail===actor.email||partnerName.length<2||partnerName.length>80)
+     partnerName.length<2||partnerName.length>80)
     fail("invalid-argument");
   const token=crypto.randomBytes(32).toString("base64url");
   const tokenHash=hashToken(token),expiresAt=Timestamp.fromMillis(now()+30*60*1000);
@@ -118,17 +118,47 @@ function requireFactory({db,getAuth,Timestamp,FieldValue,HttpsError,enabled,now}
   const memberRef=newRef.collection("members").doc(actor.uid);
   const relationRef=db.collection("partnerRelations").doc(newRef.id);
   const userRef=db.collection("users").doc(actor.uid);
+  // Secondary association never rewrites a previously assigned primary
+  // company, users/{uid}, a historical team or its financial privileges.
+  const contextRef=db.collection("partnerWorkspaceContexts").doc(actor.uid);
   let result;
   await db.runTransaction(async tx=>{
-   const [inviteSnap,userSnap,companySnap,relationSnap,memberSnap]=await Promise.all([
-    tx.get(ref),tx.get(userRef),tx.get(newRef),tx.get(relationRef),tx.get(memberRef)
+   const [inviteSnap,userSnap,companySnap,relationSnap,memberSnap,contextSnap]=await Promise.all([
+    tx.get(ref),tx.get(userRef),tx.get(newRef),tx.get(relationRef),tx.get(memberRef),
+    tx.get(contextRef)
    ]);
    if(!inviteSnap.exists||companySnap.exists||relationSnap.exists||memberSnap.exists)fail();
    const invite=inviteSnap.data()||{};
    validInvitation(invite,actor.email);
    const user=userSnap.exists?(userSnap.data()||{}):{};
-   if(user.companyId||user.active===false||
-      (userSnap.exists&&user.email&&normalizeEmail(user.email)!==actor.email))fail("failed-precondition");
+   if(user.active===false||contextSnap.exists||
+      (userSnap.exists&&user.uid!=null&&user.uid!==actor.uid)||
+      (userSnap.exists&&user.email&&normalizeEmail(user.email)!==actor.email))
+     fail("failed-precondition");
+   const secondaryCompanyId=clean(user.companyId);
+   // A prior email with an existing company is a SECONDARY partner login,
+   // not a transfer. Check the user's existing primary membership and markers
+   // inside the same transaction; never infer them from email alone.
+   if(secondaryCompanyId){
+     if(!ID.test(secondaryCompanyId)||secondaryCompanyId===newRef.id)
+       fail("failed-precondition");
+     const [primaryCompanySnap,primaryMemberSnap]=await Promise.all([
+       tx.get(db.collection("companies").doc(secondaryCompanyId)),
+       tx.get(db.collection("companies").doc(secondaryCompanyId)
+         .collection("members").doc(actor.uid))
+     ]);
+     const pc=primaryCompanySnap.data()||{},pm=primaryMemberSnap.data()||{};
+     if(!primaryCompanySnap.exists||!primaryMemberSnap.exists||
+        pc.active===false||pc.companyKind==="partner"||
+        (pc.companyKind!=null&&!["internal","direct"].includes(pc.companyKind))||
+        pm.active===false||pm.uid!=null&&pm.uid!==actor.uid||
+        pm.companyId!=null&&pm.companyId!==secondaryCompanyId||
+        (pm.accessKind!=null&&pm.accessKind!=="internal")||
+        (user.accessKind!=null&&user.accessKind!=="internal")||
+        ["partner","cooperator"].includes(pm.memberType)||
+        ["partner","cooperator"].includes(user.memberType))
+       fail("failed-precondition");
+   }
    // Owner must still be the authorized hub owner at acceptance time.
    await hubOwner(tx,invite.hubCompanyId,invite.invitedBy);
    const time=FieldValue.serverTimestamp();
@@ -150,16 +180,28 @@ function requireFactory({db,getAuth,Timestamp,FieldValue,HttpsError,enabled,now}
     active:false,countSharingApproved:false,catalogAccessApproved:false,
     createdAt:time,updatedAt:time
    });
-   tx.set(userRef,{
-    uid:actor.uid,name:clean(user.name).slice(0,70)||actor.displayName,
-    email:actor.email,companyId:newRef.id,
-    role:"leader",companyRole:"owner",teamId:null,
-    memberType:"cooperator",accessKind:"partner",active:true,
-    canViewRevenue:false,canViewUnitPrice:false,canCreateInvite:false,
-    companySetupVersion:1,updatedAt:time
-   },{merge:true});
+   if(secondaryCompanyId){
+     // Only this new server-owned context is created. Existing internal
+     // users/{uid}, primary membership and source history remain byte-identical.
+     tx.create(contextRef,{
+       uid:actor.uid,primaryCompanyId:secondaryCompanyId,
+       partnerCompanyId:newRef.id,hubCompanyId:invite.hubCompanyId,
+       emailLower:actor.email,role:"owner",kind:"partner_secondary",
+       active:true,createdAt:time
+     });
+   }else{
+     tx.set(userRef,{
+       uid:actor.uid,name:clean(user.name).slice(0,70)||actor.displayName,
+       email:actor.email,companyId:newRef.id,
+       role:"leader",companyRole:"owner",teamId:null,
+       memberType:"cooperator",accessKind:"partner",active:true,
+       canViewRevenue:false,canViewUnitPrice:false,canCreateInvite:false,
+       companySetupVersion:1,updatedAt:time
+     },{merge:true});
+   }
    tx.update(ref,{status:"accepted",acceptedBy:actor.uid,acceptedAt:time});
    result={partnerCompanyId:newRef.id,kind:"partner_company",
+    secondaryMembership:Boolean(secondaryCompanyId),
     countReportingEnabled:false,financialAccess:false};
   });
   return result;

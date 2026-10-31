@@ -130,13 +130,62 @@ test("leader or partner company cannot create partner invitations",async()=>{
   assert.equal(JSON.stringify([...db.data]),before);
  }
 });
-test("wrong recipient and existing company cannot accept or preview",async()=>{
+test("wrong email cannot preview or accept any company invitation",async()=>{
  const {db,handlers,request}=setup({recipientCompany:"existing"});
  const {token}=await handlers.create(request("owner",createInput));
  await assert.rejects(handlers.preview(request("owner",{token})));
  const before=JSON.stringify([...db.data]);
- await assert.rejects(handlers.accept(request("recipient",{token})));
+ await assert.rejects(handlers.accept(request("owner",{token})));
  assert.equal(JSON.stringify([...db.data]),before);
+});
+test("registered email joins as secondary partner Owner, original user/old records unchanged",async()=>{
+ const {db,handlers,request}=setup({recipientCompany:"existing"});
+ db.seed("companies/existing",{name:"旧所属",companyKind:"internal",active:true});
+ db.seed("companies/existing/members/recipient",{uid:"recipient",companyId:"existing",
+  companyRole:"member",accessKind:"internal",active:true});
+ db.seed("records/historic",{companyId:"existing",uid:"recipient",
+  totalRevenue:123456,results:{old:{count:7,revenuePerUnit:1234}}});
+ const original=new Map(db.data);
+ const {token}=await handlers.create(request("owner",createInput));
+ const accepted=await handlers.accept(request("recipient",{token}));
+ assert.equal(accepted.secondaryMembership,true);
+ assert.equal(accepted.financialAccess,false);
+ for(const key of ["users/recipient","companies/existing/members/recipient","records/historic"])
+  assert.deepEqual(db.data.get(key),original.get(key),key);
+ const ctx=db.data.get("partnerWorkspaceContexts/recipient");
+ assert.equal(ctx.partnerCompanyId,accepted.partnerCompanyId);
+ assert.equal(ctx.primaryCompanyId,"existing");
+ const member=db.data.get("companies/"+accepted.partnerCompanyId+"/members/recipient");
+ assert.equal(member.accessKind,"partner");
+ assert.equal(member.canViewRevenue,false);
+ assert.equal(member.canViewUnitPrice,false);
+ assert.equal(db.data.get("partnerRelations/"+accepted.partnerCompanyId).active,false);
+ await assert.rejects(handlers.accept(request("recipient",{token})));
+});
+test("hub Owner may invite own already registered email as a separate count-only company",async()=>{
+ const {db,handlers,request}=setup();
+ const originalUser=structuredClone(db.data.get("users/owner"));
+ const {token}=await handlers.create(request("owner",{
+  email:"owner@example.com",companyName:"自社による検証用協力店"
+ }));
+ const accepted=await handlers.accept(request("owner",{token}));
+ assert.equal(accepted.secondaryMembership,true);
+ assert.deepEqual(db.data.get("users/owner"),originalUser);
+ assert.equal(db.data.get("partnerWorkspaceContexts/owner").partnerCompanyId,accepted.partnerCompanyId);
+ assert.equal(db.data.get("companies/"+accepted.partnerCompanyId+"/members/owner").canViewRevenue,false);
+});
+test("existing email with missing or external source membership is denied without writes",async()=>{
+ for(const broken of ["missing","foreign","partner"]){
+  const {db,handlers,request}=setup({recipientCompany:"existing"});
+  db.seed("companies/existing",{companyKind:broken==="partner"?"partner":"internal",active:true});
+  if(broken!=="missing")db.seed("companies/existing/members/recipient",{
+   uid:"recipient",companyId:broken==="foreign"?"other":"existing",
+   accessKind:broken==="partner"?"partner":"internal",active:true});
+  const {token}=await handlers.create(request("owner",createInput));
+  const original=JSON.stringify([...db.data]);
+  await assert.rejects(handlers.accept(request("recipient",{token})));
+  assert.equal(JSON.stringify([...db.data]),original);
+ }
 });
 test("disabled recipient, malformed tokens and unknown bearer never grant access",async()=>{
  const fixture=setup({disabled:true});
@@ -259,4 +308,42 @@ test("new activation module never queries money-bearing collections or deletes",
  assert.doesNotMatch(src,/\.delete\s*\(/);
  assert.doesNotMatch(src,/\.collection\s*\(\s*["'](?:records|products|recordCorrections|revenueGoals)["']\s*\)/);
  assert.doesNotMatch(src,/\.set\s*\(.*\{merge\s*:\s*false/);
+});
+test("fully reviewed activation of existing email keeps original profile, historic sales and unit prices",async()=>{
+ const x=setup({recipientCompany:"existing"});
+ x.db.seed("companies/existing",{name:"旧所属",companyKind:"internal",active:true});
+ x.db.seed("companies/existing/members/recipient",{uid:"recipient",
+  companyId:"existing",companyRole:"member",role:"member",accessKind:"internal",active:true});
+ x.db.seed("records/old",{companyId:"existing",uid:"recipient",
+  totalRevenue:120000,results:{old:{count:8,revenuePerUnit:15000}}});
+ const {token}=await x.handlers.create(x.request("owner",createInput));
+ const p=await x.handlers.accept(x.request("recipient",{token}));
+ const baseline=new Map(x.db.data);
+ stampApproval(x.db,p.partnerCompanyId);
+ const result=await activation(x.db).activate(x.request("owner",{
+  partnerCompanyId:p.partnerCompanyId,teamName:"協力店テスト班"
+ }));
+ assert.equal(result.countReportingEnabled,true);
+ assert.equal(x.db.data.get("partnerRelations/"+p.partnerCompanyId).active,true);
+ assert.equal(x.db.data.get("partnerRelations/"+p.partnerCompanyId).countSharingApproved,true);
+ for(const k of ["users/recipient","companies/existing/members/recipient","records/old",
+   "companies/"+p.partnerCompanyId+"/members/recipient"])
+  assert.deepEqual(x.db.data.get(k),baseline.get(k),k+" changed during activation");
+});
+test("same registered hub Owner may activate an isolated self-test partner tenant only after approval",async()=>{
+ const x=setup();
+ const {token}=await x.handlers.create(x.request("owner",{
+  email:"owner@example.com",companyName:"試験用協力店"
+ }));
+ const p=await x.handlers.accept(x.request("owner",{token}));
+ const original=clone(x.db.data.get("users/owner"));
+ const teamBefore=clone(x.db.data.get("companies/hub/members/owner"));
+ stampApproval(x.db,p.partnerCompanyId);
+ const out=await activation(x.db).activate(x.request("owner",{
+  partnerCompanyId:p.partnerCompanyId,teamName:"試験班"
+ }));
+ assert.equal(out.countReportingEnabled,true);
+ assert.deepEqual(x.db.data.get("users/owner"),original);
+ assert.deepEqual(x.db.data.get("companies/hub/members/owner"),teamBefore);
+ assert.equal(x.db.data.get("companies/"+p.partnerCompanyId+"/members/owner").teamId,null);
 });

@@ -162,7 +162,15 @@ const app=initializeApp({apiKey:"AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
 authDomain:"sales-management-cc116.firebaseapp.com",projectId:"sales-management-cc116",
 appId:"1:904932511564:web:6583e8b0c585231b9049e"});
 const auth=getAuth(app),functions=getFunctions(app,"asia-northeast1");
-const call=name=>httpsCallable(functions,name);
+// Existing internal accounts can open the separate count-only partner tenant
+// without changing their original user profile. The server validates context.
+let workspaceCompanyId=new URL(location.href).searchParams.get("workspaceCompanyId")||"";
+if(workspaceCompanyId&&!/^[A-Za-z0-9_-]{1,128}$/.test(workspaceCompanyId))
+ workspaceCompanyId="";
+const call=name=>{
+ const fn=httpsCallable(functions,name);
+ return data=>fn({...data,...(workspaceCompanyId?{workspaceCompanyId}:{})});
+};
 const get=call("getPartnerWorkspace"),manage=call("managePartnerWorkspace"),
  accept=call("acceptPartnerWorkspaceInvite"),save=call("submitPartnerWorkspaceCounts");
 const $=id=>document.getElementById(id);
@@ -740,8 +748,12 @@ $("signup").onclick=async()=>{try{
  }catch(e){fail(e)}};
 $("verify").onclick=async()=>{try{await sendEmailVerification(auth.currentUser);notice("確認メールを再送しました。")}catch(e){fail(e)}};
 $("join").onclick=async()=>{if(!inviteToken)return;await action(async()=>{
- await accept({token:inviteToken,name:$("joinName").value});
- history.replaceState(null,"","/partner-workspace.html");
+ const joined=(await accept({token:inviteToken,name:$("joinName").value})).data;
+ if(joined?.secondaryMembership&&joined.partnerCompanyId)
+  workspaceCompanyId=joined.partnerCompanyId;
+ const next=new URL("/partner-workspace.html",location.origin);
+ if(workspaceCompanyId)next.searchParams.set("workspaceCompanyId",workspaceCompanyId);
+ history.replaceState(null,"",next.pathname+next.search);
  inviteToken="";$("inviteAccept").hidden=true;return "協力店へ参加しました。";
 })};
 $("logout").onclick=()=>signOut(auth);

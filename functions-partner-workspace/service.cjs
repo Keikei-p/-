@@ -79,11 +79,44 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      t.email_verified!==true||clean(t.email).toLowerCase()!==email)fail("unauthenticated");
   return {uid,email};
  }
- async function scope(uid,tx=null){
+ async function scope(uid,tx=null,workspaceCompanyId=""){
   const read=ref=>tx?tx.get(ref):ref.get();
   const us=await read(db.collection("users").doc(uid));
   const u=us.data()||{},cid=clean(u.companyId);
   if(!us.exists||!ID.test(cid)||u.uid!==uid||u.active!==true)fail();
+  // Existing-email secondary partner role, without touching original primary
+  // company, revenue flags, financial originals, or stored user document.
+  if(workspaceCompanyId){
+   if(!ID.test(workspaceCompanyId)||workspaceCompanyId===cid||
+      u.accessKind==="partner"||u.memberType==="cooperator")fail();
+   const [ctxSnap,partnerSnap,memberSnap,relationSnap]=await Promise.all([
+     read(db.collection("partnerWorkspaceContexts").doc(uid)),
+     read(db.collection("companies").doc(workspaceCompanyId)),
+     read(collection(workspaceCompanyId,"members").doc(uid)),
+     read(db.collection("partnerRelations").doc(workspaceCompanyId))
+   ]);
+   const ctx=ctxSnap.data()||{},pc=partnerSnap.data()||{},
+     pm=memberSnap.data()||{},rel=relationSnap.data()||{};
+   if(!ctxSnap.exists||!partnerSnap.exists||!memberSnap.exists||
+      !relationSnap.exists||ctx.active!==true||
+      ctx.kind!=="partner_secondary"||ctx.uid!==uid||
+      ctx.primaryCompanyId!==cid||ctx.partnerCompanyId!==workspaceCompanyId||
+      ctx.hubCompanyId!==pc.hubCompanyId||
+      (u.email&&ctx.emailLower!==clean(u.email).toLowerCase())||
+      ctx.role!=="owner"||pc.active!==true||
+      pc.companyKind!=="partner"||pc.ownerUid!==uid||
+      pc.masterUid!==uid||!ID.test(pc.hubCompanyId||"")||
+      pm.active!==true||pm.uid!==uid||
+      pm.companyId!==workspaceCompanyId||pm.companyRole!=="owner"||
+      pm.role!=="leader"||pm.teamId!=null||
+      pm.accessKind!=="partner"||pm.memberType!=="cooperator"||
+      pm.canViewRevenue!==false||pm.canViewUnitPrice!==false||
+      rel.hubCompanyId!==pc.hubCompanyId||
+      rel.partnerCompanyId!==workspaceCompanyId||
+      rel.active!==true||rel.countSharingApproved!==true)fail();
+   return {kind:"partner",uid,cid:workspaceCompanyId,
+     hubId:pc.hubCompanyId,companyName:pc.name,role:"owner",teamId:null};
+  }
   const [cs,ms]=await Promise.all([
     read(db.collection("companies").doc(cid)),
     read(collection(cid,"members").doc(uid))
@@ -146,14 +179,14 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   const {uid}=await actor(request),d=request?.data||{},op=d.action;
   if(!["addTeam","addManaged","createInvite","moveStaff","addPrivateProduct","setPrivateProduct",
    "hubAddTeam","hubCreateInvite"].includes(op))fail("invalid-argument");
-  const s=await scope(uid);
+  const s=await scope(uid,null,d.workspaceCompanyId);
   if(op==="hubAddTeam"||op==="hubCreateInvite"){
    if(s.kind!=="hub"||s.role!=="owner"||!ID.test(d.partnerCompanyId||""))fail();
    if(op==="hubAddTeam"){
     if(!validName(d.name))fail("invalid-argument");
     const ref=collection(d.partnerCompanyId,"partnerWorkTeams").doc();
     await db.runTransaction(async tx=>{
-     const fresh=await scope(uid,tx);
+     const fresh=await scope(uid,tx,d.workspaceCompanyId);
      if(fresh.kind!=="hub"||fresh.cid!==s.cid||fresh.role!=="owner")fail();
      const partner=await hubPartner(tx,s.cid,d.partnerCompanyId);
      if(!partner.active)fail("failed-precondition");
@@ -169,7 +202,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    const hash=crypto.createHash("sha256").update(token).digest("hex");
    const expiresAt=Timestamp.fromMillis(now()+30*60000);
    await db.runTransaction(async tx=>{
-    const fresh=await scope(uid,tx);
+    const fresh=await scope(uid,tx,d.workspaceCompanyId);
     if(fresh.kind!=="hub"||fresh.cid!==s.cid||fresh.role!=="owner")fail();
     const partner=await hubPartner(tx,s.cid,d.partnerCompanyId);
     if(!partner.active)fail("failed-precondition");
@@ -190,7 +223,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    if(existing.size>=100)fail("resource-exhausted");
    const ref=collection(s.cid,"partnerPrivateProducts").doc();
    await db.runTransaction(async tx=>{
-    const fresh=await scope(uid,tx);
+    const fresh=await scope(uid,tx,d.workspaceCompanyId);
     if(fresh.kind!=="partner"||fresh.cid!==s.cid||fresh.role!=="owner")fail();
     tx.create(ref,{companyId:s.cid,name:clean(d.name),active:true,
       origin:"partner_custom",visibility:"private",createdByUid:uid,
@@ -202,7 +235,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    if(s.kind!=="partner"||s.role!=="owner"||!ID.test(d.productId||"")||
       typeof d.active!=="boolean"||!validPrivateName(d.name))fail("invalid-argument");
    await db.runTransaction(async tx=>{
-    const fresh=await scope(uid,tx);
+    const fresh=await scope(uid,tx,d.workspaceCompanyId);
     if(fresh.kind!=="partner"||fresh.cid!==s.cid||fresh.role!=="owner")fail();
     const ref=privateProductRef(s.cid,d.productId),sn=await tx.get(ref);
     if(!sn.exists||sn.data()?.companyId!==s.cid||
@@ -218,7 +251,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    if(s.role!=="owner"||!validName(d.name))fail("invalid-argument");
    const ref=collection(s.cid,"partnerWorkTeams").doc();
    await db.runTransaction(async tx=>{
-    const fresh=await scope(uid,tx);
+    const fresh=await scope(uid,tx,d.workspaceCompanyId);
     if(fresh.cid!==s.cid||fresh.role!=="owner")fail();
     tx.create(ref,{name:clean(d.name),active:true,companyId:s.cid,createdByUid:uid,createdAt:FieldValue.serverTimestamp()});
    });
@@ -228,7 +261,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    if(!validName(d.name))fail("invalid-argument");
    const ref=collection(s.cid,"partnerWorkStaff").doc();
    await db.runTransaction(async tx=>{
-    const fresh=await scope(uid,tx);
+    const fresh=await scope(uid,tx,d.workspaceCompanyId);
     if(fresh.cid!==s.cid||fresh.role==="member")fail();
     const teamId=s.role==="owner"?clean(d.teamId):fresh.teamId;
     await checkTeam(tx,fresh,teamId);
@@ -240,7 +273,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   if(op==="moveStaff"){
    if(s.role!=="owner"||!ID.test(d.staffId||"")||!ID.test(d.teamId||""))fail("invalid-argument");
    await db.runTransaction(async tx=>{
-    const fresh=await scope(uid,tx);if(fresh.role!=="owner")fail();
+    const fresh=await scope(uid,tx,d.workspaceCompanyId);if(fresh.role!=="owner")fail();
     await checkTeam(tx,fresh,d.teamId);
     const ref=staffRef(fresh.cid,d.staffId),sn=await tx.get(ref);
     if(!sn.exists||sn.data()?.active!==true||sn.data()?.companyId!==s.cid||
@@ -279,7 +312,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   const token=crypto.randomBytes(32).toString("base64url"),hash=crypto.createHash("sha256").update(token).digest("hex");
   const expiresAt=Timestamp.fromMillis(now()+30*60000);
   await db.runTransaction(async tx=>{
-   const fresh=await scope(uid,tx);
+   const fresh=await scope(uid,tx,d.workspaceCompanyId);
    if(fresh.kind!=="partner"||(fresh.role!=="owner"&&(fresh.role!=="leader"&&d.role==="member"&&fresh.teamId===d.teamId)))fail();
    await checkTeam(tx,fresh,d.teamId);
    tx.create(db.collection("partnerWorkInvites").doc(hash),{
@@ -329,7 +362,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  }
  async function view(request){
   const a=await actor(request),d=request?.data||{},date=validDate(d.date);
-  const s=await scope(a.uid);
+  const s=await scope(a.uid,null,d.workspaceCompanyId);
   if(s.kind==="hub"){
    // Registered companies appear before their first daily count report.
    // Unapproved company remains listed but cannot be invited into.
@@ -434,10 +467,10 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   const {counts,total}=validateCounts(d.counts);
   const hasPrivateCounts=Object.prototype.hasOwnProperty.call(d,"privateCounts");
   const requestedPrivate=hasPrivateCounts?validatePrivateCounts(d.privateCounts).counts:null;
-  const s=await scope(a.uid);
+  const s=await scope(a.uid,null,d.workspaceCompanyId);
   if(s.kind!=="partner")fail();
   return db.runTransaction(async tx=>{
-   const fresh=await scope(a.uid,tx);
+   const fresh=await scope(a.uid,tx,d.workspaceCompanyId);
    if(fresh.kind!=="partner"||fresh.cid!==s.cid)fail();
    const sr=staffRef(s.cid,staffId),ss=await tx.get(sr),person=ss.data()||{};
    if(!ss.exists||person.active!==true||person.companyId!==s.cid||
