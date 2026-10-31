@@ -52,12 +52,13 @@ function makePartnerCountActivation({
   const approvalRef=db.collection("partnerCountOnboardingApprovals").doc(partnerId);
   const teamRef=db.collection("teams").doc("partner_"+partnerId);
   const auditRef=db.collection("partnerCountActivationAudits").doc(partnerId);
+  const secondaryRef=db.collection("partnerWorkspaceContexts").doc(uid);
   let output;
   await db.runTransaction(async tx=>{
-   const [actorSnap,pSnap,relSnap,approvalSnap,teamSnap,auditSnap]=
+   const [actorSnap,pSnap,relSnap,approvalSnap,teamSnap,auditSnap,secondarySnap]=
      await Promise.all([
       tx.get(userRef),tx.get(partnerRef),tx.get(relationRef),
-      tx.get(approvalRef),tx.get(teamRef),tx.get(auditRef)
+      tx.get(approvalRef),tx.get(teamRef),tx.get(auditRef),tx.get(secondaryRef)
      ]);
    if(!actorSnap.exists||!pSnap.exists||!relSnap.exists||
       !approvalSnap.exists||teamSnap.exists||auditSnap.exists)
@@ -69,8 +70,7 @@ function makePartnerCountActivation({
       actor.accessKind==="partner"||actor.memberType==="cooperator"||
       partner.companyKind!=="partner"||partner.active!==true||
       partner.hubCompanyId!==actor.companyId||!ID.test(partner.ownerUid)||
-      partner.ownerUid===uid||
-      relation.hubCompanyId!==actor.companyId||
+            relation.hubCompanyId!==actor.companyId||
       relation.partnerCompanyId!==partnerId||
       relation.active!==false||
       relation.countSharingApproved!==false||
@@ -86,7 +86,16 @@ function makePartnerCountActivation({
       tx.get(partnerOwnerRef),tx.get(partnerMemberRef)
      ]);
    const hub=hubSnap.data()||{},am=actorMemberSnap.data()||{},
-     owner=ownerSnap.data()||{},om=ownerMemberSnap.data()||{};
+     owner=ownerSnap.data()||{},om=ownerMemberSnap.data()||{},
+      secondary=secondarySnap.data()||{};
+    const secondaryOwner=partner.ownerUid===uid;
+    const secondaryValid=secondaryOwner&&secondarySnap.exists&&
+      secondary.kind==="partner_secondary"&&secondary.active===true&&
+      secondary.uid===uid&&secondary.primaryCompanyId===actor.companyId&&
+      secondary.partnerCompanyId===partnerId&&
+      secondary.hubCompanyId===actor.companyId&&secondary.role==="owner"&&
+      secondary.emailLower===clean(request.auth.token.email).toLowerCase()&&
+      owner.uid===uid&&owner.companyId===actor.companyId;
    if(!hubSnap.exists||hub.active!==true||
       (hub.companyKind!=null&&!["internal","direct"].includes(hub.companyKind))||
       hub.ownerUid!==uid||!actorMemberSnap.exists||
@@ -94,15 +103,16 @@ function makePartnerCountActivation({
       am.accessKind==="partner"||am.memberType==="cooperator"||
       !ownerSnap.exists||!ownerMemberSnap.exists||
       owner.uid!==partner.ownerUid||om.uid!==partner.ownerUid||
-      owner.companyId!==partnerId||om.companyId!==partnerId||
+      (!secondaryOwner&&owner.companyId!==partnerId)||
+       (secondaryOwner&&!secondaryValid)||om.companyId!==partnerId||
       owner.active!==true||om.active!==true||
-      owner.accessKind!=="partner"||om.accessKind!=="partner"||
-      owner.memberType!=="cooperator"||om.memberType!=="cooperator"||
+      (!secondaryOwner&&owner.accessKind!=="partner")||om.accessKind!=="partner"||
+      (!secondaryOwner&&owner.memberType!=="cooperator")||om.memberType!=="cooperator"||
       owner.companyRole!=="owner"||om.companyRole!=="owner"||
       owner.role!=="leader"||om.role!=="leader"||
-      owner.canViewRevenue!==false||om.canViewRevenue!==false||
-      owner.canViewUnitPrice!==false||om.canViewUnitPrice!==false||
-      owner.teamId!=null||om.teamId!=null)
+      (!secondaryOwner&&owner.canViewRevenue!==false)||om.canViewRevenue!==false||
+      (!secondaryOwner&&owner.canViewUnitPrice!==false)||om.canViewUnitPrice!==false||
+      (!secondaryOwner&&owner.teamId!=null)||om.teamId!=null)
      fail(HttpsError);
    // Approval is an ADMIN-only artifact from completed backup/restore,
    // full source-to-projection comparison, locked financial Rules and catalog.
@@ -123,8 +133,11 @@ function makePartnerCountActivation({
      companyId:partnerId,name:teamName,leaderUids:[partner.ownerUid],
      active:true,createdAt:now
    });
-   tx.update(partnerOwnerRef,{teamId:teamRef.id,updatedAt:now});
-   tx.update(partnerMemberRef,{teamId:teamRef.id,updatedAt:now});
+   if(!secondaryOwner){
+     tx.update(partnerOwnerRef,{teamId:teamRef.id,updatedAt:now});
+     tx.update(partnerMemberRef,{teamId:teamRef.id,updatedAt:now});
+   }
+   // Secondary partner access never modifies the original user or its team.
    tx.update(relationRef,{
      active:true,countSharingApproved:true,catalogAccessApproved:true,
      updatedAt:now
