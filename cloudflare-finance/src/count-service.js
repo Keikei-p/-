@@ -76,7 +76,8 @@ export async function submitCounts(store,principal,input,options={}){
     if(!target || target.active===false)throw new PermissionDenied();
     // External partners can proxy only for current members assigned to
     // their team; a forged UID for another team must never be accepted.
-    if(policy.isPartner && (policy.role!=="leader" || target.teamId!==policy.teamId)){
+    if(policy.isPartner && !policy.isPartnerCompanyOwner &&
+       (policy.role!=="leader" || target.teamId!==policy.teamId)){
       throw new PermissionDenied();
     }
     // This is an intentional fail-closed restriction until proxy-eligibility
