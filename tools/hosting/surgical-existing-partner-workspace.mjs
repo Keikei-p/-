@@ -95,7 +95,10 @@ export async function uploadSingleExistingWorkspace({assetBytes,request,release=
    "sites/nico-factory/versions/8a6f3ca799112677",
    // GitHub Action 41165276246 replaced ONLY partner-invite.html, preserving 10 others.
    // Follow-on live parity check 41165474654 verified b46f9f22bf75ed6e.
-   "sites/nico-factory/versions/b46f9f22bf75ed6e"
+   "sites/nico-factory/versions/b46f9f22bf75ed6e",
+   // Run 41167466714 finalized the count-only partner dashboard with all 11 files preserved;
+   // run 41168151076 independently confirmed its deployed exact page and all original APIs.
+   "sites/nico-factory/versions/3ca4d41ca85d8347"
  ]);
  const files=[];let pageToken="";
  do{
