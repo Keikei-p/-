@@ -73,7 +73,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git show fa514c47da90f349997df62054c755f4b2ca1678:partner-workspace.html > "$RUNNER_TEMP/approved-old-partner-workspace.html"
+          git show 9e321c3cf964fc750c5d1de46a53fc7156c5f9ce:partner-workspace.html > "$RUNNER_TEMP/approved-old-partner-workspace.html"
           curl -fsSL --max-time 30 --retry 3 'https://nico-factory.web.app/partner-workspace.html?verified_source=20261031' > "$RUNNER_TEMP/live-workspace.html"
           if cmp -s "$RUNNER_TEMP/live-workspace.html" partner-workspace.html; then
             echo 'already_live=true' >> "$GITHUB_OUTPUT"
