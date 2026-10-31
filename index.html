@@ -4869,6 +4869,19 @@ body.product-reordering .product-list {
       id="companyInviteControls"
       style="display:none;margin-top:18px;">
 
+      <div class="form-group" style="margin-bottom:16px;">
+        <label for="inviteDestinationSelect" style="font-weight:800;">
+          招待する相手を選択
+        </label>
+        <select id="inviteDestinationSelect"
+                aria-label="招待先の種類"
+                style="width:100%;min-height:44px;margin-top:8px;">
+          <option value="internal">👤 自社メンバーを招待</option>
+          <option value="partner">🤝 協力店会社を招待</option>
+        </select>
+      </div>
+
+      <div id="employeeInviteFields">
       <div style="font-size:13px;color:var(--sub);line-height:1.7;">
         メンバーの登録メールアドレスを指定して招待リンクを作ります。
         作成したリンクをLINEやメールで送ってください。
@@ -4915,13 +4928,19 @@ body.product-reordering .product-list {
 
       </div>
 
+      </div>
+
       <div id="partnerInviteInline"
            hidden
            style="margin-top:18px;padding:15px;border:1px solid var(--border);border-radius:12px;">
-        <div style="font-weight:800;margin-bottom:6px;">🤝 協力店を招待</div>
+        <div style="font-weight:800;margin-bottom:6px;">🤝 協力店会社を招待</div>
         <p style="font-size:12px;line-height:1.6;color:var(--sub);">
           自社スタッフとは別会社として招待します。協力店には売上・単価を付与しません。
           招待リンクは30分間有効です。
+        </p>
+        <p id="partnerInvitePermissionHint" hidden
+           style="font-size:12px;line-height:1.6;color:var(--sub);">
+          協力店会社の招待リンクは、自社の代表オーナーのみ発行できます。
         </p>
         <div class="management-input-row">
           <input id="partnerInviteCompanyName" type="text"
@@ -8859,12 +8878,9 @@ function openCompanyQuickPanel(
   companyInviteControls.hidden =
     mode !==
     "invite";
-  // This button is shown to the original hub owner, not a partner owner.
-  const partnerInviteBox=document.getElementById("partnerInviteInline");
-  if(partnerInviteBox)partnerInviteBox.hidden = mode !== "invite" ||
-    !currentUser?.uid || currentCompanyData?.ownerUid !== currentUser.uid ||
-    currentCompanyData?.companyKind === "partner" ||
-    currentUserData?.accessKind === "partner";
+  // Show both invitation choices inside the existing Invite Link tab.
+  // The callable itself rechecks server-side hub owner authority.
+  if (mode === "invite") syncInviteDestinationPanel();
 
   ownerTransferPanel.hidden =
     mode !==
@@ -8896,6 +8912,31 @@ function openCompanyQuickPanel(
 
 }
 
+
+function syncInviteDestinationPanel() {
+  const destination = document.getElementById("inviteDestinationSelect");
+  const internalPanel = document.getElementById("employeeInviteFields");
+  const partnerPanel = document.getElementById("partnerInviteInline");
+  const partnerButton = document.getElementById("partnerInviteCreateButton");
+  const permissionHint = document.getElementById("partnerInvitePermissionHint");
+  if (!destination || !internalPanel || !partnerPanel) return;
+
+  const partnerSelected = destination.value === "partner";
+  internalPanel.hidden = partnerSelected;
+  partnerPanel.hidden = !partnerSelected;
+
+  // Only the original hub Owner can create a cross-company invite.
+  const owner = Boolean(currentUser?.emailVerified &&
+    currentCompanyData?.ownerUid === currentUser.uid &&
+    currentCompanyData?.companyKind !== "partner" &&
+    currentUserData?.accessKind !== "partner");
+  if (partnerButton) partnerButton.disabled = !owner;
+  if (permissionHint) permissionHint.hidden = owner;
+}
+
+document.getElementById("inviteDestinationSelect").addEventListener(
+  "change", syncInviteDestinationPanel
+);
 
 managementMenuButton.onclick =
   event => {
