@@ -33,10 +33,18 @@ const UI=(options={})=>{
       assert.equal(rows[0]?.totalRevenue,undefined,"do not pass money into missing-report calculation");
       return options.missingInternal||[];
     },
-    readPartnerWorkDay:async({date})=>{
+    readPartnerQuickDay:async({date})=>{
+      assert.equal(date,"2026-10-31");
+      if(options.quickError)throw Error("legacy offline");
+      return {data:{role:"hub",partners:options.quickPartners||[]}};
+    },
+    validatedPartnerRankingDay:(x)=>x.partners,
+    readPartnerWorkDay:async({date,includeTeamStatus})=>{
+      assert.equal(includeTeamStatus,true);
       assert.equal(date,"2026-10-31");
       if(options.partnerError)throw Error("partner offline");
-      return {data:options.partner??{role:"hub",registeredCompanies:[],partners:[]}};
+      return {data:options.partner??{role:"hub",teamStatusComplete:true,
+        registeredCompanies:[],partners:[],teamReports:[]}};
     }
   };
   const render=vm.runInNewContext("let missingReportRequestGeneration=0;"+code+"\nrenderMissingReportLog",context);
@@ -47,18 +55,24 @@ test("own team and active partner omission appear as dated log; 0件 counts as s
   records:[{companyId:"internal",uid:"u",date:"2026-10-31",teamId:"A",
     totalCount:0,totalRevenue:999999,reportStatus:"no_result"}],
   missingInternal:[{teamName:"2班",reported:0,expected:1,missingNames:["田中"]}],
-  partner:{role:"hub",registeredCompanies:[
+  partner:{role:"hub",teamStatusComplete:true,registeredCompanies:[
    {partnerCompanyId:"p1",name:"協力店A",active:true},
    {partnerCompanyId:"p2",name:"協力店B",active:true},
    {partnerCompanyId:"pending",name:"未承認",active:false}
-  ],partners:[{partnerCompanyId:"p2",totalCount:0}]}
+  ],partners:[{partnerCompanyId:"p2",totalCount:0}],
+  teamReports:[
+   {partnerCompanyId:"p1",name:"協力店A",teams:[
+    {id:"a",name:"1班",status:"missing",staffCount:1,reportedStaffCount:0}]},
+   {partnerCompanyId:"p2",name:"協力店B",teams:[
+    {id:"b",name:"2班",status:"submitted",staffCount:1,reportedStaffCount:1}]}
+  ]}
  });
  await app.render();
  assert.equal(app.getReadDate(),"2026-10-31");
  assert.equal(app.list.children.length,2);
  const titles=app.list.children.map(x=>x.children[0].textContent);
  assert.ok(titles.some(x=>x.includes("2026-10-31")&&x.includes("自社：2班 未報告")));
- assert.ok(titles.some(x=>x.includes("協力店：協力店A 未報告")));
+ assert.ok(titles.some(x=>x.includes("協力店：協力店A｜1班 未報告")));
  assert.ok(!titles.some(x=>x.includes("協力店B")||x.includes("未承認")));
  assert.match(app.status.textContent,/未報告 2件/);
  assert.doesNotMatch(JSON.stringify(app.list),/999999|totalRevenue/);
@@ -92,7 +106,7 @@ test("visible menu remains Owner-only and partner data uses only count-only call
  for(const tag of ["quickMissingButton","missingReportsManagement","missingReportsDate","missingReportsList"])
    assert.ok(html.includes('id="'+tag+'"'));
  assert.match(html,/quickMissingButton\.style\.display=isCurrentCompanyOwner\(\)/);
- assert.match(code,/readPartnerWorkDay\(\{date\}\)/);
+ assert.match(code,/readPartnerWorkDay\(\{date,includeTeamStatus:true\}\)/);
  assert.doesNotMatch(code,/getDocs\(.*products|totalRevenue|revenuePerUnit|pricingOptions|deleteDoc|updateDoc|setDoc/);
  assert.match(html,/id="countGrid"|partnerCountFunctions/);
 });
