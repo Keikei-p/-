@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {buildMonthlyDraft,confirmMonthlyDraft,
- prepareMonthActivation} from "../team-planning/future-month-contract.mjs";
+import {buildMonthlyDraft,confirmMonthlyDraft,prepareMonthActivation,
+ buildFutureGoalDraft,confirmFutureGoalDraft,prepareFutureGoalReservations
+} from "../team-planning/future-month-contract.mjs";
 const owner={serverVerified:true,companyId:"hub",companyRole:"owner"};
 const people=[
  {uid:"a",companyRole:"member",role:"member",teamId:"one",active:true,
@@ -107,4 +108,99 @@ test("conflicting future dated move is never overwritten by next month activatio
  assert.throws(()=>prepareMonthActivation({plan,jstDate:"2026-11-01",
     people:changed,validTeamIds:["one","two"]}),/FUTURE_HISTORY_CONFLICT/);
  assert.equal(JSON.stringify(changed),before);
+});
+
+const goalOwner={...owner,uid:"owner123"};
+const futureGoal=buildFutureGoalDraft({actor:goalOwner,companyId:"hub",
+  month:"2026-11",goals:[{teamId:"one",targets:{nuro:10,electric:3},
+  targetRevenue:2500000},{teamId:"two",targets:{nuro:4}}]});
+const confirmGoal=()=>confirmFutureGoalDraft(futureGoal);
+test("Owner can prebook next-month product counts and revenue in DIFFERENT documents",()=>{
+ const draft=confirmGoal();
+ const out=prepareFutureGoalReservations({plan:draft,jstDate:"2026-10-31",
+   activeTeamIds:["one","two"]});
+ assert.equal(out.planId,"hub_2026-11");
+ assert.equal(out.countGoals.length,2);
+ assert.equal(out.revenueGoals.length,1);
+ assert.deepEqual(out.countGoals[0].targets,{...futureGoal.items[0].targets});
+ assert.equal(out.countGoals[0].id,"hub_one_2026-11");
+ assert.equal(out.revenueGoals[0].id,"hub_one_2026-11");
+ assert.equal(out.revenueGoals[0].targetRevenue,2500000);
+ for(const countGoal of out.countGoals){
+   assert.equal("targetRevenue" in countGoal,false,"partner-safe count goal cannot carry money");
+ }
+ for(const revenueGoal of out.revenueGoals)
+   assert.equal("targets" in revenueGoal,false,"money cannot leak via count goal");
+ assert.equal(Object.isFrozen(out.countGoals[0]),true);
+ assert.equal(Object.isFrozen(out.revenueGoals[0]),true);
+ assert.equal(JSON.stringify(people),src,"no mutations to current staff or sales");
+});
+test("Owner must confirm goal draft; never activate on or after the selected month",()=>{
+ assert.throws(()=>prepareFutureGoalReservations({plan:futureGoal,jstDate:"2026-10-31",
+   activeTeamIds:["one","two"]}),/GOALS_NOT_CONFIRMED/);
+ for(const day of ["2026-11-01","2026-11-02","2027-01-01"]){
+   assert.throws(()=>prepareFutureGoalReservations({plan:confirmGoal(),
+      jstDate:day,activeTeamIds:["one","two"]}),/GOAL_RESERVATION_TOO_LATE/);
+ }
+ for(const day of ["2026-02-30","invalid","2026-13-10"]){
+   assert.throws(()=>prepareFutureGoalReservations({plan:confirmGoal(),
+      jstDate:day,activeTeamIds:["one","two"]}),/GOAL_CLOCK/);
+ }
+});
+test("Existing count and money goals cannot be silently overwritten",()=>{
+ const plan=confirmGoal();
+ for(const [existingGoals,existingRevenueGoals,error] of [
+   [[{id:"hub_one_2026-11"}],[],"COUNT_GOAL_ALREADY_EXISTS"],
+   [[],[{id:"hub_one_2026-11"}],"REVENUE_GOAL_ALREADY_EXISTS"],
+   [[{companyId:"hub",teamId:"two",month:"2026-11"}],[],"COUNT_GOAL_ALREADY_EXISTS"],
+ ]){
+   assert.throws(()=>prepareFutureGoalReservations({plan,jstDate:"2026-10-31",
+      activeTeamIds:["one","two"],existingGoals,existingRevenueGoals}),
+      new RegExp(error));
+ }
+});
+test("No unauthorized Owner, other company, duplicate team goals or unsafe target values",()=>{
+ const make=goals=>buildFutureGoalDraft({actor:goalOwner,companyId:"hub",
+   month:"2026-11",goals});
+ for(const actor of [
+   {...goalOwner,companyRole:"leader"}, {...goalOwner,serverVerified:false},
+   {...goalOwner,companyId:"other"}, {...goalOwner,uid:undefined},
+   {...goalOwner,uid:"wrong/id"}
+ ])assert.throws(()=>buildFutureGoalDraft({actor,companyId:"hub",
+    month:"2026-11",goals:[]}),/OWNER_ONLY/);
+ assert.throws(()=>make([{teamId:"one",targets:{nuro:1}},
+    {teamId:"one",targets:{nuro:2}}]),/DUPLICATE_TEAM_GOAL/);
+ for(const value of [-1,0.1,NaN,Infinity,"4",1000000])
+   assert.throws(()=>make([{teamId:"one",targets:{nuro:value}}]),/COUNT_TARGET/);
+ for(const value of [-1,0.5,Infinity,"20",1000000000000])
+   assert.throws(()=>make([{teamId:"one",targetRevenue:value}]),/REVENUE_TARGET/);
+ for(const row of [
+   {teamId:"one",targets:{nuro:1},unitPrice:5},
+   {teamId:"one",totalRevenue:50000},
+   {teamId:"one",targets:{"bad/id":1}},
+   {teamId:"one",targets:new Date()},
+   {teamId:"one",targets:null}
+ ])assert.throws(()=>make([row]),/GOAL_FIELDS|PRODUCT|PRODUCT_TARGETS/);
+});
+test("Unapproved team and corrupt confirmed goal plan fail closed",()=>{
+ for(const activeTeamIds of [["one"],["one","one"],[]])
+   assert.throws(()=>prepareFutureGoalReservations({plan:confirmGoal(),
+     jstDate:"2026-10-31",activeTeamIds}),
+     /INACTIVE_TEAM_GOAL|DUPLICATE_ACTIVE_TEAM/);
+ const altered={...confirmGoal(),items:[{teamId:"one",targets:{nuro:-1}}]};
+ assert.throws(()=>prepareFutureGoalReservations({plan:altered,
+   jstDate:"2026-10-31",activeTeamIds:["one"]}),/INVALID_COUNT_TARGET/);
+});
+test("Finance-goal-only and explicit empty count goal retain exact canonical schema",()=>{
+ const single=confirmFutureGoalDraft(buildFutureGoalDraft({actor:goalOwner,
+   companyId:"hub",month:"2026-12",goals:[
+    {teamId:"one",targetRevenue:0},{teamId:"two",targets:{nuro:0}}]}));
+ const out=prepareFutureGoalReservations({plan:single,
+   jstDate:"2026-10-31",activeTeamIds:["one","two"]});
+ assert.equal(out.countGoals.length,1);
+ assert.equal(Object.keys(out.countGoals[0].targets).length,0);
+ assert.equal(out.revenueGoals.length,1);
+ assert.equal(out.revenueGoals[0].targetRevenue,0);
+ const clean=JSON.stringify(out.countGoals);
+ assert.equal(clean.includes("revenue"),false);
 });
