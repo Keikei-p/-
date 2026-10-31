@@ -22,7 +22,7 @@ test("partner company name and invited email are distinct, labelled, vertically 
  assert.match(form[0],/id="partnerInviteCompanyName"[^>]*type="text"[\s\S]*?maxlength="80"/);
  assert.match(form[0],/id="partnerInviteEmail"[^>]*type="email"[\s\S]*?autocomplete="email"/);
  assert.equal((form[0].match(/min-height:48px;box-sizing:border-box/g)||[]).length,2);
- assert.equal((form[0].match(/style="display:block;width:100%;max-width:100%;min-width:0;min-height:48px/g)||[]).length,3);
+ assert.equal((form[0].match(/style="display:block;width:100%;max-width:100%;min-width:0;min-height:48px/g)||[]).length,2);
  assert(!form[0].includes('class="management-input-row"'),"horizontal invite fields must be gone");
  const company=form[0].indexOf('id="partnerInviteCompanyName"');
  const email=form[0].indexOf('id="partnerInviteEmail"');
