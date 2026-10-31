@@ -568,6 +568,16 @@ Rulesの本番デプロイ: 未実施
 
 ---
 
+## 2026-10-31 — 既存ランキングの旧indexだけの公開・既知Hosting v11ファイル確認
+
+- `41152842402` のindex差分リリースは、協力店Workspace公開直後のライブVersionが `fileCount` を応答しないため、実ファイル確認に入る前に `STOP BAD_LIVE_VERSION`。ファイル切替や旧履歴書換はまだ実施されていない。
+- Workspace成功Run `41152615733` は、旧ライブ版 `2207a4addf94700b` の元10ファイルを完全保存し、新 `partner-workspace.html` 1枚を追加した合計**11ファイル**のパス・ハッシュ検証に合格後、`sites/nico-factory/versions/b6ab2b826667954d` をリリースした実ログを持つ。
+- `surgical-existing-index.mjs` は、**その監査済みVersionだけ**、`version.fileCount` が欠落する場合に限り、`files.list` の全ページの実ファイルを検証した11件以上の件数を採用する。元の`index.html`、`partner-invite.html`、`partner-counts.html`、`partner-workspace.html` の4ファイルが全て存在しない場合はSTOP。他の未審査ライブVersionで欠損件数を迂回しない。
+- 更新前後のHosting config、元ファイル全パス/ハッシュ、ライブ版並行切替の有無は引き続き検証。**差分は`index.html` 1件のみ**で、既存レコード/金額/単価/ユーザー/班/履歴/LINE・Firestore Rulesは一切触らない。
+- 公開許可の前提は最新のGitHub保護ゲート・Sales App Validation・index Hostingの模擬/実データテスト全合格と前段quick/workspaceの実ジョブ成功。Finance Rules PR #175は別審査、実本番適用未承認。
+
+---
+
 ## 2026-10-31 — 協力店Ownerによる金額付きFirestore原票の拒否（Rules改善の事前レビュー、未公開）
 
 - 現行本番の `firestore.rules` は、協力店Owner/マスターが新規の独立会社に所属している場合、同じ `companyId` の金額付き `products/records/recordCorrections/revenueGoals` にアクセスできる経路がある。ブラウザUIが金額を隠すだけでは絶対遮断にならない。
