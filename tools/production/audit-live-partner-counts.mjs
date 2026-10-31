@@ -56,8 +56,8 @@ export function financeLockedIdentity(company,users,member){
 }
 // Match the positive internal classification allowlist in firestore.rules.
 // Reject unknown markers even when accessKind != "partner".
-const INTERNAL_ACCESS=new Set([undefined,null,"internal"]);
-const INTERNAL_TYPES=new Set([undefined,null,"internal","direct","member","managed"]);
+const INTERNAL_ACCESS=new Set([undefined,"internal"]);
+const INTERNAL_TYPES=new Set([undefined,"internal","direct","member","managed"]);
 export function isInternalIdentitySafe(company,member,user=member){
  if(!company||!member||!user)return false;
  return INTERNAL_ACCESS.has(company.companyKind)&&
