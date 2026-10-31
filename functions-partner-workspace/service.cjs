@@ -229,7 +229,9 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    if(!allowed.has(x.staffId))continue;
    const {counts,total}=validateCounts(x.counts);
    if(total!==x.totalCount)fail("data-loss");
-   rows.push({staffId:x.staffId,counts,totalCount:total,version:x.version});
+   if(x.teamIdSnapshot!=null&&!ID.test(x.teamIdSnapshot))fail("data-loss");
+   rows.push({staffId:x.staffId,counts,totalCount:total,version:x.version,
+     teamIdSnapshot:x.teamIdSnapshot||null});
   }
   const visibleTeams=teams.docs.map(sn=>({id:sn.id,name:clean(sn.data().name),active:sn.data().active===true}))
    .filter(team=>s.role==="owner"||team.id===s.teamId);
@@ -269,8 +271,12 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    if(totalSnap.exists&&existing.totalCount!==Object.values(previous).reduce((x,y)=>x+y,0))
      fail("data-loss");
    const nowStamp=FieldValue.serverTimestamp(),nextVersion=d.expectedVersion+1;
+   // The team at first submission remains the owner of that day's record.
+   // A correction must never move old counts into the member's current team.
+   if(oldSnap.exists&&!ID.test(old.teamIdSnapshot||""))fail("data-loss");
+   const originalTeamId=oldSnap.exists?old.teamIdSnapshot:person.teamId;
    const row={companyId:s.cid,hubCompanyId:s.hubId,staffId,date,counts,totalCount:total,
-     version:nextVersion,staffNameSnapshot:person.name,teamIdSnapshot:person.teamId,
+     version:nextVersion,staffNameSnapshot:person.name,teamIdSnapshot:originalTeamId,
      updatedByUid:a.uid,updatedAt:nowStamp};
    if(oldSnap.exists)tx.update(er,row);else tx.create(er,{...row,createdAt:nowStamp});
    const sum={source:"staff-entries-v1",hubCompanyId:s.hubId,partnerCompanyId:s.cid,
