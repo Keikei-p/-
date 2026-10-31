@@ -1,0 +1,164 @@
+name: 'NICO partner private products - coordinated release (manual, finance gated)'
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_id:
+        description: 'Existing Firebase project ID'
+        required: true
+        type: string
+      release_confirmation:
+        description: 'Type CONFIRM_PARTNER_PRIVATE_PRODUCTS_RELEASE'
+        required: true
+        type: string
+      owner_finance_verified:
+        description: 'Type OWNER_REVENUE_PRICES_LOGIN_VERIFIED'
+        required: true
+        type: string
+      backup_restore_verified:
+        description: 'Type FIRESTORE_BACKUP_RESTORE_VERIFIED'
+        required: true
+      billing_approved:
+        description: 'Type EXISTING_FUNCTIONS_COST_APPROVED'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nico-partner-workspace-production
+  cancel-in-progress: false
+
+jobs:
+  coordinated-private-products:
+    if: ${{ github.ref == 'refs/heads/main' && inputs.project_id == 'sales-management-cc116' && inputs.release_confirmation == 'CONFIRM_PARTNER_PRIVATE_PRODUCTS_RELEASE' && inputs.owner_finance_verified == 'OWNER_REVENUE_PRICES_LOGIN_VERIFIED' && inputs.backup_restore_verified == 'FIRESTORE_BACKUP_RESTORE_VERIFIED' && inputs.billing_approved == 'EXISTING_FUNCTIONS_COST_APPROVED' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      NICO_PARTNER_RELEASE_CONFIRMATION: CONFIRM_REPLACE_PARTNER_WORKSPACE_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require exact reviewed source, zero direct changes to existing sales
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = "d17ceb37c9d7acbdd41f36bab2de3c8f21fbd85d"
+          test "$(git hash-object partner-workspace.html)" = "c5c639fbc771e93b37dfbf41e2fbd522bd4db5c7"
+          test "$(git hash-object functions-partner-workspace/index.js)" = "a2bffd167b8804a0372c7a00465c04a63d96e919"
+          test "$(git hash-object functions/index.js)" = "dfb4c48ada6fa89a24c898cd4a2f911bcede822f"
+          node -e "const f=require('fs');const a=JSON.parse(f.readFileSync('.firebaserc','utf8'));if(a.projects.default!=='sales-management-cc116')process.exit(1)"
+          node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/index.js
+          node --test tests/partner-workspace.test.cjs
+          node --test tests/partner-money-free-workspace.test.cjs
+          node --test tests/partner-count-dashboard.test.cjs
+          node --test tests/internal-owner-finance-visibility.test.cjs
+          node --test tests/partner-existing-ranking.test.cjs
+          node --test tests/surgical-existing-partner-workspace.test.mjs
+          node <<'NODE'
+          const fs=require('node:fs'),html=fs.readFileSync('partner-workspace.html','utf8');
+          if(/firebase-firestore\.js|\bgetFirestore\s*\(/.test(html))throw Error('STOP_RAW_MONEY_FIRESTORE');
+          const script=html.match(/<script type="module">([\s\S]*?)<\/script>/)?.[1];
+          if(!script)throw Error('STOP_MISSING_PARTNER_UI');
+          fs.writeFileSync('/tmp/partner-private-product-ui.mjs',script);
+          NODE
+          node --check /tmp/partner-private-product-ui.mjs
+      - name: STOP until complete live finance boundary and gateway-only client are approved
+        shell: bash
+        run: |
+          set -euo pipefail
+          # A full company cutover is required before exposing any new partner
+          # functionality. This source-only check currently blocks by design.
+          node scripts/check-finance-read-boundary-before-deploy.mjs
+          node scripts/nico-production-cutover-preflight.mjs
+      - name: Confirm existing official app and partner URLs (GET only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for route in / /partner-workspace.html /partner-invite.html /partner-counts.html; do
+            curl --fail --silent --show-error --location --retry 3 --max-time 30 \
+              "https://nico-factory.web.app$route" > "$RUNNER_TEMP/nico-existing-$(echo "$route" | tr '/' '_')"
+          done
+      - name: Load verified service identity without printing credentials
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-private-products-release-credentials.json"
+          chmod 600 "$RUNNER_TEMP/nico-private-products-release-credentials.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-private-products-release-credentials.json" >> "$GITHUB_ENV"
+      - name: Install isolated Functions and audited REST uploader
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix functions-partner-workspace --ignore-scripts --package-lock=false --no-audit --no-fund
+          npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+          npm install --global firebase-tools@15.34.1 --no-audit --no-fund
+      - name: Recheck original shared Functions before any mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase functions:list --project "$FIREBASE_PROJECT_ID" --json > "$RUNNER_TEMP/partner-before.json"
+          FILE="$RUNNER_TEMP/partner-before.json" node <<'NODE'
+          const fs=require('fs'),items=JSON.parse(fs.readFileSync(process.env.FILE,'utf8')).result||[];
+          const ids=items.map(f=>f.id||f.name||'');
+          for(const n of ['getPartnerWorkspace','managePartnerWorkspace','acceptPartnerWorkspaceInvite','submitPartnerWorkspaceCounts',
+            'createPartnerCompanyInvitation','previewPartnerCompanyInvitation','acceptPartnerCompanyInvitation','sendMissingReportReminders']){
+            if(!ids.some(id=>id===n||id.endsWith('/'+n)))throw Error('STOP_ORIGINAL_FUNCTION_MISSING_'+n);
+          }
+          console.log('PASS existing 8 functions present and unchanged');
+          NODE
+      - name: Snapshot verified, unmodified Hosting manifest (NO write)
+        run: node tools/hosting/surgical-existing-partner-workspace.mjs --dry-run
+      - name: Update exactly the four existing workspace Functions, never sales Functions or Rules
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e functions-partner-workspace/.env.sales-management-cc116
+          printf 'PARTNER_WORKSPACE_ENABLED=enabled\n' > functions-partner-workspace/.env.sales-management-cc116
+          firebase deploy --project "$FIREBASE_PROJECT_ID" --non-interactive \
+            --config firebase.partner-workspace.json \
+            --only functions:partner-workspace:getPartnerWorkspace,functions:partner-workspace:managePartnerWorkspace,functions:partner-workspace:acceptPartnerWorkspaceInvite,functions:partner-workspace:submitPartnerWorkspaceCounts
+      - name: Read back all original functions and verify anonymous access is denied
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase functions:list --project "$FIREBASE_PROJECT_ID" --json > "$RUNNER_TEMP/partner-after.json"
+          FILE="$RUNNER_TEMP/partner-after.json" node <<'NODE'
+          const fs=require('fs'),items=JSON.parse(fs.readFileSync(process.env.FILE,'utf8')).result||[];
+          const names=items.map(x=>x.id||x.name||'');
+          for(const key of ['getPartnerWorkspace','managePartnerWorkspace','acceptPartnerWorkspaceInvite','submitPartnerWorkspaceCounts',
+             'createPartnerCompanyInvitation','sendMissingReportReminders']){
+            if(!names.some(n=>n===key||n.endsWith('/'+key)))throw Error('STOP_MISSING_AFTER_RELEASE_'+key);
+          }
+          NODE
+          node <<'NODE'
+          (async()=>{
+           for(const key of ['getPartnerWorkspace','managePartnerWorkspace',
+             'acceptPartnerWorkspaceInvite','submitPartnerWorkspaceCounts']){
+            const r=await fetch('https://asia-northeast1-sales-management-cc116.cloudfunctions.net/'+key,{
+              method:'POST',headers:{'Content-Type':'application/json'},body:'{"data":{}}'});
+            if(![401,403].includes(r.status))throw Error('STOP_ANONYMOUS_ACCESS_'+key+'_'+r.status);
+           }
+          })().catch(e=>{console.error(e.message);process.exitCode=1});
+          NODE
+      - name: Replace only partner-workspace.html and preserve ALL other Hosting files
+        run: node tools/hosting/surgical-existing-partner-workspace.mjs --release
+      - name: Confirm exact partner page and original site; never infer financial auth success
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --max-time 30 'https://nico-factory.web.app/partner-workspace.html?private_verification=1' > "$RUNNER_TEMP/partner-live.html"
+          cmp -s "$RUNNER_TEMP/partner-live.html" partner-workspace.html
+          curl -fsSL --retry 3 --max-time 30 https://nico-factory.web.app/ > "$RUNNER_TEMP/nico-live-owner.html"
+          grep -Fq '営業実績管理' "$RUNNER_TEMP/nico-live-owner.html"
+          echo 'PASS isolated private partner HTML & existing app reachable. Owner authenticated login requires separate post-release proof.'

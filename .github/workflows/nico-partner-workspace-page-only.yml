@@ -18,6 +18,12 @@ on:
       - 'tests/partner-money-free-workspace.test.cjs'
       - 'tests/partner-count-dashboard.test.cjs'
       - '.github/workflows/nico-partner-workspace-page-only.yml'
+  workflow_dispatch:
+    inputs:
+      release_confirmation:
+        description: 'Type CONFIRM_PARTNER_WORKSPACE_AFTER_BACKEND_AND_FINANCE_VERIFIED'
+        required: true
+        type: string
 permissions:
   contents: read
 concurrency:
@@ -57,7 +63,9 @@ jobs:
           node --check /tmp/nico-partner-workspace-safe.mjs
   release:
     needs: validate
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.validate.result == 'success' }}
+    # New private counts must have all four Functions and finance access checked
+    # before the page is released. Never publish HTML automatically on main push.
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && needs.validate.result == 'success' && inputs.release_confirmation == 'CONFIRM_PARTNER_WORKSPACE_AFTER_BACKEND_AND_FINANCE_VERIFIED' }}
     runs-on: ubuntu-latest
     timeout-minutes: 18
     env:

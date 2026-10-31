@@ -183,3 +183,81 @@ test("legacy partner entries missing a historical team snapshot are unverified, 
  assert.equal(result.records[0].totalCount,1);
  assert.deepEqual(db.store.get(ref),saved,"no repair or data writes during read");
 });
+
+test("partner owner adds private products and own counts; hub never learns private names, counts or aggregate difference",async()=>{
+ const {db,api,req,zero}=setup();
+ const team=(await api.manage(req("p",{action:"addTeam",name:"個人班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"担当A",teamId:team}))).staffId;
+ const product=(await api.manage(req("p",{action:"addPrivateProduct",name:"独自水道契約"}))).productId;
+ const before=clone(db.store.get("records/old"));
+ const first=await api.submit(req("p",{date:"2026-10-31",staffId:staff,
+  counts:{...zero(),NURO:2},privateCounts:{[product]:9},expectedVersion:0}));
+ assert.equal(first.totalCount,2);
+ assert.equal(first.privateTotalCount,9);
+ const own=await api.view(req("p",{date:"2026-10-31"}));
+ assert.deepEqual(own.privateProducts.map(p=>({id:p.id,name:p.name,active:p.active})),
+  [{id:product,name:"独自水道契約",active:true}]);
+ assert.equal(own.records[0].privateTotalCount,9);
+ assert.equal(own.records[0].privateCounts[product],9);
+ assert.equal(own.records[0].totalCount,2);
+ const hub=await api.view(req("h",{date:"2026-10-31"}));
+ assert.equal(hub.partners[0].totalCount,2);
+ assert.equal(hub.partners[0].counts.NURO,2);
+ assert.equal("privateProducts" in hub,false);
+ for(const leak of [product,"独自水道契約","privateCount","9"]){
+  assert.equal(JSON.stringify(hub).includes(leak),false,leak+" leaked into hub");
+ }
+ const saved=db.store.get("companies/partner/partnerWorkEntries/2026-10-31__"+staff);
+ assert.equal(saved.privateTotalCount,9);
+ const shared=db.store.get("companies/hub/partnerWorkCountDays/2026-10-31/reports/partner");
+ assert.equal(JSON.stringify(shared).includes("private"),false);
+ assert.equal(shared.totalCount,2);
+ assert.deepEqual(db.store.get("records/old"),before);
+});
+test("private counts can be corrected and product disabled without erasing historical counts",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ const team=(await api.manage(req("p",{action:"addTeam",name:"A班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"担当B",teamId:team}))).staffId;
+ const product=(await api.manage(req("p",{action:"addPrivateProduct",name:"自社限定契約"}))).productId;
+ await api.submit(req("p",{date,staffId:staff,counts:zero(),privateCounts:{[product]:4},expectedVersion:0}));
+ // Old unchanged 9-key clients cannot erase the new, private count-only ledger.
+ await api.submit(req("p",{date,staffId:staff,counts:{...zero(),NURO:1},expectedVersion:1}));
+ let own=await api.view(req("p",{date}));
+ assert.equal(own.records[0].privateTotalCount,4);
+ assert.equal(own.records[0].totalCount,1);
+ await api.manage(req("p",{action:"setPrivateProduct",productId:product,
+  name:"自社限定契約改名",active:false}));
+ own=await api.view(req("p",{date}));
+ assert.equal(own.privateProducts[0].active,false);
+ assert.equal(own.records[0].privateCounts[product],4);
+ await assert.rejects(api.submit(req("p",{date,staffId:staff,counts:zero(),
+   privateCounts:{[product]:5},expectedVersion:2})),
+  e=>e.code==="failed-precondition");
+ const corrected=await api.submit(req("p",{date,staffId:staff,counts:zero(),
+   privateCounts:{[product]:0},expectedVersion:2}));
+ assert.equal(corrected.privateTotalCount,0);
+ const audits=[...db.store.keys()].filter(k=>k.includes("partnerWorkAudits/"));
+ assert.equal(audits.length,3);
+ assert.equal(db.store.get("companies/hub/partnerWorkCountDays/2026-10-31/reports/partner").totalCount,0);
+});
+test("private product management is only for owner; money/foreign ID/private key injection are denied",async()=>{
+ const {api,req,zero}=setup();
+ const team=(await api.manage(req("p",{action:"addTeam",name:"第1班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"担当C",teamId:team}))).staffId;
+ for(const name of ["1件20000円","売上500","", "A".repeat(81)]){
+  await assert.rejects(api.manage(req("p",{action:"addPrivateProduct",name})),
+    e=>e.code==="invalid-argument");
+ }
+ await assert.rejects(api.manage(req("h",{action:"addPrivateProduct",name:"秘密商品"})),
+  e=>e.code==="invalid-argument"||e.code==="permission-denied");
+ await assert.rejects(api.submit(req("p",{date:"2026-10-31",staffId:staff,
+  counts:zero(),privateCounts:{"foreign":3},expectedVersion:0})),
+  e=>e.code==="failed-precondition");
+ const product=(await api.manage(req("p",{action:"addPrivateProduct",name:"秘密商品"}))).productId;
+ await assert.rejects(api.submit(req("p",{date:"2026-10-31",staffId:staff,
+  counts:zero(),privateCounts:{[product]:-1},expectedVersion:0})),
+  e=>e.code==="invalid-argument");
+ await assert.rejects(api.submit(req("p",{date:"2026-10-31",staffId:staff,
+  counts:zero(),privateCounts:{"revenue/price":10},expectedVersion:0})),
+  e=>e.code==="invalid-argument");
+});
