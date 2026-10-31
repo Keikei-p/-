@@ -42,7 +42,7 @@ class DB {
   return result;
  }
 }
-class CallError extends Error{constructor(code,message){super(message);this.code=code;}}
+class CallError extends Error{constructor(code,message,details){super(message);this.code=code;this.details=details;}}
 function setup(){
  const db=new DB();
  const partnerUser=(uid,role,teamId=null)=>({uid,companyId:"partner",companyRole:role==="owner"?"owner":"member",
@@ -70,6 +70,28 @@ function setup(){
  const zero=()=>Object.fromEntries(KEYS.map(k=>[k,0]));
  return {db,api,req,zero};
 }
+test("unapproved partner gets an explicit approval-required denial without revealing or changing counts",async()=>{
+ const {db,api,req}=setup();
+ db.store.get("partnerRelations/partner").active=false;
+ db.store.get("partnerRelations/partner").countSharingApproved=false;
+ const before=clone([...db.store]);
+ await assert.rejects(api.view(req("p",{date:"2026-10-31"})),e=>e.code==="permission-denied"&&e.details?.reason==="partner-approval-required");
+ assert.deepEqual([...db.store],before);
+});
+test("staff invite denial distinguishes expiry and email without modifying any membership",async()=>{
+ for(const reason of ["invite-expired","invite-email-mismatch","invite-not-pending"]){
+  const {db,api,req}=setup();
+  const team=(await api.manage(req("p",{action:"addTeam",name:"検証班"}))).teamId;
+  const {token}=await api.manage(req("p",{action:"createInvite",email:"l@example.com",teamId:team,role:"member"}));
+  const invitation=[...db.store].find(([key])=>key.startsWith("partnerWorkInvites/"))[1];
+  if(reason==="invite-expired")invitation.expiresAt={toMillis:()=>NOW-1};
+  if(reason==="invite-email-mismatch")invitation.emailLower="other@example.com";
+  if(reason==="invite-not-pending")invitation.status="accepted";
+  const before=clone([...db.store]);
+  await assert.rejects(api.accept(req("l",{token,name:"検証スタッフ"})),e=>e.details?.reason===reason);
+  assert.deepEqual([...db.store],before);
+ }
+});
 test("partner owner makes team and managed staff, saves and corrects without touching original sales",async()=>{
  const {db,api,req,zero}=setup();
  const originalRecords=clone(db.store.get("records/old")),originalMoney=clone(db.store.get("products/money"));
@@ -813,4 +835,26 @@ test("only real hub Owner can request detailed partner-company team status",asyn
  const {api,req}=setup();
  await assert.rejects(api.view(req("p",{date:"2026-10-31",
   includeTeamStatus:true,partnerCompanyId:"hub"})),e=>e.code==="permission-denied");
+});
+
+test("secondary staff team move rejects revoked original membership type without mutating any history",async()=>{
+ for(const marker of ["partner","cooperator"]){
+  const {db,api,req}=setup();
+  const original={uid:"l",companyId:"hub",email:"l@example.com",name:"既存ユーザー",
+   companyRole:"member",role:"member",teamId:"original",
+   active:true,accessKind:"internal",memberType:"direct",
+   canViewRevenue:true,canViewUnitPrice:true};
+  db.seed("users/l",original);
+  db.seed("companies/hub/members/l",{...original});
+  const beforeTeam=(await api.manage(req("p",{action:"addTeam",name:"旧班"}))).teamId;
+  const afterTeam=(await api.manage(req("p",{action:"addTeam",name:"新班"}))).teamId;
+  const invite=await api.manage(req("p",{action:"createInvite",
+   email:"l@example.com",role:"leader",teamId:beforeTeam}));
+  await api.accept(req("l",{token:invite.token,name:"既存リーダー"}));
+  db.store.get("companies/hub/members/l").memberType=marker;
+  const baseline=clone([...db.store]);
+  await assert.rejects(api.manage(req("p",{action:"moveStaff",staffId:"l",teamId:afterTeam})),
+   e=>e.code==="permission-denied");
+  assert.deepEqual([...db.store],baseline,"denied move must not change original or partner history");
+ }
 });

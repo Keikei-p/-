@@ -79,16 +79,41 @@ const acceptInvite=httpsCallable(functions,"acceptPartnerCompanyInvitation");
 const $=id=>document.getElementById(id);
 const token=new URL(location.href).searchParams.get("token")||"";
 const validToken=/^[A-Za-z0-9_-]{43}$/.test(token);
+function errorMessage(e){
+ const reasons={"invite-email-mismatch":"招待先とログイン中のメールが異なります。招待されたアカウントでログインしてください。",
+ "invite-expired":"招待の有効期限が切れました。招待元に新しいリンクの発行を依頼してください。",
+ "invite-not-pending":"この招待は承認済み、または無効です。承認済みの場合は参加後の画面リンクを使用してください。"};
+ if(reasons[e?.details?.reason])return reasons[e.details.reason];
+ const code=String(e?.code||"unknown").split("/").pop();
+ const messages={
+  "email-already-in-use":"このメールは登録済みです。新規作成ではなくログインしてください。元の所属は変更されません。",
+  "invalid-credential":"メールアドレスまたはパスワードを確認してください。",
+  "wrong-password":"メールアドレスまたはパスワードを確認してください。",
+  "invalid-email":"メールアドレスの形式を確認してください。",
+  "weak-password":"パスワードは6文字以上にしてください。",
+  "unauthenticated":"認証を更新できません。メール確認後に再接続するか、ログインし直してください。",
+  "permission-denied":"このアカウントには選択した会社の利用権限がありません。招待を受けたアカウントとリンクを確認してください。",
+  "failed-precondition":"招待の承認条件を満たしていません。招待先メール・有効期限・承認済みかを確認してください。",
+  "not-found":"招待または対象が見つかりません。招待元にリンクの再発行を依頼してください。",
+  "unavailable":"サービスに接続できません。時間をおいて再接続してください。",
+  "network-request-failed":"通信できません。インターネット接続を確認して再接続してください。",
+  "too-many-requests":"操作が集中しています。しばらく待ってから再試行してください。",
+  "invalid-argument":"入力内容または招待リンクを確認してください。",
+  "aborted":"別の操作で内容が更新されました。再接続して最新の内容を確認してください。"
+ };
+ return (messages[code]||"操作を完了できませんでした。再接続し、改善しない場合は管理者へお知らせください。")+"（"+code+"）";
+}
+
+let refreshVersion=0;
 const busy=async(button,task)=>{
  button.disabled=true;try{await task();}catch(error){
   console.error("Partner invitation operation failed",error?.code||"unknown");
-  $("notice").textContent=(error?.code==="functions/unavailable"?
-   "招待サービスはまだ有効になっていません。管理者へ確認してください。":
-   "操作を完了できません。メール・招待期限・ログイン状態を確認してください。");
+  $("notice").textContent=errorMessage(error);
  }finally{button.disabled=false;}
 };
 const message=x=>{$("notice").textContent=x;};
 const refresh=async()=>{
+ const current=++refreshVersion;
  const user=auth.currentUser;
  $("logout").hidden=!user;
  $("signIn").hidden=!!user;
@@ -105,10 +130,11 @@ const refresh=async()=>{
  try{
   await getIdToken(user,true);
   const data=(await previewInvite({token})).data;
+  if(current!==refreshVersion||auth.currentUser!==user)return;
   $("info").textContent=(data.fromCompanyName||"会社")+" から "+(data.partnerCompanyName||"協力店")+" への招待です。";
   $("accept").disabled=false;
   message("招待内容を確認してください。");
- }catch{message("招待を確認できません。期限・宛先メール・利用状態をご確認ください。");}
+ }catch(error){if(current===refreshVersion&&auth.currentUser===user)message(errorMessage(error));}
 };
 onAuthStateChanged(auth,()=>refresh());
 $("signIn").addEventListener("submit",async event=>{
@@ -153,7 +179,9 @@ $("accept").addEventListener("click",async()=>busy($("accept"),async()=>{
  $("acceptedWorkspaceLink").href=workspace.pathname+workspace.search;
  $("workspaceGuide").href=workspace.pathname+workspace.search;
  $("acceptBox").hidden=true;$("acceptedBox").hidden=false;
- $("accept").disabled=true;message("招待の承諾が完了しました。件数入力画面から班・スタッフを登録できます。");
+ $("accept").disabled=true;message(data.countReportingEnabled===false?
+ "招待の承諾と会社登録が完了しました。件数共有の利用開始は管理者の承認待ちです。再登録は不要です。":
+ "招待の承諾が完了しました。件数入力画面から班・スタッフを登録できます。");
 }));
 </script>
 </body></html>

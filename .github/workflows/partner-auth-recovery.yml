@@ -1,0 +1,19 @@
+name: Partner authentication recovery and canonical presentation (no deployment)
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node scripts/sync-partner-presentation.mjs --check
+      - run: node --test tests/partner-auth-recovery.test.cjs tests/partner-count-dashboard.test.cjs tests/partner-workspace.test.cjs tests/partner-company-invitations.test.cjs tests/internal-owner-finance-visibility.test.cjs

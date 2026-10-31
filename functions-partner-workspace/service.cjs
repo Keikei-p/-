@@ -12,7 +12,7 @@ const validCompanyName=x=>typeof x==="string"&&x.trim().length>0&&
 const clean=x=>typeof x==="string"?x.trim():"";
 function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>false,now=()=>Date.now()}={}){
  if(!db||!getAuth||!FieldValue||!Timestamp||!HttpsError)throw Error("missing_partner_workspace_dependency");
- const fail=(code="permission-denied")=>{throw new HttpsError(code,"権限・入力内容を確認できません。");};
+ const fail=(code="permission-denied",reason)=>{throw new HttpsError(code,"権限・入力内容を確認できません。",reason?{reason}:undefined);};
  const validName=x=>typeof x==="string"&&NAME.test(x)&&!money.test(x);
  const validDate=x=>{
   if(typeof x!=="string"||!DATE.test(x))fail("invalid-argument");
@@ -129,8 +129,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
       pm.accessKind!=="partner"||pm.memberType!=="cooperator"||
       pm.canViewRevenue!==false||pm.canViewUnitPrice!==false||
       rel.hubCompanyId!==pc.hubCompanyId||
-      rel.partnerCompanyId!==workspaceCompanyId||
-      rel.active!==true||rel.countSharingApproved!==true)fail();
+      rel.partnerCompanyId!==workspaceCompanyId)fail();
+   if(rel.active!==true||rel.countSharingApproved!==true)fail("permission-denied","partner-approval-required");
    return {kind:"partner",uid,cid:workspaceCompanyId,
      hubId:pc.hubCompanyId,companyName:pc.name,
      role:partnerOwner?"owner":ctx.role,teamId:partnerOwner?null:ctx.teamId};
@@ -154,8 +154,9 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
       ID.test(u.teamId||"")&&u.teamId===m.teamId))fail();
    const relation=await read(db.collection("partnerRelations").doc(cid));
    if(!relation.exists||relation.data()?.hubCompanyId!==c.hubCompanyId||
-      relation.data()?.partnerCompanyId!==cid||relation.data()?.active!==true||
-      relation.data()?.countSharingApproved!==true)fail();
+      relation.data()?.partnerCompanyId!==cid)fail();
+   if(relation.data()?.active!==true||relation.data()?.countSharingApproved!==true)
+    fail("permission-denied","partner-approval-required");
    return {kind:"partner",uid,cid,hubId:c.hubCompanyId,companyName:c.name,
      role:owner?"owner":u.role,teamId:owner?null:u.teamId};
   }
@@ -336,7 +337,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
           !originalMemberSnap.exists||pm.active===false||
           (pm.uid!=null&&pm.uid!==current.uid)||
           (pm.companyId!=null&&pm.companyId!==u.companyId)||
-          (pm.accessKind!=null&&pm.accessKind!=="internal"))
+          (pm.accessKind!=null&&pm.accessKind!=="internal")||
+          ["partner","cooperator"].includes(pm.memberType))
          fail();
        const contextHistory=appendTeamMove(ctx,current.teamId,d.teamId,day);
        const memberHistory=appendTeamMove(m,current.teamId,d.teamId,day);
@@ -382,6 +384,10 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   const hash=crypto.createHash("sha256").update(token).digest("hex"),ref=db.collection("partnerWorkInvites").doc(hash);
   const joined=await db.runTransaction(async tx=>{
    const inviteSnap=await tx.get(ref),i=inviteSnap.data()||{};
+   if(inviteSnap.exists&&i.emailLower!==a.email)fail("failed-precondition","invite-email-mismatch");
+   if(inviteSnap.exists&&i.status!=="pending")fail("failed-precondition","invite-not-pending");
+   if(inviteSnap.exists&&typeof i.expiresAt?.toMillis==="function"&&i.expiresAt.toMillis()<=now())
+    fail("failed-precondition","invite-expired");
    if(!inviteSnap.exists||i.status!=="pending"||i.emailLower!==a.email||
       !ID.test(i.companyId||"")||!ID.test(i.teamId||"")||
       !["leader","member"].includes(i.role)||i.expiresAt?.toMillis?.()<=now()||

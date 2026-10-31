@@ -47,7 +47,7 @@ class MemoryDB {
   return result;
  }
 }
-class CallError extends Error{constructor(code,message){super(message);this.code=code;}}
+class CallError extends Error{constructor(code,message,details){super(message);this.code=code;this.details=details;}}
 function setup({enabled=true,disabled=false,ownerRole="owner",recipientCompany=null,hubKind="internal"}={}){
  const db=new MemoryDB();
  db.seed("companies/hub",{name:"株式会社Nico Factory",ownerUid:"owner",active:true,companyKind:hubKind});
@@ -77,6 +77,20 @@ function setup({enabled=true,disabled=false,ownerRole="owner",recipientCompany=n
  return {db,handlers,request};
 }
 const createInput={email:"partner@example.com",companyName:"連携店A"};
+test("company invitation denial provides safe distinct reasons and preserves all stored data",async()=>{
+ for(const reason of ["invite-expired","invite-email-mismatch","invite-not-pending"]){
+  const {db,handlers,request}=setup();
+  const {token}=await handlers.create(request("owner",createInput));
+  const invitation=[...db.data].find(([key])=>key.startsWith("partnerCompanyInvitations/"))[1];
+  if(reason==="invite-expired")invitation.expiresAt={toMillis:()=>NOW-1};
+  if(reason==="invite-email-mismatch")invitation.emailLower="other@example.com";
+  if(reason==="invite-not-pending")invitation.status="accepted";
+  const before=clone([...db.data]);
+  await assert.rejects(handlers.preview(request("recipient",{token})),e=>e.details?.reason===reason);
+  await assert.rejects(handlers.accept(request("recipient",{token})),e=>e.details?.reason===reason);
+  assert.deepEqual([...db.data],before);
+ }
+});
 test("disabled gate rejects before reading or writing a document",async()=>{
  const {db,handlers,request}=setup({enabled:false});
  const before=JSON.stringify([...db.data]);
