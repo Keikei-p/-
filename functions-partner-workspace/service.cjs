@@ -336,7 +336,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
           !originalMemberSnap.exists||pm.active===false||
           (pm.uid!=null&&pm.uid!==current.uid)||
           (pm.companyId!=null&&pm.companyId!==u.companyId)||
-          (pm.accessKind!=null&&pm.accessKind!=="internal"))
+          (pm.accessKind!=null&&pm.accessKind!=="internal")||
+          ["partner","cooperator"].includes(pm.memberType))
          fail();
        const contextHistory=appendTeamMove(ctx,current.teamId,d.teamId,day);
        const memberHistory=appendTeamMove(m,current.teamId,d.teamId,day);
