@@ -66,7 +66,7 @@ jobs:
           test "$(git hash-object functions-partner-quick/quick-counts.cjs)" = 3cc15f16f05cecd28be70c93c8d2c34f0708c678
   release:
     needs: validate
-    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.validate.result == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && needs.validate.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
