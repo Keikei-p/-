@@ -1,0 +1,62 @@
+name: NICO one-shot DISABLED Finance Gateway production bootstrap
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-finance-gateway-once.yml'
+permissions:
+  contents: read
+  actions: write
+concurrency:
+  group: nico-finance-disabled-bootstrap-dispatch-once
+  cancel-in-progress: false
+jobs:
+  invoke-reviewed-disabled-release:
+    if: "${{ github.repository == 'Keikei-p/-' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release: reviewed disabled NICO Finance Gateway once') }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify release intent and unchanged original Firebase and worker
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test "$(gh api repos/Keikei-p/-/commits/main --jq .sha)" = "$EXPECTED_SHA"
+          changed=$(git diff-tree --no-commit-id --name-only -r HEAD)
+          test "$changed" = '.github/workflows/nico-finance-gateway-once.yml' || { echo STOP_RELEASE_HAS_UNREVIEWED_CHANGES; exit 1; }
+          node -e "const f=require('fs');if(JSON.parse(f.readFileSync('.firebaserc')).projects.default!=='sales-management-cc116')process.exit(2)"
+          test "$(git hash-object cloudflare-finance/src/index.js)" = '5f05b404d724b796efd43d8acb68035d78e1f76d'
+          test "$(git hash-object cloudflare-finance/wrangler.toml)" = '7909dffc664928ce9d751b34c44f9bdd5eab45c2'
+          echo 'PASS protected Worker remains identical and ALL finance/write switches OFF'
+      - name: Dispatch reviewed manual-only gateway release with current main pin
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          repo=Keikei-p/-
+          workflow=nico-finance-gateway-disabled-bootstrap.yml
+          previous=$(gh api "repos/$repo/actions/workflows/$workflow/runs?event=workflow_dispatch&branch=main&per_page=25" --jq '[.workflow_runs[].id] | max // 0')
+          gh workflow run "$workflow" --repo "$repo" --ref main \
+            -f release_confirmation=BOOTSTRAP_FINANCE_GATEWAY_DISABLED_ONLY \
+            -f reviewed_main_sha="$EXPECTED_SHA"
+          run=''
+          for i in $(seq 1 45); do
+            run=$(gh api "repos/$repo/actions/workflows/$workflow/runs?event=workflow_dispatch&branch=main&per_page=25" \
+              --jq ".workflow_runs | map(select(.id > $previous and .head_sha == \"$EXPECTED_SHA\")) | sort_by(.id) | last | .id // empty")
+            if [ -n "$run" ]; then break; fi
+            sleep 8
+          done
+          test -n "$run" || { echo STOP_DISPATCHED_WORKFLOW_NOT_FOUND; exit 1; }
+          echo "DISABLED_FINANCE_RELEASE_RUN=$run"
+          gh run watch "$run" --repo "$repo" --exit-status
+          test "$(gh run view "$run" --repo "$repo" --json conclusion --jq '.conclusion')" = success
+          echo 'PASS: live disabled gateway deployed and verified by original protected release workflow'
