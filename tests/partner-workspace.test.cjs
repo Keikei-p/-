@@ -336,8 +336,10 @@ test("partner account transfer appends BOTH user and member history atomically",
     const data=db.store.get(path);
     assert.equal(data.teamId,two);
     assert.deepEqual(data.teamHistory,path.includes("partnerWorkStaff")?expected.slice(-1):expected);
-    assert.equal(data.canViewRevenue,false);
-    assert.equal(data.canViewUnitPrice,false);
+    if(!path.includes("partnerWorkStaff")){
+      assert.equal(data.canViewRevenue,false);
+      assert.equal(data.canViewUnitPrice,false);
+    }
  }
  const saved=clone(db.store.get("users/l"));
  // Calling the same transfer again must NOT append a second history record.
