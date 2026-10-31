@@ -82,7 +82,7 @@ test("partner page adds count-only dashboard and management; legacy app is not c
  assert.match(page,/action:"moveStaff"/);
  assert.match(page,/countDayCache\.clear\(\)/);
  assert.match(page,/if\(gen!==countLoadId\|\|auth\.currentUser\?\.uid!==uid\)return/);
- assert.match(page,/const message=await task\(\);await refresh\(\)/);
+ assert.match(page,/const message=await task\(\);countDayCache\.clear\(\);await refresh\(\)/);
  assert.doesNotMatch(page,/firebase-firestore\.js|\bgetFirestore\(|\bgetDoc\(|\bgetDocs\(/);
  assert.doesNotMatch(page,/\brevenuePerUnit\b|\btotalRevenue\b|\bunitPrice\b|\bpricingOptions\b/);
  assert.match(original,/function canCurrentUserViewRevenue\(\)/);
