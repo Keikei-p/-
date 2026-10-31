@@ -83,3 +83,26 @@ test("No source record/money mutations, Firestore SDK reads or auto deployments 
  assert.doesNotMatch(source,/firebase deploy|\.update\(|\.delete\(|deleteDoc\s*\(|setDoc\s*\(|runTransaction\s*\(/);
  assert.doesNotMatch(source,/\bgetFirestore\s*\(|\bfetch\s*\(|collection\s*\(db,/);
 });
+
+test("legacy cashback-tier map keys preserve counts without publishing tier or repricing",()=>{
+ const legacy={...rec,results:{
+  "nuro__cb_0":{productId:"nuro",productName:"NURO",count:1,
+     cashback:10000,revenuePerUnit:5000},
+  "nuro__cb_1":{productId:"nuro",productName:"NURO",count:1,
+     cashback:20000,revenuePerUnit:7000}
+ },totalCount:2,totalRevenue:12000};
+ const before=JSON.stringify(legacy);
+ const out=projectLegacyCountDay({...input(),records:[legacy]});
+ assert.deepEqual(out.lines.map(x=>x.count),[1,1]);
+ assert(out.lines.every(x=>x.productId==="nuro"));
+ assert.equal(out.records[0].totalCount,2);
+ assert.equal(JSON.stringify(out).includes("cb_"),false);
+ assert.equal(JSON.stringify(out).includes("cashback"),false);
+ assert.equal(JSON.stringify(out).includes("12000"),false);
+ assert.equal(JSON.stringify(legacy),before);
+});
+test("unclassified historical product key is never guessed as a new product",()=>{
+ const broken={...rec,results:{"old_nuro__cb_5":{count:2,cashback:5000}}};
+ assert.throws(()=>projectLegacyCountDay({...input(),records:[broken]}),
+  /internal_count_bridge_denied/);
+});
