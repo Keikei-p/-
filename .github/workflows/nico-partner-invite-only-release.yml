@@ -1,8 +1,5 @@
 name: NICO partner invite only — controlled live release
 on:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/nico-partner-invite-only-release.yml']
   workflow_dispatch:
     inputs:
       release_confirmation:
@@ -16,7 +13,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   invite-only:
-    if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.release_confirmation == 'CONFIRM_PARTNER_INVITE_ONLY') }}
+    if: ${{ github.ref == 'refs/heads/main' && inputs.release_confirmation == 'CONFIRM_PARTNER_INVITE_ONLY' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
