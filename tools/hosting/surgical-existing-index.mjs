@@ -90,7 +90,10 @@ export async function uploadSingleExistingIndex({assetBytes,request,release=fals
    // #41157372250 released v937d with 11 full assets verified.
    "sites/nico-factory/versions/937d59028669a5d0",
    // 2026-10-31 #41157994242 protected eleven-file index-only release.
-   "sites/nico-factory/versions/8ae15e2d9d6d6051"
+   "sites/nico-factory/versions/8ae15e2d9d6d6051",
+   // 2026-10-31 workspace-only audited release #41171058175 verified all 11
+   // original Hosting assets and preserved the main sales index unchanged.
+   "sites/nico-factory/versions/5b2ce8a92a380386"
  ]);
  const files=[];let pageToken="";
  do{
