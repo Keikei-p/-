@@ -697,3 +697,63 @@ test("invalid old-company identities and duplicate context cannot accept a partn
   assert.deepEqual([...db.store],before);
  }
 });
+test("hub can read verified partner TEAM counts; submitted zero is never missing",async()=>{
+ const {db,api,req,zero}=setup();
+ const a=(await api.manage(req("p",{action:"addTeam",name:"第1班"}))).teamId;
+ const b=(await api.manage(req("p",{action:"addTeam",name:"第2班"}))).teamId;
+ const staffA=(await api.manage(req("p",{action:"addManaged",name:"山田",teamId:a}))).staffId;
+ await api.manage(req("p",{action:"addManaged",name:"田中",teamId:b}));
+ const original=clone(db.store.get("records/old"));
+ await api.submit(req("p",{date:"2026-10-31",staffId:staffA,counts:zero(),expectedVersion:0}));
+ const normal=await api.view(req("h",{date:"2026-10-31"}));
+ assert.equal("teamReports" in normal,false,"ordinary daily view must not add expensive scans");
+ const report=await api.view(req("h",{
+  date:"2026-10-31",includeTeamStatus:true,partnerCompanyId:"partner"
+ }));
+ assert.equal(report.teamStatusComplete,true);
+ assert.equal(report.teamReports.length,1);
+ const statuses=new Map(report.teamReports[0].teams.map(x=>[x.id,x]));
+ assert.equal(statuses.get(a).status,"submitted");
+ assert.equal(statuses.get(a).totalCount,0);
+ assert.equal(statuses.get(a).reportedStaffCount,1);
+ assert.equal(statuses.get(b).status,"missing");
+ assert.equal(statuses.get(b).staffCount,1);
+ assert.equal(statuses.get(b).reportedStaffCount,0);
+ assert.equal(statuses.get(b).counts.NURO,0);
+ assert.equal(report.teamReports[0].verified,true);
+ const viewJSON=JSON.stringify(report);
+ for(const money of ["totalRevenue","revenuePerUnit","unitPrice","pricingOptions", "98765","808080"])
+  assert.equal(viewJSON.includes(money),false,"money leaked: "+money);
+ assert.deepEqual(db.store.get("records/old"),original);
+});
+test("ambiguous old team snapshot never labels the rest of a partner company falsely missing",async()=>{
+ const {db,api,req,zero}=setup();
+ const one=(await api.manage(req("p",{action:"addTeam",name:"班1"}))).teamId;
+ const two=(await api.manage(req("p",{action:"addTeam",name:"班2"}))).teamId;
+ const a=(await api.manage(req("p",{action:"addManaged",name:"山田",teamId:one}))).staffId;
+ await api.manage(req("p",{action:"addManaged",name:"田中",teamId:two}));
+ await api.submit(req("p",{date:"2026-10-31",staffId:a,counts:{...zero(),NURO:2},expectedVersion:0}));
+ const path="companies/partner/partnerWorkEntries/2026-10-31__"+a;
+ db.seed(path,{...db.store.get(path),teamIdSnapshot:null});
+ const result=await api.view(req("h",{date:"2026-10-31",includeTeamStatus:true}));
+ assert.equal(result.teamReports[0].verified,false);
+ assert.ok(result.teamReports[0].teams.every(x=>x.status!=="missing"));
+ assert.ok(result.teamReports[0].teams.some(x=>x.status==="unverified"));
+});
+test("revoke partner approval rejects team count projection without leaking old history",async()=>{
+ const {db,api,req}=setup();
+ const old=clone(db.store.get("records/old"));
+ db.seed("partnerRelations/partner",{
+  partnerCompanyId:"partner",hubCompanyId:"hub",active:false,countSharingApproved:false});
+ const result=await api.view(req("h",{date:"2026-10-31",includeTeamStatus:true}));
+ assert.deepEqual(result.teamReports,[]);
+ assert.equal(result.registeredCompanies[0].active,false);
+ await assert.rejects(api.view(req("h",{date:"2026-10-31",
+  includeTeamStatus:true,partnerCompanyId:"partner"}),e=>e.code==="permission-denied");
+ assert.deepEqual(db.store.get("records/old"),old);
+});
+test("only real hub Owner can request detailed partner-company team status",async()=>{
+ const {api,req}=setup();
+ await assert.rejects(api.view(req("p",{date:"2026-10-31",
+  includeTeamStatus:true,partnerCompanyId:"hub"})),e=>e.code==="permission-denied");
+});
