@@ -11,12 +11,19 @@ function intent(overrides={}){
     entries:[{productId:"sim",planId:"plan_0",count:2}],...overrides};
 }
 function createStore({role="member",principal="staff",currentRecord=null,recordList=null,
-  grants={},targetActive=true,targetTeam="A",partner=false,recordsName="factory_staff_2026-10-22"}={}){
-  const company={id:companyId,ownerUid:"master",masterUid:"master",active:true};
+  grants={},targetActive=true,targetTeam="A",partner=false,partnerCompanyOwner=false,
+  relationApproved=true,recordsName="factory_staff_2026-10-22"}={}){
+  const company=partnerCompanyOwner?{
+    id:companyId,ownerUid:principal,masterUid:principal,active:true,
+    companyKind:"partner",hubCompanyId:"hub"
+  }:{id:companyId,ownerUid:"master",masterUid:"master",active:true};
   const canViewRevenue=grants.revenue===true, canViewUnitPrice=grants.unit===true;
   const account={uid:principal,companyId,companyRole:role==="owner"?"owner":"member",
-    teamId:"A",role:role==="owner"?"leader":role,active:true,canViewRevenue,canViewUnitPrice,
-    ...(partner?{accessKind:"partner"}:{})};
+    teamId:partnerCompanyOwner?null:"A",role:role==="owner"?"leader":role,
+    active:true,canViewRevenue:partnerCompanyOwner?false:canViewRevenue,
+    canViewUnitPrice:partnerCompanyOwner?false:canViewUnitPrice,
+    ...(partner||partnerCompanyOwner?{accessKind:"partner"}:{}),
+    ...(partnerCompanyOwner?{memberType:"cooperator"}:{})};
   const actorMember={...account,name:"操作者"};
   const target={...(principal==="staff"?actorMember:{}),uid:"staff",companyId,
     companyRole:"member",role:"member",teamId:targetTeam,active:targetActive,name:"営業担当"};
@@ -24,6 +31,10 @@ function createStore({role="member",principal="staff",currentRecord=null,recordL
     ["companies/"+companyId+"/members/"+principal,actorMember],
     ["companies/"+companyId+"/members/staff",target],
     ["companies/"+companyId,company],
+    ...(partnerCompanyOwner?[["partnerRelations/"+companyId,{
+      partnerCompanyId:companyId,hubCompanyId:"hub",
+      active:relationApproved,countSharingApproved:relationApproved
+    }]]:[]),
     ["teams/A",{id:"A",companyId,name:"A班",active:true}],
     ["teams/B",{id:"B",companyId,name:"B班",active:true}]]);
   const saved=[],audit=[],observations={queryCount:0,reads:[],committed:0};
@@ -165,4 +176,28 @@ test("Partner leader can submit own-team counts but cannot view money or proxy f
   assert.equal(otherTeam.saved.length,0);
   await assert.rejects(submitCounts(f.store,f.principal,intent(),{policyResolver:f.policyResolver}),/stable cashback/);
 
+});
+
+test("registered partner-company Owner can submit any OWN company team's counts with no money in reply",async()=>{
+  const f=createStore({role:"owner",principal:"partner-owner",
+    targetTeam:"B",partnerCompanyOwner:true});
+  const result=await submitCounts(f.store,f.principal,intent({
+    teamId:"B",entries:[{productId:"sim",planId:"cb_0",count:2}]
+  }),{policyResolver:f.policyResolver});
+  assert.equal(result.saved,true);
+  assert.equal(result.totalCount,2);
+  assert.equal(Object.hasOwn(result,"totalRevenue"),false);
+  assert.equal(f.saved[0].data.totalRevenue,20000,
+    "server must still preserve real financial original for INTERNAL bookkeeping");
+  assert.equal(f.saved[0].data.teamId,"B");
+  assert.equal(f.observations.committed,1);
+});
+test("pending or revoked partner relation blocks ALL partner-company Owner writes atomically",async()=>{
+  const f=createStore({role:"owner",principal:"partner-owner",
+    targetTeam:"B",partnerCompanyOwner:true,relationApproved:false});
+  await assert.rejects(submitCounts(f.store,f.principal,intent({
+    teamId:"B",entries:[{productId:"sim",planId:"cb_0",count:2}]
+  }),{policyResolver:f.policyResolver}),PermissionDenied);
+  assert.equal(f.saved.length,0);
+  assert.equal(f.observations.committed,0);
 });

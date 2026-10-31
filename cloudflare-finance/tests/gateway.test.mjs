@@ -76,6 +76,80 @@ test("External partner receives ONLY own-team counts and never financial details
   assert.throws(()=>policy("leader",{uid:"master-uid",
     userGrants:{accessKind:"partner"},memberGrants:{accessKind:"partner"}}),/partner_assignment_invalid/);
 });
+test("registered partner-company Owner manages its company's counts without any finance or unit prices",()=>{
+  const companyId="partner-company",uid="partner-owner";
+  const identity={uid,companyId,companyRole:"owner",role:"leader",
+    teamId:null,active:true,memberType:"cooperator",accessKind:"partner",
+    canViewRevenue:false,canViewUnitPrice:false};
+  const tenant={id:companyId,companyKind:"partner",hubCompanyId:"hub",
+    ownerUid:uid,masterUid:uid,active:true};
+  const p=approvedPolicy(identity,{...identity},tenant,uid,"2026-11-01");
+  assert.equal(p.isPartner,true);
+  assert.equal(p.isPartnerCompanyOwner,true);
+  assert.equal(p.isOwner,true);
+  assert.equal(p.teamId,null);
+  assert.equal(p.canViewRevenue,false);
+  assert.equal(p.canViewUnitPrice,false);
+  const rawProducts=[{id:"nuro",companyId,name:"NURO",revenue:40000,
+    pricingOptions:[{cashback:0,revenuePerUnit:40000}],active:true}];
+  const rawRecords=[
+    {id:"a",companyId,uid:"staff-a",teamId:"A",totalCount:2,totalRevenue:80000,
+      results:{nuro__cb_0:{productId:"nuro",productName:"NURO",
+        count:2,cashback:0,revenuePerUnit:40000}}},
+    {id:"b",companyId,uid:"staff-b",teamId:"B",totalCount:1,totalRevenue:40000,
+      results:{nuro__cb_0:{productId:"nuro",productName:"NURO",
+        count:1,cashback:0,revenuePerUnit:40000}}},
+    {id:"foreign",companyId:"other",uid:"foreign-person",teamId:"A",totalCount:40,
+      totalRevenue:1600000,results:{}}
+  ];
+  const view={
+    products:safeProducts(rawProducts,p),
+    records:safeRecords(rawRecords,p,rawProducts),
+    revenueGoals:safeGoals([{id:"goal",companyId,targetRevenue:900000}],p),
+    members:safePartnerMembers([
+      {uid:"staff-a",companyId,teamId:"A",name:"A担当",active:true},
+      {uid:"staff-b",companyId,teamId:"B",name:"B担当",active:true},
+      {uid:"foreign-person",companyId:"other",teamId:"A",name:"他社秘密",active:true}
+    ],p)
+  };
+  assert.deepEqual(view.records.map(x=>x.id),["a","b"]);
+  assert.deepEqual(view.members.map(x=>x.uid),["staff-a","staff-b"]);
+  assert.deepEqual(view.revenueGoals,[]);
+  const json=JSON.stringify(view);
+  for(const secret of ["totalRevenue","revenuePerUnit","pricingOptions",
+    "80000","40000","900000","1600000","foreign-person","他社秘密"])
+    assert.equal(json.includes(secret),false,"partner-company Owner leaked "+secret);
+  assert.equal(view.products[0].cashbackPlans[0].cashback,0);
+});
+test("forged partner-Owner privileges never bypass mandatory tenant and dual-document markers",()=>{
+  const uid="partner-owner",cid="partner-company";
+  const identity={uid,companyId:cid,companyRole:"owner",role:"leader",
+    teamId:null,active:true,accessKind:"partner",memberType:"cooperator",
+    canViewRevenue:false,canViewUnitPrice:false};
+  const tenant={id:cid,companyKind:"partner",hubCompanyId:"hub",
+    ownerUid:uid,masterUid:uid,active:true};
+  const mutations=[
+    [u=>({...u,accessKind:"internal"}),m=>m,c=>c],
+    [u=>u,m=>({...m,memberType:"internal"}),c=>c],
+    [u=>u,m=>m,c=>({...c,companyKind:"internal"})],
+    [u=>u,m=>m,c=>({...c,ownerUid:"someone-else"})],
+    [u=>u,m=>m,c=>({...c,masterUid:"someone-else"})],
+    [u=>u,m=>m,c=>({...c,hubCompanyId:cid})],
+    [u=>({...u,teamId:"other"}),m=>m,c=>c],
+    [u=>({...u,canViewRevenue:true}),m=>m,c=>c],
+    [u=>u,m=>({...m,canViewUnitPrice:true}),c=>c]
+  ];
+  for(const [u,m,c] of mutations){
+    assert.throws(()=>approvedPolicy(u(identity),m(identity),c(tenant),uid),
+      /partner_assignment_invalid/);
+  }
+  // In a genuine internal company an Owner never loses financial access.
+  const internal=approvedPolicy({...identity,accessKind:"internal",memberType:"direct"},
+    {...identity,accessKind:"internal",memberType:"direct"},
+    {id:cid,companyKind:"internal",ownerUid:uid,masterUid:uid,active:true},uid);
+  assert.equal(internal.canViewRevenue,true);
+  assert.equal(internal.canViewUnitPrice,true);
+});
 test("partner or cooperator marker on company/user/member denies even a misconfigured Master",()=>{
   const [user,member]=person("leader",{uid:"master-uid",companyRole:"owner",
     userGrants:{canViewRevenue:true,canViewUnitPrice:true},
