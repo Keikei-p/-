@@ -34,11 +34,11 @@ test("repair only membership and historical hard-delete grants, preserve every o
  const live=liveFixture(),out=previewLiveRules(live,reviewed);
  assert.deepEqual(out.changed,[
   "isCompanyMember",
+  "review:revenueGoals",
   "deny-delete:teams",
   "deny-delete:products",
   "deny-delete:records",
-  "deny-delete:goals",
-  "deny-delete:revenueGoals"
+  "deny-delete:goals"
  ]);
  assert.equal(out.matchesReviewed,true);
  assert.equal(out.candidate,reviewed);
@@ -72,4 +72,51 @@ test("never rewrites other financial rules and no production writes or rule depl
    "match /users/{userId} {","match /invitations/{inviteId} {"]){
   assert.ok(out.candidate.includes(text));
  }
+});
+
+function substituteFn(source,name,replacement){
+ const found=new RegExp("^[ \\t]*function "+name+"\\(companyId\\) \\{[\\s\\S]*?^[ \\t]*\\}","m");
+ assert.match(source,found);
+ return source.replace(found,replacement);
+}
+test("legacy owner/master OR grant is closed without changing the existing internal catalog or access grant schema",()=>{
+ let legacy=liveFixture();
+ legacy=substituteFn(legacy,"isCompanyOwner",
+  "    function isCompanyOwner(companyId) {\n"+
+  "      return verifiedUser() && companyId != null && exists(companyPath(companyId)) &&\n"+
+  "        get(userPath(request.auth.uid)).data.companyRole == 'owner';\n"+
+  "    }");
+ legacy=substituteFn(legacy,"isCompanyMaster",
+  "    function isCompanyMaster(companyId) {\n"+
+  "      return verifiedUser() && companyId != null && effectiveMasterUid(companyId) == request.auth.uid;\n"+
+  "    }");
+ legacy=substituteFn(legacy,"sameCompany",
+  "    function sameCompany(companyId) {\n"+
+  "      return companyId != null && (isCompanyMember(companyId) || isCompanyOwner(companyId));\n"+
+  "    }");
+ const out=previewLiveRules(legacy,reviewed);
+ assert.equal(out.matchesReviewed,true);
+ assert.equal(out.candidate,reviewed);
+ assert(out.changed.includes("isCompanyOwner"));
+ assert(out.changed.includes("isCompanyMaster"));
+ assert(out.changed.includes("sameCompany"));
+});
+test("previous revenue goal access expression is recompiled from reviewed optimized grants",()=>{
+ let legacy=reviewed.replace(
+   "        && revenueGrantedAfterMembership(request.resource.data.companyId)",
+   "        && canViewRevenue(request.resource.data.companyId)"
+ );
+ if(legacy===reviewed){
+   // Historical Rules used older repeated leader grant logic.
+   const pos=reviewed.indexOf("match /revenueGoals/{goalId} {");
+   assert(pos>0);
+   const tail=reviewed.slice(pos);
+   legacy=reviewed.slice(0,pos)+tail.replace(
+    "revenueGrantedAfterMembership(resource.data.companyId)",
+    "canViewRevenue(resource.data.companyId)");
+ }
+ assert.notEqual(legacy,reviewed);
+ const out=previewLiveRules(legacy,reviewed);
+ assert(out.changed.includes("review:revenueGoals"));
+ assert.equal(out.candidate,reviewed);
 });

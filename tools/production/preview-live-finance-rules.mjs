@@ -4,8 +4,9 @@
  * reviewed membership/retention patch in a disposable GitHub Actions checkout.
  *
  * Never deploys rules, writes Firestore data, or changes the deployed release.
- * Every permitted change is bounded to isCompanyMember or a named collection's
- * delete predicate, and all other original live Rules bytes stay untouched.
+ * Allowed changes are limited to the reviewed company grant chain, the
+ * revenueGoals expression-budget-safe contract, and hard-delete predicates.
+ * All other existing live Rules bytes stay unchanged.
  */
 import {readFileSync,writeFileSync} from "node:fs";
 import {createHash} from "node:crypto";
@@ -54,26 +55,69 @@ export function previewLiveRules(live,reviewed){
   if(typeof live!=="string"||typeof reviewed!=="string"||
     !live.includes("service cloud.firestore")||!reviewed.includes("service cloud.firestore"))
     stop("NOT_FIRESTORE_RULES");
-  // Only replace the company membership predicate. Do not replace all rules.
-  const expectedFn=functionBlock(reviewed,"isCompanyMember");
-  const reviewedFn=reviewed.slice(expectedFn.start,expectedFn.end);
-  for(const marker of ["companyKind","accessKind","memberType","activeOrLegacy"]){
-    if(!reviewedFn.includes(marker))stop("REVIEWED_GUARD_MISSING_"+marker);
-  }
+  // Actual-live finance bypasses do not all call isCompanyMember():
+  // isCompanyOwner/isCompanyMaster and sameCompany may grant access directly.
+  // Replace the entire reviewed chain, NOT the existing user/product/record rules.
   let candidate=live;
-  const oldFn=functionBlock(candidate,"isCompanyMember");
-  const originalFn=candidate.slice(oldFn.start,oldFn.end);
-  if(!originalFn.includes("verifiedUser()")||
-     !originalFn.includes("exists(memberPath(")||
-     !originalFn.includes("get(userPath("))
-    stop("UNEXPECTED_OLD_MEMBERSHIP_PREDICATE");
-  // Require support functions already present in the LIVE rule source.
+  const changed=[];
+  const expectedMember=functionBlock(reviewed,"isCompanyMember");
+  const reviewedMember=reviewed.slice(expectedMember.start,expectedMember.end);
+  for(const marker of ["companyKind","accessKind","memberType","activeOrLegacy"])
+    if(!reviewedMember.includes(marker))stop("REVIEWED_GUARD_MISSING_"+marker);
+  // Require support functions already present in LIVE before any splice.
   for(const fn of ["activeOrLegacy","userPath","memberPath","companyPath"])
     if(!candidate.includes("function "+fn+"("))stop("MISSING_LIVE_HELPER_"+fn);
-  const changed=[];
-  if(originalFn!==reviewedFn){
-    candidate=replaceBlock(candidate,oldFn,reviewedFn);
-    changed.push("isCompanyMember");
+  for(const name of ["isCompanyMember","isCompanyMaster","isCompanyOwner","sameCompany"]){
+    const approved=functionBlock(reviewed,name);
+    const approvedText=reviewed.slice(approved.start,approved.end);
+    if(name!=="isCompanyMember"&&!approvedText.includes("isCompanyMember(companyId)"))
+      stop("REVIEWED_MEMBERSHIP_CHAIN_MISSING_"+name);
+    const liveSpan=functionBlock(candidate,name);
+    const before=candidate.slice(liveSpan.start,liveSpan.end);
+    if(name==="isCompanyMember"){
+      if(!before.includes("verifiedUser()") ||
+         !before.includes("exists(memberPath(") ||
+         !before.includes("get(userPath("))
+        stop("UNEXPECTED_OLD_MEMBERSHIP_PREDICATE");
+    }
+    if(!before.includes("return ")||!before.includes("companyId"))
+      stop("UNEXPECTED_OLD_GRANT_"+name);
+    if(before!==approvedText){
+      candidate=replaceBlock(candidate,liveSpan,approvedText);
+      changed.push(name);
+    }
+  }
+  // Reviewed revenueGoals uses a grant optimized for the Firestore expression
+  // budget; the LIVE expression with stricter guards exceeded that budget in
+  // the synthetic leader regression (#18). Never ship a leader regression.
+  const helperName="revenueGrantedAfterMembership";
+  const approvedHelper=functionBlock(reviewed,helperName);
+  const helperText=reviewed.slice(approvedHelper.start,approvedHelper.end);
+  if(!helperText.includes("effectiveMasterUid(companyId)"))
+    stop("REVIEWED_REVENUE_HELPER_NOT_APPROVED");
+  if(candidate.includes("function "+helperName+"(")){
+    const localHelper=functionBlock(candidate,helperName);
+    if(candidate.slice(localHelper.start,localHelper.end)!==helperText)
+      stop("UNEXPECTED_EXISTING_REVENUE_HELPER");
+  }else{
+    const insertion=functionBlock(candidate,"canViewRevenue");
+    candidate=candidate.slice(0,insertion.start)+helperText+"\n\n"+
+      candidate.slice(insertion.start);
+    changed.push("add:"+helperName);
+  }
+  const reviewedRevSpan=collectionBlock(reviewed,"revenueGoals");
+  const reviewedRev=reviewed.slice(reviewedRevSpan.start,reviewedRevSpan.end);
+  for(const marker of ["revenueGrantedAfterMembership","allow delete: if false;"]){
+    if(!reviewedRev.includes(marker))stop("REVIEWED_REVENUE_GOAL_CONTRACT_MISSING");
+  }
+  const liveRevSpan=collectionBlock(candidate,"revenueGoals");
+  const liveRev=candidate.slice(liveRevSpan.start,liveRevSpan.end);
+  if(!liveRev.includes("allow read:")||!liveRev.includes("allow create:")||
+     !liveRev.includes("allow update:")||!liveRev.includes("allow delete:"))
+    stop("UNEXPECTED_LIVE_REVENUE_GOALS");
+  if(liveRev!==reviewedRev){
+    candidate=replaceBlock(candidate,liveRevSpan,reviewedRev);
+    changed.push("review:revenueGoals");
   }
 
   for(const name of COLLECTIONS){
