@@ -31,8 +31,49 @@ test("a denied gateway request never falls back to reading raw Firestore",async(
     onView:()=>{presented++},
     onError:()=>{errors++}
   });
-  await c.refresh();
+  await assert.rejects(c.refresh(),/secure_read_denied/);
   c.stop();
   assert.equal(presented,0);
   assert.equal(errors>0,true);
+});
+test("a refresh requested during an in-flight read waits for a genuinely newer view",async()=>{
+  const releases=[],shown=[];
+  const service=startProtectedView({
+    subscribeToSignal:()=>()=>{},
+    fetchProtectedView:()=>new Promise(resolve=>releases.push(resolve)),
+    projectView:v=>v,
+    onView:v=>shown.push(v.version),
+    onError:()=>{}
+  });
+  assert.equal(releases.length,1,"initial read is in flight");
+  let completed=false;
+  const postWrite=service.refresh().then(()=>{completed=true});
+  releases.shift()({version:1});
+  for(let n=0;n<20&&releases.length<1;n++)await Promise.resolve();
+  assert.deepEqual(shown,[1]);
+  assert.equal(completed,false,"pre-save response cannot confirm a post-save refresh");
+  assert.equal(releases.length,1);
+  releases.shift()({version:2});
+  await postWrite;
+  assert.deepEqual(shown,[1,2]);
+  assert.equal(completed,true);
+  service.stop();
+});
+test("explicit protected refresh propagates server denial without optimistic success",async()=>{
+  let calls=0,errors=0;
+  const service=startProtectedView({
+    subscribeToSignal:()=>()=>{},
+    fetchProtectedView:async()=>{
+      calls++;
+      if(calls>1)throw Error("finance_forbidden");
+      return {version:1};
+    },
+    projectView:x=>x,onView:()=>{},onError:()=>{errors++}
+  });
+  // Let the initial read finish, then request a distinct authorized refresh.
+  for(let n=0;n<20&&calls<1;n++)await Promise.resolve();
+  await Promise.resolve();
+  await assert.rejects(service.refresh(),/finance_forbidden/);
+  assert.equal(errors,1);
+  service.stop();
 });

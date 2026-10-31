@@ -41,8 +41,16 @@ export function makeProtectedSalesBridge({
       const result=await submitCountIntent({
         gatewayUrl,origin,user:currentUser,input:intent,
         explicitCutover:true,fetcher});
-      // Do not silently infer a successful save from a timeout or 409.
-      await stream.refresh();
+      // A 200 from the write API alone is not proof the UI now contains
+      // the saved record. Explicitly fetch a fresh authenticated view, not
+      // an in-flight pre-write view, then cross-check immutable identity
+      // and the saved aggregate. Never fall back to raw Firestore.
+      const expectedMonth=String(selection?.date||"").slice(0,7);
+      if(expectedMonth!==getMonth())throw Error("saved_month_not_selected");
+      const confirmed=await stream.refresh();
+      const matched=confirmed?.records?.find(record=>
+        record.id===result.recordId && record.totalCount===result.totalCount);
+      if(!matched)throw Error("saved_record_not_visible_after_refresh");
       return result;
     }
   };
