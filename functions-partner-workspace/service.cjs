@@ -103,7 +103,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
       ID.test(u.teamId||"")&&u.teamId===m.teamId))fail();
    const relation=await read(db.collection("partnerRelations").doc(cid));
    if(!relation.exists||relation.data()?.hubCompanyId!==c.hubCompanyId||
-      relation.data()?.partnerCompanyId!==cid)fail();
+      relation.data()?.partnerCompanyId!==cid||relation.data()?.active!==true||
+      relation.data()?.countSharingApproved!==true)fail();
    return {kind:"partner",uid,cid,hubId:c.hubCompanyId,companyName:c.name,
      role:owner?"owner":u.role,teamId:owner?null:u.teamId};
   }
@@ -282,6 +283,13 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
        x.totalCount<0)fail("data-loss");
     const {counts,total}=validateCounts(x.counts);
     if(total!==x.totalCount)fail("data-loss");
+    // A partner may revoke count-sharing after this daily report was saved.
+    // Never disclose that saved data without current server-owned approval.
+    const relSnap=await db.collection("partnerRelations").doc(sn.id).get();
+    const rel=relSnap.data()||{};
+    if(!relSnap.exists||rel.hubCompanyId!==s.cid||
+       rel.partnerCompanyId!==sn.id||rel.active!==true||
+       rel.countSharingApproved!==true)continue;
     partners.push({partnerCompanyId:sn.id,name:x.partnerName,totalCount:total,counts});
    }
    partners.sort((x,y)=>x.name.localeCompare(y.name,"ja"));
