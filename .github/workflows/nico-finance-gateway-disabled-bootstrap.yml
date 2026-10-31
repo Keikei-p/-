@@ -1,0 +1,131 @@
+name: NICO Finance Gateway bootstrap - all financial routes OFF
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - cloudflare-finance/src/**
+      - cloudflare-finance/tests/**
+      - cloudflare-finance/wrangler.toml
+      - .github/workflows/nico-finance-gateway-disabled-bootstrap.yml
+  push:
+    branches: [main]
+    paths:
+      - cloudflare-finance/tests/disabled-gateway-production.test.mjs
+      - .github/workflows/nico-finance-gateway-disabled-bootstrap.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: nico-disabled-finance-gateway-bootstrap
+  cancel-in-progress: false
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify EVERY finance, write, count and billing switch OFF
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check cloudflare-finance/src/index.js
+          node --test cloudflare-finance/tests/disabled-gateway-production.test.mjs
+          node --test cloudflare-finance/tests/gateway.test.mjs
+          node --test cloudflare-finance/tests/internal-rank-only.test.mjs
+          node --test tests/internal-owner-finance-visibility.test.cjs
+          node --test tests/nico-production-cutover-preflight.test.mjs
+      - name: Dry-run Worker bundle without remote changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd cloudflare-finance
+          npx --yes wrangler@4.152.0 deploy --dry-run --outdir "$RUNNER_TEMP/nico-finance-disabled-bundle"
+  bootstrap-disabled-only:
+    needs: offline
+    if: "${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.offline.result == 'success' }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 17
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify Cloudflare credentials and original project without exposing secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "STOP: Cloudflare API token Secret missing"; exit 1; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "STOP: Cloudflare account Secret missing"; exit 1; }
+          node -e "const f=require('fs');if(JSON.parse(f.readFileSync('.firebaserc')).projects.default!=='sales-management-cc116')process.exit(2)"
+          node --test cloudflare-finance/tests/disabled-gateway-production.test.mjs
+      - name: Refuse to overwrite an unrecognized existing Worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from urllib.request import urlopen
+          from urllib.error import HTTPError, URLError
+          import json
+          url='https://sales-finance-gateway.jyhokei0124.workers.dev/health'
+          try:
+              response=urlopen(url,timeout=18)
+              status=response.status
+              body=json.loads(response.read(4096))
+          except HTTPError as e:
+              status=e.code;body={}
+          except URLError:
+              raise SystemExit('STOP: current Worker identity cannot be verified')
+          if status==404:
+              print('PASS expected 404, first disabled deployment authorized')
+          elif status==200 and body.get('service')=='finance-gateway' and body.get('enabled') is False:
+              print('PASS reviewed existing disabled finance Worker')
+          else:
+              raise SystemExit('STOP unrecognized Worker, HTTP '+str(status))
+          PY
+      - name: Deploy only DISABLED finance Worker (no Firebase secret or data writes)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd cloudflare-finance
+          npx --yes wrangler@4.152.0 deploy --dry-run --outdir "$RUNNER_TEMP/nico-finance-disabled-preflight"
+          npx --yes wrangler@4.152.0 deploy
+      - name: Verify live Worker is disabled, no counts, sales, or price routes exposed
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          (async()=>{
+            const root='https://sales-finance-gateway.jyhokei0124.workers.dev';
+            for(let retry=0;retry<8;retry++){
+              try{
+                const resp=await fetch(root+'/health',{cache:'no-store'});
+                const body=resp.status===200?await resp.json():null;
+                if(resp.status===200&&body?.service==='finance-gateway'&&body.enabled===false){
+                  for(const path of ['/v1/internal-counts?day=2026-10-30',
+                    '/v1/internal-ranks?month=2026-10','/v1/financial-view',
+                    '/v1/partner-count-catalog']){
+                    const denied=await fetch(root+path,{cache:'no-store'});
+                    if(denied.status!==503)
+                      throw Error('FINANCE_ROUTE_NOT_DISABLED_'+path+'_'+denied.status);
+                  }
+                  console.log('PASS inert finance Worker is LIVE; all data endpoints blocked');
+                  return;
+                }
+              }catch(e){
+                if(String(e.message).includes('FINANCE_ROUTE_NOT_DISABLED'))throw e;
+              }
+              await new Promise(r=>setTimeout(r,3500));
+            }
+            throw Error('DISABLED_FINANCE_GATEWAY_CDN_PARITY_NOT_CONFIRMED');
+          })().catch(e=>{console.error(e.message);process.exitCode=1});
+          NODE
