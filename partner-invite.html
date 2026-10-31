@@ -55,12 +55,12 @@ small{color:#5e6d82}#info{font-weight:650}
  <h2>協力店招待を受け取る</h2>
  <p id="info">招待の確認中</p>
  <button id="accept" type="button" disabled>協力店として参加</button>
- <p><small>既に別会社に所属するアカウントは使用できません。自社の会社ID・既存実績は変更しません。</small></p>
+ <p><small>過去に登録したメールアドレスでも参加できます。自社のアカウント・履歴を残し、協力店用の所属を追加します。</small></p>
 </section>
 <section id="acceptedBox" hidden>
  <h2>協力店の登録完了</h2>
  <p>協力店専用画面で班とスタッフを登録すると、商材別の件数を入力できます。売上・単価は表示しません。</p>
- <p><a href="/partner-workspace.html" style="color:#175899;font-weight:700">件数入力画面へ進む</a></p>
+ <p><a id="acceptedWorkspaceLink" href="/partner-workspace.html" style="color:#175899;font-weight:700">件数入力画面へ進む</a></p>
 </section>
 </main>
 <script type="module">
@@ -148,6 +148,10 @@ $("copyLink").addEventListener("click",async()=>busy($("copyLink"),async()=>{
 $("accept").addEventListener("click",async()=>busy($("accept"),async()=>{
  const data=(await acceptInvite({token})).data;
  $("info").textContent="協力店としての会社登録が完了しました。";
+ const workspace=new URL("/partner-workspace.html",location.origin);
+ if(data.secondaryMembership)workspace.searchParams.set("workspaceCompanyId",data.partnerCompanyId);
+ $("acceptedWorkspaceLink").href=workspace.pathname+workspace.search;
+ $("workspaceGuide").href=workspace.pathname+workspace.search;
  $("acceptBox").hidden=true;$("acceptedBox").hidden=false;
  $("accept").disabled=true;message("招待の承諾が完了しました。件数入力画面から班・スタッフを登録できます。");
 }));
