@@ -92,7 +92,10 @@ export async function uploadSingleExistingWorkspace({assetBytes,request,release=
    // 2026-10-31 #41157994242 protected eleven-file index-only release.
    "sites/nico-factory/versions/8ae15e2d9d6d6051",
    // #41158716684 verified the next 11-file index-only production version.
-   "sites/nico-factory/versions/8a6f3ca799112677"
+   "sites/nico-factory/versions/8a6f3ca799112677",
+   // GitHub Action 41165276246 replaced ONLY partner-invite.html, preserving 10 others.
+   // Follow-on live parity check 41165474654 verified b46f9f22bf75ed6e.
+   "sites/nico-factory/versions/b46f9f22bf75ed6e"
  ]);
  const files=[];let pageToken="";
  do{
