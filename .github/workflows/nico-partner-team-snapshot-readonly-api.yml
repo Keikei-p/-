@@ -42,7 +42,13 @@ jobs:
           test "$(git hash-object functions-partner-workspace/index.js)" = a2bffd167b8804a0372c7a00465c04a63d96e919
           test "$(git hash-object functions-partner-workspace/package.json)" = 6572599ecac0b8e2b05c166f9e921dc07c0b39f1
           test "$(git hash-object firebase.partner-workspace.json)" = a6ceedec5fab4e22e0a8efe19c685716a2db9750
-          test "$(git hash-object functions-partner-workspace/service.cjs)" = 42b44a0a1fb25e174d9de942e0d79ca191a0ce32
+          # Accept only the original reviewed snapshot API or the reviewed, fully-tested
+          # private-count extension. Never make a partial single-function release.
+          source_sha="$(git hash-object functions-partner-workspace/service.cjs)"
+          case "$source_sha" in
+            42b44a0a1fb25e174d9de942e0d79ca191a0ce32|d17ceb37c9d7acbdd41f36bab2de3c8f21fbd85d) ;;
+            *) echo "STOP_UNREVIEWED_WORKSPACE_CODE"; exit 1 ;;
+          esac
           node <<'NODE'
           const fs=require('node:fs');
           const code=fs.readFileSync('functions-partner-workspace/service.cjs','utf8');
@@ -53,7 +59,10 @@ jobs:
           NODE
   release:
     needs: validate
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.validate.result == 'success' }}
+    # Historical read-only release updates only one of four functions. A private
+    # catalog revision must be atomically released with all four and its UI.
+    # Disable this partial publisher; the original code and backup remain.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
