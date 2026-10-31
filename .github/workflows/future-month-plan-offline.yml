@@ -1,0 +1,36 @@
+name: Future-month team booking: no data mutations (offline)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'team-planning/**'
+      - 'tests/future-month-team-planning.test.mjs'
+      - '.github/workflows/future-month-plan-offline.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'team-planning/**'
+      - 'tests/future-month-team-planning.test.mjs'
+      - '.github/workflows/future-month-plan-offline.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify immutable old records and scheduled team changes are only future drafts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check team-planning/future-month-contract.mjs
+          node --test tests/future-month-team-planning.test.mjs
+          node <<'NODE'
+          const s=require('node:fs').readFileSync('team-planning/future-month-contract.mjs','utf8');
+          for(const pattern of [/firebase deploy/,/\bdeleteDoc\s*\(/,/\bupdateDoc\s*\(/,/\bsetDoc\s*\(/,/\bdb\.collection\s*\(/])
+            if(pattern.test(s))throw Error('PERSISTENCE_CODE_FORBIDDEN_IN_PREVIEW');
+          NODE
