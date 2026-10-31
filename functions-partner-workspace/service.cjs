@@ -36,7 +36,10 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     fail("invalid-argument");
   const result={};let sum=0;
   for(const [id,count] of Object.entries(x)){
-   if(!ID.test(id)||!Number.isSafeInteger(count)||count<0||count>9999)
+   // Firestore document IDs are generated server-side. Never allow object
+   // prototype keys to be treated as counts, even in an old saved record.
+   if(!ID.test(id)||["__proto__","constructor","prototype"].includes(id)||
+      !Number.isSafeInteger(count)||count<0||count>9999)
     fail("invalid-argument");
    result[id]=count;sum+=count;
   }

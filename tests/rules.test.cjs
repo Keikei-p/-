@@ -504,3 +504,42 @@ test('internal owner/member retain original financial document reads after partn
   await assertSucceeds(getDoc(doc(d,'records','internal-finance')));
  }
 });
+
+test('partner private product and count documents cannot be read or mutated through any browser Firestore role',async()=>{
+ const privateProduct=doc(dbFor('owner'),'companies',company,
+   'partnerPrivateProducts','private-001');
+ const privateCount=doc(dbFor('owner'),'companies',company,
+   'partnerWorkEntries','2026-10-06__helper');
+ const productData={companyId:company,name:'協力店専用',active:true,
+   origin:'partner_custom',visibility:'private'};
+ const countData={companyId:company,staffId:'helper',date,
+   privateCounts:{'private-001':7},privateTotalCount:7};
+ await env.withSecurityRulesDisabled(async c=>{
+  await setDoc(doc(c.firestore(),'companies',company,
+    'partnerPrivateProducts','private-001'),productData);
+  await setDoc(doc(c.firestore(),'companies',company,
+    'partnerWorkEntries','2026-10-06__helper'),countData);
+ });
+ for(const uid of ['owner','leaderA','helper','foreign']){
+  const db=dbFor(uid);
+  for(const [segment,id,data] of [
+    ['partnerPrivateProducts','private-001',productData],
+    ['partnerWorkEntries','2026-10-06__helper',countData]
+  ]){
+   const ref=doc(db,'companies',company,segment,id);
+   await assertFails(getDoc(ref));
+   await assertFails(getDocsFromServer(collection(db,'companies',company,segment)));
+   await assertFails(setDoc(ref,data));
+   await assertFails(updateDoc(ref,{active:false}));
+   await assertFails(deleteDoc(ref));
+  }
+ }
+ // Denied operations must not destroy original money-free partner records.
+ await env.withSecurityRulesDisabled(async c=>{
+  const db=c.firestore();
+  assert.deepEqual((await getDoc(doc(db,'companies',company,
+    'partnerPrivateProducts','private-001'))).data(),productData);
+  assert.deepEqual((await getDoc(doc(db,'companies',company,
+    'partnerWorkEntries','2026-10-06__helper'))).data(),countData);
+ });
+});
