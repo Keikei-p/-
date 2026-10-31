@@ -564,3 +564,31 @@ Rulesの本番デプロイ: 未実施
 - **追加の金融原票アクセス遮断について**: Firestore Rules PR #161は未統合/本番未配備。Ownerを含む協力店の全金融資料をFirestore本番で拒否できるかの実環境検証、既存データバックアップと隔離復元、データ整合チェックは未完了。このため今回の限定リリースは独立した「件数専用API」と読取専用の社内ランキングだけを有効化し、協力店の財務情報への旧Firestore直接接続を許可しない。**財務原票の絶対遮断・実アカウント全権限は完成と判断しない**。
 - **運用・費用リスク**: Firebase 2nd Gen Functionsの新API作成は請求が発生し得る。Artifact Registry cleanup policyは以前のIAMエラーにより未設定であり、料金監視と後日の最小権限修正が必要。既存データ初期化・移行・削除はなし。
 - **実施済みでないこと**: 本番実アカウントの協力店招待/承認・件数入力とランキング反映テスト、バージョン当時の売上資料の移行、バックアップ隔離復元検証。上記を行わず「全面運用完了」と記載しない。署名代行をしたとは扱わない。
+
+
+---
+
+## 2026-10-31 — PR: 既存「招待リンク」タブに協力店会社招待を確実に表示する限定本番リリース
+
+**本会話でのユーザー明示指示**: 「招待リンクタブの中に協力店会社招待がはいってない。どうやって招待するん? そこもいれて」。
+
+**確認済み実原因**:
+- 本番`nico-ranking-index-only-release.yml` run #41152842402は`validate=SUCCESS`、`release=FAIL`、`Read-only current production Hosting manifest` で `STOP BAD_LIVE_VERSION`。PR #169によりコードには協力店用招待欄があったが、現行の本番`index.html`には反映されなかった。
+- 既存招待用Firebase callable 3件・専用`/partner-invite.html`は以前の正式公開成功記録あり。件数専用API/スタッフ画面/ランキング改修は別の作業であり、このリリースは**index.htmlだけ**を変更する。
+- 既存「自社メンバー」招待手順・期限、旧LINE通知Function、Firestore Rules、売上単価・履歴、他のHostingアセット、Authの既存利用者は変更禁止。
+
+**承認された最小差分**:
+- 既存招待タブに`inviteDestinationSelect`で「自社メンバー」「協力店会社」の2種類を目視で選択可能にする。
+- 協力店会社選択時には**既存の**`createPartnerCompanyInvitation` callableで会社名/招待メールを送り、30分期限の受取専用URLをコピーする。新しいFirestore直接招待書込・旧社員招待への混在はしない。
+- UIでは自社元会社の代表オーナーのみ発行ボタンを有効化。サーバ側のAuth/Owner検査は既存ロジックを維持し変更しない。代表オーナー以外には説明を表示。自社社員招待は従来どおり。
+- 現行Hostingの`BAD_LIVE_VERSION` について、finalized status/元version名/Hosting設定は必須のまま、**fileCountのメタデータが欠落**していても旧4つの必須ルートと全件ファイルmanifestを検証できる時だけ読み取りの継続を許可。status/config未検証、元ファイル欠損/不一致、並行本番更新はSTOPする。
+- indexのみの既存専用`workflow_dispatch`をGitHub管理Ownerの限定mainマージ1回から呼び出す。全元ファイルSHA256保護、元Hosting設定と最終の全ファイル完全一致を失敗時必須停止。元の招待専用HTMLやスタッフ/件数ページを再配備しない。
+
+**本番適用条件・未完了**:
+- [ ] 最終HEADのSales App Validation、パートナーランキング回帰、Hosting差分テスト、保護ゲートすべて合格
+- [ ] 本番用の**元の4ルートがHTTP200**、Firebase API匿名拒否、現在のMain SHAとの一致を確認
+- [ ] `nico-ranking-index-only-release.yml` の手動release job成功
+- [ ] 公式 `https://nico-factory.web.app/` のHTML内`inviteDestinationSelect`選択肢2件・協力店リンク作成フィールドを実際のHTTP結果で確認
+- [ ] 実Ownerアカウント→協力店宛の招待発行/受領・実端末操作検証（本PRの範囲外）
+
+実績原本の初期化・削除・単価再計算・バックアップ上書きは不要、実行しない。GitHubレビューの履歴は別途記録し、管理者の署名を勝手に代行したとはみなさない。
