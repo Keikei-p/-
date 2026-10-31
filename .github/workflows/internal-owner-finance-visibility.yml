@@ -1,0 +1,39 @@
+name: Protect internal-owner finance visibility (no production writes)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'legacy-finance-entry-guard.mjs'
+      - 'firestore.rules'
+      - 'partner-workspace.html'
+      - 'tests/internal-owner-finance-visibility.test.cjs'
+      - '.github/workflows/internal-owner-finance-visibility.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'legacy-finance-entry-guard.mjs'
+      - 'firestore.rules'
+      - 'partner-workspace.html'
+      - 'tests/internal-owner-finance-visibility.test.cjs'
+      - '.github/workflows/internal-owner-finance-visibility.yml'
+permissions:
+  contents: read
+jobs:
+  protect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify existing internal owner still sees revenue, history and prices
+        run: |
+          set -euo pipefail
+          node --test tests/internal-owner-finance-visibility.test.cjs
+          node --test tests/legacy-finance-entry-guard.test.mjs
+          node --test tests/partner-money-free-workspace.test.cjs
