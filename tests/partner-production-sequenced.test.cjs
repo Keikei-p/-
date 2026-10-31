@@ -48,3 +48,17 @@ test("partner pages and backends remain independent of finance originals",()=>{
   assert.match(src,/canViewRevenue/);
  }
 });
+
+
+test("existing live partner HTML is never overwritten unless byte-identical to source",()=>{
+ for(const [file,html] of [
+  ["nico-partner-quick-release.yml","partner-counts.html"],
+  ["nico-partner-workspace-release.yml","partner-workspace.html"]]){
+  const src=read(".github/workflows/"+file);
+  assert.ok(src.includes("cmp -s"));
+  assert.ok(src.includes(html));
+  assert.ok(src.includes("already_live=true"));
+  assert.match(src,/already_live != 'true'/);
+  assert.match(src,/exit 1/);
+ }
+});
