@@ -91,7 +91,20 @@ jobs:
           npm install --prefix functions-partner-quick --ignore-scripts --package-lock=false
           npm install --prefix functions --ignore-scripts --package-lock=false
           npm install -g firebase-tools@15.34.1
-      - name: Check actual existing Hosting release without writing
+      - name: Detect already-published partner count report without rewriting it
+        id: published_count
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=$(curl --silent --location --output "$RUNNER_TEMP/live-partner-counts.html" --write-out '%{http_code}' --max-time 25 https://nico-factory.web.app/partner-counts.html || true)
+          if [ "$status" = 200 ] && grep -Fq 'getPartnerQuickCounts' "$RUNNER_TEMP/live-partner-counts.html"; then
+            echo "already_live=true" >> "$GITHUB_OUTPUT"
+            echo "REUSE verified live partner count report; do not overwrite"
+          else
+            echo "already_live=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: READ ONLY Hosting parity check only if count page is absent
+        if: ${{ steps.published_count.outputs.already_live != 'true' }}
         run: node tools/hosting/additive-partner-counts.mjs --dry-run
       - name: Prepare only count-specific Functions environmental switch
         shell: bash
