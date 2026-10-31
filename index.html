@@ -23377,7 +23377,7 @@ async function renderMissingReportLog(){
   if(!isCurrentCompanyOwner()||!uid||!companyId){
     missingReportsStatus.textContent="自社Ownerのみ確認できます。";return;
   }
-  if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(date)||date>today||
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||date>today||
      !Number.isFinite(Date.parse(date+"T00:00:00Z"))||
      new Date(date+"T00:00:00Z").toISOString().slice(0,10)!==date){
     missingReportsStatus.textContent="正しい過去の日付を選んでください。";return;
