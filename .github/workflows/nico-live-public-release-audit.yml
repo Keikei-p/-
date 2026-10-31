@@ -1,0 +1,56 @@
+name: NICO live release readiness audit (public GET, no deployment)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/production/nico-live-public-release-audit.mjs
+      - tests/nico-live-public-release-audit.test.mjs
+      - .github/workflows/nico-live-public-release-audit.yml
+  push:
+    branches: [main]
+    paths:
+      - tools/production/nico-live-public-release-audit.mjs
+      - tests/nico-live-public-release-audit.test.mjs
+      - .github/workflows/nico-live-public-release-audit.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: nico-public-production-readonly
+  cancel-in-progress: false
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: No mutations and no real customers - regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check tools/production/nico-live-public-release-audit.mjs
+          node --test tests/nico-live-public-release-audit.test.mjs
+          node --test tests/internal-owner-finance-visibility.test.cjs
+  live-readonly:
+    needs: offline
+    if: "${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.offline.result == 'success' }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Inspect published NICO site and deny anonymous partner reads
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/nico-live-public-release-audit.mjs
+          echo 'PASS: public surfaces only; authenticated Owner + Firestore real access remain separate gated checks'
