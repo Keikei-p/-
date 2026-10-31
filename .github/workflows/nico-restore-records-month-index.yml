@@ -1,0 +1,77 @@
+name: NICO restore missing production monthly sales index (index only)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/restore-records-month-index.cjs'
+      - 'tests/restore-records-month-index.test.cjs'
+      - '.github/workflows/nico-restore-records-month-index.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/restore-records-month-index.cjs'
+      - 'tests/restore-records-month-index.test.cjs'
+      - '.github/workflows/nico-restore-records-month-index.yml'
+permissions:
+  contents: read
+concurrency:
+  group: nico-records-monthly-index-repair
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Validate strictly non-destructive index-only restoration
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check scripts/restore-records-month-index.cjs
+          node --test tests/restore-records-month-index.test.cjs
+          node <<'NODE'
+          const fs=require('node:fs');
+          const config=JSON.parse(fs.readFileSync('.firebaserc','utf8'));
+          const indexes=JSON.parse(fs.readFileSync('firestore.indexes.json','utf8'));
+          const target=indexes.indexes.find(i=>i.collectionGroup==='records'&&
+            i.queryScope==='COLLECTION'&&
+            i.fields.length===2&&i.fields[0].fieldPath==='companyId'&&
+            i.fields[0].order==='ASCENDING'&&i.fields[1].fieldPath==='date'&&
+            i.fields[1].order==='ASCENDING');
+          if(config.projects.default!=='sales-management-cc116'||!target)
+            throw Error('PRODUCTION_INDEX_SCHEMA_UNAPPROVED');
+          const src=fs.readFileSync('scripts/restore-records-month-index.cjs','utf8');
+          if(/method\s*===\s*["']DELETE["']|firebase\s+deploy|documents\/|firestore:rules/i.test(src))
+            throw Error('UNAPPROVED_INDEX_WRITE_OPERATION');
+          NODE
+  repair:
+    needs: verify
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.verify.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Prepare protected service account without exposing its JSON
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-index-only.json"
+          chmod 600 "$RUNNER_TEMP/nico-index-only.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-index-only.json" >> "$GITHUB_ENV"
+          node -e "const fs=require('node:fs');if(JSON.parse(fs.readFileSync('.firebaserc','utf8')).projects.default!=='sales-management-cc116')process.exit(1)"
+      - name: Install scoped auth dependencies only
+        run: npm install --prefix functions --ignore-scripts --package-lock=false
+      - name: List live records indexes and create only missing companyId/date composite
+        run: node scripts/restore-records-month-index.cjs
+      - name: Cleanup local credential from runner
+        if: always()
+        run: rm -f "$RUNNER_TEMP/nico-index-only.json"
