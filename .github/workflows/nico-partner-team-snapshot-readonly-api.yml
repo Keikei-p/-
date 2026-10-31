@@ -5,12 +5,14 @@ on:
     paths:
       - 'functions-partner-workspace/service.cjs'
       - 'tests/partner-workspace.test.cjs'
+      - 'tests/partner-money-free-workspace.test.cjs'
       - '.github/workflows/nico-partner-team-snapshot-readonly-api.yml'
   push:
     branches: [main]
     paths:
       - 'functions-partner-workspace/service.cjs'
       - 'tests/partner-workspace.test.cjs'
+      - 'tests/partner-money-free-workspace.test.cjs'
       - '.github/workflows/nico-partner-team-snapshot-readonly-api.yml'
 permissions:
   contents: read
