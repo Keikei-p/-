@@ -614,3 +614,18 @@ Rulesの本番デプロイ: 未実施
 **署名・審査の正確性**: 本人の手書き・電子署名は取得していない。記載は会話上の緊急復旧指示と、GitHub管理者の審査ラベルを組み合わせた変更記録であり、本人署名を偽装しない。データの破壊的変更は承認対象外。
 
 - **2026-10-31 管理者審査**: GitHub管理者接続からPR #180に `sales-production-reviewed` ラベルを付けた。ラベル付与前の旧Actions eventでの保護ゲートFAILは未審査ではなく古いevent snapshotが原因。最新コミットでゲートを再実行し、合格しなければ本番には進めない。
+
+
+---
+
+## 2026-10-31 — PR #181: ログイン画面の外部guard依存を解消する緊急復旧
+
+**本番障害証拠**: PR #180での欠落`member.companyId`補完・回帰CI合格後、自動リリースRun #41154705441 の `Check existing financial guard is publicly available before replacing index` が失敗。本番の `/legacy-finance-entry-guard.mjs` はHTTP200かつ期待内容の判定に合格しなかった。新しいindexがこの相対URLへ `import` する状態では、認証画面のモジュール初期化が失敗する可能性がある。
+
+**実装方針**: 別モジュール `legacy-finance-entry-guard.mjs` の本文を`export`キーワードを除いて**完全に同一内容**で`index.html`の既存モジュール内に含める。協力店・他社・不一致UIDの拒否条件は一文字も緩和せず、外部モジュールが本番に存在しなくても権限チェックとサインイン画面が初期化できるようにする。
+
+**本番操作**: GitHubの保護ゲート・販売回帰・隔離・本人保護テストが全部成功してから、既存 `nico-login-restore.yml` のmainマージ時自動リリースを利用。手動PC/PowerShell不要、認証済みGithub環境の保護されたHosting資格情報を使用。Firebase Hosting APIの全既存ファイルパス・ハッシュ/設定を保全し、**既存`index.html`だけ**書換。Functions/Firestore Rules/Firestoreデータ/ユーザーアカウント/売上/履歴/LINEに触れない。本番配信後のHTMLに埋め込み関数と従来メンバー互換パッチを確認する。
+
+**署名の状態**: 本人の手書き・電子署名は取得していない。ユーザーの「PowerShellが使えない／ログイン不能」報告と本番復旧指示に基づく審査記録であり、本人署名を装わない。
+
+**未検証**: 実際の本人アカウントの認証成功・画面遷移は本番画面の静的HTTP検査だけでは確証できない。ログイン不可が残る場合は公開の失敗か別原因として再調査する。
