@@ -551,8 +551,67 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      report.totalCount!==partnerTeamDetails.verifiedSharedCount+
        partnerTeamDetails.unverifiedTeamCount);
    }
-   return {role:"hub",date,partners,registeredCompanies,
-    ...(partnerTeamDetails?{partnerTeamDetails}:{}),categories:KEYS};
+   // Extra Firestore reads are opt-in. Default report/dashboard calls retain
+   // their existing cost. Only approved hub Owner can invoke this branch.
+   let teamReports;
+   if(d.includeTeamStatus===true){
+    const selectedCompany=clean(d.partnerCompanyId);
+    if(selectedCompany&&!ID.test(selectedCompany))fail("invalid-argument");
+    const targets=registeredCompanies.filter(x=>x.active&&
+      (!selectedCompany||x.partnerCompanyId===selectedCompany));
+    if(selectedCompany&&targets.length!==1)fail();
+    if(targets.length>20)fail("resource-exhausted");
+    teamReports=[];
+    for(const company of targets){
+     const cid=company.partnerCompanyId;
+     const [staffSnap,entriesSnap]=await Promise.all([
+      collection(cid,"partnerWorkStaff").limit(151).get(),
+      collection(cid,"partnerWorkEntries").where("date","==",date).limit(201).get()
+     ]);
+     if(staffSnap.size>150||entriesSnap.size>200)fail("resource-exhausted");
+     const status=new Map(company.teams.map(t=>[t.id,{
+      id:t.id,name:t.name,staffCount:0,reportedStaffCount:0,
+      totalCount:0,counts:Object.fromEntries(KEYS.map(k=>[k,0]))
+     }]));
+     for(const doc of staffSnap.docs){
+      const person=doc.data()||{};
+      if(!ID.test(doc.id)||person.companyId!==cid)fail("data-loss");
+      if(person.active===true&&status.has(person.teamId))
+       status.get(person.teamId).staffCount++;
+     }
+     const seenStaff=new Set();
+     let unattributedEntries=0,reportedTotal=0;
+     for(const doc of entriesSnap.docs){
+      const row=doc.data()||{};
+      if(!ID.test(doc.id)||!ID.test(row.staffId||"")||
+         row.companyId!==cid||row.date!==date||
+         seenStaff.has(row.staffId))fail("data-loss");
+      seenStaff.add(row.staffId);
+      const normalized=validateCounts(row.counts);
+      if(row.totalCount!==normalized.total)fail("data-loss");
+      reportedTotal+=normalized.total;
+      const team=status.get(row.teamIdSnapshot);
+      if(!team){unattributedEntries++;continue;}
+      // A saved zero-count row counts as submitted, not missing.
+      team.reportedStaffCount++;
+      team.totalCount+=normalized.total;
+      for(const key of KEYS)team.counts[key]+=normalized.counts[key];
+     }
+     const aggregate=partners.find(p=>p.partnerCompanyId===cid);
+     const consistent=unattributedEntries===0 &&
+      (aggregate?aggregate.totalCount===reportedTotal:seenStaff.size===0);
+     const teams=[...status.values()].map(team=>({
+      ...team,status:team.reportedStaffCount>0?"submitted":
+       !consistent?"unverified":
+       team.staffCount>0?"missing":"not_expected"
+     }));
+     teamReports.push({partnerCompanyId:cid,name:company.name,
+      date,verified:consistent,unattributedEntries,teams});
+    }
+   }
+   return {role:"hub",date,partners,registeredCompanies,categories:KEYS,
+    ...(partnerTeamDetails?{partnerTeamDetails}:{}),
+    ...(teamReports?{teamReports,teamStatusComplete:true}:{})};
   }
   const [teams,staff,entries,privateProducts]=await Promise.all([
     collection(s.cid,"partnerWorkTeams").limit(151).get(),
