@@ -22,6 +22,23 @@ button:disabled{opacity:.52;cursor:default}.secondary{background:#e6eef9;color:#
 td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 .scroll{overflow:auto}.muted{font-size:12px;color:#607186}
 [hidden]{display:none!important}@media(max-width:420px){.grid{grid-template-columns:1fr}.row>*{flex-basis:100%}}
+
+.count-menu{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:14px 0}
+.count-menu button{background:#e8effa;color:#193c69;border:1px solid #dae5f3;min-height:51px}
+.count-menu button[aria-pressed="true"]{background:#175899;color:#fff}
+.period-menu{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}.period-menu button{min-height:43px;background:#e7edf7;color:#173e68}
+.period-menu button[aria-pressed="true"]{background:#175899;color:#fff}
+.count-kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:13px 0}
+.count-kpi{border:1px solid #d9e5f3;border-radius:12px;padding:14px;background:#f8fbff}
+.count-kpi strong{display:block;font-size:26px;font-variant-numeric:tabular-nums;color:#164d89;margin:4px 0}
+.count-kpi small{font-size:12px}
+.count-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.count-heading h2{margin-bottom:3px}.count-section{margin:15px 0}
+.count-meter{display:block;width:100%;height:7px;background:#e4eaf2;border-radius:10px;overflow:hidden;margin-top:5px}
+.count-meter i{display:block;height:100%;background:#2a76bf;border-radius:10px}
+.count-rank{font-weight:750;color:#1d538d}.count-subnav{font-size:12px;color:#506782;margin:4px 0 8px}
+#countDashboardStatus{white-space:pre-wrap;min-height:22px}
+@media(max-width:420px){.count-menu{grid-template-columns:repeat(2,minmax(0,1fr))}.count-kpi strong{font-size:22px}}
 </style></head><body>
 <header><h1>NICO FACTORY｜協力店 実績管理</h1>
 <p>会社・班・メンバーごとの件数を管理。売上・単価は表示しません。</p></header>
@@ -38,9 +55,21 @@ td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 <section id="appBox" hidden><div class="row"><strong id="who"></strong><button id="logout" class="secondary" type="button">ログアウト</button></div>
 <div class="row"><div><label for="date">実績日</label><input id="date" type="date"></div>
 <button id="refresh" type="button" class="secondary">最新情報を再取得</button></div>
-<div class="tabs"><button type="button" id="tabRecords" aria-pressed="true">実績を入力</button>
+<div class="count-menu" aria-label="実績管理メニュー">
+<button type="button" id="tabDashboard" aria-pressed="true">📊 実績・ランキング</button>
+<button type="button" id="tabRecords" aria-pressed="false">✏️ 実績を入力</button>
 <button type="button" id="tabPeople" aria-pressed="false">班・スタッフ管理</button>
-<button type="button" id="tabView" aria-pressed="false">実績一覧</button></div></section>
+<button type="button" id="tabView" aria-pressed="false">📋 日別の入力履歴</button></div></section>
+<section id="dashboardBox" hidden><div class="count-heading"><h2>件数ダッシュボード</h2><button type="button" class="secondary" id="countCsv">件数CSV</button></div>
+<p class="muted">会社・班・個人・商材の実績を比較できます。売上と単価は一切扱いません。</p>
+<div class="period-menu" aria-label="集計期間"><button id="periodDay" type="button" aria-pressed="true">日別</button><button id="periodWeek" type="button" aria-pressed="false">週別</button><button id="periodMonth" type="button" aria-pressed="false">月別</button></div>
+<p id="countDashboardStatus" role="status" aria-live="polite"></p>
+<div id="countKpis" class="count-kpis"></div>
+<div class="count-section"><h3>🏆 班別ランキング</h3><p id="countTeamHint" class="count-subnav">班移動した担当者の過去の所属班は、画面上で正確に復元できない場合があります。</p><div id="countTeamRank" class="scroll"></div></div>
+<div class="count-section"><h3>🏅 個人別ランキング</h3><div id="countStaffRank" class="scroll"></div></div>
+<div class="count-section"><h3>📦 商材別ランキング</h3><div id="countProductRank" class="scroll"></div></div>
+<div class="count-section"><h3>📆 日別推移</h3><div id="countDailyRows" class="scroll"></div></div>
+</section>
 <section id="recordsBox" hidden><h2>件数登録・訂正</h2>
 <p class="muted">スタッフ本人・所属リーダー・協力店代表が登録できます。名前だけのスタッフはリーダーか代表が代理入力します。修正履歴は残ります。</p>
 <label for="staffSelect">担当者</label><select id="staffSelect"></select>
@@ -59,7 +88,9 @@ td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 <button id="makeInvite" type="button">招待リンクを作成</button></div>
 <div id="inviteOut" hidden><label for="inviteUrl">送信する招待リンク（30分）</label><div class="row">
 <input id="inviteUrl" readonly><button id="copy" type="button">コピー</button></div></div>
-<h3>登録済みスタッフ</h3><div id="peopleList" class="scroll"></div></section>
+<h3>登録済みスタッフ</h3><div id="peopleList" class="scroll"></div>
+<div id="moveStaffBox" hidden><h3>スタッフの所属班を変更（代表者のみ）</h3><p class="muted">過去の登録件数は変更しません。過去実績の班集計は、元の保存時点の所属情報が確認できない場合は未分類で扱います。</p>
+<div class="row"><select id="moveStaffSelect" aria-label="移動するスタッフ"></select><select id="moveTeamSelect" aria-label="新しい所属班"></select><button type="button" id="moveStaffAction">所属班を変更</button></div></div></section>
 <section id="listBox" hidden><h2>今日の実績一覧</h2><div id="recordsList" class="scroll"></div></section>
 <section id="hubBox" hidden><h2>協力店の件数報告（自社オーナー用）</h2>
 <div id="hubList" class="scroll"></div><p class="muted">新しいスタッフ別入力の集計です。旧暫定会社一括報告と合算せず、重複を防ぎます。</p></section>
@@ -83,6 +114,8 @@ const dateParts=Object.fromEntries(new Intl.DateTimeFormat("en-US",
 .formatToParts(new Date()).map(p=>[p.type,p.value]));
 $("date").value=[dateParts.year,dateParts.month,dateParts.day].join("-");
 let data=null,loading=false,nonce=0;
+let countPeriod="day",countLoadId=0,countExportRows=null;
+const countDayCache=new Map(),countKeys=KEYS.slice();
 const notice=(s,bad=false)=>{$("notice").textContent=s;$("notice").className="notice"+(bad?" error":"")};
 const fail=e=>{const code=String(e?.code||"unknown").split("/").pop();
 notice("操作できませんでした（"+code+"）。認証・招待期限・入力権限を確認し、最新情報を読み直してください。",true)};
@@ -95,20 +128,199 @@ function values(){const o={};for(const x of grid.querySelectorAll("input")){
  if(!/^(?:0|[1-9]\d{0,3})$/.test(x.value.trim()))throw Error("invalid count");
  o[x.dataset.key]=Number(x.value)}return o}
 function updateTotal(){let n=0;for(const x of grid.querySelectorAll("input")){const k=Number(x.value);if(Number.isSafeInteger(k)&&k>=0&&k<=9999)n+=k} $("total").textContent=n+" 件"}
+
+function periodDatesForCounts(selected,period,today){
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(selected)||!/^\d{4}-\d{2}-\d{2}$/.test(today))
+  throw Error("invalid date");
+ const d=new Date(selected+"T00:00:00Z"),end=new Date(today+"T00:00:00Z");
+ if(!Number.isFinite(d.getTime())||d.toISOString().slice(0,10)!==selected||d>end)
+  throw Error("invalid date");
+ let start=new Date(d);
+ if(period==="week")start.setUTCDate(d.getUTCDate()-((d.getUTCDay()+6)%7));
+ else if(period==="month")start.setUTCDate(1);
+ else if(period!=="day")throw Error("invalid period");
+ const firstAllowed=new Date(end.getTime()-366*86400000);
+ if(start<firstAllowed)throw Error("not available before 366-day history limit");
+ const last=period==="day"?d:period==="week"?
+  new Date(start.getTime()+6*86400000):new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,0));
+ const dates=[];
+ for(let time=start.getTime();time<=Math.min(last.getTime(),end.getTime());time+=86400000)
+  dates.push(new Date(time).toISOString().slice(0,10));
+ if(!dates.length||dates.length>31)throw Error("invalid period size");
+ return dates;
+}
+function summarizeCountOnlyResponses(responses,teamList,keys){
+ const group=new Map(),individual=new Map(),days=[],products=Object.fromEntries(keys.map(k=>[k,0]));
+ const teams=new Map((teamList||[]).map(t=>[t.id,t.name]));
+ let total=0,hasUnverifiedTeams=false;
+ const identity=new Map();
+ for(const response of responses){
+  if(!response||!Array.isArray(response.staff)||!Array.isArray(response.records)||
+     response.categories?.join("|")!==keys.join("|"))throw Error("unverified counts");
+  const staff=new Map(response.staff.map(p=>[p.id,p]));
+  let dayCount=0,dayPeople=0;
+  const seen=new Set();
+  for(const record of response.records){
+   if(seen.has(record.staffId)||!staff.has(record.staffId))throw Error("unverified staff");
+   seen.add(record.staffId);
+   const person=staff.get(record.staffId);
+   const counts=record.counts;
+   if(!counts||Object.keys(counts).sort().join("|")!==[...keys].sort().join("|"))
+    throw Error("unverified product counts");
+   let count=0;
+   for(const key of keys){
+    const value=counts[key];
+    if(!Number.isSafeInteger(value)||value<0||value>9999)throw Error("unverified count");
+    count+=value;products[key]+=value;
+   }
+   if(count!==record.totalCount)throw Error("count mismatch");
+   if(count>0)dayPeople++;
+   dayCount+=count;total+=count;
+   const id=record.staffId;
+   if(!identity.has(id))identity.set(id,String(person.name||"担当者"));
+   individual.set(id,(individual.get(id)||0)+count);
+   // Historical team snapshots are persisted on each entry server-side.
+   // Until the partner API returns that snapshot, never attribute historical
+   // count rows to a guessed team (which might be a new team after a move).
+   const teamId=record.teamIdSnapshot;
+   const groupId=typeof teamId==="string"&&teams.has(teamId)?teamId:"__unverified__";
+   if(groupId==="__unverified__")hasUnverifiedTeams=true;
+   group.set(groupId,(group.get(groupId)||0)+count);
+  }
+  days.push({date:response.date,count:dayCount,people:dayPeople});
+ }
+ return {total,products,groups:[...group].map(([id,count])=>({
+   id,name:id==="__unverified__"?"所属班未確認":teams.get(id)||"所属班未確認",count
+  })).sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name,"ja")),
+  people:[...individual].map(([id,count])=>({id,name:identity.get(id)||"担当者",count}))
+   .sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name,"ja")),
+  days:days.sort((a,b)=>b.date.localeCompare(a.date)),
+  hasUnverifiedTeams};
+}
+function countTable(headers,rows){
+ const table=document.createElement("table"),head=document.createElement("tr");
+ for(const h of headers){const th=document.createElement("th");th.textContent=h;head.append(th)}
+ table.append(head);
+ if(!rows.length){const tr=document.createElement("tr"),td=document.createElement("td");
+  td.colSpan=headers.length;td.textContent="該当する実績はありません";tr.append(td);table.append(tr)}
+ for(const cells of rows){const tr=document.createElement("tr");
+  for(const val of cells){const td=document.createElement("td");td.textContent=String(val);tr.append(td)}
+  table.append(tr)}
+ return table;
+}
+function renderCountOnlyDashboard(summary,days){
+ const count=summary.total,positive=summary.days.filter(d=>d.count>0).length;
+ const cards=[["合計実績",count+"件"],["活動日数",positive+"日"],
+  ["実績のある担当者",summary.people.filter(p=>p.count>0).length+"人"],
+  ["1日平均",Math.round(count/days.length*10)/10+"件"]];
+ const kpis=$("countKpis");kpis.replaceChildren();
+ for(const [name,value] of cards){const box=document.createElement("div");box.className="count-kpi";
+  const lab=document.createElement("small"),val=document.createElement("strong");
+  lab.textContent=name;val.textContent=value;box.append(lab,val);kpis.append(box)}
+ $("countTeamHint").textContent=summary.hasUnverifiedTeams?
+  "過去の班所属を推測しないため、保存時点の班情報をAPIから取得できない実績は「所属班未確認」として表示します。":
+  "保存時の所属班で集計しています。";
+ $("countTeamRank").replaceChildren(countTable(["順位","班","合計件数"],
+  summary.groups.map((g,i)=>[g.id==="__unverified__"?"—":i+1,g.name,g.count+"件"])));
+ $("countStaffRank").replaceChildren(countTable(["順位","担当者","合計件数"],
+  summary.people.map((p,i)=>[i+1,p.name,p.count+"件"])));
+ $("countProductRank").replaceChildren(countTable(["順位","商材","合計件数"],
+  Object.entries(summary.products).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"ja"))
+   .map(([name,n],i)=>[i+1,name,n+"件"])));
+ $("countDailyRows").replaceChildren(countTable(["日付","合計件数","実績あり"],
+  summary.days.map(d=>[d.date,d.count+"件",d.people+"人"])));
+ countExportRows={summary,days};
+}
+function clearCountOnlyDashboard(){
+ countExportRows=null;for(const id of ["countKpis","countTeamRank","countStaffRank",
+  "countProductRank","countDailyRows"])$(id).replaceChildren();
+}
+async function loadCountDashboard(){
+ if(!data||data.role==="hub"||$("dashboardBox").hidden)return;
+ const gen=++countLoadId,uid=auth.currentUser?.uid,day=$("date").value;
+ const today=[dateParts.year,dateParts.month,dateParts.day].join("-");
+ clearCountOnlyDashboard();
+ let dates;
+ try{dates=periodDatesForCounts(day,countPeriod,today)}
+ catch(error){$("countDashboardStatus").textContent="この期間は表示できません。過去366日以内の日付を選択してください。";return}
+ $("countCsv").disabled=true;
+ $("countDashboardStatus").textContent="件数を確認中（0/"+dates.length+"日）。途中の数字は表示しません。";
+ const rows=[];
+ try{
+  for(let i=0;i<dates.length;i+=3){
+   const chunk=await Promise.all(dates.slice(i,i+3).map(async date=>{
+    let entry=countDayCache.get(uid+"|"+date);
+    if(!entry||Date.now()-entry.savedAt>60000){
+      const response=date===day&&data?.date===date?data:(await get({date})).data;
+      if(response?.role!==data?.role||response.date!==date||
+         response.categories?.join("|")!==countKeys.join("|"))throw Error("incomplete response");
+      entry={savedAt:Date.now(),response};
+      countDayCache.set(uid+"|"+date,entry);
+    }
+    return entry.response;
+   }));
+   if(gen!==countLoadId||auth.currentUser?.uid!==uid)return;
+   rows.push(...chunk);
+   $("countDashboardStatus").textContent="件数を確認中（"+rows.length+"/"+dates.length+"日）。";
+  }
+  const summary=summarizeCountOnlyResponses(rows,data.teams,countKeys);
+  if(gen!==countLoadId||auth.currentUser?.uid!==uid)return;
+  renderCountOnlyDashboard(summary,dates);
+  $("countDashboardStatus").textContent=dates[0]+" 〜 "+dates.at(-1)+
+    " の集計完了（"+dates.length+"日分・件数のみ）";
+  $("countCsv").disabled=false;
+ }catch(error){
+  if(gen!==countLoadId)return;
+  clearCountOnlyDashboard();
+  $("countDashboardStatus").textContent="集計が完了していません。通信・権限を確認して更新してください。不完全な件数は表示しません。";
+  console.error("count-only dashboard verification failed",error?.code||"incomplete");
+ }
+}
+for(const mode of ["Day","Week","Month"])$("period"+mode).onclick=()=>{
+ countPeriod=mode.toLowerCase();
+ for(const m of ["Day","Week","Month"])
+   $("period"+m).setAttribute("aria-pressed",String(m===mode));
+ loadCountDashboard();
+};
+$("countCsv").onclick=()=>{
+ if(!countExportRows)return;
+ const {summary,days}=countExportRows;
+ const csv=(cells)=>cells.map(x=>{
+  const value=String(x);
+  const safe=/^[=+@\-\t\r]/.test(value)?"'"+value:value;
+  return '"'+safe.replace(/"/g,'""')+'"';
+ }).join(",");
+ const rows=[["区分","名前","件数"],...summary.groups.map(x=>["班",x.name,x.count]),
+  ...summary.people.map(x=>["担当者",x.name,x.count]),
+  ...Object.entries(summary.products).map(([name,value])=>["商材",name,value]),
+  ...summary.days.map(x=>["日付",x.date,x.count]),
+  ["合計","",summary.total]];
+ const csvText="\uFEFF"+rows.map(csv).join("\r\n");
+ const objectUrl=URL.createObjectURL(new Blob([csvText],{type:"text/csv;charset=utf-8"}));
+ const anchor=document.createElement("a");anchor.href=objectUrl;
+ anchor.download="nico-partner-counts-"+$("date").value+"-"+countPeriod+".csv";
+ document.body.append(anchor);anchor.click();anchor.remove();
+ URL.revokeObjectURL(objectUrl);
+ notice("件数のみのCSVを出力しました。売上・単価は含まれません。");
+};
+
 function activeTab(name){
- for(const x of ["Records","People","View"])$("tab"+x).setAttribute("aria-pressed",String(x===name));
+ for(const x of ["Dashboard","Records","People","View"])$("tab"+x).setAttribute("aria-pressed",String(x===name));
+ $("dashboardBox").hidden=name!=="Dashboard"||!data||data.role==="hub";
+ if(name!=="Dashboard")countLoadId++;
  $("recordsBox").hidden=name!=="Records"||data?.role==="hub";
  $("peopleBox").hidden=name!=="People"||!data||data.role==="hub"||data.role==="member";
  $("listBox").hidden=name!=="View"||!data||data.role==="hub";
  $("hubBox").hidden=data?.role!=="hub";
+ if(name==="Dashboard"&&!$("dashboardBox").hidden)loadCountDashboard();
 }
-for(const x of ["Records","People","View"])$("tab"+x).onclick=()=>activeTab(x);
+for(const x of ["Dashboard","Records","People","View"])$("tab"+x).onclick=()=>activeTab(x);
 function cell(row,value){const td=document.createElement("td");td.textContent=String(value);row.append(td)}
 function draw(){
  const hub=data?.role==="hub";
  $("appBox").hidden=false;$("loginBox").hidden=true;$("inviteAccept").hidden=true;
  $("who").textContent=hub?"自社オーナー・協力店報告":(data.companyName||"協力店")+"｜"+(data.role||"");
- $("tabRecords").hidden=hub;$("tabPeople").hidden=hub||data.role==="member";$("tabView").hidden=hub;
+ $("tabDashboard").hidden=hub;$("tabRecords").hidden=hub;$("tabPeople").hidden=hub||data.role==="member";$("tabView").hidden=hub;
  if(hub){
   activeTab("View");const table=document.createElement("table");
   const head=document.createElement("tr");for(const x of ["協力店","件数"])cell(head,x);table.append(head);
@@ -122,6 +334,15 @@ function draw(){
  for(const t of teams){const op=document.createElement("option");op.value=t.id;op.textContent=t.name;sel.append(op)}
  if(teams.some(t=>t.id===old))sel.value=old;}
  if(data.role==="leader"){$("managedTeam").value=data.teamId;$("managedTeam").disabled=true;$("inviteTeam").value=data.teamId;$("inviteTeam").disabled=true}
+ $("moveStaffBox").hidden=data.role!=="owner";
+ for(const [id,values,makeLabel] of [
+  ["moveStaffSelect",staff,p=>p.name+"（"+(teams.find(t=>t.id===p.teamId)?.name||"班なし")+"）"],
+  ["moveTeamSelect",teams,t=>t.name]
+ ]){const target=$(id),previous=target.value;target.replaceChildren();
+  for(const item of values){const option=document.createElement("option");option.value=item.id;
+   option.textContent=makeLabel(item);target.append(option)}
+  if(values.some(x=>x.id===previous))target.value=previous}
+
  const select=$("staffSelect"),prev=select.value;select.replaceChildren();
  for(const person of staff){const op=document.createElement("option");op.value=person.id;
  op.textContent=person.name+"（"+(teams.find(t=>t.id===person.teamId)?.name||"班なし")+"）";select.append(op)}
@@ -144,7 +365,8 @@ function draw(){
  $("setupHelp").textContent=needsSetup
    ?"まず「班・スタッフ管理」で班と担当者を登録してください。登録後は件数を保存できます。":"";
  activeTab(needsSetup?"People":$("tabPeople").getAttribute("aria-pressed")==="true"?"People":
- $("tabView").getAttribute("aria-pressed")==="true"?"View":"Records");
+ $("tabView").getAttribute("aria-pressed")==="true"?"View":
+ $("tabRecords").getAttribute("aria-pressed")==="true"?"Records":"Dashboard");
 }
 function renderSelected(){if(!data||data.role==="hub")return;const rec=data.records.find(x=>x.staffId===$("staffSelect").value);
  for(const x of grid.querySelectorAll("input"))x.value=String(rec?.counts?.[x.dataset.key]??0);
@@ -155,16 +377,18 @@ async function refresh(){if(!auth.currentUser||!auth.currentUser.emailVerified)r
  const current=++nonce;loading=true;$("save").disabled=true;try{
  const res=(await get({date:$("date").value})).data;if(current!==nonce)return;
  if(!res||!Array.isArray(res.categories)||res.categories.join("|")!==KEYS.join("|"))throw Error("schema");
- data=res;draw();notice("最新の件数を読み込みました。");
+ data=res;countDayCache.set(auth.currentUser.uid+"|"+res.date,{savedAt:Date.now(),response:res});draw();notice("最新の件数を読み込みました。");
  }catch(e){data=null;$("appBox").hidden=true;fail(e)}finally{if(current===nonce)loading=false}}
-$("date").onchange=refresh;$("refresh").onclick=refresh;
+$("date").onchange=refresh;$("refresh").onclick=()=>{countDayCache.clear();refresh()};
 async function action(task){if(loading)return;loading=true;try{
+ countDayCache.clear();
  const message=await task();await refresh();
  // A successful re-read must not overwrite the actual save confirmation.
  if(typeof message==="string"&&data)notice(message);
  }catch(e){fail(e)}finally{loading=false}}
 $("createTeam").onclick=()=>action(async()=>{await manage({action:"addTeam",name:$("teamName").value});$("teamName").value="";return "班を作成しました。";});
 $("addManaged").onclick=()=>action(async()=>{await manage({action:"addManaged",name:$("managedName").value,teamId:$("managedTeam").value});$("managedName").value="";return "担当者を登録しました。";});
+$("moveStaffAction").onclick=()=>action(async()=>{await manage({action:"moveStaff",staffId:$("moveStaffSelect").value,teamId:$("moveTeamSelect").value});return "所属班を変更しました。過去の実績件数は変更していません。";});
 $("makeInvite").onclick=()=>action(async()=>{
  const result=(await manage({action:"createInvite",email:$("inviteEmail").value,
   teamId:$("inviteTeam").value,role:$("inviteRole").value})).data;
@@ -201,7 +425,7 @@ $("join").onclick=async()=>{if(!inviteToken)return;await action(async()=>{
 })};
 $("logout").onclick=()=>signOut(auth);
 onAuthStateChanged(auth,u=>{
- ++nonce;data=null;$("appBox").hidden=true;$("loginBox").hidden=!!u;
+ ++nonce;++countLoadId;data=null;countDayCache.clear();clearCountOnlyDashboard();$("appBox").hidden=true;$("loginBox").hidden=!!u;
  $("inviteAccept").hidden=true;$("verify").hidden=!u||u.emailVerified;
  $("inviteUrl").value="";$("inviteOut").hidden=true;
  if(!u){notice("招待されたアカウント、または自社オーナーでログインしてください。");return}

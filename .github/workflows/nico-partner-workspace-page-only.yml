@@ -7,6 +7,7 @@ on:
       - 'tools/hosting/surgical-existing-partner-workspace.mjs'
       - 'tests/surgical-existing-partner-workspace.test.mjs'
       - 'tests/partner-money-free-workspace.test.cjs'
+      - 'tests/partner-count-dashboard.test.cjs'
       - '.github/workflows/nico-partner-workspace-page-only.yml'
   push:
     branches: [main]
@@ -15,6 +16,7 @@ on:
       - 'tools/hosting/surgical-existing-partner-workspace.mjs'
       - 'tests/surgical-existing-partner-workspace.test.mjs'
       - 'tests/partner-money-free-workspace.test.cjs'
+      - 'tests/partner-count-dashboard.test.cjs'
       - '.github/workflows/nico-partner-workspace-page-only.yml'
 permissions:
   contents: read
@@ -38,6 +40,7 @@ jobs:
           node --test tests/surgical-existing-partner-workspace.test.mjs
           node --test tests/partner-money-free-workspace.test.cjs
           node --test tests/partner-workspace.test.cjs
+          node --test tests/partner-count-dashboard.test.cjs
           node --test tests/partner-existing-ranking.test.cjs
           node --test tests/partner-quick-counts.test.cjs
           node <<'NODE'
@@ -65,17 +68,25 @@ jobs:
         with: {fetch-depth: 0}
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
-      - name: Verify existing live partner page matches audited old page byte-for-byte
+      - name: Confirm live workspace is either reviewed original or already updated
+        id: live_state
         shell: bash
         run: |
           set -euo pipefail
-          git show 6ea48488620e7df91f41ceb9e4885c4d356f5a79:partner-workspace.html > "$RUNNER_TEMP/approved-old-partner-workspace.html"
-          curl -fsSL --max-time 30 --retry 3 'https://nico-factory.web.app/partner-workspace.html?verified_source=20261031' > "$RUNNER_TEMP/live-old-partner-workspace.html"
-          cmp -s "$RUNNER_TEMP/live-old-partner-workspace.html" "$RUNNER_TEMP/approved-old-partner-workspace.html" || {
-            echo 'STOP LIVE_PARTNER_PAGE_NOT_BASELINE: no files, rules or user records modified'
+          git show fa514c47da90f349997df62054c755f4b2ca1678:partner-workspace.html > "$RUNNER_TEMP/approved-old-partner-workspace.html"
+          curl -fsSL --max-time 30 --retry 3 'https://nico-factory.web.app/partner-workspace.html?verified_source=20261031' > "$RUNNER_TEMP/live-workspace.html"
+          if cmp -s "$RUNNER_TEMP/live-workspace.html" partner-workspace.html; then
+            echo 'already_live=true' >> "$GITHUB_OUTPUT"
+            echo 'PASS reviewed workspace already live: no re-release'
+          elif cmp -s "$RUNNER_TEMP/live-workspace.html" "$RUNNER_TEMP/approved-old-partner-workspace.html"; then
+            echo 'already_live=false' >> "$GITHUB_OUTPUT"
+            echo 'PASS reviewed original live: one-page release allowed'
+          else
+            echo 'STOP LIVE_PARTNER_PAGE_NOT_REVIEWED: no files, rules or user records modified'
             exit 1
-          }
+          fi
       - name: Load existing Firebase Hosting-only identity (never display secrets)
+        if: ${{ steps.live_state.outputs.already_live != 'true' }}
         env:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
         shell: bash
@@ -87,24 +98,27 @@ jobs:
           chmod 600 "$RUNNER_TEMP/nico-partner-workspace-hosting-only.json"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-partner-workspace-hosting-only.json" >> "$GITHUB_ENV"
       - name: Install Firebase REST authentication library, not deploy tools
+        if: ${{ steps.live_state.outputs.already_live != 'true' }}
         run: npm install --prefix functions --ignore-scripts --package-lock=false
       - name: Dry-run checks all live file paths, hashes and unmodified Hosting config
+        if: ${{ steps.live_state.outputs.already_live != 'true' }}
         run: node tools/hosting/surgical-existing-partner-workspace.mjs --dry-run
       - name: Release ONLY partner-workspace.html, preserve other original 10 assets
+        if: ${{ steps.live_state.outputs.already_live != 'true' }}
         run: node tools/hosting/surgical-existing-partner-workspace.mjs --release
       - name: Verify exact published page and unchanged existing routes
         shell: bash
         run: |
           set -euo pipefail
           ready=false
-          for n in 1 2 3 4; do
+          for n in $(seq 1 12); do
             if curl -fsSL --max-time 30 "https://nico-factory.web.app/partner-workspace.html?verified_release=${GITHUB_SHA}-${n}" > "$RUNNER_TEMP/nico-workspace-live.html" &&
               cmp -s "$RUNNER_TEMP/nico-workspace-live.html" partner-workspace.html; then
                 ready=true;break
             fi
-            sleep 3
+            sleep 5
           done
-          test "$ready" = true
+          test "$ready" = true || { echo 'STOP CDN_PARITY_NOT_CONFIRMED'; exit 1; }
           for route in / /partner-invite.html /partner-counts.html; do
             code=$(curl -sSL -o /dev/null -w '%{http_code}' --max-time 30 "https://nico-factory.web.app$route")
             test "$code" = 200

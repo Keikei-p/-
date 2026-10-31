@@ -70,3 +70,11 @@ test("latest audited production login release can be read-only inspected before 
  assert.equal(r.originalCount,11);
  assert(x.seen.every(a=>a.method==="GET"));
 });
+
+test("latest verified invitation-only Hosting version allows read-only 11-file preflight",async()=>{
+ const x=live("sites/nico-factory/versions/b46f9f22bf75ed6e",true,false);
+ const result=await uploadSingleExistingWorkspace({assetBytes:fakeWorkspace,request:x.request,release:false,log:()=>{}});
+ assert.equal(result.originalCount,11);
+ assert.equal(result.released,false);
+ assert.ok(x.seen.every(a=>a.method==="GET"));
+});
