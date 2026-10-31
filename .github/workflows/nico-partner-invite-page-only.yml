@@ -63,17 +63,25 @@ jobs:
         with: {fetch-depth: 0}
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
-      - name: Confirm current invitation matches existing reviewed version
+      - name: Identify whether previously published invitation is already live
+        id: live_state
         shell: bash
         run: |
           set -euo pipefail
           git show 81181507282d8dd0af998894d24969012118f84b:partner-invite.html > "$RUNNER_TEMP/nico-old-invite.html"
           curl -fsSL --retry 3 --max-time 30 'https://nico-factory.web.app/partner-invite.html?source_check=20261031' > "$RUNNER_TEMP/nico-live-invite.html"
-          cmp -s "$RUNNER_TEMP/nico-old-invite.html" "$RUNNER_TEMP/nico-live-invite.html" || {
-             echo 'STOP UNKNOWN_INVITE_LIVE_STATE; site unchanged'
-             exit 1
-          }
+          if cmp -s "$RUNNER_TEMP/nico-live-invite.html" partner-invite.html; then
+            echo 'already_live=true' >> "$GITHUB_OUTPUT"
+            echo 'PASS: current invite matches reviewed new page; do not redeploy'
+          elif cmp -s "$RUNNER_TEMP/nico-live-invite.html" "$RUNNER_TEMP/nico-old-invite.html"; then
+            echo 'already_live=false' >> "$GITHUB_OUTPUT"
+            echo 'PASS: original invite confirmed; gated one-page release allowed'
+          else
+            echo 'STOP UNKNOWN_INVITE_LIVE_STATE; no write performed'
+            exit 1
+          fi
       - name: Read existing service identity, without printing credentials
+        if: ${{ steps.live_state.outputs.already_live != 'true' }}
         env:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
         shell: bash
@@ -85,22 +93,25 @@ jobs:
           chmod 600 "$RUNNER_TEMP/nico-invite-rest-identity.json"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-invite-rest-identity.json" >> "$GITHUB_ENV"
       - name: Install only existing Hosting REST authentication dependencies
+        if: ${{ steps.live_state.outputs.already_live != 'true' }}
         run: npm install --prefix functions --ignore-scripts --package-lock=false
       - name: Verify full live manifest and preserve 10 unchanged assets
+        if: ${{ steps.live_state.outputs.already_live != 'true' }}
         run: node tools/hosting/surgical-existing-partner-invite.mjs --dry-run
       - name: Publish one invitation page (no Firestore, Auth, Functions, Rules or LINE changes)
+        if: ${{ steps.live_state.outputs.already_live != 'true' }}
         run: node tools/hosting/surgical-existing-partner-invite.mjs --release
       - name: Compare exact new invitation and verify all original routes
         shell: bash
         run: |
           set -euo pipefail
           ready=false
-          for n in 1 2 3; do
+          for n in $(seq 1 12); do
             curl -fsSL --max-time 30 "https://nico-factory.web.app/partner-invite.html?post_release=${GITHUB_SHA}-${n}" > "$RUNNER_TEMP/nico-updated-invite.html"
             if cmp -s "$RUNNER_TEMP/nico-updated-invite.html" partner-invite.html; then ready=true;break;fi
-            sleep 3
+            sleep 5
           done
-          test "$ready" = true
+          test "$ready" = true || { echo "STOP PAGE_CDN_PARITY_NOT_CONFIRMED"; exit 1; }
           for route in / /partner-counts.html /partner-workspace.html; do
             code=$(curl -sSL -o /dev/null -w '%{http_code}' --max-time 30 "https://nico-factory.web.app$route")
             test "$code" = 200
