@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
-import {buildInternalRankOnly as rank} from "../src/internal-rank-only.mjs";
+import {buildInternalRankOnly as rank,validInternalRankMonthQuery} from "../src/internal-rank-only.mjs";
 const companyId="direct",month="2026-10";
 const make=(id,uid,name,totalCount,date="2026-10-01")=>({
  id,companyId,uid,memberNameSnapshot:name,date,totalCount,totalRevenue:totalCount*10000,
@@ -73,4 +73,23 @@ test("actual Worker route is OFF-by-default and validates signed caller before F
  assert.match(code,/firestoreMonthlyRecords\(env,policy\.companyId/);
  assert.match(code,/buildInternalRankOnly/);
  assert.doesNotMatch(code,/\b(?:updateDoc|setDoc|deleteDoc|firebase\s+deploy|wrangler\s+deploy|documents:commit)\b/);
+});
+
+test("production route accepts one valid calendar month and rejects duplicates or foreign scope",()=>{
+ const accepts=["2026-10","2024-02","2030-12"];
+ for(const m of accepts)assert.equal(validInternalRankMonthQuery(new URLSearchParams({month:m})),true,m);
+ const rejects=["2026-00","2026-13","2026-1","2026-100","2026-10-01","2026-10%26companyId%3Dforeign","2026-xx","abc",""];
+ for(const m of rejects)assert.equal(validInternalRankMonthQuery(new URLSearchParams({month:m})),false,m);
+ for(const q of ["month=2026-10&month=2026-09","month=2026-10&companyId=other",
+  "uid=other&month=2026-10","month=2026-10&readTime=fake","month=2026-10&"]) {
+   // URLSearchParams ignores the trailing empty ampersand: this is fine.
+   if(q.endsWith("&"))continue;
+   assert.equal(validInternalRankMonthQuery(new URLSearchParams(q)),false,q);
+ }
+ assert.equal(validInternalRankMonthQuery({month:"2026-10"}),false);
+ const server=readFileSync(new URL("../src/index.js",import.meta.url),"utf8");
+ const rankRoute=server.slice(server.indexOf('if(url.pathname==="/v1/internal-ranks")'),
+   server.indexOf('if(url.pathname==="/v1/partner-count-catalog")'));
+ assert.match(rankRoute,/validInternalRankMonthQuery\(url\.searchParams\)/);
+ assert.doesNotMatch(rankRoute,/\/\^\\\\d\{4\}/);
 });
