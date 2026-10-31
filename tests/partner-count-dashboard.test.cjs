@@ -219,3 +219,22 @@ test("Owner preview has a return link and cannot write any counts or change prod
  assert.match(page,/\$\("logout"\)\.onclick=\(\)=>previewMode\?window\.location\.assign\("\/"\)/);
  assert.doesNotMatch(source("previewDay"),/setDoc|updateDoc|deleteDoc|recordsCollectionQuery|totalRevenue/);
 });
+
+test("partner uses exactly canonical sales header and summary-card classes without financial client code",()=>{
+ const header=/\<header\>\s*\<div class="header-inner"\>[\s\S]*?class="title"[^>]*id="workspaceTitle"[\s\S]*?\<div class="subtitle"\>Sales Management System\<\/div\>/;
+ assert.match(page,header);
+ assert.match(original,/\<div class="header-inner"\>[\s\S]*?\<div class="title"\>営業実績管理\<\/div\>[\s\S]*?Sales Management System/);
+ for(const cls of ["dashboard-app-grid","dashboard-app-button","dashboard-app-icon","dashboard-app-title",
+  "dashboard-summary","summary-card","summary-label","summary-value","ranking-row--champion"]){
+  assert.ok(original.includes(cls),"canonical class missing: "+cls);
+  assert.ok(page.includes(cls),"partner class missing: "+cls);
+ }
+ assert.match(page,/id="countKpis" class="count-kpis dashboard-summary"/);
+ assert.match(page,/box\.className="count-kpi summary-card"/);
+ assert.match(page,/lab\.className="summary-label";val\.className="summary-value"/);
+ assert.match(page,/id="ownerPreviewBanner" hidden/);
+ assert.match(page,/id="tabRecords"/);
+ assert.match(page,/id="tabView"/);
+ assert.match(page,/id="tabMissing"/);
+ assert.doesNotMatch(page,/firebase-firestore\.js|getFirestore\(|\brevenuePerUnit\b|\btotalRevenue\b|\bunitPrice\b/);
+});
