@@ -73,7 +73,8 @@ td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 <button type="button" id="tabDashboard" aria-pressed="true">📊 実績・ランキング</button>
 <button type="button" id="tabRecords" aria-pressed="false">✏️ 実績を入力</button>
 <button type="button" id="tabPeople" aria-pressed="false">班・スタッフ管理</button>
-<button type="button" id="tabView" aria-pressed="false">📋 日別の入力履歴</button></div></section>
+<button type="button" id="tabView" aria-pressed="false">📋 日別の入力履歴</button>
+<button type="button" id="tabMissing" aria-pressed="false">⚠️ 報告漏れ</button></div></section>
 <section id="dashboardBox" hidden><div class="count-heading"><h2>件数ダッシュボード</h2><button type="button" class="secondary" id="countCsv">件数CSV</button></div>
 <p class="muted">会社・班・個人・商材の実績を比較できます。売上と単価は一切扱いません。</p>
 <div class="period-menu" aria-label="集計期間"><button id="periodDay" type="button" aria-pressed="true">日別</button><button id="periodWeek" type="button" aria-pressed="false">週別</button><button id="periodMonth" type="button" aria-pressed="false">月別</button></div>
@@ -127,6 +128,11 @@ td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 <div id="moveStaffBox" hidden><h3>スタッフの所属班を変更（代表者のみ）</h3><p class="muted">過去の登録件数は変更しません。過去実績の班集計は、元の保存時点の所属情報が確認できない場合は未分類で扱います。</p>
 <div class="row"><select id="moveStaffSelect" aria-label="移動するスタッフ"></select><select id="moveTeamSelect" aria-label="新しい所属班"></select><button type="button" id="moveStaffAction">所属班を変更</button></div></div></section>
 <section id="listBox" hidden><h2>今日の実績一覧</h2><div id="recordsList" class="scroll"></div></section>
+<section id="missingBox" hidden><h2>⚠️ 報告漏れ</h2>
+<p class="muted">選択した「〜月〜日」の未報告だけを表示します。0件でも登録済みなら報告済みです。
+稼働予定が未登録の担当者は、休みかどうか確認してください。</p>
+<p id="missingStatus" role="status" aria-live="polite"></p>
+<div id="missingRows" class="scroll"></div></section>
 <section id="hubBox" hidden><h2>🤝 協力店会社別の実績</h2>
  <div id="hubInvitePanel" class="company-panel">
   <h3>協力店会社・リーダー・メンバーの招待管理</h3>
@@ -152,6 +158,16 @@ td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 <div id="hubCompanyDetail" class="company-panel" hidden><h3>協力店ごとの商材実績</h3>
 <label for="hubCompanySelect">会社を選ぶ</label><select id="hubCompanySelect"></select>
 <div id="hubCompanyProducts" class="scroll"></div></div>
+<div id="hubTeamBreakdown" class="company-panel">
+ <h3>🏢 協力店の班別・商材別件数</h3>
+ <p class="muted">協力店会社を選んで読み込みます。未報告の班は0件と表示しません。
+ 過去の所属班が記録されていない実績は「班未確認」に分類します。売上・単価・独自商材は取得しません。</p>
+ <label for="hubTeamCompanySelect">協力店会社</label>
+ <select id="hubTeamCompanySelect"></select>
+ <button id="hubTeamCountLoad" type="button" class="secondary">この会社の班別件数を確認</button>
+ <p id="hubTeamCountStatus" class="muted" role="status"></p>
+ <div id="hubTeamCountRows" class="scroll"></div>
+</div>
 <p class="muted">新しいスタッフ別入力の集計です。旧暫定会社一括報告と合算せず、重複を防ぎます。</p></section>
 </main>
 <script type="module">
@@ -180,7 +196,7 @@ const dateParts=Object.fromEntries(new Intl.DateTimeFormat("en-US",
 {timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"})
 .formatToParts(new Date()).map(p=>[p.type,p.value]));
 $("date").value=[dateParts.year,dateParts.month,dateParts.day].join("-");
-let data=null,loading=false,nonce=0;
+let data=null,loading=false,nonce=0,activeWorkspaceTab="Dashboard";
 let countPeriod="day",countLoadId=0,countExportRows=null;
 const countDayCache=new Map(),countKeys=KEYS.slice();
 const notice=(s,bad=false)=>{$("notice").textContent=s;$("notice").className="notice"+(bad?" error":"")};
@@ -564,17 +580,48 @@ function renderHubInvitePanel(){
  }
  $("hubMakeInvite").disabled=!ready||!teamSelect.value;
 }
+function renderMissingReportLog(){
+ const rows=[],date=$("date").value;
+ if(!data){$("missingStatus").textContent="件数情報を確認できません。";$("missingRows").replaceChildren();return}
+ if(data.role==="hub"){
+  if(!Array.isArray(data.registeredCompanies)||!Array.isArray(data.partners)){
+   $("missingStatus").textContent="協力店の報告を確認できません。未報告ゼロとは判断しないでください。";
+   $("missingRows").replaceChildren();return;
+  }
+  const submitted=new Set(data.partners.map(p=>p.partnerCompanyId));
+  for(const company of data.registeredCompanies)
+   if(company.active===true&&!submitted.has(company.partnerCompanyId))
+    rows.push([date,company.name,"協力店会社 未報告"]);
+ }else if(Array.isArray(data.staff)&&Array.isArray(data.records)&&Array.isArray(data.teams)){
+  const reported=new Set(data.records.map(r=>r.staffId));
+  for(const person of data.staff){
+   if(person.active!==true||reported.has(person.id))continue;
+   const team=data.teams.find(t=>t.id===person.teamId);
+   rows.push([date,(team?.name||"所属班未確認")+" / "+person.name,"未報告（稼働予定要確認）"]);
+  }
+ }else{
+  $("missingStatus").textContent="入力状況を確認できません。未報告ゼロとは判断しないでください。";
+  $("missingRows").replaceChildren();return;
+ }
+ $("missingStatus").textContent=rows.length?"未報告 "+rows.length+"件":"この日の未報告は確認されませんでした。";
+ $("missingRows").replaceChildren(countTable(["日付","会社／班・担当","状況"],rows));
+}
 function activeTab(name){
- for(const x of ["Dashboard","Records","People","View"])$("tab"+x).setAttribute("aria-pressed",String(x===name));
+ if(data?.role==="hub"&&name!=="Missing")name="View";
+ activeWorkspaceTab=name;
+ for(const x of ["Dashboard","Records","People","View","Missing"])
+  $("tab"+x).setAttribute("aria-pressed",String(x===name));
  $("dashboardBox").hidden=name!=="Dashboard"||!data||data.role==="hub";
  if(name!=="Dashboard")countLoadId++;
  $("recordsBox").hidden=name!=="Records"||data?.role==="hub";
  $("peopleBox").hidden=name!=="People"||!data||data.role==="hub"||data.role==="member";
  $("listBox").hidden=name!=="View"||!data||data.role==="hub";
- $("hubBox").hidden=data?.role!=="hub";
+ $("missingBox").hidden=name!=="Missing"||!data;
+ $("hubBox").hidden=data?.role!=="hub"||name==="Missing";
+ if(name==="Missing"&&!$("missingBox").hidden)renderMissingReportLog();
  if(name==="Dashboard"&&!$("dashboardBox").hidden)loadCountDashboard();
 }
-for(const x of ["Dashboard","Records","People","View"])$("tab"+x).onclick=()=>activeTab(x);
+for(const x of ["Dashboard","Records","People","View","Missing"])$("tab"+x).onclick=()=>activeTab(x);
 function cell(row,value){const td=document.createElement("td");td.textContent=String(value);row.append(td)}
 function draw(){
  const hub=data?.role==="hub";
@@ -583,7 +630,7 @@ function draw(){
  renderCompanyOverview();
  $("tabDashboard").hidden=hub;$("tabRecords").hidden=hub;$("tabPeople").hidden=hub||data.role==="member";$("tabView").hidden=hub;
  if(hub){
-  activeTab("View");const table=document.createElement("table");
+  activeTab(activeWorkspaceTab==="Missing"?"Missing":"View");const table=document.createElement("table");
   const head=document.createElement("tr");for(const x of ["協力店","件数"])cell(head,x);table.append(head);
   for(const p of data.partners){const row=document.createElement("tr");cell(row,p.name);cell(row,p.totalCount+" 件");table.append(row)}
   $("hubList").replaceChildren(table);
@@ -595,6 +642,17 @@ function draw(){
   if(data.partners.some(p=>p.partnerCompanyId===prior))select.value=prior;
   renderHubCompanyDetail();
   renderHubInvitePanel();
+  const companySelect=$("hubTeamCompanySelect"),previous=companySelect.value;
+  companySelect.replaceChildren();
+  for(const company of data.registeredCompanies||[]){
+   if(company.active!==true)continue;
+   const option=document.createElement("option");
+   option.value=company.partnerCompanyId;option.textContent=company.name;
+   companySelect.append(option);
+  }
+  if((data.registeredCompanies||[]).some(x=>x.active===true&&x.partnerCompanyId===previous))
+   companySelect.value=previous;
+  $("hubTeamCountLoad").disabled=!companySelect.value;
   return;
  }
  $("makeTeam").hidden=data.role!=="owner";
@@ -654,7 +712,8 @@ function draw(){
  $("setupHelp").hidden=!needsSetup;
  $("setupHelp").textContent=needsSetup
    ?"まず「班・スタッフ管理」で班と担当者を登録してください。登録後は件数を保存できます。":"";
- activeTab(needsSetup?"People":$("tabPeople").getAttribute("aria-pressed")==="true"?"People":
+ activeTab(needsSetup?"People":$("tabMissing").getAttribute("aria-pressed")==="true"?"Missing":
+ $("tabPeople").getAttribute("aria-pressed")==="true"?"People":
  $("tabView").getAttribute("aria-pressed")==="true"?"View":
  $("tabRecords").getAttribute("aria-pressed")==="true"?"Records":"Dashboard");
 }
@@ -672,6 +731,53 @@ function renderSelected(){if(!data||data.role==="hub")return;const rec=data.reco
  for(const x of grid.querySelectorAll("input"))x.value=String(rec?.counts?.[x.dataset.key]??0);
  $("revision").textContent=rec?"第"+rec.version+"版・訂正可能":"未登録（0件報告も保存可能）";
  $("save").disabled=!$("staffSelect").value;updateTotal()}
+$("hubTeamCompanySelect").onchange=()=>{$("hubTeamCountStatus").textContent="会社が変更されました。班別件数を再取得してください。";$("hubTeamCountRows").replaceChildren()};
+$("hubTeamCountLoad").onclick=async()=>{
+ if(!data||data.role!=="hub")return;
+ const selected=$("hubTeamCompanySelect").value,date=$("date").value;
+ if(!selected)return;
+ $("hubTeamCountStatus").textContent="班別件数を確認しています…";
+ $("hubTeamCountRows").replaceChildren();
+ try{
+  const res=(await get({date,partnerCompanyId:selected})).data;
+  const detail=res?.partnerTeamDetails;
+  if(res?.role!=="hub"||res.date!==date||detail?.partnerCompanyId!==selected||
+     detail?.scope!=="shared_counts_only"||!Array.isArray(detail.teams))
+   throw Error("unverified_team_counts");
+  if($("date").value!==date||$("hubTeamCompanySelect").value!==selected)return;
+  const holder=$("hubTeamCountRows");
+  let sums=0;
+  for(const team of detail.teams){
+   if(!Number.isSafeInteger(team.totalCount)||team.totalCount<0||
+      !Number.isSafeInteger(team.reportedStaffCount)||team.reportedStaffCount<0||
+      !team.counts||KEYS.some(k=>!Number.isSafeInteger(team.counts[k])||team.counts[k]<0))
+    throw Error("bad_team_count");
+   if(KEYS.reduce((n,k)=>n+team.counts[k],0)!==team.totalCount)
+    throw Error("team_total_mismatch");
+   sums+=team.totalCount;
+   const panel=document.createElement("div");panel.className="company-panel";
+   const label=document.createElement("h3");
+   label.textContent=team.name+"｜"+(team.reportedStaffCount?
+     team.totalCount+"件（報告 "+team.reportedStaffCount+"人）":"未報告");
+   panel.append(label);
+   if(team.reportedStaffCount)
+    panel.append(countTable(["商材","件数"],KEYS.map(k=>[k,team.counts[k]+"件"])));
+   holder.append(panel);
+  }
+  if(sums!==detail.verifiedSharedCount||detail.unreconciledWithCompanyReport)
+   throw Error("report_total_unverified");
+  if(detail.unverifiedTeamCount>0){
+   const warning=document.createElement("p");warning.className="notice error";
+   warning.textContent="⚠️ 班未確認の実績が"+detail.unverifiedTeamCount+"件。別班へ推測配分していません。";
+   holder.append(warning);
+  }
+  $("hubTeamCountStatus").textContent=date+"｜"+detail.companyName+
+   "｜"+detail.teams.length+"班の件数を確認しました。";
+ }catch(e){
+  $("hubTeamCountRows").replaceChildren();
+  $("hubTeamCountStatus").textContent="班別件数の照合に失敗しました。途中集計は表示していません。";
+ }
+};
 $("hubCompanySelect").onchange=renderHubCompanyDetail;
 $("hubInviteCompanySelect").onchange=()=>{$("hubInviteOut").hidden=true;$("hubInviteUrl").value="";renderHubInvitePanel()};
 $("hubInviteTeamSelect").onchange=()=>{$("hubInviteOut").hidden=true;$("hubInviteUrl").value=""};
