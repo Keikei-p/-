@@ -612,3 +612,5 @@ Rulesの本番デプロイ: 未実施
 **本番公開**: 新しい限定GitHub Actionsをmainへのレビュー済みマージ時だけ発動。Firebase Hostingで `index.html` 1ファイルのみを変更し、他の全ファイル・Hosting設定を現行ライブ版からSHA256照合で継承する。事前に独立した `legacy-finance-entry-guard.mjs` が本番で取得できることを確認する。**Firestore Rules, Cloud Functions, Firebase Auth, sales records, users, team, prices, revenue, historical records, backups はいっさい書き換えない**。本番ページが修正コードを配信したことを確かめる。実アカウントのログイン試験はこのリリースだけでは代行不可であり、公開成功と実ログイン成功を区別する。
 
 **署名・審査の正確性**: 本人の手書き・電子署名は取得していない。記載は会話上の緊急復旧指示と、GitHub管理者の審査ラベルを組み合わせた変更記録であり、本人署名を偽装しない。データの破壊的変更は承認対象外。
+
+- **2026-10-31 管理者審査**: GitHub管理者接続からPR #180に `sales-production-reviewed` ラベルを付けた。ラベル付与前の旧Actions eventでの保護ゲートFAILは未審査ではなく古いevent snapshotが原因。最新コミットでゲートを再実行し、合格しなければ本番には進めない。
