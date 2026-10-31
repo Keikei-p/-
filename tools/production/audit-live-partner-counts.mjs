@@ -98,6 +98,7 @@ export async function inspectLive({db,credential,clock=Date.now,request=fetch}){
  if(snap.size>200)abort("COMPANY_SCAN_INCOMPLETE");
  let internal=0,partners=0,accounts=0,staffReports=0,quickReports=0,staffEntries=0,verifiedCounts=0,unmatchedFlags=0;
  let activeInternalAccountsChecked=0,nonLoginManagedStaff=0,internalOwnersVerified=0;
+ let legacyMembersWithoutUid=0,legacyMembersWithoutCompanyId=0;
  const hubs=new Map();
  for(const companyDoc of snap.docs){
   const company=companyDoc.data();
@@ -141,8 +142,13 @@ export async function inspectLive({db,credential,clock=Date.now,request=fetch}){
      if(!isInternalIdentitySafe(company,m,m))unmatchedFlags++;
      continue;
     }
-    if(m.uid!==doc.id||m.companyId!==companyDoc.id)
-     abort("INTERNAL_MEMBER_IDENTITY_INCONSISTENT");
+    // Legacy membership documents can omit uid/companyId entirely. Existing
+    // isCompanyMember() checks the PATH and users.companyId, not these fields.
+    // A conflicting *present* marker is still a hard stop: never repair it.
+    if(m.uid==null)legacyMembersWithoutUid++;
+    else if(m.uid!==doc.id)abort("INTERNAL_MEMBER_IDENTITY_INCONSISTENT");
+    if(m.companyId==null)legacyMembersWithoutCompanyId++;
+    else if(m.companyId!==companyDoc.id)abort("INTERNAL_MEMBER_COMPANY_CONFLICT");
     const userSnap=await db.collection("users").doc(doc.id)
      .select("uid","companyId","accessKind","memberType",
       "companyRole","active","canViewRevenue","canViewUnitPrice").get();
@@ -199,6 +205,7 @@ export async function inspectLive({db,credential,clock=Date.now,request=fetch}){
  return {project:PROJECT,mode:"READ_ONLY",dataWrites:0,authSignIns:0,
   companyCount:internal,partnerCompanyCount:partners,partnerActiveMemberCount:accounts,
   activeInternalAccountsChecked,nonLoginManagedStaff,internalOwnersVerified,
+  legacyMembersWithoutUid,legacyMembersWithoutCompanyId,
   staffReportCount:staffReports,quickReportCount:quickReports,verifiedStaffEntryCount:staffEntries,
   effectiveThreeDayPartnerCount:verifiedCounts,...security,
   signedInPartnerE2EVerified:false,
