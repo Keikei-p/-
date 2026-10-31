@@ -58,6 +58,31 @@ const cloneRaw=(sn,expected)=>{
  return sn;
 };
 /**
+ * Existing NICO sales result keys sometimes contain a cashback tier suffix,
+ * e.g. "nuro__cb_1" while the stored line's canonical productId is "nuro".
+ * Never trust or publish the legacy map key as a product ID or money-free
+ * label. Rebuild a SMALL count-only array from saved productId/count only.
+ * Missing canonical IDs stop for manual review: do not guess old products.
+ */
+function normalizeForProjection(raw){
+ if(!raw.results||typeof raw.results!=="object")deny();
+ const source=Array.isArray(raw.results)
+  ?raw.results:Object.values(raw.results);
+ if(source.length>200)deny();
+ const resultRows=source.map(line=>{
+  if(!line||typeof line!=="object"||!asId(line.productId))deny();
+  return {productId:line.productId,count:line.count,
+   productName:line.productName??line.productNameSnapshot??""};
+ });
+ // Money fields are not copied even into this in-memory projection input.
+ return {id:raw.id,companyId:raw.companyId,uid:raw.uid,
+  date:raw.date,teamId:raw.teamId,
+  memberNameSnapshot:raw.memberNameSnapshot,
+  teamNameSnapshot:raw.teamNameSnapshot,workLocation:raw.workLocation,
+  totalCount:raw.totalCount,reportStatus:raw.reportStatus,
+  results:resultRows};
+}
+/**
  * One bounded, server-authorized daily slice.
  *
  * The API is required to enforce Firestore query's company/date filter,
@@ -84,8 +109,9 @@ export function projectLegacyCountDay({
   const raw=cloneRaw(item,companyId);
   if(raw.date!==day||seenRecord.has(raw.id))deny();
   seenRecord.add(raw.id);
-  const header=projectPublicRecordHeader(raw);
-  const projected=projectPublicRecordLines(raw);
+  const normalized=normalizeForProjection(raw);
+  const header=projectPublicRecordHeader(normalized);
+  const projected=projectPublicRecordLines(normalized);
   headers.push(header);lines.push(...projected);
  }
  assertPublicSchema("publicProducts",catalog);
