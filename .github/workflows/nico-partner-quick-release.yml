@@ -62,7 +62,7 @@ jobs:
           node --check /tmp/partner-quick-inline.mjs
   release:
     needs: validate
-    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.validate.result == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && needs.validate.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
