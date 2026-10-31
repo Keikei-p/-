@@ -54,10 +54,15 @@ export function financeLockedIdentity(company,users,member){
    abort("PARTNER_IDENTITY_FINANCE_FLAGS");
  }
 }
-export function isInternalIdentitySafe(company,member){
- if(company?.companyKind==="partner")return true;
- if(!["internal","direct",undefined].includes(company?.companyKind))return false;
- return member?.accessKind!=="partner"&&member?.memberType!=="cooperator";
+// Match the positive internal classification allowlist in firestore.rules.
+// Reject unknown markers even when accessKind != "partner".
+const INTERNAL_ACCESS=new Set([undefined,null,"internal"]);
+const INTERNAL_TYPES=new Set([undefined,null,"internal","direct","member","managed"]);
+export function isInternalIdentitySafe(company,member,user=member){
+ if(!company||!member||!user)return false;
+ return INTERNAL_ACCESS.has(company.companyKind)&&
+  INTERNAL_ACCESS.has(member.accessKind)&&INTERNAL_ACCESS.has(user.accessKind)&&
+  INTERNAL_TYPES.has(member.memberType)&&INTERNAL_TYPES.has(user.memberType);
 }
 async function retrieveRules(credential,request=fetch){
  const token=(await credential.getAccessToken()).access_token;
@@ -92,6 +97,7 @@ export async function inspectLive({db,credential,clock=Date.now,request=fetch}){
  const snap=await db.collection("companies").select("companyKind","ownerUid","hubCompanyId","active").limit(201).get();
  if(snap.size>200)abort("COMPANY_SCAN_INCOMPLETE");
  let internal=0,partners=0,accounts=0,staffReports=0,quickReports=0,staffEntries=0,verifiedCounts=0,unmatchedFlags=0;
+ let activeInternalAccountsChecked=0,nonLoginManagedStaff=0,internalOwnersVerified=0;
  const hubs=new Map();
  for(const companyDoc of snap.docs){
   const company=companyDoc.data();
@@ -121,12 +127,39 @@ export async function inspectLive({db,credential,clock=Date.now,request=fetch}){
   }else{
    internal++;
    const members=await db.collection("companies").doc(companyDoc.id)
-    .collection("members").select("accessKind","memberType","active").limit(201).get();
+    .collection("members").select("uid","companyId","accessKind","memberType",
+     "companyRole","hasAccount","active").limit(201).get();
    if(members.size>200)abort("INTERNAL_MEMBERS_INCOMPLETE");
+   if(!isInternalIdentitySafe(company,{},{}))abort("INTERNAL_COMPANY_KIND_UNSUPPORTED");
+   let foundOwner=false;
    for(const doc of members.docs){
-    if(doc.data().active===false)continue;
-    if(!isInternalIdentitySafe(company,doc.data()))unmatchedFlags++;
+    const m=doc.data();
+    if(m.active===false)continue;
+    // Managed staff with no account cannot authenticate as this document.
+    if(m.hasAccount===false&&m.memberType==="managed"){
+     nonLoginManagedStaff++;
+     if(!isInternalIdentitySafe(company,m,m))unmatchedFlags++;
+     continue;
+    }
+    if(m.uid!==doc.id||m.companyId!==companyDoc.id)
+     abort("INTERNAL_MEMBER_IDENTITY_INCONSISTENT");
+    const userSnap=await db.collection("users").doc(doc.id)
+     .select("uid","companyId","accessKind","memberType",
+      "companyRole","active","canViewRevenue","canViewUnitPrice").get();
+    if(!userSnap.exists)abort("INTERNAL_AUTH_PROFILE_MISSING");
+    const u=userSnap.data();
+    if(u.uid!==doc.id||u.companyId!==companyDoc.id||u.active===false)
+     abort("INTERNAL_AUTH_PROFILE_MISMATCH");
+    activeInternalAccountsChecked++;
+    if(!isInternalIdentitySafe(company,m,u))unmatchedFlags++;
+    if(doc.id===company.ownerUid){
+     foundOwner=true;
+     if(u.companyRole!=="owner"||m.companyRole!=="owner")
+      abort("INTERNAL_OWNER_ROLE_MISMATCH");
+     internalOwnersVerified++;
+    }
    }
+   if(!foundOwner)abort("INTERNAL_OWNER_NOT_VERIFIED");
   }
  }
  if(unmatchedFlags>0)abort("EXISTING_INTERNAL_MEMBER_WOULD_BE_DENIED");
@@ -165,11 +198,15 @@ export async function inspectLive({db,credential,clock=Date.now,request=fetch}){
  }
  return {project:PROJECT,mode:"READ_ONLY",dataWrites:0,authSignIns:0,
   companyCount:internal,partnerCompanyCount:partners,partnerActiveMemberCount:accounts,
+  activeInternalAccountsChecked,nonLoginManagedStaff,internalOwnersVerified,
   staffReportCount:staffReports,quickReportCount:quickReports,verifiedStaffEntryCount:staffEntries,
   effectiveThreeDayPartnerCount:verifiedCounts,...security,
   signedInPartnerE2EVerified:false,
   countAggregationVerified:staffReports+quickReports>0,
-  safeToDeployExistingRules:security.deployedRulesMatchReviewedRepo&&unmatchedFlags===0};
+  internalOwnerAndStaffCompatibilityVerified:unmatchedFlags===0,
+  // Role-marker validation alone cannot authorize a finance cutover while
+  // the live browser still reads/writes money-bearing Firestore collections.
+  safeToDeployExistingRules:false};
 }
 async function main(){
  if(process.env.NICO_PARTNER_AUDIT_MODE!=="READ_ONLY"||
