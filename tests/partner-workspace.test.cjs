@@ -55,7 +55,7 @@ function setup(){
  db.seed("users/p",partnerUser("p","leader")); // partner owner has leader role but owner companyRole
  db.store.get("users/p").companyRole="owner";
  db.seed("companies/partner/members/p",db.store.get("users/p"));
- db.seed("partnerRelations/partner",{partnerCompanyId:"partner",hubCompanyId:"hub",active:false,countSharingApproved:false});
+ db.seed("partnerRelations/partner",{partnerCompanyId:"partner",hubCompanyId:"hub",active:true,countSharingApproved:true});
  db.seed("products/money",{companyId:"hub",unitPrice:98765,totalRevenue:12345});
  db.seed("records/old",{companyId:"hub",totalRevenue:808080,results:{a:{count:5,revenuePerUnit:100}}});
  const getAuth=()=>({
@@ -392,4 +392,41 @@ test("editing legacy rows without original attribution does not invent today's t
  assert.equal(saved.totalCount,2);
  const view=await api.view(req("p",{date}));
  assert.equal(view.records[0].teamIdSnapshot,null);
+});
+
+test("invited inactive partner cannot create teams, invite members, read or save counts",async()=>{
+ const {db,api,req,zero}=setup();
+ const relation="partnerRelations/partner";
+ db.seed(relation,{partnerCompanyId:"partner",hubCompanyId:"hub",
+   active:false,countSharingApproved:false});
+ const originalCount=db.store.size;
+ await assert.rejects(api.manage(req("p",{action:"addTeam",name:"非承認班"})),
+   e=>e.code==="permission-denied");
+ await assert.rejects(api.view(req("p",{date:"2026-10-31"})),
+   e=>e.code==="permission-denied");
+ await assert.rejects(api.submit(req("p",{date:"2026-10-31",staffId:"any",
+   counts:zero(),expectedVersion:0})),e=>e.code==="permission-denied");
+ assert.equal(db.store.size,originalCount);
+ assert.equal([...db.store.keys()].some(key=>key.includes("partnerWorkEntries")),false);
+});
+test("approval revocation removes saved reports from hub view without modifying original records",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ const team=(await api.manage(req("p",{action:"addTeam",name:"承認班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"登録者",teamId:team}))).staffId;
+ await api.submit(req("p",{date,staffId:staff,counts:{...zero(),NURO:4},expectedVersion:0}));
+ const key="companies/hub/partnerWorkCountDays/"+date+"/reports/partner";
+ const old=clone(db.store.get(key));
+ assert.equal((await api.view(req("h",{date}))).partners[0].totalCount,4);
+ for(const state of [
+   {active:false,countSharingApproved:true},
+   {active:true,countSharingApproved:false},
+   {active:false,countSharingApproved:false}
+ ]){
+   db.seed("partnerRelations/partner",{partnerCompanyId:"partner",hubCompanyId:"hub",...state});
+   assert.deepEqual((await api.view(req("h",{date}))).partners,[]);
+   await assert.rejects(api.submit(req("p",{date,staffId:staff,
+       counts:zero(),expectedVersion:1})),e=>e.code==="permission-denied");
+ }
+ assert.deepEqual(db.store.get(key),old);
+ assert.equal(db.store.get("records/old").totalRevenue,808080);
 });

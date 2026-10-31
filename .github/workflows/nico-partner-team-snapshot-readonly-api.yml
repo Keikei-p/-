@@ -46,7 +46,7 @@ jobs:
           # private-count extension. Never make a partial single-function release.
           source_sha="$(git hash-object functions-partner-workspace/service.cjs)"
           case "$source_sha" in
-            42b44a0a1fb25e174d9de942e0d79ca191a0ce32|d17ceb37c9d7acbdd41f36bab2de3c8f21fbd85d|eb7f2305da94916c0a999ad81b6435eabae7297a|8ce41f3f9c21823520d6b3be1c5d2b104a93ab58) ;;
+            42b44a0a1fb25e174d9de942e0d79ca191a0ce32|d17ceb37c9d7acbdd41f36bab2de3c8f21fbd85d|eb7f2305da94916c0a999ad81b6435eabae7297a|8ce41f3f9c21823520d6b3be1c5d2b104a93ab58|99a26ad2c57e2f4ba483722a1545bf64fa69df7f|99a26ad2c57e2f4ba483722a1545bf64fa69df7f) ;;
             *) echo "STOP_UNREVIEWED_WORKSPACE_CODE"; exit 1 ;;
           esac
           node <<'NODE'

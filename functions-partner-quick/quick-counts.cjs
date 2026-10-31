@@ -68,7 +68,9 @@ function makeQuickCounts({db,getAuth,FieldValue,HttpsError,enabled,now=()=>Date.
       !ID.test(company.hubCompanyId||"")||company.hubCompanyId===user.companyId)fail(HttpsError);
    const relationSnap=await tx.get(db.collection("partnerRelations").doc(user.companyId));
    const rel=relationSnap.data()||{};
-   if(!relationSnap.exists||rel.partnerCompanyId!==user.companyId||rel.hubCompanyId!==company.hubCompanyId)fail(HttpsError);
+   if(!relationSnap.exists||rel.partnerCompanyId!==user.companyId||
+       rel.hubCompanyId!==company.hubCompanyId||rel.active!==true||
+       rel.countSharingApproved!==true)fail(HttpsError);
    const hubSnap=await tx.get(db.collection("companies").doc(company.hubCompanyId));
    const hub=hubSnap.data()||{};
    if(!hubSnap.exists||hub.active!==true||hub.ownerUid==null||
@@ -138,6 +140,13 @@ function makeQuickCounts({db,getAuth,FieldValue,HttpsError,enabled,now=()=>Date.
       BLOCKED_LABEL.test(d.partnerCompanyName))fail(HttpsError);
    const checked=validateCounts(d.counts,HttpsError);
    if(checked.total!==d.totalCount)fail(HttpsError);
+   // A revoked or never-activated partner's old count report must not be
+   // exposed to the hub simply because the stored row still exists.
+   const relSnap=await db.collection("partnerRelations").doc(snap.id).get();
+   const rel=relSnap.data()||{};
+   if(!relSnap.exists||rel.hubCompanyId!==scope.hubId||
+      rel.partnerCompanyId!==snap.id||rel.active!==true||
+      rel.countSharingApproved!==true)continue;
    rows.push({partnerCompanyId:snap.id,name:d.partnerCompanyName,
     counts:checked.counts,totalCount:checked.total,version:d.version});
   }
