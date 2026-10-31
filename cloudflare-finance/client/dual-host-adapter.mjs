@@ -73,17 +73,22 @@ export async function submitCountIntent({
   return result;
 }
 export async function getSafeFinancialView({
-  gatewayUrl,origin,user,fetcher=fetch,explicitCutover=false
+  gatewayUrl,origin,user,month,fetcher=fetch,explicitCutover=false
 }){
   if(!explicitCutover)throw Error("safe_gateway_not_released");
   if(!acceptableOrigin(origin)||!allowedGateway(gatewayUrl))throw Error("invalid_host");
+  if(typeof month!=="string"||!/^(?:19|20|21)\d{2}-(0[1-9]|1[0-2])$/.test(month))
+    throw Error("invalid_finance_month");
   if(!user||typeof user.getIdToken!=="function")throw Error("not_authenticated");
   const token=await user.getIdToken(true);
-  const response=await fetcher(new URL("/v1/financial-view",gatewayUrl).toString(),{
+  const response=await fetcher(new URL("/v1/financial-view?month="+encodeURIComponent(month),gatewayUrl).toString(),{
     method:"GET",headers:{"Authorization":"Bearer "+token},cache:"no-store"
   });
   if(!response.ok)throw Error("secure_read_failed_"+response.status);
   const data=await response.json();
-  if(!Array.isArray(data.records)||!Array.isArray(data.products))throw Error("invalid_secure_view");
+  if(!Array.isArray(data.records)||!Array.isArray(data.products)||
+     data.month!==month||
+     data.records.some(r=>!r||typeof r.date!=="string"||!r.date.startsWith(month+"-")))
+    throw Error("invalid_secure_month_view");
   return data;
 }
