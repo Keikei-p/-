@@ -950,3 +950,41 @@ test("sharing approval defaults OFF until verified finance isolation; revocation
  assert.equal(live.store.get("partnerRelations/partner").countSharingApproved,false);
  assert.equal(live.store.get("products/money").unitPrice,98765);
 });
+
+test("approved invited partner can immediately enter and correct shared counts with finance unchanged",async()=>{
+ const {db,api,req,zero}=setup({sharingApprovalEnabled:true});
+ const rel=db.store.get("partnerRelations/partner");
+ rel.active=false;rel.countSharingApproved=false;
+ const financeBefore=clone(db.store.get("records/old"));
+ const productBefore=clone(db.store.get("products/money"));
+ const originalOwner=clone(db.store.get("users/p"));
+ // Initial acceptance alone cannot start count registration; Owner must approve.
+ await assert.rejects(api.view(req("p",{date:"2026-10-31"})),
+  e=>e.code==="permission-denied"&&e.details?.reason==="partner-approval-required");
+ await api.manage(req("h",{action:"hubSetSharingApproval",partnerCompanyId:"partner",
+  companyName:"協力店",approved:true,expectedActive:false}));
+ const team=(await api.manage(req("p",{action:"addTeam",name:"登録テスト班"}))).teamId;
+ const invitation=await api.manage(req("p",{action:"createInvite",
+  email:"l@example.com",role:"leader",teamId:team}));
+ const accepted=await api.accept(req("l",{token:invitation.token,name:"登録テストリーダー"}));
+ assert.equal(accepted.joined,true);
+ const saved=await api.submit(req("l",{date:"2026-10-31",staffId:"l",
+  counts:{...zero(),NURO:2,SBMNP:1},expectedVersion:0}));
+ assert.equal(saved.version,1);
+ const first=await api.view(req("l",{date:"2026-10-31"}));
+ assert.equal(first.records.find(r=>r.staffId==="l").totalCount,3);
+ const corrected=await api.submit(req("l",{date:"2026-10-31",staffId:"l",
+  counts:{...zero(),NURO:1,SBMNP:1},expectedVersion:1}));
+ assert.equal(corrected.version,2);
+ const latest=await api.view(req("l",{date:"2026-10-31"}));
+ assert.equal(latest.records.find(r=>r.staffId==="l").totalCount,2);
+ const hub=await api.view(req("h",{date:"2026-10-31"}));
+ assert.equal(hub.partners.find(r=>r.partnerCompanyId==="partner").totalCount,2);
+ assert.deepEqual(db.store.get("records/old"),financeBefore);
+ assert.deepEqual(db.store.get("products/money"),productBefore);
+ assert.deepEqual(db.store.get("users/p"),originalOwner);
+ for(const content of [JSON.stringify(hub),JSON.stringify(latest)]){
+  for(const needle of ["unitPrice","totalRevenue","revenuePerUnit","98765","808080"])
+   assert.equal(content.includes(needle),false,"finance response leak: "+needle);
+ }
+});
