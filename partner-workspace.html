@@ -21,6 +21,7 @@ button:disabled{opacity:.52;cursor:default}.secondary{background:#e6eef9;color:#
 .notice.error{background:#fff0ed;color:#933}table{border-collapse:collapse;min-width:470px;width:100%;font-size:13px}
 td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 .scroll{overflow:auto}.muted{font-size:12px;color:#607186}
+#ownerPreviewBanner{background:#fff7dd;border:2px solid #edb851;color:#513915;padding:14px 16px;font-size:13px;font-weight:700}#ownerPreviewBanner a{margin-left:10px;color:#154a87}
 [hidden]{display:none!important}@media(max-width:420px){.grid{grid-template-columns:1fr}.row>*{flex-basis:100%}}
 
 .count-menu{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:14px 0}
@@ -51,6 +52,7 @@ td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 </style></head><body>
 <header><h1 id="workspaceTitle">NICO FACTORY｜協力店 実績管理</h1>
 <p>会社・班・メンバーごとの件数を管理。売上・単価は表示しません。</p></header>
+<div id="ownerPreviewBanner" hidden role="status">🧪 協力店の確認用プレビューです。会社・班・スタッフ・件数はすべて架空のサンプル。保存や招待送信はできません。 <a href="/" id="previewReturnLink">← 自社画面へ戻る</a></div>
 <main><div id="notice" class="notice" role="status" aria-live="polite">認証を確認しています。</div>
 <section id="loginBox"><h2>ログイン・新規登録</h2><form id="loginForm">
 <label for="email">メールアドレス</label><input id="email" type="email" autocomplete="email" required>
@@ -174,16 +176,23 @@ td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 import {initializeApp} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
 import {getAuth,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,sendEmailVerification,setPersistence,browserSessionPersistence} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js";
+import {getFirestore,doc,getDocFromServer} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 const app=initializeApp({apiKey:"AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
 authDomain:"sales-management-cc116.firebaseapp.com",projectId:"sales-management-cc116",
 appId:"1:904932511564:web:6583e8b0c585231b9049e"});
-const auth=getAuth(app),functions=getFunctions(app,"asia-northeast1");
+const auth=getAuth(app),functions=getFunctions(app,"asia-northeast1"),previewDb=getFirestore(app);
 // Existing internal accounts can open the separate count-only partner tenant
 // without changing their original user profile. The server validates context.
 let workspaceCompanyId=new URL(location.href).searchParams.get("workspaceCompanyId")||"";
 if(workspaceCompanyId&&!/^[A-Za-z0-9_-]{1,128}$/.test(workspaceCompanyId))
  workspaceCompanyId="";
+const previewQuery=new URL(location.href).searchParams;
+const previewMode=previewQuery.get("preview")==="1"&&!workspaceCompanyId&&!previewQuery.has("invite");
 const call=name=>{
+ if(previewMode)return async args=>{
+  if(name==="getPartnerWorkspace")return {data:previewDay(args?.date)};
+  throw Error("preview_readonly_no_remote_write");
+ };
  const fn=httpsCallable(functions,name);
  return data=>fn({...data,...(workspaceCompanyId?{workspaceCompanyId}:{})});
 };
@@ -191,6 +200,54 @@ const get=call("getPartnerWorkspace"),manage=call("managePartnerWorkspace"),
  accept=call("acceptPartnerWorkspaceInvite"),save=call("submitPartnerWorkspaceCounts");
 const $=id=>document.getElementById(id);
 const KEYS=["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"];
+function isVerifiedOwnerPreviewIdentity(uid,user,company,member){
+ if(!uid||!user||!company||!member||user.active===false||company.active===false||member.active===false)return false;
+ if(user.uid!=null&&user.uid!==uid||member.uid!=null&&member.uid!==uid)return false;
+ if(user.companyId!==member.companyId||!user.companyId)return false;
+ if(company.companyKind!=null&&!["internal","direct"].includes(company.companyKind))return false;
+ if(user.accessKind!=null&&user.accessKind!=="internal")return false;
+ if(member.accessKind!=null&&member.accessKind!=="internal")return false;
+ if(["partner","cooperator"].includes(user.memberType)||["partner","cooperator"].includes(member.memberType))return false;
+ return company.ownerUid===uid||company.masterUid===uid;
+}
+async function verifyOwnerPreviewAccount(account){
+ if(!previewMode||!account?.emailVerified)return false;
+ const profile=await getDocFromServer(doc(previewDb,"users",account.uid));
+ if(!profile.exists())return false;
+ const user=profile.data(),cid=user?.companyId;
+ if(typeof cid!=="string"||!/^[A-Za-z0-9_-]{1,128}$/.test(cid))return false;
+ const [c,m]=await Promise.all([
+  getDocFromServer(doc(previewDb,"companies",cid)),
+  getDocFromServer(doc(previewDb,"companies",cid,"members",account.uid))
+ ]);
+ return c.exists()&&m.exists()&&isVerifiedOwnerPreviewIdentity(account.uid,user,c.data(),m.data());
+}
+// Synthetic view data never comes from Firestore financial originals.
+function previewDay(date){
+ if(!previewMode)throw Error("preview_not_allowed");
+ const teams=[{id:"demo_team_1",name:"サンプル第1班",active:true},{id:"demo_team_2",name:"サンプル第2班",active:true}];
+ const staff=[
+  {id:"demo_staff_1",name:"サンプル リーダー",kind:"account",role:"leader",teamId:"demo_team_1",active:true},
+  {id:"demo_staff_2",name:"サンプル メンバー",kind:"managed",role:"member",teamId:"demo_team_1",active:true},
+  {id:"demo_staff_3",name:"サンプル 担当者",kind:"managed",role:"member",teamId:"demo_team_2",active:true}
+ ];
+ const a=Object.fromEntries(KEYS.map(k=>[k,0]));a.NURO=2;a.YMMNP=1;
+ const b=Object.fromEntries(KEYS.map(k=>[k,0]));b["SB光・AIR"]=1;
+ return {date:date||$("date").value,role:"owner",companyName:"サンプル協力店（架空データ）",categories:[...KEYS],teams,staff,
+ privateProducts:[{id:"demo_private",name:"サンプル独自商材",active:true}],
+ records:[
+  {staffId:"demo_staff_1",counts:a,privateCounts:{demo_private:1},privateTotalCount:1,totalCount:3,teamIdSnapshot:"demo_team_1",version:1},
+  {staffId:"demo_staff_2",counts:b,privateCounts:{},privateTotalCount:0,totalCount:1,teamIdSnapshot:"demo_team_1",version:1}
+ ]};
+}
+function disablePreviewWrites(){
+ if(!previewMode)return;
+ for(const id of ["save","createTeam","addManaged","moveStaffAction","makeInvite","addPrivateProduct",
+ "hubCreateTeam","hubMakeInvite","countGoalSave","countGoalClear","countCsv"]){
+  const b=$(id);if(b){b.disabled=true;b.title="確認用プレビューでは保存・送信できません";}
+ }
+ document.querySelectorAll("#privateProductList button").forEach(b=>b.disabled=true);
+}
 let inviteToken=new URL(location.href).searchParams.get("invite")||"";
 const dateParts=Object.fromEntries(new Intl.DateTimeFormat("en-US",
 {timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"})
