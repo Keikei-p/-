@@ -25,7 +25,7 @@ test("never replace unknown routes, missing pages, identical bytes or altered fi
  assert.throws(()=>validateManifest(original,new Map([[ASSET,hash("f")]]),4),/SOURCE_FILE_COUNT_MISMATCH/);
  assert.throws(()=>validateManifest(original,new Map([[ASSET,hash("f")],["/partner-invite.html",hash("f")]]),5),/ONLY_ONE_REPLACED_COUNTS_ALLOWED/);
 });
-test("count-only page is exclusively authenticated-callable, and no client finance SDK is imported",()=>{
+test("count-only page is exclusively authenticated-callable, and no client finance SDK is imported",async()=>{
  const fs=await import("node:fs");
  const html=fs.readFileSync(new URL("../partner-counts.html",import.meta.url),"utf8");
  for(const name of ["submitPartnerQuickCounts","getPartnerQuickCounts","approvePartnerQuickCounts"]){
