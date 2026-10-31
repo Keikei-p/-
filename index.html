@@ -9870,7 +9870,7 @@ function subscribeSelectedMonthRecords() {
             full.forEach(item=>{
               const value=item.data();
               if(value.companyId!==companyId||typeof value.date!=="string"||
-                !/^\\d{4}-\\d{2}-\\d{2}$/.test(value.date)){
+                !/^\d{4}-\d{2}-\d{2}$/.test(value.date)){
                 mismatch=true;
               }else if(value.date.startsWith(month)){
                 monthRecords.push({id:item.id,...value});
