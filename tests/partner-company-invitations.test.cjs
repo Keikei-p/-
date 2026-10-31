@@ -130,13 +130,62 @@ test("leader or partner company cannot create partner invitations",async()=>{
   assert.equal(JSON.stringify([...db.data]),before);
  }
 });
-test("wrong recipient and existing company cannot accept or preview",async()=>{
+test("wrong email cannot preview or accept any company invitation",async()=>{
  const {db,handlers,request}=setup({recipientCompany:"existing"});
  const {token}=await handlers.create(request("owner",createInput));
  await assert.rejects(handlers.preview(request("owner",{token})));
  const before=JSON.stringify([...db.data]);
- await assert.rejects(handlers.accept(request("recipient",{token})));
+ await assert.rejects(handlers.accept(request("owner",{token})));
  assert.equal(JSON.stringify([...db.data]),before);
+});
+test("registered email joins as secondary partner Owner, original user/old records unchanged",async()=>{
+ const {db,handlers,request}=setup({recipientCompany:"existing"});
+ db.seed("companies/existing",{name:"旧所属",companyKind:"internal",active:true});
+ db.seed("companies/existing/members/recipient",{uid:"recipient",companyId:"existing",
+  companyRole:"member",accessKind:"internal",active:true});
+ db.seed("records/historic",{companyId:"existing",uid:"recipient",
+  totalRevenue:123456,results:{old:{count:7,revenuePerUnit:1234}}});
+ const original=new Map(db.data);
+ const {token}=await handlers.create(request("owner",createInput));
+ const accepted=await handlers.accept(request("recipient",{token}));
+ assert.equal(accepted.secondaryMembership,true);
+ assert.equal(accepted.financialAccess,false);
+ for(const key of ["users/recipient","companies/existing/members/recipient","records/historic"])
+  assert.deepEqual(db.data.get(key),original.get(key),key);
+ const ctx=db.data.get("partnerWorkspaceContexts/recipient");
+ assert.equal(ctx.partnerCompanyId,accepted.partnerCompanyId);
+ assert.equal(ctx.primaryCompanyId,"existing");
+ const member=db.data.get("companies/"+accepted.partnerCompanyId+"/members/recipient");
+ assert.equal(member.accessKind,"partner");
+ assert.equal(member.canViewRevenue,false);
+ assert.equal(member.canViewUnitPrice,false);
+ assert.equal(db.data.get("partnerRelations/"+accepted.partnerCompanyId).active,false);
+ await assert.rejects(handlers.accept(request("recipient",{token})));
+});
+test("hub Owner may invite own already registered email as a separate count-only company",async()=>{
+ const {db,handlers,request}=setup();
+ const originalUser=structuredClone(db.data.get("users/owner"));
+ const {token}=await handlers.create(request("owner",{
+  email:"owner@example.com",companyName:"自社による検証用協力店"
+ }));
+ const accepted=await handlers.accept(request("owner",{token}));
+ assert.equal(accepted.secondaryMembership,true);
+ assert.deepEqual(db.data.get("users/owner"),originalUser);
+ assert.equal(db.data.get("partnerWorkspaceContexts/owner").partnerCompanyId,accepted.partnerCompanyId);
+ assert.equal(db.data.get("companies/"+accepted.partnerCompanyId+"/members/owner").canViewRevenue,false);
+});
+test("existing email with missing or external source membership is denied without writes",async()=>{
+ for(const broken of ["missing","foreign","partner"]){
+  const {db,handlers,request}=setup({recipientCompany:"existing"});
+  db.seed("companies/existing",{companyKind:broken==="partner"?"partner":"internal",active:true});
+  if(broken!=="missing")db.seed("companies/existing/members/recipient",{
+   uid:"recipient",companyId:broken==="foreign"?"other":"existing",
+   accessKind:broken==="partner"?"partner":"internal",active:true});
+  const {token}=await handlers.create(request("owner",createInput));
+  const original=JSON.stringify([...db.data]);
+  await assert.rejects(handlers.accept(request("recipient",{token})));
+  assert.equal(JSON.stringify([...db.data]),original);
+ }
 });
 test("disabled recipient, malformed tokens and unknown bearer never grant access",async()=>{
  const fixture=setup({disabled:true});
