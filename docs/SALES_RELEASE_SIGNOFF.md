@@ -548,3 +548,19 @@ Rulesの本番デプロイ: 未実施
 - ユーザーの明示した「既存ランキング/招待リンクに協力店を追加し本番運用にする」意思に基づき、GitHub認証済みリポジトリ所有者 `Keikei-p` の接続から PR #169へ `sales-production-reviewed` ラベルを付与した。
 - これはGitHubの変更審査ラベル操作の記録であり、ユーザー個人の手書き署名や本番実端末認証試験を実施したという意味ではない。
 - 最終HEADの保護ゲート・販売回帰・正確な保全検証がすべて成功するまでマージ/本番は実施しない。
+
+
+---
+
+## 2026-10-31 | 協力店の件数入力・スタッフ画面・既存ランキングを順次公開する限定リリース審査
+
+**依頼**: 利用者は2026-10-31の本チャットで「完全につかえるようにしtw」と明示。既存実績・単価・売上・履歴・LINE通知の変更や削除は許可していない。
+
+- リポジトリmain（`3c9158d8`）のPR #169/#170/#171/#172コード統合済み。現在のGitHub Actions `41149608704`（workspace）、`41149608641`（daily count）、`41149608598`（index ranking）はいずれも`validate=success`だが`release=skipped`。自動テスト合格は本番公開成功とは異なる。
+- 2026-10-31 `41149683165`の招待限定再公開失敗は既存 `partner-invite.html` がすでにあるため `STOP EXISTING_PARTNER_INVITE` で止まり既存データ無変更。再公開不要。
+- このリリースは既存の3つの `workflow_dispatch` リリースを `quick-counts` → `partner-workspace` → `existing ranking index` の依存順で、単一のOwner・main・明示したマージコミット題名限定の**1回限りのGitHub Actions**から起動するもの。GitHub Actions tokenはワークフロー起動用 `actions:write` のみで、Firebase本番秘密鍵・Firestore管理者権限を与えない。
+- 先行Count専用Functionの作成がすべて成功していても Artifact Registry cleanup policy のIAM不足でCLI終了コード1になる問題に対し、`deploy` ステップだけ失敗を暫定許容し、**実際に登録されたCount Functions 2件と既存LINE/招待Functions4件、匿名401/403拒否**が証明できなければ公開停止。Workspace4件も同様に実体と匿名拒否確認が必須。
+- Hostingは実サイトの全既存ファイルSHA256と設定の完全一致を保持し、`partner-counts.html` と `partner-workspace.html` を順次1ファイルだけ追加。最後に `index.html` だけを差分反映し、旧画面・既存履歴画面・招待URL・PWA/他ファイルは保存。エラー時はその段階でSTOPし、全体が完成したとは報告しない。
+- **追加の金融原票アクセス遮断について**: Firestore Rules PR #161は未統合/本番未配備。Ownerを含む協力店の全金融資料をFirestore本番で拒否できるかの実環境検証、既存データバックアップと隔離復元、データ整合チェックは未完了。このため今回の限定リリースは独立した「件数専用API」と読取専用の社内ランキングだけを有効化し、協力店の財務情報への旧Firestore直接接続を許可しない。**財務原票の絶対遮断・実アカウント全権限は完成と判断しない**。
+- **運用・費用リスク**: Firebase 2nd Gen Functionsの新API作成は請求が発生し得る。Artifact Registry cleanup policyは以前のIAMエラーにより未設定であり、料金監視と後日の最小権限修正が必要。既存データ初期化・移行・削除はなし。
+- **実施済みでないこと**: 本番実アカウントの協力店招待/承認・件数入力とランキング反映テスト、バージョン当時の売上資料の移行、バックアップ隔離復元検証。上記を行わず「全面運用完了」と記載しない。署名代行をしたとは扱わない。
