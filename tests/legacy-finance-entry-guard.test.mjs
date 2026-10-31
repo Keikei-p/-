@@ -135,3 +135,14 @@ test("real legacy login accepts member documents without companyId but rejects p
  assert.equal((await run({...baseMember,uid:"another"})).mode,"blocked");
  assert.equal((await run(null)).mode,"blocked");
 });
+
+test("partner count entry links only to count-only workspace and preserves finance guard",()=>{
+ const html=readFileSync(new URL("../index.html",import.meta.url),"utf8");
+ assert.match(html,/id="partnerCountWorkspaceEntry"/);
+ assert.match(html,/id="partnerCountWorkspaceLink" href="\/partner-workspace\.html"/);
+ assert.match(html,/partnerLink\.href="\/partner-workspace\.html"/);
+ assert.match(html,/partnerLink\.hidden=mode!=="partner"/);
+ assert.match(html,/if \(checkedEntry\.mode!=="internal"\)/);
+ assert.match(html,/showLegacyFinanceEntryBlocked\(checkedEntry\.mode\)/);
+ assert.doesNotMatch(html,/件数専用画面の本番切替まで/);
+});

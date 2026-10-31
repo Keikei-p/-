@@ -4964,6 +4964,18 @@ body.product-reordering .product-list {
         <a href="/partner-invite.html" style="display:inline-block;margin-top:10px;">
           専用の協力店招待画面を開く
         </a>
+        <div id="partnerCountWorkspaceEntry"
+             style="margin-top:16px;padding:13px;border:1px solid var(--border);border-radius:10px;">
+          <div style="font-weight:800;margin-bottom:6px;">📊 協力店の件数入力・管理</div>
+          <p style="font-size:12px;line-height:1.7;color:var(--sub);margin:0 0 10px;">
+            招待を承諾した協力店の代表・スタッフは、専用画面で班・担当者・商材別の件数を登録・訂正できます。
+            売上・単価は表示しません。協力店の方へこのURLを送ってください。
+          </p>
+          <a id="partnerCountWorkspaceLink" href="/partner-workspace.html"
+             style="display:inline-block;min-height:44px;padding:11px 16px;border-radius:9px;background:var(--primary);color:#fff;font-weight:750;">
+            協力店の件数入力画面を開く
+          </a>
+        </div>
       </div>
 
     </div>
@@ -11850,11 +11862,22 @@ function showLegacyFinanceEntryBlocked(mode) {
   verificationScreen.style.display="none";
   authScreen.style.display="block";
   databaseStatus.textContent="安全確認が必要";
-  loginStatus.textContent="件数専用画面へ移行待ち";
+  loginStatus.textContent=mode==="partner"?"協力店の件数入力はこちら":"安全確認が必要";
   const message=mode==="partner"
-    ? "協力店の方は売上・単価を含む旧画面を利用できません。件数専用画面の本番切替まで、オーナーへご確認ください。"
+    ? "協力店の方は売上・単価を含む旧画面を利用できません。下の専用画面から件数を登録・訂正してください。"
     : "会社・所属・権限をサーバーで安全に確認できません。オーナーへご確認ください。";
   showError(message);
+  // Keep the partner out of the finance-capable UI; direct to the count-only API.
+  let partnerLink=document.getElementById("legacyPartnerCountOnlyEntry");
+  if(!partnerLink){
+    partnerLink=document.createElement("a");
+    partnerLink.id="legacyPartnerCountOnlyEntry";
+    partnerLink.href="/partner-workspace.html";
+    partnerLink.textContent="協力店の件数入力・訂正画面を開く";
+    partnerLink.style.cssText="display:block;margin:12px 0;padding:14px;border-radius:10px;font-weight:750;text-align:center;background:#2563eb;color:#fff";
+    authScreen.appendChild(partnerLink);
+  }
+  partnerLink.hidden=mode!=="partner";
   // A rejected signed-in partner must still be able to switch accounts.
   // Do not accidentally route them into a finance-capable workspace.
   let signout=document.getElementById("legacyFinanceSafeSignout");
