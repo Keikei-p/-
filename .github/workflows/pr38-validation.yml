@@ -38,6 +38,9 @@ jobs:
         run: |
           node --check legacy-finance-entry-guard.mjs
           node --test tests/legacy-finance-entry-guard.test.mjs
+          # Protect existing internal owner revenue, unit price and financial
+          # dashboard visibility from partner-related regressions.
+          node --test tests/internal-owner-finance-visibility.test.cjs
 
       - name: Check sales input and correction regressions
         run: node --test tests/sales-regressions.cjs
