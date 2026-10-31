@@ -12,6 +12,8 @@ FINANCE_COST_APPROVAL = "NOT_APPROVED"
 FINANCE_PARTNER_APPROVAL = "NOT_APPROVED"
 # Count-only read API is independent, and stays OFF until public data is reconciled.
 PUBLIC_COUNT_GATEWAY_ENABLED = "disabled"
+# Legacy direct-company count paging remains OFF until full client/Rules cutover.
+INTERNAL_COUNT_PAGE_ENABLED = "disabled"
 # Separate, default-OFF registration and correction route (independent count ledger).
 PARTNER_COUNT_WRITE_ENABLED = "disabled"
 # User-facing finance-free product labels; never enables without verified count ledger.
