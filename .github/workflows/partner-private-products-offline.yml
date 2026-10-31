@@ -1,0 +1,49 @@
+name: 'NICO partner private products and counts isolated validation'
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'functions-partner-workspace/service.cjs'
+      - 'partner-workspace.html'
+      - 'tests/partner-workspace.test.cjs'
+      - 'tests/partner-money-free-workspace.test.cjs'
+      - '.github/workflows/partner-private-products-offline.yml'
+permissions:
+  contents: read
+jobs:
+  private-catalog-no-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Test existing isolated partner workspace and revenue nonregression
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/index.js
+          node --test tests/partner-workspace.test.cjs
+          node --test tests/partner-money-free-workspace.test.cjs
+          node --test tests/partner-count-dashboard.test.cjs
+          node --test tests/internal-owner-finance-visibility.test.cjs
+          node --test tests/partner-existing-ranking.test.cjs
+      - name: Fail on raw company sales access and destructive operations
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs=require('node:fs');
+          const server=fs.readFileSync('functions-partner-workspace/service.cjs','utf8');
+          const page=fs.readFileSync('partner-workspace.html','utf8');
+          for(const pattern of [/\.collection\s*\(\s*["'](?:records|products|recordCorrections|revenueGoals)["']\s*\)/,/\btx\.delete\s*\(/,/\bdb\.recursiveDelete\s*\(/])
+            if(pattern.test(server))throw Error('STOP_RAW_FINANCE_OR_DESTRUCTIVE_WORKSPACE');
+          if(!server.includes('partnerPrivateProducts')||!server.includes('privateTotalCount'))
+            throw Error('STOP_NO_PRIVATE_LEDGER');
+          if(!page.includes('privateCountGrid')||!page.includes('privateProductAdmin'))
+            throw Error('STOP_NO_PRIVATE_UI');
+          if(/getFirestore\s*\(/.test(page))throw Error('STOP_BROWSER_RAW_FIRESTORE');
+          console.log('PASS partner-only private ledger without raw finance or destructive operations');
+          NODE
