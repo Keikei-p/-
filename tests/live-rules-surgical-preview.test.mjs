@@ -35,9 +35,9 @@ test("repair only membership and historical hard-delete grants, preserve every o
  assert.deepEqual(out.changed,[
   "isCompanyMember",
   "review:revenueGoals",
+  "review:records",
   "deny-delete:teams",
   "deny-delete:products",
-  "deny-delete:records",
   "deny-delete:goals"
  ]);
  assert.equal(out.matchesReviewed,true);
