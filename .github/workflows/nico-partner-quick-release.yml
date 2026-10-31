@@ -8,6 +8,7 @@ on:
       - "partner-counts.html"
       - "tests/partner-quick-counts.test.cjs"
       - "tools/hosting/additive-partner-counts.mjs"
+      - "tools/hosting/surgical-existing-partner-counts.mjs"
       - ".github/workflows/nico-partner-quick-release.yml"
   push:
     branches: [main]
@@ -17,6 +18,7 @@ on:
       - "partner-counts.html"
       - "tests/partner-quick-counts.test.cjs"
       - "tools/hosting/additive-partner-counts.mjs"
+      - "tools/hosting/surgical-existing-partner-counts.mjs"
       - ".github/workflows/nico-partner-quick-release.yml"
   workflow_dispatch:
 permissions:
@@ -44,6 +46,8 @@ jobs:
           node --check functions-partner-quick/quick-counts.cjs
           node --check functions-partner-quick/index.js
           node --check tools/hosting/additive-partner-counts.mjs
+          node --check tools/hosting/surgical-existing-partner-counts.mjs
+          node --test tests/surgical-existing-partner-counts.test.mjs
           node --test tests/partner-quick-counts.test.cjs
           node --test tests/partner-company-invitations.test.cjs
           node --test tests/additive-partner-invite-hosting.test.mjs
@@ -53,6 +57,7 @@ jobs:
           if(Object.keys(cfg).join(',')!=='functions'||cfg.functions.source!=='functions-partner-quick'||cfg.functions.codebase!=='partner-quick')throw Error('unsafe config scope');
           const html=fs.readFileSync('partner-counts.html','utf8');
           if(!html.includes('submitPartnerQuickCounts')||!html.includes('getPartnerQuickCounts')||
+             !html.includes('approvePartnerQuickCounts')||
              /firebase-firestore\.js|\.deleteDoc\(|\bgetFirestore\(|\bcollection\(/.test(html))
             throw Error('unapproved browser access to Firestore');
           const js=html.match(/<script type="module">([\s\S]+?)<\/script>/)?.[1];
@@ -67,7 +72,7 @@ jobs:
     timeout-minutes: 25
     env:
       FIREBASE_PROJECT_ID: sales-management-cc116
-      NICO_PARTNER_RELEASE_CONFIRMATION: CONFIRM_ADD_PARTNER_COUNTS_ONLY
+      NICO_PARTNER_RELEASE_CONFIRMATION: CONFIRM_REPLACE_PARTNER_COUNTS_ONLY
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -100,12 +105,13 @@ jobs:
           if [ "$status" = 200 ] && cmp -s "$RUNNER_TEMP/existing-count-page.html" partner-counts.html; then
             echo 'already_live=true' >> "$GITHUB_OUTPUT"
             echo 'PASS: existing count page matches repository byte-for-byte'
-          elif [ "$status" = 200 ] && grep -Fq 'submitPartnerQuickCounts' "$RUNNER_TEMP/existing-count-page.html"; then
-            echo 'STOP: different count page is already live; no overwrite without review'
-            exit 1
-          else
+          elif [ "$status" = 200 ] && [ "$(git hash-object "$RUNNER_TEMP/existing-count-page.html")" = '1d30231b80cd3e20b7fdb9b9f5dadf67e16c5928' ]; then
             echo 'already_live=false' >> "$GITHUB_OUTPUT"
-            node tools/hosting/additive-partner-counts.mjs --dry-run
+            echo 'PASS reviewed original count page, only this one file may change'
+            node tools/hosting/surgical-existing-partner-counts.mjs --dry-run
+          else
+            echo 'STOP: expected reviewed current count page missing/changed; no write'
+            exit 1
           fi
       - name: Prepare only count-specific Functions environmental switch
         shell: bash
@@ -217,9 +223,9 @@ jobs:
             }
           })().catch(e=>{console.error(e.message);process.exit(1)});
           NODE
-      - name: Publish only new partner-counts.html preserving all existing live Hosting assets
+      - name: Replace only reviewed partner-counts.html preserving all other existing Hosting assets
         if: ${{ steps.count_page.outputs.already_live != 'true' }}
-        run: node tools/hosting/additive-partner-counts.mjs --release
+        run: node tools/hosting/surgical-existing-partner-counts.mjs --release
       - name: Verify published count page matches the reviewed source exactly
         shell: bash
         run: |
