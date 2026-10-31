@@ -16,6 +16,7 @@ import {makeFirestoreRestStore} from "./firestore-writer.js";
 import {makePublicCountRestHandler} from "./public-count-live-adapter.mjs";
 import {createInternalCountPage} from "./internal-count-page.mjs";
 import {makeCountDayFirestoreReader} from "./internal-count-rest-reader.mjs";
+import {normalizeInternalCountMembership} from "./internal-count-membership.mjs";
 import {createPartnerCountCatalogHandler} from "./partner-count-catalog.mjs";
 import {createPartnerCountRestWriteHandler,createPartnerOwnDayRestHandler} from "./partner-count-live-writer.mjs";
 const GOOGLE_KEYS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
@@ -649,18 +650,12 @@ export default {
             firestoreGet(env,"companies/"+cid),
             firestoreGet(env,"companies/"+cid+"/members/"+uid)
           ]);
-          if(!company||!member||user.uid!==uid||member.uid!==uid||
-             user.companyId!==cid||member.companyId!==cid||
-             user.active!==true||member.active!==true||
-             company.active===false||user.companyRole!==member.companyRole)
-            throw httpError(403,"member_unavailable");
-          if(![undefined,"internal","direct"].includes(company.companyKind)||
-             [user.accessKind,member.accessKind,user.memberType,member.memberType]
-               .some(value=>value==="partner"||value==="cooperator"))
-            throw httpError(403,"member_unavailable");
-          return {uid,companyId:cid,user,member,company,
-            firebaseIdTokenVerified:true,emailVerified:true,
-            serverMembershipVerified:true,serverVerifiedInternalCompany:true};
+          // Validate identities against authoritative Firestore document IDs.
+          // Legacy documents may omit redundant uid/active/companyId fields.
+          // An explicit conflicting UID, role or deactivation is still denied.
+          return normalizeInternalCountMembership({
+            uid,companyId:cid,user,member,company
+          });
         },
         queryDailyRecords:makeCountDayFirestoreReader({
           getServiceToken:()=>googleBearer(env),decodeDocument:docData
