@@ -176,11 +176,10 @@ td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 import {initializeApp} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
 import {getAuth,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,sendEmailVerification,setPersistence,browserSessionPersistence} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js";
-import {getFirestore,doc,getDocFromServer} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 const app=initializeApp({apiKey:"AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
 authDomain:"sales-management-cc116.firebaseapp.com",projectId:"sales-management-cc116",
 appId:"1:904932511564:web:6583e8b0c585231b9049e"});
-const auth=getAuth(app),functions=getFunctions(app,"asia-northeast1"),previewDb=getFirestore(app);
+const auth=getAuth(app),functions=getFunctions(app,"asia-northeast1");
 // Existing internal accounts can open the separate count-only partner tenant
 // without changing their original user profile. The server validates context.
 let workspaceCompanyId=new URL(location.href).searchParams.get("workspaceCompanyId")||"";
@@ -200,28 +199,6 @@ const get=call("getPartnerWorkspace"),manage=call("managePartnerWorkspace"),
  accept=call("acceptPartnerWorkspaceInvite"),save=call("submitPartnerWorkspaceCounts");
 const $=id=>document.getElementById(id);
 const KEYS=["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"];
-function isVerifiedOwnerPreviewIdentity(uid,user,company,member){
- if(!uid||!user||!company||!member||user.active===false||company.active===false||member.active===false)return false;
- if(user.uid!=null&&user.uid!==uid||member.uid!=null&&member.uid!==uid)return false;
- if(user.companyId!==member.companyId||!user.companyId)return false;
- if(company.companyKind!=null&&!["internal","direct"].includes(company.companyKind))return false;
- if(user.accessKind!=null&&user.accessKind!=="internal")return false;
- if(member.accessKind!=null&&member.accessKind!=="internal")return false;
- if(["partner","cooperator"].includes(user.memberType)||["partner","cooperator"].includes(member.memberType))return false;
- return company.ownerUid===uid||company.masterUid===uid;
-}
-async function verifyOwnerPreviewAccount(account){
- if(!previewMode||!account?.emailVerified)return false;
- const profile=await getDocFromServer(doc(previewDb,"users",account.uid));
- if(!profile.exists())return false;
- const user=profile.data(),cid=user?.companyId;
- if(typeof cid!=="string"||!/^[A-Za-z0-9_-]{1,128}$/.test(cid))return false;
- const [c,m]=await Promise.all([
-  getDocFromServer(doc(previewDb,"companies",cid)),
-  getDocFromServer(doc(previewDb,"companies",cid,"members",account.uid))
- ]);
- return c.exists()&&m.exists()&&isVerifiedOwnerPreviewIdentity(account.uid,user,c.data(),m.data());
-}
 // Synthetic view data never comes from Firestore financial originals.
 function previewDay(date){
  if(!previewMode)throw Error("preview_not_allowed");
@@ -935,16 +912,11 @@ onAuthStateChanged(auth,u=>{
  if(!u){notice("招待されたアカウント、または自社オーナーでログインしてください。");return}
  if(!u.emailVerified){notice("メール確認を済ませて、画面を再読込してください。",true);return}
  if(previewMode){
-  const generation=nonce;
-  void verifyOwnerPreviewAccount(u).then(allowed=>{
-   if(generation!==nonce||auth.currentUser?.uid!==u.uid)return;
-   if(!allowed){notice("自社Owner/Masterの本人確認ができないため、プレビューを表示できません。自社アプリに戻ってください。",true);return;}
-   $("ownerPreviewBanner").hidden=false;
-   $("logout").textContent="自社画面へ戻る";
-   void refresh();
-  }).catch(()=>{
-   if(generation===nonce)notice("自社Ownerの所属を確認できませんでした。自社アプリに戻ってください。",true);
-  });
+  // Only a signed-in, email-verified user sees fictitious sample data.
+  // No Firestore financial (or even member) collection is queried here.
+  $("ownerPreviewBanner").hidden=false;
+  $("logout").textContent="自社画面へ戻る";
+  void refresh();
   return;
  }
  if(inviteToken){$("inviteAccept").hidden=false;notice("招待リンクを確認しました。表示名を入力して参加してください。");return}
