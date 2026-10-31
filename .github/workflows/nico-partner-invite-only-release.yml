@@ -51,7 +51,20 @@ jobs:
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-partner-credential.json"
           chmod 600 "$RUNNER_TEMP/nico-partner-credential.json"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-partner-credential.json" >> "$GITHUB_ENV"
-      - name: READ ONLY live site parity check
+      - name: Detect already-published partner invitation page without rewriting it
+        id: published_invite
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=$(curl --silent --location --output "$RUNNER_TEMP/live-partner-invite.html" --write-out '%{http_code}' --max-time 25 https://nico-factory.web.app/partner-invite.html || true)
+          if [ "$status" = 200 ] && grep -Fq 'acceptPartnerCompanyInvitation' "$RUNNER_TEMP/live-partner-invite.html"; then
+            echo "already_live=true" >> "$GITHUB_OUTPUT"
+            echo "REUSE verified live invitation page; do not overwrite"
+          else
+            echo "already_live=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: READ ONLY live site parity check if page missing
+        if: ${{ steps.published_invite.outputs.already_live != 'true' }}
         run: node tools/hosting/additive-partner-invite.mjs --dry-run
       - name: Enable only new invitation Functions in temporary checkout
         shell: bash
