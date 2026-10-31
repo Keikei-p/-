@@ -203,6 +203,12 @@ function summarizeCountOnlyResponses(responses,teamList,keys){
   if(!response||!Array.isArray(response.staff)||!Array.isArray(response.records)||
      response.categories?.join("|")!==keys.join("|"))throw Error("unverified counts");
   const staff=new Map(response.staff.map(p=>[p.id,p]));
+  const privateProducts=new Map((response.privateProducts||[]).map(p=>[p.id,p]));
+  if(privateProducts.size!==(response.privateProducts||[]).length)throw Error("duplicate private product");
+  for(const p of privateProducts.values()){
+    if(typeof p.name!=="string"||typeof p.active!=="boolean"||!p.name.trim())throw Error("private catalog");
+    if(!Object.hasOwn(products,"独自："+p.name))products["独自："+p.name]=0;
+  }
   let dayCount=0,dayPeople=0;
   const seen=new Set();
   for(const record of response.records){
@@ -219,6 +225,18 @@ function summarizeCountOnlyResponses(responses,teamList,keys){
     count+=value;products[key]+=value;
    }
    if(count!==record.totalCount)throw Error("count mismatch");
+   const privateCounts=record.privateCounts||{};
+   if(typeof privateCounts!=="object"||Array.isArray(privateCounts)||
+      Object.keys(privateCounts).length>100)throw Error("private count schema");
+   let privateTotal=0;
+   for(const [productId,n] of Object.entries(privateCounts)){
+     const info=privateProducts.get(productId);
+     if(!info||!Number.isSafeInteger(n)||n<0||n>9999)throw Error("private count");
+     privateTotal+=n;
+     products["独自："+info.name]=(products["独自："+info.name]||0)+n;
+   }
+   if(privateTotal!==(record.privateTotalCount??0))throw Error("private total mismatch");
+   count+=privateTotal;
    if(count>0)dayPeople++;
    dayCount+=count;total+=count;
    const id=record.staffId;
@@ -233,6 +251,10 @@ function summarizeCountOnlyResponses(responses,teamList,keys){
    group.set(groupId,(group.get(groupId)||0)+count);
     const detail=teamProducts.get(groupId)||Object.fromEntries(keys.map(k=>[k,0]));
     for(const key of keys)detail[key]+=counts[key];
+    for(const [productId,n] of Object.entries(privateCounts)){
+      const label="独自："+privateProducts.get(productId).name;
+      detail[label]=(detail[label]||0)+n;
+    }
     teamProducts.set(groupId,detail);
     const members=teamPeople.get(groupId)||new Map();
     members.set(id,(members.get(id)||0)+count);teamPeople.set(groupId,members);
@@ -449,9 +471,15 @@ function companyPortalStats(response){
    throw Error("invalid count record");
   visited.add(r.staffId);
   if(activeIds.has(r.staffId))registered++;
-  count+=r.totalCount;
- }
- const roleLabel=response.role==="owner"?"会社オーナー":response.role==="leader"?"班リーダー":"メンバー";
+  const privateSum=Object.entries(r.privateCounts||{}).reduce((n,[id,c])=>{
+    if(!(response.privateProducts||[]).some(p=>p.id===id)||
+       !Number.isSafeInteger(c)||c<0||c>9999)throw Error("private count invalid");
+    return n+c;
+   },0);
+   if(privateSum!==(r.privateTotalCount??0))throw Error("private count mismatch");
+   count+=r.totalCount+privateSum;
+  }
+  const roleLabel=response.role==="owner"?"会社オーナー":response.role==="leader"?"班リーダー":"メンバー";
  const scope=response.role==="owner"?"自社の全班・全スタッフの件数を管理できます":
    response.role==="leader"?"所属班の閲覧可能なスタッフと実績を表示しています":
    "本人が閲覧できるスタッフと実績だけを表示しています";
