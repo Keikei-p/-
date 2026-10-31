@@ -858,3 +858,78 @@ test("secondary staff team move rejects revoked original membership type without
   assert.deepEqual([...db.store],baseline,"denied move must not change original or partner history");
  }
 });
+
+test("hub Owner explicitly approves a registered but inactive partner, without touching finance or accounts",async()=>{
+ const {db,api,req}=setup();
+ const relation=db.store.get("partnerRelations/partner");
+ relation.active=false;relation.countSharingApproved=false;relation.catalogAccessApproved=false;
+ const oldSales=clone(db.store.get("records/old")),oldPrice=clone(db.store.get("products/money"));
+ const user=clone(db.store.get("users/p")),member=clone(db.store.get("companies/partner/members/p"));
+ await assert.rejects(api.view(req("p",{date:"2026-10-31"})),e=>e.details?.reason==="partner-approval-required");
+ const res=await api.view(req("h",{date:"2026-10-31"}));
+ assert.equal(res.registeredCompanies[0].active,false);
+ const approved=await api.manage(req("h",{action:"hubSetSharingApproval",partnerCompanyId:"partner",
+  companyName:"協力店",approved:true,expectedActive:false}));
+ assert.equal(approved.active,true);assert.equal(approved.financialAccess,false);
+ assert.equal(db.store.get("partnerRelations/partner").countSharingApproved,true);
+ assert.equal(db.store.get("partnerRelations/partner").catalogAccessApproved,false);
+ assert.equal((await api.view(req("p",{date:"2026-10-31"}))).role,"owner");
+ assert.deepEqual(db.store.get("records/old"),oldSales);
+ assert.deepEqual(db.store.get("products/money"),oldPrice);
+ assert.deepEqual(db.store.get("users/p"),user);
+ assert.deepEqual(db.store.get("companies/partner/members/p"),member);
+ const revoked=await api.manage(req("h",{action:"hubSetSharingApproval",partnerCompanyId:"partner",
+  companyName:"協力店",approved:false,expectedActive:true}));
+ assert.equal(revoked.active,false);
+ await assert.rejects(api.view(req("p",{date:"2026-10-31"})),e=>e.details?.reason==="partner-approval-required");
+ assert.deepEqual(db.store.get("records/old"),oldSales);
+});
+test("hub approval denies forged hub, stale state, finance-enabled partner and tampered company without writes",async()=>{
+ const inputs=[
+  {uid:"p",company:"協力店",approved:false,expectedActive:true},
+  {uid:"h",company:"別会社",approved:true,expectedActive:true},
+  {uid:"h",company:"協力店",approved:true,expectedActive:false},
+  {uid:"h",company:"協力店",approved:"true",expectedActive:true},
+ ];
+ for(const item of inputs){
+  const {db,api,req}=setup(),before=clone([...db.store]);
+  await assert.rejects(api.manage(req(item.uid,{action:"hubSetSharingApproval",partnerCompanyId:"partner",
+   companyName:item.company,approved:item.approved,expectedActive:item.expectedActive})));
+  assert.deepEqual([...db.store],before);
+ }
+ for(const corrupt of [
+  (db)=>{db.store.get("companies/partner/members/p").canViewRevenue=true;},
+  (db)=>{db.store.get("companies/partner/members/p").canViewUnitPrice=true;},
+  (db)=>{db.store.get("users/p").canViewRevenue=true;},
+  (db)=>{db.store.get("partnerRelations/partner").hubCompanyId="other";},
+  (db)=>{db.store.get("companies/partner").active=false;}
+ ]){
+  const {db,api,req}=setup();
+  db.store.get("partnerRelations/partner").active=false;
+  db.store.get("partnerRelations/partner").countSharingApproved=false;
+  corrupt(db);const before=clone([...db.store]);
+  await assert.rejects(api.manage(req("h",{action:"hubSetSharingApproval",partnerCompanyId:"partner",
+   companyName:"協力店",approved:true,expectedActive:false})));
+  assert.deepEqual([...db.store],before);
+ }
+});
+test("approving secondary existing-email partner leaves original primary revenue access unchanged",async()=>{
+ const {db,api,req}=setup();
+ db.store.get("partnerRelations/partner").active=false;
+ db.store.get("partnerRelations/partner").countSharingApproved=false;
+ db.seed("users/p",{uid:"p",companyId:"hub",companyRole:"member",role:"member",
+  active:true,accessKind:"internal",canViewRevenue:true,canViewUnitPrice:true});
+ db.seed("companies/hub/members/p",{uid:"p",companyId:"hub",companyRole:"member",
+  active:true,accessKind:"internal",memberType:"direct"});
+ db.seed("partnerWorkspaceContexts/p",{uid:"p",kind:"partner_secondary",
+  primaryCompanyId:"hub",partnerCompanyId:"partner",hubCompanyId:"hub",
+  emailLower:"p@example.com",role:"owner",active:true});
+ db.store.get("companies/partner").masterUid="p";
+ const original=clone(db.store.get("users/p")),originalMember=clone(db.store.get("companies/hub/members/p"));
+ const result=await api.manage(req("h",{action:"hubSetSharingApproval",partnerCompanyId:"partner",
+  companyName:"協力店",approved:true,expectedActive:false}));
+ assert.equal(result.financialAccess,false);
+ assert.deepEqual(db.store.get("users/p"),original);
+ assert.deepEqual(db.store.get("companies/hub/members/p"),originalMember);
+ assert.equal((await api.view(req("p",{date:"2026-10-31",workspaceCompanyId:"partner"}))).role,"owner");
+});
