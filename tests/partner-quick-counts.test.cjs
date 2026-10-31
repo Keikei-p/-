@@ -163,7 +163,7 @@ test("quick count approval denies unauthorized company, malformed grants and rev
  const inputs=[
   [x.req("o",{partnerCompanyId:"partner1",approved:true}),"permission-denied"],
   [x.req("p",{partnerCompanyId:"partner1",approved:true}),"permission-denied"],
-  [x.req("h",{partnerCompanyId:"otherhub",approved:true}),"failed-precondition"],
+  [x.req("h",{partnerCompanyId:"otherhub",approved:true}),"permission-denied"],
   [x.req("h",{partnerCompanyId:"partner1",approved:"true"}),"invalid-argument"],
   [x.req("h",{partnerCompanyId:"partner1",approved:true,finance:true}),"invalid-argument"]
  ];
