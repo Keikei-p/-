@@ -38,6 +38,20 @@ test("partner role markers always deny revenue and unit price even for owner",()
  assert.equal(isInternalIdentitySafe({companyKind:"internal"},{accessKind:"internal",memberType:"member"}),true);
  assert.equal(isInternalIdentitySafe({companyKind:"internal"},{accessKind:"partner"}),false);
  assert.equal(isInternalIdentitySafe({companyKind:"internal"},{memberType:"cooperator"}),false);
+ for(const marker of ["partner","cooperator","unknown","external"]){
+  assert.equal(isInternalIdentitySafe({companyKind:"internal"},{accessKind:marker}),false);
+  assert.equal(isInternalIdentitySafe({companyKind:"internal"},{memberType:marker}),false);
+  assert.equal(isInternalIdentitySafe({companyKind:"internal"},{accessKind:"internal"},
+   {accessKind:marker}),false,"users.accessKind must veto member grants");
+  assert.equal(isInternalIdentitySafe({companyKind:"internal"},{memberType:"direct"},
+   {memberType:marker}),false,"users.memberType must veto member grants");
+ }
+ for(const type of [undefined,"internal","direct","member","managed"]){
+  assert.equal(isInternalIdentitySafe({}, {memberType:type}, {memberType:type}),true);
+ }
+ assert.equal(isInternalIdentitySafe({companyKind:"direct"},{}),false);
+ assert.equal(isInternalIdentitySafe({companyKind:"unknown"},{}),false);
+ assert.equal(isInternalIdentitySafe({companyKind:"partner"},{}),false);
 });
 test("audit is read-only at source-code level, does not call prod writes or sign in users",()=>{
  const source=readFileSync(new URL("../tools/production/audit-live-partner-counts.mjs",import.meta.url),"utf8");
@@ -56,7 +70,14 @@ test("mocked read-only production check matches live rule source and does not ex
   doc("p",{companyKind:"partner",ownerUid:"p-owner",hubCompanyId:"h",active:true})]);
  push("users/p-owner",[doc("p-owner",{accessKind:"partner",memberType:"cooperator",canViewRevenue:false,canViewUnitPrice:false})]);
  push("companies/p/members/p-owner",[doc("p-owner",{accessKind:"partner",memberType:"cooperator",canViewRevenue:false,canViewUnitPrice:false})]);
- push("companies/h/members",[]);
+ push("companies/h/members",[doc("h-owner",{
+  uid:"h-owner",companyId:"h",companyRole:"owner",active:true,
+  accessKind:"internal",memberType:"direct"
+ })]);
+ push("users/h-owner",[doc("h-owner",{
+  uid:"h-owner",companyId:"h",companyRole:"owner",active:true,
+  accessKind:"internal",memberType:"direct",canViewRevenue:true,canViewUnitPrice:true
+ })]);
  push("companies/p/members",[doc("p-owner",{accessKind:"partner",memberType:"cooperator",canViewRevenue:false,canViewUnitPrice:false,active:true})]);
  const day="2026-10-31";
  push("companies/h/partnerWorkCountDays/"+day+"/reports",[
@@ -90,6 +111,12 @@ test("mocked read-only production check matches live rule source and does not ex
  const result=await inspectLive({db,credential:{getAccessToken:async()=>({access_token:"TEST"})},
    request:fetchMock,clock:()=>Date.parse("2026-10-31T11:00:00+09:00")});
  assert.equal(result.deployedRulesMatchReviewedRepo,true);
+ assert.equal(result.activeInternalAccountsChecked,1);
+ assert.equal(result.internalOwnersVerified,1);
+ assert.equal(result.nonLoginManagedStaff,0);
+ assert.equal(result.internalOwnerAndStaffCompatibilityVerified,true);
+ assert.equal(result.safeToDeployExistingRules,false,
+  "static role-marker checks must never approve incomplete money gateway cutover");
  assert.equal(result.partnerCompanyCount,1);
  assert.equal(result.staffReportCount,1);
  assert.equal(result.quickReportCount,1);
