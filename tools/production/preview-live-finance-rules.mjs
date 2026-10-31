@@ -41,7 +41,8 @@ function uniqueBlock(source,re,name){
   return {start,end:closingBrace(source,opened)};
 }
 function functionBlock(source,name){
-  const re=new RegExp("^[ \\t]*function[ \\t]+"+name+"\\(companyId\\)[ \\t]*\\{","gm");
+  if(!/^[A-Za-z][A-Za-z0-9]*$/.test(name))stop("BAD_FUNC_NAME");
+  const re=new RegExp("^[ \\t]*function[ \\t]+"+name+"\\([^)]*\\)[ \\t]*\\{","gm");
   return uniqueBlock(source,re,"FUNCTION_"+name);
 }
 function collectionBlock(source,name){
@@ -87,6 +88,27 @@ export function previewLiveRules(live,reviewed){
       changed.push(name);
     }
   }
+  // Verified root-cause of the two remaining owner record-update failures:
+  // the LIVE canWriteDailyRecord helper invokes full isCompanyOwner() again
+  // after expensive sameCompany(), exhausting Firestore's 1000-expression
+  // budget. Reviewed helper reuses the already-checked caller membership and
+  // checks only the profile companyRole; keeps ordinary member/leader checks.
+  const optimizedName="canWriteDailyRecord";
+  const approvedWrite=functionBlock(reviewed,optimizedName);
+  const optimizedWrite=reviewed.slice(approvedWrite.start,approvedWrite.end);
+  if(!optimizedWrite.includes("get(memberPath(companyId, request.auth.uid))")||
+     !optimizedWrite.includes("get(userPath(request.auth.uid))")||
+     !optimizedWrite.includes("targetUid == request.auth.uid"))
+    stop("REVIEWED_RECORD_WRITE_HELPER_NOT_APPROVED");
+  const existingWrite=functionBlock(candidate,optimizedName);
+  const originalWrite=candidate.slice(existingWrite.start,existingWrite.end);
+  if(!originalWrite.includes("isCompanyOwner(companyId)")&&originalWrite!==optimizedWrite)
+    stop("UNEXPECTED_LIVE_RECORD_WRITE_HELPER");
+  if(originalWrite!==optimizedWrite){
+    candidate=replaceBlock(candidate,existingWrite,optimizedWrite);
+    changed.push("canWriteDailyRecord");
+  }
+
   // Reviewed revenueGoals uses a grant optimized for the Firestore expression
   // budget; the LIVE expression with stricter guards exceeded that budget in
   // the synthetic leader regression (#18). Never ship a leader regression.
