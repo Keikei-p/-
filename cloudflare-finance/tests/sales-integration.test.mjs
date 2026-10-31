@@ -69,6 +69,7 @@ test("month switch cannot render old snapshot and no fallback to raw money Fires
  releases.shift()();
  await next;
  await Promise.resolve();
+ for(let i=0;i<30&&!errors.length;i++)await new Promise(resolve=>setImmediate(resolve));
  assert.equal(view.length,0,"stale September must not replace current October");
  assert.ok(errors.includes("selected_finance_month_changed"));
  for(let i=0;i<10&&releases.length<1;i++)await Promise.resolve();
