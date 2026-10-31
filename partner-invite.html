@@ -23,7 +23,8 @@ small{color:#5e6d82}#info{font-weight:650}
 <header><h1>NICO FACTORY | 協力店招待</h1></header>
 <main>
 <section>
- <p>協力店は別会社として登録します。売上・単価・収益原票の閲覧権限は付けません。件数報告は別の安全確認が終わるまで利用できません。</p>
+ <p>協力店は別会社として登録します。売上・単価・収益原票の閲覧権限は付けません。招待を承諾した後は、協力店専用画面で班・担当者の登録と商材別件数の入力ができます。</p>
+ <p><a href="/partner-workspace.html" id="workspaceGuide" style="color:#175899;font-weight:700">協力店の件数入力・班管理画面へ</a></p>
  <p id="notice" role="status" aria-live="polite"></p>
 </section>
 <section id="loginBox">
@@ -55,6 +56,11 @@ small{color:#5e6d82}#info{font-weight:650}
  <p id="info">招待の確認中</p>
  <button id="accept" type="button" disabled>協力店として参加</button>
  <p><small>既に別会社に所属するアカウントは使用できません。自社の会社ID・既存実績は変更しません。</small></p>
+</section>
+<section id="acceptedBox" hidden>
+ <h2>協力店の登録完了</h2>
+ <p>協力店専用画面で班とスタッフを登録すると、商材別の件数を入力できます。売上・単価は表示しません。</p>
+ <p><a href="/partner-workspace.html" style="color:#175899;font-weight:700">件数入力画面へ進む</a></p>
 </section>
 </main>
 <script type="module">
@@ -91,6 +97,7 @@ const refresh=async()=>{
  $("signedAs").textContent=user?"ログイン中："+user.email:"";
  $("createBox").hidden=!!token||!user||!user.emailVerified;
  $("acceptBox").hidden=!token||!user||!user.emailVerified;
+ $("acceptedBox").hidden=true;
  $("accept").disabled=true;
  if(user&&!user.emailVerified){message("メールの確認を完了してから操作してください。");return;}
  if(!user||!token)return;
@@ -141,7 +148,8 @@ $("copyLink").addEventListener("click",async()=>busy($("copyLink"),async()=>{
 $("accept").addEventListener("click",async()=>busy($("accept"),async()=>{
  const data=(await acceptInvite({token})).data;
  $("info").textContent="協力店としての会社登録が完了しました。";
- $("accept").disabled=true;message("招待の承諾が完了しました。件数報告は管理者の安全確認後に有効になります。");
+ $("acceptBox").hidden=true;$("acceptedBox").hidden=false;
+ $("accept").disabled=true;message("招待の承諾が完了しました。件数入力画面から班・スタッフを登録できます。");
 }));
 </script>
 </body></html>
