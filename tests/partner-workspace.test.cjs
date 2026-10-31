@@ -806,7 +806,7 @@ test("revoke partner approval rejects team count projection without leaking old 
  assert.deepEqual(result.teamReports,[]);
  assert.equal(result.registeredCompanies[0].active,false);
  await assert.rejects(api.view(req("h",{date:"2026-10-31",
-  includeTeamStatus:true,partnerCompanyId:"partner"}),e=>e.code==="permission-denied");
+  includeTeamStatus:true,partnerCompanyId:"partner"})),e=>e.code==="permission-denied");
  assert.deepEqual(db.store.get("records/old"),old);
 });
 test("only real hub Owner can request detailed partner-company team status",async()=>{
