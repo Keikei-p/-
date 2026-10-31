@@ -74,8 +74,8 @@ test("mocked read-only production check matches live rule source and does not ex
  push("users/p-owner",[doc("p-owner",{accessKind:"partner",memberType:"cooperator",canViewRevenue:false,canViewUnitPrice:false})]);
  push("companies/p/members/p-owner",[doc("p-owner",{accessKind:"partner",memberType:"cooperator",canViewRevenue:false,canViewUnitPrice:false})]);
  push("companies/h/members",[doc("h-owner",{
-  uid:"h-owner",companyId:"h",companyRole:"owner",active:true,
-  accessKind:"internal",memberType:"direct"
+  // Legacy membership omits both copies of the path identifiers.
+  companyRole:"owner",active:true,accessKind:"internal",memberType:"direct"
  })]);
  push("users/h-owner",[doc("h-owner",{
   uid:"h-owner",companyId:"h",companyRole:"owner",active:true,
@@ -117,6 +117,8 @@ test("mocked read-only production check matches live rule source and does not ex
  assert.equal(result.deployedRulesMatchReviewedRepo,true);
  assert.equal(result.activeInternalAccountsChecked,1);
  assert.equal(result.internalOwnersVerified,1);
+ assert.equal(result.legacyMembersWithoutUid,1);
+ assert.equal(result.legacyMembersWithoutCompanyId,1);
  assert.equal(result.nonLoginManagedStaff,0);
  assert.equal(result.internalOwnerAndStaffCompatibilityVerified,true);
  assert.equal(result.safeToDeployExistingRules,false,
