@@ -1,0 +1,120 @@
+name: NICO Finance Gateway bootstrap - disabled only (manual)
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/nico-finance-gateway-disabled-bootstrap.yml']
+  workflow_dispatch:
+    inputs:
+      release_confirmation:
+        description: 'Type BOOTSTRAP_FINANCE_GATEWAY_DISABLED_ONLY'
+        required: true
+        type: string
+      reviewed_main_sha:
+        description: 'Full main commit SHA'
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: nico-finance-disabled-worker-bootstrap
+  cancel-in-progress: false
+jobs:
+  validate-off:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Refuse anything except reviewed disabled finance source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object cloudflare-finance/src/index.js)" = "5f05b404d724b796efd43d8acb68035d78e1f76d"
+          test "$(git hash-object cloudflare-finance/wrangler.toml)" = "7909dffc664928ce9d751b34c44f9bdd5eab45c2"
+          node <<'NODE'
+          const fs=require('node:fs');
+          const config=fs.readFileSync('cloudflare-finance/wrangler.toml','utf8');
+          if(!/^name = "sales-finance-gateway"$/m.test(config)||
+             !/^workers_dev = true$/m.test(config)||
+             !/^FIREBASE_PROJECT_ID = "sales-management-cc116"$/m.test(config))
+            throw Error('WRONG_WORKER_OR_PROJECT');
+          for(const key of [
+            'FINANCE_GATEWAY_ENABLED','FINANCE_WRITE_ENABLED','PUBLIC_COUNT_GATEWAY_ENABLED',
+            'INTERNAL_COUNT_PAGE_ENABLED','INTERNAL_RANKS_ENABLED','PARTNER_COUNT_WRITE_ENABLED',
+            'PARTNER_COUNT_CATALOG_ENABLED'
+          ])if(!new RegExp('^'+key+' = "disabled"$','m').test(config))
+            throw Error('UNAPPROVED_ENABLED_SWITCH');
+          for(const key of ['FINANCE_WRITE_APPROVAL','FINANCE_COST_APPROVAL',
+            'FINANCE_PARTNER_APPROVAL','PUBLIC_COUNT_PROJECTION_APPROVAL'])
+            if(!new RegExp('^'+key+' = "NOT_APPROVED"$','m').test(config))
+              throw Error('UNAPPROVED_BILLING_OR_DATA');
+          console.log('PASS all finance/count APIs OFF');
+          NODE
+          node --check cloudflare-finance/src/index.js
+          node --test cloudflare-finance/tests/gateway.test.mjs
+          node --test cloudflare-finance/tests/internal-rank-only.test.mjs
+          node --test tests/internal-owner-finance-visibility.test.cjs
+      - name: Local Wrangler bundle - strictly NO deploy
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.152.0 deploy --config cloudflare-finance/wrangler.toml \
+            --dry-run --outdir "$RUNNER_TEMP/nico-finance-disabled-build"
+          test -d "$RUNNER_TEMP/nico-finance-disabled-build"
+  deploy-disabled:
+    needs: validate-off
+    if: \${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && needs.validate-off.result == 'success' && inputs.release_confirmation == 'BOOTSTRAP_FINANCE_GATEWAY_DISABLED_ONLY' && inputs.reviewed_main_sha == github.sha }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    env:
+      CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Check account connection and pinned reviewed source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo STOP_CLOUDFLARE_TOKEN_MISSING; exit 1; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo STOP_CLOUDFLARE_ACCOUNT_MISSING; exit 1; }
+          test "$(git rev-parse HEAD)" = "\${{ github.sha }}"
+          test "$(git hash-object cloudflare-finance/src/index.js)" = "5f05b404d724b796efd43d8acb68035d78e1f76d"
+          test "$(git hash-object cloudflare-finance/wrangler.toml)" = "7909dffc664928ce9d751b34c44f9bdd5eab45c2"
+          echo "PASS only disabled gateway, no Firebase Service Account supplied"
+      - name: Deploy ONLY isolated disabled gateway
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.152.0 deploy --config cloudflare-finance/wrangler.toml
+      - name: Verify Worker disabled and canonical Firebase app unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          (async()=>{
+            const base='https://sales-finance-gateway.jyhokei0124.workers.dev';
+            let healthy=false;
+            for(let i=0;i<10;i++){
+              const r=await fetch(base+'/health',{redirect:'error',cache:'no-store'});
+              if(r.status===200){
+                const j=await r.json();
+                if(j.service==='finance-gateway'&&j.enabled===false){healthy=true;break;}
+              }
+              await new Promise(resolve=>setTimeout(resolve,4000));
+            }
+            if(!healthy)throw Error('STOP_DISABLED_WORKER_NOT_VERIFIED');
+            for(const path of ['/v1/financial-view','/v1/internal-counts?day=2026-10-31',
+              '/v1/internal-ranks?month=2026-10','/v1/partner-count-catalog']){
+              const r=await fetch(base+path,{redirect:'error'});
+              if(r.status!==503)throw Error('STOP_UNEXPECTED_GATEWAY_STATUS_'+r.status);
+            }
+            const r=await fetch('https://nico-factory.web.app/',{redirect:'error'});
+            if(r.status!==200||!(await r.text()).includes('営業実績管理'))
+              throw Error('STOP_OFFICIAL_SALES_SITE_UNAVAILABLE');
+            console.log('PASS disabled worker responds and original sales site is unchanged');
+          })().catch(e=>{console.error(e.message);process.exitCode=1});
+          NODE
