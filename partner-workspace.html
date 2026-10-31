@@ -101,11 +101,19 @@ td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 <p class="muted">スタッフ本人・所属リーダー・協力店代表が登録できます。名前だけのスタッフはリーダーか代表が代理入力します。修正履歴は残ります。</p>
 <label for="staffSelect">担当者</label><select id="staffSelect"></select>
 <div id="countGrid" class="grid" style="margin:14px 0"></div>
+<h3>協力店の独自商材（自社側には非公開）</h3>
+<div id="privateCountGrid" class="grid" style="margin:14px 0"></div>
+<p class="muted">独自商材の名称・件数・合計は協力店内のみで管理し、自社側の合同件数には加算しません。</p>
 <div class="row"><strong id="total">0 件</strong><button id="save" type="button">実績を保存</button></div>
 <p class="muted" id="revision">未登録</p><p class="muted" id="setupHelp" hidden></p></section>
 <section id="peopleBox" hidden><h2>班・スタッフ管理</h2>
 <div id="makeTeam"><h3>班を追加（代表者のみ）</h3><div class="row"><input id="teamName" placeholder="例：1班" maxlength="60">
 <button id="createTeam" type="button">班を追加</button></div></div>
+<div id="privateProductAdmin" hidden><h3>協力店独自商材の管理（代表者のみ）</h3>
+<p class="muted">独自商材は協力店内のみ。無効化しても過去の件数履歴は残ります。</p>
+<div class="row"><input id="privateProductName" aria-label="独自商材名" maxlength="80" placeholder="例：独自サービス">
+<button id="addPrivateProduct" type="button">独自商材を追加</button></div>
+<div id="privateProductList" class="scroll"></div></div>
 <h3>名前だけのスタッフを登録</h3>
 <div class="row"><input id="managedName" placeholder="スタッフ名" maxlength="60">
 <select id="managedTeam"></select><button id="addManaged" type="button">名前のみ登録</button></div>
@@ -159,7 +167,11 @@ inp.addEventListener("input",updateTotal);box.append(lab,inp);grid.append(box)}
 function values(){const o={};for(const x of grid.querySelectorAll("input")){
  if(!/^(?:0|[1-9]\d{0,3})$/.test(x.value.trim()))throw Error("invalid count");
  o[x.dataset.key]=Number(x.value)}return o}
-function updateTotal(){let n=0;for(const x of grid.querySelectorAll("input")){const k=Number(x.value);if(Number.isSafeInteger(k)&&k>=0&&k<=9999)n+=k} $("total").textContent=n+" 件"}
+function privateValues(){const o={};for(const x of $("privateCountGrid").querySelectorAll("input")){
+ if(x.disabled)continue;
+ if(!/^(?:0|[1-9]\d{0,3})$/.test(x.value.trim()))throw Error("invalid private count");
+ o[x.dataset.privateId]=Number(x.value)}return o}
+function updateTotal(){let n=0;for(const x of document.querySelectorAll("#countGrid input,#privateCountGrid input")){const k=Number(x.value);if(Number.isSafeInteger(k)&&k>=0&&k<=9999)n+=k} $("total").textContent=n+" 件"}
 
 function periodDatesForCounts(selected,period,today){
  if(!/^\d{4}-\d{2}-\d{2}$/.test(selected)||!/^\d{4}-\d{2}-\d{2}$/.test(today))
