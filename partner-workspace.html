@@ -128,6 +128,25 @@ td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 <div class="row"><select id="moveStaffSelect" aria-label="移動するスタッフ"></select><select id="moveTeamSelect" aria-label="新しい所属班"></select><button type="button" id="moveStaffAction">所属班を変更</button></div></div></section>
 <section id="listBox" hidden><h2>今日の実績一覧</h2><div id="recordsList" class="scroll"></div></section>
 <section id="hubBox" hidden><h2>🤝 協力店会社別の実績</h2>
+ <div id="hubInvitePanel" class="company-panel">
+  <h3>協力店会社・リーダー・メンバーの招待管理</h3>
+  <p class="muted">最初の協力店登録・承諾が終わると会社名が現れます。未承認の会社は招待できません。売上・単価は扱いません。</p>
+  <label for="hubInviteCompanySelect">招待先の会社</label><select id="hubInviteCompanySelect"></select>
+  <p id="hubInviteState" class="muted" role="status"></p>
+  <div id="hubInviteControls" hidden>
+   <label for="hubNewTeamName">班を追加（班がない場合）</label>
+   <div class="row"><input id="hubNewTeamName" maxlength="60" placeholder="例：第1班">
+    <button id="hubCreateTeam" type="button" class="secondary">協力店の班を追加</button></div>
+   <label for="hubInviteTeamSelect">配属先の班</label><select id="hubInviteTeamSelect"></select>
+   <label for="hubInviteRoleSelect">役割</label><select id="hubInviteRoleSelect">
+    <option value="leader">リーダー</option><option value="member">メンバー</option></select>
+   <label for="hubInviteEmail">本人のメールアドレス</label>
+   <input id="hubInviteEmail" type="email" autocomplete="off" placeholder="staff@example.com">
+   <button id="hubMakeInvite" type="button">この会社に招待リンクを作成</button>
+   <div id="hubInviteOut" hidden><label for="hubInviteUrl">30分有効・本人専用の招待リンク</label>
+    <div class="row"><input id="hubInviteUrl" readonly><button type="button" id="hubInviteCopy" class="secondary">コピー</button></div></div>
+  </div>
+ </div>
 <p class="muted">選択した日の報告済み協力店のみ表示します。未報告の会社を0件として扱いません。金額情報はありません。</p>
 <div id="hubList" class="scroll"></div>
 <div id="hubCompanyDetail" class="company-panel" hidden><h3>協力店ごとの商材実績</h3>
@@ -512,6 +531,31 @@ function renderHubCompanyDetail(){
  $("hubCompanyProducts").replaceChildren(selected?
   countTable(["商材","報告件数"],KEYS.map(k=>[k,selected.counts[k]+"件"])):countTable(["商材","報告件数"],[]));
 }
+function renderHubInvitePanel(){
+ if(data?.role!=="hub")return;
+ const registered=Array.isArray(data.registeredCompanies)?data.registeredCompanies:[];
+ const companySelect=$("hubInviteCompanySelect"),prior=companySelect.value;
+ companySelect.replaceChildren();
+ for(const company of registered){
+  const opt=document.createElement("option");opt.value=company.partnerCompanyId;
+  opt.textContent=company.name+(company.active?"":"｜承認待ち");
+  companySelect.append(opt);
+ }
+ if(registered.some(c=>c.partnerCompanyId===prior))companySelect.value=prior;
+ const selected=registered.find(c=>c.partnerCompanyId===companySelect.value),ready=selected?.active===true;
+ $("hubInviteControls").hidden=!ready;
+ $("hubInviteState").textContent=!selected?"登録済み協力店がありません。先に協力店会社を招待してください。":
+  !ready?selected.name+"：承認待ちです。件数運用の承認後に招待できます。":
+  selected.name+"｜リーダー・メンバーを招待できます。";
+ const teamSelect=$("hubInviteTeamSelect"),priorTeam=teamSelect.value;teamSelect.replaceChildren();
+ if(ready){
+  for(const team of selected.teams||[]){
+   const option=document.createElement("option");option.value=team.id;option.textContent=team.name;teamSelect.append(option);
+  }
+  if((selected.teams||[]).some(x=>x.id===priorTeam))teamSelect.value=priorTeam;
+ }
+ $("hubMakeInvite").disabled=!ready||!teamSelect.value;
+}
 function activeTab(name){
  for(const x of ["Dashboard","Records","People","View"])$("tab"+x).setAttribute("aria-pressed",String(x===name));
  $("dashboardBox").hidden=name!=="Dashboard"||!data||data.role==="hub";
@@ -542,6 +586,7 @@ function draw(){
   }
   if(data.partners.some(p=>p.partnerCompanyId===prior))select.value=prior;
   renderHubCompanyDetail();
+  renderHubInvitePanel();
   return;
  }
  $("makeTeam").hidden=data.role!=="owner";
@@ -620,6 +665,8 @@ function renderSelected(){if(!data||data.role==="hub")return;const rec=data.reco
  $("revision").textContent=rec?"第"+rec.version+"版・訂正可能":"未登録（0件報告も保存可能）";
  $("save").disabled=!$("staffSelect").value;updateTotal()}
 $("hubCompanySelect").onchange=renderHubCompanyDetail;
+$("hubInviteCompanySelect").onchange=()=>{$("hubInviteOut").hidden=true;$("hubInviteUrl").value="";renderHubInvitePanel()};
+$("hubInviteTeamSelect").onchange=()=>{$("hubInviteOut").hidden=true;$("hubInviteUrl").value=""};
 $("staffSelect").onchange=renderSelected;
 async function refresh(){if(!auth.currentUser||!auth.currentUser.emailVerified)return;
  const current=++nonce;loading=true;$("save").disabled=true;try{
@@ -642,6 +689,25 @@ $("addPrivateProduct").onclick=()=>action(async()=>{
 $("createTeam").onclick=()=>action(async()=>{await manage({action:"addTeam",name:$("teamName").value});$("teamName").value="";return "班を作成しました。";});
 $("addManaged").onclick=()=>action(async()=>{await manage({action:"addManaged",name:$("managedName").value,teamId:$("managedTeam").value});$("managedName").value="";return "担当者を登録しました。";});
 $("moveStaffAction").onclick=()=>action(async()=>{await manage({action:"moveStaff",staffId:$("moveStaffSelect").value,teamId:$("moveTeamSelect").value});return "所属班を変更しました。過去の実績件数は変更していません。";});
+$("hubCreateTeam").onclick=()=>action(async()=>{
+ await manage({action:"hubAddTeam",partnerCompanyId:$("hubInviteCompanySelect").value,
+  name:$("hubNewTeamName").value});
+ $("hubNewTeamName").value="";
+ return "協力店の班を追加しました。保存済み実績は変更していません。";
+});
+$("hubMakeInvite").onclick=()=>action(async()=>{
+ const companyId=$("hubInviteCompanySelect").value,teamId=$("hubInviteTeamSelect").value,
+  role=$("hubInviteRoleSelect").value,email=$("hubInviteEmail").value;
+ const result=(await manage({action:"hubCreateInvite",partnerCompanyId:companyId,teamId,role,email})).data;
+ const url=new URL("/partner-workspace.html",location.origin);
+ url.searchParams.set("invite",result.token);
+ $("hubInviteUrl").value=url.href;$("hubInviteOut").hidden=false;
+ return "協力店の"+(role==="leader"?"リーダー":"メンバー")+"招待リンクを作成しました。";
+});
+$("hubInviteCopy").onclick=async()=>{
+ try{await navigator.clipboard.writeText($("hubInviteUrl").value);notice("協力店の招待リンクをコピーしました")}
+ catch{$("hubInviteUrl").select();notice("リンクを選択しました。コピーしてください。")}
+};
 $("makeInvite").onclick=()=>action(async()=>{
  const result=(await manage({action:"createInvite",email:$("inviteEmail").value,
   teamId:$("inviteTeam").value,role:$("inviteRole").value})).data;
@@ -683,6 +749,7 @@ onAuthStateChanged(auth,u=>{
  ++nonce;++countLoadId;data=null;countDayCache.clear();clearCountOnlyDashboard();$("companyOverview").hidden=true;$("workspaceTitle").textContent="NICO FACTORY｜協力店 実績管理";$("appBox").hidden=true;$("loginBox").hidden=!!u;
  $("inviteAccept").hidden=true;$("verify").hidden=!u||u.emailVerified;
  $("inviteUrl").value="";$("inviteOut").hidden=true;
+ $("hubInviteUrl").value="";$("hubInviteOut").hidden=true;
  if(!u){notice("招待されたアカウント、または自社オーナーでログインしてください。");return}
  if(!u.emailVerified){notice("メール確認を済ませて、画面を再読込してください。",true);return}
  if(inviteToken){$("inviteAccept").hidden=false;notice("招待リンクを確認しました。表示名を入力して参加してください。");return}
