@@ -416,7 +416,7 @@ test("approval revocation removes saved reports from hub view without modifying 
  await api.submit(req("p",{date,staffId:staff,counts:{...zero(),NURO:4},expectedVersion:0}));
  const key="companies/hub/partnerWorkCountDays/"+date+"/reports/partner";
  const old=clone(db.store.get(key));
- assert.equal((await api.view(req("h",{date})).partners[0].totalCount,4);
+ assert.equal((await api.view(req("h",{date}))).partners[0].totalCount,4);
  for(const state of [
    {active:false,countSharingApproved:true},
    {active:true,countSharingApproved:false},
