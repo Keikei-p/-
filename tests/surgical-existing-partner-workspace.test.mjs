@@ -16,7 +16,7 @@ test("only existing partner workspace is replaced; all other live files and hash
  assert.equal(next.get("/index.html"),hash("a"));
 });
 test("stop when workspace is missing, unchanged, count unexpected or additive path attempted",()=>{
- assert.throws(()=>validateManifest(originals,new Map([["/index.html",hash("a")]]),4),/NO_WORKSPACE_CHANGE/);
+ assert.throws(()=>validateManifest(originals,new Map([["/partner-workspace.html",hash("d")]]),4),/NO_WORKSPACE_CHANGE/);
  assert.throws(()=>validateManifest(originals.slice(1),new Map([["/partner-workspace.html",hash("e")]]),3),/LIVE_INDEX_MISSING/);
  assert.throws(()=>validateManifest(originals,new Map([["/partner-workspace.html",hash("e")]]),3),/SOURCE_FILE_COUNT_MISMATCH/);
  assert.throws(()=>validateManifest(originals,new Map([["/foo.html",hash("e")]]),4),/ONLY_ONE_REPLACED_WORKSPACE_ALLOWED/);
