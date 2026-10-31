@@ -34,7 +34,7 @@ function setup({enabled=true,authDisabled=false}={}){
  db.seed("companies/partner1/members/p",user("p","partner1","partner"));
  db.seed("users/o",user("o","otherhub","internal"));
  db.seed("companies/otherhub/members/o",user("o","otherhub","internal"));
- db.seed("partnerRelations/partner1",{partnerCompanyId:"partner1",hubCompanyId:"hub",active:false,countSharingApproved:false,catalogAccessApproved:false});
+ db.seed("partnerRelations/partner1",{partnerCompanyId:"partner1",hubCompanyId:"hub",active:true,countSharingApproved:true,catalogAccessApproved:true});
  db.seed("products/private-revenue",{companyId:"hub",revenue:999,unitPrice:100});
  db.seed("records/existing",{companyId:"hub",totalCount:4,totalRevenue:10000});
  const getAuth=()=>({getUser:async uid=>({uid,disabled:authDisabled,emailVerified:true,email:uid+"@example.com"}),verifyIdToken:async bearer=>({uid:bearer[0],email_verified:true,email:bearer[0]+"@example.com"})});
@@ -82,4 +82,40 @@ test("no direct access or write to old money collections and no destructive oper
  assert.doesNotMatch(code,/\.delete\s*\(/);
  assert.doesNotMatch(code,/\.collection\s*\(\s*["'](?:products|records|recordCorrections|revenueGoals)["']\s*\)/);
  assert.doesNotMatch(code,/\.set\s*\(/);
+});
+
+test("invited but not activated partner cannot read or save, and hub sees no data",async()=>{
+ const {db,service,req,counts}=setup();
+ db.seed("partnerRelations/partner1",{partnerCompanyId:"partner1",hubCompanyId:"hub",
+   active:false,countSharingApproved:false,catalogAccessApproved:false});
+ const originalCount=db.data.size;
+ await assert.rejects(service.submit(req("p",{date:today,counts:{...counts,NURO:7},expectedVersion:0})),
+   e=>e.code==="permission-denied");
+ await assert.rejects(service.view(req("p",{date:today})),e=>e.code==="permission-denied");
+ const hub=await service.view(req("h",{date:today}));
+ assert.equal(hub.totalCount,0);
+ assert.equal(hub.partners.length,0);
+ assert.equal(db.data.size,originalCount);
+ assert.equal([...db.data.keys()].some(x=>x.includes("partnerQuickCountDays")),false);
+});
+test("revoked and partially activated partner reports cannot leak saved counts to hub",async()=>{
+ const {db,service,req,counts}=setup();
+ await service.submit(req("p",{date:today,counts:{...counts,NURO:3},expectedVersion:0}));
+ const report=[...db.data.entries()].find(([key])=>key.includes("partnerQuickCountDays"))[1];
+ const original=copy(report);
+ for(const flags of [
+  {active:false,countSharingApproved:true},
+  {active:true,countSharingApproved:false},
+  {active:false,countSharingApproved:false}
+ ]){
+  db.seed("partnerRelations/partner1",{partnerCompanyId:"partner1",hubCompanyId:"hub",...flags});
+  await assert.rejects(service.submit(req("p",{date:today,counts,expectedVersion:1})),
+    e=>e.code==="permission-denied");
+  await assert.rejects(service.view(req("p",{date:today})),e=>e.code==="permission-denied");
+  const hub=await service.view(req("h",{date:today}));
+  assert.deepEqual(hub.partners,[]);
+  assert.equal(hub.totalCount,0);
+ }
+ assert.deepEqual([...db.data.entries()].find(([key])=>key.includes("partnerQuickCountDays"))[1],original,
+   "revocation must never delete or alter historical count records");
 });
