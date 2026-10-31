@@ -15,7 +15,7 @@ import {submitCounts, SaveConflict, PermissionDenied} from "./count-service.js";
 import {makeFirestoreRestStore} from "./firestore-writer.js";
 import {makePublicCountRestHandler} from "./public-count-live-adapter.mjs";
 import {createInternalCountPage} from "./internal-count-page.mjs";
-import {buildInternalRankOnly} from "./internal-rank-only.mjs";
+import {buildInternalRankOnly,validInternalRankMonthQuery} from "./internal-rank-only.mjs";
 import {makeCountDayFirestoreReader} from "./internal-count-rest-reader.mjs";
 import {normalizeInternalCountMembership} from "./internal-count-membership.mjs";
 import {createPartnerCountCatalogHandler} from "./partner-count-catalog.mjs";
@@ -592,8 +592,7 @@ export default {
         env.FINANCE_COST_APPROVAL==="OWNER_APPROVED_BLAZE_COSTS";
       if(!enabled)return safeJSON({error:"internal_ranks_not_released"},503,origin);
       if(request.method!=="GET")return safeJSON({error:"method_not_allowed"},405,origin);
-      if([...url.searchParams.keys()].join(",")!=="month"||
-         !/^\\d{4}-(0[1-9]|1[0-2])$/.test(url.searchParams.get("month")||""))
+      if(!validInternalRankMonthQuery(url.searchParams))
         return safeJSON({error:"invalid_month"},400,origin);
       const auth=request.headers.get("authorization")||"";
       if(!auth.startsWith("Bearer "))return safeJSON({error:"unauthorized"},401,origin);
