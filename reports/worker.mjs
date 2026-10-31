@@ -256,12 +256,20 @@ export default {
    if(!Array.isArray(settings.weekdays)||!settings.weekdays.map(Number).includes(clock.weekday))continue;
    try{
     const plan=buildCombinedReportPlan({hub,companies:entries});
-    // Each linked partner must approve this weekday too; never infer consent.
+    // Partner LINE sharing requires server-owned relation approval in
+    // addition to BOTH companies' notification settings. Invitation starts
+    // inactive; revocation must stop the entire combined send.
     for(const id of plan.partnerCompanyIds){
      const p=byId.get(id);
      if(!Array.isArray(p.settings.weekdays) ||
         !p.settings.weekdays.map(Number).includes(clock.weekday))
        throw Error("Partner weekday sharing not approved");
+     const relation=await getDocument(env,token,
+       "partnerRelations/"+encodeURIComponent(id));
+     if(!relation||relation.id!==id||relation.partnerCompanyId!==id||
+        relation.hubCompanyId!==hub.id||relation.active!==true||
+        relation.countSharingApproved!==true)
+       throw Error("Partner count-sharing relation not approved");
     }
     plans.push({hub,plan});
    }catch(_error){
