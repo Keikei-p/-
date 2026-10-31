@@ -65,9 +65,17 @@ td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 <div class="period-menu" aria-label="集計期間"><button id="periodDay" type="button" aria-pressed="true">日別</button><button id="periodWeek" type="button" aria-pressed="false">週別</button><button id="periodMonth" type="button" aria-pressed="false">月別</button></div>
 <p id="countDashboardStatus" role="status" aria-live="polite"></p>
 <div id="countKpis" class="count-kpis"></div>
+<div id="countGoalBox" class="count-section" hidden><h3>🎯 月間目標件数</h3>
+<p class="muted">この端末のログイン者専用の目標です。会社全員には同期しません。実績データは変更しません。</p>
+<div class="row"><div><label for="countGoal">月間目標</label><input id="countGoal" type="number" inputmode="numeric" min="1" max="999999" step="1" placeholder="例：100"></div>
+<button id="countGoalSave" type="button">目標保存</button><button id="countGoalClear" type="button" class="secondary">解除</button></div>
+<p id="countGoalStatus" role="status" aria-live="polite"></p></div>
 <div class="count-section"><h3>🏆 班別ランキング</h3><p id="countTeamHint" class="count-subnav">班移動した担当者の過去の所属班は、画面上で正確に復元できない場合があります。</p><div id="countTeamRank" class="scroll"></div></div>
 <div class="count-section"><h3>🏅 個人別ランキング</h3><div id="countStaffRank" class="scroll"></div></div>
-<div class="count-section"><h3>📦 商材別ランキング</h3><div id="countProductRank" class="scroll"></div></div>
+<div class="count-section"><h3>📦 商材別ランキング</h3>
+<label for="countProductMode">集計方法</label><select id="countProductMode"><option value="single">商材ごと</option><option value="group">乗り換え・光・電気をまとめる</option></select>
+<p class="muted">表示のまとめ方だけを変更します。件数入力・CSVの元データには影響しません。</p>
+<div id="countProductRank" class="scroll"></div></div>
 <div class="count-section"><h3>📆 日別推移</h3><div id="countDailyRows" class="scroll"></div></div>
 </section>
 <section id="recordsBox" hidden><h2>件数登録・訂正</h2>
@@ -208,6 +216,40 @@ function countTable(headers,rows){
   table.append(tr)}
  return table;
 }
+function groupedProductCounts(products,mode){
+ const entries=Object.entries(products);
+ if(mode!=="group")return entries.sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"ja"));
+ const labels={"SBMNP":"乗り換え丸件（SBMNP＋YMMNP）","YMMNP":"乗り換え丸件（SBMNP＋YMMNP）",
+ "SB光・AIR":"SB光・AIR合計","つばさ・HTB":"新電力（つばさ・HTB）"};
+ const sum=new Map();
+ for(const [key,n] of entries){
+  if(!Number.isSafeInteger(n)||n<0)throw Error("invalid count");
+  const name=labels[key]||key;sum.set(name,(sum.get(name)||0)+n)}
+ return [...sum].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"ja"));
+}
+function renderProductRankMode(){
+ if(!countExportRows)return;
+ $("countProductRank").replaceChildren(countTable(["順位","商材","合計件数"],
+ groupedProductCounts(countExportRows.summary.products,$("countProductMode").value)
+  .map(([name,n],i)=>[i===0?"👑 1位":i+1,name,n+"件"])));
+}
+function countGoalKey(){
+ return "nico-partner-month-goal-v1:"+auth.currentUser.uid+":"+
+ encodeURIComponent(data.companyName||"")+":"+$("date").value.slice(0,7);
+}
+function renderCountGoal(){
+ $("countGoalBox").hidden=countPeriod!=="month"||!countExportRows;
+ if($("countGoalBox").hidden)return;
+ let raw;
+ try{raw=localStorage.getItem(countGoalKey())}catch{
+  $("countGoalStatus").textContent="端末への保存を利用できません。";return}
+ const goal=/^[1-9][0-9]{0,5}$/.test(raw||"")?Number(raw):0;
+ $("countGoal").value=goal?String(goal):"";
+ if(!goal){$("countGoalStatus").textContent="月目標は未設定です。";return}
+ const count=countExportRows.summary.total;
+ $("countGoalStatus").textContent="現在 "+count+"/"+goal+"件｜達成率 "+
+  Math.round(count/goal*1000)/10+"%｜残り "+Math.max(0,goal-count)+"件";
+}
 function renderCountOnlyDashboard(summary,days){
  const count=summary.total,positive=summary.days.filter(d=>d.count>0).length;
  const cards=[["合計実績",count+"件"],["活動日数",positive+"日"],
@@ -229,10 +271,10 @@ function renderCountOnlyDashboard(summary,days){
    .map(([name,n],i)=>[i+1,name,n+"件"])));
  $("countDailyRows").replaceChildren(countTable(["日付","合計件数","実績あり"],
   summary.days.map(d=>[d.date,d.count+"件",d.people+"人"])));
- countExportRows={summary,days};
+ countExportRows={summary,days};renderProductRankMode();renderCountGoal();
 }
 function clearCountOnlyDashboard(){
- countExportRows=null;for(const id of ["countKpis","countTeamRank","countStaffRank",
+ countExportRows=null;$("countGoalBox").hidden=true;for(const id of ["countKpis","countTeamRank","countStaffRank",
   "countProductRank","countDailyRows"])$(id).replaceChildren();
 }
 async function loadCountDashboard(){
@@ -276,6 +318,20 @@ async function loadCountDashboard(){
   console.error("count-only dashboard verification failed",error?.code||"incomplete");
  }
 }
+$("countProductMode").onchange=renderProductRankMode;
+$("countGoalSave").onclick=()=>{
+ if(!countExportRows||countPeriod!=="month"||!auth.currentUser)return;
+ const raw=$("countGoal").value.trim();
+ if(!/^[1-9][0-9]{0,5}$/.test(raw)){
+  $("countGoalStatus").textContent="1〜999999件の整数を入力してください。";return}
+ try{localStorage.setItem(countGoalKey(),raw);renderCountGoal()}
+ catch{$("countGoalStatus").textContent="端末に保存できませんでした。"}
+};
+$("countGoalClear").onclick=()=>{
+ if(!countExportRows||countPeriod!=="month"||!auth.currentUser)return;
+ try{localStorage.removeItem(countGoalKey());renderCountGoal()}
+ catch{$("countGoalStatus").textContent="目標を解除できませんでした。"}
+};
 for(const mode of ["Day","Week","Month"])$("period"+mode).onclick=()=>{
  countPeriod=mode.toLowerCase();
  for(const m of ["Day","Week","Month"])
