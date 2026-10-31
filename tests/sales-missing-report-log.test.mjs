@@ -8,7 +8,7 @@ const start=html.indexOf("async function renderMissingReportLog(){");
 const stop=html.indexOf("async function renderNotificationPreview()",start);
 assert.ok(start>0&&stop>start,"Missing-report renderer must be inside the existing Owner app");
 const script=html.slice(start,stop);
-function fixture({partnerResponse,partnerError=false,ownError=false,owner=true,day="2026-10-30"}={}){
+function fixture({partnerResponse,partnerError=false,ownError=false,owner=true,day="2026-10-30",quickPartners=[]}={}){
   let financeReads=0,partnerReads=0,quickReads=0;
   function node(){
     return {style:{display:"block"},textContent:"",children:[],
@@ -52,7 +52,7 @@ function fixture({partnerResponse,partnerError=false,ownError=false,owner=true,d
         ]
       }};
     },
-    readPartnerQuickDay:async()=>{quickReads++;return {data:{role:"hub",partners:[]}};},
+    readPartnerQuickDay:async()=>{quickReads++;return {data:{role:"hub",partners:quickPartners}};},
     validatedPartnerRankingDay:(data)=>data.partners,
     document:{createElement:()=>node()}
   };
@@ -105,9 +105,8 @@ test("the new missing log never exposes finance values or mutates originals",()=
 });
 
 test("legacy company 0-count report avoids false team-missing classification",async()=>{
-  const f=fixture();
-  f.context.readPartnerQuickDay=async()=>({data:{role:"hub",partners:[{partnerCompanyId:"missing",totalCount:0}]}});
+  const f=fixture({quickPartners:[{partnerCompanyId:"missing",totalCount:0}]});
   await f.run();
-  assert.doesNotMatch(f.text(),/未報告協力店.*未報告/);
-  assert.match(f.text(),/未報告協力店.*要確認/);
+  assert.doesNotMatch(f.text(),/未報告協力店｜未報告班 未報告/);
+  assert.match(f.text(),/未報告協力店｜未報告班 要確認/);
 });
