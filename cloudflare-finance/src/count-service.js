@@ -67,6 +67,17 @@ export async function submitCounts(store,principal,input,options={}){
     if(!policy || policy.companyId!==cid || policy.uid!==principal.uid){
       throw new PermissionDenied();
     }
+    // Partner companies are created with sharing disabled. A revoked or
+    // pending relation must deny every write, including a genuine Owner.
+    // Resolve this INSIDE the same Firestore transaction as the final write.
+    if(company?.companyKind==="partner"){
+      const relation=await tx.get("partnerRelations/"+cid);
+      if(!policy.isPartner || !relation ||
+         relation.partnerCompanyId!==cid ||
+         relation.hubCompanyId!==company.hubCompanyId ||
+         relation.active!==true || relation.countSharingApproved!==true)
+        throw new PermissionDenied();
+    }
     // Never let the client assign the company or price.
     if(!input || !input.uid || !input.date || !input.teamId){
       throw new ValidationError("Missing target person, date or team");
