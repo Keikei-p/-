@@ -1,0 +1,74 @@
+name: NICO original Invite Link tab — one-time reviewed production publish
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-visible-partner-invite-tab-once.yml'
+permissions:
+  contents: read
+  actions: write
+concurrency:
+  group: nico-original-invite-tab-one-shot
+  cancel-in-progress: false
+jobs:
+  one-off-index-release:
+    if: >-
+      ${{ github.repository == 'Keikei-p/-' &&
+          github.actor == 'Keikei-p' &&
+          startsWith(github.event.head_commit.message,
+           'fix: release visible partner invite selector in existing tab') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Verify canonical existing pages, protected main SHA and production project
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh api repos/Keikei-p/-/branches/main --jq '.commit.sha')" = "$EXPECTED_SHA"
+          for route in / /partner-invite.html /partner-counts.html /partner-workspace.html; do
+            status=$(curl --silent --location --output /dev/null --write-out '%{http_code}' --retry 3 --max-time 25 "https://nico-factory.web.app$route")
+            test "$status" = 200
+          done
+          status=$(curl --silent --location --output /dev/null --write-out '%{http_code}' --max-time 25 \
+            https://asia-northeast1-sales-management-cc116.cloudfunctions.net/createPartnerCompanyInvitation)
+          # GET is not a supported callable method; it must never succeed anonymously.
+          test "$status" != 200
+      - name: Reuse existing surgical index-only manual release and await actual success
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          workflow='nico-ranking-index-only-release.yml'
+          repo='Keikei-p/-'
+          previous=$(gh api "repos/$repo/actions/workflows/$workflow/runs?event=workflow_dispatch&branch=main&per_page=10" \
+            --jq '[.workflow_runs[].id] | max // 0')
+          gh workflow run "$workflow" --repo "$repo" --ref main
+          id=''
+          for attempt in $(seq 1 45); do
+            id=$(gh api "repos/$repo/actions/workflows/$workflow/runs?event=workflow_dispatch&branch=main&per_page=20" \
+              --jq ".workflow_runs | map(select(.id > $previous and .head_sha == \"$EXPECTED_SHA\")) | sort_by(.id) | last | .id // empty")
+            if [ -n "$id" ]; then break; fi
+            sleep 7
+          done
+          if [ -z "$id" ]; then echo 'STOP: gated index-only dispatch not observed'; exit 1; fi
+          echo "Surgical index-only release run=$id"
+          gh run watch "$id" --repo "$repo" --exit-status
+          test "$(gh run view "$id" --repo "$repo" --json conclusion --jq .conclusion)" = 'success'
+      - name: Post-release proof that both invite types appear in original tab
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 3 --max-time 30 \
+            https://nico-factory.web.app/ > "$RUNNER_TEMP/live-nico-invite.html"
+          for marker in 'id="inviteDestinationSelect"' 'id="employeeInviteFields"' \
+            '<option value="internal">' '<option value="partner">' \
+            'id="partnerInviteCompanyName"' 'id="partnerInviteEmail"' \
+            'id="partnerInviteCreateButton"' 'mergedPartnerRankingDay'; do
+            grep -Fq "$marker" "$RUNNER_TEMP/live-nico-invite.html"
+          done
+          echo 'SUCCESS: existing sales home, employee invites and partner company invites are simultaneously present'
