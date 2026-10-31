@@ -49,6 +49,15 @@ function makeQuickCounts({db,getAuth,FieldValue,HttpsError,enabled,now=()=>Date.
      verified.email_verified!==true||clean(verified.email).toLowerCase()!==email)fail(HttpsError,"unauthenticated");
   return uid;
  }
+ const grantRef=partnerId=>db.collection("partnerQuickCountApprovals").doc(partnerId);
+ const quickAllowed=(rel,grant,partnerId,hubId,hubOwnerUid,partnerOwnerUid)=>
+  rel.partnerCompanyId===partnerId&&rel.hubCompanyId===hubId&&
+  ((rel.active===true&&rel.countSharingApproved===true)||
+   (rel.active===false&&rel.countSharingApproved===false&&
+    !rel.countSharingRevokedAt&&!rel.revokedAt&&
+    grant?.approved===true&&grant.partnerCompanyId===partnerId&&
+    grant.hubCompanyId===hubId&&grant.partnerOwnerUid===partnerOwnerUid&&
+    grant.approvedByUid===hubOwnerUid));
  async function identity(tx,uid){
   const userSnap=await tx.get(db.collection("users").doc(uid));
   const user=userSnap.data()||{};
@@ -69,12 +78,16 @@ function makeQuickCounts({db,getAuth,FieldValue,HttpsError,enabled,now=()=>Date.
    const relationSnap=await tx.get(db.collection("partnerRelations").doc(user.companyId));
    const rel=relationSnap.data()||{};
    if(!relationSnap.exists||rel.partnerCompanyId!==user.companyId||
-       rel.hubCompanyId!==company.hubCompanyId||rel.active!==true||
-       rel.countSharingApproved!==true)fail(HttpsError);
-   const hubSnap=await tx.get(db.collection("companies").doc(company.hubCompanyId));
+       rel.hubCompanyId!==company.hubCompanyId)fail(HttpsError);
+   const [hubSnap,grantSnap]=await Promise.all([
+    tx.get(db.collection("companies").doc(company.hubCompanyId)),
+    tx.get(grantRef(user.companyId))
+   ]);
    const hub=hubSnap.data()||{};
-   if(!hubSnap.exists||hub.active!==true||hub.ownerUid==null||
-      ![undefined,"internal","direct"].includes(hub.companyKind))fail(HttpsError);
+   if(!hubSnap.exists||hub.active!==true||!ID.test(hub.ownerUid||"")||
+      ![undefined,"internal","direct"].includes(hub.companyKind)||
+      !quickAllowed(rel,grantSnap.data()||{},user.companyId,
+       company.hubCompanyId,hub.ownerUid,uid))fail(HttpsError);
    return {role:"partner",partnerId:user.companyId,hubId:company.hubCompanyId,
      companyName:clean(company.name).slice(0,80)};
   }
@@ -82,6 +95,68 @@ function makeQuickCounts({db,getAuth,FieldValue,HttpsError,enabled,now=()=>Date.
      user.accessKind==="partner"||member.accessKind==="partner"||
      user.memberType==="cooperator"||member.memberType==="cooperator")fail(HttpsError);
   return {role:"hub",hubId:user.companyId};
+ }
+ async function approve(request){
+  const uid=await caller(request),input=request?.data;
+  if(!input||typeof input!=="object"||Array.isArray(input)||
+     Object.keys(input).sort().join("|")!=="approved|partnerCompanyId"||
+     !ID.test(input.partnerCompanyId||"")||typeof input.approved!=="boolean")
+   fail(HttpsError,"invalid-argument");
+  const partnerId=input.partnerCompanyId;
+  return db.runTransaction(async tx=>{
+   const actor=await identity(tx,uid);
+   if(actor.role!=="hub"||actor.hubId===partnerId)fail(HttpsError);
+   const relationRef=db.collection("partnerRelations").doc(partnerId);
+   const companyRef=db.collection("companies").doc(partnerId);
+   const [relationSnap,companySnap,grantSnap]=await Promise.all([
+     tx.get(relationRef),tx.get(companyRef),tx.get(grantRef(partnerId))
+   ]);
+   const relation=relationSnap.data()||{},company=companySnap.data()||{},
+     grant=grantSnap.data()||{};
+   // Unknown and other-hub company IDs must not expose whether they exist.
+   if(!relationSnap.exists||!companySnap.exists||
+      relation.hubCompanyId!==actor.hubId||company.hubCompanyId!==actor.hubId)
+      fail(HttpsError);
+   if(relation.partnerCompanyId!==partnerId||
+      company.companyKind!=="partner"||
+      company.active!==true||!ID.test(company.ownerUid||"")||
+      !clean(company.name)||BLOCKED_LABEL.test(company.name)||
+      relation.active!==false||relation.countSharingApproved!==false||
+      !!relation.countSharingRevokedAt||!!relation.revokedAt)
+      fail(HttpsError,"failed-precondition");
+   const [ownerSnap,memberSnap]=await Promise.all([
+     tx.get(db.collection("users").doc(company.ownerUid)),
+     tx.get(companyRef.collection("members").doc(company.ownerUid))
+   ]);
+   const owner=ownerSnap.data()||{},member=memberSnap.data()||{};
+   if(!ownerSnap.exists||!memberSnap.exists||
+      owner.uid!==company.ownerUid||owner.companyId!==partnerId||
+      owner.companyRole!=="owner"||owner.active!==true||
+      owner.accessKind!=="partner"||owner.memberType!=="cooperator"||
+      owner.canViewRevenue!==false||owner.canViewUnitPrice!==false||
+      member.uid!==company.ownerUid||member.companyId!==partnerId||
+      member.companyRole!=="owner"||member.active!==true||
+      member.accessKind!=="partner"||member.memberType!=="cooperator"||
+      member.canViewRevenue!==false||member.canViewUnitPrice!==false)
+      fail(HttpsError,"failed-precondition");
+   const nowAt=FieldValue.serverTimestamp();
+   const next={partnerCompanyId:partnerId,hubCompanyId:actor.hubId,
+     partnerOwnerUid:company.ownerUid,approvedByUid:uid,
+     approved:input.approved,updatedAt:nowAt};
+   if(grantSnap.exists){
+    if(grant.partnerCompanyId!==partnerId||grant.hubCompanyId!==actor.hubId||
+       grant.partnerOwnerUid!==company.ownerUid||
+       grant.approvedByUid!==uid)fail(HttpsError);
+    tx.update(grantRef(partnerId),next);
+   }else{
+    tx.create(grantRef(partnerId),{...next,createdAt:nowAt});
+   }
+   const auditRef=db.collection("partnerQuickCountApprovalAudits")
+     .doc(crypto.randomBytes(16).toString("hex"));
+   tx.create(auditRef,{...next,changedByUid:uid,createdAt:nowAt});
+   return {partnerCompanyId:partnerId,approved:input.approved,
+      countOnly:true,financeAccess:false};
+  });
  }
  const reportRef=(hubId,date,partnerId)=>db.collection("companies").doc(hubId)
   .collection("partnerQuickCountDays").doc(date).collection("reports").doc(partnerId);
@@ -142,19 +217,46 @@ function makeQuickCounts({db,getAuth,FieldValue,HttpsError,enabled,now=()=>Date.
    if(checked.total!==d.totalCount)fail(HttpsError);
    // A revoked or never-activated partner's old count report must not be
    // exposed to the hub simply because the stored row still exists.
-   const relSnap=await db.collection("partnerRelations").doc(snap.id).get();
-   const rel=relSnap.data()||{};
-   if(!relSnap.exists||rel.hubCompanyId!==scope.hubId||
-      rel.partnerCompanyId!==snap.id||rel.active!==true||
-      rel.countSharingApproved!==true)continue;
+   const [relSnap,grantSnap,companySnap]=await Promise.all([
+    db.collection("partnerRelations").doc(snap.id).get(),
+    grantRef(snap.id).get(),
+    db.collection("companies").doc(snap.id).get()
+   ]);
+   const rel=relSnap.data()||{},company=companySnap.data()||{};
+   if(!relSnap.exists||!companySnap.exists||company.active!==true||
+      company.companyKind!=="partner"||company.hubCompanyId!==scope.hubId||
+      !quickAllowed(rel,grantSnap.data()||{},snap.id,
+       scope.hubId,uid,company.ownerUid))continue;
    rows.push({partnerCompanyId:snap.id,name:d.partnerCompanyName,
     counts:checked.counts,totalCount:checked.total,version:d.version});
   }
+  const relations=await db.collection("partnerRelations")
+   .where("hubCompanyId","==",scope.hubId).limit(201).get();
+  if(relations.size>200)fail(HttpsError,"resource-exhausted");
+  const pending=[];
+  for(const relationDoc of relations.docs){
+   const rel=relationDoc.data()||{},id=relationDoc.id;
+   if(!ID.test(id)||rel.partnerCompanyId!==id||
+      rel.hubCompanyId!==scope.hubId)continue;
+   const [companySnap,grantSnap]=await Promise.all([
+    db.collection("companies").doc(id).get(),grantRef(id).get()
+   ]);
+   const company=companySnap.data()||{};
+   if(!companySnap.exists||company.active!==true||
+      company.companyKind!=="partner"||company.hubCompanyId!==scope.hubId||
+      !ID.test(company.ownerUid||"")||!clean(company.name)||
+      BLOCKED_LABEL.test(company.name))continue;
+   pending.push({partnerCompanyId:id,name:company.name,
+     approved:quickAllowed(rel,grantSnap.data()||{},id,
+       scope.hubId,uid,company.ownerUid),
+     quickOnly:rel.active===false&&rel.countSharingApproved===false});
+  }
+  pending.sort((a,b)=>a.name.localeCompare(b.name,"ja"));
   rows.sort((a,b)=>a.name.localeCompare(b.name,"ja"));
   return {role:"hub",date:input.date,partners:rows,
    totalCount:rows.reduce((n,r)=>n+r.totalCount,0),
-   categories:KEYS};
+   categories:KEYS,pendingPartners:pending};
  }
- return Object.freeze({submit,view});
+ return Object.freeze({submit,view,approve});
 }
 module.exports={makeQuickCounts,KEYS};
