@@ -7,7 +7,7 @@ const html=fs.readFileSync(path.join(__dirname,"../index.html"),"utf8");
 
 function invitePanel(){
  const a=html.indexOf('<div id="partnerInviteInline"');
- const b=html.indexOf('<div id="ownerTransferPanel"',a);
+ const b=html.indexOf('id="ownerTransferPanel"',a);
  assert(a>=0&&b>a,"existing invite panel and owner management preserved");
  return html.slice(a,b);
 }
