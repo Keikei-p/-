@@ -63,7 +63,7 @@ jobs:
           NODE
           node --check /tmp/partner-workspace-module.mjs
           test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
-          test "$(git hash-object functions-partner-quick/quick-counts.cjs)" = 3cc15f16f05cecd28be70c93c8d2c34f0708c678
+          test "$(git hash-object functions-partner-quick/quick-counts.cjs)" = e046c12f1d6a902b0f273b2766699c6aada2747a
   release:
     needs: validate
     if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && needs.validate.result == 'success' }}
