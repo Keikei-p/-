@@ -82,7 +82,7 @@ jobs:
         run: |
           set -euo pipefail
           test -n "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
-          node -e "const p=require('./.firebaserc').projects.default;if(p!=='sales-management-cc116')process.exit(1)"
+          node -e "const fs=require('node:fs');const p=JSON.parse(fs.readFileSync('.firebaserc','utf8')).projects.default;if(p!=='sales-management-cc116')process.exit(1)"
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-partner-workspace-hosting-only.json"
           chmod 600 "$RUNNER_TEMP/nico-partner-workspace-hosting-only.json"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-partner-workspace-hosting-only.json" >> "$GITHUB_ENV"
