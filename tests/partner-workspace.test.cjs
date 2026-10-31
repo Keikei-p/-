@@ -523,3 +523,59 @@ test("partner invitation panel contains company, team, role and email with no ra
  assert.match(html,/<option value="member">メンバー<\/option>/);
  assert.doesNotMatch(html,/firebase-firestore\.js|getFirestore\(|\.collection\(["'](?:products|records)["']\)/);
 });
+test("existing internal Owner switches to SECONDARY partner workspace; original finance stays untouched",async()=>{
+ const {db,api,req,zero}=setup();
+ const originalUser=clone(db.store.get("users/h"));
+ const originalMember=clone(db.store.get("companies/hub/members/h"));
+ const originalSales=clone(db.store.get("records/old"));
+ const secondary="secondaryPartner";
+ db.seed("companies/"+secondary,{name:"協力店テスト",ownerUid:"h",masterUid:"h",
+  companyKind:"partner",hubCompanyId:"hub",active:true});
+ db.seed("companies/"+secondary+"/members/h",{uid:"h",companyId:secondary,
+  companyRole:"owner",role:"leader",teamId:null,active:true,accessKind:"partner",
+  memberType:"cooperator",canViewRevenue:false,canViewUnitPrice:false});
+ db.seed("partnerRelations/"+secondary,{partnerCompanyId:secondary,
+  hubCompanyId:"hub",active:true,countSharingApproved:true});
+ db.seed("partnerWorkspaceContexts/h",{uid:"h",primaryCompanyId:"hub",
+  partnerCompanyId:secondary,hubCompanyId:"hub",
+  emailLower:"h@example.com",role:"owner",kind:"partner_secondary",active:true});
+ const context={workspaceCompanyId:secondary};
+ const team=(await api.manage(req("h",{...context,action:"addTeam",name:"検証班"}))).teamId;
+ const staff=(await api.manage(req("h",{...context,action:"addManaged",teamId:team,name:"検証担当"}))).staffId;
+ const saved=await api.submit(req("h",{...context,date:"2026-10-31",staffId:staff,
+  counts:{...zero(),NURO:2},expectedVersion:0}));
+ assert.equal(saved.saved,true);
+ const view=await api.view(req("h",{...context,date:"2026-10-31"}));
+ assert.equal(view.role,"owner");
+ assert.equal(view.companyName,"協力店テスト");
+ assert.equal(view.records[0].totalCount,2);
+ assert.ok(!JSON.stringify(view).includes("totalRevenue"));
+ assert.ok(!JSON.stringify(view).includes("unitPrice"));
+ assert.deepEqual(db.store.get("users/h"),originalUser);
+ assert.deepEqual(db.store.get("companies/hub/members/h"),originalMember);
+ assert.deepEqual(db.store.get("records/old"),originalSales);
+ const primary=await api.view(req("h",{date:"2026-10-31"}));
+ assert.equal(primary.role,"hub","original internal Owner profile remains intact");
+ db.seed("partnerRelations/"+secondary,{partnerCompanyId:secondary,hubCompanyId:"hub",
+  active:false,countSharingApproved:false});
+ await assert.rejects(api.view(req("h",{...context,date:"2026-10-31"})),
+  e=>e.code==="permission-denied");
+ await assert.rejects(api.submit(req("h",{...context,date:"2026-10-31",staffId:staff,
+  counts:{...zero(),NURO:3},expectedVersion:1})),
+  e=>e.code==="permission-denied");
+ assert.deepEqual(db.store.get("records/old"),originalSales);
+});
+test("forged secondary-company ID cannot grant partner Owner access",async()=>{
+ const {db,api,req}=setup();
+ db.seed("companies/otherPartner",{name:"外国会社",ownerUid:"h",masterUid:"h",
+  companyKind:"partner",hubCompanyId:"hub",active:true});
+ db.seed("companies/otherPartner/members/h",{uid:"h",companyId:"otherPartner",
+  companyRole:"owner",role:"leader",active:true,accessKind:"partner",
+  memberType:"cooperator",canViewRevenue:false,canViewUnitPrice:false});
+ db.seed("partnerRelations/otherPartner",{partnerCompanyId:"otherPartner",
+  hubCompanyId:"hub",active:true,countSharingApproved:true});
+ const baseline=JSON.stringify([...db.store]);
+ await assert.rejects(api.view(req("h",{workspaceCompanyId:"otherPartner",date:"2026-10-31"})),
+  e=>e.code==="permission-denied");
+ assert.equal(JSON.stringify([...db.store]),baseline);
+});
