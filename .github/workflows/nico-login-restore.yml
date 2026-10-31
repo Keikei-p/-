@@ -1,5 +1,11 @@
 name: NICO emergency login restore (index and missing finance guard only)
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/hosting/restore-login-guard-and-index.mjs'
+      - 'tests/restore-login-guard-and-index.test.mjs'
+      - '.github/workflows/nico-login-restore.yml'
   push:
     branches: [main]
     paths:
