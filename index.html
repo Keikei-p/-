@@ -23401,7 +23401,9 @@ async function renderMissingReportLog(){
     if(invalid)throw Error("unexpected_company_records");
     return getUnreportedTeamSummary(date,rows);
   };
-  const [internal,partner]=await Promise.allSettled([internalRead(),readPartnerWorkDay({date})]);
+  const [internal,partner,quick]=await Promise.allSettled([
+    internalRead(),readPartnerWorkDay({date,includeTeamStatus:true}),readPartnerQuickDay({date})
+  ]);
   if(generation!==missingReportRequestGeneration||
      currentUser?.uid!==uid||currentUserData?.companyId!==companyId||
      missingReportsManagement.style.display==="none")return;
@@ -23414,19 +23416,57 @@ async function renderMissingReportLog(){
       count++;
     }
   }else{failed++;line("自社：照合できません","読み込み失敗。未報告ゼロとは判断しないでください。");}
-  if(partner.status==="fulfilled"){
+  if(partner.status==="fulfilled"&&quick.status==="fulfilled"){
     const data=partner.value?.data||{};
-    if(data.role!=="hub"||!Array.isArray(data.registeredCompanies)||!Array.isArray(data.partners)){
-      failed++;line("協力店：照合できません","会社一覧が未取得。未報告ゼロとは判断しないでください。");
+    if(data.role!=="hub"||data.teamStatusComplete!==true||
+       !Array.isArray(data.registeredCompanies)||!Array.isArray(data.partners)||
+       !Array.isArray(data.teamReports)){
+      failed++;line("協力店：照合できません","会社・班別件数の確認ができません。未報告ゼロとは判断しないでください。");
     }else{
-      const submitted=new Set(data.partners.map(x=>x.partnerCompanyId));
-      for(const company of data.registeredCompanies){
-        if(company.active!==true||submitted.has(company.partnerCompanyId))continue;
-        line("協力店："+company.name+" 未報告","協力店会社としての日次件数報告なし。稼働予定は未確認。");
-        count++;
+      let quickRows;
+      try{quickRows=validatedPartnerRankingDay(quick.value?.data,date)}
+      catch{quickRows=null}
+      if(!Array.isArray(quickRows)){
+        failed++;line("協力店：照合できません","従来の協力店簡易報告との照合に失敗。未報告ゼロとは判断しないでください。");
+      }else{
+        const quickSubmitted=new Set(quickRows.map(x=>x.id));
+        const details=new Map(data.teamReports.map(x=>[x.partnerCompanyId,x]));
+        for(const company of data.registeredCompanies){
+          if(company.active!==true)continue;
+          const report=details.get(company.partnerCompanyId);
+          if(!report||!Array.isArray(report.teams)){
+            failed++;line("協力店："+company.name+" 要確認","班別の報告履歴を確認できませんでした。");
+            continue;
+          }
+          for(const team of report.teams){
+            if(team.status==="missing"){
+              if(quickSubmitted.has(company.partnerCompanyId)){
+                failed++;line("協力店："+company.name+"｜"+team.name+" 要確認",
+                  "会社の簡易件数報告はありますが、班別の報告元を特定できません。");
+              }else{
+                line("協力店："+company.name+"｜"+team.name+" 未報告",
+                  "班としての保存済み件数がありません。現在の所属人数 "+team.staffCount+
+                  "名（稼働予定は要確認）。");
+                count++;
+              }
+            }else if(team.status==="unverified"){
+              failed++;line("協力店："+company.name+"｜"+team.name+" 要確認",
+                "過去の班移動・所属日付の確認が必要です。未報告とは断定しません。");
+            }
+          }
+          if(report.teams.length===0 &&
+             !data.partners.some(x=>x.partnerCompanyId===company.partnerCompanyId)&&
+             !quickSubmitted.has(company.partnerCompanyId)){
+            failed++;line("協力店："+company.name+" 要確認",
+              "班未登録・稼働予定不明のため、未報告とは断定できません。");
+          }
+        }
       }
     }
-  }else{failed++;line("協力店：照合できません","読み込み失敗。未報告ゼロとは判断しないでください。");}
+  }else{
+    failed++;line("協力店：照合できません",
+      "協力店の班別件数または簡易報告を取得できません。未報告ゼロとは判断しないでください。");
+  }
   missingReportsStatus.textContent=failed?
     "未報告 "+count+"件｜未確認 "+failed+"項目":
     count?"未報告 "+count+"件":"確認できた未報告はありません。";
