@@ -11,7 +11,7 @@ function planIndex(v){
 // These are the ONLY fields emitted by the protected server gateway.
 // Refuse unknown fields rather than spreading a future finance/customer secret
 // into a no-price or Owner browser model. This client is staging-only.
-const PRODUCT_FIELDS=new Set(["id","companyId","name","sortOrder","active","planIds","revenue","pricingOptions","cashbackOptions"]);
+const PRODUCT_FIELDS=new Set(["id","companyId","name","sortOrder","active","planIds","revenue","pricingOptions","cashbackOptions","cashbackPlans"]);
 const RECORD_FIELDS=new Set(["id","companyId","uid","memberNameSnapshot","teamId","teamNameSnapshot",
   "date","workLocation","totalCount","reportStatus","reportedAt","createdByUid",
   "updatedByUid","createdAt","updatedAt","recordVersion","results","totalRevenue"]);
