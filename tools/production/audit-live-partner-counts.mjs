@@ -149,9 +149,9 @@ export async function inspectLive({db,credential,clock=Date.now,request=fetch}){
     else if(m.uid!==doc.id)abort("INTERNAL_MEMBER_IDENTITY_INCONSISTENT");
     if(m.companyId==null)legacyMembersWithoutCompanyId++;
     else if(m.companyId!==companyDoc.id)abort("INTERNAL_MEMBER_COMPANY_CONFLICT");
-    const userSnap=await db.collection("users").doc(doc.id)
-     .select("uid","companyId","accessKind","memberType",
-      "companyRole","active","canViewRevenue","canViewUnitPrice").get();
+    // firebase-admin DocumentReference does not have .select(). Only
+    // collection queries do. The verified profile is read without logging.
+    const userSnap=await db.collection("users").doc(doc.id).get();
     if(!userSnap.exists)abort("INTERNAL_AUTH_PROFILE_MISSING");
     const u=userSnap.data();
     if(u.uid!==doc.id||u.companyId!==companyDoc.id||u.active===false)
