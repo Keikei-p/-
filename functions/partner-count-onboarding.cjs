@@ -97,7 +97,8 @@ function makePartnerCountActivation({
       secondary.hubCompanyId===actor.companyId&&secondary.role==="owner"&&
       secondary.emailLower===clean(owner.email).toLowerCase()&&
       owner.uid===partner.ownerUid&&owner.companyId===secondary.primaryCompanyId&&
-      owner.accessKind!=="partner"&&owner.memberType!=="cooperator";
+      (owner.accessKind==null||owner.accessKind==="internal")&&
+      (owner.memberType==null||["internal","direct","member","managed"].includes(owner.memberType));
    if(!hubSnap.exists||hub.active!==true||
       (hub.companyKind!=null&&!["internal","direct"].includes(hub.companyKind))||
       hub.ownerUid!==uid||!actorMemberSnap.exists||
@@ -110,8 +111,8 @@ function makePartnerCountActivation({
       owner.active!==true||om.active!==true||
       (!secondaryOwner&&owner.accessKind!=="partner")||om.accessKind!=="partner"||
       (!secondaryOwner&&owner.memberType!=="cooperator")||om.memberType!=="cooperator"||
-      owner.companyRole!=="owner"||om.companyRole!=="owner"||
-      owner.role!=="leader"||om.role!=="leader"||
+      (!secondaryOwner&&owner.companyRole!=="owner")||om.companyRole!=="owner"||
+      (!secondaryOwner&&owner.role!=="leader")||om.role!=="leader"||
       (!secondaryOwner&&owner.canViewRevenue!==false)||om.canViewRevenue!==false||
       (!secondaryOwner&&owner.canViewUnitPrice!==false)||om.canViewUnitPrice!==false||
       (!secondaryOwner&&owner.teamId!=null)||om.teamId!=null)
