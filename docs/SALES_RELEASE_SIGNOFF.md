@@ -586,3 +586,7 @@ Rulesの本番デプロイ: 未実施
 - 今回のGit変更は`firestore.rules`と合成エミュレータテスト`tests/rules.test.cjs`のみ。従来の財務原票・当時価格・CB・取引履歴・社員履歴は書込/削除/移行しない。最新の既存社内オーナー/リーダー/メンバーの営業登録・訂正が失敗しないか合成テストが全合格した場合のみGitに統合を検討。
 - **Git統合 != 本番Rules配備**。隔離復元照合、既存本番社員のAuth/UI確認、協力店実アカウントによる全金額原票拒否が未確認のため、`firebase deploy --only firestore:rules`の本番作業は別の保護ゲートを維持し勝手に発火しない。
 - 既存売上原票のアクセス遮断は重大な変更。GitHub owner権限によるコードレビュー用`sales-production-reviewed`は実アカウントでの完全遮断テストや署名の代用ではない。
+
+
+### PR #179 管理者による変更差分レビュー記録
+GitHubリポジトリOwner接続で `sales-production-reviewed` ラベルを付与した。確認対象は `firestore.rules` と対応する合成エミュレータテストであり、既存実績の本番データやFirebase Rulesを変更する承認ではない。合格したCIと財務原票隔離の本番検証を区別する。
