@@ -261,3 +261,28 @@ test("private product management is only for owner; money/foreign ID/private key
   counts:zero(),privateCounts:{"revenue/price":10},expectedVersion:0})),
   e=>e.code==="invalid-argument");
 });
+
+test("prototype-shaping private product keys cannot alter totals or saved records",async()=>{
+ const {db,api,req,zero}=setup();
+ const team=(await api.manage(req("p",{action:"addTeam",name:"検証班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"確認担当",teamId:team}))).staffId;
+ const day="2026-10-31";
+ const prior=clone(db.store.get("records/old"));
+ for(const bad of ["__proto__","constructor","prototype"]){
+  const injected=JSON.parse('{"'+bad+'":7}');
+  await assert.rejects(api.submit(req("p",{date:day,staffId:staff,
+   counts:zero(),privateCounts:injected,expectedVersion:0})),
+   e=>e.code==="invalid-argument",bad+" must never be a saved private count");
+ }
+ assert.equal(db.store.has("companies/partner/partnerWorkEntries/"+day+"__"+staff),false);
+ assert.equal(db.store.has("companies/hub/partnerWorkCountDays/"+day+"/reports/partner"),false);
+ assert.deepEqual(db.store.get("records/old"),prior);
+ const valid=(await api.manage(req("p",{action:"addPrivateProduct",name:"オリジナル契約"}))).productId;
+ const saved=await api.submit(req("p",{date:day,staffId:staff,counts:{...zero(),NURO:1},
+   privateCounts:{[valid]:2},expectedVersion:0}));
+ assert.equal(saved.totalCount,1);
+ assert.equal(saved.privateTotalCount,2);
+ const hub=await api.view(req("h",{date:day}));
+ assert.equal(hub.partners[0].totalCount,1);
+ assert.equal(JSON.stringify(hub).includes("privateTotalCount"),false);
+});
