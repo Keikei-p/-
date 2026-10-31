@@ -27,6 +27,8 @@ const string=x=>typeof x==="string"&&x.length>0;
 const props=x=>x&&typeof x==="object"&&!Array.isArray(x)?
  Object.keys(x).sort().join(","):null;
 const boundedCount=x=>Number.isSafeInteger(x)&&x>=0&&x<=1e6;
+const embedsMoney=s=>typeof s==="string" &&
+ /(?:[¥￥$€]|(?:\\d|[０-９])[\\d０-９,.，]*\\s*(?:万円|千円|円)|(?:CB|cashback|キャッシュバック|売上|単価|報酬|利益|commission|unitprice|revenue)[\\s:_=－-]*(?:\\d|[０-９]))/i.test(s);
 const validDate=s=>{
  if(typeof s!=="string"||!DATE.test(s))fail("invalid_day");
  const x=new Date(s+"T00:00:00Z");
@@ -46,6 +48,7 @@ function validRow(row,expected,day,companyId){
     row.date!==day||!string(row.sourceId))fail("row_schema");
  for(const v of Object.values(row)){
   if(v!==null&&typeof v==="object")fail("nested_row");
+  if(embedsMoney(v))fail("money_in_visible_label");
  }
 }
 function validatePage(page,day,expectedCompanyId,expectedReadTime,seen,catalogExpected){
@@ -59,7 +62,8 @@ function validatePage(page,day,expectedCompanyId,expectedReadTime,seen,catalogEx
     !Array.isArray(page.lines)||page.lines.length>10000||
     !Array.isArray(page.products)||page.products.length>200||
     typeof page.hasMore!=="boolean"||
-    (page.hasMore&&(!string(page.nextCursor)||page.records.length!==50))||
+    (page.hasMore&&(!string(page.nextCursor)||page.records.length!==50||
+       page.nextCursor!==page.records.at(-1)?.sourceId))||
     (!page.hasMore&&page.nextCursor!==null)||
     (!catalogExpected&&page.products.length))
    fail("page_contract");
@@ -90,7 +94,8 @@ function validatePage(page,day,expectedCompanyId,expectedReadTime,seen,catalogEx
   if(props(product)!==ALLOWED_PRODUCT||product.companyId!==page.companyId||
      !string(product.sourceId)||typeof product.name!=="string"||
      typeof product.active!=="boolean"||
-     !Number.isSafeInteger(product.sortOrder))fail("catalog_contract");
+     !Number.isSafeInteger(product.sortOrder)||
+     Object.values(product).some(embedsMoney))fail("catalog_contract");
  }
  for(const id of ids)seen.add(id);
  return page.companyId;
