@@ -429,12 +429,15 @@ function companyPortalStats(response){
  if(!Array.isArray(response.teams)||!Array.isArray(response.staff)||!Array.isArray(response.records))
   throw Error("company staff schema");
  const teams=response.teams.filter(t=>t.active),staff=response.staff.filter(p=>p.active);
- const ids=new Set(staff.map(p=>p.id));let count=0,registered=0;
- const visited=new Set();
+ const allIds=new Set(response.staff.map(p=>p.id)),activeIds=new Set(staff.map(p=>p.id));
+ if(allIds.size!==response.staff.length)throw Error("duplicate staff");
+ let count=0,registered=0;const visited=new Set();
  for(const r of response.records){
-  if(!ids.has(r.staffId)||visited.has(r.staffId)||!Number.isSafeInteger(r.totalCount)||r.totalCount<0)
+  if(!allIds.has(r.staffId)||visited.has(r.staffId)||!Number.isSafeInteger(r.totalCount)||r.totalCount<0)
    throw Error("invalid count record");
-  visited.add(r.staffId);registered++;count+=r.totalCount;
+  visited.add(r.staffId);
+  if(activeIds.has(r.staffId))registered++;
+  count+=r.totalCount;
  }
  const roleLabel=response.role==="owner"?"会社オーナー":response.role==="leader"?"班リーダー":"メンバー";
  const scope=response.role==="owner"?"自社の全班・全スタッフの件数を管理できます":
