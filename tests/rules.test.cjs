@@ -383,3 +383,105 @@ test('history correction logs are append-only and cannot be deleted',async()=>{
  await assertFails(deleteDoc(doc(dbFor('owner'),'recordCorrections','old-correction')));
  assert.equal((await getDoc(doc(dbFor('owner'),'recordCorrections','old-correction'))).exists(),true);
 });
+
+
+// All financial originals must be denied to a partner even when the partner
+// is its own company Owner/master. These are synthetic emulator-only fixtures.
+for(const marker of ['companyKind','user-accessKind','member-accessKind','memberType']) {
+ test('finance-restricted partner: owner cannot read/write original price, records, corrections or revenue goals ('+marker+')',async()=>{
+  const financeProduct={companyId:company,name:'価格つき商品',revenue:1000,
+   cashbackOptions:[0],pricingOptions:[{cashback:0,revenuePerUnit:1000}],
+   active:true,createdAt:serverTimestamp(),updatedAt:serverTimestamp()};
+  await env.withSecurityRulesDisabled(async c=>{
+   const admin=c.firestore();
+   await setDoc(doc(admin,'products','partner-finance'),financeProduct);
+   await setDoc(doc(admin,'records',key()),payload('owner'));
+   await setDoc(doc(admin,'recordCorrections','partner-finance'),{
+    companyId:company,recordId:key(),recordUid:'helper',recordDate:date,
+    changedByUid:'owner',changedByName:'owner',before:{totalRevenue:500},
+    after:{totalRevenue:1000},createdAt:serverTimestamp()});
+   await setDoc(doc(admin,'revenueGoals','partner-finance'),revenueGoalPayload());
+   // The server-issued partner owner always has accessKind=partner.
+   // Additional markers may be present, but they are not a replacement for
+   // that canonical identity flag in the current low-cost read rules.
+   await updateDoc(doc(admin,'users','owner'),{accessKind:'partner'});
+   if(marker==='companyKind') {
+    await updateDoc(doc(admin,'companies',company),{companyKind:'partner'});
+   } else {
+    const where=marker==='user-accessKind'?'users/owner':'companies/'+company+'/members/owner';
+    await updateDoc(doc(admin,where),marker==='memberType'?{memberType:'cooperator'}:{accessKind:'partner'});
+   }
+  });
+  const db=dbFor('owner');
+  for(const [coll,id] of [
+    ['products','partner-finance'],
+    ['records',key()],
+    ['recordCorrections','partner-finance'],
+    ['revenueGoals','partner-finance']
+  ]) await assertFails(getDoc(doc(db,coll,id)));
+  await assertFails(setDoc(doc(db,'products','partner-created-finance'),financeProduct));
+  await assertFails(setDoc(doc(db,'records',key('owner')),payload('owner','owner','a')));
+  await assertFails(setDoc(doc(db,'revenueGoals','partner-created-finance'),revenueGoalPayload()));
+  await assertFails(setDoc(doc(db,'recordCorrections','partner-created-finance'),{
+   companyId:company,recordId:key(),recordUid:'helper',recordDate:date,
+   changedByUid:'owner',changedByName:'owner',before:{totalRevenue:100},
+   after:{totalRevenue:200},createdAt:serverTimestamp()
+  }));
+ });
+}
+
+
+test('partner cannot downgrade its server-owned identity to access legacy financial originals',async()=>{
+ await env.withSecurityRulesDisabled(async c=>{
+  const admin=c.firestore();
+  await updateDoc(doc(admin,'companies',company),{companyKind:'partner'});
+  await updateDoc(doc(admin,'users','owner'),{accessKind:'partner',memberType:'cooperator'});
+  await updateDoc(doc(admin,'companies',company,'members','owner'),{accessKind:'partner',memberType:'cooperator'});
+ });
+ const db=dbFor('owner');
+ await assertFails(updateDoc(doc(db,'users','owner'),{accessKind:'internal',updatedAt:serverTimestamp()}));
+ await assertFails(updateDoc(doc(db,'users','owner'),{memberType:'internal',updatedAt:serverTimestamp()}));
+ await assertFails(updateDoc(doc(db,'companies',company,'members','owner'),{accessKind:'internal',updatedAt:serverTimestamp()}));
+ await assertFails(updateDoc(doc(db,'companies',company),{companyKind:'internal',updatedAt:serverTimestamp()}));
+ await assertFails(getDoc(doc(db,'products','partner-finance')));
+ await env.withSecurityRulesDisabled(async c=>{
+  const admin=c.firestore();
+  assert.equal((await getDoc(doc(admin,'users','owner'))).data().accessKind,'partner');
+  assert.equal((await getDoc(doc(admin,'companies',company))).data().companyKind,'partner');
+ });
+});
+
+
+// A damaged partially migrated principal must remain finance-restricted even
+// if one or both canonical partner flags are absent. This checks every source.
+for(const source of ['company-kind','user-access','member-access','user-type','member-type']) {
+ test('isolated marker never permits finance read: '+source,async()=>{
+  await env.withSecurityRulesDisabled(async c=>{
+   const db=c.firestore();
+   await setDoc(doc(db,'products','one-price'),{
+    companyId:company,name:'priced',revenue:9900,
+    cashbackOptions:[0],pricingOptions:[{cashback:0,revenuePerUnit:9900}],
+    active:true,createdAt:serverTimestamp(),updatedAt:serverTimestamp()
+   });
+   await setDoc(doc(db,'records',key()),payload('owner'));
+   await setDoc(doc(db,'recordCorrections','finance-history'),{
+     companyId:company,recordId:key(),recordUid:'helper',recordDate:date,
+     changedByUid:'owner',changedByName:'owner',before:{totalRevenue:100},
+     after:{totalRevenue:200},createdAt:serverTimestamp()
+   });
+   await setDoc(doc(db,'revenueGoals','private-goal'),revenueGoalPayload());
+   if(source==='company-kind') await updateDoc(doc(db,'companies',company),{companyKind:'partner'});
+   if(source==='user-access') await updateDoc(doc(db,'users','owner'),{accessKind:'partner'});
+   if(source==='member-access') await updateDoc(doc(db,'companies',company,'members','owner'),{accessKind:'partner'});
+   if(source==='user-type') await updateDoc(doc(db,'users','owner'),{memberType:'cooperator'});
+   if(source==='member-type') await updateDoc(doc(db,'companies',company,'members','owner'),{memberType:'cooperator'});
+  });
+  const db=dbFor('owner');
+  for(const [coll,id] of [
+   ['products','one-price'],['records',key()],
+   ['recordCorrections','finance-history'],['revenueGoals','private-goal']
+  ])await assertFails(getDoc(doc(db,coll,id)));
+  await assertFails(setDoc(doc(db,'records',key('owner')),payload('owner','owner','a')));
+  await assertFails(setDoc(doc(db,'revenueGoals','new-private-goal'),revenueGoalPayload()));
+ });
+}
