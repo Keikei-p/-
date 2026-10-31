@@ -122,7 +122,7 @@ test("Owner can prebook next-month product counts and revenue in DIFFERENT docum
  assert.equal(out.planId,"hub_2026-11");
  assert.equal(out.countGoals.length,2);
  assert.equal(out.revenueGoals.length,1);
- assert.deepEqual(out.countGoals[0].targets,{...futureGoal.items[0].targets});
+ assert.deepEqual({...out.countGoals[0].targets},{...futureGoal.items[0].targets});
  assert.equal(out.countGoals[0].id,"hub_one_2026-11");
  assert.equal(out.revenueGoals[0].id,"hub_one_2026-11");
  assert.equal(out.revenueGoals[0].targetRevenue,2500000);
