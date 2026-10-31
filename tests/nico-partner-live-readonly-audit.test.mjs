@@ -62,6 +62,8 @@ test("audit is read-only at source-code level, does not call prod writes or sign
  assert.doesNotMatch(source,/\b(?:db|tx|batch|docRef|recordRef)\.(?:set|create|update|delete|runTransaction)\s*\(|\bdeploy\s+--only/);
  assert.match(source,/NICO_PARTNER_AUDIT_MODE!=="READ_ONLY"/);
  assert.match(source,/signedInPartnerE2EVerified:false/);
+ assert.doesNotMatch(source,/\.doc\(doc\.id\)\s*\.select\(/,
+  "Admin SDK DocumentReference has no select method");
 });
 test("mocked read-only production check matches live rule source and does not expose any IDs",async()=>{
  const ruleText=readFileSync(new URL("../firestore.rules",import.meta.url),"utf8");
@@ -102,7 +104,7 @@ test("mocked read-only production check matches live rule source and does not ex
  });
  const reference=path=>({
   id:path.split("/").at(-1),collection:name=>query(path+"/"+name),
-  select(){return this},
+  // DocumentReference has get(), not select(). Fake must match Admin SDK.
   async get(){calls.push("READ "+path);let d=documents.get(path)?.[0];return d||{exists:false,data:()=>({})};}
  });
  const db={collection:path=>query(path)};
