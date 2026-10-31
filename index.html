@@ -4942,13 +4942,31 @@ body.product-reordering .product-list {
            style="font-size:12px;line-height:1.6;color:var(--sub);">
           協力店会社の招待リンクは、自社の代表オーナーのみ発行できます。
         </p>
-        <div class="management-input-row">
-          <input id="partnerInviteCompanyName" type="text"
-                 maxlength="80" autocomplete="organization"
-                 placeholder="協力店の会社名" aria-label="協力店の会社名">
-          <input id="partnerInviteEmail" type="email" autocomplete="off"
-                 placeholder="協力店のメールアドレス" aria-label="協力店のメールアドレス">
-          <button id="partnerInviteCreateButton" type="button">
+        <!-- Mobile-first: keep both fields full-width and visibly labelled. -->
+        <div id="partnerInviteFormFields"
+             style="display:grid;grid-template-columns:minmax(0,1fr);gap:14px;width:100%;min-width:0;">
+          <div class="form-group" style="margin:0;min-width:0;">
+            <label for="partnerInviteCompanyName"
+                   style="display:block;font-weight:800;font-size:14px;margin-bottom:7px;">
+              協力店会社名
+            </label>
+            <input id="partnerInviteCompanyName" type="text"
+                   maxlength="80" autocomplete="organization" required
+                   placeholder="例）株式会社〇〇"
+                   style="display:block;width:100%;max-width:100%;min-width:0;min-height:48px;box-sizing:border-box;">
+          </div>
+          <div class="form-group" style="margin:0;min-width:0;">
+            <label for="partnerInviteEmail"
+                   style="display:block;font-weight:800;font-size:14px;margin-bottom:7px;">
+              招待メールアドレス
+            </label>
+            <input id="partnerInviteEmail" type="email"
+                   autocomplete="email" inputmode="email" required
+                   placeholder="例）partner@example.com"
+                   style="display:block;width:100%;max-width:100%;min-width:0;min-height:48px;box-sizing:border-box;">
+          </div>
+          <button id="partnerInviteCreateButton" type="button"
+                  style="display:block;width:100%;max-width:100%;min-width:0;min-height:48px;white-space:normal;">
             協力店の招待リンク作成
           </button>
         </div>

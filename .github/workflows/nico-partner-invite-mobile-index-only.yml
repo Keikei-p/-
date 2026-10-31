@@ -1,0 +1,133 @@
+name: NICO partner invitation mobile-only index release
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'tests/partner-invite-mobile-layout.test.cjs'
+      - 'tools/hosting/surgical-existing-index.mjs'
+      - '.github/workflows/nico-partner-invite-mobile-index-only.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'tests/partner-invite-mobile-layout.test.cjs'
+      - 'tools/hosting/surgical-existing-index.mjs'
+      - '.github/workflows/nico-partner-invite-mobile-index-only.yml'
+
+permissions:
+  contents: read
+concurrency:
+  group: nico-surgical-index-release
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Check surgical one-page packaging and exact mobile layout
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check tools/hosting/surgical-existing-index.mjs
+          node --test tests/partner-invite-mobile-layout.test.cjs
+          node --test tests/surgical-existing-index.test.mjs
+          node --test tests/partner-existing-ranking.test.cjs
+          node --test tests/internal-owner-finance-visibility.test.cjs
+          node --test tests/sales-regressions.cjs
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const s=fs.readFileSync('index.html','utf8');
+          const modules=[...s.matchAll(/<script\b[^>]*type=["']module["'][^>]*>([\s\S]*?)<\/script>/g)];
+          if(!modules.length)throw Error('index module missing');
+          for(let i=0;i<modules.length;i++)
+            fs.writeFileSync('/tmp/nico-invite-mobile-script-'+i+'.mjs',modules[i][1]);
+          NODE
+          for script in /tmp/nico-invite-mobile-script-*.mjs; do node --check "$script"; done
+
+  publish-index-only:
+    needs: validate
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.validate.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      NICO_PARTNER_RELEASE_CONFIRMATION: CONFIRM_ADD_PARTNER_RANKING_INDEX_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify no concurrent main changes and untouched previous production UI baseline
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(gh api repos/Keikei-p/-/branches/main --jq '.commit.sha')" = "$GITHUB_SHA"
+          # This main baseline is the previous source HTML; if production differs
+          # never overwrite its potentially newer finance or ranking behavior.
+          git show fcb790ada3e37fb789a558b3e1e9e95010b34a40:index.html > "$RUNNER_TEMP/approved-prior-index.html"
+          curl -fsSL --retry 3 --max-time 30 \
+            "https://nico-factory.web.app/?baseline_check=$GITHUB_SHA" > "$RUNNER_TEMP/current-index.html"
+          if cmp -s "$RUNNER_TEMP/current-index.html" index.html; then
+            echo "ALREADY_LIVE=true" >> "$GITHUB_ENV"
+            echo "PASS: invited mobile fields already published; skip new version"
+          elif cmp -s "$RUNNER_TEMP/current-index.html" "$RUNNER_TEMP/approved-prior-index.html"; then
+            echo "ALREADY_LIVE=false" >> "$GITHUB_ENV"
+            echo "PASS: exact previously reviewed live index; one-file release permitted"
+          else
+            echo "STOP: production home is different from approved original; no release"
+            exit 1
+          fi
+      - name: Read approved protected Firebase identity for Hosting REST ONLY
+        if: env.ALREADY_LIVE == 'false'
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          node -e "const fs=require('node:fs');if(JSON.parse(fs.readFileSync('.firebaserc','utf8')).projects.default!=='sales-management-cc116')process.exit(1)"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-invite-mobile-hosting.json"
+          chmod 600 "$RUNNER_TEMP/nico-invite-mobile-hosting.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-invite-mobile-hosting.json" >> "$GITHUB_ENV"
+      - name: Install only Hosting REST credential dependencies
+        if: env.ALREADY_LIVE == 'false'
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Confirm preservation of every live Hosting asset
+        if: env.ALREADY_LIVE == 'false'
+        run: node tools/hosting/surgical-existing-index.mjs --dry-run
+      - name: Publish ONLY index.html, preserving every other live asset, no Rules or functions
+        if: env.ALREADY_LIVE == 'false'
+        run: node tools/hosting/surgical-existing-index.mjs --release
+      - name: Verify exact production page and unchanged original URLs
+        shell: bash
+        run: |
+          set -euo pipefail
+          success=false
+          for attempt in $(seq 1 12); do
+            curl -fsSL --max-time 30 \
+              "https://nico-factory.web.app/?verify_mobile_invite=$GITHUB_SHA-$attempt" \
+              > "$RUNNER_TEMP/live-mobile-invite.html"
+            if cmp -s "$RUNNER_TEMP/live-mobile-invite.html" index.html; then success=true; break; fi
+            sleep 5
+          done
+          test "$success" = true || { echo "STOP: CDN source parity unverified"; exit 1; }
+          for marker in 'id="partnerInviteFormFields"' '協力店会社名' \
+            '招待メールアドレス' 'id="partnerInviteCreateButton"' \
+            'id="inviteDestinationSelect"' 'mergedPartnerRankingDay'; do
+            grep -Fq "$marker" "$RUNNER_TEMP/live-mobile-invite.html"
+          done
+          for route in /partner-invite.html /partner-counts.html /partner-workspace.html; do
+            code=$(curl --silent --location --output /dev/null \
+              --write-out '%{http_code}' --max-time 30 "https://nico-factory.web.app$route")
+            test "$code" = 200
+          done
+          echo 'PASS: vertical invitation released; sales index and all other Hosting routes preserved'
