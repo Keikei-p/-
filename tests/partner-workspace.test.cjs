@@ -423,7 +423,7 @@ test("approval revocation removes saved reports from hub view without modifying 
    {active:false,countSharingApproved:false}
  ]){
    db.seed("partnerRelations/partner",{partnerCompanyId:"partner",hubCompanyId:"hub",...state});
-   assert.deepEqual((await api.view(req("h",{date})).partners,[]);
+   assert.deepEqual((await api.view(req("h",{date}))).partners,[]);
    await assert.rejects(api.submit(req("p",{date,staffId:staff,
        counts:zero(),expectedVersion:1})),e=>e.code==="permission-denied");
  }
