@@ -1,0 +1,68 @@
+name: NICO owner finance price parity (read only)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/production/audit-sales-owner-finance-parity.mjs'
+      - 'tests/sales-owner-live-finance-parity.test.mjs'
+      - '.github/workflows/nico-owner-finance-parity-readonly.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/production/audit-sales-owner-finance-parity.mjs'
+      - 'tests/sales-owner-live-finance-parity.test.mjs'
+      - '.github/workflows/nico-owner-finance-parity-readonly.yml'
+permissions:
+  contents: read
+concurrency:
+  group: nico-owner-finance-parity-readonly
+  cancel-in-progress: false
+jobs:
+  contract-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Audit has no production credentials; verify Owner pricing and old history
+        run: |
+          set -euo pipefail
+          node --check tools/production/audit-sales-owner-finance-parity.mjs
+          node --test tests/sales-owner-live-finance-parity.test.mjs
+          node --test cloudflare-finance/tests/finance-browser-contract.test.mjs
+          node --test cloudflare-finance/tests/sales-integration.test.mjs
+  live-readonly:
+    needs: contract-tests
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.contract-tests.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      NICO_OWNER_FINANCE_AUDIT_MODE: READ_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Validate exact production identity before credentials
+        run: |
+          node -e "const fs=require('fs');if(JSON.parse(fs.readFileSync('.firebaserc','utf8')).projects.default!=='sales-management-cc116')process.exit(1)"
+          node --test tests/sales-owner-live-finance-parity.test.mjs
+      - name: Set existing approved service account for READ ONLY audit (never print)
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-owner-parity-service-account.json"
+          chmod 600 "$RUNNER_TEMP/nico-owner-parity-service-account.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-owner-parity-service-account.json" >> "$GITHUB_ENV"
+      - name: Install existing Firebase Admin SDK only (no deploy)
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Read-only Owner revenue and historic unit-price parity snapshot
+        run: node tools/production/audit-sales-owner-finance-parity.mjs
+      - name: No deployment may follow this read-only audit
+        run: echo 'NO_HOSTING_OR_RULES_OR_FUNCTIONS_WRITES_PERFORMED'
