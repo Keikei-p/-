@@ -40,7 +40,7 @@ jobs:
           for file in /tmp/old-sales-index-module-*.mjs; do node --check "$file"; done
   release:
     needs: validate
-    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.validate.result == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && needs.validate.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 18
     env:
