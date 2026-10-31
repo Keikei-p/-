@@ -1,0 +1,71 @@
+name: NICO partner live count and financial boundary audit (read only)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/production/audit-live-partner-counts.mjs'
+      - 'tests/nico-partner-live-readonly-audit.test.mjs'
+      - '.github/workflows/nico-partner-live-readonly-audit.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/production/audit-live-partner-counts.mjs'
+      - 'tests/nico-partner-live-readonly-audit.test.mjs'
+      - '.github/workflows/nico-partner-live-readonly-audit.yml'
+permissions:
+  contents: read
+concurrency:
+  group: nico-partner-readonly-live-audit
+  cancel-in-progress: false
+jobs:
+  synthetic-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: No secrets and no Firebase writes - test count accuracy, partner finance rejection
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check tools/production/audit-live-partner-counts.mjs
+          node --test tests/nico-partner-live-readonly-audit.test.mjs
+          node --test tests/partner-workspace.test.cjs
+          node --test tests/partner-existing-ranking.test.cjs
+          node --test tests/partner-money-free-workspace.test.cjs
+  live-readonly:
+    needs: synthetic-tests
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.synthetic-tests.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      NICO_PARTNER_AUDIT_MODE: READ_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify PR review and protected project before any real read
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e "const fs=require('node:fs');if(JSON.parse(fs.readFileSync('.firebaserc','utf8')).projects.default!=='sales-management-cc116')process.exit(1)"
+          node --check tools/production/audit-live-partner-counts.mjs
+          node --test tests/nico-partner-live-readonly-audit.test.mjs
+      - name: Configure existing authorized credentials for READ ONLY (no echo)
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-count-audit-credential.json"
+          chmod 600 "$RUNNER_TEMP/nico-count-audit-credential.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-count-audit-credential.json" >> "$GITHUB_ENV"
+      - name: Install existing Admin SDK without changing production
+        run: npm install --prefix functions --ignore-scripts --package-lock=false
+      - name: READ ONLY - inspect deployed Rules and compare partner count summaries with staff entries
+        run: node tools/production/audit-live-partner-counts.mjs
