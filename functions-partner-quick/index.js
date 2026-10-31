@@ -14,3 +14,5 @@ const opts={region:"asia-northeast1",maxInstances:3,
  cors:["https://nico-factory.web.app"]};
 exports.submitPartnerQuickCounts=onCall(opts,service.submit);
 exports.getPartnerQuickCounts=onCall(opts,service.view);
+// Deliberately isolated: this does NOT activate workspace, catalog or finances.
+exports.approvePartnerQuickCounts=onCall(opts,service.approve);
