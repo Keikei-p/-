@@ -766,6 +766,7 @@ GitHub所有者として認証済みの接続から、本番影響をindex.html�
 
 ## 検証と本番切替の区別
 - PR #250： https://github.com/Keikei-p/-/pull/250
+- 専用UI・2ワークフロー・テストを、売上・単価・元実績を一切書き換えない差分としてレビュー。GitHub接続で `sales-production-reviewed` ラベルをPRに付与（コードレビュー標識のみ）。これは本人の電子署名・実際のFirebase本番承認ではない。
 - `tests/sales-missing-report-log.test.mjs` と `tests/owner-missing-report-tab.test.cjs` でOwner限定、日付、0件報告、協力店未承認、二重ソース独立、権限エラー時fail-closedを検査する。
 - PRに対して既存Owner売上表示、協力店の金額非露出、ランキング回帰、アプリ構文も検査する。
 - この変更を`main`へ統合しても **Firebase Hostingへ公開できたとは主張しない**。GitHub Pages公開やCode CIもFirebase本番配信と区別する。
