@@ -64,9 +64,15 @@ export async function uploadSingleExistingIndex({assetBytes,request,release=fals
  };
  const sourceName=await latest();
  const source=await request("GET",url("/"+sourceName));
+ // The live Hosting API can omit fileCount for an otherwise finalized
+ // version. This field is metadata, not a source-file security proof.
+ // Never accept a non-finalized version or missing original Hosting config.
  if(source.status!=="FINALIZED"||source.name!==sourceName||
-    !source.config||typeof source.config!=="object"||
-    !Number.isSafeInteger(Number(source.fileCount)))throw Error("BAD_LIVE_VERSION");
+    !source.config||typeof source.config!=="object")
+  throw Error("BAD_LIVE_VERSION status="+String(source.status)+
+    " nameMatches="+String(source.name===sourceName)+
+    " hasConfig="+String(!!source.config)+
+    " reportedCount="+String(source.fileCount??"absent"));
  const files=[];let pageToken="";
  do{
   const qs=new URLSearchParams({pageSize:"1000"});
@@ -77,7 +83,20 @@ export async function uploadSingleExistingIndex({assetBytes,request,release=fals
   pageToken=page.nextPageToken||"";
   if(files.length>30000)throw Error("TOO_MANY_LIVE_ASSETS");
  }while(pageToken);
- const {next,original}=validateManifest(files,new Map([[ASSET,hash]]),Number(source.fileCount));
+ // Require all known approved pages on the original live site. If fileCount
+ // is unavailable, the complete paginated manifest, unchanged hashes,
+ // stored config and final live version recheck supply the safety contract.
+ const requiredLivePages=["/index.html","/partner-invite.html",
+   "/partner-counts.html","/partner-workspace.html"];
+ const names=new Set(files.map(file=>file.path));
+ if(!requiredLivePages.every(file=>names.has(file)))
+   throw Error("REQUIRED_ORIGINAL_PAGE_MISSING");
+ const sourceCount=Number(source.fileCount);
+ if(Number.isSafeInteger(sourceCount)&&sourceCount>0&&sourceCount!==files.length)
+   throw Error("SOURCE_COUNT_METADATA_CONFLICT");
+ if(!Number.isSafeInteger(sourceCount)||sourceCount<1)
+   log("Source fileCount metadata absent; validating full manifest with "+files.length+" paths");
+ const {next,original}=validateManifest(files,new Map([[ASSET,hash]]),files.length);
  log("Verified live version and original files: "+sourceName+" / "+original.size);
  log("Replacing ONLY existing /index.html; unchanged other assets: "+(original.size-1));
  if(!release) return {released:false,sourceName,originalCount:original.size,newHash:hash};
