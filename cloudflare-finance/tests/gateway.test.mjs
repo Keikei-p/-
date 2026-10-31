@@ -1,5 +1,6 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
 import {generateKeyPairSync, sign} from "node:crypto";
 import worker,{approvedPolicy,safeProducts,safeRecords,safeGoals,safePartnerMembers,visibleMoney,verifiedToken,docData} from "../src/index.js";
 
@@ -426,4 +427,33 @@ test("Conflicting old user/member grants are flagged, never automatically widene
   assert.equal(p2.needsPermissionReview,true);
   assert.equal(p2.canViewRevenue,false);
   assert.equal(approvedPolicy(...person("member"),company,"sample","2026-10-22").needsPermissionReview,false);
+});
+
+test("enabled financial views require one valid month and never accept a user-supplied company or UID",async()=>{
+ const env={FIREBASE_PROJECT_ID:"sales-management-cc116",
+   FINANCE_GATEWAY_ENABLED:"enabled",FINANCE_COST_APPROVAL:"OWNER_APPROVED_BLAZE_COSTS"};
+ for(const q of ["","?month=2026-00","?month=2026-13","?month=2026-1",
+   "?month=2026-10&month=2026-09","?month=2026-10&companyId=other",
+   "?month=2026-10&uid=forged"]){
+   for(const route of ["financial-view","partner-dashboard"]){
+     const response=await worker.fetch(new Request("https://sales-finance-gateway.example/v1/"+
+       route+q),env);
+     assert.equal(response.status,400,route+q);
+     assert.equal((await response.json()).error,"invalid_month");
+   }
+ }
+ for(const route of ["financial-view","partner-dashboard"]){
+   const response=await worker.fetch(new Request("https://sales-finance-gateway.example/v1/"+
+     route+"?month=2026-10"),env);
+   assert.equal(response.status,401,"valid month checks authorization next");
+ }
+});
+test("actual protected finance handler routes every approved month through bounded snapshot pages",()=>{
+ const src=readFileSync(new URL("../src/index.js",import.meta.url),"utf8");
+ const service=src.slice(src.indexOf("async function financeView("),src.indexOf("export default"));
+ assert.match(service,/month\?firestoreMonthlyRecords\(env,policy\.companyId,month,fetcher\)/);
+ assert.match(service,/month\|\|y\+"-"\+m/);
+ const handler=src.slice(src.indexOf('const partnerOnly=url.pathname==="/v1/partner-dashboard"'));
+ assert.match(handler,/validInternalRankMonthQuery\(url\.searchParams\)/);
+ assert.match(handler,/month:url\.searchParams\.get\("month"\)/);
 });
