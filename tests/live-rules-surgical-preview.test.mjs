@@ -120,3 +120,17 @@ test("previous revenue goal access expression is recompiled from reviewed optimi
  assert(out.changed.includes("review:revenueGoals"));
  assert.equal(out.candidate,reviewed);
 });
+
+test("actual-live canWriteDailyRecord repeated owner grant is replaced by reviewed optimized helper",()=>{
+ const original=reviewed.match(/^[ \t]*function canWriteDailyRecord\(companyId, targetUid, teamId\) \{[\s\S]*?^[ \t]*\}/m)?.[0];
+ assert.ok(original);
+ const expensive=original.replace(
+  "(actor.companyRole == 'owner'\n          && get(userPath(request.auth.uid)).data.companyRole == 'owner')",
+  "(actor.companyRole == 'owner' && isCompanyOwner(companyId))");
+ assert.notEqual(expensive,original);
+ const live=liveFixture().replace(original,expensive);
+ const preview=previewLiveRules(live,reviewed);
+ assert.equal(preview.candidate,reviewed);
+ assert.ok(preview.changed.includes("canWriteDailyRecord"));
+ assert.equal(preview.matchesReviewed,true);
+});
