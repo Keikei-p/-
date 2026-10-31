@@ -12,6 +12,7 @@ on:
       - 'tools/production/audit-live-partner-counts.mjs'
       - 'tests/nico-partner-live-readonly-audit.test.mjs'
       - '.github/workflows/nico-partner-live-readonly-audit.yml'
+      - 'partner-workspace.html'
 permissions:
   contents: read
 concurrency:
@@ -39,7 +40,7 @@ jobs:
     needs: synthetic-tests
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.synthetic-tests.result == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 22
     env:
       FIREBASE_PROJECT_ID: sales-management-cc116
       NICO_PARTNER_AUDIT_MODE: READ_ONLY
@@ -69,3 +70,48 @@ jobs:
         run: npm install --prefix functions --ignore-scripts --package-lock=false
       - name: READ ONLY - inspect deployed Rules and compare partner count summaries with staff entries
         run: node tools/production/audit-live-partner-counts.mjs
+      - name: Prepare Java and Firestore unit test dependencies
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install test dependencies only
+        run: npm install --prefix tests --ignore-scripts --no-audit --no-fund
+      - name: Verify actual deployed Firestore Rules against synthetic owner-and-partner accounts (no production writes)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs=require('node:fs');
+          const crypto=require('node:crypto');
+          const {applicationDefault}=require('./functions/node_modules/firebase-admin/app');
+          (async()=>{
+            const project='sales-management-cc116';
+            if(JSON.parse(fs.readFileSync('.firebaserc','utf8')).projects.default!==project)throw Error('PROJECT_NOT_APPROVED');
+            const {access_token}=await applicationDefault().getAccessToken();
+            if(!access_token)throw Error('NO_READ_IDENTITY');
+            const root='https://firebaserules.googleapis.com/v1/projects/'+project;
+            async function get(url){
+              if(!url.startsWith(root+'/'))throw Error('UNTRUSTED_RULES_URL');
+              const res=await fetch(url,{headers:{Authorization:'Bearer '+access_token},redirect:'error'});
+              if(!res.ok)throw Error('FIREBASE_RULES_READ_HTTP_'+res.status);
+              return res.json();
+            }
+            const release=await get(root+'/releases/cloud.firestore');
+            if(!/^projects\/sales-management-cc116\/rulesets\/[A-Za-z0-9_-]+$/.test(release.rulesetName||''))
+              throw Error('WRONG_RELEASE');
+            const rules=await get('https://firebaserules.googleapis.com/v1/'+release.rulesetName);
+            if(rules?.source?.files?.length!==1||typeof rules.source.files[0]?.content!=='string')
+              throw Error('UNEXPECTED_RULES_FILES');
+            const live=rules.source.files[0].content;
+            const reviewed=fs.readFileSync('firestore.rules','utf8');
+            const digest=s=>crypto.createHash('sha256').update(s.replace(/\r\n/g,'\n').trim()).digest('hex');
+            console.log('LIVE_REVIEWED_RULES_SAME='+String(digest(live)===digest(reviewed)));
+            // Disposable CI checkout only: tests will use LIVE source, never upload or deploy.
+            fs.writeFileSync('firestore.rules',live,{mode:0o600});
+            console.log('LIVE_RULES_READY_FOR_OFFLINE_EMULATOR_ONLY');
+          })().catch(e=>{console.error('LIVE_RULES_AUDIT_STOP_'+e.message);process.exitCode=1});
+          NODE
+          npm install -g firebase-tools@15.34.1
+          RULES_ONLY=1 firebase emulators:exec --project demo-sales-support --only firestore "node --test tests/rules.test.cjs"
+          echo 'PASS LIVE_RULES_EMULATOR_INTERNAL_OWNER_AND_PARTNER_FINANCE'
