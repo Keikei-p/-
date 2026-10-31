@@ -1,0 +1,128 @@
+name: NICO partner quick counts — one-shot reviewed activation
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-partner-quick-reviewed-once.yml'
+      - 'tests/partner-quick-one-shot.test.mjs'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-partner-quick-reviewed-once.yml'
+permissions:
+  contents: read
+  actions: write
+concurrency:
+  group: nico-partner-quick-reviewed-once
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify one-shot scope and emergency quick count API tests
+        run: |
+          node --test tests/partner-quick-one-shot.test.mjs
+          node --test tests/partner-quick-counts.test.cjs
+  activate:
+    needs: validate
+    if: >-
+      ${{ github.event_name == 'push' &&
+          github.repository == 'Keikei-p/-' &&
+          github.actor == 'Keikei-p' &&
+          github.ref == 'refs/heads/main' &&
+          startsWith(github.event.head_commit.message,
+            'release: reviewed partner quick activation once') &&
+          needs.validate.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    permissions:
+      contents: read
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: Keikei-p/-
+      EXPECTED_PARENT_SHA: b45daca1c98991d470074e1a87e01a3a7787abe4
+      EXPECTED_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Confirm exact reviewed parent and single-purpose workflow change
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT_SHA"
+          test "$(gh api "repos/$REPO/branches/main" --jq '.commit.sha')" = "$EXPECTED_SHA"
+          git diff-tree --no-commit-id --name-only -r "$EXPECTED_SHA" > "$RUNNER_TEMP/release-changes.txt"
+          while IFS= read -r file; do
+            case "$file" in
+              '.github/workflows/nico-partner-quick-reviewed-once.yml'|'tests/partner-quick-one-shot.test.mjs') ;;
+              *) echo "STOP UNREVIEWED_RELEASE_CHANGE $file"; exit 1 ;;
+            esac
+          done < "$RUNNER_TEMP/release-changes.txt"
+          test -s "$RUNNER_TEMP/release-changes.txt"
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(git hash-object functions/partner-company-invitations.cjs)" = 575865469f68c6a1c1a24b4d32c9150cb42178fe
+          echo "PASS exact reviewed quick-count activation source, no core sales change"
+      - name: Dispatch existing independently gated quick-count manual workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          workflow='nico-partner-quick-release.yml'
+          previous=$(gh api "repos/$REPO/actions/workflows/$workflow/runs?event=workflow_dispatch&branch=main&per_page=30" \
+            --jq '[.workflow_runs[].id] | max // 0')
+          gh workflow run "$workflow" --repo "$REPO" --ref main
+          run=''
+          for n in $(seq 1 45); do
+            run=$(gh api "repos/$REPO/actions/workflows/$workflow/runs?event=workflow_dispatch&branch=main&per_page=30" \
+              --jq ".workflow_runs | map(select(.id > $previous and .head_sha == \"$EXPECTED_SHA\")) | sort_by(.id) | last | .id // empty")
+            test -n "$run" && break
+            sleep 8
+          done
+          test -n "$run" || { echo 'STOP quick release dispatch not observed'; exit 1; }
+          echo "Dispatched reviewed manual release run $run"
+          gh run watch "$run" --repo "$REPO" --exit-status
+          test "$(gh run view "$run" --repo "$REPO" --json conclusion --jq .conclusion)" = success
+      - name: Verify published exact count page, original routes and anonymous denial
+        shell: bash
+        run: |
+          set -euo pipefail
+          ready=false
+          for n in $(seq 1 12); do
+            if curl -fsSL --max-time 30 \
+                "https://nico-factory.web.app/partner-counts.html?verify=$EXPECTED_SHA-$n" \
+                > "$RUNNER_TEMP/partner-counts-live.html" &&
+               cmp -s "$RUNNER_TEMP/partner-counts-live.html" partner-counts.html; then
+              ready=true; break
+            fi
+            sleep 5
+          done
+          test "$ready" = true || { echo 'STOP REVIEWED_COUNTS_HTML_NOT_LIVE'; exit 1; }
+          for route in / /partner-invite.html /partner-workspace.html; do
+            code=$(curl -sSL -o /dev/null -w '%{http_code}' --max-time 30 \
+              "https://nico-factory.web.app$route")
+            test "$code" = 200 || { echo "STOP ORIGINAL_ROUTE_MISSING $route"; exit 1; }
+          done
+          node <<'NODE'
+          (async () => {
+            for (const name of ['submitPartnerQuickCounts','getPartnerQuickCounts','approvePartnerQuickCounts']) {
+              const response=await fetch('https://asia-northeast1-sales-management-cc116.cloudfunctions.net/'+name,{
+                method:'POST',headers:{'Content-Type':'application/json'},body:'{"data":{}}'
+              });
+              if (![401,403].includes(response.status)) throw Error('UNAUTH_API_NOT_DENIED '+name+' '+response.status);
+              console.log('PASS unauthenticated denied '+name);
+            }
+          })().catch(error=>{console.error(error);process.exitCode=1});
+          NODE
+          echo 'PASS Production quick counts are published, originals preserved, unauthenticated access denied'
