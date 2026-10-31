@@ -4,7 +4,7 @@ import {readFileSync} from "node:fs";
 import {buildInternalRankOnly as rank} from "../src/internal-rank-only.mjs";
 const companyId="direct",month="2026-10";
 const make=(id,uid,name,totalCount,date="2026-10-01")=>({
- id,companyId,uid,memberNameSnapshot:name,date,totalCount,
+ id,companyId,uid,memberNameSnapshot:name,date,totalCount,totalRevenue:totalCount*10000,
  results:totalCount?{nu:{productId:"nu",count:totalCount,revenuePerUnit:12345}}:{}
 });
 const set=()=>[make("1","u1","佐藤",3),make("2","u2","田中",1),make("3","u3","山田",1)];
@@ -18,6 +18,17 @@ test("individual ranks contain names and ranks only, no company amounts or raw i
  for(const forbidden of ["revenuePerUnit","totalRevenue","uid","companyId","count","cashback","unitPrice","12345","u1","u2","u3"]){
   assert.equal(s.includes('"'+forbidden+'"'),false);
  }
+});
+test("personal ORDER is saved revenue, not number of sales; display never reveals score",()=>{
+ const many={...make("many","u1","佐藤",9),totalRevenue:900};
+ const few={...make("few","u2","田中",1),totalRevenue:20000};
+ const r=rank({companyId,month,records:[many,few],complete:true});
+ assert.deepEqual(r.individuals,[
+  {rank:1,name:"田中",champion:true},
+  {rank:2,name:"佐藤",champion:false}
+ ]);
+ assert.equal(JSON.stringify(r).includes("20000"),false);
+ assert.equal(JSON.stringify(r).includes("900"),false);
 });
 test("historical member transfer leaves personal counts together without rewriting saved records",()=>{
  const rows=[make("old","one","佐藤",1),make("next","one","佐藤",4,"2026-10-21")];
@@ -33,6 +44,7 @@ test("failed/incomplete pages and malformed records must not publish a rank",()=
   {records:[...set(),{...set()[0]}]},
   {records:[{...set()[0],companyId:"external"}]},
   {records:[{...set()[0],totalCount:999}]},
+  {records:[{...set()[0],totalRevenue:-5}]},
   {records:[{...set()[0],date:"2026-10-99"}]},
   {records:[{...set()[0],memberNameSnapshot:"佐藤 90000円"}]},
   {records:[{...set()[0],memberNameSnapshot:"CB3000"}]},
