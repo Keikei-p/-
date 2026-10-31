@@ -193,7 +193,7 @@ async function run(){
  console.log(JSON.stringify({outcome:output.released?"RELEASED":"DRY_RUN_OK",oldVersion:output.sourceName,keptOriginalFiles:output.originalCount}));
  if(output.released){
   const page=await fetch("https://"+SITE+".web.app"+ASSET,{redirect:"manual",cache:"no-store"});
-  if(!page.ok||!((await page.text()).includes("協力店 件数報告")))
+  if(!page.ok||!((await page.text()).includes("submitPartnerWorkspaceCounts")))
     throw Error("POST_DEPLOY_COUNTS_PAGE_UNVERIFIED");
   console.log("POST_DEPLOY_HTTP_OK "+ASSET);
  }
