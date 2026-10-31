@@ -171,3 +171,60 @@ test("company names and detail are visible only after authentication and existin
  assert.match(original,/function canCurrentUserViewRevenue\(\)/);
  assert.match(original,/function canCurrentUserViewUnitPrice\(\)/);
 });
+
+test("existing internal Owner may inspect partner screen; partner markers and ordinary staff cannot",()=>{
+ const view=vm.createContext({});
+ vm.runInContext(source("isVerifiedOwnerPreviewIdentity"),view);
+ const can=view.isVerifiedOwnerPreviewIdentity;
+ const person={uid:"owner",companyId:"internal",active:true,accessKind:"internal"};
+ const company={ownerUid:"owner",companyKind:"internal",active:true};
+ const member={uid:"owner",companyId:"internal",active:true,accessKind:"internal"};
+ assert.equal(can("owner",person,company,member),true);
+ assert.equal(can("other",person,company,member),false);
+ assert.equal(can("owner",{...person,memberType:"partner"},company,member),false);
+ assert.equal(can("owner",person,company,{...member,memberType:"cooperator"}),false);
+ assert.equal(can("owner",person,{...company,companyKind:"partner"},member),false);
+ assert.equal(can("owner",person,{...company,ownerUid:"someone-else"},member),false);
+ assert.equal(can("owner",person,company,{...member,companyId:"other"}),false);
+ assert.equal(can("owner",person,{...company,active:false},member),false);
+});
+test("sample preview uses the real partner dashboard contract without finance or remote API calls",async()=>{
+ const scope=vm.createContext({
+  KEYs:undefined,KEYS,previewMode:true,$:()=>({value:"2026-11-01"}),
+  httpsCallable:()=>{throw Error("partner remote callable must never initialize");},
+  functions:{}
+ });
+ vm.runInContext(source("previewDay"),scope);
+ const callStart=page.indexOf("const call=name=>{");
+ const callEnd=page.indexOf("const get=call(",callStart);
+ assert(callStart>0&&callEnd>callStart);
+ vm.runInContext(page.slice(callStart,callEnd),scope);
+ const get=vm.runInContext('call("getPartnerWorkspace")',scope);
+ const response=(await get({date:"2026-11-01"})).data;
+ assert.equal(response.companyName,"サンプル協力店（架空データ）");
+ assert.equal(response.role,"owner");
+ assert.deepEqual([...response.categories],KEYS);
+ assert.equal(response.records.length,2);
+ assert.equal(response.staff.length,3);
+ assert.equal(response.records[0].totalCount,3);
+ assert.equal(response.records[0].privateTotalCount,1);
+ assert.doesNotMatch(JSON.stringify(response),/totalRevenue|unitPrice|pricingOptions|cashback|email|UID/i);
+ await assert.rejects(vm.runInContext('call("managePartnerWorkspace")',scope)({action:"addTeam"}),/preview_readonly/);
+ await assert.rejects(vm.runInContext('call("submitPartnerWorkspaceCounts")',scope)({counts:{}}),/preview_readonly/);
+});
+test("Owner preview has a return link and cannot write any counts or change production identity",()=>{
+ const index=original;
+ for(const id of ["quickPartnerPreviewButton","partnerOwnerPreviewLink"])
+  assert.ok(index.includes('id="'+id+'"'),id);
+ assert.match(index,/quickPartnerPreviewButton\.style\.display=isCurrentCompanyOwner\(\)/);
+ assert.match(index,/quickPartnerPreviewButton\.onclick=\(\)=>\{/);
+ assert.match(page,/id="ownerPreviewBanner" hidden/);
+ assert.match(page,/id="previewReturnLink"/);
+ assert.match(page,/getDocFromServer\(doc\(previewDb,"users",account.uid\)\)/);
+ assert.match(page,/if\(previewMode\)\{notice\("閲覧プレビューでは保存・招待を行いません。"/);
+ assert.match(page,/async function verifyOwnerPreviewAccount/);
+ assert.match(page,/if\(previewMode\)return async args=>/);
+ assert.match(page,/if\(previewMode\)return;/);
+ assert.match(page,/\$\("logout"\)\.onclick=\(\)=>previewMode\?window\.location\.assign\("\/"\)/);
+ assert.doesNotMatch(source("previewDay"),/setDoc|updateDoc|deleteDoc|recordsCollectionQuery|totalRevenue/);
+});
