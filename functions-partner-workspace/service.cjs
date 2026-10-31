@@ -110,7 +110,10 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   }
   if(c.companyKind!=null&&!["internal","direct"].includes(c.companyKind))fail();
   if(c.ownerUid!==uid||u.companyRole!=="owner"||m.companyRole!=="owner"||
-     u.accessKind==="partner"||m.accessKind==="partner")fail();
+     (u.accessKind!=null&&u.accessKind!=="internal")||
+     (m.accessKind!=null&&m.accessKind!=="internal")||
+     (u.memberType!=null&&!["internal","direct","member","managed"].includes(u.memberType))||
+     (m.memberType!=null&&!["internal","direct","member","managed"].includes(m.memberType)))fail();
   return {kind:"hub",uid,cid,role:"owner"};
  }
  const checkTeam=async(tx,s,id)=>{
