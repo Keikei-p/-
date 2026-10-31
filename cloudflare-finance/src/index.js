@@ -14,6 +14,8 @@ import {securePricing} from "./write-plan.js";
 import {submitCounts, SaveConflict, PermissionDenied} from "./count-service.js";
 import {makeFirestoreRestStore} from "./firestore-writer.js";
 import {makePublicCountRestHandler} from "./public-count-live-adapter.mjs";
+import {createInternalCountPage} from "./internal-count-page.mjs";
+import {makeCountDayFirestoreReader} from "./internal-count-rest-reader.mjs";
 import {createPartnerCountCatalogHandler} from "./partner-count-catalog.mjs";
 import {createPartnerCountRestWriteHandler,createPartnerOwnDayRestHandler} from "./partner-count-live-writer.mjs";
 const GOOGLE_KEYS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
@@ -617,6 +619,67 @@ export default {
         enabled,fetcher:fetch,getServiceToken:()=>googleBearer(env)
       });
       return handler(request);
+    }
+    if(url.pathname==="/v1/internal-counts"){
+      // Stage-only legacy count paging. Never an escape hatch for raw money:
+      // 1) independent explicit OFF switch, 2) verified Firebase ID token,
+      // 3) real user + company + member re-read on EACH call,
+      // 4) server-forced company/date query, 5) count-only allowlist.
+      // Do not switch this ON before dual-host/client compatibility, source
+      // parity, rate/cost checks and backed-up finance Rules cutover.
+      const enabled=env.FINANCE_GATEWAY_ENABLED==="enabled" &&
+        env.INTERNAL_COUNT_PAGE_ENABLED==="enabled" &&
+        env.FINANCE_COST_APPROVAL==="OWNER_APPROVED_BLAZE_COSTS" &&
+        env.FIREBASE_PROJECT_ID===PROJECT_ID;
+      if(!enabled)return safeJSON({error:"count_cutover_not_approved"},503,origin);
+      if(request.method!=="GET")return safeJSON({error:"method_not_allowed"},405,origin);
+      const auth=request.headers.get("authorization")||"";
+      if(!auth.startsWith("Bearer "))return safeJSON({error:"authorization_required"},401,origin);
+      const handler=createInternalCountPage({
+        enabled,
+        authenticate:async token=>{
+          const verified=await verifiedToken(token);
+          return {...verified,emailVerified:true};
+        },
+        loadMembership:async uid=>{
+          const user=await firestoreGet(env,"users/"+uid);
+          const cid=user?.companyId;
+          if(!/^[A-Za-z0-9_-]{1,128}$/.test(cid||""))throw httpError(403,"member_unavailable");
+          const [company,member]=await Promise.all([
+            firestoreGet(env,"companies/"+cid),
+            firestoreGet(env,"companies/"+cid+"/members/"+uid)
+          ]);
+          if(!company||!member||user.uid!==uid||member.uid!==uid||
+             user.companyId!==cid||member.companyId!==cid||
+             user.active!==true||member.active!==true||
+             company.active===false||user.companyRole!==member.companyRole)
+            throw httpError(403,"member_unavailable");
+          if(![undefined,"internal","direct"].includes(company.companyKind)||
+             [user.accessKind,member.accessKind,user.memberType,member.memberType]
+               .some(value=>value==="partner"||value==="cooperator"))
+            throw httpError(403,"member_unavailable");
+          return {uid,companyId:cid,user,member,company,
+            firebaseIdTokenVerified:true,emailVerified:true,
+            serverMembershipVerified:true,serverVerifiedInternalCompany:true};
+        },
+        queryDailyRecords:makeCountDayFirestoreReader({
+          getServiceToken:()=>googleBearer(env),decodeDocument:docData
+        }),
+        queryProducts:async({companyId})=>firestoreQuery(env,"products",companyId)
+      });
+      try{
+        const result=await handler({
+          bearer:auth.slice(7),day:url.searchParams.get("day"),
+          cursor:url.searchParams.get("cursor")||"",
+          readTime:url.searchParams.get("readTime")||""
+        });
+        return safeJSON(result,200,origin);
+      }catch(error){
+        if(error.status===401)return safeJSON({error:"unauthorized"},401,origin);
+        if(error.status===403||String(error.message||"").includes("internal_count_bridge_denied"))
+          return safeJSON({error:"forbidden"},403,origin);
+        return safeJSON({error:"count_page_unavailable"},503,origin);
+      }
     }
     if(url.pathname==="/v1/public-counts"){
       // Independent OFF-by-default switches. No REST, OAuth or certificate
