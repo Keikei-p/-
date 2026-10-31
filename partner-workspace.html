@@ -839,6 +839,11 @@ main{max-width:1200px;margin:0 auto;padding:20px}header{background:var(--header)
   <p class="muted">最初の協力店登録・承諾が終わると会社名が現れます。未承認の会社は招待できません。売上・単価は扱いません。</p>
   <label for="hubInviteCompanySelect">招待先の会社</label><select id="hubInviteCompanySelect"></select>
   <p id="hubInviteState" class="muted" role="status"></p>
+  <div id="hubApprovalControls" class="company-panel" hidden>
+   <p class="muted">会社招待を承諾した協力店の件数利用を、自社Ownerが明示的に承認・停止します。売上と単価の権限は一切付与しません。</p>
+   <button id="hubToggleApproval" type="button">協力店の件数利用を承認</button>
+   <p id="hubApprovalStatus" role="status" class="muted"></p>
+  </div>
   <div id="hubInviteControls" hidden>
    <label for="hubNewTeamName">班を追加（班がない場合）</label>
    <div class="row"><input id="hubNewTeamName" maxlength="60" placeholder="例：第1班">
@@ -1400,6 +1405,9 @@ function renderHubInvitePanel(){
  }
  if(registered.some(c=>c.partnerCompanyId===prior))companySelect.value=prior;
  const selected=registered.find(c=>c.partnerCompanyId===companySelect.value),ready=selected?.active===true;
+ $("hubApprovalControls").hidden=!selected;
+ $("hubToggleApproval").textContent=ready?"この協力店の件数利用を停止":"この協力店の件数利用を承認";
+ $("hubToggleApproval").disabled=!selected;
  $("hubInviteControls").hidden=!ready;
  $("hubInviteState").textContent=!selected?"登録済み協力店がありません。先に協力店会社を招待してください。":
   !ready?selected.name+"：承認待ちです。件数運用の承認後に招待できます。":
@@ -1617,7 +1625,28 @@ $("hubTeamCountLoad").onclick=async()=>{
  }
 };
 $("hubCompanySelect").onchange=renderHubCompanyDetail;
-$("hubInviteCompanySelect").onchange=()=>{$("hubInviteOut").hidden=true;$("hubInviteUrl").value="";renderHubInvitePanel()};
+$("hubInviteCompanySelect").onchange=()=>{
+ $("hubInviteOut").hidden=true;$("hubInviteUrl").value="";
+ $("hubApprovalStatus").textContent="";
+ renderHubInvitePanel();
+};
+$("hubToggleApproval").onclick=()=>{
+ if(!data||data.role!=="hub"||loading)return;
+ const company=data.registeredCompanies?.find(c=>c.partnerCompanyId===$("hubInviteCompanySelect").value);
+ if(!company)return;
+ const approved=company.active!==true;
+ if(!window.confirm(company.name+" の件数利用を"+(approved?"承認":"停止")+
+  "しますか？ 売上・単価・既存実績は変更しません。"))return;
+ $("hubToggleApproval").disabled=true;
+ void action(async()=>{
+  const result=(await manage({action:"hubSetSharingApproval",
+   partnerCompanyId:company.partnerCompanyId,companyName:company.name,
+   approved,expectedActive:company.active===true})).data;
+  if(result?.active!==approved||result?.financialAccess!==false)
+   throw Error("approval_not_verified");
+  return company.name+" の件数利用を"+(approved?"承認":"停止")+"しました。";
+ });
+};
 $("hubInviteTeamSelect").onchange=()=>{$("hubInviteOut").hidden=true;$("hubInviteUrl").value=""};
 $("staffSelect").onchange=renderSelected;
 async function refresh(){if(!auth.currentUser||!auth.currentUser.emailVerified||(!previewMode&&inviteToken))return;
