@@ -29,9 +29,23 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   for(const key of KEYS){const n=x[key];if(!Number.isSafeInteger(n)||n<0||n>9999)fail("invalid-argument");counts[key]=n;total+=n;}
   return {counts,total};
  };
+ const validPrivateName=x=>typeof x==="string"&&x.trim().length>0&&
+ x.trim().length<=80&&!money.test(x);
+ const validatePrivateCounts=x=>{
+  if(!x||typeof x!=="object"||Array.isArray(x)||Object.keys(x).length>100)
+    fail("invalid-argument");
+  const result={};let sum=0;
+  for(const [id,count] of Object.entries(x)){
+   if(!ID.test(id)||!Number.isSafeInteger(count)||count<0||count>9999)
+    fail("invalid-argument");
+   result[id]=count;sum+=count;
+  }
+  return {counts:result,total:sum};
+ };
  const collection=(cid,name)=>db.collection("companies").doc(cid).collection(name);
  const teamRef=(cid,id)=>collection(cid,"partnerWorkTeams").doc(id);
  const staffRef=(cid,id)=>collection(cid,"partnerWorkStaff").doc(id);
+ const privateProductRef=(cid,id)=>collection(cid,"partnerPrivateProducts").doc(id);
  const entryRef=(cid,date,id)=>collection(cid,"partnerWorkEntries").doc(date+"__"+id);
  const summaryRef=(hub,date,partner)=>collection(hub,"partnerWorkCountDays").doc(date).collection("reports").doc(partner);
  async function actor(request){
@@ -94,9 +108,40 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  };
  async function manage(request){
   const {uid}=await actor(request),d=request?.data||{},op=d.action;
-  if(!["addTeam","addManaged","createInvite","moveStaff"].includes(op))fail("invalid-argument");
+  if(!["addTeam","addManaged","createInvite","moveStaff","addPrivateProduct","setPrivateProduct"].includes(op))fail("invalid-argument");
   const s=await scope(uid);
   if(s.kind!=="partner"||s.role==="member")fail();
+  if(op==="addPrivateProduct"){
+   if(s.kind!=="partner"||s.role!=="owner"||!validPrivateName(d.name))
+     fail("invalid-argument");
+   const existing=await collection(s.cid,"partnerPrivateProducts").limit(101).get();
+   if(existing.size>=100)fail("resource-exhausted");
+   const ref=collection(s.cid,"partnerPrivateProducts").doc();
+   await db.runTransaction(async tx=>{
+    const fresh=await scope(uid,tx);
+    if(fresh.kind!=="partner"||fresh.cid!==s.cid||fresh.role!=="owner")fail();
+    tx.create(ref,{companyId:s.cid,name:clean(d.name),active:true,
+      origin:"partner_custom",visibility:"private",createdByUid:uid,
+      createdAt:FieldValue.serverTimestamp()});
+   });
+   return {productId:ref.id,created:true};
+  }
+  if(op==="setPrivateProduct"){
+   if(s.kind!=="partner"||s.role!=="owner"||!ID.test(d.productId||"")||
+      typeof d.active!=="boolean"||!validPrivateName(d.name))fail("invalid-argument");
+   await db.runTransaction(async tx=>{
+    const fresh=await scope(uid,tx);
+    if(fresh.kind!=="partner"||fresh.cid!==s.cid||fresh.role!=="owner")fail();
+    const ref=privateProductRef(s.cid,d.productId),sn=await tx.get(ref);
+    if(!sn.exists||sn.data()?.companyId!==s.cid||
+       sn.data()?.origin!=="partner_custom"||sn.data()?.visibility!=="private")
+      fail("failed-precondition");
+    tx.update(ref,{name:clean(d.name),active:d.active,
+      updatedByUid:uid,updatedAt:FieldValue.serverTimestamp()});
+   });
+   // Never delete a retired product or its original count history.
+   return {productId:d.productId,updated:true};
+  }
   if(op==="addTeam"){
    if(s.role!=="owner"||!validName(d.name))fail("invalid-argument");
    const ref=collection(s.cid,"partnerWorkTeams").doc();
@@ -208,12 +253,21 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    partners.sort((x,y)=>x.name.localeCompare(y.name,"ja"));
    return {role:"hub",date,partners,categories:KEYS};
   }
-  const [teams,staff,entries]=await Promise.all([
+  const [teams,staff,entries,privateProducts]=await Promise.all([
     collection(s.cid,"partnerWorkTeams").limit(151).get(),
     collection(s.cid,"partnerWorkStaff").limit(151).get(),
-    collection(s.cid,"partnerWorkEntries").where("date","==",date).limit(201).get()
+    collection(s.cid,"partnerWorkEntries").where("date","==",date).limit(201).get(),
+    collection(s.cid,"partnerPrivateProducts").limit(101).get()
   ]);
-  if(teams.size>150||staff.size>150||entries.size>200)fail("resource-exhausted");
+  if(teams.size>150||staff.size>150||entries.size>200||privateProducts.size>100)fail("resource-exhausted");
+  const productList=privateProducts.docs.map(sn=>{
+   const x=sn.data()||{};
+   if(!ID.test(sn.id)||x.companyId!==s.cid||x.origin!=="partner_custom"||
+      x.visibility!=="private"||!validPrivateName(x.name)||typeof x.active!=="boolean")
+     fail("data-loss");
+   return {id:sn.id,name:clean(x.name),active:x.active};
+  });
+  const privateIdSet=new Set(productList.map(x=>x.id));
   const allowed=new Map();
   for(const sn of staff.docs){
    const x=sn.data()||{};
@@ -233,18 +287,24 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    // Never infer a historical team from the member's current teamId.
    // Old entries without a snapshot stay unverified in the dashboard.
    const teamIdSnapshot=ID.test(x.teamIdSnapshot||"")?x.teamIdSnapshot:null;
+   const privateCounts=validatePrivateCounts(x.privateCounts||{});
+   if(Object.keys(privateCounts.counts).some(id=>!privateIdSet.has(id))||
+      (x.privateTotalCount??0)!==privateCounts.total)fail("data-loss");
    rows.push({staffId:x.staffId,counts,totalCount:total,version:x.version,
-     teamIdSnapshot});
+     teamIdSnapshot,privateCounts:privateCounts.counts,privateTotalCount:privateCounts.total});
   }
   const visibleTeams=teams.docs.map(sn=>({id:sn.id,name:clean(sn.data().name),active:sn.data().active===true}))
    .filter(team=>s.role==="owner"||team.id===s.teamId);
   return {role:s.role,date,companyName:clean(s.companyName),teamId:s.teamId,
-    teams:visibleTeams,staff:[...allowed.values()],records:rows,categories:KEYS};
+    teams:visibleTeams,staff:[...allowed.values()],records:rows,categories:KEYS,
+    privateProducts:productList};
  }
  async function submit(request){
   const a=await actor(request),d=request?.data||{},date=validDate(d.date),staffId=clean(d.staffId);
   if(!ID.test(staffId)||!Number.isSafeInteger(d.expectedVersion)||d.expectedVersion<0)fail("invalid-argument");
   const {counts,total}=validateCounts(d.counts);
+  const hasPrivateCounts=Object.prototype.hasOwnProperty.call(d,"privateCounts");
+  const requestedPrivate=hasPrivateCounts?validatePrivateCounts(d.privateCounts).counts:null;
   const s=await scope(a.uid);
   if(s.kind!=="partner")fail();
   return db.runTransaction(async tx=>{
@@ -254,13 +314,27 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    if(!ss.exists||person.active!==true||person.companyId!==s.cid||
       !validName(person.name)||!canStaff(fresh,person))fail();
    const er=entryRef(s.cid,date,staffId),summary=summaryRef(s.hubId,date,s.cid);
-   const [oldSnap,totalSnap]=await Promise.all([tx.get(er),tx.get(summary)]);
+   const privateProductIds=Object.keys(requestedPrivate||{});
+   // All reads happen before writes. Do not infer product ownership from IDs.
+   const [oldSnap,totalSnap,...productSnapshots]=await Promise.all([
+    tx.get(er),tx.get(summary),
+    ...privateProductIds.map(id=>tx.get(privateProductRef(s.cid,id)))
+   ]);
+   for(let i=0;i<privateProductIds.length;i++){
+    const doc=productSnapshots[i],x=doc?.data()||{};
+    if(!doc?.exists||x.companyId!==s.cid||x.origin!=="partner_custom"||
+       x.visibility!=="private"||(x.active!==true&&requestedPrivate[privateProductIds[i]]>0))
+      fail("failed-precondition");
+   }
    const old=oldSnap.data()||{},existing=totalSnap.data()||{};
    if(oldSnap.exists&&old.version!==d.expectedVersion||!oldSnap.exists&&d.expectedVersion!==0)
      fail("aborted");
    if(d.expectedVersion>=999)fail("resource-exhausted");
    // Never mix per-person entries with the earlier one-total-per-partner UI.
    if(totalSnap.exists&&existing.source!=="staff-entries-v1")fail("failed-precondition");
+   const previousPrivate=oldSnap.exists?validatePrivateCounts(old.privateCounts||{}).counts:{};
+   const privateNext={...previousPrivate,...(requestedPrivate||{})};
+   const privateValidated=validatePrivateCounts(privateNext);
    const prior=oldSnap.exists?validateCounts(old.counts).counts:
      Object.fromEntries(KEYS.map(key=>[key,0]));
    const previous=totalSnap.exists?validateCounts(existing.counts).counts:
@@ -275,6 +349,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      fail("data-loss");
    const nowStamp=FieldValue.serverTimestamp(),nextVersion=d.expectedVersion+1;
    const row={companyId:s.cid,hubCompanyId:s.hubId,staffId,date,counts,totalCount:total,
+     privateCounts:privateValidated.counts,privateTotalCount:privateValidated.total,
      version:nextVersion,staffNameSnapshot:person.name,teamIdSnapshot:person.teamId,
      updatedByUid:a.uid,updatedAt:nowStamp};
    if(oldSnap.exists)tx.update(er,row);else tx.create(er,{...row,createdAt:nowStamp});
@@ -284,8 +359,10 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    if(!validCompanyName(sum.partnerName))fail();
    if(totalSnap.exists)tx.update(summary,sum);else tx.create(summary,{...sum,createdAt:nowStamp});
    const audit=collection(s.cid,"partnerWorkAudits").doc(date+"__"+staffId+"__v"+nextVersion);
-   tx.create(audit,{...row,previousCounts:prior,createdAt:nowStamp});
-   return {saved:true,staffId,date,version:nextVersion,totalCount:total};
+   tx.create(audit,{...row,previousCounts:prior,previousPrivateCounts:previousPrivate,
+     createdAt:nowStamp});
+   return {saved:true,staffId,date,version:nextVersion,totalCount:total,
+     privateTotalCount:privateValidated.total};
   });
  }
  return Object.freeze({manage,accept,view,submit});
