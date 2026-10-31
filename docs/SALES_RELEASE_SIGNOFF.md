@@ -728,3 +728,24 @@ GitHub所有者として認証済みの接続から、本番影響をindex.html�
 - [ ] Firestoreセキュリティ問題：引き続き本番のRules置換は未実施。PR #214のEmulator 44/44合格は候補だけ。
 
 本人による本番UI修正の指示は受領したが、署名・現場実機検証が取れていない事項を合格と記載しない。
+
+---
+## 2026-10-31：Rules 所属分類の単独協力店・未知マーカー拒否（今回の源コード修正）
+
+### 依頼
+利用者から「問題解決して本番へ!」の指示。最重要不変条件は、既存のMaster/Ownerの売上・単価・件数、保存済み商材・原票・履歴・アカウントの保護。
+
+### 対象・内容
+- `firestore.rules`: `isCompanyMember` の分類条件を精密化。会社 `companyKind`、本人 `users.accessKind`、会社所属 `members.accessKind` は `internal` のみ認め、本人・所属 `memberType` は `internal/direct/member/managed` のみ認める。未設定の古い内製アカウントだけ内部扱いを維持する。partner・cooperator・unknown を**単独で**持つアカウントは金融原票への認証を拒否する。金額の計算・既存書込規則・商品/実績の保存形式・権限昇格ルールは変更しない。
+- `tests/rules.test.cjs`: 偽装Ownerで複数種の単独分類異常を試す負の回帰テストと、古いOwner・明示internal Ownerの売上・価格・実績が読める正のテストを追加。
+- 元の `index.html` / Firebase Hosting / Functions / Cloudflare Worker / 実Firestoreドキュメント / 顧客履歴には一切変更しない。
+
+### レビューと本番扱いの区別
+- [ ] GitHub Actions の実際のPR HEAD Emulatorテストが全合格（実行後に判定）。
+- [ ] 原票の金額・単価・件数・本人認証が既存の本番利用者で正常なことを検証。
+- [ ] 本番バックアップの別環境復元と原本件数ハッシュ一致が検証済み。
+- [ ] GitHub管理者の独立したレビュー・署名（ここに記載しただけでは未取得）。
+- [ ] 本番 `firestore.rules` の明示的・手動限定デプロイと、デプロイ後の実Owner/協力店の検証（まだ行っていない）。
+- [ ] 包括的な財務原票閉鎖は別の `scripts/check-finance-read-boundary-before-deploy.mjs` が引き続き拒否。既存メンバーが `products` / `records` を直接購読しているため、これだけで全面切替・協力店本番使用許可はしない。
+
+**現在の判断:** 源コードの部分修正と実際の本番配信は別。Rulesの本番適用でオーナーの閲覧を壊す可能性を否定できる独立証拠がない限り、デプロイは止める。本記録は手書き署名の代用ではない。
