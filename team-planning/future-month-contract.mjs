@@ -73,6 +73,10 @@ export function prepareMonthActivation({plan,jstDate,people,validTeamIds}){
    stop("CLOCK_INVALID");
  const since=plan.month+"-01";
  if(jstDate<since)stop("TOO_EARLY");
+ // This schedule is effective on the first of its month. Allowing a later
+ // activation would backdate new membership over days of already-saved sales.
+ // Any late recovery needs explicit Owner review and independent record audit.
+ if(jstDate>since)stop("LATE_ACTIVATION_REQUIRES_MANUAL_REVIEW");
  if(!Array.isArray(people)||!Array.isArray(validTeamIds))stop("INPUTS");
  const available=new Set(validTeamIds.map(x=>checkId(x,"TEAM")));
  const byId=new Map(people.map(p=>[p.uid,p]));
@@ -94,7 +98,11 @@ export function prepareMonthActivation({plan,jstDate,people,validTeamIds}){
     person.teamHistory.map(entry=>({...entry})):[];
   if(history.some(h=>!h||typeof h.effectiveDate!=="string"))
     stop("CORRUPT_HISTORY");
-  const atDate=history.find(h=>h.effectiveDate===since);
+  // Existing future-dated team history must not be silently overridden.
+ // Historical records are immutable: fail rather than create a conflicting
+ // timeline with two scheduled assignments effective after this month.
+ if(history.some(h=>h.effectiveDate>since))stop("FUTURE_HISTORY_CONFLICT");
+ const atDate=history.find(h=>h.effectiveDate===since);
   if(atDate&&atDate.toTeamId!==teamId)stop("CONFLICTING_HISTORY");
   if(teamChanges&&!atDate){
     history.push({effectiveDate:since,fromTeamId:previousTeam,toTeamId:teamId});
