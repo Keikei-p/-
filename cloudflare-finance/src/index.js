@@ -897,10 +897,10 @@ export default {
     // All financial views are bounded to one whole month; never read the
     // full historical company ledger and silently truncate after 100k rows.
     // Company and role come ONLY from verified membership, not query params.
-    if(!validInternalRankMonthQuery(url.searchParams))
-      return safeJSON({error:"invalid_month"},400,origin);
     const auth=request.headers.get("authorization")||"";
     if(!auth.startsWith("Bearer "))return safeJSON({error:"authorization_required"},401,origin);
+    if(!validInternalRankMonthQuery(url.searchParams))
+      return safeJSON({error:"invalid_month"},400,origin);
     try{
       const principal=await verifiedToken(auth.slice(7));
       const answer=await financeView(env,principal,fetch,{partnerOnly,month:url.searchParams.get("month")});
