@@ -78,10 +78,15 @@ export async function uploadSingleExistingIndex({assetBytes,request,release=fals
    throw Error("BAD_LIVE_FILECOUNT");
  // Both versions are audited by successful one-file-only Hosting releases:
  // b6ab2b826667954d -> 9039213fe6907270 on run 41153486449.
+ // 9039213fe6907270 -> 1c4aa6910478bd42 on run 41153882962,
+ // then 1c4aa6910478bd42 -> b52abc1a8a8a1d78 on successful
+ // emergency login restore run 41155153651. These releases preserved all 11 hashes.
  // Do not trust fileCount-free metadata for arbitrary future versions.
  const knownIncompleteCountVersions=new Set([
    "sites/nico-factory/versions/b6ab2b826667954d",
-   "sites/nico-factory/versions/9039213fe6907270"
+   "sites/nico-factory/versions/9039213fe6907270",
+   "sites/nico-factory/versions/1c4aa6910478bd42",
+   "sites/nico-factory/versions/b52abc1a8a8a1d78"
  ]);
  const files=[];let pageToken="";
  do{
