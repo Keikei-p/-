@@ -102,6 +102,31 @@ test("any monetary field, wrong total, or lost line fails instead of returning p
   assert.equal(f.calls.length,5);
  }
 });
+test("2,051 records in one day are never cut at 2,000 and no 31-day gaps",async()=>{
+ const all=Array.from({length:2051},(_,i)=>row("2026-02-01",i));
+ let pageCalls=0;
+ const fetcher=async(url)=>{
+  const u=new URL(url),day=u.searchParams.get("day");
+  if(day!=="2026-02-01")
+   return {ok:true,status:200,json:async()=>page(day,[])};
+  pageCalls++;
+  const cursor=u.searchParams.get("cursor");
+  const from=cursor===null?0:Number(cursor.split("_").at(-1))+1;
+  const chunk=all.slice(from,from+50),hasMore=from+50<all.length;
+  return {ok:true,status:200,json:async()=>({
+   ...page(day,chunk),products:cursor===null?[product]:[],
+   catalogIncluded:cursor===null,hasMore,
+   nextCursor:hasMore?chunk.at(-1).sourceId:null
+  })};
+ };
+ const result=await load(fetcher);
+ assert.equal(result.daysVerified,28);
+ assert.equal(result.totalCount,2051);
+ assert.equal(result.records.length,2051);
+ assert.equal(result.lines.length,2051);
+ assert.equal(pageCalls,42);
+ assert.equal(result.totalPages,69);
+});
 test("monthly reader is offline-only: no direct Firestore, mutation, billing or deployment",()=>{
  const source=readFileSync(new URL("../client/internal-count-month.mjs",import.meta.url),"utf8");
  assert.doesNotMatch(source,/\b(?:getFirestore|getDocs|onSnapshot|setDoc|updateDoc|deleteDoc|runTransaction|firebase\s+deploy|wrangler\s+deploy)\s*\(/);
