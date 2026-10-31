@@ -1,0 +1,41 @@
+name: "NICO secure internal month reader (offline, no deployment)"
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "cloudflare-finance/client/internal-count-day.mjs"
+      - "cloudflare-finance/client/internal-count-month.mjs"
+      - "cloudflare-finance/tests/internal-count-day.test.mjs"
+      - "cloudflare-finance/tests/internal-count-month.test.mjs"
+      - ".github/workflows/nico-internal-count-month-offline.yml"
+  push:
+    branches: [main]
+    paths:
+      - "cloudflare-finance/client/internal-count-day.mjs"
+      - "cloudflare-finance/client/internal-count-month.mjs"
+      - "cloudflare-finance/tests/internal-count-day.test.mjs"
+      - "cloudflare-finance/tests/internal-count-month.test.mjs"
+permissions:
+  contents: read
+jobs:
+  verify-month-without-finance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Parse monthly count-only client and verify every calendar day
+        run: |
+          set -euo pipefail
+          node --check cloudflare-finance/client/internal-count-day.mjs
+          node --check cloudflare-finance/client/internal-count-month.mjs
+          node --test cloudflare-finance/tests/internal-count-day.test.mjs cloudflare-finance/tests/internal-count-month.test.mjs
+      - name: Keep original owner revenue and production cutover safety
+        run: |
+          set -euo pipefail
+          node --test tests/internal-owner-finance-visibility.test.cjs
+          node --test tests/nico-production-cutover-preflight.test.mjs
