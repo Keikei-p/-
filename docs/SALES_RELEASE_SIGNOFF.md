@@ -564,3 +564,14 @@ Rulesの本番デプロイ: 未実施
 - **追加の金融原票アクセス遮断について**: Firestore Rules PR #161は未統合/本番未配備。Ownerを含む協力店の全金融資料をFirestore本番で拒否できるかの実環境検証、既存データバックアップと隔離復元、データ整合チェックは未完了。このため今回の限定リリースは独立した「件数専用API」と読取専用の社内ランキングだけを有効化し、協力店の財務情報への旧Firestore直接接続を許可しない。**財務原票の絶対遮断・実アカウント全権限は完成と判断しない**。
 - **運用・費用リスク**: Firebase 2nd Gen Functionsの新API作成は請求が発生し得る。Artifact Registry cleanup policyは以前のIAMエラーにより未設定であり、料金監視と後日の最小権限修正が必要。既存データ初期化・移行・削除はなし。
 - **実施済みでないこと**: 本番実アカウントの協力店招待/承認・件数入力とランキング反映テスト、バージョン当時の売上資料の移行、バックアップ隔離復元検証。上記を行わず「全面運用完了」と記載しない。署名代行をしたとは扱わない。
+
+
+---
+
+## 2026-10-31 — 既存ランキングの旧indexだけの公開・既知Hosting v11ファイル確認
+
+- `41152842402` のindex差分リリースは、協力店Workspace公開直後のライブVersionが `fileCount` を応答しないため、実ファイル確認に入る前に `STOP BAD_LIVE_VERSION`。ファイル切替や旧履歴書換はまだ実施されていない。
+- Workspace成功Run `41152615733` は、旧ライブ版 `2207a4addf94700b` の元10ファイルを完全保存し、新 `partner-workspace.html` 1枚を追加した合計**11ファイル**のパス・ハッシュ検証に合格後、`sites/nico-factory/versions/b6ab2b826667954d` をリリースした実ログを持つ。
+- `surgical-existing-index.mjs` は、**その監査済みVersionだけ**、`version.fileCount` が欠落する場合に限り、`files.list` の全ページの実ファイルを検証した11件以上の件数を採用する。元の`index.html`、`partner-invite.html`、`partner-counts.html`、`partner-workspace.html` の4ファイルが全て存在しない場合はSTOP。他の未審査ライブVersionで欠損件数を迂回しない。
+- 更新前後のHosting config、元ファイル全パス/ハッシュ、ライブ版並行切替の有無は引き続き検証。**差分は`index.html` 1件のみ**で、既存レコード/金額/単価/ユーザー/班/履歴/LINE・Firestore Rulesは一切触らない。
+- 公開許可の前提は最新のGitHub保護ゲート・Sales App Validation・index Hostingの模擬/実データテスト全合格と前段quick/workspaceの実ジョブ成功。Finance Rules PR #175は別審査、実本番適用未承認。
