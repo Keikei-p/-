@@ -4,8 +4,9 @@
  * reviewed membership/retention patch in a disposable GitHub Actions checkout.
  *
  * Never deploys rules, writes Firestore data, or changes the deployed release.
- * Every permitted change is bounded to isCompanyMember or a named collection's
- * delete predicate, and all other original live Rules bytes stay untouched.
+ * Allowed changes are limited to the reviewed company grant chain, the
+ * revenueGoals expression-budget-safe contract, and hard-delete predicates.
+ * All other existing live Rules bytes stay unchanged.
  */
 import {readFileSync,writeFileSync} from "node:fs";
 import {createHash} from "node:crypto";
