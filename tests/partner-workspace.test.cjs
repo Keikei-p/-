@@ -579,3 +579,121 @@ test("forged secondary-company ID cannot grant partner Owner access",async()=>{
   e=>e.code==="permission-denied");
  assert.equal(JSON.stringify([...db.store]),baseline);
 });
+
+test("registered emails join partner leader/member while source accounts and old financial records remain identical",async()=>{
+ const {db,api,req,zero}=setup();
+ const originals=new Map();
+ for(const [uid,role] of [["l","leader"],["m","member"]]){
+   const source={uid,companyId:"hub",email:uid+"@example.com",name:"既存"+uid,
+     companyRole:"member",role:"member",teamId:"original",
+     active:true,accessKind:"internal",memberType:"direct",
+     canViewRevenue:true,canViewUnitPrice:true};
+   db.seed("users/"+uid,source);
+   db.seed("companies/hub/members/"+uid,{...source});
+   originals.set("users/"+uid,clone(source));
+   originals.set("companies/hub/members/"+uid,clone(source));
+ }
+ const oldSales=clone(db.store.get("records/old"));
+ const partnerTeam=(await api.manage(req("p",{action:"addTeam",name:"協力店既存メール班"}))).teamId;
+ const joined=[];
+ for(const [uid,role] of [["l","leader"],["m","member"]]){
+  const invite=await api.manage(req("p",{action:"createInvite",email:uid+"@example.com",
+    role,teamId:partnerTeam}));
+  const result=await api.accept(req(uid,{token:invite.token,name:"既存ユーザー"+uid}));
+  assert.equal(result.joined,true);
+  assert.equal(result.secondaryMembership,true);
+  assert.equal(result.partnerCompanyId,"partner");
+  assert.equal(db.store.get("partnerWorkspaceContexts/"+uid).role,role);
+  assert.equal(db.store.get("partnerWorkspaceContexts/"+uid).teamId,partnerTeam);
+  for(const key of ["users/"+uid,"companies/hub/members/"+uid])
+   assert.deepEqual(db.store.get(key),originals.get(key),key+" must not migrate");
+  const partner=await api.view(req(uid,{workspaceCompanyId:"partner",date:"2026-10-31"}));
+  assert.equal(partner.role,role);
+  assert.equal(partner.companyName,"協力店");
+  assert.ok(!JSON.stringify(partner).includes("totalRevenue"));
+  assert.ok(!JSON.stringify(partner).includes("unitPrice"));
+  joined.push(uid);
+ }
+ assert.deepEqual(joined,["l","m"]);
+ const staff=(await api.manage(req("l",{workspaceCompanyId:"partner",
+   action:"addManaged",name:"既存メール班担当",teamId:partnerTeam}))).staffId;
+ const saved=await api.submit(req("l",{workspaceCompanyId:"partner",
+   date:"2026-10-31",staffId:staff,counts:{...zero(),NURO:1},expectedVersion:0}));
+ assert.equal(saved.saved,true);
+ const own=await api.view(req("l",{workspaceCompanyId:"partner",date:"2026-10-31"}));
+ assert.equal(own.records[0].totalCount,1);
+ assert.deepEqual(db.store.get("records/old"),oldSales);
+ for(const [key,value] of originals)assert.deepEqual(db.store.get(key),value);
+});
+test("partner Owner changes a secondary staff team without moving original internal staff",async()=>{
+ const {db,api,req}=setup();
+ const old={uid:"l",companyId:"hub",email:"l@example.com",companyRole:"member",
+   role:"member",teamId:"internalTeam",active:true,accessKind:"internal",
+   memberType:"direct",canViewRevenue:true,canViewUnitPrice:true};
+ db.seed("users/l",old);
+ db.seed("companies/hub/members/l",old);
+ const original=clone(old),records=clone(db.store.get("records/old"));
+ const t1=(await api.manage(req("p",{action:"addTeam",name:"第1班"}))).teamId;
+ const t2=(await api.manage(req("p",{action:"addTeam",name:"第2班"}))).teamId;
+ const {token}=await api.manage(req("p",{action:"createInvite",email:"l@example.com",
+   role:"leader",teamId:t1}));
+ await api.accept(req("l",{token,name:"リーダーL"}));
+ const moved=await api.manage(req("p",{action:"moveStaff",staffId:"l",teamId:t2}));
+ assert.equal(moved.moved,true);
+ assert.equal(db.store.get("partnerWorkspaceContexts/l").teamId,t2);
+ assert.equal(db.store.get("companies/partner/members/l").teamId,t2);
+ assert.equal(db.store.get("companies/partner/partnerWorkStaff/l").teamId,t2);
+ assert.equal(db.store.get("partnerWorkspaceContexts/l").teamHistory.length,1);
+ assert.deepEqual(db.store.get("users/l"),original);
+ assert.deepEqual(db.store.get("companies/hub/members/l"),original);
+ assert.deepEqual(db.store.get("records/old"),records);
+ const view=await api.view(req("l",{workspaceCompanyId:"partner",date:"2026-10-31"}));
+ assert.equal(view.role,"leader");
+ assert.equal(view.teamId,t2);
+});
+test("forged or revoked secondary staff workspace is denied without changes to original profiles",async()=>{
+ const {db,api,req}=setup();
+ const old={uid:"l",companyId:"hub",email:"l@example.com",companyRole:"member",
+   role:"member",teamId:"old",active:true,accessKind:"internal"};
+ db.seed("users/l",old);
+ db.seed("companies/hub/members/l",{...old});
+ const team=(await api.manage(req("p",{action:"addTeam",name:"協力店班"}))).teamId;
+ const {token}=await api.manage(req("p",{action:"createInvite",
+   email:"l@example.com",teamId:team,role:"leader"}));
+ await api.accept(req("l",{token,name:"既存リーダー"}));
+ const options={workspaceCompanyId:"partner",date:"2026-10-31"};
+ for(const mutation of [
+  ()=>db.store.get("partnerWorkspaceContexts/l").role="owner",
+  ()=>db.store.get("partnerWorkspaceContexts/l").partnerCompanyId="other",
+  ()=>db.store.get("partnerRelations/partner").active=false
+ ]){
+  const originalCtx=clone(db.store.get("partnerWorkspaceContexts/l"));
+  const originalRel=clone(db.store.get("partnerRelations/partner"));
+  mutation();
+  await assert.rejects(api.view(req("l",options)),e=>e.code==="permission-denied");
+  db.seed("partnerWorkspaceContexts/l",originalCtx);
+  db.seed("partnerRelations/partner",originalRel);
+ }
+ assert.equal(db.store.get("users/l").companyId,"hub");
+ assert.equal(db.store.get("users/l").accessKind,"internal");
+});
+test("invalid old-company identities and duplicate context cannot accept a partner staff invite",async()=>{
+ for(const defect of ["no-member","foreign-company","partner-marker","duplicate-context"]){
+  const {db,api,req}=setup();
+  const old={uid:"l",companyId:"hub",email:"l@example.com",
+    companyRole:"member",role:"member",teamId:"A",active:true,accessKind:"internal"};
+  if(defect==="partner-marker")old.accessKind="partner";
+  db.seed("users/l",old);
+  if(defect!=="no-member")db.seed("companies/hub/members/l",{
+    ...old,companyId:defect==="foreign-company"?"else":"hub"});
+  if(defect==="duplicate-context")db.seed("partnerWorkspaceContexts/l",{
+    uid:"l",kind:"partner_secondary",active:true,partnerCompanyId:"other"});
+  const team=(await api.manage(req("p",{action:"addTeam",name:"検証班"}))).teamId;
+  const {token}=await api.manage(req("p",{action:"createInvite",
+    role:"member",email:"l@example.com",teamId:team}));
+  const before=clone([...db.store]);
+  await assert.rejects(api.accept(req("l",{token,name:"別名"})),
+    e=>e.code==="failed-precondition");
+  assert.deepEqual([...db.store],before);
+ }
+});
