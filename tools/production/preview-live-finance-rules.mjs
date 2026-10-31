@@ -120,6 +120,25 @@ export function previewLiveRules(live,reviewed){
     changed.push("review:revenueGoals");
   }
 
+  // The current deployed records update rule repeats identity/role lookups.
+  // With partner-safe membership evaluation it exceeds Firestore's 1000
+  // expression limit on legitimate owner corrections. Use ONLY the reviewed
+  // records rule that passes both owner corrections and partner denial.
+  const approvedRecordSpan=collectionBlock(reviewed,"records");
+  const approvedRecords=reviewed.slice(approvedRecordSpan.start,approvedRecordSpan.end);
+  for(const marker of ["canWriteDailyRecord","sameCompany","allow delete: if false;"]){
+    if(!approvedRecords.includes(marker))stop("REVIEWED_RECORD_CONTRACT_MISSING_"+marker);
+  }
+  const currentRecordSpan=collectionBlock(candidate,"records");
+  const currentRecords=candidate.slice(currentRecordSpan.start,currentRecordSpan.end);
+  for(const marker of ["allow read:","allow create:","allow update:","allow delete:"]){
+    if(!currentRecords.includes(marker))stop("UNEXPECTED_LIVE_RECORD_CONTRACT_"+marker);
+  }
+  if(currentRecords!==approvedRecords){
+    candidate=replaceBlock(candidate,currentRecordSpan,approvedRecords);
+    changed.push("review:records");
+  }
+
   for(const name of COLLECTIONS){
     const approved=reviewed.slice(...(()=>{const s=collectionBlock(reviewed,name);return [s.start,s.end]})());
     if(!/allow[ \t]+delete[ \t]*:[ \t]*if[ \t]+false[ \t]*;/.test(approved))
