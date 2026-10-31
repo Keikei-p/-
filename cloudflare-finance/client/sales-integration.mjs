@@ -11,21 +11,27 @@ import {projectSafeView,buildSafeFormIntent} from "./finance-browser-contract.mj
 import {startProtectedView} from "./protected-view-runtime.mjs";
 
 export function makeProtectedSalesBridge({
-  origin,gatewayUrl,currentUser,companyId,subscribeToSignal,
+  origin,gatewayUrl,currentUser,companyId,getMonth,subscribeToSignal,
   applySnapshot,onError,explicitCutover=false,fetcher=fetch
 }){
   if(!explicitCutover)throw Error("protected_sales_cutover_not_approved");
   if(!SALES_HOST_ORIGINS.includes(origin))throw Error("unauthorized_sales_host");
   if(!currentUser||typeof currentUser.getIdToken!=="function"||
      typeof companyId!=="string"||!companyId)throw Error("missing_session");
-  if(typeof subscribeToSignal!=="function"||typeof applySnapshot!=="function"||
-      typeof onError!=="function")throw Error("invalid_sales_bridge");
+  if(typeof getMonth!=="function"||typeof subscribeToSignal!=="function"||
+      typeof applySnapshot!=="function"||typeof onError!=="function")
+    throw Error("invalid_sales_bridge");
   const getData=()=>getSafeFinancialView({
-    gatewayUrl,origin,user:currentUser,explicitCutover:true,fetcher});
+    gatewayUrl,origin,user:currentUser,month:getMonth(),explicitCutover:true,fetcher});
   const stream=startProtectedView({
     subscribeToSignal:cb=>subscribeToSignal(companyId,cb,onError),
-    fetchProtectedView:getData,projectView:projectSafeView,
-    onView:applySnapshot,onError});
+    fetchProtectedView:getData,
+    projectView:response=>{
+      // Never publish a late previous-month response after the user changed
+      // the selected month. A caller must invoke refresh() on month change.
+      if(response.month!==getMonth())throw Error("selected_finance_month_changed");
+      return {...projectSafeView(response),month:response.month};
+    },onView:applySnapshot,onError});
   return {
     refresh:stream.refresh,
     close:stream.stop,
