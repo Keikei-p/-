@@ -31,7 +31,7 @@ test("a denied gateway request never falls back to reading raw Firestore",async(
     onView:()=>{presented++},
     onError:()=>{errors++}
   });
-  await c.refresh();
+  await assert.rejects(c.refresh(),/secure_read_denied/);
   c.stop();
   assert.equal(presented,0);
   assert.equal(errors>0,true);
