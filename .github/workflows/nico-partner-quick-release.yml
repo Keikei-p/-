@@ -147,17 +147,22 @@ jobs:
           const data=JSON.parse(require('node:fs').readFileSync(process.env.FILE,'utf8'));
           const entries=Array.isArray(data.result)?data.result:[];
           const names=entries.map(x=>x.id||x.name||x.function||'');
-          const present=['submitPartnerQuickCounts','getPartnerQuickCounts'].filter(
-            n=>names.some(v=>v===n||v.endsWith('/'+n))
-          );
+          const original=['submitPartnerQuickCounts','getPartnerQuickCounts'];
+          const present=original.filter(n=>names.some(v=>v===n||v.endsWith('/'+n)));
           if(present.length===1)throw Error('PARTIAL_COUNT_DEPLOY_STOP');
+          const approvalLive=names.some(v=>v==='approvePartnerQuickCounts'||
+            v.endsWith('/approvePartnerQuickCounts'));
+          // Two old Functions are explicitly supported during one-time
+          // non-destructive addition of the third; never delete either old API.
+          if(approvalLive&&present.length!==2)throw Error('ORPHAN_APPROVAL_STOP');
           for(const n of ['sendMissingReportReminders','createPartnerCompanyInvitation',
                           'previewPartnerCompanyInvitation','acceptPartnerCompanyInvitation'])
             if(!names.some(v=>v===n||v.endsWith('/'+n)))
               throw Error('ORIGINAL_FUNCTION_MISSING '+n);
           require('node:fs').appendFileSync(process.env.GITHUB_OUTPUT,
-            'already_deployed='+(present.length===2?'true':'false')+'\n');
-          console.log('COUNT_FUNCTIONS '+(present.length===2?'REUSED_EXISTING_PAIR':'NO_PAIR_YET'));
+            'already_deployed='+(present.length===2&&approvalLive?'true':'false')+'\n');
+          console.log('COUNT_FUNCTIONS '+(present.length===2&&approvalLive?
+            'REUSED_EXISTING_THREE':'ADD_NEW_APPROVAL_WITH_EXISTING_PAIR'));
           NODE
       - name: Repair one-day Artifact Registry cleanup (separate noncritical task)
         continue-on-error: true
@@ -190,10 +195,11 @@ jobs:
           FILE="$RUNNER_TEMP/partner-quick-functions.json" node <<'NODE'
           const data=JSON.parse(require('node:fs').readFileSync(process.env.FILE,'utf8'));
           const names=(Array.isArray(data.result)?data.result:[]).map(x=>x.id||x.name||x.function||'');
-          for(const n of ['submitPartnerQuickCounts','getPartnerQuickCounts','sendMissingReportReminders',
+          for(const n of ['submitPartnerQuickCounts','getPartnerQuickCounts','approvePartnerQuickCounts',
+            'sendMissingReportReminders',
             'createPartnerCompanyInvitation','previewPartnerCompanyInvitation','acceptPartnerCompanyInvitation'])
             if(!names.some(s=>s===n||s.endsWith('/'+n)))throw Error('missing '+n);
-          console.log('PASS: two count Functions and existing four preserved');
+          console.log('PASS: three isolated count Functions and existing four preserved');
           NODE
       - name: Read-only unauthenticated count API denial check
         shell: bash
@@ -201,7 +207,8 @@ jobs:
           set -euo pipefail
           node <<'NODE'
           (async()=>{
-            for(const name of ['submitPartnerQuickCounts','getPartnerQuickCounts']){
+            for(const name of ['submitPartnerQuickCounts','getPartnerQuickCounts',
+              'approvePartnerQuickCounts']){
               const url='https://asia-northeast1-sales-management-cc116.cloudfunctions.net/'+name;
               const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},
                 body:JSON.stringify({data:{}})});
