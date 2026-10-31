@@ -117,11 +117,17 @@ service cloud.firestore {
         && activeOrLegacy(get(memberPath(companyId, request.auth.uid)).data)
         && get(userPath(request.auth.uid)).data.companyId == companyId
         && activeOrLegacy(get(userPath(request.auth.uid)).data)
-        && get(companyPath(companyId)).data.get('companyKind', 'internal') != 'partner'
-        && get(userPath(request.auth.uid)).data.get('accessKind', 'internal') != 'partner'
-        && get(memberPath(companyId, request.auth.uid)).data.get('accessKind', 'internal') != 'partner'
-        && get(userPath(request.auth.uid)).data.get('memberType', 'internal') != 'cooperator'
-        && get(memberPath(companyId, request.auth.uid)).data.get('memberType', 'internal') != 'cooperator';
+        // Internal legacy identities may omit classification markers.
+        // Once set, EVERY server-stored marker must be explicitly internal.
+        // Partner, cooperator and unknown markers each veto raw money access,
+        // even if another marker is missing or a role claims Owner/Master.
+        && get(companyPath(companyId)).data.get('companyKind', 'internal') == 'internal'
+        && get(userPath(request.auth.uid)).data.get('accessKind', 'internal') == 'internal'
+        && get(memberPath(companyId, request.auth.uid)).data.get('accessKind', 'internal') == 'internal'
+        && get(userPath(request.auth.uid)).data.get('memberType', 'internal')
+          in ['internal', 'direct', 'member', 'managed']
+        && get(memberPath(companyId, request.auth.uid)).data.get('memberType', 'internal')
+          in ['internal', 'direct', 'member', 'managed'];
     }
 
     function isCompanyLeader(companyId) {
