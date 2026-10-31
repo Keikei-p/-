@@ -45,6 +45,20 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   }
   return {counts:result,total:sum};
  };
+ // Append-only history. Never change old sales, count documents or team snapshots.
+ const appendTeamMove=(data,from,to,day)=>{
+  if(data.teamHistory!==undefined&&!Array.isArray(data.teamHistory))fail("failed-precondition");
+  const history=data.teamHistory||[];
+  if(history.length>=100||history.some(e=>!e||
+     typeof e.effectiveDate!=="string"||
+     !/^\d{4}-\d{2}-\d{2}$/.test(e.effectiveDate)||
+     e.effectiveDate>=day))
+    fail("failed-precondition");
+  return [...history.map(x=>({...x})),{effectiveDate:day,fromTeamId:from,toTeamId:to}];
+ };
+ const jstToday=()=>new Intl.DateTimeFormat("en-CA",{
+  timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"
+ }).format(now());
  const collection=(cid,name)=>db.collection("companies").doc(cid).collection(name);
  const teamRef=(cid,id)=>collection(cid,"partnerWorkTeams").doc(id);
  const staffRef=(cid,id)=>collection(cid,"partnerWorkStaff").doc(id);
@@ -174,16 +188,33 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     const fresh=await scope(uid,tx);if(fresh.role!=="owner")fail();
     await checkTeam(tx,fresh,d.teamId);
     const ref=staffRef(fresh.cid,d.staffId),sn=await tx.get(ref);
-    if(!sn.exists||sn.data()?.active!==true||sn.data()?.companyId!==s.cid)fail();
-    if(sn.data().kind==="account"&&ID.test(sn.data().uid||"")){
-      const targetUid=sn.data().uid;
-      const ur=db.collection("users").doc(targetUid),mr=collection(s.cid,"members").doc(targetUid);
-      // Firestore requires all transaction reads BEFORE the first write.
-      const [us,ms]=await Promise.all([tx.get(ur),tx.get(mr)]);
-      if(!us.exists||!ms.exists||us.data()?.companyId!==s.cid||ms.data()?.companyId!==s.cid)fail();
-      tx.update(ur,{teamId:d.teamId});tx.update(mr,{teamId:d.teamId});
-    }
-    tx.update(ref,{teamId:d.teamId,updatedAt:FieldValue.serverTimestamp()});
+    if(!sn.exists||sn.data()?.active!==true||sn.data()?.companyId!==s.cid||
+       !ID.test(sn.data()?.teamId||""))fail();
+    const current=sn.data();
+    if(current.teamId===d.teamId)return; // idempotent, no duplicate history
+    const day=jstToday();
+    if(current.kind==="account"){
+     if(!ID.test(current.uid||"")||current.uid!==d.staffId)fail();
+     const ur=db.collection("users").doc(current.uid),mr=collection(s.cid,"members").doc(current.uid);
+     // Firestore requires all transaction reads before the first write.
+     const [us,ms]=await Promise.all([tx.get(ur),tx.get(mr)]);
+     const u=us.data()||{},m=ms.data()||{};
+     if(!us.exists||!ms.exists||u.uid!==current.uid||m.uid!==current.uid||
+        u.active!==true||m.active!==true||u.companyId!==s.cid||
+        m.companyId!==s.cid||u.companyRole!=="member"||
+        m.companyRole!=="member"||u.teamId!==current.teamId||
+        m.teamId!==current.teamId||u.accessKind!=="partner"||
+        m.accessKind!=="partner"||u.canViewRevenue!==false||
+        m.canViewRevenue!==false||u.canViewUnitPrice!==false||
+        m.canViewUnitPrice!==false)fail();
+     const userHistory=appendTeamMove(u,current.teamId,d.teamId,day);
+     const memberHistory=appendTeamMove(m,current.teamId,d.teamId,day);
+     tx.update(ur,{teamId:d.teamId,teamHistory:userHistory});
+     tx.update(mr,{teamId:d.teamId,teamHistory:memberHistory});
+    }else if(current.kind!=="managed")fail();
+    const staffHistory=appendTeamMove(current,current.teamId,d.teamId,day);
+    tx.update(ref,{teamId:d.teamId,teamHistory:staffHistory,
+      updatedAt:FieldValue.serverTimestamp()});
    });
    return {moved:true};
   }
@@ -350,10 +381,20 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    }
    if(totalSnap.exists&&existing.totalCount!==Object.values(previous).reduce((x,y)=>x+y,0))
      fail("data-loss");
+   // An edit cannot reassign a previously saved day to the current team.
+   // Missing historical attribution remains unverified rather than inferred.
+   const teamIdSnapshot=oldSnap.exists?
+     (Object.prototype.hasOwnProperty.call(old,"teamIdSnapshot")?old.teamIdSnapshot:null):
+     person.teamId;
+   const staffNameSnapshot=oldSnap.exists?
+     (Object.prototype.hasOwnProperty.call(old,"staffNameSnapshot")?old.staffNameSnapshot:null):
+     person.name;
+   if(teamIdSnapshot!==null&&!ID.test(teamIdSnapshot))fail("data-loss");
+   if(staffNameSnapshot!==null&&!validName(staffNameSnapshot))fail("data-loss");
    const nowStamp=FieldValue.serverTimestamp(),nextVersion=d.expectedVersion+1;
    const row={companyId:s.cid,hubCompanyId:s.hubId,staffId,date,counts,totalCount:total,
      privateCounts:privateValidated.counts,privateTotalCount:privateValidated.total,
-     version:nextVersion,staffNameSnapshot:person.name,teamIdSnapshot:person.teamId,
+     version:nextVersion,staffNameSnapshot,teamIdSnapshot,
      updatedByUid:a.uid,updatedAt:nowStamp};
    if(oldSnap.exists)tx.update(er,row);else tx.create(er,{...row,createdAt:nowStamp});
    const sum={source:"staff-entries-v1",hubCompanyId:s.hubId,partnerCompanyId:s.cid,
