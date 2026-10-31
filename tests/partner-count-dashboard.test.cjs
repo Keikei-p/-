@@ -15,7 +15,7 @@ function source(name){
  return page.slice(start,end+2);
 }
 const ctx=vm.createContext({Date,Number,Object,Map,Set});
-vm.runInContext(["periodDatesForCounts","summarizeCountOnlyResponses"].map(source).join("\n"),ctx);
+vm.runInContext(["periodDatesForCounts","summarizeCountOnlyResponses","groupedProductCounts"].map(source).join("\n"),ctx);
 const counts=changes=>Object.fromEntries(KEYS.map(k=>[k,changes[k]||0]));
 const staff=[{id:"a",name:"佐藤",teamId:"t1"},{id:"b",name:"田中",teamId:"t2"}];
 const record=(id,changes,teamId)=>({staffId:id,counts:counts(changes),
@@ -87,4 +87,41 @@ test("partner page adds count-only dashboard and management; legacy app is not c
  assert.doesNotMatch(page,/\brevenuePerUnit\b|\btotalRevenue\b|\bunitPrice\b|\bpricingOptions\b/);
  assert.match(original,/function canCurrentUserViewRevenue\(\)/);
  assert.match(original,/function canCurrentUserViewUnitPrice\(\)/);
+});
+
+test("partner product groups combine counts exactly once and retain original categories",()=>{
+ const amounts=counts({SBMNP:3,YMMNP:4,NURO:2,"SB光・AIR":5,"つばさ・HTB":6});
+ const original=JSON.stringify(amounts);
+ const groups=[...ctx.groupedProductCounts(amounts,"group")];
+ assert.equal(groups.find(([name])=>name.includes("乗り換え丸件"))[1],7);
+ assert.equal(groups.find(([name])=>name.includes("SB光・AIR"))[1],5);
+ assert.equal(groups.find(([name])=>name.includes("新電力"))[1],6);
+ assert.equal(groups.reduce((total,[,n])=>total+n,0),20);
+ assert.equal(ctx.groupedProductCounts(amounts,"single").length,KEYS.length);
+ assert.equal(JSON.stringify(amounts),original);
+});
+test("partner drilldown aggregates historical saved team and never uses today's staff assignment",()=>{
+ const reports=[
+  day("2026-10-30",[record("a",{NURO:2,SBMNP:3},"t1"),record("b",{YMMNP:1},"t2")]),
+  day("2026-10-31",[record("a",{YMMNP:2},"t1"),record("b",{"つばさ・HTB":4},"t2")])
+ ];
+ const s=ctx.summarizeCountOnlyResponses(reports,[{id:"t1",name:"1班"},{id:"t2",name:"2班"}],KEYS);
+ assert.equal(s.teamProducts.find(x=>x.id==="t1").products.NURO,2);
+ assert.equal(s.teamProducts.find(x=>x.id==="t1").products.SBMNP,3);
+ assert.equal(s.teamProducts.find(x=>x.id==="t1").products.YMMNP,2);
+ assert.equal(s.teamPeople.find(x=>x.id==="t2").people[0].count,5);
+ assert.equal(s.teamProducts.reduce((n,x)=>n+Object.values(x.products).reduce((a,b)=>a+b,0),0),s.total);
+ const changed=[day("2026-10-31",[record("a",{NURO:1})])];
+ const unknown=ctx.summarizeCountOnlyResponses(changed,[{id:"t9",name:"新所属班"}],KEYS);
+ assert.equal(unknown.teamProducts[0].id,"__unverified__");
+ assert.equal(unknown.groups[0].name,"所属班未確認");
+});
+test("goals are only browser-local visual settings and cannot write to Firebase",()=>{
+ for(const id of ["countProductMode","countGoalBox","countGoalSave","countGoalClear","countGoalStatus",
+ "countTeamSelect","countTeamProducts","countTeamPeople"])
+  assert(page.includes('id="'+id+'"'),id);
+ assert.match(page,/localStorage\.setItem\(countGoalKey\(\),raw\)/);
+ assert.match(page,/countPeriod!=="month"/);
+ assert.match(page,/countExportRows=\{summary,days\}/);
+ assert.doesNotMatch(page,/setDoc\(|updateDoc\(|addDoc\(|deleteDoc\(/);
 });
