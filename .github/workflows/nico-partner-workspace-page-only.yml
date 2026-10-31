@@ -1,0 +1,112 @@
+name: NICO partner count-save verified page-only release
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'partner-workspace.html'
+      - 'tools/hosting/surgical-existing-partner-workspace.mjs'
+      - 'tests/surgical-existing-partner-workspace.test.mjs'
+      - 'tests/partner-money-free-workspace.test.cjs'
+      - '.github/workflows/nico-partner-workspace-page-only.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'partner-workspace.html'
+      - 'tools/hosting/surgical-existing-partner-workspace.mjs'
+      - 'tests/surgical-existing-partner-workspace.test.mjs'
+      - 'tests/partner-money-free-workspace.test.cjs'
+      - '.github/workflows/nico-partner-workspace-page-only.yml'
+permissions:
+  contents: read
+concurrency:
+  group: nico-surgical-index-release
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Validate isolated count-only page and Hosting one-page safety contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check tools/hosting/surgical-existing-partner-workspace.mjs
+          node --test tests/surgical-existing-partner-workspace.test.mjs
+          node --test tests/partner-money-free-workspace.test.cjs
+          node --test tests/partner-workspace.test.cjs
+          node --test tests/partner-existing-ranking.test.cjs
+          node --test tests/partner-quick-counts.test.cjs
+          node <<'NODE'
+          const fs=require('node:fs');
+          const html=fs.readFileSync('partner-workspace.html','utf8');
+          if(!html.includes('getPartnerWorkspace')||
+             !html.includes('submitPartnerWorkspaceCounts')||
+             /firebase-firestore\.js|\bgetFirestore\(|\bgetDoc\(/.test(html))
+            throw Error('UNSAFE_PARTNER_BROWSER');
+          const src=html.match(/<script type="module">([\s\S]*?)<\/script>/)?.[1];
+          if(!src)throw Error('PARTNER_MODULE_NOT_FOUND');
+          fs.writeFileSync('/tmp/nico-partner-workspace-safe.mjs',src);
+          NODE
+          node --check /tmp/nico-partner-workspace-safe.mjs
+  release:
+    needs: validate
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.validate.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      NICO_PARTNER_RELEASE_CONFIRMATION: CONFIRM_REPLACE_PARTNER_WORKSPACE_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify existing live partner page matches audited old page byte-for-byte
+        shell: bash
+        run: |
+          set -euo pipefail
+          git show 6ea48488620e7df91f41ceb9e4885c4d356f5a79:partner-workspace.html > "$RUNNER_TEMP/approved-old-partner-workspace.html"
+          curl -fsSL --max-time 30 --retry 3 'https://nico-factory.web.app/partner-workspace.html?verified_source=20261031' > "$RUNNER_TEMP/live-old-partner-workspace.html"
+          cmp -s "$RUNNER_TEMP/live-old-partner-workspace.html" "$RUNNER_TEMP/approved-old-partner-workspace.html" || {
+            echo 'STOP LIVE_PARTNER_PAGE_NOT_BASELINE: no files, rules or user records modified'
+            exit 1
+          }
+      - name: Load existing Firebase Hosting-only identity (never display secrets)
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          node -e "const p=require('./.firebaserc').projects.default;if(p!=='sales-management-cc116')process.exit(1)"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-partner-workspace-hosting-only.json"
+          chmod 600 "$RUNNER_TEMP/nico-partner-workspace-hosting-only.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-partner-workspace-hosting-only.json" >> "$GITHUB_ENV"
+      - name: Install Firebase REST authentication library, not deploy tools
+        run: npm install --prefix functions --ignore-scripts --package-lock=false
+      - name: Dry-run checks all live file paths, hashes and unmodified Hosting config
+        run: node tools/hosting/surgical-existing-partner-workspace.mjs --dry-run
+      - name: Release ONLY partner-workspace.html, preserve other original 10 assets
+        run: node tools/hosting/surgical-existing-partner-workspace.mjs --release
+      - name: Verify exact published page and unchanged existing routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          ready=false
+          for n in 1 2 3 4; do
+            if curl -fsSL --max-time 30 "https://nico-factory.web.app/partner-workspace.html?verified_release=${GITHUB_SHA}-${n}" > "$RUNNER_TEMP/nico-workspace-live.html" &&
+              cmp -s "$RUNNER_TEMP/nico-workspace-live.html" partner-workspace.html; then
+                ready=true;break
+            fi
+            sleep 3
+          done
+          test "$ready" = true
+          for route in / /partner-invite.html /partner-counts.html; do
+            code=$(curl -sSL -o /dev/null -w '%{http_code}' --max-time 30 "https://nico-factory.web.app$route")
+            test "$code" = 200
+          done
+          echo 'PASS partner count-only page updated; all other Hosting assets preserved'

@@ -46,7 +46,7 @@ td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 <label for="staffSelect">担当者</label><select id="staffSelect"></select>
 <div id="countGrid" class="grid" style="margin:14px 0"></div>
 <div class="row"><strong id="total">0 件</strong><button id="save" type="button">実績を保存</button></div>
-<p class="muted" id="revision">未登録</p></section>
+<p class="muted" id="revision">未登録</p><p class="muted" id="setupHelp" hidden></p></section>
 <section id="peopleBox" hidden><h2>班・スタッフ管理</h2>
 <div id="makeTeam"><h3>班を追加（代表者のみ）</h3><div class="row"><input id="teamName" placeholder="例：1班" maxlength="60">
 <button id="createTeam" type="button">班を追加</button></div></div>
@@ -77,7 +77,7 @@ const get=call("getPartnerWorkspace"),manage=call("managePartnerWorkspace"),
  accept=call("acceptPartnerWorkspaceInvite"),save=call("submitPartnerWorkspaceCounts");
 const $=id=>document.getElementById(id);
 const KEYS=["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"];
-const inviteToken=new URL(location.href).searchParams.get("invite")||"";
+let inviteToken=new URL(location.href).searchParams.get("invite")||"";
 const dateParts=Object.fromEntries(new Intl.DateTimeFormat("en-US",
 {timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"})
 .formatToParts(new Date()).map(p=>[p.type,p.value]));
@@ -138,7 +138,12 @@ function draw(){
  for(const p of staff){const entry=byId.get(p.id);const r=document.createElement("tr");
  cell(r,p.name);cell(r,entry?entry.totalCount+" 件":"未登録");cell(r,entry?"第"+entry.version+"版":"—");entries.append(r)}
  $("recordsList").replaceChildren(entries);
- renderSelected();activeTab($("tabPeople").getAttribute("aria-pressed")==="true"?"People":
+ renderSelected();
+ const needsSetup=staff.length===0&&(data.role==="owner"||data.role==="leader");
+ $("setupHelp").hidden=!needsSetup;
+ $("setupHelp").textContent=needsSetup
+   ?"まず「班・スタッフ管理」で班と担当者を登録してください。登録後は件数を保存できます。":"";
+ activeTab(needsSetup?"People":$("tabPeople").getAttribute("aria-pressed")==="true"?"People":
  $("tabView").getAttribute("aria-pressed")==="true"?"View":"Records");
 }
 function renderSelected(){if(!data||data.role==="hub")return;const rec=data.records.find(x=>x.staffId===$("staffSelect").value);
@@ -153,15 +158,19 @@ async function refresh(){if(!auth.currentUser||!auth.currentUser.emailVerified)r
  data=res;draw();notice("最新の件数を読み込みました。");
  }catch(e){data=null;$("appBox").hidden=true;fail(e)}finally{if(current===nonce)loading=false}}
 $("date").onchange=refresh;$("refresh").onclick=refresh;
-async function action(task){if(loading)return;loading=true;try{await task();await refresh()}catch(e){fail(e)}finally{loading=false}}
-$("createTeam").onclick=()=>action(async()=>{await manage({action:"addTeam",name:$("teamName").value});$("teamName").value=""});
-$("addManaged").onclick=()=>action(async()=>{await manage({action:"addManaged",name:$("managedName").value,teamId:$("managedTeam").value});$("managedName").value=""});
+async function action(task){if(loading)return;loading=true;try{
+ const message=await task();await refresh();
+ // A successful re-read must not overwrite the actual save confirmation.
+ if(typeof message==="string"&&data)notice(message);
+ }catch(e){fail(e)}finally{loading=false}}
+$("createTeam").onclick=()=>action(async()=>{await manage({action:"addTeam",name:$("teamName").value});$("teamName").value="";return "班を作成しました。";});
+$("addManaged").onclick=()=>action(async()=>{await manage({action:"addManaged",name:$("managedName").value,teamId:$("managedTeam").value});$("managedName").value="";return "担当者を登録しました。";});
 $("makeInvite").onclick=()=>action(async()=>{
  const result=(await manage({action:"createInvite",email:$("inviteEmail").value,
   teamId:$("inviteTeam").value,role:$("inviteRole").value})).data;
  const url=new URL("/partner-workspace.html",location.origin);url.searchParams.set("invite",result.token);
  $("inviteUrl").value=url.href;$("inviteOut").hidden=false;
- notice("招待リンクを作成しました。30分以内に招待先の本人に送ってください。");
+ return "招待リンクを作成しました。30分以内に招待先の本人に送ってください。";
 });
 $("copy").onclick=async()=>{try{await navigator.clipboard.writeText($("inviteUrl").value);notice("招待リンクをコピーしました")}catch{ $("inviteUrl").select();notice("リンクを選択しました。コピーしてください。")}};
 $("save").onclick=()=>action(async()=>{
@@ -173,7 +182,7 @@ $("save").onclick=()=>action(async()=>{
  const check=verified?.records?.find(r=>r.staffId===staffId);
  if(!check||check.version!==result.version||KEYS.some(k=>check.counts[k]!==counts[k]))
   throw Error("save_not_verified");
- notice("保存・再取得照合が成功しました。第"+result.version+"版");
+ return "保存・再取得照合が成功しました。第"+result.version+"版";
 });
 $("loginForm").onsubmit=async e=>{e.preventDefault();try{
  await setPersistence(auth,browserSessionPersistence);
@@ -188,7 +197,7 @@ $("verify").onclick=async()=>{try{await sendEmailVerification(auth.currentUser);
 $("join").onclick=async()=>{if(!inviteToken)return;await action(async()=>{
  await accept({token:inviteToken,name:$("joinName").value});
  history.replaceState(null,"","/partner-workspace.html");
- $("inviteAccept").hidden=true;notice("協力店へ参加しました。");
+ inviteToken="";$("inviteAccept").hidden=true;return "協力店へ参加しました。";
 })};
 $("logout").onclick=()=>signOut(auth);
 onAuthStateChanged(auth,u=>{
