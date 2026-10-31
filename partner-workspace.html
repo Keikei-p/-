@@ -151,7 +151,12 @@ td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 <div id="hubList" class="scroll"></div>
 <div id="hubCompanyDetail" class="company-panel" hidden><h3>協力店ごとの商材実績</h3>
 <label for="hubCompanySelect">会社を選ぶ</label><select id="hubCompanySelect"></select>
-<div id="hubCompanyProducts" class="scroll"></div></div>
+<div id="hubCompanyProducts" class="scroll"></div>
+<h3>🏢 協力店の班ごとの件数</h3>
+<p class="muted">選択した協力店の班別件数を読み取り専用で確認します。0件報告済みと未報告を区別します。過去の班移動や稼働予定が不明な場合は「要確認」です。</p>
+<button id="hubLoadTeamCounts" type="button" class="secondary">選択した会社の班別件数を見る</button>
+<p id="hubTeamCountStatus" role="status" aria-live="polite" class="muted"></p>
+<div id="hubTeamCountList" class="scroll"></div></div>
 <p class="muted">新しいスタッフ別入力の集計です。旧暫定会社一括報告と合算せず、重複を防ぎます。</p></section>
 </main>
 <script type="module">
@@ -534,10 +539,14 @@ function renderCompanyOverview(){
 }
 function renderHubCompanyDetail(){
  if(data?.role!=="hub")return;
- const select=$("hubCompanySelect"),selected=data.partners.find(p=>p.partnerCompanyId===select.value);
- $("hubCompanyDetail").hidden=!selected;
- $("hubCompanyProducts").replaceChildren(selected?
-  countTable(["商材","報告件数"],KEYS.map(k=>[k,selected.counts[k]+"件"])):countTable(["商材","報告件数"],[]));
+ const select=$("hubCompanySelect"),company=data.registeredCompanies?.find(p=>
+  p.partnerCompanyId===select.value&&p.active===true);
+ const submitted=data.partners.find(p=>p.partnerCompanyId===select.value);
+ $("hubCompanyDetail").hidden=!company;
+ $("hubLoadTeamCounts").disabled=!company;
+ $("hubCompanyProducts").replaceChildren(submitted?
+  countTable(["商材","報告件数"],KEYS.map(k=>[k,submitted.counts[k]+"件"])):
+  countTable(["報告状況"],company?[["この日の会社報告はまだありません。"]]:[]));
 }
 function renderHubInvitePanel(){
  if(data?.role!=="hub")return;
@@ -588,11 +597,14 @@ function draw(){
   for(const p of data.partners){const row=document.createElement("tr");cell(row,p.name);cell(row,p.totalCount+" 件");table.append(row)}
   $("hubList").replaceChildren(table);
   const select=$("hubCompanySelect"),prior=select.value;select.replaceChildren();
-  for(const company of data.partners){
+  const activeCompanies=(data.registeredCompanies||[]).filter(p=>p.active===true);
+  for(const company of activeCompanies){
    const option=document.createElement("option");option.value=company.partnerCompanyId;
-   option.textContent=company.name+"（"+company.totalCount+"件）";select.append(option);
+   const total=data.partners.find(p=>p.partnerCompanyId===company.partnerCompanyId);
+   option.textContent=company.name+(total?"（"+total.totalCount+"件）":"（未報告）");
+   select.append(option);
   }
-  if(data.partners.some(p=>p.partnerCompanyId===prior))select.value=prior;
+  if(activeCompanies.some(p=>p.partnerCompanyId===prior))select.value=prior;
   renderHubCompanyDetail();
   renderHubInvitePanel();
   return;
@@ -672,7 +684,47 @@ function renderSelected(){if(!data||data.role==="hub")return;const rec=data.reco
  for(const x of grid.querySelectorAll("input"))x.value=String(rec?.counts?.[x.dataset.key]??0);
  $("revision").textContent=rec?"第"+rec.version+"版・訂正可能":"未登録（0件報告も保存可能）";
  $("save").disabled=!$("staffSelect").value;updateTotal()}
-$("hubCompanySelect").onchange=renderHubCompanyDetail;
+$("hubCompanySelect").onchange=()=>{
+ $("hubTeamCountStatus").textContent="";
+ $("hubTeamCountList").replaceChildren();
+ renderHubCompanyDetail();
+};
+$("hubLoadTeamCounts").onclick=async()=>{
+ if(data?.role!=="hub"||!auth.currentUser)return;
+ const cid=$("hubCompanySelect").value,day=$("date").value,uid=auth.currentUser.uid;
+ if(!data.registeredCompanies?.some(c=>c.partnerCompanyId===cid&&c.active===true))return;
+ $("hubTeamCountStatus").textContent="班ごとの件数を照合中…";
+ $("hubTeamCountList").replaceChildren();
+ const button=$("hubLoadTeamCounts");button.disabled=true;
+ try{
+  const result=(await get({date:day,partnerCompanyId:cid,includeTeamStatus:true})).data;
+  if(uid!==auth.currentUser?.uid||day!==$("date").value||
+     cid!==$("hubCompanySelect").value||data?.role!=="hub")return;
+  if(result?.role!=="hub"||result.teamStatusComplete!==true||
+     result.teamReports?.length!==1||result.teamReports[0].partnerCompanyId!==cid)
+    throw Error("unverified team counts");
+  const report=result.teamReports[0];
+  const destination=$("hubTeamCountList");
+  for(const team of report.teams){
+   const box=document.createElement("div");box.className="company-panel";
+   const title=document.createElement("h3");title.textContent=team.name+"："+team.totalCount+"件";
+   const status=document.createElement("p");status.className="muted";
+   const statusText={submitted:"報告済み",missing:"未報告（稼働予定は要確認）",
+    not_expected:"対象スタッフなし",unverified:"所属・報告状況は要確認"};
+   status.textContent=(statusText[team.status]||"照合不可")+"｜"+
+    team.reportedStaffCount+"/"+team.staffCount+"名 報告済み（所属人数は現在の登録）";
+   box.append(title,status,countTable(["商材","件数"],KEYS.map(k=>[k,team.counts[k]+"件"])));
+   destination.append(box);
+  }
+  $("hubTeamCountStatus").textContent=report.verified?
+   "班ごとの保存済み件数を照合しました。":
+   "班の所属履歴・日次集計に未確認の記録があります。推定で割り振りません。";
+ }catch(e){
+  $("hubTeamCountStatus").textContent="班別件数を確認できません。0件・未報告と断定しません。";
+ }finally{
+  button.disabled=false;
+ }
+};
 $("hubInviteCompanySelect").onchange=()=>{$("hubInviteOut").hidden=true;$("hubInviteUrl").value="";renderHubInvitePanel()};
 $("hubInviteTeamSelect").onchange=()=>{$("hubInviteOut").hidden=true;$("hubInviteUrl").value=""};
 $("staffSelect").onchange=renderSelected;
