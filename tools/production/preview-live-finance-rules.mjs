@@ -74,11 +74,12 @@ export function previewLiveRules(live,reviewed){
       stop("REVIEWED_MEMBERSHIP_CHAIN_MISSING_"+name);
     const liveSpan=functionBlock(candidate,name);
     const before=candidate.slice(liveSpan.start,liveSpan.end);
-    if(name==="isCompanyMember"&&
-       (!before.includes("verifiedUser()")||
-        !before.includes("exists(memberPath(")||
-        !before.includes("get(userPath(")))
-      )stop("UNEXPECTED_OLD_MEMBERSHIP_PREDICATE");
+    if(name==="isCompanyMember"){
+      if(!before.includes("verifiedUser()") ||
+         !before.includes("exists(memberPath(") ||
+         !before.includes("get(userPath("))
+        stop("UNEXPECTED_OLD_MEMBERSHIP_PREDICATE");
+    }
     if(!before.includes("return ")||!before.includes("companyId"))
       stop("UNEXPECTED_OLD_GRANT_"+name);
     if(before!==approvedText){
