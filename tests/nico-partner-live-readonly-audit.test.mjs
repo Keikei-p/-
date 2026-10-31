@@ -102,6 +102,7 @@ test("mocked read-only production check matches live rule source and does not ex
  });
  const reference=path=>({
   id:path.split("/").at(-1),collection:name=>query(path+"/"+name),
+  select(){return this},
   async get(){calls.push("READ "+path);let d=documents.get(path)?.[0];return d||{exists:false,data:()=>({})};}
  });
  const db={collection:path=>query(path)};
