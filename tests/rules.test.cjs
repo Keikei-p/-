@@ -452,6 +452,87 @@ test('partner cannot downgrade its server-owned identity to access legacy financ
 });
 
 
+
+test('isolated partner/unknown identity markers cannot bypass raw finance even with Owner grants',async()=>{
+ const cases=[
+  ['company partner','companies/'+company,{companyKind:'partner'}],
+  ['company unknown','companies/'+company,{companyKind:'vendor'}],
+  ['user access partner','users/owner',{accessKind:'partner'}],
+  ['user access cooperator','users/owner',{accessKind:'cooperator'}],
+  ['user access unknown','users/owner',{accessKind:'unknown'}],
+  ['member access partner','companies/'+company+'/members/owner',{accessKind:'partner'}],
+  ['member access unknown','companies/'+company+'/members/owner',{accessKind:'unknown'}],
+  ['user type partner','users/owner',{memberType:'partner'}],
+  ['member type partner','companies/'+company+'/members/owner',{memberType:'partner'}],
+  ['user type cooperator','users/owner',{memberType:'cooperator'}],
+  ['member type cooperator','companies/'+company+'/members/owner',{memberType:'cooperator'}],
+  ['user type unknown','users/owner',{memberType:'unknown'}],
+  ['member type unknown','companies/'+company+'/members/owner',{memberType:'unknown'}]
+ ];
+ for(const [label,target,fields] of cases){
+  await env.clearFirestore();
+  await env.withSecurityRulesDisabled(async ctx=>{
+   const admin=ctx.firestore();
+   await setDoc(doc(admin,'companies',company),{ownerUid:'owner',masterUid:'owner'});
+   await setDoc(doc(admin,'users','owner'),{
+    uid:'owner',companyId:company,active:true,role:'leader',companyRole:'owner',
+    canViewRevenue:true,canViewUnitPrice:true
+   });
+   await setDoc(doc(admin,'companies',company,'members','owner'),{
+    uid:'owner',companyId:company,active:true,role:'leader',companyRole:'owner',
+    canViewRevenue:true,canViewUnitPrice:true
+   });
+   await setDoc(doc(admin,'teams','a'),{companyId:company,name:'a',active:true});
+   await setDoc(doc(admin,'products','security-product'),{
+    companyId:company,name:'Finance',revenue:20000,active:true,
+    pricingOptions:[{cashback:0,revenuePerUnit:20000}]
+   });
+   await setDoc(doc(admin,'records','security-record'),payload('owner','owner','a'));
+   await setDoc(doc(admin,'recordCorrections','security-correction'),{
+    companyId:company,recordId:'security-record',recordUid:'owner',
+    before:{totalRevenue:10000},after:{totalRevenue:20000}
+   });
+   await setDoc(doc(admin,'revenueGoals','security-goal'),{
+    companyId:company,month:'2026-10',teamId:'a',targetRevenue:200000
+   });
+   await updateDoc(doc(admin,target),fields);
+  });
+  const db=dbFor('owner');
+  for(const [collection,id] of [
+    ['products','security-product'],['records','security-record'],
+    ['recordCorrections','security-correction'],['revenueGoals','security-goal']
+  ]){
+    await assertFails(getDoc(doc(db,collection,id)),label+' should deny '+collection);
+  }
+  await assertFails(setDoc(doc(db,'records',key('owner')),payload('owner','owner','a')),
+    label+' must deny raw record writes');
+ }
+});
+
+test('legacy and explicitly classified internal Owners still read saved sales without changes',async()=>{
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const admin=ctx.firestore();
+  await setDoc(doc(admin,'products','original-price'),{
+   companyId:company,name:'NURO',revenue:35000,active:true,pricingOptions:[],
+   cashbackOptions:[0]
+  });
+  await setDoc(doc(admin,'records','original-sales'),payload('owner'));
+ });
+ const db=dbFor('owner');
+ const beforePrice=(await getDoc(doc(db,'products','original-price'))).data();
+ const beforeSales=(await getDoc(doc(db,'records','original-sales'))).data();
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const admin=ctx.firestore();
+  await updateDoc(doc(admin,'companies',company),{companyKind:'internal'});
+  await updateDoc(doc(admin,'users','owner'),{accessKind:'internal',memberType:'direct'});
+  await updateDoc(doc(admin,'companies',company,'members','owner'),{
+   accessKind:'internal',memberType:'direct'
+  });
+ });
+ assert.deepEqual((await getDoc(doc(db,'products','original-price'))).data(),beforePrice);
+ assert.deepEqual((await getDoc(doc(db,'records','original-sales'))).data(),beforeSales);
+});
+
 // A damaged partially migrated principal must remain finance-restricted even
 // if one or both canonical partner flags are absent. This checks every source.
 for(const source of ['company-kind','user-access','member-access','user-type','member-type']) {
