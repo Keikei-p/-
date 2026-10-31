@@ -32,9 +32,13 @@ export function createInternalCountPage({
      principal.serverMembershipVerified!==true)deny("forbidden");
   // Query client never chooses the company to read; only the live membership.
   const companyId=principal.companyId;
+  // Fetch the catalog only on the first page; a 2,501-record day should NOT
+  // re-read every product another 50 times. Subsequent pages need only the
+  // saved canonical productId/count from the original record snapshot.
+  const catalogIncluded=cursor.length===0;
   const [page,products]=await Promise.all([
    queryDailyRecords({companyId,date:day,cursor,readTime,pageSize:50}),
-   queryProducts({companyId})
+   catalogIncluded?queryProducts({companyId}):Promise.resolve([])
   ]);
   if(!page||!Array.isArray(page.records)||page.records.length>50||
      !Array.isArray(products)||products.length>200||
@@ -48,7 +52,7 @@ export function createInternalCountPage({
   const projected=projectLegacyCountDay({
    principal,day,records:page.records,products,readTime:page.readTime
   });
-  return {...projected,hasMore:page.hasMore,
+  return {...projected,catalogIncluded,hasMore:page.hasMore,
    nextCursor:page.hasMore?page.nextCursor:null};
  };
 }
