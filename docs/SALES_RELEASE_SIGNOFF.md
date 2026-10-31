@@ -575,3 +575,23 @@ Rulesの本番デプロイ: 未実施
 - `surgical-existing-index.mjs` は、**その監査済みVersionだけ**、`version.fileCount` が欠落する場合に限り、`files.list` の全ページの実ファイルを検証した11件以上の件数を採用する。元の`index.html`、`partner-invite.html`、`partner-counts.html`、`partner-workspace.html` の4ファイルが全て存在しない場合はSTOP。他の未審査ライブVersionで欠損件数を迂回しない。
 - 更新前後のHosting config、元ファイル全パス/ハッシュ、ライブ版並行切替の有無は引き続き検証。**差分は`index.html` 1件のみ**で、既存レコード/金額/単価/ユーザー/班/履歴/LINE・Firestore Rulesは一切触らない。
 - 公開許可の前提は最新のGitHub保護ゲート・Sales App Validation・index Hostingの模擬/実データテスト全合格と前段quick/workspaceの実ジョブ成功。Finance Rules PR #175は別審査、実本番適用未承認。
+
+
+---
+
+## 2026-10-31 — 既存「招待リンク」タブへの協力店会社選択を本番可視化する限定変更
+
+**依頼**: 本チャットにて「招待リンクタブの中に協力店会社招待がはいってない。どうやって招待するん? そこもいれて」と明示。
+
+**直接確認した原因**: PR #169の `index.html` には `partnerInviteInline` があるが、本番のindex単独公開Run #41152842402はRead-only Hosting manifestで`BAD_LIVE_VERSION`停止、ユーザーからタブに招待が見えないとの報告。別PRによるHosting source `fileCount` 欠損の修正（最新main版）を上書きせず保持し、UIと公開確認だけを追加する。
+
+**差分**: 既存招待リンクタブに「自社メンバーを招待」「協力店会社を招待」の明確なセレクタを追加。自社招待の件数・ロール・保存動線は変更しない。協力店では会社名と宛先メールを既存の別会社招待Callable `createPartnerCompanyInvitation` にのみ送信し、受領用30分リンクを表示/コピーする。元会社代表オーナーでない場合は専用発行ボタンを無効にし、サーバのOwner/会社境界は既存どおり検証する。会社/商品/件数/単価/売上/社員/履歴/LINE通知の原本データを更新・削除・移行しない。
+
+**本番安全ゲート**: 最新の全回帰・権限制御テストとSales protected change gate合格が必要。既存の`nico-ranking-index-only-release.yml`を本番Main/Owner/指定コミット一度限りで再実行し、旧Hosting全ファイルパス・ハッシュ・元設定の維持、indexだけ変更、協力店招待と件数/スタッフ各ページの存続、実際の公式URLで選択肢とボタンIDが表示されることを検証する。失敗時は全面公開とは報告しない。
+
+**未実施**: 実アカウントでの招待発行から協力店承諾までの操作・協力店Ownerを含む旧Firestore金融原票の完全遮断の本番検証（別PR）。Artifact Registryの整理IAMも別問題として未完了。管理者本人の手書き署名・本番データ復元検証を代行したとは扱わない。
+
+
+### GitHub管理者によるUI/公開経路レビュー
+- PR #178 の差分は旧 `index.html` の招待先セレクタと既存の協力店Callable UI、単一index公開ワークフロー・専用テスト・本記録のみであることを確認。Firebase Function、Rules、社員データ、売上等に書き込む新処理はない。
+- 認証済みリポジトリ管理者 `Keikei-p` 接続で `sales-production-reviewed` ラベルを付けた。初回の保護ゲート実行はラベル適用前のGitHub event snapshotを参照したため再実行でもFAIL。そこで本レビュー追記commitから最新eventの保護ゲートを再検査する。これは独立した本番オーナー実アカウント操作試験・本人の手書き署名ではない。

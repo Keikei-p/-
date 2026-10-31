@@ -96,3 +96,28 @@ test("existing ranking UIs reused, not a new ranking screen or money blending",(
  const scope=html.slice(start,end);
  assert(!["setDoc(","updateDoc(","addDoc(","deleteDoc("].some(k=>scope.includes(k)));
 });
+
+
+test("visible invitation destination selector preserves employee invite and switches to partner company",()=>{
+ const start=html.indexOf('id="companyInviteControls"');
+ const end=html.indexOf('id="ownerTransferPanel"',start);
+ const content=html.slice(start,end);
+ assert.ok(content.includes('id="inviteDestinationSelect"'));
+ assert.ok(content.includes('<option value="internal">'));
+ assert.ok(content.includes('<option value="partner">'));
+ assert.ok(content.includes('id="employeeInviteFields"'));
+ assert.ok(content.includes('id="inviteEmailInput"'));
+ assert.ok(content.includes('id="inviteRoleSelect"'));
+ assert.ok(content.includes('id="createInviteButton"'));
+ for(const id of ["partnerInviteCompanyName","partnerInviteEmail","partnerInviteCreateButton","partnerInviteLinkOutput"])
+  assert.ok(content.includes('id="'+id+'"'));
+ assert.ok(html.includes('document.getElementById("inviteDestinationSelect").addEventListener('));
+ const sync=fn("syncInviteDestinationPanel");
+ assert.match(sync,/internalPanel.hidden = partnerSelected/);
+ assert.match(sync,/partnerPanel.hidden = !partnerSelected/);
+ assert.match(sync,/currentCompanyData\?\.ownerUid === currentUser.uid/);
+ assert.match(sync,/partnerButton.disabled = !owner/);
+ assert.ok(html.includes('if (mode === "invite") syncInviteDestinationPanel()'));
+ assert.ok(html.includes("createPartnerCompanyInvite({companyName,email})"));
+ assert.ok(html.includes("currentCompanyData?.companyKind === \"partner\""));
+});

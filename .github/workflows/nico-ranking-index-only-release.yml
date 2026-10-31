@@ -32,7 +32,9 @@ jobs:
           const fs=require('node:fs');
           const html=fs.readFileSync('index.html','utf8');
           if(!html.includes('mergedPartnerRankingDay')||!html.includes('partnerInviteInline')||
-             !html.includes('getPartnerWorkspace'))throw Error('missing_partner_bridge');
+             !html.includes('getPartnerWorkspace')||!html.includes('inviteDestinationSelect')||
+             !html.includes('employeeInviteFields')||
+             !html.includes('協力店会社を招待'))throw Error('missing_partner_bridge');
           const modules=[...html.matchAll(/<script\b[^>]*type=["']module["'][^>]*>([\s\S]*?)<\/script>/g)];
           if(!modules.length)throw Error('no_browser_module');
           modules.forEach((m,i)=>fs.writeFileSync('/tmp/old-sales-index-module-'+i+'.mjs',m[1]));
@@ -103,7 +105,7 @@ jobs:
         run: |
           set -euo pipefail
           code=$(curl --silent --location --output "$RUNNER_TEMP/current-nico-index.html" --write-out '%{http_code}' --max-time 25 https://nico-factory.web.app/)
-          if [ "$code" = 200 ] && grep -Fq 'partnerInviteInline' "$RUNNER_TEMP/current-nico-index.html" && grep -Fq 'mergedPartnerRankingDay' "$RUNNER_TEMP/current-nico-index.html"; then
+          if [ "$code" = 200 ] && grep -Fq 'partnerInviteInline' "$RUNNER_TEMP/current-nico-index.html" && grep -Fq 'mergedPartnerRankingDay' "$RUNNER_TEMP/current-nico-index.html" && grep -Fq 'inviteDestinationSelect' "$RUNNER_TEMP/current-nico-index.html" && grep -Fq 'employeeInviteFields' "$RUNNER_TEMP/current-nico-index.html"; then
             echo 'already_live=true' >> "$GITHUB_OUTPUT"
             echo 'Main ranking/invite HTML already published: skip a second release'
           else
@@ -115,6 +117,16 @@ jobs:
       - name: Release ONLY index.html with exact preservation of every other live file
         if: ${{ steps.index_live.outputs.already_live != 'true' }}
         run: node tools/hosting/surgical-existing-index.mjs --release
+      - name: Verify the actual LIVE Invite Link tab offers self and partner choices
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 3 --max-time 30 https://nico-factory.web.app/ > "$RUNNER_TEMP/nico-live-invite.html"
+          grep -Fq 'id="inviteDestinationSelect"' "$RUNNER_TEMP/nico-live-invite.html"
+          grep -Fq '<option value="internal">' "$RUNNER_TEMP/nico-live-invite.html"
+          grep -Fq '<option value="partner">' "$RUNNER_TEMP/nico-live-invite.html"
+          grep -Fq 'id="partnerInviteCreateButton"' "$RUNNER_TEMP/nico-live-invite.html"
+          echo "PASS: public Invite Link tab exposes company partner and own-member invitations"
       - name: Verify original invite, independent counts and partner workspace still live
         shell: bash
         run: |
