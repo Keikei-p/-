@@ -137,7 +137,7 @@ function isSafeGoalMap(value){
 export function buildFutureGoalDraft({actor,companyId,month,goals=[]}){
  checkId(companyId,"COMPANY");validMonth(month);
  if(!actor||actor.serverVerified!==true||actor.companyId!==companyId||
-    actor.companyRole!=="owner"||!checkId(actor.uid||"unknown","ACTOR"))
+    actor.companyRole!=="owner"||typeof actor.uid!=="string"||!ID.test(actor.uid))
    stop("OWNER_ONLY");
  if(!Array.isArray(goals)||goals.length>100)stop("GOALS");
  const seen=new Set(),items=[];
@@ -170,7 +170,7 @@ export function buildFutureGoalDraft({actor,companyId,month,goals=[]}){
    items.push(Object.freeze(item));
  }
  return Object.freeze({companyId,month,planId:companyId+"_"+month,
-   kind:"team-goals",state:"draft",ownerUid:actor.uid||"unknown",
+   kind:"team-goals",state:"draft",ownerUid:actor.uid,
    items:Object.freeze(items)});
 }
 export function confirmFutureGoalDraft(plan){
