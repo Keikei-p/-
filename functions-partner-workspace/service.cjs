@@ -119,6 +119,21 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   if(!sn.exists||sn.data()?.active!==true)fail("failed-precondition");
   return sn.data();
  };
+ // Hub actions only touch registered partner company, team and invitation data.
+ // Never access raw sales products, records, revenue or partner private products.
+ async function hubPartner(tx,hubId,partnerId){
+  if(!ID.test(partnerId||""))fail("invalid-argument");
+  const [rs,cs]=await Promise.all([
+   tx.get(db.collection("partnerRelations").doc(partnerId)),
+   tx.get(db.collection("companies").doc(partnerId))
+  ]);
+  const rel=rs.data()||{},c=cs.data()||{};
+  if(!rs.exists||!cs.exists||rel.partnerCompanyId!==partnerId||
+    rel.hubCompanyId!==hubId||c.hubCompanyId!==hubId||
+    c.companyKind!=="partner"||c.active!==true||
+    !validCompanyName(c.name))fail("failed-precondition");
+  return {active:rel.active===true&&rel.countSharingApproved===true};
+ }
  const canStaff=(s,staff)=>{
   return s.role==="owner"||
     (s.role==="leader"&&staff.teamId===s.teamId)||
@@ -126,8 +141,44 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  };
  async function manage(request){
   const {uid}=await actor(request),d=request?.data||{},op=d.action;
-  if(!["addTeam","addManaged","createInvite","moveStaff","addPrivateProduct","setPrivateProduct"].includes(op))fail("invalid-argument");
+  if(!["addTeam","addManaged","createInvite","moveStaff","addPrivateProduct","setPrivateProduct",
+   "hubAddTeam","hubCreateInvite"].includes(op))fail("invalid-argument");
   const s=await scope(uid);
+  if(op==="hubAddTeam"||op==="hubCreateInvite"){
+   if(s.kind!=="hub"||s.role!=="owner"||!ID.test(d.partnerCompanyId||""))fail();
+   if(op==="hubAddTeam"){
+    if(!validName(d.name))fail("invalid-argument");
+    const ref=collection(d.partnerCompanyId,"partnerWorkTeams").doc();
+    await db.runTransaction(async tx=>{
+     const fresh=await scope(uid,tx);
+     if(fresh.kind!=="hub"||fresh.cid!==s.cid||fresh.role!=="owner")fail();
+     const partner=await hubPartner(tx,s.cid,d.partnerCompanyId);
+     if(!partner.active)fail("failed-precondition");
+     tx.create(ref,{name:clean(d.name),active:true,companyId:d.partnerCompanyId,
+      createdByUid:uid,createdAt:FieldValue.serverTimestamp()});
+    });
+    return {teamId:ref.id,created:true};
+   }
+   if(!EMAIL.test(clean(d.email).toLowerCase())||
+      !["leader","member"].includes(d.role)||!ID.test(d.teamId||""))
+    fail("invalid-argument");
+   const token=crypto.randomBytes(32).toString("base64url");
+   const hash=crypto.createHash("sha256").update(token).digest("hex");
+   const expiresAt=Timestamp.fromMillis(now()+30*60000);
+   await db.runTransaction(async tx=>{
+    const fresh=await scope(uid,tx);
+    if(fresh.kind!=="hub"||fresh.cid!==s.cid||fresh.role!=="owner")fail();
+    const partner=await hubPartner(tx,s.cid,d.partnerCompanyId);
+    if(!partner.active)fail("failed-precondition");
+    await checkTeam(tx,{cid:d.partnerCompanyId},d.teamId);
+    tx.create(db.collection("partnerWorkInvites").doc(hash),{
+     companyId:d.partnerCompanyId,hubCompanyId:s.cid,teamId:d.teamId,
+     role:d.role,emailLower:clean(d.email).toLowerCase(),invitedByUid:uid,
+     status:"pending",createdAt:FieldValue.serverTimestamp(),expiresAt
+    });
+   });
+   return {token,expiresAt:expiresAt.toMillis()};
+  }
   if(s.kind!=="partner"||s.role==="member")fail();
   if(op==="addPrivateProduct"){
    if(s.kind!=="partner"||s.role!=="owner"||!validPrivateName(d.name))
@@ -248,9 +299,14 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
       !i.expiresAt?.toMillis)fail("failed-precondition");
    const cr=db.collection("companies").doc(i.companyId),ur=db.collection("users").doc(a.uid),
     mr=collection(i.companyId,"members").doc(a.uid),sr=staffRef(i.companyId,a.uid);
-   const [cs,us,ms,ss]=await Promise.all([tx.get(cr),tx.get(ur),tx.get(mr),tx.get(sr)]);
+   const relationRef=db.collection("partnerRelations").doc(i.companyId);
+   const [cs,us,ms,ss,rs]=await Promise.all([tx.get(cr),tx.get(ur),tx.get(mr),tx.get(sr),tx.get(relationRef)]);
    if(!cs.exists||cs.data()?.companyKind!=="partner"||cs.data()?.active!==true||
-      cs.data()?.hubCompanyId!==i.hubCompanyId||ms.exists||ss.exists||
+      cs.data()?.hubCompanyId!==i.hubCompanyId||
+      !rs.exists||rs.data()?.partnerCompanyId!==i.companyId||
+      rs.data()?.hubCompanyId!==i.hubCompanyId||
+      rs.data()?.active!==true||rs.data()?.countSharingApproved!==true||
+      ms.exists||ss.exists||
       us.data()?.companyId||us.data()?.active===false)fail("failed-precondition");
    await checkTeam(tx,{cid:i.companyId},i.teamId);
    const name=clean(d.name);
@@ -272,6 +328,34 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   const a=await actor(request),d=request?.data||{},date=validDate(d.date);
   const s=await scope(a.uid);
   if(s.kind==="hub"){
+   // Registered companies appear before their first daily count report.
+   // Unapproved company remains listed but cannot be invited into.
+   const relations=await db.collection("partnerRelations").where("hubCompanyId","==",s.cid).limit(101).get();
+   if(relations.size>100)fail("resource-exhausted");
+   const registeredCompanies=[];
+   for(const sn of relations.docs){
+    const rel=sn.data()||{};
+    if(!ID.test(sn.id)||rel.partnerCompanyId!==sn.id||rel.hubCompanyId!==s.cid)
+     fail("data-loss");
+    const cs=await db.collection("companies").doc(sn.id).get(),c=cs.data()||{};
+    if(!cs.exists||c.hubCompanyId!==s.cid||c.companyKind!=="partner"||
+       !validCompanyName(c.name))fail("data-loss");
+    const active=rel.active===true&&rel.countSharingApproved===true&&c.active===true;
+    const teams=[];
+    if(active){
+     const teamSnaps=await collection(sn.id,"partnerWorkTeams").limit(151).get();
+     if(teamSnaps.size>150)fail("resource-exhausted");
+     for(const team of teamSnaps.docs){
+      const item=team.data()||{};
+      if(!ID.test(team.id)||item.companyId!==sn.id||!validName(item.name)||
+         typeof item.active!=="boolean")fail("data-loss");
+      if(item.active)teams.push({id:team.id,name:clean(item.name)});
+     }
+     teams.sort((a,b)=>a.name.localeCompare(b.name,"ja"));
+    }
+    registeredCompanies.push({partnerCompanyId:sn.id,name:clean(c.name),active,teams});
+   }
+   registeredCompanies.sort((a,b)=>a.name.localeCompare(b.name,"ja"));
    const qs=await collection(s.cid,"partnerWorkCountDays").doc(date)
     .collection("reports").limit(201).get();
    if(qs.size>200)fail("resource-exhausted");
@@ -293,7 +377,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     partners.push({partnerCompanyId:sn.id,name:x.partnerName,totalCount:total,counts});
    }
    partners.sort((x,y)=>x.name.localeCompare(y.name,"ja"));
-   return {role:"hub",date,partners,categories:KEYS};
+   return {role:"hub",date,partners,registeredCompanies,categories:KEYS};
   }
   const [teams,staff,entries,privateProducts]=await Promise.all([
     collection(s.cid,"partnerWorkTeams").limit(151).get(),
