@@ -10,6 +10,16 @@ const ID=/^[A-Za-z0-9_:-]{1,150}$/;
 const MONTH=/^\d{4}-(0[1-9]|1[0-2])$/;
 const MONEY=/(?:[￥¥$€]|[0-9０-９][0-9０-９,.，]*\s*(?:万|千)?円|売上|単価|報酬|利益|キャッシュバック|(?:CB|cashback|revenue|unitprice|commission)[\s:_=-]*[0-9０-９])/i;
 const reject=()=>{throw Error("internal_rank_only_incomplete_or_unauthorized");};
+/**
+ * Exact, parseable YYYY-MM only. Reject duplicates and caller-supplied
+ * companyId/UID; company scope must come from verified server membership.
+ */
+export function validInternalRankMonthQuery(params){
+ if(!(params instanceof URLSearchParams))return false;
+ const entries=[...params.entries()];
+ return entries.length===1&&entries[0][0]==="month"&&MONTH.test(entries[0][1]);
+}
+
 export function buildInternalRankOnly({companyId,month,records,complete=false}={}){
  if(!ID.test(companyId||"")||!MONTH.test(month||"")||complete!==true||
     !Array.isArray(records)||records.length>100000)reject();
