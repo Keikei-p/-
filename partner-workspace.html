@@ -167,7 +167,10 @@ inp.addEventListener("input",updateTotal);box.append(lab,inp);grid.append(box)}
 function values(){const o={};for(const x of grid.querySelectorAll("input")){
  if(!/^(?:0|[1-9]\d{0,3})$/.test(x.value.trim()))throw Error("invalid count");
  o[x.dataset.key]=Number(x.value)}return o}
-function privateValues(){const o={};for(const x of $("privateCountGrid").querySelectorAll("input")){
+function privateValues(){const o=Object.create(null);for(const x of $("privateCountGrid").querySelectorAll("input")){
+ if(!/^[A-Za-z0-9_-]{1,128}$/.test(x.dataset.privateId)||
+   ["__proto__","constructor","prototype"].includes(x.dataset.privateId))
+   throw Error("invalid private product id");
  if(x.disabled)continue;
  if(!/^(?:0|[1-9]\d{0,3})$/.test(x.value.trim()))throw Error("invalid private count");
  o[x.dataset.privateId]=Number(x.value)}return o}
