@@ -2,7 +2,7 @@
  * Server-side rank-only projection for current internal company members.
  * The trusted caller MUST verify Firebase ID token, current Firestore
  * user/member/company, company scope, and complete snapshot-pinned pagination.
- * There are NO raw individual counts, UID, prices or sales in the response.
+ * Ranks are computed from the immutable saved totalRevenue; the amount is\n * NEVER transmitted. There are NO individual counts, UID or price in response.
  *
  * This module is OFF and not wired to production until full safe cutover.
  */
@@ -21,6 +21,7 @@ export function buildInternalRankOnly({companyId,month,records,complete=false}={
      r.date.length!==10||Number.isNaN(Date.parse(r.date+"T00:00:00Z"))||
      new Date(r.date+"T00:00:00Z").toISOString().slice(0,10)!==r.date||
      !Number.isSafeInteger(r.totalCount)||r.totalCount<0||
+     !Number.isSafeInteger(r.totalRevenue)||r.totalRevenue<0||
      seen.has(r.id))reject();
   seen.add(r.id);
   if(!r.results||typeof r.results!=="object"||Array.isArray(r.results)||
@@ -37,17 +38,17 @@ export function buildInternalRankOnly({companyId,month,records,complete=false}={
   if(label.length>70||MONEY.test(label)||/[\x00-\x1f\x7f]/.test(label))reject();
   const prev=members.get(r.uid);
   if(prev&&prev.name!==label)reject();
-  if(!prev)members.set(r.uid,{name:label,count:0,uid:r.uid});
+  if(!prev)members.set(r.uid,{name:label,score:0,uid:r.uid});
   const person=members.get(r.uid);
-  person.count+=r.totalCount;
-  if(!Number.isSafeInteger(person.count))reject();
+  person.score+=r.totalRevenue;
+  if(!Number.isSafeInteger(person.score))reject();
  }
- const ordered=[...members.values()].sort((a,b)=>b.count-a.count||
+ const ordered=[...members.values()].sort((a,b)=>b.score-a.score||
     a.name.localeCompare(b.name,"ja")||a.uid.localeCompare(b.uid));
  let rank=0;
  const result=ordered.map((person,i)=>{
-  if(i===0||person.count!==ordered[i-1].count)rank=i+1;
-  return Object.freeze({rank,name:person.name,champion:rank===1&&person.count>0});
+  if(i===0||person.score!==ordered[i-1].score)rank=i+1;
+  return Object.freeze({rank,name:person.name,champion:rank===1&&person.score>0});
  });
  const reply=Object.freeze({schema:"nico-internal-person-rank-only-v1",month,
    individuals:Object.freeze(result)});
