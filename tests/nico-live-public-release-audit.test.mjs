@@ -47,7 +47,7 @@ test("static public read-only audit finds pages and denies anonymous finance end
   assert.ok(["GET","POST"].includes(options.method));
   if(options.method==="POST")assert.equal(options.body,'{"data":{}}');
   assert.equal(options.redirect,"error");
-  assert.equal(options.headers.Authorization,undefined);
+  assert.equal(options.headers?.Authorization,undefined);
  }
 });
 test("HTTP 200 for a SPA fallback does not mark partner page deployed",async()=>{
