@@ -85,6 +85,7 @@ test("partner owner makes team and managed staff, saves and corrects without tou
  assert.equal(JSON.stringify(hub).includes("unitPrice"),false);
  const own=await api.view(req("p",{date:day}));
  assert.equal(own.staff.length,1);assert.equal(own.records[0].totalCount,3);
+ assert.equal(own.records[0].teamIdSnapshot,team,"saved team must be visible to count-only dashboard");
  await assert.rejects(api.submit(req("p",{date:day,staffId:staff,counts:zero(),expectedVersion:0})),
   e=>e.code==="aborted");
  const correct=await api.submit(req("p",{date:day,staffId:staff,counts:{...zero(),NURO:1},expectedVersion:1}));
@@ -93,6 +94,25 @@ test("partner owner makes team and managed staff, saves and corrects without tou
  assert.equal([...db.store.keys()].filter(k=>k.includes("partnerWorkAudits/")).length,2);
  assert.deepEqual(db.store.get("records/old"),originalRecords);
  assert.deepEqual(db.store.get("products/money"),originalMoney);
+});
+test("team migration leaves existing per-day partner counts and team attribution unchanged",async()=>{
+ const {db,api,req,zero}=setup();
+ const oldTeam=(await api.manage(req("p",{action:"addTeam",name:"1班"}))).teamId;
+ const newTeam=(await api.manage(req("p",{action:"addTeam",name:"2班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"StaffOne",teamId:oldTeam}))).staffId;
+ const date="2026-10-31";
+ await api.submit(req("p",{date,staffId:staff,counts:{...zero(),NURO:2},expectedVersion:0}));
+ await api.manage(req("p",{action:"moveStaff",staffId:staff,teamId:newTeam}));
+ let info=await api.view(req("p",{date}));
+ assert.equal(info.staff[0].teamId,newTeam);
+ assert.equal(info.records[0].teamIdSnapshot,oldTeam);
+ await api.submit(req("p",{date,staffId:staff,counts:{...zero(),NURO:3},expectedVersion:1}));
+ info=await api.view(req("p",{date}));
+ assert.equal(info.records[0].teamIdSnapshot,oldTeam);
+ assert.equal(info.records[0].totalCount,3);
+ assert.equal(db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+staff).teamIdSnapshot,oldTeam);
+ assert.equal(db.store.get("records/old").totalRevenue,808080);
+ assert.equal(db.store.get("products/money").unitPrice,98765);
 });
 test("owner invites leader, leader accepts own team and manages name-only staff, ordinary member cannot manage",async()=>{
  const {db,api,req,zero}=setup();
