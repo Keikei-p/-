@@ -16,8 +16,8 @@ const original=[
 const local=[
  {companyId:"partner",productId:"customA",name:"パートナー専用A",
   active:true,sortOrder:2,visibility:"private"},
- {companyId:"partner",productId:"customB",name:"連携公開商材",
-  active:true,sortOrder:3,visibility:"shared_counts"}
+ {companyId:"partner",productId:"customB",name:"協力店独自商材B",
+  active:true,sortOrder:3,visibility:"private"}
 ];
 const base={hubCompanyId:"hub",partnerCompanyId:"partner",relation,
  hubProducts:original,localCustomProducts:local};
@@ -25,7 +25,7 @@ test("partner automatically sees EXACT current hub catalog labels/order, never p
  const before=JSON.stringify(base);
  const result=buildPartnerCatalog(base);
  assert.deepEqual(result.products.map(x=>x.name),[
-  "NURO光","電気","パートナー専用A","連携公開商材"]);
+  "NURO光","電気","パートナー専用A","協力店独自商材B"]);
  assert.deepEqual(result.products.map(x=>x.catalogId),[
   "shared:hub:nuro","shared:hub:electric","custom:partner:customA","custom:partner:customB"]);
  assert(result.products.some(x=>x.visibility==="private"));
@@ -34,10 +34,13 @@ test("partner automatically sees EXACT current hub catalog labels/order, never p
   assert.equal(payload.toLowerCase().includes(leak.toLowerCase()),false,leak);
  assert.equal(JSON.stringify(base),before);
 });
-test("hub sees partner custom ONLY when explicitly shared (no private product name)",()=>{
+test("hub sees NO partner-custom names, identifiers, counts or private total",()=>{
  const view=buildPartnerCatalog({...base,audience:"hub",hubProducts:[]});
- assert.deepEqual(view.products.map(x=>x.name),["連携公開商材"]);
- assert(!JSON.stringify(view).includes("パートナー専用A"));
+ assert.deepEqual(view.products,[]);
+ assert.deepEqual(view.sharedCustomProductIds,[]);
+ const dump=JSON.stringify(view);
+ for(const secret of ["パートナー専用A","協力店独自商材B","customA","customB"])
+  assert(!dump.includes(secret),secret);
 });
 test("partner product create defaults strictly private and price fields are forbidden",()=>{
  const owner={companyId:"partner",partnerCatalogRole:"owner",serverVerified:true};
@@ -59,19 +62,19 @@ test("partner product create defaults strictly private and price fields are forb
  ])assert.throws(()=>planCreatePartnerProduct({actor:notAllowed,
    partnerCompanyId:"partner",productId:"new",productName:"商材"}),/Partner catalog denied/);
 });
-test("owner-only private ↔ shared visibility is reversible without changing ID or counts",()=>{
+test("partner custom may remain private; attempts to publish to hub are always rejected",()=>{
  const actor={serverVerified:true,companyId:"partner",partnerCatalogRole:"owner"};
  const old=local[0],oldJson=JSON.stringify(old);
- const next=planChangePartnerProduct({actor,existing:old,
-  partnerCompanyId:"partner",nextVisibility:"shared_counts"});
- assert.equal(next.visibility,"shared_counts");
- assert.equal(next.productId,old.productId);
- assert.equal(old.visibility,"private");assert.equal(JSON.stringify(old),oldJson);
- const back=planChangePartnerProduct({actor,existing:next,
-  partnerCompanyId:"partner",nextVisibility:"private"});
- assert.equal(back.visibility,"private");
+ assert.throws(()=>planChangePartnerProduct({actor,existing:old,
+   partnerCompanyId:"partner",nextVisibility:"shared_counts"}),/denied/);
+ const same=planChangePartnerProduct({actor,existing:old,
+   partnerCompanyId:"partner",nextVisibility:"private"});
+ assert.equal(same.visibility,"private");
+ assert.equal(same.productId,old.productId);
+ assert.equal(JSON.stringify(old),oldJson);
  assert.throws(()=>planChangePartnerProduct({actor:{...actor,partnerCatalogRole:"leader"},
-  existing:old,partnerCompanyId:"partner",nextVisibility:"shared_counts"}),/denied/);
+  existing:old,partnerCompanyId:"partner",nextVisibility:"private"}),/denied/);
+ assert.throws(()=>buildPartnerCatalog({...base,localCustomProducts:[{...old,visibility:"shared_counts"}]}),/denied/);
 });
 test("other company cannot see partner catalog without BOTH server verified approvals",()=>{
  for(const invalid of [
@@ -89,6 +92,7 @@ test("custom documents with embedded financial fields, overlong names, money-cod
   {...local[0],revenue:90000},
   {...local[0],pricingOptions:[{revenuePerUnit:50000}]},
   {...local[0],visibility:"public_everyone"},
+  {...local[0],visibility:"shared_counts"},
   {...local[0],name:"CB20000 商材"},
   {...local[0],productId:"../../another"},
   {...local[0],sortOrder:-1}
@@ -111,5 +115,5 @@ test("PRIVATE custom counts cannot leak in combined intercompany ranking via sub
  const hub=filterPartnerCountLines({
   partnerCompanyId:"partner",customProducts:local,lines,audience:"hub"
  });
- assert.deepEqual(hub,[{productId:"customB",count:2}]);
+ assert.deepEqual(hub,[]);
 });
