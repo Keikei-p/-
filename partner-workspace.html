@@ -542,6 +542,26 @@ function draw(){
   return;
  }
  $("makeTeam").hidden=data.role!=="owner";
+  $("privateProductAdmin").hidden=data.role!=="owner";
+  const privateList=$("privateProductList");privateList.replaceChildren();
+  for(const p of data.privateProducts||[]){
+    const wrapper=document.createElement("div");wrapper.className="row";
+    const lab=document.createElement("input");lab.value=p.name;lab.maxLength=80;
+    lab.setAttribute("aria-label","独自商材名");
+    const toggle=document.createElement("button");toggle.type="button";
+    toggle.textContent=p.active?"無効化":"有効化";toggle.className="secondary";
+    toggle.onclick=()=>action(async()=>{
+      await manage({action:"setPrivateProduct",productId:p.id,name:lab.value,active:!p.active});
+      return "独自商材の表示設定を更新しました。過去の件数は変更しません。";
+    });
+    const rename=document.createElement("button");rename.type="button";
+    rename.textContent="名前を変更";
+    rename.onclick=()=>action(async()=>{
+      await manage({action:"setPrivateProduct",productId:p.id,name:lab.value,active:p.active});
+      return "独自商材名を変更しました。";
+    });
+    wrapper.append(lab,rename,toggle);privateList.append(wrapper);
+  }
  $("inviteRole").querySelector('option[value="leader"]').disabled=data.role!=="owner";
  const teams=data.teams.filter(t=>t.active),staff=data.staff.filter(s=>s.active);
  for(const id of ["managedTeam","inviteTeam"]){const sel=$(id),old=sel.value;sel.replaceChildren();
@@ -583,6 +603,16 @@ function draw(){
  $("tabRecords").getAttribute("aria-pressed")==="true"?"Records":"Dashboard");
 }
 function renderSelected(){if(!data||data.role==="hub")return;const rec=data.records.find(x=>x.staffId===$("staffSelect").value);
+ const custom=$("privateCountGrid");custom.replaceChildren();
+ for(const p of data.privateProducts||[]){
+   if(p.active===false&&!(rec?.privateCounts?.[p.id]>0))continue;
+   const box=document.createElement("div");box.className="item";
+   const lab=document.createElement("label");lab.textContent=p.name+(p.active?"":"（無効）");
+   const inp=document.createElement("input");inp.type="number";inp.min="0";inp.max="9999";
+   inp.step="1";inp.inputMode="numeric";inp.dataset.privateId=p.id;
+   inp.disabled=p.active===false;inp.value=String(rec?.privateCounts?.[p.id]??0);
+   inp.addEventListener("input",updateTotal);box.append(lab,inp);custom.append(box);
+ }
  for(const x of grid.querySelectorAll("input"))x.value=String(rec?.counts?.[x.dataset.key]??0);
  $("revision").textContent=rec?"第"+rec.version+"版・訂正可能":"未登録（0件報告も保存可能）";
  $("save").disabled=!$("staffSelect").value;updateTotal()}
@@ -601,6 +631,11 @@ async function action(task){if(loading)return;loading=true;try{
  // A successful re-read must not overwrite the actual save confirmation.
  if(typeof message==="string"&&data)notice(message);
  }catch(e){fail(e)}finally{loading=false}}
+$("addPrivateProduct").onclick=()=>action(async()=>{
+ await manage({action:"addPrivateProduct",name:$("privateProductName").value});
+ $("privateProductName").value="";
+ return "独自商材を追加しました。自社側には表示されません。";
+});
 $("createTeam").onclick=()=>action(async()=>{await manage({action:"addTeam",name:$("teamName").value});$("teamName").value="";return "班を作成しました。";});
 $("addManaged").onclick=()=>action(async()=>{await manage({action:"addManaged",name:$("managedName").value,teamId:$("managedTeam").value});$("managedName").value="";return "担当者を登録しました。";});
 $("moveStaffAction").onclick=()=>action(async()=>{await manage({action:"moveStaff",staffId:$("moveStaffSelect").value,teamId:$("moveTeamSelect").value});return "所属班を変更しました。過去の実績件数は変更していません。";});
@@ -614,12 +649,14 @@ $("makeInvite").onclick=()=>action(async()=>{
 $("copy").onclick=async()=>{try{await navigator.clipboard.writeText($("inviteUrl").value);notice("招待リンクをコピーしました")}catch{ $("inviteUrl").select();notice("リンクを選択しました。コピーしてください。")}};
 $("save").onclick=()=>action(async()=>{
  const staffId=$("staffSelect").value,record=data.records.find(r=>r.staffId===staffId),counts=values();
- const result=(await save({date:$("date").value,staffId,counts,
+ const privateCounts=privateValues();
+ const result=(await save({date:$("date").value,staffId,counts,privateCounts,
   expectedVersion:record?.version??0})).data;
  // Verify after actual API write, never show confirmation based on optimistic state.
  const verified=(await get({date:$("date").value})).data;
  const check=verified?.records?.find(r=>r.staffId===staffId);
- if(!check||check.version!==result.version||KEYS.some(k=>check.counts[k]!==counts[k]))
+ if(!check||check.version!==result.version||KEYS.some(k=>check.counts[k]!==counts[k])||
+    Object.entries(privateCounts).some(([id,n])=>check.privateCounts?.[id]!==n))
   throw Error("save_not_verified");
  return "保存・再取得照合が成功しました。第"+result.version+"版";
 });
