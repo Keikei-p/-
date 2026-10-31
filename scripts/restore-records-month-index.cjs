@@ -51,7 +51,7 @@ async function ensureMonthlyIndex({request,log=console.log,wait=async()=>{},poll
  return "CREATING";
 }
 async function main(){
- const {applicationDefault}=require("firebase-admin/app");
+ const {applicationDefault}=require("../functions/node_modules/firebase-admin/app");
  const {access_token}=await applicationDefault().getAccessToken();
  if(!access_token)throw Error("SERVICE_ACCOUNT_TOKEN_UNAVAILABLE");
  const request=async(method,url,payload)=>{
