@@ -98,7 +98,9 @@ export async function uploadSingleExistingWorkspace({assetBytes,request,release=
    "sites/nico-factory/versions/b46f9f22bf75ed6e",
    // Run 41167466714 finalized the count-only partner dashboard with all 11 files preserved;
    // run 41168151076 independently confirmed its deployed exact page and all original APIs.
-   "sites/nico-factory/versions/3ca4d41ca85d8347"
+   "sites/nico-factory/versions/3ca4d41ca85d8347",
+   // Run 41170332915: only partner-workspace.html replaced, all 11 assets verified.
+   "sites/nico-factory/versions/2a9b75da8b87ba01"
  ]);
  const files=[];let pageToken="";
  do{
