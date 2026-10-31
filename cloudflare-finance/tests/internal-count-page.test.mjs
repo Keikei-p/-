@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import worker from "../cloudflare-finance/src/index.js";
-import {makeCountDayFirestoreReader} from "../cloudflare-finance/src/internal-count-rest-reader.mjs";
+import worker from "../src/index.js";
+import {makeCountDayFirestoreReader} from "../src/internal-count-rest-reader.mjs";
 const path="projects/sales-management-cc116/databases/(default)/documents/records/";
 const day="2026-10-31",stamp="2026-10-31T06:00:00.000000Z";
 function document(id,cid="direct",when=day){
