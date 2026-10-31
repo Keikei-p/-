@@ -53,7 +53,7 @@ function fixture({partnerResponse,partnerError=false,ownError=false,owner=true,d
       }};
     },
     readPartnerQuickDay:async()=>{quickReads++;return {data:{role:"hub",partners:quickPartners}};},
-    validatedPartnerRankingDay:(data)=>data.partners,
+    validatedPartnerRankingDay:(data)=>data.partners.map(p=>({...p,id:p.partnerCompanyId})),
     document:{createElement:()=>node()}
   };
   vm.createContext(context);
