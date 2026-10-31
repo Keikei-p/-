@@ -575,3 +575,14 @@ Rulesの本番デプロイ: 未実施
 - `surgical-existing-index.mjs` は、**その監査済みVersionだけ**、`version.fileCount` が欠落する場合に限り、`files.list` の全ページの実ファイルを検証した11件以上の件数を採用する。元の`index.html`、`partner-invite.html`、`partner-counts.html`、`partner-workspace.html` の4ファイルが全て存在しない場合はSTOP。他の未審査ライブVersionで欠損件数を迂回しない。
 - 更新前後のHosting config、元ファイル全パス/ハッシュ、ライブ版並行切替の有無は引き続き検証。**差分は`index.html` 1件のみ**で、既存レコード/金額/単価/ユーザー/班/履歴/LINE・Firestore Rulesは一切触らない。
 - 公開許可の前提は最新のGitHub保護ゲート・Sales App Validation・index Hostingの模擬/実データテスト全合格と前段quick/workspaceの実ジョブ成功。Finance Rules PR #175は別審査、実本番適用未承認。
+
+
+---
+
+## 2026-10-31 — 本番件数画面リリース後のFinance Firestore分離レビュー（PR v2）
+
+- 協力店の招待ページ、件数入力/取得API2件、班/スタッフ管理API4件、既存ランキングの差分本番公開はGitHub Actions `41153311685`、`41153405016`、`41153486449`、一括確認 `41153302195`で全SUCCESS。元11ファイルのハッシュ保持・公開後4ページHTTP200・全6 API匿名401拒否を確認済み。
+- 協力店の金額付きFireStore原票の認証拒否は、本番Rulesが古いことから未完了。直営の売上・単価原票に関して、現在のユーザー別companyId分離に加えて**協力店Owner権限でもServer Rulesで完全遮断**する候補をPR #161と同じコードに限定し再提示。
+- 今回のGit変更は`firestore.rules`と合成エミュレータテスト`tests/rules.test.cjs`のみ。従来の財務原票・当時価格・CB・取引履歴・社員履歴は書込/削除/移行しない。最新の既存社内オーナー/リーダー/メンバーの営業登録・訂正が失敗しないか合成テストが全合格した場合のみGitに統合を検討。
+- **Git統合 != 本番Rules配備**。隔離復元照合、既存本番社員のAuth/UI確認、協力店実アカウントによる全金額原票拒否が未確認のため、`firebase deploy --only firestore:rules`の本番作業は別の保護ゲートを維持し勝手に発火しない。
+- 既存売上原票のアクセス遮断は重大な変更。GitHub owner権限によるコードレビュー用`sales-production-reviewed`は実アカウントでの完全遮断テストや署名の代用ではない。
