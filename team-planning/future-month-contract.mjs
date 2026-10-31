@@ -119,3 +119,122 @@ export function prepareMonthActivation({plan,jstDate,people,validTeamIds}){
  return Object.freeze({planId:plan.planId,effectiveDate:since,
   patches:Object.freeze(patches)});
 }
+
+/**
+ * Additional next-month goal reservation contract. The legacy app already stores
+ * count goals in "goals" and money goals in "revenueGoals"; they MUST remain
+ * separate. This module only prepares documents for an authenticated Owner's
+ * future transaction. Never persist or change any historical sales here.
+ *
+ * In particular, it is unsafe to write "targetRevenue" into the count goal:
+ * partner/leader count views must never receive a price-bearing field.
+ */
+const own=(x,key)=>Object.prototype.hasOwnProperty.call(x,key);
+function isSafeGoalMap(value){
+ return value && typeof value==="object"&&!Array.isArray(value)&&
+   (Object.getPrototypeOf(value)===Object.prototype||Object.getPrototypeOf(value)===null);
+}
+export function buildFutureGoalDraft({actor,companyId,month,goals=[]}){
+ checkId(companyId,"COMPANY");validMonth(month);
+ if(!actor||actor.serverVerified!==true||actor.companyId!==companyId||
+    actor.companyRole!=="owner"||typeof actor.uid!=="string"||!ID.test(actor.uid))
+   stop("OWNER_ONLY");
+ if(!Array.isArray(goals)||goals.length>100)stop("GOALS");
+ const seen=new Set(),items=[];
+ for(const row of goals){
+   if(!row||typeof row!=="object"||Array.isArray(row)||
+      Object.keys(row).some(k=>!["teamId","targets","targetRevenue"].includes(k))||
+      !own(row,"teamId")||(!own(row,"targets")&&!own(row,"targetRevenue")))
+     stop("GOAL_FIELDS");
+   const teamId=checkId(row.teamId,"TEAM");
+   if(seen.has(teamId))stop("DUPLICATE_TEAM_GOAL");
+   seen.add(teamId);
+   const item={teamId};
+   if(own(row,"targets")){
+     if(!isSafeGoalMap(row.targets)||Object.keys(row.targets).length>100)
+       stop("PRODUCT_TARGETS");
+     const targets=Object.create(null);
+     for(const [pid,n] of Object.entries(row.targets)){
+       checkId(pid,"PRODUCT");
+       if(!Number.isSafeInteger(n)||n<0||n>999999)stop("COUNT_TARGET");
+       // Preserve existing goal format and product IDs, not names or CB.
+       if(n>0)targets[pid]=n;
+     }
+     item.targets=Object.freeze(targets);
+   }
+   if(own(row,"targetRevenue")){
+     if(!Number.isSafeInteger(row.targetRevenue)||row.targetRevenue<0||
+        row.targetRevenue>999999999999)stop("REVENUE_TARGET");
+     item.targetRevenue=row.targetRevenue;
+   }
+   items.push(Object.freeze(item));
+ }
+ return Object.freeze({companyId,month,planId:companyId+"_"+month,
+   kind:"team-goals",state:"draft",ownerUid:actor.uid,
+   items:Object.freeze(items)});
+}
+export function confirmFutureGoalDraft(plan){
+ if(!plan||plan.kind!=="team-goals"||plan.state!=="draft"||
+    !validMonth(plan.month)||!Array.isArray(plan.items)||!plan.companyId||
+    !ID.test(plan.companyId))stop("GOALS_CONFIRM");
+ return Object.freeze({...plan,state:"confirmed"});
+}
+/**
+ * A future goal is RESERVED before its month begins. Existing goal documents
+ * are not overwritten: the UI/admin must explicitly resolve any conflicts.
+ * The server must reverify Owner claims, active team membership, existing
+ * documents and revision preconditions in one transaction before any writes.
+ */
+export function prepareFutureGoalReservations({
+ plan,jstDate,activeTeamIds,existingGoals=[],existingRevenueGoals=[]
+}){
+ if(!plan||plan.kind!=="team-goals"||plan.state!=="confirmed"||
+   !Array.isArray(plan.items)||!ID.test(plan.companyId||""))stop("GOALS_NOT_CONFIRMED");
+ validMonth(plan.month);
+ if(typeof jstDate!=="string"||!/^\d{4}-\d{2}-\d{2}$/.test(jstDate)||
+   !Number.isFinite(Date.parse(jstDate+"T00:00:00Z"))||
+   new Date(jstDate+"T00:00:00Z").toISOString().slice(0,10)!==jstDate)
+   stop("GOAL_CLOCK");
+ if(jstDate>=plan.month+"-01")stop("GOAL_RESERVATION_TOO_LATE");
+ if(!Array.isArray(activeTeamIds)||!Array.isArray(existingGoals)||
+    !Array.isArray(existingRevenueGoals))stop("GOAL_INPUTS");
+ const teamIds=new Set(activeTeamIds.map(x=>checkId(x,"ACTIVE_TEAM")));
+ if(teamIds.size!==activeTeamIds.length)stop("DUPLICATE_ACTIVE_TEAM");
+ const countGoals=[],revenueGoals=[],seen=new Set();
+ for(const item of plan.items){
+   if(!item||Object.keys(item).some(k=>!["teamId","targets","targetRevenue"].includes(k))||
+      !ID.test(item.teamId||"")||seen.has(item.teamId)||
+      (!own(item,"targets")&&!own(item,"targetRevenue")))
+     stop("INVALID_GOAL_ITEM");
+   seen.add(item.teamId);
+   if(!teamIds.has(item.teamId))stop("INACTIVE_TEAM_GOAL");
+   const id=plan.companyId+"_"+item.teamId+"_"+plan.month;
+   if(own(item,"targets")){
+     if(!isSafeGoalMap(item.targets)||Object.keys(item.targets).length>100)
+       stop("INVALID_COUNT_TARGETS");
+     const targets=Object.create(null);
+     for(const [pid,n] of Object.entries(item.targets)){
+       checkId(pid,"PRODUCT");
+       if(!Number.isSafeInteger(n)||n<=0||n>999999)
+         stop("INVALID_COUNT_TARGET");
+       targets[pid]=n;
+     }
+     if(existingGoals.some(g=>g&&g.id===id||
+        g&&g.companyId===plan.companyId&&g.teamId===item.teamId&&g.month===plan.month))
+       stop("COUNT_GOAL_ALREADY_EXISTS");
+     countGoals.push(Object.freeze({id,companyId:plan.companyId,
+       teamId:item.teamId,month:plan.month,targets:Object.freeze(targets)}));
+   }
+   if(own(item,"targetRevenue")){
+     if(!Number.isSafeInteger(item.targetRevenue)||item.targetRevenue<0||
+        item.targetRevenue>999999999999)stop("INVALID_REVENUE_TARGET");
+     if(existingRevenueGoals.some(g=>g&&g.id===id||
+        g&&g.companyId===plan.companyId&&g.teamId===item.teamId&&g.month===plan.month))
+       stop("REVENUE_GOAL_ALREADY_EXISTS");
+     revenueGoals.push(Object.freeze({id,companyId:plan.companyId,
+       teamId:item.teamId,month:plan.month,targetRevenue:item.targetRevenue}));
+   }
+ }
+ return Object.freeze({planId:plan.planId,month:plan.month,
+   countGoals:Object.freeze(countGoals),revenueGoals:Object.freeze(revenueGoals)});
+}
