@@ -25916,6 +25916,12 @@ function partnerCategoriesForExistingGroup(group){
   const label=normalizedPartnerRankingLabel(group.name);
   if(label===normalizedPartnerRankingLabel("乗り換え丸件"))
     return ["SBMNP","YMMNP"];
+  // The partner count schema has one combined electricity bucket:
+  // つばさ・HTB. Map it to the explicitly named existing electricity
+  // group, never to guessed product IDs or any monetary fields.
+  if(["新電力","電気まとめ"].some(name=>
+    label===normalizedPartnerRankingLabel(name)))
+    return ["つばさ・HTB"];
   const direct=Object.keys(aliases).filter(cat=>
     aliases[cat].some(alias=>normalizedPartnerRankingLabel(alias)===label));
   if(direct.length) return direct;
