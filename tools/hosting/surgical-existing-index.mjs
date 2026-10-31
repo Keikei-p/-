@@ -76,7 +76,13 @@ export async function uploadSingleExistingIndex({assetBytes,request,release=fals
  const reportedCount=countPresent?Number(source.fileCount):null;
  if(countPresent&&(!Number.isSafeInteger(reportedCount)||reportedCount<1))
    throw Error("BAD_LIVE_FILECOUNT");
- const knownIncompleteCountVersion="sites/nico-factory/versions/b6ab2b826667954d";
+ // Both versions are audited by successful one-file-only Hosting releases:
+ // b6ab2b826667954d -> 9039213fe6907270 on run 41153486449.
+ // Do not trust fileCount-free metadata for arbitrary future versions.
+ const knownIncompleteCountVersions=new Set([
+   "sites/nico-factory/versions/b6ab2b826667954d",
+   "sites/nico-factory/versions/9039213fe6907270"
+ ]);
  const files=[];let pageToken="";
  do{
   const qs=new URLSearchParams({pageSize:"1000"});
@@ -88,7 +94,7 @@ export async function uploadSingleExistingIndex({assetBytes,request,release=fals
   if(files.length>30000)throw Error("TOO_MANY_LIVE_ASSETS");
  }while(pageToken);
  if(reportedCount===null){
-  if(sourceName!==knownIncompleteCountVersion)
+  if(!knownIncompleteCountVersions.has(sourceName))
    throw Error("UNREVIEWED_LIVE_VERSION_MISSING_COUNT");
   // Known 11-file release must still list all existing pages before any write.
   for(const required of ["/index.html","/partner-invite.html","/partner-counts.html","/partner-workspace.html"])
