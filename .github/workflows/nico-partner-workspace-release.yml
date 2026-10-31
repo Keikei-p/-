@@ -120,6 +120,7 @@ jobs:
             exit 1
           fi
       - name: Snapshot existing deployed Functions and current Hosting version
+        id: workspace_page
         shell: bash
         run: |
           set -euo pipefail
@@ -133,7 +134,17 @@ jobs:
           }
           console.log('Protected existing 5 Functions confirmed.');
           NODE
-          node tools/hosting/additive-partner-workspace.mjs --dry-run
+          status=$(curl --silent --location --output "$RUNNER_TEMP/current-workspace-readonly.html" --write-out '%{http_code}' --max-time 25 https://nico-factory.web.app/partner-workspace.html || true)
+          if [ "$status" = 200 ] && cmp -s "$RUNNER_TEMP/current-workspace-readonly.html" partner-workspace.html; then
+            echo 'already_live=true' >> "$GITHUB_OUTPUT"
+            echo 'PASS: existing workspace page identical to source'
+          elif [ "$status" = 200 ] && grep -Fq 'submitPartnerWorkspaceCounts' "$RUNNER_TEMP/current-workspace-readonly.html"; then
+            echo 'STOP: unknown workspace page already exists; do not overwrite'
+            exit 1
+          else
+            echo 'already_live=false' >> "$GITHUB_OUTPUT"
+            node tools/hosting/additive-partner-workspace.mjs --dry-run
+          fi
       - name: Set explicit isolated count-only feature flag
         run: |
           set -euo pipefail
@@ -200,16 +211,15 @@ jobs:
             }
           })().catch(e=>{console.error(e.message);process.exitCode=1});
           NODE
-      - name: Add ONLY partner-workspace.html, or reuse already-verified live page
+      - name: Add ONLY partner-workspace.html, or reuse exact existing page
+        if: ${{ steps.workspace_page.outputs.already_live != 'true' }}
+        run: node tools/hosting/additive-partner-workspace.mjs --release
+      - name: Verify the exact workspace HTML bytes after release
         shell: bash
         run: |
           set -euo pipefail
-          status=$(curl --silent --location --output "$RUNNER_TEMP/current-partner-workspace.html" --write-out '%{http_code}' --max-time 25 https://nico-factory.web.app/partner-workspace.html)
-          if [ "$status" = 200 ] && grep -Fq 'submitPartnerWorkspaceCounts' "$RUNNER_TEMP/current-partner-workspace.html"; then
-            echo "Existing partner workspace HTML verified: skip Hosting version creation"
-          else
-            node tools/hosting/additive-partner-workspace.mjs --release
-          fi
+          curl -fsSL --retry 3 --max-time 25 https://nico-factory.web.app/partner-workspace.html > "$RUNNER_TEMP/published-workspace.html"
+          cmp -s "$RUNNER_TEMP/published-workspace.html" partner-workspace.html
       - name: Verify actual public page, original app, counts and invite unchanged
         run: |
           set -euo pipefail
