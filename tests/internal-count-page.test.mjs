@@ -83,3 +83,31 @@ test("rejects dates, missing signed token and pagination cursor tampering",async
  ])await assert.rejects(api(q));
  assert.deepEqual(traces,[]);
 });
+
+test("2,501 daily records are paged without a 2,000-document truncation",async()=>{
+ const many=Array.from({length:2501},(_,i)=>({
+  id:"record_"+String(i).padStart(5,"0"),companyId:"direct",uid:"u",
+  date:"2026-10-31",teamId:"team1",
+  results:{nuro:{productId:"nuro",count:1,revenuePerUnit:99999}},
+  totalCount:1,totalRevenue:99999
+ }));
+ const {api,traces}=setup({source:many});
+ let cursor="",readTime="",total=0,pages=0,ids=new Set();
+ while(true){
+  const result=await api({bearer:"a".repeat(30),day:"2026-10-31",cursor,readTime});
+  pages++;
+  for(const row of result.records){
+   assert(!ids.has(row.sourceId));
+   ids.add(row.sourceId);
+   total+=row.totalCount;
+  }
+  if(!result.hasMore)break;
+  cursor=result.nextCursor;
+  readTime=result.readTime;
+  assert(pages<55,"unbounded cursor loop");
+ }
+ assert.equal(total,2501);
+ assert.equal(ids.size,2501);
+ assert.equal(pages,51);
+ assert.equal(traces.filter(x=>x[0]==="page").length,51);
+});
