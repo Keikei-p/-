@@ -204,3 +204,44 @@ test("Finance-goal-only and explicit empty count goal retain exact canonical sch
  const clean=JSON.stringify(out.countGoals);
  assert.equal(clean.includes("revenue"),false);
 });
+
+test("future-month activation refuses a rebased plan ID without changing any prior history",()=>{
+ const forged=confirmMonthlyDraft({...draft,planId:"other_2026-11"});
+ const before=JSON.stringify(people);
+ assert.throws(()=>prepareMonthActivation({plan:forged,jstDate:"2026-11-01",
+   people,validTeamIds:["one","two"]}),/PLAN_SCOPE/);
+ assert.equal(JSON.stringify(people),before);
+});
+
+test("future-month activation does not reassign explicitly foreign-company staff",()=>{
+ const mixed=structuredClone(people);
+ mixed[0].companyId="foreignCompany";
+ const before=JSON.stringify(mixed);
+ assert.throws(()=>prepareMonthActivation({plan:confirmMonthlyDraft(draft),
+   jstDate:"2026-11-01",people:mixed,validTeamIds:["one","two"]}),
+  /FOREIGN_COMPANY_PERSON/);
+ assert.equal(JSON.stringify(mixed),before);
+ // Old entries without companyId remain supported until the live identity
+ // loader can be migrated with independent authorization checks.
+ assert.equal(prepareMonthActivation({plan:confirmMonthlyDraft(draft),
+   jstDate:"2026-11-01",people,validTeamIds:["one","two"]}).patches.length,1);
+});
+
+test("future money/count goal preview refuses forged reservation metadata",()=>{
+ const valid=confirmGoal();
+ for(const forged of [
+  {...valid,planId:"other_2026-11"},
+  {...valid,ownerUid:""},
+  {...valid,ownerUid:"wrong/uid"}
+ ]){
+  assert.throws(()=>prepareFutureGoalReservations({plan:forged,
+    jstDate:"2026-10-31",activeTeamIds:["one","two"]}),
+   /GOAL_PLAN_SCOPE/);
+ }
+ const wrongCompany={...valid,companyId:123,planId:"123_2026-11"};
+ assert.throws(()=>prepareFutureGoalReservations({plan:wrongCompany,
+   jstDate:"2026-10-31",activeTeamIds:["one","two"]}),
+  /GOALS_NOT_CONFIRMED/);
+ assert.equal(prepareFutureGoalReservations({plan:valid,
+   jstDate:"2026-10-31",activeTeamIds:["one","two"]}).countGoals.length,2);
+});
