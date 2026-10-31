@@ -197,8 +197,71 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  async function manage(request){
   const {uid}=await actor(request),d=request?.data||{},op=d.action;
   if(!["addTeam","addManaged","createInvite","moveStaff","addPrivateProduct","setPrivateProduct",
-   "hubAddTeam","hubCreateInvite"].includes(op))fail("invalid-argument");
+   "hubAddTeam","hubCreateInvite","hubSetSharingApproval"].includes(op))fail("invalid-argument");
   const s=await scope(uid,null,d.workspaceCompanyId);
+  if(op==="hubSetSharingApproval"){
+   // Explicit, authenticated hub Owner approval. Never auto-enable on invitation acceptance.
+   if(s.kind!=="hub"||s.role!=="owner"||!ID.test(d.partnerCompanyId||"")||
+      typeof d.approved!=="boolean"||typeof d.expectedActive!=="boolean"||
+      !validCompanyName(d.companyName))fail("invalid-argument");
+   const newState=await db.runTransaction(async tx=>{
+    const fresh=await scope(uid,tx,d.workspaceCompanyId);
+    if(fresh.kind!=="hub"||fresh.cid!==s.cid||fresh.role!=="owner")fail();
+    const relRef=db.collection("partnerRelations").doc(d.partnerCompanyId);
+    const companyRef=db.collection("companies").doc(d.partnerCompanyId);
+    const [relationSnap,companySnap]=await Promise.all([tx.get(relRef),tx.get(companyRef)]);
+    const relation=relationSnap.data()||{},partner=companySnap.data()||{};
+    if(!relationSnap.exists||!companySnap.exists||
+       relation.partnerCompanyId!==d.partnerCompanyId||relation.hubCompanyId!==s.cid||
+       partner.hubCompanyId!==s.cid||partner.companyKind!=="partner"||
+       partner.active!==true||!ID.test(partner.ownerUid||"")||
+       !validCompanyName(partner.name)||clean(partner.name)!==clean(d.companyName))
+      fail("failed-precondition");
+    const current=relation.active===true&&relation.countSharingApproved===true;
+    if(current!==d.expectedActive)fail("aborted");
+    if(d.approved===true){
+     // Only approve a company with a real partner Owner whose membership
+     // cannot receive sales or unit prices. Existing internal secondary
+     // identities are never rewritten and may keep original internal access.
+     const memberRef=collection(d.partnerCompanyId,"members").doc(partner.ownerUid);
+     const memberSnap=await tx.get(memberRef),member=memberSnap.data()||{};
+     if(!memberSnap.exists||member.active!==true||member.uid!==partner.ownerUid||
+        member.companyId!==d.partnerCompanyId||member.companyRole!=="owner"||
+        member.accessKind!=="partner"||member.memberType!=="cooperator"||
+        member.canViewRevenue!==false||member.canViewUnitPrice!==false)fail("failed-precondition");
+     const userRef=db.collection("users").doc(partner.ownerUid);
+     const contextRef=db.collection("partnerWorkspaceContexts").doc(partner.ownerUid);
+     const [userSnap,contextSnap]=await Promise.all([tx.get(userRef),tx.get(contextRef)]);
+     const user=userSnap.data()||{},ctx=contextSnap.data()||{};
+     if(!userSnap.exists||user.active!==true||user.uid!==partner.ownerUid)fail("failed-precondition");
+     if(contextSnap.exists){
+      if(ctx.kind!=="partner_secondary"||ctx.active!==true||
+         ctx.uid!==partner.ownerUid||ctx.partnerCompanyId!==d.partnerCompanyId||
+         ctx.hubCompanyId!==s.cid||ctx.primaryCompanyId!==user.companyId||
+         user.accessKind!=="internal")fail("failed-precondition");
+      const sourceMember=await tx.get(collection(user.companyId,"members").doc(partner.ownerUid));
+      const original=sourceMember.data()||{};
+      if(!sourceMember.exists||original.active===false||
+         (original.accessKind!=null&&original.accessKind!=="internal")||
+         ["partner","cooperator"].includes(original.memberType))fail("failed-precondition");
+     }else if(user.companyId!==d.partnerCompanyId||
+       user.accessKind!=="partner"||user.memberType!=="cooperator"||
+       user.canViewRevenue!==false||user.canViewUnitPrice!==false)fail("failed-precondition");
+    }
+    // Preserve approval history and unrelated catalog controls. No deletes or
+    // changes to company, staff, products, raw sales, user or member documents.
+    const time=FieldValue.serverTimestamp();
+    tx.update(relRef,{
+     active:d.approved,countSharingApproved:d.approved,
+     updatedAt:time,
+     ...(d.approved?{countSharingApprovedByUid:uid,countSharingApprovedAt:time}:
+      {countSharingRevokedByUid:uid,countSharingRevokedAt:time})
+    });
+    return d.approved;
+   });
+   return {partnerCompanyId:d.partnerCompanyId,active:newState,
+    countSharingApproved:newState,financialAccess:false};
+  }
   if(op==="hubAddTeam"||op==="hubCreateInvite"){
    if(s.kind!=="hub"||s.role!=="owner"||!ID.test(d.partnerCompanyId||""))fail();
    if(op==="hubAddTeam"){
