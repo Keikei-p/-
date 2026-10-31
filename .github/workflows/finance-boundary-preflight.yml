@@ -4,6 +4,10 @@ on:
     branches: [main]
     paths:
       - 'security/**'
+      - 'cloudflare-finance/client/finance-browser-contract.mjs'
+      - 'cloudflare-finance/tests/finance-browser-contract.test.mjs'
+      - 'cloudflare-finance/tests/sales-integration.test.mjs'
+      - 'cloudflare-finance/tests/protected-view-runtime.test.mjs'
       - 'scripts/check-finance-read-boundary-before-deploy.mjs'
       - 'tests/finance-release-gate.test.mjs'
       - '.github/workflows/firebase-production-deploy.yml'
@@ -29,6 +33,10 @@ jobs:
           node-version: "22"
       - name: Test finance-free projections and rank-only results
         run: node --test tests/public-projection.test.mjs tests/reconcile-projections.test.mjs tests/trusted-finance-view.test.mjs tests/public-count-api.test.mjs tests/public-count-firestore-reader.test.mjs tests/firebase-id-token-verifier.test.mjs tests/trusted-membership-loader.test.mjs tests/staged-count-gateway.test.mjs tests/trusted-partner-write-context.test.mjs tests/finance-rule-generation.test.mjs
+      - name: Test safe browser finance projection without exposing arbitrary fields
+        run: |
+          node --check cloudflare-finance/client/finance-browser-contract.mjs
+          node --test cloudflare-finance/tests/finance-browser-contract.test.mjs cloudflare-finance/tests/sales-integration.test.mjs cloudflare-finance/tests/protected-view-runtime.test.mjs
       - name: Check historic CB and saved tariff drift without touching Firebase
         run: node --test tests/historical-price-audit.test.mjs
       - name: Confirm unsafe current money Rules remain blocked from deployment
