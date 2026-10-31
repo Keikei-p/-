@@ -34,11 +34,11 @@ test("repair only membership and historical hard-delete grants, preserve every o
  const live=liveFixture(),out=previewLiveRules(live,reviewed);
  assert.deepEqual(out.changed,[
   "isCompanyMember",
+  "review:revenueGoals",
   "deny-delete:teams",
   "deny-delete:products",
   "deny-delete:records",
-  "deny-delete:goals",
-  "deny-delete:revenueGoals"
+  "deny-delete:goals"
  ]);
  assert.equal(out.matchesReviewed,true);
  assert.equal(out.candidate,reviewed);
