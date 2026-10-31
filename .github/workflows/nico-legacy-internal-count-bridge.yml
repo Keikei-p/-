@@ -1,0 +1,36 @@
+name: 'NICO legacy money-free count bridge - staging-only tests'
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'security/legacy-internal-count-bridge.mjs'
+      - 'tests/legacy-internal-count-bridge.test.mjs'
+      - '.github/workflows/nico-legacy-internal-count-bridge.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'security/legacy-internal-count-bridge.mjs'
+      - 'tests/legacy-internal-count-bridge.test.mjs'
+      - '.github/workflows/nico-legacy-internal-count-bridge.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify count-only read adapter cannot change owner financial visibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check security/legacy-internal-count-bridge.mjs
+          node --test tests/legacy-internal-count-bridge.test.mjs
+          node --test tests/trusted-finance-view.test.mjs
+          node --test tests/internal-owner-finance-visibility.test.cjs
+          node --test tests/nico-production-cutover-preflight.test.mjs
