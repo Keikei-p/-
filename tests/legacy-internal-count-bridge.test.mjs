@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import {projectLegacyCountDay} from "../security/legacy-internal-count-bridge.mjs";
 import {projectTrustedFinancialView} from "../security/trusted-finance-view.mjs";
 const principal={
@@ -78,7 +79,6 @@ test("Cross-company data, stale date, duplicate record and malformed amount-deri
  ])assert.throws(()=>projectLegacyCountDay(modified));
 });
 test("No source record/money mutations, Firestore SDK reads or auto deployments allowed in staged bridge",()=>{
- const fs=await import("node:fs");
  const source=fs.readFileSync(new URL("../security/legacy-internal-count-bridge.mjs",import.meta.url),"utf8");
  assert.doesNotMatch(source,/firebase deploy|\.update\(|\.delete\(|deleteDoc\s*\(|setDoc\s*\(|runTransaction\s*\(/);
  assert.doesNotMatch(source,/\bgetFirestore\s*\(|\bfetch\s*\(|collection\s*\(db,/);
