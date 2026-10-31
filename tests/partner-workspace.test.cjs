@@ -43,7 +43,7 @@ class DB {
  }
 }
 class CallError extends Error{constructor(code,message,details){super(message);this.code=code;this.details=details;}}
-function setup(){
+function setup({sharingApprovalEnabled=true}={}){
  const db=new DB();
  const partnerUser=(uid,role,teamId=null)=>({uid,companyId:"partner",companyRole:role==="owner"?"owner":"member",
  role,teamId,active:true,accessKind:"partner",memberType:"cooperator",
@@ -64,7 +64,7 @@ function setup(){
  });
  const Timestamp={fromMillis:ms=>({toMillis:()=>ms})},FieldValue={serverTimestamp:()=>({seconds:NOW/1000})};
  const api=makeWorkspace({db,getAuth,Timestamp,FieldValue,HttpsError:CallError,
-  enabled:()=>true,now:()=>NOW});
+  enabled:()=>true,sharingApprovalEnabled:()=>sharingApprovalEnabled,now:()=>NOW});
  const req=(uid,data={})=>({auth:{uid,token:{email:uid+"@example.com",email_verified:true}},
   rawRequest:{headers:{authorization:"Bearer "+uid.repeat(30)}},data});
  const zero=()=>Object.fromEntries(KEYS.map(k=>[k,0]));
@@ -932,4 +932,21 @@ test("approving secondary existing-email partner leaves original primary revenue
  assert.deepEqual(db.store.get("users/p"),original);
  assert.deepEqual(db.store.get("companies/hub/members/p"),originalMember);
  assert.equal((await api.view(req("p",{date:"2026-10-31",workspaceCompanyId:"partner"}))).role,"owner");
+});
+
+test("sharing approval defaults OFF until verified finance isolation; revocation still works",async()=>{
+ const {db,api,req}=setup({sharingApprovalEnabled:false});
+ db.store.get("partnerRelations/partner").active=false;
+ db.store.get("partnerRelations/partner").countSharingApproved=false;
+ const before=clone([...db.store]);
+ await assert.rejects(api.manage(req("h",{action:"hubSetSharingApproval",
+  partnerCompanyId:"partner",companyName:"協力店",approved:true,expectedActive:false})),
+  e=>e.code==="failed-precondition"&&e.details?.reason==="finance-boundary-not-approved");
+ assert.deepEqual([...db.store],before);
+ const {db:live,api:stop,req:request}=setup({sharingApprovalEnabled:false});
+ const result=await stop.manage(request("h",{action:"hubSetSharingApproval",
+  partnerCompanyId:"partner",companyName:"協力店",approved:false,expectedActive:true}));
+ assert.equal(result.active,false);
+ assert.equal(live.store.get("partnerRelations/partner").countSharingApproved,false);
+ assert.equal(live.store.get("products/money").unitPrice,98765);
 });
