@@ -50,7 +50,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git hash-object functions-partner-workspace/service.cjs)" = "1488e4c68d24e2b62560610e195a4ac9dbf5ae57"
-          test "$(git hash-object partner-workspace.html)" = "24c5765b3bfc5e84ca74d94573c440be915e77d2"
+          test "$(git hash-object partner-workspace.html)" = "997785e8a9b7d3cebcfdb4433b2bdd94ef40775d"
           test "$(git hash-object functions-partner-workspace/index.js)" = "a2bffd167b8804a0372c7a00465c04a63d96e919"
           test "$(git hash-object functions/index.js)" = "dfb4c48ada6fa89a24c898cd4a2f911bcede822f"
           node -e "const f=require('fs');const a=JSON.parse(f.readFileSync('.firebaserc','utf8'));if(a.projects.default!=='sales-management-cc116')process.exit(1)"
