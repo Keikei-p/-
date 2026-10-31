@@ -302,21 +302,56 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     if(current.kind==="account"){
      if(!ID.test(current.uid||"")||current.uid!==d.staffId)fail();
      const ur=db.collection("users").doc(current.uid),mr=collection(s.cid,"members").doc(current.uid);
-     // Firestore requires all transaction reads before the first write.
-     const [us,ms]=await Promise.all([tx.get(ur),tx.get(mr)]);
-     const u=us.data()||{},m=ms.data()||{};
+     const ctxRef=db.collection("partnerWorkspaceContexts").doc(current.uid);
+     // All source, partner and context reads happen in this transaction.
+     const [us,ms,contextSnap]=await Promise.all([
+       tx.get(ur),tx.get(mr),tx.get(ctxRef)
+     ]);
+     const u=us.data()||{},m=ms.data()||{},ctx=contextSnap.data()||{};
+     const secondary=contextSnap.exists;
      if(!us.exists||!ms.exists||u.uid!==current.uid||m.uid!==current.uid||
-        u.active!==true||m.active!==true||u.companyId!==s.cid||
-        m.companyId!==s.cid||u.companyRole!=="member"||
-        m.companyRole!=="member"||u.teamId!==current.teamId||
-        m.teamId!==current.teamId||u.accessKind!=="partner"||
-        m.accessKind!=="partner"||u.canViewRevenue!==false||
-        m.canViewRevenue!==false||u.canViewUnitPrice!==false||
-        m.canViewUnitPrice!==false)fail();
-     const userHistory=appendTeamMove(u,current.teamId,d.teamId,day);
-     const memberHistory=appendTeamMove(m,current.teamId,d.teamId,day);
-     tx.update(ur,{teamId:d.teamId,teamHistory:userHistory});
-     tx.update(mr,{teamId:d.teamId,teamHistory:memberHistory});
+        u.active!==true||m.active!==true||
+        m.companyId!==s.cid||m.companyRole!=="member"||
+        m.teamId!==current.teamId||m.accessKind!=="partner"||
+        m.memberType!=="cooperator"||
+        m.canViewRevenue!==false||m.canViewUnitPrice!==false)fail();
+     if(secondary){
+       if(ctx.kind!=="partner_secondary"||ctx.active!==true||
+          ctx.uid!==current.uid||ctx.partnerCompanyId!==s.cid||
+          ctx.hubCompanyId!==s.hubId||
+          ctx.primaryCompanyId!==u.companyId||
+          !["leader","member"].includes(ctx.role)||ctx.role!==m.role||
+          ctx.teamId!==current.teamId||
+          (u.accessKind!=null&&u.accessKind!=="internal")||
+          (u.memberType!=null&&!["internal","direct","member","managed"].includes(u.memberType)))
+         fail();
+       const originalCompanyRef=db.collection("companies").doc(u.companyId);
+       const originalMemberRef=collection(u.companyId,"members").doc(current.uid);
+       const [originalCompanySnap,originalMemberSnap]=await Promise.all([
+         tx.get(originalCompanyRef),tx.get(originalMemberRef)
+       ]);
+       const pc=originalCompanySnap.data()||{},pm=originalMemberSnap.data()||{};
+       if(!originalCompanySnap.exists||pc.active===false||
+          (pc.companyKind!=null&&!["internal","direct"].includes(pc.companyKind))||
+          !originalMemberSnap.exists||pm.active===false||
+          (pm.uid!=null&&pm.uid!==current.uid)||
+          (pm.companyId!=null&&pm.companyId!==u.companyId)||
+          (pm.accessKind!=null&&pm.accessKind!=="internal"))
+         fail();
+       const contextHistory=appendTeamMove(ctx,current.teamId,d.teamId,day);
+       const memberHistory=appendTeamMove(m,current.teamId,d.teamId,day);
+       tx.update(ctxRef,{teamId:d.teamId,teamHistory:contextHistory});
+       tx.update(mr,{teamId:d.teamId,teamHistory:memberHistory});
+     }else{
+       if(u.companyId!==s.cid||u.companyRole!=="member"||
+          u.teamId!==current.teamId||u.accessKind!=="partner"||
+          u.memberType!=="cooperator"||
+          u.canViewRevenue!==false||u.canViewUnitPrice!==false)fail();
+       const userHistory=appendTeamMove(u,current.teamId,d.teamId,day);
+       const memberHistory=appendTeamMove(m,current.teamId,d.teamId,day);
+       tx.update(ur,{teamId:d.teamId,teamHistory:userHistory});
+       tx.update(mr,{teamId:d.teamId,teamHistory:memberHistory});
+     }
     }else if(current.kind!=="managed")fail();
     const staffHistory=appendTeamMove(current,current.teamId,d.teamId,day);
     tx.update(ref,{teamId:d.teamId,teamHistory:staffHistory,
