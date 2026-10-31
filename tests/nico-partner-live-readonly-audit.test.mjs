@@ -52,6 +52,9 @@ test("partner role markers always deny revenue and unit price even for owner",()
  assert.equal(isInternalIdentitySafe({companyKind:"direct"},{}),false);
  assert.equal(isInternalIdentitySafe({companyKind:"unknown"},{}),false);
  assert.equal(isInternalIdentitySafe({companyKind:"partner"},{}),false);
+ assert.equal(isInternalIdentitySafe({companyKind:null},{}),false);
+ assert.equal(isInternalIdentitySafe({}, {accessKind:null}),false);
+ assert.equal(isInternalIdentitySafe({}, {memberType:null}),false);
 });
 test("audit is read-only at source-code level, does not call prod writes or sign in users",()=>{
  const source=readFileSync(new URL("../tools/production/audit-live-partner-counts.mjs",import.meta.url),"utf8");
