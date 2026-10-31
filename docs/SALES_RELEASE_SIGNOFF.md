@@ -802,3 +802,6 @@ GitHub所有者として認証済みの接続から、本番影響をindex.html�
 - [ ] 安全なFirebase本番Rules・Main財務読取境界の切替
 - [ ] 別環境のバックアップ復元・実アカウントの自社Owner売上表示と協力店金額遮断検証
 - [ ] Firebase Functions/Hosting本番公開とスマホ公開後確認
+
+## 2026-11-01 協力店招待復帰・既存UI再利用（未承認Draft）
+実施事実・検証・残課題は docs/PARTNER_RECOVERY_20261101.md を参照。本番財務ゲート、全件バックアップ、実機確認が未完了のため公開不可。管理者の承認ラベルを代行付与せず、手動公開条件を維持。本番データ・Rules・Functions・Hostingは変更していない。

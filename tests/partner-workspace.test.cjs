@@ -42,8 +42,8 @@ class DB {
   return result;
  }
 }
-class CallError extends Error{constructor(code,message){super(message);this.code=code;}}
-function setup(){
+class CallError extends Error{constructor(code,message,details){super(message);this.code=code;this.details=details;}}
+function setup({sharingApprovalEnabled=true}={}){
  const db=new DB();
  const partnerUser=(uid,role,teamId=null)=>({uid,companyId:"partner",companyRole:role==="owner"?"owner":"member",
  role,teamId,active:true,accessKind:"partner",memberType:"cooperator",
@@ -64,12 +64,34 @@ function setup(){
  });
  const Timestamp={fromMillis:ms=>({toMillis:()=>ms})},FieldValue={serverTimestamp:()=>({seconds:NOW/1000})};
  const api=makeWorkspace({db,getAuth,Timestamp,FieldValue,HttpsError:CallError,
-  enabled:()=>true,now:()=>NOW});
+  enabled:()=>true,sharingApprovalEnabled:()=>sharingApprovalEnabled,now:()=>NOW});
  const req=(uid,data={})=>({auth:{uid,token:{email:uid+"@example.com",email_verified:true}},
   rawRequest:{headers:{authorization:"Bearer "+uid.repeat(30)}},data});
  const zero=()=>Object.fromEntries(KEYS.map(k=>[k,0]));
  return {db,api,req,zero};
 }
+test("unapproved partner gets an explicit approval-required denial without revealing or changing counts",async()=>{
+ const {db,api,req}=setup();
+ db.store.get("partnerRelations/partner").active=false;
+ db.store.get("partnerRelations/partner").countSharingApproved=false;
+ const before=clone([...db.store]);
+ await assert.rejects(api.view(req("p",{date:"2026-10-31"})),e=>e.code==="permission-denied"&&e.details?.reason==="partner-approval-required");
+ assert.deepEqual([...db.store],before);
+});
+test("staff invite denial distinguishes expiry and email without modifying any membership",async()=>{
+ for(const reason of ["invite-expired","invite-email-mismatch","invite-not-pending"]){
+  const {db,api,req}=setup();
+  const team=(await api.manage(req("p",{action:"addTeam",name:"検証班"}))).teamId;
+  const {token}=await api.manage(req("p",{action:"createInvite",email:"l@example.com",teamId:team,role:"member"}));
+  const invitation=[...db.store].find(([key])=>key.startsWith("partnerWorkInvites/"))[1];
+  if(reason==="invite-expired")invitation.expiresAt={toMillis:()=>NOW-1};
+  if(reason==="invite-email-mismatch")invitation.emailLower="other@example.com";
+  if(reason==="invite-not-pending")invitation.status="accepted";
+  const before=clone([...db.store]);
+  await assert.rejects(api.accept(req("l",{token,name:"検証スタッフ"})),e=>e.details?.reason===reason);
+  assert.deepEqual([...db.store],before);
+ }
+});
 test("partner owner makes team and managed staff, saves and corrects without touching original sales",async()=>{
  const {db,api,req,zero}=setup();
  const originalRecords=clone(db.store.get("records/old")),originalMoney=clone(db.store.get("products/money"));
@@ -813,4 +835,156 @@ test("only real hub Owner can request detailed partner-company team status",asyn
  const {api,req}=setup();
  await assert.rejects(api.view(req("p",{date:"2026-10-31",
   includeTeamStatus:true,partnerCompanyId:"hub"})),e=>e.code==="permission-denied");
+});
+
+test("secondary staff team move rejects revoked original membership type without mutating any history",async()=>{
+ for(const marker of ["partner","cooperator"]){
+  const {db,api,req}=setup();
+  const original={uid:"l",companyId:"hub",email:"l@example.com",name:"既存ユーザー",
+   companyRole:"member",role:"member",teamId:"original",
+   active:true,accessKind:"internal",memberType:"direct",
+   canViewRevenue:true,canViewUnitPrice:true};
+  db.seed("users/l",original);
+  db.seed("companies/hub/members/l",{...original});
+  const beforeTeam=(await api.manage(req("p",{action:"addTeam",name:"旧班"}))).teamId;
+  const afterTeam=(await api.manage(req("p",{action:"addTeam",name:"新班"}))).teamId;
+  const invite=await api.manage(req("p",{action:"createInvite",
+   email:"l@example.com",role:"leader",teamId:beforeTeam}));
+  await api.accept(req("l",{token:invite.token,name:"既存リーダー"}));
+  db.store.get("companies/hub/members/l").memberType=marker;
+  const baseline=clone([...db.store]);
+  await assert.rejects(api.manage(req("p",{action:"moveStaff",staffId:"l",teamId:afterTeam})),
+   e=>e.code==="permission-denied");
+  assert.deepEqual([...db.store],baseline,"denied move must not change original or partner history");
+ }
+});
+
+test("hub Owner explicitly approves a registered but inactive partner, without touching finance or accounts",async()=>{
+ const {db,api,req}=setup();
+ const relation=db.store.get("partnerRelations/partner");
+ relation.active=false;relation.countSharingApproved=false;relation.catalogAccessApproved=false;
+ const oldSales=clone(db.store.get("records/old")),oldPrice=clone(db.store.get("products/money"));
+ const user=clone(db.store.get("users/p")),member=clone(db.store.get("companies/partner/members/p"));
+ await assert.rejects(api.view(req("p",{date:"2026-10-31"})),e=>e.details?.reason==="partner-approval-required");
+ const res=await api.view(req("h",{date:"2026-10-31"}));
+ assert.equal(res.registeredCompanies[0].active,false);
+ const approved=await api.manage(req("h",{action:"hubSetSharingApproval",partnerCompanyId:"partner",
+  companyName:"協力店",approved:true,expectedActive:false}));
+ assert.equal(approved.active,true);assert.equal(approved.financialAccess,false);
+ assert.equal(db.store.get("partnerRelations/partner").countSharingApproved,true);
+ assert.equal(db.store.get("partnerRelations/partner").catalogAccessApproved,false);
+ assert.equal((await api.view(req("p",{date:"2026-10-31"}))).role,"owner");
+ assert.deepEqual(db.store.get("records/old"),oldSales);
+ assert.deepEqual(db.store.get("products/money"),oldPrice);
+ assert.deepEqual(db.store.get("users/p"),user);
+ assert.deepEqual(db.store.get("companies/partner/members/p"),member);
+ const revoked=await api.manage(req("h",{action:"hubSetSharingApproval",partnerCompanyId:"partner",
+  companyName:"協力店",approved:false,expectedActive:true}));
+ assert.equal(revoked.active,false);
+ await assert.rejects(api.view(req("p",{date:"2026-10-31"})),e=>e.details?.reason==="partner-approval-required");
+ assert.deepEqual(db.store.get("records/old"),oldSales);
+});
+test("hub approval denies forged hub, stale state, finance-enabled partner and tampered company without writes",async()=>{
+ const inputs=[
+  {uid:"p",company:"協力店",approved:false,expectedActive:true},
+  {uid:"h",company:"別会社",approved:true,expectedActive:true},
+  {uid:"h",company:"協力店",approved:true,expectedActive:false},
+  {uid:"h",company:"協力店",approved:"true",expectedActive:true},
+ ];
+ for(const item of inputs){
+  const {db,api,req}=setup(),before=clone([...db.store]);
+  await assert.rejects(api.manage(req(item.uid,{action:"hubSetSharingApproval",partnerCompanyId:"partner",
+   companyName:item.company,approved:item.approved,expectedActive:item.expectedActive})));
+  assert.deepEqual([...db.store],before);
+ }
+ for(const corrupt of [
+  (db)=>{db.store.get("companies/partner/members/p").canViewRevenue=true;},
+  (db)=>{db.store.get("companies/partner/members/p").canViewUnitPrice=true;},
+  (db)=>{db.store.get("users/p").canViewRevenue=true;},
+  (db)=>{db.store.get("partnerRelations/partner").hubCompanyId="other";},
+  (db)=>{db.store.get("companies/partner").active=false;}
+ ]){
+  const {db,api,req}=setup();
+  db.store.get("partnerRelations/partner").active=false;
+  db.store.get("partnerRelations/partner").countSharingApproved=false;
+  corrupt(db);const before=clone([...db.store]);
+  await assert.rejects(api.manage(req("h",{action:"hubSetSharingApproval",partnerCompanyId:"partner",
+   companyName:"協力店",approved:true,expectedActive:false})));
+  assert.deepEqual([...db.store],before);
+ }
+});
+test("approving secondary existing-email partner leaves original primary revenue access unchanged",async()=>{
+ const {db,api,req}=setup();
+ db.store.get("partnerRelations/partner").active=false;
+ db.store.get("partnerRelations/partner").countSharingApproved=false;
+ db.seed("users/p",{uid:"p",companyId:"hub",companyRole:"member",role:"member",
+  active:true,accessKind:"internal",canViewRevenue:true,canViewUnitPrice:true});
+ db.seed("companies/hub/members/p",{uid:"p",companyId:"hub",companyRole:"member",
+  active:true,accessKind:"internal",memberType:"direct"});
+ db.seed("partnerWorkspaceContexts/p",{uid:"p",kind:"partner_secondary",
+  primaryCompanyId:"hub",partnerCompanyId:"partner",hubCompanyId:"hub",
+  emailLower:"p@example.com",role:"owner",active:true});
+ db.store.get("companies/partner").masterUid="p";
+ const original=clone(db.store.get("users/p")),originalMember=clone(db.store.get("companies/hub/members/p"));
+ const result=await api.manage(req("h",{action:"hubSetSharingApproval",partnerCompanyId:"partner",
+  companyName:"協力店",approved:true,expectedActive:false}));
+ assert.equal(result.financialAccess,false);
+ assert.deepEqual(db.store.get("users/p"),original);
+ assert.deepEqual(db.store.get("companies/hub/members/p"),originalMember);
+ assert.equal((await api.view(req("p",{date:"2026-10-31",workspaceCompanyId:"partner"}))).role,"owner");
+});
+
+test("sharing approval defaults OFF until verified finance isolation; revocation still works",async()=>{
+ const {db,api,req}=setup({sharingApprovalEnabled:false});
+ db.store.get("partnerRelations/partner").active=false;
+ db.store.get("partnerRelations/partner").countSharingApproved=false;
+ const before=clone([...db.store]);
+ await assert.rejects(api.manage(req("h",{action:"hubSetSharingApproval",
+  partnerCompanyId:"partner",companyName:"協力店",approved:true,expectedActive:false})),
+  e=>e.code==="failed-precondition"&&e.details?.reason==="finance-boundary-not-approved");
+ assert.deepEqual([...db.store],before);
+ const {db:live,api:stop,req:request}=setup({sharingApprovalEnabled:false});
+ const result=await stop.manage(request("h",{action:"hubSetSharingApproval",
+  partnerCompanyId:"partner",companyName:"協力店",approved:false,expectedActive:true}));
+ assert.equal(result.active,false);
+ assert.equal(live.store.get("partnerRelations/partner").countSharingApproved,false);
+ assert.equal(live.store.get("products/money").unitPrice,98765);
+});
+
+test("approved invited partner can immediately enter and correct shared counts with finance unchanged",async()=>{
+ const {db,api,req,zero}=setup({sharingApprovalEnabled:true});
+ const rel=db.store.get("partnerRelations/partner");
+ rel.active=false;rel.countSharingApproved=false;
+ const financeBefore=clone(db.store.get("records/old"));
+ const productBefore=clone(db.store.get("products/money"));
+ const originalOwner=clone(db.store.get("users/p"));
+ // Initial acceptance alone cannot start count registration; Owner must approve.
+ await assert.rejects(api.view(req("p",{date:"2026-10-31"})),
+  e=>e.code==="permission-denied"&&e.details?.reason==="partner-approval-required");
+ await api.manage(req("h",{action:"hubSetSharingApproval",partnerCompanyId:"partner",
+  companyName:"協力店",approved:true,expectedActive:false}));
+ const team=(await api.manage(req("p",{action:"addTeam",name:"登録テスト班"}))).teamId;
+ const invitation=await api.manage(req("p",{action:"createInvite",
+  email:"l@example.com",role:"leader",teamId:team}));
+ const accepted=await api.accept(req("l",{token:invitation.token,name:"登録テストリーダー"}));
+ assert.equal(accepted.joined,true);
+ const saved=await api.submit(req("l",{date:"2026-10-31",staffId:"l",
+  counts:{...zero(),NURO:2,SBMNP:1},expectedVersion:0}));
+ assert.equal(saved.version,1);
+ const first=await api.view(req("l",{date:"2026-10-31"}));
+ assert.equal(first.records.find(r=>r.staffId==="l").totalCount,3);
+ const corrected=await api.submit(req("l",{date:"2026-10-31",staffId:"l",
+  counts:{...zero(),NURO:1,SBMNP:1},expectedVersion:1}));
+ assert.equal(corrected.version,2);
+ const latest=await api.view(req("l",{date:"2026-10-31"}));
+ assert.equal(latest.records.find(r=>r.staffId==="l").totalCount,2);
+ const hub=await api.view(req("h",{date:"2026-10-31"}));
+ assert.equal(hub.partners.find(r=>r.partnerCompanyId==="partner").totalCount,2);
+ assert.deepEqual(db.store.get("records/old"),financeBefore);
+ assert.deepEqual(db.store.get("products/money"),productBefore);
+ assert.deepEqual(db.store.get("users/p"),originalOwner);
+ for(const content of [JSON.stringify(hub),JSON.stringify(latest)]){
+  for(const needle of ["unitPrice","totalRevenue","revenuePerUnit","98765","808080"])
+   assert.equal(content.includes(needle),false,"finance response leak: "+needle);
+ }
 });

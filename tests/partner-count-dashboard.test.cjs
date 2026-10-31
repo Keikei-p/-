@@ -171,3 +171,70 @@ test("company names and detail are visible only after authentication and existin
  assert.match(original,/function canCurrentUserViewRevenue\(\)/);
  assert.match(original,/function canCurrentUserViewUnitPrice\(\)/);
 });
+
+test("preview is available only after sign-in and verified email, with no raw Firestore import",()=>{
+ assert.match(page,/if\(!u\)\{notice\(/);
+ assert.match(page,/if\(!u\.emailVerified\)\{notice\(/);
+ assert.match(page,/if\(previewMode\)\{/);
+ assert.match(page,/id="ownerPreviewBanner" hidden/);
+ assert.doesNotMatch(page,/firebase-firestore\.js|getFirestore\(/);
+});
+test("sample preview uses the real partner dashboard contract without finance or remote API calls",async()=>{
+ const scope=vm.createContext({
+  KEYs:undefined,KEYS,previewMode:true,$:()=>({value:"2026-11-01"}),
+  httpsCallable:()=>{throw Error("partner remote callable must never initialize");},
+  functions:{}
+ });
+ vm.runInContext(source("previewDay"),scope);
+ const callStart=page.indexOf("const call=name=>{");
+ const callEnd=page.indexOf("const get=call(",callStart);
+ assert(callStart>0&&callEnd>callStart);
+ vm.runInContext(page.slice(callStart,callEnd),scope);
+ const get=vm.runInContext('call("getPartnerWorkspace")',scope);
+ const response=(await get({date:"2026-11-01"})).data;
+ assert.equal(response.companyName,"サンプル協力店（架空データ）");
+ assert.equal(response.role,"owner");
+ assert.deepEqual([...response.categories],KEYS);
+ assert.equal(response.records.length,2);
+ assert.equal(response.staff.length,3);
+ assert.equal(response.records[0].totalCount,3);
+ assert.equal(response.records[0].privateTotalCount,1);
+ assert.doesNotMatch(JSON.stringify(response),/totalRevenue|unitPrice|pricingOptions|cashback|email|UID/i);
+ await assert.rejects(vm.runInContext('call("managePartnerWorkspace")',scope)({action:"addTeam"}),/preview_readonly/);
+ await assert.rejects(vm.runInContext('call("submitPartnerWorkspaceCounts")',scope)({counts:{}}),/preview_readonly/);
+});
+test("Owner preview has a return link and cannot write any counts or change production identity",()=>{
+ const index=original;
+ for(const id of ["quickPartnerPreviewButton","partnerOwnerPreviewLink"])
+  assert.ok(index.includes('id="'+id+'"'),id);
+ assert.match(index,/quickPartnerPreviewButton\.style\.display=isCurrentCompanyOwner\(\)/);
+ assert.match(index,/quickPartnerPreviewButton\.onclick=\(\)=>\{/);
+ assert.match(page,/id="ownerPreviewBanner" hidden/);
+ assert.match(page,/id="previewReturnLink"/);
+ assert.match(page,/const previewMode=previewQuery\.get\("preview"\)==="1"/);
+ assert.match(page,/if\(previewMode\)\{notice\("閲覧プレビューでは保存・招待を行いません。"/);
+ assert.match(page,/if\(!u\.emailVerified\)/);
+ assert.match(page,/if\(previewMode\)return async args=>/);
+ assert.match(page,/if\(previewMode\)return;/);
+ assert.match(page,/\$\("logout"\)\.onclick=\(\)=>previewMode\?window\.location\.assign\("\/"\)/);
+ assert.doesNotMatch(source("previewDay"),/setDoc|updateDoc|deleteDoc|recordsCollectionQuery|totalRevenue/);
+});
+
+test("partner uses exactly canonical sales header and summary-card classes without financial client code",()=>{
+ const header=/\<header\>\s*\<div class="header-inner"\>[\s\S]*?class="title"[^>]*id="workspaceTitle"[\s\S]*?\<div class="subtitle"\>Sales Management System\<\/div\>/;
+ assert.match(page,header);
+ assert.match(original,/\<div class="header-inner"\>[\s\S]*?\<div class="title"\>営業実績管理\<\/div\>[\s\S]*?Sales Management System/);
+ for(const cls of ["dashboard-app-grid","dashboard-app-button","dashboard-app-icon","dashboard-app-title",
+  "dashboard-summary","summary-card","summary-label","summary-value","ranking-row--champion"]){
+  assert.ok(original.includes(cls),"canonical class missing: "+cls);
+  assert.ok(page.includes(cls),"partner class missing: "+cls);
+ }
+ assert.match(page,/id="countKpis" class="count-kpis dashboard-summary"/);
+ assert.match(page,/box\.className="count-kpi summary-card"/);
+ assert.match(page,/lab\.className="summary-label";val\.className="summary-value"/);
+ assert.match(page,/id="ownerPreviewBanner" hidden/);
+ assert.match(page,/id="tabRecords"/);
+ assert.match(page,/id="tabView"/);
+ assert.match(page,/id="tabMissing"/);
+ assert.doesNotMatch(page,/firebase-firestore\.js|getFirestore\(|\brevenuePerUnit\b|\btotalRevenue\b|\bunitPrice\b/);
+});

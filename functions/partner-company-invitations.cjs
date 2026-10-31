@@ -19,7 +19,7 @@ const isNonPartner=x=>isInternal(x?.accessKind)&&
 function requireFactory({db,getAuth,Timestamp,FieldValue,HttpsError,enabled,now}){
  if(!db||typeof getAuth!=="function"||!Timestamp||!FieldValue||!HttpsError||
    typeof enabled!=="function"||typeof now!=="function")bad();
- const fail=(reason="permission-denied")=>{throw new HttpsError(reason,"協力店招待を確認できません。");};
+ const fail=(code="permission-denied",reason)=>{throw new HttpsError(code,"協力店招待を確認できません。",reason?{reason}:undefined);};
  const ensureEnabled=()=>{if(enabled()!==true)fail("unavailable");};
  async function identity(request){
   ensureEnabled();
@@ -70,6 +70,10 @@ function requireFactory({db,getAuth,Timestamp,FieldValue,HttpsError,enabled,now}
   return results.docs[0].ref;
  }
  const validInvitation=(data,email)=>{
+  if(data&&normalizeEmail(data.emailLower)!==email)fail("failed-precondition","invite-email-mismatch");
+  if(data&&data.status!=="pending")fail("failed-precondition","invite-not-pending");
+  if(data&&typeof data.expiresAt?.toMillis==="function"&&data.expiresAt.toMillis()<=now())
+   fail("failed-precondition","invite-expired");
   if(!data||data.kind!=="partner_company"||data.status!=="pending"||
      !ID.test(data.hubCompanyId)||!ID.test(data.invitedBy)||
      normalizeEmail(data.emailLower)!==email||

@@ -21,6 +21,7 @@ button:disabled{opacity:.52;cursor:default}.secondary{background:#e6eef9;color:#
 .notice.error{background:#fff0ed;color:#933}table{border-collapse:collapse;min-width:470px;width:100%;font-size:13px}
 td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 .scroll{overflow:auto}.muted{font-size:12px;color:#607186}
+#ownerPreviewBanner{background:#fff7dd;border:2px solid #edb851;color:#513915;padding:14px 16px;font-size:13px;font-weight:700}#ownerPreviewBanner a{margin-left:10px;color:#154a87}
 [hidden]{display:none!important}@media(max-width:420px){.grid{grid-template-columns:1fr}.row>*{flex-basis:100%}}
 
 .count-menu{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:14px 0}
@@ -48,16 +49,724 @@ td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 #companyOverviewStats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 #hubCompanyDetail{margin-top:13px}
 @media(max-width:420px){.count-menu{grid-template-columns:repeat(2,minmax(0,1fr))}.count-kpi strong{font-size:22px}}
-</style></head><body>
-<header><h1 id="workspaceTitle">NICO FACTORY｜協力店 実績管理</h1>
-<p>会社・班・メンバーごとの件数を管理。売上・単価は表示しません。</p></header>
+</style><!-- canonical-presentation:start -->
+<style>
+:root {
+  --bg: #f5f7fb;
+  --card: #ffffff;
+  --card-soft: #f8fafc;
+  --text: #111827;
+  --sub: #6b7280;
+  --border: #e5e7eb;
+  --primary: #2563eb;
+  --primary-dark: #1d4ed8;
+  --button-text: #ffffff;
+  --header: #1d4ed8;
+  --header-text: #ffffff;
+  --primary-text: #1d4ed8;
+  --primary-soft: #eff6ff;
+  --primary-soft-strong: #dbeafe;
+  --primary-border: #93c5fd;
+  --primary-border-strong: #60a5fa;
+  --primary-faint: #f8fbff;
+  --success: #16a34a;
+  --danger: #dc2626;
+  --warning: #d97706;
+  --shadow: 0 10px 30px rgba(0,0,0,.06);
+  --radius: 16px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    "Noto Sans JP",
+    sans-serif;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+/*
+  スマホではdate/month入力がブラウザ固有の最小幅を持つことがあるため、
+  カード幅を押し広げないよう共通で制限する。
+*/
+input[type="date"],
+input[type="month"],
+select {
+  min-width: 0;
+  max-width: 100%;
+}
+
+button {
+  cursor: pointer;
+}
+
+.app {
+  min-height: 100vh;
+}
+
+/* =====================================================
+   ヘッダー
+===================================================== */
+
+header {
+  background: var(--header);
+  color: var(--header-text);
+  padding:
+    calc(22px + env(safe-area-inset-top))
+    20px
+    22px;
+}
+
+.header-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.title {
+  font-size: 25px;
+  font-weight: 800;
+}
+
+.subtitle {
+  margin-top: 4px;
+  font-size: 12px;
+  opacity: .65;
+}
+
+/* =====================================================
+   認証
+===================================================== */
+
+#authScreen {
+  min-height: calc(100vh - 90px);
+}
+
+.auth-wrapper {
+  min-height: calc(100vh - 90px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 30px 20px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 430px;
+  background: #fff;
+  padding: 35px;
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+}
+
+.auth-logo {
+  text-align: center;
+  font-size: 48px;
+}
+
+.auth-title {
+  margin-top: 12px;
+  text-align: center;
+  font-size: 26px;
+  font-weight: 800;
+}
+
+.auth-description {
+  margin-top: 7px;
+  text-align: center;
+  color: var(--sub);
+  font-size: 14px;
+}
+
+.form-group {
+  margin-top: 18px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 7px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.form-group input:not([type="checkbox"]):not([type="radio"]),
+.form-group select {
+  width: 100%;
+  padding: 13px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  outline: none;
+}
+
+.form-group input:not([type="checkbox"]):not([type="radio"]):focus,
+.form-group select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(37,99,235,.1);
+}
+
+
+.welcome-card,
+.status-card,
+.account-card,
+.record-card,
+.dashboard-card,
+.management-card {
+  margin-top: 18px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px;
+  box-shadow: var(--shadow);
+}
+
+
+.product-input-group {
+  min-width: 0;
+  padding: 11px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.product-input-group-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 9px;
+}
+
+.product-input-name {
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.product-input-base {
+  flex: 0 0 auto;
+  color: var(--sub);
+  font-size: 10px;
+}
+
+.product-plan-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.product-plan-cell {
+  min-width: 0;
+  padding: 8px 6px;
+  border: 1px solid #e5e7eb;
+  border-radius: 9px;
+  background: #f8fafc;
+  text-align: center;
+}
+
+.product-plan-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #475569;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.product-plan-unit {
+  min-height: 14px;
+  margin-top: 2px;
+  color: var(--sub);
+  font-size: 9px;
+}
+
+.product-plan-input {
+  width: 100%;
+  min-width: 0;
+  margin-top: 5px;
+  padding: 7px 3px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: #fff;
+  text-align: center;
+  font-size: 16px;
+}
+
+.product-input-group-total {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid #eef2f7;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+
+.ranking-grid, .ranking-product-grid { display:grid; gap: 8px; min-width:0; }
+.ranking-grid[data-columns="1"],.ranking-product-grid[data-columns="1"] { grid-template-columns: minmax(0,1fr); }
+.ranking-grid[data-columns="2"],.ranking-product-grid[data-columns="2"] { grid-template-columns: repeat(2,minmax(0,1fr)); }
+.ranking-grid[data-columns="3"],.ranking-product-grid[data-columns="3"] { grid-template-columns: repeat(3,minmax(0,1fr)); }
+.ranking-grid .ranking-row {
+  min-width:0; border:1px solid var(--border); border-radius:12px;
+  background:var(--card); gap:10px;
+}
+.ranking-grid .ranking-left { min-width:0; flex:1; }
+.ranking-grid .ranking-left > div:last-child { min-width:0; }
+.ranking-grid .ranking-name { overflow-wrap:anywhere; font-size:13px; }
+.ranking-grid .ranking-sub { overflow-wrap:anywhere; }
+.ranking-grid .ranking-value { min-width:0; overflow-wrap:anywhere; }
+.ranking-grid .ranking-count { font-size:14px; font-variant-numeric:tabular-nums; }
+.ranking-grid[data-columns="2"] .ranking-row,
+.ranking-grid[data-columns="3"] .ranking-row {
+  display:flex; flex-direction:column; align-items:stretch;
+  padding:11px 9px; gap:7px;
+}
+.ranking-grid[data-columns="2"] .ranking-left,
+.ranking-grid[data-columns="3"] .ranking-left { width:100%; gap:7px; }
+.ranking-grid[data-columns="2"] .ranking-value,
+.ranking-grid[data-columns="3"] .ranking-value { text-align:left; }
+.ranking-grid[data-columns="3"] .ranking-left { align-items:flex-start; flex-direction:column; gap:5px; }
+.ranking-grid[data-columns="3"] .ranking-count { font-size:12px; }
+.ranking-grid[data-columns="3"] .ranking-revenue { font-size:10px; }
+.ranking-grid[data-columns="3"] .ranking-number { width:24px; height:24px; font-size:11px; }
+.ranking-grid[data-columns="3"] .ranking-name { font-size:11px; }
+
+.ranking-grid[data-columns] > .ranking-row--champion {
+  grid-column: 1 / -1;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  min-height: 268px;
+  gap: 14px;
+  padding: 22px 18px 23px;
+  border: 1px solid #e6bb68;
+  border-radius: 22px;
+  color: #fff8e5;
+  background:
+    radial-gradient(ellipse at 50% -35%, rgba(236,186,91,.29), transparent 62%),
+    radial-gradient(ellipse at 5% 105%, rgba(142,103,45,.24), transparent 54%),
+    radial-gradient(ellipse at 100% 85%, rgba(166,102,38,.19), transparent 52%),
+    linear-gradient(145deg, #252633 0%, #111521 46%, #26202a 100%);
+  box-shadow: 0 12px 28px rgba(20,22,35,.20), inset 0 1px 0 rgba(255,229,157,.3);
+  text-align: center;
+}
+.ranking-grid > .ranking-row--champion::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  width: min(85%, 270px);
+  aspect-ratio: 1;
+  left: 50%;
+  top: -172px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,215,124,.14);
+  box-shadow: 0 0 0 25px rgba(232,178,85,.035), 0 0 0 52px rgba(232,178,85,.025);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.ranking-grid > .ranking-row--champion::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 34%;
+  background: linear-gradient(110deg, transparent 0%, rgba(255,235,184,.04) 25%, rgba(255,243,198,.24) 50%, rgba(255,235,184,.04) 72%, transparent 100%);
+  transform: translateX(-300%) skewX(-17deg);
+  pointer-events: none;
+}
+.ranking-grid .ranking-row--champion > * {
+  position: relative;
+  z-index: 1;
+}
+.ranking-champion-banner {
+  display: flex;
+  position: relative;
+  align-items: center;
+  justify-content: center;
+  gap: 15px;
+  min-height: 82px;
+  color: #f7d88f;
+}
+.ranking-champion-crown {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 82px;
+  height: 82px;
+  flex: 0 0 82px;
+  border: 1px solid rgba(253,218,145,.79);
+  border-radius: 50%;
+  background: radial-gradient(circle at 32% 24%, rgba(255,237,172,.23), rgba(193,143,60,.23) 43%, rgba(76,53,35,.23) 84%);
+  box-shadow: inset 0 0 0 4px rgba(244,192,103,.075), 0 3px 18px rgba(185,127,39,.14);
+}
+.ranking-champion-crown::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: -10px;
+  border: 1px solid rgba(255,211,128,.33);
+  border-radius: 50%;
+  opacity: .6;
+  pointer-events: none;
+}
+.ranking-champion-crown::after {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border: 1px solid rgba(255,229,160,.17);
+  border-radius: 50%;
+  pointer-events: none;
+}
+.ranking-champion-crown svg {
+  display: block;
+  width: 64px;
+  height: 64px;
+}
+.ranking-champion-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  gap: 7px;
+  text-align: left;
+}
+.ranking-champion-eyebrow {
+  color: #e7bd75;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .24em;
+  line-height: 1.3;
+}
+.ranking-champion-title {
+  color: #ffe6ad;
+  font-size: clamp(17px, 5vw, 23px);
+  font-weight: 900;
+  letter-spacing: .06em;
+  line-height: 1.35;
+  text-shadow: 0 1px 10px rgba(255,200,97,.12);
+}
+.ranking-champion-spark {
+  position: absolute;
+  z-index: 2;
+  font-size: 20px;
+  line-height: 1;
+  color: #ffe4a2;
+  opacity: .76;
+  pointer-events: none;
+  text-shadow: 0 0 10px rgba(254,207,102,.58);
+}
+.ranking-champion-spark--a { left: 5%; top: 7%; font-size: 23px; }
+.ranking-champion-spark--b { right: 7%; top: 10%; font-size: 16px; color: #fff4cf; }
+.ranking-champion-spark--c { right: 2%; bottom: 2%; font-size: 12px; color: #eab66b; }
+.ranking-grid .ranking-row--champion .ranking-left {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  flex: initial;
+  min-width: 0;
+}
+.ranking-grid .ranking-row--champion .ranking-left > div:last-child { min-width: 0; }
+.ranking-grid .ranking-row--champion .ranking-number,
+.ranking-grid .ranking-row--champion .ranking-number.top1 {
+  width: auto;
+  min-width: 54px;
+  height: auto;
+  min-height: 26px;
+  padding: 3px 12px;
+  border: 1px solid rgba(235,187,102,.56);
+  border-radius: 999px;
+  color: #ffe4a6;
+  background: rgba(228,173,78,.16);
+  font-size: 12px;
+  line-height: 1.3;
+}
+.ranking-grid .ranking-row--champion .ranking-number::after { content: "位"; }
+.ranking-grid .ranking-row--champion .ranking-name {
+  color: #fff9ed;
+  font-size: clamp(23px, 6vw, 30px);
+  font-weight: 900;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  text-shadow: 0 2px 12px rgba(0,0,0,.2);
+}
+.ranking-grid .ranking-row--champion .ranking-sub {
+  color: #bcc6d7;
+  font-size: 12px;
+  margin-top: 5px;
+}
+.ranking-grid .ranking-row--champion .ranking-value {
+  width: 100%;
+  max-width: 410px;
+  min-width: 0;
+  padding: 11px 14px;
+  margin: 0 auto;
+  border: 1px solid rgba(244,209,142,.26);
+  border-radius: 13px;
+  background: rgba(255,255,255,.08);
+  text-align: center;
+}
+.ranking-grid .ranking-row--champion .ranking-count {
+  color: #ffe6aa;
+  font-size: clamp(23px, 6vw, 30px);
+  font-weight: 900;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+.ranking-grid .ranking-row--champion .ranking-revenue {
+  color: #d4d7e0;
+  margin-top: 3px;
+  font-size: 12px;
+}
+
+/* 表示中の1位だけ起動する。transform / opacityのみを1回動かす。 */
+.ranking-grid[data-columns] > .ranking-row--champion.ranking-champion--animate {
+  animation: ranking-champion-entrance 850ms cubic-bezier(.17,.8,.24,1) both;
+}
+.ranking-grid > .ranking-row--champion.ranking-champion--animate::after {
+  animation: ranking-champion-shine 1600ms ease-out 350ms 1 both;
+}
+.ranking-row--champion.ranking-champion--animate .ranking-champion-crown {
+  animation: ranking-champion-crown-rise 1000ms cubic-bezier(.16,1,.3,1) 1 both;
+}
+.ranking-row--champion.ranking-champion--animate .ranking-champion-crown::before {
+  animation: ranking-champion-halo 1350ms ease-out 180ms 1 both;
+}
+.ranking-row--champion.ranking-champion--animate .ranking-champion-spark {
+  animation: ranking-champion-twinkle 1450ms ease-out 250ms 1 both;
+}
+.ranking-row--champion.ranking-champion--animate .ranking-champion-spark--b { animation-delay: 520ms; }
+.ranking-row--champion.ranking-champion--animate .ranking-champion-spark--c { animation-delay: 750ms; }
+
+@keyframes ranking-champion-entrance {
+  0% { opacity: 0; transform: translateY(19px) scale(.985); }
+  65% { opacity: 1; transform: translateY(-3px) scale(1.005); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes ranking-champion-shine {
+  0% { opacity: 0; transform: translateX(-300%) skewX(-17deg); }
+  24% { opacity: 1; }
+  100% { opacity: 0; transform: translateX(980%) skewX(-17deg); }
+}
+@keyframes ranking-champion-crown-rise {
+  0% { opacity: 0; transform: translateY(10px) scale(.72) rotate(-9deg); }
+  62% { opacity: 1; transform: translateY(-5px) scale(1.1) rotate(3deg); }
+  100% { opacity: 1; transform: translateY(0) scale(1) rotate(0); }
+}
+@keyframes ranking-champion-halo {
+  0% { opacity: 0; transform: scale(.8); }
+  42% { opacity: .95; transform: scale(1.24); }
+  100% { opacity: .6; transform: scale(1); }
+}
+@keyframes ranking-champion-twinkle {
+  0% { opacity: 0; transform: translateY(9px) scale(.3) rotate(-50deg); }
+  55% { opacity: 1; transform: translateY(-5px) scale(1.4) rotate(12deg); }
+  100% { opacity: .76; transform: translateY(0) scale(1) rotate(0); }
+}
+@media (max-width: 460px) {
+  .ranking-grid[data-columns] > .ranking-row--champion {
+    min-height: 254px;
+    padding: 18px 12px 20px;
+    border-radius: 17px;
+  }
+  .ranking-champion-banner { gap: 11px; min-height: 72px; }
+  .ranking-champion-crown { width: 70px; height: 70px; flex-basis: 70px; }
+  .ranking-champion-crown svg { width: 56px; height: 56px; }
+  .ranking-champion-eyebrow { font-size: 8px; letter-spacing: .13em; }
+  .ranking-champion-spark--a { left: 1%; }
+  .ranking-champion-spark--b { right: 1%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ranking-grid[data-columns] > .ranking-row--champion.ranking-champion--animate,
+  .ranking-grid > .ranking-row--champion.ranking-champion--animate::after,
+  .ranking-row--champion.ranking-champion--animate .ranking-champion-crown,
+  .ranking-row--champion.ranking-champion--animate .ranking-champion-crown::before,
+  .ranking-row--champion.ranking-champion--animate .ranking-champion-spark {
+    animation: none;
+  }
+  .ranking-grid > .ranking-row--champion::after { display: none; }
+}
+
+
+.ranking-row,
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+  padding: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ranking-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ranking-number {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: #f3f4f6;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ranking-number.top1 {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.ranking-number.top2 {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.ranking-number.top3 {
+  background: #fed7aa;
+  color: #9a3412;
+}
+
+.ranking-name {
+  font-weight: 700;
+}
+
+.ranking-sub {
+  margin-top: 2px;
+  color: var(--sub);
+  font-size: 11px;
+}
+
+.ranking-value {
+  text-align: right;
+}
+
+.ranking-count {
+  font-weight: 800;
+}
+
+
+.dashboard-app-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.dashboard-app-button {
+  min-height: 104px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 14px 10px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: #fff;
+  color: var(--text);
+  text-align: center;
+  cursor: pointer;
+  box-shadow: 0 3px 10px rgba(15,23,42,.04);
+}
+
+.dashboard-app-button:hover {
+  background: #f8fafc;
+  border-color: var(--primary-border);
+}
+
+.dashboard-app-button[aria-pressed="true"] {
+  border-color: var(--primary-border-strong);
+  background: var(--primary-soft);
+  color: var(--primary-text);
+  box-shadow: var(--shadow);
+}
+
+.dashboard-app-icon {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.dashboard-app-title {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+
+main{max-width:1200px;margin:0 auto;padding:20px}header{background:var(--header);color:var(--header-text)}
+ body{background:var(--bg);color:var(--text)}section{border-radius:var(--radius);padding:22px;box-shadow:var(--shadow);border-color:var(--border)}
+ button{background:var(--primary)}.secondary{background:var(--primary-soft);color:var(--primary-text)}
+ .count-menu.dashboard-app-grid .dashboard-app-button{background:var(--card);color:var(--text);min-height:104px}
+ .count-menu.dashboard-app-grid .dashboard-app-button[aria-pressed="true"]{background:var(--primary-soft);color:var(--primary-text);border-color:var(--primary-border-strong)}
+ .count-kpi,.company-stat{background:var(--card-soft);border-color:var(--border)}
+ .count-kpi strong,.company-stat strong{color:var(--text)}
+ .ranking-grid{display:grid;gap:12px}.ranking-grid[data-columns="2"]{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .ranking-row{min-width:0;overflow-wrap:anywhere}.ranking-row--champion .ranking-left{justify-content:center}
+ .ranking-row--champion .ranking-value{text-align:center}
+ @media(max-width:600px){main{padding:12px}section{padding:16px}.dashboard-app-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.ranking-grid[data-columns="2"]{grid-template-columns:1fr}}
+</style>
+<!-- canonical-presentation:end -->
+<style id="partner-count-only-parity">
+/* The canonical shell, summary and menu classes are inherited from index.html. */
+.partner-count-only-app .partner-mode-label{margin:5px 0 0;font-size:12px;opacity:.84;font-weight:700}
+.partner-count-only-app #countKpis.dashboard-summary{grid-template-columns:repeat(2,minmax(0,1fr))}
+.partner-count-only-app #countKpis .summary-card{min-width:0}
+.partner-count-only-app #countKpis .summary-value{overflow-wrap:anywhere}
+@media(max-width:420px){.partner-count-only-app #countKpis.dashboard-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>
+</head><body>
+<div class="app partner-count-only-app">
+<header>
+ <div class="header-inner">
+  <div class="title" id="workspaceTitle">営業実績管理</div>
+  <div class="subtitle">Sales Management System</div>
+  <p class="partner-mode-label">協力店｜件数管理モード</p>
+ </div>
+</header>
+<div id="ownerPreviewBanner" hidden role="status">🧪 協力店の確認用プレビューです。会社・班・スタッフ・件数はすべて架空のサンプル。保存や招待送信はできません。 <a href="/" id="previewReturnLink">← 自社画面へ戻る</a></div>
 <main><div id="notice" class="notice" role="status" aria-live="polite">認証を確認しています。</div>
 <section id="loginBox"><h2>ログイン・新規登録</h2><form id="loginForm">
 <label for="email">メールアドレス</label><input id="email" type="email" autocomplete="email" required>
 <label for="pass">パスワード（6文字以上）</label><input id="pass" type="password" autocomplete="current-password" minlength="6" required>
 <div class="row"><button type="submit">ログイン</button><button id="signup" type="button" class="secondary">アカウント作成</button></div>
 </form><p class="muted">既存の協力店代表は招待承諾時のアカウントを利用します。リーダー・メンバーは受け取った招待リンクから参加します。</p>
-<button class="secondary" id="verify" type="button" hidden>確認メールを送信・再送</button></section>
+</section>
+<section id="sessionBox" hidden aria-label="アカウントと接続状態">
+<p id="signedAs"></p><div class="row">
+<button class="secondary" id="verify" type="button" hidden>確認メールを送信・再送</button>
+<button class="secondary" id="checkVerify" type="button" hidden>メール確認を完了したので再確認</button>
+<button class="secondary" id="retrySession" type="button">再接続</button>
+<button class="secondary" id="switchAccount" type="button">別のアカウントでログイン</button>
+</div></section>
 <section id="inviteAccept" hidden><h2>協力店のスタッフ招待を承諾</h2><p>メール認証済みの招待先本人だけが参加できます。</p>
 <label for="joinName">表示名</label><input id="joinName" placeholder="例：田中 太郎" maxlength="60">
 <button id="join" type="button">この会社に参加する</button></section>
@@ -69,17 +778,19 @@ td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 <div id="companyOverviewStats" aria-label="会社実績の概要"></div></div>
 <div class="row"><div><label for="date">実績日</label><input id="date" type="date"></div>
 <button id="refresh" type="button" class="secondary">最新情報を再取得</button></div>
-<div class="count-menu" aria-label="実績管理メニュー">
-<button type="button" id="tabDashboard" aria-pressed="true">📊 実績・ランキング</button>
-<button type="button" id="tabRecords" aria-pressed="false">✏️ 実績を入力</button>
-<button type="button" id="tabPeople" aria-pressed="false">班・スタッフ管理</button>
-<button type="button" id="tabView" aria-pressed="false">📋 日別の入力履歴</button>
-<button type="button" id="tabMissing" aria-pressed="false">⚠️ 報告漏れ</button></div></section>
+<div class="count-menu dashboard-app-grid" aria-label="実績管理メニュー">
+<button class="dashboard-app-button" type="button" id="tabDashboard" aria-pressed="true"><span class="dashboard-app-icon">📊</span><span class="dashboard-app-title">実績・ランキング</span></button>
+<button class="dashboard-app-button" type="button" id="tabRecords" aria-pressed="false"><span class="dashboard-app-icon">✏️</span><span class="dashboard-app-title">実績入力</span></button>
+<button class="dashboard-app-button" type="button" id="tabPeople" aria-pressed="false"><span class="dashboard-app-icon">👥</span><span class="dashboard-app-title">班・スタッフ管理</span></button>
+<button class="dashboard-app-button" type="button" id="tabView" aria-pressed="false"><span class="dashboard-app-icon">📋</span><span class="dashboard-app-title">登録履歴・訂正</span></button>
+<button class="dashboard-app-button" type="button" id="tabMissing" aria-pressed="false"><span class="dashboard-app-icon">⚠️</span><span class="dashboard-app-title">報告漏れ</span></button><button type="button" class="dashboard-app-button" id="tabInvitations" aria-pressed="false"><span class="dashboard-app-icon">🔗</span><span class="dashboard-app-title">招待リンク</span></button>
+<button type="button" class="dashboard-app-button" id="tabProducts" aria-pressed="false"><span class="dashboard-app-icon">📦</span><span class="dashboard-app-title">商材管理</span></button>
+<button type="button" class="dashboard-app-button" id="tabAccount" aria-pressed="false"><span class="dashboard-app-icon">⚙️</span><span class="dashboard-app-title">アカウント設定</span></button></div></section>
 <section id="dashboardBox" hidden><div class="count-heading"><h2>件数ダッシュボード</h2><button type="button" class="secondary" id="countCsv">件数CSV</button></div>
 <p class="muted">会社・班・個人・商材の実績を比較できます。売上と単価は一切扱いません。</p>
 <div class="period-menu" aria-label="集計期間"><button id="periodDay" type="button" aria-pressed="true">日別</button><button id="periodWeek" type="button" aria-pressed="false">週別</button><button id="periodMonth" type="button" aria-pressed="false">月別</button></div>
 <p id="countDashboardStatus" role="status" aria-live="polite"></p>
-<div id="countKpis" class="count-kpis"></div>
+<div id="countKpis" class="count-kpis dashboard-summary"></div>
 <div id="countGoalBox" class="count-section" hidden><h3>🎯 月間目標件数</h3>
 <p class="muted">この端末のログイン者専用の目標です。会社全員には同期しません。実績データは変更しません。</p>
 <div class="row"><div><label for="countGoal">月間目標</label><input id="countGoal" type="number" inputmode="numeric" min="1" max="999999" step="1" placeholder="例：100"></div>
@@ -110,23 +821,26 @@ td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 <section id="peopleBox" hidden><h2>班・スタッフ管理</h2>
 <div id="makeTeam"><h3>班を追加（代表者のみ）</h3><div class="row"><input id="teamName" placeholder="例：1班" maxlength="60">
 <button id="createTeam" type="button">班を追加</button></div></div>
-<div id="privateProductAdmin" hidden><h3>協力店独自商材の管理（代表者のみ）</h3>
+<h3>名前だけのスタッフを登録</h3>
+<div class="row"><input id="managedName" placeholder="スタッフ名" maxlength="60">
+<select id="managedTeam"></select><button id="addManaged" type="button">名前のみ登録</button></div>
+<h3>登録済みスタッフ</h3><div id="peopleList" class="scroll"></div>
+<div id="moveStaffBox" hidden><h3>スタッフの所属班を変更（代表者のみ）</h3><p class="muted">過去の登録件数は変更しません。過去実績の班集計は、元の保存時点の所属情報が確認できない場合は未分類で扱います。</p>
+<div class="row"><select id="moveStaffSelect" aria-label="移動するスタッフ"></select><select id="moveTeamSelect" aria-label="新しい所属班"></select><button type="button" id="moveStaffAction">所属班を変更</button></div></div></section>
+<section id="productsBox" hidden><h2>商材管理</h2><p class="muted">共通商材は実績入力から利用できます。</p><div id="privateProductAdmin" hidden><h3>協力店独自商材の管理（代表者のみ）</h3>
 <p class="muted">独自商材は協力店内のみ。無効化しても過去の件数履歴は残ります。</p>
 <div class="row"><input id="privateProductName" aria-label="独自商材名" maxlength="80" placeholder="例：独自サービス">
 <button id="addPrivateProduct" type="button">独自商材を追加</button></div>
 <div id="privateProductList" class="scroll"></div></div>
-<h3>名前だけのスタッフを登録</h3>
-<div class="row"><input id="managedName" placeholder="スタッフ名" maxlength="60">
-<select id="managedTeam"></select><button id="addManaged" type="button">名前のみ登録</button></div>
-<h3>リーダー・メンバーを招待</h3><p class="muted">本人のメール認証で参加。協力店代表のみリーダーを招待できます。</p>
+</section>
+<section id="invitationsBox" hidden><h2>招待リンク</h2><h3>リーダー・メンバーを招待</h3><p class="muted">本人のメール認証で参加。協力店代表のみリーダーを招待できます。</p>
 <div class="row"><input id="inviteEmail" type="email" placeholder="招待先メールアドレス">
 <select id="inviteTeam"></select><select id="inviteRole"><option value="member">メンバー</option><option value="leader">リーダー</option></select>
 <button id="makeInvite" type="button">招待リンクを作成</button></div>
 <div id="inviteOut" hidden><label for="inviteUrl">送信する招待リンク（30分）</label><div class="row">
 <input id="inviteUrl" readonly><button id="copy" type="button">コピー</button></div></div>
-<h3>登録済みスタッフ</h3><div id="peopleList" class="scroll"></div>
-<div id="moveStaffBox" hidden><h3>スタッフの所属班を変更（代表者のみ）</h3><p class="muted">過去の登録件数は変更しません。過去実績の班集計は、元の保存時点の所属情報が確認できない場合は未分類で扱います。</p>
-<div class="row"><select id="moveStaffSelect" aria-label="移動するスタッフ"></select><select id="moveTeamSelect" aria-label="新しい所属班"></select><button type="button" id="moveStaffAction">所属班を変更</button></div></div></section>
+</section>
+<section id="accountBox" hidden><h2>アカウント設定</h2><p id="accountInfo"></p><p>パスワード変更用のメールを登録アドレスへ送信します。</p><button type="button" id="resetPassword">パスワード変更メールを送信</button><p id="accountStatus" role="status"></p></section>
 <section id="listBox" hidden><h2>今日の実績一覧</h2><div id="recordsList" class="scroll"></div></section>
 <section id="missingBox" hidden><h2>⚠️ 報告漏れ</h2>
 <p class="muted">選択した「〜月〜日」の未報告だけを表示します。0件でも登録済みなら報告済みです。
@@ -139,6 +853,11 @@ td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
   <p class="muted">最初の協力店登録・承諾が終わると会社名が現れます。未承認の会社は招待できません。売上・単価は扱いません。</p>
   <label for="hubInviteCompanySelect">招待先の会社</label><select id="hubInviteCompanySelect"></select>
   <p id="hubInviteState" class="muted" role="status"></p>
+  <div id="hubApprovalControls" class="company-panel" hidden>
+   <p class="muted">会社招待を承諾した協力店の件数利用を、自社Ownerが明示的に承認・停止します。売上と単価の権限は一切付与しません。</p>
+   <button id="hubToggleApproval" type="button">協力店の件数利用を承認</button>
+   <p id="hubApprovalStatus" role="status" class="muted"></p>
+  </div>
   <div id="hubInviteControls" hidden>
    <label for="hubNewTeamName">班を追加（班がない場合）</label>
    <div class="row"><input id="hubNewTeamName" maxlength="60" placeholder="例：第1班">
@@ -170,9 +889,10 @@ td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 </div>
 <p class="muted">新しいスタッフ別入力の集計です。旧暫定会社一括報告と合算せず、重複を防ぎます。</p></section>
 </main>
+</div>
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
-import {getAuth,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,sendEmailVerification,setPersistence,browserSessionPersistence} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+import {getAuth,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,sendEmailVerification,sendPasswordResetEmail,reload,getIdToken,setPersistence,browserSessionPersistence} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js";
 const app=initializeApp({apiKey:"AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
 authDomain:"sales-management-cc116.firebaseapp.com",projectId:"sales-management-cc116",
@@ -183,7 +903,13 @@ const auth=getAuth(app),functions=getFunctions(app,"asia-northeast1");
 let workspaceCompanyId=new URL(location.href).searchParams.get("workspaceCompanyId")||"";
 if(workspaceCompanyId&&!/^[A-Za-z0-9_-]{1,128}$/.test(workspaceCompanyId))
  workspaceCompanyId="";
+const previewQuery=new URL(location.href).searchParams;
+const previewMode=previewQuery.get("preview")==="1"&&!workspaceCompanyId&&!previewQuery.has("invite");
 const call=name=>{
+ if(previewMode)return async args=>{
+  if(name==="getPartnerWorkspace")return {data:previewDay(args?.date)};
+  throw Error("preview_readonly_no_remote_write");
+ };
  const fn=httpsCallable(functions,name);
  return data=>fn({...data,...(workspaceCompanyId?{workspaceCompanyId}:{})});
 };
@@ -191,6 +917,32 @@ const get=call("getPartnerWorkspace"),manage=call("managePartnerWorkspace"),
  accept=call("acceptPartnerWorkspaceInvite"),save=call("submitPartnerWorkspaceCounts");
 const $=id=>document.getElementById(id);
 const KEYS=["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"];
+// Synthetic view data never comes from Firestore financial originals.
+function previewDay(date){
+ if(!previewMode)throw Error("preview_not_allowed");
+ const teams=[{id:"demo_team_1",name:"サンプル第1班",active:true},{id:"demo_team_2",name:"サンプル第2班",active:true}];
+ const staff=[
+  {id:"demo_staff_1",name:"サンプル リーダー",kind:"account",role:"leader",teamId:"demo_team_1",active:true},
+  {id:"demo_staff_2",name:"サンプル メンバー",kind:"managed",role:"member",teamId:"demo_team_1",active:true},
+  {id:"demo_staff_3",name:"サンプル 担当者",kind:"managed",role:"member",teamId:"demo_team_2",active:true}
+ ];
+ const a=Object.fromEntries(KEYS.map(k=>[k,0]));a.NURO=2;a.YMMNP=1;
+ const b=Object.fromEntries(KEYS.map(k=>[k,0]));b["SB光・AIR"]=1;
+ return {date:date||$("date").value,role:"owner",companyName:"サンプル協力店（架空データ）",categories:[...KEYS],teams,staff,
+ privateProducts:[{id:"demo_private",name:"サンプル独自商材",active:true}],
+ records:[
+  {staffId:"demo_staff_1",counts:a,privateCounts:{demo_private:1},privateTotalCount:1,totalCount:3,teamIdSnapshot:"demo_team_1",version:1},
+  {staffId:"demo_staff_2",counts:b,privateCounts:{},privateTotalCount:0,totalCount:1,teamIdSnapshot:"demo_team_1",version:1}
+ ]};
+}
+function disablePreviewWrites(){
+ if(!previewMode)return;
+ for(const id of ["save","createTeam","addManaged","moveStaffAction","makeInvite","addPrivateProduct",
+ "hubCreateTeam","hubMakeInvite","countGoalSave","countGoalClear","countCsv"]){
+  const b=$(id);if(b){b.disabled=true;b.title="確認用プレビューでは保存・送信できません";}
+ }
+ document.querySelectorAll("#privateProductList button").forEach(b=>b.disabled=true);
+}
 let inviteToken=new URL(location.href).searchParams.get("invite")||"";
 const dateParts=Object.fromEntries(new Intl.DateTimeFormat("en-US",
 {timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"})
@@ -200,12 +952,36 @@ let data=null,loading=false,nonce=0,activeWorkspaceTab="Dashboard";
 let countPeriod="day",countLoadId=0,countExportRows=null;
 const countDayCache=new Map(),countKeys=KEYS.slice();
 const notice=(s,bad=false)=>{$("notice").textContent=s;$("notice").className="notice"+(bad?" error":"")};
-const fail=e=>{const code=String(e?.code||"unknown").split("/").pop();
-notice("操作できませんでした（"+code+"）。認証・招待期限・入力権限を確認し、最新情報を読み直してください。",true)};
+function errorMessage(e){
+ const reasons={"partner-approval-required":"協力店への登録は完了していますが、件数共有は未承認または停止中です。招待元の管理者へ利用開始の確認を依頼してください。再登録は不要です。",
+ "invite-email-mismatch":"招待先とログイン中のメールが異なります。招待されたアカウントでログインしてください。",
+ "invite-expired":"招待の有効期限が切れました。招待元に新しいリンクの発行を依頼してください。",
+ "invite-not-pending":"この招待は承認済み、または無効です。承認済みの場合は参加後の画面リンクを使用してください。"};
+ if(reasons[e?.details?.reason])return reasons[e.details.reason];
+ const code=String(e?.code||"unknown").split("/").pop();
+ const messages={
+  "email-already-in-use":"このメールは登録済みです。新規作成ではなくログインしてください。元の所属は変更されません。",
+  "invalid-credential":"メールアドレスまたはパスワードを確認してください。",
+  "wrong-password":"メールアドレスまたはパスワードを確認してください。",
+  "invalid-email":"メールアドレスの形式を確認してください。",
+  "weak-password":"パスワードは6文字以上にしてください。",
+  "unauthenticated":"認証を更新できません。メール確認後に再接続するか、ログインし直してください。",
+  "permission-denied":"このアカウントには選択した会社の利用権限がありません。招待を受けたアカウントとリンクを確認してください。",
+  "failed-precondition":"招待の承認条件を満たしていません。招待先メール・有効期限・承認済みかを確認してください。",
+  "not-found":"招待または対象が見つかりません。招待元にリンクの再発行を依頼してください。",
+  "unavailable":"サービスに接続できません。時間をおいて再接続してください。",
+  "network-request-failed":"通信できません。インターネット接続を確認して再接続してください。",
+  "too-many-requests":"操作が集中しています。しばらく待ってから再試行してください。",
+  "invalid-argument":"入力内容または招待リンクを確認してください。",
+  "aborted":"別の操作で内容が更新されました。再接続して最新の内容を確認してください。"
+ };
+ return (messages[code]||"操作を完了できませんでした。再接続し、改善しない場合は管理者へお知らせください。")+"（"+code+"）";
+}
+const fail=e=>notice(errorMessage(e),true);
 const grid=$("countGrid");
-for(const k of KEYS){const box=document.createElement("div");box.className="item";
-const lab=document.createElement("label");lab.textContent=k;const inp=document.createElement("input");
-inp.type="number";inp.min="0";inp.max="9999";inp.step="1";inp.inputMode="numeric";inp.value="0";inp.dataset.key=k;
+for(const k of KEYS){const box=document.createElement("div");box.className="item product-input-group";
+const lab=document.createElement("label");lab.className="product-input-name";lab.textContent=k;const inp=document.createElement("input");
+inp.className="product-plan-input";inp.type="number";inp.min="0";inp.max="9999";inp.step="1";inp.inputMode="numeric";inp.value="0";inp.dataset.key=k;
 inp.addEventListener("input",updateTotal);box.append(lab,inp);grid.append(box)}
 function values(){const o={};for(const x of grid.querySelectorAll("input")){
  if(!/^(?:0|[1-9]\d{0,3})$/.test(x.value.trim()))throw Error("invalid count");
@@ -319,7 +1095,82 @@ function summarizeCountOnlyResponses(responses,teamList,keys){
   })).sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name,"ja"))})),
   hasUnverifiedTeams};
 }
+// canonical-champion:start
+function decorateRankingChampion(row, category) {
+  row.classList.add("ranking-row--champion");
+
+  const banner = document.createElement("div");
+  banner.className = "ranking-champion-banner";
+
+  const crown = document.createElement("span");
+  crown.className = "ranking-champion-crown";
+  crown.setAttribute("aria-hidden", "true");
+  // 絵文字は機種によって見え方が変わるので、軽量な固定SVG王冠を使用する。
+  // SVG内の図形は固定文字列のみで、外部画像やネットワーク読み込みはない。
+  crown.innerHTML = `
+    <svg viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+      <path d="M13 30 L31 43 L48 15 L65 43 L83 30 L75 70 H21 Z" fill="#D99B3B" stroke="#FFE9B4" stroke-width="3.2" stroke-linejoin="round"/>
+      <path d="M19 38 L31 49 L48 25 L65 49 L77 38 L72 65 H24 Z" fill="#FFD982" opacity=".86"/>
+      <path d="M23 65 H73 V75 Q48 80 23 75 Z" fill="#B9792E" stroke="#FFE6A1" stroke-width="2.8" stroke-linejoin="round"/>
+      <path d="M28 69 H68" stroke="#FFF3C9" stroke-width="2.8" stroke-linecap="round" opacity=".84"/>
+      <path d="M31 46 L39 38 L48 22 L57 38 L65 46" stroke="#FFF0BC" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity=".92"/>
+      <path d="M48 40 L54 48 L48 57 L42 48 Z" fill="#F8F4E9" stroke="#C99846" stroke-width="1.6"/>
+      <circle cx="14" cy="29" r="4.2" fill="#FFF4D1" stroke="#DEB367" stroke-width="2"/>
+      <circle cx="48" cy="14" r="4.8" fill="#FFF4D1" stroke="#DEB367" stroke-width="2"/>
+      <circle cx="82" cy="29" r="4.2" fill="#FFF4D1" stroke="#DEB367" stroke-width="2"/>
+      <circle cx="30" cy="68" r="2.4" fill="#FFE7A0"/>
+      <circle cx="66" cy="68" r="2.4" fill="#FFE7A0"/>
+    </svg>
+  `;
+
+  const copy = document.createElement("span");
+  copy.className = "ranking-champion-copy";
+
+  const eyebrow = document.createElement("span");
+  eyebrow.className = "ranking-champion-eyebrow";
+  eyebrow.textContent = category === "product"
+    ? "PRODUCT CHAMPION" : "MONTHLY CHAMPION";
+
+  const title = document.createElement("span");
+  title.className = "ranking-champion-title";
+  title.textContent = "今月のチャンピオン";
+
+  copy.appendChild(eyebrow);
+  copy.appendChild(title);
+  banner.appendChild(crown);
+  banner.appendChild(copy);
+
+  // 小さな光を3つだけ。描画時に追加し、登場時だけCSSで短く動かす。
+  ["a", "b", "c"].forEach(position => {
+    const sparkle = document.createElement("span");
+    sparkle.className = `ranking-champion-spark ranking-champion-spark--${position}`;
+    sparkle.setAttribute("aria-hidden", "true");
+    sparkle.textContent = "✦";
+    banner.appendChild(sparkle);
+  });
+
+  row.appendChild(banner);
+}
+// canonical-champion:end
 function countTable(headers,rows){
+ if(headers[0]==="順位"&&rows.length){
+  const list=document.createElement("div");list.className="ranking-grid";list.dataset.columns="2";
+  for(const [i,cells] of rows.entries()){
+   const row=document.createElement("div");row.className="ranking-row";
+   if(i===0){decorateRankingChampion(row,headers[1]==="商材"?"product":"person");
+    row.classList.add("ranking-champion--animate");
+    row.querySelector(".ranking-champion-title").textContent="選択期間のチャンピオン";
+    row.querySelector(".ranking-champion-eyebrow").textContent="COUNT CHAMPION";
+   }
+   const left=document.createElement("div");left.className="ranking-left";
+   const rank=document.createElement("span");rank.className="ranking-number top"+(i+1);rank.textContent=String(cells[0]);
+   const name=document.createElement("span");name.className="ranking-name";name.textContent=String(cells[1]);
+   const value=document.createElement("div");value.className="ranking-value";
+   const count=document.createElement("strong");count.className="ranking-count";count.textContent=String(cells[2]);
+   left.append(rank,name);value.append(count);row.append(left,value);list.append(row);
+  }
+  return list;
+ }
  const table=document.createElement("table"),head=document.createElement("tr");
  for(const h of headers){const th=document.createElement("th");th.textContent=h;head.append(th)}
  table.append(head);
@@ -381,9 +1232,12 @@ function renderCountOnlyDashboard(summary,days){
   ["実績のある担当者",summary.people.filter(p=>p.count>0).length+"人"],
   ["1日平均",Math.round(count/days.length*10)/10+"件"]];
  const kpis=$("countKpis");kpis.replaceChildren();
- for(const [name,value] of cards){const box=document.createElement("div");box.className="count-kpi";
-  const lab=document.createElement("small"),val=document.createElement("strong");
-  lab.textContent=name;val.textContent=value;box.append(lab,val);kpis.append(box)}
+ for(const [name,value] of cards){
+  const box=document.createElement("div");box.className="count-kpi summary-card";
+  const lab=document.createElement("div"),val=document.createElement("div");
+  lab.className="summary-label";val.className="summary-value";
+  lab.textContent=name;val.textContent=value;box.append(lab,val);kpis.append(box)
+ }
  $("countTeamHint").textContent=summary.hasUnverifiedTeams?
   "過去の班所属を推測しないため、保存時点の班情報をAPIから取得できない実績は「所属班未確認」として表示します。":
   "保存時の所属班で集計しています。";
@@ -440,7 +1294,7 @@ async function loadCountDashboard(){
   renderCountOnlyDashboard(summary,dates);
   $("countDashboardStatus").textContent=dates[0]+" 〜 "+dates.at(-1)+
     " の集計完了（"+dates.length+"日分・件数のみ）";
-  $("countCsv").disabled=false;
+  $("countCsv").disabled=previewMode;
  }catch(error){
   if(gen!==countLoadId)return;
   clearCountOnlyDashboard();
@@ -451,6 +1305,7 @@ async function loadCountDashboard(){
 $("countProductMode").onchange=renderProductRankMode;
 $("countTeamSelect").onchange=renderTeamCountDetail;
 $("countGoalSave").onclick=()=>{
+ if(previewMode)return;
  if(!countExportRows||countPeriod!=="month"||!auth.currentUser)return;
  const raw=$("countGoal").value.trim();
  if(!/^[1-9][0-9]{0,5}$/.test(raw)){
@@ -459,6 +1314,7 @@ $("countGoalSave").onclick=()=>{
  catch{$("countGoalStatus").textContent="端末に保存できませんでした。"}
 };
 $("countGoalClear").onclick=()=>{
+ if(previewMode)return;
  if(!countExportRows||countPeriod!=="month"||!auth.currentUser)return;
  try{localStorage.removeItem(countGoalKey());renderCountGoal()}
  catch{$("countGoalStatus").textContent="目標を解除できませんでした。"}
@@ -567,6 +1423,9 @@ function renderHubInvitePanel(){
  }
  if(registered.some(c=>c.partnerCompanyId===prior))companySelect.value=prior;
  const selected=registered.find(c=>c.partnerCompanyId===companySelect.value),ready=selected?.active===true;
+ $("hubApprovalControls").hidden=!selected;
+ $("hubToggleApproval").textContent=ready?"この協力店の件数利用を停止":"この協力店の件数利用を承認";
+ $("hubToggleApproval").disabled=!selected;
  $("hubInviteControls").hidden=!ready;
  $("hubInviteState").textContent=!selected?"登録済み協力店がありません。先に協力店会社を招待してください。":
   !ready?selected.name+"：承認待ちです。件数運用の承認後に招待できます。":
@@ -609,10 +1468,13 @@ function renderMissingReportLog(){
 function activeTab(name){
  if(data?.role==="hub"&&name!=="Missing")name="View";
  activeWorkspaceTab=name;
- for(const x of ["Dashboard","Records","People","View","Missing"])
+ for(const x of ["Dashboard","Records","People","View","Missing","Invitations","Products","Account"])
   $("tab"+x).setAttribute("aria-pressed",String(x===name));
  $("dashboardBox").hidden=name!=="Dashboard"||!data||data.role==="hub";
  if(name!=="Dashboard")countLoadId++;
+ $("productsBox").hidden=name!=="Products"||data?.role!=="owner";
+ $("invitationsBox").hidden=name!=="Invitations"||!["owner","leader"].includes(data?.role);
+ $("accountBox").hidden=name!=="Account"||!data;
  $("recordsBox").hidden=name!=="Records"||data?.role==="hub";
  $("peopleBox").hidden=name!=="People"||!data||data.role==="hub"||data.role==="member";
  $("listBox").hidden=name!=="View"||!data||data.role==="hub";
@@ -621,13 +1483,15 @@ function activeTab(name){
  if(name==="Missing"&&!$("missingBox").hidden)renderMissingReportLog();
  if(name==="Dashboard"&&!$("dashboardBox").hidden)loadCountDashboard();
 }
-for(const x of ["Dashboard","Records","People","View","Missing"])$("tab"+x).onclick=()=>activeTab(x);
+for(const x of ["Dashboard","Records","People","View","Missing","Invitations","Products","Account"])$("tab"+x).onclick=()=>activeTab(x);
 function cell(row,value){const td=document.createElement("td");td.textContent=String(value);row.append(td)}
 function draw(){
  const hub=data?.role==="hub";
  $("appBox").hidden=false;$("loginBox").hidden=true;$("inviteAccept").hidden=true;
  $("who").textContent=hub?"自社オーナー・協力店報告":(data.companyName||"協力店")+"｜"+(data.role||"");
  renderCompanyOverview();
+ $("tabProducts").hidden=data.role!=="owner";$("tabInvitations").hidden=hub||data.role==="member";
+ $("accountInfo").textContent="メール："+(auth.currentUser?.email||"");$("resetPassword").disabled=previewMode;
  $("tabDashboard").hidden=hub;$("tabRecords").hidden=hub;$("tabPeople").hidden=hub||data.role==="member";$("tabView").hidden=hub;
  if(hub){
   activeTab(activeWorkspaceTab==="Missing"?"Missing":"View");const table=document.createElement("table");
@@ -779,17 +1643,42 @@ $("hubTeamCountLoad").onclick=async()=>{
  }
 };
 $("hubCompanySelect").onchange=renderHubCompanyDetail;
-$("hubInviteCompanySelect").onchange=()=>{$("hubInviteOut").hidden=true;$("hubInviteUrl").value="";renderHubInvitePanel()};
+$("hubInviteCompanySelect").onchange=()=>{
+ $("hubInviteOut").hidden=true;$("hubInviteUrl").value="";
+ $("hubApprovalStatus").textContent="";
+ renderHubInvitePanel();
+};
+$("hubToggleApproval").onclick=()=>{
+ if(!data||data.role!=="hub"||loading)return;
+ const company=data.registeredCompanies?.find(c=>c.partnerCompanyId===$("hubInviteCompanySelect").value);
+ if(!company)return;
+ const approved=company.active!==true;
+ if(!window.confirm(company.name+" の件数利用を"+(approved?"承認":"停止")+
+  "しますか？ 売上・単価・既存実績は変更しません。"))return;
+ $("hubToggleApproval").disabled=true;
+ void action(async()=>{
+  const result=(await manage({action:"hubSetSharingApproval",
+   partnerCompanyId:company.partnerCompanyId,companyName:company.name,
+   approved,expectedActive:company.active===true})).data;
+  if(result?.active!==approved||result?.financialAccess!==false)
+   throw Error("approval_not_verified");
+  return company.name+" の件数利用を"+(approved?"承認":"停止")+"しました。";
+ });
+};
 $("hubInviteTeamSelect").onchange=()=>{$("hubInviteOut").hidden=true;$("hubInviteUrl").value=""};
 $("staffSelect").onchange=renderSelected;
-async function refresh(){if(!auth.currentUser||!auth.currentUser.emailVerified)return;
+async function refresh(){if(!auth.currentUser||!auth.currentUser.emailVerified||(!previewMode&&inviteToken))return;
  const current=++nonce;loading=true;$("save").disabled=true;try{
  const res=(await get({date:$("date").value})).data;if(current!==nonce)return;
  if(!res||!Array.isArray(res.categories)||res.categories.join("|")!==KEYS.join("|"))throw Error("schema");
- data=res;countDayCache.set(auth.currentUser.uid+"|"+res.date,{savedAt:Date.now(),response:res});draw();notice("最新の件数を読み込みました。");
- }catch(e){data=null;$("appBox").hidden=true;fail(e)}finally{if(current===nonce)loading=false}}
+ data=res;countDayCache.set(auth.currentUser.uid+"|"+res.date,{savedAt:Date.now(),response:res});draw();
+ if(previewMode){disablePreviewWrites();notice("確認用の架空データです。実績・招待・設定は保存されません。");}
+ else notice("最新の件数を読み込みました。");
+ }catch(e){if(current!==nonce)return;hideWorkspace();fail(e)}finally{if(current===nonce)loading=false}}
 $("date").onchange=refresh;$("refresh").onclick=()=>{countDayCache.clear();refresh()};
-async function action(task){if(loading)return;loading=true;try{
+async function action(task){
+ if(previewMode){notice("閲覧プレビューでは保存・招待を行いません。");return;}
+ if(loading)return;loading=true;try{
  countDayCache.clear();
  const message=await task();await refresh();
  // A successful re-read must not overwrite the actual save confirmation.
@@ -853,6 +1742,20 @@ $("signup").onclick=async()=>{try{
  notice("確認メールを送信しました。確認完了後、画面を再読込してください。");
  }catch(e){fail(e)}};
 $("verify").onclick=async()=>{try{await sendEmailVerification(auth.currentUser);notice("確認メールを再送しました。")}catch(e){fail(e)}};
+async function reconnect(){
+ const user=auth.currentUser;if(!user)return;
+ try{await reload(user);if(auth.currentUser!==user)return;
+  await getIdToken(user,true);if(auth.currentUser!==user)return;
+  await handleAuthState(user);
+ }catch(e){fail(e)}
+}
+$("resetPassword").onclick=async()=>{
+ if(previewMode||!auth.currentUser?.email)return;
+ $("resetPassword").disabled=true;
+ try{await sendPasswordResetEmail(auth,auth.currentUser.email);$("accountStatus").textContent="変更用メールを送信しました。";}catch(e){$("accountStatus").textContent=errorMessage(e)}finally{$("resetPassword").disabled=previewMode}
+};
+$("checkVerify").onclick=reconnect;$("retrySession").onclick=reconnect;
+$("switchAccount").onclick=()=>previewMode?window.location.assign("/"):signOut(auth).catch(fail);
 $("join").onclick=async()=>{if(!inviteToken)return;await action(async()=>{
  const joined=(await accept({token:inviteToken,name:$("joinName").value})).data;
  if(joined?.secondaryMembership&&joined.partnerCompanyId)
@@ -862,15 +1765,32 @@ $("join").onclick=async()=>{if(!inviteToken)return;await action(async()=>{
  history.replaceState(null,"",next.pathname+next.search);
  inviteToken="";$("inviteAccept").hidden=true;return "協力店へ参加しました。";
 })};
-$("logout").onclick=()=>signOut(auth);
-onAuthStateChanged(auth,u=>{
+$("logout").onclick=()=>previewMode?window.location.assign("/"):signOut(auth);
+function hideWorkspace(){
+ data=null;++countLoadId;countDayCache.clear();clearCountOnlyDashboard();
+ for(const id of ["appBox","dashboardBox","recordsBox","peopleBox","listBox","missingBox","hubBox","productsBox","invitationsBox","accountBox","companyOverview"]){const el=$(id);if(el)el.hidden=true;}
+}
+async function handleAuthState(u){
+ hideWorkspace();loading=false;
  ++nonce;++countLoadId;data=null;countDayCache.clear();clearCountOnlyDashboard();$("companyOverview").hidden=true;$("workspaceTitle").textContent="NICO FACTORY｜協力店 実績管理";$("appBox").hidden=true;$("loginBox").hidden=!!u;
  $("inviteAccept").hidden=true;$("verify").hidden=!u||u.emailVerified;
+ $("sessionBox").hidden=!u;$("checkVerify").hidden=!u||u.emailVerified;
+ $("signedAs").textContent=u?"ログイン中："+(u.email||""):"";
+ $("signup").hidden=previewMode;
  $("inviteUrl").value="";$("inviteOut").hidden=true;
  $("hubInviteUrl").value="";$("hubInviteOut").hidden=true;
  if(!u){notice("招待されたアカウント、または自社オーナーでログインしてください。");return}
  if(!u.emailVerified){notice("メール確認を済ませて、画面を再読込してください。",true);return}
+ if(previewMode){
+  // Only a signed-in, email-verified user sees fictitious sample data.
+  // No Firestore financial (or even member) collection is queried here.
+  $("ownerPreviewBanner").hidden=false;
+  $("logout").textContent="自社画面へ戻る";
+  void refresh();
+  return;
+ }
  if(inviteToken){$("inviteAccept").hidden=false;notice("招待リンクを確認しました。表示名を入力して参加してください。");return}
- refresh();
-});
+ try{await getIdToken(u,true);if(auth.currentUser!==u)return;await refresh();}catch(e){fail(e)}
+}
+onAuthStateChanged(auth,handleAuthState);
 </script></body></html>
