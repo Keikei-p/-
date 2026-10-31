@@ -89,3 +89,22 @@ test("only company owner may plan; unknown role and duplicate UID rejected",()=>
  assert.throws(()=>buildMonthlyDraft({actor:owner,companyId:"hub",month:"2026-13",
   overrides:[]}),/MONTH/);
 });
+
+test("late month activation never backdates an already operating team's historical sales",()=>{
+ const plan=confirmMonthlyDraft(draft);
+ for(const late of ["2026-11-02","2026-11-15","2026-11-30","2026-12-01","2027-01-01"]){
+   assert.throws(()=>prepareMonthActivation({plan,jstDate:late,
+      people,validTeamIds:["one","two"]}),
+      /LATE_ACTIVATION_REQUIRES_MANUAL_REVIEW/,late);
+ }
+ assert.equal(JSON.stringify(people),src,
+   "late activation must not change records, user membership or teamHistory");
+});
+test("conflicting future dated move is never overwritten by next month activation",()=>{
+ const plan=confirmMonthlyDraft(draft),changed=structuredClone(people);
+ changed[0].teamHistory.push({effectiveDate:"2026-12-01",fromTeamId:"one",toTeamId:"two"});
+ const before=JSON.stringify(changed);
+ assert.throws(()=>prepareMonthActivation({plan,jstDate:"2026-11-01",
+    people:changed,validTeamIds:["one","two"]}),/FUTURE_HISTORY_CONFLICT/);
+ assert.equal(JSON.stringify(changed),before);
+});
