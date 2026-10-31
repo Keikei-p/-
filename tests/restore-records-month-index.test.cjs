@@ -48,3 +48,14 @@ test("index discovery follows pagination rather than incorrectly creating a dupl
  },log:()=>{}});
  assert.equal(res,"READY");assert(calls.length===2&&calls.every(x=>x.method==="GET"));
 });
+
+// The GitHub runner installs firebase-admin under functions/node_modules only.
+// The executable must resolve from that package directory, not repo/scripts.
+test("runner resolves Firebase Admin from functions package directory",()=>{
+ const {readFileSync}=require("node:fs");
+ const {resolve}=require("node:path");
+ const code=readFileSync(resolve(__dirname,"../scripts/restore-records-month-index.cjs"),"utf8");
+ assert.match(code,/createRequire\(resolve\(__dirname,"\.\.\/functions\/package\.json"\)\)/);
+ assert.match(code,/fromFunctions\("firebase-admin\/app"\)/);
+ assert.doesNotMatch(code,/=require\("firebase-admin\/app"\)/);
+});
