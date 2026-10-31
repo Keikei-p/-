@@ -5,16 +5,20 @@ on:
     paths:
       - "cloudflare-finance/client/internal-count-day.mjs"
       - "cloudflare-finance/client/internal-count-month.mjs"
+      - "cloudflare-finance/client/internal-count-dashboard.mjs"
       - "cloudflare-finance/tests/internal-count-day.test.mjs"
       - "cloudflare-finance/tests/internal-count-month.test.mjs"
+      - "cloudflare-finance/tests/internal-count-dashboard.test.mjs"
       - ".github/workflows/nico-internal-count-month-offline.yml"
   push:
     branches: [main]
     paths:
       - "cloudflare-finance/client/internal-count-day.mjs"
       - "cloudflare-finance/client/internal-count-month.mjs"
+      - "cloudflare-finance/client/internal-count-dashboard.mjs"
       - "cloudflare-finance/tests/internal-count-day.test.mjs"
       - "cloudflare-finance/tests/internal-count-month.test.mjs"
+      - "cloudflare-finance/tests/internal-count-dashboard.test.mjs"
 permissions:
   contents: read
 jobs:
@@ -33,7 +37,8 @@ jobs:
           set -euo pipefail
           node --check cloudflare-finance/client/internal-count-day.mjs
           node --check cloudflare-finance/client/internal-count-month.mjs
-          node --test cloudflare-finance/tests/internal-count-day.test.mjs cloudflare-finance/tests/internal-count-month.test.mjs
+          node --check cloudflare-finance/client/internal-count-dashboard.mjs
+          node --test cloudflare-finance/tests/internal-count-day.test.mjs cloudflare-finance/tests/internal-count-month.test.mjs cloudflare-finance/tests/internal-count-dashboard.test.mjs
       - name: Keep original owner revenue and production cutover safety
         run: |
           set -euo pipefail
