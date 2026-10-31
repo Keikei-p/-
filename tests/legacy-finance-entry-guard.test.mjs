@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
+import {runInNewContext} from "node:vm";
 import {classifyLegacySalesEntrypoint} from "../legacy-finance-entry-guard.mjs";
 const original=()=>{
  const uid="internalUser",companyId="internalCompany";
@@ -93,4 +94,39 @@ test("legacy UI requests three fresh server Firestore docs before any price cata
  const prod=readFileSync(new URL("../firestore.rules",import.meta.url),"utf8");
  assert(!prod.includes("function isInternalFinanceReader(companyId)"),
   "candidate finance Rules must not be silently substituted into production");
+});
+
+test("real legacy login accepts member documents without companyId but rejects partner and mismatched members",async()=>{
+ const html=readFileSync(new URL("../index.html",import.meta.url),"utf8");
+ const a=html.indexOf("async function checkLegacyEntryAgainstServer(user)");
+ const b=html.indexOf("function showLegacyFinanceEntryBlocked",a);
+ assert(a>=0&&b>a);
+ const fn=html.slice(a,b);
+ const uid="internalUser",companyId="internalCompany";
+ const user={uid,companyId,active:true,role:"leader",companyRole:"owner",teamId:null};
+ const baseMember={uid,active:true,role:"leader",companyRole:"owner",teamId:null};
+ const company={active:true,ownerUid:uid,companyKind:"internal"};
+ const run=async(memberInfo,companyInfo=company)=>{
+  const files={
+   ["users/"+uid]:user,
+   ["companies/"+companyId+"/members/"+uid]:memberInfo,
+   ["companies/"+companyId]:companyInfo
+  };
+  const scope={
+   db:{},auth:{currentUser:{uid}},user:{uid,emailVerified:true},
+   doc:(_,...parts)=>parts.join("/"),
+   getDocFromServer:async key=>({exists:()=>files[key]!=null,data:()=>files[key]}),
+   classifyLegacySalesEntrypoint
+  };
+  return await runInNewContext(fn+"\ncheckLegacyEntryAgainstServer(user);",scope,{timeout:2000});
+ };
+ assert.equal((await run({...baseMember})).mode,"internal",
+  "legacy users must log in even when member document has no redundant companyId");
+ assert.equal((await run({...baseMember,companyId})).mode,"internal");
+ assert.equal((await run({...baseMember,companyId:"anotherCompany"})).mode,"blocked",
+  "an explicit mismatched companyId must never be normalized away");
+ assert.equal((await run({...baseMember,accessKind:"partner"})).mode,"partner");
+ assert.equal((await run({...baseMember},{...company,companyKind:"partner"})).mode,"partner");
+ assert.equal((await run({...baseMember,uid:"another"})).mode,"blocked");
+ assert.equal((await run(null)).mode,"blocked");
 });

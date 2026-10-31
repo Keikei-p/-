@@ -11704,8 +11704,15 @@ async function checkLegacyEntryAgainstServer(user) {
   // Ignore a profile that raced with a sign-out or a different login.
   if (auth.currentUser?.uid!==user.uid)
     return {mode:"blocked",reason:"session_changed"};
+  // Legacy member documents are addressed by companies/{companyId}/members/{uid}
+  // and never stored a companyId field. The server-fetched document path is
+  // authoritative; preserve an explicitly different field so it is rejected.
+  const trustedMember=freshMember.data();
+  const memberForCheck=trustedMember.companyId==null
+    ? {...trustedMember,companyId:profile.companyId}
+    : trustedMember;
   const result=classifyLegacySalesEntrypoint({
-    uid:user.uid,user:profile,member:freshMember.data(),
+    uid:user.uid,user:profile,member:memberForCheck,
     company:freshCompany.data(),authEmailVerified:user.emailVerified
   });
   return {...result,profile};
