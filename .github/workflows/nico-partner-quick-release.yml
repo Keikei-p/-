@@ -154,6 +154,8 @@ jobs:
             --project "$FIREBASE_PROJECT_ID" --non-interactive
       - name: Enable isolated count-only functions only if not already created
         if: ${{ steps.existing.outputs.already_deployed != 'true' }}
+        id: deploy_quick
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
@@ -161,6 +163,11 @@ jobs:
           # never be rebuilt merely because Artifact Registry policy failed.
           firebase deploy --non-interactive --project "$FIREBASE_PROJECT_ID" \
             --config firebase.partner-quick.json --only functions:partner-quick
+      # Firebase may report exit 1 after successful 2nd Gen creates solely
+      # because Artifact Registry cleanup IAM is missing. Never treat the CLI
+      # error as success by itself: verify both new Functions and all original
+      # Functions below, followed by unauthenticated 401/403 checks and exact
+      # Hosting manifest parity. A real create error must still stop the job.
       - name: Verify new pair and existing 4 Functions remain deployed
         shell: bash
         run: |
