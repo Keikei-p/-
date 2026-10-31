@@ -64,12 +64,12 @@ jobs:
           test -d "$RUNNER_TEMP/nico-finance-disabled-build"
   deploy-disabled:
     needs: validate-off
-    if: \${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && needs.validate-off.result == 'success' && inputs.release_confirmation == 'BOOTSTRAP_FINANCE_GATEWAY_DISABLED_ONLY' && inputs.reviewed_main_sha == github.sha }}
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && needs.validate-off.result == 'success' && inputs.release_confirmation == 'BOOTSTRAP_FINANCE_GATEWAY_DISABLED_ONLY' && inputs.reviewed_main_sha == github.sha }}
     runs-on: ubuntu-latest
     timeout-minutes: 16
     env:
-      CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       WRANGLER_SEND_METRICS: "false"
     steps:
       - uses: actions/checkout@v4
@@ -82,7 +82,7 @@ jobs:
           set -euo pipefail
           test -n "$CLOUDFLARE_API_TOKEN" || { echo STOP_CLOUDFLARE_TOKEN_MISSING; exit 1; }
           test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo STOP_CLOUDFLARE_ACCOUNT_MISSING; exit 1; }
-          test "$(git rev-parse HEAD)" = "\${{ github.sha }}"
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
           test "$(git hash-object cloudflare-finance/src/index.js)" = "5f05b404d724b796efd43d8acb68035d78e1f76d"
           test "$(git hash-object cloudflare-finance/wrangler.toml)" = "7909dffc664928ce9d751b34c44f9bdd5eab45c2"
           echo "PASS only disabled gateway, no Firebase Service Account supplied"
