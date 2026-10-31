@@ -41,17 +41,17 @@ jobs:
           github.ref == 'refs/heads/main' &&
           startsWith(github.event.head_commit.message,
             'release: reviewed partner quick activation once') &&
-          needs.validate.result == 'success' }
+          needs.validate.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 55
     permissions:
       contents: read
       actions: write
     env:
-      GH_TOKEN: ${{ github.token }
+      GH_TOKEN: ${{ github.token }}
       REPO: Keikei-p/-
       EXPECTED_PARENT_SHA: b45daca1c98991d470074e1a87e01a3a7787abe4
-      EXPECTED_SHA: ${{ github.sha }
+      EXPECTED_SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
