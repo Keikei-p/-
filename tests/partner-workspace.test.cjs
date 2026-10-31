@@ -286,3 +286,108 @@ test("prototype-shaping private product keys cannot alter totals or saved record
  assert.equal(hub.partners[0].totalCount,1);
  assert.equal(JSON.stringify(hub).includes("privateTotalCount"),false);
 });
+
+test("correcting a prior day's counts after transfer preserves saved team/name, counts and money-free hub",async()=>{
+ const {db,api,req,zero}=setup();
+ const first=(await api.manage(req("p",{action:"addTeam",name:"旧班"}))).teamId;
+ const second=(await api.manage(req("p",{action:"addTeam",name:"新班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"元の担当",teamId:first}))).staffId;
+ const date="2026-10-30",key="companies/partner/partnerWorkEntries/"+date+"__"+staff;
+ await api.submit(req("p",{date,staffId:staff,counts:{...zero(),NURO:2},expectedVersion:0}));
+ const initial=clone(db.store.get(key));
+ assert.equal(initial.teamIdSnapshot,first);
+ await api.manage(req("p",{action:"moveStaff",staffId:staff,teamId:second}));
+ const person=db.store.get("companies/partner/partnerWorkStaff/"+staff);
+ assert.equal(person.teamId,second);
+ assert.deepEqual(person.teamHistory,[{effectiveDate:"2026-10-31",fromTeamId:first,toTeamId:second}]);
+ // Name changes must never rewrite immutable original name attribution.
+ db.seed("companies/partner/partnerWorkStaff/"+staff,{...person,name:"現在の担当"});
+ const fixed=await api.submit(req("p",{date,staffId:staff,
+    counts:{...zero(),NURO:3},expectedVersion:1}));
+ assert.equal(fixed.version,2);
+ const saved=db.store.get(key);
+ assert.equal(saved.teamIdSnapshot,first);
+ assert.equal(saved.staffNameSnapshot,"元の担当");
+ assert.equal(saved.totalCount,3);
+ assert.deepEqual(saved.counts,{...zero(),NURO:3});
+ const read=await api.view(req("p",{date}));
+ assert.equal(read.records[0].teamIdSnapshot,first);
+ const hub=await api.view(req("h",{date}));
+ assert.equal(hub.partners[0].totalCount,3);
+ assert.equal(JSON.stringify(hub).includes("revenue"),false);
+ assert.equal(db.store.get("records/old").totalRevenue,808080);
+});
+
+test("partner account transfer appends BOTH user and member history atomically",async()=>{
+ const {db,api,req}=setup();
+ const one=(await api.manage(req("p",{action:"addTeam",name:"第一班"}))).teamId;
+ const two=(await api.manage(req("p",{action:"addTeam",name:"第二班"}))).teamId;
+ const invite=await api.manage(req("p",{action:"createInvite",
+    email:"l@example.com",teamId:one,role:"leader"}));
+ await api.accept(req("l",{token:invite.token,name:"リーダー一"}));
+ const initial=[{effectiveDate:"2026-09-01",fromTeamId:null,toTeamId:one}];
+ for(const path of ["users/l","companies/partner/members/l"]){
+    db.seed(path,{...db.store.get(path),teamHistory:clone(initial)});
+ }
+ await api.manage(req("p",{action:"moveStaff",staffId:"l",teamId:two}));
+ const expected=[...initial,{effectiveDate:"2026-10-31",fromTeamId:one,toTeamId:two}];
+ for(const path of ["users/l","companies/partner/members/l",
+    "companies/partner/partnerWorkStaff/l"]){
+    const data=db.store.get(path);
+    assert.equal(data.teamId,two);
+    assert.deepEqual(data.teamHistory,path.includes("partnerWorkStaff")?expected.slice(-1):expected);
+    assert.equal(data.canViewRevenue,false);
+    assert.equal(data.canViewUnitPrice,false);
+ }
+ const saved=clone(db.store.get("users/l"));
+ // Calling the same transfer again must NOT append a second history record.
+ await api.manage(req("p",{action:"moveStaff",staffId:"l",teamId:two}));
+ assert.deepEqual(db.store.get("users/l"),saved);
+});
+
+test("same-day second transfer, invalid history, and 100-item history cap abort all writes",async()=>{
+ const {db,api,req}=setup();
+ const one=(await api.manage(req("p",{action:"addTeam",name:"1班"}))).teamId;
+ const two=(await api.manage(req("p",{action:"addTeam",name:"2班"}))).teamId;
+ const three=(await api.manage(req("p",{action:"addTeam",name:"3班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"スタッフ",teamId:one}))).staffId;
+ const key="companies/partner/partnerWorkStaff/"+staff;
+ await api.manage(req("p",{action:"moveStaff",staffId:staff,teamId:two}));
+ const moved=clone(db.store.get(key));
+ await assert.rejects(api.manage(req("p",{action:"moveStaff",staffId:staff,teamId:three})),
+    e=>e.code==="failed-precondition");
+ assert.deepEqual(db.store.get(key),moved);
+ db.seed(key,{...moved,teamHistory:"invalid"});
+ await assert.rejects(api.manage(req("p",{action:"moveStaff",staffId:staff,teamId:three})),
+    e=>e.code==="failed-precondition");
+ assert.equal(db.store.get(key).teamId,two);
+ const tooMany=Array.from({length:100},(_,i)=>({
+    effectiveDate:"2026-09-"+String(i%28+1).padStart(2,"0"),
+    fromTeamId:one,toTeamId:two
+ }));
+ db.seed(key,{...moved,teamHistory:tooMany});
+ await assert.rejects(api.manage(req("p",{action:"moveStaff",staffId:staff,teamId:three})),
+    e=>e.code==="failed-precondition");
+ assert.equal(db.store.get(key).teamId,two);
+});
+
+test("editing legacy rows without original attribution does not invent today's team",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-30";
+ const one=(await api.manage(req("p",{action:"addTeam",name:"A班"}))).teamId;
+ const two=(await api.manage(req("p",{action:"addTeam",name:"B班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"担当",teamId:one}))).staffId;
+ await api.submit(req("p",{date,staffId:staff,counts:{...zero(),NURO:1},expectedVersion:0}));
+ const key="companies/partner/partnerWorkEntries/"+date+"__"+staff;
+ const record=clone(db.store.get(key));
+ delete record.teamIdSnapshot;delete record.staffNameSnapshot;
+ db.seed(key,record);
+ await api.manage(req("p",{action:"moveStaff",staffId:staff,teamId:two}));
+ await api.submit(req("p",{date,staffId:staff,
+   counts:{...zero(),NURO:2},expectedVersion:1}));
+ const saved=db.store.get(key);
+ assert.equal(saved.teamIdSnapshot,null);
+ assert.equal(saved.staffNameSnapshot,null);
+ assert.equal(saved.totalCount,2);
+ const view=await api.view(req("p",{date}));
+ assert.equal(view.records[0].teamIdSnapshot,null);
+});
