@@ -697,3 +697,25 @@ test("invalid old-company identities and duplicate context cannot accept a partn
   assert.deepEqual([...db.store],before);
  }
 });
+
+test("secondary staff team move rejects revoked original membership type without mutating any history",async()=>{
+ for(const marker of ["partner","cooperator"]){
+  const {db,api,req}=setup();
+  const original={uid:"l",companyId:"hub",email:"l@example.com",name:"既存ユーザー",
+   companyRole:"member",role:"member",teamId:"original",
+   active:true,accessKind:"internal",memberType:"direct",
+   canViewRevenue:true,canViewUnitPrice:true};
+  db.seed("users/l",original);
+  db.seed("companies/hub/members/l",{...original});
+  const beforeTeam=(await api.manage(req("p",{action:"addTeam",name:"旧班"}))).teamId;
+  const afterTeam=(await api.manage(req("p",{action:"addTeam",name:"新班"}))).teamId;
+  const invite=await api.manage(req("p",{action:"createInvite",
+   email:"l@example.com",role:"leader",teamId:beforeTeam}));
+  await api.accept(req("l",{token:invite.token,name:"既存リーダー"}));
+  db.store.get("companies/hub/members/l").memberType=marker;
+  const baseline=clone([...db.store]);
+  await assert.rejects(api.manage(req("p",{action:"moveStaff",staffId:"l",teamId:afterTeam})),
+   e=>e.code==="permission-denied");
+  assert.deepEqual([...db.store],baseline,"denied move must not change original or partner history");
+ }
+});
