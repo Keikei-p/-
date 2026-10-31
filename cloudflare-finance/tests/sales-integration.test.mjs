@@ -17,7 +17,9 @@ test("NICO official URL fetches protected view and submits ONLY counts",async()=
         if(opts.method==="GET")return Response.json({
           month:"2026-10",policy:{canViewRevenue:false,canViewUnitPrice:false},
           products:[{id:"sim",name:"SIM",active:true,planIds:["plan_0"]}],
-          records:[],revenueGoals:[]});
+          records:[{id:"factory_staff_2026-10-22",companyId:"factory",
+            uid:"staff",date:"2026-10-22",totalCount:2,
+            results:{sim:{productId:"sim",planId:"plan_0",count:2}}}],revenueGoals:[]});
         return Response.json({saved:true,recordId:"factory_staff_2026-10-22",totalCount:2});
       }
     });
@@ -67,15 +69,66 @@ test("month switch cannot render old snapshot and no fallback to raw money Fires
  await Promise.resolve();
  assert.equal(releases.length,1);
  releases.shift()();
- await next;
  await Promise.resolve();
  for(let i=0;i<30&&!errors.length;i++)await new Promise(resolve=>setImmediate(resolve));
  assert.equal(view.length,0,"stale September must not replace current October");
  assert.ok(errors.includes("selected_finance_month_changed"));
- for(let i=0;i<10&&releases.length<1;i++)await Promise.resolve();
+ for(let i=0;i<20&&releases.length<1;i++)await new Promise(resolve=>setImmediate(resolve));
  assert.equal(releases.length,1);
  releases.shift()();
- for(let i=0;i<10&&view.length===0;i++)await Promise.resolve();
+ await next; // queued refresh resolves only after October is actually verified
  assert.deepEqual(view,["2026-10"]);
  bridge.close();
+});
+
+test("secure bridge refuses to report success if a post-write snapshot does not contain the saved record",async()=>{
+  let seen=0;
+  const bridge=makeProtectedSalesBridge({
+    origin:liveURLs[0],gatewayUrl:gateway,companyId:"factory",
+    getMonth:()=>"2026-10",currentUser:{getIdToken:async()=>"fixture"},
+    subscribeToSignal:()=>()=>{},applySnapshot:()=>{seen++},
+    onError:()=>{},explicitCutover:true,
+    fetcher:async (_url,opts)=>{
+      if(opts.method==="GET")return Response.json({
+        month:"2026-10",products:[{id:"sim",name:"SIM",active:true,
+          planIds:["plan_0"]}],records:[],revenueGoals:[],
+        policy:{canViewRevenue:false,canViewUnitPrice:false}
+      });
+      return Response.json({saved:true,recordId:"factory_staff_2026-10-22",totalCount:2});
+    }
+  });
+  await assert.rejects(bridge.submit({
+    selection:{uid:"staff",date:"2026-10-22",teamId:"A",reportStatus:"submitted"},
+    inputs:[{dataset:{productId:"sim",cashback:"0"},value:"2"}],
+    products:[{id:"sim",active:true,securePlanIds:["plan_0"],
+      pricingOptions:[{cashback:0,revenuePerUnit:0}]}]
+  }),/saved_record_not_visible_after_refresh/);
+  assert.ok(seen>=1);
+  bridge.close();
+});
+test("secure bridge must not confirm a failed post-write GET",async()=>{
+  let writes=0;
+  const bridge=makeProtectedSalesBridge({
+    origin:liveURLs[0],gatewayUrl:gateway,companyId:"factory",
+    getMonth:()=>"2026-10",currentUser:{getIdToken:async()=>"fixture"},
+    subscribeToSignal:()=>()=>{},applySnapshot:()=>{},
+    onError:()=>{},explicitCutover:true,
+    fetcher:async (_url,opts)=>{
+      if(opts.method==="POST"){
+        writes++;
+        return Response.json({saved:true,recordId:"factory_staff_2026-10-22",totalCount:2});
+      }
+      if(writes>0)return new Response("forbidden",{status:403});
+      return Response.json({month:"2026-10",products:[],records:[],revenueGoals:[],
+        policy:{canViewRevenue:false,canViewUnitPrice:false}});
+    }
+  });
+  await assert.rejects(bridge.submit({
+    selection:{uid:"staff",date:"2026-10-22",teamId:"A",reportStatus:"submitted"},
+    inputs:[{dataset:{productId:"sim",cashback:"0"},value:"2"}],
+    products:[{id:"sim",active:true,securePlanIds:["plan_0"],
+      pricingOptions:[{cashback:0,revenuePerUnit:0}]}]
+  }),/secure_read_failed_403/);
+  assert.equal(writes,1);
+  bridge.close();
 });
