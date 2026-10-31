@@ -1,5 +1,5 @@
 name: NICO one-shot sequenced partner production activation
-# Recovery attempt B: only exact already-published HTML is reused; never overwrites an unknown live file.
+# Recovery attempt C: only exact already-published HTML is reused; never overwrites an unknown live file.
 on:
   push:
     branches: [main]

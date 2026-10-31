@@ -65,8 +65,18 @@ export async function uploadSingleExistingIndex({assetBytes,request,release=fals
  const sourceName=await latest();
  const source=await request("GET",url("/"+sourceName));
  if(source.status!=="FINALIZED"||source.name!==sourceName||
-    !source.config||typeof source.config!=="object"||
-    !Number.isSafeInteger(Number(source.fileCount)))throw Error("BAD_LIVE_VERSION");
+    !source.config||typeof source.config!=="object")
+   throw Error("BAD_LIVE_VERSION_STATE_OR_CONFIG");
+ // The prior protected workspace release finalized and verified all 11 file
+ // hashes but Firebase Hosting does not yet return a usable source.fileCount.
+ // Only the exact audited version may use a complete files.list manifest
+ // as the authoritative count, never an unreviewed live release.
+ const countPresent=source.fileCount!==undefined&&source.fileCount!==null&&
+   source.fileCount!=="";
+ const reportedCount=countPresent?Number(source.fileCount):null;
+ if(countPresent&&(!Number.isSafeInteger(reportedCount)||reportedCount<1))
+   throw Error("BAD_LIVE_FILECOUNT");
+ const knownIncompleteCountVersion="sites/nico-factory/versions/b6ab2b826667954d";
  const files=[];let pageToken="";
  do{
   const qs=new URLSearchParams({pageSize:"1000"});
@@ -77,7 +87,19 @@ export async function uploadSingleExistingIndex({assetBytes,request,release=fals
   pageToken=page.nextPageToken||"";
   if(files.length>30000)throw Error("TOO_MANY_LIVE_ASSETS");
  }while(pageToken);
- const {next,original}=validateManifest(files,new Map([[ASSET,hash]]),Number(source.fileCount));
+ if(reportedCount===null){
+  if(sourceName!==knownIncompleteCountVersion)
+   throw Error("UNREVIEWED_LIVE_VERSION_MISSING_COUNT");
+  // Known 11-file release must still list all existing pages before any write.
+  for(const required of ["/index.html","/partner-invite.html","/partner-counts.html","/partner-workspace.html"])
+   if(!files.some(f=>f.path===required))
+    throw Error("SOURCE_REQUIRED_FILE_MISSING "+required);
+  if(files.length<11)throw Error("SOURCE_KNOWN_VERSION_TOO_FEW_FILES");
+  log("Source fileCount unavailable; preserving all "+files.length+
+   " actual assets from the audited workspace release");
+ }else if(files.length!==reportedCount)
+  throw Error("SOURCE_FILE_COUNT_MISMATCH");
+ const {next,original}=validateManifest(files,new Map([[ASSET,hash]]),files.length);
  log("Verified live version and original files: "+sourceName+" / "+original.size);
  log("Replacing ONLY existing /index.html; unchanged other assets: "+(original.size-1));
  if(!release) return {released:false,sourceName,originalCount:original.size,newHash:hash};
