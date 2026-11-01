@@ -833,3 +833,20 @@ GitHub所有者として認証済みの接続から、本番影響をindex.html�
 2026-11-01時点の `protected-change-guard` は、`index.html` が保護対象のため、レビューラベル `sales-production-reviewed` と本書への記録不足で**正しく停止**。本記録はレビュー資料であってユーザー/管理者署名やデプロイ承認の代替ではない。
 
 **管理者本人の署名: 未取得。接続されたGitHub管理者権限で差分・既存テストを確認し、今回のチャットの暫定タブ追加指示に基づいて `sales-production-reviewed` をPR #290へ付与した。ユーザー本人の独立署名・実機確認の代わりではない。mainへの反映: 未実施。Firebase本番公開: 未実施。**
+
+
+---
+
+## PR #292 — 協力店タブの既存件数入力への直通導線（2026-11-01）
+
+### 依頼範囲と技術レビュー
+- 利用者は「既存の営業アプリを崩さず、協力店の項目で一旦運用する」を優先し、続行を依頼した。
+- `index.html` のOwner専用「協力店」タブのみ、**既存の** `/partner-counts.html` への直通リンクを追加する。会社コード4 APIは本番404（GitHub read-only run #41280035032）なので未公開と正しく案内する。
+- 既存 `/partner-invite.html` と `/partner-workspace.html` の遷移先は維持。協力店へ財務可能な自社 `index.html` の利用を許可しない。
+- 変更対象は `index.html`、`tests/simple-partner-company-tab.test.mjs` と本記録のみ。GitHub PRのパッチを照合し、金融計算・本人認証・件数保存・商材/班・ランキング・履歴・LINE・Firestore Rules・Functions・Hosting配信機構の実装変更がないことを技術確認。
+- PRの自動テストは別途完了状況を確認する。GitHub CIの合格は、協力店の実ログイン・保存、アプリの本番配信、財務原票の完全遮断を証明しない。
+
+### 公開判断と未確認事項
+- 本記録は接続したGitHub経由での**限定的なコード技術レビュー**。管理者本人による独立署名・本番でのOwner/協力店アカウント実機試験は未取得であり、署名済みとして扱わない。
+- `sales-production-reviewed` を付与する場合も、当該HTML導線のみの差分確認を示す。Firestoreデータ、過去売上・単価・会員/班・認証情報を変更/初期化/削除する承認ではない。
+- このPR単独でFirebase Hostingは更新されない。現行本番 `index.html` に対するバイト完全一致と11既存資産保護、金額表示マーカー、公開後の実HTML照合が揃うまで追加Hostingリリースは行わない。
