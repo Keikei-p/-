@@ -188,8 +188,8 @@ export function previewLiveRules(live,reviewed){
 // Diagnostic labels only. Never expose original Rules text, finance records,
 // identities or individual match expressions in public CI logs.
 export function summarizeReviewedRulesMismatch(candidate,reviewed){
- const functions=[...reviewed.matchAll(/^[ \\t]*function[ \\t]+([A-Za-z][A-Za-z0-9]*)\\(/gm)].map(m=>m[1]);
- const collections=[...reviewed.matchAll(/^[ \\t]*match[ \\t]+\\/([A-Za-z][A-Za-z0-9]*)\\/\\{[A-Za-z][A-Za-z0-9]*\\}[ \\t]*\\{/gm)].map(m=>m[1]);
+ const functions=[...reviewed.matchAll(/^[ \t]*function[ \t]+([A-Za-z][A-Za-z0-9]*)\(/gm)].map(m=>m[1]);
+ const collections=[...reviewed.matchAll(/^[ \t]*match[ \t]+\/([A-Za-z][A-Za-z0-9]*)\/\{[A-Za-z][A-Za-z0-9]*\}[ \t]*\{/gm)].map(m=>m[1]);
  const fnDifferences=[];
  for(const name of [...new Set(functions)]){
   try{
@@ -206,7 +206,7 @@ export function summarizeReviewedRulesMismatch(candidate,reviewed){
     collectionDifferences.push(name);
   }catch{collectionDifferences.push(name);}
  }
- const a=candidate.split("\\n"),b=reviewed.split("\\n");
+ const a=candidate.split("\n"),b=reviewed.split("\n");
  let line=0;while(line<a.length&&line<b.length&&a[line]===b[line])line++;
  return {candidateLines:a.length,reviewedLines:b.length,
   firstDifferenceLine:line+1,
