@@ -146,3 +146,22 @@ test("partner count entry links only to count-only workspace and preserves finan
  assert.match(html,/showLegacyFinanceEntryBlocked\(checkedEntry\.mode\)/);
  assert.doesNotMatch(html,/件数専用画面の本番切替まで/);
 });
+
+
+test("count-only partner login does not require direct partner company reads",()=>{
+ const html=readFileSync(new URL("../index.html",import.meta.url),"utf8");
+ const begin=html.indexOf("async function loadUserData(");
+ const end=html.indexOf("/* =====================================================\n   個人テーマ",begin);
+ assert.ok(begin>=0&&end>begin);
+ const login=html.slice(begin,end);
+ assert.match(login,/const userSnap =\s*await getDocFromServer\(\s*userRef/);
+ const partner=login.indexOf('currentUserData.accessKind === "partner"');
+ const internal=login.indexOf("await checkLegacyEntryAgainstServer(user)");
+ assert.ok(partner>=0 && partner<internal,
+  "the isolated count-only partner path must precede the internal finance rules check");
+ assert.match(login,/currentUserData.memberType !== "cooperator"/);
+ assert.match(login,/currentUserData.canViewRevenue !== false/);
+ assert.match(login,/currentUserData.canViewUnitPrice !== false/);
+ assert.match(login,/await openSameAppPartnerWorkspace\(user\)/);
+ assert.match(login,/showLegacyFinanceEntryBlocked\("blocked"\)/);
+});
