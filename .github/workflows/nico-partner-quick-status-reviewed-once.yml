@@ -1,0 +1,119 @@
+name: NICO partner quick approval status one-shot Hosting release
+on:
+  pull_request:
+    branches: [main]
+    paths: [.github/workflows/nico-partner-quick-status-reviewed-once.yml]
+  push:
+    branches: [main]
+    paths: [.github/workflows/nico-partner-quick-status-reviewed-once.yml]
+permissions:
+  contents: read
+concurrency:
+  group: nico-surgical-index-release
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify reviewed index source and additive-only content
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object index.html)" = "105d290dcacf5342318168ed348cb10d825b8872" || { echo "STOP: reviewed sales HTML changed"; exit 1; }
+          git show 997d0fd7a317423cb73966131db0b55e78324fe4:index.html > "$RUNNER_TEMP/reviewed.html"
+          cmp index.html "$RUNNER_TEMP/reviewed.html"
+          node <<'NODE'
+          const cp=require('node:child_process'),fs=require('node:fs');
+          const stats=cp.execFileSync('git',['diff','--numstat',
+            'f904a66b53d63c6c39eb56053be7ff36f0b856bf',
+            '997d0fd7a317423cb73966131db0b55e78324fe4','--','index.html'],{encoding:'utf8'}).trim();
+          if(stats!=='66\t10\tindex.html')throw Error('STOP: unreviewed UI modifications: '+stats);
+          const html=fs.readFileSync('index.html','utf8');
+          for(const fragment of ['id="quickPartnerButton"','id="partnerCompanyManagement"',
+            'function showLegacyFinanceEntryBlocked(mode)','currentCatalogRevenuePerUnit',
+            'checkedEntry.mode!=="internal"','mergedPartnerRankingDay'])
+            if(!html.includes(fragment))throw Error('STOP: required UI/financial boundary missing');
+          console.log('PASS: exact reviewed quick-approval status change, original finance untouched');
+          NODE
+          node --test tests/simple-partner-company-tab.test.mjs
+          node --test tests/sales-regressions.cjs
+  release:
+    needs: validate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.validate.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+      NICO_PARTNER_RELEASE_CONFIRMATION: CONFIRM_ADD_PARTNER_RANKING_INDEX_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify current main and exact approved prior live HTML before any write
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(gh api repos/Keikei-p/-/branches/main --jq '.commit.sha')" = "$GITHUB_SHA" || { echo 'STOP: main changed'; exit 1; }
+          git show f904a66b53d63c6c39eb56053be7ff36f0b856bf:index.html > "$RUNNER_TEMP/approved-base.html"
+          curl -fsSL --retry 3 --max-time 30 -H 'Cache-Control: no-cache' \
+            "https://nico-factory.web.app/?partner_quick_status_baseline=$GITHUB_SHA" -o "$RUNNER_TEMP/live.html"
+          if cmp -s "$RUNNER_TEMP/live.html" index.html; then
+            echo 'ALREADY_LIVE=true' >> "$GITHUB_ENV"
+            echo 'PASS: target index already live'
+          elif cmp -s "$RUNNER_TEMP/live.html" "$RUNNER_TEMP/approved-base.html"; then
+            echo 'ALREADY_LIVE=false' >> "$GITHUB_ENV"
+            echo 'PASS: live site is byte-for-byte verified approved baseline'
+          else
+            echo 'STOP: production differs from approved source; do not overwrite'
+            exit 1
+          fi
+      - name: Load protected Firebase Hosting credential only
+        if: env.ALREADY_LIVE == 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON" || { echo 'STOP: missing credential'; exit 1; }
+          node -e "if(JSON.parse(require('fs').readFileSync('.firebaserc','utf8')).projects.default!=='sales-management-cc116')process.exit(1)"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-partner-tab-hosting.json"
+          chmod 600 "$RUNNER_TEMP/nico-partner-tab-hosting.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-partner-tab-hosting.json" >> "$GITHUB_ENV"
+      - name: Install Hosting REST credential dependency
+        if: env.ALREADY_LIVE == 'false'
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Read-only dry-run preserves exact previous Hosting manifest
+        if: env.ALREADY_LIVE == 'false'
+        run: node tools/hosting/surgical-existing-index.mjs --dry-run
+      - name: Publish ONLY index.html preserving every other existing Hosting asset
+        if: env.ALREADY_LIVE == 'false'
+        run: node tools/hosting/surgical-existing-index.mjs --release
+      - name: Verify actual Firebase Hosting HTML and pre-existing partner paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          ok=false
+          for attempt in $(seq 1 12); do
+            curl -fsSL --max-time 30 \
+              "https://nico-factory.web.app/?partner_quick_status_verify=$GITHUB_SHA-$attempt" \
+              -o "$RUNNER_TEMP/confirmed-index.html"
+            if cmp -s "$RUNNER_TEMP/confirmed-index.html" index.html; then ok=true; break; fi
+            sleep 5
+          done
+          test "$ok" = true || { echo 'STOP: published version did not match approved HTML'; exit 1; }
+          for marker in 'id="quickPartnerButton"' 'id="partnerCompanyManagement"' \
+            'id="partnerInviteInline"' 'href="/partner-counts.html"' '件数専用：利用承認済み' '二つの入力経路は別管理です' 'currentCatalogRevenuePerUnit' \
+            'checkedEntry.mode!=="internal"' 'mergedPartnerRankingDay'; do
+            grep -Fq "$marker" "$RUNNER_TEMP/confirmed-index.html" || { echo "STOP: missing $marker"; exit 1; }
+          done
+          for route in /partner-invite.html /partner-counts.html /partner-workspace.html; do
+            code=$(curl -sSL -o /dev/null -w '%{http_code}' --max-time 30 "https://nico-factory.web.app$route")
+            test "$code" = 200 || { echo "STOP: $route HTTP $code"; exit 1; }
+          done
+          echo 'PASS: only reviewed partner quick-status UI released; owner finance and other partner paths preserved'
