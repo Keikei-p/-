@@ -83,3 +83,27 @@ test("signup provides a distinct fix for registered email, rejected password, an
  assert.match(html,/新規作成は不要です/);
  assert.doesNotMatch(html,/auth\.currentUser\.delete\(|deleteUser\(/);
 });
+
+test("login has visible pending state but does not wait for optional partner workspace API",()=>{
+ assert.match(html,/pending:"Firebaseにログインしています…"/);
+ assert.match(html,/button\.setAttribute\("aria-busy","true"\)/);
+ assert.match(html,/button\.textContent="確認中…"/);
+ assert.match(html,/通信に時間がかかっています/);
+ assert.match(html,/button\.removeAttribute\("aria-busy"\)/);
+ const handler=html.match(/\$\("signIn"\)\.addEventListener\("submit"[\s\S]*?\n\}\);/)?.[0];
+ assert.ok(handler,"sign-in handler exists");
+ assert.match(handler,/await signInWithEmailAndPassword\(auth,/);
+ assert.match(handler,/credential\?\.user\?\.uid/);
+ assert.doesNotMatch(handler,/await refresh\(/,"do not block login on live partner service");
+ assert.match(html,/Partner invitation preview failed/);
+ assert.match(html,/Partner auth refresh failed/);
+ assert.match(html,/case "auth\/invalid-api-key"/);
+ assert.match(html,/case "auth\/internal-error"/);
+ assert.match(html,/case "auth\/user-disabled"/);
+});
+test("failed sign-in maintains account state and does not erase existing Firebase records",()=>{
+ assert.doesNotMatch(html,/deleteUser\(|deleteDoc\(|getFirestore\(|firebase-firestore\.js/);
+ assert.match(html,/loginに成功|ログインに成功しました/);
+ assert.match(html,/auth\/invalid-credential/);
+ assert.match(html,/onAuthStateChanged\(auth,/);
+});
