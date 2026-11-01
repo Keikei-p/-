@@ -576,7 +576,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      }
      teams.sort((a,b)=>a.name.localeCompare(b.name,"ja"));
     }
-    registeredCompanies.push({partnerCompanyId:sn.id,name:clean(c.name),active,teams});
+    registeredCompanies.push({partnerCompanyId:sn.id,name:clean(c.name),active,teams,staffApprovalManaged:rel.active===false&&rel.countSharingApproved===false});
    }
    registeredCompanies.sort((a,b)=>a.name.localeCompare(b.name,"ja"));
    // Explicitly scoped, on-demand shared-count breakdown. Never read
