@@ -35,6 +35,8 @@ small{color:#5e6d82}#info{font-weight:650}
   <button type="submit">ログイン</button>
   <button id="signUp" class="secondary" type="button">新規アカウント作成</button>
  </form>
+ <button id="resetPassword" class="secondary" type="button">登録済みの方・パスワードを再設定</button>
+ <p><small>以前の自社・協力店のメールアドレスは新規登録せずにログインできます。パスワードが不明な場合は再設定してください。実績・所属・履歴は削除されません。</small></p>
  <button id="sendVerify" class="secondary" type="button" hidden>確認メールを再送</button>
  <button id="checkVerify" class="secondary" type="button" hidden>メール確認後に再チェック</button>
  <button id="logout" class="secondary" type="button" hidden>ログアウト</button>
@@ -81,7 +83,7 @@ small{color:#5e6d82}#info{font-weight:650}
 </main>
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
-import {getAuth,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,sendEmailVerification,reload,getIdToken} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+import {getAuth,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,sendEmailVerification,sendPasswordResetEmail,reload,getIdToken} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js";
 
 const app=initializeApp({apiKey:"AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
@@ -147,6 +149,8 @@ const authErrorText=error=>{
   case "auth/weak-password":
   case "auth/password-does-not-meet-requirements": return "パスワードを確認してください。6文字以上で設定し、必要なら英数字を組み合わせてください。";
   case "auth/invalid-email": return "メールアドレスの形式を確認してください。";
+  case "auth/expired-action-code": return "再設定リンクの期限が切れています。パスワード再設定メールをもう一度送ってください。";
+  case "auth/invalid-action-code": return "再設定リンクが無効です。新しい再設定メールを発行してください。";
   case "auth/operation-not-allowed": return "新規アカウント作成がFirebase認証設定で許可されていません。管理者に連絡してください。";
   case "auth/unauthorized-domain": return "このサイトがFirebaseの認証許可ドメインに登録されていません。管理者に連絡してください。";
   case "auth/too-many-requests": return "操作が集中したため一時的に制限されています。時間をあけて操作してください。";
@@ -259,6 +263,17 @@ $("signUp").addEventListener("click",async()=>busy($("signUp"),async()=>{
   "アカウントを作成しました。確認メールのリンクを開き、この画面で「メール確認後に再チェック」を押してください。":
   "アカウントは作成できましたが、確認メールを送れませんでした。「確認メールを再送」を押してください。新規作成は不要です。");
 }));
+$("resetPassword").addEventListener("click",async()=>{
+ const email=$("email").value.trim().toLowerCase();
+ if(!$("email").checkValidity()||!email){
+  message("パスワード再設定のためにメールアドレスを正しく入力してください。");
+  $("email").focus();return;
+ }
+ await busy($("resetPassword"),async()=>{
+  await sendPasswordResetEmail(auth,email);
+  message("このメールアドレスが登録されている場合、パスワード再設定メールが届きます。受信箱と迷惑メールをご確認ください。以前の実績は削除されません。");
+ },{pending:"パスワード再設定メールを受け付けています…"});
+});
 $("sendVerify").addEventListener("click",async()=>busy($("sendVerify"),async()=>{
  await sendEmailVerification(auth.currentUser);message("確認メールを再送しました。");
 }));
