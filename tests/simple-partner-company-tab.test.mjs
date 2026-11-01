@@ -28,6 +28,9 @@ test("missing company report is never presented as zero",()=>{
  assert.match(html,/id="partnerCompanyDate"/);
  assert.match(html,/href="\/partner-invite\.html"/);
  assert.match(html,/href="\/partner-workspace\.html"/);
+ assert.match(html,/href="\/partner-counts\.html"/);
+ assert.match(html,/今日の件数を入力（件数のみ）/);
+ assert.match(html,/会社コード方式は本番公開前/);
 });
 test("original finance capable UI retains partner exclusion and original owner data",()=>{
  assert.match(html,/function showLegacyFinanceEntryBlocked\(mode\)/);
