@@ -4,7 +4,7 @@ import {readFileSync} from "node:fs";
 const invite=readFileSync(new URL("../partner-invite.html",import.meta.url),"utf8");
 const quick=readFileSync(new URL("../partner-counts.html",import.meta.url),"utf8");
 test("new partner invitation guides to live count-only screen, not locked workspace",()=>{
- assert.match(invite,/id="workspaceGuide"[^>]*href="\/partner-counts\.html"/);
+ assert.match(invite,/href="\/partner-counts\.html" id="workspaceGuide"/);
  assert.match(invite,/id="acceptedWorkspaceLink" href="\/partner-counts\.html"/);
  assert.match(invite,/if\(data\.secondaryMembership===false\)/);
  assert.match(invite,/\$\("acceptedWorkspaceLink"\)\.href="\/partner-counts\.html"/);
