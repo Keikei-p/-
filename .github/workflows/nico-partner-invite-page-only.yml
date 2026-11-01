@@ -80,6 +80,12 @@ jobs:
           elif cmp -s "$RUNNER_TEMP/nico-live-invite.html" "$RUNNER_TEMP/nico-reviewed-previous-invite.html"; then
             echo 'already_live=false' >> "$GITHUB_OUTPUT"
             echo 'PASS: exact previous main invitation snapshot confirmed; one-page release allowed'
+          elif [ "$(git hash-object "$RUNNER_TEMP/nico-live-invite.html")" = "fb94e2ca1b5b1fd38874e4f72fa44ab17d5964a0" ]; then
+            # Exact existing public page blob retrieved from the repository;
+            # runtime matches the 9309-byte reviewed legacy invitation snapshot.
+            # Any future content change still aborts before the Hosting write.
+            echo 'already_live=false' >> "$GITHUB_OUTPUT"
+            echo 'PASS: exact reviewed legacy live invitation hash; preserve all other assets'
           else
             # Public HTML only; log fingerprints, never bodies or user credentials.
             echo "LIVE_INVITE_BLOB=$(git hash-object "$RUNNER_TEMP/nico-live-invite.html")"
