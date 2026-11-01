@@ -19,8 +19,10 @@ test("existing app sign-in is reused for company and member invitations",()=>{
  assert.match(index,/void openSameAppPartnerWorkspace\(auth.currentUser\)/);
  assert.match(index,/location\.replace\(url\.href\)/);
  assert.match(legacyCompanyInvite,/target\.searchParams\.set\("partnerCompanyInvite",token\)/);
- assert.match(partner,/url\.searchParams\.set\("partnerStaffInvite",result\.token\)/);
- assert.doesNotMatch(partner,/url\.searchParams\.set\("invite",result\.token\)/);
+ assert.match(index,/url\.searchParams\.set\("partnerStaffInvite",response\.token\)/);
+ // The pinned legacy workspace remains untouched; new links from the normal
+ // app use the unified login, while older URLs remain backwards compatible.
+ assert.match(partner,/url\.searchParams\.set\("invite",result\.token\)/);
 });
 test("partner view is inside same app but legacy finance children are inaccessible",()=>{
  assert.match(index,/<main id="appScreen">/);
