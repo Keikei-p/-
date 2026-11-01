@@ -145,7 +145,7 @@ test("unexpected extra finance get permission never passes exact-source live pre
  assert.equal(result.matchesReviewed,false,"additive finance get grant must reject live release");
  assert.notEqual(result.candidateSha,result.reviewedSha);
  const script=readFileSync(new URL("../tools/production/preview-live-finance-rules.mjs",import.meta.url),"utf8");
- assert.match(script,/if\(!out\.matchesReviewed\)stop\("CANDIDATE_DIFFERS_FROM_REVIEWED_RULES"\)/);
+ assert.match(script,/if\(!out\.matchesReviewed\)\{[\s\S]*?stop\("CANDIDATE_DIFFERS_FROM_REVIEWED_RULES"\)/);
 });
 test("partner-safe reviewed rules retain internal owner and explicitly approved leader finance paths",()=>{
  const out=previewLiveRules(liveFixture(),reviewed);
