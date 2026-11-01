@@ -5,6 +5,13 @@ const index=load("index.html"),partner=load("partner-workspace.html"),
  legacyCompanyInvite=load("partner-invite.html"),
  service=load("functions-partner-workspace/service.cjs"),
  rules=load("firestore.rules");
+test("registered-partner form remains invisible until explicitly selected, including on mobile",()=>{
+ assert.match(index,/#partnerExistingInviteFields:not\(\[hidden\]\)\s*\{\s*display:\s*grid;/);
+ assert.match(index,/<div id="partnerExistingInviteFields" hidden style="gap:10px;margin-bottom:14px">/);
+ assert.doesNotMatch(index,/<div id="partnerExistingInviteFields" hidden style="display:grid/);
+ assert.match(index,/partnerExistingInviteFields\.hidden=!existing/);
+ assert.match(index,/partnerInviteModeSelect\.addEventListener\("change",syncPartnerInviteMode\)/);
+});
 test("partner invite routes selected existing company and team through the verified owner API",()=>{
  assert.match(index,/id="partnerInviteModeSelect"/);
  assert.match(index,/id="partnerExistingCompanySelect"/);
