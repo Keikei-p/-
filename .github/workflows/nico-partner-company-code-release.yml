@@ -31,9 +31,12 @@ on:
         type: string
 permissions:
   contents: read
+# PR checks must never block or be cancelled by an unrelated legacy
+# production workspace workflow. The release job itself shares the production
+# lock so that no partial workspace backend update can run concurrently.
 concurrency:
-  group: nico-partner-workspace-production
-  cancel-in-progress: false
+  group: nico-company-code-review-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -83,6 +86,9 @@ jobs:
           NODE
           node --check /tmp/nico-partner-code-login-ui.mjs
   release:
+    concurrency:
+      group: nico-partner-workspace-production
+      cancel-in-progress: false
     needs: validate
     if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && needs.validate.result == 'success' && inputs.project_id == 'sales-management-cc116' && inputs.confirm_backup_restore == 'FIRESTORE_BACKUP_RESTORE_VERIFIED' && inputs.confirm_owner_finance == 'OWNER_REVENUE_PRICES_LOGIN_VERIFIED' && inputs.confirm_billing == 'EXISTING_FUNCTIONS_COST_APPROVED' && inputs.confirm_release == 'CONFIRM_COMPANY_CODE_PARTNER_COUNT_ONLY' }}
     runs-on: ubuntu-latest
