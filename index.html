@@ -12409,13 +12409,19 @@ function partnerInlineRender(){
 async function partnerInlineFetch(){
  if(!auth.currentUser?.emailVerified)return;
  const seq=++partnerInlineNonce,uid=auth.currentUser.uid;
+ // A date change must invalidate the previous date's values immediately.
+ // Otherwise a click while the new day loads could submit old counts to it.
+ partnerInlineData=null;
+ pInline("pInlineSave").disabled=true;
+ pInline("pInlineCountFields").replaceChildren();
+ pInline("pInlineVersion").textContent="日付を読み込み中";
  partnerInlineStatus("件数を読み込み中...");
  try{
   const payload={date:pInline("pInlineDate").value};
   if(partnerInlineWorkspaceCompany)payload.workspaceCompanyId=partnerInlineWorkspaceCompany;
   const snap=(await readPartnerWorkDay(payload)).data;
   if(seq!==partnerInlineNonce||auth.currentUser?.uid!==uid)return;
-  if(!snap||!["owner","leader","member"].includes(snap.role)||
+  if(!snap||snap.date!==payload.date||!["owner","leader","member"].includes(snap.role)||
      !Array.isArray(snap.teams)||!Array.isArray(snap.staff)||
      !Array.isArray(snap.categories)||!Array.isArray(snap.records)||
      typeof snap.companyName!=="string"||snap.companyName.length===0)
@@ -12523,6 +12529,8 @@ pInline("pInlineCopyInvite").onclick=async()=>{
 };
 pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
  const snap=partnerInlineData,staffId=pInline("pInlineStaff").value;
+ const selectedDate=pInline("pInlineDate").value;
+ if(!snap||snap.date!==selectedDate)throw Error("stale_partner_count_date");
  if(!snap.staff.some(p=>p.id===staffId&&p.active))throw Error("staff");
  const counts=Object.create(null);
  for(const key of snap.categories){
@@ -12534,11 +12542,11 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
  }
  const before=snap.records.find(x=>x.staffId===staffId);
  const result=(await partnerInlineSave(partnerInlinePayload({
-  date:pInline("pInlineDate").value,staffId,counts,expectedVersion:before?.version??0
+  date:selectedDate,staffId,counts,expectedVersion:before?.version??0
  }))).data;
- const verified=(await readPartnerWorkDay(partnerInlinePayload({date:pInline("pInlineDate").value}))).data;
+ const verified=(await readPartnerWorkDay(partnerInlinePayload({date:selectedDate}))).data;
  const saved=verified?.records?.find(x=>x.staffId===staffId);
- if(!saved||saved.version!==result?.version||
+ if(verified?.date!==selectedDate||!saved||saved.version!==result?.version||
    snap.categories.some(key=>saved.counts?.[key]!==counts[key]))throw Error("save_verify");
  return "件数の保存と再取得を確認しました。";
 });
