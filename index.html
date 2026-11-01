@@ -5085,6 +5085,10 @@ body.product-reordering .product-list {
           </div>
         </div>
 
+        <details style="margin-top:9px;font-size:12px">
+          <summary>以前の協力店招待リンクを確認</summary>
+          <a href="/partner-invite.html">旧方式の招待画面</a>
+        </details>
         <div id="partnerCountWorkspaceEntry"
              style="margin-top:16px;padding:13px;border:1px solid var(--border);border-radius:10px;">
           <div style="font-weight:800;margin-bottom:6px;">📊 協力店の件数入力・管理</div>
@@ -12181,7 +12185,7 @@ partnerInviteModeSelect.addEventListener("change",syncPartnerInviteMode);
 partnerExistingCompanySelect.addEventListener("change",renderExistingPartnerTeams);
 partnerInviteCreateButton.onclick=async()=>{
  if(!currentUser?.emailVerified||currentCompanyData?.ownerUid!==currentUser.uid||
-    currentCompanyData?.companyKind==="partner"||currentUserData?.accessKind==="partner"){
+    currentCompanyData?.companyKind === "partner"||currentUserData?.accessKind==="partner"){
   showError("協力店招待は自社のオーナーだけが作成できます。");return;
  }
  const existing=partnerInviteModeSelect.value==="existing";
