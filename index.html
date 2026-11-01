@@ -13725,7 +13725,7 @@ function applyRevenueVisibility() {
 
   const allowed =
     canCurrentUserViewRevenue();
-  const nativePartnerRankOnly=!allowed&&isNativePartnerMember();
+  const nativePartnerRankOnly=!allowed&&typeof isNativePartnerMember==="function"&&isNativePartnerMember();
 
   if (
     monthlyRevenue?.closest(
@@ -32629,7 +32629,7 @@ function renderIndividualRanking(
     "";
 
   updateRankingLayoutControls("individual");
-  const nativePartnerRankOnly=!canCurrentUserViewRevenue()&&isNativePartnerMember();
+  const nativePartnerRankOnly=!canCurrentUserViewRevenue()&&typeof isNativePartnerMember==="function"&&isNativePartnerMember();
 
   if (
     !canCurrentUserViewRevenue() && !nativePartnerRankOnly
