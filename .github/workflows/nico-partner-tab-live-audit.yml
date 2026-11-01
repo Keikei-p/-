@@ -1,0 +1,48 @@
+name: NICO partner tab live anchors (read only)
+on:
+  push:
+    branches: [fix/sales-partner-tab-live-additive-20261101]
+    paths: [.github/workflows/nico-partner-tab-live-audit.yml]
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Read-only inspect live index and required integration anchors
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --max-time 30 -H 'Cache-Control: no-cache' 'https://nico-factory.web.app/?partner_tab_audit=20261101' -o "$RUNNER_TEMP/live-index.html"
+          LIVE_INDEX_PATH="$RUNNER_TEMP/live-index.html" node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import crypto from 'node:crypto';
+          const s=fs.readFileSync(process.env.LIVE_INDEX_PATH,'utf8');
+          const source=fs.readFileSync('index.html','utf8');
+          const checks={
+            htmlLength:s.length,mainLength:source.length,
+            liveSha256:crypto.createHash('sha256').update(s).digest('hex').slice(0,16),
+            exactMain:s===source,
+            hasPartnerTab:s.includes('id="quickPartnerButton"'),
+            hasExistingPartnerInvite:s.includes('id="partnerInviteInline"'),
+            hasCountOnlyAPI:s.includes('const readPartnerWorkDay')||s.includes('readPartnerWorkDay = httpsCallable'),
+            hasPartnerRankingGuard:s.includes('function canLoadPartnerRanking(){'),
+            hasQuickMenuAnchor:s.includes('id="quickOwnerButton" class="quick-menu-button"'),
+            hasPartnerManagementAnchor:s.includes('id="missingReportsManagement" class="account-card quick-panel"'),
+            hasMenuListAnchor:s.includes('const quickMenuButtons = ['),
+            hasMenuSetter:s.includes('function setManagementMenuOpen('),
+            hasOwnerHandler:s.includes('quickOwnerButton.onclick ='),
+            hasLegacyGuard:s.includes('function showLegacyFinanceEntryBlocked(mode)'),
+            hasProtectedOwnerRevenue:s.includes('currentCatalogRevenuePerUnit'),
+            hasCodeNewAPI:s.includes('issuePartnerCompanyCode'),
+            hasModule:s.includes('<script type="module">'),
+            hasCompanyOwner:s.includes('isCurrentCompanyOwner()')
+          };
+          console.log('LIVE_ANCHOR_AUDIT '+JSON.stringify(checks));
+          if(s.length<100000||!checks.hasLegacyGuard||!checks.hasProtectedOwnerRevenue)process.exit(1);
+          NODE
