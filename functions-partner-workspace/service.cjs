@@ -433,8 +433,12 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
       // re-parent original records. Original records and old member doc stay put.
       if(primaryCid!==i.hubCompanyId||pc.ownerUid===a.uid||
         pc.masterUid===a.uid||original.companyRole==="owner"||
-        pm.companyRole==="owner"||original.companyRole!=="member"||
-        pm.companyRole!=="member"||
+        pm.companyRole==="owner"||
+        // Older invited internal members may predate companyRole being stored.
+        // An absent companyRole is only accepted for a non-owner/non-master,
+        // otherwise transfer would incorrectly reject existing registered mail.
+        (original.companyRole!=null&&original.companyRole!=="member")||
+        (pm.companyRole!=null&&pm.companyRole!=="member")||
         (original.role!=null&&!["leader","member"].includes(original.role))||
         (pm.role!=null&&!["leader","member"].includes(pm.role)))
        fail("failed-precondition");
