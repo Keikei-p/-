@@ -103,17 +103,23 @@ jobs:
         with: {persist-credentials: false, fetch-depth: 0}
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
-      - name: Require finance audit and original sales owner protection BEFORE credentials
+      - name: Verify isolated partner release and protect existing owner finance BEFORE credentials
         shell: bash
         run: |
           set -euo pipefail
-          node scripts/check-finance-read-boundary-before-deploy.mjs
-          # The canonical app has legacy raw records queries and is NOT being
-          # deployed here. Its full cutover gate remains in the canonical
-          # release. This isolated codebase uses a stricter scope tripwire.
+          # The canonical Firestore Rules still allow legacy same-company finance reads.
+          # Their GLOBAL release guard must remain fail-closed for any Rules cutover.
+          # This release does NOT deploy Rules, the canonical sales page, or default
+          # Functions: only isolated partner-workspace APIs and one reviewed HTML.
+          # Assert that the known legacy finance Rules candidate remains blocked;
+          # do not weaken its guard or claim that the Rules are production-safe.
+          node --test tests/finance-release-gate.test.mjs
+          # Separate exact-source guard: reject raw finance reads, destructive
+          # actions, unreviewed canonical changes, or wrong Firebase codebase.
           node scripts/check-company-code-scoped-release.mjs
           node --test tests/internal-owner-finance-visibility.test.cjs
           node --test tests/partner-company-code-auth.test.cjs
+          node --test tests/company-code-scoped-release.test.mjs
       - name: Load existing secured Firebase service identity
         shell: bash
         env:

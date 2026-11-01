@@ -59,3 +59,27 @@ test("missing session credential check, no-finance grants or password validation
   assert(result.blocked.includes("PARTNER_CODE_ACCESS_BOUNDARY_NOT_VERIFIED"),needle);
  }
 });
+
+test("company-code production workflow is strictly scoped and cannot silently release unsafe legacy finance Rules",()=>{
+ const workflow=file(".github/workflows/nico-partner-company-code-release.yml");
+ // The existing finance Rules remain blocked; their separate deployment gate
+ // must never be treated as a green-light for this isolated code-only release.
+ assert.match(workflow,/node --test tests\/finance-release-gate\.test\.mjs/);
+ assert.match(workflow,/node scripts\/check-company-code-scoped-release\.mjs/);
+ assert.match(workflow,/node --test tests\/internal-owner-finance-visibility\.test\.cjs/);
+ assert.match(workflow,/node --test tests\/partner-company-code-auth\.test\.cjs/);
+ const deploy=workflow.match(/- name: Deploy ONLY isolated partner workspace 8 API Functions[\s\S]*?(?=\n      - name:)/)?.[0];
+ assert.ok(deploy,"exact partner Functions deployment step must exist");
+ assert.match(deploy,/--config firebase\.partner-workspace\.json/);
+ assert.match(deploy,/--only functions:partner-workspace:getPartnerWorkspace/);
+ assert.match(deploy,/functions:partner-workspace:issuePartnerCompanyCode/);
+ assert.match(deploy,/functions:partner-workspace:loginPartnerCompanyCode/);
+ assert.doesNotMatch(workflow,/firebase deploy[^\n]*--only firestore/);
+ assert.doesNotMatch(workflow,/firebase deploy[^\n]*--only hosting/);
+ assert.match(workflow,/STOP_FIRESTORE_RULES_CHANGED/);
+ assert.match(workflow,/functions-before\.json/);
+ assert.match(workflow,/STOP_PREEXISTING_FUNCTION_REMOVED/);
+ assert.match(workflow,/FIRESTORE_BACKUP_RESTORE_VERIFIED/);
+ assert.match(workflow,/OWNER_REVENUE_PRICES_LOGIN_VERIFIED/);
+ assert.match(workflow,/EXISTING_FUNCTIONS_COST_APPROVED/);
+});
