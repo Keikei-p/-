@@ -36,6 +36,7 @@ test("partner invitation preflight waits for verified recipient and retains toke
  assert.match(block,/pInline\("pMainAcceptInvite"\)\.disabled=invite\.kind==="company"/);
  assert.match(block,/pInline\("pMainAcceptInvite"\)\.disabled=false/);
  assert.match(block,/pMainSwitchInviteAccount"\)\.onclick=async/);
+ assert.match(block,/pInline\("pMainSwitchInviteAccount"\)\.disabled=false/);
  assert.match(block,/await signOut\(auth\)/);
  const switchBlock=block.slice(block.indexOf('pMainSwitchInviteAccount").onclick'),block.indexOf('pMainCancelInvite").onclick'));
  assert.doesNotMatch(switchBlock,/location\.replace|searchParams\.delete|deleteDoc|updateDoc|setDoc/);
