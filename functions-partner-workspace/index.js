@@ -23,3 +23,4 @@ const codeAuth=makeCompanyCodeAuth({
 exports.issuePartnerCompanyCode=onCall(opts,codeAuth.issue);
 exports.activatePartnerCompanyCode=onCall(opts,codeAuth.activate);
 exports.loginPartnerCompanyCode=onCall(opts,codeAuth.login);
+exports.logoutPartnerCompanyCode=onCall(opts,codeAuth.logout);
