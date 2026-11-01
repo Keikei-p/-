@@ -63,4 +63,76 @@ function makeCompanyCodeAuth({db,getAuth,FieldValue,Timestamp,HttpsError,enabled
   return {companyCode:code,expiresAt};
  }
 
+ async function activate(request){
+  gate();
+  const d=request?.data||{},code=clean(d.companyCode).toUpperCase(),pass=d.password;
+  if(!CODE.test(code)||!passwordValid(pass))fail("invalid-argument");
+  const loginRef=doc("partnerCodeLogins",code),newPartnerRef=db.collection("companies").doc();
+  const principalUid="pc_"+crypto.randomBytes(18).toString("base64url");
+  const principalRef=doc("users",principalUid),keySalt=salt(),hash=await secretHash(pass,keySalt);
+  let companyId="";
+  await db.runTransaction(async tx=>{
+   const [inviteSnap,principalSnap]=await Promise.all([tx.get(loginRef),tx.get(principalRef)]);
+   const invite=inviteSnap.data()||{};
+   if(!inviteSnap.exists||invite.status!=="pending"||!ID.test(invite.hubCompanyId||"")||
+      !ID.test(invite.issuedByUid||"")||typeof invite.expiresAt?.toMillis!=="function"||
+      invite.expiresAt.toMillis()<=now()||principalSnap.exists)
+    fail("failed-precondition");
+   const hubRef=doc("companies",invite.hubCompanyId);
+   const [hubSnap,issuerSnap,issuerMember]=await Promise.all([
+    tx.get(hubRef),tx.get(doc("users",invite.issuedByUid)),
+    tx.get(hubRef.collection("members").doc(invite.issuedByUid))
+   ]);
+   const hub=hubSnap.data()||{},issuer=issuerSnap.data()||{},hm=issuerMember.data()||{};
+   if(!hubSnap.exists||!issuerSnap.exists||!issuerMember.exists||
+      hub.ownerUid!==invite.issuedByUid||hub.active!==true||
+      (hub.companyKind!=null&&!["internal","direct"].includes(hub.companyKind))||
+      issuer.companyId!==invite.hubCompanyId||issuer.active!==true||
+      issuer.companyRole!=="owner"||hm.active!==true||
+      hm.companyRole!=="owner"||hm.uid!==invite.issuedByUid)fail();
+   companyId=invite.partnerCompanyId||newPartnerRef.id;
+   if(!ID.test(companyId))fail();
+   const companyRef=doc("companies",companyId);
+   const relationRef=doc("partnerRelations",companyId);
+   const memberRef=companyRef.collection("members").doc(principalUid);
+   const credentialRef=doc("partnerCodeCredentials",companyId);
+   const [cs,rs,ms,credentialsSnap]=await Promise.all([
+    tx.get(companyRef),tx.get(relationRef),tx.get(memberRef),tx.get(credentialRef)
+   ]);
+   if(ms.exists||credentialsSnap.exists)fail("already-exists");
+   const partner=cs.data()||{},relation=rs.data()||{};
+   if(invite.partnerCompanyId){
+    if(!cs.exists||!rs.exists||partner.active!==true||
+     partner.companyKind!=="partner"||partner.hubCompanyId!==invite.hubCompanyId||
+     partner.companyCodePrincipalUid!=null||
+     relation.partnerCompanyId!==companyId||
+     relation.hubCompanyId!==invite.hubCompanyId||
+     relation.active!==true||relation.countSharingApproved!==true)fail();
+   }else if(cs.exists||rs.exists||clean(invite.companyName).length<2){
+    fail("failed-precondition");
+   }
+   const common={uid:principalUid,companyId,companyRole:"owner",role:"leader",
+    teamId:null,active:true,authKind:"partner_code_shared",
+    accessKind:"partner",memberType:"cooperator",
+    canViewRevenue:false,canViewUnitPrice:false,canCreateInvite:false};
+   if(invite.partnerCompanyId){
+    tx.update(companyRef,{companyCodePrincipalUid:principalUid});
+   }else{
+    tx.create(companyRef,{name:invite.companyName,ownerUid:principalUid,
+      masterUid:principalUid,companyCodePrincipalUid:principalUid,
+      hubCompanyId:invite.hubCompanyId,companyKind:"partner",active:true,
+      createdBy:invite.issuedByUid,createdAt:field()});
+    tx.create(relationRef,{partnerCompanyId:companyId,hubCompanyId:invite.hubCompanyId,
+      active:true,countSharingApproved:true,catalogAccessApproved:false,createdAt:field()});
+   }
+   tx.create(principalRef,{...common,createdAt:field()});
+   tx.create(memberRef,{...common,joinedAt:field()});
+   tx.create(credentialRef,{companyId,companyCode:code,principalUid,active:true,version:1});
+   tx.update(loginRef,{status:"active",partnerCompanyId:companyId,
+      principalUid,hash,salt:keySalt,version:1,failedAttempts:0,lockedUntil:0,
+      activatedAt:field()});
+  });
+  return {activated:true,companyId,companyCode:code};
+ }
+
 module.exports={CODE,ID,clean,newCode,passwordValid,secretHash,safeEqual,salt,makeCompanyCodeAuth};
