@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {validCleanupPolicy,auditArtifactRepository,runAudit}
+import {validCleanupPolicy,boundedRollbackKeepPolicy,auditArtifactRepository,runAudit}
  from "../tools/production/audit-artifact-cleanup-iam.mjs";
 const good={action:{type:"Delete"},condition:{tagState:"any",olderThan:"1d"}};
 const repo={name:"projects/sales-management-cc116/locations/asia-northeast1/repositories/gcf-artifacts",
@@ -21,6 +21,22 @@ test("conservative cleanup conditions: dry-run, filters, keep overrides rejected
  assert.equal(auditArtifactRepository({...repo,cleanupPolicyDryRun:true}).eligibleDeletionPolicy,false);
  assert.equal(auditArtifactRepository({...repo,cleanupPolicies:{...repo.cleanupPolicies,keep:{action:{type:"Keep"},mostRecentVersions:{keepCount:9999}}}}).eligibleDeletionPolicy,false);
  assert.equal(auditArtifactRepository({...repo,cleanupPolicies:{}}).eligibleDeletionPolicy,false);
+});
+test("bounded last-five rollback images are permitted, unbounded keep is not",()=>{
+ const keep=n=>({action:{type:"Keep"},mostRecentVersions:{keepCount:n}});
+ assert.equal(boundedRollbackKeepPolicy(keep(2)),true);
+ assert.equal(boundedRollbackKeepPolicy(keep(5)),true);
+ for(const n of [0,6,9999,"5",null]){
+  assert.equal(boundedRollbackKeepPolicy(keep(n)),false);
+ }
+ const mixed=(p)=>auditArtifactRepository({...repo,cleanupPolicies:{deletion:good,rollback:p}});
+ assert.equal(mixed(keep(2)).eligibleDeletionPolicy,true);
+ assert.equal(mixed(keep(5)).boundedKeepPolicies,true);
+ assert.equal(mixed(keep(6)).eligibleDeletionPolicy,false);
+ assert.equal(mixed({action:{type:"Keep"},condition:{tagState:"any"}}).eligibleDeletionPolicy,false);
+ assert.equal(mixed({action:{type:"Keep"},mostRecentVersions:{keepCount:2,packageNamePrefixes:["one"]}}).eligibleDeletionPolicy,false);
+ assert.equal(auditArtifactRepository({...repo,cleanupPolicyDryRun:true,
+  cleanupPolicies:{deletion:good,rollback:keep(2)}}).eligibleDeletionPolicy,false);
 });
 test("read-only diagnostics POST testIamPermissions only, no passwords or resource mutations",async()=>{
  const calls=[];
