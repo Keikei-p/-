@@ -217,7 +217,7 @@ if(workspaceCompanyId&&!/^[A-Za-z0-9_-]{1,128}$/.test(workspaceCompanyId))
  workspaceCompanyId="";
 const call=name=>{
  const fn=httpsCallable(functions,name);
- return data=>fn({...data,...(workspaceCompanyId?{workspaceCompanyId}:{}),
+ return data=>fn({...data,...(workspaceCompanyId&&!activeCodeSession?{workspaceCompanyId}:{}),
   ...(activeCodeSession?{codeSessionToken:activeCodeSession}:{})});
 };
 const get=call("getPartnerWorkspace"),manage=call("managePartnerWorkspace"),
@@ -1077,7 +1077,7 @@ $("logout").onclick=async()=>{
  }
  await signOut(auth);
 };
-onAuthStateChanged(auth,u=>{
+onAuthStateChanged(auth,async u=>{
  ++nonce;++countLoadId;companyCodeSession=false;data=null;countDayCache.clear();
  clearCountOnlyDashboard();$("companyOverview").hidden=true;
  $("workspaceTitle").textContent="NICO FACTORY｜協力店 実績管理";
@@ -1086,7 +1086,12 @@ onAuthStateChanged(auth,u=>{
  $("inviteUrl").value="";$("inviteOut").hidden=true;
  $("hubInviteUrl").value="";$("hubInviteOut").hidden=true;
  if(activeCodeSession){
-  // The backend validates the session before displaying any business data.
+  // A shared company session must NEVER be combined with an old individual
+  // Firebase Auth identity. This also handles tab reloads on mobile Safari.
+  if(u){
+   try{await signOut(auth);return}
+   catch{clearCompanySession();notice("以前のメールログインを終了できません。再度ログインしてください。",true);return}
+  }
   companyCodeSession=true;$("loginBox").hidden=true;refresh();return;
  }
  if(!u){notice("協力店は会社コード、自社オーナーは従来のメールでログインしてください。");return}
