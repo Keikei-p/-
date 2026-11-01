@@ -12389,13 +12389,29 @@ async function partnerInlineFetch(){
      typeof snap.companyName!=="string"||snap.companyName.length===0)
    throw Error("partner_count_schema");
   partnerInlineData=snap;partnerInlineRender();
+  databaseStatus.textContent="件数表示OK";
   partnerInlineStatus("件数を表示しています。金額・単価は読み込んでいません。");
  }catch(e){
   if(seq!==partnerInlineNonce||auth.currentUser?.uid!==uid)return;
   partnerInlineData=null;pInline("pInlineSave").disabled=true;
   pInline("pInlineRanking").replaceChildren();
   pInline("pInlineTeams").replaceChildren();pInline("pInlinePeople").replaceChildren();
-  partnerInlineStatus("協力店の件数サービスを確認できません。自社オーナーの件数利用承認・所属・API公開状況をご確認ください。",true);
+  // An invited account can be AUTHENTICATED while its independent count
+  // activation remains pending. Never report this as a login failure.
+  const code=String(e?.code||"");
+  if(code==="functions/unavailable"||code==="functions/not-found"){
+   databaseStatus.textContent="件数サービス停止";
+   partnerInlineStatus("協力店の件数APIが未公開・停止中です。自社管理者にサービス設定の確認を依頼してください。",true);
+  }else if(code==="functions/permission-denied"||code==="functions/failed-precondition"){
+   databaseStatus.textContent="件数利用待ち";
+   partnerInlineStatus("ログイン済みですが、協力店の件数利用承認・班所属がまだ完了していない可能性があります。自社オーナーに確認してください。",true);
+  }else if(code==="functions/unauthenticated"){
+   databaseStatus.textContent="再認証が必要";
+   partnerInlineStatus("Firebaseの認証状態を確認できません。メール確認・再ログインを行ってください。",true);
+  }else{
+   databaseStatus.textContent="件数読込エラー";
+   partnerInlineStatus("件数を取得できませんでした。通信状況を確認し「更新」を押してください。解決しない場合は自社オーナーへ連絡してください。",true);
+  }
  }
 }
 async function openSameAppPartnerWorkspace(user,workspaceCompanyId=""){
