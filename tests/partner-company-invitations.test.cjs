@@ -347,3 +347,23 @@ test("same registered hub Owner may activate an isolated self-test partner tenan
  assert.deepEqual(x.db.data.get("companies/hub/members/owner"),teamBefore);
  assert.equal(x.db.data.get("companies/"+p.partnerCompanyId+"/members/owner").teamId,null);
 });
+
+test("existing partner staff invite uses registered company ID and cannot create a duplicate company",()=>{
+ const fs=require("node:fs"),path=require("node:path");
+ const html=fs.readFileSync(path.join(__dirname,"../partner-invite.html"),"utf8");
+ assert.match(html,/id="existingCompany"/);
+ assert.match(html,/id="existingTeam"/);
+ assert.match(html,/id="existingRole"/);
+ assert.match(html,/id="existingEmail"/);
+ assert.match(html,/id="existingCreate"/);
+ assert.match(html,/getPartnerWorkspace/);
+ assert.match(html,/registeredCompanies/);
+ assert.match(html,/managePartnerWorkspace/);
+ assert.match(html,/action:"hubCreateInvite",partnerCompanyId:id,teamId,role,email/);
+ assert.match(html,/!company\?\.active/);
+ assert.match(html,/company\.teams\.some\(t=>t\.id===teamId\)/);
+ assert.match(html,/url\.searchParams\.set\("invite",response\.token\)/);
+ assert.doesNotMatch(html,/firebase-firestore\.js|\bgetFirestore\s*\(/);
+ // New-company endpoint is still called only by the separate original form.
+ assert.match(html,/createInvite\(\{email:\$\("inviteEmail"\)\.value,companyName:\$\("companyName"\)\.value\}\)/);
+});
