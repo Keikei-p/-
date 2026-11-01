@@ -4382,6 +4382,28 @@ body.product-reordering .product-list {
 }
 #dashboard .dashboard-select input[type="month"] {width:100%;max-width:320px;padding:10px;}
 </style>
+
+<style id="nicoPartnerSameAppStyle">
+#appScreen[data-partner-count-only="true"] > :not(.user-bar):not(#partnerInlineWorkspace){display:none!important}
+#appScreen[data-partner-count-only="true"] .user-bar .management-tab-shell{display:none!important}
+#appScreen[data-partner-count-only="true"] #partnerInlineWorkspace{display:block!important}
+#authScreen[data-partner-invite="true"] .auth-wrapper{display:none!important}
+#partnerInlineWorkspace .p-inline-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin:12px 0}
+#partnerInlineWorkspace .p-inline-field{display:flex;flex-direction:column;gap:6px;min-width:0}
+#partnerInlineWorkspace .p-inline-field input,#partnerInlineWorkspace .p-inline-field select{width:100%;min-height:44px;min-width:0}
+#partnerInlineWorkspace .p-inline-actions{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0}
+#partnerInlineWorkspace .p-inline-actions button{min-height:44px}
+#partnerInlineWorkspace .p-inline-list{display:grid;gap:8px;margin:10px 0}
+#partnerInlineWorkspace .p-inline-row{padding:12px;border:1px solid var(--border);border-radius:10px;overflow-wrap:anywhere}
+#partnerInlineWorkspace .p-inline-muted{color:var(--sub);font-size:13px}
+#partnerInlineWorkspace .p-inline-card{background:var(--card,#fff);border:1px solid var(--border);border-radius:12px;padding:16px;margin:12px 0}
+#partnerInlineWorkspace .p-inline-card h3{margin:0 0 12px}
+#partnerInlineWorkspace #pInlineCountFields .p-inline-field{margin-bottom:8px}
+#partnerInlineWorkspace #pInlineStatus{min-height:24px;font-weight:700}
+#partnerInviteAtMain{max-width:600px;margin:24px auto;padding:20px;border:1px solid var(--border);border-radius:14px;background:var(--card,#fff)}
+#partnerInviteAtMain button{min-height:46px}
+</style>
+
 </head>
 
 <body>
@@ -4400,6 +4422,16 @@ body.product-reordering .product-list {
 ===================================================== -->
 
 <main id="authScreen">
+
+<div id="partnerInviteAtMain" hidden role="region" aria-label="協力店の招待承諾">
+  <h2>🤝 協力店の招待</h2>
+  <p id="pMainInviteDescription">ログイン後に招待を確認できます。</p>
+  <label id="pMainInviteNameField" class="form-group" hidden>表示名<input id="pMainInviteName" maxlength="60" placeholder="例：田中 太郎"></label>
+  <p id="pMainInviteStatus" role="status" aria-live="polite"></p>
+  <button id="pMainAcceptInvite" type="button">招待を承諾する</button>
+  <button id="pMainCancelInvite" type="button">キャンセルして通常画面へ</button>
+</div>
+
 
   <div class="auth-wrapper">
 
@@ -4685,6 +4717,54 @@ body.product-reordering .product-list {
 ===================================================== -->
 
 <main id="appScreen">
+
+<!-- Same Firebase sign-in as the original sales app; count-only partner APIs. -->
+<section id="partnerInlineWorkspace" hidden aria-label="協力店 実績・班管理">
+  <h2 id="pInlineTitle">協力店 実績管理</h2>
+  <p class="p-inline-muted">いつもの実績管理アプリです。協力店には件数だけを表示し、売上・単価の原票は読み込みません。</p>
+  <div class="p-inline-grid">
+    <label class="p-inline-field">実績日<input id="pInlineDate" type="date"></label>
+    <div class="p-inline-field"><label for="pInlineRefresh">最新データ</label><button id="pInlineRefresh" type="button">更新</button></div>
+  </div>
+  <p id="pInlineStatus" role="status" aria-live="polite"></p>
+  <div class="p-inline-card">
+    <h3>👥 班管理</h3>
+    <div id="pInlineTeams" class="p-inline-list"></div>
+    <div id="pInlineOwnerTeam" hidden>
+      <div class="p-inline-grid"><label class="p-inline-field">新しい班名<input id="pInlineTeamName" maxlength="60" placeholder="例：1班"></label></div>
+      <button id="pInlineAddTeam" type="button">班を追加</button>
+    </div>
+    <h3>メンバーを追加</h3>
+    <div id="pInlinePeople" class="p-inline-list"></div>
+    <div id="pInlineMemberForms" hidden>
+      <div class="p-inline-grid">
+        <label class="p-inline-field">班<select id="pInlineManageTeam"></select></label>
+        <label class="p-inline-field">メールなしメンバーの名前<input id="pInlineManagedName" maxlength="60" placeholder="例：田中 太郎"></label>
+      </div>
+      <button id="pInlineAddManaged" type="button">メールなしメンバーを追加</button>
+      <div class="p-inline-grid">
+        <label class="p-inline-field">メール招待先<input id="pInlineInviteEmail" type="email" autocomplete="off" placeholder="member@example.com"></label>
+        <label class="p-inline-field">役割<select id="pInlineInviteRole"><option value="member">メンバー</option><option value="leader">リーダー</option></select></label>
+      </div>
+      <button id="pInlineCreateInvite" type="button">メールありメンバーを招待</button>
+      <div id="pInlineInviteResult" hidden>
+        <label class="p-inline-field">招待URL<input id="pInlineInviteUrl" readonly></label>
+        <button id="pInlineCopyInvite" type="button">招待リンクをコピー</button>
+      </div>
+    </div>
+  </div>
+  <div class="p-inline-card">
+    <h3>✏️ 件数入力・訂正</h3>
+    <label class="p-inline-field">担当者<select id="pInlineStaff"></select></label>
+    <div id="pInlineCountFields" class="p-inline-grid"></div>
+    <div class="p-inline-actions">
+      <button id="pInlineSave" type="button">件数を保存</button>
+      <span id="pInlineVersion" class="p-inline-muted"></span>
+    </div>
+  </div>
+  <div class="p-inline-card"><h3>🏆 班・個人・商材ランキング（件数のみ）</h3><div id="pInlineRanking" class="p-inline-list"></div></div>
+</section>
+
 
   <!-- ユーザー情報 -->
 
@@ -6403,6 +6483,9 @@ body.product-reordering .product-list {
         class="team-list">
       </div>
 
+      <div id="ownerPartnerTeamGroups" class="team-list" aria-label="協力店の会社別班一覧" style="margin-top:14px"></div>
+
+
     </div>
 
   </div>
@@ -6998,6 +7081,13 @@ const readPartnerQuickDay = httpsCallable(partnerCountFunctions,"getPartnerQuick
 const approvePartnerQuickDay = httpsCallable(partnerCountFunctions,"approvePartnerQuickCounts");
 const readPartnerWorkDay = httpsCallable(partnerCountFunctions,"getPartnerWorkspace");
 const createPartnerCompanyInvite = httpsCallable(partnerCountFunctions,"createPartnerCompanyInvitation");
+
+const partnerInlineManage = httpsCallable(partnerCountFunctions,"managePartnerWorkspace");
+const partnerInlineSave = httpsCallable(partnerCountFunctions,"submitPartnerWorkspaceCounts");
+const partnerInlineAccept = httpsCallable(partnerCountFunctions,"acceptPartnerWorkspaceInvite");
+const partnerMainPreviewCompanyInvite = httpsCallable(partnerCountFunctions,"previewPartnerCompanyInvitation");
+const partnerMainAcceptCompanyInvite = httpsCallable(partnerCountFunctions,"acceptPartnerCompanyInvitation");
+
 
 
 /* =====================================================
@@ -10909,6 +10999,7 @@ async function enterApplication(
   user
 ) {
 
+  resetPartnerInline();
   currentUser =
     user;
 
@@ -12003,8 +12094,8 @@ partnerInviteCreateButton.onclick = async () => {
     const token=response?.data?.token;
     if(typeof token!=="string"||!/^[A-Za-z0-9_-]{43}$/.test(token))
       throw Error("invalid_invite_response");
-    const url=new URL("/partner-invite.html",location.origin);
-    url.searchParams.set("token",token);
+    const url=new URL("/",location.origin);
+    url.searchParams.set("partnerCompanyInvite",token);
     document.getElementById("partnerInviteLinkOutput").value=url.href;
     document.getElementById("partnerInviteResult").hidden=false;
     showSuccess("協力店の招待リンクを作成しました。30分以内に送ってください。");
@@ -12071,6 +12162,338 @@ copyInviteButton.onclick =
   };
 
 
+
+// NICO partner: same Firebase email sign-in, same URL, isolated COUNT-ONLY API.
+// Never read products/records/revenueGoals in this branch. Server checks scope.
+const pInline=id=>document.getElementById(id);
+let partnerInlineData=null,partnerInlineWorkspaceCompany="",partnerInlineNonce=0;
+let partnerInlineBusy=false,ownerPartnerTeamsNonce=0;
+const partnerMainDate=()=>new Intl.DateTimeFormat("sv-SE",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+const partnerMainValidId=id=>typeof id==="string"&&/^[A-Za-z0-9_-]{1,128}$/.test(id);
+function partnerMainPendingInvite(){
+ const q=new URL(location.href).searchParams;
+ const company=q.get("partnerCompanyInvite"),staff=q.get("partnerStaffInvite");
+ if(company&&staff)return {kind:"invalid",token:""};
+ if(company)return {kind:"company",token:company};
+ if(staff)return {kind:"staff",token:staff};
+ return null;
+}
+function resetPartnerInline(){
+ ++partnerInlineNonce;++ownerPartnerTeamsNonce;
+ partnerInlineData=null;partnerInlineWorkspaceCompany="";partnerInlineBusy=false;
+ appScreen.removeAttribute("data-partner-count-only");
+ pInline("partnerInlineWorkspace").hidden=true;
+ pInline("pInlineStatus").textContent="";
+ pInline("pInlineInviteUrl").value="";
+ pInline("pInlineInviteResult").hidden=true;
+ authScreen.removeAttribute("data-partner-invite");
+ pInline("partnerInviteAtMain").hidden=true;
+}
+function partnerInlineStatus(message,bad=false){
+ const el=pInline("pInlineStatus");
+ el.textContent=message;
+ el.style.color=bad?"#b91c1c":"";
+}
+function partnerMainAppendRow(parent,label,value){
+ const row=document.createElement("div");row.className="p-inline-row";
+ const b=document.createElement("strong");b.textContent=label;
+ const sub=document.createElement("div");sub.className="p-inline-muted";sub.textContent=value;
+ row.append(b,sub);parent.append(row);
+}
+function partnerInlineFillSelect(id,items,label,preferred){
+ const select=pInline(id),before=select.value;
+ select.replaceChildren();
+ for(const item of items){
+  const op=document.createElement("option");
+  op.value=item.id;op.textContent=label(item);select.append(op);
+ }
+ const pick=preferred||before;
+ if(items.some(x=>x.id===pick))select.value=pick;
+ return select.value;
+}
+function partnerInlineRenderCounts(){
+ const snap=partnerInlineData;
+ if(!snap||snap.role==="hub")return;
+ const staffId=pInline("pInlineStaff").value;
+ const entry=snap.records.find(x=>x.staffId===staffId);
+ const grid=pInline("pInlineCountFields");grid.replaceChildren();
+ for(const key of snap.categories){
+  const label=document.createElement("label");label.className="p-inline-field";
+  label.textContent=key;
+  const input=document.createElement("input");input.type="number";input.min="0";input.max="9999";
+  input.step="1";input.inputMode="numeric";input.dataset.countKey=key;
+  input.value=String(entry?.counts?.[key]??0);
+  label.append(input);grid.append(label);
+ }
+ pInline("pInlineSave").disabled=!staffId||partnerInlineBusy;
+ pInline("pInlineVersion").textContent=entry?"登録済み・第"+entry.version+"版":"未登録";
+}
+function partnerInlineRender(){
+ const snap=partnerInlineData;if(!snap||snap.role==="hub")return;
+ pInline("pInlineTitle").textContent="🤝 "+snap.companyName+"｜実績管理";
+ const teams=(snap.teams||[]).filter(x=>x.active===true);
+ const staff=(snap.staff||[]).filter(x=>x.active===true);
+ const teamById=new Map(teams.map(x=>[x.id,x]));
+ const teamList=pInline("pInlineTeams");teamList.replaceChildren();
+ for(const t of teams)partnerMainAppendRow(teamList,snap.companyName+"・"+t.name,
+  staff.filter(p=>p.teamId===t.id).length+"人");
+ if(!teams.length)partnerMainAppendRow(teamList,"班がありません","協力店オーナーが班を作成してください。");
+ pInline("pInlineOwnerTeam").hidden=snap.role!=="owner";
+ pInline("pInlineMemberForms").hidden=!["owner","leader"].includes(snap.role);
+ pInline("pInlineInviteRole").querySelector('option[value="leader"]').disabled=snap.role!=="owner";
+ if(snap.role==="leader"&&pInline("pInlineInviteRole").value==="leader")
+  pInline("pInlineInviteRole").value="member";
+ partnerInlineFillSelect("pInlineManageTeam",teams,t=>snap.companyName+"・"+t.name,
+  snap.role==="leader"?snap.teamId:"");
+ pInline("pInlineManageTeam").disabled=snap.role==="leader";
+ pInline("pInlineAddManaged").disabled=!teams.length;
+ pInline("pInlineCreateInvite").disabled=!teams.length;
+ const list=pInline("pInlinePeople");list.replaceChildren();
+ for(const person of staff)partnerMainAppendRow(list,person.name,
+  (teamById.get(person.teamId)?.name||"未配属")+"・"+
+  (person.kind==="managed"?"メールなし":person.role==="leader"?"リーダー":"メンバー"));
+ partnerInlineFillSelect("pInlineStaff",staff,
+  p=>p.name+"（"+(teamById.get(p.teamId)?.name||"未設定")+"）");
+ partnerInlineRenderCounts();
+ // Show ONLY numerical counts from the isolated partner count API, never money.
+ const rankings=pInline("pInlineRanking");rankings.replaceChildren();
+ const byTeam=new Map(teams.map(t=>[t.id,0]));
+ const byPerson=[],byProduct=new Map(snap.categories.map(k=>[k,0]));
+ for(const entry of snap.records){
+  const person=staff.find(p=>p.id===entry.staffId);
+  if(!person)continue;
+  const total=entry.totalCount;
+  if(!Number.isSafeInteger(total)||total<0)continue;
+  byPerson.push({name:person.name,n:total});
+  if(byTeam.has(entry.teamIdSnapshot))
+   byTeam.set(entry.teamIdSnapshot,byTeam.get(entry.teamIdSnapshot)+total);
+  for(const key of snap.categories)byProduct.set(key,byProduct.get(key)+(entry.counts?.[key]||0));
+ }
+ const heading=label=>{
+  const h=document.createElement("h4");h.textContent=label;rankings.append(h);
+ };
+ heading("班別");
+ for(const [id,n] of [...byTeam.entries()].sort((a,b)=>b[1]-a[1]))
+  partnerMainAppendRow(rankings,snap.companyName+"・"+(teamById.get(id)?.name||"班"),n+"件");
+ heading("個人別");
+ for(const [i,p] of byPerson.sort((a,b)=>b.n-a.n).entries())
+  partnerMainAppendRow(rankings,(i+1)+"位 "+p.name,p.n+"件");
+ heading("商材別");
+ for(const [key,n] of [...byProduct.entries()].sort((a,b)=>b[1]-a[1]))
+  partnerMainAppendRow(rankings,key,n+"件");
+}
+async function partnerInlineFetch(){
+ if(!auth.currentUser?.emailVerified)return;
+ const seq=++partnerInlineNonce,uid=auth.currentUser.uid;
+ partnerInlineStatus("件数を読み込み中...");
+ try{
+  const payload={date:pInline("pInlineDate").value};
+  if(partnerInlineWorkspaceCompany)payload.workspaceCompanyId=partnerInlineWorkspaceCompany;
+  const snap=(await readPartnerWorkDay(payload)).data;
+  if(seq!==partnerInlineNonce||auth.currentUser?.uid!==uid)return;
+  if(!snap||!["owner","leader","member"].includes(snap.role)||
+     !Array.isArray(snap.teams)||!Array.isArray(snap.staff)||
+     !Array.isArray(snap.categories)||!Array.isArray(snap.records)||
+     typeof snap.companyName!=="string"||snap.companyName.length===0)
+   throw Error("partner_count_schema");
+  partnerInlineData=snap;partnerInlineRender();
+  partnerInlineStatus("件数を表示しています。金額・単価は読み込んでいません。");
+ }catch(e){
+  if(seq!==partnerInlineNonce||auth.currentUser?.uid!==uid)return;
+  partnerInlineData=null;pInline("pInlineSave").disabled=true;
+  pInline("pInlineRanking").replaceChildren();
+  pInline("pInlineTeams").replaceChildren();pInline("pInlinePeople").replaceChildren();
+  partnerInlineStatus("協力店の件数サービスを確認できません。自社オーナーの件数利用承認・所属・API公開状況をご確認ください。",true);
+ }
+}
+async function openSameAppPartnerWorkspace(user,workspaceCompanyId=""){
+ if(!user?.emailVerified||!partnerMainValidId(user.uid))return;
+ // Do not load legacy sales products, records, prices, or Firestore listeners.
+ stopRealtimeListeners();
+ partnerInlineWorkspaceCompany=partnerMainValidId(workspaceCompanyId)?workspaceCompanyId:"";
+ partnerInlineData=null;
+ verificationScreen.style.display="none";
+ companySetupScreen.style.display="none";
+ authScreen.style.display="none";
+ appScreen.dataset.partnerCountOnly="true";
+ appScreen.style.display="block";
+ pInline("partnerInlineWorkspace").hidden=false;
+ userName.textContent=user.displayName||"協力店スタッフ";
+ userEmail.textContent=user.email||"";
+ userRole.textContent="協力店・件数管理";
+ loginStatus.textContent="ログイン済み・協力店";
+ databaseStatus.textContent="件数API";
+ pInline("pInlineDate").value=partnerMainDate();
+ await partnerInlineFetch();
+}
+async function partnerInlineRun(work){
+ if(partnerInlineBusy||!partnerInlineData)return;
+ const uid=auth.currentUser?.uid;
+ partnerInlineBusy=true;
+ pInline("pInlineSave").disabled=true;
+ try{
+  const message=await work();
+  if(uid!==auth.currentUser?.uid)return;
+  await partnerInlineFetch();
+  if(partnerInlineData)partnerInlineStatus(message||"更新しました。");
+ }catch{
+  partnerInlineStatus("保存・招待を確認できませんでした。内容・所属・権限を確認してください。",true);
+ }finally{partnerInlineBusy=false;if(partnerInlineData)partnerInlineRenderCounts();}
+}
+function partnerInlinePayload(data){
+ return {...data,...(partnerInlineWorkspaceCompany?{workspaceCompanyId:partnerInlineWorkspaceCompany}:{})};
+}
+pInline("pInlineDate").onchange=partnerInlineFetch;
+pInline("pInlineRefresh").onclick=partnerInlineFetch;
+pInline("pInlineStaff").onchange=partnerInlineRenderCounts;
+pInline("pInlineAddTeam").onclick=()=>partnerInlineRun(async()=>{
+ if(partnerInlineData.role!=="owner")throw Error("role");
+ const name=pInline("pInlineTeamName").value.trim();
+ if(!name)throw Error("name");
+ await partnerInlineManage(partnerInlinePayload({action:"addTeam",name}));
+ pInline("pInlineTeamName").value="";return "班を作成しました。";
+});
+pInline("pInlineAddManaged").onclick=()=>partnerInlineRun(async()=>{
+ if(!["owner","leader"].includes(partnerInlineData.role))throw Error("role");
+ const name=pInline("pInlineManagedName").value.trim();
+ const teamId=partnerInlineData.role==="leader"?partnerInlineData.teamId:pInline("pInlineManageTeam").value;
+ if(!name||!partnerMainValidId(teamId))throw Error("input");
+ await partnerInlineManage(partnerInlinePayload({action:"addManaged",name,teamId}));
+ pInline("pInlineManagedName").value="";return "メールなしのメンバーを追加しました。";
+});
+pInline("pInlineCreateInvite").onclick=()=>partnerInlineRun(async()=>{
+ const snap=partnerInlineData,email=pInline("pInlineInviteEmail").value.trim().toLowerCase();
+ const role=pInline("pInlineInviteRole").value;
+ const teamId=snap.role==="leader"?snap.teamId:pInline("pInlineManageTeam").value;
+ if(!["owner","leader"].includes(snap.role)||!partnerMainValidId(teamId)||
+  !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||
+  !["leader","member"].includes(role)||(snap.role==="leader"&&role!=="member"))throw Error("input");
+ const response=(await partnerInlineManage(partnerInlinePayload({action:"createInvite",email,teamId,role}))).data;
+ if(!/^[A-Za-z0-9_-]{43}$/.test(response?.token||""))throw Error("response");
+ const url=new URL("/",location.origin);url.searchParams.set("partnerStaffInvite",response.token);
+ pInline("pInlineInviteUrl").value=url.href;
+ pInline("pInlineInviteResult").hidden=false;
+ return "招待リンクを発行しました。";
+});
+pInline("pInlineCopyInvite").onclick=async()=>{
+ if(!pInline("pInlineInviteUrl").value)return;
+ try{await navigator.clipboard.writeText(pInline("pInlineInviteUrl").value);
+  partnerInlineStatus("招待リンクをコピーしました。");
+ }catch{pInline("pInlineInviteUrl").select();partnerInlineStatus("リンクを選択しました。コピーしてください。");}
+};
+pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
+ const snap=partnerInlineData,staffId=pInline("pInlineStaff").value;
+ if(!snap.staff.some(p=>p.id===staffId&&p.active))throw Error("staff");
+ const counts=Object.create(null);
+ for(const key of snap.categories){
+  const node=[...pInline("pInlineCountFields").querySelectorAll("input[data-count-key]")]
+    .find(x=>x.dataset.countKey===key);
+  const n=Number(node?.value);
+  if(!node||node.value.trim()===""||!Number.isSafeInteger(n)||n<0||n>9999)throw Error("counts");
+  counts[key]=n;
+ }
+ const before=snap.records.find(x=>x.staffId===staffId);
+ const result=(await partnerInlineSave(partnerInlinePayload({
+  date:pInline("pInlineDate").value,staffId,counts,expectedVersion:before?.version??0
+ }))).data;
+ const verified=(await readPartnerWorkDay(partnerInlinePayload({date:pInline("pInlineDate").value}))).data;
+ const saved=verified?.records?.find(x=>x.staffId===staffId);
+ if(!saved||saved.version!==result?.version||
+   snap.categories.some(key=>saved.counts?.[key]!==counts[key]))throw Error("save_verify");
+ return "件数の保存と再取得を確認しました。";
+});
+// Original internal owner sees existing teams PLUS partner-company teams.
+// Never mix partner team IDs into the original sales-team write selectors.
+async function loadOwnerPartnerCompanyTeams(){
+ const target=document.getElementById("ownerPartnerTeamGroups");
+ if(!target)return;
+ const seq=++ownerPartnerTeamsNonce;
+ target.replaceChildren();
+ if(!auth.currentUser||!isCurrentCompanyOwner()||currentCompanyData?.companyKind==="partner")return;
+ const uid=auth.currentUser.uid;
+ const heading=document.createElement("strong");heading.textContent="🤝 協力店の班一覧";
+ target.append(heading);
+ try{
+  const result=(await readPartnerWorkDay({date:partnerMainDate()})).data;
+  if(seq!==ownerPartnerTeamsNonce||uid!==auth.currentUser?.uid)return;
+  if(result?.role!=="hub"||!Array.isArray(result.registeredCompanies))throw Error("scope");
+  if(!result.registeredCompanies.length)
+   partnerMainAppendRow(target,"協力店は未登録です","招待リンクから協力店会社を追加できます。");
+  for(const company of result.registeredCompanies){
+   if(!company?.name||!Array.isArray(company.teams))continue;
+   if(!company.teams.length)
+    partnerMainAppendRow(target,company.name,"班未登録"+(company.active?"":"・件数利用未承認"));
+   for(const team of company.teams)
+    partnerMainAppendRow(target,company.name+"・"+team.name,
+      company.active?"件数登録対象":"件数利用未承認");
+  }
+ }catch{
+  if(seq!==ownerPartnerTeamsNonce)return;
+  partnerMainAppendRow(target,"協力店の班を読み込めません",
+   "協力店APIの公開・オーナー権限・件数利用の承認を確認してください。");
+ }
+}
+async function showPartnerInviteAtMain(user,invite){
+ // Invite acceptance is an explicit action; never accept while loading login.
+ stopRealtimeListeners();
+ authScreen.dataset.partnerInvite="true";
+ verificationScreen.style.display="none";companySetupScreen.style.display="none";
+ appScreen.style.display="none";authScreen.style.display="block";
+ pInline("partnerInviteAtMain").hidden=false;
+ const nameField=pInline("pMainInviteNameField");
+ nameField.hidden=invite.kind!=="staff";
+ pInline("pMainInviteName").value=user.displayName||"";
+ pInline("pMainInviteStatus").textContent="";
+ if(!/^[A-Za-z0-9_-]{43}$/.test(invite.token)){
+  pInline("pMainInviteDescription").textContent="招待リンクが正しくありません。";
+  pInline("pMainAcceptInvite").disabled=true;return;
+ }
+ pInline("pMainAcceptInvite").disabled=false;
+ if(invite.kind==="company"){
+  try{
+   const response=(await partnerMainPreviewCompanyInvite({token:invite.token})).data;
+   if(auth.currentUser?.uid!==user.uid)return;
+   pInline("pMainInviteDescription").textContent=
+    (response?.fromCompanyName||"自社")+" から "+(response?.partnerCompanyName||"協力店")+
+    " への招待です。このアカウントで参加しますか？";
+  }catch{
+   pInline("pMainInviteDescription").textContent="招待を確認できません。招待先メール・期限をご確認ください。";
+   pInline("pMainAcceptInvite").disabled=true;
+  }
+ }else{
+  pInline("pMainInviteDescription").textContent=
+   "このアカウントで協力店の班に参加します。招待先メールアドレスと一致する場合のみ承諾できます。";
+ }
+}
+pInline("pMainAcceptInvite").onclick=async()=>{
+ const invite=partnerMainPendingInvite(),user=auth.currentUser,button=pInline("pMainAcceptInvite");
+ if(!invite||!user?.emailVerified||button.disabled||
+  !/^[A-Za-z0-9_-]{43}$/.test(invite.token))return;
+ button.disabled=true;pInline("pMainInviteStatus").textContent="招待を承諾しています...";
+ try{
+  let result;
+  if(invite.kind==="company")
+   result=(await partnerMainAcceptCompanyInvite({token:invite.token})).data;
+  else{
+   const name=pInline("pMainInviteName").value.trim();
+   if(!name)throw Error("name");
+   result=(await partnerInlineAccept({token:invite.token,name,transferCurrentCompany:false})).data;
+  }
+  if(auth.currentUser?.uid!==user.uid)return;
+  if(!result?.partnerCompanyId||!partnerMainValidId(result.partnerCompanyId))throw Error("response");
+  // Never delete the employee's original company, revenue or historical data.
+  const url=new URL("/",location.origin);
+  if(result.secondaryMembership)url.searchParams.set("workspaceCompanyId",result.partnerCompanyId);
+  location.replace(url.href);
+ }catch{
+  pInline("pMainInviteStatus").textContent="招待を承諾できませんでした。メール・招待期限・既存の所属を確認してください。";
+  button.disabled=false;
+ }
+};
+pInline("pMainCancelInvite").onclick=()=>{
+ const url=new URL("/",location.origin);location.replace(url.href);
+};
+
 /* =====================================================
    Auth状態
 ===================================================== */
@@ -12097,12 +12520,27 @@ onAuthStateChanged(
       }
 
 
+      const pendingPartnerInvite=partnerMainPendingInvite();
+      if(pendingPartnerInvite){
+        await showPartnerInviteAtMain(user,pendingPartnerInvite);
+        return;
+      }
+      const partnerWorkspaceId=new URL(location.href).searchParams.get("workspaceCompanyId")||"";
+      if(partnerWorkspaceId){
+        if(!partnerMainValidId(partnerWorkspaceId)){
+          showLegacyFinanceEntryBlocked("blocked");
+          return;
+        }
+        await openSameAppPartnerWorkspace(user,partnerWorkspaceId);
+        return;
+      }
       await enterApplication(
         user
       );
 
     } else {
 
+      resetPartnerInline();
       // Never keep another company's count-only ranking in memory after logout.
       ++partnerRankingRequestGeneration;
       partnerRankingDailyCache.clear();
@@ -12190,6 +12628,12 @@ async function checkLegacyEntryAgainstServer(user) {
 }
 
 function showLegacyFinanceEntryBlocked(mode) {
+  if(mode==="partner"&&auth.currentUser?.emailVerified){
+    // Use the original login's Auth session; only isolated COUNT-ONLY API.
+    // No legacy sales subscriptions are started for this identity.
+    void openSameAppPartnerWorkspace(auth.currentUser);
+    return;
+  }
   stopRealtimeListeners();
   appScreen.style.display="none";
   companySetupScreen.style.display="none";
@@ -14495,6 +14939,9 @@ async function loadTeams(
 
 
     renderTeams();
+    // Company-grouped partner teams are read from count-only Callable, never
+    // inserted into the existing sales team's write/select collections.
+    void loadOwnerPartnerCompanyTeams();
 
     return true;
 
