@@ -1,0 +1,12 @@
+"use strict";
+const crypto=require("node:crypto");
+const {promisify}=require("node:util");
+const scrypt=promisify(crypto.scrypt);
+const CODE=/^NICO-[A-F0-9]{24}$/,ID=/^[A-Za-z0-9_-]{1,128}$/;
+const clean=x=>typeof x==="string"?x.trim():"";
+const newCode=()=>("NICO-"+crypto.randomBytes(12).toString("hex").toUpperCase());
+const passwordValid=x=>typeof x==="string"&&x.length>=12&&x.length<=128&&Buffer.byteLength(x,"utf8")<=256;
+const secretHash=async(secret,salt)=>(await scrypt(secret,Buffer.from(salt,"base64url"),64)).toString("base64url");
+const safeEqual=(a,b)=>{const x=Buffer.from(String(a)),y=Buffer.from(String(b));return x.length===y.length&&crypto.timingSafeEqual(x,y)};
+const salt=()=>crypto.randomBytes(24).toString("base64url");
+module.exports={CODE,ID,clean,newCode,passwordValid,secretHash,safeEqual,salt};
