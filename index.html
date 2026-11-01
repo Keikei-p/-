@@ -9577,6 +9577,12 @@ const nativePartnerTeams=document.getElementById("nativePartnerTeams");
 function nativePartnerName(company){
  return "協力店｜"+company+"｜1班";
 }
+function isNativePartnerMember(){
+ const teamId=currentUserData?.teamId;
+ return Boolean(teamId&&currentUserData?.companyRole!=="owner"&&
+   teams.some(t=>t.id===teamId&&t.active!==false&&
+     typeof t.name==="string"&&t.name.startsWith("協力店｜")));
+}
 function renderNativePartnerTeams(){
  nativePartnerTeams.replaceChildren();
  if(!isCurrentCompanyOwner())return;
@@ -13719,6 +13725,7 @@ function applyRevenueVisibility() {
 
   const allowed =
     canCurrentUserViewRevenue();
+  const nativePartnerRankOnly=!allowed&&isNativePartnerMember();
 
   if (
     monthlyRevenue?.closest(
@@ -13751,7 +13758,7 @@ function applyRevenueVisibility() {
   ) {
 
     individualRankingToggle.style.display =
-      allowed
+      (allowed||nativePartnerRankOnly)
         ? ""
         : "none";
 
@@ -13811,7 +13818,7 @@ function applyRevenueVisibility() {
       true;
 
     individualRankingContent.hidden =
-      true;
+      !nativePartnerRankOnly;
 
     revenueChartContent.hidden =
       true;
@@ -32622,9 +32629,10 @@ function renderIndividualRanking(
     "";
 
   updateRankingLayoutControls("individual");
+  const nativePartnerRankOnly=!canCurrentUserViewRevenue()&&isNativePartnerMember();
 
   if (
-    !canCurrentUserViewRevenue()
+    !canCurrentUserViewRevenue() && !nativePartnerRankOnly
   ) {
 
     individualRankingCount.textContent =
@@ -32641,7 +32649,7 @@ function renderIndividualRanking(
     ).sort(
       (a, b) => {
 
-        const revenueDiff =
+        const revenueDiff = nativePartnerRankOnly ? 0 :
           Number(
             b.revenue ||
             0
@@ -32695,7 +32703,7 @@ function renderIndividualRanking(
 
 
   individualRankingCount.textContent =
-    `${ranking.length}人・売上順`;
+    `${ranking.length}人・${nativePartnerRankOnly?"順位のみ":"売上順"}`;
 
 
   if (
@@ -32835,6 +32843,7 @@ function renderIndividualRanking(
         "ranking-value";
 
 
+      if(!nativePartnerRankOnly){
       value.innerHTML = `
         <div class="ranking-count">
           ${formatYen(
@@ -32846,7 +32855,7 @@ function renderIndividualRanking(
           ${item.count}件
         </div>
       `;
-
+      }
 
       row.appendChild(
         left
