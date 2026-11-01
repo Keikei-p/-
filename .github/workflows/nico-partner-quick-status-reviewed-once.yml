@@ -117,3 +117,7 @@ jobs:
             test "$code" = 200 || { echo "STOP: $route HTTP $code"; exit 1; }
           done
           echo 'PASS: only reviewed partner quick-status UI released; owner finance and other partner paths preserved'
+
+# Safety-only rerun: the first main-push run was cancelled by GitHub concurrency
+# when older index.html release workflows raced. No release parameters changed.
+# This one-line workflow-only main push retries the exact reviewed HTML gate.
