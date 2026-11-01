@@ -22,12 +22,15 @@ jobs:
           LIVE_INDEX_PATH="$RUNNER_TEMP/live-index.html" node --input-type=module <<'NODE'
           import fs from 'node:fs';
           import crypto from 'node:crypto';
+          import {execFileSync} from 'node:child_process';
           const s=fs.readFileSync(process.env.LIVE_INDEX_PATH,'utf8');
           const source=fs.readFileSync('index.html','utf8');
+          const baseline=execFileSync('git',['show','e90a26d777238892c018f323f4e7e0d0724866c3:index.html'],{encoding:'utf8'});
           const checks={
             htmlLength:s.length,mainLength:source.length,
             liveSha256:crypto.createHash('sha256').update(s).digest('hex').slice(0,16),
             exactMain:s===source,
+            exactApprovedBaseline:s===baseline,
             hasPartnerTab:s.includes('id="quickPartnerButton"'),
             hasExistingPartnerInvite:s.includes('id="partnerInviteInline"'),
             hasCountOnlyAPI:s.includes('const readPartnerWorkDay')||s.includes('readPartnerWorkDay = httpsCallable'),
