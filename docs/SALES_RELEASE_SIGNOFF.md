@@ -931,3 +931,15 @@ GitHub所有者として認証済みの接続から、本番影響をindex.html�
 - 「sales-production-reviewed」はコード審査だけを示す。Firestore/Hosting本番変更、課金、既存データの削除、バックアップ復元の承認ではない。
 - **現状はPR #306のみ。main未統合、本番未公開。** リリース前のセキュリティ遮断を未検証のまま完了として扱わない。
 - 接続済みGitHubの権限で技術審査ラベル `sales-production-reviewed` をPR #306に付けた。これは**PRソースコード差分のみの技術レビュー**で、ユーザー本人の署名・実Firestoreルール公開・Hosting公開・本番実アカウント確認の承認ではない。ラベル付与後の最新コミットCIで保護ゲートを再確認する。
+
+
+---
+## 2026-11-02 — PR #308：協力店の通常ログインから件数APIへの安全誘導
+
+- **目的**: 既存 `index.html` に統合した協力店ログイン（PR #306）で、協力店ユーザーが金額画面向けの直接Firestore会社/メンバー読取に進み、権限拒否で件数画面が出ない可能性を最小修正する。
+- **変更対象**: `index.html` と `tests/partner-one-login-same-app.test.cjs`、本技術審査記録のみ。Firestore Rules、Firebase Functions、商材の料金・売上計算、既存の実績・履歴・会社所属・LINE通知には一切変更を加えない。
+- **修正**: 自分の `users/{uid}` をサーバーから確認。協力店の明示的な `accessKind=partner`/`memberType=cooperator` かつ `canViewRevenue=false`/`canViewUnitPrice=false` に一致したユーザーだけ、内部会社用の直接Firestore所属チェックより前に既存の件数専用Callableへ誘導。不整合時は金額画面へのフォールバックを拒否。自社のOwner/leader/memberは従来のサーバー所属チェックを維持。
+- **レビュー**: 接続GitHubのソースコード・Rules・既存の招待APIを突合し、新規のログイン/DB移行/承認経路を追加していないことを確認した。PRの `sales-production-reviewed` ラベルはこの限定差分のコード技術レビューの意味であり、ユーザー本人の署名ではない。
+- **要注意**: 招待承諾直後のWorkspace件数入力には既存の `partnerRelations.active/countSharingApproved` が必要。未承認は既存のサーバーが拒否する。Quick件数専用承認とWorkspace班管理承認は別。実際の協力店メールログイン→班→件数保存・自社反映の本番E2Eは未完了。Firestoreの財務原票直接読取の根本問題は今回解消していない。
+- **本番状況**: PR #306 `a40845fa5e0108b4a29903bfc2fcb9fa4cf8d145` は既存 `index.html` のみ自動Hosting公開成功（Actions #41324240110）。本PR #308はこの初回公開に対する最小限の追加修正であり、**本記録の作成時点では未マージ・未公開**。
+- **本人の独立した署名**: 未取得。実アカウント・課金・IAM・金融データについての承認を本書で代行しない。データの削除・移籍・本番ルール適用は行わない。
