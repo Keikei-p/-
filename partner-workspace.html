@@ -52,7 +52,22 @@ td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 <header><h1 id="workspaceTitle">NICO FACTORY｜協力店 実績管理</h1>
 <p>会社・班・メンバーごとの件数を管理。売上・単価は表示しません。</p></header>
 <main><div id="notice" class="notice" role="status" aria-live="polite">認証を確認しています。</div>
-<section id="loginBox"><h2>ログイン・新規登録</h2><form id="loginForm">
+<section id="loginBox"><h2>協力店ログイン</h2>
+<div class="row"><button id="selectCodeLogin" type="button">会社コードでログイン</button><button id="selectEmailLogin" type="button" class="secondary">自社・従来のメールログイン</button></div>
+<div id="companyCodeBox">
+ <p class="muted">メール確認・招待メールは不要。自社から受け取った会社コードと、協力店が決めたパスワードを使います。共有パスワードの操作履歴は会社単位です。</p>
+ <form id="companyCodeLoginForm">
+ <label for="companyLoginCode">会社コード</label><input id="companyLoginCode" type="text" autocomplete="username" autocapitalize="characters" placeholder="NICO-XXXXXXXXXXXXXXXXXXXXXXXX" required>
+ <label for="companyLoginPassword">パスワード（12文字以上）</label><input id="companyLoginPassword" type="password" minlength="12" maxlength="128" autocomplete="current-password" required>
+ <button type="submit">会社コードでログイン</button></form>
+ <details><summary>初めて利用する協力店はこちら（パスワード設定）</summary>
+ <form id="companyCodeActivateForm">
+ <label for="companyActivationCode">自社から届いた会社コード</label><input id="companyActivationCode" type="text" autocomplete="off" autocapitalize="characters" required>
+ <label for="companyActivationPassword">新しいパスワード（12文字以上）</label><input id="companyActivationPassword" type="password" minlength="12" maxlength="128" autocomplete="new-password" required>
+ <button type="submit">初回パスワードを設定してログイン</button>
+ </form></details>
+</div>
+<form id="loginForm" hidden>
 <label for="email">メールアドレス</label><input id="email" type="email" autocomplete="email" required>
 <label for="pass">パスワード（6文字以上）</label><input id="pass" type="password" autocomplete="current-password" minlength="6" required>
 <div class="row"><button type="submit">ログイン</button><button id="signup" type="button" class="secondary">アカウント作成</button></div>
@@ -141,6 +156,16 @@ td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 <p id="missingStatus" role="status" aria-live="polite"></p>
 <div id="missingRows" class="scroll"></div></section>
 <section id="hubBox" hidden><h2>🤝 協力店会社別の実績</h2>
+<div id="companyCodeIssuePanel" class="company-panel">
+<h3>協力店へ会社コードを招待</h3>
+<p class="muted">自社が会社名を入力するとコードを自動発行。コードを協力店に送り、相手がパスワードを設定して利用します。既存の協力店会社も選択可能です。</p>
+<form id="companyCodeIssueForm">
+<label for="companyCodeExisting">既存の協力店会社（新規なら「新しい会社」）</label><select id="companyCodeExisting"><option value="">新しい会社を招待</option></select>
+<label for="companyCodeName">新しい協力店の会社名</label><input id="companyCodeName" maxlength="80" placeholder="例：株式会社〇〇">
+<button type="submit">会社コードを発行</button></form>
+<div id="companyCodeIssueResult" hidden><label for="companyCodeIssued">協力店へ送る会社コード</label>
+<div class="row"><input id="companyCodeIssued" readonly><button type="button" id="copyCompanyCode">コードをコピー</button></div>
+<p id="companyCodeDeadline" class="muted"></p></div></div>
  <div id="hubInvitePanel" class="company-panel">
   <h3>協力店会社・リーダー・メンバーの招待管理</h3>
   <p class="muted">最初の協力店登録・承諾が終わると会社名が現れます。未承認の会社は招待できません。売上・単価は扱いません。</p>
