@@ -900,8 +900,7 @@ $("hubMakeInvite").onclick=()=>action(async()=>{
  const companyId=$("hubInviteCompanySelect").value,teamId=$("hubInviteTeamSelect").value,
   role=$("hubInviteRoleSelect").value,email=$("hubInviteEmail").value;
  const result=(await manage({action:"hubCreateInvite",partnerCompanyId:companyId,teamId,role,email})).data;
- const url=new URL("/partner-workspace.html",location.origin);
- url.searchParams.set("invite",result.token);
+ const url=new URL("/",location.origin);url.searchParams.set("partnerStaffInvite",result.token);
  $("hubInviteUrl").value=url.href;$("hubInviteOut").hidden=false;
  return "協力店の"+(role==="leader"?"リーダー":"メンバー")+"招待リンクを作成しました。";
 });
@@ -912,7 +911,7 @@ $("hubInviteCopy").onclick=async()=>{
 $("makeInvite").onclick=()=>action(async()=>{
  const result=(await manage({action:"createInvite",email:$("inviteEmail").value,
   teamId:$("inviteTeam").value,role:$("inviteRole").value})).data;
- const url=new URL("/partner-workspace.html",location.origin);url.searchParams.set("invite",result.token);
+ const url=new URL("/",location.origin);url.searchParams.set("partnerStaffInvite",result.token);
  $("inviteUrl").value=url.href;$("inviteOut").hidden=false;
  return "招待リンクを作成しました。30分以内に招待先の本人に送ってください。";
 });
