@@ -43,6 +43,28 @@ test("existing app sign-in is reused for company and member invitations",()=>{
  // app use the unified login, while older URLs remain backwards compatible.
  assert.match(partner,/url\.searchParams\.set\("invite",result\.token\)/);
 });
+test("partner invitation preflight waits for verified recipient and retains token on sign-out",()=>{
+ const a=index.indexOf("async function showPartnerInviteAtMain(");
+ const b=index.indexOf("/* =====================================================\n   Auth状態",a);
+ assert.ok(a>=0&&b>a);
+ const block=index.slice(a,b);
+ assert.match(index,/id="pMainInviteSignedInAs"/);
+ assert.match(index,/id="pMainSwitchInviteAccount"/);
+ assert.match(block,/pInline\("pMainInviteSignedInAs"\)\.textContent/);
+ assert.match(block,/user\.email\|\|"メールアドレス未確認"/);
+ assert.match(block,/pInline\("pMainAcceptInvite"\)\.disabled=invite\.kind==="company"/);
+ assert.match(block,/pInline\("pMainAcceptInvite"\)\.disabled=false/);
+ assert.match(block,/pMainSwitchInviteAccount"\)\.onclick=async/);
+ assert.match(block,/pInline\("pMainSwitchInviteAccount"\)\.disabled=false/);
+ assert.match(block,/await signOut\(auth\)/);
+ const switchBlock=block.slice(block.indexOf('pMainSwitchInviteAccount").onclick'),block.indexOf('pMainCancelInvite").onclick'));
+ assert.doesNotMatch(switchBlock,/location\.replace|searchParams\.delete|deleteDoc|updateDoc|setDoc/);
+ for(const code of ["functions/not-found","functions/unauthenticated","functions/unavailable"])
+   assert.ok(block.includes(code));
+ assert.match(block,/await partnerMainPreviewCompanyInvite\(\{token:invite\.token\}\)/);
+ assert.doesNotMatch(index,/招待リンクは30分間有効です。/);
+ assert.doesNotMatch(index,/30分以内に送ってください。/);
+});
 test("verified partner profiles enter the existing count-only app before internal financial rules checks",()=>{
  const body=index.slice(index.indexOf("async function loadUserData("),index.indexOf("/* =====================================================\n   個人テーマ"));
  assert.match(body,/const userSnap =\s*await getDocFromServer\(\s*userRef/);
@@ -98,4 +120,22 @@ test("server owns partner roles and never returns financial data or permits lead
  assert.match(service,/privateProducts:productList/);
  assert.doesNotMatch(service,/\bdb\.collection\("(?:records|products|revenueGoals|recordCorrections)"\)/);
  assert.match(rules,/company\.get\('companyKind', 'internal'\) == 'internal'/);
+});
+test("same-app partner count errors distinguish pending activation from auth failure",()=>{
+ const begin=index.indexOf("async function partnerInlineFetch(");
+ const end=index.indexOf("async function openSameAppPartnerWorkspace(",begin);
+ assert.ok(begin>=0&&end>begin);
+ const view=index.slice(begin,end);
+ assert.match(view,/databaseStatus\.textContent="件数表示OK"/);
+ assert.match(view,/code==="functions\/permission-denied"/);
+ assert.match(view,/code==="functions\/failed-precondition"/);
+ assert.match(view,/databaseStatus\.textContent="件数利用待ち"/);
+ assert.match(view,/ログイン済みですが、協力店の件数利用承認/);
+ assert.match(view,/code==="functions\/unavailable"/);
+ assert.match(view,/databaseStatus\.textContent="件数サービス停止"/);
+ assert.match(view,/code==="functions\/unauthenticated"/);
+ assert.match(view,/databaseStatus\.textContent="再認証が必要"/);
+ assert.match(view,/partnerInlineData=null;pInline\("pInlineSave"\)\.disabled=true/);
+ for(const unsafe of ["getDoc(","getDocs(","deleteDoc(","setDoc(","updateDoc(","totalRevenue","unitPrice","pricingOptions"])
+  assert(!view.includes(unsafe),"Partner view cannot access finance: "+unsafe);
 });
