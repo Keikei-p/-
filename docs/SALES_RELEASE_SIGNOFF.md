@@ -960,3 +960,5 @@ GitHub所有者として認証済みの接続から、本番影響をindex.html�
 - 招待先「協力店」で「新規会社」「登録済み会社」を選択できる。登録済みは認証済み自社Ownerの既存 `getPartnerWorkspace`（登録会社と班）だけから選択し、利用承認済みの会社へ `managePartnerWorkspace(action=hubCreateInvite)` で既存のスタッフ招待を行う。
 - 招待は `member` を初期値とし、確認済みの相手には発行時に `leader` を選べる。招待受諾後のロール変更や個別の招待許可スイッチは現行APIで未対応。新規会社は既存の `createPartnerCompanyInvitation` を維持。別ログイン機能や新しいFirestoreデータ構造は作成しない。
 - 本変更で自社社員/協力店/売上/単価/実績/履歴/LINEのデータは変更しない。Functions・Rules・課金・IAMは無変更。現行協力店画面は件数専用UIであり、全画面完全同一化までは未完。未承認会社への招待はAPIが拒否し、フロントでも防止する。
+
+- PR #314 の `sales-production-reviewed` 技術レビューラベル付与後の再検査として、案内文書だけを更新した。ログイン済みOwner本人の最終UI確認と実ユーザーの受諾確認は未実施であり、承認済みと扱わない。
