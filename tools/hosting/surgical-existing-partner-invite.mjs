@@ -104,7 +104,10 @@ export async function uploadSingleExistingPartnerInvite({assetBytes,request,rele
    // Invitation-only run 41265102073 preserved all 11 assets on final release.
    "sites/nico-factory/versions/bae9889315ca26cd",
    // Verified run 41265891177: replaced the one invite file, retained 10 assets.
-   "sites/nico-factory/versions/ae272b4b50fa33d0"
+   "sites/nico-factory/versions/ae272b4b50fa33d0",
+   // 41301098328 independently verified release b3fa, retaining 11 original files.
+   // Metadata fileCount may be absent; still enumerate and verify every path/hash.
+   "sites/nico-factory/versions/b3fa6da659b9f899"
  ]);
  const files=[];let pageToken="";
  do{
