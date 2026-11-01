@@ -13,6 +13,9 @@
 <title>営業実績管理</title>
 
 <style>
+/* Hidden must beat explicit grid layouts, including on mobile. */
+#partnerExistingInviteFields:not([hidden]) { display: grid; }
+
 /* =====================================================
    基本
 ===================================================== */
@@ -5029,7 +5032,7 @@ body.product-reordering .product-list {
           <option value="new">新しい協力店会社を招待</option>
           <option value="existing">登録済み協力店へ招待</option>
         </select>
-        <div id="partnerExistingInviteFields" hidden style="display:grid;gap:10px;margin-bottom:14px">
+        <div id="partnerExistingInviteFields" hidden style="gap:10px;margin-bottom:14px">
           <label for="partnerExistingCompanySelect">協力店会社</label>
           <select id="partnerExistingCompanySelect" style="width:100%;min-height:44px"></select>
           <label for="partnerExistingTeamSelect">所属する班</label>
