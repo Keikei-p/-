@@ -953,3 +953,10 @@ GitHub所有者として認証済みの接続から、本番影響をindex.html�
 - この差分ではFirestore、Users、売上/単価、過去実績、LINE、Rules、Functions、backupを変更しない。HTMLと表示回帰テスト・技術記録のみ。PR審査ラベルは管理者独立署名ではない。
 
 - PR #312 のラベル付与後のコード保護ゲート再実行対象。既存テスト `tests/simple-partner-company-tab.test.mjs` に会社別メンバー一覧の表示・権限・読み取り限定検査を追加した。
+
+
+---
+## 2026-11-02 — 招待先を既存協力店会社へ振り分ける（最小変更）
+- 招待先「協力店」で「新規会社」「登録済み会社」を選択できる。登録済みは認証済み自社Ownerの既存 `getPartnerWorkspace`（登録会社と班）だけから選択し、利用承認済みの会社へ `managePartnerWorkspace(action=hubCreateInvite)` で既存のスタッフ招待を行う。
+- 招待は `member` を初期値とし、確認済みの相手には発行時に `leader` を選べる。招待受諾後のロール変更や個別の招待許可スイッチは現行APIで未対応。新規会社は既存の `createPartnerCompanyInvitation` を維持。別ログイン機能や新しいFirestoreデータ構造は作成しない。
+- 本変更で自社社員/協力店/売上/単価/実績/履歴/LINEのデータは変更しない。Functions・Rules・課金・IAMは無変更。現行協力店画面は件数専用UIであり、全画面完全同一化までは未完。未承認会社への招待はAPIが拒否し、フロントでも防止する。
