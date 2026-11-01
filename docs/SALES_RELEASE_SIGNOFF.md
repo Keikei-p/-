@@ -893,3 +893,15 @@ GitHub所有者として認証済みの接続から、本番影響をindex.html�
 - 対象変更は `partner-invite.html` の画面文言と承諾後リンク分岐のみ。既存招待API、QuickCount、Workspace、Firestore Rules、全実績、単価・売上・LINE、Firestoreの値、IAMを**一切変更しない**。
 - `tests/partner-simple-onboarding.test.mjs` の回帰テストとソースのJavaScript構文検査を行う。スコープを限定した Hosting one-shot は本番の直前ページと同一バイト・GitHub SHA一致を確認し、`surgical-existing-partner-invite.mjs` により **/partner-invite.htmlのみ**を保全付き公開する。旧バージョンとの一致が取れなければ停止。
 - 既存 `partner-counts.html` のオーナー手動承認ステップは残る。実アカウントで招待・承諾・認証・件数保存・財務非露出を終端まで確認したわけではない。CI成功と本番運用成功を混同しない。管理者本人の承認署名をこの記録で代行しない。
+
+---
+## 2026-11-01 — 自社アプリ「協力店」タブ内で件数専用承認を完結
+
+- 代表者の招待承諾後に自社Ownerが別の承認ページへ移動しなくて済むよう、既存 `index.html` のOwner限定協力店一覧へ `approvePartnerQuickCounts` を接続。件数専用の未承認 `quickOnly===true` の会社のみ、確認ダイアログ付き「この協力店の件数利用を承認」を表示。
+- APIは既存の隔離された Callable を再利用。リクエストには `partnerCompanyId` と `approved:true` のみ。応答では `countOnly===true`/`financeAccess===false`/`partnerCompanyId` を検証し、失敗時は承認完了と表示しない。
+- 旧Workspaceの承認や売上/単価・Security Rules・全実績・件数原票には変更なし。別会社のUID/メールの移行、DB削除、LINE、Cloud Functions、IAM変更なし。現在のOwner本人認証と一時的に表示中の会社・日付を照合し、タブが閉じた・ユーザーが変わった場合は操作を拒否。
+- `tests/simple-partner-company-tab.test.mjs` に全体UIおよび finance 原本非書込み回帰追加。既存Quick/Owner Finance/Salesテストと JS 構文検査を実施する。
+- 本番公開は前回公開済みの `index.html` と実サイトのバイト完全一致、レビュー済み新HTML blob、11ファイル全保全と公開後のHTML一致を確認した場合だけ、既存 Hosting REST 手順で `index.html` 1ファイルのみ。
+- 技術審査の記録であって本人の署名ではない。**本番協力店の実アカウント招待→ログイン→件数保存→自社反映と財務原票遮断のE2Eは未確認**。サーバーの元からある権限チェックを前提とし、フロントのボタン追加だけで利用保証は行わない。
+
+- **保護ゲート再検査（2026-11-01）:** PR作成イベントはreviewラベル付与前に発火したため、最初のprotected-change-guardは未付与として安全停止。PRに`x`印ではなく正式な `sales-production-reviewed` を付与済み。レビュー後の追加記録コミットで新しいPRイベントを発生させ、解除条件を改めて検証する。データ/本番の変更はCI段階では行わない。
