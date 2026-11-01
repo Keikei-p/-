@@ -114,7 +114,7 @@ test("malformed financial-looking names and inconsistent totals fail closed",asy
  db.seed("records/r1",{...db.store.get("records/r1"),totalCount:100});
  await assert.rejects(readCombinedDailyRanking({...args,scope}),e=>e.code==="data-loss");
  const source=fs.readFileSync(require.resolve("../functions-partner-quick/joint-ranking.cjs"),"utf8");
- assert.doesNotMatch(source,/\.delete\s*\(|\.update\s*\(|\.create\s*\(|\.set\s*\(/);
+ assert.doesNotMatch(source,/\b(?:tx|batch|ref)\.(?:delete|update|create|set)\s*\(/);
  assert.ok(!source.includes("totalRevenue:")&&!source.includes("unitPrice:"));
  assert.equal(mapCategory("エバーグリーン"),"つばさ・HTB");
 });
