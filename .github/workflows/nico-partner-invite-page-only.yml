@@ -123,6 +123,13 @@ jobs:
             # on failed safe run 41264911265: 0f2f5bc...; bytes must match Git history.
             echo 'already_live=false' >> "$GITHUB_OUTPUT"
             echo 'PASS: byte-identical current live invite verified against previously merged Git blob'
+          elif [ "$(git hash-object "$RUNNER_TEMP/nico-live-invite.html")" = "d75df585c44f3d455eface2ad1ccbe0311764330" ] && \
+               git cat-file -e "d75df585c44f3d455eface2ad1ccbe0311764330^{blob}" && \
+               git cat-file blob "d75df585c44f3d455eface2ad1ccbe0311764330" | cmp -s - "$RUNNER_TEMP/nico-live-invite.html"; then
+            # Approved live 2026-11-01 invitation-only release run 41265102073:
+            # allow only its exact historical Git blob, never an unknown page.
+            echo 'already_live=false' >> "$GITHUB_OUTPUT"
+            echo 'PASS: verified last live invite against approved Git blob bytes'
           else
             # Public HTML only; log fingerprints, never bodies or user credentials.
             echo "LIVE_INVITE_BLOB=$(git hash-object "$RUNNER_TEMP/nico-live-invite.html")"

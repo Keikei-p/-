@@ -73,6 +73,8 @@ small{color:#5e6d82}#info{font-weight:650}
  <h2>協力店招待を受け取る</h2>
  <p id="info">招待の確認中</p>
  <button id="accept" type="button" disabled>協力店として参加</button>
+ <button id="retryInvite" type="button" class="secondary" hidden>招待を再確認</button>
+ <p id="inviteRecovery" hidden>この招待リンクは期限切れ、承諾済み、または宛先が一致しない可能性があります。<strong>新しいリンクは自社オーナーから再発行</strong>してもらってください。既に参加済みの場合は上の「協力店の件数入力・班管理画面へ」を開いてください。再登録やアカウント削除は不要です。</p>
  <p><small>過去に登録したメールアドレスでも参加できます。自社のアカウント・履歴を残し、協力店用の所属を追加します。</small></p>
 </section>
 <section id="acceptedBox" hidden>
@@ -166,7 +168,10 @@ const authErrorText=error=>{
   case "auth/user-not-found": return "メールアドレスまたはパスワードを確認してください。";
   case "functions/unauthenticated": return "ログイン状態を確認してください。必要ならログインし直してください。";
   case "functions/permission-denied": return "招待されたメールアドレスでログインしてください。宛先が違う場合は管理者に確認してください。";
-  case "functions/failed-precondition": return "招待の期限切れ・登録済み・承認待ちの可能性があります。管理者に招待リンクの再発行を依頼してください。";
+  case "functions/failed-precondition": return "招待が期限切れ・承諾済み・登録条件不一致の可能性があります。発行者に新しい招待リンクを依頼してください。";
+  case "functions/not-found": return "招待リンクが見つかりません。元のリンクを確認するか、発行者に再発行を依頼してください。";
+  case "functions/already-exists": return "招待はすでに承諾されている可能性があります。協力店の件数入力画面からご確認ください。";
+  case "functions/deadline-exceeded": return "招待リンクの有効期限が切れています。発行者に新しいリンクを依頼してください。";
   case "functions/unavailable": return "招待サービスはまだ有効になっていません。管理者へ確認してください。";
   default: return "操作を完了できません。メール・招待期限・ログイン状態を確認してください。";
  }
@@ -211,6 +216,8 @@ const refresh=async()=>{
  $("acceptedBox").hidden=true;
  $("existingBox").hidden=!!token||!user||!user.emailVerified;
  $("accept").disabled=true;
+ $("retryInvite").hidden=true;
+ $("inviteRecovery").hidden=true;
  if(user&&!user.emailVerified){message("メールの確認を完了してから操作してください。");return;}
  if(!user||!token){if(user?.emailVerified)await loadExisting();return;}
  if(!validToken){message("招待リンクが正しくありません。");return;}
@@ -221,8 +228,36 @@ const refresh=async()=>{
   $("accept").disabled=false;
   message("招待内容を確認してください。");
  }catch(error){
-  console.error("Partner invitation preview failed",error?.code||"unknown");
-  message("ログイン状態は確認しましたが、招待内容を取得できません。"+authErrorText(error));
+  // A previously accepted invitation is no longer previewable. Query the
+  // authorized count-only workspace instead of sending the same user back
+  // through signup. No Firestore reads or client-side role overrides.
+  const cause=error?.code||"unknown";
+  if(["functions/failed-precondition","functions/not-found","functions/already-exists"].includes(cause)
+      &&auth.currentUser?.uid===user.uid){
+   try{
+    const check=(await getWorkspace({date:new Date().toLocaleDateString("sv-SE",{timeZone:"Asia/Tokyo"})})).data;
+    if(auth.currentUser?.uid===user.uid&&
+       ["owner","leader","member"].includes(check?.role)&&
+       typeof check.companyName==="string"&&check.companyName.length>0&&
+       Array.isArray(check.categories)&&check.categories.length>0){
+      $("acceptBox").hidden=true;
+      $("acceptedBox").hidden=false;
+      $("acceptedWorkspaceLink").href="/partner-workspace.html";
+      $("workspaceGuide").href="/partner-workspace.html";
+      message("このアカウントは協力店に参加済みです。件数入力・班管理画面へ進んでください。");
+      return;
+    }
+   }catch(workspaceError){
+    // The read-only availability check is optional; the original error
+    // remains visible, and no membership is ever inferred from its failure.
+    console.error("Partner existing membership check failed",workspaceError?.code||"unknown");
+   }
+  }
+  if(auth.currentUser?.uid!==user.uid)return;
+  $("retryInvite").hidden=false;
+  $("inviteRecovery").hidden=false;
+  console.error("Partner invitation preview failed",cause);
+  message("ログインは成功しましたが、招待は承諾できません。"+authErrorText(error));
  }
 };
 onAuthStateChanged(auth,()=>{
@@ -273,6 +308,11 @@ $("resetPassword").addEventListener("click",async()=>{
   await sendPasswordResetEmail(auth,email);
   message("このメールアドレスが登録されている場合、パスワード再設定メールが届きます。受信箱と迷惑メールをご確認ください。以前の実績は削除されません。");
  },{pending:"パスワード再設定メールを受け付けています…"});
+});
+$("retryInvite").addEventListener("click",async()=>{
+ $("retryInvite").disabled=true;
+ message("招待状況を再確認しています…");
+ try{await refresh();}finally{$("retryInvite").disabled=false;}
 });
 $("sendVerify").addEventListener("click",async()=>busy($("sendVerify"),async()=>{
  await sendEmailVerification(auth.currentUser);message("確認メールを再送しました。");
