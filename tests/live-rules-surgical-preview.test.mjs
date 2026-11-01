@@ -46,18 +46,18 @@ test("repair only membership and historical hard-delete grants, preserve every o
  assert.notEqual(out.liveSha,out.candidateSha);
 });
 test("live snapshot missing only five reviewed annotation lines restores exact reviewed bytes",()=>{
- const helperAnnotation="    // Optimized grant for paths that have already checked isCompanyMember().\\n"+
-   "    // Preserve the historical owner, explicit-revenue and master grants.\\n";
- const helperFn=reviewed.match(/^[ \\t]*function revenueGrantedAfterMembership\\(companyId\\) \\{[\\s\\S]*?^[ \\t]*\\}/m)?.[0];
+ const helperAnnotation="    // Optimized grant for paths that have already checked isCompanyMember().\n"+
+   "    // Preserve the historical owner, explicit-revenue and master grants.\n";
+ const helperFn=reviewed.match(/^[ \t]*function revenueGrantedAfterMembership\(companyId\) \{[\s\S]*?^[ \t]*\}/m)?.[0];
  assert.ok(helperFn);
  let live=liveFixture();
- const helperFull=helperAnnotation+helperFn+"\\n\\n";
+ const helperFull=helperAnnotation+helperFn+"\n\n";
  assert.ok(live.includes(helperFull));
  live=live.replace(helperFull,"");
- const retainedComment="      // Historical business documents are retained: client hard-delete is forbidden.\\n";
+ const retainedComment="      // Historical business documents are retained: client hard-delete is forbidden.\n";
  for(const name of ["teams","products","goals"]){
    const begin=live.indexOf("match /"+name+"/{");
-   const end=live.indexOf("\\n    match /",begin+7);
+   const end=live.indexOf("\n    match /",begin+7);
    assert.ok(begin>=0 && end>begin,name);
    const block=live.slice(begin,end);
    assert.ok(block.includes(retainedComment),name);
