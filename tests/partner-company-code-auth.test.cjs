@@ -106,3 +106,31 @@ test("company enters server-issued code, chooses password, can save counts witho
  await assert.rejects(f.workspace.view(f.codeReq({date:day})),e=>e.code==="unauthenticated");
  assert.deepEqual(f.db.store.get("records/historical"),before);
 });
+
+test("previously registered partner keeps owner, members and historic count entries",async()=>{
+ const f=fixture(),cid="existingPartner",oldOwner="previousOwner";
+ f.db.seed("companies/"+cid,{name:"既存協力店",ownerUid:oldOwner,masterUid:oldOwner,
+  companyKind:"partner",hubCompanyId:"hub",active:true});
+ f.db.seed("partnerRelations/"+cid,{partnerCompanyId:cid,hubCompanyId:"hub",
+  active:true,countSharingApproved:true});
+ f.db.seed("companies/"+cid+"/members/"+oldOwner,{uid:oldOwner,companyId:cid,
+  role:"leader",companyRole:"owner",active:true,canViewRevenue:false,canViewUnitPrice:false});
+ f.db.seed("companies/"+cid+"/partnerWorkEntries/2026-10-31__staff",
+  {companyId:cid,hubCompanyId:"hub",date:"2026-10-31",staffId:"staff",
+   totalCount:4,counts:Object.fromEntries(KEYS.map(k=>[k,k==="NURO"?4:0])),
+   version:1,teamIdSnapshot:"oldTeam"});
+ const oldCompany={...f.db.store.get("companies/"+cid)};
+ const oldRecords={...f.db.store.get("companies/"+cid+"/partnerWorkEntries/2026-10-31__staff")};
+ const invite=await f.service.issue(f.hubReq({partnerCompanyId:cid}));
+ const result=await f.service.activate({data:{
+  companyCode:invite.companyCode,password:"PartnerExistingPassword#2026"
+ }});
+ assert.equal(result.companyId,cid);
+ assert.equal(f.db.store.get("companies/"+cid).ownerUid,oldOwner);
+ assert.equal(f.db.store.get("companies/"+cid).masterUid,oldOwner);
+ assert.equal(f.db.store.get("companies/"+cid).companyCodePrincipalUid!=null,true);
+ assert.equal(f.db.store.get("companies/"+cid).name,oldCompany.name);
+ assert.deepEqual(f.db.store.get("companies/"+cid+"/partnerWorkEntries/2026-10-31__staff"),oldRecords);
+ assert(f.db.store.has("companies/"+cid+"/members/"+oldOwner));
+ await assert.rejects(f.service.issue(f.hubReq({partnerCompanyId:"notFound"})));
+});
