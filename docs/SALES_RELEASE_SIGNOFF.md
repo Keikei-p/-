@@ -843,7 +843,7 @@ GitHub所有者として認証済みの接続から、本番影響をindex.html�
 - 利用者は「既存の営業アプリを崩さず、協力店の項目で一旦運用する」を優先し、続行を依頼した。
 - `index.html` のOwner専用「協力店」タブのみ、**既存の** `/partner-counts.html` への直通リンクを追加する。会社コード4 APIは本番404（GitHub read-only run #41280035032）なので未公開と正しく案内する。
 - 既存 `/partner-invite.html` と `/partner-workspace.html` の遷移先は維持。協力店へ財務可能な自社 `index.html` の利用を許可しない。
-- 変更対象は `index.html`、`tests/simple-partner-company-tab.test.mjs` と本記録のみ。GitHub PRのパッチを照合し、金融計算・本人認証・件数保存・商材/班・ランキング・履歴・LINE・Firestore Rules・Functions・Hosting配信機構の実装変更がないことを技術確認。
+- 変更対象は `index.html`、`tests/simple-partner-company-tab.test.mjs`、本記録、および限定1回公開の新規 `.github/workflows/nico-partner-count-link-reviewed-once.yml`。旧公開HTMLをバイト照合し、対象HTMLのGit blob/レビュー済みコミットを固定し、他10資産と財務マーカーを保護する。GitHub PRのパッチを照合し、金融計算・本人認証・件数保存・商材/班・ランキング・履歴・LINE・Firestore Rules・Functionsの実装変更がないことを技術確認。
 - PRの自動テストは別途完了状況を確認する。GitHub CIの合格は、協力店の実ログイン・保存、アプリの本番配信、財務原票の完全遮断を証明しない。
 
 ### 公開判断と未確認事項
