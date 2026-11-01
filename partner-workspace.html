@@ -60,6 +60,11 @@ td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 <button class="secondary" id="verify" type="button" hidden>確認メールを送信・再送</button></section>
 <section id="inviteAccept" hidden><h2>協力店のスタッフ招待を承諾</h2><p>メール認証済みの招待先本人だけが参加できます。</p>
 <label for="joinName">表示名</label><input id="joinName" placeholder="例：田中 太郎" maxlength="60">
+<label for="transferExistingInternal" style="display:flex;gap:10px;align-items:flex-start;line-height:1.6">
+ <input id="transferExistingInternal" type="checkbox" checked style="width:auto;min-width:20px;min-height:20px;margin-top:2px">
+ <span><strong>自社から協力店へ移籍する</strong>（同じメールを使用）</span>
+</label>
+<p class="muted">以前、自社で利用したアカウントはそのままログインできます。自社の現役所属だけを終了し、古い実績・売上・班履歴は元の自社に保存します。自社と協力店の両方に所属したい場合はチェックを外してください。自社オーナーは先に管理権限の引継ぎが必要です。</p>
 <button id="join" type="button">この会社に参加する</button></section>
 <section id="appBox" hidden><div class="row"><strong id="who"></strong><button id="logout" class="secondary" type="button">ログアウト</button></div>
 <div id="companyOverview" class="company-panel" hidden>
@@ -851,16 +856,23 @@ $("signup").onclick=async()=>{try{
  const cred=await createUserWithEmailAndPassword(auth,$("email").value,$("pass").value);
  $("pass").value="";await sendEmailVerification(cred.user);
  notice("確認メールを送信しました。確認完了後、画面を再読込してください。");
- }catch(e){fail(e)}};
+ }catch(e){
+  if(e?.code==="auth/email-already-in-use")
+    notice("このメールは登録済みです。新規作成せず、ログインを押してください。",true);
+  else fail(e);
+ }};
 $("verify").onclick=async()=>{try{await sendEmailVerification(auth.currentUser);notice("確認メールを再送しました。")}catch(e){fail(e)}};
 $("join").onclick=async()=>{if(!inviteToken)return;await action(async()=>{
- const joined=(await accept({token:inviteToken,name:$("joinName").value})).data;
+ const joined=(await accept({token:inviteToken,name:$("joinName").value,transferCurrentCompany:$("transferExistingInternal").checked})).data;
  if(joined?.secondaryMembership&&joined.partnerCompanyId)
   workspaceCompanyId=joined.partnerCompanyId;
  const next=new URL("/partner-workspace.html",location.origin);
  if(workspaceCompanyId)next.searchParams.set("workspaceCompanyId",workspaceCompanyId);
  history.replaceState(null,"",next.pathname+next.search);
- inviteToken="";$("inviteAccept").hidden=true;return "協力店へ参加しました。";
+ inviteToken="";$("inviteAccept").hidden=true;
+ return joined?.transferredFromInternal?
+   "自社の現役所属を終了し、協力店へ移籍しました。以前の実績・売上・班履歴は元の自社に保存されています。":
+   "協力店へ参加しました。";
 })};
 $("logout").onclick=()=>signOut(auth);
 onAuthStateChanged(auth,u=>{

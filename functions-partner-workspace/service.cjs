@@ -379,6 +379,11 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  async function accept(request){
   const a=await actor(request),d=request?.data||{},token=clean(d.token);
   if(!/^[A-Za-z0-9_-]{43}$/.test(token))fail("invalid-argument");
+  // Migration must be chosen explicitly by the invited, authenticated user.
+  // Normal existing-email invitations continue using non-destructive secondary roles.
+  const transfer=d.transferCurrentCompany===true;
+  if(d.transferCurrentCompany!==undefined&&typeof d.transferCurrentCompany!=="boolean")
+   fail("invalid-argument");
   const hash=crypto.createHash("sha256").update(token).digest("hex"),ref=db.collection("partnerWorkInvites").doc(hash);
   const joined=await db.runTransaction(async tx=>{
    const inviteSnap=await tx.get(ref),i=inviteSnap.data()||{};
@@ -401,15 +406,17 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
       ms.exists||ss.exists||ctxSnap.exists||
       us.data()?.active===false)fail("failed-precondition");
    const original=us.data()||{},primaryCid=clean(original.companyId);
+   let formerMemberRef=null,formerMember=null;
    if(primaryCid){
      if(!ID.test(primaryCid)||primaryCid===i.companyId||
         original.uid!==a.uid||clean(original.email).toLowerCase()!==a.email||
         (original.accessKind!=null&&original.accessKind!=="internal")||
         (original.memberType!=null&&!["internal","direct","member","managed"].includes(original.memberType)))
        fail("failed-precondition");
+     formerMemberRef=collection(primaryCid,"members").doc(a.uid);
      const [pcSnap,pmSnap]=await Promise.all([
        tx.get(db.collection("companies").doc(primaryCid)),
-       tx.get(collection(primaryCid,"members").doc(a.uid))
+       tx.get(formerMemberRef)
      ]);
      const pc=pcSnap.data()||{},pm=pmSnap.data()||{};
      if(!pcSnap.exists||!pmSnap.exists||pc.active===false||
@@ -420,6 +427,24 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
         (pm.accessKind!=null&&pm.accessKind!=="internal")||
         ["partner","cooperator"].includes(pm.memberType))
        fail("failed-precondition");
+     formerMember=pm;
+     if(transfer){
+      // Never orphan a company owner, change another hub's roster or silently
+      // re-parent original records. Original records and old member doc stay put.
+      if(primaryCid!==i.hubCompanyId||pc.ownerUid===a.uid||
+        pc.masterUid===a.uid||original.companyRole==="owner"||
+        pm.companyRole==="owner"||original.companyRole!=="member"||
+        pm.companyRole!=="member"||
+        (original.role!=null&&!["leader","member"].includes(original.role))||
+        (pm.role!=null&&!["leader","member"].includes(pm.role)))
+       fail("failed-precondition");
+     }
+   }
+   const transferring=transfer&&Boolean(primaryCid);
+   const archivedRef=db.collection("partnerHistoricalTransfers").doc(a.uid);
+   if(transferring){
+    const archive=await tx.get(archivedRef);
+    if(archive.exists)fail("failed-precondition");
    }
    await checkTeam(tx,{cid:i.companyId},i.teamId);
    const name=clean(d.name);
@@ -429,17 +454,37 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      accessKind:"partner",memberType:"cooperator",
      canViewRevenue:false,canViewUnitPrice:false,canCreateInvite:false,
      updatedAt:FieldValue.serverTimestamp()};
-   if(primaryCid){
+   if(primaryCid&&!transferring){
      tx.create(ctxRef,{uid:a.uid,primaryCompanyId:primaryCid,
        partnerCompanyId:i.companyId,hubCompanyId:i.hubCompanyId,
        emailLower:a.email,role:i.role,teamId:i.teamId,
        kind:"partner_secondary",active:true,createdAt:FieldValue.serverTimestamp()});
+   }else if(transferring){
+     // Server-owned historical archive is not browser-readable. Preserve the
+     // original profile byte-for-byte as data, plus the entire old membership.
+     // Existing sales records, prices, snapshots and teamHistory never move.
+     tx.create(archivedRef,{uid:a.uid,sourceCompanyId:primaryCid,
+       destinationCompanyId:i.companyId,hubCompanyId:i.hubCompanyId,
+       originalUser:original,originalMember:formerMember,
+       createdAt:FieldValue.serverTimestamp()});
+     tx.update(formerMemberRef,{active:false,updatedAt:FieldValue.serverTimestamp()});
+     // Update ONLY this authenticated person's current profile. Each former
+     // property not part of the new count-only profile is cleared field-by-
+     // field AFTER its exact value has been snapshotted in the same transaction.
+     // Historical sales, former company memberships and team snapshots remain.
+     const cleanup={};
+     for(const key of Object.keys(original)){
+      if(!/^[A-Za-z][A-Za-z0-9_]*$/.test(key))fail("failed-precondition");
+      if(!Object.hasOwn(profile,key))cleanup[key]=FieldValue.delete();
+     }
+     tx.update(ur,{...cleanup,...profile});
    }else if(us.exists)tx.update(ur,profile);else tx.create(ur,profile);
    tx.create(mr,{...profile,joinedAt:FieldValue.serverTimestamp()});
    tx.create(sr,{uid:a.uid,name,kind:"account",role:i.role,teamId:i.teamId,
      companyId:i.companyId,active:true,createdAt:FieldValue.serverTimestamp()});
    tx.update(ref,{status:"accepted",acceptedByUid:a.uid,acceptedAt:FieldValue.serverTimestamp()});
-   return {secondaryMembership:Boolean(primaryCid),partnerCompanyId:i.companyId};
+   return {secondaryMembership:Boolean(primaryCid&&!transferring),
+     transferredFromInternal:transferring,partnerCompanyId:i.companyId};
   });
   return {joined:true,...joined};
  }
