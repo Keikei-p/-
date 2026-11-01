@@ -13,14 +13,15 @@ const originals=[
  {path:"/partner-counts.html",hash:hash("c")},
  {path:"/partner-workspace.html",hash:hash("d")}
 ];
-test("accepted company owner is guided to live count-only workspace; no money visible",()=>{
- assert.match(html,/href="\/partner-workspace\.html"/);
+test("new partner company owner is guided to existing count-only form while old workspaces remain",()=>{
+ assert.match(html,/href="\/partner-counts\.html"/);
+ assert.match(html,/data\.secondaryMembership===true/);
  assert.match(html,/id="acceptedBox" hidden/);
  assert.match(html,/\$\("acceptedBox"\)\.hidden=false/);
- assert.match(html,/班・スタッフを登録できます/);
+ assert.match(html,/班やスタッフの設定は後からで構いません/);
  assert.doesNotMatch(html,/件数報告は別の安全確認が終わるまで利用できません|件数報告は管理者の安全確認後に有効になります/);
  assert.match(workspace,/submitPartnerWorkspaceCounts/);
- assert.match(html,/売上・単価は表示しません/);
+ assert.match(html,/既存の売上・単価・履歴には触れません/);
  assert.doesNotMatch(html,/firebase-firestore\.js|getFirestore\(|\brevenuePerUnit\b|\btotalRevenue\b|\bunitPrice\b/);
 });
 test("only existing partner invitation may be replaced; preserve index and count pages",()=>{

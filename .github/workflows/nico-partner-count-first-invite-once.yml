@@ -1,0 +1,118 @@
+name: NICO partner count-first invite one-shot Hosting release
+on:
+  pull_request:
+    branches: [main]
+    paths: [.github/workflows/nico-partner-count-first-invite-once.yml]
+  push:
+    branches: [main]
+    paths: [.github/workflows/nico-partner-count-first-invite-once.yml]
+permissions:
+  contents: read
+concurrency:
+  group: nico-count-first-invite-static-only-20261101
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Confirm only reviewed invitation redirect changes and no finance SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object partner-invite.html)" = "fb2514ae77c23ba2fb4336a56da085fcf4078388" || { echo 'STOP: unreviewed invite HTML'; exit 1; }
+          git show c8ab2dd286a16084d6f60f0a0475f965d02e7558:partner-invite.html > "$RUNNER_TEMP/reviewed-invite.html"
+          cmp -s partner-invite.html "$RUNNER_TEMP/reviewed-invite.html"
+          node --test tests/partner-simple-onboarding.test.mjs
+          node --test tests/partner-company-invitations.test.cjs
+          node --test tests/surgical-existing-partner-invite.test.mjs
+          node --test tests/sales-regressions.cjs
+          node --check tools/hosting/surgical-existing-partner-invite.mjs
+          node <<'NODE'
+          const fs=require('node:fs'),s=fs.readFileSync('partner-invite.html','utf8');
+          if(/firebase-firestore\.js|\bgetFirestore\(|\bgetDoc\(|\bsetDoc\(|\bdeleteDoc\(/.test(s))
+            throw Error('STOP: invitation may not access Firestore directly');
+          for(const marker of ['createPartnerCompanyInvitation','acceptPartnerCompanyInvitation',
+             'id="workspaceGuide"','href="/partner-counts.html"','secondaryMembership===true'])
+            if(!s.includes(marker))throw Error('STOP: missing count-first safety '+marker);
+          const code=s.match(/<script type="module">([\s\S]*?)<\/script>/)?.[1];
+          if(!code)throw Error('STOP: missing JS module');
+          fs.writeFileSync('/tmp/nico-count-first-invite.mjs',code);
+          NODE
+          node --check /tmp/nico-count-first-invite.mjs
+  release:
+    needs: validate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.validate.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+      NICO_PARTNER_RELEASE_CONFIRMATION: CONFIRM_REPLACE_PARTNER_INVITE_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify main and exact existing invitation in production before any write
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(gh api repos/Keikei-p/-/branches/main --jq '.commit.sha')" = "$GITHUB_SHA" || { echo 'STOP: main changed'; exit 1; }
+          git show 114113dffc1bbae277a488a5a77af6c7f224f34a:partner-invite.html > "$RUNNER_TEMP/approved-before-invite.html"
+          curl -fsSL --retry 3 --max-time 30 -H 'Cache-Control: no-cache' \
+            "https://nico-factory.web.app/partner-invite.html?count_first_source=$GITHUB_SHA" > "$RUNNER_TEMP/live-invite.html"
+          if cmp -s "$RUNNER_TEMP/live-invite.html" partner-invite.html; then
+            echo 'ALREADY_LIVE=true' >> "$GITHUB_ENV"
+            echo 'PASS: reviewed invitation already public'
+          elif cmp -s "$RUNNER_TEMP/live-invite.html" "$RUNNER_TEMP/approved-before-invite.html"; then
+            echo 'ALREADY_LIVE=false' >> "$GITHUB_ENV"
+            echo 'PASS: exact old invitation confirmed'
+          else
+            echo 'STOP: live invitation differs from reviewed baseline, no writes'
+            exit 1
+          fi
+      - name: Load Hosting-only identity
+        if: env.ALREADY_LIVE == 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON" || exit 1
+          node -e "if(JSON.parse(require('fs').readFileSync('.firebaserc','utf8')).projects.default!=='sales-management-cc116')process.exit(1)"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-count-first-hosting.json"
+          chmod 600 "$RUNNER_TEMP/nico-count-first-hosting.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-count-first-hosting.json" >> "$GITHUB_ENV"
+      - name: Install Hosting REST dependencies
+        if: env.ALREADY_LIVE == 'false'
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Check unchanged full Hosting manifest without writes
+        if: env.ALREADY_LIVE == 'false'
+        run: node tools/hosting/surgical-existing-partner-invite.mjs --dry-run
+      - name: Publish ONLY original invitation file update, no Functions or Rules
+        if: env.ALREADY_LIVE == 'false'
+        run: node tools/hosting/surgical-existing-partner-invite.mjs --release
+      - name: Verify byte-identical public invitation and unchanged partner route availability
+        shell: bash
+        run: |
+          set -euo pipefail
+          ok=false
+          for attempt in $(seq 1 12); do
+            curl -fsSL --max-time 30 "https://nico-factory.web.app/partner-invite.html?count_first_verify=$GITHUB_SHA-$attempt" > "$RUNNER_TEMP/confirmed-invite.html"
+            if cmp -s "$RUNNER_TEMP/confirmed-invite.html" partner-invite.html; then ok=true; break; fi
+            sleep 5
+          done
+          test "$ok" = true || { echo 'STOP: new invite page not verifiable'; exit 1; }
+          for marker in 'id="acceptedWorkspaceLink" href="/partner-counts.html"' \
+            'secondaryMembership===true' 'createPartnerCompanyInvitation' 'acceptPartnerCompanyInvitation'; do
+            grep -Fq "$marker" "$RUNNER_TEMP/confirmed-invite.html"
+          done
+          for route in / /partner-counts.html /partner-workspace.html; do
+            code=$(curl -sSL -o /dev/null -w '%{http_code}' --max-time 30 "https://nico-factory.web.app$route")
+            test "$code" = 200 || { echo "STOP: $route HTTP $code"; exit 1; }
+          done
+          echo 'PASS: count-first invitation now live; all previous Hosting pages preserved; no financial or DB writes'

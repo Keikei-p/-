@@ -23,8 +23,9 @@ small{color:#5e6d82}#info{font-weight:650}
 <header><h1>NICO FACTORY | 協力店招待</h1></header>
 <main>
 <section>
- <p>協力店は別会社として登録します。売上・単価・収益原票の閲覧権限は付けません。招待を承諾した後は、協力店専用画面で班・担当者の登録と商材別件数の入力ができます。</p>
- <p><a href="/partner-workspace.html" id="workspaceGuide" style="color:#175899;font-weight:700">協力店の件数入力・班管理画面へ</a></p>
+ <p>協力店さんの最初の操作は<strong>「招待を受ける → 件数を入力する」</strong>だけ。班やスタッフの設定は後からで構いません。既存の売上・単価・履歴には触れません。</p>
+ <p><a href="/partner-counts.html" id="workspaceGuide" style="color:#175899;font-weight:700">件数入力画面へ（件数のみ）</a></p>
+ <p><small>会社招待を受けた後、自社オーナーが件数利用を承認すると入力できます。承認前は登録できません。すでに自社の別会社に所属している同一メールの兼任は、件数専用ログインの動作確認が完了していないため、元アカウントを削除・移籍せず自社オーナーへ確認してください。</small></p>
  <p id="notice" role="status" aria-live="polite"></p>
 </section>
 <section id="loginBox">
@@ -74,13 +75,13 @@ small{color:#5e6d82}#info{font-weight:650}
  <p id="info">招待の確認中</p>
  <button id="accept" type="button" disabled>協力店として参加</button>
  <button id="retryInvite" type="button" class="secondary" hidden>招待を再確認</button>
- <p id="inviteRecovery" hidden>この招待リンクは期限切れ、承諾済み、または宛先が一致しない可能性があります。<strong>新しいリンクは自社オーナーから再発行</strong>してもらってください。既に参加済みの場合は上の「協力店の件数入力・班管理画面へ」を開いてください。再登録やアカウント削除は不要です。</p>
+ <p id="inviteRecovery" hidden>この招待リンクは期限切れ、承諾済み、または宛先が一致しない可能性があります。<strong>新しいリンクは自社オーナーから再発行</strong>してもらってください。既に参加済みの場合は上の「件数入力画面へ（件数のみ）」を開いてください。再登録やアカウント削除は不要です。</p>
  <p><small>過去に登録したメールアドレスでも参加できます。自社のアカウント・履歴を残し、協力店用の所属を追加します。</small></p>
 </section>
 <section id="acceptedBox" hidden>
  <h2>協力店の登録完了</h2>
- <p>協力店専用画面で班とスタッフを登録すると、商材別の件数を入力できます。売上・単価は表示しません。</p>
- <p><a id="acceptedWorkspaceLink" href="/partner-workspace.html" style="color:#175899;font-weight:700">件数入力画面へ進む</a></p>
+ <p id="acceptedCountInstructions">会社の登録ができました。自社オーナーが「件数利用を承認」した後、件数入力画面で登録できます。班管理やスタッフ招待は後から対応できます。</p>
+ <p><a id="acceptedWorkspaceLink" href="/partner-counts.html" style="color:#175899;font-weight:700">件数入力画面へ進む（件数のみ）</a></p>
 </section>
 </main>
 <script type="module">
@@ -391,12 +392,27 @@ $("existingCopy").addEventListener("click",async()=>busy($("existingCopy"),async
 $("accept").addEventListener("click",async()=>busy($("accept"),async()=>{
  const data=(await acceptInvite({token})).data;
  $("info").textContent="協力店としての会社登録が完了しました。";
- const workspace=new URL("/partner-workspace.html",location.origin);
- if(data.secondaryMembership)workspace.searchParams.set("workspaceCompanyId",data.partnerCompanyId);
- $("acceptedWorkspaceLink").href=workspace.pathname+workspace.search;
- $("workspaceGuide").href=workspace.pathname+workspace.search;
+ if(data?.kind!=="partner_company"||typeof data.partnerCompanyId!=="string"||
+    !/^[A-Za-z0-9_-]{1,128}$/.test(data.partnerCompanyId))
+   throw Error("invalid_partner_registration_reply");
+ // The isolated quick-count service currently authenticates primary partner
+ // company owners only. Never misroute a secondary/internal account as quick.
+ if(data.secondaryMembership===true){
+   const workspace=new URL("/partner-workspace.html",location.origin);
+   workspace.searchParams.set("workspaceCompanyId",data.partnerCompanyId);
+   $("acceptedWorkspaceLink").href=workspace.pathname+workspace.search;
+   $("acceptedWorkspaceLink").textContent="兼任の所属先を確認（件数入力は未確認）";
+   $("acceptedCountInstructions").textContent=
+     "招待は承諾されました。以前の自社所属・実績はそのままです。同じメールでの兼任アカウントは件数専用の認証が未確認です。元アカウントを削除せず、自社オーナーに連絡してください。";
+   $("workspaceGuide").href=workspace.pathname+workspace.search;
+   message("兼任の招待承諾は完了。件数入力には追加確認が必要です。");
+ }else if(data.secondaryMembership===false){
+   $("acceptedWorkspaceLink").href="/partner-counts.html";
+   $("workspaceGuide").href="/partner-counts.html";
+   message("会社登録完了。自社オーナーが件数利用を承認した後、件数入力に進めます。");
+ }else throw Error("untrusted_membership_type");
  $("acceptBox").hidden=true;$("acceptedBox").hidden=false;
- $("accept").disabled=true;message("招待の承諾が完了しました。件数入力画面から班・スタッフを登録できます。");
+ $("accept").disabled=true;
 }));
 </script>
 </body></html>
