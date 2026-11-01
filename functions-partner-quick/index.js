@@ -16,3 +16,5 @@ exports.submitPartnerQuickCounts=onCall(opts,service.submit);
 exports.getPartnerQuickCounts=onCall(opts,service.view);
 // Deliberately isolated: this does NOT activate workspace, catalog or finances.
 exports.approvePartnerQuickCounts=onCall(opts,service.approve);
+// Read-only daily joint counts; no sales records or unit prices are returned.
+exports.getPartnerJointDailyRanking=onCall(opts,service.ranking);
