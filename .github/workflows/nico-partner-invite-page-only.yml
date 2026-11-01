@@ -130,6 +130,13 @@ jobs:
             # allow only its exact historical Git blob, never an unknown page.
             echo 'already_live=false' >> "$GITHUB_OUTPUT"
             echo 'PASS: verified last live invite against approved Git blob bytes'
+          elif [ "$(git hash-object "$RUNNER_TEMP/nico-live-invite.html")" = "d06a502514241cb6bebaf32cd58aca46e175c8a8" ] && \
+               git cat-file -e "d06a502514241cb6bebaf32cd58aca46e175c8a8^{blob}" && \
+               git cat-file blob "d06a502514241cb6bebaf32cd58aca46e175c8a8" | cmp -s - "$RUNNER_TEMP/nico-live-invite.html"; then
+            # The exact audited current-live invitation from run 41265891177.
+            # Fail closed if bytes differ, or if another release modified the page.
+            echo 'already_live=false' >> "$GITHUB_OUTPUT"
+            echo 'PASS: approved live partner invite verified byte-for-byte'
           else
             # Public HTML only; log fingerprints, never bodies or user credentials.
             echo "LIVE_INVITE_BLOB=$(git hash-object "$RUNNER_TEMP/nico-live-invite.html")"
