@@ -884,3 +884,12 @@ GitHub所有者として認証済みの接続から、本番影響をindex.html�
 本記録はGitHubに限定したコード技術審査・差分分析であり、管理者本人の署名や本番公開許可ではない。実協力店Ownerの認証・件数保存・財務原票閲覧禁止は別途必要。本番公開は**現在本番のindex.htmlと正しい承認済み元バージョンがバイト一致**し、レビュー・Sales App Validation・保護チェック・全既存ファイル保全・公開後HTTP/HTML検証が揃うときだけ別途実施。破壊的変更なし。
 
 - GitHub保護ラベルはコード技術審査対象を示すものとして適用。ラベル付与後の再検査を行い、判定前に本番へ変更しない。本人署名ではない。
+
+---
+## 2026-11-01 — 協力店招待直後の誤った班管理導線を廃止（件数優先）
+
+- ユーザーの暫定要望「既存アプリを変えず、協力店にまず件数だけ登録してもらう」へ戻す。既存の招待承諾画面が、承諾直後は未承認で使えない `partner-workspace.html` に案内していたため、**新規協力店の正規Owner**だけ、既存の `/partner-counts.html` に案内する。
+- 既存メールで元自社所属を維持する `secondaryMembership=true` は、QuickCountサーバーのprimary-only認証と不整合になるため、件数が入力できると偽らず所属の確認導線を保持し、未検証と明示。既存ユーザーを削除・移行しない。
+- 対象変更は `partner-invite.html` の画面文言と承諾後リンク分岐のみ。既存招待API、QuickCount、Workspace、Firestore Rules、全実績、単価・売上・LINE、Firestoreの値、IAMを**一切変更しない**。
+- `tests/partner-simple-onboarding.test.mjs` の回帰テストとソースのJavaScript構文検査を行う。スコープを限定した Hosting one-shot は本番の直前ページと同一バイト・GitHub SHA一致を確認し、`surgical-existing-partner-invite.mjs` により **/partner-invite.htmlのみ**を保全付き公開する。旧バージョンとの一致が取れなければ停止。
+- 既存 `partner-counts.html` のオーナー手動承認ステップは残る。実アカウントで招待・承諾・認証・件数保存・財務非露出を終端まで確認したわけではない。CI成功と本番運用成功を混同しない。管理者本人の承認署名をこの記録で代行しない。
