@@ -1060,37 +1060,26 @@ $("join").onclick=async()=>{if(!inviteToken)return;await action(async()=>{
    "協力店へ参加しました。";
 })};
 $("logout").onclick=()=>signOut(auth);
-onAuthStateChanged(auth,async u=>{
- const check=++nonce;++countLoadId;companyCodeSession=false;
- data=null;countDayCache.clear();clearCountOnlyDashboard();
- $("companyOverview").hidden=true;
+onAuthStateChanged(auth,u=>{
+ ++nonce;++countLoadId;companyCodeSession=false;data=null;countDayCache.clear();
+ clearCountOnlyDashboard();$("companyOverview").hidden=true;
  $("workspaceTitle").textContent="NICO FACTORY｜協力店 実績管理";
- $("appBox").hidden=true;$("loginBox").hidden=false;$("loginLogout").hidden=!u;
- $("inviteAccept").hidden=true;$("verify").hidden=true;
+ $("appBox").hidden=true;$("loginBox").hidden=false;
+ $("loginLogout").hidden=!u;$("inviteAccept").hidden=true;$("verify").hidden=true;
  $("inviteUrl").value="";$("inviteOut").hidden=true;
  $("hubInviteUrl").value="";$("hubInviteOut").hidden=true;
- if(!u){notice("協力店は会社コードで、自社オーナーは従来のメールでログインしてください。");return}
- let custom=false;
- try{
-  const token=await getIdTokenResult(u);
-  custom=token.claims?.partnerCodeAuth===true&&
-   /^[A-Za-z0-9_-]{1,128}$/.test(token.claims?.partnerCodeCompanyId||"")&&
-   Number.isSafeInteger(token.claims?.partnerCodeVersion);
- }catch{if(check===nonce)notice("ログイン権限の確認に失敗しました。",true);return}
- if(check!==nonce)return;
- companyCodeSession=custom;
- if(!u.emailVerified&&!custom){
+ if(activeCodeSession){
+  // The backend validates the session before displaying any business data.
+  companyCodeSession=true;$("loginBox").hidden=true;refresh();return;
+ }
+ if(!u){notice("協力店は会社コード、自社オーナーは従来のメールでログインしてください。");return}
+ if(!u.emailVerified){
   $("verify").hidden=false;
-  notice("従来メールログインはメール確認が必要です。協力店の場合は会社コードでログインしてください。",true);
-  return;
+  notice("メールログインは従来どおりメール確認が必要です。協力店は会社コードをご利用ください。",true);return;
  }
  $("loginBox").hidden=true;
- if(inviteToken&&!custom){
-  $("inviteAccept").hidden=false;notice("招待リンクを確認しました。表示名を入力して参加してください。");return;
- }
- if(inviteToken&&custom){
-  notice("会社コードでログインしました。個人メール宛の招待リンクは使用せず、件数管理を開きます。");
- }
+ if(inviteToken){$("inviteAccept").hidden=false;
+  notice("招待リンクを確認しました。表示名を入力して参加してください。");return}
  refresh();
 });
 </script></body></html>
