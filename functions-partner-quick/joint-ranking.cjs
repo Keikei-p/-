@@ -18,9 +18,9 @@ function mapCategory(name) {
  const n=normalize(name);
  if(["NURO","NURO光","ニューロ","ニューロ光"].map(normalize).includes(n))return "NURO";
  if(n==="SBMNP")return "SBMNP";
- if(n==="YMMNP")return "YMMNP";
+ if(n==="YMMNP"||n==="YMNP")return "YMMNP";
  if(["YM純新規","YMPURE","YMSHINKI"].map(normalize).includes(n))return "YM純新規";
- if(["SB光・AIR","SB光AIR","SB光","SOFTBANKAIR","SBAIR"].map(normalize).includes(n))return "SB光・AIR";
+ if(["SB光・AIR","SB光AIR","SB光AIR合算","SB光・AIR合算","SB光","SOFTBANKAIR","SBAIR"].map(normalize).includes(n))return "SB光・AIR";
  if(["ウォーター","ウォーターサーバー","フレシャス"].map(normalize).includes(n))return "ウォーター";
  if(["つばさ・HTB","つばさ","HTB","HTBエナジー","エバーグリーン","とくするでんき","新電力"].map(normalize).includes(n))return "つばさ・HTB";
  if(["太陽光・蓄電池AP","太陽光","蓄電池AP"].map(normalize).includes(n))return "太陽光・蓄電池AP";
@@ -76,6 +76,7 @@ function buildPublicRanking({date,scope,internal,partners,hideNames=false,fail})
  if(!scope?.hubId||!Array.isArray(internal)||!Array.isArray(partners))fail("data-loss");
  const people=[],teams=new Map(),products=Object.fromEntries(KEYS.map(k=>[k,0]));
  let excludedProducts=0;
+ const seenInternal=new Set(),seenPartnerStaff=new Set();
  const add=(cid,name,person,team,counts,source)=>{
   const total=Object.values(counts).reduce((n,v)=>n+v,0);
   if(!Number.isSafeInteger(total))fail("data-loss");
@@ -94,7 +95,9 @@ function buildPublicRanking({date,scope,internal,partners,hideNames=false,fail})
   const c=internalCounts(item,fail);
   excludedProducts+=c.excluded;
   const id=clean(item.uid);
-  if(!ID.test(id)||item.date!==date||item.companyId!==scope.hubId)fail("data-loss");
+  if(!ID.test(id)||item.date!==date||item.companyId!==scope.hubId||
+     seenInternal.has(id))fail("data-loss");
+  seenInternal.add(id);
   add(scope.hubId,"自社",{id,name:label(item.memberNameSnapshot,"自社スタッフ")},
    {key:ID.test(item.teamId||"")?item.teamId:"unknown",
     name:label(item.teamNameSnapshot,"自社｜班未照合")},c.counts,"internal");
@@ -104,7 +107,9 @@ function buildPublicRanking({date,scope,internal,partners,hideNames=false,fail})
   if(p.source==="staff"){
    if(!Array.isArray(p.entries))fail("data-loss");
    for(const e of p.entries){
-    if(!ID.test(e.staffId||"")||e.companyId!==p.id||e.date!==date)fail("data-loss");
+    if(!ID.test(e.staffId||"")||e.companyId!==p.id||e.date!==date||
+       seenPartnerStaff.has(p.id+"|"+e.staffId))fail("data-loss");
+    seenPartnerStaff.add(p.id+"|"+e.staffId);
     const normalized=partnerCounts(e.counts,fail);
     if(e.totalCount!==normalized.total)fail("data-loss");
     const team=ID.test(e.teamIdSnapshot||"")?e.teamIdSnapshot:"unknown";
