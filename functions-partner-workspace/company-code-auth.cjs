@@ -135,4 +135,62 @@ function makeCompanyCodeAuth({db,getAuth,FieldValue,Timestamp,HttpsError,enabled
   return {activated:true,companyId,companyCode:code};
  }
 
+ async function login(request){
+  gate();
+  const d=request?.data||{},code=clean(d.companyCode).toUpperCase(),pass=d.password;
+  if(!CODE.test(code)||typeof pass!=="string"||pass.length>128||
+      Buffer.byteLength(pass,"utf8")>256)fail("invalid-argument");
+  const loginRef=doc("partnerCodeLogins",code);
+  const sn=await loginRef.get(),record=sn.data()||{};
+  if(!sn.exists||record.status!=="active"||!ID.test(record.principalUid||"")||
+    !ID.test(record.partnerCompanyId||"")||typeof record.salt!=="string"||
+    typeof record.hash!=="string"||Number(record.lockedUntil||0)>now())fail();
+  const hashed=await secretHash(pass,record.salt);
+  let authenticated=false;
+  await db.runTransaction(async tx=>{
+   const fresh=await tx.get(loginRef),f=fresh.data()||{};
+   const cid=clean(f.partnerCompanyId);
+   if(!fresh.exists||f.status!=="active"||!ID.test(cid)||
+      f.principalUid!==record.principalUid||f.hash!==record.hash||
+      f.salt!==record.salt||f.version!==record.version||
+      Number(f.lockedUntil||0)>now())fail();
+   const [cs,rs,us,ms,credSnap]=await Promise.all([
+    tx.get(doc("companies",cid)),tx.get(doc("partnerRelations",cid)),
+    tx.get(doc("users",f.principalUid)),
+    tx.get(doc("companies",cid).collection("members").doc(f.principalUid)),
+    tx.get(doc("partnerCodeCredentials",cid))
+   ]);
+   const c=cs.data()||{},rel=rs.data()||{},u=us.data()||{},
+    m=ms.data()||{},cred=credSnap.data()||{};
+   if(!cs.exists||!rs.exists||!us.exists||!ms.exists||!credSnap.exists||
+     c.active!==true||c.companyKind!=="partner"||
+     c.companyCodePrincipalUid!==f.principalUid||
+     rel.active!==true||rel.countSharingApproved!==true||
+     rel.hubCompanyId!==c.hubCompanyId||rel.partnerCompanyId!==cid||
+     cred.active!==true||cred.companyCode!==code||cred.companyId!==cid||
+     cred.principalUid!==f.principalUid||cred.version!==f.version||
+     u.authKind!=="partner_code_shared"||m.authKind!=="partner_code_shared"||
+     u.active!==true||m.active!==true||
+     u.canViewRevenue!==false||u.canViewUnitPrice!==false||
+     m.canViewRevenue!==false||m.canViewUnitPrice!==false||
+     u.companyId!==cid||m.companyId!==cid)fail();
+   if(!passwordValid(pass)||!safeEqual(hashed,f.hash)){
+    const attempts=Number(f.failedAttempts||0)+1;
+    tx.update(loginRef,{failedAttempts:attempts>=8?0:attempts,
+      lockedUntil:attempts>=8?now()+15*60000:0});
+    return;
+   }
+   tx.update(loginRef,{failedAttempts:0,lockedUntil:0});
+   authenticated=true;
+  });
+  if(!authenticated)fail();
+  const customToken=await getAuth().createCustomToken(record.principalUid,{
+   partnerCodeAuth:true,partnerCodeCompanyId:record.partnerCompanyId,
+   partnerCodeVersion:record.version
+  });
+  return {customToken};
+ }
+ return Object.freeze({issue,activate,login});
+}
+
 module.exports={CODE,ID,clean,newCode,passwordValid,secretHash,safeEqual,salt,makeCompanyCodeAuth};
