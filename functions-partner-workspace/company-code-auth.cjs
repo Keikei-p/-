@@ -4,6 +4,7 @@ const {promisify}=require("node:util");
 const scrypt=promisify(crypto.scrypt);
 const CODE=/^NICO-[A-F0-9]{24}$/,ID=/^[A-Za-z0-9_-]{1,128}$/;
 const clean=x=>typeof x==="string"?x.trim():"";
+const invalidCompanyName=/(?:単価|売上|収益|利益|報酬|[¥￥$€]|\d[\d,]*円)/;
 const newCode=()=>("NICO-"+crypto.randomBytes(12).toString("hex").toUpperCase());
 const passwordValid=x=>typeof x==="string"&&x.length>=12&&x.length<=128&&Buffer.byteLength(x,"utf8")<=256;
 const secretHash=async(secret,salt)=>(await scrypt(secret,Buffer.from(salt,"base64url"),64)).toString("base64url");
@@ -44,7 +45,7 @@ function makeCompanyCodeAuth({db,getAuth,FieldValue,Timestamp,HttpsError,enabled
   const partnerId=clean(d.partnerCompanyId);
   const companyName=clean(d.companyName).replace(/\s+/g," ");
   if(partnerId&&!ID.test(partnerId)||!partnerId&&
-     (companyName.length<2||companyName.length>80))fail("invalid-argument");
+     (companyName.length<2||companyName.length>80||invalidCompanyName.test(companyName)))fail("invalid-argument");
   if(partnerId){
    const [cs,rs,cred]=await Promise.all([
     doc("companies",partnerId).get(),doc("partnerRelations",partnerId).get(),
@@ -112,7 +113,7 @@ function makeCompanyCodeAuth({db,getAuth,FieldValue,Timestamp,HttpsError,enabled
      relation.partnerCompanyId!==companyId||
      relation.hubCompanyId!==invite.hubCompanyId||
      relation.active!==true||relation.countSharingApproved!==true)fail();
-   }else if(cs.exists||rs.exists||clean(invite.companyName).length<2){
+   }else if(cs.exists||rs.exists||clean(invite.companyName).length<2||invalidCompanyName.test(invite.companyName)){
     fail("failed-precondition");
    }
    const common={uid:principalUid,companyId,companyRole:"owner",role:"leader",
