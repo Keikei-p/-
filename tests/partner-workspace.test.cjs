@@ -814,3 +814,68 @@ test("only real hub Owner can request detailed partner-company team status",asyn
  await assert.rejects(api.view(req("p",{date:"2026-10-31",
   includeTeamStatus:true,partnerCompanyId:"hub"})),e=>e.code==="permission-denied");
 });
+
+
+test("Owner explicitly approves an EXISTING partner for staff work; quick grant never silently approves it",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ const originals={
+   user:clone(db.store.get("users/p")),hub:clone(db.store.get("users/h")),
+   sales:clone(db.store.get("records/old")),product:clone(db.store.get("products/money"))
+ };
+ db.seed("partnerRelations/partner",{partnerCompanyId:"partner",hubCompanyId:"hub",
+   active:false,countSharingApproved:false});
+ db.seed("partnerQuickCountApprovals/partner",{partnerCompanyId:"partner",
+   hubCompanyId:"hub",approvedByUid:"h",partnerOwnerUid:"p",approved:true});
+ assert.equal((await api.view(req("h",{date}))).registeredCompanies[0].active,false);
+ await assert.rejects(api.manage(req("h",{action:"hubCreateInvite",
+   partnerCompanyId:"partner",role:"leader",teamId:"absent",email:"l@example.com"})),
+   e=>e.code==="failed-precondition");
+ const granted=await api.manage(req("h",{action:"hubSetStaffAccess",
+   partnerCompanyId:"partner",approved:true}));
+ assert.deepEqual({approved:granted.approved,financialAccess:granted.financialAccess},
+   {approved:true,financialAccess:false});
+ assert.equal(db.store.get("partnerRelations/partner").active,false,
+   "financial/canonical relation must NOT change");
+ assert.equal(db.store.get("partnerQuickCountApprovals/partner").approved,true,
+   "quick grant remains independent");
+ let hub=await api.view(req("h",{date}));
+ assert.equal(hub.registeredCompanies[0].active,true);
+ assert.equal(hub.registeredCompanies[0].staffApprovalManaged,true);
+ const team=(await api.manage(req("h",{action:"hubAddTeam",partnerCompanyId:"partner",
+   name:"既存協力店班"}))).teamId;
+ const invited=await api.manage(req("h",{action:"hubCreateInvite",
+   partnerCompanyId:"partner",teamId:team,role:"leader",email:"l@example.com"}));
+ const joined=await api.accept(req("l",{token:invited.token,name:"紹介リーダー"}));
+ assert.equal(joined.partnerCompanyId,"partner");
+ assert.equal(db.store.get("users/l").canViewRevenue,false);
+ assert.equal(db.store.get("companies/partner/members/l").canViewUnitPrice,false);
+ await api.submit(req("l",{date,staffId:"l",expectedVersion:0,
+   counts:{...zero(),NURO:1}}));
+ hub=await api.view(req("h",{date}));
+ assert.equal(hub.partners[0].totalCount,1);
+ await api.manage(req("h",{action:"hubSetStaffAccess",partnerCompanyId:"partner",approved:false}));
+ assert.equal((await api.view(req("h",{date}))).registeredCompanies[0].active,false);
+ assert.deepEqual((await api.view(req("h",{date}))).partners,[]);
+ await assert.rejects(api.view(req("l",{date})),e=>e.code==="permission-denied");
+ assert.deepEqual(db.store.get("users/p"),originals.user);
+ assert.deepEqual(db.store.get("users/h"),originals.hub);
+ assert.deepEqual(db.store.get("records/old"),originals.sales);
+ assert.deepEqual(db.store.get("products/money"),originals.product);
+});
+test("Staff approval rejects partner caller, forged company and finance-enabled partner Owner",async()=>{
+ const {db,api,req}=setup();
+ db.seed("partnerRelations/partner",{partnerCompanyId:"partner",hubCompanyId:"hub",
+   active:false,countSharingApproved:false});
+ for(const bad of [
+  req("p",{action:"hubSetStaffAccess",partnerCompanyId:"partner",approved:true}),
+  req("h",{action:"hubSetStaffAccess",partnerCompanyId:"other",approved:true}),
+  req("h",{action:"hubSetStaffAccess",partnerCompanyId:"partner",approved:"yes"})
+ ])await assert.rejects(api.manage(bad),()=>true);
+ assert.equal(db.store.has("partnerStaffWorkApprovals/partner"),false);
+ const owner={...db.store.get("companies/partner/members/p"),canViewRevenue:true};
+ db.seed("companies/partner/members/p",owner);
+ await assert.rejects(api.manage(req("h",{action:"hubSetStaffAccess",
+   partnerCompanyId:"partner",approved:true})),e=>e.code==="failed-precondition");
+ assert.equal(db.store.has("partnerStaffWorkApprovals/partner"),false);
+ assert.equal(db.store.get("records/old").totalRevenue,808080);
+});

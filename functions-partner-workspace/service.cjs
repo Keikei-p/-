@@ -65,6 +65,49 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  const privateProductRef=(cid,id)=>collection(cid,"partnerPrivateProducts").doc(id);
  const entryRef=(cid,date,id)=>collection(cid,"partnerWorkEntries").doc(date+"__"+id);
  const summaryRef=(hub,date,partner)=>collection(hub,"partnerWorkCountDays").doc(date).collection("reports").doc(partner);
+ // Separate from partnerQuickCountApprovals. A quick-count grant must never
+ // silently enable the staff workspace or any financial/canonical records.
+ const staffApprovalRef=partnerId=>db.collection("partnerStaffWorkApprovals").doc(partnerId);
+ async function staffWorkApproved(read,rel,company,partnerId){
+  if(!ID.test(partnerId||"")||!ID.test(company.hubCompanyId||"")||
+     !ID.test(company.ownerUid||"")||company.companyKind!=="partner"||
+     company.active!==true||rel.partnerCompanyId!==partnerId||
+     rel.hubCompanyId!==company.hubCompanyId)return false;
+  if(rel.active===true&&rel.countSharingApproved===true)return true;
+  if(rel.active!==false||rel.countSharingApproved!==false||
+     rel.revokedAt||rel.countSharingRevokedAt)return false;
+  const [approvalSnap,hubSnap,ownerSnap,memberSnap]=await Promise.all([
+   read(staffApprovalRef(partnerId)),
+   read(db.collection("companies").doc(company.hubCompanyId)),
+   read(db.collection("users").doc(company.ownerUid)),
+   read(collection(partnerId,"members").doc(company.ownerUid))
+  ]);
+  const grant=approvalSnap.data()||{},hub=hubSnap.data()||{},
+   owner=ownerSnap.data()||{},member=memberSnap.data()||{};
+  if(!approvalSnap.exists||!hubSnap.exists||!ownerSnap.exists||!memberSnap.exists||
+     hub.active!==true||!ID.test(hub.ownerUid||"")||
+     ![undefined,"internal","direct"].includes(hub.companyKind)||
+     grant.approved!==true||grant.partnerCompanyId!==partnerId||
+     grant.hubCompanyId!==company.hubCompanyId||
+     grant.partnerOwnerUid!==company.ownerUid||grant.approvedByUid!==hub.ownerUid||
+     owner.uid!==company.ownerUid||owner.active!==true||
+     member.uid!==company.ownerUid||member.companyId!==partnerId||
+     member.active!==true||member.companyRole!=="owner"||
+     member.accessKind!=="partner"||member.memberType!=="cooperator"||
+     member.canViewRevenue!==false||member.canViewUnitPrice!==false)return false;
+  // Existing-email secondary membership keeps the ORIGINAL internal user's
+  // finance flags unchanged; the partner membership itself remains money-free.
+  if(owner.companyId===partnerId)
+   return owner.companyRole==="owner"&&owner.accessKind==="partner"&&
+     owner.memberType==="cooperator"&&owner.canViewRevenue===false&&
+     owner.canViewUnitPrice===false;
+  const ctxSnap=await read(db.collection("partnerWorkspaceContexts").doc(company.ownerUid));
+  const ctx=ctxSnap.data()||{};
+  return ctxSnap.exists&&ctx.active===true&&ctx.uid===company.ownerUid&&
+   ctx.kind==="partner_secondary"&&ctx.role==="owner"&&
+   ctx.primaryCompanyId===owner.companyId&&ctx.partnerCompanyId===partnerId&&
+   ctx.hubCompanyId===company.hubCompanyId;
+ }
  async function actor(request){
   if(enabled()!==true)fail("unavailable");
   const uid=request?.auth?.uid,email=clean(request?.auth?.token?.email).toLowerCase();
@@ -130,7 +173,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
       pm.canViewRevenue!==false||pm.canViewUnitPrice!==false||
       rel.hubCompanyId!==pc.hubCompanyId||
       rel.partnerCompanyId!==workspaceCompanyId||
-      rel.active!==true||rel.countSharingApproved!==true)fail();
+      !(await staffWorkApproved(read,rel,pc,workspaceCompanyId)))fail();
    return {kind:"partner",uid,cid:workspaceCompanyId,
      hubId:pc.hubCompanyId,companyName:pc.name,
      role:partnerOwner?"owner":ctx.role,teamId:partnerOwner?null:ctx.teamId};
@@ -153,9 +196,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
       ["leader","member"].includes(u.role)&&m.role===u.role&&
       ID.test(u.teamId||"")&&u.teamId===m.teamId))fail();
    const relation=await read(db.collection("partnerRelations").doc(cid));
-   if(!relation.exists||relation.data()?.hubCompanyId!==c.hubCompanyId||
-      relation.data()?.partnerCompanyId!==cid||relation.data()?.active!==true||
-      relation.data()?.countSharingApproved!==true)fail();
+   if(!relation.exists||!(await staffWorkApproved(read,relation.data()||{},c,cid)))fail();
    return {kind:"partner",uid,cid,hubId:c.hubCompanyId,companyName:c.name,
      role:owner?"owner":u.role,teamId:owner?null:u.teamId};
   }
@@ -186,7 +227,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     rel.hubCompanyId!==hubId||c.hubCompanyId!==hubId||
     c.companyKind!=="partner"||c.active!==true||
     !validCompanyName(c.name))fail("failed-precondition");
-  return {active:rel.active===true&&rel.countSharingApproved===true};
+  return {active:await staffWorkApproved(ref=>tx.get(ref),rel,c,partnerId)};
  }
  const canStaff=(s,staff)=>{
   return s.role==="owner"||
@@ -196,10 +237,73 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  async function manage(request){
   const {uid}=await actor(request),d=request?.data||{},op=d.action;
   if(!["addTeam","addManaged","createInvite","moveStaff","addPrivateProduct","setPrivateProduct",
-   "hubAddTeam","hubCreateInvite"].includes(op))fail("invalid-argument");
+   "hubAddTeam","hubCreateInvite","hubSetStaffAccess"].includes(op))fail("invalid-argument");
   const s=await scope(uid,null,d.workspaceCompanyId);
-  if(op==="hubAddTeam"||op==="hubCreateInvite"){
+  if(op==="hubAddTeam"||op==="hubCreateInvite"||op==="hubSetStaffAccess"){
    if(s.kind!=="hub"||s.role!=="owner"||!ID.test(d.partnerCompanyId||""))fail();
+   if(op==="hubSetStaffAccess"){
+    if(typeof d.approved!=="boolean"||
+       Object.keys(d).sort().join("|")!=="action|approved|partnerCompanyId")
+     fail("invalid-argument");
+    return db.runTransaction(async tx=>{
+     const fresh=await scope(uid,tx,d.workspaceCompanyId);
+     if(fresh.kind!=="hub"||fresh.cid!==s.cid||fresh.role!=="owner")fail();
+     const companyRef=db.collection("companies").doc(d.partnerCompanyId);
+     const [relationSnap,companySnap,approvalSnap]=await Promise.all([
+      tx.get(db.collection("partnerRelations").doc(d.partnerCompanyId)),
+      tx.get(companyRef),tx.get(staffApprovalRef(d.partnerCompanyId))
+     ]);
+     const rel=relationSnap.data()||{},company=companySnap.data()||{},
+      grant=approvalSnap.data()||{};
+     if(!relationSnap.exists||!companySnap.exists||
+        rel.partnerCompanyId!==d.partnerCompanyId||
+        rel.hubCompanyId!==s.cid||company.companyKind!=="partner"||
+        company.hubCompanyId!==s.cid||company.active!==true||
+        !ID.test(company.ownerUid||"")||
+        !validCompanyName(company.name)||
+        rel.active!==false||rel.countSharingApproved!==false||
+        rel.revokedAt||rel.countSharingRevokedAt)
+       fail("failed-precondition");
+     // Verify the separate partner membership is explicitly money-free.
+     // A secondary Owner's ORIGINAL internal user record remains untouched.
+     const [ownerSnap,memberSnap,ctxSnap]=await Promise.all([
+      tx.get(db.collection("users").doc(company.ownerUid)),
+      tx.get(companyRef.collection("members").doc(company.ownerUid)),
+      tx.get(db.collection("partnerWorkspaceContexts").doc(company.ownerUid))
+     ]);
+     const owner=ownerSnap.data()||{},member=memberSnap.data()||{},ctx=ctxSnap.data()||{};
+     if(!ownerSnap.exists||!memberSnap.exists||owner.uid!==company.ownerUid||
+        owner.active!==true||member.uid!==company.ownerUid||
+        member.companyId!==d.partnerCompanyId||member.companyRole!=="owner"||
+        member.active!==true||member.accessKind!=="partner"||
+        member.memberType!=="cooperator"||member.canViewRevenue!==false||
+        member.canViewUnitPrice!==false)fail("failed-precondition");
+     const primary=owner.companyId===d.partnerCompanyId&&
+       owner.companyRole==="owner"&&owner.accessKind==="partner"&&
+       owner.memberType==="cooperator"&&owner.canViewRevenue===false&&
+       owner.canViewUnitPrice===false;
+     const secondary=owner.companyId!==d.partnerCompanyId&&ctxSnap.exists&&
+       ctx.uid===company.ownerUid&&ctx.kind==="partner_secondary"&&
+       ctx.active===true&&ctx.role==="owner"&&
+       ctx.primaryCompanyId===owner.companyId&&
+       ctx.partnerCompanyId===d.partnerCompanyId&&ctx.hubCompanyId===s.cid;
+     if(!primary&&!secondary)fail("failed-precondition");
+     if(approvalSnap.exists&&(grant.partnerCompanyId!==d.partnerCompanyId||
+        grant.hubCompanyId!==s.cid||grant.partnerOwnerUid!==company.ownerUid||
+        grant.approvedByUid!==uid))fail("failed-precondition");
+     const at=FieldValue.serverTimestamp();
+     const data={approved:d.approved,partnerCompanyId:d.partnerCompanyId,
+       hubCompanyId:s.cid,partnerOwnerUid:company.ownerUid,
+       approvedByUid:uid,updatedAt:at};
+     if(approvalSnap.exists)tx.update(staffApprovalRef(d.partnerCompanyId),data);
+     else tx.create(staffApprovalRef(d.partnerCompanyId),{...data,createdAt:at});
+     tx.create(db.collection("partnerStaffWorkApprovalAudits")
+       .doc(crypto.randomBytes(16).toString("hex")),
+       {...data,actorUid:uid,createdAt:at});
+     return {partnerCompanyId:d.partnerCompanyId,approved:d.approved,
+       staffCountOnly:true,financialAccess:false};
+    });
+   }
    if(op==="hubAddTeam"){
     if(!validName(d.name))fail("invalid-argument");
     const ref=collection(d.partnerCompanyId,"partnerWorkTeams").doc();
@@ -397,8 +501,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
       cs.data()?.hubCompanyId!==i.hubCompanyId||
       !rs.exists||rs.data()?.partnerCompanyId!==i.companyId||
       rs.data()?.hubCompanyId!==i.hubCompanyId||
-      rs.data()?.active!==true||rs.data()?.countSharingApproved!==true||
       ms.exists||ss.exists||ctxSnap.exists||
+      !(await staffWorkApproved(ref=>tx.get(ref),rs.data()||{},cs.data()||{},i.companyId))||
       us.data()?.active===false)fail("failed-precondition");
    const original=us.data()||{},primaryCid=clean(original.companyId);
    if(primaryCid){
@@ -459,7 +563,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     const cs=await db.collection("companies").doc(sn.id).get(),c=cs.data()||{};
     if(!cs.exists||c.hubCompanyId!==s.cid||c.companyKind!=="partner"||
        !validCompanyName(c.name))fail("data-loss");
-    const active=rel.active===true&&rel.countSharingApproved===true&&c.active===true;
+    const active=await staffWorkApproved(ref=>ref.get(),rel,c,sn.id);
     const teams=[];
     if(active){
      const teamSnaps=await collection(sn.id,"partnerWorkTeams").limit(151).get();
@@ -472,7 +576,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      }
      teams.sort((a,b)=>a.name.localeCompare(b.name,"ja"));
     }
-    registeredCompanies.push({partnerCompanyId:sn.id,name:clean(c.name),active,teams});
+    registeredCompanies.push({partnerCompanyId:sn.id,name:clean(c.name),active,teams,staffApprovalManaged:rel.active===false&&rel.countSharingApproved===false});
    }
    registeredCompanies.sort((a,b)=>a.name.localeCompare(b.name,"ja"));
    // Explicitly scoped, on-demand shared-count breakdown. Never read
@@ -539,9 +643,9 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     // Never disclose that saved data without current server-owned approval.
     const relSnap=await db.collection("partnerRelations").doc(sn.id).get();
     const rel=relSnap.data()||{};
-    if(!relSnap.exists||rel.hubCompanyId!==s.cid||
-       rel.partnerCompanyId!==sn.id||rel.active!==true||
-       rel.countSharingApproved!==true)continue;
+    const companySnap=await db.collection("companies").doc(sn.id).get();
+    if(!relSnap.exists||!companySnap.exists||
+       !(await staffWorkApproved(ref=>ref.get(),rel,companySnap.data()||{},sn.id)))continue;
     partners.push({partnerCompanyId:sn.id,name:x.partnerName,totalCount:total,counts});
    }
    partners.sort((x,y)=>x.name.localeCompare(y.name,"ja"));
