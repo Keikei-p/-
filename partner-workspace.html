@@ -52,7 +52,22 @@ td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 <header><h1 id="workspaceTitle">NICO FACTORY｜協力店 実績管理</h1>
 <p>会社・班・メンバーごとの件数を管理。売上・単価は表示しません。</p></header>
 <main><div id="notice" class="notice" role="status" aria-live="polite">認証を確認しています。</div>
-<section id="loginBox"><h2>ログイン・新規登録</h2><form id="loginForm">
+<section id="loginBox"><h2>協力店ログイン</h2>
+<div class="row"><button id="selectCodeLogin" type="button">会社コードでログイン</button><button id="selectEmailLogin" type="button" class="secondary">自社・従来のメールログイン</button></div>
+<div id="companyCodeBox">
+ <p class="muted">メール確認・招待メールは不要。自社から受け取った会社コードと、協力店が決めたパスワードを使います。共有パスワードの操作履歴は会社単位です。</p>
+ <form id="companyCodeLoginForm">
+ <label for="companyLoginCode">会社コード</label><input id="companyLoginCode" type="text" autocomplete="username" autocapitalize="characters" placeholder="NICO-XXXXXXXXXXXXXXXXXXXXXXXX" required>
+ <label for="companyLoginPassword">パスワード（12文字以上）</label><input id="companyLoginPassword" type="password" minlength="12" maxlength="128" autocomplete="current-password" required>
+ <button type="submit">会社コードでログイン</button></form>
+ <details><summary>初めて利用する協力店はこちら（パスワード設定）</summary>
+ <form id="companyCodeActivateForm">
+ <label for="companyActivationCode">自社から届いた会社コード</label><input id="companyActivationCode" type="text" autocomplete="off" autocapitalize="characters" required>
+ <label for="companyActivationPassword">新しいパスワード（12文字以上）</label><input id="companyActivationPassword" type="password" minlength="12" maxlength="128" autocomplete="new-password" required>
+ <button type="submit">初回パスワードを設定してログイン</button>
+ </form></details>
+</div>
+<form id="loginForm" hidden>
 <label for="email">メールアドレス</label><input id="email" type="email" autocomplete="email" required>
 <label for="pass">パスワード（6文字以上）</label><input id="pass" type="password" autocomplete="current-password" minlength="6" required>
 <div class="row"><button type="submit">ログイン</button><button id="signup" type="button" class="secondary">アカウント作成</button></div>
@@ -141,6 +156,16 @@ td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 <p id="missingStatus" role="status" aria-live="polite"></p>
 <div id="missingRows" class="scroll"></div></section>
 <section id="hubBox" hidden><h2>🤝 協力店会社別の実績</h2>
+<div id="companyCodeIssuePanel" class="company-panel">
+<h3>協力店へ会社コードを招待</h3>
+<p class="muted">自社が会社名を入力するとコードを自動発行。コードを協力店に送り、相手がパスワードを設定して利用します。既存の協力店会社も選択可能です。</p>
+<form id="companyCodeIssueForm">
+<label for="companyCodeExisting">既存の協力店会社（新規なら「新しい会社」）</label><select id="companyCodeExisting"><option value="">新しい会社を招待</option></select>
+<label for="companyCodeName">新しい協力店の会社名</label><input id="companyCodeName" maxlength="80" placeholder="例：株式会社〇〇">
+<button type="submit">会社コードを発行</button></form>
+<div id="companyCodeIssueResult" hidden><label for="companyCodeIssued">協力店へ送る会社コード</label>
+<div class="row"><input id="companyCodeIssued" readonly><button type="button" id="copyCompanyCode">コードをコピー</button></div>
+<p id="companyCodeDeadline" class="muted"></p></div></div>
  <div id="hubInvitePanel" class="company-panel">
   <h3>協力店会社・リーダー・メンバーの招待管理</h3>
   <p class="muted">最初の協力店登録・承諾が終わると会社名が現れます。未承認の会社は招待できません。売上・単価は扱いません。</p>
@@ -192,10 +217,15 @@ if(workspaceCompanyId&&!/^[A-Za-z0-9_-]{1,128}$/.test(workspaceCompanyId))
  workspaceCompanyId="";
 const call=name=>{
  const fn=httpsCallable(functions,name);
- return data=>fn({...data,...(workspaceCompanyId?{workspaceCompanyId}:{})});
+ return data=>fn({...data,...(workspaceCompanyId&&!activeCodeSession?{workspaceCompanyId}:{}),
+  ...(activeCodeSession?{codeSessionToken:activeCodeSession}:{})});
 };
 const get=call("getPartnerWorkspace"),manage=call("managePartnerWorkspace"),
- accept=call("acceptPartnerWorkspaceInvite"),save=call("submitPartnerWorkspaceCounts");
+ accept=call("acceptPartnerWorkspaceInvite"),save=call("submitPartnerWorkspaceCounts"),
+ issueCompanyCode=call("issuePartnerCompanyCode"),
+ activateCompanyCode=call("activatePartnerCompanyCode"),
+ codeLogin=call("loginPartnerCompanyCode"),
+ codeLogout=call("logoutPartnerCompanyCode");
 const $=id=>document.getElementById(id);
 const KEYS=["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"];
 let inviteToken=new URL(location.href).searchParams.get("invite")||"";
@@ -203,7 +233,14 @@ const dateParts=Object.fromEntries(new Intl.DateTimeFormat("en-US",
 {timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"})
 .formatToParts(new Date()).map(p=>[p.type,p.value]));
 $("date").value=[dateParts.year,dateParts.month,dateParts.day].join("-");
-let data=null,loading=false,nonce=0,activeWorkspaceTab="Dashboard";
+let data=null,loading=false,nonce=0,activeWorkspaceTab="Dashboard",companyCodeSession=false;
+let activeCodeSession="";
+try{activeCodeSession=sessionStorage.getItem("nicoPartnerCodeSession")||""}catch{}
+// Server validates every request; a stored token alone grants no client-side rights.
+const clearCompanySession=()=>{
+ activeCodeSession="";companyCodeSession=false;
+ try{sessionStorage.removeItem("nicoPartnerCodeSession")}catch{}
+};
 let countPeriod="day",countLoadId=0,countExportRows=null;
 const countDayCache=new Map(),countKeys=KEYS.slice();
 const notice=(s,bad=false)=>{$("notice").textContent=s;$("notice").className="notice"+(bad?" error":"")};
@@ -584,6 +621,18 @@ function renderHubCompanyDetail(){
 function renderHubInvitePanel(){
  if(data?.role!=="hub")return;
  const registered=Array.isArray(data.registeredCompanies)?data.registeredCompanies:[];
+ const codeSelect=$("companyCodeExisting"),selectedCode=codeSelect.value;
+ codeSelect.replaceChildren();
+ const blank=document.createElement("option");blank.value="";blank.textContent="新しい会社を招待";
+ codeSelect.append(blank);
+ for(const company of registered.filter(item=>item.active===true)){
+  const opt=document.createElement("option");
+  opt.value=company.partnerCompanyId;opt.textContent=company.name;
+  codeSelect.append(opt);
+ }
+ if(registered.some(item=>item.active===true&&item.partnerCompanyId===selectedCode))
+  codeSelect.value=selectedCode;
+ $("companyCodeName").disabled=Boolean(codeSelect.value);
  const companySelect=$("hubInviteCompanySelect"),prior=companySelect.value;
  companySelect.replaceChildren();
  for(const company of registered){
@@ -808,14 +857,19 @@ $("hubCompanySelect").onchange=renderHubCompanyDetail;
 $("hubInviteCompanySelect").onchange=()=>{$("hubInviteOut").hidden=true;$("hubInviteUrl").value="";renderHubInvitePanel()};
 $("hubInviteTeamSelect").onchange=()=>{$("hubInviteOut").hidden=true;$("hubInviteUrl").value=""};
 $("staffSelect").onchange=renderSelected;
-async function refresh(){if(!auth.currentUser||!auth.currentUser.emailVerified)return;
+async function refresh(){if(!activeCodeSession&&(!auth.currentUser||!auth.currentUser.emailVerified))return;
  const current=++nonce;loading=true;$("save").disabled=true;try{
  const res=(await get({date:$("date").value})).data;if(current!==nonce)return;
  if(!res||!Array.isArray(res.categories)||res.categories.join("|")!==KEYS.join("|"))throw Error("schema");
- data=res;countDayCache.set(auth.currentUser.uid+"|"+res.date,{savedAt:Date.now(),response:res});draw();notice("最新の件数を読み込みました。");
+ data=res;countDayCache.set((activeCodeSession?"code-session":"email-"+auth.currentUser.uid)+"|"+res.date,{savedAt:Date.now(),response:res});draw();notice("最新の件数を読み込みました。");
  }catch(e){
   if(current!==nonce)return;
   data=null;$("appBox").hidden=true;
+  if(activeCodeSession&&["functions/unauthenticated","functions/permission-denied"].includes(e?.code)){
+   clearCompanySession();
+   notice("会社コードのログイン期限が切れたか、権限が変更されました。もう一度ログインしてください。",true);
+   $("loginBox").hidden=false;return;
+  }
   // Auth may have succeeded while workspace lookup failed. Never strand
   // the user with both the login and application hidden.
   $("loginBox").hidden=false;$("loginLogout").hidden=!auth.currentUser;
@@ -876,6 +930,90 @@ $("save").onclick=()=>action(async()=>{
   throw Error("save_not_verified");
  return "保存・再取得照合が成功しました。第"+result.version+"版";
 });
+
+const setLoginMode=code=>{
+ $("companyCodeBox").hidden=!code;
+ $("loginForm").hidden=code;
+ $("signup").hidden=code;
+ $("resetPassword").hidden=code;
+ $("selectCodeLogin").className=code?"":"secondary";
+ $("selectEmailLogin").className=code?"secondary":"";
+};
+$("selectCodeLogin").onclick=()=>setLoginMode(true);
+$("selectEmailLogin").onclick=()=>setLoginMode(false);
+$("companyCodeLoginForm").onsubmit=async e=>{
+ e.preventDefault();
+ const form=$("companyCodeLoginForm"),button=form.querySelector('button[type="submit"]');
+ if(button.disabled)return;button.disabled=true;
+ try{
+  notice("会社コードとパスワードを確認しています…");
+  const companyCode=$("companyLoginCode").value.trim().toUpperCase();
+  const password=$("companyLoginPassword").value;
+  const {data:result}=await codeLogin({companyCode,password});
+  if(!/^[A-Za-z0-9_-]{43}$/.test(result?.sessionToken||""))
+   throw Error("invalid_code_session");
+  activeCodeSession=result.sessionToken;
+  try{sessionStorage.setItem("nicoPartnerCodeSession",activeCodeSession)}catch{}
+  companyCodeSession=true;
+  if(auth.currentUser)await signOut(auth);
+  else await refresh();
+  $("companyLoginPassword").value="";
+ }catch(error){$("companyLoginPassword").value="";fail(error)}
+ finally{button.disabled=false}
+};
+$("companyCodeActivateForm").onsubmit=async e=>{
+ e.preventDefault();
+ const form=$("companyCodeActivateForm"),button=form.querySelector('button[type="submit"]');
+ if(button.disabled)return;button.disabled=true;
+ try{
+  notice("会社コードの初回パスワードを設定しています…");
+  const companyCode=$("companyActivationCode").value.trim().toUpperCase();
+  const password=$("companyActivationPassword").value;
+  const activated=(await activateCompanyCode({companyCode,password})).data;
+  if(activated?.activated!==true)throw Error("activation_not_verified");
+  const {data:result}=await codeLogin({companyCode,password});
+  if(!/^[A-Za-z0-9_-]{43}$/.test(result?.sessionToken||""))
+   throw Error("invalid_code_session");
+  activeCodeSession=result.sessionToken;
+  try{sessionStorage.setItem("nicoPartnerCodeSession",activeCodeSession)}catch{}
+  companyCodeSession=true;
+  if(auth.currentUser)await signOut(auth);
+  else await refresh();
+  $("companyActivationPassword").value="";
+  $("companyLoginCode").value=companyCode;
+ }catch(error){$("companyActivationPassword").value="";fail(error)}
+ finally{button.disabled=false}
+};
+$("companyCodeExisting").onchange=()=>{
+ $("companyCodeName").disabled=Boolean($("companyCodeExisting").value);
+ $("companyCodeIssueResult").hidden=true;
+};
+$("companyCodeIssueForm").onsubmit=async e=>{
+ e.preventDefault();
+ const button=$("companyCodeIssueForm").querySelector('button[type="submit"]');
+ if(button.disabled)return;button.disabled=true;
+ try{
+  const partnerCompanyId=$("companyCodeExisting").value;
+  const companyName=$("companyCodeName").value.trim();
+  const result=(await issueCompanyCode(partnerCompanyId?
+    {partnerCompanyId}:{companyName})).data;
+  if(!/^NICO-[A-F0-9]{24}$/.test(result?.companyCode||""))
+   throw Error("invalid_issued_code");
+  $("companyCodeIssued").value=result.companyCode;
+  $("companyCodeDeadline").textContent="初回パスワード設定期限："+
+    new Date(result.expiresAt).toLocaleString("ja-JP",{timeZone:"Asia/Tokyo"})+
+    "。コードは本人に安全な方法で共有してください。";
+  $("companyCodeIssueResult").hidden=false;
+  notice("協力店用の会社コードを発行しました。相手にコードを渡し、初回パスワードを設定してもらってください。");
+ }catch(error){fail(error)}
+ finally{button.disabled=false}
+};
+$("copyCompanyCode").onclick=async()=>{
+ try{await navigator.clipboard.writeText($("companyCodeIssued").value);
+  notice("会社コードをコピーしました")}
+ catch{$("companyCodeIssued").select();notice("会社コードを選択しました。コピーしてください。")}
+};
+
 $("loginForm").onsubmit=async e=>{
  e.preventDefault();
  const button=$("loginForm").querySelector('button[type="submit"]');
@@ -883,6 +1021,7 @@ $("loginForm").onsubmit=async e=>{
  button.disabled=true;button.setAttribute("aria-busy","true");
  notice("Firebaseにログインしています…");
  try{
+  clearCompanySession();
   await setPersistence(auth,browserSessionPersistence);
   await signInWithEmailAndPassword(auth,$("email").value.trim().toLowerCase(),$("pass").value);
   $("pass").value="";
@@ -927,15 +1066,42 @@ $("join").onclick=async()=>{if(!inviteToken)return;await action(async()=>{
    "自社の現役所属を終了し、協力店へ移籍しました。以前の実績・売上・班履歴は元の自社に保存されています。":
    "協力店へ参加しました。";
 })};
-$("logout").onclick=()=>signOut(auth);
-onAuthStateChanged(auth,u=>{
- ++nonce;++countLoadId;data=null;countDayCache.clear();clearCountOnlyDashboard();$("companyOverview").hidden=true;$("workspaceTitle").textContent="NICO FACTORY｜協力店 実績管理";$("appBox").hidden=true;$("loginBox").hidden=!!u&&u.emailVerified;$("loginLogout").hidden=!u;
- $("inviteAccept").hidden=true;$("verify").hidden=!u||u.emailVerified;
+$("logout").onclick=async()=>{
+ if(activeCodeSession){
+  const previous=activeCodeSession;
+  try{await codeLogout({codeSessionToken:previous})}catch{ /* local logout even offline */ }
+  clearCompanySession();++nonce;data=null;countDayCache.clear();
+  $("appBox").hidden=true;$("loginBox").hidden=false;
+  notice("協力店の会社コードからログアウトしました。");
+  return;
+ }
+ await signOut(auth);
+};
+onAuthStateChanged(auth,async u=>{
+ ++nonce;++countLoadId;companyCodeSession=false;data=null;countDayCache.clear();
+ clearCountOnlyDashboard();$("companyOverview").hidden=true;
+ $("workspaceTitle").textContent="NICO FACTORY｜協力店 実績管理";
+ $("appBox").hidden=true;$("loginBox").hidden=false;
+ $("loginLogout").hidden=!u;$("inviteAccept").hidden=true;$("verify").hidden=true;
  $("inviteUrl").value="";$("inviteOut").hidden=true;
  $("hubInviteUrl").value="";$("hubInviteOut").hidden=true;
- if(!u){notice("招待されたアカウント、または自社オーナーでログインしてください。");return}
- if(!u.emailVerified){notice("メール確認を済ませて、画面を再読込してください。",true);return}
- if(inviteToken){$("inviteAccept").hidden=false;notice("招待リンクを確認しました。表示名を入力して参加してください。");return}
+ if(activeCodeSession){
+  // A shared company session must NEVER be combined with an old individual
+  // Firebase Auth identity. This also handles tab reloads on mobile Safari.
+  if(u){
+   try{await signOut(auth);return}
+   catch{clearCompanySession();notice("以前のメールログインを終了できません。再度ログインしてください。",true);return}
+  }
+  companyCodeSession=true;$("loginBox").hidden=true;refresh();return;
+ }
+ if(!u){notice("協力店は会社コード、自社オーナーは従来のメールでログインしてください。");return}
+ if(!u.emailVerified){
+  $("verify").hidden=false;
+  notice("メールログインは従来どおりメール確認が必要です。協力店は会社コードをご利用ください。",true);return;
+ }
+ $("loginBox").hidden=true;
+ if(inviteToken){$("inviteAccept").hidden=false;
+  notice("招待リンクを確認しました。表示名を入力して参加してください。");return}
  refresh();
 });
 </script></body></html>

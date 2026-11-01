@@ -67,15 +67,39 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  const summaryRef=(hub,date,partner)=>collection(hub,"partnerWorkCountDays").doc(date).collection("reports").doc(partner);
  async function actor(request){
   if(enabled()!==true)fail("unavailable");
+  const opaque=clean(request?.data?.codeSessionToken);
+  if(opaque){
+   if(request?.auth?.uid||!/^[A-Za-z0-9_-]{43}$/.test(opaque))fail("unauthenticated");
+   const hash=crypto.createHash("sha256").update(opaque).digest("hex");
+   const ss=await db.collection("partnerCodeSessions").doc(hash).get();
+   const session=ss.data()||{},uid=session.principalUid,cid=session.companyId;
+   if(!ss.exists||session.active!==true||!ID.test(uid||"")||
+      !ID.test(cid||"")||!Number.isSafeInteger(session.version)||
+      session.version<1||typeof session.expiresAt?.toMillis!=="function"||
+      session.expiresAt.toMillis()<=now()||
+      !/^NICO-[A-F0-9]{24}$/.test(session.companyCode||""))fail("unauthenticated");
+   const [credentials,login]=await Promise.all([
+    db.collection("partnerCodeCredentials").doc(cid).get(),
+    db.collection("partnerCodeLogins").doc(session.companyCode).get()
+   ]);
+   const c=credentials.data()||{},l=login.data()||{};
+   if(!credentials.exists||!login.exists||c.active!==true||
+      c.companyId!==cid||c.principalUid!==uid||c.companyCode!==session.companyCode||
+      c.version!==session.version||l.status!=="active"||
+      l.principalUid!==uid||l.partnerCompanyId!==cid||
+      l.version!==session.version)fail("unauthenticated");
+   return {uid,email:"",codeAuth:true,companyId:cid};
+  }
   const uid=request?.auth?.uid,email=clean(request?.auth?.token?.email).toLowerCase();
-  if(!ID.test(uid||"")||!EMAIL.test(email)||request?.auth?.token?.email_verified!==true)fail("unauthenticated");
+  if(!ID.test(uid||""))fail("unauthenticated");
   const bearer=request?.rawRequest?.headers?.authorization?.match(/^Bearer ([A-Za-z0-9._-]{20,12000})$/i)?.[1];
   if(!bearer)fail("unauthenticated");
   let a,t;
   try{[a,t]=await Promise.all([getAuth().getUser(uid),getAuth().verifyIdToken(bearer,true)]);}
   catch{fail("unauthenticated");}
-  if(!a||a.disabled===true||a.emailVerified!==true||
-     clean(a.email).toLowerCase()!==email||t?.uid!==uid||
+  if(!a||a.disabled===true||t?.uid!==uid)fail("unauthenticated");
+  if(!EMAIL.test(email)||request.auth?.token?.email_verified!==true||
+     a.emailVerified!==true||clean(a.email).toLowerCase()!==email||
      t.email_verified!==true||clean(t.email).toLowerCase()!==email)fail("unauthenticated");
   return {uid,email};
  }
@@ -84,6 +108,33 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   const us=await read(db.collection("users").doc(uid));
   const u=us.data()||{},cid=clean(u.companyId);
   if(!us.exists||!ID.test(cid)||u.uid!==uid||u.active!==true)fail();
+  // An isolated count-only company principal can manage its own staff/counts.
+  // Never promote an old internal user or alter their company / finance flags.
+  if(u.authKind==="partner_code_shared"){
+   if(workspaceCompanyId||u.accessKind!=="partner"||u.memberType!=="cooperator"||
+      u.companyRole!=="owner"||u.canViewRevenue!==false||u.canViewUnitPrice!==false)
+    fail();
+   const companyRef=db.collection("companies").doc(cid);
+   const [cs,ms,rs,credentials]=await Promise.all([
+    read(companyRef),read(collection(cid,"members").doc(uid)),
+    read(db.collection("partnerRelations").doc(cid)),
+    read(db.collection("partnerCodeCredentials").doc(cid))
+   ]);
+   const c=cs.data()||{},m=ms.data()||{},rel=rs.data()||{},cred=credentials.data()||{};
+   if(!cs.exists||!ms.exists||!rs.exists||!credentials.exists||
+      c.active!==true||c.companyKind!=="partner"||
+      c.companyCodePrincipalUid!==uid||!ID.test(c.hubCompanyId||"")||
+      m.uid!==uid||m.companyId!==cid||m.active!==true||
+      m.authKind!=="partner_code_shared"||m.accessKind!=="partner"||
+      m.memberType!=="cooperator"||m.companyRole!=="owner"||
+      m.canViewRevenue!==false||m.canViewUnitPrice!==false||
+      rel.active!==true||rel.countSharingApproved!==true||
+      rel.hubCompanyId!==c.hubCompanyId||rel.partnerCompanyId!==cid||
+      cred.active!==true||cred.principalUid!==uid||cred.companyId!==cid)
+    fail();
+   return {kind:"partner",uid,cid,hubId:c.hubCompanyId,
+     companyName:c.name,role:"owner",teamId:null};
+  }
   // Existing-email secondary partner role, without touching original primary
   // company, revenue flags, financial originals, or stored user document.
   if(workspaceCompanyId){

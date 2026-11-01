@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - 'functions-partner-workspace/**'
+      - 'tests/partner-company-code-auth.test.cjs'
       - 'firebase.partner-workspace.json'
       - 'partner-workspace.html'
       - 'tests/partner-workspace.test.cjs'
@@ -13,6 +14,7 @@ on:
     branches: [main]
     paths:
       - 'functions-partner-workspace/**'
+      - 'tests/partner-company-code-auth.test.cjs'
       - 'firebase.partner-workspace.json'
       - 'partner-workspace.html'
       - 'tests/partner-workspace.test.cjs'
@@ -41,6 +43,8 @@ jobs:
           set -euo pipefail
           node --check functions-partner-workspace/index.js
           node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/company-code-auth.cjs
+          node --test tests/partner-company-code-auth.test.cjs
           node --check tools/hosting/additive-partner-workspace.mjs
           node --test tests/partner-workspace.test.cjs
           node --test tests/partner-quick-counts.test.cjs
