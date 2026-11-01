@@ -25,7 +25,7 @@ test("company invite and existing entry/count/ranking paths remain intact",()=>{
  for(const marker of ["createPartnerCompanyInvitation","acceptPartnerCompanyInvitation","getPartnerWorkspace"])
   assert.ok(companyInvite.includes(marker),marker);
  for(const marker of ["getPartnerWorkspace","submitPartnerWorkspaceCounts","addManaged",
-  "countProductRank","countPersonRank","hubCreateInvite","renderCompanyOverview"])
+  "countProductRank","countStaffRank","hubCreateInvite","renderCompanyOverview"])
   assert.ok(workspace.includes(marker),marker);
  assert.doesNotMatch(workspace,/firebase-firestore\.js|\bgetFirestore\(|\bgetDoc\(|\bsetDoc\(|\bdeleteDoc\(/);
  assert.doesNotMatch(companyInvite,/firebase-firestore\.js|\bgetFirestore\(|\bgetDoc\(|\bsetDoc\(|\bdeleteDoc\(/);
