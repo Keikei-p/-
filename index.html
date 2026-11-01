@@ -13862,14 +13862,24 @@ function applyRevenueVisibility() {
     !allowed
   ) {
 
-    salesAnalysisContent.hidden =
-      true;
-
-    individualRankingContent.hidden =
-      true;
-
-    revenueChartContent.hidden =
-      true;
+    // Hiding a finance panel must also reset its expanded state. Previously
+    // a user signing back in as an authorised Owner could see a visible
+    // button with aria-expanded=true but a hidden panel, requiring two taps.
+    // Only hide finance panels here; never change revenue, prices or access
+    // grants for an authenticated internal Owner.
+    const financePanels = [
+      [salesAnalysisToggle, salesAnalysisContent],
+      [individualRankingToggle, individualRankingContent],
+      [revenueChartToggle, revenueChartContent]
+    ];
+    const wasExpanded = financePanels.some(([toggle]) =>
+      toggle?.getAttribute("aria-expanded") === "true"
+    );
+    financePanels.forEach(([toggle, content]) => {
+      setAccordionState(toggle, content, false);
+      toggle.setAttribute("aria-pressed", "false");
+    });
+    if (wasExpanded) dashboardDetailArea.hidden = true;
 
   }
 
