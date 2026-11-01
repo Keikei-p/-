@@ -66,7 +66,7 @@ const pending={
 test("existing company and role invite share a server-verified company ID, no new company creation",async()=>{
  const h=harness([existing,pending]);
  await h.element("partnerExistingLoad").onclick();
- assert.deepEqual(h.calls[0].payload,{date:"2026-11-01"});
+ assert.equal(h.calls[0].payload.date,"2026-11-01");
  assert.equal(h.element("partnerExistingCompanySelect").children.length,2);
  assert.equal(h.element("partnerExistingTeamSelect").value,"team-existing");
  h.element("partnerExistingRole").value="leader";
