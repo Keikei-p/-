@@ -102,8 +102,12 @@ jobs:
         run: |
           set -euo pipefail
           firebase emulators:exec --project demo-sales-support --only firestore "node --test tests/rules.test.cjs"
-          # Passing emulator tests is necessary but not sufficient:
-          # reject partner money-source grants hidden behind additional rule branches.
+          # Keep the GLOBAL owner-only finance cutover gate fail-closed:
+          # legacy sales clients are not yet migrated and cannot use it safely.
+          # This is a read-only preview, NOT the finance Rules release workflow.
           node --test tests/finance-release-gate.test.mjs
-          node scripts/check-finance-read-boundary-before-deploy.mjs
-          echo 'PASS: actual-live minimal patch and raw finance grant gate verified offline. NO PRODUCTION DEPLOYMENT.'
+          node --test tests/live-rules-surgical-preview.test.mjs
+          node --test tests/internal-owner-finance-visibility.test.cjs
+          # Above live-source step also rejects EVERY unexpected Rules byte:
+          # reviewed patch must be identical to the approved reviewed source.
+          echo 'PASS: actual-live partner finance denial + internal owner/leader regression in isolated emulator. NO PRODUCTION DEPLOYMENT.'
