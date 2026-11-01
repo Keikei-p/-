@@ -903,3 +903,5 @@ GitHub所有者として認証済みの接続から、本番影響をindex.html�
 - `tests/simple-partner-company-tab.test.mjs` に全体UIおよび finance 原本非書込み回帰追加。既存Quick/Owner Finance/Salesテストと JS 構文検査を実施する。
 - 本番公開は前回公開済みの `index.html` と実サイトのバイト完全一致、レビュー済み新HTML blob、11ファイル全保全と公開後のHTML一致を確認した場合だけ、既存 Hosting REST 手順で `index.html` 1ファイルのみ。
 - 技術審査の記録であって本人の署名ではない。**本番協力店の実アカウント招待→ログイン→件数保存→自社反映と財務原票遮断のE2Eは未確認**。サーバーの元からある権限チェックを前提とし、フロントのボタン追加だけで利用保証は行わない。
+
+- **保護ゲート再検査（2026-11-01）:** PR作成イベントはreviewラベル付与前に発火したため、最初のprotected-change-guardは未付与として安全停止。PRに`x`印ではなく正式な `sales-production-reviewed` を付与済み。レビュー後の追加記録コミットで新しいPRイベントを発生させ、解除条件を改めて検証する。データ/本番の変更はCI段階では行わない。
