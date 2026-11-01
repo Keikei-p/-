@@ -119,3 +119,28 @@ test("existing invited accounts can request password reset without account recre
  assert.match(html,/signInWithEmailAndPassword\(auth,/);
  assert.doesNotMatch(html,/deleteUser\(|\.delete\(auth\.currentUser\)/);
 });
+
+test("accepted or expired invitation safely recovers without modifying account or records",()=>{
+ assert.match(html,/id="retryInvite"/);
+ assert.match(html,/id="inviteRecovery"/);
+ assert.match(html,/case "functions\\/not-found"/);
+ assert.match(html,/case "functions\\/failed-precondition"/);
+ assert.match(html,/case "functions\\/deadline-exceeded"/);
+ assert.match(html,/getWorkspace\\(\\{date:new Date\\(\\)\\.toLocaleDateString/);
+ assert.match(html,/\\["owner","leader","member"\\]\\.includes\\(check\\?\\.role\\)/);
+ assert.match(html,/Array\\.isArray\\(check\\.categories\\)/);
+ assert.match(html,/auth\\.currentUser\\?\\.uid===user\\.uid/);
+ assert.match(html,/\\$\\("acceptedBox"\\)\\.hidden=false/);
+ assert.match(html,/\\$\\("inviteRecovery"\\)\\.hidden=false/);
+ assert.match(html,/\\$\\("retryInvite"\\)\\.addEventListener\\("click"/);
+ assert.doesNotMatch(html,/deleteUser\\(|firebase-firestore\\.js|\\bgetFirestore\\(/);
+});
+test("expired and previously accepted preview codes have distinct, actionable messages",()=>{
+ const script=html.match(/const authErrorText=error=>\\{[\\s\\S]*?\\n\\};/)?.[0];
+ assert.ok(script,"error explanation must exist");
+ const message=code=>runInNewContext(script+"\\nauthErrorText({code:"+JSON.stringify(code)+"})");
+ assert.match(message("functions/not-found"),/見つかりません/);
+ assert.match(message("functions/deadline-exceeded"),/期限/);
+ assert.match(message("functions/already-exists"),/承諾/);
+ assert.match(message("functions/permission-denied"),/招待された/);
+});
