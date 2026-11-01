@@ -13,7 +13,9 @@ const fake=(overrides={})=>{
   const callable=url.includes("cloudfunctions.net/");
   const status=overrides[name]??(callable?401:name==="catalog"?403:
     name==="/partner-counts-v2.html"?404:200);
-  return {status,ok:status>=200&&status<300};
+  return {status,ok:status>=200&&status<300,
+   text:async()=>name==="/partner-workspace.html"?
+    (overrides.workspaceHtml??'<form id="companyCodeLoginForm"></form><form id="companyCodeIssueForm"></form><form id="companyCodeActivateForm"></form>'):""};
  };
  return {fetcher,seen};
 };
@@ -68,4 +70,37 @@ test("anonymous worker catalog exposure is detected separately",async()=>{
  const r=await probe(x.fetcher);
  assert.equal(r.unauthenticatedApiSafe,false);
  assert.equal(r.allCallablesAvailableAndClosed,true);
+});
+
+test("live company-code UI and four backend endpoints require positive independent evidence",async()=>{
+ const x=fake({codeIssue:401,codeActivate:400,codeLogin:400,codeLogout:401});
+ const actual=await probe(x.fetcher);
+ assert.equal(actual.companyCodeUiLive,true);
+ assert.equal(actual.companyCodeEndpointsRespond,true);
+ assert.equal(actual.companyCodePublicSurfaceReady,true);
+ assert.equal(actual.companyCodeAuthenticatedRealUserVerified,false);
+ assert.deepEqual(Object.keys(actual.codeEndpointStatus),
+  ["codeIssue","codeActivate","codeLogin","codeLogout"]);
+ const missingApi=await probe(fake({codeLogin:404}).fetcher);
+ assert.equal(missingApi.companyCodeEndpointsRespond,false);
+ assert.equal(missingApi.companyCodePublicSurfaceReady,false);
+ const missingUI=await probe(fake({workspaceHtml:"<h1>legacy workspace</h1>"}).fetcher);
+ assert.equal(missingUI.companyCodeUiLive,false);
+ assert.equal(missingUI.companyCodePublicSurfaceReady,false);
+});
+test("even published company-code endpoints never prove login or saved counts by themselves",async()=>{
+ const x=fake({"codeIssue":401,"codeActivate":400,"codeLogin":400,"codeLogout":401});
+ const result=await probe(x.fetcher);
+ assert.equal(result.companyCodePublicSurfaceReady,true);
+ assert.equal(result.authenticatedEndToEndVerified,false);
+ assert.equal(result.productionCountReleaseApproved,false);
+ assert.equal(result.companyCodeAuthenticatedRealUserVerified,false);
+ for(const name of ["issuePartnerCompanyCode","activatePartnerCompanyCode",
+    "loginPartnerCompanyCode","logoutPartnerCompanyCode"]){
+  const item=x.seen.find(p=>p.url.endsWith("/"+name));
+  assert(item,"Missing "+name);
+  assert.equal(item.opts.method,"POST");
+  assert.deepEqual(JSON.parse(item.opts.body),{data:{}});
+  assert.equal(item.opts.headers.Authorization,undefined);
+ }
 });
