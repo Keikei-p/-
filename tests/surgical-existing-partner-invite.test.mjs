@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import {runInNewContext} from "node:vm";
 import {readFileSync} from "node:fs";
 import {validateManifest,uploadSingleExistingPartnerInvite}
  from "../tools/hosting/surgical-existing-partner-invite.mjs";
@@ -54,4 +55,31 @@ test("existing audited 11-asset Hosting manifest is inspected without changing s
  const out=await uploadSingleExistingPartnerInvite({assetBytes,request,log:()=>{}});
  assert.equal(out.released,false);assert.equal(out.originalCount,11);
  assert(seen.every(x=>x==="GET"));
+});
+
+test("registered partner leader/member invite accepts actual standard email addresses",()=>{
+ const sourceLine=html.split("\n").find(line=>line.includes(".test(email)"));
+ assert.ok(sourceLine,"real browser email validator must be present");
+ const expression=sourceLine.match(/!(\/(?:\\.|[^/])+\/)\.test\(email\)/)?.[1];
+ assert.ok(expression,"extract actual regular expression from invite form");
+ const pattern=runInNewContext(expression);
+ for(const email of ["taro@example.com","invite+1@example.co.jp","s@example.jp"])
+  assert.equal(pattern.test(email),true,email);
+ for(const email of ["not-an-email","missing@", "a b@example.com","x@example"])
+  assert.equal(pattern.test(email),false,email);
+});
+test("signup provides a distinct fix for registered email, rejected password, and disabled email provider",()=>{
+ assert.match(html,/case "auth\/email-already-in-use"/);
+ assert.match(html,/case "auth\/weak-password"/);
+ assert.match(html,/case "auth\/operation-not-allowed"/);
+ assert.match(html,/case "auth\/unauthorized-domain"/);
+ assert.match(html,/case "auth\/too-many-requests"/);
+ assert.match(html,/case "functions\/permission-denied"/);
+ assert.match(html,/case "functions\/failed-precondition"/);
+ assert.match(html,/createUserWithEmailAndPassword\(auth,email,password\)/);
+ assert.match(html,/let verificationSent=false;/);
+ assert.match(html,/try\{await sendEmailVerification\(credential\.user\);verificationSent=true;\}/);
+ assert.match(html,/アカウントは作成できましたが、確認メールを送れませんでした/);
+ assert.match(html,/新規作成は不要です/);
+ assert.doesNotMatch(html,/auth\.currentUser\.delete\(|deleteUser\(/);
 });
