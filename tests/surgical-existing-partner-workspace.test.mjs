@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
+import {runInNewContext} from "node:vm";
 import {validateManifest,uploadSingleExistingWorkspace} from "../tools/hosting/surgical-existing-partner-workspace.mjs";
 const hash=c=>String(c).repeat(64);
 const originals=[
@@ -77,4 +79,30 @@ test("latest verified invitation-only Hosting version allows read-only 11-file p
  assert.equal(result.originalCount,11);
  assert.equal(result.released,false);
  assert.ok(x.seen.every(a=>a.method==="GET"));
+});
+
+const workspaceHtml=readFileSync(new URL("../partner-workspace.html",import.meta.url),"utf8");
+test("recoverable partner login keeps original Firebase account, offers password reset and switch-account",()=>{
+ assert.match(workspaceHtml,/id="resetPassword"/);
+ assert.match(workspaceHtml,/id="loginLogout"/);
+ assert.match(workspaceHtml,/sendPasswordResetEmail\(auth,email\)/);
+ assert.match(workspaceHtml,/await signInWithEmailAndPassword\(auth,/);
+ assert.match(workspaceHtml,/button\.setAttribute\("aria-busy","true"\)/);
+ assert.match(workspaceHtml,/\$\("loginBox"\)\.hidden=false;\$\("loginLogout"\)\.hidden=!auth\.currentUser/);
+ assert.match(workspaceHtml,/\$\("loginBox"\)\.hidden=!!u&&u\.emailVerified/);
+ assert.match(workspaceHtml,/\$\("loginLogout"\)\.hidden=!u/);
+ assert.doesNotMatch(workspaceHtml,/deleteUser\(|auth\.currentUser\.delete\(/);
+ assert.doesNotMatch(workspaceHtml,/firebase-firestore\.js|\bgetFirestore\(/);
+});
+test("workspace login errors distinguish invalid password from backend membership denial",()=>{
+ const source=workspaceHtml.match(/const fail=e=>\{[\s\S]*?\n\};/)?.[0];
+ assert.ok(source,"real error mapper must exist");
+ const result=code=>runInNewContext(
+  '(()=>{let value="";const notice=(message)=>{value=message;};'+source+
+  ';fail({code:'+JSON.stringify(code)+'});return value;})()');
+ assert.match(result("auth/invalid-credential"),/パスワード/);
+ assert.match(result("auth/email-already-in-use"),/登録済み/);
+ assert.match(result("functions/permission-denied"),/ログイン済み/);
+ assert.match(result("functions/unavailable"),/サービス/);
+ assert.doesNotMatch(result("auth/invalid-credential"),/招待期限・入力権限/);
 });
