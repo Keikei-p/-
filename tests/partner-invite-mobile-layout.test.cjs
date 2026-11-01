@@ -48,7 +48,15 @@ test("existing invitations, company owner access, sales reports, finance display
  const source=html.slice(html.indexOf('const partnerInviteCreateButton ='),html.indexOf('document.getElementById("partnerInviteCopyButton")'));
  assert(source.includes('createPartnerCompanyInvite({companyName,email})'));
  assert(source.includes('currentCompanyData?.ownerUid !== currentUser.uid'));
- assert(source.includes('showSuccess("協力店の招待リンクを作成しました。'));
+ // Both new-company and existing-company invitations must show explicit
+ // success only AFTER the server returns a valid single-use token.
+ assert(source.includes('showSuccess(existing?'));
+ assert(source.includes('新規協力店の招待リンクを発行しました（24時間有効）。'));
+ assert(source.includes('招待リンクを発行しました（30分間有効）。'));
+ assert(source.includes('if(typeof token!=="string"'));
+ assert(source.includes('searchParams.set(existing?"partnerStaffInvite":"partnerCompanyInvite",token)'));
+ assert(source.includes('partnerInviteCreateButton.disabled=true'));
+ assert(source.includes('partnerInviteCreateButton.disabled=false'));
  assert(html.includes("function canCurrentUserViewRevenueForTeam("));
  assert(html.includes("function canCurrentUserViewUnitPrice(")||html.includes("function canCurrentUserViewUnitPrice"));
  assert(html.includes("mergedPartnerRankingDay"));
