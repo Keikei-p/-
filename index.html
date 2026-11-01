@@ -10999,6 +10999,7 @@ async function enterApplication(
   user
 ) {
 
+  resetPartnerInline();
   currentUser =
     user;
 
@@ -12093,8 +12094,8 @@ partnerInviteCreateButton.onclick = async () => {
     const token=response?.data?.token;
     if(typeof token!=="string"||!/^[A-Za-z0-9_-]{43}$/.test(token))
       throw Error("invalid_invite_response");
-    const url=new URL("/partner-invite.html",location.origin);
-    url.searchParams.set("token",token);
+    const url=new URL("/",location.origin);
+    url.searchParams.set("partnerCompanyInvite",token);
     document.getElementById("partnerInviteLinkOutput").value=url.href;
     document.getElementById("partnerInviteResult").hidden=false;
     showSuccess("協力店の招待リンクを作成しました。30分以内に送ってください。");
@@ -12519,12 +12520,27 @@ onAuthStateChanged(
       }
 
 
+      const pendingPartnerInvite=partnerMainPendingInvite();
+      if(pendingPartnerInvite){
+        await showPartnerInviteAtMain(user,pendingPartnerInvite);
+        return;
+      }
+      const partnerWorkspaceId=new URL(location.href).searchParams.get("workspaceCompanyId")||"";
+      if(partnerWorkspaceId){
+        if(!partnerMainValidId(partnerWorkspaceId)){
+          showLegacyFinanceEntryBlocked("blocked");
+          return;
+        }
+        await openSameAppPartnerWorkspace(user,partnerWorkspaceId);
+        return;
+      }
       await enterApplication(
         user
       );
 
     } else {
 
+      resetPartnerInline();
       // Never keep another company's count-only ranking in memory after logout.
       ++partnerRankingRequestGeneration;
       partnerRankingDailyCache.clear();
@@ -12612,6 +12628,12 @@ async function checkLegacyEntryAgainstServer(user) {
 }
 
 function showLegacyFinanceEntryBlocked(mode) {
+  if(mode==="partner"&&auth.currentUser?.emailVerified){
+    // Use the original login's Auth session; only isolated COUNT-ONLY API.
+    // No legacy sales subscriptions are started for this identity.
+    void openSameAppPartnerWorkspace(auth.currentUser);
+    return;
+  }
   stopRealtimeListeners();
   appScreen.style.display="none";
   companySetupScreen.style.display="none";
@@ -14917,6 +14939,9 @@ async function loadTeams(
 
 
     renderTeams();
+    // Company-grouped partner teams are read from count-only Callable, never
+    // inserted into the existing sales team's write/select collections.
+    void loadOwnerPartnerCompanyTeams();
 
     return true;
 
