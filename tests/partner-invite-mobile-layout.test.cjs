@@ -50,8 +50,8 @@ test("existing invitations, company owner access, sales reports, finance display
  assert(source.includes('currentCompanyData?.ownerUid !== currentUser.uid'));
  // Both new-company and existing-company invitations must show explicit
  // success only AFTER the server returns a valid single-use token.
- assert(source.includes('showSuccess(existing?'));
- assert(source.includes('新規協力店の招待リンクを発行しました（24時間有効）。'));
+ assert(source.includes('if(existing)showSuccess('));
+ assert(source.includes('else showSuccess("協力店の招待リンクを作成しました。'));
  assert(source.includes('招待リンクを発行しました（30分間有効）。'));
  assert(source.includes('if(typeof token!=="string"'));
  assert(source.includes('searchParams.set(existing?"partnerStaffInvite":"partnerCompanyInvite",token)'));
