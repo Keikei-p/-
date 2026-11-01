@@ -904,6 +904,82 @@ $("save").onclick=()=>action(async()=>{
   throw Error("save_not_verified");
  return "保存・再取得照合が成功しました。第"+result.version+"版";
 });
+
+const setLoginMode=code=>{
+ $("companyCodeBox").hidden=!code;
+ $("loginForm").hidden=code;
+ $("signup").hidden=code;
+ $("resetPassword").hidden=code;
+ $("selectCodeLogin").className=code?"":"secondary";
+ $("selectEmailLogin").className=code?"secondary":"";
+};
+$("selectCodeLogin").onclick=()=>setLoginMode(true);
+$("selectEmailLogin").onclick=()=>setLoginMode(false);
+$("companyCodeLoginForm").onsubmit=async e=>{
+ e.preventDefault();
+ const form=$("companyCodeLoginForm"),button=form.querySelector('button[type="submit"]');
+ if(button.disabled)return;button.disabled=true;
+ try{
+  notice("会社コードとパスワードを確認しています…");
+  const companyCode=$("companyLoginCode").value.trim().toUpperCase();
+  const password=$("companyLoginPassword").value;
+  const {data:result}=await codeLogin({companyCode,password});
+  if(typeof result?.customToken!=="string")throw Error("invalid_code_session");
+  await setPersistence(auth,browserSessionPersistence);
+  await signInWithCustomToken(auth,result.customToken);
+  $("companyLoginPassword").value="";
+ }catch(error){$("companyLoginPassword").value="";fail(error)}
+ finally{button.disabled=false}
+};
+$("companyCodeActivateForm").onsubmit=async e=>{
+ e.preventDefault();
+ const form=$("companyCodeActivateForm"),button=form.querySelector('button[type="submit"]');
+ if(button.disabled)return;button.disabled=true;
+ try{
+  notice("会社コードの初回パスワードを設定しています…");
+  const companyCode=$("companyActivationCode").value.trim().toUpperCase();
+  const password=$("companyActivationPassword").value;
+  const activated=(await activateCompanyCode({companyCode,password})).data;
+  if(activated?.activated!==true)throw Error("activation_not_verified");
+  const {data:result}=await codeLogin({companyCode,password});
+  if(typeof result?.customToken!=="string")throw Error("invalid_code_session");
+  await setPersistence(auth,browserSessionPersistence);
+  await signInWithCustomToken(auth,result.customToken);
+  $("companyActivationPassword").value="";
+  $("companyLoginCode").value=companyCode;
+ }catch(error){$("companyActivationPassword").value="";fail(error)}
+ finally{button.disabled=false}
+};
+$("companyCodeExisting").onchange=()=>{
+ $("companyCodeName").disabled=Boolean($("companyCodeExisting").value);
+ $("companyCodeIssueResult").hidden=true;
+};
+$("companyCodeIssueForm").onsubmit=async e=>{
+ e.preventDefault();
+ const button=$("companyCodeIssueForm").querySelector('button[type="submit"]');
+ if(button.disabled)return;button.disabled=true;
+ try{
+  const partnerCompanyId=$("companyCodeExisting").value;
+  const companyName=$("companyCodeName").value.trim();
+  const result=(await issueCompanyCode(partnerCompanyId?
+    {partnerCompanyId}:{companyName})).data;
+  if(!/^NICO-[A-F0-9]{24}$/.test(result?.companyCode||""))
+   throw Error("invalid_issued_code");
+  $("companyCodeIssued").value=result.companyCode;
+  $("companyCodeDeadline").textContent="初回パスワード設定期限："+
+    new Date(result.expiresAt).toLocaleString("ja-JP",{timeZone:"Asia/Tokyo"})+
+    "。コードは本人に安全な方法で共有してください。";
+  $("companyCodeIssueResult").hidden=false;
+  notice("協力店用の会社コードを発行しました。相手にコードを渡し、初回パスワードを設定してもらってください。");
+ }catch(error){fail(error)}
+ finally{button.disabled=false}
+};
+$("copyCompanyCode").onclick=async()=>{
+ try{await navigator.clipboard.writeText($("companyCodeIssued").value);
+  notice("会社コードをコピーしました")}
+ catch{$("companyCodeIssued").select();notice("会社コードを選択しました。コピーしてください。")}
+};
+
 $("loginForm").onsubmit=async e=>{
  e.preventDefault();
  const button=$("loginForm").querySelector('button[type="submit"]');
