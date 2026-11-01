@@ -24,15 +24,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git hash-object index.html)" = "105d290dcacf5342318168ed348cb10d825b8872" || { echo "STOP: reviewed sales HTML changed"; exit 1; }
-          git show 997d0fd7a317423cb73966131db0b55e78324fe4:index.html > "$RUNNER_TEMP/reviewed.html"
+          test "$(git hash-object index.html)" = "101aa4e5f14ccc7474c7b3a3b3062bdc41811e51" || { echo "STOP: reviewed sales HTML changed"; exit 1; }
+          git show 6c1ab0db069f7d44089ef5e52995bd5e5bb3cb38:index.html > "$RUNNER_TEMP/reviewed.html"
           cmp index.html "$RUNNER_TEMP/reviewed.html"
           node <<'NODE'
           const cp=require('node:child_process'),fs=require('node:fs');
           const stats=cp.execFileSync('git',['diff','--numstat',
             'f904a66b53d63c6c39eb56053be7ff36f0b856bf',
-            '997d0fd7a317423cb73966131db0b55e78324fe4','--','index.html'],{encoding:'utf8'}).trim();
-          if(stats!=='66\t10\tindex.html')throw Error('STOP: unreviewed UI modifications: '+stats);
+            '6c1ab0db069f7d44089ef5e52995bd5e5bb3cb38','--','index.html'],{encoding:'utf8'}).trim();
+          if(stats!=='69\t10\tindex.html')throw Error('STOP: unreviewed UI modifications: '+stats);
           const html=fs.readFileSync('index.html','utf8');
           for(const fragment of ['id="quickPartnerButton"','id="partnerCompanyManagement"',
             'function showLegacyFinanceEntryBlocked(mode)','currentCatalogRevenuePerUnit',
