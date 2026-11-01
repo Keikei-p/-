@@ -196,7 +196,20 @@ function makeCompanyCodeAuth({db,getAuth,FieldValue,Timestamp,HttpsError,enabled
   });
   return {sessionToken,expiresAt};
  }
- return Object.freeze({issue,activate,login});
+ async function logout(request){
+  gate();
+  const token=clean(request?.data?.codeSessionToken);
+  if(!/^[A-Za-z0-9_-]{43}$/.test(token))fail("unauthenticated");
+  const hash=crypto.createHash("sha256").update(token).digest("hex");
+  const sr=doc("partnerCodeSessions",hash);
+  await db.runTransaction(async tx=>{
+   const sn=await tx.get(sr);
+   if(sn.exists&&sn.data()?.active===true)
+    tx.update(sr,{active:false,revokedAt:field()});
+  });
+  return {ended:true};
+ }
+ return Object.freeze({issue,activate,login,logout});
 }
 
 module.exports={CODE,ID,clean,newCode,passwordValid,secretHash,safeEqual,salt,makeCompanyCodeAuth};
