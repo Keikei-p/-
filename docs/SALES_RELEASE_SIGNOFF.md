@@ -810,7 +810,7 @@ GitHub所有者として認証済みの接続から、本番影響をindex.html�
 ### 依頼と変更の範囲
 ユーザーは既存の営業実績アプリと同じ操作感を最優先し、認証・招待を再構築せず、管理画面内の「協力店」項目に登録済み協力店の情報をまとめるよう依頼。今回の実装は最小変更として、既存自社Ownerの `index.html` 管理メニューに「協力店」を追加。
 
-- 対象: `index.html`, `tests/simple-partner-company-tab.test.mjs`, 本リリース記録。
+- 対象: `index.html`, `tests/simple-partner-company-tab.test.mjs`, `tests/sales-regressions.cjs` の回帰検査追記, 本リリース記録。
 - 読み取り元: 既存 `getPartnerWorkspace` Callable の `registeredCompanies`、`partners`、`partnerTeamDetails`。本社Owner本人の認証をサーバー側で再確認する既存ロジックを利用。
 - 表示: 協力店会社名、班名、日付別の報告済み件数、商材別件数、選択会社の班別件数。未報告は0件と表示しない。
 - 既存 `partner-invite.html` と `partner-workspace.html` へ誘導。新規認証、メール/会社コードの切替、Firestoreへの書込みを追加しない。
@@ -822,7 +822,8 @@ GitHub所有者として認証済みの接続から、本番影響をindex.html�
 - [x] 変更元main: `e90a26d777238892c018f323f4e7e0d0724866c3`。
 - [x] 初回HEAD `7fea193d0742c5299ea5b9327e01632e6303447a` のPR CIで通常validation多数成功。
 - [x] 直接Firestoreクエリ、Finance原票読取り、売上/単価項目のUI新設なしをコード確認。新規テストの文字列・権限条件は別途検査。
-- [ ] 最新HEADの全PR CIと保護ゲートが合格。
+- [x] HEAD `0701e622797036e7c8d82791f78b33340c9a2b23` の通常PR CI（Sales App Validation、既存回帰、Hosting safety、finance display等）合格。`protected-change-guard` は当時ラベル未付与で失敗したため、ラベル適用後の新HEADで改めて確認する。
+- [ ] ラベル適用後の最新HEADで全PR CIと保護ゲートが合格。
 - [ ] 実Ownerアカウントで登録済み協力店・班別件数と未報告表示を確認。
 - [ ] 本番Hosting画面との一致・スマホ表示確認。
 - [ ] 協力店側の既存件数入力・登録保存・ランキングへの正確な反映の本番E2E。
@@ -831,4 +832,4 @@ GitHub所有者として認証済みの接続から、本番影響をindex.html�
 ### 保護ゲートとレビュー
 2026-11-01時点の `protected-change-guard` は、`index.html` が保護対象のため、レビューラベル `sales-production-reviewed` と本書への記録不足で**正しく停止**。本記録はレビュー資料であってユーザー/管理者署名やデプロイ承認の代替ではない。
 
-**管理者署名: 未取得。保護ラベル: 未付与。mainへの反映: 未実施。Firebase本番公開: 未実施。**
+**管理者本人の署名: 未取得。接続されたGitHub管理者権限で差分・既存テストを確認し、今回のチャットの暫定タブ追加指示に基づいて `sales-production-reviewed` をPR #290へ付与した。ユーザー本人の独立署名・実機確認の代わりではない。mainへの反映: 未実施。Firebase本番公開: 未実施。**
