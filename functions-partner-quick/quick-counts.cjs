@@ -7,6 +7,7 @@
  * earlier partnerCount* API, nor change any shared ranking or finance rules.
  */
 const crypto=require("node:crypto");
+const {readCombinedDailyRanking}=require("./joint-ranking.cjs");
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -257,6 +258,18 @@ function makeQuickCounts({db,getAuth,FieldValue,HttpsError,enabled,now=()=>Date.
    totalCount:rows.reduce((n,r)=>n+r.totalCount,0),
    categories:KEYS,pendingPartners:pending};
  }
- return Object.freeze({submit,view,approve});
+ async function ranking(request){
+  const uid=await caller(request),input=request?.data;
+  if(!input||typeof input!=="object"||Array.isArray(input)||
+     Object.keys(input).join("|")!=="date"||
+     !validDate(input.date,now))fail(HttpsError,"invalid-argument");
+  // Identity is rechecked on each request. Never trust a client company ID.
+  const scope=await db.runTransaction(tx=>identity(tx,uid));
+  return readCombinedDailyRanking({db,date:input.date,
+   scope:{...scope,kind:scope.role,hubId:scope.hubId,
+     cid:scope.role==="partner"?scope.partnerId:scope.hubId},
+   fail:code=>fail(HttpsError,code),grantRef,quickAllowed});
+ }
+ return Object.freeze({submit,view,approve,ranking});
 }
 module.exports={makeQuickCounts,KEYS};
