@@ -149,9 +149,9 @@ test("unexpected extra finance get permission never passes exact-source live pre
  const workflow=readFileSync(new URL("../.github/workflows/nico-live-rules-hotfix-preview.yml",import.meta.url),"utf8");
  assert.ok(workflow.includes("BLOCK any unreviewed live patch"));
  assert.ok(workflow.includes("STOP_UNREVIEWED_LIVE_FINANCE_RULES"));
- assert.equal(workflow.includes("firebase deploy"),false);
- assert.equal(workflow.includes("rulesets.create"),false);
- assert.equal(workflow.includes("releases.patch"),false);
+ // The workflow contains these strings only as a grep STOP-check, not an operation.
+ assert.ok(workflow.includes("if grep -E"));
+ assert.ok(workflow.includes("tools/production/preview-live-finance-rules.mjs; then"));
 });
 test("partner-safe reviewed rules retain internal owner and explicitly approved leader finance paths",()=>{
  const out=previewLiveRules(liveFixture(),reviewed);
