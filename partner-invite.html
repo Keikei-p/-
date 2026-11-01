@@ -151,6 +151,12 @@ const authErrorText=error=>{
   case "auth/unauthorized-domain": return "このサイトがFirebaseの認証許可ドメインに登録されていません。管理者に連絡してください。";
   case "auth/too-many-requests": return "操作が集中したため一時的に制限されています。時間をあけて操作してください。";
   case "auth/network-request-failed": return "通信できませんでした。電波・Wi-Fiを確認して再度操作してください。";
+  case "auth/internal-error": return "Firebase認証サービスで内部エラーが発生しました。時間をあけて再度試してください。";
+  case "auth/invalid-api-key": return "Firebaseの接続設定に問題があります。管理者に連絡してください。";
+  case "auth/user-disabled": return "このアカウントは利用停止中です。管理者に確認してください。";
+  case "auth/invalid-user-token":
+  case "auth/user-token-expired": return "ログインの有効期限が切れています。再度ログインしてください。";
+  case "auth/invalid-login-credentials": return "メールアドレスまたはパスワードを確認してください。";
   case "auth/invalid-credential":
   case "auth/wrong-password":
   case "auth/user-not-found": return "メールアドレスまたはパスワードを確認してください。";
@@ -161,12 +167,32 @@ const authErrorText=error=>{
   default: return "操作を完了できません。メール・招待期限・ログイン状態を確認してください。";
  }
 };
-const busy=async(button,task)=>{
- button.disabled=true;try{await task();}catch(error){
-  // Only display Firebase's error category; do not expose credentials or raw server errors.
+const busy=async(button,task,{pending="処理しています…"}={})=>{
+ if(button.disabled)return;
+ const originalLabel=button.textContent;
+ const previousError=$("notice").textContent;
+ let finished=false;
+ button.disabled=true;
+ button.setAttribute("aria-busy","true");
+ button.textContent="確認中…";
+ $("notice").textContent=pending;
+ // An Auth request can be slow on mobile networks. This is information,
+ // NOT a fabricated timeout/failure or a second sign-in attempt.
+ const slowTimer=setTimeout(()=>{
+  if(!finished)$("notice").textContent=pending+" 通信に時間がかかっています。通信状態を確認してください。";
+ },15000);
+ try{await task();}catch(error){
+  // Only display the Firebase error category; never log account identifiers,
+  // credentials, invite tokens or raw server error details.
   console.error("Partner invitation operation failed",error?.code||"unknown");
   $("notice").textContent=authErrorText(error);
- }finally{button.disabled=false;}
+ }finally{
+  finished=true;
+  clearTimeout(slowTimer);
+  button.textContent=originalLabel;
+  button.removeAttribute("aria-busy");
+  button.disabled=false;
+ }
 };
 const message=x=>{$("notice").textContent=x;};
 const refresh=async()=>{
@@ -190,15 +216,32 @@ const refresh=async()=>{
   $("info").textContent=(data.fromCompanyName||"会社")+" から "+(data.partnerCompanyName||"協力店")+" への招待です。";
   $("accept").disabled=false;
   message("招待内容を確認してください。");
- }catch{message("招待を確認できません。期限・宛先メール・利用状態をご確認ください。");}
+ }catch(error){
+  console.error("Partner invitation preview failed",error?.code||"unknown");
+  message("ログイン状態は確認しましたが、招待内容を取得できません。"+authErrorText(error));
+ }
 };
-onAuthStateChanged(auth,()=>refresh());
+onAuthStateChanged(auth,()=>{
+ refresh().catch(error=>{
+  console.error("Partner auth refresh failed",error?.code||"unknown");
+  message("ログイン状態の再確認に失敗しました。"+authErrorText(error));
+ });
+},error=>{
+ console.error("Partner auth state failed",error?.code||"unknown");
+ message("認証状態を確認できません。"+authErrorText(error));
+});
 $("signIn").addEventListener("submit",async event=>{
  event.preventDefault();
  await busy($("signIn").querySelector("button"),async()=>{
-  await signInWithEmailAndPassword(auth,$("email").value.trim().toLowerCase(),$("password").value);
-  $("password").value="";message("ログインしました。");await refresh();
- });
+  // Authentication is complete as soon as Firebase returns a signed-in user.
+  // Do not block the login button on the optional workspace lookup/preview.
+  const credential=await signInWithEmailAndPassword(auth,$("email").value.trim().toLowerCase(),$("password").value);
+  if(!credential?.user?.uid||auth.currentUser?.uid!==credential.user.uid)
+   throw {code:"auth/invalid-credential"};
+  $("password").value="";
+  message("ログインに成功しました。招待内容を確認しています。");
+  // onAuthStateChanged handles the invitation/owner workspace separately.
+ },{pending:"Firebaseにログインしています…"});
 });
 $("signUp").addEventListener("click",async()=>busy($("signUp"),async()=>{
  const email=$("email").value.trim().toLowerCase();
