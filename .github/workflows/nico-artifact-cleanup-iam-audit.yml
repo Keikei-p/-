@@ -44,7 +44,7 @@ jobs:
         with: {node-version: '22'}
       - name: Verify Firebase project and immutable read-only scope
         run: |
-          node -e "if(require('./.firebaserc').projects.default!=='sales-management-cc116')process.exit(1)"
+          node -e "if(JSON.parse(require('fs').readFileSync('.firebaserc','utf8')).projects.default!=='sales-management-cc116')process.exit(1)"
           node --test tests/audit-artifact-cleanup-iam.test.mjs
       - name: Install existing Firebase Admin SDK offline-safe (runner only)
         run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
