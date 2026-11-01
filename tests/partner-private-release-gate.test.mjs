@@ -49,20 +49,44 @@ test("release updates 4 isolated APIs before publishing 1 page, without main sal
  assert.match(release,/functions\/index.js.*dfb4c48/);
 });
 
-test("manual release pins exactly the currently merged sources, without changing the finance cutover gate",()=>{
- const cwd=fileURLToPath(new URL("../",import.meta.url));
- for(const path of [
-  "functions-partner-workspace/service.cjs",
-  "partner-workspace.html",
-  "functions-partner-workspace/index.js",
-  "functions/index.js"
- ]){
-  // git hash-object computes the blob ID without writing any Git object.
-  const digest=execFileSync("git",["hash-object",path],{cwd,encoding:"utf8"}).trim();
-  assert.match(digest,/^[0-9a-f]{40}$/);
-  assert.ok(release.includes('test "$(git hash-object '+path+')" = "'+digest+'"'),
-   "Manual release must refuse stale or unreviewed "+path);
+test("legacy private release is frozen to previously reviewed code and refuses new code",()=>{
+ const pinned={
+  "functions-partner-workspace/service.cjs":"9820d05e4d28242fdd447bb0ab2b5239be5327e8",
+  "partner-workspace.html":"fc16cacf00c8dc9361ee9f9f63de52cf60aba778",
+  "functions-partner-workspace/index.js":"a2bffd167b8804a0372c7a00465c04a63d96e919",
+  "functions/index.js":"dfb4c48ada6fa89a24c898cd4a2f911bcede822f"
+ };
+ for(const [path,hash] of Object.entries(pinned)){
+  assert.ok(release.includes('test "$(git hash-object '+path+')" = "'+hash+'"'),
+    "Legacy release guard must remain pinned to historical source "+path);
  }
  assert.match(release,/node scripts\/check-finance-read-boundary-before-deploy\.mjs/);
  assert.match(release,/node scripts\/nico-production-cutover-preflight\.mjs/);
+});
+test("new company-code coordinated release pins all updated files and keeps every cost, finance and history gate",()=>{
+ const filePath=".github/workflows/nico-partner-company-code-release.yml";
+ const newRelease=file(filePath),cwd=fileURLToPath(new URL("../",import.meta.url));
+ for(const path of [
+  "functions-partner-workspace/service.cjs",
+  "functions-partner-workspace/index.js",
+  "functions-partner-workspace/company-code-auth.cjs",
+  "partner-workspace.html","functions/index.js","firebase.partner-workspace.json"
+ ]){
+  const digest=execFileSync("git",["hash-object",path],{cwd,encoding:"utf8"}).trim();
+  assert.ok(newRelease.includes('test "$(git hash-object '+path+')" = '+String.fromCharCode(39)+digest+String.fromCharCode(39)),
+    "New release must pin exact reviewed "+path);
+ }
+ for(const name of ["OWNER_REVENUE_PRICES_LOGIN_VERIFIED","FIRESTORE_BACKUP_RESTORE_VERIFIED",
+  "EXISTING_FUNCTIONS_COST_APPROVED","CONFIRM_COMPANY_CODE_PARTNER_COUNT_ONLY",
+  "node scripts/check-finance-read-boundary-before-deploy.mjs",
+  "node scripts/nico-production-cutover-preflight.mjs",
+  "eligibleDeletionPolicy","surgical-existing-partner-workspace.mjs --dry-run"]){
+  assert(newRelease.includes(name),"Missing strict release guard "+name);
+ }
+ assert.match(newRelease,/github\.event_name == 'workflow_dispatch'/);
+ assert.doesNotMatch(newRelease,/continue-on-error: true|--only firestore/);
+ for(const name of ["getPartnerWorkspace","managePartnerWorkspace","acceptPartnerWorkspaceInvite",
+  "submitPartnerWorkspaceCounts","issuePartnerCompanyCode","activatePartnerCompanyCode",
+  "loginPartnerCompanyCode","logoutPartnerCompanyCode"])
+  assert(newRelease.includes("functions:partner-workspace:"+name),"New release misses "+name);
 });
