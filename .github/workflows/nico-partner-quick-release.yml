@@ -7,6 +7,7 @@ on:
       - "firebase.partner-quick.json"
       - "partner-counts.html"
       - "tests/partner-quick-counts.test.cjs"
+      - "tests/partner-joint-daily-ranking.test.cjs"
       - "tests/surgical-existing-partner-counts.test.mjs"
       - "tools/hosting/additive-partner-counts.mjs"
       - "tools/hosting/surgical-existing-partner-counts.mjs"
@@ -18,6 +19,7 @@ on:
       - "firebase.partner-quick.json"
       - "partner-counts.html"
       - "tests/partner-quick-counts.test.cjs"
+      - "tests/partner-joint-daily-ranking.test.cjs"
       - "tests/surgical-existing-partner-counts.test.mjs"
       - "tools/hosting/additive-partner-counts.mjs"
       - "tools/hosting/surgical-existing-partner-counts.mjs"
@@ -46,6 +48,8 @@ jobs:
           test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
           test "$(git hash-object functions/partner-company-invitations.cjs)" = 575865469f68c6a1c1a24b4d32c9150cb42178fe
           node --check functions-partner-quick/quick-counts.cjs
+          node --check functions-partner-quick/joint-ranking.cjs
+          node --test tests/partner-joint-daily-ranking.test.cjs
           node --check functions-partner-quick/index.js
           node --check tools/hosting/additive-partner-counts.mjs
           node --check tools/hosting/surgical-existing-partner-counts.mjs
@@ -60,6 +64,7 @@ jobs:
           const html=fs.readFileSync('partner-counts.html','utf8');
           if(!html.includes('submitPartnerQuickCounts')||!html.includes('getPartnerQuickCounts')||
              !html.includes('approvePartnerQuickCounts')||
+             !html.includes('getPartnerJointDailyRanking')||
              /firebase-firestore\.js|\.deleteDoc\(|\bgetFirestore\(|\bcollection\(/.test(html))
             throw Error('unapproved browser access to Firestore');
           const js=html.match(/<script type="module">([\s\S]+?)<\/script>/)?.[1];
@@ -107,7 +112,7 @@ jobs:
           if [ "$status" = 200 ] && cmp -s "$RUNNER_TEMP/existing-count-page.html" partner-counts.html; then
             echo 'already_live=true' >> "$GITHUB_OUTPUT"
             echo 'PASS: existing count page matches repository byte-for-byte'
-          elif [ "$status" = 200 ] && [ "$(git hash-object "$RUNNER_TEMP/existing-count-page.html")" = '1d30231b80cd3e20b7fdb9b9f5dadf67e16c5928' ]; then
+          elif [ "$status" = 200 ] && [ "$(git hash-object "$RUNNER_TEMP/existing-count-page.html")" = 'dd0c4b05190409b9065663a79d273c0c2186729f' ]; then
             echo 'already_live=false' >> "$GITHUB_OUTPUT"
             echo 'PASS reviewed original count page, only this one file may change'
             node tools/hosting/surgical-existing-partner-counts.mjs --dry-run
@@ -160,6 +165,8 @@ jobs:
           if(present.length===1)throw Error('PARTIAL_COUNT_DEPLOY_STOP');
           const approvalLive=names.some(v=>v==='approvePartnerQuickCounts'||
             v.endsWith('/approvePartnerQuickCounts'));
+          const jointLive=names.some(v=>v==='getPartnerJointDailyRanking'||
+            v.endsWith('/getPartnerJointDailyRanking'));
           // Two old Functions are explicitly supported during one-time
           // non-destructive addition of the third; never delete either old API.
           if(approvalLive&&present.length!==2)throw Error('ORPHAN_APPROVAL_STOP');
@@ -168,9 +175,9 @@ jobs:
             if(!names.some(v=>v===n||v.endsWith('/'+n)))
               throw Error('ORIGINAL_FUNCTION_MISSING '+n);
           require('node:fs').appendFileSync(process.env.GITHUB_OUTPUT,
-            'already_deployed='+(present.length===2&&approvalLive?'true':'false')+'\n');
-          console.log('COUNT_FUNCTIONS '+(present.length===2&&approvalLive?
-            'REUSED_EXISTING_THREE':'ADD_NEW_APPROVAL_WITH_EXISTING_PAIR'));
+            'already_deployed='+(present.length===2&&approvalLive&&jointLive?'true':'false')+'\n');
+          console.log('COUNT_FUNCTIONS '+(present.length===2&&approvalLive&&jointLive?
+            'REUSED_EXISTING_FOUR':'ADD_JOINT_RANK_WITH_EXISTING_COUNT_FUNCTIONS'));
           NODE
       - name: Repair one-day Artifact Registry cleanup (separate noncritical task)
         continue-on-error: true
@@ -204,10 +211,11 @@ jobs:
           const data=JSON.parse(require('node:fs').readFileSync(process.env.FILE,'utf8'));
           const names=(Array.isArray(data.result)?data.result:[]).map(x=>x.id||x.name||x.function||'');
           for(const n of ['submitPartnerQuickCounts','getPartnerQuickCounts','approvePartnerQuickCounts',
+            'getPartnerJointDailyRanking',
             'sendMissingReportReminders',
             'createPartnerCompanyInvitation','previewPartnerCompanyInvitation','acceptPartnerCompanyInvitation'])
             if(!names.some(s=>s===n||s.endsWith('/'+n)))throw Error('missing '+n);
-          console.log('PASS: three isolated count Functions and existing four preserved');
+          console.log('PASS: four isolated count Functions and original invitation/LINE Functions preserved');
           NODE
       - name: Read-only unauthenticated count API denial check
         shell: bash
@@ -216,7 +224,7 @@ jobs:
           node <<'NODE'
           (async()=>{
             for(const name of ['submitPartnerQuickCounts','getPartnerQuickCounts',
-              'approvePartnerQuickCounts']){
+              'approvePartnerQuickCounts','getPartnerJointDailyRanking']){
               const url='https://asia-northeast1-sales-management-cc116.cloudfunctions.net/'+name;
               const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},
                 body:JSON.stringify({data:{}})});
