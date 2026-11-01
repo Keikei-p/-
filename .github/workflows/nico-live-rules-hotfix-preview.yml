@@ -102,4 +102,8 @@ jobs:
         run: |
           set -euo pipefail
           firebase emulators:exec --project demo-sales-support --only firestore "node --test tests/rules.test.cjs"
-          echo 'PASS: actual-live minimal patch verified offline. NO PRODUCTION DEPLOYMENT.'
+          # Passing emulator tests is necessary but not sufficient:
+          # reject partner money-source grants hidden behind additional rule branches.
+          node --test tests/finance-release-gate.test.mjs
+          node scripts/check-finance-read-boundary-before-deploy.mjs
+          echo 'PASS: actual-live minimal patch and raw finance grant gate verified offline. NO PRODUCTION DEPLOYMENT.'
