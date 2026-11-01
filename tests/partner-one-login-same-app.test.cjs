@@ -24,6 +24,26 @@ test("existing app sign-in is reused for company and member invitations",()=>{
  // app use the unified login, while older URLs remain backwards compatible.
  assert.match(partner,/url\.searchParams\.set\("invite",result\.token\)/);
 });
+test("partner invite shows signed-in email and preserves invitation when switching accounts",()=>{
+ const a=index.indexOf("async function showPartnerInviteAtMain");
+ const b=index.indexOf("/* =====================================================\n   Auth状態",a);
+ assert.ok(a>=0&&b>a);
+ const block=index.slice(a,b);
+ assert.match(index,/id="pMainInviteSignedInAs"/);
+ assert.match(index,/id="pMainSwitchInviteAccount"/);
+ assert.match(block,/pInline\("pMainInviteSignedInAs"\)\.textContent/);
+ assert.match(block,/user\.email\|\|"メールアドレス未確認"/);
+ assert.match(block,/pInline\("pMainAcceptInvite"\)\.disabled=invite\.kind==="company"/);
+ assert.match(block,/pInline\("pMainAcceptInvite"\)\.disabled=false/);
+ assert.match(block,/pMainSwitchInviteAccount"\)\.onclick=async/);
+ assert.match(block,/await signOut\(auth\)/);
+ const switchBlock=block.slice(block.indexOf('pMainSwitchInviteAccount").onclick'),block.indexOf('pMainCancelInvite").onclick'));
+ assert.doesNotMatch(switchBlock,/location\.replace|searchParams\.delete|deleteDoc|updateDoc|setDoc/);
+ assert.match(block,/functions\/not-found/);
+ assert.match(block,/functions\/unauthenticated/);
+ assert.match(block,/functions\/unavailable/);
+ assert.match(block,/await partnerMainPreviewCompanyInvite\(\{token:invite\.token\}\)/);
+});
 test("verified partner profiles enter the existing count-only app before internal financial rules checks",()=>{
  const body=index.slice(index.indexOf("async function loadUserData("),index.indexOf("/* =====================================================\n   個人テーマ"));
  assert.match(body,/const userSnap =\s*await getDocFromServer\(\s*userRef/);
