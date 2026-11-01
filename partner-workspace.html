@@ -944,9 +944,13 @@ $("companyCodeLoginForm").onsubmit=async e=>{
   const companyCode=$("companyLoginCode").value.trim().toUpperCase();
   const password=$("companyLoginPassword").value;
   const {data:result}=await codeLogin({companyCode,password});
-  if(typeof result?.customToken!=="string")throw Error("invalid_code_session");
-  await setPersistence(auth,browserSessionPersistence);
-  await signInWithCustomToken(auth,result.customToken);
+  if(!/^[A-Za-z0-9_-]{43}$/.test(result?.sessionToken||""))
+   throw Error("invalid_code_session");
+  activeCodeSession=result.sessionToken;
+  try{sessionStorage.setItem("nicoPartnerCodeSession",activeCodeSession)}catch{}
+  companyCodeSession=true;
+  if(auth.currentUser)await signOut(auth);
+  else await refresh();
   $("companyLoginPassword").value="";
  }catch(error){$("companyLoginPassword").value="";fail(error)}
  finally{button.disabled=false}
@@ -962,9 +966,13 @@ $("companyCodeActivateForm").onsubmit=async e=>{
   const activated=(await activateCompanyCode({companyCode,password})).data;
   if(activated?.activated!==true)throw Error("activation_not_verified");
   const {data:result}=await codeLogin({companyCode,password});
-  if(typeof result?.customToken!=="string")throw Error("invalid_code_session");
-  await setPersistence(auth,browserSessionPersistence);
-  await signInWithCustomToken(auth,result.customToken);
+  if(!/^[A-Za-z0-9_-]{43}$/.test(result?.sessionToken||""))
+   throw Error("invalid_code_session");
+  activeCodeSession=result.sessionToken;
+  try{sessionStorage.setItem("nicoPartnerCodeSession",activeCodeSession)}catch{}
+  companyCodeSession=true;
+  if(auth.currentUser)await signOut(auth);
+  else await refresh();
   $("companyActivationPassword").value="";
   $("companyLoginCode").value=companyCode;
  }catch(error){$("companyActivationPassword").value="";fail(error)}
