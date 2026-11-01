@@ -49,8 +49,8 @@ jobs:
           set -euo pipefail
           test "$(git hash-object functions-partner-workspace/service.cjs)" = 'a23a950ba905ca7f73a8a160fb861c611ed45304'
           test "$(git hash-object functions-partner-workspace/index.js)" = '38da7e9174ffea7c406c92292dccfc651b565eb0'
-          test "$(git hash-object functions-partner-workspace/company-code-auth.cjs)" = 'd1f26342bd37fd5149479a2626ba514f106e7b42'
-          test "$(git hash-object partner-workspace.html)" = 'cc6298ed5d5ad98db1f85f2e9b32fabb1d1310cd'
+          test "$(git hash-object functions-partner-workspace/company-code-auth.cjs)" = 'f7e5899cdb9e36da610846d787955b13c1e16e4b'
+          test "$(git hash-object partner-workspace.html)" = '0930abb188165afea19ef427308ea22fddf636e7'
           test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
           test "$(git hash-object firebase.partner-workspace.json)" = 'a6ceedec5fab4e22e0a8efe19c685716a2db9750'
           node --check functions-partner-workspace/index.js
