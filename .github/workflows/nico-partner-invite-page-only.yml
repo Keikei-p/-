@@ -81,6 +81,11 @@ jobs:
             echo 'already_live=false' >> "$GITHUB_OUTPUT"
             echo 'PASS: exact previous main invitation snapshot confirmed; one-page release allowed'
           else
+            # Public HTML only; log fingerprints, never bodies or user credentials.
+            echo "LIVE_INVITE_BLOB=$(git hash-object "$RUNNER_TEMP/nico-live-invite.html")"
+            echo "LIVE_INVITE_BYTES=$(wc -c < "$RUNNER_TEMP/nico-live-invite.html")"
+            echo "REVIEWED_OLD_BLOB=$(git hash-object "$RUNNER_TEMP/nico-old-invite.html")"
+            echo "REVIEWED_MAIN_BLOB=$(git hash-object "$RUNNER_TEMP/nico-reviewed-previous-invite.html")"
             echo 'STOP UNKNOWN_INVITE_LIVE_STATE; no write performed'
             exit 1
           fi
