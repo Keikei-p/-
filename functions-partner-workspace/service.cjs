@@ -440,9 +440,9 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
        fail("failed-precondition");
      }
    }
-   if(transfer&&!primaryCid)fail("failed-precondition");
+   const transferring=transfer&&Boolean(primaryCid);
    const archivedRef=db.collection("partnerHistoricalTransfers").doc(a.uid);
-   if(transfer){
+   if(transferring){
     const archive=await tx.get(archivedRef);
     if(archive.exists)fail("failed-precondition");
    }
@@ -454,12 +454,12 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      accessKind:"partner",memberType:"cooperator",
      canViewRevenue:false,canViewUnitPrice:false,canCreateInvite:false,
      updatedAt:FieldValue.serverTimestamp()};
-   if(primaryCid&&!transfer){
+   if(primaryCid&&!transferring){
      tx.create(ctxRef,{uid:a.uid,primaryCompanyId:primaryCid,
        partnerCompanyId:i.companyId,hubCompanyId:i.hubCompanyId,
        emailLower:a.email,role:i.role,teamId:i.teamId,
        kind:"partner_secondary",active:true,createdAt:FieldValue.serverTimestamp()});
-   }else if(transfer){
+   }else if(transferring){
      // Server-owned historical archive is not browser-readable. Preserve the
      // original profile byte-for-byte as data, plus the entire old membership.
      // Existing sales records, prices, snapshots and teamHistory never move.
@@ -476,8 +476,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    tx.create(sr,{uid:a.uid,name,kind:"account",role:i.role,teamId:i.teamId,
      companyId:i.companyId,active:true,createdAt:FieldValue.serverTimestamp()});
    tx.update(ref,{status:"accepted",acceptedByUid:a.uid,acceptedAt:FieldValue.serverTimestamp()});
-   return {secondaryMembership:Boolean(primaryCid&&!transfer),
-     transferredFromInternal:transfer,partnerCompanyId:i.companyId};
+   return {secondaryMembership:Boolean(primaryCid&&!transferring),
+     transferredFromInternal:transferring,partnerCompanyId:i.companyId};
   });
   return {joined:true,...joined};
  }
