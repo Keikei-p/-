@@ -76,6 +76,8 @@ jobs:
           # This file is first introduced in the reviewed merge. Re-execution
           # after subsequent edits must not redeploy these backend callables.
           git diff-tree --no-commit-id --name-only -r -m HEAD | grep -Fxq '.github/workflows/nico-partner-invite-backend-recovery-20261101.yml'
+          # Authorize exactly this reviewed second attempt after the initial safe stop.
+          test "$(git rev-parse HEAD^1)" = '63a6094f39466865e359db73c9c2479f74474afb'
           test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
           test "$(git hash-object functions/partner-company-invitations.cjs)" = 'a5edff85164fe47662cf8fe96ed54eba7158ec51'
           test "$(git hash-object firebase.partner-invites.json)" = 'fd4e8b8068fd31cd4df671a7da8134d270ffd3a9'
@@ -131,12 +133,42 @@ jobs:
             console.log('PASS: live Firestore Rules release fingerprint captured (not deployed)');
           })().catch(e=>{console.error(e.message);process.exitCode=1});
           NODE
-      - name: Confirm Artifact Registry low-cost cleanup before an update build
+      - name: Confirm Artifact Registry cleanup (never bypass absent cost policy)
         shell: bash
         run: |
           set -euo pipefail
-          firebase functions:artifacts:setpolicy --days 1 --location asia-northeast1 \
-            --project "$FIREBASE_PROJECT_ID" --non-interactive
+          if firebase functions:artifacts:setpolicy --days 1 --location asia-northeast1 \
+            --project "$FIREBASE_PROJECT_ID" --non-interactive; then
+            echo 'PASS: Artifact Registry one-day image cleanup policy configured'
+          else
+            echo 'INFO: cleanup update unavailable; inspect existing policy READ ONLY'
+            node - <<'NODE'
+          const {createRequire}=require('node:module');
+          const req=createRequire(process.cwd()+'/functions/package.json');
+          const {applicationDefault}=req('firebase-admin/app');
+          (async()=>{
+            const token=(await applicationDefault().getAccessToken()).access_token;
+            if(!token)throw Error('STOP_ARTIFACT_REGISTRY_CREDENTIAL');
+            const base='https://artifactregistry.googleapis.com/v1/projects/sales-management-cc116/locations/asia-northeast1/repositories';
+            const res=await fetch(base+'/gcf-artifacts',{
+              headers:{Authorization:'Bearer '+token},redirect:'error'});
+            if(!res.ok)throw Error('STOP_ARTIFACT_POLICY_READ_HTTP_'+res.status);
+            const repo=await res.json();
+            const policies=Object.values(repo.cleanupPolicies||{});
+            const qualifies=p=>{
+              const sec=Number.parseFloat(String(p?.condition?.olderThan||'').replace(/s$/,''));
+              return p?.action==='DELETE'&&Number.isFinite(sec)&&sec>0&&
+               sec<=7*24*3600&&!p.condition?.tagPrefixes?.length&&
+               !p.condition?.packageNamePrefixes?.length&&
+               !p.condition?.versionNamePrefixes?.length&&
+               (p.condition.tagState==='ANY'||p.condition.tagState==null);
+            };
+            if(repo.cleanupPolicyDryRun===true||!policies.some(qualifies))
+              throw Error('STOP_ARTIFACT_CLEANUP_POLICY_NOT_PROVEN');
+            console.log('PASS: existing active max-7-day Artifact Registry cleanup verified READ ONLY');
+          })().catch(e=>{console.error(e.message);process.exitCode=1});
+          NODE
+          fi
       - name: Update ONLY the three existing partner company invitation Functions
         shell: bash
         run: |
