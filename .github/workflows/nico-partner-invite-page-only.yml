@@ -6,6 +6,8 @@ on:
       - 'partner-invite.html'
       - 'tools/hosting/surgical-existing-partner-invite.mjs'
       - 'tests/surgical-existing-partner-invite.test.mjs'
+      - 'tests/partner-public-auth-surface.test.mjs'
+      - 'tools/production/inspect-partner-public-auth.mjs'
       - '.github/workflows/nico-partner-invite-page-only.yml'
   push:
     branches: [main]
@@ -13,6 +15,8 @@ on:
       - 'partner-invite.html'
       - 'tools/hosting/surgical-existing-partner-invite.mjs'
       - 'tests/surgical-existing-partner-invite.test.mjs'
+      - 'tests/partner-public-auth-surface.test.mjs'
+      - 'tools/production/inspect-partner-public-auth.mjs'
       - '.github/workflows/nico-partner-invite-page-only.yml'
 permissions:
   contents: read
@@ -33,6 +37,11 @@ jobs:
         run: |
           set -euo pipefail
           node --check tools/hosting/surgical-existing-partner-invite.mjs
+          node --check tools/production/inspect-partner-public-auth.mjs
+          node --test tests/partner-public-auth-surface.test.mjs
+          # Public GET requests only. No credentials, no email/user enumeration,
+          # and no production writes. Fail if CDN/Auth is demonstrably unusable.
+          node tools/production/inspect-partner-public-auth.mjs
           node --test tests/surgical-existing-partner-invite.test.mjs
           node --test tests/partner-company-invitations.test.cjs
           node --test tests/partner-workspace.test.cjs
