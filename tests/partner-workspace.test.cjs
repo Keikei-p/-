@@ -33,12 +33,13 @@ class DB {
  async runTransaction(fn){
   const changes=[],tx={
     get:r=>r.get(),create:(r,d)=>changes.push(["create",r.path,clone(d)]),
-    update:(r,d)=>changes.push(["update",r.path,clone(d)])
+    update:(r,d)=>changes.push(["update",r.path,clone(d)]),
+    set:(r,d)=>changes.push(["set",r.path,clone(d)])
   };
   const result=await fn(tx);
   for(const [op,p] of changes){if(op==="create"&&this.store.has(p))throw Error("duplicate");
    if(op==="update"&&!this.store.has(p))throw Error("missing");}
-  for(const [op,p,d] of changes)this.store.set(p,op==="create"?d:{...this.store.get(p),...d});
+  for(const [op,p,d] of changes)this.store.set(p,op==="create"||op==="set"?d:{...this.store.get(p),...d});
   return result;
  }
 }
@@ -813,4 +814,104 @@ test("only real hub Owner can request detailed partner-company team status",asyn
  const {api,req}=setup();
  await assert.rejects(api.view(req("p",{date:"2026-10-31",
   includeTeamStatus:true,partnerCompanyId:"hub"})),e=>e.code==="permission-denied");
+});
+
+test("same Firebase email transfers from internal active roster to partner without losing historical sales",async()=>{
+ const {db,api,req,zero}=setup();
+ const beforeUser={uid:"m",companyId:"hub",email:"m@example.com",name:"以前の自社メンバー",
+   companyRole:"member",role:"member",teamId:"oldTeam",active:true,
+   accessKind:"internal",memberType:"direct",teamHistory:[{
+    effectiveDate:"2026-10-30",fromTeamId:"olderTeam",toTeamId:"oldTeam"
+   }],canViewRevenue:true,canViewUnitPrice:true,canCreateInvite:true,
+   originalField:"keep archive"};
+ const beforeMember={...beforeUser,joinedAt:"2026-01-01"};
+ db.seed("users/m",beforeUser);
+ db.seed("companies/hub/members/m",beforeMember);
+ const sales=clone(db.store.get("records/old")),prices=clone(db.store.get("products/money"));
+ const team=(await api.manage(req("p",{action:"addTeam",name:"移籍先班"}))).teamId;
+ const invite=await api.manage(req("h",{action:"hubCreateInvite",partnerCompanyId:"partner",
+   teamId:team,role:"member",email:"m@example.com"}));
+ const res=await api.accept(req("m",{token:invite.token,name:"新しい協力店メンバー",
+   transferCurrentCompany:true}));
+ assert.equal(res.joined,true);
+ assert.equal(res.transferredFromInternal,true);
+ assert.equal(res.secondaryMembership,false);
+ assert.equal(db.store.get("partnerWorkspaceContexts/m"),undefined);
+ const newUser=db.store.get("users/m");
+ assert.equal(newUser.companyId,"partner");
+ assert.equal(newUser.uid,"m");
+ assert.equal(newUser.role,"member");
+ assert.equal(newUser.canViewRevenue,false);
+ assert.equal(newUser.canViewUnitPrice,false);
+ assert.equal(newUser.canCreateInvite,false);
+ assert.equal(newUser.teamHistory,undefined,"old teamHistory must not be misattributed to partner");
+ assert.equal(newUser.originalField,undefined,"old profile must not be merged");
+ const oldMember=db.store.get("companies/hub/members/m");
+ assert.equal(oldMember.active,false);
+ assert.deepEqual({...oldMember,active:true,updatedAt:undefined},
+   {...beforeMember,updatedAt:undefined},"only old roster activation may change");
+ const historical=db.store.get("partnerHistoricalTransfers/m");
+ assert.equal(historical.uid,"m");
+ assert.equal(historical.sourceCompanyId,"hub");
+ assert.equal(historical.destinationCompanyId,"partner");
+ assert.deepEqual(historical.originalUser,beforeUser);
+ assert.deepEqual(historical.originalMember,beforeMember);
+ assert.deepEqual(db.store.get("records/old"),sales);
+ assert.deepEqual(db.store.get("products/money"),prices);
+ const self=await api.view(req("m",{date:"2026-10-31"}));
+ assert.equal(self.role,"member");
+ assert.equal(self.companyName,"協力店");
+ assert.ok(!JSON.stringify(self).includes("canViewRevenue"));
+ const submitted=await api.submit(req("m",{date:"2026-10-31",staffId:"m",
+   counts:{...zero(),NURO:1},expectedVersion:0}));
+ assert.equal(submitted.saved,true);
+ await assert.rejects(api.accept(req("m",{token:invite.token,name:"二重加入",
+  transferCurrentCompany:true})),e=>e.code==="failed-precondition");
+});
+test("internal owner, foreign-company invite, expired invite and invalid transfer input never migrate original records",async()=>{
+ for(const defect of ["owner","foreign","expired","invalid-input"]){
+  const {db,api,req}=setup();
+  const source={uid:"l",companyId:defect==="foreign"?"foreign":"hub",
+   email:"l@example.com",name:"元社員",companyRole:defect==="owner"?"owner":"member",
+   role:"leader",teamId:"old",active:true,accessKind:"internal"};
+  if(defect==="owner")db.seed("companies/hub",{...db.store.get("companies/hub"),ownerUid:"l"});
+  if(defect==="foreign")db.seed("companies/foreign",{active:true,companyKind:"internal",ownerUid:"foreignOwner"});
+  const oldCompany=source.companyId;
+  db.seed("users/l",source);db.seed("companies/"+oldCompany+"/members/l",{...source});
+  const team=(await api.manage(req("p",{action:"addTeam",name:"対象班"}))).teamId;
+  const invitation=await api.manage(req("p",{action:"createInvite",email:"l@example.com",
+   teamId:team,role:"leader"}));
+  if(defect==="expired"){
+   const hash=require("node:crypto").createHash("sha256").update(invitation.token).digest("hex");
+   db.store.get("partnerWorkInvites/"+hash).expiresAt={toMillis:()=>NOW-1000};
+  }
+  const originalState=clone([...db.store.entries()]);
+  const value=defect==="invalid-input"?"yes":true;
+  await assert.rejects(api.accept(req("l",{token:invitation.token,name:"新しい名前",
+   transferCurrentCompany:value})),e=>
+    ["failed-precondition","invalid-argument"].includes(e.code));
+  assert.deepEqual([...db.store.entries()],originalState);
+  assert.equal(db.store.has("partnerHistoricalTransfers/l"),false);
+ }
+});
+test("new email registration is not treated as internal transfer even if transfer option checked",async()=>{
+ const {db,api,req}=setup();
+ const team=(await api.manage(req("p",{action:"addTeam",name:"通常登録"}))).teamId;
+ const inv=await api.manage(req("p",{action:"createInvite",email:"m@example.com",
+  teamId:team,role:"member"}));
+ const output=await api.accept(req("m",{token:inv.token,name:"初めての登録",
+  transferCurrentCompany:true}));
+ assert.equal(output.secondaryMembership,false);
+ assert.equal(output.transferredFromInternal,false);
+ assert.equal(db.store.get("users/m").companyId,"partner");
+ assert.equal(db.store.has("partnerHistoricalTransfers/m"),false);
+});
+test("same-email login guidance and explicit transfer action exist in invite UI",()=>{
+ const fs=require("node:fs"),path=require("node:path");
+ const p=fs.readFileSync(path.join(__dirname,"../partner-workspace.html"),"utf8");
+ const invite=fs.readFileSync(path.join(__dirname,"../partner-invite.html"),"utf8");
+ assert.match(p,/id="transferExistingInternal"/);
+ assert.match(p,/transferCurrentCompany:\$\("transferExistingInternal"\)\.checked/);
+ assert.match(p,/auth\/email-already-in-use/);
+ assert.match(invite,/auth\/email-already-in-use/);
 });
