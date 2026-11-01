@@ -187,3 +187,18 @@ test("quick count approval denies unauthorized company, malformed grants and rev
   assert.deepEqual([...y.db.data],initial);
  }
 });
+
+test("joint daily ranking callable rejects unapproved partner, disabled service, forged scope and bad dates",async()=>{
+ const a=setup({enabled:false});
+ await assert.rejects(a.service.ranking(a.req("p",{date:today})),e=>e.code==="unavailable");
+ const b=setup();
+ b.db.seed("partnerRelations/partner1",{partnerCompanyId:"partner1",hubCompanyId:"hub",
+  active:false,countSharingApproved:false,catalogAccessApproved:false});
+ const prior=copy([...b.db.data]);
+ await assert.rejects(b.service.ranking(b.req("p",{date:today})),e=>e.code==="permission-denied");
+ await assert.rejects(b.service.ranking(b.req("h",{date:today,companyId:"otherhub"})),
+  e=>e.code==="invalid-argument");
+ await assert.rejects(b.service.ranking(b.req("h",{date:"2026-11-10"})),
+  e=>e.code==="invalid-argument");
+ assert.deepEqual([...b.db.data],prior);
+});
