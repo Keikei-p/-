@@ -4956,6 +4956,8 @@ body.product-reordering .product-list {
           <select id="partnerExistingCompanySelect" style="width:100%;min-height:46px;"></select>
           <button id="partnerExistingReloadButton" type="button" style="margin-top:9px;">会社一覧を再取得</button>
           <p id="partnerExistingInviteStatus" role="status" aria-live="polite" style="font-size:12px;line-height:1.7;"></p>
+          <button id="partnerExistingApproveButton" type="button" hidden>この会社の班・スタッフ招待を承認</button>
+          <button id="partnerExistingStopButton" type="button" hidden style="background:var(--card-soft);color:var(--text);">この会社の班・スタッフ招待を停止</button>
           <div id="partnerExistingInviteControls" hidden>
             <label for="partnerExistingTeamSelect">配属先の班</label>
             <select id="partnerExistingTeamSelect" style="width:100%;min-height:46px;"></select>
@@ -9109,6 +9111,9 @@ function renderPartnerExistingCompany(){
   const companySelect=document.getElementById("partnerExistingCompanySelect");
   const company=partnerExistingCompanies.find(c=>c.partnerCompanyId===companySelect.value);
   const ready=Boolean(company?.active);
+  const managed=Boolean(company?.staffApprovalManaged);
+  document.getElementById("partnerExistingApproveButton").hidden=!company||ready||!managed;
+  document.getElementById("partnerExistingStopButton").hidden=!company||!ready||!managed;
   const teams=Array.isArray(company?.teams)?company.teams.filter(t=>
     typeof t?.id==="string" && /^[A-Za-z0-9_-]{1,128}$/.test(t.id) &&
     typeof t.name==="string"):[];
@@ -9167,6 +9172,29 @@ document.getElementById("partnerInviteModeSelect").addEventListener("change",()=
   ++partnerExistingLoadSerial;syncInviteDestinationPanel();
 });
 document.getElementById("partnerExistingReloadButton").onclick=()=>refreshExistingPartnerCompanies();
+async function setExistingPartnerStaffApproved(approved){
+  if(!partnerExistingOwner())return showError("自社オーナー権限を確認できません。");
+  const companyId=document.getElementById("partnerExistingCompanySelect").value;
+  const company=partnerExistingCompanies.find(c=>c.partnerCompanyId===companyId);
+  if(!company||company.staffApprovalManaged!==true||company.active===approved)
+    return showError("協力店の現在の承認状態を再取得してください。");
+  const button=document.getElementById(approved?"partnerExistingApproveButton":"partnerExistingStopButton");
+  button.disabled=true;
+  try{
+    const response=(await managePartnerWorkspaceForInvite({
+      action:"hubSetStaffAccess",partnerCompanyId:companyId,approved
+    })).data;
+    if(response?.partnerCompanyId!==companyId||response.approved!==approved||
+      response.financialAccess!==false)throw Error("invalid_partner_approval");
+    await refreshExistingPartnerCompanies(companyId);
+    showSuccess(company.name+(approved?"の班・スタッフ招待を承認しました。":"の班・スタッフ招待を停止しました。"));
+  }catch(error){
+    console.error("partner staff approval unavailable",error?.code||"unknown");
+    showError("承認・停止操作を完了できません。協力店管理APIと本人権限を確認してください。");
+  }finally{button.disabled=false;}
+}
+document.getElementById("partnerExistingApproveButton").onclick=()=>setExistingPartnerStaffApproved(true);
+document.getElementById("partnerExistingStopButton").onclick=()=>setExistingPartnerStaffApproved(false);
 document.getElementById("partnerExistingCompanySelect").onchange=()=>{
   document.getElementById("partnerExistingInviteResult").hidden=true;
   document.getElementById("partnerExistingInviteUrl").value="";
