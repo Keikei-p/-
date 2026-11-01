@@ -36,3 +36,18 @@ test("count-only page is exclusively authenticated-callable, and no client finan
  assert.ok(html.includes('id="reportSection"'));
  assert.ok(html.includes('id="ownerSection"'));
 });
+
+test("unverified partner sign-in exposes verification recovery instead of a repeated login prompt",async()=>{
+ const fs=await import("node:fs");
+ const html=fs.readFileSync(new URL("../partner-counts.html",import.meta.url),"utf8");
+ for(const id of ["verifySection","verifyUser","sendVerify","checkVerify","verifyLogout"]){
+  assert.ok(html.includes('id="'+id+'"'),"missing recovery control "+id);
+ }
+ assert.match(html,/signInWithEmailAndPassword,signOut,reload,sendEmailVerification/);
+ assert.match(html,/function renderSession\(user\)\{[\s\S]*?if\(!user\.emailVerified\)\{/);
+ assert.match(html,/\$\("loginSection"\)\.hidden=true/);
+ assert.match(html,/await reload\(user\);renderSession\(auth\.currentUser\)/);
+ assert.match(html,/await sendEmailVerification\(user\)/);
+ assert.match(html,/await signOut\(auth\)/);
+ assert.doesNotMatch(html,/firebase-firestore\.js|\bgetFirestore\(|\bgetDocs\(/);
+});
