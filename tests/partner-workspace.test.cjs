@@ -878,6 +878,55 @@ test("same Firebase email transfers from internal active roster to partner witho
  await assert.rejects(api.accept(req("m",{token:invite.token,name:"二重加入",
   transferCurrentCompany:true})),e=>e.code==="failed-precondition");
 });
+test("existing email of legacy internal leader without companyRole transfers and keeps original counts",async()=>{
+ const {db,api,req}=setup();
+ const oldUser={uid:"l",companyId:"hub",email:"l@example.com",
+   name:"元自社リーダー",role:"leader",teamId:"oldTeam",active:true,
+   accessKind:"internal",memberType:"internal",
+   canViewRevenue:true,canViewUnitPrice:true,
+   teamHistory:[{effectiveDate:"2026-09-30",fromTeamId:"old0",toTeamId:"oldTeam"}]};
+ const oldMember={...oldUser,joinedAt:"2025-10-01"};
+ db.seed("users/l",oldUser);
+ db.seed("companies/hub/members/l",oldMember);
+ const savedSales=clone(db.store.get("records/old"));
+ const savedPrices=clone(db.store.get("products/money"));
+ const team=(await api.manage(req("p",{action:"addTeam",name:"協力店移籍班"}))).teamId;
+ const invite=await api.manage(req("h",{action:"hubCreateInvite",
+   partnerCompanyId:"partner",teamId:team,role:"leader",email:"l@example.com"}));
+ const result=await api.accept(req("l",{token:invite.token,
+   name:"移籍後リーダー",transferCurrentCompany:true}));
+ assert.equal(result.joined,true);
+ assert.equal(result.transferredFromInternal,true);
+ assert.equal(db.store.get("users/l").companyId,"partner");
+ assert.equal(db.store.get("users/l").canViewRevenue,false);
+ assert.equal(db.store.get("users/l").canViewUnitPrice,false);
+ assert.equal(db.store.get("companies/hub/members/l").active,false);
+ const archive=db.store.get("partnerHistoricalTransfers/l");
+ assert.deepEqual(archive.originalUser,oldUser);
+ assert.deepEqual(archive.originalMember,oldMember);
+ assert.deepEqual(db.store.get("records/old"),savedSales);
+ assert.deepEqual(db.store.get("products/money"),savedPrices);
+ const profile=await api.view(req("l",{date:"2026-10-31"}));
+ assert.equal(profile.role,"leader");
+ assert.equal(profile.companyName,"協力店");
+});
+test("legacy missing companyRole cannot permit transfer of an actual source owner",async()=>{
+ const {db,api,req}=setup();
+ const oldUser={uid:"l",companyId:"hub",email:"l@example.com",
+   name:"オーナー",role:"leader",teamId:"oldTeam",active:true,
+   accessKind:"internal"};
+ db.seed("users/l",oldUser);
+ db.seed("companies/hub/members/l",{...oldUser});
+ db.seed("companies/hub",{...db.store.get("companies/hub"),ownerUid:"l"});
+ const team=(await api.manage(req("p",{action:"addTeam",name:"移籍不可班"}))).teamId;
+ const invitation=await api.manage(req("p",{action:"createInvite",
+   teamId:team,role:"leader",email:"l@example.com"}));
+ const before=clone([...db.store.entries()]);
+ await assert.rejects(api.accept(req("l",{token:invitation.token,
+   name:"不正な移籍",transferCurrentCompany:true})),e=>e.code==="failed-precondition");
+ assert.deepEqual([...db.store.entries()],before);
+ assert.equal(db.store.has("partnerHistoricalTransfers/l"),false);
+});
 test("internal owner, foreign-company invite, expired invite and invalid transfer input never migrate original records",async()=>{
  for(const defect of ["owner","foreign","expired","invalid-input"]){
   const {db,api,req}=setup();
