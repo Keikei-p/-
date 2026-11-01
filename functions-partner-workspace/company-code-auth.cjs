@@ -184,11 +184,17 @@ function makeCompanyCodeAuth({db,getAuth,FieldValue,Timestamp,HttpsError,enabled
    authenticated=true;
   });
   if(!authenticated)fail();
-  const customToken=await getAuth().createCustomToken(record.principalUid,{
-   partnerCodeAuth:true,partnerCodeCompanyId:record.partnerCompanyId,
-   partnerCodeVersion:record.version
+  // A server-only session intentionally does NOT create a Firebase Auth
+  // account or ID token; Firestore Rules therefore cannot be bypassed.
+  const sessionToken=crypto.randomBytes(32).toString("base64url");
+  const expiresAt=now()+12*60*60*1000;
+  const sessionHash=crypto.createHash("sha256").update(sessionToken).digest("hex");
+  await doc("partnerCodeSessions",sessionHash).create({
+   principalUid:record.principalUid,companyId:record.partnerCompanyId,
+   companyCode:code,version:record.version,active:true,
+   expiresAt:Timestamp.fromMillis(expiresAt),createdAt:field()
   });
-  return {customToken};
+  return {sessionToken,expiresAt};
  }
  return Object.freeze({issue,activate,login});
 }
