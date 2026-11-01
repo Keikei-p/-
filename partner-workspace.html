@@ -57,6 +57,8 @@ td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 <label for="pass">パスワード（6文字以上）</label><input id="pass" type="password" autocomplete="current-password" minlength="6" required>
 <div class="row"><button type="submit">ログイン</button><button id="signup" type="button" class="secondary">アカウント作成</button></div>
 </form><p class="muted">既存の協力店代表は招待承諾時のアカウントを利用します。リーダー・メンバーは受け取った招待リンクから参加します。</p>
+<button class="secondary" id="resetPassword" type="button">パスワードを忘れた場合（再設定メール）</button>
+<button class="secondary" id="loginLogout" type="button" hidden>別のアカウントでログインする（ログアウト）</button>
 <button class="secondary" id="verify" type="button" hidden>確認メールを送信・再送</button></section>
 <section id="inviteAccept" hidden><h2>協力店のスタッフ招待を承諾</h2><p>メール認証済みの招待先本人だけが参加できます。</p>
 <label for="joinName">表示名</label><input id="joinName" placeholder="例：田中 太郎" maxlength="60">
@@ -177,7 +179,7 @@ td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 </main>
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
-import {getAuth,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,sendEmailVerification,setPersistence,browserSessionPersistence} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+import {getAuth,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,sendEmailVerification,sendPasswordResetEmail,setPersistence,browserSessionPersistence} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js";
 const app=initializeApp({apiKey:"AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
 authDomain:"sales-management-cc116.firebaseapp.com",projectId:"sales-management-cc116",
@@ -205,8 +207,27 @@ let data=null,loading=false,nonce=0,activeWorkspaceTab="Dashboard";
 let countPeriod="day",countLoadId=0,countExportRows=null;
 const countDayCache=new Map(),countKeys=KEYS.slice();
 const notice=(s,bad=false)=>{$("notice").textContent=s;$("notice").className="notice"+(bad?" error":"")};
-const fail=e=>{const code=String(e?.code||"unknown").split("/").pop();
-notice("操作できませんでした（"+code+"）。認証・招待期限・入力権限を確認し、最新情報を読み直してください。",true)};
+const fail=e=>{
+ const code=String(e?.code||"unknown");
+ const messages={
+  "auth/invalid-credential":"メールアドレスまたはパスワードが一致しません。以前のパスワードでログインするか、下の再設定メールをご利用ください。",
+  "auth/invalid-login-credentials":"メールアドレスまたはパスワードが一致しません。再設定メールからパスワードを変更できます。",
+  "auth/wrong-password":"パスワードが一致しません。再設定メールをご利用ください。",
+  "auth/user-not-found":"メールアドレスまたはパスワードを確認してください。再設定メールも利用できます。",
+  "auth/email-already-in-use":"このメールは登録済みです。アカウント作成は不要です。ログインまたはパスワード再設定をご利用ください。",
+  "auth/too-many-requests":"試行回数が多いため一時的に制限されています。時間をおいて再試行してください。",
+  "auth/network-request-failed":"通信できませんでした。通信状態を確認して再度お試しください。",
+  "auth/unauthorized-domain":"Firebase認証の許可ドメイン設定に問題があります。管理者に連絡してください。",
+  "auth/operation-not-allowed":"Firebaseでこのログイン方式が許可されていません。管理者に連絡してください。",
+  "auth/unsupported-persistence-type":"ブラウザのログイン保存に対応していません。SafariまたはChromeの通常タブで開き直してください。",
+  "auth/invalid-email":"メールアドレスの形式を確認してください。",
+  "functions/unauthenticated":"ログイン情報をサービスで確認できませんでした。ログインし直してください。",
+  "functions/permission-denied":"ログイン済みですが、協力店の所属・招待権限が確認できません。本人宛の招待リンクから参加するか、管理者に所属を確認してください。",
+  "functions/failed-precondition":"ログイン済みですが、協力店の登録・承認または招待期限を確認できません。管理者へお問い合わせください。",
+  "functions/unavailable":"ログインできても協力店サービスが利用できません。管理者に公開状況を確認してください。"
+ };
+ notice(messages[code]||"操作できませんでした（"+code.split("/").pop()+"）。認証・招待期限・入力権限を確認してください。",true);
+};
 const grid=$("countGrid");
 for(const k of KEYS){const box=document.createElement("div");box.className="item";
 const lab=document.createElement("label");lab.textContent=k;const inp=document.createElement("input");
@@ -792,7 +813,14 @@ async function refresh(){if(!auth.currentUser||!auth.currentUser.emailVerified)r
  const res=(await get({date:$("date").value})).data;if(current!==nonce)return;
  if(!res||!Array.isArray(res.categories)||res.categories.join("|")!==KEYS.join("|"))throw Error("schema");
  data=res;countDayCache.set(auth.currentUser.uid+"|"+res.date,{savedAt:Date.now(),response:res});draw();notice("最新の件数を読み込みました。");
- }catch(e){data=null;$("appBox").hidden=true;fail(e)}finally{if(current===nonce)loading=false}}
+ }catch(e){
+  if(current!==nonce)return;
+  data=null;$("appBox").hidden=true;
+  // Auth may have succeeded while workspace lookup failed. Never strand
+  // the user with both the login and application hidden.
+  $("loginBox").hidden=false;$("loginLogout").hidden=!auth.currentUser;
+  fail(e);
+ }finally{if(current===nonce)loading=false}}
 $("date").onchange=refresh;$("refresh").onclick=()=>{countDayCache.clear();refresh()};
 async function action(task){if(loading)return;loading=true;try{
  countDayCache.clear();
@@ -848,10 +876,20 @@ $("save").onclick=()=>action(async()=>{
   throw Error("save_not_verified");
  return "保存・再取得照合が成功しました。第"+result.version+"版";
 });
-$("loginForm").onsubmit=async e=>{e.preventDefault();try{
- await setPersistence(auth,browserSessionPersistence);
- await signInWithEmailAndPassword(auth,$("email").value,$("pass").value);
- $("pass").value="";}catch(e){fail(e)}};
+$("loginForm").onsubmit=async e=>{
+ e.preventDefault();
+ const button=$("loginForm").querySelector('button[type="submit"]');
+ if(button.disabled)return;
+ button.disabled=true;button.setAttribute("aria-busy","true");
+ notice("Firebaseにログインしています…");
+ try{
+  await setPersistence(auth,browserSessionPersistence);
+  await signInWithEmailAndPassword(auth,$("email").value.trim().toLowerCase(),$("pass").value);
+  $("pass").value="";
+  // Auth-state observer decides if invitation acceptance or workspace read is next.
+ }catch(e){fail(e)}
+ finally{button.disabled=false;button.removeAttribute("aria-busy")}
+};
 $("signup").onclick=async()=>{try{
  const cred=await createUserWithEmailAndPassword(auth,$("email").value,$("pass").value);
  $("pass").value="";await sendEmailVerification(cred.user);
@@ -861,6 +899,21 @@ $("signup").onclick=async()=>{try{
     notice("このメールは登録済みです。新規作成せず、ログインを押してください。",true);
   else fail(e);
  }};
+$("resetPassword").onclick=async()=>{
+ const email=$("email").value.trim().toLowerCase();
+ if(!email||!$("email").checkValidity()){
+  notice("パスワード再設定には正しいメールアドレスを入力してください。",true);return;
+ }
+ const button=$("resetPassword");
+ if(button.disabled)return;
+ button.disabled=true;
+ try{
+  await sendPasswordResetEmail(auth,email);
+  notice("再設定メールを送信しました。届いたメールからパスワードを設定後、同じアカウントでログインしてください。");
+ }catch(e){fail(e)}
+ finally{button.disabled=false}
+};
+$("loginLogout").onclick=async()=>{try{await signOut(auth);notice("ログアウトしました。別のアカウントでログインできます。")}catch(e){fail(e)}};
 $("verify").onclick=async()=>{try{await sendEmailVerification(auth.currentUser);notice("確認メールを再送しました。")}catch(e){fail(e)}};
 $("join").onclick=async()=>{if(!inviteToken)return;await action(async()=>{
  const joined=(await accept({token:inviteToken,name:$("joinName").value,transferCurrentCompany:$("transferExistingInternal").checked})).data;
@@ -876,7 +929,7 @@ $("join").onclick=async()=>{if(!inviteToken)return;await action(async()=>{
 })};
 $("logout").onclick=()=>signOut(auth);
 onAuthStateChanged(auth,u=>{
- ++nonce;++countLoadId;data=null;countDayCache.clear();clearCountOnlyDashboard();$("companyOverview").hidden=true;$("workspaceTitle").textContent="NICO FACTORY｜協力店 実績管理";$("appBox").hidden=true;$("loginBox").hidden=!!u;
+ ++nonce;++countLoadId;data=null;countDayCache.clear();clearCountOnlyDashboard();$("companyOverview").hidden=true;$("workspaceTitle").textContent="NICO FACTORY｜協力店 実績管理";$("appBox").hidden=true;$("loginBox").hidden=!!u&&u.emailVerified;$("loginLogout").hidden=!u;
  $("inviteAccept").hidden=true;$("verify").hidden=!u||u.emailVerified;
  $("inviteUrl").value="";$("inviteOut").hidden=true;
  $("hubInviteUrl").value="";$("hubInviteOut").hidden=true;
