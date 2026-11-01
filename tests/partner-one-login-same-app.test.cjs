@@ -146,3 +146,21 @@ test("same-app partner count errors distinguish pending activation from auth fai
  for(const unsafe of ["getDoc(","getDocs(","deleteDoc(","setDoc(","updateDoc(","totalRevenue","unitPrice","pricingOptions"])
   assert(!view.includes(unsafe),"Partner view cannot access finance: "+unsafe);
 });
+test("changing day blocks stale counts and verifies the same date for save and readback",()=>{
+ const start=index.indexOf("async function partnerInlineFetch()");
+ const stop=index.indexOf("async function openSameAppPartnerWorkspace(",start);
+ const save=index.indexOf('pInline("pInlineSave").onclick=');
+ const next=index.indexOf("async function loadOwnerPartnerCompanyTeams()",save);
+ assert.ok(start>=0&&stop>start&&save>=0&&next>save);
+ const fetch=index.slice(start,stop),submit=index.slice(save,next);
+ assert.match(fetch,/partnerInlineData=null/);
+ assert.match(fetch,/pInline\("pInlineSave"\)\.disabled=true/);
+ assert.match(fetch,/pInline\("pInlineCountFields"\)\.replaceChildren\(\)/);
+ assert.match(fetch,/snap\.date!==payload\.date/);
+ assert.match(submit,/const selectedDate=pInline\("pInlineDate"\)\.value/);
+ assert.match(submit,/snap\.date!==selectedDate/);
+ assert.match(submit,/date:selectedDate,staffId,counts/);
+ assert.match(submit,/readPartnerWorkDay\(partnerInlinePayload\(\{date:selectedDate\}\)\)/);
+ assert.match(submit,/verified\?\.date!==selectedDate/);
+ assert.doesNotMatch(submit,/date:pInline\("pInlineDate"\)\.value/);
+});
