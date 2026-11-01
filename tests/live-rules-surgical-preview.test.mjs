@@ -161,10 +161,13 @@ test("partner-safe reviewed rules retain internal owner and explicitly approved 
 });
 
 test("finance Rules mismatch diagnostic outputs only collection names and line counts, never rule contents",()=>{
- const candidate=reviewed.replace(
-  "allow read: if resource.data.companyId != null",
-  "allow read: if true || resource.data.companyId != null"
- );
+ const productStart=reviewed.indexOf("match /products/{productId} {");
+ assert.ok(productStart>0);
+ const candidate=reviewed.slice(0,productStart)+
+  reviewed.slice(productStart).replace(
+   "allow read: if resource.data.companyId != null",
+   "allow read: if true || resource.data.companyId != null"
+  );
  assert.notEqual(candidate,reviewed);
  const summary=summarizeReviewedRulesMismatch(candidate,reviewed);
  assert.ok(summary.firstDifferenceLine>0);
