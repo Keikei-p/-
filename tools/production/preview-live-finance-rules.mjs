@@ -217,6 +217,10 @@ async function main(){
   const original=readFileSync("firestore.rules","utf8");
   const {live,releaseName}=await readLiveRules();
   const out=previewLiveRules(live,original);
+  // Never test or propose an unexpectedly changed live Rules candidate.
+  // Unknown extra finance allows (including additive get/list) must not
+  // survive because they were absent from the reviewed ruleset.
+  if(!out.matchesReviewed)stop("CANDIDATE_DIFFERS_FROM_REVIEWED_RULES");
   // The snapshot stays in the disposable runner only, never in public logs.
   writeFileSync(process.env.RUNNER_TEMP+"/nico-original-live-firestore.rules",live,{mode:0o600});
   writeFileSync(process.env.RUNNER_TEMP+"/nico-proposed-live-firestore.rules",out.candidate,{mode:0o600});
