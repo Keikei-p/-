@@ -207,6 +207,51 @@ $("copyLink").addEventListener("click",async()=>busy($("copyLink"),async()=>{
  if(!$("inviteLink").value)throw Error("no link");
  await navigator.clipboard.writeText($("inviteLink").value);message("リンクをコピーしました。");
 }));
+$("existingReload").addEventListener("click",loadExisting);
+$("existingCompany").addEventListener("change",()=>{
+ $("existingResult").hidden=true;$("existingLink").value="";renderExisting();
+});
+$("existingTeam").addEventListener("change",()=>{
+ $("existingResult").hidden=true;$("existingLink").value="";renderExisting();
+});
+$("existingRole").addEventListener("change",()=>{$("existingResult").hidden=true;});
+$("existingEmail").addEventListener("input",()=>{$("existingResult").hidden=true;});
+$("existingForm").addEventListener("submit",async event=>{
+ event.preventDefault();
+ const user=auth.currentUser,id=$("existingCompany").value,teamId=$("existingTeam").value;
+ const role=$("existingRole").value,email=$("existingEmail").value.trim().toLowerCase();
+ const company=existingCompanies.find(c=>c.partnerCompanyId===id);
+ if(!user?.emailVerified||user.uid!==existingOwnerUid||
+    !company?.active||!company.teams.some(t=>t.id===teamId)||
+    !["leader","member"].includes(role)||
+    !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)){
+  message("会社・班・権限・メールを確認してください。");return;
+ }
+ await busy($("existingCreate"),async()=>{
+  await getIdToken(user,true);
+  const response=(await manageWorkspace({
+   action:"hubCreateInvite",partnerCompanyId:id,teamId,role,email
+  })).data;
+  if(auth.currentUser?.uid!==user.uid||
+    typeof response?.token!=="string"||!/^[A-Za-z0-9_-]{43}$/.test(response.token))
+   throw Error("invalid_invitation_response");
+  const url=new URL("/partner-workspace.html",location.origin);
+  url.searchParams.set("invite",response.token);
+  $("existingLink").value=url.href;$("existingResult").hidden=false;
+  message("既存の"+company.name+"へ"+(role==="leader"?"リーダー":"メンバー")+
+   "の招待リンクを作成しました。30分以内に本人に送ってください。");
+ });
+ renderExisting();
+});
+$("existingCopy").addEventListener("click",async()=>busy($("existingCopy"),async()=>{
+ if(!$("existingLink").value)throw Error("missing_link");
+ try{await navigator.clipboard.writeText($("existingLink").value);}
+ catch{
+  $("existingLink").select();
+  if(!document.execCommand("copy"))throw Error("copy_failed");
+ }
+ message("協力店スタッフの招待リンクをコピーしました。");
+}));
 $("accept").addEventListener("click",async()=>busy($("accept"),async()=>{
  const data=(await acceptInvite({token})).data;
  $("info").textContent="協力店としての会社登録が完了しました。";
