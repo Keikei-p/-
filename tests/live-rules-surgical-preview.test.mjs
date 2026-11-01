@@ -145,7 +145,11 @@ test("unexpected extra finance get permission never passes exact-source live pre
  assert.equal(result.matchesReviewed,false,"additive finance get grant must reject live release");
  assert.notEqual(result.candidateSha,result.reviewedSha);
  const script=readFileSync(new URL("../tools/production/preview-live-finance-rules.mjs",import.meta.url),"utf8");
- assert.match(script,/if\(!out\.matchesReviewed\)\{[\s\S]*?stop\("CANDIDATE_DIFFERS_FROM_REVIEWED_RULES"\)/);
+ assert.match(script,/writeFileSync\\(process\\.env\\.RUNNER_TEMP\\+"\\/nico-live-reviewed-parity\\.status"/);
+ const workflow=readFileSync(new URL("../.github/workflows/nico-live-rules-hotfix-preview.yml",import.meta.url),"utf8");
+ assert.match(workflow,/BLOCK any unreviewed live patch/);
+ assert.match(workflow,/STOP_UNREVIEWED_LIVE_FINANCE_RULES/);
+ assert.doesNotMatch(workflow,/firebase deploy|rulesets\\.create|releases\\.patch/);
 });
 test("partner-safe reviewed rules retain internal owner and explicitly approved leader finance paths",()=>{
  const out=previewLiveRules(liveFixture(),reviewed);
