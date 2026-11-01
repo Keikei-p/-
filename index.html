@@ -9202,7 +9202,7 @@ document.getElementById("partnerExistingInviteButton").onclick=async()=>{
   const role=document.getElementById("partnerExistingRoleSelect").value;
   const email=document.getElementById("partnerExistingEmailInput").value.trim().toLowerCase();
   if(!company?.active||!company.teams?.some(t=>t.id===teamId)||
-    !["leader","member"].includes(role)||!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email))
+    !["leader","member"].includes(role)||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
     return showError("会社・班・役割・メールアドレスを確認してください。");
   const button=document.getElementById("partnerExistingInviteButton");
   const ownerUid=currentUser.uid;button.disabled=true;
