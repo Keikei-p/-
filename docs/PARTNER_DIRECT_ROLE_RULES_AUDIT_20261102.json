@@ -1,0 +1,18 @@
+{
+  "score": 2,
+  "summary": "Repository Rules pass 47 emulator checks; production financial isolation is not proven. Existing issue #206 and a preview-only successful production-rules patch prevent release. No production write performed.",
+  "findings": [
+    {
+      "check": "Authority Source / Business Logic vs Rules",
+      "severity": "critical",
+      "issue": "The production Rules audit recorded partner access to financial originals. Latest inspected successful run tested a candidate offline and explicitly did not deploy it.",
+      "recommendation": "Confirm the current deployed Rules, review the existing minimal patch and rollback artifact, obtain approval for this material permission change, and verify internal finance continuity and partner denials before enabling invitations."
+    },
+    {
+      "check": "Business Logic vs Rules",
+      "severity": "major",
+      "issue": "Workspace invitation and team operations require an already registered partner company and approved active relation. Quick-count approval is not Workspace approval.",
+      "recommendation": "Verify actual company/team and relation state with authorized read-only access. Do not silently activate relations or create a representative flow."
+    }
+  ]
+}

@@ -10,7 +10,7 @@ test("one partner roster uses existing no-email managed staff service, not fake 
  assert.match(workspace,/action:"addManaged"/);
  assert.match(service,/if\(op==="addManaged"\)/);
  assert.match(service,/kind:"managed",role:"member",uid:null/);
- assert.match(service,/s\.role==="leader"&&staff\.teamId===s\.teamId/);
+ assert.match(service,/return \["owner","leader"\]\.includes\(s\.role\)/);
  assert.match(workspace,/名前だけのスタッフを登録/);
 });
 test("hub selects leader or companion without changing server role definitions",()=>{

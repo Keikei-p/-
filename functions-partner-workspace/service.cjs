@@ -240,8 +240,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   return {active:rel.active===true&&rel.countSharingApproved===true};
  }
  const canStaff=(s,staff)=>{
-  return s.role==="owner"||
-    (s.role==="leader"&&staff.teamId===s.teamId)||
+  return ["owner","leader"].includes(s.role)||
     (s.role==="member"&&staff.uid===s.uid&&staff.kind==="account");
  };
  async function manage(request){
@@ -317,11 +316,11 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    return {productId:d.productId,updated:true};
   }
   if(op==="addTeam"){
-   if(s.role!=="owner"||!validName(d.name))fail("invalid-argument");
+   if(!["owner","leader"].includes(s.role)||!validName(d.name))fail("invalid-argument");
    const ref=collection(s.cid,"partnerWorkTeams").doc();
    await db.runTransaction(async tx=>{
     const fresh=await scope(uid,tx,d.workspaceCompanyId);
-    if(fresh.cid!==s.cid||fresh.role!=="owner")fail();
+    if(fresh.cid!==s.cid||!["owner","leader"].includes(fresh.role))fail();
     tx.create(ref,{name:clean(d.name),active:true,companyId:s.cid,createdByUid:uid,createdAt:FieldValue.serverTimestamp()});
    });
    return {teamId:ref.id,created:true};
@@ -332,7 +331,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    await db.runTransaction(async tx=>{
     const fresh=await scope(uid,tx,d.workspaceCompanyId);
     if(fresh.cid!==s.cid||fresh.role==="member")fail();
-    const teamId=s.role==="owner"?clean(d.teamId):fresh.teamId;
+    const teamId=clean(d.teamId);
     await checkTeam(tx,fresh,teamId);
     tx.create(ref,{name:clean(d.name),kind:"managed",role:"member",uid:null,
       teamId,companyId:s.cid,active:true,createdByUid:uid,createdAt:FieldValue.serverTimestamp()});
@@ -340,9 +339,10 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    return {staffId:ref.id,created:true};
   }
   if(op==="moveStaff"){
-   if(s.role!=="owner"||!ID.test(d.staffId||"")||!ID.test(d.teamId||""))fail("invalid-argument");
+   if(!["owner","leader"].includes(s.role)||!ID.test(d.staffId||"")||!ID.test(d.teamId||""))fail("invalid-argument");
    await db.runTransaction(async tx=>{
-    const fresh=await scope(uid,tx,d.workspaceCompanyId);if(fresh.role!=="owner")fail();
+    const fresh=await scope(uid,tx,d.workspaceCompanyId);
+    if(fresh.cid!==s.cid||!["owner","leader"].includes(fresh.role))fail();
     await checkTeam(tx,fresh,d.teamId);
     const ref=staffRef(fresh.cid,d.staffId),sn=await tx.get(ref);
     if(!sn.exists||sn.data()?.active!==true||sn.data()?.companyId!==s.cid||
@@ -412,12 +412,12 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   }
   if(!EMAIL.test(clean(d.email).toLowerCase())||
      !["leader","member"].includes(d.role)||!ID.test(d.teamId||"")||
-     (s.role!=="owner"&&(d.role!=="member"||d.teamId!==s.teamId)))fail("invalid-argument");
+     !["owner","leader"].includes(s.role))fail("invalid-argument");
   const token=crypto.randomBytes(32).toString("base64url"),hash=crypto.createHash("sha256").update(token).digest("hex");
   const expiresAt=Timestamp.fromMillis(now()+30*60000);
   await db.runTransaction(async tx=>{
    const fresh=await scope(uid,tx,d.workspaceCompanyId);
-   if(fresh.kind!=="partner"||(fresh.role!=="owner"&&(fresh.role!=="leader"&&d.role==="member"&&fresh.teamId===d.teamId)))fail();
+   if(fresh.kind!=="partner"||fresh.cid!==s.cid||!["owner","leader"].includes(fresh.role))fail();
    await checkTeam(tx,fresh,d.teamId);
    tx.create(db.collection("partnerWorkInvites").doc(hash),{
      companyId:s.cid,hubCompanyId:s.hubId,teamId:d.teamId,role:d.role,
@@ -502,6 +502,14 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     if(archive.exists)fail("failed-precondition");
    }
    await checkTeam(tx,{cid:i.companyId},i.teamId);
+   // A pending link cannot retain a revoked inviter's authority.
+   if(!ID.test(i.invitedByUid||""))fail("failed-precondition");
+   const inviterContext=await tx.get(db.collection("partnerWorkspaceContexts").doc(i.invitedByUid));
+   const inviter=await scope(i.invitedByUid,tx,
+     inviterContext.exists&&inviterContext.data()?.partnerCompanyId===i.companyId?i.companyId:"");
+   if(!((inviter.kind==="hub"&&inviter.cid===i.hubCompanyId&&inviter.role==="owner")||
+        (inviter.kind==="partner"&&inviter.cid===i.companyId&&
+         ["owner","leader"].includes(inviter.role))))fail();
    const name=clean(d.name);
    if(!validName(name))fail("invalid-argument");
    const profile={uid:a.uid,companyId:i.companyId,name,email:a.email,
@@ -757,7 +765,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      teamIdSnapshot,privateCounts:privateCounts.counts,privateTotalCount:privateCounts.total});
   }
   const visibleTeams=teams.docs.map(sn=>({id:sn.id,name:clean(sn.data().name),active:sn.data().active===true}))
-   .filter(team=>s.role==="owner"||team.id===s.teamId);
+   .filter(team=>["owner","leader"].includes(s.role)||team.id===s.teamId);
   return {role:s.role,date,companyName:clean(s.companyName),teamId:s.teamId,
     teams:visibleTeams,staff:[...allowed.values()],records:rows,categories:KEYS,
     privateProducts:productList};

@@ -25,7 +25,8 @@ test("existing invitation tab hosts a partner invitation entry without another m
  for(const id of ["partnerInviteInline","partnerInviteCompanyName","partnerInviteEmail","partnerInviteCreateButton","partnerInviteLinkOutput"])
    assert(part.includes('id="'+id+'"'),id);
  assert(part.includes('href="/partner-invite.html"'));
- assert(html.includes('createPartnerCompanyInvitation'));
+ assert(html.includes('action:"hubCreateInvite"'));
+ assert(!html.includes('"createPartnerCompanyInvitation"'));
  assert(html.includes('currentCompanyData?.ownerUid !== currentUser.uid'));
 });
 test("validated count-only partner month aggregates and refuses partial old snapshots",async()=>{
@@ -118,7 +119,7 @@ test("visible invitation destination selector preserves employee invite and swit
  assert.match(sync,/currentCompanyData\?\.ownerUid === currentUser.uid/);
  assert.match(sync,/partnerButton.disabled = !owner/);
  assert.ok(html.includes('if (mode === "invite") syncInviteDestinationPanel()'));
- assert.ok(html.includes("createPartnerCompanyInvite({companyName,email})"));
+ assert.ok(html.includes('partnerInlineManage({action:"hubCreateInvite",partnerCompanyId,teamId,role,email})'));
  assert.ok(html.includes("currentCompanyData?.companyKind === \"partner\""));
 });
 

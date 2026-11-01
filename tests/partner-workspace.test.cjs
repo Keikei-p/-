@@ -78,6 +78,69 @@ function setup(){
  const zero=()=>Object.fromEntries(KEYS.map(k=>[k,0]));
  return {db,api,req,zero};
 }
+
+test("direct hub invite needs no representative: leader manages own company teams, invites and preserves history",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ // An existing partner company does not need an owner/representative account.
+ db.store.delete("users/p");db.store.delete("companies/partner/members/p");
+ delete db.store.get("companies/partner").ownerUid;
+ const original=clone(db.store.get("records/old"));
+ const first=(await api.manage(req("h",{action:"hubAddTeam",partnerCompanyId:"partner",name:"初期班"}))).teamId;
+ const invite=await api.manage(req("h",{action:"hubCreateInvite",partnerCompanyId:"partner",teamId:first,role:"leader",email:"l@example.com"}));
+ await api.accept(req("l",{token:invite.token,name:"リーダー"}));
+ const profile=db.store.get("users/l");
+ assert.equal(profile.companyRole,"member");assert.equal(profile.role,"leader");
+ assert.equal(profile.canViewRevenue,false);assert.equal(profile.canViewUnitPrice,false);
+ const second=(await api.manage(req("l",{action:"addTeam",name:"追加班"}))).teamId;
+ const member=await api.manage(req("l",{action:"createInvite",teamId:second,role:"member",email:"m@example.com"}));
+ await api.accept(req("m",{token:member.token,name:"メンバー"}));
+ await api.submit(req("m",{date:"2026-10-30",staffId:"m",counts:{...zero(),NURO:3},expectedVersion:0}));
+ const before=clone(db.store.get("companies/partner/partnerWorkEntries/2026-10-30__m"));
+ await api.manage(req("l",{action:"moveStaff",staffId:"m",teamId:first}));
+ assert.equal(db.store.get("users/m").teamId,first);
+ assert.equal(db.store.get("companies/partner/members/m").teamId,first);
+ assert.deepEqual(db.store.get("companies/partner/partnerWorkEntries/2026-10-30__m"),before);
+ await api.submit(req("m",{date,staffId:"m",counts:{...zero(),NURO:2},expectedVersion:0}));
+ const own=await api.view(req("l",{date})),hub=await api.view(req("h",{date}));
+ assert.equal(own.teams.length,2);assert.equal(own.records[0].totalCount,2);
+ assert.equal(hub.partners[0].totalCount,2);
+ for(const result of [own,hub])assert.doesNotMatch(JSON.stringify(result),/unitPrice|totalRevenue|revenuePerUnit/);
+ for(const action of ["addTeam","moveStaff","createInvite"])
+  await assert.rejects(api.manage(req("m",{action,name:"不許可",staffId:"l",teamId:second,role:"leader",email:"x@example.com"})));
+ db.seed("companies/other/partnerWorkTeams/foreign",{name:"他社班",companyId:"other",active:true});
+ await assert.rejects(api.manage(req("l",{action:"moveStaff",staffId:"m",teamId:"foreign"})));
+ await assert.rejects(api.manage(req("l",{action:"hubCreateInvite",partnerCompanyId:"other",teamId:"foreign",role:"leader",email:"x@example.com"})));
+ assert.deepEqual(db.store.get("records/old"),original);
+ const nextLeader=await api.manage(req("l",{action:"createInvite",teamId:second,role:"leader",email:"n@example.com"}));
+ await api.accept(req("n",{token:nextLeader.token,name:"次のリーダー"}));
+ assert.equal(db.store.get("users/n").role,"leader");
+ assert.equal(db.store.get("users/n").companyRole,"member");
+});
+
+test("pending partner invitation rechecks revoked issuer and cannot be replayed or used by a different email",async()=>{
+ const {db,api,req}=setup();
+ const teamId=(await api.manage(req("p",{action:"addTeam",name:"班"}))).teamId;
+ const result=await api.manage(req("p",{action:"createInvite",teamId,role:"leader",email:"l@example.com"}));
+ await assert.rejects(api.accept(req("x",{token:result.token,name:"別人"})));
+ db.store.get("companies/partner/members/p").active=false;
+ await assert.rejects(api.accept(req("l",{token:result.token,name:"失効"})));
+ assert.equal(db.store.has("users/l"),false);
+});
+
+test("inviter demotion between initial scope and transaction cannot issue a link",async()=>{
+ const {db,api,req}=setup();
+ const teamId=(await api.manage(req("p",{action:"addTeam",name:"班"}))).teamId;
+ const invite=await api.manage(req("p",{action:"createInvite",teamId,role:"leader",email:"l@example.com"}));
+ await api.accept(req("l",{token:invite.token,name:"リーダー"}));
+ const transaction=db.runTransaction.bind(db),before=db.store.size;
+ db.runTransaction=async fn=>{
+  db.store.get("users/l").role="member";
+  db.store.get("companies/partner/members/l").role="member";
+  return transaction(fn);
+ };
+ await assert.rejects(api.manage(req("l",{action:"createInvite",teamId,role:"member",email:"m@example.com"})));
+ assert.equal(db.store.size,before);
+});
 test("partner owner makes team and managed staff, saves and corrects without touching original sales",async()=>{
  const {db,api,req,zero}=setup();
  const originalRecords=clone(db.store.get("records/old")),originalMoney=clone(db.store.get("products/money"));

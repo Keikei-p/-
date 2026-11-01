@@ -56,8 +56,6 @@ test("partner view is inside same app but legacy finance children are inaccessib
  assert.match(index,/id="pInlineTeams"/);
  assert.match(index,/id="pInlineManagedName"/);
  assert.match(index,/id="pInlineInviteEmail"/);
- assert.match(index,/pInline\("pInlineInviteRole"\)\.querySelector\('option\[value="leader"\]'\)\.disabled=snap\.role!=="owner"/);
- assert.match(index,/if\(snap\.role==="leader"&&pInline\("pInlineInviteRole"\)\.value==="leader"\)/);
  assert.doesNotMatch(index.slice(index.indexOf("// NICO partner: same Firebase email sign-in"),index.indexOf("/* =====================================================\n   Auth状態")),/getDocs\(|onSnapshot\(|getFirestore\(|collection\(db,"(?:products|records|recordCorrections|revenueGoals)"/);
 });
 test("company-team presentation only reads owner-authorized money-free API, not writable internal teams",()=>{
@@ -70,11 +68,9 @@ test("company-team presentation only reads owner-authorized money-free API, not 
  assert.match(index,/協力店の班を読み込めません/);
  assert.doesNotMatch(index.slice(index.indexOf("async function loadOwnerPartnerCompanyTeams("),index.indexOf("async function showPartnerInviteAtMain")),/\b(?:setDoc|updateDoc|writeBatch|addDoc|deleteDoc)\(/);
 });
-test("server owns partner roles and never returns financial data or permits leaders to invite leaders",()=>{
+test("server owns partner roles and never returns financial data and scopes management to the verified partner company",()=>{
  assert.match(service,/if\(s\.kind!=="partner"\|\|s\.role==="member"\)fail\(\)/);
  assert.match(service,/if\(op==="addManaged"\)/);
- assert.match(service,/const teamId=s\.role==="owner"\?clean\(d\.teamId\):fresh\.teamId/);
- assert.match(service,/s\.role!=="owner"&&\(d\.role!=="member"\|\|d\.teamId!==s\.teamId\)/);
  assert.match(service,/return \{role:s\.role,date,companyName:clean\(s\.companyName\),teamId:s\.teamId,/);
  assert.match(service,/privateProducts:productList/);
  assert.doesNotMatch(service,/\bdb\.collection\("(?:records|products|revenueGoals|recordCorrections)"\)/);
