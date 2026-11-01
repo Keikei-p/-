@@ -135,3 +135,27 @@ test("actual-live canWriteDailyRecord repeated owner grant is replaced by review
  assert.ok(preview.changed.includes("canWriteDailyRecord"));
  assert.equal(preview.matchesReviewed,true);
 });
+
+test("unexpected extra finance get permission never passes exact-source live preview gate",()=>{
+ const live=liveFixture();
+ const anchor="allow read: if resource.data.companyId != null\\n        && sameCompany(resource.data.companyId);".replace("\\n","\n");
+ assert.ok(live.includes(anchor));
+ const altered=live.replace(anchor,anchor+"\n      allow get: if true;");
+ const result=previewLiveRules(altered,reviewed);
+ assert.equal(result.matchesReviewed,false,"additive finance get grant must reject live release");
+ assert.notEqual(result.candidateSha,result.reviewedSha);
+ const script=readFileSync(new URL("../tools/production/preview-live-finance-rules.mjs",import.meta.url),"utf8");
+ assert.match(script,/if\(!out\.matchesReviewed\)stop\("CANDIDATE_DIFFERS_FROM_REVIEWED_RULES"\)/);
+});
+test("partner-safe reviewed rules retain internal owner and explicitly approved leader finance paths",()=>{
+ const out=previewLiveRules(liveFixture(),reviewed);
+ assert.equal(out.matchesReviewed,true);
+ for(const token of [
+  "company.get('companyKind', 'internal') == 'internal'",
+  "user.get('accessKind', 'internal') == 'internal'",
+  "member.get('accessKind', 'internal') == 'internal'",
+  "user.get('memberType', 'internal') in ['internal', 'direct', 'member', 'managed']",
+  "member.get('memberType', 'internal') in ['internal', 'direct', 'member', 'managed']",
+  "function canViewRevenue(", "function canViewUnitPrice("
+ ])assert.ok(out.candidate.includes(token),token);
+});
