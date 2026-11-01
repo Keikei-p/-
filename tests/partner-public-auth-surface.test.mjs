@@ -7,6 +7,7 @@ const html=readFileSync(new URL("../partner-invite.html",import.meta.url),"utf8"
 const config=parsePartnerAuthSurface(html);
 test("public client uses only the reviewed Firebase project and SDK",()=>{
  assert.equal(config.project,"sales-management-cc116");
+ assert.match(config.appNumber,/^\d+$/);
  assert.equal(config.domain,"sales-management-cc116.firebaseapp.com");
  assert.match(config.version,/^\d+\.\d+\.\d+$/);
 });
@@ -32,6 +33,19 @@ test("read-only public auth diagnostics do not submit a password or user email",
  assert(logs.includes("NICO_AUTHORIZED_DOMAIN=true"));
  assert(logs.includes("EMAIL_PASSWORD_PROVIDER_ENABLED=true"));
  assert(!logs.some(v=>v.includes(config.key)));
+});
+test("Identity Toolkit numeric project identifier is accepted only if it matches appId",async()=>{
+ const logs=[];
+ const request=async url=>url.includes("identitytoolkit")?
+   {ok:true,status:200,json:async()=>({projectId:config.appNumber,authorizedDomains:["nico-factory.web.app"]})}:
+   {ok:true,status:200};
+ const result=await inspectPartnerPublicAuth(html,{request,log:v=>logs.push(v)});
+ assert.equal(result.publicAssetsVerified,true);
+ assert(logs.includes("PUBLIC_AUTH_PROJECT_NUMBER_MATCH=true"));
+ const mismatch=await inspectPartnerPublicAuth(html,{request:async url=>url.includes("identitytoolkit")?
+   {ok:true,status:200,json:async()=>({projectId:"wrong-project",authorizedDomains:["nico-factory.web.app"]})}:
+   {ok:true,status:200},log:()=>{}});
+ assert.equal(mismatch.publicAssetsVerified,false);
 });
 test("unsafe unauthorized domain or missing SDK fails closed without any user lookup",async()=>{
  const request=async url=>url.includes("identitytoolkit")?
