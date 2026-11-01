@@ -89,7 +89,7 @@ test("owner invites one verified recipient into isolated partner company without
  const invitation=await handlers.create(request("owner",createInput));
  assert.equal(invitation.kind,"partner_company");
  assert.equal(invitation.token.length,43);
- assert.equal(invitation.expiresAt,NOW+1800000);
+ assert.equal(invitation.expiresAt,NOW+24*60*60*1000);
  const doc=[...db.data].find(([k])=>k.startsWith("partnerCompanyInvitations/"))[1];
  assert.equal(doc.token,undefined);
  assert.equal(doc.status,"pending");
@@ -366,4 +366,37 @@ test("existing partner staff invite uses registered company ID and cannot create
  assert.doesNotMatch(html,/firebase-firestore\.js|\bgetFirestore\s*\(/);
  // New-company endpoint is still called only by the separate original form.
  assert.match(html,/createInvite\(\{email:\$\("inviteEmail"\)\.value,companyName:\$\("companyName"\)\.value\}\)/);
+});
+
+test("24-hour link is still single use; expiration and recipient mismatch never mutate old data",async()=>{
+ const {db,handlers,request}=setup();
+ const invite=await handlers.create(request("owner",createInput));
+ const ref=[...db.data.entries()].find(([key])=>key.startsWith("partnerCompanyInvitations/"))[1];
+ assert.equal(ref.expiresAt.toMillis(),NOW+24*60*60*1000);
+ const beforeWrong=JSON.stringify([...db.data]);
+ await assert.rejects(handlers.accept(request("owner",{token:invite.token})));
+ assert.equal(JSON.stringify([...db.data]),beforeWrong);
+ ref.expiresAt={toMillis:()=>NOW-1};
+ const beforeExpired=JSON.stringify([...db.data]);
+ await assert.rejects(handlers.preview(request("recipient",{token:invite.token})),e=>e.code==="failed-precondition");
+ await assert.rejects(handlers.accept(request("recipient",{token:invite.token})),e=>e.code==="failed-precondition");
+ assert.equal(JSON.stringify([...db.data]),beforeExpired);
+});
+test("existing account with source sales and revenue rights keeps every source document after secondary invite",async()=>{
+ const {db,handlers,request}=setup({recipientCompany:"existing"});
+ db.seed("companies/existing",{companyKind:"internal",active:true,name:"Existing"});
+ db.seed("companies/existing/members/recipient",{uid:"recipient",companyId:"existing",companyRole:"member",memberType:"direct",active:true,canViewRevenue:true,canViewUnitPrice:true});
+ const user={...db.data.get("users/recipient"),accessKind:"internal",canViewRevenue:true,canViewUnitPrice:true};
+ db.seed("users/recipient",user);
+ db.seed("records/old-order",{companyId:"existing",totalRevenue:99999,unitPrice:19999,uid:"recipient"});
+ const saved=JSON.stringify([...db.data]);
+ const {token}=await handlers.create(request("owner",createInput));
+ const result=await handlers.accept(request("recipient",{token}));
+ assert.equal(result.secondaryMembership,true);
+ assert.equal(result.financialAccess,false);
+ for(const path of ["users/recipient","records/old-order","companies/existing/members/recipient"])
+  assert.deepEqual(db.data.get(path),new Map(JSON.parse(saved)).get(path));
+ const member=db.data.get("companies/"+result.partnerCompanyId+"/members/recipient");
+ assert.equal(member.canViewRevenue,false);
+ assert.equal(member.canViewUnitPrice,false);
 });
