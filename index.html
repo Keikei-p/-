@@ -4982,6 +4982,66 @@ body.product-reordering .product-list {
             <button id="partnerInviteCopyButton" type="button">コピー</button>
           </div>
         </div>
+
+        <details id="partnerExistingInvitePanel"
+                 style="margin-top:17px;padding:13px;border:1px solid var(--border);border-radius:10px;">
+          <summary style="cursor:pointer;font-weight:800;min-height:44px;padding:10px 0;">
+            🏢 登録済みの協力店へリーダー・メンバーを招待
+          </summary>
+          <p style="font-size:12px;line-height:1.7;color:var(--sub);">
+            以前登録した会社をそのまま使用します。会社を再作成せず、班と役割を選び、
+            本人のメールアドレスへ30分有効な招待リンクを作成できます。
+            未承認・停止中の会社への招待はできません。
+          </p>
+          <button id="partnerExistingLoad" type="button" style="min-height:44px;">
+            登録済みの協力店会社を読み込む
+          </button>
+          <p id="partnerExistingStatus" role="status" aria-live="polite"
+             style="font-size:12px;line-height:1.7;color:var(--sub);">
+            会社一覧は自社オーナーの認証後に読み込めます。
+          </p>
+          <div id="partnerExistingFields" hidden>
+            <label for="partnerExistingCompanySelect" style="display:block;font-weight:800;margin-top:12px;">
+              招待先の協力店会社
+            </label>
+            <select id="partnerExistingCompanySelect" style="width:100%;min-height:44px;"></select>
+            <div id="partnerExistingControls" hidden>
+              <label for="partnerExistingTeamSelect" style="display:block;font-weight:800;margin-top:12px;">
+                配属先の班
+              </label>
+              <select id="partnerExistingTeamSelect" style="width:100%;min-height:44px;"></select>
+              <div class="management-input-row" style="margin-top:12px;">
+                <input id="partnerExistingTeamName" maxlength="60"
+                       placeholder="班がなければ新規の班名" aria-label="追加する協力店の班名">
+                <button id="partnerExistingAddTeam" type="button">班を追加</button>
+              </div>
+              <label for="partnerExistingRole" style="display:block;font-weight:800;margin-top:12px;">
+                招待する権限
+              </label>
+              <select id="partnerExistingRole" style="width:100%;min-height:44px;">
+                <option value="leader">リーダー</option>
+                <option value="member">メンバー</option>
+              </select>
+              <label for="partnerExistingEmail" style="display:block;font-weight:800;margin-top:12px;">
+                招待する本人のメールアドレス
+              </label>
+              <input id="partnerExistingEmail" type="email" autocomplete="off"
+                     placeholder="staff@example.com" style="width:100%;min-height:44px;">
+              <button id="partnerExistingCreate" type="button" style="width:100%;min-height:48px;margin-top:12px;">
+                この協力店にスタッフ招待リンクを作成
+              </button>
+              <div id="partnerExistingResult" hidden style="margin-top:12px;">
+                <label for="partnerExistingLink" style="display:block;font-weight:800;">
+                  招待リンク（30分間有効・本人専用）
+                </label>
+                <div class="management-input-row">
+                  <input id="partnerExistingLink" readonly>
+                  <button id="partnerExistingCopy" type="button">コピー</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </details>
         <a href="/partner-invite.html" style="display:inline-block;margin-top:10px;">
           専用の協力店招待画面を開く
         </a>
@@ -6962,6 +7022,7 @@ const db =
 const partnerCountFunctions = getFunctions(app,"asia-northeast1");
 const readPartnerQuickDay = httpsCallable(partnerCountFunctions,"getPartnerQuickCounts");
 const readPartnerWorkDay = httpsCallable(partnerCountFunctions,"getPartnerWorkspace");
+const managePartnerWork = httpsCallable(partnerCountFunctions,"managePartnerWorkspace");
 const createPartnerCompanyInvite = httpsCallable(partnerCountFunctions,"createPartnerCompanyInvitation");
 
 
@@ -11761,6 +11822,160 @@ document.getElementById("partnerInviteCopyButton").onclick=async()=>{
   }
 };
 
+
+
+/* Registered partner-company staff invites: isolated count-only callable.
+   Existing companies and users are never moved or recreated here. */
+let existingPartnerInviteCompanies=[];
+const existingInviteEl=id=>document.getElementById(id);
+const canHubInvitePartner=()=>Boolean(currentUser?.emailVerified &&
+  currentCompanyData?.ownerUid===currentUser.uid &&
+  currentCompanyData?.companyKind!=="partner" &&
+  currentUserData?.accessKind!=="partner");
+const existingInviteSelected=()=>existingPartnerInviteCompanies.find(
+  c=>c.partnerCompanyId===existingInviteEl("partnerExistingCompanySelect").value);
+function clearExistingPartnerInviteLink(){
+  existingInviteEl("partnerExistingResult").hidden=true;
+  existingInviteEl("partnerExistingLink").value="";
+}
+function renderExistingPartnerInviteSelection(){
+  clearExistingPartnerInviteLink();
+  const company=existingInviteSelected(),allowed=company?.active===true;
+  existingInviteEl("partnerExistingControls").hidden=!allowed;
+  const teams=existingInviteEl("partnerExistingTeamSelect"),previousTeam=teams.value;
+  teams.replaceChildren();
+  if(allowed)for(const team of company.teams){
+    const option=document.createElement("option");
+    option.value=team.id;option.textContent=team.name;teams.append(option);
+  }
+  if(allowed&&company.teams.some(t=>t.id===previousTeam))teams.value=previousTeam;
+  existingInviteEl("partnerExistingCreate").disabled=!allowed||!teams.value;
+  existingInviteEl("partnerExistingStatus").textContent=!company?
+    "登録済み協力店がありません。まず協力店会社の招待を承諾してもらってください。":
+    !allowed?company.name+"：スタッフ招待は承認待ちまたは停止中です。件数専用の承認とは別に、会社の招待承認が必要です。":
+    company.name+"：既存会社へ招待できます。配属する班と本人のメールを選んでください。";
+}
+async function loadExistingPartnerInviteCompanies(){
+  const button=existingInviteEl("partnerExistingLoad"),uid=currentUser?.uid;
+  if(!canHubInvitePartner()){
+    existingInviteEl("partnerExistingStatus").textContent="自社オーナーでメール認証済みのログインが必要です。";
+    return;
+  }
+  button.disabled=true;clearExistingPartnerInviteLink();
+  existingInviteEl("partnerExistingFields").hidden=true;
+  existingInviteEl("partnerExistingStatus").textContent="登録済みの会社を照合しています…";
+  try{
+    const response=(await readPartnerWorkDay({date:getTodayString()})).data;
+    if(currentUser?.uid!==uid||!canHubInvitePartner()||
+       response?.role!=="hub"||!Array.isArray(response.registeredCompanies))
+      throw Error("invalid_partner_company_list");
+    const seen=new Set();
+    const companies=response.registeredCompanies.map(company=>{
+      if(!company||typeof company.partnerCompanyId!=="string"||
+         !/^[A-Za-z0-9_-]{1,128}$/.test(company.partnerCompanyId)||
+         seen.has(company.partnerCompanyId)||typeof company.name!=="string"||
+         !company.name.trim()||typeof company.active!=="boolean"||
+         !Array.isArray(company.teams))
+        throw Error("invalid_registered_company");
+      seen.add(company.partnerCompanyId);
+      const teamIds=new Set();
+      const teams=company.teams.map(team=>{
+        if(!team||typeof team.id!=="string"||
+           !/^[A-Za-z0-9_-]{1,128}$/.test(team.id)||
+           teamIds.has(team.id)||typeof team.name!=="string"||!team.name.trim())
+          throw Error("invalid_registered_team");
+        teamIds.add(team.id);
+        return {id:team.id,name:team.name};
+      });
+      return {partnerCompanyId:company.partnerCompanyId,
+        name:company.name,active:company.active,teams};
+    });
+    existingPartnerInviteCompanies=companies;
+    const select=existingInviteEl("partnerExistingCompanySelect"),previous=select.value;
+    select.replaceChildren();
+    for(const company of companies){
+      const option=document.createElement("option");
+      option.value=company.partnerCompanyId;
+      option.textContent=company.name+(company.active?"":"（承認待ち／停止中）");
+      select.append(option);
+    }
+    if(companies.some(c=>c.partnerCompanyId===previous))select.value=previous;
+    existingInviteEl("partnerExistingFields").hidden=companies.length===0;
+    renderExistingPartnerInviteSelection();
+  }catch(error){
+    existingPartnerInviteCompanies=[];
+    existingInviteEl("partnerExistingFields").hidden=true;
+    existingInviteEl("partnerExistingStatus").textContent=
+      "会社一覧を取得できません。スタッフ招待APIの本番公開状態と自社オーナー権限を確認してください。";
+  }finally{button.disabled=false;}
+}
+existingInviteEl("partnerExistingLoad").onclick=loadExistingPartnerInviteCompanies;
+existingInviteEl("partnerExistingCompanySelect").onchange=renderExistingPartnerInviteSelection;
+existingInviteEl("partnerExistingTeamSelect").onchange=clearExistingPartnerInviteLink;
+existingInviteEl("partnerExistingRole").onchange=clearExistingPartnerInviteLink;
+existingInviteEl("partnerExistingEmail").oninput=clearExistingPartnerInviteLink;
+existingInviteEl("partnerExistingAddTeam").onclick=async()=>{
+  const company=existingInviteSelected(),name=existingInviteEl("partnerExistingTeamName").value.trim();
+  if(!canHubInvitePartner()||!company?.active||!name){
+    existingInviteEl("partnerExistingStatus").textContent="承認済みの会社と追加する班名を確認してください。";
+    return;
+  }
+  const uid=currentUser.uid,button=existingInviteEl("partnerExistingAddTeam");
+  button.disabled=true;clearExistingPartnerInviteLink();
+  try{
+    await managePartnerWork({action:"hubAddTeam",partnerCompanyId:company.partnerCompanyId,name});
+    if(currentUser?.uid!==uid)throw Error("login_changed");
+    existingInviteEl("partnerExistingTeamName").value="";
+    await loadExistingPartnerInviteCompanies();
+  }catch{
+    existingInviteEl("partnerExistingStatus").textContent="班を追加できません。会社の承認状態と権限を確認してください。";
+  }finally{button.disabled=false;}
+};
+existingInviteEl("partnerExistingCreate").onclick=async()=>{
+  const company=existingInviteSelected(),uid=currentUser?.uid,
+    teamId=existingInviteEl("partnerExistingTeamSelect").value,
+    role=existingInviteEl("partnerExistingRole").value,
+    email=existingInviteEl("partnerExistingEmail").value.trim().toLowerCase(),
+    button=existingInviteEl("partnerExistingCreate");
+  if(!canHubInvitePartner()||!company?.active||
+     !company.teams.some(team=>team.id===teamId)||
+     !["leader","member"].includes(role)||
+     !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)){
+    existingInviteEl("partnerExistingStatus").textContent="会社・班・役割・メールアドレスを確認してください。";
+    return;
+  }
+  button.disabled=true;clearExistingPartnerInviteLink();
+  try{
+    const result=(await managePartnerWork({action:"hubCreateInvite",
+      partnerCompanyId:company.partnerCompanyId,teamId,role,email})).data;
+    if(currentUser?.uid!==uid||!canHubInvitePartner()||
+       existingInviteSelected()?.partnerCompanyId!==company.partnerCompanyId||
+       !/^[A-Za-z0-9_-]{43}$/.test(result?.token||""))
+      throw Error("invalid_invite_token");
+    const url=new URL("/partner-workspace.html",location.origin);
+    url.searchParams.set("invite",result.token);
+    existingInviteEl("partnerExistingLink").value=url.href;
+    existingInviteEl("partnerExistingResult").hidden=false;
+    existingInviteEl("partnerExistingStatus").textContent=
+      company.name+"の"+(role==="leader"?"リーダー":"メンバー")+
+      "招待リンクを作成しました。30分以内に本人へ送ってください。";
+  }catch{
+    existingInviteEl("partnerExistingStatus").textContent=
+      "招待リンクを作れません。協力店承認・配属班・本人のメールを確認してください。";
+  }finally{button.disabled=false;}
+};
+existingInviteEl("partnerExistingCopy").onclick=async()=>{
+  const input=existingInviteEl("partnerExistingLink");
+  if(!input.value)return;
+  try{
+    await navigator.clipboard.writeText(input.value);
+    existingInviteEl("partnerExistingStatus").textContent="招待リンクをコピーしました。";
+  }catch{
+    input.select();
+    existingInviteEl("partnerExistingStatus").textContent=
+      "リンクを選択しました。コピーして本人へ送ってください。";
+  }
+};
 
 copyInviteButton.onclick =
   async () => {
