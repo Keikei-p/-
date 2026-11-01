@@ -107,3 +107,15 @@ test("failed sign-in maintains account state and does not erase existing Firebas
  assert.match(html,/auth\/invalid-credential/);
  assert.match(html,/onAuthStateChanged\(auth,/);
 });
+
+test("existing invited accounts can request password reset without account recreation",()=>{
+ assert.match(html,/id="resetPassword"/);
+ assert.match(html,/sendPasswordResetEmail/);
+ assert.match(html,/sendPasswordResetEmail\(auth,email\)/);
+ assert.match(html,/\$\("resetPassword"\)\.addEventListener\("click"/);
+ assert.match(html,/メールアドレスが登録されている場合/);
+ assert.match(html,/以前の実績は削除されません/);
+ assert.match(html,/case "auth\/email-already-in-use"/);
+ assert.match(html,/signInWithEmailAndPassword\(auth,/);
+ assert.doesNotMatch(html,/deleteUser\(|\.delete\(auth\.currentUser\)/);
+});
