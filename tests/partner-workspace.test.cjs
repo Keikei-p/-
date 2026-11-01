@@ -33,13 +33,17 @@ class DB {
  async runTransaction(fn){
   const changes=[],tx={
     get:r=>r.get(),create:(r,d)=>changes.push(["create",r.path,clone(d)]),
-    update:(r,d)=>changes.push(["update",r.path,clone(d)]),
-    set:(r,d)=>changes.push(["set",r.path,clone(d)])
+    update:(r,d)=>changes.push(["update",r.path,clone(d)])
   };
   const result=await fn(tx);
   for(const [op,p] of changes){if(op==="create"&&this.store.has(p))throw Error("duplicate");
    if(op==="update"&&!this.store.has(p))throw Error("missing");}
-  for(const [op,p,d] of changes)this.store.set(p,op==="create"||op==="set"?d:{...this.store.get(p),...d});
+  for(const [op,p,d] of changes){
+   const next=op==="create"?d:{...this.store.get(p),...d};
+   for(const [key,value] of Object.entries(next))
+    if(value?.__deleteField===true)delete next[key];
+   this.store.set(p,next);
+  }
   return result;
  }
 }
@@ -63,7 +67,10 @@ function setup(){
   getUser:async uid=>({uid,disabled:false,emailVerified:true,email:uid+"@example.com"}),
   verifyIdToken:async token=>{const uid=token[0];return {uid,email:uid+"@example.com",email_verified:true};}
  });
- const Timestamp={fromMillis:ms=>({toMillis:()=>ms})},FieldValue={serverTimestamp:()=>({seconds:NOW/1000})};
+ const Timestamp={fromMillis:ms=>({toMillis:()=>ms})},FieldValue={
+  serverTimestamp:()=>({seconds:NOW/1000}),
+  delete:()=>({__deleteField:true})
+ };
  const api=makeWorkspace({db,getAuth,Timestamp,FieldValue,HttpsError:CallError,
   enabled:()=>true,now:()=>NOW});
  const req=(uid,data={})=>({auth:{uid,token:{email:uid+"@example.com",email_verified:true}},
@@ -140,7 +147,10 @@ test("no unauthenticated or disabled access, malformed count and finance fields 
 test("security invariants: only isolated partner collections; no destructive database methods",()=>{
  const fs=require("node:fs");
  const code=fs.readFileSync(require.resolve("../functions-partner-workspace/service.cjs"),"utf8");
- assert.doesNotMatch(code,/\.delete\s*\(/);
+ // Historical profile field cleanup is allowed ONLY after an immutable
+ // archive is written in the same Firestore transaction; no document delete.
+ assert.match(code,/tx\.create\(archivedRef/);
+ assert.doesNotMatch(code.replaceAll("FieldValue.delete()",""),/\.delete\s*\(/);
  assert.doesNotMatch(code,/\.collection\s*\(\s*["'](?:records|products|recordCorrections|revenueGoals)["']\s*\)/);
  assert.doesNotMatch(code,/\btx\.set\s*\(/);
  assert.match(code,/canViewRevenue:false,canViewUnitPrice:false/);
