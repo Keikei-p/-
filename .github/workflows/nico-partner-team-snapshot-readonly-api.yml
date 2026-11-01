@@ -44,7 +44,7 @@ jobs:
           index_sha="$(git hash-object functions-partner-workspace/index.js)"
           if [ "$index_sha" = "38da7e9174ffea7c406c92292dccfc651b565eb0" ]; then
             test "$(git hash-object functions-partner-workspace/service.cjs)" = "a23a950ba905ca7f73a8a160fb861c611ed45304"
-            test "$(git hash-object functions-partner-workspace/company-code-auth.cjs)" = "d1f26342bd37fd5149479a2626ba514f106e7b42"
+            test "$(git hash-object functions-partner-workspace/company-code-auth.cjs)" = "f7e5899cdb9e36da610846d787955b13c1e16e4b"
             node --test tests/partner-company-code-auth.test.cjs
           else
             test "$index_sha" = "a2bffd167b8804a0372c7a00465c04a63d96e919"
