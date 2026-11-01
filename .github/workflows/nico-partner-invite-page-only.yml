@@ -93,6 +93,13 @@ jobs:
             # historical Git blob match byte for byte. No unknown-page bypass.
             echo 'already_live=false' >> "$GITHUB_OUTPUT"
             echo 'PASS: exact archived current-live invitation snapshot verified against Git history'
+          elif [ "$(git hash-object "$RUNNER_TEMP/nico-live-invite.html")" = "33d92dfc057e70e9f51afdedc613454817ae0512" ] && \
+               git cat-file -e "33d92dfc057e70e9f51afdedc613454817ae0512^{blob}" && \
+               git cat-file blob "33d92dfc057e70e9f51afdedc613454817ae0512" | cmp -s - "$RUNNER_TEMP/nico-live-invite.html"; then
+            # Previous verified Firebase Hosting release run 41261107325.
+            # Do not trust only a hash: compare all publicly deployed bytes.
+            echo 'already_live=false' >> "$GITHUB_OUTPUT"
+            echo 'PASS: byte-identical previous published invitation verified'
           else
             # Public HTML only; log fingerprints, never bodies or user credentials.
             echo "LIVE_INVITE_BLOB=$(git hash-object "$RUNNER_TEMP/nico-live-invite.html")"
