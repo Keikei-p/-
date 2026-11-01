@@ -7,7 +7,15 @@
 const urls={
   invite:"https://nico-factory.web.app/partner-invite.html",
   home:"https://nico-factory.web.app/",
-  partnerForm:"https://nico-factory.web.app/partner-counts-v2.html",
+  partnerForm:"https://nico-factory.web.app/partner-counts.html",
+  workspace:"https://nico-factory.web.app/partner-workspace.html",
+  legacyPartnerForm:"https://nico-factory.web.app/partner-counts-v2.html",
+  workspaceView:"https://asia-northeast1-sales-management-cc116.cloudfunctions.net/getPartnerWorkspace",
+  workspaceManage:"https://asia-northeast1-sales-management-cc116.cloudfunctions.net/managePartnerWorkspace",
+  workspaceSave:"https://asia-northeast1-sales-management-cc116.cloudfunctions.net/submitPartnerWorkspaceCounts",
+  workspaceAccept:"https://asia-northeast1-sales-management-cc116.cloudfunctions.net/acceptPartnerWorkspaceInvite",
+  invitePreview:"https://asia-northeast1-sales-management-cc116.cloudfunctions.net/previewPartnerCompanyInvitation",
+  inviteAccept:"https://asia-northeast1-sales-management-cc116.cloudfunctions.net/acceptPartnerCompanyInvitation",
   workerHealth:"https://sales-finance-gateway.jyhokei0124.workers.dev/health",
   workerCatalog:"https://sales-finance-gateway.jyhokei0124.workers.dev/v1/partner-count-catalog",
   inviteCallable:"https://asia-northeast1-sales-management-cc116.cloudfunctions.net/createPartnerCompanyInvitation"
@@ -22,8 +30,10 @@ export async function probe(fetcher=fetch,timeoutMs=12000){
   const ctrl=new AbortController();
   const time=setTimeout(()=>ctrl.abort(),timeoutMs);
   try{
-   const isCallable=name==="inviteCallable";
-   // Callable POST contains an invalid/anonymous empty payload. It MUST fail.
+   const isCallable=["inviteCallable","invitePreview","inviteAccept",
+    "workspaceView","workspaceManage","workspaceSave","workspaceAccept"].includes(name);
+   // Anonymous empty callable request MUST fail. Never include user identity.
+   // No authenticated changes, no database updates, no secrets, no invites.
    const result=await fetcher(link,{
     method:isCallable?"POST":"GET",
     redirect:"error",signal:ctrl.signal,
@@ -38,14 +48,22 @@ export async function probe(fetcher=fetch,timeoutMs=12000){
   }finally{clearTimeout(time);}
  }
  const inviteReady=findings.home.status===200&&findings.invite.status===200;
- const partnerUiReady=findings.partnerForm.status===200;
+ const partnerUiReady=findings.partnerForm.status===200&&findings.workspace.status===200;
  const countBackendReady=findings.workerHealth.status===200;
  const unauthenticatedApiSafe=[401,403,404,503].includes(findings.workerCatalog.status);
  const inviteAuthSafe=[401,403].includes(findings.inviteCallable.status);
- // Healthy homepage and invite do NOT imply count registration is enabled.
+ const callableNames=["inviteCallable","invitePreview","inviteAccept",
+   "workspaceView","workspaceManage","workspaceSave","workspaceAccept"];
+ const callableAnonymousRefusal=Object.fromEntries(callableNames.map(name=>
+   [name,[401,403].includes(findings[name].status)]));
+ const allCallablesAvailableAndClosed=Object.values(callableAnonymousRefusal).every(Boolean);
+ // This does not prove authenticated partner registration, permissions or finance safety.
  return {project:"sales-management-cc116",canonicalHost:"nico-factory.web.app",
   inviteReady,partnerUiReady,countBackendReady,unauthenticatedApiSafe,
-  inviteAuthSafe,productionCountReleaseApproved:false,
+  inviteAuthSafe,allCallablesAvailableAndClosed,callableAnonymousRefusal,
+  legacyPartnerPageStatus:findings.legacyPartnerForm.status,
+  productionCountReleaseApproved:false,
+  authenticatedEndToEndVerified:false,
   findings};
 }
 if(process.argv[1]&&import.meta.url===new URL("file://"+process.argv[1]).href){
@@ -53,7 +71,8 @@ if(process.argv[1]&&import.meta.url===new URL("file://"+process.argv[1]).href){
  console.log(JSON.stringify(x,null,2));
  // Fail on missing live security refusal or web availability, not on a count
  // UI intentionally withheld. This is a read-only audit, not a release gate.
- if(!x.inviteReady||!x.inviteAuthSafe||
+ if(!x.inviteReady||!x.partnerUiReady||!x.inviteAuthSafe||
+    !x.allCallablesAvailableAndClosed||
     (x.findings.workerCatalog.reachable&&!x.unauthenticatedApiSafe))
    process.exitCode=1;
 }
