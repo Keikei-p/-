@@ -4,6 +4,19 @@ import {readFileSync} from "node:fs";
 const html=readFileSync(new URL("../index.html",import.meta.url),"utf8");
 const menu=html.slice(html.indexOf('id="managementMenuPanel"'),html.indexOf("</div>\n\n        </div>\n\n      </div>",html.indexOf('id="managementMenuPanel"')));
 const source=html.slice(html.indexOf("// A small owner-only company view"),html.indexOf("quickOwnerButton.onclick =",html.indexOf("// A small owner-only company view")));
+test("native partner members get the original individual ranking without sales prices",()=>{
+ const start=html.indexOf("function renderIndividualRanking("),end=html.indexOf("/* =====================================================\n   商材別件数ランキング",start);
+ assert.ok(start>=0&&end>start);
+ const rank=html.slice(start,end);
+ assert.match(rank,/const nativePartnerRankOnly=!canCurrentUserViewRevenue\(\)&&isNativePartnerMember\(\)/);
+ assert.match(rank,/!canCurrentUserViewRevenue\(\) && !nativePartnerRankOnly/);
+ assert.match(rank,/const revenueDiff = nativePartnerRankOnly \? 0/);
+ assert.match(rank,/if\(!nativePartnerRankOnly\)\{/);
+ assert.match(rank,/順位のみ/);
+ assert.match(html,/individualRankingContent\.hidden =\s*!nativePartnerRankOnly/);
+ assert.match(html,/individualRankingToggle\.style\.display =\s*\(allowed\|\|nativePartnerRankOnly\)/);
+ assert.match(html,/t\.name\.startsWith\("協力店｜"\)/);
+});
 test("native partner invitation creates regular teams and leader invitations atomically",()=>{
  assert.match(html,/id="nativePartnerCompany"/);
  assert.match(html,/id="nativePartnerEmail"/);
