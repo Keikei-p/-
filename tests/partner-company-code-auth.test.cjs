@@ -198,10 +198,11 @@ test("company-code owner manages two teams and invites a separate leader who can
  assert.equal(ownerSummary.counts.SBMNP,3);
  const leaderView=await f.workspace.view(f.leaderReq({date}));
  assert.equal(leaderView.role,"leader");
- assert.equal(leaderView.records.length,1,"leader cannot read another team's staff records");
- assert.equal(leaderView.records[0].staffId,created);
- await assert.rejects(f.workspace.manage(f.leaderReq({
+ assert.equal(leaderView.records.length,2,"partner leader manages both teams within the same company");
+ assert.equal(leaderView.records.reduce((sum,row)=>sum+row.totalCount,0),5);
+ const nextInvite=await f.workspace.manage(f.leaderReq({
   action:"createInvite",email:"another@example.com",teamId:first,role:"leader"
- })),e=>e.code==="invalid-argument");
+ }));
+ assert.equal(nextInvite.token.length,43);
  assert.equal(f.db.store.get("records/historical").totalRevenue,250000);
 });
