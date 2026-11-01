@@ -165,3 +165,22 @@ test("count-only partner login does not require direct partner company reads",()
  assert.match(login,/await openSameAppPartnerWorkspace\(user\)/);
  assert.match(login,/showLegacyFinanceEntryBlocked\("blocked"\)/);
 });
+
+
+test("existing member tab exposes owner-scoped partner groups without monetary originals",()=>{
+ const html=readFileSync(new URL("../index.html",import.meta.url),"utf8");
+ assert.match(html,/id="memberManagementContent"[\s\S]*id="partnerMemberCompanySection"/);
+ const a=html.indexOf("// Read-only owner roster inside");
+ const b=html.indexOf("function renderMembers()",a);
+ assert.ok(a>=0&&b>a);
+ const roster=html.slice(a,b);
+ assert.match(roster,/!canLoadPartnerRanking\(\)/);
+ assert.match(roster,/await readPartnerWorkDay\(\{date:getTodayString\(\)\}\)/);
+ assert.match(roster,/result\?\.role!=="hub"/);
+ assert.match(roster,/members\)/);
+ assert.match(roster,/company\.name|item\.name/);
+ for(const f of ["getDocs(", "setDoc(", "updateDoc(", "writeBatch(", "collection(db", "revenuePerUnit", "unitPrice"])
+  assert.equal(roster.includes(f),false,"forbidden finance/read-write access "+f);
+ assert.match(html,/function canCurrentUserViewRevenue\(\)/);
+ assert.match(html,/function canCurrentUserViewUnitPrice\(\)/);
+});
