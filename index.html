@@ -9300,17 +9300,20 @@ async function loadPartnerCompanyList(){
       const status=document.createElement("p");
       status.style.cssText="margin:8px 0;color:var(--sub);font-size:13px;";
       const quickApproved=quickApproval?.approved===true;
-      status.textContent=company.active?
+      const workspaceStatus=company.active?
         (report?"班管理：報告済み｜"+report.totalCount+"件":
           "班管理：この日の件数は未報告・未確認"):
-        quickApproved?
-          (quickReport?"件数専用：報告済み｜"+quickReport.totalCount+"件":
-            "件数専用：利用承認済み｜この日は未報告・未確認"):
-        quickUnavailable?
-          "班管理は未承認｜件数専用の状態を取得できません":
+        "班管理：未承認";
+      const quickStatus=quickUnavailable?
+        "件数専用の状態を取得できません（未確認）":
         quickData===null?
-          "班管理は未承認｜件数専用の状態は過去31日より前のため未確認":
-          "班管理・件数専用とも未承認";
+          "件数専用：過去31日より前のため未確認":
+          quickApproved?
+            (quickReport?"件数専用：報告済み｜"+quickReport.totalCount+"件":
+              "件数専用：利用承認済み｜この日は未報告・未確認"):
+          quickApproval?"件数専用：未承認":
+            "件数専用：承認情報が見つかりません（未確認）";
+      status.textContent=workspaceStatus+"｜"+quickStatus;
       card.append(status);
       // Two independent reporting ledgers: show both when present, never sum
       // them, and never treat a missing report as a saved zero.
