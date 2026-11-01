@@ -143,7 +143,9 @@ const validToken=/^[A-Za-z0-9_-]{43}$/.test(token);
 const busy=async(button,task)=>{
  button.disabled=true;try{await task();}catch(error){
   console.error("Partner invitation operation failed",error?.code||"unknown");
-  $("notice").textContent=(error?.code==="functions/unavailable"?
+  $("notice").textContent=(error?.code==="auth/email-already-in-use"?
+   "このメールアドレスは登録済みです。アカウント作成ではなくログインを利用してください。":
+   error?.code==="functions/unavailable"?
    "招待サービスはまだ有効になっていません。管理者へ確認してください。":
    "操作を完了できません。メール・招待期限・ログイン状態を確認してください。");
  }finally{button.disabled=false;}
