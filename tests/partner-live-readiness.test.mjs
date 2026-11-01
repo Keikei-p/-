@@ -73,7 +73,7 @@ test("anonymous worker catalog exposure is detected separately",async()=>{
 });
 
 test("live company-code UI and four backend endpoints require positive independent evidence",async()=>{
- const x=fake({codeIssue:401,codeActivate:400,codeLogin:400,codeLogout:401});
+ const x=fake({issuePartnerCompanyCode:401,activatePartnerCompanyCode:400,loginPartnerCompanyCode:400,logoutPartnerCompanyCode:401});
  const actual=await probe(x.fetcher);
  assert.equal(actual.companyCodeUiLive,true);
  assert.equal(actual.companyCodeEndpointsRespond,true);
@@ -81,7 +81,7 @@ test("live company-code UI and four backend endpoints require positive independe
  assert.equal(actual.companyCodeAuthenticatedRealUserVerified,false);
  assert.deepEqual(Object.keys(actual.codeEndpointStatus),
   ["codeIssue","codeActivate","codeLogin","codeLogout"]);
- const missingApi=await probe(fake({codeLogin:404}).fetcher);
+ const missingApi=await probe(fake({loginPartnerCompanyCode:404}).fetcher);
  assert.equal(missingApi.companyCodeEndpointsRespond,false);
  assert.equal(missingApi.companyCodePublicSurfaceReady,false);
  const missingUI=await probe(fake({workspaceHtml:"<h1>legacy workspace</h1>"}).fetcher);
@@ -89,7 +89,7 @@ test("live company-code UI and four backend endpoints require positive independe
  assert.equal(missingUI.companyCodePublicSurfaceReady,false);
 });
 test("even published company-code endpoints never prove login or saved counts by themselves",async()=>{
- const x=fake({"codeIssue":401,"codeActivate":400,"codeLogin":400,"codeLogout":401});
+ const x=fake({"issuePartnerCompanyCode":401,"activatePartnerCompanyCode":400,"loginPartnerCompanyCode":400,"logoutPartnerCompanyCode":401});
  const result=await probe(x.fetcher);
  assert.equal(result.companyCodePublicSurfaceReady,true);
  assert.equal(result.authenticatedEndToEndVerified,false);
