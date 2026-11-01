@@ -117,13 +117,18 @@ export function previewLiveRules(live,reviewed){
   const helperText=reviewed.slice(approvedHelper.start,approvedHelper.end);
   if(!helperText.includes("effectiveMasterUid(companyId)"))
     stop("REVIEWED_REVENUE_HELPER_NOT_APPROVED");
+  // Preserve reviewed annotation bytes; never relax exact live review parity.
+  const helperAnnotation="    // Optimized grant for paths that have already checked isCompanyMember().\n"+
+    "    // Preserve the historical owner, explicit-revenue and master grants.\n";
+  if(!reviewed.slice(0,approvedHelper.start).endsWith(helperAnnotation))
+    stop("REVIEWED_REVENUE_ANNOTATION_CHANGED");
   if(candidate.includes("function "+helperName+"(")){
     const localHelper=functionBlock(candidate,helperName);
     if(candidate.slice(localHelper.start,localHelper.end)!==helperText)
       stop("UNEXPECTED_EXISTING_REVENUE_HELPER");
   }else{
     const insertion=functionBlock(candidate,"canViewRevenue");
-    candidate=candidate.slice(0,insertion.start)+helperText+"\n\n"+
+    candidate=candidate.slice(0,insertion.start)+helperAnnotation+helperText+"\n\n"+
       candidate.slice(insertion.start);
     changed.push("add:"+helperName);
   }
@@ -165,6 +170,9 @@ export function previewLiveRules(live,reviewed){
     const approved=reviewed.slice(...(()=>{const s=collectionBlock(reviewed,name);return [s.start,s.end]})());
     if(!/allow[ \t]+delete[ \t]*:[ \t]*if[ \t]+false[ \t]*;/.test(approved))
       stop("REVIEWED_RETENTION_MISSING_"+name);
+    const retentionComment="// Historical business documents are retained: client hard-delete is forbidden.";
+    if(!approved.includes("      "+retentionComment+"\n      allow delete: if false;"))
+      stop("REVIEWED_RETENTION_ANNOTATION_CHANGED_"+name);
     const span=collectionBlock(candidate,name);
     const original=candidate.slice(span.start,span.end);
     // "allow write" or combined delete grants would override an inserted deny.
@@ -174,8 +182,10 @@ export function previewLiveRules(live,reviewed){
     if(deleted.length!==1)stop("EXPECTED_SINGLE_DELETE_RULE_"+name);
     const one=deleted[0],before=one[0];
     const indent=(before.match(/^[ \t]*/)||[""])[0];
-    const after=indent+"allow delete: if false;";
-    if(before!==after){
+    const annotation=indent+retentionComment+"\n";
+    const hasAnnotation=original.slice(0,one.index).endsWith(annotation);
+    const after=(hasAnnotation?"":annotation)+indent+"allow delete: if false;";
+    if(before!==after || !hasAnnotation){
       const adjusted=original.slice(0,one.index)+after+original.slice(one.index+before.length);
       candidate=replaceBlock(candidate,span,adjusted);
       changed.push("deny-delete:"+name);
