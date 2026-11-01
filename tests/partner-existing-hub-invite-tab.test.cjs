@@ -17,7 +17,9 @@ function harness(companies,{owner=true,rejectRead=false,rejectManage=false}={}){
  function element(id){
   if(!elements.has(id)){
    const node={
-    id,value:"",hidden:false,disabled:false,textContent:"",
+    id,value:id==="partnerExistingRole"?"leader":"",
+    hidden:["partnerExistingFields","partnerExistingControls","partnerExistingResult"].includes(id),
+    disabled:false,textContent:"",
     children:[],
     replaceChildren(){this.children=[];this.value="";},
     append(child){this.children.push(child);if(!this.value)this.value=child.value;},
