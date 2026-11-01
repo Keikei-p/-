@@ -204,7 +204,7 @@ td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 </main>
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
-import {getAuth,onAuthStateChanged,signInWithEmailAndPassword,signInWithCustomToken,getIdTokenResult,createUserWithEmailAndPassword,signOut,sendEmailVerification,sendPasswordResetEmail,setPersistence,browserSessionPersistence} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+import {getAuth,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,sendEmailVerification,sendPasswordResetEmail,setPersistence,browserSessionPersistence} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js";
 const app=initializeApp({apiKey:"AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
 authDomain:"sales-management-cc116.firebaseapp.com",projectId:"sales-management-cc116",
@@ -217,7 +217,8 @@ if(workspaceCompanyId&&!/^[A-Za-z0-9_-]{1,128}$/.test(workspaceCompanyId))
  workspaceCompanyId="";
 const call=name=>{
  const fn=httpsCallable(functions,name);
- return data=>fn({...data,...(workspaceCompanyId?{workspaceCompanyId}:{})});
+ return data=>fn({...data,...(workspaceCompanyId?{workspaceCompanyId}:{}),
+  ...(activeCodeSession?{codeSessionToken:activeCodeSession}:{})});
 };
 const get=call("getPartnerWorkspace"),manage=call("managePartnerWorkspace"),
  accept=call("acceptPartnerWorkspaceInvite"),save=call("submitPartnerWorkspaceCounts"),
@@ -232,6 +233,13 @@ const dateParts=Object.fromEntries(new Intl.DateTimeFormat("en-US",
 .formatToParts(new Date()).map(p=>[p.type,p.value]));
 $("date").value=[dateParts.year,dateParts.month,dateParts.day].join("-");
 let data=null,loading=false,nonce=0,activeWorkspaceTab="Dashboard",companyCodeSession=false;
+let activeCodeSession="";
+try{activeCodeSession=sessionStorage.getItem("nicoPartnerCodeSession")||""}catch{}
+// Server validates every request; a stored token alone grants no client-side rights.
+const clearCompanySession=()=>{
+ activeCodeSession="";companyCodeSession=false;
+ try{sessionStorage.removeItem("nicoPartnerCodeSession")}catch{}
+};
 let countPeriod="day",countLoadId=0,countExportRows=null;
 const countDayCache=new Map(),countKeys=KEYS.slice();
 const notice=(s,bad=false)=>{$("notice").textContent=s;$("notice").className="notice"+(bad?" error":"")};
@@ -848,11 +856,11 @@ $("hubCompanySelect").onchange=renderHubCompanyDetail;
 $("hubInviteCompanySelect").onchange=()=>{$("hubInviteOut").hidden=true;$("hubInviteUrl").value="";renderHubInvitePanel()};
 $("hubInviteTeamSelect").onchange=()=>{$("hubInviteOut").hidden=true;$("hubInviteUrl").value=""};
 $("staffSelect").onchange=renderSelected;
-async function refresh(){if(!auth.currentUser||(!auth.currentUser.emailVerified&&!companyCodeSession))return;
+async function refresh(){if(!activeCodeSession&&(!auth.currentUser||!auth.currentUser.emailVerified))return;
  const current=++nonce;loading=true;$("save").disabled=true;try{
  const res=(await get({date:$("date").value})).data;if(current!==nonce)return;
  if(!res||!Array.isArray(res.categories)||res.categories.join("|")!==KEYS.join("|"))throw Error("schema");
- data=res;countDayCache.set(auth.currentUser.uid+"|"+res.date,{savedAt:Date.now(),response:res});draw();notice("最新の件数を読み込みました。");
+ data=res;countDayCache.set((activeCodeSession?"code-session":"email-"+auth.currentUser.uid)+"|"+res.date,{savedAt:Date.now(),response:res});draw();notice("最新の件数を読み込みました。");
  }catch(e){
   if(current!==nonce)return;
   data=null;$("appBox").hidden=true;
