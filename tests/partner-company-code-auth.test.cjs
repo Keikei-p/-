@@ -38,7 +38,7 @@ function fixture(){
  db.seed("users/h",{uid:"h",companyId:"hub",active:true,companyRole:"owner",accessKind:"internal"});
  db.seed("companies/hub/members/h",{uid:"h",companyId:"hub",active:true,companyRole:"owner",accessKind:"internal"});
  db.seed("records/historical",{uid:"retired",companyId:"hub",totalRevenue:250000,unitPrice:12000});
- let principal="",companyId="";
+ let principal="",companyId="",codeSessionToken="";
  const getAuth=()=>({
   getUser:async uid=>uid==="h"?{uid,disabled:false,emailVerified:true,email:"owner@example.com"}:
    {uid,disabled:false,emailVerified:false},
@@ -53,9 +53,9 @@ function fixture(){
  const workspace=makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError:CallError,enabled:()=>true,now:()=>NOW});
  const hubReq=data=>({auth:{uid:"h",token:{email:"owner@example.com",email_verified:true}},
  rawRequest:{headers:{authorization:"Bearer "+"O".repeat(30)}},data});
- const codeReq=data=>({auth:{uid:principal,token:{partnerCodeAuth:true,partnerCodeCompanyId:companyId,partnerCodeVersion:1}},
- rawRequest:{headers:{authorization:"Bearer "+"P".repeat(30)}},data});
- return {db,service,workspace,tokens,hubReq,codeReq,setIdentity:(uid,cid)=>{principal=uid;companyId=cid}};
+ const codeReq=data=>({auth:null,rawRequest:{headers:{}},
+  data:{...data,codeSessionToken}});
+ return {db,service,workspace,tokens,hubReq,codeReq,setIdentity:(uid,cid)=>{principal=uid;companyId=cid},setSession:v=>{codeSessionToken=v}};
 }
 test("random unique server-generated company codes, strong minimum passwords",()=>{
  const a=newCode(),b=newCode();
@@ -87,9 +87,9 @@ test("company enters server-issued code, chooses password, can save counts witho
  await assert.rejects(f.service.login({data:{companyCode:invite.companyCode,password:"WrongPassword#2026"}}),e=>e.code==="permission-denied");
  assert.equal(f.tokens.length,0);
  const login=await f.service.login({data:{companyCode:invite.companyCode,password:"LongSharedPassword#2026"}});
- assert.equal(typeof login.customToken,"string");
- assert.equal(f.tokens.length,1);
- assert.equal(f.tokens[0].claims.partnerCodeAuth,true);
+ assert.match(login.sessionToken,/^[A-Za-z0-9_-]{43}$/);
+ assert.equal(f.tokens.length,0,"company-only login never creates Firebase Auth tokens");
+ f.setSession(login.sessionToken);
  const team=(await f.workspace.manage(f.codeReq({action:"addTeam",name:"第1班"}))).teamId;
  const staffId=(await f.workspace.manage(f.codeReq({action:"addManaged",teamId:team,name:"協力店スタッフ"}))).staffId;
  const counts=Object.fromEntries(KEYS.map(x=>[x,0]));counts.NURO=3;
@@ -102,4 +102,7 @@ test("company enters server-issued code, chooses password, can save counts witho
  assert.equal(report.totalCount,3);
  assert.deepEqual(f.db.store.get("records/historical"),before);
  assert.equal(JSON.stringify(view).includes("unitPrice"),false);
+ await f.service.logout({data:{codeSessionToken:login.sessionToken}});
+ await assert.rejects(f.workspace.view(f.codeReq({date:day})),e=>e.code==="unauthenticated");
+ assert.deepEqual(f.db.store.get("records/historical"),before);
 });
