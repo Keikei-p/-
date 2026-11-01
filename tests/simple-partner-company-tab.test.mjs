@@ -39,3 +39,18 @@ test("original finance capable UI retains partner exclusion and original owner d
  assert.match(html,/function persistDailyRecord/);
  assert.match(html,/currentCatalogRevenuePerUnit/);
 });
+
+test("owner company list handles approved quick-count partners without unsafe grant promotion",()=>{
+ assert.match(source,/await readPartnerQuickDay\(\{date\}\)/);
+ assert.match(source,/response\?\.role!=="hub"/);
+ assert.match(source,/quickApproval\?\.approved===true/);
+ assert.match(source,/件数専用：利用承認済み/);
+ assert.match(source,/件数専用の状態を取得できません/);
+ assert.match(source,/quickData===null/);
+ assert.match(source,/二つの入力経路は別管理です。二重計上を防ぐため合算しません/);
+ assert.match(source,/appendReport\(report,"班管理の報告"\)/);
+ assert.match(source,/appendReport\(quickReport,"件数専用の報告"\)/);
+ assert.match(source,/if\(!stillOwner\(\)\)return;/);
+ for(const forbidden of ["setDoc(", "updateDoc(", "deleteDoc(", "getDocs(", ".innerHTML", "revenuePerUnit", "unitPrice", "totalRevenue"])
+  assert(!source.includes(forbidden),forbidden+" must not appear in count-only partner overview");
+});
