@@ -68,14 +68,25 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  async function actor(request){
   if(enabled()!==true)fail("unavailable");
   const uid=request?.auth?.uid,email=clean(request?.auth?.token?.email).toLowerCase();
-  if(!ID.test(uid||"")||!EMAIL.test(email)||request?.auth?.token?.email_verified!==true)fail("unauthenticated");
+  if(!ID.test(uid||""))fail("unauthenticated");
   const bearer=request?.rawRequest?.headers?.authorization?.match(/^Bearer ([A-Za-z0-9._-]{20,12000})$/i)?.[1];
   if(!bearer)fail("unauthenticated");
   let a,t;
   try{[a,t]=await Promise.all([getAuth().getUser(uid),getAuth().verifyIdToken(bearer,true)]);}
   catch{fail("unauthenticated");}
-  if(!a||a.disabled===true||a.emailVerified!==true||
-     clean(a.email).toLowerCase()!==email||t?.uid!==uid||
+  if(!a||a.disabled===true||t?.uid!==uid)fail("unauthenticated");
+  // Company code identities are allowed ONLY with server-minted custom claims.
+  // They never qualify for direct Firestore finance access (no verified email).
+  if(request.auth?.token?.partnerCodeAuth===true){
+   const companyId=request.auth?.token?.partnerCodeCompanyId;
+   const version=request.auth?.token?.partnerCodeVersion;
+   if(!ID.test(companyId||"")||!Number.isSafeInteger(version)||version<1||
+     t.partnerCodeAuth!==true||t.partnerCodeCompanyId!==companyId||
+     t.partnerCodeVersion!==version||a.emailVerified===true)fail("unauthenticated");
+   return {uid,email:"",companyId,codeAuth:true};
+  }
+  if(!EMAIL.test(email)||request.auth?.token?.email_verified!==true||
+     a.emailVerified!==true||clean(a.email).toLowerCase()!==email||
      t.email_verified!==true||clean(t.email).toLowerCase()!==email)fail("unauthenticated");
   return {uid,email};
  }
