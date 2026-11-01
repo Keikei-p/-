@@ -94,3 +94,18 @@ test("owner can approve only the isolated count grant in the existing partner ta
  assert.match(source,/await loadPartnerCompanyList\(\)/);
  assert.doesNotMatch(source,/partnerRelations.*\.update\(|setDoc\(|updateDoc\(|deleteDoc\(/);
 });
+
+test("member management has grouped partner companies with existing authorized owner API",()=>{
+ assert.match(html,/id="memberManagementContent"[\s\S]*id="partnerMemberCompanySection"/);
+ assert.match(html,/id="partnerMemberCompanyList"/);
+ assert.match(html,/id="partnerMemberCompanyRefresh"/);
+ assert.match(html,/partnerMemberSection\.hidden=!canLoadPartnerRanking\(\)/);
+ const roster=html.slice(html.indexOf("// Read-only owner roster inside"),html.indexOf("function renderMembers()",html.indexOf("// Read-only owner roster inside")));
+ assert.match(roster,/readPartnerWorkDay\(\{date:getTodayString\(\)\}\)/);
+ assert.match(roster,/result\?\.role!=="hub"/);
+ assert.match(roster,/Array\.isArray\(result\.registeredCompanies\)/);
+ assert.match(roster,/members\)/);
+ assert.match(roster,/role==="leader"\?"リーダー":"メンバー"/);
+ assert.doesNotMatch(roster,/\b(?:getDocs|setDoc|updateDoc|deleteDoc|writeBatch)\s*\(/);
+ assert.match(roster,/別会社の氏名は現在のAPIから取得できません/);
+});
