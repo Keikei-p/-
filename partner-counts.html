@@ -12,6 +12,15 @@
 <section id="approvalSection" hidden><h2>招待した協力店の件数利用を承認</h2>
 <p class="muted">会社招待を承諾した協力店に、件数の入力・自社への共有だけを許可します。売上、単価、既存アプリ、商材管理の権限には影響しません。解除もここからできます。</p>
 <div id="approvalRows"></div><p id="approvalNote" class="muted"></p></section>
+<section id="jointRankSection" hidden>
+ <h2>🏆 自社・協力店 合同件数ランキング</h2>
+ <p class="muted">日別・件数専用。個人は順位のみ表示し、件数・売上・単価は表示しません。簡易会社報告から個人順位を推測しません。</p>
+ <div class="row"><button id="jointRankReload" type="button" class="secondary">合同ランキングを更新</button></div>
+ <p id="jointRankStatus" class="muted" role="status" aria-live="polite"></p>
+ <h3>🏅 個人順位（件数非表示）</h3><div class="scroll"><table><thead><tr><th>順位</th><th>所属</th><th>表示名</th></tr></thead><tbody id="jointIndividuals"></tbody></table></div>
+ <h3>📦 商材別（自社＋協力店）</h3><div class="scroll"><table><thead><tr><th>商材</th><th>合計件数</th></tr></thead><tbody id="jointProducts"></tbody></table></div>
+ <h3>👥 班・協力店別</h3><div class="scroll"><table><thead><tr><th>班・会社</th><th>件数</th></tr></thead><tbody id="jointTeams"></tbody></table></div>
+</section>
 </main>
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
@@ -23,6 +32,7 @@ const auth=getAuth(app),functions=getFunctions(app,"asia-northeast1");
 const readCounts=httpsCallable(functions,"getPartnerQuickCounts");
 const submitCounts=httpsCallable(functions,"submitPartnerQuickCounts");
 const approveCounts=httpsCallable(functions,"approvePartnerQuickCounts");
+const readJointRanking=httpsCallable(functions,"getPartnerJointDailyRanking");
 const $=id=>document.getElementById(id);
 let current=null,version=null,busy=false,epoch=0;
 const parts=Object.fromEntries(new Intl.DateTimeFormat("en-US",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date()).map(x=>[x.type,x.value]));
@@ -33,7 +43,7 @@ for(const name of CATEGORIES){const d=document.createElement("div");d.className=
 function updateTotal(){let total=0;for(const input of grid.querySelectorAll("input")){const n=Number(input.value);if(Number.isSafeInteger(n)&&n>=0&&n<=9999)total+=n;}$("total").textContent=total+" 件";}
 function values(){const data={};for(const input of grid.querySelectorAll("input")){const value=input.value.trim();if(!/^(?:0|[1-9]\d{0,3})$/.test(value))throw Error("件数は0〜9999の整数で入力してください。");data[input.dataset.category]=Number(value)}return data;}
 function lock(on){busy=on;$("save").disabled=on||version===null;$("reload").disabled=on;$("date").disabled=on;for(const input of grid.querySelectorAll("input"))input.disabled=on;}
-function hide(){current=null;version=null;$("loginSection").hidden=false;$("workSection").hidden=true;$("reportSection").hidden=true;$("ownerSection").hidden=true;$("approvalSection").hidden=true;$("save").disabled=true;}
+function hide(){current=null;version=null;$("loginSection").hidden=false;$("workSection").hidden=true;$("reportSection").hidden=true;$("ownerSection").hidden=true;$("approvalSection").hidden=true;$("jointRankSection").hidden=true;$("save").disabled=true;}
 async function refresh(){if(!auth.currentUser)return;const id=++epoch;version=null;lock(true);try{const date=$("date").value;const {data}=await readCounts({date});if(id!==epoch)return;if(data?.role==="partner"){
  current="partner";version=data.report?.version??0;const counts=data.report?.counts||{};
  for(const input of grid.querySelectorAll("input"))input.value=String(counts[input.dataset.category]??0);
@@ -75,8 +85,45 @@ async function refresh(){if(!auth.currentUser)return;const id=++epoch;version=nu
   "承認済みの協力店は専用画面で件数を登録できます。";
  }else throw Error("unexpected_view");
  $("loginSection").hidden=true;$("workSection").hidden=false;
+ $("jointRankSection").hidden=false;
+ void showJointRanking(date,id);
  text("最新の報告を確認しました。");
  }catch{if(id===epoch){$("save").disabled=true;text("認証・会社権限または接続を確認できませんでした。保存は実行していません。",true)}}finally{if(id===epoch)lock(false)}}
+function fillJointTable(id,rows,fields){
+ const body=$(id);body.replaceChildren();
+ for(const item of rows){
+  const tr=document.createElement("tr");
+  for(const key of fields){
+   const td=document.createElement("td");
+   td.textContent=String(item?.[key]??"");
+   tr.appendChild(td);
+  }
+  body.appendChild(tr);
+ }
+}
+async function showJointRanking(date,session){
+ $("jointRankStatus").textContent="合同件数を照合中…";
+ for(const id of ["jointIndividuals","jointProducts","jointTeams"])$(id).replaceChildren();
+ try{
+  const result=(await readJointRanking({date})).data;
+  if(session!==epoch||$("date").value!==date||!auth.currentUser)return;
+  if(!result||result.date!==date||result.period!=="day"||
+     !Array.isArray(result.individual)||!Array.isArray(result.products)||
+     !Array.isArray(result.teams))throw Error("unverified_rank");
+  fillJointTable("jointIndividuals",result.individual,["rank","company","name"]);
+  fillJointTable("jointProducts",result.products,["name","count"]);
+  const teamRows=result.teams.map(x=>({name:x.company+"｜"+x.name,count:x.count}));
+  fillJointTable("jointTeams",teamRows,["name","count"]);
+  $("jointRankStatus").textContent=result.complete?
+   "件数の照合が完了しました。会社単位の簡易報告は個人順位に含みません。":
+   "一部の自社商材が未分類です。個人・商材の完全な順位として扱わないでください。";
+ }catch{
+  if(session===epoch)$("jointRankStatus").textContent=
+   "合同ランキングを照合できませんでした。件数入力・保存は引き続き使えます。";
+ }
+}
+$("jointRankReload").addEventListener("click",()=>showJointRanking($("date").value,epoch));
+
 $("date").addEventListener("change",()=>{version=null;$("save").disabled=true;refresh()});
 $("reload").addEventListener("click",()=>refresh());
 $("save").addEventListener("click",async()=>{if(current!=="partner"||busy||version===null)return;let counts;try{counts=values()}catch(e){text(e.message,true);return}const day=$("date").value;lock(true);try{const {data}=await submitCounts({date:day,counts,expectedVersion:version});version=null;const check=(await readCounts({date:day})).data;
