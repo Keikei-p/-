@@ -46,7 +46,11 @@ function makeCompanyCodeAuth({db,getAuth,FieldValue,Timestamp,HttpsError,enabled
   if(partnerId&&!ID.test(partnerId)||!partnerId&&
      (companyName.length<2||companyName.length>80))fail("invalid-argument");
   if(partnerId){
-   const [cs,rs]=await Promise.all([doc("companies",partnerId).get(),doc("partnerRelations",partnerId).get()]);
+   const [cs,rs,cred]=await Promise.all([
+    doc("companies",partnerId).get(),doc("partnerRelations",partnerId).get(),
+    doc("partnerCodeCredentials",partnerId).get()
+   ]);
+   if(cred.exists)fail("already-exists");
    const c=cs.data()||{},rel=rs.data()||{};
    if(!cs.exists||!rs.exists||c.companyKind!=="partner"||c.active!==true||
      c.hubCompanyId!==owner.hub||rel.partnerCompanyId!==partnerId||
