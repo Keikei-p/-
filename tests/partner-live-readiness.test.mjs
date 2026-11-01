@@ -104,3 +104,27 @@ test("even published company-code endpoints never prove login or saved counts by
   assert.equal(item.opts.headers.Authorization,undefined);
  }
 });
+
+test("read-only status diagnostics separate disabled, missing, and inconclusive anonymous results",async()=>{
+ const stopped=await probe(fake({
+  createPartnerCompanyInvitation:503,
+  previewPartnerCompanyInvitation:404,
+  acceptPartnerCompanyInvitation:403,
+  getPartnerWorkspace:401
+ }).fetcher);
+ assert.equal(stopped.partnerCallableDiagnostics.inviteCallable.diagnosis,
+   "FUNCTION_DISABLED_OR_UNAVAILABLE");
+ assert.equal(stopped.partnerCallableDiagnostics.invitePreview.diagnosis,
+   "FUNCTION_NOT_FOUND");
+ assert.equal(stopped.partnerCallableDiagnostics.inviteAccept.diagnosis,
+   "DENIED_OR_IAM_UNVERIFIED");
+ assert.equal(stopped.partnerCallableDiagnostics.workspaceView.diagnosis,
+   "AUTH_REQUIRED");
+ assert(stopped.partnerBlockingFindings.includes("inviteCallable:FUNCTION_DISABLED_OR_UNAVAILABLE"));
+ assert(stopped.partnerBlockingFindings.includes("invitePreview:FUNCTION_NOT_FOUND"));
+ assert(!stopped.partnerBlockingFindings.some(v=>v.startsWith("inviteAccept:")));
+ assert.equal(stopped.authenticatedEndToEndVerified,false);
+ assert.equal(stopped.productionCountReleaseApproved,false);
+ const exposed=await probe(fake({createPartnerCompanyInvitation:200}).fetcher);
+ assert(exposed.partnerBlockingFindings.includes("inviteCallable:UNEXPECTED_ANONYMOUS_SUCCESS"));
+});
