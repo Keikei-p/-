@@ -88,8 +88,11 @@ test("recoverable partner login keeps original Firebase account, offers password
  assert.match(workspaceHtml,/sendPasswordResetEmail\(auth,email\)/);
  assert.match(workspaceHtml,/await signInWithEmailAndPassword\(auth,/);
  assert.match(workspaceHtml,/button\.setAttribute\("aria-busy","true"\)/);
- assert.match(workspaceHtml,/\$\("loginBox"\)\.hidden=false;\$\("loginLogout"\)\.hidden=!auth\.currentUser/);
- assert.match(workspaceHtml,/\$\("loginBox"\)\.hidden=!!u&&u\.emailVerified/);
+ assert.match(workspaceHtml,/\$\("loginBox"\)\.hidden=false/);
+ assert.match(workspaceHtml,/\$\("loginBox"\)\.hidden=true/);
+ assert.match(workspaceHtml,/if\(!u\.emailVerified\)/);
+ assert.match(workspaceHtml,/activeCodeSession/);
+ assert.doesNotMatch(workspaceHtml,/signInWithCustomToken\(/);
  assert.match(workspaceHtml,/\$\("loginLogout"\)\.hidden=!u/);
  assert.doesNotMatch(workspaceHtml,/deleteUser\(|auth\.currentUser\.delete\(/);
  assert.doesNotMatch(workspaceHtml,/firebase-firestore\.js|\bgetFirestore\(/);
