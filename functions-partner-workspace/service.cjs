@@ -468,9 +468,16 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
        originalUser:original,originalMember:formerMember,
        createdAt:FieldValue.serverTimestamp()});
      tx.update(formerMemberRef,{active:false,updatedAt:FieldValue.serverTimestamp()});
-     // Replace, don't merge; legacy financial grants must not survive on the
-     // current partner profile. UID and Firebase Auth email stay unchanged.
-     tx.set(ur,profile);
+     // Update ONLY this authenticated person's current profile. Each former
+     // property not part of the new count-only profile is cleared field-by-
+     // field AFTER its exact value has been snapshotted in the same transaction.
+     // Historical sales, former company memberships and team snapshots remain.
+     const cleanup={};
+     for(const key of Object.keys(original)){
+      if(!/^[A-Za-z][A-Za-z0-9_]*$/.test(key))fail("failed-precondition");
+      if(!Object.hasOwn(profile,key))cleanup[key]=FieldValue.delete();
+     }
+     tx.update(ur,{...cleanup,...profile});
    }else if(us.exists)tx.update(ur,profile);else tx.create(ur,profile);
    tx.create(mr,{...profile,joinedAt:FieldValue.serverTimestamp()});
    tx.create(sr,{uid:a.uid,name,kind:"account",role:i.role,teamId:i.teamId,
