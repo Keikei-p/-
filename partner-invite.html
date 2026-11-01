@@ -63,7 +63,8 @@ small{color:#5e6d82}#info{font-weight:650}
  <label for="existingTeam">所属班</label><select id="existingTeam"></select>
  <p><small>班がないときは<a href="/partner-workspace.html">班管理画面</a>で追加してください。未承認の会社は招待できません。</small></p>
  <form id="existingForm">
- <label for="existingRole">権限</label><select id="existingRole"><option value="leader">リーダー</option><option value="member">メンバー</option></select>
+ <label for="existingRole">ログインする人の権限（自社が指定）</label><select id="existingRole"><option value="leader">リーダー</option><option value="member">同行（メンバー権限）</option></select>
+ <p><small>メール不要の一般スタッフは、協力店のリーダーが「班・スタッフ管理」から名前だけで追加できます。この招待フォームで登録するのはログインする人だけです。</small></p>
  <label for="existingEmail">本人のメールアドレス</label><input id="existingEmail" type="email" required>
  <button id="existingCreate" type="submit" disabled>この会社に招待リンクを作成</button>
  </form>
@@ -375,7 +376,7 @@ $("existingForm").addEventListener("submit",async event=>{
   const url=new URL("/partner-workspace.html",location.origin);
   url.searchParams.set("invite",response.token);
   $("existingLink").value=url.href;$("existingResult").hidden=false;
-  message("既存の"+company.name+"へ"+(role==="leader"?"リーダー":"メンバー")+
+  message("既存の"+company.name+"へ"+(role==="leader"?"リーダー":"同行（メンバー）")+
    "の招待リンクを作成しました。30分以内に本人に送ってください。");
  });
  renderExisting();
