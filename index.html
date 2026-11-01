@@ -9255,13 +9255,43 @@ async function loadPartnerCompanyList(){
     if(data?.role!=="hub"||!Array.isArray(data.registeredCompanies)||
         !Array.isArray(data.partners)||data.registeredCompanies.length>100||
         data.partners.length>200)throw Error("untrusted_partner_company_reply");
+    // Quick-count approval is intentionally separate from workspace approval.
+    // Read the existing count-only callable; never infer one grant from the other.
+    const earliestQuickDate=new Date(Date.parse(today+"T00:00:00Z")-31*86400000)
+      .toISOString().slice(0,10);
+    let quickData=null,quickUnavailable=false;
+    if(date>=earliestQuickDate){
+      try{
+        const response=(await readPartnerQuickDay({date})).data;
+        if(!stillOwner())return;
+        if(response?.role!=="hub"||!Array.isArray(response.partners)||
+           !Array.isArray(response.pendingPartners)||
+           response.partners.length>200||response.pendingPartners.length>200)
+          throw Error("invalid_quick_company_reply");
+        quickData=response;
+      }catch(e){
+        quickUnavailable=true;
+        console.error("partner quick counts unavailable",e?.code||"unavailable");
+      }
+    }
+    if(!stillOwner())return;
     const reports=new Map(data.partners.map(p=>[p.partnerCompanyId,p]));
+    const quickApprovals=new Map((quickData?.pendingPartners||[])
+      .map(p=>[p.partnerCompanyId,p]));
+    const quickReports=new Map((quickData?.partners||[])
+      .map(p=>[p.partnerCompanyId,p]));
     for(const company of data.registeredCompanies){
       if(!company||!/^[A-Za-z0-9_-]{1,128}$/.test(company.partnerCompanyId)||
           typeof company.name!=="string"||company.name.length>80||
           !Array.isArray(company.teams)||company.teams.length>150||
           typeof company.active!=="boolean")throw Error("invalid_partner_company");
       const report=reports.get(company.partnerCompanyId);
+      const quickReport=quickReports.get(company.partnerCompanyId);
+      const quickApproval=quickApprovals.get(company.partnerCompanyId);
+      if(quickApproval&&(quickApproval.partnerCompanyId!==company.partnerCompanyId||
+        typeof quickApproval.approved!=="boolean"))throw Error("invalid_quick_approval");
+      if(quickReport&&quickReport.partnerCompanyId!==company.partnerCompanyId)
+        throw Error("invalid_quick_report");
       const card=document.createElement("div");
       card.style.cssText="border:1px solid var(--border);border-radius:12px;padding:14px;min-width:0;";
       const name=document.createElement("strong");
@@ -9269,20 +9299,44 @@ async function loadPartnerCompanyList(){
       card.append(name);
       const status=document.createElement("p");
       status.style.cssText="margin:8px 0;color:var(--sub);font-size:13px;";
-      status.textContent=!company.active?"未承認（入力・招待はできません）":
-        report?"報告済み｜"+report.totalCount+"件":"この日の件数は未報告・未確認";
+      const quickApproved=quickApproval?.approved===true;
+      status.textContent=company.active?
+        (report?"班管理：報告済み｜"+report.totalCount+"件":
+          "班管理：この日の件数は未報告・未確認"):
+        quickApproved?
+          (quickReport?"件数専用：報告済み｜"+quickReport.totalCount+"件":
+            "件数専用：利用承認済み｜この日は未報告・未確認"):
+        quickUnavailable?
+          "班管理は未承認｜件数専用の状態を取得できません":
+        quickData===null?
+          "班管理は未承認｜件数専用の状態は過去31日より前のため未確認":
+          "班管理・件数専用とも未承認";
       card.append(status);
-      if(report){
-        if(!report.counts||Object.keys(report.counts).sort().join("|")!==
+      // Two independent reporting ledgers: show both when present, never sum
+      // them, and never treat a missing report as a saved zero.
+      const appendReport=(item,label)=>{
+        if(!item)return;
+        if(!item.counts||Object.keys(item.counts).sort().join("|")!==
              [...PARTNER_QUICK_RANK_KEYS].sort().join("|")||
-           !PARTNER_QUICK_RANK_KEYS.every(k=>Number.isSafeInteger(report.counts[k])&&
-             report.counts[k]>=0&&report.counts[k]<=9999))
+           !PARTNER_QUICK_RANK_KEYS.every(k=>Number.isSafeInteger(item.counts[k])&&
+             item.counts[k]>=0&&item.counts[k]<=9999)||
+           !Number.isSafeInteger(item.totalCount)||item.totalCount<0||
+           PARTNER_QUICK_RANK_KEYS.reduce((n,k)=>n+item.counts[k],0)!==item.totalCount)
           throw Error("unexpected_partner_counts");
         const products=document.createElement("p");
         products.style.cssText="font-size:12px;line-height:1.8;overflow-wrap:anywhere;";
-        products.textContent=PARTNER_QUICK_RANK_KEYS.filter(k=>report.counts[k]>0)
-          .map(k=>k+" "+report.counts[k]+"件").join(" / ")||"登録済み（0件）";
+        products.textContent=label+"｜"+(
+          PARTNER_QUICK_RANK_KEYS.filter(k=>item.counts[k]>0)
+          .map(k=>k+" "+item.counts[k]+"件").join(" / ")||"登録済み（0件）");
         card.append(products);
+      };
+      appendReport(report,"班管理の報告");
+      appendReport(quickReport,"件数専用の報告");
+      if(report&&quickReport){
+        const separate=document.createElement("p");
+        separate.style.cssText="color:var(--sub);font-size:12px;";
+        separate.textContent="二つの入力経路は別管理です。二重計上を防ぐため合算しません。";
+        card.append(separate);
       }
       if(company.active){
         const teams=document.createElement("p");
@@ -9331,9 +9385,11 @@ async function loadPartnerCompanyList(){
       }
       partnerCompanyList.append(card);
     }
-    partnerCompanyStatus.textContent=data.registeredCompanies.length?
+    partnerCompanyStatus.textContent=(data.registeredCompanies.length?
       "登録済み協力店 "+data.registeredCompanies.length+"社（未報告は未確認として表示）":
-      "登録済み協力店はありません。招待から追加してください。";
+      "登録済み協力店はありません。招待から追加してください。")+
+      (quickUnavailable?"｜件数専用の取得に失敗（再確認してください）":
+       quickData===null?"｜件数専用は過去31日まで表示可能":"");
   }catch(e){
     if(!stillOwner())return;
     partnerCompanyList.replaceChildren();
