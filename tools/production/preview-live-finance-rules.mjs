@@ -185,6 +185,36 @@ export function previewLiveRules(live,reviewed){
   return {candidate,changed,liveSha:sha(live),candidateSha:sha(candidate),
     reviewedSha:sha(reviewed),matchesReviewed:sha(candidate)===sha(reviewed)};
 }
+// Diagnostic labels only. Never expose original Rules text, finance records,
+// identities or individual match expressions in public CI logs.
+export function summarizeReviewedRulesMismatch(candidate,reviewed){
+ const functions=[...reviewed.matchAll(/^[ \t]*function[ \t]+([A-Za-z][A-Za-z0-9]*)\(/gm)].map(m=>m[1]);
+ const collections=[...reviewed.matchAll(/^[ \t]*match[ \t]+\/([A-Za-z][A-Za-z0-9]*)\/\{[A-Za-z][A-Za-z0-9]*\}[ \t]*\{/gm)].map(m=>m[1]);
+ const fnDifferences=[];
+ for(const name of [...new Set(functions)]){
+  try{
+   const left=functionBlock(candidate,name),right=functionBlock(reviewed,name);
+   if(candidate.slice(left.start,left.end)!==reviewed.slice(right.start,right.end))
+    fnDifferences.push(name);
+  }catch{fnDifferences.push(name);}
+ }
+ const collectionDifferences=[];
+ for(const name of [...new Set(collections)]){
+  try{
+   const left=collectionBlock(candidate,name),right=collectionBlock(reviewed,name);
+   if(candidate.slice(left.start,left.end)!==reviewed.slice(right.start,right.end))
+    collectionDifferences.push(name);
+  }catch{collectionDifferences.push(name);}
+ }
+ const a=candidate.split("\n"),b=reviewed.split("\n");
+ let line=0;while(line<a.length&&line<b.length&&a[line]===b[line])line++;
+ return {candidateLines:a.length,reviewedLines:b.length,
+  firstDifferenceLine:line+1,
+  differentFunctions:fnDifferences.slice(0,25),
+  differentCollections:collectionDifferences.slice(0,25),
+  remainingUnknownDifferences:fnDifferences.length>25||collectionDifferences.length>25};
+}
+
 async function readLiveRules(){
   if(process.env.NICO_PARTNER_AUDIT_MODE!=="READ_ONLY"||
      process.env.FIREBASE_PROJECT_ID!==PROJECT||
@@ -220,7 +250,11 @@ async function main(){
   // Never test or propose an unexpectedly changed live Rules candidate.
   // Unknown extra finance allows (including additive get/list) must not
   // survive because they were absent from the reviewed ruleset.
-  if(!out.matchesReviewed)stop("CANDIDATE_DIFFERS_FROM_REVIEWED_RULES");
+  if(!out.matchesReviewed){
+    console.error("REDACTED_LIVE_RULES_PARITY "+
+      JSON.stringify(summarizeReviewedRulesMismatch(out.candidate,original)));
+    stop("CANDIDATE_DIFFERS_FROM_REVIEWED_RULES");
+  }
   // The snapshot stays in the disposable runner only, never in public logs.
   writeFileSync(process.env.RUNNER_TEMP+"/nico-original-live-firestore.rules",live,{mode:0o600});
   writeFileSync(process.env.RUNNER_TEMP+"/nico-proposed-live-firestore.rules",out.candidate,{mode:0o600});

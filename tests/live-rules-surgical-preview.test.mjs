@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
-import {previewLiveRules} from "../tools/production/preview-live-finance-rules.mjs";
+import {previewLiveRules,summarizeReviewedRulesMismatch} from "../tools/production/preview-live-finance-rules.mjs";
 
 const reviewed=readFileSync(new URL("../firestore.rules",import.meta.url),"utf8");
 const originalFunction=reviewed.match(/^[ \t]*function isCompanyMember\(companyId\) \{[\s\S]*?^[ \t]*\}/m)?.[0];
@@ -145,7 +145,7 @@ test("unexpected extra finance get permission never passes exact-source live pre
  assert.equal(result.matchesReviewed,false,"additive finance get grant must reject live release");
  assert.notEqual(result.candidateSha,result.reviewedSha);
  const script=readFileSync(new URL("../tools/production/preview-live-finance-rules.mjs",import.meta.url),"utf8");
- assert.match(script,/if\(!out\.matchesReviewed\)stop\("CANDIDATE_DIFFERS_FROM_REVIEWED_RULES"\)/);
+ assert.match(script,/if\(!out\.matchesReviewed\)\{[\s\S]*?stop\("CANDIDATE_DIFFERS_FROM_REVIEWED_RULES"\)/);
 });
 test("partner-safe reviewed rules retain internal owner and explicitly approved leader finance paths",()=>{
  const out=previewLiveRules(liveFixture(),reviewed);
@@ -158,4 +158,21 @@ test("partner-safe reviewed rules retain internal owner and explicitly approved 
   "member.get('memberType', 'internal') in ['internal', 'direct', 'member', 'managed']",
   "function canViewRevenue(", "function canViewUnitPrice("
  ])assert.ok(out.candidate.includes(token),token);
+});
+
+test("finance Rules mismatch diagnostic outputs only collection names and line counts, never rule contents",()=>{
+ const productStart=reviewed.indexOf("match /products/{productId} {");
+ assert.ok(productStart>0);
+ const candidate=reviewed.slice(0,productStart)+
+  reviewed.slice(productStart).replace(
+   "allow read: if resource.data.companyId != null",
+   "allow read: if true || resource.data.companyId != null"
+  );
+ assert.notEqual(candidate,reviewed);
+ const summary=summarizeReviewedRulesMismatch(candidate,reviewed);
+ assert.ok(summary.firstDifferenceLine>0);
+ assert.ok(summary.differentCollections.includes("products"));
+ const serialized=JSON.stringify(summary);
+ assert.doesNotMatch(serialized,/allow read:|resource\.data|isCompanyMember\(/);
+ assert.equal(serialized.includes("sales-management-cc116"),false);
 });
