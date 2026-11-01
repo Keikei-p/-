@@ -6,6 +6,7 @@ on:
     paths:
       - 'index.html'
       - 'tests/partner-invite-mobile-layout.test.cjs'
+      - 'tests/partner-existing-hub-invite-tab.test.cjs'
       - 'tools/hosting/surgical-existing-index.mjs'
       - '.github/workflows/nico-partner-invite-mobile-index-only.yml'
   push:
@@ -13,6 +14,7 @@ on:
     paths:
       - 'index.html'
       - 'tests/partner-invite-mobile-layout.test.cjs'
+      - 'tests/partner-existing-hub-invite-tab.test.cjs'
       - 'tools/hosting/surgical-existing-index.mjs'
       - '.github/workflows/nico-partner-invite-mobile-index-only.yml'
 
@@ -37,6 +39,7 @@ jobs:
           set -euo pipefail
           node --check tools/hosting/surgical-existing-index.mjs
           node --test tests/partner-invite-mobile-layout.test.cjs
+          node --test tests/partner-existing-hub-invite-tab.test.cjs
           node --test tests/surgical-existing-index.test.mjs
           node --test tests/partner-existing-ranking.test.cjs
           node --test tests/internal-owner-finance-visibility.test.cjs
