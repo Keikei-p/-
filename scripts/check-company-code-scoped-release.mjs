@@ -14,7 +14,11 @@ import {execFileSync} from "node:child_process";
 import {fileURLToPath} from "node:url";
 import path from "node:path";
 
-export const EXISTING_CANONICAL_BLOB="ce4472702cfb58c0cf1d0fc06adb09ff00637dbb";
+// Reviewed against live NICO Hosting on 2026-11-01: exact byte parity with main
+// 204cb32b. Since the previous baseline, only the existing owner partner panel
+// was added (13bb65f and predecessors); no legacy finance/auth code was removed.
+// This pin does not approve the separate finance-rules or live E2E gates.
+export const EXISTING_CANONICAL_BLOB="c05f32d8b64b7df640f331ecf18b5171488b0258";
 const present=(s,term)=>typeof s==="string"&&s.includes(term);
 export function inspectScopedCompanyCodeRelease({
   canonicalBlob="",canonical="",partnerPage="",workspaceService="",
