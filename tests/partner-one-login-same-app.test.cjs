@@ -5,6 +5,25 @@ const index=load("index.html"),partner=load("partner-workspace.html"),
  legacyCompanyInvite=load("partner-invite.html"),
  service=load("functions-partner-workspace/service.cjs"),
  rules=load("firestore.rules");
+test("partner invite routes selected existing company and team through the verified owner API",()=>{
+ assert.match(index,/id="partnerInviteModeSelect"/);
+ assert.match(index,/id="partnerExistingCompanySelect"/);
+ assert.match(index,/id="partnerExistingTeamSelect"/);
+ assert.match(index,/id="partnerExistingInviteRole"/);
+ const a=index.indexOf("const partnerInviteCreateButton =");
+ const b=index.indexOf('document.getElementById("partnerInviteCopyButton")',a);
+ assert.ok(a>=0&&b>a);
+ const source=index.slice(a,b);
+ assert.match(source,/await readPartnerWorkDay\(\{date:getTodayString\(\)\}\)/);
+ assert.match(source,/result\?\.role!=="hub"/);
+ assert.match(source,/option\.disabled=!c\.active/);
+ assert.match(source,/await partnerInlineManage\(\{action:"hubCreateInvite"/);
+ assert.match(source,/partnerCompanyId:selected\.partnerCompanyId,teamId,email,role/);
+ assert.match(source,/await createPartnerCompanyInvite\(\{companyName,email\}\)/);
+ assert.match(source,/existing\?"partnerStaffInvite":"partnerCompanyInvite"/);
+ assert.match(source,/currentUserData\?\.companyId!==hub/);
+ assert.doesNotMatch(source,/\b(?:getDocs|setDoc|updateDoc|deleteDoc|writeBatch)\s*\(/);
+});
 test("existing app sign-in is reused for company and member invitations",()=>{
  assert.match(index,/onAuthStateChanged\(\s*auth,/);
  assert.match(index,/const pendingPartnerInvite=partnerMainPendingInvite\(\)/);
