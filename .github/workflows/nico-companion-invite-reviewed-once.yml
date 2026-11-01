@@ -1,0 +1,118 @@
+name: NICO owner-assigned leader companion invitation one-shot release
+on:
+  pull_request:
+    branches: [main]
+    paths: [.github/workflows/nico-companion-invite-reviewed-once.yml]
+  push:
+    branches: [main]
+    paths: [.github/workflows/nico-companion-invite-reviewed-once.yml]
+permissions:
+  contents: read
+concurrency:
+  group: nico-companion-invite-ui-only-20261101
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Exact reviewed single-page role label and no-auth staff preservation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object partner-invite.html)" = "7b9e105b33fd681ae8854d9610ee356aa24271ae" || { echo 'STOP: unknown invite HTML'; exit 1; }
+          git show e2e2a9ae2b309b713e56e8f8c43fb836dd2fad24:partner-invite.html > "$RUNNER_TEMP/reviewed-invite.html"
+          cmp -s partner-invite.html "$RUNNER_TEMP/reviewed-invite.html"
+          test "$(git hash-object partner-workspace.html)" = "0930abb188165afea19ef427308ea22fddf636e7" || { echo 'STOP: protected workspace changed'; exit 1; }
+          node --test tests/partner-simple-roster-invite.test.mjs
+          node --test tests/surgical-existing-partner-invite.test.mjs
+          node --test tests/partner-company-invitations.test.cjs
+          node --test tests/partner-workspace.test.cjs
+          node --test tests/sales-regressions.cjs
+          node --check tools/hosting/surgical-existing-partner-invite.mjs
+          node <<'NODE'
+          const fs=require('node:fs'),s=fs.readFileSync('partner-invite.html','utf8');
+          if(/firebase-firestore\.js|\bgetFirestore\(|\bgetDoc\(|\bsetDoc\(|\bdeleteDoc\(/.test(s))
+            throw Error('STOP: invitation must not access finance Firestore');
+          for(const marker of ['createPartnerCompanyInvitation','acceptPartnerCompanyInvitation',
+            'action:"hubCreateInvite"','同行（メンバー権限）','id="existingCompany"'])
+            if(!s.includes(marker))throw Error('STOP: required roster or scope missing '+marker);
+          const js=s.match(/<script type="module">([\s\S]*?)<\/script>/)?.[1];
+          if(!js)throw Error('STOP: missing JS module');
+          fs.writeFileSync('/tmp/nico-companion-invite-ui.mjs',js);
+          NODE
+          node --check /tmp/nico-companion-invite-ui.mjs
+  release:
+    needs: validate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.validate.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+      NICO_PARTNER_RELEASE_CONFIRMATION: CONFIRM_REPLACE_PARTNER_INVITE_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify exact previous main and live invitation before any write
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(gh api repos/Keikei-p/-/branches/main --jq '.commit.sha')" = "$GITHUB_SHA" || { echo 'STOP: main changed'; exit 1; }
+          git show ed2bb812d856999c9a51d88fd08555190448900e:partner-invite.html > "$RUNNER_TEMP/approved-before-invite.html"
+          curl -fsSL --retry 3 --max-time 30 -H 'Cache-Control: no-cache' \
+            "https://nico-factory.web.app/partner-invite.html?companion_source=$GITHUB_SHA" > "$RUNNER_TEMP/live-invite.html"
+          if cmp -s "$RUNNER_TEMP/live-invite.html" partner-invite.html; then
+            echo 'ALREADY_LIVE=true' >> "$GITHUB_ENV"
+            echo 'PASS: new invite is already public'
+          elif cmp -s "$RUNNER_TEMP/live-invite.html" "$RUNNER_TEMP/approved-before-invite.html"; then
+            echo 'ALREADY_LIVE=false' >> "$GITHUB_ENV"
+            echo 'PASS: exact old live invitation confirmed'
+          else
+            echo 'STOP: published invitation differs from approved previous HTML'
+            exit 1
+          fi
+      - name: Load only Hosting release credentials
+        if: env.ALREADY_LIVE == 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON" || exit 1
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-companion-hosting.json"
+          chmod 600 "$RUNNER_TEMP/nico-companion-hosting.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-companion-hosting.json" >> "$GITHUB_ENV"
+      - name: Install Hosting REST dependency
+        if: env.ALREADY_LIVE == 'false'
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Read-only verify entire current live Hosting manifest
+        if: env.ALREADY_LIVE == 'false'
+        run: node tools/hosting/surgical-existing-partner-invite.mjs --dry-run
+      - name: Release only partner-invite HTML preserving 10 other assets
+        if: env.ALREADY_LIVE == 'false'
+        run: node tools/hosting/surgical-existing-partner-invite.mjs --release
+      - name: Verify exact new live bytes and the unchanged original owner app
+        shell: bash
+        run: |
+          set -euo pipefail
+          ok=false
+          for attempt in $(seq 1 12); do
+            curl -fsSL --max-time 30 "https://nico-factory.web.app/partner-invite.html?companion_verify=$GITHUB_SHA-$attempt" > "$RUNNER_TEMP/confirmed-invite.html"
+            if cmp -s "$RUNNER_TEMP/confirmed-invite.html" partner-invite.html; then ok=true; break; fi
+            sleep 5
+          done
+          test "$ok" = true || { echo 'STOP: expected invite not live'; exit 1; }
+          for marker in 'id="existingRole"' '同行（メンバー権限）' 'action:"hubCreateInvite"' 'acceptPartnerCompanyInvitation'; do
+            grep -Fq "$marker" "$RUNNER_TEMP/confirmed-invite.html"
+          done
+          for route in / /partner-counts.html /partner-workspace.html; do
+            code=$(curl -sSL -o /dev/null -w '%{http_code}' --max-time 30 "https://nico-factory.web.app$route")
+            test "$code" = 200 || { echo "STOP: $route HTTP $code"; exit 1; }
+          done
+          echo 'PASS: hub-selectable companion role published; 11-file existing Hosting site preserved; no Firestore, finance, IAM or LINE writes'
