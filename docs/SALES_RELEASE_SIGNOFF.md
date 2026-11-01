@@ -866,3 +866,19 @@ GitHub所有者として認証済みの接続から、本番影響をindex.html�
 **リリース条件：** 最新CIの全チェック、正式な限定公開手順の本番HTMLベースライン一致・既存全ファイル保全・公開後HTTPとHTML一致。売上・単価と原票は変更しない。会社コード認証は今回配備しない。
 
 - **再検査メモ（2026-11-01）:** 最初の審査記録追加コミット直後の保護CIは、GitHub PRイベント作成時に `sales-production-reviewed` がまだ未付与だったため停止した。ラベルを追加してから本追記をコミットし、最新のPRイベントで保護ゲートを再判定する。財務・Hosting・DBの本番操作は実施していない。
+
+
+---
+## 2026-11-01 — 協力店一覧で件数専用の承認と報告を区別（限定コード技術レビュー）
+
+### 原因
+既存の自社「協力店」一覧は `getPartnerWorkspace` の relation.active/countSharingApproved だけで未承認を表示していた。一方、実際の `getPartnerQuickCounts` は別の `partnerQuickCountApprovals` によって件数専用利用を承認する。これらを同じ承認とみなすと、件数入力が承認済みの会社でも「未承認」と誤表示される。
+
+### 変更範囲
+- `index.html` の既存Owner限定協力店一覧へ、既存の認証付き `getPartnerQuickCounts({date})` の読み取りだけを追加。会社名・通常班別件数・件数専用の報告を分けて表示。両方に登録がある場合も足さず二重計上を防止。未報告と明示的な0件を区別し、日付31日超やAPI失敗時は未確認と明記。
+- `tests/simple-partner-company-tab.test.mjs` に件数専用と班管理の独立、財務原票非読取・無書込、失敗時未確認のテストを追加。
+- `functions-partner-workspace` / `functions-partner-quick` / `firestore.rules` / `partner-counts.html` / `partner-workspace.html` は変更しない。既存売上/単価/CB、実績/履歴/会社/班/社員UID/承認データに書込・削除・移行なし。LINE、課金、IAM変更なし。
+- 未承認会社への件数入力・招待を新規許可しない。クライアントはサーバーの返す承認結果のみ表示し、既存Callableのサーバー権限を維持する。通常Workspace承認をQuick承認へ、逆も行わない。
+
+### 審査区分と残る検証
+本記録はGitHubに限定したコード技術審査・差分分析であり、管理者本人の署名や本番公開許可ではない。実協力店Ownerの認証・件数保存・財務原票閲覧禁止は別途必要。本番公開は**現在本番のindex.htmlと正しい承認済み元バージョンがバイト一致**し、レビュー・Sales App Validation・保護チェック・全既存ファイル保全・公開後HTTP/HTML検証が揃うときだけ別途実施。破壊的変更なし。
