@@ -91,7 +91,7 @@ test("company enters server-issued code, chooses password, can save counts witho
  assert.equal(f.tokens.length,1);
  assert.equal(f.tokens[0].claims.partnerCodeAuth,true);
  const team=(await f.workspace.manage(f.codeReq({action:"addTeam",name:"第1班"}))).teamId;
- const staff=(await f.workspace.manage(f.codeReq({action:"addManaged",teamId:team,name:"協力店スタッフ"}))).staffId;
+ const staffId=(await f.workspace.manage(f.codeReq({action:"addManaged",teamId:team,name:"協力店スタッフ"}))).staffId;
  const counts=Object.fromEntries(KEYS.map(x=>[x,0]));counts.NURO=3;
  const day="2026-11-01";
  const result=await f.workspace.submit(f.codeReq({date:day,staffId,counts,expectedVersion:0}));
