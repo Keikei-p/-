@@ -12184,7 +12184,7 @@ function syncPartnerInviteMode(){
 partnerInviteModeSelect.addEventListener("change",syncPartnerInviteMode);
 partnerExistingCompanySelect.addEventListener("change",renderExistingPartnerTeams);
 partnerInviteCreateButton.onclick=async()=>{
- if(!currentUser?.emailVerified||currentCompanyData?.ownerUid!==currentUser.uid||
+ if(!currentUser?.emailVerified||currentCompanyData?.ownerUid !== currentUser.uid||
     currentCompanyData?.companyKind === "partner"||currentUserData?.accessKind==="partner"){
   showError("協力店招待は自社のオーナーだけが作成できます。");return;
  }
