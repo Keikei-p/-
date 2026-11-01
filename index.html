@@ -4428,7 +4428,9 @@ body.product-reordering .product-list {
   <p id="pMainInviteDescription">ログイン後に招待を確認できます。</p>
   <label id="pMainInviteNameField" class="form-group" hidden>表示名<input id="pMainInviteName" maxlength="60" placeholder="例：田中 太郎"></label>
   <p id="pMainInviteStatus" role="status" aria-live="polite"></p>
+  <p id="pMainInviteSignedInAs" class="p-inline-muted"></p>
   <button id="pMainAcceptInvite" type="button">招待を承諾する</button>
+  <button id="pMainSwitchInviteAccount" type="button">別のメールアドレスでログイン</button>
   <button id="pMainCancelInvite" type="button">キャンセルして通常画面へ</button>
 </div>
 
@@ -5024,7 +5026,7 @@ body.product-reordering .product-list {
         <div style="font-weight:800;margin-bottom:6px;">🤝 協力店会社を招待</div>
         <p style="font-size:12px;line-height:1.6;color:var(--sub);">
           自社スタッフとは別会社として招待します。協力店には売上・単価を付与しません。
-          招待リンクは30分間有効です。
+          招待リンクは有効期限内に承諾してください。
         </p>
         <p id="partnerInvitePermissionHint" hidden
            style="font-size:12px;line-height:1.6;color:var(--sub);">
@@ -5555,6 +5557,26 @@ body.product-reordering .product-list {
       <div class="management-title">🤝 協力店</div>
       <button id="closePartnerCompanyButton" class="quick-panel-close" type="button">閉じる</button>
     </div>
+    <section id="nativePartnerSignup" aria-label="同じ実績アプリへの協力店会社招待" style="border:1px solid var(--border);border-radius:12px;padding:14px;margin:12px 0">
+      <p style="font-weight:800;margin:0 0 10px">協力店の会社を登録して代表者を招待</p>
+      <p style="font-size:13px;line-height:1.6;color:var(--sub)">招待先もこの営業実績管理アプリを利用します。会社・班・メンバー・件数は協力店として分離し、売上と単価の原票は共有しません。</p>
+      <div style="display:grid;gap:9px;max-width:550px">
+        <label for="nativePartnerCompany">協力店の会社名</label>
+        <input id="nativePartnerCompany" type="text" maxlength="80" placeholder="例）株式会社〇〇" autocomplete="organization" style="width:100%;min-height:44px">
+        <label for="nativePartnerEmail">代表者のメールアドレス</label>
+        <input id="nativePartnerEmail" type="email" placeholder="partner@example.com" autocomplete="off" style="width:100%;min-height:44px">
+        <button id="nativePartnerCreate" type="button" style="min-height:44px">協力店代表の招待リンクを作成</button>
+      </div>
+      <p id="nativePartnerStatus" role="status" aria-live="polite" style="font-size:13px"></p>
+      <div id="nativePartnerResult" hidden>
+        <label for="nativePartnerInviteLink">協力店代表に送る招待リンク</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <input id="nativePartnerInviteLink" readonly style="flex:1;min-width:180px">
+          <button id="nativePartnerCopy" type="button">コピー</button>
+        </div>
+        <p style="font-size:13px;line-height:1.6">代表者が招待を承諾すると独立した協力店会社が作成されます。協力店の代表者が同じアプリ内で班・メンバーを管理できます。件数報告は自社の承認後に利用できます。</p>
+      </div>
+    </section>
     <p style="color:var(--sub);font-size:13px;line-height:1.8;">
       <strong>かんたん運用：①協力店の代表を招待 → ②この一覧で「件数利用を承認」 → ③協力店は件数だけ入力。</strong>
       班・スタッフの設定は後からでOK。売上・単価は協力店に渡しません。
@@ -9545,6 +9567,66 @@ quickPartnerButton.onclick=()=>{
 };
 document.getElementById("refreshPartnerCompanies").onclick=()=>void loadPartnerCompanyList();
 document.getElementById("closePartnerCompanyButton").onclick=closeQuickPanels;
+// Secure partner onboarding in the EXISTING sales app. Invitations and the
+// partner company are created server-side in separate partner-scoped records.
+// NEVER add a partner to the hub's teams/invitations/users via client batch.
+const nativePartnerCompany=document.getElementById("nativePartnerCompany");
+const nativePartnerEmail=document.getElementById("nativePartnerEmail");
+const nativePartnerCreate=document.getElementById("nativePartnerCreate");
+const nativePartnerResult=document.getElementById("nativePartnerResult");
+const nativePartnerStatus=document.getElementById("nativePartnerStatus");
+const nativePartnerInviteLink=document.getElementById("nativePartnerInviteLink");
+nativePartnerCreate.onclick=async()=>{
+ const uid=currentUser?.uid,hub=currentUserData?.companyId;
+ const companyName=nativePartnerCompany.value.trim().replace(/\s+/g," ");
+ const email=nativePartnerEmail.value.trim().toLowerCase();
+ nativePartnerResult.hidden=true;
+ nativePartnerInviteLink.value="";
+ if(!uid||!hub||!currentUser?.emailVerified||
+    currentCompanyData?.ownerUid!==uid||
+    currentCompanyData?.companyKind==="partner"||
+    currentUserData?.accessKind==="partner"||
+    !isCurrentCompanyOwner()){
+  nativePartnerStatus.textContent="自社オーナーでログインしてください。";
+  return;
+ }
+ if(companyName.length<2||companyName.length>80||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+  nativePartnerStatus.textContent="協力店名と代表者メールを確認してください。";
+  return;
+ }
+ nativePartnerCreate.disabled=true;
+ nativePartnerStatus.textContent="安全な招待リンクを発行しています…";
+ try{
+  const response=await createPartnerCompanyInvite({companyName,email});
+  if(currentUser?.uid!==uid||currentUserData?.companyId!==hub||
+     currentCompanyData?.ownerUid!==uid)
+   throw Error("stale_invite_creator");
+  const token=response?.data?.token;
+  if(typeof token!=="string"||!/^[A-Za-z0-9_-]{43}$/.test(token))
+   throw Error("invalid_invite_response");
+  const url=new URL("/",location.origin);
+  url.searchParams.set("partnerCompanyInvite",token);
+  nativePartnerInviteLink.value=url.href;
+  nativePartnerResult.hidden=false;
+  nativePartnerStatus.textContent="招待リンクを発行しました。代表者に共有してください。";
+ }catch(error){
+  // Never log the token, company-specific records, email or finance values.
+  console.error("native_partner_invite",error?.code||"unknown");
+  nativePartnerStatus.textContent="招待の発行に失敗しました。協力店招待APIの公開状態・ログイン・権限を確認してください。登録済みとは表示しません。";
+ }finally{nativePartnerCreate.disabled=false;}
+};
+document.getElementById("nativePartnerCopy").onclick=async()=>{
+ if(nativePartnerResult.hidden||!nativePartnerInviteLink.value)return;
+ try{
+  await navigator.clipboard.writeText(nativePartnerInviteLink.value);
+  nativePartnerStatus.textContent="招待リンクをコピーしました。";
+ }catch{
+  nativePartnerInviteLink.select();
+  nativePartnerStatus.textContent="リンクを選択しました。コピーしてください。";
+ }
+};
+
 
 quickOwnerButton.onclick =
   () => {
@@ -12108,7 +12190,7 @@ partnerInviteCreateButton.onclick = async () => {
     url.searchParams.set("partnerCompanyInvite",token);
     document.getElementById("partnerInviteLinkOutput").value=url.href;
     document.getElementById("partnerInviteResult").hidden=false;
-    showSuccess("協力店の招待リンクを作成しました。30分以内に送ってください。");
+    showSuccess("協力店の招待リンクを作成しました。有効期限内に送ってください。");
   } catch (error) {
     // Never log or expose invitation secrets.
     console.error("協力店招待を作成できません",error?.code||"unknown");
@@ -12307,13 +12389,29 @@ async function partnerInlineFetch(){
      typeof snap.companyName!=="string"||snap.companyName.length===0)
    throw Error("partner_count_schema");
   partnerInlineData=snap;partnerInlineRender();
+  databaseStatus.textContent="件数表示OK";
   partnerInlineStatus("件数を表示しています。金額・単価は読み込んでいません。");
  }catch(e){
   if(seq!==partnerInlineNonce||auth.currentUser?.uid!==uid)return;
   partnerInlineData=null;pInline("pInlineSave").disabled=true;
   pInline("pInlineRanking").replaceChildren();
   pInline("pInlineTeams").replaceChildren();pInline("pInlinePeople").replaceChildren();
-  partnerInlineStatus("協力店の件数サービスを確認できません。自社オーナーの件数利用承認・所属・API公開状況をご確認ください。",true);
+  // An invited account can be AUTHENTICATED while its independent count
+  // activation remains pending. Never report this as a login failure.
+  const code=String(e?.code||"");
+  if(code==="functions/unavailable"||code==="functions/not-found"){
+   databaseStatus.textContent="件数サービス停止";
+   partnerInlineStatus("協力店の件数APIが未公開・停止中です。自社管理者にサービス設定の確認を依頼してください。",true);
+  }else if(code==="functions/permission-denied"||code==="functions/failed-precondition"){
+   databaseStatus.textContent="件数利用待ち";
+   partnerInlineStatus("ログイン済みですが、協力店の件数利用承認・班所属がまだ完了していない可能性があります。自社オーナーに確認してください。",true);
+  }else if(code==="functions/unauthenticated"){
+   databaseStatus.textContent="再認証が必要";
+   partnerInlineStatus("Firebaseの認証状態を確認できません。メール確認・再ログインを行ってください。",true);
+  }else{
+   databaseStatus.textContent="件数読込エラー";
+   partnerInlineStatus("件数を取得できませんでした。通信状況を確認し「更新」を押してください。解決しない場合は自社オーナーへ連絡してください。",true);
+  }
  }
 }
 async function openSameAppPartnerWorkspace(user,workspaceCompanyId=""){
@@ -12454,11 +12552,17 @@ async function showPartnerInviteAtMain(user,invite){
  nameField.hidden=invite.kind!=="staff";
  pInline("pMainInviteName").value=user.displayName||"";
  pInline("pMainInviteStatus").textContent="";
+ // Account switching must be reusable after the next sign-in, not stuck disabled.
+ pInline("pMainSwitchInviteAccount").disabled=false;
+ pInline("pMainInviteSignedInAs").textContent=
+  "ログイン中："+(user.email||"メールアドレス未確認")+
+  "（招待先のメールアドレスと一致している必要があります）";
  if(!/^[A-Za-z0-9_-]{43}$/.test(invite.token)){
   pInline("pMainInviteDescription").textContent="招待リンクが正しくありません。";
   pInline("pMainAcceptInvite").disabled=true;return;
  }
- pInline("pMainAcceptInvite").disabled=false;
+ // Fail closed until the server confirms the invite and recipient.
+ pInline("pMainAcceptInvite").disabled=invite.kind==="company";
  if(invite.kind==="company"){
   try{
    const response=(await partnerMainPreviewCompanyInvite({token:invite.token})).data;
@@ -12466,8 +12570,18 @@ async function showPartnerInviteAtMain(user,invite){
    pInline("pMainInviteDescription").textContent=
     (response?.fromCompanyName||"自社")+" から "+(response?.partnerCompanyName||"協力店")+
     " への招待です。このアカウントで参加しますか？";
-  }catch{
-   pInline("pMainInviteDescription").textContent="招待を確認できません。招待先メール・期限をご確認ください。";
+   pInline("pMainAcceptInvite").disabled=false;
+  }catch(error){
+   if(auth.currentUser?.uid!==user.uid)return;
+   const code=String(error?.code||"");
+   pInline("pMainInviteDescription").textContent=
+    code==="functions/not-found"?
+      "招待リンクが見つかりません。招待元に再発行を依頼してください。":
+    code==="functions/unavailable"?
+      "招待の確認サービスが利用できません。管理者へ連絡してください。":
+    code==="functions/unauthenticated"?
+      "認証を確認できません。下のボタンで再ログインしてください。":
+      "このメールが招待先と違うか、リンクが期限切れ・使用済みの可能性があります。招待されたメールでログインし直すか、再発行を依頼してください。";
    pInline("pMainAcceptInvite").disabled=true;
   }
  }else{
@@ -12497,6 +12611,18 @@ pInline("pMainAcceptInvite").onclick=async()=>{
   location.replace(url.href);
  }catch{
   pInline("pMainInviteStatus").textContent="招待を承諾できませんでした。メール・招待期限・既存の所属を確認してください。";
+  button.disabled=false;
+ }
+};
+// Keep the invite token in the URL; switching identity never changes Firestore.
+pInline("pMainSwitchInviteAccount").onclick=async()=>{
+ const button=pInline("pMainSwitchInviteAccount");
+ if(!auth.currentUser||button.disabled)return;
+ button.disabled=true;
+ pInline("pMainInviteStatus").textContent="ログインを切り替えています...";
+ try{await signOut(auth);}
+ catch{
+  pInline("pMainInviteStatus").textContent="ログアウトに失敗しました。再度お試しください。";
   button.disabled=false;
  }
 };

@@ -4,6 +4,33 @@ import {readFileSync} from "node:fs";
 const html=readFileSync(new URL("../index.html",import.meta.url),"utf8");
 const menu=html.slice(html.indexOf('id="managementMenuPanel"'),html.indexOf("</div>\n\n        </div>\n\n      </div>",html.indexOf('id="managementMenuPanel"')));
 const source=html.slice(html.indexOf("// A small owner-only company view"),html.indexOf("quickOwnerButton.onclick =",html.indexOf("// A small owner-only company view")));
+test("partner tab uses isolated server-side company invitation, not hub membership",()=>{
+ const start=html.indexOf("// Secure partner onboarding in the EXISTING sales app.");
+ const end=html.indexOf("quickOwnerButton.onclick =",start);
+ assert.ok(start>=0&&end>start);
+ const code=html.slice(start,end);
+ for(const id of ["nativePartnerCompany","nativePartnerEmail","nativePartnerCreate","nativePartnerInviteLink"])
+   assert.match(html,new RegExp('id="'+id+'"'));
+ assert.match(code,/createPartnerCompanyInvite\(\{companyName,email\}\)/);
+ assert.match(code,/searchParams\.set\("partnerCompanyInvite",token\)/);
+ assert.match(code,/currentCompanyData\?\.ownerUid!==uid/);
+ assert.match(code,/nativePartnerResult\.hidden=true/);
+ assert.match(code,/invalid_invite_response/);
+ for(const forbidden of ["writeBatch(","batch.set(","collection(db,\"teams\")","collection(db,\"invitations\")","setDoc(","updateDoc(","deleteDoc(","getDocs(","getDoc(","totalRevenue","unitPrice","pricingOptions"])
+   assert(!code.includes(forbidden),"unsafe native invite: "+forbidden);
+ assert.doesNotMatch(html,/function isNativePartnerMember\(/);
+ assert.doesNotMatch(html,/const nativePartnerRankOnly=/);
+});
+test("partner invite status is not reported as success on callable failure",()=>{
+ const start=html.indexOf("// Secure partner onboarding in the EXISTING sales app.");
+ const end=html.indexOf("quickOwnerButton.onclick =",start);
+ const code=html.slice(start,end);
+ assert.match(code,/const response=await createPartnerCompanyInvite/);
+ assert.match(code,/}catch\(error\)\{/);
+ assert.match(code,/招待の発行に失敗しました/);
+ assert.match(code,/登録済みとは表示しません/);
+});
+
 test("existing app has an owner-only partner company entry",()=>{
  assert.match(menu,/id="quickPartnerButton"[^>]*display:none/);
  assert.match(html,/id="partnerCompanyManagement"/);

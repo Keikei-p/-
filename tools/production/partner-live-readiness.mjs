@@ -79,10 +79,32 @@ export async function probe(fetcher=fetch,timeoutMs=12000){
    .every(status=>[400,401,403].includes(status));
  const companyCodeUiLive=findings.workspace?.companyCodeUiPresent===true;
  const companyCodePublicSurfaceReady=companyCodeUiLive&&companyCodeEndpointsRespond;
+
+ // A denied anonymous invocation is expected. 401 is an auth challenge;
+ // 403 may be Cloud Run IAM or an application rejection, not proof of health.
+ // Never infer deployment, E2E success, or a live finance boundary from it.
+ const classify=name=>{
+  const status=findings[name]?.status||0;
+  if(status===401)return "AUTH_REQUIRED";
+  if(status===403)return "DENIED_OR_IAM_UNVERIFIED";
+  if(status===404)return "FUNCTION_NOT_FOUND";
+  if(status===503)return "FUNCTION_DISABLED_OR_UNAVAILABLE";
+  if(status===200)return "UNEXPECTED_ANONYMOUS_SUCCESS";
+  if(status===400)return "BAD_REQUEST_OR_PROTOCOL";
+  if(status===0)return "UNREACHABLE";
+  return "HTTP_"+status;
+ };
+ const partnerCallableDiagnostics=Object.fromEntries(callableNames.map(name=>
+  [name,{status:findings[name]?.status||0,diagnosis:classify(name)}]));
+ const partnerBlockingFindings=Object.entries(partnerCallableDiagnostics)
+  .filter(([,v])=>["FUNCTION_NOT_FOUND","FUNCTION_DISABLED_OR_UNAVAILABLE",
+    "UNREACHABLE","UNEXPECTED_ANONYMOUS_SUCCESS"].includes(v.diagnosis))
+  .map(([name,v])=>name+":"+v.diagnosis);
  // This does not prove authenticated partner registration, permissions or finance safety.
  return {project:"sales-management-cc116",canonicalHost:"nico-factory.web.app",
   inviteReady,partnerUiReady,countBackendReady,unauthenticatedApiSafe,
   inviteAuthSafe,allCallablesAvailableAndClosed,callableAnonymousRefusal,
+  partnerCallableDiagnostics,partnerBlockingFindings,
   legacyPartnerPageStatus:findings.legacyPartnerForm.status,
   companyCodeUiLive,companyCodeEndpointsRespond,companyCodePublicSurfaceReady,
   codeEndpointStatus,

@@ -953,3 +953,11 @@ GitHub所有者として認証済みの接続から、本番影響をindex.html�
 - この差分ではFirestore、Users、売上/単価、過去実績、LINE、Rules、Functions、backupを変更しない。HTMLと表示回帰テスト・技術記録のみ。PR審査ラベルは管理者独立署名ではない。
 
 - PR #312 のラベル付与後のコード保護ゲート再実行対象。既存テスト `tests/simple-partner-company-tab.test.mjs` に会社別メンバー一覧の表示・権限・読み取り限定検査を追加した。
+
+---
+## 2026-11-02 — PR #311 協力店招待を会社別サーバーAPIへ安全変更（本番未公開）
+- 旧PRの「自社 companyId に新しい協力店班と一般社員招待を直接作成」は自社の金額付きFirestore原票を読める危険があるため撤回。
+- 「協力店」タブの会社名＋代表メールフォームから既存 `createPartnerCompanyInvitation` Callable のみ呼び、会社別に認証・分離する既存 `partnerCompanyInvite` URLを発行。協力店は通常の `index.html` で招待を承諾する。
+- 同画面の承認済み件数表示とメンバー管理内会社別一覧を維持。旧班・社内実績・売上・単価・Firestore Rules・Functions・LINEへの書込みなし。
+- 発行API未公開/認証不備/利用未承認なら本番利用不可とする。Firebase Functions実在、招待承諾、件数保存→自社反映、ランキング合算、実際の金融原票直接読取拒否は未確認。Firestore Rules本番更新は本PRでは実施しない。
+- 本番権限変更・自動デプロイ・既存データ消去はしない。CI・Firestore emulator・本番E2E確認なしにリリース成功扱いしない。
