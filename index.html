@@ -4428,7 +4428,9 @@ body.product-reordering .product-list {
   <p id="pMainInviteDescription">ログイン後に招待を確認できます。</p>
   <label id="pMainInviteNameField" class="form-group" hidden>表示名<input id="pMainInviteName" maxlength="60" placeholder="例：田中 太郎"></label>
   <p id="pMainInviteStatus" role="status" aria-live="polite"></p>
+  <p id="pMainInviteSignedInAs" class="p-inline-muted"></p>
   <button id="pMainAcceptInvite" type="button">招待を承諾する</button>
+  <button id="pMainSwitchInviteAccount" type="button">別のメールアドレスでログイン</button>
   <button id="pMainCancelInvite" type="button">キャンセルして通常画面へ</button>
 </div>
 
@@ -5024,7 +5026,7 @@ body.product-reordering .product-list {
         <div style="font-weight:800;margin-bottom:6px;">🤝 協力店会社を招待</div>
         <p style="font-size:12px;line-height:1.6;color:var(--sub);">
           自社スタッフとは別会社として招待します。協力店には売上・単価を付与しません。
-          招待リンクは30分間有効です。
+          招待リンクは有効期限内に承諾してください。
         </p>
         <p id="partnerInvitePermissionHint" hidden
            style="font-size:12px;line-height:1.6;color:var(--sub);">
@@ -12098,7 +12100,7 @@ partnerInviteCreateButton.onclick = async () => {
     url.searchParams.set("partnerCompanyInvite",token);
     document.getElementById("partnerInviteLinkOutput").value=url.href;
     document.getElementById("partnerInviteResult").hidden=false;
-    showSuccess("協力店の招待リンクを作成しました。30分以内に送ってください。");
+    showSuccess("協力店の招待リンクを作成しました。有効期限内に送ってください。");
   } catch (error) {
     // Never log or expose invitation secrets.
     console.error("協力店招待を作成できません",error?.code||"unknown");
@@ -12444,11 +12446,14 @@ async function showPartnerInviteAtMain(user,invite){
  nameField.hidden=invite.kind!=="staff";
  pInline("pMainInviteName").value=user.displayName||"";
  pInline("pMainInviteStatus").textContent="";
+ pInline("pMainInviteSignedInAs").textContent=
+  "ログイン中："+(user.email||"メールアドレス未確認")+
+  "（招待先のメールアドレスと一致している必要があります）";
  if(!/^[A-Za-z0-9_-]{43}$/.test(invite.token)){
   pInline("pMainInviteDescription").textContent="招待リンクが正しくありません。";
   pInline("pMainAcceptInvite").disabled=true;return;
  }
- pInline("pMainAcceptInvite").disabled=false;
+ pInline("pMainAcceptInvite").disabled=invite.kind==="company";
  if(invite.kind==="company"){
   try{
    const response=(await partnerMainPreviewCompanyInvite({token:invite.token})).data;
@@ -12456,8 +12461,18 @@ async function showPartnerInviteAtMain(user,invite){
    pInline("pMainInviteDescription").textContent=
     (response?.fromCompanyName||"自社")+" から "+(response?.partnerCompanyName||"協力店")+
     " への招待です。このアカウントで参加しますか？";
-  }catch{
-   pInline("pMainInviteDescription").textContent="招待を確認できません。招待先メール・期限をご確認ください。";
+   pInline("pMainAcceptInvite").disabled=false;
+  }catch(error){
+   if(auth.currentUser?.uid!==user.uid)return;
+   const code=String(error?.code||"");
+   pInline("pMainInviteDescription").textContent=
+    code==="functions/not-found"?
+      "招待リンクが見つかりません。招待元に再発行を依頼してください。":
+    code==="functions/unavailable"?
+      "招待の確認サービスが利用できません。管理者へ連絡してください。":
+    code==="functions/unauthenticated"?
+      "認証を確認できません。下のボタンで再ログインしてください。":
+      "このメールが招待先と違うか、リンクが期限切れ・使用済みの可能性があります。招待されたメールでログインし直すか、再発行を依頼してください。";
    pInline("pMainAcceptInvite").disabled=true;
   }
  }else{
@@ -12487,6 +12502,18 @@ pInline("pMainAcceptInvite").onclick=async()=>{
   location.replace(url.href);
  }catch{
   pInline("pMainInviteStatus").textContent="招待を承諾できませんでした。メール・招待期限・既存の所属を確認してください。";
+  button.disabled=false;
+ }
+};
+// Keep invitation in the URL and never edit Firestore while switching account.
+pInline("pMainSwitchInviteAccount").onclick=async()=>{
+ const button=pInline("pMainSwitchInviteAccount");
+ if(!auth.currentUser||button.disabled)return;
+ button.disabled=true;
+ pInline("pMainInviteStatus").textContent="ログインを切り替えています...";
+ try{await signOut(auth);}
+ catch{
+  pInline("pMainInviteStatus").textContent="ログアウトに失敗しました。再度お試しください。";
   button.disabled=false;
  }
 };
