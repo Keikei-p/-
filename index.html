@@ -5954,6 +5954,14 @@ body.product-reordering .product-list {
           </div>
         </div>
         <div id="individualRankingList" class="ranking-grid" data-columns="1"></div>
+        <details id="jointCountRankingDetails" style="margin-top:18px;padding:14px;border:1px solid var(--border);border-radius:12px;">
+          <summary style="cursor:pointer;font-weight:800;">🤝 今日の自社＋協力店・合同件数ランキング</summary>
+          <p style="font-size:12px;line-height:1.6;color:var(--sub);">既存の個人売上ランキングは変更しません。合同個人順位は件数・売上を表示せず、商材・班は件数のみを表示します。会社単位の簡易報告から個人順位を推測しません。自社Ownerが閲覧できます。</p>
+          <p id="jointCountRankingStatus" role="status" aria-live="polite" style="font-size:12px;color:var(--sub)"></p>
+          <h3 style="font-size:15px">🏅 個人順位</h3><div id="jointCountIndividualList" class="ranking-grid"></div>
+          <h3 style="font-size:15px">📦 商材別件数</h3><div id="jointCountProductList" class="ranking-grid"></div>
+          <h3 style="font-size:15px">👥 班・会社別件数</h3><div id="jointCountTeamList" class="ranking-grid"></div>
+        </details>
       </div>
 
       <div id="productRankingContent" class="dashboard-app-content" hidden>
@@ -6961,9 +6969,55 @@ const db =
 
 const partnerCountFunctions = getFunctions(app,"asia-northeast1");
 const readPartnerQuickDay = httpsCallable(partnerCountFunctions,"getPartnerQuickCounts");
+const readPartnerJointDay = httpsCallable(partnerCountFunctions,"getPartnerJointDailyRanking");
 const readPartnerWorkDay = httpsCallable(partnerCountFunctions,"getPartnerWorkspace");
 const createPartnerCompanyInvite = httpsCallable(partnerCountFunctions,"createPartnerCompanyInvitation");
 
+
+// The existing revenue ranking stays byte-for-byte unchanged.
+// Only an explicitly opened, Owner-gated, count-only joint board is loaded.
+let jointRankRequest=0;
+function fillJointCountRanking(id,rows,columns){
+ const parent=document.getElementById(id);parent.replaceChildren();
+ for(const entry of rows){
+  const row=document.createElement("div");
+  row.className="ranking-row";row.style.padding="10px 12px";
+  const label=document.createElement("div");label.className="ranking-name";
+  label.textContent=columns.map(k=>String(entry?.[k]??"")).join("｜");
+  row.append(label);parent.append(row);
+ }
+}
+async function loadJointCountRanking(){
+ const status=document.getElementById("jointCountRankingStatus");
+ if(!status)return;
+ const id=++jointRankRequest;
+ for(const key of ["jointCountIndividualList","jointCountProductList","jointCountTeamList"])
+  document.getElementById(key).replaceChildren();
+ if(!auth.currentUser||!isCurrentCompanyOwner()){
+  status.textContent="この合同順位は自社Ownerが確認できます。";return;
+ }
+ const date=getTodayString();
+ status.textContent=date+"の合同件数を照合中…";
+ try{
+  const {data}=await readPartnerJointDay({date});
+  if(id!==jointRankRequest||!auth.currentUser||!isCurrentCompanyOwner())return;
+  if(data?.date!==date||data?.period!=="day"||
+     !Array.isArray(data.individual)||!Array.isArray(data.products)||!Array.isArray(data.teams))
+   throw Error("bad_joint_ranking");
+  fillJointCountRanking("jointCountIndividualList",data.individual,["rank","company","name"]);
+  fillJointCountRanking("jointCountProductList",data.products,["name","count"]);
+  fillJointCountRanking("jointCountTeamList",data.teams,["company","name","count"]);
+  status.textContent=data.complete?
+   "実績照合済み（件数の個人順位のみ）。月間の既存ランキングとは別の今日の順位です。":
+   "一部の商材を分類できません。合同ランキングは完全照合前です。";
+ }catch(error){
+  if(id===jointRankRequest)status.textContent=
+   "合同件数を照合できません。既存の売上・実績はそのまま使用できます。";
+ }
+}
+document.getElementById("jointCountRankingDetails")?.addEventListener("toggle",event=>{
+ if(event.currentTarget.open)void loadJointCountRanking();
+});
 
 /* =====================================================
    DOM

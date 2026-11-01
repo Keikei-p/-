@@ -100,7 +100,9 @@ export async function uploadSingleExistingCounts({assetBytes,request,release=fal
    // run 41168151076 independently confirmed its deployed exact page and all original APIs.
    "sites/nico-factory/versions/3ca4d41ca85d8347",
    // Run 41170332915: only partner-counts.html replaced, all 11 assets verified.
-   "sites/nico-factory/versions/2a9b75da8b87ba01"
+   "sites/nico-factory/versions/2a9b75da8b87ba01",
+   // Run 41227697982 approved quick-only release: 10b5, all 11 live assets preserved.
+   "sites/nico-factory/versions/10b5c612289fe4f0"
  ]);
  const files=[];let pageToken="";
  do{
@@ -116,7 +118,7 @@ export async function uploadSingleExistingCounts({assetBytes,request,release=fal
   if(!knownIncompleteCountVersions.has(sourceName))
    throw Error("UNREVIEWED_LIVE_VERSION_MISSING_COUNT");
   // Known 11-file release must still list all existing pages before any write.
-  for(const required of ["/index.html","/partner-invite.html","/partner-counts.html","/partner-counts.html"])
+  for(const required of ["/index.html","/partner-invite.html","/partner-counts.html","/partner-workspace.html"])
    if(!files.some(f=>f.path===required))
     throw Error("SOURCE_REQUIRED_FILE_MISSING "+required);
   if(files.length<11)throw Error("SOURCE_KNOWN_VERSION_TOO_FEW_FILES");
