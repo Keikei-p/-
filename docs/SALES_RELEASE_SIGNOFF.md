@@ -850,3 +850,17 @@ GitHub所有者として認証済みの接続から、本番影響をindex.html�
 - 本記録は接続したGitHub経由での**限定的なコード技術レビュー**。管理者本人による独立署名・本番でのOwner/協力店アカウント実機試験は未取得であり、署名済みとして扱わない。
 - `sales-production-reviewed` を付与する場合も、当該HTML導線のみの差分確認を示す。Firestoreデータ、過去売上・単価・会員/班・認証情報を変更/初期化/削除する承認ではない。
 - このPR単独でFirebase Hostingは更新されない。現行本番 `index.html` に対するバイト完全一致と11既存資産保護、金額表示マーカー、公開後の実HTML照合が揃うまで追加Hostingリリースは行わない。
+
+
+---
+
+## 2026-11-01 — PR #292：協力店タブから既存件数入力へ直接移動（コード技術審査）
+
+- 目的：PR #291で本番公開済みの自社Owner専用「協力店」タブのリンク案内を補正し、既存 `/partner-counts.html` を件数登録の導線として表示する。既存 `/partner-invite.html` と `/partner-workspace.html` は削除・変更せず、役割を正しく案内する。
+- 2026-11-01 15:14頃に確認された本番匿名read-only監査（Actions #41280035032）では、既存招待・workspace APIの未認証拒否が有効だった。一方で会社コード認証4 APIは404、会社コード用UIは本番未公開。誤って会社コード方式が使用可能と案内しない。
+- 変更対象：`index.html` の協力店タブ内の説明とリンクだけ、`tests/simple-partner-company-tab.test.mjs` の導線回帰テスト、本書。その他の画面、既存認証、会社データ、売上・単価・CB、ランキング、保存済み実績・履歴、Firestore Rules、Functions、LINE、Hostingの公開設定には変更を加えない。
+- PR #292の差分を監査：`index.html` の追加5行、削除1行（アンカーテキスト置換）。既存の財務可視性ロジック `showLegacyFinanceEntryBlocked` / `currentCatalogRevenuePerUnit` を保持。テストはリンクとメール認証の説明、会社コード未公開表示を追加検査する。
+- 先行のPRテスト多数はPASS。ただし保護ゲート `protected-change-guard` は本書変更・`sales-production-reviewed` ラベル不足で意図通りSTOP。追加後の最新HEADで再実行し、別途確認すること。
+- この記録は接続済みGitHub経由の**コード差分に対する技術レビュー資料**であり、管理者本人の署名・実アカウントE2E・本番デプロイ承認を偽装するものではない。管理者独立署名：未取得。現場のオーナー・協力店実アカウントでの招待、保存、金額原票拒否：未検証。GitHub mainへのマージとFirebase Hostingの配備は別工程であり、コードPRのみで完了扱いしない。
+
+**リリース条件：** 最新CIの全チェック、正式な限定公開手順の本番HTMLベースライン一致・既存全ファイル保全・公開後HTTPとHTML一致。売上・単価と原票は変更しない。会社コード認証は今回配備しない。
