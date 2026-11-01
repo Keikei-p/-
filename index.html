@@ -12218,9 +12218,9 @@ partnerInviteCreateButton.onclick=async()=>{
   url.searchParams.set(existing?"partnerStaffInvite":"partnerCompanyInvite",token);
   document.getElementById("partnerInviteLinkOutput").value=url.href;
   document.getElementById("partnerInviteResult").hidden=false;
-  showSuccess(existing?
-   "登録済み協力店の"+(role==="leader"?"リーダー":"メンバー")+"招待リンクを発行しました（30分間有効）。":
-   "新規協力店の招待リンクを発行しました（24時間有効）。");
+  if(existing)showSuccess("登録済み協力店の"+(role==="leader"?"リーダー":"メンバー")+
+    "招待リンクを発行しました（30分間有効）。");
+  else showSuccess("協力店の招待リンクを作成しました。24時間以内に送ってください。");
  }catch(error){
   console.error("partner_invite_error",error?.code||"unknown");
   showError("協力店への招待に失敗しました。ログイン・会社の利用承認・班を確認してください。");
