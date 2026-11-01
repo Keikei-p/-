@@ -4750,6 +4750,11 @@ body.product-reordering .product-list {
               招待リンク
             </button>
 
+            <button id="quickPartnerButton" class="quick-menu-button" type="button" aria-pressed="false" style="display:none;">
+              <span class="quick-menu-icon">🤝</span>
+              協力店
+            </button>
+
             <button id="quickOwnerButton" class="quick-menu-button" type="button" aria-pressed="false" style="display:none;">
               <span class="quick-menu-icon">👑</span>
               オーナー管理
@@ -5464,6 +5469,30 @@ body.product-reordering .product-list {
   <!-- =====================================================
        報告漏れ：読み取り専用ログ
   ===================================================== -->
+  <!-- Owner-only partner companies; populated from the EXISTING count-only callable. -->
+  <div id="partnerCompanyManagement" class="management-card quick-panel" style="display:none;">
+    <div class="quick-panel-header">
+      <div class="management-title">🤝 協力店</div>
+      <button id="closePartnerCompanyButton" class="quick-panel-close" type="button">閉じる</button>
+    </div>
+    <p style="color:var(--sub);font-size:13px;line-height:1.7;">
+      協力店ごとの会社・班・商材別件数を管理します。金額情報は取得しません。
+      未報告は0件として扱いません。
+    </p>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin:14px 0;">
+      <label for="partnerCompanyDate" style="flex:1;min-width:155px;">確認する日
+        <input type="date" id="partnerCompanyDate" style="width:100%;min-height:44px;">
+      </label>
+      <button id="refreshPartnerCompanies" class="team-action-button" type="button">会社一覧を更新</button>
+    </div>
+    <p id="partnerCompanyStatus" role="status" aria-live="polite"></p>
+    <div id="partnerCompanyList" style="display:grid;gap:12px;"></div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:18px;">
+      <a href="/partner-invite.html">協力店・メンバーの招待</a>
+      <a href="/partner-workspace.html">協力店の件数入力画面</a>
+    </div>
+  </div>
+
   <div id="missingReportsManagement" class="account-card quick-panel" style="display:none;">
     <div class="quick-panel-header">
       <div class="account-title">📋 報告漏れ</div>
@@ -8738,8 +8767,15 @@ let unsubscribeRevenueGoals = null;
    ようこそ / クイック管理
 ===================================================== */
 
+const quickPartnerButton = document.getElementById("quickPartnerButton");
+const partnerCompanyManagement = document.getElementById("partnerCompanyManagement");
+const partnerCompanyDate = document.getElementById("partnerCompanyDate");
+const partnerCompanyStatus = document.getElementById("partnerCompanyStatus");
+const partnerCompanyList = document.getElementById("partnerCompanyList");
+
 const managementWorkspacePanels = [
   companyManagement,
+  partnerCompanyManagement,
   accountSettings,
   notificationManagement,
   missingReportsManagement,
@@ -8812,6 +8848,7 @@ function hideManagementWorkspace() {
 const quickMenuButtons = [
   quickCompanyButton,
   quickInviteButton,
+  quickPartnerButton,
   quickOwnerButton,
   quickAccountButton,
   quickNotifyButton,
@@ -8833,6 +8870,12 @@ function setManagementMenuOpen(
 
   managementMenuPanel.hidden=!open;
   quickMissingButton.style.display=isCurrentCompanyOwner()?"":"none";
+  quickPartnerButton.style.display=canLoadPartnerRanking()?"":"none";
+  if(!canLoadPartnerRanking()){
+    partnerCompanyList.replaceChildren();
+    partnerCompanyStatus.textContent="";
+    partnerCompanyManagement.style.display="none";
+  }
 
 }
 
@@ -9177,6 +9220,135 @@ quickInviteButton.onclick =
 
   };
 
+
+// A small owner-only company view, backed by the existing count-only API.
+// Never use the legacy records/products collections or put financial data in this UI.
+let partnerCompanyListGeneration=0;
+async function loadPartnerCompanyList(){
+  const generation=++partnerCompanyListGeneration;
+  partnerCompanyList.replaceChildren();
+  if(!canLoadPartnerRanking()){
+    partnerCompanyStatus.textContent="自社オーナーのみ確認できます。";
+    return;
+  }
+  const uid=currentUser.uid,hub=currentUserData.companyId;
+  const today=getTodayString();
+  const date=partnerCompanyDate.value;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||date>today||
+      !Number.isFinite(Date.parse(date+"T00:00:00Z"))||
+      new Date(date+"T00:00:00Z").toISOString().slice(0,10)!==date){
+    partnerCompanyStatus.textContent="正しい過去の日付を選択してください。";
+    return;
+  }
+  partnerCompanyStatus.textContent="協力店を確認中…";
+  const stillOwner=()=>generation===partnerCompanyListGeneration &&
+    currentUser?.uid===uid && currentUserData?.companyId===hub &&
+    canLoadPartnerRanking() && partnerCompanyDate.value===date &&
+    partnerCompanyManagement.style.display!=="none";
+  try{
+    const data=(await readPartnerWorkDay({date})).data;
+    if(!stillOwner())return;
+    if(data?.role!=="hub"||!Array.isArray(data.registeredCompanies)||
+        !Array.isArray(data.partners)||data.registeredCompanies.length>100||
+        data.partners.length>200)throw Error("untrusted_partner_company_reply");
+    const reports=new Map(data.partners.map(p=>[p.partnerCompanyId,p]));
+    for(const company of data.registeredCompanies){
+      if(!company||!/^[A-Za-z0-9_-]{1,128}$/.test(company.partnerCompanyId)||
+          typeof company.name!=="string"||company.name.length>80||
+          !Array.isArray(company.teams)||company.teams.length>150||
+          typeof company.active!=="boolean")throw Error("invalid_partner_company");
+      const report=reports.get(company.partnerCompanyId);
+      const card=document.createElement("div");
+      card.style.cssText="border:1px solid var(--border);border-radius:12px;padding:14px;min-width:0;";
+      const name=document.createElement("strong");
+      name.textContent="🏢 "+company.name;
+      card.append(name);
+      const status=document.createElement("p");
+      status.style.cssText="margin:8px 0;color:var(--sub);font-size:13px;";
+      status.textContent=!company.active?"未承認（入力・招待はできません）":
+        report?"報告済み｜"+report.totalCount+"件":"この日の件数は未報告・未確認";
+      card.append(status);
+      if(report){
+        if(!report.counts||Object.keys(report.counts).sort().join("|")!==
+             [...PARTNER_QUICK_RANK_KEYS].sort().join("|")||
+           !PARTNER_QUICK_RANK_KEYS.every(k=>Number.isSafeInteger(report.counts[k])&&
+             report.counts[k]>=0&&report.counts[k]<=9999))
+          throw Error("unexpected_partner_counts");
+        const products=document.createElement("p");
+        products.style.cssText="font-size:12px;line-height:1.8;overflow-wrap:anywhere;";
+        products.textContent=PARTNER_QUICK_RANK_KEYS.filter(k=>report.counts[k]>0)
+          .map(k=>k+" "+report.counts[k]+"件").join(" / ")||"登録済み（0件）";
+        card.append(products);
+      }
+      if(company.active){
+        const teams=document.createElement("p");
+        teams.style.cssText="font-size:12px;color:var(--sub);line-height:1.7;";
+        teams.textContent="所属班："+(company.teams.length?
+          company.teams.map(t=>String(t.name||"")).join(" / "):"まだ班がありません");
+        card.append(teams);
+        const details=document.createElement("div");
+        const button=document.createElement("button");
+        button.type="button";
+        button.className="team-action-button";
+        button.textContent="班別件数を確認";
+        button.onclick=async()=>{
+          button.disabled=true;
+          details.textContent="班別件数を確認中…";
+          try{
+            const scoped=(await readPartnerWorkDay({
+              date,partnerCompanyId:company.partnerCompanyId
+            })).data;
+            if(!stillOwner())return;
+            const info=scoped?.partnerTeamDetails;
+            if(scoped?.role!=="hub"||info?.scope!=="shared_counts_only"||
+                info.partnerCompanyId!==company.partnerCompanyId||
+                !Array.isArray(info.teams)||info.teams.length>150)
+              throw Error("invalid_team_breakdown");
+            details.replaceChildren();
+            for(const team of info.teams){
+              if(typeof team.name!=="string"||
+                  !Number.isSafeInteger(team.totalCount)||team.totalCount<0)
+                throw Error("invalid_team_counts");
+              const row=document.createElement("p");
+              row.textContent=team.name+"：報告済み "+team.totalCount+"件";
+              details.append(row);
+            }
+            if(info.unverifiedTeamCount>0){
+              const note=document.createElement("p");
+              note.textContent="班未確認の実績："+info.unverifiedTeamCount+"件";
+              details.append(note);
+            }
+            if(!info.teams.length)details.textContent="登録された班はありません。";
+          }catch(e){
+            if(stillOwner())details.textContent="班別件数を確認できません。";
+          }finally{button.disabled=false;}
+        };
+        card.append(button,details);
+      }
+      partnerCompanyList.append(card);
+    }
+    partnerCompanyStatus.textContent=data.registeredCompanies.length?
+      "登録済み協力店 "+data.registeredCompanies.length+"社（未報告は未確認として表示）":
+      "登録済み協力店はありません。招待から追加してください。";
+  }catch(e){
+    if(!stillOwner())return;
+    partnerCompanyList.replaceChildren();
+    partnerCompanyStatus.textContent="協力店情報を取得できません。招待・権限・公開APIを確認してください。";
+    console.error("partner company list read failed",e?.code||"unavailable");
+  }
+}
+quickPartnerButton.onclick=()=>{
+  if(!canLoadPartnerRanking())return;
+  closeQuickPanels();
+  showManagementWorkspace(partnerCompanyManagement);
+  quickPartnerButton.setAttribute("aria-pressed","true");
+  setManagementMenuOpen(false);
+  if(!partnerCompanyDate.value)partnerCompanyDate.value=getTodayString();
+  partnerCompanyDate.max=getTodayString();
+  void loadPartnerCompanyList();
+};
+document.getElementById("refreshPartnerCompanies").onclick=()=>void loadPartnerCompanyList();
+document.getElementById("closePartnerCompanyButton").onclick=closeQuickPanels;
 
 quickOwnerButton.onclick =
   () => {
