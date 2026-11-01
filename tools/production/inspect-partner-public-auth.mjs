@@ -9,10 +9,11 @@ export function parsePartnerAuthSurface(html){
   const project=html.match(/projectId:\s*"([^"]+)"/)?.[1];
   const domain=html.match(/authDomain:\s*"([^"]+)"/)?.[1];
   const version=html.match(/firebasejs\/([0-9.]+)\/firebase-auth\.js/)?.[1];
-  if(!key||!version||project!=="sales-management-cc116"||
+  const appNumber=html.match(/appId:\s*"1:(\d+):web:/)?.[1];
+  if(!key||!version||!appNumber||project!=="sales-management-cc116"||
      domain!=="sales-management-cc116.firebaseapp.com")
     throw Error("AUTH_DIAG_BAD_PROJECT_OR_CLIENT");
-  return {key,project,domain,version};
+  return {key,project,domain,version,appNumber};
 }
 export async function inspectPartnerPublicAuth(html,{request=fetch,log=console.log}={}){
   const conf=parsePartnerAuthSurface(html);
@@ -37,15 +38,25 @@ export async function inspectPartnerPublicAuth(html,{request=fetch,log=console.l
   if(project?.ok){
     let body;
     try{body=await project.json();}catch{body={};}
-    if(body.projectId&&body.projectId!==conf.project){pass=false;log("PUBLIC_AUTH_WRONG_PROJECT=true");}
+    // Identity Toolkit can return the project number rather than the human
+    // Firebase project ID. Both must resolve to this app's registered project.
+    if(body.projectId&&body.projectId!==conf.project){
+      const numericMatch=String(body.projectId)===conf.appNumber;
+      log("PUBLIC_AUTH_PROJECT_NUMBER_MATCH="+numericMatch);
+      if(!numericMatch){pass=false;log("PUBLIC_AUTH_WRONG_PROJECT=true");}
+    }
     if(Array.isArray(body.authorizedDomains)){
       const allowed=body.authorizedDomains.includes("nico-factory.web.app");
       log("NICO_AUTHORIZED_DOMAIN="+allowed);
       if(!allowed)pass=false;
     }else log("NICO_AUTHORIZED_DOMAIN=unknown");
-    if(body.signIn?.email?.enabled===false){
+    const emailEnabled=body.signIn?.email?.enabled??body.signIn?.emailPassword?.enabled;
+    if(emailEnabled===false){
       pass=false;log("EMAIL_PASSWORD_PROVIDER_ENABLED=false");
-    }else log("EMAIL_PASSWORD_PROVIDER_ENABLED="+(body.signIn?.email?.enabled===true?"true":"unknown"));
+    }else log("EMAIL_PASSWORD_PROVIDER_ENABLED="+(emailEnabled===true?"true":"unknown"));
+    if(emailEnabled===undefined){
+      log("PUBLIC_AUTH_EMAIL_CONFIGURATION_PRESENT="+Boolean(body.signIn?.email||body.signIn?.emailPassword));
+    }
   }else log("FIREBASE_AUTH_PUBLIC_CONFIGURATION=not_verifiable");
   log("READ_ONLY_NO_USER_LOOKUP_OR_LOGIN=true");
   return {publicAssetsVerified:pass,authConfigurationVerified:project?.ok===true};
