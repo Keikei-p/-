@@ -95,6 +95,33 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   const us=await read(db.collection("users").doc(uid));
   const u=us.data()||{},cid=clean(u.companyId);
   if(!us.exists||!ID.test(cid)||u.uid!==uid||u.active!==true)fail();
+  // An isolated count-only company principal can manage its own staff/counts.
+  // Never promote an old internal user or alter their company / finance flags.
+  if(u.authKind==="partner_code_shared"){
+   if(workspaceCompanyId||u.accessKind!=="partner"||u.memberType!=="cooperator"||
+      u.companyRole!=="owner"||u.canViewRevenue!==false||u.canViewUnitPrice!==false)
+    fail();
+   const companyRef=db.collection("companies").doc(cid);
+   const [cs,ms,rs,credentials]=await Promise.all([
+    read(companyRef),read(collection(cid,"members").doc(uid)),
+    read(db.collection("partnerRelations").doc(cid)),
+    read(db.collection("partnerCodeCredentials").doc(cid))
+   ]);
+   const c=cs.data()||{},m=ms.data()||{},rel=rs.data()||{},cred=credentials.data()||{};
+   if(!cs.exists||!ms.exists||!rs.exists||!credentials.exists||
+      c.active!==true||c.companyKind!=="partner"||
+      c.companyCodePrincipalUid!==uid||!ID.test(c.hubCompanyId||"")||
+      m.uid!==uid||m.companyId!==cid||m.active!==true||
+      m.authKind!=="partner_code_shared"||m.accessKind!=="partner"||
+      m.memberType!=="cooperator"||m.companyRole!=="owner"||
+      m.canViewRevenue!==false||m.canViewUnitPrice!==false||
+      rel.active!==true||rel.countSharingApproved!==true||
+      rel.hubCompanyId!==c.hubCompanyId||rel.partnerCompanyId!==cid||
+      cred.active!==true||cred.principalUid!==uid||cred.companyId!==cid)
+    fail();
+   return {kind:"partner",uid,cid,hubId:c.hubCompanyId,
+     companyName:c.name,role:"owner",teamId:null};
+  }
   // Existing-email secondary partner role, without touching original primary
   // company, revenue flags, financial originals, or stored user document.
   if(workspaceCompanyId){
