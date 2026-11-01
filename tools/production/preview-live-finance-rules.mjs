@@ -253,8 +253,11 @@ async function main(){
   if(!out.matchesReviewed){
     console.error("REDACTED_LIVE_RULES_PARITY "+
       JSON.stringify(summarizeReviewedRulesMismatch(out.candidate,original)));
-    stop("CANDIDATE_DIFFERS_FROM_REVIEWED_RULES");
+    // Read-only diagnostic run must still finish with a BLOCKED status.
+    // Let isolated emulator tests inspect the candidate; never approve it.
   }
+  writeFileSync(process.env.RUNNER_TEMP+"/nico-live-reviewed-parity.status",
+    out.matchesReviewed?"MATCH":"BLOCK",{mode:0o600});
   // The snapshot stays in the disposable runner only, never in public logs.
   writeFileSync(process.env.RUNNER_TEMP+"/nico-original-live-firestore.rules",live,{mode:0o600});
   writeFileSync(process.env.RUNNER_TEMP+"/nico-proposed-live-firestore.rules",out.candidate,{mode:0o600});

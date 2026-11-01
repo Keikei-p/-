@@ -110,4 +110,14 @@ jobs:
           node --test tests/internal-owner-finance-visibility.test.cjs
           # Above live-source step also rejects EVERY unexpected Rules byte:
           # reviewed patch must be identical to the approved reviewed source.
-          echo 'PASS: actual-live partner finance denial + internal owner/leader regression in isolated emulator. NO PRODUCTION DEPLOYMENT.'
+          echo 'PASS: emulator diagnostic only, NO PRODUCTION DEPLOYMENT.'
+      - name: BLOCK any unreviewed live patch even when emulator checks pass
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "$RUNNER_TEMP/nico-live-reviewed-parity.status"
+          if [ "$(cat "$RUNNER_TEMP/nico-live-reviewed-parity.status")" != 'MATCH' ]; then
+            echo 'STOP_UNREVIEWED_LIVE_FINANCE_RULES: offline results are diagnostic only. NO DEPLOYMENT.'
+            exit 1
+          fi
+          echo 'PASS: proposed live Rules bytes exactly match reviewed source; still NO DEPLOYMENT.'
