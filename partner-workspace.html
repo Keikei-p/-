@@ -224,7 +224,8 @@ const get=call("getPartnerWorkspace"),manage=call("managePartnerWorkspace"),
  accept=call("acceptPartnerWorkspaceInvite"),save=call("submitPartnerWorkspaceCounts"),
  issueCompanyCode=call("issuePartnerCompanyCode"),
  activateCompanyCode=call("activatePartnerCompanyCode"),
- codeLogin=call("loginPartnerCompanyCode");
+ codeLogin=call("loginPartnerCompanyCode"),
+ codeLogout=call("logoutPartnerCompanyCode");
 const $=id=>document.getElementById(id);
 const KEYS=["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"];
 let inviteToken=new URL(location.href).searchParams.get("invite")||"";
@@ -864,6 +865,11 @@ async function refresh(){if(!activeCodeSession&&(!auth.currentUser||!auth.curren
  }catch(e){
   if(current!==nonce)return;
   data=null;$("appBox").hidden=true;
+  if(activeCodeSession&&["functions/unauthenticated","functions/permission-denied"].includes(e?.code)){
+   clearCompanySession();
+   notice("会社コードのログイン期限が切れたか、権限が変更されました。もう一度ログインしてください。",true);
+   $("loginBox").hidden=false;return;
+  }
   // Auth may have succeeded while workspace lookup failed. Never strand
   // the user with both the login and application hidden.
   $("loginBox").hidden=false;$("loginLogout").hidden=!auth.currentUser;
@@ -1015,6 +1021,7 @@ $("loginForm").onsubmit=async e=>{
  button.disabled=true;button.setAttribute("aria-busy","true");
  notice("Firebaseにログインしています…");
  try{
+  clearCompanySession();
   await setPersistence(auth,browserSessionPersistence);
   await signInWithEmailAndPassword(auth,$("email").value.trim().toLowerCase(),$("pass").value);
   $("pass").value="";
@@ -1059,7 +1066,17 @@ $("join").onclick=async()=>{if(!inviteToken)return;await action(async()=>{
    "自社の現役所属を終了し、協力店へ移籍しました。以前の実績・売上・班履歴は元の自社に保存されています。":
    "協力店へ参加しました。";
 })};
-$("logout").onclick=()=>signOut(auth);
+$("logout").onclick=async()=>{
+ if(activeCodeSession){
+  const previous=activeCodeSession;
+  try{await codeLogout({codeSessionToken:previous})}catch{ /* local logout even offline */ }
+  clearCompanySession();++nonce;data=null;countDayCache.clear();
+  $("appBox").hidden=true;$("loginBox").hidden=false;
+  notice("協力店の会社コードからログアウトしました。");
+  return;
+ }
+ await signOut(auth);
+};
 onAuthStateChanged(auth,u=>{
  ++nonce;++countLoadId;companyCodeSession=false;data=null;countDayCache.clear();
  clearCountOnlyDashboard();$("companyOverview").hidden=true;
