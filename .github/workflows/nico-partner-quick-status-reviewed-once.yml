@@ -9,7 +9,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: nico-surgical-index-release
+  group: nico-quick-status-only-release-20261101
   cancel-in-progress: false
 jobs:
   validate:
