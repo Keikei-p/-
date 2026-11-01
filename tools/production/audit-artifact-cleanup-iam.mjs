@@ -19,18 +19,31 @@ export function validCleanupPolicy(p){
   return false;
  return true;
 }
+// A bounded most-recent Keep policy preserves a small rollback window while
+// the delete policy still bounds storage. Reject conditional/unbounded keeps.
+export function boundedRollbackKeepPolicy(p){
+ const action=typeof p?.action==="string"?p.action:p?.action?.type;
+ if(!["KEEP","Keep"].includes(action))return false;
+ const v=p?.mostRecentVersions;
+ return !!v&&!p.condition&&Number.isSafeInteger(v.keepCount)&&
+   v.keepCount>=1&&v.keepCount<=5&&
+   (!v.packageNamePrefixes||v.packageNamePrefixes.length===0);
+}
 export function auditArtifactRepository(repo,permissions=[]){
  const policies=Object.values(repo?.cleanupPolicies||{});
  const deletionPolicyPresent=policies.some(validCleanupPolicy);
- // Keep policies are allowed only when reviewed separately. Avoid claiming
- // fully bounded storage if an unknown keep policy can override deletion.
- const hasKeepPolicy=policies.some(p=>["Keep","KEEP"].includes(typeof p?.action==="string"?p.action:p?.action?.type));
+ // A maximum of five recent images per package is a bounded rollback
+ // exception. Unknown or conditional keep rules remain fail-closed.
+ const keeps=policies.filter(p=>["Keep","KEEP"].includes(typeof p?.action==="string"?p.action:p?.action?.type));
+ const hasKeepPolicy=keeps.length>0;
+ const boundedKeepPolicies=keeps.length>0&&keeps.every(boundedRollbackKeepPolicy);
  return Object.freeze({
   repositoryExists:!!repo,
   policyCount:policies.length,
   dryRun:repo?.cleanupPolicyDryRun===true,
-  eligibleDeletionPolicy:deletionPolicyPresent&&!hasKeepPolicy&&repo?.cleanupPolicyDryRun!==true,
+  eligibleDeletionPolicy:deletionPolicyPresent&&(!hasKeepPolicy||boundedKeepPolicies)&&repo?.cleanupPolicyDryRun!==true,
   hasKeepPolicy,
+  boundedKeepPolicies,
   iamCanUpdate:permissions.includes("artifactregistry.repositories.update"),
   iamCanDelete:permissions.includes("artifactregistry.versions.delete")
  });
