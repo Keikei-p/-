@@ -951,3 +951,5 @@ GitHub所有者として認証済みの接続から、本番影響をindex.html�
 - 既存 `index.html` のメンバー管理内へ自社Owner限定の「協力店（会社別の班・メンバー）」を追加。社内の協力店名付き班に属する通常メンバーは既存 `members` と `teams` の情報を表示。従来の別会社協力店は既存 `getPartnerWorkspace` のOwner専用 `registeredCompanies` で会社名・班名を表示。
 - **制約**：現行 CallableはHubオーナーに協力店メンバー/リーダーの氏名を返さない。この別会社について氏名を表示できたと偽らず「未連携」と記載し、別会社のFirestoreを直接読まない。サーバー拡張/実機確認は未実施。
 - この差分ではFirestore、Users、売上/単価、過去実績、LINE、Rules、Functions、backupを変更しない。HTMLと表示回帰テスト・技術記録のみ。PR審査ラベルは管理者独立署名ではない。
+
+- PR #312 のラベル付与後のコード保護ゲート再実行対象。既存テスト `tests/simple-partner-company-tab.test.mjs` に会社別メンバー一覧の表示・権限・読み取り限定検査を追加した。
