@@ -54,3 +54,16 @@ test("owner company list handles approved quick-count partners without unsafe gr
  for(const forbidden of ["setDoc(", "updateDoc(", "deleteDoc(", "getDocs(", ".innerHTML", "revenuePerUnit", "unitPrice", "totalRevenue"])
   assert(!source.includes(forbidden),forbidden+" must not appear in count-only partner overview");
 });
+
+test("owner can approve only the isolated count grant in the existing partner tab",()=>{
+ assert.match(html,/httpsCallable\(partnerCountFunctions,"approvePartnerQuickCounts"\)/);
+ assert.match(source,/quickApproval\?\.quickOnly===true&&quickApproval\.approved===false/);
+ assert.match(source,/quickData\?\.role==="hub"/);
+ assert.match(source,/if\(!stillOwner\(\)\|\|approveButton\.disabled\)return;/);
+ assert.match(source,/window\.confirm\(company\.name/);
+ assert.match(source,/approvePartnerQuickDay\(\{\s*partnerCompanyId:company\.partnerCompanyId,approved:true/);
+ assert.match(source,/approved\.countOnly!==true/);
+ assert.match(source,/approved\.financeAccess!==false/);
+ assert.match(source,/await loadPartnerCompanyList\(\)/);
+ assert.doesNotMatch(source,/partnerRelations.*\.update\(|setDoc\(|updateDoc\(|deleteDoc\(/);
+});
