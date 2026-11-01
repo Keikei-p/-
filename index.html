@@ -5021,10 +5021,27 @@ body.product-reordering .product-list {
       <div id="partnerInviteInline"
            hidden
            style="margin-top:18px;padding:15px;border:1px solid var(--border);border-radius:12px;">
-        <div style="font-weight:800;margin-bottom:6px;">🤝 協力店会社を招待</div>
+        <div style="font-weight:800;margin-bottom:6px;">🤝 協力店を招待</div>
+        <label for="partnerInviteModeSelect" style="display:block;font-weight:700;margin-bottom:6px">招待先</label>
+        <select id="partnerInviteModeSelect" style="width:100%;min-height:44px;margin-bottom:12px">
+          <option value="new">新しい協力店会社を招待</option>
+          <option value="existing">登録済み協力店へ招待</option>
+        </select>
+        <div id="partnerExistingInviteFields" hidden style="display:grid;gap:10px;margin-bottom:14px">
+          <label for="partnerExistingCompanySelect">協力店会社</label>
+          <select id="partnerExistingCompanySelect" style="width:100%;min-height:44px"></select>
+          <label for="partnerExistingTeamSelect">所属する班</label>
+          <select id="partnerExistingTeamSelect" style="width:100%;min-height:44px"></select>
+          <label for="partnerExistingInviteRole">招待する権限</label>
+          <select id="partnerExistingInviteRole" style="width:100%;min-height:44px">
+            <option value="member">メンバー</option>
+            <option value="leader">リーダー（確認後に選択）</option>
+          </select>
+          <p id="partnerExistingInviteStatus" role="status" style="font-size:12px;color:var(--sub)"></p>
+        </div>
         <p style="font-size:12px;line-height:1.6;color:var(--sub);">
-          自社スタッフとは別会社として招待します。協力店には売上・単価を付与しません。
-          招待リンクは30分間有効です。
+          協力店会社へ振り分けて招待します。協力店へ売上・単価の閲覧権限は付与しません。
+          新しい会社の招待は24時間、登録済み会社のメンバー招待は30分間有効です。
         </p>
         <p id="partnerInvitePermissionHint" hidden
            style="font-size:12px;line-height:1.6;color:var(--sub);">
@@ -5033,7 +5050,7 @@ body.product-reordering .product-list {
         <!-- Mobile-first: keep both fields full-width and visibly labelled. -->
         <div id="partnerInviteFormFields"
              style="display:grid;grid-template-columns:minmax(0,1fr);gap:14px;width:100%;min-width:0;">
-          <div class="form-group" style="margin:0;min-width:0;">
+          <div class="form-group" id="partnerInviteNewCompanyField" style="margin:0;min-width:0;">
             <label for="partnerInviteCompanyName"
                    style="display:block;font-weight:800;font-size:14px;margin-bottom:7px;">
               協力店会社名
@@ -5067,9 +5084,7 @@ body.product-reordering .product-list {
             <button id="partnerInviteCopyButton" type="button">コピー</button>
           </div>
         </div>
-        <a href="/partner-invite.html" style="display:inline-block;margin-top:10px;">
-          専用の協力店招待画面を開く
-        </a>
+
         <div id="partnerCountWorkspaceEntry"
              style="margin-top:16px;padding:13px;border:1px solid var(--border);border-radius:10px;">
           <div style="font-weight:800;margin-bottom:6px;">📊 協力店の件数入力・管理</div>
@@ -12079,43 +12094,133 @@ createInviteButton.onclick =
 
 
 const partnerInviteCreateButton = document.getElementById("partnerInviteCreateButton");
-partnerInviteCreateButton.onclick = async () => {
-  if (!currentUser?.emailVerified ||
-      currentCompanyData?.ownerUid !== currentUser.uid ||
-      currentCompanyData?.companyKind === "partner" ||
-      currentUserData?.accessKind === "partner") {
-    showError("協力店招待は自社のオーナーだけが作成できます。");
-    return;
+const partnerInviteModeSelect=document.getElementById("partnerInviteModeSelect");
+const partnerExistingInviteFields=document.getElementById("partnerExistingInviteFields");
+const partnerExistingCompanySelect=document.getElementById("partnerExistingCompanySelect");
+const partnerExistingTeamSelect=document.getElementById("partnerExistingTeamSelect");
+const partnerExistingInviteRole=document.getElementById("partnerExistingInviteRole");
+const partnerExistingInviteStatus=document.getElementById("partnerExistingInviteStatus");
+let partnerInviteRegisteredCompanies=[],partnerInviteLookupNonce=0;
+function renderExistingPartnerTeams(){
+ partnerExistingTeamSelect.replaceChildren();
+ const partner=partnerInviteRegisteredCompanies.find(c=>c.partnerCompanyId===partnerExistingCompanySelect.value);
+ if(!partner||partner.active!==true)return;
+ for(const team of partner.teams){
+  if(typeof team.id!=="string"||!/^[A-Za-z0-9_-]{1,128}$/.test(team.id)||
+     typeof team.name!=="string"||team.name.length>80)continue;
+  const option=document.createElement("option");
+  option.value=team.id;option.textContent=team.name;
+  partnerExistingTeamSelect.append(option);
+ }
+ partnerExistingInviteStatus.textContent=partnerExistingTeamSelect.options.length?
+   "会社・班・メールアドレスを確認して招待してください。":
+   "この協力店には招待可能な班がありません。先に班を登録してください。";
+}
+async function loadExistingPartnerForInvite(){
+ const seq=++partnerInviteLookupNonce,uid=currentUser?.uid,hub=currentUserData?.companyId;
+ partnerInviteRegisteredCompanies=[];
+ partnerExistingCompanySelect.replaceChildren();
+ partnerExistingTeamSelect.replaceChildren();
+ if(!canLoadPartnerRanking()||partnerInviteModeSelect.value!=="existing"){
+  partnerExistingInviteStatus.textContent="自社オーナーのみ招待できます。";return;
+ }
+ partnerExistingInviteStatus.textContent="登録済み協力店を読み込み中…";
+ try{
+  const result=(await readPartnerWorkDay({date:getTodayString()})).data;
+  if(seq!==partnerInviteLookupNonce||currentUser?.uid!==uid||
+     currentUserData?.companyId!==hub||!canLoadPartnerRanking()||
+     partnerInviteModeSelect.value!=="existing")return;
+  if(result?.role!=="hub"||!Array.isArray(result.registeredCompanies)||
+     result.registeredCompanies.length>100)throw Error("partner_invite_company_list_invalid");
+  const found=new Set();
+  for(const c of result.registeredCompanies){
+   if(!c||typeof c.partnerCompanyId!=="string"||
+      !/^[A-Za-z0-9_-]{1,128}$/.test(c.partnerCompanyId)||found.has(c.partnerCompanyId)||
+      typeof c.name!=="string"||c.name.length>80||
+      typeof c.active!=="boolean"||!Array.isArray(c.teams)||c.teams.length>150)
+    throw Error("partner_invite_company_invalid");
+   found.add(c.partnerCompanyId);
   }
-  const companyName=document.getElementById("partnerInviteCompanyName").value.trim();
-  const email=document.getElementById("partnerInviteEmail").value.trim().toLowerCase();
-  if(companyName.length<2 || companyName.length>80 ||
-     !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    showError("協力店名と招待メールアドレスを確認してください。");
-    return;
+  partnerInviteRegisteredCompanies=result.registeredCompanies;
+  for(const c of partnerInviteRegisteredCompanies){
+   const option=document.createElement("option");
+   option.value=c.partnerCompanyId;
+   option.textContent=c.name+(c.active?"":"（利用承認待ち）");
+   option.disabled=!c.active;
+   partnerExistingCompanySelect.append(option);
   }
-  const inviteCreatorUid=currentUser.uid;
-  partnerInviteCreateButton.disabled=true;
-  try {
-    const response=await createPartnerCompanyInvite({companyName,email});
-    if(currentUser?.uid!==inviteCreatorUid ||
-       currentCompanyData?.ownerUid!==inviteCreatorUid)
-      throw Error("stale_invite_creator");
-    const token=response?.data?.token;
-    if(typeof token!=="string"||!/^[A-Za-z0-9_-]{43}$/.test(token))
-      throw Error("invalid_invite_response");
-    const url=new URL("/",location.origin);
-    url.searchParams.set("partnerCompanyInvite",token);
-    document.getElementById("partnerInviteLinkOutput").value=url.href;
-    document.getElementById("partnerInviteResult").hidden=false;
-    showSuccess("協力店の招待リンクを作成しました。30分以内に送ってください。");
-  } catch (error) {
-    // Never log or expose invitation secrets.
-    console.error("協力店招待を作成できません",error?.code||"unknown");
-    showError("協力店の招待を作成できません。ログインとオーナー権限を確認してください。");
-  } finally {
-    partnerInviteCreateButton.disabled=false;
-  }
+  const first=partnerInviteRegisteredCompanies.find(c=>c.active);
+  if(first)partnerExistingCompanySelect.value=first.partnerCompanyId;
+  renderExistingPartnerTeams();
+  if(!first)partnerExistingInviteStatus.textContent=
+   "招待可能な協力店がありません。会社の利用承認と班の登録を確認してください。";
+ }catch(error){
+  if(seq!==partnerInviteLookupNonce||currentUser?.uid!==uid)return;
+  partnerInviteRegisteredCompanies=[];
+  partnerExistingCompanySelect.replaceChildren();
+  partnerExistingTeamSelect.replaceChildren();
+  partnerExistingInviteStatus.textContent="会社一覧を取得できません。本人確認・利用承認・APIを確認してください。";
+  console.error("partner_existing_invite_load",error?.code||"unavailable");
+ }
+}
+function syncPartnerInviteMode(){
+ const existing=partnerInviteModeSelect.value==="existing";
+ document.getElementById("partnerInviteNewCompanyField").hidden=existing;
+ partnerExistingInviteFields.hidden=!existing;
+ partnerInviteCreateButton.textContent=existing?"この協力店に招待リンクを作成":"協力店の招待リンク作成";
+ document.getElementById("partnerInviteResult").hidden=true;
+ ++partnerInviteLookupNonce;
+ if(existing)void loadExistingPartnerForInvite();
+ else{
+  partnerInviteRegisteredCompanies=[];
+  partnerExistingCompanySelect.replaceChildren();partnerExistingTeamSelect.replaceChildren();
+  partnerExistingInviteStatus.textContent="";
+ }
+}
+partnerInviteModeSelect.addEventListener("change",syncPartnerInviteMode);
+partnerExistingCompanySelect.addEventListener("change",renderExistingPartnerTeams);
+partnerInviteCreateButton.onclick=async()=>{
+ if(!currentUser?.emailVerified||currentCompanyData?.ownerUid!==currentUser.uid||
+    currentCompanyData?.companyKind==="partner"||currentUserData?.accessKind==="partner"){
+  showError("協力店招待は自社のオーナーだけが作成できます。");return;
+ }
+ const existing=partnerInviteModeSelect.value==="existing";
+ const companyName=document.getElementById("partnerInviteCompanyName").value.trim();
+ const email=document.getElementById("partnerInviteEmail").value.trim().toLowerCase();
+ if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||
+    (!existing&&(companyName.length<2||companyName.length>80))){
+  showError("協力店名と招待メールアドレスを確認してください。");return;
+ }
+ const selected=partnerInviteRegisteredCompanies.find(
+  c=>c.partnerCompanyId===partnerExistingCompanySelect.value);
+ const teamId=partnerExistingTeamSelect.value,role=partnerExistingInviteRole.value;
+ if(existing&&(!selected||selected.active!==true||
+    !selected.teams.some(t=>t.id===teamId)||!["member","leader"].includes(role))){
+  showError("登録済み協力店と班を確認してください。利用承認前の会社には招待できません。");return;
+ }
+ const uid=currentUser.uid,hub=currentUserData?.companyId;
+ partnerInviteCreateButton.disabled=true;
+ try{
+  const response=existing?
+   await partnerInlineManage({action:"hubCreateInvite",
+    partnerCompanyId:selected.partnerCompanyId,teamId,email,role}):
+   await createPartnerCompanyInvite({companyName,email});
+  if(currentUser?.uid!==uid||currentUserData?.companyId!==hub||
+     currentCompanyData?.ownerUid!==uid)throw Error("stale_invite_creator");
+  const token=response?.data?.token;
+  if(typeof token!=="string"||!/^[A-Za-z0-9_-]{43}$/.test(token))
+   throw Error("invalid_invite_response");
+  const url=new URL("/",location.origin);
+  url.searchParams.set(existing?"partnerStaffInvite":"partnerCompanyInvite",token);
+  document.getElementById("partnerInviteLinkOutput").value=url.href;
+  document.getElementById("partnerInviteResult").hidden=false;
+  showSuccess(existing?
+   "登録済み協力店の"+(role==="leader"?"リーダー":"メンバー")+"招待リンクを発行しました（30分間有効）。":
+   "新規協力店の招待リンクを発行しました（24時間有効）。");
+ }catch(error){
+  console.error("partner_invite_error",error?.code||"unknown");
+  showError("協力店への招待に失敗しました。ログイン・会社の利用承認・班を確認してください。");
+ }finally{partnerInviteCreateButton.disabled=false;}
 };
 document.getElementById("partnerInviteCopyButton").onclick=async()=>{
   const input=document.getElementById("partnerInviteLinkOutput");
