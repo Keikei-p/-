@@ -134,3 +134,14 @@ test("previously registered partner keeps owner, members and historic count entr
  assert(f.db.store.has("companies/"+cid+"/members/"+oldOwner));
  await assert.rejects(f.service.issue(f.hubReq({partnerCompanyId:"notFound"})));
 });
+
+test("company-code never creates finance-named company, and mobile reload isolates old email identity",async()=>{
+ const f=fixture();
+ await assert.rejects(f.service.issue(f.hubReq({companyName:"売上会社"})),e=>e.code==="invalid-argument");
+ const html=require("node:fs").readFileSync(require("node:path").resolve(__dirname,"../partner-workspace.html"),"utf8");
+ assert.match(html,/workspaceCompanyId&&!activeCodeSession/);
+ assert.match(html,/onAuthStateChanged\(auth,async u=>/);
+ assert.match(html,/if\(activeCodeSession\)\{[\s\S]{0,240}if\(u\)\{/);
+ assert.match(html,/await signOut\(auth\);return/);
+ assert.doesNotMatch(html,/firebase-firestore\.js|\bgetFirestore\(/);
+});
