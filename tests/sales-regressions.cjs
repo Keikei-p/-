@@ -1657,3 +1657,25 @@ test('Owner-only audit refuses unknown prices, missing catalog and ambiguous CB 
  const w=mock.auditSavedRevenueRates([records[0]],[ambiguous]);
  assert(w.some(x=>x.message.includes('重複')));
 });
+
+test('Temporary partner company tab only reads scoped, count-only backend', () => {
+  const tab=html.slice(html.indexOf('// A small owner-only company view'),
+    html.indexOf('quickOwnerButton.onclick =',html.indexOf('// A small owner-only company view')));
+  assert(tab.length>3000,'temporary partner company controller missing');
+  for(const id of ['quickPartnerButton','partnerCompanyManagement','partnerCompanyDate',
+    'partnerCompanyList','partnerCompanyStatus','refreshPartnerCompanies']) {
+    assert(html.includes('id="'+id+'"'),id+' element missing');
+  }
+  assert.match(tab,/if\(!canLoadPartnerRanking\(\)\)return;/);
+  assert.match(tab,/currentUser\?\.uid===uid/);
+  assert.match(tab,/currentUserData\?\.companyId===hub/);
+  assert.match(tab,/readPartnerWorkDay\(\{date\}\)/);
+  assert.match(tab,/readPartnerWorkDay\(\{\s*date,partnerCompanyId:company\.partnerCompanyId/);
+  assert.match(tab,/未報告・未確認/);
+  for(const forbidden of ['getDocs(', 'getDoc(', 'onSnapshot(', 'setDoc(', 'deleteDoc(',
+    'getFirestore(', 'innerHTML', 'revenuePerUnit', 'totalRevenue', 'unitPrice']) {
+    assert(!tab.includes(forbidden),forbidden+' must not be added to temporary partner UI');
+  }
+  assert.match(html,/checkedEntry\.mode!=="internal"/,
+    'partner users must remain barred from finance-capable legacy workspace');
+});
