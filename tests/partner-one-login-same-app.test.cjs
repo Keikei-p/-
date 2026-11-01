@@ -5,6 +5,32 @@ const index=load("index.html"),partner=load("partner-workspace.html"),
  legacyCompanyInvite=load("partner-invite.html"),
  service=load("functions-partner-workspace/service.cjs"),
  rules=load("firestore.rules");
+test("registered-partner form remains invisible until explicitly selected, including on mobile",()=>{
+ assert.match(index,/#partnerExistingInviteFields:not\(\[hidden\]\)\s*\{\s*display:\s*grid;/);
+ assert.match(index,/<div id="partnerExistingInviteFields" hidden style="gap:10px;margin-bottom:14px">/);
+ assert.doesNotMatch(index,/<div id="partnerExistingInviteFields" hidden style="display:grid/);
+ assert.match(index,/partnerExistingInviteFields\.hidden=!existing/);
+ assert.match(index,/partnerInviteModeSelect\.addEventListener\("change",syncPartnerInviteMode\)/);
+});
+test("partner invite routes selected existing company and team through the verified owner API",()=>{
+ assert.match(index,/id="partnerInviteModeSelect"/);
+ assert.match(index,/id="partnerExistingCompanySelect"/);
+ assert.match(index,/id="partnerExistingTeamSelect"/);
+ assert.match(index,/id="partnerExistingInviteRole"/);
+ const a=index.indexOf("const partnerInviteCreateButton =");
+ const b=index.indexOf('document.getElementById("partnerInviteCopyButton")',a);
+ assert.ok(a>=0&&b>a);
+ const source=index.slice(a,b);
+ assert.match(source,/await readPartnerWorkDay\(\{date:getTodayString\(\)\}\)/);
+ assert.match(source,/result\?\.role!=="hub"/);
+ assert.match(source,/option\.disabled=!c\.active/);
+ assert.match(source,/await partnerInlineManage\(\{action:"hubCreateInvite"/);
+ assert.match(source,/partnerCompanyId:selected\.partnerCompanyId,teamId,email,role/);
+ assert.match(source,/await createPartnerCompanyInvite\(\{companyName,email\}\)/);
+ assert.match(source,/existing\?"partnerStaffInvite":"partnerCompanyInvite"/);
+ assert.match(source,/currentUserData\?\.companyId!==hub/);
+ assert.doesNotMatch(source,/\b(?:getDocs|setDoc|updateDoc|deleteDoc|writeBatch)\s*\(/);
+});
 test("existing app sign-in is reused for company and member invitations",()=>{
  assert.match(index,/onAuthStateChanged\(\s*auth,/);
  assert.match(index,/const pendingPartnerInvite=partnerMainPendingInvite\(\)/);
@@ -23,6 +49,28 @@ test("existing app sign-in is reused for company and member invitations",()=>{
  // The pinned legacy workspace remains untouched; new links from the normal
  // app use the unified login, while older URLs remain backwards compatible.
  assert.match(partner,/url\.searchParams\.set\("invite",result\.token\)/);
+});
+test("partner invitation preflight waits for verified recipient and retains token on sign-out",()=>{
+ const a=index.indexOf("async function showPartnerInviteAtMain(");
+ const b=index.indexOf("/* =====================================================\n   Auth状態",a);
+ assert.ok(a>=0&&b>a);
+ const block=index.slice(a,b);
+ assert.match(index,/id="pMainInviteSignedInAs"/);
+ assert.match(index,/id="pMainSwitchInviteAccount"/);
+ assert.match(block,/pInline\("pMainInviteSignedInAs"\)\.textContent/);
+ assert.match(block,/user\.email\|\|"メールアドレス未確認"/);
+ assert.match(block,/pInline\("pMainAcceptInvite"\)\.disabled=invite\.kind==="company"/);
+ assert.match(block,/pInline\("pMainAcceptInvite"\)\.disabled=false/);
+ assert.match(block,/pMainSwitchInviteAccount"\)\.onclick=async/);
+ assert.match(block,/pInline\("pMainSwitchInviteAccount"\)\.disabled=false/);
+ assert.match(block,/await signOut\(auth\)/);
+ const switchBlock=block.slice(block.indexOf('pMainSwitchInviteAccount").onclick'),block.indexOf('pMainCancelInvite").onclick'));
+ assert.doesNotMatch(switchBlock,/location\.replace|searchParams\.delete|deleteDoc|updateDoc|setDoc/);
+ for(const code of ["functions/not-found","functions/unauthenticated","functions/unavailable"])
+   assert.ok(block.includes(code));
+ assert.match(block,/await partnerMainPreviewCompanyInvite\(\{token:invite\.token\}\)/);
+ assert.doesNotMatch(index,/招待リンクは30分間有効です。/);
+ assert.doesNotMatch(index,/30分以内に送ってください。/);
 });
 test("verified partner profiles enter the existing count-only app before internal financial rules checks",()=>{
  const body=index.slice(index.indexOf("async function loadUserData("),index.indexOf("/* =====================================================\n   個人テーマ"));
@@ -79,4 +127,40 @@ test("server owns partner roles and never returns financial data or permits lead
  assert.match(service,/privateProducts:productList/);
  assert.doesNotMatch(service,/\bdb\.collection\("(?:records|products|revenueGoals|recordCorrections)"\)/);
  assert.match(rules,/company\.get\('companyKind', 'internal'\) == 'internal'/);
+});
+test("same-app partner count errors distinguish pending activation from auth failure",()=>{
+ const begin=index.indexOf("async function partnerInlineFetch(");
+ const end=index.indexOf("async function openSameAppPartnerWorkspace(",begin);
+ assert.ok(begin>=0&&end>begin);
+ const view=index.slice(begin,end);
+ assert.match(view,/databaseStatus\.textContent="件数表示OK"/);
+ assert.match(view,/code==="functions\/permission-denied"/);
+ assert.match(view,/code==="functions\/failed-precondition"/);
+ assert.match(view,/databaseStatus\.textContent="件数利用待ち"/);
+ assert.match(view,/ログイン済みですが、協力店の件数利用承認/);
+ assert.match(view,/code==="functions\/unavailable"/);
+ assert.match(view,/databaseStatus\.textContent="件数サービス停止"/);
+ assert.match(view,/code==="functions\/unauthenticated"/);
+ assert.match(view,/databaseStatus\.textContent="再認証が必要"/);
+ assert.match(view,/partnerInlineData=null;pInline\("pInlineSave"\)\.disabled=true/);
+ for(const unsafe of ["getDoc(","getDocs(","deleteDoc(","setDoc(","updateDoc(","totalRevenue","unitPrice","pricingOptions"])
+  assert(!view.includes(unsafe),"Partner view cannot access finance: "+unsafe);
+});
+test("changing day blocks stale counts and verifies the same date for save and readback",()=>{
+ const start=index.indexOf("async function partnerInlineFetch()");
+ const stop=index.indexOf("async function openSameAppPartnerWorkspace(",start);
+ const save=index.indexOf('pInline("pInlineSave").onclick=');
+ const next=index.indexOf("async function loadOwnerPartnerCompanyTeams()",save);
+ assert.ok(start>=0&&stop>start&&save>=0&&next>save);
+ const fetch=index.slice(start,stop),submit=index.slice(save,next);
+ assert.match(fetch,/partnerInlineData=null/);
+ assert.match(fetch,/pInline\("pInlineSave"\)\.disabled=true/);
+ assert.match(fetch,/pInline\("pInlineCountFields"\)\.replaceChildren\(\)/);
+ assert.match(fetch,/snap\.date!==payload\.date/);
+ assert.match(submit,/const selectedDate=pInline\("pInlineDate"\)\.value/);
+ assert.match(submit,/snap\.date!==selectedDate/);
+ assert.match(submit,/date:selectedDate,staffId,counts/);
+ assert.match(submit,/readPartnerWorkDay\(partnerInlinePayload\(\{date:selectedDate\}\)\)/);
+ assert.match(submit,/verified\?\.date!==selectedDate/);
+ assert.doesNotMatch(submit,/date:pInline\("pInlineDate"\)\.value/);
 });
