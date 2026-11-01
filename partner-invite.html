@@ -140,14 +140,32 @@ async function loadExisting(){
 const $=id=>document.getElementById(id);
 const token=new URL(location.href).searchParams.get("token")||"";
 const validToken=/^[A-Za-z0-9_-]{43}$/.test(token);
+// Explain safe Firebase Auth errors to the invited person without logging email/password.
+const authErrorText=error=>{
+ switch(error?.code){
+  case "auth/email-already-in-use": return "このメールアドレスは登録済みです。新規作成せず、ログインしてください。";
+  case "auth/weak-password":
+  case "auth/password-does-not-meet-requirements": return "パスワードを確認してください。6文字以上で設定し、必要なら英数字を組み合わせてください。";
+  case "auth/invalid-email": return "メールアドレスの形式を確認してください。";
+  case "auth/operation-not-allowed": return "新規アカウント作成がFirebase認証設定で許可されていません。管理者に連絡してください。";
+  case "auth/unauthorized-domain": return "このサイトがFirebaseの認証許可ドメインに登録されていません。管理者に連絡してください。";
+  case "auth/too-many-requests": return "操作が集中したため一時的に制限されています。時間をあけて操作してください。";
+  case "auth/network-request-failed": return "通信できませんでした。電波・Wi-Fiを確認して再度操作してください。";
+  case "auth/invalid-credential":
+  case "auth/wrong-password":
+  case "auth/user-not-found": return "メールアドレスまたはパスワードを確認してください。";
+  case "functions/unauthenticated": return "ログイン状態を確認してください。必要ならログインし直してください。";
+  case "functions/permission-denied": return "招待されたメールアドレスでログインしてください。宛先が違う場合は管理者に確認してください。";
+  case "functions/failed-precondition": return "招待の期限切れ・登録済み・承認待ちの可能性があります。管理者に招待リンクの再発行を依頼してください。";
+  case "functions/unavailable": return "招待サービスはまだ有効になっていません。管理者へ確認してください。";
+  default: return "操作を完了できません。メール・招待期限・ログイン状態を確認してください。";
+ }
+};
 const busy=async(button,task)=>{
  button.disabled=true;try{await task();}catch(error){
+  // Only display Firebase's error category; do not expose credentials or raw server errors.
   console.error("Partner invitation operation failed",error?.code||"unknown");
-  $("notice").textContent=(error?.code==="auth/email-already-in-use"?
-   "このメールアドレスは登録済みです。アカウント作成ではなくログインを利用してください。":
-   error?.code==="functions/unavailable"?
-   "招待サービスはまだ有効になっていません。管理者へ確認してください。":
-   "操作を完了できません。メール・招待期限・ログイン状態を確認してください。");
+  $("notice").textContent=authErrorText(error);
  }finally{button.disabled=false;}
 };
 const message=x=>{$("notice").textContent=x;};
@@ -178,15 +196,25 @@ onAuthStateChanged(auth,()=>refresh());
 $("signIn").addEventListener("submit",async event=>{
  event.preventDefault();
  await busy($("signIn").querySelector("button"),async()=>{
-  await signInWithEmailAndPassword(auth,$("email").value,$("password").value);
+  await signInWithEmailAndPassword(auth,$("email").value.trim().toLowerCase(),$("password").value);
   $("password").value="";message("ログインしました。");await refresh();
  });
 });
 $("signUp").addEventListener("click",async()=>busy($("signUp"),async()=>{
- const credential=await createUserWithEmailAndPassword(auth,$("email").value,$("password").value);
+ const email=$("email").value.trim().toLowerCase();
+ const password=$("password").value;
+ if(password.length<6){message("パスワードは6文字以上で入力してください。");return;}
+ const credential=await createUserWithEmailAndPassword(auth,email,password);
  $("password").value="";
- await sendEmailVerification(credential.user);message("確認メールを送りました。確認後に再チェックしてください。");
+ // The Firebase account has ALREADY been created at this point. A verification
+ // mail quota/network failure must not be reported as a failed account signup.
+ let verificationSent=false;
+ try{await sendEmailVerification(credential.user);verificationSent=true;}
+ catch(error){console.error("Partner verification mail",error?.code||"unknown");}
  await refresh();
+ message(verificationSent?
+  "アカウントを作成しました。確認メールのリンクを開き、この画面で「メール確認後に再チェック」を押してください。":
+  "アカウントは作成できましたが、確認メールを送れませんでした。「確認メールを再送」を押してください。新規作成は不要です。");
 }));
 $("sendVerify").addEventListener("click",async()=>busy($("sendVerify"),async()=>{
  await sendEmailVerification(auth.currentUser);message("確認メールを再送しました。");
@@ -226,7 +254,7 @@ $("existingForm").addEventListener("submit",async event=>{
  if(!user?.emailVerified||user.uid!==existingOwnerUid||
     !company?.active||!company.teams.some(t=>t.id===teamId)||
     !["leader","member"].includes(role)||
-    !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)){
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
   message("会社・班・権限・メールを確認してください。");return;
  }
  await busy($("existingCreate"),async()=>{
