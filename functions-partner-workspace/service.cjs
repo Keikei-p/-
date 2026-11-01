@@ -67,6 +67,29 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  const summaryRef=(hub,date,partner)=>collection(hub,"partnerWorkCountDays").doc(date).collection("reports").doc(partner);
  async function actor(request){
   if(enabled()!==true)fail("unavailable");
+  const opaque=clean(request?.data?.codeSessionToken);
+  if(opaque){
+   if(request?.auth?.uid||!/^[A-Za-z0-9_-]{43}$/.test(opaque))fail("unauthenticated");
+   const hash=crypto.createHash("sha256").update(opaque).digest("hex");
+   const ss=await db.collection("partnerCodeSessions").doc(hash).get();
+   const session=ss.data()||{},uid=session.principalUid,cid=session.companyId;
+   if(!ss.exists||session.active!==true||!ID.test(uid||"")||
+      !ID.test(cid||"")||!Number.isSafeInteger(session.version)||
+      session.version<1||typeof session.expiresAt?.toMillis!=="function"||
+      session.expiresAt.toMillis()<=now()||
+      !/^NICO-[A-F0-9]{24}$/.test(session.companyCode||""))fail("unauthenticated");
+   const [credentials,login]=await Promise.all([
+    db.collection("partnerCodeCredentials").doc(cid).get(),
+    db.collection("partnerCodeLogins").doc(session.companyCode).get()
+   ]);
+   const c=credentials.data()||{},l=login.data()||{};
+   if(!credentials.exists||!login.exists||c.active!==true||
+      c.companyId!==cid||c.principalUid!==uid||c.companyCode!==session.companyCode||
+      c.version!==session.version||l.status!=="active"||
+      l.principalUid!==uid||l.partnerCompanyId!==cid||
+      l.version!==session.version)fail("unauthenticated");
+   return {uid,email:"",codeAuth:true,companyId:cid};
+  }
   const uid=request?.auth?.uid,email=clean(request?.auth?.token?.email).toLowerCase();
   if(!ID.test(uid||""))fail("unauthenticated");
   const bearer=request?.rawRequest?.headers?.authorization?.match(/^Bearer ([A-Za-z0-9._-]{20,12000})$/i)?.[1];
@@ -75,16 +98,6 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   try{[a,t]=await Promise.all([getAuth().getUser(uid),getAuth().verifyIdToken(bearer,true)]);}
   catch{fail("unauthenticated");}
   if(!a||a.disabled===true||t?.uid!==uid)fail("unauthenticated");
-  // Company code identities are allowed ONLY with server-minted custom claims.
-  // They never qualify for direct Firestore finance access (no verified email).
-  if(request.auth?.token?.partnerCodeAuth===true){
-   const companyId=request.auth?.token?.partnerCodeCompanyId;
-   const version=request.auth?.token?.partnerCodeVersion;
-   if(!ID.test(companyId||"")||!Number.isSafeInteger(version)||version<1||
-     t.partnerCodeAuth!==true||t.partnerCodeCompanyId!==companyId||
-     t.partnerCodeVersion!==version||a.emailVerified===true)fail("unauthenticated");
-   return {uid,email:"",companyId,codeAuth:true};
-  }
   if(!EMAIL.test(email)||request.auth?.token?.email_verified!==true||
      a.emailVerified!==true||clean(a.email).toLowerCase()!==email||
      t.email_verified!==true||clean(t.email).toLowerCase()!==email)fail("unauthenticated");
