@@ -11940,7 +11940,7 @@ existingInviteEl("partnerExistingCreate").onclick=async()=>{
   if(!canHubInvitePartner()||!company?.active||
      !company.teams.some(team=>team.id===teamId)||
      !["leader","member"].includes(role)||
-     !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)){
+     !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
     existingInviteEl("partnerExistingStatus").textContent="会社・班・役割・メールアドレスを確認してください。";
     return;
   }
