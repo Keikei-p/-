@@ -1,0 +1,48 @@
+name: NICO partner same sales login and company teams (NO DEPLOYMENT)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'partner-invite.html'
+      - 'tests/partner-one-login-same-app.test.cjs'
+      - '.github/workflows/nico-partner-one-login-regression.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'partner-invite.html'
+      - 'tests/partner-one-login-same-app.test.cjs'
+      - '.github/workflows/nico-partner-one-login-regression.yml'
+permissions:
+  contents: read
+jobs:
+  no-write-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Check code syntax and preserved revenue ownership
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/partner-one-login-same-app.test.cjs
+          node --test tests/internal-owner-finance-visibility.test.cjs
+          node --test tests/partner-money-free-workspace.test.cjs
+          node --test tests/partner-existing-ranking.test.cjs
+          node --test tests/partner-workspace.test.cjs
+      - name: Check actual main HTML module syntax (no production credentials)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs=require('fs');
+          const page=fs.readFileSync('index.html','utf8');
+          const matches=[...page.matchAll(/<script\b[^>]*type=["']module["'][^>]*>([\s\S]*?)<\/script>/gi)];
+          if(!matches.length)throw Error('missing_browser_module');
+          matches.forEach((m,i)=>fs.writeFileSync('/tmp/nico-partner-main-'+i+'.mjs',m[1]));
+          NODE
+          for f in /tmp/nico-partner-main-*.mjs; do node --check "$f"; done
