@@ -12552,6 +12552,8 @@ async function showPartnerInviteAtMain(user,invite){
  nameField.hidden=invite.kind!=="staff";
  pInline("pMainInviteName").value=user.displayName||"";
  pInline("pMainInviteStatus").textContent="";
+ // Account switching must be reusable after the next sign-in, not stuck disabled.
+ pInline("pMainSwitchInviteAccount").disabled=false;
  pInline("pMainInviteSignedInAs").textContent=
   "ログイン中："+(user.email||"メールアドレス未確認")+
   "（招待先のメールアドレスと一致している必要があります）";
