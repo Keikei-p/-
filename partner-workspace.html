@@ -137,13 +137,12 @@ td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 <div class="row"><input id="privateProductName" aria-label="独自商材名" maxlength="80" placeholder="例：独自サービス">
 <button id="addPrivateProduct" type="button">独自商材を追加</button></div>
 <div id="privateProductList" class="scroll"></div></div>
-<h3>👥 班員を追加（メール不要）</h3>
-<p class="muted">班のリーダーがスタッフ名を入力するだけで登録できます。スタッフ本人のメール・ログインは不要です。件数の入力はリーダーまたは権限を持つ担当者が行います。登録した名前は個人別・班別実績の集計対象になります。</p>
-<div class="row"><input id="managedName" aria-label="メールなしで登録するスタッフ名" placeholder="スタッフ名（メール不要）" maxlength="60">
-<select id="managedTeam" aria-label="スタッフの所属班"></select><button id="addManaged" type="button">この班に登録</button></div>
-<h3>🔐 ログインする担当者の招待</h3><p class="muted">招待するログイン利用者は本人のメール認証が必要です。会社のリーダー・同行（メンバー）の役割は自社側で決めて招待する運用を推奨します。メール不要の班員登録は上の欄を使ってください。</p>
+<h3>名前だけのスタッフを登録</h3>
+<div class="row"><input id="managedName" placeholder="スタッフ名" maxlength="60">
+<select id="managedTeam"></select><button id="addManaged" type="button">名前のみ登録</button></div>
+<h3>リーダー・メンバーを招待</h3><p class="muted">本人のメール認証で参加。協力店代表のみリーダーを招待できます。</p>
 <div class="row"><input id="inviteEmail" type="email" placeholder="招待先メールアドレス">
-<select id="inviteTeam"></select><select id="inviteRole"><option value="member">同行（メンバー権限）</option><option value="leader">リーダー</option></select>
+<select id="inviteTeam"></select><select id="inviteRole"><option value="member">メンバー</option><option value="leader">リーダー</option></select>
 <button id="makeInvite" type="button">招待リンクを作成</button></div>
 <div id="inviteOut" hidden><label for="inviteUrl">送信する招待リンク（30分）</label><div class="row">
 <input id="inviteUrl" readonly><button id="copy" type="button">コピー</button></div></div>
@@ -178,8 +177,8 @@ td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
     <button id="hubCreateTeam" type="button" class="secondary">協力店の班を追加</button></div>
    <label for="hubInviteTeamSelect">配属先の班</label><select id="hubInviteTeamSelect"></select>
    <label for="hubInviteRoleSelect">役割</label><select id="hubInviteRoleSelect">
-    <option value="leader">リーダー</option><option value="member">同行（メンバー権限）</option></select>
-   <label for="hubInviteEmail">本人のメールアドレス（ログインする人のみ）</label>
+    <option value="leader">リーダー</option><option value="member">メンバー</option></select>
+   <label for="hubInviteEmail">本人のメールアドレス</label>
    <input id="hubInviteEmail" type="email" autocomplete="off" placeholder="staff@example.com">
    <button id="hubMakeInvite" type="button">この会社に招待リンクを作成</button>
    <div id="hubInviteOut" hidden><label for="hubInviteUrl">30分有効・本人専用の招待リンク</label>
@@ -889,7 +888,7 @@ $("addPrivateProduct").onclick=()=>action(async()=>{
  return "独自商材を追加しました。自社側には表示されません。";
 });
 $("createTeam").onclick=()=>action(async()=>{await manage({action:"addTeam",name:$("teamName").value});$("teamName").value="";return "班を作成しました。";});
-$("addManaged").onclick=()=>action(async()=>{await manage({action:"addManaged",name:$("managedName").value,teamId:$("managedTeam").value});$("managedName").value="";return "メールアドレスなしの班員を登録しました。件数の入力はリーダーが行えます。";});
+$("addManaged").onclick=()=>action(async()=>{await manage({action:"addManaged",name:$("managedName").value,teamId:$("managedTeam").value});$("managedName").value="";return "担当者を登録しました。";});
 $("moveStaffAction").onclick=()=>action(async()=>{await manage({action:"moveStaff",staffId:$("moveStaffSelect").value,teamId:$("moveTeamSelect").value});return "所属班を変更しました。過去の実績件数は変更していません。";});
 $("hubCreateTeam").onclick=()=>action(async()=>{
  await manage({action:"hubAddTeam",partnerCompanyId:$("hubInviteCompanySelect").value,
@@ -904,7 +903,7 @@ $("hubMakeInvite").onclick=()=>action(async()=>{
  const url=new URL("/partner-workspace.html",location.origin);
  url.searchParams.set("invite",result.token);
  $("hubInviteUrl").value=url.href;$("hubInviteOut").hidden=false;
- return "協力店の"+(role==="leader"?"リーダー":"同行（メンバー）")+"招待リンクを作成しました。";
+ return "協力店の"+(role==="leader"?"リーダー":"メンバー")+"招待リンクを作成しました。";
 });
 $("hubInviteCopy").onclick=async()=>{
  try{await navigator.clipboard.writeText($("hubInviteUrl").value);notice("協力店の招待リンクをコピーしました")}
