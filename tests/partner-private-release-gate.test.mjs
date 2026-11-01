@@ -79,7 +79,8 @@ test("new company-code coordinated release pins all updated files and keeps ever
  for(const name of ["OWNER_REVENUE_PRICES_LOGIN_VERIFIED","FIRESTORE_BACKUP_RESTORE_VERIFIED",
   "EXISTING_FUNCTIONS_COST_APPROVED","CONFIRM_COMPANY_CODE_PARTNER_COUNT_ONLY",
   "node scripts/check-finance-read-boundary-before-deploy.mjs",
-  "node scripts/nico-production-cutover-preflight.mjs",
+  "node scripts/check-company-code-scoped-release.mjs",
+  "node --test tests/company-code-scoped-release.test.mjs",
   "eligibleDeletionPolicy","surgical-existing-partner-workspace.mjs --dry-run"]){
   assert(newRelease.includes(name),"Missing strict release guard "+name);
  }
