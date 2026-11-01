@@ -5555,7 +5555,6 @@ body.product-reordering .product-list {
       <div class="management-title">🤝 協力店</div>
       <button id="closePartnerCompanyButton" class="quick-panel-close" type="button">閉じる</button>
     </div>
-
     <section id="nativePartnerSignup" aria-label="同じ実績アプリへの協力店会社招待" style="border:1px solid var(--border);border-radius:12px;padding:14px;margin:12px 0">
       <p style="font-weight:800;margin:0 0 10px">協力店の会社を登録して代表者を招待</p>
       <p style="font-size:13px;line-height:1.6;color:var(--sub)">招待先もこの営業実績管理アプリを利用します。会社・班・メンバー・件数は協力店として分離し、売上と単価の原票は共有しません。</p>
@@ -6620,6 +6619,16 @@ body.product-reordering .product-list {
       id="memberManagementContent"
       class="accordion-content"
       hidden>
+
+      <details id="partnerMemberCompanySection" class="compact-settings-details" style="margin-bottom:12px;" hidden>
+        <summary>🤝 協力店（会社別の班・メンバー）</summary>
+        <div class="compact-settings-body">
+          <p style="font-size:12px;color:var(--sub);line-height:1.6">協力店ごとに班と担当者を確認します。売上・単価は表示しません。</p>
+          <button id="partnerMemberCompanyRefresh" type="button" class="team-action-button">会社・メンバーを更新</button>
+          <p id="partnerMemberCompanyStatus" role="status" aria-live="polite" style="font-size:12px;"></p>
+          <div id="partnerMemberCompanyList" style="display:grid;gap:10px;"></div>
+        </div>
+      </details>
 
       <details
         id="managedMemberCreatePanel"
@@ -9556,7 +9565,6 @@ quickPartnerButton.onclick=()=>{
 };
 document.getElementById("refreshPartnerCompanies").onclick=()=>void loadPartnerCompanyList();
 document.getElementById("closePartnerCompanyButton").onclick=closeQuickPanels;
-
 // Secure partner onboarding in the EXISTING sales app. Invitations and the
 // partner company are created server-side in separate partner-scoped records.
 // NEVER add a partner to the hub's teams/invitations/users via client batch.
@@ -19651,7 +19659,118 @@ async function transferMasterToMember(
 }
 
 
+
+// Read-only owner roster inside the EXISTING member administration tab.
+// Internal/native partner-marked teams have ordinary member rows. Separate
+// partner companies are listed by the existing hub-owner count-only callable;
+// that API intentionally does not expose account names or monetary originals.
+const partnerMemberSection=document.getElementById("partnerMemberCompanySection");
+const partnerMemberList=document.getElementById("partnerMemberCompanyList");
+const partnerMemberStatus=document.getElementById("partnerMemberCompanyStatus");
+let partnerMemberGeneration=0;
+function showPartnerMemberGroup(container,title,teamsInGroup,people){
+ const card=document.createElement("div");
+ card.style.cssText="border:1px solid var(--border);border-radius:10px;padding:12px;min-width:0";
+ const heading=document.createElement("strong");heading.textContent=title;card.append(heading);
+ for(const team of teamsInGroup){
+  const detail=document.createElement("div");
+  detail.style.cssText="margin-top:9px;padding:8px;border:1px solid var(--border);border-radius:7px;";
+  const name=document.createElement("div");name.textContent="👥 "+team.name;detail.append(name);
+  const teamPeople=people.filter(p=>p.teamId===team.id&&p.active!==false);
+  if(teamPeople.length){
+   for(const member of teamPeople){
+    const row=document.createElement("p");
+    row.style.cssText="margin:6px 0 0;font-size:13px;overflow-wrap:anywhere";
+    const role=member.companyRole==="owner"?"代表":
+      member.role==="leader"?"リーダー":"メンバー";
+    row.textContent=(member.name||"氏名未設定")+"（"+role+"）";
+    detail.append(row);
+   }
+  }else{
+   const empty=document.createElement("p");
+   empty.style.cssText="margin:6px 0 0;font-size:12px;color:var(--sub)";
+   empty.textContent=people.length===0?"リーダー・メンバーの氏名は未連携です。":"登録メンバーなし";
+   detail.append(empty);
+  }
+  card.append(detail);
+ }
+ if(!teamsInGroup.length){
+  const empty=document.createElement("p");empty.style.cssText="font-size:12px;color:var(--sub)";
+  empty.textContent="班の登録なし";card.append(empty);
+ }
+ container.append(card);
+}
+async function refreshPartnerMemberCompanies(){
+ const generation=++partnerMemberGeneration;
+ partnerMemberList.replaceChildren();
+ if(!canLoadPartnerRanking()){
+  partnerMemberStatus.textContent="自社オーナーだけが確認できます。";return;
+ }
+ const uid=currentUser.uid,cid=currentUserData.companyId;
+ const stillCurrent=()=>generation===partnerMemberGeneration&&
+   currentUser?.uid===uid&&currentUserData?.companyId===cid&&
+   canLoadPartnerRanking()&&partnerMemberSection.open;
+ partnerMemberStatus.textContent="協力店を読み込み中…";
+ const nativeGroups=new Map();
+ for(const team of teams){
+  const matched=typeof team.name==="string"?
+    /^協力店｜([^｜]+)｜(.+)$/.exec(team.name):null;
+  if(!matched||team.active===false)continue;
+  if(!nativeGroups.has(matched[1]))nativeGroups.set(matched[1],[]);
+  nativeGroups.get(matched[1]).push({id:team.id,name:matched[2]});
+ }
+ for(const [company,groupTeams] of nativeGroups){
+  showPartnerMemberGroup(partnerMemberList,"🤝 "+company,groupTeams,members);
+ }
+ try{
+  const result=(await readPartnerWorkDay({date:getTodayString()})).data;
+  if(!stillCurrent())return;
+  if(result?.role!=="hub"||!Array.isArray(result.registeredCompanies)||
+      result.registeredCompanies.length>100)throw Error("partner_company_roster_invalid");
+  const ids=new Set();
+  for(const item of result.registeredCompanies){
+   if(!item||typeof item.partnerCompanyId!=="string"||
+      !/^[A-Za-z0-9_-]{1,128}$/.test(item.partnerCompanyId)||
+      ids.has(item.partnerCompanyId)||typeof item.name!=="string"||
+      item.name.length>80||!Array.isArray(item.teams)||item.teams.length>150)
+     throw Error("partner_company_roster_invalid");
+   ids.add(item.partnerCompanyId);
+   const uniqueTeams=[];
+   for(const team of item.teams){
+    if(!team||typeof team.id!=="string"||typeof team.name!=="string"||
+        team.name.length>80)throw Error("partner_team_roster_invalid");
+    uniqueTeams.push({id:team.id,name:team.name});
+   }
+   // The hub response intentionally excludes staff identities, so NEVER
+   // invent leaders, guess names or scan a different company's Firestore.
+   showPartnerMemberGroup(partnerMemberList,"🏢 "+item.name,uniqueTeams,[]);
+  }
+  partnerMemberStatus.textContent=partnerMemberList.childElementCount?
+    "会社別の班を表示中。別会社の氏名は現在のAPIから取得できません。":
+    "登録済みの協力店はありません。";
+ }catch(e){
+  if(!stillCurrent())return;
+  partnerMemberStatus.textContent=partnerMemberList.childElementCount?
+   "既存の班は表示中。別会社の情報取得に失敗しました。":
+   "協力店情報を取得できません。";
+  console.error("partner_member_list",e?.code||"unavailable");
+ }
+}
+partnerMemberSection.addEventListener("toggle",()=>{
+ if(!partnerMemberSection.open){++partnerMemberGeneration;return;}
+ void refreshPartnerMemberCompanies();
+});
+document.getElementById("partnerMemberCompanyRefresh").onclick=()=>void refreshPartnerMemberCompanies();
+
 function renderMembers() {
+
+  partnerMemberSection.hidden=!canLoadPartnerRanking();
+  if(!canLoadPartnerRanking()){
+   partnerMemberSection.open=false;
+   partnerMemberList.replaceChildren();
+   partnerMemberStatus.textContent="";
+   ++partnerMemberGeneration;
+  }
 
   memberManagementCount.textContent =
     `${members.length}人`;
