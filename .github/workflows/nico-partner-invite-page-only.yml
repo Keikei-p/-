@@ -86,6 +86,13 @@ jobs:
             # Any future content change still aborts before the Hosting write.
             echo 'already_live=false' >> "$GITHUB_OUTPUT"
             echo 'PASS: exact reviewed legacy live invitation hash; preserve all other assets'
+          elif [ "$(git hash-object "$RUNNER_TEMP/nico-live-invite.html")" = "33f8ecf222fced7b247302f6b1ef171ad2a5c69a" ] && \
+               git cat-file -e "33f8ecf222fced7b247302f6b1ef171ad2a5c69a^{blob}" && \
+               git cat-file blob "33f8ecf222fced7b247302f6b1ef171ad2a5c69a" | cmp -s - "$RUNNER_TEMP/nico-live-invite.html"; then
+            # Exactly the publicly observed live page and the reviewed
+            # historical Git blob match byte for byte. No unknown-page bypass.
+            echo 'already_live=false' >> "$GITHUB_OUTPUT"
+            echo 'PASS: exact archived current-live invitation snapshot verified against Git history'
           else
             # Public HTML only; log fingerprints, never bodies or user credentials.
             echo "LIVE_INVITE_BLOB=$(git hash-object "$RUNNER_TEMP/nico-live-invite.html")"
