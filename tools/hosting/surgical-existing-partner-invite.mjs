@@ -102,7 +102,9 @@ export async function uploadSingleExistingPartnerInvite({assetBytes,request,rele
    // finalized version 1ecde6b8eae126e0 after a byte-exact release.
    "sites/nico-factory/versions/1ecde6b8eae126e0",
    // Invitation-only run 41265102073 preserved all 11 assets on final release.
-   "sites/nico-factory/versions/bae9889315ca26cd"
+   "sites/nico-factory/versions/bae9889315ca26cd",
+   // Verified run 41265891177: replaced the one invite file, retained 10 assets.
+   "sites/nico-factory/versions/ae272b4b50fa33d0"
  ]);
  const files=[];let pageToken="";
  do{
