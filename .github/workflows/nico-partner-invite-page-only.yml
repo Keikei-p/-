@@ -109,6 +109,13 @@ jobs:
             # Do not trust only a hash: compare all publicly deployed bytes.
             echo 'already_live=false' >> "$GITHUB_OUTPUT"
             echo 'PASS: byte-identical previous published invitation verified'
+          elif [ "$(git hash-object "$RUNNER_TEMP/nico-live-invite.html")" = "68b35de08aa730336fe8d1b1377830dc0a191db0" ] && \
+               git cat-file -e "68b35de08aa730336fe8d1b1377830dc0a191db0^{blob}" && \
+               git cat-file blob "68b35de08aa730336fe8d1b1377830dc0a191db0" | cmp -s - "$RUNNER_TEMP/nico-live-invite.html"; then
+            # Exact previously published signup correction: run 41262054823.
+            # Never overwrite any changed or unreviewed version.
+            echo 'already_live=false' >> "$GITHUB_OUTPUT"
+            echo 'PASS: exact previous authenticated invitation snapshot verified'
           else
             # Public HTML only; log fingerprints, never bodies or user credentials.
             echo "LIVE_INVITE_BLOB=$(git hash-object "$RUNNER_TEMP/nico-live-invite.html")"
