@@ -101,3 +101,21 @@ test("server owns partner roles and never returns financial data or permits lead
  assert.doesNotMatch(service,/\bdb\.collection\("(?:records|products|revenueGoals|recordCorrections)"\)/);
  assert.match(rules,/company\.get\('companyKind', 'internal'\) == 'internal'/);
 });
+test("same-app partner count errors distinguish pending activation from auth failure",()=>{
+ const begin=index.indexOf("async function partnerInlineFetch(");
+ const end=index.indexOf("async function openSameAppPartnerWorkspace(",begin);
+ assert.ok(begin>=0&&end>begin);
+ const view=index.slice(begin,end);
+ assert.match(view,/databaseStatus\.textContent="件数表示OK"/);
+ assert.match(view,/code==="functions\/permission-denied"/);
+ assert.match(view,/code==="functions\/failed-precondition"/);
+ assert.match(view,/databaseStatus\.textContent="件数利用待ち"/);
+ assert.match(view,/ログイン済みですが、協力店の件数利用承認/);
+ assert.match(view,/code==="functions\/unavailable"/);
+ assert.match(view,/databaseStatus\.textContent="件数サービス停止"/);
+ assert.match(view,/code==="functions\/unauthenticated"/);
+ assert.match(view,/databaseStatus\.textContent="再認証が必要"/);
+ assert.match(view,/partnerInlineData=null;pInline\("pInlineSave"\)\.disabled=true/);
+ for(const unsafe of ["getDoc(","getDocs(","deleteDoc(","setDoc(","updateDoc(","totalRevenue","unitPrice","pricingOptions"])
+  assert(!view.includes(unsafe),"Partner view cannot access finance: "+unsafe);
+});
