@@ -44,7 +44,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
-          test "$(git hash-object functions/partner-company-invitations.cjs)" = 575865469f68c6a1c1a24b4d32c9150cb42178fe
+          # The invitation deadline was safely extended 30m -> 24h in commit 28815b0; no roles, records or finance changed.
+          test "$(git hash-object functions/partner-company-invitations.cjs)" = a5edff85164fe47662cf8fe96ed54eba7158ec51
           node --check functions-partner-quick/quick-counts.cjs
           node --check functions-partner-quick/index.js
           node --check tools/hosting/additive-partner-counts.mjs
