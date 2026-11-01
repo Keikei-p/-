@@ -1,0 +1,59 @@
+name: NICO production Firestore managed backup inventory (READ ONLY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/production/inspect-firestore-backups-readonly.mjs'
+      - 'tests/firestore-managed-backup-inventory.test.mjs'
+      - '.github/workflows/nico-firestore-managed-backup-inventory.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/production/inspect-firestore-backups-readonly.mjs'
+      - 'tests/firestore-managed-backup-inventory.test.mjs'
+      - '.github/workflows/nico-firestore-managed-backup-inventory.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Validate no-write backup inventory with synthetic responses
+        run: |
+          node --check tools/production/inspect-firestore-backups-readonly.mjs
+          node --test tests/firestore-managed-backup-inventory.test.mjs
+  live-inventory:
+    needs: offline
+    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify exact Firebase project
+        run: node -e "if(JSON.parse(require('fs').readFileSync('.firebaserc','utf8')).projects.default!=='sales-management-cc116')process.exit(1)"
+      - name: Install existing Firebase Admin SDK
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Provide existing service identity (do not print or upload)
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-readonly-backup-sa.json"
+          chmod 600 "$RUNNER_TEMP/nico-readonly-backup-sa.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-readonly-backup-sa.json" >> "$GITHUB_ENV"
+      - name: GET only - check managed backup metadata, no restoration or customer data
+        run: node tools/production/inspect-firestore-backups-readonly.mjs
+      - name: Remove service identity
+        if: always()
+        run: rm -f "$RUNNER_TEMP/nico-readonly-backup-sa.json"
