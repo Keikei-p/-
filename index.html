@@ -5475,8 +5475,9 @@ body.product-reordering .product-list {
       <div class="management-title">🤝 協力店</div>
       <button id="closePartnerCompanyButton" class="quick-panel-close" type="button">閉じる</button>
     </div>
-    <p style="color:var(--sub);font-size:13px;line-height:1.7;">
-      協力店ごとの会社・班・商材別件数を管理します。金額情報は取得しません。
+    <p style="color:var(--sub);font-size:13px;line-height:1.8;">
+      <strong>かんたん運用：①協力店の代表を招待 → ②この一覧で「件数利用を承認」 → ③協力店は件数だけ入力。</strong>
+      班・スタッフの設定は後からでOK。売上・単価は協力店に渡しません。
       未報告は0件として扱いません。
     </p>
     <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin:14px 0;">
@@ -6994,6 +6995,7 @@ const db =
 
 const partnerCountFunctions = getFunctions(app,"asia-northeast1");
 const readPartnerQuickDay = httpsCallable(partnerCountFunctions,"getPartnerQuickCounts");
+const approvePartnerQuickDay = httpsCallable(partnerCountFunctions,"approvePartnerQuickCounts");
 const readPartnerWorkDay = httpsCallable(partnerCountFunctions,"getPartnerWorkspace");
 const createPartnerCompanyInvite = httpsCallable(partnerCountFunctions,"createPartnerCompanyInvitation");
 
@@ -9315,6 +9317,37 @@ async function loadPartnerCompanyList(){
             "件数専用：承認情報が見つかりません（未確認）";
       status.textContent=workspaceStatus+"｜"+quickStatus;
       card.append(status);
+      // Only the authenticated, company-scoped quick-count grant may be used.
+      // Never convert a quick count grant to workspace/finance approval.
+      if(quickApproval?.quickOnly===true&&quickApproval.approved===false&&
+         quickData?.role==="hub"&&!quickUnavailable&&date>=earliestQuickDate){
+        const approveButton=document.createElement("button");
+        approveButton.type="button";
+        approveButton.className="team-action-button";
+        approveButton.style.cssText="margin:8px 0;min-height:44px;";
+        approveButton.textContent="この協力店の件数利用を承認";
+        approveButton.addEventListener("click",async()=>{
+          if(!stillOwner()||approveButton.disabled)return;
+          if(!window.confirm(company.name+" に件数の入力と共有だけを許可しますか？（売上・単価の権限は付与しません）"))return;
+          approveButton.disabled=true;
+          try{
+            const approved=(await approvePartnerQuickDay({
+              partnerCompanyId:company.partnerCompanyId,approved:true
+            })).data;
+            if(!stillOwner())return;
+            if(approved?.partnerCompanyId!==company.partnerCompanyId||
+               approved.approved!==true||approved.countOnly!==true||
+               approved.financeAccess!==false)throw Error("invalid_quick_grant_reply");
+            await loadPartnerCompanyList();
+          }catch(e){
+            if(!stillOwner())return;
+            approveButton.disabled=false;
+            partnerCompanyStatus.textContent="件数利用を承認できませんでした。再確認してください。";
+            console.error("partner_quick_approval",e?.code||"unavailable");
+          }
+        });
+        card.append(approveButton);
+      }
       // Two independent reporting ledgers: show both when present, never sum
       // them, and never treat a missing report as a saved zero.
       const appendReport=(item,label)=>{
