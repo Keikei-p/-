@@ -92,6 +92,51 @@ const functions=getFunctions(app,"asia-northeast1");
 const createInvite=httpsCallable(functions,"createPartnerCompanyInvitation");
 const previewInvite=httpsCallable(functions,"previewPartnerCompanyInvitation");
 const acceptInvite=httpsCallable(functions,"acceptPartnerCompanyInvitation");
+const getWorkspace=httpsCallable(functions,"getPartnerWorkspace");
+const manageWorkspace=httpsCallable(functions,"managePartnerWorkspace");
+let existingCompanies=[],existingOwnerUid="",existingRequest=0;
+function renderExisting(){
+ const c=$("existingCompany"),previous=c.value;
+ c.replaceChildren();
+ for(const p of existingCompanies){
+  const o=document.createElement("option");o.value=p.partnerCompanyId;
+  o.textContent=p.name+(p.active?"":"（承認待ち）");c.append(o);
+ }
+ if(existingCompanies.some(p=>p.partnerCompanyId===previous))c.value=previous;
+ const p=existingCompanies.find(x=>x.partnerCompanyId===c.value),t=$("existingTeam"),old=t.value;
+ t.replaceChildren();
+ if(p?.active)for(const team of p.teams){
+  const o=document.createElement("option");o.value=team.id;o.textContent=team.name;t.append(o);
+ }
+ if(p?.teams.some(team=>team.id===old))t.value=old;
+ $("existingCreate").disabled=!(p?.active&&t.value&&auth.currentUser?.uid===existingOwnerUid);
+ $("existingStatus").textContent=!p?"登録済み協力店がありません。":
+  !p.active?"協力店の本体承認が必要です。件数のみの承認ではスタッフ招待できません。":
+  !t.value?"先にこの会社の班を作成してください。":
+  p.name+"のリーダー・メンバーを招待できます。";
+}
+async function loadExisting(){
+ const u=auth.currentUser,request=++existingRequest;
+ existingCompanies=[];existingOwnerUid="";
+ $("existingCreate").disabled=true;$("existingResult").hidden=true;
+ if(!u?.emailVerified||token)return;
+ $("existingStatus").textContent="登録済み協力店を確認しています…";
+ try{
+  await getIdToken(u,true);
+  const d=(await getWorkspace({date:new Date().toLocaleDateString("sv-SE",{timeZone:"Asia/Tokyo"})})).data;
+  if(request!==existingRequest||auth.currentUser?.uid!==u.uid)return;
+  if(d?.role!=="hub"||!Array.isArray(d.registeredCompanies)||
+   d.registeredCompanies.length>100||d.registeredCompanies.some(p=>
+    !/^[A-Za-z0-9_-]{1,128}$/.test(p.partnerCompanyId||"")||
+    typeof p.name!=="string"||typeof p.active!=="boolean"||
+    !Array.isArray(p.teams)))throw Error("invalid_company_scope");
+  existingCompanies=d.registeredCompanies;existingOwnerUid=u.uid;renderExisting();
+ }catch(e){
+  if(request!==existingRequest)return;
+  $("existingStatus").textContent="会社一覧を確認できません。オーナー権限・協力店管理の公開状況をご確認ください。";
+  console.error("partner_company_lookup",e?.code||"unavailable");
+ }
+}
 const $=id=>document.getElementById(id);
 const token=new URL(location.href).searchParams.get("token")||"";
 const validToken=/^[A-Za-z0-9_-]{43}$/.test(token);
@@ -114,9 +159,10 @@ const refresh=async()=>{
  $("createBox").hidden=!!token||!user||!user.emailVerified;
  $("acceptBox").hidden=!token||!user||!user.emailVerified;
  $("acceptedBox").hidden=true;
+ $("existingBox").hidden=!!token||!user||!user.emailVerified;
  $("accept").disabled=true;
  if(user&&!user.emailVerified){message("メールの確認を完了してから操作してください。");return;}
- if(!user||!token)return;
+ if(!user||!token){if(user?.emailVerified)await loadExisting();return;}
  if(!validToken){message("招待リンクが正しくありません。");return;}
  try{
   await getIdToken(user,true);
