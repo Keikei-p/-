@@ -4428,7 +4428,9 @@ body.product-reordering .product-list {
   <p id="pMainInviteDescription">ログイン後に招待を確認できます。</p>
   <label id="pMainInviteNameField" class="form-group" hidden>表示名<input id="pMainInviteName" maxlength="60" placeholder="例：田中 太郎"></label>
   <p id="pMainInviteStatus" role="status" aria-live="polite"></p>
+  <p id="pMainInviteSignedInAs" class="p-inline-muted"></p>
   <button id="pMainAcceptInvite" type="button">招待を承諾する</button>
+  <button id="pMainSwitchInviteAccount" type="button">別のメールアドレスでログイン</button>
   <button id="pMainCancelInvite" type="button">キャンセルして通常画面へ</button>
 </div>
 
@@ -12416,13 +12418,29 @@ async function partnerInlineFetch(){
      typeof snap.companyName!=="string"||snap.companyName.length===0)
    throw Error("partner_count_schema");
   partnerInlineData=snap;partnerInlineRender();
+  databaseStatus.textContent="件数表示OK";
   partnerInlineStatus("件数を表示しています。金額・単価は読み込んでいません。");
  }catch(e){
   if(seq!==partnerInlineNonce||auth.currentUser?.uid!==uid)return;
   partnerInlineData=null;pInline("pInlineSave").disabled=true;
   pInline("pInlineRanking").replaceChildren();
   pInline("pInlineTeams").replaceChildren();pInline("pInlinePeople").replaceChildren();
-  partnerInlineStatus("協力店の件数サービスを確認できません。自社オーナーの件数利用承認・所属・API公開状況をご確認ください。",true);
+  // An invited account can be AUTHENTICATED while its independent count
+  // activation remains pending. Never report this as a login failure.
+  const code=String(e?.code||"");
+  if(code==="functions/unavailable"||code==="functions/not-found"){
+   databaseStatus.textContent="件数サービス停止";
+   partnerInlineStatus("協力店の件数APIが未公開・停止中です。自社管理者にサービス設定の確認を依頼してください。",true);
+  }else if(code==="functions/permission-denied"||code==="functions/failed-precondition"){
+   databaseStatus.textContent="件数利用待ち";
+   partnerInlineStatus("ログイン済みですが、協力店の件数利用承認・班所属がまだ完了していない可能性があります。自社オーナーに確認してください。",true);
+  }else if(code==="functions/unauthenticated"){
+   databaseStatus.textContent="再認証が必要";
+   partnerInlineStatus("Firebaseの認証状態を確認できません。メール確認・再ログインを行ってください。",true);
+  }else{
+   databaseStatus.textContent="件数読込エラー";
+   partnerInlineStatus("件数を取得できませんでした。通信状況を確認し「更新」を押してください。解決しない場合は自社オーナーへ連絡してください。",true);
+  }
  }
 }
 async function openSameAppPartnerWorkspace(user,workspaceCompanyId=""){
@@ -12563,11 +12581,17 @@ async function showPartnerInviteAtMain(user,invite){
  nameField.hidden=invite.kind!=="staff";
  pInline("pMainInviteName").value=user.displayName||"";
  pInline("pMainInviteStatus").textContent="";
+ // Account switching must be reusable after the next sign-in, not stuck disabled.
+ pInline("pMainSwitchInviteAccount").disabled=false;
+ pInline("pMainInviteSignedInAs").textContent=
+  "ログイン中："+(user.email||"メールアドレス未確認")+
+  "（招待先のメールアドレスと一致している必要があります）";
  if(!/^[A-Za-z0-9_-]{43}$/.test(invite.token)){
   pInline("pMainInviteDescription").textContent="招待リンクが正しくありません。";
   pInline("pMainAcceptInvite").disabled=true;return;
  }
- pInline("pMainAcceptInvite").disabled=false;
+ // Fail closed until the server confirms the invite and recipient.
+ pInline("pMainAcceptInvite").disabled=invite.kind==="company";
  if(invite.kind==="company"){
   try{
    const response=(await partnerMainPreviewCompanyInvite({token:invite.token})).data;
@@ -12575,8 +12599,18 @@ async function showPartnerInviteAtMain(user,invite){
    pInline("pMainInviteDescription").textContent=
     (response?.fromCompanyName||"自社")+" から "+(response?.partnerCompanyName||"協力店")+
     " への招待です。このアカウントで参加しますか？";
-  }catch{
-   pInline("pMainInviteDescription").textContent="招待を確認できません。招待先メール・期限をご確認ください。";
+   pInline("pMainAcceptInvite").disabled=false;
+  }catch(error){
+   if(auth.currentUser?.uid!==user.uid)return;
+   const code=String(error?.code||"");
+   pInline("pMainInviteDescription").textContent=
+    code==="functions/not-found"?
+      "招待リンクが見つかりません。招待元に再発行を依頼してください。":
+    code==="functions/unavailable"?
+      "招待の確認サービスが利用できません。管理者へ連絡してください。":
+    code==="functions/unauthenticated"?
+      "認証を確認できません。下のボタンで再ログインしてください。":
+      "このメールが招待先と違うか、リンクが期限切れ・使用済みの可能性があります。招待されたメールでログインし直すか、再発行を依頼してください。";
    pInline("pMainAcceptInvite").disabled=true;
   }
  }else{
@@ -12606,6 +12640,18 @@ pInline("pMainAcceptInvite").onclick=async()=>{
   location.replace(url.href);
  }catch{
   pInline("pMainInviteStatus").textContent="招待を承諾できませんでした。メール・招待期限・既存の所属を確認してください。";
+  button.disabled=false;
+ }
+};
+// Keep the invite token in the URL; switching identity never changes Firestore.
+pInline("pMainSwitchInviteAccount").onclick=async()=>{
+ const button=pInline("pMainSwitchInviteAccount");
+ if(!auth.currentUser||button.disabled)return;
+ button.disabled=true;
+ pInline("pMainInviteStatus").textContent="ログインを切り替えています...";
+ try{await signOut(auth);}
+ catch{
+  pInline("pMainInviteStatus").textContent="ログアウトに失敗しました。再度お試しください。";
   button.disabled=false;
  }
 };
