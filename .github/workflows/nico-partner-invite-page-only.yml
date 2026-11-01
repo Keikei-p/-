@@ -69,6 +69,7 @@ jobs:
         run: |
           set -euo pipefail
           git show 81181507282d8dd0af998894d24969012118f84b:partner-invite.html > "$RUNNER_TEMP/nico-old-invite.html"
+          git show ef23a407aa02fcf8cbee92f171e6bfafdc899727:partner-invite.html > "$RUNNER_TEMP/nico-reviewed-previous-invite.html"
           curl -fsSL --retry 3 --max-time 30 'https://nico-factory.web.app/partner-invite.html?source_check=20261031' > "$RUNNER_TEMP/nico-live-invite.html"
           if cmp -s "$RUNNER_TEMP/nico-live-invite.html" partner-invite.html; then
             echo 'already_live=true' >> "$GITHUB_OUTPUT"
@@ -76,6 +77,9 @@ jobs:
           elif cmp -s "$RUNNER_TEMP/nico-live-invite.html" "$RUNNER_TEMP/nico-old-invite.html"; then
             echo 'already_live=false' >> "$GITHUB_OUTPUT"
             echo 'PASS: original invite confirmed; gated one-page release allowed'
+          elif cmp -s "$RUNNER_TEMP/nico-live-invite.html" "$RUNNER_TEMP/nico-reviewed-previous-invite.html"; then
+            echo 'already_live=false' >> "$GITHUB_OUTPUT"
+            echo 'PASS: exact previous main invitation snapshot confirmed; one-page release allowed'
           else
             echo 'STOP UNKNOWN_INVITE_LIVE_STATE; no write performed'
             exit 1
