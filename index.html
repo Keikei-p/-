@@ -4382,6 +4382,28 @@ body.product-reordering .product-list {
 }
 #dashboard .dashboard-select input[type="month"] {width:100%;max-width:320px;padding:10px;}
 </style>
+
+<style id="nicoPartnerSameAppStyle">
+#appScreen[data-partner-count-only="true"] > :not(.user-bar):not(#partnerInlineWorkspace){display:none!important}
+#appScreen[data-partner-count-only="true"] .user-bar .management-tab-shell{display:none!important}
+#appScreen[data-partner-count-only="true"] #partnerInlineWorkspace{display:block!important}
+#authScreen[data-partner-invite="true"] .auth-wrapper{display:none!important}
+#partnerInlineWorkspace .p-inline-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin:12px 0}
+#partnerInlineWorkspace .p-inline-field{display:flex;flex-direction:column;gap:6px;min-width:0}
+#partnerInlineWorkspace .p-inline-field input,#partnerInlineWorkspace .p-inline-field select{width:100%;min-height:44px;min-width:0}
+#partnerInlineWorkspace .p-inline-actions{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0}
+#partnerInlineWorkspace .p-inline-actions button{min-height:44px}
+#partnerInlineWorkspace .p-inline-list{display:grid;gap:8px;margin:10px 0}
+#partnerInlineWorkspace .p-inline-row{padding:12px;border:1px solid var(--border);border-radius:10px;overflow-wrap:anywhere}
+#partnerInlineWorkspace .p-inline-muted{color:var(--sub);font-size:13px}
+#partnerInlineWorkspace .p-inline-card{background:var(--card,#fff);border:1px solid var(--border);border-radius:12px;padding:16px;margin:12px 0}
+#partnerInlineWorkspace .p-inline-card h3{margin:0 0 12px}
+#partnerInlineWorkspace #pInlineCountFields .p-inline-field{margin-bottom:8px}
+#partnerInlineWorkspace #pInlineStatus{min-height:24px;font-weight:700}
+#partnerInviteAtMain{max-width:600px;margin:24px auto;padding:20px;border:1px solid var(--border);border-radius:14px;background:var(--card,#fff)}
+#partnerInviteAtMain button{min-height:46px}
+</style>
+
 </head>
 
 <body>
@@ -4400,6 +4422,16 @@ body.product-reordering .product-list {
 ===================================================== -->
 
 <main id="authScreen">
+
+<div id="partnerInviteAtMain" hidden role="region" aria-label="協力店の招待承諾">
+  <h2>🤝 協力店の招待</h2>
+  <p id="pMainInviteDescription">ログイン後に招待を確認できます。</p>
+  <label id="pMainInviteNameField" class="form-group" hidden>表示名<input id="pMainInviteName" maxlength="60" placeholder="例：田中 太郎"></label>
+  <p id="pMainInviteStatus" role="status" aria-live="polite"></p>
+  <button id="pMainAcceptInvite" type="button">招待を承諾する</button>
+  <button id="pMainCancelInvite" type="button">キャンセルして通常画面へ</button>
+</div>
+
 
   <div class="auth-wrapper">
 
@@ -4685,6 +4717,54 @@ body.product-reordering .product-list {
 ===================================================== -->
 
 <main id="appScreen">
+
+<!-- Same Firebase sign-in as the original sales app; count-only partner APIs. -->
+<section id="partnerInlineWorkspace" hidden aria-label="協力店 実績・班管理">
+  <h2 id="pInlineTitle">協力店 実績管理</h2>
+  <p class="p-inline-muted">いつもの実績管理アプリです。協力店には件数だけを表示し、売上・単価の原票は読み込みません。</p>
+  <div class="p-inline-grid">
+    <label class="p-inline-field">実績日<input id="pInlineDate" type="date"></label>
+    <div class="p-inline-field"><label for="pInlineRefresh">最新データ</label><button id="pInlineRefresh" type="button">更新</button></div>
+  </div>
+  <p id="pInlineStatus" role="status" aria-live="polite"></p>
+  <div class="p-inline-card">
+    <h3>👥 班管理</h3>
+    <div id="pInlineTeams" class="p-inline-list"></div>
+    <div id="pInlineOwnerTeam" hidden>
+      <div class="p-inline-grid"><label class="p-inline-field">新しい班名<input id="pInlineTeamName" maxlength="60" placeholder="例：1班"></label></div>
+      <button id="pInlineAddTeam" type="button">班を追加</button>
+    </div>
+    <h3>メンバーを追加</h3>
+    <div id="pInlinePeople" class="p-inline-list"></div>
+    <div id="pInlineMemberForms" hidden>
+      <div class="p-inline-grid">
+        <label class="p-inline-field">班<select id="pInlineManageTeam"></select></label>
+        <label class="p-inline-field">メールなしメンバーの名前<input id="pInlineManagedName" maxlength="60" placeholder="例：田中 太郎"></label>
+      </div>
+      <button id="pInlineAddManaged" type="button">メールなしメンバーを追加</button>
+      <div class="p-inline-grid">
+        <label class="p-inline-field">メール招待先<input id="pInlineInviteEmail" type="email" autocomplete="off" placeholder="member@example.com"></label>
+        <label class="p-inline-field">役割<select id="pInlineInviteRole"><option value="member">メンバー</option><option value="leader">リーダー</option></select></label>
+      </div>
+      <button id="pInlineCreateInvite" type="button">メールありメンバーを招待</button>
+      <div id="pInlineInviteResult" hidden>
+        <label class="p-inline-field">招待URL<input id="pInlineInviteUrl" readonly></label>
+        <button id="pInlineCopyInvite" type="button">招待リンクをコピー</button>
+      </div>
+    </div>
+  </div>
+  <div class="p-inline-card">
+    <h3>✏️ 件数入力・訂正</h3>
+    <label class="p-inline-field">担当者<select id="pInlineStaff"></select></label>
+    <div id="pInlineCountFields" class="p-inline-grid"></div>
+    <div class="p-inline-actions">
+      <button id="pInlineSave" type="button">件数を保存</button>
+      <span id="pInlineVersion" class="p-inline-muted"></span>
+    </div>
+  </div>
+  <div class="p-inline-card"><h3>🏆 班・個人・商材ランキング（件数のみ）</h3><div id="pInlineRanking" class="p-inline-list"></div></div>
+</section>
+
 
   <!-- ユーザー情報 -->
 
@@ -6402,6 +6482,9 @@ body.product-reordering .product-list {
         id="teamList"
         class="team-list">
       </div>
+
+      <div id="ownerPartnerTeamGroups" class="team-list" aria-label="協力店の会社別班一覧" style="margin-top:14px"></div>
+
 
     </div>
 
