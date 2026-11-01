@@ -47,7 +47,7 @@ small{color:#5e6d82}#info{font-weight:650}
  <form id="inviteForm">
   <label for="companyName">協力店の会社名</label><input id="companyName" required minlength="2" maxlength="80">
   <label for="inviteEmail">招待先のメールアドレス</label><input id="inviteEmail" type="email" required>
-  <button type="submit">30分間有効な招待リンクを作成</button>
+  <button type="submit">協力店会社の招待リンクを作成</button>
  </form>
  <label for="inviteLink">招待リンク</label><input id="inviteLink" readonly>
  <button id="copyLink" class="secondary" type="button">リンクをコピー</button>
@@ -328,7 +328,15 @@ $("inviteForm").addEventListener("submit",async event=>{
   const url=new URL("/partner-invite.html",location.origin);
   url.searchParams.set("token",data.token);
   $("inviteLink").value=url.href;
-  message("招待リンクを作成しました。30分以内に宛先の方へ送ってください。");
+  const deadline=Number(data?.expiresAt);
+  if(!Number.isSafeInteger(deadline)||deadline<Date.now()||
+     deadline>Date.now()+48*60*60*1000)
+    throw Error("invalid_expiry");
+  const until=new Date(deadline).toLocaleString("ja-JP",{
+    timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit",
+    hour:"2-digit",minute:"2-digit"
+  });
+  message("招待リンクを作成しました。有効期限："+until+"（日本時間）までに本人に送ってください。");
  });
 });
 $("copyLink").addEventListener("click",async()=>busy($("copyLink"),async()=>{
