@@ -116,6 +116,13 @@ jobs:
             # Never overwrite any changed or unreviewed version.
             echo 'already_live=false' >> "$GITHUB_OUTPUT"
             echo 'PASS: exact previous authenticated invitation snapshot verified'
+          elif [ "$(git hash-object "$RUNNER_TEMP/nico-live-invite.html")" = "0f2f5bc438c3ac7f5b541e1886e01a73e34a7398" ] && \
+               git cat-file -e "0f2f5bc438c3ac7f5b541e1886e01a73e34a7398^{blob}" && \
+               git cat-file blob "0f2f5bc438c3ac7f5b541e1886e01a73e34a7398" | cmp -s - "$RUNNER_TEMP/nico-live-invite.html"; then
+            # Reviewed previous main page (merge a0b43aa). Actual public blob observed
+            # on failed safe run 41264911265: 0f2f5bc...; bytes must match Git history.
+            echo 'already_live=false' >> "$GITHUB_OUTPUT"
+            echo 'PASS: byte-identical current live invite verified against previously merged Git blob'
           else
             # Public HTML only; log fingerprints, never bodies or user credentials.
             echo "LIVE_INVITE_BLOB=$(git hash-object "$RUNNER_TEMP/nico-live-invite.html")"
