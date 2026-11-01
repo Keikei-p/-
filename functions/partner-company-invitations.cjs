@@ -85,7 +85,8 @@ function requireFactory({db,getAuth,Timestamp,FieldValue,HttpsError,enabled,now}
      partnerName.length<2||partnerName.length>80)
     fail("invalid-argument");
   const token=crypto.randomBytes(32).toString("base64url");
-  const tokenHash=hashToken(token),expiresAt=Timestamp.fromMillis(now()+30*60*1000);
+  // 24h single-use, addressed-email-bound, verified-auth invitation. Previously 30 minutes.
+  const tokenHash=hashToken(token),expiresAt=Timestamp.fromMillis(now()+24*60*60*1000);
   const ref=inviteRef().doc();
   await db.runTransaction(async tx=>{
    const userSnap=await tx.get(db.collection("users").doc(actor.uid));
