@@ -19,19 +19,26 @@ function getFunction(name){
  assert(close>i,"unclosed production function "+name);
  return html.slice(i,close+2);
 }
-const helpers=["getEffectiveMasterUid","isCurrentCompanyMaster","isCurrentCompanyOwner",
+const helpers=["setAccordionState","getEffectiveMasterUid","isCurrentCompanyMaster","isCurrentCompanyOwner",
  "canCurrentUserViewRevenue","canCurrentUserViewProductRevenue","canCurrentUserViewUnitPrice",
  "isMemberMaster","memberRevenuePermissionEnabled","memberUnitPricePermissionEnabled",
  "applyRevenueVisibility"];
+function fakeToggle(){
+ const attrs=new Map([["aria-expanded","false"],["aria-pressed","false"]]);
+ return {style:{display:"none"},
+  getAttribute:key=>attrs.get(key)||null,
+  setAttribute:(key,value)=>attrs.set(key,String(value))};
+}
 const makeUI=()=>({
  monthlyCard:{style:{display:"none"}},
  monthlyRevenue:{closest(selector){assert.equal(selector,".summary-card");return this.__card;},__card:null},
- salesAnalysisToggle:{style:{display:"none"}},
- individualRankingToggle:{style:{display:"none"}},
- revenueChartToggle:{style:{display:"none"}},
- teamRankingRevenueButton:{style:{display:"none"}},
- teamRankingRevenueProgressButton:{style:{display:"none"}},
- salesAnalysisContent:{hidden:false},individualRankingContent:{hidden:false},revenueChartContent:{hidden:false}
+ salesAnalysisToggle:fakeToggle(),
+ individualRankingToggle:fakeToggle(),
+ revenueChartToggle:fakeToggle(),
+ teamRankingRevenueButton:fakeToggle(),
+ teamRankingRevenueProgressButton:fakeToggle(),
+ salesAnalysisContent:{hidden:false},individualRankingContent:{hidden:false},revenueChartContent:{hidden:false},
+ dashboardDetailArea:{hidden:false}
 });
 function evaluate({uid="owner",company={ownerUid:uid,masterUid:uid,companyKind:"internal"},
  profile={uid,companyId:"c",companyRole:"owner",canViewRevenue:false,canViewUnitPrice:false}}={}){
@@ -98,6 +105,48 @@ test("actual revenue dashboard elements are not hidden for the internal owner",(
  assert.equal(member.teamRankingMode,"progress");
  for(const key of ["salesAnalysisContent","individualRankingContent","revenueChartContent"])
   assert.equal(member[key].hidden,true,key);
+});
+test("owner's revenue panels open on the first tap after changing from a non-finance account",()=>{
+ const ctx=evaluate({uid:"member",company:{ownerUid:"owner",companyKind:"internal"},
+  profile:{uid:"member",companyId:"c",companyRole:"member",
+   canViewRevenue:false,canViewUnitPrice:false}});
+ for(const [toggle,content] of [
+  [ctx.salesAnalysisToggle,ctx.salesAnalysisContent],
+  [ctx.individualRankingToggle,ctx.individualRankingContent],
+  [ctx.revenueChartToggle,ctx.revenueChartContent]
+ ]){
+  toggle.setAttribute("aria-expanded","true");
+  toggle.setAttribute("aria-pressed","true");
+  content.hidden=false;
+ }
+ ctx.applyRevenueVisibility();
+ for(const [toggle,content] of [
+  [ctx.salesAnalysisToggle,ctx.salesAnalysisContent],
+  [ctx.individualRankingToggle,ctx.individualRankingContent],
+  [ctx.revenueChartToggle,ctx.revenueChartContent]
+ ]){
+  assert.equal(toggle.getAttribute("aria-expanded"),"false");
+  assert.equal(toggle.getAttribute("aria-pressed"),"false");
+  assert.equal(content.hidden,true);
+ }
+ assert.equal(ctx.dashboardDetailArea.hidden,true);
+ ctx.currentUser={uid:"owner"};
+ ctx.currentCompanyData={ownerUid:"owner",companyKind:"internal"};
+ // An Owner keeps finance even if legacy boolean flags were missing/false.
+ ctx.currentUserData={uid:"owner",companyId:"c",companyRole:"owner",
+  canViewRevenue:false,canViewUnitPrice:false};
+ ctx.applyRevenueVisibility();
+ assert.equal(ctx.canCurrentUserViewRevenue(),true);
+ assert.equal(ctx.canCurrentUserViewProductRevenue(),true);
+ assert.equal(ctx.canCurrentUserViewUnitPrice(),true);
+ assert.equal(ctx.monthlyCard.style.display,"");
+ for(const toggle of [ctx.salesAnalysisToggle,ctx.individualRankingToggle,ctx.revenueChartToggle])
+  assert.equal(toggle.style.display,"");
+ // A single normal click opens the panel again; no stale expanded flag.
+ assert.equal(ctx.salesAnalysisToggle.getAttribute("aria-expanded"),"false");
+ ctx.setAccordionState(ctx.salesAnalysisToggle,ctx.salesAnalysisContent,true);
+ assert.equal(ctx.salesAnalysisContent.hidden,false);
+ assert.equal(ctx.salesAnalysisToggle.getAttribute("aria-expanded"),"true");
 });
 test("existing owner product-price editor and historical revenue data pathways remain enabled",()=>{
  const currentUI=getFunction("updateCurrentUserUI");
