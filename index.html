@@ -12684,7 +12684,7 @@ async function loadUserData(
       );
 
     const userSnap =
-      await getDoc(
+      await getDocFromServer(
         userRef
       );
 
@@ -12759,6 +12759,24 @@ async function loadUserData(
 
     }
 
+
+    // Partner email accounts are count-only. Firestore Rules deliberately
+    // reject partner reads of companies/{id} and members/{uid}; do not run the
+    // internal-company membership probe for a partner. A verified server user
+    // profile selects this route, then the callable validates all membership,
+    // active approval, and team permissions before returning any count.
+    if (currentUserData.accessKind === "partner" ||
+        ["partner","cooperator"].includes(currentUserData.memberType)) {
+      if (currentUserData.accessKind !== "partner" ||
+          currentUserData.memberType !== "cooperator" ||
+          currentUserData.canViewRevenue !== false ||
+          currentUserData.canViewUnitPrice !== false) {
+        showLegacyFinanceEntryBlocked("blocked");
+        return false;
+      }
+      await openSameAppPartnerWorkspace(user);
+      return false;
+    }
 
     // CRITICAL: prevent an explicitly designated partner from entering
     // any legacy product price / raw record subscription or write path.
