@@ -144,3 +144,13 @@ test("expired and previously accepted preview codes have distinct, actionable me
  assert.match(message("functions/already-exists"),/承諾/);
  assert.match(message("functions/permission-denied"),/招待された/);
 });
+
+test("company invitations show server supplied expiration (old 30m and new 24h both supported)",()=>{
+ assert.match(html,/const deadline=Number\(data\?\.expiresAt\)/);
+ assert.match(html,/Number\.isSafeInteger\(deadline\)/);
+ assert.match(html,/new Date\(deadline\)\.toLocaleString\("ja-JP"/);
+ assert.match(html,/timeZone:"Asia\/Tokyo"/);
+ assert.match(html,/有効期限：/);
+ assert.doesNotMatch(html,/message\("招待リンクを作成しました。30分以内に宛先の方へ送ってください。"\)/);
+ assert.match(html,/この会社に招待リンクを作成/);
+});
