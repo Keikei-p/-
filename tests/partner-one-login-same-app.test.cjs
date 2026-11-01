@@ -25,15 +25,15 @@ test("existing app sign-in is reused for company and member invitations",()=>{
  assert.match(partner,/url\.searchParams\.set\("invite",result\.token\)/);
 });
 test("verified partner profiles enter the existing count-only app before internal financial rules checks",()=>{
- const body=index.slice(index.indexOf("async function loadUserData("),index.indexOf("/* =====================================================\\n   個人テーマ"));
- assert.match(body,/const userSnap =\\s*await getDocFromServer\\(\\s*userRef/);
+ const body=index.slice(index.indexOf("async function loadUserData("),index.indexOf("/* =====================================================\n   個人テーマ"));
+ assert.match(body,/const userSnap =\s*await getDocFromServer\(\s*userRef/);
  const partnerRoute=body.indexOf('currentUserData.accessKind === "partner"');
  const legacyProbe=body.indexOf('await checkLegacyEntryAgainstServer(user)');
  assert.ok(partnerRoute>=0&&legacyProbe>partnerRoute,"partner cannot use internal-company Firestore probe");
  assert.match(body,/currentUserData.canViewRevenue !== false/);
  assert.match(body,/currentUserData.canViewUnitPrice !== false/);
- assert.match(body,/await openSameAppPartnerWorkspace\\(user\\)/);
- assert.match(body,/showLegacyFinanceEntryBlocked\\("blocked"\\)/);
+ assert.match(body,/await openSameAppPartnerWorkspace\(user\)/);
+ assert.match(body,/showLegacyFinanceEntryBlocked\("blocked"\)/);
 });
 test("partner view is inside same app but legacy finance children are inaccessible",()=>{
  assert.match(index,/<main id="appScreen">/);
