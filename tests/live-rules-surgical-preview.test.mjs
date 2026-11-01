@@ -7,9 +7,10 @@ const reviewed=readFileSync(new URL("../firestore.rules",import.meta.url),"utf8"
 const originalFunction=reviewed.match(/^[ \t]*function isCompanyMember\(companyId\) \{[\s\S]*?^[ \t]*\}/m)?.[0];
 assert.ok(originalFunction);
 const oldFunction=originalFunction.replace(
-  /\n[ \t]*&& get\(companyPath\(companyId\)\)\.data\.get\('companyKind', 'internal'\) != 'partner'[\s\S]*?memberType', 'internal'\) != 'cooperator'/,
-  ""
+  /\n[ \t]*&& company\.get\('companyKind', 'internal'\)[\s\S]*?\n[ \t]*&& member\.get\('memberType', 'internal'\)[^\n]*;/,
+  ";"
 );
+assert.notEqual(oldFunction,originalFunction,"fixture must model the actual old live member predicate");
 function liveFixture(){
   let v=reviewed.replace(originalFunction,oldFunction);
   for(const name of ["teams","products","records","goals","revenueGoals"]){
