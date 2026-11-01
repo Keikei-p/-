@@ -1,0 +1,217 @@
+name: NICO partner backend 3-callable resume after Artifact policy approved
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-partner-backend-resume-after-artifact-policy.yml'
+      - 'functions/partner-company-invitations.cjs'
+      - 'tests/partner-company-invitations.test.cjs'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-partner-backend-resume-after-artifact-policy.yml'
+permissions:
+  contents: read
+concurrency:
+  group: nico-partner-invite-production
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false, fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify frozen source, scoped project and no finance or legacy-function changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
+          test "$(git hash-object functions/partner-company-invitations.cjs)" = 'a5edff85164fe47662cf8fe96ed54eba7158ec51'
+          test "$(git hash-object functions/package.json)" = 'c104fc304b0d65faf50839213ec3401093bc724a'
+          test "$(git hash-object firebase.partner-invites.json)" = 'fd4e8b8068fd31cd4df671a7da8134d270ffd3a9'
+          git cat-file -e '4da83f98cd6f033d8ce8bda532aef39859db9c09^{blob}'
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const cfg=JSON.parse(fs.readFileSync('firebase.partner-invites.json','utf8'));
+          const project=JSON.parse(fs.readFileSync('.firebaserc','utf8')).projects.default;
+          if(project!=='sales-management-cc116'||Object.keys(cfg).join(',')!=='functions'||
+             cfg.functions.source!=='functions'||cfg.functions.codebase!=='default')
+             throw Error('STOP_WRONG_PROJECT_OR_SCOPE');
+          const body=fs.readFileSync('functions/partner-company-invitations.cjs','utf8');
+          for(const phrase of ['partnerWorkspaceContexts','secondaryMembership','canViewRevenue:false',
+            'canViewUnitPrice:false','now()+24*60*60*1000'])
+            if(!body.includes(phrase))throw Error('STOP_INCOMPLETE_COMPATIBILITY');
+          const entry=fs.readFileSync('functions/index.js','utf8');
+          for(const name of ['createPartnerCompanyInvitation','previewPartnerCompanyInvitation',
+            'acceptPartnerCompanyInvitation','sendMissingReportReminders'])
+            if(!entry.includes(name))throw Error('STOP_EXISTING_FUNCTION_MISSING');
+          NODE
+          node --check functions/partner-company-invitations.cjs
+          node --check functions/index.js
+          node --check tools/production/audit-artifact-cleanup-iam.mjs
+          node --test tests/audit-artifact-cleanup-iam.test.mjs
+          node --test tests/partner-company-invitations.test.cjs tests/partner-workspace.test.cjs tests/sales-regressions.cjs
+      - name: Ensure release code is scoped to existing three callables and does not touch financial paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)"
+  release:
+    needs: verify
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.verify.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false, fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Assert this is the one-time reviewed workflow introduction
+        shell: bash
+        run: |
+          set -euo pipefail
+          # This file is first introduced in the reviewed merge. Re-execution
+          # after subsequent edits must not redeploy these backend callables.
+          git diff-tree --no-commit-id --name-only -r -m HEAD | grep -Fxq '.github/workflows/nico-partner-backend-resume-after-artifact-policy.yml'
+          # Authorize exactly this reviewed second attempt after the initial safe stop.
+          test "$(git rev-parse HEAD^1)" = 'bce0c90d6a026aba49343c49f8804ba4a5dcaf2c'
+          test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
+          test "$(git hash-object functions/partner-company-invitations.cjs)" = 'a5edff85164fe47662cf8fe96ed54eba7158ec51'
+          test "$(git hash-object firebase.partner-invites.json)" = 'fd4e8b8068fd31cd4df671a7da8134d270ffd3a9'
+          test ! -e functions/.env.sales-management-cc116
+      - name: Install pinned Firebase CLI and existing Functions dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+          npm install -g firebase-tools@15.34.1
+          node -e "require('./functions/index.js')"
+      - name: Load existing protected Firebase identity into temporary runner only
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-repair-sa.json"
+          chmod 600 "$RUNNER_TEMP/nico-repair-sa.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-repair-sa.json" >> "$GITHUB_ENV"
+      - name: Snapshot all existing Functions and verify original scheduled LINE remains
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase functions:list --project "$FIREBASE_PROJECT_ID" --json > "$RUNNER_TEMP/nico-functions-before.json"
+          FILE="$RUNNER_TEMP/nico-functions-before.json" node - <<'NODE'
+          const a=JSON.parse(require('fs').readFileSync(process.env.FILE,'utf8'));
+          const n=(Array.isArray(a.result)?a.result:[]).map(x=>x.id||x.name||x.function||'');
+          for(const x of ['sendMissingReportReminders','createPartnerCompanyInvitation',
+              'previewPartnerCompanyInvitation','acceptPartnerCompanyInvitation'])
+            if(!n.some(s=>s===x||s.endsWith('/'+x)))throw Error('STOP_PROTECTED_FUNCTION_MISSING_'+x);
+          console.log('PASS: all four previously deployed Functions are present');
+          NODE
+      - name: Record current Firestore Rules release without changing it
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs=require('fs');
+          const {createRequire}=require('module');
+          const req=createRequire(process.cwd()+'/functions/package.json');
+          const {applicationDefault}=req('firebase-admin/app');
+          (async()=>{
+            const t=await applicationDefault().getAccessToken();
+            const url='https://firebaserules.googleapis.com/v1/projects/sales-management-cc116/releases/cloud.firestore';
+            const r=await fetch(url,{headers:{Authorization:'Bearer '+t.access_token}});
+            if(!r.ok)throw Error('STOP_CANNOT_READ_LIVE_RULES');
+            const data=await r.json(),name=data.rulesetName||'';
+            if(!/^projects\/sales-management-cc116\/rulesets\/[A-Za-z0-9_-]+$/.test(name))
+              throw Error('STOP_INVALID_RULESET');
+            fs.writeFileSync(process.env.RUNNER_TEMP+'/nico-rules-before.txt',name);
+            console.log('PASS: live Firestore Rules release fingerprint captured (not deployed)');
+          })().catch(e=>{console.error(e.message);process.exitCode=1});
+          NODE
+      - name: Confirm owner-approved active cleanup policy (read-only; no IAM mutation)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {runAudit} from './tools/production/audit-artifact-cleanup-iam.mjs';
+          const status=await runAudit();
+          if(!status.eligibleDeletionPolicy){
+            console.error('STOP_ARTIFACT_POLICY_OWNER_ACTION_REQUIRED');
+            process.exitCode=2;
+          }else{
+            console.log('PASS: verified active <=7 day repository cleanup; no artifact policy change');
+          }
+          NODE
+      - name: Update ONLY the three existing partner company invitation Functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'PARTNER_INVITES_ENABLED=enabled\n' > functions/.env.sales-management-cc116
+          chmod 600 functions/.env.sales-management-cc116
+          firebase deploy --non-interactive --project "$FIREBASE_PROJECT_ID" \
+            --config firebase.partner-invites.json \
+            --only functions:createPartnerCompanyInvitation,functions:previewPartnerCompanyInvitation,functions:acceptPartnerCompanyInvitation
+      - name: Verify all old Functions survive and unauthorized requests remain rejected
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase functions:list --project "$FIREBASE_PROJECT_ID" --json > "$RUNNER_TEMP/nico-functions-after.json"
+          BEFORE="$RUNNER_TEMP/nico-functions-before.json" AFTER="$RUNNER_TEMP/nico-functions-after.json" node - <<'NODE'
+          const fs=require('fs'),ids=p=>{
+            const a=JSON.parse(fs.readFileSync(p,'utf8'));
+            return (Array.isArray(a.result)?a.result:[]).map(x=>x.id||x.name||x.function||'').sort();
+          };
+          const before=ids(process.env.BEFORE),after=ids(process.env.AFTER);
+          for(const name of before)if(!after.includes(name))throw Error('STOP_EXISTING_FUNCTION_REMOVED');
+          for(const name of ['sendMissingReportReminders','createPartnerCompanyInvitation',
+           'previewPartnerCompanyInvitation','acceptPartnerCompanyInvitation'])
+            if(!after.some(s=>s===name||s.endsWith('/'+name)))throw Error('STOP_FUNCTION_MISSING_'+name);
+          console.log('PASS: all previous Functions retained');
+          NODE
+          node - <<'NODE'
+          (async()=>{
+           const base='https://asia-northeast1-sales-management-cc116.cloudfunctions.net/';
+           for(const name of ['createPartnerCompanyInvitation','previewPartnerCompanyInvitation',
+             'acceptPartnerCompanyInvitation']){
+             const r=await fetch(base+name,{method:'POST',headers:{'Content-Type':'application/json'},
+              body:JSON.stringify({data:{}})});
+             if(![401,403].includes(r.status))throw Error('STOP_UNAUTHENTICATED_CALLABLE_'+name+'_'+r.status);
+           }
+           console.log('PASS: three updated Functions deny unauthenticated calls');
+          })().catch(e=>{console.error(e.message);process.exitCode=1});
+          NODE
+      - name: Verify Firestore Rules, Hosting and existing app were not changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs=require('fs'),{createRequire}=require('module');
+          const req=createRequire(process.cwd()+'/functions/package.json');
+          const {applicationDefault}=req('firebase-admin/app');
+          (async()=>{
+           const token=await applicationDefault().getAccessToken();
+           const url='https://firebaserules.googleapis.com/v1/projects/sales-management-cc116/releases/cloud.firestore';
+           const res=await fetch(url,{headers:{Authorization:'Bearer '+token.access_token}});
+           if(!res.ok)throw Error('STOP_RULES_POST_READ_FAILED');
+           const current=(await res.json()).rulesetName,original=fs.readFileSync(process.env.RUNNER_TEMP+'/nico-rules-before.txt','utf8');
+           if(current!==original)throw Error('STOP_FIRESTORE_RULES_CHANGED');
+           for(const path of ['/','/partner-invite.html','/partner-counts.html','/partner-workspace.html']){
+            const u='https://nico-factory.web.app'+path;
+            const v=await fetch(u);
+            if(v.status!==200)throw Error('STOP_EXISTING_HOSTING_ROUTE_'+path);
+           }
+           console.log('PASS: unchanged Firestore Rules, original app and partner routes');
+          })().catch(e=>{console.error(e.message);process.exitCode=1});
+          NODE
+      - name: Erase temporary service identity and environment flag
+        if: always()
+        shell: bash
+        run: |
+          rm -f functions/.env.sales-management-cc116 "$RUNNER_TEMP/nico-repair-sa.json" "$RUNNER_TEMP/nico-rules-before.txt" "$RUNNER_TEMP/nico-functions-before.json" "$RUNNER_TEMP/nico-functions-after.json"
