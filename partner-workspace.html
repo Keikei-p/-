@@ -612,6 +612,18 @@ function renderHubCompanyDetail(){
 function renderHubInvitePanel(){
  if(data?.role!=="hub")return;
  const registered=Array.isArray(data.registeredCompanies)?data.registeredCompanies:[];
+ const codeSelect=$("companyCodeExisting"),selectedCode=codeSelect.value;
+ codeSelect.replaceChildren();
+ const blank=document.createElement("option");blank.value="";blank.textContent="新しい会社を招待";
+ codeSelect.append(blank);
+ for(const company of registered.filter(item=>item.active===true)){
+  const opt=document.createElement("option");
+  opt.value=company.partnerCompanyId;opt.textContent=company.name;
+  codeSelect.append(opt);
+ }
+ if(registered.some(item=>item.active===true&&item.partnerCompanyId===selectedCode))
+  codeSelect.value=selectedCode;
+ $("companyCodeName").disabled=Boolean(codeSelect.value);
  const companySelect=$("hubInviteCompanySelect"),prior=companySelect.value;
  companySelect.replaceChildren();
  for(const company of registered){
