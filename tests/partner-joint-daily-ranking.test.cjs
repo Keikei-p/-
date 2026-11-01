@@ -118,3 +118,14 @@ test("malformed financial-looking names and inconsistent totals fail closed",asy
  assert.ok(!source.includes("totalRevenue:")&&!source.includes("unitPrice:"));
  assert.equal(mapCategory("エバーグリーン"),"つばさ・HTB");
 });
+
+test("duplicate daily person rows and duplicate staff-attribution stop rather than inflate combined rank",async()=>{
+ const {args,scope,db}=fixtures();
+ db.seed("records/r1-duplicate",{...db.store.get("records/r1")});
+ await assert.rejects(readCombinedDailyRanking({...args,scope}),e=>e.code==="data-loss");
+ db.store.delete("records/r1-duplicate");
+ db.seed("companies/q/partnerWorkEntries/"+today+"__qa-copy",{
+  ...db.store.get("companies/q/partnerWorkEntries/"+today+"__qa")});
+ // The report must be consistent; never double count the same staff twice.
+ await assert.rejects(readCombinedDailyRanking({...args,scope}),e=>e.code==="data-loss");
+});
