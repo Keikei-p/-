@@ -41,9 +41,11 @@ function fixture(){
  let principal="",companyId="",codeSessionToken="";
  const getAuth=()=>({
   getUser:async uid=>uid==="h"?{uid,disabled:false,emailVerified:true,email:"owner@example.com"}:
+   uid==="leader"?{uid,disabled:false,emailVerified:true,email:"leader@example.com"}:
    {uid,disabled:false,emailVerified:false},
   verifyIdToken:async token=>token==="O".repeat(30)?
    {uid:"h",email_verified:true,email:"owner@example.com"}:
+   token==="L".repeat(30)?{uid:"leader",email_verified:true,email:"leader@example.com"}:
    {uid:principal,partnerCodeAuth:true,partnerCodeCompanyId:companyId,partnerCodeVersion:1},
   createCustomToken:async(uid,claims)=>{tokens.push({uid,claims});return "signed_custom_token_for_test"}
  });
@@ -55,7 +57,10 @@ function fixture(){
  rawRequest:{headers:{authorization:"Bearer "+"O".repeat(30)}},data});
  const codeReq=data=>({auth:null,rawRequest:{headers:{}},
   data:{...data,codeSessionToken}});
- return {db,service,workspace,tokens,hubReq,codeReq,setIdentity:(uid,cid)=>{principal=uid;companyId=cid},setSession:v=>{codeSessionToken=v}};
+ const leaderReq=data=>({auth:{uid:"leader",token:{email:"leader@example.com",email_verified:true}},
+  rawRequest:{headers:{authorization:"Bearer "+"L".repeat(30)}},data});
+ return {db,service,workspace,tokens,hubReq,codeReq,leaderReq,
+  setIdentity:(uid,cid)=>{principal=uid;companyId=cid},setSession:v=>{codeSessionToken=v}};
 }
 test("random unique server-generated company codes, strong minimum passwords",()=>{
  const a=newCode(),b=newCode();
@@ -144,4 +149,59 @@ test("company-code never creates finance-named company, and mobile reload isolat
  assert.match(html,/if\(activeCodeSession\)\{[\s\S]{0,240}if\(u\)\{/);
  assert.match(html,/await signOut\(auth\);return/);
  assert.doesNotMatch(html,/firebase-firestore\.js|\bgetFirestore\(/);
+});
+
+test("company-code owner manages two teams and invites a separate leader who can register staff and report counts",async()=>{
+ const f=fixture();
+ const issued=await f.service.issue(f.hubReq({companyName:"協力会社B"}));
+ const activated=await f.service.activate({data:{
+  companyCode:issued.companyCode,password:"SafePartnerPassword#2026"
+ }});
+ const cid=activated.companyId,cred=f.db.store.get("partnerCodeCredentials/"+cid);
+ f.setIdentity(cred.principalUid,cid);
+ const login=await f.service.login({data:{
+  companyCode:issued.companyCode,password:"SafePartnerPassword#2026"
+ }});
+ f.setSession(login.sessionToken);
+ const first=(await f.workspace.manage(f.codeReq({action:"addTeam",name:"第1班"}))).teamId;
+ const second=(await f.workspace.manage(f.codeReq({action:"addTeam",name:"第2班"}))).teamId;
+ const firstStaff=(await f.workspace.manage(f.codeReq({
+  action:"addManaged",teamId:first,name:"代表が登録した班員"
+ }))).staffId;
+ const invited=await f.workspace.manage(f.codeReq({
+  action:"createInvite",email:"leader@example.com",teamId:second,role:"leader"
+ }));
+ assert.match(invited.token,/^[A-Za-z0-9_-]{43}$/);
+ assert.equal(f.db.store.get("records/historical").totalRevenue,250000);
+ const accepted=await f.workspace.accept(f.leaderReq({
+  token:invited.token,name:"第2班リーダー"
+ }));
+ assert.equal(accepted.joined,true);
+ const created=(await f.workspace.manage(f.leaderReq({
+  action:"addManaged",teamId:second,name:"第2班スタッフ"
+ }))).staffId;
+ const firstCounts=Object.fromEntries(KEYS.map(k=>[k,k==="NURO"?2:0]));
+ const secondCounts=Object.fromEntries(KEYS.map(k=>[k,k==="SBMNP"?3:0]));
+ const date="2026-11-01";
+ await f.workspace.submit(f.codeReq({
+  date,staffId:firstStaff,counts:firstCounts,expectedVersion:0
+ }));
+ await f.workspace.submit(f.leaderReq({
+  date,staffId:created,counts:secondCounts,expectedVersion:0
+ }));
+ const ownerView=await f.workspace.view(f.codeReq({date}));
+ assert.equal(ownerView.role,"owner");
+ assert.equal(ownerView.records.reduce((sum,row)=>sum+row.totalCount,0),5);
+ const ownerSummary=f.db.store.get("companies/hub/partnerWorkCountDays/"+date+"/reports/"+cid);
+ assert.equal(ownerSummary.totalCount,5,"hub receives both teams without duplication");
+ assert.equal(ownerSummary.counts.NURO,2);
+ assert.equal(ownerSummary.counts.SBMNP,3);
+ const leaderView=await f.workspace.view(f.leaderReq({date}));
+ assert.equal(leaderView.role,"leader");
+ assert.equal(leaderView.records.length,1,"leader cannot read another team's staff records");
+ assert.equal(leaderView.records[0].staffId,created);
+ await assert.rejects(f.workspace.manage(f.leaderReq({
+  action:"createInvite",email:"another@example.com",teamId:first,role:"leader"
+ })),e=>e.code==="invalid-argument");
+ assert.equal(f.db.store.get("records/historical").totalRevenue,250000);
 });
