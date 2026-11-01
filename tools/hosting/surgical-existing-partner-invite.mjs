@@ -94,7 +94,10 @@ export async function uploadSingleExistingPartnerInvite({assetBytes,request,rele
    // #41158716684 verified the next 11-file index-only production version.
    "sites/nico-factory/versions/8a6f3ca799112677",
    // Verified partner-workspace-only release on 2026-10-31, run 41163296813.
-   "sites/nico-factory/versions/b0f723150d84c176"
+   "sites/nico-factory/versions/b0f723150d84c176",
+   // Run 41227697982 verified all 11 original assets and released only
+   // partner-counts.html; unchanged invitation page remains auditable.
+   "sites/nico-factory/versions/10b5c612289fe4f0"
  ]);
  const files=[];let pageToken="";
  do{
