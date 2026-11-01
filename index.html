@@ -5555,29 +5555,27 @@ body.product-reordering .product-list {
       <div class="management-title">🤝 協力店</div>
       <button id="closePartnerCompanyButton" class="quick-panel-close" type="button">閉じる</button>
     </div>
-    <section id="nativePartnerSignup" aria-label="協力店を通常アプリへ招待" style="border:1px solid var(--border);border-radius:12px;padding:14px;margin:12px 0">
-      <p style="font-weight:800;margin:0 0 10px">協力店をいつもの実績管理アプリに招待</p>
-      <p style="font-size:13px;color:var(--sub);line-height:1.6">新しいログイン画面はありません。既存のリーダー権限と班管理を使い、実績・ランキングも通常画面で共有します。</p>
+
+    <section id="nativePartnerSignup" aria-label="同じ実績アプリへの協力店会社招待" style="border:1px solid var(--border);border-radius:12px;padding:14px;margin:12px 0">
+      <p style="font-weight:800;margin:0 0 10px">協力店の会社を登録して代表者を招待</p>
+      <p style="font-size:13px;line-height:1.6;color:var(--sub)">招待先もこの営業実績管理アプリを利用します。会社・班・メンバー・件数は協力店として分離し、売上と単価の原票は共有しません。</p>
       <div style="display:grid;gap:9px;max-width:550px">
         <label for="nativePartnerCompany">協力店の会社名</label>
-        <input id="nativePartnerCompany" type="text" maxlength="18" placeholder="例）株式会社〇〇" autocomplete="organization" style="width:100%;min-height:44px">
+        <input id="nativePartnerCompany" type="text" maxlength="80" placeholder="例）株式会社〇〇" autocomplete="organization" style="width:100%;min-height:44px">
         <label for="nativePartnerEmail">代表者のメールアドレス</label>
         <input id="nativePartnerEmail" type="email" placeholder="partner@example.com" autocomplete="off" style="width:100%;min-height:44px">
-        <button id="nativePartnerCreate" type="button" style="min-height:44px">会社の1班を作成して代表者を招待</button>
+        <button id="nativePartnerCreate" type="button" style="min-height:44px">協力店代表の招待リンクを作成</button>
       </div>
       <p id="nativePartnerStatus" role="status" aria-live="polite" style="font-size:13px"></p>
       <div id="nativePartnerResult" hidden>
-        <label for="nativePartnerInviteLink">代表者に送る招待リンク（30分間有効）</label>
+        <label for="nativePartnerInviteLink">協力店代表に送る招待リンク</label>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <input id="nativePartnerInviteLink" readonly style="flex:1;min-width:180px">
           <button id="nativePartnerCopy" type="button">コピー</button>
         </div>
-        <p style="font-size:13px;line-height:1.6">代表者が参加したら「メンバー管理」で協力店の1班へ配属し、「招待許可」をONにしてください。代表者は通常の班管理・メンバー追加・招待を利用できます。</p>
+        <p style="font-size:13px;line-height:1.6">代表者が招待を承諾すると独立した協力店会社が作成されます。協力店の代表者が同じアプリ内で班・メンバーを管理できます。件数報告は自社の承認後に利用できます。</p>
       </div>
-      <div id="nativePartnerTeams" style="display:grid;gap:6px;margin-top:10px"></div>
     </section>
-    <details id="legacyPartnerInformation" style="margin-top:12px">
-    <summary style="cursor:pointer;font-size:13px">以前の協力店登録・件数専用データを確認する</summary>
     <p style="color:var(--sub);font-size:13px;line-height:1.8;">
       <strong>かんたん運用：①協力店の代表を招待 → ②この一覧で「件数利用を承認」 → ③協力店は件数だけ入力。</strong>
       班・スタッフの設定は後からでOK。売上・単価は協力店に渡しません。
@@ -5599,7 +5597,6 @@ body.product-reordering .product-list {
       <a href="/partner-invite.html">協力店・メンバーの招待</a>
       <a href="/partner-workspace.html">班・履歴の管理画面（メール認証）</a>
     </div>
-    </details>
   </div>
 
   <div id="missingReportsManagement" class="account-card quick-panel" style="display:none;">
@@ -9555,113 +9552,71 @@ quickPartnerButton.onclick=()=>{
   setManagementMenuOpen(false);
   if(!partnerCompanyDate.value)partnerCompanyDate.value=getTodayString();
   partnerCompanyDate.max=getTodayString();
-  renderNativePartnerTeams();
-  // Old isolated partner records are retained but no longer the primary flow.
-  if(document.getElementById("legacyPartnerInformation").open)
-    void loadPartnerCompanyList();
+  void loadPartnerCompanyList();
 };
 document.getElementById("refreshPartnerCompanies").onclick=()=>void loadPartnerCompanyList();
 document.getElementById("closePartnerCompanyButton").onclick=closeQuickPanels;
 
-
-// Native partner onboarding: use the SAME existing sales app, Firestore
-// invitations, regular sales teams, and leader/member permissions. This path
-// never creates partner-only records or changes the original finance documents.
+// Secure partner onboarding in the EXISTING sales app. Invitations and the
+// partner company are created server-side in separate partner-scoped records.
+// NEVER add a partner to the hub's teams/invitations/users via client batch.
 const nativePartnerCompany=document.getElementById("nativePartnerCompany");
 const nativePartnerEmail=document.getElementById("nativePartnerEmail");
 const nativePartnerCreate=document.getElementById("nativePartnerCreate");
-const nativePartnerStatus=document.getElementById("nativePartnerStatus");
 const nativePartnerResult=document.getElementById("nativePartnerResult");
+const nativePartnerStatus=document.getElementById("nativePartnerStatus");
 const nativePartnerInviteLink=document.getElementById("nativePartnerInviteLink");
-const nativePartnerTeams=document.getElementById("nativePartnerTeams");
-function nativePartnerName(company){
- return "協力店｜"+company+"｜1班";
-}
-function isNativePartnerMember(){
- const teamId=currentUserData?.teamId;
- return Boolean(teamId&&currentUserData?.companyRole!=="owner"&&
-   teams.some(t=>t.id===teamId&&t.active!==false&&
-     typeof t.name==="string"&&t.name.startsWith("協力店｜")));
-}
-function renderNativePartnerTeams(){
- nativePartnerTeams.replaceChildren();
- if(!isCurrentCompanyOwner())return;
- const partnerTeams=teams.filter(t=>typeof t.name==="string"&&
-   t.name.startsWith("協力店｜")&&t.active!==false);
- if(!partnerTeams.length){
-  nativePartnerTeams.textContent="登録された協力店の班はありません。";
-  return;
- }
- const h=document.createElement("strong");h.textContent="登録済みの協力店班";
- nativePartnerTeams.append(h);
- for(const team of partnerTeams){
-  const row=document.createElement("div");
-  row.style.cssText="padding:10px;border:1px solid var(--border);border-radius:8px";
-  row.textContent=team.name;
-  nativePartnerTeams.append(row);
- }
-}
 nativePartnerCreate.onclick=async()=>{
  const uid=currentUser?.uid,hub=currentUserData?.companyId;
- const name=nativePartnerCompany.value.trim().replace(/\s+/g," ");
+ const companyName=nativePartnerCompany.value.trim().replace(/\s+/g," ");
  const email=nativePartnerEmail.value.trim().toLowerCase();
- const teamName=nativePartnerName(name);
- if(!uid||!currentUser?.emailVerified||
+ nativePartnerResult.hidden=true;
+ nativePartnerInviteLink.value="";
+ if(!uid||!hub||!currentUser?.emailVerified||
     currentCompanyData?.ownerUid!==uid||
     currentCompanyData?.companyKind==="partner"||
-    !isCurrentCompanyOwner()||!hub){
-  nativePartnerStatus.textContent="協力店の代表招待は自社オーナーのみ可能です。";
+    currentUserData?.accessKind==="partner"||
+    !isCurrentCompanyOwner()){
+  nativePartnerStatus.textContent="自社オーナーでログインしてください。";
   return;
  }
- if(name.length<2||name.length>18||name.includes("｜")||
-    teamName.length>30||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
-  nativePartnerStatus.textContent="会社名（2～18文字）と代表者メールを確認してください。";
-  return;
- }
- if(teams.some(t=>t.name===teamName&&t.active!==false)){
-  nativePartnerStatus.textContent="同名の協力店1班が登録済みです。班管理をご確認ください。";
+ if(companyName.length<2||companyName.length>80||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+  nativePartnerStatus.textContent="協力店名と代表者メールを確認してください。";
   return;
  }
  nativePartnerCreate.disabled=true;
- nativePartnerResult.hidden=true;
- nativePartnerStatus.textContent="班と招待リンクを作成中…";
+ nativePartnerStatus.textContent="安全な招待リンクを発行しています…";
  try{
-  const teamRef=doc(collection(db,"teams"));
-  const inviteRef=doc(collection(db,"invitations"));
-  const batch=writeBatch(db);
-  const expiresAt=Timestamp.fromMillis(Date.now()+30*60*1000);
-  batch.set(teamRef,{
-   companyId:hub,name:teamName,leaderUids:[],active:true,
-   createdAt:serverTimestamp()
-  });
-  batch.set(inviteRef,{
-   companyId:hub,companyName:currentCompanyData.name,
-   email,role:"leader",status:"pending",invitedBy:uid,
-   createdAt:serverTimestamp(),expiresAt
-  });
-  await batch.commit();
-  if(currentUser?.uid!==uid)return;
-  nativePartnerInviteLink.value=new URL("/?invite="+encodeURIComponent(inviteRef.id),location.origin).href;
+  const response=await createPartnerCompanyInvite({companyName,email});
+  if(currentUser?.uid!==uid||currentUserData?.companyId!==hub||
+     currentCompanyData?.ownerUid!==uid)
+   throw Error("stale_invite_creator");
+  const token=response?.data?.token;
+  if(typeof token!=="string"||!/^[A-Za-z0-9_-]{43}$/.test(token))
+   throw Error("invalid_invite_response");
+  const url=new URL("/",location.origin);
+  url.searchParams.set("partnerCompanyInvite",token);
+  nativePartnerInviteLink.value=url.href;
   nativePartnerResult.hidden=false;
-  nativePartnerStatus.textContent="協力店の1班と代表者の招待リンクを作成しました。";
-  nativePartnerCompany.value="";nativePartnerEmail.value="";
-  await loadTeams();
-  renderNativePartnerTeams();
+  nativePartnerStatus.textContent="招待リンクを発行しました。代表者に共有してください。";
  }catch(error){
+  // Never log the token, company-specific records, email or finance values.
   console.error("native_partner_invite",error?.code||"unknown");
-  nativePartnerStatus.textContent="招待を作成できません。権限やネットワークを確認してください。";
+  nativePartnerStatus.textContent="招待の発行に失敗しました。協力店招待APIの公開状態・ログイン・権限を確認してください。登録済みとは表示しません。";
  }finally{nativePartnerCreate.disabled=false;}
 };
 document.getElementById("nativePartnerCopy").onclick=async()=>{
- const link=nativePartnerInviteLink.value;if(!link)return;
+ if(nativePartnerResult.hidden||!nativePartnerInviteLink.value)return;
  try{
-  await navigator.clipboard.writeText(link);
+  await navigator.clipboard.writeText(nativePartnerInviteLink.value);
   nativePartnerStatus.textContent="招待リンクをコピーしました。";
  }catch{
   nativePartnerInviteLink.select();
   nativePartnerStatus.textContent="リンクを選択しました。コピーしてください。";
  }
 };
+
 
 quickOwnerButton.onclick =
   () => {
@@ -13725,7 +13680,6 @@ function applyRevenueVisibility() {
 
   const allowed =
     canCurrentUserViewRevenue();
-  const nativePartnerRankOnly=!allowed&&typeof isNativePartnerMember==="function"&&isNativePartnerMember();
 
   if (
     monthlyRevenue?.closest(
@@ -13758,7 +13712,7 @@ function applyRevenueVisibility() {
   ) {
 
     individualRankingToggle.style.display =
-      (allowed||nativePartnerRankOnly)
+      allowed
         ? ""
         : "none";
 
@@ -13818,7 +13772,7 @@ function applyRevenueVisibility() {
       true;
 
     individualRankingContent.hidden =
-      !nativePartnerRankOnly;
+      true;
 
     revenueChartContent.hidden =
       true;
@@ -32629,10 +32583,9 @@ function renderIndividualRanking(
     "";
 
   updateRankingLayoutControls("individual");
-  const nativePartnerRankOnly=!canCurrentUserViewRevenue()&&typeof isNativePartnerMember==="function"&&isNativePartnerMember();
 
   if (
-    !canCurrentUserViewRevenue() && !nativePartnerRankOnly
+    !canCurrentUserViewRevenue()
   ) {
 
     individualRankingCount.textContent =
@@ -32649,7 +32602,7 @@ function renderIndividualRanking(
     ).sort(
       (a, b) => {
 
-        const revenueDiff = nativePartnerRankOnly ? 0 :
+        const revenueDiff =
           Number(
             b.revenue ||
             0
@@ -32703,7 +32656,7 @@ function renderIndividualRanking(
 
 
   individualRankingCount.textContent =
-    `${ranking.length}人・${nativePartnerRankOnly?"順位のみ":"売上順"}`;
+    `${ranking.length}人・売上順`;
 
 
   if (
@@ -32843,7 +32796,6 @@ function renderIndividualRanking(
         "ranking-value";
 
 
-      if(!nativePartnerRankOnly){
       value.innerHTML = `
         <div class="ranking-count">
           ${formatYen(
@@ -32855,7 +32807,7 @@ function renderIndividualRanking(
           ${item.count}件
         </div>
       `;
-      }
+
 
       row.appendChild(
         left
