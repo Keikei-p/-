@@ -929,6 +929,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   // Company-wide partner breakdown is reserved for a verified internal hub
   // Owner; do not silently ignore forged hub options in a partner session.
   if(d.includeTeamStatus===true||d.partnerCompanyId!=null)fail();
+  if(d.includeAuditHistory!=null&&d.includeAuditHistory!==true)fail("invalid-argument");
   const [teams,staff,entries,privateProducts]=await Promise.all([
     collection(s.cid,"partnerWorkTeams").limit(151).get(),
     collection(s.cid,"partnerWorkStaff").limit(151).get(),
@@ -969,11 +970,44 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    rows.push({staffId:x.staffId,counts,totalCount:total,version:x.version,
      teamIdSnapshot,privateCounts:privateCounts.counts,privateTotalCount:privateCounts.total});
   }
+  // Read immutable count-only audit events ONLY when the history tab is opened.
+  // Never query finance originals. Revisions beyond this explicit bound fail
+  // rather than silently hiding older corrections.
+  let audits;
+  if(d.includeAuditHistory===true){
+   const revisions=await collection(s.cid,"partnerWorkAudits")
+    .where("date","==",date).limit(501).get();
+   if(revisions.size>500)fail("resource-exhausted");
+   audits=[];
+   for(const sn of revisions.docs){
+    const x=sn.data()||{};
+    if(x.companyId!==s.cid||x.hubCompanyId!==s.hubId||
+       x.date!==date||!ID.test(x.staffId||"")||
+       !Number.isSafeInteger(x.version)||x.version<1||x.version>999)
+      fail("data-loss");
+    if(!allowed.has(x.staffId))continue;
+    const next=validateCounts(x.counts),before=validateCounts(x.previousCounts);
+    if(next.total!==x.totalCount)fail("data-loss");
+    const nextPrivate=validatePrivateCounts(x.privateCounts||{});
+    const prevPrivate=validatePrivateCounts(x.previousPrivateCounts||{});
+    if(nextPrivate.total!==(x.privateTotalCount??0))fail("data-loss");
+    if(Object.keys(nextPrivate.counts).some(id=>!privateIdSet.has(id))||
+       Object.keys(prevPrivate.counts).some(id=>!privateIdSet.has(id)))
+      fail("data-loss");
+    audits.push({staffId:x.staffId,
+     staffName:validName(x.staffNameSnapshot)?clean(x.staffNameSnapshot):allowed.get(x.staffId).name,
+     version:x.version,date,totalCount:next.total,previousTotalCount:before.total,
+     counts:next.counts,previousCounts:before.counts,
+     privateTotalCount:nextPrivate.total,previousPrivateTotalCount:prevPrivate.total});
+   }
+   audits.sort((a,b)=>a.staffName.localeCompare(b.staffName,"ja")||
+     a.version-b.version||a.staffId.localeCompare(b.staffId));
+  }
   const visibleTeams=teams.docs.map(sn=>({id:sn.id,name:clean(sn.data().name),active:sn.data().active===true}))
    .filter(team=>["owner","leader"].includes(s.role)||team.id===s.teamId);
   return {role:s.role,date,companyName:clean(s.companyName),teamId:s.teamId,
     teams:visibleTeams,staff:[...allowed.values()],records:rows,categories:KEYS,
-    privateProducts:productList};
+    privateProducts:productList,...(audits?{audits}: {})};
  }
  async function submit(request){
   const a=await actor(request),d=request?.data||{},date=validDate(d.date),staffId=clean(d.staffId);
