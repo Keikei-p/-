@@ -1,0 +1,61 @@
+name: NICO partner email-link Auth config status (READ ONLY)
+on:
+  push:
+    branches: [fix/partner-email-link-first-password-20261102]
+    paths: [.github/workflows/nico-partner-auth-readiness-20261102.yml]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify project and source
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/fix/partner-email-link-first-password-20261102
+          node -e "const f=require('fs');if(JSON.parse(f.readFileSync('.firebaserc','utf8')).projects.default!=='sales-management-cc116')process.exit(1)"
+      - name: Install existing Firebase SDK only
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Read Auth configuration with GET only
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-auth-readonly.json"
+          chmod 600 "$RUNNER_TEMP/nico-auth-readonly.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/nico-auth-readonly.json"
+          node --input-type=module <<'NODE'
+          import {createRequire} from "node:module";
+          const require=createRequire(new URL("./functions/package.json",import.meta.url));
+          const cred=require("firebase-admin/app").applicationDefault();
+          try{
+            const {access_token}=await cred.getAccessToken();
+            const resp=await fetch("https://identitytoolkit.googleapis.com/admin/v2/projects/sales-management-cc116/config",{
+              headers:{Authorization:"Bearer "+access_token},redirect:"error"});
+            if(!resp.ok)throw Error("STOP_AUTH_CONFIG_READ_FAILED");
+            const cfg=await resp.json();
+            const enabled=cfg?.signIn?.email?.enabled===true;
+            const linkEnabled=cfg?.signIn?.email?.passwordRequired===false;
+            const authorized=Array.isArray(cfg?.authorizedDomains)&&
+              cfg.authorizedDomains.includes("nico-factory.web.app");
+            console.log("AUTH_READONLY_STATUS "+JSON.stringify({
+              project:"sales-management-cc116",emailProviderEnabled:enabled,
+              emailLinkEnabled:linkEnabled,productionDomainAuthorized:authorized,writes:0}));
+            if(!enabled||!linkEnabled||!authorized)throw Error("STOP_PARTNER_EMAIL_LINK_AUTH_NOT_READY");
+          }catch(e){
+            console.error(/^STOP_[A-Z_]+$/.test(e.message)?e.message:"STOP_AUTH_STATUS_REDACTED_FAILURE");
+            process.exitCode=1;
+          }
+          NODE
+      - name: Remove temporary credential
+        if: always()
+        run: rm -f "$RUNNER_TEMP/nico-auth-readonly.json"
