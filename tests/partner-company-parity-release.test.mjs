@@ -366,3 +366,23 @@ test("failed partner save preserves typed two-column counts and re-enables retry
  assert.equal(saveButton.disabled,false,"retry must be enabled for an active staff member");
  assert.match(warning,/入力内容は保持しています/);
 });
+
+
+test("in-place dashboard expansion anchors to the pressed button row instead of the bottom",()=>{
+ const source=scope("function partnerSameAppPositionPanel(name){",
+  "\nfunction partnerSameAppSelectPanel(name){");
+ let placed="";
+ const detail={id:"partnerSameAppDashboardDetails"};
+ const grid={querySelectorAll:()=>buttons,before:x=>{assert.equal(x,detail);placed="management";}};
+ const buttons=["record","individual","product","team","detail"].map((name,i)=>({
+  dataset:{partnerPanel:name},offsetTop:i<3?0:100,
+  after:x=>{assert.equal(x,detail);placed="after:"+name;}
+ }));
+ const ctx={pInline:id=>id==="partnerSameAppNavigation"?grid:detail};
+ runInNewContext(source+"\npartnerSameAppPositionPanel('individual')",ctx);
+ assert.equal(placed,"after:product","expand after the touched card's grid row");
+ runInNewContext(source+"\npartnerSameAppPositionPanel('detail')",ctx);
+ assert.equal(placed,"after:detail","second row expands in its own position");
+ runInNewContext(source+"\npartnerSameAppPositionPanel('invite')",ctx);
+ assert.equal(placed,"management","invite stays in the management menu");
+});
