@@ -13122,7 +13122,8 @@ function partnerSameAppPositionPanel(name){
  const management=pInline("partnerManagementTabs");
  const detail=pInline("partnerSameAppDashboardDetails");
  const canonical=[...grid.querySelectorAll("[data-partner-panel]")];
- const manageButtons=[...management.querySelectorAll("[data-partner-panel]")];
+ const manageButtons=typeof management?.querySelectorAll==="function"
+  ?[...management.querySelectorAll("[data-partner-panel]")]:[];
  const button=[...canonical,...manageButtons].find(b=>b.dataset.partnerPanel===name&&!b.hidden);
  if(!button){grid.before(detail);return;}
  // Keep the opened panel directly below the button's row, also on mobile.
