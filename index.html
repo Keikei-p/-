@@ -13279,6 +13279,23 @@ function partnerSameAppSelectPanel(name){
  if(partnerInlineData&&name==="history")
   void loadPartnerRevisionHistory();
 }
+// Mirror the original dashboard toggle: a second tap closes the same detail.
+// Hide without removing its DOM, preserving unsaved two-column entries.
+function partnerSameAppTogglePanel(name){
+ const detail=pInline("partnerSameAppDashboardDetails");
+ if(partnerSameAppSelectedPanel===name&&!detail.hidden){
+  detail.hidden=true;
+  pInline("partnerGlobalDateToolbar").hidden=false;
+  for(const nav of ["partnerSameAppNavigation","partnerManagementTabs"]){
+   pInline(nav).querySelectorAll("[data-partner-panel]").forEach(button=>{
+    button.setAttribute("aria-pressed","false");
+    button.setAttribute("aria-expanded","false");
+   });
+  }
+  return;
+ }
+ partnerSameAppSelectPanel(name);
+}
 window.addEventListener("resize",()=>{
  if(!pInline("partnerSameAppDashboardDetails").hidden)
   partnerSameAppPositionPanel(partnerSameAppSelectedPanel);
@@ -13287,7 +13304,7 @@ for(const nav of ["partnerSameAppNavigation","partnerManagementTabs"]){
  pInline(nav).addEventListener("click",event=>{
   const button=event.target.closest("[data-partner-panel]");
   if(button&&pInline(nav).contains(button)&&!button.hidden)
-   partnerSameAppSelectPanel(button.dataset.partnerPanel);
+   partnerSameAppTogglePanel(button.dataset.partnerPanel);
  });
 }
 
