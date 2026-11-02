@@ -125,7 +125,7 @@ test("partner audit displays equal-total CB and private-item corrections, not ju
  const auditSource=portion("async function loadPartnerRevisionHistory(){","async function partnerInlineFetch(){");
  const displays=[];
  const dateControl={value:"2026-10-31"};
- const area={replaceChildren(){displays.length=0}};
+ const area={replaceChildren(){displays.length=0},append(_element){}};
  const fakeDocument={createElement(name){
   return {tag:name,className:"",textContent:"",children:[],append(...values){this.children.push(...values);}};
  }};
