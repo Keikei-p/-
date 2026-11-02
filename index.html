@@ -4410,6 +4410,13 @@ body.product-reordering .product-list {
 #partnerInlineWorkspace #pInlineCountFields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 #partnerInlineWorkspace #pInlineCountFields .p-inline-field{min-width:0;padding:10px 8px;border:1px solid var(--border);border-radius:10px}
 #partnerInlineWorkspace #pInlineCountFields .p-inline-field input{width:100%;min-width:0;box-sizing:border-box;text-align:center;font-size:18px;font-weight:700}
+#partnerInlineWorkspace #pInlineCountFields .partner-cb-card{grid-column:1/-1;display:block}
+#partnerInlineWorkspace #pInlineCountFields .partner-cb-card .partner-cb-title{font-size:16px;font-weight:800;margin-bottom:10px}
+#partnerInlineWorkspace #pInlineCountFields .partner-cb-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+#partnerInlineWorkspace #pInlineCountFields .partner-cb-options .p-inline-field{min-width:0;overflow-wrap:anywhere}
+#partnerInlineWorkspace #pInlineCountFields .partner-cb-options .p-inline-field input{min-height:46px}
+#partnerInlineWorkspace #pInlineCountFields .partner-cb-legacy{grid-column:1/-1;background:var(--card,#fff)}
+@media(max-width:350px){#partnerInlineWorkspace #pInlineCountFields .partner-cb-options{grid-template-columns:repeat(2,minmax(0,1fr))}}
 #partnerInlineWorkspace #partnerSameAppDashboardDetails{grid-column:1/-1;min-width:0;width:100%;box-sizing:border-box}
 #partnerInlineWorkspace #partnerSameAppNavigation>[data-partner-panel][aria-expanded="true"]{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary)}
 #partnerInlineWorkspace #partnerSameAppNavigation{align-items:stretch}
@@ -4915,7 +4922,9 @@ body.product-reordering .product-list {
         <select id="pInlineStaff"></select>
       </div>
     </div>
-    <div class="section-title">商材別実績</div>
+    <div class="form-group"><label for="pInlineWorkingTeam">この日の稼働班（担当者の所属班）</label>
+      <input id="pInlineWorkingTeam" type="text" readonly aria-label="担当者の所属班"></div>
+    <div class="section-title">商材別実績（CB別は件数のみ表示）</div>
     <div id="pInlineCountFields" class="product-input-list" aria-label="商材ごとの件数入力・2列表示"></div>
     <p id="pInlineEntryTotals" class="record-total-value" aria-live="polite">共有商材 0件｜協力店専用 0件</p>
     <div class="p-inline-actions">
@@ -13261,18 +13270,45 @@ function renderPartnerPrivateProductCatalog(){
  }
  if(!products.length)partnerMainAppendRow(list,"協力店専用の商材は未登録です","公開商材の件数は実績入力から登録できます。");
 }
+// A cashback tier is NOT a sales price. Only the public count-only variant is
+// rendered, with no finance metadata or legacy product subscriptions.
+const PARTNER_NURO_CB_TIERS=Object.freeze(["0","20000","40000","60000","80000","unclassified"]);
+function partnerUiCbCountSnapshot(entry){
+ const raw=entry?.cbCounts?.NURO;
+ const result=Object.create(null);
+ if(raw&&typeof raw==="object"){
+  for(const tier of PARTNER_NURO_CB_TIERS)result[tier]=raw[tier]??0;
+ }else{
+  for(const tier of PARTNER_NURO_CB_TIERS)result[tier]=0;
+  // Old counts were never categorized by CB; don't silently label them CB0.
+  result.unclassified=entry?.counts?.NURO??0;
+ }
+ return result;
+}
+function partnerInlineSelectedCb(){
+ const result=Object.create(null);let total=0;
+ for(const input of pInline("pInlineCountFields").querySelectorAll("input[data-cb-tier]")){
+  const tier=input.dataset.cbTier,n=Number(input.value);
+  if(!PARTNER_NURO_CB_TIERS.includes(tier)||input.value.trim()===""||
+     !Number.isSafeInteger(n)||n<0||n>9999)throw Error("cb_count_invalid");
+  result[tier]=n;total+=n;
+ }
+ if(total>9999)throw Error("cb_count_overflow");
+ return {result,total};
+}
 function partnerInlineHasUnsavedCounts(){
  const snap=partnerInlineData;
  if(!snap||snap.role==="hub"||!partnerInlineEditingStaffId)return false;
  const entry=snap.records.find(row=>row.staffId===partnerInlineEditingStaffId);
  const fields=pInline("pInlineCountFields");
- for(const node of fields.querySelectorAll("input[data-count-key],input[data-private-count-id]")){
-  if(node.readOnly)continue;
+ for(const node of fields.querySelectorAll("input[data-count-key],input[data-private-count-id],input[data-cb-tier]")){
   const current=node.value.trim();
   if(!current||!Number.isSafeInteger(Number(current))||Number(current)<0||Number(current)>9999)return true;
   const previous=node.dataset.countKey?
    (entry?.counts?.[node.dataset.countKey]??0):
-   (entry?.privateCounts?.[node.dataset.privateCountId]??0);
+   node.dataset.cbTier?
+    partnerUiCbCountSnapshot(entry)[node.dataset.cbTier]:
+    (entry?.privateCounts?.[node.dataset.privateCountId]??0);
   if(Number(current)!==previous)return true;
  }
  return false;
@@ -13281,15 +13317,15 @@ function renderPartnerEntryTotals(){
  const target=pInline("pInlineEntryTotals");
  const grid=pInline("pInlineCountFields");
  let shared=0,privateTotal=0;
- for(const input of grid.querySelectorAll("input[data-count-key],input[data-private-count-id]")){
+ for(const input of grid.querySelectorAll("input[data-count-key],input[data-private-count-id],input[data-cb-tier]")){
   if(input.value.trim()===""||!Number.isSafeInteger(Number(input.value))||
      Number(input.value)<0||Number(input.value)>9999){
    target.textContent="件数を確認してください";
-   pInline("pInlineSaveStatus").textContent="件数は各商材0〜9999の整数で入力してください。";
+   pInline("pInlineSaveStatus").textContent="件数は各項目0〜9999の整数で入力してください。";
    return;
   }
-  if(input.dataset.countKey)shared+=Number(input.value);
-  else privateTotal+=Number(input.value);
+  if(input.dataset.privateCountId)privateTotal+=Number(input.value);
+  else shared+=Number(input.value);
  }
  target.textContent="共有商材 "+shared+"件｜協力店専用 "+privateTotal+"件";
  if(partnerInlineHasUnsavedCounts())
@@ -13300,12 +13336,40 @@ function partnerInlineRenderCounts(){
  if(!snap||snap.role==="hub")return;
  const staffId=pInline("pInlineStaff").value;
  const entry=snap.records.find(x=>x.staffId===staffId);
+ const person=snap.staff.find(x=>x.id===staffId);
+ const team=snap.teams.find(t=>t.id===person?.teamId);
+ pInline("pInlineWorkingTeam").value=team?.name||"所属班を確認してください";
  partnerInlineEditingStaffId=staffId;
  pInline("pInlineRecordDate").value=pInline("pInlineDate").value;
  const grid=pInline("pInlineCountFields");grid.replaceChildren();
  pInline("pInlineSaveStatus").textContent="";
  for(const key of snap.categories){
-  const label=document.createElement("label");label.className="p-inline-field product-input-group product-input-group--compact";
+  if(key==="NURO"){
+   const card=document.createElement("div");
+   card.className="p-inline-field product-input-group product-input-group--compact partner-cb-card";
+   const heading=document.createElement("div");heading.className="partner-cb-title";
+   heading.textContent="NURO光｜CB別件数";
+   const hint=document.createElement("div");hint.className="p-inline-muted";
+   hint.textContent="CB金額は区分名です。収益単価・売上は表示しません。";
+   const tiers=document.createElement("div");tiers.className="partner-cb-options";
+   const saved=partnerUiCbCountSnapshot(entry);
+   for(const tier of PARTNER_NURO_CB_TIERS){
+    if(tier==="unclassified"&&!saved.unclassified)continue;
+    const field=document.createElement("label");field.className="p-inline-field";
+    if(tier==="unclassified")field.classList.add("partner-cb-legacy");
+    field.textContent=tier==="unclassified"?"既存のCB未分類":
+     tier==="0"?"CB0円":"CB"+(Number(tier)/10000)+"万円";
+    const input=document.createElement("input");input.type="number";input.min="0";
+    input.max="9999";input.step="1";input.inputMode="numeric";
+    input.dataset.cbTier=tier;input.value=String(saved[tier]);
+    input.addEventListener("input",renderPartnerEntryTotals);
+    field.append(input);tiers.append(field);
+   }
+   card.append(heading,hint,tiers);grid.append(card);
+   continue;
+  }
+  const label=document.createElement("label");
+  label.className="p-inline-field product-input-group product-input-group--compact";
   label.textContent=key;
   const input=document.createElement("input");input.type="number";input.min="0";input.max="9999";
   input.step="1";input.inputMode="numeric";input.dataset.countKey=key;
@@ -13313,12 +13377,11 @@ function partnerInlineRenderCounts(){
   input.addEventListener("input",renderPartnerEntryTotals);
   label.append(input);grid.append(label);
  }
- // Private products stay within this partner company and never enter
- // the shared all-company ranking. Preserve retired historical counts.
  for(const product of snap.privateProducts||[]){
   const prior=entry?.privateCounts?.[product.id]??0;
   if(!product.active&&prior===0)continue;
-  const label=document.createElement("label");label.className="p-inline-field product-input-group product-input-group--compact";
+  const label=document.createElement("label");
+  label.className="p-inline-field product-input-group product-input-group--compact";
   label.textContent=product.name+"（協力店専用）";
   const input=document.createElement("input");input.type="number";input.min="0";
   input.max="9999";input.step="1";input.inputMode="numeric";
@@ -13332,6 +13395,7 @@ function partnerInlineRenderCounts(){
  pInline("pInlineSave").textContent=entry?"変更した件数を保存（訂正）":"実績を一括登録";
  renderPartnerEntryTotals();
 }
+
 function partnerInlineRender(){
  const snap=partnerInlineData;if(!snap||snap.role==="hub")return;
  pInline("pInlineTitle").textContent="🤝 "+snap.companyName+"｜実績管理";
