@@ -754,6 +754,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     complete,includesDirect:true,missingCompanies,companies,teams,people,
     productCounts,categories:KEYS,direct};
   }
+  if(d.includeAuditHistory===true&&s.kind!=="partner")fail("invalid-argument");
   if(s.kind==="hub"){
    // Registered companies appear before their first daily count report.
    // Unapproved company remains listed but cannot be invited into.
