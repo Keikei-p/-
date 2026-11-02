@@ -99,7 +99,8 @@ test("partner same dashboard navigation shows original eight operations without 
   "partnerPanelDaily","partnerPanelHistory","partnerPanelMembers"])
   assert.match(index,new RegExp('id="'+id+'"'));
  assert.match(index,/partnerSameAppSelectPanel\("record"\)/);
- assert.match(index,/pInline\("partnerSameAppNavigation"\)\.addEventListener\("click"/);
+ assert.match(index,/for\(const nav of \["partnerSameAppNavigation","partnerManagementTabs"\]\)/);
+ assert.match(index,/pInline\(nav\)\.addEventListener\("click"/);
  assert.match(index,/partnerSameAppSelectedPanel/);
  assert.match(index,/pInline\("pInlineTeamDetails"\)/);
  assert.match(index,/pInline\("pInlineHistory"\)/);
@@ -117,7 +118,7 @@ test("original owner team detail displays partner company -> team -> member -> p
  assert.match(index,/pInline\("ownerPartnerDashboardDetails"\)\.hidden=!canLoadPartnerRanking\(\)/);
  assert.match(index,/readPartnerWorkDay\(\{date,partnerCompanyId:company\.partnerCompanyId\}\)/);
  assert.match(index,/info\?\.scope!=="shared_counts_only"/);
- assert.match(index,/name\.textContent=team\.name\+"｜"\+team\.totalCount/);
+ assert.match(index,/label\.textContent="👥 "\+team\.name\+"｜"\+team\.totalCount/);
  assert.match(index,/title\.textContent="👤 "\+person\.name\+"｜"\+person\.totalCount/);
  assert.match(service,/row\.members\.push\(\{name:safeName,totalCount:item\.total,counts:/);
  assert.doesNotMatch(service,/\bdb\.collection\("(?:records|products|revenueGoals|recordCorrections)"\)/);
