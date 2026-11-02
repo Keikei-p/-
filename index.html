@@ -4406,6 +4406,27 @@ body.product-reordering .product-list {
 #appScreen:not([data-partner-count-only="true"]) .partner-safe-menu{display:none!important}
 #appScreen[data-partner-count-only="true"] .user-bar .partner-safe-menu{display:block!important}
 #partnerInlineWorkspace #partnerPanelRecord > .p-inline-card{background:transparent;border:0;border-radius:0;padding:0;margin:8px 0}
+
+/* The very same count-only team cards are used by partners and the original
+   owner's partner section. Never style the owner's existing sales cards. */
+.partner-count-team-card{background:var(--card,#fff);border:1px solid var(--border,#dce1e8);border-radius:16px;padding:16px;margin:12px 0;min-width:0}
+.partner-count-team-card>summary{cursor:pointer;list-style:none;display:flex;flex-direction:column;gap:5px;font-size:17px;font-weight:800}
+.partner-count-team-card>summary::-webkit-details-marker{display:none}
+.partner-count-team-card>summary::after{content:"詳細を見る ⌄";font-size:12px;font-weight:600;color:var(--sub,#64748b)}
+.partner-count-team-card[open]>summary::after{content:"詳細を閉じる ⌃"}
+.partner-count-team-total{font-weight:800;font-size:19px;color:#2659d5}
+.partner-count-team-body{border-top:1px solid var(--border,#e2e8f0);margin-top:12px;padding-top:12px;display:grid;gap:12px}
+.partner-count-team-subtitle{font-size:15px;font-weight:800;margin:0 0 8px}
+.partner-count-team-cb-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.partner-count-team-cb-cell{background:#f5f7fa;border-radius:12px;text-align:center;padding:12px 5px;min-width:0}
+.partner-count-team-cb-label{font-size:12px;color:#64748b;font-weight:700}
+.partner-count-team-cb-value{font-size:23px;font-weight:800;color:#152238;margin-top:4px}
+.partner-count-team-product-row{display:flex;justify-content:space-between;gap:10px;padding:11px 2px;border-bottom:1px solid var(--border,#e2e8f0);font-size:15px}
+.partner-count-team-product-row strong{white-space:nowrap}
+.partner-count-team-member{border:1px solid var(--border,#e2e8f0);border-radius:11px;padding:11px;margin:8px 0}
+.partner-count-team-member>summary{cursor:pointer;font-weight:700}
+@media(max-width:350px){.partner-count-team-cb-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
 #partnerInlineWorkspace .dashboard-app-grid .dashboard-app-button{font:inherit}
 #appScreen[data-partner-count-only="true"] #partnerInlineWorkspace{display:block!important}
 #authScreen[data-partner-invite="true"] .auth-wrapper{display:none!important}
@@ -13034,124 +13055,161 @@ function appendSharedRankingRows(container,heading,entries,complete){
  container.append(section);
 }
 // Same company -> team -> person -> product tree for BOTH authenticated roles.
+// Common count-only presentation for both partner and HQ partner-company
+// breakdown. No currency, price, margin, commission, or finance read.
+const PARTNER_TEAM_CB_TIERS=["0","20000","40000","60000","80000"];
+function renderPartnerCountTeamCard(title,total,counts,cbCounts,members,keys,{verified=true}={}){
+ if(!Number.isSafeInteger(total)||total<0||!counts||typeof counts!=="object"||
+    !Array.isArray(members))throw Error("count_team_invalid");
+ const card=document.createElement("details");card.className="partner-count-team-card";
+ const summary=document.createElement("summary");
+ const heading=document.createElement("span");heading.textContent=title;
+ const totalEl=document.createElement("span");totalEl.className="partner-count-team-total";
+ totalEl.textContent="合計 "+total+"件";
+ summary.append(heading,totalEl);card.append(summary);
+ const body=document.createElement("div");body.className="partner-count-team-body";
+ const section=(name)=>{
+  const box=document.createElement("section");
+  const h=document.createElement("h4");h.className="partner-count-team-subtitle";h.textContent=name;
+  box.append(h);body.append(box);return box;
+ };
+ const sums=Object.keys(counts);
+ if(sums.some(k=>!keys.includes(k)))throw Error("count_team_unknown_product");
+ let visible=0;
+ for(const key of keys){
+  const n=counts[key]??0;
+  if(!Number.isSafeInteger(n)||n<0)throw Error("count_team_invalid_product");
+  visible+=n;
+ }
+ if(visible>total)throw Error("count_team_total_mismatch");
+ const nuro=counts.NURO||0,tiers=cbCounts?.NURO;
+ if(nuro>0||tiers){
+  const block=section("NURO光｜CB別件数");
+  const grid=document.createElement("div");grid.className="partner-count-team-cb-grid";
+  let assigned=0;
+  for(const tier of PARTNER_TEAM_CB_TIERS){
+   const amount=tiers?.[tier]??0;
+   if(!Number.isSafeInteger(amount)||amount<0)throw Error("count_team_cb_invalid");
+   assigned+=amount;
+   const tile=document.createElement("div");tile.className="partner-count-team-cb-cell";
+   const label=document.createElement("div");label.className="partner-count-team-cb-label";
+   // Cashback tier names are a classification, not sales or unit prices.
+   label.textContent=tier==="0"?"CB0":"CB"+Number(tier)/10000+"万";
+   const count=document.createElement("div");count.className="partner-count-team-cb-value";
+   count.textContent=amount+"件";tile.append(label,count);grid.append(tile);
+  }
+  block.append(grid);
+  const unclassified=tiers?.unclassified??(nuro-assigned);
+  if(!Number.isSafeInteger(unclassified)||unclassified<0||
+     assigned+unclassified!==nuro)throw Error("count_team_cb_mismatch");
+  if(unclassified)partnerMainAppendRow(block,"CB未分類",unclassified+"件（過去実績）");
+ }
+ const products=section("商材別件数");
+ for(const key of keys){
+  const n=counts[key]??0;
+  if(!n||key==="NURO")continue;
+  const row=document.createElement("div");row.className="partner-count-team-product-row";
+  const titleEl=document.createElement("span");titleEl.textContent=key;
+  const number=document.createElement("strong");number.textContent=n+"件";
+  row.append(titleEl,number);products.append(row);
+ }
+ if(!visible)partnerMainAppendRow(products,"商材別件数","0件（報告済み）");
+ if(total>visible)partnerMainAppendRow(products,"その他（直営）",total-visible+"件");
+ const people=section("班員別詳細");
+ let memberTotal=0;
+ for(const member of members){
+  if(typeof member.name!=="string"||
+     !Number.isSafeInteger(member.totalCount)||member.totalCount<0)
+   throw Error("count_team_member_invalid");
+  memberTotal+=member.totalCount;
+  const item=document.createElement("details");item.className="partner-count-team-member";
+  const label=document.createElement("summary");
+  label.textContent=member.name+"｜合計 "+member.totalCount+"件";
+  item.append(label);
+  const child=renderPartnerCountTeamCardProductOnly(member,keys);
+  item.append(child);people.append(item);
+ }
+ if(verified&&members.length&&memberTotal!==total)
+  throw Error("count_team_member_sum_mismatch");
+ if(!members.length)partnerMainAppendRow(people,"担当者別未照合","班の報告を確認してください");
+ card.append(body);return card;
+}
+function renderPartnerCountTeamCardProductOnly(member,keys){
+ const el=document.createElement("div");
+ for(const key of keys){
+  const n=member.counts?.[key]??0;
+  if(!Number.isSafeInteger(n)||n<0)throw Error("count_team_person_product_invalid");
+  if(n)partnerMainAppendRow(el,key,n+"件");
+ }
+ const nuro=member.counts?.NURO||0,cb=member.cbCounts?.NURO;
+ if(nuro&&cb){
+  const tags=PARTNER_TEAM_CB_TIERS.filter(k=>(cb[k]||0)>0)
+   .map(k=>"CB"+(k==="0"?"0":Number(k)/10000+"万")+" "+cb[k]+"件");
+  if(cb.unclassified)tags.push("CB未分類 "+cb.unclassified+"件");
+  if(tags.length)partnerMainAppendRow(el,"NURO CB内訳",tags.join(" / "));
+ }
+ return el;
+}
+// Partner's combined company/team/person tree. Original internal sales
+// rendering is untouched; this screen uses only getPartnerWorkspace counts.
 function renderPartnerFlatTeamDetails(parent,report){
- // Display company-qualified teams directly; one tap reveals staff/products.
- // Never infer historical team assignment from a current membership.
  parent.replaceChildren();
- const categories=report.categories||[];
+ const keys=report.categories||[];
  let displayed=0;
- const addCounts=(node,person)=>{
-  let shown=0;
-  for(const key of categories){
-   const n=person.counts?.[key]??0;
-   if(!Number.isSafeInteger(n)||n<0)throw Error("partner_detail_product_invalid");
-   shown+=n;
-   if(n)partnerMainAppendRow(node,key,n+"件");
-  }
-  if(!Number.isSafeInteger(person.totalCount)||person.totalCount<shown)
-   throw Error("partner_detail_total_invalid");
-  if(person.totalCount>shown)
-   partnerMainAppendRow(node,"その他（直営）",person.totalCount-shown+"件");
-  if(!person.totalCount)partnerMainAppendRow(node,"件数","0件（報告済み）");
- };
- const appendPerson=(node,person,unassigned=false)=>{
-  const entry=document.createElement("details");entry.className="p-inline-row";
-  const summary=document.createElement("summary");
-  summary.textContent="👤 "+person.name+"｜"+person.totalCount+"件"+
-   (unassigned?"（登録当時の班未確認）":"");
-  entry.append(summary);addCounts(entry,person);node.append(entry);
- };
- const appendCompany=(name,teams,people,peopleVerified)=>{
-  if(!Array.isArray(teams)||!Array.isArray(people))
-   throw Error("partner_detail_team_contract");
+ const addCompany=(name,teams,people,verified)=>{
   for(const team of teams){
-   if(!Number.isSafeInteger(team.totalCount)||team.totalCount<0)
-    throw Error("partner_detail_team_total");
-   const row=document.createElement("details");row.className="p-inline-row";
-   const title=document.createElement("summary");
-   title.textContent="👥 "+name+"・"+team.name+"｜"+team.totalCount+"件"+
-    (peopleVerified?"":"（担当者別未照合）");
-   row.append(title);
    const members=people.filter(p=>p.teamKey===team.key);
-   for(const person of members)appendPerson(row,person);
-   if(!members.length)
-    partnerMainAppendRow(row,"担当者別件数は未確認","会社の記録と照合してください");
-   parent.append(row);displayed++;
+   parent.append(renderPartnerCountTeamCard(
+    name+"・"+team.name,team.totalCount,team.counts||{},
+    team.cbCounts,members,keys,{verified:verified&&members.length>0}));
+   displayed++;
   }
-  for(const person of people.filter(p=>!p.teamKey||!teams.some(t=>t.key===p.teamKey))){
-   const row=document.createElement("details");row.className="p-inline-row";
-   const title=document.createElement("summary");
-   title.textContent="👥 "+name+"・当時の班未確認｜"+person.totalCount+"件";
-   row.append(title);appendPerson(row,person,true);parent.append(row);displayed++;
+  for(const person of people.filter(p=>!p.teamKey||
+    !teams.some(t=>t.key===p.teamKey))){
+   parent.append(renderPartnerCountTeamCard(
+    name+"・当時の班未確認",person.totalCount,person.counts||{},
+    person.cbCounts,[person],keys,{verified:true}));
+   displayed++;
   }
  };
- appendCompany("🏢 直営",report.direct.teams,report.direct.people,
+ addCompany("🏢 直営",report.direct.teams,report.direct.people,
   report.direct.peopleVerified===true);
  for(const company of report.companies)
-  appendCompany("🤝 "+company.name,
+  addCompany("🤝 "+company.name,
    report.teams.filter(t=>t.companyId===company.id),
-   report.people.filter(p=>p.companyId===company.id),
-   company.peopleVerified===true);
- if(!displayed)
-  partnerMainAppendRow(parent,"まだ班別実績がありません","未報告を0件とは扱いません");
+   report.people.filter(p=>p.companyId===company.id),company.peopleVerified===true);
+ if(!displayed)partnerMainAppendRow(parent,"まだ班別実績がありません","未報告を0件とは扱いません");
  for(const name of report.missingCompanies||[])
   partnerMainAppendRow(parent,"🤝 "+name,"未報告・0件とは扱いません");
 }
-
+// HQ's combined partner breakdown reuses the EXACT SAME card renderer.
 function renderSharedCountTeamDetails(parent,report){
  parent.replaceChildren();
- const keys=report.categories;
- const addCounts=(node,counts,total)=>{
-  let shown=0;
-  for(const key of keys){
-   const n=counts?.[key]||0;
-   if(!Number.isSafeInteger(n)||n<0)throw Error("shared_detail_count_invalid");
-   if(n)partnerMainAppendRow(node,key,n+"件");
-   shown+=n;
+ const keys=report.categories||[];
+ const group=(name,total,teams,people,verified)=>{
+  const section=document.createElement("section");section.className="p-inline-company-teams";
+  const heading=document.createElement("h4");heading.textContent=name+"｜"+total+"件";
+  section.append(heading);
+  for(const team of teams){
+   const members=people.filter(p=>p.teamKey===team.key);
+   section.append(renderPartnerCountTeamCard(team.name,team.totalCount,
+    team.counts||{},team.cbCounts,members,keys,
+    {verified:verified&&members.length>0}));
   }
-  if(total>shown)partnerMainAppendRow(node,"その他（直営）",total-shown+"件");
-  if(total<shown)throw Error("shared_detail_total_invalid");
+  for(const person of people.filter(p=>!p.teamKey||
+    !teams.some(t=>t.key===p.teamKey))){
+   section.append(renderPartnerCountTeamCard(
+    "登録当時の班未確認",person.totalCount,person.counts||{},
+    person.cbCounts,[person],keys,{verified:true}));
+  }
+  if(!teams.length&&!people.length)
+   partnerMainAppendRow(section,"班・担当者別の件数は未照合","会社の報告状況を確認してください");
+  parent.append(section);
  };
- // Match the internal team list. One tap on a team opens every member and
- // their product counts; no company/person nesting and no financial fields.
- const showCompany=(name,total,teamRows,peopleRows,verified=true)=>{
-  const group=document.createElement("section");group.className="p-inline-company-teams";
-  const heading=document.createElement("h4");
-  heading.textContent=name+"｜"+total+"件"+(verified?"":"（個人別未照合）");
-  group.append(heading);
-  for(const team of teamRows){
-   const teamRow=document.createElement("details");teamRow.className="p-inline-row";
-   const teamTitle=document.createElement("summary");
-   teamTitle.textContent="👥 "+team.name+"｜"+team.totalCount+"件";
-   teamRow.append(teamTitle);
-   const members=peopleRows.filter(p=>p.teamKey===team.key);
-   for(const member of members){
-    const person=document.createElement("div");person.className="p-inline-row";
-    const title=document.createElement("strong");
-    title.textContent="👤 "+member.name+"｜"+member.totalCount+"件";
-    person.append(title);addCounts(person,member.counts,member.totalCount);
-    teamRow.append(person);
-   }
-   if(!members.length)partnerMainAppendRow(teamRow,
-    "担当者別件数は未確認","会社の記録と照合してください");
-   group.append(teamRow);
-  }
-  const unassigned=peopleRows.filter(p=>!p.teamKey||!teamRows.some(t=>t.key===p.teamKey));
-  for(const member of unassigned){
-   const person=document.createElement("div");person.className="p-inline-row";
-   const title=document.createElement("strong");
-   title.textContent="👤 "+member.name+"｜"+member.totalCount+"件（登録当時の班未確認）";
-   person.append(title);addCounts(person,member.counts,member.totalCount);
-   group.append(person);
-  }
-  if(!teamRows.length&&!unassigned.length)
-   partnerMainAppendRow(group,"班・担当者別の件数は未照合","会社の報告状況を確認してください");
-  parent.append(group);
- };
- showCompany("🏢 直営",report.direct.totalCount,report.direct.teams,
+ group("🏢 直営",report.direct.totalCount,report.direct.teams,
   report.direct.people,report.direct.peopleVerified===true);
  for(const company of report.companies)
-  showCompany("🤝 "+company.name,company.totalCount,
+  group("🤝 "+company.name,company.totalCount,
    report.teams.filter(t=>t.companyId===company.id),
    report.people.filter(p=>p.companyId===company.id),
    company.peopleVerified===true);
