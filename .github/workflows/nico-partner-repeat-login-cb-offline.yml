@@ -7,6 +7,7 @@ on:
       - index.html
       - functions-partner-workspace/service.cjs
       - tests/partner-repeat-login-cb-parity.test.mjs
+      - tests/partner-company-parity-release.test.mjs
       - .github/workflows/nico-partner-repeat-login-cb-offline.yml
   workflow_dispatch:
 permissions:
