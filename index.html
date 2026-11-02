@@ -4750,6 +4750,17 @@ body.product-reordering .product-list {
     <div class="p-inline-field"><label for="pInlineRefresh">最新データ</label><button id="pInlineRefresh" type="button">更新</button></div>
   </div>
   <p id="pInlineStatus" role="status" aria-live="polite"></p>
+  <div id="partnerSameAppNavigation" class="dashboard-app-grid" role="group" aria-label="営業実績管理メニュー">
+    <button class="dashboard-app-button" type="button" data-partner-panel="record"><span class="dashboard-app-icon">✏️</span><span class="dashboard-app-title">実績入力</span><span class="dashboard-app-meta">登録・訂正</span></button>
+    <button class="dashboard-app-button" type="button" data-partner-panel="individual"><span class="dashboard-app-icon">🏆</span><span class="dashboard-app-title">個人ランキング</span><span class="dashboard-app-meta">件数順</span></button>
+    <button class="dashboard-app-button" type="button" data-partner-panel="product"><span class="dashboard-app-icon">📦</span><span class="dashboard-app-title">商材別ランキング</span><span class="dashboard-app-meta">件数順</span></button>
+    <button class="dashboard-app-button" type="button" data-partner-panel="team"><span class="dashboard-app-icon">👥</span><span class="dashboard-app-title">班ランキング</span><span class="dashboard-app-meta">件数順</span></button>
+    <button class="dashboard-app-button" type="button" data-partner-panel="detail"><span class="dashboard-app-icon">📋</span><span class="dashboard-app-title">班別詳細</span><span class="dashboard-app-meta">班・担当者</span></button>
+    <button class="dashboard-app-button" type="button" data-partner-panel="daily"><span class="dashboard-app-icon">📅</span><span class="dashboard-app-title">日別</span><span class="dashboard-app-meta">日付別件数</span></button>
+    <button class="dashboard-app-button" type="button" data-partner-panel="history"><span class="dashboard-app-icon">📝</span><span class="dashboard-app-title">登録履歴</span><span class="dashboard-app-meta">登録・訂正内容</span></button>
+    <button class="dashboard-app-button" type="button" data-partner-panel="members"><span class="dashboard-app-icon">👤</span><span class="dashboard-app-title">班・メンバー</span><span class="dashboard-app-meta">班編成・招待</span></button>
+  </div>
+  <section id="partnerPanelMembers" data-partner-view="members" hidden>
   <div class="p-inline-card">
     <h3>👥 班管理</h3>
     <div id="pInlineTeams" class="p-inline-list"></div>
@@ -4778,6 +4789,8 @@ body.product-reordering .product-list {
       </div>
     </div>
   </div>
+  </section>
+  <section id="partnerPanelRecord" data-partner-view="record">
   <div class="p-inline-card">
     <h3>✏️ 件数入力・訂正</h3>
     <label class="p-inline-field">担当者<select id="pInlineStaff"></select></label>
@@ -4787,7 +4800,19 @@ body.product-reordering .product-list {
       <span id="pInlineVersion" class="p-inline-muted"></span>
     </div>
   </div>
-  <div class="p-inline-card"><h3>🏆 班・個人・商材ランキング（件数のみ）</h3><div id="pInlineRanking" class="p-inline-list"></div></div>
+  </section>
+  <section id="partnerPanelRankings" data-partner-view="ranking" hidden>
+    <div class="p-inline-card"><h3 id="partnerRankingHeading">🏆 ランキング（件数のみ）</h3><div id="pInlineRanking" class="p-inline-list"></div></div>
+  </section>
+  <section id="partnerPanelDetail" data-partner-view="detail" hidden>
+    <div class="p-inline-card"><h3>📋 班別詳細</h3><div id="pInlineTeamDetails" class="p-inline-list"></div></div>
+  </section>
+  <section id="partnerPanelDaily" data-partner-view="daily" hidden>
+    <div class="p-inline-card"><h3>📅 日別</h3><p>上の実績日を切り替えて確認できます。</p><div id="pInlineDailySummary" class="p-inline-list"></div></div>
+  </section>
+  <section id="partnerPanelHistory" data-partner-view="history" hidden>
+    <div class="p-inline-card"><h3>📝 登録履歴</h3><p>訂正は実績入力から行えます。</p><div id="pInlineHistory" class="p-inline-list"></div></div>
+  </section>
 </section>
 
 
