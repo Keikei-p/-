@@ -168,7 +168,7 @@ jobs:
           set -e
           echo "$result" > "$RUNNER_TEMP/owner-partner-deploy-code.txt"
           for n in getPartnerWorkspace managePartnerWorkspace acceptPartnerWorkspaceInvite submitPartnerWorkspaceCounts; do
-            grep -Fq "functions[partner-workspace:${n}(asia-northeast1)] Successful update operation" "$RUNNER_TEMP/owner-partner-deploy-private.log" || {
+            grep -F "functions[partner-workspace:${n}(asia-northeast1)]" "$RUNNER_TEMP/owner-partner-deploy-private.log" | grep -Fq "Successful update operation" || {
               echo "STOP_FUNCTION_UPDATE_NOT_CONFIRMED_${n}"; exit 1;
             }
           done
@@ -217,7 +217,8 @@ jobs:
           console.log('PASS_ALL_FOUR_ACTIVE_AND_AUTH_DENIED');
           NODE
       - name: Keep original Hosting, Firestore, Rules, Auth, LINE and price data untouched
-        run: echo 'PARTNER_OWNER_HOTFIX_SUCCESS: Functions only; no client/Rules/data writes'
+        run: |
+          echo 'PARTNER_OWNER_HOTFIX_SUCCESS: Functions only; no client/Rules/data writes'
       - name: Remove private credentials and deployment logs
         if: always()
         run: |
