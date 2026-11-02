@@ -518,7 +518,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    if(primaryCid){
      if(!ID.test(primaryCid)||primaryCid===i.companyId||
         original.uid!==a.uid||
-        (original.email!=null&&clean(original.email).toLowerCase()!==a.email)||
+        (clean(original.email)&&clean(original.email).toLowerCase()!==a.email)||
         (original.accessKind!=null&&original.accessKind!=="internal")||
         (original.memberType!=null&&!["internal","direct","member","managed"].includes(original.memberType)))
        fail("failed-precondition");
@@ -532,7 +532,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
         (pc.companyKind!=null&&!["internal","direct"].includes(pc.companyKind))||
         pm.active===false||
         (pm.uid!=null&&pm.uid!==a.uid)||
-        (pm.email!=null&&clean(pm.email).toLowerCase()!==a.email)||
+        (clean(pm.email)&&clean(pm.email).toLowerCase()!==a.email)||
         (pm.companyId!=null&&pm.companyId!==primaryCid)||
         (pm.accessKind!=null&&pm.accessKind!=="internal")||
         ["partner","cooperator"].includes(pm.memberType))
