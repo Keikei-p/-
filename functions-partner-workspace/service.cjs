@@ -3,6 +3,8 @@
 const crypto=require("node:crypto");
 const {readDirectDayCounts}=require("./shared-direct-counts.cjs");
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
+// Cashback is a product variant label, NOT a sales unit price or revenue.
+const PARTNER_CB_OPTIONS=Object.freeze({"NURO":Object.freeze(["0","20000","40000","60000","80000","unclassified"])});
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const NAME=/^[\p{L}\p{N} 　・ー（）()_.-]{1,60}$/u;
@@ -29,6 +31,29 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   let total=0;const counts={};
   for(const key of KEYS){const n=x[key];if(!Number.isSafeInteger(n)||n<0||n>9999)fail("invalid-argument");counts[key]=n;total+=n;}
   return {counts,total};
+ };
+ const validateCbCounts=(raw,counts)=>{
+  // Legacy records without a breakdown remain unchanged and unclassified.
+  if(raw==null)return null;
+  if(!raw||typeof raw!=="object"||Array.isArray(raw)||
+     Object.keys(raw).length!==1||!Object.hasOwn(raw,"NURO"))fail("invalid-argument");
+  const tiers=raw.NURO;
+  if(!tiers||typeof tiers!=="object"||Array.isArray(tiers)||
+     Object.keys(tiers).length>PARTNER_CB_OPTIONS.NURO.length)fail("invalid-argument");
+  const normalized=Object.create(null);let sum=0;
+  for(const [key,value] of Object.entries(tiers)){
+   if(!PARTNER_CB_OPTIONS.NURO.includes(key)||
+      !Number.isSafeInteger(value)||value<0||value>9999)fail("invalid-argument");
+   normalized[key]=value;sum+=value;
+  }
+  if(sum!==counts.NURO)fail("invalid-argument");
+  return {NURO:{...normalized}};
+ };
+ const validateWorkLocation=x=>{
+  if(x===undefined||x===null)return "";
+  if(typeof x!=="string"||x.length>100||/[\x00-\x1f\x7f]/.test(x))
+   fail("invalid-argument");
+  return x.trim();
  };
  const validPrivateName=x=>typeof x==="string"&&x.trim().length>0&&
  x.trim().length<=80&&!money.test(x);
@@ -640,6 +665,23 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  }
  async function view(request){
   const a=await actor(request),d=request?.data||{},date=validDate(d.date);
+  if(d.resolveSecondaryWorkspace===true){
+   // Repeated password login on a different phone: resolve the EXISTING
+   // authenticated user's secondary-company membership, never an invite.
+   if(Object.keys(d).some(key=>!["date","resolveSecondaryWorkspace"].includes(key)))
+    fail("invalid-argument");
+   const context=await db.collection("partnerWorkspaceContexts").doc(a.uid).get();
+   if(!context.exists)return {scope:"partner_workspace_lookup",workspaceCompanyId:null};
+   const stored=context.data()||{};
+   if(stored.uid!==a.uid||stored.kind!=="partner_secondary"||
+      stored.active!==true||!ID.test(stored.partnerCompanyId||""))
+    fail("failed-precondition");
+   // The same authority check used for real saves ensures revoked roles,
+   // disabled companies and stale member records never resolve here.
+   const verified=await scope(a.uid,null,stored.partnerCompanyId);
+   if(verified.kind!=="partner"||verified.cid!==stored.partnerCompanyId)fail();
+   return {scope:"partner_workspace_lookup",workspaceCompanyId:verified.cid};
+  }
   const s=d.sharedRankings===true
    ?await sharedRankScope(a.uid,d.workspaceCompanyId)
    :await scope(a.uid,null,d.workspaceCompanyId);
@@ -968,8 +1010,11 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    const privateCounts=validatePrivateCounts(x.privateCounts||{});
    if(Object.keys(privateCounts.counts).some(id=>!privateIdSet.has(id))||
       (x.privateTotalCount??0)!==privateCounts.total)fail("data-loss");
-   rows.push({staffId:x.staffId,counts,totalCount:total,version:x.version,
-     teamIdSnapshot,privateCounts:privateCounts.counts,privateTotalCount:privateCounts.total});
+   const cbCounts=validateCbCounts(x.cbCounts,counts);
+   const workLocation=validateWorkLocation(x.workLocation);
+   rows.push({staffId:x.staffId,counts,totalCount:total,version:x.version,workLocation,
+     teamIdSnapshot,privateCounts:privateCounts.counts,privateTotalCount:privateCounts.total,
+     cbCounts});
   }
   // Read immutable count-only audit events ONLY when the history tab is opened.
   // Never query finance originals. Revisions beyond this explicit bound fail
@@ -995,10 +1040,15 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     if(Object.keys(nextPrivate.counts).some(id=>!privateIdSet.has(id))||
        Object.keys(prevPrivate.counts).some(id=>!privateIdSet.has(id)))
       fail("data-loss");
+    const cbCounts=validateCbCounts(x.cbCounts,next.counts);
+    const previousCbCounts=validateCbCounts(x.previousCbCounts,before.counts);
+    const workLocation=validateWorkLocation(x.workLocation);
+    const previousWorkLocation=validateWorkLocation(x.previousWorkLocation);
     audits.push({staffId:x.staffId,
      staffName:validName(x.staffNameSnapshot)?clean(x.staffNameSnapshot):allowed.get(x.staffId).name,
      version:x.version,date,totalCount:next.total,previousTotalCount:before.total,
      counts:next.counts,previousCounts:before.counts,
+     cbCounts,previousCbCounts,workLocation,previousWorkLocation,
      privateTotalCount:nextPrivate.total,previousPrivateTotalCount:prevPrivate.total});
    }
    audits.sort((a,b)=>a.staffName.localeCompare(b.staffName,"ja")||
@@ -1014,6 +1064,9 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   const a=await actor(request),d=request?.data||{},date=validDate(d.date),staffId=clean(d.staffId);
   if(!ID.test(staffId)||!Number.isSafeInteger(d.expectedVersion)||d.expectedVersion<0)fail("invalid-argument");
   const {counts,total}=validateCounts(d.counts);
+  const requestedCb=Object.hasOwn(d,"cbCounts")?
+   validateCbCounts(d.cbCounts,counts):undefined;
+  const workLocation=validateWorkLocation(d.workLocation);
   const hasPrivateCounts=Object.prototype.hasOwnProperty.call(d,"privateCounts");
   const requestedPrivate=hasPrivateCounts?validatePrivateCounts(d.privateCounts).counts:null;
   const s=await scope(a.uid,null,d.workspaceCompanyId);
@@ -1038,16 +1091,24 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
       fail("failed-precondition");
    }
    const old=oldSnap.data()||{},existing=totalSnap.data()||{};
+   const previousWorkLocation=oldSnap.exists?
+     validateWorkLocation(old.workLocation):"";
    if(oldSnap.exists&&old.version!==d.expectedVersion||!oldSnap.exists&&d.expectedVersion!==0)
      fail("aborted");
    if(d.expectedVersion>=999)fail("resource-exhausted");
    // Never mix per-person entries with the earlier one-total-per-partner UI.
    if(totalSnap.exists&&existing.source!=="staff-entries-v1")fail("failed-precondition");
    const previousPrivate=oldSnap.exists?validatePrivateCounts(old.privateCounts||{}).counts:{};
+   const priorCounts=oldSnap.exists?validateCounts(old.counts).counts:
+    Object.fromEntries(KEYS.map(key=>[key,0]));
+   const oldCb=oldSnap.exists?validateCbCounts(old.cbCounts,priorCounts):null;
+   // Old clients that save only totals cannot corrupt a previously saved CB
+   // distribution. If they change NURO totals, mark the breakdown unclassified.
+   const nextCb=requestedCb!==undefined?requestedCb:
+    (oldCb&&priorCounts.NURO===counts.NURO?oldCb:null);
    const privateNext={...previousPrivate,...(requestedPrivate||{})};
    const privateValidated=validatePrivateCounts(privateNext);
-   const prior=oldSnap.exists?validateCounts(old.counts).counts:
-     Object.fromEntries(KEYS.map(key=>[key,0]));
+   const prior=priorCounts;
    const previous=totalSnap.exists?validateCounts(existing.counts).counts:
      Object.fromEntries(KEYS.map(key=>[key,0]));
    const aggregate={};let aggregateTotal=0;
@@ -1071,6 +1132,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    const nowStamp=FieldValue.serverTimestamp(),nextVersion=d.expectedVersion+1;
    const row={companyId:s.cid,hubCompanyId:s.hubId,staffId,date,counts,totalCount:total,
      privateCounts:privateValidated.counts,privateTotalCount:privateValidated.total,
+     cbCounts:nextCb,workLocation,
      version:nextVersion,staffNameSnapshot,teamIdSnapshot,
      updatedByUid:a.uid,updatedAt:nowStamp};
    if(oldSnap.exists)tx.update(er,row);else tx.create(er,{...row,createdAt:nowStamp});
@@ -1080,7 +1142,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    if(!validCompanyName(sum.partnerName))fail();
    if(totalSnap.exists)tx.update(summary,sum);else tx.create(summary,{...sum,createdAt:nowStamp});
    const audit=collection(s.cid,"partnerWorkAudits").doc(date+"__"+staffId+"__v"+nextVersion);
-   tx.create(audit,{...row,previousCounts:prior,previousPrivateCounts:previousPrivate,
+   tx.create(audit,{...row,previousCounts:prior,previousCbCounts:oldCb,
+     previousWorkLocation,previousPrivateCounts:previousPrivate,
      createdAt:nowStamp});
    return {saved:true,staffId,date,version:nextVersion,totalCount:total,
      privateTotalCount:privateValidated.total};

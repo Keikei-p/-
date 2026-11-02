@@ -1,0 +1,32 @@
+name: Partner repeat login and CB count-only regression (no deploy)
+on:
+  push:
+    branches:
+      - fix/partner-login-repeat-and-cb-counts-20261102
+    paths:
+      - index.html
+      - functions-partner-workspace/service.cjs
+      - tests/partner-repeat-login-cb-parity.test.mjs
+      - tests/partner-company-parity-release.test.mjs
+      - .github/workflows/nico-partner-repeat-login-cb-offline.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline-no-write:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check count-only backend syntax
+        run: node --check functions-partner-workspace/service.cjs
+      - name: Test cashback variants, login, company totals and original sales
+        run: |
+          node --test tests/partner-repeat-login-cb-parity.test.mjs tests/partner-company-parity-release.test.mjs tests/partner-management-tabs-parity.test.mjs tests/owner-partner-team-detail-screen.test.mjs tests/sales-regressions.cjs
+      - name: Test partner backend transaction protections
+        run: node --test tests/partner-workspace.test.cjs tests/partner-count-dashboard.test.cjs tests/partner-count-only-ledger.test.mjs

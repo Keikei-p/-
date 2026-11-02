@@ -4410,6 +4410,13 @@ body.product-reordering .product-list {
 #partnerInlineWorkspace #pInlineCountFields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 #partnerInlineWorkspace #pInlineCountFields .p-inline-field{min-width:0;padding:10px 8px;border:1px solid var(--border);border-radius:10px}
 #partnerInlineWorkspace #pInlineCountFields .p-inline-field input{width:100%;min-width:0;box-sizing:border-box;text-align:center;font-size:18px;font-weight:700}
+#partnerInlineWorkspace #pInlineCountFields .partner-cb-card{grid-column:1/-1;display:block}
+#partnerInlineWorkspace #pInlineCountFields .partner-cb-card .partner-cb-title{font-size:16px;font-weight:800;margin-bottom:10px}
+#partnerInlineWorkspace #pInlineCountFields .partner-cb-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+#partnerInlineWorkspace #pInlineCountFields .partner-cb-options .p-inline-field{min-width:0;overflow-wrap:anywhere}
+#partnerInlineWorkspace #pInlineCountFields .partner-cb-options .p-inline-field input{min-height:46px}
+#partnerInlineWorkspace #pInlineCountFields .partner-cb-legacy{grid-column:1/-1;background:var(--card,#fff)}
+@media(max-width:350px){#partnerInlineWorkspace #pInlineCountFields .partner-cb-options{grid-template-columns:repeat(2,minmax(0,1fr))}}
 #partnerInlineWorkspace #partnerSameAppDashboardDetails{grid-column:1/-1;min-width:0;width:100%;box-sizing:border-box}
 #partnerInlineWorkspace #partnerSameAppNavigation>[data-partner-panel][aria-expanded="true"]{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary)}
 #partnerInlineWorkspace #partnerSameAppNavigation{align-items:stretch}
@@ -4790,6 +4797,9 @@ body.product-reordering .product-list {
 <section id="partnerInlineWorkspace" hidden aria-label="協力店 実績・班管理">
   <div class="dashboard-card">
   <h2 id="pInlineTitle" class="dashboard-title">協力店 実績管理</h2>
+  <button id="pInlineReturnToOwnCompany" type="button" class="team-action-button" hidden>
+    自社アカウントの画面に戻る
+  </button>
   <p class="p-inline-muted">いつもの実績管理アプリです。協力店には件数だけを表示し、売上・単価の原票は読み込みません。</p>
   <div id="partnerGlobalDateToolbar" class="p-inline-grid">
     <label class="p-inline-field">ダッシュボードの表示日<input id="pInlineDate" type="date"></label>
@@ -4915,7 +4925,11 @@ body.product-reordering .product-list {
         <select id="pInlineStaff"></select>
       </div>
     </div>
-    <div class="section-title">商材別実績</div>
+    <div class="form-group"><label for="pInlineWorkingTeam">この日の稼働班（担当者の所属班）</label>
+      <input id="pInlineWorkingTeam" type="text" readonly aria-label="担当者の所属班"></div>
+    <div class="form-group"><label for="pInlineWorkLocation">現場場所</label>
+      <input id="pInlineWorkLocation" type="text" maxlength="100" autocomplete="off" placeholder="例：○○市 ○○店"></div>
+    <div class="section-title">商材別実績（CB別は件数のみ表示）</div>
     <div id="pInlineCountFields" class="product-input-list" aria-label="商材ごとの件数入力・2列表示"></div>
     <p id="pInlineEntryTotals" class="record-total-value" aria-live="polite">共有商材 0件｜協力店専用 0件</p>
     <div class="p-inline-actions">
@@ -12548,6 +12562,26 @@ let partnerInlineBusy=false,ownerPartnerTeamsNonce=0;
 let partnerInlineEditingStaffId="";
 const partnerMainDate=()=>new Intl.DateTimeFormat("sv-SE",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
 const partnerMainValidId=id=>typeof id==="string"&&/^[A-Za-z0-9_-]{1,128}$/.test(id);
+// Only an opaque company ID, never invitation tokens, email or sales data, is
+// remembered so an approved secondary partner can log in again via password.
+// Every reload remains subject to backend company and membership verification.
+const partnerWorkspacePreferenceKey=uid=>"nico-partner-workspace:"+uid;
+function rememberPartnerWorkspace(uid,cid){
+ if(!partnerMainValidId(uid)||!partnerMainValidId(cid))return;
+ try{localStorage.setItem(partnerWorkspacePreferenceKey(uid),cid);}
+ catch{/* Private browsing may disable storage; the current URL still works. */}
+}
+function rememberedPartnerWorkspace(uid){
+ if(!partnerMainValidId(uid))return "";
+ try{
+  const cid=localStorage.getItem(partnerWorkspacePreferenceKey(uid))||"";
+  return partnerMainValidId(cid)?cid:"";
+ }catch{return "";}
+}
+function clearRememberedPartnerWorkspace(uid){
+ if(!partnerMainValidId(uid))return;
+ try{localStorage.removeItem(partnerWorkspacePreferenceKey(uid));}catch{}
+}
 function partnerMainPendingInvite(){
  const q=new URL(location.href).searchParams;
  const company=q.get("partnerCompanyInvite"),staff=q.get("partnerStaffInvite");
@@ -13261,18 +13295,46 @@ function renderPartnerPrivateProductCatalog(){
  }
  if(!products.length)partnerMainAppendRow(list,"協力店専用の商材は未登録です","公開商材の件数は実績入力から登録できます。");
 }
+// A cashback tier is NOT a sales price. Only the public count-only variant is
+// rendered, with no finance metadata or legacy product subscriptions.
+const PARTNER_NURO_CB_TIERS=Object.freeze(["0","20000","40000","60000","80000","unclassified"]);
+function partnerUiCbCountSnapshot(entry){
+ const raw=entry?.cbCounts?.NURO;
+ const result=Object.create(null);
+ if(raw&&typeof raw==="object"){
+  for(const tier of PARTNER_NURO_CB_TIERS)result[tier]=raw[tier]??0;
+ }else{
+  for(const tier of PARTNER_NURO_CB_TIERS)result[tier]=0;
+  // Old counts were never categorized by CB; don't silently label them CB0.
+  result.unclassified=entry?.counts?.NURO??0;
+ }
+ return result;
+}
+function partnerInlineSelectedCb(){
+ const result=Object.create(null);let total=0;
+ for(const input of pInline("pInlineCountFields").querySelectorAll("input[data-cb-tier]")){
+  const tier=input.dataset.cbTier,n=Number(input.value);
+  if(!PARTNER_NURO_CB_TIERS.includes(tier)||input.value.trim()===""||
+     !Number.isSafeInteger(n)||n<0||n>9999)throw Error("cb_count_invalid");
+  result[tier]=n;total+=n;
+ }
+ if(total>9999)throw Error("cb_count_overflow");
+ return {result,total};
+}
 function partnerInlineHasUnsavedCounts(){
  const snap=partnerInlineData;
  if(!snap||snap.role==="hub"||!partnerInlineEditingStaffId)return false;
  const entry=snap.records.find(row=>row.staffId===partnerInlineEditingStaffId);
  const fields=pInline("pInlineCountFields");
- for(const node of fields.querySelectorAll("input[data-count-key],input[data-private-count-id]")){
-  if(node.readOnly)continue;
+ if(pInline("pInlineWorkLocation").value.trim()!==(entry?.workLocation||""))return true;
+ for(const node of fields.querySelectorAll("input[data-count-key],input[data-private-count-id],input[data-cb-tier]")){
   const current=node.value.trim();
   if(!current||!Number.isSafeInteger(Number(current))||Number(current)<0||Number(current)>9999)return true;
   const previous=node.dataset.countKey?
    (entry?.counts?.[node.dataset.countKey]??0):
-   (entry?.privateCounts?.[node.dataset.privateCountId]??0);
+   node.dataset.cbTier?
+    partnerUiCbCountSnapshot(entry)[node.dataset.cbTier]:
+    (entry?.privateCounts?.[node.dataset.privateCountId]??0);
   if(Number(current)!==previous)return true;
  }
  return false;
@@ -13281,15 +13343,15 @@ function renderPartnerEntryTotals(){
  const target=pInline("pInlineEntryTotals");
  const grid=pInline("pInlineCountFields");
  let shared=0,privateTotal=0;
- for(const input of grid.querySelectorAll("input[data-count-key],input[data-private-count-id]")){
+ for(const input of grid.querySelectorAll("input[data-count-key],input[data-private-count-id],input[data-cb-tier]")){
   if(input.value.trim()===""||!Number.isSafeInteger(Number(input.value))||
      Number(input.value)<0||Number(input.value)>9999){
    target.textContent="件数を確認してください";
-   pInline("pInlineSaveStatus").textContent="件数は各商材0〜9999の整数で入力してください。";
+   pInline("pInlineSaveStatus").textContent="件数は各項目0〜9999の整数で入力してください。";
    return;
   }
-  if(input.dataset.countKey)shared+=Number(input.value);
-  else privateTotal+=Number(input.value);
+  if(input.dataset.privateCountId)privateTotal+=Number(input.value);
+  else shared+=Number(input.value);
  }
  target.textContent="共有商材 "+shared+"件｜協力店専用 "+privateTotal+"件";
  if(partnerInlineHasUnsavedCounts())
@@ -13300,12 +13362,41 @@ function partnerInlineRenderCounts(){
  if(!snap||snap.role==="hub")return;
  const staffId=pInline("pInlineStaff").value;
  const entry=snap.records.find(x=>x.staffId===staffId);
+ const person=snap.staff.find(x=>x.id===staffId);
+ const team=snap.teams.find(t=>t.id===person?.teamId);
+ pInline("pInlineWorkingTeam").value=team?.name||"所属班を確認してください";
+ pInline("pInlineWorkLocation").value=entry?.workLocation||"";
  partnerInlineEditingStaffId=staffId;
  pInline("pInlineRecordDate").value=pInline("pInlineDate").value;
  const grid=pInline("pInlineCountFields");grid.replaceChildren();
  pInline("pInlineSaveStatus").textContent="";
  for(const key of snap.categories){
-  const label=document.createElement("label");label.className="p-inline-field product-input-group product-input-group--compact";
+  if(key==="NURO"){
+   const card=document.createElement("div");
+   card.className="p-inline-field product-input-group product-input-group--compact partner-cb-card";
+   const heading=document.createElement("div");heading.className="partner-cb-title";
+   heading.textContent="NURO光｜CB別件数";
+   const hint=document.createElement("div");hint.className="p-inline-muted";
+   hint.textContent="CB金額は区分名です。収益単価・売上は表示しません。";
+   const tiers=document.createElement("div");tiers.className="partner-cb-options";
+   const saved=partnerUiCbCountSnapshot(entry);
+   for(const tier of PARTNER_NURO_CB_TIERS){
+    if(tier==="unclassified"&&!saved.unclassified)continue;
+    const field=document.createElement("label");field.className="p-inline-field";
+    if(tier==="unclassified")field.classList.add("partner-cb-legacy");
+    field.textContent=tier==="unclassified"?"既存のCB未分類":
+     tier==="0"?"CB0円":"CB"+(Number(tier)/10000)+"万円";
+    const input=document.createElement("input");input.type="number";input.min="0";
+    input.max="9999";input.step="1";input.inputMode="numeric";
+    input.dataset.cbTier=tier;input.value=String(saved[tier]);
+    input.addEventListener("input",renderPartnerEntryTotals);
+    field.append(input);tiers.append(field);
+   }
+   card.append(heading,hint,tiers);grid.append(card);
+   continue;
+  }
+  const label=document.createElement("label");
+  label.className="p-inline-field product-input-group product-input-group--compact";
   label.textContent=key;
   const input=document.createElement("input");input.type="number";input.min="0";input.max="9999";
   input.step="1";input.inputMode="numeric";input.dataset.countKey=key;
@@ -13313,12 +13404,11 @@ function partnerInlineRenderCounts(){
   input.addEventListener("input",renderPartnerEntryTotals);
   label.append(input);grid.append(label);
  }
- // Private products stay within this partner company and never enter
- // the shared all-company ranking. Preserve retired historical counts.
  for(const product of snap.privateProducts||[]){
   const prior=entry?.privateCounts?.[product.id]??0;
   if(!product.active&&prior===0)continue;
-  const label=document.createElement("label");label.className="p-inline-field product-input-group product-input-group--compact";
+  const label=document.createElement("label");
+  label.className="p-inline-field product-input-group product-input-group--compact";
   label.textContent=product.name+"（協力店専用）";
   const input=document.createElement("input");input.type="number";input.min="0";
   input.max="9999";input.step="1";input.inputMode="numeric";
@@ -13332,6 +13422,7 @@ function partnerInlineRenderCounts(){
  pInline("pInlineSave").textContent=entry?"変更した件数を保存（訂正）":"実績を一括登録";
  renderPartnerEntryTotals();
 }
+
 function partnerInlineRender(){
  const snap=partnerInlineData;if(!snap||snap.role==="hub")return;
  pInline("pInlineTitle").textContent="🤝 "+snap.companyName+"｜実績管理";
@@ -13500,11 +13591,21 @@ async function partnerInlineFetch(){
   return false;
  }
 }
+pInline("pInlineReturnToOwnCompany").onclick=()=>{
+ const uid=auth.currentUser?.uid;
+ if(!uid)return;
+ clearRememberedPartnerWorkspace(uid);
+ // The normal internal app STILL checks fresh server-side finance permissions.
+ location.replace(new URL("/",location.origin).href);
+};
 async function openSameAppPartnerWorkspace(user,workspaceCompanyId=""){
  if(!user?.emailVerified||!partnerMainValidId(user.uid))return;
  // Do not load legacy sales products, records, prices, or Firestore listeners.
  stopRealtimeListeners();
  partnerInlineWorkspaceCompany=partnerMainValidId(workspaceCompanyId)?workspaceCompanyId:"";
+ const switchButton=pInline("pInlineReturnToOwnCompany");
+ switchButton.hidden=!partnerInlineWorkspaceCompany;
+ if(partnerInlineWorkspaceCompany)rememberPartnerWorkspace(user.uid,partnerInlineWorkspaceCompany);
  partnerLeaderLastInvitation=null;
  pInline("pInlineInviteResult").hidden=true;
  pInline("pInlineInviteEmailStatus").textContent="";
@@ -13819,14 +13920,16 @@ pInline("pInlineCopyInvite").onclick=async()=>{
   partnerInlineStatus("招待リンクをコピーしました。");
  }catch{pInline("pInlineInviteUrl").select();partnerInlineStatus("リンクを選択しました。コピーしてください。");}
 };
-function partnerInlineCountsUnchanged(snap,staffId,counts,privateCounts){
+function partnerInlineCountsUnchanged(snap,staffId,counts,privateCounts,cbCounts=null,workLocation=""){
  // Saving an unchanged correction must not create a new audit version.
  // A first-ever zero-count report is still a legitimate new record.
  const previous=snap?.records?.find(row=>row.staffId===staffId);
- if(!previous)return false;
+ if(!previous||String(previous.workLocation||"")!==workLocation)return false;
  return snap.categories.every(key=>previous.counts?.[key]===counts[key])&&
   Object.entries(privateCounts).every(([id,count])=>
-   (previous.privateCounts?.[id]??0)===count);
+   (previous.privateCounts?.[id]??0)===count)&&
+  (!cbCounts||PARTNER_NURO_CB_TIERS.every(tier=>
+   (partnerUiCbCountSnapshot(previous)[tier]??0)===(cbCounts.NURO?.[tier]??0)));
 }
 pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
  const snap=partnerInlineData,staffId=pInline("pInlineStaff").value;
@@ -13834,8 +13937,13 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
  if(!snap||!uid||date!==pInline("pInlineDate").value||
     date!==pInline("pInlineRecordDate").value)throw Error("date_changed");
  if(!snap.staff.some(p=>p.id===staffId&&p.active))throw Error("staff");
+ const workLocation=pInline("pInlineWorkLocation").value.trim();
+ if(workLocation.length>100||/[\x00-\x1f\x7f]/.test(workLocation))throw Error("work_location_invalid");
  const counts=Object.create(null);
+ const parsedCb=partnerInlineSelectedCb();
+ const cbCounts={NURO:parsedCb.result};
  for(const key of snap.categories){
+  if(key==="NURO"){counts[key]=parsedCb.total;continue;}
   const node=[...pInline("pInlineCountFields").querySelectorAll("input[data-count-key]")]
     .find(x=>x.dataset.countKey===key);
   const n=Number(node?.value);
@@ -13854,10 +13962,10 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
   if(!product)throw Error("private_product_unknown");
   if(product.active)privateCounts[id]=n;
  }
- if(partnerInlineCountsUnchanged(snap,staffId,counts,privateCounts))
+ if(partnerInlineCountsUnchanged(snap,staffId,counts,privateCounts,cbCounts,workLocation))
   return "登録済みの件数と同じです。変更がないため訂正履歴は追加していません。";
  const result=(await partnerInlineSave(partnerInlinePayload({
-  date,staffId,counts,privateCounts,expectedVersion:before?.version??0
+  date,staffId,counts,cbCounts,workLocation,privateCounts,expectedVersion:before?.version??0
  }))).data;
  if(uid!==auth.currentUser?.uid||workspace!==partnerInlineWorkspaceCompany)
   throw Error("save_verify");
@@ -13867,8 +13975,10 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
  if(verified?.date!==date||verified?.companyName!==snap.companyName||
     !result?.saved||!saved||result.date!==date||result.staffId!==staffId||
     result.version!==(before?.version??0)+1||saved.version!==result.version||
-    saved.totalCount!==expectedTotal||
+    saved.totalCount!==expectedTotal||saved.workLocation!==workLocation||
     snap.categories.some(key=>saved.counts?.[key]!==counts[key])||
+    PARTNER_NURO_CB_TIERS.some(tier=>
+     (saved.cbCounts?.NURO?.[tier]??0)!==(cbCounts.NURO[tier]??0))||
     Object.keys(privateCounts).some(id=>saved.privateCounts?.[id]!==privateCounts[id])||
     uid!==auth.currentUser?.uid||workspace!==partnerInlineWorkspaceCompany)
   throw Error("save_verify");
@@ -14154,7 +14264,10 @@ pInline("pMainAcceptInvite").onclick=async()=>{
   if(!result?.partnerCompanyId||!partnerMainValidId(result.partnerCompanyId))throw Error("response");
   // Never delete the employee's original company, revenue or historical data.
   const url=new URL("/",location.origin);
-  if(result.secondaryMembership)url.searchParams.set("workspaceCompanyId",result.partnerCompanyId);
+  if(result.secondaryMembership){
+   rememberPartnerWorkspace(user.uid,result.partnerCompanyId);
+   url.searchParams.set("workspaceCompanyId",result.partnerCompanyId);
+  }
   location.replace(url.href);
  }catch(error){
   const code=error?.code||"";
@@ -14309,7 +14422,27 @@ onAuthStateChanged(
         await showPartnerInviteAtMain(user,pendingPartnerInvite);
         return;
       }
-      const partnerWorkspaceId=new URL(location.href).searchParams.get("workspaceCompanyId")||"";
+      const explicitPartnerWorkspace=new URL(location.href).searchParams.get("workspaceCompanyId")||"";
+      let partnerWorkspaceId=explicitPartnerWorkspace||rememberedPartnerWorkspace(user.uid);
+      if(!partnerWorkspaceId){
+        // Password login can occur on a second device where localStorage is
+        // empty. The server resolves only this verified user's own approved
+        // secondary membership; there is no invite-token or finance lookup.
+        try{
+          const result=(await readPartnerWorkDay({
+            date:partnerMainDate(),resolveSecondaryWorkspace:true
+          })).data;
+          if(auth.currentUser?.uid!==user.uid)return;
+          if(result?.scope==="partner_workspace_lookup"&&
+             partnerMainValidId(result.workspaceCompanyId))
+            partnerWorkspaceId=result.workspaceCompanyId;
+        }catch(error){
+          // Missing/older backend: preserve normal internal login, do not
+          // silently grant any partner/finance role from unverified data.
+          console.info("partner_workspace_discovery_unavailable",
+            typeof error?.code==="string"?error.code:"unavailable");
+        }
+      }
       if(partnerWorkspaceId){
         if(!partnerMainValidId(partnerWorkspaceId)){
           showLegacyFinanceEntryBlocked("blocked");
