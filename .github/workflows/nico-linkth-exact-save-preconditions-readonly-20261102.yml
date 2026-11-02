@@ -219,8 +219,15 @@ jobs:
             noProductionChanges:true
            }));
           }catch(e){
+           const detail=String(e?.message||'');
            console.log('SAVE_SIMULATION_READONLY',JSON.stringify({
             preconditions:'REJECTED',errorCode:e.code||'internal',
+            errorClass:String(e?.name||'unknown'),
+            harnessThresholdOnly:detail==='DRY_RUN_RESULT_UNEXPECTED',
+            isReadOnlyTransaction:/read.only|readOnly/i.test(detail),
+            isMissingMethod:/is not a function|undefined/i.test(detail),
+            isFirestoreError:/firestore|transaction|grpc|5 NOT_FOUND/i.test(detail),
+            readCalls,interceptedWrites:writeCalls,
             noProductionChanges:true
            }));
            process.exitCode=2;
