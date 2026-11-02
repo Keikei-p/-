@@ -1,0 +1,41 @@
+name: NICO direct local rank safety (offline only)
+on:
+  push:
+    branches:
+      - fix/partner-direct-local-ranking-safety-20261102
+    paths:
+      - index.html
+      - tests/partner-direct-local-ranking-safety.test.mjs
+      - .github/workflows/nico-direct-local-rank-safety.yml
+  pull_request:
+    branches:
+      - fix/partner-email-link-first-password-20261102
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Reject browser module syntax errors before deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs=require('fs');
+          const html=fs.readFileSync('index.html','utf8');
+          const module=html.match(/<script type="module">([\s\S]*?)<\/script>/)?.[1];
+          if(!module)throw Error('NO_BROWSER_MODULE');
+          fs.writeFileSync('/tmp/nico-direct-safe-check.mjs',module);
+          NODE
+          node --check /tmp/nico-direct-safe-check.mjs
+      - name: Run historical direct rank, partner counts and Owner finance regressions
+        run: |
+          set -euo pipefail
+          node --test tests/partner-direct-local-ranking-safety.test.mjs tests/partner-shared-direct-redaction.test.cjs tests/partner-company-parity-release.test.mjs tests/internal-owner-finance-visibility.test.cjs
