@@ -317,14 +317,14 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   }
   if(s.kind!=="partner"||s.role==="member")fail();
   if(op==="addPrivateProduct"){
-   if(s.kind!=="partner"||s.role!=="owner"||!validPrivateName(d.name))
+   if(s.kind!=="partner"||!["owner","leader"].includes(s.role)||!validPrivateName(d.name))
      fail("invalid-argument");
    const existing=await collection(s.cid,"partnerPrivateProducts").limit(101).get();
    if(existing.size>=100)fail("resource-exhausted");
    const ref=collection(s.cid,"partnerPrivateProducts").doc();
    await db.runTransaction(async tx=>{
     const fresh=await scope(uid,tx,d.workspaceCompanyId);
-    if(fresh.kind!=="partner"||fresh.cid!==s.cid||fresh.role!=="owner")fail();
+    if(fresh.kind!=="partner"||fresh.cid!==s.cid||!["owner","leader"].includes(fresh.role))fail();
     tx.create(ref,{companyId:s.cid,name:clean(d.name),active:true,
       origin:"partner_custom",visibility:"private",createdByUid:uid,
       createdAt:FieldValue.serverTimestamp()});
@@ -332,11 +332,11 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    return {productId:ref.id,created:true};
   }
   if(op==="setPrivateProduct"){
-   if(s.kind!=="partner"||s.role!=="owner"||!ID.test(d.productId||"")||
+   if(s.kind!=="partner"||!["owner","leader"].includes(s.role)||!ID.test(d.productId||"")||
       typeof d.active!=="boolean"||!validPrivateName(d.name))fail("invalid-argument");
    await db.runTransaction(async tx=>{
     const fresh=await scope(uid,tx,d.workspaceCompanyId);
-    if(fresh.kind!=="partner"||fresh.cid!==s.cid||fresh.role!=="owner")fail();
+    if(fresh.kind!=="partner"||fresh.cid!==s.cid||!["owner","leader"].includes(fresh.role))fail();
     const ref=privateProductRef(s.cid,d.productId),sn=await tx.get(ref);
     if(!sn.exists||sn.data()?.companyId!==s.cid||
        sn.data()?.origin!=="partner_custom"||sn.data()?.visibility!=="private")
