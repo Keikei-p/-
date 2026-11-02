@@ -4429,6 +4429,7 @@ body.product-reordering .product-list {
   <label id="pMainInviteNameField" class="form-group" hidden>表示名<input id="pMainInviteName" maxlength="60" placeholder="例：田中 太郎"></label>
   <p id="pMainInviteStatus" role="status" aria-live="polite"></p>
   <button id="pMainAcceptInvite" type="button">招待を承諾する</button>
+  <button id="pMainChangeInviteAccount" type="button">別のメールでログイン</button>
   <button id="pMainCancelInvite" type="button">キャンセルして通常画面へ</button>
 </div>
 
@@ -5069,6 +5070,11 @@ body.product-reordering .product-list {
             <input id="partnerInviteLinkOutput" type="text" readonly>
             <button id="partnerInviteCopyButton" type="button">コピー</button>
           </div>
+          <div style="display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin-top:12px;">
+            <button id="partnerInviteSendEmailButton" type="button">招待メールを送る（メールアプリ）</button>
+            <button id="partnerInviteResendEmailButton" type="button">招待メールを再送</button>
+          </div>
+          <p id="partnerInviteEmailStatus" role="status" aria-live="polite" style="font-size:12px;line-height:1.6;color:var(--sub);margin-top:8px;">メールアプリで送信してください。送信前は相手に届きません。</p>
         </div>
         <a href="/partner-invite.html" style="display:inline-block;margin-top:10px;">
           専用の協力店招待画面を開く
@@ -12083,13 +12089,68 @@ createInviteButton.onclick =
 
 let directPartnerInviteCompanies=[];
 let directPartnerInviteSequence=0;
+let directPartnerLastInvitation=null;
+function clearDirectPartnerEmailResult(){
+ directPartnerLastInvitation=null;
+ document.getElementById("partnerInviteResult").hidden=true;
+}
+function partnerInviteMailUrl(invite){
+ const subject="【NICO FACTORY】協力店へのご招待";
+ const body="営業実績管理アプリの協力店へ招待します。\n"+
+   "招待メールアドレスでログイン・メール認証を行い、次のリンクから参加してください。\n"+
+   "リンクは発行から30分間有効です。\n\n"+invite.url+
+   "\n\n※件数入力用の招待です。売上・単価は共有されません。";
+ return "mailto:"+encodeURIComponent(invite.email)+
+   "?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(body);
+}
+async function composePartnerInvitationEmail(){
+ const send=document.getElementById("partnerInviteSendEmailButton");
+ const resend=document.getElementById("partnerInviteResendEmailButton");
+ const status=document.getElementById("partnerInviteEmailStatus");
+ const invite=directPartnerLastInvitation;
+ if(!invite||!currentUser?.emailVerified||
+    currentCompanyData?.ownerUid!==currentUser.uid){
+   status.textContent="招待元オーナーとしてリンクを作成してください。";
+   return;
+ }
+ send.disabled=true;resend.disabled=true;
+ try{
+  let latest=invite;
+  if(Date.now()>=invite.expiresAt){
+   // Never email a known expired token. Reissue for the identical company,
+   // team, role and address; the backend rechecks owner permission.
+   const res=(await partnerInlineManage({action:"hubCreateInvite",
+     partnerCompanyId:invite.partnerCompanyId,teamId:invite.teamId,
+     email:invite.email,role:invite.role})).data;
+   if(!/^[A-Za-z0-9_-]{43}$/.test(res?.token||"")||
+      !Number.isFinite(res.expiresAt)||res.expiresAt<=Date.now())
+    throw Error("invite_refresh_failed");
+   const url=new URL("/",location.origin);
+   url.searchParams.set("partnerStaffInvite",res.token);
+   latest={...invite,url:url.href,expiresAt:res.expiresAt};
+   directPartnerLastInvitation=latest;
+   document.getElementById("partnerInviteLinkOutput").value=latest.url;
+  }
+  status.textContent="メールアプリを開きます。宛先を確認して「送信」を押してください。";
+  window.location.href=partnerInviteMailUrl(latest);
+ }catch(error){
+  console.error("partner_invitation_mail_compose_failed",error?.code||"unknown");
+  status.textContent="メールを準備できませんでした。ログインと招待の期限を確認してください。";
+ }finally{send.disabled=false;resend.disabled=false;}
+}
+document.getElementById("partnerInviteSendEmailButton").onclick=composePartnerInvitationEmail;
+document.getElementById("partnerInviteResendEmailButton").onclick=composePartnerInvitationEmail;
+document.getElementById("partnerInviteEmail").addEventListener("input",clearDirectPartnerEmailResult);
+document.getElementById("partnerInviteRole").addEventListener("change",clearDirectPartnerEmailResult);
+document.getElementById("partnerInviteTeam").addEventListener("change",clearDirectPartnerEmailResult);
+document.getElementById("partnerInviteNewCompanyName").addEventListener("input",clearDirectPartnerEmailResult);
 function renderDirectPartnerInviteTeams(){
  const isNew=pInline("partnerInviteCompanyName").value==="__new__";
  pInline("partnerInviteNewCompanyField").hidden=!isNew;
  pInline("partnerInviteTeamField").hidden=isNew;
  const company=directPartnerInviteCompanies.find(c=>c.partnerCompanyId===pInline("partnerInviteCompanyName").value);
  partnerInlineFillSelect("partnerInviteTeam",company?.teams||[],t=>t.name);
- pInline("partnerInviteResult").hidden=true;
+ clearDirectPartnerEmailResult();
 }
 async function loadDirectPartnerInviteCompanies(){
  const uid=currentUser?.uid,seq=++directPartnerInviteSequence;
@@ -12160,16 +12221,24 @@ partnerInviteCreateButton.onclick = async () => {
        currentCompanyData?.ownerUid!==inviteCreatorUid)
       throw Error("stale_invite_creator");
     const token=response?.data?.token;
-    if(typeof token!=="string"||!/^[A-Za-z0-9_-]{43}$/.test(token))
+    if(typeof token!=="string"||!/^[A-Za-z0-9_-]{43}$/.test(token)||
+       !partnerMainValidId(response?.data?.partnerCompanyId)||
+       !partnerMainValidId(response?.data?.teamId)||
+       !Number.isFinite(response?.data?.expiresAt))
       throw Error("invalid_invite_response");
     const url=new URL("/",location.origin);
     url.searchParams.set("partnerStaffInvite",token);
     if(isNew)await loadDirectPartnerInviteCompanies();
     if(currentUser?.uid!==inviteCreatorUid||currentCompanyData?.ownerUid!==inviteCreatorUid)
       throw Error("stale_invite_creator");
+    directPartnerLastInvitation={url:url.href,email,role,
+      partnerCompanyId:response.data.partnerCompanyId,
+      teamId:response.data.teamId,expiresAt:response.data.expiresAt};
     document.getElementById("partnerInviteLinkOutput").value=url.href;
     document.getElementById("partnerInviteResult").hidden=false;
-    showSuccess("協力店の招待リンクを作成しました。30分以内に送ってください。");
+    document.getElementById("partnerInviteEmailStatus").textContent=
+      "メールアプリから送信してください。自動送信はされません。期限切れは再送時にリンクを再発行します。";
+    showSuccess("協力店の招待リンクを作成しました。メール送信ボタンから送ってください。");
   } catch (error) {
     // Never log or expose invitation secrets.
     console.error("協力店招待を作成できません",error?.code||"unknown");
@@ -12622,6 +12691,7 @@ onAuthStateChanged(
       partnerRankingActiveKey="";
       const link=document.getElementById("partnerInviteLinkOutput");
       const inviteResultElement=document.getElementById("partnerInviteResult");
+      directPartnerLastInvitation=null;
       if(link)link.value="";
       if(inviteResultElement)inviteResultElement.hidden=true;
 
