@@ -4823,7 +4823,7 @@ body.product-reordering .product-list {
     <div class="p-inline-card"><h3 id="partnerRankingHeading">🏆 ランキング（件数のみ）</h3><div id="pInlineRanking" class="p-inline-list"></div></div>
     <div class="p-inline-card" id="partnerSharedRankingsSection">
       <h3>🤝 協力店合同ランキング（選択日）</h3>
-      <p class="p-inline-muted">承認済みの協力店で共通の件数・順位です。直営分は共有準備中のため含みません。</p>
+      <p class="p-inline-muted">承認済みの協力店で共通の件数・順位です。直営も協力店も件数のみを集計し、売上・単価を表示しません。</p>
       <button id="partnerSharedRankingsRefresh" type="button" class="team-action-button">みんなのランキングを更新</button>
       <p id="partnerSharedRankingsStatus" role="status"></p>
       <div id="partnerSharedRankingContent" class="p-inline-list"></div>
@@ -12794,7 +12794,8 @@ async function loadSharedDailyStandings(where){
      !Array.isArray(response.companies)||!Array.isArray(response.teams)||
      !Array.isArray(response.people)||!Array.isArray(response.categories)||
      !response.productCounts||typeof response.productCounts!=="object"||
-     typeof response.complete!=="boolean"||response.includesDirect!==false)
+     typeof response.complete!=="boolean"||response.includesDirect!==true||
+     !response.direct||typeof response.direct!=="object")
    throw Error("shared_ranking_contract");
   if(response.companies.length>20||response.teams.length>4000||
      response.people.length>4000||response.categories.length!==PARTNER_QUICK_RANK_KEYS.length)
@@ -12803,30 +12804,32 @@ async function loadSharedDailyStandings(where){
   if(categories.some(k=>!response.categories.includes(k)||!Number.isSafeInteger(response.productCounts[k])||
      response.productCounts[k]<0)||Object.keys(response.productCounts).length!==categories.length)
    throw Error("shared_ranking_category");
-  let companyRows=response.companies.map(x=>({name:"🤝 "+x.name,count:x.totalCount}));
-  let teamRows=response.teams.map(x=>({name:"🤝 "+x.companyName+"・"+x.name,count:x.totalCount}));
-  let personRows=response.people.map(x=>({name:"🤝 "+x.companyName+"・"+x.name,count:x.totalCount}));
-  const productTotals=new Map(categories.map(k=>[k,response.productCounts[k]]));
-  let complete=response.complete,internal=null;
-  if(!partner){
-   internal=verifiedDirectDayCounts(date);
-   if(!internal)complete=false;
-   else{
-    companyRows.push({name:"🏢 直営",count:internal.totalCount});
-    teamRows.push(...internal.teams.map(x=>({name:x.name,count:x.totalCount})));
-    personRows.push(...internal.people.map(x=>({name:x.name,count:x.totalCount})));
-    for(const {name,count} of internal.products){
-     // Never silently guess which catalog items are the same product.
-     productTotals.set(name,(productTotals.get(name)||0)+count);
-    }
-   }
-  }
+  const internal=response.direct;
+  if(!Array.isArray(internal.people)||!Array.isArray(internal.teams)||
+     !internal.counts||typeof internal.counts!=="object"||
+     !Number.isSafeInteger(internal.totalCount)||internal.totalCount<0||
+     !Number.isSafeInteger(internal.otherCount)||internal.otherCount<0||
+     !Number.isSafeInteger(internal.recordsVerified)||internal.recordsVerified<0||
+     internal.recordsVerified>3000||internal.people.length>3000||
+     internal.teams.length>3000||Object.keys(internal.counts).length!==categories.length||
+     categories.some(k=>!Number.isSafeInteger(internal.counts[k])||internal.counts[k]<0)||
+     categories.reduce((n,k)=>n+internal.counts[k],internal.otherCount)!==internal.totalCount)
+   throw Error("shared_direct_count_contract");
+  const companyRows=response.companies.map(x=>({name:"🤝 "+x.name,count:x.totalCount}));
+  const teamRows=response.teams.map(x=>({name:"🤝 "+x.companyName+"・"+x.name,count:x.totalCount}));
+  const personRows=response.people.map(x=>({name:"🤝 "+x.companyName+"・"+x.name,count:x.totalCount}));
+  companyRows.push({name:"🏢 直営",count:internal.totalCount});
+  teamRows.push(...internal.teams.map(x=>({name:"🏢 直営・"+x.name,count:x.totalCount})));
+  personRows.push(...internal.people.map(x=>({name:"🏢 直営・"+x.name,count:x.totalCount})));
+  const productTotals=new Map(categories.map(k=>[k,response.productCounts[k]+internal.counts[k]]));
+  if(internal.otherCount)productTotals.set("その他（直営）",internal.otherCount);
+  const complete=response.complete;
   const partnerSum=response.companies.reduce((n,x)=>n+x.totalCount,0);
   if(!Number.isSafeInteger(partnerSum)||partnerSum<0)throw Error("shared_overflow");
   status.textContent=complete?
-   "件数照合済み｜"+(partner?"協力店合同":"直営＋協力店合同")+
+   "件数照合済み｜直営＋協力店合同"+
      " "+(partnerSum+(internal?.totalCount||0))+"件｜同率順位は同順位":
-   "未報告・未照合の会社、または直営の読込待ちがあります。表示は途中経過で、正式順位は確定していません。";
+   "未報告・未照合の協力店があります。表示は途中経過で、正式順位は確定していません。";
   appendSharedRankingRows(content,"🏢 会社別件数",companyRows,complete);
   appendSharedRankingRows(content,"🏆 個人ランキング",personRows,complete);
   appendSharedRankingRows(content,"👥 班ランキング",teamRows,complete);
