@@ -4519,6 +4519,28 @@ body.product-reordering .product-list {
 
       </div>
 
+      <!-- Shown only when a partner opens the Firebase authentication email link. -->
+      <section id="partnerEmailLinkVerifyPanel" hidden style="margin-top:16px;padding:14px;border:1px solid var(--border);border-radius:12px;">
+        <strong>協力店のメール認証</strong>
+        <p style="font-size:13px;">招待メールを受け取った本人のアドレスを入力してください。パスワードはまだ必要ありません。</p>
+        <label for="partnerEmailLinkAddress">招待先メールアドレス</label>
+        <input id="partnerEmailLinkAddress" type="email" autocomplete="email" inputmode="email" style="display:block;width:100%;min-height:44px;margin:8px 0;">
+        <button id="partnerEmailLinkVerifyButton" type="button">メールを認証する</button>
+        <p id="partnerEmailLinkVerifyStatus" role="status" aria-live="polite"></p>
+      </section>
+      <section id="partnerEmailLinkPasswordPanel" hidden style="margin-top:16px;padding:14px;border:1px solid var(--border);border-radius:12px;">
+        <strong>認証完了・初回パスワード設定</strong>
+        <p style="font-size:13px;">設定後はメールアドレスとパスワードでログインできます。</p>
+        <label for="partnerEmailLinkName">名前</label>
+        <input id="partnerEmailLinkName" maxlength="30" autocomplete="name" style="display:block;width:100%;min-height:44px;margin:8px 0;">
+        <label for="partnerEmailLinkPassword">パスワード（8文字以上）</label>
+        <input id="partnerEmailLinkPassword" type="password" autocomplete="new-password" minlength="8" style="display:block;width:100%;min-height:44px;margin:8px 0;">
+        <label for="partnerEmailLinkPasswordConfirm">パスワード確認</label>
+        <input id="partnerEmailLinkPasswordConfirm" type="password" autocomplete="new-password" minlength="8" style="display:block;width:100%;min-height:44px;margin:8px 0;">
+        <button id="partnerEmailLinkPasswordButton" type="button">パスワードを設定して参加へ</button>
+        <p id="partnerEmailLinkPasswordStatus" role="status" aria-live="polite"></p>
+      </section>
+
       <div
         id="authRecoveryControls"
         style="margin-top:14px;text-align:center;">
@@ -5071,10 +5093,10 @@ body.product-reordering .product-list {
             <button id="partnerInviteCopyButton" type="button">コピー</button>
           </div>
           <div style="display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin-top:12px;">
-            <button id="partnerInviteSendEmailButton" type="button">招待メールを送る（メールアプリ）</button>
+            <button id="partnerInviteSendEmailButton" type="button">認証メールを送信</button>
             <button id="partnerInviteResendEmailButton" type="button">招待メールを再送</button>
           </div>
-          <p id="partnerInviteEmailStatus" role="status" aria-live="polite" style="font-size:12px;line-height:1.6;color:var(--sub);margin-top:8px;">メールアプリで送信してください。送信前は相手に届きません。</p>
+          <p id="partnerInviteEmailStatus" role="status" aria-live="polite" style="font-size:12px;line-height:1.6;color:var(--sub);margin-top:8px;">招待後に認証メールを自動送信します。未送信の場合は理由を表示します。</p>
         </div>
         <a href="/partner-invite.html" style="display:inline-block;margin-top:10px;">
           専用の協力店招待画面を開く
@@ -6978,6 +7000,11 @@ import {
   onAuthStateChanged,
   sendEmailVerification,
   sendPasswordResetEmail,
+  sendSignInLinkToEmail,
+  signInWithEmailLink,
+  isSignInWithEmailLink,
+  updatePassword,
+  getAdditionalUserInfo,
   EmailAuthProvider,
   reauthenticateWithCredential,
   deleteUser,
@@ -12094,14 +12121,12 @@ function clearDirectPartnerEmailResult(){
  directPartnerLastInvitation=null;
  document.getElementById("partnerInviteResult").hidden=true;
 }
-function partnerInviteMailUrl(invite){
- const subject="【NICO FACTORY】協力店へのご招待";
- const body="営業実績管理アプリの協力店へ招待します。\n"+
-   "招待メールアドレスでログイン・メール認証を行い、次のリンクから参加してください。\n"+
-   "リンクは発行から30分間有効です。\n\n"+invite.url+
-   "\n\n※件数入力用の招待です。売上・単価は共有されません。";
- return "mailto:"+encodeURIComponent(invite.email)+
-   "?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(body);
+function partnerInviteAuthSettings(invite){
+ const u=new URL(invite.url,location.origin);
+ if(u.origin!==location.origin||!/^[A-Za-z0-9_-]{43}$/.test(u.searchParams.get("partnerStaffInvite")||""))
+  throw Error("invalid_partner_invitation_link");
+ // Never disclose invitee email in the redirect URL.
+ return {url:u.href,handleCodeInApp:true};
 }
 async function composePartnerInvitationEmail(){
  const send=document.getElementById("partnerInviteSendEmailButton");
@@ -12131,11 +12156,15 @@ async function composePartnerInvitationEmail(){
    directPartnerLastInvitation=latest;
    document.getElementById("partnerInviteLinkOutput").value=latest.url;
   }
-  status.textContent="メールアプリを開きます。宛先を確認して「送信」を押してください。";
-  window.location.href=partnerInviteMailUrl(latest);
+  await sendSignInLinkToEmail(auth,latest.email,partnerInviteAuthSettings(latest));
+  status.textContent="Firebaseから認証メールを送信しました。メール確認後、初回パスワード設定へ進めます。";
+  return true;
  }catch(error){
   console.error("partner_invitation_mail_compose_failed",error?.code||"unknown");
-  status.textContent="メールを準備できませんでした。ログインと招待の期限を確認してください。";
+  status.textContent=error?.code==="auth/operation-not-allowed"?
+    "Firebaseのメールリンク認証が無効です。メールは送信されていません。":
+    "認証メールを送信できませんでした。設定・送信上限・ネット接続を確認してください。";
+  return false;
  }finally{send.disabled=false;resend.disabled=false;}
 }
 document.getElementById("partnerInviteSendEmailButton").onclick=composePartnerInvitationEmail;
@@ -12236,9 +12265,9 @@ partnerInviteCreateButton.onclick = async () => {
       teamId:response.data.teamId,expiresAt:response.data.expiresAt};
     document.getElementById("partnerInviteLinkOutput").value=url.href;
     document.getElementById("partnerInviteResult").hidden=false;
-    document.getElementById("partnerInviteEmailStatus").textContent=
-      "メールアプリから送信してください。自動送信はされません。期限切れは再送時にリンクを再発行します。";
-    showSuccess("協力店の招待リンクを作成しました。メール送信ボタンから送ってください。");
+    const sent=await composePartnerInvitationEmail();
+    if(sent)showSuccess("協力店の認証メールを送信しました。本人確認後、パスワードを設定します。");
+    else showError("招待リンクを作成しましたが、認証メールは未送信です。認証設定を確認して再送してください。");
   } catch (error) {
     // Never log or expose invitation secrets.
     console.error("協力店招待を作成できません",error?.code||"unknown");
@@ -12516,7 +12545,13 @@ pInline("pInlineCreateInvite").onclick=()=>partnerInlineRun(async()=>{
  const url=new URL("/",location.origin);url.searchParams.set("partnerStaffInvite",response.token);
  pInline("pInlineInviteUrl").value=url.href;
  pInline("pInlineInviteResult").hidden=false;
- return "招待リンクを発行しました。";
+ try{
+  await sendSignInLinkToEmail(auth,email,partnerInviteAuthSettings({url:url.href}));
+  return "招待メールを送信しました。相手が本人確認して参加します。";
+ }catch(error){
+  console.error("partner_leader_email_send_failed",error?.code||"unknown");
+  return "招待リンクは作成しましたが、メールは未送信です。Firebaseメールリンク設定を確認してください。";
+ }
 });
 pInline("pInlineCopyInvite").onclick=async()=>{
  if(!pInline("pInlineInviteUrl").value)return;
