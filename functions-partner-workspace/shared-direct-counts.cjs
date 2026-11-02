@@ -65,7 +65,7 @@ async function readDirectDayCounts(db,hubId,date,keys,{maxRecords=MAX_DIRECT_REC
    productNames.set(product.id,safeName(value.name,""));
  }
  const people=new Map(),teams=new Map(),counts=Object.fromEntries(keys.map(k=>[k,0]));
- let totalCount=0,otherCount=0;
+ let totalCount=0,otherCount=0,unverifiedPersonRecords=0;
  for(const doc of snap.docs){
   const row=doc.data()||{};
   if(row.companyId!==hubId||row.date!==date)throw Error("DIRECT_SCOPE_MISMATCH");
@@ -86,19 +86,23 @@ async function readDirectDayCounts(db,hubId,date,keys,{maxRecords=MAX_DIRECT_REC
      (row.totalCount!=null&&(!Number.isSafeInteger(row.totalCount)||row.totalCount!==n)))
    throw Error("DIRECT_TOTAL_MISMATCH");
   totalCount+=n;
-  const personId=safeIdentifier(row.uid)?row.uid:"record_"+doc.id;
-  if(!safeIdentifier(personId))throw Error("DIRECT_PERSON_UNVERIFIED");
+  // A record ID is NOT a verified staff identity: never invent people in
+  // a cross-company individual ranking when a legacy entry lacks a UID.
+  const personId=safeIdentifier(row.uid)?row.uid:null;
+  if(!personId)unverifiedPersonRecords++;
   const name=safeName(row.memberNameSnapshot,"担当者未確認");
   const teamId=safeIdentifier(row.teamId)?row.teamId:"unknown";
   const teamName=safeName(row.teamNameSnapshot,"当時の班未確認");
-  const personKey=redactedKey("person",hubId,personId);
   const teamKey=redactedKey("team",hubId,teamId);
-  let person=people.get(personKey);
-  if(!person){person={key:personKey,name,teamKey,totalCount:0,
-    counts:Object.fromEntries(keys.map(k=>[k,0]))};people.set(personKey,person);}
-  if(person.teamKey!==teamKey)person.teamKey=null; // cross-team entries are not re-attributed
-  person.totalCount+=n;
-  for(const key of keys)person.counts[key]+=daily[key];
+  if(personId){
+   const personKey=redactedKey("person",hubId,personId);
+   let person=people.get(personKey);
+   if(!person){person={key:personKey,name,teamKey,totalCount:0,
+     counts:Object.fromEntries(keys.map(k=>[k,0]))};people.set(personKey,person);}
+   if(person.teamKey!==teamKey)person.teamKey=null; // cross-team entries are not re-attributed
+   person.totalCount+=n;
+   for(const key of keys)person.counts[key]+=daily[key];
+  }
   const team=teams.get(teamKey)||{key:teamKey,name:teamName,totalCount:0,
     counts:Object.fromEntries(keys.map(k=>[k,0]))};
   team.totalCount+=n;
@@ -111,6 +115,7 @@ async function readDirectDayCounts(db,hubId,date,keys,{maxRecords=MAX_DIRECT_REC
  if(sum!==totalCount)throw Error("DIRECT_CATEGORY_MISMATCH");
  return {companyName:"直営",totalCount,counts,otherCount,
   people:[...people.values()],teams:[...teams.values()],
+  peopleVerified:unverifiedPersonRecords===0,unverifiedPersonRecords,
   recordsVerified:snap.size};
 }
 module.exports={readDirectDayCounts,MAX_DIRECT_RECORDS_PER_DAY};
