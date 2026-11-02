@@ -65,7 +65,7 @@ function fixture(){
   partnerMainAppendRow:(parent,label,value)=>{const entry=node();entry.textContent=label+"｜"+value;parent.append(entry);},
   PARTNER_QUICK_RANK_KEYS:["NURO","SBMNP"]
  };
- runInNewContext(teamCardCode+"\n"+source.replace("}catch(error){\n     if(validSession()&&card.open){", "}catch(error){throw error;\n     if(validSession()&&card.open){"),context);
+ runInNewContext(teamCardCode+"\n"+source,context);
  const openCompany=async index=>{
   const company=dom.ownerPartnerDashboardList.children[index];
   company.open=true;
