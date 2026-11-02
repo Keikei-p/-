@@ -14669,7 +14669,11 @@ async function loadOwnerPartnerDetails(){
        productTotal+=n;if(n)partnerMainAppendRow(products,key,n+"件");
       }
       if(productTotal!==team.totalCount)throw Error("team_product_total_mismatch");
-      row.append(products);holder.append(row);
+      // After all server totals reconcile, render the SAME photo-style card
+      // used in the partner's own班別詳細; do not surface financial originals.
+      row.append(products);
+      holder.append(renderPartnerCountTeamCard(team.name,team.totalCount,
+       team.counts,team.cbCounts,team.members,PARTNER_QUICK_RANK_KEYS,{verified:true}));
      }
      if(teamTotal!==info.verifiedSharedCount)throw Error("company_total_mismatch");
      if(!info.teams.length)partnerMainAppendRow(holder,"班未登録","班の登録状態を確認してください");
