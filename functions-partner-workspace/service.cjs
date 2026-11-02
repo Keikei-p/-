@@ -191,8 +191,13 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     read(collection(cid,"members").doc(uid))
   ]);
   const c=cs.data()||{},m=ms.data()||{};
+  // Internal legacy member documents can omit redundant companyId. The
+  // verified Firestore path and users.companyId establish the same company.
+  // An explicit mismatch is denied; partner members still require companyId.
   if(!cs.exists||!ms.exists||c.active!==true||m.active!==true||
-     m.uid!==uid||m.companyId!==cid||m.companyRole!==u.companyRole)fail();
+     m.uid!==uid||(m.companyId!=null&&m.companyId!==cid)||
+     (c.companyKind==="partner"&&m.companyId!==cid)||
+     m.companyRole!==u.companyRole)fail();
   if(c.companyKind==="partner"){
    if(!ID.test(c.hubCompanyId||"")||c.hubCompanyId===cid||
       u.accessKind!=="partner"||m.accessKind!=="partner"||
