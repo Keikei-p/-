@@ -33,7 +33,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git hash-object functions-partner-workspace/service.cjs)" = '29c0e3b29863e654ba70fd5b3f4a8efe4d0827d8'
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = '300b69d9f9b99ad33925abdcc67f8d81068084eb'
           test "$(git hash-object index.html)" = 'd68e0be91d5933c03ed0657a73751573fb5c7344'
           test "$(git hash-object functions-partner-workspace/index.js)" = '38da7e9174ffea7c406c92292dccfc651b565eb0'
           test "$(git hash-object firebase.partner-workspace.json)" = 'a6ceedec5fab4e22e0a8efe19c685716a2db9750'
@@ -71,7 +71,7 @@ jobs:
           set -euo pipefail
           test "$(gh api repos/Keikei-p/-/branches/main --jq '.commit.sha')" = "$GITHUB_SHA"
           test "$(git hash-object index.html)" = d68e0be91d5933c03ed0657a73751573fb5c7344
-          test "$(git hash-object functions-partner-workspace/service.cjs)" = 29c0e3b29863e654ba70fd5b3f4a8efe4d0827d8
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 300b69d9f9b99ad33925abdcc67f8d81068084eb
           test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
           test "$(git hash-object firebase.partner-workspace.json)" = a6ceedec5fab4e22e0a8efe19c685716a2db9750
           node --test tests/internal-owner-finance-visibility.test.cjs tests/partner-workspace.test.cjs
