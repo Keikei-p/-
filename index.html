@@ -13217,10 +13217,23 @@ function renderPartnerCountTeamCardProductOnly(member,keys){
  }
  return el;
 }
+// Keep a single expanded team per company. Always reuses the SAME card renderer
+// for partners and HQ; no extra data source or write can be triggered here.
+function partnerCompactWireTeamSelection(grid){
+ for(const card of grid.children){
+  if(card.className!=="partner-count-team-card"||
+     typeof card.addEventListener!=="function")continue;
+  card.addEventListener("toggle",()=>{
+   if(!card.open)return;
+   for(const other of grid.children)if(other!==card&&other.open===true)other.open=false;
+  });
+ }
+}
 // Partner's combined company/team/person tree. Original internal sales
 // rendering is untouched; this screen uses only getPartnerWorkspace counts.
 function renderPartnerFlatTeamDetails(parent,report){
  parent.replaceChildren();
+ parent.className+=" partner-count-team-grid";
  const keys=report.categories||[];
  let displayed=0;
  const addCompany=(name,teams,people,verified)=>{
@@ -13248,13 +13261,14 @@ function renderPartnerFlatTeamDetails(parent,report){
  if(!displayed)partnerMainAppendRow(parent,"まだ班別実績がありません","未報告を0件とは扱いません");
  for(const name of report.missingCompanies||[])
   partnerMainAppendRow(parent,"🤝 "+name,"未報告・0件とは扱いません");
+ partnerCompactWireTeamSelection(parent);
 }
 // HQ's combined partner breakdown reuses the EXACT SAME card renderer.
 function renderSharedCountTeamDetails(parent,report){
  parent.replaceChildren();
  const keys=report.categories||[];
  const group=(name,total,teams,people,verified)=>{
-  const section=document.createElement("section");section.className="p-inline-company-teams";
+  const section=document.createElement("section");section.className="p-inline-company-teams partner-count-team-grid";
   const heading=document.createElement("h4");heading.textContent=name+"｜"+total+"件";
   section.append(heading);
   for(const team of teams){
@@ -13271,6 +13285,7 @@ function renderSharedCountTeamDetails(parent,report){
   }
   if(!teams.length&&!people.length)
    partnerMainAppendRow(section,"班・担当者別の件数は未照合","会社の報告状況を確認してください");
+  partnerCompactWireTeamSelection(section);
   parent.append(section);
  };
  group("🏢 直営",report.direct.totalCount,report.direct.teams,
@@ -13516,8 +13531,9 @@ function partnerSameAppSelectPanel(name){
   renderPartnerRankingOnlyPanel();
   void loadSharedDailyStandings("partner");
  }
- if(partnerInlineData&&name==="detail")
-  void loadSharedDailyStandings("partnerDetail");
+ // Partner's own saved team/people are already rendered from getPartnerWorkspace.
+ // Do not load unrelated companies for this detail tab or expose finance data.
+ if(partnerInlineData&&name==="detail")pInline("pInlineTeamDetails").hidden=false;
  if(partnerInlineData&&name==="history")
   void loadPartnerRevisionHistory();
 }
@@ -14671,7 +14687,7 @@ async function loadOwnerPartnerDetails(){
      (report?"登録済み｜"+company.teams.length+"班":"未報告｜"+company.teams.length+"班"):
      "承認後に件数の閲覧が可能です";
    card.append(note);
-   const holder=document.createElement("div");holder.className="owner-partner-team-list";
+   const holder=document.createElement("div");holder.className="owner-partner-team-list partner-count-team-grid";
    card.append(holder);list.append(card);
    let loaded=false,loading=false;
    card.addEventListener("toggle",async()=>{
@@ -14742,6 +14758,7 @@ async function loadOwnerPartnerDetails(){
       holder.append(renderPartnerCountTeamCard(team.name,team.totalCount,
        team.counts,team.cbCounts,team.members,PARTNER_QUICK_RANK_KEYS,{verified:true}));
      }
+     partnerCompactWireTeamSelection(holder);
      if(teamTotal!==info.verifiedSharedCount)throw Error("company_total_mismatch");
      if(!info.teams.length)partnerMainAppendRow(holder,"班未登録","班の登録状態を確認してください");
      if(info.unverifiedTeamCount>0)
