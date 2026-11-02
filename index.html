@@ -12108,11 +12108,26 @@ async function loadDirectPartnerInviteCompanies(){
   renderDirectPartnerInviteTeams();
   pInline("partnerInviteCreateButton").disabled=false;
   pInline("partnerInviteCompanyStatus").textContent="協力店を選ぶか、新しく追加してください。新しい協力店は1班から開始し、自社と件数を共有します。";
- }catch{
+ }catch(error){
   if(seq!==directPartnerInviteSequence||currentUser?.uid!==uid)return;
   directPartnerInviteCompanies=[];
-  pInline("partnerInviteCompanyName").replaceChildren();pInline("partnerInviteTeam").replaceChildren();
-  pInline("partnerInviteCompanyStatus").textContent="協力店を取得できません。再度、所属区分を選択してください。";
+  pInline("partnerInviteCompanyName").replaceChildren();
+  pInline("partnerInviteTeam").replaceChildren();
+  pInline("partnerInviteResult").hidden=true;
+  pInline("partnerInviteCreateButton").disabled=true;
+  // Keep the failure closed. An unavailable company list must never be
+  // mistaken for an empty list that authorizes a new company.
+  const code=typeof error?.code==="string"?error.code:"";
+  const status=code==="functions/not-found"||code==="functions/unimplemented"?
+    "協力店の班・招待APIが本番に公開されていません。管理者がFunctions公開を確認してください。":
+    code==="functions/unauthenticated"?
+    "ログイン認証の確認に失敗しました。自社オーナーとして再ログインしてください。":
+    code==="functions/permission-denied"||code==="functions/failed-precondition"?
+    "会社一覧の権限を確認できません。自社オーナー権限・会社の有効状態を確認してください。":
+    "協力店会社一覧を取得できません。招待は停止しています。管理者にAPIの稼働状況を確認してください。";
+  pInline("partnerInviteCompanyStatus").textContent=status;
+  // Do not expose email, invitation token or server response in logs.
+  console.error("partner_company_list_unavailable",code||"unavailable");
  }
 }
 document.getElementById("partnerInviteCompanyName").onchange=renderDirectPartnerInviteTeams;
