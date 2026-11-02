@@ -13950,9 +13950,9 @@ async function loadOwnerPartnerDetails(){
       typeof company.active!=="boolean"||!Array.isArray(company.teams)||
       company.teams.length>150)throw Error("invalid_partner_company");
    seen.add(company.partnerCompanyId);
-   const report=reports.get(company.partnerCompanyId);
-   if(report&&(!company.active||report.name!==company.name))
-    throw Error("unapproved_or_incorrect_partner_report");
+   // A disabled partner is never shown a prior count; company renames do not
+   // invalidate immutable historical reports tied to the same company ID.
+   const report=company.active?reports.get(company.partnerCompanyId):null;
    if(report){reported++;total+=report.totalCount;}
    else if(company.active)unreported++;
    const card=document.createElement("details");card.className="p-inline-card owner-partner-company-card";
