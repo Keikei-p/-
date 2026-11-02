@@ -52,6 +52,8 @@ function fixture(){
   pInline:id=>dom[id],
   document:{createElement:node},
   currentUser:{uid:"owner-1"},
+  allTeamsOverviewToggle:ownerToggle,
+  allTeamsOverviewContent:dom.allTeamsOverviewContent,
   canLoadPartnerRanking:()=>authorized,
   getTodayString:()=>"2026-11-02",
   readPartnerWorkDay:fn,
