@@ -44,7 +44,7 @@ test("photo-style CB boxes show five tiers and count-only person/product details
  tilesPeople[0].events.click();
  assert.equal(tilesPeople[0].attrs["aria-pressed"],"true");
  assert.match(collect(card),/佐藤｜合計 6件/);
- assert.match(collect(card),/NURO｜1件/);
+ assert.match(collect(card),/NURO 1件/);
  assert.doesNotMatch(content,/¥|￥|売上|単価|収益|報酬|利益|価格|金額/);
  const tiles=[];
  const walk=n=>{if(n.className==="partner-count-team-cb-cell")tiles.push(n);n.children?.forEach(walk);};
