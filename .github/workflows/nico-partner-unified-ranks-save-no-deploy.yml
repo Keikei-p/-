@@ -1,0 +1,43 @@
+name: NICO partner one combined leaderboard, team details and safe save errors (NO DEPLOY)
+on:
+  push:
+    branches: [fix/partner-count-save-feedback-unified-ranks-teams-20261102]
+    paths:
+      - index.html
+      - tests/partner-unified-ranks-save-feedback-20261102.test.mjs
+      - .github/workflows/nico-partner-unified-ranks-save-no-deploy.yml
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Parse exact existing app script and all reviewed browser UI behaviors
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const html=fs.readFileSync('index.html','utf8');
+          const m=html.match(/<script type="module">([\s\S]*?)<\/script>/);
+          if(!m||!html.includes('partnerSameAppNavigation')||
+             !html.includes('monthlyRevenue')||!html.includes('signInWithEmailAndPassword'))
+             throw Error('STOP_CORE_AUTH_OR_OWNER_FINANCE_MISSING');
+          fs.writeFileSync('/tmp/nico-partner-unified-candidate.mjs',m[1]);
+          NODE
+          node --check /tmp/nico-partner-unified-candidate.mjs
+          node --test tests/partner-unified-ranks-save-feedback-20261102.test.mjs
+          node --test tests/dashboard-inline-original-partner-parity.test.mjs
+          node --test tests/partner-company-parity-release.test.mjs
+          node --test tests/partner-email-resend-and-join.test.mjs
+          node --test tests/partner-one-login-same-app.test.cjs
+          node --test tests/internal-owner-finance-visibility.test.cjs
+          node --test tests/partner-workspace.test.cjs
+          node --test tests/partner-shared-direct-redaction.test.cjs
+          node --test tests/partner-money-free-workspace.test.cjs
+          echo PASS_NEW_PARTNER_UI_AND_ORIGINAL_FINANCE_NO_DEPLOY
