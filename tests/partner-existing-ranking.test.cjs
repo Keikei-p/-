@@ -210,7 +210,7 @@ test("monthly standings never certify a missing approved partner day as zero",as
  const row=(date,n)=>({partnerCompanyId:"partnerA",name:"協力店A",
   counts:{...zero(),NURO:n},totalCount:n});
  const cache=new Map();
- let reportedFirstDay=false,readCount=0;
+ let reportedFirstDay=false,readCount=0,includeRoster=true;
  const ctx=make(["validatedPartnerRankingDay","mergedPartnerRankingDay",
   "readPartnerRankingMonth"],{
   PARTNER_QUICK_RANK_KEYS:keys,getTodayString:()=>"2026-11-02",
@@ -221,8 +221,8 @@ test("monthly standings never certify a missing approved partner day as zero",as
   },
   readPartnerWorkDay:async({date})=>{
    readCount++;return {data:{role:"hub",date,
-    registeredCompanies:[{partnerCompanyId:"partnerA",name:"協力店A",
-      active:true,teams:[]}],
+    ...(includeRoster?{registeredCompanies:[{partnerCompanyId:"partnerA",name:"協力店A",
+      active:true,teams:[]}]}:{}),
     partners:date==="2026-11-01"?(reportedFirstDay?[row(date,0)]:[]):[row(date,3)]
    }};
   }
@@ -240,6 +240,11 @@ test("monthly standings never certify a missing approved partner day as zero",as
  assert.equal(complete.rows[0].totalCount,3);
  assert.equal(readCount,8);
  assert.doesNotMatch(JSON.stringify(complete),/totalRevenue|unitPrice|revenuePerUnit/);
+ includeRoster=false;cache.clear();
+ const oldApi=await ctx.readPartnerRankingMonth("2026-11");
+ assert.equal(oldApi.complete,false,"an old API without company coverage cannot certify ranks");
+ assert.equal(oldApi.rows[0].totalCount,3);
+ assert.equal(readCount,12);
 });
 
 test("unverified monthly company counts stay visible without imaginary place numbers",()=>{
