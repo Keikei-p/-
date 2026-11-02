@@ -101,3 +101,45 @@ test("saved team and departed staff are shown from the original count snapshot, 
  assert.match(render,/renderPartnerRankingOnlyPanel\(\)/);
  assert.match(render,/const daily=pInline\("pInlineDailySummary"\)/);
 });
+
+test("partner cards mirror eleven original dashboard controls without finance API subscriptions",()=>{
+ const expected=[
+  ["salesAnalysisToggle","analysis"],["individualRankingToggle","individual"],
+  ["productRankingToggle","product"],["teamRankingToggle","team"],
+  ["revenueChartToggle","chart"],["allTeamsOverviewToggle","detail"],
+  ["productSummaryToggle","products"],["reportBuilderToggle","report"],
+  ["dailyGoalCalculatorToggle","goal"],["dailySummaryToggle","daily"],
+  ["recordHistoryToggle","history"]
+ ];
+ const internal=scope('id="dashboard"','id="dashboardDetailArea"');
+ const mount=scope("function mountPartnerCanonicalNavigation(){","\nfunction renderPartnerCountOnlyExtras(){");
+ const navDefinition=mount.slice(mount.indexOf("const tabs=["),mount.indexOf("];",mount.indexOf("const tabs=["))+2);
+ for(const [button,panel] of expected){
+  assert.ok(internal.includes('id="'+button+'"'),"missing internal "+button);
+  assert.ok(navDefinition.includes('["'+button+'","'+panel+'"'),"missing exact partner parity "+panel);
+ }
+ assert.equal((mount.match(/cloneNode\(true\)/g)||[]).length,1,"same markup, no divergent menu");
+ assert.match(mount,/card\.removeAttribute\("id"\)/);
+ assert.match(mount,/card\.removeAttribute\("style"\)/);
+ assert.match(mount,/card\.querySelectorAll\("\[id\]"\)/);
+ assert.match(mount,/target\.replaceChildren\(\.\.\.cards\)/);
+ assert.match(mount,/mount\.append\(input\)/);
+ assert.match(mount,/userBar\.after\(pInline\("partnerInlineWorkspace"\)\)/);
+ assert.match(html,/mountPartnerCanonicalNavigation\(\)/);
+ assert.match(html,/id="partnerSameAppDashboardDetails"/);
+ for(const panel of ["Analysis","Chart","ProductSummary","Report","Goal"])
+  assert.match(html,new RegExp('id="partnerPanel'+panel+'"'));
+ const extras=scope("function renderPartnerCountOnlyExtras(){",
+   "\npInline(\"pPartnerGoalTarget\").addEventListener");
+ for(const marker of ["snap.records","snap.categories","snap.teams",
+  "pPartnerDailyCount","pPartnerStaffCount","pPartnerTeamCount",
+  "pPartnerAnalysis","pPartnerChart","pPartnerProductSummary",
+  "pPartnerReportText","renderPartnerGoalEstimate()"])
+  assert.ok(extras.includes(marker),marker);
+ for(const forbidden of ["getDocs(","getDoc(","onSnapshot(","collection(db,",
+  "monthlyRevenue","revenuePerUnit","unitPrice","revenueGoals"])
+  assert.ok(!extras.includes(forbidden),"private data reference "+forbidden);
+ assert.match(html,/id="pPartnerRecordToggle"/);
+ assert.match(html,/id="pPartnerMemberShortcut"/);
+ assert.match(html,/if\(id==="partnerPanelRecord"\)continue/);
+});
