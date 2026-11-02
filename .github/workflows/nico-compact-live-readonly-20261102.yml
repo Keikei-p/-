@@ -1,0 +1,80 @@
+name: NICO compact UI exact LIVE Hosting read-only verification
+on:
+  push:
+    branches: [release/nico-partner-compact-two-column-ui-20261102]
+    paths: [.github/workflows/nico-compact-live-readonly-20261102.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Load existing auditor without changing Firebase
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-compact-readonly.json"
+          chmod 600 "$RUNNER_TEMP/nico-compact-readonly.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-compact-readonly.json" >> "$GITHUB_ENV"
+      - name: Compare live Hosting and current reviewed candidate, never write
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund >/dev/null
+          node --input-type=module <<'NODE'
+          import {createRequire} from 'node:module';
+          import {readFileSync} from 'node:fs';
+          import {createHash} from 'node:crypto';
+          import {gzipSync} from 'node:zlib';
+          const require=createRequire(process.cwd()+'/functions/package.json');
+          const {applicationDefault}=require('firebase-admin/app');
+          const token=(await applicationDefault().getAccessToken()).access_token;
+          const base='https://firebasehosting.googleapis.com/v1beta1';
+          const read=async path=>{
+           const r=await fetch(base+path,{headers:{Authorization:'Bearer '+token}});
+           if(!r.ok)throw Error('STOP_HOSTING_READ_HTTP_'+r.status);
+           return await r.json();
+          };
+          const releases=await read('/sites/nico-factory/releases?pageSize=1');
+          if(releases.releases?.length!==1)throw Error('STOP_UNKNOWN_LIVE_RELEASE');
+          const versionName=releases.releases[0].version?.name;
+          if(!/^sites\/nico-factory\/versions\/[A-Za-z0-9_-]+$/.test(versionName))
+           throw Error('STOP_UNKNOWN_LIVE_VERSION');
+          const version=await read('/'+versionName);
+          let files=[],next='';
+          do{
+           const qs=new URLSearchParams({pageSize:'1000'});
+           if(next)qs.set('pageToken',next);
+           const result=await read('/'+versionName+'/files?'+qs);
+           if(!Array.isArray(result.files))throw Error('STOP_NO_FILES');
+           files.push(...result.files);
+           next=result.nextPageToken||'';
+          }while(next);
+          const entry=files.find(x=>x.path==='/index.html');
+          if(files.length!==11||!entry)throw Error('STOP_LIVE_ASSET_COUNT_OR_INDEX_MISSING');
+          const candidate=readFileSync('index.html');
+          const candidateHash=createHash('sha256').update(gzipSync(candidate,{mtime:0})).digest('hex');
+          const got=await fetch('https://nico-factory.web.app/?compact_check=20261102_2358',{cache:'no-store'});
+          if(!got.ok)throw Error('STOP_LIVE_HTML_HTTP_'+got.status);
+          const live=Buffer.from(await got.arrayBuffer());
+          const rawMatch=live.equals(candidate);
+          console.log('LIVE_HOSTING_VERSION',versionName);
+          console.log('LIVE_11_ASSETS',files.length);
+          console.log('LIVE_INDEX_MANIFEST_MATCH',entry.hash===candidateHash);
+          console.log('LIVE_HTML_EXACT_CANDIDATE_MATCH',rawMatch);
+          console.log('LIVE_HAS_COMPACT_SELECTORS',live.toString().includes('partner-count-team-people-grid'));
+          console.log('LIVE_OWNER_FINANCE_ANCHOR_PRESENT',live.toString().includes('monthlyRevenue'));
+          console.log('AUDIT_READ_ONLY_NO_DATA_WRITES');
+          if(entry.hash===candidateHash&&!rawMatch)
+           throw Error('STOP_CDN_NOT_YET_MATCHING_HOSTING');
+          NODE
+      - name: Always remove credentials
+        if: always()
+        run: rm -f "$RUNNER_TEMP/nico-compact-readonly.json"
