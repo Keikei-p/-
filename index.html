@@ -13641,9 +13641,30 @@ async function partnerLeaderSendInviteEmail(invite){
   return false;
  }
 }
+function partnerLeaderInviteServerMessage(code){
+ // Keep the invitation token and private server details out of user-visible logs.
+ if(code==="functions/not-found"||code==="functions/unimplemented")
+  return "招待機能のサーバーが本番に公開されていません。管理者へFunctionsの確認を依頼してください。";
+ if(code==="functions/unavailable")
+  return "招待サーバーが一時的に利用できません。稼働設定と通信を確認してください。";
+ if(code==="functions/unauthenticated")
+  return "ログイン情報またはメール認証が期限切れです。もう一度ログインしてから招待してください。";
+ if(code==="functions/permission-denied")
+  return "招待権限を確認できません。協力店リーダー権限と所属会社を管理者に確認してください。";
+ if(code==="functions/failed-precondition")
+  return "選択した班か協力店の所属・承認状態が変更されています。最新データに更新して選び直してください。";
+ if(code==="functions/resource-exhausted")
+  return "招待の上限に達しました。管理者に招待数・利用制限を確認してください。";
+ return "招待リンクを作成できませんでした。通信・権限・班を確認して再試行してください。";
+}
 pInline("pInlineCreateInvite").onclick=()=>partnerInlineRun(async()=>{
  const snap=partnerInlineData,email=pInline("pInlineInviteEmail").value.trim().toLowerCase();
  const role=pInline("pInlineInviteRole").value,teamId=pInline("pInlineInviteTeam").value;
+ const creatorUid=auth.currentUser?.uid,creatorCompany=partnerInlineWorkspaceCompany;
+ if(!creatorUid||auth.currentUser?.emailVerified!==true){
+  partnerLeaderInviteFormFeedback("認証済みアカウントでログインしてから招待してください。",true);
+  throw Error("invite_unauthenticated");
+ }
  if(!["owner","leader"].includes(snap.role)){
   partnerLeaderInviteFormFeedback("招待できるのは協力店のリーダー・管理者のみです。",true);
   throw Error("invite_permission");
@@ -13668,8 +13689,16 @@ pInline("pInlineCreateInvite").onclick=()=>partnerInlineRun(async()=>{
    action:"createInvite",email,teamId,role
   }))).data;
  }catch(error){
-  partnerLeaderInviteFormFeedback("招待リンクを作成できませんでした。所属・招待権限・通信を確認してください。",true);
+  partnerLeaderInviteFormFeedback(partnerLeaderInviteServerMessage(error?.code),true);
   throw error;
+ }
+ // Never expose a newly minted invitation after an account or company switch.
+ if(creatorUid!==auth.currentUser?.uid||
+    creatorCompany!==partnerInlineWorkspaceCompany||
+    partnerInlineData?.role!==snap.role){
+  partnerLeaderInvalidateInvite();
+  partnerLeaderInviteFormFeedback("アカウントか会社が切り替わりました。現在の画面で招待をやり直してください。",true);
+  throw Error("invite_context_changed");
  }
  if(!/^[A-Za-z0-9_-]{43}$/.test(response?.token||"")||
     !Number.isFinite(response.expiresAt)||response.expiresAt<=Date.now()){
@@ -13679,7 +13708,7 @@ pInline("pInlineCreateInvite").onclick=()=>partnerInlineRun(async()=>{
  const url=new URL("/",location.origin);
  url.searchParams.set("partnerStaffInvite",response.token);
  const invite={url:url.href,email,role,teamId,expiresAt:response.expiresAt,
-  uid:auth.currentUser.uid,workspaceCompanyId:partnerInlineWorkspaceCompany};
+  uid:creatorUid,workspaceCompanyId:creatorCompany};
  partnerLeaderShowInvite(invite);
  const sent=await partnerLeaderSendInviteEmail(invite);
  partnerLeaderInviteFormFeedback(sent?
