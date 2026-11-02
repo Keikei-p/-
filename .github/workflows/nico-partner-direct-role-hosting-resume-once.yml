@@ -1,0 +1,192 @@
+name: NICO one-shot direct-role verified Functions -> Hosting only (no Functions redeploy)
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/nico-partner-direct-role-hosting-resume-once.yml']
+  push:
+    branches: [main]
+    paths: ['.github/workflows/nico-partner-direct-role-hosting-resume-once.yml']
+permissions:
+  contents: read
+concurrency:
+  group: nico-surgical-index-release
+  cancel-in-progress: false
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false, fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Check exact approved code, 4 Functions and Hosting-only safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object index.html)" = 'd68e0be91d5933c03ed0657a73751573fb5c7344'
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = '29c0e3b29863e654ba70fd5b3f4a8efe4d0827d8'
+          test "$(git hash-object functions-partner-workspace/index.js)" = '38da7e9174ffea7c406c92292dccfc651b565eb0'
+          test "$(git hash-object firebase.partner-workspace.json)" = 'a6ceedec5fab4e22e0a8efe19c685716a2db9750'
+          test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
+          node --check tools/hosting/surgical-existing-index.mjs
+          node --check functions-partner-workspace/service.cjs
+          node --test tests/internal-owner-finance-visibility.test.cjs tests/partner-workspace.test.cjs tests/sales-regressions.cjs tests/surgical-existing-index.test.mjs
+          node --test tests/partner-one-login-same-app.test.cjs tests/partner-existing-ranking.test.cjs
+          node <<'NODE'
+          const fs=require('fs');
+          const y=fs.readFileSync('.github/workflows/nico-partner-direct-role-hosting-resume-once.yml','utf8');
+          const banned=['firebase'+' deploy','functions:artifacts:'+'setpolicy','--'+'force','firestore:'+'delete','functions:'+'delete'];
+          if(banned.some(phrase=>y.includes(phrase)))throw Error('STOP_UNSAFE_RESUME_ACTION');
+          if(!y.includes('cloudfunctions.googleapis.com/v2/')||!y.includes('PARTNER_WORKSPACE_ENABLED'))throw Error('STOP_UNVERIFIED_FUNCTIONS');
+          const app=JSON.parse(fs.readFileSync('.firebaserc','utf8'));
+          if(app.projects.default!=='sales-management-cc116')throw Error('STOP_WRONG_PROJECT');
+          NODE
+  resume-hosting-only:
+    needs: offline
+    if: >-
+      ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.actor == 'Keikei-p' && startsWith(github.event.head_commit.message, 'release: resume direct-role Hosting after verified Functions') && needs.offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      NICO_PARTNER_RELEASE_CONFIRMATION: CONFIRM_ADD_PARTNER_RANKING_INDEX_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false, fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Lock to current exact main and previous reviewed production page
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(gh api repos/Keikei-p/-/branches/main --jq '.commit.sha')" = "$GITHUB_SHA" || { echo 'STOP_MAIN_CHANGED'; exit 1; }
+          test "$(git hash-object index.html)" = 'd68e0be91d5933c03ed0657a73751573fb5c7344'
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = '29c0e3b29863e654ba70fd5b3f4a8efe4d0827d8'
+          git show cca9dcadaa277ae43ed08891d54b8b373aa78d6a:index.html > "$RUNNER_TEMP/direct-role-reviewed-index.html"
+          git show 518141bbedb8a93645f31530790cc9c4bb8974e3:index.html > "$RUNNER_TEMP/direct-role-approved-live-before.html"
+          cmp -s "$RUNNER_TEMP/direct-role-reviewed-index.html" index.html || { echo 'STOP_REVIEWED_SOURCE_CHANGED'; exit 1; }
+          curl -fsSL --retry 3 --max-time 35 'https://nico-factory.web.app/?partner_resume_preflight=1' > "$RUNNER_TEMP/direct-role-live-before.html"
+          if cmp -s "$RUNNER_TEMP/direct-role-live-before.html" index.html; then
+            echo 'ALREADY_LIVE=true' >> "$GITHUB_ENV"
+            echo 'PASS exact reviewed page already published; no Hosting write needed'
+          elif cmp -s "$RUNNER_TEMP/direct-role-live-before.html" "$RUNNER_TEMP/direct-role-approved-live-before.html"; then
+            echo 'ALREADY_LIVE=false' >> "$GITHUB_ENV"
+            echo 'PASS exact old live page, safe single-file release can proceed'
+          else
+            echo 'STOP_UNKNOWN_OR_CHANGED_LIVE_INDEX'; exit 1
+          fi
+      - name: Load existing protected Firebase identity only for read audits and Hosting REST
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/direct-role-resume-identity.json"
+          chmod 600 "$RUNNER_TEMP/direct-role-resume-identity.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/direct-role-resume-identity.json" >> "$GITHUB_ENV"
+      - name: Install original Firebase Admin SDK (no Functions deployment or builds)
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Verify 4 successful post-deploy Functions, finance Rules and backup (read-only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {createRequire} from 'node:module';
+          import {createHash} from 'node:crypto';
+          import {inspect} from './tools/production/inspect-firestore-backups-readonly.mjs';
+          const require=createRequire(process.cwd()+'/functions/package.json');
+          const {applicationDefault}=require('firebase-admin/app');
+          const token=(await applicationDefault().getAccessToken()).access_token;
+          const get=async url=>{
+            const r=await fetch(url,{headers:{Authorization:'Bearer '+token},redirect:'error'});
+            if(!r.ok)throw Error('STOP_READ_ONLY_AUDIT_HTTP_'+r.status);
+            return r.json();
+          };
+          const root='https://firebaserules.googleapis.com/v1/';
+          const rel=await get(root+'projects/sales-management-cc116/releases/cloud.firestore');
+          if(!/^projects\/sales-management-cc116\/rulesets\/[A-Za-z0-9_-]+$/.test(rel.rulesetName))throw Error('STOP_RULESET_INVALID');
+          const body=await get(root+rel.rulesetName);
+          if(body.source?.files?.length!==1)throw Error('STOP_RULES_UNREADABLE');
+          const digest=createHash('sha256').update(body.source.files[0].content.replace(/\r\n/g,'\n').trim()).digest('hex');
+          if(digest!=='d1d9998d874a1a31c81ddf6996e08cd9de3a3d13bd684e245140bf03cab32179')
+            throw Error('STOP_PRODUCTION_FINANCE_RULES_CHANGED');
+          const backup=await inspect();
+          const age=Date.now()-Date.parse(backup.latestReadySnapshot||'');
+          if(backup.readyBackups<1||!Number.isFinite(age)||age<0||age>48*60*60*1000)
+            throw Error('STOP_RECENT_BACKUP_MISSING');
+          const names=['getPartnerWorkspace','managePartnerWorkspace','acceptPartnerWorkspaceInvite','submitPartnerWorkspaceCounts'];
+          const sources=new Set();
+          for(const name of names){
+            const f=await get('https://cloudfunctions.googleapis.com/v2/projects/sales-management-cc116/locations/asia-northeast1/functions/'+name);
+            if(f.name!=='projects/sales-management-cc116/locations/asia-northeast1/functions/'+name||
+               f.state!=='ACTIVE'||f.environment!=='GEN_2'||
+               f.buildConfig?.runtime!=='nodejs22'||f.buildConfig?.entryPoint!==name||
+               f.serviceConfig?.environmentVariables?.PARTNER_WORKSPACE_ENABLED!=='enabled')
+              throw Error('STOP_FUNCTION_NOT_ACTIVE_OR_WRONG_VERSION_'+name);
+            if(!Number.isFinite(Date.parse(f.updateTime))||
+               Date.parse(f.updateTime)<Date.parse('2026-11-02T02:43:38Z'))
+              throw Error('STOP_FUNCTION_NOT_UPDATED_IN_CONFIRMED_RELEASE_'+name);
+            const src=f.buildConfig?.source?.storageSource;
+            if(!src?.bucket||!src.object)throw Error('STOP_FUNCTION_SOURCE_NOT_ATTESTABLE_'+name);
+            sources.add(src.bucket+'/'+src.object+'/'+(src.generation||''));
+            console.log('PASS_ACTIVE_RECENT_PARTNER_FUNCTION '+name);
+          }
+          if(sources.size!==1)throw Error('STOP_FUNCTION_SOURCES_DIFFER');
+          console.log('PASS verified all four updated Functions, approved Rules and recent backup');
+          NODE
+          node <<'NODE'
+          (async()=>{
+            for(const name of ['getPartnerWorkspace','managePartnerWorkspace','acceptPartnerWorkspaceInvite','submitPartnerWorkspaceCounts']){
+              const r=await fetch('https://asia-northeast1-sales-management-cc116.cloudfunctions.net/'+name,{
+                method:'POST',headers:{'Content-Type':'application/json'},body:'{"data":{}}'});
+              if(![401,403].includes(r.status))throw Error('STOP_ANONYMOUS_ACCESS_'+name+'_'+r.status);
+              console.log('PASS_ANONYMOUS_REJECTED '+name);
+            }
+          })().catch(e=>{console.error(e.message);process.exitCode=1});
+          NODE
+      - name: Dry-run exact one-file Hosting change against all live asset hashes
+        if: env.ALREADY_LIVE == 'false'
+        run: node tools/hosting/surgical-existing-index.mjs --dry-run
+      - name: Recheck main and live HTML after the read-only audit
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(gh api repos/Keikei-p/-/branches/main --jq '.commit.sha')" = "$GITHUB_SHA"
+          curl -fsSL --max-time 35 'https://nico-factory.web.app/?partner_resume_second=1' > "$RUNNER_TEMP/direct-role-live-second.html"
+          if [ "$ALREADY_LIVE" = false ]; then
+            cmp -s "$RUNNER_TEMP/direct-role-live-second.html" "$RUNNER_TEMP/direct-role-approved-live-before.html" ||
+              { echo 'STOP_CONCURRENT_INDEX_PUBLISH'; exit 1; }
+          else
+            cmp -s "$RUNNER_TEMP/direct-role-live-second.html" index.html || { echo 'STOP_LIVE_CHANGED'; exit 1; }
+          fi
+      - name: Publish ONLY reviewed index.html, no Functions/Rules/Auth/DB/LINE writes
+        if: env.ALREADY_LIVE == 'false'
+        run: node tools/hosting/surgical-existing-index.mjs --release
+      - name: Verify exact public HTML and preexisting routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          parity=false
+          for i in $(seq 1 10); do
+            curl -fsSL --retry 2 --max-time 35 "https://nico-factory.web.app/?partner_resume_verify=$GITHUB_SHA-$i" > "$RUNNER_TEMP/direct-role-index-after.html"
+            if cmp -s "$RUNNER_TEMP/direct-role-index-after.html" index.html; then parity=true; break; fi
+            sleep 3
+          done
+          test "$parity" = true || { echo 'STOP_LIVE_INDEX_PARITY'; exit 1; }
+          for marker in 'id="inviteDestinationSelect"' 'id="pInlineMoveStaff"' 'partnerInviteInline' 'mergedPartnerRankingDay'; do
+            grep -Fq "$marker" "$RUNNER_TEMP/direct-role-index-after.html"
+          done
+          for route in /partner-invite.html /partner-counts.html /partner-workspace.html; do
+            test "$(curl -sSL -o /dev/null -w '%{http_code}' --max-time 30 "https://nico-factory.web.app$route")" = 200
+          done
+          echo 'PASS_DIRECT_ROLE_HOSTING_RELEASE: exact new main UI, old routes retained; no Functions redeployed'
+      - name: Remove temporary identity and private read-only evidence
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/direct-role-resume-identity.json" "$RUNNER_TEMP/direct-role-reviewed-index.html" "$RUNNER_TEMP/direct-role-approved-live-before.html" "$RUNNER_TEMP/direct-role-live-before.html" "$RUNNER_TEMP/direct-role-live-second.html" "$RUNNER_TEMP/direct-role-index-after.html"
