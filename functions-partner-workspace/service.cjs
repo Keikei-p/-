@@ -931,14 +931,23 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    // Missing real staff IDs must not create fictitious personal rankings.
    // Company and team totals remain visible, clearly marked incomplete.
    if(direct.peopleVerified!==true)complete=false;
-   const sharedConfig=await readRankingSettings(hubId);
-   const groupStandings=groupPersonalScores(sharedConfig.groups,
-    [...people,...direct.people.map(person=>({...person,companyName:"直営"}))],
-    {categories:KEYS});
+   // New group settings cannot take down established direct+partner rankings.
+   // Report the group as unverified, never invent category/identity mappings.
+   let sharedConfig={revision:0,groups:[]},groupStandings=[],groupStatus="unverified";
+   try{
+    sharedConfig=await readRankingSettings(hubId);
+    groupStandings=groupPersonalScores(sharedConfig.groups,
+     [...people,...direct.people.map(person=>({...person,companyName:"直営"}))],
+     {categories:KEYS});
+    groupStatus="verified";
+   }catch(error){
+    // No raw errors, finance or hidden group names are serialized to clients.
+    groupStandings=[];
+   }
    return {scope:"shared_counts_only",date,role:s.kind==="hub"?"hub":"partner",
     complete,includesDirect:true,missingCompanies,companies,teams,people,
     productCounts,categories:KEYS,direct,rankingGroups:sharedConfig.groups,
-    groupStandings,groupRevision:sharedConfig.revision};
+    groupStandings,groupRevision:sharedConfig.revision,groupStatus};
   }
   if(d.includeAuditHistory===true&&s.kind!=="partner")fail("invalid-argument");
   if(s.kind==="hub"){
