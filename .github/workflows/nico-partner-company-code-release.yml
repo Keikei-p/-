@@ -50,7 +50,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git hash-object functions-partner-workspace/service.cjs)" = '29c0e3b29863e654ba70fd5b3f4a8efe4d0827d8'
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = '300b69d9f9b99ad33925abdcc67f8d81068084eb'
           test "$(git hash-object functions-partner-workspace/index.js)" = '38da7e9174ffea7c406c92292dccfc651b565eb0'
           test "$(git hash-object functions-partner-workspace/company-code-auth.cjs)" = 'f7e5899cdb9e36da610846d787955b13c1e16e4b'
           test "$(git hash-object partner-workspace.html)" = '0930abb188165afea19ef427308ea22fddf636e7'

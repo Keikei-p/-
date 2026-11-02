@@ -43,7 +43,7 @@ jobs:
           # coordinated code-login bundle when ALL reviewed blobs and tests match.
           index_sha="$(git hash-object functions-partner-workspace/index.js)"
           if [ "$index_sha" = "38da7e9174ffea7c406c92292dccfc651b565eb0" ]; then
-            test "$(git hash-object functions-partner-workspace/service.cjs)" = "29c0e3b29863e654ba70fd5b3f4a8efe4d0827d8"
+            test "$(git hash-object functions-partner-workspace/service.cjs)" = "300b69d9f9b99ad33925abdcc67f8d81068084eb"
             test "$(git hash-object functions-partner-workspace/company-code-auth.cjs)" = "f7e5899cdb9e36da610846d787955b13c1e16e4b"
             node --test tests/partner-company-code-auth.test.cjs
           else
@@ -55,7 +55,7 @@ jobs:
           # private-count extension, or the verified existing-email secondary-company\n          # scope regression suite. Never make a partial single-function release.
           source_sha="$(git hash-object functions-partner-workspace/service.cjs)"
           case "$source_sha" in
-            42b44a0a1fb25e174d9de942e0d79ca191a0ce32|d17ceb37c9d7acbdd41f36bab2de3c8f21fbd85d|eb7f2305da94916c0a999ad81b6435eabae7297a|8ce41f3f9c21823520d6b3be1c5d2b104a93ab58|99a26ad2c57e2f4ba483722a1545bf64fa69df7f|a773643eccc0c27956510e35dd501d348366a020|47d3600d3f6f0d9214bae908922fd17a93e76fb9|3267550a775355896e4ca2bd70622a6b5587ebd6|dc0981489487aa81559cf522c5311d4377878c60|41d59e5dcde09d43fe04de5c35307459893c3475|9820d05e4d28242fdd447bb0ab2b5239be5327e8|a23a950ba905ca7f73a8a160fb861c611ed45304|29c0e3b29863e654ba70fd5b3f4a8efe4d0827d8) ;;
+            42b44a0a1fb25e174d9de942e0d79ca191a0ce32|d17ceb37c9d7acbdd41f36bab2de3c8f21fbd85d|eb7f2305da94916c0a999ad81b6435eabae7297a|8ce41f3f9c21823520d6b3be1c5d2b104a93ab58|99a26ad2c57e2f4ba483722a1545bf64fa69df7f|a773643eccc0c27956510e35dd501d348366a020|47d3600d3f6f0d9214bae908922fd17a93e76fb9|3267550a775355896e4ca2bd70622a6b5587ebd6|dc0981489487aa81559cf522c5311d4377878c60|41d59e5dcde09d43fe04de5c35307459893c3475|9820d05e4d28242fdd447bb0ab2b5239be5327e8|a23a950ba905ca7f73a8a160fb861c611ed45304|300b69d9f9b99ad33925abdcc67f8d81068084eb) ;;
             *) echo "STOP_UNREVIEWED_WORKSPACE_CODE"; exit 1 ;;
           esac
           node <<'NODE'
