@@ -13162,7 +13162,7 @@ async function loadSharedDailyStandings(where,force=false){
   if(chosen==="all"||chosen==="individual")
    appendSharedRankingRows(content,"🏆 個人ランキング",personRows,complete);
   if(chosen==="all"||chosen==="product")
-   appendSharedRankingRows(content,"📦 商材別ランキング",
+   appendSharedRankingRows(content,"📦 商材別件数",
     [...productTotals].map(([name,count])=>({name,count})),complete);
   if(chosen==="all"||chosen==="team")
    appendSharedRankingRows(content,"👥 班ランキング",teamRows,complete);
@@ -13812,7 +13812,7 @@ async function partnerInlineRun(work){
   // Never log user input, invite tokens, UIDs or financial data.
   console.warn("partner_workspace_operation_error",code||"unclassified");
   const message=conflict?
-   "別の端末で件数が更新されました。二重登録せず「更新」で履歴を確認してください。入力内容は保持しています。":
+   "別の担当者が先に件数を更新した可能性があります。二重登録せず「更新」で履歴を確認してください。入力内容は保持しています。":
    error?.message==="save_verify"||error?.message==="refresh_after_write"?
    "保存後の照合ができませんでした。再登録せず「更新」で履歴を確認してください。入力内容は保持しています。":
    code==="functions/permission-denied"?
@@ -13827,7 +13827,7 @@ async function partnerInlineRun(work){
    "既存の件数集計との不整合が見つかりました。履歴を保護するため保存を停止しました。管理者へ連絡してください。":
    code==="functions/resource-exhausted"?
    "件数入力の上限に達しました。管理者に確認してください。":
-   refresh?"保存結果を確認できませんでした。入力内容を保持しています。二重登録せず「更新」で登録履歴を確認してください。":
+   refresh?"保存結果を確認できませんでした。入力内容は保持しています。二重登録せず「更新」で登録履歴を確認してください。":
    "招待処理を確認できませんでした。招待タブで権限と状態を確認してください。";
   partnerInlineStatus(message,true);
   if(error?.message==="save_verify"&&pInline("pInlineSaveStatus"))
