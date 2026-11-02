@@ -30,6 +30,7 @@ function harness({existing="",fetchResult=true}={}){
   stopRealtimeListeners:()=>calls.push("stopRealtimeListeners"),
   rememberPartnerWorkspace:(uid,cid)=>{calls.push("remember");prefs.set(uid,cid);},
   rememberedPartnerWorkspace:uid=>prefs.get(uid)||"",
+  clearOwnCompanyPreference:()=>{},
   clearRememberedPartnerWorkspace:uid=>{calls.push("clear");prefs.delete(uid);},
   partnerMainDate:()=> "2026-11-02",
   mountPartnerCanonicalNavigation:()=>{},
