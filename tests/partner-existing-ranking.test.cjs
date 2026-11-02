@@ -240,7 +240,7 @@ test("monthly standings never certify a missing approved partner day as zero",as
 });
 
 test("unverified monthly company counts stay visible without imaginary place numbers",()=>{
- const parent={children:[],append(child){this.children.push(child);}};
+ const parent={children:[],append(child){this.children.push(child);nodes.set(child.id,child);}};
  const nodes=new Map();
  const create=tag=>({
   tag,id:"",textContent:"",hidden:false,children:[],
