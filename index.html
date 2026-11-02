@@ -12392,6 +12392,31 @@ function resetPartnerInline(){
  authScreen.removeAttribute("data-partner-invite");
  pInline("partnerInviteAtMain").hidden=true;
 }
+// Partner sees original dashboard-style menu, not the finance DOM.
+let partnerSameAppSelectedPanel="record";
+function partnerSameAppSelectPanel(name){
+ const map={record:"partnerPanelRecord",individual:"partnerPanelRankings",
+  product:"partnerPanelRankings",team:"partnerPanelRankings",
+  detail:"partnerPanelDetail",daily:"partnerPanelDaily",
+  history:"partnerPanelHistory",members:"partnerPanelMembers"};
+ if(!Object.hasOwn(map,name))return;
+ partnerSameAppSelectedPanel=name;
+ for(const id of new Set(Object.values(map)))pInline(id).hidden=id!==map[name];
+ pInline("partnerRankingHeading").textContent=
+  ({individual:"🏆 個人ランキング",product:"📦 商材別ランキング",team:"👥 班ランキング"}[name]||"ランキング");
+ pInline("partnerSameAppNavigation").querySelectorAll("[data-partner-panel]").forEach(button=>{
+  const selected=button.dataset.partnerPanel===name;
+  button.setAttribute("aria-pressed",String(selected));
+  button.setAttribute("aria-expanded",String(selected));
+ });
+ if(partnerInlineData)partnerInlineRender();
+}
+pInline("partnerSameAppNavigation").addEventListener("click",event=>{
+ const button=event.target.closest("[data-partner-panel]");
+ if(button&&pInline("partnerSameAppNavigation").contains(button))
+  partnerSameAppSelectPanel(button.dataset.partnerPanel);
+});
+
 function partnerInlineStatus(message,bad=false){
  const el=pInline("pInlineStatus");
  el.textContent=message;
@@ -12523,6 +12548,7 @@ async function openSameAppPartnerWorkspace(user,workspaceCompanyId=""){
  loginStatus.textContent="ログイン済み・協力店";
  databaseStatus.textContent="件数API";
  pInline("pInlineDate").value=partnerMainDate();
+ partnerSameAppSelectPanel("record");
  await partnerInlineFetch();
 }
 async function partnerInlineRun(work){
