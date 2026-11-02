@@ -611,9 +611,38 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   });
   return {joined:true,...joined};
  }
+ // Shared count-only standings do not grant finance or management rights.
+ // Internal members already joined to the same live company may READ ranks.
+ // All other endpoints still use strict Owner-only scope().
+ async function sharedRankScope(uid,workspaceCompanyId=""){
+  if(workspaceCompanyId)return scope(uid,null,workspaceCompanyId);
+  const us=await db.collection("users").doc(uid).get(),u=us.data()||{};
+  if(!us.exists||u.uid!==uid||u.active!==true||!ID.test(u.companyId||""))fail();
+  const cid=u.companyId;
+  const [cs,ms]=await Promise.all([
+   db.collection("companies").doc(cid).get(),
+   collection(cid,"members").doc(uid).get()
+  ]);
+  const c=cs.data()||{},m=ms.data()||{};
+  if(!cs.exists||!ms.exists||c.active!==true||
+     m.active!==true||m.uid!==uid||(m.companyId!=null&&m.companyId!==cid)||
+     u.companyRole!==m.companyRole)fail();
+  if(c.companyKind==="partner")return scope(uid);
+  if(c.companyKind!=null&&!["internal","direct"].includes(c.companyKind))fail();
+  if((u.accessKind!=null&&u.accessKind!=="internal")||
+     (m.accessKind!=null&&m.accessKind!=="internal")||
+     ["partner","cooperator"].includes(u.memberType)||
+     ["partner","cooperator"].includes(m.memberType)||
+     !["owner","member"].includes(u.companyRole)||
+     !["leader","member"].includes(u.role)||m.role!==u.role)
+   fail();
+  return {kind:"hub",uid,cid,role:u.companyRole};
+ }
  async function view(request){
   const a=await actor(request),d=request?.data||{},date=validDate(d.date);
-  const s=await scope(a.uid,null,d.workspaceCompanyId);
+  const s=d.sharedRankings===true
+   ?await sharedRankScope(a.uid,d.workspaceCompanyId)
+   :await scope(a.uid,null,d.workspaceCompanyId);
   if(d.sharedRankings===true){
    // The same COUNT-ONLY standings are available to the original Hub Owner
    // and to authenticated partners already approved for sharing. No direct
