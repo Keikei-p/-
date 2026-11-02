@@ -40,6 +40,6 @@ test('performs the same full inventory, restore and finance regression as protec
  }
  assert.match(wf,/if-no-files-found: error/);
  assert.match(wf,/name: Remove private temporary credentials and logs/);
- assert.match(wf,/path: \\$\\{\\{ runner\\.temp \\}\\}\\/partner-boundary-summary\\.json/);
- assert.doesNotMatch(wf,/path:.*partner-boundary-private\\.log/);
+ assert.ok(wf.includes('path: ${{ runner.temp }}/partner-boundary-summary.json'));
+ assert.ok(!wf.includes('path: ${{ runner.temp }}/partner-boundary-private.log'));
 });
