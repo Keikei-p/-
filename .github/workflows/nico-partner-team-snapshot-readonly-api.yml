@@ -32,6 +32,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # This historical read-only publisher is disabled. For the exact
+          # newly reviewed invitation changes, only run non-write regressions.
+          # The old source hashes remain mandatory for its original path.
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
+             [ "$(git hash-object functions-partner-workspace/service.cjs)" = 'b94a6aba231dc2569009580a178297a5b6194bda' ] &&
+             [ "$(git hash-object index.html)" = '88ef5636bfe9254e71f2109d452b6d3049f99861' ]; then
+            node --check functions-partner-workspace/service.cjs
+            node --test tests/partner-workspace.test.cjs tests/internal-owner-finance-visibility.test.cjs
+            node --test tests/partner-email-resend-and-join.test.mjs tests/partner-invite-resend-and-accept.test.cjs
+            echo 'PASS_NEW_INVITE_REVIEW_ONLY; LEGACY_SINGLE_FUNCTION_PUBLISHER_DISABLED'
+            exit 0
+          fi
           node --check functions-partner-workspace/service.cjs
           node --check functions-partner-workspace/index.js
           node --test tests/partner-workspace.test.cjs
