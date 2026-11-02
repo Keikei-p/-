@@ -95,7 +95,7 @@ test("owner team screen keeps the original sales UI and displays actual partner 
  assert.match(f.dom.ownerPartnerDashboardSummary.children.at(-1).textContent,/未報告/);
  assert.equal(f.calls().length,1,"company breakdown is lazy, not extra database reads");
  const card=await f.openCompany(0);
- const team=card.children[2].children[0];
+ const team=card.children[2].children[0].children[0];
  const content=n=>[n.textContent||"",...(n.children||[]).flatMap(content)].join(" ");
  assert.equal(team.className,"partner-count-team-card");
  assert.match(content(team),/1班/);
@@ -117,7 +117,7 @@ test("owner refresh shows corrected count once and explicitly marks unreported",
  assert.equal(f.dom.ownerPartnerDashboardList.children.length,2);
  assert.match(f.dom.ownerPartnerDashboardSummary.children[0].textContent,/4件/);
  const company=await f.openCompany(0);
- assert.match(company.children[2].children[0].children[0].children[1].textContent,/4件/);
+ assert.match(company.children[2].children[0].children[0].children[0].children[1].textContent,/4件/);
  f.setHasReport(false);await f.run();
  assert.match(f.dom.ownerPartnerDashboardList.children[0].children[0].textContent,/未報告/);
  assert.match(f.dom.ownerPartnerDashboardSummary.children.at(-1).textContent,/2社/);
