@@ -168,7 +168,9 @@ test("shared standings use one verified API and keep financial UI isolated",()=>
  assert.match(source,/sharedRankings:true/);
  assert.match(source,/payload\.workspaceCompanyId=partnerInlineWorkspaceCompany/);
  assert.match(source,/response\?\.scope!=="shared_counts_only"/);
- assert.match(source,/response\.includesDirect!==false/);
+ assert.match(source,/response\.includesDirect!==true/);
+ assert.match(source,/const internal=response\.direct/);
+ assert.match(source,/companyRows\.push\(\{name:"🏢 直営"/);
  assert.match(source,/!Number\.isSafeInteger\(response\.productCounts\[k\]\)/);
  assert.match(source,/!recordsReady/);
  assert.match(source,/recordsSubscribedMonth!==date\.slice\(0,7\)/);
