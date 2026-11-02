@@ -12583,6 +12583,21 @@ function clearRememberedPartnerWorkspace(uid){
  if(!partnerMainValidId(uid))return;
  try{localStorage.removeItem(partnerWorkspacePreferenceKey(uid));}catch{}
 }
+// When an internal employee deliberately returns to their own company, do not
+// immediately auto-discover their secondary partner membership again.
+const ownCompanyPreferenceKey=uid=>"nico-partner-own-company:"+uid;
+function preferOwnCompanyUntilLogout(uid){
+ if(!partnerMainValidId(uid))return;
+ try{sessionStorage.setItem(ownCompanyPreferenceKey(uid),"1");}catch{}
+}
+function partnerMainOwnCompanyPreferred(uid){
+ if(!partnerMainValidId(uid))return false;
+ try{return sessionStorage.getItem(ownCompanyPreferenceKey(uid))==="1";}catch{return false;}
+}
+function clearOwnCompanyPreference(uid){
+ if(!partnerMainValidId(uid))return;
+ try{sessionStorage.removeItem(ownCompanyPreferenceKey(uid));}catch{}
+}
 function partnerMainPendingInvite(){
  const q=new URL(location.href).searchParams;
  const company=q.get("partnerCompanyInvite"),staff=q.get("partnerStaffInvite");
@@ -13618,6 +13633,7 @@ pInline("pInlineReturnToOwnCompany").onclick=()=>{
  const uid=auth.currentUser?.uid;
  if(!uid)return;
  clearRememberedPartnerWorkspace(uid);
+ preferOwnCompanyUntilLogout(uid);
  // The normal internal app STILL checks fresh server-side finance permissions.
  location.replace(new URL("/",location.origin).href);
 };
@@ -13657,6 +13673,7 @@ async function openSameAppPartnerWorkspace(user,workspaceCompanyId=""){
     partnerInlineWorkspaceCompany!==workspaceRequested)return;
  if(!workspaceRequested)return;
  if(loaded===true){
+  clearOwnCompanyPreference(user.uid);
   rememberPartnerWorkspace(user.uid,workspaceRequested);
  }else if(loaded===false&&rememberedPartnerWorkspace(user.uid)===workspaceRequested){
   // A revoked or unavailable workspace must not trap subsequent logins.
@@ -14470,8 +14487,10 @@ onAuthStateChanged(
         return;
       }
       const explicitPartnerWorkspace=new URL(location.href).searchParams.get("workspaceCompanyId")||"";
-      let partnerWorkspaceId=explicitPartnerWorkspace||rememberedPartnerWorkspace(user.uid);
-      if(!partnerWorkspaceId){
+      const ownCompanyPreferred=partnerMainOwnCompanyPreferred(user.uid);
+      let partnerWorkspaceId=explicitPartnerWorkspace||
+        (ownCompanyPreferred?"":rememberedPartnerWorkspace(user.uid));
+      if(!partnerWorkspaceId&&!ownCompanyPreferred){
         // Password login can occur on a second device where localStorage is
         // empty. The server resolves only this verified user's own approved
         // secondary membership; there is no invite-token or finance lookup.
@@ -14504,6 +14523,7 @@ onAuthStateChanged(
 
     } else {
 
+      if(currentUser?.uid)clearOwnCompanyPreference(currentUser.uid);
       resetPartnerInline();
       // Never keep another company's count-only ranking in memory after logout.
       ++partnerRankingRequestGeneration;
