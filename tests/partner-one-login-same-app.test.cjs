@@ -76,3 +76,18 @@ test("server owns partner roles and never returns financial data and scopes mana
  assert.doesNotMatch(service,/\bdb\.collection\("(?:records|products|revenueGoals|recordCorrections)"\)/);
  assert.match(rules,/company\.get\('companyKind', 'internal'\) == 'internal'/);
 });
+
+test("partner company list errors are explicit, fail closed and never create a replacement company",()=>{
+ const i=index.indexOf("async function loadDirectPartnerInviteCompanies()");
+ const e=index.indexOf('document.getElementById("partnerInviteCompanyName").onchange=',i);
+ assert(i>0&&e>i);
+ const flow=index.slice(i,e);
+ assert.match(flow,/code==="functions\/not-found"\|\|code==="functions\/unimplemented"/);
+ assert.match(flow,/code==="functions\/permission-denied"/);
+ assert.match(flow,/code==="functions\/unauthenticated"/);
+ assert.match(flow,/partnerInviteCreateButton"\)\.disabled=true/);
+ assert.match(flow,/partnerInviteCompanyName"\)\.replaceChildren\(\)/);
+ assert.match(flow,/partner_company_list_unavailable/);
+ assert.doesNotMatch(flow,/partnerInlineManage\(|tx\.create\(|setDoc\(/);
+ assert.match(index,/if\(!currentUser\?\.emailVerified/);
+});
