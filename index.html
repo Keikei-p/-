@@ -13812,7 +13812,7 @@ async function partnerInlineRun(work){
   // Never log user input, invite tokens, UIDs or financial data.
   console.warn("partner_workspace_operation_error",code||"unclassified");
   const message=conflict?
-   "別の担当者が先に件数を更新した可能性があります。二重登録せず「更新」で履歴を確認してください。入力内容は保持しています。":
+   "別の担当者が先に件数を更新した可能性があります。上書きせず、二重登録もしないで「更新」で履歴を確認してください。入力内容は保持しています。":
    error?.message==="save_verify"||error?.message==="refresh_after_write"?
    "保存後の照合ができませんでした。再登録せず「更新」で履歴を確認してください。入力内容は保持しています。":
    code==="functions/permission-denied"?
