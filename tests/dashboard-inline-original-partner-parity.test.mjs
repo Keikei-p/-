@@ -120,6 +120,49 @@ test("partner card second tap closes only the panel and preserves entered counts
  assert.match(html,/partnerSameAppTogglePanel\(button.dataset.partnerPanel\)/);
 });
 
+test("partner audit displays equal-total CB and private-item corrections, not just aggregate totals",async()=>{
+ const cbSource=portion("function partnerUiCbCountSnapshot(entry){","function partnerInlineSelectedCb(){");
+ const auditSource=portion("async function loadPartnerRevisionHistory(){","async function partnerInlineFetch(){");
+ const displays=[];
+ const dateControl={value:"2026-10-31"};
+ const area={replaceChildren(){displays.length=0}};
+ const fakeDocument={createElement(name){
+  return {tag:name,className:"",textContent:"",children:[],append(...values){this.children.push(...values);}};
+ }};
+ const counts={NURO:2};
+ const response={
+  date:"2026-10-31",companyName:"協力店A",role:"leader",
+  audits:[{
+   staffId:"a",staffName:"担当A",version:2,
+   previousTotalCount:2,totalCount:2,previousCounts:counts,counts,
+   previousCbCounts:{NURO:{"20000":2}},cbCounts:{NURO:{"40000":2}},
+   previousPrivateCounts:{x:2,y:0},privateCounts:{x:0,y:2},
+   previousPrivateTotalCount:2,privateTotalCount:2
+  }]
+ };
+ const ctx={
+  document:fakeDocument,
+  auth:{currentUser:{uid:"some-uid"}},
+  partnerInlineData:{companyName:"協力店A",role:"leader",
+   staff:[{id:"a",name:"担当A"}],categories:["NURO"],
+   privateProducts:[{id:"x",name:"独自A"},{id:"y",name:"独自B"}]},
+  partnerInlineWorkspaceCompany:"",
+  partnerAuditNonce:0,
+  pInline:id=>id==="pInlineDate"?dateControl:id==="pInlineHistory"?area:undefined,
+  readPartnerWorkDay:async()=>({data:response}),
+  partnerMainAppendRow:(_target,label,value)=>displays.push([label,value]),
+ };
+ runInNewContext('const PARTNER_NURO_CB_TIERS=["0","20000","40000","60000","80000","unclassified"];\n'+
+  cbSource+'\n'+auditSource+'\nthis.testAudit=loadPartnerRevisionHistory;',ctx);
+ await ctx.testAudit();
+ assert.ok(displays.some(([label,value])=>label==="NURO光 CB2万円"&&value==="2件 → 0件"));
+ assert.ok(displays.some(([label,value])=>label==="NURO光 CB4万円"&&value==="0件 → 2件"));
+ assert.ok(displays.some(([label,value])=>label==="独自A（協力店内のみ）"&&value==="2件 → 0件"));
+ assert.ok(displays.some(([label,value])=>label==="独自B（協力店内のみ）"&&value==="0件 → 2件"));
+ assert.equal(displays.some(([label])=>label==="協力店専用商材"),false,
+  "per-product edits must be visible even when total private count is unchanged");
+});
+
 test("partner uses original input visual structure with 2 columns and isolated CB categories",()=>{
  assert.match(html,/id="pInlineCountFields" class="product-input-list"/);
  assert.match(html,/#partnerInlineWorkspace #pInlineCountFields\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
