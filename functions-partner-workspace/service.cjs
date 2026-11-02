@@ -747,6 +747,9 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    let direct;
    try{direct=await readDirectDayCounts(db,hubId,date,KEYS);}
    catch{fail("failed-precondition");}
+   // Missing real staff IDs must not create fictitious personal rankings.
+   // Company and team totals remain visible, clearly marked incomplete.
+   if(direct.peopleVerified!==true)complete=false;
    return {scope:"shared_counts_only",date,role:s.kind==="hub"?"hub":"partner",
     complete,includesDirect:true,missingCompanies,companies,teams,people,
     productCounts,categories:KEYS,direct};
