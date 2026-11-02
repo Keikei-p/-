@@ -4425,6 +4425,13 @@ body.product-reordering .product-list {
 #partnerInlineWorkspace #partnerPanelInvite .management-input-row button{min-height:48px}
 #partnerInlineWorkspace #partnerPanelInvite #pInlineResendInvite{min-height:46px;width:100%;margin-top:10px}
 #partnerInlineWorkspace #partnerPanelInvite #pInlineInviteEmailStatus{overflow-wrap:anywhere}
+#partnerInlineWorkspace .partner-management-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:16px 0}
+#partnerInlineWorkspace .partner-management-tabs .quick-menu-button{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-width:0;min-height:48px;padding:10px 8px;border:1px solid var(--border);border-radius:10px;background:var(--card,#fff);font:inherit;font-weight:700}
+#partnerInlineWorkspace .partner-management-tabs .quick-menu-button[hidden]{display:none!important}
+#partnerInlineWorkspace .partner-management-tabs .quick-menu-button[aria-pressed="true"]{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary)}
+#partnerInlineWorkspace #pInlinePeople{grid-template-columns:repeat(2,minmax(0,1fr))}
+#partnerInlineWorkspace #partnerPanelMembers .p-inline-field{margin-bottom:10px}
+@media(max-width:350px){#partnerInlineWorkspace #pInlinePeople{grid-template-columns:1fr}}
 
 @media(max-width:430px){#partnerInlineWorkspace #pInlineCountFields{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}#partnerInlineWorkspace #pInlineCountFields .p-inline-field{padding:8px 5px;font-size:12px}}
 </style>
@@ -4798,25 +4805,39 @@ body.product-reordering .product-list {
     <button class="dashboard-app-button" type="button" data-partner-panel="history"><span class="dashboard-app-icon">📝</span><span class="dashboard-app-title">登録履歴</span><span class="dashboard-app-meta">登録・訂正内容</span></button>
     <button class="dashboard-app-button" type="button" data-partner-panel="members"><span class="dashboard-app-icon">👤</span><span class="dashboard-app-title">班・メンバー</span><span class="dashboard-app-meta">班編成・招待</span></button>
   </div>
+  <div id="partnerManagementTabs" class="partner-management-tabs" role="group" aria-label="自社と同じ管理タブ">
+    <button type="button" class="quick-menu-button" data-partner-panel="invite" aria-controls="partnerPanelInvite"><span class="quick-menu-icon">✉️</span>招待リンク</button>
+    <button type="button" class="quick-menu-button" data-partner-panel="teams" aria-controls="partnerPanelTeams"><span class="quick-menu-icon">👥</span>班管理</button>
+    <button type="button" class="quick-menu-button" data-partner-panel="members" aria-controls="partnerPanelMembers"><span class="quick-menu-icon">👤</span>メンバー管理</button>
+    <button type="button" class="quick-menu-button" data-partner-panel="catalog" aria-controls="partnerPanelCatalog"><span class="quick-menu-icon">📦</span>商材管理</button>
+  </div>
   <div id="partnerSameAppDashboardDetails" class="dashboard-detail-area" hidden>
-  <section id="partnerPanelMembers" data-partner-view="members" hidden>
-  <div class="p-inline-card">
+  <section id="partnerPanelTeams" data-partner-view="teams" hidden>
+  <div class="p-inline-card management-card">
     <h3>👥 班管理</h3>
+    <p class="p-inline-muted">自社と同じ班管理です。所属会社の班を確認し、権限がある場合は追加できます。</p>
     <div id="pInlineTeams" class="p-inline-list"></div>
     <div id="pInlineOwnerTeam" hidden>
       <div class="p-inline-grid"><label class="p-inline-field">新しい班名<input id="pInlineTeamName" maxlength="60" placeholder="例：1班"></label></div>
-      <button id="pInlineAddTeam" type="button">班を追加</button>
+      <button id="pInlineAddTeam" type="button" class="team-action-button">班を追加</button>
     </div>
-    <h3>メンバーを追加</h3>
-    <div id="pInlinePeople" class="p-inline-list"></div>
+  </div>
+  </section>
+  <section id="partnerPanelMembers" data-partner-view="members" hidden>
+  <div class="p-inline-card management-card">
+    <h3>👤 メンバー管理</h3>
+    <p class="p-inline-muted">自社と同じメンバー管理です。所属班・権限を確認し、リーダーは班編成とメンバー追加ができます。</p>
+    <div id="pInlinePeople" class="p-inline-list" aria-label="所属メンバー一覧"></div>
     <div id="pInlineMemberForms" hidden>
       <div class="p-inline-grid">
-        <label class="p-inline-field">班<select id="pInlineManageTeam"></select></label>
+        <label class="p-inline-field">所属班<select id="pInlineManageTeam"></select></label>
         <label class="p-inline-field">メールなしメンバーの名前<input id="pInlineManagedName" maxlength="60" placeholder="例：田中 太郎"></label>
       </div>
       <label class="p-inline-field">班を変更するメンバー<select id="pInlineMoveStaff"></select></label>
-      <button id="pInlineMove" type="button">選択した班に変更</button>
-      <button id="pInlineAddManaged" type="button">メールなしメンバーを追加</button>
+      <div class="p-inline-actions">
+        <button id="pInlineMove" class="team-action-button" type="button">選択した班に変更</button>
+        <button id="pInlineAddManaged" class="team-action-button" type="button">メールなしメンバーを追加</button>
+      </div>
     </div>
   </div>
   </section>
@@ -12701,7 +12722,7 @@ function mountPartnerSafeManagementMenu(){
  const actions=[
   ["🏢","会社","account"],
   ["✉️","招待リンク","invite"],
-  ["👥","班管理","members"],
+  ["👥","班管理","teams"],
   ["👤","メンバー管理","members"],
   ["📦","商材追加・管理","catalog"],
   ["⚙️","アカウント設定","account"]
@@ -12726,6 +12747,7 @@ function mountPartnerSafeManagementMenu(){
  for(const [icon,label,action] of actions){
   const button=document.createElement("button");
   button.type="button";button.className="quick-menu-button";
+  button.dataset.partnerManagementAction=action;
   const span=document.createElement("span");
   span.className="quick-menu-icon";span.textContent=icon;
   button.append(span,document.createTextNode(label));
@@ -13097,17 +13119,16 @@ function renderPartnerRankingOnlyPanel(){
 let partnerSameAppSelectedPanel="record";
 function partnerSameAppPositionPanel(name){
  const grid=pInline("partnerSameAppNavigation");
+ const management=pInline("partnerManagementTabs");
  const detail=pInline("partnerSameAppDashboardDetails");
- const button=[...grid.querySelectorAll("[data-partner-panel]")].find(b=>b.dataset.partnerPanel===name);
- if(!button){
-  // Management tabs live in the same application, beneath the management header.
-  grid.before(detail);
-  return;
- }
- // Insert after the selected button's current grid row, not after all cards.
- const buttons=[...grid.querySelectorAll("[data-partner-panel]")];
- const rowTop=button.offsetTop;
- const row=buttons.filter(b=>b.offsetTop===rowTop);
+ const canonical=[...grid.querySelectorAll("[data-partner-panel]")];
+ const manageButtons=typeof management?.querySelectorAll==="function"
+  ?[...management.querySelectorAll("[data-partner-panel]")]:[];
+ const button=[...canonical,...manageButtons].find(b=>b.dataset.partnerPanel===name&&!b.hidden);
+ if(!button){grid.before(detail);return;}
+ // Keep the opened panel directly below the button's row, also on mobile.
+ const siblings=canonical.includes(button)?canonical:manageButtons.filter(b=>!b.hidden);
+ const row=siblings.filter(b=>b.offsetTop===button.offsetTop);
  (row[row.length-1]||button).after(detail);
 }
 function partnerSameAppSelectPanel(name){
@@ -13115,12 +13136,17 @@ function partnerSameAppSelectPanel(name){
  const map={record:"partnerPanelRecord",individual:"partnerPanelRankings",
   product:"partnerPanelRankings",team:"partnerPanelRankings",
   detail:"partnerPanelDetail",daily:"partnerPanelDaily",
-  history:"partnerPanelHistory",members:"partnerPanelMembers",
+  history:"partnerPanelHistory",teams:"partnerPanelTeams",members:"partnerPanelMembers",
   invite:"partnerPanelInvite",catalog:"partnerPanelCatalog",account:"partnerPanelSafeAccount",
   analysis:"partnerPanelAnalysis",chart:"partnerPanelChart",
   products:"partnerPanelProductSummary",report:"partnerPanelReport",
   goal:"partnerPanelGoal"};
  if(!Object.hasOwn(map,name))return;
+ if(["invite","catalog"].includes(name)&&partnerInlineData&&
+    !["owner","leader"].includes(partnerInlineData.role)){
+  partnerInlineStatus("この管理機能は協力店リーダーだけが利用できます。",true);
+  return;
+ }
  partnerSameAppSelectedPanel=name;
  const detail=pInline("partnerSameAppDashboardDetails");
  detail.hidden=false;
@@ -13131,11 +13157,13 @@ function partnerSameAppSelectPanel(name){
  pInline("partnerRankingHeading").textContent=
   ({individual:"🏆 個人ランキング",product:"📦 商材別ランキング",
    team:"👥 班ランキング"}[name]||"ランキング");
- pInline("partnerSameAppNavigation").querySelectorAll("[data-partner-panel]").forEach(button=>{
-  const selected=button.dataset.partnerPanel===name;
-  button.setAttribute("aria-pressed",String(selected));
-  button.setAttribute("aria-expanded",String(selected));
- });
+ for(const nav of ["partnerSameAppNavigation","partnerManagementTabs"]){
+  pInline(nav).querySelectorAll("[data-partner-panel]").forEach(button=>{
+   const selected=button.dataset.partnerPanel===name;
+   button.setAttribute("aria-pressed",String(selected));
+   button.setAttribute("aria-expanded",String(selected));
+  });
+ }
  partnerSameAppPositionPanel(name);
  // Never reset unsubmitted two-column inputs by changing the dashboard tab.
  if(partnerInlineData&&["individual","product","team"].includes(name)){
@@ -13151,11 +13179,13 @@ window.addEventListener("resize",()=>{
  if(!pInline("partnerSameAppDashboardDetails").hidden)
   partnerSameAppPositionPanel(partnerSameAppSelectedPanel);
 });
-pInline("partnerSameAppNavigation").addEventListener("click",event=>{
- const button=event.target.closest("[data-partner-panel]");
- if(button&&pInline("partnerSameAppNavigation").contains(button))
-  partnerSameAppSelectPanel(button.dataset.partnerPanel);
-});
+for(const nav of ["partnerSameAppNavigation","partnerManagementTabs"]){
+ pInline(nav).addEventListener("click",event=>{
+  const button=event.target.closest("[data-partner-panel]");
+  if(button&&pInline(nav).contains(button)&&!button.hidden)
+   partnerSameAppSelectPanel(button.dataset.partnerPanel);
+ });
+}
 
 function partnerInlineStatus(message,bad=false){
  const el=pInline("pInlineStatus");
@@ -13296,7 +13326,15 @@ function partnerInlineRender(){
  partnerInlineFillSelect("pInlineInviteTeam",teams,t=>snap.companyName+"・"+t.name);
  partnerInlineFillSelect("pInlineMoveStaff",staff,p=>p.name);
  pInline("pInlineAddManaged").disabled=!teams.length;
- pInline("pInlineCreateInvite").disabled=!teams.length||!["leader","owner"].includes(snap.role);
+ const canManage=["owner","leader"].includes(snap.role);
+ pInline("pInlineCreateInvite").disabled=!teams.length||!canManage;
+ for(const nav of [pInline("partnerManagementTabs"),document.querySelector(".partner-safe-menu")]){
+  if(!nav)continue;
+  for(const button of nav.querySelectorAll("[data-partner-panel],[data-partner-management-action]")){
+   const action=button.dataset.partnerPanel||button.dataset.partnerManagementAction;
+   if(["invite","catalog"].includes(action))button.hidden=!canManage;
+  }
+ }
  renderPartnerPrivateProductCatalog();
  const list=pInline("pInlinePeople");list.replaceChildren();
  for(const person of staff)partnerMainAppendRow(list,person.name,

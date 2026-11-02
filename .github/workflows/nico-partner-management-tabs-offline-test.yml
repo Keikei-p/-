@@ -1,0 +1,30 @@
+name: NICO partner management tabs offline parity (no deploy)
+on:
+  push:
+    branches:
+      - fix/partner-management-invite-tabs-parity-20261102
+    paths:
+      - index.html
+      - tests/partner-company-parity-release.test.mjs
+      - tests/partner-management-tabs-parity.test.mjs
+      - .github/workflows/nico-partner-management-tabs-offline-test.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test-no-firebase-writes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out isolated feature branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Static navigation parity and count-only finance protections
+        run: node --test tests/partner-company-parity-release.test.mjs tests/partner-management-tabs-parity.test.mjs
+      - name: Legacy owner sales regressions
+        run: node --test tests/sales-regressions.cjs

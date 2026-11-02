@@ -150,7 +150,7 @@ test("safe hamburger menu mirrors the original while blocking native financial a
  const source=scope("function mountPartnerSafeManagementMenu(){","\n// Partner sees original dashboard-style menu");
  for(const phrase of ["management-tab-button","management-tab-panel","quick-menu-button",
   '["🏢","会社","account"]','["✉️","招待リンク","invite"]',
-  '["👥","班管理","members"]','["👤","メンバー管理","members"]',
+  '["👥","班管理","teams"]','["👤","メンバー管理","members"]',
   '["📦","商材追加・管理","catalog"]','["⚙️","アカウント設定","account"]',
   '["leader","owner"].includes(snap.role)','partnerSameAppSelectPanel(action)'])
   assert.ok(source.includes(phrase),"missing partner-safe operation "+phrase);
