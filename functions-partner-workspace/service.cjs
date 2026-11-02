@@ -1067,6 +1067,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   const requestedCb=Object.hasOwn(d,"cbCounts")?
    validateCbCounts(d.cbCounts,counts):undefined;
   const workLocation=validateWorkLocation(d.workLocation);
+  const workTeamId=d.workTeamId==null?null:clean(d.workTeamId);
+  if(d.workTeamId!=null&&!ID.test(workTeamId))fail("invalid-argument");
   const hasPrivateCounts=Object.prototype.hasOwnProperty.call(d,"privateCounts");
   const requestedPrivate=hasPrivateCounts?validatePrivateCounts(d.privateCounts).counts:null;
   const s=await scope(a.uid,null,d.workspaceCompanyId);
@@ -1121,9 +1123,21 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      fail("data-loss");
    // An edit cannot reassign a previously saved day to the current team.
    // Missing historical attribution remains unverified rather than inferred.
+   // Historical team attribution is immutable. Only a first-time daily entry
+   // may choose another ACTIVE team in the same partner company.
    const teamIdSnapshot=oldSnap.exists?
      (Object.prototype.hasOwnProperty.call(old,"teamIdSnapshot")?old.teamIdSnapshot:null):
-     person.teamId;
+     (workTeamId||person.teamId);
+   if(oldSnap.exists&&workTeamId&&workTeamId!==teamIdSnapshot)
+    fail("failed-precondition");
+   if(!oldSnap.exists){
+    if(!ID.test(teamIdSnapshot||"")||
+       (fresh.role==="member"&&teamIdSnapshot!==person.teamId))
+     fail("permission-denied");
+    const chosenTeam=await tx.get(teamRef(s.cid,teamIdSnapshot));
+    if(!chosenTeam.exists||chosenTeam.data()?.companyId!==s.cid||
+       chosenTeam.data()?.active!==true)fail("failed-precondition");
+   }
    const staffNameSnapshot=oldSnap.exists?
      (Object.prototype.hasOwnProperty.call(old,"staffNameSnapshot")?old.staffNameSnapshot:null):
      person.name;

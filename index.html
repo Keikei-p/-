@@ -4925,8 +4925,9 @@ body.product-reordering .product-list {
         <select id="pInlineStaff"></select>
       </div>
     </div>
-    <div class="form-group"><label for="pInlineWorkingTeam">この日の稼働班（担当者の所属班）</label>
-      <input id="pInlineWorkingTeam" type="text" readonly aria-label="担当者の所属班"></div>
+    <div class="form-group"><label for="pInlineWorkingTeam">この日の稼働班</label>
+      <select id="pInlineWorkingTeam" aria-label="この日の稼働班"></select>
+      <small class="p-inline-muted">初回登録時のみ選択できます。過去の所属班・実績は変更しません。</small></div>
     <div class="form-group"><label for="pInlineWorkLocation">現場場所</label>
       <input id="pInlineWorkLocation" type="text" maxlength="100" autocomplete="off" placeholder="例：○○市 ○○店"></div>
     <div class="section-title">商材別実績（CB別は件数のみ表示）</div>
@@ -13327,6 +13328,8 @@ function partnerInlineHasUnsavedCounts(){
  const entry=snap.records.find(row=>row.staffId===partnerInlineEditingStaffId);
  const fields=pInline("pInlineCountFields");
  if(pInline("pInlineWorkLocation").value.trim()!==(entry?.workLocation||""))return true;
+ const person=snap.staff.find(p=>p.id===partnerInlineEditingStaffId);
+ if(!entry&&pInline("pInlineWorkingTeam").value!==(person?.teamId||""))return true;
  for(const node of fields.querySelectorAll("input[data-count-key],input[data-private-count-id],input[data-cb-tier]")){
   const current=node.value.trim();
   if(!current||!Number.isSafeInteger(Number(current))||Number(current)<0||Number(current)>9999)return true;
@@ -13363,8 +13366,27 @@ function partnerInlineRenderCounts(){
  const staffId=pInline("pInlineStaff").value;
  const entry=snap.records.find(x=>x.staffId===staffId);
  const person=snap.staff.find(x=>x.id===staffId);
- const team=snap.teams.find(t=>t.id===person?.teamId);
- pInline("pInlineWorkingTeam").value=team?.name||"所属班を確認してください";
+ const teamSelect=pInline("pInlineWorkingTeam");
+ teamSelect.replaceChildren();
+ const assigned=person?.teamId||"";
+ const savedTeamId=entry?.teamIdSnapshot||"";
+ const allowedTeams=(snap.teams||[]).filter(t=>t.active===true&&
+  (["owner","leader"].includes(snap.role)||t.id===assigned));
+ for(const team of allowedTeams){
+  const option=document.createElement("option");option.value=team.id;
+  option.textContent=team.name;teamSelect.append(option);
+ }
+ const selectedId=entry?savedTeamId:assigned;
+ if(!allowedTeams.some(t=>t.id===selectedId)){
+  const option=document.createElement("option");option.value=selectedId;
+  const former=(snap.teams||[]).find(t=>t.id===selectedId);
+  option.textContent=entry?(former?.name||"登録当時の班未確認")+"（当時の班）":
+   "所属班を確認してください";
+  teamSelect.append(option);
+ }
+ teamSelect.value=selectedId;
+ teamSelect.disabled=!!entry||snap.role==="member"||!allowedTeams.length;
+
  pInline("pInlineWorkLocation").value=entry?.workLocation||"";
  partnerInlineEditingStaffId=staffId;
  pInline("pInlineRecordDate").value=pInline("pInlineDate").value;
@@ -13417,7 +13439,8 @@ function partnerInlineRenderCounts(){
   input.addEventListener("input",renderPartnerEntryTotals);
   label.append(input);grid.append(label);
  }
- pInline("pInlineSave").disabled=!staffId||partnerInlineBusy;
+ pInline("pInlineSave").disabled=!staffId||partnerInlineBusy||(!entry&&
+  !allowedTeams.some(t=>t.id===teamSelect.value));
  pInline("pInlineVersion").textContent=entry?"登録済み・第"+entry.version+"版":"未登録";
  pInline("pInlineSave").textContent=entry?"変更した件数を保存（訂正）":"実績を一括登録";
  renderPartnerEntryTotals();
@@ -13637,7 +13660,7 @@ async function partnerInlineRun(work){
  partnerInlineBusy=true;
  // A date/staff change or a second tap during an asynchronous save must never
  // change what day/person gets verified. Preserve input values on any failure.
- const locks=["pInlineDate","pInlineRecordDate","pInlineStaff","pInlineRefresh",
+ const locks=["pInlineDate","pInlineRecordDate","pInlineStaff","pInlineWorkingTeam","pInlineWorkLocation","pInlineRefresh",
   "pInlineZero","pInlineClear"].map(pInline).filter(Boolean);
  const fields=pInline("pInlineCountFields");
  if(fields?.querySelectorAll)locks.push(...fields.querySelectorAll("input"));
@@ -13709,6 +13732,10 @@ pInline("pInlineRefresh").onclick=()=>{
  if(partnerInlineHasUnsavedCounts()&&
     !window.confirm("入力途中の件数が残っています。保存せず最新データに更新しますか？"))return;
  void partnerInlineFetch();
+};
+pInline("pInlineWorkingTeam").onchange=()=>{
+ if(partnerInlineBusy)return;
+ renderPartnerEntryTotals();
 };
 pInline("pInlineStaff").onchange=()=>{
  if(partnerInlineBusy)return;
@@ -13951,6 +13978,12 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
   counts[key]=n;
  }
  const before=snap.records.find(x=>x.staffId===staffId);
+ const workTeamId=pInline("pInlineWorkingTeam").value;
+ if(!before&&(!partnerMainValidId(workTeamId)||
+    !snap.teams.some(t=>t.id===workTeamId&&t.active===true)||
+    (snap.role==="member"&&
+     snap.staff.find(p=>p.id===staffId)?.teamId!==workTeamId)))
+  throw Error("work_team_invalid");
  const privateCounts=Object.create(null);
  for(const node of pInline("pInlineCountFields").querySelectorAll("input[data-private-count-id]")){
   const id=node.dataset.privateCountId,n=Number(node.value);
@@ -13965,7 +13998,8 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
  if(partnerInlineCountsUnchanged(snap,staffId,counts,privateCounts,cbCounts,workLocation))
   return "登録済みの件数と同じです。変更がないため訂正履歴は追加していません。";
  const result=(await partnerInlineSave(partnerInlinePayload({
-  date,staffId,counts,cbCounts,workLocation,privateCounts,expectedVersion:before?.version??0
+  date,staffId,counts,cbCounts,workLocation,
+  ...(!before?{workTeamId}:{}),privateCounts,expectedVersion:before?.version??0
  }))).data;
  if(uid!==auth.currentUser?.uid||workspace!==partnerInlineWorkspaceCompany)
   throw Error("save_verify");
@@ -13976,6 +14010,7 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
     !result?.saved||!saved||result.date!==date||result.staffId!==staffId||
     result.version!==(before?.version??0)+1||saved.version!==result.version||
     saved.totalCount!==expectedTotal||saved.workLocation!==workLocation||
+    (!before&&saved.teamIdSnapshot!==workTeamId)||
     snap.categories.some(key=>saved.counts?.[key]!==counts[key])||
     PARTNER_NURO_CB_TIERS.some(tier=>
      (saved.cbCounts?.NURO?.[tier]??0)!==(cbCounts.NURO[tier]??0))||
