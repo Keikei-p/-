@@ -4393,6 +4393,12 @@ body.product-reordering .product-list {
 <style id="nicoPartnerSameAppStyle">
 #appScreen[data-partner-count-only="true"] > :not(.user-bar):not(#partnerInlineWorkspace){display:none!important}
 #appScreen[data-partner-count-only="true"] .user-bar .management-tab-shell{display:none!important}
+#appScreen[data-partner-count-only="true"] #partnerManagementTabs,
+#appScreen[data-partner-count-only="true"] #partnerSameAppNavigation>[data-partner-panel="members"],
+#appScreen[data-partner-count-only="true"] #partnerPanelRankings>.p-inline-card:first-child,
+#appScreen[data-partner-count-only="true"] #partnerPanelDetail>.p-inline-card:first-child{display:none!important}
+#appScreen[data-partner-count-only="true"] #partnerSharedDetailTree>section{margin:10px 0 16px}
+#appScreen[data-partner-count-only="true"] #partnerSharedDetailTree>section>h4{font-size:15px;margin:10px 2px}
 #appScreen:not([data-partner-count-only="true"]) .partner-safe-menu{display:none!important}
 #appScreen[data-partner-count-only="true"] .user-bar .partner-safe-menu{display:block!important}
 #partnerInlineWorkspace #partnerPanelRecord > .p-inline-card{background:transparent;border:0;border-radius:0;padding:0;margin:8px 0}
@@ -4959,7 +4965,7 @@ body.product-reordering .product-list {
   <section id="partnerPanelRankings" data-partner-view="ranking" hidden>
     <div class="p-inline-card"><h3 id="partnerRankingHeading">🏆 ランキング（件数のみ）</h3><div id="pInlineRanking" class="p-inline-list"></div></div>
     <div class="p-inline-card" id="partnerSharedRankingsSection">
-      <h3>🤝 協力店合同ランキング（選択日）</h3>
+      <h3>🏆 本社・協力店 合同ランキング（選択日）</h3>
       <p class="p-inline-muted">承認済みの協力店で共通の件数・順位です。直営も協力店も件数のみを集計し、売上・単価を表示しません。</p>
       <button id="partnerSharedRankingsRefresh" type="button" class="team-action-button">みんなのランキングを更新</button>
       <p id="partnerSharedRankingsStatus" role="status"></p>
@@ -4968,7 +4974,7 @@ body.product-reordering .product-list {
   </section>
   <section id="partnerPanelDetail" data-partner-view="detail" hidden>
     <div class="p-inline-card"><h3>📋 班別詳細</h3><div id="pInlineTeamDetails" class="p-inline-list"></div></div>
-    <div class="p-inline-card"><h3>🌐 直営・協力店 全社班別詳細（選択日）</h3><button id="partnerSharedDetailRefresh" class="team-action-button" type="button">全社の会社・班・担当者件数を表示</button><p id="partnerSharedDetailStatus" role="status"></p><div id="partnerSharedDetailTree" class="p-inline-list"></div></div>
+    <div class="p-inline-card"><h3>📋 本社・協力店の班別詳細（選択日）</h3><p class="p-inline-muted">班を押すと担当者・商材・件数が見られます。</p><button id="partnerSharedDetailRefresh" class="team-action-button" type="button">班別詳細を更新</button><p id="partnerSharedDetailStatus" role="status"></p><div id="partnerSharedDetailTree" class="p-inline-list"></div></div>
   </section>
   <section id="partnerPanelDaily" data-partner-view="daily" hidden>
     <div class="p-inline-card"><h3>📅 日別</h3><p>上の実績日を切り替えて確認できます。</p><div id="pInlineDailySummary" class="p-inline-list"></div></div>
@@ -13025,50 +13031,52 @@ function renderSharedCountTeamDetails(parent,report){
   if(total>shown)partnerMainAppendRow(node,"その他（直営）",total-shown+"件");
   if(total<shown)throw Error("shared_detail_total_invalid");
  };
+ // Match the internal team list. One tap on a team opens every member and
+ // their product counts; no company/person nesting and no financial fields.
  const showCompany=(name,total,teamRows,peopleRows,verified=true)=>{
-  const company=document.createElement("details");company.className="p-inline-row";
-  const summary=document.createElement("summary");
-  summary.textContent=name+"｜"+total+"件"+(verified?"":"（個人別未照合）");
-  company.append(summary);
+  const group=document.createElement("section");group.className="p-inline-company-teams";
+  const heading=document.createElement("h4");
+  heading.textContent=name+"｜"+total+"件"+(verified?"":"（個人別未照合）");
+  group.append(heading);
   for(const team of teamRows){
-   const row=document.createElement("details");row.className="p-inline-row";
-   const title=document.createElement("summary");
-   title.textContent="👥 "+team.name+"｜"+team.totalCount+"件";
-   row.append(title);
+   const teamRow=document.createElement("details");teamRow.className="p-inline-row";
+   const teamTitle=document.createElement("summary");
+   teamTitle.textContent="👥 "+team.name+"｜"+team.totalCount+"件";
+   teamRow.append(teamTitle);
    const members=peopleRows.filter(p=>p.teamKey===team.key);
    for(const member of members){
-    const item=document.createElement("details");item.className="p-inline-row";
-    const label=document.createElement("summary");
-    label.textContent="👤 "+member.name+"｜"+member.totalCount+"件";
-    item.append(label);addCounts(item,member.counts,member.totalCount);row.append(item);
+    const person=document.createElement("div");person.className="p-inline-row";
+    const title=document.createElement("strong");
+    title.textContent="👤 "+member.name+"｜"+member.totalCount+"件";
+    person.append(title);addCounts(person,member.counts,member.totalCount);
+    teamRow.append(person);
    }
-   if(!members.length)partnerMainAppendRow(row,
+   if(!members.length)partnerMainAppendRow(teamRow,
     "担当者別件数は未確認","会社の記録と照合してください");
-   company.append(row);
+   group.append(teamRow);
   }
   const unassigned=peopleRows.filter(p=>!p.teamKey||!teamRows.some(t=>t.key===p.teamKey));
   for(const member of unassigned){
-   const item=document.createElement("details");item.className="p-inline-row";
-   const label=document.createElement("summary");
-   label.textContent="👤 "+member.name+"｜"+member.totalCount+"件（登録当時の班未確認）";
-   item.append(label);addCounts(item,member.counts,member.totalCount);company.append(item);
+   const person=document.createElement("div");person.className="p-inline-row";
+   const title=document.createElement("strong");
+   title.textContent="👤 "+member.name+"｜"+member.totalCount+"件（登録当時の班未確認）";
+   person.append(title);addCounts(person,member.counts,member.totalCount);
+   group.append(person);
   }
   if(!teamRows.length&&!unassigned.length)
-   partnerMainAppendRow(company,"班・担当者別の件数は未照合","会社の報告状況を確認してください");
-  parent.append(company);
+   partnerMainAppendRow(group,"班・担当者別の件数は未照合","会社の報告状況を確認してください");
+  parent.append(group);
  };
  showCompany("🏢 直営",report.direct.totalCount,report.direct.teams,
   report.direct.people,report.direct.peopleVerified===true);
- for(const company of report.companies){
+ for(const company of report.companies)
   showCompany("🤝 "+company.name,company.totalCount,
    report.teams.filter(t=>t.companyId===company.id),
    report.people.filter(p=>p.companyId===company.id),
    company.peopleVerified===true);
- }
  for(const name of report.missingCompanies||[])
   partnerMainAppendRow(parent,"🤝 "+name,"未報告・0件とは扱いません");
 }
-
 async function loadSharedDailyStandings(where,force=false){
  const partner=where==="partner"||where==="partnerDetail";
  const detail=where==="partnerDetail"||where==="ownerDetail";
@@ -13148,11 +13156,18 @@ async function loadSharedDailyStandings(where,force=false){
    renderSharedCountTeamDetails(content,response);
    return;
   }
-  appendSharedRankingRows(content,"🏢 会社別件数",companyRows,complete);
-  appendSharedRankingRows(content,"🏆 個人ランキング",personRows,complete);
-  appendSharedRankingRows(content,"👥 班ランキング",teamRows,complete);
-  appendSharedRankingRows(content,"📦 商材別件数",
-   [...productTotals].map(([name,count])=>({name,count})),complete);
+  // Both internal and partner see the identical joint count dataset.
+  // Partner taps only the matching ranking card, not a duplicate local list.
+  const chosen=partner?partnerSameAppSelectedPanel:"all";
+  if(chosen==="all"||chosen==="individual")
+   appendSharedRankingRows(content,"🏆 個人ランキング",personRows,complete);
+  if(chosen==="all"||chosen==="product")
+   appendSharedRankingRows(content,"📦 商材別ランキング",
+    [...productTotals].map(([name,count])=>({name,count})),complete);
+  if(chosen==="all"||chosen==="team")
+   appendSharedRankingRows(content,"👥 班ランキング",teamRows,complete);
+  if(chosen==="all")
+   appendSharedRankingRows(content,"🏢 会社別件数",companyRows,complete);
  }catch(error){
   if(seq!==sharedDailyRankingGeneration||auth.currentUser?.uid!==uid)return;
   content.replaceChildren();
@@ -13271,7 +13286,6 @@ function partnerSameAppSelectPanel(name){
  partnerSameAppPositionPanel(name);
  // Never reset unsubmitted two-column inputs by changing the dashboard tab.
  if(partnerInlineData&&["individual","product","team"].includes(name)){
-  renderPartnerRankingOnlyPanel();
   void loadSharedDailyStandings("partner");
  }
  if(partnerInlineData&&name==="detail")
@@ -13794,12 +13808,27 @@ async function partnerInlineRun(work){
   if(partnerInlineData)partnerInlineStatus(resultMessage);
  }catch(error){
   const conflict=error?.code==="functions/aborted"||error?.message==="aborted";
+  const code=typeof error?.code==="string"?error.code:"";
+  // Never log user input, invite tokens, UIDs or financial data.
+  console.warn("partner_workspace_operation_error",code||"unclassified");
   const message=conflict?
-   "別の担当者が先に件数を更新した可能性があります。上書きせず、入力内容を控えて「更新」で最新件数を確認してください。":
+   "別の端末で件数が更新されました。二重登録せず「更新」で履歴を確認してください。入力内容は保持しています。":
    error?.message==="save_verify"||error?.message==="refresh_after_write"?
-   "保存APIへの送信後、最新データの表示を照合できませんでした。二重登録を避けるため、再登録前に「更新」で最新件数を確認してください。入力内容は保持しています。":
-   refresh?"保存を確認できませんでした。入力内容は保持しています。権限と通信を確認して再試行してください。":
-   "招待処理を確認できませんでした。招待タブのエラー表示で原因を確認してください。";
+   "保存後の照合ができませんでした。再登録せず「更新」で履歴を確認してください。入力内容は保持しています。":
+   code==="functions/permission-denied"?
+   "保存権限がありません。担当者と所属班、リーダー権限を確認してください。入力内容は保持しています。":
+   code==="functions/failed-precondition"?
+   "保存先の班・承認状態または以前の報告形式に不整合があります。既存履歴を保護するため登録を停止しました。管理者へ連絡してください。":
+   code==="functions/unauthenticated"?
+   "認証を確認できません。ログインし直した後、登録履歴を確認してください。":
+   code==="functions/invalid-argument"?
+   "日付・担当者・商材・CB別件数を確認してください。件数は0以上の整数です。":
+   code==="functions/data-loss"?
+   "既存の件数集計との不整合が見つかりました。履歴を保護するため保存を停止しました。管理者へ連絡してください。":
+   code==="functions/resource-exhausted"?
+   "件数入力の上限に達しました。管理者に確認してください。":
+   refresh?"保存結果を確認できませんでした。入力内容を保持しています。二重登録せず「更新」で登録履歴を確認してください。":
+   "招待処理を確認できませんでした。招待タブで権限と状態を確認してください。";
   partnerInlineStatus(message,true);
   if(error?.message==="save_verify"&&pInline("pInlineSaveStatus"))
    pInline("pInlineSaveStatus").textContent=message;
