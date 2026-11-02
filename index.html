@@ -4840,6 +4840,7 @@ body.product-reordering .product-list {
     <h3>✏️ 件数入力・訂正</h3>
     <label class="p-inline-field">担当者<select id="pInlineStaff"></select></label>
     <div id="pInlineCountFields" class="p-inline-grid" aria-label="商材ごとの件数入力・2列表示"></div>
+    <p id="pInlineEntryTotals" class="record-total-value" aria-live="polite">共有商材 0件｜協力店専用 0件</p>
     <div class="p-inline-actions">
       <button id="pInlineSave" type="button">件数を保存</button>
       <span id="pInlineVersion" class="p-inline-muted"></span>
@@ -13150,6 +13151,20 @@ function renderPartnerPrivateProductCatalog(){
  }
  if(!products.length)partnerMainAppendRow(list,"協力店専用の商材は未登録です","公開商材の件数は実績入力から登録できます。");
 }
+function renderPartnerEntryTotals(){
+ const target=pInline("pInlineEntryTotals");
+ const grid=pInline("pInlineCountFields");
+ let shared=0,privateTotal=0;
+ for(const input of grid.querySelectorAll("input[data-count-key],input[data-private-count-id]")){
+  if(input.value.trim()===""||!Number.isSafeInteger(Number(input.value))||
+     Number(input.value)<0||Number(input.value)>9999){
+   target.textContent="件数を確認してください";return;
+  }
+  if(input.dataset.countKey)shared+=Number(input.value);
+  else privateTotal+=Number(input.value);
+ }
+ target.textContent="共有商材 "+shared+"件｜協力店専用 "+privateTotal+"件";
+}
 function partnerInlineRenderCounts(){
  const snap=partnerInlineData;
  if(!snap||snap.role==="hub")return;
@@ -13162,6 +13177,7 @@ function partnerInlineRenderCounts(){
   const input=document.createElement("input");input.type="number";input.min="0";input.max="9999";
   input.step="1";input.inputMode="numeric";input.dataset.countKey=key;
   input.value=String(entry?.counts?.[key]??0);
+  input.addEventListener("input",renderPartnerEntryTotals);
   label.append(input);grid.append(label);
  }
  // Private products stay within this partner company and never enter
@@ -13175,10 +13191,12 @@ function partnerInlineRenderCounts(){
   input.max="9999";input.step="1";input.inputMode="numeric";
   input.dataset.privateCountId=product.id;input.value=String(prior);
   if(!product.active)input.readOnly=true;
+  input.addEventListener("input",renderPartnerEntryTotals);
   label.append(input);grid.append(label);
  }
  pInline("pInlineSave").disabled=!staffId||partnerInlineBusy;
  pInline("pInlineVersion").textContent=entry?"登録済み・第"+entry.version+"版":"未登録";
+ renderPartnerEntryTotals();
 }
 function partnerInlineRender(){
  const snap=partnerInlineData;if(!snap||snap.role==="hub")return;
@@ -13324,7 +13342,13 @@ async function partnerInlineRun(work){
   if(partnerInlineData)partnerInlineStatus(message||"更新しました。");
  }catch{
   partnerInlineStatus("保存・招待を確認できませんでした。内容・所属・権限を確認してください。",true);
- }finally{partnerInlineBusy=false;if(partnerInlineData)partnerInlineRenderCounts();}
+ }finally{
+  partnerInlineBusy=false;
+  if(partnerInlineData){
+   partnerInlineRenderCounts();
+   renderPartnerPrivateProductCatalog();
+  }
+ }
 }
 function partnerInlinePayload(data){
  return {...data,...(partnerInlineWorkspaceCompany?{workspaceCompanyId:partnerInlineWorkspaceCompany}:{})};
