@@ -49,6 +49,17 @@ jobs:
                :Promise.resolve(null)
             ]);
             const r=relation.data()||{},d=report?.data()||{};
+            const activeTeamIds=new Set(teams.docs.filter(x=>x.data()?.active===true).map(x=>x.id));
+            const nameOK=/^[\\p{L}\\p{N} 　・ー（）()_.-]{1,60}$/u;
+            console.log('STAFF_TEAM_SAVE_CONTRACT',JSON.stringify({
+              staffMissingCompanyId:staff.docs.filter(x=>x.data()?.companyId!==cid).length,
+              staffMissingName:staff.docs.filter(x=>!nameOK.test(x.data()?.name||'')).length,
+              staffMissingOrInactiveTeam:staff.docs.filter(x=>x.data()?.active===true&&!activeTeamIds.has(x.data()?.teamId)).length,
+              teamMissingCompanyId:teams.docs.filter(x=>x.data()?.companyId!==cid).length,
+              managedStaff:staff.docs.filter(x=>x.data()?.kind==='managed').length,
+              accountStaff:staff.docs.filter(x=>x.data()?.kind==='account').length,
+              accountStaffMissingUid:staff.docs.filter(x=>x.data()?.kind==='account'&&!x.data()?.uid).length
+            }));
             const reportSource=!report?.exists?'none':d.source==='staff-entries-v1'?'staff-entries-v1':'legacy-or-unknown';
             console.log('PARTNER_DAY_DIAG',JSON.stringify({
               companyActive:c.active===true,hubPresent:!!hub,
