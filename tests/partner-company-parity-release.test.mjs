@@ -457,3 +457,49 @@ test("verified partner save refreshes once and shows an explicit confirmation",a
  assert.match(pInline("pInlineSaveStatus").textContent,/保存と再取得を確認/);
  assert.equal(pInline("pInlineSave").disabled,false);
 });
+
+test("unchanged partner counts cannot append duplicate correction history; first zero report still saves",()=>{
+ const body=scope("function partnerInlineCountsUnchanged(snap,staffId,counts,privateCounts){",
+  '\npInline("pInlineSave").onclick=');
+ assert.ok(body.startsWith("function partnerInlineCountsUnchanged"));
+ const ctx={};
+ runInNewContext(body,ctx);
+ const record={staffId:"staff-1",counts:{NURO:2,SBMNP:0},privateCounts:{private1:3},version:7};
+ const snap={categories:["NURO","SBMNP"],records:[record]};
+ assert.equal(ctx.partnerInlineCountsUnchanged(snap,"staff-1",
+  {NURO:2,SBMNP:0},{private1:3}),true);
+ assert.equal(ctx.partnerInlineCountsUnchanged(snap,"staff-1",
+  {NURO:3,SBMNP:0},{private1:3}),false);
+ assert.equal(ctx.partnerInlineCountsUnchanged(snap,"staff-1",
+  {NURO:2,SBMNP:0},{private1:4}),false);
+ assert.equal(ctx.partnerInlineCountsUnchanged(snap,"new-staff",
+  {NURO:0,SBMNP:0},{}),false,
+  "a first-ever zero report must create a real saved record");
+ const save=scope('pInline("pInlineSave").onclick=',
+  "\n// Original internal owner sees existing teams");
+ assert(save.indexOf("partnerInlineCountsUnchanged(")<save.indexOf("partnerInlineSave(partnerInlinePayload("),
+  "no-op detection must precede the privileged write");
+});
+test("concurrent partner count edits do not overwrite history and request a fresh read",async()=>{
+ const body=scope("async function partnerInlineRun(work){","\nfunction partnerInlinePayload(data){");
+ const nodes=new Map();
+ const pInline=id=>{
+  if(!nodes.has(id))nodes.set(id,{disabled:false,value:"staff-1",textContent:"",querySelectorAll:()=>[]});
+  return nodes.get(id);
+ };
+ let status="",refreshed=0;
+ const ctx={pInline,partnerInlineBusy:false,
+  partnerInlineData:{staff:[{id:"staff-1",active:true}]},
+  auth:{currentUser:{uid:"test-uid"}},
+  partnerInlineStatus:x=>{status=x;},
+  renderPartnerPrivateProductCatalog:()=>{},
+  partnerInlineFetch:async()=>{refreshed++;return true;},
+  sharedDailyRankingGeneration:0,sharedDailyRankCache:new Map()};
+ const error=Error("stale version");error.code="functions/aborted";
+ ctx.conflictError=error;
+ await runInNewContext(body+"\npartnerInlineRun(async()=>{throw conflictError;})",ctx);
+ assert.equal(refreshed,0,"stale version never reloads or silently overwrites");
+ assert.match(status,/別の担当者が先に件数を更新/);
+ assert.match(status,/上書きせず/);
+ assert.equal(pInline("pInlineSave").disabled,false);
+});
