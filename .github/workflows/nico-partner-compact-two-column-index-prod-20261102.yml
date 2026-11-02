@@ -49,7 +49,7 @@ jobs:
              !html.includes('partner-count-team-grid')||
              !html.includes('partnerCompactWireTeamSelection')||
              !html.includes('person.active===true&&person.teamId===team.id')||
-             !html.includes('person.reported===false')||
+             !html.includes('member.reported===false')||
              html.includes('件数を表示しています。金額・単価は読み込んでいません。'))
             throw Error('STOP_REVIEWED_OWNER_OR_PARTNER_UI_CHANGED');
           fs.writeFileSync('/tmp/nico-partner-index.mjs',module);
