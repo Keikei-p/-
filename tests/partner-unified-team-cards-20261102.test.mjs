@@ -9,9 +9,11 @@ const end=html.indexOf("async function loadSharedDailyStandings(",start);
 assert.ok(start>0&&end>start);
 const code=html.slice(start,end);
 function element(tag){
- return {tag,className:"",textContent:"",hidden:false,children:[],
+ return {tag,className:"",textContent:"",hidden:false,open:false,children:[],attrs:{},events:{},
   append(...nodes){this.children.push(...nodes);},
-  replaceChildren(...nodes){this.children=[...nodes];}};
+  replaceChildren(...nodes){this.children=[...nodes];},
+  setAttribute(name,value){this.attrs[name]=value;},
+  addEventListener(name,handler){this.events[name]=handler;}};
 }
 function harness(){
  const context={document:{createElement:element},partnerMainAppendRow(parent,label,value){
@@ -33,11 +35,20 @@ test("photo-style CB boxes show five tiers and count-only person/product details
  assert.equal(card.className,"partner-count-team-card");
  const content=collect(card);
  for(const text of ["LinkTh・2班","合計 6件","NURO光｜CB別件数","CB0","CB2万","CB4万","CB6万","CB8万",
-  "YMMNP","3件","つばさ・HTB","2件","佐藤｜合計 6件"])assert.ok(content.includes(text),text);
+  "YMMNP","3件","つばさ・HTB","2件","佐藤"])assert.ok(content.includes(text),text);
+ const tilesPeople=[];
+ const findPeople=n=>{if(n.className==="partner-count-team-person-button")tilesPeople.push(n);n.children?.forEach(findPeople);};
+ findPeople(card);
+ assert.equal(tilesPeople.length,1);
+ assert.equal(tilesPeople[0].attrs["aria-pressed"],"false");
+ tilesPeople[0].events.click();
+ assert.equal(tilesPeople[0].attrs["aria-pressed"],"true");
+ assert.match(collect(card),/佐藤｜合計 6件/);
+ assert.match(collect(card),/NURO 1件/);
  assert.doesNotMatch(content,/¥|￥|売上|単価|収益|報酬|利益|価格|金額/);
  const tiles=[];
  const walk=n=>{if(n.className==="partner-count-team-cb-cell")tiles.push(n);n.children?.forEach(walk);};
- walk(card);assert.equal(tiles.length,5);
+ walk(card);assert.equal(tiles.length,10,"five team CB tiles and five for selected person");
 });
 test("unclassified NURO is labeled separately and never falsely counted as CB0",()=>{
  const ctx=harness();

@@ -11,9 +11,11 @@ function extract(start,end){
  return source.slice(a,b);
 }
 function newNode(tag){
- return {tag,children:[],className:"",textContent:"",
+ return {tag,children:[],className:"",textContent:"",events:{},attrs:{},open:false,
   append(...nodes){this.children.push(...nodes)},
-  replaceChildren(...nodes){this.children=[...nodes]}};
+  replaceChildren(...nodes){this.children=[...nodes]},
+  addEventListener(name,fn){this.events[name]=fn},
+  setAttribute(name,value){this.attrs[name]=value}};
 }
 
 test("partner dashboard uses the same HQ+partner ranking rather than a local private-only list",()=>{

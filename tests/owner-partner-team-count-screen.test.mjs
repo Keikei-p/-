@@ -17,9 +17,10 @@ const teamCardCode=html.slice(cardBegin,cardEnd);
 function node(tag="div"){
  return {
   tag,children:[],className:"",textContent:"",value:"",hidden:false,open:false,
-  handlers:{},append(...items){this.children.push(...items);},
+  handlers:{},attrs:{},append(...items){this.children.push(...items);},
   replaceChildren(...items){this.children=[...items];this.textContent="";},
   addEventListener(type,fn){this.handlers[type]=fn;},
+  setAttribute(name,value){this.attrs[name]=value;},
   get lastChild(){return this.children.at(-1);}
  };
 }
@@ -100,6 +101,12 @@ test("owner team screen keeps the original sales UI and displays actual partner 
  assert.equal(team.className,"partner-count-team-card",JSON.stringify({holderChildren:card.children[2].children.map(x=>({tag:x.tag,className:x.className,text:x.textContent})),teamText:content(team)}));
  assert.match(content(team),/1班/);
  assert.match(content(team),/合計 3件/);
+ assert.match(content(team),/田中/);
+ const buttons=[];
+ const find=n=>{if(n.className==="partner-count-team-person-button")buttons.push(n);n.children?.forEach(find);};
+ find(team);
+ assert.equal(buttons.length,1);
+ buttons[0].handlers.click();
  assert.match(content(team),/田中｜合計 3件/);
  assert.match(content(team),/NURO｜2件/);
  assert.match(content(team),/SBMNP｜1件/);
