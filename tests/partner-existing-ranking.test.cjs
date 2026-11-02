@@ -199,3 +199,42 @@ test("actual quick + staff count API merge prioritizes staff ledger without doub
  assert.equal(own.find(x=>x.name==="NURO光").count,2);
  assert.equal(own.find(x=>x.name==="新電力").count,3);
 });
+
+test("monthly standings never certify a missing approved partner day as zero",async()=>{
+ const keys=["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター",
+  "つばさ・HTB","太陽光・蓄電池AP","U-NEXT"];
+ const zero=()=>Object.fromEntries(keys.map(k=>[k,0]));
+ const row=(date,n)=>({partnerCompanyId:"partnerA",name:"協力店A",
+  counts:{...zero(),NURO:n},totalCount:n});
+ const cache=new Map();
+ let reportedFirstDay=false,readCount=0;
+ const ctx=make(["validatedPartnerRankingDay","mergedPartnerRankingDay",
+  "readPartnerRankingMonth"],{
+  PARTNER_QUICK_RANK_KEYS:keys,getTodayString:()=>"2026-11-02",
+  currentPartnerRankingKey:month=>"company|"+month,
+  partnerRankingDailyCache:cache,
+  readPartnerQuickDay:async({date})=>{
+   readCount++;return {data:{role:"hub",date,partners:[]}};
+  },
+  readPartnerWorkDay:async({date})=>{
+   readCount++;return {data:{role:"hub",date,
+    registeredCompanies:[{partnerCompanyId:"partnerA",name:"協力店A",
+      active:true,teams:[]}],
+    partners:date==="2026-11-01"?(reportedFirstDay?[row(date,0)]:[]):[row(date,3)]
+   }};
+  }
+ });
+ const incomplete=await ctx.readPartnerRankingMonth("2026-11");
+ assert.equal(incomplete.complete,false,"missing is never an authenticated zero");
+ assert.match(incomplete.reason,/未報告/);
+ assert.equal(incomplete.rows.length,1);
+ assert.equal(incomplete.rows[0].totalCount,3,"available counts are preserved");
+ assert.equal(readCount,4);
+ reportedFirstDay=true;
+ cache.clear();
+ const complete=await ctx.readPartnerRankingMonth("2026-11");
+ assert.equal(complete.complete,true,"an explicit 0-count report is verified");
+ assert.equal(complete.rows[0].totalCount,3);
+ assert.equal(readCount,8);
+ assert.doesNotMatch(JSON.stringify(complete),/totalRevenue|unitPrice|revenuePerUnit/);
+});
