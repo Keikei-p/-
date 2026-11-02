@@ -4837,12 +4837,16 @@ body.product-reordering .product-list {
   </section>
   <section id="partnerPanelRecord" data-partner-view="record">
   <div class="p-inline-card">
-    <h3>✏️ 件数入力・訂正</h3>
+    <h3>✏️ 実績登録・訂正</h3>
+    <p class="p-inline-muted">日付と担当者を選び、商材ごとの件数を入力して一括登録できます。</p>
     <label class="p-inline-field">担当者<select id="pInlineStaff"></select></label>
-    <div id="pInlineCountFields" class="p-inline-grid" aria-label="商材ごとの件数入力・2列表示"></div>
+    <div class="section-title">商材別実績</div>
+    <div id="pInlineCountFields" class="product-input-list" aria-label="商材ごとの件数入力・2列表示"></div>
     <p id="pInlineEntryTotals" class="record-total-value" aria-live="polite">共有商材 0件｜協力店専用 0件</p>
     <div class="p-inline-actions">
-      <button id="pInlineSave" type="button">件数を保存</button>
+      <button id="pInlineSave" class="record-save-button" type="button">実績を一括登録</button>
+      <button id="pInlineZero" class="record-clear-button" type="button">実績なし（0件報告）</button>
+      <button id="pInlineClear" class="record-clear-button" type="button">入力をクリア</button>
       <span id="pInlineVersion" class="p-inline-muted"></span>
     </div>
   </div>
@@ -13172,7 +13176,7 @@ function partnerInlineRenderCounts(){
  const entry=snap.records.find(x=>x.staffId===staffId);
  const grid=pInline("pInlineCountFields");grid.replaceChildren();
  for(const key of snap.categories){
-  const label=document.createElement("label");label.className="p-inline-field";
+  const label=document.createElement("label");label.className="p-inline-field product-input-group product-input-group--compact";
   label.textContent=key;
   const input=document.createElement("input");input.type="number";input.min="0";input.max="9999";
   input.step="1";input.inputMode="numeric";input.dataset.countKey=key;
@@ -13185,7 +13189,7 @@ function partnerInlineRenderCounts(){
  for(const product of snap.privateProducts||[]){
   const prior=entry?.privateCounts?.[product.id]??0;
   if(!product.active&&prior===0)continue;
-  const label=document.createElement("label");label.className="p-inline-field";
+  const label=document.createElement("label");label.className="p-inline-field product-input-group product-input-group--compact";
   label.textContent=product.name+"（協力店専用）";
   const input=document.createElement("input");input.type="number";input.min="0";
   input.max="9999";input.step="1";input.inputMode="numeric";
@@ -13356,6 +13360,20 @@ function partnerInlinePayload(data){
 pInline("pInlineDate").onchange=partnerInlineFetch;
 pInline("pInlineRefresh").onclick=partnerInlineFetch;
 pInline("pInlineStaff").onchange=partnerInlineRenderCounts;
+function partnerInlineClearFields(){
+ for(const input of pInline("pInlineCountFields").querySelectorAll("input:not([readonly])"))
+  input.value="0";
+ renderPartnerEntryTotals();
+}
+pInline("pInlineClear").onclick=()=>{
+ partnerInlineClearFields();
+ partnerInlineStatus("入力だけをクリアしました。保存済み実績は変更していません。");
+};
+pInline("pInlineZero").onclick=()=>{
+ if(partnerInlineBusy||!partnerInlineData)return;
+ partnerInlineClearFields();
+ pInline("pInlineSave").click();
+};
 pInline("pInlineAddTeam").onclick=()=>partnerInlineRun(async()=>{
  if(!["owner","leader"].includes(partnerInlineData.role))throw Error("role");
  const name=pInline("pInlineTeamName").value.trim();
