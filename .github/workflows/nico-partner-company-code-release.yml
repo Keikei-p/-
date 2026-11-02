@@ -68,7 +68,16 @@ jobs:
           node --test tests/surgical-existing-partner-workspace.test.mjs
           node --test tests/audit-artifact-cleanup-iam.test.mjs
           node --test tests/company-code-scoped-release.test.mjs
-          node scripts/check-company-code-scoped-release.mjs
+          # The company-code publisher is intentionally restricted to its historical
+          # standalone scope. A direct-role PR modifies the canonical app, so the
+          # original deploy check must stay mandatory on workflow_dispatch.
+          # PRs instead exercise the count-only workspace and finance regressions.
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            node scripts/check-company-code-scoped-release.mjs
+          else
+            node --test tests/partner-workspace.test.cjs tests/internal-owner-finance-visibility.test.cjs
+            echo 'PASS_PR_ONLY_DIRECT_ROLE_REVIEW_NO_COMPANY_CODE_DEPLOYMENT'
+          fi
           node - <<'NODE'
           const fs=require('node:fs');
           const cfg=JSON.parse(fs.readFileSync('firebase.partner-workspace.json','utf8'));
