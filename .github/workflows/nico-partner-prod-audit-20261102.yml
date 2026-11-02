@@ -1,0 +1,84 @@
+name: NICO partner production readiness audit 2026-11-02 (READ ONLY)
+on:
+  push:
+    branches: [audit/partner-prod-readiness-20261102]
+    paths: [.github/workflows/nico-partner-prod-audit-20261102.yml]
+permissions:
+  contents: read
+concurrency:
+  group: nico-partner-audit-read-only-20261102
+  cancel-in-progress: false
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: Verify source and original owner regression (NO WRITES)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check functions-partner-workspace/service.cjs
+          node --test tests/partner-repeat-login-cb-parity.test.mjs tests/partner-company-parity-release.test.mjs tests/partner-management-tabs-parity.test.mjs tests/owner-partner-team-detail-screen.test.mjs tests/internal-owner-finance-visibility.test.cjs tests/partner-money-free-workspace.test.cjs tests/sales-regressions.cjs
+      - name: Verify published index, Auth Email Link, live Rules and count Function only via GET
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_SERVICE_ACCOUNT_JSON:-}" || { echo STOP_AUTH_READ_CREDENTIAL_MISSING; exit 1; }
+          test "$(node -p \"JSON.parse(require('fs').readFileSync('.firebaserc','utf8')).projects.default\")" = sales-management-cc116
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-audit-key.json"
+          chmod 600 "$RUNNER_TEMP/nico-audit-key.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/nico-audit-key.json"
+          trap 'rm -f "$RUNNER_TEMP/nico-audit-key.json"' EXIT
+          npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund >/dev/null
+          node --input-type=module <<'NODE'
+          import {createRequire} from 'node:module';
+          import {createHash} from 'node:crypto';
+          import {readFileSync} from 'node:fs';
+          const require=createRequire(process.cwd()+'/functions/package.json');
+          const {applicationDefault}=require('firebase-admin/app');
+          const project='sales-management-cc116';
+          if(JSON.parse(readFileSync('.firebaserc','utf8')).projects.default!==project)throw Error('STOP_WRONG_PROJECT');
+          const {access_token}=await applicationDefault().getAccessToken();
+          if(!access_token)throw Error('STOP_NO_READ_IDENTITY');
+          const safeGet=async url=>{
+            if(!/^https:\/\/(?:identitytoolkit\.googleapis\.com\/admin\/v2\/projects\/sales-management-cc116\/config|firebaserules\.googleapis\.com\/v1\/projects\/sales-management-cc116\/(?:releases\/cloud\.firestore|rulesets\/[A-Za-z0-9_-]+)|cloudfunctions\.googleapis\.com\/v2\/projects\/sales-management-cc116\/locations\/asia-northeast1\/functions\/[A-Za-z0-9_-]+)$/.test(url))
+              throw Error('STOP_UNAPPROVED_READ_URL');
+            const response=await fetch(url,{headers:{Authorization:'Bearer '+access_token},redirect:'error'});
+            if(!response.ok)throw Error('STOP_READONLY_HTTP_'+response.status);
+            return response.json();
+          };
+          const auth=await safeGet('https://identitytoolkit.googleapis.com/admin/v2/projects/'+project+'/config');
+          const emailEnabled=auth?.signIn?.email?.enabled===true,linkEnabled=auth?.signIn?.email?.passwordRequired===false,domainAuthorized=auth?.authorizedDomains?.includes('nico-factory.web.app')===true;
+          console.log('LIVE_AUTH_READONLY '+JSON.stringify({emailPasswordProviderEnabled:emailEnabled,emailLinkEnabled:linkEnabled,domainAuthorized}));
+          if(!emailEnabled||!linkEnabled||!domainAuthorized)throw Error('STOP_AUTH_EMAIL_LINK_NOT_READY');
+          const release=await safeGet('https://firebaserules.googleapis.com/v1/projects/'+project+'/releases/cloud.firestore');
+          if(!/^projects\/sales-management-cc116\/rulesets\/[A-Za-z0-9_-]+$/.test(release?.rulesetName||''))throw Error('STOP_RULESET_NAME');
+          const rule=await safeGet('https://firebaserules.googleapis.com/v1/'+release.rulesetName);
+          if(rule?.source?.files?.length!==1||typeof rule.source.files[0].content!=='string')throw Error('STOP_RULESET_SHAPE');
+          const ruleHash=createHash('sha256').update(rule.source.files[0].content.replace(/\r\n/g,'\n').trim()).digest('hex');
+          const reviewedHash='d1d9998d874a1a31c81ddf6996e08cd9de3a3d13bd684e245140bf03cab32179';
+          console.log('LIVE_RULES_REVIEWED '+(ruleHash===reviewedHash?'PASS':'MISMATCH'));
+          if(ruleHash!==reviewedHash)throw Error('STOP_FINANCE_RULES_CHANGED');
+          const names=['getPartnerWorkspace','managePartnerWorkspace','acceptPartnerWorkspaceInvite','submitPartnerWorkspaceCounts','sendMissingReportReminders'];
+          for(const name of names){
+            const fn=await safeGet('https://cloudfunctions.googleapis.com/v2/projects/'+project+'/locations/asia-northeast1/functions/'+name);
+            if(fn.state!=='ACTIVE'||fn.environment!=='GEN_2')throw Error('STOP_FUNCTION_INACTIVE_'+name);
+            console.log('LIVE_FUNCTION_ACTIVE '+name);
+          }
+          const response=await fetch('https://nico-factory.web.app/',{cache:'no-store',redirect:'error'});
+          if(response.status!==200)throw Error('STOP_HOSTING_HTTP_'+response.status);
+          const html=await response.text();
+          for(const marker of ['営業実績管理','partnerSameAppNavigation','partnerPanelRecord','pInlineCountFields'])
+            if(!html.includes(marker))throw Error('STOP_HOSTING_MARKER_MISSING');
+          console.log('LIVE_PAGE_READONLY '+JSON.stringify({http:response.status,sha256:createHash('sha256').update(html).digest('hex'),hasSameAppPartnerForm:true}));
+          const anonymous=await fetch('https://asia-northeast1-sales-management-cc116.cloudfunctions.net/getPartnerWorkspace',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"data":{}}'});
+          if(![401,403].includes(anonymous.status))throw Error('STOP_ANONYMOUS_COUNT_API_OPEN_'+anonymous.status);
+          console.log('LIVE_ANONYMOUS_API_DENIED '+anonymous.status);
+          console.log('READONLY_GATE_PASS_NO_PRODUCTION_WRITES');
+          NODE
