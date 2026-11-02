@@ -79,6 +79,40 @@ function setup(){
  return {db,api,req,zero};
 }
 
+test("existing hub Owner without legacy optional member.companyId can list and invite",async()=>{
+ const {db,api,req}=setup();
+ const ownerUserBefore=clone(db.store.get("users/h"));
+ const original=clone(db.store.get("records/old"));
+ const finance=clone(db.store.get("products/money"));
+ const ownerMember=clone(db.store.get("companies/hub/members/h"));
+ delete ownerMember.companyId; // all 8 internal authenticated accounts in the live audit lack this field
+ db.seed("companies/hub/members/h",ownerMember);
+ const list=await api.view(req("h",{date:"2026-10-31"}));
+ assert.equal(list.role,"hub");
+ assert.ok(Array.isArray(list.registeredCompanies));
+ const invite=await api.manage(req("h",{action:"hubCreateInvite",companyName:"新会社",role:"leader",email:"n@example.com"}));
+ assert.match(invite.token,/^[A-Za-z0-9_-]{43}$/);
+ assert.deepEqual(db.store.get("companies/hub/members/h"),ownerMember);
+ assert.deepEqual(db.store.get("users/h"),ownerUserBefore);
+ assert.deepEqual(db.store.get("records/old"),original);
+ assert.deepEqual(db.store.get("products/money"),finance);
+});
+
+test("existing hub Owner still denies a present foreign membership companyId and revoked roles",async()=>{
+ for(const mutate of [
+  m=>{m.companyId="other";},
+  m=>{m.companyRole="member";},
+  m=>{m.active=false;}
+ ]){
+  const {db,api,req}=setup(),member=clone(db.store.get("companies/hub/members/h"));
+  mutate(member);db.seed("companies/hub/members/h",member);
+  const before=clone([...db.store]);
+  await assert.rejects(api.view(req("h",{date:"2026-10-31"})),e=>e.code==="permission-denied");
+  await assert.rejects(api.manage(req("h",{action:"hubCreateInvite",companyName:"新会社",role:"leader",email:"n@example.com"})),e=>e.code==="permission-denied");
+  assert.deepEqual([...db.store],before);
+ }
+});
+
 test("first company is created with direct leader/member invite, no representative or finance mutation",async()=>{
  for(const role of ["leader","member"]){
   const {db,api,req,zero}=setup();
