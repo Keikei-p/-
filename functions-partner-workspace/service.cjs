@@ -49,6 +49,12 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   if(sum!==counts.NURO)fail("invalid-argument");
   return {NURO:{...normalized}};
  };
+ const validateWorkLocation=x=>{
+  if(x===undefined||x===null)return "";
+  if(typeof x!=="string"||x.length>100||/[\x00-\x1f\x7f]/.test(x))
+   fail("invalid-argument");
+  return x.trim();
+ };
  const validPrivateName=x=>typeof x==="string"&&x.trim().length>0&&
  x.trim().length<=80&&!money.test(x);
  const validatePrivateCounts=x=>{
@@ -1005,7 +1011,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    if(Object.keys(privateCounts.counts).some(id=>!privateIdSet.has(id))||
       (x.privateTotalCount??0)!==privateCounts.total)fail("data-loss");
    const cbCounts=validateCbCounts(x.cbCounts,counts);
-   rows.push({staffId:x.staffId,counts,totalCount:total,version:x.version,
+   const workLocation=validateWorkLocation(x.workLocation);
+   rows.push({staffId:x.staffId,counts,totalCount:total,version:x.version,workLocation,
      teamIdSnapshot,privateCounts:privateCounts.counts,privateTotalCount:privateCounts.total,
      cbCounts});
   }
@@ -1035,11 +1042,13 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
       fail("data-loss");
     const cbCounts=validateCbCounts(x.cbCounts,next.counts);
     const previousCbCounts=validateCbCounts(x.previousCbCounts,before.counts);
+    const workLocation=validateWorkLocation(x.workLocation);
+    const previousWorkLocation=validateWorkLocation(x.previousWorkLocation);
     audits.push({staffId:x.staffId,
      staffName:validName(x.staffNameSnapshot)?clean(x.staffNameSnapshot):allowed.get(x.staffId).name,
      version:x.version,date,totalCount:next.total,previousTotalCount:before.total,
      counts:next.counts,previousCounts:before.counts,
-     cbCounts,previousCbCounts,
+     cbCounts,previousCbCounts,workLocation,previousWorkLocation,
      privateTotalCount:nextPrivate.total,previousPrivateTotalCount:prevPrivate.total});
    }
    audits.sort((a,b)=>a.staffName.localeCompare(b.staffName,"ja")||
@@ -1057,6 +1066,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   const {counts,total}=validateCounts(d.counts);
   const requestedCb=Object.hasOwn(d,"cbCounts")?
    validateCbCounts(d.cbCounts,counts):undefined;
+  const workLocation=validateWorkLocation(d.workLocation);
   const hasPrivateCounts=Object.prototype.hasOwnProperty.call(d,"privateCounts");
   const requestedPrivate=hasPrivateCounts?validatePrivateCounts(d.privateCounts).counts:null;
   const s=await scope(a.uid,null,d.workspaceCompanyId);
@@ -1081,6 +1091,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
       fail("failed-precondition");
    }
    const old=oldSnap.data()||{},existing=totalSnap.data()||{};
+   const previousWorkLocation=oldSnap.exists?
+     validateWorkLocation(old.workLocation):"";
    if(oldSnap.exists&&old.version!==d.expectedVersion||!oldSnap.exists&&d.expectedVersion!==0)
      fail("aborted");
    if(d.expectedVersion>=999)fail("resource-exhausted");
@@ -1120,7 +1132,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    const nowStamp=FieldValue.serverTimestamp(),nextVersion=d.expectedVersion+1;
    const row={companyId:s.cid,hubCompanyId:s.hubId,staffId,date,counts,totalCount:total,
      privateCounts:privateValidated.counts,privateTotalCount:privateValidated.total,
-     cbCounts:nextCb,
+     cbCounts:nextCb,workLocation,
      version:nextVersion,staffNameSnapshot,teamIdSnapshot,
      updatedByUid:a.uid,updatedAt:nowStamp};
    if(oldSnap.exists)tx.update(er,row);else tx.create(er,{...row,createdAt:nowStamp});
@@ -1131,7 +1143,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    if(totalSnap.exists)tx.update(summary,sum);else tx.create(summary,{...sum,createdAt:nowStamp});
    const audit=collection(s.cid,"partnerWorkAudits").doc(date+"__"+staffId+"__v"+nextVersion);
    tx.create(audit,{...row,previousCounts:prior,previousCbCounts:oldCb,
-     previousPrivateCounts:previousPrivate,
+     previousWorkLocation,previousPrivateCounts:previousPrivate,
      createdAt:nowStamp});
    return {saved:true,staffId,date,version:nextVersion,totalCount:total,
      privateTotalCount:privateValidated.total};
