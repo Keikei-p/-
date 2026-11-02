@@ -1486,3 +1486,41 @@ test("archiving cannot disable linked accounts, arbitrary staff or users from ot
  assert.equal(db.store.get("companies/partner/partnerWorkStaff/"+id).active,true);
  assert.deepEqual(db.store.get("users/p"),before.find(([key])=>key==="users/p")[1]);
 });
+
+
+test("shared partner and owner breakdown use identical sanitized NURO cashback-tier counts, never prices",async()=>{
+ const {db,api,req,zero}=setup();
+ const team=(await api.manage(req("p",{action:"addTeam",name:"1班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"佐藤",teamId:team}))).staffId;
+ const date="2026-10-31",counts={...zero(),NURO:3,YMMNP:2};
+ await api.submit(req("p",{date,staffId:staff,counts,
+  cbCounts:{NURO:{"0":1,"60000":2}},expectedVersion:0}));
+ const before=clone([...db.store]);
+ const partner=await api.view(req("p",{date,sharedRankings:true}));
+ const owner=await api.view(req("h",{date,sharedRankings:true}));
+ const ownerDetails=await api.view(req("h",{date,partnerCompanyId:"partner"}));
+ assert.deepEqual(partner.people[0].cbCounts,owner.people[0].cbCounts);
+ assert.deepEqual(partner.teams[0].cbCounts,owner.teams[0].cbCounts);
+ assert.equal(partner.teams[0].cbCounts.NURO["0"],1);
+ assert.equal(partner.teams[0].cbCounts.NURO["60000"],2);
+ assert.equal(partner.teams[0].cbCounts.NURO["20000"],0);
+ assert.equal(ownerDetails.partnerTeamDetails.teams[0].members[0].cbCounts.NURO["60000"],2);
+ assert.equal(ownerDetails.partnerTeamDetails.teams[0].cbCounts.NURO["0"],1);
+ for(const output of [partner,owner,ownerDetails.partnerTeamDetails]){
+  const str=JSON.stringify(output);
+  assert.doesNotMatch(str,/unitPrice|totalRevenue|revenuePerUnit|commission|salesAmount|privateCounts|workLocation/);
+ }
+ assert.deepEqual([...db.store],before,"read-only count display never modifies source");
+});
+test("unclassified historic NURO entries stay unclassified and are never mapped to CB0",async()=>{
+ const {db,api,req,zero}=setup();
+ const team=(await api.manage(req("p",{action:"addTeam",name:"旧班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"過去社員",teamId:team}))).staffId;
+ const date="2026-10-31";
+ await api.submit(req("p",{date,staffId:staff,counts:{...zero(),NURO:4},expectedVersion:0}));
+ const shared=await api.view(req("p",{date,sharedRankings:true}));
+ assert.equal(shared.teams[0].cbCounts.NURO["0"],0);
+ assert.equal(shared.teams[0].cbCounts.NURO.unclassified,4);
+ const owner=await api.view(req("h",{date,partnerCompanyId:"partner"}));
+ assert.equal(owner.partnerTeamDetails.teams[0].cbCounts.NURO.unclassified,4);
+});

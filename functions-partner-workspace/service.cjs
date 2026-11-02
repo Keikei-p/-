@@ -49,6 +49,19 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   if(sum!==counts.NURO)fail("invalid-argument");
   return {NURO:{...normalized}};
  };
+ // Cashback tiers are metadata, never prices or revenues.
+ // Legacy saved NURO without a CB breakdown remains explicitly unclassified.
+ const tierCounts=(raw,counts)=>{
+  const source=validateCbCounts(raw,counts)?.NURO;
+  const out=Object.fromEntries(PARTNER_CB_OPTIONS.NURO.map(k=>[k,0]));
+  if(source)for(const k of PARTNER_CB_OPTIONS.NURO)out[k]=source[k]||0;
+  else out.unclassified=counts.NURO;
+  return out;
+ };
+ const sumTiers=(target,source)=>{
+  for(const tier of PARTNER_CB_OPTIONS.NURO)target[tier]+=source[tier]||0;
+ };
+ const blankTiers=()=>Object.fromEntries(PARTNER_CB_OPTIONS.NURO.map(k=>[k,0]));
  const validateWorkLocation=x=>{
   if(x===undefined||x===null)return "";
   if(typeof x!=="string"||x.length>100||/[\x00-\x1f\x7f]/.test(x))
@@ -775,16 +788,18 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      const tid=ID.test(e.teamIdSnapshot||"")?e.teamIdSnapshot:"";
      const safeName=validName(e.staffNameSnapshot)?
       clean(e.staffNameSnapshot):"担当者未確認";
+     const cb=tierCounts(e.cbCounts,item.counts);
      const key=crypto.createHash("sha256").update(cid+"\n"+e.staffId)
       .digest("hex");
      members.push({key,name:safeName,companyName:company.name,
       companyId:cid,teamKey:crypto.createHash("sha256").update(cid+"\nteam\n"+tid).digest("hex"),
       teamName:savedTeams.get(tid)||"登録当時の班未確認",
-      totalCount:item.total,counts:item.counts});
+      totalCount:item.total,counts:item.counts,cbCounts:{NURO:cb}});
      const bucket=group.get(tid)||{name:savedTeams.get(tid)||"登録当時の班未確認",
-      totalCount:0,counts:Object.fromEntries(KEYS.map(k=>[k,0]))};
+      totalCount:0,counts:Object.fromEntries(KEYS.map(k=>[k,0])),cbCounts:{NURO:blankTiers()}};
      bucket.totalCount+=item.total;
      for(const k of KEYS)bucket.counts[k]+=item.counts[k];
+     sumTiers(bucket.cbCounts.NURO,cb);
      group.set(tid,bucket);
     }
     // Legacy company-level reports have no verified staff ledger. They
@@ -872,7 +887,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      if(t.active)rows.set(sn.id,{
       teamId:sn.id,name:clean(t.name),
       counts:Object.fromEntries(KEYS.map(k=>[k,0])),
-      totalCount:0,reportedStaffCount:0,members:[]
+      totalCount:0,reportedStaffCount:0,members:[],cbCounts:{NURO:blankTiers()}
      });
     }
     let unverifiedTeamCount=0,verifiedSharedCount=0;
@@ -893,11 +908,14 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      row.totalCount+=item.total;
      verifiedSharedCount+=item.total;
      for(const k of KEYS)row.counts[k]+=item.counts[k];
+     const cb=tierCounts(e.cbCounts,item.counts);
+     sumTiers(row.cbCounts.NURO,cb);
      // Immutable name snapshot, no financial originals or private products.
      // No staffId, UID or email escapes the Hub Owner count-only API.
      const safeName=validName(e.staffNameSnapshot)?clean(e.staffNameSnapshot):
       "担当者未確認";
-     row.members.push({name:safeName,totalCount:item.total,counts:{...item.counts}});
+     row.members.push({name:safeName,totalCount:item.total,counts:{...item.counts},
+      cbCounts:{NURO:cb}});
     }
     partnerTeamDetails={
      partnerCompanyId:selectedPartnerId,companyName:chosen.name,date,
