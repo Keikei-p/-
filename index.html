@@ -12695,7 +12695,7 @@ function installOwnerCombinedCountCards(){
   dateInput.max=getTodayString();dateLabel.append(dateInput);
   const button=document.createElement("button");button.type="button";
   button.className="team-action-button";button.textContent="みんなの件数を更新";
-  button.onclick=()=>loadSharedDailyStandings(name);
+  button.onclick=()=>loadSharedDailyStandings(name,true);
   const status=document.createElement("p");status.id="ownerSharedStatus"+name;
   status.setAttribute("role","status");
   const body=document.createElement("div");body.id="ownerSharedContent"+name;
@@ -12703,9 +12703,15 @@ function installOwnerCombinedCountCards(){
   card.append(heading,dateLabel,button,status,body);parent.append(card);
  }
 }
+function canReadSharedCountOnlyRanks(){
+ return !!currentUser?.emailVerified&&!!currentUserData?.companyId&&
+  currentUserData.active!==false&&currentCompanyData?.companyKind!=="partner"&&
+  currentUserData.accessKind!=="partner"&&
+  currentUserData.memberType!=="cooperator";
+}
 function setOwnerCombinedCountCardVisibility(name){
  const card=document.getElementById("ownerSharedCard"+name);
- if(card)card.hidden=!canLoadPartnerRanking();
+ if(card)card.hidden=!canReadSharedCountOnlyRanks();
 }
 installOwnerCombinedCountCards();
 
@@ -12828,10 +12834,10 @@ function renderSharedCountTeamDetails(parent,report){
   partnerMainAppendRow(parent,"🤝 "+name,"未報告・0件とは扱いません");
 }
 
-async function loadSharedDailyStandings(where){
+async function loadSharedDailyStandings(where,force=false){
  const partner=where==="partner"||where==="partnerDetail";
  const detail=where==="partnerDetail"||where==="ownerDetail";
- if(!partner&&!canLoadPartnerRanking())return;
+ if(!partner&&!canReadSharedCountOnlyRanks())return;
  const named=(!partner&&["Individual","Product","Team"].includes(where))?where:null;
  const dateField=partner?"pInlineDate":named?"ownerSharedDate"+named:"ownerPartnerDashboardDate";
  const statusField=detail?(partner?"partnerSharedDetailStatus":"ownerSharedDetailStatus"):
@@ -12853,8 +12859,7 @@ async function loadSharedDailyStandings(where){
    payload.workspaceCompanyId=partnerInlineWorkspaceCompany;
   const cacheKey=[uid,partner?partnerInlineWorkspaceCompany:"hub",date].join("|");
   const cached=sharedDailyRankCache.get(cacheKey);
-  const useCached=where!=="partner"&&where!=="owner"&&where!=="partnerDetail"&&
-   where!=="ownerDetail"&&cached&&Date.now()-cached.checkedAt<30000;
+  const useCached=!force&&cached&&Date.now()-cached.checkedAt<30000;
   const response=useCached?cached.value:(await readPartnerWorkDay(payload)).data;
   if(seq!==sharedDailyRankingGeneration||auth.currentUser?.uid!==uid||
      date!==pInline(dateField).value)return;
@@ -12920,10 +12925,10 @@ async function loadSharedDailyStandings(where){
   console.error("shared_daily_ranking_unavailable",error?.code||"unverified");
  }
 }
-pInline("partnerSharedRankingsRefresh").onclick=()=>loadSharedDailyStandings("partner");
-pInline("ownerSharedRankingsRefresh").onclick=()=>loadSharedDailyStandings("owner");
-pInline("partnerSharedDetailRefresh").onclick=()=>loadSharedDailyStandings("partnerDetail");
-pInline("ownerSharedDetailRefresh").onclick=()=>loadSharedDailyStandings("ownerDetail");
+pInline("partnerSharedRankingsRefresh").onclick=()=>loadSharedDailyStandings("partner",true);
+pInline("ownerSharedRankingsRefresh").onclick=()=>loadSharedDailyStandings("owner",true);
+pInline("partnerSharedDetailRefresh").onclick=()=>loadSharedDailyStandings("partnerDetail",true);
+pInline("ownerSharedDetailRefresh").onclick=()=>loadSharedDailyStandings("ownerDetail",true);
 
 // Partner sees original dashboard-style menu, not the finance DOM.
 function renderPartnerRankingOnlyPanel(){
