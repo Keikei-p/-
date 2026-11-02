@@ -351,6 +351,26 @@ jobs:
           if(!r.ok)process.exit(0);
           const all=(await r.json()).entries||[];
           console.log('RUNTIME_CLOUD_LOG_ENTRY_COUNT',all.length);
+          for(const e of all.slice(0,55)){
+           console.log('SAVE_API_REQUEST_META',JSON.stringify({minute:String(e.timestamp||'').slice(0,16),
+            method:String(e.httpRequest?.requestMethod||''),
+            status:Number(e.httpRequest?.status||0),severity:String(e.severity||'')}));
+          }
+          const companion=await fetch('https://logging.googleapis.com/v2/entries:list',
+           {method:'POST',headers:{Authorization:'Bearer '+signed,'Content-Type':'application/json'},
+            body:JSON.stringify({resourceNames:['projects/sales-management-cc116'],
+             filter:'resource.type="cloud_run_revision" AND resource.labels.service_name="getpartnerworkspace" AND timestamp>="2026-11-02T11:00:00Z"',
+             pageSize:70,orderBy:'timestamp desc'})});
+          console.log('GET_API_LOG_ACCESS_HTTP',companion.status);
+          if(companion.ok){
+           const readings=(await companion.json()).entries||[];
+           console.log('GET_API_REQUEST_COUNT',readings.length);
+           for(const e of readings.slice(0,35)){
+            console.log('GET_API_REQUEST_META',JSON.stringify({minute:String(e.timestamp||'').slice(0,16),
+             method:String(e.httpRequest?.requestMethod||''),
+             status:Number(e.httpRequest?.status||0),severity:String(e.severity||'')}));
+           }
+          }
           const whitelist=/PERMISSION_DENIED|INVALID_ARGUMENT|ALREADY_EXISTS|FAILED_PRECONDITION|INTERNAL|DEADLINE_EXCEEDED|UNAUTHENTICATED|UNAVAILABLE|NOT_FOUND|RESOURCE_EXHAUSTED|ABORTED|DATA_LOSS|UNIMPLEMENTED|INVALID\s+FIELD|Transaction\s+error|Cannot\s+read\s+properties|is\s+not\s+a\s+function/gi;
           for(const e of all.slice(0,35)){
            const obj=(e.jsonPayload||{}),raw=JSON.stringify(obj)+' '+String(e.textPayload||'');
