@@ -1,0 +1,99 @@
+name: NICO enable approved partner email-link method only (guarded)
+on:
+  push:
+    branches: [fix/partner-email-link-first-password-20261102]
+    paths: [.github/workflows/nico-partner-enable-email-link-once-20261102.yml]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: nico-production-auth-email-link-once
+  cancel-in-progress: false
+jobs:
+  enable:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Bind to approved release evidence and unchanged production main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/fix/partner-email-link-first-password-20261102
+          test "$(gh api repos/Keikei-p/-/branches/main --jq '.commit.sha')" = 283bc749c97756fc3de03671ae7bac4eccdc46c3 || { echo STOP_MAIN_CHANGED; exit 1; }
+          test "$(gh api repos/Keikei-p/-/actions/runs/41388293487 --jq '.conclusion')" = success || { echo STOP_FINANCE_READONLY_VERIFICATION_MISSING; exit 1; }
+          node -e "const f=require('fs');if(JSON.parse(f.readFileSync('.firebaserc','utf8')).projects.default!=='sales-management-cc116')process.exit(1)"
+      - name: Install existing auth SDK
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Enable exactly Email Link alongside existing Email Password, then read back
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-email-link-identity.json"
+          chmod 600 "$RUNNER_TEMP/nico-email-link-identity.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/nico-email-link-identity.json"
+          node --input-type=module <<'NODE'
+          import {createRequire} from 'node:module';
+          const require=createRequire(new URL('./functions/package.json',import.meta.url));
+          const credential=require('firebase-admin/app').applicationDefault();
+          const origin='https://identitytoolkit.googleapis.com/admin/v2/projects/sales-management-cc116/config';
+          const fail=code=>{throw Error('STOP_'+code)};
+          let changed=false;
+          try{
+            const {access_token}=await credential.getAccessToken();
+            const headers={Authorization:'Bearer '+access_token};
+            const read=async()=>{
+              const r=await fetch(origin,{headers,redirect:'error'});
+              if(!r.ok)fail('AUTH_READ_'+r.status);
+              return r.json();
+            };
+            const before=await read();
+            if(before?.signIn?.email?.enabled!==true||
+               !Array.isArray(before?.authorizedDomains)||
+               !before.authorizedDomains.includes('nico-factory.web.app'))
+              fail('EMAIL_PROVIDER_OR_DOMAIN_MISMATCH');
+            if(before.signIn.email.passwordRequired===false){
+              console.log('AUTH_RESULT '+JSON.stringify({emailPasswordEnabled:true,emailLinkEnabled:true,domainAuthorized:true,changed:false,project:'sales-management-cc116'}));
+              process.exit(0);
+            }
+            if(before.signIn.email.passwordRequired!==true)fail('UNEXPECTED_EMAIL_CONFIG');
+            // This exact FieldMask does not touch existing sign-in/password users,
+            // account objects, allowed domains, other providers, Firestore or data.
+            const body={signIn:{email:{passwordRequired:false}}};
+            if(Object.keys(body).join()!=='signIn'||
+               Object.keys(body.signIn).join()!=='email'||
+               Object.keys(body.signIn.email).join()!=='passwordRequired')
+              fail('PATCH_SCOPE');
+            const r=await fetch(origin+'?updateMask=signIn.email.passwordRequired',{
+              method:'PATCH',headers:{...headers,'Content-Type':'application/json'},
+              body:JSON.stringify(body),redirect:'error'
+            });
+            if(!r.ok)fail('AUTH_PATCH_'+r.status);
+            changed=true;
+            const after=await read();
+            if(after?.signIn?.email?.enabled!==true||
+               after.signIn.email.passwordRequired!==false||
+               !Array.isArray(after.authorizedDomains)||
+               !after.authorizedDomains.includes('nico-factory.web.app'))
+              fail('AUTH_READBACK');
+            console.log('AUTH_RESULT '+JSON.stringify({project:'sales-management-cc116',
+              emailPasswordEnabled:true,emailLinkEnabled:true,domainAuthorized:true,
+              changed,productionDataWrites:0}));
+          }catch(e){
+            console.error(/^STOP_[A-Z0-9_]+$/.test(e.message)?e.message:'STOP_AUTH_REDACTED');
+            process.exitCode=1;
+          }
+          NODE
+      - name: Remove identity
+        if: always()
+        run: rm -f "$RUNNER_TEMP/nico-email-link-identity.json"
