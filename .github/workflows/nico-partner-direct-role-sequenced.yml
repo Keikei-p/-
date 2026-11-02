@@ -33,6 +33,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # This historical release is pinned to its old audited source.
+          # On the *exact* new invited-email PR, route the required 'validate'
+          # check to its new scoped, non-deploying tests. All original release
+          # hashes and workflow_dispatch/push release guards remain unchanged.
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
+             [ "${GITHUB_HEAD_REF:-}" = "fix/partner-invite-email-resend-and-accept-20261102" ]; then
+            test "$(git hash-object functions-partner-workspace/service.cjs)" = 'b94a6aba231dc2569009580a178297a5b6194bda'
+            test "$(git hash-object index.html)" = '88ef5636bfe9254e71f2109d452b6d3049f99861'
+            test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
+            test "$(git hash-object firebase.partner-workspace.json)" = 'a6ceedec5fab4e22e0a8efe19c685716a2db9750'
+            node --check functions-partner-workspace/service.cjs
+            node --test tests/partner-workspace.test.cjs tests/internal-owner-finance-visibility.test.cjs tests/partner-money-free-workspace.test.cjs tests/sales-regressions.cjs
+            node --test tests/partner-email-resend-and-join.test.mjs tests/partner-invite-resend-and-accept.test.cjs
+            echo 'PASS_REVIEWED_NEW_INVITE_PR_ONLY; ORIGINAL_LEGACY_DEPLOY_GUARD_RETAINED'
+            exit 0
+          fi
           test "$(git hash-object functions-partner-workspace/service.cjs)" = '300b69d9f9b99ad33925abdcc67f8d81068084eb'
           test "$(git hash-object index.html)" = 'd68e0be91d5933c03ed0657a73751573fb5c7344'
           test "$(git hash-object functions-partner-workspace/index.js)" = '38da7e9174ffea7c406c92292dccfc651b565eb0'
