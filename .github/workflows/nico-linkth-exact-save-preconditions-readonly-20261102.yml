@@ -243,7 +243,7 @@ jobs:
           const require=createRequire(process.cwd()+'/functions/package.json');
           const {initializeApp,applicationDefault,getApp}=require('firebase-admin/app');
           const {getFirestore}=require('firebase-admin/firestore');
-          initializeApp({credential:applicationDefault(),projectId:'sales-management-cc116',name:'linkth-existing-doc-safe-iam'});
+          initializeApp({credential:applicationDefault(),projectId:'sales-management-cc116'},'linkth-existing-doc-safe-iam');
           const db=getFirestore(getApp('linkth-existing-doc-safe-iam'));
           const companyQuery=await db.collection('companies').where('name','==','株式会社LinkTh').limit(2).get();
           if(companyQuery.size!==1)throw Error('STOP_NOT_EXACTLY_ONE_EXISTING_COMPANY');
