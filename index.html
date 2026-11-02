@@ -27936,7 +27936,26 @@ async function mergedPartnerRankingDay(date){
   const newRows=validatedPartnerRankingDay(staff.data,date);
   const selected=new Map(oldRows.map(row=>[row.id,row]));
   for(const row of newRows)selected.set(row.id,row);
-  return [...selected.values()];
+  const result=[...selected.values()];
+  // A registered, approved partner missing from BOTH ledgers is unreported,
+  // not a verified zero. Preserve available counts but never certify ranks.
+  const registered=staff.data?.registeredCompanies;
+  let coverageComplete=true;
+  if(Array.isArray(registered)){
+    if(registered.length>100)throw Error("partner_month_scope_invalid");
+    const seen=new Set();
+    for(const company of registered){
+      const id=company?.partnerCompanyId;
+      if(typeof id!=="string"||!/^[A-Za-z0-9_-]{1,128}$/.test(id)||
+         seen.has(id)||typeof company.active!=="boolean")
+        throw Error("partner_month_coverage_invalid");
+      seen.add(id);
+      if(company.active&&!selected.has(id))coverageComplete=false;
+    }
+  }
+  // Non-enumerable metadata keeps the original row-array API compatible.
+  Object.defineProperty(result,"coverageComplete",{value:coverageComplete});
+  return result;
 }
 async function readPartnerRankingMonth(month){
   if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month))
@@ -27957,6 +27976,7 @@ async function readPartnerRankingMonth(month){
       cursor=new Date(cursor.getTime()+86400000))
     days.push(cursor.toISOString().slice(0,10));
   const map=new Map();
+  let coverageComplete=true;
   // Bounded network concurrency; never request all 31 Functions at once.
   for(let i=0;i<days.length;i+=4){
     const dates=days.slice(i,i+4);
@@ -27975,6 +27995,7 @@ async function readPartnerRankingMonth(month){
       return rows;
     }));
     responses.forEach((rows,index)=>{
+      if(rows.coverageComplete===false)coverageComplete=false;
       for(const item of rows){
         const old=map.get(item.id)||{
           id:item.id,name:item.name,totalCount:0,
@@ -27990,7 +28011,8 @@ async function readPartnerRankingMonth(month){
       }
     });
   }
-  return {complete:true,rows:[...map.values()],reason:""};
+  return {complete:coverageComplete,rows:[...map.values()],
+    reason:coverageComplete?"":"協力店に未報告の日があります。月間順位は未確定です。"};
 }
 function currentPartnerRankingRows(){
   if(!canLoadPartnerRanking()||
