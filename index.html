@@ -13439,7 +13439,8 @@ function partnerInlineRenderCounts(){
   input.addEventListener("input",renderPartnerEntryTotals);
   label.append(input);grid.append(label);
  }
- pInline("pInlineSave").disabled=!staffId||partnerInlineBusy;
+ pInline("pInlineSave").disabled=!staffId||partnerInlineBusy||(!entry&&
+  !allowedTeams.some(t=>t.id===teamSelect.value));
  pInline("pInlineVersion").textContent=entry?"登録済み・第"+entry.version+"版":"未登録";
  pInline("pInlineSave").textContent=entry?"変更した件数を保存（訂正）":"実績を一括登録";
  renderPartnerEntryTotals();
@@ -13659,7 +13660,7 @@ async function partnerInlineRun(work){
  partnerInlineBusy=true;
  // A date/staff change or a second tap during an asynchronous save must never
  // change what day/person gets verified. Preserve input values on any failure.
- const locks=["pInlineDate","pInlineRecordDate","pInlineStaff","pInlineRefresh",
+ const locks=["pInlineDate","pInlineRecordDate","pInlineStaff","pInlineWorkingTeam","pInlineWorkLocation","pInlineRefresh",
   "pInlineZero","pInlineClear"].map(pInline).filter(Boolean);
  const fields=pInline("pInlineCountFields");
  if(fields?.querySelectorAll)locks.push(...fields.querySelectorAll("input"));
