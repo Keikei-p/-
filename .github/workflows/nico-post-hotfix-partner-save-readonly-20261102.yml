@@ -1,4 +1,5 @@
 name: NICO linkth counts and callable logs after hotfix (READ ONLY)
+# Latest LinkTh persisted daily counts reconciliation triggered after history UI tests.
 on:
   push:
     branches: [diagnose/partner-save-post-hotfix-readonly-20261102]
