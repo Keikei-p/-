@@ -32,7 +32,11 @@ test("partner published catalog displays only sanitized server-returned rows",()
  assert.match(html,/loadPartnerPublishedProductList\(\)/);
  assert.match(html,/Object\.keys\(product\)\.sort\(\)\.join\("\|"\)!=="id\|name\|sortOrder"/);
  assert.match(html,/partnerMainValidId\(product\.id\)/);
- assert.match(html,/row\.append\(name\);target\.append\(row\)/);
+ assert.match(html,/row\.append\(name\)/);
+ assert.match(html,/target\.append\(row\)/);
+ assert.match(html,/id="partnerCatalogLinkStatus"/);
+ assert.match(html,/async function saveCatalogCountLink\(/);
+ assert.match(html,/readPartnerCountLinks/);
 });
 test("the redundant Owner ranking inside team details is hidden, while team details stay available",()=>{
  assert.match(html,/id="ownerSharedRankingsSection" style="display:none"/);
