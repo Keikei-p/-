@@ -12,7 +12,7 @@ concurrency:
   group: nico-partner-legacy-owner-test-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: false
 jobs:
-  validate:
+  legacy-owner-hotfix-validate:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
@@ -59,12 +59,12 @@ jobs:
            throw Error('STOP_PROJECT');
           NODE
   release:
-    needs: validate
+    needs: legacy-owner-hotfix-validate
     concurrency:
       group: nico-partner-workspace-production
       cancel-in-progress: false
     if: >-
-      ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.actor == 'Keikei-p' && startsWith(github.event.head_commit.message, 'release: fix legacy Owner partner invites') && needs.validate.result == 'success' }}
+      ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.actor == 'Keikei-p' && startsWith(github.event.head_commit.message, 'release: fix legacy Owner partner invites') && needs.legacy-owner-hotfix-validate.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
