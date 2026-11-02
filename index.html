@@ -4821,6 +4821,13 @@ body.product-reordering .product-list {
   </section>
   <section id="partnerPanelRankings" data-partner-view="ranking" hidden>
     <div class="p-inline-card"><h3 id="partnerRankingHeading">🏆 ランキング（件数のみ）</h3><div id="pInlineRanking" class="p-inline-list"></div></div>
+    <div class="p-inline-card" id="partnerSharedRankingsSection">
+      <h3>🤝 協力店合同ランキング（選択日）</h3>
+      <p class="p-inline-muted">承認済みの協力店で共通の件数・順位です。直営分は共有準備中のため含みません。</p>
+      <button id="partnerSharedRankingsRefresh" type="button" class="team-action-button">みんなのランキングを更新</button>
+      <p id="partnerSharedRankingsStatus" role="status"></p>
+      <div id="partnerSharedRankingContent" class="p-inline-list"></div>
+    </div>
   </section>
   <section id="partnerPanelDetail" data-partner-view="detail" hidden>
     <div class="p-inline-card"><h3>📋 班別詳細</h3><div id="pInlineTeamDetails" class="p-inline-list"></div></div>
@@ -6322,6 +6329,13 @@ body.product-reordering .product-list {
         <div id="allTeamsOverviewList"></div>
         <section id="ownerPartnerDashboardDetails" class="p-inline-card" hidden aria-label="協力店の会社別班詳細">
           <h3>🤝 協力店</h3>
+          <div class="p-inline-card" id="ownerSharedRankingsSection">
+            <h3>🏆 直営＋協力店 件数ランキング（選択日）</h3>
+            <p class="p-inline-muted">直営は読込済みの日別件数、協力店は承認済み件数だけを合算します。</p>
+            <button id="ownerSharedRankingsRefresh" type="button" class="team-action-button">合同ランキングを更新</button>
+            <p id="ownerSharedRankingsStatus" role="status"></p>
+            <div id="ownerSharedRankingContent" class="p-inline-list"></div>
+          </div>
           <div class="p-inline-grid">
             <label class="p-inline-field">件数の確認日<input id="ownerPartnerDashboardDate" type="date"></label>
             <button id="ownerPartnerDashboardRefresh" type="button" class="team-action-button">協力店の班別件数を表示</button>
