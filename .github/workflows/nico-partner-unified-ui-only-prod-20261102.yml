@@ -1,0 +1,159 @@
+name: NICO same app partner dashboard one-file guarded production UI release
+on:
+  push:
+    branches: [release/nico-partner-unified-ui-only-20261102]
+    paths: [.github/workflows/nico-partner-unified-ui-only-prod-20261102.yml]
+permissions:
+  contents: read
+concurrency:
+  group: nico-partner-workspace-production
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false, fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Confirm exact UI-only scope, original owner finance and unchanged Functions/Rules
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object index.html)" = d9ab0b0f48425208854842937bb86d694d7c0ea2
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 55b16051c09810778f79256097446aa0dec1b36e
+          test "$(git hash-object functions-partner-workspace/index.js)" = 38da7e9174ffea7c406c92292dccfc651b565eb0
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object tools/hosting/surgical-existing-index.mjs)" = 1c6923e06135dc480e11f342e44f5e74f8c5bbc7
+          node -e "if(JSON.parse(require('fs').readFileSync('.firebaserc','utf8')).projects.default!=='sales-management-cc116')process.exit(1)"
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const s=fs.readFileSync('index.html','utf8');
+          const source=s.match(/<script type="module">([\s\S]*?)<\/script>/)?.[1];
+          if(!source||!s.includes('monthlyRevenue')||!s.includes('signInWithEmailAndPassword')||
+             !s.includes('partnerInlineSave')||!s.includes('partnerSameAppNavigation'))
+            throw Error('STOP_ORIGINAL_OWNER_FINANCE_AUTH_OR_PARTNER_SCREEN_MISSING');
+          fs.writeFileSync('/tmp/nico-ui-prod-verify.mjs',source);
+          NODE
+          node --check /tmp/nico-ui-prod-verify.mjs
+      - name: Run all relevant owner finance, team, ranking, CB, invite and safe save regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/partner-unified-rank-team-save.test.mjs
+          node --test tests/dashboard-inline-original-partner-parity.test.mjs
+          node --test tests/partner-company-parity-release.test.mjs
+          node --test tests/partner-money-free-workspace.test.cjs
+          node --test tests/internal-owner-finance-visibility.test.cjs
+          node --test tests/partner-workspace.test.cjs
+          node --test tests/partner-count-dashboard.test.cjs
+          node --test tests/partner-email-resend-and-join.test.mjs
+          node --test tests/surgical-existing-index.test.mjs
+          echo PASS_FINANCE_PROTECTED_UI_ONLY_CANDIDATE
+  release:
+    needs: validate
+    if: ${{ github.repository == 'Keikei-p/-' && github.ref == 'refs/heads/release/nico-partner-unified-ui-only-20261102' && needs.validate.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NICO_PARTNER_RELEASE_CONFIRMATION: CONFIRM_ADD_PARTNER_RANKING_INDEX_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false, fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Confirm existing main and exact production source unchanged
+        env: {GH_TOKEN: ${{ github.token }}}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)" = 283bc749c97756fc3de03671ae7bac4eccdc46c3 || { echo STOP_MAIN_CHANGED; exit 1; }
+          test "$(git hash-object index.html)" = d9ab0b0f48425208854842937bb86d694d7c0ea2
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          curl -fsSL --retry 3 --max-time 35 'https://nico-factory.web.app/?before_partner_ui_release=20261102' > "$RUNNER_TEMP/owner-live-before.html"
+          git show 6c571d5e0ed26a62d8cdea47be229e6113514c6d:index.html > "$RUNNER_TEMP/owner-verified-before.html"
+          cmp -s "$RUNNER_TEMP/owner-live-before.html" "$RUNNER_TEMP/owner-verified-before.html" || { echo STOP_UNKNOWN_LIVE_SOURCE; exit 1; }
+          echo PASS_EXACT_OLD_LIVE_INDEX_BYTES
+      - name: Load existing scoped Firebase identity, never echo secret
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-ui-release-sa.json"
+          chmod 600 "$RUNNER_TEMP/nico-ui-release-sa.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-ui-release-sa.json" >> "$GITHUB_ENV"
+      - name: Install ONLY existing read-only GCP audit client
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Confirm live finance Rules, recent backup and unchanged four partner Functions (READ ONLY)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {createRequire} from 'node:module';
+          import {createHash} from 'node:crypto';
+          import {inspect} from './tools/production/inspect-firestore-backups-readonly.mjs';
+          const require=createRequire(process.cwd()+'/functions/package.json');
+          const cred=require('firebase-admin/app').applicationDefault();
+          const token=(await cred.getAccessToken()).access_token;
+          const get=async u=>{
+            const r=await fetch(u,{headers:{Authorization:'Bearer '+token},redirect:'error'});
+            if(!r.ok)throw Error('STOP_LIVE_METADATA_'+r.status);
+            return r.json();
+          };
+          const rulesRoot='https://firebaserules.googleapis.com/v1/';
+          const rel=await get(rulesRoot+'projects/sales-management-cc116/releases/cloud.firestore');
+          const rules=await get(rulesRoot+rel.rulesetName);
+          if(rules.source?.files?.length!==1)throw Error('STOP_UNVERIFIED_RULES');
+          const digest=createHash('sha256').update(rules.source.files[0].content.replace(/\r\n/g,'\n').trim()).digest('hex');
+          if(digest!=='d1d9998d874a1a31c81ddf6996e08cd9de3a3d13bd684e245140bf03cab32179')
+            throw Error('STOP_FINANCE_RULES_CHANGED');
+          const backups=await inspect(),age=Date.now()-Date.parse(backups.latestReadySnapshot||'');
+          if(!backups.readyBackups||!Number.isFinite(age)||age<0||age>48*3600000)
+            throw Error('STOP_STALE_BACKUP');
+          for(const name of ['getPartnerWorkspace','managePartnerWorkspace','acceptPartnerWorkspaceInvite',
+            'submitPartnerWorkspaceCounts','createPartnerCompanyInvitation','sendMissingReportReminders']){
+            const fn=await get('https://cloudfunctions.googleapis.com/v2/projects/sales-management-cc116/locations/asia-northeast1/functions/'+name);
+            if(fn.state!=='ACTIVE'||fn.environment!=='GEN_2')throw Error('STOP_ORIGINAL_FUNCTION_NOT_ACTIVE_'+name);
+          }
+          console.log('PASS_LIVE_RULES_BACKUP_AND_ORIGINAL_FUNCTIONS');
+          NODE
+      - name: Verify exact original Hosting version, preserve all old assets (DRY RUN)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/hosting/surgical-existing-index.mjs --dry-run > "$RUNNER_TEMP/hosting-preflight.log"
+          grep -Fq 'sites/nico-factory/versions/8efadaf1ed2482b9' "$RUNNER_TEMP/hosting-preflight.log" || { echo STOP_LIVE_VERSION_CHANGED; exit 1; }
+          grep -Fq '"keptOriginalFiles":11' "$RUNNER_TEMP/hosting-preflight.log" || { echo STOP_HOSTING_ASSET_COUNT_CHANGED; exit 1; }
+          echo PASS_ALL_11_PREVIOUS_ASSETS_PRESERVED
+      - name: Publish ONLY existing index.html, never deploy Functions or Rules
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object index.html)" = d9ab0b0f48425208854842937bb86d694d7c0ea2
+          node tools/hosting/surgical-existing-index.mjs --release
+          echo PASS_PARTNER_CANONICAL_UI_ONLY_RELEASE
+      - name: Confirm exact live HTML and original partner invitation, counts and workspace pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --max-time 35 'https://nico-factory.web.app/?after_partner_ui_release=20261102' > "$RUNNER_TEMP/owner-live-after.html"
+          cmp -s index.html "$RUNNER_TEMP/owner-live-after.html" || { echo STOP_PUBLISHED_UI_BYTES_NOT_EXACT; exit 1; }
+          for route in partner-invite.html partner-counts.html partner-workspace.html; do
+            curl -fsSL --retry 3 --max-time 35 "https://nico-factory.web.app/$route" > "$RUNNER_TEMP/$route"
+          done
+          grep -Fq 'createPartnerCompanyInvitation' "$RUNNER_TEMP/partner-invite.html"
+          grep -Fq 'getPartnerQuickCounts' "$RUNNER_TEMP/partner-counts.html"
+          grep -Fq 'submitPartnerWorkspaceCounts' "$RUNNER_TEMP/partner-workspace.html"
+          grep -Fq 'monthlyRevenue' "$RUNNER_TEMP/owner-live-after.html"
+          grep -Fq 'partnerSameAppNavigation' "$RUNNER_TEMP/owner-live-after.html"
+          echo PASS_FULL_LIVE_HTML_MATCH_AND_ALL_ORIGINAL_INVITE_ROUTES
+      - name: Remove temporary credentials
+        if: always()
+        run: rm -f "$RUNNER_TEMP/nico-ui-release-sa.json"
