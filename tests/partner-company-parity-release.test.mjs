@@ -210,6 +210,7 @@ test("corrected counts and date changes invalidate stale joint standings, while 
  assert.match(reset,/\+\+sharedDailyRankingGeneration/);
  const memory=new Map([["company-A",42]]);
  const fields={pInlineStatus:{textContent:""},pInlineInviteUrl:{value:""},
+  pInlineInviteEmailStatus:{textContent:""},pInlineInviteRecipient:{textContent:""},
   pInlineInviteResult:{hidden:false},partnerInlineWorkspace:{hidden:false},
   partnerInviteAtMain:{hidden:false}};
  const ctx={partnerInlineNonce:0,ownerPartnerTeamsNonce:0,partnerAuditNonce:0,
