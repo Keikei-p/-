@@ -78,6 +78,109 @@ function setup(){
  const zero=()=>Object.fromEntries(KEYS.map(k=>[k,0]));
  return {db,api,req,zero};
 }
+
+test("first company is created with direct leader/member invite, no representative or finance mutation",async()=>{
+ for(const role of ["leader","member"]){
+  const {db,api,req,zero}=setup();
+  for(const key of [...db.store.keys()])if(key.startsWith("companies/partner")||key==="partnerRelations/partner"||key==="users/p")db.store.delete(key);
+  const before=new Map([...db.store].map(([k,v])=>[k,clone(v)]));
+  const invite=await api.manage(req("h",{action:"hubCreateInvite",companyName:"新協力店",role,email:"n@example.com"}));
+  const joined=await api.accept(req("n",{token:invite.token,name:"参加者"}));
+  const cid=joined.partnerCompanyId,c=db.store.get("companies/"+cid);
+  assert.equal(c.name,"新協力店");assert.equal(c.ownerUid,undefined);
+  assert.equal(db.store.get("users/n").role,role);
+  assert.equal(db.store.get("users/n").companyRole,"member");
+  assert.equal(db.store.get("users/n").canViewRevenue,false);
+  assert.equal(db.store.get("users/n").canViewUnitPrice,false);
+  await api.submit(req("n",{date:"2026-10-31",staffId:"n",counts:{...zero(),NURO:2},expectedVersion:0}));
+  const own=await api.view(req("n",{date:"2026-10-31"})),hub=await api.view(req("h",{date:"2026-10-31"}));
+  assert.equal(own.records[0].totalCount,2);assert.equal(hub.partners[0].totalCount,2);
+  if(role==="leader")await api.manage(req("n",{action:"addTeam",name:"2班"}));
+  else await assert.rejects(api.manage(req("n",{action:"addTeam",name:"2班"})));
+  for(const [k,v] of before)assert.deepEqual(db.store.get(k),v);
+  const size=db.store.size;
+  await assert.rejects(api.manage(req("h",{action:"hubCreateInvite",companyName:"新協力店",role,email:"x@example.com"})),{code:"already-exists"});
+  assert.equal(db.store.size,size);
+ }
+});
+
+test("new company invite fails closed for partner callers, revoked hub owners and invalid input",async()=>{
+ for(const patch of [{companyName:""},{companyName:"売上100円"},{companyName:"Ａ".repeat(81)},{role:"owner"},{teamId:"foreign"},{email:"bad"}]){
+  const {db,api,req}=setup(),before=clone([...db.store]);
+  await assert.rejects(api.manage(req("h",{action:"hubCreateInvite",companyName:"新会社",role:"leader",email:"n@example.com",...patch})));
+  assert.deepEqual([...db.store],before);
+ }
+ const {db,api,req}=setup();
+ const payload={action:"hubCreateInvite",companyName:"新会社",role:"leader",email:"n@example.com"};
+ await assert.rejects(api.manage(req("p",payload)));
+ const transaction=db.runTransaction.bind(db);
+ db.runTransaction=fn=>{db.store.get("companies/hub/members/h").active=false;return transaction(fn);};
+ await assert.rejects(api.manage(req("h",payload)));
+ assert.equal([...db.store.keys()].filter(k=>k.startsWith("partnerWorkInvites/")).length,0);
+});
+
+test("direct hub invite needs no representative: leader manages own company teams, invites and preserves history",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ // An existing partner company does not need an owner/representative account.
+ db.store.delete("users/p");db.store.delete("companies/partner/members/p");
+ delete db.store.get("companies/partner").ownerUid;
+ const original=clone(db.store.get("records/old"));
+ const first=(await api.manage(req("h",{action:"hubAddTeam",partnerCompanyId:"partner",name:"初期班"}))).teamId;
+ const invite=await api.manage(req("h",{action:"hubCreateInvite",partnerCompanyId:"partner",teamId:first,role:"leader",email:"l@example.com"}));
+ await api.accept(req("l",{token:invite.token,name:"リーダー"}));
+ const profile=db.store.get("users/l");
+ assert.equal(profile.companyRole,"member");assert.equal(profile.role,"leader");
+ assert.equal(profile.canViewRevenue,false);assert.equal(profile.canViewUnitPrice,false);
+ const second=(await api.manage(req("l",{action:"addTeam",name:"追加班"}))).teamId;
+ const member=await api.manage(req("l",{action:"createInvite",teamId:second,role:"member",email:"m@example.com"}));
+ await api.accept(req("m",{token:member.token,name:"メンバー"}));
+ await api.submit(req("m",{date:"2026-10-30",staffId:"m",counts:{...zero(),NURO:3},expectedVersion:0}));
+ const before=clone(db.store.get("companies/partner/partnerWorkEntries/2026-10-30__m"));
+ await api.manage(req("l",{action:"moveStaff",staffId:"m",teamId:first}));
+ assert.equal(db.store.get("users/m").teamId,first);
+ assert.equal(db.store.get("companies/partner/members/m").teamId,first);
+ assert.deepEqual(db.store.get("companies/partner/partnerWorkEntries/2026-10-30__m"),before);
+ await api.submit(req("m",{date,staffId:"m",counts:{...zero(),NURO:2},expectedVersion:0}));
+ const own=await api.view(req("l",{date})),hub=await api.view(req("h",{date}));
+ assert.equal(own.teams.length,2);assert.equal(own.records[0].totalCount,2);
+ assert.equal(hub.partners[0].totalCount,2);
+ for(const result of [own,hub])assert.doesNotMatch(JSON.stringify(result),/unitPrice|totalRevenue|revenuePerUnit/);
+ for(const action of ["addTeam","moveStaff","createInvite"])
+  await assert.rejects(api.manage(req("m",{action,name:"不許可",staffId:"l",teamId:second,role:"leader",email:"x@example.com"})));
+ db.seed("companies/other/partnerWorkTeams/foreign",{name:"他社班",companyId:"other",active:true});
+ await assert.rejects(api.manage(req("l",{action:"moveStaff",staffId:"m",teamId:"foreign"})));
+ await assert.rejects(api.manage(req("l",{action:"hubCreateInvite",partnerCompanyId:"other",teamId:"foreign",role:"leader",email:"x@example.com"})));
+ assert.deepEqual(db.store.get("records/old"),original);
+ const nextLeader=await api.manage(req("l",{action:"createInvite",teamId:second,role:"leader",email:"n@example.com"}));
+ await api.accept(req("n",{token:nextLeader.token,name:"次のリーダー"}));
+ assert.equal(db.store.get("users/n").role,"leader");
+ assert.equal(db.store.get("users/n").companyRole,"member");
+});
+
+test("pending partner invitation rechecks revoked issuer and cannot be replayed or used by a different email",async()=>{
+ const {db,api,req}=setup();
+ const teamId=(await api.manage(req("p",{action:"addTeam",name:"班"}))).teamId;
+ const result=await api.manage(req("p",{action:"createInvite",teamId,role:"leader",email:"l@example.com"}));
+ await assert.rejects(api.accept(req("x",{token:result.token,name:"別人"})));
+ db.store.get("companies/partner/members/p").active=false;
+ await assert.rejects(api.accept(req("l",{token:result.token,name:"失効"})));
+ assert.equal(db.store.has("users/l"),false);
+});
+
+test("inviter demotion between initial scope and transaction cannot issue a link",async()=>{
+ const {db,api,req}=setup();
+ const teamId=(await api.manage(req("p",{action:"addTeam",name:"班"}))).teamId;
+ const invite=await api.manage(req("p",{action:"createInvite",teamId,role:"leader",email:"l@example.com"}));
+ await api.accept(req("l",{token:invite.token,name:"リーダー"}));
+ const transaction=db.runTransaction.bind(db),before=db.store.size;
+ db.runTransaction=async fn=>{
+  db.store.get("users/l").role="member";
+  db.store.get("companies/partner/members/l").role="member";
+  return transaction(fn);
+ };
+ await assert.rejects(api.manage(req("l",{action:"createInvite",teamId,role:"member",email:"m@example.com"})));
+ assert.equal(db.store.size,before);
+});
 test("partner owner makes team and managed staff, saves and corrects without touching original sales",async()=>{
  const {db,api,req,zero}=setup();
  const originalRecords=clone(db.store.get("records/old")),originalMoney=clone(db.store.get("products/money"));

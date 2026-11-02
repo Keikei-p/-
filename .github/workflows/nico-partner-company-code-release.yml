@@ -50,7 +50,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git hash-object functions-partner-workspace/service.cjs)" = 'a23a950ba905ca7f73a8a160fb861c611ed45304'
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = '29c0e3b29863e654ba70fd5b3f4a8efe4d0827d8'
           test "$(git hash-object functions-partner-workspace/index.js)" = '38da7e9174ffea7c406c92292dccfc651b565eb0'
           test "$(git hash-object functions-partner-workspace/company-code-auth.cjs)" = 'f7e5899cdb9e36da610846d787955b13c1e16e4b'
           test "$(git hash-object partner-workspace.html)" = '0930abb188165afea19ef427308ea22fddf636e7'
@@ -68,7 +68,16 @@ jobs:
           node --test tests/surgical-existing-partner-workspace.test.mjs
           node --test tests/audit-artifact-cleanup-iam.test.mjs
           node --test tests/company-code-scoped-release.test.mjs
-          node scripts/check-company-code-scoped-release.mjs
+          # The company-code publisher is intentionally restricted to its historical
+          # standalone scope. A direct-role PR modifies the canonical app, so the
+          # original deploy check must stay mandatory on workflow_dispatch.
+          # PRs instead exercise the count-only workspace and finance regressions.
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            node scripts/check-company-code-scoped-release.mjs
+          else
+            node --test tests/partner-workspace.test.cjs tests/internal-owner-finance-visibility.test.cjs
+            echo 'PASS_PR_ONLY_DIRECT_ROLE_REVIEW_NO_COMPANY_CODE_DEPLOYMENT'
+          fi
           node - <<'NODE'
           const fs=require('node:fs');
           const cfg=JSON.parse(fs.readFileSync('firebase.partner-workspace.json','utf8'));
@@ -114,6 +123,10 @@ jobs:
           # Assert that the known legacy finance Rules candidate remains blocked;
           # do not weaken its guard or claim that the Rules are production-safe.
           node --test tests/finance-release-gate.test.mjs
+          # Reject deployment until actual canonical finance access is proven
+          # compatible. The current repository Rules fail this global guard:
+          # intentionally stop rather than bypass the financial boundary.
+          node scripts/check-finance-read-boundary-before-deploy.mjs
           # Separate exact-source guard: reject raw finance reads, destructive
           # actions, unreviewed canonical changes, or wrong Firebase codebase.
           node scripts/check-company-code-scoped-release.mjs

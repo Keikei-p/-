@@ -953,3 +953,16 @@ GitHub所有者として認証済みの接続から、本番影響をindex.html�
 - この差分ではFirestore、Users、売上/単価、過去実績、LINE、Rules、Functions、backupを変更しない。HTMLと表示回帰テスト・技術記録のみ。PR審査ラベルは管理者独立署名ではない。
 
 - PR #312 のラベル付与後のコード保護ゲート再実行対象。既存テスト `tests/simple-partner-company-tab.test.mjs` に会社別メンバー一覧の表示・権限・読み取り限定検査を追加した。
+
+
+---
+
+## 2026-11-02 — PR #315 協力店直接招待の安全審査（本番未許可）
+
+- **対象**: PR #315 `fix/partner-direct-role-invite-20261102`、Firebase `sales-management-cc116`、本番 `https://nico-factory.web.app/`。基準main `c6391694aab651464c5cf86a79fed03e89fe1e71`。PR #316はmain統合済みだが、Rules本番適用は未確認。
+- **目的・差分**: 自社の既存招待画面から協力店会社（未登録なら会社作成）と班・リーダー/同行を指定、同一アプリで招待を受け、協力店内でメール不要の班員登録と件数管理を再利用。自社の売上・単価・原票・履歴・LINEを保持。
+- **新規診断修正**: `loadDirectPartnerInviteCompanies` で `getPartnerWorkspace` が失敗したら招待を不可に保ち、`functions/not-found`（API未公開）・`functions/unauthenticated`（認証）・`functions/permission-denied`/ `functions/failed-precondition`（権限）を区別して画面に表示。既存会社0社と失敗を混同せず、誤って会社作成しない。トークン/メール/サーバー詳細をログ出力しない。
+- **確認済み**: GitHub Actions `no-write-regression` run [41367856704](https://github.com/Keikei-p/-/actions/runs/41367856704) は成功。既存の売上権限回帰/同一ログイン/合同ランキングに合格チェックあり。実アカウントE2E・本番Rules拒否確認ではない。
+- **未完了保護ゲート**: Issue [#206](https://github.com/Keikei-p/-/issues/206) の本番Rulesは危険性あり。PR #316の `nico-partner-boundary-manual.yml` はPR用offine検証成功だが、`verify`/ `apply` の `workflow_dispatch` 成功証跡なし。全件バックアップ/隔離復元照合も本番実行未確認。古いデプロイWorkflowの固定ソースハッシュ不一致、および本PRの保護ラベル/管理者署名が未成立。これらを解除したり固定ハッシュだけ書き換えて公開したりしない。
+- **順番**: 本番限定Rulesの`verify` → 検証一致時のみ`apply` → 協力店原票拒否/自社財務閲覧の実証 → 本PRの差分最終レビュー・署名・ラベル・現行コードにpinした必要4 Functionsのみの限定公開 → 招待+班+個人+合同ランキング実アカウントE2E → Hosting検証。
+- **本番状態**: 今回のPRは **Draft・未統合・未公開**。Firestore/Auth/Functions/Hosting/LINE/既存全実績への書込みなし。管理者本人の署名は**未取得**。この記録は本人署名・本番公開承認を代行しない。

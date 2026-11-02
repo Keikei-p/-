@@ -4741,6 +4741,8 @@ body.product-reordering .product-list {
         <label class="p-inline-field">班<select id="pInlineManageTeam"></select></label>
         <label class="p-inline-field">メールなしメンバーの名前<input id="pInlineManagedName" maxlength="60" placeholder="例：田中 太郎"></label>
       </div>
+      <label class="p-inline-field">班を変更するメンバー<select id="pInlineMoveStaff"></select></label>
+      <button id="pInlineMove" type="button">選択した班に変更</button>
       <button id="pInlineAddManaged" type="button">メールなしメンバーを追加</button>
       <div class="p-inline-grid">
         <label class="p-inline-field">メール招待先<input id="pInlineInviteEmail" type="email" autocomplete="off" placeholder="member@example.com"></label>
@@ -4965,7 +4967,7 @@ body.product-reordering .product-list {
                 aria-label="招待先の種類"
                 style="width:100%;min-height:44px;margin-top:8px;">
           <option value="internal">👤 自社メンバーを招待</option>
-          <option value="partner">🤝 協力店会社を招待</option>
+          <option value="partner">🤝 協力店メンバーを招待</option>
         </select>
       </div>
 
@@ -5021,14 +5023,14 @@ body.product-reordering .product-list {
       <div id="partnerInviteInline"
            hidden
            style="margin-top:18px;padding:15px;border:1px solid var(--border);border-radius:12px;">
-        <div style="font-weight:800;margin-bottom:6px;">🤝 協力店会社を招待</div>
+        <div style="font-weight:800;margin-bottom:6px;">🤝 協力店メンバーを招待</div>
         <p style="font-size:12px;line-height:1.6;color:var(--sub);">
-          自社スタッフとは別会社として招待します。協力店には売上・単価を付与しません。
+          所属する協力店・班と、リーダー／メンバーを選んで招待します。売上・単価は付与しません。
           招待リンクは30分間有効です。
         </p>
         <p id="partnerInvitePermissionHint" hidden
            style="font-size:12px;line-height:1.6;color:var(--sub);">
-          協力店会社の招待リンクは、自社の代表オーナーのみ発行できます。
+          協力店への招待リンクは、自社オーナーが発行できます。
         </p>
         <!-- Mobile-first: keep both fields full-width and visibly labelled. -->
         <div id="partnerInviteFormFields"
@@ -5038,10 +5040,7 @@ body.product-reordering .product-list {
                    style="display:block;font-weight:800;font-size:14px;margin-bottom:7px;">
               協力店会社名
             </label>
-            <input id="partnerInviteCompanyName" type="text"
-                   maxlength="80" autocomplete="organization" required
-                   placeholder="例）株式会社〇〇"
-                   style="display:block;width:100%;max-width:100%;min-width:0;min-height:48px;box-sizing:border-box;">
+            <select id="partnerInviteCompanyName" required style="display:block;width:100%;max-width:100%;min-width:0;min-height:48px;box-sizing:border-box;"><option value="">協力店を選択</option></select>
           </div>
           <div class="form-group" style="margin:0;min-width:0;">
             <label for="partnerInviteEmail"
@@ -5053,6 +5052,10 @@ body.product-reordering .product-list {
                    placeholder="例）partner@example.com"
                    style="display:block;width:100%;max-width:100%;min-width:0;min-height:48px;box-sizing:border-box;">
           </div>
+          <label class="form-group" id="partnerInviteNewCompanyField" hidden>新しい協力店名<input id="partnerInviteNewCompanyName" maxlength="80" placeholder="協力店の会社名"></label>
+          <label class="form-group" id="partnerInviteTeamField">班<select id="partnerInviteTeam" required></select></label>
+          <label class="form-group">権限<select id="partnerInviteRole"><option value="leader">リーダー</option><option value="member">メンバー</option></select></label>
+          <p id="partnerInviteCompanyStatus" role="status"></p>
           <button id="partnerInviteCreateButton" type="button"
                   style="display:block;width:100%;max-width:100%;min-width:0;min-height:48px;white-space:normal;">
             協力店の招待リンク作成
@@ -7090,7 +7093,6 @@ const partnerCountFunctions = getFunctions(app,"asia-northeast1");
 const readPartnerQuickDay = httpsCallable(partnerCountFunctions,"getPartnerQuickCounts");
 const approvePartnerQuickDay = httpsCallable(partnerCountFunctions,"approvePartnerQuickCounts");
 const readPartnerWorkDay = httpsCallable(partnerCountFunctions,"getPartnerWorkspace");
-const createPartnerCompanyInvite = httpsCallable(partnerCountFunctions,"createPartnerCompanyInvitation");
 
 const partnerInlineManage = httpsCallable(partnerCountFunctions,"managePartnerWorkspace");
 const partnerInlineSave = httpsCallable(partnerCountFunctions,"submitPartnerWorkspaceCounts");
@@ -9202,6 +9204,7 @@ function syncInviteDestinationPanel() {
     currentUserData?.accessKind !== "partner");
   if (partnerButton) partnerButton.disabled = !owner;
   if (permissionHint) permissionHint.hidden = owner;
+  if(partnerSelected&&owner)void loadDirectPartnerInviteCompanies();
 }
 
 document.getElementById("inviteDestinationSelect").addEventListener(
@@ -12078,6 +12081,56 @@ createInviteButton.onclick =
   };
 
 
+let directPartnerInviteCompanies=[];
+let directPartnerInviteSequence=0;
+function renderDirectPartnerInviteTeams(){
+ const isNew=pInline("partnerInviteCompanyName").value==="__new__";
+ pInline("partnerInviteNewCompanyField").hidden=!isNew;
+ pInline("partnerInviteTeamField").hidden=isNew;
+ const company=directPartnerInviteCompanies.find(c=>c.partnerCompanyId===pInline("partnerInviteCompanyName").value);
+ partnerInlineFillSelect("partnerInviteTeam",company?.teams||[],t=>t.name);
+ pInline("partnerInviteResult").hidden=true;
+}
+async function loadDirectPartnerInviteCompanies(){
+ const uid=currentUser?.uid,seq=++directPartnerInviteSequence;
+ directPartnerInviteCompanies=[];
+ pInline("partnerInviteCreateButton").disabled=true;
+ pInline("partnerInviteCompanyStatus").textContent="協力店を確認中…";
+ try{
+  const result=(await readPartnerWorkDay({date:partnerMainDate()})).data;
+  if(seq!==directPartnerInviteSequence||currentUser?.uid!==uid)return;
+  if(result?.role!=="hub"||!Array.isArray(result.registeredCompanies))throw Error("scope");
+  directPartnerInviteCompanies=result.registeredCompanies.filter(c=>c.active===true);
+  partnerInlineFillSelect("partnerInviteCompanyName",directPartnerInviteCompanies.map(c=>({...c,id:c.partnerCompanyId})),c=>c.name);
+  const addOption=document.createElement("option");addOption.value="__new__";addOption.textContent="新しい協力店を追加";
+  pInline("partnerInviteCompanyName").append(addOption);
+  if(!directPartnerInviteCompanies.length)pInline("partnerInviteCompanyName").value="__new__";
+  renderDirectPartnerInviteTeams();
+  pInline("partnerInviteCreateButton").disabled=false;
+  pInline("partnerInviteCompanyStatus").textContent="協力店を選ぶか、新しく追加してください。新しい協力店は1班から開始し、自社と件数を共有します。";
+ }catch(error){
+  if(seq!==directPartnerInviteSequence||currentUser?.uid!==uid)return;
+  directPartnerInviteCompanies=[];
+  pInline("partnerInviteCompanyName").replaceChildren();
+  pInline("partnerInviteTeam").replaceChildren();
+  pInline("partnerInviteResult").hidden=true;
+  pInline("partnerInviteCreateButton").disabled=true;
+  // Keep the failure closed. An unavailable company list must never be
+  // mistaken for an empty list that authorizes a new company.
+  const code=typeof error?.code==="string"?error.code:"";
+  const status=code==="functions/not-found"||code==="functions/unimplemented"?
+    "協力店の班・招待APIが本番に公開されていません。管理者がFunctions公開を確認してください。":
+    code==="functions/unauthenticated"?
+    "ログイン認証の確認に失敗しました。自社オーナーとして再ログインしてください。":
+    code==="functions/permission-denied"||code==="functions/failed-precondition"?
+    "会社一覧の権限を確認できません。自社オーナー権限・会社の有効状態を確認してください。":
+    "協力店会社一覧を取得できません。招待は停止しています。管理者にAPIの稼働状況を確認してください。";
+  pInline("partnerInviteCompanyStatus").textContent=status;
+  // Do not expose email, invitation token or server response in logs.
+  console.error("partner_company_list_unavailable",code||"unavailable");
+ }
+}
+document.getElementById("partnerInviteCompanyName").onchange=renderDirectPartnerInviteTeams;
 const partnerInviteCreateButton = document.getElementById("partnerInviteCreateButton");
 partnerInviteCreateButton.onclick = async () => {
   if (!currentUser?.emailVerified ||
@@ -12087,17 +12140,22 @@ partnerInviteCreateButton.onclick = async () => {
     showError("協力店招待は自社のオーナーだけが作成できます。");
     return;
   }
-  const companyName=document.getElementById("partnerInviteCompanyName").value.trim();
+  const partnerCompanyId=document.getElementById("partnerInviteCompanyName").value;
+  const teamId=document.getElementById("partnerInviteTeam").value;
+  const role=document.getElementById("partnerInviteRole").value;
   const email=document.getElementById("partnerInviteEmail").value.trim().toLowerCase();
-  if(companyName.length<2 || companyName.length>80 ||
+  const company=directPartnerInviteCompanies.find(c=>c.partnerCompanyId===partnerCompanyId&&c.active);
+  const isNew=partnerCompanyId==="__new__";
+  const companyName=document.getElementById("partnerInviteNewCompanyName").value.trim();
+  if((isNew?(!companyName||companyName.length>80):(!company||!company.teams.some(t=>t.id===teamId)))||!["leader","member"].includes(role)||
      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    showError("協力店名と招待メールアドレスを確認してください。");
-    return;
+    showError("協力店・班・権限と招待メールアドレスを確認してください。");return;
   }
   const inviteCreatorUid=currentUser.uid;
   partnerInviteCreateButton.disabled=true;
   try {
-    const response=await createPartnerCompanyInvite({companyName,email});
+    const response=await partnerInlineManage({action:"hubCreateInvite",
+      ...(isNew?{companyName}:{partnerCompanyId,teamId}),role,email});
     if(currentUser?.uid!==inviteCreatorUid ||
        currentCompanyData?.ownerUid!==inviteCreatorUid)
       throw Error("stale_invite_creator");
@@ -12105,7 +12163,10 @@ partnerInviteCreateButton.onclick = async () => {
     if(typeof token!=="string"||!/^[A-Za-z0-9_-]{43}$/.test(token))
       throw Error("invalid_invite_response");
     const url=new URL("/",location.origin);
-    url.searchParams.set("partnerCompanyInvite",token);
+    url.searchParams.set("partnerStaffInvite",token);
+    if(isNew)await loadDirectPartnerInviteCompanies();
+    if(currentUser?.uid!==inviteCreatorUid||currentCompanyData?.ownerUid!==inviteCreatorUid)
+      throw Error("stale_invite_creator");
     document.getElementById("partnerInviteLinkOutput").value=url.href;
     document.getElementById("partnerInviteResult").hidden=false;
     showSuccess("協力店の招待リンクを作成しました。30分以内に送ってください。");
@@ -12247,15 +12308,11 @@ function partnerInlineRender(){
  const teamList=pInline("pInlineTeams");teamList.replaceChildren();
  for(const t of teams)partnerMainAppendRow(teamList,snap.companyName+"・"+t.name,
   staff.filter(p=>p.teamId===t.id).length+"人");
- if(!teams.length)partnerMainAppendRow(teamList,"班がありません","協力店オーナーが班を作成してください。");
- pInline("pInlineOwnerTeam").hidden=snap.role!=="owner";
+ if(!teams.length)partnerMainAppendRow(teamList,"班がありません","協力店リーダーが班を作成してください。");
+ pInline("pInlineOwnerTeam").hidden=!["owner","leader"].includes(snap.role);
  pInline("pInlineMemberForms").hidden=!["owner","leader"].includes(snap.role);
- pInline("pInlineInviteRole").querySelector('option[value="leader"]').disabled=snap.role!=="owner";
- if(snap.role==="leader"&&pInline("pInlineInviteRole").value==="leader")
-  pInline("pInlineInviteRole").value="member";
- partnerInlineFillSelect("pInlineManageTeam",teams,t=>snap.companyName+"・"+t.name,
-  snap.role==="leader"?snap.teamId:"");
- pInline("pInlineManageTeam").disabled=snap.role==="leader";
+ partnerInlineFillSelect("pInlineManageTeam",teams,t=>snap.companyName+"・"+t.name);
+ partnerInlineFillSelect("pInlineMoveStaff",staff,p=>p.name);
  pInline("pInlineAddManaged").disabled=!teams.length;
  pInline("pInlineCreateInvite").disabled=!teams.length;
  const list=pInline("pInlinePeople");list.replaceChildren();
@@ -12357,16 +12414,23 @@ pInline("pInlineDate").onchange=partnerInlineFetch;
 pInline("pInlineRefresh").onclick=partnerInlineFetch;
 pInline("pInlineStaff").onchange=partnerInlineRenderCounts;
 pInline("pInlineAddTeam").onclick=()=>partnerInlineRun(async()=>{
- if(partnerInlineData.role!=="owner")throw Error("role");
+ if(!["owner","leader"].includes(partnerInlineData.role))throw Error("role");
  const name=pInline("pInlineTeamName").value.trim();
  if(!name)throw Error("name");
  await partnerInlineManage(partnerInlinePayload({action:"addTeam",name}));
  pInline("pInlineTeamName").value="";return "班を作成しました。";
 });
+pInline("pInlineMove").onclick=()=>partnerInlineRun(async()=>{
+ if(!["owner","leader"].includes(partnerInlineData.role))throw Error("role");
+ const staffId=pInline("pInlineMoveStaff").value,teamId=pInline("pInlineManageTeam").value;
+ if(!partnerMainValidId(staffId)||!partnerMainValidId(teamId))throw Error("input");
+ await partnerInlineManage(partnerInlinePayload({action:"moveStaff",staffId,teamId}));
+ return "班を変更しました。過去の実績の班は保持されます。";
+});
 pInline("pInlineAddManaged").onclick=()=>partnerInlineRun(async()=>{
  if(!["owner","leader"].includes(partnerInlineData.role))throw Error("role");
  const name=pInline("pInlineManagedName").value.trim();
- const teamId=partnerInlineData.role==="leader"?partnerInlineData.teamId:pInline("pInlineManageTeam").value;
+ const teamId=pInline("pInlineManageTeam").value;
  if(!name||!partnerMainValidId(teamId))throw Error("input");
  await partnerInlineManage(partnerInlinePayload({action:"addManaged",name,teamId}));
  pInline("pInlineManagedName").value="";return "メールなしのメンバーを追加しました。";
@@ -12374,10 +12438,10 @@ pInline("pInlineAddManaged").onclick=()=>partnerInlineRun(async()=>{
 pInline("pInlineCreateInvite").onclick=()=>partnerInlineRun(async()=>{
  const snap=partnerInlineData,email=pInline("pInlineInviteEmail").value.trim().toLowerCase();
  const role=pInline("pInlineInviteRole").value;
- const teamId=snap.role==="leader"?snap.teamId:pInline("pInlineManageTeam").value;
+ const teamId=pInline("pInlineManageTeam").value;
  if(!["owner","leader"].includes(snap.role)||!partnerMainValidId(teamId)||
   !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||
-  !["leader","member"].includes(role)||(snap.role==="leader"&&role!=="member"))throw Error("input");
+  !["leader","member"].includes(role))throw Error("input");
  const response=(await partnerInlineManage(partnerInlinePayload({action:"createInvite",email,teamId,role}))).data;
  if(!/^[A-Za-z0-9_-]{43}$/.test(response?.token||""))throw Error("response");
  const url=new URL("/",location.origin);url.searchParams.set("partnerStaffInvite",response.token);

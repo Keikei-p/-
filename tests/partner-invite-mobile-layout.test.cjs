@@ -19,7 +19,7 @@ test("partner company name and invited email are distinct, labelled, vertically 
  assert.match(form[0],/gap:14px;width:100%;min-width:0/);
  assert.match(form[0],/<label for="partnerInviteCompanyName"[^>]*>[\s\S]*?協力店会社名[\s\S]*?<\/label>/);
  assert.match(form[0],/<label for="partnerInviteEmail"[^>]*>[\s\S]*?招待メールアドレス[\s\S]*?<\/label>/);
- assert.match(form[0],/id="partnerInviteCompanyName"[^>]*type="text"[\s\S]*?maxlength="80"/);
+ assert.match(form[0],/<select id="partnerInviteCompanyName"[^>]*required/);
  assert.match(form[0],/id="partnerInviteEmail"[^>]*type="email"[\s\S]*?autocomplete="email"/);
  assert.equal((form[0].match(/min-height:48px;box-sizing:border-box/g)||[]).length,2);
  assert.equal((form[0].match(/style="display:block;width:100%;max-width:100%;min-width:0;min-height:48px/g)||[]).length,3);
@@ -46,7 +46,8 @@ test("existing invitations, company owner access, sales reports, finance display
    'id="ownerTransferPanel"'
  ])assert(html.includes(marker),marker);
  const source=html.slice(html.indexOf('const partnerInviteCreateButton ='),html.indexOf('document.getElementById("partnerInviteCopyButton")'));
- assert(source.includes('createPartnerCompanyInvite({companyName,email})'));
+ assert(source.includes('partnerInlineManage({action:"hubCreateInvite",'));
+ assert(source.includes('...(isNew?{companyName}:{partnerCompanyId,teamId}),role,email}'));
  assert(source.includes('currentCompanyData?.ownerUid !== currentUser.uid'));
  assert(source.includes('showSuccess("協力店の招待リンクを作成しました。'));
  assert(html.includes("function canCurrentUserViewRevenueForTeam("));
