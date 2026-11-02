@@ -86,7 +86,9 @@ test("validated count-only partner month aggregates and refuses partial old snap
 });
 test("existing ranking UIs reused, not a new ranking screen or money blending",()=>{
  assert(html.includes('const originalRows=buildTeamRankingRows(teamMap,monthly,teamRankingMode)'));
- assert(html.includes('const partnerRows=teamRankingMode==="progress"'));
+ assert(html.includes('const ranking = sortTeamRankingRows(originalRows,teamRankingMode)'));
+ assert(!html.includes('const partnerRows=teamRankingMode==="progress"'),
+  "partner company aggregates must never be fictional team ranks");
  assert(html.includes('const augmentedRows=[...monthly,...partnerRankingVirtualRecords()]'));
  assert(html.includes("const productsWithCounts=buildGroupedProductMemberRanking("));
  assert(html.includes("function renderIndividualRanking("));
