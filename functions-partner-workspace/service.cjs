@@ -1049,6 +1049,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      version:x.version,date,totalCount:next.total,previousTotalCount:before.total,
      counts:next.counts,previousCounts:before.counts,
      cbCounts,previousCbCounts,workLocation,previousWorkLocation,
+     privateCounts:nextPrivate.counts,previousPrivateCounts:prevPrivate.counts,
      privateTotalCount:nextPrivate.total,previousPrivateTotalCount:prevPrivate.total});
    }
    audits.sort((a,b)=>a.staffName.localeCompare(b.staffName,"ja")||
