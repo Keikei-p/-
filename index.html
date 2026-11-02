@@ -12500,6 +12500,7 @@ const pInline=id=>document.getElementById(id);
 let partnerInlineData=null,partnerInlineWorkspaceCompany="",partnerInlineNonce=0;
 let partnerAuditNonce=0;
 let partnerInlineBusy=false,ownerPartnerTeamsNonce=0;
+let partnerInlineEditingStaffId="";
 const partnerMainDate=()=>new Intl.DateTimeFormat("sv-SE",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
 const partnerMainValidId=id=>typeof id==="string"&&/^[A-Za-z0-9_-]{1,128}$/.test(id);
 function partnerMainPendingInvite(){
@@ -12516,6 +12517,8 @@ function resetPartnerInline(){
  // before another user or company can sign in on the same browser session.
  ++sharedDailyRankingGeneration;sharedDailyRankCache.clear();
  partnerInlineData=null;partnerInlineWorkspaceCompany="";partnerInlineBusy=false;
+ partnerInlineEditingStaffId="";
+ pInline("pInlineSaveStatus").textContent="";
  appScreen.removeAttribute("data-partner-count-only");
  pInline("partnerInlineWorkspace").hidden=true;
  pInline("pInlineStatus").textContent="";
@@ -13202,6 +13205,22 @@ function renderPartnerPrivateProductCatalog(){
  }
  if(!products.length)partnerMainAppendRow(list,"協力店専用の商材は未登録です","公開商材の件数は実績入力から登録できます。");
 }
+function partnerInlineHasUnsavedCounts(){
+ const snap=partnerInlineData;
+ if(!snap||snap.role==="hub"||!partnerInlineEditingStaffId)return false;
+ const entry=snap.records.find(row=>row.staffId===partnerInlineEditingStaffId);
+ const fields=pInline("pInlineCountFields");
+ for(const node of fields.querySelectorAll("input[data-count-key],input[data-private-count-id]")){
+  if(node.readOnly)continue;
+  const current=node.value.trim();
+  if(!current||!Number.isSafeInteger(Number(current))||Number(current)<0||Number(current)>9999)return true;
+  const previous=node.dataset.countKey?
+   (entry?.counts?.[node.dataset.countKey]??0):
+   (entry?.privateCounts?.[node.dataset.privateCountId]??0);
+  if(Number(current)!==previous)return true;
+ }
+ return false;
+}
 function renderPartnerEntryTotals(){
  const target=pInline("pInlineEntryTotals");
  const grid=pInline("pInlineCountFields");
@@ -13215,13 +13234,18 @@ function renderPartnerEntryTotals(){
   else privateTotal+=Number(input.value);
  }
  target.textContent="共有商材 "+shared+"件｜協力店専用 "+privateTotal+"件";
+ if(partnerInlineHasUnsavedCounts())
+  pInline("pInlineSaveStatus").textContent="未保存の件数があります。「一括登録」を押すまで反映されません。";
 }
 function partnerInlineRenderCounts(){
  const snap=partnerInlineData;
  if(!snap||snap.role==="hub")return;
  const staffId=pInline("pInlineStaff").value;
  const entry=snap.records.find(x=>x.staffId===staffId);
+ partnerInlineEditingStaffId=staffId;
+ pInline("pInlineRecordDate").value=pInline("pInlineDate").value;
  const grid=pInline("pInlineCountFields");grid.replaceChildren();
+ pInline("pInlineSaveStatus").textContent="";
  for(const key of snap.categories){
   const label=document.createElement("label");label.className="p-inline-field product-input-group product-input-group--compact";
   label.textContent=key;
@@ -13247,6 +13271,7 @@ function partnerInlineRenderCounts(){
  }
  pInline("pInlineSave").disabled=!staffId||partnerInlineBusy;
  pInline("pInlineVersion").textContent=entry?"登録済み・第"+entry.version+"版":"未登録";
+ pInline("pInlineSave").textContent=entry?"変更した件数を保存（訂正）":"実績を一括登録";
  renderPartnerEntryTotals();
 }
 function partnerInlineRender(){
@@ -13428,6 +13453,8 @@ async function openSameAppPartnerWorkspace(user,workspaceCompanyId=""){
  loginStatus.textContent="ログイン済み・協力店";
  databaseStatus.textContent="件数API";
  pInline("pInlineDate").value=partnerMainDate();
+ pInline("pInlineRecordDate").value=pInline("pInlineDate").value;
+ partnerInlineEditingStaffId="";
  mountPartnerCanonicalNavigation();
  mountPartnerSafeManagementMenu();
  partnerSameAppSelectPanel("record");
