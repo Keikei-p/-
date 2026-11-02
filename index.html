@@ -6257,6 +6257,15 @@ body.product-reordering .product-list {
         class="dashboard-app-content"
         hidden>
         <div id="allTeamsOverviewList"></div>
+        <section id="ownerPartnerDashboardDetails" class="p-inline-card" hidden aria-label="協力店の会社別班詳細">
+          <h3>🤝 協力店</h3>
+          <div class="p-inline-grid">
+            <label class="p-inline-field">件数の確認日<input id="ownerPartnerDashboardDate" type="date"></label>
+            <button id="ownerPartnerDashboardRefresh" type="button" class="team-action-button">協力店の班別件数を表示</button>
+          </div>
+          <p id="ownerPartnerDashboardStatus" role="status" aria-live="polite"></p>
+          <div id="ownerPartnerDashboardList" class="team-list"></div>
+        </section>
       </div>
 
       <div
