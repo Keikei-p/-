@@ -1,0 +1,30 @@
+name: NICO shared catalog publication (NO DEPLOY)
+on:
+  push:
+    branches:
+      - feature/partner-shared-catalog-rank-20261103
+  pull_request:
+    branches:
+      - release/nico-partner-compact-two-column-index-20261102
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax-check catalog and isolated partner backend
+        run: |
+          node --check functions-partner-workspace/catalog-publication.cjs
+          node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/index.js
+      - name: Test publication isolation and preserve existing owner UI
+        run: |
+          node --test tests/partner-catalog-publication.test.cjs
+          node --test tests/owner-partner-team-count-screen.test.mjs
+          node --test tests/partner-unified-ranks-save-feedback-20261102.test.mjs
+      - name: Assert NO DEPLOY
+        run: echo 'NO DEPLOY - Firestore, Rules, Hosting, Auth, LINE and Functions untouched'
