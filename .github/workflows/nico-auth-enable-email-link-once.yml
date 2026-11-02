@@ -58,7 +58,7 @@ jobs:
             const url='https://identitytoolkit.googleapis.com/admin/v2/projects/sales-management-cc116/config';
             const get=async()=>(await client.request({method:'GET',url})).data;
             const before=await get();
-            if(before?.name!=='projects/sales-management-cc116/config'){
+            if(before?.name!=null&&before.name!=='projects/sales-management-cc116/config'){
               console.log('STOP_WRONG_AUTH_RESOURCE');process.exitCode=1;return;
             }
             if(before.signIn?.email?.enabled!==true||!Array.isArray(before.authorizedDomains)||
