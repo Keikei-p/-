@@ -4391,6 +4391,13 @@ body.product-reordering .product-list {
 </style>
 
 <style id="nicoPartnerSameAppStyle">
+/* Keep existing login and invite routes. Hide duplicate local-only scoreboards
+   and direct management shortcuts; the existing safe hamburger remains. */
+#appScreen[data-partner-count-only="true"] #partnerManagementTabs{display:none!important}
+#appScreen[data-partner-count-only="true"] #partnerSameAppNavigation>[data-partner-panel="members"]{display:none!important}
+#appScreen[data-partner-count-only="true"] #partnerPanelRankings>.p-inline-card:first-child{display:none!important}
+#appScreen[data-partner-count-only="true"] #partnerPanelDetail>.p-inline-card:first-child{display:none!important}
+
 #appScreen[data-partner-count-only="true"] > :not(.user-bar):not(#partnerInlineWorkspace){display:none!important}
 #appScreen[data-partner-count-only="true"] .user-bar .management-tab-shell{display:none!important}
 #appScreen:not([data-partner-count-only="true"]) .partner-safe-menu{display:none!important}
@@ -13011,6 +13018,70 @@ function appendSharedRankingRows(container,heading,entries,complete){
  container.append(section);
 }
 // Same company -> team -> person -> product tree for BOTH authenticated roles.
+function renderPartnerFlatTeamDetails(parent,report){
+ // Display company-qualified teams directly; one tap reveals staff/products.
+ // Never infer historical team assignment from a current membership.
+ parent.replaceChildren();
+ const categories=report.categories||[];
+ let displayed=0;
+ const addCounts=(node,person)=>{
+  let shown=0;
+  for(const key of categories){
+   const n=person.counts?.[key]??0;
+   if(!Number.isSafeInteger(n)||n<0)throw Error("partner_detail_product_invalid");
+   shown+=n;
+   if(n)partnerMainAppendRow(node,key,n+"件");
+  }
+  if(!Number.isSafeInteger(person.totalCount)||person.totalCount<shown)
+   throw Error("partner_detail_total_invalid");
+  if(person.totalCount>shown)
+   partnerMainAppendRow(node,"その他（直営）",person.totalCount-shown+"件");
+  if(!person.totalCount)partnerMainAppendRow(node,"件数","0件（報告済み）");
+ };
+ const appendPerson=(node,person,unassigned=false)=>{
+  const entry=document.createElement("details");entry.className="p-inline-row";
+  const summary=document.createElement("summary");
+  summary.textContent="👤 "+person.name+"｜"+person.totalCount+"件"+
+   (unassigned?"（登録当時の班未確認）":"");
+  entry.append(summary);addCounts(entry,person);node.append(entry);
+ };
+ const appendCompany=(name,teams,people,peopleVerified)=>{
+  if(!Array.isArray(teams)||!Array.isArray(people))
+   throw Error("partner_detail_team_contract");
+  for(const team of teams){
+   if(!Number.isSafeInteger(team.totalCount)||team.totalCount<0)
+    throw Error("partner_detail_team_total");
+   const row=document.createElement("details");row.className="p-inline-row";
+   const title=document.createElement("summary");
+   title.textContent="👥 "+name+"・"+team.name+"｜"+team.totalCount+"件"+
+    (peopleVerified?"":"（担当者別未照合）");
+   row.append(title);
+   const members=people.filter(p=>p.teamKey===team.key);
+   for(const person of members)appendPerson(row,person);
+   if(!members.length)
+    partnerMainAppendRow(row,"担当者別件数は未確認","会社の記録と照合してください");
+   parent.append(row);displayed++;
+  }
+  for(const person of people.filter(p=>!p.teamKey||!teams.some(t=>t.key===p.teamKey))){
+   const row=document.createElement("details");row.className="p-inline-row";
+   const title=document.createElement("summary");
+   title.textContent="👥 "+name+"・当時の班未確認｜"+person.totalCount+"件";
+   row.append(title);appendPerson(row,person,true);parent.append(row);displayed++;
+  }
+ };
+ appendCompany("🏢 直営",report.direct.teams,report.direct.people,
+  report.direct.peopleVerified===true);
+ for(const company of report.companies)
+  appendCompany("🤝 "+company.name,
+   report.teams.filter(t=>t.companyId===company.id),
+   report.people.filter(p=>p.companyId===company.id),
+   company.peopleVerified===true);
+ if(!displayed)
+  partnerMainAppendRow(parent,"まだ班別実績がありません","未報告を0件とは扱いません");
+ for(const name of report.missingCompanies||[])
+  partnerMainAppendRow(parent,"🤝 "+name,"未報告・0件とは扱いません");
+}
+
 function renderSharedCountTeamDetails(parent,report){
  parent.replaceChildren();
  const keys=report.categories;
@@ -13145,7 +13216,24 @@ async function loadSharedDailyStandings(where,force=false){
      " "+(partnerSum+(internal?.totalCount||0))+"件｜同率順位は同順位":
    "未報告・未照合の実績があります。表示は途中経過で、正式順位は確定していません。";
   if(detail){
-   renderSharedCountTeamDetails(content,response);
+   if(partner)renderPartnerFlatTeamDetails(content,response);
+   else renderSharedCountTeamDetails(content,response);
+   return;
+  }
+  // Partners and HQ use the very same approved counts, people and products.
+  // Choose ONE ranking per card; never show private-only ranks above it.
+  if(partner){
+   const partnerRankings={
+    individual:["🏆 個人ランキング",personRows],
+    team:["👥 班ランキング",teamRows],
+    product:["📦 商材別ランキング",
+     [...productTotals].map(([name,count])=>({name,count}))]
+   };
+   if(!Object.hasOwn(partnerRankings,partnerSameAppSelectedPanel))
+    throw Error("partner_combined_ranking_selection");
+   const [heading,items]=partnerRankings[partnerSameAppSelectedPanel];
+   pInline("partnerSharedRankingsSection").querySelector("h3").textContent=heading;
+   appendSharedRankingRows(content,heading,items,complete);
    return;
   }
   appendSharedRankingRows(content,"🏢 会社別件数",companyRows,complete);
@@ -13230,6 +13318,9 @@ function partnerSameAppPositionPanel(name){
   ?[...management.querySelectorAll("[data-partner-panel]")]:[];
  const button=[...canonical,...manageButtons].find(b=>b.dataset.partnerPanel===name&&!b.hidden);
  if(!button){grid.before(detail);return;}
+ // Hidden management shortcuts must still open the content area from the
+ // visible safe hamburger; never append a panel inside a display:none menu.
+ if(manageButtons.includes(button)){management.after(detail);return;}
  // Keep the opened panel directly below the button's row, also on mobile.
  const siblings=canonical.includes(button)?canonical:manageButtons.filter(b=>!b.hidden);
  const row=siblings.filter(b=>b.offsetTop===button.offsetTop);
@@ -13766,6 +13857,24 @@ async function openSameAppPartnerWorkspace(user,workspaceCompanyId=""){
   clearRememberedPartnerWorkspace(user.uid);
  }
 }
+function partnerCountSaveFailureMessage(error){
+ const code=String(error?.code||"").replace(/^functions\//,"");
+ const reason=error?.message||"";
+ if(reason==="date_changed"||reason==="staff")
+  return "保存できませんでした。対象日・担当者が変更されています。入力を残したまま選択を確認してください。";
+ if(reason==="counts"||reason==="work_location_invalid"||
+    reason==="private_product_unknown"||code==="invalid-argument")
+  return "保存できませんでした。件数・NUROのCB区分・現場・日付を確認してください。入力は保持しています。";
+ if(code==="permission-denied"||code==="unauthenticated")
+  return "保存できませんでした（認証・権限）。協力店への所属とメール認証を管理者に確認してください。入力は保持しています。";
+ if(code==="failed-precondition")
+  return "保存できませんでした（班・担当者・既存登録との不整合）。同じ内容を再送せず、まず「更新」で確認してください。";
+ if(code==="resource-exhausted")
+  return "保存できませんでした（登録上限）。入力は保持しています。管理者に確認してください。";
+ // The request may have committed remotely. Never suggest immediate resubmission.
+ return "保存結果を確認できませんでした（通信・サーバー応答）。入力は保持しています。二重登録を避けるため、再送前に「更新」で保存済み件数を確認してください。";
+}
+
 async function partnerInlineRun(work){
  const refresh=arguments[1]?.refresh!==false;
  if(partnerInlineBusy||!partnerInlineData)return;
@@ -13798,7 +13907,8 @@ async function partnerInlineRun(work){
    "別の担当者が先に件数を更新した可能性があります。上書きせず、入力内容を控えて「更新」で最新件数を確認してください。":
    error?.message==="save_verify"||error?.message==="refresh_after_write"?
    "保存APIへの送信後、最新データの表示を照合できませんでした。二重登録を避けるため、再登録前に「更新」で最新件数を確認してください。入力内容は保持しています。":
-   refresh?"保存を確認できませんでした。入力内容は保持しています。権限と通信を確認して再試行してください。":
+   arguments[1]?.kind==="save"?partnerCountSaveFailureMessage(error):
+   refresh?"更新を確認できませんでした。入力内容は保持しています。対象の権限と通信を確認してください。":
    "招待処理を確認できませんでした。招待タブのエラー表示で原因を確認してください。";
   partnerInlineStatus(message,true);
   if(error?.message==="save_verify"&&pInline("pInlineSaveStatus"))
@@ -14132,7 +14242,7 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
     uid!==auth.currentUser?.uid||workspace!==partnerInlineWorkspaceCompany)
   throw Error("save_verify");
  return "件数の保存と再取得を確認しました。";
-});
+},{kind:"save"});
 // Original internal owner sees existing teams PLUS partner-company teams.
 // Never mix partner team IDs into the original sales-team write selectors.
 async function loadOwnerPartnerCompanyTeams(){
