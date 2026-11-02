@@ -203,7 +203,7 @@ test("corrected counts and date changes invalidate stale joint standings, while 
   "\nfunction partnerInlinePayload(data){");
  assert.match(action,/sharedDailyRankCache\.clear\(\)/);
  assert.match(action,/\+\+sharedDailyRankingGeneration/);
- assert.ok(action.indexOf("sharedDailyRankCache.clear()")<action.indexOf("await partnerInlineFetch()"),
+ assert.ok(action.indexOf("sharedDailyRankCache.clear()")<action.indexOf("if(!await partnerInlineFetch())"),
   "invalidate only after successful mutation, before refreshing the visible screen");
  const reset=scope("function resetPartnerInline(){","// Clone the eleven button styles");
  assert.match(reset,/sharedDailyRankCache\.clear\(\)/);
@@ -335,14 +335,14 @@ test("partner entry reuses canonical 2-column product cards with safe zero/clear
  assert.match(html,/id="pInlineClear" class="record-clear-button"/);
  assert.match(html,/className="p-inline-field product-input-group product-input-group--compact"/);
  assert.match(html,/function partnerInlineClearFields\(\)/);
- const action=scope('pInline("pInlineStaff").onchange=partnerInlineRenderCounts;',
+ const action=scope('function partnerInlineChangeDate(which){',
   '\npInline("pInlineAddTeam").onclick');
  assert.match(action,/input:not\(\[readonly\]\)/);
  assert.match(action,/renderPartnerEntryTotals\(\)/);
  assert.match(action,/保存済み実績は変更していません/);
  assert.match(action,/pInline\("pInlineSave"\)\.click\(\)/);
  const save=scope('pInline("pInlineSave").onclick=',"\n// Original internal owner sees existing teams");
- assert.match(save,/saved\.version!==result\?\.version/);
+ assert.match(save,/saved\.version!==result\.version/);
  assert.match(save,/saved\.privateCounts\?\.\[id\]/);
 });
 
@@ -386,4 +386,69 @@ test("in-place dashboard expansion anchors to the pressed button row instead of 
  assert.equal(placed,"after:detail","second row expands in its own position");
  runInNewContext(source+"\npartnerSameAppPositionPanel('invite')",ctx);
  assert.equal(placed,"management","invite stays in the management menu");
+});
+
+test("partner registration mirrors the original date/staff record grid and keeps two count columns",()=>{
+ const panel=scope('<section id="partnerPanelRecord"','<section id="partnerPanelRankings"');
+ assert.match(panel,/class="p-inline-card record-card"/);
+ assert.match(panel,/class="record-title">📊 実績入力/);
+ assert.match(panel,/class="record-grid"/);
+ assert.match(panel,/<label for="pInlineRecordDate">日付<\/label>/);
+ assert.match(panel,/<label for="pInlineStaff">担当者<\/label>/);
+ assert(panel.indexOf('id="pInlineRecordDate"')<panel.indexOf('id="pInlineStaff"'));
+ assert.match(panel,/id="pInlineCountFields" class="product-input-list"/);
+ assert.match(panel,/id="pInlineSaveStatus"/);
+ assert.match(html,/#partnerInlineWorkspace #pInlineCountFields\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+});
+test("switching date or staff cannot silently discard unsubmitted partner counts",()=>{
+ const body=scope('function partnerInlineChangeDate(which){','\npInline("pInlineAddTeam").onclick=');
+ const elements=new Map();
+ const pInline=id=>{
+  if(!elements.has(id))elements.set(id,{value:"",onclick:null,onchange:null,
+    querySelectorAll:()=>[],click(){this.clicks=(this.clicks||0)+1;}});
+  return elements.get(id);
+ };
+ pInline("pInlineDate").value="2026-11-02";
+ pInline("pInlineRecordDate").value="2026-11-02";
+ pInline("pInlineStaff").value="staff-2";
+ let updates=0,confirms=0,clears=0;
+ const ctx={pInline,partnerInlineBusy:false,partnerInlineData:{
+  date:"2026-11-02",records:[{staffId:"staff-1",totalCount:5,privateTotalCount:0}]
+ },partnerInlineEditingStaffId:"staff-1",partnerInlineHasUnsavedCounts:()=>true,
+ partnerInlineRenderCounts:()=>{},partnerInlineFetch:()=>{updates++;},
+ partnerInlineClearFields:()=>{clears++;},renderPartnerEntryTotals:()=>{},
+ partnerInlineStatus:()=>{},window:{confirm:()=>{confirms++;return false;}}};
+ runInNewContext(body,ctx);
+ pInline("pInlineStaff").onchange();
+ assert.equal(pInline("pInlineStaff").value,"staff-1","unconfirmed staff change is undone");
+ pInline("pInlineRecordDate").value="2026-11-01";
+ pInline("pInlineRecordDate").onchange();
+ assert.equal(pInline("pInlineRecordDate").value,"2026-11-02");
+ assert.equal(pInline("pInlineDate").value,"2026-11-02");
+ pInline("pInlineRefresh").onclick();
+ assert.equal(updates,0,"unsaved input blocks refresh");
+ pInline("pInlineZero").onclick();
+ assert.equal(clears,0,"declined zero correction retains original input");
+ assert.equal(pInline("pInlineSave").clicks||0,0,"no zero correction is saved");
+ assert.equal(confirms,4);
+});
+test("verified partner save refreshes once and shows an explicit confirmation",async()=>{
+ const body=scope("async function partnerInlineRun(work){","\nfunction partnerInlinePayload(data){");
+ const nodes=new Map();
+ const pInline=id=>{
+  if(!nodes.has(id))nodes.set(id,{disabled:false,value:"staff-1",textContent:"",querySelectorAll:()=>[]});
+  return nodes.get(id);
+ };
+ let fetched=0,rendered=0;
+ const ctx={pInline,auth:{currentUser:{uid:"uid1"}},
+  partnerInlineBusy:false,partnerInlineData:{staff:[{id:"staff-1",active:true}]},
+  partnerInlineFetch:async()=>{fetched++;return true;},partnerInlineRenderCounts:()=>{
+   rendered++;pInline("pInlineSaveStatus").textContent="";
+  },renderPartnerPrivateProductCatalog:()=>{},partnerInlineStatus:()=>{},
+  sharedDailyRankingGeneration:0,sharedDailyRankCache:new Map()};
+ await runInNewContext(body+'\npartnerInlineRun(async()=>"件数の保存と再取得を確認しました。")',ctx);
+ assert.equal(fetched,1);
+ assert.equal(rendered,1);
+ assert.match(pInline("pInlineSaveStatus").textContent,/保存と再取得を確認/);
+ assert.equal(pInline("pInlineSave").disabled,false);
 });
