@@ -224,3 +224,38 @@ test("corrected counts and date changes invalidate stale joint standings, while 
  assert.equal(ctx.partnerInlineWorkspaceCompany,"");
  assert.equal(ctx.partnerInlineData,null);
 });
+
+
+test("legacy direct product resolution keeps verified totals but never invents ranked people",()=>{
+ const src=scope("function verifiedDirectDayCounts(date){","\nfunction appendSharedRankingRows(");
+ assert.ok(src.includes("productTotals=new Map()"),"product accumulator must not shadow original catalog");
+ assert.ok(src.includes("products.find("),"original catalog resolves product IDs");
+ const ctx={
+  recordsReady:true,recordsSubscribedMonth:"2026-11",dashboardMonth:{value:"2026-11"},
+  canLoadPartnerRanking:()=>true,currentUserData:{companyId:"hub"},
+  products:[{id:"p1",name:"NURO光"}],
+  records:[
+   {id:"old",companyId:"hub",date:"2026-11-02",teamId:"a",teamNameSnapshot:"旧1班",
+    memberNameSnapshot:"不明",results:[{productId:"p1",count:2}],totalCount:2},
+   {id:"verified",uid:"user42",companyId:"hub",date:"2026-11-02",
+    teamId:"a",teamNameSnapshot:"旧1班",memberNameSnapshot:"実在",
+    results:[{productId:"p1",count:3}],totalCount:3}
+  ],
+  getRecordResults:r=>r.results,
+  getCurrentMemberName:r=>r.memberNameSnapshot,
+  getCurrentTeamName:r=>r.teamNameSnapshot,
+  sharedVerifiedProductCategory:name=>name==="NURO光"?"NURO":null
+ };
+ const result=runInNewContext(src+"\nverifiedDirectDayCounts('2026-11-02')",ctx);
+ assert.equal(result.totalCount,5);
+ assert.equal(result.teams.length,1);
+ assert.equal(result.teams[0].totalCount,5,"historical team totals remain intact");
+ assert.equal(result.people.length,1,"missing UID must not invent an individual");
+ assert.equal(result.people[0].totalCount,3);
+ assert.equal(result.peopleVerified,false);
+ assert.equal(result.unverifiedPersonRecords,1);
+ assert.equal(result.products[0].name,"NURO");
+ assert.equal(result.products[0].count,5);
+ assert.match(html,/report\.direct\.peopleVerified===true/);
+ assert.match(html,/未報告・未照合の実績があります/);
+});
