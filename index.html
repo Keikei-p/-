@@ -28019,6 +28019,39 @@ async function readPartnerRankingMonth(month){
   return {complete:coverageComplete,rows:[...map.values()],
     reason:coverageComplete?"":"協力店に未報告の日があります。月間順位は未確定です。"};
 }
+// Preserve available company counts when an approved partner has not
+// reported a day, but NEVER turn these incomplete numbers into rank places.
+function renderOwnerPartnerMonthlyPendingCounts(){
+ const parent=individualRankingContent;
+ if(!parent)return;
+ let card=document.getElementById("ownerPartnerMonthlyPendingCounts");
+ if(!card){
+  card=document.createElement("section");
+  card.id="ownerPartnerMonthlyPendingCounts";
+  card.className="p-inline-card";
+  parent.append(card);
+ }
+ card.replaceChildren();
+ const valid=canLoadPartnerRanking()&&
+  partnerRankingState.key===currentPartnerRankingKey()&&
+  partnerRankingState.complete===false;
+ card.hidden=!valid;
+ if(!valid)return;
+ const title=document.createElement("h3");
+ title.textContent="🤝 協力店の月間報告済み件数（未確定・順位なし）";
+ card.append(title);
+ const hint=document.createElement("p");
+ hint.textContent=partnerRankingState.reason||"全社の報告が揃っていません。";
+ card.append(hint);
+ const rows=Array.isArray(partnerRankingState.rows)?partnerRankingState.rows:[];
+ for(const row of rows){
+  if(typeof row.name!=="string"||!Number.isSafeInteger(row.totalCount)||
+     row.totalCount<0)continue;
+  partnerMainAppendRow(card,row.name,row.totalCount+"件｜報告済み分のみ");
+ }
+ if(!rows.length)
+  partnerMainAppendRow(card,"未照合","報告済みの協力店件数を確認できません。");
+}
 function currentPartnerRankingRows(){
   if(!canLoadPartnerRanking()||
      partnerRankingState.key!==currentPartnerRankingKey()||
@@ -33766,6 +33799,7 @@ function renderIndividualRanking(
   individualMap
 ) {
   setOwnerCombinedCountCardVisibility("Individual");
+  renderOwnerPartnerMonthlyPendingCounts();
 
   individualRankingList.innerHTML =
     "";
