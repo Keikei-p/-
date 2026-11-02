@@ -34949,16 +34949,10 @@ function renderTeamRanking(
     canViewRevenue ? "" : "none";
 
   const originalRows=buildTeamRankingRows(teamMap,monthly,teamRankingMode);
-  const partnerRows=teamRankingMode==="progress"
-    ? currentPartnerRankingRows().map(row=>({
-        id:"quick-partner:"+row.id,name:"🤝 "+row.name,
-        count:row.totalCount,revenue:0,totalTarget:0,totalActual:row.totalCount,
-        remaining:0,progress:0
-      }))
-    : [];
-  const ranking = sortTeamRankingRows(
-    [...originalRows,...partnerRows],teamRankingMode
-  );
+  // Company totals are not teams. Do not insert an imaginary team called
+  // "partner company" into the existing goal-progress leaderboard. Real
+  // partner teams are reported by the verified, count-only joint scoreboard.
+  const ranking = sortTeamRankingRows(originalRows,teamRankingMode);
 
   const modeLabel =
     teamRankingMode === "revenue"
