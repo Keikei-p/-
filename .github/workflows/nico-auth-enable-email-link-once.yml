@@ -66,10 +66,10 @@ jobs:
               console.log('STOP_PASSWORD_OR_HOSTING_DOMAIN_NOT_READY');process.exitCode=1;return;
             }
             const state=before.signIn.email.passwordRequired;
-            if(state!==true&&state!==false){
+            if(state!==true&&state!==false&&state!==undefined){
               console.log('STOP_AMBIGUOUS_AUTH_EMAIL_LINK_CONFIG');process.exitCode=1;return;
             }
-            if(state===true){
+            if(state!==false){
               await client.request({
                 method:'PATCH',
                 url:url+'?updateMask=signIn.email.passwordRequired',
