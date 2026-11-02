@@ -4,6 +4,9 @@ on:
     branches: [fix/partner-compact-two-column-team-ui-20261102]
     paths:
       - tests/partner-compact-two-column-team-ui-20261102.test.mjs
+      - tests/partner-always-visible-success-ui-20261102.test.mjs
+      - tests/partner-history-direct-correction-20261102.test.mjs
+      - tests/partner-managed-staff-archive-20261102.test.mjs
       - index.html
       - functions-partner-workspace/service.cjs
       - tests/partner-workspace.test.cjs
