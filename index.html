@@ -12579,9 +12579,20 @@ function renderPartnerCountOnlyExtras(){
  const products=pInline("pPartnerProductSummary");products.replaceChildren();
  for(const [key,n] of [...byProduct].sort((a,b)=>b[1]-a[1]))
   partnerMainAppendRow(products,key,n+"件");
+ const privateProductById=new Map((snap.privateProducts||[]).map(p=>[p.id,p.name]));
+ const privateTotals=new Map();
+ for(const item of items)for(const [id,n] of Object.entries(item.privateCounts||{}))
+  privateTotals.set(id,(privateTotals.get(id)||0)+n);
+ for(const [id,n] of [...privateTotals].sort((a,b)=>b[1]-a[1]))
+  if(n)partnerMainAppendRow(products,(privateProductById.get(id)||"過去の専用商材")+"（社内のみ）",n+"件");
  const lines=[snap.companyName+"｜"+snap.date+" 営業実績報告",
   "総件数："+count+"件","報告した担当者："+new Set(items.map(x=>x.staffId)).size+"人",""];
  for(const [key,n] of byProduct)if(n)lines.push(key+"："+n+"件");
+ if(privateTotals.size){
+  lines.push("【協力店内だけの商材・合同ランキング対象外】");
+  for(const [id,n] of privateTotals)if(n)
+   lines.push((privateProductById.get(id)||"過去の専用商材")+"："+n+"件");
+ }
  pInline("pPartnerReportText").value=lines.join("\n");
  renderPartnerGoalEstimate();
 }
@@ -12636,8 +12647,8 @@ function mountPartnerSafeManagementMenu(){
   ["🏢","会社","account"],
   ["✉️","招待リンク","invite"],
   ["👥","班管理","members"],
-  ["👤","メンバー","members"],
-  ["📦","商材管理","products"],
+  ["👤","メンバー管理","members"],
+  ["📦","商材追加・管理","catalog"],
   ["⚙️","アカウント設定","account"]
  ];
  const getAccountPanel=()=>{
@@ -12676,18 +12687,13 @@ function mountPartnerSafeManagementMenu(){
     partnerMainAppendRow(detail,"所属会社",snap.companyName);
     partnerMainAppendRow(detail,"権限",snap.role==="leader"?"リーダー":snap.role==="owner"?"管理者":"メンバー");
     partnerMainAppendRow(detail,"ログインメール",auth.currentUser?.email||"未設定");
-    pInline("partnerSameAppDashboardDetails").hidden=false;
-    for(const item of pInline("partnerSameAppDashboardDetails").querySelectorAll("[data-partner-view]"))
-     item.hidden=true;
-    destination.hidden=false;
-    partnerSameAppSelectedPanel="account";
-    pInline("partnerSameAppNavigation").querySelectorAll("[data-partner-panel]").forEach(card=>{
-     card.setAttribute("aria-pressed","false");card.setAttribute("aria-expanded","false");
-    });
+    partnerSameAppSelectPanel("account");
    }else{
-    partnerSameAppSelectPanel(action==="invite"?"members":action);
+    partnerSameAppSelectPanel(action);
     if(action==="invite"&&["leader","owner"].includes(snap.role))
      pInline("pInlineInviteEmail").focus();
+    if(action==="catalog"&&["leader","owner"].includes(snap.role))
+     pInline("pInlineCustomName").focus();
    }
   };
   buttons.append(button);
@@ -13115,6 +13121,35 @@ function partnerInlineFillSelect(id,items,label,preferred){
  if(items.some(x=>x.id===pick))select.value=pick;
  return select.value;
 }
+function renderPartnerPrivateProductCatalog(){
+ const snap=partnerInlineData;
+ if(!snap||snap.role==="hub")return;
+ const editable=["owner","leader"].includes(snap.role);
+ const add=pInline("pInlineAddPrivateProduct");
+ add.disabled=!editable||partnerInlineBusy;
+ const list=pInline("pInlinePrivateProductList");list.replaceChildren();
+ const products=Array.isArray(snap.privateProducts)?snap.privateProducts:[];
+ for(const product of products){
+  const row=document.createElement("div");row.className="p-inline-row";
+  const heading=document.createElement("strong");
+  heading.textContent=product.name+(product.active?"":"（非表示・過去の件数は保持）");
+  row.append(heading);
+  if(editable){
+   const toggle=document.createElement("button");toggle.type="button";
+   toggle.className="team-action-button";
+   toggle.textContent=product.active?"商材を非表示にする":"再表示する";
+   toggle.onclick=()=>partnerInlineRun(async()=>{
+    await partnerInlineManage(partnerInlinePayload({
+     action:"setPrivateProduct",productId:product.id,name:product.name,active:!product.active
+    }));
+    return "商材の表示を更新しました。過去の実績は保持されます。";
+   });
+   row.append(toggle);
+  }
+  list.append(row);
+ }
+ if(!products.length)partnerMainAppendRow(list,"協力店専用の商材は未登録です","公開商材の件数は実績入力から登録できます。");
+}
 function partnerInlineRenderCounts(){
  const snap=partnerInlineData;
  if(!snap||snap.role==="hub")return;
@@ -13127,6 +13162,19 @@ function partnerInlineRenderCounts(){
   const input=document.createElement("input");input.type="number";input.min="0";input.max="9999";
   input.step="1";input.inputMode="numeric";input.dataset.countKey=key;
   input.value=String(entry?.counts?.[key]??0);
+  label.append(input);grid.append(label);
+ }
+ // Private products stay within this partner company and never enter
+ // the shared all-company ranking. Preserve retired historical counts.
+ for(const product of snap.privateProducts||[]){
+  const prior=entry?.privateCounts?.[product.id]??0;
+  if(!product.active&&prior===0)continue;
+  const label=document.createElement("label");label.className="p-inline-field";
+  label.textContent=product.name+"（協力店専用）";
+  const input=document.createElement("input");input.type="number";input.min="0";
+  input.max="9999";input.step="1";input.inputMode="numeric";
+  input.dataset.privateCountId=product.id;input.value=String(prior);
+  if(!product.active)input.readOnly=true;
   label.append(input);grid.append(label);
  }
  pInline("pInlineSave").disabled=!staffId||partnerInlineBusy;
@@ -13146,9 +13194,11 @@ function partnerInlineRender(){
  pInline("pInlineOwnerTeam").hidden=!["owner","leader"].includes(snap.role);
  pInline("pInlineMemberForms").hidden=!["owner","leader"].includes(snap.role);
  partnerInlineFillSelect("pInlineManageTeam",teams,t=>snap.companyName+"・"+t.name);
+ partnerInlineFillSelect("pInlineInviteTeam",teams,t=>snap.companyName+"・"+t.name);
  partnerInlineFillSelect("pInlineMoveStaff",staff,p=>p.name);
  pInline("pInlineAddManaged").disabled=!teams.length;
- pInline("pInlineCreateInvite").disabled=!teams.length;
+ pInline("pInlineCreateInvite").disabled=!teams.length||!["leader","owner"].includes(snap.role);
+ renderPartnerPrivateProductCatalog();
  const list=pInline("pInlinePeople");list.replaceChildren();
  for(const person of staff)partnerMainAppendRow(list,person.name,
   (teamById.get(person.teamId)?.name||"未配属")+"・"+
@@ -13307,7 +13357,7 @@ pInline("pInlineAddManaged").onclick=()=>partnerInlineRun(async()=>{
 pInline("pInlineCreateInvite").onclick=()=>partnerInlineRun(async()=>{
  const snap=partnerInlineData,email=pInline("pInlineInviteEmail").value.trim().toLowerCase();
  const role=pInline("pInlineInviteRole").value;
- const teamId=pInline("pInlineManageTeam").value;
+ const teamId=pInline("pInlineInviteTeam").value;
  if(!["owner","leader"].includes(snap.role)||!partnerMainValidId(teamId)||
   !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||
   !["leader","member"].includes(role))throw Error("input");
@@ -13323,6 +13373,13 @@ pInline("pInlineCreateInvite").onclick=()=>partnerInlineRun(async()=>{
   console.error("partner_leader_email_send_failed",error?.code||"unknown");
   return "招待リンクは作成しましたが、メールは未送信です。Firebaseメールリンク設定を確認してください。";
  }
+});
+pInline("pInlineAddPrivateProduct").onclick=()=>partnerInlineRun(async()=>{
+ const snap=partnerInlineData,name=pInline("pInlineCustomName").value.trim();
+ if(!["owner","leader"].includes(snap.role)||!name||name.length>80)throw Error("product");
+ await partnerInlineManage(partnerInlinePayload({action:"addPrivateProduct",name}));
+ pInline("pInlineCustomName").value="";
+ return "商材を追加しました。実績入力に反映します。";
 });
 pInline("pInlineCopyInvite").onclick=async()=>{
  if(!pInline("pInlineInviteUrl").value)return;
@@ -13342,13 +13399,22 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
   counts[key]=n;
  }
  const before=snap.records.find(x=>x.staffId===staffId);
+ const privateCounts=Object.create(null);
+ for(const node of pInline("pInlineCountFields").querySelectorAll("input[data-private-count-id]")){
+  const id=node.dataset.privateCountId,n=Number(node.value);
+  if(!partnerMainValidId(id)||node.value.trim()===""||
+     !Number.isSafeInteger(n)||n<0||n>9999)throw Error("privateCounts");
+  privateCounts[id]=n;
+ }
  const result=(await partnerInlineSave(partnerInlinePayload({
-  date:pInline("pInlineDate").value,staffId,counts,expectedVersion:before?.version??0
+  date:pInline("pInlineDate").value,staffId,counts,privateCounts,expectedVersion:before?.version??0
  }))).data;
  const verified=(await readPartnerWorkDay(partnerInlinePayload({date:pInline("pInlineDate").value}))).data;
  const saved=verified?.records?.find(x=>x.staffId===staffId);
  if(!saved||saved.version!==result?.version||
-   snap.categories.some(key=>saved.counts?.[key]!==counts[key]))throw Error("save_verify");
+   snap.categories.some(key=>saved.counts?.[key]!==counts[key])||
+   Object.keys(privateCounts).some(id=>saved.privateCounts?.[id]!==privateCounts[id]))
+   throw Error("save_verify");
  return "件数の保存と再取得を確認しました。";
 });
 // Original internal owner sees existing teams PLUS partner-company teams.
