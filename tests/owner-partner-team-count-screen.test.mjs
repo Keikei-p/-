@@ -92,11 +92,14 @@ test("owner team screen keeps the original sales UI and displays actual partner 
  assert.equal(f.calls().length,1,"company breakdown is lazy, not extra database reads");
  const card=await f.openCompany(0);
  const team=card.children[2].children[0];
- assert.match(team.children[0].textContent,/1班｜3件/);
- const staff=team.children[1].children[0];
- assert.match(staff.children[0].textContent,/田中｜3件/);
- assert.match(staff.children[1].textContent,/NURO｜2件/);
- assert.match(staff.children[2].textContent,/SBMNP｜1件/);
+ const content=n=>[n.textContent||"",...(n.children||[]).flatMap(content)].join(" ");
+ assert.equal(team.className,"partner-count-team-card");
+ assert.match(content(team),/1班/);
+ assert.match(content(team),/合計 3件/);
+ assert.match(content(team),/田中｜合計 3件/);
+ assert.match(content(team),/NURO 2件/);
+ assert.match(content(team),/SBMNP 1件/);
+ assert.doesNotMatch(content(team),/¥|￥|売上|単価/);
  assert.equal(f.calls().length,2);
  await card.handlers.toggle();
  assert.equal(f.calls().length,2,"opening again does not duplicate reads");
@@ -110,7 +113,7 @@ test("owner refresh shows corrected count once and explicitly marks unreported",
  assert.equal(f.dom.ownerPartnerDashboardList.children.length,2);
  assert.match(f.dom.ownerPartnerDashboardSummary.children[0].textContent,/4件/);
  const company=await f.openCompany(0);
- assert.match(company.children[2].children[0].children[0].textContent,/4件/);
+ assert.match(company.children[2].children[0].children[0].children[1].textContent,/4件/);
  f.setHasReport(false);await f.run();
  assert.match(f.dom.ownerPartnerDashboardList.children[0].children[0].textContent,/未報告/);
  assert.match(f.dom.ownerPartnerDashboardSummary.children.at(-1).textContent,/2社/);
