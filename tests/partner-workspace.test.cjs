@@ -1303,3 +1303,45 @@ test("internal member can read approved count-only standings but cannot manage p
  account.active=false;
  await assert.rejects(api.view(req("x",{date:"2026-10-31",sharedRankings:true})),{code:"permission-denied"});
 });
+
+
+test("partner leader without a representative can manage own count-only custom products but member and hub cannot",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ const original=clone(db.store.get("records/old"));
+ const team=(await api.manage(req("p",{action:"addTeam",name:"登録班"}))).teamId;
+ const lead=(await api.manage(req("p",{action:"createInvite",
+   teamId:team,role:"leader",email:"l@example.com"}))).token;
+ await api.accept(req("l",{token:lead,name:"協力店リーダー"}));
+ const member=(await api.manage(req("l",{action:"createInvite",
+   teamId:team,role:"member",email:"m@example.com"}))).token;
+ await api.accept(req("m",{token:member,name:"協力店メンバー"}));
+ const id=(await api.manage(req("l",{action:"addPrivateProduct",name:"新規協力店商材"}))).productId;
+ const staff=(await api.manage(req("l",{action:"addManaged",name:"登録者",teamId:team}))).staffId;
+ const saved=await api.submit(req("l",{date,staffId:staff,counts:{...zero(),NURO:2},
+   privateCounts:{[id]:3},expectedVersion:0}));
+ assert.equal(saved.totalCount,2);
+ assert.equal(saved.privateTotalCount,3);
+ const partner=await api.view(req("l",{date}));
+ assert.equal(partner.privateProducts[0].name,"新規協力店商材");
+ assert.equal(partner.records.find(x=>x.staffId===staff).privateCounts[id],3);
+ await assert.rejects(api.manage(req("m",{action:"addPrivateProduct",name:"禁止商材"})),
+   e=>e.code==="permission-denied");
+ await assert.rejects(api.manage(req("m",{action:"setPrivateProduct",productId:id,
+   name:"改竄",active:false})),e=>e.code==="permission-denied");
+ await api.manage(req("l",{action:"setPrivateProduct",productId:id,
+   name:"新規協力店商材",active:false}));
+ const disabled=await api.view(req("l",{date}));
+ assert.equal(disabled.privateProducts[0].active,false);
+ assert.equal(disabled.records.find(x=>x.staffId===staff).privateCounts[id],3);
+ // A normal edit must keep disabled historical private counts without resending
+ // those forbidden positive values in its patch.
+ await api.submit(req("l",{date,staffId:staff,counts:{...zero(),NURO:4},
+   privateCounts:{},expectedVersion:1}));
+ const after=await api.view(req("l",{date}));
+ assert.equal(after.records[0].privateCounts[id],3);
+ const hub=await api.view(req("h",{date}));
+ assert.equal(hub.partners[0].totalCount,4);
+ assert.equal(JSON.stringify(hub).includes("新規協力店商材"),false);
+ assert.equal(JSON.stringify(hub).includes(id),false);
+ assert.deepEqual(db.store.get("records/old"),original);
+});
