@@ -13229,7 +13229,9 @@ function renderPartnerEntryTotals(){
  for(const input of grid.querySelectorAll("input[data-count-key],input[data-private-count-id]")){
   if(input.value.trim()===""||!Number.isSafeInteger(Number(input.value))||
      Number(input.value)<0||Number(input.value)>9999){
-   target.textContent="件数を確認してください";return;
+   target.textContent="件数を確認してください";
+   pInline("pInlineSaveStatus").textContent="件数は各商材0〜9999の整数で入力してください。";
+   return;
   }
   if(input.dataset.countKey)shared+=Number(input.value);
   else privateTotal+=Number(input.value);
