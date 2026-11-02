@@ -79,6 +79,46 @@ function setup(){
  return {db,api,req,zero};
 }
 
+test("first company is created with direct leader/member invite, no representative or finance mutation",async()=>{
+ for(const role of ["leader","member"]){
+  const {db,api,req,zero}=setup();
+  for(const key of [...db.store.keys()])if(key.startsWith("companies/partner")||key==="partnerRelations/partner"||key==="users/p")db.store.delete(key);
+  const before=new Map([...db.store].map(([k,v])=>[k,clone(v)]));
+  const invite=await api.manage(req("h",{action:"hubCreateInvite",companyName:"新協力店",role,email:"n@example.com"}));
+  const joined=await api.accept(req("n",{token:invite.token,name:"参加者"}));
+  const cid=joined.partnerCompanyId,c=db.store.get("companies/"+cid);
+  assert.equal(c.name,"新協力店");assert.equal(c.ownerUid,undefined);
+  assert.equal(db.store.get("users/n").role,role);
+  assert.equal(db.store.get("users/n").companyRole,"member");
+  assert.equal(db.store.get("users/n").canViewRevenue,false);
+  assert.equal(db.store.get("users/n").canViewUnitPrice,false);
+  await api.submit(req("n",{date:"2026-10-31",staffId:"n",counts:{...zero(),NURO:2},expectedVersion:0}));
+  const own=await api.view(req("n",{date:"2026-10-31"})),hub=await api.view(req("h",{date:"2026-10-31"}));
+  assert.equal(own.records[0].totalCount,2);assert.equal(hub.partners[0].totalCount,2);
+  if(role==="leader")await api.manage(req("n",{action:"addTeam",name:"2班"}));
+  else await assert.rejects(api.manage(req("n",{action:"addTeam",name:"2班"})));
+  for(const [k,v] of before)assert.deepEqual(db.store.get(k),v);
+  const size=db.store.size;
+  await assert.rejects(api.manage(req("h",{action:"hubCreateInvite",companyName:"新協力店",role,email:"x@example.com"})),{code:"already-exists"});
+  assert.equal(db.store.size,size);
+ }
+});
+
+test("new company invite fails closed for partner callers, revoked hub owners and invalid input",async()=>{
+ for(const patch of [{companyName:""},{companyName:"売上100円"},{companyName:"Ａ".repeat(81)},{role:"owner"},{teamId:"foreign"},{email:"bad"}]){
+  const {db,api,req}=setup(),before=clone([...db.store]);
+  await assert.rejects(api.manage(req("h",{action:"hubCreateInvite",companyName:"新会社",role:"leader",email:"n@example.com",...patch})));
+  assert.deepEqual([...db.store],before);
+ }
+ const {db,api,req}=setup();
+ const payload={action:"hubCreateInvite",companyName:"新会社",role:"leader",email:"n@example.com"};
+ await assert.rejects(api.manage(req("p",payload)));
+ const transaction=db.runTransaction.bind(db);
+ db.runTransaction=fn=>{db.store.get("companies/hub/members/h").active=false;return transaction(fn);};
+ await assert.rejects(api.manage(req("h",payload)));
+ assert.equal([...db.store.keys()].filter(k=>k.startsWith("partnerWorkInvites/")).length,0);
+});
+
 test("direct hub invite needs no representative: leader manages own company teams, invites and preserves history",async()=>{
  const {db,api,req,zero}=setup(),date="2026-10-31";
  // An existing partner company does not need an owner/representative account.

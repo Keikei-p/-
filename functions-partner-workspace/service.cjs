@@ -249,7 +249,11 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    "hubAddTeam","hubCreateInvite"].includes(op))fail("invalid-argument");
   const s=await scope(uid,null,d.workspaceCompanyId);
   if(op==="hubAddTeam"||op==="hubCreateInvite"){
-   if(s.kind!=="hub"||s.role!=="owner"||!ID.test(d.partnerCompanyId||""))fail();
+   const newCompany=op==="hubCreateInvite"&&d.partnerCompanyId==null;
+   if(s.kind!=="hub"||s.role!=="owner")fail();
+   if(newCompany){
+    if(!validCompanyName(d.companyName)||d.teamId!=null)fail("invalid-argument");
+   }else if(!ID.test(d.partnerCompanyId||""))fail("invalid-argument");
    if(op==="hubAddTeam"){
     if(!validName(d.name))fail("invalid-argument");
     const ref=collection(d.partnerCompanyId,"partnerWorkTeams").doc();
@@ -264,19 +268,42 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     return {teamId:ref.id,created:true};
    }
    if(!EMAIL.test(clean(d.email).toLowerCase())||
-      !["leader","member"].includes(d.role)||!ID.test(d.teamId||""))
+      !["leader","member"].includes(d.role)||(!newCompany&&!ID.test(d.teamId||"")))
     fail("invalid-argument");
+   const companyName=clean(d.companyName).normalize("NFKC");
+   if(newCompany&&!validCompanyName(companyName))fail("invalid-argument");
+   const partnerId=newCompany?"partner_"+crypto.createHash("sha256")
+    .update(s.cid+"\n"+companyName.toLowerCase()).digest("hex"):d.partnerCompanyId;
+   const teamId=newCompany?"initial":d.teamId;
    const token=crypto.randomBytes(32).toString("base64url");
    const hash=crypto.createHash("sha256").update(token).digest("hex");
    const expiresAt=Timestamp.fromMillis(now()+30*60000);
    await db.runTransaction(async tx=>{
     const fresh=await scope(uid,tx,d.workspaceCompanyId);
     if(fresh.kind!=="hub"||fresh.cid!==s.cid||fresh.role!=="owner")fail();
-    const partner=await hubPartner(tx,s.cid,d.partnerCompanyId);
-    if(!partner.active)fail("failed-precondition");
-    await checkTeam(tx,{cid:d.partnerCompanyId},d.teamId);
+    if(newCompany){
+     const cr=db.collection("companies").doc(partnerId);
+     const rr=db.collection("partnerRelations").doc(partnerId);
+     const [existing,relation,relations]=await Promise.all([
+      tx.get(cr),tx.get(rr),tx.get(db.collection("partnerRelations").where("hubCompanyId","==",s.cid).limit(101))
+     ]);
+     if(existing.exists||relation.exists)fail("already-exists");
+     if(relations.size>=100)fail("resource-exhausted");
+     // Only the internal owner explicitly creates a count-sharing workspace.
+     // No representative, owner account, financial access or existing data edits.
+     const stamp={createdByUid:uid,createdAt:FieldValue.serverTimestamp()};
+     tx.create(cr,{name:companyName,companyKind:"partner",hubCompanyId:s.cid,active:true,...stamp});
+     tx.create(rr,{partnerCompanyId:partnerId,hubCompanyId:s.cid,active:true,
+      countSharingApproved:true,...stamp});
+     tx.create(collection(partnerId,"partnerWorkTeams").doc(teamId),{
+      name:"1班",companyId:partnerId,active:true,...stamp});
+    }else{
+     const partner=await hubPartner(tx,s.cid,partnerId);
+     if(!partner.active)fail("failed-precondition");
+     await checkTeam(tx,{cid:partnerId},teamId);
+    }
     tx.create(db.collection("partnerWorkInvites").doc(hash),{
-     companyId:d.partnerCompanyId,hubCompanyId:s.cid,teamId:d.teamId,
+     companyId:partnerId,hubCompanyId:s.cid,teamId,
      role:d.role,emailLower:clean(d.email).toLowerCase(),invitedByUid:uid,
      status:"pending",createdAt:FieldValue.serverTimestamp(),expiresAt
     });

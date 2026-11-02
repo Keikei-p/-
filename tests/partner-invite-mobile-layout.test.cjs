@@ -46,7 +46,8 @@ test("existing invitations, company owner access, sales reports, finance display
    'id="ownerTransferPanel"'
  ])assert(html.includes(marker),marker);
  const source=html.slice(html.indexOf('const partnerInviteCreateButton ='),html.indexOf('document.getElementById("partnerInviteCopyButton")'));
- assert(source.includes('partnerInlineManage({action:"hubCreateInvite",partnerCompanyId,teamId,role,email})'));
+ assert(source.includes('partnerInlineManage({action:"hubCreateInvite",'));
+ assert(source.includes('...(isNew?{companyName}:{partnerCompanyId,teamId}),role,email}'));
  assert(source.includes('currentCompanyData?.ownerUid !== currentUser.uid'));
  assert(source.includes('showSuccess("協力店の招待リンクを作成しました。'));
  assert(html.includes("function canCurrentUserViewRevenueForTeam("));

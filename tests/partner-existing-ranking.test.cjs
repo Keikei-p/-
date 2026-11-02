@@ -119,7 +119,8 @@ test("visible invitation destination selector preserves employee invite and swit
  assert.match(sync,/currentCompanyData\?\.ownerUid === currentUser.uid/);
  assert.match(sync,/partnerButton.disabled = !owner/);
  assert.ok(html.includes('if (mode === "invite") syncInviteDestinationPanel()'));
- assert.ok(html.includes('partnerInlineManage({action:"hubCreateInvite",partnerCompanyId,teamId,role,email})'));
+  assert.ok(html.includes('partnerInlineManage({action:"hubCreateInvite",'));
+  assert.ok(html.includes('...(isNew?{companyName}:{partnerCompanyId,teamId}),role,email}'));
  assert.ok(html.includes("currentCompanyData?.companyKind === \"partner\""));
 });
 

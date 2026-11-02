@@ -5052,7 +5052,8 @@ body.product-reordering .product-list {
                    placeholder="例）partner@example.com"
                    style="display:block;width:100%;max-width:100%;min-width:0;min-height:48px;box-sizing:border-box;">
           </div>
-          <label class="form-group">班<select id="partnerInviteTeam" required></select></label>
+          <label class="form-group" id="partnerInviteNewCompanyField" hidden>新しい協力店名<input id="partnerInviteNewCompanyName" maxlength="80" placeholder="協力店の会社名"></label>
+          <label class="form-group" id="partnerInviteTeamField">班<select id="partnerInviteTeam" required></select></label>
           <label class="form-group">権限<select id="partnerInviteRole"><option value="leader">リーダー</option><option value="member">メンバー</option></select></label>
           <p id="partnerInviteCompanyStatus" role="status"></p>
           <button id="partnerInviteCreateButton" type="button"
@@ -12083,6 +12084,9 @@ createInviteButton.onclick =
 let directPartnerInviteCompanies=[];
 let directPartnerInviteSequence=0;
 function renderDirectPartnerInviteTeams(){
+ const isNew=pInline("partnerInviteCompanyName").value==="__new__";
+ pInline("partnerInviteNewCompanyField").hidden=!isNew;
+ pInline("partnerInviteTeamField").hidden=isNew;
  const company=directPartnerInviteCompanies.find(c=>c.partnerCompanyId===pInline("partnerInviteCompanyName").value);
  partnerInlineFillSelect("partnerInviteTeam",company?.teams||[],t=>t.name);
  pInline("partnerInviteResult").hidden=true;
@@ -12098,10 +12102,12 @@ async function loadDirectPartnerInviteCompanies(){
   if(result?.role!=="hub"||!Array.isArray(result.registeredCompanies))throw Error("scope");
   directPartnerInviteCompanies=result.registeredCompanies.filter(c=>c.active===true);
   partnerInlineFillSelect("partnerInviteCompanyName",directPartnerInviteCompanies.map(c=>({...c,id:c.partnerCompanyId})),c=>c.name);
+  const addOption=document.createElement("option");addOption.value="__new__";addOption.textContent="新しい協力店を追加";
+  pInline("partnerInviteCompanyName").append(addOption);
+  if(!directPartnerInviteCompanies.length)pInline("partnerInviteCompanyName").value="__new__";
   renderDirectPartnerInviteTeams();
-  pInline("partnerInviteCreateButton").disabled=!directPartnerInviteCompanies.length;
-  pInline("partnerInviteCompanyStatus").textContent=directPartnerInviteCompanies.length?
-   "所属する協力店と班を選択してください。":"招待できる協力店がありません。会社の登録・件数利用承認を確認してください。";
+  pInline("partnerInviteCreateButton").disabled=false;
+  pInline("partnerInviteCompanyStatus").textContent="協力店を選ぶか、新しく追加してください。新しい協力店は1班から開始し、自社と件数を共有します。";
  }catch{
   if(seq!==directPartnerInviteSequence||currentUser?.uid!==uid)return;
   directPartnerInviteCompanies=[];
@@ -12124,14 +12130,17 @@ partnerInviteCreateButton.onclick = async () => {
   const role=document.getElementById("partnerInviteRole").value;
   const email=document.getElementById("partnerInviteEmail").value.trim().toLowerCase();
   const company=directPartnerInviteCompanies.find(c=>c.partnerCompanyId===partnerCompanyId&&c.active);
-  if(!company||!company.teams.some(t=>t.id===teamId)||!["leader","member"].includes(role)||
+  const isNew=partnerCompanyId==="__new__";
+  const companyName=document.getElementById("partnerInviteNewCompanyName").value.trim();
+  if((isNew?(!companyName||companyName.length>80):(!company||!company.teams.some(t=>t.id===teamId)))||!["leader","member"].includes(role)||
      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     showError("協力店・班・権限と招待メールアドレスを確認してください。");return;
   }
   const inviteCreatorUid=currentUser.uid;
   partnerInviteCreateButton.disabled=true;
   try {
-    const response=await partnerInlineManage({action:"hubCreateInvite",partnerCompanyId,teamId,role,email});
+    const response=await partnerInlineManage({action:"hubCreateInvite",
+      ...(isNew?{companyName}:{partnerCompanyId,teamId}),role,email});
     if(currentUser?.uid!==inviteCreatorUid ||
        currentCompanyData?.ownerUid!==inviteCreatorUid)
       throw Error("stale_invite_creator");
@@ -12140,6 +12149,9 @@ partnerInviteCreateButton.onclick = async () => {
       throw Error("invalid_invite_response");
     const url=new URL("/",location.origin);
     url.searchParams.set("partnerStaffInvite",token);
+    if(isNew)await loadDirectPartnerInviteCompanies();
+    if(currentUser?.uid!==inviteCreatorUid||currentCompanyData?.ownerUid!==inviteCreatorUid)
+      throw Error("stale_invite_creator");
     document.getElementById("partnerInviteLinkOutput").value=url.href;
     document.getElementById("partnerInviteResult").hidden=false;
     showSuccess("協力店の招待リンクを作成しました。30分以内に送ってください。");
