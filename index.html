@@ -13467,7 +13467,7 @@ async function openSameAppPartnerWorkspace(user,workspaceCompanyId=""){
  partnerSameAppSelectPanel("record");
  await partnerInlineFetch();
 }
-async function partnerInlineRun(work){
+async function partnerInlineRun(work,{refresh=true}={}){
  if(partnerInlineBusy||!partnerInlineData)return;
  const uid=auth.currentUser?.uid;
  let completed=false,resultMessage="";
@@ -13486,8 +13486,10 @@ async function partnerInlineRun(work){
   if(uid!==auth.currentUser?.uid)return;
   // Only a confirmed write refreshes the count fields; do not erase inputs
   // when a save or invitation fails and the user needs to retry.
-  ++sharedDailyRankingGeneration;sharedDailyRankCache.clear();
-  if(!await partnerInlineFetch())throw Error("refresh_after_write");
+  if(refresh){
+   ++sharedDailyRankingGeneration;sharedDailyRankCache.clear();
+   if(!await partnerInlineFetch())throw Error("refresh_after_write");
+  }
   completed=true;resultMessage=message||"更新しました。";
   if(partnerInlineData)partnerInlineStatus(resultMessage);
  }catch(error){
@@ -13496,7 +13498,8 @@ async function partnerInlineRun(work){
    "別の担当者が先に件数を更新した可能性があります。上書きせず、入力内容を控えて「更新」で最新件数を確認してください。":
    error?.message==="save_verify"||error?.message==="refresh_after_write"?
    "保存APIへの送信後、最新データの表示を照合できませんでした。二重登録を避けるため、再登録前に「更新」で最新件数を確認してください。入力内容は保持しています。":
-   "保存・招待を確認できませんでした。入力内容は保持しています。権限と通信を確認して再試行してください。";
+   refresh?"保存を確認できませんでした。入力内容は保持しています。権限と通信を確認して再試行してください。":
+   "招待処理を確認できませんでした。招待タブのエラー表示で原因を確認してください。";
   partnerInlineStatus(message,true);
   if(error?.message==="save_verify"&&pInline("pInlineSaveStatus"))
    pInline("pInlineSaveStatus").textContent=message;
@@ -13505,7 +13508,9 @@ async function partnerInlineRun(work){
   partnerInlineBusy=false;
   if(partnerInlineData&&uid===auth.currentUser?.uid){
    if(completed){
-    partnerInlineRenderCounts();
+    // Creating an invitation is not a count write: do not reset unfinished input.
+    if(refresh)partnerInlineRenderCounts();
+    else pInline("pInlineSave").disabled=false;
     if(resultMessage.startsWith("件数の保存")||
       resultMessage.startsWith("登録済みの件数"))
      pInline("pInlineSaveStatus").textContent=resultMessage;
@@ -13715,7 +13720,7 @@ pInline("pInlineCreateInvite").onclick=()=>partnerInlineRun(async()=>{
   "認証メールの送信処理が完了しました。相手のメール確認をお待ちください。":
   "招待リンクは作成済みです。メールを送信できなかったため、下の再送ボタンをご利用ください。",!sent);
  return sent?"認証メールを送信しました。":"招待リンクは作成しましたがメールは未送信です。招待タブから再送してください。";
-});
+},{refresh:false});
 function partnerLeaderInvalidateInvite(){
  // Changing the invitee, role or team must not leave a reusable old link.
  partnerLeaderLastInvitation=null;
