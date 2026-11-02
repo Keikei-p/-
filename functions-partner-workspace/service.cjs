@@ -663,7 +663,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      if(t.active)rows.set(sn.id,{
       teamId:sn.id,name:clean(t.name),
       counts:Object.fromEntries(KEYS.map(k=>[k,0])),
-      totalCount:0,reportedStaffCount:0
+      totalCount:0,reportedStaffCount:0,members:[]
      });
     }
     let unverifiedTeamCount=0,verifiedSharedCount=0;
@@ -684,6 +684,11 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      row.totalCount+=item.total;
      verifiedSharedCount+=item.total;
      for(const k of KEYS)row.counts[k]+=item.counts[k];
+     // Immutable name snapshot, no financial originals or private products.
+     // No staffId, UID or email escapes the Hub Owner count-only API.
+     const safeName=validName(e.staffNameSnapshot)?clean(e.staffNameSnapshot):
+      "担当者未確認";
+     row.members.push({name:safeName,totalCount:item.total,counts:{...item.counts}});
     }
     partnerTeamDetails={
      partnerCompanyId:selectedPartnerId,companyName:chosen.name,date,
