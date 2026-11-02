@@ -12393,6 +12393,36 @@ function resetPartnerInline(){
  pInline("partnerInviteAtMain").hidden=true;
 }
 // Partner sees original dashboard-style menu, not the finance DOM.
+function renderPartnerRankingOnlyPanel(){
+ const snap=partnerInlineData;
+ if(!snap||snap.role==="hub")return;
+ const rankings=pInline("pInlineRanking");rankings.replaceChildren();
+ const staffById=new Map(snap.staff.filter(x=>x.active).map(x=>[x.id,x]));
+ const teams=new Map(snap.teams.filter(x=>x.active).map(x=>[x.id,x]));
+ const rows=[];
+ if(partnerSameAppSelectedPanel==="product"){
+  for(const key of snap.categories){
+   const n=snap.records.reduce((sum,r)=>sum+(r.counts?.[key]||0),0);
+   rows.push({name:key,n});
+  }
+ }else if(partnerSameAppSelectedPanel==="team"){
+  for(const [id,t] of teams){
+   const n=snap.records.filter(r=>r.teamIdSnapshot===id)
+    .reduce((sum,r)=>sum+r.totalCount,0);
+   rows.push({name:snap.companyName+"・"+t.name,n});
+  }
+ }else{
+  for(const r of snap.records){
+   const person=staffById.get(r.staffId);
+   if(person)rows.push({name:person.name,n:r.totalCount});
+  }
+ }
+ rows.sort((a,b)=>b.n-a.n||a.name.localeCompare(b.name,"ja"));
+ for(const [i,row] of rows.entries())
+  partnerMainAppendRow(rankings,(i+1)+"位 "+row.name,row.n+"件");
+ if(!rows.length)partnerMainAppendRow(rankings,"まだ実績がありません","選択日の実績を確認してください");
+}
+
 let partnerSameAppSelectedPanel="record";
 function partnerSameAppSelectPanel(name){
  const map={record:"partnerPanelRecord",individual:"partnerPanelRankings",
@@ -12409,7 +12439,9 @@ function partnerSameAppSelectPanel(name){
   button.setAttribute("aria-pressed",String(selected));
   button.setAttribute("aria-expanded",String(selected));
  });
- if(partnerInlineData)partnerInlineRender();
+ // Changing dashboard tabs must never erase unsubmitted count input fields.
+ if(partnerInlineData&&["individual","product","team"].includes(name))
+  renderPartnerRankingOnlyPanel();
 }
 pInline("partnerSameAppNavigation").addEventListener("click",event=>{
  const button=event.target.closest("[data-partner-panel]");
