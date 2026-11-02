@@ -14257,14 +14257,22 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
  }
  if(partnerInlineCountsUnchanged(snap,staffId,counts,privateCounts,cbCounts,workLocation))
   return "登録済みの件数と同じです。変更がないため訂正履歴は追加していません。";
+ // Firebase Functions JSON serialization expects normal own-property objects.
+ // Keep the null-prototype maps internally to prevent prototype pollution,
+ // but convert all THREE nested maps at the wire boundary before httpsCallable.
+ // Otherwise serializer.mapValues can throw before any POST reaches Cloud Run.
+ const wireCounts=Object.fromEntries(Object.entries(counts));
+ const wireCbCounts={NURO:Object.fromEntries(Object.entries(parsedCb.result))};
+ const wirePrivateCounts=Object.fromEntries(Object.entries(privateCounts));
  const expected={date,staffId,counts,cbCounts,workLocation,workTeamId,
   privateCounts,expectedVersion:before?.version??0,
   categories:snap.categories,companyName:snap.companyName};
  let result=null,saveError=null;
  try{
   result=(await partnerInlineSave(partnerInlinePayload({
-   date,staffId,counts,cbCounts,workLocation,
-   ...(!before?{workTeamId}:{}),privateCounts,expectedVersion:expected.expectedVersion
+   date,staffId,counts:wireCounts,cbCounts:wireCbCounts,workLocation,
+   ...(!before?{workTeamId}:{}),privateCounts:wirePrivateCounts,
+   expectedVersion:expected.expectedVersion
   }))).data;
  }catch(error){saveError=error;}
  if(uid!==auth.currentUser?.uid||workspace!==partnerInlineWorkspaceCompany)
