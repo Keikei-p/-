@@ -61,7 +61,7 @@ test('save failures are distinguished without erasing drafts or authorizing retr
    'functions/unauthenticated','functions/invalid-argument','functions/data-loss',
    'functions/resource-exhausted'])
     assert.ok(html.includes('code==="'+category+'"'),category);
-  assert.match(html,/二重登録せず「更新」で履歴を確認/);
+  assert.match(html,/上書きせず、二重登録もしないで「更新」で履歴を確認/);
   assert.match(html,/入力内容は保持しています/);
   assert.match(html,/if\(completed\)\{[\s\S]{0,500}partnerInlineRenderCounts\(\)/);
   assert.match(html,/console\.warn\("partner_workspace_operation_error",code\|\|"unclassified"\)/);
