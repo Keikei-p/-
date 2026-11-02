@@ -2,7 +2,7 @@ name: NICO same-app partner 4-function and index production release 2026-11-02
 on:
   push:
     branches: [release/nico-sales-partner-4api-index-prod-20261102]
-    paths: [.github/workflows/nico-sales-partner-unified-prod-20261102.yml]
+    paths: [.github/workflows/nico-sales-partner-4api-index-prod-20261102.yml]
 permissions:
   contents: read
   actions: read
