@@ -1008,3 +1008,5 @@ PR https://github.com/Keikei-p/-/pull/325
 - 本文はユーザーの会話上の公開意思と技術レビューの記録であり、GitHub管理者本人による独立電子署名を代筆したものではない。
 
 **現時点: PRはDraft。新しいHostingとFunctionsは本番未更新。Authのみ限定本番設定成功。**
+
+- 2026-11-02: 接続済みのGitHub管理者 Keikei-p を通じて本PRへ保護レビューラベル sales-production-reviewed を適用。ユーザーの本番準備依頼に基づく代理操作であり、独立した本人署名ではない。ラベル反映後の保護ゲートを再実行する。
