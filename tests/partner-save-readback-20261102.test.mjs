@@ -76,3 +76,42 @@ test("verified noncommit preserves original Firebase failure code for diagnosis"
  assert.match(describe({code:"functions/not-found"}),/functions\/not-found/);
  assert.match(describe({message:"save_not_committed"}),/まだ保存されていません/);
 });
+
+test("count/CB/privateCount wire payload uses plain objects compatible with Firebase Functions serializer",()=>{
+ const start=moduleText.indexOf('pInline("pInlineSave").onclick=()=>partnerInlineRun(');
+ const end=moduleText.indexOf("// Original internal owner sees existing teams PLUS partner-company teams.",start);
+ assert.ok(start>0&&end>start);
+ const handler=moduleText.slice(start,end);
+ for(const text of [
+  "wireCounts=Object.fromEntries(Object.entries(counts))",
+  "wireCbCounts={NURO:Object.fromEntries(Object.entries(parsedCb.result))}",
+  "wirePrivateCounts=Object.fromEntries(Object.entries(privateCounts))",
+  "counts:wireCounts,cbCounts:wireCbCounts",
+  "privateCounts:wirePrivateCounts"
+ ]) assert.ok(handler.includes(text),text);
+ assert.equal(handler.split("await partnerInlineSave(").length-1,1,"no duplicate writes");
+ function firebaseEncode(v){
+  if(v===null||v===undefined)return null;
+  if(Array.isArray(v))return v.map(firebaseEncode);
+  if(typeof v==="object"){
+   const out={};
+   // Callable functions SDK serializer's own-property contract:
+   // null-prototype objects cannot implement hasOwnProperty.
+   for(const key in v)if(v.hasOwnProperty(key))out[key]=firebaseEncode(v[key]);
+   return out;
+  }
+  return v;
+ }
+ const nullCounts=Object.assign(Object.create(null),{"NURO":1,"SBMNP":2});
+ const nullCb=Object.assign(Object.create(null),{"0":1,"20000":0});
+ const nullPrivate=Object.assign(Object.create(null),{"product1":3});
+ assert.throws(()=>firebaseEncode({counts:nullCounts,cbCounts:{NURO:nullCb},privateCounts:nullPrivate}),TypeError);
+ const wire={counts:Object.fromEntries(Object.entries(nullCounts)),
+  cbCounts:{NURO:Object.fromEntries(Object.entries(nullCb))},
+  privateCounts:Object.fromEntries(Object.entries(nullPrivate))};
+ assert.deepEqual(firebaseEncode(wire),{counts:{NURO:1,SBMNP:2},
+  cbCounts:{NURO:{"0":1,"20000":0}},privateCounts:{product1:3}});
+ for(const data of [wire.counts,wire.cbCounts.NURO,wire.privateCounts])
+  assert.equal(Object.getPrototypeOf(data),Object.prototype);
+ assert.equal(Object.getPrototypeOf(nullCounts),null,"internal map remains prototype safe");
+});
