@@ -1,0 +1,156 @@
+name: NICO current-live partner team one-tap guarded UI release
+on:
+  push:
+    branches: [release/nico-partner-current-team-one-tap-prod-20261102]
+    paths: [.github/workflows/nico-partner-current-team-one-tap-prod-20261102.yml]
+permissions:
+  contents: read
+concurrency:
+  group: nico-partner-workspace-production
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify exact changed page and completely original finance and backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object index.html)" = 66c2b863da883cd479152506e8ddb20e0cd8ab60
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 55b16051c09810778f79256097446aa0dec1b36e
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object tools/hosting/surgical-existing-index.mjs)" = 1c6923e06135dc480e11f342e44f5e74f8c5bbc7
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const text=fs.readFileSync('index.html','utf8');
+          const module=text.match(/<script type="module">([\s\S]*?)<\/script>/)?.[1];
+          if(!module||!text.includes('monthlyRevenue')||!text.includes('signInWithEmailAndPassword')||
+             !text.includes('partnerCountSaveFailureMessage'))
+           throw Error('STOP_OWNER_FINANCE_AUTH_OR_SAVE_GUARD_MISSING');
+          fs.writeFileSync('/tmp/nico-partner-current-test.mjs',module);
+          NODE
+          node --check /tmp/nico-partner-current-test.mjs
+      - name: Recheck original finance, same shared ranking, invites and one-tap team details
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/partner-live-team-one-tap.test.mjs
+          node --test tests/dashboard-inline-original-partner-parity.test.mjs
+          node --test tests/partner-company-parity-release.test.mjs
+          node --test tests/internal-owner-finance-visibility.test.cjs
+          node --test tests/partner-workspace.test.cjs
+          node --test tests/partner-email-resend-and-join.test.mjs
+          node --test tests/surgical-existing-index.test.mjs
+          echo PASS_EXACT_UI_ONLY_CANDIDATE
+  release:
+    needs: validate
+    if: ${{ github.repository == 'Keikei-p/-' && github.ref == 'refs/heads/release/nico-partner-current-team-one-tap-prod-20261102' && needs.validate.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 28
+    env:
+      NICO_PARTNER_RELEASE_CONFIRMATION: CONFIRM_ADD_PARTNER_RANKING_INDEX_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify main unchanged and live page exactly matches latest successful release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh api repos/Keikei-p/-/branches/main --jq '.commit.sha')" = 283bc749c97756fc3de03671ae7bac4eccdc46c3 || { echo STOP_MAIN_CHANGED; exit 1; }
+          test "$(git hash-object index.html)" = 66c2b863da883cd479152506e8ddb20e0cd8ab60
+          curl -fsSL --retry 3 --max-time 35 'https://nico-factory.web.app/?before_one_tap=20261102' > "$RUNNER_TEMP/current.html"
+          git show a6dd02d515be14cce52863c6662001bb35cdebce:index.html > "$RUNNER_TEMP/last-released.html"
+          cmp -s "$RUNNER_TEMP/current.html" "$RUNNER_TEMP/last-released.html" || { echo STOP_NEWER_LIVE_UI_EXISTS; exit 1; }
+          echo PASS_SAME_AS_LATEST_RELEASED_HTML
+      - name: Use existing protected identity with no logs
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-team-release.json"
+          chmod 600 "$RUNNER_TEMP/nico-team-release.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-team-release.json" >> "$GITHUB_ENV"
+      - name: Install only unchanged metadata audit dependency
+        run: |
+          set -euo pipefail
+          npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Verify original financial Rules, recent backup and original APIs using GET only
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {createRequire} from 'node:module';
+          import {createHash} from 'node:crypto';
+          import {inspect} from './tools/production/inspect-firestore-backups-readonly.mjs';
+          const require=createRequire(process.cwd()+'/functions/package.json');
+          const token=(await require('firebase-admin/app').applicationDefault().getAccessToken()).access_token;
+          const get=async url=>{
+            const r=await fetch(url,{headers:{Authorization:'Bearer '+token},redirect:'error'});
+            if(!r.ok)throw Error('STOP_READONLY_METADATA_'+r.status);
+            return r.json();
+          };
+          const rel=await get('https://firebaserules.googleapis.com/v1/projects/sales-management-cc116/releases/cloud.firestore');
+          const rules=await get('https://firebaserules.googleapis.com/v1/'+rel.rulesetName);
+          if(rules.source?.files?.length!==1)throw Error('STOP_LIVE_RULES_UNKNOWN');
+          const digest=createHash('sha256').update(rules.source.files[0].content.replace(/\r\n/g,'\n').trim()).digest('hex');
+          if(digest!=='d1d9998d874a1a31c81ddf6996e08cd9de3a3d13bd684e245140bf03cab32179')
+            throw Error('STOP_FINANCE_RULES_CHANGED');
+          const b=await inspect(),age=Date.now()-Date.parse(b.latestReadySnapshot||'');
+          if(!b.readyBackups||!Number.isFinite(age)||age<0||age>48*3600000)throw Error('STOP_BACKUP_NOT_RECENT');
+          for(const name of ['getPartnerWorkspace','managePartnerWorkspace','acceptPartnerWorkspaceInvite','submitPartnerWorkspaceCounts','sendMissingReportReminders']){
+            const fn=await get('https://cloudfunctions.googleapis.com/v2/projects/sales-management-cc116/locations/asia-northeast1/functions/'+name);
+            if(fn.state!=='ACTIVE'||fn.environment!=='GEN_2')throw Error('STOP_FUNCTION_NOT_ACTIVE_'+name);
+          }
+          console.log('PASS_ALL_FINANCE_RULES_BACKUPS_AND_FUNCTIONS');
+          NODE
+      - name: Protect every old Hosting asset and live config (READ ONLY)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/hosting/surgical-existing-index.mjs --dry-run > "$RUNNER_TEMP/team-manifest.log"
+          grep -Fq 'sites/nico-factory/versions/049c92508b8f9b7d' "$RUNNER_TEMP/team-manifest.log" || { echo STOP_LIVE_VERSION_MOVED; exit 1; }
+          grep -Fq '"keptOriginalFiles":11' "$RUNNER_TEMP/team-manifest.log" || { echo STOP_FILE_COUNT_MOVED; exit 1; }
+          echo PASS_KEEP_ALL_11_HOSTING_FILES
+      - name: Release only reviewed index (NO Functions, Rules, database or invitations)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object index.html)" = 66c2b863da883cd479152506e8ddb20e0cd8ab60
+          node tools/hosting/surgical-existing-index.mjs --release
+          echo PASS_ONLY_ONE_EXISTING_INDEX_REPLACED
+      - name: Post-release byte equality and original URLs preservation
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --max-time 35 'https://nico-factory.web.app/?after_one_tap=20261102' > "$RUNNER_TEMP/live-after.html"
+          cmp -s index.html "$RUNNER_TEMP/live-after.html" || { echo STOP_LIVE_INDEX_MISMATCH; exit 1; }
+          for route in partner-invite.html partner-counts.html partner-workspace.html; do
+            curl -fsSL --retry 3 --max-time 30 "https://nico-factory.web.app/$route" > "$RUNNER_TEMP/$route"
+          done
+          grep -Fq 'createPartnerCompanyInvitation' "$RUNNER_TEMP/partner-invite.html"
+          grep -Fq 'getPartnerQuickCounts' "$RUNNER_TEMP/partner-counts.html"
+          grep -Fq 'submitPartnerWorkspaceCounts' "$RUNNER_TEMP/partner-workspace.html"
+          grep -Fq 'partnerCountSaveFailureMessage' "$RUNNER_TEMP/live-after.html"
+          grep -Fq 'monthlyRevenue' "$RUNNER_TEMP/live-after.html"
+          echo PASS_OWNER_PARTNER_POST_RELEASE_PARITY
+      - name: Remove temporary identity
+        if: always()
+        run: rm -f "$RUNNER_TEMP/nico-team-release.json"
