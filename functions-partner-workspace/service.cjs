@@ -312,7 +312,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      status:"pending",createdAt:FieldValue.serverTimestamp(),expiresAt
     });
    });
-   return {token,expiresAt:expiresAt.toMillis()};
+   return {token,expiresAt:expiresAt.toMillis(),partnerCompanyId:partnerId,teamId};
   }
   if(s.kind!=="partner"||s.role==="member")fail();
   if(op==="addPrivateProduct"){
@@ -467,6 +467,32 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   if(d.transferCurrentCompany!==undefined&&typeof d.transferCurrentCompany!=="boolean")
    fail("invalid-argument");
   const hash=crypto.createHash("sha256").update(token).digest("hex"),ref=db.collection("partnerWorkInvites").doc(hash);
+  if(d.previewOnly!==undefined&&d.previewOnly!==true)fail("invalid-argument");
+  if(d.previewOnly===true){
+   // The verified invitee may preview without joining or changing data.
+   const sn=await ref.get(),i=sn.data()||{};
+   if(!sn.exists||i.status!=="pending"||
+      !i.expiresAt?.toMillis||i.expiresAt.toMillis()<=now())
+    fail("failed-precondition");
+   if(i.emailLower!==a.email)fail("permission-denied");
+   if(!ID.test(i.companyId||"")||!ID.test(i.teamId||"")||
+      !["leader","member"].includes(i.role))fail("failed-precondition");
+   const [company,relation,team]=await Promise.all([
+    db.collection("companies").doc(i.companyId).get(),
+    db.collection("partnerRelations").doc(i.companyId).get(),
+    teamRef(i.companyId,i.teamId).get()
+   ]);
+   if(!company.exists||company.data()?.active!==true||
+      company.data()?.companyKind!=="partner"||
+      company.data()?.hubCompanyId!==i.hubCompanyId||
+      !relation.exists||relation.data()?.hubCompanyId!==i.hubCompanyId||
+      relation.data()?.partnerCompanyId!==i.companyId||
+      relation.data()?.active!==true||relation.data()?.countSharingApproved!==true||
+      !team.exists||team.data()?.active!==true)
+    fail("failed-precondition");
+   return {valid:true,companyName:clean(company.data()?.name),
+     teamName:clean(team.data()?.name),role:i.role};
+  }
   const joined=await db.runTransaction(async tx=>{
    const inviteSnap=await tx.get(ref),i=inviteSnap.data()||{};
    if(!inviteSnap.exists||i.status!=="pending"||i.emailLower!==a.email||
@@ -491,7 +517,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    let formerMemberRef=null,formerMember=null;
    if(primaryCid){
      if(!ID.test(primaryCid)||primaryCid===i.companyId||
-        original.uid!==a.uid||clean(original.email).toLowerCase()!==a.email||
+        original.uid!==a.uid||
+        (original.email!=null&&clean(original.email).toLowerCase()!==a.email)||
         (original.accessKind!=null&&original.accessKind!=="internal")||
         (original.memberType!=null&&!["internal","direct","member","managed"].includes(original.memberType)))
        fail("failed-precondition");
@@ -505,6 +532,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
         (pc.companyKind!=null&&!["internal","direct"].includes(pc.companyKind))||
         pm.active===false||
         (pm.uid!=null&&pm.uid!==a.uid)||
+        (pm.email!=null&&clean(pm.email).toLowerCase()!==a.email)||
         (pm.companyId!=null&&pm.companyId!==primaryCid)||
         (pm.accessKind!=null&&pm.accessKind!=="internal")||
         ["partner","cooperator"].includes(pm.memberType))
