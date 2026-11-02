@@ -91,6 +91,7 @@ test("success is rendered beside Save, remains visible after refresh; errors mus
   sharedDailyRankCache:new Map(),
   pInline:id=>ui.get(id)||null,
   partnerInlineStatus:msg=>messages.push(msg),
+  partnerCountSaveFailureMessage:()=>"保存に失敗しました。",
   async partnerInlineFetch(){ui.get("pInlineSaveStatus").textContent="";return true;},
   partnerInlineRenderCounts(){ui.get("pInlineSaveStatus").textContent="";},
   renderPartnerPrivateProductCatalog(){},
