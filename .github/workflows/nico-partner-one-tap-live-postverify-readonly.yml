@@ -45,14 +45,47 @@ jobs:
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/verify-sa.json"
           chmod 600 "$RUNNER_TEMP/verify-sa.json"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/verify-sa.json" >> "$GITHUB_ENV"
-      - name: GET only - confirm exact new active Hosting version and all original files
+      - name: GET only - compare actual new and old Hosting file manifests directly
         run: |
           set -euo pipefail
           npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
-          node tools/hosting/surgical-existing-index.mjs --dry-run > "$RUNNER_TEMP/live-manifest.txt"
-          grep -Fq 'sites/nico-factory/versions/b100b4ebcbbebaee' "$RUNNER_TEMP/live-manifest.txt" || { echo STOP_HOSTING_RELEASE_IS_NOT_EXPECTED; exit 1; }
-          grep -Fq '"keptOriginalFiles":11' "$RUNNER_TEMP/live-manifest.txt" || { echo STOP_ORIGINAL_ASSET_LOST; exit 1; }
-          echo PASS_RELEASED_VERSION_AND_ALL_11_FILES_READONLY
+          node --input-type=module <<'NODE'
+          import {createRequire} from 'node:module';
+          const require=createRequire(process.cwd()+'/functions/package.json');
+          const token=(await require('firebase-admin/app').applicationDefault().getAccessToken()).access_token;
+          const base='https://firebasehosting.googleapis.com/v1beta1/';
+          const get=async path=>{
+            const r=await fetch(base+path,{headers:{Authorization:'Bearer '+token},redirect:'error'});
+            if(!r.ok)throw Error('STOP_HOSTING_GET_HTTP_'+r.status);
+            return r.json();
+          };
+          const old='sites/nico-factory/versions/049c92508b8f9b7d';
+          const latest='sites/nico-factory/versions/b100b4ebcbbebaee';
+          const releases=await get('sites/nico-factory/releases?pageSize=1');
+          if(releases.releases?.[0]?.version?.name!==latest)throw Error('STOP_RELEASE_IS_NOT_EXPECTED');
+          const [before,after,source,final]=await Promise.all([
+            get(old+'/files?pageSize=1000'),
+            get(latest+'/files?pageSize=1000'),
+            get(old),get(latest)
+          ]);
+          if(source.status!=='FINALIZED'||final.status!=='FINALIZED'||
+             JSON.stringify(source.config)!==JSON.stringify(final.config))
+            throw Error('STOP_HOSTING_CONFIG_CHANGED');
+          if(before.nextPageToken||after.nextPageToken||
+             before.files?.length!==11||after.files?.length!==11)
+            throw Error('STOP_HOSTING_FILE_COUNT_CHANGED');
+          const oldFiles=new Map(before.files.map(x=>[x.path,x.hash]));
+          const newFiles=new Map(after.files.map(x=>[x.path,x.hash]));
+          if(oldFiles.size!==11||newFiles.size!==11||
+             !oldFiles.has('/index.html')||!newFiles.has('/index.html'))
+            throw Error('STOP_INCOMPLETE_MANIFEST');
+          for(const [path,hash] of oldFiles)
+            if(path!=='/index.html'&&newFiles.get(path)!==hash)
+              throw Error('STOP_ORIGINAL_ASSET_MODIFIED');
+          if(oldFiles.get('/index.html')===newFiles.get('/index.html'))
+            throw Error('STOP_INDEX_NOT_CHANGED');
+          console.log('PASS_NEW_VERSION_EXACT_11_FILES_AND_10_PRESERVED_ASSETS');
+          NODE
       - name: GET only - original partner invitation URLs
         run: |
           set -euo pipefail
