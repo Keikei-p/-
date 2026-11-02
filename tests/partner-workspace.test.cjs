@@ -1428,3 +1428,61 @@ test("member sees only own revision audits while owner sees all partner count re
  assert.equal(own.audits[0].counts.SBMNP,2);
  assert.equal(JSON.stringify(own).includes("別の担当"),false);
 });
+
+
+test("partner leader archives email-less staff but keeps every original report and its totals",async()=>{
+ const {db,api,req,zero}=setup();
+ const team=(await api.manage(req("p",{action:"addTeam",name:"1班"}))).teamId;
+ const id=(await api.manage(req("p",{action:"addManaged",name:"佐藤",teamId:team}))).staffId;
+ const date="2026-10-31",counts=zero();counts.NURO=3;
+ const row={companyId:"partner",hubCompanyId:"hub",date,staffId:id,teamIdSnapshot:team,
+  staffNameSnapshot:"佐藤",counts,totalCount:3,version:1,
+  privateCounts:{},privateTotalCount:0,workLocation:"店頭",cbCounts:{NURO:{"0":3}}};
+ db.seed("companies/partner/partnerWorkEntries/"+date+"__"+id,row);
+ db.seed("companies/hub/partnerWorkCountDays/"+date+"/reports/partner",{
+  source:"staff-entries-v1",hubCompanyId:"hub",partnerCompanyId:"partner",date,
+  partnerName:"協力店",counts,totalCount:3
+ });
+ db.seed("companies/partner/partnerWorkAudits/"+date+"__"+id+"__v1",
+  {...row,previousCounts:zero(),previousCbCounts:null,previousWorkLocation:"",
+   previousPrivateCounts:{}});
+ const originalEntry=clone(db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+id));
+ const originalReport=clone(db.store.get("companies/hub/partnerWorkCountDays/"+date+"/reports/partner"));
+ const originalAudit=clone(db.store.get("companies/partner/partnerWorkAudits/"+date+"__"+id+"__v1"));
+ const protectedInternal=clone(db.store.get("records/old"));
+ const done=await api.manage(req("p",{action:"removeManaged",staffId:id}));
+ assert.deepEqual(done,{staffId:id,archived:true,changed:true});
+ const staff=db.store.get("companies/partner/partnerWorkStaff/"+id);
+ assert.equal(staff.active,false);
+ assert.equal(staff.kind,"managed");
+ assert.equal(staff.name,"佐藤");
+ assert.equal(staff.deactivatedByUid,"p");
+ assert.deepEqual(db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+id),originalEntry);
+ assert.deepEqual(db.store.get("companies/hub/partnerWorkCountDays/"+date+"/reports/partner"),originalReport);
+ assert.deepEqual(db.store.get("companies/partner/partnerWorkAudits/"+date+"__"+id+"__v1"),originalAudit);
+ assert.deepEqual(db.store.get("records/old"),protectedInternal);
+ const view=await api.view(req("p",{date}));
+ assert.equal(view.staff.find(x=>x.id===id).active,false);
+ assert.equal(view.records.find(x=>x.staffId===id).totalCount,3);
+ assert.deepEqual(await api.manage(req("p",{action:"removeManaged",staffId:id})),
+  {staffId:id,archived:true,changed:false});
+ await assert.rejects(api.submit(req("p",{date,staffId:id,counts,
+  expectedVersion:1})),e=>e.code==="permission-denied");
+});
+test("archiving cannot disable linked accounts, arbitrary staff or users from other roles",async()=>{
+ const {db,api,req}=setup();
+ const team=(await api.manage(req("p",{action:"addTeam",name:"1班"}))).teamId;
+ const id=(await api.manage(req("p",{action:"addManaged",name:"鈴木",teamId:team}))).staffId;
+ const before=clone([...db.store]);
+ await assert.rejects(api.manage(req("p",{action:"removeManaged",staffId:"p"})),
+  e=>e.code==="failed-precondition");
+ await assert.rejects(api.manage(req("p",{action:"removeManaged",staffId:"invalid/id"})),
+  e=>e.code==="invalid-argument");
+ db.seed("companies/partner/partnerWorkStaff/account1",{active:true,companyId:"partner",
+  teamId:team,name:"アカウント",kind:"account",role:"member",uid:"account1"});
+ await assert.rejects(api.manage(req("p",{action:"removeManaged",staffId:"account1"})),
+  e=>e.code==="failed-precondition");
+ assert.equal(db.store.get("companies/partner/partnerWorkStaff/account1").active,true);
+ assert.equal(db.store.get("companies/partner/partnerWorkStaff/"+id).active,true);
+ assert.deepEqual(db.store.get("users/p"),before.find(([key])=>key==="users/p")[1]);
+});
