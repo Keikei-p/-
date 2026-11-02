@@ -108,8 +108,8 @@ test("owner team screen keeps the original sales UI and displays actual partner 
  assert.equal(buttons.length,1);
  buttons[0].handlers.click();
  assert.match(content(team),/田中｜合計 3件/);
- assert.match(content(team),/NURO 2件/);
- assert.match(content(team),/SBMNP 1件/);
+ assert.match(content(team),/NURO｜2件/);
+ assert.match(content(team),/SBMNP｜1件/);
  assert.doesNotMatch(content(team),/¥|￥|売上|単価/);
  assert.equal(f.calls().length,2);
  await card.handlers.toggle();
