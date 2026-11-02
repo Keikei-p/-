@@ -191,8 +191,12 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     read(collection(cid,"members").doc(uid))
   ]);
   const c=cs.data()||{},m=ms.data()||{};
+  // Existing internal memberships can predate the optional companyId field.
+  // The document path and live Owner role still bind authorization; any
+  // present conflicting companyId must remain an explicit denial.
   if(!cs.exists||!ms.exists||c.active!==true||m.active!==true||
-     m.uid!==uid||m.companyId!==cid||m.companyRole!==u.companyRole)fail();
+     m.uid!==uid||(m.companyId!=null&&m.companyId!==cid)||
+     m.companyRole!==u.companyRole)fail();
   if(c.companyKind==="partner"){
    if(!ID.test(c.hubCompanyId||"")||c.hubCompanyId===cid||
       u.accessKind!=="partner"||m.accessKind!=="partner"||
