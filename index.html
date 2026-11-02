@@ -4743,13 +4743,26 @@ body.product-reordering .product-list {
 
 <!-- Same Firebase sign-in as the original sales app; count-only partner APIs. -->
 <section id="partnerInlineWorkspace" hidden aria-label="協力店 実績・班管理">
-  <h2 id="pInlineTitle">協力店 実績管理</h2>
+  <div class="dashboard-card">
+  <h2 id="pInlineTitle" class="dashboard-title">協力店 実績管理</h2>
   <p class="p-inline-muted">いつもの実績管理アプリです。協力店には件数だけを表示し、売上・単価の原票は読み込みません。</p>
   <div class="p-inline-grid">
     <label class="p-inline-field">実績日<input id="pInlineDate" type="date"></label>
     <div class="p-inline-field"><label for="pInlineRefresh">最新データ</label><button id="pInlineRefresh" type="button">更新</button></div>
   </div>
   <p id="pInlineStatus" role="status" aria-live="polite"></p>
+  <div class="dashboard-summary" aria-label="協力店の選択日実績">
+    <div class="summary-card"><div class="summary-label">選択日の件数</div><div id="pPartnerDailyCount" class="summary-value">-</div></div>
+    <div class="summary-card"><div class="summary-label">報告した担当者</div><div id="pPartnerStaffCount" class="summary-value">-</div></div>
+    <div class="summary-card"><div class="summary-label">班数</div><div id="pPartnerTeamCount" class="summary-value">-</div></div>
+  </div>
+  <div class="p-inline-card" style="margin-bottom:14px">
+    <div class="dashboard-title">✏️ 実績入力</div>
+    <button id="pPartnerRecordToggle" type="button" class="team-action-button">入力欄を開く・閉じる</button>
+    <button id="pPartnerMemberShortcut" type="button" class="team-action-button">班・メンバー管理</button>
+    <div id="partnerInputMount"></div>
+  </div>
+  <div class="dashboard-title">📈 実績ダッシュボード</div>
   <div id="partnerSameAppNavigation" class="dashboard-app-grid" role="group" aria-label="営業実績管理メニュー">
     <button class="dashboard-app-button" type="button" data-partner-panel="record"><span class="dashboard-app-icon">✏️</span><span class="dashboard-app-title">実績入力</span><span class="dashboard-app-meta">登録・訂正</span></button>
     <button class="dashboard-app-button" type="button" data-partner-panel="individual"><span class="dashboard-app-icon">🏆</span><span class="dashboard-app-title">個人ランキング</span><span class="dashboard-app-meta">件数順</span></button>
@@ -4760,6 +4773,7 @@ body.product-reordering .product-list {
     <button class="dashboard-app-button" type="button" data-partner-panel="history"><span class="dashboard-app-icon">📝</span><span class="dashboard-app-title">登録履歴</span><span class="dashboard-app-meta">登録・訂正内容</span></button>
     <button class="dashboard-app-button" type="button" data-partner-panel="members"><span class="dashboard-app-icon">👤</span><span class="dashboard-app-title">班・メンバー</span><span class="dashboard-app-meta">班編成・招待</span></button>
   </div>
+  <div id="partnerSameAppDashboardDetails" class="dashboard-detail-area" hidden>
   <section id="partnerPanelMembers" data-partner-view="members" hidden>
   <div class="p-inline-card">
     <h3>👥 班管理</h3>
@@ -4813,6 +4827,26 @@ body.product-reordering .product-list {
   <section id="partnerPanelHistory" data-partner-view="history" hidden>
     <div class="p-inline-card"><h3>📝 登録履歴</h3><p>訂正は実績入力から行えます。</p><div id="pInlineHistory" class="p-inline-list"></div></div>
   </section>
+  <section id="partnerPanelAnalysis" data-partner-view="analysis" hidden>
+    <div class="p-inline-card"><h3>📈 件数分析</h3><div id="pPartnerAnalysis" class="p-inline-list"></div></div>
+  </section>
+  <section id="partnerPanelChart" data-partner-view="chart" hidden>
+    <div class="p-inline-card"><h3>📊 件数グラフ</h3><div id="pPartnerChart" class="p-inline-list"></div></div>
+  </section>
+  <section id="partnerPanelProductSummary" data-partner-view="products" hidden>
+    <div class="p-inline-card"><h3>📦 商材別</h3><div id="pPartnerProductSummary" class="p-inline-list"></div></div>
+  </section>
+  <section id="partnerPanelReport" data-partner-view="report" hidden>
+    <div class="p-inline-card"><h3>📣 件数報告文</h3><textarea id="pPartnerReportText" rows="8" readonly style="width:100%;box-sizing:border-box"></textarea><button id="pPartnerCopyReport" type="button" class="team-action-button">報告文をコピー</button><p id="pPartnerReportStatus" role="status"></p></div>
+  </section>
+  <section id="partnerPanelGoal" data-partner-view="goal" hidden>
+    <div class="p-inline-card"><h3>🎯 目標日割り計算</h3><p class="p-inline-muted">手入力した目標から選択日の件数を差し引く簡易計算です。月間実績の自動集計ではありません。</p>
+      <div class="p-inline-grid"><label class="p-inline-field">目標件数<input id="pPartnerGoalTarget" type="number" min="0" max="999999" step="1" inputmode="numeric" value="0"></label><label class="p-inline-field">残り稼働日数<input id="pPartnerGoalDays" type="number" min="1" max="366" step="1" inputmode="numeric" value="1"></label></div>
+      <p id="pPartnerGoalResult" role="status"></p>
+    </div>
+  </section>
+  </div>
+  </div>
 </section>
 
 
