@@ -12493,19 +12493,51 @@ function partnerInlineRender(){
    byTeam.set(entry.teamIdSnapshot,byTeam.get(entry.teamIdSnapshot)+total);
   for(const key of snap.categories)byProduct.set(key,byProduct.get(key)+(entry.counts?.[key]||0));
  }
- const heading=label=>{
-  const h=document.createElement("h4");h.textContent=label;rankings.append(h);
- };
- heading("班別");
- for(const [id,n] of [...byTeam.entries()].sort((a,b)=>b[1]-a[1]))
-  partnerMainAppendRow(rankings,snap.companyName+"・"+(teamById.get(id)?.name||"班"),n+"件");
- heading("個人別");
- for(const [i,p] of byPerson.sort((a,b)=>b.n-a.n).entries())
-  partnerMainAppendRow(rankings,(i+1)+"位 "+p.name,p.n+"件");
- heading("商材別");
- for(const [key,n] of [...byProduct.entries()].sort((a,b)=>b[1]-a[1]))
-  partnerMainAppendRow(rankings,key,n+"件");
+ const mode=partnerSameAppSelectedPanel;
+ if(mode==="team"){
+  for(const [i,item] of [...byTeam.entries()].sort((a,b)=>b[1]-a[1]).entries())
+   partnerMainAppendRow(rankings,(i+1)+"位 "+snap.companyName+"・"+(teamById.get(item[0])?.name||"班"),item[1]+"件");
+ }else if(mode==="product"){
+  for(const [i,item] of [...byProduct.entries()].sort((a,b)=>b[1]-a[1]).entries())
+   partnerMainAppendRow(rankings,(i+1)+"位 "+item[0],item[1]+"件");
+ }else{
+  for(const [i,item] of byPerson.sort((a,b)=>b.n-a.n).entries())
+   partnerMainAppendRow(rankings,(i+1)+"位 "+item.name,item.n+"件");
+ }
+ const details=pInline("pInlineTeamDetails");details.replaceChildren();
+ for(const team of teams){
+  const row=document.createElement("details");row.className="p-inline-row";
+  const header=document.createElement("summary");
+  header.textContent=snap.companyName+"・"+team.name+"｜"+(byTeam.get(team.id)||0)+"件";
+  row.append(header);
+  for(const person of staff.filter(p=>p.teamId===team.id)){
+   const entry=snap.records.find(e=>e.staffId===person.id&&e.teamIdSnapshot===team.id);
+   const member=document.createElement("div");member.className="p-inline-row";
+   const name=document.createElement("strong");
+   name.textContent=person.name+"｜"+(entry?.totalCount||0)+"件";
+   member.append(name);
+   for(const cat of snap.categories){
+    const n=entry?.counts?.[cat]||0;
+    if(n)partnerMainAppendRow(member,cat,n+"件");
+   }
+   row.append(member);
+  }
+  details.append(row);
+ }
+ const daily=pInline("pInlineDailySummary");daily.replaceChildren();
+ partnerMainAppendRow(daily,snap.date+"｜"+snap.companyName,
+  snap.records.reduce((n,e)=>n+e.totalCount,0)+"件");
+ for(const [cat,n] of byProduct)if(n)partnerMainAppendRow(daily,cat,n+"件");
+ const history=pInline("pInlineHistory");history.replaceChildren();
+ for(const entry of snap.records){
+  const person=staff.find(p=>p.id===entry.staffId);
+  partnerMainAppendRow(history,(person?.name||"登録者")+"｜第"+entry.version+"版",
+   snap.date+"｜"+entry.totalCount+"件");
+ }
+ if(!snap.records.length)partnerMainAppendRow(history,
+  "この日の登録はありません","未報告は0件とは扱いません");
 }
+
 async function partnerInlineFetch(){
  if(!auth.currentUser?.emailVerified)return;
  const seq=++partnerInlineNonce,uid=auth.currentUser.uid;
