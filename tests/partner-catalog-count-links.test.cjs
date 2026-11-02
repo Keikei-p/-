@@ -68,3 +68,20 @@ test("server mapping endpoint never writes sales product, entries, audits, summa
  assert.match(legacySave,/const priorCounts=oldSnap\.exists\?validateCounts\(old\.counts\)/);
  assert.match(legacySave,/if\(oldSnap\.exists\)tx\.update\(er,row\);else tx\.create\(er,/);
 });
+
+
+test("legacy partner count save remains BYTE-FOR-BYTE identical to the deployed release",()=>{
+ const source=fs.readFileSync(require.resolve("../functions-partner-workspace/service.cjs"),"utf8");
+ const start=source.indexOf(" async function submit(request){");
+ const end=source.indexOf(" return Object.freeze(",start);
+ assert.ok(start>0&&end>start,"legacy count saver must remain isolated");
+ const segment=source.slice(start,end);
+ assert.equal(segment.length,6050,"legacy count-saving function was edited");
+ // FNV-1a over the original JavaScript UTF-16 code units, frozen from
+ // release/nico-partner-compact-two-column-index-20261102.
+ let h=2166136261;
+ for(let i=0;i<segment.length;i++)
+  h=Math.imul(h^segment.charCodeAt(i),16777619)>>>0;
+ assert.equal(h.toString(16).padStart(8,"0"),"4c482896",
+  "Original saved-count, CB, totals and audit behavior must not change");
+});
