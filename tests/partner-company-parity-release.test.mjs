@@ -209,7 +209,7 @@ test("corrected counts and date changes invalidate stale joint standings, while 
  assert.match(reset,/sharedDailyRankCache\.clear\(\)/);
  assert.match(reset,/\+\+sharedDailyRankingGeneration/);
  const memory=new Map([["company-A",42]]);
- const fields={pInlineStatus:{textContent:""},pInlineInviteUrl:{value:""},
+ const fields={pInlineStatus:{textContent:""},pInlineSaveStatus:{textContent:""},pInlineInviteUrl:{value:""},
   pInlineInviteEmailStatus:{textContent:""},pInlineInviteRecipient:{textContent:""},
   pInlineInviteResult:{hidden:false},partnerInlineWorkspace:{hidden:false},
   partnerInviteAtMain:{hidden:false}};
@@ -312,7 +312,8 @@ test("partner count inputs show live totals for public and company-only products
   {dataset:{privateCountId:"custom"},value:"4"}
  ];
  const node={querySelectorAll:()=>fields};
- const ctx={pInline:id=>id==="pInlineEntryTotals"?output:node};
+ const ctx={pInline:id=>id==="pInlineEntryTotals"?output:node,
+  partnerInlineHasUnsavedCounts:()=>false};
  runInNewContext(source+"\nrenderPartnerEntryTotals();",ctx);
  assert.equal(output.textContent,"共有商材 3件｜協力店専用 4件");
  fields[2].value="-1";
@@ -444,6 +445,7 @@ test("verified partner save refreshes once and shows an explicit confirmation",a
   partnerInlineBusy:false,partnerInlineData:{staff:[{id:"staff-1",active:true}]},
   partnerInlineFetch:async()=>{fetched++;return true;},partnerInlineRenderCounts:()=>{
    rendered++;pInline("pInlineSaveStatus").textContent="";
+   pInline("pInlineSave").disabled=false;
   },renderPartnerPrivateProductCatalog:()=>{},partnerInlineStatus:()=>{},
   sharedDailyRankingGeneration:0,sharedDailyRankCache:new Map()};
  await runInNewContext(body+'\npartnerInlineRun(async()=>"件数の保存と再取得を確認しました。")',ctx);
