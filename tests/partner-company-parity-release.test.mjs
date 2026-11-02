@@ -459,7 +459,7 @@ test("verified partner save refreshes once and shows an explicit confirmation",a
 });
 
 test("unchanged partner counts cannot append duplicate correction history; first zero report still saves",()=>{
- const body=scope("function partnerInlineCountsUnchanged(snap,staffId,counts,privateCounts,cbCounts=null){",
+ const body=scope("function partnerInlineCountsUnchanged(snap,staffId,counts,privateCounts,cbCounts=null,workLocation=\"\"){",
   '\npInline("pInlineSave").onclick=');
  assert.ok(body.startsWith("function partnerInlineCountsUnchanged"));
  const ctx={};
