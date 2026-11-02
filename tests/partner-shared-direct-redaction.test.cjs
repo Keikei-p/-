@@ -88,3 +88,25 @@ test("count-only export never publishes partial budget-exceeded rankings",async(
  await assert.rejects(readDirectDayCounts(db,"hub","2026-10-31",KEYS,{maxRecords:3}),/DIRECT_READ_BUDGET_EXCEEDED/);
  assert.equal(MAX_DIRECT_RECORDS_PER_DAY,3000);
 });
+
+
+test("unattributed legacy records preserve totals without creating fake individuals",async()=>{
+ const db=fakeDb({
+  "records/unknown":{companyId:"hub",date:"2026-10-31",
+   memberNameSnapshot:"仮担当",teamId:"t1",teamNameSnapshot:"直営1班",
+   results:[{productName:"NURO",count:2}],totalCount:2,totalRevenue:999999},
+  "records/known":{companyId:"hub",date:"2026-10-31",uid:"real",
+   memberNameSnapshot:"実在担当",teamId:"t1",teamNameSnapshot:"直営1班",
+   results:[{productName:"NURO",count:3}],totalCount:3,totalRevenue:777777}
+ });
+ const data=await readDirectDayCounts(db,"hub","2026-10-31",KEYS);
+ assert.equal(data.totalCount,5,"company totals must not lose valid sales counts");
+ assert.equal(data.counts.NURO,5);
+ assert.equal(data.teams[0].totalCount,5,"historical team retains unattributed counts");
+ assert.equal(data.peopleVerified,false);
+ assert.equal(data.unverifiedPersonRecords,1);
+ assert.equal(data.people.length,1,"unknown records must not create imaginary staff");
+ assert.equal(data.people[0].name,"実在担当");
+ assert.equal(data.people[0].totalCount,3);
+ assert.doesNotMatch(JSON.stringify(data),/仮担当|records\/unknown|999999|777777/);
+});
