@@ -12438,6 +12438,9 @@ function partnerMainPendingInvite(){
 }
 function resetPartnerInline(){
  ++partnerInlineNonce;++ownerPartnerTeamsNonce;
+ // Clear company-specific count snapshots and invalidate in-flight ranking reads
+ // before another user or company can sign in on the same browser session.
+ ++sharedDailyRankingGeneration;sharedDailyRankCache.clear();
  partnerInlineData=null;partnerInlineWorkspaceCompany="";partnerInlineBusy=false;
  appScreen.removeAttribute("data-partner-count-only");
  pInline("partnerInlineWorkspace").hidden=true;
@@ -13016,6 +13019,8 @@ function partnerSameAppSelectPanel(name){
   renderPartnerRankingOnlyPanel();
   void loadSharedDailyStandings("partner");
  }
+ if(partnerInlineData&&name==="detail")
+  void loadSharedDailyStandings("partnerDetail");
 }
 pInline("partnerSameAppNavigation").addEventListener("click",event=>{
  const button=event.target.closest("[data-partner-panel]");
@@ -13152,6 +13157,12 @@ async function partnerInlineFetch(){
    throw Error("partner_count_schema");
   partnerInlineData=snap;partnerInlineRender();
   partnerInlineStatus("件数を表示しています。金額・単価は読み込んでいません。");
+  // Date changes and saved corrections must refresh the shared read-only
+  // scoreboard currently on screen; never reuse the previous day's figures.
+  if(["individual","product","team"].includes(partnerSameAppSelectedPanel))
+   void loadSharedDailyStandings("partner",true);
+  else if(partnerSameAppSelectedPanel==="detail")
+   void loadSharedDailyStandings("partnerDetail",true);
  }catch(e){
   if(seq!==partnerInlineNonce||auth.currentUser?.uid!==uid)return;
   partnerInlineData=null;pInline("pInlineSave").disabled=true;
@@ -13191,6 +13202,9 @@ async function partnerInlineRun(work){
  try{
   const message=await work();
   if(uid!==auth.currentUser?.uid)return;
+  // Any successful count/team/staff update invalidates cached standings.
+  // The refreshed ranking is fetched only if its panel is already visible.
+  ++sharedDailyRankingGeneration;sharedDailyRankCache.clear();
   await partnerInlineFetch();
   if(partnerInlineData)partnerInlineStatus(message||"更新しました。");
  }catch{
