@@ -96,6 +96,30 @@ test("partner fallback and live original menu expose all count-only dashboard ac
  assert.match(mount,/target.replaceChildren\(\.\.\.cards\)/);
 });
 
+
+test("partner card second tap closes only the panel and preserves entered counts",()=>{
+ const code=portion("function partnerSameAppTogglePanel(name){",'window.addEventListener("resize"');
+ const detail={hidden:false},toolbar={hidden:true},calls=[],attributes=[];
+ const button={setAttribute:(name,value)=>attributes.push([name,value])};
+ const ctx={
+  partnerSameAppSelectedPanel:"analysis",
+  pInline:id=>id==="partnerSameAppDashboardDetails"?detail:
+   id==="partnerGlobalDateToolbar"?toolbar:
+   ({querySelectorAll:()=>[button]}),
+  partnerSameAppSelectPanel:name=>calls.push(name)
+ };
+ runInNewContext(code+"\nthis.toggle=partnerSameAppTogglePanel;",ctx);
+ ctx.toggle("analysis");
+ assert.equal(detail.hidden,true);
+ assert.equal(toolbar.hidden,false);
+ assert.equal(calls.length,0);
+ assert.deepEqual(attributes.filter(x=>x[0]==="aria-expanded").map(x=>x[1]),["false","false"]);
+ ctx.toggle("chart");
+ assert.deepEqual(calls,["chart"]);
+ assert.doesNotMatch(code,/replaceChildren\(|\.reset\(|localStorage\.|setDoc\(|updateDoc\(/);
+ assert.match(html,/partnerSameAppTogglePanel\(button.dataset.partnerPanel\)/);
+});
+
 test("partner uses original input visual structure with 2 columns and isolated CB categories",()=>{
  assert.match(html,/id="pInlineCountFields" class="product-input-list"/);
  assert.match(html,/#partnerInlineWorkspace #pInlineCountFields\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
