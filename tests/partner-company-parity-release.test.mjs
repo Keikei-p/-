@@ -118,12 +118,12 @@ test("partner cards mirror eleven original dashboard controls without finance AP
   assert.ok(internal.includes('id="'+button+'"'),"missing internal "+button);
   assert.ok(navDefinition.includes('["'+button+'","'+panel+'"'),"missing exact partner parity "+panel);
  }
- assert.equal((mount.match(/cloneNode\(true\)/g)||[]).length,1,"same markup, no divergent menu");
+ assert.equal((mount.match(/cloneNode\(true\)/g)||[]).length,2,"the extra input card and eleven canonical dashboard cards share markup");
  assert.match(mount,/card\.removeAttribute\("id"\)/);
  assert.match(mount,/card\.removeAttribute\("style"\)/);
  assert.match(mount,/card\.querySelectorAll\("\[id\]"\)/);
  assert.match(mount,/target\.replaceChildren\(\.\.\.cards\)/);
- assert.match(mount,/mount\.append\(input\)/);
+ assert.match(mount,/target\.append\(details\)/);
  assert.match(mount,/userBar\.after\(pInline\("partnerInlineWorkspace"\)\)/);
  assert.match(html,/mountPartnerCanonicalNavigation\(\)/);
  assert.match(html,/id="partnerSameAppDashboardDetails"/);
@@ -141,7 +141,7 @@ test("partner cards mirror eleven original dashboard controls without finance AP
   assert.ok(!extras.includes(forbidden),"private data reference "+forbidden);
  assert.match(html,/id="pPartnerRecordToggle"/);
  assert.match(html,/id="pPartnerMemberShortcut"/);
- assert.match(html,/if\(id==="partnerPanelRecord"\)continue/);
+ assert.match(html,/function partnerSameAppPositionPanel\(name\)/);
 });
 
 test("safe hamburger menu mirrors the original while blocking native financial actions",()=>{
@@ -150,15 +150,15 @@ test("safe hamburger menu mirrors the original while blocking native financial a
  const source=scope("function mountPartnerSafeManagementMenu(){","\n// Partner sees original dashboard-style menu");
  for(const phrase of ["management-tab-button","management-tab-panel","quick-menu-button",
   '["🏢","会社","account"]','["✉️","招待リンク","invite"]',
-  '["👥","班管理","members"]','["👤","メンバー","members"]',
-  '["📦","商材管理","products"]','["⚙️","アカウント設定","account"]',
-  '["leader","owner"].includes(snap.role)','partnerSameAppSelectPanel(action==="invite"?"members":action)'])
+  '["👥","班管理","members"]','["👤","メンバー管理","members"]',
+  '["📦","商材追加・管理","catalog"]','["⚙️","アカウント設定","account"]',
+  '["leader","owner"].includes(snap.role)','partnerSameAppSelectPanel(action)'])
   assert.ok(source.includes(phrase),"missing partner-safe operation "+phrase);
  for(const unsafe of ["openManagementPanel(","getDocs(","onSnapshot(","monthlyRevenue",
   "revenuePerUnit","unitPrice","pricingOptions"])
   assert.ok(!source.includes(unsafe),"unsafe finance menu "+unsafe);
  assert.match(html,/mountPartnerSafeManagementMenu\(\)/);
- assert.match(html,/if\(safeAccount\)safeAccount.hidden=true/);
+ assert.match(html,/if\(safeAccount\)safeAccount.hidden=name!=="account"/);
 });
 
 test("shared standings use one verified API and keep financial UI isolated",()=>{
@@ -258,4 +258,43 @@ test("legacy direct product resolution keeps verified totals but never invents r
  assert.equal(result.products[0].count,5);
  assert.match(html,/report\.direct\.peopleVerified===true/);
  assert.match(html,/未報告・未照合の実績があります/);
+});
+
+test("partner dashboard opens the tapped canonical card in its own grid row and keeps count entry two columns",()=>{
+ const css=scope('<style id="nicoPartnerSameAppStyle">','</style>');
+ assert.match(css,/#partnerInlineWorkspace #pInlineCountFields\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+ assert.match(css,/#partnerInlineWorkspace #partnerSameAppDashboardDetails\{grid-column:1\/-1/);
+ const mount=scope("function mountPartnerCanonicalNavigation(){","\nfunction renderPartnerCountOnlyExtras(){");
+ assert.match(mount,/recordButton\.dataset\.partnerPanel="record"/);
+ assert.match(mount,/target\.append\(details\)/);
+ assert.doesNotMatch(mount,/mount\.append\(input\)/);
+ const position=scope("function partnerSameAppPositionPanel(name){","\nwindow.addEventListener");
+ assert.match(position,/button\.offsetTop/);
+ assert.match(position,/row\[row.length-1\]/);
+ assert.match(position,/\.after\(detail\)/);
+ const nav=scope('id="partnerSameAppNavigation"','id="partnerPanelMembers"');
+ for(const id of ["record","individual","team","product","detail","daily","history"])
+  assert.match(nav,new RegExp('data-partner-panel="'+id+'"'));
+ assert.match(html,/id="partnerLegacyShortcuts" hidden/);
+});
+test("partner management contains standalone invitation, member, and private catalog tabs",()=>{
+ for(const id of ["partnerPanelInvite","partnerPanelCatalog","partnerPanelMembers",
+   "pInlineInviteTeam","pInlineInviteEmail","pInlineInviteRole","pInlineCreateInvite",
+   "pInlineCustomName","pInlineAddPrivateProduct","pInlinePrivateProductList"])
+  assert.equal((html.match(new RegExp('id="'+id+'"','g'))||[]).length,1,id);
+ const menu=scope("function mountPartnerSafeManagementMenu(){","\n// Partner sees original dashboard-style menu");
+ for(const action of ['["✉️","招待リンク","invite"]','["👤","メンバー管理","members"]',
+   '["📦","商材追加・管理","catalog"]'])
+  assert.ok(menu.includes(action),action);
+ const select=scope("function partnerSameAppSelectPanel(name){",
+  '\npInline("partnerSameAppNavigation").addEventListener');
+ for(const id of ["partnerPanelInvite","partnerPanelCatalog","partnerPanelMembers"])
+  assert.ok(select.includes(id),id);
+ assert.match(html,/pInline\("pInlineInviteTeam"\)\.value/);
+ assert.match(html,/action:"addPrivateProduct"/);
+ assert.match(html,/action:"setPrivateProduct"/);
+ assert.match(html,/privateCounts,expectedVersion/);
+ assert.match(html,/saved\.privateCounts\?\.\[id\]/);
+ assert.match(html,/if\(product\.active\)privateCounts\[id\]=n/);
+ assert.match(html,/partnerInlineRun\(async\(\)=>/);
 });
