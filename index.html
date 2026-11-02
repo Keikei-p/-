@@ -33987,6 +33987,10 @@ function buildProductMemberRanking(monthly, teamId = "") {
         productMap.set(productKey, product);
       }
       product.count += count;
+      // A company aggregate is NOT a human member. Count it once for the
+      // product totals, but never fabricate a person in individual ranks.
+      // Verified day-level real people appear in the shared count-only card.
+      if(record.__partnerQuickOnly)return;
       let person = product.members.get(memberKey);
       if (!person) {
         person = {key: memberKey, name: memberName, count: 0, teamNames: new Set()};
@@ -34330,11 +34334,15 @@ function renderProductMemberRanking(monthly) {
   });
 
   productRankingSelectedLabel.textContent = `${selected.name}｜個人獲得ランキング`;
-  productRankingMemberCount.textContent = `${selected.members.length}人・${selected.count}件`;
+  productRankingMemberCount.textContent = `${selected.members.length}人・${selected.count}件`+
+    (currentPartnerRankingRows().length?"（協力店の会社合計は個人順位に含みません。日別合同ランキングで確認）":"");
 
   if (selected.members.length === 0) {
     productRankingMemberList.innerHTML =
-      '<div class="empty-message">この月・選択班での獲得実績はありません。</div>';
+      '<div class="empty-message">'+
+      (teamId.startsWith("quick-partner:")?
+        "協力店の会社合計件数を反映しています。個人別は日別合同件数ランキングで確認してください。":
+        "この月・選択班での獲得実績はありません。")+'</div>';
     return;
   }
 
