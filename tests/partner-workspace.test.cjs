@@ -79,6 +79,46 @@ function setup(){
  return {db,api,req,zero};
 }
 
+test("live legacy internal owner can list partner companies with missing redundant member companyId",async()=>{
+ const {db,api,req}=setup();
+ // The read-only production inventory saw existing internal member documents
+ // omit companyId. Authentication and owner checks remain mandatory.
+ delete db.store.get("companies/hub/members/h").companyId;
+ const before=clone([...db.store]);
+ const view=await api.view(req("h",{date:"2026-10-31"}));
+ assert.equal(view.role,"hub");
+ assert.ok(view.registeredCompanies.some(x=>x.partnerCompanyId==="partner"));
+ const invite=await api.manage(req("h",{action:"hubCreateInvite",
+  companyName:"レガシー社",role:"leader",email:"l@example.com"}));
+ assert.match(invite.token,/^[A-Za-z0-9_-]{43}$/);
+ for(const [key,value] of before){
+  if(key==="companies/hub/members/h"||key==="users/h"||key==="records/old"||key==="products/money")
+   assert.deepEqual(db.store.get(key),value);
+ }
+});
+
+test("legacy companyId compatibility never promotes wrong hub, owner or partner",async()=>{
+ for(const companyId of ["other","","partner"]){
+  const {db,api,req}=setup(),before=clone([...db.store]);
+  db.store.get("companies/hub/members/h").companyId=companyId;
+  await assert.rejects(api.view(req("h",{date:"2026-10-31"})),{code:"permission-denied"});
+  await assert.rejects(api.manage(req("h",{action:"hubCreateInvite",companyName:"拒否社",role:"leader",email:"l@example.com"})),{code:"permission-denied"});
+  assert.deepEqual(db.store.get("records/old"),before.find(([k])=>k==="records/old")[1]);
+ }
+ for(const tweak of [
+  ({db})=>{db.store.get("companies/hub").ownerUid="x";},
+  ({db})=>{db.store.get("companies/hub/members/h").companyRole="member";},
+  ({db})=>{db.store.get("users/h").companyId="other";},
+  ({db})=>{db.store.get("users/h").active=false;}
+ ]){
+  const ctx=setup();delete ctx.db.store.get("companies/hub/members/h").companyId;
+  tweak(ctx);
+  await assert.rejects(ctx.api.view(ctx.req("h",{date:"2026-10-31"})),{code:"permission-denied"});
+ }
+ const partner=setup();delete partner.db.store.get("companies/partner/members/p").companyId;
+ await assert.rejects(partner.api.view(partner.req("p",{date:"2026-10-31"})),{code:"permission-denied"});
+});
+
 test("first company is created with direct leader/member invite, no representative or finance mutation",async()=>{
  for(const role of ["leader","member"]){
   const {db,api,req,zero}=setup();
