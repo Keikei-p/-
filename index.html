@@ -4980,7 +4980,12 @@ body.product-reordering .product-list {
   <section id="partnerPanelCatalog" data-partner-view="catalog" hidden>
     <div class="p-inline-card">
       <h3>📦 商材追加・管理</h3>
-      <p class="p-inline-muted">自社と共有の商材に加えて協力店専用の商材を追加できます。協力店専用の件数は全社ランキングに公開しません。</p>
+      <p class="p-inline-muted">本社が公開した商材と、協力店専用の商材を確認できます。</p>
+      <h4>本社から公開された商材</h4>
+      <button type="button" id="pInlineReloadSharedProducts" class="team-action-button">公開商材を更新</button>
+      <p id="pInlineSharedProductStatus" class="p-inline-muted" role="status">本社の公開商材を確認できます。</p>
+      <div id="pInlineSharedProductList" class="product-list"></div>
+      <p class="p-inline-muted">公開商材の一覧は閲覧専用です。件数入力への全商材同期は、既存履歴を保護する互換性確認後に切り替えます。</p>
       <div class="p-inline-grid">
         <label class="p-inline-field">追加する商材名<input id="pInlineCustomName" maxlength="80" placeholder="商材名"></label>
       </div>
@@ -13475,6 +13480,7 @@ async function loadSharedDailyStandings(where,force=false){
  }
 }
 pInline("partnerSharedRankingsRefresh").onclick=()=>loadSharedDailyStandings("partner",true);
+pInline("pInlineReloadSharedProducts").onclick=()=>void loadPartnerPublishedProductList();
 pInline("ownerSharedRankingsRefresh").onclick=()=>loadSharedDailyStandings("owner",true);
 pInline("partnerSharedDetailRefresh").onclick=()=>loadSharedDailyStandings("partnerDetail",true);
 pInline("ownerSharedDetailRefresh").onclick=()=>loadSharedDailyStandings("ownerDetail",true);
@@ -13594,6 +13600,7 @@ function partnerSameAppSelectPanel(name){
   });
  }
  partnerSameAppPositionPanel(name);
+ if(partnerInlineData&&name==="catalog")void loadPartnerPublishedProductList();
  // Never reset unsubmitted two-column inputs by changing the dashboard tab.
  if(partnerInlineData&&["individual","product","team"].includes(name)){
   renderPartnerRankingOnlyPanel();
@@ -13657,6 +13664,42 @@ function partnerInlineFillSelect(id,items,label,preferred){
  if(items.some(x=>x.id===pick))select.value=pick;
  return select.value;
 }
+
+let partnerSharedCatalogNonce=0;
+async function loadPartnerPublishedProductList(){
+ const uid=auth.currentUser?.uid,company=partnerInlineWorkspaceCompany;
+ const target=pInline("pInlineSharedProductList"),status=pInline("pInlineSharedProductStatus");
+ if(!partnerInlineData||!uid||!target||!status)return;
+ const seq=++partnerSharedCatalogNonce;
+ target.replaceChildren();status.textContent="本社の公開商材を照合中…";
+ try{
+  const data=(await readPartnerCatalogPublication(partnerInlinePayload({}))).data;
+  if(seq!==partnerSharedCatalogNonce||uid!==auth.currentUser?.uid||
+     company!==partnerInlineWorkspaceCompany)return;
+  if(data?.role!=="partner"||!Array.isArray(data.products)||data.products.length>1000||
+     !Number.isSafeInteger(data.revision))throw Error("partner_catalog_contract");
+  const ids=new Set();
+  for(const product of data.products){
+   if(!product||Object.keys(product).sort().join("|")!=="id|name|sortOrder"||
+      !partnerMainValidId(product.id)||ids.has(product.id)||
+      typeof product.name!=="string"||!product.name.trim()||
+      !Number.isSafeInteger(product.sortOrder))throw Error("partner_catalog_malformed");
+   ids.add(product.id);
+   const row=document.createElement("div");row.className="product-item";
+   const name=document.createElement("div");name.className="product-name";
+   name.textContent=product.name;row.append(name);target.append(row);
+  }
+  status.textContent=data.products.length?
+   "本社が協力店に公開した商材 "+data.products.length+"件を表示中。価格情報は取得していません。":
+   "本社が協力店へ公開した商材はまだありません。";
+ }catch(e){
+  if(seq!==partnerSharedCatalogNonce||uid!==auth.currentUser?.uid)return;
+  target.replaceChildren();
+  status.textContent="公開商材を照合できません。未確認の情報は表示しません。";
+  console.warn("partner_published_catalog_unavailable",e?.code||"unverified");
+ }
+}
+
 function renderPartnerPrivateProductCatalog(){
  const snap=partnerInlineData;
  if(!snap||snap.role==="hub")return;
