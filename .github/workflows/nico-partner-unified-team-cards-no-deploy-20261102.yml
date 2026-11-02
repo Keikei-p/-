@@ -1,0 +1,51 @@
+name: NICO partner matching team cards + cashback count redaction (NO DEPLOY)
+on:
+  push:
+    branches: [fix/partner-unified-team-detail-cards-20261102]
+    paths:
+      - index.html
+      - functions-partner-workspace/service.cjs
+      - tests/partner-workspace.test.cjs
+      - tests/partner-unified-team-cards-20261102.test.mjs
+      - tests/partner-unified-ranks-save-feedback-20261102.test.mjs
+      - tests/owner-partner-team-count-screen.test.mjs
+      - tests/owner-partner-team-detail-screen.test.mjs
+      - .github/workflows/nico-partner-unified-team-cards-no-deploy-20261102.yml
+permissions: {contents: read}
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Preserve original money, authentication, count APIs and run tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          node --check functions-partner-workspace/service.cjs
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const html=fs.readFileSync('index.html','utf8');
+          const m=html.match(/<script type="module">([\s\S]*?)<\/script>/)?.[1];
+          if(!m||!html.includes("monthlyRevenue")||
+             !html.includes("signInWithEmailAndPassword")||
+             !html.includes("partnerInlineOpenHistoryCorrection")||
+             !html.includes("partnerInlineRemoveManagedStaff"))
+           throw Error("STOP_OWNER_FINANCE_OR_PREVIOUS_FEATURE_MISSING");
+          fs.writeFileSync("/tmp/nico-partner-team-cards.mjs",m);
+          NODE
+          node --check /tmp/nico-partner-team-cards.mjs
+          node --test tests/partner-unified-team-cards-20261102.test.mjs
+          node --test tests/partner-workspace.test.cjs
+          node --test tests/partner-unified-ranks-save-feedback-20261102.test.mjs
+          node --test tests/owner-partner-team-count-screen.test.mjs
+          node --test tests/owner-partner-team-detail-screen.test.mjs
+          node --test tests/partner-always-visible-success-ui-20261102.test.mjs
+          node --test tests/internal-owner-finance-visibility.test.cjs
+          node --test tests/partner-money-free-workspace.test.cjs
+          echo PASS_TEAM_CARDS_COUNT_ONLY_FINANCE_PROTECTED_NO_DEPLOY
