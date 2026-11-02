@@ -2964,6 +2964,13 @@ body.product-reordering .product-list {
   color: var(--primary-text);
 }
 
+/* Keep the existing revenue-safe detail node directly below the clicked dashboard row. */
+#dashboard > .dashboard-app-grid > #dashboardDetailArea {
+  grid-column: 1 / -1;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
 .dashboard-detail-area {
   margin-top: 14px;
   border: 1px solid var(--border);
@@ -4412,7 +4419,7 @@ body.product-reordering .product-list {
 #partnerInlineWorkspace #pInlineCountFields .p-inline-field input{width:100%;min-width:0;box-sizing:border-box;text-align:center;font-size:18px;font-weight:700}
 #partnerInlineWorkspace #pInlineCountFields .partner-cb-card{grid-column:1/-1;display:block}
 #partnerInlineWorkspace #pInlineCountFields .partner-cb-card .partner-cb-title{font-size:16px;font-weight:800;margin-bottom:10px}
-#partnerInlineWorkspace #pInlineCountFields .partner-cb-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+#partnerInlineWorkspace #pInlineCountFields .partner-cb-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 #partnerInlineWorkspace #pInlineCountFields .partner-cb-options .p-inline-field{min-width:0;overflow-wrap:anywhere}
 #partnerInlineWorkspace #pInlineCountFields .partner-cb-options .p-inline-field input{min-height:46px}
 #partnerInlineWorkspace #pInlineCountFields .partner-cb-legacy{grid-column:1/-1;background:var(--card,#fff)}
@@ -10018,6 +10025,18 @@ function setupAccordionGroup(
 }
 
 
+// Use the original dashboard detail DOM and event handlers; only move its
+// container within the same grid so the panel opens at the clicked row.
+let expandedDashboardToggle = null;
+function positionOriginalDashboardDetail(toggle) {
+  if(!toggle||!toggle.isConnected||!dashboardDetailArea)return;
+  const grid=toggle.closest("#dashboard > .dashboard-app-grid");
+  if(!grid)return;
+  const siblings=[...grid.querySelectorAll(".dashboard-app-button")].filter(button=>
+    !button.hidden&&button.style.display!=="none");
+  const row=siblings.filter(button=>button.offsetTop===toggle.offsetTop);
+  (row[row.length-1]||toggle).after(dashboardDetailArea);
+}
 function setupDashboardMenu(
   items
 ) {
@@ -10083,6 +10102,8 @@ function setupDashboardMenu(
 
             dashboardDetailArea.hidden =
               false;
+            expandedDashboardToggle = item.toggle;
+            positionOriginalDashboardDetail(item.toggle);
 
             requestAnimationFrame(
               () => {
@@ -10107,7 +10128,7 @@ function setupDashboardMenu(
             );
 
           } else {
-
+            expandedDashboardToggle = null;
             dashboardDetailArea.hidden =
               true;
 
@@ -10124,7 +10145,10 @@ function setupDashboardMenu(
     true;
 
 }
-
+window.addEventListener("resize",()=>{
+ if(!expandedDashboardToggle||dashboardDetailArea.hidden)return;
+ requestAnimationFrame(()=>positionOriginalDashboardDetail(expandedDashboardToggle));
+});
 
 setupDashboardMenu(
   [
