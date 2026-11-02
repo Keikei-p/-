@@ -1010,3 +1010,16 @@ PR https://github.com/Keikei-p/-/pull/325
 **現時点: PRはDraft。新しいHostingとFunctionsは本番未更新。Authのみ限定本番設定成功。**
 
 - 2026-11-02: 接続済みのGitHub管理者 Keikei-p を通じて本PRへ保護レビューラベル sales-production-reviewed を適用。ユーザーの本番準備依頼に基づく代理操作であり、独立した本人署名ではない。ラベル反映後の保護ゲートを再実行する。
+
+
+---
+
+## 2026-11-02｜PR #327 公開済み固定版のmain同期レビュー
+
+- **目的**: 既に本番へ限定公開されているソースだけを main と整合させ、次回手動Hosting公開による旧UI復帰を防ぐ。新規Functions/Hosting/Firestoreへの公開はこのPRでは実行しない。
+- **固定証拠**: release branch 原点 `7729fec9e65f5c50cc7754931df166fd901db7b1`。限定リリース [run #41394626922](https://github.com/Keikei-p/-/actions/runs/41394626922) で validate / release 成功、Hosting 版 `1b1ae98d3d7ca818`、旧Functions全件名称保持、金額を含まないAPIの匿名呼出拒否、公開HTML完全一致がログで確認された。
+- **監査範囲**: 差分20ファイル。新規Workflowはそれぞれ read-only、PR限定、または `release/nico-sales-partner-unified-20261102` / `fix/partner-email-link-first-password-20261102` の特定ブランチ・workflowファイルpath限定で起動。既存 `nico-factory-sync.yml` と `firebase-production-deploy.yml` は `workflow_dispatch` のみ。 `nico-partner-workspace-release.yml` の本番jobは `workflow_dispatch` 限定。
+- **既存データの保護**: 今回のdocs追記はリポジトリのみ。Firestore原票、Rules、実績履歴、UID、単価、売上、LINE、現行Hosting、既存Functionsへの書込みなし。
+- **保護チェック**: PR #327 初回 protected-change-guard は `sales-production-reviewed` ラベル欠落で停止。接続中の管理者権限で差分と公開トリガーを確認しレビュー記録およびラベル追加後、この追記により新しいPRイベントで再審査する。旧SHA固定ワークフローを緩めない。
+- **継続する未完了**: 実協力店UIDでの本番Firestore財務原票拒否、実メール受信→パスワード設定→招待承諾→件数保存→本家表示、iOS/Androidの実機確認、および最新PR #325の追加42コミットの本番公開。これらを成功と報告しない。
+- **承認の区別**: ユーザーのチャットによる本番準備・継続指示に基づく管理者接続からの技術レビュー。本人の独立GitHubレビュー、実機受入署名を取得したとの主張はしない。
