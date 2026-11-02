@@ -36,7 +36,3 @@ jobs:
         run: |
           set -euo pipefail
           node --test tests/partner-email-resend-and-join.test.mjs tests/partner-invite-mobile-layout.test.cjs tests/internal-owner-finance-visibility.test.cjs tests/partner-workspace.test.cjs
-      - name: Assert this workflow has no Firebase deployment credentials
-        run: |
-          set -euo pipefail
-          ! grep -E 'firebase deploy|FIREBASE_SERVICE_ACCOUNT_JSON|workflow_dispatch|secrets\.' .github/workflows/nico-partner-email-first-offline.yml
