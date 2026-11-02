@@ -12710,6 +12710,7 @@ function setOwnerCombinedCountCardVisibility(name){
 installOwnerCombinedCountCards();
 
 let sharedDailyRankingGeneration=0;
+const sharedDailyRankCache=new Map();
 function verifiedDirectDayCounts(date){
  if(!canLoadPartnerRanking()||!recordsReady||
     recordsSubscribedMonth!==date.slice(0,7)||dashboardMonth.value!==date.slice(0,7))
@@ -12850,7 +12851,11 @@ async function loadSharedDailyStandings(where){
   const payload={date,sharedRankings:true};
   if(partner&&partnerInlineWorkspaceCompany)
    payload.workspaceCompanyId=partnerInlineWorkspaceCompany;
-  const response=(await readPartnerWorkDay(payload)).data;
+  const cacheKey=[uid,partner?partnerInlineWorkspaceCompany:"hub",date].join("|");
+  const cached=sharedDailyRankCache.get(cacheKey);
+  const useCached=where!=="partner"&&where!=="owner"&&where!=="partnerDetail"&&
+   where!=="ownerDetail"&&cached&&Date.now()-cached.checkedAt<30000;
+  const response=useCached?cached.value:(await readPartnerWorkDay(payload)).data;
   if(seq!==sharedDailyRankingGeneration||auth.currentUser?.uid!==uid||
      date!==pInline(dateField).value)return;
   if(response?.scope!=="shared_counts_only"||
@@ -12861,6 +12866,11 @@ async function loadSharedDailyStandings(where){
      typeof response.complete!=="boolean"||response.includesDirect!==true||
      !response.direct||typeof response.direct!=="object")
    throw Error("shared_ranking_contract");
+  if(!useCached){
+   sharedDailyRankCache.set(cacheKey,{checkedAt:Date.now(),value:response});
+   if(sharedDailyRankCache.size>20)
+    sharedDailyRankCache.delete(sharedDailyRankCache.keys().next().value);
+  }
   if(response.companies.length>20||response.teams.length>4000||
      response.people.length>4000||response.categories.length!==PARTNER_QUICK_RANK_KEYS.length)
    throw Error("shared_ranking_scope");
