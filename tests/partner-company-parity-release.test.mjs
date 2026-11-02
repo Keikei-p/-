@@ -344,3 +344,25 @@ test("partner entry reuses canonical 2-column product cards with safe zero/clear
  assert.match(save,/saved\.version!==result\?\.version/);
  assert.match(save,/saved\.privateCounts\?\.\[id\]/);
 });
+
+
+test("failed partner save preserves typed two-column counts and re-enables retry",async()=>{
+ const body=scope("async function partnerInlineRun(work){","\nfunction partnerInlinePayload(data){");
+ const saveButton={disabled:false},staffInput={value:"staff-1"},typed={value:"7"};
+ let refreshed=0,warning="";
+ const ctx={
+  partnerInlineBusy:false,partnerInlineData:{staff:[{id:"staff-1",active:true}]},
+  auth:{currentUser:{uid:"test-uid"}},
+  pInline:id=>id==="pInlineSave"?saveButton:id==="pInlineStaff"?staffInput:null,
+  partnerInlineStatus:value=>{warning=value;},
+  partnerInlineRenderCounts:()=>{refreshed++;typed.value="0";},
+  renderPartnerPrivateProductCatalog:()=>{},
+  partnerInlineFetch:async()=>{},
+  sharedDailyRankingGeneration:0,sharedDailyRankCache:new Map()
+ };
+ await runInNewContext(body+"\npartnerInlineRun(async()=>{throw Error('network');})",ctx);
+ assert.equal(typed.value,"7","the user's unfinished input must not be overwritten after error");
+ assert.equal(refreshed,0);
+ assert.equal(saveButton.disabled,false,"retry must be enabled for an active staff member");
+ assert.match(warning,/入力内容は保持しています/);
+});
