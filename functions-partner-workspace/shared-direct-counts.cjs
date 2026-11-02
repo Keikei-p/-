@@ -81,8 +81,9 @@ async function readDirectDayCounts(db,hubId,date,keys,{maxRecords=MAX_DIRECT_REC
   const personKey=redactedKey("person",hubId,personId);
   const teamKey=redactedKey("team",hubId,teamId);
   let person=people.get(personKey);
-  if(!person){person={key:personKey,name,totalCount:0,
+  if(!person){person={key:personKey,name,teamKey,totalCount:0,
     counts:Object.fromEntries(keys.map(k=>[k,0]))};people.set(personKey,person);}
+  if(person.teamKey!==teamKey)person.teamKey=null; // cross-team entries are not re-attributed
   person.totalCount+=n;
   for(const key of keys)person.counts[key]+=daily[key];
   const team=teams.get(teamKey)||{key:teamKey,name:teamName,totalCount:0,
