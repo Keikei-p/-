@@ -46,7 +46,7 @@ jobs:
             const email=res.data?.signIn?.email||{};
             const domains=res.data?.authorizedDomains||[];
             const password=email.enabled===true;
-            const link=password&&email.passwordRequired===false;
+            const link=password&&(email.passwordRequired===false||email.passwordRequired===undefined);
             const domain=Array.isArray(domains)&&domains.includes('nico-factory.web.app');
             console.log('NICO_AUTH_CONFIG_SHAPE required_field='+(Object.hasOwn(email,'passwordRequired')?String(email.passwordRequired):'MISSING')+' resource_name_kind='+(res.data?.name==null?'MISSING':/^projects\/[0-9]+\/config$/.test(res.data.name)?'NUMERIC':'OTHER')+' signInKeys='+Object.keys(res.data?.signIn||{}).sort().join(','));
             console.log('NICO_AUTH_READONLY email_provider='+password+' email_link='+link+' hosting_domain='+domain+' production_writes=0');
