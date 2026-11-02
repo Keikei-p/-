@@ -13505,6 +13505,14 @@ async function loadSharedDailyStandings(where,force=false){
   if(seq!==sharedDailyRankingGeneration||auth.currentUser?.uid!==uid)return;
   content.replaceChildren();
   status.textContent="ランキングを正しく照合できません。データ・権限を確認して更新してください。";
+  if(named==="Product"&&ownerJointProductMode){
+   ownerJointProductSnapshot=null;renderOwnerJointProductRanking(null);
+  }
+  if(named==="Individual"&&ownerJointIndividualMode){
+   ownerJointIndividualSnapshot=null;
+   document.getElementById("ownerJointIndividualStatus").textContent="合同ランキングの照合に失敗しました。自社の元の順位は維持しています。";
+   individualRankingList.replaceChildren();
+  }
   console.error("shared_daily_ranking_unavailable",error?.code||"unverified");
  }
 }
@@ -13522,7 +13530,7 @@ document.getElementById("ownerJointIndividualButton").onclick=()=>{
 };
 document.getElementById("ownerOriginalIndividualButton").onclick=()=>{
  ownerJointIndividualMode=false;ownerJointIndividualSnapshot=null;
- renderIndividualRanking(buildIndividualMap(records.filter(r=>r.date?.startsWith(dashboardMonth.value))));
+ renderDashboard();
  document.getElementById("ownerJointIndividualStatus").textContent="自社の従来ランキングを表示しています。";
 };
 ownerJointIndividualDate.onchange=()=>{
