@@ -65,7 +65,8 @@ jobs:
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
       - name: Confirm existing main and exact production source unchanged
-        env: {GH_TOKEN: ${{ github.token }}}
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
