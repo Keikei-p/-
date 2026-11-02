@@ -32,7 +32,7 @@ jobs:
           NODE
           node --check /tmp/nico-readback-candidate.mjs
           node --test tests/partner-save-readback-20261102.test.mjs
-          node --test tests/partner-unified-rank-team-save.test.mjs
+          node --test tests/partner-unified-ranks-save-feedback-20261102.test.mjs
           node --test tests/dashboard-inline-original-partner-parity.test.mjs
           node --test tests/internal-owner-finance-visibility.test.cjs
           node --test tests/partner-workspace.test.cjs
