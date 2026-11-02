@@ -923,6 +923,11 @@ test("hub can inspect partner-company per-team shared product counts without fin
  assert.equal(rows.length,2);
  assert.equal(rows.find(x=>x.teamId===t1).totalCount,3);
  assert.equal(rows.find(x=>x.teamId===t1).counts.NURO,2);
+ assert.equal(rows.find(x=>x.teamId===t1).members.length,1);
+ assert.equal(rows.find(x=>x.teamId===t1).members[0].name,"担当1");
+ assert.equal(rows.find(x=>x.teamId===t1).members[0].totalCount,3);
+ assert.equal(rows.find(x=>x.teamId===t1).members[0].counts.YMMNP,1);
+ assert.equal(rows.find(x=>x.teamId===t2).members[0].totalCount,0);
  assert.equal(rows.find(x=>x.teamId===t2).totalCount,0);
  assert.equal(rows.find(x=>x.teamId===t2).reportedStaffCount,1,
    "zero count is a submitted report, not a missing report");
@@ -1170,4 +1175,55 @@ test("same-email login guidance and explicit transfer action exist in invite UI"
  assert.match(p,/transferCurrentCompany:\$\("transferExistingInternal"\)\.checked/);
  assert.match(p,/auth\/email-already-in-use/);
  assert.match(invite,/auth\/email-already-in-use/);
+});
+
+test("shared daily standings expose verified partners to both companies without any prices",async()=>{
+ const {db,api,req,zero}=setup();
+ db.seed("companies/partner/partnerWorkTeams/t1",{companyId:"partner",name:"第一班",active:true});
+ db.seed("companies/partner/partnerWorkStaff/staffA",{
+  companyId:"partner",uid:"p",name:"佐藤",active:true,kind:"account",role:"leader",teamId:"t1"});
+ const data={date:"2026-10-31",staffId:"staffA",expectedVersion:0,counts:{...zero(),NURO:2,SBMNP:1}};
+ const saved=await api.submit(req("p",data));
+ assert.equal(saved.totalCount,3);
+ const before=clone([...db.store]);
+ const owner=await api.view(req("h",{date:"2026-10-31",sharedRankings:true}));
+ const partner=await api.view(req("p",{date:"2026-10-31",sharedRankings:true}));
+ assert.equal(owner.scope,"shared_counts_only");
+ assert.equal(owner.includesDirect,false,"no direct-company finance reads or fabricated counts");
+ assert.equal(owner.complete,true);
+ assert.equal(owner.companies[0].totalCount,3);
+ assert.equal(owner.people.length,1);
+ assert.equal(owner.people[0].name,"佐藤");
+ assert.equal(owner.people[0].totalCount,3);
+ assert.equal(owner.teams[0].name,"第一班");
+ assert.equal(owner.productCounts.NURO,2);
+ assert.equal(owner.productCounts.SBMNP,1);
+ assert.deepEqual(owner.people,partner.people,"both companies see the same counts-only standings");
+ assert.equal(partner.role,"partner");
+ assert.match(owner.people[0].key,/^[a-f0-9]{64}$/);
+ assert.doesNotMatch(JSON.stringify(owner),/unitPrice|revenuePerUnit|totalRevenue|pricingOptions|98765|808080/);
+ assert.doesNotMatch(JSON.stringify(owner),/staffA|p@example.com/);
+ assert.deepEqual([...db.store],before,"standings read must never write or mutate existing data");
+ const corrected=await api.submit(req("p",{...data,expectedVersion:1,counts:{...zero(),NURO:5}}));
+ assert.equal(corrected.totalCount,5);
+ const next=await api.view(req("h",{date:"2026-10-31",sharedRankings:true}));
+ assert.equal(next.companies[0].totalCount,5,"correction replaces, never double counts");
+ assert.equal(next.people[0].totalCount,5);
+ assert.equal(next.productCounts.SBMNP,0);
+});
+test("unsubmitted approved companies are not misrepresented as zero-count ranks",async()=>{
+ const {db,api,req}=setup();
+ const result=await api.view(req("p",{date:"2026-10-31",sharedRankings:true}));
+ assert.equal(result.complete,false);
+ assert.deepEqual(result.companies,[]);
+ assert.deepEqual(result.people,[]);
+ assert.deepEqual(result.missingCompanies,["協力店"]);
+ assert.equal(result.includesDirect,false);
+ assert.deepEqual(db.store.get("records/old").totalRevenue,808080);
+});
+test("count-only daily ranking refuses forged company scope and revoked sharing",async()=>{
+ const {db,api,req}=setup();
+ await assert.rejects(api.view(req("p",{date:"2026-10-31",sharedRankings:true,partnerCompanyId:"other"})),{code:"invalid-argument"});
+ db.store.get("partnerRelations/partner").countSharingApproved=false;
+ await assert.rejects(api.view(req("p",{date:"2026-10-31",sharedRankings:true})),{code:"permission-denied"});
 });

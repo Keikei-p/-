@@ -613,6 +613,106 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  async function view(request){
   const a=await actor(request),d=request?.data||{},date=validDate(d.date);
   const s=await scope(a.uid,null,d.workspaceCompanyId);
+  if(d.sharedRankings===true){
+   // The same COUNT-ONLY standings are available to the original Hub Owner
+   // and to authenticated partners already approved for sharing. No direct
+   // sales originals, prices, private products, UIDs or emails are queried.
+   if(d.partnerCompanyId!=null||d.includeTeamStatus===true)fail("invalid-argument");
+   const hubId=s.kind==="hub"?s.cid:s.hubId;
+   if(!ID.test(hubId||""))fail();
+   const relations=await db.collection("partnerRelations")
+    .where("hubCompanyId","==",hubId).limit(21).get();
+   if(relations.size>20)fail("resource-exhausted"); // fail closed, never partial ranking
+   const approved=[];
+   for(const relSnap of relations.docs){
+    const rel=relSnap.data()||{},cid=relSnap.id;
+    if(!ID.test(cid)||rel.partnerCompanyId!==cid||rel.hubCompanyId!==hubId)
+     fail("data-loss");
+    if(rel.active!==true||rel.countSharingApproved!==true)continue;
+    const companySnap=await db.collection("companies").doc(cid).get();
+    const company=companySnap.data()||{};
+    if(!companySnap.exists||company.companyKind!=="partner"||
+       company.hubCompanyId!==hubId||!validCompanyName(company.name))
+     fail("data-loss");
+    if(company.active===true)approved.push({cid,name:clean(company.name)});
+   }
+   const companies=[],teams=[],people=[],missingCompanies=[];
+   const productCounts=Object.fromEntries(KEYS.map(key=>[key,0]));
+   let complete=true;
+   for(const company of approved){
+    const cid=company.cid;
+    const [reportSnap,entrySnaps,teamSnaps]=await Promise.all([
+     summaryRef(hubId,date,cid).get(),
+     collection(cid,"partnerWorkEntries").where("date","==",date).limit(201).get(),
+     collection(cid,"partnerWorkTeams").limit(151).get()
+    ]);
+    if(entrySnaps.size>200||teamSnaps.size>150)fail("resource-exhausted");
+    if(!reportSnap.exists){
+     // No report means missing, not 0. Suppress a false complete ranking.
+     if(entrySnaps.size)fail("data-loss");
+     complete=false;missingCompanies.push(company.name);continue;
+    }
+    const r=reportSnap.data()||{};
+    if(r.partnerCompanyId!==cid||r.hubCompanyId!==hubId||
+       r.date!==date||!validCompanyName(r.partnerName))fail("data-loss");
+    const summary=validateCounts(r.counts);
+    if(summary.total!==r.totalCount)fail("data-loss");
+    const savedTeams=new Map();
+    for(const t of teamSnaps.docs){
+     const x=t.data()||{};
+     if(!ID.test(t.id)||x.companyId!==cid||!validName(x.name))
+      fail("data-loss");
+     savedTeams.set(t.id,clean(x.name));
+    }
+    const group=new Map(),unique=new Set(),members=[];
+    let verified=0;
+    for(const entrySnap of entrySnaps.docs){
+     const e=entrySnap.data()||{};
+     if(e.companyId!==cid||e.hubCompanyId!==hubId||e.date!==date||
+        !ID.test(e.staffId||"")||unique.has(e.staffId))
+      fail("data-loss");
+     unique.add(e.staffId);
+     const item=validateCounts(e.counts);
+     if(item.total!==e.totalCount)fail("data-loss");
+     verified+=item.total;
+     const tid=ID.test(e.teamIdSnapshot||"")?e.teamIdSnapshot:"";
+     const safeName=validName(e.staffNameSnapshot)?
+      clean(e.staffNameSnapshot):"担当者未確認";
+     const key=crypto.createHash("sha256").update(cid+"\n"+e.staffId)
+      .digest("hex");
+     members.push({key,name:safeName,companyName:company.name,
+      teamName:savedTeams.get(tid)||"登録当時の班未確認",
+      totalCount:item.total,counts:item.counts});
+     const bucket=group.get(tid)||{name:savedTeams.get(tid)||"登録当時の班未確認",
+      totalCount:0,counts:Object.fromEntries(KEYS.map(k=>[k,0]))};
+     bucket.totalCount+=item.total;
+     for(const k of KEYS)bucket.counts[k]+=item.counts[k];
+     group.set(tid,bucket);
+    }
+    // Legacy company-level reports have no verified staff ledger. They
+    // remain visible as company totals but NEVER turn into imaginary people.
+    const hasLedger=r.source==="staff-entries-v1";
+    if(hasLedger&&verified!==summary.total)fail("data-loss");
+    if(!hasLedger&&entrySnaps.size>0)fail("data-loss");
+    if(!hasLedger)complete=false;
+    companies.push({id:cid,name:company.name,totalCount:summary.total,
+     counts:summary.counts,peopleVerified:hasLedger});
+    for(const k of KEYS)productCounts[k]+=summary.counts[k];
+    if(hasLedger){
+     people.push(...members);
+     for(const [tid,item] of group)teams.push({
+      key:crypto.createHash("sha256").update(cid+"\nteam\n"+tid).digest("hex"),
+      companyName:company.name,...item
+     });
+    }
+   }
+   companies.sort((a,b)=>b.totalCount-a.totalCount||a.name.localeCompare(b.name,"ja"));
+   people.sort((a,b)=>b.totalCount-a.totalCount||a.name.localeCompare(b.name,"ja"));
+   teams.sort((a,b)=>b.totalCount-a.totalCount||a.name.localeCompare(b.name,"ja"));
+   return {scope:"shared_counts_only",date,role:s.kind==="hub"?"hub":"partner",
+    complete,includesDirect:false,missingCompanies,companies,teams,people,
+    productCounts,categories:KEYS};
+  }
   if(s.kind==="hub"){
    // Registered companies appear before their first daily count report.
    // Unapproved company remains listed but cannot be invited into.
@@ -663,7 +763,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      if(t.active)rows.set(sn.id,{
       teamId:sn.id,name:clean(t.name),
       counts:Object.fromEntries(KEYS.map(k=>[k,0])),
-      totalCount:0,reportedStaffCount:0
+      totalCount:0,reportedStaffCount:0,members:[]
      });
     }
     let unverifiedTeamCount=0,verifiedSharedCount=0;
@@ -684,6 +784,11 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      row.totalCount+=item.total;
      verifiedSharedCount+=item.total;
      for(const k of KEYS)row.counts[k]+=item.counts[k];
+     // Immutable name snapshot, no financial originals or private products.
+     // No staffId, UID or email escapes the Hub Owner count-only API.
+     const safeName=validName(e.staffNameSnapshot)?clean(e.staffNameSnapshot):
+      "担当者未確認";
+     row.members.push({name:safeName,totalCount:item.total,counts:{...item.counts}});
     }
     partnerTeamDetails={
      partnerCompanyId:selectedPartnerId,companyName:chosen.name,date,
