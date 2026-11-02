@@ -4396,7 +4396,8 @@ body.product-reordering .product-list {
 #appScreen[data-partner-count-only="true"] #partnerManagementTabs{display:none!important}
 #appScreen[data-partner-count-only="true"] #partnerSameAppNavigation>[data-partner-panel="members"]{display:none!important}
 #appScreen[data-partner-count-only="true"] #partnerPanelRankings>.p-inline-card:first-child{display:none!important}
-#appScreen[data-partner-count-only="true"] #partnerPanelDetail>.p-inline-card:first-child{display:none!important}
+#appScreen[data-partner-count-only="true"] #partnerPanelDetail>.p-inline-card:first-child{display:block!important}
+#appScreen[data-partner-count-only="true"] #partnerPanelDetail>.p-inline-card:nth-child(2){display:none!important}
 #appScreen[data-partner-count-only="true"] #partnerSharedDetailTree>section{margin:10px 0 16px}
 #appScreen[data-partner-count-only="true"] #partnerSharedDetailTree>section>h4{font-size:15px;margin:10px 2px}
 #appScreen[data-partner-count-only="true"] #partnerSharedDetailTree details>div.p-inline-row{margin:7px 2px;padding:10px}
@@ -4426,6 +4427,33 @@ body.product-reordering .product-list {
 .partner-count-team-member{border:1px solid var(--border,#e2e8f0);border-radius:11px;padding:11px;margin:8px 0}
 .partner-count-team-member>summary{cursor:pointer;font-weight:700}
 @media(max-width:350px){.partner-count-team-cb-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Compact 2-column team and staff selection, with one active detail panel. */
+.partner-count-team-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:start;margin:12px 0}
+.partner-count-team-grid>.partner-count-team-card{margin:0;min-width:0;padding:12px}
+.partner-count-team-grid>.partner-count-team-card[open]{grid-column:1/-1}
+.partner-count-team-grid>.partner-count-team-card>summary{gap:5px;font-size:14px;overflow-wrap:anywhere}
+.partner-count-team-grid>.partner-count-team-card>summary .partner-count-team-total{font-size:20px}
+.partner-count-team-grid>.partner-count-team-card:not([open])>summary::after{content:"タップして表示";font-size:11px}
+.partner-count-team-grid>.partner-count-team-card[open]>summary::after{content:"選択中 · 閉じる";font-size:11px}
+.partner-count-team-grid>h4,.partner-count-team-grid>.p-inline-row,.partner-count-team-grid>.partner-count-team-notice{grid-column:1/-1;margin:0}
+.partner-count-team-people-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.partner-count-team-person-button{display:flex;min-width:0;min-height:62px;align-items:flex-start;flex-direction:column;gap:5px;text-align:left;border:1px solid var(--border,#dce1e8);border-radius:12px;background:var(--card,#fff);padding:11px;font:inherit;color:inherit;cursor:pointer}
+.partner-count-team-person-button[aria-pressed="true"]{border:2px solid #2d62dc;background:#eff5ff;padding:10px}
+.partner-count-team-person-button:focus-visible{outline:3px solid #86afff;outline-offset:2px}
+.partner-count-team-person-name{font-size:13px;font-weight:700;overflow-wrap:anywhere;width:100%}
+.partner-count-team-person-count{font-size:17px;font-weight:800;color:#2458ce}
+.partner-count-team-person-detail{grid-column:1/-1;background:var(--card,#fff);border:1px solid var(--border,#dce1e8);border-radius:12px;padding:12px}
+.partner-count-team-person-detail[hidden]{display:none!important}
+.partner-count-team-member-products{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.partner-count-team-member-products>.p-inline-row{padding:10px;background:#f5f7fa;border-radius:10px;border:0;margin:0;overflow-wrap:anywhere}
+.partner-count-team-member-products>.partner-count-team-cb-grid{grid-column:1/-1;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px}
+.partner-count-team-member-products .partner-count-team-cb-cell{padding:8px 2px}
+.partner-count-team-member-products .partner-count-team-cb-value{font-size:15px}
+.partner-count-team-member-products .partner-count-team-cb-label{font-size:10px}
+.partner-count-team-member-products>.partner-count-team-member-note{grid-column:1/-1}
+@media(max-width:360px){.partner-count-team-member-products>.partner-count-team-cb-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}
+
 
 #partnerInlineWorkspace .dashboard-app-grid .dashboard-app-button{font:inherit}
 #appScreen[data-partner-count-only="true"] #partnerInlineWorkspace{display:block!important}
