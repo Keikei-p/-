@@ -37,7 +37,7 @@ test("NURO CB tier inputs preserve old counts as unclassified; never invent CB0"
  assert.equal(ctx.result["0"],0);
  for(const tier of ["0","20000","40000","60000","80000","unclassified"])
   assert.ok(source.includes(tier),tier);
- assert.match(html,/grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+ assert.match(html,/#partnerInlineWorkspace #pInlineCountFields \.partner-cb-options\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
  assert.match(html,/dataset.cbTier=tier/);
  assert.match(html,/card.className="p-inline-field product-input-group product-input-group--compact partner-cb-card"/);
 });
