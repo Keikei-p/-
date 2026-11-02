@@ -394,6 +394,9 @@ test("partner registration mirrors the original date/staff record grid and keeps
  assert.match(panel,/class="p-inline-card record-card"/);
  assert.match(panel,/class="record-title">📊 実績入力/);
  assert.match(panel,/class="record-grid"/);
+ assert.match(html,/id="partnerGlobalDateToolbar" class="p-inline-grid"/);
+ assert.match(html,/#partnerInlineWorkspace #partnerGlobalDateToolbar\[hidden\]\{display:none!important\}/);
+ assert.match(html,/pInline\("partnerGlobalDateToolbar"\)\.hidden=name==="record"/);
  assert.match(panel,/<label for="pInlineRecordDate">日付<\/label>/);
  assert.match(panel,/<label for="pInlineStaff">担当者<\/label>/);
  assert(panel.indexOf('id="pInlineRecordDate"')<panel.indexOf('id="pInlineStaff"'));
