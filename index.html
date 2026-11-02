@@ -13862,9 +13862,34 @@ async function openSameAppPartnerWorkspace(user,workspaceCompanyId=""){
   clearRememberedPartnerWorkspace(user.uid);
  }
 }
+// The callable may commit before the phone loses its response. Read-only
+// verification is mandatory: do not write again or clear the user's draft.
+function partnerSavedCountReadbackState(verified,expected){
+ if(!verified||verified.date!==expected.date||
+    verified.companyName!==expected.companyName||
+    !Array.isArray(verified.records))return "unknown";
+ const record=verified.records.find(x=>x.staffId===expected.staffId);
+ if(!record)return expected.expectedVersion===0?"not_saved":"unknown";
+ if(!Number.isSafeInteger(record.version))return "unknown";
+ if(record.version===expected.expectedVersion)return "not_saved";
+ if(record.version!==expected.expectedVersion+1)return "unknown";
+ const countOk=expected.categories.every(key=>
+   Number.isSafeInteger(record.counts?.[key])&&record.counts[key]===expected.counts[key]);
+ const cbOk=PARTNER_NURO_CB_TIERS.every(tier=>
+   (record.cbCounts?.NURO?.[tier]??0)===(expected.cbCounts.NURO[tier]??0));
+ const privateOk=Object.keys(expected.privateCounts).every(id=>
+   (record.privateCounts?.[id]??0)===expected.privateCounts[id]);
+ const total=Object.values(expected.counts).reduce((sum,n)=>sum+n,0);
+ return record.totalCount===total&&record.workLocation===expected.workLocation&&
+   (expected.expectedVersion!==0||record.teamIdSnapshot===expected.workTeamId)&&
+   countOk&&cbOk&&privateOk?"saved":"unknown";
+}
+
 function partnerCountSaveFailureMessage(error){
  const code=String(error?.code||"").replace(/^functions\//,"");
  const reason=error?.message||"";
+ if(reason==="save_not_committed")
+  return "サーバーを再確認しましたが、件数はまだ保存されていません。入力は保持しています。日付と担当者を確認し、接続が安定してから再試行してください。";
  if(reason==="date_changed"||reason==="staff")
   return "保存できませんでした。対象日・担当者が変更されています。入力を残したまま選択を確認してください。";
  if(reason==="counts"||reason==="work_location_invalid"||
@@ -14226,25 +14251,33 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
  }
  if(partnerInlineCountsUnchanged(snap,staffId,counts,privateCounts,cbCounts,workLocation))
   return "登録済みの件数と同じです。変更がないため訂正履歴は追加していません。";
- const result=(await partnerInlineSave(partnerInlinePayload({
-  date,staffId,counts,cbCounts,workLocation,
-  ...(!before?{workTeamId}:{}),privateCounts,expectedVersion:before?.version??0
- }))).data;
+ const expected={date,staffId,counts,cbCounts,workLocation,workTeamId,
+  privateCounts,expectedVersion:before?.version??0,
+  categories:snap.categories,companyName:snap.companyName};
+ let result=null,saveError=null;
+ try{
+  result=(await partnerInlineSave(partnerInlinePayload({
+   date,staffId,counts,cbCounts,workLocation,
+   ...(!before?{workTeamId}:{}),privateCounts,expectedVersion:expected.expectedVersion
+  }))).data;
+ }catch(error){saveError=error;}
  if(uid!==auth.currentUser?.uid||workspace!==partnerInlineWorkspaceCompany)
   throw Error("save_verify");
- const verified=(await readPartnerWorkDay(partnerInlinePayload({date}))).data;
- const saved=verified?.records?.find(x=>x.staffId===staffId);
- const expectedTotal=Object.values(counts).reduce((sum,n)=>sum+n,0);
- if(verified?.date!==date||verified?.companyName!==snap.companyName||
-    !result?.saved||!saved||result.date!==date||result.staffId!==staffId||
-    result.version!==(before?.version??0)+1||saved.version!==result.version||
-    saved.totalCount!==expectedTotal||saved.workLocation!==workLocation||
-    (!before&&saved.teamIdSnapshot!==workTeamId)||
-    snap.categories.some(key=>saved.counts?.[key]!==counts[key])||
-    PARTNER_NURO_CB_TIERS.some(tier=>
-     (saved.cbCounts?.NURO?.[tier]??0)!==(cbCounts.NURO[tier]??0))||
-    Object.keys(privateCounts).some(id=>saved.privateCounts?.[id]!==privateCounts[id])||
-    uid!==auth.currentUser?.uid||workspace!==partnerInlineWorkspaceCompany)
+ // Even on an uncertain callable response, reconcile by GET only.
+ // No automatic second save; protects audit versions and double counting.
+ let verified=null;
+ try{verified=(await readPartnerWorkDay(partnerInlinePayload({date}))).data;}
+ catch(error){if(!saveError)throw Error("save_verify");}
+ if(uid!==auth.currentUser?.uid||workspace!==partnerInlineWorkspaceCompany)
+  throw Error("save_verify");
+ const readback=partnerSavedCountReadbackState(verified,expected);
+ if(saveError){
+  if(readback==="saved")return "件数の保存を再取得で確認しました。";
+  if(readback==="not_saved")throw Error("save_not_committed");
+  throw saveError;
+ }
+ if(!result?.saved||result.date!==date||result.staffId!==staffId||
+    result.version!==expected.expectedVersion+1||readback!=="saved")
   throw Error("save_verify");
  return "件数の保存と再取得を確認しました。";
 },{kind:"save"});
