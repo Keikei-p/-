@@ -154,6 +154,78 @@ jobs:
           }
           console.log('DIAGNOSTIC_READONLY_SUCCESS_NO_USER_DATA_PRINTED');
           NODE
+      - name: Dry-run exact production service against actual records, intercept every write
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {createRequire} from 'node:module';
+          const require=createRequire(process.cwd()+'/functions/package.json');
+          const {initializeApp,applicationDefault}=require('firebase-admin/app');
+          const {getFirestore,FieldValue,Timestamp}=require('firebase-admin/firestore');
+          const {getAuth}=require('firebase-admin/auth');
+          const {HttpsError}=require('firebase-functions/v2/https');
+          const {makeWorkspace,KEYS}=await import('./functions-partner-workspace/service.cjs');
+          try{initializeApp({credential:applicationDefault(),projectId:'sales-management-cc116'});}
+          catch(e){if(!/already exists/.test(String(e.message)))throw e;}
+          const db=getFirestore(),name='株式会社LinkTh';
+          const q=await db.collection('companies').where('name','==',name).limit(2).get();
+          if(q.size!==1)throw Error('NO_UNIQUE_LINKTH');
+          const cid=q.docs[0].id;
+          const staff=await db.collection('companies').doc(cid).collection('partnerWorkStaff').limit(100).get();
+          const account=staff.docs.find(x=>x.data()?.kind==='account'&&x.data()?.active===true);
+          if(!account)throw Error('NO_ACTIVE_ACCOUNT');
+          const uid=account.data().uid,record=await getAuth().getUser(uid);
+          if(!record.emailVerified||record.disabled)throw Error('EMAIL_NOT_VERIFIED');
+          let readCalls=0,writeCalls=0;
+          const protectedDb={
+           collection:(...args)=>db.collection(...args),
+           runTransaction:fn=>db.runTransaction(async realTx=>{
+            const proxy={
+             get:ref=>{readCalls++;return realTx.get(ref);},
+             create:(...args)=>{writeCalls++;},
+             update:(...args)=>{writeCalls++;}
+            };
+            return fn(proxy);
+           },{readOnly:true})
+          };
+          const authMock=()=>({
+           getUser:async requestedUid=>{
+            if(requestedUid!==uid)throw Error('UNEXPECTED_UID');
+            return record;
+           },
+           verifyIdToken:async()=>({uid,email:record.email,email_verified:true})
+          });
+          const service=makeWorkspace({
+           db:protectedDb,getAuth:authMock,FieldValue,Timestamp,HttpsError,
+           enabled:()=>true
+          });
+          const counts=Object.fromEntries(KEYS.map(key=>[key,key==='NURO'?1:0]));
+          const cbCounts={NURO:{'0':1,'20000':0,'40000':0,'60000':0,'80000':0}};
+          const request={
+           auth:{uid,token:{email:record.email,email_verified:true}},
+           rawRequest:{headers:{authorization:'Bearer '+('a'.repeat(60))}},
+           data:{date:'2026-11-02',staffId:account.id,
+            counts,cbCounts,workLocation:'',
+            expectedVersion:0,privateCounts:{},
+            workTeamId:account.data().teamId}
+          };
+          try{
+           const answer=await service.submit(request);
+           if(!answer?.saved||writeCalls!==3||readCalls<10)
+            throw Error('DRY_RUN_RESULT_UNEXPECTED');
+           console.log('SAVE_SIMULATION_READONLY',JSON.stringify({
+            preconditions:'PASS',readCalls,interceptedWrites:writeCalls,
+            noProductionChanges:true
+           }));
+          }catch(e){
+           console.log('SAVE_SIMULATION_READONLY',JSON.stringify({
+            preconditions:'REJECTED',errorCode:e.code||'internal',
+            noProductionChanges:true
+           }));
+           process.exitCode=2;
+          }
+          NODE
       - name: Remove temporary credentials
         if: always()
         run: rm -f "$RUNNER_TEMP/linkth-exact-audit.json"
