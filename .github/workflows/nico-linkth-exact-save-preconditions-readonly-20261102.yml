@@ -1,0 +1,159 @@
+name: NICO Partner LinkTh exact save preconditions (READ ONLY)
+on:
+  push:
+    branches: [diagnose/partner-linkth-save-preconditions-20261102-c1]
+    paths: [.github/workflows/nico-linkth-exact-save-preconditions-readonly-20261102.yml]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Prepare existing audit identity without disclosure
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/linkth-exact-audit.json"
+          chmod 600 "$RUNNER_TEMP/linkth-exact-audit.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/linkth-exact-audit.json" >> "$GITHUB_ENV"
+      - name: Check all server save authorization predicates; no writes
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund >/dev/null
+          node --input-type=module <<'NODE'
+          import {createRequire} from 'node:module';
+          const require=createRequire(process.cwd()+'/functions/package.json');
+          const {initializeApp,applicationDefault}=require('firebase-admin/app');
+          const {getFirestore}=require('firebase-admin/firestore');
+          const {getAuth}=require('firebase-admin/auth');
+          initializeApp({credential:applicationDefault(),projectId:'sales-management-cc116'});
+          const db=getFirestore(),date='2026-11-02';
+          const ID=/^[A-Za-z0-9_-]{1,128}$/;
+          const NAME=/^[\p{L}\p{N} 　・ー（）()_.-]{1,60}$/u;
+          const valid=x=>typeof x==='string'&&NAME.test(x)&&!/(?:単価|売上|収益|利益|報酬|[¥￥$€]|\d[\d,]*円)/.test(x);
+          const rows=await db.collection('companies').where('name','==','株式会社LinkTh').limit(3).get();
+          if(rows.size!==1)throw Error('STOP_PARTNER_COMPANY_NOT_UNIQUE');
+          const companyDoc=rows.docs[0],cid=companyDoc.id,c=companyDoc.data();
+          if(c.companyKind!=='partner')throw Error('STOP_NOT_PARTNER');
+          const ref=(c,key)=>db.collection('companies').doc(c).collection(key);
+          const [relSnap,memberSnap,teamSnap,staffSnap,summarySnap,entriesSnap]=await Promise.all([
+           db.collection('partnerRelations').doc(cid).get(),
+           ref(cid,'members').limit(100).get(),
+           ref(cid,'partnerWorkTeams').limit(151).get(),
+           ref(cid,'partnerWorkStaff').limit(151).get(),
+           ref(c.hubCompanyId,'partnerWorkCountDays').doc(date).collection('reports').doc(cid).get(),
+           ref(cid,'partnerWorkEntries').where('date','==',date).limit(201).get()
+          ]);
+          const rel=relSnap.data()||{},teams=new Map(teamSnap.docs.map(x=>[x.id,x.data()])),
+           staff=staffSnap.docs.map(x=>({id:x.id,...x.data()})),
+           accounts=staff.filter(x=>x.kind==='account'&&ID.test(x.uid||'')),
+           failures=[];
+          if(!c.active)failures.push('company_inactive');
+          if(!ID.test(c.hubCompanyId||''))failures.push('hub_id_missing');
+          if(!relSnap.exists||rel.active!==true||rel.countSharingApproved!==true||
+           rel.partnerCompanyId!==cid||rel.hubCompanyId!==c.hubCompanyId)failures.push('sharing_relation_invalid');
+          if(!valid(c.name))failures.push('company_name_invalid');
+          if(summarySnap.exists&&(summarySnap.data()||{}).source!=='staff-entries-v1')
+           failures.push('legacy_summary_source_conflict');
+          console.log('COMPANY_SAVE_GLOBAL_BLOCKERS',JSON.stringify(failures));
+          console.log('COUNT_STATE',JSON.stringify({members:memberSnap.size,teams:teamSnap.size,staff:staff.length,
+            accounts:accounts.length,entriesForDate:entriesSnap.size,summaryExists:summarySnap.exists}));
+          let index=0;
+          for(const staffAccount of accounts){
+           index++;
+           const uid=staffAccount.uid,b=[];
+           let a=null;
+           try{a=await getAuth().getUser(uid)}catch{b.push('auth_user_unavailable');}
+           if(a&&(!a.emailVerified||a.disabled))b.push('auth_unverified_or_disabled');
+           const [us,ms,contextSnap]=await Promise.all([
+            db.collection('users').doc(uid).get(),
+            ref(cid,'members').doc(uid).get(),
+            db.collection('partnerWorkspaceContexts').doc(uid).get()
+           ]);
+           const u=us.data()||{},m=ms.data()||{},ctx=contextSnap.data()||{};
+           if(!us.exists||u.uid!==uid||u.active!==true||!ID.test(u.companyId||''))
+            b.push('invalid_user_profile');
+           if(!ms.exists||m.uid!==uid||m.active!==true||m.companyId!==cid)
+            b.push('invalid_partner_member');
+           let role='unknown',primary=u.companyId===cid;
+           if(primary){
+            if(u.companyRole!==m.companyRole)b.push('company_role_mismatch');
+            if(u.accessKind!=='partner'||m.accessKind!=='partner'||
+              u.memberType!=='cooperator'||m.memberType!=='cooperator')
+             b.push('partner_access_flags_mismatch');
+            if(u.canViewRevenue!==false||m.canViewRevenue!==false||
+              u.canViewUnitPrice!==false||m.canViewUnitPrice!==false)
+             b.push('partner_finance_flags_mismatch');
+            const owner=c.ownerUid===uid&&u.companyRole==='owner'&&m.companyRole==='owner';
+            if(!owner&&!(u.companyRole==='member'&&
+              ['leader','member'].includes(u.role)&&m.role===u.role&&
+              ID.test(u.teamId||'')&&u.teamId===m.teamId))
+             b.push('partner_role_team_inconsistent');
+            role=owner?'owner':u.role;
+           }else{
+            if(!contextSnap.exists||ctx.active!==true||ctx.kind!=='partner_secondary'||
+               ctx.uid!==uid||ctx.primaryCompanyId!==u.companyId||
+               ctx.partnerCompanyId!==cid||ctx.hubCompanyId!==c.hubCompanyId||
+               (u.email&&ctx.emailLower!==String(u.email).trim().toLowerCase()))
+              b.push('secondary_workspace_context_invalid');
+            if(u.accessKind!=null&&u.accessKind!=='internal')b.push('secondary_primary_kind_invalid');
+            if(u.memberType!=null&&!['internal','direct','member','managed'].includes(u.memberType))
+              b.push('secondary_primary_member_type_invalid');
+            if(m.accessKind!=='partner'||m.memberType!=='cooperator'||m.canViewRevenue!==false||
+              m.canViewUnitPrice!==false)
+              b.push('secondary_partner_flags_invalid');
+            const [primaryCompanySnap,primaryMemberSnap]=await Promise.all([
+             db.collection('companies').doc(u.companyId).get(),
+             ref(u.companyId,'members').doc(uid).get()
+            ]);
+            const pc=primaryCompanySnap.data()||{},pm=primaryMemberSnap.data()||{};
+            if(!primaryCompanySnap.exists||!primaryMemberSnap.exists||pc.active===false||
+               (pc.companyKind!=null&&!['internal','direct'].includes(pc.companyKind))||
+               pm.active===false||(pm.uid!=null&&pm.uid!==uid)||
+               (pm.companyId!=null&&pm.companyId!==u.companyId)||
+               (pm.accessKind!=null&&pm.accessKind!=='internal')||
+               ['partner','cooperator'].includes(pm.memberType))
+              b.push('secondary_original_membership_invalid');
+            const owner=ctx.role==='owner'&&c.ownerUid===uid&&c.masterUid===uid&&
+              m.companyRole==='owner'&&m.role==='leader'&&m.teamId==null;
+            const worker=['leader','member'].includes(ctx.role)&&
+              m.companyRole==='member'&&m.role===ctx.role&&
+              ID.test(ctx.teamId||'')&&m.teamId===ctx.teamId&&c.ownerUid!==uid;
+            if(!owner&&!worker)b.push('secondary_role_team_inconsistent');
+            role=owner?'owner':ctx.role;
+           }
+           if(staffAccount.active!==true||staffAccount.companyId!==cid||
+              !valid(staffAccount.name))
+            b.push('staff_not_active_or_invalid');
+           if(!['owner','leader'].includes(role)&&
+               !(role==='member'&&staffAccount.uid===uid&&staffAccount.kind==='account'))
+            b.push('account_cannot_save_own_staff');
+           let possible=0;
+           for(const item of staff){
+            if(item.active!==true||item.companyId!==cid||!valid(item.name))continue;
+            if(role==='member'&&!(item.kind==='account'&&item.uid===uid))continue;
+            const team=teams.get(item.teamId);
+            if(team?.active===true&&team.companyId===cid)possible++;
+           }
+           if(possible===0)b.push('no_eligible_active_staff_team');
+           console.log('ACCOUNT_SAVE_PREFLIGHT_'+index,JSON.stringify({
+             membershipType:primary?'primary':'secondary',role:String(role),
+             writableStaffWithActiveTeam:possible,blockers:b
+           }));
+          }
+          console.log('DIAGNOSTIC_READONLY_SUCCESS_NO_USER_DATA_PRINTED');
+          NODE
+      - name: Remove temporary credentials
+        if: always()
+        run: rm -f "$RUNNER_TEMP/linkth-exact-audit.json"
