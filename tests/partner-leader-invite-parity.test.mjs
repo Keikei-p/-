@@ -121,3 +121,58 @@ test("unauthorized invite role is explained before attempting a privileged serve
  assert.match(f.pInline("pInlineInviteFormStatus").textContent,/リーダー・管理者のみ/);
  assert.equal(f.writes,0);
 });
+
+test("partner invite callable errors have concrete next actions without exposing raw response",async()=>{
+ const f=fixture();
+ const message=f.context.partnerLeaderInviteServerMessage;
+ assert.match(message("functions/not-found"),/本番に公開されていません/);
+ assert.match(message("functions/permission-denied"),/リーダー権限/);
+ assert.match(message("functions/unauthenticated"),/ログイン/);
+ assert.match(message("functions/failed-precondition"),/班か協力店/);
+ f.context.partnerInlineRun=async work=>{try{await work();}catch{}};
+ f.context.partnerInlineManage=async ()=>{
+  const error=Error("internal secret details");error.code="functions/permission-denied";
+  throw error;
+ };
+ f.pInline("pInlineInviteEmail").value="person@example.com";
+ f.pInline("pInlineInviteRole").value="leader";
+ f.pInline("pInlineInviteTeam").value="team-A";
+ await f.pInline("pInlineCreateInvite").onclick();
+ assert.match(f.pInline("pInlineInviteFormStatus").textContent,/リーダー権限/);
+ assert.doesNotMatch(f.pInline("pInlineInviteFormStatus").textContent,/internal secret/);
+ assert.equal(f.sent.length,0);
+ assert.equal(f.pInline("pInlineInviteResult").hidden,true);
+});
+test("leader invitation selects its own team, not the unrelated management team",async()=>{
+ const f=fixture();
+ f.context.partnerInlineRun=async work=>{try{await work();}catch(e){throw e;}};
+ f.pInline("pInlineInviteEmail").value="person@example.com";
+ f.pInline("pInlineInviteRole").value="leader";
+ f.pInline("pInlineInviteTeam").value="team-A";
+ f.pInline("pInlineManageTeam").value="foreign-team";
+ await f.pInline("pInlineCreateInvite").onclick();
+ assert.equal(f.writes,1);
+ assert.equal(f.sent.length,1);
+ assert.match(f.pInline("pInlineInviteFormStatus").textContent,/送信処理が完了/);
+});
+test("leader invite never exposes the generated token after account switches mid-request",async()=>{
+ const f=fixture();
+ f.context.partnerInlineRun=async work=>{try{await work();}catch{}};
+ let resolveRequest,called=false;
+ f.context.partnerInlineManage=async ()=>{
+  called=true;
+  return await new Promise(resolve=>{resolveRequest=resolve;});
+ };
+ f.pInline("pInlineInviteEmail").value="person@example.com";
+ f.pInline("pInlineInviteRole").value="leader";
+ f.pInline("pInlineInviteTeam").value="team-A";
+ const pending=f.pInline("pInlineCreateInvite").onclick();
+ assert.equal(called,true);
+ f.context.auth.currentUser={uid:"different-user",emailVerified:true};
+ resolveRequest({data:{token:"x".repeat(43),expiresAt:Date.now()+1800000}});
+ await pending;
+ assert.equal(f.sent.length,0);
+ assert.equal(f.pInline("pInlineInviteUrl").value,"");
+ assert.equal(f.pInline("pInlineInviteResult").hidden,true);
+ assert.match(f.pInline("pInlineInviteFormStatus").textContent,/アカウントか会社が切り替わり/);
+});
