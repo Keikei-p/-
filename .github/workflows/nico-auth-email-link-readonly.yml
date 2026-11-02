@@ -1,0 +1,59 @@
+name: NICO Auth email link and domain read-only verification
+on:
+  push:
+    branches:
+      - fix/partner-email-link-first-password-20261102
+    paths:
+      - '.github/workflows/nico-auth-email-link-readonly.yml'
+permissions:
+  contents: read
+concurrency:
+  group: nico-auth-email-link-readonly
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Google authentication client in temporary workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix "$RUNNER_TEMP/nico-auth-audit" google-auth-library@9.15.1 --ignore-scripts --no-audit --no-fund --silent
+      - name: Inspect live Firebase Authentication settings (NO WRITE)
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const {GoogleAuth}=require(process.env.RUNNER_TEMP+'/nico-auth-audit/node_modules/google-auth-library');
+          (async()=>{
+            const raw=process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+            if(!raw){console.log('STOP_AUTH_AUDIT_CREDENTIALS_NOT_CONFIGURED');process.exitCode=1;return;}
+            const creds=JSON.parse(raw);
+            if(creds.project_id!=='sales-management-cc116'){
+              console.log('STOP_AUTH_AUDIT_PROJECT_MISMATCH');process.exitCode=1;return;
+            }
+            const client=await new GoogleAuth({credentials:creds,scopes:['https://www.googleapis.com/auth/cloud-platform']}).getClient();
+            const res=await client.request({url:'https://identitytoolkit.googleapis.com/admin/v2/projects/sales-management-cc116/config',method:'GET'});
+            const email=res.data?.signIn?.email||{};
+            const domains=res.data?.authorizedDomains||[];
+            const password=email.enabled===true;
+            const link=password&&(email.passwordRequired===false||email.passwordRequired===undefined);
+            const domain=Array.isArray(domains)&&domains.includes('nico-factory.web.app');
+            console.log('NICO_AUTH_CONFIG_SHAPE required_field='+(Object.hasOwn(email,'passwordRequired')?String(email.passwordRequired):'MISSING')+' resource_name_kind='+(res.data?.name==null?'MISSING':/^projects\/[0-9]+\/config$/.test(res.data.name)?'NUMERIC':'OTHER')+' signInKeys='+Object.keys(res.data?.signIn||{}).sort().join(','));
+            console.log('NICO_AUTH_READONLY email_provider='+password+' email_link='+link+' hosting_domain='+domain+' production_writes=0');
+            if(!password||!link||!domain){console.log('STOP_AUTH_PROVIDER_NOT_READY');process.exitCode=1;}
+          })().catch(e=>{
+            const status=Number(e?.response?.status)||0;
+            console.log('STOP_AUTH_READONLY_AUDIT_FAILED_HTTP_'+(status||'UNKNOWN'));
+            process.exitCode=1;
+          });
+          NODE

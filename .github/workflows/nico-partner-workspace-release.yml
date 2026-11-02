@@ -43,6 +43,8 @@ jobs:
           set -euo pipefail
           node --check functions-partner-workspace/index.js
           node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/shared-direct-counts.cjs
+          node --test tests/partner-shared-direct-redaction.test.cjs
           node --check functions-partner-workspace/company-code-auth.cjs
           node --test tests/partner-company-code-auth.test.cjs
           node --check tools/hosting/additive-partner-workspace.mjs

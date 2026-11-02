@@ -1,0 +1,107 @@
+name: NICO partner boundary isolated full read-only verification (no deploy)
+on:
+  push:
+    branches:
+      - fix/partner-email-link-first-password-20261102
+    paths:
+      - .github/workflows/nico-partner-boundary-pr-verify-20261102.yml
+permissions:
+  contents: read
+concurrency:
+  group: firebase-rules-production
+  cancel-in-progress: false
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Test reviewed Rules and original internal finances offline
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/partner-boundary-release.test.mjs tests/live-rules-surgical-preview.test.mjs tests/internal-owner-finance-visibility.test.cjs tests/sales-regressions.cjs
+          node --test tools/readonly-backup/backup.test.mjs
+          npm install --prefix tests --ignore-scripts --no-audit --no-fund
+          npm install -g firebase-tools@15.34.1 --no-audit --no-fund
+          firebase emulators:exec --project demo-sales-support --only firestore 'node --test tests/rules.test.cjs'
+  readonly:
+    needs: offline
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      NICO_USAGE_APPROVAL: EXISTING_FUNCTIONS_AND_FULL_INVENTORY_APPROVED
+      NICO_RULES_APPROVAL: VERIFY_ONLY
+      RELEASE_MODE: verify
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Bind verification to approved production and original main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/fix/partner-email-link-first-password-20261102"
+          test "$(gh api repos/Keikei-p/-/branches/main --jq '.commit.sha')" = "283bc749c97756fc3de03671ae7bac4eccdc46c3" || { echo STOP_MAIN_CHANGED; exit 1; }
+          test "$RELEASE_MODE" = verify
+          test "$NICO_RULES_APPROVAL" = VERIFY_ONLY
+          test "$NICO_USAGE_APPROVAL" = EXISTING_FUNCTIONS_AND_FULL_INVENTORY_APPROVED
+          node -e "const f=require('fs'),c=require('crypto');const x=f.readFileSync('firestore.rules','utf8').replace(/\\r\\n/g,'\\n').trim();if(c.createHash('sha256').update(x).digest('hex')!=='d1d9998d874a1a31c81ddf6996e08cd9de3a3d13bd684e245140bf03cab32179')process.exit(1)"
+      - name: Install existing readonly tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+          npm install -g firebase-tools@15.34.1 --no-audit --no-fund
+      - name: Supply approved service identity temporarily
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-partner-readonly.json"
+          chmod 600 "$RUNNER_TEMP/nico-partner-readonly.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-partner-readonly.json" >> "$GITHUB_ENV"
+      - name: Full inventory and isolated emulator restore (NO production writes)
+        shell: bash
+        run: |
+          set -euo pipefail
+          result=0
+          firebase emulators:exec --project demo-sales-restore --only firestore \
+            'node tools/production/release-partner-boundary.mjs verify' \
+            > "$RUNNER_TEMP/nico-partner-readonly-private.log" 2>&1 || result=$?
+          grep -E '^(STOP_[A-Z0-9_]+$|PARTNER_BOUNDARY_(CHECK|RESULT) )' "$RUNNER_TEMP/nico-partner-readonly-private.log" || true
+          test "$result" = 0
+      - name: Keep redacted read-only proof
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: partner-boundary-pr-verified-readonly
+          path: ${{ runner.temp }}/partner-boundary-summary.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Remove private credentials and diagnostic logs
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/nico-partner-readonly.json" "$RUNNER_TEMP/nico-partner-readonly-private.log" firestore-debug.log firebase-debug.log ui-debug.log

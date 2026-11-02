@@ -20,9 +20,12 @@ class Coll {
 class Query {
  constructor(db,path,filter,lim=Infinity){this.db=db;this.path=path;this.filter=filter;this.lim=lim;}
  limit(n){return new Query(this.db,this.path,this.filter,n);}
- async get(){const docs=[];for(const [p,v] of this.db.store){
-  if(p.startsWith(this.path+"/")&&!p.slice(this.path.length+1).includes("/")&&
-     (!this.filter||v[this.filter.k]===this.filter.v))
+ where(k,op,v){assert.equal(op,"==");return new Query(this.db,this.path,
+  [...(Array.isArray(this.filter)?this.filter:this.filter?[this.filter]:[]),{k,v}],this.lim);}
+ async get(){const docs=[],filters=Array.isArray(this.filter)?this.filter:this.filter?[this.filter]:[];
+  for(const [p,v] of this.db.store){
+   if(p.startsWith(this.path+"/")&&!p.slice(this.path.length+1).includes("/")&&
+      filters.every(f=>v[f.k]===f.v))
     docs.push({id:p.split("/").at(-1),data:()=>clone(v)});
   }const rows=docs.slice(0,this.lim);return {size:rows.length,docs:rows};}
 }
@@ -923,6 +926,11 @@ test("hub can inspect partner-company per-team shared product counts without fin
  assert.equal(rows.length,2);
  assert.equal(rows.find(x=>x.teamId===t1).totalCount,3);
  assert.equal(rows.find(x=>x.teamId===t1).counts.NURO,2);
+ assert.equal(rows.find(x=>x.teamId===t1).members.length,1);
+ assert.equal(rows.find(x=>x.teamId===t1).members[0].name,"担当1");
+ assert.equal(rows.find(x=>x.teamId===t1).members[0].totalCount,3);
+ assert.equal(rows.find(x=>x.teamId===t1).members[0].counts.YMMNP,1);
+ assert.equal(rows.find(x=>x.teamId===t2).members[0].totalCount,0);
  assert.equal(rows.find(x=>x.teamId===t2).totalCount,0);
  assert.equal(rows.find(x=>x.teamId===t2).reportedStaffCount,1,
    "zero count is a submitted report, not a missing report");
@@ -1170,4 +1178,113 @@ test("same-email login guidance and explicit transfer action exist in invite UI"
  assert.match(p,/transferCurrentCompany:\$\("transferExistingInternal"\)\.checked/);
  assert.match(p,/auth\/email-already-in-use/);
  assert.match(invite,/auth\/email-already-in-use/);
+});
+
+test("shared daily standings expose verified partners to both companies without any prices",async()=>{
+ const {db,api,req,zero}=setup();
+ db.seed("companies/partner/partnerWorkTeams/t1",{companyId:"partner",name:"第一班",active:true});
+ db.seed("companies/partner/partnerWorkStaff/staffA",{
+  companyId:"partner",uid:"p",name:"佐藤",active:true,kind:"account",role:"leader",teamId:"t1"});
+ db.seed("records/direct20261031",{companyId:"hub",date:"2026-10-31",
+  uid:"h",teamId:"directTeam",teamNameSnapshot:"直営1班",
+  memberNameSnapshot:"直営太郎",
+  results:{nuro:{productName:"NURO光",count:2,revenuePerUnit:98765}},
+  totalCount:2,totalRevenue:197530});
+ const data={date:"2026-10-31",staffId:"staffA",expectedVersion:0,counts:{...zero(),NURO:2,SBMNP:1}};
+ const saved=await api.submit(req("p",data));
+ assert.equal(saved.totalCount,3);
+ const before=clone([...db.store]);
+ const owner=await api.view(req("h",{date:"2026-10-31",sharedRankings:true}));
+ const partner=await api.view(req("p",{date:"2026-10-31",sharedRankings:true}));
+ assert.equal(owner.scope,"shared_counts_only");
+ assert.equal(owner.includesDirect,true);
+ assert.equal(owner.direct.totalCount,2);
+ assert.equal(owner.direct.people[0].name,"直営太郎");
+ assert.equal(owner.direct.teams[0].name,"直営1班");
+ assert.equal(owner.direct.counts.NURO,2);
+ assert.deepEqual(owner.direct,partner.direct,"both companies see the same verified direct counts");
+ assert.equal(owner.complete,true);
+ assert.equal(owner.companies[0].totalCount,3);
+ assert.equal(owner.people.length,1);
+ assert.equal(owner.people[0].name,"佐藤");
+ assert.equal(owner.people[0].totalCount,3);
+ assert.equal(owner.teams[0].name,"第一班");
+ assert.equal(owner.productCounts.NURO,2);
+ assert.equal(owner.productCounts.SBMNP,1);
+ assert.deepEqual(owner.people,partner.people,"both companies see the same counts-only standings");
+ assert.equal(partner.role,"partner");
+ assert.match(owner.people[0].key,/^[a-f0-9]{64}$/);
+ assert.doesNotMatch(JSON.stringify(owner),/unitPrice|revenuePerUnit|totalRevenue|pricingOptions|98765|808080|197530/);
+ assert.doesNotMatch(JSON.stringify(owner),/staffA|p@example.com/);
+ assert.deepEqual([...db.store],before,"standings read must never write or mutate existing data");
+ const corrected=await api.submit(req("p",{...data,expectedVersion:1,counts:{...zero(),NURO:5}}));
+ assert.equal(corrected.totalCount,5);
+ const next=await api.view(req("h",{date:"2026-10-31",sharedRankings:true}));
+ assert.equal(next.companies[0].totalCount,5,"correction replaces, never double counts");
+ assert.equal(next.people[0].totalCount,5);
+ assert.equal(next.productCounts.SBMNP,0);
+});
+test("unsubmitted approved companies are not misrepresented as zero-count ranks",async()=>{
+ const {db,api,req}=setup();
+ const result=await api.view(req("p",{date:"2026-10-31",sharedRankings:true}));
+ assert.equal(result.complete,false);
+ assert.deepEqual(result.companies,[]);
+ assert.deepEqual(result.people,[]);
+ assert.deepEqual(result.missingCompanies,["協力店"]);
+ assert.equal(result.includesDirect,true);
+ assert.equal(result.direct.totalCount,0);
+ assert.deepEqual(result.direct.people,[]);
+ assert.deepEqual(db.store.get("records/old").totalRevenue,808080);
+});
+test("count-only daily ranking refuses forged company scope and revoked sharing",async()=>{
+ const {db,api,req}=setup();
+ await assert.rejects(api.view(req("p",{date:"2026-10-31",sharedRankings:true,partnerCompanyId:"other"})),{code:"invalid-argument"});
+ db.store.get("partnerRelations/partner").countSharingApproved=false;
+ await assert.rejects(api.view(req("p",{date:"2026-10-31",sharedRankings:true})),{code:"permission-denied"});
+});
+
+test("direct redaction fails closed on overflow and malformed legacy counts",async()=>{
+ const {readDirectDayCounts}=require("../functions-partner-workspace/shared-direct-counts.cjs");
+ const {db}=setup(),date="2026-10-31";
+ const mk=(uid,quantity)=>({companyId:"hub",date,uid,teamId:"t",teamNameSnapshot:"直営班",
+   memberNameSnapshot:"同姓",totalCount:quantity,totalRevenue:9999999,
+   results:{one:{count:quantity,productName:"NURO",revenuePerUnit:999999}}});
+ db.seed("records/new01",mk("h",1));
+ db.seed("records/new02",mk("q",2));
+ const original=clone([...db.store]);
+ const a=await readDirectDayCounts(db,"hub",date,KEYS,{maxRecords:2});
+ assert.equal(a.totalCount,3);
+ assert.equal(a.people.length,2,"same names must remain distinct people");
+ assert.equal(a.teams.length,1);
+ assert.equal(a.counts.NURO,3);
+ assert.equal(a.recordsVerified,2);
+ assert.doesNotMatch(JSON.stringify(a),/9999999|revenuePerUnit|totalRevenue|unitPrice|@example.com/);
+ assert.deepEqual([...db.store],original);
+ await assert.rejects(readDirectDayCounts(db,"hub",date,KEYS,{maxRecords:1}),/DIRECT_READ_BUDGET_EXCEEDED/);
+ db.store.get("records/new01").totalCount=999;
+ await assert.rejects(readDirectDayCounts(db,"hub",date,KEYS,{maxRecords:2}),/DIRECT_TOTAL_MISMATCH/);
+});
+
+test("internal member can read approved count-only standings but cannot manage partner data",async()=>{
+ const {db,api,req,zero}=setup();
+ db.seed("users/x",{uid:"x",companyId:"hub",companyRole:"member",role:"member",
+  active:true,canViewRevenue:false,canViewUnitPrice:false,accessKind:"internal"});
+ db.seed("companies/hub/members/x",{uid:"x",companyId:"hub",companyRole:"member",
+  role:"member",active:true,canViewRevenue:false,canViewUnitPrice:false,accessKind:"internal"});
+ db.seed("records/memberSale",{uid:"x",companyId:"hub",date:"2026-10-31",
+  teamId:"ti",teamNameSnapshot:"直営2班",memberNameSnapshot:"社員",
+  totalCount:1,totalRevenue:2222,
+  results:{n:{productName:"NURO",count:1,revenuePerUnit:2222}}});
+ const ranking=await api.view(req("x",{date:"2026-10-31",sharedRankings:true}));
+ assert.equal(ranking.role,"hub");
+ assert.equal(ranking.includesDirect,true);
+ assert.equal(ranking.direct.totalCount,1);
+ assert.equal(ranking.direct.people[0].name,"社員");
+ assert.doesNotMatch(JSON.stringify(ranking),/2222|revenuePerUnit|totalRevenue|canViewRevenue|@example.com/);
+ await assert.rejects(api.view(req("x",{date:"2026-10-31"})),{code:"permission-denied"});
+ await assert.rejects(api.manage(req("x",{action:"hubCreateInvite",
+  companyName:"不正",role:"member",email:"n@example.com"})),{code:"permission-denied"});
+ const account=db.store.get("companies/hub/members/x");
+ account.active=false;
+ await assert.rejects(api.view(req("x",{date:"2026-10-31",sharedRankings:true})),{code:"permission-denied"});
 });

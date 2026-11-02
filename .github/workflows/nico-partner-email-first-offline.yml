@@ -1,0 +1,38 @@
+name: NICO partner email-first onboarding (offline only)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'tests/partner-email-resend-and-join.test.mjs'
+      - 'tests/partner-invite-mobile-layout.test.cjs'
+      - '.github/workflows/nico-partner-email-first-offline.yml'
+permissions:
+  contents: read
+jobs:
+  no-write-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Parse the canonical inlined browser module
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs=require('fs');
+          const html=fs.readFileSync('index.html','utf8');
+          const script=html.match(/<script type="module">([\s\S]*?)<\/script>/)?.[1];
+          if(!script)throw Error('NO_INLINE_AUTH_MODULE');
+          fs.writeFileSync('/tmp/nico-email-first.mjs',script);
+          NODE
+          node --check /tmp/nico-email-first.mjs
+      - name: New email-first, original owner revenue and partner access regression
+        run: |
+          set -euo pipefail
+          node --test tests/partner-email-resend-and-join.test.mjs tests/partner-invite-mobile-layout.test.cjs tests/internal-owner-finance-visibility.test.cjs tests/partner-workspace.test.cjs tests/partner-company-parity-release.test.mjs

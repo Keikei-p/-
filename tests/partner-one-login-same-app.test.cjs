@@ -91,3 +91,34 @@ test("partner company list errors are explicit, fail closed and never create a r
  assert.doesNotMatch(flow,/partnerInlineManage\(|tx\.create\(|setDoc\(/);
  assert.match(index,/if\s*\(!currentUser\?\.emailVerified\s*\|\|/);
 });
+
+test("partner same dashboard navigation shows original eight operations without exposing internal finance",()=>{
+ for(const key of ["record","individual","product","team","detail","daily","history","members"])
+  assert.match(index,new RegExp('data-partner-panel="'+key+'"'));
+ for(const id of ["partnerPanelRecord","partnerPanelRankings","partnerPanelDetail",
+  "partnerPanelDaily","partnerPanelHistory","partnerPanelMembers"])
+  assert.match(index,new RegExp('id="'+id+'"'));
+ assert.match(index,/partnerSameAppSelectPanel\("record"\)/);
+ assert.match(index,/pInline\("partnerSameAppNavigation"\)\.addEventListener\("click"/);
+ assert.match(index,/partnerSameAppSelectedPanel/);
+ assert.match(index,/pInline\("pInlineTeamDetails"\)/);
+ assert.match(index,/pInline\("pInlineHistory"\)/);
+ assert.match(index,/pInline\("pInlineDailySummary"\)/);
+ assert.match(index,/#appScreen\[data-partner-count-only="true"\] > :not\(\.user-bar\):not\(#partnerInlineWorkspace\)\{display:none!important\}/);
+ // Counts-only view uses existing confirmed Firebase Auth and read-only count endpoint.
+ const scope=index.slice(index.indexOf("// NICO partner: same Firebase email sign-in"),
+   index.indexOf("/* =====================================================\n   Auth状態"));
+ assert.doesNotMatch(scope,/collection\(db,"(?:products|records|revenueGoals|recordCorrections)"/);
+ assert.doesNotMatch(scope,/(?:getDocs|onSnapshot)\s*\(/);
+});
+test("original owner team detail displays partner company -> team -> member -> product from scoped count API",()=>{
+ for(const id of ["ownerPartnerDashboardDetails","ownerPartnerDashboardDate","ownerPartnerDashboardList"])
+  assert.match(index,new RegExp('id="'+id+'"'));
+ assert.match(index,/pInline\("ownerPartnerDashboardDetails"\)\.hidden=!canLoadPartnerRanking\(\)/);
+ assert.match(index,/readPartnerWorkDay\(\{date,partnerCompanyId:company\.partnerCompanyId\}\)/);
+ assert.match(index,/info\?\.scope!=="shared_counts_only"/);
+ assert.match(index,/name\.textContent=team\.name\+"｜"\+team\.totalCount/);
+ assert.match(index,/title\.textContent="👤 "\+person\.name\+"｜"\+person\.totalCount/);
+ assert.match(service,/row\.members\.push\(\{name:safeName,totalCount:item\.total,counts:/);
+ assert.doesNotMatch(service,/\bdb\.collection\("(?:records|products|revenueGoals|recordCorrections)"\)/);
+});

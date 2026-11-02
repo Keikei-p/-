@@ -49,7 +49,9 @@ test("existing invitations, company owner access, sales reports, finance display
  assert(source.includes('partnerInlineManage({action:"hubCreateInvite",'));
  assert(source.includes('...(isNew?{companyName}:{partnerCompanyId,teamId}),role,email}'));
  assert(source.includes('currentCompanyData?.ownerUid !== currentUser.uid'));
- assert(source.includes('showSuccess("協力店の招待リンクを作成しました。'));
+ assert(source.includes('const sent=await composePartnerInvitationEmail();'));
+ assert(source.includes('if(sent)showSuccess("協力店の認証メールを送信しました。'));
+ assert(source.includes('else showError("招待リンクを作成しましたが、認証メールは未送信です。'));
  assert(html.includes("function canCurrentUserViewRevenueForTeam("));
  assert(html.includes("function canCurrentUserViewUnitPrice(")||html.includes("function canCurrentUserViewUnitPrice"));
  assert(html.includes("mergedPartnerRankingDay"));
