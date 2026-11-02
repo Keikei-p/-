@@ -8,7 +8,7 @@ const OTHER="その他（直営）";
 const money=/(?:単価|売上|収益|利益|報酬|[¥￥$€]|\d[\d,]*円)/;
 const safeName=(value,defaultValue)=>{
  const name=typeof value==="string"?value.trim():"";
- return name&&name.length<=80&&!money.test(name)?name:defaultValue;
+ return name&&name.length<=80&&!money.test(name)&&!/@/.test(name)&&!/[\r\n\x00-\x1f]/.test(name)?name:defaultValue;
 };
 const cleanProductName=value=>String(value||"").normalize("NFKC").toUpperCase()
  .replace(/[\s　・、，,./／+＋_\-]/g,"");
