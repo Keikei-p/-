@@ -66,6 +66,36 @@ test("partner dashboard uses the original card grid and opens below its own sele
  assert.match(html,/#partnerInlineWorkspace #partnerSameAppDashboardDetails\{grid-column:1\/-1/);
 });
 
+
+test("partner fallback and live original menu expose all count-only dashboard actions",()=>{
+ const fallback=portion('id="partnerSameAppNavigation"','id="partnerManagementTabs"');
+ const panels=[...fallback.matchAll(/data-partner-panel="([^"]+)"/g)].map(match=>match[1]);
+ assert.deepEqual(panels,[
+  "record","analysis","individual","product","team","chart","detail",
+  "products","report","goal","daily","history","members"
+ ]);
+ const mount=portion("function mountPartnerCanonicalNavigation(){","function renderPartnerCountOnlyExtras(){");
+ for(const [original,key] of [
+  ["salesAnalysisToggle","analysis"],["individualRankingToggle","individual"],
+  ["productRankingToggle","product"],["teamRankingToggle","team"],
+  ["revenueChartToggle","chart"],["allTeamsOverviewToggle","detail"],
+  ["productSummaryToggle","products"],["reportBuilderToggle","report"],
+  ["dailyGoalCalculatorToggle","goal"],["dailySummaryToggle","daily"],
+  ["recordHistoryToggle","history"]
+ ])assert.ok(mount.includes('["'+original+'","'+key+'"'),"missing live "+key);
+ const router=portion("function partnerSameAppSelectPanel(name){",'window.addEventListener("resize"');
+ for(const [key,id] of [
+  ["analysis","partnerPanelAnalysis"],["chart","partnerPanelChart"],
+  ["products","partnerPanelProductSummary"],["report","partnerPanelReport"],
+  ["goal","partnerPanelGoal"]
+ ]){
+  assert.ok(router.includes(key+':"'+id+'"'),key+" not routed");
+  assert.equal((html.match(new RegExp('id="'+id+'"','g'))||[]).length,1,id);
+ }
+ assert.doesNotMatch(fallback,/売上分析|収益グラフ|売上順|収益単価|totalRevenue|unitPrice/);
+ assert.match(mount,/target.replaceChildren\(\.\.\.cards\)/);
+});
+
 test("partner uses original input visual structure with 2 columns and isolated CB categories",()=>{
  assert.match(html,/id="pInlineCountFields" class="product-input-list"/);
  assert.match(html,/#partnerInlineWorkspace #pInlineCountFields\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
