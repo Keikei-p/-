@@ -26,6 +26,7 @@ jobs:
         run: |
           node --test tests/partner-catalog-publication.test.cjs
           node --test tests/partner-shared-ranking-groups.test.cjs
+          node --test tests/partner-shared-catalog-ui-contract.test.cjs
           node --test tests/owner-partner-team-count-screen.test.mjs
           node --test tests/partner-unified-ranks-save-feedback-20261102.test.mjs
       - name: Assert NO DEPLOY
