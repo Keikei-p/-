@@ -659,6 +659,23 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  }
  async function view(request){
   const a=await actor(request),d=request?.data||{},date=validDate(d.date);
+  if(d.resolveSecondaryWorkspace===true){
+   // Repeated password login on a different phone: resolve the EXISTING
+   // authenticated user's secondary-company membership, never an invite.
+   if(Object.keys(d).some(key=>!["date","resolveSecondaryWorkspace"].includes(key)))
+    fail("invalid-argument");
+   const context=await db.collection("partnerWorkspaceContexts").doc(a.uid).get();
+   if(!context.exists)return {scope:"partner_workspace_lookup",workspaceCompanyId:null};
+   const stored=context.data()||{};
+   if(stored.uid!==a.uid||stored.kind!=="partner_secondary"||
+      stored.active!==true||!ID.test(stored.partnerCompanyId||""))
+    fail("failed-precondition");
+   // The same authority check used for real saves ensures revoked roles,
+   // disabled companies and stale member records never resolve here.
+   const verified=await scope(a.uid,null,stored.partnerCompanyId);
+   if(verified.kind!=="partner"||verified.cid!==stored.partnerCompanyId)fail();
+   return {scope:"partner_workspace_lookup",workspaceCompanyId:verified.cid};
+  }
   const s=d.sharedRankings===true
    ?await sharedRankScope(a.uid,d.workspaceCompanyId)
    :await scope(a.uid,null,d.workspaceCompanyId);
