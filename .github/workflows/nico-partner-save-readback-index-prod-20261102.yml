@@ -1,0 +1,131 @@
+name: NICO partner save-readback single-index guarded production release
+on:
+  push:
+    branches: [release/nico-partner-save-readback-index-20261102]
+    paths: [.github/workflows/nico-partner-save-readback-index-prod-20261102.yml]
+permissions:
+  contents: read
+concurrency:
+  group: nico-partner-workspace-production
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Exact candidate boundary, unchanged functions and finance Rules
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object index.html)" = ab415315e2bb6692dc9172cd9212f20e90815cae
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 55b16051c09810778f79256097446aa0dec1b36e
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object tools/hosting/surgical-existing-index.mjs)" = 1c6923e06135dc480e11f342e44f5e74f8c5bbc7
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const html=fs.readFileSync('index.html','utf8');
+          const module=html.match(/<script type="module">([\s\S]*?)<\/script>/)?.[1];
+          if(!module||!html.includes('monthlyRevenue')||
+             !html.includes('signInWithEmailAndPassword')||
+             !html.includes('partnerSavedCountReadbackState'))
+            throw Error('STOP_REVIEWED_OWNER_OR_PARTNER_UI_CHANGED');
+          fs.writeFileSync('/tmp/nico-partner-index.mjs',module);
+          NODE
+          node --check /tmp/nico-partner-index.mjs
+      - name: Correct and legacy partner finance tests, no production writes
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/partner-save-readback-20261102.test.mjs
+          node --test tests/partner-unified-ranks-save-feedback-20261102.test.mjs
+          node --test tests/dashboard-inline-original-partner-parity.test.mjs
+          node --test tests/internal-owner-finance-visibility.test.cjs
+          node --test tests/partner-workspace.test.cjs
+          echo PASS_83_TESTS_NO_PRODUCTION_WRITES
+  release:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      NICO_PARTNER_RELEASE_CONFIRMATION: CONFIRM_ADD_PARTNER_RANKING_INDEX_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Check main, deployment history, existing reviewed target
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)" = 283bc749c97756fc3de03671ae7bac4eccdc46c3 || { echo STOP_MAIN_CHANGED; exit 1; }
+          test "$(gh api repos/Keikei-p/-/actions/runs/41440083022 --jq .conclusion)" = success || { echo STOP_CURRENT_LIVE_NOT_VERIFIED; exit 1; }
+          test "$(gh api repos/Keikei-p/-/actions/runs/41431798668 --jq .conclusion)" = success || { echo STOP_4_PARTNER_APIS_NOT_VERIFIED; exit 1; }
+          test "$(git hash-object index.html)" = ab415315e2bb6692dc9172cd9212f20e90815cae
+      - name: Load existing restricted identity for read-only checks and Hosting-only release
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON" || { echo STOP_NO_CREDENTIALS; exit 1; }
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/readback-hosting-identity.json"
+          chmod 600 "$RUNNER_TEMP/readback-hosting-identity.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/readback-hosting-identity.json" >> "$GITHUB_ENV"
+      - name: Load existing Firebase Hosting library only, never Firestore writes
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Refuse unknown live version or changed original index and assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/hosting/surgical-existing-index.mjs --dry-run > "$RUNNER_TEMP/live-manifest-before.log"
+          grep -Fq 'sites/nico-factory/versions/b100b4ebcbbebaee' "$RUNNER_TEMP/live-manifest-before.log" || { echo STOP_NEWER_HOSTING_RELEASE_EXISTS; exit 1; }
+          grep -Fq 'Replacing ONLY existing /index.html; unchanged other assets: 10' "$RUNNER_TEMP/live-manifest-before.log" || { echo STOP_HOSTING_MANIFEST_UNEXPECTED; exit 1; }
+          valid=0
+          for i in 1 2 3 4 5 6; do
+            curl -fsSL --max-time 25 "https://nico-factory.web.app/?before_readback_release=$i" > "$RUNNER_TEMP/live-before.html"
+            if [ "$(git hash-object "$RUNNER_TEMP/live-before.html")" = 66c2b863da883cd479152506e8ddb20e0cd8ab60 ]; then valid=1; break; fi
+            sleep 2
+          done
+          test "$valid" = 1 || { echo STOP_LIVE_HTML_NOT_EXACTLY_REVIEWED; exit 1; }
+          echo PASS_EXISTING_LIVE_HTML_AND_11_ASSETS_FIXED
+      - name: Replace ONLY index with full file manifest, no Functions Rules or Firestore deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/hosting/surgical-existing-index.mjs --dry-run > "$RUNNER_TEMP/live-manifest-final.log"
+          grep -Fq 'sites/nico-factory/versions/b100b4ebcbbebaee' "$RUNNER_TEMP/live-manifest-final.log" || { echo STOP_LIVE_VERSION_CHANGED; exit 1; }
+          node tools/hosting/surgical-existing-index.mjs --release
+          echo PASS_HOSTING_INDEX_ONLY_RELEASED
+      - name: Verify live exact HTML, original partner pages and owner finance anchors
+        shell: bash
+        run: |
+          set -euo pipefail
+          matched=0
+          for n in 1 2 3 4 5 6 7 8 9 10; do
+            curl -fsSL --max-time 25 "https://nico-factory.web.app/?after_readback_release=$n" > "$RUNNER_TEMP/live-after.html"
+            if cmp -s index.html "$RUNNER_TEMP/live-after.html"; then matched=1; break; fi
+            sleep 3
+          done
+          test "$matched" = 1 || { echo STOP_POSTRELEASE_LIVE_HTML_UNVERIFIED; exit 1; }
+          grep -Fq 'partnerSavedCountReadbackState' "$RUNNER_TEMP/live-after.html"
+          grep -Fq 'monthlyRevenue' "$RUNNER_TEMP/live-after.html"
+          for page in partner-invite.html partner-counts.html partner-workspace.html; do
+            curl -fsSL --max-time 25 "https://nico-factory.web.app/$page" > "$RUNNER_TEMP/$page"
+          done
+          grep -Fq 'createPartnerCompanyInvitation' "$RUNNER_TEMP/partner-invite.html"
+          grep -Fq 'getPartnerQuickCounts' "$RUNNER_TEMP/partner-counts.html"
+          grep -Fq 'submitPartnerWorkspaceCounts' "$RUNNER_TEMP/partner-workspace.html"
+          echo PASS_NEW_READBACK_LIVE_EXACT_AND_ORIGINAL_PAGES
+      - name: Clean up temporary identity
+        if: always()
+        run: rm -f "$RUNNER_TEMP/readback-hosting-identity.json" "$RUNNER_TEMP/live-before.html" "$RUNNER_TEMP/live-after.html"
