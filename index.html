@@ -13838,27 +13838,45 @@ function partnerInlineRender(){
  }
  renderPartnerRankingOnlyPanel();
  const details=pInline("pInlineTeamDetails");details.replaceChildren();
+ details.className="p-inline-list partner-count-team-grid";
  for(const team of allTeams){
-  const row=document.createElement("details");row.className="p-inline-row";
-  const header=document.createElement("summary");
-  header.textContent=snap.companyName+"・"+team.name+(team.active?"":"（過去の班）")+"｜"+(byTeam.get(team.id)||0)+"件";
-  row.append(header);
-  // Group saved entries by their original team; never move old results when
-  // staff transfer to another team or their account becomes inactive.
-  for(const entry of snap.records.filter(e=>e.teamIdSnapshot===team.id)){
+  // Always attribute past entries to the immutable saved team ID, never the
+  // member's current team. Deactivated members' saved counts are retained.
+  const reported=snap.records.filter(e=>e.teamIdSnapshot===team.id);
+  const productTotals=Object.fromEntries(snap.categories.map(k=>[k,0]));
+  const cb=Object.fromEntries(PARTNER_TEAM_CB_TIERS.map(k=>[k,0]));
+  cb.unclassified=0;
+  const memberRows=[];
+  let total=0;
+  const reportedIds=new Set();
+  for(const entry of reported){
+   reportedIds.add(entry.staffId);total+=entry.totalCount;
+   for(const key of snap.categories)productTotals[key]+=entry.counts?.[key]||0;
+   const current=entry.cbCounts?.NURO;
+   const assigned=PARTNER_TEAM_CB_TIERS.reduce((sum,k)=>sum+(current?.[k]||0),0);
+   for(const tier of PARTNER_TEAM_CB_TIERS)cb[tier]+=current?.[tier]||0;
+   cb.unclassified+=current?.unclassified??((entry.counts?.NURO||0)-assigned);
    const person=allStaff.find(p=>p.id===entry.staffId);
-   const member=document.createElement("div");member.className="p-inline-row";
-   const name=document.createElement("strong");
-   name.textContent=(person?.name||"担当者未確認")+"｜"+entry.totalCount+"件";
-   member.append(name);
-   for(const cat of snap.categories){
-    const n=entry?.counts?.[cat]||0;
-    if(n)partnerMainAppendRow(member,cat,n+"件");
-   }
-   row.append(member);
+   memberRows.push({name:person?.name||"担当者未確認",
+    totalCount:entry.totalCount,counts:entry.counts,cbCounts:entry.cbCounts,reported:true});
   }
-  details.append(row);
+  for(const person of allStaff){
+   if(person.active===true&&person.teamId===team.id&&!reportedIds.has(person.id))
+    memberRows.push({name:person.name,totalCount:0,counts:{},cbCounts:null,reported:false});
+  }
+  const hasReports=reported.length>0;
+  const card=renderPartnerCountTeamCard(
+   team.name+(team.active?"":"（過去の班）")+(hasReports?"":"｜未報告"),
+   total,productTotals,{NURO:cb},memberRows,snap.categories,{verified:true});
+  details.append(card);
  }
+ const unknown=snap.records.filter(e=>!allTeams.some(t=>t.id===e.teamIdSnapshot));
+ if(unknown.length){
+  const total=unknown.reduce((n,e)=>n+e.totalCount,0);
+  partnerMainAppendRow(details,"過去の班が未確認",total+"件（"+unknown.length+"人の報告）");
+ }
+ if(!allTeams.length)partnerMainAppendRow(details,"班がまだありません","班を追加してください");
+ partnerCompactWireTeamSelection(details);
  const daily=pInline("pInlineDailySummary");daily.replaceChildren();
  partnerMainAppendRow(daily,snap.date+"｜"+snap.companyName,
   snap.records.reduce((n,e)=>n+e.totalCount,0)+"件");
