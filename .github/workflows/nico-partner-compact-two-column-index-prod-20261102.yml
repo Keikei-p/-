@@ -25,7 +25,7 @@ jobs:
           test "$(git hash-object functions-partner-workspace/service.cjs)" = bcfc59a7f8173c18b8982f30f4abe2aa0d08b0a7
           test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
-          test "$(git hash-object tools/hosting/surgical-existing-index.mjs)" = 1c6923e06135dc480e11f342e44f5e74f8c5bbc7
+          test "$(git hash-object tools/hosting/surgical-existing-index.mjs)" = bca512123d2bb579f038e85b49b3ca328676aee4
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
           const html=fs.readFileSync('index.html','utf8');
@@ -59,6 +59,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          node --test tests/surgical-existing-partner-workspace.test.mjs
+          node --test tests/surgical-existing-partner-counts.test.mjs
           node --test tests/partner-compact-two-column-team-ui-20261102.test.mjs
           node --test tests/partner-unified-team-cards-20261102.test.mjs
           node --test tests/owner-partner-team-count-screen.test.mjs
