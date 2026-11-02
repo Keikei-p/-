@@ -13404,7 +13404,11 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
   const id=node.dataset.privateCountId,n=Number(node.value);
   if(!partnerMainValidId(id)||node.value.trim()===""||
      !Number.isSafeInteger(n)||n<0||n>9999)throw Error("privateCounts");
-  privateCounts[id]=n;
+  // Server retains retired products' immutable historical count snapshots.
+  // Resubmitting a positive value for a retired product is correctly denied.
+  const product=(snap.privateProducts||[]).find(p=>p.id===id);
+  if(!product)throw Error("private_product_unknown");
+  if(product.active)privateCounts[id]=n;
  }
  const result=(await partnerInlineSave(partnerInlinePayload({
   date:pInline("pInlineDate").value,staffId,counts,privateCounts,expectedVersion:before?.version??0
