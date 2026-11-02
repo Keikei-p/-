@@ -1,0 +1,47 @@
+name: NICO current-live team one-tap parity regression (NO DEPLOY)
+on:
+  push:
+    branches: [fix/partner-live-team-one-tap-20261102]
+    paths:
+      - index.html
+      - tests/partner-live-team-one-tap.test.mjs
+      - .github/workflows/nico-partner-live-team-one-tap-ci.yml
+permissions: {contents: read}
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Pin exact latest Hosting source, preserve finance, Rules and all four Functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object index.html)" = 66c2b863da883cd479152506e8ddb20e0cd8ab60
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 55b16051c09810778f79256097446aa0dec1b36e
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const html=fs.readFileSync('index.html','utf8');
+          const source=html.match(/<script type="module">([\s\S]*?)<\/script>/)?.[1];
+          if(!source||!html.includes('monthlyRevenue')||!html.includes('partnerCountSaveFailureMessage'))
+           throw Error('STOP_ORIGINAL_FINANCE_AND_SAVE_BOUNDARY');
+          fs.writeFileSync('/tmp/nico-current-ui.mjs',source);
+          NODE
+          node --check /tmp/nico-current-ui.mjs
+      - name: Test preserved released UI, partner detail, finance, rankings, invite, CB, history and write safety
+        run: |
+          set -euo pipefail
+          node --test tests/partner-live-team-one-tap.test.mjs
+          node --test tests/dashboard-inline-original-partner-parity.test.mjs
+          node --test tests/partner-company-parity-release.test.mjs
+          node --test tests/internal-owner-finance-visibility.test.cjs
+          node --test tests/partner-money-free-workspace.test.cjs
+          node --test tests/partner-workspace.test.cjs
+          node --test tests/partner-email-resend-and-join.test.mjs
+          node --test tests/surgical-existing-index.test.mjs
+          echo PASS_CURRENT_LIVE_TEAM_ONLY_CHANGE_NO_DEPLOY
