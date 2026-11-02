@@ -97,7 +97,7 @@ test("owner team screen keeps the original sales UI and displays actual partner 
  const card=await f.openCompany(0);
  const team=card.children[2].children[0];
  const content=n=>[n.textContent||"",...(n.children||[]).flatMap(content)].join(" ");
- assert.equal(team.className,"partner-count-team-card");
+ assert.equal(team.className,"partner-count-team-card",JSON.stringify({holderChildren:card.children[2].children.map(x=>({tag:x.tag,className:x.className,text:x.textContent})),teamText:content(team)}));
  assert.match(content(team),/1班/);
  assert.match(content(team),/合計 3件/);
  assert.match(content(team),/田中｜合計 3件/);
