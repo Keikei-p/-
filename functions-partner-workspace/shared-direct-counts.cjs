@@ -73,7 +73,7 @@ async function readDirectDayCounts(db,hubId,date,keys,{maxRecords=MAX_DIRECT_REC
      (row.totalCount!=null&&(!Number.isSafeInteger(row.totalCount)||row.totalCount!==n)))
    throw Error("DIRECT_TOTAL_MISMATCH");
   totalCount+=n;
-  const personId=safeIdentifier(row.uid)?row.uid:"record:"+doc.id;
+  const personId=safeIdentifier(row.uid)?row.uid:"record_"+doc.id;
   if(!safeIdentifier(personId))throw Error("DIRECT_PERSON_UNVERIFIED");
   const name=safeName(row.memberNameSnapshot,"担当者未確認");
   const teamId=safeIdentifier(row.teamId)?row.teamId:"unknown";
