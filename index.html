@@ -4406,6 +4406,14 @@ body.product-reordering .product-list {
 #partnerInlineWorkspace #pInlineStatus{min-height:24px;font-weight:700}
 #partnerInviteAtMain{max-width:600px;margin:24px auto;padding:20px;border:1px solid var(--border);border-radius:14px;background:var(--card,#fff)}
 #partnerInviteAtMain button{min-height:46px}
+#partnerInlineWorkspace #pInlineCountFields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+#partnerInlineWorkspace #pInlineCountFields .p-inline-field{min-width:0;padding:10px 8px;border:1px solid var(--border);border-radius:10px}
+#partnerInlineWorkspace #pInlineCountFields .p-inline-field input{width:100%;min-width:0;box-sizing:border-box;text-align:center;font-size:18px;font-weight:700}
+#partnerInlineWorkspace #partnerSameAppDashboardDetails{grid-column:1/-1;min-width:0;width:100%;box-sizing:border-box}
+#partnerInlineWorkspace #partnerSameAppNavigation>[data-partner-panel][aria-expanded="true"]{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary)}
+#partnerInlineWorkspace #partnerSameAppNavigation{align-items:stretch}
+#partnerInlineWorkspace #partnerPanelRecord .p-inline-card{background:var(--card,#fff);border:1px solid var(--border);border-radius:12px;padding:16px}
+@media(max-width:430px){#partnerInlineWorkspace #pInlineCountFields{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}#partnerInlineWorkspace #pInlineCountFields .p-inline-field{padding:8px 5px;font-size:12px}}
 </style>
 
 </head>
@@ -4760,7 +4768,7 @@ body.product-reordering .product-list {
     <div class="summary-card"><div class="summary-label">報告した担当者</div><div id="pPartnerStaffCount" class="summary-value">-</div></div>
     <div class="summary-card"><div class="summary-label">班数</div><div id="pPartnerTeamCount" class="summary-value">-</div></div>
   </div>
-  <div class="p-inline-card" style="margin-bottom:14px">
+  <div class="p-inline-card" id="partnerLegacyShortcuts" hidden>
     <div class="dashboard-title">✏️ 実績入力</div>
     <button id="pPartnerRecordToggle" type="button" class="team-action-button">入力欄を開く・閉じる</button>
     <button id="pPartnerMemberShortcut" type="button" class="team-action-button">班・メンバー管理</button>
@@ -4796,23 +4804,42 @@ body.product-reordering .product-list {
       <label class="p-inline-field">班を変更するメンバー<select id="pInlineMoveStaff"></select></label>
       <button id="pInlineMove" type="button">選択した班に変更</button>
       <button id="pInlineAddManaged" type="button">メールなしメンバーを追加</button>
-      <div class="p-inline-grid">
-        <label class="p-inline-field">メール招待先<input id="pInlineInviteEmail" type="email" autocomplete="off" placeholder="member@example.com"></label>
-        <label class="p-inline-field">役割<select id="pInlineInviteRole"><option value="member">メンバー</option><option value="leader">リーダー</option></select></label>
-      </div>
-      <button id="pInlineCreateInvite" type="button">メールありメンバーを招待</button>
-      <div id="pInlineInviteResult" hidden>
-        <label class="p-inline-field">招待URL<input id="pInlineInviteUrl" readonly></label>
-        <button id="pInlineCopyInvite" type="button">招待リンクをコピー</button>
-      </div>
     </div>
   </div>
+  </section>
+  <section id="partnerPanelInvite" data-partner-view="invite" hidden>
+    <div class="p-inline-card">
+      <h3>✉️ 招待リンク</h3>
+      <p class="p-inline-muted">協力店のリーダーが担当者を招待します。本人がメール認証後、パスワードを設定して同じアプリを使えます。</p>
+      <div class="p-inline-grid">
+        <label class="p-inline-field">招待する班<select id="pInlineInviteTeam"></select></label>
+        <label class="p-inline-field">招待先メール<input id="pInlineInviteEmail" type="email" autocomplete="off" placeholder="member@example.com"></label>
+        <label class="p-inline-field">権限<select id="pInlineInviteRole"><option value="member">メンバー</option><option value="leader">リーダー</option></select></label>
+      </div>
+      <button id="pInlineCreateInvite" class="team-action-button" type="button">招待メールを送信</button>
+      <div id="pInlineInviteResult" hidden>
+        <label class="p-inline-field">招待URL<input id="pInlineInviteUrl" readonly></label>
+        <button id="pInlineCopyInvite" class="team-action-button" type="button">招待リンクをコピー</button>
+      </div>
+    </div>
+  </section>
+  <section id="partnerPanelCatalog" data-partner-view="catalog" hidden>
+    <div class="p-inline-card">
+      <h3>📦 商材追加・管理</h3>
+      <p class="p-inline-muted">自社と共有の商材に加えて協力店専用の商材を追加できます。協力店専用の件数は全社ランキングに公開しません。</p>
+      <div class="p-inline-grid">
+        <label class="p-inline-field">追加する商材名<input id="pInlineCustomName" maxlength="80" placeholder="商材名"></label>
+      </div>
+      <button id="pInlineAddPrivateProduct" class="team-action-button" type="button">商材を追加</button>
+      <p id="pInlineCatalogStatus" role="status"></p>
+      <div id="pInlinePrivateProductList" class="p-inline-list"></div>
+    </div>
   </section>
   <section id="partnerPanelRecord" data-partner-view="record">
   <div class="p-inline-card">
     <h3>✏️ 件数入力・訂正</h3>
     <label class="p-inline-field">担当者<select id="pInlineStaff"></select></label>
-    <div id="pInlineCountFields" class="p-inline-grid"></div>
+    <div id="pInlineCountFields" class="p-inline-grid" aria-label="商材ごとの件数入力・2列表示"></div>
     <div class="p-inline-actions">
       <button id="pInlineSave" type="button">件数を保存</button>
       <span id="pInlineVersion" class="p-inline-muted"></span>
@@ -12475,6 +12502,20 @@ function mountPartnerCanonicalNavigation(){
   products:"partnerPanelProductSummary",report:"partnerPanelReport",
   goal:"partnerPanelGoal",daily:"partnerPanelDaily",history:"partnerPanelHistory"};
  const cards=[];
+ // The existing sales dashboard has eleven canonical cards. Add the
+ // simple count-input card with the same card template and styles.
+ const recordButton=original.querySelector("#salesAnalysisToggle")?.cloneNode(true);
+ if(!recordButton)return false;
+ recordButton.removeAttribute("id");recordButton.removeAttribute("style");
+ recordButton.querySelectorAll("[id]").forEach(node=>node.removeAttribute("id"));
+ recordButton.dataset.partnerPanel="record";
+ recordButton.setAttribute("aria-pressed","false");
+ recordButton.setAttribute("aria-expanded","false");
+ recordButton.setAttribute("aria-controls","partnerPanelRecord");
+ recordButton.querySelector(".dashboard-app-icon").textContent="✏️";
+ recordButton.querySelector(".dashboard-app-title").textContent="実績入力";
+ recordButton.querySelector(".dashboard-app-meta").textContent="件数を登録・訂正";
+ cards.push(recordButton);
  for(const [id,panel,icon,title,meta] of tabs){
   const originalButton=original.querySelector("#"+id);
   if(!originalButton)return false;
@@ -12492,9 +12533,8 @@ function mountPartnerCanonicalNavigation(){
   cards.push(card);
  }
  target.replaceChildren(...cards);
- const mount=pInline("partnerInputMount");
- const input=pInline("partnerPanelRecord");
- if(input.parentNode!==mount)mount.append(input);
+ const details=pInline("partnerSameAppDashboardDetails");
+ if(details.parentNode!==target)target.append(details);
  // Reuse the same user header placement as the internal company.
  const userBar=appScreen.querySelector(".user-bar");
  if(userBar&&userBar.nextElementSibling!==pInline("partnerInlineWorkspace"))
@@ -12994,32 +13034,48 @@ function renderPartnerRankingOnlyPanel(){
 }
 
 let partnerSameAppSelectedPanel="record";
+function partnerSameAppPositionPanel(name){
+ const grid=pInline("partnerSameAppNavigation");
+ const detail=pInline("partnerSameAppDashboardDetails");
+ const button=[...grid.querySelectorAll("[data-partner-panel]")].find(b=>b.dataset.partnerPanel===name);
+ if(!button){
+  // Management tabs live in the same application, beneath the management header.
+  grid.before(detail);
+  return;
+ }
+ // Insert after the selected button's current grid row, not after all cards.
+ const buttons=[...grid.querySelectorAll("[data-partner-panel]")];
+ const rowTop=button.offsetTop;
+ const row=buttons.filter(b=>b.offsetTop===rowTop);
+ (row[row.length-1]||button).after(detail);
+}
 function partnerSameAppSelectPanel(name){
  const map={record:"partnerPanelRecord",individual:"partnerPanelRankings",
   product:"partnerPanelRankings",team:"partnerPanelRankings",
   detail:"partnerPanelDetail",daily:"partnerPanelDaily",
   history:"partnerPanelHistory",members:"partnerPanelMembers",
+  invite:"partnerPanelInvite",catalog:"partnerPanelCatalog",account:"partnerPanelSafeAccount",
   analysis:"partnerPanelAnalysis",chart:"partnerPanelChart",
   products:"partnerPanelProductSummary",report:"partnerPanelReport",
   goal:"partnerPanelGoal"};
  if(!Object.hasOwn(map,name))return;
  partnerSameAppSelectedPanel=name;
- pInline("partnerSameAppDashboardDetails").hidden=name==="record";
+ const detail=pInline("partnerSameAppDashboardDetails");
+ detail.hidden=false;
+ for(const section of detail.querySelectorAll("[data-partner-view]"))
+  section.hidden=section.id!==map[name];
  const safeAccount=pInline("partnerPanelSafeAccount");
- if(safeAccount)safeAccount.hidden=true;
- for(const id of new Set(Object.values(map))){
-  if(id==="partnerPanelRecord")continue; // The input form stays above the dashboard.
-  pInline(id).hidden=id!==map[name];
- }
- if(name==="record")pInline("partnerPanelRecord").hidden=false;
+ if(safeAccount)safeAccount.hidden=name!=="account";
  pInline("partnerRankingHeading").textContent=
-  ({individual:"🏆 個人ランキング",product:"📦 商材別ランキング",team:"👥 班ランキング"}[name]||"ランキング");
+  ({individual:"🏆 個人ランキング",product:"📦 商材別ランキング",
+   team:"👥 班ランキング"}[name]||"ランキング");
  pInline("partnerSameAppNavigation").querySelectorAll("[data-partner-panel]").forEach(button=>{
   const selected=button.dataset.partnerPanel===name;
   button.setAttribute("aria-pressed",String(selected));
   button.setAttribute("aria-expanded",String(selected));
  });
- // Changing dashboard tabs must never erase unsubmitted count input fields.
+ partnerSameAppPositionPanel(name);
+ // Never reset unsubmitted two-column inputs by changing the dashboard tab.
  if(partnerInlineData&&["individual","product","team"].includes(name)){
   renderPartnerRankingOnlyPanel();
   void loadSharedDailyStandings("partner");
@@ -13027,6 +13083,10 @@ function partnerSameAppSelectPanel(name){
  if(partnerInlineData&&name==="detail")
   void loadSharedDailyStandings("partnerDetail");
 }
+window.addEventListener("resize",()=>{
+ if(!pInline("partnerSameAppDashboardDetails").hidden)
+  partnerSameAppPositionPanel(partnerSameAppSelectedPanel);
+});
 pInline("partnerSameAppNavigation").addEventListener("click",event=>{
  const button=event.target.closest("[data-partner-panel]");
  if(button&&pInline("partnerSameAppNavigation").contains(button))
