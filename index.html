@@ -4771,7 +4771,7 @@ body.product-reordering .product-list {
   <h2 id="pInlineTitle" class="dashboard-title">協力店 実績管理</h2>
   <p class="p-inline-muted">いつもの実績管理アプリです。協力店には件数だけを表示し、売上・単価の原票は読み込みません。</p>
   <div class="p-inline-grid">
-    <label class="p-inline-field">実績日<input id="pInlineDate" type="date"></label>
+    <label class="p-inline-field">ダッシュボードの表示日<input id="pInlineDate" type="date"></label>
     <div class="p-inline-field"><label for="pInlineRefresh">最新データ</label><button id="pInlineRefresh" type="button">更新</button></div>
   </div>
   <p id="pInlineStatus" role="status" aria-live="polite"></p>
@@ -4867,10 +4867,19 @@ body.product-reordering .product-list {
     </div>
   </section>
   <section id="partnerPanelRecord" data-partner-view="record">
-  <div class="p-inline-card">
-    <h3>✏️ 実績登録・訂正</h3>
-    <p class="p-inline-muted">日付と担当者を選び、商材ごとの件数を入力して一括登録できます。</p>
-    <label class="p-inline-field">担当者<select id="pInlineStaff"></select></label>
+  <div class="p-inline-card record-card">
+    <div class="record-title">📊 実績入力</div>
+    <div class="record-description">自社と同じ入力形式です。日付・担当者を選び、商材ごとの件数を2列で入力してください。</div>
+    <div class="record-grid">
+      <div class="form-group">
+        <label for="pInlineRecordDate">日付</label>
+        <input id="pInlineRecordDate" type="date">
+      </div>
+      <div class="form-group">
+        <label for="pInlineStaff">担当者</label>
+        <select id="pInlineStaff"></select>
+      </div>
+    </div>
     <div class="section-title">商材別実績</div>
     <div id="pInlineCountFields" class="product-input-list" aria-label="商材ごとの件数入力・2列表示"></div>
     <p id="pInlineEntryTotals" class="record-total-value" aria-live="polite">共有商材 0件｜協力店専用 0件</p>
@@ -4880,6 +4889,7 @@ body.product-reordering .product-list {
       <button id="pInlineClear" class="record-clear-button" type="button">入力をクリア</button>
       <span id="pInlineVersion" class="p-inline-muted"></span>
     </div>
+    <p id="pInlineSaveStatus" class="p-inline-muted" role="status" aria-live="polite"></p>
   </div>
   </section>
   <section id="partnerPanelRankings" data-partner-view="ranking" hidden>
