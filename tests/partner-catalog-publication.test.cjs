@@ -1,0 +1,61 @@
+"use strict";
+const test=require("node:test");
+const assert=require("node:assert/strict");
+const fs=require("node:fs");
+const catalog=require("../functions-partner-workspace/catalog-publication.cjs");
+
+test("empty publication is private by default and cannot leak the price-bearing master",()=>{
+ const m=[{id:"nuro",name:"NURO",sortOrder:2,companyId:"hub",revenue:999999,
+  pricingOptions:[{cashback:20000,revenuePerUnit:333333}]}];
+ const s=catalog.loadPublication(null);
+ assert.deepEqual(s,{revision:0,productIds:[]});
+ assert.deepEqual(catalog.projectMasterProducts(m,s.productIds,true),[]);
+ const listed=catalog.projectMasterProducts(m,["nuro"],true);
+ assert.deepEqual(listed,[{id:"nuro",name:"NURO",sortOrder:2,published:true}]);
+ const text=JSON.stringify(listed);
+ assert.doesNotMatch(text,/999999|333333|revenue|pricingOptions|cashback|companyId/);
+});
+
+test("only explicitly published active ID is sent; original ordering retained",()=>{
+ const products=[{id:"A",name:"SBMNP",sortOrder:2},
+  {id:"B",name:"YMMNP",sortOrder:1},{id:"C",name:"U-NEXT",active:false,sortOrder:0}];
+ assert.deepEqual(catalog.projectMasterProducts(products,["A","C"],true).map(p=>p.id),["A"]);
+ assert.deepEqual(catalog.projectMasterProducts(products,["A","C"],false).map(p=>p.id),["B","A"]);
+});
+
+test("one-item toggle uses revision and never accepts stale writes",()=>{
+ const first=catalog.changePublication(null,"NURO",true,0);
+ assert.deepEqual(first,{revision:1,productIds:["NURO"]});
+ assert.deepEqual(catalog.changePublication(first,"SBMNP",true,1),{
+  revision:2,productIds:["NURO","SBMNP"]
+ });
+ assert.throws(()=>catalog.changePublication(first,"YMMNP",true,0),/INVALID/);
+ assert.deepEqual(catalog.changePublication(first,"NURO",false,1),
+  {revision:2,productIds:[]});
+});
+
+test("reject duplicate, malformed and price-bearing public material",()=>{
+ assert.throws(()=>catalog.loadPublication({revision:1,productIds:["NURO","NURO"]}),/INVALID/);
+ assert.throws(()=>catalog.projectMasterProducts([{id:"A",name:"NURO 売上 35万円"}],["A"],true),/INVALID/);
+ assert.throws(()=>catalog.projectMasterProducts([{id:"A",name:"単価¥90000"}],["A"],true),/INVALID/);
+ assert.throws(()=>catalog.changePublication(null,"__proto__",true,0),/INVALID/);
+ assert.throws(()=>catalog.changePublication(null,"A","true",0),/INVALID/);
+});
+
+test("production integration is isolated and no legacy sales write is introduced",()=>{
+ const service=fs.readFileSync(require.resolve("../functions-partner-workspace/service.cjs"),"utf8");
+ const functions=fs.readFileSync(require.resolve("../functions-partner-workspace/index.js"),"utf8");
+ const html=fs.readFileSync(require.resolve("../index.html"),"utf8");
+ assert.match(service,/async function setCatalogPublication\(/);
+ assert.match(service,/if\(s\.kind!=="hub"\|\|s\.role!=="owner"/);
+ assert.match(service,/db\.collection\("products"\)\.doc\(d\.productId\)/);
+ assert.match(service,/tx\.set\(stateRef,\{/);
+ assert.doesNotMatch(service.slice(service.indexOf("async function setCatalogPublication("),
+  service.indexOf(" const checkTeam=async")),/tx\.(?:set|update|delete)\((?:productRef|productDoc)/);
+ assert.match(functions,/exports\.getPartnerCatalog=onCall/);
+ assert.match(functions,/exports\.setPartnerCatalogPublication=onCall/);
+ assert.match(html,/id="partnerCatalogPublicationStatus"/);
+ assert.match(html,/async function changeCatalogPublication\(/);
+ assert.match(html,/getPartnerCatalog/);
+ assert.match(html,/協力店に公開/);
+});
