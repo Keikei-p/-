@@ -1,0 +1,66 @@
+name: NICO partner LinkTh legacy count-summary diagnostic (READ ONLY)
+on:
+  push:
+    branches: [fix/partner-unified-rank-teams-safe-save-20261102]
+    paths: [.github/workflows/nico-partner-diagnostic-save-source-readonly-20261102.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Use existing scoped Firebase identity and never expose contents
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/partner-diagnostic.json"
+          chmod 600 "$RUNNER_TEMP/partner-diagnostic.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/partner-diagnostic.json" >> "$GITHUB_ENV"
+      - name: Inspect ONLY partner company counts/relation and legacy summary source
+        run: |
+          set -euo pipefail
+          npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+          node --input-type=module <<'NODE'
+          import {createRequire} from 'node:module';
+          const require=createRequire(process.cwd()+'/functions/package.json');
+          const {initializeApp,applicationDefault}=require('firebase-admin/app');
+          const {getFirestore}=require('firebase-admin/firestore');
+          initializeApp({credential:applicationDefault(),projectId:'sales-management-cc116'});
+          const db=getFirestore(),day='2026-11-02';
+          const matched=await db.collection('companies').where('name','==','株式会社LinkTh').limit(10).get();
+          console.log('MATCHED_COMPANY_COUNT',matched.size);
+          for(const doc of matched.docs){
+            const c=doc.data()||{},cid=doc.id;
+            if(c.companyKind!=='partner'){console.log('MATCHED_COMPANY_NOT_PARTNER');continue;}
+            const hub=c.hubCompanyId;
+            const [relation,teams,staff,entries,report]=await Promise.all([
+              db.collection('partnerRelations').doc(cid).get(),
+              db.collection('companies').doc(cid).collection('partnerWorkTeams').limit(150).get(),
+              db.collection('companies').doc(cid).collection('partnerWorkStaff').limit(200).get(),
+              db.collection('companies').doc(cid).collection('partnerWorkEntries').where('date','==',day).limit(201).get(),
+              typeof hub==='string'&&hub?db.collection('companies').doc(hub)
+               .collection('partnerWorkCountDays').doc(day).collection('reports').doc(cid).get()
+               :Promise.resolve(null)
+            ]);
+            const r=relation.data()||{},d=report?.data()||{};
+            const reportSource=!report?.exists?'none':d.source==='staff-entries-v1'?'staff-entries-v1':'legacy-or-unknown';
+            console.log('PARTNER_DAY_DIAG',JSON.stringify({
+              companyActive:c.active===true,hubPresent:!!hub,
+              relationActive:r.active===true,sharingApproved:r.countSharingApproved===true,
+              teamCount:teams.size,activeTeamCount:teams.docs.filter(x=>x.data()?.active===true).length,
+              staffCount:staff.size,activeStaffCount:staff.docs.filter(x=>x.data()?.active===true).length,
+              dayStaffEntryCount:entries.size,dayReportSource:reportSource,
+              legacySummaryBlocksNewSave:reportSource==='legacy-or-unknown'
+            }));
+          }
+          console.log('NO_IDS_EMAILS_UIDS_NAMES_PRICES_OR_RECORD_CONTENTS_LOGGED');
+          NODE
+      - name: Cleanup identity
+        if: always()
+        run: rm -f "$RUNNER_TEMP/partner-diagnostic.json"
