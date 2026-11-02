@@ -1,6 +1,7 @@
 "use strict";
 // Isolated partner operations: no reads/writes to sales products, records or prices.
 const crypto=require("node:crypto");
+const {readDirectDayCounts}=require("./shared-direct-counts.cjs");
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -709,9 +710,16 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    companies.sort((a,b)=>b.totalCount-a.totalCount||a.name.localeCompare(b.name,"ja"));
    people.sort((a,b)=>b.totalCount-a.totalCount||a.name.localeCompare(b.name,"ja"));
    teams.sort((a,b)=>b.totalCount-a.totalCount||a.name.localeCompare(b.name,"ja"));
+   // Authenticated Hub and approved partner both receive the same verified
+   // redacted direct-company counters. The separate reader alone touches
+   // legacy records; it returns no money, email, UID, or original documents.
+   // An index/limit mismatch FAILS, never pretends direct sales were zero.
+   let direct;
+   try{direct=await readDirectDayCounts(db,hubId,date,KEYS);}
+   catch{fail("failed-precondition");}
    return {scope:"shared_counts_only",date,role:s.kind==="hub"?"hub":"partner",
-    complete,includesDirect:false,missingCompanies,companies,teams,people,
-    productCounts,categories:KEYS};
+    complete,includesDirect:true,missingCompanies,companies,teams,people,
+    productCounts,categories:KEYS,direct};
   }
   if(s.kind==="hub"){
    // Registered companies appear before their first daily count report.
