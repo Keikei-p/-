@@ -1,0 +1,76 @@
+name: NICO production count-save runtime IAM diagnosis (READ ONLY)
+on:
+  push:
+    branches: [test/partner-transaction-contract-20261102]
+    paths: [.github/workflows/nico-partner-save-runtime-readonly-20261102.yml]
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Set current service account only for read-only config audit
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/partner-runtime-audit.json"
+          chmod 600 "$RUNNER_TEMP/partner-runtime-audit.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/partner-runtime-audit.json" >> "$GITHUB_ENV"
+      - name: Inspect four deployed functions and runtime write IAM bindings without listing identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+          node --input-type=module <<'NODE'
+          import {createRequire} from 'node:module';
+          const require=createRequire(process.cwd()+'/functions/package.json');
+          const token=(await require('firebase-admin/app').applicationDefault().getAccessToken()).access_token;
+          async function req(url,method='GET',body=undefined){
+            const r=await fetch(url,{method,headers:{
+              Authorization:'Bearer '+token,...(body?{'Content-Type':'application/json'}:{})
+            },...(body?{body:JSON.stringify(body)}:{})});
+            return {status:r.status,body:r.ok?await r.json():null};
+          }
+          const functions=['getPartnerWorkspace','managePartnerWorkspace',
+            'acceptPartnerWorkspaceInvite','submitPartnerWorkspaceCounts'];
+          const runtime=[];
+          for(const name of functions){
+            const {status,body}=await req('https://cloudfunctions.googleapis.com/v2/projects/sales-management-cc116/locations/asia-northeast1/functions/'+name);
+            if(status!==200)throw Error('STOP_FUNCTION_METADATA_'+name+'_'+status);
+            const fn=body||{},env=fn.serviceConfig?.environmentVariables||{};
+            runtime.push({fn:name,state:fn.state,gen:fn.environment,revision:fn.serviceConfig?.revision,
+              sameRuntimeIdentity:null,partnerEnabled:env.PARTNER_WORKSPACE_ENABLED==='enabled',
+              companyCodeEnabled:env.PARTNER_COMPANY_CODE_AUTH_ENABLED==='enabled',
+              serviceAccount:fn.serviceConfig?.serviceAccountEmail||''});
+          }
+          const identities=[...new Set(runtime.map(x=>x.serviceAccount))];
+          for(const f of runtime){f.sameRuntimeIdentity=identities.length===1;delete f.serviceAccount;}
+          console.log('FUNCTION_READONLY_CONFIG',JSON.stringify(runtime));
+          console.log('DISTINCT_RUNTIME_IDENTITIES',identities.length);
+          const policy=await req('https://cloudresourcemanager.googleapis.com/v1/projects/sales-management-cc116:getIamPolicy','POST',{});
+          console.log('PROJECT_IAM_READ_STATUS',policy.status);
+          if(policy.status===200){
+            const bindings=(policy.body?.bindings||[]);
+            const writeRoles=['roles/editor','roles/owner','roles/datastore.user','roles/datastore.owner'];
+            const matched=identities.map(identity=>({
+              hasAnyKnownWriteRole:bindings.some(b=>writeRoles.includes(b.role)&&
+                (b.members||[]).includes('serviceAccount:'+identity)),
+              foundRoles:bindings.filter(b=>(b.members||[]).includes('serviceAccount:'+identity))
+                .map(b=>b.role).filter(r=>writeRoles.includes(r))
+            }));
+            console.log('RUNTIME_WRITE_ROLE_PRESENT',JSON.stringify(matched));
+          }
+          console.log('NO_SECRETS_NO_UIDS_NO_EMAIL_ADDRESSES_OUTPUT');
+          NODE
+      - name: Remove temporary credentials
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/partner-runtime-audit.json"
