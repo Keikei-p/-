@@ -1,8 +1,10 @@
 "use strict";
 const test=require("node:test");
 const assert=require("node:assert/strict");
-const {initializeApp,getApps}=require("../functions-partner-workspace/node_modules/firebase-admin/app");
-const {getFirestore,FieldValue,Timestamp}=require("../functions-partner-workspace/node_modules/firebase-admin/firestore");
+const {createRequire}=require("node:module");
+const fromPartnerPackage=createRequire(require.resolve("../functions-partner-workspace/package.json"));
+const {initializeApp,getApps}=fromPartnerPackage("firebase-admin/app");
+const {getFirestore,FieldValue,Timestamp}=fromPartnerPackage("firebase-admin/firestore");
 const {makeWorkspace,KEYS}=require("../functions-partner-workspace/service.cjs");
 
 class CallError extends Error{constructor(code,message){super(message);this.code=code;}}
