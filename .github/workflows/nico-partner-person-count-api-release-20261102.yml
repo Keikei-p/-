@@ -1,0 +1,154 @@
+name: NICO verified partner member-count read API (one function only)
+on:
+  push:
+    branches: [fix/partner-email-link-first-password-20261102]
+    paths: [.github/workflows/nico-partner-person-count-api-release-20261102.yml]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: nico-partner-workspace-production
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Confirm exact reviewed, finance-free API, tests and no change to originals
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 0fb00a74bfe621e8cccad878e4e18cdaab76ff32
+          test "$(git hash-object functions-partner-workspace/index.js)" = 38da7e9174ffea7c406c92292dccfc651b565eb0
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(git hash-object firebase.partner-workspace.json)" = a6ceedec5fab4e22e0a8efe19c685716a2db9750
+          node --check functions-partner-workspace/service.cjs
+          node --test tests/partner-workspace.test.cjs tests/partner-money-free-workspace.test.cjs tests/internal-owner-finance-visibility.test.cjs
+          node --test tests/partner-company-parity-release.test.mjs tests/partner-email-resend-and-join.test.mjs
+          node <<'NODE'
+          const fs=require('fs'),s=fs.readFileSync('functions-partner-workspace/service.cjs','utf8');
+          if(!s.includes('row.members.push({name:safeName,totalCount:item.total,counts:{...item.counts}})')||
+             /db\.collection\(["'](?:products|records|recordCorrections|revenueGoals)["']\)/.test(s))
+           throw Error('STOP_COUNT_ONLY_API_REVIEW');
+          NODE
+  release:
+    needs: validate
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/fix/partner-email-link-first-password-20261102' && needs.validate.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Confirm unchanged main and prior full inventory Rules verification
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh api repos/Keikei-p/-/branches/main --jq '.commit.sha')" = 283bc749c97756fc3de03671ae7bac4eccdc46c3 || { echo STOP_MAIN_CHANGED; exit 1; }
+          test "$(gh api repos/Keikei-p/-/actions/runs/41388293487 --jq '.conclusion')" = success || { echo STOP_RULES_AND_BACKUP_PROOF; exit 1; }
+          test "$(gh api repos/Keikei-p/-/actions/runs/41388920232 --jq '.conclusion')" = success || { echo STOP_AUTH_RELEASE_MISSING; exit 1; }
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 0fb00a74bfe621e8cccad878e4e18cdaab76ff32
+      - name: Load production identity without echoing contents
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/partner-member-count.json"
+          chmod 600 "$RUNNER_TEMP/partner-member-count.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/partner-member-count.json" >> "$GITHUB_ENV"
+      - name: Install pinned existing CLI and source package
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix functions-partner-workspace --ignore-scripts --package-lock=false --no-audit --no-fund
+          npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+          npm install -g firebase-tools@15.34.1 --no-audit --no-fund
+      - name: Read-only verify live candidate Rules, backup and original Functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {createRequire} from 'node:module';
+          import {createHash} from 'node:crypto';
+          import {inspect} from './tools/production/inspect-firestore-backups-readonly.mjs';
+          const require=createRequire(process.cwd()+'/functions/package.json');
+          const cred=require('firebase-admin/app').applicationDefault();
+          const token=(await cred.getAccessToken()).access_token;
+          const get=async u=>{const r=await fetch(u,{headers:{Authorization:'Bearer '+token},redirect:'error'});if(!r.ok)throw Error('STOP_READONLY_METADATA_'+r.status);return r.json()};
+          const root='https://firebaserules.googleapis.com/v1/';
+          const rel=await get(root+'projects/sales-management-cc116/releases/cloud.firestore');
+          const rule=await get(root+rel.rulesetName);
+          if(rule.source?.files?.length!==1)throw Error('STOP_RULES_UNKNOWN');
+          const sha=createHash('sha256').update(rule.source.files[0].content.replace(/\r\n/g,'\n').trim()).digest('hex');
+          if(sha!=='d1d9998d874a1a31c81ddf6996e08cd9de3a3d13bd684e245140bf03cab32179')throw Error('STOP_FINANCE_RULES_CHANGED');
+          const backups=await inspect(),age=Date.now()-Date.parse(backups.latestReadySnapshot||'');
+          if(!backups.readyBackups||age<0||age>48*3600000||!Number.isFinite(age))throw Error('STOP_BACKUP_STALE');
+          for(const name of ['getPartnerWorkspace','managePartnerWorkspace','acceptPartnerWorkspaceInvite','submitPartnerWorkspaceCounts','sendMissingReportReminders']){
+           const fn=await get('https://cloudfunctions.googleapis.com/v2/projects/sales-management-cc116/locations/asia-northeast1/functions/'+name);
+           if(fn.state!=='ACTIVE'||fn.environment!=='GEN_2')throw Error('STOP_ORIGINAL_NOT_ACTIVE_'+name);
+          }
+          console.log('PASS_FINANCE_RULES_BACKUPS_ORIGINAL_FUNCTIONS');
+          NODE
+          firebase functions:list --project "$FIREBASE_PROJECT_ID" --json > "$RUNNER_TEMP/partner-functions-before.json"
+      - name: Update getPartnerWorkspace only; NEVER delete other APIs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e functions-partner-workspace/.env.sales-management-cc116
+          printf 'PARTNER_WORKSPACE_ENABLED=enabled\nPARTNER_COMPANY_CODE_AUTH_ENABLED=enabled\n' > functions-partner-workspace/.env.sales-management-cc116
+          date -u +%Y-%m-%dT%H:%M:%SZ > "$RUNNER_TEMP/member-count-started.txt"
+          set +e
+          firebase deploy --non-interactive --project "$FIREBASE_PROJECT_ID" \
+            --config firebase.partner-workspace.json --only functions:partner-workspace:getPartnerWorkspace \
+            > "$RUNNER_TEMP/member-count-deploy.log" 2>&1
+          result=$?
+          set -e
+          grep -F 'functions[partner-workspace:getPartnerWorkspace(asia-northeast1)]' "$RUNNER_TEMP/member-count-deploy.log" | grep -Fq 'Successful update operation' || { echo STOP_FUNCTION_DEPLOY_NOT_CONFIRMED; exit 1; }
+          if [ "$result" -ne 0 ]; then
+            grep -Fq 'Functions successfully deployed but could not set up cleanup policy' "$RUNNER_TEMP/member-count-deploy.log" || { echo STOP_UNKNOWN_FUNCTION_DEPLOY_FAILURE; exit 1; }
+          fi
+          echo PASS_ONE_FUNCTION_UPDATE_LOG
+      - name: Confirm active update, original APIs preserved, unauthenticated denied
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase functions:list --project "$FIREBASE_PROJECT_ID" --json > "$RUNNER_TEMP/partner-functions-after.json"
+          node <<'NODE'
+          const fs=require('fs'),r=p=>(JSON.parse(fs.readFileSync(p,'utf8')).result||[]).map(x=>x.id||x.name||'');
+          const before=r(process.env.RUNNER_TEMP+'/partner-functions-before.json');
+          const after=r(process.env.RUNNER_TEMP+'/partner-functions-after.json');
+          if(!before.length||before.some(x=>!after.includes(x)))throw Error('STOP_FUNCTION_LOST');
+          console.log('PASS_ALL_ORIGINAL_FUNCTION_NAMES_PRESERVED');
+          NODE
+          node --input-type=module <<'NODE'
+          import {createRequire} from 'node:module';
+          import {readFileSync} from 'node:fs';
+          const require=createRequire(process.cwd()+'/functions/package.json');
+          const cred=require('firebase-admin/app').applicationDefault();
+          const token=(await cred.getAccessToken()).access_token;
+          const started=Date.parse(readFileSync(process.env.RUNNER_TEMP+'/member-count-started.txt','utf8').trim());
+          const r=await fetch('https://cloudfunctions.googleapis.com/v2/projects/sales-management-cc116/locations/asia-northeast1/functions/getPartnerWorkspace',{headers:{Authorization:'Bearer '+token},redirect:'error'});
+          if(!r.ok)throw Error('STOP_FUNCTION_READBACK_'+r.status);
+          const fn=await r.json();
+          if(fn.state!=='ACTIVE'||fn.buildConfig?.entryPoint!=='getPartnerWorkspace'||
+             Date.parse(fn.updateTime)<started||fn.serviceConfig?.environmentVariables?.PARTNER_WORKSPACE_ENABLED!=='enabled')throw Error('STOP_FUNCTION_NOT_ACTIVE');
+          const anonymous=await fetch('https://asia-northeast1-sales-management-cc116.cloudfunctions.net/getPartnerWorkspace',{
+           method:'POST',headers:{'Content-Type':'application/json'},body:'{"data":{}}'});
+          if(![401,403].includes(anonymous.status))throw Error('STOP_ANONYMOUS_READ');
+          console.log('PASS_UPDATED_COUNT_ONLY_GET_FUNCTION_ACTIVE_AND_DENY_ANONYMOUS');
+          NODE
+      - name: Always remove temporary identity and logs
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/partner-member-count.json" "$RUNNER_TEMP/member-count-deploy.log" "$RUNNER_TEMP/member-count-started.txt" "$RUNNER_TEMP/partner-functions-before.json" "$RUNNER_TEMP/partner-functions-after.json" functions-partner-workspace/.env.sales-management-cc116
