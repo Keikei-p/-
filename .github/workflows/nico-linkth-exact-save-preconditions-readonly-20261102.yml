@@ -323,6 +323,47 @@ jobs:
            throw Error('STOP_PROTECTED_COMPANY_DOC_CHANGED');
           console.log('RUNTIME_PROBE_EXISTING_DATA_UNCHANGED');
           NODE
+      - name: Read runtime Cloud Run errors through delegated identity (sanitize; no emails or document data)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {createRequire} from 'node:module';
+          const require=createRequire(process.cwd()+'/functions/package.json');
+          const {applicationDefault}=require('firebase-admin/app');
+          const source=(await applicationDefault().getAccessToken()).access_token;
+          const fnResp=await fetch('https://cloudfunctions.googleapis.com/v2/projects/sales-management-cc116/locations/asia-northeast1/functions/submitPartnerWorkspaceCounts',
+           {headers:{Authorization:'Bearer '+source}});
+          if(!fnResp.ok)throw Error('FUNCTION_METADATA_NOT_AVAILABLE');
+          const runtime=(await fnResp.json()).serviceConfig?.serviceAccountEmail;
+          if(!runtime)throw Error('FUNCTION_RUNTIME_IDENTITY_NOT_AVAILABLE');
+          const tok=await fetch('https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/'+encodeURIComponent(runtime)+':generateAccessToken',
+           {method:'POST',headers:{Authorization:'Bearer '+source,'Content-Type':'application/json'},
+            body:JSON.stringify({scope:['https://www.googleapis.com/auth/cloud-platform'],lifetime:'600s'})});
+          if(!tok.ok)throw Error('RUNTIME_ACCESS_TOKEN_DENIED_'+tok.status);
+          const signed=(await tok.json()).accessToken;
+          if(!signed)throw Error('RUNTIME_ACCESS_TOKEN_MISSING');
+          const filter='resource.type="cloud_run_revision" AND resource.labels.service_name="submitpartnerworkspacecounts" AND timestamp>="2026-11-02T10:00:00Z"';
+          const r=await fetch('https://logging.googleapis.com/v2/entries:list',
+           {method:'POST',headers:{Authorization:'Bearer '+signed,'Content-Type':'application/json'},
+            body:JSON.stringify({resourceNames:['projects/sales-management-cc116'],filter,pageSize:60,orderBy:'timestamp desc'})});
+          console.log('RUNTIME_CLOUD_LOG_ACCESS_HTTP',r.status);
+          if(!r.ok)process.exit(0);
+          const all=(await r.json()).entries||[];
+          console.log('RUNTIME_CLOUD_LOG_ENTRY_COUNT',all.length);
+          const whitelist=/PERMISSION_DENIED|INVALID_ARGUMENT|ALREADY_EXISTS|FAILED_PRECONDITION|INTERNAL|DEADLINE_EXCEEDED|UNAUTHENTICATED|UNAVAILABLE|NOT_FOUND|RESOURCE_EXHAUSTED|ABORTED|DATA_LOSS|UNIMPLEMENTED|INVALID\s+FIELD|Transaction\s+error|Cannot\s+read\s+properties|is\s+not\s+a\s+function/gi;
+          for(const e of all.slice(0,35)){
+           const obj=(e.jsonPayload||{}),raw=JSON.stringify(obj)+' '+String(e.textPayload||'');
+           const marks=[...new Set((raw.match(whitelist)||[]).map(x=>x.toUpperCase()))];
+           const status=e.httpRequest?.status||0;
+           if(!marks.length&&status<400&&e.severity!=='ERROR')continue;
+           // NEVER output raw payload, UIDs, emails, PII, tokens, request paths or stack.
+           console.log('RUNTIME_LOG_SANITIZED',JSON.stringify({
+             minute:String(e.timestamp||'').slice(0,16),severity:String(e.severity||''),
+             httpStatus:status,markers:marks.slice(0,12)
+           }));
+          }
+          NODE
       - name: Remove temporary credentials
         if: always()
         run: rm -f "$RUNNER_TEMP/linkth-exact-audit.json"
