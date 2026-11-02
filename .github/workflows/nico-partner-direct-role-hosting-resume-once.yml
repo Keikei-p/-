@@ -43,7 +43,8 @@ jobs:
           NODE
   resume-hosting-only:
     needs: offline
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.actor == 'Keikei-p' && startsWith(github.event.head_commit.message, 'release: resume direct-role Hosting after verified Functions') && needs.offline.result == 'success' }}
+    if: >-
+      ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.actor == 'Keikei-p' && startsWith(github.event.head_commit.message, 'release: resume direct-role Hosting after verified Functions') && needs.offline.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
