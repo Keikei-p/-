@@ -1,0 +1,80 @@
+name: NICO 2-column UI production count ledger preservation (READ ONLY)
+# Re-verify LinkTh persisted daily counts after the managed staff archive backend+index release.
+on:
+  push:
+    branches: [release/nico-partner-compact-two-column-ui-20261102]
+    paths: [.github/workflows/nico-compact-ui-count-preservation-readonly-20261102.yml]
+permissions: {contents: read}
+jobs:
+  diagnosis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Existing read-only audit credential
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/partner-current-readonly.json"
+          chmod 600 "$RUNNER_TEMP/partner-current-readonly.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/partner-current-readonly.json" >> "$GITHUB_ENV"
+      - name: Verify actual counts and save-callable arrival after production hotfix
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund >/dev/null
+          node --input-type=module <<'NODE'
+          import {createRequire} from 'node:module';
+          const require=createRequire(process.cwd()+'/functions/package.json');
+          const {initializeApp,applicationDefault}=require('firebase-admin/app');
+          const {getFirestore}=require('firebase-admin/firestore');
+          initializeApp({credential:applicationDefault(),projectId:'sales-management-cc116'});
+          const db=getFirestore(),day='2026-11-02';
+          const q=await db.collection('companies').where('name','==','株式会社LinkTh').limit(2).get();
+          if(q.size!==1)throw Error('STOP_COMPANY_AMBIGUOUS');
+          const cid=q.docs[0].id,c=q.docs[0].data();
+          const [entries,report]=await Promise.all([
+           db.collection('companies').doc(cid).collection('partnerWorkEntries').where('date','==',day).limit(201).get(),
+           db.collection('companies').doc(c.hubCompanyId).collection('partnerWorkCountDays').doc(day).collection('reports').doc(cid).get()
+          ]);
+          console.log('CURRENT_SAVED_COUNTS',JSON.stringify({
+           date:day,entries:entries.size,countTotal:entries.docs.reduce((s,d)=>s+(Number.isSafeInteger(d.data()?.totalCount)?d.data().totalCount:0),0),
+           approvedSummaryExists:report.exists,summaryTotal:report.exists?report.data()?.totalCount:null
+          }));
+          const token=(await applicationDefault().getAccessToken()).access_token;
+          const url='https://cloudfunctions.googleapis.com/v2/projects/sales-management-cc116/locations/asia-northeast1/functions/submitPartnerWorkspaceCounts';
+          const response=await fetch(url,{headers:{Authorization:'Bearer '+token}});
+          if(!response.ok)throw Error('STOP_FN_METADATA_HTTP_'+response.status);
+          const runtime=(await response.json()).serviceConfig?.serviceAccountEmail;
+          const response2=await fetch('https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/'+encodeURIComponent(runtime)+':generateAccessToken',{
+           method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
+           body:JSON.stringify({scope:['https://www.googleapis.com/auth/cloud-platform'],lifetime:'600s'})
+          });
+          if(!response2.ok)throw Error('STOP_LOG_DELEGATION_HTTP_'+response2.status);
+          const delegated=(await response2.json()).accessToken;
+          for(const name of ['submitpartnerworkspacecounts','getpartnerworkspace']){
+           const filter='resource.type="cloud_run_revision" AND resource.labels.service_name="'+name+
+             '" AND timestamp>="2026-11-02T12:50:00Z"';
+           const r=await fetch('https://logging.googleapis.com/v2/entries:list',{
+            method:'POST',headers:{Authorization:'Bearer '+delegated,'Content-Type':'application/json'},
+            body:JSON.stringify({resourceNames:['projects/sales-management-cc116'],filter,
+             pageSize:80,orderBy:'timestamp desc'})
+           });
+           if(!r.ok)throw Error('STOP_LOG_HTTP_'+r.status);
+           const events=(await r.json()).entries||[];
+           const http=events.filter(e=>e.httpRequest);
+           const result=http.map(e=>({minute:String(e.timestamp||'').slice(0,16),
+            method:String(e.httpRequest.requestMethod||''),status:Number(e.httpRequest.status||0)}));
+           console.log('API_POST_HOTFIX_LOG',JSON.stringify({service:name,events:events.length,httpRequests:result}));
+          }
+          console.log('AUDIT_ONLY_NO_WRITES');
+          NODE
+      - name: Clean credential
+        if: always()
+        run: rm -f "$RUNNER_TEMP/partner-current-readonly.json"
