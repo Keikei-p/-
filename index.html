@@ -5021,7 +5021,7 @@ body.product-reordering .product-list {
   </div>
   </section>
   <section id="partnerPanelRankings" data-partner-view="ranking" hidden>
-    <div class="p-inline-card"><h3 id="partnerRankingHeading">🏆 ランキング（件数のみ）</h3><div id="pInlineRanking" class="p-inline-list"></div></div>
+    <div class="p-inline-card" style="display:none" aria-hidden="true"><h3 id="partnerRankingHeading">🏆 ランキング（件数のみ）</h3><div id="pInlineRanking" class="p-inline-list"></div></div>
     <div class="p-inline-card" id="partnerSharedRankingsSection">
       <h3>🤝 協力店合同ランキング（選択日）</h3>
       <p class="p-inline-muted">承認済みの協力店で共通の件数・順位です。直営も協力店も件数のみを集計し、売上・単価を表示しません。</p>
@@ -6548,7 +6548,7 @@ body.product-reordering .product-list {
               <p id="ownerSharedDetailStatus" role="status"></p>
               <div id="ownerSharedDetailTree" class="p-inline-list"></div>
             </div>
-            <div class="p-inline-card" id="ownerSharedRankingsSection">
+            <div class="p-inline-card" id="ownerSharedRankingsSection" style="display:none" aria-hidden="true">
               <h3>🏆 直営＋協力店 件数ランキング（選択日）</h3>
               <p class="p-inline-muted">売上・単価は含めません。</p>
               <button id="ownerSharedRankingsRefresh" type="button" class="team-action-button">合同ランキングを更新</button>
@@ -13072,6 +13072,63 @@ function verifiedDirectDayCounts(date){
   peopleVerified:unverifiedPeople===0,unverifiedPersonRecords:unverifiedPeople,
   products:[...productTotals].map(([name,count])=>({name,count}))};
 }
+
+let selectedPartnerSharedGroupId="";
+function renderPartnerSharedGroupCards(target,response){
+ const groups=response.groupStandings;
+ if(!Array.isArray(groups)||groups.length>30)throw Error("shared_group_contract");
+ const cardGrid=document.createElement("div");
+ cardGrid.className="ranking-product-grid";cardGrid.dataset.columns="2";
+ const header=document.createElement("strong");header.textContent="商材グループを選択";
+ const list=document.createElement("div");list.className="ranking-grid";list.dataset.columns="1";
+ target.append(header,cardGrid,list);
+ if(!groups.length){
+  const note=document.createElement("p");note.className="ranking-product-help";
+  note.textContent="本社側の既存ランキンググループを協力店と共有すると、同じ商材がここに表示されます。";
+  target.append(note);return;
+ }
+ if(!groups.some(x=>x.id===selectedPartnerSharedGroupId))
+  selectedPartnerSharedGroupId=groups[0].id;
+ const select=group=>{
+  selectedPartnerSharedGroupId=group.id;
+  for(const btn of cardGrid.querySelectorAll("button"))
+   btn.setAttribute("aria-pressed",String(btn.dataset.groupId===group.id));
+  list.replaceChildren();
+  if(group.complete!==true){
+   const note=document.createElement("p");note.className="ranking-product-help";
+   note.textContent="この商材グループは商材IDとの対応確認が未完了です。順位を推測して表示しません。";
+   list.append(note);return;
+  }
+  if(!Array.isArray(group.members)||group.members.length>4000)throw Error("shared_members_invalid");
+  for(const item of group.members){
+   if(!Number.isSafeInteger(item.rank)||item.rank<1||
+      !Number.isSafeInteger(item.count)||item.count<0||
+      typeof item.name!=="string"||typeof item.companyName!=="string")
+     throw Error("shared_rank_row_invalid");
+   const row=document.createElement("div");row.className="ranking-row";
+   const left=document.createElement("div");left.className="ranking-left";
+   const number=document.createElement("span");number.className="ranking-number";
+   number.textContent=item.rank+"位";
+   if(item.rank<=3)number.classList.add("top"+item.rank);
+   const name=document.createElement("div");name.className="ranking-name";
+   name.textContent=item.name+"｜"+item.companyName;left.append(number,name);
+   const value=document.createElement("div");value.className="ranking-value";
+   const count=document.createElement("span");count.className="ranking-count";
+   count.textContent=item.count+"件";value.append(count);row.append(left,value);list.append(row);
+  }
+ };
+ for(const group of groups){
+  if(typeof group.id!=="string"||typeof group.name!=="string")
+   throw Error("shared_group_bad_row");
+  const button=document.createElement("button");button.type="button";
+  button.className="ranking-product-card";button.dataset.groupId=group.id;
+  const title=document.createElement("span");title.className="ranking-product-card-name";
+  title.textContent=group.name;button.append(title);
+  button.onclick=()=>select(group);cardGrid.append(button);
+ }
+ select(groups.find(x=>x.id===selectedPartnerSharedGroupId));
+}
+
 function appendSharedRankingRows(container,heading,entries,complete){
  const section=document.createElement("section");section.className="p-inline-card";
  const h=document.createElement("h4");h.textContent=heading;section.append(h);
@@ -13386,6 +13443,11 @@ async function loadSharedDailyStandings(where,force=false){
   }
   // Partners and HQ use the very same approved counts, people and products.
   // Choose ONE ranking per card; never show private-only ranks above it.
+  if(partner&&partnerSameAppSelectedPanel==="product"){
+   if(!Array.isArray(response.groupStandings))throw Error("shared_group_server_unavailable");
+   renderPartnerSharedGroupCards(content,response);
+   return;
+  }
   if(partner){
    const partnerRankings={
     individual:["🏆 個人ランキング",personRows],
