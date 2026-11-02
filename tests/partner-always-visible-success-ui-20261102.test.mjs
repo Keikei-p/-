@@ -107,6 +107,9 @@ test("success is rendered beside Save, remains visible after refresh; errors mus
  assert.equal(ui.get("pInlineSaveStatus").dataset.result,"error");
  assert.doesNotMatch(ui.get("pInlineSaveStatus").textContent,/実績を登録できました/);
  assert.match(html,/#partnerInlineWorkspace #pInlineSaveStatus\[data-result="success"\]/);
+ assert.match(source,/pInline\("pInlineSaveStatus"\)\.dataset\.result="pending"/);
+ assert.match(source,/pInline\("pInlineSaveStatus"\)\.dataset\.result="error"/);
+
 });
 
 test("original HQ finance / security rules, invite, saved history and merged rankings remain untouched",()=>{
