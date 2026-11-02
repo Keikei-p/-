@@ -1374,3 +1374,24 @@ test("audit history records every saved correction without exposing finance or l
  for(const k of ["totalRevenue","revenuePerUnit","unitPrice","updatedByUid","createdByUid"])
   assert.equal(text.includes(k),false);
 });
+
+
+test("member sees only own revision audits while owner sees all partner count revisions",async()=>{
+ const {api,req,zero}=setup(),date="2026-10-31";
+ const team=(await api.manage(req("p",{action:"addTeam",name:"履歴照合班"}))).teamId;
+ const managed=(await api.manage(req("p",{action:"addManaged",name:"別の担当",teamId:team}))).staffId;
+ await api.submit(req("p",{date,staffId:managed,
+  counts:{...zero(),NURO:8},expectedVersion:0}));
+ const invitation=await api.manage(req("p",{action:"createInvite",
+  email:"m@example.com",role:"member",teamId:team}));
+ await api.accept(req("m",{token:invitation.token,name:"本人"}));
+ await api.submit(req("m",{date,staffId:"m",
+  counts:{...zero(),SBMNP:2},expectedVersion:0}));
+ const all=await api.view(req("p",{date,includeAuditHistory:true}));
+ assert.equal(all.audits.length,2);
+ const own=await api.view(req("m",{date,includeAuditHistory:true}));
+ assert.equal(own.audits.length,1);
+ assert.equal(own.audits[0].staffId,"m");
+ assert.equal(own.audits[0].counts.SBMNP,2);
+ assert.equal(JSON.stringify(own).includes("別の担当"),false);
+});
