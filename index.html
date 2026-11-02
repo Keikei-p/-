@@ -6890,6 +6890,7 @@ body.product-reordering .product-list {
       <div class="product-sort-help">
         商材カードを長押しして、そのまま好きな位置へ動かすと並べ替えできます。
       </div>
+      <p id="partnerCatalogPublicationStatus" role="status" aria-live="polite">公開設定を読み込み中</p>
 
       <div
         id="productList"
@@ -7431,6 +7432,8 @@ const partnerInlineSave = httpsCallable(partnerCountFunctions,"submitPartnerWork
 const partnerInlineAccept = httpsCallable(partnerCountFunctions,"acceptPartnerWorkspaceInvite");
 const partnerMainPreviewCompanyInvite = httpsCallable(partnerCountFunctions,"previewPartnerCompanyInvitation");
 const partnerMainAcceptCompanyInvite = httpsCallable(partnerCountFunctions,"acceptPartnerCompanyInvitation");
+const readPartnerCatalogPublication = httpsCallable(partnerCountFunctions,"getPartnerCatalog");
+const setPartnerCatalogPublication = httpsCallable(partnerCountFunctions,"setPartnerCatalogPublication");
 
 
 
@@ -19403,6 +19406,7 @@ async function loadProducts(
 
 
     renderProducts();
+    if(catalogOwner())void refreshCatalogPublication();
 
     return true;
 
@@ -20416,6 +20420,70 @@ productList.addEventListener(
 );
 
 
+
+let catalogPublicationState={ready:false,revision:0,published:new Set(),owner:"",busy:false};
+function catalogOwner(){
+  if(!currentUser?.uid||!currentUserData?.companyId||
+     currentUserData.companyRole!=="owner"||currentCompanyData?.companyKind==="partner")return "";
+  return currentUser.uid+"|"+currentUserData.companyId;
+}
+function catalogStatus(value){
+  const node=document.getElementById("partnerCatalogPublicationStatus");
+  if(node)node.textContent=value;
+}
+async function refreshCatalogPublication(){
+  const owner=catalogOwner();
+  catalogPublicationState={ready:false,revision:0,published:new Set(),owner,busy:false};
+  if(!owner)return;
+  catalogStatus("協力店の商材公開を確認中…");
+  try{
+    const d=(await readPartnerCatalogPublication({})).data;
+    if(catalogOwner()!==owner)return;
+    if(d?.role!=="hub"||!Number.isSafeInteger(d.revision)||
+       !Array.isArray(d.products)||d.products.length>1000||
+       d.products.some(p=>typeof p.id!=="string"||typeof p.published!=="boolean"))
+      throw Error("invalid_catalog");
+    catalogPublicationState={ready:true,revision:d.revision,owner,busy:false,
+      published:new Set(d.products.filter(p=>p.published).map(p=>p.id))};
+    catalogStatus("チェックした商材だけ協力店へ公開。売上・単価は共有しません。");
+  }catch(e){
+    if(catalogOwner()!==owner)return;
+    catalogStatus("公開設定を確認できません。安全のため公開操作を無効にしています。");
+    console.warn("catalog_publication_read_unavailable",e?.code||"unverified");
+  }
+  if(catalogOwner()===owner)renderProducts();
+}
+async function changeCatalogPublication(productId,published){
+  const state=catalogPublicationState,owner=catalogOwner();
+  if(!state.ready||state.busy||state.owner!==owner||!owner)return;
+  state.busy=true;renderProducts();catalogStatus("公開設定を保存し照合中…");
+  try{
+    const saved=(await setPartnerCatalogPublication({
+      productId,published,expectedRevision:state.revision
+    })).data;
+    if(catalogOwner()!==owner)return;
+    if(saved?.saved!==true||saved.productId!==productId||
+      saved.published!==published||saved.revision!==state.revision+1)
+      throw Error("unverified_save");
+    const read=(await readPartnerCatalogPublication({})).data;
+    if(catalogOwner()!==owner)return;
+    if(read?.role!=="hub"||read.revision!==saved.revision||
+      !Array.isArray(read.products)||
+      !read.products.some(p=>p.id===productId&&p.published===published))
+      throw Error("unverified_readback");
+    catalogPublicationState={ready:true,revision:read.revision,owner,busy:false,
+      published:new Set(read.products.filter(p=>p.published).map(p=>p.id))};
+    catalogStatus("協力店の商材公開設定を保存・照合しました。");
+  }catch(e){
+    if(catalogOwner()!==owner)return;
+    // Network failure may occur after commit. Never blindly retry a write.
+    catalogPublicationState={ready:false,revision:0,published:new Set(),owner,busy:false};
+    catalogStatus("保存結果が不明です。再送せず商材一覧を更新して確認してください。");
+    console.warn("catalog_publication_write_unverified",e?.code||"unverified");
+  }
+  if(catalogOwner()===owner)renderProducts();
+}
+
 function renderProducts() {
 
   productManagementCount.textContent =
@@ -20536,6 +20604,22 @@ function renderProducts() {
       actions.appendChild(
         edit
       );
+      const ownerKey=catalogOwner();
+      if(ownerKey){
+        const label=document.createElement("label");
+        label.style.cssText="display:flex;align-items:center;gap:6px;font-size:12px;white-space:nowrap;";
+        const checkbox=document.createElement("input");
+        checkbox.type="checkbox";
+        checkbox.checked=catalogPublicationState.owner===ownerKey&&
+          catalogPublicationState.published.has(product.id);
+        checkbox.disabled=!catalogPublicationState.ready||catalogPublicationState.busy||
+          catalogPublicationState.owner!==ownerKey;
+        checkbox.setAttribute("aria-label",product.name+" を協力店に公開");
+        checkbox.onchange=()=>void changeCatalogPublication(product.id,checkbox.checked);
+        label.append(checkbox,document.createTextNode("協力店に公開"));
+        actions.appendChild(label);
+      }
+
 
 
       item.appendChild(
