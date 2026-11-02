@@ -4417,6 +4417,8 @@ body.product-reordering .product-list {
 #partnerInlineWorkspace #pInlineCountFields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 #partnerInlineWorkspace #pInlineCountFields .p-inline-field{min-width:0;padding:10px 8px;border:1px solid var(--border);border-radius:10px}
 #partnerInlineWorkspace #pInlineCountFields .p-inline-field input{width:100%;min-width:0;box-sizing:border-box;text-align:center;font-size:18px;font-weight:700}
+#partnerInlineWorkspace #pInlineCountFields .product-input-name{white-space:normal;overflow-wrap:anywhere}
+#partnerInlineWorkspace #pInlineCountFields .product-input-group-title{width:100%}
 #partnerInlineWorkspace #pInlineCountFields .partner-cb-card{grid-column:1/-1;display:block}
 #partnerInlineWorkspace #pInlineCountFields .partner-cb-card .partner-cb-title{font-size:16px;font-weight:800;margin-bottom:10px}
 #partnerInlineWorkspace #pInlineCountFields .partner-cb-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
@@ -13449,6 +13451,7 @@ function partnerInlineRenderCounts(){
      tier==="0"?"CB0円":"CB"+(Number(tier)/10000)+"万円";
     const input=document.createElement("input");input.type="number";input.min="0";
     input.max="9999";input.step="1";input.inputMode="numeric";
+    input.className="product-plan-input";
     input.dataset.cbTier=tier;input.value=String(saved[tier]);
     input.addEventListener("input",renderPartnerEntryTotals);
     field.append(input);tiers.append(field);
@@ -13458,9 +13461,11 @@ function partnerInlineRenderCounts(){
   }
   const label=document.createElement("label");
   label.className="p-inline-field product-input-group product-input-group--compact";
-  label.textContent=key;
+  const title=document.createElement("div");title.className="product-input-group-title";
+  const name=document.createElement("span");name.className="product-input-name";
+  name.textContent=key;title.append(name);label.append(title);
   const input=document.createElement("input");input.type="number";input.min="0";input.max="9999";
-  input.step="1";input.inputMode="numeric";input.dataset.countKey=key;
+  input.step="1";input.inputMode="numeric";input.className="product-plan-input";input.dataset.countKey=key;
   input.value=String(entry?.counts?.[key]??0);
   input.addEventListener("input",renderPartnerEntryTotals);
   label.append(input);grid.append(label);
@@ -13470,9 +13475,12 @@ function partnerInlineRenderCounts(){
   if(!product.active&&prior===0)continue;
   const label=document.createElement("label");
   label.className="p-inline-field product-input-group product-input-group--compact";
-  label.textContent=product.name+"（協力店専用）";
+  const title=document.createElement("div");title.className="product-input-group-title";
+  const name=document.createElement("span");name.className="product-input-name";
+  name.textContent=product.name+"（協力店専用）";
+  title.append(name);label.append(title);
   const input=document.createElement("input");input.type="number";input.min="0";
-  input.max="9999";input.step="1";input.inputMode="numeric";
+  input.max="9999";input.step="1";input.inputMode="numeric";input.className="product-plan-input";
   input.dataset.privateCountId=product.id;input.value=String(prior);
   if(!product.active)input.readOnly=true;
   input.addEventListener("input",renderPartnerEntryTotals);
