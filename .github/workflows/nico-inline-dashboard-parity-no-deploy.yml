@@ -24,6 +24,8 @@ jobs:
         run: |
           set -euo pipefail
           node --test tests/dashboard-inline-original-partner-parity.test.mjs
+          node --check functions-partner-workspace/service.cjs
+          node --test tests/partner-workspace.test.cjs
           node --test tests/partner-repeat-login-cb-parity.test.mjs
           node --test tests/partner-management-tabs-parity.test.mjs
           node --test tests/partner-one-login-same-app.test.cjs
