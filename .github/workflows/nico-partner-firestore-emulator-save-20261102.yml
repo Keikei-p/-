@@ -1,0 +1,37 @@
+name: NICO partner real Firestore transaction count-save smoke (EMULATOR ONLY)
+on:
+  push:
+    branches: [test/partner-transaction-contract-20261102]
+    paths:
+      - tests/partner-firestore-real-transaction-20261102.test.cjs
+      - .github/workflows/nico-partner-firestore-emulator-save-20261102.yml
+permissions:
+  contents: read
+jobs:
+  emulator-transaction:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '21'}
+      - name: Install only isolated tools; no production credentials or real deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix functions-partner-workspace --ignore-scripts --package-lock=false --no-audit --no-fund
+          npm install --global firebase-tools@15.34.1 --no-audit --no-fund
+      - name: Save and amend counts in a disposable Firestore emulator only
+        shell: bash
+        env:
+          FIREBASE_CONFIG: '{"projectId":"demo-nico-partner-count-save-tx"}'
+          GOOGLE_CLOUD_PROJECT: demo-nico-partner-count-save-tx
+          GCLOUD_PROJECT: demo-nico-partner-count-save-tx
+        run: |
+          set -euo pipefail
+          firebase emulators:exec --non-interactive --project demo-nico-partner-count-save-tx --only firestore \
+            "node --test tests/partner-firestore-real-transaction-20261102.test.cjs"
+          echo PASS_REAL_FIRESTORE_EMULATOR_COUNT_SAVE_NEVER_PRODUCTION
