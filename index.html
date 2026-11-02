@@ -6913,6 +6913,7 @@ body.product-reordering .product-list {
         商材カードを長押しして、そのまま好きな位置へ動かすと並べ替えできます。
       </div>
       <p id="partnerCatalogPublicationStatus" role="status" aria-live="polite">公開設定を読み込み中</p>
+      <p id="partnerCatalogLinkStatus" role="status" aria-live="polite">公開商材と件数入力区分の対応を読み込み中</p>
 
       <div
         id="productList"
@@ -7458,6 +7459,8 @@ const readPartnerCatalogPublication = httpsCallable(partnerCountFunctions,"getPa
 const setPartnerCatalogPublication = httpsCallable(partnerCountFunctions,"setPartnerCatalogPublication");
 const readPartnerRankingGroups = httpsCallable(partnerCountFunctions,"getPartnerRankingGroups");
 const writePartnerRankingGroups = httpsCallable(partnerCountFunctions,"setPartnerRankingGroups");
+const readPartnerCountLinks = httpsCallable(partnerCountFunctions,"getPartnerCountLinks");
+const writePartnerCountLink = httpsCallable(partnerCountFunctions,"setPartnerCountLink");
 
 
 
@@ -20618,6 +20621,85 @@ productList.addEventListener(
 
 
 
+
+// Category links are immutable and take effect from the next day.
+// Keep existing nine saved count buckets and ALL historic prices unchanged.
+let catalogCountLinkState={ready:false,owner:"",revision:0,links:new Map(),busy:false};
+function catalogCountLinkStatus(msg){
+ const status=document.getElementById("partnerCatalogLinkStatus");
+ if(status)status.textContent=msg;
+}
+function verifiedLinkResponse(d){
+ if(d?.scope!=="partner_count_category_links"||
+    !Number.isSafeInteger(d.revision)||!Array.isArray(d.links)||
+    d.links.length>PARTNER_QUICK_RANK_KEYS.length)throw Error("category_link_unverified");
+ const ids=new Set(),categories=new Set(),map=new Map();
+ for(const item of d.links){
+  if(!item||Object.keys(item).sort().join("|")!=="category|effectiveFrom|productId"||
+   !partnerMainValidId(item.productId)||ids.has(item.productId)||
+   !PARTNER_QUICK_RANK_KEYS.includes(item.category)||categories.has(item.category)||
+   typeof item.effectiveFrom!=="string"||!/^\\d{4}-\\d{2}-\\d{2}$/.test(item.effectiveFrom))
+    throw Error("category_link_schema");
+  ids.add(item.productId);categories.add(item.category);
+  map.set(item.productId,{category:item.category,effectiveFrom:item.effectiveFrom});
+ }
+ return map;
+}
+async function refreshCatalogCountLinks(){
+ const owner=catalogOwner();
+ catalogCountLinkState={ready:false,owner,revision:0,links:new Map(),busy:false};
+ if(!owner)return;
+ catalogCountLinkStatus("本社商材と協力店件数区分の対応を照合中…");
+ try{
+  const d=(await readPartnerCountLinks({})).data;
+  if(owner!==catalogOwner())return;
+  const links=verifiedLinkResponse(d);
+  catalogCountLinkState={ready:true,owner,revision:d.revision,links,busy:false};
+  catalogCountLinkStatus("対応付けは翌日から有効です。過去の実績・単価は変更しません。");
+ }catch(err){
+  if(owner!==catalogOwner())return;
+  catalogCountLinkStatus("件数区分を確認できないため対応付けを無効にしています。");
+  console.warn("owner_catalog_count_links_unavailable",err?.code||"unverified");
+ }
+ if(owner===catalogOwner())renderProducts();
+}
+async function saveCatalogCountLink(productId,category){
+ const state=catalogCountLinkState,owner=catalogOwner();
+ if(!owner||!state.ready||state.busy||state.owner!==owner||
+  !catalogPublicationState.ready||!catalogPublicationState.published.has(productId)||
+  state.links.has(productId)||state.links.size>=PARTNER_QUICK_RANK_KEYS.length||
+  !PARTNER_QUICK_RANK_KEYS.includes(category)||
+  [...state.links.values()].some(x=>x.category===category))return;
+ if(!window.confirm("この本社商材を協力店の「"+category+"」件数区分に紐づけます。変更後は過去実績保護のため紐づけを変更できません。続行しますか？")){
+  renderProducts();return;
+ }
+ state.busy=true;renderProducts();
+ catalogCountLinkStatus("件数区分の保存と読み戻しを確認中…");
+ try{
+  const saved=(await writePartnerCountLink({productId,category,
+    expectedRevision:state.revision})).data;
+  if(owner!==catalogOwner())return;
+  if(saved?.linked!==true||saved.productId!==productId||
+     saved.category!==category||saved.revision!==state.revision+1)
+   throw Error("category_link_write_unknown");
+  const read=(await readPartnerCountLinks({})).data;
+  if(owner!==catalogOwner())return;
+  const links=verifiedLinkResponse(read);
+  if(read.revision!==saved.revision||links.get(productId)?.category!==category||
+     links.get(productId)?.effectiveFrom!==saved.effectiveFrom)
+    throw Error("category_link_readback_unknown");
+  catalogCountLinkState={ready:true,owner,revision:read.revision,links,busy:false};
+  catalogCountLinkStatus("件数区分の紐づけを保存・照合しました。有効日は"+saved.effectiveFrom+"です。");
+ }catch(e){
+  if(owner!==catalogOwner())return;
+  // This write may have committed even if the phone never received a response.
+  catalogCountLinkState={ready:false,owner,revision:0,links:new Map(),busy:false};
+  catalogCountLinkStatus("保存結果が不明です。二重送信せず、画面を更新して確認してください。");
+  console.warn("catalog_count_link_write_unverified",e?.code||"unverified");
+ }
+ if(owner===catalogOwner())renderProducts();
+}
+
 let catalogPublicationState={ready:false,revision:0,published:new Set(),owner:"",busy:false};
 function catalogOwner(){
   if(!currentUser?.uid||!currentUserData?.companyId||
@@ -20648,7 +20730,10 @@ async function refreshCatalogPublication(){
     catalogStatus("公開設定を確認できません。安全のため公開操作を無効にしています。");
     console.warn("catalog_publication_read_unavailable",e?.code||"unverified");
   }
-  if(catalogOwner()===owner)renderProducts();
+  if(catalogOwner()===owner){
+   renderProducts();
+   void refreshCatalogCountLinks();
+  }
 }
 async function changeCatalogPublication(productId,published){
   const state=catalogPublicationState,owner=catalogOwner();
@@ -20815,6 +20900,34 @@ function renderProducts() {
         checkbox.onchange=()=>void changeCatalogPublication(product.id,checkbox.checked);
         label.append(checkbox,document.createTextNode("協力店に公開"));
         actions.appendChild(label);
+        const selectLabel=document.createElement("label");
+        selectLabel.style.cssText="display:flex;align-items:center;gap:5px;font-size:12px;";
+        selectLabel.textContent="協力店の件数区分";
+        const select=document.createElement("select");
+        select.setAttribute("aria-label",product.name+" の件数区分");
+        select.className="team-action-button";
+        const placeholder=document.createElement("option");
+        placeholder.value="";placeholder.textContent="未設定";
+        select.append(placeholder);
+        const linked=catalogCountLinkState.links.get(product.id);
+        const used=new Set([...catalogCountLinkState.links.values()].map(v=>v.category));
+        for(const category of PARTNER_QUICK_RANK_KEYS){
+          const option=document.createElement("option");
+          option.value=category;option.textContent=category;
+          if(used.has(category)&&linked?.category!==category)option.disabled=true;
+          select.append(option);
+        }
+        select.value=linked?.category||"";
+        select.disabled=!catalogCountLinkState.ready||catalogCountLinkState.busy||
+          catalogCountLinkState.owner!==ownerKey||
+          !catalogPublicationState.ready||!catalogPublicationState.published.has(product.id)||
+          !!linked;
+        select.onchange=()=>void saveCatalogCountLink(product.id,select.value);
+        selectLabel.append(select);actions.appendChild(selectLabel);
+        if(linked){
+          const date=document.createElement("small");
+          date.textContent="有効日: "+linked.effectiveFrom;actions.append(date);
+        }
       }
 
 
