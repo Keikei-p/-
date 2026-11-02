@@ -4440,6 +4440,11 @@ body.product-reordering .product-list {
 #partnerInlineWorkspace #partnerSameAppNavigation>[data-partner-panel][aria-expanded="true"]{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary)}
 #partnerInlineWorkspace #partnerSameAppNavigation{align-items:stretch}
 #partnerInlineWorkspace #partnerPanelRecord .p-inline-card{background:var(--card,#fff);border:1px solid var(--border);border-radius:12px;padding:16px}
+#appScreen[data-partner-count-only="true"] #partnerPanelRecord{display:block!important;width:100%;box-sizing:border-box}
+#appScreen[data-partner-count-only="true"] #partnerPanelRecord[hidden]{display:block!important}
+#partnerInlineWorkspace #pInlineSaveStatus[data-result="success"]{color:#166534;font-size:16px;font-weight:800;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:14px;margin:12px 0;line-height:1.5}
+#partnerInlineWorkspace #pInlineSaveStatus[data-result="error"]{color:#b91c1c;font-weight:700;line-height:1.5}
+#partnerInlineWorkspace #pInlineSaveStatus[data-result="pending"]{font-weight:700}
 #partnerInlineWorkspace #partnerPanelInvite .partner-invite-form{display:block;max-width:600px;margin:14px auto 0}
 #partnerInlineWorkspace #partnerPanelInvite .form-group{margin:0 0 14px;min-width:0}
 #partnerInlineWorkspace #partnerPanelInvite .form-group>label{display:block;font-size:14px;font-weight:800;margin-bottom:7px}
@@ -4819,7 +4824,7 @@ body.product-reordering .product-list {
   <button id="pInlineReturnToOwnCompany" type="button" class="team-action-button" hidden>
     自社アカウントの画面に戻る
   </button>
-  <p class="p-inline-muted">いつもの実績管理アプリです。協力店には件数だけを表示し、売上・単価の原票は読み込みません。</p>
+  <p class="p-inline-muted">今日の実績を登録・確認できます。</p>
   <div id="partnerGlobalDateToolbar" class="p-inline-grid">
     <label class="p-inline-field">ダッシュボードの表示日<input id="pInlineDate" type="date"></label>
     <div class="p-inline-field"><label for="pInlineRefresh">最新データ</label><button id="pInlineRefresh" type="button">更新</button></div>
@@ -12725,6 +12730,15 @@ function mountPartnerCanonicalNavigation(){
  target.replaceChildren(...cards);
  const details=pInline("partnerSameAppDashboardDetails");
  if(details.parentNode!==target)target.append(details);
+ // Input must always be visible, like the original HQ record form, without
+ // opening a dashboard card. Reparent the SAME element, never clone inputs,
+ // event handlers or values, and never move any finance components.
+ const record=pInline("partnerPanelRecord");
+ const summary=pInline("partnerInlineWorkspace").querySelector(".dashboard-summary");
+ if(record&&summary){
+  if(record.previousElementSibling!==summary)summary.after(record);
+  record.hidden=false;
+ }
  // Reuse the same user header placement as the internal company.
  const userBar=appScreen.querySelector(".user-bar");
  if(userBar&&userBar.nextElementSibling!==pInline("partnerInlineWorkspace"))
@@ -12809,9 +12823,8 @@ pInline("pPartnerCopyReport").onclick=async()=>{
  finally{button.disabled=false;}
 };
 pInline("pPartnerRecordToggle").onclick=()=>{
- const panel=pInline("partnerPanelRecord");
- panel.hidden=!panel.hidden;
- pInline("pPartnerRecordToggle").setAttribute("aria-expanded",String(!panel.hidden));
+ // Old hidden shortcut is kept for compatibility, but must never hide input.
+ partnerSameAppSelectPanel("record");
 };
 pInline("pPartnerMemberShortcut").onclick=()=>partnerSameAppSelectPanel("members");
 
@@ -13332,7 +13345,15 @@ function partnerSameAppPositionPanel(name){
  (row[row.length-1]||button).after(detail);
 }
 function partnerSameAppSelectPanel(name){
- pInline("partnerGlobalDateToolbar").hidden=name==="record";
+ if(name==="record"){
+  // The form is permanently mounted below the daily summary; this card is a
+  // shortcut, not a toggle. Ranking/detail panels remain independently open.
+  const form=pInline("partnerPanelRecord");
+  form.hidden=false;
+  if(partnerInlineData)form.scrollIntoView({behavior:"smooth",block:"start"});
+  return;
+ }
+ pInline("partnerGlobalDateToolbar").hidden=false;
  const map={record:"partnerPanelRecord",individual:"partnerPanelRankings",
   product:"partnerPanelRankings",team:"partnerPanelRankings",
   detail:"partnerPanelDetail",daily:"partnerPanelDaily",
@@ -13378,6 +13399,7 @@ function partnerSameAppSelectPanel(name){
 // Mirror the original dashboard toggle: a second tap closes the same detail.
 // Hide without removing its DOM, preserving unsaved two-column entries.
 function partnerSameAppTogglePanel(name){
+ if(name==="record"){partnerSameAppSelectPanel("record");return;}
  const detail=pInline("partnerSameAppDashboardDetails");
  if(partnerSameAppSelectedPanel===name&&!detail.hidden){
   detail.hidden=true;
@@ -13510,6 +13532,7 @@ function renderPartnerEntryTotals(){
      Number(input.value)<0||Number(input.value)>9999){
    target.textContent="件数を確認してください";
    pInline("pInlineSaveStatus").textContent="件数は各項目0〜9999の整数で入力してください。";
+   pInline("pInlineSaveStatus").dataset.result="error";
    return;
   }
   if(input.dataset.privateCountId)privateTotal+=Number(input.value);
@@ -13518,6 +13541,7 @@ function renderPartnerEntryTotals(){
  target.textContent="共有商材 "+shared+"件｜協力店専用 "+privateTotal+"件";
  if(partnerInlineHasUnsavedCounts())
   pInline("pInlineSaveStatus").textContent="未保存の件数があります。「一括登録」を押すまで反映されません。";
+  pInline("pInlineSaveStatus").dataset.result="pending";
 }
 function partnerInlineRenderCounts(){
  const snap=partnerInlineData;
@@ -13551,6 +13575,7 @@ function partnerInlineRenderCounts(){
  pInline("pInlineRecordDate").value=pInline("pInlineDate").value;
  const grid=pInline("pInlineCountFields");grid.replaceChildren();
  pInline("pInlineSaveStatus").textContent="";
+ delete pInline("pInlineSaveStatus").dataset.result;
  for(const key of snap.categories){
   if(key==="NURO"){
    const card=document.createElement("div");
@@ -13883,7 +13908,7 @@ async function partnerInlineFetch(){
      typeof snap.companyName!=="string"||snap.companyName.length===0)
    throw Error("partner_count_schema");
   partnerInlineData=snap;partnerInlineRender();
-  partnerInlineStatus("件数を表示しています。金額・単価は読み込んでいません。");
+  partnerInlineStatus("最新の件数を表示しています。");
   // Date changes and saved corrections must refresh the shared read-only
   // scoreboard currently on screen; never reuse the previous day's figures.
   if(["individual","product","team"].includes(partnerSameAppSelectedPanel))
@@ -14009,6 +14034,11 @@ async function partnerInlineRun(work){
  const uid=auth.currentUser?.uid;
  let completed=false,resultMessage="";
  partnerInlineBusy=true;
+ if(arguments[1]?.kind==="save"){
+  const message=pInline("pInlineSaveStatus");
+  message.textContent="保存内容を確認しています…";
+  message.dataset.result="pending";
+ }
  // A date/staff change or a second tap during an asynchronous save must never
  // change what day/person gets verified. Preserve input values on any failure.
  const locks=["pInlineDate","pInlineRecordDate","pInlineStaff","pInlineWorkingTeam","pInlineWorkLocation","pInlineRefresh",
@@ -14039,8 +14069,11 @@ async function partnerInlineRun(work){
    refresh?"更新を確認できませんでした。入力内容は保持しています。対象の権限と通信を確認してください。":
    "招待処理を確認できませんでした。招待タブのエラー表示で原因を確認してください。";
   partnerInlineStatus(message,true);
-  if(error?.message==="save_verify"&&pInline("pInlineSaveStatus"))
-   pInline("pInlineSaveStatus").textContent=message;
+  if(arguments[1]?.kind==="save"){
+   const feedback=pInline("pInlineSaveStatus");
+   feedback.textContent=message;
+   feedback.dataset.result="error";
+  }
  }finally{
   locks.forEach((node,i)=>{node.disabled=prior[i];});
   partnerInlineBusy=false;
@@ -14049,9 +14082,11 @@ async function partnerInlineRun(work){
     // Creating an invitation is not a count write: do not reset unfinished input.
     if(refresh)partnerInlineRenderCounts();
     else pInline("pInlineSave").disabled=false;
-    if(resultMessage.startsWith("件数の保存")||
-      resultMessage.startsWith("登録済みの件数"))
-     pInline("pInlineSaveStatus").textContent=resultMessage;
+    if(arguments[1]?.kind==="save"){
+     const feedback=pInline("pInlineSaveStatus");
+     feedback.textContent=resultMessage;
+     feedback.dataset.result=resultMessage.startsWith("✅ 実績を")?"success":"info";
+    }
    }else{
     const chosen=pInline("pInlineStaff").value;
     pInline("pInlineSave").disabled=!partnerInlineData.staff.some(
@@ -14402,8 +14437,11 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
  if(uid!==auth.currentUser?.uid||workspace!==partnerInlineWorkspaceCompany)
   throw Error("save_verify");
  const readback=partnerSavedCountReadbackState(verified,expected);
+ // Positive feedback ONLY when the saved version matches the server GET.
+ // Never report success just because the callable returned HTTP 200.
+ const verifiedMessage=before?"✅ 実績を修正できました！":"✅ 実績を登録できました！";
  if(saveError){
-  if(readback==="saved")return "件数の保存を再取得で確認しました。";
+  if(readback==="saved")return verifiedMessage;
   if(readback==="not_saved"){
    // Keep the ORIGINAL callable failure code after verified readback. The old
    // generic error hid the cause of rejected writes on real partner phones.
@@ -14417,7 +14455,7 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
  if(!result?.saved||result.date!==date||result.staffId!==staffId||
     result.version!==expected.expectedVersion+1||readback!=="saved")
   throw Error("save_verify");
- return "件数の保存と再取得を確認しました。";
+ return verifiedMessage;
 },{kind:"save"});
 // Original internal owner sees existing teams PLUS partner-company teams.
 // Never mix partner team IDs into the original sales-team write selectors.
