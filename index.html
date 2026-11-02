@@ -13763,7 +13763,12 @@ async function loadPartnerPublishedProductList(){
  const seq=++partnerSharedCatalogNonce;
  target.replaceChildren();status.textContent="本社の公開商材を照合中…";
  try{
-  const data=(await readPartnerCatalogPublication(partnerInlinePayload({}))).data;
+  const [catalogResponse,linkResponse]=await Promise.all([
+   readPartnerCatalogPublication(partnerInlinePayload({})),
+   readPartnerCountLinks(partnerInlinePayload({}))
+  ]);
+  const data=catalogResponse.data;
+  const mapped=verifiedLinkResponse(linkResponse.data);
   if(seq!==partnerSharedCatalogNonce||uid!==auth.currentUser?.uid||
      company!==partnerInlineWorkspaceCompany)return;
   if(data?.role!=="partner"||!Array.isArray(data.products)||data.products.length>1000||
@@ -13777,7 +13782,14 @@ async function loadPartnerPublishedProductList(){
    ids.add(product.id);
    const row=document.createElement("div");row.className="product-item";
    const name=document.createElement("div");name.className="product-name";
-   name.textContent=product.name;row.append(name);target.append(row);
+   name.textContent=product.name;row.append(name);
+   const link=mapped.get(product.id);
+   if(link){
+    const category=document.createElement("small");category.className="p-inline-muted";
+    category.textContent="件数区分: "+link.category+"（"+link.effectiveFrom+"から）";
+    row.append(category);
+   }
+   target.append(row);
   }
   status.textContent=data.products.length?
    "本社が協力店に公開した商材 "+data.products.length+"件を表示中。価格情報は取得していません。":
