@@ -8,6 +8,7 @@ on:
       - 'tests/partner-invite-mobile-layout.test.cjs'
       - 'tests/partner-shared-direct-redaction.test.cjs'
       - 'tests/partner-workspace.test.cjs'
+      - 'tests/partner-existing-ranking.test.cjs'
       - 'functions-partner-workspace/service.cjs'
       - 'functions-partner-workspace/shared-direct-counts.cjs'
       - '.github/workflows/nico-partner-email-first-offline.yml'
@@ -41,3 +42,4 @@ jobs:
           set -euo pipefail
           node --test tests/partner-email-resend-and-join.test.mjs tests/partner-invite-mobile-layout.test.cjs tests/internal-owner-finance-visibility.test.cjs tests/partner-workspace.test.cjs tests/partner-company-parity-release.test.mjs
           node --test tests/partner-shared-direct-redaction.test.cjs
+          node --test tests/partner-existing-ranking.test.cjs
