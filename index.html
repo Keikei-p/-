@@ -12764,6 +12764,25 @@ pInline("ownerPartnerDashboardRefresh").onclick=async()=>{
         throw Error("invalid_partner_product");
        if(n)partnerMainAppendRow(row,key,n+"件");
       }
+      // Verified server data only; display each staff member like the
+      // internal company team detail, without raw sales or email fields.
+      if(!Array.isArray(team.members)||team.members.length>200)
+       throw Error("invalid_partner_members");
+      for(const person of team.members){
+       if(typeof person.name!=="string"||person.name.length>60||
+          !Number.isSafeInteger(person.totalCount)||person.totalCount<0||
+          !person.counts||typeof person.counts!=="object")
+        throw Error("invalid_partner_member_counts");
+       const member=document.createElement("details");member.className="p-inline-row";
+       const title=document.createElement("summary");
+       title.textContent="👤 "+person.name+"｜"+person.totalCount+"件";member.append(title);
+       for(const [key,n] of Object.entries(person.counts)){
+        if(!PARTNER_QUICK_RANK_KEYS.includes(key)||!Number.isSafeInteger(n)||n<0)
+         throw Error("invalid_partner_member_product");
+        if(n)partnerMainAppendRow(member,key,n+"件");
+       }
+       row.append(member);
+      }
       teams.append(row);
      }
      if(!info.teams.length)teams.textContent="登録されている班はありません。";
