@@ -273,6 +273,56 @@ jobs:
           console.log('AUDIT_CREDENTIAL_IS_RUNTIME_IDENTITY',credential.client_email===fn.serviceConfig?.serviceAccountEmail);
           console.log('SAFE_DENIED_WRITE_PROBE_COMPLETE_NO_MUTATIONS');
           NODE
+      - name: Test protected non-mutating write precondition AS the Cloud Function runtime identity if delegated token is allowed
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {createRequire} from 'node:module';
+          const require=createRequire(process.cwd()+'/functions/package.json');
+          const {initializeApp,applicationDefault}=require('firebase-admin/app');
+          const {getFirestore}=require('firebase-admin/firestore');
+          initializeApp({credential:applicationDefault(),projectId:'sales-management-cc116'});
+          const db=getFirestore(),company=(await db.collection('companies')
+           .where('name','==','株式会社LinkTh').limit(2).get());
+          if(company.size!==1)throw Error('STOP_TARGET_NOT_UNIQUE');
+          const doc=company.docs[0],before=await doc.ref.get();
+          if(!before.exists)throw Error('STOP_EXISTING_DOC_NOT_FOUND');
+          const sourceToken=(await applicationDefault().getAccessToken()).access_token;
+          const fn=await fetch('https://cloudfunctions.googleapis.com/v2/projects/sales-management-cc116/locations/asia-northeast1/functions/submitPartnerWorkspaceCounts',
+           {headers:{Authorization:'Bearer '+sourceToken}});
+          if(!fn.ok)throw Error('STOP_FN_CONFIG_NOT_READABLE');
+          const runtime=(await fn.json()).serviceConfig?.serviceAccountEmail;
+          if(!runtime||!runtime.includes('@'))throw Error('STOP_RUNTIME_ACCOUNT_NOT_FOUND');
+          const delegated=await fetch('https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/'+encodeURIComponent(runtime)+':generateAccessToken',
+           {method:'POST',headers:{Authorization:'Bearer '+sourceToken,'Content-Type':'application/json'},
+            body:JSON.stringify({scope:['https://www.googleapis.com/auth/datastore'],lifetime:'600s'})});
+          if(!delegated.ok){
+           console.log('RUNTIME_DELEGATION_NOT_AVAILABLE_HTTP',delegated.status);
+          }else{
+           const signed=await delegated.json(),token=signed.accessToken;
+           if(!token)throw Error('STOP_DELEGATION_EMPTY');
+           // This update is mathematically impossible to apply to an existing
+           // document: exists:false precondition, previously verified exists:true.
+           // It checks runtime Firestore write permission WITHOUT modifying data.
+           const name='projects/sales-management-cc116/databases/(default)/documents/companies/'+doc.id;
+           const commit=await fetch('https://firestore.googleapis.com/v1/projects/sales-management-cc116/databases/(default)/documents:commit',
+            {method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
+             body:JSON.stringify({writes:[{update:{name,fields:{diagnosticNoWrite:{booleanValue:true}}},
+               currentDocument:{exists:false}}]})});
+           const out=await commit.json();
+           if(commit.ok)throw Error('STOP_UNEXPECTED_IMPOSSIBLE_PRECONDITION_COMMIT');
+           console.log('RUNTIME_IMPOSSIBLE_WRITE_RESULT',JSON.stringify({
+            http:commit.status,status:String(out?.error?.status||'unknown'),
+            noDataModified:true
+           }));
+          }
+          const after=await doc.ref.get();
+          if(!after.exists||before.updateTime.toMillis()!==after.updateTime.toMillis()||
+            JSON.stringify(before.data())!==JSON.stringify(after.data()))
+           throw Error('STOP_PROTECTED_COMPANY_DOC_CHANGED');
+          console.log('RUNTIME_PROBE_EXISTING_DATA_UNCHANGED');
+          NODE
       - name: Remove temporary credentials
         if: always()
         run: rm -f "$RUNNER_TEMP/linkth-exact-audit.json"
