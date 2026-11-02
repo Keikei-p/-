@@ -146,8 +146,11 @@ test("actual quick + staff count API merge prioritizes staff ledger without doub
    },
    readPartnerWorkDay:async({date})=>{
     calls.push(["staff",date]);
-    return {data:{role:"hub",date,partners:date==="2026-10-31"?
-     [row("partnerA","協力店A",{NURO:2,"つばさ・HTB":3})]:[]}};
+    return {data:{role:"hub",date,
+     registeredCompanies:date==="2026-10-31"?
+      [{partnerCompanyId:"partnerA",active:true},{partnerCompanyId:"partnerB",active:true}]:[],
+     partners:date==="2026-10-31"?
+      [row("partnerA","協力店A",{NURO:2,"つばさ・HTB":3})]:[]}};
    },
    dashboardMonth:{value:"2026-10"},
    currentPartnerRankingRows:()=>ctx.monthRows,
