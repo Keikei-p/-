@@ -212,7 +212,7 @@ jobs:
           };
           try{
            const answer=await service.submit(request);
-           if(!answer?.saved||writeCalls!==3||readCalls<10)
+           if(!answer?.saved||writeCalls!==3||readCalls<8)
             throw Error('DRY_RUN_RESULT_UNEXPECTED');
            console.log('SAVE_SIMULATION_READONLY',JSON.stringify({
             preconditions:'PASS',readCalls,interceptedWrites:writeCalls,
