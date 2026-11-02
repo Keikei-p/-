@@ -69,10 +69,10 @@ test("verified noncommit preserves original Firebase failure code for diagnosis"
  const context={};
  vm.runInNewContext(moduleText.slice(a,b)+";globalThis.describe=partnerCountSaveFailureMessage;",context);
  const describe=context.describe;
- assert.match(describe({code:"functions/internal"}),/functions\\/internal/);
+ assert.match(describe({code:"functions/internal"}),/functions\/internal/);
  assert.match(describe({code:"functions/unavailable"}),/unavailable/);
  assert.match(describe({code:"functions/permission-denied"}),/認証・権限/);
  assert.match(describe({code:"functions/invalid-argument"}),/件数・NURO/);
- assert.match(describe({code:"functions/not-found"}),/functions\\/not-found/);
+ assert.match(describe({code:"functions/not-found"}),/functions\/not-found/);
  assert.match(describe({message:"save_not_committed"}),/まだ保存されていません/);
 });
