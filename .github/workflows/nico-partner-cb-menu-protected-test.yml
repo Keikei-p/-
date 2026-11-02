@@ -1,0 +1,27 @@
+name: NICO legacy finance and partner menu compatibility (no deploy)
+on:
+  push:
+    branches:
+      - test/partner-cb-finance-and-menu-regressions-20261102
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Legacy owner finance and partner same-app navigation
+        run: node --test tests/partner-money-free-workspace.test.cjs tests/partner-one-login-same-app.test.cjs tests/internal-owner-finance-visibility.test.cjs
+      - name: New partner login/CB, team tree and legacy sales regressions
+        run: node --test tests/partner-repeat-login-cb-parity.test.mjs tests/partner-company-parity-release.test.mjs tests/partner-management-tabs-parity.test.mjs tests/owner-partner-team-detail-screen.test.mjs tests/sales-regressions.cjs
+      - name: Partner backend syntax and permission regression
+        run: |
+          node --check functions-partner-workspace/service.cjs
+          node --test tests/partner-workspace.test.cjs tests/partner-count-dashboard.test.cjs tests/partner-count-only-ledger.test.mjs
