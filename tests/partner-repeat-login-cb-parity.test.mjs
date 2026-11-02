@@ -17,8 +17,10 @@ test("first-time and secondary partner logins retain password flow and use verif
  const callback=between(html,'pInline("pMainAcceptInvite").onclick=async()=>','// Partner onboarding: email is verified');
  assert.match(callback,/rememberPartnerWorkspace\(user.uid,result.partnerCompanyId\)/);
  const routing=between(html,"onAuthStateChanged(","/\* =====================================================\n   ユーザー情報読み込み");
- assert.match(routing,/const partnerWorkspaceId=explicitPartnerWorkspace\|\|rememberedPartnerWorkspace\(user.uid\)/);
+ assert.match(routing,/let partnerWorkspaceId=explicitPartnerWorkspace\|\|rememberedPartnerWorkspace\(user.uid\)/);
  assert.match(routing,/await openSameAppPartnerWorkspace\(user,partnerWorkspaceId\)/);
+ assert.match(routing,/resolveSecondaryWorkspace:true/);
+ assert.match(routing,/result\?\.scope==="partner_workspace_lookup"/);
  assert.match(html,/await signInWithEmailAndPassword\(/);
  const api=between(html,'pInline("pInlineReturnToOwnCompany").onclick=','async function partnerInlineRun(work){');
  assert.match(api,/clearRememberedPartnerWorkspace\(uid\)/);
@@ -50,6 +52,11 @@ test("count-only CB saves use total validation, versioned audit, and no sales so
   "tx.update(summary,sum)",
  ]) assert.ok(backend.includes(marker),marker);
  assert.doesNotMatch(backend,/db\.collection\("(?:products|records|recordCorrections|revenueGoals)"\)/);
+ const resolver=between(backend,"if(d.resolveSecondaryWorkspace===true){","const s=d.sharedRankings===true");
+ assert.match(resolver,/partnerWorkspaceContexts/);
+ assert.match(resolver,/scope\(a.uid,null,stored.partnerCompanyId\)/);
+ assert.match(resolver,/return \{scope:"partner_workspace_lookup",workspaceCompanyId:verified.cid\}/);
+ assert.doesNotMatch(resolver,/tx\.|\.update\(|\.create\(|\.delete\(/);
  const save=between(html,'pInline("pInlineSave").onclick=','// Original internal owner sees existing teams');
  for(const marker of ["partnerInlineSelectedCb()","counts[key]=parsedCb.total",
   "date,staffId,counts,cbCounts,privateCounts,expectedVersion:",
