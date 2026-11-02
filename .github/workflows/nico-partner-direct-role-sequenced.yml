@@ -1,0 +1,208 @@
+name: NICO direct-role partner - guarded backend then existing index
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/nico-partner-direct-role-sequenced.yml','functions-partner-workspace/service.cjs','index.html']
+  workflow_dispatch:
+    inputs:
+      reviewed_main_sha:
+        description: 'Exact current main SHA after review and merge'
+        required: true
+        type: string
+      release_confirmation:
+        description: 'CONFIRM_DIRECT_ROLE_FUNCTIONS_THEN_INDEX'
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: nico-partner-workspace-production
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '21'}
+      - name: Review exact source and test finance, invitations, counts and rules
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = '29c0e3b29863e654ba70fd5b3f4a8efe4d0827d8'
+          test "$(git hash-object index.html)" = 'd68e0be91d5933c03ed0657a73751573fb5c7344'
+          test "$(git hash-object functions-partner-workspace/index.js)" = '38da7e9174ffea7c406c92292dccfc651b565eb0'
+          test "$(git hash-object firebase.partner-workspace.json)" = 'a6ceedec5fab4e22e0a8efe19c685716a2db9750'
+          test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
+          node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/index.js
+          node --check tools/hosting/surgical-existing-index.mjs
+          node --test tests/partner-workspace.test.cjs tests/partner-company-code-auth.test.cjs tests/partner-money-free-workspace.test.cjs tests/internal-owner-finance-visibility.test.cjs tests/sales-regressions.cjs tests/partner-existing-ranking.test.cjs tests/surgical-existing-index.test.mjs
+          node --test tests/partner-simple-roster-invite.test.mjs tests/partner-one-login-same-app.test.cjs tests/partner-invite-mobile-layout.test.cjs
+          node --test tests/partner-boundary-release.test.mjs tests/live-rules-surgical-preview.test.mjs
+          npm install --prefix tests --ignore-scripts --no-audit --no-fund
+          npm install -g firebase-tools@15.34.1 --no-audit --no-fund
+          firebase emulators:exec --project demo-sales-support --only firestore 'node --test tests/rules.test.cjs'
+  release:
+    needs: validate
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && needs.validate.result == 'success' && inputs.reviewed_main_sha == github.sha && inputs.release_confirmation == 'CONFIRM_DIRECT_ROLE_FUNCTIONS_THEN_INDEX' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      NICO_PARTNER_RELEASE_CONFIRMATION: CONFIRM_ADD_PARTNER_RANKING_INDEX_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Require exact reviewed main, isolated four-Function code and original sales files
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(gh api repos/Keikei-p/-/branches/main --jq '.commit.sha')" = "$GITHUB_SHA"
+          test "$(git hash-object index.html)" = d68e0be91d5933c03ed0657a73751573fb5c7344
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 29c0e3b29863e654ba70fd5b3f4a8efe4d0827d8
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(git hash-object firebase.partner-workspace.json)" = a6ceedec5fab4e22e0a8efe19c685716a2db9750
+          node --test tests/internal-owner-finance-visibility.test.cjs tests/partner-workspace.test.cjs
+          node -e 'const fs=require("fs");if(JSON.parse(fs.readFileSync(".firebaserc","utf8")).projects.default!=="sales-management-cc116")process.exit(1)'
+      - name: Load existing protected Firebase identity, never print credentials
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/direct-role-identity.json"
+          chmod 600 "$RUNNER_TEMP/direct-role-identity.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/direct-role-identity.json" >> "$GITHUB_ENV"
+      - name: Install existing pinned Firebase CLI and SDKs
+        run: |
+          npm install -g firebase-tools@15.34.1 --no-audit --no-fund
+          npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+          npm install --prefix functions-partner-workspace --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Require approved production finance Rules and recent managed backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {createHash} from 'node:crypto';
+          import {createRequire} from 'node:module';
+          import {writeFileSync} from 'node:fs';
+          import {inspect} from './tools/production/inspect-firestore-backups-readonly.mjs';
+          const require=createRequire(process.cwd()+'/functions/package.json');
+          const {applicationDefault}=require('firebase-admin/app');
+          const token=(await applicationDefault().getAccessToken()).access_token;
+          const root='https://firebaserules.googleapis.com/v1/';
+          const get=async path=>{
+            const res=await fetch(root+path,{headers:{Authorization:'Bearer '+token},redirect:'error'});
+            if(!res.ok)throw Error('STOP_RULES_READ_FAILED_'+res.status);
+            return res.json();
+          };
+          const live=(await get('projects/sales-management-cc116/releases/cloud.firestore')).rulesetName;
+          if(!/^projects\/sales-management-cc116\/rulesets\/[A-Za-z0-9_-]+$/.test(live))throw Error('STOP_RULESET_UNKNOWN');
+          const source=(await get(live)).source?.files;
+          if(source?.length!==1)throw Error('STOP_RULES_SOURCE');
+          const digest=createHash('sha256').update(source[0].content.replace(/\r\n/g,'\n').trim()).digest('hex');
+          if(digest!=='d1d9998d874a1a31c81ddf6996e08cd9de3a3d13bd684e245140bf03cab32179')throw Error('STOP_FINANCE_BOUNDARY_UNAPPROVED');
+          const backup=await inspect();
+          const age=Date.now()-Date.parse(backup.latestReadySnapshot||'');
+          if(backup.readyBackups<1||!Number.isFinite(age)||age<0||age>172800000)throw Error('STOP_BACKUP_NOT_RECENT');
+          writeFileSync(process.env.RUNNER_TEMP+'/direct-role-rules-ref.txt',live,{mode:0o600});
+          console.log('PASS approved live finance boundary and ready recent backup');
+          NODE
+      - name: Verify original Hosting HTML and complete one-file asset manifest before deploying
+        shell: bash
+        run: |
+          set -euo pipefail
+          git show 518141bbedb8a93645f31530790cc9c4bb8974e3:index.html > "$RUNNER_TEMP/reviewed-previous-index.html"
+          curl -fsSL --retry 3 --max-time 35 'https://nico-factory.web.app/?partner_direct_role_preflight=1' > "$RUNNER_TEMP/live-index-before.html"
+          if cmp -s "$RUNNER_TEMP/live-index-before.html" index.html; then
+            echo 'ALREADY_LIVE=true' >> "$GITHUB_ENV"
+          elif cmp -s "$RUNNER_TEMP/live-index-before.html" "$RUNNER_TEMP/reviewed-previous-index.html"; then
+            echo 'ALREADY_LIVE=false' >> "$GITHUB_ENV"
+            node tools/hosting/surgical-existing-index.mjs --dry-run
+          else
+            echo 'STOP_UNKNOWN_LIVE_INDEX'; exit 1
+          fi
+      - name: Preserve existing Functions inventory and existing optional login flags
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase functions:list --project "$FIREBASE_PROJECT_ID" --json > "$RUNNER_TEMP/direct-role-before.json"
+          test ! -e functions-partner-workspace/.env.sales-management-cc116
+          printf 'PARTNER_WORKSPACE_ENABLED=enabled\nPARTNER_COMPANY_CODE_AUTH_ENABLED=enabled\n' > functions-partner-workspace/.env.sales-management-cc116
+      - name: Update only existing four partner Functions, not default Functions or Firestore
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase deploy --non-interactive --project "$FIREBASE_PROJECT_ID" --config firebase.partner-workspace.json --only functions:partner-workspace:getPartnerWorkspace,functions:partner-workspace:managePartnerWorkspace,functions:partner-workspace:acceptPartnerWorkspaceInvite,functions:partner-workspace:submitPartnerWorkspaceCounts
+      - name: Verify original Functions preserved and four endpoints reject unauthenticated users
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase functions:list --project "$FIREBASE_PROJECT_ID" --json > "$RUNNER_TEMP/direct-role-after.json"
+          node <<'NODE'
+          const fs=require('fs');
+          const ids=p=>(JSON.parse(fs.readFileSync(p,'utf8')).result||[]).map(x=>x.id||x.name||'');
+          const before=ids(process.env.RUNNER_TEMP+'/direct-role-before.json'),after=ids(process.env.RUNNER_TEMP+'/direct-role-after.json');
+          if(before.some(n=>!after.includes(n)))throw Error('STOP_PREEXISTING_FUNCTION_MISSING');
+          for(const key of ['getPartnerWorkspace','managePartnerWorkspace','acceptPartnerWorkspaceInvite','submitPartnerWorkspaceCounts','sendMissingReportReminders'])
+            if(!after.some(n=>n===key||n.endsWith('/'+key)))throw Error('STOP_WORKSPACE_FUNCTION_MISSING_'+key);
+          NODE
+          node <<'NODE'
+          (async()=>{
+            for(const key of ['getPartnerWorkspace','managePartnerWorkspace','acceptPartnerWorkspaceInvite','submitPartnerWorkspaceCounts']){
+              const r=await fetch('https://asia-northeast1-sales-management-cc116.cloudfunctions.net/'+key,{method:'POST',headers:{'Content-Type':'application/json'},body:'{"data":{}}'});
+              if(![401,403].includes(r.status))throw Error('STOP_ANON_ACCESS_'+key+'_'+r.status);
+            }
+            console.log('PASS original Functions retained and anonymous requests denied');
+          })().catch(e=>{console.error(e.message);process.exitCode=1});
+          NODE
+      - name: Check main, Rules and previously reviewed Hosting again before publishing
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(gh api repos/Keikei-p/-/branches/main --jq '.commit.sha')" = "$GITHUB_SHA"
+          node --input-type=module <<'NODE'
+          import {createRequire} from 'node:module';
+          import {readFileSync} from 'node:fs';
+          const require=createRequire(process.cwd()+'/functions/package.json');
+          const {applicationDefault}=require('firebase-admin/app');
+          const token=(await applicationDefault().getAccessToken()).access_token;
+          const r=await fetch('https://firebaserules.googleapis.com/v1/projects/sales-management-cc116/releases/cloud.firestore',{headers:{Authorization:'Bearer '+token},redirect:'error'});
+          if(!r.ok||(await r.json()).rulesetName!==readFileSync(process.env.RUNNER_TEMP+'/direct-role-rules-ref.txt','utf8'))throw Error('STOP_RULES_CHANGED');
+          NODE
+          curl -fsSL --max-time 35 'https://nico-factory.web.app/?partner_direct_role_before_publish=1' > "$RUNNER_TEMP/live-index-second.html"
+          if [ "$ALREADY_LIVE" = false ]; then
+            cmp -s "$RUNNER_TEMP/live-index-second.html" "$RUNNER_TEMP/reviewed-previous-index.html" || { echo 'STOP_LIVE_INDEX_CHANGED'; exit 1; }
+          fi
+      - name: Replace only existing index.html while retaining all other hosting files
+        if: env.ALREADY_LIVE == 'false'
+        run: node tools/hosting/surgical-existing-index.mjs --release
+      - name: Validate production HTML parity and original routes after release
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --max-time 35 'https://nico-factory.web.app/?partner_direct_role_verified=1' > "$RUNNER_TEMP/index-after.html"
+          cmp -s "$RUNNER_TEMP/index-after.html" index.html || { echo 'STOP_HTML_NOT_LIVE'; exit 1; }
+          for marker in 'id="inviteDestinationSelect"' 'id="pInlineMoveStaff"' 'partnerInviteInline' 'mergedPartnerRankingDay'; do
+            grep -Fq "$marker" "$RUNNER_TEMP/index-after.html"
+          done
+          for p in /partner-invite.html /partner-counts.html /partner-workspace.html; do
+            test "$(curl -sSL -o /dev/null -w '%{http_code}' --max-time 30 "https://nico-factory.web.app$p")" = 200
+          done
+          echo 'PASS four Functions then single-index release; existing assets untouched'
+      - name: Remove private identity, Rules references and temporary environment flags
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/direct-role-identity.json" "$RUNNER_TEMP/direct-role-rules-ref.txt" "$RUNNER_TEMP/direct-role-before.json" "$RUNNER_TEMP/direct-role-after.json" "$RUNNER_TEMP/reviewed-previous-index.html" "$RUNNER_TEMP/live-index-before.html" "$RUNNER_TEMP/live-index-second.html" "$RUNNER_TEMP/index-after.html" functions-partner-workspace/.env.sales-management-cc116
