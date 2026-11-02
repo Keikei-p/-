@@ -36122,7 +36122,9 @@ function availableRankingProductChoices() {
   });
   // Use the EXISTING group editor to manually assign any partner-only category
   // whose registered product name cannot be safely mapped automatically.
-  if(canLoadPartnerRanking()){
+  // The original Owner can explicitly select partner categories for the
+  // shared group even before the first partner report arrives.
+  if(isCurrentCompanyManager()){
     PARTNER_QUICK_RANK_KEYS.forEach(category=>{
       const key="legacy:"+category;
       if(!found.has(key)) found.set(key,{
