@@ -325,3 +325,21 @@ test("partner count inputs show live totals for public and company-only products
  assert.match(mutation,/partnerInlineRenderCounts\(\)/);
  assert.match(mutation,/renderPartnerPrivateProductCatalog\(\)/);
 });
+
+test("partner entry reuses canonical 2-column product cards with safe zero/clear operations",()=>{
+ assert.match(html,/id="pInlineCountFields" class="product-input-list"/);
+ assert.match(html,/id="pInlineSave" class="record-save-button"/);
+ assert.match(html,/id="pInlineZero" class="record-clear-button"/);
+ assert.match(html,/id="pInlineClear" class="record-clear-button"/);
+ assert.match(html,/className="p-inline-field product-input-group product-input-group--compact"/);
+ assert.match(html,/function partnerInlineClearFields\(\)/);
+ const action=scope('pInline("pInlineStaff").onchange=partnerInlineRenderCounts;',
+  '\npInline("pInlineAddTeam").onclick');
+ assert.match(action,/input:not\(\[readonly\]\)/);
+ assert.match(action,/renderPartnerEntryTotals\(\)/);
+ assert.match(action,/保存済み実績は変更していません/);
+ assert.match(action,/pInline\("pInlineSave"\)\.click\(\)/);
+ const save=scope('pInline("pInlineSave").onclick=',"\n// Original internal owner sees existing teams");
+ assert.match(save,/saved\.version!==result\?\.version/);
+ assert.match(save,/saved\.privateCounts\?\.\[id\]/);
+});
