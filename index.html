@@ -13424,12 +13424,14 @@ async function partnerInlineFetch(){
    void loadSharedDailyStandings("partnerDetail",true);
   else if(partnerSameAppSelectedPanel==="history")
    void loadPartnerRevisionHistory();
+  return true;
  }catch(e){
-  if(seq!==partnerInlineNonce||auth.currentUser?.uid!==uid)return;
+  if(seq!==partnerInlineNonce||auth.currentUser?.uid!==uid)return false;
   partnerInlineData=null;pInline("pInlineSave").disabled=true;
   pInline("pInlineRanking").replaceChildren();
   pInline("pInlineTeams").replaceChildren();pInline("pInlinePeople").replaceChildren();
   partnerInlineStatus("協力店の件数サービスを確認できません。自社オーナーの件数利用承認・所属・API公開状況をご確認ください。",true);
+  return false;
  }
 }
 async function openSameAppPartnerWorkspace(user,workspaceCompanyId=""){
@@ -13463,7 +13465,7 @@ async function openSameAppPartnerWorkspace(user,workspaceCompanyId=""){
 async function partnerInlineRun(work){
  if(partnerInlineBusy||!partnerInlineData)return;
  const uid=auth.currentUser?.uid;
- let completed=false;
+ let completed=false,resultMessage="";
  partnerInlineBusy=true;
  // A date/staff change or a second tap during an asynchronous save must never
  // change what day/person gets verified. Preserve input values on any failure.
@@ -13480,15 +13482,12 @@ async function partnerInlineRun(work){
   // Only a confirmed write refreshes the count fields; do not erase inputs
   // when a save or invitation fails and the user needs to retry.
   ++sharedDailyRankingGeneration;sharedDailyRankCache.clear();
-  await partnerInlineFetch();
-  completed=true;
-  if(partnerInlineData){
-   partnerInlineStatus(message||"更新しました。");
-   if(message?.startsWith("件数の保存"))pInline("pInlineSaveStatus").textContent=message;
-  }
+  if(!await partnerInlineFetch())throw Error("refresh_after_write");
+  completed=true;resultMessage=message||"更新しました。";
+  if(partnerInlineData)partnerInlineStatus(resultMessage);
  }catch(error){
-  const message=error?.message==="save_verify"?
-   "保存APIへの送信後、件数の再照合に失敗しました。二重操作を避けるため、再登録前に「更新」で最新件数を確認してください。入力内容は保持しています。":
+  const message=error?.message==="save_verify"||error?.message==="refresh_after_write"?
+   "保存APIへの送信後、最新データの表示を照合できませんでした。二重登録を避けるため、再登録前に「更新」で最新件数を確認してください。入力内容は保持しています。":
    "保存・招待を確認できませんでした。入力内容は保持しています。権限と通信を確認して再試行してください。";
   partnerInlineStatus(message,true);
   if(error?.message==="save_verify"&&pInline("pInlineSaveStatus"))
@@ -13497,8 +13496,11 @@ async function partnerInlineRun(work){
   locks.forEach((node,i)=>{node.disabled=prior[i];});
   partnerInlineBusy=false;
   if(partnerInlineData&&uid===auth.currentUser?.uid){
-   if(completed)partnerInlineRenderCounts();
-   else{
+   if(completed){
+    partnerInlineRenderCounts();
+    if(resultMessage.startsWith("件数の保存"))
+     pInline("pInlineSaveStatus").textContent=resultMessage;
+   }else{
     const chosen=pInline("pInlineStaff").value;
     pInline("pInlineSave").disabled=!partnerInlineData.staff.some(
      member=>member.id===chosen&&member.active===true);
@@ -13714,6 +13716,9 @@ pInline("pInlineCopyInvite").onclick=async()=>{
 };
 pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
  const snap=partnerInlineData,staffId=pInline("pInlineStaff").value;
+ const date=snap?.date,workspace=partnerInlineWorkspaceCompany,uid=auth.currentUser?.uid;
+ if(!snap||!uid||date!==pInline("pInlineDate").value||
+    date!==pInline("pInlineRecordDate").value)throw Error("date_changed");
  if(!snap.staff.some(p=>p.id===staffId&&p.active))throw Error("staff");
  const counts=Object.create(null);
  for(const key of snap.categories){
@@ -13736,14 +13741,21 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
   if(product.active)privateCounts[id]=n;
  }
  const result=(await partnerInlineSave(partnerInlinePayload({
-  date:pInline("pInlineDate").value,staffId,counts,privateCounts,expectedVersion:before?.version??0
+  date,staffId,counts,privateCounts,expectedVersion:before?.version??0
  }))).data;
- const verified=(await readPartnerWorkDay(partnerInlinePayload({date:pInline("pInlineDate").value}))).data;
+ if(uid!==auth.currentUser?.uid||workspace!==partnerInlineWorkspaceCompany)
+  throw Error("save_verify");
+ const verified=(await readPartnerWorkDay(partnerInlinePayload({date}))).data;
  const saved=verified?.records?.find(x=>x.staffId===staffId);
- if(!saved||saved.version!==result?.version||
-   snap.categories.some(key=>saved.counts?.[key]!==counts[key])||
-   Object.keys(privateCounts).some(id=>saved.privateCounts?.[id]!==privateCounts[id]))
-   throw Error("save_verify");
+ const expectedTotal=Object.values(counts).reduce((sum,n)=>sum+n,0);
+ if(verified?.date!==date||verified?.companyName!==snap.companyName||
+    !result?.saved||!saved||result.date!==date||result.staffId!==staffId||
+    result.version!==(before?.version??0)+1||saved.version!==result.version||
+    saved.totalCount!==expectedTotal||
+    snap.categories.some(key=>saved.counts?.[key]!==counts[key])||
+    Object.keys(privateCounts).some(id=>saved.privateCounts?.[id]!==privateCounts[id])||
+    uid!==auth.currentUser?.uid||workspace!==partnerInlineWorkspaceCompany)
+  throw Error("save_verify");
  return "件数の保存と再取得を確認しました。";
 });
 // Original internal owner sees existing teams PLUS partner-company teams.
