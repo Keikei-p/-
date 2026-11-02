@@ -4413,6 +4413,18 @@ body.product-reordering .product-list {
 #partnerInlineWorkspace #partnerSameAppNavigation>[data-partner-panel][aria-expanded="true"]{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary)}
 #partnerInlineWorkspace #partnerSameAppNavigation{align-items:stretch}
 #partnerInlineWorkspace #partnerPanelRecord .p-inline-card{background:var(--card,#fff);border:1px solid var(--border);border-radius:12px;padding:16px}
+#partnerInlineWorkspace #partnerPanelInvite .partner-invite-form{display:block;max-width:600px;margin:14px auto 0}
+#partnerInlineWorkspace #partnerPanelInvite .form-group{margin:0 0 14px;min-width:0}
+#partnerInlineWorkspace #partnerPanelInvite .form-group>label{display:block;font-size:14px;font-weight:800;margin-bottom:7px}
+#partnerInlineWorkspace #partnerPanelInvite .form-group input,
+#partnerInlineWorkspace #partnerPanelInvite .form-group select{display:block;width:100%;max-width:100%;min-height:48px;box-sizing:border-box}
+#partnerInlineWorkspace #partnerPanelInvite #pInlineCreateInvite{display:block;width:100%;min-height:48px;white-space:normal}
+#partnerInlineWorkspace #partnerPanelInvite #pInlineInviteResult{max-width:600px;margin:16px auto 0;padding:14px;border:1px solid var(--border);border-radius:12px}
+#partnerInlineWorkspace #partnerPanelInvite .management-input-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}
+#partnerInlineWorkspace #partnerPanelInvite .management-input-row button{min-height:48px}
+#partnerInlineWorkspace #partnerPanelInvite #pInlineResendInvite{min-height:46px;width:100%;margin-top:10px}
+#partnerInlineWorkspace #partnerPanelInvite #pInlineInviteEmailStatus{overflow-wrap:anywhere}
+
 @media(max-width:430px){#partnerInlineWorkspace #pInlineCountFields{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}#partnerInlineWorkspace #pInlineCountFields .p-inline-field{padding:8px 5px;font-size:12px}}
 </style>
 
@@ -4810,16 +4822,34 @@ body.product-reordering .product-list {
   <section id="partnerPanelInvite" data-partner-view="invite" hidden>
     <div class="p-inline-card">
       <h3>✉️ 招待リンク</h3>
-      <p class="p-inline-muted">協力店のリーダーが担当者を招待します。本人がメール認証後、パスワードを設定して同じアプリを使えます。</p>
-      <div class="p-inline-grid">
-        <label class="p-inline-field">招待する班<select id="pInlineInviteTeam"></select></label>
-        <label class="p-inline-field">招待先メール<input id="pInlineInviteEmail" type="email" autocomplete="off" placeholder="member@example.com"></label>
-        <label class="p-inline-field">権限<select id="pInlineInviteRole"><option value="member">メンバー</option><option value="leader">リーダー</option></select></label>
+      <p class="p-inline-muted">自社と同じ招待タブです。協力店リーダーが班員を招待できます。売上・単価の閲覧権限は付きません。</p>
+      <div id="pInlineInviteForm" class="partner-invite-form">
+        <div class="form-group">
+          <label for="pInlineInviteEmail">① 招待メールアドレス</label>
+          <input id="pInlineInviteEmail" type="email" inputmode="email" autocomplete="email" required placeholder="例）member@example.com">
+        </div>
+        <div class="form-group">
+          <label for="pInlineInviteRole">② 招待する権限</label>
+          <select id="pInlineInviteRole"><option value="member">メンバー</option><option value="leader">リーダー</option></select>
+        </div>
+        <div class="form-group">
+          <label for="pInlineInviteTeam">③ 所属する班</label>
+          <select id="pInlineInviteTeam" required></select>
+        </div>
+        <button id="pInlineCreateInvite" class="team-action-button" type="button">招待リンク作成・認証メール送信</button>
       </div>
-      <button id="pInlineCreateInvite" class="team-action-button" type="button">招待メールを送信</button>
       <div id="pInlineInviteResult" hidden>
-        <label class="p-inline-field">招待URL<input id="pInlineInviteUrl" readonly></label>
-        <button id="pInlineCopyInvite" class="team-action-button" type="button">招待リンクをコピー</button>
+        <p class="p-inline-muted">招待リンクの有効期限は30分です。認証メールが届かない場合は再送できます。</p>
+        <p id="pInlineInviteRecipient" class="p-inline-muted"></p>
+        <div class="form-group">
+          <label for="pInlineInviteUrl">相手に送る招待リンク</label>
+          <div class="management-input-row">
+            <input id="pInlineInviteUrl" type="text" readonly aria-label="招待リンク">
+            <button id="pInlineCopyInvite" class="team-action-button" type="button">コピー</button>
+          </div>
+        </div>
+        <button id="pInlineResendInvite" class="team-action-button" type="button">認証メールを再送</button>
+        <p id="pInlineInviteEmailStatus" role="status" aria-live="polite" class="p-inline-muted"></p>
       </div>
     </div>
   </section>
@@ -12478,6 +12508,9 @@ function resetPartnerInline(){
  appScreen.removeAttribute("data-partner-count-only");
  pInline("partnerInlineWorkspace").hidden=true;
  pInline("pInlineStatus").textContent="";
+ partnerLeaderLastInvitation=null;
+ pInline("pInlineInviteEmailStatus").textContent="";
+ pInline("pInlineInviteRecipient").textContent="";
  pInline("pInlineInviteUrl").value="";
  pInline("pInlineInviteResult").hidden=true;
  authScreen.removeAttribute("data-partner-invite");
@@ -13368,6 +13401,9 @@ async function openSameAppPartnerWorkspace(user,workspaceCompanyId=""){
  // Do not load legacy sales products, records, prices, or Firestore listeners.
  stopRealtimeListeners();
  partnerInlineWorkspaceCompany=partnerMainValidId(workspaceCompanyId)?workspaceCompanyId:"";
+ partnerLeaderLastInvitation=null;
+ pInline("pInlineInviteResult").hidden=true;
+ pInline("pInlineInviteEmailStatus").textContent="";
  partnerInlineData=null;
  verificationScreen.style.display="none";
  companySetupScreen.style.display="none";
@@ -13458,26 +13494,83 @@ pInline("pInlineAddManaged").onclick=()=>partnerInlineRun(async()=>{
  await partnerInlineManage(partnerInlinePayload({action:"addManaged",name,teamId}));
  pInline("pInlineManagedName").value="";return "メールなしのメンバーを追加しました。";
 });
-pInline("pInlineCreateInvite").onclick=()=>partnerInlineRun(async()=>{
- const snap=partnerInlineData,email=pInline("pInlineInviteEmail").value.trim().toLowerCase();
- const role=pInline("pInlineInviteRole").value;
- const teamId=pInline("pInlineInviteTeam").value;
- if(!["owner","leader"].includes(snap.role)||!partnerMainValidId(teamId)||
-  !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||
-  !["leader","member"].includes(role))throw Error("input");
- const response=(await partnerInlineManage(partnerInlinePayload({action:"createInvite",email,teamId,role}))).data;
- if(!/^[A-Za-z0-9_-]{43}$/.test(response?.token||""))throw Error("response");
- const url=new URL("/",location.origin);url.searchParams.set("partnerStaffInvite",response.token);
- pInline("pInlineInviteUrl").value=url.href;
+// Invite credentials stay in memory only; never persist links or tokens in Firestore/UI logs.
+let partnerLeaderLastInvitation=null;
+function partnerLeaderInviteFeedback(message,failed=false){
+ const status=pInline("pInlineInviteEmailStatus");
+ status.textContent=message;
+ status.style.color=failed?"#b91c1c":"";
+}
+function partnerLeaderShowInvite(invite){
+ partnerLeaderLastInvitation=invite;
+ pInline("pInlineInviteUrl").value=invite.url;
+ pInline("pInlineInviteRecipient").textContent="送信先："+invite.email+"｜権限："+(invite.role==="leader"?"リーダー":"メンバー");
  pInline("pInlineInviteResult").hidden=false;
+}
+async function partnerLeaderSendInviteEmail(invite){
+ if(!invite||!["owner","leader"].includes(partnerInlineData?.role)||
+    !auth.currentUser?.emailVerified||invite.uid!==auth.currentUser.uid||
+    invite.workspaceCompanyId!==partnerInlineWorkspaceCompany)
+  throw Error("partner_invite_context_changed");
+ let latest=invite;
+ if(!Number.isFinite(latest.expiresAt)||Date.now()>=latest.expiresAt){
+  // Never resend an expired token. Reissue with the same role/team/email after
+  // server-side company and leader checks; the previous invitation is not changed.
+  const response=(await partnerInlineManage(partnerInlinePayload({
+   action:"createInvite",email:latest.email,teamId:latest.teamId,role:latest.role
+  }))).data;
+  if(!/^[A-Za-z0-9_-]{43}$/.test(response?.token||"")||
+     !Number.isFinite(response.expiresAt)||response.expiresAt<=Date.now())
+   throw Error("partner_invite_refresh_failed");
+  const url=new URL("/",location.origin);
+  url.searchParams.set("partnerStaffInvite",response.token);
+  latest={...latest,url:url.href,expiresAt:response.expiresAt};
+  partnerLeaderShowInvite(latest);
+ }
  try{
-  await sendSignInLinkToEmail(auth,email,partnerInviteAuthSettings({url:url.href}));
-  return "招待メールを送信しました。相手が本人確認して参加します。";
+  await sendSignInLinkToEmail(auth,latest.email,partnerInviteAuthSettings(latest));
+  partnerLeaderInviteFeedback("認証メールを送信しました。本人確認後、初回パスワードを設定して参加します。");
+  return true;
  }catch(error){
   console.error("partner_leader_email_send_failed",error?.code||"unknown");
-  return "招待リンクは作成しましたが、メールは未送信です。Firebaseメールリンク設定を確認してください。";
+  partnerLeaderInviteFeedback(error?.code==="auth/operation-not-allowed"?
+   "Firebaseのメールリンク認証が無効です。メールは送信されていません。":
+   "招待リンクは作成しましたが、認証メールを送信できませんでした。設定・送信上限・通信を確認して再送してください。",true);
+  return false;
  }
+}
+pInline("pInlineCreateInvite").onclick=()=>partnerInlineRun(async()=>{
+ const snap=partnerInlineData,email=pInline("pInlineInviteEmail").value.trim().toLowerCase();
+ const role=pInline("pInlineInviteRole").value,teamId=pInline("pInlineInviteTeam").value;
+ if(!["owner","leader"].includes(snap.role)||!partnerMainValidId(teamId)||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||
+    !["leader","member"].includes(role))throw Error("input");
+ const response=(await partnerInlineManage(partnerInlinePayload({
+  action:"createInvite",email,teamId,role
+ }))).data;
+ if(!/^[A-Za-z0-9_-]{43}$/.test(response?.token||"")||
+    !Number.isFinite(response.expiresAt)||response.expiresAt<=Date.now())
+  throw Error("invite_response");
+ const url=new URL("/",location.origin);
+ url.searchParams.set("partnerStaffInvite",response.token);
+ const invite={url:url.href,email,role,teamId,expiresAt:response.expiresAt,
+  uid:auth.currentUser.uid,workspaceCompanyId:partnerInlineWorkspaceCompany};
+ partnerLeaderShowInvite(invite);
+ const sent=await partnerLeaderSendInviteEmail(invite);
+ return sent?"認証メールを送信しました。":"招待リンクは作成しましたがメールは未送信です。招待タブから再送してください。";
 });
+pInline("pInlineResendInvite").onclick=async()=>{
+ if(partnerInlineBusy||!partnerLeaderLastInvitation)return;
+ const button=pInline("pInlineResendInvite");
+ button.disabled=true;
+ partnerLeaderInviteFeedback("招待メールを再送しています…");
+ try{
+  await partnerLeaderSendInviteEmail(partnerLeaderLastInvitation);
+ }catch(error){
+  console.error("partner_leader_resend_failed",error?.code||"unknown");
+  partnerLeaderInviteFeedback("再送できませんでした。権限・接続を確認してください。",true);
+ }finally{button.disabled=false;}
+};
 pInline("pInlineAddPrivateProduct").onclick=()=>partnerInlineRun(async()=>{
  const snap=partnerInlineData,name=pInline("pInlineCustomName").value.trim();
  if(!["owner","leader"].includes(snap.role)||!name||name.length>80)throw Error("product");
