@@ -14417,7 +14417,26 @@ onAuthStateChanged(
         return;
       }
       const explicitPartnerWorkspace=new URL(location.href).searchParams.get("workspaceCompanyId")||"";
-      const partnerWorkspaceId=explicitPartnerWorkspace||rememberedPartnerWorkspace(user.uid);
+      let partnerWorkspaceId=explicitPartnerWorkspace||rememberedPartnerWorkspace(user.uid);
+      if(!partnerWorkspaceId){
+        // Password login can occur on a second device where localStorage is
+        // empty. The server resolves only this verified user's own approved
+        // secondary membership; there is no invite-token or finance lookup.
+        try{
+          const result=(await readPartnerWorkDay({
+            date:partnerMainDate(),resolveSecondaryWorkspace:true
+          })).data;
+          if(auth.currentUser?.uid!==user.uid)return;
+          if(result?.scope==="partner_workspace_lookup"&&
+             partnerMainValidId(result.workspaceCompanyId))
+            partnerWorkspaceId=result.workspaceCompanyId;
+        }catch(error){
+          // Missing/older backend: preserve normal internal login, do not
+          // silently grant any partner/finance role from unverified data.
+          console.info("partner_workspace_discovery_unavailable",
+            typeof error?.code==="string"?error.code:"unavailable");
+        }
+      }
       if(partnerWorkspaceId){
         if(!partnerMainValidId(partnerWorkspaceId)){
           showLegacyFinanceEntryBlocked("blocked");
