@@ -12768,13 +12768,75 @@ function appendSharedRankingRows(container,heading,entries,complete){
  }
  container.append(section);
 }
+// Same company -> team -> person -> product tree for BOTH authenticated roles.
+function renderSharedCountTeamDetails(parent,report){
+ parent.replaceChildren();
+ const keys=report.categories;
+ const addCounts=(node,counts,total)=>{
+  let shown=0;
+  for(const key of keys){
+   const n=counts?.[key]||0;
+   if(!Number.isSafeInteger(n)||n<0)throw Error("shared_detail_count_invalid");
+   if(n)partnerMainAppendRow(node,key,n+"件");
+   shown+=n;
+  }
+  if(total>shown)partnerMainAppendRow(node,"その他（直営）",total-shown+"件");
+  if(total<shown)throw Error("shared_detail_total_invalid");
+ };
+ const showCompany=(name,total,teamRows,peopleRows,verified=true)=>{
+  const company=document.createElement("details");company.className="p-inline-row";
+  const summary=document.createElement("summary");
+  summary.textContent=name+"｜"+total+"件"+(verified?"":"（個人別未照合）");
+  company.append(summary);
+  for(const team of teamRows){
+   const row=document.createElement("details");row.className="p-inline-row";
+   const title=document.createElement("summary");
+   title.textContent="👥 "+team.name+"｜"+team.totalCount+"件";
+   row.append(title);
+   const members=peopleRows.filter(p=>p.teamKey===team.key);
+   for(const member of members){
+    const item=document.createElement("details");item.className="p-inline-row";
+    const label=document.createElement("summary");
+    label.textContent="👤 "+member.name+"｜"+member.totalCount+"件";
+    item.append(label);addCounts(item,member.counts,member.totalCount);row.append(item);
+   }
+   if(!members.length)partnerMainAppendRow(row,
+    "担当者別件数は未確認","会社の記録と照合してください");
+   company.append(row);
+  }
+  const unassigned=peopleRows.filter(p=>!p.teamKey||!teamRows.some(t=>t.key===p.teamKey));
+  for(const member of unassigned){
+   const item=document.createElement("details");item.className="p-inline-row";
+   const label=document.createElement("summary");
+   label.textContent="👤 "+member.name+"｜"+member.totalCount+"件（登録当時の班未確認）";
+   item.append(label);addCounts(item,member.counts,member.totalCount);company.append(item);
+  }
+  if(!teamRows.length&&!unassigned.length)
+   partnerMainAppendRow(company,"班・担当者別の件数は未照合","会社の報告状況を確認してください");
+  parent.append(company);
+ };
+ showCompany("🏢 直営",report.direct.totalCount,report.direct.teams,
+  report.direct.people,report.direct.recordsVerified>0);
+ for(const company of report.companies){
+  showCompany("🤝 "+company.name,company.totalCount,
+   report.teams.filter(t=>t.companyId===company.id),
+   report.people.filter(p=>p.companyId===company.id),
+   company.peopleVerified===true);
+ }
+ for(const name of report.missingCompanies||[])
+  partnerMainAppendRow(parent,"🤝 "+name,"未報告・0件とは扱いません");
+}
+
 async function loadSharedDailyStandings(where){
- const partner=where==="partner";
+ const partner=where==="partner"||where==="partnerDetail";
+ const detail=where==="partnerDetail"||where==="ownerDetail";
  if(!partner&&!canLoadPartnerRanking())return;
  const named=(!partner&&["Individual","Product","Team"].includes(where))?where:null;
  const dateField=partner?"pInlineDate":named?"ownerSharedDate"+named:"ownerPartnerDashboardDate";
- const statusField=partner?"partnerSharedRankingsStatus":named?"ownerSharedStatus"+named:"ownerSharedRankingsStatus";
- const contentField=partner?"partnerSharedRankingContent":named?"ownerSharedContent"+named:"ownerSharedRankingContent";
+ const statusField=detail?(partner?"partnerSharedDetailStatus":"ownerSharedDetailStatus"):
+  partner?"partnerSharedRankingsStatus":named?"ownerSharedStatus"+named:"ownerSharedRankingsStatus";
+ const contentField=detail?(partner?"partnerSharedDetailTree":"ownerSharedDetailTree"):
+  partner?"partnerSharedRankingContent":named?"ownerSharedContent"+named:"ownerSharedRankingContent";
  const date=pInline(dateField).value;
  const status=pInline(statusField);
  const content=pInline(contentField);
@@ -12832,6 +12894,10 @@ async function loadSharedDailyStandings(where){
    "件数照合済み｜直営＋協力店合同"+
      " "+(partnerSum+(internal?.totalCount||0))+"件｜同率順位は同順位":
    "未報告・未照合の協力店があります。表示は途中経過で、正式順位は確定していません。";
+  if(detail){
+   renderSharedCountTeamDetails(content,response);
+   return;
+  }
   appendSharedRankingRows(content,"🏢 会社別件数",companyRows,complete);
   appendSharedRankingRows(content,"🏆 個人ランキング",personRows,complete);
   appendSharedRankingRows(content,"👥 班ランキング",teamRows,complete);
@@ -12846,6 +12912,8 @@ async function loadSharedDailyStandings(where){
 }
 pInline("partnerSharedRankingsRefresh").onclick=()=>loadSharedDailyStandings("partner");
 pInline("ownerSharedRankingsRefresh").onclick=()=>loadSharedDailyStandings("owner");
+pInline("partnerSharedDetailRefresh").onclick=()=>loadSharedDailyStandings("partnerDetail");
+pInline("ownerSharedDetailRefresh").onclick=()=>loadSharedDailyStandings("ownerDetail");
 
 // Partner sees original dashboard-style menu, not the finance DOM.
 function renderPartnerRankingOnlyPanel(){
