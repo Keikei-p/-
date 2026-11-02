@@ -30,9 +30,9 @@ jobs:
           node <<'NODE'
           const fs=require('fs');
           const html=fs.readFileSync('index.html','utf8');
-          const module=html.match(/<script type="module">([\s\S]*?)<\/script>/)?.[1];
-          if(!module)throw Error('NO_BROWSER_MODULE');
-          fs.writeFileSync('/tmp/nico-direct-safe-check.mjs',module);
+          const browserCode=html.match(/<script type="module">([\s\S]*?)<\/script>/)?.[1];
+          if(!browserCode)throw Error('NO_BROWSER_MODULE');
+          fs.writeFileSync('/tmp/nico-direct-safe-check.mjs',browserCode);
           NODE
           node --check /tmp/nico-direct-safe-check.mjs
       - name: Run historical direct rank, partner counts and Owner finance regressions
