@@ -34,7 +34,7 @@ test("one persistent record element is placed immediately after count summary, n
  assert.match(part,/form\.hidden=false/);
  assert.match(part,/if\(partnerInlineData\)form\.scrollIntoView/);
  assert.match(part,/if\(partnerInlineData&&name==="history"\)/);
- assert.match(part,/loadSharedDailyStandings\("partnerDetail"\)/);
+ assert.match(part,/if\(partnerInlineData&&name==="detail"\)pInline\("pInlineTeamDetails"\)\.hidden=false/);
  const legacy=snippet('pInline("pPartnerRecordToggle").onclick=()=>{','pInline("pPartnerMemberShortcut").onclick');
  assert.doesNotMatch(legacy,/panel\.hidden=!panel\.hidden/);
 });
