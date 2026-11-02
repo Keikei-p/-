@@ -16,6 +16,9 @@ exports.getPartnerWorkspace=onCall(opts,service.view);
 exports.managePartnerWorkspace=onCall(opts,service.manage);
 exports.acceptPartnerWorkspaceInvite=onCall(opts,service.accept);
 exports.submitPartnerWorkspaceCounts=onCall(opts,service.submit);
+// New isolated catalog callables: do not redeploy legacy functions without a reviewed release.
+exports.getPartnerCatalog=onCall(opts,service.viewCatalog);
+exports.setPartnerCatalogPublication=onCall(opts,service.setCatalogPublication);
 const codeAuth=makeCompanyCodeAuth({
  db:getFirestore(),getAuth,FieldValue,Timestamp,HttpsError,
  enabled:()=>process.env.PARTNER_COMPANY_CODE_AUTH_ENABLED==="enabled"
