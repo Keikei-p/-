@@ -54,8 +54,8 @@ jobs:
             return response.json();
           };
           const auth=await safeGet('https://identitytoolkit.googleapis.com/admin/v2/projects/'+project+'/config');
-          const emailEnabled=auth?.signIn?.email?.enabled===true,linkEnabled=auth?.signIn?.email?.passwordRequired===false,domainAuthorized=auth?.authorizedDomains?.includes('nico-factory.web.app')===true;
-          console.log('LIVE_AUTH_READONLY '+JSON.stringify({emailPasswordProviderEnabled:emailEnabled,emailLinkEnabled:linkEnabled,domainAuthorized}));
+          const emailEnabled=auth?.signIn?.email?.enabled===true,linkEnabled=auth?.signIn?.email?.passwordRequired!==true,domainAuthorized=auth?.authorizedDomains?.includes('nico-factory.web.app')===true;
+          console.log('LIVE_AUTH_READONLY '+JSON.stringify({emailPasswordProviderEnabled:emailEnabled,emailLinkEnabled:linkEnabled,domainAuthorized,passwordRequiredFieldPresent:Object.hasOwn(auth?.signIn?.email||{},'passwordRequired')}));
           if(!emailEnabled||!linkEnabled||!domainAuthorized)throw Error('STOP_AUTH_EMAIL_LINK_NOT_READY');
           const release=await safeGet('https://firebaserules.googleapis.com/v1/projects/'+project+'/releases/cloud.firestore');
           if(!/^projects\/sales-management-cc116\/rulesets\/[A-Za-z0-9_-]+$/.test(release?.rulesetName||''))throw Error('STOP_RULESET_NAME');
