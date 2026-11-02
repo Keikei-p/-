@@ -36,7 +36,8 @@ jobs:
           node <<'NODE'
           const fs=require('fs');
           const y=fs.readFileSync('.github/workflows/nico-partner-direct-role-hosting-resume-once.yml','utf8');
-          if(/firebase deploy|functions:artifacts:setpolicy|--force|firestore:delete|functions:delete/.test(y))throw Error('STOP_UNSAFE_RESUME_ACTION');
+          const banned=['firebase'+' deploy','functions:artifacts:'+'setpolicy','--'+'force','firestore:'+'delete','functions:'+'delete'];
+          if(banned.some(phrase=>y.includes(phrase)))throw Error('STOP_UNSAFE_RESUME_ACTION');
           if(!y.includes('cloudfunctions.googleapis.com/v2/')||!y.includes('PARTNER_WORKSPACE_ENABLED'))throw Error('STOP_UNVERIFIED_FUNCTIONS');
           const app=JSON.parse(fs.readFileSync('.firebaserc','utf8'));
           if(app.projects.default!=='sales-management-cc116')throw Error('STOP_WRONG_PROJECT');
