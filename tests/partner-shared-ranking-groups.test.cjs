@@ -37,6 +37,13 @@ test("unmapped product ID does not invent a name-based mapping or score",()=>{
   {id:"one",name:"NURO",complete:false,members:[]}
  ]);
 });
+test("published product ID and explicitly selected legacy category count once",()=>{
+ const groups=[{id:"linked",name:"NURO",keys:["id:p1","legacy:NURO"]}];
+ const scores=groupPersonalScores(groups,[{key:"u1",name:"A",companyName:"直営",
+  counts:{NURO:4}}],{categories:valid.categories});
+ assert.deepEqual(scores,[{id:"linked",name:"NURO",complete:true,
+  members:[{rank:1,name:"A",companyName:"直営",count:4}]}]);
+});
 test("backend only stores groups in private settings and no legacy financial rows",()=>{
  const service=fs.readFileSync(require.resolve("../functions-partner-workspace/service.cjs"),"utf8");
  const api=fs.readFileSync(require.resolve("../functions-partner-workspace/index.js"),"utf8");
