@@ -9,6 +9,10 @@ const end="\nasync function showPartnerInviteAtMain(user,invite){";
 const from=html.indexOf(begin),to=html.indexOf(end,from);
 assert.ok(from>=0&&to>from,"partner owner screen is present");
 const source=html.slice(from,to);
+const cardBegin=html.indexOf("const PARTNER_TEAM_CB_TIERS=");
+const cardEnd=html.indexOf("async function loadSharedDailyStandings(",cardBegin);
+assert.ok(cardBegin>0&&cardEnd>cardBegin);
+const teamCardCode=html.slice(cardBegin,cardEnd);
 
 function node(tag="div"){
  return {
@@ -61,7 +65,7 @@ function fixture(){
   partnerMainAppendRow:(parent,label,value)=>{const entry=node();entry.textContent=label+"｜"+value;parent.append(entry);},
   PARTNER_QUICK_RANK_KEYS:["NURO","SBMNP"]
  };
- runInNewContext(source,context);
+ runInNewContext(teamCardCode+"\n"+source,context);
  const openCompany=async index=>{
   const company=dom.ownerPartnerDashboardList.children[index];
   company.open=true;
