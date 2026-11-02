@@ -39,7 +39,7 @@ test("owner team tab automatically fetches company counts while allowing manual 
   'reports.has(item.partnerCompanyId)',
   'reports.keys()',
  ]) assert.ok(view.includes(marker),"missing "+marker);
- assert.match(view,/date===date/);
+ assert.ok(view.includes('pInline("ownerPartnerDashboardDate").value===date'));
  assert.match(view,/currentUser\?\.uid===uid/);
 });
 
