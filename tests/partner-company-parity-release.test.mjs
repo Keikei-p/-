@@ -298,3 +298,30 @@ test("partner management contains standalone invitation, member, and private cat
  assert.match(html,/if\(product\.active\)privateCounts\[id\]=n/);
  assert.match(html,/partnerInlineRun\(async\(\)=>/);
 });
+
+
+test("partner count inputs show live totals for public and company-only products",()=>{
+ const source=scope("function renderPartnerEntryTotals(){",
+   "\nfunction partnerInlineRenderCounts(){");
+ const output={textContent:""};
+ const fields=[
+  {dataset:{countKey:"NURO"},value:"2"},
+  {dataset:{countKey:"SBMNP"},value:"1"},
+  {dataset:{privateCountId:"custom"},value:"4"}
+ ];
+ const node={querySelectorAll:()=>fields};
+ const ctx={pInline:id=>id==="pInlineEntryTotals"?output:node};
+ runInNewContext(source+"\nrenderPartnerEntryTotals();",ctx);
+ assert.equal(output.textContent,"共有商材 3件｜協力店専用 4件");
+ fields[2].value="-1";
+ runInNewContext(source+"\nrenderPartnerEntryTotals();",ctx);
+ assert.equal(output.textContent,"件数を確認してください");
+ fields[2].value="4.5";
+ runInNewContext(source+"\nrenderPartnerEntryTotals();",ctx);
+ assert.equal(output.textContent,"件数を確認してください");
+ assert.match(html,/id="pInlineEntryTotals"/);
+ const mutation=scope("async function partnerInlineRun(work){",
+   "\nfunction partnerInlinePayload(data){");
+ assert.match(mutation,/partnerInlineRenderCounts\(\)/);
+ assert.match(mutation,/renderPartnerPrivateProductCatalog\(\)/);
+});
