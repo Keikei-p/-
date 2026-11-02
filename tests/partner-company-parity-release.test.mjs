@@ -89,3 +89,15 @@ test("same-app ranking stays exact for repeated staff IDs, matching names and hi
  assert.equal(output[0][0],"件数を検証できません");
  assert.equal(output.length,1,"invalid totals may not enter published ranking");
 });
+
+test("saved team and departed staff are shown from the original count snapshot, not current assignments",()=>{
+ const render=scope("function partnerInlineRender(){","\nasync function partnerInlineFetch(){");
+ assert.match(render,/const allTeams=snap.teams\|\|\[\],allStaff=snap.staff\|\|\[\]/);
+ assert.match(render,/const byTeam=new Map\(allTeams.map/);
+ assert.match(render,/for\(const team of allTeams\)/);
+ assert.match(render,/snap.records.filter\(e=>e.teamIdSnapshot===team.id\)/);
+ assert.match(render,/const person=allStaff.find\(p=>p.id===entry.staffId\)/);
+ assert.doesNotMatch(render,/snap.records.find\(e=>e.staffId===person.id&&e.teamIdSnapshot===team.id\)/);
+ assert.match(render,/renderPartnerRankingOnlyPanel\(\)/);
+ assert.match(render,/pInline\("pInlineDate"\)/);
+});
