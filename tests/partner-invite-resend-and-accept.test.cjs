@@ -25,7 +25,7 @@ test("partner email composer and resend are visible but never claim automatic de
  assert.match(html,/if\(Date\.now\(\)>=invite\.expiresAt\)/);
  assert.match(html,/partnerInlineManage\(\{action:"hubCreateInvite"/);
  assert.match(html,/partnerCompanyId:invite\.partnerCompanyId,teamId:invite\.teamId/);
- assert.match(html,/partnerInviteEmail\.\S*\)?/); // the input is explicitly bound below
+ assert.match(html,/document\.getElementById\("partnerInviteEmail"\)\.addEventListener/);
  assert.match(html,/addEventListener\("input",clearDirectPartnerEmailResult\)/);
  assert.match(html,/directPartnerLastInvitation=null/);
  assert.doesNotMatch(html,/送信が完了しました/);
