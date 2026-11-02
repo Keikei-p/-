@@ -71,6 +71,7 @@ function fixture(){
  return {dom,context,ownerToggle,calls:()=>calls,
   openCompany,setReport:n=>{reportTotal=n;},setDetail:n=>{detailTotal=n;},
   setHasReport:v=>{hasReport=v;},setAuthorized:v=>{authorized=v;},
+  renameCompany:name=>{companyA.name=name;},disableCompany:()=>{companyA.active=false;},
   run:()=>runInNewContext("loadOwnerPartnerDetails()",context)};
 }
 
@@ -113,6 +114,17 @@ test("owner refresh shows corrected count once and explicitly marks unreported",
  f.setHasReport(false);await f.run();
  assert.match(f.dom.ownerPartnerDashboardList.children[0].children[0].textContent,/未報告/);
  assert.match(f.dom.ownerPartnerDashboardSummary.children.at(-1).textContent,/2社/);
+});
+
+test("renamed company retains count and disabled company hides previous totals",async()=>{
+ const f=fixture();
+ f.renameCompany("協力店A（新社名）");
+ await f.run();
+ assert.match(f.dom.ownerPartnerDashboardList.children[0].children[0].textContent,/新社名.*3件/);
+ f.disableCompany();
+ await f.run();
+ assert.match(f.dom.ownerPartnerDashboardList.children[0].children[0].textContent,/承認待ち/);
+ assert.match(f.dom.ownerPartnerDashboardSummary.children[0].textContent,/0件/);
 });
 
 test("owner refuses mismatched company/person totals and unauthorized reads",async()=>{
