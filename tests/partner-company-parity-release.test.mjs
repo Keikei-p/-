@@ -143,3 +143,20 @@ test("partner cards mirror eleven original dashboard controls without finance AP
  assert.match(html,/id="pPartnerMemberShortcut"/);
  assert.match(html,/if\(id==="partnerPanelRecord"\)continue/);
 });
+
+test("safe hamburger menu mirrors the original while blocking native financial actions",()=>{
+ assert.match(html,/#appScreen\[data-partner-count-only="true"\] \.user-bar \.management-tab-shell\{display:none!important\}/);
+ assert.match(html,/#appScreen\[data-partner-count-only="true"\] \.user-bar \.partner-safe-menu\{display:block!important\}/);
+ const source=scope("function mountPartnerSafeManagementMenu(){","\n// Partner sees original dashboard-style menu");
+ for(const phrase of ["management-tab-button","management-tab-panel","quick-menu-button",
+  '["🏢","会社","account"]','["✉️","招待リンク","invite"]',
+  '["👥","班管理","members"]','["👤","メンバー","members"]',
+  '["📦","商材管理","products"]','["⚙️","アカウント設定","account"]',
+  '["leader","owner"].includes(snap.role)','partnerSameAppSelectPanel(action==="invite"?"members":action)'])
+  assert.ok(source.includes(phrase),"missing partner-safe operation "+phrase);
+ for(const unsafe of ["openManagementPanel(","getDocs(","onSnapshot(","monthlyRevenue",
+  "revenuePerUnit","unitPrice","pricingOptions"])
+  assert.ok(!source.includes(unsafe),"unsafe finance menu "+unsafe);
+ assert.match(html,/mountPartnerSafeManagementMenu\(\)/);
+ assert.match(html,/if\(safeAccount\)safeAccount.hidden=true/);
+});
