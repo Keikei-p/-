@@ -6375,6 +6375,14 @@ body.product-reordering .product-list {
             <button type="button" data-ranking-cols="3" aria-pressed="false">3列</button>
           </div>
         </div>
+        <div class="revenue-chart-toolbar" id="ownerJointIndividualControls" style="margin-bottom:12px;">
+          <button type="button" id="ownerJointIndividualButton" class="team-action-button">直営＋協力店｜件数順</button>
+          <button type="button" id="ownerOriginalIndividualButton" class="team-action-button">自社｜売上順</button>
+          <label class="ranking-product-scope">合同ランキングの日付
+            <input id="ownerJointIndividualDate" type="date">
+          </label>
+        </div>
+        <p id="ownerJointIndividualStatus" class="ranking-product-help" role="status">自社の従来ランキングを表示しています。</p>
         <div id="individualRankingList" class="ranking-grid" data-columns="1"></div>
       </div>
 
@@ -13456,6 +13464,10 @@ async function loadSharedDailyStandings(where,force=false){
   }
   // Partners and HQ use the very same approved counts, people and products.
   // Choose ONE ranking per card; never show private-only ranks above it.
+  if(named==="Individual"&&ownerJointIndividualMode){
+   ownerJointIndividualSnapshot={people:personRows,complete,date};
+   renderOwnerJointIndividualRanking();return;
+  }
   if(named==="Product"&&ownerJointProductMode){
    ownerJointProductSnapshot=response;
    renderOwnerJointProductRanking(response);
@@ -13496,6 +13508,30 @@ async function loadSharedDailyStandings(where,force=false){
   console.error("shared_daily_ranking_unavailable",error?.code||"unverified");
  }
 }
+
+
+const ownerJointIndividualDate=document.getElementById("ownerJointIndividualDate");
+ownerJointIndividualDate.value=getTodayString();
+ownerJointIndividualDate.max=getTodayString();
+document.getElementById("ownerJointIndividualButton").onclick=()=>{
+ if(!canReadSharedCountOnlyRanks())return;
+ ownerJointIndividualMode=true;ownerJointIndividualSnapshot=null;
+ document.getElementById("ownerSharedDateIndividual").value=ownerJointIndividualDate.value;
+ renderOwnerJointIndividualRanking();
+ void loadSharedDailyStandings("Individual",true);
+};
+document.getElementById("ownerOriginalIndividualButton").onclick=()=>{
+ ownerJointIndividualMode=false;ownerJointIndividualSnapshot=null;
+ renderIndividualRanking(buildIndividualMap(records.filter(r=>r.date?.startsWith(dashboardMonth.value))));
+ document.getElementById("ownerJointIndividualStatus").textContent="自社の従来ランキングを表示しています。";
+};
+ownerJointIndividualDate.onchange=()=>{
+ if(!ownerJointIndividualMode)return;
+ ownerJointIndividualSnapshot=null;
+ document.getElementById("ownerSharedDateIndividual").value=ownerJointIndividualDate.value;
+ renderOwnerJointIndividualRanking();
+ void loadSharedDailyStandings("Individual",true);
+};
 
 const ownerJointProductDate=document.getElementById("ownerJointProductDate");
 ownerJointProductDate.value=getTodayString();ownerJointProductDate.max=getTodayString();
@@ -35455,10 +35491,54 @@ function decorateRankingChampion(row, category) {
   row.appendChild(banner);
 }
 
+
+let ownerJointIndividualMode=false,ownerJointIndividualSnapshot=null;
+function renderOwnerJointIndividualRanking(){
+ if(!ownerJointIndividualMode)return;
+ individualRankingList.replaceChildren();
+ const state=ownerJointIndividualSnapshot;
+ const status=document.getElementById("ownerJointIndividualStatus");
+ if(!state||!Array.isArray(state.people)){
+  status.textContent="合同個人ランキングを確認中です。";
+  individualRankingList.textContent="照合中…";return;
+ }
+ status.textContent=state.complete?
+  "直営＋協力店の件数照合済み（"+state.date+"）":
+  "未報告・未照合があるため順位は暫定表示です。";
+ const rows=[...state.people].sort((a,b)=>b.count-a.count||
+  a.name.localeCompare(b.name,"ja"));
+ individualRankingCount.textContent="合同 "+rows.length+"人・件数順";
+ if(!rows.length){
+  individualRankingList.textContent="表示可能な実績がありません。未報告は0件ではありません。";
+  return;
+ }
+ let prev=null,rank=0;
+ for(const [i,person] of rows.entries()){
+  if(!Number.isSafeInteger(person.count)||person.count<0||
+   typeof person.name!=="string")throw Error("owner_combined_rank_unverified");
+  if(prev!==person.count)rank=i+1;
+  prev=person.count;
+  const row=document.createElement("div");row.className="ranking-row";
+  const left=document.createElement("div");left.className="ranking-left";
+  const number=document.createElement("span");number.className="ranking-number";
+  number.textContent=state.complete?rank+"位":"暫定";
+  if(state.complete&&rank<=3)number.classList.add("top"+rank);
+  const name=document.createElement("span");name.className="ranking-name";
+  name.textContent=person.name;left.append(number,name);
+  const value=document.createElement("div");value.className="ranking-value";
+  const count=document.createElement("span");count.className="ranking-count";
+  count.textContent=person.count+"件";value.append(count);
+  row.append(left,value);individualRankingList.append(row);
+ }
+}
+
 function renderIndividualRanking(
   individualMap
 ) {
   setOwnerCombinedCountCardVisibility("Individual");
+  if(ownerJointIndividualMode){
+   renderOwnerJointIndividualRanking();return;
+  }
   renderOwnerPartnerMonthlyPendingCounts();
 
   individualRankingList.innerHTML =
