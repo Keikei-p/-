@@ -35,35 +35,40 @@ test("invite, teams, staff and products remain operable only through the existin
  assert.match(source,/async function openSameAppPartnerWorkspace/);
 });
 
-test("team details open directly into people, then their product counts; original history team retained",()=>{
- const code=extract("function renderPartnerFlatTeamDetails(parent,report){",
-  "function renderSharedCountTeamDetails(parent,report){");
- const context={document:{createElement:newNode},
+test("partner combined details and owner use shared safe team cards and retain missing companies",()=>{
+ const code=extract("const PARTNER_TEAM_CB_TIERS=",
+  "async function loadSharedDailyStandings(where,force=false){");
+ const ctx={
+  document:{createElement:newNode},
   partnerMainAppendRow(parent,label,value){
    const row=newNode("row");row.label=label;row.value=value;parent.append(row);
-  }};
- vm.runInNewContext(code+";globalThis.render=renderPartnerFlatTeamDetails;",context);
+  }
+ };
+ vm.runInNewContext(code+";this.render=renderPartnerFlatTeamDetails;",ctx);
  const root=newNode("container");
  const report={
   categories:["NURO","SBMNP"],
-  direct:{teams:[{key:"d1",name:"1班",totalCount:2}],
+  direct:{teams:[{key:"d1",name:"1班",totalCount:2,counts:{NURO:2,SBMNP:0}}],
    people:[{name:"本社・佐藤",teamKey:"d1",totalCount:2,counts:{NURO:2,SBMNP:0}}],
    peopleVerified:true},
   companies:[{id:"p1",name:"LinkTh",peopleVerified:true}],
-  teams:[{key:"p1-team1",companyId:"p1",name:"2班",totalCount:4}],
+  teams:[{key:"p1-team1",companyId:"p1",name:"2班",totalCount:4,
+   counts:{NURO:3,SBMNP:1},cbCounts:{NURO:{"0":0,"60000":3,unclassified:0}}}],
   people:[{name:"協力店・田中",companyId:"p1",teamKey:"p1-team1",totalCount:4,
-   counts:{NURO:3,SBMNP:1}}],
+   counts:{NURO:3,SBMNP:1},cbCounts:{NURO:{"60000":3}}}],
   missingCompanies:["未報告の協力店"]
  };
- context.render(root,report);
+ ctx.render(root,report);
+ assert.equal(root.children.length,3);
  assert.equal(root.children[0].tag,"details");
- assert.match(root.children[0].children[0].textContent,/直営・1班.*2件/);
- assert.equal(root.children[1].tag,"details");
- assert.match(root.children[1].children[0].textContent,/LinkTh・2班.*4件/);
- const partnerPerson=root.children[1].children[1];
- assert.match(partnerPerson.children[0].textContent,/協力店・田中.*4件/);
- assert.deepEqual(partnerPerson.children.filter(n=>n.tag==="row").map(n=>[n.label,n.value]),
-  [["NURO","3件"],["SBMNP","1件"]]);
+ assert.match(root.children[0].children[0].children[0].textContent,/直営・1班/);
+ assert.equal(root.children[1].className,"partner-count-team-card");
+ const all=node=>[node.textContent||"",...(node.children||[]).flatMap(all)].join(" ");
+ assert.match(all(root.children[1]),/LinkTh・2班/);
+ assert.match(all(root.children[1]),/合計 4件/);
+ assert.match(all(root.children[1]),/協力店・田中/);
+ assert.match(all(root.children[1]),/CB6万/);
+ assert.match(all(root.children[1]),/SBMNP/);
  assert.equal(root.children[2].label,"🤝 未報告の協力店");
  assert.equal(root.children[2].value,"未報告・0件とは扱いません");
 });
