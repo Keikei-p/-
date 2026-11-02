@@ -44,12 +44,15 @@ jobs:
             if(!resp.ok)throw Error("STOP_AUTH_CONFIG_READ_FAILED");
             const cfg=await resp.json();
             const enabled=cfg?.signIn?.email?.enabled===true;
-            const linkEnabled=cfg?.signIn?.email?.passwordRequired===false;
+            const linkFieldPresent=Object.prototype.hasOwnProperty.call(cfg?.signIn?.email||{},"passwordRequired");
+            const linkValue=cfg?.signIn?.email?.passwordRequired;
+            const linkEnabled=linkValue===false;
             const authorized=Array.isArray(cfg?.authorizedDomains)&&
               cfg.authorizedDomains.includes("nico-factory.web.app");
             console.log("AUTH_READONLY_STATUS "+JSON.stringify({
               project:"sales-management-cc116",emailProviderEnabled:enabled,
-              emailLinkEnabled:linkEnabled,productionDomainAuthorized:authorized,writes:0}));
+              emailLinkEnabledExplicit:linkEnabled,passwordRequiredPresent:linkFieldPresent,
+              passwordRequiredValue:linkFieldPresent?linkValue:"OMITTED",productionDomainAuthorized:authorized,writes:0}));
             if(!enabled||!linkEnabled||!authorized)throw Error("STOP_PARTNER_EMAIL_LINK_AUTH_NOT_READY");
           }catch(e){
             console.error(/^STOP_[A-Z_]+$/.test(e.message)?e.message:"STOP_AUTH_STATUS_REDACTED_FAILURE");
