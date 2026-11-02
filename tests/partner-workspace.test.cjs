@@ -1223,6 +1223,21 @@ test("shared daily standings expose verified partners to both companies without 
  assert.equal(next.companies[0].totalCount,5,"correction replaces, never double counts");
  assert.equal(next.people[0].totalCount,5);
  assert.equal(next.productCounts.SBMNP,0);
+ // A legacy direct record without a verified UID still contributes to the
+ // company and historical team, never to a made-up individual's rank.
+ db.seed("records/legacyMissingPerson",{companyId:"hub",date:"2026-10-31",
+  teamId:"directTeam",teamNameSnapshot:"直営1班",memberNameSnapshot:"名前のみ",
+  results:{nuro:{productName:"NURO",count:2,revenuePerUnit:999999}},
+  totalCount:2,totalRevenue:1999998});
+ const partial=await api.view(req("h",{date:"2026-10-31",sharedRankings:true}));
+ assert.equal(partial.complete,false,"cannot claim complete global individual ranks");
+ assert.equal(partial.direct.peopleVerified,false);
+ assert.equal(partial.direct.unverifiedPersonRecords,1);
+ assert.equal(partial.direct.totalCount,4);
+ assert.equal(partial.direct.teams[0].totalCount,4);
+ assert.equal(partial.direct.people.length,1);
+ assert.equal(partial.direct.people[0].totalCount,2);
+ assert.doesNotMatch(JSON.stringify(partial),/名前のみ|1999998|999999/);
 });
 test("unsubmitted approved companies are not misrepresented as zero-count ranks",async()=>{
  const {db,api,req}=setup();
