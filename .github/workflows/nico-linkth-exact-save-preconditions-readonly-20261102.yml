@@ -255,7 +255,7 @@ jobs:
            const ref=candidates[i],before=await ref.get();
            if(!before.exists)throw Error('STOP_DOC_NOT_EXISTING');
            let outcome='unexpected_success';
-           try{await ref.create({__never_written_diagnostic__:true});}
+           try{await ref.create({diagnosticNoWrite:true});}
            catch(error){outcome=String(error?.code??'unknown')+' '+String(error?.details||'').split(' ')[0].replace(/[^A-Za-z_-]/g,'').slice(0,26);}
            const after=await ref.get();
            if(!after.exists||before.updateTime.toMillis()!==after.updateTime.toMillis()||
