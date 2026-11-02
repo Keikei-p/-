@@ -176,3 +176,28 @@ test("leader invite never exposes the generated token after account switches mid
  assert.equal(f.pInline("pInlineInviteResult").hidden,true);
  assert.match(f.pInline("pInlineInviteFormStatus").textContent,/アカウントか会社が切り替わり/);
 });
+
+test("a successful leader invitation never depends on count refresh or resets unsubmitted counts",async()=>{
+ const run=slice("async function partnerInlineRun(work){","\nfunction partnerInlinePayload(data){");
+ assert.match(inviteScript,/\},\{refresh:false\}\);/,"leader invitation must bypass unrelated count reload");
+ const nodes=new Map();
+ const pInline=id=>{
+  if(!nodes.has(id))nodes.set(id,{disabled:false,value:id==="pInlineStaff"?"staff-1":"",
+   textContent:"",querySelectorAll:()=>[]});
+  return nodes.get(id);
+ };
+ let countReads=0,resetCountInputs=0,displayMessage="";
+ const ctx={pInline,auth:{currentUser:{uid:"leader-1"}},
+  partnerInlineBusy:false,partnerInlineData:{staff:[{id:"staff-1",active:true}]},
+  partnerInlineFetch:async()=>{countReads++;throw Error("counts service offline");},
+  partnerInlineRenderCounts:()=>{resetCountInputs++;},
+  renderPartnerPrivateProductCatalog:()=>{},
+  partnerInlineStatus:x=>{displayMessage=x;},
+  sharedDailyRankingGeneration:0,sharedDailyRankCache:new Map()};
+ await runInNewContext(run+
+  '\npartnerInlineRun(async()=>"認証メールを送信しました。",{refresh:false});',ctx);
+ assert.equal(countReads,0,"a sent invitation is not subject to workspace count API availability");
+ assert.equal(resetCountInputs,0,"unsaved count input cannot be reset by invitation");
+ assert.match(displayMessage,/認証メールを送信しました/);
+ assert.equal(pInline("pInlineSave").disabled,false);
+});
