@@ -49,7 +49,10 @@ function groupPersonalScores(groups,persons,{categories=[]}={}){
  for(const group of groups){
   const categoryKeys=group.keys.filter(x=>x.startsWith("legacy:"))
     .map(x=>x.slice(7));
-  const unmapped=group.keys.some(x=>x.startsWith("id:"));
+  // A hub product ID without any explicitly selected fixed count category is
+  // not a verifiable category mapping. Combining both key kinds does NOT
+  // double-count; only the owner-selected legacy categories contribute once.
+  const unmapped=group.keys.some(x=>x.startsWith("id:"))&&categoryKeys.length===0;
   assert(categoryKeys.every(x=>categoriesSet.has(x)));
   // Refuse a misleading partial group score if not all products are mapped.
   if(unmapped){out.push({id:group.id,name:group.name,complete:false,members:[]});continue;}
