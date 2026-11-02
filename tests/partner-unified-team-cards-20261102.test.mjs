@@ -48,7 +48,7 @@ test("photo-style CB boxes show five tiers and count-only person/product details
  assert.doesNotMatch(content,/¥|￥|売上|単価|収益|報酬|利益|価格|金額/);
  const tiles=[];
  const walk=n=>{if(n.className==="partner-count-team-cb-cell")tiles.push(n);n.children?.forEach(walk);};
- walk(card);assert.equal(tiles.length,5);
+ walk(card);assert.equal(tiles.length,10,"five team CB tiles and five for selected person");
 });
 test("unclassified NURO is labeled separately and never falsely counted as CB0",()=>{
  const ctx=harness();
