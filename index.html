@@ -6387,7 +6387,15 @@ body.product-reordering .product-list {
             <button type="button" data-ranking-cols="3" aria-pressed="false">3列</button>
           </div>
         </div>
-        <label class="ranking-product-scope">
+        <div class="revenue-chart-toolbar" id="ownerJointProductModeControls" style="margin-bottom:12px;">
+          <button type="button" id="ownerJointProductButton" class="team-action-button">直営＋協力店｜選択日</button>
+          <button type="button" id="ownerOriginalProductButton" class="team-action-button">自社のみ｜月間</button>
+          <label class="ranking-product-scope">合同ランキングの日付
+            <input id="ownerJointProductDate" type="date">
+          </label>
+        </div>
+        <p id="ownerJointProductStatus" class="ranking-product-help" role="status">自社の従来ランキングを表示しています。</p>
+        <label class="ranking-product-scope" id="ownerOriginalProductTeamFilter">
           班で絞り込む
           <select id="productRankingTeamSelect">
             <option value="">会社全体</option>
@@ -13448,6 +13456,11 @@ async function loadSharedDailyStandings(where,force=false){
   }
   // Partners and HQ use the very same approved counts, people and products.
   // Choose ONE ranking per card; never show private-only ranks above it.
+  if(named==="Product"&&ownerJointProductMode){
+   ownerJointProductSnapshot=response;
+   renderOwnerJointProductRanking(response);
+   return;
+  }
   if(partner&&partnerSameAppSelectedPanel==="product"){
    if(response.groupStatus!=="verified"||!Array.isArray(response.groupStandings)){
     const warning=document.createElement("p");warning.className="ranking-product-help";
@@ -13483,6 +13496,32 @@ async function loadSharedDailyStandings(where,force=false){
   console.error("shared_daily_ranking_unavailable",error?.code||"unverified");
  }
 }
+
+const ownerJointProductDate=document.getElementById("ownerJointProductDate");
+ownerJointProductDate.value=getTodayString();ownerJointProductDate.max=getTodayString();
+document.getElementById("ownerJointProductButton").onclick=()=>{
+ if(!isCurrentCompanyManager())return;
+ ownerJointProductMode=true;
+ ownerJointProductSnapshot=null;
+ ownerJointProductDateKey=ownerJointProductDate.value;
+ document.getElementById("ownerSharedDateProduct").value=ownerJointProductDateKey;
+ document.getElementById("ownerJointProductStatus").textContent="合同ランキングを確認中…";
+ renderOwnerJointProductRanking(null);
+ void loadSharedDailyStandings("Product",true);
+};
+document.getElementById("ownerOriginalProductButton").onclick=()=>{
+ ownerJointProductMode=false;ownerJointProductSnapshot=null;
+ renderProductMemberRanking(records.filter(r=>r.date?.startsWith(dashboardMonth.value)));
+ document.getElementById("ownerJointProductStatus").textContent="自社の従来の月間ランキングを表示しています。";
+};
+ownerJointProductDate.onchange=()=>{
+ if(!ownerJointProductMode)return;
+ ownerJointProductSnapshot=null;
+ ownerJointProductDateKey=ownerJointProductDate.value;
+ document.getElementById("ownerSharedDateProduct").value=ownerJointProductDateKey;
+ void loadSharedDailyStandings("Product",true);
+};
+
 pInline("partnerSharedRankingsRefresh").onclick=()=>loadSharedDailyStandings("partner",true);
 pInline("pInlineReloadSharedProducts").onclick=()=>void loadPartnerPublishedProductList();
 pInline("ownerSharedRankingsRefresh").onclick=()=>loadSharedDailyStandings("owner",true);
@@ -36108,8 +36147,76 @@ rankingGroupAdd.addEventListener("click", async () => {
   }]);
 });
 
+
+// Existing owner product-rank panel is reused for joint day results.
+// Original revenue controls and monthly ranks remain fully intact.
+let ownerJointProductMode=false,ownerJointProductSnapshot=null,ownerJointProductDateKey="";
+function renderOwnerJointProductRanking(snapshot){
+ if(!ownerJointProductMode)return;
+ productRankingProductList.replaceChildren();
+ productRankingMemberList.replaceChildren();
+ const groups=snapshot?.groupStandings;
+ const status=document.getElementById("ownerJointProductStatus");
+ if(!snapshot||snapshot.groupStatus!=="verified"||!Array.isArray(groups)){
+  status.textContent="合同ランキングを照合できません。既存の自社ランキングに戻して確認できます。";
+  productRankingProductList.textContent="共有商材グループを確認できません。";
+  return;
+ }
+ productRankingCount.textContent="合同 "+groups.length+"グループ";
+ if(!groups.length){
+  productRankingProductList.textContent="共有商材グループが未設定です。本社商材ランキングからグループを協力店へ共有してください。";
+  return;
+ }
+ status.textContent=snapshot.complete?
+  "直営＋協力店の件数を照合済み（"+ownerJointProductDateKey+"）":
+  "未報告の会社・担当者がいます。現在の結果は暫定です。";
+ if(!groups.some(g=>g.id===selectedProductRankingKey))
+  selectedProductRankingKey=groups[0].id;
+ const show=(group)=>{
+  selectedProductRankingKey=group.id;
+  for(const btn of productRankingProductList.querySelectorAll("button"))
+   btn.setAttribute("aria-pressed",String(btn.dataset.groupId===group.id));
+  productRankingMemberList.replaceChildren();
+  productRankingSelectedLabel.textContent=group.name+"｜合同個人ランキング";
+  productRankingMemberCount.textContent=group.complete?
+   group.members.length+"人":"商材IDとの件数区分が未対応";
+  if(!group.complete){
+   productRankingMemberList.textContent="件数区分を確認できないため順位を表示しません。";
+   return;
+  }
+  for(const member of group.members){
+   const row=document.createElement("div");row.className="ranking-row";
+   const left=document.createElement("div");left.className="ranking-left";
+   const rank=document.createElement("span");rank.className="ranking-number";
+   rank.textContent=snapshot.complete?member.rank+"位":"暫定";
+   if(snapshot.complete&&member.rank<=3)rank.classList.add("top"+member.rank);
+   const name=document.createElement("div");name.className="ranking-name";
+   name.textContent=member.name+"｜"+member.companyName;left.append(rank,name);
+   const value=document.createElement("div");value.className="ranking-value";
+   const count=document.createElement("span");count.className="ranking-count";
+   count.textContent=member.count+"件";value.append(count);
+   row.append(left,value);productRankingMemberList.append(row);
+  }
+ };
+ for(const group of groups){
+  const button=document.createElement("button");button.type="button";
+  button.className="ranking-product-card";button.dataset.groupId=group.id;
+  const label=document.createElement("span");
+  label.className="ranking-product-card-name";label.textContent=group.name;
+  button.append(label);button.onclick=()=>show(group);
+  productRankingProductList.append(button);
+ }
+ show(groups.find(g=>g.id===selectedProductRankingKey));
+}
+
 function renderProductMemberRanking(monthly) {
   setOwnerCombinedCountCardVisibility("Product");
+  if(ownerJointProductMode){
+    document.getElementById("ownerOriginalProductTeamFilter").hidden=true;
+    renderOwnerJointProductRanking(ownerJointProductSnapshot);
+    return;
+  }
+  document.getElementById("ownerOriginalProductTeamFilter").hidden=false;
   rankingGroupEditor.hidden = !isCurrentCompanyManager();
   updateRankingLayoutControls("product");
 
