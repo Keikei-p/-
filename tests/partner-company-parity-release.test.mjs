@@ -160,3 +160,30 @@ test("safe hamburger menu mirrors the original while blocking native financial a
  assert.match(html,/mountPartnerSafeManagementMenu\(\)/);
  assert.match(html,/if\(safeAccount\)safeAccount.hidden=true/);
 });
+
+test("shared standings use one verified API and keep financial UI isolated",()=>{
+ const source=scope("let sharedDailyRankingGeneration=0;",
+   "\n// Partner sees original dashboard-style menu, not the finance DOM.");
+ assert.match(source,/readPartnerWorkDay\(payload\)/);
+ assert.match(source,/sharedRankings:true/);
+ assert.match(source,/payload\.workspaceCompanyId=partnerInlineWorkspaceCompany/);
+ assert.match(source,/response\?\.scope!=="shared_counts_only"/);
+ assert.match(source,/response\.includesDirect!==false/);
+ assert.match(source,/!Number\.isSafeInteger\(response\.productCounts\[k\]\)/);
+ assert.match(source,/!recordsReady/);
+ assert.match(source,/recordsSubscribedMonth!==date\.slice\(0,7\)/);
+ assert.match(source,/appendSharedRankingRows\(content,"🏢 会社別件数"/);
+ assert.match(source,/appendSharedRankingRows\(content,"🏆 個人ランキング"/);
+ assert.match(source,/appendSharedRankingRows\(content,"👥 班ランキング"/);
+ assert.match(source,/appendSharedRankingRows\(content,"📦 商材別件数"/);
+ assert.match(source,/complete\?\s*"件数照合済み/);
+ assert.match(source,/未報告・未照合/);
+ for(const marker of ["getDocs(","getDoc(","onSnapshot(","collection(db,",
+   "totalRevenue","revenuePerUnit","canCurrentUserViewUnitPrice("])
+  assert.ok(!source.includes(marker),"unpermitted finance access "+marker);
+ for(const id of ["partnerSharedRankingsSection","partnerSharedRankingsRefresh",
+  "partnerSharedRankingsStatus","partnerSharedRankingContent",
+  "ownerSharedRankingsSection","ownerSharedRankingsRefresh",
+  "ownerSharedRankingsStatus","ownerSharedRankingContent"])
+  assert.equal((html.match(new RegExp('id="'+id+'"','g'))||[]).length,1,id);
+});
