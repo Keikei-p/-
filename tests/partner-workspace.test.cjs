@@ -1345,3 +1345,32 @@ test("partner leader without a representative can manage own count-only custom p
  assert.equal(JSON.stringify(hub).includes(id),false);
  assert.deepEqual(db.store.get("records/old"),original);
 });
+
+
+test("audit history records every saved correction without exposing finance or losing originals",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ const original=clone(db.store.get("records/old"));
+ const finance=clone(db.store.get("products/money"));
+ const team=(await api.manage(req("p",{action:"addTeam",name:"監査班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"監査担当",teamId:team}))).staffId;
+ const id=(await api.manage(req("p",{action:"addPrivateProduct",name:"専用商材"}))).productId;
+ await api.submit(req("p",{date,staffId:staff,counts:{...zero(),NURO:2},
+  privateCounts:{[id]:1},expectedVersion:0}));
+ await api.submit(req("p",{date,staffId:staff,counts:{...zero(),NURO:3},
+  privateCounts:{[id]:2},expectedVersion:1}));
+ assert.equal("audits" in await api.view(req("p",{date})),false);
+ const own=await api.view(req("p",{date,includeAuditHistory:true}));
+ assert.deepEqual(own.audits.map(x=>[x.version,x.previousTotalCount,x.totalCount]),
+  [[1,0,2],[2,2,3]]);
+ assert.equal(own.audits[1].previousCounts.NURO,2);
+ assert.equal(own.audits[1].counts.NURO,3);
+ assert.equal(own.audits[1].previousPrivateTotalCount,1);
+ assert.equal(own.audits[1].privateTotalCount,2);
+ await assert.rejects(api.view(req("h",{date,includeAuditHistory:true})),
+  e=>e.code==="invalid-argument");
+ assert.deepEqual(db.store.get("records/old"),original);
+ assert.deepEqual(db.store.get("products/money"),finance);
+ const text=JSON.stringify(own.audits);
+ for(const k of ["totalRevenue","revenuePerUnit","unitPrice","updatedByUid","createdByUid"])
+  assert.equal(text.includes(k),false);
+});
