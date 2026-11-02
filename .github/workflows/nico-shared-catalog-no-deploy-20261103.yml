@@ -20,12 +20,14 @@ jobs:
         run: |
           node --check functions-partner-workspace/catalog-publication.cjs
           node --check functions-partner-workspace/shared-ranking-groups.cjs
+          node --check functions-partner-workspace/catalog-count-links.cjs
           node --check functions-partner-workspace/service.cjs
           node --check functions-partner-workspace/index.js
       - name: Test publication isolation and preserve existing owner UI
         run: |
           node --test tests/partner-catalog-publication.test.cjs
           node --test tests/partner-shared-ranking-groups.test.cjs
+          node --test tests/partner-catalog-count-links.test.cjs
           node --test tests/partner-shared-catalog-ui-contract.test.cjs
           node --test tests/owner-partner-team-count-screen.test.mjs
           node --test tests/partner-unified-ranks-save-feedback-20261102.test.mjs
