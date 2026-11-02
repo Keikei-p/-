@@ -12160,7 +12160,8 @@ function partnerInviteAuthSettings(invite){
  if(u.origin!==location.origin||!/^[A-Za-z0-9_-]{43}$/.test(u.searchParams.get("partnerStaffInvite")||""))
   throw Error("invalid_partner_invitation_link");
  // Never disclose invitee email in the redirect URL.
- return {url:u.href,handleCodeInApp:true,linkDomain:"nico-factory.web.app"};
+ // Use the Firebase project default Hosting action-link domain; the return URL is the existing app.
+ return {url:u.href,handleCodeInApp:true};
 }
 async function composePartnerInvitationEmail(){
  const send=document.getElementById("partnerInviteSendEmailButton");
