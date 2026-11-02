@@ -13127,7 +13127,7 @@ function partnerSameAppPositionPanel(name){
  const button=[...canonical,...manageButtons].find(b=>b.dataset.partnerPanel===name&&!b.hidden);
  if(!button){grid.before(detail);return;}
  // Keep the opened panel directly below the button's row, also on mobile.
- const siblings=grid.contains(button)?canonical:manageButtons.filter(b=>!b.hidden);
+ const siblings=canonical.includes(button)?canonical:manageButtons.filter(b=>!b.hidden);
  const row=siblings.filter(b=>b.offsetTop===button.offsetTop);
  (row[row.length-1]||button).after(detail);
 }
