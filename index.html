@@ -12427,6 +12427,130 @@ function resetPartnerInline(){
  authScreen.removeAttribute("data-partner-invite");
  pInline("partnerInviteAtMain").hidden=true;
 }
+// Clone the eleven button styles, icons and order from the internal
+// dashboard. Never clone internal event listeners or financial data.
+function mountPartnerCanonicalNavigation(){
+ const original=document.querySelector("#dashboard > .dashboard-app-grid");
+ const target=pInline("partnerSameAppNavigation");
+ if(!original||!target)return false;
+ const tabs=[
+  ["salesAnalysisToggle","analysis","📈","件数分析","班・担当者・商材"],
+  ["individualRankingToggle","individual",null,null,"件数順"],
+  ["productRankingToggle","product",null,null,"件数順"],
+  ["teamRankingToggle","team",null,null,"件数順"],
+  ["revenueChartToggle","chart",null,"件数グラフ","班別の件数"],
+  ["allTeamsOverviewToggle","detail",null,null,"班・担当者"],
+  ["productSummaryToggle","products",null,null,"商材別件数"],
+  ["reportBuilderToggle","report",null,null,"件数報告をコピー"],
+  ["dailyGoalCalculatorToggle","goal",null,null,"件数から計算"],
+  ["dailySummaryToggle","daily",null,null,"日別件数"],
+  ["recordHistoryToggle","history",null,null,"登録・訂正"]
+ ];
+ const destinations={analysis:"partnerPanelAnalysis",individual:"partnerPanelRankings",
+  product:"partnerPanelRankings",team:"partnerPanelRankings",
+  chart:"partnerPanelChart",detail:"partnerPanelDetail",
+  products:"partnerPanelProductSummary",report:"partnerPanelReport",
+  goal:"partnerPanelGoal",daily:"partnerPanelDaily",history:"partnerPanelHistory"};
+ const cards=[];
+ for(const [id,panel,icon,title,meta] of tabs){
+  const originalButton=original.querySelector("#"+id);
+  if(!originalButton)return false;
+  const card=originalButton.cloneNode(true);
+  card.removeAttribute("id");
+  card.removeAttribute("style");
+  card.querySelectorAll("[id]").forEach(node=>node.removeAttribute("id"));
+  card.dataset.partnerPanel=panel;
+  card.setAttribute("aria-pressed","false");
+  card.setAttribute("aria-expanded","false");
+  card.setAttribute("aria-controls",destinations[panel]);
+  if(icon)card.querySelector(".dashboard-app-icon").textContent=icon;
+  if(title)card.querySelector(".dashboard-app-title").textContent=title;
+  card.querySelector(".dashboard-app-meta").textContent=meta;
+  cards.push(card);
+ }
+ target.replaceChildren(...cards);
+ const mount=pInline("partnerInputMount");
+ const input=pInline("partnerPanelRecord");
+ if(input.parentNode!==mount)mount.append(input);
+ // Reuse the same user header placement as the internal company.
+ const userBar=appScreen.querySelector(".user-bar");
+ if(userBar&&userBar.nextElementSibling!==pInline("partnerInlineWorkspace"))
+  userBar.after(pInline("partnerInlineWorkspace"));
+ return true;
+}
+function renderPartnerCountOnlyExtras(){
+ const snap=partnerInlineData;
+ if(!snap||snap.role==="hub")return;
+ const items=Array.isArray(snap.records)?snap.records:[];
+ const teams=snap.teams||[],categories=snap.categories||[];
+ const count=items.reduce((sum,r)=>sum+r.totalCount,0);
+ pInline("pPartnerDailyCount").textContent=count+"件";
+ pInline("pPartnerStaffCount").textContent=new Set(items.map(x=>x.staffId)).size+"人";
+ pInline("pPartnerTeamCount").textContent=teams.filter(t=>t.active).length+"班";
+ const teamById=new Map(teams.map(t=>[t.id,t]));
+ const byTeam=new Map();
+ for(const r of items){
+  const id=r.teamIdSnapshot||"unverified";
+  byTeam.set(id,(byTeam.get(id)||0)+r.totalCount);
+ }
+ const analysis=pInline("pPartnerAnalysis");analysis.replaceChildren();
+ partnerMainAppendRow(analysis,snap.companyName+"｜"+snap.date,count+"件");
+ for(const [id,n] of [...byTeam].sort((a,b)=>b[1]-a[1]))
+  partnerMainAppendRow(analysis,teamById.get(id)?.name||"当時の班未確認",n+"件");
+ const chart=pInline("pPartnerChart");chart.replaceChildren();
+ const max=Math.max(1,...byTeam.values());
+ for(const [id,n] of [...byTeam].sort((a,b)=>b[1]-a[1])){
+  const wrapper=document.createElement("div");wrapper.className="p-inline-row";
+  const name=document.createElement("strong");
+  name.textContent=(teamById.get(id)?.name||"当時の班未確認")+"｜"+n+"件";
+  const track=document.createElement("div");
+  track.style.cssText="height:12px;border-radius:8px;background:var(--card-soft);margin-top:8px;overflow:hidden";
+  const bar=document.createElement("div");
+  bar.style.cssText="height:100%;border-radius:8px;background:var(--primary);width:"+(n/max*100)+"%";
+  track.append(bar);wrapper.append(name,track);chart.append(wrapper);
+ }
+ if(!byTeam.size)partnerMainAppendRow(chart,"まだ実績がありません","選択日を確認してください");
+ const byProduct=new Map(categories.map(key=>[key,0]));
+ for(const item of items)for(const key of categories)
+  byProduct.set(key,byProduct.get(key)+(item.counts?.[key]||0));
+ const products=pInline("pPartnerProductSummary");products.replaceChildren();
+ for(const [key,n] of [...byProduct].sort((a,b)=>b[1]-a[1]))
+  partnerMainAppendRow(products,key,n+"件");
+ const lines=[snap.companyName+"｜"+snap.date+" 営業実績報告",
+  "総件数："+count+"件","報告した担当者："+new Set(items.map(x=>x.staffId)).size+"人",""];
+ for(const [key,n] of byProduct)if(n)lines.push(key+"："+n+"件");
+ pInline("pPartnerReportText").value=lines.join("\n");
+ renderPartnerGoalEstimate();
+}
+function renderPartnerGoalEstimate(){
+ const snap=partnerInlineData,goal=Number(pInline("pPartnerGoalTarget").value);
+ const days=Number(pInline("pPartnerGoalDays").value),out=pInline("pPartnerGoalResult");
+ if(!snap||!Number.isSafeInteger(goal)||goal<0||goal>999999||
+    !Number.isSafeInteger(days)||days<1||days>366){
+  out.textContent="目標件数と残り稼働日数を確認してください。";return;
+ }
+ const actual=snap.records.reduce((n,r)=>n+r.totalCount,0);
+ const remaining=Math.max(0,goal-actual);
+ out.textContent="選択日の件数："+actual+"件｜残り "+remaining+"件｜1日あたり "+Math.ceil(remaining/days)+"件";
+}
+pInline("pPartnerGoalTarget").addEventListener("input",renderPartnerGoalEstimate);
+pInline("pPartnerGoalDays").addEventListener("input",renderPartnerGoalEstimate);
+pInline("pPartnerCopyReport").onclick=async()=>{
+ const button=pInline("pPartnerCopyReport"),status=pInline("pPartnerReportStatus");
+ const report=pInline("pPartnerReportText").value;
+ if(!report){status.textContent="報告内容がありません。";return;}
+ button.disabled=true;
+ try{await navigator.clipboard.writeText(report);status.textContent="件数報告をコピーしました。";}
+ catch{status.textContent="コピーできませんでした。報告内容を選択してコピーしてください。";}
+ finally{button.disabled=false;}
+};
+pInline("pPartnerRecordToggle").onclick=()=>{
+ const panel=pInline("partnerPanelRecord");
+ panel.hidden=!panel.hidden;
+ pInline("pPartnerRecordToggle").setAttribute("aria-expanded",String(!panel.hidden));
+};
+pInline("pPartnerMemberShortcut").onclick=()=>partnerSameAppSelectPanel("members");
+
 // Partner sees original dashboard-style menu, not the finance DOM.
 function renderPartnerRankingOnlyPanel(){
  const snap=partnerInlineData;
@@ -12487,10 +12611,18 @@ function partnerSameAppSelectPanel(name){
  const map={record:"partnerPanelRecord",individual:"partnerPanelRankings",
   product:"partnerPanelRankings",team:"partnerPanelRankings",
   detail:"partnerPanelDetail",daily:"partnerPanelDaily",
-  history:"partnerPanelHistory",members:"partnerPanelMembers"};
+  history:"partnerPanelHistory",members:"partnerPanelMembers",
+  analysis:"partnerPanelAnalysis",chart:"partnerPanelChart",
+  products:"partnerPanelProductSummary",report:"partnerPanelReport",
+  goal:"partnerPanelGoal"};
  if(!Object.hasOwn(map,name))return;
  partnerSameAppSelectedPanel=name;
- for(const id of new Set(Object.values(map)))pInline(id).hidden=id!==map[name];
+ pInline("partnerSameAppDashboardDetails").hidden=name==="record";
+ for(const id of new Set(Object.values(map))){
+  if(id==="partnerPanelRecord")continue; // The input form stays above the dashboard.
+  pInline(id).hidden=id!==map[name];
+ }
+ if(name==="record")pInline("partnerPanelRecord").hidden=false;
  pInline("partnerRankingHeading").textContent=
   ({individual:"🏆 個人ランキング",product:"📦 商材別ランキング",team:"👥 班ランキング"}[name]||"ランキング");
  pInline("partnerSameAppNavigation").querySelectorAll("[data-partner-panel]").forEach(button=>{
@@ -12571,6 +12703,7 @@ function partnerInlineRender(){
  partnerInlineFillSelect("pInlineStaff",staff,
   p=>p.name+"（"+(teamById.get(p.teamId)?.name||"未設定")+"）");
  partnerInlineRenderCounts();
+ renderPartnerCountOnlyExtras();
  // Aggregate day data for the detail and daily views. Rankings reuse
  // the same historical staff-ID-aware renderer after every refresh/tab change.
  const byTeam=new Map(allTeams.map(t=>[t.id,0]));
@@ -12662,6 +12795,7 @@ async function openSameAppPartnerWorkspace(user,workspaceCompanyId=""){
  loginStatus.textContent="ログイン済み・協力店";
  databaseStatus.textContent="件数API";
  pInline("pInlineDate").value=partnerMainDate();
+ mountPartnerCanonicalNavigation();
  partnerSameAppSelectPanel("record");
  await partnerInlineFetch();
 }
