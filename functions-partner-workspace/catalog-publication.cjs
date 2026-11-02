@@ -2,7 +2,7 @@
 // Server-only projection for the original NICO sales product master.
 // The raw master includes price and cashback revenue; NEVER serialize it.
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
-const MONEY=/(?:売上|単価|収益|利益|原価|報酬|価格|\\u00a5|[￥¥$€]|[0-9０-９][0-9０-９,.，]*\\s*(?:万|千)?円|revenue|unitprice|unit_price|cashback|commission)/i;
+const MONEY=/(?:売上|単価|収益|利益|原価|報酬|価格|¥|[￥¥$€]|[0-9０-９][0-9０-９,.，]*\s*(?:万|千)?円|revenue|unitprice|unit_price|cashback|commission)/i;
 function ensure(ok){if(!ok)throw Error("CATALOG_PUBLICATION_INVALID");}
 function validId(id){return typeof id==="string"&&ID.test(id)&&!["__proto__","constructor","prototype"].includes(id);}
 function nameOnly(name){
