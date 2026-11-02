@@ -4386,6 +4386,10 @@ body.product-reordering .product-list {
 <style id="nicoPartnerSameAppStyle">
 #appScreen[data-partner-count-only="true"] > :not(.user-bar):not(#partnerInlineWorkspace){display:none!important}
 #appScreen[data-partner-count-only="true"] .user-bar .management-tab-shell{display:none!important}
+#appScreen:not([data-partner-count-only="true"]) .partner-safe-menu{display:none!important}
+#appScreen[data-partner-count-only="true"] .user-bar .partner-safe-menu{display:block!important}
+#partnerInlineWorkspace #partnerPanelRecord > .p-inline-card{background:transparent;border:0;border-radius:0;padding:0;margin:8px 0}
+#partnerInlineWorkspace .dashboard-app-grid .dashboard-app-button{font:inherit}
 #appScreen[data-partner-count-only="true"] #partnerInlineWorkspace{display:block!important}
 #authScreen[data-partner-invite="true"] .auth-wrapper{display:none!important}
 #partnerInlineWorkspace .p-inline-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin:12px 0}
@@ -12551,6 +12555,94 @@ pInline("pPartnerRecordToggle").onclick=()=>{
 };
 pInline("pPartnerMemberShortcut").onclick=()=>partnerSameAppSelectPanel("members");
 
+// The native menu contains finance/owner actions. Keep its shell visually
+// identical while routing partner actions ONLY to the count-only workspace.
+function mountPartnerSafeManagementMenu(){
+ const bar=appScreen.querySelector(".user-bar-actions");
+ if(!bar)return false;
+ let menu=bar.querySelector(".partner-safe-menu");
+ if(menu)return true;
+ menu=document.createElement("div");
+ menu.className="partner-safe-menu";
+ menu.style.position="relative";
+ const toggle=document.createElement("button");
+ toggle.type="button";toggle.className="management-tab-button";
+ toggle.textContent="☰";toggle.setAttribute("aria-label","管理メニュー");
+ toggle.setAttribute("aria-expanded","false");
+ const panel=document.createElement("div");
+ panel.className="management-tab-panel";panel.hidden=true;
+ const buttons=document.createElement("div");buttons.className="quick-menu";
+ panel.append(buttons);menu.append(toggle,panel);bar.append(menu);
+ const actions=[
+  ["🏢","会社","account"],
+  ["✉️","招待リンク","invite"],
+  ["👥","班管理","members"],
+  ["👤","メンバー","members"],
+  ["📦","商材管理","products"],
+  ["⚙️","アカウント設定","account"]
+ ];
+ const getAccountPanel=()=>{
+  let section=pInline("partnerPanelSafeAccount");
+  if(section)return section;
+  section=document.createElement("section");
+  section.id="partnerPanelSafeAccount";
+  section.className="p-inline-card";section.hidden=true;
+  const title=document.createElement("h3");
+  title.textContent="🏢 会社・アカウント設定";
+  const details=document.createElement("div");
+  details.id="pPartnerSafeAccountDetails";
+  details.className="p-inline-list";
+  section.append(title,details);
+  pInline("partnerSameAppDashboardDetails").append(section);
+  return section;
+ };
+ getAccountPanel();
+ const close=()=>{panel.hidden=true;toggle.setAttribute("aria-expanded","false");};
+ for(const [icon,label,action] of actions){
+  const button=document.createElement("button");
+  button.type="button";button.className="quick-menu-button";
+  const span=document.createElement("span");
+  span.className="quick-menu-icon";span.textContent=icon;
+  button.append(span,document.createTextNode(label));
+  button.onclick=()=>{
+   const snap=partnerInlineData;
+   close();
+   if(!snap)return;
+   if(action==="invite"&&!["leader","owner"].includes(snap.role)){
+    partnerInlineStatus("招待リンクの発行は協力店リーダーが行えます。",true);return;
+   }
+   if(action==="account"){
+    const destination=getAccountPanel(),detail=pInline("pPartnerSafeAccountDetails");
+    detail.replaceChildren();
+    partnerMainAppendRow(detail,"所属会社",snap.companyName);
+    partnerMainAppendRow(detail,"権限",snap.role==="leader"?"リーダー":snap.role==="owner"?"管理者":"メンバー");
+    partnerMainAppendRow(detail,"ログインメール",auth.currentUser?.email||"未設定");
+    pInline("partnerSameAppDashboardDetails").hidden=false;
+    for(const item of pInline("partnerSameAppDashboardDetails").querySelectorAll("[data-partner-view]"))
+     item.hidden=true;
+    destination.hidden=false;
+    partnerSameAppSelectedPanel="account";
+    pInline("partnerSameAppNavigation").querySelectorAll("[data-partner-panel]").forEach(card=>{
+     card.setAttribute("aria-pressed","false");card.setAttribute("aria-expanded","false");
+    });
+   }else{
+    partnerSameAppSelectPanel(action==="invite"?"members":action);
+    if(action==="invite"&&["leader","owner"].includes(snap.role))
+     pInline("pInlineInviteEmail").focus();
+   }
+  };
+  buttons.append(button);
+ }
+ toggle.onclick=()=>{
+  panel.hidden=!panel.hidden;
+  toggle.setAttribute("aria-expanded",String(!panel.hidden));
+ };
+ document.addEventListener("click",event=>{
+  if(!menu.contains(event.target))close();
+ });
+ return true;
+}
+
 // Partner sees original dashboard-style menu, not the finance DOM.
 function renderPartnerRankingOnlyPanel(){
  const snap=partnerInlineData;
@@ -12618,6 +12710,8 @@ function partnerSameAppSelectPanel(name){
  if(!Object.hasOwn(map,name))return;
  partnerSameAppSelectedPanel=name;
  pInline("partnerSameAppDashboardDetails").hidden=name==="record";
+ const safeAccount=pInline("partnerPanelSafeAccount");
+ if(safeAccount)safeAccount.hidden=true;
  for(const id of new Set(Object.values(map))){
   if(id==="partnerPanelRecord")continue; // The input form stays above the dashboard.
   pInline(id).hidden=id!==map[name];
@@ -12796,6 +12890,7 @@ async function openSameAppPartnerWorkspace(user,workspaceCompanyId=""){
  databaseStatus.textContent="件数API";
  pInline("pInlineDate").value=partnerMainDate();
  mountPartnerCanonicalNavigation();
+ mountPartnerSafeManagementMenu();
  partnerSameAppSelectPanel("record");
  await partnerInlineFetch();
 }
