@@ -15,7 +15,7 @@ const userName=document.getElementById('userName'),userEmail=document.getElement
 const stopRealtimeListeners=()=>{},showSuccess=m=>window.__message=m,showError=m=>{throw Error(m)};
 const isCurrentCompanyOwner=()=>true;
 window.__calls=[];window.__snap={role:'leader',companyName:'検証協力店',teamId:'a',categories:['NURO'],teams:[{id:'a',name:'1班',active:true}],staff:[{id:'l',name:'検証リーダー',kind:'account',role:'leader',uid:'l',teamId:'a',active:true}],records:[]};
-const readPartnerWorkDay=async()=>({data:currentUser.uid==='h'?{role:'hub',registeredCompanies:window.__emptyCompanies?[]:[{partnerCompanyId:'partner',name:'検証協力店',active:true,teams:[{id:'a',name:'1班'}]}]}:structuredClone(window.__snap)});
+const readPartnerWorkDay=async()=>{if(currentUser.uid==='h'&&window.__listingError){const e=new Error('unavailable');e.code=window.__listingError;throw e;}return {data:currentUser.uid==='h'?{role:'hub',registeredCompanies:window.__emptyCompanies?[]:[{partnerCompanyId:'partner',name:'検証協力店',active:true,teams:[{id:'a',name:'1班'}]}]}:structuredClone(window.__snap)};};
 const partnerInlineManage=async data=>{window.__calls.push(data);if(data.action==='addTeam')window.__snap.teams.push({id:'b',name:data.name,active:true});if(data.action==='moveStaff')window.__snap.staff.find(x=>x.id===data.staffId).teamId=data.teamId;return {data:{token:'T'.repeat(43)}}};
 const partnerInlineSave=async data=>{window.__calls.push(data);window.__snap.records=[{staffId:data.staffId,counts:data.counts,totalCount:data.counts.NURO,version:data.expectedVersion+1,teamIdSnapshot:'b'}];return {data:{version:data.expectedVersion+1}}};
 const partnerInlineAccept=async data=>{window.__calls.push(data);return {data:{joined:true,partnerCompanyId:'partner',secondaryMembership:false}}};
@@ -60,6 +60,18 @@ const partnerInlineAccept=async data=>{window.__calls.push(data);return {data:{j
   await page.waitForFunction(()=>!document.getElementById('partnerInviteResult').hidden);
   assert.deepEqual(await page.evaluate(()=>window.__calls.at(-1)),{
    action:'hubCreateInvite',companyName:'初めての協力店',role:'leader',email:'member@example.test'});
+  // Reproduce the user's production screenshot: unavailable workspace API is
+  // not an empty partner company list and must never permit invitations.
+  const issuedBefore=await page.evaluate(()=>window.__calls.length);
+  await page.evaluate(async()=>{
+   window.__listingError='functions/not-found';
+   await loadDirectPartnerInviteCompanies();
+  });
+  assert.equal(await page.locator('#partnerInviteCreateButton').isEnabled(),false);
+  assert.equal(await page.locator('#partnerInviteCompanyName option').count(),0);
+  assert.match(await page.textContent('#partnerInviteCompanyStatus'),/APIが本番に公開されていません/);
+  assert.equal(await page.evaluate(()=>window.__calls.length),issuedBefore);
+  await page.evaluate(()=>{window.__listingError=null;});
   await page.evaluate(async()=>{
    currentUser={uid:'l',emailVerified:true,email:'l@example.test',displayName:'検証リーダー'};auth.currentUser=currentUser;
    await showPartnerInviteAtMain(currentUser,partnerMainPendingInvite());
