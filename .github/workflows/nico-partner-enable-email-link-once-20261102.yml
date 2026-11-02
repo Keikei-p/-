@@ -66,7 +66,8 @@ jobs:
               console.log('AUTH_RESULT '+JSON.stringify({emailPasswordEnabled:true,emailLinkEnabled:true,domainAuthorized:true,changed:false,project:'sales-management-cc116'}));
               process.exit(0);
             }
-            if(before.signIn.email.passwordRequired!==true)fail('UNEXPECTED_EMAIL_CONFIG');
+            if(before.signIn.email.passwordRequired!==true&&
+               before.signIn.email.passwordRequired!==undefined)fail('UNEXPECTED_EMAIL_CONFIG');
             // This exact FieldMask does not touch existing sign-in/password users,
             // account objects, allowed domains, other providers, Firestore or data.
             const body={signIn:{email:{passwordRequired:false}}};
@@ -82,13 +83,14 @@ jobs:
             changed=true;
             const after=await read();
             if(after?.signIn?.email?.enabled!==true||
-               after.signIn.email.passwordRequired!==false||
+               after.signIn.email.passwordRequired===true||
                !Array.isArray(after.authorizedDomains)||
                !after.authorizedDomains.includes('nico-factory.web.app'))
               fail('AUTH_READBACK');
             console.log('AUTH_RESULT '+JSON.stringify({project:'sales-management-cc116',
               emailPasswordEnabled:true,emailLinkEnabled:true,domainAuthorized:true,
-              changed,productionDataWrites:0}));
+              changed,productionDataWrites:0,configReadbackFieldPresent:
+                Object.prototype.hasOwnProperty.call(after.signIn.email,'passwordRequired')}));
           }catch(e){
             console.error(/^STOP_[A-Z0-9_]+$/.test(e.message)?e.message:'STOP_AUTH_REDACTED');
             process.exitCode=1;
