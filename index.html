@@ -13491,7 +13491,10 @@ async function partnerInlineRun(work){
   completed=true;resultMessage=message||"更新しました。";
   if(partnerInlineData)partnerInlineStatus(resultMessage);
  }catch(error){
-  const message=error?.message==="save_verify"||error?.message==="refresh_after_write"?
+  const conflict=error?.code==="functions/aborted"||error?.message==="aborted";
+  const message=conflict?
+   "別の担当者が先に件数を更新した可能性があります。上書きせず、入力内容を控えて「更新」で最新件数を確認してください。":
+   error?.message==="save_verify"||error?.message==="refresh_after_write"?
    "保存APIへの送信後、最新データの表示を照合できませんでした。二重登録を避けるため、再登録前に「更新」で最新件数を確認してください。入力内容は保持しています。":
    "保存・招待を確認できませんでした。入力内容は保持しています。権限と通信を確認して再試行してください。";
   partnerInlineStatus(message,true);
@@ -13503,7 +13506,8 @@ async function partnerInlineRun(work){
   if(partnerInlineData&&uid===auth.currentUser?.uid){
    if(completed){
     partnerInlineRenderCounts();
-    if(resultMessage.startsWith("件数の保存"))
+    if(resultMessage.startsWith("件数の保存")||
+      resultMessage.startsWith("登録済みの件数"))
      pInline("pInlineSaveStatus").textContent=resultMessage;
    }else{
     const chosen=pInline("pInlineStaff").value;
@@ -13719,6 +13723,15 @@ pInline("pInlineCopyInvite").onclick=async()=>{
   partnerInlineStatus("招待リンクをコピーしました。");
  }catch{pInline("pInlineInviteUrl").select();partnerInlineStatus("リンクを選択しました。コピーしてください。");}
 };
+function partnerInlineCountsUnchanged(snap,staffId,counts,privateCounts){
+ // Saving an unchanged correction must not create a new audit version.
+ // A first-ever zero-count report is still a legitimate new record.
+ const previous=snap?.records?.find(row=>row.staffId===staffId);
+ if(!previous)return false;
+ return snap.categories.every(key=>previous.counts?.[key]===counts[key])&&
+  Object.entries(privateCounts).every(([id,count])=>
+   (previous.privateCounts?.[id]??0)===count);
+}
 pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
  const snap=partnerInlineData,staffId=pInline("pInlineStaff").value;
  const date=snap?.date,workspace=partnerInlineWorkspaceCompany,uid=auth.currentUser?.uid;
@@ -13745,6 +13758,8 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
   if(!product)throw Error("private_product_unknown");
   if(product.active)privateCounts[id]=n;
  }
+ if(partnerInlineCountsUnchanged(snap,staffId,counts,privateCounts))
+  return "登録済みの件数と同じです。変更がないため訂正履歴は追加していません。";
  const result=(await partnerInlineSave(partnerInlinePayload({
   date,staffId,counts,privateCounts,expectedVersion:before?.version??0
  }))).data;
