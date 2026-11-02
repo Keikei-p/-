@@ -276,6 +276,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    collection(hubId,"partnerCatalogSettings").doc("publication").get()
   ]);
   if(master.size>1000)fail("resource-exhausted");
+  if(master.docs.some(doc=>doc.data()?.companyId!==hubId))fail("data-loss");
   let state,rows;
   try{
    state=loadPublication(settings.exists?settings.data():null);
@@ -298,6 +299,9 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   const productRef=db.collection("products").doc(d.productId);
   const stateRef=collection(s.cid,"partnerCatalogSettings").doc("publication");
   return db.runTransaction(async tx=>{
+   // Revalidate live Owner membership INSIDE the transaction, guarding a role revocation.
+   const fresh=await scope(a.uid,tx);
+   if(fresh.kind!=="hub"||fresh.role!=="owner"||fresh.cid!==s.cid)fail();
    const [productDoc,stateDoc]=await Promise.all([tx.get(productRef),tx.get(stateRef)]);
    const product=productDoc.data()||{};
    if(!productDoc.exists||product.companyId!==s.cid||product.active===false)fail("failed-precondition");
