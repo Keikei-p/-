@@ -50,9 +50,20 @@ async function readDirectDayCounts(db,hubId,date,keys,{maxRecords=MAX_DIRECT_REC
     !Array.isArray(keys)||!keys.length||maxRecords<1||maxRecords>MAX_DIRECT_RECORDS_PER_DAY)
   throw Error("DIRECT_SCOPE_INVALID");
  // Use existing company/date composite query. One bounded read, no writes.
- const snap=await db.collection("records").where("companyId","==",hubId)
-  .where("date","==",date).limit(maxRecords+1).get();
+ const [snap,catalog]=await Promise.all([
+  db.collection("records").where("companyId","==",hubId)
+   .where("date","==",date).limit(maxRecords+1).get(),
+  db.collection("products").where("companyId","==",hubId).limit(301).get()
+ ]);
  if(snap.size>maxRecords)throw Error("DIRECT_READ_BUDGET_EXCEEDED");
+ if(catalog.size>300)throw Error("DIRECT_CATALOG_BUDGET_EXCEEDED");
+ const productNames=new Map();
+ for(const product of catalog.docs){
+  const value=product.data()||{};
+  if(value.companyId!==hubId)throw Error("DIRECT_CATALOG_SCOPE_MISMATCH");
+  if(safeIdentifier(product.id))
+   productNames.set(product.id,safeName(value.name,""));
+ }
  const people=new Map(),teams=new Map(),counts=Object.fromEntries(keys.map(k=>[k,0]));
  let totalCount=0,otherCount=0;
  for(const doc of snap.docs){
@@ -65,7 +76,9 @@ async function readDirectDayCounts(db,hubId,date,keys,{maxRecords=MAX_DIRECT_REC
    const number=Number(result?.count??0);
    if(!Number.isSafeInteger(number)||number<0||number>9999)
     throw Error("DIRECT_INVALID_QUANTITY");
-   const label=mapCategory(result.productName||result.productNameSnapshot||row.productNameSnapshot,keys);
+   const productName=result.productNameSnapshot||result.productName||
+    productNames.get(result.productId)||row.productNameSnapshot||"";
+   const label=mapCategory(productName,keys);
    if(label===OTHER)otherCount+=number;else{daily[label]+=number;counts[label]+=number;}
    n+=number;
   }
