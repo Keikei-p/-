@@ -1264,3 +1264,27 @@ test("direct redaction fails closed on overflow and malformed legacy counts",asy
  db.store.get("records/new01").totalCount=999;
  await assert.rejects(readDirectDayCounts(db,"hub",date,KEYS,{maxRecords:2}),/DIRECT_TOTAL_MISMATCH/);
 });
+
+test("internal member can read approved count-only standings but cannot manage partner data",async()=>{
+ const {db,api,req,zero}=setup();
+ db.seed("users/x",{uid:"x",companyId:"hub",companyRole:"member",role:"member",
+  active:true,canViewRevenue:false,canViewUnitPrice:false,accessKind:"internal"});
+ db.seed("companies/hub/members/x",{uid:"x",companyId:"hub",companyRole:"member",
+  role:"member",active:true,canViewRevenue:false,canViewUnitPrice:false,accessKind:"internal"});
+ db.seed("records/memberSale",{uid:"x",companyId:"hub",date:"2026-10-31",
+  teamId:"ti",teamNameSnapshot:"直営2班",memberNameSnapshot:"社員",
+  totalCount:1,totalRevenue:2222,
+  results:{n:{productName:"NURO",count:1,revenuePerUnit:2222}}});
+ const ranking=await api.view(req("x",{date:"2026-10-31",sharedRankings:true}));
+ assert.equal(ranking.role,"hub");
+ assert.equal(ranking.includesDirect,true);
+ assert.equal(ranking.direct.totalCount,1);
+ assert.equal(ranking.direct.people[0].name,"社員");
+ assert.doesNotMatch(JSON.stringify(ranking),/2222|revenuePerUnit|totalRevenue|canViewRevenue|@example.com/);
+ await assert.rejects(api.view(req("x",{date:"2026-10-31"})),{code:"permission-denied"});
+ await assert.rejects(api.manage(req("x",{action:"hubCreateInvite",
+  companyName:"不正",role:"member",email:"n@example.com"})),{code:"permission-denied"});
+ const account=db.store.get("companies/hub/members/x");
+ account.active=false;
+ await assert.rejects(api.view(req("x",{date:"2026-10-31",sharedRankings:true})),{code:"permission-denied"});
+});
