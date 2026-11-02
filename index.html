@@ -13465,6 +13465,14 @@ async function partnerInlineRun(work){
  const uid=auth.currentUser?.uid;
  let completed=false;
  partnerInlineBusy=true;
+ // A date/staff change or a second tap during an asynchronous save must never
+ // change what day/person gets verified. Preserve input values on any failure.
+ const locks=["pInlineDate","pInlineRecordDate","pInlineStaff","pInlineRefresh",
+  "pInlineZero","pInlineClear"].map(pInline).filter(Boolean);
+ const fields=pInline("pInlineCountFields");
+ if(fields?.querySelectorAll)locks.push(...fields.querySelectorAll("input"));
+ const prior=locks.map(node=>node.disabled);
+ locks.forEach(node=>{node.disabled=true;});
  pInline("pInlineSave").disabled=true;
  try{
   const message=await work();
@@ -13474,12 +13482,21 @@ async function partnerInlineRun(work){
   ++sharedDailyRankingGeneration;sharedDailyRankCache.clear();
   await partnerInlineFetch();
   completed=true;
-  if(partnerInlineData)partnerInlineStatus(message||"更新しました。");
- }catch{
-  partnerInlineStatus("保存・招待を確認できませんでした。入力内容は保持しています。権限と通信を確認して再試行してください。",true);
- }finally{
-  partnerInlineBusy=false;
   if(partnerInlineData){
+   partnerInlineStatus(message||"更新しました。");
+   if(message?.startsWith("件数の保存"))pInline("pInlineSaveStatus").textContent=message;
+  }
+ }catch(error){
+  const message=error?.message==="save_verify"?
+   "保存APIへの送信後、件数の再照合に失敗しました。二重操作を避けるため、再登録前に「更新」で最新件数を確認してください。入力内容は保持しています。":
+   "保存・招待を確認できませんでした。入力内容は保持しています。権限と通信を確認して再試行してください。";
+  partnerInlineStatus(message,true);
+  if(error?.message==="save_verify"&&pInline("pInlineSaveStatus"))
+   pInline("pInlineSaveStatus").textContent=message;
+ }finally{
+  locks.forEach((node,i)=>{node.disabled=prior[i];});
+  partnerInlineBusy=false;
+  if(partnerInlineData&&uid===auth.currentUser?.uid){
    if(completed)partnerInlineRenderCounts();
    else{
     const chosen=pInline("pInlineStaff").value;
@@ -13493,9 +13510,36 @@ async function partnerInlineRun(work){
 function partnerInlinePayload(data){
  return {...data,...(partnerInlineWorkspaceCompany?{workspaceCompanyId:partnerInlineWorkspaceCompany}:{})};
 }
-pInline("pInlineDate").onchange=partnerInlineFetch;
-pInline("pInlineRefresh").onclick=partnerInlineFetch;
-pInline("pInlineStaff").onchange=partnerInlineRenderCounts;
+function partnerInlineChangeDate(which){
+ if(partnerInlineBusy)return;
+ const next=pInline(which).value,previous=partnerInlineData?.date;
+ if(previous&&next!==previous&&partnerInlineHasUnsavedCounts()&&
+    !window.confirm("入力途中の件数が残っています。保存せず日付を変更しますか？")){
+  pInline("pInlineDate").value=previous;
+  pInline("pInlineRecordDate").value=previous;
+  return;
+ }
+ pInline("pInlineDate").value=next;
+ pInline("pInlineRecordDate").value=next;
+ if(next!==previous)void partnerInlineFetch();
+}
+pInline("pInlineDate").onchange=()=>partnerInlineChangeDate("pInlineDate");
+pInline("pInlineRecordDate").onchange=()=>partnerInlineChangeDate("pInlineRecordDate");
+pInline("pInlineRefresh").onclick=()=>{
+ if(partnerInlineBusy)return;
+ if(partnerInlineHasUnsavedCounts()&&
+    !window.confirm("入力途中の件数が残っています。保存せず最新データに更新しますか？"))return;
+ void partnerInlineFetch();
+};
+pInline("pInlineStaff").onchange=()=>{
+ if(partnerInlineBusy)return;
+ if(partnerInlineHasUnsavedCounts()&&
+    !window.confirm("入力途中の件数が残っています。保存せず担当者を変更しますか？")){
+  pInline("pInlineStaff").value=partnerInlineEditingStaffId;
+  return;
+ }
+ partnerInlineRenderCounts();
+};
 function partnerInlineClearFields(){
  for(const input of pInline("pInlineCountFields").querySelectorAll("input:not([readonly])"))
   input.value="0";
@@ -13507,6 +13551,10 @@ pInline("pInlineClear").onclick=()=>{
 };
 pInline("pInlineZero").onclick=()=>{
  if(partnerInlineBusy||!partnerInlineData)return;
+ const staffId=pInline("pInlineStaff").value;
+ const existing=partnerInlineData.records.find(row=>row.staffId===staffId);
+ if(existing&&((existing.totalCount||0)>0||(existing.privateTotalCount||0)>0)&&
+    !window.confirm("登録済みの件数を0件に訂正します。過去の訂正履歴は残ります。続行しますか？"))return;
  partnerInlineClearFields();
  pInline("pInlineSave").click();
 };
