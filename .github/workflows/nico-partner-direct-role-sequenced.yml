@@ -19,7 +19,7 @@ concurrency:
   group: nico-partner-direct-role-review-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  validate:
+  legacy-direct-role-validate:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -67,8 +67,8 @@ jobs:
     concurrency:
       group: nico-partner-workspace-production
       cancel-in-progress: false
-    needs: validate
-    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && needs.validate.result == 'success' && inputs.reviewed_main_sha == github.sha && inputs.release_confirmation == 'CONFIRM_DIRECT_ROLE_FUNCTIONS_THEN_INDEX' }}
+    needs: legacy-direct-role-validate
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && needs.legacy-direct-role-validate.result == 'success' && inputs.reviewed_main_sha == github.sha && inputs.release_confirmation == 'CONFIRM_DIRECT_ROLE_FUNCTIONS_THEN_INDEX' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
