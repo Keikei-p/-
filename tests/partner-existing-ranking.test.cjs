@@ -186,6 +186,10 @@ test("actual quick + staff count API merge prioritizes staff ledger without doub
  const ranked=ctx.buildGroupedProductMemberRanking([...internal,...virtual],"",joined);
  assert.equal(ranked.find(x=>x.name==="NURO光").count,6,
   "direct NURO 4 plus partner staff NURO 2");
+ assert.equal(ranked.find(x=>x.name==="NURO光").members.length,1,
+  "partner company aggregate must NOT appear as an invented individual");
+ assert.equal(ranked.find(x=>x.name==="NURO光").members[0].name,"直営A",
+  "only a verified real person gets an individual rank");
  assert.equal(ranked.find(x=>x.name==="新電力").count,3,
   "partner combined electricity entries counted in existing new-electricity group");
  assert.equal(ranked.find(x=>x.name==="乗り換え丸件").count,2,
