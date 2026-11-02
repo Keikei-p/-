@@ -17,7 +17,9 @@ test("first-time and secondary partner logins retain password flow and use verif
  const callback=between(html,'pInline("pMainAcceptInvite").onclick=async()=>','// Partner onboarding: email is verified');
  assert.match(callback,/rememberPartnerWorkspace\(user.uid,result.partnerCompanyId\)/);
  const routing=between(html,"onAuthStateChanged(","/\* =====================================================\n   ユーザー情報読み込み");
- assert.match(routing,/let partnerWorkspaceId=explicitPartnerWorkspace\|\|rememberedPartnerWorkspace\(user.uid\)/);
+ assert.match(routing,/let partnerWorkspaceId=explicitPartnerWorkspace\|\|\s*\(ownCompanyPreferred\?"":rememberedPartnerWorkspace\(user.uid\)\)/);
+ assert.match(routing,/const ownCompanyPreferred=partnerMainOwnCompanyPreferred\(user.uid\)/);
+ assert.match(routing,/if\(!partnerWorkspaceId&&!ownCompanyPreferred\)/);
  assert.match(routing,/await openSameAppPartnerWorkspace\(user,partnerWorkspaceId\)/);
  assert.match(routing,/resolveSecondaryWorkspace:true/);
  assert.match(routing,/result\?\.scope==="partner_workspace_lookup"/);
