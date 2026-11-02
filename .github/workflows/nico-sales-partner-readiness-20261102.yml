@@ -1,0 +1,145 @@
+name: NICO sales partner latest production readiness (READ ONLY)
+on:
+  push:
+    branches: [release/nico-sales-partner-readiness-20261102]
+    paths: [.github/workflows/nico-sales-partner-readiness-20261102.yml]
+permissions:
+  contents: read
+concurrency:
+  group: nico-sales-partner-readiness-readonly
+  cancel-in-progress: false
+jobs:
+  source-and-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Pin exactly reviewed latest source and preserve original finance and Rules
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object index.html)" = '4835ccce2d2d8ddf9cc5ad0924dcad113d23eee0'
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = '55b16051c09810778f79256097446aa0dec1b36e'
+          test "$(git hash-object functions-partner-workspace/shared-direct-counts.cjs)" = '6f66771256f5790dbe18bed6b9e50d01cb3adcad'
+          test "$(git hash-object functions-partner-workspace/index.js)" = '38da7e9174ffea7c406c92292dccfc651b565eb0'
+          test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
+          test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
+          test "$(git hash-object firebase.partner-workspace.json)" = 'a6ceedec5fab4e22e0a8efe19c685716a2db9750'
+          test "$(git hash-object tools/hosting/surgical-existing-index.mjs)" = '1c6923e06135dc480e11f342e44f5e74f8c5bbc7'
+          node -e "const f=require('fs');if(JSON.parse(f.readFileSync('.firebaserc','utf8')).projects.default!=='sales-management-cc116')process.exit(1)"
+          node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/shared-direct-counts.cjs
+          node --check functions-partner-workspace/index.js
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const html=fs.readFileSync('index.html','utf8');
+          const script=html.match(/<script type="module">([\s\S]*?)<\/script>/)?.[1];
+          if(!script||!html.includes('sharedRankings:true')||!html.includes('partnerSameAppNavigation')||
+             !html.includes('monthlyRevenue')||!html.includes('signInWithEmailAndPassword'))
+            throw Error('STOP_ORIGINAL_FINANCE_OR_PARTNER_LOGIN_MISSING');
+          fs.writeFileSync('/tmp/nico-sales-candidate.mjs',script);
+          NODE
+          node --check /tmp/nico-sales-candidate.mjs
+      - name: Finance, history, login, CB, invites and joint count regressions (NO WRITES)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/partner-workspace.test.cjs
+          node --test tests/partner-shared-direct-redaction.test.cjs
+          node --test tests/partner-money-free-workspace.test.cjs
+          node --test tests/internal-owner-finance-visibility.test.cjs
+          node --test tests/partner-one-login-same-app.test.cjs
+          node --test tests/partner-email-resend-and-join.test.mjs
+          node --test tests/dashboard-inline-original-partner-parity.test.mjs
+          node --test tests/partner-repeat-login-cb-parity.test.mjs
+          node --test tests/partner-management-tabs-parity.test.mjs
+          node --test tests/partner-company-parity-release.test.mjs
+          node --test tests/partner-existing-ranking.test.cjs
+          echo PASS_CANDIDATE_NO_DEPLOY
+  production-readonly:
+    needs: source-and-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify existing public site and anonymous partner API rejection
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --max-time 35 https://nico-factory.web.app/ > "$RUNNER_TEMP/nico-live-before.html"
+          grep -Fq '営業実績管理' "$RUNNER_TEMP/nico-live-before.html"
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 25 -X POST -H 'Content-Type: application/json' \
+            --data '{"data":{}}' 'https://asia-northeast1-sales-management-cc116.cloudfunctions.net/getPartnerWorkspace')
+          case "$code" in 401|403) echo PASS_ANONYMOUS_API_REJECTED ;; *) echo "STOP_ANONYMOUS_API_STATUS_$code"; exit 1;; esac
+          echo PASS_PUBLIC_SITE_GET_NO_WRITE
+      - name: Load existing protected read-only Firebase identity
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_SERVICE_ACCOUNT_JSON:-}" || { echo STOP_NO_EXISTING_CREDENTIAL; exit 1; }
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-readonly.json"
+          chmod 600 "$RUNNER_TEMP/nico-readonly.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-readonly.json" >> "$GITHUB_ENV"
+      - name: Install only existing audit dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+          npm install --prefix functions-partner-workspace --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Verify deployed Finance Rules, recent backup and existing callable functions (GET only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {createRequire} from 'node:module';
+          import {createHash} from 'node:crypto';
+          import {inspect} from './tools/production/inspect-firestore-backups-readonly.mjs';
+          const require=createRequire(process.cwd()+'/functions/package.json');
+          const cred=require('firebase-admin/app').applicationDefault();
+          const token=(await cred.getAccessToken()).access_token;
+          const get=async url=>{
+            const r=await fetch(url,{headers:{Authorization:'Bearer '+token},redirect:'error'});
+            if(!r.ok)throw Error('STOP_GCP_READONLY_'+r.status);
+            return r.json();
+          };
+          const root='https://firebaserules.googleapis.com/v1/';
+          const rel=await get(root+'projects/sales-management-cc116/releases/cloud.firestore');
+          const rule=await get(root+rel.rulesetName);
+          if(rule.source?.files?.length!==1)throw Error('STOP_RULES_UNVERIFIED');
+          const digest=createHash('sha256').update(rule.source.files[0].content.replace(/\r\n/g,'\n').trim()).digest('hex');
+          if(digest!=='d1d9998d874a1a31c81ddf6996e08cd9de3a3d13bd684e245140bf03cab32179')
+            throw Error('STOP_FINANCE_RULES_CHANGED');
+          const backups=await inspect();
+          const age=Date.now()-Date.parse(backups.latestReadySnapshot||'');
+          if(!backups.readyBackups||!Number.isFinite(age)||age<0||age>48*3600000)
+            throw Error('STOP_BACKUP_NOT_RECENT');
+          for(const name of ['getPartnerWorkspace','managePartnerWorkspace','acceptPartnerWorkspaceInvite',
+            'submitPartnerWorkspaceCounts','createPartnerCompanyInvitation','sendMissingReportReminders']){
+            const fn=await get('https://cloudfunctions.googleapis.com/v2/projects/sales-management-cc116/locations/asia-northeast1/functions/'+name);
+            if(fn.state!=='ACTIVE'||fn.environment!=='GEN_2')
+              throw Error('STOP_ORIGINAL_FUNCTION_NOT_ACTIVE_'+name);
+          }
+          console.log('PASS_LIVE_RULES_BACKUP_AND_ORIGINAL_FUNCTIONS_READONLY');
+          NODE
+      - name: Inspect full Hosting release and preserve-all-assets plan (DRY RUN)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/hosting/surgical-existing-index.mjs --dry-run
+          echo PASS_EXISTING_SITE_MANIFEST_PRESERVATION
+          echo NOT_RELEASED_REAL_UID_INVITE_PASSWORD_SAVE_FINANCE_E2E_UNVERIFIED
+      - name: Remove temporary identity
+        if: always()
+        run: rm -f "$RUNNER_TEMP/nico-readonly.json" "$RUNNER_TEMP/nico-live-before.html"
