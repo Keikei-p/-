@@ -8,7 +8,9 @@ const verifier=read('tools/production/release-partner-boundary.mjs');
 test('one-time trigger is exact main-push workflow path, no repeat schedule',()=>{
  assert.match(wf,/push:\s*\n\s*branches: \[main\]/);
  assert.match(wf,/paths:\s*\n\s*- '\.github\/workflows\/nico-partner-boundary-verify-once\.yml'/);
- assert.doesNotMatch(wf,/schedule:|cron:|pull_request:|workflow_dispatch:/);
+ assert.match(wf,/pull_request:[\\s\\S]*branches: \\[main\\]/);
+ assert.doesNotMatch(wf,/schedule:|cron:|workflow_dispatch:/);
+ assert.match(wf,/github\.event_name == 'push'/);
  assert.match(wf,/STOP_MAIN_CHANGED/);
  assert.match(wf,/group: firebase-rules-production/);
  assert.match(wf,/cancel-in-progress: false/);
