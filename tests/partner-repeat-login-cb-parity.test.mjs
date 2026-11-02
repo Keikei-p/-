@@ -49,6 +49,7 @@ test("count-only CB saves use total validation, versioned audit, and no sales so
   "const oldCb=oldSnap.exists?validateCbCounts(old.cbCounts,priorCounts):null",
   "cbCounts:nextCb",
   "previousCbCounts:oldCb",
+  "workLocation","previousWorkLocation",
   "tx.update(summary,sum)",
  ]) assert.ok(backend.includes(marker),marker);
  assert.doesNotMatch(backend,/db\.collection\("(?:products|records|recordCorrections|revenueGoals)"\)/);
@@ -59,10 +60,12 @@ test("count-only CB saves use total validation, versioned audit, and no sales so
  assert.doesNotMatch(resolver,/tx\.|\.update\(|\.create\(|\.delete\(/);
  const save=between(html,'pInline("pInlineSave").onclick=','// Original internal owner sees existing teams');
  for(const marker of ["partnerInlineSelectedCb()","counts[key]=parsedCb.total",
-  "date,staffId,counts,cbCounts,privateCounts,expectedVersion:",
+  "date,staffId,counts,cbCounts,workLocation,privateCounts,expectedVersion:",
   "saved.cbCounts?.NURO?.[tier]","partnerInlineCountsUnchanged"])
   assert.ok(save.includes(marker),marker);
  assert.match(html,/function partnerInlineClearFields\(\)/);
+ assert.match(html,/id="pInlineWorkLocation"/);
+ assert.match(html,/saved.workLocation!==workLocation/);
 });
 test("cashback count parser rejects NaN and overflows, accepts 0 and 5 plan cells",()=>{
  const source=between(html,"const PARTNER_NURO_CB_TIERS=","function partnerInlineHasUnsavedCounts(){");
