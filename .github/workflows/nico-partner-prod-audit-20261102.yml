@@ -36,6 +36,7 @@ jobs:
           export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/nico-audit-key.json"
           trap 'rm -f "$RUNNER_TEMP/nico-audit-key.json"' EXIT
           npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund >/dev/null
+          node tools/hosting/surgical-existing-index.mjs --dry-run
           node --input-type=module <<'NODE'
           import {createRequire} from 'node:module';
           import {createHash} from 'node:crypto';
