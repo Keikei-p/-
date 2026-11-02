@@ -12620,6 +12620,86 @@ async function loadOwnerPartnerCompanyTeams(){
    "協力店APIの公開・オーナー権限・件数利用の承認を確認してください。");
  }
 }
+// Original owner 班別詳細: secure, on-demand company -> team -> product counts.
+let ownerPartnerDashboardNonce=0;
+pInline("ownerPartnerDashboardDate").value=getTodayString();
+pInline("ownerPartnerDashboardDate").max=getTodayString();
+pInline("ownerPartnerDashboardRefresh").onclick=async()=>{
+ const nonce=++ownerPartnerDashboardNonce;
+ const list=pInline("ownerPartnerDashboardList"),status=pInline("ownerPartnerDashboardStatus");
+ list.replaceChildren();
+ if(!canLoadPartnerRanking()){
+  status.textContent="自社オーナーのみ協力店の班別詳細を確認できます。";return;
+ }
+ const uid=currentUser.uid,date=pInline("ownerPartnerDashboardDate").value;
+ let valid=false;
+ try{valid=/^\d{4}-\d{2}-\d{2}$/.test(date)&&date<=getTodayString()&&
+  new Date(date+"T00:00:00Z").toISOString().slice(0,10)===date;}catch{}
+ if(!valid){status.textContent="確認日を選んでください。";return;}
+ status.textContent="協力店の会社一覧を取得しています…";
+ const validSession=()=>nonce===ownerPartnerDashboardNonce&&currentUser?.uid===uid&&
+  canLoadPartnerRanking()&&pInline("ownerPartnerDashboardDate").value===date;
+ try{
+  const response=(await readPartnerWorkDay({date})).data;
+  if(!validSession())return;
+  if(response?.role!=="hub"||!Array.isArray(response.registeredCompanies)||
+     response.registeredCompanies.length>100)throw Error("invalid_partner_companies");
+  for(const company of response.registeredCompanies){
+   if(!/^[A-Za-z0-9_-]{1,128}$/.test(company.partnerCompanyId||"")||
+      typeof company.name!=="string"||!Array.isArray(company.teams)||
+      typeof company.active!=="boolean")throw Error("invalid_partner_company");
+   const card=document.createElement("details");card.className="p-inline-card";
+   const header=document.createElement("summary");
+   header.textContent="🤝 "+company.name+"｜"+company.teams.length+"班"+
+    (company.active?"":"（件数利用停止中）");
+   card.append(header);
+   const teams=document.createElement("div");teams.className="team-list";
+   card.append(teams);list.append(card);
+   let loaded=false;
+   card.addEventListener("toggle",async()=>{
+    if(!card.open||loaded||!validSession()||!company.active)return;
+    loaded=true;teams.textContent="班別件数を取得中…";
+    try{
+     const res=(await readPartnerWorkDay({date,partnerCompanyId:company.partnerCompanyId})).data;
+     if(!validSession())return;
+     const info=res?.partnerTeamDetails;
+     if(res?.role!=="hub"||info?.scope!=="shared_counts_only"||
+        info.partnerCompanyId!==company.partnerCompanyId||
+        !Array.isArray(info.teams)||info.teams.length>150)
+      throw Error("invalid_partner_team_details");
+     teams.replaceChildren();
+     for(const team of info.teams){
+      if(typeof team.name!=="string"||!Number.isSafeInteger(team.totalCount)||
+         !team.counts||typeof team.counts!=="object")
+       throw Error("invalid_partner_team");
+      const row=document.createElement("details");row.className="p-inline-row";
+      const name=document.createElement("summary");
+      name.textContent=team.name+"｜"+team.totalCount+"件（登録"+team.reportedStaffCount+"人）";
+      row.append(name);
+      for(const [key,n] of Object.entries(team.counts)){
+       if(!PARTNER_QUICK_RANK_KEYS.includes(key)||!Number.isSafeInteger(n)||n<0)
+        throw Error("invalid_partner_product");
+       if(n)partnerMainAppendRow(row,key,n+"件");
+      }
+      teams.append(row);
+     }
+     if(!info.teams.length)teams.textContent="登録されている班はありません。";
+     if(info.unverifiedTeamCount>0)
+      partnerMainAppendRow(teams,"班未確認の実績",info.unverifiedTeamCount+"件");
+    }catch(error){
+     if(validSession())teams.textContent="班別件数を確認できません。再読み込みしてください。";
+     loaded=false;
+    }
+   });
+  }
+  status.textContent=response.registeredCompanies.length+
+   "社。会社を開くと班・商材別件数を表示します。未報告は0件と扱いません。";
+ }catch(error){
+  if(!validSession())return;
+  list.replaceChildren();status.textContent="会社一覧を取得できません。";
+ }
+};
+
 async function showPartnerInviteAtMain(user,invite){
  // Invite acceptance is an explicit action; never accept while loading login.
  stopRealtimeListeners();
@@ -32560,6 +32640,8 @@ function renderAllTeamsOverview(
   monthly = []
 ) {
 
+  // Keep legacy finance tabs private while rendering an owner-only COUNT-ONLY tree.
+  pInline("ownerPartnerDashboardDetails").hidden=!canLoadPartnerRanking();
   allTeamsOverviewList.innerHTML =
     "";
 
