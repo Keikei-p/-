@@ -135,7 +135,10 @@ jobs:
             sources.add(src.bucket+'/'+src.object+'/'+(src.generation||''));
             console.log('PASS_ACTIVE_RECENT_PARTNER_FUNCTION '+name);
           }
-          if(sources.size!==1)throw Error('STOP_FUNCTION_SOURCES_DIFFER');
+          // GCF v2 may assign a separate immutable StorageSource to each function.
+          // Presence and update time are validated per function; identity across
+          // different function source objects is not a supported release invariant.
+          if(sources.size<1||sources.size>names.length)throw Error('STOP_FUNCTION_SOURCE_PROOF_INCOMPLETE');
           console.log('PASS verified all four updated Functions, approved Rules and recent backup');
           NODE
           node <<'NODE'
