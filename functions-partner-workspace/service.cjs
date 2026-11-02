@@ -682,6 +682,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      const key=crypto.createHash("sha256").update(cid+"\n"+e.staffId)
       .digest("hex");
      members.push({key,name:safeName,companyName:company.name,
+      companyId:cid,teamKey:crypto.createHash("sha256").update(cid+"\nteam\n"+tid).digest("hex"),
       teamName:savedTeams.get(tid)||"登録当時の班未確認",
       totalCount:item.total,counts:item.counts});
      const bucket=group.get(tid)||{name:savedTeams.get(tid)||"登録当時の班未確認",
@@ -703,7 +704,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      people.push(...members);
      for(const [tid,item] of group)teams.push({
       key:crypto.createHash("sha256").update(cid+"\nteam\n"+tid).digest("hex"),
-      companyName:company.name,...item
+      companyId:cid,companyName:company.name,...item
      });
     }
    }
