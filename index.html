@@ -13883,14 +13883,16 @@ pInline("pInlineCopyInvite").onclick=async()=>{
   partnerInlineStatus("招待リンクをコピーしました。");
  }catch{pInline("pInlineInviteUrl").select();partnerInlineStatus("リンクを選択しました。コピーしてください。");}
 };
-function partnerInlineCountsUnchanged(snap,staffId,counts,privateCounts){
+function partnerInlineCountsUnchanged(snap,staffId,counts,privateCounts,cbCounts=null){
  // Saving an unchanged correction must not create a new audit version.
  // A first-ever zero-count report is still a legitimate new record.
  const previous=snap?.records?.find(row=>row.staffId===staffId);
  if(!previous)return false;
  return snap.categories.every(key=>previous.counts?.[key]===counts[key])&&
   Object.entries(privateCounts).every(([id,count])=>
-   (previous.privateCounts?.[id]??0)===count);
+   (previous.privateCounts?.[id]??0)===count)&&
+  (!cbCounts||PARTNER_NURO_CB_TIERS.every(tier=>
+   (partnerUiCbCountSnapshot(previous)[tier]??0)===(cbCounts.NURO?.[tier]??0)));
 }
 pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
  const snap=partnerInlineData,staffId=pInline("pInlineStaff").value;
@@ -13899,7 +13901,10 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
     date!==pInline("pInlineRecordDate").value)throw Error("date_changed");
  if(!snap.staff.some(p=>p.id===staffId&&p.active))throw Error("staff");
  const counts=Object.create(null);
+ const parsedCb=partnerInlineSelectedCb();
+ const cbCounts={NURO:parsedCb.result};
  for(const key of snap.categories){
+  if(key==="NURO"){counts[key]=parsedCb.total;continue;}
   const node=[...pInline("pInlineCountFields").querySelectorAll("input[data-count-key]")]
     .find(x=>x.dataset.countKey===key);
   const n=Number(node?.value);
@@ -13918,10 +13923,10 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
   if(!product)throw Error("private_product_unknown");
   if(product.active)privateCounts[id]=n;
  }
- if(partnerInlineCountsUnchanged(snap,staffId,counts,privateCounts))
+ if(partnerInlineCountsUnchanged(snap,staffId,counts,privateCounts,cbCounts))
   return "登録済みの件数と同じです。変更がないため訂正履歴は追加していません。";
  const result=(await partnerInlineSave(partnerInlinePayload({
-  date,staffId,counts,privateCounts,expectedVersion:before?.version??0
+  date,staffId,counts,cbCounts,privateCounts,expectedVersion:before?.version??0
  }))).data;
  if(uid!==auth.currentUser?.uid||workspace!==partnerInlineWorkspaceCompany)
   throw Error("save_verify");
@@ -13933,6 +13938,8 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
     result.version!==(before?.version??0)+1||saved.version!==result.version||
     saved.totalCount!==expectedTotal||
     snap.categories.some(key=>saved.counts?.[key]!==counts[key])||
+    PARTNER_NURO_CB_TIERS.some(tier=>
+     (saved.cbCounts?.NURO?.[tier]??0)!==(cbCounts.NURO[tier]??0))||
     Object.keys(privateCounts).some(id=>saved.privateCounts?.[id]!==privateCounts[id])||
     uid!==auth.currentUser?.uid||workspace!==partnerInlineWorkspaceCompany)
   throw Error("save_verify");
