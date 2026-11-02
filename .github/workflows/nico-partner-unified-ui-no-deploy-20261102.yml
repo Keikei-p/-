@@ -21,7 +21,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git hash-object index.html)" = '5f31289b70cb10febe13aa23c5b9afbe14766b8d'
+          test "$(git hash-object index.html)" = 'aafb40c10e1d1940ef36f9cb254cdbfccac86cf6'
           test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
           test "$(git hash-object functions-partner-workspace/service.cjs)" = '55b16051c09810778f79256097446aa0dec1b36e'
           test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
