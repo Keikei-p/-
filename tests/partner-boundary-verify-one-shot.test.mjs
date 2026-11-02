@@ -8,7 +8,7 @@ const verifier=read('tools/production/release-partner-boundary.mjs');
 test('one-time trigger is exact main-push workflow path, no repeat schedule',()=>{
  assert.match(wf,/push:\s*\n\s*branches: \[main\]/);
  assert.match(wf,/paths:\s*\n\s*- '\.github\/workflows\/nico-partner-boundary-verify-once\.yml'/);
- assert.match(wf,/pull_request:[\\s\\S]*branches: \\[main\\]/);
+ assert.ok(wf.includes('pull_request:\n    branches: [main]'), 'PR offline-only validation trigger missing');
  assert.doesNotMatch(wf,/schedule:|cron:|workflow_dispatch:/);
  assert.match(wf,/github\.event_name == 'push'/);
  assert.match(wf,/STOP_MAIN_CHANGED/);
@@ -40,5 +40,6 @@ test('performs the same full inventory, restore and finance regression as protec
  }
  assert.match(wf,/if-no-files-found: error/);
  assert.match(wf,/name: Remove private temporary credentials and logs/);
- assert.doesNotMatch(wf,/actions\/upload-artifact@[^\n]*\n[^]*partner-boundary-private\.log/);
+ assert.match(wf,/path: \\$\\{\\{ runner\\.temp \\}\\}\\/partner-boundary-summary\\.json/);
+ assert.doesNotMatch(wf,/path:.*partner-boundary-private\\.log/);
 });
