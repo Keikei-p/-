@@ -41,6 +41,7 @@ test("owner team tab automatically fetches company counts while allowing manual 
  ]) assert.ok(view.includes(marker),"missing "+marker);
  assert.ok(view.includes('pInline("ownerPartnerDashboardDate").value===date'));
  assert.match(view,/currentUser\?\.uid===uid/);
+ assert.match(view,/response.date!==date/);
 });
 
 test("every disclosed team and person count is validated before display",()=>{
