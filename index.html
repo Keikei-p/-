@@ -4873,7 +4873,7 @@ body.product-reordering .product-list {
   <section id="partnerPanelMembers" data-partner-view="members" hidden>
   <div class="p-inline-card management-card">
     <h3>👤 メンバー管理</h3>
-    <p class="p-inline-muted">自社と同じメンバー管理です。所属班・権限を確認し、リーダーは班編成とメンバー追加ができます。</p>
+    <p class="p-inline-muted">自社と同じメンバー管理です。リーダーはメールなしで登録した班員を「削除」できます。過去の実績・履歴・ランキングは残ります。ログインするメンバーの所属解除は対象外です。</p>
     <div id="pInlinePeople" class="p-inline-list" aria-label="所属メンバー一覧"></div>
     <div id="pInlineMemberForms" hidden>
       <div class="p-inline-grid">
@@ -13639,9 +13639,23 @@ function partnerInlineRender(){
  }
  renderPartnerPrivateProductCatalog();
  const list=pInline("pInlinePeople");list.replaceChildren();
- for(const person of staff)partnerMainAppendRow(list,person.name,
-  (teamById.get(person.teamId)?.name||"未配属")+"・"+
-  (person.kind==="managed"?"メールなし":person.role==="leader"?"リーダー":"メンバー"));
+ for(const person of staff){
+  const row=document.createElement("div");row.className="p-inline-row";
+  const label=document.createElement("strong");label.textContent=person.name;
+  const summary=document.createElement("span");
+  summary.textContent="｜"+(teamById.get(person.teamId)?.name||"未配属")+"・"+
+   (person.kind==="managed"?"メールなし":person.role==="leader"?"リーダー":"メンバー");
+  row.append(label,summary);
+  if(canManage&&person.kind==="managed"){
+   const remove=document.createElement("button");
+   remove.type="button";remove.className="team-action-button";
+   remove.textContent="班員を削除";
+   remove.setAttribute("aria-label",person.name+" を班員一覧から削除（実績と履歴は保持）");
+   remove.onclick=()=>void partnerInlineRemoveManagedStaff(person.id,person.name);
+   row.append(remove);
+  }
+  list.append(row);
+ }
  partnerInlineFillSelect("pInlineStaff",staff,
   p=>p.name+"（"+(teamById.get(p.teamId)?.name||"未設定")+"）");
  partnerInlineRenderCounts();
@@ -14116,6 +14130,31 @@ pInline("pInlineMove").onclick=()=>partnerInlineRun(async()=>{
  await partnerInlineManage(partnerInlinePayload({action:"moveStaff",staffId,teamId}));
  return "班を変更しました。過去の実績の班は保持されます。";
 });
+// Only archive email-less managed staff. Never delete a registered
+// account, historical report, revision audit, ranking or team snapshot.
+async function partnerInlineRemoveManagedStaff(staffId,name){
+ const snap=partnerInlineData;
+ if(partnerInlineBusy||!snap||!["owner","leader"].includes(snap.role))return;
+ const person=snap.staff.find(p=>p.id===staffId);
+ if(!person||person.active!==true||person.kind!=="managed"||person.uid!=null){
+  partnerInlineStatus("削除できるのはメールなしで登録した班員のみです。",true);
+  return;
+ }
+ if(!window.confirm(name+" を班員一覧から削除しますか？\\n過去の件数・登録履歴・ランキングは消えません。"))
+  return;
+ if(partnerInlineHasUnsavedCounts()&&
+    !window.confirm("入力途中の件数が残っています。未保存の入力を破棄して班員を削除しますか？"))
+  return;
+ await partnerInlineRun(async()=>{
+  const result=(await partnerInlineManage(partnerInlinePayload({
+   action:"removeManaged",staffId
+  }))).data;
+  if(result?.archived!==true||result.staffId!==staffId)
+   throw Error("managed_staff_archive_unverified");
+  return name+" を班員一覧から削除しました。過去の件数と履歴は保持されています。";
+ });
+}
+
 pInline("pInlineAddManaged").onclick=()=>partnerInlineRun(async()=>{
  if(!["owner","leader"].includes(partnerInlineData.role))throw Error("role");
  const name=pInline("pInlineManagedName").value.trim();
