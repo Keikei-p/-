@@ -60,7 +60,7 @@ test("count-only CB saves use total validation, versioned audit, and no sales so
  assert.doesNotMatch(resolver,/tx\.|\.update\(|\.create\(|\.delete\(/);
  const save=between(html,'pInline("pInlineSave").onclick=','// Original internal owner sees existing teams');
  for(const marker of ["partnerInlineSelectedCb()","counts[key]=parsedCb.total",
-  "date,staffId,counts,cbCounts,workLocation,privateCounts,expectedVersion:",
+  "...(!before?{workTeamId}:{}),privateCounts,expectedVersion:",
   "saved.cbCounts?.NURO?.[tier]","partnerInlineCountsUnchanged"])
   assert.ok(save.includes(marker),marker);
  assert.match(html,/function partnerInlineClearFields\(\)/);
@@ -79,4 +79,36 @@ test("cashback count parser rejects NaN and overflows, accepts 0 and 5 plan cell
  assert.throws(()=>ctx.read(),/cb_count_overflow/);
  fields[0].value="0.5";
  assert.throws(()=>ctx.read(),/cb_count_invalid/);
+});
+
+test("daily working team is selectable only for new entries and never rewrites historical teams",()=>{
+ const screen=between(html,'id="partnerPanelRecord"','id="partnerPanelRankings"');
+ assert.match(screen,/id="pInlineWorkingTeam"[^>]*><\\/select>/);
+ const renderer=between(html,"function partnerInlineRenderCounts(){","function partnerInlineRender(){");
+ for(const token of [
+  "const assigned=person?.teamId",
+  "entry?.teamIdSnapshot",
+  "const allowedTeams=",
+  "t.active===true",
+  'snap.role==="member"',
+  "teamSelect.disabled=!!entry",
+ ])assert.ok(renderer.includes(token),token);
+ const save=between(html,'pInline("pInlineSave").onclick=','// Original internal owner sees existing teams');
+ for(const token of [
+  'const workTeamId=pInline("pInlineWorkingTeam").value',
+  'if(!before&&(!partnerMainValidId(workTeamId)',
+  '...(!before?{workTeamId}:{})',
+  '(!before&&saved.teamIdSnapshot!==workTeamId)',
+ ])assert.ok(save.includes(token),token);
+ const submit=between(backend,"async function submit(request){","return Object.freeze({manage,accept,view,submit})");
+ for(const token of [
+  'const workTeamId=d.workTeamId==null?null:clean(d.workTeamId)',
+  'const teamIdSnapshot=oldSnap.exists?',
+  '(workTeamId||person.teamId)',
+  'if(oldSnap.exists&&workTeamId&&workTeamId!==teamIdSnapshot)',
+  '(fresh.role==="member"&&teamIdSnapshot!==person.teamId)',
+  'const chosenTeam=await tx.get(teamRef(s.cid,teamIdSnapshot))',
+  'chosenTeam.data()?.active!==true',
+ ])assert.ok(submit.includes(token),token);
+ assert.doesNotMatch(submit,/tx.delete\(/);
 });
