@@ -12398,29 +12398,53 @@ function renderPartnerRankingOnlyPanel(){
  const snap=partnerInlineData;
  if(!snap||snap.role==="hub")return;
  const rankings=pInline("pInlineRanking");rankings.replaceChildren();
- const staffById=new Map(snap.staff.filter(x=>x.active).map(x=>[x.id,x]));
- const teams=new Map(snap.teams.filter(x=>x.active).map(x=>[x.id,x]));
+ // Rank by the immutable staff ID / saved team snapshot, never by a current
+ // name/team assignment. Retain departed staff and inactive historical teams.
+ const staffById=new Map((snap.staff||[]).map(x=>[x.id,x]));
+ const teams=new Map((snap.teams||[]).map(x=>[x.id,x]));
  const rows=[];
+ const records=Array.isArray(snap.records)?snap.records:[];
+ for(const entry of records){
+  if(!Number.isSafeInteger(entry.totalCount)||entry.totalCount<0){
+   partnerMainAppendRow(rankings,"件数を検証できません","再読み込みしてください");
+   return;
+  }
+ }
  if(partnerSameAppSelectedPanel==="product"){
   for(const key of snap.categories){
-   const n=snap.records.reduce((sum,r)=>sum+(r.counts?.[key]||0),0);
+   const n=records.reduce((sum,r)=>sum+(r.counts?.[key]||0),0);
    rows.push({name:key,n});
   }
  }else if(partnerSameAppSelectedPanel==="team"){
-  for(const [id,t] of teams){
-   const n=snap.records.filter(r=>r.teamIdSnapshot===id)
-    .reduce((sum,r)=>sum+r.totalCount,0);
-   rows.push({name:snap.companyName+"・"+t.name,n});
-  }
+  const totals=new Map();
+  for(const r of records)if(teams.has(r.teamIdSnapshot))
+   totals.set(r.teamIdSnapshot,(totals.get(r.teamIdSnapshot)||0)+r.totalCount);
+  for(const [id,t] of teams)rows.push({
+   name:snap.companyName+"・"+t.name+(t.active?"":"（過去の班）"),
+   n:totals.get(id)||0
+  });
  }else{
-  for(const r of snap.records){
+  // Multiple records for one staff ID must become ONE person, not multiple
+  // ranks. Never combine different staff who happen to share a name.
+  const totals=new Map();
+  for(const r of records){
    const person=staffById.get(r.staffId);
-   if(person)rows.push({name:person.name,n:r.totalCount});
+   if(!person)continue;
+   totals.set(r.staffId,(totals.get(r.staffId)||0)+r.totalCount);
   }
+  for(const [id,n] of totals)rows.push({name:staffById.get(id).name,n});
+ }
+ if(rows.some(x=>!Number.isSafeInteger(x.n)||x.n<0)){
+  partnerMainAppendRow(rankings,"件数を検証できません","再読み込みしてください");
+  return;
  }
  rows.sort((a,b)=>b.n-a.n||a.name.localeCompare(b.name,"ja"));
- for(const [i,row] of rows.entries())
-  partnerMainAppendRow(rankings,(i+1)+"位 "+row.name,row.n+"件");
+ let rank=0,previous=null;
+ for(const [i,row] of rows.entries()){
+  if(previous!==row.n)rank=i+1;
+  partnerMainAppendRow(rankings,rank+"位 "+row.name,row.n+"件");
+  previous=row.n;
+ }
  if(!rows.length)partnerMainAppendRow(rankings,"まだ実績がありません","選択日の実績を確認してください");
 }
 
@@ -12512,31 +12536,20 @@ function partnerInlineRender(){
  partnerInlineFillSelect("pInlineStaff",staff,
   p=>p.name+"（"+(teamById.get(p.teamId)?.name||"未設定")+"）");
  partnerInlineRenderCounts();
- // Show ONLY numerical counts from the isolated partner count API, never money.
- const rankings=pInline("pInlineRanking");rankings.replaceChildren();
+ // Aggregate day data for the detail and daily views. Rankings reuse
+ // the same historical staff-ID-aware renderer after every refresh/tab change.
  const byTeam=new Map(teams.map(t=>[t.id,0]));
- const byPerson=[],byProduct=new Map(snap.categories.map(k=>[k,0]));
+ const byProduct=new Map(snap.categories.map(k=>[k,0]));
  for(const entry of snap.records){
   const person=staff.find(p=>p.id===entry.staffId);
   if(!person)continue;
   const total=entry.totalCount;
   if(!Number.isSafeInteger(total)||total<0)continue;
-  byPerson.push({name:person.name,n:total});
   if(byTeam.has(entry.teamIdSnapshot))
    byTeam.set(entry.teamIdSnapshot,byTeam.get(entry.teamIdSnapshot)+total);
   for(const key of snap.categories)byProduct.set(key,byProduct.get(key)+(entry.counts?.[key]||0));
  }
- const mode=partnerSameAppSelectedPanel;
- if(mode==="team"){
-  for(const [i,item] of [...byTeam.entries()].sort((a,b)=>b[1]-a[1]).entries())
-   partnerMainAppendRow(rankings,(i+1)+"位 "+snap.companyName+"・"+(teamById.get(item[0])?.name||"班"),item[1]+"件");
- }else if(mode==="product"){
-  for(const [i,item] of [...byProduct.entries()].sort((a,b)=>b[1]-a[1]).entries())
-   partnerMainAppendRow(rankings,(i+1)+"位 "+item[0],item[1]+"件");
- }else{
-  for(const [i,item] of byPerson.sort((a,b)=>b.n-a.n).entries())
-   partnerMainAppendRow(rankings,(i+1)+"位 "+item.name,item.n+"件");
- }
+ renderPartnerRankingOnlyPanel();
  const details=pInline("pInlineTeamDetails");details.replaceChildren();
  for(const team of teams){
   const row=document.createElement("details");row.className="p-inline-row";
