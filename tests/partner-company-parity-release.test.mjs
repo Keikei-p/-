@@ -99,5 +99,5 @@ test("saved team and departed staff are shown from the original count snapshot, 
  assert.match(render,/const person=allStaff.find\(p=>p.id===entry.staffId\)/);
  assert.doesNotMatch(render,/snap.records.find\(e=>e.staffId===person.id&&e.teamIdSnapshot===team.id\)/);
  assert.match(render,/renderPartnerRankingOnlyPanel\(\)/);
- assert.match(render,/pInline\("pInlineDate"\)/);
+ assert.match(render,/const daily=pInline\("pInlineDailySummary"\)/);
 });
