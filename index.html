@@ -13545,6 +13545,7 @@ pInline("pInlineCreateInvite").onclick=()=>partnerInlineRun(async()=>{
  if(!["owner","leader"].includes(snap.role)||!partnerMainValidId(teamId)||
     !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||
     !["leader","member"].includes(role))throw Error("input");
+ partnerLeaderInvalidateInvite();
  const response=(await partnerInlineManage(partnerInlinePayload({
   action:"createInvite",email,teamId,role
  }))).data;
@@ -13559,6 +13560,16 @@ pInline("pInlineCreateInvite").onclick=()=>partnerInlineRun(async()=>{
  const sent=await partnerLeaderSendInviteEmail(invite);
  return sent?"認証メールを送信しました。":"招待リンクは作成しましたがメールは未送信です。招待タブから再送してください。";
 });
+function partnerLeaderInvalidateInvite(){
+ // Changing the invitee, role or team must not leave a reusable old link.
+ partnerLeaderLastInvitation=null;
+ pInline("pInlineInviteResult").hidden=true;
+ pInline("pInlineInviteUrl").value="";
+ pInline("pInlineInviteEmailStatus").textContent="";
+}
+pInline("pInlineInviteEmail").oninput=partnerLeaderInvalidateInvite;
+pInline("pInlineInviteRole").onchange=partnerLeaderInvalidateInvite;
+pInline("pInlineInviteTeam").onchange=partnerLeaderInvalidateInvite;
 pInline("pInlineResendInvite").onclick=async()=>{
  if(partnerInlineBusy||!partnerLeaderLastInvitation)return;
  const button=pInline("pInlineResendInvite");
