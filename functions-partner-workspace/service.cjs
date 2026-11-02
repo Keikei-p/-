@@ -2,6 +2,7 @@
 // Isolated partner operations: no reads/writes to sales products, records or prices.
 const crypto=require("node:crypto");
 const {loadPublication,projectMasterProducts,changePublication,validId,nameOnly}=require("./catalog-publication.cjs");
+const {readLinks,addLink,projectLinks}=require("./catalog-count-links.cjs");
 const {decodeGroups,saveGroups,groupPersonalScores}=require("./shared-ranking-groups.cjs");
 const {readDirectDayCounts}=require("./shared-direct-counts.cjs");
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
@@ -358,6 +359,63 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    tx.set(configRef,{...next,updatedAt:FieldValue.serverTimestamp(),
      updatedByUid:a.uid});
    return {saved:true,revision:next.revision,groups:next.groups};
+  });
+ }
+
+ // Explicit links apply only from the NEXT day onward. No past entry,
+ // summary, ranking or saved CB tier is reinterpreted or overwritten.
+ const countLinksRef=hub=>collection(hub,"partnerCatalogSettings").doc("countLinks");
+ async function getPartnerCountLinks(request){
+  const a=await actor(request),d=request?.data||{};
+  if(Object.keys(d).some(key=>key!=="workspaceCompanyId"))fail("invalid-argument");
+  const s=await scope(a.uid,null,d.workspaceCompanyId);
+  const hubId=s.kind==="hub"?s.cid:s.hubId;
+  if(!validId(hubId))fail();
+  const [linkSnap,pubSnap]=await Promise.all([
+   countLinksRef(hubId).get(),publicationRef(hubId).get()
+  ]);
+  try{
+   const pub=loadPublication(pubSnap.exists?pubSnap.data():null);
+   const result=projectLinks(linkSnap.exists?linkSnap.data():null,{
+    categories:KEYS,publishedIds:pub.productIds,audience:s.kind,
+    date:s.kind==="partner"?jstToday():null
+   });
+   return {scope:"partner_count_category_links",...result};
+  }catch{fail("data-loss");}
+ }
+ async function setPartnerCountLink(request){
+  const a=await actor(request),d=request?.data||{};
+  if(Object.keys(d).sort().join("|")!=="category|expectedRevision|productId"||
+     !validId(d.productId)||!KEYS.includes(d.category)||
+     !Number.isSafeInteger(d.expectedRevision)||d.expectedRevision<0)
+   fail("invalid-argument");
+  const s=await scope(a.uid);
+  if(s.kind!=="hub"||s.role!=="owner")fail();
+  const productRef=db.collection("products").doc(d.productId);
+  const ref=countLinksRef(s.cid),pubRef=publicationRef(s.cid);
+  const effectiveFrom=new Date(Date.parse(jstToday()+"T00:00:00Z")+86400000)
+   .toISOString().slice(0,10);
+  return db.runTransaction(async tx=>{
+   const live=await scope(a.uid,tx);
+   if(live.kind!=="hub"||live.role!=="owner"||live.cid!==s.cid)fail();
+   const [productSnap,pubSnap,linkSnap]=await Promise.all([
+    tx.get(productRef),tx.get(pubRef),tx.get(ref)
+   ]);
+   const item=productSnap.data()||{};
+   if(!productSnap.exists||item.companyId!==s.cid||item.active!==true)
+    fail("failed-precondition");
+   try{nameOnly(item.name);}catch{fail("failed-precondition");}
+   let next;
+   try{
+    const pub=loadPublication(pubSnap.exists?pubSnap.data():null);
+    next=addLink({existing:linkSnap.exists?linkSnap.data():null,
+     productId:d.productId,category:d.category,effectiveFrom,
+     expectedRevision:d.expectedRevision,publishedIds:pub.productIds,categories:KEYS});
+   }catch{fail("failed-precondition");}
+   // Never write productRef, entryRef, summaryRef, audit or revenue fields.
+   tx.set(ref,{...next,updatedByUid:a.uid,updatedAt:FieldValue.serverTimestamp()});
+   return {linked:true,revision:next.revision,productId:d.productId,
+    category:d.category,effectiveFrom};
   });
  }
  const checkTeam=async(tx,s,id)=>{
@@ -1321,6 +1379,6 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   });
  }
  return Object.freeze({manage,accept,view,submit,viewCatalog,setCatalogPublication,
-  getPartnerRankingGroups,setPartnerRankingGroups});
+  getPartnerRankingGroups,setPartnerRankingGroups,getPartnerCountLinks,setPartnerCountLink});
 }
 module.exports={makeWorkspace,KEYS};
