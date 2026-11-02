@@ -1,0 +1,41 @@
+name: NICO partner history direct correction regression (NO DEPLOY)
+on:
+  push:
+    branches: [fix/partner-history-direct-correction-20261102]
+    paths:
+      - index.html
+      - tests/partner-history-direct-correction-20261102.test.mjs
+      - tests/partner-save-readback-20261102.test.mjs
+      - .github/workflows/nico-partner-history-correction-no-deploy-20261102.yml
+permissions: {contents: read}
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Syntax check and contract tests, with no Firebase writes
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const html=fs.readFileSync('index.html','utf8');
+          const script=html.match(/<script type="module">([\s\S]*?)<\/script>/)?.[1];
+          if(!script||!html.includes('monthlyRevenue')||
+             !html.includes('signInWithEmailAndPassword')||
+             !html.includes('partnerSavedCountReadbackState'))
+             throw Error('STOP_EXISTING_APP_CHANGED');
+          fs.writeFileSync('/tmp/nico-readback-candidate.mjs',script);
+          NODE
+          node --check /tmp/nico-readback-candidate.mjs
+          node --test tests/partner-history-direct-correction-20261102.test.mjs
+          node --test tests/partner-save-readback-20261102.test.mjs
+          node --test tests/partner-unified-ranks-save-feedback-20261102.test.mjs
+          node --test tests/dashboard-inline-original-partner-parity.test.mjs
+          node --test tests/internal-owner-finance-visibility.test.cjs
+          node --test tests/partner-workspace.test.cjs
+          echo PASS_SAVE_READBACK_FINANCE_AND_HISTORICAL_COUNTS_NO_DEPLOY
