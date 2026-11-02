@@ -1,0 +1,29 @@
+name: NICO owner partner team counts UI offline (no deploy)
+on:
+  push:
+    branches:
+      - fix/owner-partner-count-team-detail-screen-20261102
+    paths:
+      - index.html
+      - tests/owner-partner-team-count-screen.test.mjs
+      - .github/workflows/nico-owner-partner-team-counts-offline.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  owner-counts-and-legacy-safe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact isolated feature revision
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify owner partner team count screen and existing partner UI
+        run: node --test tests/owner-partner-team-count-screen.test.mjs tests/partner-company-parity-release.test.mjs tests/partner-management-tabs-parity.test.mjs
+      - name: Protect original company sales and finance UI
+        run: node --test tests/sales-regressions.cjs
