@@ -13389,22 +13389,29 @@ async function openSameAppPartnerWorkspace(user,workspaceCompanyId=""){
 async function partnerInlineRun(work){
  if(partnerInlineBusy||!partnerInlineData)return;
  const uid=auth.currentUser?.uid;
+ let completed=false;
  partnerInlineBusy=true;
  pInline("pInlineSave").disabled=true;
  try{
   const message=await work();
   if(uid!==auth.currentUser?.uid)return;
-  // Any successful count/team/staff update invalidates cached standings.
-  // The refreshed ranking is fetched only if its panel is already visible.
+  // Only a confirmed write refreshes the count fields; do not erase inputs
+  // when a save or invitation fails and the user needs to retry.
   ++sharedDailyRankingGeneration;sharedDailyRankCache.clear();
   await partnerInlineFetch();
+  completed=true;
   if(partnerInlineData)partnerInlineStatus(message||"更新しました。");
  }catch{
-  partnerInlineStatus("保存・招待を確認できませんでした。内容・所属・権限を確認してください。",true);
+  partnerInlineStatus("保存・招待を確認できませんでした。入力内容は保持しています。権限と通信を確認して再試行してください。",true);
  }finally{
   partnerInlineBusy=false;
   if(partnerInlineData){
-   partnerInlineRenderCounts();
+   if(completed)partnerInlineRenderCounts();
+   else{
+    const chosen=pInline("pInlineStaff").value;
+    pInline("pInlineSave").disabled=!partnerInlineData.staff.some(
+     member=>member.id===chosen&&member.active===true);
+   }
    renderPartnerPrivateProductCatalog();
   }
  }
