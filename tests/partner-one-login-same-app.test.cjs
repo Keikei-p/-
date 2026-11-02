@@ -89,5 +89,5 @@ test("partner company list errors are explicit, fail closed and never create a r
  assert.match(flow,/partnerInviteCompanyName"\)\.replaceChildren\(\)/);
  assert.match(flow,/partner_company_list_unavailable/);
  assert.doesNotMatch(flow,/partnerInlineManage\(|tx\.create\(|setDoc\(/);
- assert.match(index,/if\(!currentUser\?\.emailVerified \|\|/);
+ assert.match(index,/if\s*\(!currentUser\?\.emailVerified\s*\|\|/);
 });
