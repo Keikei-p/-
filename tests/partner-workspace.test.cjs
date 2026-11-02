@@ -1242,3 +1242,25 @@ test("count-only daily ranking refuses forged company scope and revoked sharing"
  db.store.get("partnerRelations/partner").countSharingApproved=false;
  await assert.rejects(api.view(req("p",{date:"2026-10-31",sharedRankings:true})),{code:"permission-denied"});
 });
+
+test("direct redaction fails closed on overflow and malformed legacy counts",async()=>{
+ const {readDirectDayCounts}=require("../functions-partner-workspace/shared-direct-counts.cjs");
+ const {db}=setup(),date="2026-10-31";
+ const mk=(uid,quantity)=>({companyId:"hub",date,uid,teamId:"t",teamNameSnapshot:"直営班",
+   memberNameSnapshot:"同姓",totalCount:quantity,totalRevenue:9999999,
+   results:{one:{count:quantity,productName:"NURO",revenuePerUnit:999999}}});
+ db.seed("records/new01",mk("h",1));
+ db.seed("records/new02",mk("q",2));
+ const original=clone([...db.store]);
+ const a=await readDirectDayCounts(db,"hub",date,KEYS,{maxRecords:2});
+ assert.equal(a.totalCount,3);
+ assert.equal(a.people.length,2,"same names must remain distinct people");
+ assert.equal(a.teams.length,1);
+ assert.equal(a.counts.NURO,3);
+ assert.equal(a.recordsVerified,2);
+ assert.doesNotMatch(JSON.stringify(a),/9999999|revenuePerUnit|totalRevenue|unitPrice|@example.com/);
+ assert.deepEqual([...db.store],original);
+ await assert.rejects(readDirectDayCounts(db,"hub",date,KEYS,{maxRecords:1}),/DIRECT_READ_BUDGET_EXCEEDED/);
+ db.store.get("records/new01").totalCount=999;
+ await assert.rejects(readDirectDayCounts(db,"hub",date,KEYS,{maxRecords:2}),/DIRECT_TOTAL_MISMATCH/);
+});
