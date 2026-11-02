@@ -20638,7 +20638,7 @@ function verifiedLinkResponse(d){
   if(!item||Object.keys(item).sort().join("|")!=="category|effectiveFrom|productId"||
    !partnerMainValidId(item.productId)||ids.has(item.productId)||
    !PARTNER_QUICK_RANK_KEYS.includes(item.category)||categories.has(item.category)||
-   typeof item.effectiveFrom!=="string"||!/^\\d{4}-\\d{2}-\\d{2}$/.test(item.effectiveFrom))
+   typeof item.effectiveFrom!=="string"||!/^\d{4}-\d{2}-\d{2}$/.test(item.effectiveFrom))
     throw Error("category_link_schema");
   ids.add(item.productId);categories.add(item.category);
   map.set(item.productId,{category:item.category,effectiveFrom:item.effectiveFrom});
