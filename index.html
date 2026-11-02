@@ -13636,7 +13636,38 @@ async function loadPartnerRevisionHistory(){
        before<0||after<0)throw Error("audit_category_count");
     if(before!==after)partnerMainAppendRow(row,category,before+"件 → "+after+"件");
    }
-   if(event.previousPrivateTotalCount!==event.privateTotalCount)
+   // Show CB corrections even when the NURO total stayed the same. Older
+   // entries without a tier breakdown remain 'unclassified', not CB0.
+   const previousCb=partnerUiCbCountSnapshot({
+    cbCounts:event.previousCbCounts,counts:event.previousCounts
+   });
+   const currentCb=partnerUiCbCountSnapshot({
+    cbCounts:event.cbCounts,counts:event.counts
+   });
+   for(const tier of PARTNER_NURO_CB_TIERS){
+    const before=previousCb[tier],after=currentCb[tier];
+    if(!Number.isSafeInteger(before)||!Number.isSafeInteger(after)||
+       before<0||after<0)throw Error("audit_cb_count");
+    if(before!==after){
+     const label=tier==="unclassified"?"既存のCB未分類":
+      tier==="0"?"CB0円":"CB"+(Number(tier)/10000)+"万円";
+     partnerMainAppendRow(row,"NURO光 "+label,before+"件 → "+after+"件");
+    }
+   }
+   // Private product names and corrections remain in the authorized partner
+   // workspace only; never add them to the shared company leaderboard.
+   if(event.privateCounts&&event.previousPrivateCounts){
+    const beforeCounts=event.previousPrivateCounts,afterCounts=event.privateCounts;
+    const privateNames=new Map((snap.privateProducts||[]).map(p=>[p.id,p.name]));
+    for(const productId of new Set([...Object.keys(beforeCounts),...Object.keys(afterCounts)])){
+     const before=beforeCounts[productId]??0,after=afterCounts[productId]??0;
+     if(!Number.isSafeInteger(before)||!Number.isSafeInteger(after)||
+        before<0||after<0)throw Error("audit_private_count");
+     if(before!==after)partnerMainAppendRow(row,
+      (privateNames.get(productId)||"過去の専用商材")+"（協力店内のみ）",
+      before+"件 → "+after+"件");
+    }
+   }else if(event.previousPrivateTotalCount!==event.privateTotalCount)
     partnerMainAppendRow(row,"協力店専用商材",
      event.previousPrivateTotalCount+"件 → "+event.privateTotalCount+"件");
    area.append(row);

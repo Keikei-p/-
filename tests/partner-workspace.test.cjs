@@ -1366,6 +1366,8 @@ test("audit history records every saved correction without exposing finance or l
  assert.equal(own.audits[1].counts.NURO,3);
  assert.equal(own.audits[1].previousPrivateTotalCount,1);
  assert.equal(own.audits[1].privateTotalCount,2);
+ assert.equal(own.audits[1].previousPrivateCounts[id],1);
+ assert.equal(own.audits[1].privateCounts[id],2);
  await assert.rejects(api.view(req("h",{date,includeAuditHistory:true})),
   e=>e.code==="invalid-argument");
  assert.deepEqual(db.store.get("records/old"),original);
@@ -1375,6 +1377,37 @@ test("audit history records every saved correction without exposing finance or l
   assert.equal(text.includes(k),false);
 });
 
+
+test("audit exposes same-total CB tier and private product edits only inside the partner workspace",async()=>{
+ const {api,req,zero}=setup(),date="2026-10-31";
+ const team=(await api.manage(req("p",{action:"addTeam",name:"変更内容班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"変更内容担当",teamId:team}))).staffId;
+ const first=(await api.manage(req("p",{action:"addPrivateProduct",name:"協力店限定A"}))).productId;
+ const second=(await api.manage(req("p",{action:"addPrivateProduct",name:"協力店限定B"}))).productId;
+ const counts={...zero(),NURO:2};
+ await api.submit(req("p",{date,staffId:staff,counts,
+  cbCounts:{NURO:{"20000":2}},privateCounts:{[first]:2,[second]:0},expectedVersion:0}));
+ await api.submit(req("p",{date,staffId:staff,counts,
+  cbCounts:{NURO:{"40000":2}},privateCounts:{[first]:0,[second]:2},expectedVersion:1}));
+ const own=await api.view(req("p",{date,includeAuditHistory:true}));
+ assert.equal(own.audits.length,2);
+ const correction=own.audits[1];
+ assert.equal(correction.previousTotalCount,2);
+ assert.equal(correction.totalCount,2);
+ assert.equal(correction.previousCbCounts.NURO["20000"],2);
+ assert.equal(correction.cbCounts.NURO["40000"],2);
+ assert.equal(correction.previousPrivateCounts[first],2);
+ assert.equal(correction.privateCounts[first],0);
+ assert.equal(correction.previousPrivateCounts[second],0);
+ assert.equal(correction.privateCounts[second],2);
+ const plain=JSON.stringify(correction);
+ for(const secret of ["totalRevenue","revenuePerUnit","unitPrice","updatedByUid","createdByUid"])
+  assert.equal(plain.includes(secret),false,secret);
+ assert.equal("audits" in await api.view(req("p",{date})),false);
+ const hub=await api.view(req("h",{date}));
+ assert.equal(JSON.stringify(hub).includes(first),false);
+ assert.equal(JSON.stringify(hub).includes(second),false);
+});
 
 test("member sees only own revision audits while owner sees all partner count revisions",async()=>{
  const {api,req,zero}=setup(),date="2026-10-31";
