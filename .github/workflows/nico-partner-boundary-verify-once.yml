@@ -27,6 +27,7 @@ jobs:
       - name: Verify transport, rollback, existing finance and full candidate Rules
         run: |
           set -euo pipefail
+          node --test tests/partner-boundary-verify-one-shot.test.mjs
           node --test tests/partner-boundary-release.test.mjs tests/live-rules-surgical-preview.test.mjs tests/internal-owner-finance-visibility.test.cjs tests/sales-regressions.cjs
           node --test tools/readonly-backup/backup.test.mjs
           npm install --prefix tests --ignore-scripts --no-audit --no-fund
