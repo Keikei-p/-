@@ -1,0 +1,27 @@
+name: NICO partner original-company switch parity (no deploy)
+on:
+  push:
+    branches: [fix/partner-own-company-navigation-20261102]
+    paths: [index.html, tests/partner-own-company-navigation.test.mjs, tests/partner-relogin-preference-safety.test.mjs, .github/workflows/nico-partner-own-company-navigation-test.yml]
+  pull_request:
+    branches: [fix/partner-email-link-first-password-20261102]
+    paths: [index.html, tests/partner-own-company-navigation.test.mjs, tests/partner-relogin-preference-safety.test.mjs, .github/workflows/nico-partner-own-company-navigation-test.yml]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Test original-company return and protected repeat partner login
+        run: |
+          set -euo pipefail
+          node --test tests/partner-own-company-navigation.test.mjs
+          node --test tests/partner-relogin-preference-safety.test.mjs
+          node --test tests/partner-repeat-login-cb-parity.test.mjs
+          node --test tests/partner-one-login-same-app.test.cjs
+          node --test tests/partner-money-free-workspace.test.cjs
