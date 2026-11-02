@@ -233,6 +233,47 @@ jobs:
            process.exitCode=2;
           }
           NODE
+      - name: Safely check actual Firestore create permissions against EXISTING docs (guaranteed no writes)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {createRequire} from 'node:module';
+          import {readFileSync} from 'node:fs';
+          const require=createRequire(process.cwd()+'/functions/package.json');
+          const {initializeApp,applicationDefault}=require('firebase-admin/app');
+          const {getFirestore}=require('firebase-admin/firestore');
+          initializeApp({credential:applicationDefault(),projectId:'sales-management-cc116',name:'linkth-existing-doc-safe-iam'});
+          const db=getFirestore((await import('firebase-admin/app')).getApp('linkth-existing-doc-safe-iam'));
+          const companyQuery=await db.collection('companies').where('name','==','株式会社LinkTh').limit(2).get();
+          if(companyQuery.size!==1)throw Error('STOP_NOT_EXACTLY_ONE_EXISTING_COMPANY');
+          const company=companyQuery.docs[0],cid=company.id;
+          const staff=await db.collection('companies').doc(cid).collection('partnerWorkStaff').limit(50).get();
+          if(staff.empty)throw Error('STOP_NO_EXISTING_STAFF');
+          const candidates=[company.ref,staff.docs[0].ref];
+          for(let i=0;i<candidates.length;i++){
+           const ref=candidates[i],before=await ref.get();
+           if(!before.exists)throw Error('STOP_DOC_NOT_EXISTING');
+           let outcome='unexpected_success';
+           try{await ref.create({__never_written_diagnostic__:true});}
+           catch(error){outcome=String(error?.code??'unknown')+' '+String(error?.details||'').split(' ')[0].replace(/[^A-Za-z_-]/g,'').slice(0,26);}
+           const after=await ref.get();
+           if(!after.exists||before.updateTime.toMillis()!==after.updateTime.toMillis()||
+              JSON.stringify(before.data())!==JSON.stringify(after.data()))
+            throw Error('STOP_EXISTING_DOCUMENT_CHANGED');
+           console.log('GUARANTEED_NO_WRITE_CREATE_EXISTING_'+i,JSON.stringify({outcome,unchanged:true}));
+           if(outcome.includes('unexpected_success'))throw Error('STOP_CREATE_OVERWROTE_EXISTING_DOC');
+          }
+          const credential=JSON.parse(readFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS,'utf8'));
+          const {GoogleAuth}=require('google-auth-library');
+          const token=await new GoogleAuth({scopes:['https://www.googleapis.com/auth/cloud-platform']}).getAccessToken();
+          const api='https://cloudfunctions.googleapis.com/v2/projects/sales-management-cc116/locations/asia-northeast1/functions/submitPartnerWorkspaceCounts';
+          const response=await fetch(api,{headers:{Authorization:'Bearer '+token}});
+          if(!response.ok)throw Error('STOP_FUNCTION_CONFIG_HTTP_'+response.status);
+          const fn=await response.json();
+          console.log('AUDIT_CREDENTIAL_IS_RUNTIME_IDENTITY',credential.client_email===fn.serviceConfig?.serviceAccountEmail);
+          console.log('SAFE_DENIED_WRITE_PROBE_COMPLETE_NO_MUTATIONS');
+          NODE
       - name: Remove temporary credentials
         if: always()
         run: rm -f "$RUNNER_TEMP/linkth-exact-audit.json"
