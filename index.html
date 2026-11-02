@@ -13901,6 +13901,12 @@ function partnerCountSaveFailureMessage(error){
   return "保存できませんでした（班・担当者・既存登録との不整合）。同じ内容を再送せず、まず「更新」で確認してください。";
  if(code==="resource-exhausted")
   return "保存できませんでした（登録上限）。入力は保持しています。管理者に確認してください。";
+ if(code==="internal")
+  return "保存できませんでした（サーバー内部エラー functions/internal）。件数は未保存です。入力を保持しています。管理者にエラーコードを伝えてください。";
+ if(code==="unavailable"||code==="deadline-exceeded")
+  return "保存できませんでした（通信・サーバー接続："+code+"）。入力を保持しています。二重登録を避けて最新件数を確認してください。";
+ if(code==="not-found"||code==="unimplemented")
+  return "保存APIが見つかりません（functions/"+code+"）。本番Functionsの公開状態を管理者に確認してください。入力は保持しています。";
  // The request may have committed remotely. Never suggest immediate resubmission.
  return "保存結果を確認できませんでした（通信・サーバー応答）。入力は保持しています。二重登録を避けるため、再送前に「更新」で保存済み件数を確認してください。";
 }
@@ -14273,7 +14279,14 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
  const readback=partnerSavedCountReadbackState(verified,expected);
  if(saveError){
   if(readback==="saved")return "件数の保存を再取得で確認しました。";
-  if(readback==="not_saved")throw Error("save_not_committed");
+  if(readback==="not_saved"){
+   // Keep the ORIGINAL callable failure code after verified readback. The old
+   // generic error hid the cause of rejected writes on real partner phones.
+   // No automatic retry, no payload logging and no changes to saved data.
+   if(typeof saveError?.code==="string"&&/^functions\/[a-z-]+$/.test(saveError.code))
+    throw saveError;
+   throw Error("save_not_committed");
+  }
   throw saveError;
  }
  if(!result?.saved||result.date!==date||result.staffId!==staffId||
