@@ -192,22 +192,22 @@ test("shared standings use one verified API and keep financial UI isolated",()=>
 
 test("corrected counts and date changes invalidate stale joint standings, while team detail opens the shared tree",()=>{
  const select=scope("function partnerSameAppSelectPanel(name){",
-  '\\npInline("partnerSameAppNavigation").addEventListener');
+  '\npInline("partnerSameAppNavigation").addEventListener');
  assert.match(select,/name==="detail"/);
- assert.match(select,/loadSharedDailyStandings\\("partnerDetail"\\)/);
+ assert.match(select,/loadSharedDailyStandings\("partnerDetail"\)/);
  const fetch=scope("async function partnerInlineFetch(){",
-  "\\nasync function openSameAppPartnerWorkspace(");
- assert.match(fetch,/loadSharedDailyStandings\\("partner",true\\)/);
- assert.match(fetch,/loadSharedDailyStandings\\("partnerDetail",true\\)/);
+  "\nasync function openSameAppPartnerWorkspace(");
+ assert.match(fetch,/loadSharedDailyStandings\("partner",true\)/);
+ assert.match(fetch,/loadSharedDailyStandings\("partnerDetail",true\)/);
  const action=scope("async function partnerInlineRun(work){",
-  "\\nfunction partnerInlinePayload(data){");
- assert.match(action,/sharedDailyRankCache\\.clear\\(\\)/);
- assert.match(action,/\\+\\+sharedDailyRankingGeneration/);
+  "\nfunction partnerInlinePayload(data){");
+ assert.match(action,/sharedDailyRankCache\.clear\(\)/);
+ assert.match(action,/\+\+sharedDailyRankingGeneration/);
  assert.ok(action.indexOf("sharedDailyRankCache.clear()")<action.indexOf("await partnerInlineFetch()"),
   "invalidate only after successful mutation, before refreshing the visible screen");
  const reset=scope("function resetPartnerInline(){","// Clone the eleven button styles");
- assert.match(reset,/sharedDailyRankCache\\.clear\\(\\)/);
- assert.match(reset,/\\+\\+sharedDailyRankingGeneration/);
+ assert.match(reset,/sharedDailyRankCache\.clear\(\)/);
+ assert.match(reset,/\+\+sharedDailyRankingGeneration/);
  const memory=new Map([["company-A",42]]);
  const fields={pInlineStatus:{textContent:""},pInlineInviteUrl:{value:""},
   pInlineInviteResult:{hidden:false},partnerInlineWorkspace:{hidden:false},
@@ -218,7 +218,7 @@ test("corrected counts and date changes invalidate stale joint standings, while 
   partnerInlineBusy:true,
   appScreen:{removeAttribute(){}},authScreen:{removeAttribute(){}},
   pInline:id=>fields[id]};
- runInNewContext(reset+"\\nresetPartnerInline()",ctx);
+ runInNewContext(reset+"\nresetPartnerInline()",ctx);
  assert.equal(memory.size,0,"no old company's rank data after logout");
  assert.equal(ctx.sharedDailyRankingGeneration,1,"invalidate stale in-flight request");
  assert.equal(ctx.partnerInlineWorkspaceCompany,"");
