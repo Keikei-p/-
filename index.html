@@ -6397,7 +6397,8 @@ body.product-reordering .product-list {
           <div id="rankingGroupProducts" style="display:grid;gap:8px;max-height:240px;overflow:auto;"></div>
           <button id="rankingGroupAdd" type="button" class="team-action-button" style="margin:12px 0;">選んだ商材でグループを追加</button>
           <div id="rankingGroupExisting" style="display:grid;gap:8px;"></div>
-          <p class="ranking-product-help">この設定は、この端末・このアカウント・このURLだけに保存されます。ほかの端末や旧URLとは同期しません。実績・商材・売上は変更しません。</p>
+          <button type="button" id="rankingGroupPublish" class="team-action-button">現在のグループ設定を協力店と共有</button>
+          <p id="rankingGroupPublishStatus" role="status" class="ranking-product-help">端末内の設定は保持します。協力店への共有は別途確認します。</p>
         </details>
         <p class="ranking-product-help">グループをタップすると、担当者ごとの合計獲得件数が表示されます（売上金額は表示しません）。</p>
         <div id="productRankingProductList" class="ranking-product-grid" data-columns="1"></div>
@@ -7434,6 +7435,8 @@ const partnerMainPreviewCompanyInvite = httpsCallable(partnerCountFunctions,"pre
 const partnerMainAcceptCompanyInvite = httpsCallable(partnerCountFunctions,"acceptPartnerCompanyInvitation");
 const readPartnerCatalogPublication = httpsCallable(partnerCountFunctions,"getPartnerCatalog");
 const setPartnerCatalogPublication = httpsCallable(partnerCountFunctions,"setPartnerCatalogPublication");
+const readPartnerRankingGroups = httpsCallable(partnerCountFunctions,"getPartnerRankingGroups");
+const writePartnerRankingGroups = httpsCallable(partnerCountFunctions,"setPartnerRankingGroups");
 
 
 
@@ -19407,6 +19410,8 @@ async function loadProducts(
 
     renderProducts();
     if(catalogOwner())void refreshCatalogPublication();
+    if(isCurrentCompanyManager()&&remoteRankingGroupState.key!==remoteRankingGroupKey())
+      void readRemoteRankingGroups();
 
     return true;
 
@@ -35705,6 +35710,75 @@ function rankProductMemberCounts(members) {
 }
 
 // Ranking presentation only: no new Firestore reads or writes, no new permissions.
+
+let remoteRankingGroupState={key:"",revision:0,groups:[],ready:false,busy:false};
+const remoteRankingGroupKey=()=>currentUser?.uid&&currentUserData?.companyId?
+  currentUser.uid+"|"+currentUserData.companyId:"";
+function remoteRankingStatus(msg){
+ const target=document.getElementById("rankingGroupPublishStatus");
+ if(target)target.textContent=msg;
+}
+async function readRemoteRankingGroups(){
+ const key=remoteRankingGroupKey();
+ if(!key||!isCurrentCompanyManager())return;
+ remoteRankingGroupState={key,revision:0,groups:[],ready:false,busy:false};
+ try{
+  const data=(await readPartnerRankingGroups({})).data;
+  if(remoteRankingGroupKey()!==key)return;
+  if(data?.scope!=="shared_count_rank_groups"||
+    !Number.isSafeInteger(data.revision)||!Array.isArray(data.groups)||
+    data.groups.length>30)throw Error("remote_rank_groups_invalid");
+  const parsed=normalizeRankingGroups(data.groups);
+  if(parsed.length!==data.groups.length)throw Error("remote_rank_groups_malformed");
+  remoteRankingGroupState={key,revision:data.revision,groups:parsed,ready:true,busy:false};
+  // Never erase original local settings from another phone/account. Import
+  // server settings only if there is no current local configuration.
+  if(!rankingGroups.length&&parsed.length){
+    rankingGroups=parsed;
+    rankingGroupsLoaded=true;
+    renderRankingGroupEditor();
+  }
+  remoteRankingStatus(data.revision===0?
+    "共有設定はまだありません。既存のグループを作り「協力店と共有」で登録してください。":
+    "共有済み設定を確認しました。端末内のグループは削除しません。");
+ }catch(e){
+  if(remoteRankingGroupKey()!==key)return;
+  remoteRankingStatus("共有設定の読込が未確認です。端末内の設定・実績は変更していません。");
+  console.warn("ranking_group_shared_read_unavailable",e?.code||"unverified");
+ }
+}
+async function publishCurrentRankingGroups(groups=rankingGroups){
+ const key=remoteRankingGroupKey(),state=remoteRankingGroupState;
+ if(!key||!isCurrentCompanyManager()||state.key!==key||!state.ready||state.busy){
+  remoteRankingStatus("共有設定を確認できません。画面を更新してから再確認してください。");return false;
+ }
+ state.busy=true;
+ const expected=state.revision,payload=normalizeRankingGroups(groups);
+ remoteRankingStatus("選択したランキンググループを共有設定へ保存中…");
+ try{
+  const saved=(await writePartnerRankingGroups({expectedRevision:expected,groups:payload})).data;
+  if(key!==remoteRankingGroupKey())return false;
+  if(saved?.saved!==true||saved.revision!==expected+1||
+     JSON.stringify(normalizeRankingGroups(saved.groups))!==JSON.stringify(payload))
+    throw Error("ranking_shared_save_unverified");
+  const read=(await readPartnerRankingGroups({})).data;
+  if(key!==remoteRankingGroupKey())return false;
+  if(read?.scope!=="shared_count_rank_groups"||read.revision!==saved.revision||
+     JSON.stringify(normalizeRankingGroups(read.groups))!==JSON.stringify(payload))
+    throw Error("ranking_shared_readback_unverified");
+  remoteRankingGroupState={key,revision:read.revision,groups:payload,ready:true,busy:false};
+  remoteRankingStatus("協力店と共有するランキンググループを保存・照合しました。");
+  return true;
+ }catch(e){
+  if(key===remoteRankingGroupKey()){
+   remoteRankingGroupState={key,revision:0,groups:[],ready:false,busy:false};
+   remoteRankingStatus("共有設定は未確認です。二重保存を避けるため、再読込して結果を確認してください。端末内設定は保持しました。");
+   console.warn("ranking_group_shared_write_unverified",e?.code||"unverified");
+  }
+  return false;
+ }
+}
+
 function rankingGroupsStorageKey() {
   if (!currentUser?.uid || !currentUserData?.companyId) return "";
   return "sales-ranking-groups-v1-" +
@@ -35891,7 +35965,8 @@ async function saveRankingGroups(next) {
     renderProductMemberRanking(records.filter(record =>
       record.date?.startsWith(dashboardMonth.value)
     ));
-    showSuccess("ランキンググループをこの端末に保存しました。");
+    showSuccess("ランキンググループをこの端末に保存しました。協力店との同期も確認します。");
+    void publishCurrentRankingGroups(normalized);
     return true;
   } catch (error) {
     console.error("ランキンググループ保存エラー:", error);
@@ -35904,6 +35979,8 @@ async function saveRankingGroups(next) {
 }
 
 rankingGroupEditor.addEventListener("toggle", renderRankingGroupEditor);
+const rankingGroupPublish=document.getElementById("rankingGroupPublish");
+if(rankingGroupPublish)rankingGroupPublish.addEventListener("click",()=>void publishCurrentRankingGroups());
 rankingGroupAdd.addEventListener("click", async () => {
   const name = rankingGroupName.value.trim();
   const taken = new Set(rankingGroups.flatMap(group => group.keys));
