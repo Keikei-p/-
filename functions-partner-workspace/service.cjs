@@ -367,7 +367,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  const countLinksRef=hub=>collection(hub,"partnerCatalogSettings").doc("countLinks");
  async function getPartnerCountLinks(request){
   const a=await actor(request),d=request?.data||{};
-  if(Object.keys(d).some(key=>key!=="workspaceCompanyId"))fail("invalid-argument");
+  if(Object.keys(d).some(key=>!["workspaceCompanyId","codeSessionToken"].includes(key)))
+   fail("invalid-argument");
   const s=await scope(a.uid,null,d.workspaceCompanyId);
   const hubId=s.kind==="hub"?s.cid:s.hubId;
   if(!validId(hubId))fail();
