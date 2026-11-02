@@ -1,6 +1,7 @@
 "use strict";
 // Isolated partner operations: no reads/writes to sales products, records or prices.
 const crypto=require("node:crypto");
+const {loadPublication,projectMasterProducts,changePublication,validId,nameOnly}=require("./catalog-publication.cjs");
 const {readDirectDayCounts}=require("./shared-direct-counts.cjs");
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 // Cashback is a product variant label, NOT a sales unit price or revenue.
@@ -260,6 +261,54 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      (u.memberType!=null&&!["internal","direct","member","managed"].includes(u.memberType))||
      (m.memberType!=null&&!["internal","direct","member","managed"].includes(m.memberType)))fail();
   return {kind:"hub",uid,cid,role:"owner"};
+ }
+
+ // The raw sales product master is read on the trusted backend only.
+ // No pricing, sales history, or financial fields reach partner clients.
+ async function viewCatalog(request){
+  const a=await actor(request),d=request?.data||{};
+  const s=await scope(a.uid,null,d.workspaceCompanyId);
+  if(s.kind!=="partner"&&s.kind!=="hub")fail();
+  const hubId=s.kind==="hub"?s.cid:s.hubId;
+  if(!ID.test(hubId||""))fail();
+  const [master,settings]=await Promise.all([
+   db.collection("products").where("companyId","==",hubId).limit(1001).get(),
+   collection(hubId,"partnerCatalogSettings").doc("publication").get()
+  ]);
+  if(master.size>1000)fail("resource-exhausted");
+  let state,rows;
+  try{
+   state=loadPublication(settings.exists?settings.data():null);
+   rows=projectMasterProducts(master.docs.map(doc=>({...doc.data(),id:doc.id})),
+    state.productIds,s.kind==="partner");
+  }catch{fail("data-loss");}
+  return {role:s.kind,revision:state.revision,products:s.kind==="partner"?
+   rows.map(({id,name,sortOrder})=>({id,name,sortOrder})):rows};
+ }
+ // One product flag per transaction; optimistic version guards concurrent owners.
+ // Existing products, price metadata and history are never written.
+ async function setCatalogPublication(request){
+  const a=await actor(request),d=request?.data||{};
+  if(d.workspaceCompanyId!=null)fail();
+  const s=await scope(a.uid);
+  if(s.kind!=="hub"||s.role!=="owner"||
+     !validId(d.productId)||typeof d.published!=="boolean"||
+     !Number.isSafeInteger(d.expectedRevision)||d.expectedRevision<0)
+    fail("permission-denied");
+  const productRef=db.collection("products").doc(d.productId);
+  const stateRef=collection(s.cid,"partnerCatalogSettings").doc("publication");
+  return db.runTransaction(async tx=>{
+   const [productDoc,stateDoc]=await Promise.all([tx.get(productRef),tx.get(stateRef)]);
+   const product=productDoc.data()||{};
+   if(!productDoc.exists||product.companyId!==s.cid||product.active===false)fail("failed-precondition");
+   try{nameOnly(product.name);}catch{fail("failed-precondition");}
+   let next;
+   try{next=changePublication(stateDoc.exists?stateDoc.data():null,
+     d.productId,d.published,d.expectedRevision);}
+   catch{fail("aborted");}
+   tx.set(stateRef,{...next,updatedByUid:a.uid,updatedAt:FieldValue.serverTimestamp()});
+   return {saved:true,revision:next.revision,productId:d.productId,published:d.published};
+  });
  }
  const checkTeam=async(tx,s,id)=>{
   if(!ID.test(id||""))fail("invalid-argument");
@@ -1207,6 +1256,6 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      privateTotalCount:privateValidated.total};
   });
  }
- return Object.freeze({manage,accept,view,submit});
+ return Object.freeze({manage,accept,view,submit,viewCatalog,setCatalogPublication});
 }
 module.exports={makeWorkspace,KEYS};
