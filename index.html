@@ -13532,6 +13532,7 @@ function renderPartnerEntryTotals(){
      Number(input.value)<0||Number(input.value)>9999){
    target.textContent="件数を確認してください";
    pInline("pInlineSaveStatus").textContent="件数は各項目0〜9999の整数で入力してください。";
+   pInline("pInlineSaveStatus").dataset.result="error";
    return;
   }
   if(input.dataset.privateCountId)privateTotal+=Number(input.value);
@@ -13540,6 +13541,7 @@ function renderPartnerEntryTotals(){
  target.textContent="共有商材 "+shared+"件｜協力店専用 "+privateTotal+"件";
  if(partnerInlineHasUnsavedCounts())
   pInline("pInlineSaveStatus").textContent="未保存の件数があります。「一括登録」を押すまで反映されません。";
+  pInline("pInlineSaveStatus").dataset.result="pending";
 }
 function partnerInlineRenderCounts(){
  const snap=partnerInlineData;
