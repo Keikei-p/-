@@ -35,4 +35,4 @@ jobs:
       - name: New email-first, original owner revenue and partner access regression
         run: |
           set -euo pipefail
-          node --test tests/partner-email-resend-and-join.test.mjs tests/partner-invite-mobile-layout.test.cjs tests/internal-owner-finance-visibility.test.cjs tests/partner-workspace.test.cjs
+          node --test tests/partner-email-resend-and-join.test.mjs tests/partner-invite-mobile-layout.test.cjs tests/internal-owner-finance-visibility.test.cjs tests/partner-workspace.test.cjs tests/partner-company-parity-release.test.mjs
