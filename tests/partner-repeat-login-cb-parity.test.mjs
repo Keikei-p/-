@@ -65,7 +65,7 @@ test("cashback count parser rejects NaN and overflows, accepts 0 and 5 plan cell
  const output=ctx.read();
  assert.equal(output.total,10);
  assert.equal(output.result["40000"],2);
- fields[0].value="10000";
+ fields[0].value="9999";
  assert.throws(()=>ctx.read(),/cb_count_overflow/);
  fields[0].value="0.5";
  assert.throws(()=>ctx.read(),/cb_count_invalid/);
