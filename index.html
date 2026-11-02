@@ -12518,7 +12518,8 @@ function resetPartnerInline(){
  ++sharedDailyRankingGeneration;sharedDailyRankCache.clear();
  partnerInlineData=null;partnerInlineWorkspaceCompany="";partnerInlineBusy=false;
  partnerInlineEditingStaffId="";
- pInline("pInlineSaveStatus").textContent="";
+ const saveStatus=pInline("pInlineSaveStatus");
+ if(saveStatus)saveStatus.textContent="";
  appScreen.removeAttribute("data-partner-count-only");
  pInline("partnerInlineWorkspace").hidden=true;
  pInline("pInlineStatus").textContent="";
