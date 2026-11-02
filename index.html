@@ -4397,6 +4397,9 @@ body.product-reordering .product-list {
 #appScreen[data-partner-count-only="true"] #partnerSameAppNavigation>[data-partner-panel="members"]{display:none!important}
 #appScreen[data-partner-count-only="true"] #partnerPanelRankings>.p-inline-card:first-child{display:none!important}
 #appScreen[data-partner-count-only="true"] #partnerPanelDetail>.p-inline-card:first-child{display:none!important}
+#appScreen[data-partner-count-only="true"] #partnerSharedDetailTree>section{margin:10px 0 16px}
+#appScreen[data-partner-count-only="true"] #partnerSharedDetailTree>section>h4{font-size:15px;margin:10px 2px}
+#appScreen[data-partner-count-only="true"] #partnerSharedDetailTree details>div.p-inline-row{margin:7px 2px;padding:10px}
 
 #appScreen[data-partner-count-only="true"] > :not(.user-bar):not(#partnerInlineWorkspace){display:none!important}
 #appScreen[data-partner-count-only="true"] .user-bar .management-tab-shell{display:none!important}
@@ -13096,50 +13099,52 @@ function renderSharedCountTeamDetails(parent,report){
   if(total>shown)partnerMainAppendRow(node,"その他（直営）",total-shown+"件");
   if(total<shown)throw Error("shared_detail_total_invalid");
  };
+ // Match the internal team list. One tap on a team opens every member and
+ // their product counts; no company/person nesting and no financial fields.
  const showCompany=(name,total,teamRows,peopleRows,verified=true)=>{
-  const company=document.createElement("details");company.className="p-inline-row";
-  const summary=document.createElement("summary");
-  summary.textContent=name+"｜"+total+"件"+(verified?"":"（個人別未照合）");
-  company.append(summary);
+  const group=document.createElement("section");group.className="p-inline-company-teams";
+  const heading=document.createElement("h4");
+  heading.textContent=name+"｜"+total+"件"+(verified?"":"（個人別未照合）");
+  group.append(heading);
   for(const team of teamRows){
-   const row=document.createElement("details");row.className="p-inline-row";
-   const title=document.createElement("summary");
-   title.textContent="👥 "+team.name+"｜"+team.totalCount+"件";
-   row.append(title);
+   const teamRow=document.createElement("details");teamRow.className="p-inline-row";
+   const teamTitle=document.createElement("summary");
+   teamTitle.textContent="👥 "+team.name+"｜"+team.totalCount+"件";
+   teamRow.append(teamTitle);
    const members=peopleRows.filter(p=>p.teamKey===team.key);
    for(const member of members){
-    const item=document.createElement("details");item.className="p-inline-row";
-    const label=document.createElement("summary");
-    label.textContent="👤 "+member.name+"｜"+member.totalCount+"件";
-    item.append(label);addCounts(item,member.counts,member.totalCount);row.append(item);
+    const person=document.createElement("div");person.className="p-inline-row";
+    const title=document.createElement("strong");
+    title.textContent="👤 "+member.name+"｜"+member.totalCount+"件";
+    person.append(title);addCounts(person,member.counts,member.totalCount);
+    teamRow.append(person);
    }
-   if(!members.length)partnerMainAppendRow(row,
+   if(!members.length)partnerMainAppendRow(teamRow,
     "担当者別件数は未確認","会社の記録と照合してください");
-   company.append(row);
+   group.append(teamRow);
   }
   const unassigned=peopleRows.filter(p=>!p.teamKey||!teamRows.some(t=>t.key===p.teamKey));
   for(const member of unassigned){
-   const item=document.createElement("details");item.className="p-inline-row";
-   const label=document.createElement("summary");
-   label.textContent="👤 "+member.name+"｜"+member.totalCount+"件（登録当時の班未確認）";
-   item.append(label);addCounts(item,member.counts,member.totalCount);company.append(item);
+   const person=document.createElement("div");person.className="p-inline-row";
+   const title=document.createElement("strong");
+   title.textContent="👤 "+member.name+"｜"+member.totalCount+"件（登録当時の班未確認）";
+   person.append(title);addCounts(person,member.counts,member.totalCount);
+   group.append(person);
   }
   if(!teamRows.length&&!unassigned.length)
-   partnerMainAppendRow(company,"班・担当者別の件数は未照合","会社の報告状況を確認してください");
-  parent.append(company);
+   partnerMainAppendRow(group,"班・担当者別の件数は未照合","会社の報告状況を確認してください");
+  parent.append(group);
  };
  showCompany("🏢 直営",report.direct.totalCount,report.direct.teams,
   report.direct.people,report.direct.peopleVerified===true);
- for(const company of report.companies){
+ for(const company of report.companies)
   showCompany("🤝 "+company.name,company.totalCount,
    report.teams.filter(t=>t.companyId===company.id),
    report.people.filter(p=>p.companyId===company.id),
    company.peopleVerified===true);
- }
  for(const name of report.missingCompanies||[])
   partnerMainAppendRow(parent,"🤝 "+name,"未報告・0件とは扱いません");
 }
-
 async function loadSharedDailyStandings(where,force=false){
  const partner=where==="partner"||where==="partnerDetail";
  const detail=where==="partnerDetail"||where==="ownerDetail";
