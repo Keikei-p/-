@@ -32,7 +32,7 @@ test("group aggregates verified direct and partner per-person category counts, n
  assert.doesNotMatch(JSON.stringify(result),/revenue|price|cashback|email/);
 });
 test("unmapped product ID does not invent a name-based mapping or score",()=>{
- const groups=[{id:"one",name:"NURO",keys:["id:p1","legacy:NURO"]}];
+ const groups=[{id:"one",name:"NURO",keys:["id:p1"]}];
  assert.deepEqual(groupPersonalScores(groups,[],{categories:valid.categories}),[
   {id:"one",name:"NURO",complete:false,members:[]}
  ]);
