@@ -13108,8 +13108,8 @@ function renderPartnerSharedGroupCards(target,response){
    const row=document.createElement("div");row.className="ranking-row";
    const left=document.createElement("div");left.className="ranking-left";
    const number=document.createElement("span");number.className="ranking-number";
-   number.textContent=item.rank+"位";
-   if(item.rank<=3)number.classList.add("top"+item.rank);
+   number.textContent=response.complete===true?item.rank+"位":"暫定";
+   if(response.complete===true&&item.rank<=3)number.classList.add("top"+item.rank);
    const name=document.createElement("div");name.className="ranking-name";
    name.textContent=item.name+"｜"+item.companyName;left.append(number,name);
    const value=document.createElement("div");value.className="ranking-value";
