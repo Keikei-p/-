@@ -4927,6 +4927,8 @@ body.product-reordering .product-list {
     </div>
     <div class="form-group"><label for="pInlineWorkingTeam">この日の稼働班（担当者の所属班）</label>
       <input id="pInlineWorkingTeam" type="text" readonly aria-label="担当者の所属班"></div>
+    <div class="form-group"><label for="pInlineWorkLocation">現場場所</label>
+      <input id="pInlineWorkLocation" type="text" maxlength="100" autocomplete="off" placeholder="例：○○市 ○○店"></div>
     <div class="section-title">商材別実績（CB別は件数のみ表示）</div>
     <div id="pInlineCountFields" class="product-input-list" aria-label="商材ごとの件数入力・2列表示"></div>
     <p id="pInlineEntryTotals" class="record-total-value" aria-live="polite">共有商材 0件｜協力店専用 0件</p>
@@ -13324,6 +13326,7 @@ function partnerInlineHasUnsavedCounts(){
  if(!snap||snap.role==="hub"||!partnerInlineEditingStaffId)return false;
  const entry=snap.records.find(row=>row.staffId===partnerInlineEditingStaffId);
  const fields=pInline("pInlineCountFields");
+ if(pInline("pInlineWorkLocation").value.trim()!==(entry?.workLocation||""))return true;
  for(const node of fields.querySelectorAll("input[data-count-key],input[data-private-count-id],input[data-cb-tier]")){
   const current=node.value.trim();
   if(!current||!Number.isSafeInteger(Number(current))||Number(current)<0||Number(current)>9999)return true;
@@ -13362,6 +13365,7 @@ function partnerInlineRenderCounts(){
  const person=snap.staff.find(x=>x.id===staffId);
  const team=snap.teams.find(t=>t.id===person?.teamId);
  pInline("pInlineWorkingTeam").value=team?.name||"所属班を確認してください";
+ pInline("pInlineWorkLocation").value=entry?.workLocation||"";
  partnerInlineEditingStaffId=staffId;
  pInline("pInlineRecordDate").value=pInline("pInlineDate").value;
  const grid=pInline("pInlineCountFields");grid.replaceChildren();
@@ -13916,11 +13920,11 @@ pInline("pInlineCopyInvite").onclick=async()=>{
   partnerInlineStatus("招待リンクをコピーしました。");
  }catch{pInline("pInlineInviteUrl").select();partnerInlineStatus("リンクを選択しました。コピーしてください。");}
 };
-function partnerInlineCountsUnchanged(snap,staffId,counts,privateCounts,cbCounts=null){
+function partnerInlineCountsUnchanged(snap,staffId,counts,privateCounts,cbCounts=null,workLocation=""){
  // Saving an unchanged correction must not create a new audit version.
  // A first-ever zero-count report is still a legitimate new record.
  const previous=snap?.records?.find(row=>row.staffId===staffId);
- if(!previous)return false;
+ if(!previous||String(previous.workLocation||"")!==workLocation)return false;
  return snap.categories.every(key=>previous.counts?.[key]===counts[key])&&
   Object.entries(privateCounts).every(([id,count])=>
    (previous.privateCounts?.[id]??0)===count)&&
@@ -13933,6 +13937,8 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
  if(!snap||!uid||date!==pInline("pInlineDate").value||
     date!==pInline("pInlineRecordDate").value)throw Error("date_changed");
  if(!snap.staff.some(p=>p.id===staffId&&p.active))throw Error("staff");
+ const workLocation=pInline("pInlineWorkLocation").value.trim();
+ if(workLocation.length>100||/[\x00-\x1f\x7f]/.test(workLocation))throw Error("work_location_invalid");
  const counts=Object.create(null);
  const parsedCb=partnerInlineSelectedCb();
  const cbCounts={NURO:parsedCb.result};
@@ -13956,10 +13962,10 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
   if(!product)throw Error("private_product_unknown");
   if(product.active)privateCounts[id]=n;
  }
- if(partnerInlineCountsUnchanged(snap,staffId,counts,privateCounts,cbCounts))
+ if(partnerInlineCountsUnchanged(snap,staffId,counts,privateCounts,cbCounts,workLocation))
   return "登録済みの件数と同じです。変更がないため訂正履歴は追加していません。";
  const result=(await partnerInlineSave(partnerInlinePayload({
-  date,staffId,counts,cbCounts,privateCounts,expectedVersion:before?.version??0
+  date,staffId,counts,cbCounts,workLocation,privateCounts,expectedVersion:before?.version??0
  }))).data;
  if(uid!==auth.currentUser?.uid||workspace!==partnerInlineWorkspaceCompany)
   throw Error("save_verify");
@@ -13969,7 +13975,7 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
  if(verified?.date!==date||verified?.companyName!==snap.companyName||
     !result?.saved||!saved||result.date!==date||result.staffId!==staffId||
     result.version!==(before?.version??0)+1||saved.version!==result.version||
-    saved.totalCount!==expectedTotal||
+    saved.totalCount!==expectedTotal||saved.workLocation!==workLocation||
     snap.categories.some(key=>saved.counts?.[key]!==counts[key])||
     PARTNER_NURO_CB_TIERS.some(tier=>
      (saved.cbCounts?.NURO?.[tier]??0)!==(cbCounts.NURO[tier]??0))||
