@@ -12710,6 +12710,107 @@ pInline("pMainCancelInvite").onclick=()=>{
  const url=new URL("/",location.origin);location.replace(url.href);
 };
 
+// Partner onboarding: email is verified by Firebase before FIRST password choice.
+// Existing email/password accounts keep the current UID, password, sales and history.
+// The verified invitation is previewed and accepted by the existing server API.
+let partnerEmailLinkBusy=false;
+let partnerEmailLinkPending=isSignInWithEmailLink(auth,location.href);
+let partnerEmailLinkPasswordState=null;
+function partnerEmailLinkTokenFromCallback(){
+ try{
+  const source=new URL(location.href);
+  let token=source.searchParams.get("partnerStaffInvite");
+  if(!token&&source.searchParams.has("continueUrl")){
+   const nested=new URL(source.searchParams.get("continueUrl"));
+   if(nested.origin!==location.origin)return "";
+   token=nested.searchParams.get("partnerStaffInvite");
+  }
+  return /^[A-Za-z0-9_-]{43}$/.test(token||"")?token:"";
+ }catch{return "";}
+}
+function partnerEmailLinkShowScreen(){
+ if(!partnerEmailLinkPending&&!partnerEmailLinkPasswordState)return;
+ authScreen.style.display="block";
+ verificationScreen.style.display="none";
+ companySetupScreen.style.display="none";
+ appScreen.style.display="none";
+ authButton.disabled=true;
+ switchButton.disabled=true;
+ const needPassword=!!partnerEmailLinkPasswordState;
+ pInline("partnerEmailLinkVerifyPanel").hidden=needPassword;
+ pInline("partnerEmailLinkPasswordPanel").hidden=!needPassword;
+ authTitle.textContent=needPassword?"協力店・初回パスワード設定":"協力店・メール認証";
+}
+partnerEmailLinkShowScreen();
+pInline("partnerEmailLinkVerifyButton").onclick=async()=>{
+ if(partnerEmailLinkBusy||!partnerEmailLinkPending)return;
+ const button=pInline("partnerEmailLinkVerifyButton");
+ const status=pInline("partnerEmailLinkVerifyStatus");
+ const email=pInline("partnerEmailLinkAddress").value.trim().toLowerCase();
+ const token=partnerEmailLinkTokenFromCallback();
+ if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||!token){
+  status.textContent="招待メールアドレスと有効な招待リンクを確認してください。";
+  return;
+ }
+ partnerEmailLinkBusy=true;button.disabled=true;
+ try{
+  // This verifies ownership of the mailbox BEFORE requesting a password.
+  // Never auto-accept the invite; the recipient must confirm their company.
+  const signed=await signInWithEmailLink(auth,email,location.href);
+  if(!signed.user?.emailVerified||signed.user.email?.toLowerCase()!==email)
+   throw Error("verified_email_mismatch");
+  const firstAccount=getAdditionalUserInfo(signed)?.isNewUser===true;
+  history.replaceState(null,"","/?partnerStaffInvite="+encodeURIComponent(token));
+  if(firstAccount){
+   partnerEmailLinkPasswordState={uid:signed.user.uid,token};
+   partnerEmailLinkShowScreen();
+  }else{
+   // Existing legitimate user: retain email/password and original company.
+   await signed.user.getIdToken(true);
+   await showPartnerInviteAtMain(signed.user,{kind:"staff",token});
+   partnerEmailLinkPending=false;
+  }
+ }catch(error){
+  console.error("partner_email_link_verify_failed",error?.code||"unknown");
+  status.textContent="メール認証ができませんでした。招待先メール・期限・Firebaseのメールリンク設定を確認してください。";
+  partnerEmailLinkShowScreen();
+ }finally{
+  partnerEmailLinkBusy=false;button.disabled=false;
+ }
+};
+pInline("partnerEmailLinkPasswordButton").onclick=async()=>{
+ const pending=partnerEmailLinkPasswordState,user=auth.currentUser;
+ if(!pending||!user||user.uid!==pending.uid||!user.emailVerified)return;
+ const button=pInline("partnerEmailLinkPasswordButton");
+ const status=pInline("partnerEmailLinkPasswordStatus");
+ const name=pInline("partnerEmailLinkName").value.trim();
+ const pass=pInline("partnerEmailLinkPassword").value;
+ const confirm=pInline("partnerEmailLinkPasswordConfirm").value;
+ if(!name||name.length>30||pass.length<8||pass!==confirm){
+  status.textContent="名前と8文字以上の同じパスワードを入力してください。";
+  return;
+ }
+ button.disabled=true;partnerEmailLinkBusy=true;
+ try{
+  await updatePassword(user,pass);
+  await createUserDocument(user,name);
+  await user.getIdToken(true);
+  // Keep all existing docs: the server-only acceptance creates the membership.
+  await showPartnerInviteAtMain(user,{kind:"staff",token:pending.token});
+  pInline("pMainInviteName").value=name;
+  pInline("partnerEmailLinkPasswordPanel").hidden=true;
+  partnerEmailLinkPasswordState=null;
+  partnerEmailLinkPending=false;
+  pInline("partnerEmailLinkPassword").value="";
+  pInline("partnerEmailLinkPasswordConfirm").value="";
+ }catch(error){
+  console.error("partner_first_password_failed",error?.code||"unknown");
+  status.textContent="パスワード設定または初回登録に失敗しました。通信状態を確認してください。";
+ }finally{
+  partnerEmailLinkBusy=false;button.disabled=false;
+ }
+};
+
 /* =====================================================
    Auth状態
 ===================================================== */
@@ -12717,6 +12818,12 @@ pInline("pMainCancelInvite").onclick=()=>{
 onAuthStateChanged(
   auth,
   async user => {
+
+    // Email-link completion and initial password cannot be skipped by auth routing.
+    if(partnerEmailLinkPending||partnerEmailLinkBusy||partnerEmailLinkPasswordState){
+      partnerEmailLinkShowScreen();
+      return;
+    }
 
     if (user) {
 
