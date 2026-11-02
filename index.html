@@ -12676,7 +12676,7 @@ function verifiedDirectDayCounts(date){
    const count=Number(result.count);
    if(!Number.isSafeInteger(count)||count<0||count>9999)throw Error("direct_count_invalid");
    n+=count;
-   let productName=String(result.productName||productsById?.get?.(result.productId)?.name||"").trim();
+   let productName=String(result.productName||products.find(x=>x.id===result.productId)?.name||"").trim();
    if(!productName&&result.productId)productName=String(
      products.find(x=>x.id===result.productId)?.name||"").trim();
    if(count){
