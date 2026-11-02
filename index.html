@@ -4797,6 +4797,9 @@ body.product-reordering .product-list {
 <section id="partnerInlineWorkspace" hidden aria-label="協力店 実績・班管理">
   <div class="dashboard-card">
   <h2 id="pInlineTitle" class="dashboard-title">協力店 実績管理</h2>
+  <button id="pInlineReturnToOwnCompany" type="button" class="team-action-button" hidden>
+    自社アカウントの画面に戻る
+  </button>
   <p class="p-inline-muted">いつもの実績管理アプリです。協力店には件数だけを表示し、売上・単価の原票は読み込みません。</p>
   <div id="partnerGlobalDateToolbar" class="p-inline-grid">
     <label class="p-inline-field">ダッシュボードの表示日<input id="pInlineDate" type="date"></label>
@@ -12557,6 +12560,26 @@ let partnerInlineBusy=false,ownerPartnerTeamsNonce=0;
 let partnerInlineEditingStaffId="";
 const partnerMainDate=()=>new Intl.DateTimeFormat("sv-SE",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
 const partnerMainValidId=id=>typeof id==="string"&&/^[A-Za-z0-9_-]{1,128}$/.test(id);
+// Only an opaque company ID, never invitation tokens, email or sales data, is
+// remembered so an approved secondary partner can log in again via password.
+// Every reload remains subject to backend company and membership verification.
+const partnerWorkspacePreferenceKey=uid=>"nico-partner-workspace:"+uid;
+function rememberPartnerWorkspace(uid,cid){
+ if(!partnerMainValidId(uid)||!partnerMainValidId(cid))return;
+ try{localStorage.setItem(partnerWorkspacePreferenceKey(uid),cid);}
+ catch{/* Private browsing may disable storage; the current URL still works. */}
+}
+function rememberedPartnerWorkspace(uid){
+ if(!partnerMainValidId(uid))return "";
+ try{
+  const cid=localStorage.getItem(partnerWorkspacePreferenceKey(uid))||"";
+  return partnerMainValidId(cid)?cid:"";
+ }catch{return "";}
+}
+function clearRememberedPartnerWorkspace(uid){
+ if(!partnerMainValidId(uid))return;
+ try{localStorage.removeItem(partnerWorkspacePreferenceKey(uid));}catch{}
+}
 function partnerMainPendingInvite(){
  const q=new URL(location.href).searchParams;
  const company=q.get("partnerCompanyInvite"),staff=q.get("partnerStaffInvite");
@@ -13564,11 +13587,21 @@ async function partnerInlineFetch(){
   return false;
  }
 }
+pInline("pInlineReturnToOwnCompany").onclick=()=>{
+ const uid=auth.currentUser?.uid;
+ if(!uid)return;
+ clearRememberedPartnerWorkspace(uid);
+ // The normal internal app STILL checks fresh server-side finance permissions.
+ location.replace(new URL("/",location.origin).href);
+};
 async function openSameAppPartnerWorkspace(user,workspaceCompanyId=""){
  if(!user?.emailVerified||!partnerMainValidId(user.uid))return;
  // Do not load legacy sales products, records, prices, or Firestore listeners.
  stopRealtimeListeners();
  partnerInlineWorkspaceCompany=partnerMainValidId(workspaceCompanyId)?workspaceCompanyId:"";
+ const switchButton=pInline("pInlineReturnToOwnCompany");
+ switchButton.hidden=!partnerInlineWorkspaceCompany;
+ if(partnerInlineWorkspaceCompany)rememberPartnerWorkspace(user.uid,partnerInlineWorkspaceCompany);
  partnerLeaderLastInvitation=null;
  pInline("pInlineInviteResult").hidden=true;
  pInline("pInlineInviteEmailStatus").textContent="";
@@ -14225,7 +14258,10 @@ pInline("pMainAcceptInvite").onclick=async()=>{
   if(!result?.partnerCompanyId||!partnerMainValidId(result.partnerCompanyId))throw Error("response");
   // Never delete the employee's original company, revenue or historical data.
   const url=new URL("/",location.origin);
-  if(result.secondaryMembership)url.searchParams.set("workspaceCompanyId",result.partnerCompanyId);
+  if(result.secondaryMembership){
+   rememberPartnerWorkspace(user.uid,result.partnerCompanyId);
+   url.searchParams.set("workspaceCompanyId",result.partnerCompanyId);
+  }
   location.replace(url.href);
  }catch(error){
   const code=error?.code||"";
@@ -14380,7 +14416,8 @@ onAuthStateChanged(
         await showPartnerInviteAtMain(user,pendingPartnerInvite);
         return;
       }
-      const partnerWorkspaceId=new URL(location.href).searchParams.get("workspaceCompanyId")||"";
+      const explicitPartnerWorkspace=new URL(location.href).searchParams.get("workspaceCompanyId")||"";
+      const partnerWorkspaceId=explicitPartnerWorkspace||rememberedPartnerWorkspace(user.uid);
       if(partnerWorkspaceId){
         if(!partnerMainValidId(partnerWorkspaceId)){
           showLegacyFinanceEntryBlocked("blocked");
