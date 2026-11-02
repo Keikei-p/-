@@ -12604,10 +12604,42 @@ async function showPartnerInviteAtMain(user,invite){
    pInline("pMainAcceptInvite").disabled=true;
   }
  }else{
-  pInline("pMainInviteDescription").textContent=
-   "このアカウントで協力店の班に参加します。招待先メールアドレスと一致する場合のみ承諾できます。";
+  pInline("pMainAcceptInvite").disabled=true;
+  pInline("pMainInviteDescription").textContent="招待メールを照合しています…";
+  try{
+   const result=(await partnerInlineAccept({token:invite.token,previewOnly:true})).data;
+   if(auth.currentUser?.uid!==user.uid)return;
+   if(!result?.valid)throw Error("invalid_invitation");
+   pInline("pMainInviteDescription").textContent=
+     "ログイン中："+(user.email||"確認済みメール")+
+     "。"+result.companyName+"・"+result.teamName+"（"+
+     (result.role==="leader"?"リーダー":"メンバー")+"）への招待です。";
+   pInline("pMainAcceptInvite").disabled=false;
+  }catch(error){
+   if(auth.currentUser?.uid!==user.uid)return;
+   const code=error?.code||"";
+   pInline("pMainInviteDescription").textContent=
+     code==="functions/permission-denied"?
+     "招待先メールと現在のログインメールが異なります。別のメールでログインしてください。":
+     code==="functions/failed-precondition"?
+     "招待が期限切れ・使用済み、または班が無効です。招待元にメール再送を依頼してください。":
+     "招待情報を確認できません。通信状態を確認して再度開いてください。";
+   pInline("pMainInviteStatus").textContent="承諾前にメールアドレスと招待の状態を確認してください。";
+  }
  }
 }
+pInline("pMainChangeInviteAccount").onclick=async()=>{
+ const switchButton=pInline("pMainChangeInviteAccount");
+ switchButton.disabled=true;
+ try{
+  await signOut(auth);
+  pInline("partnerInviteAtMain").hidden=true;
+  delete authScreen.dataset.partnerInvite;
+  pInline("pMainInviteStatus").textContent="";
+ }catch{
+  pInline("pMainInviteStatus").textContent="ログアウトできませんでした。もう一度お試しください。";
+ }finally{switchButton.disabled=false;}
+};
 pInline("pMainAcceptInvite").onclick=async()=>{
  const invite=partnerMainPendingInvite(),user=auth.currentUser,button=pInline("pMainAcceptInvite");
  if(!invite||!user?.emailVerified||button.disabled||
@@ -12628,8 +12660,14 @@ pInline("pMainAcceptInvite").onclick=async()=>{
   const url=new URL("/",location.origin);
   if(result.secondaryMembership)url.searchParams.set("workspaceCompanyId",result.partnerCompanyId);
   location.replace(url.href);
- }catch{
-  pInline("pMainInviteStatus").textContent="招待を承諾できませんでした。メール・招待期限・既存の所属を確認してください。";
+ }catch(error){
+  const code=error?.code||"";
+  pInline("pMainInviteStatus").textContent=
+    code==="functions/permission-denied"?
+      "招待メールとログイン中のメール、または招待元の権限が一致しません。別のメールでログインしてください。":
+    code==="functions/failed-precondition"?
+      "招待の期限切れ・使用済み・既存所属の重複を確認してください。招待元に再送を依頼できます。":
+      "参加できませんでした。通信・メール認証・招待の状態を確認してください。";
   button.disabled=false;
  }
 };
