@@ -4984,7 +4984,7 @@ body.product-reordering .product-list {
     <div class="p-inline-card"><h3>📅 日別</h3><p>上の実績日を切り替えて確認できます。</p><div id="pInlineDailySummary" class="p-inline-list"></div></div>
   </section>
   <section id="partnerPanelHistory" data-partner-view="history" hidden>
-    <div class="p-inline-card"><h3>📝 登録履歴</h3><p>訂正は実績入力から行えます。</p><div id="pInlineHistory" class="p-inline-list"></div></div>
+    <div class="p-inline-card"><h3>📝 登録履歴</h3><p>登録・訂正履歴を選び「この実績を修正」を押すと、最新の保存済み件数を実績入力欄に表示します。過去の訂正履歴は消しません。</p><div id="pInlineHistory" class="p-inline-list"></div></div>
   </section>
   <section id="partnerPanelAnalysis" data-partner-view="analysis" hidden>
     <div class="p-inline-card"><h3>📈 件数分析</h3><div id="pPartnerAnalysis" class="p-inline-list"></div></div>
@@ -13695,6 +13695,65 @@ function partnerInlineRender(){
   "この日の登録はありません","未報告は0件とは扱いません");
 }
 
+// Open a saved person's latest counts directly from the history, like the
+// original sales history editor. Historical audit entries remain append-only:
+// never re-submit an older revision as if it were the current version.
+async function partnerInlineOpenHistoryCorrection(staffId,expectedDate){
+ if(partnerInlineBusy||!partnerInlineData||!auth.currentUser?.uid)return;
+ const uid=auth.currentUser.uid,workspace=partnerInlineWorkspaceCompany;
+ if(partnerInlineData.date!==expectedDate||
+    pInline("pInlineDate").value!==expectedDate){
+  partnerInlineStatus("履歴の日付が変更されました。登録履歴を開き直してください。",true);
+  return;
+ }
+ if(partnerInlineHasUnsavedCounts()&&
+    !window.confirm("入力途中の件数があります。保存せず履歴の実績を開きますか？"))return;
+ partnerInlineBusy=true;
+ partnerInlineStatus("最新の登録内容を照合しています...");
+ try{
+  // Read current version before editing; stale events must never overwrite
+  // other leaders' later changes. submit() still enforces expectedVersion.
+  const payload={date:expectedDate};
+  if(workspace)payload.workspaceCompanyId=workspace;
+  const fresh=(await readPartnerWorkDay(payload)).data;
+  if(uid!==auth.currentUser?.uid||workspace!==partnerInlineWorkspaceCompany||
+     expectedDate!==pInline("pInlineDate").value)return;
+  if(!fresh||fresh.date!==expectedDate||
+     fresh.companyName!==partnerInlineData.companyName||
+     !["owner","leader","member"].includes(fresh.role)||
+     !Array.isArray(fresh.staff)||!Array.isArray(fresh.records)||
+     !Array.isArray(fresh.teams)||!Array.isArray(fresh.categories))
+   throw Error("history_fresh_contract");
+  const staff=fresh.staff.find(p=>p.id===staffId&&p.active===true);
+  const latest=fresh.records.find(r=>r.staffId===staffId);
+  if(!staff||!latest||!Number.isSafeInteger(latest.version)||
+     latest.version<1)throw Error("history_record_unavailable");
+  // Backend only returns members authorized to edit/see the selected staff.
+  if(fresh.role==="member"&&(staff.kind!=="account"||
+     staff.uid!==uid))throw Error("history_not_writable");
+  partnerInlineData=fresh;
+  partnerInlineBusy=false;
+  partnerInlineRender();
+  if(![...pInline("pInlineStaff").options].some(o=>o.value===staffId))
+   throw Error("history_staff_missing");
+  pInline("pInlineStaff").value=staffId;
+  partnerInlineRenderCounts();
+  partnerSameAppSelectPanel("record");
+  pInline("pInlineSaveStatus").textContent=
+   "登録履歴から最新の第"+latest.version+
+   "版を読み込みました。修正後「変更した件数を保存（訂正）」を押してください。過去の履歴は残ります。";
+  partnerInlineStatus("履歴の実績を編集できます。保存前の内容は変更されていません。");
+  pInline("partnerPanelRecord").scrollIntoView({behavior:"smooth",block:"start"});
+ }catch(error){
+  if(uid!==auth.currentUser?.uid||workspace!==partnerInlineWorkspaceCompany)return;
+  partnerInlineStatus("実績の編集画面を開けません。最新の所属・履歴を更新してください。入力内容は変更していません。",true);
+ }finally{
+  // Do not re-render after setting the edit guidance: that would erase the
+  // selected record's status and may discard values just opened from history.
+  partnerInlineBusy=false;
+ }
+}
+
 async function loadPartnerRevisionHistory(){
  const snap=partnerInlineData,uid=auth.currentUser?.uid;
  if(!snap||!uid)return;
@@ -13766,6 +13825,25 @@ async function loadPartnerRevisionHistory(){
    }else if(event.previousPrivateTotalCount!==event.privateTotalCount)
     partnerMainAppendRow(row,"協力店専用商材",
      event.previousPrivateTotalCount+"件 → "+event.privateTotalCount+"件");
+   // Edit the CURRENT saved entry (not the immutable audit snapshot).
+   // Retired accounts stay visible in history but cannot write new versions.
+   const member=snap.staff.find(p=>p.id===event.staffId);
+   const latest=snap.records?.find(r=>r.staffId===event.staffId);
+   if(member?.active===true&&latest&&Number.isSafeInteger(latest.version)){
+    const edit=document.createElement("button");
+    edit.type="button";edit.className="team-action-button";
+    edit.textContent="✏️ この実績を修正";
+    edit.setAttribute("aria-label",(event.staffName||allowed.get(event.staffId))+
+     " の保存済み実績を修正");
+    edit.onclick=()=>void partnerInlineOpenHistoryCorrection(event.staffId,date);
+    row.append(edit);
+    if(event.version!==latest.version)
+     partnerMainAppendRow(row,"過去の訂正版",
+      "この時点の件数は履歴として保持し、編集では最新の第"+latest.version+"版を読み込みます");
+   }else{
+    partnerMainAppendRow(row,"編集不可",
+     "現在の担当者が無効、または保存済み実績がありません。過去の履歴は保持しています");
+   }
    area.append(row);
   }
   if(!reply.audits.length)partnerMainAppendRow(area,
