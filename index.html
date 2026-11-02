@@ -4393,6 +4393,7 @@ body.product-reordering .product-list {
 #appScreen[data-partner-count-only="true"] #partnerInlineWorkspace{display:block!important}
 #authScreen[data-partner-invite="true"] .auth-wrapper{display:none!important}
 #partnerInlineWorkspace .p-inline-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin:12px 0}
+#partnerInlineWorkspace #partnerGlobalDateToolbar[hidden]{display:none!important}
 #partnerInlineWorkspace .p-inline-field{display:flex;flex-direction:column;gap:6px;min-width:0}
 #partnerInlineWorkspace .p-inline-field input,#partnerInlineWorkspace .p-inline-field select{width:100%;min-height:44px;min-width:0}
 #partnerInlineWorkspace .p-inline-actions{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0}
@@ -4770,7 +4771,7 @@ body.product-reordering .product-list {
   <div class="dashboard-card">
   <h2 id="pInlineTitle" class="dashboard-title">協力店 実績管理</h2>
   <p class="p-inline-muted">いつもの実績管理アプリです。協力店には件数だけを表示し、売上・単価の原票は読み込みません。</p>
-  <div class="p-inline-grid">
+  <div id="partnerGlobalDateToolbar" class="p-inline-grid">
     <label class="p-inline-field">ダッシュボードの表示日<input id="pInlineDate" type="date"></label>
     <div class="p-inline-field"><label for="pInlineRefresh">最新データ</label><button id="pInlineRefresh" type="button">更新</button></div>
   </div>
@@ -13110,6 +13111,7 @@ function partnerSameAppPositionPanel(name){
  (row[row.length-1]||button).after(detail);
 }
 function partnerSameAppSelectPanel(name){
+ pInline("partnerGlobalDateToolbar").hidden=name==="record";
  const map={record:"partnerPanelRecord",individual:"partnerPanelRankings",
   product:"partnerPanelRankings",team:"partnerPanelRankings",
   detail:"partnerPanelDetail",daily:"partnerPanelDaily",
