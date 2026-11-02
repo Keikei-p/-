@@ -12657,6 +12657,139 @@ function mountPartnerSafeManagementMenu(){
  return true;
 }
 
+// Shared count-only scoreboard: hub and partner call the SAME audited
+// endpoint. Fetch only when the ranking is opened / refresh is requested.
+let sharedDailyRankingGeneration=0;
+function verifiedDirectDayCounts(date){
+ if(!canLoadPartnerRanking()||!recordsReady||
+    recordsSubscribedMonth!==date.slice(0,7)||dashboardMonth.value!==date.slice(0,7))
+  return null;
+ const direct=records.filter(r=>r.date===date);
+ const people=new Map(),teams=new Map(),products=new Map();
+ let total=0;
+ for(const r of direct){
+  if(r.companyId&&r.companyId!==currentUserData.companyId)throw Error("direct_wrong_company");
+  const results=getRecordResults(r);
+  if(!Array.isArray(results))throw Error("direct_results_invalid");
+  let n=0;
+  for(const result of results){
+   const count=Number(result.count);
+   if(!Number.isSafeInteger(count)||count<0||count>9999)throw Error("direct_count_invalid");
+   n+=count;
+   let productName=String(result.productName||productsById?.get?.(result.productId)?.name||"").trim();
+   if(!productName&&result.productId)productName=String(
+     products.find(x=>x.id===result.productId)?.name||"").trim();
+   if(count){
+    const label=productName||"商材未確認（直営）";
+    products.set(label,(products.get(label)||0)+count);
+   }
+  }
+  if(!Number.isSafeInteger(n)||n<0||
+     (Number.isSafeInteger(r.totalCount)&&r.totalCount!==n))
+   throw Error("direct_total_mismatch");
+  total+=n;
+  const personId=typeof r.uid==="string"&&r.uid?r.uid:"history:"+r.id;
+  if(!personId||personId==="history:undefined")throw Error("direct_person_id_missing");
+  const name=String(r.memberNameSnapshot||getCurrentMemberName(r)||"担当者未確認");
+  const row=people.get(personId)||{key:"direct:"+personId,name:"直営｜"+name,totalCount:0};
+  row.totalCount+=n;people.set(personId,row);
+  const teamId=typeof r.teamId==="string"&&r.teamId?r.teamId:"unknown";
+  const teamName=String(r.teamNameSnapshot||getCurrentTeamName(r)||"当時の班未確認");
+  const tr=teams.get(teamId)||{key:"direct-team:"+teamId,name:"直営｜"+teamName,totalCount:0};
+  tr.totalCount+=n;teams.set(teamId,tr);
+ }
+ return {totalCount:total,people:[...people.values()],teams:[...teams.values()],
+  products:[...products].map(([name,count])=>({name,count}))};
+}
+function appendSharedRankingRows(container,heading,entries,complete){
+ const section=document.createElement("section");section.className="p-inline-card";
+ const h=document.createElement("h4");h.textContent=heading;section.append(h);
+ const sorted=[...entries].sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name,"ja"));
+ if(!sorted.length)partnerMainAppendRow(section,"表示できる実績がありません","未報告を0件とは扱いません");
+ let previous=null,rank=0;
+ for(const [i,row] of sorted.entries()){
+  if(!Number.isSafeInteger(row.count)||row.count<0||typeof row.name!=="string")
+   throw Error("shared_ranking_entry_invalid");
+  if(previous!==row.count)rank=i+1;
+  const prefix=complete?(rank===1&&row.count>0?"🏆 ":"")+rank+"位 ":"";
+  partnerMainAppendRow(section,prefix+row.name,row.count+"件");
+  previous=row.count;
+ }
+ container.append(section);
+}
+async function loadSharedDailyStandings(where){
+ const partner=where==="partner";
+ if(!partner&&!canLoadPartnerRanking())return;
+ const date=partner?pInline("pInlineDate").value:pInline("ownerPartnerDashboardDate").value;
+ const status=pInline(partner?"partnerSharedRankingsStatus":"ownerSharedRankingsStatus");
+ const content=pInline(partner?"partnerSharedRankingContent":"ownerSharedRankingContent");
+ const uid=auth.currentUser?.uid,seq=++sharedDailyRankingGeneration;
+ content.replaceChildren();
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||date>getTodayString()){
+  status.textContent="確認する日付を選択してください。";return;
+ }
+ status.textContent="会社・班・個人・商材の件数を照合しています…";
+ try{
+  const payload={date,sharedRankings:true};
+  if(partner&&partnerInlineWorkspaceCompany)
+   payload.workspaceCompanyId=partnerInlineWorkspaceCompany;
+  const response=(await readPartnerWorkDay(payload)).data;
+  if(seq!==sharedDailyRankingGeneration||auth.currentUser?.uid!==uid||
+     date!==(partner?pInline("pInlineDate").value:pInline("ownerPartnerDashboardDate").value))return;
+  if(response?.scope!=="shared_counts_only"||
+     response.role!==(partner?"partner":"hub")||response.date!==date||
+     !Array.isArray(response.companies)||!Array.isArray(response.teams)||
+     !Array.isArray(response.people)||!Array.isArray(response.categories)||
+     !response.productCounts||typeof response.productCounts!=="object"||
+     typeof response.complete!=="boolean"||response.includesDirect!==false)
+   throw Error("shared_ranking_contract");
+  if(response.companies.length>20||response.teams.length>4000||
+     response.people.length>4000||response.categories.length!==PARTNER_QUICK_RANK_KEYS.length)
+   throw Error("shared_ranking_scope");
+  const categories=[...PARTNER_QUICK_RANK_KEYS];
+  if(categories.some(k=>!response.categories.includes(k)||!Number.isSafeInteger(response.productCounts[k])||
+     response.productCounts[k]<0)||Object.keys(response.productCounts).length!==categories.length)
+   throw Error("shared_ranking_category");
+  let companyRows=response.companies.map(x=>({name:"🤝 "+x.name,count:x.totalCount}));
+  let teamRows=response.teams.map(x=>({name:"🤝 "+x.companyName+"・"+x.name,count:x.totalCount}));
+  let personRows=response.people.map(x=>({name:"🤝 "+x.companyName+"・"+x.name,count:x.totalCount}));
+  const productTotals=new Map(categories.map(k=>[k,response.productCounts[k]]));
+  let complete=response.complete,internal=null;
+  if(!partner){
+   internal=verifiedDirectDayCounts(date);
+   if(!internal)complete=false;
+   else{
+    companyRows.push({name:"🏢 直営",count:internal.totalCount});
+    teamRows.push(...internal.teams.map(x=>({name:x.name,count:x.totalCount})));
+    personRows.push(...internal.people.map(x=>({name:x.name,count:x.totalCount})));
+    for(const {name,count} of internal.products){
+     // Never silently guess which catalog items are the same product.
+     const directLabel="直営｜"+name;
+     productTotals.set(directLabel,(productTotals.get(directLabel)||0)+count);
+    }
+   }
+  }
+  const partnerSum=response.companies.reduce((n,x)=>n+x.totalCount,0);
+  if(!Number.isSafeInteger(partnerSum)||partnerSum<0)throw Error("shared_overflow");
+  status.textContent=complete?
+   "件数照合済み｜"+(partner?"協力店合同":"直営＋協力店合同")+
+     " "+(partnerSum+(internal?.totalCount||0))+"件｜同率順位は同順位":
+   "未報告・未照合の会社、または直営の読込待ちがあります。表示は途中経過で、正式順位は確定していません。";
+  appendSharedRankingRows(content,"🏢 会社別件数",companyRows,complete);
+  appendSharedRankingRows(content,"🏆 個人ランキング",personRows,complete);
+  appendSharedRankingRows(content,"👥 班ランキング",teamRows,complete);
+  appendSharedRankingRows(content,"📦 商材別件数",
+   [...productTotals].map(([name,count])=>({name,count})),complete);
+ }catch(error){
+  if(seq!==sharedDailyRankingGeneration||auth.currentUser?.uid!==uid)return;
+  content.replaceChildren();
+  status.textContent="ランキングを正しく照合できません。データ・権限を確認して更新してください。";
+  console.error("shared_daily_ranking_unavailable",error?.code||"unverified");
+ }
+}
+pInline("partnerSharedRankingsRefresh").onclick=()=>loadSharedDailyStandings("partner");
+pInline("ownerSharedRankingsRefresh").onclick=()=>loadSharedDailyStandings("owner");
+
 // Partner sees original dashboard-style menu, not the finance DOM.
 function renderPartnerRankingOnlyPanel(){
  const snap=partnerInlineData;
@@ -12739,8 +12872,10 @@ function partnerSameAppSelectPanel(name){
   button.setAttribute("aria-expanded",String(selected));
  });
  // Changing dashboard tabs must never erase unsubmitted count input fields.
- if(partnerInlineData&&["individual","product","team"].includes(name))
+ if(partnerInlineData&&["individual","product","team"].includes(name)){
   renderPartnerRankingOnlyPanel();
+  void loadSharedDailyStandings("partner");
+ }
 }
 pInline("partnerSameAppNavigation").addEventListener("click",event=>{
  const button=event.target.closest("[data-partner-panel]");
