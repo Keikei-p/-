@@ -16,7 +16,7 @@ test("partner leader invite is in the original app menu with owner-style stacked
  assert.match(html,/id="companyInviteControls"/);
  for(const id of ["pInlineInviteEmail","pInlineInviteRole","pInlineInviteTeam",
   "pInlineCreateInvite","pInlineResendInvite","pInlineCopyInvite",
-  "pInlineInviteUrl","pInlineInviteRecipient","pInlineInviteEmailStatus"]){
+  "pInlineInviteUrl","pInlineInviteRecipient","pInlineInviteEmailStatus","pInlineInviteFormStatus"]){
   assert.equal((inviteHtml.match(new RegExp('id="'+id+'"',"g"))||[]).length,1,id);
  }
  assert(inviteHtml.indexOf('id="pInlineInviteEmail"') <
@@ -91,4 +91,32 @@ test("unverified actor or member cannot send partner invitation",async()=>{
   assert.equal(f.sent.length,0);
   assert.equal(f.writes,0);
  }
+});
+
+test("invalid invite email and missing team get immediate specific feedback without server writes",async()=>{
+ const f=fixture();
+ f.context.partnerInlineRun=async work=>{try{await work();}catch{}};
+ const click=f.pInline("pInlineCreateInvite").onclick;
+ assert.equal(typeof click,"function");
+ f.pInline("pInlineInviteEmail").value="invalid";
+ f.pInline("pInlineInviteRole").value="member";
+ f.pInline("pInlineInviteTeam").value="team-A";
+ await click();
+ assert.match(f.pInline("pInlineInviteFormStatus").textContent,/メールアドレスを正しく入力/);
+ assert.equal(f.writes,0,"invalid email cannot create a backend invitation");
+ f.pInline("pInlineInviteEmail").value="member@example.com";
+ f.pInline("pInlineInviteTeam").value="";
+ await click();
+ assert.match(f.pInline("pInlineInviteFormStatus").textContent,/所属する班を選択/);
+ assert.equal(f.writes,0,"missing team cannot create a backend invitation");
+});
+test("unauthorized invite role is explained before attempting a privileged server call",async()=>{
+ const f=fixture({role:"member"});
+ f.context.partnerInlineRun=async work=>{try{await work();}catch{}};
+ f.pInline("pInlineInviteEmail").value="member@example.com";
+ f.pInline("pInlineInviteRole").value="member";
+ f.pInline("pInlineInviteTeam").value="team-A";
+ await f.pInline("pInlineCreateInvite").onclick();
+ assert.match(f.pInline("pInlineInviteFormStatus").textContent,/リーダー・管理者のみ/);
+ assert.equal(f.writes,0);
 });
