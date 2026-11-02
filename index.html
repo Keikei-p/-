@@ -27945,7 +27945,8 @@ async function mergedPartnerRankingDay(date){
   // A registered, approved partner missing from BOTH ledgers is unreported,
   // not a verified zero. Preserve available counts but never certify ranks.
   const registered=staff.data?.registeredCompanies;
-  let coverageComplete=true;
+  // Old backends that omit the company roster cannot prove a complete month.
+  let coverageComplete=Array.isArray(registered);
   if(Array.isArray(registered)){
     if(registered.length>100)throw Error("partner_month_scope_invalid");
     const seen=new Set();
