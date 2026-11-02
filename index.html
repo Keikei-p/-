@@ -13748,9 +13748,9 @@ async function partnerInlineOpenHistoryCorrection(staffId,expectedDate){
   if(uid!==auth.currentUser?.uid||workspace!==partnerInlineWorkspaceCompany)return;
   partnerInlineStatus("実績の編集画面を開けません。最新の所属・履歴を更新してください。入力内容は変更していません。",true);
  }finally{
+  // Do not re-render after setting the edit guidance: that would erase the
+  // selected record's status and may discard values just opened from history.
   partnerInlineBusy=false;
-  if(partnerInlineData&&uid===auth.currentUser?.uid&&
-     partnerSameAppSelectedPanel==="record")partnerInlineRenderCounts();
  }
 }
 
