@@ -51,7 +51,7 @@ test('team accordion: one tap on a team reveals member and product counts with n
     assert.ok(section.children[1].children[1].children.some(x=>x.tag==='row'));
   }
   const partner=root.children[1].children[1].children[1];
-  assert.equal(partner.textContent,'👤 佐藤｜3件');
+  assert.equal(partner.children[0].textContent,'👤 佐藤｜3件');
   assert.equal(partner.children[1].textContent,'NURO:2件');
   assert.equal(partner.children[2].textContent,'ウォーター:1件');
   assert.doesNotMatch(JSON.stringify(root),/売上|単価|Revenue|Price/);
