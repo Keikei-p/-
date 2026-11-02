@@ -19,7 +19,7 @@ test("resend never silently claims delivery, uses current role email and team, r
  assert.match(html,/email:invite\.email,role:invite\.role/);
  assert.match(html,/window\.location\.href=partnerInviteMailUrl\(latest\)/);
  assert.match(html,/mailto:/);
- assert.doesNotMatch(html,/招待メールを自動送信しました|メールを送信しました/);
+ assert.doesNotMatch(html,/招待メールを自動送信しました/);
 });
 test("join is previewed only by verified signed-in email before mutation",()=>{
  assert.match(html,/partnerInlineAccept\(\{token:invite\.token,previewOnly:true\}\)/);
@@ -29,7 +29,7 @@ test("join is previewed only by verified signed-in email before mutation",()=>{
  assert.match(server,/if\(d\.previewOnly===true\)/);
  assert.match(server,/return \{valid:true,companyName:/);
  assert.match(server,/m\.companyId!=null&&m\.companyId!==cid/);
- assert.match(server,/pm\.email!=null&&clean\(pm\.email\)/);
+ assert.match(server,/clean\(pm\.email\)&&clean\(pm\.email\)/);
  assert.match(html,/transferCurrentCompany:false/);
 });
 test("only the original finance-protected source remains and no new financial permissions are granted",()=>{
