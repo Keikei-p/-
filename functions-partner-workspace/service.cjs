@@ -2,6 +2,7 @@
 // Isolated partner operations: no reads/writes to sales products, records or prices.
 const crypto=require("node:crypto");
 const {loadPublication,projectMasterProducts,changePublication,validId,nameOnly}=require("./catalog-publication.cjs");
+const {decodeGroups,saveGroups,groupPersonalScores}=require("./shared-ranking-groups.cjs");
 const {readDirectDayCounts}=require("./shared-direct-counts.cjs");
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 // Cashback is a product variant label, NOT a sales unit price or revenue.
@@ -312,6 +313,51 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    catch{fail("aborted");}
    tx.set(stateRef,{...next,updatedByUid:a.uid,updatedAt:FieldValue.serverTimestamp()});
    return {saved:true,revision:next.revision,productId:d.productId,published:d.published};
+  });
+ }
+
+ // Share the original group editor's definitions with other approved members.
+ // The source remains hub-owned; partner users may only read redacted settings.
+ const groupSettingsRef=hub=>collection(hub,"partnerRankingSettings").doc("shared");
+ const publicationRef=hub=>collection(hub,"partnerCatalogSettings").doc("publication");
+ async function readRankingSettings(hub){
+  const [groups,publication]=await Promise.all([
+   groupSettingsRef(hub).get(),publicationRef(hub).get()
+  ]);
+  try{
+   const pub=loadPublication(publication.exists?publication.data():null);
+   return decodeGroups(groups.exists?groups.data():null,
+    {allowedProducts:pub.productIds,categories:KEYS});
+  }catch{fail("data-loss");}
+ }
+ async function getPartnerRankingGroups(request){
+  const a=await actor(request),d=request?.data||{};
+  const s=await sharedRankScope(a.uid,d.workspaceCompanyId);
+  const hub=s.kind==="hub"?s.cid:s.hubId;
+  if(!validId(hub))fail();
+  const config=await readRankingSettings(hub);
+  return {scope:"shared_count_rank_groups",revision:config.revision,groups:config.groups};
+ }
+ async function setPartnerRankingGroups(request){
+  const a=await actor(request),d=request?.data||{};
+  if(d.workspaceCompanyId!=null||!Number.isSafeInteger(d.expectedRevision)||
+     d.expectedRevision<0||!Array.isArray(d.groups))fail("invalid-argument");
+  const s=await scope(a.uid);
+  if(s.kind!=="hub"||s.role!=="owner")fail();
+  return db.runTransaction(async tx=>{
+   const fresh=await scope(a.uid,tx);
+   if(fresh.kind!=="hub"||fresh.role!=="owner"||fresh.cid!==s.cid)fail();
+   const configRef=groupSettingsRef(s.cid),pubRef=publicationRef(s.cid);
+   const [existing,pubSnap]=await Promise.all([tx.get(configRef),tx.get(pubRef)]);
+   let next;
+   try{
+    const pub=loadPublication(pubSnap.exists?pubSnap.data():null);
+    next=saveGroups(existing.exists?existing.data():null,d.groups,d.expectedRevision,
+     {allowedProducts:pub.productIds,categories:KEYS});
+   }catch{fail("failed-precondition");}
+   tx.set(configRef,{...next,updatedAt:FieldValue.serverTimestamp(),
+     updatedByUid:a.uid});
+   return {saved:true,revision:next.revision,groups:next.groups};
   });
  }
  const checkTeam=async(tx,s,id)=>{
@@ -885,9 +931,14 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    // Missing real staff IDs must not create fictitious personal rankings.
    // Company and team totals remain visible, clearly marked incomplete.
    if(direct.peopleVerified!==true)complete=false;
+   const sharedConfig=await readRankingSettings(hubId);
+   const groupStandings=groupPersonalScores(sharedConfig.groups,
+    [...people,...direct.people.map(person=>({...person,companyName:"直営"}))],
+    {categories:KEYS});
    return {scope:"shared_counts_only",date,role:s.kind==="hub"?"hub":"partner",
     complete,includesDirect:true,missingCompanies,companies,teams,people,
-    productCounts,categories:KEYS,direct};
+    productCounts,categories:KEYS,direct,rankingGroups:sharedConfig.groups,
+    groupStandings,groupRevision:sharedConfig.revision};
   }
   if(d.includeAuditHistory===true&&s.kind!=="partner")fail("invalid-argument");
   if(s.kind==="hub"){
@@ -1260,6 +1311,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      privateTotalCount:privateValidated.total};
   });
  }
- return Object.freeze({manage,accept,view,submit,viewCatalog,setCatalogPublication});
+ return Object.freeze({manage,accept,view,submit,viewCatalog,setCatalogPublication,
+  getPartnerRankingGroups,setPartnerRankingGroups});
 }
 module.exports={makeWorkspace,KEYS};
