@@ -45,8 +45,9 @@ test("partner counts in existing ranking never add partner revenue or prices",()
  assert.match(partner,/revenuePerUnit:0/);
  assert.doesNotMatch(partner,/\btotalRevenue\b|\bunitPrice\b|\btotalPrice\b/);
  const team=app.slice(app.indexOf("function renderTeamRanking("),app.indexOf("function renderTeamRanking(")+2800);
- assert.match(team,/const partnerRows=teamRankingMode==="progress"/);
- assert.match(team,/count:row\.totalCount,revenue:0/);
+ assert.match(team,/sortTeamRankingRows\(originalRows,teamRankingMode\)/);
+ assert.doesNotMatch(team,/const partnerRows=teamRankingMode==="progress"/,
+  "do not rank company totals as fictitious teams");
  const products=app.slice(app.indexOf("function renderProductMemberRanking("),app.indexOf("function buildTeamRankingRows("));
  assert.ok(products.includes("partnerRankingVirtualRecords()"));
  assert.ok(products.includes("existingGroupsWithPartnerCounts(rankingGroups)"));
