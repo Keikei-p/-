@@ -50,7 +50,7 @@ jobs:
             ]);
             const r=relation.data()||{},d=report?.data()||{};
             const activeTeamIds=new Set(teams.docs.filter(x=>x.data()?.active===true).map(x=>x.id));
-            const nameOK=/^[\\p{L}\\p{N} 　・ー（）()_.-]{1,60}$/u;
+            const nameOK=/^[\p{L}\p{N} 　・ー（）()_.-]{1,60}$/u;
             console.log('STAFF_TEAM_SAVE_CONTRACT',JSON.stringify({
               staffMissingCompanyId:staff.docs.filter(x=>x.data()?.companyId!==cid).length,
               staffMissingName:staff.docs.filter(x=>!nameOK.test(x.data()?.name||'')).length,
