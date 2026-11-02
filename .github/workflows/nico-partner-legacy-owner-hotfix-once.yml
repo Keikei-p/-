@@ -1,0 +1,224 @@
+name: NICO partner legacy Owner invitation - exact four Functions hotfix
+on:
+  pull_request:
+    branches: [main]
+    paths: ['functions-partner-workspace/service.cjs','tests/partner-workspace.test.cjs','.github/workflows/nico-partner-legacy-owner-hotfix-once.yml']
+  push:
+    branches: [main]
+    paths: ['functions-partner-workspace/service.cjs','.github/workflows/nico-partner-legacy-owner-hotfix-once.yml']
+permissions:
+  contents: read
+concurrency:
+  group: nico-partner-legacy-owner-test-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Check exact isolated source and finance/legacy-owner regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 300b69d9f9b99ad33925abdcc67f8d81068084eb
+          test "$(git hash-object functions-partner-workspace/index.js)" = 38da7e9174ffea7c406c92292dccfc651b565eb0
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(git hash-object index.html)" = d68e0be91d5933c03ed0657a73751573fb5c7344
+          test "$(git hash-object firebase.partner-workspace.json)" = a6ceedec5fab4e22e0a8efe19c685716a2db9750
+          node --check functions-partner-workspace/service.cjs
+          node --test tests/partner-workspace.test.cjs tests/partner-company-code-auth.test.cjs tests/partner-money-free-workspace.test.cjs
+          node --test tests/internal-owner-finance-visibility.test.cjs tests/partner-existing-ranking.test.cjs tests/partner-count-dashboard.test.cjs
+          node <<'NODE'
+          const fs=require('fs');
+          const s=fs.readFileSync('functions-partner-workspace/service.cjs','utf8');
+          const marker='m.uid!==uid||(m.companyId!=null&&m.companyId!==cid)||';
+          if(!s.includes(marker))throw Error('STOP_LEGACY_OWNER_COMPAT_NOT_EXACT');
+          if(/\.collection\(["'](?:products|records|recordCorrections|revenueGoals)["']\)/.test(s)||
+             /\btx\.delete\s*\(|recursiveDelete/.test(s))throw Error('STOP_FINANCE_OR_DELETE_ACCESS');
+          if(JSON.parse(fs.readFileSync('.firebaserc','utf8')).projects.default!=='sales-management-cc116')
+           throw Error('STOP_PROJECT');
+          NODE
+  release:
+    needs: validate
+    concurrency:
+      group: nico-partner-workspace-production
+      cancel-in-progress: false
+    if: >-
+      ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.actor == 'Keikei-p' && startsWith(github.event.head_commit.message, 'release: fix legacy Owner partner invites') && needs.validate.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify exact main and protected reviewed functions source before credentials
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(gh api repos/Keikei-p/-/branches/main --jq '.commit.sha')" = "$GITHUB_SHA"
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 300b69d9f9b99ad33925abdcc67f8d81068084eb
+          test "$(git hash-object index.html)" = d68e0be91d5933c03ed0657a73751573fb5c7344
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          node --test tests/internal-owner-finance-visibility.test.cjs tests/partner-workspace.test.cjs
+      - name: Load existing service identity without printing it
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/owner-partner-hotfix-credential.json"
+          chmod 600 "$RUNNER_TEMP/owner-partner-hotfix-credential.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/owner-partner-hotfix-credential.json" >> "$GITHUB_ENV"
+      - name: Install pinned original SDK and CLI without scripts
+        run: |
+          npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+          npm install --prefix functions-partner-workspace --ignore-scripts --package-lock=false --no-audit --no-fund
+          npm install -g firebase-tools@15.34.1 --no-audit --no-fund
+      - name: READ ONLY - confirm current finance Rules, backup and legacy Owner shape
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {createHash} from 'node:crypto';
+          import {createRequire} from 'node:module';
+          import {inspect} from './tools/production/inspect-firestore-backups-readonly.mjs';
+          const require=createRequire(process.cwd()+'/functions/package.json');
+          const {applicationDefault,initializeApp}=require('firebase-admin/app');
+          const {getFirestore}=require('firebase-admin/firestore');
+          const project='sales-management-cc116';
+          const credential=applicationDefault();
+          const token=(await credential.getAccessToken()).access_token;
+          async function get(url){
+           const r=await fetch(url,{headers:{Authorization:'Bearer '+token},redirect:'error'});
+           if(!r.ok)throw Error('STOP_RULES_API_HTTP_'+r.status);
+           return r.json();
+          }
+          const root='https://firebaserules.googleapis.com/v1/';
+          const rel=await get(root+'projects/'+project+'/releases/cloud.firestore');
+          if(!/^projects\/sales-management-cc116\/rulesets\/[A-Za-z0-9_-]+$/.test(rel.rulesetName))throw Error('STOP_RULESET');
+          const source=(await get(root+rel.rulesetName)).source?.files;
+          if(source?.length!==1)throw Error('STOP_RULE_SOURCE');
+          const digest=createHash('sha256').update(source[0].content.replace(/\r\n/g,'\n').trim()).digest('hex');
+          if(digest!=='d1d9998d874a1a31c81ddf6996e08cd9de3a3d13bd684e245140bf03cab32179')
+           throw Error('STOP_FINANCE_RULES_CHANGED');
+          const backups=await inspect();
+          const age=Date.now()-Date.parse(backups.latestReadySnapshot||'');
+          if(!backups.readyBackups||!Number.isFinite(age)||age<0||age>48*3600000)
+           throw Error('STOP_RECENT_BACKUP_REQUIRED');
+          initializeApp({credential,projectId:project});
+          const db=getFirestore();
+          const snaps=await db.collection('companies').limit(5).get();
+          if(snaps.size===0||snaps.size>=5)throw Error('STOP_COMPANY_INVENTORY_UNKNOWN');
+          const internal=snaps.docs.filter(x=>x.data().active===true&&
+            [undefined,'internal','direct'].includes(x.data().companyKind));
+          if(internal.length!==1)throw Error('STOP_EXPECTED_INTERNAL_COMPANY_SCOPE');
+          const companyDoc=internal[0],company=companyDoc.data(),cid=companyDoc.id,uid=company.ownerUid;
+          if(!/^[A-Za-z0-9_-]{1,128}$/.test(uid||''))throw Error('STOP_OWNER_REF');
+          const [uSnap,mSnap]=await Promise.all([
+            db.collection('users').doc(uid).get(),
+            db.collection('companies').doc(cid).collection('members').doc(uid).get()
+          ]);
+          const u=uSnap.data()||{},m=mSnap.data()||{};
+          if(!uSnap.exists||!mSnap.exists||u.uid!==uid||u.companyId!==cid||
+            u.active!==true||u.companyRole!=='owner'||m.uid!==uid||
+            m.active!==true||m.companyRole!=='owner'||company.ownerUid!==uid||
+            (m.companyId!=null&&m.companyId!==cid)||
+            ![undefined,'internal'].includes(u.accessKind)||
+            ![undefined,'internal'].includes(m.accessKind))
+            throw Error('STOP_OWNER_HAS_UNREVIEWED_PROFILE_DIFFERENCE');
+          console.log('PASS_PRODUCTION_INTERNAL_OWNER_LEGACY_MEMBERSHIP '+JSON.stringify({
+            ownerVerified:true,legacyMemberCompanyIdMissing:m.companyId==null,
+            ownerCanInvite:true,productionWrites:0
+          }));
+          NODE
+      - name: Snapshot existing Functions (read only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase functions:list --project "$FIREBASE_PROJECT_ID" --json > "$RUNNER_TEMP/owner-partner-before.json"
+          node <<'NODE'
+          const fs=require('fs'),a=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+'/owner-partner-before.json','utf8')).result||[];
+          const names=a.map(x=>x.id||x.name||'');
+          for(const n of ['getPartnerWorkspace','managePartnerWorkspace','acceptPartnerWorkspaceInvite',
+             'submitPartnerWorkspaceCounts','sendMissingReportReminders']){
+            if(!names.some(x=>x===n||x.endsWith('/'+n)))throw Error('STOP_EXISTING_FUNCTION_MISSING_'+n);
+          }
+          console.log('PASS_ORIGINAL_FUNCTIONS_PRESERVED_BEFORE');
+          NODE
+      - name: Deploy only 4 existing partner Functions once, never change Artifact policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e functions-partner-workspace/.env.sales-management-cc116
+          printf 'PARTNER_WORKSPACE_ENABLED=enabled\nPARTNER_COMPANY_CODE_AUTH_ENABLED=enabled\n' > functions-partner-workspace/.env.sales-management-cc116
+          date -u +%Y-%m-%dT%H:%M:%SZ > "$RUNNER_TEMP/owner-partner-started.txt"
+          set +e
+          firebase deploy --non-interactive --project "$FIREBASE_PROJECT_ID" --config firebase.partner-workspace.json --only functions:partner-workspace:getPartnerWorkspace,functions:partner-workspace:managePartnerWorkspace,functions:partner-workspace:acceptPartnerWorkspaceInvite,functions:partner-workspace:submitPartnerWorkspaceCounts > "$RUNNER_TEMP/owner-partner-deploy-private.log" 2>&1
+          result=$?
+          set -e
+          echo "$result" > "$RUNNER_TEMP/owner-partner-deploy-code.txt"
+          for n in getPartnerWorkspace managePartnerWorkspace acceptPartnerWorkspaceInvite submitPartnerWorkspaceCounts; do
+            grep -Fq "functions[partner-workspace:${n}(asia-northeast1)] Successful update operation" "$RUNNER_TEMP/owner-partner-deploy-private.log" || {
+              echo "STOP_FUNCTION_UPDATE_NOT_CONFIRMED_${n}"; exit 1;
+            }
+          done
+          if [ "$result" -ne 0 ]; then
+            grep -Fq 'Functions successfully deployed but could not set up cleanup policy in location asia-northeast1' "$RUNNER_TEMP/owner-partner-deploy-private.log" || {
+              echo 'STOP_UNEXPECTED_FUNCTIONS_DEPLOY_EXIT'; exit 1;
+            }
+            echo 'ARTIFACT_CLEANUP_POLICY_UNCHANGED: four updates succeeded; verify actual Functions next'
+          else
+            echo 'FOUR_PARTNER_FUNCTIONS_CLI_SUCCEEDED'
+          fi
+      - name: Verify all prior Functions, four active recent revisions and anonymous denial
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase functions:list --project "$FIREBASE_PROJECT_ID" --json > "$RUNNER_TEMP/owner-partner-after.json"
+          node <<'NODE'
+          const fs=require('fs');
+          const ids=p=>(JSON.parse(fs.readFileSync(p,'utf8')).result||[]).map(x=>x.id||x.name||'');
+          const before=ids(process.env.RUNNER_TEMP+'/owner-partner-before.json'),after=ids(process.env.RUNNER_TEMP+'/owner-partner-after.json');
+          for(const n of before)if(!after.includes(n))throw Error('STOP_PREEXISTING_FUNCTION_LOST');
+          console.log('PASS_PREEXISTING_FUNCTIONS_ALL_RETAINED');
+          NODE
+          node --input-type=module <<'NODE'
+          import {createRequire} from 'node:module';
+          import {readFileSync} from 'node:fs';
+          const require=createRequire(process.cwd()+'/functions/package.json');
+          const {applicationDefault}=require('firebase-admin/app');
+          const token=(await applicationDefault().getAccessToken()).access_token;
+          const started=Date.parse(readFileSync(process.env.RUNNER_TEMP+'/owner-partner-started.txt','utf8').trim());
+          for(const name of ['getPartnerWorkspace','managePartnerWorkspace','acceptPartnerWorkspaceInvite','submitPartnerWorkspaceCounts']){
+            const url='https://cloudfunctions.googleapis.com/v2/projects/sales-management-cc116/locations/asia-northeast1/functions/'+name;
+            const res=await fetch(url,{headers:{Authorization:'Bearer '+token},redirect:'error'});
+            if(!res.ok)throw Error('STOP_FUNCTION_READ_HTTP_'+res.status);
+            const f=await res.json();
+            if(f.state!=='ACTIVE'||f.environment!=='GEN_2'||f.buildConfig?.runtime!=='nodejs22'||
+               f.buildConfig?.entryPoint!==name||
+               f.serviceConfig?.environmentVariables?.PARTNER_WORKSPACE_ENABLED!=='enabled'||
+               Date.parse(f.updateTime)<started||!f.buildConfig?.source?.storageSource?.object)
+             throw Error('STOP_FUNCTION_NOT_UPDATED_AND_ACTIVE_'+name);
+            console.log('PASS_ACTIVE_UPDATED_PARTNER_FUNCTION '+name);
+            const anon=await fetch('https://asia-northeast1-sales-management-cc116.cloudfunctions.net/'+name,{
+              method:'POST',headers:{'Content-Type':'application/json'},body:'{"data":{}}'});
+            if(![401,403].includes(anon.status))throw Error('STOP_ANONYMOUS_ACCESS_'+name+'_'+anon.status);
+          }
+          console.log('PASS_ALL_FOUR_ACTIVE_AND_AUTH_DENIED');
+          NODE
+      - name: Keep original Hosting, Firestore, Rules, Auth, LINE and price data untouched
+        run: echo 'PARTNER_OWNER_HOTFIX_SUCCESS: Functions only; no client/Rules/data writes'
+      - name: Remove private credentials and deployment logs
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/owner-partner-hotfix-credential.json" "$RUNNER_TEMP/owner-partner-before.json" "$RUNNER_TEMP/owner-partner-after.json" "$RUNNER_TEMP/owner-partner-started.txt" "$RUNNER_TEMP/owner-partner-deploy-code.txt" "$RUNNER_TEMP/owner-partner-deploy-private.log" functions-partner-workspace/.env.sales-management-cc116
