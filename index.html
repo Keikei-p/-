@@ -12657,6 +12657,23 @@ function mountPartnerSafeManagementMenu(){
  return true;
 }
 
+function sharedVerifiedProductCategory(label){
+ const normalized=normalizedPartnerRankingLabel(label);
+ const aliases={
+  "NURO":["NURO","NURO光","ニューロ","ニューロ光"],
+  "SBMNP":["SBMNP"],"YMMNP":["YMMNP"],
+  "YM純新規":["YM純新規"],
+  "SB光・AIR":["SB光・AIR","SB光AIR","SB光","ソフトバンク光","ソフトバンクAIR"],
+  "ウォーター":["ウォーター","ウォーターサーバー","フレシャス"],
+  "つばさ・HTB":["つばさ・HTB","つばさ電気","HTBエナジー"],
+  "太陽光・蓄電池AP":["太陽光・蓄電池AP"],
+  "U-NEXT":["U-NEXT","UNEXT"]
+ };
+ for(const [category,names] of Object.entries(aliases))
+  if(names.some(name=>normalizedPartnerRankingLabel(name)===normalized))
+   return category;
+ return null;
+}
 // Shared count-only scoreboard: hub and partner call the SAME audited
 // endpoint. Fetch only when the ranking is opened / refresh is requested.
 let sharedDailyRankingGeneration=0;
@@ -12680,7 +12697,8 @@ function verifiedDirectDayCounts(date){
    if(!productName&&result.productId)productName=String(
      products.find(x=>x.id===result.productId)?.name||"").trim();
    if(count){
-    const label=productName||"商材未確認（直営）";
+    const label=sharedVerifiedProductCategory(productName)||
+     ("直営｜"+(productName||"商材未確認"));
     products.set(label,(products.get(label)||0)+count);
    }
   }
@@ -12764,8 +12782,7 @@ async function loadSharedDailyStandings(where){
     personRows.push(...internal.people.map(x=>({name:x.name,count:x.totalCount})));
     for(const {name,count} of internal.products){
      // Never silently guess which catalog items are the same product.
-     const directLabel="直営｜"+name;
-     productTotals.set(directLabel,(productTotals.get(directLabel)||0)+count);
+     productTotals.set(name,(productTotals.get(name)||0)+count);
     }
    }
   }
