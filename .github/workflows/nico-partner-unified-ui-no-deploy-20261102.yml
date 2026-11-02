@@ -1,0 +1,50 @@
+name: NICO partner unified dashboard and safe save regression (NO DEPLOY)
+on:
+  push:
+    branches: [fix/partner-unified-rank-teams-safe-save-20261102]
+    paths:
+      - index.html
+      - tests/partner-unified-rank-team-save.test.mjs
+      - .github/workflows/nico-partner-unified-ui-no-deploy-20261102.yml
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Pin changed UI only and keep all production financial sources untouched
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object index.html)" = 'd9ab0b0f48425208854842937bb86d694d7c0ea2'
+          test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = '55b16051c09810778f79256097446aa0dec1b36e'
+          test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const s=fs.readFileSync('index.html','utf8');
+          const js=s.match(/<script type="module">([\s\S]*?)<\/script>/)?.[1];
+          if(!js||!s.includes('signInWithEmailAndPassword')||!s.includes('monthlyRevenue')||
+            !s.includes('partnerInlineSave')||!s.includes('loadSharedDailyStandings'))
+            throw Error('STOP_ORIGINAL_AUTH_FINANCE_PARTNER_UI_CHANGED');
+          fs.writeFileSync('/tmp/nico-partner-ui.mjs',js);
+          NODE
+          node --check /tmp/nico-partner-ui.mjs
+      - name: Run UI, security, leaderboard, save and history suites without production writes
+        run: |
+          set -euo pipefail
+          node --test tests/partner-unified-rank-team-save.test.mjs
+          node --test tests/dashboard-inline-original-partner-parity.test.mjs
+          node --test tests/partner-company-parity-release.test.mjs
+          node --test tests/partner-money-free-workspace.test.cjs
+          node --test tests/internal-owner-finance-visibility.test.cjs
+          node --test tests/partner-workspace.test.cjs
+          node --test tests/partner-count-dashboard.test.cjs
+          node --test tests/partner-email-resend-and-join.test.mjs
+          node --test tests/surgical-existing-index.test.mjs
+          echo PASS_UI_ONLY_READY_NO_DEPLOY
