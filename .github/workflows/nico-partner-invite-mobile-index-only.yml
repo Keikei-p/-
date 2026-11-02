@@ -64,6 +64,18 @@ jobs:
         with: {fetch-depth: 0, persist-credentials: false}
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
+      - name: Hold direct-role bundle until four Functions are published first
+        shell: bash
+        run: |
+          set -euo pipefail
+          # This exact reviewed UI + backend pair requires an explicitly
+          # sequenced release. Never let an ordinary main push serve the new
+          # invitation UI against the old workspace API.
+          if [ "$(git hash-object index.html)" = 'd68e0be91d5933c03ed0657a73751573fb5c7344' ] &&
+             [ "$(git hash-object functions-partner-workspace/service.cjs)" = '29c0e3b29863e654ba70fd5b3f4a8efe4d0827d8' ]; then
+            echo 'STOP_DIRECT_ROLE_REQUIRES_SEQUENCED_FUNCTIONS_FIRST'
+            exit 1
+          fi
       - name: Verify no concurrent main changes and untouched previous production UI baseline
         shell: bash
         env:
