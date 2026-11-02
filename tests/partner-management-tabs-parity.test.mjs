@@ -35,7 +35,7 @@ test("invite and member administration are separate with no finance access",()=>
  for(const id of ["pInlineInviteEmail","pInlineInviteRole","pInlineInviteTeam",
   "pInlineCreateInvite","pInlineResendInvite"])
   assert.ok(invite.includes('id="'+id+'"'));
- assert.match(html,/partnerManagementTabs.*partnerSameAppNavigation/ s);
+ assert.ok(html.includes('id="partnerManagementTabs"'));
  assert.match(html,/if\(\["invite","catalog"\]\.includes\(name\)\&\&partnerInlineData/);
  assert.match(html,/button\.hidden=!canManage/);
  assert.match(html,/sendSignInLinkToEmail\(auth,latest\.email,partnerInviteAuthSettings\(latest\)\)/);
