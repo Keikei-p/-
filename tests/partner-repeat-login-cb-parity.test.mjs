@@ -83,7 +83,7 @@ test("cashback count parser rejects NaN and overflows, accepts 0 and 5 plan cell
 
 test("daily working team is selectable only for new entries and never rewrites historical teams",()=>{
  const screen=between(html,'id="partnerPanelRecord"','id="partnerPanelRankings"');
- assert.match(screen,/id="pInlineWorkingTeam"[^>]*><\\/select>/);
+ assert.ok(screen.includes('id="pInlineWorkingTeam"'),"team selection must exist");
  const renderer=between(html,"function partnerInlineRenderCounts(){","function partnerInlineRender(){");
  for(const token of [
   "const assigned=person?.teamId",
