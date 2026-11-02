@@ -13144,18 +13144,41 @@ function renderPartnerCountTeamCard(title,total,counts,cbCounts,members,keys,{ve
  if(!visible)partnerMainAppendRow(products,"商材別件数","0件（報告済み）");
  if(total>visible)partnerMainAppendRow(products,"その他（直営）",total-visible+"件");
  const people=section("班員別詳細");
- let memberTotal=0;
- for(const member of members){
+ const peopleGrid=document.createElement("div");peopleGrid.className="partner-count-team-people-grid";
+ const personal=document.createElement("div");personal.className="partner-count-team-person-detail";
+ personal.hidden=true;
+ people.append(peopleGrid,personal);
+ const buttons=[];
+ let memberTotal=0,selected=-1;
+ const selectPerson=index=>{
+  if(selected===index){selected=-1;personal.hidden=true;personal.replaceChildren();}
+  else{
+   selected=index;personal.hidden=false;personal.replaceChildren();
+   const member=members[index];
+   const heading=document.createElement("strong");
+   heading.textContent=member.name+"｜"+(member.reported===false?"未報告":"合計 "+member.totalCount+"件");
+   personal.append(heading);
+   if(member.reported!==false)personal.append(renderPartnerCountTeamCardProductOnly(member,keys));
+  }
+  for(const [i,button] of buttons.entries())
+   button.setAttribute("aria-pressed",String(i===selected));
+ };
+ for(const [i,member] of members.entries()){
   if(typeof member.name!=="string"||
      !Number.isSafeInteger(member.totalCount)||member.totalCount<0)
    throw Error("count_team_member_invalid");
   memberTotal+=member.totalCount;
-  const item=document.createElement("details");item.className="partner-count-team-member";
-  const label=document.createElement("summary");
-  label.textContent=member.name+"｜合計 "+member.totalCount+"件";
-  item.append(label);
-  const child=renderPartnerCountTeamCardProductOnly(member,keys);
-  item.append(child);people.append(item);
+  const button=document.createElement("button");button.type="button";
+  button.className="partner-count-team-person-button";
+  button.setAttribute("aria-pressed","false");
+  button.setAttribute("aria-label",member.name+" の商材別件数を表示");
+  const nameEl=document.createElement("span");nameEl.className="partner-count-team-person-name";
+  nameEl.textContent=member.name;
+  const countEl=document.createElement("span");countEl.className="partner-count-team-person-count";
+  countEl.textContent=member.reported===false?"未報告":member.totalCount+"件";
+  button.append(nameEl,countEl);
+  button.addEventListener("click",()=>selectPerson(i));
+  buttons.push(button);peopleGrid.append(button);
  }
  if(verified&&members.length&&memberTotal!==total)
   throw Error("count_team_member_sum_mismatch");
@@ -13163,18 +13186,34 @@ function renderPartnerCountTeamCard(title,total,counts,cbCounts,members,keys,{ve
  card.append(body);return card;
 }
 function renderPartnerCountTeamCardProductOnly(member,keys){
- const el=document.createElement("div");
+ const el=document.createElement("div");el.className="partner-count-team-member-products";
+ if(member.reported===false)return el;
+ let visible=0;
  for(const key of keys){
   const n=member.counts?.[key]??0;
   if(!Number.isSafeInteger(n)||n<0)throw Error("count_team_person_product_invalid");
-  if(n)partnerMainAppendRow(el,key,n+"件");
+  if(n){partnerMainAppendRow(el,key,n+"件");visible+=n;}
  }
+ if(!visible)partnerMainAppendRow(el,"商材別件数","0件で報告済み");
  const nuro=member.counts?.NURO||0,cb=member.cbCounts?.NURO;
- if(nuro&&cb){
-  const tags=PARTNER_TEAM_CB_TIERS.filter(k=>(cb[k]||0)>0)
-   .map(k=>"CB"+(k==="0"?"0":Number(k)/10000+"万")+" "+cb[k]+"件");
-  if(cb.unclassified)tags.push("CB未分類 "+cb.unclassified+"件");
-  if(tags.length)partnerMainAppendRow(el,"NURO CB内訳",tags.join(" / "));
+ if(nuro){
+  const grid=document.createElement("div");grid.className="partner-count-team-cb-grid";
+  let classified=0;
+  for(const tier of PARTNER_TEAM_CB_TIERS){
+   const count=cb?.[tier]??0;
+   if(!Number.isSafeInteger(count)||count<0)throw Error("count_team_person_cb_invalid");
+   classified+=count;
+   const cell=document.createElement("div");cell.className="partner-count-team-cb-cell";
+   const label=document.createElement("div");label.className="partner-count-team-cb-label";
+   label.textContent=tier==="0"?"CB0":"CB"+Number(tier)/10000+"万";
+   const value=document.createElement("div");value.className="partner-count-team-cb-value";
+   value.textContent=count+"件";cell.append(label,value);grid.append(cell);
+  }
+  el.append(grid);
+  const unknown=cb?.unclassified??(nuro-classified);
+  if(!Number.isSafeInteger(unknown)||unknown<0||classified+unknown!==nuro)
+   throw Error("count_team_person_cb_mismatch");
+  if(unknown)partnerMainAppendRow(el,"CB未分類",unknown+"件（過去実績）");
  }
  return el;
 }
