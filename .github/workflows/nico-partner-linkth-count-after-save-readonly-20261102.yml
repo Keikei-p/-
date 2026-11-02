@@ -1,0 +1,90 @@
+name: NICO LinkTh post-save count and account contract (READ ONLY)
+on:
+  push:
+    branches: [test/partner-transaction-contract-20261102]
+    paths: [.github/workflows/nico-partner-linkth-count-after-save-readonly-20261102.yml]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Load existing read-only audit identity
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/linkth-audit.json"
+          chmod 600 "$RUNNER_TEMP/linkth-audit.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/linkth-audit.json" >> "$GITHUB_ENV"
+      - name: Audit Nov 2 counts and verified partner auth membership without any write
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+          node --input-type=module <<'NODE'
+          import {createRequire} from 'node:module';
+          const require=createRequire(process.cwd()+'/functions/package.json');
+          const {initializeApp,applicationDefault}=require('firebase-admin/app');
+          const {getFirestore}=require('firebase-admin/firestore');
+          const {getAuth}=require('firebase-admin/auth');
+          initializeApp({credential:applicationDefault(),projectId:'sales-management-cc116'});
+          const db=getFirestore(),date='2026-11-02';
+          const query=await db.collection('companies').where('name','==','株式会社LinkTh').limit(10).get();
+          console.log('MATCHED_LINKTH_COMPANIES',query.size);
+          for(const doc of query.docs){
+           const company=doc.data()||{},cid=doc.id;
+           if(company.companyKind!=='partner')continue;
+           const [members,staff,entries,summary]=await Promise.all([
+             db.collection('companies').doc(cid).collection('members').limit(100).get(),
+             db.collection('companies').doc(cid).collection('partnerWorkStaff').limit(200).get(),
+             db.collection('companies').doc(cid).collection('partnerWorkEntries').where('date','==',date).limit(201).get(),
+             db.collection('companies').doc(company.hubCompanyId).collection('partnerWorkCountDays')
+              .doc(date).collection('reports').doc(cid).get()
+           ]);
+           let count=0,invalidVersion=0;
+           for(const entry of entries.docs){
+             const e=entry.data()||{};
+             count+=Number.isSafeInteger(e.totalCount)?e.totalCount:0;
+             if(!Number.isSafeInteger(e.version)||e.version<1)invalidVersion++;
+           }
+           const accountIds=[...new Set(staff.docs.filter(x=>x.data()?.kind==='account').map(x=>x.data()?.uid).filter(Boolean))];
+           let authVerified=0,authNotVerified=0,authNotFound=0,userMemberMismatch=0,accountWritable=0;
+           for(const uid of accountIds){
+            let auth;try{auth=await getAuth().getUser(uid)}catch{authNotFound++;continue;}
+            if(auth.emailVerified&&!auth.disabled)authVerified++;else authNotVerified++;
+            const [us,ms]=await Promise.all([
+              db.collection('users').doc(uid).get(),
+              db.collection('companies').doc(cid).collection('members').doc(uid).get()
+            ]);
+            const user=us.data()||{},m=ms.data()||{};
+            if(!us.exists||!ms.exists||user.active!==true||m.active!==true||
+               user.uid!==uid||m.uid!==uid||m.companyId!==cid||
+               user.canViewRevenue!==false||m.canViewRevenue!==false)
+              userMemberMismatch++;
+            if(['owner','leader'].includes(m.role)||m.companyRole==='owner')accountWritable++;
+           }
+           const report=summary.data()||{};
+           console.log('READ_ONLY_DAY_AFTER_SCREENSHOT',JSON.stringify({
+             date,registeredEntries:entries.size,verifiedSavedCount:count,
+             invalidVersions:invalidVersion,
+             summaryExists:summary.exists,
+             summarySource:summary.exists?report.source||'missing':'none',
+             summaryTotalCount:summary.exists&&Number.isSafeInteger(report.totalCount)?report.totalCount:null,
+             accountStaffCount:accountIds.length,accountAuthVerified:authVerified,
+             accountAuthNotVerified:authNotVerified,accountAuthNotFound:authNotFound,
+             accountMembershipFlagMismatch:userMemberMismatch,
+             accountLeaderOrOwnerCount:accountWritable,teamCount:2
+           }));
+          }
+          console.log('NO_SALES_NO_PRICES_NO_EMAILS_NO_UIDS_NO_RECORD_DETAILS_PRINTED');
+          NODE
+      - name: Cleanup temporary identity
+        if: always()
+        run: rm -f "$RUNNER_TEMP/linkth-audit.json"
