@@ -114,6 +114,10 @@ jobs:
           # Assert that the known legacy finance Rules candidate remains blocked;
           # do not weaken its guard or claim that the Rules are production-safe.
           node --test tests/finance-release-gate.test.mjs
+          # Reject deployment until actual canonical finance access is proven
+          # compatible. The current repository Rules fail this global guard:
+          # intentionally stop rather than bypass the financial boundary.
+          node scripts/check-finance-read-boundary-before-deploy.mjs
           # Separate exact-source guard: reject raw finance reads, destructive
           # actions, unreviewed canonical changes, or wrong Firebase codebase.
           node scripts/check-company-code-scoped-release.mjs
