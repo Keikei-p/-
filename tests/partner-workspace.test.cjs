@@ -113,6 +113,66 @@ test("existing hub Owner still denies a present foreign membership companyId and
  }
 });
 
+test("verified email invite preview never changes membership, and refuses wrong account or expired link",async()=>{
+ const {db,api,req}=setup();
+ const team=(await api.manage(req("h",{action:"hubAddTeam",partnerCompanyId:"partner",name:"確認班"}))).teamId;
+ const created=await api.manage(req("h",{action:"hubCreateInvite",partnerCompanyId:"partner",
+  teamId:team,role:"leader",email:"n@example.com"}));
+ assert.equal(created.partnerCompanyId,"partner");
+ assert.equal(created.teamId,team);
+ assert.ok(Number.isFinite(created.expiresAt));
+ const before=clone([...db.store]);
+ const preview=await api.accept(req("n",{token:created.token,previewOnly:true}));
+ assert.deepEqual(preview,{valid:true,companyName:"協力店",teamName:"確認班",role:"leader"});
+ assert.deepEqual([...db.store],before,"preview must not write records or membership");
+ await assert.rejects(api.accept(req("x",{token:created.token,previewOnly:true})),{code:"permission-denied"});
+ await assert.rejects(api.accept(req("n",{token:created.token,previewOnly:false})),{code:"invalid-argument"});
+ assert.deepEqual([...db.store],before);
+ const hashed=require("node:crypto").createHash("sha256").update(created.token).digest("hex");
+ db.store.get("partnerWorkInvites/"+hashed).expiresAt={toMillis:()=>NOW-1000};
+ await assert.rejects(api.accept(req("n",{token:created.token,previewOnly:true})),{code:"failed-precondition"});
+});
+
+test("existing verified hub owner may join as separate count-only partner without missing legacy email fields",async()=>{
+ const {db,api,req}=setup();
+ // Existing production profiles may lack redundant email data. Firebase Auth
+ // has already verified the signed-in email, and finance must remain untouched.
+ delete db.store.get("users/h").email;
+ delete db.store.get("companies/hub/members/h").email;
+ delete db.store.get("companies/hub/members/h").companyId;
+ const originals=clone([...db.store]);
+ const team=(await api.manage(req("h",{action:"hubAddTeam",partnerCompanyId:"partner",name:"既存検証班"}))).teamId;
+ const invite=await api.manage(req("h",{action:"hubCreateInvite",partnerCompanyId:"partner",
+  teamId:team,role:"leader",email:"h@example.com"}));
+ const preview=await api.accept(req("h",{token:invite.token,previewOnly:true}));
+ assert.equal(preview.valid,true);
+ const result=await api.accept(req("h",{token:invite.token,name:"既存オーナー",transferCurrentCompany:false}));
+ assert.equal(result.secondaryMembership,true);
+ assert.equal(result.transferredFromInternal,false);
+ assert.equal(db.store.get("users/h").companyId,"hub");
+ assert.equal(db.store.get("companies/hub/members/h").active,true);
+ const extra=db.store.get("companies/partner/members/h");
+ assert.equal(extra.canViewRevenue,false);
+ assert.equal(extra.canViewUnitPrice,false);
+ const view=await api.view(req("h",{date:"2026-10-31",workspaceCompanyId:"partner"}));
+ assert.equal(view.role,"leader");
+ assert.deepEqual(db.store.get("products/money"),originals.find(([k])=>k==="products/money")[1]);
+ assert.deepEqual(db.store.get("records/old"),originals.find(([k])=>k==="records/old")[1]);
+ await assert.rejects(api.accept(req("h",{token:invite.token,name:"二度目"})),{code:"failed-precondition"});
+});
+
+test("legacy email fallback refuses explicit mismatched user or member email",async()=>{
+ for(const path of ["users/h","companies/hub/members/h"]){
+  const {db,api,req}=setup();
+  db.store.get(path).email="wrong@example.com";
+  const team=(await api.manage(req("h",{action:"hubAddTeam",partnerCompanyId:"partner",name:"別班"}))).teamId;
+  const invite=await api.manage(req("h",{action:"hubCreateInvite",partnerCompanyId:"partner",
+   teamId:team,role:"member",email:"h@example.com"}));
+  await assert.rejects(api.accept(req("h",{token:invite.token,name:"拒否"})),{code:"failed-precondition"});
+  assert.equal(db.store.get("companies/partner/members/h"),undefined);
+ }
+});
+
 test("first company is created with direct leader/member invite, no representative or finance mutation",async()=>{
  for(const role of ["leader","member"]){
   const {db,api,req,zero}=setup();
