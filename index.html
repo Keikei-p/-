@@ -12457,6 +12457,7 @@ copyInviteButton.onclick =
 // Never read products/records/revenueGoals in this branch. Server checks scope.
 const pInline=id=>document.getElementById(id);
 let partnerInlineData=null,partnerInlineWorkspaceCompany="",partnerInlineNonce=0;
+let partnerAuditNonce=0;
 let partnerInlineBusy=false,ownerPartnerTeamsNonce=0;
 const partnerMainDate=()=>new Intl.DateTimeFormat("sv-SE",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
 const partnerMainValidId=id=>typeof id==="string"&&/^[A-Za-z0-9_-]{1,128}$/.test(id);
@@ -12469,7 +12470,7 @@ function partnerMainPendingInvite(){
  return null;
 }
 function resetPartnerInline(){
- ++partnerInlineNonce;++ownerPartnerTeamsNonce;
+ ++partnerInlineNonce;++ownerPartnerTeamsNonce;++partnerAuditNonce;
  // Clear company-specific count snapshots and invalidate in-flight ranking reads
  // before another user or company can sign in on the same browser session.
  ++sharedDailyRankingGeneration;sharedDailyRankCache.clear();
@@ -13093,6 +13094,8 @@ function partnerSameAppSelectPanel(name){
  }
  if(partnerInlineData&&name==="detail")
   void loadSharedDailyStandings("partnerDetail");
+ if(partnerInlineData&&name==="history")
+  void loadPartnerRevisionHistory();
 }
 window.addEventListener("resize",()=>{
  if(!pInline("partnerSameAppDashboardDetails").hidden)
@@ -13278,6 +13281,56 @@ function partnerInlineRender(){
   "この日の登録はありません","未報告は0件とは扱いません");
 }
 
+async function loadPartnerRevisionHistory(){
+ const snap=partnerInlineData,uid=auth.currentUser?.uid;
+ if(!snap||!uid)return;
+ const date=pInline("pInlineDate").value;
+ const workspace=partnerInlineWorkspaceCompany;
+ const seq=++partnerAuditNonce,area=pInline("pInlineHistory");
+ area.replaceChildren();
+ partnerMainAppendRow(area,"登録・訂正履歴を照合しています",date);
+ try{
+  const payload={date,includeAuditHistory:true};
+  if(workspace)payload.workspaceCompanyId=workspace;
+  const reply=(await readPartnerWorkDay(payload)).data;
+  if(seq!==partnerAuditNonce||uid!==auth.currentUser?.uid||
+     date!==pInline("pInlineDate").value||
+     workspace!==partnerInlineWorkspaceCompany)return;
+  if(reply?.date!==date||reply?.companyName!==snap.companyName||
+     !Array.isArray(reply.audits)||reply.audits.length>500||
+     !["owner","leader","member"].includes(reply.role))throw Error("audit_contract");
+  const allowed=new Map((snap.staff||[]).map(x=>[x.id,x.name]));
+  area.replaceChildren();
+  for(const event of reply.audits){
+   if(!allowed.has(event.staffId)||!Number.isSafeInteger(event.version)||
+      !Number.isSafeInteger(event.totalCount)||
+      !Number.isSafeInteger(event.previousTotalCount)||
+      !event.counts||!event.previousCounts)throw Error("audit_person_count");
+   const row=document.createElement("details");row.className="p-inline-row";
+   const title=document.createElement("summary");
+   title.textContent=(event.staffName||allowed.get(event.staffId))+
+    "｜第"+event.version+"版｜"+event.previousTotalCount+"件 → "+
+    event.totalCount+"件";
+   row.append(title);
+   for(const category of snap.categories){
+    const before=event.previousCounts[category],after=event.counts[category];
+    if(!Number.isSafeInteger(before)||!Number.isSafeInteger(after)||
+       before<0||after<0)throw Error("audit_category_count");
+    if(before!==after)partnerMainAppendRow(row,category,before+"件 → "+after+"件");
+   }
+   if(event.previousPrivateTotalCount!==event.privateTotalCount)
+    partnerMainAppendRow(row,"協力店専用商材",
+     event.previousPrivateTotalCount+"件 → "+event.privateTotalCount+"件");
+   area.append(row);
+  }
+  if(!reply.audits.length)partnerMainAppendRow(area,
+    "この日の訂正履歴はありません","登録のない日は未報告として扱います。");
+ }catch(error){
+  if(seq!==partnerAuditNonce||uid!==auth.currentUser?.uid)return;
+  area.replaceChildren();
+  partnerMainAppendRow(area,"履歴を検証できません","日付・権限・通信を確認して更新してください。");
+ }
+}
 async function partnerInlineFetch(){
  if(!auth.currentUser?.emailVerified)return;
  const seq=++partnerInlineNonce,uid=auth.currentUser.uid;
@@ -13300,6 +13353,8 @@ async function partnerInlineFetch(){
    void loadSharedDailyStandings("partner",true);
   else if(partnerSameAppSelectedPanel==="detail")
    void loadSharedDailyStandings("partnerDetail",true);
+  else if(partnerSameAppSelectedPanel==="history")
+   void loadPartnerRevisionHistory();
  }catch(e){
   if(seq!==partnerInlineNonce||auth.currentUser?.uid!==uid)return;
   partnerInlineData=null;pInline("pInlineSave").disabled=true;
