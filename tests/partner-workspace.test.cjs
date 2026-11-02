@@ -923,6 +923,11 @@ test("hub can inspect partner-company per-team shared product counts without fin
  assert.equal(rows.length,2);
  assert.equal(rows.find(x=>x.teamId===t1).totalCount,3);
  assert.equal(rows.find(x=>x.teamId===t1).counts.NURO,2);
+ assert.equal(rows.find(x=>x.teamId===t1).members.length,1);
+ assert.equal(rows.find(x=>x.teamId===t1).members[0].name,"担当1");
+ assert.equal(rows.find(x=>x.teamId===t1).members[0].totalCount,3);
+ assert.equal(rows.find(x=>x.teamId===t1).members[0].counts.YMMNP,1);
+ assert.equal(rows.find(x=>x.teamId===t2).members[0].totalCount,0);
  assert.equal(rows.find(x=>x.teamId===t2).totalCount,0);
  assert.equal(rows.find(x=>x.teamId===t2).reportedStaffCount,1,
    "zero count is a submitted report, not a missing report");
