@@ -38,7 +38,7 @@ concurrency:
   group: nico-company-code-review-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  validate:
+  legacy-company-code-validate:
     runs-on: ubuntu-latest
     timeout-minutes: 16
     steps:
@@ -116,8 +116,8 @@ jobs:
     concurrency:
       group: nico-partner-workspace-production
       cancel-in-progress: false
-    needs: validate
-    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && needs.validate.result == 'success' && inputs.project_id == 'sales-management-cc116' && inputs.confirm_backup_restore == 'FIRESTORE_BACKUP_RESTORE_VERIFIED' && inputs.confirm_owner_finance == 'OWNER_REVENUE_PRICES_LOGIN_VERIFIED' && inputs.confirm_billing == 'EXISTING_FUNCTIONS_COST_APPROVED' && inputs.confirm_release == 'CONFIRM_COMPANY_CODE_PARTNER_COUNT_ONLY' }}
+    needs: legacy-company-code-validate
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && needs.legacy-company-code-validate.result == 'success' && inputs.project_id == 'sales-management-cc116' && inputs.confirm_backup_restore == 'FIRESTORE_BACKUP_RESTORE_VERIFIED' && inputs.confirm_owner_finance == 'OWNER_REVENUE_PRICES_LOGIN_VERIFIED' && inputs.confirm_billing == 'EXISTING_FUNCTIONS_COST_APPROVED' && inputs.confirm_release == 'CONFIRM_COMPANY_CODE_PARTNER_COUNT_ONLY' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
