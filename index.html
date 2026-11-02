@@ -12725,8 +12725,8 @@ function verifiedDirectDayCounts(date){
     recordsSubscribedMonth!==date.slice(0,7)||dashboardMonth.value!==date.slice(0,7))
   return null;
  const direct=records.filter(r=>r.date===date);
- const people=new Map(),teams=new Map(),products=new Map();
- let total=0;
+ const people=new Map(),teams=new Map(),productTotals=new Map();
+ let total=0,unverifiedPeople=0;
  for(const r of direct){
   if(r.companyId&&r.companyId!==currentUserData.companyId)throw Error("direct_wrong_company");
   const results=getRecordResults(r);
@@ -12742,25 +12742,30 @@ function verifiedDirectDayCounts(date){
    if(count){
     const label=sharedVerifiedProductCategory(productName)||
      ("直営｜"+(productName||"商材未確認"));
-    products.set(label,(products.get(label)||0)+count);
+    productTotals.set(label,(productTotals.get(label)||0)+count);
    }
   }
   if(!Number.isSafeInteger(n)||n<0||
      (Number.isSafeInteger(r.totalCount)&&r.totalCount!==n))
    throw Error("direct_total_mismatch");
   total+=n;
-  const personId=typeof r.uid==="string"&&r.uid?r.uid:"history:"+r.id;
-  if(!personId||personId==="history:undefined")throw Error("direct_person_id_missing");
-  const name=String(r.memberNameSnapshot||getCurrentMemberName(r)||"担当者未確認");
-  const row=people.get(personId)||{key:"direct:"+personId,name:"直営｜"+name,totalCount:0};
-  row.totalCount+=n;people.set(personId,row);
+  // Historic records without a verified staff ID keep their company/team counts,
+  // but never become imaginary people in an individual ranking.
+  const personId=typeof r.uid==="string"&&/^[A-Za-z0-9_-]{1,128}$/.test(r.uid)?r.uid:null;
+  if(!personId)unverifiedPeople++;
+  else{
+   const name=String(r.memberNameSnapshot||getCurrentMemberName(r)||"担当者未確認");
+   const row=people.get(personId)||{key:"direct:"+personId,name:"直営｜"+name,totalCount:0};
+   row.totalCount+=n;people.set(personId,row);
+  }
   const teamId=typeof r.teamId==="string"&&r.teamId?r.teamId:"unknown";
   const teamName=String(r.teamNameSnapshot||getCurrentTeamName(r)||"当時の班未確認");
   const tr=teams.get(teamId)||{key:"direct-team:"+teamId,name:"直営｜"+teamName,totalCount:0};
   tr.totalCount+=n;teams.set(teamId,tr);
  }
  return {totalCount:total,people:[...people.values()],teams:[...teams.values()],
-  products:[...products].map(([name,count])=>({name,count}))};
+  peopleVerified:unverifiedPeople===0,unverifiedPersonRecords:unverifiedPeople,
+  products:[...productTotals].map(([name,count])=>({name,count}))};
 }
 function appendSharedRankingRows(container,heading,entries,complete){
  const section=document.createElement("section");section.className="p-inline-card";
@@ -12826,7 +12831,7 @@ function renderSharedCountTeamDetails(parent,report){
   parent.append(company);
  };
  showCompany("🏢 直営",report.direct.totalCount,report.direct.teams,
-  report.direct.people,report.direct.recordsVerified>0);
+  report.direct.people,report.direct.peopleVerified===true);
  for(const company of report.companies){
   showCompany("🤝 "+company.name,company.totalCount,
    report.teams.filter(t=>t.companyId===company.id),
@@ -12911,7 +12916,7 @@ async function loadSharedDailyStandings(where,force=false){
   status.textContent=complete?
    "件数照合済み｜直営＋協力店合同"+
      " "+(partnerSum+(internal?.totalCount||0))+"件｜同率順位は同順位":
-   "未報告・未照合の協力店があります。表示は途中経過で、正式順位は確定していません。";
+   "未報告・未照合の実績があります。表示は途中経過で、正式順位は確定していません。";
   if(detail){
    renderSharedCountTeamDetails(content,response);
    return;
