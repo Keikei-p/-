@@ -54,8 +54,25 @@ test("code never retries submit automatically, writes remain one operation, and 
  const handler=moduleText.slice(start,end);
  assert.equal(handler.split("await partnerInlineSave(").length-1,1);
  assert.ok(handler.includes("await readPartnerWorkDay("));
- assert.ok(handler.includes("if(readback===\"not_saved\")throw Error(\"save_not_committed\")"));
+ assert.ok(handler.includes('if(readback==="not_saved"){'));
+ assert.ok(handler.includes('throw saveError;'));
+ assert.ok(handler.includes('throw Error("save_not_committed");'));
  assert.ok(moduleText.includes("保存結果を確認できませんでした"));
  assert.ok(moduleText.includes("入力は保持しています"));
  assert.match(moduleText,/function partnerCountSaveFailureMessage/);
+});
+
+test("verified noncommit preserves original Firebase failure code for diagnosis",()=>{
+ const a=moduleText.indexOf("function partnerCountSaveFailureMessage(");
+ const b=moduleText.indexOf("async function partnerInlineRun(",a);
+ assert.ok(a>0&&b>a);
+ const context={};
+ vm.runInNewContext(moduleText.slice(a,b)+";globalThis.describe=partnerCountSaveFailureMessage;",context);
+ const describe=context.describe;
+ assert.match(describe({code:"functions/internal"}),/functions\\/internal/);
+ assert.match(describe({code:"functions/unavailable"}),/unavailable/);
+ assert.match(describe({code:"functions/permission-denied"}),/認証・権限/);
+ assert.match(describe({code:"functions/invalid-argument"}),/件数・NURO/);
+ assert.match(describe({code:"functions/not-found"}),/functions\\/not-found/);
+ assert.match(describe({message:"save_not_committed"}),/まだ保存されていません/);
 });
