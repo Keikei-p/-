@@ -13828,7 +13828,7 @@ async function loadPartnerRevisionHistory(){
    // Edit the CURRENT saved entry (not the immutable audit snapshot).
    // Retired accounts stay visible in history but cannot write new versions.
    const member=snap.staff.find(p=>p.id===event.staffId);
-   const latest=snap.records.find(r=>r.staffId===event.staffId);
+   const latest=snap.records?.find(r=>r.staffId===event.staffId);
    if(member?.active===true&&latest&&Number.isSafeInteger(latest.version)){
     const edit=document.createElement("button");
     edit.type="button";edit.className="team-action-button";
