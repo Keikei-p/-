@@ -13449,7 +13449,11 @@ async function loadSharedDailyStandings(where,force=false){
   // Partners and HQ use the very same approved counts, people and products.
   // Choose ONE ranking per card; never show private-only ranks above it.
   if(partner&&partnerSameAppSelectedPanel==="product"){
-   if(!Array.isArray(response.groupStandings))throw Error("shared_group_server_unavailable");
+   if(response.groupStatus!=="verified"||!Array.isArray(response.groupStandings)){
+    const warning=document.createElement("p");warning.className="ranking-product-help";
+    warning.textContent="ランキングの共有グループを照合できません。既存件数は維持されています。";
+    content.append(warning);return;
+   }
    renderPartnerSharedGroupCards(content,response);
    return;
   }
