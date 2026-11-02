@@ -83,9 +83,9 @@ test("direct verified partner workspace selection overrides a temporary own-comp
 
 test("original-company button remembers the conscious choice before safe page reload",()=>{
  const button=section('pInline("pInlineReturnToOwnCompany").onclick=','async function openSameAppPartnerWorkspace(');
- const calls=[],ctx={
+ const calls=[],buttonNode={onclick:null},ctx={
   auth:{currentUser:{uid:"userA"}},
-  pInline:id=>{assert.equal(id,"pInlineReturnToOwnCompany");return {onclick:null};},
+  pInline:id=>{assert.equal(id,"pInlineReturnToOwnCompany");return buttonNode;},
   clearRememberedPartnerWorkspace:uid=>calls.push("clear:"+uid),
   preferOwnCompanyUntilLogout:uid=>calls.push("prefer-own:"+uid),
   location:{origin:"https://nico-factory.web.app",replace:url=>calls.push("navigate:"+url)},
