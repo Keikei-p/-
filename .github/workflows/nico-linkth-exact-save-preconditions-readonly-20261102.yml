@@ -34,7 +34,7 @@ jobs:
           node --input-type=module <<'NODE'
           import {createRequire} from 'node:module';
           const require=createRequire(process.cwd()+'/functions/package.json');
-          const {initializeApp,applicationDefault}=require('firebase-admin/app');
+          const {initializeApp,applicationDefault,getApp}=require('firebase-admin/app');
           const {getFirestore}=require('firebase-admin/firestore');
           const {getAuth}=require('firebase-admin/auth');
           initializeApp({credential:applicationDefault(),projectId:'sales-management-cc116'});
@@ -244,7 +244,7 @@ jobs:
           const {initializeApp,applicationDefault}=require('firebase-admin/app');
           const {getFirestore}=require('firebase-admin/firestore');
           initializeApp({credential:applicationDefault(),projectId:'sales-management-cc116',name:'linkth-existing-doc-safe-iam'});
-          const db=getFirestore((await import('firebase-admin/app')).getApp('linkth-existing-doc-safe-iam'));
+          const db=getFirestore(getApp('linkth-existing-doc-safe-iam'));
           const companyQuery=await db.collection('companies').where('name','==','株式会社LinkTh').limit(2).get();
           if(companyQuery.size!==1)throw Error('STOP_NOT_EXACTLY_ONE_EXISTING_COMPANY');
           const company=companyQuery.docs[0],cid=company.id;
@@ -265,8 +265,7 @@ jobs:
            if(outcome.includes('unexpected_success'))throw Error('STOP_CREATE_OVERWROTE_EXISTING_DOC');
           }
           const credential=JSON.parse(readFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS,'utf8'));
-          const {GoogleAuth}=require('google-auth-library');
-          const token=await new GoogleAuth({scopes:['https://www.googleapis.com/auth/cloud-platform']}).getAccessToken();
+          const token=(await applicationDefault().getAccessToken()).access_token;
           const api='https://cloudfunctions.googleapis.com/v2/projects/sales-management-cc116/locations/asia-northeast1/functions/submitPartnerWorkspaceCounts';
           const response=await fetch(api,{headers:{Authorization:'Bearer '+token}});
           if(!response.ok)throw Error('STOP_FUNCTION_CONFIG_HTTP_'+response.status);
