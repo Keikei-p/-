@@ -34,7 +34,7 @@ jobs:
           if(!html.includes('mergedPartnerRankingDay')||!html.includes('partnerInviteInline')||
              !html.includes('getPartnerWorkspace')||!html.includes('inviteDestinationSelect')||
              !html.includes('employeeInviteFields')||
-             !html.includes('協力店会社を招待'))throw Error('missing_partner_bridge');
+             !/<option\s+value="partner">[^<]*協力店(?:会社|メンバー)を招待<\/option>/.test(html))throw Error('missing_partner_bridge');
           const modules=[...html.matchAll(/<script\b[^>]*type=["']module["'][^>]*>([\s\S]*?)<\/script>/g)];
           if(!modules.length)throw Error('no_browser_module');
           modules.forEach((m,i)=>fs.writeFileSync('/tmp/old-sales-index-module-'+i+'.mjs',m[1]));
