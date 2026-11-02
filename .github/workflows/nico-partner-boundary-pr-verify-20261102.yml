@@ -105,3 +105,5 @@ jobs:
         shell: bash
         run: |
           rm -f "$RUNNER_TEMP/nico-partner-readonly.json" "$RUNNER_TEMP/nico-partner-readonly-private.log" firestore-debug.log firebase-debug.log ui-debug.log
+
+# Trigger read-only security verification for PR #325 invite parity (2026-11-02).
