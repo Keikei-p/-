@@ -1,0 +1,33 @@
+name: NICO original + partner inline dashboard parity (no deploy)
+on:
+  push:
+    branches: [fix/partner-and-owner-inline-dashboard-parity-20261102]
+    paths:
+      - index.html
+      - tests/dashboard-inline-original-partner-parity.test.mjs
+      - tests/partner-repeat-login-cb-parity.test.mjs
+      - .github/workflows/nico-inline-dashboard-parity-no-deploy.yml
+  pull_request:
+    branches: [fix/partner-email-link-first-password-20261102]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate original and partner dashboard UI without production writes
+        run: |
+          set -euo pipefail
+          node --test tests/dashboard-inline-original-partner-parity.test.mjs
+          node --check functions-partner-workspace/service.cjs
+          node --test tests/partner-workspace.test.cjs
+          node --test tests/partner-repeat-login-cb-parity.test.mjs
+          node --test tests/partner-management-tabs-parity.test.mjs
+          node --test tests/partner-one-login-same-app.test.cjs
+          node --test tests/partner-money-free-workspace.test.cjs
+          node --test tests/internal-owner-finance-visibility.test.cjs

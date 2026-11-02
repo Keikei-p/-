@@ -20,9 +20,12 @@ class Coll {
 class Query {
  constructor(db,path,filter,lim=Infinity){this.db=db;this.path=path;this.filter=filter;this.lim=lim;}
  limit(n){return new Query(this.db,this.path,this.filter,n);}
- async get(){const docs=[];for(const [p,v] of this.db.store){
-  if(p.startsWith(this.path+"/")&&!p.slice(this.path.length+1).includes("/")&&
-     (!this.filter||v[this.filter.k]===this.filter.v))
+ where(k,op,v){assert.equal(op,"==");return new Query(this.db,this.path,
+  [...(Array.isArray(this.filter)?this.filter:this.filter?[this.filter]:[]),{k,v}],this.lim);}
+ async get(){const docs=[],filters=Array.isArray(this.filter)?this.filter:this.filter?[this.filter]:[];
+  for(const [p,v] of this.db.store){
+   if(p.startsWith(this.path+"/")&&!p.slice(this.path.length+1).includes("/")&&
+      filters.every(f=>v[f.k]===f.v))
     docs.push({id:p.split("/").at(-1),data:()=>clone(v)});
   }const rows=docs.slice(0,this.lim);return {size:rows.length,docs:rows};}
 }
@@ -923,6 +926,11 @@ test("hub can inspect partner-company per-team shared product counts without fin
  assert.equal(rows.length,2);
  assert.equal(rows.find(x=>x.teamId===t1).totalCount,3);
  assert.equal(rows.find(x=>x.teamId===t1).counts.NURO,2);
+ assert.equal(rows.find(x=>x.teamId===t1).members.length,1);
+ assert.equal(rows.find(x=>x.teamId===t1).members[0].name,"担当1");
+ assert.equal(rows.find(x=>x.teamId===t1).members[0].totalCount,3);
+ assert.equal(rows.find(x=>x.teamId===t1).members[0].counts.YMMNP,1);
+ assert.equal(rows.find(x=>x.teamId===t2).members[0].totalCount,0);
  assert.equal(rows.find(x=>x.teamId===t2).totalCount,0);
  assert.equal(rows.find(x=>x.teamId===t2).reportedStaffCount,1,
    "zero count is a submitted report, not a missing report");
@@ -1170,4 +1178,253 @@ test("same-email login guidance and explicit transfer action exist in invite UI"
  assert.match(p,/transferCurrentCompany:\$\("transferExistingInternal"\)\.checked/);
  assert.match(p,/auth\/email-already-in-use/);
  assert.match(invite,/auth\/email-already-in-use/);
+});
+
+test("shared daily standings expose verified partners to both companies without any prices",async()=>{
+ const {db,api,req,zero}=setup();
+ db.seed("companies/partner/partnerWorkTeams/t1",{companyId:"partner",name:"第一班",active:true});
+ db.seed("companies/partner/partnerWorkStaff/staffA",{
+  companyId:"partner",uid:"p",name:"佐藤",active:true,kind:"account",role:"leader",teamId:"t1"});
+ db.seed("records/direct20261031",{companyId:"hub",date:"2026-10-31",
+  uid:"h",teamId:"directTeam",teamNameSnapshot:"直営1班",
+  memberNameSnapshot:"直営太郎",
+  results:{nuro:{productName:"NURO光",count:2,revenuePerUnit:98765}},
+  totalCount:2,totalRevenue:197530});
+ const data={date:"2026-10-31",staffId:"staffA",expectedVersion:0,counts:{...zero(),NURO:2,SBMNP:1}};
+ const saved=await api.submit(req("p",data));
+ assert.equal(saved.totalCount,3);
+ const before=clone([...db.store]);
+ const owner=await api.view(req("h",{date:"2026-10-31",sharedRankings:true}));
+ const partner=await api.view(req("p",{date:"2026-10-31",sharedRankings:true}));
+ assert.equal(owner.scope,"shared_counts_only");
+ assert.equal(owner.includesDirect,true);
+ assert.equal(owner.direct.totalCount,2);
+ assert.equal(owner.direct.people[0].name,"直営太郎");
+ assert.equal(owner.direct.teams[0].name,"直営1班");
+ assert.equal(owner.direct.counts.NURO,2);
+ assert.deepEqual(owner.direct,partner.direct,"both companies see the same verified direct counts");
+ assert.equal(owner.complete,true);
+ assert.equal(owner.companies[0].totalCount,3);
+ assert.equal(owner.people.length,1);
+ assert.equal(owner.people[0].name,"佐藤");
+ assert.equal(owner.people[0].totalCount,3);
+ assert.equal(owner.teams[0].name,"第一班");
+ assert.equal(owner.productCounts.NURO,2);
+ assert.equal(owner.productCounts.SBMNP,1);
+ assert.deepEqual(owner.people,partner.people,"both companies see the same counts-only standings");
+ assert.equal(partner.role,"partner");
+ assert.match(owner.people[0].key,/^[a-f0-9]{64}$/);
+ assert.doesNotMatch(JSON.stringify(owner),/unitPrice|revenuePerUnit|totalRevenue|pricingOptions|98765|808080|197530/);
+ assert.doesNotMatch(JSON.stringify(owner),/staffA|p@example.com/);
+ assert.deepEqual([...db.store],before,"standings read must never write or mutate existing data");
+ const corrected=await api.submit(req("p",{...data,expectedVersion:1,counts:{...zero(),NURO:5}}));
+ assert.equal(corrected.totalCount,5);
+ const next=await api.view(req("h",{date:"2026-10-31",sharedRankings:true}));
+ assert.equal(next.companies[0].totalCount,5,"correction replaces, never double counts");
+ assert.equal(next.people[0].totalCount,5);
+ assert.equal(next.productCounts.SBMNP,0);
+ // A legacy direct record without a verified UID still contributes to the
+ // company and historical team, never to a made-up individual's rank.
+ db.seed("records/legacyMissingPerson",{companyId:"hub",date:"2026-10-31",
+  teamId:"directTeam",teamNameSnapshot:"直営1班",memberNameSnapshot:"名前のみ",
+  results:{nuro:{productName:"NURO",count:2,revenuePerUnit:999999}},
+  totalCount:2,totalRevenue:1999998});
+ const partial=await api.view(req("h",{date:"2026-10-31",sharedRankings:true}));
+ assert.equal(partial.complete,false,"cannot claim complete global individual ranks");
+ assert.equal(partial.direct.peopleVerified,false);
+ assert.equal(partial.direct.unverifiedPersonRecords,1);
+ assert.equal(partial.direct.totalCount,4);
+ assert.equal(partial.direct.teams[0].totalCount,4);
+ assert.equal(partial.direct.people.length,1);
+ assert.equal(partial.direct.people[0].totalCount,2);
+ assert.doesNotMatch(JSON.stringify(partial),/名前のみ|1999998|999999/);
+});
+test("unsubmitted approved companies are not misrepresented as zero-count ranks",async()=>{
+ const {db,api,req}=setup();
+ const result=await api.view(req("p",{date:"2026-10-31",sharedRankings:true}));
+ assert.equal(result.complete,false);
+ assert.deepEqual(result.companies,[]);
+ assert.deepEqual(result.people,[]);
+ assert.deepEqual(result.missingCompanies,["協力店"]);
+ assert.equal(result.includesDirect,true);
+ assert.equal(result.direct.totalCount,0);
+ assert.deepEqual(result.direct.people,[]);
+ assert.deepEqual(db.store.get("records/old").totalRevenue,808080);
+});
+test("count-only daily ranking refuses forged company scope and revoked sharing",async()=>{
+ const {db,api,req}=setup();
+ await assert.rejects(api.view(req("p",{date:"2026-10-31",sharedRankings:true,partnerCompanyId:"other"})),{code:"invalid-argument"});
+ db.store.get("partnerRelations/partner").countSharingApproved=false;
+ await assert.rejects(api.view(req("p",{date:"2026-10-31",sharedRankings:true})),{code:"permission-denied"});
+});
+
+test("direct redaction fails closed on overflow and malformed legacy counts",async()=>{
+ const {readDirectDayCounts}=require("../functions-partner-workspace/shared-direct-counts.cjs");
+ const {db}=setup(),date="2026-10-31";
+ const mk=(uid,quantity)=>({companyId:"hub",date,uid,teamId:"t",teamNameSnapshot:"直営班",
+   memberNameSnapshot:"同姓",totalCount:quantity,totalRevenue:9999999,
+   results:{one:{count:quantity,productName:"NURO",revenuePerUnit:999999}}});
+ db.seed("records/new01",mk("h",1));
+ db.seed("records/new02",mk("q",2));
+ const original=clone([...db.store]);
+ const a=await readDirectDayCounts(db,"hub",date,KEYS,{maxRecords:2});
+ assert.equal(a.totalCount,3);
+ assert.equal(a.people.length,2,"same names must remain distinct people");
+ assert.equal(a.teams.length,1);
+ assert.equal(a.counts.NURO,3);
+ assert.equal(a.recordsVerified,2);
+ assert.doesNotMatch(JSON.stringify(a),/9999999|revenuePerUnit|totalRevenue|unitPrice|@example.com/);
+ assert.deepEqual([...db.store],original);
+ await assert.rejects(readDirectDayCounts(db,"hub",date,KEYS,{maxRecords:1}),/DIRECT_READ_BUDGET_EXCEEDED/);
+ db.store.get("records/new01").totalCount=999;
+ await assert.rejects(readDirectDayCounts(db,"hub",date,KEYS,{maxRecords:2}),/DIRECT_TOTAL_MISMATCH/);
+});
+
+test("internal member can read approved count-only standings but cannot manage partner data",async()=>{
+ const {db,api,req,zero}=setup();
+ db.seed("users/x",{uid:"x",companyId:"hub",companyRole:"member",role:"member",
+  active:true,canViewRevenue:false,canViewUnitPrice:false,accessKind:"internal"});
+ db.seed("companies/hub/members/x",{uid:"x",companyId:"hub",companyRole:"member",
+  role:"member",active:true,canViewRevenue:false,canViewUnitPrice:false,accessKind:"internal"});
+ db.seed("records/memberSale",{uid:"x",companyId:"hub",date:"2026-10-31",
+  teamId:"ti",teamNameSnapshot:"直営2班",memberNameSnapshot:"社員",
+  totalCount:1,totalRevenue:2222,
+  results:{n:{productName:"NURO",count:1,revenuePerUnit:2222}}});
+ const ranking=await api.view(req("x",{date:"2026-10-31",sharedRankings:true}));
+ assert.equal(ranking.role,"hub");
+ assert.equal(ranking.includesDirect,true);
+ assert.equal(ranking.direct.totalCount,1);
+ assert.equal(ranking.direct.people[0].name,"社員");
+ assert.doesNotMatch(JSON.stringify(ranking),/2222|revenuePerUnit|totalRevenue|canViewRevenue|@example.com/);
+ await assert.rejects(api.view(req("x",{date:"2026-10-31"})),{code:"permission-denied"});
+ await assert.rejects(api.manage(req("x",{action:"hubCreateInvite",
+  companyName:"不正",role:"member",email:"n@example.com"})),{code:"permission-denied"});
+ const account=db.store.get("companies/hub/members/x");
+ account.active=false;
+ await assert.rejects(api.view(req("x",{date:"2026-10-31",sharedRankings:true})),{code:"permission-denied"});
+});
+
+
+test("partner leader without a representative can manage own count-only custom products but member and hub cannot",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ const original=clone(db.store.get("records/old"));
+ const team=(await api.manage(req("p",{action:"addTeam",name:"登録班"}))).teamId;
+ const lead=(await api.manage(req("p",{action:"createInvite",
+   teamId:team,role:"leader",email:"l@example.com"}))).token;
+ await api.accept(req("l",{token:lead,name:"協力店リーダー"}));
+ const member=(await api.manage(req("l",{action:"createInvite",
+   teamId:team,role:"member",email:"m@example.com"}))).token;
+ await api.accept(req("m",{token:member,name:"協力店メンバー"}));
+ const id=(await api.manage(req("l",{action:"addPrivateProduct",name:"新規協力店商材"}))).productId;
+ const staff=(await api.manage(req("l",{action:"addManaged",name:"登録者",teamId:team}))).staffId;
+ const saved=await api.submit(req("l",{date,staffId:staff,counts:{...zero(),NURO:2},
+   privateCounts:{[id]:3},expectedVersion:0}));
+ assert.equal(saved.totalCount,2);
+ assert.equal(saved.privateTotalCount,3);
+ const partner=await api.view(req("l",{date}));
+ assert.equal(partner.privateProducts[0].name,"新規協力店商材");
+ assert.equal(partner.records.find(x=>x.staffId===staff).privateCounts[id],3);
+ await assert.rejects(api.manage(req("m",{action:"addPrivateProduct",name:"禁止商材"})),
+   e=>e.code==="permission-denied");
+ await assert.rejects(api.manage(req("m",{action:"setPrivateProduct",productId:id,
+   name:"改竄",active:false})),e=>e.code==="permission-denied");
+ await api.manage(req("l",{action:"setPrivateProduct",productId:id,
+   name:"新規協力店商材",active:false}));
+ const disabled=await api.view(req("l",{date}));
+ assert.equal(disabled.privateProducts[0].active,false);
+ assert.equal(disabled.records.find(x=>x.staffId===staff).privateCounts[id],3);
+ // A normal edit must keep disabled historical private counts without resending
+ // those forbidden positive values in its patch.
+ await api.submit(req("l",{date,staffId:staff,counts:{...zero(),NURO:4},
+   privateCounts:{},expectedVersion:1}));
+ const after=await api.view(req("l",{date}));
+ assert.equal(after.records[0].privateCounts[id],3);
+ const hub=await api.view(req("h",{date}));
+ assert.equal(hub.partners[0].totalCount,4);
+ assert.equal(JSON.stringify(hub).includes("新規協力店商材"),false);
+ assert.equal(JSON.stringify(hub).includes(id),false);
+ assert.deepEqual(db.store.get("records/old"),original);
+});
+
+
+test("audit history records every saved correction without exposing finance or losing originals",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ const original=clone(db.store.get("records/old"));
+ const finance=clone(db.store.get("products/money"));
+ const team=(await api.manage(req("p",{action:"addTeam",name:"監査班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"監査担当",teamId:team}))).staffId;
+ const id=(await api.manage(req("p",{action:"addPrivateProduct",name:"専用商材"}))).productId;
+ await api.submit(req("p",{date,staffId:staff,counts:{...zero(),NURO:2},
+  privateCounts:{[id]:1},expectedVersion:0}));
+ await api.submit(req("p",{date,staffId:staff,counts:{...zero(),NURO:3},
+  privateCounts:{[id]:2},expectedVersion:1}));
+ assert.equal("audits" in await api.view(req("p",{date})),false);
+ const own=await api.view(req("p",{date,includeAuditHistory:true}));
+ assert.deepEqual(own.audits.map(x=>[x.version,x.previousTotalCount,x.totalCount]),
+  [[1,0,2],[2,2,3]]);
+ assert.equal(own.audits[1].previousCounts.NURO,2);
+ assert.equal(own.audits[1].counts.NURO,3);
+ assert.equal(own.audits[1].previousPrivateTotalCount,1);
+ assert.equal(own.audits[1].privateTotalCount,2);
+ assert.equal(own.audits[1].previousPrivateCounts[id],1);
+ assert.equal(own.audits[1].privateCounts[id],2);
+ await assert.rejects(api.view(req("h",{date,includeAuditHistory:true})),
+  e=>e.code==="invalid-argument");
+ assert.deepEqual(db.store.get("records/old"),original);
+ assert.deepEqual(db.store.get("products/money"),finance);
+ const text=JSON.stringify(own.audits);
+ for(const k of ["totalRevenue","revenuePerUnit","unitPrice","updatedByUid","createdByUid"])
+  assert.equal(text.includes(k),false);
+});
+
+
+test("audit exposes same-total CB tier and private product edits only inside the partner workspace",async()=>{
+ const {api,req,zero}=setup(),date="2026-10-31";
+ const team=(await api.manage(req("p",{action:"addTeam",name:"変更内容班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"変更内容担当",teamId:team}))).staffId;
+ const first=(await api.manage(req("p",{action:"addPrivateProduct",name:"協力店限定A"}))).productId;
+ const second=(await api.manage(req("p",{action:"addPrivateProduct",name:"協力店限定B"}))).productId;
+ const counts={...zero(),NURO:2};
+ await api.submit(req("p",{date,staffId:staff,counts,
+  cbCounts:{NURO:{"20000":2}},privateCounts:{[first]:2,[second]:0},expectedVersion:0}));
+ await api.submit(req("p",{date,staffId:staff,counts,
+  cbCounts:{NURO:{"40000":2}},privateCounts:{[first]:0,[second]:2},expectedVersion:1}));
+ const own=await api.view(req("p",{date,includeAuditHistory:true}));
+ assert.equal(own.audits.length,2);
+ const correction=own.audits[1];
+ assert.equal(correction.previousTotalCount,2);
+ assert.equal(correction.totalCount,2);
+ assert.equal(correction.previousCbCounts.NURO["20000"],2);
+ assert.equal(correction.cbCounts.NURO["40000"],2);
+ assert.equal(correction.previousPrivateCounts[first],2);
+ assert.equal(correction.privateCounts[first],0);
+ assert.equal(correction.previousPrivateCounts[second],0);
+ assert.equal(correction.privateCounts[second],2);
+ const plain=JSON.stringify(correction);
+ for(const secret of ["totalRevenue","revenuePerUnit","unitPrice","updatedByUid","createdByUid"])
+  assert.equal(plain.includes(secret),false,secret);
+ assert.equal("audits" in await api.view(req("p",{date})),false);
+ const hub=await api.view(req("h",{date}));
+ assert.equal(JSON.stringify(hub).includes(first),false);
+ assert.equal(JSON.stringify(hub).includes(second),false);
+});
+
+test("member sees only own revision audits while owner sees all partner count revisions",async()=>{
+ const {api,req,zero}=setup(),date="2026-10-31";
+ const team=(await api.manage(req("p",{action:"addTeam",name:"履歴照合班"}))).teamId;
+ const managed=(await api.manage(req("p",{action:"addManaged",name:"別の担当",teamId:team}))).staffId;
+ await api.submit(req("p",{date,staffId:managed,
+  counts:{...zero(),NURO:8},expectedVersion:0}));
+ const invitation=await api.manage(req("p",{action:"createInvite",
+  email:"m@example.com",role:"member",teamId:team}));
+ await api.accept(req("m",{token:invitation.token,name:"本人"}));
+ await api.submit(req("m",{date,staffId:"m",
+  counts:{...zero(),SBMNP:2},expectedVersion:0}));
+ const all=await api.view(req("p",{date,includeAuditHistory:true}));
+ assert.equal(all.audits.length,2);
+ const own=await api.view(req("m",{date,includeAuditHistory:true}));
+ assert.equal(own.audits.length,1);
+ assert.equal(own.audits[0].staffId,"m");
+ assert.equal(own.audits[0].counts.SBMNP,2);
+ assert.equal(JSON.stringify(own).includes("別の担当"),false);
 });

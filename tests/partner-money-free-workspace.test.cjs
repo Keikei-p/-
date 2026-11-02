@@ -34,7 +34,10 @@ test("staff count API never returns monetary fields, accesses money originals or
  assert.doesNotMatch(service,/\.collection\(["'](?:products|records|recordCorrections|revenueGoals)["']\)/);
  assert.doesNotMatch(service,/\b(revenuePerUnit|totalRevenue|unitPrice|pricingOptions|targetRevenue)\s*:/);
  assert.match(service,/partners\.push\(\{partnerCompanyId:sn\.id,name:x\.partnerName,totalCount:total,counts\}\)/);
- assert.match(service,/rows\.push\(\{staffId:x\.staffId,counts,totalCount:total,version:x\.version,\s*teamIdSnapshot,privateCounts:/);
+ assert.match(service,/rows\.push\(\{staffId:x\.staffId,counts,totalCount:total,version:x\.version/);
+ assert.match(service,/teamIdSnapshot,privateCounts:privateCounts\.counts/);
+ assert.match(service,/cbCounts\}/);
+ assert.match(service,/validateCbCounts\(x\.cbCounts,counts\)/);
  assert.match(service,/const teamIdSnapshot=ID\.test\(x\.teamIdSnapshot\|\|""\)\?x\.teamIdSnapshot:null/);
  assert.match(service,/if\(totalSnap\.exists&&existing\.source!=="staff-entries-v1"\)fail/);
  assert.match(service,/existing\.totalCount!==Object\.values\(previous\)/);
@@ -45,8 +48,9 @@ test("partner counts in existing ranking never add partner revenue or prices",()
  assert.match(partner,/revenuePerUnit:0/);
  assert.doesNotMatch(partner,/\btotalRevenue\b|\bunitPrice\b|\btotalPrice\b/);
  const team=app.slice(app.indexOf("function renderTeamRanking("),app.indexOf("function renderTeamRanking(")+2800);
- assert.match(team,/const partnerRows=teamRankingMode==="progress"/);
- assert.match(team,/count:row\.totalCount,revenue:0/);
+ assert.match(team,/sortTeamRankingRows\(originalRows,teamRankingMode\)/);
+ assert.doesNotMatch(team,/const partnerRows=teamRankingMode==="progress"/,
+  "do not rank company totals as fictitious teams");
  const products=app.slice(app.indexOf("function renderProductMemberRanking("),app.indexOf("function buildTeamRankingRows("));
  assert.ok(products.includes("partnerRankingVirtualRecords()"));
  assert.ok(products.includes("existingGroupsWithPartnerCounts(rankingGroups)"));

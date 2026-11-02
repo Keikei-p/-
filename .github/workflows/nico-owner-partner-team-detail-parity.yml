@@ -1,0 +1,25 @@
+name: NICO owner partner team-detail parity (no deploy)
+on:
+  push:
+    branches:
+      - fix/owner-partner-count-team-detail-screen-20261102
+    paths:
+      - index.html
+      - tests/owner-partner-team-detail-screen.test.mjs
+      - .github/workflows/nico-owner-partner-team-detail-parity.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  owner-count-view-readonly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify partner company count UI, original revenue, security and regressions
+        run: node --test tests/owner-partner-team-detail-screen.test.mjs tests/partner-company-parity-release.test.mjs tests/partner-management-tabs-parity.test.mjs tests/sales-regressions.cjs

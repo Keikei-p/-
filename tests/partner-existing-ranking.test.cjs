@@ -86,7 +86,9 @@ test("validated count-only partner month aggregates and refuses partial old snap
 });
 test("existing ranking UIs reused, not a new ranking screen or money blending",()=>{
  assert(html.includes('const originalRows=buildTeamRankingRows(teamMap,monthly,teamRankingMode)'));
- assert(html.includes('const partnerRows=teamRankingMode==="progress"'));
+ assert(html.includes('const ranking = sortTeamRankingRows(originalRows,teamRankingMode)'));
+ assert(!html.includes('const partnerRows=teamRankingMode==="progress"'),
+  "partner company aggregates must never be fictional team ranks");
  assert(html.includes('const augmentedRows=[...monthly,...partnerRankingVirtualRecords()]'));
  assert(html.includes("const productsWithCounts=buildGroupedProductMemberRanking("));
  assert(html.includes("function renderIndividualRanking("));
@@ -146,8 +148,11 @@ test("actual quick + staff count API merge prioritizes staff ledger without doub
    },
    readPartnerWorkDay:async({date})=>{
     calls.push(["staff",date]);
-    return {data:{role:"hub",date,partners:date==="2026-10-31"?
-     [row("partnerA","協力店A",{NURO:2,"つばさ・HTB":3})]:[]}};
+    return {data:{role:"hub",date,
+     registeredCompanies:date==="2026-10-31"?
+      [{partnerCompanyId:"partnerA",active:true},{partnerCompanyId:"partnerB",active:true}]:[],
+     partners:date==="2026-10-31"?
+      [row("partnerA","協力店A",{NURO:2,"つばさ・HTB":3})]:[]}};
    },
    dashboardMonth:{value:"2026-10"},
    currentPartnerRankingRows:()=>ctx.monthRows,
@@ -186,6 +191,10 @@ test("actual quick + staff count API merge prioritizes staff ledger without doub
  const ranked=ctx.buildGroupedProductMemberRanking([...internal,...virtual],"",joined);
  assert.equal(ranked.find(x=>x.name==="NURO光").count,6,
   "direct NURO 4 plus partner staff NURO 2");
+ assert.equal(ranked.find(x=>x.name==="NURO光").members.length,1,
+  "partner company aggregate must NOT appear as an invented individual");
+ assert.equal(ranked.find(x=>x.name==="NURO光").members[0].name,"直営A",
+  "only a verified real person gets an individual rank");
  assert.equal(ranked.find(x=>x.name==="新電力").count,3,
   "partner combined electricity entries counted in existing new-electricity group");
  assert.equal(ranked.find(x=>x.name==="乗り換え丸件").count,2,
@@ -194,4 +203,79 @@ test("actual quick + staff count API merge prioritizes staff ledger without doub
   "quick-partner:partnerA",joined);
  assert.equal(own.find(x=>x.name==="NURO光").count,2);
  assert.equal(own.find(x=>x.name==="新電力").count,3);
+});
+
+test("monthly standings never certify a missing approved partner day as zero",async()=>{
+ const keys=["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター",
+  "つばさ・HTB","太陽光・蓄電池AP","U-NEXT"];
+ const zero=()=>Object.fromEntries(keys.map(k=>[k,0]));
+ const row=(date,n)=>({partnerCompanyId:"partnerA",name:"協力店A",
+  counts:{...zero(),NURO:n},totalCount:n});
+ const cache=new Map();
+ let reportedFirstDay=false,readCount=0,includeRoster=true;
+ const ctx=make(["validatedPartnerRankingDay","mergedPartnerRankingDay",
+  "readPartnerRankingMonth"],{
+  PARTNER_QUICK_RANK_KEYS:keys,getTodayString:()=>"2026-11-02",
+  currentPartnerRankingKey:month=>"company|"+month,
+  partnerRankingDailyCache:cache,
+  readPartnerQuickDay:async({date})=>{
+   readCount++;return {data:{role:"hub",date,partners:[]}};
+  },
+  readPartnerWorkDay:async({date})=>{
+   readCount++;return {data:{role:"hub",date,
+    ...(includeRoster?{registeredCompanies:[{partnerCompanyId:"partnerA",name:"協力店A",
+      active:true,teams:[]}]}:{}),
+    partners:date==="2026-11-01"?(reportedFirstDay?[row(date,0)]:[]):[row(date,3)]
+   }};
+  }
+ });
+ const incomplete=await ctx.readPartnerRankingMonth("2026-11");
+ assert.equal(incomplete.complete,false,"missing is never an authenticated zero");
+ assert.match(incomplete.reason,/未報告/);
+ assert.equal(incomplete.rows.length,1);
+ assert.equal(incomplete.rows[0].totalCount,3,"available counts are preserved");
+ assert.equal(readCount,4);
+ reportedFirstDay=true;
+ cache.clear();
+ const complete=await ctx.readPartnerRankingMonth("2026-11");
+ assert.equal(complete.complete,true,"an explicit 0-count report is verified");
+ assert.equal(complete.rows[0].totalCount,3);
+ assert.equal(readCount,8);
+ assert.doesNotMatch(JSON.stringify(complete),/totalRevenue|unitPrice|revenuePerUnit/);
+ includeRoster=false;cache.clear();
+ const oldApi=await ctx.readPartnerRankingMonth("2026-11");
+ assert.equal(oldApi.complete,false,"an old API without company coverage cannot certify ranks");
+ assert.equal(oldApi.rows[0].totalCount,3);
+ assert.equal(readCount,12);
+});
+
+test("unverified monthly company counts stay visible without imaginary place numbers",()=>{
+ const parent={children:[],append(child){this.children.push(child);nodes.set(child.id,child);}};
+ const nodes=new Map();
+ const create=tag=>({
+  tag,id:"",textContent:"",hidden:false,children:[],
+  append(child){this.children.push(child);},
+  replaceChildren(){this.children=[];}
+ });
+ const entries=[];
+ const state={key:"current",complete:false,reason:"未報告の日があります",
+  rows:[{name:"協力店A",totalCount:12},{name:"協力店B",totalCount:3}]};
+ const ctx=make(["renderOwnerPartnerMonthlyPendingCounts"],{
+  individualRankingContent:parent,partnerRankingState:state,
+  canLoadPartnerRanking:()=>true,currentPartnerRankingKey:()=>"current",
+  document:{getElementById:id=>nodes.get(id)||null,createElement:tag=>{
+   const element=create(tag);const assign=element.append.bind(element);
+   element.append=child=>{assign(child);if(element.id)nodes.set(element.id,element);};
+   return element;
+  }},
+  partnerMainAppendRow:(target,label,value)=>entries.push({label,value})
+ });
+ ctx.renderOwnerPartnerMonthlyPendingCounts();
+ assert.equal(parent.children.length,1);
+ assert.equal(parent.children[0].hidden,false);
+ assert.deepEqual(entries.map(x=>x.value),["12件｜報告済み分のみ","3件｜報告済み分のみ"]);
+ assert.ok(entries.every(x=>!/[0-9]+位/.test(x.label)),"unverified people cannot be ranked");
+ state.complete=true;
+ ctx.renderOwnerPartnerMonthlyPendingCounts();
+ assert.equal(parent.children[0].hidden,true);
 });
