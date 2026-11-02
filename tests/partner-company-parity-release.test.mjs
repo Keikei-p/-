@@ -212,7 +212,7 @@ test("corrected counts and date changes invalidate stale joint standings, while 
  const fields={pInlineStatus:{textContent:""},pInlineInviteUrl:{value:""},
   pInlineInviteResult:{hidden:false},partnerInlineWorkspace:{hidden:false},
   partnerInviteAtMain:{hidden:false}};
- const ctx={partnerInlineNonce:0,ownerPartnerTeamsNonce:0,
+ const ctx={partnerInlineNonce:0,ownerPartnerTeamsNonce:0,partnerAuditNonce:0,
   sharedDailyRankingGeneration:0,sharedDailyRankCache:memory,
   partnerInlineData:{records:[{totalCount:2}]},partnerInlineWorkspaceCompany:"company-A",
   partnerInlineBusy:true,
@@ -221,6 +221,7 @@ test("corrected counts and date changes invalidate stale joint standings, while 
  runInNewContext(reset+"\nresetPartnerInline()",ctx);
  assert.equal(memory.size,0,"no old company's rank data after logout");
  assert.equal(ctx.sharedDailyRankingGeneration,1,"invalidate stale in-flight request");
+ assert.equal(ctx.partnerAuditNonce,1,"invalidate stale audit requests on logout");
  assert.equal(ctx.partnerInlineWorkspaceCompany,"");
  assert.equal(ctx.partnerInlineData,null);
 });
