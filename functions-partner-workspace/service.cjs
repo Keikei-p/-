@@ -275,7 +275,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  };
  async function manage(request){
   const {uid}=await actor(request),d=request?.data||{},op=d.action;
-  if(!["addTeam","addManaged","createInvite","moveStaff","addPrivateProduct","setPrivateProduct",
+  if(!["addTeam","addManaged","removeManaged","createInvite","moveStaff","addPrivateProduct","setPrivateProduct",
    "hubAddTeam","hubCreateInvite"].includes(op))fail("invalid-argument");
   const s=await scope(uid,null,d.workspaceCompanyId);
   if(op==="hubAddTeam"||op==="hubCreateInvite"){
@@ -394,6 +394,31 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
       teamId,companyId:s.cid,active:true,createdByUid:uid,createdAt:FieldValue.serverTimestamp()});
    });
    return {staffId:ref.id,created:true};
+  }
+  if(op==="removeManaged"){
+   // Reversible archive for manually registered (email-less) staff only.
+   // Never remove Firebase Auth, memberships, financial data or past counts.
+   // Logged-in accounts require a separate reviewed membership revocation.
+   if(!["owner","leader"].includes(s.role)||!ID.test(d.staffId||""))
+    fail("invalid-argument");
+   const archived=await db.runTransaction(async tx=>{
+    const fresh=await scope(uid,tx,d.workspaceCompanyId);
+    if(fresh.kind!=="partner"||fresh.cid!==s.cid||
+       !["owner","leader"].includes(fresh.role))fail();
+    const ref=staffRef(s.cid,d.staffId),snap=await tx.get(ref);
+    const person=snap.data()||{};
+    if(!snap.exists||person.companyId!==s.cid||
+       person.kind!=="managed"||person.uid!=null||
+       person.role!=="member"||!validName(person.name)||
+       !ID.test(person.teamId||""))fail("failed-precondition");
+    if(person.active===false)return false; // idempotent, never erase
+    if(person.active!==true)fail("failed-precondition");
+    tx.update(ref,{active:false,deactivatedByUid:uid,
+     deactivatedAt:FieldValue.serverTimestamp(),
+     updatedByUid:uid,updatedAt:FieldValue.serverTimestamp()});
+    return true;
+   });
+   return {staffId:d.staffId,archived:true,changed:archived};
   }
   if(op==="moveStaff"){
    if(!["owner","leader"].includes(s.role)||!ID.test(d.staffId||"")||!ID.test(d.teamId||""))fail("invalid-argument");
