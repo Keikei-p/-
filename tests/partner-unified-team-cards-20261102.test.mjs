@@ -71,8 +71,9 @@ test("backend reads only saved count ledger and exports no financial fields",()=
   "sumTiers(bucket.cbCounts.NURO,cb)",
   'out.unclassified=counts.NURO'
  ])assert.ok(service.includes(expected),expected);
- for(const line of service.slice(service.indexOf("if(d.sharedRankings===true){"),
-  service.indexOf('const qs=await collection(s.cid,"partnerWorkCountDays")')).split("\n")){
+ const partnerRead=service.slice(service.indexOf("if(d.sharedRankings===true){"),
+  service.indexOf('const qs=await collection(s.cid,"partnerWorkCountDays")'));
+ for(const line of partnerRead.split("\n")){
   assert.doesNotMatch(line,/db\.collection\(["'](?:records|products|revenueGoals)["']\)/);
  }
 });
