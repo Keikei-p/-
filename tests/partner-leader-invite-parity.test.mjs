@@ -40,6 +40,7 @@ function fixture({expired=false,sendError=false,verified=true,role="leader"}={})
  const auth={currentUser:{uid:"leader-1",emailVerified:verified}};
  const context={pInline,auth,partnerInlineData:{role},
   partnerInlineWorkspaceCompany:"company-A",partnerInlineBusy:false,
+  partnerMainValidId:value=>/^[A-Za-z0-9_-]{1,128}$/.test(value),
   location:{origin:"https://nico-factory.web.app"},URL,console,
   partnerInviteAuthSettings:invite=>({url:invite.url,handleCodeInApp:true}),
   partnerInlinePayload:x=>x,
