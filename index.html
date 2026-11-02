@@ -12676,6 +12676,37 @@ function sharedVerifiedProductCategory(label){
 }
 // Shared count-only scoreboard: hub and partner call the SAME audited
 // endpoint. Fetch only when the ranking is opened / refresh is requested.
+function installOwnerCombinedCountCards(){
+ for(const [name,panelId,title] of [
+   ["Individual","individualRankingContent","🏆 合同個人・件数ランキング"],
+   ["Product","productRankingContent","📦 合同商材別・件数ランキング"],
+   ["Team","teamRankingContent","👥 合同班・件数ランキング"]]){
+  const parent=document.getElementById(panelId);
+  if(!parent||document.getElementById("ownerSharedCard"+name))continue;
+  const card=document.createElement("section");card.id="ownerSharedCard"+name;
+  card.className="p-inline-card";card.hidden=true;
+  const heading=document.createElement("h3");heading.textContent=title;
+  const dateLabel=document.createElement("label");dateLabel.className="p-inline-field";
+  dateLabel.textContent="集計日";
+  const dateInput=document.createElement("input");dateInput.type="date";
+  dateInput.id="ownerSharedDate"+name;dateInput.value=getTodayString();
+  dateInput.max=getTodayString();dateLabel.append(dateInput);
+  const button=document.createElement("button");button.type="button";
+  button.className="team-action-button";button.textContent="みんなの件数を更新";
+  button.onclick=()=>loadSharedDailyStandings(name);
+  const status=document.createElement("p");status.id="ownerSharedStatus"+name;
+  status.setAttribute("role","status");
+  const body=document.createElement("div");body.id="ownerSharedContent"+name;
+  body.className="p-inline-list";
+  card.append(heading,dateLabel,button,status,body);parent.append(card);
+ }
+}
+function setOwnerCombinedCountCardVisibility(name){
+ const card=document.getElementById("ownerSharedCard"+name);
+ if(card)card.hidden=!canLoadPartnerRanking();
+}
+installOwnerCombinedCountCards();
+
 let sharedDailyRankingGeneration=0;
 function verifiedDirectDayCounts(date){
  if(!canLoadPartnerRanking()||!recordsReady||
@@ -12738,9 +12769,13 @@ function appendSharedRankingRows(container,heading,entries,complete){
 async function loadSharedDailyStandings(where){
  const partner=where==="partner";
  if(!partner&&!canLoadPartnerRanking())return;
- const date=partner?pInline("pInlineDate").value:pInline("ownerPartnerDashboardDate").value;
- const status=pInline(partner?"partnerSharedRankingsStatus":"ownerSharedRankingsStatus");
- const content=pInline(partner?"partnerSharedRankingContent":"ownerSharedRankingContent");
+ const named=(!partner&&["Individual","Product","Team"].includes(where))?where:null;
+ const dateField=partner?"pInlineDate":named?"ownerSharedDate"+named:"ownerPartnerDashboardDate";
+ const statusField=partner?"partnerSharedRankingsStatus":named?"ownerSharedStatus"+named:"ownerSharedRankingsStatus";
+ const contentField=partner?"partnerSharedRankingContent":named?"ownerSharedContent"+named:"ownerSharedRankingContent";
+ const date=pInline(dateField).value;
+ const status=pInline(statusField);
+ const content=pInline(contentField);
  const uid=auth.currentUser?.uid,seq=++sharedDailyRankingGeneration;
  content.replaceChildren();
  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||date>getTodayString()){
@@ -12753,7 +12788,7 @@ async function loadSharedDailyStandings(where){
    payload.workspaceCompanyId=partnerInlineWorkspaceCompany;
   const response=(await readPartnerWorkDay(payload)).data;
   if(seq!==sharedDailyRankingGeneration||auth.currentUser?.uid!==uid||
-     date!==(partner?pInline("pInlineDate").value:pInline("ownerPartnerDashboardDate").value))return;
+     date!==pInline(dateField).value)return;
   if(response?.scope!=="shared_counts_only"||
      response.role!==(partner?"partner":"hub")||response.date!==date||
      !Array.isArray(response.companies)||!Array.isArray(response.teams)||
@@ -33601,6 +33636,7 @@ function decorateRankingChampion(row, category) {
 function renderIndividualRanking(
   individualMap
 ) {
+  setOwnerCombinedCountCardVisibility("Individual");
 
   individualRankingList.innerHTML =
     "";
@@ -34213,6 +34249,7 @@ rankingGroupAdd.addEventListener("click", async () => {
 });
 
 function renderProductMemberRanking(monthly) {
+  setOwnerCombinedCountCardVisibility("Product");
   rankingGroupEditor.hidden = !isCurrentCompanyManager();
   updateRankingLayoutControls("product");
 
@@ -34468,6 +34505,7 @@ function renderTeamRanking(
   teamMap,
   monthly = []
 ) {
+  setOwnerCombinedCountCardVisibility("Team");
 
   teamRankingList.innerHTML = "";
 
