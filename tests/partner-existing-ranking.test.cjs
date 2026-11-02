@@ -238,3 +238,34 @@ test("monthly standings never certify a missing approved partner day as zero",as
  assert.equal(readCount,8);
  assert.doesNotMatch(JSON.stringify(complete),/totalRevenue|unitPrice|revenuePerUnit/);
 });
+
+test("unverified monthly company counts stay visible without imaginary place numbers",()=>{
+ const parent={children:[],append(child){this.children.push(child);}};
+ const nodes=new Map();
+ const create=tag=>({
+  tag,id:"",textContent:"",hidden:false,children:[],
+  append(child){this.children.push(child);},
+  replaceChildren(){this.children=[];}
+ });
+ const entries=[];
+ const state={key:"current",complete:false,reason:"未報告の日があります",
+  rows:[{name:"協力店A",totalCount:12},{name:"協力店B",totalCount:3}]};
+ const ctx=make(["renderOwnerPartnerMonthlyPendingCounts"],{
+  individualRankingContent:parent,partnerRankingState:state,
+  canLoadPartnerRanking:()=>true,currentPartnerRankingKey:()=>"current",
+  document:{getElementById:id=>nodes.get(id)||null,createElement:tag=>{
+   const element=create(tag);const assign=element.append.bind(element);
+   element.append=child=>{assign(child);if(element.id)nodes.set(element.id,element);};
+   return element;
+  }},
+  partnerMainAppendRow:(target,label,value)=>entries.push({label,value})
+ });
+ ctx.renderOwnerPartnerMonthlyPendingCounts();
+ assert.equal(parent.children.length,1);
+ assert.equal(parent.children[0].hidden,false);
+ assert.deepEqual(entries.map(x=>x.value),["12件｜報告済み分のみ","3件｜報告済み分のみ"]);
+ assert.ok(entries.every(x=>!/[0-9]+位/.test(x.label)),"unverified people cannot be ranked");
+ state.complete=true;
+ ctx.renderOwnerPartnerMonthlyPendingCounts();
+ assert.equal(parent.children[0].hidden,true);
+});
