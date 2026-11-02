@@ -20,9 +20,12 @@ class Coll {
 class Query {
  constructor(db,path,filter,lim=Infinity){this.db=db;this.path=path;this.filter=filter;this.lim=lim;}
  limit(n){return new Query(this.db,this.path,this.filter,n);}
- async get(){const docs=[];for(const [p,v] of this.db.store){
-  if(p.startsWith(this.path+"/")&&!p.slice(this.path.length+1).includes("/")&&
-     (!this.filter||v[this.filter.k]===this.filter.v))
+ where(k,op,v){assert.equal(op,"==");return new Query(this.db,this.path,
+  [...(Array.isArray(this.filter)?this.filter:this.filter?[this.filter]:[]),{k,v}],this.lim);}
+ async get(){const docs=[],filters=Array.isArray(this.filter)?this.filter:this.filter?[this.filter]:[];
+  for(const [p,v] of this.db.store){
+   if(p.startsWith(this.path+"/")&&!p.slice(this.path.length+1).includes("/")&&
+      filters.every(f=>v[f.k]===f.v))
     docs.push({id:p.split("/").at(-1),data:()=>clone(v)});
   }const rows=docs.slice(0,this.lim);return {size:rows.length,docs:rows};}
 }
@@ -1182,6 +1185,11 @@ test("shared daily standings expose verified partners to both companies without 
  db.seed("companies/partner/partnerWorkTeams/t1",{companyId:"partner",name:"第一班",active:true});
  db.seed("companies/partner/partnerWorkStaff/staffA",{
   companyId:"partner",uid:"p",name:"佐藤",active:true,kind:"account",role:"leader",teamId:"t1"});
+ db.seed("records/direct20261031",{companyId:"hub",date:"2026-10-31",
+  uid:"h",teamId:"directTeam",teamNameSnapshot:"直営1班",
+  memberNameSnapshot:"直営太郎",
+  results:{nuro:{productName:"NURO光",count:2,revenuePerUnit:98765}},
+  totalCount:2,totalRevenue:197530});
  const data={date:"2026-10-31",staffId:"staffA",expectedVersion:0,counts:{...zero(),NURO:2,SBMNP:1}};
  const saved=await api.submit(req("p",data));
  assert.equal(saved.totalCount,3);
@@ -1189,7 +1197,12 @@ test("shared daily standings expose verified partners to both companies without 
  const owner=await api.view(req("h",{date:"2026-10-31",sharedRankings:true}));
  const partner=await api.view(req("p",{date:"2026-10-31",sharedRankings:true}));
  assert.equal(owner.scope,"shared_counts_only");
- assert.equal(owner.includesDirect,false,"no direct-company finance reads or fabricated counts");
+ assert.equal(owner.includesDirect,true);
+ assert.equal(owner.direct.totalCount,2);
+ assert.equal(owner.direct.people[0].name,"直営太郎");
+ assert.equal(owner.direct.teams[0].name,"直営1班");
+ assert.equal(owner.direct.counts.NURO,2);
+ assert.deepEqual(owner.direct,partner.direct,"both companies see the same verified direct counts");
  assert.equal(owner.complete,true);
  assert.equal(owner.companies[0].totalCount,3);
  assert.equal(owner.people.length,1);
@@ -1201,7 +1214,7 @@ test("shared daily standings expose verified partners to both companies without 
  assert.deepEqual(owner.people,partner.people,"both companies see the same counts-only standings");
  assert.equal(partner.role,"partner");
  assert.match(owner.people[0].key,/^[a-f0-9]{64}$/);
- assert.doesNotMatch(JSON.stringify(owner),/unitPrice|revenuePerUnit|totalRevenue|pricingOptions|98765|808080/);
+ assert.doesNotMatch(JSON.stringify(owner),/unitPrice|revenuePerUnit|totalRevenue|pricingOptions|98765|808080|197530/);
  assert.doesNotMatch(JSON.stringify(owner),/staffA|p@example.com/);
  assert.deepEqual([...db.store],before,"standings read must never write or mutate existing data");
  const corrected=await api.submit(req("p",{...data,expectedVersion:1,counts:{...zero(),NURO:5}}));
@@ -1218,7 +1231,9 @@ test("unsubmitted approved companies are not misrepresented as zero-count ranks"
  assert.deepEqual(result.companies,[]);
  assert.deepEqual(result.people,[]);
  assert.deepEqual(result.missingCompanies,["協力店"]);
- assert.equal(result.includesDirect,false);
+ assert.equal(result.includesDirect,true);
+ assert.equal(result.direct.totalCount,0);
+ assert.deepEqual(result.direct.people,[]);
  assert.deepEqual(db.store.get("records/old").totalRevenue,808080);
 });
 test("count-only daily ranking refuses forged company scope and revoked sharing",async()=>{
