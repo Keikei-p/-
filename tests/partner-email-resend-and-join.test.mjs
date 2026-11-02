@@ -45,7 +45,8 @@ test("invite mail is automatically sent by Firebase and never faked by link crea
  assert.match(html,/if\(sent\)showSuccess\("協力店の認証メールを送信しました/);
  assert.match(html,/else showError\("招待リンクを作成しましたが、認証メールは未送信です/);
  assert.match(html,/auth\/operation-not-allowed/);
- assert.match(html,/partnerInviteAuthSettings\(\{url:url.href\}\)/);
+ assert.match(html,/const sent=await partnerLeaderSendInviteEmail\(invite\)/);
+ assert.match(html,/partnerInviteAuthSettings\(latest\)/);
  assert.doesNotMatch(html,/window\.location\.href=partnerInviteMailUrl/);
 });
 test("recipient verifies invitation mailbox first, sets first password, and then accepts count-only invite",()=>{
