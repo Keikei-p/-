@@ -51,7 +51,10 @@ test("partner view is inside same app but legacy finance children are inaccessib
  assert.match(index,/let verified=null;/);
  assert.match(index,/verified=\(await readPartnerWorkDay\(partnerInlinePayload\(\{date\}\)\)\)\.data/);
  assert.match(index,/const readback=partnerSavedCountReadbackState\(verified,expected\)/);
- assert.match(index,/snap\.categories\.some\(key=>saved\.counts\?\.\[key\]!==counts\[key\]\)/);
+ assert.match(index,/const countOk=expected\.categories\.every\(key=>/);
+ assert.match(index,/Number\.isSafeInteger\(record\.counts\?\.\[key\]\)&&record\.counts\[key\]===expected\.counts\[key\]/);
+ assert.match(index,/const cbOk=PARTNER_NURO_CB_TIERS\.every\(tier=>/);
+ assert.match(index,/const readback=partnerSavedCountReadbackState\(verified,expected\)/);
  assert.match(index,/pInline\("pInlineTitle"\)\.textContent="🤝 "\+snap\.companyName/);
  assert.match(index,/snap\.companyName\+"・"\+t\.name/);
  assert.match(index,/id="pInlineRanking"/);
