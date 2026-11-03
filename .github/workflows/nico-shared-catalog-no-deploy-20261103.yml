@@ -24,6 +24,7 @@ jobs:
           node --check functions-partner-workspace/additional-counts.cjs
           node --check functions-partner-workspace/extra-rank-projection.cjs
           node --check functions-partner-workspace/monthly-shared-projection.cjs
+          node --check functions-partner-workspace/partner-product-monthly.cjs
           node --check functions-partner-workspace/shared-direct-counts.cjs
           node --check functions-partner-workspace/service.cjs
           node --check functions-partner-workspace/index.js
@@ -36,6 +37,7 @@ jobs:
           node --test tests/partner-additional-counts-isolation.test.cjs
           node --test tests/partner-extra-shared-ranking.test.cjs
           node --test tests/partner-monthly-shared-counts.test.cjs
+          node --test tests/partner-product-monthly-parity.test.cjs
           node --test tests/partner-shared-monthly-ui.test.cjs
           node --test tests/count-drift-diagnostic-readonly-20261103.test.mjs
           node --test tests/count-drift-correction-readonly.test.mjs
