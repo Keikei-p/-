@@ -1063,13 +1063,22 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
       company.hubCompanyId!==hubId||!validCompanyName(company.name))
     fail("data-loss");
    if(company.active!==true)continue;
-   const [legacy,extra]=await Promise.all([
+   const [legacy,extra,teamDocs]=await Promise.all([
     collection(cid,"partnerWorkEntries").where("date",">=",first)
      .where("date","<=",lastDate).limit(2001).get(),
     collection(cid,"partnerAdditionalCountEntries").where("date",">=",first)
-     .where("date","<=",lastDate).limit(2001).get()
+     .where("date","<=",lastDate).limit(2001).get(),
+    collection(cid,"partnerWorkTeams").limit(151).get()
    ]);
-   if(legacy.size>2000||extra.size>2000)fail("resource-exhausted");
+   if(legacy.size>2000||extra.size>2000||teamDocs.size>150)
+    fail("resource-exhausted");
+   const teamNames={};
+   for(const doc of teamDocs.docs){
+    const data=doc.data()||{};
+    if(!ID.test(doc.id)||data.companyId!==cid||!validName(data.name))
+     fail("data-loss");
+    teamNames[doc.id]=clean(data.name);
+   }
    partnerRowsRead+=legacy.size+extra.size;
    if(partnerRowsRead>10000)fail("resource-exhausted");
    let rank;
@@ -1077,7 +1086,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     rank=projectPartnerMonth({
      hubId,cid,companyName:clean(company.name),from:first,to:lastDate,
      legacyDocs:legacy.docs,extraDocs:extra.docs,keys:KEYS,
-     publishedIds:extraVerifiedIds,linkedIds
+     publishedIds:extraVerifiedIds,linkedIds,teamNames
     });
    }catch{fail("data-loss");}
    companies.push({id:cid,name:rank.name,totalCount:rank.totalCount,
