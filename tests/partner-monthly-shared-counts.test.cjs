@@ -45,6 +45,33 @@ test("monthly counts merge two days for same partner person and immutable team",
  assert.equal(data.teams[0].totalCount,10);
  assert.doesNotMatch(JSON.stringify(data),/staffId|uid|email|revenue|unitPrice|¥/);
 });
+test("private partner products count once in shared monthly totals but private product IDs never leak",()=>{
+ const data=project([
+  row("2026-11-01","u1",{NURO:2,SBMNP:1},
+   {privateCounts:{secretThing:3},privateTotalCount:3}),
+  row("2026-11-02","u1",{NURO:1,SBMNP:0},
+   {privateCounts:{secretThing:4},privateTotalCount:4})
+ ],[row("2026-11-02","u1",{extraSolar:2})]);
+ assert.equal(data.totalCount,13);
+ assert.equal(data.privateTotalCount,7);
+ assert.equal(data.additionalTotalCount,2);
+ assert.equal(data.people[0].totalCount,13);
+ assert.equal(data.teams[0].totalCount,13);
+ assert.deepEqual(data.counts,{NURO:3,SBMNP:1});
+ assert.deepEqual(data.people[0].extraCounts,{extraSolar:2});
+ assert.doesNotMatch(JSON.stringify(data),/secretThing|privateCounts|unitPrice|revenue/);
+});
+test("damaged private quantities fail closed rather than making inconsistent combined ranks",()=>{
+ for(const patch of [
+  {privateCounts:{secretThing:3},privateTotalCount:4},
+  {privateCounts:{secretThing:-1},privateTotalCount:-1},
+  {privateCounts:{secretThing:1},privateTotalCount:"1"},
+  {privateCounts:{__proto_bad:10000},privateTotalCount:10000}
+ ]){
+  assert.throws(()=>project([row("2026-11-01","u1",{NURO:1,SBMNP:0},patch)],[]),
+   /UNVERIFIED/,JSON.stringify(patch));
+ }
+});
 test("unknown or previously unpublished product stays in total, not visible product groups",()=>{
  const data=project([], [row("2026-11-01","u1",{archivedItem:7,extraSolar:1})]);
  assert.equal(data.totalCount,8);

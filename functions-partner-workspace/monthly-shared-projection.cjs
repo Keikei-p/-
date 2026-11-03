@@ -3,6 +3,7 @@
 // never modify legacy sales, products, prices, Firestore Rules or historical data.
 const crypto=require("node:crypto");
 const {projectExtraRankDocs}=require("./extra-rank-projection.cjs");
+const {normalizeExtraCounts}=require("./additional-counts.cjs");
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const DAY=/^\d{4}-\d{2}-\d{2}$/;
 const forbidden=/\b(?:revenue|price|commission)\b|(?:売上|単価|利益|原価|収益|報酬|[¥￥$€]|\d[\d,]*円)/i;
@@ -42,7 +43,7 @@ function projectPartnerMonth({hubId,cid,companyName,from,to,legacyDocs,extraDocs
    totalCount:0,counts:zero(),extraTotalCount:0});
   return teams.get(key);
  };
- const counts=zero();let totalCount=0,additionalTotalCount=0;
+ const counts=zero();let totalCount=0,additionalTotalCount=0,privateTotalCount=0;
  for(const doc of legacyDocs){
   const x=doc?.data?.()||{},id=x.staffId,date=x.date,tid=x.teamIdSnapshot;
   if(!ID.test(id||"")||!ID.test(tid||"")||!DAY.test(date||"")||
@@ -59,8 +60,17 @@ function projectPartnerMonth({hubId,cid,companyName,from,to,legacyDocs,extraDocs
    subtotal+=x.counts[key];
   }
   if(subtotal!==x.totalCount)fail();
+  // Private partner products count toward the person/team/company total, as
+  // in the partner monthly product summary. Never expose private product IDs.
+  let privateCount;
+  try{privateCount=normalizeExtraCounts(x.privateCounts??{}).total;}
+  catch{fail();}
+  if((x.privateTotalCount??0)!==privateCount)fail();
+  const combinedTotal=subtotal+privateCount;
+  if(!Number.isSafeInteger(combinedTotal))fail();
   const p=person(id,x.staffNameSnapshot,tid),t=team(tid);
-  p.totalCount+=subtotal;t.totalCount+=subtotal;totalCount+=subtotal;
+  p.totalCount+=combinedTotal;t.totalCount+=combinedTotal;
+  totalCount+=combinedTotal;privateTotalCount+=privateCount;
   for(const key of keys){
    counts[key]+=x.counts[key];p.counts[key]+=x.counts[key];
    t.counts[key]+=x.counts[key];
@@ -87,9 +97,10 @@ function projectPartnerMonth({hubId,cid,companyName,from,to,legacyDocs,extraDocs
     p.extraCounts[productId]=(p.extraCounts[productId]||0)+count;
   }
  }
- if(!Number.isSafeInteger(totalCount)||!Number.isSafeInteger(additionalTotalCount))
+ if(!Number.isSafeInteger(totalCount)||!Number.isSafeInteger(additionalTotalCount)||
+    !Number.isSafeInteger(privateTotalCount))
   fail();
- return {id:cid,name:companyName,totalCount,additionalTotalCount,counts,
+ return {id:cid,name:companyName,totalCount,additionalTotalCount,privateTotalCount,counts,
   people:[...people.values()],teams:[...teams.values()],
   verifiedEntryCount:legacyDocs.length+extraDocs.length};
 }
