@@ -46,3 +46,20 @@ test("the redundant Owner ranking inside team details is hidden, while team deta
  assert.match(html,/renderPartnerSharedGroupCards\(/);
  assert.match(html,/response\.complete===true\?item\.rank\+"位":"暫定"/);
 });
+
+
+test("additional products remain inside the original two-column entry, never the financial DOM",()=>{
+ assert.match(html,/id="pInlineCountFields"/);
+ assert.match(html,/id="pInlineExtraFields" class="product-input-list"/);
+ assert.match(html,/id="pInlineExtraSave"/);
+ assert.match(html,/const writePartnerAdditionalCounts = httpsCallable/);
+ assert.match(html,/const readPartnerAdditionalCounts = httpsCallable/);
+ assert.match(html,/async function savePartnerExtra\(/);
+ assert.match(html,/partnerExtraDirty\(\)/);
+ assert.match(html,/return partnerExtraDirty\(\)/);
+ assert.match(html,/if\(refresh&&partnerExtraDirty\(\)\)/);
+ assert.match(html,/const matching=verified\?\.version===before\+1/);
+ assert.match(html,/Object\.entries\(changes\)\.every/);
+ assert.match(html,/async function loadPartnerExtra\(/);
+ assert.match(html,/renderPartnerExtra\(\)/);
+});
