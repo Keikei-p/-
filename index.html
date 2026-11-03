@@ -5039,6 +5039,8 @@ body.product-reordering .product-list {
       <h3>🤝 協力店合同ランキング（選択日）</h3>
       <p class="p-inline-muted">承認済みの協力店で共通の件数・順位です。直営も協力店も件数のみを集計し、売上・単価を表示しません。</p>
       <button id="partnerSharedRankingsRefresh" type="button" class="team-action-button">みんなのランキングを更新</button>
+      <button id="partnerSharedRankingsMonthButton" type="button" class="team-action-button">直営＋協力店｜月間件数（暫定）</button>
+      <label class="ranking-product-scope">月間<input id="partnerSharedRankingsMonth" type="month"></label>
       <p id="partnerSharedRankingsStatus" role="status"></p>
       <div id="partnerSharedRankingContent" class="p-inline-list"></div>
     </div>
@@ -13067,6 +13069,7 @@ function setOwnerCombinedCountCardVisibility(name){
 installOwnerCombinedCountCards();
 
 let sharedDailyRankingGeneration=0;
+let partnerSharedRankPeriod="day";
 const sharedDailyRankCache=new Map();
 function verifiedDirectDayCounts(date){
  if(!canLoadPartnerRanking()||!recordsReady||
@@ -13151,7 +13154,7 @@ function renderPartnerSharedGroupCards(target,response){
    const row=document.createElement("div");row.className="ranking-row";
    const left=document.createElement("div");left.className="ranking-left";
    const number=document.createElement("span");number.className="ranking-number";
-   number.textContent=response.complete===true?item.rank+"位":"暫定";
+   number.textContent=response.complete===true?item.rank+"位":"暫定"+item.rank+"位";
    if(response.complete===true&&item.rank<=3)number.classList.add("top"+item.rank);
    const name=document.createElement("div");name.className="ranking-name";
    name.textContent=item.name+"｜"+item.companyName;left.append(number,name);
@@ -13182,7 +13185,7 @@ function appendSharedRankingRows(container,heading,entries,complete){
   if(!Number.isSafeInteger(row.count)||row.count<0||typeof row.name!=="string")
    throw Error("shared_ranking_entry_invalid");
   if(previous!==row.count)rank=i+1;
-  const prefix=complete?(rank===1&&row.count>0?"🏆 ":"")+rank+"位 ":"";
+  const prefix=complete?(rank===1&&row.count>0?"🏆 ":"")+rank+"位 ":"暫定"+rank+"位 ";
   partnerMainAppendRow(section,prefix+row.name,row.count+"件");
   previous=row.count;
  }
@@ -13405,6 +13408,8 @@ function renderSharedCountTeamDetails(parent,report){
   partnerMainAppendRow(parent,"🤝 "+name,"未報告・0件とは扱いません");
 }
 async function loadSharedDailyStandings(where,force=false){
+ if(where==="partner"&&partnerSharedRankPeriod==="month")
+  return loadPartnerMonthlySharedRankings();
  const partner=where==="partner"||where==="partnerDetail";
  const detail=where==="partnerDetail"||where==="ownerDetail";
  if(!partner&&!canReadSharedCountOnlyRanks())return;
@@ -13686,7 +13691,10 @@ for(const which of ["Individual","Product"]){
    load();
  };
 }
-pInline("partnerSharedRankingsRefresh").onclick=()=>loadSharedDailyStandings("partner",true);
+pInline("partnerSharedRankingsRefresh").onclick=()=>{
+ partnerSharedRankPeriod="day";
+ void loadSharedDailyStandings("partner",true);
+};
 pInline("pInlineReloadSharedProducts").onclick=()=>void loadPartnerPublishedProductList();
 pInline("ownerSharedRankingsRefresh").onclick=()=>loadSharedDailyStandings("owner",true);
 pInline("partnerSharedDetailRefresh").onclick=()=>loadSharedDailyStandings("partnerDetail",true);
