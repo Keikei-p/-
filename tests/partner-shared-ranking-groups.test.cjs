@@ -88,8 +88,9 @@ test("invalid or duplicate category links fail closed before counting",()=>{
 });
 test("shared standings read date-effective server links, never mutate legacy sales",()=>{
  const service=fs.readFileSync(require.resolve("../functions-partner-workspace/service.cjs"),"utf8");
- assert.match(service,/const effectiveLinks=readLinks/);
+ assert.match(service,/allCountLinks=readLinks/);
+ assert.match(service,/const effectiveLinks=allCountLinks\.filter/);
  assert.match(service,/link\.effectiveFrom<=date/);
- assert.match(service,/productLinks:effectiveLinks/);
+ assert.match(service,/productLinks:effectiveLinks,extraVerifiedIds/);
  assert.match(service,/groupStandings=groupPersonalScores/);
 });
