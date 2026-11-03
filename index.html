@@ -14033,6 +14033,117 @@ async function loadPartnerPublishedProductList(){
  }
 }
 
+// Original sales summary uses a MONTH selector. Never replace its equivalent
+// partner panel with the selected day's counts, or pretend missing days are 0.
+let partnerProductMonthlyNonce=0,partnerProductMonthlyCache=null;
+let partnerPublishedProductNames=new Map();
+function renderPartnerProductMonthlySummary(data){
+ const snap=partnerInlineData;
+ if(!snap||!data)return;
+ const privateNames=new Map((snap.privateProducts||[]).map(p=>[p.id,p.name+
+  (p.active?"":"（非表示・過去の実績）")]));
+ const rows=snap.categories.map(key=>({name:key,count:data.counts[key]}));
+ let unknownPrivate=0,unknownAdditional=0;
+ for(const [id,n] of Object.entries(data.privateCounts)){
+  if(privateNames.has(id))rows.push({name:privateNames.get(id)+"（協力店専用）",count:n});
+  else unknownPrivate+=n;
+ }
+ for(const [id,n] of Object.entries(data.additionalCounts)){
+  if(partnerPublishedProductNames.has(id))
+   rows.push({name:partnerPublishedProductNames.get(id)+"（追加商材）",count:n});
+  else unknownAdditional+=n;
+ }
+ if(unknownPrivate)rows.push({name:"過去の協力店専用商材（名称未確認）",count:unknownPrivate});
+ if(unknownAdditional)rows.push({name:"過去・未公開の追加商材（名称未確認）",count:unknownAdditional});
+ rows.sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name,"ja"));
+ for(const targetId of ["pPartnerProductSummary","partnerCatalogProductMonthlyRows"]){
+  const list=pInline(targetId);list.replaceChildren();
+  if(!data.verifiedWorkRows&&!data.verifiedExtraRows){
+   partnerMainAppendRow(list,"この月の保存済み実績はありません",
+    "未報告の日を0件として集計していません。");
+   continue;
+  }
+  for(const item of rows){
+   const row=document.createElement("div");row.className="summary-row";
+   const label=document.createElement("div");label.className="summary-row-name";
+   label.textContent=item.name;
+   const amount=document.createElement("strong");amount.textContent=item.count+"件";
+   row.append(label,amount);list.append(row);
+  }
+ }
+ const label="保存済み分 "+data.totalCount+"件｜通常商材 "+data.primaryTotalCount+
+  "件・協力店専用 "+data.privateTotalCount+"件・追加商材 "+data.additionalTotalCount+"件";
+ const note="選択月の登録済み件数の合計です。未報告や未照合の実績は0件扱いしません。売上・単価は表示しません。";
+ for(const id of ["partnerProductMonthlyTotal","partnerCatalogProductMonthlyTotal"])
+  pInline(id).textContent=data.verifiedWorkRows||data.verifiedExtraRows?label:"月間合計は未確定";
+ for(const id of ["partnerProductMonthlyStatus","partnerCatalogProductMonthlyStatus"])
+  pInline(id).textContent=note;
+}
+function verifyPartnerProductMonthlyResponse(data,month,snap){
+ if(data?.scope!=="partner_product_monthly_counts_only"||
+    data.month!==month||data.complete!==false||
+    !["owner","leader","member"].includes(data.role)||
+    data.companyName!==snap.companyName||
+    !Array.isArray(data.categories)||data.categories.length!==snap.categories.length||
+    data.categories.some((key,i)=>key!==snap.categories[i]))throw Error("product_month_contract");
+ const fixed=data.counts,priv=data.privateCounts,extra=data.additionalCounts;
+ if(!fixed||!priv||!extra||[fixed,priv,extra].some(x=>
+    typeof x!=="object"||Array.isArray(x)))throw Error("product_month_counts");
+ if(Object.keys(fixed).length!==snap.categories.length||
+    snap.categories.some(k=>!Number.isSafeInteger(fixed[k])||fixed[k]<0))
+   throw Error("product_month_categories");
+ const validMap=map=>Object.entries(map).every(([id,n])=>
+  partnerMainValidId(id)&&Number.isSafeInteger(n)&&n>=0);
+ if(!validMap(priv)||!validMap(extra))throw Error("product_month_extra");
+ const sum=map=>Object.values(map).reduce((n,v)=>n+v,0);
+ for(const [expected,actual] of [
+  [data.primaryTotalCount,sum(fixed)],[data.privateTotalCount,sum(priv)],
+  [data.additionalTotalCount,sum(extra)],
+  [data.totalCount,data.primaryTotalCount+data.privateTotalCount+data.additionalTotalCount]
+ ])if(!Number.isSafeInteger(expected)||expected<0||expected!==actual)
+  throw Error("product_month_totals");
+ if(!Number.isSafeInteger(data.verifiedWorkRows)||data.verifiedWorkRows<0||
+    !Number.isSafeInteger(data.verifiedExtraRows)||data.verifiedExtraRows<0)
+  throw Error("product_month_rows");
+ return data;
+}
+async function loadPartnerProductMonthlyTotals({force=false}={}){
+ const snap=partnerInlineData,uid=auth.currentUser?.uid,workspace=partnerInlineWorkspaceCompany;
+ const month=pInline("partnerProductMonth").value;
+ const seq=++partnerProductMonthlyNonce;
+ if(!snap||snap.role==="hub"||!uid)return;
+ for(const id of ["partnerProductMonthlyStatus","partnerCatalogProductMonthlyStatus"])
+  pInline(id).textContent="月間の保存済み件数を照合しています…";
+ for(const id of ["pPartnerProductSummary","partnerCatalogProductMonthlyRows"])
+  pInline(id).replaceChildren();
+ for(const id of ["partnerProductMonthlyTotal","partnerCatalogProductMonthlyTotal"])
+  pInline(id).textContent="";
+ if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)||month>getTodayString().slice(0,7)){
+  for(const id of ["partnerProductMonthlyStatus","partnerCatalogProductMonthlyStatus"])
+   pInline(id).textContent="対象月を確認してください。";
+  return;
+ }
+ try{
+  const key=uid+"|"+workspace+"|"+month;
+  const cache=partnerProductMonthlyCache;
+  const recent=!force&&cache?.key===key&&Date.now()-cache.at<60000;
+  const raw=recent?cache.data:
+   (await readPartnerProductMonthlyTotals(partnerInlinePayload({month}))).data;
+  if(seq!==partnerProductMonthlyNonce||uid!==auth.currentUser?.uid||
+     workspace!==partnerInlineWorkspaceCompany||
+     month!==pInline("partnerProductMonth").value)return;
+  const data=verifyPartnerProductMonthlyResponse(raw,month,snap);
+  partnerProductMonthlyCache={key,data,at:Date.now()};
+  renderPartnerProductMonthlySummary(data);
+ }catch(error){
+  if(seq!==partnerProductMonthlyNonce||uid!==auth.currentUser?.uid)return;
+  partnerProductMonthlyCache=null;
+  for(const id of ["partnerProductMonthlyStatus","partnerCatalogProductMonthlyStatus"])
+   pInline(id).textContent="月間件数を照合できません。既存の実績は変更されていません。";
+  console.warn("partner_product_month_unavailable",error?.code||"unverified");
+ }
+}
+
 function renderPartnerPrivateProductCatalog(){
  const snap=partnerInlineData;
  if(!snap||snap.role==="hub")return;
