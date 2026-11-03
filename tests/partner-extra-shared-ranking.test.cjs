@@ -63,3 +63,45 @@ test("service reads separate ledger, validates company/date and uses the canonic
  assert.match(index,/productTotals\.set\("追加商材（協力店）",response\.additionalTotalCount\)/);
  assert.match(index,/ownerJointProductMode/);
 });
+
+test("original direct sales rows preserve money while published product IDs count once",async()=>{
+ const {readDirectDayCounts}=require("../functions-partner-workspace/shared-direct-counts.cjs");
+ const raw={companyId:"hub",date:day,uid:"realStaffId",memberNameSnapshot:"直営A",
+  teamId:"teamMain",teamNameSnapshot:"本社班",totalCount:7,
+  results:[
+   {productId:"solar",productNameSnapshot:"新商材",count:4},
+   {productId:"nuroProduct",productNameSnapshot:"NURO光",count:3}
+  ],totalRevenue:999999,unitPrice:9999,email:"secret@example.com"};
+ const mock={
+  collection(name){
+   const docs=name==="records"?[{data:()=>raw}]:[
+    {id:"solar",data:()=>({companyId:"hub",name:"新商材"})},
+    {id:"nuroProduct",data:()=>({companyId:"hub",name:"NURO光"})}
+   ];
+   return {where(){return this;},limit(){return this;},
+    async get(){return {size:docs.length,docs};}};
+  }
+ };
+ const direct=await readDirectDayCounts(mock,"hub",day,["NURO"],{
+  approvedExtraProductIds:["solar","nuroProduct"]
+ });
+ assert.equal(direct.totalCount,7);
+ assert.equal(direct.counts.NURO,3);
+ assert.equal(direct.otherCount,4);
+ assert.deepEqual(direct.people[0].extraCounts,{solar:4,nuroProduct:3});
+ assert.deepEqual(direct.people[0].extraCategoryCounts,{nuroProduct:{NURO:3}});
+ const groups=[
+  {id:"combo",name:"合同",keys:["legacy:NURO","id:solar","id:nuroProduct"]},
+  {id:"product",name:"個別",keys:["id:nuroProduct"]}
+ ];
+ const result=groupPersonalScores(groups,direct.people,{
+  categories:["NURO"],extraVerifiedIds:["solar","nuroProduct"]
+ });
+ assert.equal(result[0].members[0].count,7);
+ assert.equal(result[1].members[0].count,3);
+ assert.doesNotMatch(JSON.stringify(direct),/999999|9999|secret@example\.com|realStaffId/);
+});
+test("shared API passes only published unlinked direct product IDs to redacted reader",()=>{
+ const service=fs.readFileSync(require.resolve("../functions-partner-workspace/service.cjs"),"utf8");
+ assert.match(service,/approvedExtraProductIds:extraVerifiedIds/);
+});
