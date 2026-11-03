@@ -153,9 +153,11 @@ test('emulator preserves a historically mismatched sale and never invents a corr
   assert.equal(after.totalCount,before.totalCount,'saved totals must never be repaired by assumption');
   assert.equal(after.totalRevenue,before.totalRevenue,'historical revenue must be retained');
   assert.equal(auditWrites.length,0,'failed source write must not generate an audit event');
-  const correctionDocs=await env.withSecurityRulesDisabled(async c=>
-    getDocsFromServer(collection(c.firestore(),'recordCorrections')));
-  assert.equal(correctionDocs.size,0,'no correction history writes on failed transaction');
+  let correctionCount=-1;
+  await env.withSecurityRulesDisabled(async c=>{
+    correctionCount=(await getDocsFromServer(collection(c.firestore(),'recordCorrections'))).size;
+  });
+  assert.equal(correctionCount,0,'no correction history writes on failed transaction');
 });
 
 
