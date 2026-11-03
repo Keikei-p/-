@@ -53,7 +53,7 @@ test("server mapping endpoint never writes sales product, entries, audits, summa
  const service=fs.readFileSync(require.resolve("../functions-partner-workspace/service.cjs"),"utf8");
  const exported=fs.readFileSync(require.resolve("../functions-partner-workspace/index.js"),"utf8");
  const begin=service.indexOf(" async function setPartnerCountLink(request)");
- const end=service.indexOf(" const checkTeam=async",begin);
+ const end=service.indexOf(" async function approvedExtraCatalog",begin);
  assert.ok(begin>0&&end>begin,"count linking is isolated");
  const method=service.slice(begin,end);
  assert.match(method,/const live=await scope\(a\.uid,tx\)/);
