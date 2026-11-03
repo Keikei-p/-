@@ -17,6 +17,18 @@ const project=(legacyDocs,extraDocs)=>projectPartnerMonth({
  from:"2026-11-01",to:"2026-11-03",legacyDocs,extraDocs,
  keys,publishedIds:["extraSolar"],linkedIds:["existing"]
 });
+test("team labels are resolved only from verified IDs; missing/departed team remains unknown",()=>{
+ const args={
+  hubId:"hub",cid:"partner",companyName:"協力店A",
+  from:"2026-11-01",to:"2026-11-03",keys,
+  publishedIds:["extraSolar"],linkedIds:[],
+  legacyDocs:[row("2026-11-01","u1",{NURO:1,SBMNP:0})],
+  extraDocs:[],teamNames:{teamA:"広島1班"}
+ };
+ assert.equal(projectPartnerMonth(args).teams[0].name,"広島1班");
+ assert.equal(projectPartnerMonth(args).people[0].teamName,"広島1班");
+ assert.equal(projectPartnerMonth({...args,teamNames:{}}).teams[0].name,"当時の班名未確認");
+});
 test("monthly counts merge two days for same partner person and immutable team",()=>{
  const data=project([
   row("2026-11-01","u1",{NURO:2,SBMNP:1}),
