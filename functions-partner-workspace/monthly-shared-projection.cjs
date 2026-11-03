@@ -17,7 +17,7 @@ function projectPartnerMonth({hubId,cid,companyName,from,to,legacyDocs,extraDocs
    !Array.isArray(keys)||!keys.length||new Set(keys).size!==keys.length||
    !Array.isArray(legacyDocs)||!Array.isArray(extraDocs)||
    legacyDocs.length>2000||extraDocs.length>2000)fail();
- const people=new Map(),teams=new Map(),seenLegacy=new Set(),extraByDate=new Map();
+ const people=new Map(),teams=new Map(),seenLegacy=new Set(),legacyByDocId=new Map(),extraByDate=new Map();
  const zero=()=>blank(keys);
  const person=(staffId,name,teamId)=>{
   const key=hash(cid+"\n"+staffId),teamKey=hash(cid+"\nteam\n"+teamId);
@@ -43,7 +43,7 @@ function projectPartnerMonth({hubId,cid,companyName,from,to,legacyDocs,extraDocs
    x.companyId!==cid||x.hubCompanyId!==hubId||
    seenLegacy.has(doc.id)||!Number.isSafeInteger(x.totalCount)||x.totalCount<0||
    !safe(x.staffNameSnapshot))fail();
-  seenLegacy.add(doc.id);
+  seenLegacy.add(doc.id);legacyByDocId.set(doc.id,x);
   if(!x.counts||typeof x.counts!=="object"||Array.isArray(x.counts)||
    Object.keys(x.counts).length!==keys.length)fail();
   let subtotal=0;
@@ -71,8 +71,8 @@ function projectPartnerMonth({hubId,cid,companyName,from,to,legacyDocs,extraDocs
    const p=person(x.staffId,x.staffNameSnapshot,x.teamIdSnapshot),
     t=team(x.teamIdSnapshot);
    const legacyDocId=date+"__"+x.staffId;
-   const existing=legacyDocs.find(doc=>doc.id===legacyDocId);
-   if(existing&&existing.data().teamIdSnapshot!==x.teamIdSnapshot)fail();
+   const existing=legacyByDocId.get(legacyDocId);
+   if(existing&&existing.teamIdSnapshot!==x.teamIdSnapshot)fail();
    p.totalCount+=x.totalCount;t.totalCount+=x.totalCount;
    t.extraTotalCount+=x.totalCount;
    totalCount+=x.totalCount;additionalTotalCount+=x.totalCount;
