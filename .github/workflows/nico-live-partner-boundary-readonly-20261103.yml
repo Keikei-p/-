@@ -1,0 +1,60 @@
+name: NICO current live partner boundary & counts (READ ONLY)
+on:
+  push:
+    branches:
+      - feature/partner-shared-catalog-rank-20261103
+    paths:
+      - 'tools/production/verify-live-partner-boundary-readonly-20261103.mjs'
+      - 'tests/live-partner-boundary-readonly-20261103.test.mjs'
+      - '.github/workflows/nico-live-partner-boundary-readonly-20261103.yml'
+permissions:
+  contents: read
+concurrency:
+  group: nico-current-live-partner-boundary-readonly
+  cancel-in-progress: false
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      NICO_PROD_AUDIT_MODE: READ_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Prove fail-closed request allowlist and typed inventory isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check tools/production/verify-live-partner-boundary-readonly-20261103.mjs
+          node --test tests/live-partner-boundary-readonly-20261103.test.mjs
+      - name: Install pinned existing Firebase Admin SDK locally
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Load existing production READ ONLY audit credential
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-readonly-live-identity.json"
+          chmod 600 "$RUNNER_TEMP/nico-readonly-live-identity.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-readonly-live-identity.json" >> "$GITHUB_ENV"
+      - name: GET current Rules and READY backup and audit typed Firestore documents twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Script permits only Rules GET, backups GET, document GET and
+          # Firestore's read-only POST listCollectionIds method.
+          # ZERO Rules writes, ZERO document writes, ZERO deployments.
+          node tools/production/verify-live-partner-boundary-readonly-20261103.mjs
+      - name: Remove local ephemeral identity
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/nico-readonly-live-identity.json"
+          rm -f firebase-debug.log firestore-debug.log
