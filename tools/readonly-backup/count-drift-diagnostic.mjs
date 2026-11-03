@@ -32,7 +32,7 @@ export function classifyCountDrift(snapshot){
     !Array.isArray(snapshot?.documents))throw Error("COUNT_DIAGNOSTIC_INVALID_SNAPSHOT");
  const corrections=new Map();
  for(const item of snapshot.documents){
-  if(!/^recordCorrections\\/[^/]+$/.test(item?.path||""))continue;
+  if(!/^recordCorrections\/[^/]+$/.test(item?.path||""))continue;
   const ref=item?.value?.fields?.recordId?.stringValue;
   if(typeof ref!=="string"||!ref||ref.includes("/"))continue;
   corrections.set(ref,(corrections.get(ref)||0)+1);
