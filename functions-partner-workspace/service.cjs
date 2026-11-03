@@ -5,8 +5,9 @@ const {loadPublication,projectMasterProducts,changePublication,validId,nameOnly}
 const {readLinks,addLink,projectLinks}=require("./catalog-count-links.cjs");
 const {normalizeExtraCounts,applyExtraCounts,projectedExtraRead}=require("./additional-counts.cjs");
 const {projectExtraRankDocs}=require("./extra-rank-projection.cjs");
+const {projectPartnerMonth}=require("./monthly-shared-projection.cjs");
 const {decodeGroups,saveGroups,groupPersonalScores}=require("./shared-ranking-groups.cjs");
-const {readDirectDayCounts}=require("./shared-direct-counts.cjs");
+const {readDirectDayCounts,readDirectRangeCounts}=require("./shared-direct-counts.cjs");
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 // Cashback is a product variant label, NOT a sales unit price or revenue.
 const PARTNER_CB_OPTIONS=Object.freeze({"NURO":Object.freeze(["0","20000","40000","60000","80000","unclassified"])});
@@ -1016,6 +1017,102 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    fail();
   return {kind:"hub",uid,cid,role:u.companyRole};
  }
+ async function viewMonthly(request){
+  const a=await actor(request),d=request?.data||{};
+  if(Object.keys(d).some(k=>!["month","workspaceCompanyId"].includes(k))||
+     typeof d.month!=="string"||!/^\d{4}-\d{2}$/.test(d.month))
+   fail("invalid-argument");
+  const first=validDate(d.month+"-01"),current=jstToday();
+  const endOfMonth=new Date(Date.parse(first+"T00:00:00Z")+35*86400000)
+   .toISOString().slice(0,7); // use UTC month arithmetic below instead
+  void endOfMonth;
+  const [year,monthNum]=d.month.split("-").map(Number);
+  const last=new Date(Date.UTC(year,monthNum,0)).toISOString().slice(0,10);
+  const lastDate=last<current?last:current;
+  const s=await sharedRankScope(a.uid,d.workspaceCompanyId);
+  const hubId=s.kind==="hub"?s.cid:s.hubId;
+  if(!ID.test(hubId||""))fail();
+  const relations=await db.collection("partnerRelations")
+   .where("hubCompanyId","==",hubId).limit(21).get();
+  if(relations.size>20)fail("resource-exhausted");
+  const [pubDoc,linksDoc]=await Promise.all([
+   publicationRef(hubId).get(),countLinksRef(hubId).get()
+  ]);
+  let publishedIds,allLinks;
+  try{
+   publishedIds=loadPublication(pubDoc.exists?pubDoc.data():null).productIds;
+   allLinks=readLinks(linksDoc.exists?linksDoc.data():null,KEYS).links;
+  }catch{fail("data-loss");}
+  const linkedIds=allLinks.map(x=>x.productId);
+  const extraVerifiedIds=publishedIds.filter(id=>!linkedIds.includes(id));
+  // Monthly reads are intentionally bounded; never send incomplete data as a
+  // "complete" ranking or pass any raw original financial fields to clients.
+  let direct;
+  try{
+   direct=await readDirectRangeCounts(db,hubId,first,lastDate,KEYS,{
+    maxRecords:10000,approvedExtraProductIds:extraVerifiedIds
+   });
+  }catch{fail("failed-precondition");}
+  const companies=[],people=[],teams=[],productCounts=Object.fromEntries(KEYS.map(k=>[k,0]));
+  let additionalTotalCount=0,partnerRowsRead=0;
+  for(const relSnap of relations.docs){
+   const rel=relSnap.data()||{},cid=relSnap.id;
+   if(!ID.test(cid)||rel.partnerCompanyId!==cid||rel.hubCompanyId!==hubId)
+    fail("data-loss");
+   if(rel.active!==true||rel.countSharingApproved!==true)continue;
+   const companySnap=await db.collection("companies").doc(cid).get();
+   const company=companySnap.data()||{};
+   if(!companySnap.exists||company.companyKind!=="partner"||
+      company.hubCompanyId!==hubId||!validCompanyName(company.name))
+    fail("data-loss");
+   if(company.active!==true)continue;
+   const [legacy,extra]=await Promise.all([
+    collection(cid,"partnerWorkEntries").where("date",">=",first)
+     .where("date","<=",lastDate).limit(2001).get(),
+    collection(cid,"partnerAdditionalCountEntries").where("date",">=",first)
+     .where("date","<=",lastDate).limit(2001).get()
+   ]);
+   if(legacy.size>2000||extra.size>2000)fail("resource-exhausted");
+   partnerRowsRead+=legacy.size+extra.size;
+   if(partnerRowsRead>10000)fail("resource-exhausted");
+   let rank;
+   try{
+    rank=projectPartnerMonth({
+     hubId,cid,companyName:clean(company.name),from:first,to:lastDate,
+     legacyDocs:legacy.docs,extraDocs:extra.docs,keys:KEYS,
+     publishedIds:extraVerifiedIds,linkedIds
+    });
+   }catch{fail("data-loss");}
+   companies.push({id:cid,name:rank.name,totalCount:rank.totalCount,
+    extraTotalCount:rank.additionalTotalCount,counts:rank.counts,
+    peopleVerified:true});
+   people.push(...rank.people);teams.push(...rank.teams);
+   for(const key of KEYS)productCounts[key]+=rank.counts[key];
+   additionalTotalCount+=rank.additionalTotalCount;
+  }
+  let sharedConfig={revision:0,groups:[]},groupStandings=[],groupStatus="unverified";
+  try{
+   sharedConfig=await readRankingSettings(hubId);
+   // Linking halfway through a month is NOT sufficient to back-classify the
+   // earlier days. Whole-month rank only uses links active on its first day.
+   const effectiveLinks=allLinks.filter(link=>link.effectiveFrom<=first);
+   groupStandings=groupPersonalScores(sharedConfig.groups,[
+    ...people,...direct.people.map(p=>({...p,companyName:"直営"}))
+   ],{categories:KEYS,productLinks:effectiveLinks,extraVerifiedIds});
+   groupStatus="verified";
+  }catch{groupStandings=[];}
+  companies.sort((a,b)=>b.totalCount-a.totalCount||a.name.localeCompare(b.name,"ja"));
+  people.sort((a,b)=>b.totalCount-a.totalCount||a.name.localeCompare(b.name,"ja"));
+  // Individual ledgers alone cannot prove all companies submitted all days.
+  // Always label this a provisional, VERIFIED-ENTRIES monthly leaderboard.
+  return {scope:"shared_monthly_counts_only",month:d.month,
+   role:s.kind==="hub"?"hub":"partner",complete:false,
+   provisionalReason:"月間の全日・全員報告の照合前",
+   includesDirect:true,companies,teams,people,productCounts,additionalTotalCount,
+   categories:KEYS,direct,rankingGroups:sharedConfig.groups,groupStandings,
+   groupRevision:sharedConfig.revision,groupStatus,
+   recordsVerified:direct.recordsVerified,partnerRowsVerified:partnerRowsRead};
+ }
  async function view(request){
   const a=await actor(request),d=request?.data||{},date=validDate(d.date);
   if(d.resolveSecondaryWorkspace===true){
@@ -1590,7 +1687,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      privateTotalCount:privateValidated.total};
   });
  }
- return Object.freeze({manage,accept,view,submit,viewCatalog,setCatalogPublication,
+ return Object.freeze({manage,accept,view,viewMonthly,submit,viewCatalog,setCatalogPublication,
   getPartnerRankingGroups,setPartnerRankingGroups,getPartnerCountLinks,setPartnerCountLink,
   viewAdditionalCounts,submitAdditionalCounts});
 }
