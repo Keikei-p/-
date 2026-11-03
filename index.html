@@ -15483,6 +15483,85 @@ async function loadOwnerPartnerCompanyTeams(){
 let ownerPartnerDashboardNonce=0;
 pInline("ownerPartnerDashboardDate").value=getTodayString();
 pInline("ownerPartnerDashboardDate").max=getTodayString();
+// Validated separately from the original nine-category counts. An extra-only
+// report must never be labeled "0件" simply because there is no old report.
+function verifyOwnerPublishedExtras(extra,originalTeams){
+ if(extra?.scope!=="published_extra_count_only"||extra.complete!==true||
+    !Number.isSafeInteger(extra.verifiedPublishedCount)||extra.verifiedPublishedCount<0||
+    !Number.isSafeInteger(extra.unattributedPublishedCount)||extra.unattributedPublishedCount<0||
+    !Array.isArray(extra.teams)||extra.teams.length>150)
+  throw Error("owner_extra_contract");
+ const originalIds=new Set(originalTeams.map(t=>t.teamId));
+ const map=new Map(),isCount=n=>Number.isSafeInteger(n)&&n>=0;
+ const verifyProducts=products=>{
+  if(!Array.isArray(products)||products.length>1000)throw Error("owner_extra_products");
+  const seen=new Set();let total=0;
+  for(const p of products){
+   if(!partnerMainValidId(p?.id)||seen.has(p.id)||
+      typeof p.name!=="string"||!p.name||p.name.length>80||
+      !isCount(p.count)||p.count===0)
+    throw Error("owner_extra_product");
+   seen.add(p.id);total+=p.count;
+  }
+  if(!isCount(total))throw Error("owner_extra_overflow");
+  return total;
+ };
+ let checked=extra.unattributedPublishedCount;
+ for(const team of extra.teams){
+  if(!partnerMainValidId(team?.teamId)||!originalIds.has(team.teamId)||
+     map.has(team.teamId)||!isCount(team.totalCount)||team.totalCount<=0||
+     !Array.isArray(team.people)||team.people.length>200)
+   throw Error("owner_extra_team");
+  const pTotal=verifyProducts(team.products);
+  if(pTotal!==team.totalCount)throw Error("owner_extra_team_products");
+  const productMap=new Map(team.products.map(p=>[p.id,p.count]));
+  const memberMap=new Map(),membersTotal=new Map();
+  let members=0;
+  for(const person of team.people){
+   if(typeof person.name!=="string"||!person.name||person.name.length>60||
+      !isCount(person.totalCount)||person.totalCount<=0)
+    throw Error("owner_extra_person");
+   const sum=verifyProducts(person.products);
+   if(sum!==person.totalCount)throw Error("owner_extra_person_products");
+   members+=sum;
+   for(const product of person.products){
+    if(!productMap.has(product.id))throw Error("owner_extra_unknown_product");
+    membersTotal.set(product.id,(membersTotal.get(product.id)||0)+product.count);
+   }
+  }
+  if(members!==team.totalCount||[...productMap].some(([id,n])=>membersTotal.get(id)!==n))
+   throw Error("owner_extra_person_total");
+  checked+=team.totalCount;map.set(team.teamId,team);
+ }
+ if(!isCount(checked)||checked!==extra.verifiedPublishedCount)
+  throw Error("owner_extra_total");
+ return map;
+}
+function appendOwnerPublishedExtras(card,team,extra){
+ if(!extra?.totalCount)return;
+ const body=card.querySelector(".partner-count-team-body");
+ const total=card.querySelector(".partner-count-team-total");
+ if(!body||!total)throw Error("owner_extra_card");
+ const combined=team.totalCount+extra.totalCount;
+ if(!Number.isSafeInteger(combined))throw Error("owner_extra_combined");
+ total.textContent="合計 "+combined+"件（通常 "+team.totalCount+"・公開追加 "+extra.totalCount+"）";
+ const section=document.createElement("section");
+ const label=document.createElement("h4");label.className="partner-count-team-subtitle";
+ label.textContent="公開された追加商材（別保存）｜"+extra.totalCount+"件";section.append(label);
+ for(const product of extra.products)
+  partnerMainAppendRow(section,product.name,product.count+"件");
+ const people=document.createElement("div");people.className="partner-count-team-people-grid";
+ for(const person of extra.people){
+  const row=document.createElement("details");row.className="p-inline-row owner-partner-person";
+  const name=document.createElement("summary");
+  name.textContent="👤 "+person.name+"｜追加 "+person.totalCount+"件";
+  row.append(name);
+  for(const product of person.products)
+   partnerMainAppendRow(row,product.name,product.count+"件");
+  people.append(row);
+ }
+ section.append(people);body.append(section);
+}
 async function loadOwnerPartnerDetails(){
  const nonce=++ownerPartnerDashboardNonce;
  const list=pInline("ownerPartnerDashboardList"),status=pInline("ownerPartnerDashboardStatus");
@@ -15558,6 +15637,8 @@ async function loadOwnerPartnerDetails(){
         info.unreconciledWithCompanyReport===true||
         (report&&info.verifiedSharedCount+info.unverifiedTeamCount!==report.totalCount))
       throw Error("invalid_partner_team_details");
+     const additional=info.publishedAdditional;
+     const publishedExtraByTeam=verifyOwnerPublishedExtras(additional,info.teams);
      holder.replaceChildren();
      let teamTotal=0;
      for(const team of info.teams){
@@ -15608,9 +15689,16 @@ async function loadOwnerPartnerDetails(){
       row.append(products);
       holder.append(renderPartnerCountTeamCard(team.name,team.totalCount,
        team.counts,team.cbCounts,team.members,PARTNER_QUICK_RANK_KEYS,{verified:true}));
+      appendOwnerPublishedExtras(holder.lastElementChild,team,publishedExtraByTeam.get(team.teamId));
      }
      partnerCompactWireTeamSelection(holder);
      if(teamTotal!==info.verifiedSharedCount)throw Error("company_total_mismatch");
+     if(additional.verifiedPublishedCount>0)
+      partnerMainAppendRow(holder,"公開された追加商材（別保存）",
+       additional.verifiedPublishedCount+"件（通常商材へ二重加算しません）");
+     if(additional.unattributedPublishedCount>0)
+      partnerMainAppendRow(holder,"登録当時の班が未確認・公開追加商材",
+       additional.unattributedPublishedCount+"件（現在の班に振り替えません）");
      if(!info.teams.length)partnerMainAppendRow(holder,"班未登録","班の登録状態を確認してください");
      if(info.unverifiedTeamCount>0)
       partnerMainAppendRow(holder,"登録当時の班が未確認",info.unverifiedTeamCount+"件");
