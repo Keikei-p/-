@@ -5014,7 +5014,15 @@ body.product-reordering .product-list {
     <div class="form-group"><label for="pInlineWorkLocation">現場場所</label>
       <input id="pInlineWorkLocation" type="text" maxlength="100" autocomplete="off" placeholder="例：○○市 ○○店"></div>
     <div class="section-title">商材別実績（CB別は件数のみ表示）</div>
-    <div id="pInlineCountFields" class="product-input-list" aria-label="商材ごとの件数入力・2列表示"></div>
+    <div id="pInlineCountFields" class="product-input-list" aria-label="既存商材の件数入力・2列表示"></div>
+    <div id="pInlineExtraPanel" class="p-inline-card" hidden>
+      <div class="section-title">本社から公開された追加商材</div>
+      <p class="p-inline-muted">追加商材は過去の件数・CB・売上・単価を守るため別保存です。</p>
+      <div id="pInlineExtraFields" class="product-input-list" aria-label="追加商材件数・2列表示"></div>
+      <p id="pInlineExtraTotals" class="p-inline-muted"></p>
+      <div class="p-inline-actions"><button id="pInlineExtraSave" class="record-save-button" type="button">追加商材の件数を保存</button><button id="pInlineExtraRefresh" class="team-action-button" type="button">追加商材を更新</button></div>
+      <p id="pInlineExtraStatus" class="p-inline-muted" role="status" aria-live="polite"></p>
+    </div>
     <p id="pInlineEntryTotals" class="record-total-value" aria-live="polite">共有商材 0件｜協力店専用 0件</p>
     <div class="p-inline-actions">
       <button id="pInlineSave" class="record-save-button" type="button">実績を一括登録</button>
@@ -7461,6 +7469,8 @@ const readPartnerRankingGroups = httpsCallable(partnerCountFunctions,"getPartner
 const writePartnerRankingGroups = httpsCallable(partnerCountFunctions,"setPartnerRankingGroups");
 const readPartnerCountLinks = httpsCallable(partnerCountFunctions,"getPartnerCountLinks");
 const writePartnerCountLink = httpsCallable(partnerCountFunctions,"setPartnerCountLink");
+const readPartnerAdditionalCounts = httpsCallable(partnerCountFunctions,"getPartnerAdditionalCounts");
+const writePartnerAdditionalCounts = httpsCallable(partnerCountFunctions,"submitPartnerAdditionalCounts");
 
 
 
