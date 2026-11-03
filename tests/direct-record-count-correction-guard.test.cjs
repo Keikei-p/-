@@ -1,0 +1,36 @@
+"use strict";
+const {test}=require("node:test");
+const assert=require("node:assert/strict");
+const fs=require("node:fs");
+const html=fs.readFileSync(require("node:path").join(__dirname,"../index.html"),"utf8");
+test("owner sales save still rejects inconsistent stored total AND revenue before any transaction",()=>{
+ const v=html.indexOf("function validateFinancialRecordForSave(data)");
+ const call=html.indexOf("validateFinancialRecordForSave(data);",v+45);
+ const correction=html.indexOf("const writeCorrection = existingDailyRecord",call);
+ const persist=html.indexOf("await persistDailyRecord(recordRef, data",correction);
+ assert.ok(v>0&&call>v&&correction>call&&persist>correction);
+ const method=html.slice(v,html.indexOf("function calculateResultsTotals(",v));
+ assert.match(method,/count !== Number\(data\.totalCount\)/);
+ assert.match(method,/revenue !== Number\(data\.totalRevenue\)/);
+ assert.match(method,/throw recordConflict/);
+});
+test("corrections remain atomic, append-only and old records are updated with readback",()=>{
+ const start=html.indexOf("async function persistDailyRecord(");
+ const end=html.indexOf("function findDailyRecord(",start);
+ assert.ok(start>0&&end>start);
+ const method=html.slice(start,end);
+ assert.match(method,/daily\.size > 1/);
+ assert.match(method,/expectedRevision/);
+ assert.match(method,/transaction\.set\(recordRef, data, \{mergeFields: Object\.keys\(data\)\}\)/);
+ assert.match(method,/if \(writeCorrection\) writeCorrection\(transaction\)/);
+ assert.doesNotMatch(method,/transaction\.delete\(/);
+ const correctionStart=html.indexOf("const writeCorrection = existingDailyRecord");
+ const correctionEnd=html.indexOf("await persistDailyRecord(recordRef, data",correctionStart);
+ const correction=html.slice(correctionStart,correctionEnd);
+ assert.match(correction,/recordCorrections/);
+ assert.match(correction,/before: \{/);
+ assert.match(correction,/after: \{/);
+ assert.match(correction,/transaction\.set/);
+ const saved=html.slice(correctionEnd,correctionEnd+500);
+ assert.match(saved,/getDoc\(/);
+});
