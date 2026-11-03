@@ -40,7 +40,8 @@ test("unmapped product ID does not invent a name-based mapping or score",()=>{
 test("published product ID and explicitly selected legacy category count once",()=>{
  const groups=[{id:"linked",name:"NURO",keys:["id:p1","legacy:NURO"]}];
  const scores=groupPersonalScores(groups,[{key:"u1",name:"A",companyName:"直営",
-  counts:{NURO:4}}],{categories:valid.categories});
+  counts:{NURO:4}}],{categories:valid.categories,
+   productLinks:[{productId:"p1",category:"NURO"}]});
  assert.deepEqual(scores,[{id:"linked",name:"NURO",complete:true,
   members:[{rank:1,name:"A",companyName:"直営",count:4}]}]);
 });
@@ -54,4 +55,41 @@ test("backend only stores groups in private settings and no legacy financial row
  assert.match(service,/groupPersonalScores\(sharedConfig.groups/);
  assert.match(api,/exports\.getPartnerRankingGroups=onCall/);
  assert.match(api,/exports\.setPartnerRankingGroups=onCall/);
+});
+
+test("a linked published product ID alone uses the approved category for BOTH companies",()=>{
+ const groups=[{id:"one",name:"NURO",keys:["id:p1"]}];
+ const people=[
+  {key:"d1",name:"直営担当",companyName:"直営",counts:{NURO:4}},
+  {key:"p1",name:"協力店担当",companyName:"協力店",counts:{NURO:6}}
+ ];
+ const result=groupPersonalScores(groups,people,{
+  categories:valid.categories,productLinks:[{productId:"p1",category:"NURO"}]
+ });
+ assert.equal(result[0].complete,true);
+ assert.deepEqual(result[0].members.map(x=>[x.name,x.count,x.rank]),[
+  ["協力店担当",6,1],["直営担当",4,2]
+ ]);
+});
+test("mixed group with any unlinked product does not publish a partial false rank",()=>{
+ const groups=[{id:"mixed",name:"混合",keys:["legacy:NURO","id:p2"]}];
+ const people=[{key:"d1",name:"直営",counts:{NURO:8}}];
+ const result=groupPersonalScores(groups,people,{categories:valid.categories});
+ assert.deepEqual(result,[{id:"mixed",name:"混合",complete:false,members:[]}]);
+});
+test("invalid or duplicate category links fail closed before counting",()=>{
+ const groups=[{id:"one",name:"NURO",keys:["id:p1"]}],people=[];
+ const run=links=>groupPersonalScores(groups,people,{
+  categories:valid.categories,productLinks:links
+ });
+ assert.throws(()=>run([{productId:"p1",category:"UNKNOWN"}]),/SHARED_RANKING/);
+ assert.throws(()=>run([{productId:"p1",category:"NURO"},{productId:"p2",category:"NURO"}]),/SHARED_RANKING/);
+ assert.throws(()=>run([{productId:"__proto__",category:"NURO"}]),/SHARED_RANKING/);
+});
+test("shared standings read date-effective server links, never mutate legacy sales",()=>{
+ const service=fs.readFileSync(require.resolve("../functions-partner-workspace/service.cjs"),"utf8");
+ assert.match(service,/const effectiveLinks=readLinks/);
+ assert.match(service,/link\.effectiveFrom<=date/);
+ assert.match(service,/productLinks:effectiveLinks/);
+ assert.match(service,/groupStandings=groupPersonalScores/);
 });
