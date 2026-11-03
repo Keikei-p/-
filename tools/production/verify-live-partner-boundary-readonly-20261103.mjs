@@ -51,7 +51,7 @@ export async function audit({request,backup=inspect,inventory=collect,clock=()=>
  ensure(sha(await readRules(live.rulesetName))===CANDIDATE);
  const available=await backup();
  const age=clock()-Date.parse(available.latestReadySnapshot);
- if(!(available.readyBackups>0)&&Number.isSafeInteger(available.readyBackups))
+ if(!Number.isSafeInteger(available.readyBackups)||available.readyBackups<1)
   stop('NO_READY_BACKUP');
  if(!Number.isFinite(age)||age<0||age>48*3600*1000)stop('READY_BACKUP_TOO_OLD');
  const before=await inventory(get,{maxDocuments:10000});
