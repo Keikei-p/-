@@ -124,6 +124,12 @@ test("direct monthly counts refuse missing totals and missing or mismatched prod
   /DIRECT_INVALID_QUANTITY/);
  await assert.rejects(direct({...good,results:[{productId:"p1",count:null}]}),
   /DIRECT_INVALID_QUANTITY/);
+ for(const invalidCount of ["", "  ", "2 ", false, true]){
+  await assert.rejects(direct({...good,results:[{productId:"p1",count:invalidCount}]}),
+   /DIRECT_INVALID_QUANTITY/);
+ }
+ const legacyDigitString=await direct({...good,results:[{productId:"p1",productNameSnapshot:"NURO光",count:"2"}]});
+ assert.equal(legacyDigitString.totalCount,2,"legacy digit strings remain compatible");
  const noResult=await direct({...good,totalCount:0,results:[]});
  assert.equal(noResult.totalCount,0,"genuine explicit no-result remains zero");
  const correct=await direct(good);
