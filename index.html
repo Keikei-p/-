@@ -7429,6 +7429,7 @@ const readPartnerWorkDay = httpsCallable(partnerCountFunctions,"getPartnerWorksp
 const partnerInlineManage = httpsCallable(partnerCountFunctions,"managePartnerWorkspace");
 const partnerInlineSave = httpsCallable(partnerCountFunctions,"submitPartnerWorkspaceCounts");
 const partnerInlineAccept = httpsCallable(partnerCountFunctions,"acceptPartnerWorkspaceInvite");
+const partnerTransferSecondary = httpsCallable(partnerCountFunctions,"transferPartnerSecondaryMembership");
 const partnerMainPreviewCompanyInvite = httpsCallable(partnerCountFunctions,"previewPartnerCompanyInvitation");
 const partnerMainAcceptCompanyInvite = httpsCallable(partnerCountFunctions,"acceptPartnerCompanyInvitation");
 
@@ -12941,6 +12942,7 @@ function mountPartnerSafeManagementMenu(){
     partnerMainAppendRow(detail,"権限",snap.role==="leader"?"リーダー":snap.role==="owner"?"管理者":"メンバー");
     partnerMainAppendRow(detail,"ログインメール",auth.currentUser?.email||"未設定");
     partnerSameAppSelectPanel("account");
+    void renderPartnerSelfTransferAction(detail);
    }else{
     partnerSameAppSelectPanel(action);
     if(action==="invite"&&["leader","owner"].includes(snap.role))
@@ -12959,6 +12961,55 @@ function mountPartnerSafeManagementMenu(){
   if(!menu.contains(event.target))close();
  });
  return true;
+}
+
+// A secondary partner must personally confirm losing OLD internal access.
+// No admin can invoke this for another UID, and login never triggers it.
+// The preview is strictly read-only and hidden when the backend is not ready.
+async function renderPartnerSelfTransferAction(detail){
+ const uid=auth.currentUser?.uid,secondary=partnerInlineWorkspaceCompany;
+ if(!uid||!partnerMainValidId(secondary)||!detail?.isConnected)return;
+ let result;
+ try{result=(await partnerTransferSecondary({
+  action:"preview",confirmation:"I_ACCEPT_PARTNER_ONLY_ACCESS"
+ })).data;}catch{return;}
+ if(auth.currentUser?.uid!==uid||partnerInlineWorkspaceCompany!==secondary||
+    !detail.isConnected||result?.eligible!==true)return;
+ const holder=document.createElement("div");
+ holder.className="p-inline-card";
+ const info=document.createElement("p");
+ info.textContent="既存の自社所属から、この協力店へ正式に移籍します。以前の自社へのアクセス権は終了しますが、過去の件数・売上・単価・訂正履歴は消しません。";
+ const label=document.createElement("label");
+ const checkbox=document.createElement("input");
+ checkbox.type="checkbox";
+ label.append(checkbox,document.createTextNode(" 内容を確認し、自分の協力店所属を正式に切り替える"));
+ const button=document.createElement("button");
+ button.type="button";button.className="team-action-button";button.disabled=true;
+ button.textContent="本人確認のうえ正式移籍";
+ const status=document.createElement("p");
+ status.setAttribute("role","status");status.setAttribute("aria-live","polite");
+ checkbox.onchange=()=>{button.disabled=!checkbox.checked;};
+ button.onclick=async()=>{
+  if(!checkbox.checked||auth.currentUser?.uid!==uid||button.disabled)return;
+  if(!window.confirm("この操作で旧自社へのアクセスが終了します。過去の実績や売上履歴は保存されます。移籍を確定しますか？"))return;
+  button.disabled=true;checkbox.disabled=true;
+  status.textContent="所属変更を確認しています…";
+  try{
+   const response=(await partnerTransferSecondary({
+    action:"confirm",confirmation:"I_ACCEPT_PARTNER_ONLY_ACCESS"
+   })).data;
+   if(auth.currentUser?.uid!==uid||response?.transferred!==true||
+      response?.countsOnly!==true)throw Error("readback");
+   clearOwnCompanyPreference(uid);
+   rememberPartnerWorkspace(uid,secondary);
+   const url=new URL("/",location.origin);
+   url.searchParams.set("workspaceCompanyId",secondary);
+   location.replace(url.href);
+  }catch{
+   status.textContent="移籍結果を確認できませんでした。二重に申請せず、再ログインして所属を確認してください。";
+  }
+ };
+ holder.append(info,label,button,status);detail.append(holder);
 }
 
 function sharedVerifiedProductCategory(label){
