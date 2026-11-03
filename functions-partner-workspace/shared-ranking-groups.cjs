@@ -42,19 +42,35 @@ function saveGroups(current,newGroups,revision,validation){
 }
 // One shared result for HQ & partners from verified, redacted per-person category rows.
 // Product IDs without an owner-approved category mapping cannot be inferred by name.
-function groupPersonalScores(groups,persons,{categories=[]}={}){
- assert(Array.isArray(groups)&&Array.isArray(persons)&&Array.isArray(categories));
- const categoriesSet=new Set(categories);
+function groupPersonalScores(groups,persons,{categories=[],productLinks=[]}={}){
+ assert(Array.isArray(groups)&&Array.isArray(persons)&&Array.isArray(categories)&&
+   Array.isArray(productLinks));
+ const categoriesSet=new Set(categories),linked=new Map(),usedCategories=new Set();
+ // Only Owner-approved, date-effective mappings can turn a product ID into
+ // an existing count category. Never infer mappings from product names.
+ for(const link of productLinks){
+  assert(link&&validId(link.productId)&&categoriesSet.has(link.category)&&
+   !linked.has(link.productId)&&!usedCategories.has(link.category));
+  linked.set(link.productId,link.category);
+  usedCategories.add(link.category);
+ }
  const out=[];
  for(const group of groups){
-  const categoryKeys=group.keys.filter(x=>x.startsWith("legacy:"))
-    .map(x=>x.slice(7));
-  // A hub product ID without any explicitly selected fixed count category is
-  // not a verifiable category mapping. Combining both key kinds does NOT
-  // double-count; only the owner-selected legacy categories contribute once.
-  const unmapped=group.keys.some(x=>x.startsWith("id:"))&&categoryKeys.length===0;
-  assert(categoryKeys.every(x=>categoriesSet.has(x)));
-  // Refuse a misleading partial group score if not all products are mapped.
+  const categoryKeys=new Set();
+  let unmapped=false;
+  for(const key of group.keys){
+   if(key.startsWith("legacy:")){
+    const category=key.slice(7);
+    assert(categoriesSet.has(category));
+    categoryKeys.add(category);
+   }else if(key.startsWith("id:")){
+    const category=linked.get(key.slice(3));
+    if(!category){unmapped=true;break;}
+    categoryKeys.add(category);
+   }else assert(false);
+  }
+  // A mixed group must not silently drop an unlinked product ID and publish
+  // a plausible but WRONG ranking. Dedupe mapped IDs and legacy keys.
   if(unmapped){out.push({id:group.id,name:group.name,complete:false,members:[]});continue;}
   const members=[];
   for(const p of persons){
