@@ -14251,7 +14251,7 @@ function partnerExtraDirty(){
 // Count inputs are never silently coalesced from an empty value into zero.
 function partnerCountInputNumber(input){
  const raw=input?.value?.trim();
- if(typeof raw!=="string"||!/^\\d+$/.test(raw))return null;
+ if(typeof raw!=="string"||!/^\d+$/.test(raw))return null;
  const count=Number(raw);
  return Number.isSafeInteger(count)&&count>=0&&count<=9999?count:null;
 }
