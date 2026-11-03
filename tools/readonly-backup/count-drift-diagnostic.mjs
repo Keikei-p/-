@@ -26,6 +26,45 @@ function linesFrom(field){
   return {shape:"array",lines:field.arrayValue.values??[]};
  return null;
 }
+function snapshotCounts(data){
+ const fields=data?.mapValue?.fields;
+ if(!fields||typeof fields!=="object")return null;
+ const saved=quantity(fields.totalCount),decoded=linesFrom(fields.results);
+ if(saved===null||!decoded)return null;
+ let derived=0;
+ for(const line of decoded.lines){
+  const n=quantity(line?.mapValue?.fields?.count);
+  if(n===null)return null;
+  derived+=n;
+  if(!valid(derived))return null;
+ }
+ return {saved,derived};
+}
+function correctionProof(rows,saved,derived){
+ const result={beforeConsistent:0,beforeMismatched:0,
+  afterConsistent:0,afterMismatched:0,
+  verifiedAfterSnapshots:0,afterSavedMatchesCurrent:0,
+  afterLinesMatchCurrent:0,afterBothMatchCurrent:0,
+  unverifiedSnapshots:0};
+ for(const c of rows){
+  const fields=c.value?.fields||{};
+  const before=snapshotCounts(fields.before);
+  const after=snapshotCounts(fields.after);
+  if(before){
+   if(before.saved===before.derived)result.beforeConsistent++;
+   else result.beforeMismatched++;
+  }else result.unverifiedSnapshots++;
+  if(after){
+   result.verifiedAfterSnapshots++;
+   if(after.saved===after.derived)result.afterConsistent++;
+   else result.afterMismatched++;
+   if(after.saved===saved)result.afterSavedMatchesCurrent++;
+   if(after.derived===derived)result.afterLinesMatchCurrent++;
+   if(after.saved===saved&&after.derived===derived)result.afterBothMatchCurrent++;
+  }else result.unverifiedSnapshots++;
+ }
+ return result;
+}
 export function classifyCountDrift(snapshot){
  if(snapshot?.projectId!=="sales-management-cc116"||
     snapshot?.format!=="firestore-rest-typed-v1"||
@@ -35,7 +74,9 @@ export function classifyCountDrift(snapshot){
   if(!/^recordCorrections\/[^/]+$/.test(item?.path||""))continue;
   const ref=item?.value?.fields?.recordId?.stringValue;
   if(typeof ref!=="string"||!ref||ref.includes("/"))continue;
-  corrections.set(ref,(corrections.get(ref)||0)+1);
+  const rows=corrections.get(ref)||[];
+  rows.push(item);
+  corrections.set(ref,rows);
  }
  const mismatches=[],summary={matched:0,unverifiable:0};
  for(const item of snapshot.documents){
@@ -64,7 +105,8 @@ export function classifyCountDrift(snapshot){
    direction:saved>computed?"saved_exceeds_lines":"lines_exceed_saved",
    absoluteCountDifference:Math.abs(saved-computed),
    savedCountIsZero:saved===0,linesCountIsZero:computed===0,
-   relatedCorrectionDocuments:corrections.get(item.path.slice("records/".length))||0
+   relatedCorrectionDocuments:(corrections.get(item.path.slice("records/".length))||[]).length,
+   correctionCountProof:correctionProof(corrections.get(item.path.slice("records/".length))||[],saved,computed)
   }));
  }
  return Object.freeze({
