@@ -38,6 +38,7 @@ jobs:
           node --test tests/partner-extra-shared-ranking.test.cjs
           node --test tests/partner-monthly-shared-counts.test.cjs
           node --test tests/partner-product-monthly-parity.test.cjs
+          node --test tests/partner-input-hq-parity-count-only-20261103.test.cjs
           node --test tests/partner-shared-monthly-ui.test.cjs
           node --test tests/count-drift-diagnostic-readonly-20261103.test.mjs
           node --test tests/count-drift-correction-readonly.test.mjs
