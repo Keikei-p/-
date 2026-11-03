@@ -6384,10 +6384,14 @@ body.product-reordering .product-list {
           </div>
         </div>
         <div class="revenue-chart-toolbar" id="ownerJointIndividualControls" style="margin-bottom:12px;">
-          <button type="button" id="ownerJointIndividualButton" class="team-action-button">直営＋協力店｜件数順</button>
+          <button type="button" id="ownerJointIndividualButton" class="team-action-button">直営＋協力店｜日別件数</button>
+          <button type="button" id="ownerJointIndividualMonthButton" class="team-action-button">直営＋協力店｜月間件数（暫定）</button>
           <button type="button" id="ownerOriginalIndividualButton" class="team-action-button">自社｜売上順</button>
           <label class="ranking-product-scope">合同ランキングの日付
             <input id="ownerJointIndividualDate" type="date">
+          </label>
+          <label class="ranking-product-scope">合同月間
+            <input id="ownerJointIndividualMonth" type="month">
           </label>
         </div>
         <p id="ownerJointIndividualStatus" class="ranking-product-help" role="status">自社の従来ランキングを表示しています。</p>
@@ -6405,9 +6409,13 @@ body.product-reordering .product-list {
         </div>
         <div class="revenue-chart-toolbar" id="ownerJointProductModeControls" style="margin-bottom:12px;">
           <button type="button" id="ownerJointProductButton" class="team-action-button">直営＋協力店｜選択日</button>
+          <button type="button" id="ownerJointProductMonthButton" class="team-action-button">直営＋協力店｜月間件数（暫定）</button>
           <button type="button" id="ownerOriginalProductButton" class="team-action-button">自社のみ｜月間</button>
           <label class="ranking-product-scope">合同ランキングの日付
             <input id="ownerJointProductDate" type="date">
+          </label>
+          <label class="ranking-product-scope">合同月間
+            <input id="ownerJointProductMonth" type="month">
           </label>
         </div>
         <p id="ownerJointProductStatus" class="ranking-product-help" role="status">自社の従来ランキングを表示しています。</p>
@@ -7457,6 +7465,7 @@ const partnerCountFunctions = getFunctions(app,"asia-northeast1");
 const readPartnerQuickDay = httpsCallable(partnerCountFunctions,"getPartnerQuickCounts");
 const approvePartnerQuickDay = httpsCallable(partnerCountFunctions,"approvePartnerQuickCounts");
 const readPartnerWorkDay = httpsCallable(partnerCountFunctions,"getPartnerWorkspace");
+const readPartnerMonthlySharedCounts = httpsCallable(partnerCountFunctions,"getPartnerMonthlySharedCounts");
 
 const partnerInlineManage = httpsCallable(partnerCountFunctions,"managePartnerWorkspace");
 const partnerInlineSave = httpsCallable(partnerCountFunctions,"submitPartnerWorkspaceCounts");
