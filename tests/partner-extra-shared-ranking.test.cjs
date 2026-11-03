@@ -15,8 +15,8 @@ const project=(docs,opts={})=>projectExtraRankDocs(docs,{
 test("published extra products remain count-only; old/depublished quantities stay in original ledger only",()=>{
  const projected=project([doc("staff1",{solar:3,water:2,archived:7})]);
  assert.deepEqual(projected,[{staffId:"staff1",staffNameSnapshot:"担当A",
-  teamIdSnapshot:"teamA",totalCount:5,extraCounts:{solar:3,water:2},
-  archivedCount:7}]);
+  teamIdSnapshot:"teamA",totalCount:5,extraCounts:{solar:3,water:2}}]);
+ assert.doesNotMatch(JSON.stringify(projected),/archivedCount|privateCounts|archived/);
  const original=doc("staff1",{solar:3,water:2,archived:7}).data();
  assert.equal(original.totalCount,12);
  assert.equal(original.counts.archived,7);
@@ -117,10 +117,8 @@ test("shared extra ledger redacts retired/unpublished quantities across staff an
   doc("c",{onlyHidden:8})
  ]);
  assert.deepEqual(rows.map(r=>r.totalCount),[2,4,0]);
- assert.deepEqual(rows.map(r=>r.archivedCount),[9,6,8]);
- assert.equal(rows.reduce((n,r)=>n+r.totalCount,0),6);
- assert.equal(rows.reduce((n,r)=>n+r.archivedCount,0),23);
- assert.doesNotMatch(JSON.stringify(rows),/onlyHidden|retired|unlisted|unitPrice|revenue/);
+ assert.equal(rows.reduce((n,r)=>r.totalCount+n,0),6);
+ assert.doesNotMatch(JSON.stringify(rows),/onlyHidden|retired|unlisted|archivedCount|privateTotalCount|unitPrice|revenue/);
  // Original immutable source documents are unchanged and retain full history.
  const raw=doc("a",{solar:2,retired:9}).data();
  assert.equal(raw.totalCount,11);

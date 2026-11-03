@@ -45,7 +45,7 @@ function projectExtraRankDocs(docs,{hubId,cid,date,publishedIds=[],linkedIds=[]}
   if(!Number.isSafeInteger(publishedTotal)||publishedTotal<0)fail();
   rows.push({staffId:id,staffNameSnapshot:row.staffNameSnapshot,
    teamIdSnapshot:row.teamIdSnapshot,totalCount:publishedTotal,
-   extraCounts:publicCounts,archivedCount});
+   extraCounts:publicCounts});
  }
  return rows;
 }
