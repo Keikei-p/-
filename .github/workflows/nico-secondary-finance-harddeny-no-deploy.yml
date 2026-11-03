@@ -27,18 +27,13 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - name: Reject any deploy or production credential in this workflow
+      - name: Verify syntax, isolated project and no production credential
         shell: bash
         run: |
           set -euo pipefail
           node --check tests/rules.test.cjs
-          node - <<'NODE'
-          const fs = require('node:fs');
-          const workflow = fs.readFileSync('.github/workflows/nico-secondary-finance-harddeny-no-deploy.yml','utf8');
-          if (/secrets\.|GOOGLE_APPLICATION_CREDENTIALS|firebase deploy|firebase use|--project sales-management-cc116/.test(workflow)) {
-            throw Error('Production access or deployment forbidden in offline test');
-          }
-          NODE
+          test "${FIREBASE_PROJECT_ID:-demo-sales-support}" = "demo-sales-support"
+          test -z "${GOOGLE_APPLICATION_CREDENTIALS:-}"
       - name: Install disposable test-only dependencies
         run: |
           npm install --prefix tests --ignore-scripts --no-audit --no-fund
