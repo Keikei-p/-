@@ -1609,3 +1609,45 @@ test("legacy partner company totals remain available but cannot become verified 
  assert.deepEqual(result.people,[]);
  assert.deepEqual([...db.store],before,"read-only ranks must never modify legacy company or financial records");
 });
+
+
+test("unpublishing added partner product never shares hidden historic quantities or changes saved ledger",async()=>{
+ const {db,api,req}=setup(),date="2026-10-31";
+ db.seed("products/solar",{companyId:"hub",name:"太陽光",active:true,
+  unitPrice:90000,totalRevenue:800000});
+ db.seed("products/water",{companyId:"hub",name:"給水",active:true,
+  unitPrice:30000,totalRevenue:500000});
+ db.seed("companies/hub/partnerCatalogSettings/publication",{
+  revision:1,productIds:["solar","water"]
+ });
+ const team=(await api.manage(req("p",{action:"addTeam",name:"共有班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"登録担当",teamId:team}))).staffId;
+ const saved=await api.submitAdditionalCounts(req("p",{
+  date,staffId:staff,changes:{solar:2,water:7},expectedVersion:0
+ }));
+ assert.equal(saved.totalCount,9);
+ const before=clone([...db.store]);
+ const all=await api.view(req("h",{date,sharedRankings:true}));
+ assert.equal(all.additionalTotalCount,9);
+ assert.equal(all.companies[0].totalCount,9);
+ db.seed("companies/hub/partnerCatalogSettings/publication",{
+  revision:2,productIds:["solar"]
+ });
+ const beforeRead=clone([...db.store]);
+ const shared=await api.view(req("h",{date,sharedRankings:true}));
+ const partner=await api.view(req("p",{date,sharedRankings:true}));
+ assert.equal(shared.additionalTotalCount,2);
+ assert.equal(shared.companies[0].totalCount,2);
+ assert.equal(shared.companies[0].extraTotalCount,2);
+ assert.equal(shared.people[0].totalCount,2);
+ assert.equal(shared.teams[0].totalCount,2);
+ assert.deepEqual(shared.people,partner.people,"same count-only standings for approved parties");
+ assert.equal(JSON.stringify(shared).includes('"water":7'),false);
+ assert.doesNotMatch(JSON.stringify(shared),/unitPrice|totalRevenue|90000|800000|30000|500000/);
+ const retained=db.store.get("companies/partner/partnerAdditionalCountEntries/"+date+"__"+staff);
+ assert.equal(retained.totalCount,9,"original saved 9 is not rewritten");
+ assert.equal(retained.counts.solar,2);
+ assert.equal(retained.counts.water,7);
+ assert.deepEqual([...db.store],beforeRead,"read-only rankings must not alter stored counts or prices");
+ assert.deepEqual(db.store.get("records/old"),new Map(before).get("records/old"));
+});
