@@ -57,8 +57,23 @@ test('exact live Rules plus fresh managed backup, stable typed documents and mat
  assert.equal(f.calls.every(x=>x.method==='GET'),true);
  assert.doesNotMatch(JSON.stringify(x),/salesRevenue|9999999|test|firebase_service_account_json/i);
 });
+test('real stored count mismatches produce redacted diagnostics without rewriting history',async()=>{
+ const f=setup();
+ f.args.inventory=async()=>{
+  const v=structuredClone(snapshot);
+  v.documents[0].value.fields.totalCount.integerValue='4';
+  return v;
+ };
+ const result=await audit(f.args);
+ assert.equal(result.currentRulesVerified,true);
+ assert.equal(result.fullTypedInventoryStable,true);
+ assert.equal(result.independentDirectCountConsistent,false);
+ assert.equal(result.unmatchedDirectRecordTotals,1);
+ assert.equal(result.productionDocumentWrites,0);
+ assert.doesNotMatch(JSON.stringify(result),/records\/test|salesRevenue|9999999/);
+});
 test('old/deviating Rules, absent/stale backup and live inventory changes stop without writes',async()=>{
- for(const scenario of ['oldRules','badName','noBackup','stale','invalidBackup','dataRace','countMismatch']){
+ for(const scenario of ['oldRules','badName','noBackup','stale','invalidBackup','dataRace']){
   const f=setup(),orig=f.args.request;
   if(scenario==='oldRules')f.args.request=async(method,url,body)=>{
    const z=await orig(method,url,body);
@@ -73,10 +88,6 @@ test('old/deviating Rules, absent/stale backup and live inventory changes stop w
   if(scenario==='invalidBackup')f.args.backup=async()=>({readyBackups:null,latestReadySnapshot:new Date(now).toISOString()});
   if(scenario==='stale')f.args.backup=async()=>({readyBackups:1,latestReadySnapshot:new Date(now-49*3600e3).toISOString()});
   if(scenario==='dataRace'){let n=0;f.args.inventory=async()=>{n++;const v=structuredClone(snapshot);v.documents[0].value.updateTime='2026-11-0'+n+'T00:00:00Z';return v;};}
-  if(scenario==='countMismatch')f.args.inventory=async()=>{
-   const v=structuredClone(snapshot);
-   v.documents[0].value.fields.totalCount.integerValue='4';return v;
-  };
   await assert.rejects(audit(f.args),/STOP_/,
    'safety gate must reject '+scenario);
   assert.equal(f.calls.every(x=>x.method==='GET'),true);
