@@ -42,7 +42,9 @@ jobs:
           npm install --global firebase-tools@15.34.1 --no-audit --no-fund
       - name: Finance and count unit regression without production credentials
         run: |
-          node --test tests/internal-owner-finance-visibility.test.cjs tests/partner-money-free-workspace.test.cjs tests/sales-regressions.cjs tests/partner-workspace.test.cjs
+          node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/index.js
+          node --test tests/internal-owner-finance-visibility.test.cjs tests/partner-money-free-workspace.test.cjs tests/sales-regressions.cjs tests/partner-workspace.test.cjs tests/partner-one-login-same-app.test.cjs
       - name: Run all Firestore rules and legacy record tests in isolated emulator
         env:
           FIREBASE_PROJECT_ID: demo-sales-support
