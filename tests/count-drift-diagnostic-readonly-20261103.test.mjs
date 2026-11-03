@@ -22,7 +22,7 @@ test('redacts identity and revenue while explaining saved vs line count directio
  const out=classifyCountDrift(data);
  assert.equal(out.mismatchedRecords,1);
  assert.equal(out.matchedRecords,2);
- assert.deepEqual(out.mismatchKinds,[{
+ assert.deepEqual(out.mismatchKinds.map(({correctionCountProof,...item})=>item),[{
   shape:'map',rowCount:2,zeroCountRows:0,
   direction:'saved_exceeds_lines',absoluteCountDifference:2,
   savedCountIsZero:false,linesCountIsZero:false,relatedCorrectionDocuments:0
@@ -33,7 +33,7 @@ test('redacts identity and revenue while explaining saved vs line count directio
 });
 test('returns an aggregate not names for array larger-than-saved and zero row cases',()=>{
  const out=classifyCountDrift(snapshot([doc('private',2,[0,4],'array')]));
- assert.deepEqual(out.mismatchKinds,[{shape:'array',rowCount:2,zeroCountRows:1,
+ assert.deepEqual(out.mismatchKinds.map(({correctionCountProof,...item})=>item),[{shape:'array',rowCount:2,zeroCountRows:1,
   direction:'lines_exceed_saved',absoluteCountDifference:2,
   savedCountIsZero:false,linesCountIsZero:false,relatedCorrectionDocuments:0}]);
 });
