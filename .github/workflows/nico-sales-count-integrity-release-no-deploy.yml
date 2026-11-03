@@ -19,9 +19,46 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Confirm the existing sales UI is byte-for-byte preserved
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const assert = require('node:assert/strict');
+          const {execFileSync} = require('node:child_process');
+          // Reviewed release base: never silently replace the partner UI with older main.
+          const base = execFileSync('git', ['show',
+            'ccfef10600fc1d979013b8cd6520ae5b3ff1d5f1:index.html'],
+            {encoding:'utf8',maxBuffer:10*1024*1024});
+          const now = fs.readFileSync('index.html','utf8');
+          const begin = now.indexOf('function isPersistedRecordCountConsistent(record) {');
+          const save = now.indexOf('async function persistDailyRecord(');
+          const first = now.indexOf('    // A historical line can survive',save);
+          const last = now.indexOf('    // resultsの削除済み商材が復活しないようマップ全体を置換。',first);
+          assert(begin>=0 && save>begin && first>save && last>first,
+            'stop: count guard or canonical sales transaction is missing');
+          const helper = now.slice(begin,save);
+          const gate = now.slice(first,last);
+          assert(helper.length>700 && helper.length<1200 && gate.length>250 && gate.length<600,
+            'stop: unexpectedly altered quantity guard');
+          assert.equal(now.replace(helper,'').replace(gate,''),base,
+            'stop: existing partner UI, finance and save code changed beyond reviewed additions');
+          console.log('PASS: canonical partner UI, finance and history unchanged; guard only');
+          NODE
+      - name: Verify existing partner count, owner finance, CB and historical screens
+        run: |
+          node --test \
+            tests/internal-owner-finance-visibility.test.cjs \
+            tests/partner-money-free-workspace.test.cjs \
+            tests/partner-one-login-same-app.test.cjs \
+            tests/partner-invite-mobile-layout.test.cjs \
+            tests/partner-compact-two-column-team-ui-20261102.test.mjs \
+            tests/partner-history-direct-correction-20261102.test.mjs \
+            tests/partner-managed-staff-archive-20261102.test.mjs
       - name: Check only the reviewed read-only historical quantity guard is installed
         run: |
           node <<'NODE'
