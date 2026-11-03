@@ -1192,7 +1192,9 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    // legacy records; it returns no money, email, UID, or original documents.
    // An index/limit mismatch FAILS, never pretends direct sales were zero.
    let direct;
-   try{direct=await readDirectDayCounts(db,hubId,date,KEYS);}
+   try{direct=await readDirectDayCounts(db,hubId,date,KEYS,{
+    approvedExtraProductIds:extraVerifiedIds
+   });}
    catch{fail("failed-precondition");}
    // Missing real staff IDs must not create fictitious personal rankings.
    // Company and team totals remain visible, clearly marked incomplete.
