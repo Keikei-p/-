@@ -12778,6 +12778,8 @@ function resetPartnerInline(){
  // Clear company-specific count snapshots and invalidate in-flight ranking reads
  // before another user or company can sign in on the same browser session.
  ++sharedDailyRankingGeneration;sharedDailyRankCache.clear();
+ ++partnerProductMonthlyNonce;partnerProductMonthlyCache=null;
+ partnerPublishedProductNames=new Map();
  partnerInlineData=null;partnerInlineWorkspaceCompany="";partnerInlineBusy=false;
  partnerInlineEditingStaffId="";
  const saveStatus=pInline("pInlineSaveStatus");
@@ -13802,6 +13804,16 @@ pInline("partnerSharedRankingsRefresh").onclick=()=>{
  void loadSharedDailyStandings("partner",true);
 };
 pInline("pInlineReloadSharedProducts").onclick=()=>void loadPartnerPublishedProductList();
+// Both product and catalog tabs mirror the same original HQ month selector.
+const partnerProductInitialMonth=getTodayString().slice(0,7);
+for(const [id,other] of [["partnerProductMonth","partnerCatalogMonth"],
+                         ["partnerCatalogMonth","partnerProductMonth"]]){
+ const el=pInline(id);el.value=partnerProductInitialMonth;el.max=partnerProductInitialMonth;
+ el.onchange=()=>{pInline(other).value=el.value;
+  void loadPartnerProductMonthlyTotals({force:true});};
+}
+for(const id of ["partnerProductMonthReload","partnerCatalogMonthReload"])
+ pInline(id).onclick=()=>void loadPartnerProductMonthlyTotals({force:true});
 pInline("ownerSharedRankingsRefresh").onclick=()=>loadSharedDailyStandings("owner",true);
 pInline("partnerSharedDetailRefresh").onclick=()=>loadSharedDailyStandings("partnerDetail",true);
 pInline("ownerSharedDetailRefresh").onclick=()=>loadSharedDailyStandings("ownerDetail",true);
@@ -13922,6 +13934,8 @@ function partnerSameAppSelectPanel(name){
  }
  partnerSameAppPositionPanel(name);
  if(partnerInlineData&&name==="catalog")void loadPartnerPublishedProductList();
+ if(partnerInlineData&&["products","catalog"].includes(name))
+  void loadPartnerProductMonthlyTotals();
  // Never reset unsubmitted two-column inputs by changing the dashboard tab.
  if(partnerInlineData&&["individual","product","team"].includes(name)){
   renderPartnerRankingOnlyPanel();
@@ -14022,12 +14036,16 @@ async function loadPartnerPublishedProductList(){
    }
    target.append(row);
   }
+  partnerPublishedProductNames=new Map(data.products.map(p=>[p.id,p.name]));
+  if(partnerProductMonthlyCache?.data)
+   renderPartnerProductMonthlySummary(partnerProductMonthlyCache.data);
   status.textContent=data.products.length?
    "本社が協力店に公開した商材 "+data.products.length+"件を表示中。価格情報は取得していません。":
    "本社が協力店へ公開した商材はまだありません。";
  }catch(e){
   if(seq!==partnerSharedCatalogNonce||uid!==auth.currentUser?.uid)return;
   target.replaceChildren();
+  partnerPublishedProductNames=new Map();
   status.textContent="公開商材を照合できません。未確認の情報は表示しません。";
   console.warn("partner_published_catalog_unavailable",e?.code||"unverified");
  }
@@ -14932,6 +14950,7 @@ async function partnerInlineRun(work){
   // Only a confirmed write refreshes the count fields; do not erase inputs
   // when a save or invitation fails and the user needs to retry.
   if(refresh){
+   ++partnerProductMonthlyNonce;partnerProductMonthlyCache=null;
    ++sharedDailyRankingGeneration;sharedDailyRankCache.clear();
    if(!await partnerInlineFetch())throw Error("refresh_after_write");
   }
