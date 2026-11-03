@@ -358,7 +358,10 @@ test("security invariants: only isolated partner collections; no destructive dat
   "product master reads must remain reviewed and bounded");
  assert.match(code,/projectMasterProducts\(/);
  assert.match(code,/\.where\("companyId","==",s\.cid\)\.limit\(1001\)\.get\(\)/);
- assert.doesNotMatch(code,/\btx\.set\s*\(/);
+ // Existing owner-owned catalog/ranking settings may be set atomically.
+ // Sales records, price masters and historical ledgers must never be tx.set.
+ assert.deepEqual([...code.matchAll(/\btx\.set\(\s*(\w+)/g)].map(match=>match[1]),
+  ["stateRef","configRef","ref"]);
  assert.match(code,/canViewRevenue:false,canViewUnitPrice:false/);
  assert.match(code,/partnerWorkAudits/);
 });
