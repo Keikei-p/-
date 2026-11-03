@@ -4981,6 +4981,16 @@ body.product-reordering .product-list {
     <div class="p-inline-card">
       <h3>📦 商材追加・管理</h3>
       <p class="p-inline-muted">本社が公開した商材と、協力店専用の商材を確認できます。</p>
+      <div class="p-inline-card" id="partnerCatalogMonthlyPanel">
+        <h4>📊 商材ごとの月間トータル件数</h4>
+        <div class="p-inline-grid">
+          <label class="p-inline-field">対象月<input type="month" id="partnerCatalogMonth" aria-label="協力店の商材集計月"></label>
+          <button id="partnerCatalogMonthReload" class="team-action-button" type="button">月間件数を更新</button>
+        </div>
+        <p id="partnerCatalogProductMonthlyStatus" class="p-inline-muted" role="status">保存済みの実績を月単位で集計します。</p>
+        <strong id="partnerCatalogProductMonthlyTotal" class="summary-row-name"></strong>
+        <div id="partnerCatalogProductMonthlyRows" class="p-inline-list"></div>
+      </div>
       <h4>本社から公開された商材</h4>
       <button type="button" id="pInlineReloadSharedProducts" class="team-action-button">公開商材を更新</button>
       <p id="pInlineSharedProductStatus" class="p-inline-muted" role="status">本社の公開商材を確認できます。</p>
@@ -5062,7 +5072,16 @@ body.product-reordering .product-list {
     <div class="p-inline-card"><h3>📊 件数グラフ</h3><div id="pPartnerChart" class="p-inline-list"></div></div>
   </section>
   <section id="partnerPanelProductSummary" data-partner-view="products" hidden>
-    <div class="p-inline-card"><h3>📦 商材別</h3><div id="pPartnerProductSummary" class="p-inline-list"></div></div>
+    <div class="p-inline-card">
+      <h3>📦 商材別件数（本社と同じ月間表示）</h3>
+      <div class="p-inline-grid">
+        <label class="p-inline-field">対象月<input type="month" id="partnerProductMonth" aria-label="商材別件数の集計月"></label>
+        <button id="partnerProductMonthReload" class="team-action-button" type="button">月間件数を更新</button>
+      </div>
+      <p id="partnerProductMonthlyStatus" class="p-inline-muted" role="status">選択月の保存済み件数を集計します。</p>
+      <strong id="partnerProductMonthlyTotal" class="summary-row-name"></strong>
+      <div id="pPartnerProductSummary" class="p-inline-list"></div>
+    </div>
   </section>
   <section id="partnerPanelReport" data-partner-view="report" hidden>
     <div class="p-inline-card"><h3>📣 件数報告文</h3><textarea id="pPartnerReportText" rows="8" readonly style="width:100%;box-sizing:border-box"></textarea><button id="pPartnerCopyReport" type="button" class="team-action-button">報告文をコピー</button><p id="pPartnerReportStatus" role="status"></p></div>
@@ -7468,6 +7487,8 @@ const readPartnerQuickDay = httpsCallable(partnerCountFunctions,"getPartnerQuick
 const approvePartnerQuickDay = httpsCallable(partnerCountFunctions,"approvePartnerQuickCounts");
 const readPartnerWorkDay = httpsCallable(partnerCountFunctions,"getPartnerWorkspace");
 const readPartnerMonthlySharedCounts = httpsCallable(partnerCountFunctions,"getPartnerMonthlySharedCounts");
+// Partner monthly product totals contain counts only, never finance originals.
+const readPartnerProductMonthlyTotals = httpsCallable(partnerCountFunctions,"getPartnerProductMonthlyTotals");
 
 const partnerInlineManage = httpsCallable(partnerCountFunctions,"managePartnerWorkspace");
 const partnerInlineSave = httpsCallable(partnerCountFunctions,"submitPartnerWorkspaceCounts");
@@ -12880,15 +12901,13 @@ function renderPartnerCountOnlyExtras(){
  const byProduct=new Map(categories.map(key=>[key,0]));
  for(const item of items)for(const key of categories)
   byProduct.set(key,byProduct.get(key)+(item.counts?.[key]||0));
- const products=pInline("pPartnerProductSummary");products.replaceChildren();
- for(const [key,n] of [...byProduct].sort((a,b)=>b[1]-a[1]))
-  partnerMainAppendRow(products,key,n+"件");
+ // Product tab uses the server-verified MONTHLY total, not a one-day
+ // snapshot. The daily count summary remains used for reports and charts.
  const privateProductById=new Map((snap.privateProducts||[]).map(p=>[p.id,p.name]));
  const privateTotals=new Map();
  for(const item of items)for(const [id,n] of Object.entries(item.privateCounts||{}))
   privateTotals.set(id,(privateTotals.get(id)||0)+n);
- for(const [id,n] of [...privateTotals].sort((a,b)=>b[1]-a[1]))
-  if(n)partnerMainAppendRow(products,(privateProductById.get(id)||"過去の専用商材")+"（社内のみ）",n+"件");
+ // Private products are also included in the verified monthly projection.
  const lines=[snap.companyName+"｜"+snap.date+" 営業実績報告",
   "総件数："+count+"件","報告した担当者："+new Set(items.map(x=>x.staffId)).size+"人",""];
  for(const [key,n] of byProduct)if(n)lines.push(key+"："+n+"件");
