@@ -32,7 +32,7 @@ test("new partner link never mutates money-bearing catalog records",()=>{
  const service=fs.readFileSync(path.join(__dirname,"..",
   "functions-partner-workspace","service.cjs"),"utf8");
  const first=service.indexOf(" async function setPartnerCountLink(request)");
- const last=service.indexOf(" const checkTeam=async",first);
+ const last=service.indexOf(" async function approvedExtraCatalog",first);
  assert.ok(first>0&&last>first);
  const method=service.slice(first,last);
  assert.doesNotMatch(method,/tx\.(?:set|update|delete)\((?:productRef|entryRef|summaryRef|audit)/);
