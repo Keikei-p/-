@@ -1,8 +1,10 @@
 name: NICO read-only secondary context inventory (NO DEPLOY)
 on:
+  # Only reviewed main code may access the live read-only service identity.
+  # Unreviewed feature branches must NEVER execute with production credentials.
   push:
     branches:
-      - security/partner-secondary-raw-finance-deny-20261104
+      - main
     paths:
       - 'tools/production/audit-secondary-contexts-readonly.mjs'
       - 'tests/nico-secondary-readonly-inventory.test.mjs'
