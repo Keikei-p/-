@@ -45,9 +45,14 @@ function readCountRows(entry){
   return [];
  throw Error("DIRECT_RECORD_SHAPE_UNVERIFIED");
 }
-async function readDirectDayCounts(db,hubId,date,keys,{maxRecords=MAX_DIRECT_RECORDS_PER_DAY}={}){
+async function readDirectDayCounts(db,hubId,date,keys,{
+ maxRecords=MAX_DIRECT_RECORDS_PER_DAY,approvedExtraProductIds=[]
+}={}){
  if(!safeIdentifier(hubId)||!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(date)||
-    !Array.isArray(keys)||!keys.length||maxRecords<1||maxRecords>MAX_DIRECT_RECORDS_PER_DAY)
+    !Array.isArray(keys)||!keys.length||maxRecords<1||maxRecords>MAX_DIRECT_RECORDS_PER_DAY||
+    !Array.isArray(approvedExtraProductIds)||approvedExtraProductIds.length>1000||
+    approvedExtraProductIds.some(id=>!safeIdentifier(id))||
+    new Set(approvedExtraProductIds).size!==approvedExtraProductIds.length)
   throw Error("DIRECT_SCOPE_INVALID");
  // Use existing company/date composite query. One bounded read, no writes.
  const [snap,catalog]=await Promise.all([
@@ -65,6 +70,7 @@ async function readDirectDayCounts(db,hubId,date,keys,{maxRecords=MAX_DIRECT_REC
    productNames.set(product.id,safeName(value.name,""));
  }
  const people=new Map(),teams=new Map(),counts=Object.fromEntries(keys.map(k=>[k,0]));
+ const approvedExtras=new Set(approvedExtraProductIds);
  let totalCount=0,otherCount=0,unverifiedPersonRecords=0;
  for(const doc of snap.docs){
   const row=doc.data()||{};
@@ -72,6 +78,7 @@ async function readDirectDayCounts(db,hubId,date,keys,{maxRecords=MAX_DIRECT_REC
   const results=readCountRows(row);
   let n=0;
   const daily=Object.fromEntries(keys.map(k=>[k,0]));
+  const dailyExtra={},dailyExtraCategoryCounts={};
   for(const result of results){
    const number=Number(result?.count??0);
    if(!Number.isSafeInteger(number)||number<0||number>9999)
@@ -80,6 +87,17 @@ async function readDirectDayCounts(db,hubId,date,keys,{maxRecords=MAX_DIRECT_REC
     productNames.get(result.productId)||row.productNameSnapshot||"";
    const label=mapCategory(productName,keys);
    if(label===OTHER)otherCount+=number;else{daily[label]+=number;counts[label]+=number;}
+   // Preserve existing classification. Extra ID counters are a second
+   // redacted attribution of the SAME record, not additional sales.
+   const id=result.productId;
+   if(approvedExtras.has(id)){
+    dailyExtra[id]=(dailyExtra[id]||0)+number;
+    if(label!==OTHER){
+     if(!dailyExtraCategoryCounts[id])dailyExtraCategoryCounts[id]={};
+     dailyExtraCategoryCounts[id][label]=
+      (dailyExtraCategoryCounts[id][label]||0)+number;
+    }
+   }
    n+=number;
   }
   if(!Number.isSafeInteger(n)||n<0||
@@ -102,6 +120,17 @@ async function readDirectDayCounts(db,hubId,date,keys,{maxRecords=MAX_DIRECT_REC
    if(person.teamKey!==teamKey)person.teamKey=null; // cross-team entries are not re-attributed
    person.totalCount+=n;
    for(const key of keys)person.counts[key]+=daily[key];
+   if(approvedExtras.size){
+    person.extraCounts ||= {};
+    person.extraCategoryCounts ||= {};
+    for(const [id,value] of Object.entries(dailyExtra))
+     person.extraCounts[id]=(person.extraCounts[id]||0)+value;
+    for(const [id,categories] of Object.entries(dailyExtraCategoryCounts)){
+     const source=person.extraCategoryCounts[id] ||= {};
+     for(const [category,value] of Object.entries(categories))
+      source[category]=(source[category]||0)+value;
+    }
+   }
   }
   const team=teams.get(teamKey)||{key:teamKey,name:teamName,totalCount:0,
     counts:Object.fromEntries(keys.map(k=>[k,0]))};
