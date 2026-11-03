@@ -1616,6 +1616,6 @@ test("verified person transfers an existing secondary company into count-only pr
  const updated=await api.submit(req("m",{workspaceCompanyId:"partner",date:"2026-10-31",
   staffId:"m",counts:{...zero(),NURO:3},expectedVersion:1}));
  assert.equal(updated.saved,true);
- assert.equal((await api.view(req("m",{date:"2026-10-31"})).records[0].totalCount,3);
+ assert.equal((await api.view(req("m",{date:"2026-10-31"}))).records[0].totalCount,3);
  assert.deepEqual(db.store.get("records/old"),oldSales);
 });
