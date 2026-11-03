@@ -6,15 +6,17 @@ const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const MONTH=/^\d{4}-(0[1-9]|1[0-2])$/;
 const fail=()=>{throw Error("PARTNER_PRODUCT_MONTH_UNVERIFIED");};
 const positive=n=>Number.isSafeInteger(n)&&n>=0;
-function projectPartnerProductMonth({hubId,cid,month,keys,workDocs=[],extraDocs=[]}={}){
+function projectPartnerProductMonth({hubId,cid,month,keys,workDocs=[],extraDocs=[],linkedIds=[]}={}){
  if(!ID.test(hubId||"")||!ID.test(cid||"")||!MONTH.test(month||"")||
    !Array.isArray(keys)||keys.length!==9||new Set(keys).size!==keys.length||
    keys.some(k=>typeof k!=="string"||!k)||!Array.isArray(workDocs)||
-   !Array.isArray(extraDocs)||workDocs.length>2000||extraDocs.length>2000)fail();
+   !Array.isArray(extraDocs)||workDocs.length>2000||extraDocs.length>2000||
+   !Array.isArray(linkedIds)||linkedIds.some(id=>!ID.test(id))||
+   new Set(linkedIds).size!==linkedIds.length)fail();
  const counts=Object.fromEntries(keys.map(k=>[k,0]));
  const privateCounts=Object.create(null),additionalCounts=Object.create(null);
  let primaryTotalCount=0,privateTotalCount=0,additionalTotalCount=0;
- const seenWork=new Set(),seenExtra=new Set();
+ const seenWork=new Set(),seenExtra=new Set(),blocked=new Set(linkedIds);
  const verifyDoc=(doc,seen)=>{
   const x=doc?.data?.();
   if(!x||typeof x!=="object"||!ID.test(x.staffId||"")||
@@ -57,7 +59,11 @@ function projectPartnerProductMonth({hubId,cid,month,keys,workDocs=[],extraDocs=
   const x=verifyDoc(doc,seenExtra);
   const normalized=normalizeExtraCounts(x.counts);
   if(x.totalCount!==normalized.total)fail();
-  for(const [id,n] of Object.entries(normalized.counts))add(additionalCounts,id,n);
+  for(const [id,n] of Object.entries(normalized.counts)){
+   // A linked master product must not appear in both original 9 and extra buckets.
+   if(n>0&&blocked.has(id))fail();
+   add(additionalCounts,id,n);
+  }
   additionalTotalCount+=normalized.total;
   if(!positive(additionalTotalCount))fail();
  }
