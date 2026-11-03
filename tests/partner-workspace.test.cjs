@@ -351,7 +351,13 @@ test("security invariants: only isolated partner collections; no destructive dat
  // archive is written in the same Firestore transaction; no document delete.
  assert.match(code,/tx\.create\(archivedRef/);
  assert.doesNotMatch(code.replaceAll("FieldValue.delete()",""),/\.delete\s*\(/);
- assert.doesNotMatch(code,/\.collection\s*\(\s*["'](?:records|products|recordCorrections|revenueGoals)["']\s*\)/);
+ // Financial sales originals remain unreadable here. Reviewed name-only
+ // product-master reads are allowed on the server, never sent as raw products.
+ assert.doesNotMatch(code,/\.collection\s*\(\s*["'](?:records|recordCorrections|revenueGoals)["']\s*\)/);
+ assert.equal([...code.matchAll(/db\.collection\("products"\)/g)].length,5,
+  "product master reads must remain reviewed and bounded");
+ assert.match(code,/projectMasterProducts\(/);
+ assert.match(code,/\.where\("companyId","==",s\.cid\)\.limit\(1001\)\.get\(\)/);
  assert.doesNotMatch(code,/\btx\.set\s*\(/);
  assert.match(code,/canViewRevenue:false,canViewUnitPrice:false/);
  assert.match(code,/partnerWorkAudits/);
