@@ -23,6 +23,9 @@ exports.getPartnerRankingGroups=onCall(opts,service.getPartnerRankingGroups);
 exports.setPartnerRankingGroups=onCall(opts,service.setPartnerRankingGroups);
 exports.getPartnerCountLinks=onCall(opts,service.getPartnerCountLinks);
 exports.setPartnerCountLink=onCall(opts,service.setPartnerCountLink);
+// Isolated ledger: never writes original nine categories, original sales or price metadata.
+exports.getPartnerAdditionalCounts=onCall(opts,service.viewAdditionalCounts);
+exports.submitPartnerAdditionalCounts=onCall(opts,service.submitAdditionalCounts);
 const codeAuth=makeCompanyCodeAuth({
  db:getFirestore(),getAuth,FieldValue,Timestamp,HttpsError,
  enabled:()=>process.env.PARTNER_COMPANY_CODE_AUTH_ENABLED==="enabled"
