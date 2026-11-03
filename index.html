@@ -23046,7 +23046,7 @@ function isPersistedRecordCountConsistent(record) {
   // recalculate/write the saved total, historic prices or revenue.
   const isCount = value =>
     (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) ||
-    (typeof value === "string" && /^\\d+$/.test(value) &&
+    (typeof value === "string" && /^\d+$/.test(value) &&
       Number.isSafeInteger(Number(value)));
   const saved = record?.totalCount;
   const rows = record?.results;
