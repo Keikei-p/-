@@ -56,7 +56,8 @@ export async function audit({request,backup=inspect,inventory=collect,clock=()=>
  if(!Number.isFinite(age)||age<0||age>48*3600*1000)stop('READY_BACKUP_TOO_OLD');
  const before=await inventory(get,{maxDocuments:10000});
  const first=auditSummary(before);
- if(first.registeredUnits.mismatchedResultTotals!==0)stop('STORED_RECORD_COUNT_MISMATCH');
+ // Keep the original data untouched. Report count mismatches only as
+ // aggregate diagnostics AFTER a second read establishes document stability.
  const digest=fingerprint(before);
  // The same typed fields, histories, CB/prices and identities must remain
  // unchanged throughout this read-only verification. Legitimate concurrent
@@ -79,6 +80,7 @@ export async function audit({request,backup=inspect,inventory=collect,clock=()=>
   directRecordCountMissing:first.registeredUnits.missingFields,
   independentlyMatchedDirectRecordTotals:first.registeredUnits.matchedResultTotals,
   unmatchedDirectRecordTotals:first.registeredUnits.mismatchedResultTotals,
+  independentDirectCountConsistent:first.registeredUnits.mismatchedResultTotals===0,
   unverifiedLegacyRecordTotals:first.registeredUnits.resultsMissingOrUnverifiable,
   noCustomerDataOrFinanceValuesLogged:true,
   // Still NOT proof of smartphone login/auth access; must be tested with real
@@ -110,6 +112,7 @@ async function main(){
   }})
  });
  console.log('NICO_LIVE_PARTNER_BOUNDARY_READ_ONLY '+JSON.stringify(result));
+ if(!result.independentDirectCountConsistent)stop('STORED_RECORD_COUNT_MISMATCH');
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  main().catch(error=>{
