@@ -13,6 +13,8 @@ const service=makeWorkspace({
 const opts={region:"asia-northeast1",maxInstances:3,
  cors:["https://nico-factory.web.app"]};
 exports.getPartnerWorkspace=onCall(opts,service.view);
+// Explicit opt-in: bounded monthly COUNT-ONLY projection, never deploy by CI.
+exports.getPartnerMonthlySharedCounts=onCall(opts,service.viewMonthly);
 exports.managePartnerWorkspace=onCall(opts,service.manage);
 exports.acceptPartnerWorkspaceInvite=onCall(opts,service.accept);
 exports.submitPartnerWorkspaceCounts=onCall(opts,service.submit);
