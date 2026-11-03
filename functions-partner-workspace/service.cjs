@@ -1151,9 +1151,14 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    let sharedConfig={revision:0,groups:[]},groupStandings=[],groupStatus="unverified";
    try{
     sharedConfig=await readRankingSettings(hubId);
+    // Date-effective, immutable mappings only. Future-dated links and
+    // unlinked catalog IDs MUST NOT contribute to a falsely complete rank.
+    const linksSnap=await countLinksRef(hubId).get();
+    const effectiveLinks=readLinks(linksSnap.exists?linksSnap.data():null,KEYS)
+     .links.filter(link=>link.effectiveFrom<=date);
     groupStandings=groupPersonalScores(sharedConfig.groups,
      [...people,...direct.people.map(person=>({...person,companyName:"直営"}))],
-     {categories:KEYS});
+     {categories:KEYS,productLinks:effectiveLinks});
     groupStatus="verified";
    }catch(error){
     // No raw errors, finance or hidden group names are serialized to clients.
