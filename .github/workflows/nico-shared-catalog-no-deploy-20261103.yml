@@ -27,6 +27,7 @@ jobs:
           node --check functions-partner-workspace/shared-direct-counts.cjs
           node --check functions-partner-workspace/service.cjs
           node --check functions-partner-workspace/index.js
+          node --check tools/production/verify-live-partner-boundary-readonly-20261103.mjs
       - name: Test publication isolation and preserve existing owner UI
         run: |
           node --test tests/partner-catalog-publication.test.cjs
@@ -36,6 +37,7 @@ jobs:
           node --test tests/partner-extra-shared-ranking.test.cjs
           node --test tests/partner-monthly-shared-counts.test.cjs
           node --test tests/partner-shared-monthly-ui.test.cjs
+          node --test tests/live-partner-boundary-readonly-20261103.test.mjs
           NODE_OPTIONS=--experimental-vm-modules node --test tests/partner-index-module-parse.test.cjs
           node --test tests/partner-finance-regression.test.cjs
           node --test tests/partner-shared-catalog-ui-contract.test.cjs
