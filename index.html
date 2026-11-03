@@ -14944,7 +14944,12 @@ pInline("pMainAcceptInvite").onclick=async()=>{
   else{
    const name=pInline("pMainInviteName").value.trim();
    if(!name)throw Error("name");
-   result=(await partnerInlineAccept({token:invite.token,name,transferCurrentCompany:false})).data;
+   // One UID must not retain an internal money-bearing membership while also
+   // joining a partner. The member must explicitly agree to an archival,
+   // count-only transfer. Existing Owner accounts are rejected server-side.
+   const consent=window.confirm("協力店への参加を確定しますか？ 自社の所属がある場合は旧自社へのアクセスが終了します。過去の実績・売上・当時単価・訂正履歴はそのまま保存します。");
+   if(!consent){button.disabled=false;pInline("pMainInviteStatus").textContent="参加を取り消しました。";return;}
+   result=(await partnerInlineAccept({token:invite.token,name,transferCurrentCompany:true})).data;
   }
   if(auth.currentUser?.uid!==user.uid)return;
   if(!result?.partnerCompanyId||!partnerMainValidId(result.partnerCompanyId))throw Error("response");
