@@ -1524,3 +1524,20 @@ test("unclassified historic NURO entries stay unclassified and are never mapped 
  const owner=await api.view(req("h",{date,partnerCompanyId:"partner"}));
  assert.equal(owner.partnerTeamDetails.teams[0].cbCounts.NURO.unclassified,4);
 });
+
+test("old phone remembered workspace ID remains count-only after partner becomes primary",async()=>{
+ const {api,req,db}=setup();
+ // Existing direct partner principal as it will be after protected transfer.
+ const current=db.store.get("users/p");
+ assert.equal(current.companyId,"partner");
+ assert.equal(current.accessKind,"partner");
+ const normal=await api.view(req("p",{date:"2026-10-31"}));
+ const remembered=await api.view(req("p",{date:"2026-10-31",workspaceCompanyId:"partner"}));
+ assert.deepEqual(remembered,normal,"cached same partner company must not lock out count screen");
+ assert.ok(!JSON.stringify(remembered).includes("totalRevenue"));
+ assert.ok(!JSON.stringify(remembered).includes("unitPrice"));
+ await assert.rejects(api.view(req("p",{date:"2026-10-31",workspaceCompanyId:"hub"})),
+  {code:"permission-denied"});
+ await assert.rejects(api.view(req("h",{date:"2026-10-31",workspaceCompanyId:"hub"})),
+  {code:"permission-denied"});
+});
