@@ -37,6 +37,8 @@ jobs:
           node --test tests/partner-extra-shared-ranking.test.cjs
           node --test tests/partner-monthly-shared-counts.test.cjs
           node --test tests/partner-shared-monthly-ui.test.cjs
+          node --test tests/count-drift-diagnostic-readonly-20261103.test.mjs
+          node --test tests/count-drift-correction-readonly.test.mjs
           node --test tests/live-partner-boundary-readonly-20261103.test.mjs
           NODE_OPTIONS=--experimental-vm-modules node --test tests/partner-index-module-parse.test.cjs
           node --test tests/partner-finance-regression.test.cjs
