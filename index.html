@@ -13691,6 +13691,93 @@ for(const which of ["Individual","Product"]){
    load();
  };
 }
+async function loadPartnerMonthlySharedRankings(){
+ const monthInput=pInline("partnerSharedRankingsMonth");
+ const month=monthInput.value,uid=auth.currentUser?.uid;
+ const status=pInline("partnerSharedRankingsStatus"),content=pInline("partnerSharedRankingContent");
+ const seq=++ownerMonthlyRankGeneration;
+ ++sharedDailyRankingGeneration; // invalidate any older daily response
+ content.replaceChildren();
+ if(partnerSharedRankPeriod!=="month"||!uid||
+    !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)||
+    month>getTodayString().slice(0,7)){
+  status.textContent="対象月を確認してください。";return;
+ }
+ status.textContent="直営＋協力店の月間件数を照合しています…";
+ try{
+  const payload={month};
+  if(partnerInlineWorkspaceCompany)
+   payload.workspaceCompanyId=partnerInlineWorkspaceCompany;
+  const key=uid+"|partner|"+(partnerInlineWorkspaceCompany||"")+"|"+month;
+  const old=ownerMonthlyRankCache.get(key),cached=old&&Date.now()-old.checkedAt<180000;
+  const response=cached?old.value:(await readPartnerMonthlySharedCounts(payload)).data;
+  if(seq!==ownerMonthlyRankGeneration||auth.currentUser?.uid!==uid||
+     partnerSharedRankPeriod!=="month"||monthInput.value!==month)return;
+  if(response?.scope!=="shared_monthly_counts_only"||response.role!=="partner"||
+     response.month!==month||response.complete!==false||
+     !Array.isArray(response.people)||!Array.isArray(response.teams)||
+     !Array.isArray(response.companies)||!Array.isArray(response.categories)||
+     !response.productCounts||!response.direct||!Array.isArray(response.direct.people)||
+     !Array.isArray(response.direct.teams)||!response.direct.counts||
+     response.categories.length!==PARTNER_QUICK_RANK_KEYS.length||
+     response.people.length>4000||response.teams.length>4000||
+     !Number.isSafeInteger(response.additionalTotalCount)||response.additionalTotalCount<0)
+   throw Error("partner_monthly_contract");
+  const categories=[...PARTNER_QUICK_RANK_KEYS],direct=response.direct;
+  if(categories.some(k=>!response.categories.includes(k)||
+     !Number.isSafeInteger(response.productCounts[k])||response.productCounts[k]<0||
+     !Number.isSafeInteger(direct.counts[k])||direct.counts[k]<0))
+   throw Error("partner_monthly_categories");
+  const personRows=[
+   ...response.people.map(p=>({name:"🤝 "+p.companyName+"・"+p.name,count:p.totalCount})),
+   ...direct.people.map(p=>({name:"🏢 直営・"+p.name,count:p.totalCount}))
+  ];
+  const teamRows=[
+   ...response.teams.map(t=>({name:"🤝 "+t.companyName+"・"+t.name,count:t.totalCount})),
+   ...direct.teams.map(t=>({name:"🏢 直営・"+t.name,count:t.totalCount}))
+  ];
+  const productTotals=new Map(categories.map(k=>[
+   k,response.productCounts[k]+direct.counts[k]
+  ]));
+  if(direct.otherCount)productTotals.set("その他（直営）",direct.otherCount);
+  if(response.additionalTotalCount)
+   productTotals.set("追加商材（協力店）",response.additionalTotalCount);
+  if(!cached){
+   ownerMonthlyRankCache.set(key,{checkedAt:Date.now(),value:response});
+   if(ownerMonthlyRankCache.size>4)
+    ownerMonthlyRankCache.delete(ownerMonthlyRankCache.keys().next().value);
+  }
+  const selected=partnerSameAppSelectedPanel;
+  const headings={individual:"🏆 個人ランキング",team:"👥 班ランキング",product:"📦 商材別ランキング"};
+  if(!Object.hasOwn(headings,selected))return;
+  pInline("partnerSharedRankingsSection").querySelector("h3").textContent=
+   headings[selected]+"（"+month+"・月間暫定）";
+  const rows={individual:personRows,team:teamRows,
+   product:[...productTotals].map(([name,count])=>({name,count}))};
+  if(selected==="product"&&response.groupStatus==="verified"&&
+     Array.isArray(response.groupStandings)&&response.groupStandings.length){
+   renderPartnerSharedGroupCards(content,response);
+  }else{
+   appendSharedRankingRows(content,headings[selected],rows[selected],false);
+  }
+  status.textContent="月間途中経過｜未報告・未照合は0件扱いせず、全社合同の暫定順位を表示しています。";
+ }catch(error){
+  if(seq!==ownerMonthlyRankGeneration||auth.currentUser?.uid!==uid)return;
+  content.replaceChildren();
+  status.textContent="月間の集計を照合できません。入力データ・権限・読取上限を確認してください。";
+  console.error("partner_monthly_rank_unavailable",error?.code||"unverified");
+ }
+}
+const partnerSharedRankingsMonth=pInline("partnerSharedRankingsMonth");
+partnerSharedRankingsMonth.value=getTodayString().slice(0,7);
+partnerSharedRankingsMonth.max=getTodayString().slice(0,7);
+pInline("partnerSharedRankingsMonthButton").onclick=()=>{
+ partnerSharedRankPeriod="month";
+ void loadPartnerMonthlySharedRankings();
+};
+partnerSharedRankingsMonth.onchange=()=>{
+ if(partnerSharedRankPeriod==="month")void loadPartnerMonthlySharedRankings();
+};
 pInline("partnerSharedRankingsRefresh").onclick=()=>{
  partnerSharedRankPeriod="day";
  void loadSharedDailyStandings("partner",true);
