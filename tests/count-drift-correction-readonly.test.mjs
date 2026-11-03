@@ -22,6 +22,8 @@ test("historical correction links to mismatched record without revealing record 
   recordId:{stringValue:"example"},
   before:correctionSnapshot(1),after:correctionSnapshot(1)
  }}};
+ original.value.updateTime="2026-11-02T00:00:00Z";
+ correction.value.fields.createdAt={timestampValue:"2026-11-01T00:00:00Z"};
  const result=classifyCountDrift({...meta,documents:[original,correction]});
  assert.equal(result.mismatchedRecords,1);
  assert.equal(result.mismatchKinds[0].relatedCorrectionDocuments,1);
@@ -31,7 +33,7 @@ test("historical correction links to mismatched record without revealing record 
   verifiedAfterSnapshots:1,afterSavedMatchesCurrent:1,
   afterLinesMatchCurrent:0,afterBothMatchCurrent:0,
   unverifiedSnapshots:0,
-  currentVsSingleCorrection:{addedProductRows:0,removedProductRows:0,quantityChangedProductRows:1,currentRecordUpdatedAfterCorrection:null}
+  currentVsSingleCorrection:{addedProductRows:0,removedProductRows:0,quantityChangedProductRows:1,currentRecordUpdatedAfterCorrection:true}
  });
  assert.ok(!JSON.stringify(result).includes("example"));
  assert.ok(!JSON.stringify(result).includes("correction1"));
