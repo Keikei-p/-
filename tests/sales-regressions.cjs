@@ -1679,3 +1679,71 @@ test('Temporary partner company tab only reads scoped, count-only backend', () =
   assert.match(html,/checkedEntry\.mode!=="internal"/,
     'partner users must remain barred from finance-capable legacy workspace');
 });
+
+
+test('historical record quantity guard rejects surplus/unknown counts without editing stored data',()=>{
+  const {isPersistedRecordCountConsistent:valid}=context(['isPersistedRecordCountConsistent']);
+  const original={totalCount:2,totalRevenue:143000,results:{
+    p1:{count:1,revenuePerUnit:48000},p2:{count:1,revenuePerUnit:95000},
+    legacyResidual:{count:1,revenuePerUnit:1000}
+  }};
+  const savedBefore=JSON.stringify(original);
+  assert.equal(valid(original),false,'surplus historical product row must block');
+  assert.equal(JSON.stringify(original),savedBefore,'guard must be read-only');
+  assert.equal(valid({totalCount:2,results:{a:{count:1},b:{count:1}}}),true);
+  assert.equal(valid({totalCount:'2',results:{a:{count:'2'}}}),true);
+  assert.equal(valid({totalCount:0,results:{}}),true,'zero count report still works');
+  assert.equal(valid({totalCount:1,results:{a:{count:2}}}),false);
+  assert.equal(valid({totalCount:0,results:{a:{count:''}}}),false);
+  assert.equal(valid({totalCount:' ',results:{}}),false);
+  assert.equal(valid({totalCount:1,results:{a:{}}}),false);
+  assert.equal(valid({totalCount:3,results:[]}),false);
+  assert.equal(valid({totalCount:1,results:{a:{count:-1}}}),false);
+  assert.equal(valid({totalCount:1,results:{a:{count:1.5}}}),false);
+  assert.equal(valid({totalCount:1,results:{a:{count:NaN}}}),false);
+  assert.equal(valid({totalCount:1,results:{a:{count:'1e0'}}}),false);
+  assert.equal(valid({totalCount:2,results:{a:{count:Number.MAX_SAFE_INTEGER},b:{count:1}}}),false);
+});
+
+test('transaction refuses existing corrupt totals before record or correction writes; valid saves remain atomic',async()=>{
+  const current={companyId:'internal',uid:'u1',date:'2026-11-03',
+    totalCount:2,totalRevenue:3500,results:{a:{count:2,revenuePerUnit:1750},b:{count:1,revenuePerUnit:0}}};
+  const immutable=JSON.stringify(current);
+  const writes=[],audit=[];
+  let existing=true;
+  const ctx=context(['recordConflict','isPersistedRecordCountConsistent','persistDailyRecord'],{
+    db:{},
+    recordsCollectionQuery:()=>({}),
+    where:()=>({}),
+    query:()=>({}),
+    getDocsFromServer:async()=>({size:existing?1:0,docs:existing?[{id:'r1'}]:[]}),
+    recordRevision:()=> 'v1',
+    runTransaction:async(_db,callback)=>callback({
+      get:async()=>({
+        exists:()=>existing,
+        id:'r1',data:()=>current
+      }),
+      set:(...args)=>writes.push(args)
+    })
+  });
+  const ref={id:'r1'};
+  const data={uid:'u1',date:'2026-11-03',totalCount:2,results:{a:{count:2}}};
+  const correction=()=>audit.push('new correction');
+  await assert.rejects(ctx.persistDailyRecord(ref,data,{id:'r1'},'v1',correction),
+    /既存実績の総件数と商材別件数が一致しません/);
+  assert.equal(writes.length,0,'no Firestore record changes when corrupt');
+  assert.equal(audit.length,0,'no misleading correction row');
+  assert.equal(JSON.stringify(current),immutable,'not even local source is mutated');
+
+  current.results={a:{count:2,revenuePerUnit:1750}};
+  await ctx.persistDailyRecord(ref,data,{id:'r1'},'v1',correction);
+  assert.equal(writes.length,1,'validated existing save uses original transaction');
+  assert.equal(audit.length,1,'validated correction remains in same transaction');
+  assert.deepEqual(writes[0][2],{mergeFields:Object.keys(data)},
+    'original mergeFields (whole results) contract retained');
+
+  existing=false;
+  await ctx.persistDailyRecord(ref,data,null,null,null);
+  assert.equal(writes.length,2,'new reports still save');
+  assert.equal(audit.length,1,'new reports do not invent correction history');
+});
