@@ -12,6 +12,7 @@ import path from 'node:path';
 import {collect, auditSummary, fingerprint, validateSafeCall} from '../readonly-backup/backup.mjs';
 import {inspect} from './inspect-firestore-backups-readonly.mjs';
 import {CANDIDATE} from './release-partner-boundary.mjs';
+import {classifyCountDrift} from '../readonly-backup/count-drift-diagnostic.mjs';
 
 const PROJECT='sales-management-cc116';
 const RULES='https://firebaserules.googleapis.com/v1/projects/'+PROJECT;
@@ -56,6 +57,9 @@ export async function audit({request,backup=inspect,inventory=collect,clock=()=>
  if(!Number.isFinite(age)||age<0||age>48*3600*1000)stop('READY_BACKUP_TOO_OLD');
  const before=await inventory(get,{maxDocuments:10000});
  const first=auditSummary(before);
+ const countDrift=classifyCountDrift(before);
+ if(countDrift.mismatchedRecords!==first.registeredUnits.mismatchedResultTotals)
+  stop('DRIFT_DIAGNOSTIC_NOT_CONSISTENT');
  // Keep the original data untouched. Report count mismatches only as
  // aggregate diagnostics AFTER a second read establishes document stability.
  const digest=fingerprint(before);
@@ -80,6 +84,7 @@ export async function audit({request,backup=inspect,inventory=collect,clock=()=>
   directRecordCountMissing:first.registeredUnits.missingFields,
   independentlyMatchedDirectRecordTotals:first.registeredUnits.matchedResultTotals,
   unmatchedDirectRecordTotals:first.registeredUnits.mismatchedResultTotals,
+  countDriftDiagnosis:countDrift,
   independentDirectCountConsistent:first.registeredUnits.mismatchedResultTotals===0,
   unverifiedLegacyRecordTotals:first.registeredUnits.resultsMissingOrUnverifiable,
   noCustomerDataOrFinanceValuesLogged:true,
