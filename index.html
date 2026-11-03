@@ -13545,23 +13545,88 @@ async function loadSharedDailyStandings(where,force=false){
 }
 
 
+// Explicit opt-in monthly count mode. Never switch the original revenue rank
+// to quantities or perform 31 unbounded daily reads in the browser.
+const ownerMonthlyRankCache=new Map();
+let ownerMonthlyRankGeneration=0;
+let ownerJointIndividualPeriod="day",ownerJointProductPeriod="day";
+async function loadOwnerMonthlySharedRanks(which){
+ const monthField=which==="Product"?"ownerJointProductMonth":"ownerJointIndividualMonth";
+ const month=document.getElementById(monthField).value;
+ const status=document.getElementById("ownerJoint"+which+"Status");
+ const uid=auth.currentUser?.uid,seq=++ownerMonthlyRankGeneration;
+ // Cancel obsolete day fetches; stale responses must not overwrite new month.
+ ++sharedDailyRankingGeneration;
+ if(!uid||!canReadSharedCountOnlyRanks()||
+    !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)||
+    month>getTodayString().slice(0,7)){
+  status.textContent="対象月と権限を確認してください。";return;
+ }
+ status.textContent="直営・協力店の月間件数を照合しています。月間は暫定順位です…";
+ try{
+  const key=uid+"|"+(currentUserData?.companyId||"")+"|"+month;
+  const old=ownerMonthlyRankCache.get(key),cached=old&&Date.now()-old.checkedAt<180000;
+  const response=cached?old.value:(await readPartnerMonthlySharedCounts({month})).data;
+  if(seq!==ownerMonthlyRankGeneration||auth.currentUser?.uid!==uid||
+     document.getElementById(monthField).value!==month)return;
+  if(response?.scope!=="shared_monthly_counts_only"||response.role!=="hub"||
+     response.month!==month||response.complete!==false||
+     !Array.isArray(response.people)||!Array.isArray(response.companies)||
+     !response.direct||!Array.isArray(response.direct.people)||
+     !Array.isArray(response.groupStandings)||response.people.length>4000||
+     !Number.isSafeInteger(response.recordsVerified)||response.recordsVerified>10000||
+     !Number.isSafeInteger(response.partnerRowsVerified)||response.partnerRowsVerified>10000)
+   throw Error("monthly_rank_contract");
+  const personRows=[
+   ...response.people.map(p=>({name:"🤝 "+p.companyName+"・"+p.name,count:p.totalCount})),
+   ...response.direct.people.map(p=>({name:"🏢 直営・"+p.name,count:p.totalCount}))
+  ];
+  if(personRows.some(p=>typeof p.name!=="string"||
+     !Number.isSafeInteger(p.count)||p.count<0))throw Error("monthly_rank_people");
+  if(!cached){
+   ownerMonthlyRankCache.set(key,{checkedAt:Date.now(),value:response});
+   if(ownerMonthlyRankCache.size>4)
+    ownerMonthlyRankCache.delete(ownerMonthlyRankCache.keys().next().value);
+  }
+  if(which==="Individual"){
+   if(!ownerJointIndividualMode||ownerJointIndividualPeriod!=="month")return;
+   ownerJointIndividualSnapshot={people:personRows,complete:false,date:month+"（月間・暫定）"};
+   renderOwnerJointIndividualRanking();
+  }else{
+   if(!ownerJointProductMode||ownerJointProductPeriod!=="month")return;
+   ownerJointProductDateKey=month+"（月間・暫定）";
+   ownerJointProductSnapshot=response;
+   renderOwnerJointProductRanking(response);
+  }
+  status.textContent="月間件数の途中経過です。未報告・未照合の実績は0件として確定していません。";
+ }catch(error){
+  if(seq!==ownerMonthlyRankGeneration||auth.currentUser?.uid!==uid)return;
+  status.textContent="月間の件数を照合できません。読取上限・認証・権限を確認してください。既存売上データは維持しています。";
+  if(which==="Individual"){ownerJointIndividualSnapshot=null;renderOwnerJointIndividualRanking();}
+  else{ownerJointProductSnapshot=null;renderOwnerJointProductRanking(null);}
+  console.error("shared_monthly_count_unavailable",error?.code||"unverified");
+ }
+}
+
 const ownerJointIndividualDate=document.getElementById("ownerJointIndividualDate");
 ownerJointIndividualDate.value=getTodayString();
 ownerJointIndividualDate.max=getTodayString();
 document.getElementById("ownerJointIndividualButton").onclick=()=>{
  if(!canReadSharedCountOnlyRanks())return;
+ ++ownerMonthlyRankGeneration;ownerJointIndividualPeriod="day";
  ownerJointIndividualMode=true;ownerJointIndividualSnapshot=null;
  document.getElementById("ownerSharedDateIndividual").value=ownerJointIndividualDate.value;
  renderOwnerJointIndividualRanking();
  void loadSharedDailyStandings("Individual",true);
 };
 document.getElementById("ownerOriginalIndividualButton").onclick=()=>{
+ ++ownerMonthlyRankGeneration;++sharedDailyRankingGeneration;
  ownerJointIndividualMode=false;ownerJointIndividualSnapshot=null;
  renderDashboard();
  document.getElementById("ownerJointIndividualStatus").textContent="自社の従来ランキングを表示しています。";
 };
 ownerJointIndividualDate.onchange=()=>{
- if(!ownerJointIndividualMode)return;
+ if(!ownerJointIndividualMode||ownerJointIndividualPeriod!=="day")return;
  ownerJointIndividualSnapshot=null;
  document.getElementById("ownerSharedDateIndividual").value=ownerJointIndividualDate.value;
  renderOwnerJointIndividualRanking();
@@ -13572,6 +13637,7 @@ const ownerJointProductDate=document.getElementById("ownerJointProductDate");
 ownerJointProductDate.value=getTodayString();ownerJointProductDate.max=getTodayString();
 document.getElementById("ownerJointProductButton").onclick=()=>{
  if(!isCurrentCompanyManager())return;
+ ++ownerMonthlyRankGeneration;ownerJointProductPeriod="day";
  ownerJointProductMode=true;
  ownerJointProductSnapshot=null;
  ownerJointProductDateKey=ownerJointProductDate.value;
@@ -13581,18 +13647,45 @@ document.getElementById("ownerJointProductButton").onclick=()=>{
  void loadSharedDailyStandings("Product",true);
 };
 document.getElementById("ownerOriginalProductButton").onclick=()=>{
+ ++ownerMonthlyRankGeneration;++sharedDailyRankingGeneration;
  ownerJointProductMode=false;ownerJointProductSnapshot=null;
  renderProductMemberRanking(records.filter(r=>r.date?.startsWith(dashboardMonth.value)));
  document.getElementById("ownerJointProductStatus").textContent="自社の従来の月間ランキングを表示しています。";
 };
 ownerJointProductDate.onchange=()=>{
- if(!ownerJointProductMode)return;
+ if(!ownerJointProductMode||ownerJointProductPeriod!=="day")return;
  ownerJointProductSnapshot=null;
  ownerJointProductDateKey=ownerJointProductDate.value;
  document.getElementById("ownerSharedDateProduct").value=ownerJointProductDateKey;
  void loadSharedDailyStandings("Product",true);
 };
 
+
+for(const which of ["Individual","Product"]){
+ const monthInput=document.getElementById("ownerJoint"+which+"Month");
+ const monthButton=document.getElementById("ownerJoint"+which+"MonthButton");
+ monthInput.value=getTodayString().slice(0,7);
+ monthInput.max=getTodayString().slice(0,7);
+ const load=()=>{
+  if(!canReadSharedCountOnlyRanks())return;
+  if(which==="Individual"){
+   ownerJointIndividualMode=true;ownerJointIndividualPeriod="month";
+   ownerJointIndividualSnapshot=null;
+   renderOwnerJointIndividualRanking();
+  }else{
+   ownerJointProductMode=true;ownerJointProductPeriod="month";
+   ownerJointProductSnapshot=null;
+   renderOwnerJointProductRanking(null);
+  }
+  void loadOwnerMonthlySharedRanks(which);
+ };
+ monthButton.onclick=load;
+ monthInput.onchange=()=>{
+  if(which==="Individual"&&ownerJointIndividualMode&&ownerJointIndividualPeriod==="month"||
+     which==="Product"&&ownerJointProductMode&&ownerJointProductPeriod==="month")
+   load();
+ };
+}
 pInline("partnerSharedRankingsRefresh").onclick=()=>loadSharedDailyStandings("partner",true);
 pInline("pInlineReloadSharedProducts").onclick=()=>void loadPartnerPublishedProductList();
 pInline("ownerSharedRankingsRefresh").onclick=()=>loadSharedDailyStandings("owner",true);
