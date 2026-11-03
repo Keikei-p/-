@@ -34,3 +34,30 @@ test("corrections remain atomic, append-only and old records are updated with re
  const saved=html.slice(correctionEnd,correctionEnd+500);
  assert.match(saved,/getDoc\(/);
 });
+
+
+// Match the reviewed release-safe guard, but keep the partner-rank UI intact.
+test("current stored totals are verified before any correction transaction writes",()=>{
+ const vm=require("node:vm");
+ const begin=html.indexOf("function isPersistedRecordCountConsistent(record) {");
+ const end=html.indexOf("async function persistDailyRecord(",begin);
+ assert.ok(begin>0&&end>begin);
+ const sandbox={};
+ vm.runInNewContext(html.slice(begin,end)+";this.guard=isPersistedRecordCountConsistent;",sandbox);
+ const check=sandbox.guard;
+ assert.equal(check({totalCount:2,results:{a:{count:1},b:{count:"1"}}}),true);
+ assert.equal(check({totalCount:0,results:{}}),true);
+ assert.equal(check({totalCount:1,results:{a:{count:1},b:{count:1}}}),false);
+ assert.equal(check({totalCount:2,results:{a:{count:1}}}),false);
+ assert.equal(check({totalCount:1,results:{a:{count:""}}}),false);
+ assert.equal(check({totalCount:1,results:{a:{count:-1},b:{count:2}}}),false);
+ assert.equal(check({totalCount:1,results:null}),false);
+ assert.equal(check({totalCount:"1e2",results:{a:{count:100}}}),false);
+ const persist=html.slice(end,html.indexOf("function findDailyRecord(",end));
+ const revision=persist.indexOf("recordRevision(current) !== expectedRevision");
+ const guardAt=persist.indexOf("isPersistedRecordCountConsistent(current)");
+ const saveAt=persist.indexOf("transaction.set(recordRef, data");
+ const auditAt=persist.indexOf("writeCorrection(transaction)");
+ assert.ok(revision>=0&&guardAt>revision&&saveAt>guardAt&&auditAt>saveAt);
+ assert.doesNotMatch(persist,/transaction\.delete\(/);
+});
