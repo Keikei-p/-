@@ -1031,19 +1031,24 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   // records, cross-partner collections, names or prices enter this endpoint.
   const s=await scope(a.uid,null,d.workspaceCompanyId);
   if(s.kind!=="partner"||!ID.test(s.cid)||!ID.test(s.hubId))fail();
-  const [work,extra]=await Promise.all([
+  const [work,extra,linksSnap]=await Promise.all([
    collection(s.cid,"partnerWorkEntries")
     .where("date",">=",first).where("date","<=",last).limit(2001).get(),
    collection(s.cid,"partnerAdditionalCountEntries")
-    .where("date",">=",first).where("date","<=",last).limit(2001).get()
+    .where("date",">=",first).where("date","<=",last).limit(2001).get(),
+   countLinksRef(s.hubId).get()
   ]);
   // Avoid displaying incomplete months as authoritative totals when capped.
   if(work.size>2000||extra.size>2000)fail("resource-exhausted");
   let summary;
-  try{summary=projectPartnerProductMonth({
-   hubId:s.hubId,cid:s.cid,month:d.month,keys:KEYS,
-   workDocs:work.docs,extraDocs:extra.docs
-  });}catch{fail("data-loss");}
+  try{
+   const linked=readLinks(linksSnap.exists?linksSnap.data():null,KEYS).links;
+   summary=projectPartnerProductMonth({
+    hubId:s.hubId,cid:s.cid,month:d.month,keys:KEYS,
+    workDocs:work.docs,extraDocs:extra.docs,
+    linkedIds:linked.map(link=>link.productId)
+   });
+  }catch{fail("data-loss");}
   return {scope:"partner_product_monthly_counts_only",month:d.month,
    role:s.role,companyName:clean(s.companyName),...summary};
  }
