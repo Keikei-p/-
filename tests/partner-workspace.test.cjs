@@ -1541,3 +1541,81 @@ test("old phone remembered workspace ID remains count-only after partner becomes
  await assert.rejects(api.view(req("h",{date:"2026-10-31",workspaceCompanyId:"hub"})),
   {code:"permission-denied"});
 });
+
+
+test("verified person transfers an existing secondary company into count-only primary without touching historical sales",async()=>{
+ const {db,api,req,zero}=setup();
+ // An original internal employee with existing sales-related flags and history.
+ const internal={uid:"m",companyId:"hub",email:"m@example.com",name:"以前の自社従業員",
+  companyRole:"member",role:"member",teamId:"former",active:true,
+  accessKind:"internal",memberType:"direct",canViewRevenue:true,canViewUnitPrice:true,
+  teamHistory:[{effectiveDate:"2026-10-01",fromTeamId:"other",toTeamId:"former"}],
+  importantHistoricalFlag:"retain"};
+ db.seed("users/m",internal);
+ db.seed("companies/hub/members/m",{...internal,joinedAt:"2025-10-01"});
+ const originalUser=clone(db.store.get("users/m"));
+ const originalMember=clone(db.store.get("companies/hub/members/m"));
+ const oldFinance=clone(db.store.get("products/money"));
+ const oldSales=clone(db.store.get("records/old"));
+ const teamId=(await api.manage(req("p",{action:"addTeam",name:"移籍先班"}))).teamId;
+ const invite=await api.manage(req("p",{action:"createInvite",email:"m@example.com",
+  teamId,role:"member"}));
+ const joined=await api.accept(req("m",{token:invite.token,name:"協力店スタッフ"}));
+ assert.equal(joined.secondaryMembership,true);
+ const originalContext=clone(db.store.get("partnerWorkspaceContexts/m"));
+ const saved=await api.submit(req("m",{workspaceCompanyId:"partner",date:"2026-10-31",
+  staffId:"m",counts:{...zero(),NURO:2},expectedVersion:0}));
+ assert.equal(saved.saved,true);
+ const partnerCount=clone(db.store.get("companies/partner/partnerWorkEntries/2026-10-31__m"));
+ const sharedCount=clone(db.store.get("companies/hub/partnerWorkCountDays/2026-10-31/reports/partner"));
+ const before=clone([...db.store]);
+ const preview=await api.transferSecondary(req("m",{action:"preview",
+  confirmation:"I_ACCEPT_PARTNER_ONLY_ACCESS"}));
+ assert.deepEqual(preview,{eligible:true,countsOnly:true,
+  oldHistoricalSalesRetained:true,requiresUserConfirmation:true});
+ assert.deepEqual([...db.store],before,"preview must never write");
+ await assert.rejects(api.transferSecondary(req("h",{action:"confirm",
+  confirmation:"I_ACCEPT_PARTNER_ONLY_ACCESS"})),{code:"failed-precondition"});
+ await assert.rejects(api.transferSecondary(req("m",{action:"confirm",
+  confirmation:"not_confirmed"})),{code:"invalid-argument"});
+ assert.deepEqual([...db.store],before,"unauthorized calls must not alter anything");
+ const result=await api.transferSecondary(req("m",{action:"confirm",
+  confirmation:"I_ACCEPT_PARTNER_ONLY_ACCESS"}));
+ assert.deepEqual(result,{transferred:true,countsOnly:true,historyPreserved:true});
+ const archive=db.store.get("partnerHistoricalTransfers/m");
+ assert.deepEqual(archive.originalUser,originalUser);
+ assert.deepEqual(archive.originalMember,originalMember);
+ assert.deepEqual(archive.originalContext,originalContext);
+ const user=db.store.get("users/m");
+ assert.equal(user.companyId,"partner");
+ assert.equal(user.accessKind,"partner");
+ assert.equal(user.memberType,"cooperator");
+ assert.equal(user.canViewRevenue,false);
+ assert.equal(user.canViewUnitPrice,false);
+ assert.equal(user.teamId,teamId);
+ assert.equal(user.role,"member");
+ assert.equal(user.importantHistoricalFlag,undefined);
+ assert.equal(db.store.get("companies/hub/members/m").active,false);
+ assert.equal(db.store.get("partnerWorkspaceContexts/m").active,false);
+ assert.equal(db.store.get("partnerWorkspaceContexts/m").transferredToPrimary,true);
+ assert.deepEqual(db.store.get("products/money"),oldFinance);
+ assert.deepEqual(db.store.get("records/old"),oldSales);
+ assert.deepEqual(db.store.get("companies/partner/partnerWorkEntries/2026-10-31__m"),partnerCount);
+ assert.deepEqual(db.store.get("companies/hub/partnerWorkCountDays/2026-10-31/reports/partner"),sharedCount);
+ const direct=await api.view(req("m",{date:"2026-10-31"}));
+ const oldPhone=await api.view(req("m",{date:"2026-10-31",workspaceCompanyId:"partner"}));
+ assert.equal(direct.records[0].totalCount,2);
+ assert.deepEqual(oldPhone,direct,"cached phone/company ID still reads partner counts");
+ assert.equal((await api.view(req("m",{date:"2026-10-31",
+  resolveSecondaryWorkspace:true})).workspaceCompanyId,"partner");
+ assert.ok(!JSON.stringify(direct).includes("totalRevenue"));
+ assert.ok(!JSON.stringify(direct).includes("unitPrice"));
+ await assert.rejects(api.transferSecondary(req("m",{action:"confirm",
+  confirmation:"I_ACCEPT_PARTNER_ONLY_ACCESS"})),{code:"failed-precondition"});
+ // Existing count editing works after transfer, no second record or old sales mutation.
+ const updated=await api.submit(req("m",{workspaceCompanyId:"partner",date:"2026-10-31",
+  staffId:"m",counts:{...zero(),NURO:3},expectedVersion:1}));
+ assert.equal(updated.saved,true);
+ assert.equal((await api.view(req("m",{date:"2026-10-31"})).records[0].totalCount,3);
+ assert.deepEqual(db.store.get("records/old"),oldSales);
+});
