@@ -14045,7 +14045,7 @@ function partnerInlineHasUnsavedCounts(){
     (entry?.privateCounts?.[node.dataset.privateCountId]??0);
   if(Number(current)!==previous)return true;
  }
- return false;
+ return partnerExtraDirty();
 }
 function renderPartnerEntryTotals(){
  const target=pInline("pInlineEntryTotals");
@@ -14155,6 +14155,7 @@ function partnerInlineRenderCounts(){
   !allowedTeams.some(t=>t.id===teamSelect.value));
  pInline("pInlineVersion").textContent=entry?"登録済み・第"+entry.version+"版":"未登録";
  pInline("pInlineSave").textContent=entry?"変更した件数を保存（訂正）":"実績を一括登録";
+ renderPartnerExtra();
  renderPartnerEntryTotals();
 }
 
@@ -14448,6 +14449,7 @@ async function partnerInlineFetch(){
      typeof snap.companyName!=="string"||snap.companyName.length===0)
    throw Error("partner_count_schema");
   partnerInlineData=snap;partnerInlineRender();
+  void loadPartnerExtra();
   partnerInlineStatus("最新の件数を表示しています。");
   // Date changes and saved corrections must refresh the shared read-only
   // scoreboard currently on screen; never reuse the previous day's figures.
@@ -14672,6 +14674,7 @@ pInline("pInlineStaff").onchange=()=>{
   return;
  }
  partnerInlineRenderCounts();
+ renderPartnerExtra();
 };
 function partnerInlineClearFields(){
  for(const input of pInline("pInlineCountFields").querySelectorAll("input:not([readonly])"))
@@ -14910,7 +14913,12 @@ function partnerInlineCountsUnchanged(snap,staffId,counts,privateCounts,cbCounts
   (!cbCounts||PARTNER_NURO_CB_TIERS.every(tier=>
    (partnerUiCbCountSnapshot(previous)[tier]??0)===(cbCounts.NURO?.[tier]??0)));
 }
-pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
+pInline("pInlineSave").onclick=()=>{
+ if(partnerExtraDirty()){
+  pInline("pInlineExtraStatus").textContent="追加商材に未保存の件数があります。先に「追加商材の件数を保存」で登録してください。";
+  return;
+ }
+ return partnerInlineRun(async()=>{
  const snap=partnerInlineData,staffId=pInline("pInlineStaff").value;
  const date=snap?.date,workspace=partnerInlineWorkspaceCompany,uid=auth.currentUser?.uid;
  if(!snap||!uid||date!==pInline("pInlineDate").value||
@@ -14997,6 +15005,7 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
   throw Error("save_verify");
  return verifiedMessage;
 },{kind:"save"});
+};
 // Original internal owner sees existing teams PLUS partner-company teams.
 // Never mix partner team IDs into the original sales-team write selectors.
 async function loadOwnerPartnerCompanyTeams(){
