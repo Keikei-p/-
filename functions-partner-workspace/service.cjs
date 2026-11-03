@@ -5,6 +5,7 @@ const {loadPublication,projectMasterProducts,changePublication,validId,nameOnly}
 const {readLinks,addLink,projectLinks}=require("./catalog-count-links.cjs");
 const {normalizeExtraCounts,applyExtraCounts,projectedExtraRead}=require("./additional-counts.cjs");
 const {projectExtraRankDocs}=require("./extra-rank-projection.cjs");
+const {ownerPublishedExtraBreakdown}=require("./owner-published-extra-breakdown.cjs");
 const {projectPartnerMonth}=require("./monthly-shared-projection.cjs");
 const {projectPartnerProductMonth}=require("./partner-product-monthly.cjs");
 const {decodeGroups,saveGroups,groupPersonalScores}=require("./shared-ranking-groups.cjs");
@@ -1438,10 +1439,41 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      row.members.push({name:safeName,totalCount:item.total,counts:{...item.counts},
       cbCounts:{NURO:cb}});
     }
+    // The old nine-category day report remains unchanged. Additional published
+    // products have an independent ledger and must NOT be silently dropped from
+    // HQ's team/member breakdown or mixed into old CB/revenue totals.
+    // This path is Hub OWNER only, on-demand and count-only.
+    const extraSnap=await collection(selectedPartnerId,"partnerAdditionalCountEntries")
+     .where("date","==",date).limit(201).get();
+    if(extraSnap.size>200)fail("resource-exhausted");
+    let publishedAdditional={scope:"published_extra_count_only",complete:true,
+     verifiedPublishedCount:0,unattributedPublishedCount:0,teams:[]};
+    if(extraSnap.size){
+     const [pubSnap,linksSnap,master]=await Promise.all([
+      publicationRef(s.cid).get(),countLinksRef(s.cid).get(),
+      db.collection("products").where("companyId","==",s.cid).limit(1001).get()
+     ]);
+     if(master.size>1000||master.docs.some(doc=>doc.data()?.companyId!==s.cid))
+      fail("data-loss");
+     try{
+      const publicIds=loadPublication(pubSnap.exists?pubSnap.data():null).productIds;
+      const links=readLinks(linksSnap.exists?linksSnap.data():null,KEYS).links;
+      const blocked=new Set(links.map(x=>x.productId));
+      const publicProducts=projectMasterProducts(
+       master.docs.map(doc=>({...doc.data(),id:doc.id})),publicIds,true)
+       .filter(product=>!blocked.has(product.id))
+       .map(({id,name})=>({id,name}));
+      publishedAdditional=ownerPublishedExtraBreakdown(extraSnap.docs,{
+       hubId:s.cid,cid:selectedPartnerId,date,teamIds:[...rows.keys()],
+       publishedProducts:publicProducts,linkedIds:[...blocked]
+      });
+     }catch{fail("data-loss");}
+    }
     partnerTeamDetails={
      partnerCompanyId:selectedPartnerId,companyName:chosen.name,date,
      teams:[...rows.values()].sort((a,b)=>a.name.localeCompare(b.name,"ja")),
-     verifiedSharedCount,unverifiedTeamCount,scope:"shared_counts_only"
+     verifiedSharedCount,unverifiedTeamCount,scope:"shared_counts_only",
+     publishedAdditional
     };
    }
    const qs=await collection(s.cid,"partnerWorkCountDays").doc(date)
