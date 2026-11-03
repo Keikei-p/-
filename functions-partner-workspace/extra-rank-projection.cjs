@@ -4,6 +4,7 @@
 const {normalizeExtraCounts}=require("./additional-counts.cjs");
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const NAME=/^[\p{L}\p{N} 　・ー（）()_.-]{1,60}$/u;
+const MONEY=/(?:単価|売上|収益|利益|報酬|[¥￥$€]|\d[\d,]*円)/;
 const fail=()=>{throw Error("PARTNER_EXTRA_RANK_UNVERIFIED");};
 function projectExtraRankDocs(docs,{hubId,cid,date,publishedIds=[],linkedIds=[]}={}){
  if(!Array.isArray(docs)||docs.length>200||!ID.test(hubId||"")||
@@ -20,7 +21,8 @@ function projectExtraRankDocs(docs,{hubId,cid,date,publishedIds=[],linkedIds=[]}
     !Number.isSafeInteger(row.version)||row.version<1||
     !Number.isSafeInteger(row.totalCount)||row.totalCount<0||
     !ID.test(row.teamIdSnapshot||"")||
-    typeof row.staffNameSnapshot!=="string"||!NAME.test(row.staffNameSnapshot))fail();
+    typeof row.staffNameSnapshot!=="string"||!NAME.test(row.staffNameSnapshot)||
+    MONEY.test(row.staffNameSnapshot))fail();
   seen.add(id);
   let normalized;
   try{normalized=normalizeExtraCounts(row.counts);}
