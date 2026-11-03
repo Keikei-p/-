@@ -14841,6 +14841,13 @@ async function openSameAppPartnerWorkspace(user,workspaceCompanyId=""){
  partnerLeaderLastInvitation=null;
  pInline("pInlineInviteResult").hidden=true;
  pInline("pInlineInviteEmailStatus").textContent="";
+ // Switching partner companies must never reuse another company's product names
+ // or monthly counts, even if the same email has two approved memberships.
+ ++partnerProductMonthlyNonce;partnerProductMonthlyCache=null;
+ partnerPublishedProductNames=new Map();
+ const currentProductMonth=getTodayString().slice(0,7);
+ for(const id of ["partnerProductMonth","partnerCatalogMonth"])
+  pInline(id).value=currentProductMonth;
  partnerInlineData=null;
  verificationScreen.style.display="none";
  companySetupScreen.style.display="none";
