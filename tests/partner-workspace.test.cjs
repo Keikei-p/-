@@ -136,7 +136,7 @@ test("verified email invite preview never changes membership, and refuses wrong 
  await assert.rejects(api.accept(req("n",{token:created.token,previewOnly:true})),{code:"failed-precondition"});
 });
 
-test("existing verified hub owner may join as separate count-only partner without missing legacy email fields",async()=>{
+test("existing internal Owner cannot join a secondary partner and accidentally lose finance access",async()=>{
  const {db,api,req}=setup();
  // Existing production profiles may lack redundant email data. Firebase Auth
  // has already verified the signed-in email, and finance must remain untouched.
@@ -149,19 +149,17 @@ test("existing verified hub owner may join as separate count-only partner withou
   teamId:team,role:"leader",email:"h@example.com"}));
  const preview=await api.accept(req("h",{token:invite.token,previewOnly:true}));
  assert.equal(preview.valid,true);
- const result=await api.accept(req("h",{token:invite.token,name:"既存オーナー",transferCurrentCompany:false}));
- assert.equal(result.secondaryMembership,true);
- assert.equal(result.transferredFromInternal,false);
+ const before=clone([...db.store]);
+ await assert.rejects(api.accept(req("h",{token:invite.token,
+  name:"既存オーナー",transferCurrentCompany:false})),{code:"failed-precondition"});
+ await assert.rejects(api.accept(req("h",{token:invite.token,
+  name:"既存オーナー",transferCurrentCompany:true})),{code:"failed-precondition"});
+ assert.deepEqual([...db.store],before,"rejected transfer cannot touch original Owner or sales");
  assert.equal(db.store.get("users/h").companyId,"hub");
  assert.equal(db.store.get("companies/hub/members/h").active,true);
- const extra=db.store.get("companies/partner/members/h");
- assert.equal(extra.canViewRevenue,false);
- assert.equal(extra.canViewUnitPrice,false);
- const view=await api.view(req("h",{date:"2026-10-31",workspaceCompanyId:"partner"}));
- assert.equal(view.role,"leader");
+ assert.equal(db.store.get("companies/partner/members/h"),undefined);
  assert.deepEqual(db.store.get("products/money"),originals.find(([k])=>k==="products/money")[1]);
  assert.deepEqual(db.store.get("records/old"),originals.find(([k])=>k==="records/old")[1]);
- await assert.rejects(api.accept(req("h",{token:invite.token,name:"二度目"})),{code:"failed-precondition"});
 });
 
 test("legacy email fallback refuses explicit mismatched user or member email",async()=>{
