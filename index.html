@@ -23041,6 +23041,26 @@ function recordConflict(message) {
   return error;
 }
 
+function isPersistedRecordCountConsistent(record) {
+  // Read-only precondition for editing a stored record. This must never
+  // recalculate/write the saved total, historic prices or revenue.
+  const saved = record?.totalCount;
+  const rows = record?.results;
+  if (saved == null || saved === "" || !Number.isSafeInteger(Number(saved)) ||
+      Number(saved) < 0 || !rows || typeof rows !== "object" || Array.isArray(rows)) {
+    return false;
+  }
+  let sum = 0;
+  for (const row of Object.values(rows)) {
+    const count = row?.count;
+    if (count == null || count === "" || !Number.isSafeInteger(Number(count)) ||
+        Number(count) < 0) return false;
+    sum += Number(count);
+    if (!Number.isSafeInteger(sum)) return false;
+  }
+  return sum === Number(saved);
+}
+
 async function persistDailyRecord(recordRef, data, expectedRecord, expectedRevision, writeCorrection = null) {
   // サーバーで同日を確認。旧IDの実績もそのまま更新し、重複は推測で統合しない。
   const daily = await getDocsFromServer(query(
@@ -23057,6 +23077,12 @@ async function persistDailyRecord(recordRef, data, expectedRecord, expectedRevis
     }
     if (expectedRecord && (!current || recordRevision(current) !== expectedRevision)) {
       throw recordConflict("編集中に実績が変更・削除されました。上書きせず、日付・担当者を選び直してください。");
+    }
+    // A historical line can survive an older nested merge. Never silently
+    // normalize a mismatched stored record during an ordinary edit.
+    // Preserve the source row, original revenue, unit prices and audit trail.
+    if (current && !isPersistedRecordCountConsistent(current)) {
+      throw recordConflict("既存実績の総件数と商材別件数が一致しません。売上・単価・履歴を保護するため保存を中止しました。オーナーに履歴確認を依頼してください。");
     }
     // resultsの削除済み商材が復活しないようマップ全体を置換。
     transaction.set(recordRef, data, {mergeFields: Object.keys(data)});
