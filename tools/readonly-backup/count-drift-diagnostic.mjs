@@ -40,12 +40,47 @@ function snapshotCounts(data){
  }
  return {saved,derived};
 }
-function correctionProof(rows,saved,derived){
+function countMap(field){
+ if(!field?.mapValue||typeof field.mapValue!=="object")return null;
+ const rows=field.mapValue.fields??{};
+ if(!rows||typeof rows!=="object"||Array.isArray(rows))return null;
+ const output=new Map();
+ for(const [key,row] of Object.entries(rows)){
+  const count=quantity(row?.mapValue?.fields?.count);
+  if(count===null)return null;
+  output.set(key,count);
+ }
+ return output;
+}
+function afterRowChanges(currentRecord,correction){
+ const latest=correction?.value?.fields?.after?.mapValue?.fields||{};
+ const original=countMap(latest.results);
+ const current=countMap(currentRecord?.value?.fields?.results);
+ if(!original||!current)return null;
+ let added=0,removed=0,changed=0;
+ for(const [key,n] of current){
+  if(!original.has(key))added++;
+  else if(original.get(key)!==n)changed++;
+ }
+ for(const key of original.keys())if(!current.has(key))removed++;
+ const at=correction?.value?.fields?.createdAt?.timestampValue;
+ const updated=currentRecord?.value?.updateTime;
+ const t1=typeof at==="string"?Date.parse(at):NaN;
+ const t2=typeof updated==="string"?Date.parse(updated):NaN;
+ return {addedProductRows:added,removedProductRows:removed,
+  quantityChangedProductRows:changed,
+  currentRecordUpdatedAfterCorrection:
+   Number.isFinite(t1)&&Number.isFinite(t2)?t2>t1:null};
+}
+function correctionProof(rows,saved,derived,record){
  const result={beforeConsistent:0,beforeMismatched:0,
   afterConsistent:0,afterMismatched:0,
   verifiedAfterSnapshots:0,afterSavedMatchesCurrent:0,
   afterLinesMatchCurrent:0,afterBothMatchCurrent:0,
-  unverifiedSnapshots:0};
+  unverifiedSnapshots:0,
+  currentVsSingleCorrection:null};
+ if(rows.length===1)
+  result.currentVsSingleCorrection=afterRowChanges(record,rows[0]);
  for(const c of rows){
   const fields=c.value?.fields||{};
   const before=snapshotCounts(fields.before);
@@ -106,7 +141,7 @@ export function classifyCountDrift(snapshot){
    absoluteCountDifference:Math.abs(saved-computed),
    savedCountIsZero:saved===0,linesCountIsZero:computed===0,
    relatedCorrectionDocuments:(corrections.get(item.path.slice("records/".length))||[]).length,
-   correctionCountProof:correctionProof(corrections.get(item.path.slice("records/".length))||[],saved,computed)
+   correctionCountProof:correctionProof(corrections.get(item.path.slice("records/".length))||[],saved,computed,item)
   }));
  }
  return Object.freeze({
