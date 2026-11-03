@@ -41,6 +41,7 @@ jobs:
           node --test tests/partner-product-monthly-parity.test.cjs
           node --test tests/partner-input-hq-parity-count-only-20261103.test.cjs
           node --test tests/partner-owner-extra-team-parity-20261103.test.cjs
+          node --test tests/partner-workspace.test.cjs
           node --test tests/owner-partner-team-detail-screen.test.mjs
           node --test tests/partner-shared-monthly-ui.test.cjs
           node --test tests/count-drift-diagnostic-readonly-20261103.test.mjs
