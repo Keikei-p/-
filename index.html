@@ -14358,6 +14358,7 @@ async function savePartnerExtra(){
    partnerExtra={ready:true,uid,workspace,date,products:read.products,records:read.records};
    renderPartnerExtra();
    status.textContent="✅ 追加商材の件数を保存・確認しました。旧実績・単価・売上は変更していません。";
+   ++partnerProductMonthlyNonce;partnerProductMonthlyCache=null;
    ++sharedDailyRankingGeneration;sharedDailyRankCache.clear();
   }else{
    partnerExtra.ready=false;
