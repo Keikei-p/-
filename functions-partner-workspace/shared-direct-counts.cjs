@@ -52,7 +52,8 @@ async function readDirectRangeCounts(db,hubId,fromDate,toDate,keys,{
     !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(toDate)||fromDate>toDate||
     !Array.isArray(keys)||!keys.length||maxRecords<1||maxRecords>10000||
     !Array.isArray(approvedExtraProductIds)||approvedExtraProductIds.length>1000||
-    approvedExtraProductIds.some(id=>!safeIdentifier(id))||
+    approvedExtraProductIds.some(id=>!safeIdentifier(id)||
+      ["__proto__","constructor","prototype"].includes(id))||
     new Set(approvedExtraProductIds).size!==approvedExtraProductIds.length)
   throw Error("DIRECT_SCOPE_INVALID");
  // Use existing company/date composite query. One bounded read, no writes.

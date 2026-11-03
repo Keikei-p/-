@@ -183,3 +183,13 @@ test("monthly Callable is opt-in, count-only, auth-scoped and never complete by 
  assert.doesNotMatch(monthly,/tx\.(?:create|update|set|delete)\(/);
  assert.match(api,/exports\.getPartnerMonthlySharedCounts=onCall/);
 });
+
+test("direct approved-product IDs reject prototype property names before any database query",async()=>{
+ let readCalls=0;
+ const db={collection(){readCalls++;throw Error("unexpected data access");}};
+ for(const productId of ["__proto__","constructor","prototype"]){
+  await assert.rejects(readDirectRangeCounts(db,"hub","2026-11-01","2026-11-01",
+   ["NURO"],{approvedExtraProductIds:[productId]}),/DIRECT_SCOPE_INVALID/);
+ }
+ assert.equal(readCalls,0);
+});
