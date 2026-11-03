@@ -15515,7 +15515,7 @@ function verifyOwnerPublishedExtras(extra,originalTeams){
   const pTotal=verifyProducts(team.products);
   if(pTotal!==team.totalCount)throw Error("owner_extra_team_products");
   const productMap=new Map(team.products.map(p=>[p.id,p.count]));
-  const memberMap=new Map(),membersTotal=new Map();
+  const membersTotal=new Map();
   let members=0;
   for(const person of team.people){
    if(typeof person.name!=="string"||!person.name||person.name.length>60||
