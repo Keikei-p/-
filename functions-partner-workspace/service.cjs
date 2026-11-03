@@ -4,6 +4,7 @@ const crypto=require("node:crypto");
 const {loadPublication,projectMasterProducts,changePublication,validId,nameOnly}=require("./catalog-publication.cjs");
 const {readLinks,addLink,projectLinks}=require("./catalog-count-links.cjs");
 const {normalizeExtraCounts,applyExtraCounts,projectedExtraRead}=require("./additional-counts.cjs");
+const {projectExtraRankDocs}=require("./extra-rank-projection.cjs");
 const {decodeGroups,saveGroups,groupPersonalScores}=require("./shared-ranking-groups.cjs");
 const {readDirectDayCounts}=require("./shared-direct-counts.cjs");
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
@@ -1062,25 +1063,50 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    }
    const companies=[],teams=[],people=[],missingCompanies=[];
    const productCounts=Object.fromEntries(KEYS.map(key=>[key,0]));
+   // The partner extra ledger is independent of the original nine categories.
+   // Check publication and immutable links once, before any ranking is composed.
+   const [rankPubSnap,rankLinkSnap]=await Promise.all([
+    publicationRef(hubId).get(),countLinksRef(hubId).get()
+   ]);
+   let publishedIds,allCountLinks;
+   try{
+    publishedIds=loadPublication(rankPubSnap.exists?rankPubSnap.data():null).productIds;
+    allCountLinks=readLinks(rankLinkSnap.exists?rankLinkSnap.data():null,KEYS).links;
+   }catch{fail("data-loss");}
+   const linkedIds=allCountLinks.map(link=>link.productId);
+   const extraVerifiedIds=publishedIds.filter(id=>!linkedIds.includes(id));
+   const effectiveLinks=allCountLinks.filter(link=>link.effectiveFrom<=date);
+   let additionalTotalCount=0;
    let complete=true;
    for(const company of approved){
     const cid=company.cid;
-    const [reportSnap,entrySnaps,teamSnaps]=await Promise.all([
+    const [reportSnap,entrySnaps,teamSnaps,extraSnaps]=await Promise.all([
      summaryRef(hubId,date,cid).get(),
      collection(cid,"partnerWorkEntries").where("date","==",date).limit(201).get(),
-     collection(cid,"partnerWorkTeams").limit(151).get()
+     collection(cid,"partnerWorkTeams").limit(151).get(),
+     collection(cid,"partnerAdditionalCountEntries").where("date","==",date).limit(201).get()
     ]);
-    if(entrySnaps.size>200||teamSnaps.size>150)fail("resource-exhausted");
+    if(entrySnaps.size>200||teamSnaps.size>150||extraSnaps.size>200)
+     fail("resource-exhausted");
+    let extraRows;
+    try{
+     extraRows=projectExtraRankDocs(extraSnaps.docs,{
+      hubId,cid,date,publishedIds:extraVerifiedIds,linkedIds
+     });
+    }catch{fail("data-loss");}
     if(!reportSnap.exists){
-     // No report means missing, not 0. Suppress a false complete ranking.
+     // Extra-only submissions are real counts, but missing nine-category
+     // reports remain marked INCOMPLETE, never silently treated as 0.
      if(entrySnaps.size)fail("data-loss");
-     complete=false;missingCompanies.push(company.name);continue;
+     complete=false;missingCompanies.push(company.name);
+     if(!extraRows.length)continue;
     }
     const r=reportSnap.data()||{};
-    if(r.partnerCompanyId!==cid||r.hubCompanyId!==hubId||
-       r.date!==date||!validCompanyName(r.partnerName))fail("data-loss");
-    const summary=validateCounts(r.counts);
-    if(summary.total!==r.totalCount)fail("data-loss");
+    if(reportSnap.exists&&(r.partnerCompanyId!==cid||r.hubCompanyId!==hubId||
+       r.date!==date||!validCompanyName(r.partnerName)))fail("data-loss");
+    const summary=reportSnap.exists?validateCounts(r.counts):
+     {counts:Object.fromEntries(KEYS.map(k=>[k,0])),total:0};
+    if(reportSnap.exists&&summary.total!==r.totalCount)fail("data-loss");
     const savedTeams=new Map();
     for(const t of teamSnaps.docs){
      const x=t.data()||{};
@@ -1088,7 +1114,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
       fail("data-loss");
      savedTeams.set(t.id,clean(x.name));
     }
-    const group=new Map(),unique=new Set(),members=[];
+    const group=new Map(),unique=new Set(),members=[],memberByStaff=new Map();
     let verified=0;
     for(const entrySnap of entrySnaps.docs){
      const e=entrySnap.data()||{};
@@ -1105,10 +1131,11 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      const cb=tierCounts(e.cbCounts,item.counts);
      const key=crypto.createHash("sha256").update(cid+"\n"+e.staffId)
       .digest("hex");
-     members.push({key,name:safeName,companyName:company.name,
+     const member={key,name:safeName,companyName:company.name,
       companyId:cid,teamKey:crypto.createHash("sha256").update(cid+"\nteam\n"+tid).digest("hex"),
       teamName:savedTeams.get(tid)||"登録当時の班未確認",
-      totalCount:item.total,counts:item.counts,cbCounts:{NURO:cb}});
+      totalCount:item.total,counts:item.counts,extraCounts:{},cbCounts:{NURO:cb}};
+     members.push(member);memberByStaff.set(e.staffId,member);
      const bucket=group.get(tid)||{name:savedTeams.get(tid)||"登録当時の班未確認",
       totalCount:0,counts:Object.fromEntries(KEYS.map(k=>[k,0])),cbCounts:{NURO:blankTiers()}};
      bucket.totalCount+=item.total;
@@ -1118,14 +1145,38 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     }
     // Legacy company-level reports have no verified staff ledger. They
     // remain visible as company totals but NEVER turn into imaginary people.
-    const hasLedger=r.source==="staff-entries-v1";
+    const hasLedger=reportSnap.exists&&r.source==="staff-entries-v1";
     if(hasLedger&&verified!==summary.total)fail("data-loss");
     if(!hasLedger&&entrySnaps.size>0)fail("data-loss");
     if(!hasLedger)complete=false;
-    companies.push({id:cid,name:company.name,totalCount:summary.total,
-     counts:summary.counts,peopleVerified:hasLedger});
+    let companyExtras=0;
+    for(const extra of extraRows){
+     const tid=extra.teamIdSnapshot,teamKey=crypto.createHash("sha256")
+      .update(cid+"\nteam\n"+tid).digest("hex");
+     let member=memberByStaff.get(extra.staffId);
+     if(member&&member.teamKey!==teamKey)fail("data-loss");
+     if(!member){
+      member={key:crypto.createHash("sha256").update(cid+"\n"+extra.staffId).digest("hex"),
+       name:clean(extra.staffNameSnapshot),companyName:company.name,companyId:cid,
+       teamKey,teamName:savedTeams.get(tid)||"登録当時の班未確認",
+       totalCount:0,counts:Object.fromEntries(KEYS.map(k=>[k,0])),
+       extraCounts:{},cbCounts:{NURO:blankTiers()}};
+      memberByStaff.set(extra.staffId,member);members.push(member);
+     }
+     member.totalCount+=extra.totalCount;
+     member.extraCounts=extra.extraCounts;
+     companyExtras+=extra.totalCount;
+     const bucket=group.get(tid)||{name:savedTeams.get(tid)||"登録当時の班未確認",
+      totalCount:0,counts:Object.fromEntries(KEYS.map(k=>[k,0])),
+      cbCounts:{NURO:blankTiers()}};
+     bucket.totalCount+=extra.totalCount;
+     group.set(tid,bucket);
+    }
+    additionalTotalCount+=companyExtras;
+    companies.push({id:cid,name:company.name,totalCount:summary.total+companyExtras,
+     counts:summary.counts,extraTotalCount:companyExtras,peopleVerified:hasLedger});
     for(const k of KEYS)productCounts[k]+=summary.counts[k];
-    if(hasLedger){
+    if(hasLedger||extraRows.length){
      people.push(...members);
      for(const [tid,item] of group)teams.push({
       key:crypto.createHash("sha256").update(cid+"\nteam\n"+tid).digest("hex"),
@@ -1151,14 +1202,11 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    let sharedConfig={revision:0,groups:[]},groupStandings=[],groupStatus="unverified";
    try{
     sharedConfig=await readRankingSettings(hubId);
-    // Date-effective, immutable mappings only. Future-dated links and
-    // unlinked catalog IDs MUST NOT contribute to a falsely complete rank.
-    const linksSnap=await countLinksRef(hubId).get();
-    const effectiveLinks=readLinks(linksSnap.exists?linksSnap.data():null,KEYS)
-     .links.filter(link=>link.effectiveFrom<=date);
+    // Date-effective mappings count existing buckets once. Unlinked,
+    // published additional products count only from verified extra ledgers.
     groupStandings=groupPersonalScores(sharedConfig.groups,
      [...people,...direct.people.map(person=>({...person,companyName:"直営"}))],
-     {categories:KEYS,productLinks:effectiveLinks});
+     {categories:KEYS,productLinks:effectiveLinks,extraVerifiedIds});
     groupStatus="verified";
    }catch(error){
     // No raw errors, finance or hidden group names are serialized to clients.
@@ -1166,7 +1214,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    }
    return {scope:"shared_counts_only",date,role:s.kind==="hub"?"hub":"partner",
     complete,includesDirect:true,missingCompanies,companies,teams,people,
-    productCounts,categories:KEYS,direct,rankingGroups:sharedConfig.groups,
+    productCounts,additionalTotalCount,categories:KEYS,direct,rankingGroups:sharedConfig.groups,
     groupStandings,groupRevision:sharedConfig.revision,groupStatus};
   }
   if(d.includeAuditHistory===true&&s.kind!=="partner")fail("invalid-argument");
