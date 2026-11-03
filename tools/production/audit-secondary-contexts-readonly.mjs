@@ -116,7 +116,7 @@ export async function inventory({db,credential,authService,request=fetch,include
  if(!db||!credential||!authService)abort('MISSING_DEPENDENCY');
  const [contexts,companies,transfers]=await Promise.all([
   bounded(db,'partnerWorkspaceContexts',['uid','kind','active','primaryCompanyId',
-   'partnerCompanyId','hubCompanyId']),
+   'partnerCompanyId','hubCompanyId','role','teamId','emailLower']),
   bounded(db,'companies',['companyKind','ownerUid','masterUid','active','hubCompanyId']),
   bounded(db,'partnerHistoricalTransfers',['uid','sourceCompanyId','destinationCompanyId'])
  ]);
