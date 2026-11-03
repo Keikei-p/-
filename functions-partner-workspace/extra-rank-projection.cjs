@@ -38,8 +38,13 @@ function projectExtraRankDocs(docs,{hubId,cid,date,publishedIds=[],linkedIds=[]}
     else total+=quantity;
     return total;
    },0);
+  // The original ledger retains every quantity (including archived or
+  // unpublished products). Only currently published product IDs may
+  // contribute to a count sent to the HQ/shared leaderboard.
+  const publishedTotal=row.totalCount-archivedCount;
+  if(!Number.isSafeInteger(publishedTotal)||publishedTotal<0)fail();
   rows.push({staffId:id,staffNameSnapshot:row.staffNameSnapshot,
-   teamIdSnapshot:row.teamIdSnapshot,totalCount:row.totalCount,
+   teamIdSnapshot:row.teamIdSnapshot,totalCount:publishedTotal,
    extraCounts:publicCounts,archivedCount});
  }
  return rows;

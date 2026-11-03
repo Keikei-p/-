@@ -12,11 +12,15 @@ const project=(docs,opts={})=>projectExtraRankDocs(docs,{
  hubId:"hub",cid:"partner",date:day,publishedIds:["solar","water"],
  linkedIds:["legacyId"],...opts
 });
-test("published extra products remain count-only; old/depublished quantities are retained in total",()=>{
+test("published extra products remain count-only; old/depublished quantities stay in original ledger only",()=>{
  const projected=project([doc("staff1",{solar:3,water:2,archived:7})]);
  assert.deepEqual(projected,[{staffId:"staff1",staffNameSnapshot:"担当A",
-  teamIdSnapshot:"teamA",totalCount:12,extraCounts:{solar:3,water:2},
+  teamIdSnapshot:"teamA",totalCount:5,extraCounts:{solar:3,water:2},
   archivedCount:7}]);
+ const original=doc("staff1",{solar:3,water:2,archived:7}).data();
+ assert.equal(original.totalCount,12);
+ assert.equal(original.counts.archived,7);
+ assert.equal(project([doc("staff1",{solar:3,water:2,archived:7})],{publishedIds:[]})[0].totalCount,0);
  assert.doesNotMatch(JSON.stringify(projected),/price|revenue|cashback|email|commission/i);
 });
 test("different staff IDs never merge, same product ranks across original group UI",()=>{
@@ -104,4 +108,21 @@ test("original direct sales rows preserve money while published product IDs coun
 test("shared API passes only published unlinked direct product IDs to redacted reader",()=>{
  const service=fs.readFileSync(require.resolve("../functions-partner-workspace/service.cjs"),"utf8");
  assert.match(service,/approvedExtraProductIds:extraVerifiedIds/);
+});
+
+test("shared extra ledger redacts retired/unpublished quantities across staff and daily totals",()=>{
+ const rows=project([
+  doc("a",{solar:2,retired:9}),
+  doc("b",{water:4,unlisted:6}),
+  doc("c",{onlyHidden:8})
+ ]);
+ assert.deepEqual(rows.map(r=>r.totalCount),[2,4,0]);
+ assert.deepEqual(rows.map(r=>r.archivedCount),[9,6,8]);
+ assert.equal(rows.reduce((n,r)=>n+r.totalCount,0),6);
+ assert.equal(rows.reduce((n,r)=>n+r.archivedCount,0),23);
+ assert.doesNotMatch(JSON.stringify(rows),/onlyHidden|retired|unlisted|unitPrice|revenue/);
+ // Original immutable source documents are unchanged and retain full history.
+ const raw=doc("a",{solar:2,retired:9}).data();
+ assert.equal(raw.totalCount,11);
+ assert.equal(raw.counts.retired,9);
 });
