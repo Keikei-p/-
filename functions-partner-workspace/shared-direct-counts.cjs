@@ -89,9 +89,14 @@ async function readDirectRangeCounts(db,hubId,fromDate,toDate,keys,{
   const daily=Object.fromEntries(keys.map(k=>[k,0]));
   const dailyExtra={},dailyExtraCategoryCounts={};
   for(const result of results){
-   if(result?.count==null)throw Error("DIRECT_INVALID_QUANTITY");
-   const number=Number(result.count);
-   if(!Number.isSafeInteger(number)||number<0||number>9999)
+   const raw=result?.count;
+   // A missing value, blank string or boolean must not be coerced into 0/1.
+   // Preserve the legacy digit-string format without inferring quantities.
+   const validType=(typeof raw==="number"&&Number.isSafeInteger(raw))||
+    (typeof raw==="string"&&/^\d+$/.test(raw)&&Number.isSafeInteger(Number(raw)));
+   if(!validType)throw Error("DIRECT_INVALID_QUANTITY");
+   const number=Number(raw);
+   if(number<0||number>9999)
     throw Error("DIRECT_INVALID_QUANTITY");
    const productName=result.productNameSnapshot||result.productName||
     productNames.get(result.productId)||row.productNameSnapshot||"";
