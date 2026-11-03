@@ -128,6 +128,38 @@ test('transaction replacement removes deleted product and preserves creation met
 });
 
 
+test('emulator preserves a historically mismatched sale and never invents a correction audit',{skip:process.env.RULES_ONLY==='1'},async()=>{
+  await seedRecord();
+  const db=dbFor('owner'),ref=doc(db,'records',key()),api=app(db);
+  // Simulate a legacy nested-map merge using only the disposable emulator.
+  await env.withSecurityRulesDisabled(async c=>{
+    await updateDoc(doc(c.firestore(),'records',key()),{'results.orphanLegacy':{count:1,revenuePerUnit:75}});
+  });
+  const before={id:ref.id,...(await getDoc(ref)).data()};
+  assert.equal(before.totalCount,2);
+  assert.equal(before.results.A.count,2);
+  assert.equal(before.results.orphanLegacy.count,1);
+  const corrected={...before,results:{A:{...before.results.A}},totalCount:2,totalRevenue:200};
+  const auditWrites=[];
+  await assert.rejects(
+    api.persistDailyRecord(ref,corrected,before,api.recordRevision(before),txn=>{
+      auditWrites.push('unexpected correction');
+      txn.set(doc(db,'recordCorrections','forbidden'),{recordId:ref.id});
+    }),
+    error=>error?.code==='record-conflict'&&error.message.includes('総件数と商材別件数')
+  );
+  const after=(await getDoc(ref)).data();
+  assert.deepEqual(after.results,before.results,'source lines must not be silently discarded');
+  assert.equal(after.totalCount,before.totalCount,'saved totals must never be repaired by assumption');
+  assert.equal(after.totalRevenue,before.totalRevenue,'historical revenue must be retained');
+  assert.equal(auditWrites.length,0,'failed source write must not generate an audit event');
+  const correctionDocs=await env.withSecurityRulesDisabled(async c=>
+    getDocs(collection(c.firestore(),'recordCorrections')));
+  assert.equal(correctionDocs.size,0,'no correction history writes on failed transaction');
+});
+
+
+
 function revenueGoalPayload(teamId='a',targetRevenue=3000000){
  return {companyId:company,teamId,month:'2026-10',targetRevenue,createdAt:serverTimestamp(),updatedAt:serverTimestamp()};
 }
