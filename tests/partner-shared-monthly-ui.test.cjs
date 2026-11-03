@@ -5,7 +5,8 @@ const api=fs.readFileSync(require.resolve("../functions-partner-workspace/index.
 const service=fs.readFileSync(require.resolve("../functions-partner-workspace/service.cjs"),"utf8");
 test("monthly count-only callable is isolated from daily, hosted only in draft",()=>{
  assert.match(api,/exports\.getPartnerMonthlySharedCounts=onCall\(opts,service\.viewMonthly\)/);
- assert.match(service,/return Object\.freeze\(\{manage,accept,view,viewMonthly,submit/);
+ assert.match(service,/return Object\.freeze\(\{manage,accept,view,viewMonthly,viewProductMonthly,submit/);
+ assert.match(api,/exports\.getPartnerProductMonthlyTotals=onCall\(opts,service\.viewProductMonthly\)/);
  assert.match(service,/async function viewMonthly\(request\)/);
  assert.match(service,/complete:false/);
  assert.match(service,/readDirectRangeCounts\(/);
