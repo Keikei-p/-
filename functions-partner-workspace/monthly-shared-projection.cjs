@@ -28,7 +28,10 @@ function projectPartnerMonth({hubId,cid,companyName,from,to,legacyDocs,extraDocs
     safe(teamNames[teamId])?teamNames[teamId].trim():"当時の班名未確認",totalCount:0,
     counts:zero(),extraCounts:{}};
    people.set(staffId,p);
-  }else if(p.teamKey!==teamKey)p.teamKey=null; // never reassign old work
+  }else if(p.teamKey!==teamKey){
+   p.teamKey=null; // Never reassign historic work to the current team.
+   p.teamName="複数班（当時の所属班ごとに集計）";
+  }
   return p;
  };
  const team=teamId=>{
