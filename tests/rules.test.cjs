@@ -595,7 +595,14 @@ for(const source of ['company-kind','user-access','member-access','user-type','m
   for(const [coll,id] of [
    ['products','one-price'],['records',key()],
    ['recordCorrections','finance-history'],['revenueGoals','private-goal']
-  ])await assertFails(getDoc(doc(db,coll,id)));
+  ]){
+    await assertFails(getDoc(doc(db,coll,id)),'partner marker must deny direct '+coll+' reads');
+    // A collection query is an independent Firestore Rules path (list, not get).
+    // This MUST fail even when the attacker knows the exact company ID.
+    await assertFails(getDocsFromServer(query(
+      collection(db,coll),where('companyId','==',company)
+    )),'partner marker must deny '+coll+' list/query access');
+  }
   await assertFails(setDoc(doc(db,'records',key('owner')),payload('owner','owner','a')));
   await assertFails(setDoc(doc(db,'revenueGoals','new-private-goal'),revenueGoalPayload()));
  });
@@ -617,6 +624,13 @@ test('internal owner/member retain original financial document reads after partn
   const d=dbFor(uid);
   await assertSucceeds(getDoc(doc(d,'products','internal-finance')));
   await assertSucceeds(getDoc(doc(d,'records','internal-finance')));
+  // No loss of existing finance-capable internal company list operations.
+  for(const coll of ['products','records']){
+    const rows=await assertSucceeds(getDocsFromServer(query(
+      collection(d,coll),where('companyId','==',company)
+    )));
+    assert.equal(rows.size,1,'internal '+uid+' should still query '+coll);
+  }
  }
 });
 
