@@ -14248,14 +14248,29 @@ function partnerExtraDirty(){
  }
  return false;
 }
+// Count inputs are never silently coalesced from an empty value into zero.
+function partnerCountInputNumber(input){
+ const raw=input?.value?.trim();
+ if(typeof raw!=="string"||!/^\\d+$/.test(raw))return null;
+ const count=Number(raw);
+ return Number.isSafeInteger(count)&&count>=0&&count<=9999?count:null;
+}
 function updatePartnerExtraTotals(){
  const record=partnerExtra.records.find(x=>x.staffId===pInline("pInlineStaff").value);
  const inputs=[...pInline("pInlineExtraFields").querySelectorAll("input[data-extra-id]")];
- const total=inputs.reduce((sum,i)=>sum+Number(i.value||0),0);
- pInline("pInlineExtraTotals").textContent="追加商材 "+total+"件"+
-  ((record?.archivedTotal||0)>0?"｜過去の非公開商材 "+record.archivedTotal+"件を保持":"");
- pInline("pInlineExtraSave").disabled=!partnerExtraValid()||
+ let total=0,valid=true;
+ for(const input of inputs){
+  const count=partnerCountInputNumber(input);
+  if(count===null){valid=false;break;}
+  total+=count;
+ }
+ const archived=record?.archivedTotal??0;
+ pInline("pInlineExtraTotals").textContent=valid?
+  "追加商材 "+total+"件"+(archived>0?"｜過去の非公開商材 "+archived+"件を保持":""):
+  "追加商材の件数を確認してください（空欄は0件として扱いません）";
+ pInline("pInlineExtraSave").disabled=!valid||!partnerExtraValid()||
   partnerExtraBusy||partnerInlineBusy||!inputs.length||!pInline("pInlineStaff").value;
+ renderPartnerEntryTotals();
 }
 function renderPartnerExtra(){
  const panel=pInline("pInlineExtraPanel"),fields=pInline("pInlineExtraFields");
@@ -14312,13 +14327,14 @@ async function loadPartnerExtra(){
   }
   partnerExtra={ready:true,uid,workspace,date,products:data.products,records:data.records};
   pInline("pInlineExtraStatus").textContent="本社から公開された追加商材です。保存は専用ボタンで行います。";
-  renderPartnerExtra();return true;
+  renderPartnerExtra();renderPartnerEntryTotals();return true;
  }catch(e){
   if(seq!==partnerExtraNonce||uid!==auth.currentUser?.uid)return false;
   pInline("pInlineExtraPanel").hidden=false;
   pInline("pInlineExtraFields").replaceChildren();
   pInline("pInlineExtraSave").disabled=true;
   pInline("pInlineExtraStatus").textContent="追加商材を確認できません。既存の実績入力は引き続き利用できます。";
+  renderPartnerEntryTotals();
   console.warn("partner_extra_read_unavailable",e?.code||"unverified");
   return false;
  }
@@ -14414,20 +14430,47 @@ function partnerInlineHasUnsavedCounts(){
 function renderPartnerEntryTotals(){
  const target=pInline("pInlineEntryTotals");
  const grid=pInline("pInlineCountFields");
- let shared=0,privateTotal=0;
+ let shared=0,privateTotal=0,cbTotal=0;
  for(const input of grid.querySelectorAll("input[data-count-key],input[data-private-count-id],input[data-cb-tier]")){
-  if(input.value.trim()===""||!Number.isSafeInteger(Number(input.value))||
-     Number(input.value)<0||Number(input.value)>9999){
-   target.textContent="件数を確認してください";
+  const count=partnerCountInputNumber(input);
+  if(count===null){
+   target.textContent="件数を確認してください（空欄・不正な数字は集計しません）";
    pInline("pInlineSaveStatus").textContent="件数は各項目0〜9999の整数で入力してください。";
    return;
   }
-  if(input.dataset.privateCountId)privateTotal+=Number(input.value);
-  else shared+=Number(input.value);
+  if(input.dataset.privateCountId)privateTotal+=count;
+  else shared+=count;
+  if(input.dataset.cbTier)cbTotal+=count;
  }
- target.textContent="共有商材 "+shared+"件｜協力店専用 "+privateTotal+"件";
+ // Same visual grouping as HQ, including a CB subtotal without leaking revenue.
+ const cbLabel=grid.querySelector(".partner-cb-title");
+ if(cbLabel)cbLabel.textContent="NURO光｜CB別件数（合計 "+cbTotal+"件）";
+ if(!partnerExtraValid()){
+  // A failed/unfinished remote read is not proof of zero additional sales.
+  target.textContent="通常商材 "+shared+"件｜協力店専用 "+privateTotal+
+   "件｜追加商材 未確認（全体合計は保留）";
+ }else{
+  let additional=0,valid=true;
+  for(const input of pInline("pInlineExtraFields").querySelectorAll("input[data-extra-id]")){
+   const count=partnerCountInputNumber(input);
+   if(count===null){valid=false;break;}
+   additional+=count;
+  }
+  const record=partnerExtra.records.find(x=>x.staffId===pInline("pInlineStaff").value);
+  const archived=record?.archivedTotal??0;
+  if(!Number.isSafeInteger(archived)||archived<0)valid=false;
+  if(!valid){
+   target.textContent="追加商材の件数を確認してください（全体合計は保留）";
+  }else{
+   const total=shared+privateTotal+additional+archived;
+   target.textContent="入力中の合計 "+total+"件｜通常 "+shared+
+    "件・専用 "+privateTotal+"件・追加 "+additional+
+    "件"+(archived?"・過去の追加商材 "+archived+"件":"");
+  }
+ }
  if(partnerInlineHasUnsavedCounts())
-  pInline("pInlineSaveStatus").textContent="未保存の件数があります。「一括登録」を押すまで反映されません。";
+  pInline("pInlineSaveStatus").textContent=
+   "未保存の件数があります。通常・専用商材と追加商材は、それぞれの保存ボタンで確認してください。";
 }
 function partnerInlineRenderCounts(){
  const snap=partnerInlineData;
