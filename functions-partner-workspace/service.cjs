@@ -505,8 +505,9 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    const live=await scope(a.uid,tx,d.workspaceCompanyId);
    if(live.kind!=="partner"||live.cid!==s.cid||live.hubId!==s.hubId)fail();
    const sr=staffRef(s.cid,staffId),er=extraEntryRef(s.cid,date,staffId);
-   const [staffSnap,prevSnap,catalog]=await Promise.all([
-    tx.get(sr),tx.get(er),approvedExtraCatalog(live,tx)
+   const [staffSnap,prevSnap,legacySnap,catalog]=await Promise.all([
+    tx.get(sr),tx.get(er),tx.get(entryRef(s.cid,date,staffId)),
+    approvedExtraCatalog(live,tx)
    ]);
    const person=staffSnap.data()||{},previous=prevSnap.data()||{};
    if(!staffSnap.exists||person.active!==true||person.companyId!==s.cid||
@@ -538,8 +539,17 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     if(doc.exists&&(value.hubCompanyId!==s.hubId||value.productId!==usedIds[i]))
      fail("data-loss");
    }
-   const teamIdSnapshot=prevSnap.exists?previous.teamIdSnapshot:person.teamId;
-   const staffNameSnapshot=prevSnap.exists?previous.staffNameSnapshot:person.name;
+   // A saved historical sales-team snapshot is authoritative. Never attach
+   // extra counts for an old date to the worker\u0027s CURRENT team.
+   const legacy=legacySnap.data()||{};
+   if(legacySnap.exists&&(legacy.companyId!==s.cid||
+      legacy.staffId!==staffId||legacy.date!==date))fail("data-loss");
+   const teamIdSnapshot=prevSnap.exists?previous.teamIdSnapshot:
+    legacySnap.exists?legacy.teamIdSnapshot:
+    date===jstToday()?person.teamId:null;
+   const staffNameSnapshot=prevSnap.exists?previous.staffNameSnapshot:
+    legacySnap.exists?legacy.staffNameSnapshot:
+    date===jstToday()?person.name:null;
    if(!ID.test(teamIdSnapshot||"")||!validName(staffNameSnapshot))fail("data-loss");
    if(!prevSnap.exists){
     const team=await tx.get(teamRef(s.cid,teamIdSnapshot));
