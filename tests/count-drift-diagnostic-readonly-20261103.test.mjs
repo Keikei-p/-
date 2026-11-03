@@ -25,7 +25,7 @@ test('redacts identity and revenue while explaining saved vs line count directio
  assert.deepEqual(out.mismatchKinds,[{
   shape:'map',rowCount:2,zeroCountRows:0,
   direction:'saved_exceeds_lines',absoluteCountDifference:2,
-  savedCountIsZero:false,linesCountIsZero:false
+  savedCountIsZero:false,linesCountIsZero:false,relatedCorrectionDocuments:0
  }]);
  assert.equal(JSON.stringify(data),before);
  for(const value of ['SECRET-STAFF','secret-user','secretA','450000','999999999','privateProductId','records/'])
@@ -35,7 +35,7 @@ test('returns an aggregate not names for array larger-than-saved and zero row ca
  const out=classifyCountDrift(snapshot([doc('private',2,[0,4],'array')]));
  assert.deepEqual(out.mismatchKinds,[{shape:'array',rowCount:2,zeroCountRows:1,
   direction:'lines_exceed_saved',absoluteCountDifference:2,
-  savedCountIsZero:false,linesCountIsZero:false}]);
+  savedCountIsZero:false,linesCountIsZero:false,relatedCorrectionDocuments:0}]);
 });
 test('unverifiable rows are never treated as verified zero counts',()=>{
  const noResults={path:'records/privateX',value:{fields:{totalCount:{integerValue:'7'}}}};
