@@ -43,7 +43,7 @@ function projectPartnerMonth({hubId,cid,companyName,from,to,legacyDocs,extraDocs
    totalCount:0,counts:zero(),extraTotalCount:0});
   return teams.get(key);
  };
- const counts=zero();let totalCount=0,additionalTotalCount=0,privateTotalCount=0;
+ const counts=zero();let totalCount=0,additionalTotalCount=0;
  for(const doc of legacyDocs){
   const x=doc?.data?.()||{},id=x.staffId,date=x.date,tid=x.teamIdSnapshot;
   if(!ID.test(id||"")||!ID.test(tid||"")||!DAY.test(date||"")||
@@ -60,17 +60,16 @@ function projectPartnerMonth({hubId,cid,companyName,from,to,legacyDocs,extraDocs
    subtotal+=x.counts[key];
   }
   if(subtotal!==x.totalCount)fail();
-  // Private partner products count toward the person/team/company total, as
-  // in the partner monthly product summary. Never expose private product IDs.
+  // Private partner products are visible only in the partner's own
+  // monthly product view. Validate their saved totals, but do not add their
+  // quantities to shared HQ/partner rankings or disclose private totals.
   let privateCount;
   try{privateCount=normalizeExtraCounts(x.privateCounts??{}).total;}
   catch{fail();}
   if((x.privateTotalCount??0)!==privateCount)fail();
-  const combinedTotal=subtotal+privateCount;
-  if(!Number.isSafeInteger(combinedTotal))fail();
   const p=person(id,x.staffNameSnapshot,tid),t=team(tid);
-  p.totalCount+=combinedTotal;t.totalCount+=combinedTotal;
-  totalCount+=combinedTotal;privateTotalCount+=privateCount;
+  p.totalCount+=subtotal;t.totalCount+=subtotal;
+  totalCount+=subtotal;
   for(const key of keys){
    counts[key]+=x.counts[key];p.counts[key]+=x.counts[key];
    t.counts[key]+=x.counts[key];
@@ -97,10 +96,9 @@ function projectPartnerMonth({hubId,cid,companyName,from,to,legacyDocs,extraDocs
     p.extraCounts[productId]=(p.extraCounts[productId]||0)+count;
   }
  }
- if(!Number.isSafeInteger(totalCount)||!Number.isSafeInteger(additionalTotalCount)||
-    !Number.isSafeInteger(privateTotalCount))
+ if(!Number.isSafeInteger(totalCount)||!Number.isSafeInteger(additionalTotalCount))
   fail();
- return {id:cid,name:companyName,totalCount,additionalTotalCount,privateTotalCount,counts,
+ return {id:cid,name:companyName,totalCount,additionalTotalCount,counts,
   people:[...people.values()],teams:[...teams.values()],
   verifiedEntryCount:legacyDocs.length+extraDocs.length};
 }

@@ -45,21 +45,25 @@ test("monthly counts merge two days for same partner person and immutable team",
  assert.equal(data.teams[0].totalCount,10);
  assert.doesNotMatch(JSON.stringify(data),/staffId|uid|email|revenue|unitPrice|¥/);
 });
-test("private partner products count once in shared monthly totals but private product IDs never leak",()=>{
- const data=project([
+test("private partner counts remain private: own monthly totals retain them, shared rankings exclude them",()=>{
+ const originals=[
   row("2026-11-01","u1",{NURO:2,SBMNP:1},
    {privateCounts:{secretThing:3},privateTotalCount:3}),
   row("2026-11-02","u1",{NURO:1,SBMNP:0},
    {privateCounts:{secretThing:4},privateTotalCount:4})
- ],[row("2026-11-02","u1",{extraSolar:2})]);
- assert.equal(data.totalCount,13);
- assert.equal(data.privateTotalCount,7);
+ ];
+ const data=project(originals,[row("2026-11-02","u1",{extraSolar:2})]);
+ assert.equal(data.totalCount,6,"only 4 published-category + 2 published extra counts may be shared");
  assert.equal(data.additionalTotalCount,2);
- assert.equal(data.people[0].totalCount,13);
- assert.equal(data.teams[0].totalCount,13);
+ assert.equal(data.people[0].totalCount,6);
+ assert.equal(data.teams[0].totalCount,6);
  assert.deepEqual(data.counts,{NURO:3,SBMNP:1});
  assert.deepEqual(data.people[0].extraCounts,{extraSolar:2});
- assert.doesNotMatch(JSON.stringify(data),/secretThing|privateCounts|unitPrice|revenue/);
+ assert.doesNotMatch(JSON.stringify(data),/secretThing|privateCounts|privateTotalCount|unitPrice|revenue/);
+ // Original private quantities are intact; the partner's own product-month
+ // view continues to include them (covered by partner-product-monthly-parity).
+ assert.equal(originals[0].data().privateTotalCount,3);
+ assert.equal(originals[1].data().privateTotalCount,4);
 });
 test("damaged private quantities fail closed rather than making inconsistent combined ranks",()=>{
  for(const patch of [
