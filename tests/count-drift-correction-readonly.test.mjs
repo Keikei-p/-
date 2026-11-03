@@ -20,16 +20,16 @@ test("historical correction links to mismatched record without revealing record 
  }}});
  const correction={path:"recordCorrections/correction1",value:{fields:{
   recordId:{stringValue:"example"},
-  before:correctionSnapshot(1),after:correctionSnapshot(2)
+  before:correctionSnapshot(1),after:correctionSnapshot(1)
  }}};
  const result=classifyCountDrift({...meta,documents:[original,correction]});
  assert.equal(result.mismatchedRecords,1);
  assert.equal(result.mismatchKinds[0].relatedCorrectionDocuments,1);
  assert.deepEqual(result.mismatchKinds[0].correctionCountProof,{
   beforeConsistent:1,beforeMismatched:0,
-  afterConsistent:0,afterMismatched:1,
+  afterConsistent:1,afterMismatched:0,
   verifiedAfterSnapshots:1,afterSavedMatchesCurrent:1,
-  afterLinesMatchCurrent:1,afterBothMatchCurrent:1,
+  afterLinesMatchCurrent:0,afterBothMatchCurrent:0,
   unverifiedSnapshots:0
  });
  assert.ok(!JSON.stringify(result).includes("example"));
