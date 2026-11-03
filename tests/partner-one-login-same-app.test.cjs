@@ -13,7 +13,13 @@ test("existing app sign-in is reused for company and member invitations",()=>{
  assert.match(index,/partnerCompanyInvite/);
  assert.match(index,/partnerStaffInvite/);
  assert.match(index,/partnerMainAcceptCompanyInvite\(\{token:invite\.token\}\)/);
- assert.match(index,/partnerInlineAccept\(\{token:invite\.token,name,transferCurrentCompany:false\}\)/);
+ assert.match(index,/partnerInlineAccept\(\{token:invite\.token,name,transferCurrentCompany:true\}\)/);
+ assert.match(index,/const consent=window\.confirm\(/);
+ assert.match(index,/const partnerTransferSecondary = httpsCallable\(partnerCountFunctions,"transferPartnerSecondaryMembership"\)/);
+ assert.match(index,/void renderPartnerSelfTransferAction\(detail\)/);
+ assert.match(index,/button\.onclick=async\(\)=>\{/);
+ assert.match(service,/async function transferSecondary\(request\)/);
+ assert.match(service,/transferredToPrimary:true/);
  assert.match(index,/showLegacyFinanceEntryBlocked\(checkedEntry.mode\)/);
  assert.match(index,/if\(mode==="partner"&&auth.currentUser\?\.emailVerified\)/);
  assert.match(index,/void openSameAppPartnerWorkspace\(auth.currentUser\)/);
