@@ -1246,6 +1246,8 @@ test("shared daily standings expose verified partners to both companies without 
  assert.equal(partial.direct.teams[0].totalCount,4);
  assert.equal(partial.direct.people.length,1);
  assert.equal(partial.direct.people[0].totalCount,2);
+ assert.equal(partial.groupStatus,"unverified","missing direct UID must not publish personal product standings");
+ assert.deepEqual(partial.groupStandings,[]);
  assert.doesNotMatch(JSON.stringify(partial),/名前のみ|1999998|999999/);
 });
 test("unsubmitted approved companies are not misrepresented as zero-count ranks",async()=>{
@@ -1586,4 +1588,24 @@ test("saved partner counts reach HQ breakdown and joint ranks exactly once",asyn
  assert.deepEqual(db.store.get("records/old"),salesBefore);
  for(const result of [hub.partnerTeamDetails,shared,next.partnerTeamDetails,rank])
   assert.doesNotMatch(JSON.stringify(result),/98000|808080|revenuePerUnit|totalRevenue|unitPrice|@example\.com/);
+});
+
+test("legacy partner company totals remain available but cannot become verified personal rankings",async()=>{
+ const {db,api,req,zero}=setup();
+ const date="2026-10-31",counts={...zero(),NURO:3};
+ db.seed("companies/hub/partnerWorkCountDays/"+date+"/reports/partner",{
+  source:"legacy-company-only",hubCompanyId:"hub",partnerCompanyId:"partner",
+  partnerName:"協力店",date,counts,totalCount:3
+ });
+ const before=clone([...db.store]);
+ const result=await api.view(req("h",{date,sharedRankings:true}));
+ assert.equal(result.companies.length,1);
+ assert.equal(result.companies[0].totalCount,3);
+ assert.equal(result.companies[0].peopleVerified,false);
+ assert.equal(result.complete,false);
+ assert.equal(result.groupStatus,"unverified");
+ assert.deepEqual(result.groupStandings,[]);
+ assert.equal(result.productCounts.NURO,3);
+ assert.deepEqual(result.people,[]);
+ assert.deepEqual([...db.store],before,"read-only ranks must never modify legacy company or financial records");
 });
