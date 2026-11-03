@@ -77,6 +77,7 @@ async function readDirectRangeCounts(db,hubId,fromDate,toDate,keys,{
  const people=new Map(),teams=new Map(),counts=Object.fromEntries(keys.map(k=>[k,0]));
  const approvedExtras=new Set(approvedExtraProductIds);
  let totalCount=0,otherCount=0,unverifiedPersonRecords=0;
+ const seenPersonDays=new Set();
  for(const doc of snap.docs){
   const row=doc.data()||{};
   if(row.companyId!==hubId||typeof row.date!=="string"||
@@ -122,6 +123,11 @@ async function readDirectRangeCounts(db,hubId,fromDate,toDate,keys,{
   // A record ID is NOT a verified staff identity: never invent people in
   // a cross-company individual ranking when a legacy entry lacks a UID.
   const personId=safeIdentifier(row.uid)?row.uid:null;
+  if(personId){
+   const uniqueDay=JSON.stringify([row.date,personId]);
+   if(seenPersonDays.has(uniqueDay))throw Error("DIRECT_DUPLICATE_PERSON_DAY");
+   seenPersonDays.add(uniqueDay);
+  }
   if(!personId)unverifiedPersonRecords++;
   const name=safeName(row.memberNameSnapshot,"担当者未確認");
   const teamId=safeIdentifier(row.teamId)?row.teamId:"unknown";

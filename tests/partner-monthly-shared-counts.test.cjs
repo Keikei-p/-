@@ -193,3 +193,22 @@ test("direct approved-product IDs reject prototype property names before any dat
  }
  assert.equal(readCalls,0);
 });
+
+test("direct company monthly count rejects duplicate staff/day originals rather than ranking them twice",async()=>{
+ const entry=(date,uid)=>({data:()=>({companyId:"hub",date,uid,teamId:"teamA",
+  memberNameSnapshot:"担当者A",totalCount:2,
+  results:[{productId:"nuro",productNameSnapshot:"NURO光",count:2}]})});
+ const mkdb=docs=>({collection(name){
+  const rows=name==="records"?docs:[];
+  return {where(){return this;},limit(){return this;},
+   async get(){return {size:rows.length,docs:rows};}};
+ }});
+ const read=docs=>readDirectRangeCounts(mkdb(docs),"hub","2026-11-01","2026-11-03",
+  ["NURO"],{maxRecords:10});
+ await assert.rejects(read([entry("2026-11-01","u1"),entry("2026-11-01","u1")]),
+  /DIRECT_DUPLICATE_PERSON_DAY/);
+ const distinct=await read([entry("2026-11-01","u1"),entry("2026-11-02","u1")]);
+ assert.equal(distinct.totalCount,4);
+ assert.equal(distinct.people.length,1);
+ assert.equal(distinct.people[0].totalCount,4);
+});
