@@ -7,6 +7,7 @@ on:
     paths:
       - index.html
       - tests/sales-regressions.cjs
+      - tests/partner-one-login-same-app.test.cjs
       - tests/rules.test.cjs
       - .github/workflows/nico-sales-count-integrity-release-no-deploy.yml
 
