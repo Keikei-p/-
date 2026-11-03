@@ -45,19 +45,23 @@ function readCountRows(entry){
   return [];
  throw Error("DIRECT_RECORD_SHAPE_UNVERIFIED");
 }
-async function readDirectDayCounts(db,hubId,date,keys,{
+async function readDirectRangeCounts(db,hubId,fromDate,toDate,keys,{
  maxRecords=MAX_DIRECT_RECORDS_PER_DAY,approvedExtraProductIds=[]
 }={}){
- if(!safeIdentifier(hubId)||!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(date)||
-    !Array.isArray(keys)||!keys.length||maxRecords<1||maxRecords>MAX_DIRECT_RECORDS_PER_DAY||
+ if(!safeIdentifier(hubId)||!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(fromDate)||
+    !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(toDate)||fromDate>toDate||
+    !Array.isArray(keys)||!keys.length||maxRecords<1||maxRecords>10000||
     !Array.isArray(approvedExtraProductIds)||approvedExtraProductIds.length>1000||
     approvedExtraProductIds.some(id=>!safeIdentifier(id))||
     new Set(approvedExtraProductIds).size!==approvedExtraProductIds.length)
   throw Error("DIRECT_SCOPE_INVALID");
  // Use existing company/date composite query. One bounded read, no writes.
+ // Month mode uses the SAME redactor, with an explicit hard cap of 10k rows.
+ const query=db.collection("records").where("companyId","==",hubId);
+ const bounded=fromDate===toDate?query.where("date","==",fromDate):
+  query.where("date",">=",fromDate).where("date","<=",toDate);
  const [snap,catalog]=await Promise.all([
-  db.collection("records").where("companyId","==",hubId)
-   .where("date","==",date).limit(maxRecords+1).get(),
+  bounded.limit(maxRecords+1).get(),
   db.collection("products").where("companyId","==",hubId).limit(301).get()
  ]);
  if(snap.size>maxRecords)throw Error("DIRECT_READ_BUDGET_EXCEEDED");
@@ -74,7 +78,8 @@ async function readDirectDayCounts(db,hubId,date,keys,{
  let totalCount=0,otherCount=0,unverifiedPersonRecords=0;
  for(const doc of snap.docs){
   const row=doc.data()||{};
-  if(row.companyId!==hubId||row.date!==date)throw Error("DIRECT_SCOPE_MISMATCH");
+  if(row.companyId!==hubId||typeof row.date!=="string"||
+    row.date<fromDate||row.date>toDate)throw Error("DIRECT_SCOPE_MISMATCH");
   const results=readCountRows(row);
   let n=0;
   const daily=Object.fromEntries(keys.map(k=>[k,0]));
@@ -147,4 +152,7 @@ async function readDirectDayCounts(db,hubId,date,keys,{
   peopleVerified:unverifiedPersonRecords===0,unverifiedPersonRecords,
   recordsVerified:snap.size};
 }
-module.exports={readDirectDayCounts,MAX_DIRECT_RECORDS_PER_DAY};
+async function readDirectDayCounts(db,hubId,date,keys,opts={}){
+ return readDirectRangeCounts(db,hubId,date,date,keys,opts);
+}
+module.exports={readDirectDayCounts,readDirectRangeCounts,MAX_DIRECT_RECORDS_PER_DAY};
