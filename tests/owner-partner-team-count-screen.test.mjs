@@ -21,7 +21,8 @@ function node(tag="div"){
   replaceChildren(...items){this.children=[...items];this.textContent="";},
   addEventListener(type,fn){this.handlers[type]=fn;},
   setAttribute(name,value){this.attrs[name]=value;},
-  get lastChild(){return this.children.at(-1);}
+  get lastChild(){return this.children.at(-1);},
+  get lastElementChild(){return this.children.at(-1);}
  };
 }
 
@@ -45,8 +46,10 @@ function fixture(){
     scope:"shared_counts_only",date,partnerCompanyId,
     verifiedSharedCount:detailTotal,unverifiedTeamCount:0,
     unreconciledWithCompanyReport:false,
-    teams:[{name:"1班",totalCount:detailTotal,reportedStaffCount:1,counts,
-     members:[{name:"田中",totalCount:detailTotal,counts}]}]
+    teams:[{teamId:"t1",name:"1班",totalCount:detailTotal,reportedStaffCount:1,counts,
+     members:[{name:"田中",totalCount:detailTotal,counts}]}],
+    publishedAdditional:{scope:"published_extra_count_only",complete:true,
+     verifiedPublishedCount:0,unattributedPublishedCount:0,teams:[]}
    }}};
   }
   return {data:{date,role:"hub",registeredCompanies:[companyA,companyB],

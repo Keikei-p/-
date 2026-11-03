@@ -13,9 +13,23 @@ const service=makeWorkspace({
 const opts={region:"asia-northeast1",maxInstances:3,
  cors:["https://nico-factory.web.app"]};
 exports.getPartnerWorkspace=onCall(opts,service.view);
+// Explicit opt-in: bounded monthly COUNT-ONLY projection, never deploy by CI.
+exports.getPartnerMonthlySharedCounts=onCall(opts,service.viewMonthly);
+// Own-company, saved-entry MONTHLY product totals. Read only; no financial originals.
+exports.getPartnerProductMonthlyTotals=onCall(opts,service.viewProductMonthly);
 exports.managePartnerWorkspace=onCall(opts,service.manage);
 exports.acceptPartnerWorkspaceInvite=onCall(opts,service.accept);
 exports.submitPartnerWorkspaceCounts=onCall(opts,service.submit);
+// New isolated catalog callables: do not redeploy legacy functions without a reviewed release.
+exports.getPartnerCatalog=onCall(opts,service.viewCatalog);
+exports.setPartnerCatalogPublication=onCall(opts,service.setCatalogPublication);
+exports.getPartnerRankingGroups=onCall(opts,service.getPartnerRankingGroups);
+exports.setPartnerRankingGroups=onCall(opts,service.setPartnerRankingGroups);
+exports.getPartnerCountLinks=onCall(opts,service.getPartnerCountLinks);
+exports.setPartnerCountLink=onCall(opts,service.setPartnerCountLink);
+// Isolated ledger: never writes original nine categories, original sales or price metadata.
+exports.getPartnerAdditionalCounts=onCall(opts,service.viewAdditionalCounts);
+exports.submitPartnerAdditionalCounts=onCall(opts,service.submitAdditionalCounts);
 const codeAuth=makeCompanyCodeAuth({
  db:getFirestore(),getAuth,FieldValue,Timestamp,HttpsError,
  enabled:()=>process.env.PARTNER_COMPANY_CODE_AUTH_ENABLED==="enabled"

@@ -1,7 +1,15 @@
 "use strict";
 // Isolated partner operations: no reads/writes to sales products, records or prices.
 const crypto=require("node:crypto");
-const {readDirectDayCounts}=require("./shared-direct-counts.cjs");
+const {loadPublication,projectMasterProducts,changePublication,validId,nameOnly}=require("./catalog-publication.cjs");
+const {readLinks,addLink,projectLinks}=require("./catalog-count-links.cjs");
+const {normalizeExtraCounts,applyExtraCounts,projectedExtraRead}=require("./additional-counts.cjs");
+const {projectExtraRankDocs}=require("./extra-rank-projection.cjs");
+const {ownerPublishedExtraBreakdown}=require("./owner-published-extra-breakdown.cjs");
+const {projectPartnerMonth}=require("./monthly-shared-projection.cjs");
+const {projectPartnerProductMonth}=require("./partner-product-monthly.cjs");
+const {decodeGroups,saveGroups,groupPersonalScores,canPublishSharedPersonalRankings}=require("./shared-ranking-groups.cjs");
+const {readDirectDayCounts,readDirectRangeCounts}=require("./shared-direct-counts.cjs");
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 // Cashback is a product variant label, NOT a sales unit price or revenue.
 const PARTNER_CB_OPTIONS=Object.freeze({"NURO":Object.freeze(["0","20000","40000","60000","80000","unclassified"])});
@@ -103,6 +111,10 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  const staffRef=(cid,id)=>collection(cid,"partnerWorkStaff").doc(id);
  const privateProductRef=(cid,id)=>collection(cid,"partnerPrivateProducts").doc(id);
  const entryRef=(cid,date,id)=>collection(cid,"partnerWorkEntries").doc(date+"__"+id);
+ // New dynamic-count documents are intentionally disjoint from all original
+ // fixed-9 product ledgers, daily reports, price histories and audits.
+ const extraEntryRef=(cid,date,id)=>collection(cid,"partnerAdditionalCountEntries").doc(date+"__"+id);
+ const extraUsageRef=(hub,productId)=>collection(hub,"partnerAdditionalProductUsage").doc(productId);
  const summaryRef=(hub,date,partner)=>collection(hub,"partnerWorkCountDays").doc(date).collection("reports").doc(partner);
  async function actor(request){
   if(enabled()!==true)fail("unavailable");
@@ -260,6 +272,312 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      (u.memberType!=null&&!["internal","direct","member","managed"].includes(u.memberType))||
      (m.memberType!=null&&!["internal","direct","member","managed"].includes(m.memberType)))fail();
   return {kind:"hub",uid,cid,role:"owner"};
+ }
+
+ // The raw sales product master is read on the trusted backend only.
+ // No pricing, sales history, or financial fields reach partner clients.
+ async function viewCatalog(request){
+  const a=await actor(request),d=request?.data||{};
+  const s=await scope(a.uid,null,d.workspaceCompanyId);
+  if(s.kind!=="partner"&&s.kind!=="hub")fail();
+  const hubId=s.kind==="hub"?s.cid:s.hubId;
+  if(!ID.test(hubId||""))fail();
+  const [master,settings]=await Promise.all([
+   db.collection("products").where("companyId","==",hubId).limit(1001).get(),
+   collection(hubId,"partnerCatalogSettings").doc("publication").get()
+  ]);
+  if(master.size>1000)fail("resource-exhausted");
+  if(master.docs.some(doc=>doc.data()?.companyId!==hubId))fail("data-loss");
+  let state,rows;
+  try{
+   state=loadPublication(settings.exists?settings.data():null);
+   rows=projectMasterProducts(master.docs.map(doc=>({...doc.data(),id:doc.id})),
+    state.productIds,s.kind==="partner");
+  }catch{fail("data-loss");}
+  return {role:s.kind,revision:state.revision,products:s.kind==="partner"?
+   rows.map(({id,name,sortOrder})=>({id,name,sortOrder})):rows};
+ }
+ // One product flag per transaction; optimistic version guards concurrent owners.
+ // Existing products, price metadata and history are never written.
+ async function setCatalogPublication(request){
+  const a=await actor(request),d=request?.data||{};
+  if(d.workspaceCompanyId!=null)fail();
+  const s=await scope(a.uid);
+  if(s.kind!=="hub"||s.role!=="owner"||
+     !validId(d.productId)||typeof d.published!=="boolean"||
+     !Number.isSafeInteger(d.expectedRevision)||d.expectedRevision<0)
+    fail("permission-denied");
+  const productRef=db.collection("products").doc(d.productId);
+  const stateRef=collection(s.cid,"partnerCatalogSettings").doc("publication");
+  return db.runTransaction(async tx=>{
+   // Revalidate live Owner membership INSIDE the transaction, guarding a role revocation.
+   const fresh=await scope(a.uid,tx);
+   if(fresh.kind!=="hub"||fresh.role!=="owner"||fresh.cid!==s.cid)fail();
+   const [productDoc,stateDoc]=await Promise.all([tx.get(productRef),tx.get(stateRef)]);
+   const product=productDoc.data()||{};
+   if(!productDoc.exists||product.companyId!==s.cid||product.active===false)fail("failed-precondition");
+   try{nameOnly(product.name);}catch{fail("failed-precondition");}
+   let next;
+   try{next=changePublication(stateDoc.exists?stateDoc.data():null,
+     d.productId,d.published,d.expectedRevision);}
+   catch{fail("aborted");}
+   tx.set(stateRef,{...next,updatedByUid:a.uid,updatedAt:FieldValue.serverTimestamp()});
+   return {saved:true,revision:next.revision,productId:d.productId,published:d.published};
+  });
+ }
+
+ // Share the original group editor's definitions with other approved members.
+ // The source remains hub-owned; partner users may only read redacted settings.
+ const groupSettingsRef=hub=>collection(hub,"partnerRankingSettings").doc("shared");
+ const publicationRef=hub=>collection(hub,"partnerCatalogSettings").doc("publication");
+ async function readRankingSettings(hub){
+  const [groups,publication]=await Promise.all([
+   groupSettingsRef(hub).get(),publicationRef(hub).get()
+  ]);
+  try{
+   const pub=loadPublication(publication.exists?publication.data():null);
+   return decodeGroups(groups.exists?groups.data():null,
+    {allowedProducts:pub.productIds,categories:KEYS});
+  }catch{fail("data-loss");}
+ }
+ async function getPartnerRankingGroups(request){
+  const a=await actor(request),d=request?.data||{};
+  const s=await sharedRankScope(a.uid,d.workspaceCompanyId);
+  const hub=s.kind==="hub"?s.cid:s.hubId;
+  if(!validId(hub))fail();
+  const config=await readRankingSettings(hub);
+  return {scope:"shared_count_rank_groups",revision:config.revision,groups:config.groups};
+ }
+ async function setPartnerRankingGroups(request){
+  const a=await actor(request),d=request?.data||{};
+  if(d.workspaceCompanyId!=null||!Number.isSafeInteger(d.expectedRevision)||
+     d.expectedRevision<0||!Array.isArray(d.groups))fail("invalid-argument");
+  const s=await scope(a.uid);
+  if(s.kind!=="hub"||s.role!=="owner")fail();
+  return db.runTransaction(async tx=>{
+   const fresh=await scope(a.uid,tx);
+   if(fresh.kind!=="hub"||fresh.role!=="owner"||fresh.cid!==s.cid)fail();
+   const configRef=groupSettingsRef(s.cid),pubRef=publicationRef(s.cid);
+   const [existing,pubSnap]=await Promise.all([tx.get(configRef),tx.get(pubRef)]);
+   let next;
+   try{
+    const pub=loadPublication(pubSnap.exists?pubSnap.data():null);
+    next=saveGroups(existing.exists?existing.data():null,d.groups,d.expectedRevision,
+     {allowedProducts:pub.productIds,categories:KEYS});
+   }catch{fail("failed-precondition");}
+   tx.set(configRef,{...next,updatedAt:FieldValue.serverTimestamp(),
+     updatedByUid:a.uid});
+   return {saved:true,revision:next.revision,groups:next.groups};
+  });
+ }
+
+ // Explicit links apply only from the NEXT day onward. No past entry,
+ // summary, ranking or saved CB tier is reinterpreted or overwritten.
+ const countLinksRef=hub=>collection(hub,"partnerCatalogSettings").doc("countLinks");
+ async function getPartnerCountLinks(request){
+  const a=await actor(request),d=request?.data||{};
+  if(Object.keys(d).some(key=>!["workspaceCompanyId","codeSessionToken"].includes(key)))
+   fail("invalid-argument");
+  const s=await scope(a.uid,null,d.workspaceCompanyId);
+  const hubId=s.kind==="hub"?s.cid:s.hubId;
+  if(!validId(hubId))fail();
+  const [linkSnap,pubSnap]=await Promise.all([
+   countLinksRef(hubId).get(),publicationRef(hubId).get()
+  ]);
+  try{
+   const pub=loadPublication(pubSnap.exists?pubSnap.data():null);
+   const result=projectLinks(linkSnap.exists?linkSnap.data():null,{
+    categories:KEYS,publishedIds:pub.productIds,audience:s.kind,
+    date:s.kind==="partner"?jstToday():null
+   });
+   return {scope:"partner_count_category_links",...result};
+  }catch{fail("data-loss");}
+ }
+ async function setPartnerCountLink(request){
+  const a=await actor(request),d=request?.data||{};
+  if(Object.keys(d).sort().join("|")!=="category|expectedRevision|productId"||
+     !validId(d.productId)||!KEYS.includes(d.category)||
+     !Number.isSafeInteger(d.expectedRevision)||d.expectedRevision<0)
+   fail("invalid-argument");
+  const s=await scope(a.uid);
+  if(s.kind!=="hub"||s.role!=="owner")fail();
+  const productRef=db.collection("products").doc(d.productId);
+  const ref=countLinksRef(s.cid),pubRef=publicationRef(s.cid);
+  const effectiveFrom=new Date(Date.parse(jstToday()+"T00:00:00Z")+86400000)
+   .toISOString().slice(0,10);
+  return db.runTransaction(async tx=>{
+   const live=await scope(a.uid,tx);
+   if(live.kind!=="hub"||live.role!=="owner"||live.cid!==s.cid)fail();
+   const [productSnap,pubSnap,linkSnap,usageSnap]=await Promise.all([
+    tx.get(productRef),tx.get(pubRef),tx.get(ref),tx.get(extraUsageRef(s.cid,d.productId))
+   ]);
+   // Refuse to reclassify a product that already has extra-count history.
+   if(usageSnap.exists)fail("failed-precondition");
+   const item=productSnap.data()||{};
+   if(!productSnap.exists||item.companyId!==s.cid||item.active!==true)
+    fail("failed-precondition");
+   try{nameOnly(item.name);}catch{fail("failed-precondition");}
+   let next;
+   try{
+    const pub=loadPublication(pubSnap.exists?pubSnap.data():null);
+    next=addLink({existing:linkSnap.exists?linkSnap.data():null,
+     productId:d.productId,category:d.category,effectiveFrom,
+     expectedRevision:d.expectedRevision,publishedIds:pub.productIds,categories:KEYS});
+   }catch{fail("failed-precondition");}
+   // Never write productRef, entryRef, summaryRef, audit or revenue fields.
+   tx.set(ref,{...next,updatedByUid:a.uid,updatedAt:FieldValue.serverTimestamp()});
+   return {linked:true,revision:next.revision,productId:d.productId,
+    category:d.category,effectiveFrom};
+  });
+ }
+
+ // Product filtering is exclusively performed on the trusted service:
+ // neither originals nor pricing fields are sent to partner browsers.
+ async function approvedExtraCatalog(s,tx=null){
+  if(s.kind!=="partner")fail();
+  const get=ref=>tx?tx.get(ref):ref.get(),hub=s.hubId;
+  const [master,pubDoc,linksDoc]=await Promise.all([
+   get(db.collection("products").where("companyId","==",hub).limit(1001)),
+   get(publicationRef(hub)),get(countLinksRef(hub))
+  ]);
+  if(master.size>1000)fail("resource-exhausted");
+  if(master.docs.some(doc=>doc.data()?.companyId!==hub))fail("data-loss");
+  let products,linked;
+  try{
+   const pub=loadPublication(pubDoc.exists?pubDoc.data():null);
+   const links=readLinks(linksDoc.exists?linksDoc.data():null,KEYS);
+   linked=new Set(links.links.map(link=>link.productId));
+   products=projectMasterProducts(master.docs.map(doc=>({...doc.data(),id:doc.id})),
+    pub.productIds,true).filter(product=>!linked.has(product.id))
+    .map(({id,name,sortOrder})=>({id,name,sortOrder}));
+  }catch{fail("data-loss");}
+  return {products,blockedIds:[...linked]};
+ }
+ async function viewAdditionalCounts(request){
+  const a=await actor(request),d=request?.data||{},date=validDate(d.date);
+  if(Object.keys(d).some(key=>!["date","workspaceCompanyId","codeSessionToken"].includes(key)))
+   fail("invalid-argument");
+  const s=await scope(a.uid,null,d.workspaceCompanyId);
+  if(s.kind!=="partner")fail();
+  const catalog=await approvedExtraCatalog(s);
+  const [staffSnap,extraSnap]=await Promise.all([
+   collection(s.cid,"partnerWorkStaff").limit(151).get(),
+   collection(s.cid,"partnerAdditionalCountEntries").where("date","==",date)
+    .limit(201).get()
+  ]);
+  if(staffSnap.size>150||extraSnap.size>200)fail("resource-exhausted");
+  const accessible=new Set();
+  for(const doc of staffSnap.docs){
+   const person=doc.data()||{};
+   if(!ID.test(doc.id)||person.companyId!==s.cid||!validName(person.name))
+    fail("data-loss");
+   if(canStaff(s,person))accessible.add(doc.id);
+  }
+  const ids=catalog.products.map(p=>p.id);
+  const records=[];
+  for(const doc of extraSnap.docs){
+   const row=doc.data()||{};
+   if(row.companyId!==s.cid||row.hubCompanyId!==s.hubId||
+    row.date!==date||!ID.test(row.staffId||"")||
+    doc.id!==date+"__"+row.staffId||
+    !Number.isSafeInteger(row.version)||row.version<1||
+    !Number.isSafeInteger(row.totalCount)||row.totalCount<0)fail("data-loss");
+   if(!accessible.has(row.staffId))continue;
+   let result;
+   try{result=projectedExtraRead(row.counts,{visibleIds:ids});}
+   catch{fail("data-loss");}
+   if(result.totalCount!==row.totalCount)fail("data-loss");
+   records.push({staffId:row.staffId,version:row.version,
+    counts:result.counts,archivedTotal:result.archivedTotal,
+    totalCount:result.totalCount,teamIdSnapshot:row.teamIdSnapshot||null});
+  }
+  return {scope:"partner_extra_counts",date,role:s.role,
+   companyName:s.companyName,products:catalog.products,records};
+ }
+ async function submitAdditionalCounts(request){
+  const a=await actor(request),d=request?.data||{},
+   date=validDate(d.date),staffId=clean(d.staffId);
+  if(!ID.test(staffId)||!Number.isSafeInteger(d.expectedVersion)||
+     d.expectedVersion<0||d.expectedVersion>=999||
+     !d.changes||Object.keys(d.changes).length===0)fail("invalid-argument");
+  let patch;
+  try{patch=normalizeExtraCounts(d.changes);}
+  catch{fail("invalid-argument");}
+  const s=await scope(a.uid,null,d.workspaceCompanyId);
+  if(s.kind!=="partner")fail();
+  return db.runTransaction(async tx=>{
+   const live=await scope(a.uid,tx,d.workspaceCompanyId);
+   if(live.kind!=="partner"||live.cid!==s.cid||live.hubId!==s.hubId)fail();
+   const sr=staffRef(s.cid,staffId),er=extraEntryRef(s.cid,date,staffId);
+   const [staffSnap,prevSnap,legacySnap,catalog]=await Promise.all([
+    tx.get(sr),tx.get(er),tx.get(entryRef(s.cid,date,staffId)),
+    approvedExtraCatalog(live,tx)
+   ]);
+   const person=staffSnap.data()||{},previous=prevSnap.data()||{};
+   if(!staffSnap.exists||person.active!==true||person.companyId!==s.cid||
+      !validName(person.name)||!canStaff(live,person))fail();
+   if(prevSnap.exists){
+    if(previous.date!==date||previous.companyId!==s.cid||
+       previous.hubCompanyId!==s.hubId||previous.staffId!==staffId||
+       !Number.isSafeInteger(previous.version)||previous.version<1||
+       previous.version!==d.expectedVersion)fail("aborted");
+   }else if(d.expectedVersion!==0)fail("aborted");
+   let old,next;
+   try{
+    old=normalizeExtraCounts(prevSnap.exists?previous.counts:{});
+    if(prevSnap.exists&&old.total!==previous.totalCount)
+     fail("data-loss");
+    next=applyExtraCounts({previous:old.counts,changes:patch.counts,
+     allowedIds:catalog.products.map(p=>p.id),blockedLegacyIds:catalog.blockedIds});
+   }catch(e){if(e?.code==="data-loss")throw e;fail("failed-precondition");}
+   if(JSON.stringify(old.counts)===JSON.stringify(next.counts))
+    return {saved:false,unchanged:true,staffId,date,
+     version:prevSnap.exists?previous.version:0,totalCount:old.total};
+   if(Object.keys(next.counts).length>100)fail("resource-exhausted");
+   const usedIds=Object.keys(next.counts).filter(id=>next.counts[id]>0);
+   // Permanent usage marker prevents an Owner mapping an already-counted
+   // extra product into a legacy bucket (which would double-count it).
+   const usedSnaps=await Promise.all(usedIds.map(id=>tx.get(extraUsageRef(s.hubId,id))));
+   for(let i=0;i<usedIds.length;i++){
+    const doc=usedSnaps[i],value=doc.data()||{};
+    if(doc.exists&&(value.hubCompanyId!==s.hubId||value.productId!==usedIds[i]))
+     fail("data-loss");
+   }
+   // A saved historical sales-team snapshot is authoritative. Never attach
+   // extra counts for an old date to the worker\u0027s CURRENT team.
+   const legacy=legacySnap.data()||{};
+   if(legacySnap.exists&&(legacy.companyId!==s.cid||
+      legacy.staffId!==staffId||legacy.date!==date))fail("data-loss");
+   const teamIdSnapshot=prevSnap.exists?previous.teamIdSnapshot:
+    legacySnap.exists?legacy.teamIdSnapshot:
+    date===jstToday()?person.teamId:null;
+   const staffNameSnapshot=prevSnap.exists?previous.staffNameSnapshot:
+    legacySnap.exists?legacy.staffNameSnapshot:
+    date===jstToday()?person.name:null;
+   if(!ID.test(teamIdSnapshot||"")||!validName(staffNameSnapshot))fail("data-loss");
+   if(!prevSnap.exists){
+    const team=await tx.get(teamRef(s.cid,teamIdSnapshot));
+    if(!team.exists||team.data()?.companyId!==s.cid||team.data()?.active!==true)
+      fail("failed-precondition");
+   }
+   const nowStamp=FieldValue.serverTimestamp(),version=d.expectedVersion+1;
+   const row={companyId:s.cid,hubCompanyId:s.hubId,date,staffId,
+    counts:next.counts,totalCount:next.total,version,
+    staffNameSnapshot,teamIdSnapshot,updatedByUid:a.uid,updatedAt:nowStamp};
+   if(prevSnap.exists)tx.update(er,row);
+   else tx.create(er,{...row,createdAt:nowStamp});
+   const audit=collection(s.cid,"partnerAdditionalCountAudits")
+    .doc(date+"__"+staffId+"__v"+version);
+   tx.create(audit,{...row,previousCounts:old.counts,
+    previousTotalCount:old.total,createdAt:nowStamp});
+   for(let i=0;i<usedIds.length;i++){
+    if(!usedSnaps[i].exists)
+     tx.create(extraUsageRef(s.hubId,usedIds[i]),
+      {hubCompanyId:s.hubId,productId:usedIds[i],
+       firstCompanyId:s.cid,firstDate:date,createdAt:nowStamp});
+   }
+   return {saved:true,staffId,date,version,totalCount:next.total};
+  });
  }
  const checkTeam=async(tx,s,id)=>{
   if(!ID.test(id||""))fail("invalid-argument");
@@ -701,6 +1019,146 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    fail();
   return {kind:"hub",uid,cid,role:u.companyRole};
  }
+ async function viewProductMonthly(request){
+  const a=await actor(request),d=request?.data||{};
+  if(Object.keys(d).some(key=>!["month","workspaceCompanyId"].includes(key))||
+    typeof d.month!=="string"||!/^\d{4}-(0[1-9]|1[0-2])$/.test(d.month)||
+    d.month>jstToday().slice(0,7))fail("invalid-argument");
+  const [year,num]=d.month.split("-").map(Number);
+  const first=d.month+"-01";
+  const monthEnd=new Date(Date.UTC(year,num,0)).toISOString().slice(0,10);
+  const last=monthEnd<jstToday()?monthEnd:jstToday();
+  // The partner may query ONLY its own approved workspace: no hub financial
+  // records, cross-partner collections, names or prices enter this endpoint.
+  const s=await scope(a.uid,null,d.workspaceCompanyId);
+  if(s.kind!=="partner"||!ID.test(s.cid)||!ID.test(s.hubId))fail();
+  const [work,extra,linksSnap]=await Promise.all([
+   collection(s.cid,"partnerWorkEntries")
+    .where("date",">=",first).where("date","<=",last).limit(2001).get(),
+   collection(s.cid,"partnerAdditionalCountEntries")
+    .where("date",">=",first).where("date","<=",last).limit(2001).get(),
+   countLinksRef(s.hubId).get()
+  ]);
+  // Avoid displaying incomplete months as authoritative totals when capped.
+  if(work.size>2000||extra.size>2000)fail("resource-exhausted");
+  let summary;
+  try{
+   const linked=readLinks(linksSnap.exists?linksSnap.data():null,KEYS).links;
+   summary=projectPartnerProductMonth({
+    hubId:s.hubId,cid:s.cid,month:d.month,keys:KEYS,
+    workDocs:work.docs,extraDocs:extra.docs,
+    linkedIds:linked.map(link=>link.productId)
+   });
+  }catch{fail("data-loss");}
+  return {scope:"partner_product_monthly_counts_only",month:d.month,
+   role:s.role,companyName:clean(s.companyName),...summary};
+ }
+ async function viewMonthly(request){
+  const a=await actor(request),d=request?.data||{};
+  if(Object.keys(d).some(k=>!["month","workspaceCompanyId"].includes(k))||
+     typeof d.month!=="string"||!/^\d{4}-\d{2}$/.test(d.month))
+   fail("invalid-argument");
+  const first=validDate(d.month+"-01"),current=jstToday();
+  const [year,monthNum]=d.month.split("-").map(Number);
+  const last=new Date(Date.UTC(year,monthNum,0)).toISOString().slice(0,10);
+  const lastDate=last<current?last:current;
+  const s=await sharedRankScope(a.uid,d.workspaceCompanyId);
+  const hubId=s.kind==="hub"?s.cid:s.hubId;
+  if(!ID.test(hubId||""))fail();
+  const relations=await db.collection("partnerRelations")
+   .where("hubCompanyId","==",hubId).limit(21).get();
+  if(relations.size>20)fail("resource-exhausted");
+  const [pubDoc,linksDoc]=await Promise.all([
+   publicationRef(hubId).get(),countLinksRef(hubId).get()
+  ]);
+  let publishedIds,allLinks;
+  try{
+   publishedIds=loadPublication(pubDoc.exists?pubDoc.data():null).productIds;
+   allLinks=readLinks(linksDoc.exists?linksDoc.data():null,KEYS).links;
+  }catch{fail("data-loss");}
+  const linkedIds=allLinks.map(x=>x.productId);
+  const extraVerifiedIds=publishedIds.filter(id=>!linkedIds.includes(id));
+  // Monthly reads are intentionally bounded; never send incomplete data as a
+  // "complete" ranking or pass any raw original financial fields to clients.
+  let direct;
+  try{
+   direct=await readDirectRangeCounts(db,hubId,first,lastDate,KEYS,{
+    maxRecords:10000,approvedExtraProductIds:extraVerifiedIds
+   });
+  }catch{fail("failed-precondition");}
+  const companies=[],people=[],teams=[],productCounts=Object.fromEntries(KEYS.map(k=>[k,0]));
+  let additionalTotalCount=0,partnerRowsRead=0;
+  for(const relSnap of relations.docs){
+   const rel=relSnap.data()||{},cid=relSnap.id;
+   if(!ID.test(cid)||rel.partnerCompanyId!==cid||rel.hubCompanyId!==hubId)
+    fail("data-loss");
+   if(rel.active!==true||rel.countSharingApproved!==true)continue;
+   const companySnap=await db.collection("companies").doc(cid).get();
+   const company=companySnap.data()||{};
+   if(!companySnap.exists||company.companyKind!=="partner"||
+      company.hubCompanyId!==hubId||!validCompanyName(company.name))
+    fail("data-loss");
+   if(company.active!==true)continue;
+   const [legacy,extra,teamDocs]=await Promise.all([
+    collection(cid,"partnerWorkEntries").where("date",">=",first)
+     .where("date","<=",lastDate).limit(2001).get(),
+    collection(cid,"partnerAdditionalCountEntries").where("date",">=",first)
+     .where("date","<=",lastDate).limit(2001).get(),
+    collection(cid,"partnerWorkTeams").limit(151).get()
+   ]);
+   if(legacy.size>2000||extra.size>2000||teamDocs.size>150)
+    fail("resource-exhausted");
+   const teamNames={};
+   for(const doc of teamDocs.docs){
+    const data=doc.data()||{};
+    if(!ID.test(doc.id)||data.companyId!==cid||!validName(data.name))
+     fail("data-loss");
+    teamNames[doc.id]=clean(data.name);
+   }
+   partnerRowsRead+=legacy.size+extra.size;
+   if(partnerRowsRead>10000)fail("resource-exhausted");
+   let rank;
+   try{
+    rank=projectPartnerMonth({
+     hubId,cid,companyName:clean(company.name),from:first,to:lastDate,
+     legacyDocs:legacy.docs,extraDocs:extra.docs,keys:KEYS,
+     publishedIds:extraVerifiedIds,linkedIds,teamNames
+    });
+   }catch{fail("data-loss");}
+   companies.push({id:cid,name:rank.name,totalCount:rank.totalCount,
+    extraTotalCount:rank.additionalTotalCount,counts:rank.counts,
+    peopleVerified:true});
+   people.push(...rank.people);teams.push(...rank.teams);
+   for(const key of KEYS)productCounts[key]+=rank.counts[key];
+   additionalTotalCount+=rank.additionalTotalCount;
+  }
+  let sharedConfig={revision:0,groups:[]},groupStandings=[],groupStatus="unverified";
+  try{
+   sharedConfig=await readRankingSettings(hubId);
+   // Linking halfway through a month is NOT sufficient to back-classify the
+   // earlier days. Whole-month rank only uses links active on its first day.
+   const effectiveLinks=allLinks.filter(link=>link.effectiveFrom<=first);
+   // Saved company totals are valid, but a missing per-person source must
+   // never create an apparently verified individual/product leaderboard.
+   if(canPublishSharedPersonalRankings(direct,companies)){
+    groupStandings=groupPersonalScores(sharedConfig.groups,[
+     ...people,...direct.people.map(p=>({...p,companyName:"直営"}))
+    ],{categories:KEYS,productLinks:effectiveLinks,extraVerifiedIds});
+    groupStatus="verified";
+   }
+  }catch{groupStandings=[];}
+  companies.sort((a,b)=>b.totalCount-a.totalCount||a.name.localeCompare(b.name,"ja"));
+  people.sort((a,b)=>b.totalCount-a.totalCount||a.name.localeCompare(b.name,"ja"));
+  // Individual ledgers alone cannot prove all companies submitted all days.
+  // Always label this a provisional, VERIFIED-ENTRIES monthly leaderboard.
+  return {scope:"shared_monthly_counts_only",month:d.month,
+   role:s.kind==="hub"?"hub":"partner",complete:false,
+   provisionalReason:"月間の全日・全員報告の照合前",
+   includesDirect:true,companies,teams,people,productCounts,additionalTotalCount,
+   categories:KEYS,direct,rankingGroups:sharedConfig.groups,groupStandings,
+   groupRevision:sharedConfig.revision,groupStatus,
+   recordsVerified:direct.recordsVerified,partnerRowsVerified:partnerRowsRead};
+ }
  async function view(request){
   const a=await actor(request),d=request?.data||{},date=validDate(d.date);
   if(d.resolveSecondaryWorkspace===true){
@@ -748,25 +1206,50 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    }
    const companies=[],teams=[],people=[],missingCompanies=[];
    const productCounts=Object.fromEntries(KEYS.map(key=>[key,0]));
+   // The partner extra ledger is independent of the original nine categories.
+   // Check publication and immutable links once, before any ranking is composed.
+   const [rankPubSnap,rankLinkSnap]=await Promise.all([
+    publicationRef(hubId).get(),countLinksRef(hubId).get()
+   ]);
+   let publishedIds,allCountLinks;
+   try{
+    publishedIds=loadPublication(rankPubSnap.exists?rankPubSnap.data():null).productIds;
+    allCountLinks=readLinks(rankLinkSnap.exists?rankLinkSnap.data():null,KEYS).links;
+   }catch{fail("data-loss");}
+   const linkedIds=allCountLinks.map(link=>link.productId);
+   const extraVerifiedIds=publishedIds.filter(id=>!linkedIds.includes(id));
+   const effectiveLinks=allCountLinks.filter(link=>link.effectiveFrom<=date);
+   let additionalTotalCount=0;
    let complete=true;
    for(const company of approved){
     const cid=company.cid;
-    const [reportSnap,entrySnaps,teamSnaps]=await Promise.all([
+    const [reportSnap,entrySnaps,teamSnaps,extraSnaps]=await Promise.all([
      summaryRef(hubId,date,cid).get(),
      collection(cid,"partnerWorkEntries").where("date","==",date).limit(201).get(),
-     collection(cid,"partnerWorkTeams").limit(151).get()
+     collection(cid,"partnerWorkTeams").limit(151).get(),
+     collection(cid,"partnerAdditionalCountEntries").where("date","==",date).limit(201).get()
     ]);
-    if(entrySnaps.size>200||teamSnaps.size>150)fail("resource-exhausted");
+    if(entrySnaps.size>200||teamSnaps.size>150||extraSnaps.size>200)
+     fail("resource-exhausted");
+    let extraRows;
+    try{
+     extraRows=projectExtraRankDocs(extraSnaps.docs,{
+      hubId,cid,date,publishedIds:extraVerifiedIds,linkedIds
+     });
+    }catch{fail("data-loss");}
     if(!reportSnap.exists){
-     // No report means missing, not 0. Suppress a false complete ranking.
+     // Extra-only submissions are real counts, but missing nine-category
+     // reports remain marked INCOMPLETE, never silently treated as 0.
      if(entrySnaps.size)fail("data-loss");
-     complete=false;missingCompanies.push(company.name);continue;
+     complete=false;missingCompanies.push(company.name);
+     if(!extraRows.length)continue;
     }
     const r=reportSnap.data()||{};
-    if(r.partnerCompanyId!==cid||r.hubCompanyId!==hubId||
-       r.date!==date||!validCompanyName(r.partnerName))fail("data-loss");
-    const summary=validateCounts(r.counts);
-    if(summary.total!==r.totalCount)fail("data-loss");
+    if(reportSnap.exists&&(r.partnerCompanyId!==cid||r.hubCompanyId!==hubId||
+       r.date!==date||!validCompanyName(r.partnerName)))fail("data-loss");
+    const summary=reportSnap.exists?validateCounts(r.counts):
+     {counts:Object.fromEntries(KEYS.map(k=>[k,0])),total:0};
+    if(reportSnap.exists&&summary.total!==r.totalCount)fail("data-loss");
     const savedTeams=new Map();
     for(const t of teamSnaps.docs){
      const x=t.data()||{};
@@ -774,7 +1257,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
       fail("data-loss");
      savedTeams.set(t.id,clean(x.name));
     }
-    const group=new Map(),unique=new Set(),members=[];
+    const group=new Map(),unique=new Set(),members=[],memberByStaff=new Map();
     let verified=0;
     for(const entrySnap of entrySnaps.docs){
      const e=entrySnap.data()||{};
@@ -791,10 +1274,11 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      const cb=tierCounts(e.cbCounts,item.counts);
      const key=crypto.createHash("sha256").update(cid+"\n"+e.staffId)
       .digest("hex");
-     members.push({key,name:safeName,companyName:company.name,
+     const member={key,name:safeName,companyName:company.name,
       companyId:cid,teamKey:crypto.createHash("sha256").update(cid+"\nteam\n"+tid).digest("hex"),
       teamName:savedTeams.get(tid)||"登録当時の班未確認",
-      totalCount:item.total,counts:item.counts,cbCounts:{NURO:cb}});
+      totalCount:item.total,counts:item.counts,extraCounts:{},cbCounts:{NURO:cb}};
+     members.push(member);memberByStaff.set(e.staffId,member);
      const bucket=group.get(tid)||{name:savedTeams.get(tid)||"登録当時の班未確認",
       totalCount:0,counts:Object.fromEntries(KEYS.map(k=>[k,0])),cbCounts:{NURO:blankTiers()}};
      bucket.totalCount+=item.total;
@@ -804,14 +1288,38 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     }
     // Legacy company-level reports have no verified staff ledger. They
     // remain visible as company totals but NEVER turn into imaginary people.
-    const hasLedger=r.source==="staff-entries-v1";
+    const hasLedger=reportSnap.exists&&r.source==="staff-entries-v1";
     if(hasLedger&&verified!==summary.total)fail("data-loss");
     if(!hasLedger&&entrySnaps.size>0)fail("data-loss");
     if(!hasLedger)complete=false;
-    companies.push({id:cid,name:company.name,totalCount:summary.total,
-     counts:summary.counts,peopleVerified:hasLedger});
+    let companyExtras=0;
+    for(const extra of extraRows){
+     const tid=extra.teamIdSnapshot,teamKey=crypto.createHash("sha256")
+      .update(cid+"\nteam\n"+tid).digest("hex");
+     let member=memberByStaff.get(extra.staffId);
+     if(member&&member.teamKey!==teamKey)fail("data-loss");
+     if(!member){
+      member={key:crypto.createHash("sha256").update(cid+"\n"+extra.staffId).digest("hex"),
+       name:clean(extra.staffNameSnapshot),companyName:company.name,companyId:cid,
+       teamKey,teamName:savedTeams.get(tid)||"登録当時の班未確認",
+       totalCount:0,counts:Object.fromEntries(KEYS.map(k=>[k,0])),
+       extraCounts:{},cbCounts:{NURO:blankTiers()}};
+      memberByStaff.set(extra.staffId,member);members.push(member);
+     }
+     member.totalCount+=extra.totalCount;
+     member.extraCounts=extra.extraCounts;
+     companyExtras+=extra.totalCount;
+     const bucket=group.get(tid)||{name:savedTeams.get(tid)||"登録当時の班未確認",
+      totalCount:0,counts:Object.fromEntries(KEYS.map(k=>[k,0])),
+      cbCounts:{NURO:blankTiers()}};
+     bucket.totalCount+=extra.totalCount;
+     group.set(tid,bucket);
+    }
+    additionalTotalCount+=companyExtras;
+    companies.push({id:cid,name:company.name,totalCount:summary.total+companyExtras,
+     counts:summary.counts,extraTotalCount:companyExtras,peopleVerified:hasLedger});
     for(const k of KEYS)productCounts[k]+=summary.counts[k];
-    if(hasLedger){
+    if(hasLedger||extraRows.length){
      people.push(...members);
      for(const [tid,item] of group)teams.push({
       key:crypto.createHash("sha256").update(cid+"\nteam\n"+tid).digest("hex"),
@@ -827,14 +1335,34 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    // legacy records; it returns no money, email, UID, or original documents.
    // An index/limit mismatch FAILS, never pretends direct sales were zero.
    let direct;
-   try{direct=await readDirectDayCounts(db,hubId,date,KEYS);}
+   try{direct=await readDirectDayCounts(db,hubId,date,KEYS,{
+    approvedExtraProductIds:extraVerifiedIds
+   });}
    catch{fail("failed-precondition");}
    // Missing real staff IDs must not create fictitious personal rankings.
    // Company and team totals remain visible, clearly marked incomplete.
    if(direct.peopleVerified!==true)complete=false;
+   // New group settings cannot take down established direct+partner rankings.
+   // Report the group as unverified, never invent category/identity mappings.
+   let sharedConfig={revision:0,groups:[]},groupStandings=[],groupStatus="unverified";
+   try{
+    sharedConfig=await readRankingSettings(hubId);
+    // Date-effective mappings count existing buckets once. Unlinked,
+    // published additional products count only from verified extra ledgers.
+    if(canPublishSharedPersonalRankings(direct,companies)){
+     groupStandings=groupPersonalScores(sharedConfig.groups,
+      [...people,...direct.people.map(person=>({...person,companyName:"直営"}))],
+      {categories:KEYS,productLinks:effectiveLinks,extraVerifiedIds});
+     groupStatus="verified";
+    }
+   }catch(error){
+    // No raw errors, finance or hidden group names are serialized to clients.
+    groupStandings=[];
+   }
    return {scope:"shared_counts_only",date,role:s.kind==="hub"?"hub":"partner",
     complete,includesDirect:true,missingCompanies,companies,teams,people,
-    productCounts,categories:KEYS,direct};
+    productCounts,additionalTotalCount,categories:KEYS,direct,rankingGroups:sharedConfig.groups,
+    groupStandings,groupRevision:sharedConfig.revision,groupStatus};
   }
   if(d.includeAuditHistory===true&&s.kind!=="partner")fail("invalid-argument");
   if(s.kind==="hub"){
@@ -917,10 +1445,41 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      row.members.push({name:safeName,totalCount:item.total,counts:{...item.counts},
       cbCounts:{NURO:cb}});
     }
+    // The old nine-category day report remains unchanged. Additional published
+    // products have an independent ledger and must NOT be silently dropped from
+    // HQ's team/member breakdown or mixed into old CB/revenue totals.
+    // This path is Hub OWNER only, on-demand and count-only.
+    const extraSnap=await collection(selectedPartnerId,"partnerAdditionalCountEntries")
+     .where("date","==",date).limit(201).get();
+    if(extraSnap.size>200)fail("resource-exhausted");
+    let publishedAdditional={scope:"published_extra_count_only",complete:true,
+     verifiedPublishedCount:0,unattributedPublishedCount:0,teams:[]};
+    if(extraSnap.size){
+     const [pubSnap,linksSnap,master]=await Promise.all([
+      publicationRef(s.cid).get(),countLinksRef(s.cid).get(),
+      db.collection("products").where("companyId","==",s.cid).limit(1001).get()
+     ]);
+     if(master.size>1000||master.docs.some(doc=>doc.data()?.companyId!==s.cid))
+      fail("data-loss");
+     try{
+      const publicIds=loadPublication(pubSnap.exists?pubSnap.data():null).productIds;
+      const links=readLinks(linksSnap.exists?linksSnap.data():null,KEYS).links;
+      const blocked=new Set(links.map(x=>x.productId));
+      const publicProducts=projectMasterProducts(
+       master.docs.map(doc=>({...doc.data(),id:doc.id})),publicIds,true)
+       .filter(product=>!blocked.has(product.id))
+       .map(({id,name})=>({id,name}));
+      publishedAdditional=ownerPublishedExtraBreakdown(extraSnap.docs,{
+       hubId:s.cid,cid:selectedPartnerId,date,teamIds:[...rows.keys()],
+       publishedProducts:publicProducts,linkedIds:[...blocked]
+      });
+     }catch{fail("data-loss");}
+    }
     partnerTeamDetails={
      partnerCompanyId:selectedPartnerId,companyName:chosen.name,date,
      teams:[...rows.values()].sort((a,b)=>a.name.localeCompare(b.name,"ja")),
-     verifiedSharedCount,unverifiedTeamCount,scope:"shared_counts_only"
+     verifiedSharedCount,unverifiedTeamCount,scope:"shared_counts_only",
+     publishedAdditional
     };
    }
    const qs=await collection(s.cid,"partnerWorkCountDays").doc(date)
@@ -1207,6 +1766,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      privateTotalCount:privateValidated.total};
   });
  }
- return Object.freeze({manage,accept,view,submit});
+ return Object.freeze({manage,accept,view,viewMonthly,viewProductMonthly,submit,viewCatalog,setCatalogPublication,
+  getPartnerRankingGroups,setPartnerRankingGroups,getPartnerCountLinks,setPartnerCountLink,
+  viewAdditionalCounts,submitAdditionalCounts});
 }
 module.exports={makeWorkspace,KEYS};

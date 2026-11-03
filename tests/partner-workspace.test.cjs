@@ -351,8 +351,17 @@ test("security invariants: only isolated partner collections; no destructive dat
  // archive is written in the same Firestore transaction; no document delete.
  assert.match(code,/tx\.create\(archivedRef/);
  assert.doesNotMatch(code.replaceAll("FieldValue.delete()",""),/\.delete\s*\(/);
- assert.doesNotMatch(code,/\.collection\s*\(\s*["'](?:records|products|recordCorrections|revenueGoals)["']\s*\)/);
- assert.doesNotMatch(code,/\btx\.set\s*\(/);
+ // Financial sales originals remain unreadable here. Reviewed name-only
+ // product-master reads are allowed on the server, never sent as raw products.
+ assert.doesNotMatch(code,/\.collection\s*\(\s*["'](?:records|recordCorrections|revenueGoals)["']\s*\)/);
+ assert.equal([...code.matchAll(/db\.collection\("products"\)/g)].length,5,
+  "product master reads must remain reviewed and bounded");
+ assert.match(code,/projectMasterProducts\(/);
+ assert.match(code,/\.where\("companyId","==",s\.cid\)\.limit\(1001\)\.get\(\)/);
+ // Existing owner-owned catalog/ranking settings may be set atomically.
+ // Sales records, price masters and historical ledgers must never be tx.set.
+ assert.deepEqual([...code.matchAll(/\btx\.set\(\s*(\w+)/g)].map(match=>match[1]),
+  ["stateRef","configRef","ref"]);
  assert.match(code,/canViewRevenue:false,canViewUnitPrice:false/);
  assert.match(code,/partnerWorkAudits/);
 });
@@ -1237,6 +1246,8 @@ test("shared daily standings expose verified partners to both companies without 
  assert.equal(partial.direct.teams[0].totalCount,4);
  assert.equal(partial.direct.people.length,1);
  assert.equal(partial.direct.people[0].totalCount,2);
+ assert.equal(partial.groupStatus,"unverified","missing direct UID must not publish personal product standings");
+ assert.deepEqual(partial.groupStandings,[]);
  assert.doesNotMatch(JSON.stringify(partial),/名前のみ|1999998|999999/);
 });
 test("unsubmitted approved companies are not misrepresented as zero-count ranks",async()=>{
@@ -1523,4 +1534,120 @@ test("unclassified historic NURO entries stay unclassified and are never mapped 
  assert.equal(shared.teams[0].cbCounts.NURO.unclassified,4);
  const owner=await api.view(req("h",{date,partnerCompanyId:"partner"}));
  assert.equal(owner.partnerTeamDetails.teams[0].cbCounts.NURO.unclassified,4);
+});
+
+
+test("saved partner counts reach HQ breakdown and joint ranks exactly once",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ const moneyBefore=clone(db.store.get("products/money"));
+ const salesBefore=clone(db.store.get("records/old"));
+ // A real published original master without finance exposure.
+ db.seed("products/solar",{companyId:"hub",name:"太陽光",active:true,
+  sortOrder:1,revenuePerUnit:98000,totalRevenue:808080});
+ db.seed("companies/hub/partnerCatalogSettings/publication",{
+  revision:1,productIds:["solar"]
+ });
+ const team=(await api.manage(req("p",{action:"addTeam",name:"営業1班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"担当A",teamId:team}))).staffId;
+ const saved=await api.submit(req("p",{date,staffId:staff,
+  counts:{...zero(),NURO:2},expectedVersion:0}));
+ assert.equal(saved.totalCount,2);
+ const extra=await api.submitAdditionalCounts(req("p",{
+  date,staffId:staff,changes:{solar:3},expectedVersion:0
+ }));
+ assert.equal(extra.saved,true);assert.equal(extra.totalCount,3);
+ const partner=await api.view(req("p",{date}));
+ assert.equal(partner.records[0].totalCount,2);
+ const hub=await api.view(req("h",{date,partnerCompanyId:"partner"}));
+ assert.equal(hub.partners[0].totalCount,2); // Immutable original 9-count report
+ assert.equal(hub.partnerTeamDetails.verifiedSharedCount,2);
+ assert.equal(hub.partnerTeamDetails.teams[0].totalCount,2);
+ assert.equal(hub.partnerTeamDetails.publishedAdditional.verifiedPublishedCount,3);
+ assert.equal(hub.partnerTeamDetails.publishedAdditional.teams[0].teamId,team);
+ assert.equal(hub.partnerTeamDetails.publishedAdditional.teams[0].people[0].totalCount,3);
+ assert.equal(hub.partnerTeamDetails.publishedAdditional.teams[0].products[0].name,"太陽光");
+ const shared=await api.view(req("h",{date,sharedRankings:true}));
+ assert.equal(shared.role,"hub");assert.equal(shared.scope,"shared_counts_only");
+ assert.equal(shared.companies[0].totalCount,5);
+ assert.equal(shared.additionalTotalCount,3);
+ assert.equal(shared.productCounts.NURO,2);
+ assert.equal(shared.companies[0].extraTotalCount,3);
+ // A versioned edit changes the public extra total, not original sales.
+ const revised=await api.submitAdditionalCounts(req("p",{
+  date,staffId:staff,changes:{solar:4},expectedVersion:1
+ }));
+ assert.equal(revised.version,2);assert.equal(revised.totalCount,4);
+ const next=await api.view(req("h",{date,partnerCompanyId:"partner"}));
+ assert.equal(next.partnerTeamDetails.publishedAdditional.verifiedPublishedCount,4);
+ assert.equal(next.partners[0].totalCount,2);
+ const rank=await api.view(req("h",{date,sharedRankings:true}));
+ assert.equal(rank.companies[0].totalCount,6);
+ assert.equal(rank.additionalTotalCount,4);
+ assert.equal([...db.store.keys()].filter(k=>k.includes("partnerAdditionalCountAudits/")).length,2);
+ assert.deepEqual(db.store.get("products/money"),moneyBefore);
+ assert.deepEqual(db.store.get("records/old"),salesBefore);
+ for(const result of [hub.partnerTeamDetails,shared,next.partnerTeamDetails,rank])
+  assert.doesNotMatch(JSON.stringify(result),/98000|808080|revenuePerUnit|totalRevenue|unitPrice|@example\.com/);
+});
+
+test("legacy partner company totals remain available but cannot become verified personal rankings",async()=>{
+ const {db,api,req,zero}=setup();
+ const date="2026-10-31",counts={...zero(),NURO:3};
+ db.seed("companies/hub/partnerWorkCountDays/"+date+"/reports/partner",{
+  source:"legacy-company-only",hubCompanyId:"hub",partnerCompanyId:"partner",
+  partnerName:"協力店",date,counts,totalCount:3
+ });
+ const before=clone([...db.store]);
+ const result=await api.view(req("h",{date,sharedRankings:true}));
+ assert.equal(result.companies.length,1);
+ assert.equal(result.companies[0].totalCount,3);
+ assert.equal(result.companies[0].peopleVerified,false);
+ assert.equal(result.complete,false);
+ assert.equal(result.groupStatus,"unverified");
+ assert.deepEqual(result.groupStandings,[]);
+ assert.equal(result.productCounts.NURO,3);
+ assert.deepEqual(result.people,[]);
+ assert.deepEqual([...db.store],before,"read-only ranks must never modify legacy company or financial records");
+});
+
+
+test("unpublishing added partner product never shares hidden historic quantities or changes saved ledger",async()=>{
+ const {db,api,req}=setup(),date="2026-10-31";
+ db.seed("products/solar",{companyId:"hub",name:"太陽光",active:true,
+  unitPrice:90000,totalRevenue:800000});
+ db.seed("products/water",{companyId:"hub",name:"給水",active:true,
+  unitPrice:30000,totalRevenue:500000});
+ db.seed("companies/hub/partnerCatalogSettings/publication",{
+  revision:1,productIds:["solar","water"]
+ });
+ const team=(await api.manage(req("p",{action:"addTeam",name:"共有班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"登録担当",teamId:team}))).staffId;
+ const saved=await api.submitAdditionalCounts(req("p",{
+  date,staffId:staff,changes:{solar:2,water:7},expectedVersion:0
+ }));
+ assert.equal(saved.totalCount,9);
+ const before=clone([...db.store]);
+ const all=await api.view(req("h",{date,sharedRankings:true}));
+ assert.equal(all.additionalTotalCount,9);
+ assert.equal(all.companies[0].totalCount,9);
+ db.seed("companies/hub/partnerCatalogSettings/publication",{
+  revision:2,productIds:["solar"]
+ });
+ const beforeRead=clone([...db.store]);
+ const shared=await api.view(req("h",{date,sharedRankings:true}));
+ const partner=await api.view(req("p",{date,sharedRankings:true}));
+ assert.equal(shared.additionalTotalCount,2);
+ assert.equal(shared.companies[0].totalCount,2);
+ assert.equal(shared.companies[0].extraTotalCount,2);
+ assert.equal(shared.people[0].totalCount,2);
+ assert.equal(shared.teams[0].totalCount,2);
+ assert.deepEqual(shared.people,partner.people,"same count-only standings for approved parties");
+ assert.equal(JSON.stringify(shared).includes('"water":7'),false);
+ assert.doesNotMatch(JSON.stringify(shared),/unitPrice|totalRevenue|90000|800000|30000|500000/);
+ const retained=db.store.get("companies/partner/partnerAdditionalCountEntries/"+date+"__"+staff);
+ assert.equal(retained.totalCount,9,"original saved 9 is not rewritten");
+ assert.equal(retained.counts.solar,2);
+ assert.equal(retained.counts.water,7);
+ assert.deepEqual([...db.store],beforeRead,"read-only rankings must not alter stored counts or prices");
+ assert.deepEqual(db.store.get("records/old"),new Map(before).get("records/old"));
 });
