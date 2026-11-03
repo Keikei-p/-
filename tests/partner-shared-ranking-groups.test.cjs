@@ -2,7 +2,7 @@
 const test=require("node:test");
 const assert=require("node:assert/strict");
 const fs=require("node:fs");
-const {decodeGroups,saveGroups,groupPersonalScores}=require("../functions-partner-workspace/shared-ranking-groups.cjs");
+const {decodeGroups,saveGroups,groupPersonalScores,canPublishSharedPersonalRankings}=require("../functions-partner-workspace/shared-ranking-groups.cjs");
 const valid={allowedProducts:["p1","p2"],categories:["NURO","SBMNP","YMMNP","U-NEXT"]};
 test("server defaults to empty shared groups, never destroys local-only old settings",()=>{
  assert.deepEqual(decodeGroups(null,valid),{revision:0,groups:[]});
@@ -93,4 +93,26 @@ test("shared standings read date-effective server links, never mutate legacy sal
  assert.match(service,/link\.effectiveFrom<=date/);
  assert.match(service,/productLinks:effectiveLinks,extraVerifiedIds/);
  assert.match(service,/groupStandings=groupPersonalScores/);
+});
+
+test("shared personal product standings withhold verification for missing staff identities, leaving company counts untouched",()=>{
+ const direct={peopleVerified:true,totalCount:12,people:[{name:"直営A",count:12}]};
+ const partners=[{name:"協力店A",peopleVerified:true,totalCount:7}];
+ assert.equal(canPublishSharedPersonalRankings(direct,partners),true);
+ assert.equal(canPublishSharedPersonalRankings({...direct,peopleVerified:false},partners),false);
+ assert.equal(canPublishSharedPersonalRankings(direct,[{...partners[0],peopleVerified:false}]),false);
+ assert.equal(canPublishSharedPersonalRankings(direct,[{...partners[0],peopleVerified:undefined}]),false);
+ assert.equal(canPublishSharedPersonalRankings(null,partners),false);
+ assert.equal(canPublishSharedPersonalRankings(direct,null),false);
+ assert.equal(canPublishSharedPersonalRankings(direct,[]),true);
+ assert.equal(partners[0].totalCount,7);
+ assert.equal(direct.totalCount,12);
+ const source=fs.readFileSync(require.resolve("../functions-partner-workspace/service.cjs"),"utf8");
+ const monthly=source.slice(source.indexOf(" async function viewMonthly(request){"),source.indexOf(" async function view(request){"));
+ const daily=source.slice(source.indexOf('  if(d.sharedRankings===true){'),source.indexOf('  if(d.includeAuditHistory===true&&s.kind!=="partner")'));
+ for(const scope of [monthly,daily]){
+  assert.match(scope,/if\(canPublishSharedPersonalRankings\(direct,companies\)\)/);
+  assert.match(scope,/groupStandings=groupPersonalScores/);
+  assert.match(scope,/groupStatus="verified"/);
+ }
 });

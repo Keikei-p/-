@@ -8,7 +8,7 @@ const {projectExtraRankDocs}=require("./extra-rank-projection.cjs");
 const {ownerPublishedExtraBreakdown}=require("./owner-published-extra-breakdown.cjs");
 const {projectPartnerMonth}=require("./monthly-shared-projection.cjs");
 const {projectPartnerProductMonth}=require("./partner-product-monthly.cjs");
-const {decodeGroups,saveGroups,groupPersonalScores}=require("./shared-ranking-groups.cjs");
+const {decodeGroups,saveGroups,groupPersonalScores,canPublishSharedPersonalRankings}=require("./shared-ranking-groups.cjs");
 const {readDirectDayCounts,readDirectRangeCounts}=require("./shared-direct-counts.cjs");
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 // Cashback is a product variant label, NOT a sales unit price or revenue.
@@ -1138,10 +1138,14 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    // Linking halfway through a month is NOT sufficient to back-classify the
    // earlier days. Whole-month rank only uses links active on its first day.
    const effectiveLinks=allLinks.filter(link=>link.effectiveFrom<=first);
-   groupStandings=groupPersonalScores(sharedConfig.groups,[
-    ...people,...direct.people.map(p=>({...p,companyName:"直営"}))
-   ],{categories:KEYS,productLinks:effectiveLinks,extraVerifiedIds});
-   groupStatus="verified";
+   // Saved company totals are valid, but a missing per-person source must
+   // never create an apparently verified individual/product leaderboard.
+   if(canPublishSharedPersonalRankings(direct,companies)){
+    groupStandings=groupPersonalScores(sharedConfig.groups,[
+     ...people,...direct.people.map(p=>({...p,companyName:"直営"}))
+    ],{categories:KEYS,productLinks:effectiveLinks,extraVerifiedIds});
+    groupStatus="verified";
+   }
   }catch{groupStandings=[];}
   companies.sort((a,b)=>b.totalCount-a.totalCount||a.name.localeCompare(b.name,"ja"));
   people.sort((a,b)=>b.totalCount-a.totalCount||a.name.localeCompare(b.name,"ja"));
@@ -1345,10 +1349,12 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     sharedConfig=await readRankingSettings(hubId);
     // Date-effective mappings count existing buckets once. Unlinked,
     // published additional products count only from verified extra ledgers.
-    groupStandings=groupPersonalScores(sharedConfig.groups,
-     [...people,...direct.people.map(person=>({...person,companyName:"直営"}))],
-     {categories:KEYS,productLinks:effectiveLinks,extraVerifiedIds});
-    groupStatus="verified";
+    if(canPublishSharedPersonalRankings(direct,companies)){
+     groupStandings=groupPersonalScores(sharedConfig.groups,
+      [...people,...direct.people.map(person=>({...person,companyName:"直営"}))],
+      {categories:KEYS,productLinks:effectiveLinks,extraVerifiedIds});
+     groupStatus="verified";
+    }
    }catch(error){
     // No raw errors, finance or hidden group names are serialized to clients.
     groupStandings=[];

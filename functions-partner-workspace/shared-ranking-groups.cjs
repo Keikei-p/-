@@ -117,4 +117,12 @@ function groupPersonalScores(groups,persons,{categories=[],productLinks=[],extra
  }
  return out;
 }
-module.exports={decodeGroups,saveGroups,groupPersonalScores};
+// A company-only legacy summary or a direct record with no verified person
+// identity cannot be assigned to a specific staff member. Keep company/team
+// totals available, but withhold personalized product standings until every
+// represented company's individual source is independently verified.
+function canPublishSharedPersonalRankings(direct,companies){
+ return direct?.peopleVerified===true&&Array.isArray(companies)&&
+  companies.every(x=>x&&x.peopleVerified===true);
+}
+module.exports={decodeGroups,saveGroups,groupPersonalScores,canPublishSharedPersonalRankings};
