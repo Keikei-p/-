@@ -70,6 +70,20 @@ test("reject misattributed, damaged, duplicated and missing monthly originals wi
  assert.throws(()=>month([valid],[extra("2026-11-01","one",{a:1}),extra("2026-11-01","one",{a:1})]),/UNVERIFIED/);
  assert.throws(()=>month([], [doc("2026-11-01","one",{counts:{extra:2},totalCount:3})]),/UNVERIFIED/);
 });
+test("linked master product cannot be double-counted as an additional sale",()=>{
+ assert.throws(()=>projectPartnerProductMonth({
+  hubId:"hubA",cid:"partnerA",month:"2026-11",keys:KEYS,
+  workDocs:[saved("2026-11-01","one",{NURO:2})],
+  extraDocs:[extra("2026-11-01","one",{linkedMaster:2})],
+  linkedIds:["linkedMaster"]
+ }),/UNVERIFIED/);
+ assert.equal(projectPartnerProductMonth({
+  hubId:"hubA",cid:"partnerA",month:"2026-11",keys:KEYS,
+  workDocs:[saved("2026-11-01","one",{NURO:2})],
+  extraDocs:[extra("2026-11-01","one",{newProduct:3})],
+  linkedIds:["linkedMaster"]
+ }).totalCount,5);
+});
 test("return contract is count-only, even with deliberately planted fake finance fields",()=>{
  const a=saved("2026-11-01","one",{NURO:4},{privateA:2});
  const rec=doc("2026-11-01","one",{...a.data(),revenue:543210,unitPrice:90000,price:25000,
@@ -92,6 +106,8 @@ test("server requires verified partner scope and reads only its own count-only c
  assert.match(scoped,/collection\(s.cid,"partnerWorkEntries"\)/);
  assert.match(scoped,/collection\(s.cid,"partnerAdditionalCountEntries"\)/);
  assert.match(scoped,/limit\(2001\)/);
+ assert.match(scoped,/countLinksRef\(s\.hubId\)\.get\(\)/);
+ assert.match(scoped,/linkedIds:linked\.map\(link=>link\.productId\)/);
  assert.match(scoped,/if\(work.size>2000\|\|extra.size>2000\)/);
  assert.doesNotMatch(scoped,/db\.collection\("(records|products|revenueGoals|recordCorrections)"\)|(?:tx\.)?(?:set|create|update|delete)\(/);
  assert.match(backend,/exports\.getPartnerProductMonthlyTotals=onCall\(opts,service.viewProductMonthly\)/);
