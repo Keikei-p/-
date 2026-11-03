@@ -105,6 +105,33 @@ test("month-range direct reader suppresses financial originals and aggregates ve
  assert.ok(calls.some(x=>x[1]==="date"&&x[2]==="<="));
  assert.doesNotMatch(JSON.stringify(result),/revenue|price|900000|9000|user1/);
 });
+test("direct monthly counts refuse missing totals and missing or mismatched product quantities",async()=>{
+ const good={companyId:"hub",date:"2026-11-02",uid:"u1",teamId:"teamA",
+  memberNameSnapshot:"担当者A",totalCount:2,
+  results:[{productId:"p1",productNameSnapshot:"NURO光",count:2}],
+  totalRevenue:100000,revenuePerUnit:50000};
+ const mock=record=>({collection(name){
+  const docs=name==="records"?[{data:()=>record}]:[];
+  return {where(){return this;},limit(){return this;},
+   async get(){return {size:docs.length,docs};}};
+ }});
+ const direct=record=>readDirectRangeCounts(mock(record),"hub",
+  "2026-11-01","2026-11-03",["NURO"],{maxRecords:10});
+ await assert.rejects(direct({...good,totalCount:undefined}),/DIRECT_TOTAL_UNVERIFIED/);
+ await assert.rejects(direct({...good,totalCount:null}),/DIRECT_TOTAL_UNVERIFIED/);
+ await assert.rejects(direct({...good,totalCount:1}),/DIRECT_TOTAL_MISMATCH/);
+ await assert.rejects(direct({...good,results:[{productId:"p1",count:undefined}]}),
+  /DIRECT_INVALID_QUANTITY/);
+ await assert.rejects(direct({...good,results:[{productId:"p1",count:null}]}),
+  /DIRECT_INVALID_QUANTITY/);
+ const noResult=await direct({...good,totalCount:0,results:[]});
+ assert.equal(noResult.totalCount,0,"genuine explicit no-result remains zero");
+ const correct=await direct(good);
+ assert.equal(correct.totalCount,2);
+ assert.equal(correct.people[0].totalCount,2);
+ assert.doesNotMatch(JSON.stringify(correct),/totalRevenue|revenuePerUnit|100000|50000/);
+});
+
 test("monthly Callable is opt-in, count-only, auth-scoped and never complete by assumption",()=>{
  const service=fs.readFileSync(require.resolve("../functions-partner-workspace/service.cjs"),"utf8");
  const api=fs.readFileSync(require.resolve("../functions-partner-workspace/index.js"),"utf8");
