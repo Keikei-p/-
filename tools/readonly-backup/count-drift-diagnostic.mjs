@@ -15,9 +15,12 @@ function quantity(field){
  return null;
 }
 function linesFrom(field){
- if(field?.mapValue?.fields&&typeof field.mapValue.fields==="object"&&
-    !Array.isArray(field.mapValue.fields))
-  return {shape:"map",lines:Object.values(field.mapValue.fields)};
+ if(field?.mapValue&&typeof field.mapValue==="object"&&
+    !Array.isArray(field.mapValue)){
+  const fields=field.mapValue.fields??{};
+  if(fields&&typeof fields==="object"&&!Array.isArray(fields))
+   return {shape:"map",lines:Object.values(fields)};
+ }
  if(field?.arrayValue&&typeof field.arrayValue==="object"&&
     Array.isArray(field.arrayValue.values??[]))
   return {shape:"array",lines:field.arrayValue.values??[]};
@@ -27,6 +30,13 @@ export function classifyCountDrift(snapshot){
  if(snapshot?.projectId!=="sales-management-cc116"||
     snapshot?.format!=="firestore-rest-typed-v1"||
     !Array.isArray(snapshot?.documents))throw Error("COUNT_DIAGNOSTIC_INVALID_SNAPSHOT");
+ const corrections=new Map();
+ for(const item of snapshot.documents){
+  if(!/^recordCorrections\\/[^/]+$/.test(item?.path||""))continue;
+  const ref=item?.value?.fields?.recordId?.stringValue;
+  if(typeof ref!=="string"||!ref||ref.includes("/"))continue;
+  corrections.set(ref,(corrections.get(ref)||0)+1);
+ }
  const mismatches=[],summary={matched:0,unverifiable:0};
  for(const item of snapshot.documents){
   if(!ROOT.test(item?.path||""))continue;
@@ -53,7 +63,8 @@ export function classifyCountDrift(snapshot){
    zeroCountRows:zeroRows,
    direction:saved>computed?"saved_exceeds_lines":"lines_exceed_saved",
    absoluteCountDifference:Math.abs(saved-computed),
-   savedCountIsZero:saved===0,linesCountIsZero:computed===0
+   savedCountIsZero:saved===0,linesCountIsZero:computed===0,
+   relatedCorrectionDocuments:corrections.get(item.path.slice("records/".length))||0
   }));
  }
  return Object.freeze({
