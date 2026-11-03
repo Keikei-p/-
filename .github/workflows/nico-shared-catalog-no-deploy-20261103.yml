@@ -23,6 +23,8 @@ jobs:
           node --check functions-partner-workspace/catalog-count-links.cjs
           node --check functions-partner-workspace/additional-counts.cjs
           node --check functions-partner-workspace/extra-rank-projection.cjs
+          node --check functions-partner-workspace/monthly-shared-projection.cjs
+          node --check functions-partner-workspace/shared-direct-counts.cjs
           node --check functions-partner-workspace/service.cjs
           node --check functions-partner-workspace/index.js
       - name: Test publication isolation and preserve existing owner UI
@@ -32,6 +34,7 @@ jobs:
           node --test tests/partner-catalog-count-links.test.cjs
           node --test tests/partner-additional-counts-isolation.test.cjs
           node --test tests/partner-extra-shared-ranking.test.cjs
+          node --test tests/partner-monthly-shared-counts.test.cjs
           node --test tests/partner-finance-regression.test.cjs
           node --test tests/partner-shared-catalog-ui-contract.test.cjs
           node --test tests/owner-partner-team-count-screen.test.mjs
