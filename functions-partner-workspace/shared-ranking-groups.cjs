@@ -42,9 +42,11 @@ function saveGroups(current,newGroups,revision,validation){
 }
 // One shared result for HQ & partners from verified, redacted per-person category rows.
 // Product IDs without an owner-approved category mapping cannot be inferred by name.
-function groupPersonalScores(groups,persons,{categories=[],productLinks=[]}={}){
+function groupPersonalScores(groups,persons,{categories=[],productLinks=[],extraVerifiedIds=[]}={}){
  assert(Array.isArray(groups)&&Array.isArray(persons)&&Array.isArray(categories)&&
-   Array.isArray(productLinks));
+   Array.isArray(productLinks)&&Array.isArray(extraVerifiedIds)&&
+   extraVerifiedIds.every(validId)&&new Set(extraVerifiedIds).size===extraVerifiedIds.length);
+ const extraVerified=new Set(extraVerifiedIds);
  const categoriesSet=new Set(categories),linked=new Map(),usedCategories=new Set();
  // Only Owner-approved, date-effective mappings can turn a product ID into
  // an existing count category. Never infer mappings from product names.
@@ -54,9 +56,10 @@ function groupPersonalScores(groups,persons,{categories=[],productLinks=[]}={}){
   linked.set(link.productId,link.category);
   usedCategories.add(link.category);
  }
+ assert([...linked.keys()].every(id=>!extraVerified.has(id)));
  const out=[];
  for(const group of groups){
-  const categoryKeys=new Set();
+  const categoryKeys=new Set(),extraKeys=new Set();
   let unmapped=false;
   for(const key of group.keys){
    if(key.startsWith("legacy:")){
@@ -64,9 +67,10 @@ function groupPersonalScores(groups,persons,{categories=[],productLinks=[]}={}){
     assert(categoriesSet.has(category));
     categoryKeys.add(category);
    }else if(key.startsWith("id:")){
-    const category=linked.get(key.slice(3));
-    if(!category){unmapped=true;break;}
-    categoryKeys.add(category);
+    const productId=key.slice(3),category=linked.get(productId);
+    if(category)categoryKeys.add(category);
+    else if(extraVerified.has(productId))extraKeys.add(productId);
+    else {unmapped=true;break;}
    }else assert(false);
   }
   // A mixed group must not silently drop an unlinked product ID and publish
@@ -79,6 +83,11 @@ function groupPersonalScores(groups,persons,{categories=[],productLinks=[]}={}){
    let count=0;
    for(const k of categoryKeys){
     const value=p.counts[k];
+    assert(Number.isSafeInteger(value)&&value>=0);
+    count+=value;
+   }
+   for(const productId of extraKeys){
+    const value=p.extraCounts?.[productId]??0;
     assert(Number.isSafeInteger(value)&&value>=0);
     count+=value;
    }
