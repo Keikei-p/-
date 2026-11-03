@@ -12,7 +12,7 @@ function ownerPublishedExtraBreakdown(docs,{
  if(!Array.isArray(teamIds)||teamIds.length>150||
     teamIds.some(id=>!validId(id))||new Set(teamIds).size!==teamIds.length||
     !Array.isArray(publishedProducts)||publishedProducts.length>1000)fail();
- const ids=new Set(),names=new Map(),counts=new Map();
+ const ids=new Set(),names=new Map();
  for(const p of publishedProducts){
   if(!validId(p?.id)||ids.has(p.id))fail();
   ids.add(p.id);
