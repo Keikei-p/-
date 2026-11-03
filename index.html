@@ -14360,6 +14360,8 @@ async function savePartnerExtra(){
    status.textContent="✅ 追加商材の件数を保存・確認しました。旧実績・単価・売上は変更していません。";
    ++partnerProductMonthlyNonce;partnerProductMonthlyCache=null;
    ++sharedDailyRankingGeneration;sharedDailyRankCache.clear();
+   if(["products","catalog"].includes(partnerSameAppSelectedPanel))
+    void loadPartnerProductMonthlyTotals({force:true});
   }else{
    partnerExtra.ready=false;
    status.textContent=sendError?.code==="functions/aborted"?
@@ -14810,6 +14812,8 @@ async function partnerInlineFetch(){
    void loadSharedDailyStandings("partnerDetail",true);
   else if(partnerSameAppSelectedPanel==="history")
    void loadPartnerRevisionHistory();
+  else if(["products","catalog"].includes(partnerSameAppSelectedPanel))
+   void loadPartnerProductMonthlyTotals({force:true});
   return true;
  }catch(e){
   if(seq!==partnerInlineNonce||auth.currentUser?.uid!==uid)return false;
