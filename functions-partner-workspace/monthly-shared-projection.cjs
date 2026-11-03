@@ -11,10 +11,11 @@ const blank=keys=>Object.fromEntries(keys.map(x=>[x,0]));
 const hash=x=>crypto.createHash("sha256").update(x).digest("hex");
 const safe=x=>typeof x==="string"&&x.trim().length>0&&x.trim().length<=80&&!forbidden.test(x)&&!/@/.test(x);
 function projectPartnerMonth({hubId,cid,companyName,from,to,legacyDocs,extraDocs,keys,
- publishedIds=[],linkedIds=[]}={}){
+ publishedIds=[],linkedIds=[],teamNames={}}={}){
  if(!ID.test(hubId||"")||!ID.test(cid||"")||!safe(companyName)||
    !DAY.test(from||"")||!DAY.test(to||"")||from>to||
    !Array.isArray(keys)||!keys.length||new Set(keys).size!==keys.length||
+   !teamNames||typeof teamNames!=="object"||Array.isArray(teamNames)||
    !Array.isArray(legacyDocs)||!Array.isArray(extraDocs)||
    legacyDocs.length>2000||extraDocs.length>2000)fail();
  const people=new Map(),teams=new Map(),seenLegacy=new Set(),legacyByDocId=new Map(),extraByDate=new Map();
@@ -23,7 +24,8 @@ function projectPartnerMonth({hubId,cid,companyName,from,to,legacyDocs,extraDocs
   const key=hash(cid+"\n"+staffId),teamKey=hash(cid+"\nteam\n"+teamId);
   let p=people.get(staffId);
   if(!p){
-   p={key,name,companyName,teamKey,teamName:"当時の班",totalCount:0,
+   p={key,name,companyName,teamKey,teamName:Object.hasOwn(teamNames,teamId)&&
+    safe(teamNames[teamId])?teamNames[teamId].trim():"当時の班名未確認",totalCount:0,
     counts:zero(),extraCounts:{}};
    people.set(staffId,p);
   }else if(p.teamKey!==teamKey)p.teamKey=null; // never reassign old work
@@ -31,7 +33,9 @@ function projectPartnerMonth({hubId,cid,companyName,from,to,legacyDocs,extraDocs
  };
  const team=teamId=>{
   const key=hash(cid+"\nteam\n"+teamId);
-  if(!teams.has(key))teams.set(key,{key,name:"当時の班",companyName,
+  const savedName=Object.hasOwn(teamNames,teamId)&&safe(teamNames[teamId])?
+   teamNames[teamId].trim():"当時の班名未確認";
+  if(!teams.has(key))teams.set(key,{key,name:savedName,companyName,
    totalCount:0,counts:zero(),extraTotalCount:0});
   return teams.get(key);
  };
