@@ -54,6 +54,9 @@ test("isolation: new API writes only additional ledger, immutable audit and usag
  assert.match(method,/expectedVersion/);
  assert.match(method,/applyExtraCounts/);
  assert.match(method,/const audit=collection\(s\.cid,"partnerAdditionalCountAudits"\)/);
+ assert.match(method,/tx\.get\(entryRef\(s\.cid,date,staffId\)\)/);
+ assert.match(method,/legacySnap\.exists\?legacy\.teamIdSnapshot/);
+ assert.match(method,/date===jstToday\(\)\?person\.teamId:null/);
  assert.match(method,/tx\.create\(extraUsageRef/);
  assert.match(method,/if\(prevSnap\.exists\)tx\.update\(er,row\)/);
  assert.doesNotMatch(method,/tx\.(?:update|create|set|delete)\((?:productRef|entryRef|summaryRef|auditRef|priceRef|revenueRef)\b/);
