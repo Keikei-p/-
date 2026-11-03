@@ -174,9 +174,16 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    return {kind:"partner",uid,cid,hubId:c.hubCompanyId,
      companyName:c.name,role:"owner",teamId:null};
   }
+  // Old mobile clients remember the secondary partner company ID. After an
+  // approved historical transfer the SAME partner becomes the primary company,
+  // so allow that stale, matching ID to flow through the strictly checked
+  // direct-partner scope below. Never grant internal users this fallback.
+  if(workspaceCompanyId&&workspaceCompanyId===cid){
+   if(u.accessKind!=="partner"||u.memberType!=="cooperator")fail();
+  }
   // Existing-email secondary partner role, without touching original primary
   // company, revenue flags, financial originals, or stored user document.
-  if(workspaceCompanyId){
+  if(workspaceCompanyId&&workspaceCompanyId!==cid){
    if(!ID.test(workspaceCompanyId)||workspaceCompanyId===cid||
       (u.accessKind!=null&&u.accessKind!=="internal")||
       (u.memberType!=null&&!["internal","direct","member","managed"].includes(u.memberType)))fail();
