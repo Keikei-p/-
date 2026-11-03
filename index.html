@@ -15109,6 +15109,26 @@ pInline("pInlineClear").onclick=()=>{
 pInline("pInlineZero").onclick=()=>{
  if(partnerInlineBusy||!partnerInlineData)return;
  const staffId=pInline("pInlineStaff").value;
+ // "0件報告" must never erase or ignore a separate extra-product report.
+ // The second ledger is independently versioned and NEVER auto-corrected here.
+ if(!partnerExtraValid()){
+  pInline("pInlineSaveStatus").textContent=
+   "追加商材を確認できていないため、0件報告はできません。追加商材を更新してください。";
+  return;
+ }
+ if(partnerExtraDirty()){
+  pInline("pInlineSaveStatus").textContent=
+   "追加商材に未保存の入力があります。保存内容を確認してから0件報告してください。";
+  return;
+ }
+ const extraSaved=partnerExtra.records.find(row=>row.staffId===staffId);
+ if((extraSaved?.totalCount??0)>0||
+    [...pInline("pInlineCountFields").querySelectorAll("input[data-private-count-id][readonly]")]
+      .some(input=>(partnerCountInputNumber(input)??0)>0)){
+  pInline("pInlineSaveStatus").textContent=
+   "過去の協力店専用商材または追加商材に保存済み件数があります。実績を自動で0件にせず、履歴を確認してください。";
+  return;
+ }
  const existing=partnerInlineData.records.find(row=>row.staffId===staffId);
  if(existing&&((existing.totalCount||0)>0||(existing.privateTotalCount||0)>0)&&
     !window.confirm("登録済みの件数を0件に訂正します。過去の訂正履歴は残ります。続行しますか？"))return;
