@@ -1739,7 +1739,7 @@ test('transaction refuses existing corrupt totals before record or correction wr
   await ctx.persistDailyRecord(ref,data,{id:'r1'},'v1',correction);
   assert.equal(writes.length,1,'validated existing save uses original transaction');
   assert.equal(audit.length,1,'validated correction remains in same transaction');
-  assert.deepEqual(writes[0][2],{mergeFields:Object.keys(data)},
+  assert.equal(JSON.stringify(writes[0][2]),JSON.stringify({mergeFields:Object.keys(data)}),
     'original mergeFields (whole results) contract retained');
 
   existing=false;
