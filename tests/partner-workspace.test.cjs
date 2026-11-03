@@ -1607,7 +1607,7 @@ test("verified person transfers an existing secondary company into count-only pr
  assert.equal(direct.records[0].totalCount,2);
  assert.deepEqual(oldPhone,direct,"cached phone/company ID still reads partner counts");
  assert.equal((await api.view(req("m",{date:"2026-10-31",
-  resolveSecondaryWorkspace:true})).workspaceCompanyId,"partner");
+  resolveSecondaryWorkspace:true}))).workspaceCompanyId,"partner");
  assert.ok(!JSON.stringify(direct).includes("totalRevenue"));
  assert.ok(!JSON.stringify(direct).includes("unitPrice"));
  await assert.rejects(api.transferSecondary(req("m",{action:"confirm",
