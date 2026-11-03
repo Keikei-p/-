@@ -114,3 +114,31 @@ test("same HQ team card shows verified approved additional-product count and rej
  assert.match(html,/appendOwnerPublishedExtras\(holder.lastElementChild,team,publishedExtraByTeam.get\(team.teamId\)\)/);
  assert.match(html,/additional\.verifiedPublishedCount\+"件（通常商材へ二重加算しません）"/);
 });
+
+
+test("HQ original team card appends only published additional product and staff drilldown",()=>{
+ const html=fs.readFileSync(require.resolve("../index.html"),"utf8");
+ const a=html.indexOf("function verifyOwnerPublishedExtras(");
+ const b=html.indexOf("async function loadOwnerPartnerDetails(){",a);
+ const box=()=>({children:[],textContent:"",className:"",
+  append(...items){this.children.push(...items);}});
+ const content=box(),total={textContent:"合計 2件"};
+ const card={querySelector(selector){
+  return selector===".partner-count-team-body"?content:
+   selector===".partner-count-team-total"?total:null;
+ }};
+ const ctx={document:{createElement:()=>box()},
+  partnerMainAppendRow(parent,name,value){
+   const row=box();row.textContent=name+"｜"+value;parent.append(row);
+  }};
+ vm.runInNewContext(html.slice(a,b)+"\nthis.render=appendOwnerPublishedExtras;",ctx);
+ const extra={totalCount:3,products:[{id:"solar",name:"太陽光",count:3}],
+  people:[{name:"担当A",totalCount:3,products:[{id:"solar",name:"太陽光",count:3}]}]};
+ ctx.render(card,{totalCount:2},extra);
+ assert.match(total.textContent,/合計 5件（通常 2・公開追加 3）/);
+ const dump=JSON.stringify(content);
+ assert.match(dump,/公開された追加商材（別保存）/);
+ assert.match(dump,/担当A/);
+ assert.match(dump,/太陽光/);
+ assert.doesNotMatch(dump,/売上|単価|revenue|unitPrice|email/);
+});
