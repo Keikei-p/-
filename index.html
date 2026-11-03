@@ -13429,6 +13429,7 @@ async function loadSharedDailyStandings(where,force=false){
      !Array.isArray(response.companies)||!Array.isArray(response.teams)||
      !Array.isArray(response.people)||!Array.isArray(response.categories)||
      !response.productCounts||typeof response.productCounts!=="object"||
+     !Number.isSafeInteger(response.additionalTotalCount)||response.additionalTotalCount<0||
      typeof response.complete!=="boolean"||response.includesDirect!==true||
      !response.direct||typeof response.direct!=="object")
    throw Error("shared_ranking_contract");
@@ -13463,6 +13464,10 @@ async function loadSharedDailyStandings(where,force=false){
   personRows.push(...internal.people.map(x=>({name:"🏢 直営・"+x.name,count:x.totalCount})));
   const productTotals=new Map(categories.map(k=>[k,response.productCounts[k]+internal.counts[k]]));
   if(internal.otherCount)productTotals.set("その他（直営）",internal.otherCount);
+  // Additional quantities are saved independently; never blend them into the
+  // original nine product buckets or historic price/CB calculations.
+  if(response.additionalTotalCount)
+   productTotals.set("追加商材（協力店）",response.additionalTotalCount);
   const complete=response.complete;
   const partnerSum=response.companies.reduce((n,x)=>n+x.totalCount,0);
   if(!Number.isSafeInteger(partnerSum)||partnerSum<0)throw Error("shared_overflow");
