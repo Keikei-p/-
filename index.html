@@ -36390,7 +36390,7 @@ function renderOwnerJointIndividualRanking(){
   const row=document.createElement("div");row.className="ranking-row";
   const left=document.createElement("div");left.className="ranking-left";
   const number=document.createElement("span");number.className="ranking-number";
-  number.textContent=state.complete?rank+"位":"暫定";
+  number.textContent=state.complete?rank+"位":"暫定"+rank+"位";
   if(state.complete&&rank<=3)number.classList.add("top"+rank);
   const name=document.createElement("span");name.className="ranking-name";
   name.textContent=person.name;left.append(number,name);
@@ -37139,7 +37139,7 @@ function renderOwnerJointProductRanking(snapshot){
    const row=document.createElement("div");row.className="ranking-row";
    const left=document.createElement("div");left.className="ranking-left";
    const rank=document.createElement("span");rank.className="ranking-number";
-   rank.textContent=snapshot.complete?member.rank+"位":"暫定";
+   rank.textContent=snapshot.complete?member.rank+"位":"暫定"+member.rank+"位";
    if(snapshot.complete&&member.rank<=3)rank.classList.add("top"+member.rank);
    const name=document.createElement("div");name.className="ranking-name";
    name.textContent=member.name+"｜"+member.companyName;left.append(rank,name);

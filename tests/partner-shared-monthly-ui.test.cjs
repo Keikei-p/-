@@ -39,6 +39,19 @@ test("partner shares same provisional month rank panels; no separate sales DOM",
  assert.match(html,/appendSharedRankingRows\(content,headings\[selected\],rows\[selected\],false\)/);
  assert.match(html,/暫定.*位/);
 });
+test("joint owner standings show distinct provisional positions with count-only values",()=>{
+ const individual=html.slice(html.indexOf("function renderOwnerJointIndividualRanking(){"),
+  html.indexOf("function renderIndividualRanking(",html.indexOf("function renderOwnerJointIndividualRanking(){")));
+ const product=html.slice(html.indexOf("function renderOwnerJointProductRanking(snapshot){"),
+  html.indexOf("function renderProductMemberRanking(",html.indexOf("function renderOwnerJointProductRanking(snapshot){")));
+ assert.match(individual,/number\.textContent=state\.complete\?rank\+"位":"暫定"\+rank\+"位"/);
+ assert.match(product,/rank\.textContent=snapshot\.complete\?member\.rank\+"位":"暫定"\+member\.rank\+"位"/);
+ assert.match(individual,/person\.count\+"件"/);
+ assert.match(product,/member\.count\+"件"/);
+ assert.doesNotMatch(individual,/formatYen|totalRevenue|unitPrice/);
+ assert.doesNotMatch(product,/formatYen|totalRevenue|unitPrice/);
+});
+
 test("monthly UI opts in manually, limits repeated paid reads and invalidates stale requests",()=>{
  assert.match(html,/ownerMonthlyRankCache=new Map/);
  assert.match(html,/Date\.now\(\)-old\.checkedAt<180000/);
