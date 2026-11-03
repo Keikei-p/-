@@ -23044,17 +23044,19 @@ function recordConflict(message) {
 function isPersistedRecordCountConsistent(record) {
   // Read-only precondition for editing a stored record. This must never
   // recalculate/write the saved total, historic prices or revenue.
+  const isCount = value =>
+    (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) ||
+    (typeof value === "string" && /^\\d+$/.test(value) &&
+      Number.isSafeInteger(Number(value)));
   const saved = record?.totalCount;
   const rows = record?.results;
-  if (saved == null || saved === "" || !Number.isSafeInteger(Number(saved)) ||
-      Number(saved) < 0 || !rows || typeof rows !== "object" || Array.isArray(rows)) {
+  if (!isCount(saved) || !rows || typeof rows !== "object" || Array.isArray(rows)) {
     return false;
   }
   let sum = 0;
   for (const row of Object.values(rows)) {
     const count = row?.count;
-    if (count == null || count === "" || !Number.isSafeInteger(Number(count)) ||
-        Number(count) < 0) return false;
+    if (!isCount(count)) return false;
     sum += Number(count);
     if (!Number.isSafeInteger(sum)) return false;
   }
