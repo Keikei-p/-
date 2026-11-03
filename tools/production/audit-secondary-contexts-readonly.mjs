@@ -47,6 +47,37 @@ export function classifySecondary({context,user,oldMember,oldCompany,partnerMemb
  return 'internal_finance_read_path';
 }
 
+/**
+ * Strict dry-run only. A primary conversion must never be issued solely from
+ * this boolean; the user's live client session and immutable backup remain
+ * separate deployment gates.
+ */
+export function transferEligibility({context,user,oldMember,oldCompany,
+ partnerMember,partnerCompany,relation,staff,archived,auth}){
+ if(classifySecondary({context,user,oldMember,oldCompany,partnerMember,partnerCompany})!=='internal_finance_read_path')
+  return false;
+ if(context.primaryCompanyId!==context.hubCompanyId||
+    partnerCompany.hubCompanyId!==context.hubCompanyId||
+    oldCompany.ownerUid===context.uid||oldCompany.masterUid===context.uid||
+    user.companyRole==='owner'||oldMember.companyRole==='owner'||
+    !['leader','member'].includes(context.role)||
+    context.role!==partnerMember.role||!ID.test(context.teamId||'')||
+    partnerMember.teamId!==context.teamId||
+    partnerMember.companyRole!=='member'||partnerMember.uid!==context.uid||
+    partnerMember.companyId!==context.partnerCompanyId||
+    partnerMember.canViewRevenue!==false||partnerMember.canViewUnitPrice!==false||
+    !relation||relation.active!==true||relation.countSharingApproved!==true||
+    relation.hubCompanyId!==context.hubCompanyId||
+    relation.partnerCompanyId!==context.partnerCompanyId||
+    !staff||staff.kind!=='account'||staff.uid!==context.uid||
+    staff.active!==true||staff.teamId!==context.teamId||
+    archived===true||
+    !auth||auth.disabled===true||auth.emailVerified!==true||
+    typeof auth.email!=='string'||auth.email.toLowerCase()!==context.emailLower)
+    return false;
+ return true;
+}
+
 async function bounded(db,name,fields){
  const snap=await db.collection(name).select(...fields).limit(LIMIT+1).get();
  if(snap.size>LIMIT)abort('SCAN_CAP');
@@ -81,8 +112,8 @@ async function getRulesHash(credential,request=fetch){
  return sha(current.source.files[0].content);
 }
 
-export async function inventory({db,credential,request=fetch,includeBackup=true}){
- if(!db||!credential)abort('MISSING_DEPENDENCY');
+export async function inventory({db,credential,authService,request=fetch,includeBackup=true}){
+ if(!db||!credential||!authService)abort('MISSING_DEPENDENCY');
  const [contexts,companies,transfers]=await Promise.all([
   bounded(db,'partnerWorkspaceContexts',['uid','kind','active','primaryCompanyId',
    'partnerCompanyId','hubCompanyId']),
@@ -92,19 +123,29 @@ export async function inventory({db,credential,request=fetch,includeBackup=true}
  const values={totalContexts:contexts.length,activeSecondaryContexts:0,
   ownerConflicts:0,nonOwnerOldFinancePaths:0,inactiveOrUnknownContexts:0,
   inconsistentContexts:0,internalOwnersScanned:0,internalOwnerContexts:0,
-  historicalTransfersPresent:transfers.length};
+  historicalTransfersPresent:transfers.length,transferEligibleCandidates:0,transferNeedsReview:0};
  for(const c of contexts){
   const x=c.data()||{};
   if(x.uid!==c.id||!ID.test(c.id)||!ID.test(x.primaryCompanyId||'')||
      !ID.test(x.partnerCompanyId||''))abort('CONTEXT_SCHEMA');
-  const [user,oldMember,oldCompany,partnerMember,partnerCompany]=await Promise.all([
+  const [user,oldMember,oldCompany,partnerMember,partnerCompany,relation,staff,archive,auth]=await Promise.all([
    refDoc(db,'users',c.id).get().then(s=>s.data()||null),
    db.collection('companies').doc(x.primaryCompanyId).collection('members').doc(c.id).get().then(s=>s.data()||null),
    refDoc(db,'companies',x.primaryCompanyId).get().then(s=>s.data()||null),
    db.collection('companies').doc(x.partnerCompanyId).collection('members').doc(c.id).get().then(s=>s.data()||null),
-   refDoc(db,'companies',x.partnerCompanyId).get().then(s=>s.data()||null)
+   refDoc(db,'companies',x.partnerCompanyId).get().then(s=>s.data()||null),
+   refDoc(db,'partnerRelations',x.partnerCompanyId).get().then(s=>s.data()||null),
+   db.collection('companies').doc(x.partnerCompanyId).collection('partnerWorkStaff').doc(c.id).get().then(s=>s.data()||null),
+   refDoc(db,'partnerHistoricalTransfers',c.id).get().then(s=>s.exists),
+   authService.getUser(c.id).then(a=>({email:a.email,emailVerified:a.emailVerified,disabled:a.disabled}))
   ]);
   const kind=classifySecondary({context:x,user,oldMember,oldCompany,partnerMember,partnerCompany});
+  if(kind==='internal_finance_read_path'){
+   const eligible=transferEligibility({context:x,user,oldMember,oldCompany,partnerMember,
+     partnerCompany,relation,staff,archived:archive,auth});
+   if(eligible)values.transferEligibleCandidates++;
+   else values.transferNeedsReview++;
+  }
   if(kind==='owner_conflict'){values.ownerConflicts++;values.activeSecondaryContexts++;}
   else if(kind==='internal_finance_read_path'){values.nonOwnerOldFinancePaths++;values.activeSecondaryContexts++;}
   else if(kind==='inactive_or_unrecognized')values.inactiveOrUnknownContexts++;
@@ -150,15 +191,18 @@ async function main(){
  const require=createRequire(new URL('../../functions/package.json',import.meta.url));
  const {applicationDefault,initializeApp}=require('firebase-admin/app');
  const {getFirestore}=require('firebase-admin/firestore');
+ const {getAuth}=require('firebase-admin/auth');
  const credential=applicationDefault();
  initializeApp({credential,projectId:PROJECT});
- const result=await inventory({db:getFirestore(),credential});
+ const result=await inventory({db:getFirestore(),credential,authService:getAuth()});
  console.log('NICO_SECONDARY_READ_ONLY '+JSON.stringify(result));
  // A successful inventory is not a deploy authorization.
  if(result.ownerConflicts||result.internalOwnerContexts)console.log('BLOCK_OWNER_SECONDARY_CONTEXT');
  if(result.nonOwnerOldFinancePaths)console.log('BLOCK_PARTNER_OLD_FINANCE_READ_PATH');
  if(result.inconsistentContexts)console.log('BLOCK_SECONDARY_CONTEXT_INVALID');
  if(!result.rulesFingerprintMatchesLastReviewed)console.log('BLOCK_LIVE_RULESET_DIFFERENT');
+ if(result.transferNeedsReview)console.log('BLOCK_TRANSFER_PRECONDITION');
+ if(result.transferEligibleCandidates)console.log('TRANSFER_CANDIDATE_FOUND__NO_WRITES');
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  main().catch(e=>{console.error(/^STOP_SECONDARY_INVENTORY_[A-Z0-9_]+$/.test(e.message)?e.message:'STOP_SECONDARY_INVENTORY_UNVERIFIED');process.exitCode=1;});
