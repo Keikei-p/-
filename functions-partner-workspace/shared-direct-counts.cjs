@@ -80,12 +80,17 @@ async function readDirectRangeCounts(db,hubId,fromDate,toDate,keys,{
   const row=doc.data()||{};
   if(row.companyId!==hubId||typeof row.date!=="string"||
     row.date<fromDate||row.date>toDate)throw Error("DIRECT_SCOPE_MISMATCH");
+  // Missing persisted totals must never be guessed from visible line items.
+  // A legacy mismatch or incomplete report is not a legitimate zero-count day.
+  if(!Number.isSafeInteger(row.totalCount)||row.totalCount<0)
+   throw Error("DIRECT_TOTAL_UNVERIFIED");
   const results=readCountRows(row);
   let n=0;
   const daily=Object.fromEntries(keys.map(k=>[k,0]));
   const dailyExtra={},dailyExtraCategoryCounts={};
   for(const result of results){
-   const number=Number(result?.count??0);
+   if(result?.count==null)throw Error("DIRECT_INVALID_QUANTITY");
+   const number=Number(result.count);
    if(!Number.isSafeInteger(number)||number<0||number>9999)
     throw Error("DIRECT_INVALID_QUANTITY");
    const productName=result.productNameSnapshot||result.productName||
@@ -105,8 +110,7 @@ async function readDirectRangeCounts(db,hubId,fromDate,toDate,keys,{
    }
    n+=number;
   }
-  if(!Number.isSafeInteger(n)||n<0||
-     (row.totalCount!=null&&(!Number.isSafeInteger(row.totalCount)||row.totalCount!==n)))
+  if(!Number.isSafeInteger(n)||n<0||row.totalCount!==n)
    throw Error("DIRECT_TOTAL_MISMATCH");
   totalCount+=n;
   // A record ID is NOT a verified staff identity: never invent people in
