@@ -88,8 +88,19 @@ function groupPersonalScores(groups,persons,{categories=[],productLinks=[],extra
    }
    for(const productId of extraKeys){
     const value=p.extraCounts?.[productId]??0;
-    assert(Number.isSafeInteger(value)&&value>=0);
-    count+=value;
+    const overlap=p.extraCategoryCounts?.[productId]||{};
+    assert(Number.isSafeInteger(value)&&value>=0&&
+     overlap&&typeof overlap==="object"&&!Array.isArray(overlap));
+    let countedInLegacy=0;
+    for(const [category,quantity] of Object.entries(overlap)){
+     assert(categoriesSet.has(category)&&Number.isSafeInteger(quantity)&&quantity>=0);
+     if(categoryKeys.has(category))countedInLegacy+=quantity;
+    }
+    // The direct company's original category aggregates ALREADY include
+    // some product-ID quantities. Subtract that overlap once, whereas
+    // partner additional-ledger quantities never overlap old categories.
+    assert(countedInLegacy<=value);
+    count+=value-countedInLegacy;
    }
    assert(Number.isSafeInteger(count));
    members.push({key:p.key,name:p.name,companyName:p.companyName||"直営",count});
