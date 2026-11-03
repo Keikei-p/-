@@ -62,6 +62,7 @@ test("old team changes remain separate; person identity never gets invented",()=
  assert.equal(data.people.length,1);
  assert.equal(data.teams.length,2);
  assert.equal(data.people[0].teamKey,null);
+ assert.equal(data.people[0].teamName,"複数班（当時の所属班ごとに集計）");
  assert.deepEqual(data.teams.map(t=>t.totalCount).sort(),[1,2]);
 });
 test("company/date/ledger/extra double attribution corruption is rejected",()=>{
