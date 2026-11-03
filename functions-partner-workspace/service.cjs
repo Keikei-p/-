@@ -612,6 +612,12 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
         ["partner","cooperator"].includes(pm.memberType))
        fail("failed-precondition");
      formerMember=pm;
+     // Internal Owners must NEVER gain a secondary partner context on the same
+     // Firebase UID: context-based raw-finance denial would also hide their
+     // legitimate original revenue. They must use a separately authorized UID.
+     if(!transfer&&(pc.ownerUid===a.uid||pc.masterUid===a.uid||
+        original.companyRole==="owner"||pm.companyRole==="owner"))
+      fail("failed-precondition");
      if(transfer){
       // Never orphan a company owner, change another hub's roster or silently
       // re-parent original records. Original records and old member doc stay put.
