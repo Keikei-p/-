@@ -6,6 +6,8 @@ on:
     paths:
       - firestore.rules
       - tests/rules.test.cjs
+      - tests/partner-workspace.test.cjs
+      - functions-partner-workspace/service.cjs
       - .github/workflows/nico-secondary-finance-harddeny-no-deploy.yml
   push:
     branches:
@@ -40,7 +42,7 @@ jobs:
           npm install --global firebase-tools@15.34.1 --no-audit --no-fund
       - name: Finance and count unit regression without production credentials
         run: |
-          node --test tests/internal-owner-finance-visibility.test.cjs tests/partner-money-free-workspace.test.cjs tests/sales-regressions.cjs
+          node --test tests/internal-owner-finance-visibility.test.cjs tests/partner-money-free-workspace.test.cjs tests/sales-regressions.cjs tests/partner-workspace.test.cjs
       - name: Run all Firestore rules and legacy record tests in isolated emulator
         env:
           FIREBASE_PROJECT_ID: demo-sales-support
