@@ -6,6 +6,9 @@ on:
     paths:
       - 'tools/production/verify-live-partner-boundary-readonly-20261103.mjs'
       - 'tests/live-partner-boundary-readonly-20261103.test.mjs'
+      - 'tools/readonly-backup/count-drift-diagnostic.mjs'
+      - 'tests/count-drift-diagnostic-readonly-20261103.test.mjs'
+      - 'tests/count-drift-correction-readonly.test.mjs'
       - '.github/workflows/nico-live-partner-boundary-readonly-20261103.yml'
 permissions:
   contents: read
@@ -33,6 +36,7 @@ jobs:
           node --check tools/production/verify-live-partner-boundary-readonly-20261103.mjs
           node --test tests/live-partner-boundary-readonly-20261103.test.mjs
           node --test tests/count-drift-diagnostic-readonly-20261103.test.mjs
+          node --test tests/count-drift-correction-readonly.test.mjs
       - name: Install pinned existing Firebase Admin SDK locally
         run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
       - name: Load existing production READ ONLY audit credential
