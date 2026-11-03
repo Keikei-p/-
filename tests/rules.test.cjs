@@ -95,7 +95,7 @@ function app(db){
  const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
  const source=name=>{let a=html.indexOf(`function ${name}(`);if(html.slice(a-6,a)==='async ')a-=6;return html.slice(a,html.indexOf('\n}',a)+2);};
  const ctx=vm.createContext({db,query,where,getDocsFromServer,runTransaction,recordsCollectionQuery:()=>query(collection(db,'records'),where('companyId','==',company))});
- vm.runInContext(['recordRevision','recordConflict','persistDailyRecord'].map(source).join('\n'),ctx);return ctx;
+ vm.runInContext(['recordRevision','recordConflict','isPersistedRecordCountConsistent','persistDailyRecord'].map(source).join('\n'),ctx);return ctx;
 }
 test('concurrent leaders registering same day produce exactly one record',{skip:process.env.RULES_ONLY==='1'},async()=>{
  const a=dbFor('leaderA'),b=dbFor('leaderB');
@@ -126,6 +126,40 @@ test('transaction replacement removes deleted product and preserves creation met
  await api.persistDailyRecord(ref,patch('owner',{companyId:company,uid:'helper',date,results:{B:{count:1,revenuePerUnit:50}},totalCount:1,totalRevenue:50}),before,api.recordRevision(before));
  const saved=(await getDoc(ref)).data();assert.deepEqual(saved.results,{B:{count:1,revenuePerUnit:50}});assert.deepEqual(saved.createdAt,before.createdAt);
 });
+
+
+test('emulator preserves a historically mismatched sale and never invents a correction audit',{skip:process.env.RULES_ONLY==='1'},async()=>{
+  await seedRecord();
+  const db=dbFor('owner'),ref=doc(db,'records',key()),api=app(db);
+  // Simulate a legacy nested-map merge using only the disposable emulator.
+  await env.withSecurityRulesDisabled(async c=>{
+    await updateDoc(doc(c.firestore(),'records',key()),{'results.orphanLegacy':{count:1,revenuePerUnit:75}});
+  });
+  const before={id:ref.id,...(await getDoc(ref)).data()};
+  assert.equal(before.totalCount,2);
+  assert.equal(before.results.A.count,2);
+  assert.equal(before.results.orphanLegacy.count,1);
+  const corrected={...before,results:{A:{...before.results.A}},totalCount:2,totalRevenue:200};
+  const auditWrites=[];
+  await assert.rejects(
+    api.persistDailyRecord(ref,corrected,before,api.recordRevision(before),txn=>{
+      auditWrites.push('unexpected correction');
+      txn.set(doc(db,'recordCorrections','forbidden'),{recordId:ref.id});
+    }),
+    error=>error?.code==='record-conflict'&&error.message.includes('総件数と商材別件数')
+  );
+  const after=(await getDoc(ref)).data();
+  assert.deepEqual(after.results,before.results,'source lines must not be silently discarded');
+  assert.equal(after.totalCount,before.totalCount,'saved totals must never be repaired by assumption');
+  assert.equal(after.totalRevenue,before.totalRevenue,'historical revenue must be retained');
+  assert.equal(auditWrites.length,0,'failed source write must not generate an audit event');
+  let correctionCount=-1;
+  await env.withSecurityRulesDisabled(async c=>{
+    correctionCount=(await getDocsFromServer(collection(c.firestore(),'recordCorrections'))).size;
+  });
+  assert.equal(correctionCount,0,'no correction history writes on failed transaction');
+});
+
 
 
 function revenueGoalPayload(teamId='a',targetRevenue=3000000){
@@ -561,7 +595,14 @@ for(const source of ['company-kind','user-access','member-access','user-type','m
   for(const [coll,id] of [
    ['products','one-price'],['records',key()],
    ['recordCorrections','finance-history'],['revenueGoals','private-goal']
-  ])await assertFails(getDoc(doc(db,coll,id)));
+  ]){
+    await assertFails(getDoc(doc(db,coll,id)),'partner marker must deny direct '+coll+' reads');
+    // A collection query is an independent Firestore Rules path (list, not get).
+    // This MUST fail even when the attacker knows the exact company ID.
+    await assertFails(getDocsFromServer(query(
+      collection(db,coll),where('companyId','==',company)
+    )),'partner marker must deny '+coll+' list/query access');
+  }
   await assertFails(setDoc(doc(db,'records',key('owner')),payload('owner','owner','a')));
   await assertFails(setDoc(doc(db,'revenueGoals','new-private-goal'),revenueGoalPayload()));
  });
@@ -583,6 +624,13 @@ test('internal owner/member retain original financial document reads after partn
   const d=dbFor(uid);
   await assertSucceeds(getDoc(doc(d,'products','internal-finance')));
   await assertSucceeds(getDoc(doc(d,'records','internal-finance')));
+  // No loss of existing finance-capable internal company list operations.
+  for(const coll of ['products','records']){
+    const rows=await assertSucceeds(getDocsFromServer(query(
+      collection(d,coll),where('companyId','==',company)
+    )));
+    assert.equal(rows.size,1,'internal '+uid+' should still query '+coll);
+  }
  }
 });
 
