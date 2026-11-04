@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import {inspectPublic} from '../tools/production/verify-public-workspace-readonly.mjs';
 const allowedEnv={NICO_PUBLIC_READONLY:'YES'};
 const kinds=['getPartnerWorkspace','managePartnerWorkspace','acceptPartnerWorkspaceInvite',
- 'submitPartnerWorkspaceCounts','transferPartnerSecondaryMembership'];
+ 'submitPartnerWorkspaceCounts','transferPartnerSecondaryMembership',
+ 'previewManagedAccountErasure','listManagedAccountErasurePending',
+ 'confirmManagedAccountErasure'];
 function fakeFetch({missingMigration=true,homeHasAction=false,statusOverride={}}={}){
  const calls=[];
  const fetcher=async(url,opts)=>{
@@ -18,7 +20,9 @@ function fakeFetch({missingMigration=true,homeHasAction=false,statusOverride={}}
   }
   for(const name of kinds){
    if(url.endsWith('/'+name)){
-    return {status:statusOverride[name]??(missingMigration&&name==='transferPartnerSecondaryMembership'?404:401)};
+    return {status:statusOverride[name]??(
+     (missingMigration&&name==='transferPartnerSecondaryMembership'||
+      ['previewManagedAccountErasure','listManagedAccountErasurePending','confirmManagedAccountErasure'].includes(name))?404:401)};
    }
   }
   throw Error('UNEXPECTED_URL');
@@ -30,15 +34,19 @@ test('missing migration callable is reported without any production writes or si
  const x=await inspectPublic({fetcher,env:allowedEnv});
  assert.equal(x.project,'sales-management-cc116');
  assert.equal(x.api.transferPartnerSecondaryMembership,'not_published');
+ assert.equal(x.api.previewManagedAccountErasure,'not_published');
+ assert.equal(x.api.listManagedAccountErasurePending,'not_published');
+ assert.equal(x.api.confirmManagedAccountErasure,'not_published');
  assert.equal(x.api.managePartnerWorkspace,'anonymous_denied');
  assert.equal(x.dataWrites,0);
  assert.equal(x.authenticatedUserReads,0);
  assert.equal(x.safeToDeploy,false);
- assert.equal(calls.length,7);
+ assert.equal(calls.length,10);
  assert.ok(calls.every(c=>c.method==='GET'||(c.method==='POST'&&c.body==='{"data":{}}')));
  assert.ok(calls.every(c=>!c.headers.Authorization&&!c.headers.authorization));
  assert.equal(x.homepageHasSecondaryTransferAction,false);
  assert.equal(x.candidateHasMigrationAction,true);
+ assert.equal(x.candidateHasAccountErasureAction,true);
  assert.equal(x.liveAppMatchesCandidate,false);
  assert.ok(x.candidateAppSizeBytes>10000);
 });
