@@ -23,17 +23,18 @@ class DB{
   const tx={
    get:ref=>ref.get(),
    create:(ref,value)=>ops.push(["create",ref.path,clone(value)]),
+   set:(ref,value)=>ops.push(["set",ref.path,clone(value)]),
    update:(ref,value)=>ops.push(["update",ref.path,clone(value)]),
    delete:ref=>ops.push(["delete",ref.path,null])
   };
   const result=await callback(tx);
   for(const [op,path] of ops){
    if(op==="create"&&this.store.has(path))throw Error("already exists");
-   if((op==="update"||op==="delete")&&!this.store.has(path))throw Error("missing");
+   if((op==="update"||op==="set"||op==="delete")&&!this.store.has(path))throw Error("missing");
   }
   for(const [op,path,data] of ops){
    if(op==="delete"){this.store.delete(path);this.writes.push([op,path]);continue;}
-   const next=op==="create"?data:{...clone(this.store.get(path)),...data};
+   const next=op==="create"||op==="set"?data:{...clone(this.store.get(path)),...data};
    for(const [key,val] of Object.entries(next))if(val?.__deleteField)delete next[key];
    this.store.set(path,next);this.writes.push([op,path]);
   }
@@ -125,6 +126,7 @@ test("owner preview is read-only and confirms irreversible Auth/profile erasure 
 });
 test("partner leader may delete same-team member, but staff history stays as anonymous tombstone",async()=>{
  const s=setup(),original=s.history();
+ s.db.store.get("companies/partner/partnerWorkStaff/pmember").privatePhone="090-0000-0000";
  const before=await s.service.preview(s.request("pleader",{action:"preview",targetUid:"pmember"}));
  assert.equal(before.ready,true);assert.equal(before.targetName,"田中 花子");
  const result=await s.service.confirm(s.request("pleader",{action:"confirm",targetUid:"pmember",
@@ -136,6 +138,7 @@ test("partner leader may delete same-team member, but staff history stays as ano
  assert.deepEqual(s.db.store.get("companies/partner/partnerWorkStaff/pmember").name,"退会済み");
  assert.equal(s.db.store.get("companies/partner/partnerWorkStaff/pmember").email,undefined);
  assert.equal(s.db.store.get("companies/partner/partnerWorkStaff/pmember").uid,null);
+ assert.equal(s.db.store.get("companies/partner/partnerWorkStaff/pmember").privatePhone,undefined);
  assert.deepEqual(s.history(),original,"all previously saved count and finance snapshots unchanged");
 });
 test("partner leader cannot delete another team or another leader, owner cannot delete self",async()=>{
