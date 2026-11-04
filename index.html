@@ -14476,7 +14476,9 @@ function attachPendingAccountErasureControl(host,canManage,refresh){
  let panel=document.getElementById(id);
  if(!panel){
   panel=document.createElement("div");
-  panel.id=id;panel.style.cssText="padding:12px 0;display:block;";
+  // Do not force display:block: it would override [hidden] and reveal the
+  // button to non-manager accounts (server still rejects them).
+  panel.id=id;panel.style.cssText="padding:12px 0;";
   const button=document.createElement("button");button.type="button";
   button.className="member-action-button";
   button.textContent="削除が未完了のアカウントを確認";
