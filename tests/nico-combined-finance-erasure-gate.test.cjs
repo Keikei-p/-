@@ -18,7 +18,7 @@ test("same production app keeps both secondary partner migration and strict mana
  assert.match(ui,/confirmManagedAccountErasure/);
  assert.match(ui,/listManagedAccountErasurePending/);
  assert.match(ui,/pInlinePeople/);
- assert.match(ui,/pInlineCounts/);
+ assert.match(ui,/pInlineCountFields/);
  assert.match(ui,/reauthenticateWithCredential\(operator,cred\)/);
  assert.match(ui,/confirmation:"DELETE_ACCOUNT_ONLY",confirmName:targetName/);
  assert.match(ui,/confirmation:"I_ACCEPT_PARTNER_ONLY_ACCESS"/);
