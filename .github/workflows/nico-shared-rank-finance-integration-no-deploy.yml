@@ -67,4 +67,5 @@ jobs:
         run: |
           npx --yes firebase-tools@15.34.1 emulators:exec --project demo-sales-support --only firestore "node --test tests/rules.test.cjs"
       - name: No deployment or real data writes
-        run: echo 'PASS: demo emulator only - no Firebase production, no Hosting, no Functions, no Rules publish'
+        run: |
+          echo 'PASS: demo emulator only - no Firebase production, no Hosting, no Functions, no Rules publish'
