@@ -38,6 +38,9 @@ test('missing migration callable is reported without any production writes or si
  assert.ok(calls.every(c=>c.method==='GET'||(c.method==='POST'&&c.body==='{"data":{}}')));
  assert.ok(calls.every(c=>!c.headers.Authorization&&!c.headers.authorization));
  assert.equal(x.homepageHasSecondaryTransferAction,false);
+ assert.equal(x.candidateHasMigrationAction,true);
+ assert.equal(x.liveAppMatchesCandidate,false);
+ assert.ok(x.candidateAppSizeBytes>10000);
 });
 test('published migration callable must reject anonymous request',async()=>{
  const {fetcher}=fakeFetch({missingMigration:false,homeHasAction:true,
