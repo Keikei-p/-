@@ -80,14 +80,14 @@ test('unrecognized input is rejected and never interpreted as ready',()=>{
 
 test('even a synthetic static compatibility result is never production approval',()=>{
  const f=fixture();
- const sha=inspectPartnerReleaseReadiness(f).candidateRulesSha256;
- const originalPin=f.manualRelease.match(/export const CANDIDATE='([a-f0-9]{64})'/)[1];
- f.manualRelease=f.manualRelease.replace(originalPin,sha);
  f.rules=f.rules.replace('service cloud.firestore {',
   'service cloud.firestore {\n    function isInternalFinanceReader(companyId) { return false; }');
  f.browser=f.browser
   .replace('function recordsCollectionQuery(', 'function oldRecordsQueryDisabled(')
   .replace('function persistDailyRecord(', 'function oldPersistDisabled(');
+ const sha=inspectPartnerReleaseReadiness(f).candidateRulesSha256;
+ const originalPin=f.manualRelease.match(/export const CANDIDATE='([a-f0-9]{64})'/)[1];
+ f.manualRelease=f.manualRelease.replace(originalPin,sha);
  const result=inspectPartnerReleaseReadiness(f);
  assert.deepEqual(result.blockers,[]);
  assert.equal(result.staticReleasePathCompatible,true);
