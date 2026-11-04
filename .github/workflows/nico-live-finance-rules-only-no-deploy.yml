@@ -51,6 +51,15 @@ jobs:
           fi
           node --check tests/rules.test.cjs
           node - <<'NODE'
+          const {execFileSync}=require('node:child_process');
+          const {createHash}=require('node:crypto');
+          const source=execFileSync('git',['show','origin/main:firestore.rules'],{encoding:'utf8'});
+          const sha=createHash('sha256').update(source.replace(/\r\n/g,'\n').trim()).digest('hex');
+          const live='d1d9998d874a1a31c81ddf6996e08cd9de3a3d13bd684e245140bf03cab32179';
+          if(sha!==live)throw Error('STOP_MAIN_BASELINE_RULESET_DIFFERS_FROM_LIVE');
+          console.log('PASS_REVIEWED_MAIN_RULESET_EQUALS_LIVE_RULESET');
+          NODE
+          node - <<'NODE'
           const fs=require('node:fs');
           const s=fs.readFileSync('firestore.rules','utf8');
           const gate=(s.match(/noSecondaryPartnerWorkspace\(\)/g)||[]).length;
