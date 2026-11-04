@@ -6,6 +6,7 @@ on:
   pull_request:
     branches:
       - release/nico-partner-compact-two-column-index-20261102
+      - feature/partner-shared-catalog-rank-20261103
 permissions:
   contents: read
 jobs:
@@ -32,6 +33,7 @@ jobs:
           node --check tools/production/verify-live-partner-boundary-readonly-20261103.mjs
       - name: Test publication isolation and preserve existing owner UI
         run: |
+          node --test tests/shared-count-management.test.cjs
           node --test tests/partner-catalog-publication.test.cjs
           node --test tests/partner-shared-ranking-groups.test.cjs
           node --test tests/partner-catalog-count-links.test.cjs

@@ -14,18 +14,18 @@ function snippet(start,end){
 test("partner UI no longer repeats the money/price loading notice, while server-only count API stays",()=>{
  assert.doesNotMatch(html,/件数を表示しています。金額・単価は読み込んでいません/);
  assert.doesNotMatch(html,/協力店には件数だけを表示し、売上・単価の原票は読み込みません/);
- assert.match(html,/今日の実績を登録・確認できます/);
+ assert.match(html,/班・メンバー・商材・実績を一元管理できます/);
  assert.match(source,/partnerInlineStatus\("最新の件数を表示しています。"\)/);
  assert.match(source,/const readPartnerWorkDay = httpsCallable\(partnerCountFunctions,"getPartnerWorkspace"\)/);
  assert.match(source,/const partnerInlineSave = httpsCallable\(partnerCountFunctions,"submitPartnerWorkspaceCounts"\)/);
  assert.match(html,/monthlyRevenue/);
 });
 
-test("one persistent record element is placed immediately after count summary, not inside toggle details",()=>{
+test("one persistent record element precedes the dashboard, matching the internal company",()=>{
  const mount=snippet("function mountPartnerCanonicalNavigation(){","function renderPartnerCountOnlyExtras(){");
  assert.match(mount,/const record=pInline\("partnerPanelRecord"\)/);
- assert.match(mount,/querySelector\("\.dashboard-summary"\)/);
- assert.match(mount,/summary\.after\(record\)/);
+ assert.match(mount,/const dashboard=pInline\("partnerDashboard"\)/);
+ assert.match(mount,/dashboard\.before\(record\)/);
  assert.match(mount,/record\.hidden=false/);
  assert.match(html,/#appScreen\[data-partner-count-only="true"\] #partnerPanelRecord\{display:block!important/);
  assert.equal((html.match(/id="partnerPanelRecord"/g)||[]).length,1);
@@ -62,7 +62,7 @@ test("record card click never hides the always-visible form or disturbs other da
 });
 
 test("confirmation only happens after verified server readback for both new and edited rows",()=>{
- const save=snippet('pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>',
+ const save=snippet('pInline("pInlineSave").onclick=()=>{',
   "// Original internal owner sees existing teams PLUS partner-company teams.");
  assert.match(save,/const readback=partnerSavedCountReadbackState\(verified,expected\)/);
  assert.match(save,/const verifiedMessage=before\?"✅ 実績を修正できました！":"✅ 実績を登録できました！"/);
@@ -84,7 +84,7 @@ test("success is rendered beside Save, remains visible after refresh; errors mus
  ])ui.set(name,{disabled:false,textContent:"",dataset:{}});
  const messages=[];
  const context={
-  partnerInlineBusy:false,
+  partnerInlineBusy:false,partnerExtraDirty:()=>false,partnerProductMonthlyNonce:0,partnerProductMonthlyCache:null,
   partnerInlineData:{staff:[{id:"a",active:true}]},
   auth:{currentUser:{uid:"u"}},
   sharedDailyRankingGeneration:0,

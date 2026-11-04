@@ -31,7 +31,7 @@ test("owner team tab automatically fetches company counts while allowing manual 
   'async function loadOwnerPartnerDetails(){',
   'allTeamsOverviewToggle.addEventListener("click"',
   '!allTeamsOverviewContent.hidden&&canLoadPartnerRanking()',
-  'pInline("ownerPartnerDashboardRefresh").onclick=()=>void loadOwnerPartnerDetails()',
+  'pInline("ownerPartnerDashboardRefresh").onclick=()=>void refreshOwnerCountManagement()',
   'ownerPartnerDashboardDate',
   'const response=(await readPartnerWorkDay({date})).data',
   'report.totalCount+"件"',

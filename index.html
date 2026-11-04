@@ -4406,7 +4406,6 @@ body.product-reordering .product-list {
 #appScreen[data-partner-count-only="true"] .user-bar .management-tab-shell{display:none!important}
 #appScreen:not([data-partner-count-only="true"]) .partner-safe-menu{display:none!important}
 #appScreen[data-partner-count-only="true"] .user-bar .partner-safe-menu{display:block!important}
-#partnerInlineWorkspace #partnerPanelRecord > .p-inline-card{background:transparent;border:0;border-radius:0;padding:0;margin:8px 0}
 
 /* The very same count-only team cards are used by partners and the original
    owner's partner section. Never style the owner's existing sales cards. */
@@ -4498,7 +4497,12 @@ body.product-reordering .product-list {
 #partnerInlineWorkspace #partnerSameAppDashboardDetails{grid-column:1/-1;min-width:0;width:100%;box-sizing:border-box}
 #partnerInlineWorkspace #partnerSameAppNavigation>[data-partner-panel][aria-expanded="true"]{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary)}
 #partnerInlineWorkspace #partnerSameAppNavigation{align-items:stretch}
-#partnerInlineWorkspace #partnerPanelRecord .p-inline-card{background:var(--card,#fff);border:1px solid var(--border);border-radius:12px;padding:16px}
+#partnerInlineWorkspace #partnerGlobalDateToolbar{grid-template-columns:minmax(0,250px) auto;align-items:end;justify-content:start}
+#partnerInlineWorkspace #partnerGlobalDateToolbar input{padding:11px;border:1px solid var(--border);border-radius:9px;background:var(--card);color:var(--text)}
+#partnerInlineWorkspace #partnerGlobalDateToolbar button{margin:0}
+#partnerInlineWorkspace #pInlineEntryTotals{font-size:22px;overflow-wrap:anywhere}
+#partnerInlineWorkspace #partnerPanelRecord .p-inline-actions{gap:8px;margin:0}
+#partnerInlineWorkspace #partnerPanelRecord .record-clear-button{margin-left:0}
 #appScreen[data-partner-count-only="true"] #partnerPanelRecord{display:block!important;width:100%;box-sizing:border-box}
 #appScreen[data-partner-count-only="true"] #partnerPanelRecord[hidden]{display:block!important}
 #partnerInlineWorkspace #pInlineSaveStatus[data-result="success"]{color:#166534;font-size:16px;font-weight:800;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:14px;margin:12px 0;line-height:1.5}
@@ -4878,15 +4882,18 @@ body.product-reordering .product-list {
 
 <!-- Same Firebase sign-in as the original sales app; count-only partner APIs. -->
 <section id="partnerInlineWorkspace" hidden aria-label="協力店 実績・班管理">
-  <div class="dashboard-card">
-  <h2 id="pInlineTitle" class="dashboard-title">協力店 実績管理</h2>
+  <div class="welcome-card">
+  <div id="pInlineTitle" class="welcome-title">営業実績管理へようこそ</div>
+  <div class="welcome-text">班・メンバー・商材・実績を一元管理できます。</div>
   <button id="pInlineReturnToOwnCompany" type="button" class="team-action-button" hidden>
     自社アカウントの画面に戻る
   </button>
-  <p class="p-inline-muted">今日の実績を登録・確認できます。</p>
+  </div>
+  <div id="partnerDashboard" class="dashboard-card">
+  <div class="dashboard-title">📈 実績ダッシュボード</div>
   <div id="partnerGlobalDateToolbar" class="p-inline-grid">
     <label class="p-inline-field">ダッシュボードの表示日<input id="pInlineDate" type="date"></label>
-    <div class="p-inline-field"><label for="pInlineRefresh">最新データ</label><button id="pInlineRefresh" type="button">更新</button></div>
+    <div class="p-inline-field"><label for="pInlineRefresh">最新データ</label><button id="pInlineRefresh" class="team-action-button" type="button">更新</button></div>
   </div>
   <p id="pInlineStatus" role="status" aria-live="polite"></p>
   <div class="dashboard-summary" aria-label="協力店の選択日実績">
@@ -4900,7 +4907,6 @@ body.product-reordering .product-list {
     <button id="pPartnerMemberShortcut" type="button" class="team-action-button">班・メンバー管理</button>
     <div id="partnerInputMount"></div>
   </div>
-  <div class="dashboard-title">📈 実績ダッシュボード</div>
   <div id="partnerSameAppNavigation" class="dashboard-app-grid" role="group" aria-label="営業実績管理メニュー">
     <button class="dashboard-app-button" type="button" data-partner-panel="record"><span class="dashboard-app-icon">✏️</span><span class="dashboard-app-title">実績入力</span><span class="dashboard-app-meta">登録・訂正</span></button>
     <button class="dashboard-app-button" type="button" data-partner-panel="analysis"><span class="dashboard-app-icon">📈</span><span class="dashboard-app-title">件数分析</span><span class="dashboard-app-meta">全体・班・商材</span></button>
@@ -5015,24 +5021,24 @@ body.product-reordering .product-list {
     </div>
   </section>
   <section id="partnerPanelRecord" data-partner-view="record">
-  <div class="p-inline-card record-card">
+  <div class="record-card">
     <div class="record-title">📊 実績入力</div>
-    <div class="record-description">自社と同じ入力形式です。日付・担当者を選び、商材ごとの件数を2列で入力してください。</div>
+    <div class="record-description">その日の全商材をまとめて入力できます。件数を入力して「一括登録」を押してください。</div>
     <div class="record-grid">
       <div class="form-group">
         <label for="pInlineRecordDate">日付</label>
         <input id="pInlineRecordDate" type="date">
+        <div class="form-group"><label for="pInlineWorkingTeam">この日の稼働班</label>
+          <select id="pInlineWorkingTeam" aria-label="この日の稼働班"></select>
+          <small class="p-inline-muted">初回登録時のみ選択できます。過去の所属班・実績は変更しません。</small></div>
       </div>
       <div class="form-group">
         <label for="pInlineStaff">担当者</label>
         <select id="pInlineStaff"></select>
+        <div class="form-group"><label for="pInlineWorkLocation">現場場所</label>
+          <input id="pInlineWorkLocation" type="text" maxlength="100" autocomplete="off" placeholder="例：○○市 ○○店"></div>
       </div>
     </div>
-    <div class="form-group"><label for="pInlineWorkingTeam">この日の稼働班</label>
-      <select id="pInlineWorkingTeam" aria-label="この日の稼働班"></select>
-      <small class="p-inline-muted">初回登録時のみ選択できます。過去の所属班・実績は変更しません。</small></div>
-    <div class="form-group"><label for="pInlineWorkLocation">現場場所</label>
-      <input id="pInlineWorkLocation" type="text" maxlength="100" autocomplete="off" placeholder="例：○○市 ○○店"></div>
     <div class="section-title">商材別実績（CB別は件数のみ表示）</div>
     <div id="pInlineCountFields" class="product-input-list" aria-label="既存商材の件数入力・2列表示"></div>
     <div id="pInlineExtraPanel" class="p-inline-card" hidden>
@@ -5043,7 +5049,7 @@ body.product-reordering .product-list {
       <div class="p-inline-actions"><button id="pInlineExtraSave" class="record-save-button" type="button">追加商材の件数を保存</button><button id="pInlineExtraRefresh" class="team-action-button" type="button">追加商材を更新</button></div>
       <p id="pInlineExtraStatus" class="p-inline-muted" role="status" aria-live="polite"></p>
     </div>
-    <p id="pInlineEntryTotals" class="record-total-value" aria-live="polite">通常商材・追加商材の件数を確認中…</p>
+    <div class="record-total"><div class="record-total-label">合計件数</div><p id="pInlineEntryTotals" class="record-total-value" aria-live="polite">通常商材・追加商材の件数を確認中…</p></div>
     <p id="pInlineSaveStagesHint" class="p-inline-muted">本社と同じ入力画面でまとめて確認できます。通常・専用商材と追加商材は履歴を守るため保存先が別です。変更した側の保存ボタンを押し、それぞれ保存完了を確認してください。</p>
     <div class="p-inline-actions">
       <button id="pInlineSave" class="record-save-button" type="button">実績を一括登録</button>
@@ -6609,10 +6615,11 @@ body.product-reordering .product-list {
           <p id="ownerPartnerDashboardStatus" role="status" aria-live="polite">班別詳細を開くと協力店の件数を取得します。</p>
           <div id="ownerPartnerDashboardSummary" class="owner-partner-summary"></div>
           <div id="ownerPartnerDashboardList" class="owner-partner-company-list"></div>
-          <details class="p-inline-card owner-partner-additional">
-            <summary>🌐 直営＋協力店の合同班別詳細・ランキング</summary>
+          <details class="p-inline-card owner-partner-additional" open>
+            <summary>🌐 直営＋協力店｜班・メンバーの獲得件数</summary>
             <div class="p-inline-card" id="ownerSharedDetailsSection">
               <h3>会社・班・担当者件数（選択日）</h3>
+              <p class="p-inline-muted">班を押すと、メンバーごとの商材別獲得件数を確認できます。同じ日付の件数で両社を比較します。</p>
               <button id="ownerSharedDetailRefresh" class="team-action-button" type="button">合同班別詳細を表示</button>
               <p id="ownerSharedDetailStatus" role="status"></p>
               <div id="ownerSharedDetailTree" class="p-inline-list"></div>
@@ -12831,20 +12838,12 @@ function mountPartnerCanonicalNavigation(){
   products:"partnerPanelProductSummary",report:"partnerPanelReport",
   goal:"partnerPanelGoal",daily:"partnerPanelDaily",history:"partnerPanelHistory"};
  const cards=[];
- // The existing sales dashboard has eleven canonical cards. Add the
- // simple count-input card with the same card template and styles.
- const recordButton=original.querySelector("#salesAnalysisToggle")?.cloneNode(true);
- if(!recordButton)return false;
- recordButton.removeAttribute("id");recordButton.removeAttribute("style");
- recordButton.querySelectorAll("[id]").forEach(node=>node.removeAttribute("id"));
- recordButton.dataset.partnerPanel="record";
- recordButton.setAttribute("aria-pressed","false");
- recordButton.setAttribute("aria-expanded","false");
- recordButton.setAttribute("aria-controls","partnerPanelRecord");
- recordButton.querySelector(".dashboard-app-icon").textContent="✏️";
- recordButton.querySelector(".dashboard-app-title").textContent="実績入力";
- recordButton.querySelector(".dashboard-app-meta").textContent="件数を登録・訂正";
- cards.push(recordButton);
+ // Reuse only the eleven original dashboard actions. The always-visible
+ // input form is a separate sibling card, as on the internal company screen.
+ const details=pInline("partnerSameAppDashboardDetails");
+ const record=pInline("partnerPanelRecord");
+ const dashboard=pInline("partnerDashboard");
+ if(!details||!record||!dashboard)return false;
  for(const [id,panel,icon,title,meta] of tabs){
   const originalButton=original.querySelector("#"+id);
   if(!originalButton)return false;
@@ -12862,17 +12861,11 @@ function mountPartnerCanonicalNavigation(){
   cards.push(card);
  }
  target.replaceChildren(...cards);
- const details=pInline("partnerSameAppDashboardDetails");
  if(details.parentNode!==target)target.append(details);
- // Input must always be visible, like the original HQ record form, without
- // opening a dashboard card. Reparent the SAME element, never clone inputs,
- // event handlers or values, and never move any finance components.
- const record=pInline("partnerPanelRecord");
- const summary=pInline("partnerInlineWorkspace").querySelector(".dashboard-summary");
- if(record&&summary){
-  if(record.previousElementSibling!==summary)summary.after(record);
-  record.hidden=false;
- }
+ // Move the SAME node before the dashboard: preserve handlers, values and
+ // count-only data. Never reuse the internal finance form or its listeners.
+ if(record.nextElementSibling!==dashboard)dashboard.before(record);
+ record.hidden=false;
  // Reuse the same user header placement as the internal company.
  const userBar=appScreen.querySelector(".user-bar");
  if(userBar&&userBar.nextElementSibling!==pInline("partnerInlineWorkspace"))
@@ -13904,7 +13897,7 @@ function partnerSameAppPositionPanel(name){
 }
 function partnerSameAppSelectPanel(name){
  if(name==="record"){
-  // The form is permanently mounted below the daily summary; this card is a
+  // The form is permanently mounted before the dashboard; this is a
   // shortcut, not a toggle. Ranking/detail panels remain independently open.
   const form=pInline("partnerPanelRecord");
   form.hidden=false;
@@ -15728,14 +15721,32 @@ async function loadOwnerPartnerDetails(){
   status.textContent="協力店の件数を照合できません。権限・接続を確認して更新してください。";
  }
 }
-pInline("ownerPartnerDashboardRefresh").onclick=()=>void loadOwnerPartnerDetails();
+// Keep the company audit and shared team/member view on the same selected day.
+let ownerCountManagementGeneration=0;
+async function refreshOwnerCountManagement(){
+ const generation=++ownerCountManagementGeneration;
+ const date=pInline("ownerPartnerDashboardDate").value;
+ const uid=auth.currentUser?.uid;
+ pInline("ownerSharedDetailTree").replaceChildren();
+ pInline("ownerSharedDetailStatus").textContent="班・メンバーの件数を確認しています…";
+ // Clear old-day ranking immediately, including when the new fetch fails.
+ pInline("ownerSharedRankingContent").replaceChildren();
+ pInline("ownerSharedRankingsStatus").textContent="選択日の合同ランキングは更新ボタンで確認できます。";
+ await loadOwnerPartnerDetails();
+ if(generation!==ownerCountManagementGeneration||auth.currentUser?.uid!==uid||
+    pInline("ownerPartnerDashboardDate").value!==date||
+    pInline("ownerPartnerDashboardDetails").hidden||
+    pInline("allTeamsOverviewContent").hidden||!canLoadPartnerRanking())return;
+ await loadSharedDailyStandings("ownerDetail",true);
+}
+pInline("ownerPartnerDashboardRefresh").onclick=()=>void refreshOwnerCountManagement();
 pInline("ownerPartnerDashboardDate").onchange=()=>{
  if(!pInline("ownerPartnerDashboardDetails").hidden&&
-    !pInline("allTeamsOverviewContent").hidden)void loadOwnerPartnerDetails();
+    !pInline("allTeamsOverviewContent").hidden)void refreshOwnerCountManagement();
 };
 allTeamsOverviewToggle.addEventListener("click",()=>{
  if(!allTeamsOverviewContent.hidden&&canLoadPartnerRanking())
-  void loadOwnerPartnerDetails();
+  void refreshOwnerCountManagement();
 });
 
 async function showPartnerInviteAtMain(user,invite){

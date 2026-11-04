@@ -133,11 +133,11 @@ test('Hidden team revenue is labeled hidden instead of showing a false zero', ()
 
 test('Transactional correction replaces results and preserves metadata', async () => {
   for (const results of [{A:{count:1,revenuePerUnit:100}}, {C:{count:4,revenuePerUnit:300}}, {}]) {
-    let stored={companyId:'c',uid:'u',date:'2026-10-06',teamId:'a',createdAt:'keep',createdByUid:'creator',custom:'keep',results:{A:{count:3},B:{count:2}}};
+    let stored={companyId:'c',uid:'u',date:'2026-10-06',teamId:'a',createdAt:'keep',createdByUid:'creator',custom:'keep',totalCount:5,results:{A:{count:3},B:{count:2}}};
     const before=structuredClone(stored);
     const data={results,totalCount:Object.values(results).reduce((n,r)=>n+r.count,0),
       totalRevenue:Object.values(results).reduce((n,r)=>n+r.count*r.revenuePerUnit,0)};
-    const ctx=context(['persistDailyRecord','recordRevision','recordConflict','validateFinancialRecordForSave','getRecordResults','calculateResultsTotals'],{
+    const ctx=context(['isPersistedRecordCountConsistent','persistDailyRecord','recordRevision','recordConflict','validateFinancialRecordForSave','getRecordResults','calculateResultsTotals'],{
       db:{},query:()=>{},where:()=>{},recordsCollectionQuery:()=>{},
       getDocsFromServer:async()=>({size:1,docs:[{id:'r'}]}),
       runTransaction:async(db,callback)=>callback({get:async()=>({exists:()=>true,id:'r',data:()=>stored}),
@@ -178,9 +178,9 @@ test('Only owner can correct another team; self and own team remain editable',()
 });
 
 test('Stale edits, deleted records and simultaneous same-day registration stop without writes',async()=>{
-  const initial={uid:'u',date:'2026-10-06',teamId:'a',results:{A:{count:1}}};
+  const initial={uid:'u',date:'2026-10-06',teamId:'a',totalCount:1,results:{A:{count:1}}};
   let current=structuredClone(initial),writes=0;
-  const ctx=context(['persistDailyRecord','recordRevision','recordConflict','validateFinancialRecordForSave'],{db:{},query:()=>{},where:()=>{},recordsCollectionQuery:()=>{},
+  const ctx=context(['isPersistedRecordCountConsistent','persistDailyRecord','recordRevision','recordConflict','validateFinancialRecordForSave'],{db:{},query:()=>{},where:()=>{},recordsCollectionQuery:()=>{},
     getDocsFromServer:async()=>({size:0,docs:[]}),
     runTransaction:async(db,callback)=>callback({get:async()=>({exists:()=>!!current,id:'r',data:()=>current}),set:()=>writes++})});
   const valid={results:{A:{count:1,revenuePerUnit:100}},totalCount:1,totalRevenue:100};
@@ -1074,7 +1074,7 @@ test('Manual groups sum source products and people; count ties are rank 1, 1, 3'
   assert(!r.some(x=>x.name==='Electric'));
 });
 
-test('Ranking groups save to this user browser only and never touch Firebase',()=> {
+test('Ranking groups retain local settings and sync through the scoped publication callable',()=> {
   const code=source('saveRankingGroups');
   assert(code.includes('safeLocalStorageSet(storageKey, JSON.stringify(normalized))'));
   assert(code.includes('isCurrentCompanyManager()'));
@@ -1085,7 +1085,8 @@ test('Ranking groups save to this user browser only and never touch Firebase',()
   const key=source('rankingGroupsStorageKey');
   assert(key.includes('currentUserData.companyId'));
   assert(key.includes('currentUser.uid'));
-  assert(html.includes('この端末・このアカウント・このURLだけに保存'));
+  assert(code.includes('void publishCurrentRankingGroups(normalized)'));
+  assert(source('publishCurrentRankingGroups').includes('await writePartnerRankingGroups('));
   const render=source('renderProductMemberRanking');
   assert(render.includes('buildGroupedProductMemberRanking(') && render.includes('augmentedRows,teamId,joinedGroups'));
   assert(render.includes('renderRankingGroupEditor()'));
@@ -1431,7 +1432,7 @@ test('Sales correction and its audit must be written in one atomic transaction',
   const next={...old,totalCount:3,totalRevenue:300,results:{x:{count:3,revenuePerUnit:100}}};
   let committed=[],readRecord=structuredClone(old);
   const transactions=[];
-  const ctx=context(['persistDailyRecord','recordRevision','recordConflict'],{
+  const ctx=context(['isPersistedRecordCountConsistent','persistDailyRecord','recordRevision','recordConflict'],{
     db:{},recordsCollectionQuery:()=>({}),query:()=>({}),where:()=>({}),
     getDocsFromServer:async()=>({size:1,docs:[{id:'r'}]}),
     runTransaction:async(_db,cb)=>{

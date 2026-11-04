@@ -48,8 +48,8 @@ test("partner view is inside same app but legacy finance children are inaccessib
  assert.match(index,/await partnerInlineManage\(partnerInlinePayload\(\{action:"addManaged",name,teamId\}\)\)/);
  assert.match(index,/action:"createInvite",email,teamId,role/);
  assert.match(index,/partnerInlineSave\(partnerInlinePayload\(\{/);
- assert.match(index,/const verified=\(await readPartnerWorkDay\(partnerInlinePayload/);
- assert.match(index,/snap\.categories\.some\(key=>saved\.counts\?\.\[key\]!==counts\[key\]\)/);
+ assert.match(index,/verified=\(await readPartnerWorkDay\(partnerInlinePayload/);
+ assert.match(index,/partnerSavedCountReadbackState\(verified,expected\)/);
  assert.match(index,/pInline\("pInlineTitle"\)\.textContent="🤝 "\+snap\.companyName/);
  assert.match(index,/snap\.companyName\+"・"\+t\.name/);
  assert.match(index,/id="pInlineRanking"/);
@@ -73,7 +73,7 @@ test("server owns partner roles and never returns financial data and scopes mana
  assert.match(service,/if\(op==="addManaged"\)/);
  assert.match(service,/return \{role:s\.role,date,companyName:clean\(s\.companyName\),teamId:s\.teamId,/);
  assert.match(service,/privateProducts:productList/);
- assert.doesNotMatch(service,/\bdb\.collection\("(?:records|products|revenueGoals|recordCorrections)"\)/);
+ assert.doesNotMatch(service,/\bdb\.collection\("(?:records|revenueGoals|recordCorrections)"\)/);
  assert.match(rules,/company\.get\('companyKind', 'internal'\) == 'internal'/);
 });
 
@@ -121,5 +121,10 @@ test("original owner team detail displays partner company -> team -> member -> p
  assert.match(index,/label\.textContent="👥 "\+team\.name\+"｜"\+team\.totalCount/);
  assert.match(index,/title\.textContent="👤 "\+person\.name\+"｜"\+person\.totalCount/);
  assert.match(service,/row\.members\.push\(\{name:safeName,totalCount:item\.total,counts:/);
- assert.doesNotMatch(service,/\bdb\.collection\("(?:records|products|revenueGoals|recordCorrections)"\)/);
+ assert.doesNotMatch(service,/\bdb\.collection\("(?:records|revenueGoals|recordCorrections)"\)/);
+});
+
+test("server catalog explicitly returns only published ID, name and order to partner",()=>{
+ assert.ok(service.includes("rows.map(({id,name,sortOrder})=>({id,name,sortOrder})):rows"));
+ assert.ok(service.includes("state.productIds,s.kind===\"partner\""));
 });
