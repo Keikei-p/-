@@ -67,7 +67,7 @@ jobs:
           const fs=require('node:fs');
           const s=fs.readFileSync('firestore.rules','utf8');
           const gate=(s.match(/noSecondaryPartnerWorkspace\(\)/g)||[]).length;
-          if(gate!==20||!s.includes('function noSecondaryPartnerWorkspace()'))
+          if(gate!==22||!s.includes('function noSecondaryPartnerWorkspace()'))
             throw Error('STOP_FINANCE_BOUNDARY_MISSING');
           console.log('PASS_FINANCE_RULES_GUARD_REFERENCES='+gate);
           NODE
