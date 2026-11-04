@@ -59,6 +59,8 @@ jobs:
           node --test tests/partner-monthly-shared-counts.test.cjs
           node --test tests/partner-workspace.test.cjs
           node --test tests/internal-owner-finance-visibility.test.cjs
+          node --test tests/direct-record-count-correction-guard.test.cjs
+          node --test tests/count-drift-correction-readonly.test.mjs
           node --test tests/partner-money-free-workspace.test.cjs
           NODE_OPTIONS=--experimental-vm-modules node --test tests/partner-index-module-parse.test.cjs
       - name: Install emulator-only Firestore test dependencies
