@@ -1051,3 +1051,31 @@ test('secondary former internal Master or Owner cannot administer old company or
    assert.equal((await getDoc(doc(admin,'companies',company,'members','helper'))).data().active,true);
  });
 });
+
+test('secondary partner cannot retrieve old internal LINE pairing codes',async()=>{
+ const pairingCode='ABCD1234';
+ await env.withSecurityRulesDisabled(async ctx=>{
+  await setDoc(doc(ctx.firestore(),'linePairingCodes',pairingCode),{
+   companyId:company,createdBy:'owner',status:'pending',
+   createdAt:serverTimestamp(),expiresAt:serverTimestamp()
+  });
+ });
+ const oldOwner=dbFor('owner'),internalLeader=dbFor('leaderA');
+ const sensitive=doc(oldOwner,'linePairingCodes',pairingCode);
+ await assertSucceeds(getDoc(sensitive));
+ await assertSucceeds(getDoc(doc(internalLeader,'linePairingCodes',pairingCode)));
+ let original;
+ await env.withSecurityRulesDisabled(async ctx=>{
+  original=(await getDoc(doc(ctx.firestore(),'linePairingCodes',pairingCode))).data();
+  await setDoc(doc(ctx.firestore(),'partnerWorkspaceContexts','owner'),{
+   uid:'owner',kind:'partner_secondary',active:true,
+   primaryCompanyId:company,partnerCompanyId:'partner-demo',hubCompanyId:company
+  });
+ });
+ await assertFails(getDoc(sensitive));
+ await assertSucceeds(getDoc(doc(internalLeader,'linePairingCodes',pairingCode)));
+ await env.withSecurityRulesDisabled(async ctx=>{
+  assert.deepEqual((await getDoc(doc(ctx.firestore(),'linePairingCodes',pairingCode))).data(),
+   original,'linking-code document must stay untouched');
+ });
+});
