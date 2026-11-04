@@ -344,3 +344,38 @@ test("reused UID with identical email and creationTime is blocked without origin
  assert.equal(s.people.has("staff"),true);
  assert.deepEqual(s.history(),history);
 });
+
+
+test("pending erasure refuses an independently moved or reactivated user profile",async()=>{
+ for(const change of [
+  s=>{s.db.store.get("users/staff").companyId="anotherHub";},
+  s=>{s.db.store.get("users/staff").active=true;},
+  s=>{s.db.store.get("companies/hub/members/staff").active=true;},
+  s=>{s.db.store.get("companies/hub/members/staff").uid="different-person";}
+ ]){
+  const s=setup(),history=s.history();s.failDeletion();
+  await assert.rejects(s.service.confirm(s.request("owner",{action:"confirm",
+   targetUid:"staff",confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"山田 太郎"})),
+   e=>e.code==="unavailable");
+  change(s);s.restoreDeletion();
+  const previous=clone([...s.db.store]),ops=s.events.length;
+  await assert.rejects(s.service.confirm(s.request("owner",{action:"confirm",
+   targetUid:"staff",confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"山田 太郎"})),
+   e=>e.code==="failed-precondition");
+  assert.equal(s.events.length,ops,"no Auth operations after profile changes");
+  assert.deepEqual([...s.db.store],previous,"no profile deleted or modified");
+  assert.deepEqual(s.history(),history);
+ }
+});
+test("partner account lacking a valid historical team must not be disabled before final cleanup",async()=>{
+ const s=setup(),original=clone([...s.db.store]);
+ s.db.store.get("users/pmember").teamId="";
+ s.db.store.get("companies/partner/members/pmember").teamId="";
+ s.db.store.get("companies/partner/partnerWorkStaff/pmember").teamId="";
+ const before=clone([...s.db.store]);
+ await assert.rejects(s.service.preview(s.request("pleader",{action:"preview",targetUid:"pmember"})),
+  e=>e.code==="failed-precondition");
+ assert.deepEqual([...s.db.store],before);
+ assert.equal(s.events.length,0);
+ assert.notDeepEqual([...s.db.store],original);
+});
