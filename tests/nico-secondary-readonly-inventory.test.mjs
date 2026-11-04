@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {classifySecondary,transferEligibility} from '../tools/production/audit-secondary-contexts-readonly.mjs';
 const context={uid:'test_uid',kind:'partner_secondary',active:true,primaryCompanyId:'internal_company',
  partnerCompanyId:'partner_company',hubCompanyId:'internal_company'};
-const user={companyId:'internal_company',companyRole:'member',active:true,accessKind:'internal',
+const user={uid:'test_uid',companyId:'internal_company',companyRole:'member',active:true,accessKind:'internal',
  memberType:'direct',canViewRevenue:false,canViewUnitPrice:false};
 const oldMember={companyRole:'member',active:true,accessKind:'internal',memberType:'direct'};
 const oldCompany={ownerUid:'some_other_owner',masterUid:'some_other_owner',companyKind:'internal',active:true};
@@ -33,10 +33,12 @@ test('non-owner verified partner secondary has a read-only eligible transition p
  const ready={...sample(),context:{...context,role:'member',teamId:'partner_team',emailLower:'person@example.test'},
   partnerCompany:{...partnerCompany,hubCompanyId:'internal_company'},
   partnerMember:{...partnerMember,uid:'test_uid',companyId:'partner_company',role:'member',
-   companyRole:'member',teamId:'partner_team',canViewRevenue:false,canViewUnitPrice:false},
+   name:'協力店スタッフ',companyRole:'member',teamId:'partner_team',canViewRevenue:false,canViewUnitPrice:false},
   relation:{hubCompanyId:'internal_company',partnerCompanyId:'partner_company',active:true,
    countSharingApproved:true},
-  staff:{uid:'test_uid',kind:'account',active:true,teamId:'partner_team'},
+  staff:{uid:'test_uid',companyId:'partner_company',kind:'account',
+   role:'member',active:true,teamId:'partner_team'},
+  team:{companyId:'partner_company',active:true},
   archived:false,auth:{email:'person@example.test',emailVerified:true,disabled:false}};
  assert.equal(transferEligibility(ready),true);
  assert.equal(transferEligibility({...ready,archived:true}),false);
@@ -44,4 +46,12 @@ test('non-owner verified partner secondary has a read-only eligible transition p
  assert.equal(transferEligibility({...ready,oldCompany:{...oldCompany,ownerUid:'test_uid'}}),false);
  assert.equal(transferEligibility({...ready,staff:{...ready.staff,teamId:'foreign_team'}}),false);
  assert.equal(transferEligibility({...ready,partnerMember:{...ready.partnerMember,canViewRevenue:true}}),false);
+ assert.equal(transferEligibility({...ready,partnerMember:{...ready.partnerMember,name:''}}),false);
+ assert.equal(transferEligibility({...ready,partnerMember:{...ready.partnerMember,canCreateInvite:true}}),false);
+ assert.equal(transferEligibility({...ready,staff:{...ready.staff,role:'leader'}}),false);
+ assert.equal(transferEligibility({...ready,team:{companyId:'partner_company',active:false}}),false);
+ assert.equal(transferEligibility({...ready,team:{companyId:'other',active:true}}),false);
+ assert.equal(transferEligibility({...ready,user:{...ready.user,companyRole:'owner'}}),false);
+ assert.equal(transferEligibility({...ready,user:{...ready.user,uid:'foreign_uid'}}),false);
+ assert.equal(transferEligibility({...ready,oldMember:{...ready.oldMember,active:false}}),false);
 });
