@@ -776,3 +776,56 @@ test('even an inactive or malformed secondary context fails closed until an owne
  await assertFails(getDoc(doc(dbFor('owner'),'products','stale-context-money')));
 });
 
+
+
+test('ordinary internal member with new secondary context loses finance reads; unrelated internal Owner keeps access',async()=>{
+ // Real read-only production inventory found a non-Owner secondary UID with a
+ // legacy direct-finance path. Simulate it without production credentials.
+ const originals={};
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const admin=ctx.firestore();
+  await setDoc(doc(admin,'products','member-old-product'),catalogPayload());
+  await setDoc(doc(admin,'records','member-old-record'),payload('owner'));
+  await setDoc(doc(admin,'recordCorrections','member-old-correction'),{
+   companyId:company,recordId:'member-old-record',recordUid:'helper',
+   changedByUid:'owner',changedByName:'Owner',recordDate:date,
+   before:{totalCount:1,totalRevenue:100},after:{totalCount:2,totalRevenue:200},
+   createdAt:serverTimestamp()
+  });
+  await setDoc(doc(admin,'revenueGoals','member-old-goal'),revenueGoalPayload('b'));
+  for(const [coll,id] of [
+   ['products','member-old-product'],['records','member-old-record'],
+   ['recordCorrections','member-old-correction'],['revenueGoals','member-old-goal']
+  ]) originals[coll]=(await getDoc(doc(admin,coll,id))).data();
+ });
+ const member=dbFor('helper'),owner=dbFor('owner');
+ for(const [coll,id] of [
+  ['products','member-old-product'],['records','member-old-record'],
+  ['recordCorrections','member-old-correction']
+ ]) await assertSucceeds(getDoc(doc(member,coll,id)));
+ await env.withSecurityRulesDisabled(async ctx=>{
+  await setDoc(doc(ctx.firestore(),'partnerWorkspaceContexts','helper'),{
+   kind:'partner_secondary',uid:'helper',active:true,
+   primaryCompanyId:company,hubCompanyId:company,partnerCompanyId:'partner-example'
+  });
+ });
+ for(const [coll,id] of [
+  ['products','member-old-product'],['records','member-old-record'],
+  ['recordCorrections','member-old-correction'],['revenueGoals','member-old-goal']
+ ]){
+  await assertFails(getDoc(doc(member,coll,id)));
+  const filters=[where('companyId','==',company)];
+  if(coll==='revenueGoals')filters.push(where('teamId','==','b'));
+  await assertFails(getDocsFromServer(query(collection(member,coll),...filters)));
+  await assertSucceeds(getDoc(doc(owner,coll,id)));
+ }
+ await assertFails(getDoc(doc(member,'records','member-missing-record')));
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const admin=ctx.firestore();
+  for(const [coll,id] of [
+   ['products','member-old-product'],['records','member-old-record'],
+   ['recordCorrections','member-old-correction'],['revenueGoals','member-old-goal']
+  ]) assert.deepEqual((await getDoc(doc(admin,coll,id))).data(),originals[coll],
+   'secondary association must not edit '+coll);
+ });
+});
