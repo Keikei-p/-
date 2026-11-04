@@ -86,6 +86,13 @@ function makeAccountErasure({db,getAuth,FieldValue,HttpsError,enabled=()=>false,
     (m.companyId!=null&&m.companyId!==cid)||u.active!==true||
     m.active!==true||u.companyRole!=="member"||m.companyRole!=="member"||
     !norm(u.name)||u.name.length>80)fail();
+  // Before touching anything, prove that the Auth UID and profile's
+  // existing email actually refer to the same target account.
+  let identity;
+  try{identity=await getAuth().getUser(targetUid);}catch{fail();}
+  if(identity.uid!==targetUid||!EMAIL.test(lower(identity.email))||
+    (u.email&&lower(u.email)!==lower(identity.email))||
+    (m.email&&lower(m.email)!==lower(identity.email)))fail();
   if(mode==="internal_owner"){
    if(u.accessKind==="partner"||m.accessKind==="partner"||
      c.ownerUid===targetUid||c.masterUid===targetUid)fail();
