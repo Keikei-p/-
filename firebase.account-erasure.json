@@ -1,0 +1,11 @@
+{
+  "functions": {
+    "source": "functions-account-erasure",
+    "codebase": "account-erasure",
+    "ignore": [
+      "node_modules",
+      ".git",
+      "firebase-debug.log"
+    ]
+  }
+}
