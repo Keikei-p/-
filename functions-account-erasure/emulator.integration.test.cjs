@@ -108,6 +108,7 @@ test("real Auth delete failure leaves job recoverable, then deletes exactly orig
  const controlled={
   getUser:u=>auth.getUser(u),
   verifyIdToken:(jwt,revoke)=>auth.verifyIdToken(jwt,revoke),
+  setCustomUserClaims:(u,claims)=>auth.setCustomUserClaims(u,claims),
   updateUser:(u,opts)=>auth.updateUser(u,opts),
   deleteUser:u=>failDelete?Promise.reject(new Error("simulated-local-auth-error")):auth.deleteUser(u)
  };
@@ -135,6 +136,7 @@ test("real Firebase SDK guards newly recreated UID during pending deletion",asyn
  const controlled={
   getUser:u=>auth.getUser(u),
   verifyIdToken:(jwt,revoke)=>auth.verifyIdToken(jwt,revoke),
+  setCustomUserClaims:(u,claims)=>auth.setCustomUserClaims(u,claims),
   updateUser:(u,opts)=>auth.updateUser(u,opts),
   deleteUser:u=>{attempted++;return stop?Promise.reject(new Error("simulated-failure")):auth.deleteUser(u);}
  };
