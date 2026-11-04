@@ -49,6 +49,28 @@ export async function restoreToLocalEmulator(snapshot,{
   // Complete preflight before the first emulator write.
   const docs=checkedDocuments(snapshot,maxDocuments);
   const digest=fingerprint(snapshot);
+  // Never silently overwrite data already present in a local rehearsal.
+  // Verify the absence of EVERY incoming ID before the first PATCH. A
+  // timeout, permission error, redirect or any response other than HTTP 404
+  // blocks the entire attempt; all operations stay on the demo emulator.
+  async function assertMissingBeforeRestore(){
+    let index=0,checked=0,failed=false;
+    const workers=Array.from({length:Math.min(EMULATOR_WORKERS,docs.length)},async()=>{
+      while(index<docs.length&&!failed){
+        const row=docs[index++];
+        const endpoint=base+row.segments.map(encodeURIComponent).join("/");
+        try{
+          const response=await send(endpoint,{method:"GET",redirect:"error",
+            headers:{"Authorization":"Bearer owner"}});
+          if(response?.status!==404)throw Error("existing or inaccessible target");
+          checked++;
+        }catch{failed=true;}
+      }
+    });
+    await Promise.all(workers);
+    if(failed||checked!==docs.length)
+      throw Error("BLOCK: emulator destination is not proven empty for all incoming IDs");
+  }
   // Preflight has validated EVERY document before any writes. Limit all
   // traffic to the demo emulator; run bounded work pools for large archives.
   async function runPhase(method){
@@ -59,10 +81,10 @@ export async function restoreToLocalEmulator(snapshot,{
         const endpoint=base+row.segments.map(encodeURIComponent).join("/");
         try{
           const options=method==="PATCH"?{
-            method:"PATCH",headers:{
+            method:"PATCH",redirect:"error",headers:{
               "Content-Type":"application/json","Authorization":"Bearer owner"},
             body:JSON.stringify({fields:row.fields})
-          }:{method:"GET",headers:{"Authorization":"Bearer owner"}};
+          }:{method:"GET",redirect:"error",headers:{"Authorization":"Bearer owner"}};
           const response=await send(endpoint,options);
           if(!response?.ok)throw Error("emulator response failed");
           const saved=await response.json();
@@ -82,6 +104,7 @@ export async function restoreToLocalEmulator(snapshot,{
     if(verified!==docs.length)throw Error("BLOCK: incomplete emulator check");
     return verified;
   }
+  await assertMissingBeforeRestore();
   await runPhase("PATCH");
   const verified=await runPhase("GET");
   return {destinationProject:TEST_PROJECT,documentCount:verified,
