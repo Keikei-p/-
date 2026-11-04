@@ -1080,3 +1080,43 @@ test('secondary partner cannot retrieve old internal LINE pairing codes',async()
    original,'linking-code document must stay untouched');
  });
 });
+
+
+test('isolated partner identity marker blocks old internal LINE pairing reads',async()=>{
+ const cases=[
+  ['company kind','companies/'+company,{companyKind:'partner'}],
+  ['user access','users/owner',{accessKind:'partner'}],
+  ['member access','companies/'+company+'/members/owner',{accessKind:'partner'}],
+  ['user type','users/owner',{memberType:'cooperator'}],
+  ['member type','companies/'+company+'/members/owner',{memberType:'cooperator'}]
+ ];
+ for(const [label,target,fields] of cases){
+  await env.clearFirestore();
+  await env.withSecurityRulesDisabled(async ctx=>{
+   const admin=ctx.firestore();
+   await setDoc(doc(admin,'companies',company),{ownerUid:'owner',masterUid:'owner',active:true});
+   const internal={uid:'owner',companyId:company,role:'leader',companyRole:'owner',
+     active:true,canViewRevenue:true,canViewUnitPrice:true};
+   await setDoc(doc(admin,'users','owner'),internal);
+   await setDoc(doc(admin,'companies',company,'members','owner'),internal);
+   await setDoc(doc(admin,'linePairingCodes','SAFE1234'),{
+    companyId:company,createdBy:'owner',status:'pending',
+    createdAt:serverTimestamp(),expiresAt:serverTimestamp()
+   });
+  });
+  const owner=dbFor('owner');
+  const pairing=doc(owner,'linePairingCodes','SAFE1234');
+  await assertSucceeds(getDoc(pairing));
+  let before;
+  await env.withSecurityRulesDisabled(async ctx=>{
+   const admin=ctx.firestore();
+   before=(await getDoc(doc(admin,'linePairingCodes','SAFE1234'))).data();
+   await updateDoc(doc(admin,target),fields);
+  });
+  await assertFails(getDoc(pairing),label+' must deny legacy LINE code');
+  await env.withSecurityRulesDisabled(async ctx=>{
+   const actual=(await getDoc(doc(ctx.firestore(),'linePairingCodes','SAFE1234'))).data();
+   assert.deepEqual(actual,before,label+' must not rewrite pairing document');
+  });
+ }
+});
