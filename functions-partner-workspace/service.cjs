@@ -712,9 +712,9 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   const verified=await scope(a.uid,null,ctx.partnerCompanyId);
   if(verified.kind!=="partner"||verified.cid!==ctx.partnerCompanyId||
      verified.role==="owner")fail();
-  if(d.action==="preview")return {eligible:true,
-   countsOnly:true,oldHistoricalSalesRetained:true,requiresUserConfirmation:true};
-
+  // Preview and confirm MUST use exactly the same server-side eligibility
+  // checks, including immutable archive, exact member/roster/team consistency.
+  // A successful simple scope check alone is not a safe promise to the user.
   return db.runTransaction(async tx=>{
    const [contextSnap,userSnap,partnerSnap,oldCompanySnap,oldMemberSnap,
     partnerMemberSnap,relationSnap,staffSnap,teamSnap,archiveSnap]=await Promise.all([
@@ -783,6 +783,11 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     updatedAt:FieldValue.serverTimestamp()
    };
    if(!validName(partnerProfile.name))fail("failed-precondition");
+   // Firestore transaction may return without ANY write during preview.
+   // Confirm reruns all checks on fresh transactional snapshots, so a role or
+   // team change between preview and confirmation is automatically refused.
+   if(d.action==="preview")return {eligible:true,
+    countsOnly:true,oldHistoricalSalesRetained:true,requiresUserConfirmation:true};
    const cleanup={};
    for(const key of Object.keys(u)){
     if(!/^[A-Za-z][A-Za-z0-9_]*$/.test(key))fail("failed-precondition");
