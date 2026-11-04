@@ -108,9 +108,12 @@ function makeAccountErasure({db,getAuth,FieldValue,HttpsError,enabled=()=>false,
    if(!allowPending)fail();
    if(j.targetUid!==targetUid||!norm(j.targetName)||
       typeof j.targetAuthHash!=="string"||
-      !/^[a-f0-9]{64}$/.test(j.targetAuthHash))fail();
+      !/^[a-f0-9]{64}$/.test(j.targetAuthHash)||
+      typeof j.targetAuthMarker!=="string"||
+      !/^[a-f0-9]{48}$/.test(j.targetAuthMarker))fail();
    return {mode,cid,status:"pending",jr,targetUid,ur,mr,sr,
-    targetName:j.targetName,targetAuthHash:j.targetAuthHash};
+    targetName:j.targetName,targetAuthHash:j.targetAuthHash,
+    targetAuthMarker:j.targetAuthMarker};
   }
   if(!us.exists||!ms.exists||u.uid!==targetUid||
     u.companyId!==cid||m.uid!==targetUid||
@@ -215,6 +218,12 @@ function makeAccountErasure({db,getAuth,FieldValue,HttpsError,enabled=()=>false,
    return{complete:true,authDeleted:true,personalProfileDeleted:true};
   }
   if(norm(d.confirmName)!==checked.targetName)fail("invalid-argument");
+  // Metadata.creationTime in the Auth emulator (and potentially near-simultaneous
+  // real user recreations) is not a sufficient identity guarantee. A private,
+  // per-deletion custom claim is REQUIRED before we call deleteUser.
+  const marker=checked.status==="ready"?
+   crypto.randomBytes(24).toString("hex"):checked.targetAuthMarker;
+  if(!/^[a-f0-9]{48}$/.test(marker||""))fail();
   if(checked.status==="ready"){
    // Only the bounded account and roster paths change here. The business
    // history is copied BEFORE profile removal, without email, name or sales.
@@ -225,7 +234,7 @@ function makeAccountErasure({db,getAuth,FieldValue,HttpsError,enabled=()=>false,
     tx.create(x.jr,{
      companyId:x.cid,mode:x.mode,requestedByUid:a.uid,status:"pending",
      targetUid:d.targetUid,targetName:x.targetName,
-     targetAuthHash:x.targetAuthHash,
+     targetAuthHash:x.targetAuthHash,targetAuthMarker:marker,
      businessHistory:x.businessHistory,createdAt:FieldValue.serverTimestamp()
     });
     tx.update(x.ur,{active:false,updatedAt:FieldValue.serverTimestamp()});
@@ -237,8 +246,21 @@ function makeAccountErasure({db,getAuth,FieldValue,HttpsError,enabled=()=>false,
   // A missing Auth user is fine when an earlier attempt deleted it already.
   let stillThere=false;
   try{
-   const account=await getAuth().getUser(d.targetUid);
+   let account=await getAuth().getUser(d.targetUid);
    if(authIdentityHash(account)!==checked.targetAuthHash)fail();
+   if(checked.status==="ready"){
+    // Only the FIRST, explicitly consented deletion can mark an Auth record.
+    // A retry MUST NOT re-mark a new Auth user with a reused UID.
+    if(account.customClaims?.nicoErasureProofV1!=null)fail();
+    try{
+     await getAuth().setCustomUserClaims(d.targetUid,{
+      ...(account.customClaims||{}),nicoErasureProofV1:marker
+     });
+    }catch{fail("unavailable");}
+    account=await getAuth().getUser(d.targetUid);
+   }
+   if(authIdentityHash(account)!==checked.targetAuthHash||
+      account.customClaims?.nicoErasureProofV1!==marker)fail();
    stillThere=true;
   }catch(e){
    if(e?.code!=="auth/user-not-found")throw e;
@@ -247,8 +269,16 @@ function makeAccountErasure({db,getAuth,FieldValue,HttpsError,enabled=()=>false,
   // The durable pending job enables the SAME manager to retry safely.
   try{
    if(stillThere){
+    // Re-check the marker immediately before each irrevocable Auth action.
+    // Firebase Admin has no conditional delete-if-claims-match operation.
+    const beforeDisable=await getAuth().getUser(d.targetUid);
+    if(authIdentityHash(beforeDisable)!==checked.targetAuthHash||
+       beforeDisable.customClaims?.nicoErasureProofV1!==marker)fail();
     try{await getAuth().updateUser(d.targetUid,{disabled:true});}
     catch(e){if(e?.code!=="auth/user-not-found")throw e;}
+    const beforeDelete=await getAuth().getUser(d.targetUid);
+    if(authIdentityHash(beforeDelete)!==checked.targetAuthHash||
+       beforeDelete.customClaims?.nicoErasureProofV1!==marker)fail();
     try{await getAuth().deleteUser(d.targetUid);}
     catch(e){if(e?.code!=="auth/user-not-found")throw e;}
    }
@@ -278,7 +308,7 @@ function makeAccountErasure({db,getAuth,FieldValue,HttpsError,enabled=()=>false,
    }
    tx.update(x.jr,{status:"complete",
     targetUid:FieldValue.delete(),targetName:FieldValue.delete(),
-    targetAuthHash:FieldValue.delete(),
+    targetAuthHash:FieldValue.delete(),targetAuthMarker:FieldValue.delete(),
     completedAt:FieldValue.serverTimestamp()});
   });
   return {complete:true,authDeleted:true,personalProfileDeleted:true,
