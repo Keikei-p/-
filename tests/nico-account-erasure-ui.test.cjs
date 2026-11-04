@@ -11,6 +11,12 @@ test("owner and partner leader have separate manager-only hard erasure action",(
  assert.match(html,/!isManagedMember\(member\) && \(member\.id \|\| member\.uid\)/);
  assert.match(html,/snap\.role==="leader"&&person\.role==="member"&&person\.teamId===snap\.teamId/);
  assert.match(html,/managedAccountErasureConfirmation\(targetName\)/);
+ assert.match(html,/accountErasurePending = httpsCallable\(partnerCountFunctions,"listManagedAccountErasurePending"\)/);
+ assert.match(html,/function attachPendingAccountErasureControl\(host,canManage,refresh\)/);
+ assert.match(html,/async function loadPendingAccountErasure\(panel,refresh\)/);
+ assert.match(html,/attachPendingAccountErasureControl\(memberList,/);
+ assert.match(html,/attachPendingAccountErasureControl\(list,canManage,/);
+ assert.match(html,/preview\?\.ready!==true&&preview\?\.pending!==true/);
  assert.match(html,/reauthenticateWithCredential\(operator,cred\)/);
  assert.match(html,/confirmation:"DELETE_ACCOUNT_ONLY",confirmName:targetName/);
  assert.match(html,/result\.authDeleted!==true\|\|result\.personalProfileDeleted!==true/);
@@ -34,6 +40,10 @@ test("account erasure is isolated from old suspend and Firebase sales collection
  assert.match(api,/ref\("partnerWorkspaceContexts",targetUid\)/);
  assert.match(api,/ref\("partnerHistoricalTransfers",targetUid\)/);
  assert.match(index,/NICO_ACCOUNT_ERASURE_ENABLED==="enabled"/);
+ assert.match(index,/exports\.listManagedAccountErasurePending=onCall\(opts,service\.listPending\)/);
+ assert.match(api,/async function listPending\(request\)/);
+ assert.match(api,/authIdentityHash\(account\)!==checked\.targetAuthHash/);
+ assert.match(api,/targetUid:FieldValue\.delete\(\),targetName:FieldValue\.delete\(\)/);
 });
 test("isolated deployment file excludes Hosting and Firestore Rules",()=>{
  const json=JSON.parse(fs.readFileSync(path.join(root,"firebase.account-erasure.json"),"utf8"));
