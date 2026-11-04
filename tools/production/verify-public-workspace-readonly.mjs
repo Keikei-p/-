@@ -6,6 +6,7 @@
  * This is an observation, never a production deployment approval.
  */
 import {createHash} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 const URLS=Object.freeze({
  app:'https://nico-factory.web.app/',
@@ -34,6 +35,15 @@ export async function inspectPublic({fetcher=fetch,env=process.env}={}){
  const html=await homepage.text();
  if(!html.includes('id="appScreen"')||!html.includes('id="partnerInlineWorkspace"')||
     html.length<10000)stop('UNEXPECTED_HOME_HTML');
+ // Compare the existing public UI to the exact candidate file without
+ // downloading any user data or making any deployment changes.
+ const candidateHtml=readFileSync(new URL('../../index.html',import.meta.url),'utf8');
+ const liveFingerprint=hash(html),candidateFingerprint=hash(candidateHtml);
+ const criticalIds=['appScreen','partnerInlineWorkspace','pInlineCountFields',
+  'pInlineRanking','pInlineTeams','pInlineHistory','pInlineInviteEmail'];
+ const missingCandidateIds=criticalIds.filter(id=>html.includes('id="'+id+'"')&&
+  !candidateHtml.includes('id="'+id+'"'));
+ if(missingCandidateIds.length)stop('CANDIDATE_REMOVES_EXISTING_UI');
  const workspace=await response(fetcher,URLS.workspace,{method:'GET'});
  if(workspace.status!==200)stop('WORKSPACE_HTTP_'+workspace.status);
  const wh=await workspace.text();
@@ -41,7 +51,11 @@ export async function inspectPublic({fetcher=fetch,env=process.env}={}){
     wh.length<1000)stop('UNEXPECTED_WORKSPACE_HTML');
  const result={project:'sales-management-cc116',mode:'PUBLIC_ONLY_READ_ONLY',
   firebaseCredentialsUsed:false,authenticatedUserReads:0,dataWrites:0,
-  liveAppHtmlSha256:hash(html),liveAppSizeBytes:Buffer.byteLength(html,'utf8'),
+  liveAppHtmlSha256:liveFingerprint,liveAppSizeBytes:Buffer.byteLength(html,'utf8'),
+  candidateAppHtmlSha256:candidateFingerprint,
+  candidateAppSizeBytes:Buffer.byteLength(candidateHtml,'utf8'),
+  liveAppMatchesCandidate:liveFingerprint===candidateFingerprint,
+  candidateHasMigrationAction:candidateHtml.includes('transferPartnerSecondaryMembership'),
   liveWorkspaceHtmlSha256:hash(wh),liveWorkspaceSizeBytes:Buffer.byteLength(wh,'utf8'),
   homepageHasSecondaryTransferAction:html.includes('transferPartnerSecondaryMembership'),
   api:{}};
