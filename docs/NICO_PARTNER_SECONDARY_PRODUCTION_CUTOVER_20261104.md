@@ -4,7 +4,7 @@
 
 ## 本番読み取り専用監査の確認済み事実
 - Firebase: `sales-management-cc116`、既存公開URL: `https://nico-factory.web.app/`（別サイトへの切替は禁止）。
-- 2026-11-04 の production READ-ONLY inventory: active secondary context **1**、旧自社金額原票への読取経路が残る非Ownerアカウント **1**、自社Owner二重所属 **0**、移籍前検証適合 **1**、過去の移籍履歴 **0**、Firestore READY backup **7**。
+- 2026-11-04 の production READ-ONLY inventory（**旧版の適合判定**）: active secondary context **1**、旧自社金額原票への読取経路が残る非Ownerアカウント **1**、自社Owner二重所属 **0**、旧基準の移籍候補 **1**、過去の移籍履歴 **0**、Firestore READY backup **7**。**2026-11-04後半に候補適合条件を厳格化（名前・有効な班・スタッフ役割・旧Member/Company整合性）したため、「移籍適合1」は現時点の確定値ではない。最新コードをレビュー後に読み取り専用監査を再実行し、そこで0となったら本人移籍を停止して原因を安全に調査する。**
 - 公開中の Rules 正規化SHA256: `d1d9998d874a1a31c81ddf6996e08cd9de3a3d13bd684e245140bf03cab32179`（監査日時の値であり、公開当日の再確認必須）。
 - 旧 `records` の1文書に `results` 集計と `totalCount` の **1件不一致**。**原因未特定につき修正・再計算・削除・再単価計算は禁止**（Issue #352）。
 - Draft PR #355 の NO DEPLOY Actions `41756601979`: 業務回帰156/156、Rules Emulator50/50、計206/206合格。**実UIDと本番のBrowser/Functions連携は未検証**。
