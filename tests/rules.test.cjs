@@ -989,6 +989,13 @@ test('secondary former internal Master or Owner cannot administer old company or
  const former=dbFor('owner');
  const companyRef=doc(former,'companies',company);
  const memberRef=doc(former,'companies',company,'members','helper');
+ // A registered staff member has a stable email in both old user/member docs.
+ // The minimal seed above omits it because most tests do not need manager edits.
+ await env.withSecurityRulesDisabled(async ctx=>{
+   const admin=ctx.firestore();
+   await updateDoc(doc(admin,'users','helper'),{email:'helper@example.test'});
+   await updateDoc(doc(admin,'companies',company,'members','helper'),{email:'helper@example.test'});
+ });
  // These operations are intentionally allowed for the *real* internal owner.
  // Assert that the partner linkage, rather than unrelated role rules,
  // is what subsequently revokes their old administration grants.
