@@ -1,0 +1,40 @@
+name: NICO live public partner security probe (NO DEPLOY)
+on:
+  push:
+    branches:
+      - security/partner-secondary-raw-finance-deny-20261104
+    paths:
+      - 'tools/production/verify-public-workspace-readonly.mjs'
+      - 'tests/nico-public-workspace-readonly.test.mjs'
+      - '.github/workflows/nico-public-workspace-readonly-no-deploy.yml'
+permissions:
+  contents: read
+concurrency:
+  group: nico-public-partner-readonly
+  cancel-in-progress: false
+jobs:
+  public-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      NICO_PUBLIC_READONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify syntax and mock-only security contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "${GOOGLE_APPLICATION_CREDENTIALS:-}"
+          test -z "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          node --check tools/production/verify-public-workspace-readonly.mjs
+          node --test tests/nico-public-workspace-readonly.test.mjs
+      - name: Probe existing public Homepage and anonymous callable rejection
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/verify-public-workspace-readonly.mjs
