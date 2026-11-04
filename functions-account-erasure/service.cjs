@@ -15,6 +15,22 @@ function makeAccountErasure({db,getAuth,FieldValue,HttpsError,enabled=()=>false,
  const member=(cid,uid)=>ref("companies",cid).collection("members").doc(uid);
  const staff=(cid,uid)=>ref("companies",cid).collection("partnerWorkStaff").doc(uid);
  const job=(cid,uid)=>ref("accountErasureJobs",jobKey(cid,uid));
+ // Team movement is preserved only as business metadata. Unknown fields
+ // (including email/name/phone) never get copied into the erasure receipt.
+ const safeHistory=value=>{
+  if(value==null)return [];
+  if(!Array.isArray(value)||value.length>100)fail();
+  return value.map(entry=>{
+   if(!entry||typeof entry!=="object"||Array.isArray(entry)||
+      Object.keys(entry).some(key=>!["effectiveDate","fromTeamId","toTeamId"].includes(key))||
+      typeof entry.effectiveDate!=="string"||
+      !/^\\d{4}-\\d{2}-\\d{2}$/.test(entry.effectiveDate)||
+      (entry.fromTeamId!=null&&!UID.test(entry.fromTeamId))||
+      (entry.toTeamId!=null&&!UID.test(entry.toTeamId)))fail();
+   return {effectiveDate:entry.effectiveDate,fromTeamId:entry.fromTeamId??null,
+    toTeamId:entry.toTeamId??null};
+  });
+ };
  async function actor(request,strict=false){
   if(enabled()!==true)fail("unavailable");
   const uid=request?.auth?.uid,mail=lower(request?.auth?.token?.email);
@@ -121,9 +137,9 @@ function makeAccountErasure({db,getAuth,FieldValue,HttpsError,enabled=()=>false,
    targetName:norm(u.name),targetEmail:lower(u.email),
    businessHistory:{
     oldTeamId:u.teamId||null,role:u.role||null,
-    userTeamHistory:Array.isArray(u.teamHistory)?u.teamHistory:[],
-    memberTeamHistory:Array.isArray(m.teamHistory)?m.teamHistory:[],
-    staffTeamHistory:Array.isArray(st.teamHistory)?st.teamHistory:[]
+    userTeamHistory:safeHistory(u.teamHistory),
+    memberTeamHistory:safeHistory(m.teamHistory),
+    staffTeamHistory:safeHistory(st.teamHistory)
    }};
  }
  async function preview(request){
