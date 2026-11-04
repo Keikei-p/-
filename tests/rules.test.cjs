@@ -877,3 +877,62 @@ test('secondary context cannot be forged or removed by any Firebase client to re
   assert.equal((await getDoc(doc(admin,'products','secondary-immutable-product'))).data().revenue,5000);
  });
 });
+
+
+test('secondary partner cannot read legacy internal reporting, LINE settings or open-ended goal maps',async()=>{
+ const financeTemplate={morning:{intro:'テスト売上100万円'},final:{outro:'社外秘テスト'},updatedBy:'owner'};
+ const privateLine={lineGroupId:'synthetic-private-channel',lineGroupName:'非公開の社内グループ'};
+ const oldGoal={companyId:company,teamId:'b',month:'2026-10',targets:{NURO:3,legacyRevenueTarget:500000}};
+ const managerGoal={companyId:company,teamId:'a',month:'2026-10',targets:{NURO:1}};
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const admin=ctx.firestore();
+  await setDoc(doc(admin,'companies',company,'settings','reporting'),financeTemplate);
+  await setDoc(doc(admin,'companies',company,'settings','notifications'),privateLine);
+  await setDoc(doc(admin,'goals','secondary-old-goal'),oldGoal);
+  await setDoc(doc(admin,'goals','secondary-leader-goal'),managerGoal);
+ });
+ const member=dbFor('helper'),leader=dbFor('leaderA'),owner=dbFor('owner');
+ const reporting=(db)=>doc(db,'companies',company,'settings','reporting');
+ const notifications=(db)=>doc(db,'companies',company,'settings','notifications');
+ const goal=(db,id)=>doc(db,'goals',id);
+ // Verify these were reachable through the unchanged legacy membership
+ // BEFORE the server-created partner context (the actual leak path).
+ await assertSucceeds(getDoc(reporting(member)));
+ await assertSucceeds(getDoc(notifications(member)));
+ await assertSucceeds(getDoc(goal(member,'secondary-old-goal')));
+ await assertSucceeds(getDoc(goal(leader,'secondary-leader-goal')));
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const admin=ctx.firestore();
+  for(const uid of ['helper','leaderA']){
+   await setDoc(doc(admin,'partnerWorkspaceContexts',uid),{
+    uid,kind:'partner_secondary',active:true,
+    primaryCompanyId:company,partnerCompanyId:'partner-demo',hubCompanyId:company
+   });
+  }
+ });
+ for(const db of [member,leader]){
+  await assertFails(getDoc(reporting(db)));
+  await assertFails(getDoc(notifications(db)));
+  await assertFails(getDocsFromServer(collection(db,'companies',company,'settings')));
+  await assertFails(getDoc(goal(db,'secondary-old-goal')));
+  await assertFails(getDocsFromServer(query(collection(db,'goals'),where('companyId','==',company))));
+ }
+ await assertFails(setDoc(goal(leader,'secondary-new-goal'),{
+  companyId:company,teamId:'a',month:'2026-10',
+  targets:{NURO:99},createdAt:serverTimestamp(),updatedAt:serverTimestamp()
+ }));
+ await assertFails(updateDoc(goal(leader,'secondary-leader-goal'),{
+  targets:{NURO:99},updatedAt:serverTimestamp()
+ }));
+ // A separate legitimate direct Owner still sees original settings/goals.
+ await assertSucceeds(getDoc(reporting(owner)));
+ await assertSucceeds(getDoc(notifications(owner)));
+ await assertSucceeds(getDoc(goal(owner,'secondary-old-goal')));
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const admin=ctx.firestore();
+  assert.deepEqual((await getDoc(reporting(admin))).data(),financeTemplate);
+  assert.deepEqual((await getDoc(notifications(admin))).data(),privateLine);
+  assert.deepEqual((await getDoc(goal(admin,'secondary-old-goal'))).data(),oldGoal);
+  assert.deepEqual((await getDoc(goal(admin,'secondary-leader-goal'))).data(),managerGoal);
+ });
+});

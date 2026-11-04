@@ -976,10 +976,14 @@ service cloud.firestore {
       }
 
       match /settings/{settingId} {
-        allow read: if isCompanyMember(companyId)
-          || isCompanyOwner(companyId);
+        // Secondary partner UIDs retain a legacy internal membership.
+        // Old reporting templates can contain money in free-text, and
+        // notification settings contain private LINE channel identifiers.
+        allow read: if noSecondaryPartnerWorkspace()
+          && (isCompanyMember(companyId) || isCompanyOwner(companyId));
 
-        allow create, update: if isCompanyOwner(companyId)
+        allow create, update: if noSecondaryPartnerWorkspace()
+          && isCompanyOwner(companyId)
           && (
             (
               settingId == 'reporting'
@@ -1305,10 +1309,14 @@ service cloud.firestore {
 
 
     match /goals/{goalId} {
-      allow read: if resource.data.companyId != null
+      // Legacy goal maps have an open-ended targets object; never expose
+      // their raw contents to an identity now linked to a partner.
+      allow read: if noSecondaryPartnerWorkspace()
+        && resource.data.companyId != null
         && sameCompany(resource.data.companyId);
 
-      allow create: if request.resource.data.keys().hasOnly([
+      allow create: if noSecondaryPartnerWorkspace()
+        && request.resource.data.keys().hasOnly([
           'companyId', 'teamId', 'month', 'targets', 'createdAt', 'updatedAt'
         ])
         && request.resource.data.companyId != null
@@ -1331,7 +1339,8 @@ service cloud.firestore {
           )
         );
 
-      allow update: if resource.data.companyId != null
+      allow update: if noSecondaryPartnerWorkspace()
+        && resource.data.companyId != null
         && request.resource.data.companyId == resource.data.companyId
         && request.resource.data.teamId == resource.data.teamId
         && request.resource.data.month == resource.data.month
