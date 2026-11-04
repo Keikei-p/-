@@ -50,7 +50,11 @@ export function inspectPartnerReleaseReadiness(input){
   }else if(!rules.includes('function isInternalFinanceReader(companyId)')){
     blockers.push('CURRENT_FINANCE_GATE_REQUIRES_DIFFERENT_RULES_CONTRACT');
   }
-  if(/function\s+recordsCollectionQuery\s*\(|function\s+persistDailyRecord\s*\(/.test(browser)){
+  // Match the same four raw financial collection entrypoints as the
+  // canonical Hosting preflight, not just the legacy record write helper.
+  const directFinance=/(?:companyCollectionQuery|collection)\s*\(\s*(?:db\s*,\s*)?['"](?:records|products|recordCorrections|revenueGoals)['"]/.test(browser);
+  const legacyFinance=/function\s+recordsCollectionQuery\s*\(|function\s+persistDailyRecord\s*\(/.test(browser);
+  if(directFinance||legacyFinance){
     blockers.push('LEGACY_BROWSER_STILL_USES_RAW_SALES_COLLECTIONS');
   }
   if(!hostingWorkflow.includes('node scripts/nico-production-cutover-preflight.mjs')){
