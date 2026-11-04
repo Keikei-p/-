@@ -24,7 +24,7 @@ function makeAccountErasure({db,getAuth,FieldValue,HttpsError,enabled=()=>false,
    if(!entry||typeof entry!=="object"||Array.isArray(entry)||
       Object.keys(entry).some(key=>!["effectiveDate","fromTeamId","toTeamId"].includes(key))||
       typeof entry.effectiveDate!=="string"||
-      !/^\\d{4}-\\d{2}-\\d{2}$/.test(entry.effectiveDate)||
+      !/^\d{4}-\d{2}-\d{2}$/.test(entry.effectiveDate)||
       (entry.fromTeamId!=null&&!UID.test(entry.fromTeamId))||
       (entry.toTeamId!=null&&!UID.test(entry.toTeamId)))fail();
    return {effectiveDate:entry.effectiveDate,fromTeamId:entry.fromTeamId??null,
