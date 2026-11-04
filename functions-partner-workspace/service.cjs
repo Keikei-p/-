@@ -174,9 +174,16 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    return {kind:"partner",uid,cid,hubId:c.hubCompanyId,
      companyName:c.name,role:"owner",teamId:null};
   }
+  // Old mobile clients remember the secondary partner company ID. After an
+  // approved historical transfer the SAME partner becomes the primary company,
+  // so allow that stale, matching ID to flow through the strictly checked
+  // direct-partner scope below. Never grant internal users this fallback.
+  if(workspaceCompanyId&&workspaceCompanyId===cid){
+   if(u.accessKind!=="partner"||u.memberType!=="cooperator")fail();
+  }
   // Existing-email secondary partner role, without touching original primary
   // company, revenue flags, financial originals, or stored user document.
-  if(workspaceCompanyId){
+  if(workspaceCompanyId&&workspaceCompanyId!==cid){
    if(!ID.test(workspaceCompanyId)||workspaceCompanyId===cid||
       (u.accessKind!=null&&u.accessKind!=="internal")||
       (u.memberType!=null&&!["internal","direct","member","managed"].includes(u.memberType)))fail();
@@ -454,7 +461,10 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
        tx.get(ur),tx.get(mr),tx.get(ctxRef)
      ]);
      const u=us.data()||{},m=ms.data()||{},ctx=contextSnap.data()||{};
-     const secondary=contextSnap.exists;
+     // A historical converted context is retained for audit only. Once inactive,
+     // the member is a direct partner principal and must be updated through the
+     // regular partner membership path, not the old internal profile.
+     const secondary=contextSnap.exists&&ctx.kind==="partner_secondary"&&ctx.active===true;
      if(!us.exists||!ms.exists||u.uid!==current.uid||m.uid!==current.uid||
         u.active!==true||m.active!==true||
         m.companyId!==s.cid||m.companyRole!=="member"||
@@ -602,6 +612,12 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
         ["partner","cooperator"].includes(pm.memberType))
        fail("failed-precondition");
      formerMember=pm;
+     // Internal Owners must NEVER gain a secondary partner context on the same
+     // Firebase UID: context-based raw-finance denial would also hide their
+     // legitimate original revenue. They must use a separately authorized UID.
+     if(!transfer&&(pc.ownerUid===a.uid||pc.masterUid===a.uid||
+        original.companyRole==="owner"||pm.companyRole==="owner"))
+      fail("failed-precondition");
      if(transfer){
       // Never orphan a company owner, change another hub's roster or silently
       // re-parent original records. Original records and old member doc stay put.
@@ -674,6 +690,129 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   });
   return {joined:true,...joined};
  }
+ // Same verified user's EXISTING secondary partner membership -> primary
+ // count-only membership. No invitation needed; a second invitation would
+ // duplicate partner staff or fail when the existing context already exists.
+ // A separate explicit client confirmation is mandatory; this API is never
+ // called by login, refresh, a timer, or an owner acting on another UID.
+ async function transferSecondary(request){
+  const a=await actor(request),d=request?.data||{};
+  if(a.codeAuth||!a.email||!["preview","confirm"].includes(d.action)||
+     d.confirmation!=="I_ACCEPT_PARTNER_ONLY_ACCESS"||
+     Object.keys(d).some(k=>!["action","confirmation"].includes(k)))
+   fail("invalid-argument");
+  const cr=db.collection("partnerWorkspaceContexts").doc(a.uid);
+  const context=await cr.get(),ctx=context.data()||{};
+  if(!context.exists||ctx.uid!==a.uid||ctx.kind!=="partner_secondary"||
+     ctx.active!==true||!ID.test(ctx.partnerCompanyId||"")||
+     !ID.test(ctx.primaryCompanyId||"")||
+     ctx.primaryCompanyId===ctx.partnerCompanyId)
+   fail("failed-precondition");
+  // Preview has the same server-verified authentication and partner role scope.
+  const verified=await scope(a.uid,null,ctx.partnerCompanyId);
+  if(verified.kind!=="partner"||verified.cid!==ctx.partnerCompanyId||
+     verified.role==="owner")fail();
+  // Preview and confirm MUST use exactly the same server-side eligibility
+  // checks, including immutable archive, exact member/roster/team consistency.
+  // A successful simple scope check alone is not a safe promise to the user.
+  return db.runTransaction(async tx=>{
+   const [contextSnap,userSnap,partnerSnap,oldCompanySnap,oldMemberSnap,
+    partnerMemberSnap,relationSnap,staffSnap,teamSnap,archiveSnap]=await Promise.all([
+    tx.get(cr),tx.get(db.collection("users").doc(a.uid)),
+    tx.get(db.collection("companies").doc(ctx.partnerCompanyId)),
+    tx.get(db.collection("companies").doc(ctx.primaryCompanyId)),
+    tx.get(collection(ctx.primaryCompanyId,"members").doc(a.uid)),
+    tx.get(collection(ctx.partnerCompanyId,"members").doc(a.uid)),
+    tx.get(db.collection("partnerRelations").doc(ctx.partnerCompanyId)),
+    tx.get(staffRef(ctx.partnerCompanyId,a.uid)),
+    tx.get(teamRef(ctx.partnerCompanyId,ctx.teamId)),
+    tx.get(db.collection("partnerHistoricalTransfers").doc(a.uid))
+   ]);
+   const c=contextSnap.data()||{},u=userSnap.data()||{},
+    pc=partnerSnap.data()||{},ic=oldCompanySnap.data()||{},
+    om=oldMemberSnap.data()||{},pm=partnerMemberSnap.data()||{},
+    rel=relationSnap.data()||{},staff=staffSnap.data()||{},
+    team=teamSnap.data()||{};
+   if(!contextSnap.exists||!userSnap.exists||!partnerSnap.exists||
+      !oldCompanySnap.exists||!oldMemberSnap.exists||!partnerMemberSnap.exists||
+      !relationSnap.exists||!staffSnap.exists||!teamSnap.exists||archiveSnap.exists||
+      c.uid!==a.uid||c.kind!=="partner_secondary"||c.active!==true||
+      c.primaryCompanyId!==ctx.primaryCompanyId||
+      c.partnerCompanyId!==ctx.partnerCompanyId||
+      c.hubCompanyId!==ctx.hubCompanyId||
+      c.primaryCompanyId!==c.hubCompanyId||
+      !ID.test(c.teamId||"")||c.teamId!==ctx.teamId||
+      !["leader","member"].includes(c.role)||c.role!==ctx.role||
+      c.emailLower!==a.email||
+      u.uid!==a.uid||u.companyId!==c.primaryCompanyId||
+      u.active!==true||u.companyRole==="owner"||
+      (u.companyRole!=null&&u.companyRole!=="member")||
+      (u.accessKind!=null&&u.accessKind!=="internal")||
+      (u.memberType!=null&&!["internal","direct","member","managed"].includes(u.memberType))||
+      (u.email&&clean(u.email).toLowerCase()!==a.email)||
+      ic.active===false||!["internal","direct",undefined].includes(ic.companyKind)||
+      ic.ownerUid===a.uid||ic.masterUid===a.uid||
+      om.active!==true||om.companyRole==="owner"||
+      (om.companyRole!=null&&om.companyRole!=="member")||
+      (om.uid!=null&&om.uid!==a.uid)||
+      (om.companyId!=null&&om.companyId!==c.primaryCompanyId)||
+      (om.accessKind!=null&&om.accessKind!=="internal")||
+      (om.memberType!=null&&!["internal","direct","member","managed"].includes(om.memberType))||
+      (om.email&&clean(om.email).toLowerCase()!==a.email)||
+      pc.companyKind!=="partner"||pc.active!==true||
+      pc.hubCompanyId!==c.hubCompanyId||pc.ownerUid===a.uid||
+      pm.uid!==a.uid||pm.companyId!==c.partnerCompanyId||
+      pm.active!==true||pm.companyRole!=="member"||pm.role!==c.role||
+      pm.teamId!==c.teamId||pm.accessKind!=="partner"||
+      pm.memberType!=="cooperator"||pm.canViewRevenue!==false||
+      pm.canViewUnitPrice!==false||pm.canCreateInvite===true||
+      rel.partnerCompanyId!==c.partnerCompanyId||
+      rel.hubCompanyId!==c.hubCompanyId||rel.active!==true||
+      rel.countSharingApproved!==true||
+      staff.uid!==a.uid||staff.companyId!==c.partnerCompanyId||
+      staff.kind!=="account"||staff.active!==true||
+      staff.teamId!==c.teamId||staff.role!==c.role||
+      team.companyId!==c.partnerCompanyId||team.active!==true)
+    fail("failed-precondition");
+   const partnerProfile={
+    uid:a.uid,companyId:c.partnerCompanyId,
+    name:clean(pm.name),email:a.email,
+    role:c.role,companyRole:"member",teamId:c.teamId,active:true,
+    accessKind:"partner",memberType:"cooperator",
+    canViewRevenue:false,canViewUnitPrice:false,canCreateInvite:false,
+    updatedAt:FieldValue.serverTimestamp()
+   };
+   if(!validName(partnerProfile.name))fail("failed-precondition");
+   // Firestore transaction may return without ANY write during preview.
+   // Confirm reruns all checks on fresh transactional snapshots, so a role or
+   // team change between preview and confirmation is automatically refused.
+   if(d.action==="preview")return {eligible:true,
+    countsOnly:true,oldHistoricalSalesRetained:true,requiresUserConfirmation:true};
+   const cleanup={};
+   for(const key of Object.keys(u)){
+    if(!/^[A-Za-z][A-Za-z0-9_]*$/.test(key))fail("failed-precondition");
+    if(!Object.hasOwn(partnerProfile,key))cleanup[key]=FieldValue.delete();
+   }
+   // The only archive records every original profile and membership exactly.
+   // No raw sales, counts, unit prices, correction documents or partner
+   // count entries are loaded, rewritten, merged or deleted.
+   tx.create(db.collection("partnerHistoricalTransfers").doc(a.uid),{
+    uid:a.uid,sourceCompanyId:c.primaryCompanyId,
+    destinationCompanyId:c.partnerCompanyId,hubCompanyId:c.hubCompanyId,
+    originalUser:u,originalMember:om,originalContext:c,
+    createdAt:FieldValue.serverTimestamp()
+   });
+   tx.update(collection(c.primaryCompanyId,"members").doc(a.uid),{
+    active:false,updatedAt:FieldValue.serverTimestamp()
+   });
+   tx.update(db.collection("users").doc(a.uid),{...cleanup,...partnerProfile});
+   // Preserve original context as a tombstone so no one can silently issue
+   // a duplicate secondary invitation, and older clients can resolve safely.
+   tx.update(cr,{active:false,transferredToPrimary:true,
+    transferredAt:FieldValue.serverTimestamp()});
+   return {transferred:true,countsOnly:true,historyPreserved:true};
+  });
+ }
  // Shared count-only standings do not grant finance or management rights.
  // Internal members already joined to the same live company may READ ranks.
  // All other endpoints still use strict Owner-only scope().
@@ -711,6 +850,11 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    const context=await db.collection("partnerWorkspaceContexts").doc(a.uid).get();
    if(!context.exists)return {scope:"partner_workspace_lookup",workspaceCompanyId:null};
    const stored=context.data()||{};
+   if(stored.kind==="partner_secondary"&&stored.active===false&&stored.transferredToPrimary===true){
+    const verified=await scope(a.uid,null,stored.partnerCompanyId);
+    if(verified.kind!=="partner"||verified.cid!==stored.partnerCompanyId)fail();
+    return {scope:"partner_workspace_lookup",workspaceCompanyId:verified.cid};
+   }
    if(stored.uid!==a.uid||stored.kind!=="partner_secondary"||
       stored.active!==true||!ID.test(stored.partnerCompanyId||""))
     fail("failed-precondition");
@@ -1207,6 +1351,6 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      privateTotalCount:privateValidated.total};
   });
  }
- return Object.freeze({manage,accept,view,submit});
+ return Object.freeze({manage,accept,transferSecondary,view,submit});
 }
 module.exports={makeWorkspace,KEYS};

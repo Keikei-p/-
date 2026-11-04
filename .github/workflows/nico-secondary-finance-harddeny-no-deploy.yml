@@ -1,0 +1,58 @@
+name: NICO secondary partner finance hard deny (NO DEPLOY)
+on:
+  pull_request:
+    branches:
+      - release/nico-partner-compact-two-column-index-20261102
+    paths:
+      - firestore.rules
+      - tests/rules.test.cjs
+      - tests/partner-workspace.test.cjs
+      - functions-partner-workspace/service.cjs
+      - index.html
+      - partner-workspace.html
+      - tools/ci/check-inline-html-module.mjs
+      - .github/workflows/nico-secondary-finance-harddeny-no-deploy.yml
+  push:
+    branches:
+      - security/partner-secondary-raw-finance-deny-20261104
+permissions:
+  contents: read
+jobs:
+  offline-emulator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Verify syntax, isolated project and no production credential
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check tests/rules.test.cjs
+          test "${FIREBASE_PROJECT_ID:-demo-sales-support}" = "demo-sales-support"
+          test -z "${GOOGLE_APPLICATION_CREDENTIALS:-}"
+      - name: Install disposable test-only dependencies
+        run: |
+          npm install --prefix tests --ignore-scripts --no-audit --no-fund
+          npm install --global firebase-tools@15.34.1 --no-audit --no-fund
+      - name: Finance and count unit regression without production credentials
+        run: |
+          node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/index.js
+          node --check tools/production/audit-secondary-contexts-readonly.mjs
+          node --test tests/nico-secondary-readonly-inventory.test.mjs
+          node tools/ci/check-inline-html-module.mjs
+          node --test tests/internal-owner-finance-visibility.test.cjs tests/partner-money-free-workspace.test.cjs tests/sales-regressions.cjs tests/partner-workspace.test.cjs tests/partner-one-login-same-app.test.cjs
+      - name: Run all Firestore rules and legacy record tests in isolated emulator
+        env:
+          FIREBASE_PROJECT_ID: demo-sales-support
+        run: |
+          firebase emulators:exec --project demo-sales-support --only firestore 'node --test tests/rules.test.cjs'
