@@ -175,16 +175,23 @@ function makeAccountErasure({db,getAuth,FieldValue,HttpsError,enabled=()=>false,
    const x=await check(a,d.targetUid,tx,true);
    if(x.status==="complete")return;
    if(x.status!=="pending")fail();
-   const [us,ms,ss]=await Promise.all([tx.get(x.ur),tx.get(x.mr),
-    x.sr?tx.get(x.sr):Promise.resolve(null)]);
+   const [us,ms,ss,receipt]=await Promise.all([tx.get(x.ur),tx.get(x.mr),
+    x.sr?tx.get(x.sr):Promise.resolve(null),tx.get(x.jr)]);
    // No change to historical record, count, pricing, team or correction docs.
    if(us.exists)tx.delete(x.ur);
    if(ms.exists)tx.delete(x.mr);
    // A non-personal tombstone retains the historical staff ID for count joins.
    // Display name and email never remain on the live staff profile.
-   if(ss?.exists)tx.update(x.sr,{uid:null,name:"退会済み",kind:"retired",
-     active:false,updatedAt:FieldValue.serverTimestamp(),
-     email:FieldValue.delete()});
+   if(ss?.exists){
+    const business=receipt.data()?.businessHistory||{};
+    if(!UID.test(business.oldTeamId||"")||
+      !["leader","member"].includes(business.role))fail();
+    // Replace the whole live staff document: old profile could contain
+    // unexpected name/email/phone fields. Never leave PII by shallow update.
+    tx.set(x.sr,{uid:null,name:"退会済み",kind:"retired",companyId:x.cid,
+      role:business.role,teamId:business.oldTeamId,active:false,
+      retiredAt:FieldValue.serverTimestamp()});
+   }
    tx.update(x.jr,{status:"complete",completedAt:FieldValue.serverTimestamp()});
   });
   return {complete:true,authDeleted:true,personalProfileDeleted:true,
