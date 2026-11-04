@@ -7,12 +7,18 @@ on:
       - 'functions-account-erasure/**'
       - 'firebase.account-erasure.json'
       - 'tests/nico-account-erasure.test.cjs'
+      - 'tests/nico-account-erasure-ui.test.cjs'
+      - 'tools/ci/check-account-erasure-ui-syntax.mjs'
+      - 'index.html'
       - '.github/workflows/nico-account-erasure-no-deploy.yml'
   pull_request:
     paths:
       - 'functions-account-erasure/**'
       - 'firebase.account-erasure.json'
       - 'tests/nico-account-erasure.test.cjs'
+      - 'tests/nico-account-erasure-ui.test.cjs'
+      - 'tools/ci/check-account-erasure-ui-syntax.mjs'
+      - 'index.html'
       - '.github/workflows/nico-account-erasure-no-deploy.yml'
 permissions:
   contents: read
@@ -50,7 +56,8 @@ jobs:
         run: |
           node --check functions-account-erasure/index.js
           node --check functions-account-erasure/service.cjs
-          node --test tests/nico-account-erasure.test.cjs
+          node --test tests/nico-account-erasure.test.cjs tests/nico-account-erasure-ui.test.cjs
+          node tools/ci/check-account-erasure-ui-syntax.mjs
       - name: Verify old suspend-only function and historical sales regression
         run: |
           node --test tests/sales-regressions.cjs
