@@ -20,6 +20,8 @@ const sha=v=>createHash('sha256').update(v.replace(/\r\n/g,'\n').trim()).digest(
 const sourceFingerprint='d1d9998d874a1a31c81ddf6996e08cd9de3a3d13bd684e245140bf03cab32179';
 const internalType=x=>x===undefined||x==='internal'||x==='direct';
 const legacyType=x=>x===undefined||['internal','direct','member','managed'].includes(x);
+const validPartnerName=x=>typeof x==='string'&&/^[\\p{L}\\p{N} 　・ー（）()_.-]{1,60}$/u.test(x.trim())&&
+ !/(?:単価|売上|収益|利益|報酬|[¥￥$€]|\\d[\\d,]*円)/.test(x);
 const internalKind=x=>x===undefined||x==='internal'||x==='direct';
 const internalAccess=x=>x===undefined||x==='internal';
 
@@ -53,24 +55,37 @@ export function classifySecondary({context,user,oldMember,oldCompany,partnerMemb
  * separate deployment gates.
  */
 export function transferEligibility({context,user,oldMember,oldCompany,
- partnerMember,partnerCompany,relation,staff,archived,auth}){
+ partnerMember,partnerCompany,relation,staff,team,archived,auth}){
  if(classifySecondary({context,user,oldMember,oldCompany,partnerMember,partnerCompany})!=='internal_finance_read_path')
   return false;
  if(context.primaryCompanyId!==context.hubCompanyId||
     partnerCompany.hubCompanyId!==context.hubCompanyId||
+    partnerCompany.ownerUid===context.uid||
     oldCompany.ownerUid===context.uid||oldCompany.masterUid===context.uid||
     user.companyRole==='owner'||oldMember.companyRole==='owner'||
+    (user.companyRole!=null&&user.companyRole!=='member')||
+    (oldMember.companyRole!=null&&oldMember.companyRole!=='member')||
+    user.uid!==context.uid||user.companyId!==context.primaryCompanyId||
+    oldMember.uid!=null&&oldMember.uid!==context.uid||
+    oldMember.companyId!=null&&oldMember.companyId!==context.primaryCompanyId||
+    user.active!==true||oldMember.active!==true||
+    (user.email&&user.email.trim().toLowerCase()!==context.emailLower)||
+    (oldMember.email&&oldMember.email.trim().toLowerCase()!==context.emailLower)||
     !['leader','member'].includes(context.role)||
     context.role!==partnerMember.role||!ID.test(context.teamId||'')||
     partnerMember.teamId!==context.teamId||
     partnerMember.companyRole!=='member'||partnerMember.uid!==context.uid||
     partnerMember.companyId!==context.partnerCompanyId||
     partnerMember.canViewRevenue!==false||partnerMember.canViewUnitPrice!==false||
+    partnerMember.canCreateInvite===true||
+    !validPartnerName(partnerMember.name)||
     !relation||relation.active!==true||relation.countSharingApproved!==true||
     relation.hubCompanyId!==context.hubCompanyId||
     relation.partnerCompanyId!==context.partnerCompanyId||
     !staff||staff.kind!=='account'||staff.uid!==context.uid||
-    staff.active!==true||staff.teamId!==context.teamId||
+    staff.active!==true||staff.companyId!==context.partnerCompanyId||
+    staff.role!==context.role||staff.teamId!==context.teamId||
+    !team||team.companyId!==context.partnerCompanyId||team.active!==true||
     archived===true||
     !auth||auth.disabled===true||auth.emailVerified!==true||
     typeof auth.email!=='string'||auth.email.toLowerCase()!==context.emailLower)
@@ -128,7 +143,7 @@ export async function inventory({db,credential,authService,request=fetch,include
   const x=c.data()||{};
   if(x.uid!==c.id||!ID.test(c.id)||!ID.test(x.primaryCompanyId||'')||
      !ID.test(x.partnerCompanyId||''))abort('CONTEXT_SCHEMA');
-  const [user,oldMember,oldCompany,partnerMember,partnerCompany,relation,staff,archive,auth]=await Promise.all([
+  const [user,oldMember,oldCompany,partnerMember,partnerCompany,relation,staff,team,archive,auth]=await Promise.all([
    refDoc(db,'users',c.id).get().then(s=>s.data()||null),
    db.collection('companies').doc(x.primaryCompanyId).collection('members').doc(c.id).get().then(s=>s.data()||null),
    refDoc(db,'companies',x.primaryCompanyId).get().then(s=>s.data()||null),
@@ -136,13 +151,16 @@ export async function inventory({db,credential,authService,request=fetch,include
    refDoc(db,'companies',x.partnerCompanyId).get().then(s=>s.data()||null),
    refDoc(db,'partnerRelations',x.partnerCompanyId).get().then(s=>s.data()||null),
    db.collection('companies').doc(x.partnerCompanyId).collection('partnerWorkStaff').doc(c.id).get().then(s=>s.data()||null),
+   ID.test(x.teamId||'')?
+    db.collection('companies').doc(x.partnerCompanyId).collection('partnerWorkTeams').doc(x.teamId).get().then(s=>s.data()||null):
+    Promise.resolve(null),
    refDoc(db,'partnerHistoricalTransfers',c.id).get().then(s=>s.exists),
    authService.getUser(c.id).then(a=>({email:a.email,emailVerified:a.emailVerified,disabled:a.disabled}))
   ]);
   const kind=classifySecondary({context:x,user,oldMember,oldCompany,partnerMember,partnerCompany});
   if(kind==='internal_finance_read_path'){
    const eligible=transferEligibility({context:x,user,oldMember,oldCompany,partnerMember,
-     partnerCompany,relation,staff,archived:archive,auth});
+     partnerCompany,relation,staff,team,archived:archive,auth});
    if(eligible)values.transferEligibleCandidates++;
    else values.transferNeedsReview++;
   }
