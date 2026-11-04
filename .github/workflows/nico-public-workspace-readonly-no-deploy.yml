@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - security/partner-secondary-raw-finance-deny-20261104
+      - integration/nico-partner-security-erasure-20261104
     paths:
       - 'tools/production/verify-public-workspace-readonly.mjs'
       - 'tests/nico-public-workspace-readonly.test.mjs'
