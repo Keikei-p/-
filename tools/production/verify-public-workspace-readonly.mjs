@@ -16,8 +16,14 @@ const URLS=Object.freeze({
 const NAMES=Object.freeze([
  'getPartnerWorkspace','managePartnerWorkspace',
  'acceptPartnerWorkspaceInvite','submitPartnerWorkspaceCounts',
- 'transferPartnerSecondaryMembership'
+ 'transferPartnerSecondaryMembership',
+ 'previewManagedAccountErasure','listManagedAccountErasurePending',
+ 'confirmManagedAccountErasure'
 ]);
+const UNPUBLISHED=Object.freeze(new Set([
+ 'transferPartnerSecondaryMembership','previewManagedAccountErasure',
+ 'listManagedAccountErasurePending','confirmManagedAccountErasure'
+]));
 const stop=reason=>{throw new Error('STOP_PUBLIC_READONLY_'+reason);};
 const hash=s=>createHash('sha256').update(s).digest('hex');
 function environmentCheck(env){
@@ -56,8 +62,12 @@ export async function inspectPublic({fetcher=fetch,env=process.env}={}){
   candidateAppSizeBytes:Buffer.byteLength(candidateHtml,'utf8'),
   liveAppMatchesCandidate:liveFingerprint===candidateFingerprint,
   candidateHasMigrationAction:candidateHtml.includes('transferPartnerSecondaryMembership'),
+  candidateHasAccountErasureAction:candidateHtml.includes('previewManagedAccountErasure')&&
+   candidateHtml.includes('confirmManagedAccountErasure'),
   liveWorkspaceHtmlSha256:hash(wh),liveWorkspaceSizeBytes:Buffer.byteLength(wh,'utf8'),
   homepageHasSecondaryTransferAction:html.includes('transferPartnerSecondaryMembership'),
+  homepageHasAdminErasureAction:html.includes('previewManagedAccountErasure')&&
+   html.includes('confirmManagedAccountErasure'),
   api:{}};
  for(const name of NAMES){
   const r=await response(fetcher,URLS.functions+name,{
@@ -66,7 +76,7 @@ export async function inspectPublic({fetcher=fetch,env=process.env}={}){
   });
   if(r.status===401||r.status===403)result.api[name]='anonymous_denied';
   else if(r.status===404){
-   if(name!=='transferPartnerSecondaryMembership')stop('EXISTING_FUNCTION_MISSING_'+name);
+   if(!UNPUBLISHED.has(name))stop('EXISTING_FUNCTION_MISSING_'+name);
    result.api[name]='not_published';
   }else stop('CALLABLE_UNSAFE_HTTP_'+name+'_'+r.status);
  }
@@ -81,6 +91,10 @@ async function main(){
   console.log('NICO_PUBLIC_PROBE '+JSON.stringify(result));
   if(result.api.transferPartnerSecondaryMembership==='not_published')
    console.log('BLOCK_MIGRATION_FUNCTION_NOT_PUBLISHED');
+  for(const name of UNPUBLISHED)if(result.api[name]==='not_published')
+   console.log('BLOCK_NOT_PUBLISHED_'+name);
+  if(!result.homepageHasAdminErasureAction)
+   console.log('BLOCK_ACCOUNT_ERASURE_UI_NOT_PUBLISHED');
   if(!result.homepageHasSecondaryTransferAction)
    console.log('BLOCK_SELF_MIGRATION_UI_NOT_PUBLISHED');
  }catch(e){
