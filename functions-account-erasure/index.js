@@ -14,4 +14,5 @@ const opts={region:"asia-northeast1",maxInstances:1,
 // Named independently from legacy suspend-only deleteCompanyMemberAccount.
 // Never repurpose that existing operation for hard deletion.
 exports.previewManagedAccountErasure=onCall(opts,service.preview);
+exports.listManagedAccountErasurePending=onCall(opts,service.listPending);
 exports.confirmManagedAccountErasure=onCall(opts,service.confirm);
