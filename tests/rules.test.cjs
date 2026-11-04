@@ -983,3 +983,71 @@ test('partner-secondary former internal leader loses old peer directory and old 
   assert.equal((await getDoc(doc(admin,'users','helper'))).data().active,true);
  });
 });
+
+
+test('secondary former internal Master or Owner cannot administer old company or edit old staff',async()=>{
+ const former=dbFor('owner');
+ const companyRef=doc(former,'companies',company);
+ const memberRef=doc(former,'companies',company,'members','helper');
+ // A registered staff member has a stable email in both old user/member docs.
+ // The minimal seed above omits it because most tests do not need manager edits.
+ await env.withSecurityRulesDisabled(async ctx=>{
+   const admin=ctx.firestore();
+   await updateDoc(doc(admin,'users','helper'),{email:'helper@example.test'});
+   await updateDoc(doc(admin,'companies',company,'members','helper'),{email:'helper@example.test'});
+ });
+ // These operations are intentionally allowed for the *real* internal owner.
+ // Assert that the partner linkage, rather than unrelated role rules,
+ // is what subsequently revokes their old administration grants.
+ await assertSucceeds(updateDoc(companyRef,{
+   name:'Internal owner preserved',updatedAt:serverTimestamp()
+ }));
+ await assertSucceeds(updateDoc(memberRef,{
+   name:'Before context',updatedAt:serverTimestamp()
+ }));
+ await env.withSecurityRulesDisabled(async ctx=>{
+   const admin=ctx.firestore();
+   await setDoc(doc(admin,'users','standbyOwner'),{
+     uid:'standbyOwner',name:'standbyOwner',companyId:company,
+     role:'leader',companyRole:'owner',teamId:'a',active:true
+   });
+   await setDoc(doc(admin,'companies',company,'members','standbyOwner'),{
+     uid:'standbyOwner',name:'standbyOwner',companyId:company,
+     role:'leader',companyRole:'owner',teamId:'a',active:true
+   });
+   await setDoc(doc(admin,'partnerWorkspaceContexts','owner'),{
+     uid:'owner',kind:'partner_secondary',active:true,
+     primaryCompanyId:company,partnerCompanyId:'partner-demo',hubCompanyId:company
+   });
+ });
+ await assertFails(updateDoc(companyRef,{
+   name:'Must not apply',updatedAt:serverTimestamp()
+ }));
+ await assertFails(updateDoc(memberRef,{
+   name:'Must not apply',updatedAt:serverTimestamp()
+ }));
+ // An old Master may still appear in company.masterUid. It must not use that
+ // legacy privilege to overwrite another member's finance permission.
+ await assertFails(updateDoc(memberRef,{
+   canViewRevenue:false,updatedAt:serverTimestamp()
+ }));
+ // Keep self-identity reads for historic membership and same-email login.
+ await assertSucceeds(getDoc(doc(former,'users','owner')));
+ await assertSucceeds(getDoc(doc(former,'companies',company,'members','owner')));
+ // A different, legitimate, non-partner company Owner must retain management.
+ const valid=dbFor('standbyOwner');
+ await assertSucceeds(updateDoc(doc(valid,'companies',company),{
+   name:'Legitimate owner controls',updatedAt:serverTimestamp()
+ }));
+ await assertSucceeds(updateDoc(doc(valid,'companies',company,'members','helper'),{
+   name:'Legitimate owner manages staff',updatedAt:serverTimestamp()
+ }));
+ await env.withSecurityRulesDisabled(async ctx=>{
+   const admin=ctx.firestore();
+   assert.equal((await getDoc(doc(admin,'companies',company))).data().name,
+     'Legitimate owner controls');
+   assert.equal((await getDoc(doc(admin,'companies',company,'members','helper'))).data().name,
+     'Legitimate owner manages staff');
+   assert.equal((await getDoc(doc(admin,'companies',company,'members','helper'))).data().active,true);
+ });
+});

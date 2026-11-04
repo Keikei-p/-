@@ -156,12 +156,18 @@ service cloud.firestore {
     }
 
     function isCompanyMaster(companyId) {
-      return isCompanyMember(companyId)
+      // A secondary-partner identity must not exercise its previous
+      // internal Master role to transfer ownership or change grants.
+      return noSecondaryPartnerWorkspace()
+        && isCompanyMember(companyId)
         && effectiveMasterUid(companyId) == request.auth.uid;
     }
 
     function isCompanyOwner(companyId) {
-      return isCompanyMember(companyId)
+      // Old owner flags may remain solely to preserve historical records.
+      // They cannot authorize internal administration from partner context.
+      return noSecondaryPartnerWorkspace()
+        && isCompanyMember(companyId)
         && get(userPath(request.auth.uid)).data.companyRole == 'owner'
         && get(memberPath(companyId, request.auth.uid)).data.companyRole == 'owner';
     }
