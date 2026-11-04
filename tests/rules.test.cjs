@@ -1118,3 +1118,31 @@ test('isolated partner identity marker blocks old internal LINE pairing reads',a
   });
  }
 });
+
+test('secondary partner cannot read former internal team roster and leader UIDs',async()=>{
+ const oldOwner=dbFor('owner'),validLeader=dbFor('leaderA');
+ const team=doc(oldOwner,'teams','a');
+ await env.withSecurityRulesDisabled(async ctx=>{
+  await updateDoc(doc(ctx.firestore(),'teams','a'),{
+    leaderUids:['owner','leaderA']
+  });
+ });
+ await assertSucceeds(getDoc(team));
+ await assertSucceeds(getDocsFromServer(query(collection(oldOwner,'teams'),
+   where('companyId','==',company))));
+ const before=(await getDoc(doc(validLeader,'teams','a'))).data();
+ await env.withSecurityRulesDisabled(async ctx=>{
+  await setDoc(doc(ctx.firestore(),'partnerWorkspaceContexts','owner'),{
+   uid:'owner',kind:'partner_secondary',active:true,
+   primaryCompanyId:company,partnerCompanyId:'partner-demo',hubCompanyId:company
+  });
+ });
+ await assertFails(getDoc(team));
+ await assertFails(getDocsFromServer(query(collection(oldOwner,'teams'),
+   where('companyId','==',company))));
+ await assertSucceeds(getDoc(doc(validLeader,'teams','a')));
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const stored=(await getDoc(doc(ctx.firestore(),'teams','a'))).data();
+  assert.deepEqual(stored,before,'existing team and roster must be unchanged');
+ });
+});
