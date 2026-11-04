@@ -20,8 +20,8 @@ const sha=v=>createHash('sha256').update(v.replace(/\r\n/g,'\n').trim()).digest(
 const sourceFingerprint='d1d9998d874a1a31c81ddf6996e08cd9de3a3d13bd684e245140bf03cab32179';
 const internalType=x=>x===undefined||x==='internal'||x==='direct';
 const legacyType=x=>x===undefined||['internal','direct','member','managed'].includes(x);
-const validPartnerName=x=>typeof x==='string'&&/^[\\p{L}\\p{N} 　・ー（）()_.-]{1,60}$/u.test(x.trim())&&
- !/(?:単価|売上|収益|利益|報酬|[¥￥$€]|\\d[\\d,]*円)/.test(x);
+const validPartnerName=x=>typeof x==='string'&&/^[\p{L}\p{N} 　・ー（）()_.-]{1,60}$/u.test(x.trim())&&
+ !/(?:単価|売上|収益|利益|報酬|[¥￥$€]|\d[\d,]*円)/.test(x);
 const internalKind=x=>x===undefined||x==='internal'||x==='direct';
 const internalAccess=x=>x===undefined||x==='internal';
 
