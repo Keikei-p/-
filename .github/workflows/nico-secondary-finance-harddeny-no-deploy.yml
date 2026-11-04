@@ -47,6 +47,8 @@ jobs:
         run: |
           node --check functions-partner-workspace/service.cjs
           node --check functions-partner-workspace/index.js
+          node --check tools/production/audit-secondary-contexts-readonly.mjs
+          node --test tests/nico-secondary-readonly-inventory.test.mjs
           node tools/ci/check-inline-html-module.mjs
           node --test tests/internal-owner-finance-visibility.test.cjs tests/partner-money-free-workspace.test.cjs tests/sales-regressions.cjs tests/partner-workspace.test.cjs tests/partner-one-login-same-app.test.cjs
       - name: Run all Firestore rules and legacy record tests in isolated emulator
