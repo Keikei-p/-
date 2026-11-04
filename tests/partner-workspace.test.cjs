@@ -1617,3 +1617,60 @@ test("verified person transfers an existing secondary company into count-only pr
  assert.equal((await api.view(req("m",{date:"2026-10-31"}))).records[0].totalCount,3);
  assert.deepEqual(db.store.get("records/old"),oldSales);
 });
+
+
+test("secondary-to-primary transfer refuses unsafe source, target and Auth conditions without changing any saved data",async()=>{
+ const variants=[
+  ["source-owner",({db})=>{db.store.get("companies/hub").ownerUid="m";}],
+  ["source-owner-role",({db})=>{db.store.get("companies/hub/members/m").companyRole="owner";}],
+  ["inactive-old-member",({db})=>{db.store.get("companies/hub/members/m").active=false;}],
+  ["foreign-primary-company",({db})=>{db.store.get("partnerWorkspaceContexts/m").primaryCompanyId="otherHub";}],
+  ["revoked-sharing",({db})=>{db.store.get("partnerRelations/partner").countSharingApproved=false;}],
+  ["wrong-member-team",({db})=>{db.store.get("companies/partner/members/m").teamId="foreignTeam";}],
+  ["wrong-staff-team",({db})=>{db.store.get("companies/partner/partnerWorkStaff/m").teamId="foreignTeam";}],
+  ["monetary-partner-member",({db})=>{db.store.get("companies/partner/members/m").canViewRevenue=true;}],
+  ["already-archived",({db})=>{db.seed("partnerHistoricalTransfers/m",{sourceCompanyId:"hub",uid:"m"});}],
+  ["invalid-email",({db})=>{db.store.get("partnerWorkspaceContexts/m").emailLower="wrong@example.com";}]
+ ];
+ for(const [label,damage] of variants){
+  const {db,api,req}=setup();
+  const original={uid:"m",companyId:"hub",email:"m@example.com",name:"旧自社担当",
+   companyRole:"member",role:"member",teamId:"former",active:true,
+   accessKind:"internal",memberType:"direct",
+   canViewRevenue:true,canViewUnitPrice:true};
+  db.seed("users/m",original);
+  db.seed("companies/hub/members/m",{...original});
+  const teamId=(await api.manage(req("p",{action:"addTeam",name:"確認用班"}))).teamId;
+  const invite=await api.manage(req("p",{action:"createInvite",
+   email:"m@example.com",teamId,role:"member"}));
+  await api.accept(req("m",{token:invite.token,name:"協力店担当"}));
+  damage({db});
+  const before=clone([...db.store]);
+  await assert.rejects(
+   api.transferSecondary(req("m",{action:"confirm",
+    confirmation:"I_ACCEPT_PARTNER_ONLY_ACCESS"})),
+   e=>e.code==="failed-precondition"||e.code==="permission-denied",
+   label
+  );
+  assert.deepEqual([...db.store],before,label+" must never mutate source, historical finance or saved partner counts");
+ }
+});
+
+test("secondary-to-primary transfer refuses cross-account, anonymous and malformed confirmation",async()=>{
+ const {db,api,req}=setup();
+ const old={uid:"m",companyId:"hub",email:"m@example.com",name:"旧自社",
+  companyRole:"member",role:"member",active:true,accessKind:"internal",memberType:"direct"};
+ db.seed("users/m",old);
+ db.seed("companies/hub/members/m",{...old});
+ const teamId=(await api.manage(req("p",{action:"addTeam",name:"確認用班"}))).teamId;
+ const invite=await api.manage(req("p",{action:"createInvite",
+  email:"m@example.com",teamId,role:"member"}));
+ await api.accept(req("m",{token:invite.token,name:"協力店担当"}));
+ const before=clone([...db.store]);
+ await assert.rejects(api.transferSecondary(req("h",{action:"confirm",
+  confirmation:"I_ACCEPT_PARTNER_ONLY_ACCESS"})),{code:"failed-precondition"});
+ await assert.rejects(api.transferSecondary(req("m",{action:"confirm",
+  confirmation:"I_ACCEPT_PARTNER_ONLY_ACCESS",uid:"h"})),{code:"invalid-argument"});
+ await assert.rejects(api.transferSecondary(req("m",{action:"confirm"})),{code:"invalid-argument"});
+ assert.deepEqual([...db.store],before);
+});
