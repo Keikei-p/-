@@ -13,6 +13,23 @@ class Ref{
 class Coll{
  constructor(db,path){this.db=db;this.path=path;}
  doc(id){return new Ref(this.db,this.path+"/"+id);}
+ where(field,operation,value){assert.equal(operation,"==");return new Query(this.db,this.path,field,value);}
+}
+class Query{
+ constructor(db,root,field,value,cap=Infinity){this.db=db;this.root=root;this.field=field;this.value=value;this.cap=cap;}
+ limit(n){return new Query(this.db,this.root,this.field,this.value,n);}
+ async get(){
+  const docs=[];
+  for(const [path,record] of this.db.store){
+   if(path.startsWith(this.root+"/")&&
+      !path.slice(this.root.length+1).includes("/")&&
+      record[this.field]===this.value){
+    docs.push({id:path.split("/").at(-1),data:()=>clone(record)});
+   }
+  }
+  const rows=docs.slice(0,this.cap);
+  return {size:rows.length,docs:rows};
+ }
 }
 class DB{
  constructor(){this.store=new Map();this.writes=[];}
@@ -44,7 +61,8 @@ class DB{
 class ErrorCode extends Error{constructor(code,message){super(message);this.code=code;}}
 function setup({authAgeSec=0,featureEnabled=true}={}){
  const db=new DB(),people=new Map(),events=[];let throwOnDelete=false;
- const account=(uid,email=uid+"@example.com")=>people.set(uid,{uid,email,emailVerified:true,disabled:false});
+ const account=(uid,email=uid+"@example.com")=>people.set(uid,{uid,email,
+  emailVerified:true,disabled:false,metadata:{creationTime:"2025-01-01T00:00:00.000Z"}});
  for(const uid of ["owner","staff","powner","pleader","pmember","pother","foreign","another"])
   account(uid);
  db.seed("companies/hub",{name:"自社",ownerUid:"owner",companyKind:"internal",active:true});
@@ -185,7 +203,7 @@ test("failed Auth deletion retains a resumable pending job and all saved busines
  assert.equal(pending.pending,true);
  s.restoreDeletion();
  const resumed=await s.service.confirm(s.request("owner",{action:"confirm",targetUid:"staff",
-  confirmation:"DELETE_ACCOUNT_ONLY",confirmName:""}));
+  confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"山田 太郎"}));
  assert.equal(resumed.complete,true);
  assert.equal(s.people.has("staff"),false);
  assert.deepEqual(s.history(),history);
@@ -231,4 +249,69 @@ test("erasure feature is disabled by default on nonreviewed deployments",async()
  await assert.rejects(s.service.preview(s.request("owner",{action:"preview",targetUid:"staff"})),e=>e.code==="unavailable");
  assert.deepEqual([...s.db.store],before);
  assert.equal(s.events.length,0);
+});
+
+
+test("manager can find suspended pending erasure after browser reload and safely resume",async()=>{
+ const s=setup(),history=s.history();
+ s.failDeletion();
+ await assert.rejects(s.service.confirm(s.request("owner",{action:"confirm",
+  targetUid:"staff",confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"山田 太郎"})),
+  e=>e.code==="unavailable");
+ const pending=await s.service.listPending(s.request("owner",{action:"listPending"}));
+ assert.deepEqual(pending.pending,[{targetUid:"staff",targetName:"山田 太郎"}]);
+ const preview=await s.service.preview(s.request("owner",{action:"preview",targetUid:"staff"}));
+ assert.equal(preview.pending,true);
+ assert.equal(preview.targetName,"山田 太郎");
+ const recorded=clone([...s.db.store]); // listing and preview are strictly read-only
+ await s.service.listPending(s.request("owner",{action:"listPending"}));
+ assert.deepEqual([...s.db.store],recorded);
+ s.restoreDeletion();
+ const response=await s.service.confirm(s.request("owner",{action:"confirm",
+  targetUid:"staff",confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"山田 太郎"}));
+ assert.equal(response.complete,true);
+ assert.deepEqual((await s.service.listPending(s.request("owner",{action:"listPending"}))).pending,[]);
+ const receipt=[...s.db.store].find(([path])=>path.startsWith("accountErasureJobs/"))[1];
+ assert.equal(receipt.status,"complete");
+ assert.equal(receipt.targetUid,undefined);
+ assert.equal(receipt.targetName,undefined);
+ assert.equal(receipt.targetAuthHash,undefined);
+ assert.deepEqual(s.history(),history);
+});
+test("a newly recreated Auth UID cannot be deleted using the earlier pending erasure approval",async()=>{
+ const s=setup(),history=s.history();s.failDeletion();
+ await assert.rejects(s.service.confirm(s.request("owner",{action:"confirm",
+  targetUid:"staff",confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"山田 太郎"})),e=>e.code==="unavailable");
+ s.people.set("staff",{uid:"staff",email:"staff@example.com",disabled:false,emailVerified:true,
+  metadata:{creationTime:"2026-11-04T00:00:00.000Z"}});
+ s.restoreDeletion();const events=s.events.length;
+ await assert.rejects(s.service.confirm(s.request("owner",{action:"confirm",
+  targetUid:"staff",confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"山田 太郎"})),e=>e.code==="failed-precondition");
+ assert.equal(s.events.length,events,"new Firebase account must not receive updateUser/deleteUser");
+ assert.equal(s.people.has("staff"),true);
+ assert.deepEqual(s.history(),history);
+});
+test("if previous attempt deleted Auth but not Firestore, retry safely completes only profile cleanup",async()=>{
+ const s=setup(),history=s.history();s.failDeletion();
+ await assert.rejects(s.service.confirm(s.request("owner",{action:"confirm",
+  targetUid:"staff",confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"山田 太郎"})),e=>e.code==="unavailable");
+ s.people.delete("staff");
+ const events=s.events.length;
+ s.restoreDeletion();
+ const finished=await s.service.confirm(s.request("owner",{action:"confirm",
+  targetUid:"staff",confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"山田 太郎"}));
+ assert.equal(finished.complete,true);
+ assert.equal(s.events.length,events,"Auth already missing: do not attempt deletion again");
+ assert.equal(s.db.store.has("users/staff"),false);
+ assert.equal(s.db.store.has("companies/hub/members/staff"),false);
+ assert.deepEqual(s.history(),history);
+});
+test("pending erasure list only exposes original requesting owner and never other partner/company identities",async()=>{
+ const s=setup();s.failDeletion();
+ await assert.rejects(s.service.confirm(s.request("pleader",{action:"confirm",
+  targetUid:"pmember",confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"田中 花子"})),e=>e.code==="unavailable");
+ assert.deepEqual((await s.service.listPending(s.request("owner",{action:"listPending"}))).pending,[]);
+ assert.deepEqual((await s.service.listPending(s.request("powner",{action:"listPending"}))).pending,[]);
+ const own=await s.service.listPending(s.request("pleader",{action:"listPending"}));
+ assert.deepEqual(own.pending,[{targetUid:"pmember",targetName:"田中 花子"}]);
 });
