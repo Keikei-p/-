@@ -23,6 +23,14 @@ const view=(r,over={})=>({date:expected.date,companyName:expected.companyName,re
 test("confirmed original version 0 save is recognized by verified GET only",()=>{
  assert.equal(check(view([row]),expected),"saved");
 });
+
+test("first save cannot confirm a different team; correction retains the historical team",()=>{
+ const otherTeam={...row,teamIdSnapshot:"historical-team"};
+ assert.equal(check(view([otherTeam]),expected),"unknown");
+ // A correction's current staff assignment must not rewrite its old snapshot.
+ assert.equal(check(view([{...otherTeam,version:2}]),
+   {...expected,expectedVersion:1,workTeamId:"current-team"}),"saved");
+});
 test("lack of first entry is confirmed not saved; no speculation",()=>{
  assert.equal(check(view([]),expected),"not_saved");
 });

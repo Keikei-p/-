@@ -14480,9 +14480,9 @@ function managedAccountErasureConfirmation(targetName){
   overlay.style.cssText="position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:16px;";
   const panel=document.createElement("div");
   panel.style.cssText="background:var(--card,#fff);color:var(--text,#111);padding:24px;border-radius:16px;max-width:440px;width:100%;max-height:90vh;overflow-y:auto;";
-  const title=document.createElement("h3");title.textContent="アカウント情報を完全削除";
+  const title=document.createElement("h3");title.textContent="ログイン認証を削除";
   const message=document.createElement("p");
-  message.textContent=targetName+" のFirebaseログインと現役プロフィールを削除します。取り消しできません。過去の実績件数・売上・当時単価・班・訂正記録は会社の履歴として残ります。過去の実績に保存された名前も残る場合があります。";
+  message.textContent=targetName+" のFirebaseログイン認証だけを削除します。取り消しできません。プロフィールは保持し、所属は無効化します。過去の実績件数・売上・当時単価・班・訂正記録は会社の履歴として残ります。過去の実績に保存された名前も残る場合があります。";
   const nameLabel=document.createElement("label");
   nameLabel.textContent="確認のため対象者の名前を入力";
   const nameInput=document.createElement("input");
@@ -14501,7 +14501,7 @@ function managedAccountErasureConfirmation(targetName){
   const cancel=document.createElement("button");cancel.type="button";
   cancel.textContent="キャンセル";cancel.className="member-action-button";
   const confirm=document.createElement("button");confirm.type="button";
-  confirm.textContent="アカウントを完全削除";confirm.className="history-delete";
+  confirm.textContent="ログイン認証を削除";confirm.className="history-delete";
   const finish=value=>{password.value="";overlay.remove();resolve(value);};
   cancel.onclick=()=>finish(null);
   confirm.onclick=()=>{
@@ -14584,7 +14584,8 @@ async function eraseManagedAccount(targetUid,targetName,refresh){
   const preview=(await accountErasurePreview({action:"preview",targetUid})).data;
   if(auth.currentUser?.uid!==operator.uid)throw Error("account_changed");
   if((preview?.ready!==true&&preview?.pending!==true)||
-     preview.targetUid!==targetUid||preview.targetName!==targetName){
+     preview.targetUid!==targetUid||preview.targetName!==targetName||
+     preview.removesActiveUserAndMemberProfile!==false||preview.personalProfilesRetained!==true){
    showError("この人の所属・権限・過去の移籍情報を確認できず、削除を停止しました。");return;
   }
   const answer=await managedAccountErasureConfirmation(targetName);
@@ -14597,12 +14598,12 @@ async function eraseManagedAccount(targetUid,targetName,refresh){
   }finally{answer.password="";}
   if(auth.currentUser?.uid!==operator.uid)throw Error("account_changed");
   const result=(await accountErasureConfirm({
-   action:"confirm",targetUid,confirmation:"DELETE_ACCOUNT_ONLY",confirmName:targetName
+   action:"confirm",targetUid,confirmation:"DELETE_AUTH_ONLY",confirmName:targetName
   })).data;
   if(auth.currentUser?.uid!==operator.uid||result?.complete!==true||
-     result.authDeleted!==true||result.personalProfileDeleted!==true)
+     result.authDeleted!==true||result.personalProfileDeleted!==false||result.personalProfilesRetained!==true)
    throw Error("unverified_complete");
-  showSuccess(targetName+" のログインアカウントと現役プロフィールを削除しました。過去の件数・売上・班履歴は保持しています。");
+  showSuccess(targetName+" のログイン認証を削除しました。プロフィールは保持し、所属を無効化しました。過去の件数・売上・班履歴は保持しています。");
   if(typeof refresh==="function")await refresh();
  }catch(error){
   if(error?.code==="functions/not-found"||error?.code==="functions/unimplemented")
@@ -22953,7 +22954,7 @@ function renderMembers() {
             eraseButton.type="button";
             eraseButton.className="history-delete";
             eraseButton.textContent="ログイン情報を完全削除";
-            eraseButton.title="Firebase Authと現役プロフィールのみ削除。実績・売上・班履歴は保持";
+            eraseButton.title="Firebase Authのみ削除。プロフィール・実績・売上・班履歴は保持";
             eraseButton.onclick=()=>void eraseManagedAccount(
               member.id || member.uid,member.name || "",()=>loadMembers()
             );

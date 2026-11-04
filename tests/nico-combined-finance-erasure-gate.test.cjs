@@ -20,7 +20,7 @@ test("same production app keeps both secondary partner migration and strict mana
  assert.match(ui,/pInlinePeople/);
  assert.match(ui,/pInlineCountFields/);
  assert.match(ui,/reauthenticateWithCredential\(operator,cred\)/);
- assert.match(ui,/confirmation:"DELETE_ACCOUNT_ONLY",confirmName:targetName/);
+ assert.match(ui,/confirmation:"DELETE_AUTH_ONLY",confirmName:targetName/);
  assert.match(ui,/confirmation:"I_ACCEPT_PARTNER_ONLY_ACCESS"/);
 });
 
@@ -59,8 +59,8 @@ test("account erasure remains disabled unless explicitly enabled; no direct raw 
    "account deletion must not open original ledger "+c);
  }
  assert.match(erasure,/getAuth\(\)\.deleteUser\(d\.targetUid\)/);
- assert.match(erasure,/tx\.delete\(x\.ur\)/);
- assert.match(erasure,/tx\.delete\(x\.mr\)/);
+ assert.doesNotMatch(erasure,/tx\.delete\(/);
+ assert.match(erasure,/personalProfilesRetained:true/);
  assert.match(erasure,/historicalBusinessRecordsPreserved:true/);
 });
 
@@ -76,5 +76,5 @@ test("historical sales, CB and ranking result functions are preserved alongside 
  assert.match(ui,/renderPartnerCountOnlyExtras\(/);
  assert.match(workspace,/partnerWorkEntries/);
  assert.match(workspace,/cbCounts/);
- assert.match(erasure,/kind:"retired"/);
+ assert.doesNotMatch(erasure,/tx\.set\(x\.sr/);
 });

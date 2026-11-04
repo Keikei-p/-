@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {runInNewContext} from "node:vm";
-const html=readFileSync(new URL("../index.html",import.meta.url),"utf8");
+const html=readFileSync(new URL("../index.html",import.meta.url),"utf8").replace(/\r\n/g,"\n");
 const backend=readFileSync(new URL("../functions-partner-workspace/service.cjs",import.meta.url),"utf8");
 function between(source,a,b){
  const i=source.indexOf(a),j=source.indexOf(b,i);
@@ -62,12 +62,14 @@ test("count-only CB saves use total validation, versioned audit, and no sales so
  assert.doesNotMatch(resolver,/tx\.|\.update\(|\.create\(|\.delete\(/);
  const save=between(html,'pInline("pInlineSave").onclick=','// Original internal owner sees existing teams');
  for(const marker of ["partnerInlineSelectedCb()","counts[key]=parsedCb.total",
-  "...(!before?{workTeamId}:{}),privateCounts,expectedVersion:",
-  "saved.cbCounts?.NURO?.[tier]","partnerInlineCountsUnchanged"])
+  "...(!before?{workTeamId}:{}),privateCounts:wirePrivateCounts,",
+  "expectedVersion:expected.expectedVersion",
+  "partnerSavedCountReadbackState(verified,expected)","partnerInlineCountsUnchanged"])
   assert.ok(save.includes(marker),marker);
  assert.match(html,/function partnerInlineClearFields\(\)/);
  assert.match(html,/id="pInlineWorkLocation"/);
- assert.match(html,/saved.workLocation!==workLocation/);
+ assert.match(html,/record.workLocation===expected.workLocation/);
+ assert.match(html,/record.teamIdSnapshot===expected.workTeamId/);
 });
 test("cashback count parser rejects NaN and overflows, accepts 0 and 5 plan cells",()=>{
  const source=between(html,"const PARTNER_NURO_CB_TIERS=","function partnerInlineHasUnsavedCounts(){");
@@ -100,9 +102,9 @@ test("daily working team is selectable only for new entries and never rewrites h
   'const workTeamId=pInline("pInlineWorkingTeam").value',
   'if(!before&&(!partnerMainValidId(workTeamId)',
   '...(!before?{workTeamId}:{})',
-  '(!before&&saved.teamIdSnapshot!==workTeamId)',
+  'partnerSavedCountReadbackState(verified,expected)',
  ])assert.ok(save.includes(token),token);
- const submit=between(backend,"async function submit(request){","return Object.freeze({manage,accept,view,submit})");
+ const submit=between(backend,"async function submit(request){","return Object.freeze({manage,accept,");
  for(const token of [
   'const workTeamId=d.workTeamId==null?null:clean(d.workTeamId)',
   'const teamIdSnapshot=oldSnap.exists?',

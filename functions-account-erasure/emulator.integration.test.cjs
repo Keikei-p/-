@@ -88,11 +88,11 @@ test("real Firestore transaction + Auth deletion retains immutable old revenue a
  const d=await seedHub(),r=data=>request(d.owner,d.ownerMail,d.jwt,data);
  assert.equal((await service.preview(r({action:"preview",targetUid:d.person}))).ready,true);
  const out=await service.confirm(r({action:"confirm",targetUid:d.person,
-  confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"検証担当者"}));
+  confirmation:"DELETE_AUTH_ONLY",confirmName:"検証担当者"}));
  assert.equal(out.complete,true);
  await assert.rejects(auth.getUser(d.person),e=>e.code==="auth/user-not-found");
- assert.equal((await db.doc("users/"+d.person).get()).exists,false);
- assert.equal((await db.doc("companies/"+d.hub+"/members/"+d.person).get()).exists,false);
+ assert.equal((await db.doc("users/"+d.person).get()).exists,true);
+ assert.equal((await db.doc("companies/"+d.hub+"/members/"+d.person).get()).exists,true);
  await assertHistorical(d);
  const receipt=(await db.collection("accountErasureJobs")
   .where("requestedByUid","==",d.owner).get()).docs[0];
@@ -114,7 +114,7 @@ test("real Auth delete failure leaves job recoverable, then deletes exactly orig
  };
  const svc=makeAccountErasure({db,getAuth:()=>controlled,FieldValue,HttpsError:CallError,enabled:()=>true});
  await assert.rejects(svc.confirm(r({action:"confirm",targetUid:d.person,
-  confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"検証担当者"})),e=>e.code==="unavailable");
+  confirmation:"DELETE_AUTH_ONLY",confirmName:"検証担当者"})),e=>e.code==="unavailable");
  assert.equal((await auth.getUser(d.person)).disabled,true);
  const found=await svc.listPending(r({action:"listPending"}));
  assert.deepEqual(found.pending,[{targetUid:d.person,targetName:"検証担当者"}]);
@@ -124,7 +124,7 @@ test("real Auth delete failure leaves job recoverable, then deletes exactly orig
  assert.equal(receipt.data().status,"pending");
  failDelete=false;
  const resumed=await svc.confirm(r({action:"confirm",targetUid:d.person,
-  confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"検証担当者"}));
+  confirmation:"DELETE_AUTH_ONLY",confirmName:"検証担当者"}));
  assert.equal(resumed.complete,true);
  assert.equal((await db.doc(receipt.ref.path).get()).data().status,"complete");
  await assert.rejects(auth.getUser(d.person),e=>e.code==="auth/user-not-found");
@@ -142,7 +142,7 @@ test("real Firebase SDK guards newly recreated UID during pending deletion",asyn
  };
  const svc=makeAccountErasure({db,getAuth:()=>controlled,FieldValue,HttpsError:CallError,enabled:()=>true});
  await assert.rejects(svc.confirm(r({action:"confirm",targetUid:d.person,
-  confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"検証担当者"})),e=>e.code==="unavailable");
+  confirmation:"DELETE_AUTH_ONLY",confirmName:"検証担当者"})),e=>e.code==="unavailable");
  const receipt=(await db.collection("accountErasureJobs")
   .where("requestedByUid","==",d.owner).get()).docs[0];
  records.add(receipt.ref.path);
@@ -152,7 +152,7 @@ test("real Firebase SDK guards newly recreated UID during pending deletion",asyn
  stop=false;
  const before=attempted;
  await assert.rejects(svc.confirm(r({action:"confirm",targetUid:d.person,
-  confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"検証担当者"})),
+  confirmation:"DELETE_AUTH_ONLY",confirmName:"検証担当者"})),
   e=>e.code==="failed-precondition");
  assert.equal(attempted,before);
  assert.equal((await auth.getUser(d.person)).disabled,false);
@@ -192,17 +192,17 @@ test("real partner leader removes only same-team Auth profile; saved NURO counts
  const rq=data=>request(leader,leader+"@example.test",jwt,data);
  assert.equal((await service.preview(rq({action:"preview",targetUid:target}))).ready,true);
  const erased=await service.confirm(rq({action:"confirm",targetUid:target,
-  confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"退職前のメンバー"}));
+  confirmation:"DELETE_AUTH_ONLY",confirmName:"退職前のメンバー"}));
  assert.equal(erased.complete,true);
  await assert.rejects(auth.getUser(target),e=>e.code==="auth/user-not-found");
- assert.equal((await db.doc("users/"+target).get()).exists,false);
- assert.equal((await db.doc("companies/"+cid+"/members/"+target).get()).exists,false);
+ assert.equal((await db.doc("users/"+target).get()).exists,true);
+ assert.equal((await db.doc("companies/"+cid+"/members/"+target).get()).exists,true);
  const retired=(await db.doc("companies/"+cid+"/partnerWorkStaff/"+target).get()).data();
- assert.equal(retired.name,"退会済み");
- assert.equal(retired.kind,"retired");
+ assert.equal(retired.name,"退職前のメンバー");
+ assert.equal(retired.kind,"account");
  assert.equal(retired.active,false);
- assert.equal(retired.phone,undefined);
- assert.equal(retired.email,undefined);
+ assert.equal(retired.phone,"0000-0000");
+ assert.equal(retired.email,target+"@example.test");
  assert.equal(retired.teamId,"teamA");
  assert.deepEqual((await db.doc(ledgerPath).get()).data(),ledger);
  const receipt=(await db.collection("accountErasureJobs")

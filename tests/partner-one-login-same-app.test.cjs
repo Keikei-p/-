@@ -1,6 +1,6 @@
 "use strict";
 const test=require("node:test"),assert=require("node:assert/strict"),fs=require("node:fs"),path=require("node:path");
-const load=name=>fs.readFileSync(path.join(__dirname,"..",name),"utf8");
+const load=name=>fs.readFileSync(path.join(__dirname,"..",name),"utf8").replace(/\r\n/g,"\n");
 const index=load("index.html"),partner=load("partner-workspace.html"),
  legacyCompanyInvite=load("partner-invite.html"),
  service=load("functions-partner-workspace/service.cjs"),
