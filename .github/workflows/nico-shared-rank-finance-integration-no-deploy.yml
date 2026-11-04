@@ -42,7 +42,7 @@ jobs:
           git fetch --no-tags origin fix/partner-shared-rank-independent-requests-20261104
           git diff --name-only origin/fix/partner-shared-rank-independent-requests-20261104...HEAD > /tmp/nico-integration-files.txt
           cat /tmp/nico-integration-files.txt
-          if grep -Ev '^(firestore\.rules|tests/rules\.test\.cjs|\.github/workflows/nico-shared-rank-finance-integration-no-deploy.yml|tools/production/check-partner-release-readiness\.mjs|tests/partner-release-readiness-audit\.test\.mjs) /tmp/nico-integration-files.txt; then /tmp/nico-integration-files.txt; then
+          if grep -Ev '^(firestore\.rules|tests/rules\.test\.cjs|\.github/workflows/nico-shared-rank-finance-integration-no-deploy\.yml|tools/production/check-partner-release-readiness\.mjs|tests/partner-release-readiness-audit\.test\.mjs)$' /tmp/nico-integration-files.txt; then
             echo STOP_UNEXPECTED_INTEGRATION_FILES
             exit 1
           fi
