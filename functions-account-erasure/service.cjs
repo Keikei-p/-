@@ -15,6 +15,17 @@ function makeAccountErasure({db,getAuth,FieldValue,HttpsError,enabled=()=>false,
  const member=(cid,uid)=>ref("companies",cid).collection("members").doc(uid);
  const staff=(cid,uid)=>ref("companies",cid).collection("partnerWorkStaff").doc(uid);
  const job=(cid,uid)=>ref("accountErasureJobs",jobKey(cid,uid));
+ const authIdentityHash=a=>{
+  if(!a||!UID.test(a.uid||"")||!EMAIL.test(lower(a.email))||
+     typeof a.metadata?.creationTime!=="string"||
+     !a.metadata.creationTime.trim())fail();
+  return crypto.createHash("sha256").update(a.uid+"\\n"+
+   lower(a.email)+"\\n"+a.metadata.creationTime).digest("hex");
+ };
+ async function authGone(uid){
+  try{await getAuth().getUser(uid);return false;}
+  catch(e){if(e?.code==="auth/user-not-found")return true;throw e;}
+ }
  // Team movement is preserved only as business metadata. Unknown fields
  // (including email/name/phone) never get copied into the erasure receipt.
  const safeHistory=value=>{
@@ -95,7 +106,11 @@ function makeAccountErasure({db,getAuth,FieldValue,HttpsError,enabled=()=>false,
       !["pending","complete"].includes(j.status))fail();
    if(j.status==="complete")return{mode,cid,status:"complete",jr,targetUid};
    if(!allowPending)fail();
-   return {mode,cid,status:"pending",jr,targetUid,ur,mr,sr};
+   if(j.targetUid!==targetUid||!norm(j.targetName)||
+      typeof j.targetAuthHash!=="string"||
+      !/^[a-f0-9]{64}$/.test(j.targetAuthHash))fail();
+   return {mode,cid,status:"pending",jr,targetUid,ur,mr,sr,
+    targetName:j.targetName,targetAuthHash:j.targetAuthHash};
   }
   if(!us.exists||!ms.exists||u.uid!==targetUid||
     u.companyId!==cid||m.uid!==targetUid||
@@ -134,7 +149,7 @@ function makeAccountErasure({db,getAuth,FieldValue,HttpsError,enabled=()=>false,
       (u.role!=="member"||m.role!=="member"||u.teamId!==mu.teamId))fail("permission-denied");
   }
   return {mode,cid,status:"ready",jr,targetUid,ur,mr,sr,
-   targetName:norm(u.name),targetEmail:lower(u.email),
+   targetName:norm(u.name),targetAuthHash:authIdentityHash(identity),
    businessHistory:{
     oldTeamId:u.teamId||null,role:u.role||null,
     userTeamHistory:safeHistory(u.teamHistory),
@@ -149,7 +164,8 @@ function makeAccountErasure({db,getAuth,FieldValue,HttpsError,enabled=()=>false,
   const result=await check(a,d.targetUid,null,true);
   return {targetUid:d.targetUid,
    // Name is shown only to the same manager who already owns the roster.
-   targetName:result.status==="ready"?result.targetName:null,
+   targetName:result.status==="ready"||result.status==="pending"?
+    result.targetName:null,
    ready:result.status==="ready",
    pending:result.status==="pending",
    completed:result.status==="complete",
@@ -157,6 +173,34 @@ function makeAccountErasure({db,getAuth,FieldValue,HttpsError,enabled=()=>false,
    removesActiveUserAndMemberProfile:true,
    historicalSalesAndTeamSnapshotsRetained:true,
    note:"過去の営業記録・班履歴に保存済みの氏名・UIDは履歴として残る場合があります。"};
+ }
+ // A fresh manager-initiated query is necessary: deactivated accounts
+ // disappear from the ordinary active-member list, even after page reload.
+ async function listPending(request){
+  const a=await actor(request),d=request?.data||{};
+  if(d.action!=="listPending"||
+     Object.keys(d).some(k=>k!=="action"))fail("invalid-argument");
+  const snaps=await db.collection("accountErasureJobs")
+   .where("requestedByUid","==",a.uid).limit(26).get();
+  if(snaps.size>25)fail("resource-exhausted");
+  const entries=[];
+  for(const sn of snaps.docs){
+   const receipt=sn.data()||{};
+   if(receipt.status!=="pending")continue;
+   if(!UID.test(receipt.targetUid||""))fail();
+   let x;
+   try{x=await check(a,receipt.targetUid,null,true);}
+   catch(e){
+    if(e.code==="permission-denied"||e.code==="failed-precondition")continue;
+    throw e;
+   }
+   if(x.status==="pending"&&x.jr.id===sn.id&&
+      x.targetName===receipt.targetName){
+    entries.push({targetUid:x.targetUid,targetName:x.targetName});
+   }
+  }
+  entries.sort((a,b)=>a.targetName.localeCompare(b.targetName,"ja"));
+  return {pending:entries,readOnly:true};
  }
  async function confirm(request){
   const a=await actor(request,true),d=request?.data||{};
@@ -166,9 +210,12 @@ function makeAccountErasure({db,getAuth,FieldValue,HttpsError,enabled=()=>false,
     Object.keys(d).some(k=>!["action","targetUid","confirmation","confirmName"].includes(k)))
     fail("invalid-argument");
   let checked=await check(a,d.targetUid,null,true);
-  if(checked.status==="complete")return{complete:true,authDeleted:true,personalProfileDeleted:true};
+  if(checked.status==="complete"){
+   if(!await authGone(d.targetUid))fail();
+   return{complete:true,authDeleted:true,personalProfileDeleted:true};
+  }
+  if(norm(d.confirmName)!==checked.targetName)fail("invalid-argument");
   if(checked.status==="ready"){
-   if(norm(d.confirmName)!==checked.targetName)fail("invalid-argument");
    // Only the bounded account and roster paths change here. The business
    // history is copied BEFORE profile removal, without email, name or sales.
    await db.runTransaction(async tx=>{
@@ -177,6 +224,8 @@ function makeAccountErasure({db,getAuth,FieldValue,HttpsError,enabled=()=>false,
        x.targetName!==checked.targetName)fail();
     tx.create(x.jr,{
      companyId:x.cid,mode:x.mode,requestedByUid:a.uid,status:"pending",
+     targetUid:d.targetUid,targetName:x.targetName,
+     targetAuthHash:x.targetAuthHash,
      businessHistory:x.businessHistory,createdAt:FieldValue.serverTimestamp()
     });
     tx.update(x.ur,{active:false,updatedAt:FieldValue.serverTimestamp()});
@@ -184,13 +233,25 @@ function makeAccountErasure({db,getAuth,FieldValue,HttpsError,enabled=()=>false,
     if(x.sr)tx.update(x.sr,{active:false,updatedAt:FieldValue.serverTimestamp()});
    });
   }
+  // Never delete a newly recreated Firebase Auth identity under a reused UID.
+  // A missing Auth user is fine when an earlier attempt deleted it already.
+  let stillThere=false;
+  try{
+   const account=await getAuth().getUser(d.targetUid);
+   if(authIdentityHash(account)!==checked.targetAuthHash)fail();
+   stillThere=true;
+  }catch(e){
+   if(e?.code!=="auth/user-not-found")throw e;
+  }
   // Firebase Authentication cannot participate in Firestore transactions.
   // The durable pending job enables the SAME manager to retry safely.
   try{
-   try{await getAuth().updateUser(d.targetUid,{disabled:true});}
-   catch(e){if(e?.code!=="auth/user-not-found")throw e;}
-   try{await getAuth().deleteUser(d.targetUid);}
-   catch(e){if(e?.code!=="auth/user-not-found")throw e;}
+   if(stillThere){
+    try{await getAuth().updateUser(d.targetUid,{disabled:true});}
+    catch(e){if(e?.code!=="auth/user-not-found")throw e;}
+    try{await getAuth().deleteUser(d.targetUid);}
+    catch(e){if(e?.code!=="auth/user-not-found")throw e;}
+   }
   }catch{
    fail("unavailable"); // pending job remains for recovery, records unaffected
   }
@@ -215,11 +276,14 @@ function makeAccountErasure({db,getAuth,FieldValue,HttpsError,enabled=()=>false,
       role:business.role,teamId:business.oldTeamId,active:false,
       retiredAt:FieldValue.serverTimestamp()});
    }
-   tx.update(x.jr,{status:"complete",completedAt:FieldValue.serverTimestamp()});
+   tx.update(x.jr,{status:"complete",
+    targetUid:FieldValue.delete(),targetName:FieldValue.delete(),
+    targetAuthHash:FieldValue.delete(),
+    completedAt:FieldValue.serverTimestamp()});
   });
   return {complete:true,authDeleted:true,personalProfileDeleted:true,
    historicalBusinessRecordsPreserved:true};
  }
- return Object.freeze({preview,confirm});
+ return Object.freeze({preview,confirm,listPending});
 }
 module.exports={makeAccountErasure};
