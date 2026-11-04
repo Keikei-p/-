@@ -15,6 +15,7 @@ on:
   push:
     branches:
       - security/partner-secondary-raw-finance-deny-20261104
+      - integration/nico-partner-security-erasure-20261104
 permissions:
   contents: read
 jobs:
