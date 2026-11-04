@@ -6,8 +6,9 @@ on:
 permissions:
   contents: read
 concurrency:
+  # Test newest draft commit only; older no-deploy checks must not consume free minutes.
   group: nico-shared-finance-integration-no-deploy
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   demo-emulator:
     runs-on: ubuntu-latest
