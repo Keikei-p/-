@@ -69,6 +69,22 @@ test('manual Rules workflow or production finance preflight cannot silently disa
  assert(inspectPartnerReleaseReadiness(h).blockers.includes('HOSTING_SAFETY_PREFLIGHT_MISSING'));
 });
 
+test('all four browser financial source types are detected, including scoped queries',()=>{
+ const collections=['records','products','recordCorrections','revenueGoals'];
+ for(const collection of collections){
+  for(const invocation of [
+   'companyCollectionQuery("'+collection+'")',
+   'collection(db, "'+collection+'")'
+  ]){
+   const f=fixture();
+   f.browser='<html> '+invocation+' </html>';
+   const result=inspectPartnerReleaseReadiness(f);
+   assert(result.blockers.includes('LEGACY_BROWSER_STILL_USES_RAW_SALES_COLLECTIONS'),
+    invocation+' must not be missed');
+  }
+ }
+});
+
 test('unrecognized input is rejected and never interpreted as ready',()=>{
  const f=fixture();
  f.rules='';
@@ -82,9 +98,8 @@ test('even a synthetic static compatibility result is never production approval'
  const f=fixture();
  f.rules=f.rules.replace('service cloud.firestore {',
   'service cloud.firestore {\n    function isInternalFinanceReader(companyId) { return false; }');
- f.browser=f.browser
-  .replace('function recordsCollectionQuery(', 'function oldRecordsQueryDisabled(')
-  .replace('function persistDailyRecord(', 'function oldPersistDisabled(');
+ // A synthetic gateway-only browser replaces every legacy raw collection path.
+ f.browser='<html>signInWithEmailAndPassword service-worker.js /v1/public-counts</html>';
  const sha=inspectPartnerReleaseReadiness(f).candidateRulesSha256;
  const originalPin=f.manualRelease.match(/export const CANDIDATE='([a-f0-9]{64})'/)[1];
  f.manualRelease=f.manualRelease.replace(originalPin,sha);
