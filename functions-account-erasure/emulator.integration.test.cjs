@@ -158,3 +158,55 @@ test("real Firebase SDK guards newly recreated UID during pending deletion",asyn
  assert.equal((await auth.getUser(d.person)).disabled,false);
  await assertHistorical(d);
 });
+
+test("real partner leader removes only same-team Auth profile; saved NURO counts and CB history remain",async()=>{
+ const hub=uid("hub"),cid=uid("partner"),owner=uid("powner"),
+  leader=uid("pleader"),target=uid("pmember");
+ const roleFor=u=>u===owner?"owner":u===leader?"leader":"member";
+ for(const u of [owner,leader,target]){
+  await createUser(u,u+"@example.test");accounts.add(u);
+ }
+ const ref=async(path,data)=>{await db.doc(path).set(data);records.add(path);};
+ await ref("companies/"+cid,{companyKind:"partner",hubCompanyId:hub,
+  ownerUid:owner,active:true});
+ await ref("partnerRelations/"+cid,{partnerCompanyId:cid,hubCompanyId:hub,
+  active:true,countSharingApproved:true});
+ for(const u of [owner,leader,target]){
+  const record={uid:u,email:u+"@example.test",name:u===target?"退職前のメンバー":"管理者",
+   companyId:cid,companyRole:u===owner?"owner":"member",role:roleFor(u),
+   teamId:"teamA",active:true,accessKind:"partner",memberType:"cooperator",
+   canViewRevenue:false,canViewUnitPrice:false};
+  await ref("users/"+u,record);
+  await ref("companies/"+cid+"/members/"+u,record);
+  await ref("companies/"+cid+"/partnerWorkStaff/"+u,{
+   uid:u,companyId:cid,name:record.name,email:record.email,phone:"0000-0000",
+   teamId:"teamA",role:roleFor(u),kind:"account",active:true
+  });
+ }
+ const ledgerPath="companies/"+cid+"/partnerWorkEntries/2026-10-31__"+target;
+ const ledger={companyId:cid,date:"2026-10-31",staffId:target,
+  staffNameSnapshot:"退職前のメンバー",teamIdSnapshot:"teamA",totalCount:3,
+  counts:{NURO:3},cbCounts:{NURO:{"20000":3}}};
+ await ref(ledgerPath,ledger);
+ const jwt=await token(leader+"@example.test");
+ const rq=data=>request(leader,leader+"@example.test",jwt,data);
+ assert.equal((await service.preview(rq({action:"preview",targetUid:target}))).ready,true);
+ const erased=await service.confirm(rq({action:"confirm",targetUid:target,
+  confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"退職前のメンバー"}));
+ assert.equal(erased.complete,true);
+ await assert.rejects(auth.getUser(target),e=>e.code==="auth/user-not-found");
+ assert.equal((await db.doc("users/"+target).get()).exists,false);
+ assert.equal((await db.doc("companies/"+cid+"/members/"+target).get()).exists,false);
+ const retired=(await db.doc("companies/"+cid+"/partnerWorkStaff/"+target).get()).data();
+ assert.equal(retired.name,"退会済み");
+ assert.equal(retired.kind,"retired");
+ assert.equal(retired.active,false);
+ assert.equal(retired.phone,undefined);
+ assert.equal(retired.email,undefined);
+ assert.equal(retired.teamId,"teamA");
+ assert.deepEqual((await db.doc(ledgerPath).get()).data(),ledger);
+ const receipt=(await db.collection("accountErasureJobs")
+  .where("requestedByUid","==",leader).get()).docs[0];
+ assert.equal(receipt.data().status,"complete");
+ records.add(receipt.ref.path);
+});
