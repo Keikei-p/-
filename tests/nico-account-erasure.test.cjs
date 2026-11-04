@@ -113,7 +113,7 @@ test("owner preview is read-only and confirms irreversible Auth/profile erasure 
  assert.equal(s.db.store.has("users/staff"),false);
  assert.equal(s.db.store.has("companies/hub/members/staff"),false);
  assert.deepEqual(s.history(),original);
- assert.equal(s.db.store.size,before.length,"only job replaces former user and member");
+ assert.equal(s.db.store.size,before.length-1,"one receipt created; former user and membership removed");
  const receipt=[...s.db.store].find(([k])=>k.startsWith("accountErasureJobs/"))?.[1];
  assert.equal(receipt.status,"complete");
  assert.deepEqual(receipt.businessHistory.userTeamHistory,
