@@ -1615,7 +1615,19 @@ test("verified person transfers an existing secondary company into count-only pr
   staffId:"m",counts:{...zero(),NURO:3},expectedVersion:1}));
  assert.equal(updated.saved,true);
  assert.equal((await api.view(req("m",{date:"2026-10-31"}))).records[0].totalCount,3);
+ // A retired secondary context must not make future team edits behave as an
+ // old internal member. The saved day's original team snapshot is immutable.
+ const nextTeam=(await api.manage(req("p",{action:"addTeam",name:"移籍後の2班"}))).teamId;
+ const teamBeforeMove=db.store.get("companies/partner/partnerWorkEntries/2026-10-31__m").teamIdSnapshot;
+ const moved=await api.manage(req("p",{action:"moveStaff",staffId:"m",teamId:nextTeam}));
+ assert.equal(moved.moved,true);
+ assert.equal(db.store.get("users/m").teamId,nextTeam);
+ assert.equal(db.store.get("companies/partner/members/m").teamId,nextTeam);
+ assert.equal(db.store.get("companies/partner/partnerWorkStaff/m").teamId,nextTeam);
+ assert.equal(db.store.get("companies/partner/partnerWorkEntries/2026-10-31__m").teamIdSnapshot,
+  teamBeforeMove,"an existing day's team snapshot must never be silently rewritten");
  assert.deepEqual(db.store.get("records/old"),oldSales);
+ assert.deepEqual(db.store.get("products/money"),oldFinance);
 });
 
 
