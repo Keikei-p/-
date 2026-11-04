@@ -936,3 +936,50 @@ test('secondary partner cannot read legacy internal reporting, LINE settings or 
   assert.deepEqual((await getDoc(goal(admin,'secondary-leader-goal'))).data(),managerGoal);
  });
 });
+
+test('partner-secondary former internal leader loses old peer directory and old invitations, while self and actual Owner stay available',async()=>{
+ const manager=dbFor('leaderA'),owner=dbFor('owner');
+ const oldPeer=doc(manager,'users','helper');
+ const oldMembers=collection(manager,'companies',company,'members');
+ const preInvite=doc(manager,'invitations','secondary-test-before');
+ const newInvite=doc(manager,'invitations','secondary-test-after');
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const admin=ctx.firestore();
+  await updateDoc(doc(admin,'companies',company),{name:'Demo Internal Company'});
+  await updateDoc(doc(admin,'companies',company,'members','leaderA'),{canCreateInvite:true});
+ });
+ const invite=(id)=>({
+  companyId:company,companyName:'Demo Internal Company',
+  email:id+'@example.test',role:'member',status:'pending',
+  invitedBy:'leaderA',createdAt:serverTimestamp(),
+  expiresAt:new Date(Date.now()+15*60*1000)
+ });
+ // Prove the exact legacy paths could be used before the server linked a
+ // secondary workspace. No existing historical document is changed here.
+ await assertSucceeds(getDoc(oldPeer));
+ await assertSucceeds(getDocsFromServer(oldMembers));
+ await assertSucceeds(setDoc(preInvite,invite('before')));
+ await env.withSecurityRulesDisabled(async ctx=>{
+  await setDoc(doc(ctx.firestore(),'partnerWorkspaceContexts','leaderA'),{
+   uid:'leaderA',kind:'partner_secondary',active:true,
+   primaryCompanyId:company,partnerCompanyId:'partner-demo',hubCompanyId:company
+  });
+ });
+ await assertFails(getDoc(oldPeer));
+ await assertFails(getDocsFromServer(oldMembers));
+ await assertFails(getDoc(doc(manager,'companies',company,'members','helper')));
+ await assertFails(getDocsFromServer(query(collection(manager,'users'),where('companyId','==',company))));
+ await assertFails(setDoc(newInvite,invite('after')));
+ // Routing can still identify the authenticated user's own old profile.
+ await assertSucceeds(getDoc(doc(manager,'users','leaderA')));
+ await assertSucceeds(getDoc(doc(manager,'companies',company,'members','leaderA')));
+ // Owner is a different internal UID and keeps the established staff tools.
+ await assertSucceeds(getDoc(doc(owner,'users','helper')));
+ await assertSucceeds(getDocsFromServer(collection(owner,'companies',company,'members')));
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const admin=ctx.firestore();
+  assert.equal((await getDoc(doc(admin,'invitations','secondary-test-before'))).data().status,'pending');
+  assert.equal((await getDoc(doc(admin,'invitations','secondary-test-after'))).exists(),false);
+  assert.equal((await getDoc(doc(admin,'users','helper'))).data().active,true);
+ });
+});

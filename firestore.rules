@@ -167,8 +167,12 @@ service cloud.firestore {
     }
 
     function isCompanyManager(companyId) {
-      return isCompanyLeader(companyId)
-        || isCompanyOwner(companyId);
+      // An old leader role must never re-open the internal staff directory,
+      // team administration or profile management to a partner-secondary UID.
+      // Self-profile and self-member reads remain separately permitted for
+      // login compatibility, while genuine internal managers are unchanged.
+      return noSecondaryPartnerWorkspace()
+        && (isCompanyLeader(companyId) || isCompanyOwner(companyId));
     }
 
     // Product writes previously re-entered master/member checks through both
@@ -257,7 +261,10 @@ service cloud.firestore {
     }
 
     function canCreateInvite(companyId) {
-      return isCompanyMaster(companyId)
+      // Invitations use a separate grant from isCompanyManager. Gate both,
+      // or a former internal leader could still issue old company invites.
+      return noSecondaryPartnerWorkspace()
+        && (isCompanyMaster(companyId)
         || (
           isCompanyMember(companyId)
           && (
@@ -268,7 +275,7 @@ service cloud.firestore {
               && get(memberPath(companyId, request.auth.uid)).data.role == 'leader'
             )
           )
-        );
+        ));
     }
 
     function managedMemberCreate(companyId, memberId) {
