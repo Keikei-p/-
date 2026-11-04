@@ -1736,3 +1736,27 @@ test("a migrated secondary leader retains existing partner member invitation rig
  assert.deepEqual(db.store.get("products/money"),oldFinance);
  assert.deepEqual(db.store.get("records/old"),oldSales);
 });
+
+test("retired anonymous staff profile preserves all saved historical partner counts and team attribution",async()=>{
+ const {db,api,req,zero}=setup();
+ const team=(await api.manage(req("p",{action:"addTeam",name:"保存済み班"}))).teamId;
+ const staffId=(await api.manage(req("p",{action:"addManaged",name:"退職前",teamId:team}))).staffId;
+ const saved=await api.submit(req("p",{date:"2026-10-31",staffId,
+  counts:{...zero(),NURO:2},expectedVersion:0}));
+ assert.equal(saved.saved,true);
+ const path="companies/partner/partnerWorkEntries/2026-10-31__"+staffId;
+ const oldEntry=clone(db.store.get(path));
+ const staffPath="companies/partner/partnerWorkStaff/"+staffId;
+ db.seed(staffPath,{uid:null,name:"退会済み",kind:"retired",companyId:"partner",
+  role:"member",teamId:team,active:false});
+ const viewed=await api.view(req("p",{date:"2026-10-31"}));
+ const row=viewed.records.find(x=>x.staffId===staffId);
+ assert.equal(row.totalCount,2);
+ assert.equal(row.teamIdSnapshot,team);
+ assert.equal(viewed.staff.find(x=>x.id===staffId).name,"退会済み");
+ assert.equal(viewed.staff.find(x=>x.id===staffId).active,false);
+ const owner=await api.view(req("h",{date:"2026-10-31",includeTeamStatus:true}));
+ const reports=owner.teamReports.find(x=>x.partnerCompanyId==="partner");
+ assert.equal(reports.teams.find(x=>x.id===team).totalCount,2);
+ assert.deepEqual(db.store.get(path),oldEntry,"deleting personal login profile cannot change saved NURO counts");
+});
