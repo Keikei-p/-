@@ -23,9 +23,13 @@ function mock(){
   const send=async(url,options)=>{
     calls.push({url,method:options.method});
     if(options.method==="PATCH"){
+      // Simulate Firestore's create-only precondition, not a blind upsert.
+      assert(url.endsWith("?currentDocument.exists=false"));
+      const destination=url.slice(0,-"?currentDocument.exists=false".length);
+      if(memory.has(destination))return {ok:false,status:412};
       const fields=JSON.parse(options.body).fields;
-      memory.set(url,fields);
-      return {ok:true,json:async()=>({fields})};
+      memory.set(destination,fields);
+      return {ok:true,status:200,json:async()=>({fields})};
     }
     if(options.method==="GET"){
       const fields=memory.get(url);
@@ -56,6 +60,8 @@ test("synthetic fields and original paths round-trip only through demo emulator 
   assert.equal(m.calls.length,6);
   assert(m.calls.every(x=>x.url.startsWith("http://127.0.0.1:8080/v1/projects/demo-sales-restore/")));
   assert.deepEqual(m.calls.map(x=>x.method),["GET","GET","PATCH","PATCH","GET","GET"]);
+  assert(m.calls.filter(x=>x.method==="PATCH")
+    .every(x=>x.url.endsWith("?currentDocument.exists=false")));
   assert.equal(JSON.stringify(snapshot()),before);
 });
 test("validation fails before any emulator write on malformed or duplicate archive paths",async()=>{
@@ -137,4 +143,27 @@ test("preflight fails closed on permission errors, server faults and redirects b
   await assert.rejects(restoreToLocalEmulator(snapshot(),{...params,send:refused}),/BLOCK: emulator destination/);
   assert(m.calls.every(c=>c.method!=="PATCH"));
  }
+});
+
+test("concurrent local document creation after empty preflight cannot be overwritten",async()=>{
+ const m=mock(),first=emulatorBase(params.emulatorHost,TEST_PROJECT)+"records/synthetic-one";
+ const incumbent={totalCount:{integerValue:"777"}};
+ let raceTriggered=false;
+ const concurrent=async(url,options)=>{
+  if(options.method==="PATCH"&&url.startsWith(first+"?")&&!raceTriggered){
+   // A different process creates the document after all preflight GETs.
+   m.memory.set(first,incumbent);
+   raceTriggered=true;
+  }
+  return m.send(url,options);
+ };
+ await assert.rejects(
+  restoreToLocalEmulator(snapshot(),{...params,send:concurrent}),
+  /BLOCK: emulator restore write\/verification failed/
+ );
+ assert.equal(raceTriggered,true);
+ assert.deepEqual(m.memory.get(first),incumbent,
+  "create-only conditional PATCH must not replace a concurrently created document");
+ assert(m.calls.filter(x=>x.method==="PATCH")
+  .every(x=>x.url.endsWith("?currentDocument.exists=false")));
 });

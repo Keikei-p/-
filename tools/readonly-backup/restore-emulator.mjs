@@ -85,7 +85,12 @@ export async function restoreToLocalEmulator(snapshot,{
               "Content-Type":"application/json","Authorization":"Bearer owner"},
             body:JSON.stringify({fields:row.fields})
           }:{method:"GET",redirect:"error",headers:{"Authorization":"Bearer owner"}};
-          const response=await send(endpoint,options);
+          // The GET-only empty check can race with another local process.
+          // Firestore REST create-only precondition also protects the actual
+          // PATCH: existing documents fail with 412 and remain untouched.
+          const writeEndpoint=method==="PATCH"?
+            endpoint+"?currentDocument.exists=false":endpoint;
+          const response=await send(writeEndpoint,options);
           if(!response?.ok)throw Error("emulator response failed");
           const saved=await response.json();
           if(canonical(saved.fields??{})!==canonical(row.fields))
