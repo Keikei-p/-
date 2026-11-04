@@ -83,8 +83,8 @@ function makeAccountErasure({db,getAuth,FieldValue,HttpsError,enabled=()=>false,
   }
   if(!us.exists||!ms.exists||u.uid!==targetUid||
     u.companyId!==cid||m.uid!==targetUid||
-    (m.companyId!=null&&m.companyId!==cid)||u.active!==true||
-    m.active!==true||u.companyRole!=="member"||m.companyRole!=="member"||
+    (m.companyId!=null&&m.companyId!==cid)||
+    u.companyRole!=="member"||m.companyRole!=="member"||
     !norm(u.name)||u.name.length>80)fail();
   // Before touching anything, prove that the Auth UID and profile's
   // existing email actually refer to the same target account.
@@ -93,12 +93,19 @@ function makeAccountErasure({db,getAuth,FieldValue,HttpsError,enabled=()=>false,
   if(identity.uid!==targetUid||!EMAIL.test(lower(identity.email))||
     (u.email&&lower(u.email)!==lower(identity.email))||
     (m.email&&lower(m.email)!==lower(identity.email)))fail();
+  // Existing owner "利用停止" disables Auth but keeps old personal profiles.
+  // Such an already suspended account must still be eligible for hard erasure.
+  // One active and one inactive document is an unsafe partial state.
+  const activePair=u.active===true&&m.active===true;
+  const alreadySuspended=u.active===false&&m.active===false&&identity.disabled===true;
+  if(!activePair&&!alreadySuspended)fail();
   if(mode==="internal_owner"){
    if(u.accessKind==="partner"||m.accessKind==="partner"||
      c.ownerUid===targetUid||c.masterUid===targetUid)fail();
   }else{
    if(!ss?.exists||st.uid!==targetUid||st.companyId!==cid||
-      st.kind!=="account"||st.active!==true||
+      st.kind!=="account"||
+      !(st.active===true||alreadySuspended&&st.active===false)||
       st.role!==u.role||st.teamId!==u.teamId||m.teamId!==u.teamId||
       u.accessKind!=="partner"||m.accessKind!=="partner"||
       u.memberType!=="cooperator"||m.memberType!=="cooperator"||
