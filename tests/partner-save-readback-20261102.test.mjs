@@ -48,7 +48,7 @@ test("an unchanged private count or extra private count mismatch never hides a r
  assert.equal(check(view([{...r,privateCounts:{custom:1}}]),e),"unknown");
 });
 test("code never retries submit automatically, writes remain one operation, and keeps input on failed verification",()=>{
- const start=moduleText.indexOf('pInline("pInlineSave").onclick=()=>partnerInlineRun(');
+ const start=moduleText.indexOf('pInline("pInlineSave").onclick=()=>{');
  const end=moduleText.indexOf("// Original internal owner sees existing teams PLUS partner-company teams.",start);
  assert.ok(start>0&&end>start);
  const handler=moduleText.slice(start,end);
@@ -78,7 +78,7 @@ test("verified noncommit preserves original Firebase failure code for diagnosis"
 });
 
 test("count/CB/privateCount wire payload uses plain objects compatible with Firebase Functions serializer",()=>{
- const start=moduleText.indexOf('pInline("pInlineSave").onclick=()=>partnerInlineRun(');
+ const start=moduleText.indexOf('pInline("pInlineSave").onclick=()=>{');
  const end=moduleText.indexOf("// Original internal owner sees existing teams PLUS partner-company teams.",start);
  assert.ok(start>0&&end>start);
  const handler=moduleText.slice(start,end);

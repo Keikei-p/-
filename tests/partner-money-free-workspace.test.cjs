@@ -31,7 +31,7 @@ test("staff count API never returns monetary fields, accesses money originals or
   const keys=JSON.parse(t.match(/const KEYS=Object\.freeze\((\[[^;]+\])\);/)[1]);
   assert.deepEqual(keys,KEYS);
  }
- assert.doesNotMatch(service,/\.collection\(["'](?:products|records|recordCorrections|revenueGoals)["']\)/);
+ assert.doesNotMatch(service,/\.collection\(["'](?:records|recordCorrections|revenueGoals)["']\)/);
  assert.doesNotMatch(service,/\b(revenuePerUnit|totalRevenue|unitPrice|pricingOptions|targetRevenue)\s*:/);
  assert.match(service,/partners\.push\(\{partnerCompanyId:sn\.id,name:x\.partnerName,totalCount:total,counts\}\)/);
  assert.match(service,/rows\.push\(\{staffId:x\.staffId,counts,totalCount:total,version:x\.version/);
@@ -55,4 +55,9 @@ test("partner counts in existing ranking never add partner revenue or prices",()
  assert.ok(products.includes("partnerRankingVirtualRecords()"));
  assert.ok(products.includes("existingGroupsWithPartnerCounts(rankingGroups)"));
  assert.doesNotMatch(products,/\bformatYen\(|revenuePerUnit|unitPrice|totalRevenue/);
+});
+
+test("server catalog explicitly returns only published ID, name and order to partner",()=>{
+ assert.ok(service.includes("rows.map(({id,name,sortOrder})=>({id,name,sortOrder})):rows"));
+ assert.ok(service.includes("state.productIds,s.kind===\"partner\""));
 });
