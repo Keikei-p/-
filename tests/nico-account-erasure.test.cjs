@@ -66,7 +66,7 @@ function setup(){
   db.seed("companies/partner/members/"+uid,x);
   db.seed("companies/partner/partnerWorkStaff/"+uid,{uid,name:x.name,email:x.email,companyId:"partner",
     kind:"account",role,teamId,active:true,
-    teamHistory:[{effectiveDate:"2026-10-01",fromTeamId:"before",toTeamId}]});
+    teamHistory:[{effectiveDate:"2026-10-01",fromTeamId:"before",toTeamId:teamId}]});
  }
  db.seed("products/money",{companyId:"hub",price:70000,unitPrice:9000});
  db.seed("records/old",{companyId:"hub",totalCount:7,totalRevenue:100000,
