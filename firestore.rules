@@ -1050,7 +1050,9 @@ service cloud.firestore {
     }
 
     match /linePairingCodes/{pairingCode} {
-      allow get: if resource.data.companyId != null
+      // Partner-secondary UIDs must never read former internal LINE pairing codes.
+      allow get: if noSecondaryPartnerWorkspace()
+        && resource.data.companyId != null
         && sameCompany(resource.data.companyId);
 
       allow list: if false;
