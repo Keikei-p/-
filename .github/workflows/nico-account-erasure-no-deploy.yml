@@ -8,6 +8,7 @@ on:
       - 'firebase.account-erasure.json'
       - 'tests/nico-account-erasure.test.cjs'
       - 'tests/nico-account-erasure-ui.test.cjs'
+      - 'tests/partner-workspace.test.cjs'
       - 'tools/ci/check-account-erasure-ui-syntax.mjs'
       - 'index.html'
       - '.github/workflows/nico-account-erasure-no-deploy.yml'
@@ -17,6 +18,7 @@ on:
       - 'firebase.account-erasure.json'
       - 'tests/nico-account-erasure.test.cjs'
       - 'tests/nico-account-erasure-ui.test.cjs'
+      - 'tests/partner-workspace.test.cjs'
       - 'tools/ci/check-account-erasure-ui-syntax.mjs'
       - 'index.html'
       - '.github/workflows/nico-account-erasure-no-deploy.yml'
@@ -57,6 +59,7 @@ jobs:
           node --check functions-account-erasure/index.js
           node --check functions-account-erasure/service.cjs
           node --test tests/nico-account-erasure.test.cjs tests/nico-account-erasure-ui.test.cjs
+          node --test tests/partner-workspace.test.cjs
           node tools/ci/check-account-erasure-ui-syntax.mjs
       - name: Verify old suspend-only function and historical sales regression
         run: |
