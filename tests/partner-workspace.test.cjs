@@ -1658,6 +1658,15 @@ test("secondary-to-primary transfer refuses unsafe source, target and Auth condi
   await api.accept(req("m",{token:invite.token,name:"協力店担当"}));
   damage({db});
   const before=clone([...db.store]);
+  // Previously this preview promised "eligible" despite a preexisting archive
+  // or revoked role. It must now refuse before asking the user for consent.
+  await assert.rejects(
+   api.transferSecondary(req("m",{action:"preview",
+    confirmation:"I_ACCEPT_PARTNER_ONLY_ACCESS"})),
+   e=>e.code==="failed-precondition"||e.code==="permission-denied",
+   label+" preview must fail closed"
+  );
+  assert.deepEqual([...db.store],before,label+" preview must not mutate anything");
   await assert.rejects(
    api.transferSecondary(req("m",{action:"confirm",
     confirmation:"I_ACCEPT_PARTNER_ONLY_ACCESS"})),
@@ -1685,4 +1694,45 @@ test("secondary-to-primary transfer refuses cross-account, anonymous and malform
   confirmation:"I_ACCEPT_PARTNER_ONLY_ACCESS",uid:"h"})),{code:"invalid-argument"});
  await assert.rejects(api.transferSecondary(req("m",{action:"confirm"})),{code:"invalid-argument"});
  assert.deepEqual([...db.store],before);
+});
+
+
+test("a migrated secondary leader retains existing partner member invitation rights",async()=>{
+ const {db,api,req}=setup();
+ const oldFinance=clone(db.store.get("products/money"));
+ const oldSales=clone(db.store.get("records/old"));
+ const internal={uid:"m",companyId:"hub",email:"m@example.com",
+  name:"旧社内担当",role:"member",companyRole:"member",active:true,
+  accessKind:"internal",memberType:"direct",canViewRevenue:true,
+  canViewUnitPrice:true};
+ db.seed("users/m",internal);
+ db.seed("companies/hub/members/m",{...internal});
+ const teamId=(await api.manage(req("p",{action:"addTeam",name:"リーダーの班"}))).teamId;
+ const invite=await api.manage(req("p",{action:"createInvite",email:"m@example.com",
+  role:"leader",teamId}));
+ const existing=await api.accept(req("m",{token:invite.token,name:"協力店リーダー"}));
+ assert.equal(existing.secondaryMembership,true);
+ const beforeTransfer=await api.manage(req("m",{action:"createInvite",
+  workspaceCompanyId:"partner",email:"n@example.com",role:"member",teamId}));
+ assert.match(beforeTransfer.token,/^[A-Za-z0-9_-]{43}$/);
+ const preview=await api.transferSecondary(req("m",{action:"preview",
+  confirmation:"I_ACCEPT_PARTNER_ONLY_ACCESS"}));
+ assert.equal(preview.eligible,true);
+ const result=await api.transferSecondary(req("m",{action:"confirm",
+  confirmation:"I_ACCEPT_PARTNER_ONLY_ACCESS"}));
+ assert.equal(result.transferred,true);
+ assert.equal(db.store.get("users/m").role,"leader");
+ assert.equal(db.store.get("users/m").companyId,"partner");
+ assert.equal(db.store.get("users/m").canViewRevenue,false);
+ assert.equal(db.store.get("users/m").canViewUnitPrice,false);
+ const afterTransfer=await api.manage(req("m",{action:"createInvite",
+  workspaceCompanyId:"partner",email:"x@example.com",role:"member",teamId}));
+ assert.match(afterTransfer.token,/^[A-Za-z0-9_-]{43}$/);
+ const invited=await api.accept(req("x",{token:afterTransfer.token,name:"招待したメンバー"}));
+ assert.equal(invited.joined,true,"stale context must not revoke leader invitation powers");
+ assert.equal(db.store.get("companies/partner/members/x").role,"member");
+ assert.equal(db.store.get("users/x").accessKind,"partner");
+ assert.equal(db.store.get("users/x").canViewRevenue,false);
+ assert.deepEqual(db.store.get("products/money"),oldFinance);
+ assert.deepEqual(db.store.get("records/old"),oldSales);
 });
