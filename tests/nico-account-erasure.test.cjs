@@ -125,20 +125,61 @@ function setup({authAgeSec=0,featureEnabled=true}={}){
    .map(path=>[path,clone(db.store.get(path))])
  };
 }
-test("owner preview is read-only and confirms irreversible Auth/profile erasure without touching business history",async()=>{
+test("Auth-only removal preserves every profile field except active status and update timestamp",async()=>{
+ for(const [manager,target,name,paths] of [
+  ["owner","staff","山田 太郎",["users/staff","companies/hub/members/staff"]],
+  ["pleader","pmember","田中 花子",["users/pmember","companies/partner/members/pmember","companies/partner/partnerWorkStaff/pmember"]]
+ ]){
+  const s=setup(),before=paths.map(p=>clone(s.db.store.get(p)));
+  const preview=await s.service.preview(s.request(manager,{action:"preview",targetUid:target}));
+  assert.equal(preview.removesActiveUserAndMemberProfile,false);
+  assert.equal(preview.personalProfilesRetained,true);
+  const result=await s.service.confirm(s.request(manager,{action:"confirm",targetUid:target,
+   confirmation:"DELETE_AUTH_ONLY",confirmName:name}));
+  assert.equal(result.personalProfileDeleted,false);
+  assert.equal(result.personalProfilesRetained,true);
+  paths.forEach((p,i)=>{
+   const after=clone(s.db.store.get(p));
+   assert.equal(after.active,false);
+   delete after.updatedAt;
+   delete before[i].updatedAt;
+   assert.deepEqual(after,{...before[i],active:false});
+  });
+  assert.ok(s.db.writes.every(([op])=>op!=="delete"));
+ }
+});
+
+test("old destructive confirmation and jobs cannot enter the Auth-only flow",async()=>{
+ const s=setup(),before=clone([...s.db.store]);
+ await assert.rejects(s.service.confirm(s.request("owner",{action:"confirm",targetUid:"staff",
+  confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"山田 太郎"})),e=>e.code==="invalid-argument");
+ assert.deepEqual([...s.db.store],before);
+ s.failDeletion();
+ await assert.rejects(s.service.confirm(s.request("owner",{action:"confirm",targetUid:"staff",
+  confirmation:"DELETE_AUTH_ONLY",confirmName:"山田 太郎"})));
+ const receipt=[...s.db.store].find(([p])=>p.startsWith("accountErasureJobs/"))[1];
+ delete receipt.deletionScope;
+ const pending=clone([...s.db.store]),events=s.events.length;
+ await assert.rejects(s.service.confirm(s.request("owner",{action:"confirm",targetUid:"staff",
+  confirmation:"DELETE_AUTH_ONLY",confirmName:"山田 太郎"})),e=>e.code==="failed-precondition");
+ assert.deepEqual([...s.db.store],pending);
+ assert.equal(s.events.length,events);
+});
+
+test("owner preview is read-only and confirms irreversible Auth-only erasure without touching business history",async()=>{
  const s=setup(),original=s.history(),before=clone([...s.db.store]);
  const p=await s.service.preview(s.request("owner",{action:"preview",targetUid:"staff"}));
  assert.equal(p.ready,true);assert.equal(p.targetName,"山田 太郎");
  assert.deepEqual([...s.db.store],before);
  const result=await s.service.confirm(s.request("owner",{action:"confirm",targetUid:"staff",
-  confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"山田 太郎"}));
+  confirmation:"DELETE_AUTH_ONLY",confirmName:"山田 太郎"}));
  assert.equal(result.complete,true);
  assert.equal(result.authDeleted,true);
  assert.equal(s.people.has("staff"),false);
- assert.equal(s.db.store.has("users/staff"),false);
- assert.equal(s.db.store.has("companies/hub/members/staff"),false);
+ assert.equal(s.db.store.has("users/staff"),true);
+ assert.equal(s.db.store.has("companies/hub/members/staff"),true);
  assert.deepEqual(s.history(),original);
- assert.equal(s.db.store.size,before.length-1,"one receipt created; former user and membership removed");
+ assert.equal(s.db.store.size,before.length+1,"one receipt created; original profiles retained");
  const receipt=[...s.db.store].find(([k])=>k.startsWith("accountErasureJobs/"))?.[1];
  assert.equal(receipt.status,"complete");
  assert.deepEqual(receipt.businessHistory.userTeamHistory,
@@ -148,21 +189,21 @@ test("owner preview is read-only and confirms irreversible Auth/profile erasure 
  const again=await s.service.preview(s.request("owner",{action:"preview",targetUid:"staff"}));
  assert.equal(again.completed,true);
 });
-test("partner leader may delete same-team member, but staff history stays as anonymous tombstone",async()=>{
+test("partner leader may delete same-team member, but staff profile and history stay intact",async()=>{
  const s=setup(),original=s.history();
  s.db.store.get("companies/partner/partnerWorkStaff/pmember").privatePhone="090-0000-0000";
  const before=await s.service.preview(s.request("pleader",{action:"preview",targetUid:"pmember"}));
  assert.equal(before.ready,true);assert.equal(before.targetName,"田中 花子");
  const result=await s.service.confirm(s.request("pleader",{action:"confirm",targetUid:"pmember",
-  confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"田中 花子"}));
+  confirmation:"DELETE_AUTH_ONLY",confirmName:"田中 花子"}));
  assert.equal(result.complete,true);
  assert.equal(s.people.has("pmember"),false);
- assert.equal(s.db.store.has("users/pmember"),false);
- assert.equal(s.db.store.has("companies/partner/members/pmember"),false);
- assert.deepEqual(s.db.store.get("companies/partner/partnerWorkStaff/pmember").name,"退会済み");
- assert.equal(s.db.store.get("companies/partner/partnerWorkStaff/pmember").email,undefined);
- assert.equal(s.db.store.get("companies/partner/partnerWorkStaff/pmember").uid,null);
- assert.equal(s.db.store.get("companies/partner/partnerWorkStaff/pmember").privatePhone,undefined);
+ assert.equal(s.db.store.has("users/pmember"),true);
+ assert.equal(s.db.store.has("companies/partner/members/pmember"),true);
+ assert.deepEqual(s.db.store.get("companies/partner/partnerWorkStaff/pmember").name,"田中 花子");
+ assert.equal(s.db.store.get("companies/partner/partnerWorkStaff/pmember").email,"pmember@example.com");
+ assert.equal(s.db.store.get("companies/partner/partnerWorkStaff/pmember").uid,"pmember");
+ assert.equal(s.db.store.get("companies/partner/partnerWorkStaff/pmember").privatePhone,"090-0000-0000");
  assert.deepEqual(s.history(),original,"all previously saved count and finance snapshots unchanged");
 });
 test("partner leader cannot delete another team or another leader, owner cannot delete self",async()=>{
@@ -201,7 +242,7 @@ test("mismatched Firebase Authentication email or Firestore identity blocks eras
 test("failed Auth deletion retains a resumable pending job and all saved business records",async()=>{
  const s=setup(),history=s.history();s.failDeletion();
  await assert.rejects(s.service.confirm(s.request("owner",{action:"confirm",targetUid:"staff",
-  confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"山田 太郎"})),e=>e.code==="unavailable");
+  confirmation:"DELETE_AUTH_ONLY",confirmName:"山田 太郎"})),e=>e.code==="unavailable");
  assert.equal(s.people.has("staff"),true);
  assert.equal(s.db.store.get("users/staff").active,false);
  assert.deepEqual(s.history(),history);
@@ -209,7 +250,7 @@ test("failed Auth deletion retains a resumable pending job and all saved busines
  assert.equal(pending.pending,true);
  s.restoreDeletion();
  const resumed=await s.service.confirm(s.request("owner",{action:"confirm",targetUid:"staff",
-  confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"山田 太郎"}));
+  confirmation:"DELETE_AUTH_ONLY",confirmName:"山田 太郎"}));
  assert.equal(resumed.complete,true);
  assert.equal(s.people.has("staff"),false);
  assert.deepEqual(s.history(),history);
@@ -218,8 +259,8 @@ test("malformed confirmation or foreign uid cannot write or delete any account",
  const s=setup(),start=clone([...s.db.store]);
  for(const data of [
   {action:"confirm",targetUid:"staff",confirmation:"wrong",confirmName:"山田 太郎"},
-  {action:"confirm",targetUid:"staff",confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"別人"},
-  {action:"confirm",targetUid:"staff",confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"山田 太郎",companyId:"partner"}
+  {action:"confirm",targetUid:"staff",confirmation:"DELETE_AUTH_ONLY",confirmName:"別人"},
+  {action:"confirm",targetUid:"staff",confirmation:"DELETE_AUTH_ONLY",confirmName:"山田 太郎",companyId:"partner"}
  ]){
   await assert.rejects(s.service.confirm(s.request("owner",data)));
  }
@@ -236,7 +277,7 @@ test("previously suspended company member can have Auth and live account deleted
  const preview=await s.service.preview(s.request("owner",{action:"preview",targetUid:"staff"}));
  assert.equal(preview.ready,true);
  const result=await s.service.confirm(s.request("owner",{action:"confirm",targetUid:"staff",
-  confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"山田 太郎"}));
+  confirmation:"DELETE_AUTH_ONLY",confirmName:"山田 太郎"}));
  assert.equal(result.complete,true);
  assert.equal(s.people.has("staff"),false);
  assert.deepEqual(s.history(),history);
@@ -246,7 +287,7 @@ test("stale administrator authentication cannot erase any Firebase account or bu
  const p=await s.service.preview(s.request("owner",{action:"preview",targetUid:"staff"}));
  assert.equal(p.ready,true);
  await assert.rejects(s.service.confirm(s.request("owner",{action:"confirm",targetUid:"staff",
-  confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"山田 太郎"})),e=>e.code==="failed-precondition");
+  confirmation:"DELETE_AUTH_ONLY",confirmName:"山田 太郎"})),e=>e.code==="failed-precondition");
  assert.deepEqual([...s.db.store],before);
  assert.equal(s.events.length,0);
 });
@@ -262,7 +303,7 @@ test("manager can find suspended pending erasure after browser reload and safely
  const s=setup(),history=s.history();
  s.failDeletion();
  await assert.rejects(s.service.confirm(s.request("owner",{action:"confirm",
-  targetUid:"staff",confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"山田 太郎"})),
+  targetUid:"staff",confirmation:"DELETE_AUTH_ONLY",confirmName:"山田 太郎"})),
   e=>e.code==="unavailable");
  const pending=await s.service.listPending(s.request("owner",{action:"listPending"}));
  assert.deepEqual(pending.pending,[{targetUid:"staff",targetName:"山田 太郎"}]);
@@ -274,7 +315,7 @@ test("manager can find suspended pending erasure after browser reload and safely
  assert.deepEqual([...s.db.store],recorded);
  s.restoreDeletion();
  const response=await s.service.confirm(s.request("owner",{action:"confirm",
-  targetUid:"staff",confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"山田 太郎"}));
+  targetUid:"staff",confirmation:"DELETE_AUTH_ONLY",confirmName:"山田 太郎"}));
  assert.equal(response.complete,true);
  assert.deepEqual((await s.service.listPending(s.request("owner",{action:"listPending"}))).pending,[]);
  const receipt=[...s.db.store].find(([path])=>path.startsWith("accountErasureJobs/"))[1];
@@ -287,35 +328,35 @@ test("manager can find suspended pending erasure after browser reload and safely
 test("a newly recreated Auth UID cannot be deleted using the earlier pending erasure approval",async()=>{
  const s=setup(),history=s.history();s.failDeletion();
  await assert.rejects(s.service.confirm(s.request("owner",{action:"confirm",
-  targetUid:"staff",confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"山田 太郎"})),e=>e.code==="unavailable");
+  targetUid:"staff",confirmation:"DELETE_AUTH_ONLY",confirmName:"山田 太郎"})),e=>e.code==="unavailable");
  s.people.set("staff",{uid:"staff",email:"staff@example.com",disabled:false,emailVerified:true,
   metadata:{creationTime:"2026-11-04T00:00:00.000Z"}});
  s.restoreDeletion();const events=s.events.length;
  await assert.rejects(s.service.confirm(s.request("owner",{action:"confirm",
-  targetUid:"staff",confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"山田 太郎"})),e=>e.code==="failed-precondition");
+  targetUid:"staff",confirmation:"DELETE_AUTH_ONLY",confirmName:"山田 太郎"})),e=>e.code==="failed-precondition");
  assert.equal(s.events.length,events,"new Firebase account must not receive updateUser/deleteUser");
  assert.equal(s.people.has("staff"),true);
  assert.deepEqual(s.history(),history);
 });
-test("if previous attempt deleted Auth but not Firestore, retry safely completes only profile cleanup",async()=>{
+test("if previous attempt deleted Auth but not Firestore, retry safely completes only the receipt",async()=>{
  const s=setup(),history=s.history();s.failDeletion();
  await assert.rejects(s.service.confirm(s.request("owner",{action:"confirm",
-  targetUid:"staff",confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"山田 太郎"})),e=>e.code==="unavailable");
+  targetUid:"staff",confirmation:"DELETE_AUTH_ONLY",confirmName:"山田 太郎"})),e=>e.code==="unavailable");
  s.people.delete("staff");
  const events=s.events.length;
  s.restoreDeletion();
  const finished=await s.service.confirm(s.request("owner",{action:"confirm",
-  targetUid:"staff",confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"山田 太郎"}));
+  targetUid:"staff",confirmation:"DELETE_AUTH_ONLY",confirmName:"山田 太郎"}));
  assert.equal(finished.complete,true);
  assert.equal(s.events.length,events,"Auth already missing: do not attempt deletion again");
- assert.equal(s.db.store.has("users/staff"),false);
- assert.equal(s.db.store.has("companies/hub/members/staff"),false);
+ assert.equal(s.db.store.has("users/staff"),true);
+ assert.equal(s.db.store.has("companies/hub/members/staff"),true);
  assert.deepEqual(s.history(),history);
 });
 test("pending erasure list only exposes original requesting owner and never other partner/company identities",async()=>{
  const s=setup();s.failDeletion();
  await assert.rejects(s.service.confirm(s.request("pleader",{action:"confirm",
-  targetUid:"pmember",confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"田中 花子"})),e=>e.code==="unavailable");
+  targetUid:"pmember",confirmation:"DELETE_AUTH_ONLY",confirmName:"田中 花子"})),e=>e.code==="unavailable");
  assert.deepEqual((await s.service.listPending(s.request("owner",{action:"listPending"}))).pending,[]);
  assert.deepEqual((await s.service.listPending(s.request("powner",{action:"listPending"}))).pending,[]);
  const own=await s.service.listPending(s.request("pleader",{action:"listPending"}));
@@ -327,7 +368,7 @@ test("reused UID with identical email and creationTime is blocked without origin
  const s=setup(),history=s.history();
  s.failDeletion();
  await assert.rejects(s.service.confirm(s.request("owner",{action:"confirm",
-  targetUid:"staff",confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"山田 太郎"})),
+  targetUid:"staff",confirmation:"DELETE_AUTH_ONLY",confirmName:"山田 太郎"})),
   e=>e.code==="unavailable");
  const original=clone(s.people.get("staff"));
  assert.ok(original.customClaims?.nicoErasureProofV1);
@@ -337,7 +378,7 @@ test("reused UID with identical email and creationTime is blocked without origin
  s.restoreDeletion();
  const opsBefore=s.events.length;
  await assert.rejects(s.service.confirm(s.request("owner",{action:"confirm",
-  targetUid:"staff",confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"山田 太郎"})),
+  targetUid:"staff",confirmation:"DELETE_AUTH_ONLY",confirmName:"山田 太郎"})),
   e=>e.code==="failed-precondition");
  assert.equal(s.events.length,opsBefore,"recreated Auth record must not be disabled or removed");
  assert.equal(s.people.get("staff").disabled,false);
@@ -355,12 +396,12 @@ test("pending erasure refuses an independently moved or reactivated user profile
  ]){
   const s=setup(),history=s.history();s.failDeletion();
   await assert.rejects(s.service.confirm(s.request("owner",{action:"confirm",
-   targetUid:"staff",confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"山田 太郎"})),
+   targetUid:"staff",confirmation:"DELETE_AUTH_ONLY",confirmName:"山田 太郎"})),
    e=>e.code==="unavailable");
   change(s);s.restoreDeletion();
   const previous=clone([...s.db.store]),ops=s.events.length;
   await assert.rejects(s.service.confirm(s.request("owner",{action:"confirm",
-   targetUid:"staff",confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"山田 太郎"})),
+   targetUid:"staff",confirmation:"DELETE_AUTH_ONLY",confirmName:"山田 太郎"})),
    e=>e.code==="failed-precondition");
   assert.equal(s.events.length,ops,"no Auth operations after profile changes");
   assert.deepEqual([...s.db.store],previous,"no profile deleted or modified");

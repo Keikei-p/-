@@ -1,0 +1,18 @@
+{
+  "score": 1,
+  "summary": "Production audit log still reports one secondary-partner UID with an old raw-finance read path. Candidate emulator success is not proof of live denial.",
+  "findings": [
+    {
+      "check": "Authority Source",
+      "severity": "critical",
+      "issue": "The production read-only audit reports nonOwnerOldFinancePaths=1 and realPartnerFinanceDenyVerified=false. A hidden UI does not block raw document access.",
+      "recommendation": "Review PR 358 against the exact live Rules fingerprint, preserve internal Owner visibility, obtain approval for the permission change, and verify get/list denial using the partner identity before reporting completion."
+    },
+    {
+      "check": "Business Logic vs. Rules",
+      "severity": "major",
+      "issue": "The candidate rejects every UID with a secondary context, including inactive contexts and dual internal Owners. Production inventory reports zero Owner conflicts but live Owner access is unverified.",
+      "recommendation": "Repeat the read-only inventory at cutover and verify internal Owner access and count-only partner workflows. Stop if an Owner conflict exists."
+    }
+  ]
+}

@@ -69,6 +69,7 @@ jobs:
           node --test tests/nico-account-erasure.test.cjs tests/nico-account-erasure-ui.test.cjs
           node --test tests/nico-combined-finance-erasure-gate.test.cjs
           node --test tests/partner-workspace.test.cjs
+          node --test tests/partner-one-login-same-app.test.cjs tests/partner-repeat-login-cb-parity.test.mjs tests/partner-save-readback-20261102.test.mjs
           node tools/ci/check-account-erasure-ui-syntax.mjs
       - name: Verify old suspend-only function and historical sales regression
         run: |

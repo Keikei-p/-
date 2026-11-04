@@ -18,13 +18,13 @@ test("owner and partner leader have separate manager-only hard erasure action",(
  assert.match(html,/attachPendingAccountErasureControl\(list,canManage,/);
  assert.match(html,/preview\?\.ready!==true&&preview\?\.pending!==true/);
  assert.match(html,/reauthenticateWithCredential\(operator,cred\)/);
- assert.match(html,/confirmation:"DELETE_ACCOUNT_ONLY",confirmName:targetName/);
- assert.match(html,/result\.authDeleted!==true\|\|result\.personalProfileDeleted!==true/);
+ assert.match(html,/confirmation:"DELETE_AUTH_ONLY",confirmName:targetName/);
+ assert.match(html,/result\.authDeleted!==true\|\|result\.personalProfileDeleted!==false/);
 });
 test("user is shown irreversible confirmation with preserved team and business history warning",()=>{
  assert.match(html,/nameInput\.value\.trim\(\)!==targetName/);
  assert.match(html,/password\.type="password"/);
- assert.match(html,/Auth.*現役プロフィール/);
+ assert.match(html,/Authのみ削除/);
  assert.match(html,/過去の実績件数・売上・当時単価・班・訂正記録/);
  assert.match(html,/過去の実績に保存された名前も残る場合/);
 });

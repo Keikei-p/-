@@ -102,7 +102,7 @@ function makeAccountErasure({db,getAuth,FieldValue,HttpsError,enabled=()=>false,
   const u=us.data()||{},m=ms.data()||{},st=ss?.data()||{},j=js.data()||{};
   if(secondary.exists||oldTransfer.exists)fail();
   if(js.exists){
-   if(j.companyId!==cid||j.mode!==mode||j.requestedByUid!==a.uid||
+   if(j.deletionScope!=="auth_only_v1"||j.companyId!==cid||j.mode!==mode||j.requestedByUid!==a.uid||
       !["pending","complete"].includes(j.status))fail();
    if(j.status==="complete")return{mode,cid,status:"complete",jr,targetUid};
    if(!allowPending)fail();
@@ -184,7 +184,8 @@ function makeAccountErasure({db,getAuth,FieldValue,HttpsError,enabled=()=>false,
    pending:result.status==="pending",
    completed:result.status==="complete",
    removesFirebaseAuthentication:true,
-   removesActiveUserAndMemberProfile:true,
+   removesActiveUserAndMemberProfile:false,
+   personalProfilesRetained:true,
    historicalSalesAndTeamSnapshotsRetained:true,
    note:"過去の営業記録・班履歴に保存済みの氏名・UIDは履歴として残る場合があります。"};
  }
@@ -219,14 +220,14 @@ function makeAccountErasure({db,getAuth,FieldValue,HttpsError,enabled=()=>false,
  async function confirm(request){
   const a=await actor(request,true),d=request?.data||{};
   if(d.action!=="confirm"||!UID.test(d.targetUid||"")||
-    d.confirmation!=="DELETE_ACCOUNT_ONLY"||
+    d.confirmation!=="DELETE_AUTH_ONLY"||
     typeof d.confirmName!=="string"||
     Object.keys(d).some(k=>!["action","targetUid","confirmation","confirmName"].includes(k)))
     fail("invalid-argument");
   let checked=await check(a,d.targetUid,null,true);
   if(checked.status==="complete"){
    if(!await authGone(d.targetUid))fail();
-   return{complete:true,authDeleted:true,personalProfileDeleted:true};
+   return{complete:true,authDeleted:true,personalProfileDeleted:false,personalProfilesRetained:true};
   }
   if(norm(d.confirmName)!==checked.targetName)fail("invalid-argument");
   // Metadata.creationTime in the Auth emulator (and potentially near-simultaneous
@@ -237,12 +238,13 @@ function makeAccountErasure({db,getAuth,FieldValue,HttpsError,enabled=()=>false,
   if(!/^[a-f0-9]{48}$/.test(marker||""))fail();
   if(checked.status==="ready"){
    // Only the bounded account and roster paths change here. The business
-   // history is copied BEFORE profile removal, without email, name or sales.
+   // history is copied before deactivation, without email, name or sales.
    await db.runTransaction(async tx=>{
     const x=await check(a,d.targetUid,tx,false);
     if(x.status!=="ready"||x.cid!==checked.cid||x.mode!==checked.mode||
        x.targetName!==checked.targetName)fail();
     tx.create(x.jr,{
+     deletionScope:"auth_only_v1",
      companyId:x.cid,mode:x.mode,requestedByUid:a.uid,status:"pending",
      targetUid:d.targetUid,targetName:x.targetName,
      targetAuthHash:x.targetAuthHash,targetAuthMarker:marker,
@@ -300,29 +302,15 @@ function makeAccountErasure({db,getAuth,FieldValue,HttpsError,enabled=()=>false,
    const x=await check(a,d.targetUid,tx,true);
    if(x.status==="complete")return;
    if(x.status!=="pending")fail();
-   const [us,ms,ss,receipt]=await Promise.all([tx.get(x.ur),tx.get(x.mr),
-    x.sr?tx.get(x.sr):Promise.resolve(null),tx.get(x.jr)]);
-   // No change to historical record, count, pricing, team or correction docs.
-   if(us.exists)tx.delete(x.ur);
-   if(ms.exists)tx.delete(x.mr);
-   // A non-personal tombstone retains the historical staff ID for count joins.
-   // Display name and email never remain on the live staff profile.
-   if(ss?.exists){
-    const business=receipt.data()?.businessHistory||{};
-    if(!UID.test(business.oldTeamId||"")||
-      !["leader","member"].includes(business.role))fail();
-    // Replace the whole live staff document: old profile could contain
-    // unexpected name/email/phone fields. Never leave PII by shallow update.
-    tx.set(x.sr,{uid:null,name:"退会済み",kind:"retired",companyId:x.cid,
-      role:business.role,teamId:business.oldTeamId,active:false,
-      retiredAt:FieldValue.serverTimestamp()});
-   }
+   // Auth-only removal: retain every profile field and historical join key.
+   // check(..., true) proves the original roster remains inactive. Do not
+   // delete/anonymize users, memberships or staff after deleting Auth.
    tx.update(x.jr,{status:"complete",
     targetUid:FieldValue.delete(),targetName:FieldValue.delete(),
     targetAuthHash:FieldValue.delete(),targetAuthMarker:FieldValue.delete(),
     completedAt:FieldValue.serverTimestamp()});
   });
-  return {complete:true,authDeleted:true,personalProfileDeleted:true,
+  return {complete:true,authDeleted:true,personalProfileDeleted:false,personalProfilesRetained:true,
    historicalBusinessRecordsPreserved:true};
  }
  return Object.freeze({preview,confirm,listPending});
