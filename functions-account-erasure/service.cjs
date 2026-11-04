@@ -106,6 +106,15 @@ function makeAccountErasure({db,getAuth,FieldValue,HttpsError,enabled=()=>false,
       !["pending","complete"].includes(j.status))fail();
    if(j.status==="complete")return{mode,cid,status:"complete",jr,targetUid};
    if(!allowPending)fail();
+   // A pending job is permission to finish deletion of ONLY the original
+   // inactive roster. If that UID was reactivated/transferred, never delete
+   // the new current users/{uid}, even when Auth proof happens to match.
+   if(!us.exists||!ms.exists||
+      u.uid!==targetUid||u.companyId!==cid||u.active!==false||
+      m.uid!==targetUid||(m.companyId!=null&&m.companyId!==cid)||
+      m.active!==false||
+      (sr&&(!ss?.exists||st.uid!==targetUid||st.companyId!==cid||
+       st.kind!=="account"||st.active!==false)))fail();
    if(j.targetUid!==targetUid||!norm(j.targetName)||
       typeof j.targetAuthHash!=="string"||
       !/^[a-f0-9]{64}$/.test(j.targetAuthHash)||
@@ -138,6 +147,8 @@ function makeAccountErasure({db,getAuth,FieldValue,HttpsError,enabled=()=>false,
      c.ownerUid===targetUid||c.masterUid===targetUid)fail();
   }else{
    if(!ss?.exists||st.uid!==targetUid||st.companyId!==cid||
+      !UID.test(u.teamId||"")||
+      !["member","leader"].includes(u.role)||m.role!==u.role||
       st.kind!=="account"||
       !(st.active===true||alreadySuspended&&st.active===false)||
       st.role!==u.role||st.teamId!==u.teamId||m.teamId!==u.teamId||
