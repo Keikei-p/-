@@ -8,6 +8,9 @@ on:
       - tests/rules.test.cjs
       - tests/partner-workspace.test.cjs
       - functions-partner-workspace/service.cjs
+      - index.html
+      - partner-workspace.html
+      - tools/ci/check-inline-html-module.mjs
       - .github/workflows/nico-secondary-finance-harddeny-no-deploy.yml
   push:
     branches:
@@ -44,6 +47,7 @@ jobs:
         run: |
           node --check functions-partner-workspace/service.cjs
           node --check functions-partner-workspace/index.js
+          node tools/ci/check-inline-html-module.mjs
           node --test tests/internal-owner-finance-visibility.test.cjs tests/partner-money-free-workspace.test.cjs tests/sales-regressions.cjs tests/partner-workspace.test.cjs tests/partner-one-login-same-app.test.cjs
       - name: Run all Firestore rules and legacy record tests in isolated emulator
         env:
