@@ -42,7 +42,7 @@ jobs:
           git fetch --no-tags origin fix/partner-shared-rank-independent-requests-20261104
           git diff --name-only origin/fix/partner-shared-rank-independent-requests-20261104...HEAD > /tmp/nico-integration-files.txt
           cat /tmp/nico-integration-files.txt
-          if grep -Ev '^(firestore\.rules|tests/rules\.test\.cjs|\.github/workflows/nico-shared-rank-finance-integration-no-deploy.yml)$' /tmp/nico-integration-files.txt; then
+          if grep -Ev '^(firestore\.rules|tests/rules\.test\.cjs|\.github/workflows/nico-shared-rank-finance-integration-no-deploy.yml|tools/production/check-partner-release-readiness\.mjs|tests/partner-release-readiness-audit\.test\.mjs) /tmp/nico-integration-files.txt; then /tmp/nico-integration-files.txt; then
             echo STOP_UNEXPECTED_INTEGRATION_FILES
             exit 1
           fi
@@ -63,6 +63,14 @@ jobs:
           node --test tests/count-drift-correction-readonly.test.mjs
           node --test tests/partner-money-free-workspace.test.cjs
           NODE_OPTIONS=--experimental-vm-modules node --test tests/partner-index-module-parse.test.cjs
+      - name: Verify release blockers remain enforced without any credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check tools/production/check-partner-release-readiness.mjs
+          node --test tests/partner-release-readiness-audit.test.mjs
+          node tools/production/check-partner-release-readiness.mjs --assert-known-blockers | tee /tmp/nico-release-blockers.log
+          grep -Fq PASS_KNOWN_RELEASE_BLOCKERS_IDENTIFIED_NO_DEPLOYMENT /tmp/nico-release-blockers.log
       - name: Install emulator-only Firestore test dependencies
         run: npm install --prefix tests --ignore-scripts --no-audit --no-fund
       - name: Verify every Firestore Rules test with synthetic demo identities
