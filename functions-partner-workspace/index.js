@@ -15,6 +15,8 @@ const opts={region:"asia-northeast1",maxInstances:3,
 exports.getPartnerWorkspace=onCall(opts,service.view);
 exports.managePartnerWorkspace=onCall(opts,service.manage);
 exports.acceptPartnerWorkspaceInvite=onCall(opts,service.accept);
+// Self-confirmed promotion of an already joined partner; never auto-migrate.
+exports.transferPartnerSecondaryMembership=onCall(opts,service.transferSecondary);
 exports.submitPartnerWorkspaceCounts=onCall(opts,service.submit);
 const codeAuth=makeCompanyCodeAuth({
  db:getFirestore(),getAuth,FieldValue,Timestamp,HttpsError,

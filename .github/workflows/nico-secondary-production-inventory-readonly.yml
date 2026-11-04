@@ -1,0 +1,64 @@
+name: NICO read-only secondary context inventory (NO DEPLOY)
+on:
+  # Only reviewed main code may access the live read-only service identity.
+  # Unreviewed feature branches must NEVER execute with production credentials.
+  push:
+    branches:
+      - main
+    paths:
+      - 'tools/production/audit-secondary-contexts-readonly.mjs'
+      - 'tests/nico-secondary-readonly-inventory.test.mjs'
+      - '.github/workflows/nico-secondary-production-inventory-readonly.yml'
+permissions:
+  contents: read
+concurrency:
+  group: nico-secondary-production-inventory-readonly
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Pure synthetic tests before retrieving credentials
+        run: |
+          set -euo pipefail
+          node --check tools/production/audit-secondary-contexts-readonly.mjs
+          node --test tests/nico-secondary-readonly-inventory.test.mjs
+  production-read-only:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      NICO_SECONDARY_INVENTORY_MODE: READ_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Validate target project and synthetic tests (no secret)
+        run: |
+          set -euo pipefail
+          node -e "const fs=require('node:fs'); if(JSON.parse(fs.readFileSync('.firebaserc','utf8')).projects.default!=='sales-management-cc116')process.exit(1)"
+          node --test tests/nico-secondary-readonly-inventory.test.mjs
+      - name: Supply existing authorized service account without printing
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-secondary-readonly.json"
+          chmod 600 "$RUNNER_TEMP/nico-secondary-readonly.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-secondary-readonly.json" >> "$GITHUB_ENV"
+      - name: Install existing Admin SDK, no deployment
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Aggregate-only live UID inventory, Rules fingerprint and backup metadata
+        run: node tools/production/audit-secondary-contexts-readonly.mjs
+      - name: Delete temporary service identity
+        if: always()
+        run: rm -f "$RUNNER_TEMP/nico-secondary-readonly.json"
