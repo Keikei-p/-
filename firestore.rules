@@ -1116,7 +1116,10 @@ service cloud.firestore {
     }
 
     match /teams/{teamId} {
-      allow read: if resource.data.companyId != null
+      // Partner-secondary identities must not read the former internal team's
+      // names or leader UIDs through their historical internal membership.
+      allow read: if noSecondaryPartnerWorkspace()
+        && resource.data.companyId != null
         && sameCompany(resource.data.companyId);
 
       allow create: if request.resource.data.keys().hasOnly([
