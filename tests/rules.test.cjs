@@ -829,3 +829,51 @@ test('ordinary internal member with new secondary context loses finance reads; u
    'secondary association must not edit '+coll);
  });
 });
+
+
+test('secondary context cannot be forged or removed by any Firebase client to revive old finance grants',async()=>{
+ // Only Admin SDK may own the context lifecycle. A client capable of deleting
+ // the context would revive old direct grants under noSecondaryPartnerWorkspace().
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const admin=ctx.firestore();
+  await setDoc(doc(admin,'products','secondary-immutable-product'),catalogPayload());
+  await setDoc(doc(admin,'records','secondary-immutable-record'),payload('owner'));
+ });
+ const member=dbFor('helper'),owner=dbFor('owner');
+ const existing=doc(member,'records','secondary-immutable-record');
+ // Before the server marks the identity as secondary, legacy internal grants
+ // still read the old original. The test never edits that original.
+ await assertSucceeds(getDoc(existing));
+ for(const actor of ['helper','owner','leaderA']){
+  const db=dbFor(actor);
+  await assertFails(setDoc(doc(db,'partnerWorkspaceContexts','forged-'+actor),{
+   uid:actor,kind:'partner_secondary',active:true
+  }));
+ }
+ const canonical={uid:'helper',kind:'partner_secondary',active:true,
+  primaryCompanyId:company,partnerCompanyId:'partner-example',hubCompanyId:company};
+ await env.withSecurityRulesDisabled(async ctx=>{
+  await setDoc(doc(ctx.firestore(),'partnerWorkspaceContexts','helper'),canonical);
+ });
+ await assertFails(getDoc(existing));
+ await assertFails(getDoc(doc(member,'products','secondary-immutable-product')));
+ for(const actor of ['helper','owner','leaderA']){
+  const db=dbFor(actor),context=doc(db,'partnerWorkspaceContexts','helper');
+  await assertFails(getDoc(context));
+  await assertFails(getDocsFromServer(collection(db,'partnerWorkspaceContexts')));
+  await assertFails(updateDoc(context,{active:false}));
+  await assertFails(setDoc(context,{...canonical,kind:'internal',active:false}));
+  await assertFails(deleteDoc(context));
+ }
+ // A failed context mutation must not re-enable the old internal finance path.
+ await assertFails(getDoc(existing));
+ await assertFails(getDoc(doc(member,'products','secondary-immutable-product')));
+ await assertSucceeds(getDoc(doc(owner,'records','secondary-immutable-record')));
+ await assertSucceeds(getDoc(doc(owner,'products','secondary-immutable-product')));
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const admin=ctx.firestore();
+  assert.deepEqual((await getDoc(doc(admin,'partnerWorkspaceContexts','helper'))).data(),canonical);
+  assert.equal((await getDoc(doc(admin,'records','secondary-immutable-record'))).data().totalCount,2);
+  assert.equal((await getDoc(doc(admin,'products','secondary-immutable-product'))).data().revenue,5000);
+ });
+});
