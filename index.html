@@ -7429,6 +7429,11 @@ const readPartnerWorkDay = httpsCallable(partnerCountFunctions,"getPartnerWorksp
 const partnerInlineManage = httpsCallable(partnerCountFunctions,"managePartnerWorkspace");
 const partnerInlineSave = httpsCallable(partnerCountFunctions,"submitPartnerWorkspaceCounts");
 const partnerInlineAccept = httpsCallable(partnerCountFunctions,"acceptPartnerWorkspaceInvite");
+// A separate, disabled-by-default codebase. Existing suspend-only deletion
+// remains unchanged; no account can be hard-deleted by an old UI button.
+const accountErasurePreview = httpsCallable(partnerCountFunctions,"previewManagedAccountErasure");
+const accountErasureConfirm = httpsCallable(partnerCountFunctions,"confirmManagedAccountErasure");
+const accountErasurePending = httpsCallable(partnerCountFunctions,"listManagedAccountErasurePending");
 const partnerMainPreviewCompanyInvite = httpsCallable(partnerCountFunctions,"previewPartnerCompanyInvitation");
 const partnerMainAcceptCompanyInvite = httpsCallable(partnerCountFunctions,"acceptPartnerCompanyInvitation");
 
@@ -13803,6 +13808,7 @@ function partnerInlineRender(){
  }
  renderPartnerPrivateProductCatalog();
  const list=pInline("pInlinePeople");list.replaceChildren();
+ attachPendingAccountErasureControl(list,canManage,()=>partnerInlineFetch());
  for(const person of staff){
   const row=document.createElement("div");row.className="p-inline-row";
   const label=document.createElement("strong");label.textContent=person.name;
@@ -13810,6 +13816,15 @@ function partnerInlineRender(){
   summary.textContent="｜"+(teamById.get(person.teamId)?.name||"未配属")+"・"+
    (person.kind==="managed"?"メールなし":person.role==="leader"?"リーダー":"メンバー");
   row.append(label,summary);
+  if(canManage&&person.kind==="account"&&person.id!==auth.currentUser?.uid&&
+     (snap.role==="owner"||
+      (snap.role==="leader"&&person.role==="member"&&person.teamId===snap.teamId))){
+   const erase=document.createElement("button");
+   erase.type="button";erase.className="history-delete";
+   erase.textContent="ログイン情報を完全削除";
+   erase.onclick=()=>void eraseManagedAccount(person.id,person.name,()=>partnerInlineFetch());
+   row.append(erase);
+  }
   if(canManage&&person.kind==="managed"){
    const remove=document.createElement("button");
    remove.type="button";remove.className="team-action-button";
@@ -14405,6 +14420,151 @@ async function partnerLeaderSendInviteEmail(invite){
   return false;
  }
 }
+// All irreversible account deletion requires a freshly verified administrator,
+// matching target name, second confirmation and scoped server-side authorization.
+// Historical sales/price/team/count snapshots are NEVER browser-deleted.
+function managedAccountErasureConfirmation(targetName){
+ return new Promise(resolve=>{
+  const overlay=document.createElement("div");
+  overlay.setAttribute("role","dialog");overlay.setAttribute("aria-modal","true");
+  overlay.setAttribute("aria-label","アカウント完全削除の本人確認");
+  overlay.style.cssText="position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:16px;";
+  const panel=document.createElement("div");
+  panel.style.cssText="background:var(--card,#fff);color:var(--text,#111);padding:24px;border-radius:16px;max-width:440px;width:100%;max-height:90vh;overflow-y:auto;";
+  const title=document.createElement("h3");title.textContent="アカウント情報を完全削除";
+  const message=document.createElement("p");
+  message.textContent=targetName+" のFirebaseログインと現役プロフィールを削除します。取り消しできません。過去の実績件数・売上・当時単価・班・訂正記録は会社の履歴として残ります。過去の実績に保存された名前も残る場合があります。";
+  const nameLabel=document.createElement("label");
+  nameLabel.textContent="確認のため対象者の名前を入力";
+  const nameInput=document.createElement("input");
+  nameInput.type="text";nameInput.autocomplete="off";
+  nameInput.style.cssText="display:block;width:100%;padding:12px;margin:8px 0 16px;";
+  const passwordLabel=document.createElement("label");
+  passwordLabel.textContent="管理者本人の現在のパスワード";
+  const password=document.createElement("input");
+  password.type="password";password.autocomplete="current-password";
+  password.style.cssText="display:block;width:100%;padding:12px;margin:8px 0 16px;";
+  const note=document.createElement("p");note.setAttribute("role","status");
+  note.textContent="パスワードはFirebase本人再認証にのみ使い、保存しません。";
+  note.style.cssText="font-size:12px;line-height:1.5;";
+  const row=document.createElement("div");
+  row.style.cssText="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;";
+  const cancel=document.createElement("button");cancel.type="button";
+  cancel.textContent="キャンセル";cancel.className="member-action-button";
+  const confirm=document.createElement("button");confirm.type="button";
+  confirm.textContent="アカウントを完全削除";confirm.className="history-delete";
+  const finish=value=>{password.value="";overlay.remove();resolve(value);};
+  cancel.onclick=()=>finish(null);
+  confirm.onclick=()=>{
+   if(nameInput.value.trim()!==targetName||!password.value){
+    note.textContent="対象者名と現在のパスワードを正しく入力してください。";return;
+   }
+   const secret=password.value;
+   finish({password:secret});
+  };
+  row.append(cancel,confirm);nameLabel.append(nameInput);passwordLabel.append(password);
+  panel.append(title,message,nameLabel,passwordLabel,note,row);overlay.append(panel);
+  document.body.append(overlay);nameInput.focus();
+ });
+}
+// Deliberate manual refresh only: a stopped account disappears from the
+// normal member list. A separate read-only view lets the same manager recover
+// their own pending account deletion after a browser/phone restart.
+function attachPendingAccountErasureControl(host,canManage,refresh){
+ if(!host?.id)return;
+ const id="nico-erasure-pending-"+host.id;
+ let panel=document.getElementById(id);
+ if(!panel){
+  panel=document.createElement("div");
+  // Do not force display:block: it would override [hidden] and reveal the
+  // button to non-manager accounts (server still rejects them).
+  panel.id=id;panel.style.cssText="padding:12px 0;";
+  const button=document.createElement("button");button.type="button";
+  button.className="member-action-button";
+  button.textContent="削除が未完了のアカウントを確認";
+  const result=document.createElement("div");
+  result.setAttribute("role","status");result.setAttribute("aria-live","polite");
+  result.style.cssText="margin-top:8px;";
+  panel.append(button,result);
+  host.after(panel);
+ }
+ panel.hidden=!canManage;
+ panel.firstElementChild.onclick=()=>void loadPendingAccountErasure(panel,refresh);
+}
+async function loadPendingAccountErasure(panel,refresh){
+ const uid=auth.currentUser?.uid;
+ const result=panel?.lastElementChild;
+ if(!uid||!result||panel.hidden)return;
+ result.textContent="削除途中のアカウントを照合しています…";
+ try{
+  const response=(await accountErasurePending({action:"listPending"})).data;
+  if(auth.currentUser?.uid!==uid||panel.hidden)return;
+  if(response?.readOnly!==true||!Array.isArray(response.pending))
+   throw Error("invalid_pending_readback");
+  result.replaceChildren();
+  if(!response.pending.length){
+   result.textContent="未完了の削除はありません。";return;
+  }
+  for(const person of response.pending){
+   if(!partnerMainValidId(person.targetUid)||!person.targetName)continue;
+   const row=document.createElement("div");
+   row.className="member-actions";
+   const name=document.createElement("span");
+   name.textContent=person.targetName+"｜削除未完了";
+   const button=document.createElement("button");
+   button.type="button";button.className="history-delete";
+   button.textContent="本人確認して削除を再開";
+   button.onclick=()=>void eraseManagedAccount(
+    person.targetUid,person.targetName,async()=>{
+     if(typeof refresh==="function")await refresh();
+     await loadPendingAccountErasure(panel,refresh);
+    });
+   row.append(name,button);result.append(row);
+  }
+ }catch{
+  if(auth.currentUser?.uid!==uid||panel.hidden)return;
+  result.textContent="未完了の削除情報を確認できません。認証や接続を確認してください。再送前に管理者が状態を確認してください。";
+ }
+}
+
+async function eraseManagedAccount(targetUid,targetName,refresh){
+ const operator=auth.currentUser;
+ if(!operator?.uid||!operator.emailVerified||!targetUid||
+    operator.uid===targetUid||typeof targetName!=="string")return;
+ try{
+  const preview=(await accountErasurePreview({action:"preview",targetUid})).data;
+  if(auth.currentUser?.uid!==operator.uid)throw Error("account_changed");
+  if((preview?.ready!==true&&preview?.pending!==true)||
+     preview.targetUid!==targetUid||preview.targetName!==targetName){
+   showError("この人の所属・権限・過去の移籍情報を確認できず、削除を停止しました。");return;
+  }
+  const answer=await managedAccountErasureConfirmation(targetName);
+  if(!answer)return;
+  if(auth.currentUser?.uid!==operator.uid)throw Error("account_changed");
+  try{
+   const cred=EmailAuthProvider.credential(operator.email,answer.password);
+   await reauthenticateWithCredential(operator,cred);
+   await operator.getIdToken(true);
+  }finally{answer.password="";}
+  if(auth.currentUser?.uid!==operator.uid)throw Error("account_changed");
+  const result=(await accountErasureConfirm({
+   action:"confirm",targetUid,confirmation:"DELETE_ACCOUNT_ONLY",confirmName:targetName
+  })).data;
+  if(auth.currentUser?.uid!==operator.uid||result?.complete!==true||
+     result.authDeleted!==true||result.personalProfileDeleted!==true)
+   throw Error("unverified_complete");
+  showSuccess(targetName+" のログインアカウントと現役プロフィールを削除しました。過去の件数・売上・班履歴は保持しています。");
+  if(typeof refresh==="function")await refresh();
+ }catch(error){
+  if(error?.code==="functions/not-found"||error?.code==="functions/unimplemented")
+   showError("完全削除機能はまだ本番に公開されていません。利用停止とは別の操作です。");
+  else if(error?.code==="auth/wrong-password"||error?.code==="auth/invalid-credential")
+   showError("管理者のパスワード認証に失敗したため、削除していません。");
+  else
+   showError("削除完了を確認できませんでした。二重操作せず、アカウント状態を管理者が確認してください。");
+ }
+}
+
 function partnerLeaderInviteServerMessage(code){
  // Keep the invitation token and private server details out of user-visible logs.
  if(code==="functions/not-found"||code==="functions/unimplemented")
@@ -22245,6 +22405,8 @@ function renderMembers() {
     "";
 
   renderManagedMemberTeamOptions();
+  attachPendingAccountErasureControl(memberList,
+    isCurrentCompanyOwner(),()=>loadMembers());
 
   if (
     managedMemberCreatePanel
@@ -22720,7 +22882,7 @@ function renderMembers() {
             "history-delete";
 
           removeButton.textContent =
-            "会社から削除";
+            "利用停止（履歴保持）";
 
           removeButton.onclick =
             () =>
@@ -22732,6 +22894,17 @@ function renderMembers() {
             removeButton
           );
 
+          if (!isManagedMember(member) && (member.id || member.uid)) {
+            const eraseButton=document.createElement("button");
+            eraseButton.type="button";
+            eraseButton.className="history-delete";
+            eraseButton.textContent="ログイン情報を完全削除";
+            eraseButton.title="Firebase Authと現役プロフィールのみ削除。実績・売上・班履歴は保持";
+            eraseButton.onclick=()=>void eraseManagedAccount(
+              member.id || member.uid,member.name || "",()=>loadMembers()
+            );
+            actions.appendChild(eraseButton);
+          }
         }
 
       } else if (

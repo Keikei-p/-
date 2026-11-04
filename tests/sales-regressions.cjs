@@ -1679,3 +1679,35 @@ test('Temporary partner company tab only reads scoped, count-only backend', () =
   assert.match(html,/checkedEntry\.mode!=="internal"/,
     'partner users must remain barred from finance-capable legacy workspace');
 });
+
+
+test('former deleted Auth UID still contributes to owner old-team totals and original revenue',()=>{
+  // Render the REAL production team-detail function against preserved sales
+  // originals with no live users/{uid} or companies/.../members/{uid}.
+  const month=[{
+    uid:'deleted-member-uid',date:'2026-10-09',teamId:'retired-team',
+    memberNameSnapshot:'当時の登録者',
+    results:{nuro:{count:7,revenuePerUnit:9000}}
+  }];
+  const original=JSON.stringify(month);
+  const ctx=context(['renderSelectedTeamMemberDetail'],{
+    document,members:[],
+    recordBelongsToTeam:(record,team)=>record.teamId===team.id,
+    getDisplayRecordResults:(record)=>Object.values(record.results),
+    getCurrentMemberName:(record)=>record.memberNameSnapshot,
+    buildMemberProductDisplayGroups:()=>[],
+    buildTeamGoalProgress:()=>({totalTarget:0}),
+    buildTeamRevenueGoalProgress:()=>({targetRevenue:0}),
+    escapeHtml:s=>s,
+    canCurrentUserViewRevenueForTeam:()=>true,
+    formatYen:n=>'¥'+n
+  });
+  const output=element();
+  ctx.renderSelectedTeamMemberDetail(output,{id:'retired-team',name:'過去の班'},month);
+  const text=textOf(output);
+  assert.match(text,/過去の班/);
+  assert.match(text,/当時の登録者/);
+  assert.match(text,/7件/);
+  assert.match(text,/¥63000/);
+  assert.equal(JSON.stringify(month),original,'history and old sales are never mutated by rendering');
+});
