@@ -7,6 +7,7 @@ on:
       - firestore.rules
       - tests/rules.test.cjs
       - .github/workflows/nico-live-finance-rules-only-no-deploy.yml
+      - docs/SALES_RELEASE_SIGNOFF.md
   pull_request:
     branches:
       - main
@@ -14,6 +15,7 @@ on:
       - firestore.rules
       - tests/rules.test.cjs
       - .github/workflows/nico-live-finance-rules-only-no-deploy.yml
+      - docs/SALES_RELEASE_SIGNOFF.md
 permissions:
   contents: read
 jobs:
@@ -45,7 +47,9 @@ jobs:
           git fetch --no-tags origin main
           git diff --name-only origin/main...HEAD > /tmp/nico-rules-changed.txt
           cat /tmp/nico-rules-changed.txt
-          if grep -Ev '^(firestore\.rules|tests/rules\.test\.cjs|\.github/workflows/nico-live-finance-rules-only-no-deploy\.yml)$' /tmp/nico-rules-changed.txt; then
+          # Permit the mandatory maintainer release-review document only.
+          # Other application, database and workflow changes still fail closed.
+          if grep -Ev '^(firestore\.rules|tests/rules\.test\.cjs|\.github/workflows/nico-live-finance-rules-only-no-deploy\.yml|docs/SALES_RELEASE_SIGNOFF\.md)$' /tmp/nico-rules-changed.txt; then
             echo "STOP_UNEXPECTED_CHANGES_OUTSIDE_FINANCE_RULES"
             exit 1
           fi
