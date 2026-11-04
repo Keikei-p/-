@@ -99,6 +99,12 @@ function setup({authAgeSec=0,featureEnabled=true}={}){
    return clone(people.get(uid));},
   verifyIdToken:async token=>{const uid=token.split("-")[0];return {uid,email:uid+"@example.com",
    email_verified:true,auth_time:NOW/1000-authAgeSec};},
+  setCustomUserClaims:async(uid,claims)=>{
+   events.push(["claims",uid]);
+   const user=people.get(uid);
+   if(!user)throw Error("Auth user no longer exists");
+   user.customClaims=clone(claims);
+  },
   updateUser:async(uid,patch)=>{events.push(["disable",uid,patch]);const u=people.get(uid);
    if(!u)throw Object.assign(Error("missing"),{code:"auth/user-not-found"});Object.assign(u,patch);},
   deleteUser:async uid=>{events.push(["delete",uid]);if(throwOnDelete)throw Error("network");
@@ -314,4 +320,27 @@ test("pending erasure list only exposes original requesting owner and never othe
  assert.deepEqual((await s.service.listPending(s.request("powner",{action:"listPending"}))).pending,[]);
  const own=await s.service.listPending(s.request("pleader",{action:"listPending"}));
  assert.deepEqual(own.pending,[{targetUid:"pmember",targetName:"田中 花子"}]);
+});
+
+
+test("reused UID with identical email and creationTime is blocked without original Auth proof",async()=>{
+ const s=setup(),history=s.history();
+ s.failDeletion();
+ await assert.rejects(s.service.confirm(s.request("owner",{action:"confirm",
+  targetUid:"staff",confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"山田 太郎"})),
+  e=>e.code==="unavailable");
+ const original=clone(s.people.get("staff"));
+ assert.ok(original.customClaims?.nicoErasureProofV1);
+ s.people.set("staff",{uid:"staff",email:original.email,
+  emailVerified:true,disabled:false,
+  metadata:clone(original.metadata)});
+ s.restoreDeletion();
+ const opsBefore=s.events.length;
+ await assert.rejects(s.service.confirm(s.request("owner",{action:"confirm",
+  targetUid:"staff",confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"山田 太郎"})),
+  e=>e.code==="failed-precondition");
+ assert.equal(s.events.length,opsBefore,"recreated Auth record must not be disabled or removed");
+ assert.equal(s.people.get("staff").disabled,false);
+ assert.equal(s.people.has("staff"),true);
+ assert.deepEqual(s.history(),history);
 });
