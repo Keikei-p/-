@@ -7433,6 +7433,7 @@ const partnerInlineAccept = httpsCallable(partnerCountFunctions,"acceptPartnerWo
 // remains unchanged; no account can be hard-deleted by an old UI button.
 const accountErasurePreview = httpsCallable(partnerCountFunctions,"previewManagedAccountErasure");
 const accountErasureConfirm = httpsCallable(partnerCountFunctions,"confirmManagedAccountErasure");
+const accountErasurePending = httpsCallable(partnerCountFunctions,"listManagedAccountErasurePending");
 const partnerMainPreviewCompanyInvite = httpsCallable(partnerCountFunctions,"previewPartnerCompanyInvitation");
 const partnerMainAcceptCompanyInvite = httpsCallable(partnerCountFunctions,"acceptPartnerCompanyInvitation");
 
@@ -13807,6 +13808,7 @@ function partnerInlineRender(){
  }
  renderPartnerPrivateProductCatalog();
  const list=pInline("pInlinePeople");list.replaceChildren();
+ attachPendingAccountErasureControl(list,canManage,()=>partnerInlineFetch());
  for(const person of staff){
   const row=document.createElement("div");row.className="p-inline-row";
   const label=document.createElement("strong");label.textContent=person.name;
@@ -14465,6 +14467,64 @@ function managedAccountErasureConfirmation(targetName){
   document.body.append(overlay);nameInput.focus();
  });
 }
+// Deliberate manual refresh only: a stopped account disappears from the
+// normal member list. A separate read-only view lets the same manager recover
+// their own pending account deletion after a browser/phone restart.
+function attachPendingAccountErasureControl(host,canManage,refresh){
+ if(!host?.id)return;
+ const id="nico-erasure-pending-"+host.id;
+ let panel=document.getElementById(id);
+ if(!panel){
+  panel=document.createElement("div");
+  panel.id=id;panel.style.cssText="padding:12px 0;display:block;";
+  const button=document.createElement("button");button.type="button";
+  button.className="member-action-button";
+  button.textContent="削除が未完了のアカウントを確認";
+  const result=document.createElement("div");
+  result.setAttribute("role","status");result.setAttribute("aria-live","polite");
+  result.style.cssText="margin-top:8px;";
+  panel.append(button,result);
+  host.after(panel);
+ }
+ panel.hidden=!canManage;
+ panel.firstElementChild.onclick=()=>void loadPendingAccountErasure(panel,refresh);
+}
+async function loadPendingAccountErasure(panel,refresh){
+ const uid=auth.currentUser?.uid;
+ const result=panel?.lastElementChild;
+ if(!uid||!result||panel.hidden)return;
+ result.textContent="削除途中のアカウントを照合しています…";
+ try{
+  const response=(await accountErasurePending({action:"listPending"})).data;
+  if(auth.currentUser?.uid!==uid||panel.hidden)return;
+  if(response?.readOnly!==true||!Array.isArray(response.pending))
+   throw Error("invalid_pending_readback");
+  result.replaceChildren();
+  if(!response.pending.length){
+   result.textContent="未完了の削除はありません。";return;
+  }
+  for(const person of response.pending){
+   if(!partnerMainValidId(person.targetUid)||!person.targetName)continue;
+   const row=document.createElement("div");
+   row.className="member-actions";
+   const name=document.createElement("span");
+   name.textContent=person.targetName+"｜削除未完了";
+   const button=document.createElement("button");
+   button.type="button";button.className="history-delete";
+   button.textContent="本人確認して削除を再開";
+   button.onclick=()=>void eraseManagedAccount(
+    person.targetUid,person.targetName,async()=>{
+     if(typeof refresh==="function")await refresh();
+     await loadPendingAccountErasure(panel,refresh);
+    });
+   row.append(name,button);result.append(row);
+  }
+ }catch{
+  if(auth.currentUser?.uid!==uid||panel.hidden)return;
+  result.textContent="未完了の削除情報を確認できません。認証や接続を確認してください。再送前に管理者が状態を確認してください。";
+ }
+}
+
 async function eraseManagedAccount(targetUid,targetName,refresh){
  const operator=auth.currentUser;
  if(!operator?.uid||!operator.emailVerified||!targetUid||
@@ -14472,8 +14532,8 @@ async function eraseManagedAccount(targetUid,targetName,refresh){
  try{
   const preview=(await accountErasurePreview({action:"preview",targetUid})).data;
   if(auth.currentUser?.uid!==operator.uid)throw Error("account_changed");
-  if(preview?.ready!==true||preview.targetUid!==targetUid||
-     preview.targetName!==targetName){
+  if((preview?.ready!==true&&preview?.pending!==true)||
+     preview.targetUid!==targetUid||preview.targetName!==targetName){
    showError("この人の所属・権限・過去の移籍情報を確認できず、削除を停止しました。");return;
   }
   const answer=await managedAccountErasureConfirmation(targetName);
@@ -22343,6 +22403,8 @@ function renderMembers() {
     "";
 
   renderManagedMemberTeamOptions();
+  attachPendingAccountErasureControl(memberList,
+    isCurrentCompanyOwner(),()=>loadMembers());
 
   if (
     managedMemberCreatePanel
