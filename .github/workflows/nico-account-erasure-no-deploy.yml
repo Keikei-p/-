@@ -5,6 +5,7 @@ on:
       - feature/nico-managed-account-erasure-20261104
     paths:
       - 'functions-account-erasure/**'
+      - 'firebase.account-erasure.emulator.json'
       - 'firebase.account-erasure.json'
       - 'tests/nico-account-erasure.test.cjs'
       - 'tests/nico-account-erasure-ui.test.cjs'
@@ -16,6 +17,7 @@ on:
   pull_request:
     paths:
       - 'functions-account-erasure/**'
+      - 'firebase.account-erasure.emulator.json'
       - 'firebase.account-erasure.json'
       - 'tests/nico-account-erasure.test.cjs'
       - 'tests/nico-account-erasure-ui.test.cjs'
@@ -66,3 +68,42 @@ jobs:
       - name: Verify old suspend-only function and historical sales regression
         run: |
           node --test tests/sales-regressions.cjs
+
+  actual-sdk-emulator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      GCLOUD_PROJECT: demo-sales-account-erasure
+      FIREBASE_PROJECT_ID: demo-sales-account-erasure
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Refuse production credentials and enforce demo-only project
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GCLOUD_PROJECT" = demo-sales-account-erasure
+          test "$FIREBASE_PROJECT_ID" = demo-sales-account-erasure
+          test -z "${GOOGLE_APPLICATION_CREDENTIALS:-}"
+          test -z "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          test -z "${NICO_ACCOUNT_ERASURE_ENABLED:-}"
+      - name: Install isolated Firebase Admin SDK and Firebase emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix functions-account-erasure --ignore-scripts --no-audit --no-fund
+      - name: Exercise real SDK in local Auth and Firestore emulators only (NO DEPLOY)
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes firebase-tools@15.34.1 --config firebase.account-erasure.emulator.json \
+            emulators:exec --only auth,firestore --project demo-sales-account-erasure \
+            "node functions-account-erasure/emulator.integration.test.cjs"
