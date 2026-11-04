@@ -42,7 +42,7 @@ class DB{
  }
 }
 class ErrorCode extends Error{constructor(code,message){super(message);this.code=code;}}
-function setup(){
+function setup({authAgeSec=0,featureEnabled=true}={}){
  const db=new DB(),people=new Map(),events=[];let throwOnDelete=false;
  const account=(uid,email=uid+"@example.com")=>people.set(uid,{uid,email,emailVerified:true,disabled:false});
  for(const uid of ["owner","staff","powner","pleader","pmember","pother","foreign","another"])
@@ -80,7 +80,7 @@ function setup(){
   getUser:async uid=>{if(!people.has(uid)){const e=Error("not found");e.code="auth/user-not-found";throw e;}
    return clone(people.get(uid));},
   verifyIdToken:async token=>{const uid=token.split("-")[0];return {uid,email:uid+"@example.com",
-   email_verified:true,auth_time:NOW/1000};},
+   email_verified:true,auth_time:NOW/1000-authAgeSec};},
   updateUser:async(uid,patch)=>{events.push(["disable",uid,patch]);const u=people.get(uid);
    if(!u)throw Object.assign(Error("missing"),{code:"auth/user-not-found"});Object.assign(u,patch);},
   deleteUser:async uid=>{events.push(["delete",uid]);if(throwOnDelete)throw Error("network");
@@ -92,7 +92,7 @@ function setup(){
  const service=makeAccountErasure({
   db,getAuth:()=>auth,HttpsError:ErrorCode,FieldValue:{
    serverTimestamp:()=>({__serverTimestamp:true}),delete:()=>({__deleteField:true})
-  },enabled:()=>true,now:()=>NOW
+  },enabled:()=>featureEnabled,now:()=>NOW
  });
  return{db,people,events,service,request,
   failDeletion:()=>{throwOnDelete=true;},restoreDeletion:()=>{throwOnDelete=false;},
@@ -200,5 +200,35 @@ test("malformed confirmation or foreign uid cannot write or delete any account",
   await assert.rejects(s.service.confirm(s.request("owner",data)));
  }
  assert.deepEqual([...s.db.store],start);
+ assert.equal(s.events.length,0);
+});
+
+
+test("previously suspended company member can have Auth and live account deleted without changing sales",async()=>{
+ const s=setup(),history=s.history();
+ s.db.store.get("users/staff").active=false;
+ s.db.store.get("companies/hub/members/staff").active=false;
+ s.people.get("staff").disabled=true;
+ const preview=await s.service.preview(s.request("owner",{action:"preview",targetUid:"staff"}));
+ assert.equal(preview.ready,true);
+ const result=await s.service.confirm(s.request("owner",{action:"confirm",targetUid:"staff",
+  confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"山田 太郎"}));
+ assert.equal(result.complete,true);
+ assert.equal(s.people.has("staff"),false);
+ assert.deepEqual(s.history(),history);
+});
+test("stale administrator authentication cannot erase any Firebase account or business data",async()=>{
+ const s=setup({authAgeSec:360}),before=clone([...s.db.store]);
+ const p=await s.service.preview(s.request("owner",{action:"preview",targetUid:"staff"}));
+ assert.equal(p.ready,true);
+ await assert.rejects(s.service.confirm(s.request("owner",{action:"confirm",targetUid:"staff",
+  confirmation:"DELETE_ACCOUNT_ONLY",confirmName:"山田 太郎"})),e=>e.code==="failed-precondition");
+ assert.deepEqual([...s.db.store],before);
+ assert.equal(s.events.length,0);
+});
+test("erasure feature is disabled by default on nonreviewed deployments",async()=>{
+ const s=setup({featureEnabled:false}),before=clone([...s.db.store]);
+ await assert.rejects(s.service.preview(s.request("owner",{action:"preview",targetUid:"staff"})),e=>e.code==="unavailable");
+ assert.deepEqual([...s.db.store],before);
  assert.equal(s.events.length,0);
 });
