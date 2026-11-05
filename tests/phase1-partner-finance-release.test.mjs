@@ -31,7 +31,9 @@ const snap={
 const liveProof=()=>({checkedAgainst:'production-live',partnerDocumentDenied:true,
  partnerListDenied:true,ownerFinanceAllowed:true});
 const approvals={approval:true,candidateEmulatorVerified:true,
- realOwnerBeforeVerified:true,backupReviewed:true,verifyLiveRoles:async()=>liveProof()};
+ realOwnerBeforeVerified:true,backupReviewed:true,verifyLiveRoles:async()=>liveProof(),
+ preApplyCheck:async()=>({checkedAgainst:'production-live',ownerFinanceAllowed:true,
+  affectedSecondaryBound:true,partnerSessionFresh:true})};
 const goodBackup=()=>({readyBackups:1,latestReadySnapshot:date});
 const snapshot=async()=>structuredClone(snap);
 const restore=async data=>({
@@ -271,4 +273,67 @@ test('release helper contains no executable production runner or identity loadin
  assert.doesNotMatch(source,/FIREBASE_SERVICE_ACCOUNT_JSON|GOOGLE_APPLICATION_CREDENTIALS|firebase\s+deploy/);
  assert.doesNotMatch(source,/applicationDefault|initializeApp|createRequire/);
  assert.match(source,/apply=false/);
+});
+
+
+test('after last full-data snapshot, expired credentials STOP before ANY active Rules PATCH',async()=>{
+ const f=fixture();
+ let precheck=0;
+ await assert.rejects(phase1Boundary({
+  ...f.args,...approvals,apply:true,
+  preApplyCheck:async()=>{precheck++;throw Error('STOP_TEST_USER_SESSION_EXPIRED');}
+ }),/STOP_TEST_USER_SESSION_EXPIRED/);
+ assert.equal(precheck,1);
+ assert.deepEqual(f.writes.map(x=>x.method),['POST'],
+  'creating an unactivated version is allowed; NEVER alter active Rules');
+ assert.equal(f.getCurrent(),oldId);
+});
+
+test('fake or incomplete pre-PATCH evidence does NOT authorize a Rules release',async()=>{
+ for(const evidence of [
+  null,{},'ok',
+  {checkedAgainst:'synthetic-only',ownerFinanceAllowed:true,
+   affectedSecondaryBound:true,partnerSessionFresh:true},
+  {checkedAgainst:'production-live',ownerFinanceAllowed:false,
+   affectedSecondaryBound:true,partnerSessionFresh:true},
+  {checkedAgainst:'production-live',ownerFinanceAllowed:true,
+   affectedSecondaryBound:false,partnerSessionFresh:true},
+  {checkedAgainst:'production-live',ownerFinanceAllowed:true,
+   affectedSecondaryBound:true,partnerSessionFresh:false}
+ ]){
+  const f=fixture();
+  await assert.rejects(phase1Boundary({...f.args,...approvals,apply:true,
+   preApplyCheck:async()=>evidence}),/STOP_PHASE1_PRE_SWITCH_ACCOUNT_UNVERIFIED/);
+  assert.equal(f.getCurrent(),oldId);
+  assert.deepEqual(f.writes.map(x=>x.method),['POST']);
+ }
+});
+
+test('pre-PATCH reproof is not called during readonly verify or candidate already active',async()=>{
+ for(const starting of [oldId,candidateId]){
+  const f=fixture({starting});
+  const result=await phase1Boundary({...f.args,...approvals,
+   apply:starting===candidateId,
+   preApplyCheck:async()=>{throw Error('must not contact account sessions');}});
+  assert.equal(result.applied,false);
+  assert.equal(f.writes.length,0);
+ }
+});
+
+test('pre-PATCH reproof runs after final inventory validation and BEFORE switch',async()=>{
+ const f=fixture();
+ const calls=[],getSnapshot=f.args.snapshot;
+ const result=await phase1Boundary({...f.args,...approvals,apply:true,
+  snapshot:async()=>{calls.push('snapshot');return getSnapshot();},
+  preApplyCheck:async()=>{
+   calls.push('preApply');
+   assert.equal(f.getCurrent(),oldId);
+   return {checkedAgainst:'production-live',ownerFinanceAllowed:true,
+    affectedSecondaryBound:true,partnerSessionFresh:true};
+  }
+ });
+ assert.equal(result.applied,true);
+ assert.equal(calls.filter(x=>x==='preApply').length,1);
+ assert.equal(calls[calls.indexOf('preApply')-1],'snapshot');
+ assert.equal(f.getCurrent(),candidateId);
 });
