@@ -12913,7 +12913,13 @@ function renderPartnerMonthTeamSummary(data){
    pInline(id).textContent="-";
   pInline("pPartnerMonthStatus").textContent=data.month+
    " の保存済み報告はありません。未報告の日は0件と判断しません。";
-  status.textContent=data.month+"｜この月の班別詳細は未報告です。";return;
+  status.textContent=data.month+"｜この月の班別詳細は未報告です。";
+  for(const id of ["pPartnerAnalysis","pPartnerChart"]){
+   const area=pInline(id);area.replaceChildren();
+   partnerMainAppendRow(area,data.month+"｜この月の保存済み実績はありません",
+    "未報告を0件として集計していません。");
+  }
+  return;
  }
  pInline("pPartnerMonthCount").textContent=data.totalCount+"件";
  pInline("pPartnerMonthStaffCount").textContent=data.reportedStaffCount+"人";
