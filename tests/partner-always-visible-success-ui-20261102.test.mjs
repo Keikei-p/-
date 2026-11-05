@@ -196,7 +196,7 @@ test("partner-only mode never starts financial Firestore listeners",()=>{
  const ctx={appScreen:{dataset:{partnerCountOnly:"true"}}};
  vm.runInNewContext(code+"\nthis.start=startRealtimeListeners;",ctx);
  assert.equal(ctx.start(),undefined,"return before invoking any legacy listener");
- const firstGuard=code.indexOf('if(appScreen.dataset.partnerCountOnly==="true")return;');
+ const firstGuard=code.indexOf('if(typeof appScreen!=="undefined"&&appScreen?.dataset?.partnerCountOnly==="true")return;');
  const stop=code.indexOf("stopRealtimeListeners();");
  assert(firstGuard>=0&&stop>firstGuard,"role guard before old listener reset");
 });
