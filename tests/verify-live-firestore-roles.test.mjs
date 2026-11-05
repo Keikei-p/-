@@ -27,7 +27,9 @@ function fixture(opts={}){
     const status=opts.statusOverride?.({partner,url,req,calls})??(partner?403:200);
     return {
       status,
-      json:async()=>req.method==='POST'
+      json:async()=>status===403
+        ?{error:{code:403,status:'PERMISSION_DENIED'}}
+        :req.method==='POST'
         ?[{document:{name:RESOURCE_ROOT+'/'+JSON.parse(req.body).structuredQuery.from[0].collectionId+'/demo',fields:{companyId:{stringValue:'internal_company'}}}}]
         :{name:url.slice(API.length),fields:isProduct
           ?{companyId:{stringValue:'internal_company'},revenue:{integerValue:'10000'}}
@@ -202,4 +204,47 @@ test('stale Owner or secondary Partner token is refused AFTER construction but B
       /STOP_LIVE_ROLE_USER_IDENTITY_NOT_VERIFIED/,role);
     assert.equal(f.calls.length,0,'do not mistake auth expiry for Rules denial');
   }
+});
+
+
+test('plain HTTP 403 is not enough: only structured Firestore PERMISSION_DENIED proves denial',async()=>{
+  const invalid=[
+    {},{error:{code:403,status:'UNAUTHENTICATED'}},
+    {error:{code:401,status:'PERMISSION_DENIED'}},
+    {error:{code:403,status:'RESOURCE_EXHAUSTED'}},
+    {error:{code:403,message:'Forbidden'}},
+    [{error:{code:403,status:'PERMISSION_DENIED'}}]
+  ];
+  for(const denial of invalid){
+    const f=fixture();
+    const verifier=f.create({fetchImpl:async(url,req)=>{
+      const partner=req.headers.Authorization.includes(jwt('partneruid'));
+      const collection=req.method==='POST'
+        ?JSON.parse(req.body).structuredQuery.from[0].collectionId
+        :url.includes('/products/')?'products':'records';
+      if(partner)return {status:403,json:async()=>denial};
+      return {status:200,json:async()=>req.method==='POST'?
+        [{document:{name:RESOURCE_ROOT+'/'+collection+'/demo',fields:{companyId:{stringValue:'internal_company'}}}}]:{
+          name:url.slice(API.length),fields:{companyId:{stringValue:'internal_company'},
+            revenue:{integerValue:'1'},totalRevenue:{integerValue:'1'}}
+        }};
+    }});
+    await assert.rejects(verifier(args),/STOP_LIVE_ROLE_PERMISSION_DENIAL_UNVERIFIED/);
+  }
+});
+test('partner 403 with non-JSON body is not accepted as a Firestore Rules denial',async()=>{
+  const f=fixture();
+  const verifier=f.create({fetchImpl:async(url,req)=>{
+    const partner=req.headers.Authorization.includes(jwt('partneruid'));
+    const collection=req.method==='POST'
+      ?JSON.parse(req.body).structuredQuery.from[0].collectionId
+      :url.includes('/products/')?'products':'records';
+    if(partner)return {status:403,json:async()=>{throw Error('not Firestore')}};
+    return {status:200,json:async()=>req.method==='POST'?
+      [{document:{name:RESOURCE_ROOT+'/'+collection+'/demo',fields:{companyId:{stringValue:'internal_company'}}}}]:{
+        name:url.slice(API.length),fields:{companyId:{stringValue:'internal_company'},
+          revenue:{integerValue:'1'},totalRevenue:{integerValue:'1'}}
+      }};
+  }});
+  await assert.rejects(verifier(args),/STOP_LIVE_ROLE_PERMISSION_DENIAL_UNVERIFIED/);
 });
