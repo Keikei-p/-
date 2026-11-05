@@ -36,7 +36,9 @@ function fixture({ownerStatus=200,partnerStatus=403,ownerCompany='internal_compa
     const product=url.includes('/products/');
     return {
       status:isPartner?partnerStatus:ownerStatus,
-      json:async()=>opts.method==='POST'?[{document:{name:RESOURCE_ROOT+'/'+JSON.parse(opts.body).structuredQuery.from[0].collectionId+'/existingRow',fields:{companyId:{stringValue:ownerCompany}}}}]:{
+      json:async()=>isPartner&&partnerStatus===403
+        ?{error:{code:403,status:'PERMISSION_DENIED'}}
+        :opts.method==='POST'?[{document:{name:RESOURCE_ROOT+'/'+JSON.parse(opts.body).structuredQuery.from[0].collectionId+'/existingRow',fields:{companyId:{stringValue:ownerCompany}}}}]:{
         name:url.slice(API.length),fields:{
           companyId:{stringValue:ownerCompany},
           [product?'revenue':'totalRevenue']:{integerValue:'15000'}
