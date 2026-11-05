@@ -28,6 +28,12 @@ const helper=[
  "        && get(companyPath(companyId)).data.get('companyKind', 'internal') == 'internal'",
  "        && get(userPath(request.auth.uid)).data.get('accessKind', 'internal') == 'internal'",
  "        && get(memberPath(companyId, request.auth.uid)).data.get('accessKind', 'internal') == 'internal'",
+ "        && get(userPath(request.auth.uid)).data.get('memberType', 'internal')",
+ "             in ['internal', 'direct', 'member', 'managed']",
+ "        && get(memberPath(companyId, request.auth.uid)).data.get('memberType', 'internal')",
+ "             in ['internal', 'direct', 'member', 'managed']",
+ "        && get(userPath(request.auth.uid)).data.get('memberType', 'internal') != 'cooperator'",
+ "        && get(memberPath(companyId, request.auth.uid)).data.get('memberType', 'internal') != 'cooperator'",
  "        && get(userPath(request.auth.uid)).data.get('memberType', 'internal') != 'partner'",
  "        && get(memberPath(companyId, request.auth.uid)).data.get('memberType', 'internal') != 'partner';",
  '    }',''
