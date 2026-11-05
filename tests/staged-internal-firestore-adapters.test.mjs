@@ -10,7 +10,7 @@ import {
  createStagedInternalFirebaseAdapters,createStagedInternalFirebaseCountGateway
 } from '../security/staged-internal-firebase-adapters.mjs';
 const DB='projects/sales-management-cc116/databases/(default)/documents';
-const URL='https://firestore.googleapis.com/v1/'+DB+':runQuery';
+const FIRESTORE_URL='https://firestore.googleapis.com/v1/'+DB+':runQuery';
 const TIME='2026-11-05T02:30:00.000000Z';
 const companyId='direct',day='2026-11-05';
 const string=s=>({stringValue:s}),int=n=>({integerValue:String(n)});
@@ -45,7 +45,7 @@ test('fixed REST query projects only fields needed for counts; no company/collec
  const prod=buildStagedInternalRunQuery({table:'products',companyId,limit:201});
  const rec=buildStagedInternalRunQuery({table:'records',companyId,day,
   cursor:'sale0001',snapshotTime:TIME,limit:50});
- assert.equal(prod.endpoint,URL);assert.equal(rec.method,'POST');
+ assert.equal(prod.endpoint,FIRESTORE_URL);assert.equal(rec.method,'POST');
  assert.deepEqual(prod.body.structuredQuery.from,[{collectionId:'products'}]);
  assert.equal(prod.body.structuredQuery.limit,201);
  assert.deepEqual(prod.body.structuredQuery.select.fields.map(x=>x.fieldPath),
@@ -138,7 +138,7 @@ test('backend adapters use Admin Auth/ACL documents only, fixed service REST and
  assert.equal(await adapter.readDocument('partnerWorkspaceContexts/owner'),null);
  assert.equal((await adapter.loadCountPage(options)).records.length,1);
  assert.equal(audit.queries.length,2);
- assert(audit.queries.every(x=>x.url===URL&&x.init.method==='POST'));
+ assert(audit.queries.every(x=>x.url===FIRESTORE_URL&&x.init.method==='POST'));
  assert.equal(audit.queries[1].init.headers.Authorization,'Bearer '+'s'.repeat(70));
  const returned=JSON.stringify(audit.queries.map(x=>JSON.parse(x.init.body)));
  assert(!returned.includes('totalRevenue'));
