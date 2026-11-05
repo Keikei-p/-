@@ -32,6 +32,7 @@ function identity(token, expectedUid, nowSeconds, minimumRemainingSeconds=60){
      claims.aud!==PROJECT||
      claims.iss!=='https://securetoken.google.com/'+PROJECT||
      claims.email_verified!==true||
+     typeof claims.email!=='string'||claims.email.trim().length===0||
      !claims.firebase||typeof claims.firebase.sign_in_provider!=='string'||
      !Number.isSafeInteger(claims.iat)||!Number.isSafeInteger(claims.exp)||
      claims.iat>nowSeconds+60||claims.exp<=nowSeconds+minimumRemainingSeconds||
