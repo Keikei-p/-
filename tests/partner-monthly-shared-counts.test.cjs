@@ -41,8 +41,10 @@ test("monthly counts merge two days for same partner person and immutable team",
  assert.deepEqual(data.counts,{NURO:5,SBMNP:1});
  assert.equal(data.people.length,1);
  assert.equal(data.people[0].totalCount,10);
+ assert.equal(data.people[0].companyId,"partner");
  assert.deepEqual(data.people[0].extraCounts,{extraSolar:4});
  assert.equal(data.teams[0].totalCount,10);
+ assert.equal(data.teams[0].companyId,"partner");
  assert.doesNotMatch(JSON.stringify(data),/staffId|uid|email|revenue|unitPrice|¥/);
 });
 test("private partner counts remain private: own monthly totals retain them, shared rankings exclude them",()=>{
