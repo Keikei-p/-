@@ -52,7 +52,9 @@ test("backend only stores groups in private settings and no legacy financial row
  assert.match(service,/async function setPartnerRankingGroups\(/);
  assert.match(service,/const fresh=await scope\(a.uid,tx\)/);
  assert.match(service,/partnerRankingSettings/);
- assert.match(service,/groupPersonalScores\(sharedConfig.groups/);
+ assert.match(service,/groupPersonalScores\(rankingGroups/);
+ assert.match(service,/addAutomaticPublishedGroups\(sharedConfig.groups/);
+ assert.match(service,/readVisibleRankingGroups\(/);
  assert.match(api,/exports\.getPartnerRankingGroups=onCall/);
  assert.match(api,/exports\.setPartnerRankingGroups=onCall/);
 });
@@ -111,7 +113,9 @@ test("shared personal product standings withhold verification for missing staff 
  const monthly=source.slice(source.indexOf(" async function viewMonthly(request){"),source.indexOf(" async function view(request){"));
  const daily=source.slice(source.indexOf('  if(d.sharedRankings===true){'),source.indexOf('  if(d.includeAuditHistory===true&&s.kind!=="partner")'));
  for(const scope of [monthly,daily]){
-  assert.match(scope,/if\(canPublishSharedPersonalRankings\(direct,companies\)\)/);
+  assert.match(scope,/const verified=canPublishSharedPersonalRankings\(direct,companies\)/);
+  assert.match(scope,/direct.peopleVerified===true\?/);
+  assert.match(scope,/extraOnlyManual/);
   assert.match(scope,/groupStandings=groupPersonalScores/);
   assert.match(scope,/groupStatus="verified"/);
  }
