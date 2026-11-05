@@ -34,6 +34,13 @@ function setup({kind="internal",context=null}={}){
   db.seed("users/staff",{uid:"staff",companyId:"partner",companyRole:"member",
    accessKind:"partner",memberType:"cooperator",active:true});
   db.seed("companies/partner",{hubCompanyId:"hub",companyKind:"partner",active:true});
+  db.seed("companies/partner/members/staff",{
+   uid:"staff",companyId:"partner",active:true,accessKind:"partner",memberType:"cooperator"});
+  db.seed("partnerRelations/partner",{hubCompanyId:"hub",partnerCompanyId:"partner",
+   active:true,countSharingApproved:true});
+  db.seed("partnerHistoricalTransfers/staff",{uid:"staff",
+   sourceCompanyId:"hub",destinationCompanyId:"partner",hubCompanyId:"hub",
+   originalUser:{uid:"staff",companyId:"hub"}});
  }
  if(context!==null)db.seed("partnerWorkspaceContexts/staff",{active:context});
  const tokens={auth:0,verified:0};
@@ -138,4 +145,31 @@ test("existing UI calls server only; no unsafe browser batch / Auth delete",()=>
   "../functions-partner-workspace/index.js"),"utf8");
  assert.match(idx,/SAFE_INTERNAL_MEMBER_REMOVAL_ENABLED==="enabled"/);
  assert.match(idx,/exports\.removeInternalCompanyMember=onCall/);
+});
+
+test("integrated ranking release cannot remove a stale-role Master",async()=>{
+ const x=setup();x.db.docs.get("companies/hub").masterUid="staff";
+ const before=snapshot(x.db);
+ await assert.rejects(x.api.remove(x.req()),e=>e.code==="failed-precondition");
+ assert.deepEqual(snapshot(x.db),before);assert.equal(x.db.writes.length,0);
+});
+test("integrated deletion preserves partner login unless transfer chain is verified",async()=>{
+ for(const mutate of [
+  x=>x.db.docs.delete("partnerHistoricalTransfers/staff"),
+  x=>x.db.docs.delete("partnerRelations/partner"),
+  x=>x.db.docs.get("partnerRelations/partner").countSharingApproved=false,
+  x=>x.db.docs.get("companies/partner/members/staff").active=false,
+  x=>x.db.docs.get("partnerHistoricalTransfers/staff").sourceCompanyId="foreign"
+ ]){
+  const x=setup({kind:"partner"});mutate(x);const before=snapshot(x.db);
+  await assert.rejects(x.api.remove(x.req()),e=>e.code==="failed-precondition");
+  assert.deepEqual(snapshot(x.db),before);assert.equal(x.db.writes.length,0);
+ }
+});
+test("stale transfer archive cannot cause a currently-internal login to be disabled",async()=>{
+ const x=setup();x.db.seed("partnerHistoricalTransfers/staff",{
+  uid:"staff",sourceCompanyId:"hub",destinationCompanyId:"partner"});
+ const before=snapshot(x.db);
+ await assert.rejects(x.api.remove(x.req()),e=>e.code==="failed-precondition");
+ assert.deepEqual(snapshot(x.db),before);assert.equal(x.db.writes.length,0);
 });
