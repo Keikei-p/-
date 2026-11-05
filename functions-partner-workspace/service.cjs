@@ -1159,9 +1159,12 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      publishedIds:extraVerifiedIds,linkedIds,teamNames
     });
    }catch{fail("data-loss");}
+   // A company with no saved entry this month is UNREPORTED, never a
+   // verified zero-count competitor. An explicit zero-report row is valid.
    companies.push({id:cid,name:rank.name,totalCount:rank.totalCount,
     extraTotalCount:rank.additionalTotalCount,counts:rank.counts,
-    peopleVerified:true});
+    verifiedEntryCount:rank.verifiedEntryCount,
+    peopleVerified:rank.verifiedEntryCount>0});
    people.push(...rank.people);teams.push(...rank.teams);
    for(const key of KEYS)productCounts[key]+=rank.counts[key];
    additionalTotalCount+=rank.additionalTotalCount;
