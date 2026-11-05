@@ -11,7 +11,9 @@ import {
 import {fingerprint} from '../tools/readonly-backup/backup.mjs';
 
 const PROJECT='sales-management-cc116';
-const ROOT='https://firestore.googleapis.com/v1/projects/'+PROJECT+'/databases/(default)/documents';
+const API='https://firestore.googleapis.com/v1/';
+const RESOURCE_ROOT='projects/'+PROJECT+'/databases/(default)/documents';
+const ROOT=API+RESOURCE_ROOT;
 const RULES_ROOT='https://firebaserules.googleapis.com/v1/projects/'+PROJECT;
 const releaseUrl=RULES_ROOT+'/releases/cloud.firestore';
 const oldId='projects/'+PROJECT+'/rulesets/legacy';
@@ -34,8 +36,8 @@ function fixture({ownerStatus=200,partnerStatus=403,ownerCompany='internal_compa
     const product=url.includes('/products/');
     return {
       status:isPartner?partnerStatus:ownerStatus,
-      json:async()=>opts.method==='POST'?[{readTime:DATE}]:{
-        name:url,fields:{
+      json:async()=>opts.method==='POST'?[{document:{name:RESOURCE_ROOT+'/'+JSON.parse(opts.body).structuredQuery.from[0].collectionId+'/existingRow',fields:{companyId:{stringValue:ownerCompany}}}}]:{
+        name:url.slice(API.length),fields:{
           companyId:{stringValue:ownerCompany},
           [product?'revenue':'totalRevenue']:{integerValue:'15000'}
         }
@@ -130,7 +132,7 @@ function fakeIdentity({changedPath='',changes={},statusOverride=0}={}){
    if(path==='partnerWorkspaceContexts/'+owner)return {status:404};
    const fields={...rows[path],...(path===changedPath?changes:{})};
    if(!rows[path])return {status:404};
-   return {status:200,json:async()=>({name:url,fields})};
+   return {status:200,json:async()=>({name:url.slice(API.length),fields})};
   }
  };
  Object.defineProperty(result,'calls',{value:calls});
@@ -300,4 +302,19 @@ test('bridge rejects generic partner and otherwise-valid mocked identity prior t
  assert.equal(r.writes.length,0);
  assert.equal(r.getActive(),oldId);
  assert.equal(f.calls.length,0);
+});
+
+test('identity Admin GET rejects HTTPS name and another document while accepting exact REST resource',async()=>{
+ const badIdentity=fakeIdentity();
+ const actualFetch=badIdentity.fetchImpl;
+ badIdentity.fetchImpl=async(url,options)=>{
+   const r=await actualFetch(url,options);
+   if(r.status!==200)return r;
+   return {status:200,json:async()=>({...await r.json(),name:url})};
+ };
+ await assert.rejects(createAffectedSecondaryIdentityVerifier({
+   ...badIdentity,expectedOwnerUid:'realOwner',expectedPartnerUid:'secondaryPartner',
+   internalCompanyId:'internal_company'
+ })(),/STOP_PHASE1_IDENTITY_UNRECOGNIZED_DOCUMENT/);
+ assert(badIdentity.calls.every(x=>x.method==='GET'));
 });
