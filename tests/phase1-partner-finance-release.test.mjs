@@ -148,8 +148,8 @@ test('uncertain patch or changed inventory rolls Rules back to exact previously 
    let n=0;
    f.args.snapshot=async()=>{
     const v=structuredClone(snap);
-    // reads 1,2 are pre-apply checks; the third read differs.
-    if(++n===4)v.documents[0].value.fields.totalCount.integerValue='4';
+    // Reads 1 and 2 precede the release; read 3 detects a later change.
+    if(++n===3)v.documents[0].value.fields.totalCount.integerValue='4';
     return v;
    };
   }
@@ -175,7 +175,6 @@ test('do not rollback a concurrent operator unrelated release',async()=>{
  assert.deepEqual(f.writes.map(x=>x.method),['POST','PATCH']);
 });
 test('no arbitrary Firestore writes, wrong host or unreviewed Rules source passes transport',()=>{
- const sha=require=>require;
  for(const method of ['PATCH','POST','DELETE']){
   assert.equal(allowedPhase1Request(method,
    'https://firestore.googleapis.com/v1/projects/'+PROJECT+
