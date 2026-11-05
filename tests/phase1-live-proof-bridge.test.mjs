@@ -203,7 +203,7 @@ test('broken Owner permission, wrong company or expired Owner token always stops
     });
     if(type==='expired')f.setTime((T+4000)*1000);
     const r=releaseFixture();
-    await assert.rejects(createLiveFirestoreOwnerPreflight(f.accounts)(),
+    await assert.rejects(async()=>createLiveFirestoreOwnerPreflight(f.accounts)(),
       /STOP_LIVE_ROLE_/);
     assert.equal(r.writes.length,0);
     assert.equal(r.getActive(),oldId);
@@ -239,7 +239,7 @@ test('bridge is import-only, with no deployed runner, credential reader or impli
     '../tools/production/phase1-live-proof-bridge.mjs',import.meta.url),'utf8');
   assert.doesNotMatch(source,/process\.env|firebase deploy|spawn\(|execFile\(/);
   assert.match(source,/phase1Boundary\(\{/);
-  assert.match(source,/verifyLiveRoles:after/);
+  assert.match(source,/verifyLiveRoles:async proofArgs/);
   assert.match(source,/realOwnerBeforeVerified:true/);
   assert.match(source,/TRUSTED_AFFECTED_IDENTITY_REQUIRED/);
   assert.match(source,/POST_SWITCH_IDENTITY_UNVERIFIED/);
