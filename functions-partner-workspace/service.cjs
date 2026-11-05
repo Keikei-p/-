@@ -1171,8 +1171,11 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    const verified=canPublishSharedPersonalRankings(direct,companies);
    // Extra-only rows contain audited staff IDs but old fixed-category reports
    // might be missing. Display only new-product ranks as PROVISIONAL.
+   const approvedNew=new Set(extraVerifiedIds);
+   const extraOnlyManual=sharedConfig.groups.filter(group=>
+    group.keys.every(key=>key.startsWith("id:")&&approvedNew.has(key.slice(3))));
    const rankingGroups=verified?allGroups:
-    direct.peopleVerified===true?automatic:[];
+    direct.peopleVerified===true?[...extraOnlyManual,...automatic]:[];
    if(verified||rankingGroups.length){
     groupStandings=groupPersonalScores(rankingGroups,[
      ...people,...direct.people.map(p=>({...p,companyName:"直営"}))
@@ -1387,8 +1390,11 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     const verified=canPublishSharedPersonalRankings(direct,companies);
     // A missing fixed-category source cannot produce a legacy-category
     // ranking. New-product rows with verified staff IDs remain provisional.
+    const approvedNew=new Set(extraVerifiedIds);
+    const extraOnlyManual=sharedConfig.groups.filter(group=>
+     group.keys.every(key=>key.startsWith("id:")&&approvedNew.has(key.slice(3))));
     const rankingGroups=verified?allGroups:
-     direct.peopleVerified===true?automatic:[];
+     direct.peopleVerified===true?[...extraOnlyManual,...automatic]:[];
     if(verified||rankingGroups.length){
      groupStandings=groupPersonalScores(rankingGroups,
       [...people,...direct.people.map(person=>({...person,companyName:"直営"}))],
