@@ -23,17 +23,21 @@ function mock(){
   const send=async(url,options)=>{
     calls.push({url,method:options.method});
     if(options.method==="PATCH"){
+      // Simulate Firestore's create-only precondition, not a blind upsert.
+      assert(url.endsWith("?currentDocument.exists=false"));
+      const destination=url.slice(0,-"?currentDocument.exists=false".length);
+      if(memory.has(destination))return {ok:false,status:412};
       const fields=JSON.parse(options.body).fields;
-      memory.set(url,fields);
-      return {ok:true,json:async()=>({fields})};
+      memory.set(destination,fields);
+      return {ok:true,status:200,json:async()=>({fields})};
     }
     if(options.method==="GET"){
       const fields=memory.get(url);
-      return fields?{ok:true,json:async()=>({fields})}:{ok:false};
+      return fields?{ok:true,status:200,json:async()=>({fields})}:{ok:false,status:404};
     }
     throw Error("Unexpected emulator method");
   };
-  return {send,calls};
+  return {send,calls,memory};
 }
 test("no cloud endpoint or production project can be selected",()=>{
   for(const host of [
@@ -53,9 +57,11 @@ test("synthetic fields and original paths round-trip only through demo emulator 
   assert.equal(result.metadataTimestampsPreserved,false);
   assert.equal(result.productionTouched,false);
   assert.equal(result.sourceInventoryFingerprint.length,64);
-  assert.equal(m.calls.length,4);
+  assert.equal(m.calls.length,6);
   assert(m.calls.every(x=>x.url.startsWith("http://127.0.0.1:8080/v1/projects/demo-sales-restore/")));
-  assert.deepEqual(m.calls.map(x=>x.method),["PATCH","PATCH","GET","GET"]);
+  assert.deepEqual(m.calls.map(x=>x.method),["GET","GET","PATCH","PATCH","GET","GET"]);
+  assert(m.calls.filter(x=>x.method==="PATCH")
+    .every(x=>x.url.endsWith("?currentDocument.exists=false")));
   assert.equal(JSON.stringify(snapshot()),before);
 });
 test("validation fails before any emulator write on malformed or duplicate archive paths",async()=>{
@@ -79,7 +85,8 @@ test("strict maxDocuments guard blocks partial restore before writing",async()=>
 test("REST write or readback mismatches are always reported without exposing private data",async()=>{
   const m=mock(),broken=async(url,options)=>{
     const result=await m.send(url,options);
-    if(options.method==="GET")return {ok:true,json:async()=>({fields:{tampered:{booleanValue:true}}})};
+    if(options.method==="GET"&&result.ok)
+      return {ok:true,status:200,json:async()=>({fields:{tampered:{booleanValue:true}}})};
     return result;
   };
   await assert.rejects(restoreToLocalEmulator(snapshot(),{...params,send:broken}),err=>
@@ -100,9 +107,10 @@ test("25,001 synthetic documents roundtrip without the old 10,000 limit",async()
   const result=await restoreToLocalEmulator(large,{...params,send:m.send});
   assert.equal(result.documentCount,25001);
   assert.equal(result.fieldsAndIdsVerified,true);
-  assert.equal(m.calls.length,50002);
-  assert(m.calls.slice(0,25001).every(c=>c.method==="PATCH"));
-  assert(m.calls.slice(25001).every(c=>c.method==="GET"));
+  assert.equal(m.calls.length,75003);
+  assert(m.calls.slice(0,25001).every(c=>c.method==="GET"));
+  assert(m.calls.slice(25001,50002).every(c=>c.method==="PATCH"));
+  assert(m.calls.slice(50002).every(c=>c.method==="GET"));
   assert(m.calls.every(c=>c.url.includes("/demo-sales-restore/")));
   assert.equal(result.productionTouched,false);
 });
@@ -115,4 +123,47 @@ test("a 50,001 document archive is blocked before any writes",async()=>{
   const m=mock();
   await assert.rejects(restoreToLocalEmulator(tooMany,{...params,send:m.send}),/BLOCK/);
   assert.equal(m.calls.length,0);
+});
+
+test("nonempty local target must abort all writes before restoring any document",async()=>{
+ const m=mock();
+ const endpoint=emulatorBase(params.emulatorHost,TEST_PROJECT)+"records/synthetic-one";
+ m.memory.set(endpoint,{totalCount:{integerValue:"999"}});
+ const old=JSON.stringify([...m.memory]);
+ await assert.rejects(restoreToLocalEmulator(snapshot(),{...params,send:m.send}),/BLOCK: emulator destination/);
+ assert(m.calls.length>0);
+ assert(m.calls.every(c=>c.method==="GET"),"no PATCH on a nonempty target");
+ assert.equal(JSON.stringify([...m.memory]),old,"existing test data must not be overwritten");
+});
+test("preflight fails closed on permission errors, server faults and redirects before local writes",async()=>{
+ for(const status of [200,301,401,403,429,500]){
+  const m=mock();
+  const refused=async(url,options)=>options.method==="GET"?
+   {status,ok:false}:m.send(url,options);
+  await assert.rejects(restoreToLocalEmulator(snapshot(),{...params,send:refused}),/BLOCK: emulator destination/);
+  assert(m.calls.every(c=>c.method!=="PATCH"));
+ }
+});
+
+test("concurrent local document creation after empty preflight cannot be overwritten",async()=>{
+ const m=mock(),first=emulatorBase(params.emulatorHost,TEST_PROJECT)+"records/synthetic-one";
+ const incumbent={totalCount:{integerValue:"777"}};
+ let raceTriggered=false;
+ const concurrent=async(url,options)=>{
+  if(options.method==="PATCH"&&url.startsWith(first+"?")&&!raceTriggered){
+   // A different process creates the document after all preflight GETs.
+   m.memory.set(first,incumbent);
+   raceTriggered=true;
+  }
+  return m.send(url,options);
+ };
+ await assert.rejects(
+  restoreToLocalEmulator(snapshot(),{...params,send:concurrent}),
+  /BLOCK: emulator restore write\/verification failed/
+ );
+ assert.equal(raceTriggered,true);
+ assert.deepEqual(m.memory.get(first),incumbent,
+  "create-only conditional PATCH must not replace a concurrently created document");
+ assert(m.calls.filter(x=>x.method==="PATCH")
+  .every(x=>x.url.endsWith("?currentDocument.exists=false")));
 });

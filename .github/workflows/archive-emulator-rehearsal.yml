@@ -4,6 +4,8 @@ on:
     paths:
       - "functions/rehearse-sales-restore.mjs"
       - "tests/generate-synthetic-archive.mjs"
+      - "tools/readonly-backup/restore-emulator.mjs"
+      - "tools/readonly-backup/restore-emulator-live.test.mjs"
       - ".github/workflows/archive-emulator-rehearsal.yml"
   workflow_dispatch:
 permissions:
@@ -30,3 +32,16 @@ jobs:
       - name: Run isolated emulator import and full read-back check
         run: |
           npx --yes firebase-tools emulators:exec --only firestore --project demo-sales-archive-rehearsal "node functions/rehearse-sales-restore.mjs /tmp/sales-archive-test.json --confirm-emulator"
+
+      - name: Verify create-only typed restore against real localhost Firestore Emulator (synthetic only)
+        env:
+          GCLOUD_PROJECT: demo-sales-restore
+          GOOGLE_CLOUD_PROJECT: demo-sales-restore
+          GOOGLE_APPLICATION_CREDENTIALS: ""
+        run: |
+          set -euo pipefail
+          test "$GCLOUD_PROJECT" = demo-sales-restore
+          test "$GOOGLE_CLOUD_PROJECT" = demo-sales-restore
+          test -z "${GOOGLE_APPLICATION_CREDENTIALS:-}"
+          test -z "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          npx --yes firebase-tools emulators:exec --only firestore --project demo-sales-restore "node --test tools/readonly-backup/restore-emulator-live.test.mjs"
