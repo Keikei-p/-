@@ -15024,10 +15024,37 @@ pInline("pInlineReturnToOwnCompany").onclick=()=>{
  // The normal internal app STILL checks fresh server-side finance permissions.
  location.replace(new URL("/",location.origin).href);
 };
+// Clear ONLY the browser's old internal sales/price state before opening the
+// partner's count-only workspace. This never deletes or modifies Firestore
+// documents, Auth identities, product prices, sales records or history.
+function isolateInternalFinanceForPartnerWorkspace(){
+ products=[];
+ records=[];
+ revenueGoals=[];
+ annualChartRecords=null;
+ members=[];
+ teams=[];
+ goals=[];
+ currentUserData=null;
+ currentCompanyData=null;
+ editingProductId=null;
+ editingRecordId=null;
+ editingRecordRevision=null;
+ // Stop retaining prices in detached/hidden legacy controls after a role
+ // switch. Partner navigation clones only safe labels, never these nodes.
+ for(const node of [productList,productPricingEditor,editProductPricingEditor,
+                    individualRankingList,productRankingMemberList,
+                    monthlyRevenue]){
+  if(node)node.replaceChildren();
+ }
+}
 async function openSameAppPartnerWorkspace(user,workspaceCompanyId=""){
  if(!user?.emailVerified||!partnerMainValidId(user.uid))return;
- // Do not load legacy sales products, records, prices, or Firestore listeners.
+ // Prevent any newly started legacy reader before the asynchronous count
+ // endpoint resolves. The original owner returns through a fresh page reload.
+ appScreen.dataset.partnerCountOnly="true";
  stopRealtimeListeners();
+ isolateInternalFinanceForPartnerWorkspace();
  partnerInlineWorkspaceCompany=partnerMainValidId(workspaceCompanyId)?workspaceCompanyId:"";
  const workspaceRequested=partnerInlineWorkspaceCompany;
  const switchButton=pInline("pInlineReturnToOwnCompany");
@@ -17968,7 +17995,9 @@ deleteOwnAccountButton.onclick =
 ===================================================== */
 
 function startRealtimeListeners() {
-
+  // A partner role change can occur while an old Firebase callback is pending.
+  // Never restart money-bearing listeners inside the count-only workspace.
+  if(appScreen.dataset.partnerCountOnly==="true")return;
   stopRealtimeListeners();
   loadLocalRankingGroups();
 
@@ -20447,15 +20476,18 @@ function compareProductsByOrder(
 async function loadProducts(
   throwOnError = false
 ) {
-
+  // A delayed getDocs that began in the internal workspace must not re-add
+  // price-bearing products after switching to a partner count-only view.
+  if(appScreen.dataset.partnerCountOnly==="true")return false;
+  const companyId=currentUserData?.companyId,uid=auth.currentUser?.uid;
   try {
-
     const snapshot =
       await getDocs(
         companyCollectionQuery("products")
       );
-
-
+    if(appScreen.dataset.partnerCountOnly==="true"||
+       uid!==auth.currentUser?.uid||
+       companyId!==currentUserData?.companyId)return false;
     products = [];
 
     snapshot.forEach(
