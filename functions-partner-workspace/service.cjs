@@ -1699,12 +1699,15 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   // Owner; do not silently ignore forged hub options in a partner session.
   if(d.includeTeamStatus===true||d.partnerCompanyId!=null)fail();
   if(d.includeAuditHistory!=null&&d.includeAuditHistory!==true)fail("invalid-argument");
-  const [teams,staff,entries,privateProducts]=await Promise.all([
+  const [teams,staff,entries,privateProducts,legacyGateSnap]=await Promise.all([
     collection(s.cid,"partnerWorkTeams").limit(151).get(),
     collection(s.cid,"partnerWorkStaff").limit(151).get(),
     collection(s.cid,"partnerWorkEntries").where("date","==",date).limit(201).get(),
-    collection(s.cid,"partnerPrivateProducts").limit(101).get()
+    collection(s.cid,"partnerPrivateProducts").limit(101).get(),
+    legacyGateRef(s.cid).get()
   ]);
+  const legacyPublication=await legacyInputPolicy(s.hubId,s.cid,date,
+   ref=>ref.get(),legacyGateSnap);
   if(teams.size>150||staff.size>150||entries.size>200||privateProducts.size>100)fail("resource-exhausted");
   const productList=privateProducts.docs.map(sn=>{
    const x=sn.data()||{};
@@ -1785,7 +1788,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    .filter(team=>["owner","leader"].includes(s.role)||team.id===s.teamId);
   return {role:s.role,date,companyName:clean(s.companyName),teamId:s.teamId,
     teams:visibleTeams,staff:[...allowed.values()],records:rows,categories:KEYS,
-    privateProducts:productList,...(audits?{audits}: {})};
+    legacyPublication,privateProducts:productList,...(audits?{audits}: {})};
  }
  async function submit(request){
   const a=await actor(request),d=request?.data||{},date=validDate(d.date),staffId=clean(d.staffId);
@@ -1809,8 +1812,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    const er=entryRef(s.cid,date,staffId),summary=summaryRef(s.hubId,date,s.cid);
    const privateProductIds=Object.keys(requestedPrivate||{});
    // All reads happen before writes. Do not infer product ownership from IDs.
-   const [oldSnap,totalSnap,...productSnapshots]=await Promise.all([
-    tx.get(er),tx.get(summary),
+   const [oldSnap,totalSnap,legacyGateSnap,...productSnapshots]=await Promise.all([
+    tx.get(er),tx.get(summary),tx.get(legacyGateRef(s.cid)),
     ...privateProductIds.map(id=>tx.get(privateProductRef(s.cid,id)))
    ]);
    for(let i=0;i<privateProductIds.length;i++){
@@ -1835,6 +1838,15 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    // distribution. If they change NURO totals, mark the breakdown unclassified.
    const nextCb=requestedCb!==undefined?requestedCb:
     (oldCb&&priorCounts.NURO===counts.NURO?oldCb:null);
+   // Security: the same transaction re-reads the live publication and
+   // fixed-category links. Hidden categories must retain the saved quantity
+   // AND its NURO CB breakdown, even with an outdated browser.
+   const policy=await legacyInputPolicy(s.hubId,s.cid,date,
+    ref=>tx.get(ref),legacyGateSnap);
+   try{
+    assertLegacyEditAllowed({policy,previous:priorCounts,next:counts,
+     previousCb:oldCb,nextCb,categories:KEYS});
+   }catch{fail("failed-precondition");}
    const privateNext={...previousPrivate,...(requestedPrivate||{})};
    const privateValidated=validatePrivateCounts(privateNext);
    const prior=priorCounts;
@@ -1891,6 +1903,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   });
  }
  return Object.freeze({manage,accept,view,viewMonthly,viewProductMonthly,submit,viewCatalog,setCatalogPublication,
+  activatePartnerLegacyCountGate,getPartnerLegacyCountGate,
   getPartnerRankingGroups,setPartnerRankingGroups,getPartnerCountLinks,setPartnerCountLink,
   viewAdditionalCounts,submitAdditionalCounts});
 }
