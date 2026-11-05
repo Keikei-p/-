@@ -10543,6 +10543,17 @@ function clearMessages() {
 }
 
 
+// Applies only to old same-company client reads; partner dashboards use
+// isolated count-only Cloud Functions. Never accept results from a previous
+// authenticated account, company, or earlier internal listener session.
+function sameInternalReadContext(companyId,uid,session){
+ return !!companyId&&!!uid&&
+   typeof appScreen!=="undefined"&&
+   appScreen.dataset.partnerCountOnly!=="true"&&
+   currentUserData?.companyId===companyId&&
+   auth.currentUser?.uid===uid&&
+   internalListenerSessionGeneration===session;
+}
 function companyCollectionQuery(
   collectionName
 ) {
@@ -18600,14 +18611,15 @@ function stopRealtimeListeners() {
 async function loadTeams(
   throwOnError = false
 ) {
-
+  const companyId=currentUserData?.companyId,uid=auth.currentUser?.uid;
+  const session=internalListenerSessionGeneration;
+  if(!sameInternalReadContext(companyId,uid,session))return false;
   try {
-
     const snapshot =
       await getDocs(
         companyCollectionQuery("teams")
       );
-
+    if(!sameInternalReadContext(companyId,uid,session))return false;
 
     teams = [];
 
@@ -22271,6 +22283,9 @@ saveProductModal.onclick =
 async function loadMembers(
   throwOnError = false
 ) {
+  const companyId=currentUserData?.companyId,uid=auth.currentUser?.uid;
+  const session=internalListenerSessionGeneration;
+  if(!sameInternalReadContext(companyId,uid,session))return false;
 
   if (
     !isCurrentCompanyManager()
@@ -22293,7 +22308,7 @@ async function loadMembers(
       await getDocs(
         companyMembersCollectionRef()
       );
-
+    if(!sameInternalReadContext(companyId,uid,session))return false;
 
     members = [];
 
