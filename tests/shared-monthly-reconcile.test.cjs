@@ -156,6 +156,6 @@ test("monthly shared server verifies all layers before ranking group creation an
  const ranking=month.indexOf("groupPersonalScores(");
  assert(verify>0&&ranking>verify);
  assert.match(month.slice(verify,ranking),/catch\\{fail\\("data-loss"\\);\\}/);
- assert.doesNotMatch(month,/tx\\.(?:set|update|create|delete)\\(/);
+ assert.doesNotMatch(month,/tx\.(?:set|update|create|delete)\(/);
  assert.match(month,/complete:false/);
 });
