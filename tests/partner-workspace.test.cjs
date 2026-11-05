@@ -355,8 +355,12 @@ test("security invariants: only isolated partner collections; no destructive dat
  // Financial sales originals remain unreadable here. Reviewed name-only
  // product-master reads are allowed on the server, never sent as raw products.
  assert.doesNotMatch(code,/\.collection\s*\(\s*["'](?:records|recordCorrections|revenueGoals)["']\s*\)/);
- assert.equal([...code.matchAll(/db\.collection\("products"\)/g)].length,5,
+ // A live product ON/OFF requires one extra bounded Owner-master read.
+ // Keep this strict: extra unreviewed reads and raw finance returns fail CI.
+ assert.equal([...code.matchAll(/db\.collection\("products"\)/g)].length,6,
   "product master reads must remain reviewed and bounded");
+ assert.match(code,/async function activePublishedProducts\(hub,publishedIds\)/);
+ assert.match(code,/db\.collection\("products"\)\.where\("companyId","==",hub\)\s*\.limit\(1001\)\.get\(\)/);
  assert.match(code,/projectMasterProducts\(/);
  assert.match(code,/\.where\("companyId","==",s\.cid\)\.limit\(1001\)\.get\(\)/);
  // Existing owner-owned catalog/ranking settings may be set atomically.
