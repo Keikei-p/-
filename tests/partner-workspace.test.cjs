@@ -1908,3 +1908,70 @@ test("partner saved original nine plus new product stay immutable through correc
  assert.deepEqual(db.store.get(extraKey),extraBefore);
  assert.deepEqual(db.store.get("records/old"),originalSales);
 });
+
+
+test("month dashboard API selects October or November and never changes saved staff/team/price documents",async()=>{
+ const {db,api,req,zero}=setup(Date.parse("2026-11-05T10:00:00+09:00"));
+ for(const [id,name] of [["teamA","1班"],["teamB","2班"]])
+  db.seed("companies/partner/partnerWorkTeams/"+id,
+   {companyId:"partner",name,active:true});
+ db.seed("products/newProduct",{companyId:"hub",name:"新商材",active:true,
+  unitPrice:77777,totalRevenue:333333});
+ db.seed("companies/hub/partnerCatalogSettings/publication",{
+  revision:1,productIds:["newProduct"]
+ });
+ const put=(collection,date,staffId,teamIdSnapshot,counts,opts={})=>
+  db.seed("companies/partner/"+collection+"/"+date+"__"+staffId,{
+   companyId:"partner",hubCompanyId:"hub",date,staffId,version:1,
+   teamIdSnapshot,staffNameSnapshot:staffId==="staffA"?"佐藤":"鈴木",
+   counts,totalCount:Object.values(counts).reduce((n,v)=>n+v,0),...opts
+  });
+ put("partnerWorkEntries","2026-10-15","staffA","teamA",{...zero(),NURO:2});
+ put("partnerWorkEntries","2026-11-01","staffA","teamB",{...zero(),NURO:1});
+ put("partnerWorkEntries","2026-11-02","staffB","teamA",{...zero(),SBMNP:1});
+ put("partnerAdditionalCountEntries","2026-11-02","staffB","teamA",
+  {newProduct:3,previouslyHidden:4});
+ const old=clone([...db.store]);
+ const oct=await api.viewPartnerMonthTeam(req("p",{month:"2026-10"}));
+ assert.equal(oct.month,"2026-10");assert.equal(oct.visibility,"company");
+ assert.equal(oct.totalCount,2);assert.equal(oct.reportedStaffCount,1);
+ assert.equal(oct.teams[0].name,"1班");
+ const nov=await api.viewPartnerMonthTeam(req("p",{month:"2026-11"}));
+ assert.equal(nov.month,"2026-11");assert.equal(nov.totalCount,9);
+ assert.equal(nov.primaryTotalCount,2);assert.equal(nov.additionalTotalCount,7);
+ assert.equal(nov.teams.length,2);assert.equal(nov.reportedStaffCount,2);
+ assert.equal(nov.teams.find(t=>t.name==="1班").totalCount,8);
+ assert.equal(nov.teams.find(t=>t.name==="2班").totalCount,1);
+ assert.equal(nov.teams.find(t=>t.name==="1班").people[0].counts["追加：新商材"],3);
+ assert.equal(nov.teams.find(t=>t.name==="1班").people[0].counts["過去・非公開の追加商材"],4);
+ assert.doesNotMatch(JSON.stringify(nov),/333333|77777|previouslyHidden|newProduct|unitPrice|totalRevenue/);
+ assert.deepEqual([...db.store],old,"month reads never alter legacy/extra records, CB, prices or audits");
+ await assert.rejects(api.viewPartnerMonthTeam(req("h",{month:"2026-11"})),{code:"permission-denied"});
+ await assert.rejects(api.viewPartnerMonthTeam(req("p",{month:"2026-12"})),{code:"invalid-argument"});
+});
+test("regular partner member's monthly read excludes other staff, while team move remains immutable",async()=>{
+ const {db,api,req,zero}=setup(Date.parse("2026-11-05T10:00:00+09:00"));
+ const member={uid:"m",companyId:"partner",companyRole:"member",role:"member",
+  teamId:"teamA",active:true,accessKind:"partner",memberType:"cooperator",
+  canViewRevenue:false,canViewUnitPrice:false};
+ db.seed("users/m",member);
+ db.seed("companies/partner/members/m",member);
+ db.seed("companies/partner/partnerWorkStaff/m",{companyId:"partner",
+  uid:"m",name:"本人",teamId:"teamA",kind:"account",active:true});
+ db.seed("companies/partner/partnerWorkTeams/teamA",{companyId:"partner",name:"1班",active:true});
+ const row=(staffId,count)=>db.seed("companies/partner/partnerWorkEntries/2026-11-02__"+staffId,{
+  companyId:"partner",hubCompanyId:"hub",date:"2026-11-02",
+  staffId,teamIdSnapshot:"teamA",staffNameSnapshot:staffId==="m"?"本人":"他人",
+  version:1,counts:{...zero(),NURO:count},totalCount:count
+ });
+ row("m",2);row("staffB",999);
+ const memberView=await api.viewPartnerMonthTeam(req("m",{month:"2026-11"}));
+ assert.equal(memberView.visibility,"self");assert.equal(memberView.totalCount,2);
+ assert.equal(memberView.reportedStaffCount,1);
+ assert.equal(memberView.teams[0].people.length,1);
+ assert.equal(memberView.teams[0].people[0].name,"本人");
+ assert.doesNotMatch(JSON.stringify(memberView),/他人|999/);
+ const ownerView=await api.viewPartnerMonthTeam(req("p",{month:"2026-11"}));
+ assert.equal(ownerView.visibility,"company");
+ assert.equal(ownerView.totalCount,1001);
+});
