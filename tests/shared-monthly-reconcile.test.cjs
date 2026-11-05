@@ -28,7 +28,8 @@ function fixture(){
   productCounts:{NURO:4,SBMNP:1},additionalTotalCount:2,
   direct:{totalCount:5,otherCount:2,recordsVerified:2,peopleVerified:true,
    counts:{NURO:3,SBMNP:0},
-   people:[{totalCount:5}],teams:[{totalCount:5}]}
+   people:[{totalCount:5,counts:{NURO:3,SBMNP:0}}],
+   teams:[{totalCount:5,counts:{NURO:3,SBMNP:0}}]}
  };
 }
 test("verified company + individual + team + product counts reconcile without financial fields",()=>{
@@ -61,6 +62,41 @@ test("1-count drift anywhere rejects every joint ranking instead of showing plau
   assert.throws(()=>reconcileSharedMonthlyCounts(f),
    /SHARED_MONTHLY_RECONCILIATION_FAILED/);
  }
+});
+test("HQ category drift is rejected even when every total count still matches",()=>{
+ for(const type of ["people","teams"]){
+  const f=fixture(),original=copy(f);
+  // A member or team still has exactly five sales, but one NURO appears
+  // under SBMNP. Company totals, partner totals and global sum stay intact.
+  f.direct[type][0].counts.NURO=2;
+  f.direct[type][0].counts.SBMNP=1;
+  assert.equal(f.direct[type][0].totalCount,5);
+  assert.equal(f.direct.totalCount,5);
+  assert.deepEqual(f.direct.counts,original.direct.counts);
+  assert.throws(()=>reconcileSharedMonthlyCounts(f),/RECONCILIATION_FAILED/);
+ }
+});
+test("HQ categories require every key and cannot overcount any staff or team",()=>{
+ for(const change of [
+  f=>delete f.direct.people[0].counts.NURO,
+  f=>delete f.direct.teams[0].counts.SBMNP,
+  f=>{f.direct.people[0].counts.NURO=6;},
+  f=>{f.direct.teams[0].counts.NURO=6;},
+  f=>{f.direct.people[0].counts.NURO='3';},
+  f=>{f.direct.teams[0].counts.NURO=Infinity;}
+ ]){
+  const f=fixture();change(f);
+  assert.throws(()=>reconcileSharedMonthlyCounts(f),/RECONCILIATION_FAILED/);
+ }
+});
+test("unverified HQ person subset stays explicitly incomplete and category bounded",()=>{
+ const f=fixture();
+ f.direct.peopleVerified=false;
+ f.direct.people=[{totalCount:2,counts:{NURO:2,SBMNP:0}}];
+ const x=reconcileSharedMonthlyCounts(f);
+ assert.equal(x.complete,false);
+ f.direct.people[0].counts.SBMNP=1;
+ assert.throws(()=>reconcileSharedMonthlyCounts(f),/RECONCILIATION_FAILED/);
 });
 test("missing direct person identity is allowed ONLY when explicitly unverified, never promotes rank",()=>{
  const x=fixture();
