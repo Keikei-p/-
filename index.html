@@ -13202,21 +13202,63 @@ function renderPartnerSharedGroupCards(target,response){
  select(groups.find(x=>x.id===selectedPartnerSharedGroupId));
 }
 
-function appendSharedRankingRows(container,heading,entries,complete){
- const section=document.createElement("section");section.className="p-inline-card";
- const h=document.createElement("h4");h.textContent=heading;section.append(h);
- const sorted=[...entries].sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name,"ja"));
- if(!sorted.length)partnerMainAppendRow(section,"表示できる実績がありません","未報告を0件とは扱いません");
- let previous=null,rank=0;
- for(const [i,row] of sorted.entries()){
-  if(!Number.isSafeInteger(row.count)||row.count<0||typeof row.name!=="string")
-   throw Error("shared_ranking_entry_invalid");
-  if(previous!==row.count)rank=i+1;
-  const prefix=complete?(rank===1&&row.count>0?"🏆 ":"")+rank+"位 ":"暫定"+rank+"位 ";
-  partnerMainAppendRow(section,prefix+row.name,row.count+"件");
-  previous=row.count;
+// Identical, count-only ranking row for the existing HQ and partner tabs.
+function makeCanonicalCountRankRow(name,count,rank,complete){
+ if(typeof name!=="string"||!name||name.length>240||
+    !Number.isSafeInteger(count)||count<0||!Number.isSafeInteger(rank)||
+    rank<1||rank>4000||typeof complete!=="boolean")
+  throw Error("canonical_count_rank_invalid");
+ const row=document.createElement("div");row.className="ranking-row";
+ const left=document.createElement("div");left.className="ranking-left";
+ const number=document.createElement("span");number.className="ranking-number";
+ number.textContent=complete?rank+"位":"暫定"+rank+"位";
+ if(complete&&rank<=3)number.classList.add("top"+rank);
+ const nameElement=document.createElement("span");
+ nameElement.className="ranking-name";nameElement.textContent=name;
+ left.append(number,nameElement);
+ const value=document.createElement("div");value.className="ranking-value";
+ const quantity=document.createElement("span");quantity.className="ranking-count";
+ quantity.textContent=count+"件";value.append(quantity);row.append(left,value);
+ return row;
+}
+function renderCanonicalCountRankRows(parent,entries,complete){
+ if(!Array.isArray(entries)||entries.length>4000||typeof complete!=="boolean")
+  throw Error("canonical_count_rank_contract");
+ // Validate all rows before rendering. Unknown quantities are not zero.
+ for(const entry of entries){
+  if(!entry||typeof entry.name!=="string"||!entry.name||
+     entry.name.length>240||!Number.isSafeInteger(entry.count)||entry.count<0)
+   throw Error("canonical_count_rank_invalid");
  }
- container.append(section);
+ const sorted=[...entries].sort((a,b)=>b.count-a.count||
+  a.name.localeCompare(b.name,"ja"));
+ const group=document.createDocumentFragment();
+ if(!sorted.length){
+  const empty=document.createElement("p");empty.className="ranking-product-help";
+  empty.textContent="表示可能な実績がありません。未報告を0件とは扱いません。";
+  group.append(empty);
+ }
+ let prior=null,rank=0;
+ for(const [i,item] of sorted.entries()){
+  if(item.count!==prior)rank=i+1;
+  prior=item.count;
+  group.append(makeCanonicalCountRankRow(item.name,item.count,rank,complete));
+ }
+ parent.append(group);return sorted.length;
+}
+function appendSharedRankingRows(container,heading,entries,complete,embedded=false){
+ // Partner already has the heading inside its ORIGINAL ranking panel.
+ // Owner's multi-section count dashboard keeps its separate headings.
+ const section=embedded?container:document.createElement("section");
+ if(!embedded){
+  section.className="p-inline-card";
+  const h=document.createElement("h4");h.textContent=heading;section.append(h);
+ }
+ const list=document.createElement("div");list.className="ranking-grid";
+ list.dataset.columns="1";
+ renderCanonicalCountRankRows(list,entries,complete);
+ section.append(list);
+ if(!embedded)container.append(section);
 }
 // Same company -> team -> person -> product tree for BOTH authenticated roles.
 // Common count-only presentation for both partner and HQ partner-company
@@ -13560,7 +13602,7 @@ async function loadSharedDailyStandings(where,force=false){
     throw Error("partner_combined_ranking_selection");
    const [heading,items]=partnerRankings[partnerSameAppSelectedPanel];
    pInline("partnerSharedRankingsSection").querySelector("h3").textContent=heading;
-   appendSharedRankingRows(content,heading,items,complete);
+   appendSharedRankingRows(content,heading,items,complete,true);
    return;
   }
   appendSharedRankingRows(content,"🏢 会社別件数",companyRows,complete);
@@ -13793,7 +13835,7 @@ async function loadPartnerMonthlySharedRankings(){
      Array.isArray(response.groupStandings)&&response.groupStandings.length){
    renderPartnerSharedGroupCards(content,response);
   }else{
-   appendSharedRankingRows(content,headings[selected],rows[selected],false);
+   appendSharedRankingRows(content,headings[selected],rows[selected],false,true);
   }
   status.textContent="月間途中経過｜未報告・未照合は0件扱いせず、全社合同の暫定順位を表示しています。";
  }catch(error){
@@ -36297,34 +36339,15 @@ function renderOwnerJointIndividualRanking(){
   status.textContent="合同個人ランキングを確認中です。";
   individualRankingList.textContent="照合中…";return;
  }
+ if(typeof state.complete!=="boolean")throw Error("owner_combined_rank_unverified");
+ // The same canonical ranked-row component powers both company views.
+ // Internal original sales-amount ranking remains a separate, intact mode.
+ const verifiedCount=renderCanonicalCountRankRows(
+  individualRankingList,state.people,state.complete);
+ individualRankingCount.textContent="合同 "+verifiedCount+"人・件数順";
  status.textContent=state.complete?
   "直営＋協力店の件数照合済み（"+state.date+"）":
   "未報告・未照合があるため順位は暫定表示です。";
- const rows=[...state.people].sort((a,b)=>b.count-a.count||
-  a.name.localeCompare(b.name,"ja"));
- individualRankingCount.textContent="合同 "+rows.length+"人・件数順";
- if(!rows.length){
-  individualRankingList.textContent="表示可能な実績がありません。未報告は0件ではありません。";
-  return;
- }
- let prev=null,rank=0;
- for(const [i,person] of rows.entries()){
-  if(!Number.isSafeInteger(person.count)||person.count<0||
-   typeof person.name!=="string")throw Error("owner_combined_rank_unverified");
-  if(prev!==person.count)rank=i+1;
-  prev=person.count;
-  const row=document.createElement("div");row.className="ranking-row";
-  const left=document.createElement("div");left.className="ranking-left";
-  const number=document.createElement("span");number.className="ranking-number";
-  number.textContent=state.complete?rank+"位":"暫定"+rank+"位";
-  if(state.complete&&rank<=3)number.classList.add("top"+rank);
-  const name=document.createElement("span");name.className="ranking-name";
-  name.textContent=person.name;left.append(number,name);
-  const value=document.createElement("div");value.className="ranking-value";
-  const count=document.createElement("span");count.className="ranking-count";
-  count.textContent=person.count+"件";value.append(count);
-  row.append(left,value);individualRankingList.append(row);
- }
 }
 
 function renderIndividualRanking(
