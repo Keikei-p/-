@@ -90,3 +90,24 @@ test("month UI and backend enforce company scope, no daily rewrite, missing-repo
  assert.doesNotMatch(service.slice(service.indexOf(" async function viewMonthly(request){"),
   service.indexOf(" async function view(request){")),/\btx\.set\(|\btx\.update\(|\btx\.delete\(/);
 });
+
+test("a missing monthly report is not zero sales, but a saved zero-count report is verified",()=>{
+ const base={hubId:"hub",cid:"partner",companyName:"協力店A",
+  from:"2026-10-01",to:"2026-10-31",keys,teamNames:{team1:"第1班"},
+  extraDocs:[],publishedIds:[],linkedIds:[]};
+ const missing=projectPartnerMonth({...base,legacyDocs:[]});
+ const zero=projectPartnerMonth({...base,legacyDocs:[
+  entry("2026-10-11","workerA","team1",{NURO:0,SBMNP:0})
+ ]});
+ assert.equal(missing.totalCount,0);
+ assert.equal(missing.verifiedEntryCount,0,"missing report is not a verified zero");
+ assert.equal(zero.totalCount,0);
+ assert.equal(zero.verifiedEntryCount,1,"explicit saved 0 report is valid");
+ const service=fs.readFileSync(require.resolve("../functions-partner-workspace/service.cjs"),"utf8");
+ const html=fs.readFileSync(require.resolve("../index.html"),"utf8");
+ assert.match(service,/verifiedEntryCount:rank\.verifiedEntryCount/);
+ assert.match(service,/peopleVerified:rank\.verifiedEntryCount>0/);
+ assert.match(html,/const reported=company\.verifiedEntryCount>0/);
+ assert.match(html,/reported\?company\.totalCount\+"件":"未報告"/);
+ assert.match(html,/partner\.verifiedEntryCount>0\?partner\.totalCount\+"件":"未報告"/);
+});
