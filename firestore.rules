@@ -110,6 +110,17 @@ service cloud.firestore {
       return get(userPath(request.auth.uid)).data.companyId;
     }
 
+    // A Firebase UID with a server-created secondary partner context is NOT
+    // a finance-only internal UID, even when its older internal membership
+    // still has Owner or canViewRevenue flags. Fail closed before any raw
+    // money-bearing document can be read or written.
+    // Deployment requires a read-only inventory: legitimate internal Owners
+    // with a dual context must be separated before enabling this boundary.
+    function noSecondaryPartnerWorkspace() {
+      return signedIn()
+        && !exists(/databases/$(database)/documents/partnerWorkspaceContexts/$(request.auth.uid));
+    }
+
     function isCompanyMember(companyId) {
       // One read of each authoritative document per permission evaluation.
       // Repeated get(...) inside the full product-write predicate can exceed
@@ -145,19 +156,29 @@ service cloud.firestore {
     }
 
     function isCompanyMaster(companyId) {
-      return isCompanyMember(companyId)
+      // A secondary-partner identity must not exercise its previous
+      // internal Master role to transfer ownership or change grants.
+      return noSecondaryPartnerWorkspace()
+        && isCompanyMember(companyId)
         && effectiveMasterUid(companyId) == request.auth.uid;
     }
 
     function isCompanyOwner(companyId) {
-      return isCompanyMember(companyId)
+      // Old owner flags may remain solely to preserve historical records.
+      // They cannot authorize internal administration from partner context.
+      return noSecondaryPartnerWorkspace()
+        && isCompanyMember(companyId)
         && get(userPath(request.auth.uid)).data.companyRole == 'owner'
         && get(memberPath(companyId, request.auth.uid)).data.companyRole == 'owner';
     }
 
     function isCompanyManager(companyId) {
-      return isCompanyLeader(companyId)
-        || isCompanyOwner(companyId);
+      // An old leader role must never re-open the internal staff directory,
+      // team administration or profile management to a partner-secondary UID.
+      // Self-profile and self-member reads remain separately permitted for
+      // login compatibility, while genuine internal managers are unchanged.
+      return noSecondaryPartnerWorkspace()
+        && (isCompanyLeader(companyId) || isCompanyOwner(companyId));
     }
 
     // Product writes previously re-entered master/member checks through both
@@ -246,7 +267,10 @@ service cloud.firestore {
     }
 
     function canCreateInvite(companyId) {
-      return isCompanyMaster(companyId)
+      // Invitations use a separate grant from isCompanyManager. Gate both,
+      // or a former internal leader could still issue old company invites.
+      return noSecondaryPartnerWorkspace()
+        && (isCompanyMaster(companyId)
         || (
           isCompanyMember(companyId)
           && (
@@ -257,7 +281,7 @@ service cloud.firestore {
               && get(memberPath(companyId, request.auth.uid)).data.role == 'leader'
             )
           )
-        );
+        ));
     }
 
     function managedMemberCreate(companyId, memberId) {
@@ -965,10 +989,14 @@ service cloud.firestore {
       }
 
       match /settings/{settingId} {
-        allow read: if isCompanyMember(companyId)
-          || isCompanyOwner(companyId);
+        // Secondary partner UIDs retain a legacy internal membership.
+        // Old reporting templates can contain money in free-text, and
+        // notification settings contain private LINE channel identifiers.
+        allow read: if noSecondaryPartnerWorkspace()
+          && (isCompanyMember(companyId) || isCompanyOwner(companyId));
 
-        allow create, update: if isCompanyOwner(companyId)
+        allow create, update: if noSecondaryPartnerWorkspace()
+          && isCompanyOwner(companyId)
           && (
             (
               settingId == 'reporting'
@@ -1022,7 +1050,9 @@ service cloud.firestore {
     }
 
     match /linePairingCodes/{pairingCode} {
-      allow get: if resource.data.companyId != null
+      // Partner-secondary UIDs must never read former internal LINE pairing codes.
+      allow get: if noSecondaryPartnerWorkspace()
+        && resource.data.companyId != null
         && sameCompany(resource.data.companyId);
 
       allow list: if false;
@@ -1086,7 +1116,10 @@ service cloud.firestore {
     }
 
     match /teams/{teamId} {
-      allow read: if resource.data.companyId != null
+      // Partner-secondary identities must not read the former internal team's
+      // names or leader UIDs through their historical internal membership.
+      allow read: if noSecondaryPartnerWorkspace()
+        && resource.data.companyId != null
         && sameCompany(resource.data.companyId);
 
       allow create: if request.resource.data.keys().hasOnly([
@@ -1113,10 +1146,12 @@ service cloud.firestore {
     }
 
     match /products/{productId} {
-      allow read: if resource.data.companyId != null
+      allow read: if noSecondaryPartnerWorkspace()
+        && resource.data.companyId != null
         && sameCompany(resource.data.companyId);
 
-      allow create: if request.resource.data.keys().hasOnly([
+      allow create: if noSecondaryPartnerWorkspace()
+        && request.resource.data.keys().hasOnly([
           'companyId', 'name', 'revenue', 'cashbackOptions', 'pricingOptions',
           'sortOrder', 'active', 'createdAt', 'updatedAt'
         ])
@@ -1131,7 +1166,8 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time
         && request.resource.data.updatedAt == request.time;
 
-      allow update: if resource.data.companyId != null
+      allow update: if noSecondaryPartnerWorkspace()
+        && resource.data.companyId != null
         && canManageProducts(resource.data.companyId)
         && request.resource.data.companyId == resource.data.companyId
         && validShortName(request.resource.data.name, 50)
@@ -1150,15 +1186,18 @@ service cloud.firestore {
     }
 
     match /records/{recordId} {
-      allow read: if resource.data.companyId != null
+      allow read: if noSecondaryPartnerWorkspace()
+        && resource.data.companyId != null
         && sameCompany(resource.data.companyId);
 
       // 新規登録のトランザクションで、未作成ドキュメントだけ読取を許可。
       // 既存データの会社分離は上のreadルールを維持する。
-      allow get: if verifiedUser() && isCompanyMember(currentCompanyId())
+      allow get: if noSecondaryPartnerWorkspace()
+        && verifiedUser() && isCompanyMember(currentCompanyId())
         && !exists(/databases/$(database)/documents/records/$(recordId));
 
-      allow create: if recordId == request.resource.data.companyId + '_' + request.resource.data.uid + '_' + request.resource.data.date
+      allow create: if noSecondaryPartnerWorkspace()
+        && recordId == request.resource.data.companyId + '_' + request.resource.data.uid + '_' + request.resource.data.date
         && validSelectableTeam(request.resource.data.companyId, request.resource.data.teamId)
         && request.resource.data.keys().hasOnly([
           'companyId', 'uid', 'memberNameSnapshot', 'teamId',
@@ -1210,7 +1249,8 @@ service cloud.firestore {
           request.resource.data.uid, request.resource.data.teamId);
 
 
-      allow update: if resource.data.companyId != null
+      allow update: if noSecondaryPartnerWorkspace()
+        && resource.data.companyId != null
         && request.resource.data.companyId == resource.data.companyId
         && sameCompany(resource.data.companyId)
         && request.resource.data.uid == resource.data.uid
@@ -1261,10 +1301,12 @@ service cloud.firestore {
     }
 
     match /recordCorrections/{correctionId} {
-      allow read: if resource.data.companyId != null
+      allow read: if noSecondaryPartnerWorkspace()
+        && resource.data.companyId != null
         && sameCompany(resource.data.companyId);
 
-      allow create: if request.resource.data.keys().hasOnly([
+      allow create: if noSecondaryPartnerWorkspace()
+        && request.resource.data.keys().hasOnly([
           'companyId', 'recordId', 'recordUid', 'recordDate',
           'changedByUid', 'changedByName', 'before', 'after', 'createdAt'
         ])
@@ -1285,10 +1327,14 @@ service cloud.firestore {
 
 
     match /goals/{goalId} {
-      allow read: if resource.data.companyId != null
+      // Legacy goal maps have an open-ended targets object; never expose
+      // their raw contents to an identity now linked to a partner.
+      allow read: if noSecondaryPartnerWorkspace()
+        && resource.data.companyId != null
         && sameCompany(resource.data.companyId);
 
-      allow create: if request.resource.data.keys().hasOnly([
+      allow create: if noSecondaryPartnerWorkspace()
+        && request.resource.data.keys().hasOnly([
           'companyId', 'teamId', 'month', 'targets', 'createdAt', 'updatedAt'
         ])
         && request.resource.data.companyId != null
@@ -1311,7 +1357,8 @@ service cloud.firestore {
           )
         );
 
-      allow update: if resource.data.companyId != null
+      allow update: if noSecondaryPartnerWorkspace()
+        && resource.data.companyId != null
         && request.resource.data.companyId == resource.data.companyId
         && request.resource.data.teamId == resource.data.teamId
         && request.resource.data.month == resource.data.month
@@ -1332,7 +1379,8 @@ service cloud.firestore {
     }
 
     match /revenueGoals/{goalId} {
-      allow read: if resource.data.companyId != null
+      allow read: if noSecondaryPartnerWorkspace()
+        && resource.data.companyId != null
         && sameCompany(resource.data.companyId)
         && (
           (
@@ -1346,7 +1394,8 @@ service cloud.firestore {
           )
         );
 
-      allow create: if request.resource.data.keys().hasOnly([
+      allow create: if noSecondaryPartnerWorkspace()
+        && request.resource.data.keys().hasOnly([
           'companyId', 'teamId', 'month', 'targetRevenue',
           'createdAt', 'updatedAt'
         ])
@@ -1376,7 +1425,8 @@ service cloud.firestore {
           )
         );
 
-      allow update: if resource.data.companyId != null
+      allow update: if noSecondaryPartnerWorkspace()
+        && resource.data.companyId != null
         && isCompanyMember(resource.data.companyId)
         && request.resource.data.companyId == resource.data.companyId
         && request.resource.data.teamId == resource.data.teamId
