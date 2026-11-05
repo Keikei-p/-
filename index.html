@@ -13154,15 +13154,15 @@ function verifiedDirectDayCounts(date){
 let selectedPartnerSharedGroupId="";
 function renderPartnerSharedGroupCards(target,response){
  const groups=response.groupStandings;
- if(!Array.isArray(groups)||groups.length>30)throw Error("shared_group_contract");
+ if(!Array.isArray(groups)||groups.length>100)throw Error("shared_group_contract");
  const cardGrid=document.createElement("div");
  cardGrid.className="ranking-product-grid";cardGrid.dataset.columns="2";
- const header=document.createElement("strong");header.textContent="商材グループを選択";
+ const header=document.createElement("strong");header.textContent="公開商材・商材グループを選択";
  const list=document.createElement("div");list.className="ranking-grid";list.dataset.columns="1";
  target.append(header,cardGrid,list);
  if(!groups.length){
   const note=document.createElement("p");note.className="ranking-product-help";
-  note.textContent="本社側の既存ランキンググループを協力店と共有すると、同じ商材がここに表示されます。";
+  note.textContent="本社の商材管理で協力店に公開ONにした新商材は自動でここに表示されます。既存の商材グループも利用できます。";
   target.append(note);return;
  }
  if(!groups.some(x=>x.id===selectedPartnerSharedGroupId))
@@ -37115,7 +37115,7 @@ function renderOwnerJointProductRanking(snapshot){
  }
  productRankingCount.textContent="合同 "+groups.length+"グループ";
  if(!groups.length){
-  productRankingProductList.textContent="共有商材グループが未設定です。本社商材ランキングからグループを協力店へ共有してください。";
+  productRankingProductList.textContent="協力店に公開中の新商材は自動表示されます。既存商材はランキンググループを設定して共有してください。";
   return;
  }
  status.textContent=snapshot.complete?

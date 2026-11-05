@@ -1,0 +1,38 @@
+name: NICO dynamic product counts + personal rankings (NO DEPLOY)
+on:
+  push:
+    branches: [feature/partner-auto-published-count-ranks-20261105]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      FIREBASE_PROJECT_ID: demo-dynamic-products-no-deploy
+      SAFE_INTERNAL_MEMBER_REMOVAL_ENABLED: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check isolated catalog and original UI module syntax
+        run: |
+          node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/automatic-published-groups.cjs
+          node --check functions-partner-workspace/catalog-publication.cjs
+          node --check tests/partner-workspace.test.cjs
+          node --check tests/partner-auto-published-ranking.test.cjs
+      - name: Verify new-product publication count edits and shared personal ranks (synthetic only)
+        run: |
+          node --test tests/partner-auto-monthly-ranking.test.cjs tests/partner-auto-published-ranking.test.cjs tests/partner-workspace.test.cjs tests/partner-catalog-publication.test.cjs tests/partner-extra-shared-ranking.test.cjs tests/partner-monthly-shared-counts.test.cjs tests/partner-shared-ranking-groups.test.cjs tests/partner-catalog-count-links.test.cjs tests/partner-additional-counts-isolation.test.cjs tests/partner-product-monthly-parity.test.cjs tests/partner-shared-catalog-ui-contract.test.cjs
+      - name: Verify actual large inline app module parses
+        run: |
+          NODE_OPTIONS=--experimental-vm-modules node --test tests/partner-index-module-parse.test.cjs
+      - name: Confirm no production release
+        run: echo "NO DEPLOY - synthetic fixtures only; no Firebase credentials, no Firestore writes, no Hosting/Functions deploy."
