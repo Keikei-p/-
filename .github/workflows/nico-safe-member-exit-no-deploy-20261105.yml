@@ -1,0 +1,56 @@
+name: NICO safe member exit - NO DEPLOY
+on:
+  push:
+    branches: [fix/safe-internal-member-removal-20261105]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: nico-safe-internal-member-exit-no-deploy
+  cancel-in-progress: true
+jobs:
+  test-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ""
+      GOOGLE_APPLICATION_CREDENTIALS: ""
+      SAFE_INTERNAL_MEMBER_REMOVAL_ENABLED: ""
+      SAFE_INTERNAL_SELF_ACCOUNT_DELETE_ENABLED: ""
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Guard against unreviewed paths or live credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$SAFE_INTERNAL_MEMBER_REMOVAL_ENABLED"
+          test -z "$SAFE_INTERNAL_SELF_ACCOUNT_DELETE_ENABLED"
+          git fetch origin main
+          git diff --name-only origin/main...HEAD >/tmp/changed
+          if grep -Ev '^(index\.html|functions-partner-workspace/index\.js|functions-partner-workspace/internal-member-exit\.cjs|functions-partner-workspace/internal-self-account-exit\.cjs|tests/internal-member-exit\.test\.cjs|\.github/workflows/nico-safe-member-exit-no-deploy-20261105\.yml)$' /tmp/changed; then
+            echo STOP_UNEXPECTED_PATH
+            exit 1
+          fi
+          node --check functions-partner-workspace/index.js
+          node --check functions-partner-workspace/internal-member-exit.cjs
+          node --check functions-partner-workspace/internal-self-account-exit.cjs
+          node --check tests/internal-member-exit.test.cjs
+      - name: Safe exit, owner visibility, shared counts and existing partner flows
+        run: |
+          node --test tests/internal-member-exit.test.cjs
+          node --test tests/partner-workspace.test.cjs
+          node --test tests/internal-owner-finance-visibility.test.cjs
+          node --test tests/partner-one-login-same-app.test.cjs
+          node --test tests/partner-existing-ranking.test.cjs
+          node --test tests/partner-money-free-workspace.test.cjs
+      - name: All tests synthetic only
+        run: echo 'NO DEPLOY; no Firebase Auth deletes, no Firestore writes'
