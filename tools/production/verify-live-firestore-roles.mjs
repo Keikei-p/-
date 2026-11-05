@@ -13,7 +13,9 @@
  * phase1Boundary engine verifies that source and rolls back on role failure.
  */
 const PROJECT='sales-management-cc116';
-const ROOT='https://firestore.googleapis.com/v1/projects/'+PROJECT+'/databases/(default)/documents';
+const API='https://firestore.googleapis.com/v1/';
+const RESOURCE_ROOT='projects/'+PROJECT+'/databases/(default)/documents';
+const ROOT=API+RESOURCE_ROOT;
 const RELEASE='projects/'+PROJECT+'/releases/cloud.firestore';
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const stop=code=>{throw Error('STOP_LIVE_ROLE_'+code);};
@@ -72,14 +74,30 @@ async function requireResponse(fetcher,url,method,token,body,expectedStatus,fiel
   try { parsed=await response.json(); }
   catch { stop('RESPONSE_NOT_JSON'); }
   if(field){
-    if(!parsed||typeof parsed!=='object'||!parsed.name?.startsWith(ROOT+'/')||
+    // Firestore Document.name is a RESOURCE name without the HTTPS hostname.
+    // Equality, not prefix match, ensures this is the EXACT requested original.
+    if(!parsed||typeof parsed!=='object'||
+       parsed.name!==url.slice(API.length)||
        !parsed.fields||typeof parsed.fields!=='object'||
        parsed.fields.companyId?.stringValue!==companyId||
        !parsed.fields[field]||
        !('integerValue' in parsed.fields[field] ||
          'doubleValue' in parsed.fields[field]))stop('OWNER_FINANCE_NOT_VERIFIED');
-  }else if(!Array.isArray(parsed)){
-    stop('OWNER_LIST_NOT_VERIFIED');
+  }else{
+    // An HTTP 200 with an empty / unrelated query is not proof that Owner's
+    // existing internal records can actually be listed. Require one selected
+    // companyId-bearing document with the matching resource collection.
+    const collection=body?.structuredQuery?.from?.[0]?.collectionId;
+    const prefix=RESOURCE_ROOT+'/'+collection+'/';
+    if(!['products','records'].includes(collection)||!Array.isArray(parsed))
+      stop('OWNER_LIST_NOT_VERIFIED');
+    const found=parsed.filter(entry=>entry&&typeof entry==='object'&&entry.document);
+    if(found.length!==1||
+       found[0]?.document?.fields?.companyId?.stringValue!==companyId||
+       typeof found[0]?.document?.name!=='string'||
+       !found[0].document.name.startsWith(prefix)||
+       !/^[^/]+$/.test(found[0].document.name.slice(prefix.length)))
+      stop('OWNER_LIST_NOT_VERIFIED');
   }
   // Deliberately discard the entire raw data response.
 }
