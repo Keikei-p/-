@@ -44,8 +44,8 @@ jobs:
           node --test tests/internal-member-exit.test.cjs
           node --test tests/partner-workspace.test.cjs
           node --test tests/internal-owner-finance-visibility.test.cjs
-          node --test tests/partner-ui-layout-parity.test.cjs
-          node --test tests/shared-count-management.test.cjs
-          node --test tests/direct-record-count-correction-guard.test.cjs
+          node --test tests/partner-one-login-same-app.test.cjs
+          node --test tests/partner-existing-ranking.test.cjs
+          node --test tests/partner-money-free-workspace.test.cjs
       - name: All tests synthetic only
         run: echo 'NO DEPLOY; no Firebase Auth deletes, no Firestore writes'
