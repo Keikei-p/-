@@ -13,7 +13,15 @@ const direct='demo-direct-a',partner='demo-partner-b';
 const dbFor=uid=>env.authenticatedContext(uid,{email:uid+'@example.test',email_verified:true}).firestore();
 before(async()=>{
  if(!process.env.FIRESTORE_EMULATOR_HOST)throw Error('EMULATOR_ONLY_NO_PRODUCTION');
- env=await initializeTestEnvironment({projectId:'demo-sales-support',firestore:{rules:closure.rules}});
+ const diagnostic=closure.rules.replace(/\n  }\n}\s*$/, "\n    match /__finance_probe/{probeId} {\n"+
+  "      allow get: if (probeId == 'member' && isCompanyMember('demo-direct-a'))\n"+
+  "        || (probeId == 'secondary' && noSecondaryPartnerWorkspace())\n"+
+  "        || (probeId == 'master' && isCompanyMaster('demo-direct-a'))\n"+
+  "        || (probeId == 'owner' && isCompanyOwner('demo-direct-a'))\n"+
+  "        || (probeId == 'finance' && isInternalFinanceReader('demo-direct-a'));\n"+
+  "    }\n  }\n}\n");
+ assert.notEqual(diagnostic,closure.rules,'probe must be emulator-only');
+ env=await initializeTestEnvironment({projectId:'demo-sales-support',firestore:{rules:diagnostic}});
  await env.withSecurityRulesDisabled(async ctx=>{
   const db=ctx.firestore();
   await setDoc(doc(db,'companies',direct),{ownerUid:'owner',masterUid:'owner',active:true,companyKind:'internal'});
@@ -31,6 +39,8 @@ before(async()=>{
    uid:'secondary',kind:'partner_secondary',active:true,
    primaryCompanyId:direct,partnerCompanyId:partner,hubCompanyId:direct
   });
+  for(const name of ['member','secondary','master','owner','finance'])
+   await setDoc(doc(db,'__finance_probe',name),{probe:name});
   for(const [table,fields] of [
    ['products',{name:'商品',revenue:50000}],
    ['records',{uid:'worker',date:'2026-11-05',totalCount:2,totalRevenue:100000}],
@@ -53,6 +63,16 @@ test('future closure only in memory; not deployed and requires browser migration
  assert.equal(closure.requiresVerifiedBackupRestore,true);
  assert.equal(checkFinanceRulesBeforeDeploy(closure.rules).staticShapeValid,true);
 });
+test('emulator-only probe of internal owner finance permission chain',async()=>{
+ const outcome={};
+ for(const label of ['member','secondary','master','owner','finance']){
+  try{await getDoc(doc(dbFor('owner'),'__finance_probe',label));outcome[label]='ALLOW';}
+  catch{outcome[label]='DENY';}
+ }
+ assert.deepEqual(outcome,{member:'ALLOW',secondary:'ALLOW',master:'ALLOW',
+  owner:'ALLOW',finance:'ALLOW'},'diagnostic only; no production data involved');
+});
+
 test('internal owner can read old monetary originals in emulator',async()=>{
  for(const table of tables){
   const snap=await assertSucceeds(getDoc(doc(dbFor('owner'),table,'internal-sample')));
