@@ -1832,3 +1832,79 @@ test("Owner-added product ON -> partner count input -> corrected joint individua
  assert.deepEqual(db.store.get("records/currentDirect"),savedOriginalDirect);
  assert.deepEqual(db.store.get("records/old"),oldSales);
 });
+
+
+test("partner saved original nine plus new product stay immutable through corrections, publication OFF and ON",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ const originalSales=clone(db.store.get("records/old"));
+ db.seed("products/fiberNew",{companyId:"hub",name:"新商材A",active:true,
+  unitPrice:90000,revenue:444444});
+ const priceBefore=clone(db.store.get("products/fiberNew"));
+ const team=(await api.manage(req("p",{action:"addTeam",name:"保存班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"佐藤",teamId:team}))).staffId;
+ const enabled=await api.setCatalogPublication(req("h",{
+  productId:"fiberNew",published:true,expectedRevision:0
+ }));
+ assert.equal(enabled.saved,true);
+ await api.submit(req("p",{date,staffId:staff,counts:{...zero(),NURO:3},
+  expectedVersion:0}));
+ await api.submitAdditionalCounts(req("p",{date,staffId:staff,
+  changes:{fiberNew:2},expectedVersion:0}));
+ let joined=await api.view(req("h",{date,sharedRankings:true}));
+ assert.equal(joined.companies[0].totalCount,5);
+ assert.equal(joined.people[0].totalCount,5);
+ const legacyCorrected=await api.submit(req("p",{date,staffId:staff,
+  counts:{...zero(),NURO:4},expectedVersion:1}));
+ assert.equal(legacyCorrected.totalCount,4);
+ joined=await api.view(req("p",{date,sharedRankings:true}));
+ assert.equal(joined.companies[0].totalCount,6,"legacy edit replaces 3 with 4, not 3+4");
+ await api.submitAdditionalCounts(req("p",{date,staffId:staff,
+  changes:{fiberNew:5},expectedVersion:1}));
+ joined=await api.view(req("h",{date,sharedRankings:true}));
+ assert.equal(joined.companies[0].totalCount,9,"4 original + 5 extra, no double count");
+ assert.equal(joined.people[0].totalCount,9);
+ const legacyKey="companies/partner/partnerWorkEntries/"+date+"__"+staff;
+ const extraKey="companies/partner/partnerAdditionalCountEntries/"+date+"__"+staff;
+ const summaryKey="companies/hub/partnerWorkCountDays/"+date+"/reports/partner";
+ const legacyBefore=clone(db.store.get(legacyKey));
+ const extraBefore=clone(db.store.get(extraKey));
+ const summaryBefore=clone(db.store.get(summaryKey));
+ const auditBefore=clone([...db.store].filter(([k])=>k.includes("partnerWorkAudits/")||
+  k.includes("partnerAdditionalCountAudits/")));
+ assert.equal(summaryBefore.totalCount,4);
+ assert.equal(extraBefore.totalCount,5);
+ const disabled=await api.setCatalogPublication(req("h",{
+  productId:"fiberNew",published:false,expectedRevision:1
+ }));
+ assert.equal(disabled.saved,true);
+ await assert.rejects(api.submitAdditionalCounts(req("p",{date,staffId:staff,
+  changes:{fiberNew:6},expectedVersion:2})),{code:"failed-precondition"});
+ const archived=await api.viewAdditionalCounts(req("p",{date}));
+ assert.deepEqual(archived.products,[]);
+ assert.equal(archived.records[0].totalCount,5);
+ assert.equal(archived.records[0].archivedTotal,5);
+ assert.deepEqual(archived.records[0].counts,{});
+ const offShared=await api.view(req("h",{date,sharedRankings:true}));
+ assert.equal(offShared.companies[0].totalCount,4,
+  "hidden added product excluded ONLY from public shared ranking");
+ assert.equal(offShared.people[0].totalCount,4);
+ assert.equal(offShared.productCounts.NURO,4);
+ assert.doesNotMatch(JSON.stringify(offShared),/90000|444444|revenue|unitPrice|fiberNew/);
+ assert.deepEqual(db.store.get(legacyKey),legacyBefore);
+ assert.deepEqual(db.store.get(extraKey),extraBefore);
+ assert.deepEqual(db.store.get(summaryKey),summaryBefore);
+ assert.deepEqual(clone([...db.store].filter(([k])=>k.includes("partnerWorkAudits/")||
+  k.includes("partnerAdditionalCountAudits/"))),auditBefore);
+ assert.deepEqual(db.store.get("products/fiberNew"),priceBefore);
+ assert.deepEqual(db.store.get("records/old"),originalSales);
+ await api.setCatalogPublication(req("h",{
+  productId:"fiberNew",published:true,expectedRevision:2
+ }));
+ const restored=await api.view(req("h",{date,sharedRankings:true}));
+ assert.equal(restored.companies[0].totalCount,9);
+ assert.equal(restored.people[0].totalCount,9);
+ assert.equal(restored.additionalTotalCount,5);
+ assert.deepEqual(db.store.get(legacyKey),legacyBefore);
+ assert.deepEqual(db.store.get(extraKey),extraBefore);
+ assert.deepEqual(db.store.get("records/old"),originalSales);
+});
