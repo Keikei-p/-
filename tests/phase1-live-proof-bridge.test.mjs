@@ -25,7 +25,7 @@ const jwt=(sub,overrides={})=>
   Buffer.from('{"typ":"JWT","alg":"RS256"}').toString('base64url')+'.'+
   Buffer.from(JSON.stringify({
     sub,aud:PROJECT,iss:'https://securetoken.google.com/'+PROJECT,
-    email_verified:true,iat:T-20,exp:T+2400,auth_time:T-40,
+    email_verified:true,email:sub+'@example.test',iat:T-20,exp:T+2400,auth_time:T-40,
     firebase:{sign_in_provider:'password'},...overrides
   })).toString('base64url')+'.'+'x'.repeat(100);
 function fixture({ownerStatus=200,partnerStatus=403,ownerCompany='internal_company'}={}){
