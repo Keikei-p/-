@@ -1256,7 +1256,8 @@ test("day shared scoreboard checks partner product sums before sending HQ or par
   {companyId:"partner",name:"第一班",active:true});
  for(const id of ["staffA","staffB"])
   db.seed("companies/partner/partnerWorkStaff/"+id,{
-   companyId:"partner",uid:null,name:id,active:true,kind:"managed",role:"member",teamId:"t1"
+   companyId:"partner",uid:null,name:id==="staffA"?"佐藤":"田中",
+   active:true,kind:"managed",role:"member",teamId:"t1"
   });
  const entry=(staffId,counts,expectedVersion)=>({date,staffId,counts,expectedVersion});
  const a={...zero(),NURO:2,SBMNP:1},b={...zero(),NURO:1,SBMNP:2};
