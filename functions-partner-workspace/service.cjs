@@ -1268,6 +1268,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      savedTeams.set(t.id,clean(x.name));
     }
     const group=new Map(),unique=new Set(),members=[],memberByStaff=new Map();
+    const verifiedCategories=Object.fromEntries(KEYS.map(key=>[key,0]));
     let verified=0;
     for(const entrySnap of entrySnaps.docs){
      const e=entrySnap.data()||{};
@@ -1278,6 +1279,11 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      const item=validateCounts(e.counts);
      if(item.total!==e.totalCount)fail("data-loss");
      verified+=item.total;
+     if(!Number.isSafeInteger(verified))fail("data-loss");
+     for(const key of KEYS){
+      verifiedCategories[key]+=item.counts[key];
+      if(!Number.isSafeInteger(verifiedCategories[key]))fail("data-loss");
+     }
      const tid=ID.test(e.teamIdSnapshot||"")?e.teamIdSnapshot:"";
      const safeName=validName(e.staffNameSnapshot)?
       clean(e.staffNameSnapshot):"担当者未確認";
@@ -1299,7 +1305,9 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     // Legacy company-level reports have no verified staff ledger. They
     // remain visible as company totals but NEVER turn into imaginary people.
     const hasLedger=reportSnap.exists&&r.source==="staff-entries-v1";
-    if(hasLedger&&verified!==summary.total)fail("data-loss");
+    if(hasLedger&&(verified!==summary.total||
+       KEYS.some(key=>verifiedCategories[key]!==summary.counts[key])))
+     fail("data-loss");
     if(!hasLedger&&entrySnaps.size>0)fail("data-loss");
     if(!hasLedger)complete=false;
     let companyExtras=0;
