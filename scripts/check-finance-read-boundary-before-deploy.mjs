@@ -50,7 +50,7 @@ function verifyFinanceHelper(source){
  if(!/^return(?:noSecondaryPartnerWorkspace\(\)&&)?companyId!=null&&/.test(helper)||
     (source.includes('function noSecondaryPartnerWorkspace()')&&
      !helper.startsWith('returnnoSecondaryPartnerWorkspace()&&'))||
-    hasTopLevelOr(matches[0][1]))block('MISSING_SERVER_PARTNER_GUARD');
+    helper.includes('||')||hasTopLevelOr(matches[0][1]))block('MISSING_SERVER_PARTNER_GUARD');
  for(const condition of [
   "get(companyPath(companyId)).data.get('companyKind','internal')=='internal'",
   "get(userPath(request.auth.uid)).data.get('accessKind','internal')=='internal'",
@@ -74,8 +74,17 @@ export function checkFinanceRulesBeforeDeploy(source){
  for(const group of roots){
    const body=ruleBody(source,group);
    const condition=checkAction(body,"read",group);
+   // Exactly these two established internal principals may read raw
+   // monetary documents. Static checks must not approve "|| true" inside
+   // the owner clause or an additional manager/employee grant.
+   const normalized=condition.replace(/\\s+/g,'');
+   const prefix='resource.data.companyId!=null&&isInternalFinanceReader(resource.data.companyId)&&(';
+   const m='isCompanyMaster(resource.data.companyId)';
+   const o='isCompanyOwner(resource.data.companyId)';
+   const recognized=normalized===prefix+m+'||'+o+')'||
+     normalized===prefix+o+'||'+m+')';
    // Require the restrictive AND before any owner/leader OR branch.
-   if(hasTopLevelOr(condition)||/sameCompany\s*\(/.test(condition)||
+   if(!recognized||hasTopLevelOr(condition)||/sameCompany\s*\(/.test(condition)||
       !/^\s*resource\.data\.companyId\s*!=\s*null\s*&&\s*isInternalFinanceReader\(resource\.data\.companyId\)\s*&&\s*\(\s*isCompany(?:Master|Owner)\(/.test(condition)||
       !/isCompanyOwner\(resource\.data\.companyId\)|isCompanyMaster\(resource\.data\.companyId\)/.test(condition))
      block("RAW_READ_"+group);
