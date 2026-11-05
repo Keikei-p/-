@@ -20,7 +20,7 @@ const RELEASE='projects/'+PROJECT+'/releases/cloud.firestore';
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const stop=code=>{throw Error('STOP_LIVE_ROLE_'+code);};
 
-function identity(token, expectedUid, nowSeconds){
+function identity(token, expectedUid, nowSeconds, minimumRemainingSeconds=60){
   if(typeof token!=='string'||token.length<100||token.length>8192||
      token.split('.').length!==3)stop('FIREBASE_USER_TOKEN_REQUIRED');
   let claims;
@@ -34,7 +34,7 @@ function identity(token, expectedUid, nowSeconds){
      claims.email_verified!==true||
      !claims.firebase||typeof claims.firebase.sign_in_provider!=='string'||
      !Number.isSafeInteger(claims.iat)||!Number.isSafeInteger(claims.exp)||
-     claims.iat>nowSeconds+60||claims.exp<=nowSeconds+60||
+     claims.iat>nowSeconds+60||claims.exp<=nowSeconds+minimumRemainingSeconds||
      claims.exp-claims.iat>3700||
      !Number.isSafeInteger(claims.auth_time)||
      claims.auth_time>nowSeconds+60)stop('USER_IDENTITY_NOT_VERIFIED');
@@ -210,6 +210,41 @@ export function createLiveFirestoreOwnerPreflight({
     return Object.freeze({
       checkedAgainst:fetchImpl===undefined?'production-live':'synthetic-only',
       ownerFinanceAllowed:true
+    });
+  };
+}
+
+
+/**
+ * Local freshness-only gate for the final pre-PATCH window.
+ *
+ * JWT payloads are NOT proof of authentication; real Owner GET/List below
+ * supplies cryptographic user-token validation by Firestore. This gate only
+ * prevents an already/still-nearly-expired partner token from making a
+ * production switch that would immediately require rollback.
+ */
+export function createLiveFirestoreSessionPreflight({
+  ownerIdToken,partnerIdToken,expectedOwnerUid,expectedPartnerUid,
+  now=()=>Date.now(),minimumRemainingSeconds=600
+}={}){
+  if(typeof now!=='function'||
+     !Number.isSafeInteger(minimumRemainingSeconds)||
+     minimumRemainingSeconds<120||minimumRemainingSeconds>1200)
+    stop('INVALID_FRESHNESS_WINDOW');
+  let used=false;
+  return function verifySessionsImmediatelyBeforeSwitch(){
+    if(used)stop('SINGLE_USE_SESSION_PREFLIGHT');
+    used=true;
+    const nowSeconds=Math.floor(now()/1000);
+    const owner=identity(ownerIdToken,expectedOwnerUid,nowSeconds,minimumRemainingSeconds);
+    const partner=identity(partnerIdToken,expectedPartnerUid,nowSeconds,minimumRemainingSeconds);
+    if(owner===partner||ownerIdToken===partnerIdToken)
+      stop('DISTINCT_USERS_REQUIRED');
+    return Object.freeze({
+      checkedAgainst:'local-claims-only',
+      ownerSessionFresh:true,
+      partnerSessionFresh:true,
+      userTokenCryptographyVerified:false
     });
   };
 }
