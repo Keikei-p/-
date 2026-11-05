@@ -1,7 +1,7 @@
 "use strict";
 // Isolated partner operations: no reads/writes to sales products, records or prices.
 const crypto=require("node:crypto");
-const {loadPublication,projectMasterProducts,changePublication,validId,nameOnly}=require("./catalog-publication.cjs");
+const {loadPublication,projectMasterProducts,projectOwnerPublicationRows,changePublication,validId,nameOnly}=require("./catalog-publication.cjs");
 const {readLinks,addLink,projectLinks}=require("./catalog-count-links.cjs");
 const {normalizeExtraCounts,applyExtraCounts,projectedExtraRead}=require("./additional-counts.cjs");
 const {projectExtraRankDocs}=require("./extra-rank-projection.cjs");
@@ -291,11 +291,13 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   let state,rows;
   try{
    state=loadPublication(settings.exists?settings.data():null);
-   rows=projectMasterProducts(master.docs.map(doc=>({...doc.data(),id:doc.id})),
-    state.productIds,s.kind==="partner");
+   const originals=master.docs.map(doc=>({...doc.data(),id:doc.id}));
+   rows=s.kind==="partner"?
+    projectMasterProducts(originals,state.productIds,true)
+     .map(({id,name,sortOrder})=>({id,name,sortOrder})):
+    projectOwnerPublicationRows(originals,state.productIds);
   }catch{fail("data-loss");}
-  return {role:s.kind,revision:state.revision,products:s.kind==="partner"?
-   rows.map(({id,name,sortOrder})=>({id,name,sortOrder})):rows};
+  return {role:s.kind,revision:state.revision,products:rows};
  }
  // One product flag per transaction; optimistic version guards concurrent owners.
  // Existing products, price metadata and history are never written.
@@ -315,8 +317,14 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    if(fresh.kind!=="hub"||fresh.role!=="owner"||fresh.cid!==s.cid)fail();
    const [productDoc,stateDoc]=await Promise.all([tx.get(productRef),tx.get(stateRef)]);
    const product=productDoc.data()||{};
-   if(!productDoc.exists||product.companyId!==s.cid||product.active===false)fail("failed-precondition");
-   try{nameOnly(product.name);}catch{fail("failed-precondition");}
+   // OFF must remain possible after an original product is retired or its
+   // label becomes invalid for partner display. Re-publishing still requires
+   // a currently active, safe-to-display original master.
+   if(!productDoc.exists||product.companyId!==s.cid||
+      (d.published&&product.active===false))fail("failed-precondition");
+   if(d.published){
+    try{nameOnly(product.name);}catch{fail("failed-precondition");}
+   }
    let next;
    try{next=changePublication(stateDoc.exists?stateDoc.data():null,
      d.productId,d.published,d.expectedRevision);}

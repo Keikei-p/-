@@ -1,0 +1,36 @@
+name: Partner catalog OFF safety (NO DEPLOY)
+on:
+  push:
+    branches: [fix/partner-publish-off-inactive-20261105]
+    paths:
+      - 'functions-partner-workspace/service.cjs'
+      - 'tests/partner-workspace.test.cjs'
+      - '.github/workflows/partner-catalog-off-no-deploy-20261105.yml'
+permissions:
+  contents: read
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      FIREBASE_PROJECT_ID: demo-partner-off-test
+      NICO_ACCOUNT_ERASURE_ENABLED: ''
+      SAFE_INTERNAL_MEMBER_REMOVAL_ENABLED: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check code and test syntax
+        run: |
+          node --check functions-partner-workspace/service.cjs
+          node --check tests/partner-workspace.test.cjs
+      - name: Verify synthetic catalog publication, partner counts, and old history
+        run: |
+          node --test tests/partner-workspace.test.cjs tests/partner-catalog-publication.test.cjs tests/partner-catalog-count-links.test.cjs tests/partner-additional-counts-isolation.test.cjs
+      - name: Confirm no deploy
+        run: echo "Offline synthetic tests only. No production secrets, releases, or Firebase writes."
