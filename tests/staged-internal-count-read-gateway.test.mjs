@@ -45,8 +45,11 @@ function setup({records=[one(1)],products=[product],complete=true,
   loadCountPage:async options=>{
    audit.queries.push(options);
    assert.equal(options.companyId,cid);
-   const page=records.filter(r=>r.id>options.cursor).slice(0,options.limit);
-   return {complete,readTime:snapshotTime,products,records:page};
+   const remaining=records.filter(r=>r.id>options.cursor);
+   const page=remaining.slice(0,options.limit);
+   const hasMore=remaining.length>page.length;
+   return {complete,readTime:snapshotTime,products,records:page,hasMore,
+    nextCursor:hasMore?page.at(-1).id:null};
   }
  });
  return {server,audit,docs};
@@ -72,7 +75,10 @@ test('internal owner receives exact historical CB counts but no original prices'
  assert.equal(body.lines[0].count,2);
  assert.equal(body.products[0].name,'NURO光');
  assert.equal(body.nextCursor,null);
- assert.equal(body.snapshotTime,now);
+ assert.equal(body.readTime,now);
+ assert.equal(body.companyId,cid);
+ assert.equal(body.catalogIncluded,true);
+ assert.equal(body.hasMore,false);
  const response=JSON.stringify(body);
  for(const s of ['40000','20000','10000','totalRevenue','revenuePerUnit',
   'cashback','pricingOptions','unitPrice'])assert(!response.includes(s),s);
@@ -161,7 +167,7 @@ test('2501 records return stable, nontruncated count pages without money',async(
  const f=setup({records:Array.from({length:2501},(_,i)=>one(i))});
  let cursor='',snapshot='',count=0,seen=new Set(),pages=0;
  do{
-  const suffix=cursor?'&cursor='+cursor+'&snapshot='+encodeURIComponent(snapshot):'';
+  const suffix=cursor?'&cursor='+cursor+'&readTime='+encodeURIComponent(snapshot):'';
   const result=await f.server(request(suffix));
   assert.equal(result.status,200,'must not return partial result');
   const response=await result.json();
@@ -172,7 +178,7 @@ test('2501 records return stable, nontruncated count pages without money',async(
   }
   assert(!JSON.stringify(response).includes('totalRevenue'));
   cursor=response.nextCursor??'';
-  snapshot=response.snapshotTime;
+  snapshot=response.readTime;
   assert(pages<55,'must finish');
  }while(cursor);
  assert.equal(count,5002);
@@ -180,6 +186,47 @@ test('2501 records return stable, nontruncated count pages without money',async(
  assert.equal(pages,51);
  assert(f.audit.queries.every(x=>x.limit===50&&x.companyId===cid));
  assert(f.audit.queries.slice(1).every(x=>x.snapshotTime===now));
+});
+test('exact 50 finished rows return hasMore=false without unnecessary extra request',async()=>{
+ const f=setup({records:Array.from({length:50},(_,i)=>one(i))});
+ const result=await f.server(request());
+ assert.equal(result.status,200);
+ const body=await result.json();
+ assert.equal(body.records.length,50);
+ assert.equal(body.hasMore,false);
+ assert.equal(body.nextCursor,null);
+ assert.equal(body.catalogIncluded,true);
+ assert.equal(f.audit.queries.length,1);
+});
+test('later page omits the catalog while validating products against server source',async()=>{
+ const f=setup({records:Array.from({length:51},(_,i)=>one(i))});
+ const first=await f.server(request());
+ assert.equal(first.status,200);
+ const a=await first.json();
+ assert.equal(a.hasMore,true);
+ assert.equal(a.records.length,50);
+ assert.equal(a.nextCursor,'sale0049');
+ assert.equal(a.products.length,1);
+ const second=await f.server(request('&cursor='+a.nextCursor+'&readTime='+encodeURIComponent(a.readTime)));
+ assert.equal(second.status,200);
+ const b=await second.json();
+ assert.equal(b.records.length,1);
+ assert.equal(b.lines.length,1);
+ assert.deepEqual(b.products,[]);
+ assert.equal(b.catalogIncluded,false);
+ assert.equal(b.hasMore,false);
+ assert.equal(b.nextCursor,null);
+ assert.equal(f.audit.queries.length,2);
+});
+test('missing Origin on same-origin GET is accepted; cross-site Origin is denied',async()=>{
+ const f=setup();
+ const same=new Request(ORIGIN+'/v1/internal-counts?day='+day,{
+  headers:{Authorization:'Bearer '+TOKEN}
+ });
+ assert.equal((await f.server(same)).status,200);
+ const cross=await f.server(request('',{origin:'https://evil.example'}));
+ assert.equal(cross.status,403);
+ assert.equal(f.audit.queries.length,1);
 });
 test('mismatched saved count, missing catalog, truncated query and stale snapshot fail closed',async()=>{
  const cases=[
@@ -196,7 +243,7 @@ test('mismatched saved count, missing catalog, truncated query and stale snapsho
   assert.deepEqual(await res.json(),{error:'request_blocked'});
  }
  const f=setup();
- const stale=await f.server(request('&cursor=sale0001&snapshot=2026-10-30T09%3A00%3A00Z'));
+ const stale=await f.server(request('&cursor=sale0001&readTime=2026-10-30T09%3A00%3A00Z'));
  assert.equal(stale.status,503);
 });
 test('staged route is not referenced by firebase deploy, Hosting or live Function export',()=>{
