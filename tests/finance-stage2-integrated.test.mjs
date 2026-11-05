@@ -62,6 +62,34 @@ test('internal owner can read old monetary originals in emulator',async()=>{
   assert.equal(snap.exists(),true,table);
  }
 });
+test('future closure preserves HQ Owner company-scoped list queries needed by existing dashboard',async()=>{
+ // The original HQ page uses queries, not only getDoc; a rule that passes
+ // point reads but rejects a where(companyId) query is not production-ready.
+ for(const table of tables){
+  const ownerDb=dbFor('owner');
+  const snap=await assertSucceeds(getDocsFromServer(
+   query(collection(ownerDb,table),where('companyId','==',direct))
+  ));
+  assert.equal(snap.size,1,table+' original one-company browser query');
+  assert.equal(snap.docs[0].data().companyId,direct);
+  // The new boundary must not require erasing or rewriting old sales money.
+  if(table==='records')assert.equal(snap.docs[0].data().totalRevenue,100000);
+  if(table==='revenueGoals')assert.equal(snap.docs[0].data().targetRevenue,300000);
+ }
+});
+test('future closure denies same-company finance LISTS to former Owner and partner',async()=>{
+ // A mistaken LIST permission can leak every historical price despite GET
+ // being denied. Check both the former internal Owner with a secondary
+ // partner membership and the active partner owner.
+ for(const [uid,target] of [['secondary',direct],['partnerOwner',partner],
+                              ['staleCooperator',direct]]){
+  for(const table of tables){
+   const db=dbFor(uid);
+   await assertFails(getDocsFromServer(query(collection(db,table),
+    where('companyId','==',target))));
+  }
+ }
+});
 test('internal member raw reads are incompatible, proving migration is mandatory',async()=>{
  for(const table of tables)await assertFails(getDoc(doc(dbFor('worker'),table,'internal-sample')));
 });
