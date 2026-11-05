@@ -2,6 +2,8 @@ name: NICO safe member exit - NO DEPLOY
 on:
   push:
     branches: [fix/safe-internal-member-removal-20261105]
+  pull_request:
+    branches: [main]
 permissions:
   contents: read
 concurrency:
