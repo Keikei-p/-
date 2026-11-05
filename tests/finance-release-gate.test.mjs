@@ -53,3 +53,41 @@ test("replacing another collection's read guard with sameCompany is not approved
    "&& sameCompany(resource.data.companyId)");
  assert.throws(()=>checkFinanceRulesBeforeDeploy(altered),/RAW_READ/);
 });
+
+test("only the original internal Owner or Master may read raw finance on a staged ruleset",()=>{
+ const owner="isCompanyOwner(resource.data.companyId)";
+ for(const replacement of [
+  owner+" || true",
+  owner+" || isCompanyLeader(resource.data.companyId)",
+  owner+" || canViewRevenue(resource.data.companyId)"
+ ]){
+  const mutated=stage2.replace(owner,replacement);
+  assert.notEqual(mutated,stage2);
+  assert.throws(()=>checkFinanceRulesBeforeDeploy(mutated),/RAW_READ_/);
+ }
+});
+test("a partner-allowing OR inside the finance helper cannot pass string-only guard tests",()=>{
+ for(const replacement of [
+  "return companyId != null || true",
+  "return companyId != null && (true || false)",
+ ]){
+  const mutant=stage2.replace("return companyId != null",replacement);
+  assert.notEqual(mutant,stage2);
+  assert.throws(()=>checkFinanceRulesBeforeDeploy(mutant),/MISSING_SERVER_PARTNER_GUARD/);
+ }
+ const marker="get(memberPath(companyId, request.auth.uid)).data.get('memberType', 'internal') != 'cooperator'";
+ const unsafe=stage2.replace(marker,"true");
+ assert.notEqual(unsafe,stage2);
+ assert.throws(()=>checkFinanceRulesBeforeDeploy(unsafe),/MISSING_SERVER_PARTNER_GUARD/);
+});
+test("get of existing financial records must not be enabled by additional OR",()=>{
+ const marker="!exists(/databases/$(database)/documents/records/$(recordId))";
+ assert(stage2.includes(marker));
+ for(const unsafe of [
+  stage2.replace(marker,marker+" || true"),
+  stage2.replace(marker,"("+marker+" || true)")
+ ]){
+  assert.notEqual(unsafe,stage2);
+  assert.throws(()=>checkFinanceRulesBeforeDeploy(unsafe),/ADDITIVE_GET_records/);
+ }
+});
