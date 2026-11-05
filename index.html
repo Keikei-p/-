@@ -4885,15 +4885,26 @@ body.product-reordering .product-list {
   </button>
   <p class="p-inline-muted">今日の実績を登録・確認できます。</p>
   <div id="partnerGlobalDateToolbar" class="p-inline-grid">
-    <label class="p-inline-field">ダッシュボードの表示日<input id="pInlineDate" type="date"></label>
-    <div class="p-inline-field"><label for="pInlineRefresh">最新データ</label><button id="pInlineRefresh" type="button">更新</button></div>
+    <label class="p-inline-field">ダッシュボードの表示月<input id="pInlineDashboardMonth" type="month" aria-label="協力店ダッシュボードの対象月"></label>
+    <div class="p-inline-field"><label for="pInlineDashboardMonthRefresh">月間集計</label><button id="pInlineDashboardMonthRefresh" type="button">月間件数を更新</button></div>
+    <label class="p-inline-field">実績入力・履歴の表示日<input id="pInlineDate" type="date"></label>
+    <div class="p-inline-field"><label for="pInlineRefresh">選択日のデータ</label><button id="pInlineRefresh" type="button">日別を更新</button></div>
   </div>
   <p id="pInlineStatus" role="status" aria-live="polite"></p>
-  <div class="dashboard-summary" aria-label="協力店の選択日実績">
-    <div class="summary-card"><div class="summary-label">選択日の件数</div><div id="pPartnerDailyCount" class="summary-value">-</div></div>
-    <div class="summary-card"><div class="summary-label">報告した担当者</div><div id="pPartnerStaffCount" class="summary-value">-</div></div>
-    <div class="summary-card"><div class="summary-label">班数</div><div id="pPartnerTeamCount" class="summary-value">-</div></div>
+  <div class="dashboard-summary" aria-label="協力店の選択月実績">
+    <div class="summary-card"><div class="summary-label">選択月の保存済み件数</div><div id="pPartnerMonthCount" class="summary-value">-</div></div>
+    <div class="summary-card"><div class="summary-label">報告した担当者（月間）</div><div id="pPartnerMonthStaffCount" class="summary-value">-</div></div>
+    <div class="summary-card"><div class="summary-label">稼働した班（月間）</div><div id="pPartnerMonthTeamCount" class="summary-value">-</div></div>
   </div>
+  <p id="pPartnerMonthStatus" class="p-inline-muted" role="status" aria-live="polite">月を選ぶと、その月に保存された件数だけを集計します。</p>
+  <details class="p-inline-card" id="partnerDaySummaryDisclosure">
+    <summary>選択日の件数を見る（日別）</summary>
+    <div class="dashboard-summary" aria-label="協力店の選択日実績">
+      <div class="summary-card"><div class="summary-label">選択日の件数</div><div id="pPartnerDailyCount" class="summary-value">-</div></div>
+      <div class="summary-card"><div class="summary-label">報告した担当者</div><div id="pPartnerStaffCount" class="summary-value">-</div></div>
+      <div class="summary-card"><div class="summary-label">班数</div><div id="pPartnerTeamCount" class="summary-value">-</div></div>
+    </div>
+  </details>
   <div class="p-inline-card" id="partnerLegacyShortcuts" hidden>
     <div class="dashboard-title">✏️ 実績入力</div>
     <button id="pPartnerRecordToggle" type="button" class="team-action-button">入力欄を開く・閉じる</button>
@@ -5067,8 +5078,18 @@ body.product-reordering .product-list {
     </div>
   </section>
   <section id="partnerPanelDetail" data-partner-view="detail" hidden>
-    <div class="p-inline-card"><h3>📋 班別詳細</h3><div id="pInlineTeamDetails" class="p-inline-list"></div></div>
-    <div class="p-inline-card"><h3>🌐 直営・協力店 全社班別詳細（選択日）</h3><button id="partnerSharedDetailRefresh" class="team-action-button" type="button">全社の会社・班・担当者件数を表示</button><p id="partnerSharedDetailStatus" role="status"></p><div id="partnerSharedDetailTree" class="p-inline-list"></div></div>
+    <div class="p-inline-card"><h3>📋 班別詳細（月間）</h3>
+      <p id="partnerMonthlyTeamStatus" class="p-inline-muted" role="status">上の表示月を選ぶと、1か月分だけ班・担当者・商材の件数を表示します。</p>
+      <div id="partnerMonthlyTeamDetails" class="p-inline-list partner-count-team-grid"></div>
+    </div>
+    <details class="p-inline-card"><summary>選択日の班別詳細（日別）を見る</summary>
+      <div id="pInlineTeamDetails" class="p-inline-list"></div>
+    </details>
+    <details class="p-inline-card"><summary>直営・協力店の全社班別詳細（選択日）を見る</summary>
+      <button id="partnerSharedDetailRefresh" class="team-action-button" type="button">全社の会社・班・担当者件数を表示</button>
+      <p id="partnerSharedDetailStatus" role="status"></p>
+      <div id="partnerSharedDetailTree" class="p-inline-list"></div>
+    </details>
   </section>
   <section id="partnerPanelDaily" data-partner-view="daily" hidden>
     <div class="p-inline-card"><h3>📅 日別</h3><p>上の実績日を切り替えて確認できます。</p><div id="pInlineDailySummary" class="p-inline-list"></div></div>
@@ -7498,6 +7519,8 @@ const readPartnerQuickDay = httpsCallable(partnerCountFunctions,"getPartnerQuick
 const approvePartnerQuickDay = httpsCallable(partnerCountFunctions,"approvePartnerQuickCounts");
 const readPartnerWorkDay = httpsCallable(partnerCountFunctions,"getPartnerWorkspace");
 const readPartnerMonthlySharedCounts = httpsCallable(partnerCountFunctions,"getPartnerMonthlySharedCounts");
+// Own-company monthly summary and team/person/product counts; no finance source.
+const readPartnerMonthlyTeamDetails = httpsCallable(partnerCountFunctions,"getPartnerMonthlyTeamDetails");
 // Partner monthly product totals contain counts only, never finance originals.
 const readPartnerProductMonthlyTotals = httpsCallable(partnerCountFunctions,"getPartnerProductMonthlyTotals");
 
