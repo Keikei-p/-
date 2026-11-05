@@ -88,3 +88,119 @@ test("no HTML parsing of a hostile name, no owner revenue mode changes and no hi
  assert(!originalPartner.includes('totalRevenue'));
  assert(!segment.includes("getDocs(")&&!segment.includes("setDoc("));
 });
+
+
+function monthlyRankingFixture(){
+ const start=source.indexOf('const ownerMonthlyRankCache=new Map();');
+ const end=source.indexOf('const ownerJointIndividualDate=',start);
+ const partnerStart=source.indexOf('async function loadPartnerMonthlySharedRankings(){',end);
+ const partnerEnd=source.indexOf('const partnerSharedRankingsMonth=pInline(',partnerStart);
+ assert(start>=0&&end>start&&partnerStart>end&&partnerEnd>partnerStart);
+ const pending=[],rendered=[],nodes={};
+ for(const [name,value] of [
+  ['ownerJointIndividualMonth','2026-11'],['ownerJointProductMonth','2026-11'],
+  ['ownerJointIndividualStatus',''],['ownerJointProductStatus',''],
+  ['partnerSharedRankingsMonth','2026-11'],
+  ['partnerSharedRankingsStatus',''],['partnerSharedRankingContent','']
+ ])nodes[name]={value,textContent:value,replaceChildren(){this.cleared=true}};
+ nodes.partnerSharedRankingsSection={querySelector:()=>({textContent:''})};
+ const state={uid:'owner',companyId:'direct',workspace:'partnerOne'};
+ const ctx={
+  Map,Date,auth:{currentUser:{uid:state.uid}},
+  currentUserData:{companyId:state.companyId},
+  getTodayString:()=> '2026-11-05',
+  document:{getElementById:id=>nodes[id]},
+  pInline:id=>nodes[id],
+  partnerInlineWorkspaceCompany:state.workspace,
+  PARTNER_QUICK_RANK_KEYS:['NURO','SBMNP'],
+  partnerSameAppSelectedPanel:'individual',
+  canReadSharedCountOnlyRanks:()=>true,
+  renderOwnerJointIndividualRanking:()=>rendered.push('Individual'),
+  renderOwnerJointProductRanking:()=>rendered.push('Product'),
+  appendSharedRankingRows:()=>rendered.push('partner'),
+  readPartnerMonthlySharedCounts:payload=>new Promise(resolve=>pending.push({payload,resolve})),
+  console:{error(){}}
+ };
+ const prefix='let sharedDailyRankingGeneration=0;const sharedDailyRequestSequences=new Map();'+
+  'let ownerJointIndividualMode=true,ownerJointProductMode=true;'+
+  'let ownerJointIndividualSnapshot=null,ownerJointProductSnapshot=null;'+
+  'let ownerJointProductDateKey="";let partnerSharedRankPeriod="month";';
+ vm.runInNewContext(prefix+source.slice(start,end)+source.slice(partnerStart,partnerEnd)+
+  '\nthis.owner=loadOwnerMonthlySharedRanks;this.partner=loadPartnerMonthlySharedRankings;'+
+  '\nthis.switchCard=(card)=>nextSharedMonthlyRequest(card);'+
+  '\nthis.switchPartnerDay=()=>{nextSharedMonthlyRequest("partner");partnerSharedRankPeriod="day"};'+
+  '\nthis.invalidateSession=()=>{++sharedDailyRankingGeneration};',ctx);
+ const ownerReply=()=>({scope:'shared_monthly_counts_only',role:'hub',
+  month:'2026-11',complete:false,people:[{companyName:'協力店',name:'担当A',totalCount:3}],
+  companies:[],direct:{people:[{name:'担当B',totalCount:2}]},
+  groupStandings:[],recordsVerified:1,partnerRowsVerified:1});
+ const partnerReply=()=>({scope:'shared_monthly_counts_only',role:'partner',
+  month:'2026-11',complete:false,people:[],teams:[],companies:[],
+  categories:['NURO','SBMNP'],productCounts:{NURO:0,SBMNP:0},
+  additionalTotalCount:0,direct:{people:[],teams:[],counts:{NURO:0,SBMNP:0},
+   otherCount:0},groupStatus:'unverified'});
+ return {ctx,state,nodes,rendered,pending,ownerReply,partnerReply,
+  resolve(index,reply){pending[index].resolve({data:reply});}};
+}
+test('the original HQ individual and product monthly ranking cards complete independently',async()=>{
+ const f=monthlyRankingFixture();
+ const individual=f.ctx.owner('Individual');
+ const product=f.ctx.owner('Product');
+ assert.equal(f.pending.length,2);
+ f.resolve(1,f.ownerReply());await product;
+ f.resolve(0,f.ownerReply());await individual;
+ assert.deepEqual(f.rendered,['Product','Individual']);
+});
+test('monthly rankings ignore stale responses for same card but not the other card',async()=>{
+ const f=monthlyRankingFixture();
+ const old=f.ctx.owner('Individual');
+ const latest=f.ctx.owner('Individual');
+ const product=f.ctx.owner('Product');
+ f.resolve(1,f.ownerReply());await latest;
+ f.resolve(2,f.ownerReply());await product;
+ f.resolve(0,f.ownerReply());await old;
+ assert.deepEqual(f.rendered,['Individual','Product']);
+});
+test('partner monthly and HQ monthly may resolve together, without cancelling either',async()=>{
+ const f=monthlyRankingFixture();
+ const owner=f.ctx.owner('Product');
+ const partner=f.ctx.partner();
+ f.resolve(1,f.partnerReply());await partner;
+ f.resolve(0,f.ownerReply());await owner;
+ assert.deepEqual(f.rendered,['partner','Product']);
+});
+test('card switch, company/workspace change and logout invalidate only relevant monthly results',async()=>{
+ {
+  const f=monthlyRankingFixture();
+  const individual=f.ctx.owner('Individual'),product=f.ctx.owner('Product');
+  f.ctx.switchCard('Individual');
+  f.resolve(0,f.ownerReply());await individual;
+  f.resolve(1,f.ownerReply());await product;
+  assert.deepEqual(f.rendered,['Product']);
+ }
+ {
+  const f=monthlyRankingFixture();
+  const partner=f.ctx.partner(),owner=f.ctx.owner('Individual');
+  f.ctx.switchPartnerDay();
+  f.resolve(0,f.partnerReply());await partner;
+  f.resolve(1,f.ownerReply());await owner;
+  assert.deepEqual(f.rendered,['Individual']);
+ }
+ {
+  const f=monthlyRankingFixture();
+  const owner=f.ctx.owner('Individual'),partner=f.ctx.partner();
+  f.ctx.currentUserData.companyId='differentCompany';
+  f.ctx.partnerInlineWorkspaceCompany='differentWorkspace';
+  f.resolve(0,f.ownerReply());await owner;
+  f.resolve(1,f.partnerReply());await partner;
+  assert.deepEqual(f.rendered,[]);
+ }
+ {
+  const f=monthlyRankingFixture();
+  const owner=f.ctx.owner('Individual'),partner=f.ctx.partner();
+  f.ctx.invalidateSession();
+  f.resolve(0,f.ownerReply());await owner;
+  f.resolve(1,f.partnerReply());await partner;
+  assert.deepEqual(f.rendered,[]);
+ }
+});
