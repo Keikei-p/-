@@ -19,6 +19,7 @@
  * Firestore REST where Google validates the ID token and Security Rules.
  */
 import {phase1Boundary} from './phase1-partner-finance-release.mjs';
+import {createAffectedSecondaryIdentityVerifier} from './phase1-bound-identity-readonly.mjs';
 import {
   createLiveFirestoreOwnerPreflight,
   createLiveFirestoreRoleVerifier
@@ -29,6 +30,7 @@ const allowRelease=new Set([
   'request','snapshot','restore','backup',
   'reviewedBaseline','reviewedCandidate','now','log'
 ]);
+const allowIdentity=new Set(['credential','partnerCompanyId','fetchImpl','now']);
 const allowAccounts=new Set([
   'ownerIdToken','partnerIdToken','expectedOwnerUid',
   'expectedPartnerUid','internalCompanyId','productId',
@@ -36,7 +38,7 @@ const allowAccounts=new Set([
 ]);
 
 export async function phase1WithLiveAccountGate({
-  release,accounts,approval=false,
+  release,accounts,identity,approval=false,
   candidateEmulatorVerified=false,backupReviewed=false
 }={}){
   // Do not allow flags or arbitrary callback injection inside the release
@@ -46,13 +48,34 @@ export async function phase1WithLiveAccountGate({
   if(!release||typeof release!=='object'||Array.isArray(release)||
      Object.keys(release).some(key=>!allowRelease.has(key))||
      !accounts||typeof accounts!=='object'||Array.isArray(accounts)||
-     Object.keys(accounts).some(key=>!allowAccounts.has(key)))
+     Object.keys(accounts).some(key=>!allowAccounts.has(key))||
+     !identity||typeof identity!=='object'||Array.isArray(identity)||
+     Object.keys(identity).some(key=>!allowIdentity.has(key)))
     stop('UNREVIEWED_INPUT_KEYS');
   if(typeof release.request!=='function'||typeof release.snapshot!=='function'||
      typeof release.restore!=='function'||typeof release.backup!=='function'||
      typeof release.reviewedBaseline!=='string'||
      typeof release.reviewedCandidate!=='string')
     stop('INCOMPLETE_RELEASE_DEPENDENCIES');
+
+  // A generic partner UID getting 403 could fake a successful financial
+  // boundary test. Bind the exact affected dual-membership identity to the
+  // internal company and partner membership with independently trusted reads.
+  const identityArgs={
+    credential:identity.credential,
+    partnerCompanyId:identity.partnerCompanyId,
+    expectedOwnerUid:accounts.expectedOwnerUid,
+    expectedPartnerUid:accounts.expectedPartnerUid,
+    internalCompanyId:accounts.internalCompanyId,
+    ...(identity.fetchImpl===undefined?{}:{fetchImpl:identity.fetchImpl}),
+    ...(identity.now===undefined?{}:{now:identity.now})
+  };
+  const identityProof=await createAffectedSecondaryIdentityVerifier(identityArgs)();
+  if(identityProof?.checkedAgainst!=='production-admin-readonly'||
+     identityProof?.ownerInternalBound!==true||
+     identityProof?.affectedSecondaryBound!==true||
+     identityProof?.productionDocumentWrites!==0)
+    stop('TRUSTED_AFFECTED_IDENTITY_REQUIRED');
 
   const before=createLiveFirestoreOwnerPreflight(accounts);
   const after=createLiveFirestoreRoleVerifier(accounts);
@@ -68,6 +91,16 @@ export async function phase1WithLiveAccountGate({
     ...release,
     apply:true,approval:true,candidateEmulatorVerified:true,
     backupReviewed:true,realOwnerBeforeVerified:true,
-    verifyLiveRoles:after
+    // Recheck the affected secondary membership immediately AFTER the Rules
+    // switch, before calling the real UID GET/LIST denial probe. Never claim
+    // success for a stale identity snapshot or a different partner UID.
+    verifyLiveRoles:async proofArgs=>{
+      const fresh=await createAffectedSecondaryIdentityVerifier(identityArgs)();
+      if(fresh?.checkedAgainst!=='production-admin-readonly'||
+         fresh?.ownerInternalBound!==true||
+         fresh?.affectedSecondaryBound!==true)
+        stop('POST_SWITCH_IDENTITY_UNVERIFIED');
+      return after(proofArgs);
+    }
   });
 }
