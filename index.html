@@ -8599,6 +8599,9 @@ let members = [];
 let records = [];
 // Only a complete server-confirmed selected month can drive monthly totals.
 let recordQueryGeneration = 0;
+// All internal Firestore subscription callbacks share this independent
+// lifecycle epoch. A month change must NOT cancel product/goal listeners.
+let internalListenerSessionGeneration = 0;
 let recordsReady = false;
 let recordsSubscribedMonth = "";
 let annualChartRecords = null;
@@ -17999,6 +18002,18 @@ function startRealtimeListeners() {
   // Never restart money-bearing listeners inside the count-only workspace.
   if(typeof appScreen!=="undefined"&&appScreen?.dataset?.partnerCountOnly==="true")return;
   stopRealtimeListeners();
+  const listenerSession=typeof internalListenerSessionGeneration==="number"
+    ?internalListenerSessionGeneration:null;
+  const listenerCompany=typeof currentUserData==="undefined"?null:currentUserData?.companyId;
+  const listenerUid=typeof currentUser==="undefined"?null:currentUser?.uid;
+  // Unsubscribe stops future delivery, but a callback already queued by
+  // Firestore may still execute. Reject it after role, company or UID changes.
+  const internalSnapshotIsCurrent=()=>(
+    (typeof appScreen==="undefined"||appScreen?.dataset?.partnerCountOnly!=="true")&&
+    (listenerSession===null||internalListenerSessionGeneration===listenerSession)&&
+    (listenerCompany===null||currentUserData?.companyId===listenerCompany)&&
+    (listenerUid===null||currentUser?.uid===listenerUid)
+  );
   loadLocalRankingGroups();
 
 
@@ -18018,6 +18033,7 @@ function startRealtimeListeners() {
       onSnapshot(
         companyMembersCollectionRef(),
         snapshot => {
+          if(!internalSnapshotIsCurrent())return;
 
           members = [];
 
@@ -18105,8 +18121,9 @@ function startRealtimeListeners() {
 
                 loadMembers()
                   .then(
-                    () =>
-                      startRealtimeListeners()
+                    () => {
+                      if(internalSnapshotIsCurrent())startRealtimeListeners();
+                    }
                   );
 
                 return;
@@ -18152,6 +18169,7 @@ function startRealtimeListeners() {
           currentUser.uid
         ),
         async userSnap => {
+          if(!internalSnapshotIsCurrent())return;
 
           if (
             !userSnap.exists()
@@ -18217,8 +18235,7 @@ function startRealtimeListeners() {
           ) {
 
             await loadMembers();
-
-            startRealtimeListeners();
+            if(internalSnapshotIsCurrent())startRealtimeListeners();
 
           }
 
@@ -18244,6 +18261,7 @@ function startRealtimeListeners() {
     onSnapshot(
       companyCollectionQuery("teams"),
       snapshot => {
+          if(!internalSnapshotIsCurrent())return;
 
         teams = [];
 
@@ -18315,6 +18333,7 @@ function startRealtimeListeners() {
     onSnapshot(
       companyCollectionQuery("products"),
       snapshot => {
+          if(!internalSnapshotIsCurrent())return;
 
         products = [];
 
@@ -18377,6 +18396,7 @@ function startRealtimeListeners() {
     onSnapshot(
       companyCollectionQuery("goals"),
       snapshot => {
+          if(!internalSnapshotIsCurrent())return;
 
         goals = [];
 
@@ -18423,6 +18443,7 @@ function startRealtimeListeners() {
       onSnapshot(
         revenueGoalQuery,
         snapshot => {
+          if(!internalSnapshotIsCurrent())return;
 
           revenueGoals = [];
 
@@ -18477,6 +18498,7 @@ function startRealtimeListeners() {
 
 
 function stopRealtimeListeners() {
+  ++internalListenerSessionGeneration;
   ++recordQueryGeneration;
   ++annualChartGeneration;
   ++recordFormLookupGeneration;
