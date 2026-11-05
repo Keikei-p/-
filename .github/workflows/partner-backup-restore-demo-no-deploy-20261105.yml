@@ -49,7 +49,9 @@ jobs:
         run: |
           set -euo pipefail
           npx --yes firebase-tools@15.34.1 emulators:exec --only firestore --project demo-sales-restore \
-            "node --test tools/readonly-backup/restore-emulator-live.test.mjs && node --test tests/partner-backup-restore-domain-live.test.mjs"
+            "node --test tools/readonly-backup/restore-emulator-live.test.mjs"
+          npx --yes firebase-tools@15.34.1 emulators:exec --only firestore --project demo-sales-restore \
+            "node --test tests/partner-backup-restore-domain-live.test.mjs"
       - name: Report strictly limited result
         run: |
           echo "PASS: local demo Firestore Emulator restored synthetic document fields and IDs; NO PRODUCTION WRITES"
