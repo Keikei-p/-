@@ -14,18 +14,18 @@ class Ref {
 class Coll {
  constructor(db,path){this.db=db;this.path=path;}
  doc(id){return new Ref(this.db,this.path+"/"+(id||"auto"+(++this.db.serial)));}
- where(k,op,v){assert.equal(op,"==");return new Query(this.db,this.path,{k,v});}
+ where(k,op,v){assert.ok(["==",">=","<="].includes(op));return new Query(this.db,this.path,{k,op,v});}
  limit(n){return new Query(this.db,this.path,null,n);}
 }
 class Query {
  constructor(db,path,filter,lim=Infinity){this.db=db;this.path=path;this.filter=filter;this.lim=lim;}
  limit(n){return new Query(this.db,this.path,this.filter,n);}
- where(k,op,v){assert.equal(op,"==");return new Query(this.db,this.path,
-  [...(Array.isArray(this.filter)?this.filter:this.filter?[this.filter]:[]),{k,v}],this.lim);}
+ where(k,op,v){assert.ok(["==",">=","<="].includes(op));return new Query(this.db,this.path,
+  [...(Array.isArray(this.filter)?this.filter:this.filter?[this.filter]:[]),{k,op,v}],this.lim);}
  async get(){const docs=[],filters=Array.isArray(this.filter)?this.filter:this.filter?[this.filter]:[];
   for(const [p,v] of this.db.store){
    if(p.startsWith(this.path+"/")&&!p.slice(this.path.length+1).includes("/")&&
-      filters.every(f=>v[f.k]===f.v))
+      filters.every(f=>f.op===">="?v[f.k]>=f.v:f.op==="<="?v[f.k]<=f.v:v[f.k]===f.v))
     docs.push({id:p.split("/").at(-1),data:()=>clone(v)});
   }const rows=docs.slice(0,this.lim);return {size:rows.length,docs:rows};}
 }
@@ -52,7 +52,7 @@ class DB {
  }
 }
 class CallError extends Error{constructor(code,message){super(message);this.code=code;}}
-function setup(){
+function setup(nowOverride=NOW){
  const db=new DB();
  const partnerUser=(uid,role,teamId=null)=>({uid,companyId:"partner",companyRole:role==="owner"?"owner":"member",
  role,teamId,active:true,accessKind:"partner",memberType:"cooperator",
@@ -76,7 +76,7 @@ function setup(){
   delete:()=>({__deleteField:true})
  };
  const api=makeWorkspace({db,getAuth,Timestamp,FieldValue,HttpsError:CallError,
-  enabled:()=>true,now:()=>NOW});
+  enabled:()=>true,now:()=>nowOverride});
  const req=(uid,data={})=>({auth:{uid,token:{email:uid+"@example.com",email_verified:true}},
   rawRequest:{headers:{authorization:"Bearer "+uid.repeat(30)}},data});
  const zero=()=>Object.fromEntries(KEYS.map(k=>[k,0]));
