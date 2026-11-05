@@ -7,7 +7,8 @@ import {
  createStagedInternalFirestoreReader
 } from '../security/staged-internal-firestore-reader.mjs';
 import {
- createStagedInternalFirebaseAdapters,createStagedInternalFirebaseCountGateway
+ createStagedInternalFirebaseAdapters,createStagedInternalFirebaseCountGateway,
+ assertStagedInternalTransportQuery
 } from '../security/staged-internal-firebase-adapters.mjs';
 const DB='projects/sales-management-cc116/databases/(default)/documents';
 const FIRESTORE_URL='https://firestore.googleapis.com/v1/'+DB+':runQuery';
@@ -114,6 +115,36 @@ test('pinning a readTime on the second page covers both catalog and records',asy
  const stale=makeReader({products:[{...product(),readTime:'2026-11-05T02:31:00Z'}]});
  await assert.rejects(stale.reader({...options,snapshotTime:TIME}),
   /STAGED_INTERNAL_FIRESTORE_READ_BLOCKED/);
+});
+test('the privileged Firebase transport rejects finance field selection and OR-filter bypasses',()=>{
+ const good=buildStagedInternalRunQuery({
+  table:'records',companyId,day,cursor:'sale0001',snapshotTime:TIME,limit:50});
+ const catalog=buildStagedInternalRunQuery({
+  table:'products',companyId,snapshotTime:TIME,limit:201});
+ assert.equal(assertStagedInternalTransportQuery(good),good);
+ assert.equal(assertStagedInternalTransportQuery(catalog),catalog);
+ const changes=[
+  q=>q.body.structuredQuery.select.fields.push({fieldPath:'totalRevenue'}),
+  q=>q.body.structuredQuery.select.fields.push({fieldPath:'revenuePerUnit'}),
+  q=>q.body.structuredQuery.where.compositeFilter.op='OR',
+  q=>q.body.structuredQuery.where.compositeFilter.filters[0].fieldFilter.value.stringValue='other',
+  q=>q.body.structuredQuery.orderBy[0].direction='DESCENDING',
+  q=>q.body.structuredQuery.startAt.before=true,
+  q=>q.body.structuredQuery.startAt.values[0].referenceValue=DB+'/products/private',
+  q=>q.body.structuredQuery.limit=100,
+  q=>q.body.structuredQuery.from[0].collectionId='recordCorrections',
+  q=>q.body.readTime='2026-11-05T02:31:00Z'
+ ];
+ for(const mutate of changes){
+  const forged=structuredClone(good);
+  mutate(forged);
+  assert.throws(()=>assertStagedInternalTransportQuery(forged),
+   /STAGED_INTERNAL_FIREBASE_ADAPTER_DENIED/);
+ }
+ const priceProduct=structuredClone(catalog);
+ priceProduct.body.structuredQuery.select.fields.push({fieldPath:'pricingOptions'});
+ assert.throws(()=>assertStagedInternalTransportQuery(priceProduct),
+  /STAGED_INTERNAL_FIREBASE_ADAPTER_DENIED/);
 });
 test('backend adapters use Admin Auth/ACL documents only, fixed service REST and no writes',async()=>{
  const audit={auth:[],docs:[],queries:[]};

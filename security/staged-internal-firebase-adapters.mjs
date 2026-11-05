@@ -5,7 +5,7 @@
  */
 import {createFirebaseIdTokenVerifier} from './firebase-id-token-verifier.mjs';
 import {createStagedInternalCountReadGateway} from './staged-internal-count-read-gateway.mjs';
-import {createStagedInternalFirestoreReader} from './staged-internal-firestore-reader.mjs';
+import {createStagedInternalFirestoreReader,buildStagedInternalRunQuery} from './staged-internal-firestore-reader.mjs';
 
 const URL='https://firestore.googleapis.com/v1/projects/sales-management-cc116/databases/(default)/documents:runQuery';
 const ID=/^[A-Za-z0-9_:-]{1,128}$/;
@@ -17,15 +17,44 @@ function pathAllowed(path){
  if(p.length===4&&p[0]==='companies'&&ID.test(p[1])&&p[2]==='members'&&ID.test(p[3]))return path;
  deny();
 }
-function queryAllowed(q){
+/**
+ * No generic Firestore proxy: reconstruct the exact allowlisted query
+ * shape and reject additional selected fields, OR filters, altered indexes,
+ * missing company/day constraints or a forged cursor. This predicate is
+ * independent of (and additional to) the signed-user ACL.
+ */
+export function assertStagedInternalTransportQuery(q){
  if(!q||q.method!=='POST'||q.endpoint!==URL||!q.body?.structuredQuery)deny();
- const structure=q.body.structuredQuery;
- const table=structure.from?.length===1?structure.from[0].collectionId:null;
- if(!['products','records'].includes(table)||structure.limit!==(table==='products'?201:50)||
-   structure.from[0].allDescendants===true)deny();
- // This is a transport for one internal query family, never a client proxy.
+ const sq=q.body.structuredQuery;
+ const table=sq.from?.length===1?sq.from[0].collectionId:null;
+ if(!['products','records'].includes(table)||
+   sq.limit!==(table==='products'?201:50))deny();
+ let companyId,day,cursor='';
+ if(table==='products'){
+  companyId=sq.where?.fieldFilter?.value?.stringValue;
+ }else{
+  const f=sq.where?.compositeFilter?.filters;
+  if(!Array.isArray(f)||f.length!==2)deny();
+  companyId=f[0].fieldFilter?.value?.stringValue;
+  day=f[1].fieldFilter?.value?.stringValue;
+  if(sq.startAt!==undefined){
+   const path=sq.startAt?.values?.[0]?.referenceValue;
+   const prefix='projects/sales-management-cc116/databases/(default)/documents/records/';
+   if(typeof path!=='string'||!path.startsWith(prefix))deny();
+   cursor=path.slice(prefix.length);
+  }
+ }
+ let canonical;
+ try{
+  canonical=buildStagedInternalRunQuery({
+   table,companyId,...(table==='records'?{day,cursor}:{}),
+   snapshotTime:q.body.readTime??null,limit:sq.limit
+  });
+ }catch{deny();}
+ if(JSON.stringify(q)!==JSON.stringify(canonical))deny();
  return q;
 }
+
 export function createStagedInternalFirebaseAdapters({
  auth,db,getAccessToken,fetchFirestore
 }={}){
@@ -41,7 +70,7 @@ export function createStagedInternalFirebaseAdapters({
   return doc.exists?doc.data():null;
  };
  const executeRunQuery=async request=>{
-  const query=queryAllowed(request);
+  const query=assertStagedInternalTransportQuery(request);
   const token=await getAccessToken();
   if(typeof token!=='string'||token.length<20||/[\r\n]/.test(token))deny();
   const result=await fetchFirestore(URL,{
