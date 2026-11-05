@@ -79,6 +79,15 @@ test('old live and already-at-candidate Rules are accepted only with exact sourc
  assert.equal(status.applied,false);
  assert.equal(f.writes.length,0);
 });
+test('a reviewed candidate already active must NOT report a new publish or issue writes',async()=>{
+ const f=fixture({starting:candidateId});
+ const r=await phase1Boundary({...f.args,...approvals,apply:true});
+ assert.equal(r.applied,false,'there was no actual Rules publish');
+ assert.equal(r.alreadyAtReviewedCandidate,true);
+ assert.equal(r.reviewedRulesPresent,true);
+ assert.equal(f.writes.length,0,'even approved idempotent path does not write');
+ assert.equal(f.getCurrent(),candidateId);
+});
 test('deployer cannot apply without separate owner, partner, backup and signed approval',async()=>{
  for(const missing of Object.keys(approvals)){
   const f=fixture();
