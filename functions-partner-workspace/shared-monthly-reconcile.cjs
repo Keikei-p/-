@@ -105,10 +105,35 @@ function reconcileSharedMonthlyCounts({
  if(!number(direct.totalCount)||!number(direct.otherCount)||
     originalTotal+direct.otherCount!==direct.totalCount||!number(direct.recordsVerified)||
     typeof direct.peopleVerified!=="boolean")deny();
- if(sum(direct.teams.map(t=>t?.totalCount))!==direct.totalCount)deny();
- const verifiedPeopleTotal=sum(direct.people.map(p=>p?.totalCount));
+ // An internal team/member can retain the SAME overall count while its
+ // product quantities are moved between categories. Comparing only totals
+ // would publish wrong individual/product standings despite correct HQ sum.
+ const directTeamsByCategory=Object.fromEntries(categories.map(k=>[k,0]));
+ const directPeopleByCategory=Object.fromEntries(categories.map(k=>[k,0]));
+ const verifiedTeamTotal=sum(direct.teams.map(t=>{
+  if(!obj(t)||!number(t.totalCount)||
+     categorySum(t.counts,categories)>t.totalCount)deny();
+  for(const key of categories)
+   directTeamsByCategory[key]=sum([directTeamsByCategory[key],t.counts[key]]);
+  return t.totalCount;
+ }));
+ if(verifiedTeamTotal!==direct.totalCount||
+    categories.some(key=>directTeamsByCategory[key]!==direct.counts[key]))deny();
+ const verifiedPeopleTotal=sum(direct.people.map(p=>{
+  if(!obj(p)||!number(p.totalCount)||
+     categorySum(p.counts,categories)>p.totalCount)deny();
+  for(const key of categories)
+   directPeopleByCategory[key]=sum([directPeopleByCategory[key],p.counts[key]]);
+  return p.totalCount;
+ }));
  if(direct.peopleVerified===true?verifiedPeopleTotal!==direct.totalCount:
     verifiedPeopleTotal>direct.totalCount)deny();
+ // Old direct records can lack a verifiable staff ID; never invent their
+ // identity. Partial personal rows may cover a strict subset of company
+ // product quantities, but cannot exceed any saved product subtotal.
+ if(categories.some(key=>directPeopleByCategory[key]>direct.counts[key]||
+    (direct.peopleVerified&&directPeopleByCategory[key]!==direct.counts[key])))
+   deny();
  const combinedTotal=sum([companyTotal,direct.totalCount]);
  // Never infer month completeness from arithmetic; missing days remain
  // unverified and the caller must keep its provisional-only status.
