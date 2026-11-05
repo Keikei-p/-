@@ -273,3 +273,93 @@ test('only verified server readback updates rank caches; extra-ledger confirmati
  assert.match(buttons,/loadOwnerMonthlySharedRanks\(which,true\)/);
  assert.match(source,/void loadPartnerMonthlySharedRankings\(true\)/);
 });
+
+
+function foregroundSharedRankFixture(){
+ const start=source.indexOf('let lastVisibleSharedRankingRefreshAt=0;');
+ const end=source.indexOf('for(const nav of ["partnerSameAppNavigation","partnerManagementTabs"]){',start);
+ assert(start>=0&&end>start,'foreground-only focus handler should exist');
+ const events=[],calls=[],inputs={date:'2026-11-05',cb:'40000',count:'7'};
+ const nodes={
+  partnerSameAppDashboardDetails:{hidden:false},
+  partnerPanelRankings:{hidden:false},
+  individualRankingContent:{hidden:false},
+  productRankingContent:{hidden:false}
+ };
+ let now=100000;
+ const ctx={
+  document:{visibilityState:'visible',addEventListener:(name,fn)=>events.push({name,fn})},
+  window:{addEventListener:(name,fn)=>events.push({name,fn})},
+  auth:{currentUser:{uid:'owner'}},
+  appScreen:{style:{display:'block'},dataset:{partnerCountOnly:'true'}},
+  partnerInlineData:{role:'member'},
+  partnerSameAppSelectedPanel:'individual',
+  ownerJointIndividualMode:true,ownerJointProductMode:true,
+  ownerJointIndividualPeriod:'month',ownerJointProductPeriod:'day',
+  canReadSharedCountOnlyRanks:()=>true,
+  pInline:id=>nodes[id],
+  Date:{now:()=>now},
+  loadSharedDailyStandings:(which,force)=>calls.push({which,force}),
+  loadOwnerMonthlySharedRanks:(which,force)=>calls.push({which,force,month:true})
+ };
+ vm.runInNewContext(source.slice(start,end)+'\nthis.refresh=refreshVisibleSharedRankingsOnResume;',ctx);
+ return {ctx,events,calls,nodes,inputs,run:()=>ctx.refresh(),clock:t=>now=t};
+}
+test('switching back to a partner ranking refreshes server counts without touching unsaved input',()=>{
+ const f=foregroundSharedRankFixture();
+ assert.deepEqual(f.events.map(x=>x.name).sort(),['focus','visibilitychange']);
+ const before=JSON.stringify(f.inputs);
+ assert.equal(f.run(),true);
+ assert.deepEqual(f.calls.map(x=>x.which),['partner']);
+ assert.equal(f.calls[0].force,true);
+ assert.equal(JSON.stringify(f.inputs),before,'two-column count/CB drafts must survive');
+ f.clock(105000);
+ assert.equal(f.events.find(e=>e.name==='visibilitychange').fn(),false);
+ assert.equal(f.calls.length,1,'focus+visibility must not double-read');
+ f.clock(200001);assert.equal(f.run(),true);
+ assert.equal(f.calls.length,2,'foreground re-entry may refresh again after 90s');
+});
+test('background, hidden rank panel, logged-out and edit-only partner screens do not fetch',()=>{
+ const f=foregroundSharedRankFixture();
+ f.ctx.document.visibilityState='hidden';
+ assert.equal(f.run(),false);
+ f.ctx.document.visibilityState='visible';
+ f.nodes.partnerPanelRankings.hidden=true;
+ assert.equal(f.run(),false);
+ f.nodes.partnerPanelRankings.hidden=false;
+ f.ctx.partnerSameAppSelectedPanel='record';
+ assert.equal(f.run(),false);
+ f.ctx.partnerSameAppSelectedPanel='individual';
+ f.ctx.auth.currentUser=null;
+ assert.equal(f.run(),false);
+ assert.equal(f.calls.length,0);
+});
+test('owner individual and product rankings are independently refreshed only when visible',()=>{
+ const f=foregroundSharedRankFixture();
+ f.ctx.appScreen.dataset.partnerCountOnly='false';
+ assert.equal(f.run(),true);
+ assert.deepEqual(f.calls.map(x=>[x.which,x.force,x.month||false]),
+  [['Individual',true,true],['Product',true,false]]);
+ f.calls.length=0;
+ f.clock(200001);f.nodes.productRankingContent.hidden=true;
+ assert.equal(f.run(),true);
+ assert.deepEqual(f.calls.map(x=>x.which),['Individual']);
+ f.calls.length=0;
+ f.clock(300002);f.ctx.ownerJointIndividualMode=false;
+ assert.equal(f.run(),false);
+ assert.equal(f.calls.length,0);
+});
+test('forced partner day/month routing and tab opening bypass local TTL but never auto-save',()=>{
+ const start=source.indexOf('async function loadSharedDailyStandings(where,force=false){');
+ const end=source.indexOf('const ownerMonthlyRankCache=new Map();',start);
+ const ranking=source.slice(start,end);
+ assert.match(ranking,/return loadPartnerMonthlySharedRankings\(force\)/);
+ const nav=source.slice(source.indexOf('function partnerSameAppSelectPanel(name){'),
+  source.indexOf('// Mirror the original dashboard toggle:',source.indexOf('function partnerSameAppSelectPanel(name){')));
+ assert.match(nav,/loadSharedDailyStandings\("partner",true\)/);
+ const startResume=source.indexOf('let lastVisibleSharedRankingRefreshAt=0;');
+ const endResume=source.indexOf('for(const nav of ["partnerSameAppNavigation","partnerManagementTabs"]){',startResume);
+ const resume=source.slice(startResume,endResume);
+ assert(!/partnerInlineFetch\(|partnerInlineSave\(|submitPartnerWorkspaceCounts\(|setDoc\(|updateDoc\(/.test(resume));
+ assert.match(resume,/90000/);
+});
