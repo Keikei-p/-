@@ -124,7 +124,8 @@ export async function phase1Boundary({
  log(summary);
  if(!apply)return summary;
  if(liveHash===hashes.candidate)
-  return {...summary,applied:true,alreadyAtReviewedCandidate:true};
+  return {...summary,applied:false,alreadyAtReviewedCandidate:true,
+   reviewedRulesPresent:true};
  let created=null,attempted=false;
  const point=async rulesetName=>call('PATCH',RELEASE,{
   release:{name:NAME,rulesetName},updateMask:'rulesetName'
