@@ -16,9 +16,9 @@ const ROOTS=[
 const digest=s=>createHash('sha256').update(s.replace(/\r\n/g,'\n').trim()).digest('hex');
 
 function ruleBlock(source,collection){
-  // Multiple matching paths are OR-grants in Firestore, not overrides.
-  // Never validate only the first block and ignore a later permissive one.
-  const matcher=new RegExp('^    match /'+collection+'/\\{[A-Za-z]+\\} \\{','gm');
+  // Firestore OR-combines matching paths. An alternative capture name such as
+  // {record_id_2} must NOT evade duplicate-rule detection.
+  const matcher=new RegExp('^[ \\t]*match[ \\t]+/'+collection+'/\\{[^}\\r\\n]+\\}[ \\t]*\\{','gm');
   const matches=[...source.matchAll(matcher)];
   if(matches.length!==1)return '';
   const start=matches[0];
@@ -26,16 +26,37 @@ function ruleBlock(source,collection){
   return source.slice(start.index,end<0?undefined:end);
 }
 
+// A guard before "&&" is insufficient when a later top-level "|| true"
+// grants access. Nested ORs within the guarded right-hand condition are safe.
+function hasTopLevelOr(expression){
+  let depth=0,quote='',escaped=false;
+  for(let i=0;i<expression.length;i++){
+    const ch=expression[i];
+    if(quote){
+      if(escaped)escaped=false;
+      else if(ch==='\\')escaped=true;
+      else if(ch===quote)quote='';
+      continue;
+    }
+    if(ch==='"'||ch==="'"){quote=ch;continue;}
+    if(ch==='('){depth++;continue;}
+    if(ch===')'){depth--;if(depth<0)return true;continue;}
+    if(depth===0&&ch==='|'&&expression[i+1]==='|')return true;
+  }
+  return depth!==0||Boolean(quote);
+}
+
 function allReadGrantsGuarded(block){
   if(!block)return false;
   const permissions=[...block.matchAll(/allow\s+([^:;]+):\s*if\s*([\s\S]*?);/g)];
-  // A single unguarded get/list/read grant overrides a safe read rule.
+  // A single unguarded get/list/read grant overrides a protected read rule.
   return permissions.filter(([,verbs])=>
     verbs.split(',').some(verb=>['read','get','list'].includes(verb.trim()))
   ).every(([, , expression])=>{
     const condition=expression.trim();
     return condition==='false' ||
-      /^noSecondaryPartnerWorkspace\(\)\s*&&/.test(condition);
+      (/^noSecondaryPartnerWorkspace\(\)\s*&&/.test(condition) &&
+       !hasTopLevelOr(condition));
   });
 }
 
