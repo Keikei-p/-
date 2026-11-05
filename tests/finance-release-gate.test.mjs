@@ -59,9 +59,9 @@ test("only the original internal Owner or Master may read raw finance on a stage
  for(const table of ["products","records","recordCorrections","revenueGoals"]){
   const start=stage2.indexOf("match /"+table+"/{");
   assert(start>=0,table+" must be a real finance rule path");
-  const after=stage2.indexOf("\\n    match /",start+1);
+  const after=stage2.indexOf("\n    match /",start+1);
   const body=stage2.slice(start,after<0?undefined:after);
-  const read=body.match(/allow read:\\s*if\\s*([\\s\\S]*?);/)?.[1];
+  const read=body.match(/allow read:\s*if\s*([\s\S]*?);/)?.[1];
   assert(read?.includes(owner),table+" finance read must have an Owner branch");
   for(const replacement of [
    owner+" || true",
