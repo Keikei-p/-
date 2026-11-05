@@ -134,7 +134,7 @@ export function createLiveFirestoreRoleVerifier({
         'GET',ownerIdToken,null,200,field,internalCompanyId);
       // Prove that the SAME constrained list query is permitted for Owner.
       await requireResponse(transport,ROOT+':runQuery',
-        'POST',ownerIdToken,financeQuery(collection,internalCompanyId),200,null);
+        'POST',ownerIdToken,financeQuery(collection,internalCompanyId),200,null,internalCompanyId);
     }
     // Then require explicit 403, not 401/404/429/5xx or network failure.
     for(const [collection,id] of tests){
@@ -187,7 +187,7 @@ export function createLiveFirestoreOwnerPreflight({
       await requireResponse(transport,ROOT+'/'+collection+'/'+id,
         'GET',ownerIdToken,null,200,field,internalCompanyId);
       await requireResponse(transport,ROOT+':runQuery',
-        'POST',ownerIdToken,financeQuery(collection,internalCompanyId),200,null);
+        'POST',ownerIdToken,financeQuery(collection,internalCompanyId),200,null,internalCompanyId);
     }
     return Object.freeze({
       checkedAgainst:fetchImpl===undefined?'production-live':'synthetic-only',
