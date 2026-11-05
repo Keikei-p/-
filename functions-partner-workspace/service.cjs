@@ -1194,7 +1194,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   // Individual ledgers alone cannot prove all companies submitted all days.
   // Always label this a provisional, VERIFIED-ENTRIES monthly leaderboard.
   return {scope:"shared_monthly_counts_only",month:d.month,
-   role:s.kind==="hub"?"hub":"partner",complete:false,
+   role:s.kind==="hub"?"hub":"partner",
+   ...(s.kind==="partner"?{workspaceCompanyId:s.cid}:{}),complete:false,
    provisionalReason:"月間の全日・全員報告の照合前",
    includesDirect:true,companies,teams,people,productCounts,additionalTotalCount,
    categories:KEYS,direct,rankingGroups:sharedConfig.groups,groupStandings,
