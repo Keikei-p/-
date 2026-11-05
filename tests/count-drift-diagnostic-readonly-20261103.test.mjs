@@ -97,12 +97,12 @@ test('changed quantities, extra correction, or corrupt snapshots never earn one-
  }}});
  const scenarios=[
   {record:{...record(),value:{fields:{
-    totalCount:{integerValue:'3'},results:results({a:2,b:2})}},corrections:[correction()]},
+    totalCount:{integerValue:'3'},results:results({a:2,b:2})}}},corrections:[correction()]},
   {record:record(),corrections:[correction(),correction()]},
   {record:record(),corrections:[{...correction(),value:{fields:{
     ...correction().value.fields,after:saved({a:2})}}}]},
   {record:record(),corrections:[{...correction(),value:{fields:{
-    ...correction().value.fields,before:saved({a:2,b:5})}}}]},
+    ...correction().value.fields,before:{mapValue:{fields:{totalCount:{integerValue:'1'},results:results({a:2,b:5})}}}}}}]},
   {record:record(),corrections:[]}
  ];
  for(const example of scenarios){
