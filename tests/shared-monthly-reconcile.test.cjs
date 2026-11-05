@@ -14,15 +14,15 @@ function fixture(){
     counts:{NURO:2,SBMNP:1},peopleVerified:true}
   ],
   people:[
-   {name:"担当A",companyName:"協力店A",totalCount:4,
+   {name:"担当A",companyId:"partnerA",companyName:"協力店A",totalCount:4,
     counts:{NURO:2,SBMNP:0},extraCounts:{solar:2}},
-   {name:"担当B",companyName:"協力店B",totalCount:3,
+   {name:"担当B",companyId:"partnerB",companyName:"協力店B",totalCount:3,
     counts:{NURO:2,SBMNP:1},extraCounts:{}}
   ],
   teams:[
-   {name:"A班",companyName:"協力店A",totalCount:4,extraTotalCount:2,
+   {name:"A班",companyId:"partnerA",companyName:"協力店A",totalCount:4,extraTotalCount:2,
     counts:{NURO:2,SBMNP:0}},
-   {name:"B班",companyName:"協力店B",totalCount:3,extraTotalCount:0,
+   {name:"B班",companyId:"partnerB",companyName:"協力店B",totalCount:3,extraTotalCount:0,
     counts:{NURO:2,SBMNP:1}}
   ],
   productCounts:{NURO:4,SBMNP:1},additionalTotalCount:2,
@@ -158,4 +158,37 @@ test("monthly shared server verifies all layers before ranking group creation an
  assert.match(month.slice(verify,ranking),/catch\{fail\("data-loss"\);\}/);
  assert.doesNotMatch(month,/tx\.(?:set|update|create|delete)\(/);
  assert.match(month,/complete:false/);
+});
+
+test("balanced cross-company transfers of people or teams cannot silently create wrong winners",()=>{
+ for(const field of ["people","teams"]){
+  const x=fixture(),before=copy(x);
+  // Both source totals remain correct: only the company attribution changes.
+  const first=x[field][0].companyId;
+  x[field][0].companyId=x[field][1].companyId;
+  x[field][1].companyId=first;
+  assert.throws(()=>reconcileSharedMonthlyCounts(x),/RECONCILIATION_FAILED/);
+  assert.equal(x.companies[0].totalCount,before.companies[0].totalCount);
+  assert.equal(x.companies[1].totalCount,before.companies[1].totalCount);
+ }
+});
+test("per-company identities cannot be inferred from shared display names",()=>{
+ const x=fixture();
+ x.companies[0].name="協力店";x.companies[1].name="協力店";
+ for(const person of x.people)person.companyName="協力店";
+ for(const team of x.teams)team.companyName="協力店";
+ assert.equal(reconcileSharedMonthlyCounts(x).partnerTotalCount,7);
+ x.people[1].companyId="partnerA";
+ assert.throws(()=>reconcileSharedMonthlyCounts(x),/RECONCILIATION_FAILED/);
+});
+test("missing, unknown or inconsistent company scopes refuse monthly rankings",()=>{
+ for(const modify of [
+  x=>{delete x.people[0].companyId;},
+  x=>x.teams[0].companyId="partnerOutside",
+  x=>x.people[0].companyId="partnerB",
+  x=>x.teams[1].companyId="partnerA"
+ ]){
+  const x=fixture();modify(x);
+  assert.throws(()=>reconcileSharedMonthlyCounts(x),/RECONCILIATION_FAILED/);
+ }
 });
