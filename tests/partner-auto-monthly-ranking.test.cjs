@@ -42,7 +42,7 @@ test("new Owner-published product month has one person per saved staff ID, corre
   totalRevenue:777777,unitPrice:222222};
  const directDb={collection(name){
   const rows=name==="records"?[{data:()=>record}]:
-   [{id:"newFiber",data:()=>master[0]}];
+   [{id:"newFiber",data:()=>({...master[0],companyId:"hub"})}];
   return {where(){return this;},limit(){return this;},
    async get(){return {size:rows.length,docs:rows};}};
  }};
