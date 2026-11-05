@@ -1,0 +1,63 @@
+name: NICO affected secondary identity + finance boundary (NO DEPLOY)
+on:
+  push:
+    branches: [security/phase1-affected-account-binding-20261106]
+  pull_request:
+    branches: [security/phase1-owner-preflight-bridge-20261105]
+permissions:
+  contents: read
+concurrency:
+  group: nico-affected-secondary-identity-no-deploy
+  cancel-in-progress: true
+jobs:
+  test-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      FIREBASE_PROJECT_ID: demo-sales-support
+      GCLOUD_PROJECT: demo-sales-support
+      GOOGLE_APPLICATION_CREDENTIALS: ""
+      FIREBASE_SERVICE_ACCOUNT_JSON: ""
+      NICO_RULES_APPROVAL: ""
+      NICO_USAGE_APPROVAL: ""
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Exact-source Rules, parent SHA and new-file allowlist
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$FIREBASE_PROJECT_ID" = demo-sales-support
+          test "$GCLOUD_PROJECT" = demo-sales-support
+          test -z "${GOOGLE_APPLICATION_CREDENTIALS:-}"
+          test -z "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          test -z "${NICO_RULES_APPROVAL:-}"
+          test -z "${NICO_USAGE_APPROVAL:-}"
+          git fetch --no-tags origin main security/phase1-owner-preflight-bridge-20261105
+          test "$(git rev-parse origin/security/phase1-owner-preflight-bridge-20261105)" = 2b6031b3bda425c6e6f638fed218e388e03d7194
+          test "$(git hash-object firestore.rules)" = 6d6ac7fd3544b0326823e419a3acd7e1d060b714
+          git diff --name-only 2b6031b3bda425c6e6f638fed218e388e03d7194...HEAD > /tmp/nico-identity-scope.txt
+          if grep -Ev '^(tools/production/phase1-bound-identity-readonly\.mjs|tools/production/phase1-live-proof-bridge\.mjs|tests/phase1-live-proof-bridge\.test\.mjs|\.github/workflows/nico-affected-identity-gate-no-deploy\.yml)$' /tmp/nico-identity-scope.txt; then
+            echo STOP_UNREVIEWED_IDENTITY_CHANGE
+            exit 1
+          fi
+      - name: Syntax and all original + identity + rollback contract tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check tools/production/phase1-bound-identity-readonly.mjs
+          node --check tools/production/phase1-live-proof-bridge.mjs
+          node --check tests/phase1-live-proof-bridge.test.mjs
+          node --test tests/verify-live-firestore-roles.test.mjs tests/phase1-live-proof-bridge.test.mjs tests/phase1-partner-finance-release.test.mjs
+      - name: Assert NO production credentials or deployment approved
+        run: |
+          echo 'PASS_SYNTHETIC_IDENTITY_ONLY'
+          echo 'AFFECTED_REAL_UID_VERIFIED=false'
+          echo 'OWNER_REAL_UID_VERIFIED=false'
+          echo 'PRODUCTION_APPROVED=false'
+          echo 'RULES_RELEASED=false'
