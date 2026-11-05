@@ -69,7 +69,18 @@ async function requireResponse(fetcher,url,method,token,body,expectedStatus,fiel
     stop('NETWORK_UNVERIFIED');
   }
   if(response?.status!==expectedStatus)stop('HTTP_STATUS_UNVERIFIED');
-  if(expectedStatus!==200)return;
+  if(expectedStatus===403){
+    // A generic HTTP 403 (proxy, API quota, invalid identity, etc.) must
+    // never be treated as proof that Firestore Security Rules blocked the
+    // specific partner. Require Google's structured permission-denied error.
+    let denial;
+    try { denial=await response.json(); }
+    catch { stop('PERMISSION_DENIAL_UNVERIFIED'); }
+    if(denial?.error?.status!=='PERMISSION_DENIED'||
+       denial?.error?.code!==403)
+      stop('PERMISSION_DENIAL_UNVERIFIED');
+    return;
+  }
   let parsed;
   try { parsed=await response.json(); }
   catch { stop('RESPONSE_NOT_JSON'); }
