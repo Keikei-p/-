@@ -1921,6 +1921,12 @@ test("Owner explicitly arms ONE partner for tomorrow without changing any saved 
   {productId:"nuroProduct",category:"NURO",effectiveFrom:"2026-11-01"}
  ]});
  const allBefore=clone([...db.store]);
+ const preview=await api.getPartnerLegacyCountGate(req("h",{partnerCompanyId:"partner"}));
+ assert.deepEqual({
+  armed:preview.armed,mappedCategoryCount:preview.mappedCategoryCount,
+  totalCategoryCount:preview.totalCategoryCount,coverageDate:preview.coverageDate
+ },{armed:false,mappedCategoryCount:1,totalCategoryCount:9,coverageDate:"2026-11-01"});
+ assert.deepEqual([...db.store],allBefore,"preview must not write counts, finance or settings");
  await assert.rejects(api.activatePartnerLegacyCountGate(req("p",{
   partnerCompanyId:"partner",expectedRevision:0,
   confirmation:"ACTIVATE_NEXT_DAY_LEGACY_CATEGORY_FILTER"
@@ -1936,7 +1942,8 @@ test("Owner explicitly arms ONE partner for tomorrow without changing any saved 
  assert.deepEqual(done,{armed:true,effectiveFrom:"2026-11-01",partnerCompanyId:"partner"});
  assert.deepEqual(await api.getPartnerLegacyCountGate(req("h",{partnerCompanyId:"partner"})),{
   scope:"partner_legacy_count_gate",partnerCompanyId:"partner",
-  armed:true,effectiveFrom:"2026-11-01",revision:1
+  armed:true,effectiveFrom:"2026-11-01",revision:1,
+  mappedCategoryCount:1,totalCategoryCount:9,coverageDate:"2026-11-01"
  });
  await assert.rejects(api.getPartnerLegacyCountGate(req("p",{
   partnerCompanyId:"partner"

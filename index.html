@@ -15883,16 +15883,29 @@ async function loadOwnerPartnerDetails(){
       if(!validSession())return;
       if(state?.scope!=="partner_legacy_count_gate"||
          state.partnerCompanyId!==company.partnerCompanyId||
-         typeof state.armed!=="boolean")throw Error("gate_unverified");
+         typeof state.armed!=="boolean"||
+         !Number.isSafeInteger(state.mappedCategoryCount)||
+         !Number.isSafeInteger(state.totalCategoryCount)||
+         state.totalCategoryCount!==9||
+         state.mappedCategoryCount<0||
+         state.mappedCategoryCount>state.totalCategoryCount||
+         !/^\d{4}-\d{2}-\d{2}$/.test(state.coverageDate||""))
+       throw Error("gate_unverified");
+      const coverage="紐付け済み "+state.mappedCategoryCount+"/"+state.totalCategoryCount+
+       " 区分（"+state.coverageDate+"時点）。";
+      const partial=state.mappedCategoryCount<state.totalCategoryCount;
+      const warning=partial?"未紐付け区分は従来どおり入力可能です。":"";
       if(state.armed){
-       gateStatus.textContent="連動済み｜適用開始："+state.effectiveFrom;
-       activate.textContent="公開ON/OFF連動を設定済み";
+       gateStatus.textContent=(partial?"一部連動済み｜":"連動済み｜")+
+        "適用開始："+state.effectiveFrom+"。"+coverage+warning;
+       activate.textContent="紐付け済み区分の連動を設定済み";
        return;
       }
-      gateStatus.textContent="未設定｜商材管理で旧9区分の商材紐付けが必要です。";
-      if(!window.confirm(company.name+"の旧9区分への公開ON/OFF連動を翌日から適用しますか？"+
-       "公開OFFの対応商材は新たに件数の増減・CB訂正ができなくなります。"+
-       "過去件数・売上・班・CB・履歴は保持します。"+
+      gateStatus.textContent="未設定｜"+coverage+warning;
+      if(!window.confirm(company.name+"の紐付け済み区分の公開ON/OFF連動を翌日から適用しますか？\n"+
+       coverage+warning+"\n"+
+       "公開OFFの対応商材は新たに件数の増減・CB訂正ができなくなります。\n"+
+       "過去件数・売上・班・CB・履歴は保持します。\n"+
        "この設定は後から画面で解除できません。"))return;
       const saved=(await activatePartnerLegacyCountGate({
        partnerCompanyId:company.partnerCompanyId,expectedRevision:0,
@@ -15903,8 +15916,9 @@ async function loadOwnerPartnerDetails(){
          !/^\d{4}-\d{2}-\d{2}$/.test(saved.effectiveFrom))
        throw Error("gate_activation_unverified");
       gateStatus.textContent="✅ "+saved.effectiveFrom+
-       "から旧9区分の公開OFF入力制限を適用します。既存実績は残ります。";
-      activate.textContent="公開ON/OFF連動を設定済み";
+       "から紐付け済み区分の公開OFF入力制限を適用します。"+
+       coverage+warning+"既存実績は残ります。";
+      activate.textContent="紐付け済み区分の連動を設定済み";
      }catch{
       if(validSession())gateStatus.textContent="設定できませんでした。商材管理で旧9区分の対応関係と協力店の承認状態を確認してください。";
      }finally{activate.disabled=false;}

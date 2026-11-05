@@ -492,11 +492,23 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   const rel=rs.data()||{};
   if(!rs.exists||rel.partnerCompanyId!==d.partnerCompanyId||
      rel.hubCompanyId!==s.cid)fail();
-  const doc=await legacyGateRef(d.partnerCompanyId).get();
+  const [doc,linkDoc]=await Promise.all([
+   legacyGateRef(d.partnerCompanyId).get(),countLinksRef(s.cid).get()
+  ]);
   try{
    const gate=readLegacyGate(doc.exists?doc.data():null);
+   const links=readLinks(linkDoc.exists?linkDoc.data():null,KEYS);
+   const today=jstToday();
+   const tomorrow=new Date(Date.parse(today+"T00:00:00Z")+86400000)
+    .toISOString().slice(0,10);
+   // Read-only Owner preview: count effective links only, never expose
+   // product IDs, the private partner ledger, or price information.
+   const coverageDate=gate.mode==="enforce"?
+    (gate.effectiveFrom>today?gate.effectiveFrom:today):tomorrow;
    return {scope:"partner_legacy_count_gate",partnerCompanyId:d.partnerCompanyId,
-    armed:gate.mode==="enforce",effectiveFrom:gate.effectiveFrom,revision:gate.revision};
+    armed:gate.mode==="enforce",effectiveFrom:gate.effectiveFrom,revision:gate.revision,
+    mappedCategoryCount:links.links.filter(x=>x.effectiveFrom<=coverageDate).length,
+    totalCategoryCount:KEYS.length,coverageDate};
   }catch{fail("data-loss");}
  }
  async function activatePartnerLegacyCountGate(request){
