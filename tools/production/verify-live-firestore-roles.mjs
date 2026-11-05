@@ -127,6 +127,13 @@ export function createLiveFirestoreRoleVerifier({
     attempted=true;
     if(!/^[a-f0-9]{64}$/.test(expectedRulesSha256||'')||
        releaseName!==RELEASE)stop('RULES_RELEASE_NOT_PINNED');
+    // A long pre-switch inventory/restore may outlive a token that was fresh
+    // when this verifier was constructed. Recheck BOTH real sessions just
+    // before the post-switch reads: never mistake an expired partner token's
+    // failure for permission denial by the new Security Rules.
+    const liveNow=Math.floor(now()/1000);
+    identity(ownerIdToken,expectedOwnerUid,liveNow);
+    identity(partnerIdToken,expectedPartnerUid,liveNow);
     // First prove these documents exist and that the *independent* Owner can
     // actually read their financial fields. Otherwise partner 403 is vacuous.
     for(const [collection,id,field] of tests){
