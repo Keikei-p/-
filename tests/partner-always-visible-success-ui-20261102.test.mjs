@@ -89,7 +89,7 @@ test("success is rendered beside Save, remains visible after refresh; errors mus
   auth:{currentUser:{uid:"u"}},
   sharedDailyRankingGeneration:0,
   sharedDailyRankCache:new Map(),
-  invalidateSharedRankingReadCaches(){this.invalidations=(this.invalidations||0)+1;},
+  invalidateSharedRankingReadCaches:()=>{context.invalidations=(context.invalidations||0)+1;},
   pInline:id=>ui.get(id)||null,
   partnerInlineStatus:msg=>messages.push(msg),
   partnerCountSaveFailureMessage:()=>"保存に失敗しました。",
