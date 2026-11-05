@@ -126,6 +126,7 @@ function monthlyRankingFixture(){
   'let ownerJointIndividualSnapshot=null,ownerJointProductSnapshot=null;'+
   'let ownerJointProductDateKey="";let partnerSharedRankPeriod="month";';
  vm.runInNewContext(prefix+source.slice(start,end)+source.slice(partnerStart,partnerEnd)+
+  '\nownerJointIndividualPeriod="month";ownerJointProductPeriod="month";'+
   '\nthis.owner=loadOwnerMonthlySharedRanks;this.partner=loadPartnerMonthlySharedRankings;'+
   '\nthis.switchCard=(card)=>nextSharedMonthlyRequest(card);'+
   '\nthis.switchPartnerDay=()=>{nextSharedMonthlyRequest("partner");partnerSharedRankPeriod="day"};'+
