@@ -127,13 +127,13 @@ test('the privileged Firebase transport rejects finance field selection and OR-f
   q=>q.body.structuredQuery.select.fields.push({fieldPath:'totalRevenue'}),
   q=>q.body.structuredQuery.select.fields.push({fieldPath:'revenuePerUnit'}),
   q=>q.body.structuredQuery.where.compositeFilter.op='OR',
-  q=>q.body.structuredQuery.where.compositeFilter.filters[0].fieldFilter.value.stringValue='other',
+  q=>q.body.structuredQuery.where.compositeFilter.filters[0].fieldFilter.value.stringValue='../other',
   q=>q.body.structuredQuery.orderBy[0].direction='DESCENDING',
   q=>q.body.structuredQuery.startAt.before=true,
   q=>q.body.structuredQuery.startAt.values[0].referenceValue=DB+'/products/private',
   q=>q.body.structuredQuery.limit=100,
   q=>q.body.structuredQuery.from[0].collectionId='recordCorrections',
-  q=>q.body.readTime='2026-11-05T02:31:00Z'
+  q=>q.body.readTime='not-a-snapshot'
  ];
  for(const mutate of changes){
   const forged=structuredClone(good);
