@@ -200,3 +200,51 @@ test("partner-only mode never starts financial Firestore listeners",()=>{
  const stop=code.indexOf("stopRealtimeListeners();");
  assert(firstGuard>=0&&stop>firstGuard,"role guard before old listener reset");
 });
+
+
+test("queued internal Firestore snapshots are invalid after a partner or company switch",()=>{
+ const a=source.indexOf('  const listenerSession=typeof internalListenerSessionGeneration==="number"');
+ const b=source.indexOf('  loadLocalRankingGroups();',a);
+ assert(a>=0&&b>a,'internal snapshot epoch must be captured after subscription reset');
+ const ctx={
+  internalListenerSessionGeneration:5,
+  recordQueryGeneration:10,
+  appScreen:{dataset:{partnerCountOnly:"false"}},
+  currentUserData:{companyId:"direct"},
+  currentUser:{uid:"owner"}
+ };
+ vm.runInNewContext(source.slice(a,b)+'\nthis.verify=internalSnapshotIsCurrent;',ctx);
+ assert.equal(ctx.verify(),true);
+ ctx.recordQueryGeneration+=1;
+ assert.equal(ctx.verify(),true,"changing dashboard month never cancels catalog listeners");
+ ctx.internalListenerSessionGeneration+=1;
+ assert.equal(ctx.verify(),false,"a fresh listener session rejects an old queued callback");
+ ctx.internalListenerSessionGeneration=5;
+ ctx.appScreen.dataset.partnerCountOnly="true";
+ assert.equal(ctx.verify(),false,"partner cannot revive an old finance listener");
+ ctx.appScreen.dataset.partnerCountOnly="false";
+ ctx.currentUserData.companyId="other";
+ assert.equal(ctx.verify(),false,"changing original company rejects prior callback");
+ ctx.currentUserData.companyId="direct";
+ ctx.currentUser.uid="another";
+ assert.equal(ctx.verify(),false,"another user's callbacks cannot rehydrate prior prices");
+ const stop=snippet('function stopRealtimeListeners() {','async function loadTeams(');
+ assert.match(stop,/\+\+internalListenerSessionGeneration;/);
+});
+test("all six original Firebase listeners check the context before mutating UI",()=>{
+ const start=source.indexOf('function startRealtimeListeners() {');
+ const end=source.indexOf('function stopRealtimeListeners() {',start);
+ const code=source.slice(start,end);
+ const callbacks=[
+  /companyMembersCollectionRef\(\),\s*snapshot => \{\s*if\(!internalSnapshotIsCurrent\(\)\)return;/,
+  /currentUser\.uid\s*\),\s*async userSnap => \{\s*if\(!internalSnapshotIsCurrent\(\)\)return;/,
+  /companyCollectionQuery\("teams"\),\s*snapshot => \{\s*if\(!internalSnapshotIsCurrent\(\)\)return;/,
+  /companyCollectionQuery\("products"\),\s*snapshot => \{\s*if\(!internalSnapshotIsCurrent\(\)\)return;/,
+  /companyCollectionQuery\("goals"\),\s*snapshot => \{\s*if\(!internalSnapshotIsCurrent\(\)\)return;/,
+  /revenueGoalQuery,\s*snapshot => \{\s*if\(!internalSnapshotIsCurrent\(\)\)return;/
+ ];
+ for(const re of callbacks)assert.match(code,re);
+ assert.match(code,/await loadMembers\(\);\s*if\(internalSnapshotIsCurrent\(\)\)startRealtimeListeners\(\)/);
+ assert.match(code,/if\(internalSnapshotIsCurrent\(\)\)startRealtimeListeners\(\)/);
+ assert(!/setDoc\(|deleteDoc\(|updateDoc\(|runTransaction\(/.test(code));
+});
