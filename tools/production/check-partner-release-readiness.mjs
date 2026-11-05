@@ -24,7 +24,7 @@ function ruleBlock(source,collection){
 
 export function inspectPartnerReleaseReadiness(input){
   const {rules,manualRelease,financeGate,financeWorkflow,hostingWorkflow,browser}=input;
-  for(const [name,value] of Object.entries(input)){
+  for(const [name,value] of Object.entries({rules,manualRelease,financeGate,financeWorkflow,hostingWorkflow,browser})){
     if(typeof value!=='string'||value.length<20)throw Error('RELEASE_INPUT_MISSING_'+name);
   }
   const blockers=[];
@@ -68,7 +68,7 @@ export function inspectPartnerReleaseReadiness(input){
   // This tool has no real user tokens or access to production backup content.
   // Never equate a static PASS with production deployment approval.
   return Object.freeze({
-    candidateRulesSha256,
+    candidateRulesSha256:candidateSha256,
     manualReleasePinnedSha256:oldPin?.[1]||null,
     staticReleasePathCompatible:blockers.length===0,
     productionApproved:false,
