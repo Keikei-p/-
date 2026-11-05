@@ -93,7 +93,7 @@ test("no HTML parsing of a hostile name, no owner revenue mode changes and no hi
 function monthlyRankingFixture(){
  const start=source.indexOf('const ownerMonthlyRankCache=new Map();');
  const end=source.indexOf('const ownerJointIndividualDate=',start);
- const partnerStart=source.indexOf('async function loadPartnerMonthlySharedRankings(){',end);
+ const partnerStart=source.indexOf('async function loadPartnerMonthlySharedRankings(force=false){',end);
  const partnerEnd=source.indexOf('const partnerSharedRankingsMonth=pInline(',partnerStart);
  assert(start>=0&&end>start&&partnerStart>end&&partnerEnd>partnerStart);
  const pending=[],rendered=[],nodes={};
