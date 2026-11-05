@@ -76,12 +76,13 @@ test("damaged private quantities fail closed rather than making inconsistent com
    /UNVERIFIED/,JSON.stringify(patch));
  }
 });
-test("unknown or previously unpublished additional product stays in original ledger, not shared total",()=>{
+test("historic OFF extras stay in overall counts without product-specific publication",()=>{
  const saved=row("2026-11-01","u1",{archivedItem:7,extraSolar:1});
  const data=project([], [saved]);
- assert.equal(data.totalCount,1);
+ assert.equal(data.totalCount,8);
  assert.equal(data.additionalTotalCount,1);
- assert.equal(data.people[0].totalCount,1);
+ assert.equal(data.archivedExtraTotalCount,7);
+ assert.equal(data.people[0].totalCount,8);
  assert.deepEqual(data.people[0].extraCounts,{extraSolar:1});
  assert.equal(saved.data().totalCount,8);
  const ranked=groupPersonalScores([{id:"g",name:"extra",keys:["id:extraSolar"]}],

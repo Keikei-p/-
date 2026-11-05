@@ -3,6 +3,7 @@
 const crypto=require("node:crypto");
 const {loadPublication,projectMasterProducts,projectOwnerPublicationRows,changePublication,validId,nameOnly}=require("./catalog-publication.cjs");
 const {readLinks,addLink,projectLinks}=require("./catalog-count-links.cjs");
+const {readLegacyGate,activateLegacyGate,resolveLegacyInputPolicy,assertLegacyEditAllowed}=require("./legacy-publication-policy.cjs");
 const {normalizeExtraCounts,applyExtraCounts,projectedExtraRead}=require("./additional-counts.cjs");
 const {projectExtraRankDocs}=require("./extra-rank-projection.cjs");
 const {ownerPublishedExtraBreakdown}=require("./owner-published-extra-breakdown.cjs");
@@ -11,6 +12,8 @@ const {projectPartnerProductMonth}=require("./partner-product-monthly.cjs");
 const {decodeGroups,saveGroups,groupPersonalScores,canPublishSharedPersonalRankings}=require("./shared-ranking-groups.cjs");
 const {readVisibleRankingGroups,addAutomaticPublishedGroups}=require("./automatic-published-groups.cjs");
 const {readDirectDayCounts,readDirectRangeCounts}=require("./shared-direct-counts.cjs");
+const {isDirectCountIntegrityError,MONTHLY_DIRECT_COUNTS_UNVERIFIED}=
+ require("./monthly-integrity-gate.cjs");
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 // Cashback is a product variant label, NOT a sales unit price or revenue.
 const PARTNER_CB_OPTIONS=Object.freeze({"NURO":Object.freeze(["0","20000","40000","60000","80000","unclassified"])});
@@ -460,6 +463,89 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    tx.set(ref,{...next,updatedByUid:a.uid,updatedAt:FieldValue.serverTimestamp()});
    return {linked:true,revision:next.revision,productId:d.productId,
     category:d.category,effectiveFrom};
+  });
+ }
+
+ // Original nine categories remain available until one Partner is armed
+ // by Hub Owner. Existing reports and historical snapshots never migrate.
+ const legacyGateRef=cid=>collection(cid,"partnerCatalogSettings").doc("legacyPublicationGate");
+ async function legacyInputPolicy(hub,cid,date,get=ref=>ref.get(),snap=null){
+  const gateDoc=snap||await get(legacyGateRef(cid));
+  let gate;try{gate=readLegacyGate(gateDoc.exists?gateDoc.data():null);}
+  catch{fail("data-loss");}
+  if(gate.mode==="legacy"||date<gate.effectiveFrom)
+   return {mode:gate.mode==="legacy"?"legacy":"scheduled",
+    effectiveFrom:gate.effectiveFrom,blockedCategories:[]};
+  const [pubDoc,linkDoc]=await Promise.all([
+   get(publicationRef(hub)),get(countLinksRef(hub))
+  ]);
+  try{return resolveLegacyInputPolicy({
+   gate:gateDoc.data(),publication:pubDoc.exists?pubDoc.data():null,
+   links:linkDoc.exists?linkDoc.data():null,date,categories:KEYS
+  });}catch{fail("data-loss");}
+ }
+ async function getPartnerLegacyCountGate(request){
+  const a=await actor(request),d=request?.data||{};
+  if(Object.keys(d).join("|")!=="partnerCompanyId"||!validId(d.partnerCompanyId))
+   fail("invalid-argument");
+  const s=await scope(a.uid);
+  if(s.kind!=="hub"||s.role!=="owner")fail();
+  const rs=await db.collection("partnerRelations").doc(d.partnerCompanyId).get();
+  const rel=rs.data()||{};
+  if(!rs.exists||rel.partnerCompanyId!==d.partnerCompanyId||
+     rel.hubCompanyId!==s.cid)fail();
+  const [doc,linkDoc]=await Promise.all([
+   legacyGateRef(d.partnerCompanyId).get(),countLinksRef(s.cid).get()
+  ]);
+  try{
+   const gate=readLegacyGate(doc.exists?doc.data():null);
+   const links=readLinks(linkDoc.exists?linkDoc.data():null,KEYS);
+   const today=jstToday();
+   const tomorrow=new Date(Date.parse(today+"T00:00:00Z")+86400000)
+    .toISOString().slice(0,10);
+   // Read-only Owner preview: count effective links only, never expose
+   // product IDs, the private partner ledger, or price information.
+   const coverageDate=gate.mode==="enforce"?
+    (gate.effectiveFrom>today?gate.effectiveFrom:today):tomorrow;
+   return {scope:"partner_legacy_count_gate",partnerCompanyId:d.partnerCompanyId,
+    armed:gate.mode==="enforce",effectiveFrom:gate.effectiveFrom,revision:gate.revision,
+    mappedCategoryCount:links.links.filter(x=>x.effectiveFrom<=coverageDate).length,
+    totalCategoryCount:KEYS.length,coverageDate};
+  }catch{fail("data-loss");}
+ }
+ async function activatePartnerLegacyCountGate(request){
+  const a=await actor(request),d=request?.data||{};
+  if(Object.keys(d).sort().join("|")!=="confirmation|expectedRevision|partnerCompanyId"||
+     !validId(d.partnerCompanyId)||d.expectedRevision!==0||
+     d.confirmation!=="ACTIVATE_NEXT_DAY_LEGACY_CATEGORY_FILTER")
+   fail("invalid-argument");
+  const s=await scope(a.uid);
+  if(s.kind!=="hub"||s.role!=="owner")fail();
+  const from=new Date(Date.parse(jstToday()+"T00:00:00Z")+86400000)
+   .toISOString().slice(0,10);
+  return db.runTransaction(async tx=>{
+   const live=await scope(a.uid,tx);
+   if(live.kind!=="hub"||live.role!=="owner"||live.cid!==s.cid)fail();
+   const ref=legacyGateRef(d.partnerCompanyId);
+   const [rs,cs,old,links]=await Promise.all([
+    tx.get(db.collection("partnerRelations").doc(d.partnerCompanyId)),
+    tx.get(db.collection("companies").doc(d.partnerCompanyId)),
+    tx.get(ref),tx.get(countLinksRef(s.cid))
+   ]);
+   const rel=rs.data()||{},company=cs.data()||{};
+   if(!rs.exists||!cs.exists||rel.partnerCompanyId!==d.partnerCompanyId||
+      rel.hubCompanyId!==s.cid||rel.active!==true||
+      rel.countSharingApproved!==true||company.companyKind!=="partner"||
+      company.hubCompanyId!==s.cid||company.active!==true)fail("failed-precondition");
+   let next;
+   try{
+    if(!readLinks(links.exists?links.data():null,KEYS).links.some(x=>x.effectiveFrom<=from))
+     fail("failed-precondition");
+    next=activateLegacyGate(old.exists?old.data():null,from,d.expectedRevision);
+   }catch(e){if(e?.code==="failed-precondition")throw e;fail("failed-precondition");}
+   tx.create(ref,{...next,hubCompanyId:s.cid,partnerCompanyId:d.partnerCompanyId,
+    activatedByUid:a.uid,activatedAt:FieldValue.serverTimestamp()});
+   return {armed:true,effectiveFrom:from,partnerCompanyId:d.partnerCompanyId};
   });
  }
 
@@ -1119,7 +1205,14 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    direct=await readDirectRangeCounts(db,hubId,first,lastDate,KEYS,{
     maxRecords:10000,approvedExtraProductIds:extraVerifiedIds
    });
-  }catch{fail("failed-precondition");}
+  }catch(error){
+   // A historical count mismatch must never turn into a fake zero or a
+   // partial published monthly rank. Send only a fixed reason code;
+   // never return a record ID, stored amount, price, or source details.
+   if(isDirectCountIntegrityError(error))
+    throw new HttpsError("failed-precondition",MONTHLY_DIRECT_COUNTS_UNVERIFIED);
+   fail("failed-precondition");
+  }
   const companies=[],people=[],teams=[],productCounts=Object.fromEntries(KEYS.map(k=>[k,0]));
   let additionalTotalCount=0,partnerRowsRead=0;
   for(const relSnap of relations.docs){
@@ -1159,9 +1252,13 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      publishedIds:extraVerifiedIds,linkedIds,teamNames
     });
    }catch{fail("data-loss");}
+   // A company with no saved entry this month is UNREPORTED, never a
+   // verified zero-count competitor. An explicit zero-report row is valid.
    companies.push({id:cid,name:rank.name,totalCount:rank.totalCount,
-    extraTotalCount:rank.additionalTotalCount,counts:rank.counts,
-    peopleVerified:true});
+    extraTotalCount:rank.additionalTotalCount,
+    archivedExtraTotalCount:rank.archivedExtraTotalCount,counts:rank.counts,
+    verifiedEntryCount:rank.verifiedEntryCount,
+    peopleVerified:rank.verifiedEntryCount>0});
    people.push(...rank.people);teams.push(...rank.teams);
    for(const key of KEYS)productCounts[key]+=rank.counts[key];
    additionalTotalCount+=rank.additionalTotalCount;
@@ -1194,9 +1291,12 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   // Individual ledgers alone cannot prove all companies submitted all days.
   // Always label this a provisional, VERIFIED-ENTRIES monthly leaderboard.
   return {scope:"shared_monthly_counts_only",month:d.month,
-   role:s.kind==="hub"?"hub":"partner",complete:false,
+   role:s.kind==="hub"?"hub":"partner",
+   ...(s.kind==="partner"?{workspaceCompanyId:s.cid}:{}),complete:false,
    provisionalReason:"月間の全日・全員報告の照合前",
    includesDirect:true,companies,teams,people,productCounts,additionalTotalCount,
+   // Same trusted filtered public catalog; no price, cashback or revenue fields.
+   publishedProducts:rankableProducts.map(({id,name,sortOrder})=>({id,name,sortOrder})),
    categories:KEYS,direct,rankingGroups:sharedConfig.groups,groupStandings,
    groupRevision:sharedConfig.revision,groupStatus,
    recordsVerified:direct.recordsVerified,partnerRowsVerified:partnerRowsRead};
@@ -1336,7 +1436,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     if(hasLedger&&verified!==summary.total)fail("data-loss");
     if(!hasLedger&&entrySnaps.size>0)fail("data-loss");
     if(!hasLedger)complete=false;
-    let companyExtras=0;
+    let companyExtras=0,companyArchivedExtras=0;
     for(const extra of extraRows){
      const tid=extra.teamIdSnapshot,teamKey=crypto.createHash("sha256")
       .update(cid+"\nteam\n"+tid).digest("hex");
@@ -1350,18 +1450,24 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
        extraCounts:{},cbCounts:{NURO:blankTiers()}};
       memberByStaff.set(extra.staffId,member);members.push(member);
      }
-     member.totalCount+=extra.totalCount;
+     const savedExtra=extra.totalCount+extra.archivedCount;
+     if(!Number.isSafeInteger(savedExtra)||savedExtra<0)fail("data-loss");
+     member.totalCount+=savedExtra;
      member.extraCounts=extra.extraCounts;
-     companyExtras+=extra.totalCount;
+     companyExtras+=savedExtra;
+     companyArchivedExtras+=extra.archivedCount;
      const bucket=group.get(tid)||{name:savedTeams.get(tid)||"登録当時の班未確認",
       totalCount:0,counts:Object.fromEntries(KEYS.map(k=>[k,0])),
       cbCounts:{NURO:blankTiers()}};
-     bucket.totalCount+=extra.totalCount;
+     bucket.totalCount+=savedExtra;
      group.set(tid,bucket);
     }
-    additionalTotalCount+=companyExtras;
+    // Product-specific published totals and all-time earned headline counts
+    // are separate: no new names or money are exposed.
+    additionalTotalCount+=companyExtras-companyArchivedExtras;
     companies.push({id:cid,name:company.name,totalCount:summary.total+companyExtras,
-     counts:summary.counts,extraTotalCount:companyExtras,peopleVerified:hasLedger});
+     counts:summary.counts,extraTotalCount:companyExtras-companyArchivedExtras,
+     archivedExtraTotalCount:companyArchivedExtras,peopleVerified:hasLedger});
     for(const k of KEYS)productCounts[k]+=summary.counts[k];
     if(hasLedger||extraRows.length){
      people.push(...members);
@@ -1627,12 +1733,15 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   // Owner; do not silently ignore forged hub options in a partner session.
   if(d.includeTeamStatus===true||d.partnerCompanyId!=null)fail();
   if(d.includeAuditHistory!=null&&d.includeAuditHistory!==true)fail("invalid-argument");
-  const [teams,staff,entries,privateProducts]=await Promise.all([
+  const [teams,staff,entries,privateProducts,legacyGateSnap]=await Promise.all([
     collection(s.cid,"partnerWorkTeams").limit(151).get(),
     collection(s.cid,"partnerWorkStaff").limit(151).get(),
     collection(s.cid,"partnerWorkEntries").where("date","==",date).limit(201).get(),
-    collection(s.cid,"partnerPrivateProducts").limit(101).get()
+    collection(s.cid,"partnerPrivateProducts").limit(101).get(),
+    legacyGateRef(s.cid).get()
   ]);
+  const legacyPublication=await legacyInputPolicy(s.hubId,s.cid,date,
+   ref=>ref.get(),legacyGateSnap);
   if(teams.size>150||staff.size>150||entries.size>200||privateProducts.size>100)fail("resource-exhausted");
   const productList=privateProducts.docs.map(sn=>{
    const x=sn.data()||{};
@@ -1713,7 +1822,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    .filter(team=>["owner","leader"].includes(s.role)||team.id===s.teamId);
   return {role:s.role,date,companyName:clean(s.companyName),teamId:s.teamId,
     teams:visibleTeams,staff:[...allowed.values()],records:rows,categories:KEYS,
-    privateProducts:productList,...(audits?{audits}: {})};
+    legacyPublication,privateProducts:productList,...(audits?{audits}: {})};
  }
  async function submit(request){
   const a=await actor(request),d=request?.data||{},date=validDate(d.date),staffId=clean(d.staffId);
@@ -1737,8 +1846,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    const er=entryRef(s.cid,date,staffId),summary=summaryRef(s.hubId,date,s.cid);
    const privateProductIds=Object.keys(requestedPrivate||{});
    // All reads happen before writes. Do not infer product ownership from IDs.
-   const [oldSnap,totalSnap,...productSnapshots]=await Promise.all([
-    tx.get(er),tx.get(summary),
+   const [oldSnap,totalSnap,legacyGateSnap,...productSnapshots]=await Promise.all([
+    tx.get(er),tx.get(summary),tx.get(legacyGateRef(s.cid)),
     ...privateProductIds.map(id=>tx.get(privateProductRef(s.cid,id)))
    ]);
    for(let i=0;i<privateProductIds.length;i++){
@@ -1763,6 +1872,15 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    // distribution. If they change NURO totals, mark the breakdown unclassified.
    const nextCb=requestedCb!==undefined?requestedCb:
     (oldCb&&priorCounts.NURO===counts.NURO?oldCb:null);
+   // Security: the same transaction re-reads the live publication and
+   // fixed-category links. Hidden categories must retain the saved quantity
+   // AND its NURO CB breakdown, even with an outdated browser.
+   const policy=await legacyInputPolicy(s.hubId,s.cid,date,
+    ref=>tx.get(ref),legacyGateSnap);
+   try{
+    assertLegacyEditAllowed({policy,previous:priorCounts,next:counts,
+     previousCb:oldCb,nextCb,categories:KEYS});
+   }catch{fail("failed-precondition");}
    const privateNext={...previousPrivate,...(requestedPrivate||{})};
    const privateValidated=validatePrivateCounts(privateNext);
    const prior=priorCounts;
@@ -1819,6 +1937,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   });
  }
  return Object.freeze({manage,accept,view,viewMonthly,viewProductMonthly,submit,viewCatalog,setCatalogPublication,
+  activatePartnerLegacyCountGate,getPartnerLegacyCountGate,
   getPartnerRankingGroups,setPartnerRankingGroups,getPartnerCountLinks,setPartnerCountLink,
   viewAdditionalCounts,submitAdditionalCounts});
 }

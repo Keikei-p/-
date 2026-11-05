@@ -15,8 +15,9 @@ const project=(docs,opts={})=>projectExtraRankDocs(docs,{
 test("published extra products remain count-only; old/depublished quantities stay in original ledger only",()=>{
  const projected=project([doc("staff1",{solar:3,water:2,archived:7})]);
  assert.deepEqual(projected,[{staffId:"staff1",staffNameSnapshot:"担当A",
-  teamIdSnapshot:"teamA",totalCount:5,extraCounts:{solar:3,water:2}}]);
- assert.doesNotMatch(JSON.stringify(projected),/archivedCount|privateCounts|archived/);
+  teamIdSnapshot:"teamA",totalCount:5,archivedCount:7,
+  extraCounts:{solar:3,water:2}}]);
+ assert.doesNotMatch(JSON.stringify(projected),/"archived":|privateCounts/);
  const original=doc("staff1",{solar:3,water:2,archived:7}).data();
  assert.equal(original.totalCount,12);
  assert.equal(original.counts.archived,7);
@@ -60,8 +61,8 @@ test("service reads separate ledger, validates company/date and uses the canonic
  const index=fs.readFileSync(require.resolve("../index.html"),"utf8");
  assert.match(service,/projectExtraRankDocs\(extraSnaps\.docs/);
  assert.match(service,/partnerAdditionalCountEntries"\)\.where\("date","==",date\)/);
- assert.match(service,/member\.totalCount\+=extra\.totalCount/);
- assert.match(service,/companyExtras\+=extra\.totalCount/);
+ assert.match(service,/member\.totalCount\+=savedExtra/);
+ assert.match(service,/companyExtras\+=savedExtra/);
  assert.match(service,/additionalTotalCount,?categories:KEYS/);
  assert.match(service,/extraVerifiedIds/);
  assert.match(index,/productTotals\.set\("追加商材（協力店）",response\.additionalTotalCount\)/);
@@ -117,8 +118,9 @@ test("shared extra ledger redacts retired/unpublished quantities across staff an
   doc("c",{onlyHidden:8})
  ]);
  assert.deepEqual(rows.map(r=>r.totalCount),[2,4,0]);
+ assert.deepEqual(rows.map(r=>r.archivedCount),[9,6,8]);
  assert.equal(rows.reduce((n,r)=>r.totalCount+n,0),6);
- assert.doesNotMatch(JSON.stringify(rows),/onlyHidden|retired|unlisted|archivedCount|privateTotalCount|unitPrice|revenue/);
+ assert.doesNotMatch(JSON.stringify(rows),/onlyHidden|retired|unlisted|privateTotalCount|unitPrice|revenue/);
  // Original immutable source documents are unchanged and retain full history.
  const raw=doc("a",{solar:2,retired:9}).data();
  assert.equal(raw.totalCount,11);

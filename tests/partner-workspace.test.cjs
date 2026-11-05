@@ -1622,7 +1622,7 @@ test("legacy partner company totals remain available but cannot become verified 
 });
 
 
-test("unpublishing added partner product never shares hidden historic quantities or changes saved ledger",async()=>{
+test("unpublishing hides product details but keeps all saved historic headline counts",async()=>{
  const {db,api,req}=setup(),date="2026-10-31";
  db.seed("products/solar",{companyId:"hub",name:"太陽光",active:true,
   unitPrice:90000,totalRevenue:800000});
@@ -1647,11 +1647,12 @@ test("unpublishing added partner product never shares hidden historic quantities
  const beforeRead=clone([...db.store]);
  const shared=await api.view(req("h",{date,sharedRankings:true}));
  const partner=await api.view(req("p",{date,sharedRankings:true}));
- assert.equal(shared.additionalTotalCount,2);
- assert.equal(shared.companies[0].totalCount,2);
+ assert.equal(shared.additionalTotalCount,2,"visible product breakdown remains filtered");
+ assert.equal(shared.companies[0].totalCount,9,"overall count retains 7 saved OFF");
  assert.equal(shared.companies[0].extraTotalCount,2);
- assert.equal(shared.people[0].totalCount,2);
- assert.equal(shared.teams[0].totalCount,2);
+ assert.equal(shared.companies[0].archivedExtraTotalCount,7);
+ assert.equal(shared.people[0].totalCount,9);
+ assert.equal(shared.teams[0].totalCount,9);
  assert.deepEqual(shared.people,partner.people,"same count-only standings for approved parties");
  assert.equal(JSON.stringify(shared).includes('"water":7'),false);
  assert.doesNotMatch(JSON.stringify(shared),/unitPrice|totalRevenue|90000|800000|30000|500000/);
@@ -1885,9 +1886,11 @@ test("partner saved original nine plus new product stay immutable through correc
  assert.equal(archived.records[0].archivedTotal,5);
  assert.deepEqual(archived.records[0].counts,{});
  const offShared=await api.view(req("h",{date,sharedRankings:true}));
- assert.equal(offShared.companies[0].totalCount,4,
-  "hidden added product excluded ONLY from public shared ranking");
- assert.equal(offShared.people[0].totalCount,4);
+ assert.equal(offShared.companies[0].totalCount,9,
+  "hidden product removed from product ranks, not from earned total");
+ assert.equal(offShared.companies[0].archivedExtraTotalCount,5);
+ assert.equal(offShared.companies[0].extraTotalCount,0);
+ assert.equal(offShared.people[0].totalCount,9);
  assert.equal(offShared.productCounts.NURO,4);
  assert.doesNotMatch(JSON.stringify(offShared),/90000|444444|revenue|unitPrice|fiberNew/);
  assert.deepEqual(db.store.get(legacyKey),legacyBefore);
@@ -1907,4 +1910,144 @@ test("partner saved original nine plus new product stay immutable through correc
  assert.deepEqual(db.store.get(legacyKey),legacyBefore);
  assert.deepEqual(db.store.get(extraKey),extraBefore);
  assert.deepEqual(db.store.get("records/old"),originalSales);
+});
+
+
+test("Owner explicitly arms ONE partner for tomorrow without changing any saved count or finance",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ const team=(await api.manage(req("p",{action:"addTeam",name:"既存班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"既存担当",teamId:team}))).staffId;
+ await api.submit(req("p",{date,staffId:staff,counts:{...zero(),NURO:3},expectedVersion:0}));
+ const savedBefore=clone(db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+staff));
+ const oldFinance=clone(db.store.get("records/old"));
+ db.seed("companies/hub/partnerCatalogSettings/countLinks",{revision:1,links:[
+  {productId:"nuroProduct",category:"NURO",effectiveFrom:"2026-11-01"}
+ ]});
+ const allBefore=clone([...db.store]);
+ const preview=await api.getPartnerLegacyCountGate(req("h",{partnerCompanyId:"partner"}));
+ assert.deepEqual({
+  armed:preview.armed,mappedCategoryCount:preview.mappedCategoryCount,
+  totalCategoryCount:preview.totalCategoryCount,coverageDate:preview.coverageDate
+ },{armed:false,mappedCategoryCount:1,totalCategoryCount:9,coverageDate:"2026-11-01"});
+ assert.deepEqual([...db.store],allBefore,"preview must not write counts, finance or settings");
+ await assert.rejects(api.activatePartnerLegacyCountGate(req("p",{
+  partnerCompanyId:"partner",expectedRevision:0,
+  confirmation:"ACTIVATE_NEXT_DAY_LEGACY_CATEGORY_FILTER"
+ })),{code:"permission-denied"});
+ await assert.rejects(api.activatePartnerLegacyCountGate(req("h",{
+  partnerCompanyId:"partner",expectedRevision:0,confirmation:"wrong"
+ })),{code:"invalid-argument"});
+ assert.deepEqual([...db.store],allBefore);
+ const done=await api.activatePartnerLegacyCountGate(req("h",{
+  partnerCompanyId:"partner",expectedRevision:0,
+  confirmation:"ACTIVATE_NEXT_DAY_LEGACY_CATEGORY_FILTER"
+ }));
+ assert.deepEqual(done,{armed:true,effectiveFrom:"2026-11-01",partnerCompanyId:"partner"});
+ assert.deepEqual(await api.getPartnerLegacyCountGate(req("h",{partnerCompanyId:"partner"})),{
+  scope:"partner_legacy_count_gate",partnerCompanyId:"partner",
+  armed:true,effectiveFrom:"2026-11-01",revision:1,
+  mappedCategoryCount:1,totalCategoryCount:9,coverageDate:"2026-11-01"
+ });
+ await assert.rejects(api.getPartnerLegacyCountGate(req("p",{
+  partnerCompanyId:"partner"
+ })),{code:"permission-denied"});
+ await assert.rejects(api.activatePartnerLegacyCountGate(req("h",{
+  partnerCompanyId:"partner",expectedRevision:0,
+  confirmation:"ACTIVATE_NEXT_DAY_LEGACY_CATEGORY_FILTER"
+ })),{code:"failed-precondition"});
+ const view=await api.view(req("p",{date}));
+ assert.deepEqual(view.legacyPublication,{
+  mode:"scheduled",effectiveFrom:"2026-11-01",blockedCategories:[]
+ });
+ assert.deepEqual(db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+staff),savedBefore);
+ assert.deepEqual(db.store.get("records/old"),oldFinance);
+});
+
+test("legacy OFF freezes a linked bucket in transaction; other partner counts, CB, history remain",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ const team=(await api.manage(req("p",{action:"addTeam",name:"保護班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"既存担当",teamId:team}))).staffId;
+ const finance=clone(db.store.get("records/old"));
+ await api.submit(req("p",{date,staffId:staff,
+  counts:{...zero(),NURO:3,YMMNP:2},expectedVersion:0}));
+ // Synthetic opt-in already effective for this date. Real activation can only
+ // be scheduled the next day and is covered by the test above.
+ db.seed("companies/partner/partnerCatalogSettings/legacyPublicationGate",{
+  revision:1,mode:"enforce",effectiveFrom:date,hubCompanyId:"hub",
+  partnerCompanyId:"partner"
+ });
+ db.seed("companies/hub/partnerCatalogSettings/publication",{
+  revision:1,productIds:["nuroProduct"]
+ });
+ db.seed("companies/hub/partnerCatalogSettings/countLinks",{
+  revision:1,links:[
+   {productId:"nuroProduct",category:"NURO",effectiveFrom:date},
+   {productId:"ymProduct",category:"YMMNP",effectiveFrom:date}
+  ]
+ });
+ const before=clone([...db.store]);
+ const policy=(await api.view(req("p",{date}))).legacyPublication;
+ assert.deepEqual(policy,{mode:"enforce",effectiveFrom:date,blockedCategories:["YMMNP"]});
+ await assert.rejects(api.submit(req("p",{date,staffId:staff,
+  counts:{...zero(),NURO:3,YMMNP:4},expectedVersion:1})),
+  {code:"failed-precondition"});
+ await assert.rejects(api.submit(req("p",{date,staffId:staff,
+  counts:{...zero(),NURO:3,YMMNP:0},expectedVersion:1})),
+  {code:"failed-precondition"});
+ assert.deepEqual([...db.store],before,"rejected edits cannot create an audit or change originals");
+ const revised=await api.submit(req("p",{date,staffId:staff,
+  counts:{...zero(),NURO:4,YMMNP:2},expectedVersion:1}));
+ assert.equal(revised.totalCount,6);
+ const original=db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+staff);
+ assert.equal(original.counts.YMMNP,2);
+ const report=db.store.get("companies/hub/partnerWorkCountDays/"+date+"/reports/partner");
+ assert.equal(report.totalCount,6,"the incremental correction replaced 5 with 6 exactly once");
+ assert.deepEqual(db.store.get("records/old"),finance);
+ const history=await api.view(req("p",{date,includeAuditHistory:true}));
+ assert.equal(history.audits.length,2);
+ assert.equal(history.records[0].counts.YMMNP,2);
+ assert.equal(history.records[0].counts.NURO,4);
+ // Turning publication ON allows previously frozen category without touching
+ // existing CB or original revenue, and clears only the input prohibition.
+ db.seed("companies/hub/partnerCatalogSettings/publication",{
+  revision:2,productIds:["nuroProduct","ymProduct"]
+ });
+ assert.deepEqual((await api.view(req("p",{date}))).legacyPublication.blockedCategories,[]);
+ const again=await api.submit(req("p",{date,staffId:staff,
+  counts:{...zero(),NURO:4,YMMNP:5},expectedVersion:2}));
+ assert.equal(again.totalCount,9);
+ assert.equal(db.store.get("companies/hub/partnerWorkCountDays/"+date+"/reports/partner").totalCount,9);
+ assert.deepEqual(db.store.get("records/old"),finance);
+});
+
+test("blocked NURO preserves original CB split; cannot overwrite counts or its tier classification",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ const team=(await api.manage(req("p",{action:"addTeam",name:"CB班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"担当",teamId:team}))).staffId;
+ const counts={...zero(),NURO:3,YMMNP:1};
+ await api.submit(req("p",{date,staffId:staff,counts,
+  cbCounts:{NURO:{"0":1,"20000":2}},expectedVersion:0}));
+ db.seed("companies/partner/partnerCatalogSettings/legacyPublicationGate",{
+  revision:1,mode:"enforce",effectiveFrom:date
+ });
+ db.seed("companies/hub/partnerCatalogSettings/publication",{
+  revision:1,productIds:[]
+ });
+ db.seed("companies/hub/partnerCatalogSettings/countLinks",{
+  revision:1,links:[{productId:"nuroProduct",category:"NURO",effectiveFrom:date}]
+ });
+ const before=clone([...db.store]);
+ await assert.rejects(api.submit(req("p",{date,staffId:staff,counts,
+  cbCounts:{NURO:{"0":2,"20000":1}},expectedVersion:1})),
+  {code:"failed-precondition"});
+ await assert.rejects(api.submit(req("p",{date,staffId:staff,
+  counts:{...counts,NURO:4},expectedVersion:1})),{code:"failed-precondition"});
+ assert.deepEqual([...db.store],before);
+ const changed=await api.submit(req("p",{date,staffId:staff,
+  counts:{...counts,YMMNP:2},expectedVersion:1}));
+ assert.equal(changed.totalCount,5);
+ const latest=db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+staff);
+ assert.deepEqual(latest.cbCounts,{NURO:{"0":1,"20000":2}});
+ const audit=db.store.get("companies/partner/partnerWorkAudits/"+date+"__"+staff+"__v2");
+ assert.deepEqual(audit.previousCbCounts,{NURO:{"0":1,"20000":2}});
 });

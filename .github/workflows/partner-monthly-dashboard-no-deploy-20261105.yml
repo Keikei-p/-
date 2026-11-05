@@ -1,0 +1,40 @@
+name: Partner monthly dashboard and saved team details (NO DEPLOY)
+on:
+  push:
+    branches: [feature/partner-monthly-dashboard-team-details-20261105]
+    paths:
+      - 'functions-partner-workspace/**'
+      - 'tests/partner-monthly-dashboard-isolation.test.cjs'
+      - 'tests/partner-monthly-dashboard-ui-syntax.test.cjs'
+      - 'tests/partner-workspace.test.cjs'
+      - 'tests/partner-auto-monthly-ranking.test.cjs'
+      - 'index.html'
+      - '.github/workflows/partner-monthly-dashboard-no-deploy-20261105.yml'
+permissions:
+  contents: read
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      FIREBASE_PROJECT_ID: demo-partner-month-read-only
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax checks (never deploy)
+        run: |
+          node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/monthly-shared-projection.cjs
+          node --check tests/partner-monthly-dashboard-isolation.test.cjs
+          node --check tests/partner-monthly-dashboard-ui-syntax.test.cjs
+      - name: Verify month-only counts, old staff/team provenance and shared ranking
+        run: |
+          node --test tests/partner-monthly-dashboard-isolation.test.cjs tests/partner-monthly-dashboard-ui-syntax.test.cjs tests/partner-auto-monthly-ranking.test.cjs tests/partner-auto-published-ranking.test.cjs tests/partner-workspace.test.cjs tests/partner-extra-shared-ranking.test.cjs tests/partner-monthly-shared-counts.test.cjs tests/partner-shared-ranking-groups.test.cjs tests/partner-catalog-publication.test.cjs tests/partner-catalog-count-links.test.cjs tests/partner-additional-counts-isolation.test.cjs
+      - name: Explicit no production mutation
+        run: echo 'NO DEPLOY - no prod Firestore, Firebase Auth, Rules, Functions or Hosting access'

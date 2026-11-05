@@ -1,0 +1,75 @@
+name: NICO Partner Integrated Counts + Finance Boundary Crosscheck (NO DEPLOY)
+on:
+  push:
+    branches: [feature/partner-catalog-month-integrated-20261105]
+    paths:
+      - 'index.html'
+      - 'functions-partner-workspace/**'
+      - 'tests/**'
+      - '.github/workflows/partner-finance-counts-crosscheck-no-deploy.yml'
+  pull_request:
+    branches: [feature/partner-auto-published-count-ranks-20261105]
+permissions:
+  contents: read
+jobs:
+  offline-crosscheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      FIREBASE_PROJECT_ID: demo-sales-support
+      SAFE_INTERNAL_MEMBER_REMOVAL_ENABLED: ''
+    steps:
+      - name: Check out integrated counts UI and Functions (never publish)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check out independently reviewed security candidate at pinned commit
+        uses: actions/checkout@v4
+        with:
+          repository: Keikei-p/-
+          ref: b1f694aff1e3328aef984d3d84a1ecafdb4abf40
+          path: finance-review
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Check commit pin and ensure financial gate is not falsely marked deployed
+        run: |
+          set -euo pipefail
+          test "$(git -C finance-review rev-parse HEAD)" = b1f694aff1e3328aef984d3d84a1ecafdb4abf40
+          test "$FIREBASE_PROJECT_ID" = demo-sales-support
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          node - <<'NODE'
+          const fs=require('node:fs'),assert=require('node:assert/strict');
+          const rules=fs.readFileSync('finance-review/firestore.rules','utf8');
+          const original=fs.readFileSync('firestore.rules','utf8');
+          const service=fs.readFileSync('functions-partner-workspace/service.cjs','utf8');
+          assert.match(rules,/function noSecondaryPartnerWorkspace\(\)/);
+          for(const path of ['products','records','recordCorrections','revenueGoals','goals','teams','settings'])
+            assert.match(rules,new RegExp('match /'+path+'/'));
+          assert.match(service,/assertLegacyEditAllowed\(/);
+          assert.match(service,/projectPartnerMonth\(/);
+          assert.notEqual(rules,original,'reviewed security candidate is not deployed through this workflow');
+          console.log('PASS: separate pinned finance Rules, integrated count-only APIs, NO DEPLOY');
+          NODE
+      - name: Verify counts, month selection and rankings offline
+        run: |
+          node --check functions-partner-workspace/service.cjs
+          node --test tests/partner-month-integrity-gate.test.cjs tests/direct-persisted-count-edit-protection.test.cjs tests/partner-legacy-publication-policy.test.cjs tests/partner-auto-published-ranking.test.cjs tests/partner-month-dashboard-months-and-teams.test.cjs tests/partner-workspace.test.cjs
+      - name: Install Firebase Emulator dependencies for security candidate only
+        run: npm install --prefix finance-review/tests --ignore-scripts --no-audit --no-fund
+      - name: Test finance deny and internal owner allow with synthetic Firebase UIDs
+        working-directory: finance-review
+        run: |
+          npx --yes firebase-tools@15.34.1 emulators:exec --project demo-sales-support --only firestore "node --test tests/rules.test.cjs"
+      - name: Fail-closed release boundary reminder
+        run: |
+          echo "NO DEPLOY: only local emulated UIDs, no Firebase service identity, production data or Rules changes"
+          echo "Real partner UID finance GET/LIST deny and internal owner live access remain a mandatory manual release blocker"

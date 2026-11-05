@@ -25,9 +25,9 @@ function projectPartnerMonth({hubId,cid,companyName,from,to,legacyDocs,extraDocs
   const key=hash(cid+"\n"+staffId),teamKey=hash(cid+"\nteam\n"+teamId);
   let p=people.get(staffId);
   if(!p){
-   p={key,name,companyName,teamKey,teamName:Object.hasOwn(teamNames,teamId)&&
+   p={key,name,companyName,companyId:cid,teamKey,teamName:Object.hasOwn(teamNames,teamId)&&
     safe(teamNames[teamId])?teamNames[teamId].trim():"当時の班名未確認",totalCount:0,
-    counts:zero(),extraCounts:{}};
+    counts:zero(),extraCounts:{},archivedExtraTotalCount:0};
    people.set(staffId,p);
   }else if(p.teamKey!==teamKey){
    p.teamKey=null; // Never reassign historic work to the current team.
@@ -39,11 +39,12 @@ function projectPartnerMonth({hubId,cid,companyName,from,to,legacyDocs,extraDocs
   const key=hash(cid+"\nteam\n"+teamId);
   const savedName=Object.hasOwn(teamNames,teamId)&&safe(teamNames[teamId])?
    teamNames[teamId].trim():"当時の班名未確認";
-  if(!teams.has(key))teams.set(key,{key,name:savedName,companyName,
-   totalCount:0,counts:zero(),extraTotalCount:0});
+  if(!teams.has(key))teams.set(key,{key,name:savedName,companyName,companyId:cid,
+   totalCount:0,counts:zero(),extraTotalCount:0,
+   archivedExtraTotalCount:0,extraCounts:{}});
   return teams.get(key);
  };
- const counts=zero();let totalCount=0,additionalTotalCount=0;
+ const counts=zero();let totalCount=0,additionalTotalCount=0,archivedExtraTotalCount=0;
  for(const doc of legacyDocs){
   const x=doc?.data?.()||{},id=x.staffId,date=x.date,tid=x.teamIdSnapshot;
   if(!ID.test(id||"")||!ID.test(tid||"")||!DAY.test(date||"")||
@@ -89,16 +90,25 @@ function projectPartnerMonth({hubId,cid,companyName,from,to,legacyDocs,extraDocs
    const legacyDocId=date+"__"+x.staffId;
    const existing=legacyByDocId.get(legacyDocId);
    if(existing&&existing.teamIdSnapshot!==x.teamIdSnapshot)fail();
-   p.totalCount+=x.totalCount;t.totalCount+=x.totalCount;
+   const savedTotal=x.totalCount+x.archivedCount;
+   if(!Number.isSafeInteger(savedTotal)||savedTotal<0)fail();
+   // An OFF flag stops new input/product-specific display, not earned history.
+   p.totalCount+=savedTotal;t.totalCount+=savedTotal;
+   p.archivedExtraTotalCount+=x.archivedCount;
+   t.archivedExtraTotalCount+=x.archivedCount;
    t.extraTotalCount+=x.totalCount;
-   totalCount+=x.totalCount;additionalTotalCount+=x.totalCount;
-   for(const [productId,count] of Object.entries(x.extraCounts))
+   totalCount+=savedTotal;additionalTotalCount+=x.totalCount;
+   archivedExtraTotalCount+=x.archivedCount;
+   for(const [productId,count] of Object.entries(x.extraCounts)){
     p.extraCounts[productId]=(p.extraCounts[productId]||0)+count;
+    t.extraCounts[productId]=(t.extraCounts[productId]||0)+count;
+   }
   }
  }
  if(!Number.isSafeInteger(totalCount)||!Number.isSafeInteger(additionalTotalCount))
   fail();
- return {id:cid,name:companyName,totalCount,additionalTotalCount,counts,
+ return {id:cid,name:companyName,totalCount,additionalTotalCount,
+  archivedExtraTotalCount,counts,
   people:[...people.values()],teams:[...teams.values()],
   verifiedEntryCount:legacyDocs.length+extraDocs.length};
 }

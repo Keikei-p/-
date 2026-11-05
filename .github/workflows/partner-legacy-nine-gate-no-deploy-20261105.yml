@@ -1,0 +1,34 @@
+name: NICO legacy nine publication gate (NO DEPLOY)
+on:
+  push:
+    branches: [feature/partner-legacy-nine-publication-gate-20261105]
+  pull_request:
+    branches: [feature/partner-auto-published-count-ranks-20261105]
+permissions:
+  contents: read
+jobs:
+  offline-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      FIREBASE_PROJECT_ID: demo-partner-legacy-gate
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax verification
+        run: |
+          node --check functions-partner-workspace/legacy-publication-policy.cjs
+          node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/index.js
+          node --check tests/partner-legacy-publication-policy.test.cjs
+      - name: Partner count, publication, monthly ranking and privacy regressions
+        run: |
+          node --test tests/partner-legacy-publication-policy.test.cjs tests/partner-workspace.test.cjs tests/partner-catalog-count-links.test.cjs tests/partner-catalog-publication.test.cjs tests/partner-additional-counts-isolation.test.cjs tests/partner-extra-shared-ranking.test.cjs tests/partner-auto-published-ranking.test.cjs tests/partner-auto-monthly-ranking.test.cjs tests/partner-monthly-shared-counts.test.cjs tests/partner-shared-ranking-groups.test.cjs
+      - name: Confirm no production work
+        run: echo 'NO DEPLOY - tests only; production Firestore, Auth, Rules, Hosting, Functions and LINE unchanged'
