@@ -3,6 +3,9 @@ on:
   push:
     branches:
       - integration/shared-rank-finance-boundary-20261104
+  pull_request:
+    branches:
+      - fix/partner-shared-rank-independent-requests-20261104
 permissions:
   contents: read
 concurrency:
