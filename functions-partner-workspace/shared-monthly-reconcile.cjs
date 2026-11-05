@@ -39,7 +39,7 @@ function reconcileSharedMonthlyCounts({
     !Array.isArray(teams)||teams.length>4000||
     !obj(direct)||!Array.isArray(direct.people)||!Array.isArray(direct.teams))
   deny();
- const companyIds=new Set();
+ const companyIds=new Set(),byCompany=new Map();
  const totals=Object.fromEntries(categories.map(c=>[c,0]));
  const companyTotal=sum(companies.map(company=>{
   if(!obj(company)||typeof company.id!=="string"||
@@ -47,6 +47,7 @@ function reconcileSharedMonthlyCounts({
      companyIds.has(company.id)||company.peopleVerified!==true||
      !number(company.extraTotalCount))deny();
   companyIds.add(company.id);
+  byCompany.set(company.id,{personCount:0,teamCount:0,personExtras:0,teamExtras:0});
   const normal=categorySum(company.counts,categories);
   if(!number(company.totalCount)||company.totalCount!==normal+company.extraTotalCount)
    deny();
@@ -61,20 +62,37 @@ function reconcileSharedMonthlyCounts({
  const personTotal=sum(people.map(p=>{
   if(!obj(p)||typeof p.name!=="string"||typeof p.companyName!=="string"||
      !number(p.totalCount))deny();
-  if(categorySum(p.counts,categories)+extraSum(p.extraCounts??{})!==p.totalCount)
-   deny();
+  const scoped=byCompany.get(p.companyId);
+  if(!scoped)deny(); // No member may be attributed to a different company.
+  const extras=extraSum(p.extraCounts??{});
+  if(categorySum(p.counts,categories)+extras!==p.totalCount)deny();
+  scoped.personCount=sum([scoped.personCount,p.totalCount]);
+  scoped.personExtras=sum([scoped.personExtras,extras]);
   return p.totalCount;
  }));
  const teamTotal=sum(teams.map(t=>{
   if(!obj(t)||typeof t.name!=="string"||typeof t.companyName!=="string"||
      !number(t.totalCount)||!number(t.extraTotalCount))deny();
+  const scoped=byCompany.get(t.companyId);
+  if(!scoped)deny();
   if(categorySum(t.counts,categories)+t.extraTotalCount!==t.totalCount)
    deny();
+  scoped.teamCount=sum([scoped.teamCount,t.totalCount]);
+  scoped.teamExtras=sum([scoped.teamExtras,t.extraTotalCount]);
   return t.totalCount;
  }));
  if(personTotal!==companyTotal||teamTotal!==companyTotal||
     sum(teams.map(t=>t.extraTotalCount))!==extras||
     sum(people.map(p=>extraSum(p.extraCounts??{})))!==extras)deny();
+ // Global sums can match while two partner companies have swapped individual
+ // or team attribution. Verify each company independently before ranking.
+ for(const company of companies){
+  const scoped=byCompany.get(company.id);
+  if(scoped.personCount!==company.totalCount||
+     scoped.teamCount!==company.totalCount||
+     scoped.personExtras!==company.extraTotalCount||
+     scoped.teamExtras!==company.extraTotalCount)deny();
+ }
  const originalTotal=categorySum(direct.counts,categories);
  if(!number(direct.totalCount)||!number(direct.otherCount)||
     originalTotal+direct.otherCount!==direct.totalCount||!number(direct.recordsVerified)||
