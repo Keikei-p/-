@@ -32,17 +32,19 @@ jobs:
           git fetch --no-tags origin feature/partner-catalog-month-integrated-20261105
           test "$(git rev-parse origin/feature/partner-catalog-month-integrated-20261105)" = 17d470b7b9bc19f4ddfda32a32900728094a3de1
           git diff --name-only 17d470b7b9bc19f4ddfda32a32900728094a3de1...HEAD >/tmp/ranking-ui-files.txt
-          if grep -Ev '^(index\.html|tests/partner-shared-rank-ui-parity\.test\.cjs|\.github/workflows/nico-shared-ranking-ui-parity-no-deploy\.yml)$' /tmp/ranking-ui-files.txt; then
+          if grep -Ev '^(index\.html|tests/partner-shared-rank-ui-parity\.test\.cjs|tests/partner-ranking-independent-requests\.test\.cjs|\.github/workflows/nico-shared-ranking-ui-parity-no-deploy\.yml)$' /tmp/ranking-ui-files.txt; then
             echo STOP_UNEXPECTED_RANKING_UI_CHANGES
             exit 1
           fi
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
           node --check tests/partner-shared-rank-ui-parity.test.cjs
+          node --check tests/partner-ranking-independent-requests.test.cjs
       - name: Run verified combined ranking UI and product counts tests
         shell: bash
         run: |
           set -euo pipefail
           node --test tests/partner-shared-rank-ui-parity.test.cjs
+          node --test tests/partner-ranking-independent-requests.test.cjs
           node --test tests/partner-auto-monthly-ranking.test.cjs tests/partner-shared-ranking-groups.test.cjs tests/partner-catalog-publication.test.cjs tests/partner-catalog-count-links.test.cjs tests/partner-monthly-shared-counts.test.cjs
           NODE_OPTIONS=--experimental-vm-modules node --test tests/partner-index-module-parse.test.cjs
       - name: Ensure no production resources were changed
