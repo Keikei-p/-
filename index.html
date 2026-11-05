@@ -13141,6 +13141,21 @@ function verifiedDirectDayCounts(date){
   products:[...productTotals].map(([name,count])=>({name,count}))};
 }
 
+// Only verified per-person quantities can produce a shared product-card total.
+// Never infer zero for unreported staff or derive totals from money fields.
+function verifiedSharedRankingGroupTotal(group){
+ if(group?.complete!==true)return null;
+ if(!Array.isArray(group.members)||group.members.length>4000)
+  throw Error("shared_rank_group_members_unverified");
+ let total=0;
+ for(const person of group.members){
+  if(!person||!Number.isSafeInteger(person.count)||person.count<0)
+   throw Error("shared_rank_group_count_unverified");
+  total+=person.count;
+  if(!Number.isSafeInteger(total))throw Error("shared_rank_group_sum_overflow");
+ }
+ return total;
+}
 let selectedPartnerSharedGroupId="";
 function renderPartnerSharedGroupCards(target,response){
  const groups=response.groupStandings;
@@ -13192,6 +13207,9 @@ function renderPartnerSharedGroupCards(target,response){
   button.className="ranking-product-card";button.dataset.groupId=group.id;
   const title=document.createElement("span");title.className="ranking-product-card-name";
   title.textContent=group.name;button.append(title);
+  const count=document.createElement("span");count.className="ranking-product-card-count";
+  const sum=verifiedSharedRankingGroupTotal(group);
+  count.textContent=sum===null?"件数未照合":sum+"件";button.append(count);
   button.onclick=()=>select(group);cardGrid.append(button);
  }
  select(groups.find(x=>x.id===selectedPartnerSharedGroupId));
@@ -13200,16 +13218,32 @@ function renderPartnerSharedGroupCards(target,response){
 function appendSharedRankingRows(container,heading,entries,complete){
  const section=document.createElement("section");section.className="p-inline-card";
  const h=document.createElement("h4");h.textContent=heading;section.append(h);
- const sorted=[...entries].sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name,"ja"));
+ if(!Array.isArray(entries)||entries.length>4000)throw Error("shared_ranking_entries_unverified");
+ const sorted=[...entries];
+ if(sorted.some(x=>!x||!Number.isSafeInteger(x.count)||x.count<0||
+    typeof x.name!=="string"))throw Error("shared_ranking_entry_invalid");
+ sorted.sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name,"ja"));
  if(!sorted.length)partnerMainAppendRow(section,"表示できる実績がありません","未報告を0件とは扱いません");
+ const list=document.createElement("div");list.className="ranking-grid";
+ list.dataset.columns="1";section.append(list);
  let previous=null,rank=0;
- for(const [i,row] of sorted.entries()){
-  if(!Number.isSafeInteger(row.count)||row.count<0||typeof row.name!=="string")
-   throw Error("shared_ranking_entry_invalid");
-  if(previous!==row.count)rank=i+1;
-  const prefix=complete?(rank===1&&row.count>0?"🏆 ":"")+rank+"位 ":"暫定"+rank+"位 ";
-  partnerMainAppendRow(section,prefix+row.name,row.count+"件");
-  previous=row.count;
+ for(const [i,item] of sorted.entries()){
+  if(previous!==item.count)rank=i+1;
+  previous=item.count;
+  const row=document.createElement("div");row.className="ranking-row";
+  // A provisional entry cannot be promoted as a confirmed champion.
+  if(complete===true&&rank===1&&item.count>0)
+   decorateRankingChampion(row,"individual");
+  const left=document.createElement("div");left.className="ranking-left";
+  const number=document.createElement("span");number.className="ranking-number";
+  number.textContent=complete===true?rank+"位":"暫定"+rank+"位";
+  if(complete===true&&rank<=3)number.classList.add("top"+rank);
+  const name=document.createElement("span");name.className="ranking-name";
+  name.textContent=item.name;left.append(number,name);
+  const value=document.createElement("div");value.className="ranking-value";
+  const count=document.createElement("span");count.className="ranking-count";
+  count.textContent=item.count+"件";value.append(count);
+  row.append(left,value);list.append(row);
  }
  container.append(section);
 }
@@ -36713,6 +36747,8 @@ function renderOwnerJointIndividualRanking(){
   if(prev!==person.count)rank=i+1;
   prev=person.count;
   const row=document.createElement("div");row.className="ranking-row";
+  if(state.complete===true&&rank===1&&person.count>0)
+   decorateRankingChampion(row,"individual");
   const left=document.createElement("div");left.className="ranking-left";
   const number=document.createElement("span");number.className="ranking-number";
   number.textContent=state.complete?rank+"位":"暫定"+rank+"位";
@@ -37479,7 +37515,10 @@ function renderOwnerJointProductRanking(snapshot){
   button.className="ranking-product-card";button.dataset.groupId=group.id;
   const label=document.createElement("span");
   label.className="ranking-product-card-name";label.textContent=group.name;
-  button.append(label);button.onclick=()=>show(group);
+  const count=document.createElement("span");count.className="ranking-product-card-count";
+  const sum=verifiedSharedRankingGroupTotal(group);
+  count.textContent=sum===null?"件数未照合":sum+"件";
+  button.append(label,count);button.onclick=()=>show(group);
   productRankingProductList.append(button);
  }
  show(groups.find(g=>g.id===selectedProductRankingKey));
