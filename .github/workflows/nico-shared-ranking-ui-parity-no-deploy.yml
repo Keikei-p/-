@@ -1,0 +1,54 @@
+name: NICO Shared Ranking UI Parity and Product Counts (NO DEPLOY)
+on:
+  push:
+    branches: [feature/partner-ranking-ui-parity-counts-20261105]
+  pull_request:
+    branches: [feature/partner-catalog-month-integrated-20261105]
+permissions:
+  contents: read
+concurrency:
+  group: nico-shared-ranking-ui-parity
+  cancel-in-progress: true
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      FIREBASE_PROJECT_ID: demo-sales-support
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false, fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Require exact reviewed integration base, no deployed changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$FIREBASE_PROJECT_ID" = demo-sales-support
+          test -z "${GOOGLE_APPLICATION_CREDENTIALS:-}"
+          test -z "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          git fetch --no-tags origin feature/partner-catalog-month-integrated-20261105
+          test "$(git rev-parse origin/feature/partner-catalog-month-integrated-20261105)" = 17d470b7b9bc19f4ddfda32a32900728094a3de1
+          git diff --name-only 17d470b7b9bc19f4ddfda32a32900728094a3de1...HEAD >/tmp/ranking-ui-files.txt
+          if grep -Ev '^(index\.html|tests/partner-shared-rank-ui-parity\.test\.cjs|tests/partner-ranking-independent-requests\.test\.cjs|\.github/workflows/nico-shared-ranking-ui-parity-no-deploy\.yml)$' /tmp/ranking-ui-files.txt; then
+            echo STOP_UNEXPECTED_RANKING_UI_CHANGES
+            exit 1
+          fi
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          node --check tests/partner-shared-rank-ui-parity.test.cjs
+          node --check tests/partner-ranking-independent-requests.test.cjs
+      - name: Run verified combined ranking UI and product counts tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/partner-shared-rank-ui-parity.test.cjs
+          node --test tests/partner-ranking-independent-requests.test.cjs
+          node --test tests/partner-auto-monthly-ranking.test.cjs tests/partner-shared-ranking-groups.test.cjs tests/partner-catalog-publication.test.cjs tests/partner-catalog-count-links.test.cjs tests/partner-monthly-shared-counts.test.cjs
+          NODE_OPTIONS=--experimental-vm-modules node --test tests/partner-index-module-parse.test.cjs
+      - name: Ensure no production resources were changed
+        run: |
+          echo 'PASS_SHARED_RANKING_UI_PARITY_DEMO_ONLY'
+          echo 'PRODUCTION_DEPLOYED=false'
+          echo 'NO_SALES_RECORDS_OR_FINANCE_CHANGED=true'
