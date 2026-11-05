@@ -7509,6 +7509,7 @@ const readPartnerMonthlySharedCounts = httpsCallable(partnerCountFunctions,"getP
 const readPartnerProductMonthlyTotals = httpsCallable(partnerCountFunctions,"getPartnerProductMonthlyTotals");
 
 const partnerInlineManage = httpsCallable(partnerCountFunctions,"managePartnerWorkspace");
+const safeRemoveInternalMember = httpsCallable(partnerCountFunctions,"removeInternalCompanyMember");
 const partnerInlineSave = httpsCallable(partnerCountFunctions,"submitPartnerWorkspaceCounts");
 const partnerInlineAccept = httpsCallable(partnerCountFunctions,"acceptPartnerWorkspaceInvite");
 const partnerMainPreviewCompanyInvite = httpsCallable(partnerCountFunctions,"previewPartnerCompanyInvitation");
@@ -23926,136 +23927,41 @@ function renderMembers() {
 }
 
 
-async function disableCompanyMember(
-  member
-) {
-
-  if (
-    currentUserData?.companyRole !==
-      "owner" ||
-    member.companyRole ===
-      "owner"
-  ) {
-
-    showError(
-      "この操作は会社オーナーだけが実行できます。"
-    );
-
+async function disableCompanyMember(member) {
+  // Only a trusted server may decide if a former internal account can be
+  // disabled without breaking an active secondary partner login.
+  if (!isCurrentCompanyOwner() || member.companyRole === "owner" ||
+      member.id === currentUser?.uid) {
+    showError("この操作は会社オーナーだけが実行できます。");
     return;
-
   }
-
-  if (
-    !confirm(
-      `${member.name || "このメンバー"}を会社から削除しますか？\n\n過去の実績は残ります。`
-    )
-  ) {
-
+  const memberId=member.id || member.uid;
+  if (typeof memberId !== "string" ||
+      !/^[A-Za-z0-9_-]{1,128}$/.test(memberId)) {
+    showError("削除対象のメンバーを確認できません。");
     return;
-
   }
-
+  if (!confirm(
+    (member.name || "このメンバー") +
+    "を自社のメンバー一覧から外しますか？\n\n" +
+    "過去の件数・売上・班履歴とFirebaseログイン情報は消しません。\n" +
+    "協力店と兼用している場合はログイン保護のため、この操作を停止します。"
+  )) return;
   try {
-
-    const memberId =
-      member.id ||
-      member.uid;
-
-    let rootUserExists =
-      false;
-
-    if (
-      !isManagedMember(
-        member
-      )
-    ) {
-
-      try {
-
-        const userSnap =
-          await getDoc(
-            doc(
-              db,
-              "users",
-              memberId
-            )
-          );
-
-        rootUserExists =
-          userSnap.exists();
-
-      } catch (error) {
-
-        console.warn(
-          "削除対象のusers確認に失敗しました。member側の無効化を続行します。",
-          error
-        );
-
-      }
-
+    const response=await safeRemoveInternalMember({memberId,confirmed:true});
+    if (response?.data?.removed !== true ||
+        response?.data?.memberId !== memberId)
+      throw Error("safe_removal_unverified");
+    showSuccess("会社のメンバーから外しました。過去の実績とログイン情報は残っています。");
+  } catch(error) {
+    // NEVER fall back to the legacy Firestore client-side batch.
+    if (error?.code === "functions/failed-precondition") {
+      showError("協力店の所属・移籍情報が残っているため、ログイン保護のために削除を停止しました。");
+    } else {
+      showError("安全な所属確認ができませんでした。変更せずに停止しました。");
     }
-
-    const batch =
-      writeBatch(
-        db
-      );
-
-    if (
-      rootUserExists
-    ) {
-
-      batch.update(
-        doc(
-          db,
-          "users",
-          memberId
-        ),
-        {
-          active:
-            false,
-          updatedAt:
-            serverTimestamp()
-        }
-      );
-
-    }
-
-    batch.update(
-      doc(
-        db,
-        "companies",
-        currentUserData.companyId,
-        "members",
-        memberId
-      ),
-      {
-        active:
-          false,
-        updatedAt:
-          serverTimestamp()
-      }
-    );
-
-    await batch.commit();
-
-    showSuccess(
-      rootUserExists
-        ? "メンバーを会社から削除しました。過去の実績は残っています。"
-        : "古いメンバー情報を会社一覧から削除しました。過去の実績は残っています。"
-    );
-
-  } catch (error) {
-
-    console.error(error);
-
-    showError(
-      firebaseErrorMessage(
-        error
-      )
-    );
-
+    console.warn("自社メンバー除外は安全確認で停止",error?.code||"unavailable");
   }
-
 }
 
 

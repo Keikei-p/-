@@ -19,6 +19,7 @@ jobs:
       GOOGLE_APPLICATION_CREDENTIALS: ""
       FIREBASE_SERVICE_ACCOUNT_JSON: ""
       NICO_ACCOUNT_ERASURE_ENABLED: ""
+      SAFE_INTERNAL_MEMBER_REMOVAL_ENABLED: ""
     steps:
       - uses: actions/checkout@v4
         with:
@@ -40,15 +41,18 @@ jobs:
           test -z "${GOOGLE_APPLICATION_CREDENTIALS:-}"
           test -z "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
           test -z "${NICO_ACCOUNT_ERASURE_ENABLED:-}"
+          test -z "${SAFE_INTERNAL_MEMBER_REMOVAL_ENABLED:-}"
           git fetch --no-tags origin fix/partner-shared-rank-independent-requests-20261104
           git diff --name-only origin/fix/partner-shared-rank-independent-requests-20261104...HEAD > /tmp/nico-integration-files.txt
           cat /tmp/nico-integration-files.txt
-          if grep -Ev '^(firestore\.rules|tests/rules\.test\.cjs|\.github/workflows/nico-shared-rank-finance-integration-no-deploy\.yml|tools/production/check-partner-release-readiness\.mjs|tests/partner-release-readiness-audit\.test\.mjs|security/finance-stage2-integrated\.mjs|tests/finance-stage2-integrated\.test\.mjs|security/staged-internal-count-read-gateway\.mjs|tests/staged-internal-count-read-gateway\.test\.mjs|security/staged-internal-firestore-reader\.mjs|security/staged-internal-firebase-adapters\.mjs|tests/staged-internal-firestore-adapters\.test\.mjs|cloudflare-finance/src/index\.js|cloudflare-finance/src/internal-count-membership\.mjs|cloudflare-finance/tests/internal-count-membership\.test\.mjs)$' /tmp/nico-integration-files.txt; then
+          if grep -Ev '^(firestore\.rules|tests/rules\.test\.cjs|\.github/workflows/nico-shared-rank-finance-integration-no-deploy\.yml|tools/production/check-partner-release-readiness\.mjs|tests/partner-release-readiness-audit\.test\.mjs|security/finance-stage2-integrated\.mjs|tests/finance-stage2-integrated\.test\.mjs|security/staged-internal-count-read-gateway\.mjs|tests/staged-internal-count-read-gateway\.test\.mjs|security/staged-internal-firestore-reader\.mjs|security/staged-internal-firebase-adapters\.mjs|tests/staged-internal-firestore-adapters\.test\.mjs|cloudflare-finance/src/index\.js|cloudflare-finance/src/internal-count-membership\.mjs|cloudflare-finance/tests/internal-count-membership\.test\.mjs|functions-partner-workspace/index\.js|functions-partner-workspace/internal-member-exit\.cjs|tests/internal-member-exit\.test\.cjs|index\.html)$' /tmp/nico-integration-files.txt; then
             echo STOP_UNEXPECTED_INTEGRATION_FILES
             exit 1
           fi
           node --check tests/rules.test.cjs
           node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/index.js
+          node --check functions-partner-workspace/internal-member-exit.cjs
           node --check functions-partner-workspace/monthly-shared-projection.cjs
           node --check functions-partner-workspace/shared-direct-counts.cjs
       - name: Verify count-only shared rankings, old UI and owner money visibility
@@ -64,6 +68,7 @@ jobs:
           node --test tests/count-drift-correction-readonly.test.mjs
           node --test tests/staged-internal-count-read-gateway.test.mjs
           node --test tests/staged-internal-firestore-adapters.test.mjs
+          node --test tests/internal-member-exit.test.cjs
           node --test cloudflare-finance/tests/internal-count-membership.test.mjs
           node --test cloudflare-finance/tests/internal-count-page.test.mjs
           node --test tests/partner-money-free-workspace.test.cjs
