@@ -34,6 +34,7 @@ function identity(token, expectedUid, nowSeconds){
      !Number.isSafeInteger(claims.iat)||!Number.isSafeInteger(claims.exp)||
      claims.iat>nowSeconds+60||claims.exp<=nowSeconds+60||
      claims.exp-claims.iat>3700||
+     !Number.isSafeInteger(claims.auth_time)||
      claims.auth_time>nowSeconds+60)stop('USER_IDENTITY_NOT_VERIFIED');
   return claims.sub;
 }
@@ -49,7 +50,7 @@ function financeQuery(collection,companyId){
     limit:1
   }};
 }
-async function requireResponse(fetcher,url,method,token,body,expectedStatus,field){
+async function requireResponse(fetcher,url,method,token,body,expectedStatus,field,companyId){
   let response;
   try {
     response=await fetcher(url,{
@@ -73,6 +74,7 @@ async function requireResponse(fetcher,url,method,token,body,expectedStatus,fiel
   if(field){
     if(!parsed||typeof parsed!=='object'||!parsed.name?.startsWith(ROOT+'/')||
        !parsed.fields||typeof parsed.fields!=='object'||
+       parsed.fields.companyId?.stringValue!==companyId||
        !parsed.fields[field]||
        !('integerValue' in parsed.fields[field] ||
          'doubleValue' in parsed.fields[field]))stop('OWNER_FINANCE_NOT_VERIFIED');
@@ -111,7 +113,7 @@ export function createLiveFirestoreRoleVerifier({
     // actually read their financial fields. Otherwise partner 403 is vacuous.
     for(const [collection,id,field] of tests){
       await requireResponse(transport,ROOT+'/'+collection+'/'+id,
-        'GET',ownerIdToken,null,200,field);
+        'GET',ownerIdToken,null,200,field,internalCompanyId);
       // Prove that the SAME constrained list query is permitted for Owner.
       await requireResponse(transport,ROOT+':runQuery',
         'POST',ownerIdToken,financeQuery(collection,internalCompanyId),200,null);
