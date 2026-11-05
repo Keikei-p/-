@@ -1,12 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
 import {normalizeInternalCountMembership} from "../src/internal-count-membership.mjs";
 import {projectLegacyCountDay} from "../../security/legacy-internal-count-bridge.mjs";
 import {approvedPolicy} from "../src/index.js";
 
 const uid="owner001",companyId="direct001";
 const legacy={
- uid,companyId,
+ uid,companyId,secondaryContext:null,
  user:{id:uid,companyId,companyRole:"owner",role:"owner"},
  member:{id:uid,companyRole:"owner",role:"owner"},
  company:{id:companyId,ownerUid:uid},
@@ -59,6 +60,13 @@ test("explicit disabled, conflicting UID/roles, wrong company, or partner marker
   {...legacy,member:{...legacy.member,memberType:"cooperator"}},
   {...legacy,company:{...legacy.company,companyKind:"unclassified"}},
   {...legacy,uid:"foreign"},
+  {...legacy,secondaryContext:undefined},
+  {...legacy,secondaryContext:{active:true,kind:"partner_secondary"}},
+  {...legacy,secondaryContext:{active:false,kind:"partner_secondary"}},
+  {...legacy,user:{...legacy.user,accessKind:"vendor"}},
+  {...legacy,member:{...legacy.member,accessKind:"cooperator"}},
+  {...legacy,user:{...legacy.user,memberType:"affiliate"}},
+  {...legacy,member:{...legacy.member,memberType:"unknown"}},
  ];
  for(const candidate of bad){
   assert.throws(()=>normalizeInternalCountMembership(candidate),
@@ -74,4 +82,14 @@ test("normalizer cannot mutate Firestore snapshots or add price access flags",()
  assert.equal(result.serverMembershipVerified,true);
  assert.notEqual(result.user,legacy.user);
  assert.notEqual(result.member,legacy.member);
+});
+
+test("count-only legacy Worker must read secondary context before accepting old internal role",()=>{
+ const source=readFileSync(new URL("../src/index.js",import.meta.url),"utf8");
+ const start=source.indexOf('if(url.pathname==="/v1/internal-counts")');
+ assert(start>0);
+ const block=source.slice(start,source.indexOf('if(url.pathname==="/v1/public-counts")',start));
+ assert.match(block,/firestoreGet\(env,"partnerWorkspaceContexts\/"\+uid\)/);
+ assert.match(block,/uid,companyId:cid,user,member,company,secondaryContext/);
+ assert.doesNotMatch(block,/deleteDoc\(|setDoc\(|updateDoc\(/);
 });
