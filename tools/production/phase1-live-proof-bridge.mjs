@@ -22,7 +22,8 @@ import {phase1Boundary} from './phase1-partner-finance-release.mjs';
 import {createAffectedSecondaryIdentityVerifier} from './phase1-bound-identity-readonly.mjs';
 import {
   createLiveFirestoreOwnerPreflight,
-  createLiveFirestoreRoleVerifier
+  createLiveFirestoreRoleVerifier,
+  createLiveFirestoreSessionPreflight
 } from './verify-live-firestore-roles.mjs';
 
 const stop=code=>{throw Error('STOP_PHASE1_LIVE_BRIDGE_'+code);};
@@ -91,6 +92,39 @@ export async function phase1WithLiveAccountGate({
     ...release,
     apply:true,approval:true,candidateEmulatorVerified:true,
     backupReviewed:true,realOwnerBeforeVerified:true,
+    // Full production inventory + local restore can outlive the tokens used
+    // for the first Owner preflight. The switch engine calls this gate AFTER
+    // its last pre-PATCH inventory fingerprint and BEFORE changing the active
+    // Rules release. This prevents an avoidable input outage and rollback.
+    preApplyCheck:async()=>{
+      const freshIdentity=await createAffectedSecondaryIdentityVerifier(identityArgs)();
+      if(freshIdentity?.checkedAgainst!=='production-admin-readonly'||
+         freshIdentity?.ownerInternalBound!==true||
+         freshIdentity?.affectedSecondaryBound!==true||
+         freshIdentity?.productionDocumentWrites!==0)
+        stop('PRE_SWITCH_AFFECTED_IDENTITY_UNVERIFIED');
+      const session=createLiveFirestoreSessionPreflight(accounts)();
+      if(session?.ownerSessionFresh!==true||
+         session?.partnerSessionFresh!==true||
+         session?.checkedAgainst!=='local-claims-only')
+        stop('PRE_SWITCH_SESSIONS_UNVERIFIED');
+      // A local JWT parse is not proof of Firebase Auth. The original
+      // Owner must STILL read actual live money through Firestore Security
+      // Rules immediately before the switch, with the real user ID token.
+      const owner=await createLiveFirestoreOwnerPreflight(accounts)();
+      if(owner?.checkedAgainst!=='production-live'||
+         owner?.ownerFinanceAllowed!==true)
+        stop('PRE_SWITCH_OWNER_FINANCE_UNVERIFIED');
+      // The token freshness check also runs after network reads, ensuring
+      // it did not expire during the pre-switch Owner probe.
+      createLiveFirestoreSessionPreflight(accounts)();
+      return Object.freeze({
+        checkedAgainst:'production-live',
+        ownerFinanceAllowed:true,
+        affectedSecondaryBound:true,
+        partnerSessionFresh:true
+      });
+    },
     // Recheck the affected secondary membership immediately AFTER the Rules
     // switch, before calling the real UID GET/LIST denial probe. Never claim
     // success for a stale identity snapshot or a different partner UID.
