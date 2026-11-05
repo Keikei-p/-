@@ -10,6 +10,7 @@ const {projectPartnerMonth}=require("./monthly-shared-projection.cjs");
 const {projectPartnerProductMonth}=require("./partner-product-monthly.cjs");
 const {decodeGroups,saveGroups,groupPersonalScores,canPublishSharedPersonalRankings}=require("./shared-ranking-groups.cjs");
 const {readDirectDayCounts,readDirectRangeCounts}=require("./shared-direct-counts.cjs");
+const {reconcileSharedMonthlyCounts}=require("./shared-monthly-reconcile.cjs");
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 // Cashback is a product variant label, NOT a sales unit price or revenue.
 const PARTNER_CB_OPTIONS=Object.freeze({"NURO":Object.freeze(["0","20000","40000","60000","80000","unclassified"])});
@@ -1132,6 +1133,15 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    for(const key of KEYS)productCounts[key]+=rank.counts[key];
    additionalTotalCount+=rank.additionalTotalCount;
   }
+  // Last count-only consistency barrier: all published HQ/partner
+  // company, team, individual and product counts must independently add
+  // up before any shared ranking is composed. One drift blocks all rows.
+  try{
+   reconcileSharedMonthlyCounts({
+    companies,people,teams,productCounts,additionalTotalCount,direct,
+    categories:KEYS
+   });
+  }catch{fail("data-loss");}
   let sharedConfig={revision:0,groups:[]},groupStandings=[],groupStatus="unverified";
   try{
    sharedConfig=await readRankingSettings(hubId);
@@ -1258,16 +1268,25 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      savedTeams.set(t.id,clean(x.name));
     }
     const group=new Map(),unique=new Set(),members=[],memberByStaff=new Map();
+    const verifiedCategories=Object.fromEntries(KEYS.map(key=>[key,0]));
     let verified=0;
     for(const entrySnap of entrySnaps.docs){
      const e=entrySnap.data()||{};
+     // A ranking entry must still belong to its immutable date/staff path.
+     // Reject a copied or mis-keyed person document before building ranks.
      if(e.companyId!==cid||e.hubCompanyId!==hubId||e.date!==date||
-        !ID.test(e.staffId||"")||unique.has(e.staffId))
+        !ID.test(e.staffId||"")||entrySnap.id!==date+"__"+e.staffId||
+        unique.has(e.staffId))
       fail("data-loss");
      unique.add(e.staffId);
      const item=validateCounts(e.counts);
      if(item.total!==e.totalCount)fail("data-loss");
      verified+=item.total;
+     if(!Number.isSafeInteger(verified))fail("data-loss");
+     for(const key of KEYS){
+      verifiedCategories[key]+=item.counts[key];
+      if(!Number.isSafeInteger(verifiedCategories[key]))fail("data-loss");
+     }
      const tid=ID.test(e.teamIdSnapshot||"")?e.teamIdSnapshot:"";
      const safeName=validName(e.staffNameSnapshot)?
       clean(e.staffNameSnapshot):"担当者未確認";
@@ -1289,7 +1308,9 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     // Legacy company-level reports have no verified staff ledger. They
     // remain visible as company totals but NEVER turn into imaginary people.
     const hasLedger=reportSnap.exists&&r.source==="staff-entries-v1";
-    if(hasLedger&&verified!==summary.total)fail("data-loss");
+    if(hasLedger&&(verified!==summary.total||
+       KEYS.some(key=>verifiedCategories[key]!==summary.counts[key])))
+     fail("data-loss");
     if(!hasLedger&&entrySnaps.size>0)fail("data-loss");
     if(!hasLedger)complete=false;
     let companyExtras=0;

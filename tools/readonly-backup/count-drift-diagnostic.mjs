@@ -72,13 +72,39 @@ function afterRowChanges(currentRecord,correction){
   currentRecordUpdatedAfterCorrection:
    Number.isFinite(t1)&&Number.isFinite(t2)?t2>t1:null};
 }
+/**
+ * This is only a row-shape hypothesis: current.results may contain one
+ * additional row after the sole correction's verified after.results.
+ * It cannot establish which sales happened or prove the old nested merge
+ * was the cause. No product ID or raw quantity is returned to CI logs.
+ */
+function extraRowEvidence(rows,record,saved,derived,proof){
+ if(rows.length!==1||proof.beforeConsistent!==1||
+    proof.afterConsistent!==1||proof.afterSavedMatchesCurrent!==1||
+    !Number.isSafeInteger(saved)||!Number.isSafeInteger(derived)||
+    derived<=saved)return false;
+ const after=rows[0]?.value?.fields?.after?.mapValue?.fields;
+ const original=countMap(after?.results);
+ const current=countMap(record?.value?.fields?.results);
+ if(!original||!current||current.size!==original.size+1)return false;
+ let added=0,addedCount=0;
+ for(const [key,count] of current){
+  if(!original.has(key)){added++;addedCount+=count;}
+  else if(original.get(key)!==count)return false;
+ }
+ return added===1&&addedCount===derived-saved;
+}
 function correctionProof(rows,saved,derived,record){
  const result={beforeConsistent:0,beforeMismatched:0,
   afterConsistent:0,afterMismatched:0,
   verifiedAfterSnapshots:0,afterSavedMatchesCurrent:0,
   afterLinesMatchCurrent:0,afterBothMatchCurrent:0,
   unverifiedSnapshots:0,
-  currentVsSingleCorrection:null};
+  currentVsSingleCorrection:null,
+  // An explanatory candidate, never permission for automatic correction.
+  exactOneExtraRowMatchesDrift:false,
+  historicalNestedMergeCauseProven:false,
+  ownerDecisionRequired:true};
  if(rows.length===1)
   result.currentVsSingleCorrection=afterRowChanges(record,rows[0]);
  for(const c of rows){
@@ -98,6 +124,7 @@ function correctionProof(rows,saved,derived,record){
    if(after.saved===saved&&after.derived===derived)result.afterBothMatchCurrent++;
   }else result.unverifiedSnapshots++;
  }
+ result.exactOneExtraRowMatchesDrift=extraRowEvidence(rows,record,saved,derived,result);
  return result;
 }
 export function classifyCountDrift(snapshot){

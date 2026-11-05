@@ -1,0 +1,164 @@
+/**
+ * NO DEPLOY. Server-side, count-only bridge for historical internal records.
+ * Reuses the existing projection without rewriting originals or publishing
+ * raw prices. Dependencies must be SERVER-OWNED Admin/verification adapters.
+ *
+ * A real adapter must query a bounded company/day page at ONE snapshot, sort
+ * strictly by document ID, and supply a fully verified product catalog.
+ * No Firebase initialization, credentials, or browser bundle here.
+ */
+import {projectLegacyCountDay} from './legacy-internal-count-bridge.mjs';
+
+const ORIGIN='https://nico-factory.web.app';
+const ROUTE='/v1/internal-counts';
+const ID=/^[A-Za-z0-9_:-]{1,128}$/;
+const DATE=/^\d{4}-\d{2}-\d{2}$/;
+const TIME=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/;
+const TOKEN=/^Bearer ([A-Za-z0-9._-]{20,12000})$/;
+const MAX_PAGE=50;
+const deny=status=>{throw Object.assign(new Error('internal_counts_blocked'),{status});};
+const validId=v=>typeof v==='string'&&ID.test(v);
+function validDay(day){
+ if(typeof day!=='string'||!DATE.test(day))return false;
+ const d=new Date(day+'T00:00:00Z');
+ return !Number.isNaN(d.valueOf())&&d.toISOString().slice(0,10)===day;
+}
+const plain=v=>v!==null&&typeof v==='object'&&!Array.isArray(v);
+function answer(status,body,origin){
+ const headers={'Content-Type':'application/json; charset=utf-8',
+  'Cache-Control':'no-store','Vary':'Origin','X-Content-Type-Options':'nosniff',
+  'Referrer-Policy':'no-referrer'};
+ if(origin===ORIGIN)headers['Access-Control-Allow-Origin']=ORIGIN;
+ return new Response(JSON.stringify(body),{status,headers});
+}
+function checkAccount(account,auth){
+ if(!plain(account)||account.uid!==auth.uid||account.disabled!==false||
+   account.emailVerified!==true||!Number.isSafeInteger(auth.authTime)||
+   auth.authTime<1||typeof account.tokensValidAfterTime!=='string')deny(403);
+ const after=Date.parse(account.tokensValidAfterTime);
+ if(!Number.isFinite(after)||Math.floor(after/1000)>=auth.authTime)deny(403);
+}
+function strictInternal(principal){
+ const {uid,user,company,member}=principal;
+ if(!validId(uid)||!plain(user)||!plain(company)||!plain(member)||
+   // The server already read users/{uid} and companies/{companyId}/members/{uid}.
+   // Old rows sometimes omit redundant uid/companyId/active fields. Only a
+   // missing field may be filled from those authenticated document paths.
+   (user.uid!=null&&user.uid!==uid)||
+   (member.uid!=null&&member.uid!==uid)||
+   !validId(user.companyId)||
+   (member.companyId!=null&&member.companyId!==user.companyId)||
+   user.active===false||member.active===false||company.active===false||
+   user.companyRole!==member.companyRole)deny(403);
+ // A positive, current partner marker always vetoes the historical direct
+ // account, even when its stale companyRole is owner/master.
+ if(![undefined,'internal','direct'].includes(company.companyKind)||
+   ![undefined,'internal'].includes(user.accessKind)||
+   ![undefined,'internal'].includes(member.accessKind)||
+   ![undefined,'internal','direct','member','managed'].includes(user.memberType)||
+   ![undefined,'internal','direct','member','managed'].includes(member.memberType))
+   deny(403);
+ // The downstream projection requires explicit uid/active/companyId. Create
+ // a count-only in-memory copy; never grant money permissions or write docs.
+ return Object.freeze({
+   companyId:user.companyId,
+   user:{...user,uid,active:true},
+   member:{...member,uid,companyId:user.companyId,active:true},
+   company:{...company,active:true}
+ });
+}
+export function createStagedInternalCountReadGateway({
+ enabled=false,authenticateBearer,loadAuthUser,readDocument,loadCountPage
+}={}){
+ if(enabled!==true)return async request=>
+  answer(503,{error:'service_disabled'},request?.headers?.get?.('Origin')||'');
+ if([authenticateBearer,loadAuthUser,readDocument,loadCountPage]
+   .some(fn=>typeof fn!=='function'))throw Error('INTERNAL_COUNT_SERVER_ADAPTER_MISSING');
+ return async function handle(request){
+  const origin=request?.headers?.get?.('Origin')||'';
+  try{
+   // Same-origin GET may have no Origin header; reject any foreign Origin.
+   if(!request||request.method!=='GET'||(origin&&origin!==ORIGIN))deny(403);
+   const url=new URL(request.url);
+   if(url.protocol!=='https:'||url.origin!==ORIGIN||url.pathname!==ROUTE||
+      url.hash)deny(403);
+   const q=url.searchParams,keys=[...q.keys()];
+   if(keys.length<1||keys.some(k=>!['day','cursor','readTime'].includes(k))||
+      new Set(keys).size!==keys.length)deny(400);
+   const day=q.get('day'),cursor=q.get('cursor')||'';
+   const snapshot=q.get('readTime')||'';
+   if(!validDay(day)||(cursor&&!validId(cursor))||
+      Boolean(cursor)!==Boolean(snapshot)||
+      (snapshot&&!TIME.test(snapshot)))deny(400);
+   const token=request.headers.get('Authorization')?.match(TOKEN)?.[1];
+   if(!token)deny(401);
+   let auth;
+   try{auth=await authenticateBearer(token);}catch{deny(401);}
+   if(!plain(auth)||!validId(auth.uid)||auth.emailVerified!==true)deny(401);
+   const account=await loadAuthUser(auth.uid);
+   checkAccount(account,auth);
+   // A secondary context vetoes the *old internal identity*, even when
+   // a stale Owner/Master flag and active=false context still exist.
+   const [user,secondary]=await Promise.all([
+    readDocument('users/'+auth.uid),
+    readDocument('partnerWorkspaceContexts/'+auth.uid)
+   ]);
+   if(secondary!==null&&secondary!==undefined)deny(403);
+   if(!plain(user)||!validId(user.companyId))deny(403);
+   const [company,member]=await Promise.all([
+    readDocument('companies/'+user.companyId),
+    readDocument('companies/'+user.companyId+'/members/'+auth.uid)
+   ]);
+   const verified=strictInternal({uid:auth.uid,user,company,member});
+   const {companyId}=verified;
+   const page=await loadCountPage({
+    companyId,day,cursor,snapshotTime:snapshot||null,limit:MAX_PAGE
+   });
+   // The trusted reader must attest a complete, consistently read slice.
+   // Missing pages and stale snapshots are NEVER interpreted as 0 records.
+   if(!plain(page)||page.complete!==true||
+      !Array.isArray(page.records)||page.records.length>MAX_PAGE||
+      !Array.isArray(page.products)||page.products.length>200||
+      typeof page.readTime!=='string'||!TIME.test(page.readTime)||
+      (snapshot&&snapshot!==page.readTime)||
+      typeof page.hasMore!=='boolean'||
+      (page.hasMore&&page.records.length!==MAX_PAGE))deny(503);
+   let last=cursor;
+   for(const record of page.records){
+    if(!plain(record)||!validId(record.id)||record.id<=last||
+       record.companyId!==companyId||record.date!==day)deny(503);
+    last=record.id;
+   }
+   // The trusted reader must prove next-page presence with a lookahead.
+   // Exactly MAX_PAGE records can still be the final page (no extra empty query).
+   if(page.hasMore){
+    if(page.nextCursor!==last||!validId(last))deny(503);
+   }else if(page.nextCursor!==null)deny(503);
+   const projected=projectLegacyCountDay({
+    principal:{uid:auth.uid,companyId,firebaseIdTokenVerified:true,
+      emailVerified:true,serverMembershipVerified:true,
+      serverVerifiedInternalCompany:true,
+      user:verified.user,member:verified.member,company:verified.company},
+    day,readTime:page.readTime,records:page.records,products:page.products
+   });
+   // Product IDs in the historic record must be confirmed against catalog;
+   // no missing products, invented categories or truncated saved totals.
+   const ids=new Set(projected.products.map(p=>p.sourceId));
+   if(projected.lines.length>2000||
+      projected.lines.some(line=>!ids.has(line.productId)))deny(503);
+   // Match the real Worker/browser public-count page contract exactly.
+   // The product catalog is verified server-side for every page but never
+   // re-sent to the browser after the first page; originals stay unchanged.
+   return answer(200,{
+    day,readTime:page.readTime,companyId,
+    records:projected.records,lines:projected.lines,
+    products:cursor?[]:projected.products,
+    catalogIncluded:!cursor,hasMore:page.hasMore,
+    nextCursor:page.hasMore?last:null
+   },origin);
+  }catch(e){
+   return answer(Number.isInteger(e?.status)?e.status:503,
+     {error:'request_blocked'},origin);
+  }
+ };
+}

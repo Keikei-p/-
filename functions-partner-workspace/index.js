@@ -5,6 +5,7 @@ const {getFirestore,FieldValue,Timestamp}=require("firebase-admin/firestore");
 const {onCall,HttpsError}=require("firebase-functions/v2/https");
 const {makeWorkspace}=require("./service.cjs");
 const {makeCompanyCodeAuth}=require("./company-code-auth.cjs");
+const {makeInternalMemberExit}=require("./internal-member-exit.cjs");
 initializeApp();
 const service=makeWorkspace({
  db:getFirestore(),getAuth,FieldValue,Timestamp,HttpsError,
@@ -38,3 +39,10 @@ exports.issuePartnerCompanyCode=onCall(opts,codeAuth.issue);
 exports.activatePartnerCompanyCode=onCall(opts,codeAuth.activate);
 exports.loginPartnerCompanyCode=onCall(opts,codeAuth.login);
 exports.logoutPartnerCompanyCode=onCall(opts,codeAuth.logout);
+
+// Separate default-OFF internal exit; never cascade-delete Auth or records.
+const internalMemberExit=makeInternalMemberExit({
+ db:getFirestore(),getAuth,FieldValue,HttpsError,
+ enabled:()=>process.env.SAFE_INTERNAL_MEMBER_REMOVAL_ENABLED==="enabled"
+});
+exports.removeInternalCompanyMember=onCall(opts,internalMemberExit.remove);

@@ -15,8 +15,12 @@ const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const denied=()=>{const e=new Error("legacy_count_membership_denied");e.status=403;throw e;};
 const isId=x=>typeof x==="string"&&ID.test(x);
 export function normalizeInternalCountMembership({
-  uid,companyId,user,member,company
+  uid,companyId,user,member,company,secondaryContext
 }={}){
+ // The trusted server must explicitly query the secondary context.
+ // Undefined means the check was skipped; any existing context, including
+ // inactive/old partner context, revokes historic internal count access.
+ if(secondaryContext!==null)denied();
  if(!isId(uid)||!isId(companyId)||!user||!member||!company ||
    user.id!==uid||member.id!==uid||company.id!==companyId ||
    user.companyId!==companyId ||
@@ -26,9 +30,10 @@ export function normalizeInternalCountMembership({
    user.active===false||member.active===false||company.active===false ||
    user.companyRole!==member.companyRole ||
    ![undefined,"internal","direct"].includes(company.companyKind) ||
-   [user.accessKind,member.accessKind,user.memberType,member.memberType]
-     .some(k=>k==="partner"||k==="cooperator"||
-       k!=null&&typeof k!=="string"))
+   [user.accessKind,member.accessKind].some(k=>
+     k!=null&&k!=="internal") ||
+   [user.memberType,member.memberType].some(k=>
+     k!=null&&!["internal","direct","member","managed"].includes(k)))
   denied();
  return {
   uid,companyId,

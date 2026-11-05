@@ -1,0 +1,103 @@
+name: NICO shared rankings + secondary finance boundary (NO DEPLOY)
+on:
+  push:
+    branches:
+      - integration/shared-rank-finance-boundary-20261104
+  pull_request:
+    branches:
+      - fix/partner-shared-rank-independent-requests-20261104
+permissions:
+  contents: read
+concurrency:
+  # Test newest draft commit only; older no-deploy checks must not consume free minutes.
+  group: nico-shared-finance-integration-no-deploy
+  cancel-in-progress: true
+jobs:
+  demo-emulator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      FIREBASE_PROJECT_ID: demo-sales-support
+      GCLOUD_PROJECT: demo-sales-support
+      GOOGLE_APPLICATION_CREDENTIALS: ""
+      FIREBASE_SERVICE_ACCOUNT_JSON: ""
+      NICO_ACCOUNT_ERASURE_ENABLED: ""
+      SAFE_INTERNAL_MEMBER_REMOVAL_ENABLED: ""
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Fail closed on unexpected changes and real Firebase credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$FIREBASE_PROJECT_ID" = demo-sales-support
+          test "$GCLOUD_PROJECT" = demo-sales-support
+          test -z "${GOOGLE_APPLICATION_CREDENTIALS:-}"
+          test -z "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          test -z "${NICO_ACCOUNT_ERASURE_ENABLED:-}"
+          test -z "${SAFE_INTERNAL_MEMBER_REMOVAL_ENABLED:-}"
+          git fetch --no-tags origin fix/partner-shared-rank-independent-requests-20261104
+          git fetch --no-tags origin main
+          git diff --name-only origin/fix/partner-shared-rank-independent-requests-20261104...HEAD > /tmp/nico-integration-files.txt
+          cat /tmp/nico-integration-files.txt
+          if grep -Ev '^(firestore\.rules|tests/rules\.test\.cjs|\.github/workflows/nico-shared-rank-finance-integration-no-deploy\.yml|scripts/check-finance-read-boundary-before-deploy\.mjs|tests/finance-release-gate\.test\.mjs|tools/production/check-partner-release-readiness\.mjs|tests/partner-release-readiness-audit\.test\.mjs|security/finance-stage2-integrated\.mjs|tests/finance-stage2-integrated\.test\.mjs|security/reviewed-phase1-rules-preview\.mjs|tests/reviewed-phase1-rules-preview\.test\.mjs|security/staged-internal-count-read-gateway\.mjs|tests/staged-internal-count-read-gateway\.test\.mjs|security/staged-internal-firestore-reader\.mjs|security/staged-internal-firebase-adapters\.mjs|tests/staged-internal-firestore-adapters\.test\.mjs|security/staged-internal-count-browser\.mjs|tests/staged-internal-count-browser\.test\.mjs|cloudflare-finance/src/index\.js|cloudflare-finance/src/internal-count-membership\.mjs|cloudflare-finance/tests/internal-count-membership\.test\.mjs|functions-partner-workspace/index\.js|functions-partner-workspace/internal-member-exit\.cjs|tests/internal-member-exit\.test\.cjs|functions-partner-workspace/service\.cjs|functions-partner-workspace/monthly-shared-projection\.cjs|tests/partner-monthly-shared-counts\.test\.cjs|tests/partner-workspace\.test\.cjs|functions-partner-workspace/shared-monthly-reconcile\.cjs|tests/shared-monthly-reconcile\.test\.cjs|tools/readonly-backup/count-drift-diagnostic\.mjs|tests/count-drift-diagnostic-readonly-20261103\.test\.mjs|tests/count-drift-correction-readonly\.test\.mjs|tests/canonical-shared-rank-ui.test.cjs|tests/partner-always-visible-success-ui-20261102\.test\.mjs|index\.html)$' /tmp/nico-integration-files.txt; then
+            echo STOP_UNEXPECTED_INTEGRATION_FILES
+            exit 1
+          fi
+          node --check tests/rules.test.cjs
+          node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/index.js
+          node --check functions-partner-workspace/internal-member-exit.cjs
+          node --check functions-partner-workspace/monthly-shared-projection.cjs
+          node --check functions-partner-workspace/shared-monthly-reconcile.cjs
+          node --check functions-partner-workspace/shared-direct-counts.cjs
+      - name: Verify count-only shared rankings, old UI and owner money visibility
+        run: |
+          node --test tests/shared-count-management.test.cjs
+          node --test tests/shared-daily-concurrent-panels.test.cjs
+          node --test tests/partner-ui-layout-parity.test.cjs
+          node --test tests/canonical-shared-rank-ui.test.cjs
+          node --test tests/partner-always-visible-success-ui-20261102.test.mjs
+          node --test tests/partner-extra-shared-ranking.test.cjs
+          node --test tests/partner-monthly-shared-counts.test.cjs
+          node --test tests/shared-monthly-reconcile.test.cjs
+          node --test tests/partner-workspace.test.cjs
+          node --test tests/internal-owner-finance-visibility.test.cjs
+          node --test tests/direct-record-count-correction-guard.test.cjs
+          node --test tests/count-drift-correction-readonly.test.mjs
+          node --test tests/count-drift-diagnostic-readonly-20261103.test.mjs
+          node --test tests/staged-internal-count-read-gateway.test.mjs
+          node --test tests/staged-internal-firestore-adapters.test.mjs
+          node --test tests/staged-internal-count-browser.test.mjs
+          node --test tests/internal-member-exit.test.cjs
+          node --test cloudflare-finance/tests/internal-count-membership.test.mjs
+          node --test cloudflare-finance/tests/internal-count-page.test.mjs
+          node --test tests/partner-money-free-workspace.test.cjs
+          NODE_OPTIONS=--experimental-vm-modules node --test tests/partner-index-module-parse.test.cjs
+      - name: Verify release blockers remain enforced without any credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check tools/production/check-partner-release-readiness.mjs
+          node --test tests/partner-release-readiness-audit.test.mjs
+          node --test tests/finance-release-gate.test.mjs
+          node --test tests/reviewed-phase1-rules-preview.test.mjs
+          node tools/production/check-partner-release-readiness.mjs --assert-known-blockers | tee /tmp/nico-release-blockers.log
+          grep -Fq PASS_KNOWN_RELEASE_BLOCKERS_IDENTIFIED_NO_DEPLOYMENT /tmp/nico-release-blockers.log
+      - name: Install emulator-only Firestore test dependencies
+        run: npm install --prefix tests --ignore-scripts --no-audit --no-fund
+      - name: Verify every Firestore Rules test with synthetic demo identities
+        run: |
+          npx --yes firebase-tools@15.34.1 emulators:exec --project demo-sales-support --only firestore "node --test tests/rules.test.cjs && node --test tests/finance-stage2-integrated.test.mjs"
+      - name: No deployment or real data writes
+        run: |
+          echo 'PASS: demo emulator only - no Firebase production, no Hosting, no Functions, no Rules publish'

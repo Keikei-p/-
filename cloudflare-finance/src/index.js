@@ -717,7 +717,12 @@ export default {
           return {...verified,emailVerified:true};
         },
         loadMembership:async uid=>{
-          const user=await firestoreGet(env,"users/"+uid);
+          // A former internal UID with any secondary partner context must
+          // never revive its historic internal count-read privileges.
+          const [user,secondaryContext]=await Promise.all([
+            firestoreGet(env,"users/"+uid),
+            firestoreGet(env,"partnerWorkspaceContexts/"+uid)
+          ]);
           const cid=user?.companyId;
           if(!/^[A-Za-z0-9_-]{1,128}$/.test(cid||""))throw httpError(403,"member_unavailable");
           const [company,member]=await Promise.all([
@@ -728,7 +733,7 @@ export default {
           // Legacy documents may omit redundant uid/active/companyId fields.
           // An explicit conflicting UID, role or deactivation is still denied.
           return normalizeInternalCountMembership({
-            uid,companyId:cid,user,member,company
+            uid,companyId:cid,user,member,company,secondaryContext
           });
         },
         queryDailyRecords:makeCountDayFirestoreReader({

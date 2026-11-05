@@ -25,7 +25,7 @@ function projectPartnerMonth({hubId,cid,companyName,from,to,legacyDocs,extraDocs
   const key=hash(cid+"\n"+staffId),teamKey=hash(cid+"\nteam\n"+teamId);
   let p=people.get(staffId);
   if(!p){
-   p={key,name,companyName,teamKey,teamName:Object.hasOwn(teamNames,teamId)&&
+   p={key,name,companyId:cid,companyName,teamKey,teamName:Object.hasOwn(teamNames,teamId)&&
     safe(teamNames[teamId])?teamNames[teamId].trim():"当時の班名未確認",totalCount:0,
     counts:zero(),extraCounts:{}};
    people.set(staffId,p);
@@ -39,7 +39,7 @@ function projectPartnerMonth({hubId,cid,companyName,from,to,legacyDocs,extraDocs
   const key=hash(cid+"\nteam\n"+teamId);
   const savedName=Object.hasOwn(teamNames,teamId)&&safe(teamNames[teamId])?
    teamNames[teamId].trim():"当時の班名未確認";
-  if(!teams.has(key))teams.set(key,{key,name:savedName,companyName,
+  if(!teams.has(key))teams.set(key,{key,companyId:cid,name:savedName,companyName,
    totalCount:0,counts:zero(),extraTotalCount:0});
   return teams.get(key);
  };

@@ -53,3 +53,50 @@ test("replacing another collection's read guard with sameCompany is not approved
    "&& sameCompany(resource.data.companyId)");
  assert.throws(()=>checkFinanceRulesBeforeDeploy(altered),/RAW_READ/);
 });
+
+test("only the original internal Owner or Master may read raw finance on a staged ruleset",()=>{
+ const owner="isCompanyOwner(resource.data.companyId)";
+ for(const table of ["products","records","recordCorrections","revenueGoals"]){
+  const start=stage2.indexOf("match /"+table+"/{");
+  assert(start>=0,table+" must be a real finance rule path");
+  const after=stage2.indexOf("\n    match /",start+1);
+  const body=stage2.slice(start,after<0?undefined:after);
+  const read=body.match(/allow read:\s*if\s*([\s\S]*?);/)?.[1];
+  assert(read?.includes(owner),table+" finance read must have an Owner branch");
+  for(const replacement of [
+   owner+" || true",
+   owner+" || isCompanyLeader(resource.data.companyId)",
+   owner+" || canViewRevenue(resource.data.companyId)"
+  ]){
+   const nextRead=read.replace(owner,replacement);
+   assert.notEqual(nextRead,read,table+" must alter the financial read");
+   const mutated=stage2.slice(0,start)+body.replace(read,nextRead)+stage2.slice(after<0?stage2.length:after);
+   assert.throws(()=>checkFinanceRulesBeforeDeploy(mutated),/RAW_READ_/,table);
+  }
+ }
+});
+test("a partner-allowing OR inside the finance helper cannot pass string-only guard tests",()=>{
+ for(const replacement of [
+  "return companyId != null || true",
+  "return companyId != null && (true || false)",
+ ]){
+  const mutant=stage2.replace("return companyId != null",replacement);
+  assert.notEqual(mutant,stage2);
+  assert.throws(()=>checkFinanceRulesBeforeDeploy(mutant),/MISSING_SERVER_PARTNER_GUARD/);
+ }
+ const marker="get(memberPath(companyId, request.auth.uid)).data.get('memberType', 'internal') != 'cooperator'";
+ const unsafe=stage2.replace(marker,"true");
+ assert.notEqual(unsafe,stage2);
+ assert.throws(()=>checkFinanceRulesBeforeDeploy(unsafe),/MISSING_SERVER_PARTNER_GUARD/);
+});
+test("get of existing financial records must not be enabled by additional OR",()=>{
+ const marker="!exists(/databases/$(database)/documents/records/$(recordId))";
+ assert(stage2.includes(marker));
+ for(const unsafe of [
+  stage2.replace(marker,marker+" || true"),
+  stage2.replace(marker,"("+marker+" || true)")
+ ]){
+  assert.notEqual(unsafe,stage2);
+  assert.throws(()=>checkFinanceRulesBeforeDeploy(unsafe),/ADDITIVE_GET_records/);
+ }
+});
