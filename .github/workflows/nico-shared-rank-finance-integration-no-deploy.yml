@@ -43,7 +43,7 @@ jobs:
           git fetch --no-tags origin fix/partner-shared-rank-independent-requests-20261104
           git diff --name-only origin/fix/partner-shared-rank-independent-requests-20261104...HEAD > /tmp/nico-integration-files.txt
           cat /tmp/nico-integration-files.txt
-          if grep -Ev '^(firestore\.rules|tests/rules\.test\.cjs|\.github/workflows/nico-shared-rank-finance-integration-no-deploy\.yml|tools/production/check-partner-release-readiness\.mjs|tests/partner-release-readiness-audit\.test\.mjs|security/finance-stage2-integrated\.mjs|tests/finance-stage2-integrated\.test\.mjs)$' /tmp/nico-integration-files.txt; then
+          if grep -Ev '^(firestore\.rules|tests/rules\.test\.cjs|\.github/workflows/nico-shared-rank-finance-integration-no-deploy\.yml|tools/production/check-partner-release-readiness\.mjs|tests/partner-release-readiness-audit\.test\.mjs|security/finance-stage2-integrated\.mjs|tests/finance-stage2-integrated\.test\.mjs|security/staged-internal-count-read-gateway\.mjs|tests/staged-internal-count-read-gateway\.test\.mjs)$' /tmp/nico-integration-files.txt; then
             echo STOP_UNEXPECTED_INTEGRATION_FILES
             exit 1
           fi
@@ -62,6 +62,7 @@ jobs:
           node --test tests/internal-owner-finance-visibility.test.cjs
           node --test tests/direct-record-count-correction-guard.test.cjs
           node --test tests/count-drift-correction-readonly.test.mjs
+          node --test tests/staged-internal-count-read-gateway.test.mjs
           node --test tests/partner-money-free-workspace.test.cjs
           NODE_OPTIONS=--experimental-vm-modules node --test tests/partner-index-module-parse.test.cjs
       - name: Verify release blockers remain enforced without any credentials
