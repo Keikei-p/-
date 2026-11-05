@@ -1272,8 +1272,11 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     let verified=0;
     for(const entrySnap of entrySnaps.docs){
      const e=entrySnap.data()||{};
+     // A ranking entry must still belong to its immutable date/staff path.
+     // Reject a copied or mis-keyed person document before building ranks.
      if(e.companyId!==cid||e.hubCompanyId!==hubId||e.date!==date||
-        !ID.test(e.staffId||"")||unique.has(e.staffId))
+        !ID.test(e.staffId||"")||entrySnap.id!==date+"__"+e.staffId||
+        unique.has(e.staffId))
       fail("data-loss");
      unique.add(e.staffId);
      const item=validateCounts(e.counts);
