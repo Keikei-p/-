@@ -66,8 +66,13 @@ export function inspectPartnerReleaseReadiness(input){
     if(typeof value!=='string'||value.length<20)throw Error('RELEASE_INPUT_MISSING_'+name);
   }
   const blockers=[];
-  if(!rules.includes('function noSecondaryPartnerWorkspace()')||
-     !rules.includes('!exists(/databases/$(database)/documents/partnerWorkspaceContexts/$(request.auth.uid))')){
+  // Require the exact fail-closed secondary-identity predicate, not merely
+  // the presence of a reassuring "!exists" substring alongside "|| true".
+  const secondaryPredicate=rules.match(
+    /function noSecondaryPartnerWorkspace\(\)\s*\{([^}]*)\}/
+  )?.[1]?.replace(/\s+/g,'');
+  if(secondaryPredicate!==
+    'returnsignedIn()&&!exists(/databases/$(database)/documents/partnerWorkspaceContexts/$(request.auth.uid));'){
     blockers.push('PARTNER_SECONDARY_UID_GUARD_MISSING');
   }
   for(const [collection,verb] of ROOTS){
