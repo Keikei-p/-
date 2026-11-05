@@ -8,6 +8,7 @@ const {projectExtraRankDocs}=require("./extra-rank-projection.cjs");
 const {ownerPublishedExtraBreakdown}=require("./owner-published-extra-breakdown.cjs");
 const {projectPartnerMonth}=require("./monthly-shared-projection.cjs");
 const {projectPartnerProductMonth}=require("./partner-product-monthly.cjs");
+const {projectPartnerMonthTeamDetails}=require("./partner-monthly-team-detail.cjs");
 const {decodeGroups,saveGroups,groupPersonalScores,canPublishSharedPersonalRankings}=require("./shared-ranking-groups.cjs");
 const {readVisibleRankingGroups,addAutomaticPublishedGroups}=require("./automatic-published-groups.cjs");
 const {readDirectDayCounts,readDirectRangeCounts}=require("./shared-direct-counts.cjs");
@@ -1051,6 +1052,71 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    fail();
   return {kind:"hub",uid,cid,role:u.companyRole};
  }
+ // Own-company monthly team/person/product detail is read-only and never
+ // changes daily input, version history or original finance documents.
+ async function viewPartnerMonthTeam(request){
+  const a=await actor(request),d=request?.data||{};
+  if(Object.keys(d).some(k=>!["month","workspaceCompanyId"].includes(k))||
+     typeof d.month!=="string"||!/^\d{4}-(0[1-9]|1[0-2])$/.test(d.month)||
+     d.month>jstToday().slice(0,7))fail("invalid-argument");
+  const from=validDate(d.month+"-01"),[year,m]=d.month.split("-").map(Number);
+  const end=new Date(Date.UTC(year,m,0)).toISOString().slice(0,10);
+  const through=end<jstToday()?end:jstToday();
+  const s=await scope(a.uid,null,d.workspaceCompanyId);
+  if(s.kind!=="partner"||!ID.test(s.cid)||!ID.test(s.hubId))fail();
+  const [work,extra,teams,privateProducts,pub,links]=await Promise.all([
+   collection(s.cid,"partnerWorkEntries").where("date",">=",from)
+    .where("date","<=",through).limit(2001).get(),
+   collection(s.cid,"partnerAdditionalCountEntries").where("date",">=",from)
+    .where("date","<=",through).limit(2001).get(),
+   collection(s.cid,"partnerWorkTeams").limit(151).get(),
+   collection(s.cid,"partnerPrivateProducts").limit(101).get(),
+   publicationRef(s.hubId).get(),countLinksRef(s.hubId).get()
+  ]);
+  if(work.size>2000||extra.size>2000||teams.size>150||
+    privateProducts.size>100)fail("resource-exhausted");
+  const teamNames={};
+  for(const doc of teams.docs){
+   const row=doc.data()||{};
+   if(!ID.test(doc.id)||row.companyId!==s.cid||!validName(row.name))
+    fail("data-loss");
+   teamNames[doc.id]=clean(row.name);
+  }
+  const partnerPrivate=[];
+  for(const doc of privateProducts.docs){
+   const row=doc.data()||{};
+   if(!validId(doc.id)||row.companyId!==s.cid||
+     row.origin!=="partner_custom"||row.visibility!=="private"||
+     !validPrivateName(row.name))fail("data-loss");
+   partnerPrivate.push({id:doc.id,name:clean(row.name)});
+  }
+  let active,linked;
+  try{
+   const approved=loadPublication(pub.exists?pub.data():null).productIds;
+   linked=readLinks(links.exists?links.data():null,KEYS).links
+    .map(link=>link.productId);
+   active=(await activePublishedProducts(s.hubId,approved))
+    .filter(product=>!linked.includes(product.id));
+  }catch{fail("data-loss");}
+  // A member gets only their own staff records, matching day-view canStaff.
+  let visibleWork=work.docs,visibleExtra=extra.docs;
+  if(s.role==="member"){
+   const staff=await staffRef(s.cid,a.uid).get(),p=staff.data()||{};
+   if(!staff.exists||p.uid!==a.uid||p.kind!=="account"||
+      p.active!==true||p.companyId!==s.cid)fail();
+   visibleWork=visibleWork.filter(x=>x.data()?.staffId===a.uid);
+   visibleExtra=visibleExtra.filter(x=>x.data()?.staffId===a.uid);
+  }
+  let projection;
+  try{
+   projection=projectPartnerMonthTeamDetails({hubId:s.hubId,cid:s.cid,
+    companyName:clean(s.companyName),month:d.month,keys:KEYS,
+    workDocs:visibleWork,extraDocs:visibleExtra,
+    teamNames,publishedProducts:active,linkedIds:linked,
+    privateProducts:partnerPrivate});
+  }catch{fail("data-loss");}
+  return {...projection,role:s.role,visibility:s.role==="member"?"self":"company"};
+ }
  async function viewProductMonthly(request){
   const a=await actor(request),d=request?.data||{};
   if(Object.keys(d).some(key=>!["month","workspaceCompanyId"].includes(key))||
@@ -1818,7 +1884,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      privateTotalCount:privateValidated.total};
   });
  }
- return Object.freeze({manage,accept,view,viewMonthly,viewProductMonthly,submit,viewCatalog,setCatalogPublication,
+ return Object.freeze({manage,accept,view,viewMonthly,viewPartnerMonthTeam,viewProductMonthly,submit,viewCatalog,setCatalogPublication,
   getPartnerRankingGroups,setPartnerRankingGroups,getPartnerCountLinks,setPartnerCountLink,
   viewAdditionalCounts,submitAdditionalCounts});
 }

@@ -15,6 +15,8 @@ const opts={region:"asia-northeast1",maxInstances:3,
 exports.getPartnerWorkspace=onCall(opts,service.view);
 // Explicit opt-in: bounded monthly COUNT-ONLY projection, never deploy by CI.
 exports.getPartnerMonthlySharedCounts=onCall(opts,service.viewMonthly);
+// Partner-only month dashboard, saved team/member/product details, no writes.
+exports.getPartnerMonthlyTeamDetails=onCall(opts,service.viewPartnerMonthTeam);
 // Own-company, saved-entry MONTHLY product totals. Read only; no financial originals.
 exports.getPartnerProductMonthlyTotals=onCall(opts,service.viewProductMonthly);
 exports.managePartnerWorkspace=onCall(opts,service.manage);

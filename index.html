@@ -4883,17 +4883,28 @@ body.product-reordering .product-list {
   <button id="pInlineReturnToOwnCompany" type="button" class="team-action-button" hidden>
     自社アカウントの画面に戻る
   </button>
-  <p class="p-inline-muted">今日の実績を登録・確認できます。</p>
+  <p class="p-inline-muted">10月・11月など表示月を選んで件数と班別詳細を確認できます。実績入力・訂正は従来どおり日付別です。</p>
   <div id="partnerGlobalDateToolbar" class="p-inline-grid">
-    <label class="p-inline-field">ダッシュボードの表示日<input id="pInlineDate" type="date"></label>
-    <div class="p-inline-field"><label for="pInlineRefresh">最新データ</label><button id="pInlineRefresh" type="button">更新</button></div>
+    <label class="p-inline-field">ダッシュボードの表示月<input id="pInlineDashboardMonth" type="month" aria-label="協力店ダッシュボードの対象月"></label>
+    <div class="p-inline-field"><label for="pInlineDashboardMonthRefresh">月間集計</label><button id="pInlineDashboardMonthRefresh" type="button">月間件数を更新</button></div>
+    <label class="p-inline-field">実績入力・履歴の表示日<input id="pInlineDate" type="date"></label>
+    <div class="p-inline-field"><label for="pInlineRefresh">選択日のデータ</label><button id="pInlineRefresh" type="button">日別を更新</button></div>
   </div>
   <p id="pInlineStatus" role="status" aria-live="polite"></p>
-  <div class="dashboard-summary" aria-label="協力店の選択日実績">
-    <div class="summary-card"><div class="summary-label">選択日の件数</div><div id="pPartnerDailyCount" class="summary-value">-</div></div>
-    <div class="summary-card"><div class="summary-label">報告した担当者</div><div id="pPartnerStaffCount" class="summary-value">-</div></div>
-    <div class="summary-card"><div class="summary-label">班数</div><div id="pPartnerTeamCount" class="summary-value">-</div></div>
+  <div class="dashboard-summary" aria-label="協力店の選択月実績">
+    <div class="summary-card"><div class="summary-label">選択月の保存済み件数</div><div id="pPartnerMonthCount" class="summary-value">-</div></div>
+    <div class="summary-card"><div class="summary-label">報告した担当者（月間）</div><div id="pPartnerMonthStaffCount" class="summary-value">-</div></div>
+    <div class="summary-card"><div class="summary-label">稼働した班（月間）</div><div id="pPartnerMonthTeamCount" class="summary-value">-</div></div>
   </div>
+  <p id="pPartnerMonthStatus" class="p-inline-muted" role="status" aria-live="polite">月を選ぶと、その月に保存された件数だけを集計します。</p>
+  <details class="p-inline-card" id="partnerDaySummaryDisclosure">
+    <summary>選択日の件数を見る（日別）</summary>
+    <div class="dashboard-summary" aria-label="協力店の選択日実績">
+      <div class="summary-card"><div class="summary-label">選択日の件数</div><div id="pPartnerDailyCount" class="summary-value">-</div></div>
+      <div class="summary-card"><div class="summary-label">報告した担当者</div><div id="pPartnerStaffCount" class="summary-value">-</div></div>
+      <div class="summary-card"><div class="summary-label">班数</div><div id="pPartnerTeamCount" class="summary-value">-</div></div>
+    </div>
+  </details>
   <div class="p-inline-card" id="partnerLegacyShortcuts" hidden>
     <div class="dashboard-title">✏️ 実績入力</div>
     <button id="pPartnerRecordToggle" type="button" class="team-action-button">入力欄を開く・閉じる</button>
@@ -5059,16 +5070,26 @@ body.product-reordering .product-list {
     <div class="p-inline-card" id="partnerSharedRankingsSection">
       <h3>🤝 協力店合同ランキング（選択日）</h3>
       <p class="p-inline-muted">承認済みの協力店で共通の件数・順位です。直営も協力店も件数のみを集計し、売上・単価を表示しません。</p>
-      <button id="partnerSharedRankingsRefresh" type="button" class="team-action-button">みんなのランキングを更新</button>
-      <button id="partnerSharedRankingsMonthButton" type="button" class="team-action-button">直営＋協力店｜月間件数（暫定）</button>
+      <button id="partnerSharedRankingsRefresh" type="button" class="team-action-button">選択日のランキング</button>
+      <button id="partnerSharedRankingsMonthButton" type="button" class="team-action-button">選択月のランキング（暫定）</button>
       <label class="ranking-product-scope">月間<input id="partnerSharedRankingsMonth" type="month"></label>
       <p id="partnerSharedRankingsStatus" role="status"></p>
       <div id="partnerSharedRankingContent" class="p-inline-list"></div>
     </div>
   </section>
   <section id="partnerPanelDetail" data-partner-view="detail" hidden>
-    <div class="p-inline-card"><h3>📋 班別詳細</h3><div id="pInlineTeamDetails" class="p-inline-list"></div></div>
-    <div class="p-inline-card"><h3>🌐 直営・協力店 全社班別詳細（選択日）</h3><button id="partnerSharedDetailRefresh" class="team-action-button" type="button">全社の会社・班・担当者件数を表示</button><p id="partnerSharedDetailStatus" role="status"></p><div id="partnerSharedDetailTree" class="p-inline-list"></div></div>
+    <div class="p-inline-card"><h3>📋 班別詳細（月間）</h3>
+      <p id="partnerMonthlyTeamStatus" class="p-inline-muted" role="status">上の表示月を選ぶと、1か月分だけ班・担当者・商材の件数を表示します。</p>
+      <div id="partnerMonthlyTeamDetails" class="p-inline-list partner-count-team-grid"></div>
+    </div>
+    <details class="p-inline-card"><summary>選択日の班別詳細（日別）を見る</summary>
+      <div id="pInlineTeamDetails" class="p-inline-list"></div>
+    </details>
+    <details class="p-inline-card"><summary>直営・協力店の全社班別詳細（選択日）を見る</summary>
+      <button id="partnerSharedDetailRefresh" class="team-action-button" type="button">全社の会社・班・担当者件数を表示</button>
+      <p id="partnerSharedDetailStatus" role="status"></p>
+      <div id="partnerSharedDetailTree" class="p-inline-list"></div>
+    </details>
   </section>
   <section id="partnerPanelDaily" data-partner-view="daily" hidden>
     <div class="p-inline-card"><h3>📅 日別</h3><p>上の実績日を切り替えて確認できます。</p><div id="pInlineDailySummary" class="p-inline-list"></div></div>
@@ -7498,6 +7519,8 @@ const readPartnerQuickDay = httpsCallable(partnerCountFunctions,"getPartnerQuick
 const approvePartnerQuickDay = httpsCallable(partnerCountFunctions,"approvePartnerQuickCounts");
 const readPartnerWorkDay = httpsCallable(partnerCountFunctions,"getPartnerWorkspace");
 const readPartnerMonthlySharedCounts = httpsCallable(partnerCountFunctions,"getPartnerMonthlySharedCounts");
+// Own-company monthly summary and team/person/product counts; no finance source.
+const readPartnerMonthlyTeamDetails = httpsCallable(partnerCountFunctions,"getPartnerMonthlyTeamDetails");
 // Partner monthly product totals contain counts only, never finance originals.
 const readPartnerProductMonthlyTotals = httpsCallable(partnerCountFunctions,"getPartnerProductMonthlyTotals");
 
@@ -12736,6 +12759,7 @@ copyInviteButton.onclick =
 // Never read products/records/revenueGoals in this branch. Server checks scope.
 const pInline=id=>document.getElementById(id);
 let partnerInlineData=null,partnerInlineWorkspaceCompany="",partnerInlineNonce=0;
+let partnerDashboardMonthNonce=0;
 let partnerAuditNonce=0;
 let partnerInlineBusy=false,ownerPartnerTeamsNonce=0;
 let partnerInlineEditingStaffId="";
@@ -12786,6 +12810,7 @@ function partnerMainPendingInvite(){
 }
 function resetPartnerInline(){
  ++partnerInlineNonce;++ownerPartnerTeamsNonce;++partnerAuditNonce;
+ ++partnerDashboardMonthNonce;
  // Clear company-specific count snapshots and invalidate in-flight ranking reads
  // before another user or company can sign in on the same browser session.
  ++sharedDailyRankingGeneration;sharedDailyRankCache.clear();
@@ -12878,6 +12903,108 @@ function mountPartnerCanonicalNavigation(){
  if(userBar&&userBar.nextElementSibling!==pInline("partnerInlineWorkspace"))
   userBar.after(pInline("partnerInlineWorkspace"));
  return true;
+}
+// Month view never touches the selected DAY used by counts, revisions or history.
+function renderPartnerMonthTeamSummary(data){
+ const results=pInline("partnerMonthlyTeamDetails");results.replaceChildren();
+ const status=pInline("partnerMonthlyTeamStatus");
+ if(!data.savedWorkRows&&!data.savedExtraRows){
+  for(const id of ["pPartnerMonthCount","pPartnerMonthStaffCount","pPartnerMonthTeamCount"])
+   pInline(id).textContent="-";
+  pInline("pPartnerMonthStatus").textContent=data.month+
+   " の保存済み報告はありません。未報告の日は0件と判断しません。";
+  status.textContent=data.month+"｜この月の班別詳細は未報告です。";
+  for(const id of ["pPartnerAnalysis","pPartnerChart"]){
+   const area=pInline(id);area.replaceChildren();
+   partnerMainAppendRow(area,data.month+"｜この月の保存済み実績はありません",
+    "未報告を0件として集計していません。");
+  }
+  return;
+ }
+ pInline("pPartnerMonthCount").textContent=data.totalCount+"件";
+ pInline("pPartnerMonthStaffCount").textContent=data.reportedStaffCount+"人";
+ pInline("pPartnerMonthTeamCount").textContent=data.reportedTeamCount+"班";
+ pInline("pPartnerMonthStatus").textContent=data.month+"｜保存済み "+data.totalCount+
+  "件（通常 "+data.primaryTotalCount+"・専用 "+data.privateTotalCount+
+  "・追加 "+data.additionalTotalCount+"）｜未報告を0件扱いしません。";
+ status.textContent=data.month+
+  "の班別詳細｜班を押す→担当者を押す→商材ごとの1か月分の件数。";
+ for(const team of data.teams)
+  results.append(renderPartnerCountTeamCard(team.name+"｜"+data.month,
+   team.totalCount,team.counts,team.cbCounts,team.people,
+   data.categories,{verified:true}));
+ partnerCompactWireTeamSelection(results);
+ // The original dashboard's analysis/chart cards also honor the same month.
+ // Only SAVED snapshots are graphed; missing days never become zero sales.
+ const analysis=pInline("pPartnerAnalysis");analysis.replaceChildren();
+ partnerMainAppendRow(analysis,data.companyName+"｜"+data.month+"（保存済み分）",
+  data.totalCount+"件");
+ for(const team of data.teams)
+  partnerMainAppendRow(analysis,team.name,team.totalCount+"件");
+ const chart=pInline("pPartnerChart");chart.replaceChildren();
+ const max=Math.max(1,...data.teams.map(t=>t.totalCount));
+ for(const team of data.teams){
+  const wrapper=document.createElement("div");wrapper.className="p-inline-row";
+  const name=document.createElement("strong");
+  name.textContent=team.name+"｜"+team.totalCount+"件";
+  const track=document.createElement("div");
+  track.style.cssText="height:12px;border-radius:8px;background:var(--card-soft);margin-top:8px;overflow:hidden";
+  const bar=document.createElement("div");
+  bar.style.cssText="height:100%;border-radius:8px;background:var(--primary);width:"+
+   (team.totalCount/max*100)+"%";
+  track.append(bar);wrapper.append(name,track);chart.append(wrapper);
+ }
+}
+async function loadPartnerDashboardMonth(){
+ const snap=partnerInlineData,uid=auth.currentUser?.uid,
+  workspace=partnerInlineWorkspaceCompany,
+  month=pInline("pInlineDashboardMonth").value,seq=++partnerDashboardMonthNonce;
+ if(!snap||snap.role==="hub"||!uid)return;
+ const status=pInline("pPartnerMonthStatus");
+ status.textContent="選択月の保存済み件数を照合しています…";
+ pInline("partnerMonthlyTeamStatus").textContent="班・担当者別の月間件数を照合中…";
+ pInline("partnerMonthlyTeamDetails").replaceChildren();
+ for(const id of ["pPartnerMonthCount","pPartnerMonthStaffCount","pPartnerMonthTeamCount"])
+  pInline(id).textContent="-";
+ if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)||
+   month>getTodayString().slice(0,7)){
+  status.textContent="対象の年月を選んでください。";return;
+ }
+ try{
+  const data=(await readPartnerMonthlyTeamDetails(partnerInlinePayload({month}))).data;
+  if(seq!==partnerDashboardMonthNonce||auth.currentUser?.uid!==uid||
+   workspace!==partnerInlineWorkspaceCompany||partnerInlineData!==snap||
+   month!==pInline("pInlineDashboardMonth").value)return;
+  if(data?.scope!=="partner_monthly_team_counts_only"||data.month!==month||
+   data.companyName!==snap.companyName||data.role!==snap.role||
+   data.visibility!==(snap.role==="member"?"self":"company")||
+   data.complete!==false||!Array.isArray(data.categories)||
+   data.categories.length<snap.categories.length||
+   snap.categories.some((key,i)=>key!==data.categories[i])||
+   !Array.isArray(data.teams)||data.teams.length>150)
+   throw Error("partner_month_details_schema");
+  const n=data.totalCount;
+  if(!Number.isSafeInteger(n)||n<0||
+   !Number.isSafeInteger(data.primaryTotalCount)||data.primaryTotalCount<0||
+   !Number.isSafeInteger(data.privateTotalCount)||data.privateTotalCount<0||
+   !Number.isSafeInteger(data.additionalTotalCount)||data.additionalTotalCount<0||
+   n!==data.primaryTotalCount+data.privateTotalCount+data.additionalTotalCount||
+   !Number.isSafeInteger(data.reportedStaffCount)||data.reportedStaffCount<0||
+   !Number.isSafeInteger(data.reportedTeamCount)||data.reportedTeamCount!==data.teams.length||
+   !Number.isSafeInteger(data.savedWorkRows)||data.savedWorkRows<0||
+   !Number.isSafeInteger(data.savedExtraRows)||data.savedExtraRows<0||
+   data.teams.reduce((sum,team)=>sum+team.totalCount,0)!==n)
+   throw Error("partner_month_details_total");
+  renderPartnerMonthTeamSummary(data);
+ }catch(error){
+  if(seq!==partnerDashboardMonthNonce||auth.currentUser?.uid!==uid||
+   workspace!==partnerInlineWorkspaceCompany)return;
+  status.textContent="選択月の件数を照合できません。保存済みデータは変更していません。";
+  pInline("partnerMonthlyTeamStatus").textContent=
+   "班別月間詳細を確認できません。月を選び直して更新してください。";
+  pInline("partnerMonthlyTeamDetails").replaceChildren();
+  console.warn("partner_month_team_read_failed",error?.code||"unverified");
+ }
 }
 function renderPartnerCountOnlyExtras(){
  const snap=partnerInlineData;
@@ -13101,7 +13228,7 @@ function setOwnerCombinedCountCardVisibility(name){
 installOwnerCombinedCountCards();
 
 let sharedDailyRankingGeneration=0;
-let partnerSharedRankPeriod="day";
+let partnerSharedRankPeriod="month";
 const sharedDailyRankCache=new Map();
 function verifiedDirectDayCounts(date){
  if(!canLoadPartnerRanking()||!recordsReady||
@@ -13441,7 +13568,7 @@ function renderSharedCountTeamDetails(parent,report){
 }
 async function loadSharedDailyStandings(where,force=false){
  if(where==="partner"&&partnerSharedRankPeriod==="month")
-  return loadPartnerMonthlySharedRankings();
+  return loadPartnerMonthlySharedRankings(force);
  const partner=where==="partner"||where==="partnerDetail";
  const detail=where==="partnerDetail"||where==="ownerDetail";
  if(!partner&&!canReadSharedCountOnlyRanks())return;
@@ -13723,7 +13850,7 @@ for(const which of ["Individual","Product"]){
    load();
  };
 }
-async function loadPartnerMonthlySharedRankings(){
+async function loadPartnerMonthlySharedRankings(force=false){
  const monthInput=pInline("partnerSharedRankingsMonth");
  const month=monthInput.value,uid=auth.currentUser?.uid;
  const status=pInline("partnerSharedRankingsStatus"),content=pInline("partnerSharedRankingContent");
@@ -13741,7 +13868,7 @@ async function loadPartnerMonthlySharedRankings(){
   if(partnerInlineWorkspaceCompany)
    payload.workspaceCompanyId=partnerInlineWorkspaceCompany;
   const key=uid+"|partner|"+(partnerInlineWorkspaceCompany||"")+"|"+month;
-  const old=ownerMonthlyRankCache.get(key),cached=old&&Date.now()-old.checkedAt<180000;
+  const old=ownerMonthlyRankCache.get(key),cached=!force&&old&&Date.now()-old.checkedAt<180000;
   const response=cached?old.value:(await readPartnerMonthlySharedCounts(payload)).data;
   if(seq!==ownerMonthlyRankGeneration||auth.currentUser?.uid!==uid||
      partnerSharedRankPeriod!=="month"||monthInput.value!==month)return;
@@ -13808,7 +13935,8 @@ pInline("partnerSharedRankingsMonthButton").onclick=()=>{
  void loadPartnerMonthlySharedRankings();
 };
 partnerSharedRankingsMonth.onchange=()=>{
- if(partnerSharedRankPeriod==="month")void loadPartnerMonthlySharedRankings();
+ pInline("pInlineDashboardMonth").value=partnerSharedRankingsMonth.value;
+ pInline("pInlineDashboardMonth").onchange();
 };
 pInline("partnerSharedRankingsRefresh").onclick=()=>{
  partnerSharedRankPeriod="day";
@@ -13821,7 +13949,8 @@ for(const [id,other] of [["partnerProductMonth","partnerCatalogMonth"],
                          ["partnerCatalogMonth","partnerProductMonth"]]){
  const el=pInline(id);el.value=partnerProductInitialMonth;el.max=partnerProductInitialMonth;
  el.onchange=()=>{pInline(other).value=el.value;
-  void loadPartnerProductMonthlyTotals({force:true});};
+  pInline("pInlineDashboardMonth").value=el.value;
+  pInline("pInlineDashboardMonth").onchange();};
 }
 for(const id of ["partnerProductMonthReload","partnerCatalogMonthReload"])
  pInline(id).onclick=()=>void loadPartnerProductMonthlyTotals({force:true});
@@ -13954,7 +14083,7 @@ function partnerSameAppSelectPanel(name){
  }
  // Partner's own saved team/people are already rendered from getPartnerWorkspace.
  // Do not load unrelated companies for this detail tab or expose finance data.
- if(partnerInlineData&&name==="detail")pInline("pInlineTeamDetails").hidden=false;
+ if(partnerInlineData&&name==="detail")void loadPartnerDashboardMonth();
  if(partnerInlineData&&name==="history")
   void loadPartnerRevisionHistory();
 }
@@ -14387,6 +14516,10 @@ async function savePartnerExtra(){
    status.textContent="✅ 追加商材の件数を保存・確認しました。旧実績・単価・売上は変更していません。";
    ++partnerProductMonthlyNonce;partnerProductMonthlyCache=null;
    ++sharedDailyRankingGeneration;sharedDailyRankCache.clear();
+   void loadPartnerDashboardMonth();
+   ownerMonthlyRankCache.clear();
+   if(["individual","product","team"].includes(partnerSameAppSelectedPanel))
+    void loadPartnerMonthlySharedRankings(true);
    if(["products","catalog"].includes(partnerSameAppSelectedPanel))
     void loadPartnerProductMonthlyTotals({force:true});
   }else{
@@ -14856,6 +14989,7 @@ async function partnerInlineFetch(){
      typeof snap.companyName!=="string"||snap.companyName.length===0)
    throw Error("partner_count_schema");
   partnerInlineData=snap;partnerInlineRender();
+  void loadPartnerDashboardMonth();
   void loadPartnerExtra();
   partnerInlineStatus("最新の件数を表示しています。");
   // Date changes and saved corrections must refresh the shared read-only
@@ -14918,6 +15052,10 @@ async function openSameAppPartnerWorkspace(user,workspaceCompanyId=""){
  userRole.textContent="協力店・件数管理";
  loginStatus.textContent="ログイン済み・協力店";
  databaseStatus.textContent="件数API";
+ pInline("pInlineDashboardMonth").value=getTodayString().slice(0,7);
+ pInline("pInlineDashboardMonth").max=getTodayString().slice(0,7);
+ partnerSharedRankPeriod="month";
+ pInline("partnerSharedRankingsMonth").value=pInline("pInlineDashboardMonth").value;
  pInline("pInlineDate").value=partnerMainDate();
  pInline("pInlineRecordDate").value=pInline("pInlineDate").value;
  partnerInlineEditingStaffId="";
@@ -15075,6 +15213,18 @@ function partnerInlineChangeDate(which){
  pInline("pInlineRecordDate").value=next;
  if(next!==previous)void partnerInlineFetch();
 }
+pInline("pInlineDashboardMonth").onchange=()=>{
+ const month=pInline("pInlineDashboardMonth").value;
+ for(const id of ["partnerSharedRankingsMonth","partnerProductMonth","partnerCatalogMonth"])
+  pInline(id).value=month;
+ partnerSharedRankPeriod="month";
+ void loadPartnerDashboardMonth();
+ if(["individual","product","team"].includes(partnerSameAppSelectedPanel))
+  void loadPartnerMonthlySharedRankings(true);
+ if(["products","catalog"].includes(partnerSameAppSelectedPanel))
+  void loadPartnerProductMonthlyTotals({force:true});
+};
+pInline("pInlineDashboardMonthRefresh").onclick=()=>void loadPartnerDashboardMonth();
 pInline("pInlineDate").onchange=()=>partnerInlineChangeDate("pInlineDate");
 pInline("pInlineRecordDate").onchange=()=>partnerInlineChangeDate("pInlineRecordDate");
 pInline("pInlineRefresh").onclick=()=>{
