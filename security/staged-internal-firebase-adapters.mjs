@@ -28,7 +28,7 @@ export function assertStagedInternalTransportQuery(q){
  const sq=q.body.structuredQuery;
  const table=sq.from?.length===1?sq.from[0].collectionId:null;
  if(!['products','records'].includes(table)||
-   sq.limit!==(table==='products'?201:50))deny();
+   sq.limit!==(table==='products'?201:51))deny();
  let companyId,day,cursor='';
  if(table==='products'){
   companyId=sq.where?.fieldFilter?.value?.stringValue;
