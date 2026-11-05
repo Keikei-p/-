@@ -61,7 +61,7 @@ function makeInternalSelfAccountExit({
    const userSnap=await tx.get(ref),user=userSnap.data()||{};
    const cid=user.companyId;
    if(!userSnap.exists||user.uid!==uid||!isId(cid)||
-      user.active!==true||user.companyRole==="owner"||
+      user.active!==true||user.companyRole!=="member"||
       ![undefined,"internal"].includes(user.accessKind)||
       ![undefined,"internal","direct","member","managed"].includes(user.memberType))
      fail("failed-precondition");
@@ -77,7 +77,8 @@ function makeInternalSelfAccountExit({
       secondarySnap.exists||archiveSnap.exists||
       company.active!==true||
       ![undefined,"internal","direct"].includes(company.companyKind)||
-      member.active!==true||member.companyRole==="owner"||
+      company.ownerUid===uid||company.masterUid===uid||
+      member.active!==true||member.companyRole!=="member"||
       (member.uid!=null&&member.uid!==uid)||
       (member.companyId!=null&&member.companyId!==cid)||
       ![undefined,"internal"].includes(member.accessKind)||

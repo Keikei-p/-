@@ -253,6 +253,22 @@ test("own deletion blocks secondary partner context active or inactive, transfer
   assert.equal(x.db.writes.length,0);
  }
 });
+test("legacy owner and master identities are blocked even with missing or stale roles",async()=>{
+ for(const patch of [
+  x=>x.db.docs.get("companies/hub").ownerUid="staff",
+  x=>x.db.docs.get("companies/hub").masterUid="staff",
+  x=>x.db.docs.get("users/staff").companyRole="owner",
+  x=>{delete x.db.docs.get("users/staff").companyRole;},
+  x=>x.db.docs.get("companies/hub/members/staff").companyRole="owner",
+  x=>{delete x.db.docs.get("companies/hub/members/staff").companyRole;}
+ ]){
+  const x=selfSetup();patch(x);const saved=snapshot(x.db);
+  await assert.rejects(x.api.remove(x.req()),e=>e.code==="failed-precondition");
+  assert.deepEqual(snapshot(x.db),saved);
+  assert.equal(x.db.writes.length,0);
+  assert.equal(x.authCalls.deleted,0);
+ }
+});
 test("own deletion requires recent reauth (auth_time <= 5 min), verified email and exact UID",async()=>{
  for(const change of [
   sdk=>{const original=sdk.verifyIdToken;sdk.verifyIdToken=async arg=>({
