@@ -13935,7 +13935,8 @@ pInline("partnerSharedRankingsMonthButton").onclick=()=>{
  void loadPartnerMonthlySharedRankings();
 };
 partnerSharedRankingsMonth.onchange=()=>{
- if(partnerSharedRankPeriod==="month")void loadPartnerMonthlySharedRankings();
+ pInline("pInlineDashboardMonth").value=partnerSharedRankingsMonth.value;
+ pInline("pInlineDashboardMonth").onchange();
 };
 pInline("partnerSharedRankingsRefresh").onclick=()=>{
  partnerSharedRankPeriod="day";
@@ -13948,7 +13949,8 @@ for(const [id,other] of [["partnerProductMonth","partnerCatalogMonth"],
                          ["partnerCatalogMonth","partnerProductMonth"]]){
  const el=pInline(id);el.value=partnerProductInitialMonth;el.max=partnerProductInitialMonth;
  el.onchange=()=>{pInline(other).value=el.value;
-  void loadPartnerProductMonthlyTotals({force:true});};
+  pInline("pInlineDashboardMonth").value=el.value;
+  pInline("pInlineDashboardMonth").onchange();};
 }
 for(const id of ["partnerProductMonthReload","partnerCatalogMonthReload"])
  pInline(id).onclick=()=>void loadPartnerProductMonthlyTotals({force:true});
