@@ -33,7 +33,10 @@ test("historical correction links to mismatched record without revealing record 
   verifiedAfterSnapshots:1,afterSavedMatchesCurrent:1,
   afterLinesMatchCurrent:0,afterBothMatchCurrent:0,
   unverifiedSnapshots:0,
-  currentVsSingleCorrection:{addedProductRows:0,removedProductRows:0,quantityChangedProductRows:1,currentRecordUpdatedAfterCorrection:true}
+  currentVsSingleCorrection:{addedProductRows:0,removedProductRows:0,quantityChangedProductRows:1,currentRecordUpdatedAfterCorrection:true},
+  exactOneExtraRowMatchesDrift:false,
+  historicalNestedMergeCauseProven:false,
+  ownerDecisionRequired:true
  });
  assert.ok(!JSON.stringify(result).includes("example"));
  assert.ok(!JSON.stringify(result).includes("correction1"));
