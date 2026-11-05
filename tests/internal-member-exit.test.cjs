@@ -2,6 +2,7 @@
 const test=require("node:test"),assert=require("node:assert/strict");
 const fs=require("node:fs"),path=require("node:path");
 const {makeInternalMemberExit}=require("../functions-partner-workspace/internal-member-exit.cjs");
+const {makeInternalSelfAccountExit}=require("../functions-partner-workspace/internal-self-account-exit.cjs");
 const cp=x=>JSON.parse(JSON.stringify(x));
 class HttpsError extends Error{constructor(code,message){super(message);this.code=code;}}
 class DB{
@@ -176,4 +177,129 @@ test("existing UI calls server only; no unsafe browser batch / Auth delete",()=>
   "../functions-partner-workspace/index.js"),"utf8");
  assert.match(idx,/SAFE_INTERNAL_MEMBER_REMOVAL_ENABLED==="enabled"/);
  assert.match(idx,/exports\.removeInternalCompanyMember=onCall/);
+});
+
+function selfSetup({mode="internal",context=false,archive=false,authFails=false}={}){
+ const base=setup();
+ const db=base.db;
+ const uid="staff";
+ if(mode==="owner")db.docs.get("users/staff").companyRole="owner";
+ if(mode==="partner"){
+  db.docs.get("users/staff").companyId="partner";
+  db.docs.get("users/staff").accessKind="partner";
+  db.docs.get("users/staff").memberType="cooperator";
+  db.seed("companies/partner",{companyKind:"partner",hubCompanyId:"hub",active:true});
+ }
+ if(context)db.seed("partnerWorkspaceContexts/staff",{uid,active:context});
+ if(archive)db.seed("partnerHistoricalTransfers/staff",{
+  uid,sourceCompanyId:"hub",destinationCompanyId:"partner"});
+ const authCalls={lookup:0,verify:0,deleted:0};
+ const now=1793854800;
+ const sdk={
+  getUser:async who=>{authCalls.lookup++;return {
+   uid:who,disabled:false,emailVerified:true,email:who+"@example.com"};
+  },
+  verifyIdToken:async jwt=>{authCalls.verify++;
+   if(jwt!=="x".repeat(70))throw Error("bad_token");
+   return {uid,email:uid+"@example.com",email_verified:true,auth_time:now-60};
+  },
+  deleteUser:async who=>{authCalls.deleted++;assert.equal(who,uid);
+   if(authFails)throw Error("network_ambiguous");
+  }
+ };
+ const api=makeInternalSelfAccountExit({db,getAuth:()=>sdk,
+  FieldValue:{serverTimestamp:()=>({__now:true})},
+  HttpsError,enabled:()=>true,nowSeconds:()=>now});
+ const req=(data={confirmed:true})=>({data,
+  auth:{uid,token:{email:uid+"@example.com",email_verified:true}},
+  rawRequest:{headers:{authorization:"Bearer "+"x".repeat(70)}}});
+ return {db,api,req,authCalls,sdk};
+}
+test("own deletion default OFF does not access Auth, Firestore or delete anything",async()=>{
+ const x=selfSetup();
+ const gated=makeInternalSelfAccountExit({
+  db:x.db,getAuth:()=>{throw Error("unexpectedAuth");},
+  FieldValue:{serverTimestamp:()=>({})},HttpsError});
+ await assert.rejects(gated.remove(x.req()),e=>e.code==="unavailable");
+ assert.deepEqual(x.authCalls,{lookup:0,verify:0,deleted:0});
+ assert.equal(x.db.writes.length,0);
+});
+test("own deletion allows only verified non-owner internal identity and retains financial histories",async()=>{
+ const x=selfSetup();
+ x.db.seed("records/sale1",{uid:"staff",totalCount:12,totalRevenue:980000});
+ x.db.seed("products/p1",{unitPrice:7000});
+ x.db.seed("recordCorrections/c1",{ownerUid:"staff",before:{count:10}});
+ const before=x.db.docs;
+ const orig=["records/sale1","products/p1","recordCorrections/c1"]
+  .map(key=>cp(before.get(key)));
+ const result=await x.api.remove(x.req());
+ assert.deepEqual(result,{deleted:true,uid:"staff",financeAndHistoryPreserved:true});
+ assert.equal(x.authCalls.deleted,1);
+ assert.deepEqual(x.db.writes.sort(),["companies/hub/members/staff","users/staff"]);
+ assert.equal(x.db.docs.get("users/staff").active,false);
+ assert.equal(x.db.docs.get("users/staff").accountRemovalStatus,"auth_pending");
+ assert.deepEqual(x.db.docs.get("companies/hub/members/staff").teamHistory,[{teamId:"A"}]);
+ for(const [i,key] of ["records/sale1","products/p1","recordCorrections/c1"].entries())
+  assert.deepEqual(x.db.docs.get(key),orig[i]);
+});
+test("own deletion blocks secondary partner context active or inactive, transfer archive and partner root",async()=>{
+ for(const config of [
+  {context:true},{context:"inactive"},{archive:true},{mode:"partner"},{mode:"owner"}
+ ]){
+  const x=selfSetup(config),before=snapshot(x.db);
+  await assert.rejects(x.api.remove(x.req()),e=>e.code==="failed-precondition");
+  assert.deepEqual(snapshot(x.db),before);
+  assert.deepEqual(x.authCalls,{lookup:1,verify:1,deleted:0});
+  assert.equal(x.db.writes.length,0);
+ }
+});
+test("own deletion requires recent reauth (auth_time <= 5 min), verified email and exact UID",async()=>{
+ for(const change of [
+  sdk=>{const original=sdk.verifyIdToken;sdk.verifyIdToken=async arg=>({
+   ...await original(arg),auth_time:1793854800-301});},
+  sdk=>{const original=sdk.verifyIdToken;sdk.verifyIdToken=async arg=>({
+   ...await original(arg),uid:"other"});},
+  sdk=>{const original=sdk.getUser;sdk.getUser=async arg=>({
+   ...await original(arg),disabled:true});},
+  sdk=>{const original=sdk.getUser;sdk.getUser=async arg=>({
+   ...await original(arg),emailVerified:false});}
+ ]){
+  const x=selfSetup();change(x.sdk);const before=snapshot(x.db);
+  await assert.rejects(x.api.remove(x.req()),e=>e.code==="unauthenticated");
+  assert.deepEqual(snapshot(x.db),before);assert.equal(x.db.writes.length,0);
+  assert.equal(x.authCalls.deleted,0);
+ }
+});
+test("self-delete can never pick another uid, target company, or unconfirmed operation",async()=>{
+ const x=selfSetup();
+ for(const data of [
+  {confirmed:false},{confirmed:true,memberId:"owner"},
+  {confirmed:true,companyId:"partner"},
+  {confirmed:true,collection:"records"},{}
+ ]){
+  await assert.rejects(x.api.remove(x.req(data)),e=>e.code==="invalid-argument");
+ }
+ assert.equal(x.authCalls.deleted,0);
+ assert.equal(x.db.writes.length,0);
+});
+test("ambiguous Auth deletion failure is reported as error and identity remains locked, never restored",async()=>{
+ const x=selfSetup({authFails:true});
+ await assert.rejects(x.api.remove(x.req()),e=>e.code==="internal");
+ assert.equal(x.authCalls.deleted,1);
+ assert.equal(x.db.docs.get("users/staff").active,false);
+ assert.equal(x.db.docs.get("companies/hub/members/staff").active,false);
+ assert.equal(x.db.docs.get("users/staff").accountRemovalStatus,"auth_pending");
+});
+test("self account UI has no client-side Firestore removal or Auth deleteUser",()=>{
+ const html=fs.readFileSync(path.join(__dirname,"../index.html"),"utf8");
+ const start=html.indexOf("deleteOwnAccountButton.onclick =");
+ const end=html.indexOf("/* =====================================================\n   ★ リアルタイム監視",start);
+ assert(start>0&&end>start);
+ const body=html.slice(start,end);
+ assert.match(body,/safeDeleteOwnInternalAccount\(\{confirmed:true\}\)/);
+ assert.match(body,/reauthenticateWithCredential/);
+ assert.doesNotMatch(body,/\b(?:writeBatch|batch\.update|deleteUser|deleteDoc|setDoc|updateDoc)\s*\(/);
+ const fn=fs.readFileSync(path.join(__dirname,"../functions-partner-workspace/index.js"),"utf8");
+ assert.match(fn,/SAFE_INTERNAL_SELF_ACCOUNT_DELETE_ENABLED==="enabled"/);
+ assert.match(fn,/exports\.deleteOwnInternalAccountSafely=onCall/);
 });

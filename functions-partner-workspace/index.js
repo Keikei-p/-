@@ -6,6 +6,7 @@ const {onCall,HttpsError}=require("firebase-functions/v2/https");
 const {makeWorkspace}=require("./service.cjs");
 const {makeCompanyCodeAuth}=require("./company-code-auth.cjs");
 const {makeInternalMemberExit}=require("./internal-member-exit.cjs");
+const {makeInternalSelfAccountExit}=require("./internal-self-account-exit.cjs");
 initializeApp();
 const service=makeWorkspace({
  db:getFirestore(),getAuth,FieldValue,Timestamp,HttpsError,
@@ -32,3 +33,10 @@ const internalMemberExit=makeInternalMemberExit({
  enabled:()=>process.env.SAFE_INTERNAL_MEMBER_REMOVAL_ENABLED==="enabled"
 });
 exports.removeInternalCompanyMember=onCall(opts,internalMemberExit.remove);
+
+// Default OFF. Requires a separate signed release review before enabling.
+const selfAccountExit=makeInternalSelfAccountExit({
+ db:getFirestore(),getAuth,FieldValue,HttpsError,
+ enabled:()=>process.env.SAFE_INTERNAL_SELF_ACCOUNT_DELETE_ENABLED==="enabled"
+});
+exports.deleteOwnInternalAccountSafely=onCall(opts,selfAccountExit.remove);

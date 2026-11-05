@@ -15,6 +15,7 @@ jobs:
       FIREBASE_SERVICE_ACCOUNT_JSON: ""
       GOOGLE_APPLICATION_CREDENTIALS: ""
       SAFE_INTERNAL_MEMBER_REMOVAL_ENABLED: ""
+      SAFE_INTERNAL_SELF_ACCOUNT_DELETE_ENABLED: ""
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,14 +31,16 @@ jobs:
           test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
           test -z "$GOOGLE_APPLICATION_CREDENTIALS"
           test -z "$SAFE_INTERNAL_MEMBER_REMOVAL_ENABLED"
+          test -z "$SAFE_INTERNAL_SELF_ACCOUNT_DELETE_ENABLED"
           git fetch origin main
           git diff --name-only origin/main...HEAD >/tmp/changed
-          if grep -Ev '^(index\.html|functions-partner-workspace/index\.js|functions-partner-workspace/internal-member-exit\.cjs|tests/internal-member-exit\.test\.cjs|\.github/workflows/nico-safe-member-exit-no-deploy-20261105\.yml)$' /tmp/changed; then
+          if grep -Ev '^(index\.html|functions-partner-workspace/index\.js|functions-partner-workspace/internal-member-exit\.cjs|functions-partner-workspace/internal-self-account-exit\.cjs|tests/internal-member-exit\.test\.cjs|\.github/workflows/nico-safe-member-exit-no-deploy-20261105\.yml)$' /tmp/changed; then
             echo STOP_UNEXPECTED_PATH
             exit 1
           fi
           node --check functions-partner-workspace/index.js
           node --check functions-partner-workspace/internal-member-exit.cjs
+          node --check functions-partner-workspace/internal-self-account-exit.cjs
           node --check tests/internal-member-exit.test.cjs
       - name: Safe exit, owner visibility, shared counts and existing partner flows
         run: |
