@@ -42,7 +42,7 @@ jobs:
           test "$(git rev-parse origin/security/phase1-owner-preflight-bridge-20261105)" = 2b6031b3bda425c6e6f638fed218e388e03d7194
           test "$(git hash-object firestore.rules)" = 6d6ac7fd3544b0326823e419a3acd7e1d060b714
           git diff --name-only 2b6031b3bda425c6e6f638fed218e388e03d7194...HEAD > /tmp/nico-identity-scope.txt
-          if grep -Ev '^(tools/production/phase1-bound-identity-readonly\.mjs|tools/production/phase1-live-proof-bridge\.mjs|tools/production/verify-live-firestore-roles\.mjs|tests/verify-live-firestore-roles\.test\.mjs|tests/phase1-live-proof-bridge\.test\.mjs|docs/PHASE1_SECONDARY_FINANCE_RELEASE_SIGNOFF_NO_DEPLOY\.md|\.github/workflows/nico-affected-identity-gate-no-deploy\.yml)$' /tmp/nico-identity-scope.txt; then
+          if grep -Ev '^(tools/production/phase1-bound-identity-readonly\.mjs|tools/production/phase1-live-proof-bridge\.mjs|tools/production/phase1-partner-finance-release\.mjs|tools/production/verify-live-firestore-roles\.mjs|tests/verify-live-firestore-roles\.test\.mjs|tests/phase1-live-proof-bridge\.test\.mjs|tests/phase1-partner-finance-release\.test\.mjs|docs/PHASE1_SECONDARY_FINANCE_RELEASE_SIGNOFF_NO_DEPLOY\.md|\.github/workflows/nico-affected-identity-gate-no-deploy\.yml)$' /tmp/nico-identity-scope.txt; then
             echo STOP_UNREVIEWED_IDENTITY_CHANGE
             exit 1
           fi
@@ -52,8 +52,10 @@ jobs:
           set -euo pipefail
           node --check tools/production/phase1-bound-identity-readonly.mjs
           node --check tools/production/phase1-live-proof-bridge.mjs
+          node --check tools/production/phase1-partner-finance-release.mjs
           node --check tools/production/verify-live-firestore-roles.mjs
           node --check tests/phase1-live-proof-bridge.test.mjs
+          node --check tests/phase1-partner-finance-release.test.mjs
           node --check tests/verify-live-firestore-roles.test.mjs
           node --test tests/verify-live-firestore-roles.test.mjs tests/phase1-live-proof-bridge.test.mjs tests/phase1-partner-finance-release.test.mjs
       - name: Assert NO production credentials or deployment approved
