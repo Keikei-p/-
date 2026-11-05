@@ -64,15 +64,19 @@ test("isolation: new API writes only additional ledger, immutable audit and usag
  assert.match(api,/exports\.getPartnerAdditionalCounts=onCall/);
  assert.match(api,/exports\.submitPartnerAdditionalCounts=onCall/);
 });
-test("original legacy count writer is still byte-for-byte frozen",()=>{
+test("legacy writer original totals and audit operations remain pinned after only the reviewed OFF guard",()=>{
  const service=fs.readFileSync(require.resolve("../functions-partner-workspace/service.cjs"),"utf8");
  const a=service.indexOf(" async function submit(request){");
  const b=service.indexOf(" return Object.freeze(",a);
  assert.ok(a>0&&b>a);
  const original=service.slice(a,b);
- assert.equal(original.length,6050);
+ assert.equal(original.length,6570,"legacy writer was changed beyond the reviewed OFF guard");
+ assert.match(original,/assertLegacyEditAllowed\(/);
+ assert.match(original,/const priorCounts=oldSnap\.exists\?validateCounts\(old\.counts\)/);
+ assert.match(original,/if\(oldSnap\.exists\)tx\.update\(er,row\);else tx\.create\(er,/);
+ assert.match(original,/tx\.create\(audit,/);
  let h=2166136261;
  for(let i=0;i<original.length;i++)
   h=Math.imul(h^original.charCodeAt(i),16777619)>>>0;
- assert.equal(h.toString(16).padStart(8,"0"),"4c482896");
+ assert.equal(h.toString(16).padStart(8,"0"),"deb7d3f9");
 });

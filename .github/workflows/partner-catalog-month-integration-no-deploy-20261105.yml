@@ -1,0 +1,39 @@
+name: NICO Partner Catalog + Monthly Dashboard Integration (NO DEPLOY)
+on:
+  push:
+    branches: [feature/partner-catalog-month-integrated-20261105]
+  pull_request:
+    branches: [feature/partner-auto-published-count-ranks-20261105]
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      FIREBASE_PROJECT_ID: demo-partner-month-integrated
+      SAFE_INTERNAL_MEMBER_REMOVAL_ENABLED: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify code parses
+        run: |
+          node --check functions-partner-workspace/legacy-publication-policy.cjs
+          node --check functions-partner-workspace/monthly-shared-projection.cjs
+          node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/index.js
+      - name: Owner ON/OFF gate and October November dashboard regression tests
+        run: |
+          node --test tests/partner-legacy-publication-policy.test.cjs tests/partner-workspace.test.cjs tests/partner-catalog-count-links.test.cjs tests/partner-catalog-publication.test.cjs tests/partner-additional-counts-isolation.test.cjs tests/partner-extra-shared-ranking.test.cjs tests/partner-auto-published-ranking.test.cjs tests/partner-auto-monthly-ranking.test.cjs tests/partner-monthly-shared-counts.test.cjs tests/partner-shared-ranking-groups.test.cjs tests/partner-month-dashboard-months-and-teams.test.cjs tests/partner-monthly-dashboard-isolation.test.cjs tests/partner-monthly-dashboard-ui-syntax.test.cjs tests/partner-product-monthly-parity.test.cjs tests/partner-shared-catalog-ui-contract.test.cjs
+      - name: Parse the full sales app inline JavaScript module
+        env:
+          NODE_OPTIONS: '--experimental-vm-modules'
+        run: node --test tests/partner-index-module-parse.test.cjs
+      - name: Production data and deployment are out of scope
+        run: echo 'NO DEPLOY; no Firebase credentials or production writes; existing reports, revenue, prices, CB and history remain untouched'

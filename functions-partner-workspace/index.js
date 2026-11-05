@@ -27,6 +27,9 @@ exports.getPartnerRankingGroups=onCall(opts,service.getPartnerRankingGroups);
 exports.setPartnerRankingGroups=onCall(opts,service.setPartnerRankingGroups);
 exports.getPartnerCountLinks=onCall(opts,service.getPartnerCountLinks);
 exports.setPartnerCountLink=onCall(opts,service.setPartnerCountLink);
+exports.getPartnerLegacyCountGate=onCall(opts,service.getPartnerLegacyCountGate);
+// Owner only: arms a SINGLE partner next-day; existing nine entry docs untouched.
+exports.activatePartnerLegacyCountGate=onCall(opts,service.activatePartnerLegacyCountGate);
 // Isolated ledger: never writes original nine categories, original sales or price metadata.
 exports.getPartnerAdditionalCounts=onCall(opts,service.viewAdditionalCounts);
 exports.submitPartnerAdditionalCounts=onCall(opts,service.submitAdditionalCounts);
