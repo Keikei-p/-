@@ -12904,6 +12904,82 @@ function mountPartnerCanonicalNavigation(){
   userBar.after(pInline("partnerInlineWorkspace"));
  return true;
 }
+// Month view never touches the selected DAY used by counts, revisions or history.
+function renderPartnerMonthTeamSummary(data){
+ const results=pInline("partnerMonthlyTeamDetails");results.replaceChildren();
+ const status=pInline("partnerMonthlyTeamStatus");
+ if(!data.savedWorkRows&&!data.savedExtraRows){
+  for(const id of ["pPartnerMonthCount","pPartnerMonthStaffCount","pPartnerMonthTeamCount"])
+   pInline(id).textContent="-";
+  pInline("pPartnerMonthStatus").textContent=data.month+
+   " の保存済み報告はありません。未報告の日は0件と判断しません。";
+  status.textContent=data.month+"｜この月の班別詳細は未報告です。";return;
+ }
+ pInline("pPartnerMonthCount").textContent=data.totalCount+"件";
+ pInline("pPartnerMonthStaffCount").textContent=data.reportedStaffCount+"人";
+ pInline("pPartnerMonthTeamCount").textContent=data.reportedTeamCount+"班";
+ pInline("pPartnerMonthStatus").textContent=data.month+"｜保存済み "+data.totalCount+
+  "件（通常 "+data.primaryTotalCount+"・専用 "+data.privateTotalCount+
+  "・追加 "+data.additionalTotalCount+"）｜未報告を0件扱いしません。";
+ status.textContent=data.month+
+  "の班別詳細｜班を押す→担当者を押す→商材ごとの1か月分の件数。";
+ for(const team of data.teams)
+  results.append(renderPartnerCountTeamCard(team.name+"｜"+data.month,
+   team.totalCount,team.counts,team.cbCounts,team.people,
+   data.categories,{verified:true}));
+ partnerCompactWireTeamSelection(results);
+}
+async function loadPartnerDashboardMonth(){
+ const snap=partnerInlineData,uid=auth.currentUser?.uid,
+  workspace=partnerInlineWorkspaceCompany,
+  month=pInline("pInlineDashboardMonth").value,seq=++partnerDashboardMonthNonce;
+ if(!snap||snap.role==="hub"||!uid)return;
+ const status=pInline("pPartnerMonthStatus");
+ status.textContent="選択月の保存済み件数を照合しています…";
+ pInline("partnerMonthlyTeamStatus").textContent="班・担当者別の月間件数を照合中…";
+ pInline("partnerMonthlyTeamDetails").replaceChildren();
+ for(const id of ["pPartnerMonthCount","pPartnerMonthStaffCount","pPartnerMonthTeamCount"])
+  pInline(id).textContent="-";
+ if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)||
+   month>getTodayString().slice(0,7)){
+  status.textContent="対象の年月を選んでください。";return;
+ }
+ try{
+  const data=(await readPartnerMonthlyTeamDetails(partnerInlinePayload({month}))).data;
+  if(seq!==partnerDashboardMonthNonce||auth.currentUser?.uid!==uid||
+   workspace!==partnerInlineWorkspaceCompany||partnerInlineData!==snap||
+   month!==pInline("pInlineDashboardMonth").value)return;
+  if(data?.scope!=="partner_monthly_team_counts_only"||data.month!==month||
+   data.companyName!==snap.companyName||data.role!==snap.role||
+   data.visibility!==(snap.role==="member"?"self":"company")||
+   data.complete!==false||!Array.isArray(data.categories)||
+   data.categories.length<snap.categories.length||
+   snap.categories.some((key,i)=>key!==data.categories[i])||
+   !Array.isArray(data.teams)||data.teams.length>150)
+   throw Error("partner_month_details_schema");
+  const n=data.totalCount;
+  if(!Number.isSafeInteger(n)||n<0||
+   !Number.isSafeInteger(data.primaryTotalCount)||data.primaryTotalCount<0||
+   !Number.isSafeInteger(data.privateTotalCount)||data.privateTotalCount<0||
+   !Number.isSafeInteger(data.additionalTotalCount)||data.additionalTotalCount<0||
+   n!==data.primaryTotalCount+data.privateTotalCount+data.additionalTotalCount||
+   !Number.isSafeInteger(data.reportedStaffCount)||data.reportedStaffCount<0||
+   !Number.isSafeInteger(data.reportedTeamCount)||data.reportedTeamCount!==data.teams.length||
+   !Number.isSafeInteger(data.savedWorkRows)||data.savedWorkRows<0||
+   !Number.isSafeInteger(data.savedExtraRows)||data.savedExtraRows<0||
+   data.teams.reduce((sum,team)=>sum+team.totalCount,0)!==n)
+   throw Error("partner_month_details_total");
+  renderPartnerMonthTeamSummary(data);
+ }catch(error){
+  if(seq!==partnerDashboardMonthNonce||auth.currentUser?.uid!==uid||
+   workspace!==partnerInlineWorkspaceCompany)return;
+  status.textContent="選択月の件数を照合できません。保存済みデータは変更していません。";
+  pInline("partnerMonthlyTeamStatus").textContent=
+   "班別月間詳細を確認できません。月を選び直して更新してください。";
+  pInline("partnerMonthlyTeamDetails").replaceChildren();
+  console.warn("partner_month_team_read_failed",error?.code||"unverified");
+ }
+}
 function renderPartnerCountOnlyExtras(){
  const snap=partnerInlineData;
  if(!snap||snap.role==="hub")return;
