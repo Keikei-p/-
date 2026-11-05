@@ -21,10 +21,12 @@ before(async()=>{
   await setDoc(doc(db,'companies',partner),{ownerUid:'partnerOwner',masterUid:'partnerOwner',active:true,companyKind:'partner'});
   for(const [uid,companyId,role,accessKind] of [
    ['owner',direct,'owner','internal'],['worker',direct,'member','internal'],
-   ['secondary',direct,'owner','internal'],['partnerOwner',partner,'owner','partner']
+   ['secondary',direct,'owner','internal'],['partnerOwner',partner,'owner','partner'],
+   ['staleCooperator',direct,'owner','internal']
   ]){
    const base={uid,companyId,role:role==='owner'?'leader':'member',
-     companyRole:role,active:true,teamId:'team1',accessKind};
+     companyRole:role,active:true,teamId:'team1',accessKind,
+     ...(uid==='staleCooperator'?{memberType:'cooperator'}:{})};
    await setDoc(doc(db,'users',uid),base);
    await setDoc(doc(db,'companies',companyId,'members',uid),base);
   }
@@ -65,6 +67,10 @@ test('internal member raw reads are incompatible, proving migration is mandatory
 });
 test('secondary partner cannot reuse old internal owner role to read money',async()=>{
  for(const table of tables)await assertFails(getDoc(doc(dbFor('secondary'),table,'internal-sample')));
+});
+test('stale internal Owner flags do not override a cooperator marker even without secondary context',async()=>{
+ for(const table of tables)
+  await assertFails(getDoc(doc(dbFor('staleCooperator'),table,'internal-sample')));
 });
 test('partner owner cannot read any financial originals even in partner company',async()=>{
  for(const table of tables)await assertFails(getDoc(doc(dbFor('partnerOwner'),table,'partner-sample')));
