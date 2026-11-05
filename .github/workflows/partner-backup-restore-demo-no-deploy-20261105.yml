@@ -4,11 +4,17 @@ on:
     branches: [feature/partner-catalog-month-integrated-20261105]
     paths:
       - 'tests/partner-backup-restore-domain-live.test.mjs'
+      - 'tools/readonly-backup/restore-emulator.mjs'
+      - 'tools/readonly-backup/restore-emulator.test.mjs'
+      - 'tools/readonly-backup/restore-emulator-live.test.mjs'
       - '.github/workflows/partner-backup-restore-demo-no-deploy-20261105.yml'
   pull_request:
     branches: [feature/partner-auto-published-count-ranks-20261105]
     paths:
       - 'tests/partner-backup-restore-domain-live.test.mjs'
+      - 'tools/readonly-backup/restore-emulator.mjs'
+      - 'tools/readonly-backup/restore-emulator.test.mjs'
+      - 'tools/readonly-backup/restore-emulator-live.test.mjs'
       - '.github/workflows/partner-backup-restore-demo-no-deploy-20261105.yml'
 permissions:
   contents: read
