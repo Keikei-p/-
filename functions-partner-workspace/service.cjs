@@ -9,6 +9,7 @@ const {ownerPublishedExtraBreakdown}=require("./owner-published-extra-breakdown.
 const {projectPartnerMonth}=require("./monthly-shared-projection.cjs");
 const {projectPartnerProductMonth}=require("./partner-product-monthly.cjs");
 const {decodeGroups,saveGroups,groupPersonalScores,canPublishSharedPersonalRankings}=require("./shared-ranking-groups.cjs");
+const {readVisibleRankingGroups,addAutomaticPublishedGroups}=require("./automatic-published-groups.cjs");
 const {readDirectDayCounts,readDirectRangeCounts}=require("./shared-direct-counts.cjs");
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 // Cashback is a product variant label, NOT a sales unit price or revenue.
@@ -338,14 +339,31 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  // The source remains hub-owned; partner users may only read redacted settings.
  const groupSettingsRef=hub=>collection(hub,"partnerRankingSettings").doc("shared");
  const publicationRef=hub=>collection(hub,"partnerCatalogSettings").doc("publication");
- async function readRankingSettings(hub){
+ async function activePublishedProducts(hub,publishedIds){
+  // Read the price-bearing master only inside the trusted backend.
+  // Only names and IDs leave this trusted scope.
+  const master=await db.collection("products").where("companyId","==",hub)
+   .limit(1001).get();
+  if(master.size>1000||master.docs.some(doc=>doc.data()?.companyId!==hub))
+   fail("data-loss");
+  try{
+   return projectMasterProducts(master.docs.map(doc=>({...doc.data(),id:doc.id})),
+    publishedIds,true).map(({id,name,sortOrder})=>({id,name,sortOrder}));
+  }catch{fail("data-loss");}
+ }
+ async function readRankingSettings(hub,activePublishedIds=null){
   const [groups,publication]=await Promise.all([
    groupSettingsRef(hub).get(),publicationRef(hub).get()
   ]);
   try{
    const pub=loadPublication(publication.exists?publication.data():null);
-   return decodeGroups(groups.exists?groups.data():null,
-    {allowedProducts:pub.productIds,categories:KEYS});
+   const activeIds=activePublishedIds===null?
+    (await activePublishedProducts(hub,pub.productIds)).map(p=>p.id):
+    activePublishedIds;
+   // Historical Owner groups are never deleted on OFF. Hidden product IDs
+   // and their group names must not escape in the shared count API.
+   return readVisibleRankingGroups(groups.exists?groups.data():null,
+    activeIds,KEYS);
   }catch{fail("data-loss");}
  }
  async function getPartnerRankingGroups(request){
@@ -1085,7 +1103,9 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    allLinks=readLinks(linksDoc.exists?linksDoc.data():null,KEYS).links;
   }catch{fail("data-loss");}
   const linkedIds=allLinks.map(x=>x.productId);
-  const extraVerifiedIds=publishedIds.filter(id=>!linkedIds.includes(id));
+  const rankableProducts=await activePublishedProducts(hubId,publishedIds);
+  const activePublishedIds=rankableProducts.map(p=>p.id);
+  const extraVerifiedIds=activePublishedIds.filter(id=>!linkedIds.includes(id));
   // Monthly reads are intentionally bounded; never send incomplete data as a
   // "complete" ranking or pass any raw original financial fields to clients.
   let direct;
@@ -1142,14 +1162,19 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   }
   let sharedConfig={revision:0,groups:[]},groupStandings=[],groupStatus="unverified";
   try{
-   sharedConfig=await readRankingSettings(hubId);
-   // Linking halfway through a month is NOT sufficient to back-classify the
-   // earlier days. Whole-month rank only uses links active on its first day.
+   sharedConfig=await readRankingSettings(hubId,activePublishedIds);
+   const allGroups=addAutomaticPublishedGroups(sharedConfig.groups,
+    rankableProducts,linkedIds);
+   const automatic=allGroups.slice(sharedConfig.groups.length);
+   // A mid-month category link never back-classifies earlier days.
    const effectiveLinks=allLinks.filter(link=>link.effectiveFrom<=first);
-   // Saved company totals are valid, but a missing per-person source must
-   // never create an apparently verified individual/product leaderboard.
-   if(canPublishSharedPersonalRankings(direct,companies)){
-    groupStandings=groupPersonalScores(sharedConfig.groups,[
+   const verified=canPublishSharedPersonalRankings(direct,companies);
+   // Extra-only rows contain audited staff IDs but old fixed-category reports
+   // might be missing. Display only new-product ranks as PROVISIONAL.
+   const rankingGroups=verified?allGroups:
+    direct.peopleVerified===true?automatic:[];
+   if(verified||rankingGroups.length){
+    groupStandings=groupPersonalScores(rankingGroups,[
      ...people,...direct.people.map(p=>({...p,companyName:"直営"}))
     ],{categories:KEYS,productLinks:effectiveLinks,extraVerifiedIds});
     groupStatus="verified";
@@ -1225,7 +1250,9 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     allCountLinks=readLinks(rankLinkSnap.exists?rankLinkSnap.data():null,KEYS).links;
    }catch{fail("data-loss");}
    const linkedIds=allCountLinks.map(link=>link.productId);
-   const extraVerifiedIds=publishedIds.filter(id=>!linkedIds.includes(id));
+   const rankableProducts=await activePublishedProducts(hubId,publishedIds);
+   const activePublishedIds=rankableProducts.map(p=>p.id);
+   const extraVerifiedIds=activePublishedIds.filter(id=>!linkedIds.includes(id));
    const effectiveLinks=allCountLinks.filter(link=>link.effectiveFrom<=date);
    let additionalTotalCount=0;
    let complete=true;
@@ -1350,15 +1377,20 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    // Missing real staff IDs must not create fictitious personal rankings.
    // Company and team totals remain visible, clearly marked incomplete.
    if(direct.peopleVerified!==true)complete=false;
-   // New group settings cannot take down established direct+partner rankings.
-   // Report the group as unverified, never invent category/identity mappings.
+   // Original and new shared group rankings use the same redacted staff IDs.
    let sharedConfig={revision:0,groups:[]},groupStandings=[],groupStatus="unverified";
    try{
-    sharedConfig=await readRankingSettings(hubId);
-    // Date-effective mappings count existing buckets once. Unlinked,
-    // published additional products count only from verified extra ledgers.
-    if(canPublishSharedPersonalRankings(direct,companies)){
-     groupStandings=groupPersonalScores(sharedConfig.groups,
+    sharedConfig=await readRankingSettings(hubId,activePublishedIds);
+    const allGroups=addAutomaticPublishedGroups(sharedConfig.groups,
+     rankableProducts,linkedIds);
+    const automatic=allGroups.slice(sharedConfig.groups.length);
+    const verified=canPublishSharedPersonalRankings(direct,companies);
+    // A missing fixed-category source cannot produce a legacy-category
+    // ranking. New-product rows with verified staff IDs remain provisional.
+    const rankingGroups=verified?allGroups:
+     direct.peopleVerified===true?automatic:[];
+    if(verified||rankingGroups.length){
+     groupStandings=groupPersonalScores(rankingGroups,
       [...people,...direct.people.map(person=>({...person,companyName:"直営"}))],
       {categories:KEYS,productLinks:effectiveLinks,extraVerifiedIds});
      groupStatus="verified";
