@@ -215,3 +215,23 @@ test('secondary context helper cannot be bypassed by leaving !exists in an OR gr
   '&& (!exists(/databases/$(database)/documents/partnerWorkspaceContexts/$(request.auth.uid)) || true);');
  assert(inspectPartnerReleaseReadiness(g).blockers.includes('PARTNER_SECONDARY_UID_GUARD_MISSING'));
 });
+
+test('new finance preflight verifier is recognized without granting deployment',()=>{
+ const f=fixture(),result=inspectPartnerReleaseReadiness(f);
+ assert(!result.blockers.includes('FINANCE_RELEASE_GATE_UNRECOGNIZED'));
+ assert(result.blockers.includes('CURRENT_FINANCE_GATE_REQUIRES_DIFFERENT_RULES_CONTRACT'));
+ assert.equal(result.productionApproved,false);
+});
+test('missing helper verification or broadened raw read condition blocks the preflight',()=>{
+ for(const [old,changed] of [
+  ['verifyFinanceHelper(source);','// verifier disabled'],
+  ['function verifyFinanceHelper(source)','function verifyFinanceHelperInactive(source)'],
+  ['!recognized||hasTopLevelOr(condition)','false&&hasTopLevelOr(condition)'],
+  ["block('MISSING_SERVER_PARTNER_GUARD')","block('SKIPPED_FINANCE_GUARD')"]
+ ]){
+  const f=fixture();
+  assert(f.financeGate.includes(old),old+' must exist before mutation');
+  f.financeGate=f.financeGate.replace(old,changed);
+  assert(inspectPartnerReleaseReadiness(f).blockers.includes('FINANCE_RELEASE_GATE_UNRECOGNIZED'),old);
+ }
+});
