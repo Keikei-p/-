@@ -13481,7 +13481,7 @@ function renderSharedCountTeamDetails(parent,report){
 }
 async function loadSharedDailyStandings(where,force=false){
  if(where==="partner"&&partnerSharedRankPeriod==="month")
-  return loadPartnerMonthlySharedRankings();
+  return loadPartnerMonthlySharedRankings(force);
  const partner=where==="partner"||where==="partnerDetail";
  const detail=where==="partnerDetail"||where==="ownerDetail";
  if(!partner&&!canReadSharedCountOnlyRanks())return;
@@ -14033,7 +14033,10 @@ function partnerSameAppSelectPanel(name){
  // Never reset unsubmitted two-column inputs by changing the dashboard tab.
  if(partnerInlineData&&["individual","product","team"].includes(name)){
   renderPartnerRankingOnlyPanel();
-  void loadSharedDailyStandings("partner");
+  // Opening a leaderboard is explicit user intent: bypass the brief local
+  // day/month cache so another phone's saved counts can appear immediately.
+  // This is count-only; the two-column unsaved input stays untouched.
+  void loadSharedDailyStandings("partner",true);
  }
  // Partner's own saved team/people are already rendered from getPartnerWorkspace.
  // Do not load unrelated companies for this detail tab or expose finance data.
@@ -14063,6 +14066,49 @@ window.addEventListener("resize",()=>{
  if(!pInline("partnerSameAppDashboardDetails").hidden)
   partnerSameAppPositionPanel(partnerSameAppSelectedPanel);
 });
+// Foreground-only catch-up for counts recorded on ANOTHER device.
+// No timer/polling and no entry-form refresh: unsaved amounts, CB selection,
+// date and staff stay unchanged. Only currently visible count rankings load.
+// Focus and visibilitychange may both fire; use a shared 90-second budget.
+let lastVisibleSharedRankingRefreshAt=0;
+const VISIBLE_SHARED_RANK_REFRESH_INTERVAL_MS=90000;
+function refreshVisibleSharedRankingsOnResume(){
+ if(document.visibilityState!=="visible"||!auth.currentUser?.uid||
+    appScreen.style.display==="none")return false;
+ const now=Date.now();
+ if(now-lastVisibleSharedRankingRefreshAt<VISIBLE_SHARED_RANK_REFRESH_INTERVAL_MS)
+  return false;
+ let refreshed=false;
+ if(appScreen.dataset.partnerCountOnly==="true"){
+  const details=pInline("partnerSameAppDashboardDetails");
+  if(partnerInlineData&&!details.hidden&&
+     ["individual","product","team"].includes(partnerSameAppSelectedPanel)&&
+     !pInline("partnerPanelRankings").hidden){
+   // The monthly and daily routes both perform authenticated count-only reads.
+   // force=true is forwarded by loadSharedDailyStandings to month mode.
+   void loadSharedDailyStandings("partner",true);
+   refreshed=true;
+  }
+ }else if(canReadSharedCountOnlyRanks()){
+  for(const [which,panel] of [
+    ["Individual","individualRankingContent"],
+    ["Product","productRankingContent"]
+  ]){
+   if(!pInline(panel)?.hidden&&
+      (which==="Individual"?ownerJointIndividualMode:ownerJointProductMode)){
+    const month=which==="Individual"?
+      ownerJointIndividualPeriod==="month":ownerJointProductPeriod==="month";
+    if(month)void loadOwnerMonthlySharedRanks(which,true);
+    else void loadSharedDailyStandings(which,true);
+    refreshed=true;
+   }
+  }
+ }
+ if(refreshed)lastVisibleSharedRankingRefreshAt=now;
+ return refreshed;
+}
+document.addEventListener("visibilitychange",refreshVisibleSharedRankingsOnResume);
+window.addEventListener("focus",refreshVisibleSharedRankingsOnResume);
 for(const nav of ["partnerSameAppNavigation","partnerManagementTabs"]){
  pInline(nav).addEventListener("click",event=>{
   const button=event.target.closest("[data-partner-panel]");
