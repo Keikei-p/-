@@ -160,3 +160,45 @@ test('release readiness auditor is side-effect free and cannot deploy or touch c
  assert.match(s,/productionApproved:false/);
  assert.match(s,/process\.exitCode=2/);
 });
+
+test('alternate capture names cannot hide an overlapping permissive finance rule',()=>{
+ for(const name of ['records','products','recordCorrections','revenueGoals']){
+  const f=fixture();
+  const start=f.rules.indexOf('    match /'+name+'/{');
+  assert(start>=0);
+  const extra='    match /'+name+'/{shadow_02} {\n      allow read: if true;\n    }\n\n';
+  f.rules=f.rules.slice(0,start)+extra+f.rules.slice(start);
+  assert(inspectPartnerReleaseReadiness(f).blockers.includes(
+   'PARTNER_RAW_READ_GUARD_MISSING_'+name),name);
+ }
+});
+
+test('a top-level OR after the secondary guard is a financial read bypass',()=>{
+ for(const name of ['products','records','teams']){
+  const f=fixture();
+  const start=f.rules.indexOf('    match /'+name+'/{');
+  const end=f.rules.indexOf('\n    match /',start+1);
+  assert(start>=0&&end>start);
+  const block=f.rules.slice(start,end);
+  const altered=block.replace('&& sameCompany(resource.data.companyId);',
+   '&& sameCompany(resource.data.companyId) || true;');
+  assert.notEqual(altered,block,name+' needs an actual read-condition mutation');
+  f.rules=f.rules.slice(0,start)+altered+f.rules.slice(end);
+  assert(inspectPartnerReleaseReadiness(f).blockers.includes(
+   'PARTNER_RAW_READ_GUARD_MISSING_'+name),name+' top-level OR must veto release');
+ }
+});
+
+test('OR nested inside the guarded condition is not misclassified as unguarded',()=>{
+ const f=fixture();
+ const start=f.rules.indexOf('    match /teams/{teamId} {');
+ const end=f.rules.indexOf('\n    match /',start+1);
+ assert(start>=0&&end>start);
+ const block=f.rules.slice(start,end);
+ const altered=block.replace('&& sameCompany(resource.data.companyId);',
+  '&& (sameCompany(resource.data.companyId) || false);');
+ assert.notEqual(altered,block);
+ f.rules=f.rules.slice(0,start)+altered+f.rules.slice(end);
+ assert(!inspectPartnerReleaseReadiness(f).blockers.includes(
+  'PARTNER_RAW_READ_GUARD_MISSING_teams'));
+});
