@@ -13570,6 +13570,20 @@ function renderPartnerDashboardMonth(data,month){
   throw Error("partner_month_team_contract");
  if(teams.reduce((n,t)=>n+t.totalCount,0)!==company.totalCount)
   throw Error("partner_month_team_total_mismatch");
+ // The filtered safe public product catalog already comes from the trusted
+ // count-only API. No historical finance master is fetched by the browser.
+ if(!Array.isArray(data.publishedProducts)||data.publishedProducts.length>1000)
+  throw Error("partner_month_public_catalog_contract");
+ const monthNames=new Map();
+ for(const product of data.publishedProducts){
+  if(!product||Object.keys(product).sort().join("|")!=="id|name|sortOrder"||
+     !partnerMainValidId(product.id)||monthNames.has(product.id)||
+     typeof product.name!=="string"||!product.name.trim()||
+     !Number.isSafeInteger(product.sortOrder))
+   throw Error("partner_month_public_catalog_malformed");
+  monthNames.set(product.id,product.name);
+ }
+ partnerPublishedProductNames=monthNames;
  pInline("pPartnerDailyCount").textContent=company.totalCount+"件";
  pInline("pPartnerStaffCount").textContent=people.length+"人";
  pInline("pPartnerTeamCount").textContent=teams.length+"班";
