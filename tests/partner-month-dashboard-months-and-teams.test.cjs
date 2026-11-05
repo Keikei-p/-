@@ -39,19 +39,20 @@ const read=(month,visible=["newProduct"])=>projectPartnerMonth({
 test("October and November are independent 1-month company/team/person totals and retain historic team attribution",()=>{
  const untouched=JSON.stringify([...legacyDocs,...extraDocs].map(x=>x.data()));
  const october=read("2026-10"),november=read("2026-11");
- assert.equal(october.totalCount,9,"October 4 fixed + 5 new products");
+ assert.equal(october.totalCount,17,"October 4 fixed + 5 visible + 8 historic OFF");
  assert.equal(october.additionalTotalCount,5);
+ assert.equal(october.archivedExtraTotalCount,8);
  assert.equal(november.totalCount,10,"November 6 fixed + 4 new products");
  assert.equal(november.additionalTotalCount,4);
  assert.deepEqual(october.teams.map(t=>[t.name,t.totalCount,t.extraCounts]).sort((a,b)=>a[0].localeCompare(b[0],"ja")),[
-  ["旧班",5,{newProduct:3}],["新班",4,{newProduct:2}]
+  ["旧班",13,{newProduct:3}],["新班",4,{newProduct:2}]
  ].sort((a,b)=>a[0].localeCompare(b[0],"ja")));
  assert.deepEqual(november.teams.map(t=>[t.name,t.totalCount,t.extraCounts]),[
   ["新班",10,{newProduct:4}]
  ]);
  assert.equal(october.people.length,2);
  const staffA=october.people.find(x=>x.name==="佐藤");
- assert.equal(staffA.totalCount,6);
+ assert.equal(staffA.totalCount,14);
  assert.equal(staffA.teamKey,null,"same person across 2 historical teams must not move old records");
  assert.equal(staffA.extraCounts.newProduct,3);
  assert.equal(october.teams.reduce((sum,team)=>sum+team.totalCount,0),october.totalCount);
@@ -62,8 +63,9 @@ test("OFF hides only new product monthly ranking counts without deleting saved l
  const before=JSON.stringify(extraDocs.map(x=>x.data()));
  const visible=read("2026-10");
  const hidden=read("2026-10",[]);
- assert.equal(visible.totalCount,9);
- assert.equal(hidden.totalCount,4);
+ assert.equal(visible.totalCount,17);
+ assert.equal(hidden.totalCount,17,"OFF must not reduce saved monthly totals");
+ assert.equal(hidden.archivedExtraTotalCount,13);
  assert.equal(hidden.additionalTotalCount,0);
  assert.deepEqual(hidden.teams.map(t=>t.extraCounts),[{},{}]);
  assert.equal(JSON.stringify(extraDocs.map(x=>x.data())),before);

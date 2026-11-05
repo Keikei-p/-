@@ -13460,9 +13460,13 @@ function partnerMonthVisibleCountRows(row,keys){
   }
   const namedSum=rows.slice(keys.filter(key=>(counts[key]??0)>0).length)
    .reduce((sum,r)=>sum+r.count,0);
-  if(residual>namedSum)rows.push({
+  const historic=row?.archivedExtraTotalCount??0;
+  if(!Number.isSafeInteger(historic)||historic<0||historic>residual-namedSum)
+   throw Error("partner_month_archived_count_mismatch");
+  if(historic)rows.push({name:"公開OFF商材の保存済み過去分",count:historic});
+  if(residual-namedSum>historic)rows.push({
    name:extraSubtotal?"追加商材（名称未照合）・その他":"追加商材・その他",
-   count:residual-namedSum
+   count:residual-namedSum-historic
   });
  }else if(residual)rows.push({name:"追加商材・その他（分類未照合）",count:residual});
  return rows;
@@ -13559,6 +13563,7 @@ function renderPartnerDashboardMonth(data,month){
  const company=data.companies.find(c=>c.id===companyId);
  if(!company||company.name!==snap.companyName||
     !Number.isSafeInteger(company.totalCount)||company.totalCount<0||
+    !Number.isSafeInteger(company.archivedExtraTotalCount)||company.archivedExtraTotalCount<0||
     !Number.isSafeInteger(company.verifiedEntryCount)||company.verifiedEntryCount<0)
   throw Error("partner_month_missing_company");
  // First zero-report is a real saved record; no record is NOT zero sales.
@@ -13632,7 +13637,8 @@ function renderPartnerDashboardMonth(data,month){
    (partner.verifiedEntryCount>0?partner.totalCount+"件":"未報告"),t,p,keys);
  }
  pInline("pPartnerMonthStatus").textContent=reported?
-  label+"の保存済み実績を表示中｜未報告日は0件と扱わず、月間順位は暫定です。":
+  label+"の保存済み実績を表示中｜未報告日は0件と扱わず、月間順位は暫定です。"+
+  (company.archivedExtraTotalCount?" 公開OFF商材の過去"+company.archivedExtraTotalCount+"件も合計に保持しています。":"") :
   label+"はまだ登録済み実績を確認できません。未報告を0件とは表示しません。";
  pInline("partnerSharedDetailStatus").textContent="対象月 "+label+
   " の保存済み班・担当者別件数です。登録時の班を使用し、売上・単価は含みません。";

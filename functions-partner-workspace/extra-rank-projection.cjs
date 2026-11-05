@@ -43,9 +43,11 @@ function projectExtraRankDocs(docs,{hubId,cid,date,publishedIds=[],linkedIds=[]}
   // contribute to a count sent to the HQ/shared leaderboard.
   const publishedTotal=row.totalCount-archivedCount;
   if(!Number.isSafeInteger(publishedTotal)||publishedTotal<0)fail();
+  // Past hidden quantities contribute only as an aggregate, never exposing
+  // archived product identifiers, labels, pricing, or original ledgers.
   rows.push({staffId:id,staffNameSnapshot:row.staffNameSnapshot,
    teamIdSnapshot:row.teamIdSnapshot,totalCount:publishedTotal,
-   extraCounts:publicCounts});
+   archivedCount,extraCounts:publicCounts});
  }
  return rows;
 }

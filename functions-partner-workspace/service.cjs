@@ -1246,7 +1246,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    // A company with no saved entry this month is UNREPORTED, never a
    // verified zero-count competitor. An explicit zero-report row is valid.
    companies.push({id:cid,name:rank.name,totalCount:rank.totalCount,
-    extraTotalCount:rank.additionalTotalCount,counts:rank.counts,
+    extraTotalCount:rank.additionalTotalCount,
+    archivedExtraTotalCount:rank.archivedExtraTotalCount,counts:rank.counts,
     verifiedEntryCount:rank.verifiedEntryCount,
     peopleVerified:rank.verifiedEntryCount>0});
    people.push(...rank.people);teams.push(...rank.teams);
@@ -1426,7 +1427,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     if(hasLedger&&verified!==summary.total)fail("data-loss");
     if(!hasLedger&&entrySnaps.size>0)fail("data-loss");
     if(!hasLedger)complete=false;
-    let companyExtras=0;
+    let companyExtras=0,companyArchivedExtras=0;
     for(const extra of extraRows){
      const tid=extra.teamIdSnapshot,teamKey=crypto.createHash("sha256")
       .update(cid+"\nteam\n"+tid).digest("hex");
@@ -1440,18 +1441,24 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
        extraCounts:{},cbCounts:{NURO:blankTiers()}};
       memberByStaff.set(extra.staffId,member);members.push(member);
      }
-     member.totalCount+=extra.totalCount;
+     const savedExtra=extra.totalCount+extra.archivedCount;
+     if(!Number.isSafeInteger(savedExtra)||savedExtra<0)fail("data-loss");
+     member.totalCount+=savedExtra;
      member.extraCounts=extra.extraCounts;
-     companyExtras+=extra.totalCount;
+     companyExtras+=savedExtra;
+     companyArchivedExtras+=extra.archivedCount;
      const bucket=group.get(tid)||{name:savedTeams.get(tid)||"登録当時の班未確認",
       totalCount:0,counts:Object.fromEntries(KEYS.map(k=>[k,0])),
       cbCounts:{NURO:blankTiers()}};
-     bucket.totalCount+=extra.totalCount;
+     bucket.totalCount+=savedExtra;
      group.set(tid,bucket);
     }
-    additionalTotalCount+=companyExtras;
+    // Product-specific published totals and all-time earned headline counts
+    // are separate: no new names or money are exposed.
+    additionalTotalCount+=companyExtras-companyArchivedExtras;
     companies.push({id:cid,name:company.name,totalCount:summary.total+companyExtras,
-     counts:summary.counts,extraTotalCount:companyExtras,peopleVerified:hasLedger});
+     counts:summary.counts,extraTotalCount:companyExtras-companyArchivedExtras,
+     archivedExtraTotalCount:companyArchivedExtras,peopleVerified:hasLedger});
     for(const k of KEYS)productCounts[k]+=summary.counts[k];
     if(hasLedger||extraRows.length){
      people.push(...members);

@@ -29,10 +29,11 @@ test("new Owner-published product month has one person per saved staff ID, corre
  assert.deepEqual(published.map(x=>x.id),["newFiber"]);
  const original=JSON.stringify(docs.map(x=>x.data()));
  const month=project(["newFiber"]);
- assert.equal(month.totalCount,11);
+ assert.equal(month.totalCount,20);
  assert.equal(month.additionalTotalCount,11);
+ assert.equal(month.archivedExtraTotalCount,9);
  assert.equal(month.people.length,2);
- assert.deepEqual(month.people.map(x=>x.totalCount).sort((a,b)=>b-a),[6,5]);
+ assert.deepEqual(month.people.map(x=>x.totalCount).sort((a,b)=>b-a),[15,5]);
  const auto=addAutomaticPublishedGroups([],published,[]);
  assert.equal(auto.length,1);
  assert.deepEqual(auto[0].keys,["id:newFiber"]);
@@ -55,11 +56,13 @@ test("new Owner-published product month has one person per saved staff ID, corre
   categories:keys,extraVerifiedIds:["newFiber"]
  });
  assert.deepEqual(ranked[0].members.map(x=>[x.count,x.rank]),[[6,1],[5,2],[3,3]]);
- assert.doesNotMatch(JSON.stringify(ranked),/777777|222222|300000|555555|unitPrice|revenue|pricingOptions|archived/);
+ assert.doesNotMatch(JSON.stringify(ranked),/777777|222222|300000|555555|unitPrice|revenue|pricingOptions|"archived":/);
  // Turning OFF excludes the product from all NEW monthly shared counts but
  // preserves immutable old extra records; publishing again restores exact totals.
  const afterOff=project([]);
- assert.equal(afterOff.totalCount,0);
+ assert.equal(afterOff.totalCount,20,"OFF retains saved historic headline");
+ assert.equal(afterOff.archivedExtraTotalCount,20);
+ assert.equal(afterOff.additionalTotalCount,0);
  assert.deepEqual(addAutomaticPublishedGroups([],projectMasterProducts(master,[],true),[]),[]);
  assert.equal(JSON.stringify(docs.map(x=>x.data())),original);
  const restored=project(["newFiber"]);
