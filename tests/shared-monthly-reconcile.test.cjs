@@ -192,3 +192,18 @@ test("missing, unknown or inconsistent company scopes refuse monthly rankings",(
   assert.throws(()=>reconcileSharedMonthlyCounts(x),/RECONCILIATION_FAILED/);
  }
 });
+
+test("balanced cross-company product reassignment cannot distort category rankings",()=>{
+ for(const type of ["people","teams"]){
+  const x=fixture();
+  // Keep each company/person/team and global total unchanged, but swap
+  // one NURO category count with one SBMNP count between companies.
+  x[type][0].counts.NURO=1;
+  x[type][0].counts.SBMNP=1;
+  x[type][1].counts.NURO=3;
+  x[type][1].counts.SBMNP=0;
+  assert.equal(x[type][0].totalCount,4);
+  assert.equal(x[type][1].totalCount,3);
+  assert.throws(()=>reconcileSharedMonthlyCounts(x),/RECONCILIATION_FAILED/);
+ }
+});
