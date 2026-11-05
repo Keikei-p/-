@@ -3,6 +3,7 @@
 const crypto=require("node:crypto");
 const {loadPublication,projectMasterProducts,projectOwnerPublicationRows,changePublication,validId,nameOnly}=require("./catalog-publication.cjs");
 const {readLinks,addLink,projectLinks}=require("./catalog-count-links.cjs");
+const {readLegacyGate,activateLegacyGate,resolveLegacyInputPolicy,assertLegacyEditAllowed}=require("./legacy-publication-policy.cjs");
 const {normalizeExtraCounts,applyExtraCounts,projectedExtraRead}=require("./additional-counts.cjs");
 const {projectExtraRankDocs}=require("./extra-rank-projection.cjs");
 const {ownerPublishedExtraBreakdown}=require("./owner-published-extra-breakdown.cjs");
@@ -460,6 +461,77 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    tx.set(ref,{...next,updatedByUid:a.uid,updatedAt:FieldValue.serverTimestamp()});
    return {linked:true,revision:next.revision,productId:d.productId,
     category:d.category,effectiveFrom};
+  });
+ }
+
+ // Original nine categories remain available until one Partner is armed
+ // by Hub Owner. Existing reports and historical snapshots never migrate.
+ const legacyGateRef=cid=>collection(cid,"partnerCatalogSettings").doc("legacyPublicationGate");
+ async function legacyInputPolicy(hub,cid,date,get=ref=>ref.get(),snap=null){
+  const gateDoc=snap||await get(legacyGateRef(cid));
+  let gate;try{gate=readLegacyGate(gateDoc.exists?gateDoc.data():null);}
+  catch{fail("data-loss");}
+  if(gate.mode==="legacy"||date<gate.effectiveFrom)
+   return {mode:gate.mode==="legacy"?"legacy":"scheduled",
+    effectiveFrom:gate.effectiveFrom,blockedCategories:[]};
+  const [pubDoc,linkDoc]=await Promise.all([
+   get(publicationRef(hub)),get(countLinksRef(hub))
+  ]);
+  try{return resolveLegacyInputPolicy({
+   gate:gateDoc.data(),publication:pubDoc.exists?pubDoc.data():null,
+   links:linkDoc.exists?linkDoc.data():null,date,categories:KEYS
+  });}catch{fail("data-loss");}
+ }
+ async function getPartnerLegacyCountGate(request){
+  const a=await actor(request),d=request?.data||{};
+  if(Object.keys(d).join("|")!=="partnerCompanyId"||!validId(d.partnerCompanyId))
+   fail("invalid-argument");
+  const s=await scope(a.uid);
+  if(s.kind!=="hub"||s.role!=="owner")fail();
+  const rs=await db.collection("partnerRelations").doc(d.partnerCompanyId).get();
+  const rel=rs.data()||{};
+  if(!rs.exists||rel.partnerCompanyId!==d.partnerCompanyId||
+     rel.hubCompanyId!==s.cid)fail();
+  const doc=await legacyGateRef(d.partnerCompanyId).get();
+  try{
+   const gate=readLegacyGate(doc.exists?doc.data():null);
+   return {scope:"partner_legacy_count_gate",partnerCompanyId:d.partnerCompanyId,
+    armed:gate.mode==="enforce",effectiveFrom:gate.effectiveFrom,revision:gate.revision};
+  }catch{fail("data-loss");}
+ }
+ async function activatePartnerLegacyCountGate(request){
+  const a=await actor(request),d=request?.data||{};
+  if(Object.keys(d).sort().join("|")!=="confirmation|expectedRevision|partnerCompanyId"||
+     !validId(d.partnerCompanyId)||d.expectedRevision!==0||
+     d.confirmation!=="ACTIVATE_NEXT_DAY_LEGACY_CATEGORY_FILTER")
+   fail("invalid-argument");
+  const s=await scope(a.uid);
+  if(s.kind!=="hub"||s.role!=="owner")fail();
+  const from=new Date(Date.parse(jstToday()+"T00:00:00Z")+86400000)
+   .toISOString().slice(0,10);
+  return db.runTransaction(async tx=>{
+   const live=await scope(a.uid,tx);
+   if(live.kind!=="hub"||live.role!=="owner"||live.cid!==s.cid)fail();
+   const ref=legacyGateRef(d.partnerCompanyId);
+   const [rs,cs,old,links]=await Promise.all([
+    tx.get(db.collection("partnerRelations").doc(d.partnerCompanyId)),
+    tx.get(db.collection("companies").doc(d.partnerCompanyId)),
+    tx.get(ref),tx.get(countLinksRef(s.cid))
+   ]);
+   const rel=rs.data()||{},company=cs.data()||{};
+   if(!rs.exists||!cs.exists||rel.partnerCompanyId!==d.partnerCompanyId||
+      rel.hubCompanyId!==s.cid||rel.active!==true||
+      rel.countSharingApproved!==true||company.companyKind!=="partner"||
+      company.hubCompanyId!==s.cid||company.active!==true)fail("failed-precondition");
+   let next;
+   try{
+    if(!readLinks(links.exists?links.data():null,KEYS).links.some(x=>x.effectiveFrom<=from))
+     fail("failed-precondition");
+    next=activateLegacyGate(old.exists?old.data():null,from,d.expectedRevision);
+   }catch(e){if(e?.code==="failed-precondition")throw e;fail("failed-precondition");}
+   tx.create(ref,{...next,hubCompanyId:s.cid,partnerCompanyId:d.partnerCompanyId,
+    activatedByUid:a.uid,activatedAt:FieldValue.serverTimestamp()});
+   return {armed:true,effectiveFrom:from,partnerCompanyId:d.partnerCompanyId};
   });
  }
 
