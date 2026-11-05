@@ -89,6 +89,7 @@ test("success is rendered beside Save, remains visible after refresh; errors mus
   auth:{currentUser:{uid:"u"}},
   sharedDailyRankingGeneration:0,
   sharedDailyRankCache:new Map(),
+  invalidateSharedRankingReadCaches(){this.invalidations=(this.invalidations||0)+1;},
   pInline:id=>ui.get(id)||null,
   partnerInlineStatus:msg=>messages.push(msg),
   partnerCountSaveFailureMessage:()=>"保存に失敗しました。",
@@ -101,6 +102,7 @@ test("success is rendered beside Save, remains visible after refresh; errors mus
  await context.perform(async()=> "✅ 実績を登録できました！",{kind:"save"});
  assert.equal(ui.get("pInlineSaveStatus").dataset.result,"success");
  assert.match(ui.get("pInlineSaveStatus").textContent,/実績を登録できました/);
+ assert.equal(context.invalidations,1,"verified save invalidates stale counts");
  await context.perform(async()=> "登録済みの件数と同じです。変更はありません。",{kind:"save"});
  assert.notEqual(ui.get("pInlineSaveStatus").dataset.result,"success");
  await context.perform(async()=> {throw Object.assign(Error("no"),{code:"functions/permission-denied"})},{kind:"save",refresh:false});
