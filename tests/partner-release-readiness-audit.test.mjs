@@ -142,8 +142,13 @@ test('additive get or list grants cannot bypass the protected read rule',()=>{
 
 test('secondary guard joined with OR is never accepted as protected',()=>{
  const f=fixture();
- f.rules=f.rules.replace('allow read: if noSecondaryPartnerWorkspace()\n',
+ const teamStart=f.rules.indexOf('    match /teams/{teamId} {');
+ assert(teamStart>=0,'team read rule must exist');
+ const before=f.rules.slice(teamStart);
+ const after=before.replace('allow read: if noSecondaryPartnerWorkspace()\n',
    'allow read: if noSecondaryPartnerWorkspace() || true\n');
+ assert.notEqual(after,before,'the intended team read grant must be altered');
+ f.rules=f.rules.slice(0,teamStart)+after;
  assert(inspectPartnerReleaseReadiness(f).blockers.includes(
   'PARTNER_RAW_READ_GUARD_MISSING_teams'));
 });
