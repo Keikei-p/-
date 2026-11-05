@@ -76,7 +76,7 @@ jobs:
         run: npm install --prefix tests --ignore-scripts --no-audit --no-fund
       - name: Verify every Firestore Rules test with synthetic demo identities
         run: |
-          npx --yes firebase-tools@15.34.1 emulators:exec --project demo-sales-support --only firestore "node --test tests/rules.test.cjs tests/finance-stage2-integrated.test.mjs"
+          npx --yes firebase-tools@15.34.1 emulators:exec --project demo-sales-support --only firestore "node --test tests/rules.test.cjs && node --test tests/finance-stage2-integrated.test.mjs"
       - name: No deployment or real data writes
         run: |
           echo 'PASS: demo emulator only - no Firebase production, no Hosting, no Functions, no Rules publish'
