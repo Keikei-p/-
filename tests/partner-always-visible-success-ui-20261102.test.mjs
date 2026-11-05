@@ -120,3 +120,83 @@ test("original HQ finance / security rules, invite, saved history and merged ran
   'id="partnerPanelInvite"','id="partnerPanelHistory"'
  ])assert.ok(html.includes(marker),marker);
 });
+
+
+test("role switch scrubs in-memory internal prices and stale monetary DOM without any database writes",()=>{
+ const code=snippet("function isolateInternalFinanceForPartnerWorkspace(){",
+  "async function openSameAppPartnerWorkspace(");
+ const cleared=[],nodes=Array.from({length:6},(_,i)=>({
+  replaceChildren(){cleared.push(i);}
+ }));
+ const ctx={
+  products:[{id:"price",unitPrice:87000,pricingOptions:[{price:50000}]}],
+  records:[{totalRevenue:500000}],
+  revenueGoals:[{targetRevenue:1000000}],
+  annualChartRecords:[{totalRevenue:500000}],
+  members:[{email:"private@example.test"}],
+  teams:[{name:"old team"}],goals:[{total:1}],
+  currentUserData:{companyId:"internal",canViewRevenue:true,companyRole:"owner"},
+  currentCompanyData:{companyKind:"internal",name:"Nico"},
+  editingProductId:"price",editingRecordId:"old",editingRecordRevision:5,
+  productList:nodes[0],productPricingEditor:nodes[1],
+  editProductPricingEditor:nodes[2],individualRankingList:nodes[3],
+  productRankingMemberList:nodes[4],monthlyRevenue:nodes[5]
+ };
+ vm.runInNewContext(code+"\nthis.scrub=isolateInternalFinanceForPartnerWorkspace;",ctx);
+ ctx.scrub();
+ for(const key of ["products","records","revenueGoals","members","teams","goals"])
+  assert.equal(ctx[key].length,0,key);
+ for(const key of ["currentUserData","currentCompanyData","annualChartRecords",
+  "editingProductId","editingRecordId","editingRecordRevision"])
+  assert.equal(ctx[key],null,key);
+ assert.equal(cleared.length,6,"both old price editors and ranking DOM are scrubbed");
+ const open=snippet("async function openSameAppPartnerWorkspace(",
+  "// The callable may commit before the phone loses its response.");
+ const mode=open.indexOf('appScreen.dataset.partnerCountOnly="true";'),
+  stop=open.indexOf("stopRealtimeListeners();"),
+  scrub=open.indexOf("isolateInternalFinanceForPartnerWorkspace();"),
+  fetch=open.indexOf("await partnerInlineFetch();");
+ assert(mode>=0&&stop>mode&&scrub>stop&&fetch>scrub,
+  "partner-only mode and memory cleanup happen before async reads");
+ assert(!/deleteDoc\(|setDoc\(|updateDoc\(|runTransaction\(/.test(code));
+});
+test("a pending legacy product read cannot rehydrate prices after switching to partner",async()=>{
+ const code=snippet("async function loadProducts(","function clearProductLongPress()");
+ let resolveRead,rendered=0;
+ const ctx={
+  appScreen:{dataset:{partnerCountOnly:false}},
+  auth:{currentUser:{uid:"owner"}},
+  currentUserData:{companyId:"direct"},
+  products:[{id:"stale",unitPrice:45000}],
+  getDocs:()=>new Promise(resolve=>{resolveRead=resolve;}),
+  companyCollectionQuery:()=>({type:"products"}),
+  compareProductsByOrder:()=>0,
+  renderProducts:()=>{rendered++;},
+  catalogOwner:()=>false,
+  isCurrentCompanyManager:()=>false,
+  console:{error(){}},
+  showError:()=>{throw Error("unexpected error UI");}
+ };
+ vm.runInNewContext(code+"\nthis.read=loadProducts;",ctx);
+ const first=ctx.read();
+ assert.equal(typeof resolveRead,"function");
+ ctx.appScreen.dataset.partnerCountOnly="true";
+ ctx.products=[];
+ resolveRead({forEach:fn=>fn({id:"secret",data:()=>({unitPrice:90000})})});
+ assert.equal(await first,false);
+ assert.equal(ctx.products.length,0);
+ assert.equal(rendered,0);
+ assert.equal(await ctx.read(),false,"partner may not even start the old getDocs");
+});
+test("partner-only mode never starts financial Firestore listeners",()=>{
+ const start=source.indexOf("function startRealtimeListeners() {");
+ const end=source.indexOf("function stopRealtimeListeners()",start);
+ assert(start>=0&&end>start);
+ const code=source.slice(start,end);
+ const ctx={appScreen:{dataset:{partnerCountOnly:"true"}}};
+ vm.runInNewContext(code+"\nthis.start=startRealtimeListeners;",ctx);
+ assert.equal(ctx.start(),undefined,"return before invoking any legacy listener");
+ const firstGuard=code.indexOf('if(appScreen.dataset.partnerCountOnly==="true")return;');
+ const stop=code.indexOf("stopRealtimeListeners();");
+ assert(firstGuard>=0&&stop>firstGuard,"role guard before old listener reset");
+});
