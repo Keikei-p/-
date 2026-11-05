@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {phase1WithLiveAccountGate} from '../tools/production/phase1-live-proof-bridge.mjs';
 import {phase1Boundary} from '../tools/production/phase1-partner-finance-release.mjs';
+import {createAffectedSecondaryIdentityVerifier} from '../tools/production/phase1-bound-identity-readonly.mjs';
 import {
   createLiveFirestoreOwnerPreflight,createLiveFirestoreRoleVerifier
 } from '../tools/production/verify-live-firestore-roles.mjs';
@@ -86,7 +87,55 @@ function releaseFixture(){
     }
   };
 }
-const approvals={approval:true,candidateEmulatorVerified:true,backupReviewed:true};
+
+const approvalRows={approval:true,candidateEmulatorVerified:true,backupReviewed:true};
+// These are solely mock documents. No production credentials or identities.
+const oauthRoot=ROOT+'/';
+const str=v=>({stringValue:v});
+const flag=v=>({booleanValue:v});
+function fakeIdentity({changedPath='',changes={},statusOverride=0}={}){
+ const owner='realOwner',partner='secondaryPartner',internal='internal_company',external='partner_company';
+ const rows={
+  ['users/'+owner]:{companyId:str(internal),companyRole:str('owner'),
+   accessKind:str('internal'),active:flag(true)},
+  ['companies/'+internal]:{companyKind:str('internal'),active:flag(true),
+    ownerUid:str(owner)},
+  ['companies/'+internal+'/members/'+owner]:{
+    companyRole:str('owner'),active:flag(true),accessKind:str('internal')},
+  ['partnerWorkspaceContexts/'+partner]:{
+    uid:str(partner),kind:str('partner_secondary'),active:flag(true),
+    primaryCompanyId:str(internal),partnerCompanyId:str(external),
+    hubCompanyId:str(internal)},
+  ['users/'+partner]:{companyId:str(internal),companyRole:str('member'),
+    active:flag(true),accessKind:str('internal')},
+  ['companies/'+internal+'/members/'+partner]:{
+    companyRole:str('member'),active:flag(true),accessKind:str('internal')},
+  ['companies/'+external]:{companyKind:str('partner'),active:flag(true),
+    hubCompanyId:str(internal)},
+  ['companies/'+external+'/members/'+partner]:{
+    uid:str(partner),companyId:str(external),active:flag(true),
+    accessKind:str('partner'),memberType:str('cooperator'),
+    companyRole:str('member'),canViewRevenue:flag(false),
+    canViewUnitPrice:flag(false)}
+ };
+ const calls=[];
+ return {
+  calls,
+  credential:{getAccessToken:async()=>({access_token:'fake-oauth-token-xxxxxxxxxxxxxxxx'})},
+  partnerCompanyId:external,
+  now:()=>T*1000,
+  fetchImpl:async(url,opts)=>{
+   const path=url.slice(oauthRoot.length);
+   calls.push({path,method:opts.method});
+   if(statusOverride)return {status:statusOverride,json:async()=>({})};
+   if(path==='partnerWorkspaceContexts/'+owner)return {status:404};
+   const fields={...rows[path],...(path===changedPath?changes:{})};
+   if(!rows[path])return {status:404};
+   return {status:200,json:async()=>({name:url,fields})};
+  }
+ };
+}
+const approvals=approvalRows;
 
 test('preflight reads two Owner original documents AND their constrained lists without writes',async()=>{
   const f=fixture();
@@ -113,7 +162,7 @@ test('bridge denies missing signed-review flags BEFORE either account or Rules A
     const f=fixture(),r=releaseFixture();
     const settings={...approvals,[omitted]:false};
     await assert.rejects(phase1WithLiveAccountGate({
-      release:r.release,accounts:f.accounts,...settings
+      release:r.release,accounts:f.accounts,identity:fakeIdentity(),...settings
     }),/STOP_PHASE1_LIVE_BRIDGE_INDEPENDENT_APPROVAL_REQUIRED/);
     assert.equal(f.calls.length,0);
     assert.equal(r.writes.length,0);
@@ -140,9 +189,9 @@ test('bridge cannot be tricked by caller supplying fake verification or apply ov
 test('synthetic injected HTTP transport, even with 200 Owner, NEVER starts Rules release',async()=>{
   const f=fixture(),r=releaseFixture();
   await assert.rejects(phase1WithLiveAccountGate({
-    release:r.release,accounts:f.accounts,...approvals
-  }),/STOP_PHASE1_LIVE_BRIDGE_REAL_OWNER_PREFLIGHT_REQUIRED/);
-  assert.equal(f.calls.length,4);
+    release:r.release,accounts:f.accounts,identity:fakeIdentity(),...approvals
+  }),/STOP_PHASE1_LIVE_BRIDGE_TRUSTED_AFFECTED_IDENTITY_REQUIRED/);
+  assert.equal(f.calls.length,0);
   assert.equal(r.writes.length,0);
   assert.equal(r.getActive(),oldId);
 });
@@ -155,9 +204,8 @@ test('broken Owner permission, wrong company or expired Owner token always stops
     });
     if(type==='expired')f.setTime((T+4000)*1000);
     const r=releaseFixture();
-    await assert.rejects(phase1WithLiveAccountGate({
-      release:r.release,accounts:f.accounts,...approvals
-    }),/STOP_LIVE_ROLE_/);
+    await assert.rejects(createLiveFirestoreOwnerPreflight(f.accounts)(),
+      /STOP_LIVE_ROLE_/);
     assert.equal(r.writes.length,0);
     assert.equal(r.getActive(),oldId);
   }
@@ -194,4 +242,61 @@ test('bridge is import-only, with no deployed runner, credential reader or impli
   assert.match(source,/phase1Boundary\(\{/);
   assert.match(source,/verifyLiveRoles:after/);
   assert.match(source,/realOwnerBeforeVerified:true/);
+  assert.match(source,/TRUSTED_AFFECTED_IDENTITY_REQUIRED/);
+  assert.match(source,/POST_SWITCH_IDENTITY_UNVERIFIED/);
+});
+
+test('synthetic identity cannot claim production even when EVERY expected membership is valid',async()=>{
+ const identity=fakeIdentity();
+ const result=await createAffectedSecondaryIdentityVerifier({
+  ...identity,expectedOwnerUid:'realOwner',expectedPartnerUid:'secondaryPartner',
+  internalCompanyId:'internal_company'
+ })();
+ assert.deepEqual(result,{
+  checkedAgainst:'synthetic-only',ownerInternalBound:true,
+  affectedSecondaryBound:true,projectId:PROJECT,productionDocumentWrites:0
+ });
+ assert.equal(identity.calls.length,9);
+ assert(identity.calls.every(c=>c.method==='GET'));
+ assert(!JSON.stringify(result).includes('secondaryPartner'));
+ assert(!JSON.stringify(result).includes('internal_company'));
+});
+test('unrelated / incomplete partner account cannot be used to prove affected secondary denial',async()=>{
+ const checks=[
+  ['partnerWorkspaceContexts/secondaryPartner',{kind:str('partner_primary')}],
+  ['partnerWorkspaceContexts/secondaryPartner',{primaryCompanyId:str('wrong_company')}],
+  ['partnerWorkspaceContexts/secondaryPartner',{active:flag(false)}],
+  ['companies/internal_company/members/secondaryPartner',{companyRole:str('owner')}],
+  ['companies/partner_company/members/secondaryPartner',{canViewRevenue:flag(true)}],
+  ['companies/partner_company/members/secondaryPartner',{memberType:str('internal')}],
+  ['companies/partner_company',{companyKind:str('internal')}],
+  ['users/secondaryPartner',{companyId:str('wrong_company')}],
+  ['users/realOwner',{companyRole:str('member')}],
+  ['companies/internal_company',{ownerUid:str('anotherOwner')}]
+ ];
+ for(const [changedPath,changes] of checks){
+  const identity=fakeIdentity({changedPath,changes});
+  await assert.rejects(createAffectedSecondaryIdentityVerifier({
+    ...identity,expectedOwnerUid:'realOwner',expectedPartnerUid:'secondaryPartner',
+    internalCompanyId:'internal_company'
+  })(),/STOP_PHASE1_IDENTITY_(OWNER_NOT_INDEPENDENTLY_BOUND|AFFECTED_SECONDARY_NOT_BOUND)/,
+  changedPath);
+ }
+});
+test('missing identity doc and unexpected auth response fail without any writes',async()=>{
+ const identity=fakeIdentity({statusOverride:401});
+ await assert.rejects(createAffectedSecondaryIdentityVerifier({
+  ...identity,expectedOwnerUid:'realOwner',expectedPartnerUid:'secondaryPartner',
+  internalCompanyId:'internal_company'
+ })(),/STOP_PHASE1_IDENTITY_IDENTITY_READ_UNVERIFIED/);
+ assert(identity.calls.every(c=>c.method==='GET'));
+});
+test('bridge rejects generic partner and otherwise-valid mocked identity prior to Rules API',async()=>{
+ const f=fixture(),r=releaseFixture(),identity=fakeIdentity();
+ await assert.rejects(phase1WithLiveAccountGate({
+  release:r.release,accounts:f.accounts,identity,...approvals
+ }),/STOP_PHASE1_LIVE_BRIDGE_TRUSTED_AFFECTED_IDENTITY_REQUIRED/);
+ assert.equal(r.writes.length,0);
+ assert.equal(r.getActive(),oldId);
+ assert.equal(f.calls.length,0);
 });
