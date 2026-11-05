@@ -1250,6 +1250,66 @@ test("shared daily standings expose verified partners to both companies without 
  assert.deepEqual(partial.groupStandings,[]);
  assert.doesNotMatch(JSON.stringify(partial),/名前のみ|1999998|999999/);
 });
+test("day shared scoreboard checks partner product sums before sending HQ or partner ranks",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ db.seed("companies/partner/partnerWorkTeams/t1",
+  {companyId:"partner",name:"第一班",active:true});
+ for(const id of ["staffA","staffB"])
+  db.seed("companies/partner/partnerWorkStaff/"+id,{
+   companyId:"partner",uid:null,name:id,active:true,kind:"managed",role:"member",teamId:"t1"
+  });
+ const entry=(staffId,counts,expectedVersion)=>({date,staffId,counts,expectedVersion});
+ const a={...zero(),NURO:2,SBMNP:1},b={...zero(),NURO:1,SBMNP:2};
+ await api.submit(req("p",entry("staffA",a,0)));
+ await api.submit(req("p",entry("staffB",b,0)));
+ const oldRecords=clone(db.store.get("records/old"));
+ const oldMoney=clone(db.store.get("products/money"));
+ const before=clone([...db.store]);
+ for(const uid of ["h","p"]){
+  const result=await api.view(req(uid,{date,sharedRankings:true}));
+  assert.deepEqual(result.productCounts,{...zero(),NURO:3,SBMNP:3});
+  assert.equal(result.companies[0].totalCount,6);
+  assert.equal(result.people.reduce((n,x)=>n+x.totalCount,0),6);
+  assert.equal(result.teams[0].totalCount,6);
+  assert.doesNotMatch(JSON.stringify(result),
+   /totalRevenue|revenuePerUnit|unitPrice|98765|808080|staffA|staffB/);
+ }
+ assert.deepEqual([...db.store],before,"both scoreboards must only read");
+ const docId="companies/partner/partnerWorkEntries/"+date+"__staffA";
+ const original=clone(db.store.get(docId));
+ db.store.get(docId).counts.NURO=3;
+ db.store.get(docId).counts.SBMNP=0;
+ // This person's count stays at 3 and the company's total stays 6.
+ assert.equal(db.store.get(docId).totalCount,3);
+ assert.equal(db.store.get("companies/hub/partnerWorkSummaries/"+date+"__partner"),undefined);
+ for(const uid of ["h","p"])
+  await assert.rejects(api.view(req(uid,{date,sharedRankings:true})),{code:"data-loss"});
+ // This is a READ-ONLY rejection; revert the *test fixture* without writes.
+ db.seed(docId,original);
+ const recovered=await api.view(req("h",{date,sharedRankings:true}));
+ assert.equal(recovered.companies[0].totalCount,6);
+ assert.deepEqual(db.store.get("records/old"),oldRecords);
+ assert.deepEqual(db.store.get("products/money"),oldMoney);
+});
+test("shared scoreboard refuses a daily entry copied under another staff document ID",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ db.seed("companies/partner/partnerWorkTeams/t1",{companyId:"partner",name:"第一班",active:true});
+ db.seed("companies/partner/partnerWorkStaff/staffA",{
+  companyId:"partner",uid:"p",name:"佐藤",active:true,kind:"account",role:"leader",teamId:"t1"});
+ await api.submit(req("p",{date,staffId:"staffA",expectedVersion:0,counts:{...zero(),NURO:2}}));
+ const path="companies/partner/partnerWorkEntries/"+date+"__staffA";
+ const original=clone(db.store.get(path));
+ // A copied entry with a conflicting staff identity must not appear under
+ // somebody else's leaderboard name, even when quantities are valid.
+ db.store.get(path).staffId="staffB";
+ const before=clone([...db.store]);
+ for(const uid of ["h","p"])
+  await assert.rejects(api.view(req(uid,{date,sharedRankings:true})),{code:"data-loss"});
+ assert.deepEqual([...db.store],before);
+ db.seed(path,original);
+ const valid=await api.view(req("p",{date,sharedRankings:true}));
+ assert.equal(valid.people[0].totalCount,2);
+});
 test("unsubmitted approved companies are not misrepresented as zero-count ranks",async()=>{
  const {db,api,req}=setup();
  const result=await api.view(req("p",{date:"2026-10-31",sharedRankings:true}));
