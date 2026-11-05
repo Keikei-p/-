@@ -13630,15 +13630,28 @@ async function loadSharedDailyStandings(where,force=false){
 // Explicit opt-in monthly count mode. Never switch the original revenue rank
 // to quantities or perform 31 unbounded daily reads in the browser.
 const ownerMonthlyRankCache=new Map();
-let ownerMonthlyRankGeneration=0;
+// Separate request generations for the three existing ranking surfaces.
+// A product-month refresh must never cancel an in-flight personal-month read.
+const sharedMonthlyRequestSequences=new Map();
+function nextSharedMonthlyRequest(card){
+ const next=(sharedMonthlyRequestSequences.get(card)||0)+1;
+ sharedMonthlyRequestSequences.set(card,next);
+ return next;
+}
+function invalidateSharedDailyCard(card){
+ sharedDailyRequestSequences.set(card,(sharedDailyRequestSequences.get(card)||0)+1);
+}
 let ownerJointIndividualPeriod="day",ownerJointProductPeriod="day";
 async function loadOwnerMonthlySharedRanks(which){
  const monthField=which==="Product"?"ownerJointProductMonth":"ownerJointIndividualMonth";
  const month=document.getElementById(monthField).value;
  const status=document.getElementById("ownerJoint"+which+"Status");
- const uid=auth.currentUser?.uid,seq=++ownerMonthlyRankGeneration;
- // Cancel obsolete day fetches; stale responses must not overwrite new month.
- ++sharedDailyRankingGeneration;
+ const uid=auth.currentUser?.uid,companyId=currentUserData?.companyId;
+ const seq=nextSharedMonthlyRequest(which);
+ const sessionGeneration=sharedDailyRankingGeneration;
+ // Only the matching daily card becomes obsolete, not the other active
+ // individual/product card or partner's independent rankings panel.
+ invalidateSharedDailyCard("ownerSharedContent"+which);
  if(!uid||!canReadSharedCountOnlyRanks()||
     !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)||
     month>getTodayString().slice(0,7)){
@@ -13646,10 +13659,12 @@ async function loadOwnerMonthlySharedRanks(which){
  }
  status.textContent="直営・協力店の月間件数を照合しています。月間は暫定順位です…";
  try{
-  const key=uid+"|"+(currentUserData?.companyId||"")+"|"+month;
+  const key=uid+"|"+(companyId||"")+"|"+month;
   const old=ownerMonthlyRankCache.get(key),cached=old&&Date.now()-old.checkedAt<180000;
   const response=cached?old.value:(await readPartnerMonthlySharedCounts({month})).data;
-  if(seq!==ownerMonthlyRankGeneration||auth.currentUser?.uid!==uid||
+  if(seq!==sharedMonthlyRequestSequences.get(which)||
+     sessionGeneration!==sharedDailyRankingGeneration||
+     auth.currentUser?.uid!==uid||currentUserData?.companyId!==companyId||
      document.getElementById(monthField).value!==month)return;
   if(response?.scope!=="shared_monthly_counts_only"||response.role!=="hub"||
      response.month!==month||response.complete!==false||
@@ -13682,7 +13697,9 @@ async function loadOwnerMonthlySharedRanks(which){
   }
   status.textContent="月間件数の途中経過です。未報告・未照合の実績は0件として確定していません。";
  }catch(error){
-  if(seq!==ownerMonthlyRankGeneration||auth.currentUser?.uid!==uid)return;
+  if(seq!==sharedMonthlyRequestSequences.get(which)||
+     sessionGeneration!==sharedDailyRankingGeneration||
+     auth.currentUser?.uid!==uid||currentUserData?.companyId!==companyId)return;
   status.textContent="月間の件数を照合できません。読取上限・認証・権限を確認してください。既存売上データは維持しています。";
   if(which==="Individual"){ownerJointIndividualSnapshot=null;renderOwnerJointIndividualRanking();}
   else{ownerJointProductSnapshot=null;renderOwnerJointProductRanking(null);}
@@ -13695,14 +13712,14 @@ ownerJointIndividualDate.value=getTodayString();
 ownerJointIndividualDate.max=getTodayString();
 document.getElementById("ownerJointIndividualButton").onclick=()=>{
  if(!canReadSharedCountOnlyRanks())return;
- ++ownerMonthlyRankGeneration;ownerJointIndividualPeriod="day";
+ nextSharedMonthlyRequest("Individual");ownerJointIndividualPeriod="day";
  ownerJointIndividualMode=true;ownerJointIndividualSnapshot=null;
  document.getElementById("ownerSharedDateIndividual").value=ownerJointIndividualDate.value;
  renderOwnerJointIndividualRanking();
  void loadSharedDailyStandings("Individual",true);
 };
 document.getElementById("ownerOriginalIndividualButton").onclick=()=>{
- ++ownerMonthlyRankGeneration;++sharedDailyRankingGeneration;
+ nextSharedMonthlyRequest("Individual");invalidateSharedDailyCard("ownerSharedContentIndividual");
  ownerJointIndividualMode=false;ownerJointIndividualSnapshot=null;
  renderDashboard();
  document.getElementById("ownerJointIndividualStatus").textContent="自社の従来ランキングを表示しています。";
@@ -13719,7 +13736,7 @@ const ownerJointProductDate=document.getElementById("ownerJointProductDate");
 ownerJointProductDate.value=getTodayString();ownerJointProductDate.max=getTodayString();
 document.getElementById("ownerJointProductButton").onclick=()=>{
  if(!isCurrentCompanyManager())return;
- ++ownerMonthlyRankGeneration;ownerJointProductPeriod="day";
+ nextSharedMonthlyRequest("Product");ownerJointProductPeriod="day";
  ownerJointProductMode=true;
  ownerJointProductSnapshot=null;
  ownerJointProductDateKey=ownerJointProductDate.value;
@@ -13729,7 +13746,7 @@ document.getElementById("ownerJointProductButton").onclick=()=>{
  void loadSharedDailyStandings("Product",true);
 };
 document.getElementById("ownerOriginalProductButton").onclick=()=>{
- ++ownerMonthlyRankGeneration;++sharedDailyRankingGeneration;
+ nextSharedMonthlyRequest("Product");invalidateSharedDailyCard("ownerSharedContentProduct");
  ownerJointProductMode=false;ownerJointProductSnapshot=null;
  renderProductMemberRanking(records.filter(r=>r.date?.startsWith(dashboardMonth.value)));
  document.getElementById("ownerJointProductStatus").textContent="自社の従来の月間ランキングを表示しています。";
@@ -13771,9 +13788,11 @@ for(const which of ["Individual","Product"]){
 async function loadPartnerMonthlySharedRankings(){
  const monthInput=pInline("partnerSharedRankingsMonth");
  const month=monthInput.value,uid=auth.currentUser?.uid;
+ const workspace=partnerInlineWorkspaceCompany;
  const status=pInline("partnerSharedRankingsStatus"),content=pInline("partnerSharedRankingContent");
- const seq=++ownerMonthlyRankGeneration;
- ++sharedDailyRankingGeneration; // invalidate any older daily response
+ const seq=nextSharedMonthlyRequest("partner");
+ const sessionGeneration=sharedDailyRankingGeneration;
+ invalidateSharedDailyCard("partnerSharedRankingContent");
  content.replaceChildren();
  if(partnerSharedRankPeriod!=="month"||!uid||
     !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)||
@@ -13785,10 +13804,12 @@ async function loadPartnerMonthlySharedRankings(){
   const payload={month};
   if(partnerInlineWorkspaceCompany)
    payload.workspaceCompanyId=partnerInlineWorkspaceCompany;
-  const key=uid+"|partner|"+(partnerInlineWorkspaceCompany||"")+"|"+month;
+  const key=uid+"|partner|"+(workspace||"")+"|"+month;
   const old=ownerMonthlyRankCache.get(key),cached=old&&Date.now()-old.checkedAt<180000;
   const response=cached?old.value:(await readPartnerMonthlySharedCounts(payload)).data;
-  if(seq!==ownerMonthlyRankGeneration||auth.currentUser?.uid!==uid||
+  if(seq!==sharedMonthlyRequestSequences.get("partner")||
+     sessionGeneration!==sharedDailyRankingGeneration||
+     auth.currentUser?.uid!==uid||partnerInlineWorkspaceCompany!==workspace||
      partnerSharedRankPeriod!=="month"||monthInput.value!==month)return;
   if(response?.scope!=="shared_monthly_counts_only"||response.role!=="partner"||
      response.month!==month||response.complete!==false||
@@ -13839,7 +13860,10 @@ async function loadPartnerMonthlySharedRankings(){
   }
   status.textContent="月間途中経過｜未報告・未照合は0件扱いせず、全社合同の暫定順位を表示しています。";
  }catch(error){
-  if(seq!==ownerMonthlyRankGeneration||auth.currentUser?.uid!==uid)return;
+  if(seq!==sharedMonthlyRequestSequences.get("partner")||
+     sessionGeneration!==sharedDailyRankingGeneration||
+     auth.currentUser?.uid!==uid||partnerInlineWorkspaceCompany!==workspace||
+     partnerSharedRankPeriod!=="month")return;
   content.replaceChildren();
   status.textContent="月間の集計を照合できません。入力データ・権限・読取上限を確認してください。";
   console.error("partner_monthly_rank_unavailable",error?.code||"unverified");
@@ -13856,6 +13880,7 @@ partnerSharedRankingsMonth.onchange=()=>{
  if(partnerSharedRankPeriod==="month")void loadPartnerMonthlySharedRankings();
 };
 pInline("partnerSharedRankingsRefresh").onclick=()=>{
+ nextSharedMonthlyRequest("partner");
  partnerSharedRankPeriod="day";
  void loadSharedDailyStandings("partner",true);
 };
