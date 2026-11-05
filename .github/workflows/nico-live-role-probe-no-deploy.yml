@@ -1,9 +1,9 @@
 name: NICO real-user Firestore role proof contract (NO DEPLOY)
 on:
   push:
-    branches: [security/phase1-live-idtoken-probe-20261105]
+    branches: [security/phase1-live-idtoken-probe-20261105, security/phase1-owner-preflight-bridge-20261105]
   pull_request:
-    branches: [security/phase1-reviewed-rules-release-gate-20261105]
+    branches: [security/phase1-reviewed-rules-release-gate-20261105, security/phase1-live-idtoken-probe-20261105]
 permissions:
   contents: read
 concurrency:
@@ -36,7 +36,7 @@ jobs:
           test -z "${GOOGLE_APPLICATION_CREDENTIALS:-}"
           test -z "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
           test -z "${NICO_RULES_APPROVAL:-}"
-          git fetch --no-tags origin security/phase1-reviewed-rules-release-gate-20261105
+          git fetch --no-tags origin main security/phase1-reviewed-rules-release-gate-20261105
           test "$(git rev-parse origin/security/phase1-reviewed-rules-release-gate-20261105)" = 50b49dba0c5c7f8612f50b7b4598be4749b339f9
           test "$(git hash-object firestore.rules)" = 6d6ac7fd3544b0326823e419a3acd7e1d060b714
           git diff --name-only 50b49dba0c5c7f8612f50b7b4598be4749b339f9...HEAD > /tmp/live-role-files.txt
@@ -47,7 +47,9 @@ jobs:
       - name: Check module and run only synthetic user-token contract tests
         run: |
           node --check tools/production/verify-live-firestore-roles.mjs
-          node --test tests/verify-live-firestore-roles.test.mjs
+          node --check tools/production/phase1-live-proof-bridge.mjs
+          node --check tests/phase1-live-proof-bridge.test.mjs
+          node --test tests/verify-live-firestore-roles.test.mjs tests/phase1-live-proof-bridge.test.mjs
       - name: Explicitly prohibit production access, release or artifact credentials
         run: |
           echo 'PASS_SYNTHETIC_ONLY'
