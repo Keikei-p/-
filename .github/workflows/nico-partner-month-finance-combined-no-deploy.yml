@@ -56,7 +56,8 @@ jobs:
           const head=execFileSync('git',['hash-object','firestore.rules'],{encoding:'utf8'}).trim();
           const tests=execFileSync('git',['hash-object','tests/rules.test.cjs'],{encoding:'utf8'}).trim();
           assert.equal(head,'6d6ac7fd3544b0326823e419a3acd7e1d060b714');
-          assert.equal(tests,'0292ea176ad67e6486cd9fd1a0d08dc18a3317cd');
+          assert.equal(tests,'66a1dc2b6f45d8210a1dea7a659ae6ea60a23cd6');
+          assert.match(require('node:fs').readFileSync('tests/rules.test.cjs','utf8'),/\['recordRevision','recordConflict','isPersistedRecordCountConsistent','persistDailyRecord'\]/,'count-consistency test VM helper must be loaded');
           console.log('PASS_PINNED_FINANCE_RULES_AND_TESTS');
           NODE
       - name: Regress latest partner ON/OFF, two-month dashboard, teams and rankings
