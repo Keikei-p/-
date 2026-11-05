@@ -1,0 +1,41 @@
+name: NICO Partner Monthly Dashboard & Teams (NO DEPLOY)
+on:
+  push:
+    branches: [feature/partner-monthly-dashboard-team-details-20261105]
+    paths:
+      - 'index.html'
+      - 'functions-partner-workspace/**'
+      - 'tests/**'
+      - '.github/workflows/partner-month-dashboard-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      FIREBASE_PROJECT_ID: demo-sales-monthly-no-deploy
+      SAFE_INTERNAL_MEMBER_REMOVAL_ENABLED: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax check
+        run: |
+          node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/monthly-shared-projection.cjs
+          node --check tests/partner-month-dashboard-months-and-teams.test.cjs
+      - name: Check October November, team history and existing partner count invariants
+        run: |
+          node --test tests/partner-month-dashboard-months-and-teams.test.cjs tests/partner-monthly-shared-counts.test.cjs tests/partner-auto-monthly-ranking.test.cjs tests/partner-auto-published-ranking.test.cjs tests/partner-workspace.test.cjs tests/partner-catalog-publication.test.cjs tests/partner-catalog-count-links.test.cjs tests/partner-additional-counts-isolation.test.cjs tests/partner-extra-shared-ranking.test.cjs tests/partner-product-monthly-parity.test.cjs tests/partner-shared-catalog-ui-contract.test.cjs tests/partner-shared-ranking-groups.test.cjs
+      - name: Parse large inline sales app module without a browser or Firebase credentials
+        env:
+          NODE_OPTIONS: '--experimental-vm-modules'
+        run: node --test tests/partner-index-module-parse.test.cjs
+      - name: No production changes
+        run: echo "NO DEPLOY - no secrets, Firebase deploys, Firestore writes, Rules changes, Auth updates or LINE operations."
