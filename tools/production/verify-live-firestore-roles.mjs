@@ -134,3 +134,46 @@ export function createLiveFirestoreRoleVerifier({
     });
   };
 }
+
+
+/**
+ * Verify the still-active Owner's real Firestore finance access BEFORE a
+ * candidate Rules release. This deliberately never asks the partner to be
+ * denied under legacy Rules: that would deadlock the security fix.
+ *
+ * Only a native fetch (no test transport injection) labels real production;
+ * the release bridge refuses synthetic-only proof. No live data leaves here.
+ */
+export function createLiveFirestoreOwnerPreflight({
+  ownerIdToken,expectedOwnerUid,internalCompanyId,productId,recordId,
+  fetchImpl,now=()=>Date.now()
+}={}){
+  const transport=fetchImpl===undefined?globalThis.fetch:fetchImpl;
+  if(typeof transport!=='function'||typeof now!=='function')
+    stop('TRANSPORT');
+  if(!ID.test(internalCompanyId||'')||
+     !ID.test(productId||'')||!ID.test(recordId||''))
+    stop('DOCUMENT_IDS');
+  const preflightUid=identity(ownerIdToken,expectedOwnerUid,Math.floor(now()/1000));
+  if(!preflightUid)stop('OWNER_IDENTITY');
+  let used=false;
+  return async function verifyRealOwnerBeforeSwitch(){
+    if(used)stop('SINGLE_USE_OWNER_PREFLIGHT');
+    used=true;
+    // Token age is checked AGAIN at the moment of the live requests.
+    identity(ownerIdToken,expectedOwnerUid,Math.floor(now()/1000));
+    for(const [collection,id,field] of [
+      ['products',productId,'revenue'],
+      ['records',recordId,'totalRevenue']
+    ]){
+      await requireResponse(transport,ROOT+'/'+collection+'/'+id,
+        'GET',ownerIdToken,null,200,field,internalCompanyId);
+      await requireResponse(transport,ROOT+':runQuery',
+        'POST',ownerIdToken,financeQuery(collection,internalCompanyId),200,null);
+    }
+    return Object.freeze({
+      checkedAgainst:fetchImpl===undefined?'production-live':'synthetic-only',
+      ownerFinanceAllowed:true
+    });
+  };
+}
