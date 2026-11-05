@@ -19,9 +19,11 @@ function setup({items=[makeRecord(1)],mutate=()=>{},scope={uid:UID,companyId:CID
   const cursor=u.searchParams.get('cursor')||'';
   const records=items.filter(x=>x.sourceId>cursor).slice(0,50);
   const lines=records.map(makeLine);
-  const body=mutate({day:DAY,records,lines,products:[product],
+  const correct={day:DAY,records,lines,products:[product],
    nextCursor:records.length===50?records.at(-1).sourceId:null,
-   snapshotTime:TIME},calls.length);
+   snapshotTime:TIME};
+  const changed=mutate(correct,calls.length);
+  const body=changed===undefined?correct:changed;
   return {ok:true,status:200,
    headers:{get:()=> 'application/json; charset=utf-8'},
    json:async()=>body};
