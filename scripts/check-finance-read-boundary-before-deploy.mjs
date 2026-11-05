@@ -77,7 +77,7 @@ export function checkFinanceRulesBeforeDeploy(source){
    // Exactly these two established internal principals may read raw
    // monetary documents. Static checks must not approve "|| true" inside
    // the owner clause or an additional manager/employee grant.
-   const normalized=condition.replace(/\\s+/g,'');
+   const normalized=condition.replace(/\s+/g,'');
    const prefix='resource.data.companyId!=null&&isInternalFinanceReader(resource.data.companyId)&&(';
    const m='isCompanyMaster(resource.data.companyId)';
    const o='isCompanyOwner(resource.data.companyId)';
