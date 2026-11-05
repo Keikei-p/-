@@ -122,6 +122,7 @@ function monthlyRankingFixture(){
   console:{error(){}}
  };
  const prefix='let sharedDailyRankingGeneration=0;const sharedDailyRequestSequences=new Map();'+
+  'const sharedDailyRankCache=new Map();'+
   'let ownerJointIndividualMode=true,ownerJointProductMode=true;'+
   'let ownerJointIndividualSnapshot=null,ownerJointProductSnapshot=null;'+
   'let ownerJointProductDateKey="";let partnerSharedRankPeriod="month";';
@@ -129,6 +130,8 @@ function monthlyRankingFixture(){
   '\nownerJointIndividualPeriod="month";ownerJointProductPeriod="month";'+
   '\nthis.owner=loadOwnerMonthlySharedRanks;this.partner=loadPartnerMonthlySharedRankings;'+
   '\nthis.switchCard=(card)=>nextSharedMonthlyRequest(card);'+
+  '\nthis.invalidateVerifiedCounts=()=>invalidateSharedRankingReadCaches();'+
+  '\nthis.rankingCache=ownerMonthlyRankCache;this.dailyCache=sharedDailyRankCache;'+
   '\nthis.switchPartnerDay=()=>{nextSharedMonthlyRequest("partner");partnerSharedRankPeriod="day"};'+
   '\nthis.invalidateSession=()=>{++sharedDailyRankingGeneration};',ctx);
  const ownerReply=()=>({scope:'shared_monthly_counts_only',role:'hub',
@@ -204,4 +207,69 @@ test('card switch, company/workspace change and logout invalidate only relevant 
   f.resolve(1,f.partnerReply());await partner;
   assert.deepEqual(f.rendered,[]);
  }
+});
+
+
+test('verified saved counts clear BOTH ranking caches and prevent pre-save month replay',async()=>{
+ const f=monthlyRankingFixture();
+ // Simulate a stale user-visible leaderboard already cached.
+ f.ctx.rankingCache.set('owner|direct|2026-11',
+  {checkedAt:Date.now(),value:f.ownerReply()});
+ f.ctx.dailyCache.set('owner|direct|2026-11-05',
+  {checkedAt:Date.now(),value:{totalCount:1}});
+ const preSave=f.ctx.owner('Product',true);
+ assert.equal(f.pending.length,1);
+ f.ctx.invalidateVerifiedCounts();
+ assert.equal(f.ctx.rankingCache.size,0);
+ assert.equal(f.ctx.dailyCache.size,0);
+ f.resolve(0,f.ownerReply());await preSave;
+ assert.deepEqual(f.rendered,[],'a response started before the write may not return to UI');
+ const afterSave=f.ctx.owner('Product');
+ assert.equal(f.pending.length,2,'post-save query must re-read from server');
+ f.resolve(1,f.ownerReply());await afterSave;
+ assert.deepEqual(f.rendered,['Product']);
+});
+test('manual monthly refresh ignores the 3-minute cached result for both roles',async()=>{
+ const f=monthlyRankingFixture();
+ const old=f.ctx.owner('Individual');
+ f.resolve(0,f.ownerReply());await old;
+ assert.equal(f.ctx.rankingCache.size,1);
+ await f.ctx.owner('Individual');
+ assert.equal(f.pending.length,1,'ordinary immediate repeat may reuse verified cache');
+ const refresh=f.ctx.owner('Individual',true);
+ assert.equal(f.pending.length,2,'explicit refresh must fetch server even inside TTL');
+ f.resolve(1,f.ownerReply());await refresh;
+ const partner=f.ctx.partner();
+ f.resolve(2,f.partnerReply());await partner;
+ await f.ctx.partner();
+ assert.equal(f.pending.length,3);
+ const partnerRefresh=f.ctx.partner(true);
+ assert.equal(f.pending.length,4);
+ f.resolve(3,f.partnerReply());await partnerRefresh;
+});
+test('only verified server readback updates rank caches; extra-ledger confirmation refreshes visible ranking',()=>{
+ const refreshStart=source.indexOf('async function partnerInlineFetch(){');
+ const refreshEnd=source.indexOf('async function openSameAppPartnerWorkspace(',refreshStart);
+ const fetcher=source.slice(refreshStart,refreshEnd);
+ assert.match(fetcher,/if\(!snap\|\|!/);
+ const success=fetcher.indexOf('invalidateSharedRankingReadCaches();');
+ assert(success>fetcher.indexOf('const snap=(await readPartnerWorkDay'));
+ assert(success<fetcher.indexOf('partnerInlineData=snap;'));
+ const extraStart=source.indexOf('async function savePartnerExtra(){');
+ const extraEnd=source.indexOf('pInline("pInlineExtraSave").onclick=',extraStart);
+ const extra=source.slice(extraStart,extraEnd);
+ assert.match(extra,/if\(matching&&\(!result\|\|result.saved===true/);
+ const confirmed=extra.indexOf('invalidateSharedRankingReadCaches();');
+ assert(confirmed>extra.indexOf('if(matching&&'));
+ assert.match(extra.slice(confirmed),/loadSharedDailyStandings\("partner",true\)/);
+ const savedStart=source.indexOf('async function partnerInlineRun(work){');
+ const savedEnd=source.indexOf('function partnerInlinePayload(data){',savedStart);
+ const saved=source.slice(savedStart,savedEnd);
+ assert.match(saved,/const message=await work\(\);/);
+ assert.match(saved,/invalidateSharedRankingReadCaches\(\);/);
+ assert.match(saved,/if\(!await partnerInlineFetch\(\)\)throw/);
+ const buttons=source.slice(source.indexOf('for(const which of ["Individual","Product"]){'),
+   source.indexOf('const partnerSharedRankingsMonth=pInline('));
+ assert.match(buttons,/loadOwnerMonthlySharedRanks\(which,true\)/);
+ assert.match(source,/void loadPartnerMonthlySharedRankings\(true\)/);
 });
