@@ -41,7 +41,7 @@ export function createStagedInternalCountBrowserReader({
   if(typeof token!=='string'||token.length<20||token.length>12000||
      !/^[A-Za-z0-9._-]+$/.test(token)||!sameContext(getActiveScope,original)||
      signal?.aborted)fail();
-  let cursor='',snapshot='',catalog=null,fingerprint='',total=0;
+  let cursor='',snapshot='',catalog=null,total=0;
   const records=[],lines=[],seen=new Set(),seenLines=new Set();
   for(let pageIndex=0;pageIndex<MAX_PAGES;pageIndex++){
    if(!sameContext(getActiveScope,original)||signal?.aborted)fail();
@@ -49,7 +49,7 @@ export function createStagedInternalCountBrowserReader({
    url.searchParams.set('day',day);
    if(cursor){
     url.searchParams.set('cursor',cursor);
-    url.searchParams.set('snapshot',snapshot);
+    url.searchParams.set('readTime',snapshot);
    }
    const response=await fetchPage(url.toString(),{
     method:'GET',headers:{Authorization:'Bearer '+token,Accept:'application/json'},
@@ -64,21 +64,27 @@ export function createStagedInternalCountBrowserReader({
    if(!sameContext(getActiveScope,original)||signal?.aborted||
       !body||typeof body!=='object'||Array.isArray(body)||
       Object.keys(body).sort().join(',')!==
-       ['day','records','lines','products','nextCursor','snapshotTime'].sort().join(',')||
-      body.day!==day||!Array.isArray(body.records)||!Array.isArray(body.lines)||
+       ['day','readTime','companyId','records','lines','products',
+        'catalogIncluded','hasMore','nextCursor'].sort().join(',')||
+      body.day!==day||body.companyId!==original.companyId||
+      !Array.isArray(body.records)||!Array.isArray(body.lines)||
       !Array.isArray(body.products)||body.records.length>PAGE_SIZE||
       body.lines.length>2000||body.products.length>200||
-      typeof body.snapshotTime!=='string'||!TIME.test(body.snapshotTime)||
-      (snapshot&&body.snapshotTime!==snapshot))fail();
+      typeof body.readTime!=='string'||!TIME.test(body.readTime)||
+      (snapshot&&body.readTime!==snapshot)||
+      typeof body.catalogIncluded!=='boolean'||
+      typeof body.hasMore!=='boolean'||
+      body.catalogIncluded!==(pageIndex===0))fail();
    try{
     assertPublicSchema('publicRecords',body.records);
     assertPublicSchema('publicRecordLines',body.lines);
     assertPublicSchema('publicProducts',body.products);
    }catch{fail();}
-   snapshot=body.snapshotTime;
-   const nextCatalog=JSON.stringify(body.products);
-   if(catalog===null){catalog=body.products;fingerprint=nextCatalog;}
-   else if(nextCatalog!==fingerprint)fail();
+   snapshot=body.readTime;
+   // The real Worker deliberately sends the verified product catalog only
+   // once. Subsequent pages contain ONLY records + lines under readTime.
+   if(pageIndex===0)catalog=body.products;
+   else if(body.products.length!==0)fail();
    const pageRecords=new Map();
    for(const record of body.records){
     if(!ID.test(record.sourceId)||record.sourceId<=cursor||
@@ -105,9 +111,11 @@ export function createStagedInternalCountBrowserReader({
     if(header.totalCount!==sum)fail();
    total+=body.records.length;
    if(total>MAX_TOTAL)fail();
-   if(body.nextCursor===null){
-    if(body.records.length===PAGE_SIZE)fail();
-    if(!sameContext(getActiveScope,original))fail();
+   if(!body.hasMore){
+    // Exactly 50 final records is legal: the Worker queried one additional
+    // row to prove there is no next page. An absent cursor is authoritative.
+    if(body.nextCursor!==null||!sameContext(getActiveScope,original)||
+       signal?.aborted)fail();
     return Object.freeze({
      day,companyId:original.companyId,totalRecords:total,
      records:Object.freeze(records),lines:Object.freeze(lines),
