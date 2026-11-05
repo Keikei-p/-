@@ -1622,7 +1622,7 @@ test("legacy partner company totals remain available but cannot become verified 
 });
 
 
-test("unpublishing added partner product never shares hidden historic quantities or changes saved ledger",async()=>{
+test("unpublishing hides product details but keeps all saved historic headline counts",async()=>{
  const {db,api,req}=setup(),date="2026-10-31";
  db.seed("products/solar",{companyId:"hub",name:"太陽光",active:true,
   unitPrice:90000,totalRevenue:800000});
@@ -1647,11 +1647,12 @@ test("unpublishing added partner product never shares hidden historic quantities
  const beforeRead=clone([...db.store]);
  const shared=await api.view(req("h",{date,sharedRankings:true}));
  const partner=await api.view(req("p",{date,sharedRankings:true}));
- assert.equal(shared.additionalTotalCount,2);
- assert.equal(shared.companies[0].totalCount,2);
+ assert.equal(shared.additionalTotalCount,2,"visible product breakdown remains filtered");
+ assert.equal(shared.companies[0].totalCount,9,"overall count retains 7 saved OFF");
  assert.equal(shared.companies[0].extraTotalCount,2);
- assert.equal(shared.people[0].totalCount,2);
- assert.equal(shared.teams[0].totalCount,2);
+ assert.equal(shared.companies[0].archivedExtraTotalCount,7);
+ assert.equal(shared.people[0].totalCount,9);
+ assert.equal(shared.teams[0].totalCount,9);
  assert.deepEqual(shared.people,partner.people,"same count-only standings for approved parties");
  assert.equal(JSON.stringify(shared).includes('"water":7'),false);
  assert.doesNotMatch(JSON.stringify(shared),/unitPrice|totalRevenue|90000|800000|30000|500000/);
@@ -1885,9 +1886,11 @@ test("partner saved original nine plus new product stay immutable through correc
  assert.equal(archived.records[0].archivedTotal,5);
  assert.deepEqual(archived.records[0].counts,{});
  const offShared=await api.view(req("h",{date,sharedRankings:true}));
- assert.equal(offShared.companies[0].totalCount,4,
-  "hidden added product excluded ONLY from public shared ranking");
- assert.equal(offShared.people[0].totalCount,4);
+ assert.equal(offShared.companies[0].totalCount,9,
+  "hidden product removed from product ranks, not from earned total");
+ assert.equal(offShared.companies[0].archivedExtraTotalCount,5);
+ assert.equal(offShared.companies[0].extraTotalCount,0);
+ assert.equal(offShared.people[0].totalCount,9);
  assert.equal(offShared.productCounts.NURO,4);
  assert.doesNotMatch(JSON.stringify(offShared),/90000|444444|revenue|unitPrice|fiberNew/);
  assert.deepEqual(db.store.get(legacyKey),legacyBefore);
