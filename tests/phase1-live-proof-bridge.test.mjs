@@ -6,7 +6,8 @@ import {phase1WithLiveAccountGate} from '../tools/production/phase1-live-proof-b
 import {phase1Boundary} from '../tools/production/phase1-partner-finance-release.mjs';
 import {createAffectedSecondaryIdentityVerifier} from '../tools/production/phase1-bound-identity-readonly.mjs';
 import {
-  createLiveFirestoreOwnerPreflight,createLiveFirestoreRoleVerifier
+  createLiveFirestoreOwnerPreflight,createLiveFirestoreRoleVerifier,
+  createLiveFirestoreSessionPreflight
 } from '../tools/production/verify-live-firestore-roles.mjs';
 import {fingerprint} from '../tools/readonly-backup/backup.mjs';
 
@@ -224,7 +225,9 @@ test('owner proof does not satisfy future partner denial; synthetic post-switch 
   await assert.rejects(phase1Boundary({
     ...r.release,apply:true,approval:true,
     candidateEmulatorVerified:true,realOwnerBeforeVerified:true,
-    backupReviewed:true,verifyLiveRoles
+    backupReviewed:true,verifyLiveRoles,
+    preApplyCheck:async()=>({checkedAgainst:'production-live',
+      ownerFinanceAllowed:true,affectedSecondaryBound:true,partnerSessionFresh:true})
   }),/STOP_PHASE1_POST_SWITCH_ROLE_UNVERIFIED/);
   assert.equal(r.getActive(),oldId);
   assert.deepEqual(r.writes,['POST','PATCH','PATCH']);
@@ -246,6 +249,8 @@ test('bridge is import-only, with no deployed runner, credential reader or impli
   assert.doesNotMatch(source,/process\.env|firebase deploy|spawn\(|execFile\(/);
   assert.match(source,/phase1Boundary\(\{/);
   assert.match(source,/verifyLiveRoles:async proofArgs/);
+  assert.match(source,/preApplyCheck:async/);
+  assert.match(source,/PRE_SWITCH_OWNER_FINANCE_UNVERIFIED/);
   assert.match(source,/realOwnerBeforeVerified:true/);
   assert.match(source,/TRUSTED_AFFECTED_IDENTITY_REQUIRED/);
   assert.match(source,/POST_SWITCH_IDENTITY_UNVERIFIED/);
@@ -319,4 +324,41 @@ test('identity Admin GET rejects HTTPS name and another document while accepting
    internalCompanyId:'internal_company'
  })(),/STOP_PHASE1_IDENTITY_UNRECOGNIZED_DOCUMENT/);
  assert(badIdentity.calls.every(x=>x.method==='GET'));
+});
+
+
+test('immediately before PATCH, BOTH sessions must have enough remaining lifetime',async()=>{
+ for(const role of ['owner','partner']){
+  const f=fixture();
+  const token=jwt(role==='owner'?'realOwner':'secondaryPartner',{exp:T+400});
+  const args={...f.accounts,
+   ...(role==='owner'?{ownerIdToken:token}:{partnerIdToken:token})};
+  const before=createLiveFirestoreSessionPreflight({
+    ...args,minimumRemainingSeconds:600
+  });
+  assert.throws(before,/STOP_LIVE_ROLE_USER_IDENTITY_NOT_VERIFIED/);
+  assert.equal(f.calls.length,0);
+ }
+});
+
+test('fresh Owner/Partner token claims are only local precheck, NOT production proof',()=>{
+ const f=fixture();
+ const preflight=createLiveFirestoreSessionPreflight(f.accounts);
+ const result=preflight();
+ assert.deepEqual(result,{
+  checkedAgainst:'local-claims-only',
+  ownerSessionFresh:true,partnerSessionFresh:true,
+  userTokenCryptographyVerified:false
+ });
+ assert.equal(f.calls.length,0,'the local freshness check does not call Firebase');
+ assert.throws(preflight,/STOP_LIVE_ROLE_SINGLE_USE_SESSION_PREFLIGHT/);
+});
+
+test('synthetic pre-PATCH identity is blocked before any Rules change, even with fresh tokens',async()=>{
+ const f=fixture(),r=releaseFixture();
+ await assert.rejects(phase1WithLiveAccountGate({
+   release:r.release,accounts:f.accounts,identity:fakeIdentity(),...approvals
+ }),/STOP_PHASE1_LIVE_BRIDGE_TRUSTED_AFFECTED_IDENTITY_REQUIRED/);
+ assert.equal(r.writes.length,0);
+ assert.equal(r.getActive(),oldId);
 });
