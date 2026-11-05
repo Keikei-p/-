@@ -3,7 +3,8 @@
  * LIBRARY ONLY: no CLI or GitHub action can use live credentials in this PR.
  * Requires an exactly matching approved legacy source and candidate, a full
  * production snapshot restored to a separate local emulator, and independent
- * actual UID review before apply=true is ever allowed.
+ * production account checks against a candidate emulator before a switch,
+ * plus live checks immediately after any switch before reporting success.
  */
 import {createHash} from 'node:crypto';
 import {PROJECT,validateSafeCall,fingerprint} from '../readonly-backup/backup.mjs';
@@ -62,14 +63,20 @@ export function allowedPhase1Request(method,url,body,candidateSha){
  */
 export async function phase1Boundary({
  request,snapshot,restore,backup,reviewedBaseline,reviewedCandidate,
- apply=false,approval=false,realOwnerVerified=false,realPartnerDenied=false,
- backupReviewed=false,log=()=>{},now=()=>Date.now()
+ apply=false,approval=false,candidateEmulatorVerified=false,
+ realOwnerBeforeVerified=false,backupReviewed=false,
+ verifyLiveRoles=null,log=()=>{},now=()=>Date.now()
 }={}){
  if(typeof request!=='function'||typeof snapshot!=='function'||
     typeof restore!=='function'||typeof backup!=='function'||
     typeof log!=='function'||typeof now!=='function')stop('DEPENDENCIES');
  const hashes=exactSources(reviewedBaseline,reviewedCandidate);
- if(apply&&(!approval||!realOwnerVerified||!realPartnerDenied||!backupReviewed))
+ // A real partner's live finance request is expected to be ALLOWED under
+ // the previous vulnerable Rules; demanding a live denial pre-switch is
+ // impossible. Candidate proof is an independently reviewed emulator gate.
+ // Real live partner get/list denial is checked IMMEDIATELY AFTER the switch.
+ if(apply&&(!approval||!candidateEmulatorVerified||!realOwnerBeforeVerified||
+    !backupReviewed||typeof verifyLiveRoles!=='function'))
   stop('MISSING_PRODUCTION_APPROVAL');
  const call=async(method,url,body)=>{
   if(!allowedPhase1Request(method,url,body,hashes.candidate))stop('API_NOT_ALLOWED');
@@ -118,14 +125,30 @@ export async function phase1Boundary({
   reviewedCandidateSha256:hashes.candidate,
   isolatedFieldsAndIdsRestored:true,
   managedBackupRestored:false,metadataTimestampsRestored:false,
-  productionDocumentWrites:0,reviewedRealOwnerAccess:realOwnerVerified===true,
-  reviewedRealPartnerFinanceDeny:realPartnerDenied===true,applied:false
+  productionDocumentWrites:0,
+  reviewedOwnerBeforeSwitch:realOwnerBeforeVerified===true,
+  reviewedCandidateEmulatorBoundary:candidateEmulatorVerified===true,
+  reviewedRealPartnerFinanceDeny:false,postSwitchRoleVerified:false,
+  applied:false
  });
  log(summary);
  if(!apply)return summary;
+ // Already-present Rules must still pass real account checks before a
+ // positive verification result; do not roll back a Ruleset we did not set.
+ const validateLiveRoles=async()=>{
+  const result=await verifyLiveRoles({
+   expectedRulesSha256:hashes.candidate,
+   releaseName:NAME
+  });
+  if(result?.checkedAgainst!=='production-live'||
+     result.partnerDocumentDenied!==true||result.partnerListDenied!==true||
+     result.ownerFinanceAllowed!==true)stop('POST_SWITCH_ROLE_UNVERIFIED');
+  return {postSwitchRoleVerified:true,
+   reviewedRealPartnerFinanceDeny:true,reviewedLiveOwnerFinanceRead:true};
+ };
  if(liveHash===hashes.candidate)
-  return {...summary,applied:false,alreadyAtReviewedCandidate:true,
-   reviewedRulesPresent:true};
+  return {...summary,...await validateLiveRoles(),applied:false,
+   alreadyAtReviewedCandidate:true,reviewedRulesPresent:true};
  let created=null,attempted=false;
  const point=async rulesetName=>call('PATCH',RELEASE,{
   release:{name:NAME,rulesetName},updateMask:'rulesetName'
@@ -143,7 +166,8 @@ export async function phase1Boundary({
      digest(await getSource(created.name))!==hashes.candidate)
     stop('RELEASE_READBACK_FAILED');
   if(fingerprint(await snapshot())!==inventory)stop('INVENTORY_CHANGED_AFTER_APPLY');
-  return {...summary,applied:true,rollbackRuleset:starting,
+  const roleResult=await validateLiveRoles();
+  return {...summary,...roleResult,applied:true,rollbackRuleset:starting,
    currentRuleset:created.name};
  }catch(error){
   if(attempted){
