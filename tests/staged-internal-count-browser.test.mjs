@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createStagedInternalCountBrowserReader} from '../security/staged-internal-count-browser.mjs';
+import {createInternalCountPage} from '../cloudflare-finance/src/internal-count-page.mjs';
 const DAY='2026-11-05',CID='direct',UID='member',TIME='2026-11-05T09:30:00Z';
 const token='a'.repeat(64);
 const product={companyId:CID,sourceId:'nuro',name:'NURO光',active:true,sortOrder:0};
@@ -19,9 +20,12 @@ function setup({items=[makeRecord(1)],mutate=()=>{},scope={uid:UID,companyId:CID
   const cursor=u.searchParams.get('cursor')||'';
   const records=items.filter(x=>x.sourceId>cursor).slice(0,50);
   const lines=records.map(makeLine);
-  const correct={day:DAY,records,lines,products:[product],
-   nextCursor:records.length===50?records.at(-1).sourceId:null,
-   snapshotTime:TIME};
+  const hasMore=records.length===50&&
+   items.some(x=>x.sourceId>records.at(-1).sourceId);
+  const correct={day:DAY,companyId:CID,records,lines,
+   products:cursor?[]:[product],catalogIncluded:!cursor,
+   hasMore,nextCursor:hasMore?records.at(-1).sourceId:null,
+   readTime:TIME};
   const changed=mutate(correct,calls.length);
   const body=changed===undefined?correct:changed;
   return {ok:true,status:200,
@@ -64,7 +68,7 @@ test('2,501 saved daily entries are read in 51 pages without duplicate or missin
  assert.equal(f.tokenCount(),1);
  for(let i=1;i<f.calls.length;i++){
   const u=new URL(f.calls[i].url);
-  assert.equal(u.searchParams.get('snapshot'),TIME);
+  assert.equal(u.searchParams.get('readTime'),TIME);
   assert.equal(u.searchParams.get('cursor'),result.records[i*50-1].sourceId);
  }
  assert(Object.isFrozen(result));
@@ -88,8 +92,86 @@ test('invalid page, private fields, altered counts and stale snapshot all reject
   await assert.rejects(run(f),/STAGED_INTERNAL_COUNT_BROWSER_BLOCKED/);
  }
  const items=Array.from({length:51},(_,i)=>makeRecord(i));
- const f=setup({items,mutate:(b,n)=>n===2?{...b,snapshotTime:'2026-11-05T09:40:00Z'}:b});
+ const f=setup({items,mutate:(b,n)=>n===2?{...b,readTime:'2026-11-05T09:40:00Z'}:b});
  await assert.rejects(run(f),/STAGED_INTERNAL_COUNT_BROWSER_BLOCKED/);
+});
+test('exactly 50 records is a valid completed Worker page without a cursor',async()=>{
+ const f=setup({items:Array.from({length:50},(_,i)=>makeRecord(i))});
+ const result=await run(f);
+ assert.equal(result.totalRecords,50);
+ assert.equal(f.calls.length,1);
+ assert.equal(result.lines.length,50);
+});
+test('later Worker pages cannot resend private catalog or change page flags',async()=>{
+ const items=Array.from({length:51},(_,i)=>makeRecord(i));
+ for(const mutate of [
+  (b,n)=>n===2?{...b,products:[product]}:b,
+  (b,n)=>n===2?{...b,catalogIncluded:true}:b,
+  (b,n)=>n===2?{...b,hasMore:true,nextCursor:'wrong'}:b,
+  (b,n)=>n===2?{...b,companyId:'partner'}:b,
+  (b,n)=>n===2?{...b,readTime:'2026-11-05T09:40:00Z'}:b,
+  (b,n)=>n===2?{...b,products:[{...product,price:50000}]}:b
+ ]){
+  const f=setup({items,mutate});
+  await assert.rejects(run(f),/STAGED_INTERNAL_COUNT_BROWSER_BLOCKED/);
+  assert.equal(f.calls.length,2);
+ }
+});
+test('actual Worker page projection and staged browser reader agree on paged count-only contract',async()=>{
+ const rows=Array.from({length:51},(_,i)=>({
+  id:'record'+String(i).padStart(5,'0'),companyId:CID,uid:UID,
+  date:DAY,teamId:'team1',memberNameSnapshot:'担当者',
+  teamNameSnapshot:'第一班',totalCount:2,totalRevenue:100000,
+  results:{NURO_CB_20000:{productId:'nuro',productName:'NURO光',count:2,
+   revenuePerUnit:50000,cashback:20000}}
+ }));
+ const financeProduct={id:'nuro',companyId:CID,name:'NURO光',
+  active:true,pricingOptions:[{cashback:20000,revenuePerUnit:50000}]};
+ let catalogQueries=0,dayQueries=0;
+ const server=createInternalCountPage({
+  enabled:true,authenticate:async()=>({uid:UID,emailVerified:true}),
+  loadMembership:async()=>({
+   uid:UID,companyId:CID,firebaseIdTokenVerified:true,
+   emailVerified:true,serverMembershipVerified:true,
+   serverVerifiedInternalCompany:true,
+   user:{uid:UID,companyId:CID,active:true,companyRole:'member'},
+   member:{uid:UID,companyId:CID,active:true,companyRole:'member'},
+   company:{active:true,companyKind:'internal'}
+  }),
+  queryDailyRecords:async({companyId,date,cursor,readTime,pageSize})=>{
+   dayQueries++;
+   assert.equal(companyId,CID);assert.equal(date,DAY);
+   assert.equal(pageSize,50);
+   if(cursor)assert.equal(readTime,TIME);
+   const rest=rows.filter(x=>x.id>cursor);
+   const records=rest.slice(0,50);
+   return {records,readTime:TIME,hasMore:rest.length>50,
+    nextCursor:rest.length>50?records.at(-1).id:null};
+  },
+  queryProducts:async()=>{catalogQueries++;return [financeProduct];}
+ });
+ const scope={uid:UID,companyId:CID,mode:'internal'};
+ const reader=createStagedInternalCountBrowserReader({
+  enabled:true,getActiveScope:()=>scope,getIdToken:async()=>token,
+  fetchPage:async requestUrl=>{
+   const u=new URL(requestUrl);
+   const payload=await server({bearer:token,
+    day:u.searchParams.get('day'),
+    cursor:u.searchParams.get('cursor')||'',
+    readTime:u.searchParams.get('readTime')||''});
+   return {ok:true,status:200,headers:{get:()=> 'application/json'},
+    json:async()=>payload};
+  }
+ });
+ const x=await reader({day:DAY});
+ assert.equal(x.totalRecords,51);
+ assert.equal(x.lines.length,51);
+ assert.equal(x.lines.reduce((n,row)=>n+row.count,0),102);
+ assert.equal(dayQueries,2);
+ assert.equal(catalogQueries,1,'catalog is only returned on first page');
+ for(const sensitive of ['totalRevenue','revenuePerUnit','cashback',
+    '100000','50000','20000','pricingOptions'])
+  assert(!JSON.stringify(x).includes(sensitive),sensitive);
 });
 test('authenticated context change while reading rejects the whole count result',async()=>{
  for(const patch of [
