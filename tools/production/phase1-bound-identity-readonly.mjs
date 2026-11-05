@@ -35,7 +35,8 @@ function value(field){
   return undefined;
 }
 function unpack(document,url){
-  if(document?.name!==url || !document.fields ||
+  // Firestore Document.name is a resource path, not an HTTPS URL.
+  if(document?.name!==url.slice('https://firestore.googleapis.com/v1/'.length) || !document.fields ||
      typeof document.fields!=='object'||Array.isArray(document.fields))
     stop('UNRECOGNIZED_DOCUMENT');
   const result=Object.create(null);
