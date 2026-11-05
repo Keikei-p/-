@@ -1683,6 +1683,9 @@ test("Owner can turn OFF a retired published master without changing sales data 
  assert.deepEqual(db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+staff),savedEntry);
  assert.deepEqual(db.store.get("companies/hub/partnerWorkCountDays/"+date+"/reports/partner"),savedSummary);
  assert.deepEqual((await api.viewCatalog(req("p",{}))).products,[]);
+ const ownerView=await api.viewCatalog(req("h",{}));
+ assert.equal(ownerView.role,"hub");
+ assert.equal(ownerView.products.find(x=>x.id==="retired").published,false);
  await assert.rejects(api.setCatalogPublication(req("h",{
   productId:"retired",published:false,expectedRevision:1
  })),{code:"aborted"});
