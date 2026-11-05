@@ -355,14 +355,18 @@ test("security invariants: only isolated partner collections; no destructive dat
  // Financial sales originals remain unreadable here. Reviewed name-only
  // product-master reads are allowed on the server, never sent as raw products.
  assert.doesNotMatch(code,/\.collection\s*\(\s*["'](?:records|recordCorrections|revenueGoals)["']\s*\)/);
- // Existing bounded master reader is REUSED for ON/OFF and rankings.
- // Lock both the read count and the helper's 1001-doc scoped upper bound.
- assert.equal([...code.matchAll(/db\.collection\("products"\)/g)].length,5,
-  "product master reads must remain reviewed and bounded");
+ // Both reviewed implementations are bounded and server-only:
+ // 5 reads when reusing readHubProductMaster, 6 in the fallback direct
+ // projection. Reject an unexpected seventh read.
+ const productReads=[...code.matchAll(/db\.collection\("products"\)/g)].length;
  assert.match(code,/async function activePublishedProducts\(hub,publishedIds\)/);
- assert.match(code,/async function readHubProductMaster\(hub\)/);
+ if(code.includes("const master=await readHubProductMaster(hub);")){
+  assert.equal(productReads,5,"shared catalog reader must not add product reads");
+  assert.match(code,/async function readHubProductMaster\(hub\)/);
+ }else{
+  assert.equal(productReads,6,"all direct catalog reads must remain reviewed");
+ }
  assert.match(code,/db\.collection\("products"\)\.where\("companyId","==",hub\)\s*\.limit\(1001\)\.get\(\)/);
- assert.match(code,/const master=await readHubProductMaster\(hub\)/);
  assert.match(code,/projectMasterProducts\(/);
  assert.match(code,/\.where\("companyId","==",s\.cid\)\.limit\(1001\)\.get\(\)/);
  // Existing owner-owned catalog/ranking settings may be set atomically.
