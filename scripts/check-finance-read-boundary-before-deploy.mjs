@@ -23,20 +23,59 @@ function checkAction(body,verb,group){
  if(found.length!==1)block("ACTION_"+group+"_"+verb);
  return found[0][1];
 }
+
+// Independent Firestore allow grants are OR-combined. A broad OR at the top
+// of a read/write predicate must never be approved by a substring match.
+function hasTopLevelOr(expr){
+ let depth=0,quote='',escape=false;
+ for(let i=0;i<expr.length;i++){
+  const ch=expr[i];
+  if(quote){
+   if(escape)escape=false;
+   else if(ch==='\\')escape=true;
+   else if(ch===quote)quote='';
+   continue;
+  }
+  if(ch==='"'||ch==="'"){quote=ch;continue;}
+  if(ch==='('){depth++;continue;}
+  if(ch===')'){depth--;if(depth<0)return true;continue;}
+  if(depth===0&&ch==='|'&&expr[i+1]==='|')return true;
+ }
+ return depth!==0||Boolean(quote);
+}
+function verifyFinanceHelper(source){
+ const matches=[...source.matchAll(/function\s+isInternalFinanceReader\(companyId\)\s*\{([^}]*)\}/g)];
+ if(matches.length!==1)block('MISSING_SERVER_PARTNER_GUARD');
+ const helper=matches[0][1].replace(/\s+/g,'');
+ if(!/^return(?:noSecondaryPartnerWorkspace\(\)&&)?companyId!=null&&/.test(helper)||
+    (source.includes('function noSecondaryPartnerWorkspace()')&&
+     !helper.startsWith('returnnoSecondaryPartnerWorkspace()&&'))||
+    hasTopLevelOr(matches[0][1]))block('MISSING_SERVER_PARTNER_GUARD');
+ for(const condition of [
+  "get(companyPath(companyId)).data.get('companyKind','internal')=='internal'",
+  "get(userPath(request.auth.uid)).data.get('accessKind','internal')=='internal'",
+  "get(memberPath(companyId,request.auth.uid)).data.get('accessKind','internal')=='internal'"
+ ])if(!helper.includes(condition))block('MISSING_SERVER_PARTNER_GUARD');
+ for(const marker of [
+  "get(userPath(request.auth.uid)).data.get('memberType','internal')",
+  "get(memberPath(companyId,request.auth.uid)).data.get('memberType','internal')"
+ ]){
+  if(!helper.includes(marker+"in['internal','direct','member','managed']")||
+     !helper.includes(marker+"!='partner'")||
+     !helper.includes(marker+"!='cooperator'"))
+   block('MISSING_SERVER_PARTNER_GUARD');
+ }
+}
+
 export function checkFinanceRulesBeforeDeploy(source){
  if(typeof source!=="string"||!/^rules_version = '2';/m.test(source))
    block("UNKNOWN_RULES");
- const helper=source.slice(source.indexOf("function isInternalFinanceReader(companyId)"));
- if(!helper.startsWith("function isInternalFinanceReader(companyId)")||
-   !helper.includes("companyKind")||!helper.includes("accessKind")||
-   !helper.includes("memberType")||
-   !helper.includes("!= 'partner'"))
-   block("MISSING_SERVER_PARTNER_GUARD");
+ verifyFinanceHelper(source);
  for(const group of roots){
    const body=ruleBody(source,group);
    const condition=checkAction(body,"read",group);
    // Require the restrictive AND before any owner/leader OR branch.
-   if(/sameCompany\s*\(/.test(condition)||
+   if(hasTopLevelOr(condition)||/sameCompany\s*\(/.test(condition)||
       !/^\s*resource\.data\.companyId\s*!=\s*null\s*&&\s*isInternalFinanceReader\(resource\.data\.companyId\)\s*&&\s*\(\s*isCompany(?:Master|Owner)\(/.test(condition)||
       !/isCompanyOwner\(resource\.data\.companyId\)|isCompanyMaster\(resource\.data\.companyId\)/.test(condition))
      block("RAW_READ_"+group);
@@ -46,18 +85,20 @@ export function checkFinanceRulesBeforeDeploy(source){
    const gets=[...body.matchAll(/allow\s+get\s*:\s*if\s*([\s\S]*?);/g)];
    if(gets.length>1||(gets.length===1&&
       !(group==="records"&&
-       gets[0][1].includes("!exists(")&&
-       gets[0][1].includes("records/$(recordId)"))))
+       !hasTopLevelOr(gets[0][1])&&
+       gets[0][1].trim().endsWith("!exists(/databases/$(database)/documents/records/$(recordId))")&&
+       (!source.includes("function noSecondaryPartnerWorkspace()")||
+        /^\s*noSecondaryPartnerWorkspace\(\)\s*&&/.test(gets[0][1])))))
      block("ADDITIVE_GET_"+group);
    const create=checkAction(body,"create",group);
-   if(!/^\s*isInternalFinanceReader\(request\.resource\.data\.companyId\)\s*&&\s*\(/.test(create))
+   if(hasTopLevelOr(create)||!/^\s*isInternalFinanceReader\(request\.resource\.data\.companyId\)\s*&&\s*\(/.test(create))
      block("RAW_CREATE_"+group);
    if(group==="recordCorrections"){
      if(!/allow update,\s*delete:\s*if false;/.test(body))
        block("CORRECTION_IMMUTABILITY");
    }else{
      const update=checkAction(body,"update",group);
-     if(!/^\s*isInternalFinanceReader\(resource\.data\.companyId\)\s*&&\s*\(/.test(update))
+     if(hasTopLevelOr(update)||!/^\s*isInternalFinanceReader\(resource\.data\.companyId\)\s*&&\s*\(/.test(update))
        block("RAW_UPDATE_"+group);
      const deletion=checkAction(body,"delete",group);
      if(deletion.trim()!=="false")block("RAW_DELETE_"+group);
