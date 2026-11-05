@@ -77,15 +77,16 @@ export function createStagedInternalCountReadGateway({
  return async function handle(request){
   const origin=request?.headers?.get?.('Origin')||'';
   try{
-   if(!request||request.method!=='GET'||origin!==ORIGIN)deny(403);
+   // Same-origin GET may have no Origin header; reject any foreign Origin.
+   if(!request||request.method!=='GET'||(origin&&origin!==ORIGIN))deny(403);
    const url=new URL(request.url);
    if(url.protocol!=='https:'||url.origin!==ORIGIN||url.pathname!==ROUTE||
       url.hash)deny(403);
    const q=url.searchParams,keys=[...q.keys()];
-   if(keys.length<1||keys.some(k=>!['day','cursor','snapshot'].includes(k))||
+   if(keys.length<1||keys.some(k=>!['day','cursor','readTime'].includes(k))||
       new Set(keys).size!==keys.length)deny(400);
    const day=q.get('day'),cursor=q.get('cursor')||'';
-   const snapshot=q.get('snapshot')||'';
+   const snapshot=q.get('readTime')||'';
    if(!validDay(day)||(cursor&&!validId(cursor))||
       Boolean(cursor)!==Boolean(snapshot)||
       (snapshot&&!TIME.test(snapshot)))deny(400);
@@ -119,13 +120,20 @@ export function createStagedInternalCountReadGateway({
       !Array.isArray(page.records)||page.records.length>MAX_PAGE||
       !Array.isArray(page.products)||page.products.length>200||
       typeof page.readTime!=='string'||!TIME.test(page.readTime)||
-      (snapshot&&snapshot!==page.readTime))deny(503);
+      (snapshot&&snapshot!==page.readTime)||
+      typeof page.hasMore!=='boolean'||
+      (page.hasMore&&page.records.length!==MAX_PAGE))deny(503);
    let last=cursor;
    for(const record of page.records){
     if(!plain(record)||!validId(record.id)||record.id<=last||
        record.companyId!==companyId||record.date!==day)deny(503);
     last=record.id;
    }
+   // The trusted reader must prove next-page presence with a lookahead.
+   // Exactly MAX_PAGE records can still be the final page (no extra empty query).
+   if(page.hasMore){
+    if(page.nextCursor!==last||!validId(last))deny(503);
+   }else if(page.nextCursor!==null)deny(503);
    const projected=projectLegacyCountDay({
     principal:{uid:auth.uid,companyId,firebaseIdTokenVerified:true,
       emailVerified:true,serverMembershipVerified:true,
@@ -138,10 +146,15 @@ export function createStagedInternalCountReadGateway({
    const ids=new Set(projected.products.map(p=>p.sourceId));
    if(projected.lines.length>2000||
       projected.lines.some(line=>!ids.has(line.productId)))deny(503);
+   // Match the real Worker/browser public-count page contract exactly.
+   // The product catalog is verified server-side for every page but never
+   // re-sent to the browser after the first page; originals stay unchanged.
    return answer(200,{
-    day,records:projected.records,lines:projected.lines,products:projected.products,
-    nextCursor:page.records.length===MAX_PAGE?last:null,
-    snapshotTime:page.readTime
+    day,readTime:page.readTime,companyId,
+    records:projected.records,lines:projected.lines,
+    products:cursor?[]:projected.products,
+    catalogIncluded:!cursor,hasMore:page.hasMore,
+    nextCursor:page.hasMore?last:null
    },origin);
   }catch(e){
    return answer(Number.isInteger(e?.status)?e.status:503,
