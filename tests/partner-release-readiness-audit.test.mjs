@@ -202,3 +202,16 @@ test('OR nested inside the guarded condition is not misclassified as unguarded',
  assert(!inspectPartnerReleaseReadiness(f).blockers.includes(
   'PARTNER_RAW_READ_GUARD_MISSING_teams'));
 });
+
+test('secondary context helper cannot be bypassed by leaving !exists in an OR grant',()=>{
+ const f=fixture();
+ const before='&& !exists(/databases/$(database)/documents/partnerWorkspaceContexts/$(request.auth.uid));';
+ assert(f.rules.includes(before));
+ f.rules=f.rules.replace(before,
+  '&& !exists(/databases/$(database)/documents/partnerWorkspaceContexts/$(request.auth.uid)) || true;');
+ assert(inspectPartnerReleaseReadiness(f).blockers.includes('PARTNER_SECONDARY_UID_GUARD_MISSING'));
+ const g=fixture();
+ g.rules=g.rules.replace(before,
+  '&& (!exists(/databases/$(database)/documents/partnerWorkspaceContexts/$(request.auth.uid)) || true);');
+ assert(inspectPartnerReleaseReadiness(g).blockers.includes('PARTNER_SECONDARY_UID_GUARD_MISSING'));
+});
