@@ -56,14 +56,23 @@ test("replacing another collection's read guard with sameCompany is not approved
 
 test("only the original internal Owner or Master may read raw finance on a staged ruleset",()=>{
  const owner="isCompanyOwner(resource.data.companyId)";
- for(const replacement of [
-  owner+" || true",
-  owner+" || isCompanyLeader(resource.data.companyId)",
-  owner+" || canViewRevenue(resource.data.companyId)"
- ]){
-  const mutated=stage2.replace(owner,replacement);
-  assert.notEqual(mutated,stage2);
-  assert.throws(()=>checkFinanceRulesBeforeDeploy(mutated),/RAW_READ_/);
+ for(const table of ["products","records","recordCorrections","revenueGoals"]){
+  const start=stage2.indexOf("match /"+table+"/{");
+  assert(start>=0,table+" must be a real finance rule path");
+  const after=stage2.indexOf("\\n    match /",start+1);
+  const body=stage2.slice(start,after<0?undefined:after);
+  const read=body.match(/allow read:\\s*if\\s*([\\s\\S]*?);/)?.[1];
+  assert(read?.includes(owner),table+" finance read must have an Owner branch");
+  for(const replacement of [
+   owner+" || true",
+   owner+" || isCompanyLeader(resource.data.companyId)",
+   owner+" || canViewRevenue(resource.data.companyId)"
+  ]){
+   const nextRead=read.replace(owner,replacement);
+   assert.notEqual(nextRead,read,table+" must alter the financial read");
+   const mutated=stage2.slice(0,start)+body.replace(read,nextRead)+stage2.slice(after<0?stage2.length:after);
+   assert.throws(()=>checkFinanceRulesBeforeDeploy(mutated),/RAW_READ_/,table);
+  }
  }
 });
 test("a partner-allowing OR inside the finance helper cannot pass string-only guard tests",()=>{
