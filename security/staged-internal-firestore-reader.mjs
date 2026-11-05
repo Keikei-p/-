@@ -87,7 +87,7 @@ export function buildStagedInternalRunQuery({table,companyId,day,cursor='',snaps
     typeof cursor!=='string'||(cursor&&!id(cursor))||
     (table==='products'&&cursor!=='')||
     (snapshotTime!==null&&!TIME.test(snapshotTime))||
-    limit!==(table==='products'?201:50))deny();
+    limit!==(table==='products'?201:51))deny();
  const filters=[eq('companyId',companyId)];
  if(table==='records')filters.push(eq('date',day));
  const query={
@@ -108,7 +108,7 @@ export function buildStagedInternalRunQuery({table,companyId,day,cursor='',snaps
 }
 export function decodeStagedInternalRunQuery(rows,{table,companyId,cursor='',snapshotTime=null,limit}={}){
  if(!Array.isArray(rows)||!rows.length||!['products','records'].includes(table)||
-    !id(companyId)||limit!==(table==='products'?201:50)||
+    !id(companyId)||limit!==(table==='products'?201:51)||
     (cursor&&!id(cursor))||(snapshotTime!==null&&!TIME.test(snapshotTime)))deny();
  const prefix=DB+'/'+table+'/';
  let last=cursor,time='';
@@ -143,11 +143,16 @@ export function createStagedInternalFirestoreReader({executeRunQuery}={}){
    table:'products',companyId,snapshotTime,limit:201});
   if(catalog.docs.length>200)deny();
   const q=buildStagedInternalRunQuery({
+   // Read one extra document to attest whether a next page exists.
+   // Only the first 50 records ever leave the trusted reader.
    table:'records',companyId,day,cursor,
-   snapshotTime:catalog.readTime,limit:50});
+   snapshotTime:catalog.readTime,limit:51});
   const records=decodeStagedInternalRunQuery(await executeRunQuery(q),{
-   table:'records',companyId,cursor,snapshotTime:catalog.readTime,limit:50});
+   table:'records',companyId,cursor,snapshotTime:catalog.readTime,limit:51});
+  const hasMore=records.docs.length>50;
+  const visible=records.docs.slice(0,50);
   return {complete:true,readTime:catalog.readTime,
-   products:catalog.docs,records:records.docs};
+   products:catalog.docs,records:visible,hasMore,
+   nextCursor:hasMore?visible.at(-1).id:null};
  };
 }
