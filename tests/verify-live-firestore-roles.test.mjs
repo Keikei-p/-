@@ -4,7 +4,9 @@ import {createLiveFirestoreRoleVerifier} from '../tools/production/verify-live-f
 
 const T=Math.floor(Date.parse('2026-11-05T14:00:00Z')/1000);
 const PROJECT='sales-management-cc116';
-const ROOT='https://firestore.googleapis.com/v1/projects/'+PROJECT+'/databases/(default)/documents';
+const API='https://firestore.googleapis.com/v1/';
+const RESOURCE_ROOT='projects/'+PROJECT+'/databases/(default)/documents';
+const ROOT=API+RESOURCE_ROOT;
 const RULES='a'.repeat(64);
 const RELEASE='projects/'+PROJECT+'/releases/cloud.firestore';
 const jwt=(sub,overrides={})=>{
@@ -26,8 +28,8 @@ function fixture(opts={}){
     return {
       status,
       json:async()=>req.method==='POST'
-        ?[{document:{name:ROOT+'/products/demo'}}]
-        :{name:url,fields:isProduct
+        ?[{document:{name:RESOURCE_ROOT+'/'+JSON.parse(req.body).structuredQuery.from[0].collectionId+'/demo',fields:{companyId:{stringValue:'internal_company'}}}}]
+        :{name:url.slice(API.length),fields:isProduct
           ?{companyId:{stringValue:'internal_company'},revenue:{integerValue:'10000'}}
           :{companyId:{stringValue:'internal_company'},totalRevenue:{integerValue:'10000'}}}
     };
@@ -136,11 +138,49 @@ test('Owner document from wrong company is never accepted as proof of company fi
   const verifier=f.create({fetchImpl:async(url,req)=>({
     status:200,
     json:async()=>req.method==='POST' ? [] :{
-      name:url,fields:{
+      name:url.slice(API.length),fields:{
         companyId:{stringValue:'other_company'},
         revenue:{integerValue:'500'},totalRevenue:{integerValue:'500'}
       }
     }
   })});
   await assert.rejects(verifier(args),/STOP_LIVE_ROLE_OWNER_FINANCE_NOT_VERIFIED/);
+});
+
+
+test('real REST Document.name uses resource path, not HTTPS URL; wrong document cannot impersonate Owner',async()=>{
+  for(const docName of [
+    ROOT+'/products/knownProduct',
+    RESOURCE_ROOT+'/products/anotherProduct',
+    RESOURCE_ROOT+'/products/knownProduct/other',
+    'projects/other/databases/(default)/documents/products/knownProduct'
+  ]){
+    const f=fixture();
+    const verifier=f.create({fetchImpl:async(url,req)=>({
+      status:200,json:async()=>req.method==='GET'?{
+        name:docName,fields:{companyId:{stringValue:'internal_company'},revenue:{integerValue:'1'}}
+      }: [{document:{name:RESOURCE_ROOT+'/products/demo',fields:{companyId:{stringValue:'internal_company'}}}}]
+    })});
+    await assert.rejects(verifier(args),/STOP_LIVE_ROLE_OWNER_FINANCE_NOT_VERIFIED/);
+  }
+});
+test('Owner list HTTP 200 with empty, unrelated or wrong-company results is NOT evidence of finance access',async()=>{
+  const invalid=[
+    [],
+    [{readTime:'2026-11-05T14:00:00Z'}],
+    [{document:{name:RESOURCE_ROOT+'/records/no',fields:{companyId:{stringValue:'internal_company'}}}}],
+    [{document:{name:RESOURCE_ROOT+'/products/demo',fields:{companyId:{stringValue:'other_company'}}}}],
+    [{document:{name:ROOT+'/products/demo',fields:{companyId:{stringValue:'internal_company'}}}}],
+    [{document:{name:RESOURCE_ROOT+'/products/demo/another',fields:{companyId:{stringValue:'internal_company'}}}}]
+  ];
+  for(const listResult of invalid){
+    const f=fixture();
+    const verifier=f.create({fetchImpl:async(url,req)=>({
+      status:200,json:async()=>req.method==='POST'?listResult:{
+        name:url.slice(API.length),
+        fields:{companyId:{stringValue:'internal_company'},revenue:{integerValue:'1'},totalRevenue:{integerValue:'1'}}
+      }
+    })});
+    await assert.rejects(verifier(args),/STOP_LIVE_ROLE_OWNER_LIST_NOT_VERIFIED/);
+  }
 });
