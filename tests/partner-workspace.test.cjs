@@ -1707,3 +1707,118 @@ test("Owner can unpublish a newly unsafe name, but may never publish it to partn
  assert.deepEqual(db.store.get("companies/hub/partnerCatalogSettings/publication").productIds,[]);
  assert.equal(db.store.get("products/old").revenue,90000);
 });
+
+test("Owner-added product ON -> partner count input -> corrected joint individual rank -> OFF -> safe restoration",async()=>{
+ const {db,api,req}=setup(),date="2026-10-31";
+ // Simulate the existing Owner product-create flow: new master is active,
+ // but partner publication starts OFF. Finance fields remain server-only.
+ db.seed("products/fiberNew",{companyId:"hub",name:"新商材A",
+  sortOrder:1,active:true,unitPrice:888888,totalRevenue:999999,
+  pricingOptions:[{cashback:0,revenuePerUnit:555555}]});
+ const masterBefore=clone(db.store.get("products/fiberNew"));
+ const oldSales=clone(db.store.get("records/old"));
+ const ownerBefore=await api.viewCatalog(req("h"));
+ assert.equal(ownerBefore.products.find(p=>p.id==="fiberNew").published,false);
+ assert.deepEqual((await api.viewCatalog(req("p"))).products,[]);
+ const enabled=await api.setCatalogPublication(req("h",{
+  productId:"fiberNew",published:true,expectedRevision:0
+ }));
+ assert.equal(enabled.saved,true);
+ const visible=(await api.viewCatalog(req("p"))).products;
+ assert.deepEqual(visible,[{id:"fiberNew",name:"新商材A",sortOrder:1}]);
+ assert.doesNotMatch(JSON.stringify(visible),/888888|999999|555555|revenue|unitPrice|cashback|pricingOptions/);
+ const team=(await api.manage(req("p",{action:"addTeam",name:"協力店の班"}))).teamId;
+ const first=(await api.manage(req("p",{action:"addManaged",teamId:team,name:"協力店A"}))).staffId;
+ const second=(await api.manage(req("p",{action:"addManaged",teamId:team,name:"協力店B"}))).staffId;
+ // Direct salesperson records the SAME product through the original master,
+ // not the partner extra ledger. Do not create another sale for it.
+ db.seed("records/currentDirect",{companyId:"hub",date,uid:"directPerson",
+  teamId:"directTeam",teamNameSnapshot:"直営班",memberNameSnapshot:"直営C",
+  totalCount:2,results:[{productId:"fiberNew",productNameSnapshot:"新商材A",count:2}],
+  totalRevenue:444444,unitPrice:222222});
+ const savedOriginalDirect=clone(db.store.get("records/currentDirect"));
+ await api.submitAdditionalCounts(req("p",{
+  date,staffId:first,changes:{fiberNew:3},expectedVersion:0
+ }));
+ await api.submitAdditionalCounts(req("p",{
+  date,staffId:second,changes:{fiberNew:5},expectedVersion:0
+ }));
+ const own=await api.viewAdditionalCounts(req("p",{date}));
+ assert.equal(own.products.length,1);
+ assert.equal(own.records.length,2);
+ assert.equal(own.records.reduce((n,x)=>n+x.totalCount,0),8);
+ const firstRank=await api.view(req("h",{date,sharedRankings:true}));
+ const partnerRank=await api.view(req("p",{date,sharedRankings:true}));
+ assert.equal(firstRank.groupStatus,"verified");
+ assert.equal(firstRank.complete,false,"extra-only reports are provisional");
+ assert.equal(firstRank.additionalTotalCount,8);
+ assert.equal(firstRank.direct.totalCount,2);
+ assert.equal(firstRank.companies[0].totalCount,8);
+ assert.equal(firstRank.people.length,2);
+ assert.equal(firstRank.people.reduce((n,p)=>n+p.totalCount,0),8);
+ assert.equal(firstRank.groupStandings.length,1);
+ assert.equal(firstRank.groupStandings[0].name,"新商材A");
+ assert.deepEqual(firstRank.groupStandings[0].members.map(x=>x.count),[5,3,2]);
+ assert.deepEqual(firstRank.groupStandings,partnerRank.groupStandings);
+ assert.doesNotMatch(JSON.stringify(firstRank),/888888|999999|555555|444444|222222|pricingOptions|revenuePerUnit|totalRevenue|unitPrice/);
+ // Versioned edit REPLACES 3 with 6; never add the delta twice.
+ const changed=await api.submitAdditionalCounts(req("p",{
+  date,staffId:first,changes:{fiberNew:6},expectedVersion:1
+ }));
+ assert.equal(changed.version,2);
+ await assert.rejects(api.submitAdditionalCounts(req("p",{
+  date,staffId:first,changes:{fiberNew:7},expectedVersion:1
+ })),{code:"aborted"});
+ const revised=await api.view(req("h",{date,sharedRankings:true}));
+ assert.equal(revised.additionalTotalCount,11);
+ assert.equal(revised.companies[0].totalCount,11);
+ assert.deepEqual(revised.groupStandings[0].members.map(x=>x.count),[6,5,2]);
+ // A manually configured group now owns the product; no duplicate card.
+ await api.setPartnerRankingGroups(req("h",{expectedRevision:0,
+  groups:[{id:"fiberOwnerGroup",name:"新商材の合同勝負",keys:["id:fiberNew"]}]
+ }));
+ const manual=await api.view(req("h",{date,sharedRankings:true}));
+ assert.deepEqual(manual.groupStandings.map(g=>g.id),["fiberOwnerGroup"]);
+ // Another new master enters with default OFF and can be toggled ON later.
+ db.seed("products/electricNew",{companyId:"hub",name:"新商材B",
+  active:true,sortOrder:2,revenuePerUnit:987654});
+ assert.equal((await api.viewCatalog(req("h"))).products
+  .find(p=>p.id==="electricNew").published,false);
+ await api.setCatalogPublication(req("h",{
+  productId:"electricNew",published:true,expectedRevision:1
+ }));
+ const both=await api.view(req("h",{date,sharedRankings:true}));
+ assert.deepEqual(both.groupStandings.map(g=>g.name),["新商材の合同勝負","新商材B"]);
+ // OFF hides product name and ledger quantities from the shared ranking.
+ // Prior entries and all original financial documents are retained.
+ const pastLedger=clone(db.store.get("companies/partner/partnerAdditionalCountEntries/"+date+"__"+first));
+ const pastAudit=clone(db.store.get("companies/partner/partnerAdditionalCountAudits/"+date+"__"+first+"__v2"));
+ await api.setCatalogPublication(req("h",{
+  productId:"fiberNew",published:false,expectedRevision:2
+ }));
+ const afterOff=await api.view(req("h",{date,sharedRankings:true}));
+ const partnerOff=await api.view(req("p",{date,sharedRankings:true}));
+ assert.equal(afterOff.additionalTotalCount,0);
+ assert.equal(afterOff.groupStatus,"verified");
+ assert.deepEqual(afterOff.groupStandings.map(g=>g.name),["新商材B"]);
+ assert.deepEqual(afterOff.groupStandings,partnerOff.groupStandings);
+ assert.deepEqual((await api.viewCatalog(req("p"))).products.map(x=>x.id),["electricNew"]);
+ assert.doesNotMatch(JSON.stringify(afterOff.groupStandings),/fiberNew|新商材A|新商材の合同勝負/);
+ assert.deepEqual(db.store.get("companies/partner/partnerAdditionalCountEntries/"+date+"__"+first),pastLedger);
+ assert.deepEqual(db.store.get("companies/partner/partnerAdditionalCountAudits/"+date+"__"+first+"__v2"),pastAudit);
+ await assert.rejects(api.submitAdditionalCounts(req("p",{
+  date,staffId:first,changes:{fiberNew:9},expectedVersion:2
+ })),{code:"failed-precondition"});
+ // Reactivating publication restores READ-ONLY history and the same saved
+ // Owner group; no old count is reinserted, rewritten or newly invoiced.
+ await api.setCatalogPublication(req("h",{
+  productId:"fiberNew",published:true,expectedRevision:3
+ }));
+ const restored=await api.view(req("h",{date,sharedRankings:true}));
+ assert.equal(restored.additionalTotalCount,11);
+ assert.deepEqual(restored.groupStandings.find(g=>g.id==="fiberOwnerGroup")
+  .members.map(m=>m.count),[6,5,2]);
+ assert.deepEqual(db.store.get("products/fiberNew"),masterBefore);
+ assert.deepEqual(db.store.get("records/currentDirect"),savedOriginalDirect);
+ assert.deepEqual(db.store.get("records/old"),oldSales);
+});
