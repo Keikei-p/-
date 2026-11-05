@@ -47,7 +47,9 @@ function reconcileSharedMonthlyCounts({
      companyIds.has(company.id)||company.peopleVerified!==true||
      !number(company.extraTotalCount))deny();
   companyIds.add(company.id);
-  byCompany.set(company.id,{personCount:0,teamCount:0,personExtras:0,teamExtras:0});
+  byCompany.set(company.id,{personCount:0,teamCount:0,personExtras:0,teamExtras:0,
+   personCategories:Object.fromEntries(categories.map(key=>[key,0])),
+   teamCategories:Object.fromEntries(categories.map(key=>[key,0]))});
   const normal=categorySum(company.counts,categories);
   if(!number(company.totalCount)||company.totalCount!==normal+company.extraTotalCount)
    deny();
@@ -68,6 +70,8 @@ function reconcileSharedMonthlyCounts({
   if(categorySum(p.counts,categories)+extras!==p.totalCount)deny();
   scoped.personCount=sum([scoped.personCount,p.totalCount]);
   scoped.personExtras=sum([scoped.personExtras,extras]);
+  for(const key of categories)
+   scoped.personCategories[key]=sum([scoped.personCategories[key],p.counts[key]]);
   return p.totalCount;
  }));
  const teamTotal=sum(teams.map(t=>{
@@ -79,6 +83,8 @@ function reconcileSharedMonthlyCounts({
    deny();
   scoped.teamCount=sum([scoped.teamCount,t.totalCount]);
   scoped.teamExtras=sum([scoped.teamExtras,t.extraTotalCount]);
+  for(const key of categories)
+   scoped.teamCategories[key]=sum([scoped.teamCategories[key],t.counts[key]]);
   return t.totalCount;
  }));
  if(personTotal!==companyTotal||teamTotal!==companyTotal||
@@ -91,7 +97,9 @@ function reconcileSharedMonthlyCounts({
   if(scoped.personCount!==company.totalCount||
      scoped.teamCount!==company.totalCount||
      scoped.personExtras!==company.extraTotalCount||
-     scoped.teamExtras!==company.extraTotalCount)deny();
+     scoped.teamExtras!==company.extraTotalCount||
+     categories.some(key=>scoped.personCategories[key]!==company.counts[key]||
+      scoped.teamCategories[key]!==company.counts[key]))deny();
  }
  const originalTotal=categorySum(direct.counts,categories);
  if(!number(direct.totalCount)||!number(direct.otherCount)||
