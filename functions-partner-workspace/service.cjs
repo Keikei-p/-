@@ -275,15 +275,6 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   return {kind:"hub",uid,cid,role:"owner"};
  }
 
- // Bounded master reader shared by publication and rank projections.
- // No master document is ever returned directly to a partner client.
- async function readHubProductMaster(hub){
-  const master=await db.collection("products").where("companyId","==",hub)
-   .limit(1001).get();
-  if(master.size>1000)fail("resource-exhausted");
-  if(master.docs.some(doc=>doc.data()?.companyId!==hub))fail("data-loss");
-  return master;
- }
  // The raw sales product master is read on the trusted backend only.
  // No pricing, sales history, or financial fields reach partner clients.
  async function viewCatalog(request){
@@ -293,7 +284,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   const hubId=s.kind==="hub"?s.cid:s.hubId;
   if(!ID.test(hubId||""))fail();
   const [master,settings]=await Promise.all([
-   readHubProductMaster(hubId),
+   db.collection("products").where("companyId","==",hubId).limit(1001).get(),
    collection(hubId,"partnerCatalogSettings").doc("publication").get()
   ]);
   if(master.size>1000)fail("resource-exhausted");
@@ -351,7 +342,10 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  async function activePublishedProducts(hub,publishedIds){
   // Read the price-bearing master only inside the trusted backend.
   // Only names and IDs leave this trusted scope.
-  const master=await readHubProductMaster(hub);
+  const master=await db.collection("products").where("companyId","==",hub)
+   .limit(1001).get();
+  if(master.size>1000||master.docs.some(doc=>doc.data()?.companyId!==hub))
+   fail("data-loss");
   try{
    return projectMasterProducts(master.docs.map(doc=>({...doc.data(),id:doc.id})),
     publishedIds,true).map(({id,name,sortOrder})=>({id,name,sortOrder}));
