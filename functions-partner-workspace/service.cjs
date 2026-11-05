@@ -1198,6 +1198,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    ...(s.kind==="partner"?{workspaceCompanyId:s.cid}:{}),complete:false,
    provisionalReason:"月間の全日・全員報告の照合前",
    includesDirect:true,companies,teams,people,productCounts,additionalTotalCount,
+   // Same trusted filtered public catalog; no price, cashback or revenue fields.
+   publishedProducts:rankableProducts.map(({id,name,sortOrder})=>({id,name,sortOrder})),
    categories:KEYS,direct,rankingGroups:sharedConfig.groups,groupStandings,
    groupRevision:sharedConfig.revision,groupStatus,
    recordsVerified:direct.recordsVerified,partnerRowsVerified:partnerRowsRead};
