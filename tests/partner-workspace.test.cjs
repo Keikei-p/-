@@ -1675,7 +1675,7 @@ test("Owner can turn OFF a retired published master without changing sales data 
  })),{code:"permission-denied"});
  const result=await api.setCatalogPublication(req("h",{
   productId:"retired",published:false,expectedRevision:1
- });
+ }));
  assert.deepEqual(result,{saved:true,revision:2,productId:"retired",published:false});
  assert.deepEqual(db.store.get("companies/hub/partnerCatalogSettings/publication").productIds,[]);
  assert.equal(db.store.get("companies/hub/partnerCatalogSettings/publication").revision,2);
@@ -1699,7 +1699,7 @@ test("Owner can unpublish a newly unsafe name, but may never publish it to partn
  })),{code:"failed-precondition"});
  const saved=await api.setCatalogPublication(req("h",{
   productId:"old",published:false,expectedRevision:1
- });
+ }));
  assert.equal(saved.published,false);
  assert.deepEqual(db.store.get("companies/hub/partnerCatalogSettings/publication").productIds,[]);
  assert.equal(db.store.get("products/old").revenue,90000);
