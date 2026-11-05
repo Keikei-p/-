@@ -184,3 +184,22 @@ test('Owner list HTTP 200 with empty, unrelated or wrong-company results is NOT 
     await assert.rejects(verifier(args),/STOP_LIVE_ROLE_OWNER_LIST_NOT_VERIFIED/);
   }
 });
+
+
+test('stale Owner or secondary Partner token is refused AFTER construction but BEFORE any post-release HTTP',async()=>{
+  for(const role of ['owner','partner']){
+    const f=fixture();
+    let now=T*1000;
+    const verifier=f.create({
+      now:()=>now,
+      ...(role==='owner'?{ownerIdToken:jwt('owneruid',{exp:T+100})}
+                       :{partnerIdToken:jwt('partneruid',{exp:T+100})})
+    });
+    // A backup scan or external approval can take enough time that a token
+    // valid at construction has expired before the Rules flip verification.
+    now=(T+120)*1000;
+    await assert.rejects(verifier(args),
+      /STOP_LIVE_ROLE_USER_IDENTITY_NOT_VERIFIED/,role);
+    assert.equal(f.calls.length,0,'do not mistake auth expiry for Rules denial');
+  }
+});
