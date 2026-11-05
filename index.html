@@ -4883,7 +4883,7 @@ body.product-reordering .product-list {
   <button id="pInlineReturnToOwnCompany" type="button" class="team-action-button" hidden>
     自社アカウントの画面に戻る
   </button>
-  <p class="p-inline-muted">今日の実績を登録・確認できます。</p>
+  <p class="p-inline-muted">10月・11月など表示月を選んで件数と班別詳細を確認できます。実績入力・訂正は従来どおり日付別です。</p>
   <div id="partnerGlobalDateToolbar" class="p-inline-grid">
     <label class="p-inline-field">ダッシュボードの表示月<input id="pInlineDashboardMonth" type="month" aria-label="協力店ダッシュボードの対象月"></label>
     <div class="p-inline-field"><label for="pInlineDashboardMonthRefresh">月間集計</label><button id="pInlineDashboardMonthRefresh" type="button">月間件数を更新</button></div>
@@ -5070,8 +5070,8 @@ body.product-reordering .product-list {
     <div class="p-inline-card" id="partnerSharedRankingsSection">
       <h3>🤝 協力店合同ランキング（選択日）</h3>
       <p class="p-inline-muted">承認済みの協力店で共通の件数・順位です。直営も協力店も件数のみを集計し、売上・単価を表示しません。</p>
-      <button id="partnerSharedRankingsRefresh" type="button" class="team-action-button">みんなのランキングを更新</button>
-      <button id="partnerSharedRankingsMonthButton" type="button" class="team-action-button">直営＋協力店｜月間件数（暫定）</button>
+      <button id="partnerSharedRankingsRefresh" type="button" class="team-action-button">選択日のランキング</button>
+      <button id="partnerSharedRankingsMonthButton" type="button" class="team-action-button">選択月のランキング（暫定）</button>
       <label class="ranking-product-scope">月間<input id="partnerSharedRankingsMonth" type="month"></label>
       <p id="partnerSharedRankingsStatus" role="status"></p>
       <div id="partnerSharedRankingContent" class="p-inline-list"></div>
@@ -13202,7 +13202,7 @@ function setOwnerCombinedCountCardVisibility(name){
 installOwnerCombinedCountCards();
 
 let sharedDailyRankingGeneration=0;
-let partnerSharedRankPeriod="day";
+let partnerSharedRankPeriod="month";
 const sharedDailyRankCache=new Map();
 function verifiedDirectDayCounts(date){
  if(!canLoadPartnerRanking()||!recordsReady||
@@ -13542,7 +13542,7 @@ function renderSharedCountTeamDetails(parent,report){
 }
 async function loadSharedDailyStandings(where,force=false){
  if(where==="partner"&&partnerSharedRankPeriod==="month")
-  return loadPartnerMonthlySharedRankings();
+  return loadPartnerMonthlySharedRankings(force);
  const partner=where==="partner"||where==="partnerDetail";
  const detail=where==="partnerDetail"||where==="ownerDetail";
  if(!partner&&!canReadSharedCountOnlyRanks())return;
@@ -13824,7 +13824,7 @@ for(const which of ["Individual","Product"]){
    load();
  };
 }
-async function loadPartnerMonthlySharedRankings(){
+async function loadPartnerMonthlySharedRankings(force=false){
  const monthInput=pInline("partnerSharedRankingsMonth");
  const month=monthInput.value,uid=auth.currentUser?.uid;
  const status=pInline("partnerSharedRankingsStatus"),content=pInline("partnerSharedRankingContent");
@@ -13842,7 +13842,7 @@ async function loadPartnerMonthlySharedRankings(){
   if(partnerInlineWorkspaceCompany)
    payload.workspaceCompanyId=partnerInlineWorkspaceCompany;
   const key=uid+"|partner|"+(partnerInlineWorkspaceCompany||"")+"|"+month;
-  const old=ownerMonthlyRankCache.get(key),cached=old&&Date.now()-old.checkedAt<180000;
+  const old=ownerMonthlyRankCache.get(key),cached=!force&&old&&Date.now()-old.checkedAt<180000;
   const response=cached?old.value:(await readPartnerMonthlySharedCounts(payload)).data;
   if(seq!==ownerMonthlyRankGeneration||auth.currentUser?.uid!==uid||
      partnerSharedRankPeriod!=="month"||monthInput.value!==month)return;
@@ -14489,6 +14489,9 @@ async function savePartnerExtra(){
    ++partnerProductMonthlyNonce;partnerProductMonthlyCache=null;
    ++sharedDailyRankingGeneration;sharedDailyRankCache.clear();
    void loadPartnerDashboardMonth();
+   ownerMonthlyRankCache.clear();
+   if(["individual","product","team"].includes(partnerSameAppSelectedPanel))
+    void loadPartnerMonthlySharedRankings(true);
    if(["products","catalog"].includes(partnerSameAppSelectedPanel))
     void loadPartnerProductMonthlyTotals({force:true});
   }else{
@@ -15023,6 +15026,8 @@ async function openSameAppPartnerWorkspace(user,workspaceCompanyId=""){
  databaseStatus.textContent="件数API";
  pInline("pInlineDashboardMonth").value=getTodayString().slice(0,7);
  pInline("pInlineDashboardMonth").max=getTodayString().slice(0,7);
+ partnerSharedRankPeriod="month";
+ pInline("partnerSharedRankingsMonth").value=pInline("pInlineDashboardMonth").value;
  pInline("pInlineDate").value=partnerMainDate();
  pInline("pInlineRecordDate").value=pInline("pInlineDate").value;
  partnerInlineEditingStaffId="";
@@ -15180,7 +15185,17 @@ function partnerInlineChangeDate(which){
  pInline("pInlineRecordDate").value=next;
  if(next!==previous)void partnerInlineFetch();
 }
-pInline("pInlineDashboardMonth").onchange=()=>void loadPartnerDashboardMonth();
+pInline("pInlineDashboardMonth").onchange=()=>{
+ const month=pInline("pInlineDashboardMonth").value;
+ for(const id of ["partnerSharedRankingsMonth","partnerProductMonth","partnerCatalogMonth"])
+  pInline(id).value=month;
+ partnerSharedRankPeriod="month";
+ void loadPartnerDashboardMonth();
+ if(["individual","product","team"].includes(partnerSameAppSelectedPanel))
+  void loadPartnerMonthlySharedRankings(true);
+ if(["products","catalog"].includes(partnerSameAppSelectedPanel))
+  void loadPartnerProductMonthlyTotals({force:true});
+};
 pInline("pInlineDashboardMonthRefresh").onclick=()=>void loadPartnerDashboardMonth();
 pInline("pInlineDate").onchange=()=>partnerInlineChangeDate("pInlineDate");
 pInline("pInlineRecordDate").onchange=()=>partnerInlineChangeDate("pInlineRecordDate");
