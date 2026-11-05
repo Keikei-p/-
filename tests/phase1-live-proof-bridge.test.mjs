@@ -119,8 +119,7 @@ function fakeIdentity({changedPath='',changes={},statusOverride=0}={}){
     canViewUnitPrice:flag(false)}
  };
  const calls=[];
- return {
-  calls,
+ const result={
   credential:{getAccessToken:async()=>({access_token:'fake-oauth-token-xxxxxxxxxxxxxxxx'})},
   partnerCompanyId:external,
   now:()=>T*1000,
