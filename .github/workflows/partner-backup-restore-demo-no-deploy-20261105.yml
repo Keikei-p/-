@@ -1,0 +1,56 @@
+name: NICO synthetic complete-sales backup restore rehearsal (NO DEPLOY)
+on:
+  push:
+    branches: [feature/partner-catalog-month-integrated-20261105]
+    paths:
+      - 'tests/partner-backup-restore-domain-live.test.mjs'
+      - '.github/workflows/partner-backup-restore-demo-no-deploy-20261105.yml'
+  pull_request:
+    branches: [feature/partner-auto-published-count-ranks-20261105]
+    paths:
+      - 'tests/partner-backup-restore-domain-live.test.mjs'
+      - '.github/workflows/partner-backup-restore-demo-no-deploy-20261105.yml'
+permissions:
+  contents: read
+jobs:
+  synthetic-restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GCLOUD_PROJECT: demo-sales-restore
+      GOOGLE_CLOUD_PROJECT: demo-sales-restore
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Refuse production credentials and verify all scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GCLOUD_PROJECT" = demo-sales-restore
+          test "$GOOGLE_CLOUD_PROJECT" = demo-sales-restore
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          node --check tests/partner-backup-restore-domain-live.test.mjs
+          node --check tools/readonly-backup/restore-emulator.mjs
+      - name: Test preflight, create-only and 25k synthetic documents (mocked localhost)
+        run: node --test tools/readonly-backup/restore-emulator.test.mjs
+      - name: Test direct+partner sales, historic correction and CB in REAL local Firestore emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes firebase-tools@15.34.1 emulators:exec --only firestore --project demo-sales-restore \
+            "node --test tests/partner-backup-restore-domain-live.test.mjs tools/readonly-backup/restore-emulator-live.test.mjs"
+      - name: Report strictly limited result
+        run: |
+          echo "PASS: local demo Firestore Emulator restored synthetic document fields and IDs; NO PRODUCTION WRITES"
+          echo "NOT VERIFIED: actual production backup completeness, Firebase Auth, Firestore Rules, metadata timestamps, live UID finance access"
