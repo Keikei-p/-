@@ -28,7 +28,10 @@ const snap={
   },createTime:date,updateTime:date}}
  ]
 };
-const approvals={approval:true,realOwnerVerified:true,realPartnerDenied:true,backupReviewed:true};
+const liveProof=()=>({checkedAgainst:'production-live',partnerDocumentDenied:true,
+ partnerListDenied:true,ownerFinanceAllowed:true});
+const approvals={approval:true,candidateEmulatorVerified:true,
+ realOwnerBeforeVerified:true,backupReviewed:true,verifyLiveRoles:async()=>liveProof()};
 const goodBackup=()=>({readyBackups:1,latestReadySnapshot:date});
 const snapshot=async()=>structuredClone(snap);
 const restore=async data=>({
@@ -85,10 +88,12 @@ test('a reviewed candidate already active must NOT report a new publish or issue
  assert.equal(r.applied,false,'there was no actual Rules publish');
  assert.equal(r.alreadyAtReviewedCandidate,true);
  assert.equal(r.reviewedRulesPresent,true);
+ assert.equal(r.postSwitchRoleVerified,true);
+ assert.equal(r.reviewedRealPartnerFinanceDeny,true);
  assert.equal(f.writes.length,0,'even approved idempotent path does not write');
  assert.equal(f.getCurrent(),candidateId);
 });
-test('deployer cannot apply without separate owner, partner, backup and signed approval',async()=>{
+test('deployer cannot apply without candidate emulator, Owner baseline, backup, post-switch verifier and signed approval',async()=>{
  for(const missing of Object.keys(approvals)){
   const f=fixture();
   const bad={...approvals,[missing]:false};
@@ -142,6 +147,9 @@ test('approved synthetic apply switches EXACTLY once and reads back Rules and fu
  assert.deepEqual(f.writes.map(x=>x.method),['POST','PATCH']);
  assert.equal(r.productionDocumentWrites,0);
  assert.equal(r.managedBackupRestored,false);
+ assert.equal(r.postSwitchRoleVerified,true);
+ assert.equal(r.reviewedRealPartnerFinanceDeny,true);
+ assert.equal(r.reviewedLiveOwnerFinanceRead,true);
 });
 test('uncertain patch or changed inventory rolls Rules back to exact previously published release',async()=>{
  for(const kind of ['uncertainPatch','afterInventoryChanged']){
@@ -167,6 +175,49 @@ test('uncertain patch or changed inventory rolls Rules back to exact previously 
   assert.deepEqual(f.writes.map(x=>x.method),['POST','PATCH','PATCH']);
   assert.equal(f.logs.at(-1).rulesRolledBack,true);
  }
+});
+test('live permission probe runs after Rules switch and rejects missing, false, throwing or malformed proof',async()=>{
+ for(const kind of ['noProof','partnerDoc','partnerList','owner','wrongTarget','throws']){
+  const f=fixture();
+  let called=0;
+  const check=async args=>{
+   called++;
+   assert.equal(args.releaseName,'projects/'+PROJECT+'/releases/cloud.firestore');
+   assert.equal(typeof args.expectedRulesSha256,'string');
+   if(kind==='throws')throw Error('session unavailable');
+   const result=liveProof();
+   if(kind==='noProof')return null;
+   if(kind==='partnerDoc')result.partnerDocumentDenied=false;
+   if(kind==='partnerList')result.partnerListDenied=false;
+   if(kind==='owner')result.ownerFinanceAllowed=false;
+   if(kind==='wrongTarget')result.checkedAgainst='demo-only';
+   return result;
+  };
+  await assert.rejects(phase1Boundary({...f.args,...approvals,apply:true,
+   verifyLiveRoles:check}));
+  assert.equal(called,1);
+  assert.equal(f.getCurrent(),oldId,'failure after switch must restore original Rules');
+  assert.deepEqual(f.writes.map(x=>x.method),['POST','PATCH','PATCH']);
+  assert.equal(f.logs.at(-1).rulesRolledBack,true);
+ }
+});
+test('already-installed candidate cannot falsely claim safe state without live role proof',async()=>{
+ const f=fixture({starting:candidateId});
+ await assert.rejects(phase1Boundary({...f.args,...approvals,apply:true,
+  verifyLiveRoles:async()=>({checkedAgainst:'production-live',partnerDocumentDenied:false,
+   partnerListDenied:false,ownerFinanceAllowed:true})}),/STOP_PHASE1_POST_SWITCH_ROLE_UNVERIFIED/);
+ assert.deepEqual(f.writes,[],'never rollback someone else’s previously active Rules');
+ assert.equal(f.getCurrent(),candidateId);
+});
+test('verify-only never invokes live-role probe or implies live denial',async()=>{
+ const f=fixture();
+ let called=0;
+ const report=await phase1Boundary({...f.args,verifyLiveRoles:async()=>{called++;throw Error('must not call');}});
+ assert.equal(report.applied,false);
+ assert.equal(report.reviewedRealPartnerFinanceDeny,false);
+ assert.equal(report.postSwitchRoleVerified,false);
+ assert.equal(called,0);
+ assert.equal(f.writes.length,0);
 });
 test('a changed production inventory before Rules PATCH stops without modifying the live release',async()=>{
  const f=fixture();
