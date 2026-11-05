@@ -62,7 +62,7 @@ jobs:
       - name: Verify counts, month selection and rankings offline
         run: |
           node --check functions-partner-workspace/service.cjs
-          node --test tests/direct-persisted-count-edit-protection.test.cjs tests/partner-legacy-publication-policy.test.cjs tests/partner-auto-published-ranking.test.cjs tests/partner-month-dashboard-months-and-teams.test.cjs tests/partner-workspace.test.cjs
+          node --test tests/partner-month-integrity-gate.test.cjs tests/direct-persisted-count-edit-protection.test.cjs tests/partner-legacy-publication-policy.test.cjs tests/partner-auto-published-ranking.test.cjs tests/partner-month-dashboard-months-and-teams.test.cjs tests/partner-workspace.test.cjs
       - name: Install Firebase Emulator dependencies for security candidate only
         run: npm install --prefix finance-review/tests --ignore-scripts --no-audit --no-fund
       - name: Test finance deny and internal owner allow with synthetic Firebase UIDs

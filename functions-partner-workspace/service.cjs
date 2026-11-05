@@ -12,6 +12,8 @@ const {projectPartnerProductMonth}=require("./partner-product-monthly.cjs");
 const {decodeGroups,saveGroups,groupPersonalScores,canPublishSharedPersonalRankings}=require("./shared-ranking-groups.cjs");
 const {readVisibleRankingGroups,addAutomaticPublishedGroups}=require("./automatic-published-groups.cjs");
 const {readDirectDayCounts,readDirectRangeCounts}=require("./shared-direct-counts.cjs");
+const {isDirectCountIntegrityError,MONTHLY_DIRECT_COUNTS_UNVERIFIED}=
+ require("./monthly-integrity-gate.cjs");
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 // Cashback is a product variant label, NOT a sales unit price or revenue.
 const PARTNER_CB_OPTIONS=Object.freeze({"NURO":Object.freeze(["0","20000","40000","60000","80000","unclassified"])});
@@ -1203,7 +1205,14 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    direct=await readDirectRangeCounts(db,hubId,first,lastDate,KEYS,{
     maxRecords:10000,approvedExtraProductIds:extraVerifiedIds
    });
-  }catch{fail("failed-precondition");}
+  }catch(error){
+   // A historical count mismatch must never turn into a fake zero or a
+   // partial published monthly rank. Send only a fixed reason code;
+   // never return a record ID, stored amount, price, or source details.
+   if(isDirectCountIntegrityError(error))
+    throw new HttpsError("failed-precondition",MONTHLY_DIRECT_COUNTS_UNVERIFIED);
+   fail("failed-precondition");
+  }
   const companies=[],people=[],teams=[],productCounts=Object.fromEntries(KEYS.map(k=>[k,0]));
   let additionalTotalCount=0,partnerRowsRead=0;
   for(const relSnap of relations.docs){
