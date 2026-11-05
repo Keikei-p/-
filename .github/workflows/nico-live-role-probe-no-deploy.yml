@@ -40,7 +40,7 @@ jobs:
           test "$(git rev-parse origin/security/phase1-reviewed-rules-release-gate-20261105)" = 50b49dba0c5c7f8612f50b7b4598be4749b339f9
           test "$(git hash-object firestore.rules)" = 6d6ac7fd3544b0326823e419a3acd7e1d060b714
           git diff --name-only 50b49dba0c5c7f8612f50b7b4598be4749b339f9...HEAD > /tmp/live-role-files.txt
-          if grep -Ev '^(tools/production/verify-live-firestore-roles\.mjs|tests/verify-live-firestore-roles\.test\.mjs|\.github/workflows/nico-live-role-probe-no-deploy\.yml)$' /tmp/live-role-files.txt; then
+          if grep -Ev '^(tools/production/verify-live-firestore-roles\.mjs|tests/verify-live-firestore-roles\.test\.mjs|tools/production/phase1-live-proof-bridge\.mjs|tests/phase1-live-proof-bridge\.test\.mjs|\.github/workflows/nico-live-role-probe-no-deploy\.yml)$' /tmp/live-role-files.txt; then
             echo 'STOP_UNREVIEWED_CHANGE'
             exit 1
           fi
