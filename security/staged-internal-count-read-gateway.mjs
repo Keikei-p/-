@@ -40,19 +40,32 @@ function checkAccount(account,auth){
 }
 function strictInternal(principal){
  const {uid,user,company,member}=principal;
- if(!plain(user)||!plain(company)||!plain(member)||
-   user.uid!==uid||member.uid!==uid||
-   !validId(user.companyId)||user.companyId!==member.companyId||
+ if(!validId(uid)||!plain(user)||!plain(company)||!plain(member)||
+   // The server already read users/{uid} and companies/{companyId}/members/{uid}.
+   // Old rows sometimes omit redundant uid/companyId/active fields. Only a
+   // missing field may be filled from those authenticated document paths.
+   (user.uid!=null&&user.uid!==uid)||
+   (member.uid!=null&&member.uid!==uid)||
+   !validId(user.companyId)||
+   (member.companyId!=null&&member.companyId!==user.companyId)||
    user.active===false||member.active===false||company.active===false||
    user.companyRole!==member.companyRole)deny(403);
- // Match legacy internal identities without inventing any partner rights.
- if(![undefined,'internal'].includes(company.companyKind)||
+ // A positive, current partner marker always vetoes the historical direct
+ // account, even when its stale companyRole is owner/master.
+ if(![undefined,'internal','direct'].includes(company.companyKind)||
    ![undefined,'internal'].includes(user.accessKind)||
    ![undefined,'internal'].includes(member.accessKind)||
    ![undefined,'internal','direct','member','managed'].includes(user.memberType)||
    ![undefined,'internal','direct','member','managed'].includes(member.memberType))
    deny(403);
- return user.companyId;
+ // The downstream projection requires explicit uid/active/companyId. Create
+ // a count-only in-memory copy; never grant money permissions or write docs.
+ return Object.freeze({
+   companyId:user.companyId,
+   user:{...user,uid,active:true},
+   member:{...member,uid,companyId:user.companyId,active:true},
+   company:{...company,active:true}
+ });
 }
 export function createStagedInternalCountReadGateway({
  enabled=false,authenticateBearer,loadAuthUser,readDocument,loadCountPage
@@ -95,7 +108,8 @@ export function createStagedInternalCountReadGateway({
     readDocument('companies/'+user.companyId),
     readDocument('companies/'+user.companyId+'/members/'+auth.uid)
    ]);
-   const companyId=strictInternal({uid:auth.uid,user,company,member});
+   const verified=strictInternal({uid:auth.uid,user,company,member});
+   const {companyId}=verified;
    const page=await loadCountPage({
     companyId,day,cursor,snapshotTime:snapshot||null,limit:MAX_PAGE
    });
@@ -115,7 +129,8 @@ export function createStagedInternalCountReadGateway({
    const projected=projectLegacyCountDay({
     principal:{uid:auth.uid,companyId,firebaseIdTokenVerified:true,
       emailVerified:true,serverMembershipVerified:true,
-      serverVerifiedInternalCompany:true,user,member,company},
+      serverVerifiedInternalCompany:true,
+      user:verified.user,member:verified.member,company:verified.company},
     day,readTime:page.readTime,records:page.records,products:page.products
    });
    // Product IDs in the historic record must be confirmed against catalog;
