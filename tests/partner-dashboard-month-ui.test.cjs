@@ -33,7 +33,7 @@ test("October/November global picker and day input are independent; no panel rem
  assert.match(html,/month!==pInline\("pInlineDashboardMonth"\)\.value/);
  assert.match(html,/void loadPartnerDashboardMonth\(\)/);
  assert.match(html,/partnerCompactWireTeamSelection\(results\)/);
- assert.match(html,/renderPartnerCountTeamCard\(team\.name\+"\|"\+data\.month/);
+ assert.match(html,/renderPartnerCountTeamCard\(team\.name\+"｜"\+data\.month/);
  assert.match(html,/pInline\("partnerSharedRankingsMonth"\)\.value=/);
  assert.match(html,/partnerSharedRankPeriod="month"/);
  assert.match(html,/partnerSameAppSelectedPanel/);
