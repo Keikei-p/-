@@ -1,0 +1,75 @@
+name: NICO exact reviewed Phase1 Rules release engine (NO DEPLOY)
+on:
+  push:
+    branches: [security/phase1-reviewed-rules-release-gate-20261105]
+  pull_request:
+    branches: [security/nico-live-finance-rules-only-20261104]
+permissions:
+  contents: read
+concurrency:
+  group: nico-phase1-exact-no-deploy
+  cancel-in-progress: true
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 24
+    env:
+      FIREBASE_PROJECT_ID: demo-sales-support
+      GCLOUD_PROJECT: demo-sales-support
+      GOOGLE_APPLICATION_CREDENTIALS: ""
+      FIREBASE_SERVICE_ACCOUNT_JSON: ""
+      NICO_RULES_APPROVAL: ""
+      NICO_USAGE_APPROVAL: ""
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Fail closed if the reviewed rules or expected changes drift
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$FIREBASE_PROJECT_ID" = demo-sales-support
+          test "$GCLOUD_PROJECT" = demo-sales-support
+          test -z "${GOOGLE_APPLICATION_CREDENTIALS:-}"
+          test -z "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          test -z "${NICO_RULES_APPROVAL:-}"
+          test -z "${NICO_USAGE_APPROVAL:-}"
+          git fetch --no-tags origin main security/nico-live-finance-rules-only-20261104
+          test "$(git rev-parse origin/security/nico-live-finance-rules-only-20261104)" = b1f694aff1e3328aef984d3d84a1ecafdb4abf40
+          git diff --name-only b1f694aff1e3328aef984d3d84a1ecafdb4abf40...HEAD > /tmp/nico-phase1-files.txt
+          if grep -Ev '^(tools/production/phase1-partner-finance-release\.mjs|tests/phase1-partner-finance-release\.test\.mjs|\.github/workflows/nico-phase1-rules-exact-release-no-deploy\.yml)$' /tmp/nico-phase1-files.txt; then
+            echo STOP_UNEXPECTED_RELEASE_CHANGES
+            exit 1
+          fi
+          node - <<'NODE'
+          const cp=require('node:child_process'),assert=require('node:assert/strict');
+          assert.equal(cp.execFileSync('git',['hash-object','firestore.rules'],{encoding:'utf8'}).trim(),
+            '6d6ac7fd3544b0326823e419a3acd7e1d060b714');
+          assert.equal(cp.execFileSync('git',['hash-object','tests/rules.test.cjs'],{encoding:'utf8'}).trim(),
+            '0292ea176ad67e6486cd9fd1a0d08dc18a3317cd');
+          console.log('PASS_EXACT_REVIEWED_PHASE1_SOURCE');
+          NODE
+          node --check tools/production/phase1-partner-finance-release.mjs
+          node --check tests/phase1-partner-finance-release.test.mjs
+      - name: Check exact old/live/candidate, denied writes, approvals, concurrency and rollback (all synthetic)
+        shell: bash
+        run: node --test tests/phase1-partner-finance-release.test.mjs
+      - name: Test retained Owner and secondary partner finance rights in isolated Firestore emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix tests --ignore-scripts --no-audit --no-fund
+          npx --yes firebase-tools@15.34.1 emulators:exec --project demo-sales-support --only firestore "node --test tests/rules.test.cjs"
+      - name: Do not connect to any production project or deploy
+        run: |
+          echo 'PASS_PHASE1_REVIEWED_ENGINE_OFFLINE_ONLY'
+          echo 'PRODUCTION_RELEASE_APPROVED=false'
+          echo 'PRODUCTION_RELEASE_APPLIED=false'
