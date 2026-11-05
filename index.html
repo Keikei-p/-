@@ -12928,6 +12928,26 @@ function renderPartnerMonthTeamSummary(data){
    team.totalCount,team.counts,team.cbCounts,team.people,
    data.categories,{verified:true}));
  partnerCompactWireTeamSelection(results);
+ // The original dashboard's analysis/chart cards also honor the same month.
+ // Only SAVED snapshots are graphed; missing days never become zero sales.
+ const analysis=pInline("pPartnerAnalysis");analysis.replaceChildren();
+ partnerMainAppendRow(analysis,data.companyName+"｜"+data.month+"（保存済み分）",
+  data.totalCount+"件");
+ for(const team of data.teams)
+  partnerMainAppendRow(analysis,team.name,team.totalCount+"件");
+ const chart=pInline("pPartnerChart");chart.replaceChildren();
+ const max=Math.max(1,...data.teams.map(t=>t.totalCount));
+ for(const team of data.teams){
+  const wrapper=document.createElement("div");wrapper.className="p-inline-row";
+  const name=document.createElement("strong");
+  name.textContent=team.name+"｜"+team.totalCount+"件";
+  const track=document.createElement("div");
+  track.style.cssText="height:12px;border-radius:8px;background:var(--card-soft);margin-top:8px;overflow:hidden";
+  const bar=document.createElement("div");
+  bar.style.cssText="height:100%;border-radius:8px;background:var(--primary);width:"+
+   (team.totalCount/max*100)+"%";
+  track.append(bar);wrapper.append(name,track);chart.append(wrapper);
+ }
 }
 async function loadPartnerDashboardMonth(){
  const snap=partnerInlineData,uid=auth.currentUser?.uid,
