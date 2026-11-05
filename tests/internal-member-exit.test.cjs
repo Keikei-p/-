@@ -128,6 +128,7 @@ test("owner impersonation, invalid identity and account markers fail before writ
  const mutations=[
   x=>x.db.docs.get("users/owner").companyRole="leader",
   x=>x.db.docs.get("companies/hub").ownerUid="other",
+  x=>x.db.docs.get("companies/hub").masterUid="staff",
   x=>x.db.docs.get("companies/hub/members/staff").companyRole="owner",
   x=>x.db.docs.get("users/staff").accessKind="partner",
   x=>x.db.docs.get("users/staff").uid="foreign",
