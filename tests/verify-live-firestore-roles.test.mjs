@@ -28,8 +28,8 @@ function fixture(opts={}){
       json:async()=>req.method==='POST'
         ?[{document:{name:ROOT+'/products/demo'}}]
         :{name:url,fields:isProduct
-          ?{revenue:{integerValue:'10000'}}
-          :{totalRevenue:{integerValue:'10000'}}}
+          ?{companyId:{stringValue:'internal_company'},revenue:{integerValue:'10000'}}
+          :{companyId:{stringValue:'internal_company'},totalRevenue:{integerValue:'10000'}}}
     };
   };
   const create=(override={})=>createLiveFirestoreRoleVerifier({
@@ -93,6 +93,7 @@ test('required identity binding rejects wrong project, same UID, expired, disabl
     {ownerIdToken:jwt('owneruid',{email_verified:false})},
     {ownerIdToken:jwt('owneruid',{exp:T-1})},
     {ownerIdToken:jwt('owneruid',{exp:T+7000})},
+    {ownerIdToken:jwt('owneruid',{auth_time:null})},
     {ownerIdToken:'oauth-opaque'},
     {expectedOwnerUid:'different-uid'},
     {partnerIdToken:jwt('owneruid'),expectedPartnerUid:'owneruid'}
@@ -128,4 +129,18 @@ test('malformed Owner finance document and malformed query response fail closed'
     }});
     await assert.rejects(verifier(args),/STOP_LIVE_ROLE_(OWNER_FINANCE_NOT_VERIFIED|OWNER_LIST_NOT_VERIFIED)/);
   }
+});
+
+test('Owner document from wrong company is never accepted as proof of company finance',async()=>{
+  const f=fixture();
+  const verifier=f.create({fetchImpl:async(url,req)=>({
+    status:200,
+    json:async()=>req.method==='POST' ? [] :{
+      name:url,fields:{
+        companyId:{stringValue:'other_company'},
+        revenue:{integerValue:'500'},totalRevenue:{integerValue:'500'}
+      }
+    }
+  })});
+  await assert.rejects(verifier(args),/STOP_LIVE_ROLE_OWNER_FINANCE_NOT_VERIFIED/);
 });
