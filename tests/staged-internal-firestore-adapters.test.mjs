@@ -45,7 +45,7 @@ function makeReader({products=[product()],records=[record()],mutate=()=>{}}={}){
 test('fixed REST query projects only fields needed for counts; no company/collection override',()=>{
  const prod=buildStagedInternalRunQuery({table:'products',companyId,limit:201});
  const rec=buildStagedInternalRunQuery({table:'records',companyId,day,
-  cursor:'sale0001',snapshotTime:TIME,limit:50});
+  cursor:'sale0001',snapshotTime:TIME,limit:51});
  assert.equal(prod.endpoint,FIRESTORE_URL);assert.equal(rec.method,'POST');
  assert.deepEqual(prod.body.structuredQuery.from,[{collectionId:'products'}]);
  assert.equal(prod.body.structuredQuery.limit,201);
@@ -62,6 +62,7 @@ test('fixed REST query projects only fields needed for counts; no company/collec
   {table:'recordCorrections',companyId,day,limit:50},
   {table:'revenueGoals',companyId,limit:50},
   {table:'records',companyId:'other/a',day,limit:50},
+  {table:'records',companyId,day,limit:50},
   {table:'records',companyId,day:'2026-02-31',limit:50},
   {table:'records',companyId,day,cursor:'../price',limit:50},
   {table:'products',companyId,day,limit:201},
@@ -84,6 +85,27 @@ test('actual REST-shaped legacy results lose price and CB values BEFORE old-coun
  assert.equal(JSON.stringify(record()),before);
  assert.equal(audit.length,2);
  assert.equal(audit[1].body.readTime,TIME);
+});
+test('the bounded 51-row read proves whether a 50-row page actually continues',async()=>{
+ const entries=Array.from({length:51},(_,i)=>record('sale'+String(i).padStart(4,'0')));
+ const full=makeReader({records:entries});
+ const a=await full.reader(options);
+ assert.equal(a.records.length,50,'the 51st record must remain server-only');
+ assert.equal(a.hasMore,true);
+ assert.equal(a.nextCursor,'sale0049');
+ assert.equal(full.audit[1].body.structuredQuery.limit,51);
+ const finished=makeReader({records:entries.slice(0,50)});
+ const b=await finished.reader(options);
+ assert.equal(b.records.length,50);
+ assert.equal(b.hasMore,false);
+ assert.equal(b.nextCursor,null);
+ assert.equal(finished.audit.length,2,'exact-50 page does not need another query');
+ const last=makeReader({records:[record('sale0050')]});
+ const c=await last.reader({...options,cursor:'sale0049',snapshotTime:TIME});
+ assert.equal(c.records.length,1);
+ assert.equal(c.hasMore,false);
+ assert.equal(c.nextCursor,null);
+ assert.equal(last.audit[1].body.structuredQuery.limit,51);
 });
 test('empty day is a verified empty response; missing readTime and split snapshots stop',async()=>{
  const r=makeReader({records:[{readTime:TIME}]});
@@ -118,7 +140,7 @@ test('pinning a readTime on the second page covers both catalog and records',asy
 });
 test('the privileged Firebase transport rejects finance field selection and OR-filter bypasses',()=>{
  const good=buildStagedInternalRunQuery({
-  table:'records',companyId,day,cursor:'sale0001',snapshotTime:TIME,limit:50});
+  table:'records',companyId,day,cursor:'sale0001',snapshotTime:TIME,limit:51});
  const catalog=buildStagedInternalRunQuery({
   table:'products',companyId,snapshotTime:TIME,limit:201});
  assert.equal(assertStagedInternalTransportQuery(good),good);
