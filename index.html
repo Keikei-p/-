@@ -7512,6 +7512,8 @@ const readPartnerRankingGroups = httpsCallable(partnerCountFunctions,"getPartner
 const writePartnerRankingGroups = httpsCallable(partnerCountFunctions,"setPartnerRankingGroups");
 const readPartnerCountLinks = httpsCallable(partnerCountFunctions,"getPartnerCountLinks");
 const writePartnerCountLink = httpsCallable(partnerCountFunctions,"setPartnerCountLink");
+const readPartnerLegacyCountGate = httpsCallable(partnerCountFunctions,"getPartnerLegacyCountGate");
+const activatePartnerLegacyCountGate = httpsCallable(partnerCountFunctions,"activatePartnerLegacyCountGate");
 const readPartnerAdditionalCounts = httpsCallable(partnerCountFunctions,"getPartnerAdditionalCounts");
 const writePartnerAdditionalCounts = httpsCallable(partnerCountFunctions,"submitPartnerAdditionalCounts");
 
@@ -14503,16 +14505,26 @@ function partnerInlineRenderCounts(){
  partnerInlineEditingStaffId=staffId;
  pInline("pInlineRecordDate").value=pInline("pInlineDate").value;
  const grid=pInline("pInlineCountFields");grid.replaceChildren();
+ const policy=snap.legacyPublication||{mode:"legacy",blockedCategories:[]};
+ if(!["legacy","scheduled","enforce"].includes(policy.mode)||
+    !Array.isArray(policy.blockedCategories)||
+    policy.blockedCategories.some(key=>!snap.categories.includes(key))||
+    new Set(policy.blockedCategories).size!==policy.blockedCategories.length)
+  throw Error("legacy_policy_contract");
+ const blocked=new Set(policy.blockedCategories);
  pInline("pInlineSaveStatus").textContent="";
  delete pInline("pInlineSaveStatus").dataset.result;
  for(const key of snap.categories){
   if(key==="NURO"){
+   const frozen=blocked.has(key),oldCount=entry?.counts?.NURO??0;
    const card=document.createElement("div");
+   if(frozen&&oldCount===0)card.style.display="none";
    card.className="p-inline-field product-input-group product-input-group--compact partner-cb-card";
    const heading=document.createElement("div");heading.className="partner-cb-title";
    heading.textContent="NURO光｜CB別件数";
    const hint=document.createElement("div");hint.className="p-inline-muted";
-   hint.textContent="CB区分ごとの件数入力です。売上・単価は表示しません。";
+   hint.textContent=frozen?"公開OFF｜登録済みCB件数を保持（変更できません）":
+    "CB区分ごとの件数入力です。売上・単価は表示しません。";
    const tiers=document.createElement("div");tiers.className="partner-cb-options";
    const saved=partnerUiCbCountSnapshot(entry);
    for(const tier of PARTNER_NURO_CB_TIERS){
@@ -14525,20 +14537,25 @@ function partnerInlineRenderCounts(){
     input.max="9999";input.step="1";input.inputMode="numeric";
     input.className="product-plan-input";
     input.dataset.cbTier=tier;input.value=String(saved[tier]);
+    if(frozen)input.readOnly=true;
     input.addEventListener("input",renderPartnerEntryTotals);
     field.append(input);tiers.append(field);
    }
    card.append(heading,hint,tiers);grid.append(card);
    continue;
   }
+  const frozen=blocked.has(key),prior=entry?.counts?.[key]??0;
   const label=document.createElement("label");
   label.className="p-inline-field product-input-group product-input-group--compact";
+  if(frozen&&prior===0)label.style.display="none";
   const title=document.createElement("div");title.className="product-input-group-title";
   const name=document.createElement("span");name.className="product-input-name";
-  name.textContent=key;title.append(name);label.append(title);
+  name.textContent=key+(frozen?"｜公開OFF・過去件数のみ":"");
+  title.append(name);label.append(title);
   const input=document.createElement("input");input.type="number";input.min="0";input.max="9999";
   input.step="1";input.inputMode="numeric";input.className="product-plan-input";input.dataset.countKey=key;
-  input.value=String(entry?.counts?.[key]??0);
+  input.value=String(prior);
+  if(frozen)input.readOnly=true;
   input.addEventListener("input",renderPartnerEntryTotals);
   label.append(input);grid.append(label);
  }
@@ -14950,7 +14967,7 @@ function partnerSavedCountReadbackState(verified,expected){
  if(record.version!==expected.expectedVersion+1)return "unknown";
  const countOk=expected.categories.every(key=>
    Number.isSafeInteger(record.counts?.[key])&&record.counts[key]===expected.counts[key]);
- const cbOk=PARTNER_NURO_CB_TIERS.every(tier=>
+ const cbOk=expected.cbCounts===null||PARTNER_NURO_CB_TIERS.every(tier=>
    (record.cbCounts?.NURO?.[tier]??0)===(expected.cbCounts.NURO[tier]??0));
  const privateOk=Object.keys(expected.privateCounts).every(id=>
    (record.privateCounts?.[id]??0)===expected.privateCounts[id]);
@@ -15369,7 +15386,9 @@ pInline("pInlineSave").onclick=()=>{
  if(workLocation.length>100||/[\x00-\x1f\x7f]/.test(workLocation))throw Error("work_location_invalid");
  const counts=Object.create(null);
  const parsedCb=partnerInlineSelectedCb();
- const cbCounts={NURO:parsedCb.result};
+ // Keep the original classification when NURO is published OFF.
+ const blockedNuRo=partnerInlineData?.legacyPublication?.blockedCategories?.includes("NURO")===true;
+ const cbCounts=blockedNuRo?null:{NURO:parsedCb.result};
  for(const key of snap.categories){
   if(key==="NURO"){counts[key]=parsedCb.total;continue;}
   const node=[...pInline("pInlineCountFields").querySelectorAll("input[data-count-key]")]
@@ -15403,7 +15422,8 @@ pInline("pInlineSave").onclick=()=>{
  // but convert all THREE nested maps at the wire boundary before httpsCallable.
  // Otherwise serializer.mapValues can throw before any POST reaches Cloud Run.
  const wireCounts=Object.fromEntries(Object.entries(counts));
- const wireCbCounts={NURO:Object.fromEntries(Object.entries(parsedCb.result))};
+ const wireCbCounts=cbCounts?
+  {NURO:Object.fromEntries(Object.entries(parsedCb.result))}:null;
  const wirePrivateCounts=Object.fromEntries(Object.entries(privateCounts));
  const expected={date,staffId,counts,cbCounts,workLocation,workTeamId,
   privateCounts,expectedVersion:before?.version??0,
@@ -15411,7 +15431,7 @@ pInline("pInlineSave").onclick=()=>{
  let result=null,saveError=null;
  try{
   result=(await partnerInlineSave(partnerInlinePayload({
-   date,staffId,counts:wireCounts,cbCounts:wireCbCounts,workLocation,
+   date,staffId,counts:wireCounts,...(wireCbCounts?{cbCounts:wireCbCounts}:{}),workLocation,
    ...(!before?{workTeamId}:{}),privateCounts:wirePrivateCounts,
    expectedVersion:expected.expectedVersion
   }))).data;
@@ -15617,6 +15637,54 @@ async function loadOwnerPartnerDetails(){
      (report?"登録済み｜"+company.teams.length+"班":"未報告｜"+company.teams.length+"班"):
      "承認後に件数の閲覧が可能です";
    card.append(note);
+   if(company.active){
+    // Each partner is switched over only on explicit Hub Owner confirmation.
+    // Saved legacy entries, CB and existing ranking identities remain intact.
+    const activate=document.createElement("button");
+    activate.type="button";activate.className="team-action-button";
+    activate.textContent="旧9区分の商材公開ON/OFF連動を確認";
+    const gateStatus=document.createElement("p");
+    gateStatus.className="p-inline-muted";
+    gateStatus.textContent="未設定なら従来の件数入力を継続します。";
+    activate.onclick=async()=>{
+     if(!validSession())return;
+     activate.disabled=true;
+     gateStatus.textContent="協力店の公開制御を確認しています…";
+     try{
+      const state=(await readPartnerLegacyCountGate({
+       partnerCompanyId:company.partnerCompanyId
+      })).data;
+      if(!validSession())return;
+      if(state?.scope!=="partner_legacy_count_gate"||
+         state.partnerCompanyId!==company.partnerCompanyId||
+         typeof state.armed!=="boolean")throw Error("gate_unverified");
+      if(state.armed){
+       gateStatus.textContent="連動済み｜適用開始："+state.effectiveFrom;
+       activate.textContent="公開ON/OFF連動を設定済み";
+       return;
+      }
+      gateStatus.textContent="未設定｜商材管理で旧9区分の商材紐付けが必要です。";
+      if(!window.confirm(company.name+"の旧9区分への公開ON/OFF連動を翌日から適用しますか？"+
+       "公開OFFの対応商材は新たに件数の増減・CB訂正ができなくなります。"+
+       "過去件数・売上・班・CB・履歴は保持します。"+
+       "この設定は後から画面で解除できません。"))return;
+      const saved=(await activatePartnerLegacyCountGate({
+       partnerCompanyId:company.partnerCompanyId,expectedRevision:0,
+       confirmation:"ACTIVATE_NEXT_DAY_LEGACY_CATEGORY_FILTER"
+      })).data;
+      if(!validSession())return;
+      if(saved?.armed!==true||saved.partnerCompanyId!==company.partnerCompanyId||
+         !/^\d{4}-\d{2}-\d{2}$/.test(saved.effectiveFrom))
+       throw Error("gate_activation_unverified");
+      gateStatus.textContent="✅ "+saved.effectiveFrom+
+       "から旧9区分の公開OFF入力制限を適用します。既存実績は残ります。";
+      activate.textContent="公開ON/OFF連動を設定済み";
+     }catch{
+      if(validSession())gateStatus.textContent="設定できませんでした。商材管理で旧9区分の対応関係と協力店の承認状態を確認してください。";
+     }finally{activate.disabled=false;}
+    };
+    card.append(activate,gateStatus);
+   }
    const holder=document.createElement("div");holder.className="owner-partner-team-list partner-count-team-grid";
    card.append(holder);list.append(card);
    let loaded=false,loading=false;
