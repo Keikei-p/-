@@ -2,7 +2,7 @@
 
 **Draft review checklist — NOT an approval, signature, deployment or successful real-user test.**
 
-Project: \`sales-management-cc116\`. Repository: \`Keikei-p/-\`.
+Project: `sales-management-cc116`. Repository: `Keikei-p/-`.
 Production: https://nico-factory.web.app/
 Dependencies: PR #358 (reviewed Rules), #376 (switch+rollback), #378 (user
 get/list), #379 (Owner preflight), #380 (affected identity binding).
@@ -12,7 +12,7 @@ get/list), #379 (Owner preflight), #380 (affected identity binding).
 1. **Independent human review**. Authorized maintainer reviews the exact
    candidate Rules, their effects on real Owner access and affected secondary
    users, and the code changes. Approval is explicitly recorded by the human,
-   with the required \`sales-production-reviewed\` protection gate and signed
+   with the required `sales-production-reviewed` protection gate and signed
    release record. Bot comments, CI green checks or user requests alone are
    not a substitute for a separate independent signoff. No fake signature.
 2. **Production backup and archive**. Check managed Firestore backup READY
@@ -22,15 +22,15 @@ get/list), #379 (Owner preflight), #380 (affected identity binding).
    cannot restore metadata timestamps. Preserve sales, CB, prices, team
    history, corrections, Auth, LINE and existing account links.
 3. **Exact reviewed source**. Only the original main Rules Git blob
-   \`d9f4df6a2ac0f8b5720534a2461ec66b94379190\` and new reviewed
-   \`6d6ac7fd3544b0326823e419a3acd7e1d060b714\` may be considered.
+   `d9f4df6a2ac0f8b5720534a2461ec66b94379190` and new reviewed
+   `6d6ac7fd3544b0326823e419a3acd7e1d060b714` may be considered.
    Review the actual live Rules **source content**, not just a filename.
    Unknown source, concurrent operator or changed inventory: STOP.
 4. **Independent affected account identity**. From a trusted, private
    execution environment, a server-side OAuth credential does only
    read-only GETs for internal Owner and the **specific affected dual-context
-   partner**. Verify \`users/{uid}\`, \`companies/{hub}\`,
-   \`companies/{hub}/members/{uid}\`, \`partnerWorkspaceContexts/{uid}\`,
+   partner**. Verify `users/{uid}`, `companies/{hub}`,
+   `companies/{hub}/members/{uid}`, `partnerWorkspaceContexts/{uid}`,
    partner company and its member; confirm owner has no secondary context.
    This prevents incorrectly proving security with an unrelated 403 user.
    No other partner UID may be silently substituted.
@@ -41,8 +41,8 @@ get/list), #379 (Owner preflight), #380 (affected identity binding).
    GitHub Actions logs or PR comments. Do **not** use Admin SDK/OAuth to
    test Firestore Security Rules; Admin credentials bypass them.
 6. **Pre-switch test**. The Owner's user ID token must read the existing
-   internal company \`products.revenue\` and \`records.totalRevenue\` via
-   GET and a company-scoped read-only \`:runQuery\`. The candidate Rules must
+   internal company `products.revenue` and `records.totalRevenue` via
+   GET and a company-scoped read-only `:runQuery`. The candidate Rules must
    deny the affected partner via the local Firestore Emulator. Expecting the
    partner to get 403 under the old **vulnerable** live Rules is incorrect.
 7. **Narrow Rules-only switch**. Only after steps 1–6 are reviewed and
@@ -69,7 +69,7 @@ get/list), #379 (Owner preflight), #380 (affected identity binding).
 
 ## Explicit release state (last verified 2026-11-05)
 
-- Production Rules: previous reviewed source \`d1d9998d...\`, **not**
+- Production Rules: previous reviewed source `d1d9998d...`, **not**
   new secondary-partner boundary; raw finance access risk remains.
 - Production inventory: the Nov 5 read-only run #42036092110 restored
   **390 documents** (IDs/fields) to an isolated emulator; no production writes.
