@@ -17997,7 +17997,7 @@ deleteOwnAccountButton.onclick =
 function startRealtimeListeners() {
   // A partner role change can occur while an old Firebase callback is pending.
   // Never restart money-bearing listeners inside the count-only workspace.
-  if(appScreen.dataset.partnerCountOnly==="true")return;
+  if(typeof appScreen!=="undefined"&&appScreen?.dataset?.partnerCountOnly==="true")return;
   stopRealtimeListeners();
   loadLocalRankingGroups();
 
@@ -20478,14 +20478,14 @@ async function loadProducts(
 ) {
   // A delayed getDocs that began in the internal workspace must not re-add
   // price-bearing products after switching to a partner count-only view.
-  if(appScreen.dataset.partnerCountOnly==="true")return false;
+  if(typeof appScreen!=="undefined"&&appScreen?.dataset?.partnerCountOnly==="true")return false;
   const companyId=currentUserData?.companyId,uid=auth.currentUser?.uid;
   try {
     const snapshot =
       await getDocs(
         companyCollectionQuery("products")
       );
-    if(appScreen.dataset.partnerCountOnly==="true"||
+    if((typeof appScreen!=="undefined"&&appScreen?.dataset?.partnerCountOnly==="true")||
        uid!==auth.currentUser?.uid||
        companyId!==currentUserData?.companyId)return false;
     products = [];
