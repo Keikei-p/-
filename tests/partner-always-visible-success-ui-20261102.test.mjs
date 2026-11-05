@@ -248,3 +248,67 @@ test("all six original Firebase listeners check the context before mutating UI",
  assert.match(code,/if\(internalSnapshotIsCurrent\(\)\)startRealtimeListeners\(\)/);
  assert(!/setDoc\(|deleteDoc\(|updateDoc\(|runTransaction\(/.test(code));
 });
+
+
+test("old company team/member readers discard late results when switching to partner",async()=>{
+ const helper=snippet("function sameInternalReadContext(companyId,uid,session){",
+  "function companyCollectionQuery(");
+ const functionSource=name=>{
+  const start=source.indexOf("async function "+name+"(");
+  const end=source.indexOf("\n}\n",start);
+  assert(start>=0&&end>start,"missing "+name);
+  return source.slice(start,end+2);
+ };
+ for(const task of ["loadTeams","loadMembers"]){
+  let resolveRead,rendered=0;
+  const ctx={
+   internalListenerSessionGeneration:1,
+   currentUserData:{companyId:"direct",role:"leader"},
+   auth:{currentUser:{uid:"owner"}},
+   appScreen:{dataset:{partnerCountOnly:"false"}},
+   teams:[{id:"old"}],members:[{id:"old",email:"private@example.test"}],
+   getDocs:()=>new Promise(resolve=>{resolveRead=resolve;}),
+   companyCollectionQuery:()=>({}),
+   companyMembersCollectionRef:()=>({}),
+   isCurrentCompanyManager:()=>true,
+   renderTeams:()=>{rendered++;},
+   renderMembers:()=>{rendered++;},
+   renderOwnerTransferOptions:()=>{rendered++;},
+   loadOwnerPartnerCompanyTeams:async()=>{rendered++;},
+   compareProductsByOrder:()=>0,console:{error(){}}
+  };
+  vm.runInNewContext(helper+"\n"+functionSource(task)+
+   "\nthis.invoke="+task+";this.check=sameInternalReadContext;",ctx);
+  const inflight=ctx.invoke();
+  assert.equal(typeof resolveRead,"function");
+  ctx.appScreen.dataset.partnerCountOnly="true";
+  ctx.internalListenerSessionGeneration=2;
+  ctx.teams=[];ctx.members=[];
+  resolveRead({forEach:fn=>fn({id:"inherited",data:()=>({name:"Internal member",unitPrice:99999})})});
+  assert.equal(await inflight,false,task+" must ignore old role result");
+  assert.equal(ctx.teams.length,0);
+  assert.equal(ctx.members.length,0);
+  assert.equal(rendered,0);
+  assert.equal(await ctx.invoke(),false,task+" must not start old Firestore readers");
+ }
+});
+test("same-company reader rejects UID changes, company switches and listener generations",()=>{
+ const code=snippet("function sameInternalReadContext(companyId,uid,session){",
+  "function companyCollectionQuery(");
+ const ctx={currentUserData:{companyId:"direct"},
+  auth:{currentUser:{uid:"owner"}},appScreen:{dataset:{partnerCountOnly:"false"}},
+  internalListenerSessionGeneration:3};
+ vm.runInNewContext(code+"\nthis.check=sameInternalReadContext;",ctx);
+ assert.equal(ctx.check("direct","owner",3),true);
+ ctx.currentUserData.companyId="another";
+ assert.equal(ctx.check("direct","owner",3),false);
+ ctx.currentUserData.companyId="direct";
+ ctx.auth.currentUser.uid="another";
+ assert.equal(ctx.check("direct","owner",3),false);
+ ctx.auth.currentUser.uid="owner";
+ ctx.internalListenerSessionGeneration=4;
+ assert.equal(ctx.check("direct","owner",3),false);
+ ctx.internalListenerSessionGeneration=3;
+ ctx.appScreen.dataset.partnerCountOnly="true";
+ assert.equal(ctx.check("direct","owner",3),false);
+});
