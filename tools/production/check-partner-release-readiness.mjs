@@ -87,8 +87,18 @@ export function inspectPartnerReleaseReadiness(input){
   if(!oldPin||oldPin[1]!==candidateSha256){
     blockers.push('MANUAL_RELEASE_RULES_SHA_PIN_MISMATCH');
   }
+  // The current pre-deploy guard verifies the Rules helper rather than
+  // declaring a Rules helper locally. Match the actual fail-closed verifier,
+  // never interpret a missing/new guard as approval to deploy.
+  const approvedFinanceGate=financeGate.includes('function checkFinanceRulesBeforeDeploy(source)')
+    && financeGate.includes('verifyFinanceHelper(source);')
+    && financeGate.includes('function verifyFinanceHelper(source)')
+    && financeGate.includes("block('MISSING_SERVER_PARTNER_GUARD')")
+    && financeGate.includes('hasTopLevelOr(condition)')
+    && financeGate.includes('const recognized=normalized===prefix')
+    && financeGate.includes('!recognized||hasTopLevelOr(condition)');
   if(!financeWorkflow.includes('node scripts/check-finance-read-boundary-before-deploy.mjs')||
-     !financeGate.includes('function isInternalFinanceReader(companyId)')){
+     !approvedFinanceGate){
     blockers.push('FINANCE_RELEASE_GATE_UNRECOGNIZED');
   }else if(!rules.includes('function isInternalFinanceReader(companyId)')){
     blockers.push('CURRENT_FINANCE_GATE_REQUIRES_DIFFERENT_RULES_CONTRACT');
