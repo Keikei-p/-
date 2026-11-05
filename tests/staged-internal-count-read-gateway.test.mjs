@@ -96,6 +96,48 @@ test('secondary old owner, partner markers, inactive and revoked account all fai
   assert.equal(f.audit.queries.length,0);
  }
 });
+test('server-attested legacy internal membership works when redundant fields are absent',async()=>{
+ const f=setup({mutateDocs:docs=>{
+  const user=docs.get('users/owner');
+  delete user.uid;delete user.active;
+  const member=docs.get('companies/demo-direct/members/owner');
+  delete member.uid;delete member.companyId;delete member.active;
+  const company=docs.get('companies/demo-direct');
+  delete company.active;
+  company.companyKind='direct';
+ }});
+ const original=JSON.stringify([...f.docs]);
+ const response=await f.server(request());
+ assert.equal(response.status,200);
+ const counts=await response.json();
+ assert.equal(counts.records[0].totalCount,2);
+ assert.equal(counts.lines[0].count,2);
+ assert.equal(f.audit.queries.length,1);
+ assert.equal(JSON.stringify([...f.docs]),original,'old source documents must never be mutated');
+ assert(!JSON.stringify(counts).includes('revenuePerUnit'));
+});
+test('legacy compatibility never trusts conflicting identifiers, deactivation or partner markers',async()=>{
+ const changes=[
+  d=>d.get('users/owner').uid='anotherUser',
+  d=>d.get('companies/demo-direct/members/owner').uid='anotherUser',
+  d=>d.get('companies/demo-direct/members/owner').companyId='differentCompany',
+  d=>d.get('users/owner').active=false,
+  d=>d.get('companies/demo-direct/members/owner').active=false,
+  d=>d.get('companies/demo-direct').active=false,
+  d=>d.get('companies/demo-direct').companyKind='partner',
+  d=>d.get('users/owner').accessKind='partner',
+  d=>d.get('companies/demo-direct/members/owner').accessKind='partner',
+  d=>d.get('users/owner').memberType='cooperator',
+  d=>d.get('companies/demo-direct/members/owner').memberType='cooperator',
+  d=>d.get('users/owner').companyRole='member'
+ ];
+ for(const change of changes){
+  const f=setup({mutateDocs:change});
+  const result=await f.server(request());
+  assert.equal(result.status,403,'invalid membership must fail before count reads');
+  assert.equal(f.audit.queries.length,0);
+ }
+});
 test('untrusted origin, token and arbitrary company/collection URL never query Firestore',async()=>{
  const f=setup();
  const bad=[
