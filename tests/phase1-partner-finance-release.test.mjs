@@ -148,8 +148,8 @@ test('uncertain patch or changed inventory rolls Rules back to exact previously 
    let n=0;
    f.args.snapshot=async()=>{
     const v=structuredClone(snap);
-    // Reads 1 and 2 precede the release; read 3 detects a later change.
-    if(++n===3)v.documents[0].value.fields.totalCount.integerValue='4';
+    // Reads 1,2,3 precede the release; read 4 detects post-apply drift.
+    if(++n===4)v.documents[0].value.fields.totalCount.integerValue='4';
     return v;
    };
   }
@@ -158,6 +158,20 @@ test('uncertain patch or changed inventory rolls Rules back to exact previously 
   assert.deepEqual(f.writes.map(x=>x.method),['POST','PATCH','PATCH']);
   assert.equal(f.logs.at(-1).rulesRolledBack,true);
  }
+});
+test('a changed production inventory before Rules PATCH stops without modifying the live release',async()=>{
+ const f=fixture();
+ let n=0;
+ f.args.snapshot=async()=>{
+  const value=structuredClone(snap);
+  if(++n===3)value.documents[0].value.fields.totalCount.integerValue='4';
+  return value;
+ };
+ await assert.rejects(phase1Boundary({...f.args,...approvals,apply:true}),
+  /STOP_PHASE1_INVENTORY_CHANGED_BEFORE_APPLY/);
+ assert.equal(f.getCurrent(),oldId);
+ assert.deepEqual(f.writes.map(x=>x.method),['POST'],
+  'a newly created, inactive Ruleset is safe; no live-release PATCH');
 });
 test('do not rollback a concurrent operator unrelated release',async()=>{
  const f=fixture(),original=f.args.request;
