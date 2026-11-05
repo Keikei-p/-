@@ -1,0 +1,39 @@
+name: NICO partner dashboard month and team detail (NO DEPLOY)
+on:
+  push:
+    branches: [feature/partner-dashboard-month-team-20261105]
+  pull_request:
+    paths:
+      - 'functions-partner-workspace/partner-monthly-team-detail.cjs'
+      - 'tests/partner-monthly-team-detail.test.cjs'
+      - 'functions-partner-workspace/service.cjs'
+      - 'functions-partner-workspace/index.js'
+      - 'index.html'
+permissions:
+  contents: read
+jobs:
+  offline-month-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      FIREBASE_PROJECT_ID: demo-partner-dashboard-month
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax check
+        run: |
+          node --check functions-partner-workspace/partner-monthly-team-detail.cjs
+          node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/index.js
+          node --check tests/partner-monthly-team-detail.test.cjs
+      - name: Read-only month, saved counts, ranking, security regression
+        run: |
+          node --test tests/partner-monthly-team-detail.test.cjs tests/partner-product-monthly-parity.test.cjs tests/partner-monthly-shared-counts.test.cjs tests/partner-workspace.test.cjs tests/partner-auto-monthly-ranking.test.cjs tests/partner-auto-published-ranking.test.cjs tests/partner-catalog-publication.test.cjs tests/partner-catalog-count-links.test.cjs tests/partner-extra-shared-ranking.test.cjs
+      - name: No production deployment
+        run: echo "NO DEPLOY; no production Firebase credentials, Rules, Functions or Hosting changes"
