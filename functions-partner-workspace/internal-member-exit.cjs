@@ -75,6 +75,9 @@ function makeInternalMemberExit({db,getAuth,FieldValue,HttpsError,enabled=()=>fa
    ]);
    const member=memberSnap.data()||{},target=targetSnap.data()||{};
    if(!memberSnap.exists||member.companyRole==="owner"||
+      // Legacy master selection may exist even when the member role is stale.
+      // Never revoke a master login through a regular member exit.
+      company.masterUid===targetId||
       member.active===false||
       (member.uid!=null&&member.uid!==targetId)||
       (member.companyId!=null&&member.companyId!==cid))
