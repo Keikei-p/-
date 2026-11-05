@@ -111,6 +111,43 @@ test('even a synthetic static compatibility result is never production approval'
  assert.equal(result.productionBackupRestoredAndVerified,false);
 });
 
+
+test('duplicate rule path cannot hide a second permissive match grant',()=>{
+ for(const path of ['products','records','recordCorrections','revenueGoals','teams','linePairingCodes']){
+  const f=fixture();
+  const start=f.rules.indexOf('    match /'+path+'/{');
+  assert(start>=0,path+' must exist');
+  f.rules=f.rules.slice(0,start)+
+   '    match /'+path+'/{shadowId} {\n      allow read: if true;\n    }\n\n'+
+   f.rules.slice(start);
+  assert(inspectPartnerReleaseReadiness(f).blockers.includes(
+   'PARTNER_RAW_READ_GUARD_MISSING_'+path),path+' duplicate must block release');
+ }
+});
+
+test('additive get or list grants cannot bypass the protected read rule',()=>{
+ for(const path of ['products','records','recordCorrections','revenueGoals','teams','linePairingCodes']){
+  for(const verb of ['get','list']){
+   const f=fixture();
+   const start=f.rules.indexOf('    match /'+path+'/{');
+   assert(start>=0,path+' must exist');
+   const newline=f.rules.indexOf('\n',start);
+   f.rules=f.rules.slice(0,newline+1)+
+    '      allow '+verb+': if true;\n'+f.rules.slice(newline+1);
+   assert(inspectPartnerReleaseReadiness(f).blockers.includes(
+    'PARTNER_RAW_READ_GUARD_MISSING_'+path),path+' '+verb+' must block release');
+  }
+ }
+});
+
+test('secondary guard joined with OR is never accepted as protected',()=>{
+ const f=fixture();
+ f.rules=f.rules.replace('allow read: if noSecondaryPartnerWorkspace()\n',
+   'allow read: if noSecondaryPartnerWorkspace() || true\n');
+ assert(inspectPartnerReleaseReadiness(f).blockers.includes(
+  'PARTNER_RAW_READ_GUARD_MISSING_teams'));
+});
+
 test('release readiness auditor is side-effect free and cannot deploy or touch customers',()=>{
  const s=read('tools/production/check-partner-release-readiness.mjs');
  assert.doesNotMatch(s,/\b(?:setDoc|updateDoc|deleteDoc|writeFileSync|execFileSync|spawnSync|fetch|https\.request|firebase\s+deploy|wrangler\s+deploy)\s*\(/);

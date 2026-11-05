@@ -16,10 +16,27 @@ const ROOTS=[
 const digest=s=>createHash('sha256').update(s.replace(/\r\n/g,'\n').trim()).digest('hex');
 
 function ruleBlock(source,collection){
-  const start=new RegExp('^    match /'+collection+'/\\{[A-Za-z]+\\} \\{','m').exec(source);
-  if(!start)return '';
+  // Multiple matching paths are OR-grants in Firestore, not overrides.
+  // Never validate only the first block and ignore a later permissive one.
+  const matcher=new RegExp('^    match /'+collection+'/\\{[A-Za-z]+\\} \\{','gm');
+  const matches=[...source.matchAll(matcher)];
+  if(matches.length!==1)return '';
+  const start=matches[0];
   const end=source.indexOf('\n    match /',start.index+start[0].length);
   return source.slice(start.index,end<0?undefined:end);
+}
+
+function allReadGrantsGuarded(block){
+  if(!block)return false;
+  const permissions=[...block.matchAll(/allow\s+([^:;]+):\s*if\s*([\s\S]*?);/g)];
+  // A single unguarded get/list/read grant overrides a safe read rule.
+  return permissions.filter(([,verbs])=>
+    verbs.split(',').some(verb=>['read','get','list'].includes(verb.trim()))
+  ).every(([, , expression])=>{
+    const condition=expression.trim();
+    return condition==='false' ||
+      /^noSecondaryPartnerWorkspace\(\)\s*&&/.test(condition);
+  });
 }
 
 export function inspectPartnerReleaseReadiness(input){
@@ -35,7 +52,7 @@ export function inspectPartnerReleaseReadiness(input){
   for(const [collection,verb] of ROOTS){
     const block=ruleBlock(rules,collection);
     const expected=new RegExp('allow\\s+'+verb+'\\s*:\\s*if\\s+noSecondaryPartnerWorkspace\\(\\)');
-    if(!expected.test(block)){
+    if(!expected.test(block)||!allReadGrantsGuarded(block)){
       blockers.push('PARTNER_RAW_READ_GUARD_MISSING_'+collection);
     }
   }
