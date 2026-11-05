@@ -13556,8 +13556,11 @@ function renderPartnerDashboardMonth(data,month){
   throw Error("partner_month_workspace_mismatch");
  const company=data.companies.find(c=>c.id===companyId);
  if(!company||company.name!==snap.companyName||
-    !Number.isSafeInteger(company.totalCount)||company.totalCount<0)
+    !Number.isSafeInteger(company.totalCount)||company.totalCount<0||
+    !Number.isSafeInteger(company.verifiedEntryCount)||company.verifiedEntryCount<0)
   throw Error("partner_month_missing_company");
+ // First zero-report is a real saved record; no record is NOT zero sales.
+ const reported=company.verifiedEntryCount>0;
  const keys=[...data.categories];
  const teams=data.teams.filter(t=>t.companyId===companyId);
  const people=data.people.filter(p=>p.companyId===companyId);
@@ -13584,16 +13587,18 @@ function renderPartnerDashboardMonth(data,month){
   monthNames.set(product.id,product.name);
  }
  partnerPublishedProductNames=monthNames;
- pInline("pPartnerDailyCount").textContent=company.totalCount+"件";
- pInline("pPartnerStaffCount").textContent=people.length+"人";
- pInline("pPartnerTeamCount").textContent=teams.length+"班";
+ pInline("pPartnerDailyCount").textContent=reported?company.totalCount+"件":"未報告";
+ pInline("pPartnerStaffCount").textContent=reported?people.length+"人":"-";
+ pInline("pPartnerTeamCount").textContent=reported?teams.length+"班":"-";
  const label=month.replace("-","年")+"月";
  pInline("pInlineTeamDetailsTitle").textContent="📋 班別詳細｜"+label;
  pInline("partnerSharedDetailTitle").textContent="🌐 直営・協力店 全社班別詳細｜"+label;
  const own=pInline("pInlineTeamDetails");own.replaceChildren();
- appendPartnerMonthCompany(own,"🤝 "+company.name+"｜"+company.totalCount+"件",teams,people,keys);
+ appendPartnerMonthCompany(own,"🤝 "+company.name+"｜"+
+  (reported?company.totalCount+"件":"未報告"),teams,people,keys);
  const analysis=pInline("pPartnerAnalysis");analysis.replaceChildren();
- partnerMainAppendRow(analysis,company.name+"｜"+label,company.totalCount+"件（保存済み分）");
+ partnerMainAppendRow(analysis,company.name+"｜"+label,
+  reported?company.totalCount+"件（保存済み分）":"未報告（0件とは扱いません）");
  for(const team of [...teams].sort((a,b)=>b.totalCount-a.totalCount))
   partnerMainAppendRow(analysis,team.name,team.totalCount+"件");
  const chart=pInline("pPartnerChart");chart.replaceChildren();
@@ -13612,15 +13617,21 @@ function renderPartnerDashboardMonth(data,month){
  const shared=pInline("partnerSharedDetailTree");shared.replaceChildren();
  if(data.direct?.teams&&data.direct?.people&&
     Array.isArray(data.direct.teams)&&Array.isArray(data.direct.people)){
-  appendPartnerMonthCompany(shared,"🏢 直営｜"+data.direct.totalCount+"件",
+  appendPartnerMonthCompany(shared,"🏢 直営｜"+
+   (data.direct.recordsVerified>0?data.direct.totalCount+"件":"未報告"),
    data.direct.teams,data.direct.people,keys);
  }
  for(const partner of data.companies){
   const t=data.teams.filter(x=>x.companyId===partner.id);
   const p=data.people.filter(x=>x.companyId===partner.id);
-  appendPartnerMonthCompany(shared,"🤝 "+partner.name+"｜"+partner.totalCount+"件",t,p,keys);
+  if(!Number.isSafeInteger(partner.verifiedEntryCount)||partner.verifiedEntryCount<0)
+   throw Error("partner_month_partner_report_invalid");
+  appendPartnerMonthCompany(shared,"🤝 "+partner.name+"｜"+
+   (partner.verifiedEntryCount>0?partner.totalCount+"件":"未報告"),t,p,keys);
  }
- pInline("pPartnerMonthStatus").textContent=label+"の保存済み実績を表示中｜未報告日は0件と扱わず、月間順位は暫定です。";
+ pInline("pPartnerMonthStatus").textContent=reported?
+  label+"の保存済み実績を表示中｜未報告日は0件と扱わず、月間順位は暫定です。":
+  label+"はまだ登録済み実績を確認できません。未報告を0件とは表示しません。";
  pInline("partnerSharedDetailStatus").textContent="対象月 "+label+
   " の保存済み班・担当者別件数です。登録時の班を使用し、売上・単価は含みません。";
 }
