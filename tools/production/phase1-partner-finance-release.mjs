@@ -65,7 +65,7 @@ export async function phase1Boundary({
  request,snapshot,restore,backup,reviewedBaseline,reviewedCandidate,
  apply=false,approval=false,candidateEmulatorVerified=false,
  realOwnerBeforeVerified=false,backupReviewed=false,
- verifyLiveRoles=null,log=()=>{},now=()=>Date.now()
+ verifyLiveRoles=null,preApplyCheck=null,log=()=>{},now=()=>Date.now()
 }={}){
  if(typeof request!=='function'||typeof snapshot!=='function'||
     typeof restore!=='function'||typeof backup!=='function'||
@@ -76,7 +76,8 @@ export async function phase1Boundary({
  // impossible. Candidate proof is an independently reviewed emulator gate.
  // Real live partner get/list denial is checked IMMEDIATELY AFTER the switch.
  if(apply&&(!approval||!candidateEmulatorVerified||!realOwnerBeforeVerified||
-    !backupReviewed||typeof verifyLiveRoles!=='function'))
+    !backupReviewed||typeof verifyLiveRoles!=='function'||
+    typeof preApplyCheck!=='function'))
   stop('MISSING_PRODUCTION_APPROVAL');
  const call=async(method,url,body)=>{
   if(!allowedPhase1Request(method,url,body,hashes.candidate))stop('API_NOT_ALLOWED');
@@ -160,6 +161,17 @@ export async function phase1Boundary({
   if(!RULESET.test(created?.name||''))stop('NEW_RULESET_INVALID');
   if((await getRelease())!==starting)stop('RULES_RELEASE_RACE');
   if(fingerprint(await snapshot())!==inventory)stop('INVENTORY_CHANGED_BEFORE_APPLY');
+  // The backup + isolation scan can take several minutes. Do not flip
+  // production Rules on a stale Owner / affected-partner user session.
+  // This is the last gate, directly before the *first* release PATCH; a
+  // failure leaves the existing live Rules untouched. Its result contains
+  // no user IDs, amounts, document bodies or authentication credentials.
+  const ready=await preApplyCheck();
+  if(ready?.checkedAgainst!=='production-live'||
+     ready?.ownerFinanceAllowed!==true||
+     ready?.affectedSecondaryBound!==true||
+     ready?.partnerSessionFresh!==true)
+    stop('PRE_SWITCH_ACCOUNT_UNVERIFIED');
   attempted=true;
   await point(created.name);
   if((await getRelease())!==created.name||
