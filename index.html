@@ -15637,6 +15637,54 @@ async function loadOwnerPartnerDetails(){
      (report?"登録済み｜"+company.teams.length+"班":"未報告｜"+company.teams.length+"班"):
      "承認後に件数の閲覧が可能です";
    card.append(note);
+   if(company.active){
+    // Each partner is switched over only on explicit Hub Owner confirmation.
+    // Saved legacy entries, CB and existing ranking identities remain intact.
+    const activate=document.createElement("button");
+    activate.type="button";activate.className="team-action-button";
+    activate.textContent="旧9区分の商材公開ON/OFF連動を確認";
+    const gateStatus=document.createElement("p");
+    gateStatus.className="p-inline-muted";
+    gateStatus.textContent="未設定なら従来の件数入力を継続します。";
+    activate.onclick=async()=>{
+     if(!validSession())return;
+     activate.disabled=true;
+     gateStatus.textContent="協力店の公開制御を確認しています…";
+     try{
+      const state=(await readPartnerLegacyCountGate({
+       partnerCompanyId:company.partnerCompanyId
+      })).data;
+      if(!validSession())return;
+      if(state?.scope!=="partner_legacy_count_gate"||
+         state.partnerCompanyId!==company.partnerCompanyId||
+         typeof state.armed!=="boolean")throw Error("gate_unverified");
+      if(state.armed){
+       gateStatus.textContent="連動済み｜適用開始："+state.effectiveFrom;
+       activate.textContent="公開ON/OFF連動を設定済み";
+       return;
+      }
+      gateStatus.textContent="未設定｜商材管理で旧9区分の商材紐付けが必要です。";
+      if(!window.confirm(company.name+"の旧9区分への公開ON/OFF連動を翌日から適用しますか？"+
+       "公開OFFの対応商材は新たに件数の増減・CB訂正ができなくなります。"+
+       "過去件数・売上・班・CB・履歴は保持します。"+
+       "この設定は後から画面で解除できません。"))return;
+      const saved=(await activatePartnerLegacyCountGate({
+       partnerCompanyId:company.partnerCompanyId,expectedRevision:0,
+       confirmation:"ACTIVATE_NEXT_DAY_LEGACY_CATEGORY_FILTER"
+      })).data;
+      if(!validSession())return;
+      if(saved?.armed!==true||saved.partnerCompanyId!==company.partnerCompanyId||
+         !/^\\d{4}-\\d{2}-\\d{2}$/.test(saved.effectiveFrom))
+       throw Error("gate_activation_unverified");
+      gateStatus.textContent="✅ "+saved.effectiveFrom+
+       "から旧9区分の公開OFF入力制限を適用します。既存実績は残ります。";
+      activate.textContent="公開ON/OFF連動を設定済み";
+     }catch{
+      if(validSession())gateStatus.textContent="設定できませんでした。商材管理で旧9区分の対応関係と協力店の承認状態を確認してください。";
+     }finally{activate.disabled=false;}
+    };
+    card.append(activate,gateStatus);
+   }
    const holder=document.createElement("div");holder.className="owner-partner-team-list partner-count-team-grid";
    card.append(holder);list.append(card);
    let loaded=false,loading=false;
