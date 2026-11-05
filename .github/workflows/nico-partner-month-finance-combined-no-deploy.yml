@@ -1,0 +1,81 @@
+name: NICO Partner Month + Catalog + Finance Rules Combined (NO DEPLOY)
+on:
+  push:
+    branches: [integration/partner-month-catalog-finance-20261105]
+  pull_request:
+    branches: [feature/partner-catalog-month-integrated-20261105]
+permissions:
+  contents: read
+concurrency:
+  group: nico-partner-month-finance-combined-no-deploy
+  cancel-in-progress: true
+jobs:
+  combined-emulator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      FIREBASE_PROJECT_ID: demo-sales-support
+      GCLOUD_PROJECT: demo-sales-support
+      GOOGLE_APPLICATION_CREDENTIALS: ""
+      FIREBASE_SERVICE_ACCOUNT_JSON: ""
+      SAFE_INTERNAL_MEMBER_REMOVAL_ENABLED: ""
+      NICO_ACCOUNT_ERASURE_ENABLED: ""
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Require exact reviewed UI and finance candidate, reject unrelated changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$FIREBASE_PROJECT_ID" = demo-sales-support
+          test "$GCLOUD_PROJECT" = demo-sales-support
+          test -z "${GOOGLE_APPLICATION_CREDENTIALS:-}"
+          test -z "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          test -z "${SAFE_INTERNAL_MEMBER_REMOVAL_ENABLED:-}"
+          test -z "${NICO_ACCOUNT_ERASURE_ENABLED:-}"
+          git fetch --no-tags origin feature/partner-catalog-month-integrated-20261105
+          base_sha="$(git rev-parse origin/feature/partner-catalog-month-integrated-20261105)"
+          test "$base_sha" = 17d470b7b9bc19f4ddfda32a32900728094a3de1
+          git diff --name-only "$base_sha"...HEAD > /tmp/nico-month-finance-files.txt
+          if grep -Ev '^(firestore\.rules|tests/rules\.test\.cjs|\.github/workflows/nico-partner-month-finance-combined-no-deploy\.yml)$' /tmp/nico-month-finance-files.txt; then
+            echo STOP_UNEXPECTED_MONTH_FINANCE_CHANGES
+            exit 1
+          fi
+          node - <<'NODE'
+          const {execFileSync}=require('node:child_process');
+          const assert=require('node:assert/strict');
+          const head=execFileSync('git',['hash-object','firestore.rules'],{encoding:'utf8'}).trim();
+          const tests=execFileSync('git',['hash-object','tests/rules.test.cjs'],{encoding:'utf8'}).trim();
+          assert.equal(head,'6d6ac7fd3544b0326823e419a3acd7e1d060b714');
+          assert.equal(tests,'0292ea176ad67e6486cd9fd1a0d08dc18a3317cd');
+          console.log('PASS_PINNED_FINANCE_RULES_AND_TESTS');
+          NODE
+      - name: Regress latest partner ON/OFF, two-month dashboard, teams and rankings
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/index.js
+          node --test tests/partner-month-integrity-gate.test.cjs tests/direct-persisted-count-edit-protection.test.cjs tests/partner-legacy-publication-policy.test.cjs tests/partner-workspace.test.cjs tests/partner-catalog-count-links.test.cjs tests/partner-catalog-publication.test.cjs tests/partner-additional-counts-isolation.test.cjs tests/partner-extra-shared-ranking.test.cjs tests/partner-auto-published-ranking.test.cjs tests/partner-auto-monthly-ranking.test.cjs tests/partner-monthly-shared-counts.test.cjs tests/partner-shared-ranking-groups.test.cjs tests/partner-month-dashboard-months-and-teams.test.cjs tests/partner-monthly-dashboard-isolation.test.cjs tests/partner-monthly-dashboard-ui-syntax.test.cjs tests/partner-product-monthly-parity.test.cjs tests/partner-shared-catalog-ui-contract.test.cjs
+          NODE_OPTIONS=--experimental-vm-modules node --test tests/partner-index-module-parse.test.cjs
+      - name: Install synthetic Firestore emulator dependencies only
+        run: npm install --prefix tests --ignore-scripts --no-audit --no-fund
+      - name: Test finance-denied partner and authorized internal Owner against same candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes firebase-tools@15.34.1 emulators:exec --project demo-sales-support --only firestore "node --test tests/rules.test.cjs"
+      - name: Confirm no production release or data writes
+        run: |
+          echo 'PASS_COMBINED_DEMO_ONLY'
+          echo 'PRODUCTION_APPROVED=false'
+          echo 'PRODUCTION_DEPLOYED=false'
