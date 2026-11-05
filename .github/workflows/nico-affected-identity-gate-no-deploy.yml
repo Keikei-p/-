@@ -1,9 +1,9 @@
 name: NICO affected secondary identity + finance boundary (NO DEPLOY)
 on:
   push:
-    branches: [security/phase1-affected-account-binding-20261106]
+    branches: [security/phase1-affected-account-binding-20261106, security/phase1-count-uptime-preswitch-20261106]
   pull_request:
-    branches: [security/phase1-owner-preflight-bridge-20261105]
+    branches: [security/phase1-owner-preflight-bridge-20261105, security/phase1-affected-account-binding-20261106]
 permissions:
   contents: read
 concurrency:
