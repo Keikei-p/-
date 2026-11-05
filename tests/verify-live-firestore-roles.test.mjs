@@ -13,7 +13,7 @@ const jwt=(sub,overrides={})=>{
   const head=Buffer.from(JSON.stringify({alg:'RS256',typ:'JWT'})).toString('base64url');
   const payload=Buffer.from(JSON.stringify({
     sub,aud:PROJECT,iss:'https://securetoken.google.com/'+PROJECT,
-    email_verified:true,iat:T-50,exp:T+3000,auth_time:T-50,
+    email_verified:true,email:sub+'@example.test',iat:T-50,exp:T+3000,auth_time:T-50,
     firebase:{sign_in_provider:'password'},...overrides
   })).toString('base64url');
   return head+'.'+payload+'.'+'z'.repeat(80);
@@ -95,6 +95,8 @@ test('required identity binding rejects wrong project, same UID, expired, disabl
     {ownerIdToken:jwt('owneruid',{aud:'another-project'})},
     {ownerIdToken:jwt('owneruid',{iss:'https://accounts.google.com'})},
     {ownerIdToken:jwt('owneruid',{email_verified:false})},
+    {ownerIdToken:jwt('owneruid',{email:null})},
+    {partnerIdToken:jwt('partneruid',{email:''})},
     {ownerIdToken:jwt('owneruid',{exp:T-1})},
     {ownerIdToken:jwt('owneruid',{exp:T+7000})},
     {ownerIdToken:jwt('owneruid',{auth_time:null})},
