@@ -34,6 +34,16 @@ function setup({kind="internal",context=null}={}){
   db.seed("users/staff",{uid:"staff",companyId:"partner",companyRole:"member",
    accessKind:"partner",memberType:"cooperator",active:true});
   db.seed("companies/partner",{hubCompanyId:"hub",companyKind:"partner",active:true});
+  db.seed("companies/partner/members/staff",{
+   uid:"staff",companyId:"partner",active:true,
+   accessKind:"partner",memberType:"cooperator"});
+  db.seed("partnerRelations/partner",{
+   hubCompanyId:"hub",partnerCompanyId:"partner",
+   active:true,countSharingApproved:true});
+  db.seed("partnerHistoricalTransfers/staff",{
+   uid:"staff",sourceCompanyId:"hub",destinationCompanyId:"partner",
+   hubCompanyId:"hub",originalUser:{uid:"staff",companyId:"hub"},
+   originalMember:{uid:"staff",companyId:"hub",companyRole:"member"}});
  }
  if(context!==null)db.seed("partnerWorkspaceContexts/staff",{active:context});
  const tokens={auth:0,verified:0};
@@ -79,6 +89,34 @@ test("fully transferred user retains current partner profile; only former member
  assert.equal(result.mode,"already_transferred");
  assert.deepEqual(x.db.writes,["companies/hub/members/staff"]);
  assert.deepEqual(x.db.docs.get("users/staff"),old);
+});
+test("full transfer is blocked unless archive, destination membership and partner relation are all valid",async()=>{
+ const scenarios=[
+  x=>x.db.docs.delete("partnerHistoricalTransfers/staff"),
+  x=>x.db.docs.get("partnerHistoricalTransfers/staff").sourceCompanyId="foreign",
+  x=>x.db.docs.get("partnerHistoricalTransfers/staff").originalUser.companyId="foreign",
+  x=>x.db.docs.delete("companies/partner/members/staff"),
+  x=>x.db.docs.get("companies/partner/members/staff").active=false,
+  x=>x.db.docs.get("companies/partner/members/staff").accessKind="internal",
+  x=>x.db.docs.delete("partnerRelations/partner"),
+  x=>x.db.docs.get("partnerRelations/partner").countSharingApproved=false,
+  x=>x.db.docs.get("companies/partner").active=false
+ ];
+ for(const change of scenarios){
+  const x=setup({kind:"partner"});change(x);const old=snapshot(x.db);
+  await assert.rejects(x.api.remove(x.req()),e=>e.code==="failed-precondition");
+  assert.deepEqual(snapshot(x.db),old);
+  assert.equal(x.db.writes.length,0);
+ }
+});
+test("orphaned transfer archive blocks mistaken direct-user removal",async()=>{
+ const x=setup();
+ x.db.seed("partnerHistoricalTransfers/staff",{
+  uid:"staff",sourceCompanyId:"hub",destinationCompanyId:"partner"});
+ const old=snapshot(x.db);
+ await assert.rejects(x.api.remove(x.req()),e=>e.code==="failed-precondition");
+ assert.deepEqual(snapshot(x.db),old);
+ assert.equal(x.db.writes.length,0);
 });
 test("managed account-less member retires without inventing or deleting Auth",async()=>{
  const x=setup({kind:"managed"}),r=await x.api.remove(x.req());
