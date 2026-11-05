@@ -93,7 +93,10 @@ export function inspectPartnerReleaseReadiness(input){
   const approvedFinanceGate=financeGate.includes('function checkFinanceRulesBeforeDeploy(source)')
     && financeGate.includes('verifyFinanceHelper(source);')
     && financeGate.includes('function verifyFinanceHelper(source)')
-    && financeGate.includes("block('MISSING_SERVER_PARTNER_GUARD')")
+    // Four independent stop points are intentional (missing helper, weak
+    // prefix, missing internal company/access check, unsafe member types).
+    // Refuse even one removed stop point rather than accepting an inert label.
+    && (financeGate.match(/block\\('MISSING_SERVER_PARTNER_GUARD'\\)/g)||[]).length===4
     && financeGate.includes('hasTopLevelOr(condition)')
     && financeGate.includes('const recognized=normalized===prefix')
     && financeGate.includes('!recognized||hasTopLevelOr(condition)');
