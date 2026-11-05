@@ -1159,9 +1159,12 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      publishedIds:extraVerifiedIds,linkedIds,teamNames
     });
    }catch{fail("data-loss");}
+   // A company with no saved entry this month is UNREPORTED, never a
+   // verified zero-count competitor. An explicit zero-report row is valid.
    companies.push({id:cid,name:rank.name,totalCount:rank.totalCount,
     extraTotalCount:rank.additionalTotalCount,counts:rank.counts,
-    peopleVerified:true});
+    verifiedEntryCount:rank.verifiedEntryCount,
+    peopleVerified:rank.verifiedEntryCount>0});
    people.push(...rank.people);teams.push(...rank.teams);
    for(const key of KEYS)productCounts[key]+=rank.counts[key];
    additionalTotalCount+=rank.additionalTotalCount;
@@ -1194,9 +1197,12 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   // Individual ledgers alone cannot prove all companies submitted all days.
   // Always label this a provisional, VERIFIED-ENTRIES monthly leaderboard.
   return {scope:"shared_monthly_counts_only",month:d.month,
-   role:s.kind==="hub"?"hub":"partner",complete:false,
+   role:s.kind==="hub"?"hub":"partner",
+   ...(s.kind==="partner"?{workspaceCompanyId:s.cid}:{}),complete:false,
    provisionalReason:"月間の全日・全員報告の照合前",
    includesDirect:true,companies,teams,people,productCounts,additionalTotalCount,
+   // Same trusted filtered public catalog; no price, cashback or revenue fields.
+   publishedProducts:rankableProducts.map(({id,name,sortOrder})=>({id,name,sortOrder})),
    categories:KEYS,direct,rankingGroups:sharedConfig.groups,groupStandings,
    groupRevision:sharedConfig.revision,groupStatus,
    recordsVerified:direct.recordsVerified,partnerRowsVerified:partnerRowsRead};

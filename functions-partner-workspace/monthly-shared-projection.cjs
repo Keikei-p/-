@@ -25,7 +25,7 @@ function projectPartnerMonth({hubId,cid,companyName,from,to,legacyDocs,extraDocs
   const key=hash(cid+"\n"+staffId),teamKey=hash(cid+"\nteam\n"+teamId);
   let p=people.get(staffId);
   if(!p){
-   p={key,name,companyName,teamKey,teamName:Object.hasOwn(teamNames,teamId)&&
+   p={key,name,companyName,companyId:cid,teamKey,teamName:Object.hasOwn(teamNames,teamId)&&
     safe(teamNames[teamId])?teamNames[teamId].trim():"当時の班名未確認",totalCount:0,
     counts:zero(),extraCounts:{}};
    people.set(staffId,p);
@@ -39,8 +39,8 @@ function projectPartnerMonth({hubId,cid,companyName,from,to,legacyDocs,extraDocs
   const key=hash(cid+"\nteam\n"+teamId);
   const savedName=Object.hasOwn(teamNames,teamId)&&safe(teamNames[teamId])?
    teamNames[teamId].trim():"当時の班名未確認";
-  if(!teams.has(key))teams.set(key,{key,name:savedName,companyName,
-   totalCount:0,counts:zero(),extraTotalCount:0});
+  if(!teams.has(key))teams.set(key,{key,name:savedName,companyName,companyId:cid,
+   totalCount:0,counts:zero(),extraTotalCount:0,extraCounts:{}});
   return teams.get(key);
  };
  const counts=zero();let totalCount=0,additionalTotalCount=0;
@@ -92,8 +92,10 @@ function projectPartnerMonth({hubId,cid,companyName,from,to,legacyDocs,extraDocs
    p.totalCount+=x.totalCount;t.totalCount+=x.totalCount;
    t.extraTotalCount+=x.totalCount;
    totalCount+=x.totalCount;additionalTotalCount+=x.totalCount;
-   for(const [productId,count] of Object.entries(x.extraCounts))
+   for(const [productId,count] of Object.entries(x.extraCounts)){
     p.extraCounts[productId]=(p.extraCounts[productId]||0)+count;
+    t.extraCounts[productId]=(t.extraCounts[productId]||0)+count;
+   }
   }
  }
  if(!Number.isSafeInteger(totalCount)||!Number.isSafeInteger(additionalTotalCount))
