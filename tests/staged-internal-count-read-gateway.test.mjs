@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createStagedInternalCountReadGateway} from '../security/staged-internal-count-read-gateway.mjs';
+import {createStagedInternalCountBrowserReader} from '../security/staged-internal-count-browser.mjs';
 
 const ORIGIN='https://nico-factory.web.app',TOKEN='x'.repeat(70);
 const now='2026-11-05T09:30:00Z';
@@ -227,6 +228,31 @@ test('missing Origin on same-origin GET is accepted; cross-site Origin is denied
  const cross=await f.server(request('',{origin:'https://evil.example'}));
  assert.equal(cross.status,403);
  assert.equal(f.audit.queries.length,1);
+});
+test('staged HTTP gateway and browser can read 51 rows across pages without exposing sales',async()=>{
+ const f=setup({records:Array.from({length:51},(_,i)=>one(i))});
+ const activeScope={uid,companyId:cid,mode:'internal'};
+ const read=createStagedInternalCountBrowserReader({
+  enabled:true,
+  getActiveScope:()=>activeScope,
+  getIdToken:async()=>TOKEN,
+  fetchPage:async (url,options)=>f.server(new Request(url,{
+   method:options.method,
+   headers:{...options.headers,Origin:ORIGIN}
+  }))
+ });
+ const result=await read({day});
+ assert.equal(result.totalRecords,51);
+ assert.equal(result.records.length,51);
+ assert.equal(result.lines.reduce((sum,line)=>sum+line.count,0),102);
+ assert.equal(result.products.length,1);
+ assert.equal(f.audit.queries.length,2);
+ assert.equal(f.audit.queries[0].snapshotTime,null);
+ assert.equal(f.audit.queries[1].snapshotTime,now);
+ const serialized=JSON.stringify(result);
+ for(const privateValue of ['totalRevenue','revenuePerUnit','unitPrice',
+  'pricingOptions','cashback','40000','20000','10000'])
+  assert(!serialized.includes(privateValue),privateValue);
 });
 test('mismatched saved count, missing catalog, truncated query and stale snapshot fail closed',async()=>{
  const cases=[
