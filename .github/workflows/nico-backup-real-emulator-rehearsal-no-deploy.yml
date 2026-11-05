@@ -1,0 +1,74 @@
+name: NICO synthetic restore against REAL LOCAL emulator (NO DEPLOY)
+on:
+  push:
+    branches:
+      - safety/nico-backup-real-emulator-rehearsal-20261105
+    paths:
+      - tests/restore-real-emulator-synthetic.test.mjs
+      - .github/workflows/nico-backup-real-emulator-rehearsal-no-deploy.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - tests/restore-real-emulator-synthetic.test.mjs
+      - .github/workflows/nico-backup-real-emulator-rehearsal-no-deploy.yml
+permissions:
+  contents: read
+concurrency:
+  group: nico-synthetic-local-restore-no-deploy
+  cancel-in-progress: true
+jobs:
+  real-emulator-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      GCLOUD_PROJECT: demo-sales-restore
+      FIREBASE_PROJECT_ID: demo-sales-restore
+      GOOGLE_APPLICATION_CREDENTIALS: ""
+      FIREBASE_SERVICE_ACCOUNT_JSON: ""
+      NICO_RULES_APPROVAL: ""
+      NICO_USAGE_APPROVAL: ""
+      SALES_BACKUP_PASSPHRASE: ""
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Confirm exact synthetic-only scope and no production credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GCLOUD_PROJECT" = demo-sales-restore
+          test "$FIREBASE_PROJECT_ID" = demo-sales-restore
+          test -z "${GOOGLE_APPLICATION_CREDENTIALS:-}"
+          test -z "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          test -z "${NICO_RULES_APPROVAL:-}"
+          test -z "${NICO_USAGE_APPROVAL:-}"
+          test -z "${SALES_BACKUP_PASSPHRASE:-}"
+          git fetch --no-tags origin main
+          git diff --name-only origin/main...HEAD >/tmp/nico-restore-synthetic-files.txt
+          if grep -Ev '^(tests/restore-real-emulator-synthetic\.test\.mjs|\.github/workflows/nico-backup-real-emulator-rehearsal-no-deploy\.yml)$' /tmp/nico-restore-synthetic-files.txt; then
+            echo STOP_UNEXPECTED_FILES
+            exit 1
+          fi
+          node --check tests/restore-real-emulator-synthetic.test.mjs
+          node --check tools/readonly-backup/restore-emulator.mjs
+      - name: Run existing synthetic mock restore invariants
+        run: node --test tools/readonly-backup/restore-emulator.test.mjs
+      - name: Restore synthetic original counts, historical values, teams and pricing to LOCAL emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes firebase-tools@15.34.1 emulators:exec --project demo-sales-restore --only firestore "node --test tests/restore-real-emulator-synthetic.test.mjs"
+      - name: Explicitly forbid any production deployment status
+        shell: bash
+        run: |
+          echo 'PASS_DEMO_LOCAL_RESTORE_ONLY'
+          echo 'ACTUAL_PRODUCTION_BACKUP_RESTORED=false'
+          echo 'NO_PRODUCTION_FIREBASE_WRITE=true'
