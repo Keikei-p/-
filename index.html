@@ -12759,6 +12759,7 @@ copyInviteButton.onclick =
 // Never read products/records/revenueGoals in this branch. Server checks scope.
 const pInline=id=>document.getElementById(id);
 let partnerInlineData=null,partnerInlineWorkspaceCompany="",partnerInlineNonce=0;
+let partnerDashboardMonthNonce=0;
 let partnerAuditNonce=0;
 let partnerInlineBusy=false,ownerPartnerTeamsNonce=0;
 let partnerInlineEditingStaffId="";
@@ -12809,6 +12810,7 @@ function partnerMainPendingInvite(){
 }
 function resetPartnerInline(){
  ++partnerInlineNonce;++ownerPartnerTeamsNonce;++partnerAuditNonce;
+ ++partnerDashboardMonthNonce;
  // Clear company-specific count snapshots and invalidate in-flight ranking reads
  // before another user or company can sign in on the same browser session.
  ++sharedDailyRankingGeneration;sharedDailyRankCache.clear();
@@ -13977,7 +13979,7 @@ function partnerSameAppSelectPanel(name){
  }
  // Partner's own saved team/people are already rendered from getPartnerWorkspace.
  // Do not load unrelated companies for this detail tab or expose finance data.
- if(partnerInlineData&&name==="detail")pInline("pInlineTeamDetails").hidden=false;
+ if(partnerInlineData&&name==="detail")void loadPartnerDashboardMonth();
  if(partnerInlineData&&name==="history")
   void loadPartnerRevisionHistory();
 }
@@ -14410,6 +14412,7 @@ async function savePartnerExtra(){
    status.textContent="✅ 追加商材の件数を保存・確認しました。旧実績・単価・売上は変更していません。";
    ++partnerProductMonthlyNonce;partnerProductMonthlyCache=null;
    ++sharedDailyRankingGeneration;sharedDailyRankCache.clear();
+   void loadPartnerDashboardMonth();
    if(["products","catalog"].includes(partnerSameAppSelectedPanel))
     void loadPartnerProductMonthlyTotals({force:true});
   }else{
@@ -14879,6 +14882,7 @@ async function partnerInlineFetch(){
      typeof snap.companyName!=="string"||snap.companyName.length===0)
    throw Error("partner_count_schema");
   partnerInlineData=snap;partnerInlineRender();
+  void loadPartnerDashboardMonth();
   void loadPartnerExtra();
   partnerInlineStatus("最新の件数を表示しています。");
   // Date changes and saved corrections must refresh the shared read-only
@@ -14941,6 +14945,8 @@ async function openSameAppPartnerWorkspace(user,workspaceCompanyId=""){
  userRole.textContent="協力店・件数管理";
  loginStatus.textContent="ログイン済み・協力店";
  databaseStatus.textContent="件数API";
+ pInline("pInlineDashboardMonth").value=getTodayString().slice(0,7);
+ pInline("pInlineDashboardMonth").max=getTodayString().slice(0,7);
  pInline("pInlineDate").value=partnerMainDate();
  pInline("pInlineRecordDate").value=pInline("pInlineDate").value;
  partnerInlineEditingStaffId="";
@@ -15098,6 +15104,8 @@ function partnerInlineChangeDate(which){
  pInline("pInlineRecordDate").value=next;
  if(next!==previous)void partnerInlineFetch();
 }
+pInline("pInlineDashboardMonth").onchange=()=>void loadPartnerDashboardMonth();
+pInline("pInlineDashboardMonthRefresh").onclick=()=>void loadPartnerDashboardMonth();
 pInline("pInlineDate").onchange=()=>partnerInlineChangeDate("pInlineDate");
 pInline("pInlineRecordDate").onchange=()=>partnerInlineChangeDate("pInlineRecordDate");
 pInline("pInlineRefresh").onclick=()=>{
