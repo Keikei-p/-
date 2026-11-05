@@ -69,11 +69,15 @@ function makeInternalMemberExit({db,getAuth,FieldValue,HttpsError,enabled=()=>fa
    const memberRef=companyRef.collection("members").doc(targetId);
    const targetRef=db.collection("users").doc(targetId);
    const ctxRef=db.collection("partnerWorkspaceContexts").doc(targetId);
-   const [memberSnap,targetSnap,ctxSnap]=await Promise.all([
-    tx.get(memberRef),tx.get(targetRef),tx.get(ctxRef)
+   const archiveRef=db.collection("partnerHistoricalTransfers").doc(targetId);
+   const [memberSnap,targetSnap,ctxSnap,archiveSnap]=await Promise.all([
+    tx.get(memberRef),tx.get(targetRef),tx.get(ctxRef),tx.get(archiveRef)
    ]);
    const member=memberSnap.data()||{},target=targetSnap.data()||{};
    if(!memberSnap.exists||member.companyRole==="owner"||
+      // Legacy master selection may exist even when the member role is stale.
+      // Never revoke a master login through a regular member exit.
+      company.masterUid===targetId||
       member.active===false||
       (member.uid!=null&&member.uid!==targetId)||
       (member.companyId!=null&&member.companyId!==cid))
@@ -81,6 +85,10 @@ function makeInternalMemberExit({db,getAuth,FieldValue,HttpsError,enabled=()=>fa
    // Any present secondary context (even inactive) vetoes disabling the
    // original internal user OR member: both are required by partner scope.
    if(ctxSnap.exists)reject("failed-precondition");
+   // A leftover historical-transfer archive with a direct root user
+   // means the identity state is not settled. Never guess it is internal.
+   if(archiveSnap.exists&&target.companyId===cid)
+    reject("failed-precondition");
    let updateRoot=false,mode;
    if(targetSnap.exists){
     if(target.uid!==targetId||target.companyRole==="owner"||
@@ -96,15 +104,35 @@ function makeInternalMemberExit({db,getAuth,FieldValue,HttpsError,enabled=()=>fa
      const partnerId=target.companyId;
      if(!isId(partnerId)||target.accessKind!=="partner"||
         target.memberType!=="cooperator")reject("failed-precondition");
-     const partnerSnap=await tx.get(db.collection("companies").doc(partnerId));
-     const partner=partnerSnap.data()||{};
-     if(!partnerSnap.exists||partner.active!==true||
-        partner.companyKind!=="partner"||partner.hubCompanyId!==cid)
+     const [partnerSnap,partnerMemberSnap,relationSnap]=await Promise.all([
+      tx.get(db.collection("companies").doc(partnerId)),
+      tx.get(db.collection("companies").doc(partnerId).collection("members").doc(targetId)),
+      tx.get(db.collection("partnerRelations").doc(partnerId))
+     ]);
+     const partner=partnerSnap.data()||{},
+      destinationMember=partnerMemberSnap.data()||{},
+      relation=relationSnap.data()||{},
+      archive=archiveSnap.data()||{};
+     if(!partnerSnap.exists||!partnerMemberSnap.exists||
+        !relationSnap.exists||!archiveSnap.exists||
+        partner.active!==true||partner.companyKind!=="partner"||
+        partner.hubCompanyId!==cid||
+        destinationMember.uid!==targetId||
+        destinationMember.companyId!==partnerId||
+        destinationMember.active!==true||
+        destinationMember.accessKind!=="partner"||
+        destinationMember.memberType!=="cooperator"||
+        relation.active!==true||relation.countSharingApproved!==true||
+        relation.partnerCompanyId!==partnerId||relation.hubCompanyId!==cid||
+        archive.uid!==targetId||archive.sourceCompanyId!==cid||
+        archive.destinationCompanyId!==partnerId||
+        archive.hubCompanyId!==cid||
+        archive.originalUser?.companyId!==cid)
       reject("failed-precondition");
      mode="already_transferred";
     }
    }else{
-    if(member.memberType!=="managed"&&member.hasAccount!==false)
+    if(archiveSnap.exists||member.memberType!=="managed"&&member.hasAccount!==false)
      reject("failed-precondition");
     mode="managed";
    }
