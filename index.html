@@ -13214,7 +13214,7 @@ function partnerInternetUpdateTotal(){
  const data=partnerInternetRecord(),status=pInline("pInlineInternetStatus");
  const hikari=pInline("pInlineInternetHikari"),air=pInline("pInlineInternetAir");
  const save=pInline("pInlineInternetSave");
- const parse=x=>x.value.trim()!==""&&/^\\d+$/.test(x.value.trim())?
+ const parse=x=>x.value.trim()!==""&&/^\d+$/.test(x.value.trim())?
   Number(x.value.trim()):NaN;
  const h=parse(hikari),a=parse(air),total=data?.total;
  const valid=Number.isSafeInteger(h)&&Number.isSafeInteger(a)&&
