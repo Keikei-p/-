@@ -39,7 +39,8 @@ test("monthly UI only fetches bound count-only callable; no money or direct Fire
  assert.match(block,/memberTotal!==team\.totalCount/);
  assert.match(block,/attributed\+\(data\.unattributedCount\?\?0\)!==data\.totalCount/);
  assert.match(block,/summary\.textContent=team\.name/);
- assert.match(block,/products\.textContent=nonzero\.length/);
+ assert.match(block,/products\\.textContent=lines\\.length/);
+ assert.match(block,/partnerMonthExtraLabels\\(additional\\?\\.counts,extra\\)/);
  assert.doesNotMatch(block,/\.innerHTML\s*=/);
 
  assert.doesNotMatch(block,/\b(?:getDoc|getDocs|getFirestore|setDoc|updateDoc|deleteDoc|writeBatch|onSnapshot|formatYen)\s*\(/);
@@ -328,4 +329,66 @@ test("partner has separate published extra-product count inputs and audited save
  assert.match(html,/id="pInlineCountFields" class="p-inline-grid"/);
  assert.match(html,/pInline\("pInlineSave"\)\.onclick=\(\)=>partnerInlineRun\(async\(\)=>/);
  assert.match(html,/await partnerInlineSave\(partnerInlinePayload/);
+});
+
+test("both monthly screens integrate extra-products by saved team without changing old nine",()=>{
+ const partner=html.slice(html.indexOf("async function partnerInlineMonthFetch(){"),
+  html.indexOf("// Extra products use a separate count-only ledger",html.indexOf("async function partnerInlineMonthFetch(){")));
+ const owner=html.slice(html.indexOf("async function loadOwnerPartnerSavedMonth("),
+  html.indexOf("async function loadOwnerPartnerCompanyTeams(",html.indexOf("async function loadOwnerPartnerSavedMonth(")));
+ for(const region of [partner,owner]){
+  assert.match(region,/partnerMonthVisibleExtras\\(data\\)/);
+  assert.match(region,/extraTeam\\?\\.totalCount\\|\\|0/);
+  assert.match(region,/partnerMonthAppendExtraOnlyTeams\\(/);
+  assert.match(region,/partnerMonthExtraLabels\\(/);
+  assert.match(region,/追加商材は未照合です/);
+  assert.doesNotMatch(region,/\\b(?:setDoc|updateDoc|deleteDoc|formatYen)\\s*\\(/);
+ }
+ assert.match(partner,/partnerMonthMergedPeople\\(data,extra\\)/);
+ assert.match(partner,/extra\\?\\.products/);
+});
+
+test("extra saved-month contract rejects phantom totals, secret fields and split-team sums",()=>{
+ const begin=html.indexOf("function partnerSavedMonthCheckTotals(");
+ const end=html.indexOf("function partnerRenderJointRows(",begin);
+ const check=vm.runInNewContext("("+html.slice(begin,end).trim()+"\\n)");
+ const keys=["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォー",
+  "つばさ・HTB","太陽光・蓄電池AP","U-NEXT"];
+ keys[5]="ウォーター";
+ const row=n=>Object.fromEntries(keys.map(k=>[k,k==="NURO"?n:0]));
+ const own={key:"a".repeat(64),name:"田中",totalCount:3,counts:row(3)};
+ const extraMember={key:own.key,name:"田中",totalCount:2,counts:{extra:2}};
+ const good=()=>({
+  scope:"partner_saved_month_counts_only",month:"2026-10",
+  totalCount:3,counts:row(3),unattributedCount:0,unattributedRows:0,
+  missingHistoricalTeamAttribution:false,
+  people:[structuredClone(own)],
+  teams:[{key:"b".repeat(64),name:"第1班",totalCount:3,counts:row(3),
+   members:[structuredClone(own)]}],
+  extraVerified:true,combinedTotalCount:5,
+  extra:{scope:"partner_published_extra_month_only",month:"2026-10",
+   complete:false,productionDocumentWrites:0,containsUnpublished:false,
+   totalCount:2,verifiedExtraRows:1,unattributedCount:0,unattributedRows:0,
+   products:[{id:"extra",name:"追加商材X",totalCount:2}],
+   people:[structuredClone(extraMember)],
+   teams:[{key:"b".repeat(64),name:"第1班",totalCount:2,counts:{extra:2},
+    members:[structuredClone(extraMember)]}]}
+ });
+ assert.equal(check(good(),keys),true);
+ for(const change of [
+  d=>{d.combinedTotalCount=6;},
+  d=>{d.extra.people[0].counts.extra=3;},
+  d=>{d.extra.products[0].totalCount=3;},
+  d=>{d.extra.teams[0].members[0].counts.extra=1;},
+  d=>{d.extra.teams[0].unattributedCount=1;},
+  d=>{d.extra.teams[0].members[0].unitPrice=90000;},
+  d=>{d.extra.products[0].name="売上99万円";},
+  d=>{d.extra.teams[0].members.push(structuredClone(extraMember));}
+ ]){
+  const invalid=good();change(invalid);
+  assert.throws(()=>check(invalid,keys),/partner_saved_month_integrity/);
+ }
+ const unknown=good();unknown.extra=null;
+ unknown.extraVerified=false;unknown.combinedTotalCount=null;
+ assert.equal(check(unknown,keys),true);
 });
