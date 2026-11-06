@@ -5661,6 +5661,23 @@ body.product-reordering .product-list {
       <p class="p-inline-muted">こちらは「件数専用」の会社全体の報告です。担当者別・班別の件数とは別の原票です。勝手に合算・移行しません。</p>
       <p id="ownerPartnerQuickStatus" role="status" aria-live="polite"></p>
       <div id="ownerPartnerQuickFields" class="p-inline-grid"></div>
+      <section id="ownerPartnerQuickSplitPanel" class="p-inline-card" hidden>
+        <h4>SB光・SoftBank Air の内訳（件数専用の会社全体報告）</h4>
+        <p class="p-inline-muted">保存した「SB光・AIR」の合算件数は変更しません。光＋Airが元の件数と完全一致した場合だけ内訳を別履歴に保存します。担当者別の内訳とは合算しません。</p>
+        <p id="ownerPartnerQuickSplitStatus" role="status" aria-live="polite"></p>
+        <div class="p-inline-grid">
+          <label class="p-inline-field">SB光 件数
+            <input id="ownerPartnerQuickHikari" type="number" inputmode="numeric" min="0" max="9999" step="1">
+          </label>
+          <label class="p-inline-field">SoftBank Air 件数
+            <input id="ownerPartnerQuickAir" type="number" inputmode="numeric" min="0" max="9999" step="1">
+          </label>
+          <label class="p-inline-field">内訳確認の理由
+            <input id="ownerPartnerQuickSplitReason" type="text" maxlength="160" placeholder="例：元契約書の光とAirを照合">
+          </label>
+        </div>
+        <button id="ownerPartnerQuickSplitSave" type="button" disabled>光・Airの内訳を履歴付きで保存</button>
+      </section>
       <label class="p-inline-field">訂正理由（必須）
         <input id="ownerPartnerQuickReason" type="text" maxlength="160" placeholder="例：当日の契約件数を照合">
       </label>
@@ -7228,6 +7245,7 @@ const partnerCountFunctions = getFunctions(app,"asia-northeast1");
 const readPartnerQuickDay = httpsCallable(partnerCountFunctions,"getPartnerQuickCounts");
 const readOwnerPartnerQuickCorrection = httpsCallable(partnerCountFunctions,"getOwnerPartnerQuickCorrection");
 const submitOwnerPartnerQuickCorrection = httpsCallable(partnerCountFunctions,"submitOwnerPartnerQuickCorrection");
+const submitOwnerPartnerQuickInternetSplit = httpsCallable(partnerCountFunctions,"submitOwnerPartnerQuickInternetSplit");
 const approvePartnerQuickDay = httpsCallable(partnerCountFunctions,"approvePartnerQuickCounts");
 const readPartnerWorkDay = httpsCallable(partnerCountFunctions,"getPartnerWorkspace");
 const readPartnerSavedMonth = httpsCallable(partnerCountFunctions,"getPartnerSavedMonthlyCounts");
@@ -9589,6 +9607,10 @@ function ownerQuickReset(){
  document.getElementById("ownerPartnerQuickStatus").textContent="";
  document.getElementById("ownerPartnerQuickReason").value="";
  document.getElementById("ownerPartnerQuickSave").disabled=true;
+ document.getElementById("ownerPartnerQuickSplitPanel").hidden=true;
+ document.getElementById("ownerPartnerQuickSplitSave").disabled=true;
+ document.getElementById("ownerPartnerQuickSplitReason").value="";
+ document.getElementById("ownerPartnerQuickSplitStatus").textContent="";
 }
 async function openOwnerPartnerQuickProxy(companyId,companyName){
  if(!canLoadPartnerRanking()||!partnerMainValidId(companyId)||!currentUser?.uid)return;
@@ -9603,6 +9625,14 @@ async function openOwnerPartnerQuickProxy(companyId,companyName){
   reason=document.getElementById("ownerPartnerQuickReason"),
   save=document.getElementById("ownerPartnerQuickSave");
  panel.hidden=false;fields.replaceChildren();reason.value="";save.disabled=true;
+ const splitPanel=document.getElementById("ownerPartnerQuickSplitPanel"),
+  splitStatus=document.getElementById("ownerPartnerQuickSplitStatus"),
+  splitSave=document.getElementById("ownerPartnerQuickSplitSave"),
+  splitHikari=document.getElementById("ownerPartnerQuickHikari"),
+  splitAir=document.getElementById("ownerPartnerQuickAir"),
+  splitReason=document.getElementById("ownerPartnerQuickSplitReason");
+ splitPanel.hidden=true;splitSave.disabled=true;splitReason.value="";
+ splitStatus.textContent="";
  document.getElementById("ownerPartnerQuickTitle").textContent=
   "🏢 "+companyName+"｜件数専用の報告";
  status.textContent="会社全体の件数専用レコードを確認中…";
@@ -9643,6 +9673,83 @@ async function openOwnerPartnerQuickProxy(companyId,companyName){
    input.step="1";input.value=String(record.counts[key]);
    label.append(input);fields.append(label);inputs.set(key,input);
   }
+  // The company-only quick report has its own classified breakdown.
+  // It is not the member/staff-based partnerInternetSplits ledger.
+  const split=d.internetSplit,combined=record.counts["SB光・AIR"];
+  if(!split||!Number.isSafeInteger(split.revision)||split.revision<0||
+     typeof split.verified!=="boolean"||
+     split.combinedCount!==combined||
+     split.sourceVersion!==record.version||
+     !Number.isSafeInteger(split.unclassified)||
+     split.unclassified!==(split.verified?0:combined)||
+     (split.revision===0&&
+       (split.hikari!==null||split.air!==null||split.verified))||
+     (split.revision>0&&
+       (![split.hikari,split.air].every(v=>Number.isSafeInteger(v)&&v>=0&&v<=9999)||
+        split.hikari+split.air<0)))
+    throw Error("owner_quick_split_response");
+  splitPanel.hidden=false;
+  splitHikari.value=split.revision>0?String(split.hikari):"";
+  splitAir.value=split.revision>0?String(split.air):"";
+  splitStatus.textContent=split.verified?
+   "元の合算"+combined+"件＝光"+split.hikari+"件＋Air"+split.air+"件（検証済み）":
+   "未分類"+combined+"件。元報告が変更された場合、過去の内訳は検証済みとして扱いません。";
+  splitSave.disabled=false;
+  splitSave.onclick=async()=>{
+   if(stale()||ownerQuickBusy||splitSave.disabled)return;
+   const h=splitHikari.value.trim(),a=splitAir.value.trim();
+   if(!/^\d+$/.test(h)||!/^\d+$/.test(a)||
+       ![Number(h),Number(a)].every(v=>Number.isSafeInteger(v)&&v>=0&&v<=9999)){
+    splitStatus.textContent="光・Airそれぞれ0～9999の整数を入力してください。";return;
+   }
+   const hikari=Number(h),air=Number(a),why=splitReason.value.trim();
+   if(hikari+air!==combined){
+    splitStatus.textContent="光＋Airは元のSB光・AIR "+combined+"件と一致させてください。";return;
+   }
+   if(why.length<3||why.length>160){
+    splitStatus.textContent="内訳を確認した理由を3文字以上入力してください。";return;
+   }
+   if(split.verified&&split.hikari===hikari&&split.air===air){
+    splitStatus.textContent="検証済みの内訳と同じため変更はありません。";return;
+   }
+   if(!window.confirm(companyName+"｜"+day+" の件数専用SB光・AIR "+
+      combined+"件を光"+hikari+"件＋Air"+air+
+      "件として内訳保存しますか？ 元の報告件数は変更しません。"))return;
+   ownerQuickBusy=true;splitSave.disabled=true;save.disabled=true;
+   splitStatus.textContent="元報告を照合して内訳を保存中…";
+   try{
+    const result=(await submitOwnerPartnerQuickInternetSplit({
+     partnerCompanyId:companyId,date:day,hikari,air,reason:why,
+     sourceVersion:record.version,expectedRevision:split.revision
+    })).data;
+    if(stale())return;
+    if(result?.saved!==true||result.partnerCompanyId!==companyId||
+       result.date!==day||result.revision!==split.revision+1||
+       result.sourceVersion!==record.version||
+       result.combinedCount!==combined||
+       result.classified!==true||result.auditLogged!==true)
+     throw Error("owner_quick_split_save");
+    const check=(await readOwnerPartnerQuickCorrection({
+     partnerCompanyId:companyId,date:day
+    })).data;
+    if(stale())return;
+    if(check?.report?.version!==record.version||
+       check.report.counts?.["SB光・AIR"]!==combined||
+       check.internetSplit?.revision!==result.revision||
+       check.internetSplit?.verified!==true||
+       check.internetSplit.hikari!==hikari||
+       check.internetSplit.air!==air)
+     throw Error("owner_quick_split_reverify");
+    splitStatus.textContent="光・Airの内訳を保存し、再取得で一致しました。";
+    void openOwnerPartnerQuickProxy(companyId,companyName);
+   }catch{
+    if(!stale())splitStatus.textContent=
+      "内訳の確認・保存結果が不明です。再取得してからやり直してください。";
+   }finally{
+    ownerQuickBusy=false;
+    if(!stale()){splitSave.disabled=false;save.disabled=false;}
+   }
+  };
   save.disabled=false;
   status.textContent="保存済み "+record.totalCount+"件・第"+record.version+
    "版｜件数専用の会社全体の入力（担当者別とは合算しません）";
@@ -9700,6 +9807,7 @@ async function openOwnerPartnerQuickProxy(companyId,companyName){
  }catch{
   if(stale())return;
   fields.replaceChildren();save.disabled=true;
+  splitPanel.hidden=true;splitSave.disabled=true;
   status.textContent="件数専用の報告を確認できません。承認・権限・保存済みの有無をご確認ください。";
  }
 }
