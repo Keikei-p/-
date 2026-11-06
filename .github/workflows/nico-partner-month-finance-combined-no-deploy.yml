@@ -1,7 +1,7 @@
 name: NICO Partner Month + Catalog + Finance Rules Combined (NO DEPLOY)
 on:
   push:
-    branches: [integration/partner-month-catalog-finance-20261105, fix/partner-october-history-readonly-20261106]
+    branches: [integration/partner-month-catalog-finance-20261105, fix/partner-october-history-readonly-20261106, fix/partner-legacy-staff-overlap-audit-20261106]
   pull_request:
     branches: [feature/partner-catalog-month-integrated-20261105, integration/partner-month-catalog-finance-20261105]
 permissions:
@@ -46,7 +46,7 @@ jobs:
           base_sha="$(git rev-parse origin/feature/partner-catalog-month-integrated-20261105)"
           test "$base_sha" = 17d470b7b9bc19f4ddfda32a32900728094a3de1
           git diff --name-only "$base_sha"...HEAD > /tmp/nico-month-finance-files.txt
-          if grep -Ev '^(firestore\.rules|tests/rules\.test\.cjs|index\.html|tests/partner-shared-rank-ui-parity\.test\.cjs|tests/partner-ranking-independent-requests\.test\.cjs|\.github/workflows/nico-partner-month-finance-combined-no-deploy\.yml)$' /tmp/nico-month-finance-files.txt; then
+          if grep -Ev '^(firestore\.rules|tests/rules\.test\.cjs|index\.html|tests/partner-shared-rank-ui-parity\.test\.cjs|tests/partner-ranking-independent-requests\.test\.cjs|tests/partner-existing-ranking\.test\.cjs|\.github/workflows/nico-partner-month-finance-combined-no-deploy\.yml)$' /tmp/nico-month-finance-files.txt; then
             echo STOP_UNEXPECTED_MONTH_FINANCE_CHANGES
             exit 1
           fi
@@ -68,7 +68,7 @@ jobs:
           node --check functions-partner-workspace/index.js
           node --test tests/partner-month-integrity-gate.test.cjs tests/direct-persisted-count-edit-protection.test.cjs tests/partner-legacy-publication-policy.test.cjs tests/partner-workspace.test.cjs tests/partner-catalog-count-links.test.cjs tests/partner-catalog-publication.test.cjs tests/partner-additional-counts-isolation.test.cjs tests/partner-extra-shared-ranking.test.cjs tests/partner-auto-published-ranking.test.cjs tests/partner-auto-monthly-ranking.test.cjs tests/partner-monthly-shared-counts.test.cjs tests/partner-shared-ranking-groups.test.cjs tests/partner-month-dashboard-months-and-teams.test.cjs tests/partner-monthly-dashboard-isolation.test.cjs tests/partner-monthly-dashboard-ui-syntax.test.cjs tests/partner-product-monthly-parity.test.cjs tests/partner-shared-catalog-ui-contract.test.cjs
           node --test tests/partner-shared-rank-ui-parity.test.cjs
-          node --test tests/partner-ranking-independent-requests.test.cjs
+          node --test tests/partner-ranking-independent-requests.test.cjs tests/partner-existing-ranking.test.cjs
           NODE_OPTIONS=--experimental-vm-modules node --test tests/partner-index-module-parse.test.cjs
       - name: Install synthetic Firestore emulator dependencies only
         run: npm install --prefix tests --ignore-scripts --no-audit --no-fund
