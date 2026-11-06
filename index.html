@@ -9580,6 +9580,132 @@ document.getElementById("ownerPartnerDirectoryNext").onclick=()=>void ownerDirFe
 let partnerCompanyListGeneration=0;
 let ownerProxyCompany="",ownerProxyCompanyName="",ownerProxyNonce=0;
 const ownerProxyPanel=document.getElementById("ownerPartnerProxyPanel");
+let ownerQuickCompany="",ownerQuickName="",ownerQuickNonce=0,ownerQuickBusy=false;
+function ownerQuickReset(){
+ ++ownerQuickNonce;ownerQuickCompany="";ownerQuickName="";
+ ownerQuickBusy=false;
+ document.getElementById("ownerPartnerQuickProxyPanel").hidden=true;
+ document.getElementById("ownerPartnerQuickFields").replaceChildren();
+ document.getElementById("ownerPartnerQuickStatus").textContent="";
+ document.getElementById("ownerPartnerQuickReason").value="";
+ document.getElementById("ownerPartnerQuickSave").disabled=true;
+}
+async function openOwnerPartnerQuickProxy(companyId,companyName){
+ if(!canLoadPartnerRanking()||!partnerMainValidId(companyId)||!currentUser?.uid)return;
+ const uid=currentUser.uid,hub=currentUserData?.companyId,day=partnerCompanyDate.value,
+  seq=++ownerQuickNonce;
+ ownerQuickCompany=companyId;ownerQuickName=companyName;ownerQuickBusy=false;
+ const panel=document.getElementById("ownerPartnerQuickProxyPanel"),
+  status=document.getElementById("ownerPartnerQuickStatus"),
+  fields=document.getElementById("ownerPartnerQuickFields"),
+  reason=document.getElementById("ownerPartnerQuickReason"),
+  save=document.getElementById("ownerPartnerQuickSave");
+ panel.hidden=false;fields.replaceChildren();reason.value="";save.disabled=true;
+ document.getElementById("ownerPartnerQuickTitle").textContent=
+  "🏢 "+companyName+"｜件数専用の報告";
+ status.textContent="会社全体の件数専用レコードを確認中…";
+ const stale=()=>seq!==ownerQuickNonce||currentUser?.uid!==uid||
+  currentUserData?.companyId!==hub||!canLoadPartnerRanking()||
+  partnerCompanyDate.value!==day||ownerQuickCompany!==companyId||
+  partnerCompanyManagement.style.display==="none";
+ try{
+  const d=(await readOwnerPartnerQuickCorrection({
+   date:day,partnerCompanyId:companyId
+  })).data;
+  if(stale())return;
+  const keys=["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR",
+   "ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"];
+  if(d?.scope!=="hub_owner_quick_count_correction"||
+     d.date!==day||d.partnerCompanyId!==companyId||
+     d.existingRecordsOnly!==true||d.financialFieldsIncluded!==false)
+   throw Error("owner_quick_response");
+  if(!d.report){
+   status.textContent="この日の件数専用の報告は未登録です。新規入力は協力店側で行ってください。";
+   return;
+  }
+  const record=d.report;
+  if(!Number.isSafeInteger(record.version)||record.version<1||
+     !Number.isSafeInteger(record.totalCount)||record.totalCount<0||
+     !record.counts||Object.keys(record.counts).sort().join("|")!==
+        [...keys].sort().join("|")||
+     keys.some(k=>!Number.isSafeInteger(record.counts[k])||
+        record.counts[k]<0||record.counts[k]>9999)||
+     keys.reduce((sum,k)=>sum+record.counts[k],0)!==record.totalCount)
+   throw Error("owner_quick_saved_record_invalid");
+  const inputs=new Map();
+  for(const key of keys){
+   const label=document.createElement("label");label.className="p-inline-field";
+   label.textContent=key;
+   const input=document.createElement("input");input.type="number";
+   input.inputMode="numeric";input.min="0";input.max="9999";
+   input.step="1";input.value=String(record.counts[key]);
+   label.append(input);fields.append(label);inputs.set(key,input);
+  }
+  save.disabled=false;
+  status.textContent="保存済み "+record.totalCount+"件・第"+record.version+
+   "版｜件数専用の会社全体の入力（担当者別とは合算しません）";
+  save.onclick=async()=>{
+   if(stale()||ownerQuickBusy||save.disabled)return;
+   const counts=Object.create(null);
+   for(const [key,input] of inputs){
+    const v=input.value.trim();
+    if(!/^\\d+$/.test(v)||!Number.isSafeInteger(Number(v))||
+       Number(v)<0||Number(v)>9999){
+     status.textContent="0以上9999以下の整数だけ入力してください。";return;
+    }
+    counts[key]=Number(v);
+   }
+   const why=reason.value.trim(),total=keys.reduce((sum,k)=>sum+counts[k],0);
+   if(why.length<3||why.length>160){
+    status.textContent="訂正理由を3文字以上入力してください。";return;
+   }
+   if(keys.every(k=>counts[k]===record.counts[k])){
+    status.textContent="件数に変更はありません。";return;
+   }
+   if(!window.confirm(companyName+"｜"+day+" の件数専用の報告を"+
+     record.totalCount+"件→"+total+
+     "件に訂正し、オーナーの変更履歴を残しますか？"))return;
+   ownerQuickBusy=true;save.disabled=true;
+   status.textContent="件数専用の保存・照合中…";
+   try{
+    const result=(await submitOwnerPartnerQuickCorrection({
+     partnerCompanyId:companyId,date:day,counts,
+     expectedVersion:record.version,reason:why
+    })).data;
+    if(stale())return;
+    if(result?.saved!==true||result.partnerCompanyId!==companyId||
+       result.date!==day||result.totalCount!==total||
+       result.version!==record.version+1||result.correctionLogged!==true)
+     throw Error("owner_quick_save");
+    const check=(await readOwnerPartnerQuickCorrection({
+     partnerCompanyId:companyId,date:day
+    })).data;
+    if(stale())return;
+    if(check?.scope!=="hub_owner_quick_count_correction"||
+       check.report?.version!==result.version||check.report.totalCount!==total||
+       keys.some(k=>check.report.counts?.[k]!==counts[k]))
+     throw Error("owner_quick_reverify");
+    status.textContent="保存と再取得が一致しました。件数専用の履歴を追記済み。";
+    void openOwnerPartnerQuickProxy(companyId,companyName);
+    void loadPartnerCompanyList();
+   }catch{
+    if(!stale())status.textContent=
+     "訂正結果を確認できません。データを再取得してから操作してください。";
+   }finally{
+    ownerQuickBusy=false;save.disabled=false;
+   }
+  };
+ }catch{
+  if(stale())return;
+  fields.replaceChildren();save.disabled=true;
+  status.textContent="件数専用の報告を確認できません。承認・権限・保存済みの有無をご確認ください。";
+ }
+}
+document.getElementById("ownerPartnerQuickClose").onclick=ownerQuickReset;
+document.getElementById("ownerPartnerQuickRefresh").onclick=()=>{
+ if(ownerQuickCompany)void openOwnerPartnerQuickProxy(ownerQuickCompany,ownerQuickName);
+};
+
 function ownerProxyReset(){
  ++ownerProxyNonce;ownerProxyCompany="";ownerProxyCompanyName="";
  ownerProxyPanel.hidden=true;
