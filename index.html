@@ -12577,7 +12577,7 @@ function partnerValidateCombinedMonth(data,month){
     data.productionDocumentWrites!==0)invalid();
  // Validate ALL rows, not just visible first 100, before showing ranking.
  const sums=rows=>rows.reduce((sum,r,i)=>{
-  if(!r||typeof r.name!=="string"||r.name.length>80||
+  if(!r||typeof r.name!=="string"||!r.name||r.name.length>80||
      !Number.isSafeInteger(r.totalCount)||r.totalCount<0||
      !Number.isSafeInteger(r.rank)||r.rank<1||
      (i>0&&rows[i-1].totalCount<r.totalCount)||
@@ -12882,6 +12882,10 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
 // Read-only, on-demand Owner view. Requests ONE authorized partner company
 // and ONE selected month; never loads internal finance originals or creates data.
 async function loadOwnerPartnerSavedMonth(companyId,companyName){
+ ++ownerJointNonce;
+ pInline("ownerPartnerJointPeople").replaceChildren();
+ pInline("ownerPartnerJointProducts").replaceChildren();
+ pInline("ownerPartnerJointStatus").textContent="保存済み件数の照合待ち";
  if(!auth.currentUser||!isCurrentCompanyOwner()||
     currentCompanyData?.companyKind==="partner"||
     !partnerMainValidId(companyId))return;
