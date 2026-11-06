@@ -72,3 +72,21 @@ test("all sources and source objects remain untouched",()=>{
  call({direct:d,partners:[p]});
  assert.equal(JSON.stringify({d,p}),before);
 });
+
+
+test("months with NO saved rows have no fabricated 0-count product standings",()=>{
+ const emptyDirect={...direct(0),recordsVerified:0,people:[],counts:row(0)};
+ const missing=partner("missing","協力店B",0);
+ missing.data.people=[];missing.data.verifiedEntryRows=0;
+ const r=call({direct:emptyDirect,partners:[missing]});
+ assert.equal(r.hasSavedRows,false);
+ assert.deepEqual(r.people,[]);
+ assert.deepEqual(r.products,[]);
+ assert.equal(r.complete,false);
+ assert.equal(r.companies[0].reported,false);
+ const reported={...missing,data:{...missing.data,verifiedEntryRows:1}};
+ const savedZero=call({direct:emptyDirect,partners:[reported]});
+ assert.equal(savedZero.hasSavedRows,true);
+ assert.equal(savedZero.products.length,9);
+ assert.equal(savedZero.products.every(x=>x.totalCount===0),true);
+});
