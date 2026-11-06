@@ -6622,6 +6622,12 @@ body.product-reordering .product-list {
         id="productList"
         class="product-list">
       </div>
+      <div class="p-inline-card" id="ownerPublishedCatalogControls">
+        <h3>🤝 協力店への商材公開設定</h3>
+        <p class="p-inline-muted">各商材カードで公開ON/OFFを選べます。価格・CB・売上は協力店へ渡しません。</p>
+        <button id="ownerPublishedCatalogRefresh" type="button" class="team-action-button">公開状態を更新</button>
+        <p id="ownerPublishedCatalogStatus" class="p-inline-muted" role="status" aria-live="polite">公開設定未確認</p>
+      </div>
 
     </div>
 
@@ -7149,6 +7155,8 @@ const approvePartnerQuickDay = httpsCallable(partnerCountFunctions,"approvePartn
 const readPartnerWorkDay = httpsCallable(partnerCountFunctions,"getPartnerWorkspace");
 const readPartnerSavedMonth = httpsCallable(partnerCountFunctions,"getPartnerSavedMonthlyCounts");
 const readPartnerCombinedMonth = httpsCallable(partnerCountFunctions,"getPartnerCombinedMonthlyCounts");
+const readPartnerPublishedCatalog = httpsCallable(partnerCountFunctions,"getPartnerPublishedCatalog");
+const setPartnerPublishedProduct = httpsCallable(partnerCountFunctions,"setPartnerPublishedProduct");
 
 const partnerInlineManage = httpsCallable(partnerCountFunctions,"managePartnerWorkspace");
 const partnerInlineSave = httpsCallable(partnerCountFunctions,"submitPartnerWorkspaceCounts");
