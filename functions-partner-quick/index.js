@@ -17,5 +17,7 @@ exports.getPartnerQuickCounts=onCall(opts,service.view);
 // Owner-only read/correction of the distinct company-level quick count ledger.
 exports.getOwnerPartnerQuickCorrection=onCall(opts,service.viewOwnerQuickCorrection);
 exports.submitOwnerPartnerQuickCorrection=onCall(opts,service.submitOwnerQuickCorrection);
+// Classifies quick-report SB Hikari/Air without updating its original count.
+exports.submitOwnerPartnerQuickInternetSplit=onCall(opts,service.submitOwnerQuickInternetSplit);
 // Deliberately isolated: this does NOT activate workspace, catalog or finances.
 exports.approvePartnerQuickCounts=onCall(opts,service.approve);
