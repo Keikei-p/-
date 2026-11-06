@@ -23940,7 +23940,7 @@ function recordConflict(message) {
 function readOnlyRecordCountEvidence(record) {
   const validCount = value =>
     (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) ||
-    (typeof value === "string" && /^\\d+$/.test(value) &&
+    (typeof value === "string" && /^\d+$/.test(value) &&
       Number.isSafeInteger(Number(value)));
   const saved = validCount(record?.totalCount) ? Number(record.totalCount) : null;
   const raw = record?.results;
@@ -23965,7 +23965,7 @@ function readOnlyRecordCountEvidence(record) {
 // partner account, other company or any unverified monthly record.
 function selectOwnerCountIntegrityRows(monthly, selectedMonth) {
   const uid = currentUser?.uid;
-  if (!uid || !/^\\d{4}-(0[1-9]|1[0-2])$/.test(selectedMonth || "") ||
+  if (!uid || !/^\d{4}-(0[1-9]|1[0-2])$/.test(selectedMonth || "") ||
       !Array.isArray(monthly) || !isCurrentCompanyOwner() ||
       !canCurrentUserViewRevenue() || Boolean(partnerInlineWorkspaceCompany) ||
       currentUserData?.accessKind === "partner" ||
