@@ -2,6 +2,7 @@
 // Partner SB Hikari / SoftBank Air classification, additive and count-only.
 // Never migrate, overwrite or reprice the existing "SB光・AIR" count ledger.
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
+const {monthBounds}=require("./partner-saved-month.cjs");
 const LEGACY_KEY="SB光・AIR";
 const safeInt=n=>Number.isSafeInteger(n)&&n>=0&&n<=9999;
 const failure=()=>{throw Error("PARTNER_INTERNET_SPLIT_INVALID");};
@@ -107,6 +108,78 @@ function makePartnerInternetSplitOperations({db,actor,scope,collection,fail,
   return {scope:"partner_internet_split_counts_only",date,
    partnerCompanyId:who.cid,records:result,financialFieldsIncluded:false};
  }
+ // On-demand month projection for the HQ Owner. No saved counts are rewritten.
+ // An old combined count remains in "unclassified" until a person verifies both pieces.
+ async function viewInternetSplitMonth(request){
+  const d=request?.data||{};
+  if(Object.keys(d).some(k=>!["month","partnerCompanyId","workspaceCompanyId",
+    "codeSessionToken"].includes(k)))fail("invalid-argument");
+  const who=await verifiedCompany(request,d.partnerCompanyId);
+  const today=new Intl.DateTimeFormat("en-CA",{
+   timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"
+  }).format(Date.now());
+  let bounds;
+  try{bounds=monthBounds(d.month,today);}catch{fail("invalid-argument");}
+  const [sourceDocs,splitDocs]=await Promise.all([
+   entries(who.cid).where("date",">=",bounds.first).where("date","<=",bounds.last)
+    .limit(1001).get(),
+   splits(who.cid).where("date",">=",bounds.first).where("date","<=",bounds.last)
+    .limit(1001).get()
+  ]);
+  if(sourceDocs.size>1000||splitDocs.size>1000)fail("resource-exhausted");
+  const byId=new Map();
+  for(const sn of splitDocs.docs){
+   const row=sn.data()||{},id=row.date+"__"+row.staffId;
+   if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(row.date||"")||
+      !ID.test(row.staffId||"")||sn.id!==id||byId.has(id)||
+      row.date<bounds.first||row.date>bounds.last)fail("data-loss");
+   let parsed;
+   try{parsed=readSplit(row,{cid:who.cid,hubId:who.hubId,
+    date:row.date,staffId:row.staffId});}catch{fail("data-loss");}
+   byId.set(id,parsed);
+  }
+  const people=new Map();
+  let total=0,hikari=0,air=0,unclassified=0,sourceRows=0,classifiedRows=0;
+  const seen=new Set();
+  for(const sn of sourceDocs.docs){
+   const row=sn.data()||{},staffId=row.staffId,date=row.date,
+    key=date+"__"+staffId;
+   if(!ID.test(staffId||"")||sn.id!==key||seen.has(key)||
+      typeof date!=="string"||date<bounds.first||date>bounds.last)
+    fail("data-loss");
+   seen.add(key);
+   if(who.scope.kind==="partner"&&who.scope.role==="member"&&
+      staffId!==who.actor.uid)continue;
+   let src;
+   try{src=validateSource(row,{cid:who.cid,hubId:who.hubId,date,staffId});}
+   catch{fail("data-loss");}
+   const v=projectSplit(src,byId.get(key)||null);
+   const vh=v.verified?v.hikari:0,va=v.verified?v.air:0;
+   total+=v.total;hikari+=vh;air+=va;unclassified+=v.unclassified;
+   sourceRows++;if(v.verified)classifiedRows++;
+   if(![total,hikari,air,unclassified].every(Number.isSafeInteger))fail("data-loss");
+   let person=people.get(staffId);
+   if(!person){
+    const candidate=row.staffNameSnapshot;
+    const label=typeof candidate==="string"&&
+      /^[\\p{L}\\p{N} 　・ー（）()_.-]{1,60}$/u.test(candidate)&&
+      !/(?:単価|売上|利益|報酬|[¥￥$€]|\\d[\\d,]*円)/.test(candidate)?
+      candidate:"当時の氏名未確認";
+    person={staffId,name:label,combined:0,hikari:0,air:0,unclassified:0};
+    people.set(staffId,person);
+   }
+   person.combined+=v.total;person.hikari+=vh;person.air+=va;
+   person.unclassified+=v.unclassified;
+  }
+  if(total!==hikari+air+unclassified||[...byId.keys()].some(id=>!seen.has(id)))
+   fail("data-loss");
+  return {scope:"partner_internet_split_month_counts_only",
+   month:d.month,partnerCompanyId:who.cid,combinedTotal:total,
+   verifiedHikari:hikari,verifiedAir:air,unclassified,
+   sourceRows,classifiedRows,people:[...people.values()].sort((a,b)=>
+    b.unclassified-a.unclassified||a.name.localeCompare(b.name,"ja")),
+   financialFieldsIncluded:false,productionDocumentWrites:0};
+ }
  async function submitInternetSplit(request){
   const d=request?.data||{},date=validDate(d.date),staffId=d.staffId;
   if(Object.keys(d).sort().join("|")!==
@@ -165,6 +238,6 @@ function makePartnerInternetSplitOperations({db,actor,scope,collection,fail,
     hikari:d.hikari,air:d.air,combinedCount:current.total};
   });
  }
- return Object.freeze({viewInternetSplitDay,submitInternetSplit});
+ return Object.freeze({viewInternetSplitDay,viewInternetSplitMonth,submitInternetSplit});
 }
 module.exports={makePartnerInternetSplitOperations,validateSource,readSplit,projectSplit};
