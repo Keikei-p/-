@@ -238,3 +238,29 @@ test("HQ joint personal and product count ranks live in original ranking tabs, n
  assert.match(joint,/pInline\("ownerPartnerJointProductStatus"\)/);
  assert.doesNotMatch(joint,/ownerPartnerMonth"\)\.value!==month/);
 });
+
+
+test("partner uses the same ranking menu tabs instead of a second monthly ranking card",()=>{
+ for(const id of ["pInlineJointPersonToggle","pInlineJointProductToggle",
+  "pInlineJointPersonalContent","pInlineJointProductContent",
+  "pInlineJointProductStatus"])
+  assert.equal((html.match(new RegExp('id="'+id+'"',"g"))||[]).length,1,id);
+ const start=html.indexOf('id="partnerInlineWorkspace"'),end=html.indexOf('<!-- ユーザー情報 -->',start);
+ const panel=html.slice(start,end);
+ assert.match(panel,/class="dashboard-app-button"[^>]*aria-expanded="false"[^>]*aria-controls="pInlineJointPersonalContent"/);
+ assert.match(panel,/class="dashboard-app-button"[^>]*aria-expanded="false"[^>]*aria-controls="pInlineJointProductContent"/);
+ assert.match(panel,/id="pInlineJointPersonalContent" class="dashboard-app-content" hidden/);
+ assert.match(panel,/id="pInlineJointProductContent" class="dashboard-app-content" hidden/);
+ assert.match(panel,/id="pInlineJointPeople" class="ranking-grid" data-columns="1"/);
+ assert.match(panel,/id="pInlineJointProducts" class="ranking-grid" data-columns="1"/);
+ assert.match(html,/pInline\("pInlineJointPersonToggle"\)\.onclick=\(\)=>partnerShowJointRankingTab\("personal"\)/);
+ assert.match(html,/pInline\("pInlineJointProductToggle"\)\.onclick=\(\)=>partnerShowJointRankingTab\("product"\)/);
+ const begin=html.indexOf("function partnerShowJointRankingTab(");
+ const finish=html.indexOf('pInline("pInlineDate").onchange=',begin);
+ const handler=html.slice(begin,finish);
+ assert.match(handler,/setAccordionState\(pInline\(buttonId\),pInline\(contentId\),which===type\)/);
+ assert.doesNotMatch(handler,/setDoc|updateDoc|deleteDoc|innerHTML|formatYen/);
+ const parent=html.slice(html.indexOf('id="pInlineMonthCard"'),panel.length+start);
+ assert.equal(parent.split('id="pInlineJointPeople"').length-1,1);
+ assert.equal(html.split('id="pInlineMonth"').length-1,1);
+});
