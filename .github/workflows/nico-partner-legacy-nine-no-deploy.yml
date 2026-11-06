@@ -59,7 +59,15 @@ jobs:
             tests/partner-additional-ledger-main.test.cjs \
             tests/partner-combined-month-ranking-main.test.cjs \
             tests/partner-catalog-publish-main.test.cjs \
-            tests/partner-saved-month-main.test.cjs
+            tests/partner-saved-month-main.test.cjs \
+            tests/partner-company-code-auth.test.cjs \
+            tests/partner-company-invitations.test.cjs \
+            tests/partner-one-login-same-app.test.cjs \
+            tests/partner-invite-resend-and-accept.test.cjs \
+            tests/partner-money-free-workspace.test.cjs \
+            tests/partner-existing-ranking.test.cjs \
+            tests/internal-owner-finance-visibility.test.cjs \
+            tests/sales-regressions.cjs
       - name: Confirm no production action
         run: |
           echo "PRODUCTION_DOCUMENT_WRITES=0"
