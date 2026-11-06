@@ -4785,6 +4785,8 @@ body.product-reordering .product-list {
     <h4>班別</h4><div id="pInlineMonthTeams" class="p-inline-list"></div>
     <h4>個人別</h4><div id="pInlineMonthPeople" class="p-inline-list"></div>
     <h4>商材別</h4><div id="pInlineMonthProducts" class="p-inline-list"></div>
+    <h4>追加商材の班・担当者別内訳（保存当時の班）</h4>
+    <div id="pInlineMonthExtras" class="p-inline-list"></div>
   </div>
   <div class="dashboard-app-grid" aria-label="本社と共通の件数ランキングメニュー">
     <button id="pInlineJointPersonToggle" class="dashboard-app-button" type="button" aria-expanded="false" aria-controls="pInlineJointPersonalContent">
@@ -12575,6 +12577,102 @@ function partnerSavedMonthCheckTotals(data,keys){
  if(teamTotal+data.unattributedCount!==data.totalCount)stop();
  return true;
 }
+
+// The additional ledger has its OWN count totals, separate from the fixed
+// nine categories. Refuse mismatched, duplicate or financial-tainted payloads.
+function partnerSavedMonthCheckAdditional(data){
+ const stop=()=>{throw Error("partner_saved_extra_month_integrity");};
+ const x=data?.additional;
+ const ok=n=>Number.isSafeInteger(n)&&n>=0;
+ const key=k=>typeof k==="string"&&/^[a-f0-9]{64}$/.test(k);
+ const title=t=>typeof t==="string"&&t.length>0&&t.length<=80;
+ if(!x||x.scope!=="partner_published_extra_month_only"||
+    x.month!==data.month||x.complete!==false||
+    x.productionDocumentWrites!==0||typeof x.containsUnpublished!=="boolean"||
+    !ok(x.totalCount)||!ok(x.verifiedExtraRows)||!ok(x.unattributedCount)||
+    !ok(x.unattributedRows)||!Array.isArray(x.products)||
+    !Array.isArray(x.people)||!Array.isArray(x.teams)||
+    !Array.isArray(x.unattributedProducts)||
+    x.products.length>1000||x.people.length>1000||x.teams.length>150)stop();
+ const catalog=new Map();
+ for(const p of x.products){
+  if(!p||!/^[A-Za-z0-9_-]{1,128}$/.test(p.id||"")||
+     catalog.has(p.id)||!title(p.name)||!ok(p.totalCount)||
+     p.totalCount===0)stop();
+  catalog.set(p.id,p);
+ }
+ const sumProducts=list=>{
+  if(!Array.isArray(list)||list.length>1000)stop();
+  let sum=0;const seen=new Set();
+  for(const p of list){
+   if(!p||!catalog.has(p.id)||seen.has(p.id)||
+      p.name!==catalog.get(p.id).name||!ok(p.totalCount)||p.totalCount===0)
+    stop();
+   seen.add(p.id);sum+=p.totalCount;
+   if(!ok(sum))stop();
+  }
+  return sum;
+ };
+ const people=new Map();let peopleTotal=0;
+ for(const p of x.people){
+  if(!p||!key(p.key)||people.has(p.key)||!title(p.name)||
+     !ok(p.totalCount)||sumProducts(p.products)!==p.totalCount)stop();
+  people.set(p.key,p);peopleTotal+=p.totalCount;
+ }
+ if(peopleTotal!==x.totalCount||sumProducts(x.products)!==x.totalCount)stop();
+ const byProduct=new Map([...catalog.keys()].map(id=>[id,0]));
+ let teamTotal=0;const teams=new Set();
+ for(const t of x.teams){
+  if(!t||!key(t.key)||teams.has(t.key)||!title(t.name)||
+     !ok(t.totalCount)||!Array.isArray(t.members)||
+     t.members.length>1000||sumProducts(t.products)!==t.totalCount)
+   stop();
+  teams.add(t.key);teamTotal+=t.totalCount;
+  const local=new Map([...catalog.keys()].map(id=>[id,0]));
+  let memberTotal=0;const members=new Set();
+  for(const m of t.members){
+   if(!m||!key(m.key)||members.has(m.key)||!people.has(m.key)||
+      !title(m.name)||!ok(m.totalCount)||
+      sumProducts(m.products)!==m.totalCount)stop();
+   members.add(m.key);memberTotal+=m.totalCount;
+   for(const p of m.products)local.set(p.id,local.get(p.id)+p.totalCount);
+  }
+  if(memberTotal!==t.totalCount||
+     t.products.some(p=>local.get(p.id)!==p.totalCount)||
+     [...local].some(([id,n])=>n>0&&!t.products.some(p=>p.id===id)))stop();
+  for(const p of t.products)byProduct.set(p.id,byProduct.get(p.id)+p.totalCount);
+ }
+ if(teamTotal+x.unattributedCount!==x.totalCount||
+    sumProducts(x.unattributedProducts)!==x.unattributedCount)stop();
+ for(const p of x.unattributedProducts)byProduct.set(p.id,byProduct.get(p.id)+p.totalCount);
+ if([...catalog].some(([id,p])=>byProduct.get(id)!==p.totalCount))stop();
+ return x;
+}
+function partnerRenderAdditionalMonth(target,extra){
+ target.replaceChildren();
+ for(const team of extra.teams){
+  const details=document.createElement("details");details.className="p-inline-row";
+  const summary=document.createElement("summary");
+  summary.textContent=team.name+"｜追加商材 "+team.totalCount+"件（開いて担当者別）";
+  details.append(summary);
+  for(const person of team.members){
+   const row=document.createElement("div");row.className="p-inline-row";
+   const heading=document.createElement("strong");
+   heading.textContent=person.name+"｜"+person.totalCount+"件";
+   const products=document.createElement("div");products.className="p-inline-muted";
+   products.textContent=person.products.map(p=>p.name+" "+p.totalCount+"件").join(" / ");
+   row.append(heading,products);details.append(row);
+  }
+  target.append(details);
+ }
+ if(extra.unattributedCount>0)
+  partnerMainAppendRow(target,"班未照合の追加商材",extra.unattributedCount+"件（班を推測せず保留）");
+ if(extra.containsUnpublished)
+  partnerMainAppendRow(target,"公開OFFの追加商材","過去の保存件数は保全し、公開中の集計に含めません。");
+ if(!extra.teams.length&&!extra.unattributedCount)
+  partnerMainAppendRow(target,"追加商材の保存済み実績なし","未報告は0件確定と扱いません。");
+}
+
 // Identical count/rank presentation for the internal Owner and partners.
 // Never include raw monetary fields or use innerHTML for external names.
 function partnerRenderJointRows(containerId,rows,isPeople){
@@ -12767,7 +12865,7 @@ async function partnerInlineMonthFetch(){
  const month=pInline("pInlineMonth").value,uid=auth.currentUser.uid;
  const workspace=partnerInlineWorkspaceCompany,seq=++partnerInlineMonthNonce;
  const status=pInline("pInlineMonthStatus");
- const containers=["pInlineMonthTeams","pInlineMonthPeople","pInlineMonthProducts"];
+ const containers=["pInlineMonthTeams","pInlineMonthPeople","pInlineMonthProducts","pInlineMonthExtras"];
  ++partnerJointNonce;
  for(const id of containers)pInline(id).replaceChildren();
  pInline("pInlineJointPeople").replaceChildren();pInline("pInlineJointProducts").replaceChildren();
@@ -12793,6 +12891,7 @@ async function partnerInlineMonthFetch(){
      keys.some(k=>!Number.isSafeInteger(data.counts[k])||data.counts[k]<0))
    throw Error("partner_saved_month_contract");
   partnerSavedMonthCheckTotals(data,keys);
+  const extra=partnerSavedMonthCheckAdditional(data);
   const amount=data.totalCount;
   const show=(id,items)=>{
    const element=pInline(id);
@@ -12850,12 +12949,21 @@ async function partnerInlineMonthFetch(){
    throw Error("partner_month_total_sum");
   if(!data.teams.length)
    partnerMainAppendRow(teamBox,"班の保存済みデータなし","未入力を0件確定とは扱いません。");
-  show("pInlineMonthPeople",data.people);
-  const products=keys.map(k=>({name:k,totalCount:data.counts[k]}))
-   .sort((a,b)=>b.totalCount-a.totalCount||a.name.localeCompare(b.name,"ja"));
+  const merged=new Map(data.people.map(p=>[p.key,{...p}]));
+  for(const person of extra.people){
+   const saved=merged.get(person.key);
+   if(saved)saved.totalCount+=person.totalCount;
+   else merged.set(person.key,{...person});
+  }
+  show("pInlineMonthPeople",[...merged.values()].sort((a,b)=>b.totalCount-a.totalCount));
+  const products=[
+   ...keys.map(k=>({name:k,totalCount:data.counts[k]})),
+   ...extra.products.map(p=>({name:p.name,totalCount:p.totalCount}))
+  ].sort((a,b)=>b.totalCount-a.totalCount||a.name.localeCompare(b.name,"ja"));
   show("pInlineMonthProducts",products);
-  status.textContent=month.replace("-","年")+"月の保存済み件数："+amount+
-   "件（暫定・未入力日は未照合）"+
+  partnerRenderAdditionalMonth(pInline("pInlineMonthExtras"),extra);
+  status.textContent=month.replace("-","年")+"月の保存済み件数："+(amount+extra.totalCount)+
+   "件（基本9商材 "+amount+"件・追加商材 "+extra.totalCount+"件／暫定）"+
    (data.missingHistoricalTeamAttribution?"。班未照合の過去実績があります。":"");
   void partnerFetchJointMonth("partner",month,workspace);
  }catch{
@@ -13100,6 +13208,7 @@ async function loadOwnerPartnerSavedMonth(companyId,companyName){
      !Array.isArray(data.teams)||data.teams.length>150)
    throw Error("owner_partner_month_schema");
   partnerSavedMonthCheckTotals(data,keys);
+  const extra=partnerSavedMonthCheckAdditional(data);
   let total=0;
   for(const team of data.teams){
    if(typeof team.name!=="string"||team.name.length>80||
@@ -13137,8 +13246,14 @@ async function loadOwnerPartnerSavedMonth(companyId,companyName){
    throw Error("owner_partner_month_total");
   if(!data.teams.length)
    partnerMainAppendRow(target,"保存済み班の実績がありません","未入力を0件確定とは扱いません。");
+  const extraHeading=document.createElement("h4");
+  extraHeading.textContent="追加商材の班・担当者別内訳";
+  const extraBox=document.createElement("div");extraBox.className="p-inline-list";
+  partnerRenderAdditionalMonth(extraBox,extra);
+  target.append(extraHeading,extraBox);
   status.textContent=companyName+"｜"+month+"｜保存済み"+
-   data.totalCount+"件（暫定・未入力日は未照合）"+
+   (data.totalCount+extra.totalCount)+"件（基本9商材 "+data.totalCount+
+   "件・追加商材 "+extra.totalCount+"件／暫定）"+
    (data.missingHistoricalTeamAttribution?
     "。保存当時の班が不明な件数があります。":"");
  }catch{
