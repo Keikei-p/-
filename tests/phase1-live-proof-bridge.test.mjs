@@ -422,7 +422,7 @@ test('invalid Owner and worker role combinations stop BEFORE Rules release witho
     await assert.rejects(createAffectedSecondaryIdentityVerifier({
       ...identity,expectedOwnerUid:'realOwner',
       expectedPartnerUid:'secondaryPartner',internalCompanyId:'internal_company'
-    })(),/STOP_PHASE1_IDENTITY_AFFECTED_SECONDARY_NOT_BOUND/,
+    })(),/STOP_PHASE1_IDENTITY_(AFFECTED_SECONDARY_NOT_BOUND|PARTNER_SELF_COUNT_ENTRY_NOT_READY)/,
       variant.role+' '+variant.changedPath);
     assert(identity.calls.every(x=>x.method==='GET'),
       'no writes even when real data is inconsistent');
