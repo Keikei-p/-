@@ -1,6 +1,12 @@
 "use strict";
 // Isolated partner operations: no reads/writes to sales products, records or prices.
 const crypto=require("node:crypto");
+const {monthBounds,projectSavedPartnerMonth}=require("./partner-saved-month.cjs");
+const {readDirectRangeCounts}=require("./shared-direct-counts.cjs");
+const {projectCombinedMonth}=require("./combined-saved-month-ranking.cjs");
+const {makePartnerCatalogOperations}=require("./partner-catalog-operations.cjs");
+const {projectPublishedPartnerExtras}=require("./partner-combined-extra-projection.cjs");
+const {makePartnerAdditionalOperations}=require("./partner-additional-operations.cjs");
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -829,6 +835,149 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     teams:visibleTeams,staff:[...allowed.values()],records:rows,categories:KEYS,
     privateProducts:productList};
  }
+ // Isolated read-only monthly counts. Never read financial originals or write.
+ async function viewSavedMonth(request){
+  const a=await actor(request),d=request?.data||{};
+  if(Object.keys(d).some(k=>!["month","workspaceCompanyId","partnerCompanyId","codeSessionToken"].includes(k)))
+   fail("invalid-argument");
+  const current=new Intl.DateTimeFormat("en-CA",{
+   timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"
+  }).format(now());
+  let bounds;
+  try{bounds=monthBounds(d.month,current);}catch{fail("invalid-argument");}
+  const s=await scope(a.uid,null,d.workspaceCompanyId);
+  let cid=s.cid,hubId=s.hubId,role=s.role;
+  if(s.kind==="hub"){
+   if(!ID.test(d.partnerCompanyId||""))fail("invalid-argument");
+   const [rs,cs]=await Promise.all([
+    db.collection("partnerRelations").doc(d.partnerCompanyId).get(),
+    db.collection("companies").doc(d.partnerCompanyId).get()
+   ]);
+   const r=rs.data()||{},company=cs.data()||{};
+   if(!rs.exists||!cs.exists||r.partnerCompanyId!==d.partnerCompanyId||
+      r.hubCompanyId!==s.cid||r.active!==true||r.countSharingApproved!==true||
+      company.companyKind!=="partner"||company.hubCompanyId!==s.cid||
+      company.active!==true)fail();
+   cid=d.partnerCompanyId;hubId=s.cid;role="hub";
+  }else if(s.kind==="partner"){
+   if(d.partnerCompanyId!=null)fail();
+  }else fail();
+  // The bounded date range never returns incomplete totals if it overflows.
+  const [entries,extraEntries,teams]=await Promise.all([
+   collection(cid,"partnerWorkEntries").where("date",">=",bounds.first)
+    .where("date","<=",bounds.last).limit(1001).get(),
+   collection(cid,"partnerAdditionalCountEntries").where("date",">=",bounds.first)
+    .where("date","<=",bounds.last).limit(1001).get(),
+   collection(cid,"partnerWorkTeams").limit(151).get()
+  ]);
+  if(entries.size>1000||extraEntries.size>1000||teams.size>150)
+   fail("resource-exhausted");
+  const teamNames=Object.create(null);
+  for(const sn of teams.docs){
+   const x=sn.data()||{};
+   if(!ID.test(sn.id)||x.companyId!==cid)fail("data-loss");
+   teamNames[sn.id]=x.name;
+  }
+  // Members see only their own count rows; no other identities serialized.
+  const rows=role==="member"?entries.docs.filter(sn=>
+   sn.data()?.staffId===a.uid):entries.docs;
+  let base;
+  try{
+   base=projectSavedPartnerMonth({
+    hubId,partnerId:cid,month:d.month,rows,categoryKeys:KEYS,
+    teamNames,role,actorUid:a.uid
+   });
+  }catch{fail("data-loss");}
+  // The original nine categories remain available even when the separate
+  // extra catalog/ledger cannot be verified. Unknown extras are NEVER zero.
+  let extra=null;
+  try{
+   const policy=await getExtraPolicy(hubId);
+   const scopedExtra=role==="member"?extraEntries.docs.filter(sn=>
+    sn.data()?.staffId===a.uid):extraEntries.docs;
+   extra=projectPublishedPartnerExtras({
+    hubId,cid,month:d.month,docs:scopedExtra,
+    visibleProducts:policy.products,blockedIds:policy.blockedIds,
+    teamNames,role,actorUid:a.uid
+   });
+  }catch{ /* legacy nine-category read stays usable; extra is UNVERIFIED */ }
+  const combinedTotalCount=extra&&
+   Number.isSafeInteger(base.totalCount+extra.totalCount)?
+   base.totalCount+extra.totalCount:null;
+  return {...base,extra,extraVerified:!!extra&&combinedTotalCount!==null,
+   combinedTotalCount};
+ }
+ // Read-only joint MONTHLY individual/product counts for the same verified
+ // internal Owner and approved partners; no writes and no raw finance output.
+ async function viewCombinedMonth(request){
+  const a=await actor(request),d=request?.data||{};
+  if(Object.keys(d).some(k=>!["month","workspaceCompanyId","codeSessionToken"].includes(k)))
+   fail("invalid-argument");
+  const current=new Intl.DateTimeFormat("en-CA",{
+   timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"
+  }).format(now());
+  let bounds;
+  try{bounds=monthBounds(d.month,current);}catch{fail("invalid-argument");}
+  const s=await scope(a.uid,null,d.workspaceCompanyId);
+  if(s.kind!=="hub"&&s.kind!=="partner")fail();
+  const hubId=s.kind==="hub"?s.cid:s.hubId;
+  if(!ID.test(hubId||""))fail();
+  const relations=await db.collection("partnerRelations")
+   .where("hubCompanyId","==",hubId).limit(21).get();
+  if(relations.size>20)fail("resource-exhausted");
+  // Direct redactor reads legacy sales records SERVER-SIDE ONLY and rejects
+  // inconsistent saved totals, missing UID and non-auditable quantities.
+  // If even one source is malformed, no combined rank is published.
+  let direct;
+  try{direct=await readDirectRangeCounts(db,hubId,bounds.first,bounds.last,KEYS,{
+   maxRecords:10000
+  });}catch{fail("failed-precondition");}
+  // Financial product master is read ONLY by the isolated catalog module.
+  // Reuse its exact active publication + legacy category collision policy.
+  let publishedExtras,blockedExtraIds;
+  try{
+   const policy=await getExtraPolicy(hubId);
+   publishedExtras=policy.products.map(({id,name})=>({id,name}));
+   blockedExtraIds=policy.blockedIds;
+  }catch{fail("failed-precondition");}
+  const partners=[];
+  let reviewedRows=0;
+  for(const rs of relations.docs){
+   const rel=rs.data()||{},cid=rs.id;
+   if(!ID.test(cid)||rel.partnerCompanyId!==cid||rel.hubCompanyId!==hubId)
+    fail("data-loss");
+   if(rel.active!==true||rel.countSharingApproved!==true)continue;
+   const companySnap=await db.collection("companies").doc(cid).get();
+   const company=companySnap.data()||{};
+   if(!companySnap.exists||company.companyKind!=="partner"||
+      company.hubCompanyId!==hubId||company.active!==true||
+      !validCompanyName(company.name))fail("data-loss");
+   const [rows,extraDocs]=await Promise.all([
+    collection(cid,"partnerWorkEntries")
+     .where("date",">=",bounds.first)
+     .where("date","<=",bounds.last).limit(1001).get(),
+    collection(cid,"partnerAdditionalCountEntries")
+     .where("date",">=",bounds.first)
+     .where("date","<=",bounds.last).limit(1001).get()
+   ]);
+   if(rows.size>1000||extraDocs.size>1000)fail("resource-exhausted");
+   reviewedRows+=rows.size+extraDocs.size;
+   if(reviewedRows>10000)fail("resource-exhausted");
+   let data,extra;
+   try{
+    data=projectSavedPartnerMonth({hubId,partnerId:cid,month:d.month,
+     rows:rows.docs,categoryKeys:KEYS});
+    extra=projectPublishedPartnerExtras({
+     hubId,cid,month:d.month,docs:extraDocs.docs,
+     visibleProducts:publishedExtras,blockedIds:blockedExtraIds
+    });
+   }catch{fail("data-loss");}
+   partners.push({id:cid,name:company.name,data,extra});
+  }
+  try{
+   return projectCombinedMonth({month:d.month,hubId,keys:KEYS,direct,partners});
+  }catch{fail("failed-precondition");}
+ }
  async function submit(request){
   const a=await actor(request),d=request?.data||{},date=validDate(d.date),staffId=clean(d.staffId);
   if(!ID.test(staffId)||!Number.isSafeInteger(d.expectedVersion)||d.expectedVersion<0)fail("invalid-argument");
@@ -905,6 +1054,15 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      privateTotalCount:privateValidated.total};
   });
  }
- return Object.freeze({manage,accept,view,submit});
+ const {getPublishedCatalog,setPublishedProduct}=makePartnerCatalogOperations({
+  db,actor,scope,collection,FieldValue,fail
+ });
+ const {viewAdditionalCounts,submitAdditionalCounts,getExtraPolicy}=makePartnerAdditionalOperations({
+  db,actor,scope,collection,FieldValue,fail,validDate,validName,canStaff,jstToday,KEYS
+ });
+ return Object.freeze({
+  manage,accept,view,viewSavedMonth,viewCombinedMonth,
+  getPublishedCatalog,setPublishedProduct,viewAdditionalCounts,submitAdditionalCounts,submit
+ });
 }
 module.exports={makeWorkspace,KEYS};

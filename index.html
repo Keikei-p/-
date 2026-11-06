@@ -4765,7 +4765,46 @@ body.product-reordering .product-list {
       <span id="pInlineVersion" class="p-inline-muted"></span>
     </div>
   </div>
-  <div class="p-inline-card"><h3>🏆 班・個人・商材ランキング（件数のみ）</h3><div id="pInlineRanking" class="p-inline-list"></div></div>
+  <div class="p-inline-card" id="pInlineExtraCard">
+    <h3>📦 本社が公開した追加商材｜件数入力</h3>
+    <p class="p-inline-muted">公開ONの追加商材だけ表示します。既存9商材の件数は上の入力欄で管理します。</p>
+    <p id="pInlineExtraStatus" class="p-inline-muted" role="status" aria-live="polite">追加商材を確認中...</p>
+    <div id="pInlineExtraCountFields" class="p-inline-grid"></div>
+    <div class="p-inline-actions">
+      <button type="button" id="pInlineExtraSave" disabled>追加商材の件数を保存</button>
+      <span id="pInlineExtraVersion" class="p-inline-muted"></span>
+    </div>
+  </div>
+  <div class="p-inline-card" id="pInlineMonthCard">
+    <h3>📅 月別実績・班詳細（件数のみ）</h3>
+    <div class="p-inline-grid">
+      <label class="p-inline-field">表示月<input id="pInlineMonth" type="month" aria-label="協力店の表示月"></label>
+      <div class="p-inline-field"><label for="pInlineMonthRefresh">月別データ</label><button id="pInlineMonthRefresh" type="button">月別を更新</button></div>
+    </div>
+    <p id="pInlineMonthStatus" class="p-inline-muted" role="status" aria-live="polite">月別の保存済み件数を確認できます。</p>
+    <h4>班別</h4><div id="pInlineMonthTeams" class="p-inline-list"></div>
+    <h4>個人別</h4><div id="pInlineMonthPeople" class="p-inline-list"></div>
+    <h4>商材別</h4><div id="pInlineMonthProducts" class="p-inline-list"></div>
+  </div>
+  <div class="dashboard-app-grid" aria-label="本社と共通の件数ランキングメニュー">
+    <button id="pInlineJointPersonToggle" class="dashboard-app-button" type="button" aria-expanded="false" aria-controls="pInlineJointPersonalContent">
+      <span class="dashboard-app-icon">🏆</span><span class="dashboard-app-title">個人ランキング</span>
+      <span class="dashboard-app-meta">自社＋協力店・件数順</span>
+    </button>
+    <button id="pInlineJointProductToggle" class="dashboard-app-button" type="button" aria-expanded="false" aria-controls="pInlineJointProductContent">
+      <span class="dashboard-app-icon">📦</span><span class="dashboard-app-title">商材別ランキング</span>
+      <span class="dashboard-app-meta">自社＋協力店・件数順</span>
+    </button>
+  </div>
+  <div id="pInlineJointPersonalContent" class="dashboard-app-content" hidden>
+    <p id="pInlineJointStatus" class="p-inline-muted" role="status" aria-live="polite">保存済み件数の照合待ち</p>
+    <div id="pInlineJointPeople" class="ranking-grid" data-columns="1"></div>
+  </div>
+  <div id="pInlineJointProductContent" class="dashboard-app-content" hidden>
+    <p id="pInlineJointProductStatus" class="p-inline-muted" role="status" aria-live="polite">保存済み件数の照合待ち</p>
+    <div id="pInlineJointProducts" class="ranking-grid" data-columns="1"></div>
+  </div>
+  <div class="p-inline-card"><h3>🏆 選択日のランキング（件数のみ）</h3><div id="pInlineRanking" class="p-inline-list"></div></div>
 </section>
 
 
@@ -6077,6 +6116,12 @@ body.product-reordering .product-list {
           </div>
         </div>
         <div id="individualRankingList" class="ranking-grid" data-columns="1"></div>
+        <div id="ownerPartnerJointPersonalPanel" class="p-inline-card">
+          <h3>🤝 自社＋協力店 合同個人ランキング｜件数順</h3>
+          <button id="ownerPartnerJointRefresh" type="button">合同件数を更新</button>
+          <p id="ownerPartnerJointStatus" class="p-inline-muted" role="status" aria-live="polite">月間件数は未照合です。</p>
+          <div id="ownerPartnerJointPeople" class="ranking-grid" data-columns="1"></div>
+        </div>
       </div>
 
       <div id="productRankingContent" class="dashboard-app-content" hidden>
@@ -6112,6 +6157,12 @@ body.product-reordering .product-list {
           <span id="productRankingMemberCount"></span>
         </div>
         <div id="productRankingMemberList" class="ranking-grid" data-columns="1"></div>
+        <div id="ownerPartnerJointProductPanel" class="p-inline-card">
+          <h3>🤝 自社＋協力店 合同商材ランキング｜件数順</h3>
+          <button id="ownerPartnerJointProductsRefresh" type="button">合同件数を更新</button>
+          <p id="ownerPartnerJointProductStatus" class="p-inline-muted" role="status" aria-live="polite">月間件数は未照合です。</p>
+          <div id="ownerPartnerJointProducts" class="ranking-grid" data-columns="1"></div>
+        </div>
       </div>
 
       <div
@@ -6493,6 +6544,13 @@ body.product-reordering .product-list {
       </div>
 
       <div id="ownerPartnerTeamGroups" class="team-list" aria-label="協力店の会社別班一覧" style="margin-top:14px"></div>
+      <div id="ownerPartnerMonthControls" class="p-inline-card" hidden>
+        <h3>協力店の月別班詳細（件数のみ）</h3>
+        <label class="p-inline-field">表示月<input type="month" id="ownerPartnerMonth" aria-label="本社から確認する協力店の月"></label>
+        <p id="ownerPartnerMonthStatus" class="p-inline-muted" role="status" aria-live="polite"></p>
+        <div id="ownerPartnerMonthDetails" class="p-inline-list"></div>
+
+      </div>
 
 
     </div>
@@ -6573,6 +6631,12 @@ body.product-reordering .product-list {
       <div
         id="productList"
         class="product-list">
+      </div>
+      <div class="p-inline-card" id="ownerPublishedCatalogControls">
+        <h3>🤝 協力店への商材公開設定</h3>
+        <p class="p-inline-muted">各商材カードで公開ON/OFFを選べます。価格・CB・売上は協力店へ渡しません。</p>
+        <button id="ownerPublishedCatalogRefresh" type="button" class="team-action-button">公開状態を更新</button>
+        <p id="ownerPublishedCatalogStatus" class="p-inline-muted" role="status" aria-live="polite">公開設定未確認</p>
       </div>
 
     </div>
@@ -7099,6 +7163,12 @@ const partnerCountFunctions = getFunctions(app,"asia-northeast1");
 const readPartnerQuickDay = httpsCallable(partnerCountFunctions,"getPartnerQuickCounts");
 const approvePartnerQuickDay = httpsCallable(partnerCountFunctions,"approvePartnerQuickCounts");
 const readPartnerWorkDay = httpsCallable(partnerCountFunctions,"getPartnerWorkspace");
+const readPartnerSavedMonth = httpsCallable(partnerCountFunctions,"getPartnerSavedMonthlyCounts");
+const readPartnerCombinedMonth = httpsCallable(partnerCountFunctions,"getPartnerCombinedMonthlyCounts");
+const readPartnerPublishedCatalog = httpsCallable(partnerCountFunctions,"getPartnerPublishedCatalog");
+const setPartnerPublishedProduct = httpsCallable(partnerCountFunctions,"setPartnerPublishedProduct");
+const readPartnerAdditionalDay = httpsCallable(partnerCountFunctions,"getPartnerAdditionalCounts");
+const submitPartnerAdditionalDay = httpsCallable(partnerCountFunctions,"submitPartnerAdditionalCounts");
 
 const partnerInlineManage = httpsCallable(partnerCountFunctions,"managePartnerWorkspace");
 const partnerInlineSave = httpsCallable(partnerCountFunctions,"submitPartnerWorkspaceCounts");
@@ -12307,7 +12377,10 @@ copyInviteButton.onclick =
 // Never read products/records/revenueGoals in this branch. Server checks scope.
 const pInline=id=>document.getElementById(id);
 let partnerInlineData=null,partnerInlineWorkspaceCompany="",partnerInlineNonce=0;
-let partnerInlineBusy=false,ownerPartnerTeamsNonce=0;
+let partnerExtraData=null,partnerExtraNonce=0;
+let partnerInlineBusy=false,ownerPartnerTeamsNonce=0,partnerInlineMonthNonce=0;
+let ownerPartnerMonthNonce=0,ownerPartnerSelectedCompany="",ownerPartnerSelectedName="";
+let partnerJointNonce=0,ownerJointNonce=0,ownerJointCachedMonth="";
 const partnerMainDate=()=>new Intl.DateTimeFormat("sv-SE",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
 const partnerMainValidId=id=>typeof id==="string"&&/^[A-Za-z0-9_-]{1,128}$/.test(id);
 function partnerMainPendingInvite(){
@@ -12319,13 +12392,27 @@ function partnerMainPendingInvite(){
  return null;
 }
 function resetPartnerInline(){
- ++partnerInlineNonce;++ownerPartnerTeamsNonce;
+ ownerCatalogReset();
+ ++partnerInlineNonce;++ownerPartnerTeamsNonce;++partnerInlineMonthNonce;++ownerPartnerMonthNonce;
+ ++partnerJointNonce;++ownerJointNonce;++partnerExtraNonce;
+ partnerExtraData=null;
+ pInline("pInlineExtraCountFields").replaceChildren();
+ pInline("pInlineExtraSave").disabled=true;
+ pInline("pInlineExtraStatus").textContent="";
+ pInline("pInlineExtraVersion").textContent="";
  partnerInlineData=null;partnerInlineWorkspaceCompany="";partnerInlineBusy=false;
  appScreen.removeAttribute("data-partner-count-only");
  pInline("partnerInlineWorkspace").hidden=true;
  pInline("pInlineStatus").textContent="";
  pInline("pInlineInviteUrl").value="";
  pInline("pInlineInviteResult").hidden=true;
+ pInline("pInlineMonthStatus").textContent="";
+ for(const id of ["pInlineJointPeople","pInlineJointProducts","pInlineMonthTeams","pInlineMonthPeople","pInlineMonthProducts"])
+  pInline(id).replaceChildren();
+ pInline("pInlineJointStatus").textContent="";
+ pInline("pInlineJointProductStatus").textContent="";
+ setAccordionState(pInline("pInlineJointPersonToggle"),pInline("pInlineJointPersonalContent"),false);
+ setAccordionState(pInline("pInlineJointProductToggle"),pInline("pInlineJointProductContent"),false);
  authScreen.removeAttribute("data-partner-invite");
  pInline("partnerInviteAtMain").hidden=true;
 }
@@ -12367,6 +12454,7 @@ function partnerInlineRenderCounts(){
  }
  pInline("pInlineSave").disabled=!staffId||partnerInlineBusy;
  pInline("pInlineVersion").textContent=entry?"登録済み・第"+entry.version+"版":"未登録";
+ partnerExtraRenderCounts();
 }
 function partnerInlineRender(){
  const snap=partnerInlineData;if(!snap||snap.role==="hub")return;
@@ -12418,9 +12506,524 @@ function partnerInlineRender(){
  for(const [key,n] of [...byProduct.entries()].sort((a,b)=>b[1]-a[1]))
   partnerMainAppendRow(rankings,key,n+"件");
 }
+
+// Reconcile all four saved-month views before showing any ranking or count.
+// A malformed or partially upgraded monthly API must never display incorrect
+// "confirmed" figures. All checks are local, bounded and read-only.
+function partnerSavedMonthCheckTotals(data,keys){
+ const stop=()=>{throw Error("partner_saved_month_integrity");};
+ if(!data||!Array.isArray(keys)||keys.length!==9||new Set(keys).size!==9||
+    !Array.isArray(data.teams)||data.teams.length>150||
+    !Array.isArray(data.people)||data.people.length>1000||
+    !Number.isSafeInteger(data.totalCount)||data.totalCount<0||
+    !Number.isSafeInteger(data.unattributedCount)||data.unattributedCount<0||
+    !Number.isSafeInteger(data.unattributedRows)||data.unattributedRows<0||
+    typeof data.missingHistoricalTeamAttribution!=="boolean"||
+    data.missingHistoricalTeamAttribution!==(data.unattributedRows>0))
+  stop();
+ const safeCounts=counts=>counts&&typeof counts==="object"&&
+  !Array.isArray(counts)&&Object.keys(counts).length===keys.length&&
+  keys.every(k=>Object.hasOwn(counts,k)&&
+   Number.isSafeInteger(counts[k])&&counts[k]>=0);
+ const sum=counts=>keys.reduce((n,k)=>n+counts[k],0);
+ if(!safeCounts(data.counts)||sum(data.counts)!==data.totalCount)stop();
+ // Reject financial fields even if a future endpoint accidentally adds them.
+ const stack=[data];let inspected=0;
+ while(stack.length){
+  const item=stack.pop();
+  if(item===null||typeof item!=="object")continue;
+  if(++inspected>12000)stop();
+  for(const [key,value] of Object.entries(item)){
+   if(/revenue|unit.?price|profit|commission|cash.?back|cb.?counts|settlement|fee.?amount|sales.?amount|売上|単価|報酬|利益|キャッシュバック/i.test(key))
+    stop();
+   if(value&&typeof value==="object")stack.push(value);
+  }
+ }
+ const keyCheck=x=>typeof x==="string"&&/^[a-f0-9]{64}$/.test(x);
+ const personKeys=new Set();let peopleTotal=0;
+ for(const person of data.people){
+  if(!keyCheck(person?.key)||personKeys.has(person.key)||
+     typeof person.name!=="string"||person.name.length>80||
+     !Number.isSafeInteger(person.totalCount)||person.totalCount<0||
+     !safeCounts(person.counts)||sum(person.counts)!==person.totalCount)stop();
+  personKeys.add(person.key);peopleTotal+=person.totalCount;
+ }
+ if(peopleTotal!==data.totalCount)stop();
+ let teamTotal=0;const teamKeys=new Set();
+ for(const team of data.teams){
+  if(!keyCheck(team?.key)||teamKeys.has(team.key)||
+     typeof team.name!=="string"||team.name.length>80||
+     !Number.isSafeInteger(team.totalCount)||team.totalCount<0||
+     !safeCounts(team.counts)||sum(team.counts)!==team.totalCount||
+     !Array.isArray(team.members)||team.members.length>1000)stop();
+  teamKeys.add(team.key);
+  const counts=Object.fromEntries(keys.map(k=>[k,0]));
+  let memberTotal=0;const members=new Set();
+  for(const member of team.members){
+   if(!keyCheck(member?.key)||members.has(member.key)||
+      !personKeys.has(member.key)||
+      typeof member.name!=="string"||member.name.length>80||
+      !Number.isSafeInteger(member.totalCount)||member.totalCount<0||
+      !safeCounts(member.counts)||sum(member.counts)!==member.totalCount)stop();
+   members.add(member.key);memberTotal+=member.totalCount;
+   for(const k of keys)counts[k]+=member.counts[k];
+  }
+  if(memberTotal!==team.totalCount||
+     keys.some(k=>counts[k]!==team.counts[k]))stop();
+  teamTotal+=team.totalCount;
+ }
+ if(teamTotal+data.unattributedCount!==data.totalCount)stop();
+ // The additional catalog is a separate, optional ledger. Its failure must
+ // NEVER be interpreted as zero extra sales or corrupt the original nine.
+ if(data.extra===undefined)return true; // old synthetic contract
+ if(data.extra===null){
+  if(data.extraVerified!==false||data.combinedTotalCount!==null)stop();
+  return true;
+ }
+ const e=data.extra,safe=n=>Number.isSafeInteger(n)&&n>=0;
+ if(data.extraVerified!==true||e?.scope!=="partner_published_extra_month_only"||
+    e.month!==data.month||e.complete!==false||
+    e.productionDocumentWrites!==0||
+    typeof e.containsUnpublished!=="boolean"||
+    !safe(e.totalCount)||!safe(e.verifiedExtraRows)||
+    !safe(e.unattributedCount)||!safe(e.unattributedRows)||
+    !Array.isArray(e.people)||e.people.length>1000||
+    !Array.isArray(e.products)||e.products.length>1000||
+    !Array.isArray(e.teams)||e.teams.length>150||
+    !safe(data.combinedTotalCount)||
+    data.totalCount+e.totalCount!==data.combinedTotalCount)stop();
+ const safeExtraLabel=x=>typeof x==="string"&&x.length>0&&x.length<=80&&
+  !/(?:単価|売上|収益|利益|報酬|価格|原価|[¥￥$€]|[0-9０-９][0-9０-９,.，]*\s*(?:万|千)?円|revenue|unit.?price|cash.?back|commission)/i.test(x);
+ const permittedKeys=(value,allowed)=>Object.keys(value).every(k=>allowed.includes(k));
+ const extraIds=new Set(),extraProductTotals=new Map();
+ let productTotal=0;
+ for(const product of e.products){
+  if(!/^[A-Za-z0-9_-]{1,128}$/.test(product?.id||"")||
+     extraIds.has(product.id)||
+     !permittedKeys(product,["id","name","totalCount"])||
+     !safeExtraLabel(product.name)||
+     !safe(product.totalCount)||product.totalCount===0)stop();
+  extraIds.add(product.id);extraProductTotals.set(product.id,product.totalCount);
+  productTotal+=product.totalCount;
+ }
+ if(productTotal!==e.totalCount)stop();
+ const extraPersonKeys=new Set(),personTotals=new Map();
+ let extraPeopleTotal=0;
+ const checkExtraCounts=counts=>{
+  if(!counts||typeof counts!=="object"||Array.isArray(counts)||
+     Object.keys(counts).length>extraIds.size)return false;
+  let sum=0;
+  for(const [id,n] of Object.entries(counts)){
+   if(!extraIds.has(id)||!safe(n)||n>9999*1000)return false;
+   sum+=n;
+  }
+  return safe(sum)?sum:false;
+ };
+ const productChecks=new Map();
+ for(const person of e.people){
+  const own=checkExtraCounts(person?.counts);
+  if(!keyCheck(person?.key)||extraPersonKeys.has(person.key)||
+     !permittedKeys(person,["key","name","totalCount","counts"])||
+     !safeExtraLabel(person.name)||
+     !safe(person.totalCount)||own===false||own!==person.totalCount)stop();
+  extraPersonKeys.add(person.key);
+  personTotals.set(person.key,person.totalCount);
+  extraPeopleTotal+=person.totalCount;
+  for(const [id,n] of Object.entries(person.counts))
+   productChecks.set(id,(productChecks.get(id)||0)+n);
+ }
+ if(extraPeopleTotal!==e.totalCount||
+    [...extraProductTotals].some(([id,n])=>productChecks.get(id)!==n))stop();
+ const teamExtraKeys=new Set();
+ let extraTeamsTotal=0;
+ for(const team of e.teams){
+  const own=checkExtraCounts(team?.counts);
+  if(!keyCheck(team?.key)||teamExtraKeys.has(team.key)||
+     !permittedKeys(team,["key","name","totalCount","counts","members"])||
+     !safeExtraLabel(team.name)||
+     !safe(team.totalCount)||own===false||own!==team.totalCount||
+     !Array.isArray(team.members)||team.members.length>1000)stop();
+  teamExtraKeys.add(team.key);
+  const seenMembers=new Set(),teamParts=new Map();
+  let memberSum=0;
+  for(const member of team.members){
+   const sum=checkExtraCounts(member?.counts);
+   if(!keyCheck(member?.key)||seenMembers.has(member.key)||
+      !extraPersonKeys.has(member.key)||
+      !permittedKeys(member,["key","name","totalCount","counts"])||
+      !safeExtraLabel(member.name)||
+      !safe(member.totalCount)||sum===false||sum!==member.totalCount)stop();
+   seenMembers.add(member.key);memberSum+=member.totalCount;
+   if(member.totalCount>personTotals.get(member.key))stop();
+   for(const [id,n] of Object.entries(member.counts))
+    teamParts.set(id,(teamParts.get(id)||0)+n);
+  }
+  if(memberSum!==team.totalCount||
+     [...teamParts].some(([id,n])=>team.counts[id]!==n)||
+     Object.keys(team.counts).some(id=>(teamParts.get(id)||0)!==team.counts[id]))stop();
+  extraTeamsTotal+=team.totalCount;
+ }
+ if(extraTeamsTotal+e.unattributedCount!==e.totalCount)stop();
+ return true;
+}
+// Identical count/rank presentation for the internal Owner and partners.
+// Never include raw monetary fields or use innerHTML for external names.
+function partnerRenderJointRows(containerId,rows,isPeople){
+ const parent=pInline(containerId);parent.replaceChildren();
+ const ordered=rows.slice(0,100);
+ let previousCount=null,previousRank=0,total=0;
+ const keys=new Set();
+ for(let i=0;i<ordered.length;i++){
+  const r=ordered[i];
+  if(!r||typeof r.name!=="string"||!r.name||r.name.length>80||
+     !Number.isSafeInteger(r.totalCount)||r.totalCount<0||
+     !Number.isSafeInteger(r.rank)||r.rank<1||
+     (i>0&&r.totalCount>previousCount)||
+     r.rank!==(r.totalCount===previousCount?previousRank:i+1)||
+     (isPeople&&(!/^[a-f0-9]{64}$/.test(r.key||"")||
+      keys.has(r.key)||!["direct","partner"].includes(r.kind)||
+      typeof r.companyName!=="string"||r.companyName.length>80)))
+   throw Error("joint_rank_contract");
+  if(isPeople)keys.add(r.key);
+  previousCount=r.totalCount;previousRank=r.rank;total+=r.totalCount;
+  const row=document.createElement("div");row.className="ranking-row";
+  const left=document.createElement("div");left.className="ranking-left";
+  const number=document.createElement("span");number.className="ranking-number";
+  number.textContent=r.rank+"位";
+  const names=document.createElement("div");
+  const name=document.createElement("div");name.className="ranking-name";
+  name.textContent=r.name;
+  names.append(name);
+  if(isPeople){
+   const sub=document.createElement("div");sub.className="ranking-sub";
+   sub.textContent=r.kind==="direct"?"直営":r.companyName;
+   names.append(sub);
+  }
+  left.append(number,names);
+  const value=document.createElement("span");value.className="ranking-count";
+  value.textContent=r.totalCount+"件";
+  row.append(left,value);parent.append(row);
+ }
+ if(!ordered.length)partnerMainAppendRow(parent,"ランキング未照合","保存済み件数がまだありません。");
+ return total;
+}
+function partnerValidateCombinedMonth(data,month){
+ const invalid=()=>{throw Error("joint_saved_month_invalid");};
+ if(!data||data.scope!=="joint_saved_month_counts_only"||
+    data.month!==month||data.complete!==false||data.provisional!==true||
+    !Array.isArray(data.people)||data.people.length>10000||
+    !Array.isArray(data.products)||data.products.length>1010||
+    !Number.isSafeInteger(data.grandTotal)||data.grandTotal<0||
+    !Number.isSafeInteger(data.partnerTotal)||data.partnerTotal<0||
+    !Number.isSafeInteger(data.directTotal)||data.directTotal<0||
+    data.grandTotal!==data.directTotal+data.partnerTotal||
+    data.productionDocumentWrites!==0)invalid();
+ // Validate ALL rows, not just visible first 100, before showing ranking.
+ const sums=rows=>rows.reduce((sum,r,i)=>{
+  if(!r||typeof r.name!=="string"||!r.name||r.name.length>80||
+     !Number.isSafeInteger(r.totalCount)||r.totalCount<0||
+     !Number.isSafeInteger(r.rank)||r.rank<1||
+     (i>0&&rows[i-1].totalCount<r.totalCount)||
+     r.rank!==(i&&r.totalCount===rows[i-1].totalCount?
+      rows[i-1].rank:i+1))invalid();
+  return sum+r.totalCount;
+ },0);
+ if(sums(data.people)!==data.grandTotal||
+    sums(data.products)!==data.grandTotal)invalid();
+ const ids=new Set();
+ for(const row of data.people){
+  if(!/^[a-f0-9]{64}$/.test(row.key||"")||ids.has(row.key)||
+     !["direct","partner"].includes(row.kind)||
+     typeof row.companyName!=="string"||!row.companyName.trim()||row.companyName.length>80)invalid();
+  ids.add(row.key);
+ }
+ // Unexpected sensitive keys anywhere in the response are an API failure,
+ // not a client-side masking task.
+ const stack=[data];let inspected=0;
+ while(stack.length){
+  const item=stack.pop();
+  if(!item||typeof item!=="object")continue;
+  if(++inspected>12000)invalid();
+  for(const [key,value] of Object.entries(item)){
+   if(/revenue|unit.?price|commission|profit|cash.?back|cb.?amount|fee.?amount|settlement|sales.?amount|売上|単価|報酬|利益|キャッシュバック/i.test(key))invalid();
+   if(value&&typeof value==="object")stack.push(value);
+  }
+ }
+ return true;
+}
+async function partnerFetchJointMonth(kind,month,workspace){
+ const owner=kind==="owner",seq=owner?++ownerJointNonce:++partnerJointNonce;
+ const uid=auth.currentUser?.uid;
+ const prefix=owner?"ownerPartnerJoint":"pInlineJoint";
+ const status=pInline(prefix+"Status");
+ const productStatus=owner?pInline("ownerPartnerJointProductStatus"):pInline("pInlineJointProductStatus");
+ const report=message=>{status.textContent=message;
+  if(productStatus)productStatus.textContent=message;};
+ const clear=()=>{pInline(prefix+"People").replaceChildren();
+  pInline(prefix+"Products").replaceChildren();};
+ clear();
+ report("直営・協力店の保存済み件数を照合中...");
+ if(!uid||!/^\d{4}-(?:0[1-9]|1[0-2])$/.test(month)){
+  report("表示月を選んでください。");return;
+ }
+ try{
+  const payload={month,...(!owner&&workspace?{workspaceCompanyId:workspace}:{})};
+  const data=(await readPartnerCombinedMonth(payload)).data;
+  const stale=()=>owner?seq!==ownerJointNonce||!isCurrentCompanyOwner()||
+   currentCompanyData?.companyKind==="partner"||
+   dashboardMonth.value!==month:
+   seq!==partnerJointNonce||workspace!==partnerInlineWorkspaceCompany||
+   pInline("pInlineMonth").value!==month;
+  if(stale()||auth.currentUser?.uid!==uid)return;
+  partnerValidateCombinedMonth(data,month);
+  partnerRenderJointRows(prefix+"People",data.people,true);
+  partnerRenderJointRows(prefix+"Products",data.products,false);
+  report(month+"｜本社＋協力店の保存済み"+
+   data.grandTotal+"件を集計（暫定・未報告日/未報告者は未照合）");
+ }catch{
+  if(auth.currentUser?.uid!==uid)return;
+  if(owner?seq!==ownerJointNonce:seq!==partnerJointNonce)return;
+  clear();
+  report("合同ランキング未照合。保存元の件数不一致・権限・新API公開状態を確認してください。既存実績は変更していません。");
+ }
+}
+function partnerExtraRenderCounts(){
+ const grid=pInline("pInlineExtraCountFields");grid.replaceChildren();
+ const snap=partnerExtraData,staffId=pInline("pInlineStaff").value;
+ const status=pInline("pInlineExtraStatus");
+ pInline("pInlineExtraSave").disabled=true;
+ if(!partnerInlineData||!snap||snap.date!==pInline("pInlineDate").value){
+  pInline("pInlineExtraVersion").textContent="未照合";return;
+ }
+ const row=snap.records.find(r=>r.staffId===staffId);
+ for(const product of snap.products){
+  const field=document.createElement("label");
+  field.className="p-inline-field";field.textContent=product.name;
+  const input=document.createElement("input");
+  input.type="number";input.min="0";input.max="9999";input.step="1";
+  input.inputMode="numeric";input.dataset.extraProductId=product.id;
+  input.value=String(row?.counts?.[product.id]??0);
+  field.append(input);grid.append(field);
+ }
+ pInline("pInlineExtraSave").disabled=!staffId||!snap.products.length||partnerInlineBusy;
+ pInline("pInlineExtraVersion").textContent=row?"保存済み・第"+row.version+"版":"未登録";
+ if(!snap.products.length)status.textContent="公開ONの追加商材はありません。既存9商材の入力は利用できます。";
+}
+async function partnerExtraFetch(){
+ const uid=auth.currentUser?.uid,day=pInline("pInlineDate").value;
+ const workspace=partnerInlineWorkspaceCompany,seq=++partnerExtraNonce;
+ partnerExtraData=null;partnerExtraRenderCounts();
+ if(!uid||!partnerInlineData||!auth.currentUser?.emailVerified)return;
+ const status=pInline("pInlineExtraStatus");
+ status.textContent="本社公開の追加商材を読み込み中...";
+ try{
+  const d=(await readPartnerAdditionalDay(partnerInlinePayload({date:day}))).data;
+  if(seq!==partnerExtraNonce||auth.currentUser?.uid!==uid||
+     partnerInlineWorkspaceCompany!==workspace||pInline("pInlineDate").value!==day)return;
+  if(!d||d.scope!=="partner_extra_counts"||d.date!==day||
+     !Array.isArray(d.products)||d.products.length>100||
+     !Array.isArray(d.records)||d.records.length>200||
+     !["owner","leader","member"].includes(d.role))throw Error("extra_schema");
+  const ids=new Set(),seen=new Set();
+  for(const p of d.products){
+   if(!/^[A-Za-z0-9_-]{1,128}$/.test(p?.id||"")||ids.has(p.id)||
+      typeof p.name!=="string"||!p.name||p.name.length>80||
+      /売上|単価|利益|報酬|価格|原価|revenue|cashback|unitprice|[￥¥$€]/i.test(p.name))
+    throw Error("extra_product_schema");
+   ids.add(p.id);
+  }
+  for(const r of d.records){
+   if(!/^[A-Za-z0-9_-]{1,128}$/.test(r?.staffId||"")||
+      seen.has(r.staffId)||!Number.isSafeInteger(r.version)||r.version<1||
+      !Number.isSafeInteger(r.totalCount)||r.totalCount<0||
+      !Number.isSafeInteger(r.archivedTotal)||r.archivedTotal<0||
+      !r.counts||typeof r.counts!=="object"||Array.isArray(r.counts)||
+      Object.entries(r.counts).some(([id,n])=>!ids.has(id)||
+       !Number.isSafeInteger(n)||n<0||n>9999)||
+      Object.values(r.counts).reduce((a,n)=>a+n,0)+r.archivedTotal!==r.totalCount)
+    throw Error("extra_saved_schema");
+   seen.add(r.staffId);
+  }
+  partnerExtraData=d;
+  status.textContent="公開中の追加商材の件数を確認しました。金額は表示しません。";
+  partnerExtraRenderCounts();
+ }catch{
+  if(seq!==partnerExtraNonce||auth.currentUser?.uid!==uid)return;
+  partnerExtraData=null;partnerExtraRenderCounts();
+  status.textContent="追加商材の公開・件数APIを確認できません。既存9商材の入力はそのまま使えます。";
+ }
+}
+// Helpers never read Firestore or payment fields. Only the independently
+// verified, Owner-published extra products are displayed beside old nine.
+function partnerMonthVisibleExtras(data){
+ return data?.extraVerified===true&&data.extra?data.extra:null;
+}
+function partnerMonthExtraLabels(counts,extra){
+ if(!extra)return [];
+ const names=new Map(extra.products.map(p=>[p.id,p.name]));
+ return Object.entries(counts||{}).filter(([id,n])=>names.has(id)&&n>0)
+  .map(([id,n])=>names.get(id)+" "+n+"件");
+}
+function partnerMonthMergedPeople(data,extra){
+ const people=new Map(data.people.map(p=>[p.key,{...p}]));
+ if(extra)for(const person of extra.people){
+  const current=people.get(person.key);
+  if(current)current.totalCount+=person.totalCount;
+  else people.set(person.key,{key:person.key,name:person.name,
+   totalCount:person.totalCount});
+ }
+ return [...people.values()].sort((a,b)=>b.totalCount-a.totalCount||
+  a.name.localeCompare(b.name,"ja"));
+}
+function partnerMonthAppendExtraOnlyTeams(parent,extra,oldKeys){
+ if(!extra)return;
+ for(const team of extra.teams){
+  if(oldKeys.has(team.key))continue;
+  const details=document.createElement("details");details.className="p-inline-row";
+  const summary=document.createElement("summary");
+  summary.textContent=team.name+"｜"+team.totalCount+"件（追加商材・押すと内訳表示）";
+  details.append(summary);
+  for(const person of team.members){
+   const line=document.createElement("div");line.className="p-inline-row";
+   const strong=document.createElement("strong");
+   strong.textContent=person.name+"｜"+person.totalCount+"件";
+   const products=document.createElement("div");products.className="p-inline-muted";
+   products.textContent=partnerMonthExtraLabels(person.counts,extra).join(" / ")||"保存済み0件";
+   line.append(strong,products);details.append(line);
+  }
+  parent.append(details);
+ }
+}
+async function partnerInlineMonthFetch(){
+ if(!auth.currentUser?.emailVerified||!partnerInlineData)return;
+ const month=pInline("pInlineMonth").value,uid=auth.currentUser.uid;
+ const workspace=partnerInlineWorkspaceCompany,seq=++partnerInlineMonthNonce;
+ const status=pInline("pInlineMonthStatus");
+ const containers=["pInlineMonthTeams","pInlineMonthPeople","pInlineMonthProducts"];
+ ++partnerJointNonce;
+ for(const id of containers)pInline(id).replaceChildren();
+ pInline("pInlineJointPeople").replaceChildren();pInline("pInlineJointProducts").replaceChildren();
+ pInline("pInlineJointStatus").textContent="保存済み件数の照合待ち";
+ pInline("pInlineJointProductStatus").textContent="保存済み件数の照合待ち";
+ status.textContent="月別の保存済み件数を照合中...";
+ if(!/^\d{4}-(?:0[1-9]|1[0-2])$/.test(month)){
+  status.textContent="表示月を選択してください。";return;
+ }
+ try{
+  const payload={month,...(workspace?{workspaceCompanyId:workspace}:{})};
+  const data=(await readPartnerSavedMonth(payload)).data;
+  if(seq!==partnerInlineMonthNonce||auth.currentUser?.uid!==uid||
+     workspace!==partnerInlineWorkspaceCompany||pInline("pInlineMonth").value!==month)return;
+  const keys=partnerInlineData?.categories||[];
+  if(data?.scope!=="partner_saved_month_counts_only"||data.month!==month||
+     data.complete!==false||data.financialFieldsIncluded!==false||
+     !Array.isArray(data.teams)||!Array.isArray(data.people)||
+     data.teams.length>150||data.people.length>1000||
+     !Number.isSafeInteger(data.totalCount)||data.totalCount<0||
+     !data.counts||typeof data.counts!=="object"||
+     keys.length!==9||Object.keys(data.counts).length!==keys.length||
+     keys.some(k=>!Number.isSafeInteger(data.counts[k])||data.counts[k]<0))
+   throw Error("partner_saved_month_contract");
+  partnerSavedMonthCheckTotals(data,keys);
+  const extra=partnerMonthVisibleExtras(data),
+   extraByTeam=new Map((extra?.teams||[]).map(team=>[team.key,team]));
+  const amount=extra?data.combinedTotalCount:data.totalCount;
+  const show=(id,items)=>{
+   const element=pInline(id);
+   for(const item of items){
+    if(typeof item.name!=="string"||item.name.length>80||
+       !Number.isSafeInteger(item.totalCount)||item.totalCount<0)
+      throw Error("partner_saved_month_item");
+    partnerMainAppendRow(element,item.name,item.totalCount+"件");
+   }
+   if(items.length===0)partnerMainAppendRow(element,"保存済みデータ未確認","未入力を0件確定とは扱いません。");
+  };
+  // The team row opens saved-attribution staff/product details for ONE
+  // selected month. Never infer a historical team's people from today's roster.
+  const teamBox=pInline("pInlineMonthTeams");
+  const validCounts=counts=>counts&&typeof counts==="object"&&
+   Object.keys(counts).length===keys.length&&
+   keys.every(k=>Number.isSafeInteger(counts[k])&&counts[k]>=0);
+  let attributed=0;
+  for(const team of data.teams){
+   const extraTeam=extraByTeam.get(team.key);
+   const extraPeople=new Map((extraTeam?.members||[]).map(p=>[p.key,p]));
+   if(typeof team.name!=="string"||team.name.length>80||
+      !Number.isSafeInteger(team.totalCount)||team.totalCount<0||
+      !Array.isArray(team.members)||team.members.length>1000||
+      !validCounts(team.counts)||
+      keys.reduce((n,k)=>n+team.counts[k],0)!==team.totalCount)
+    throw Error("partner_month_team_contract");
+   const details=document.createElement("details");
+   details.className="p-inline-row";
+   const summary=document.createElement("summary");
+   summary.textContent=team.name+"｜"+(team.totalCount+(extraTeam?.totalCount||0))+"件（"+
+    team.members.length+"人・押すと内訳表示）";
+   details.append(summary);
+   let memberTotal=0;
+   for(const member of team.members){
+    if(typeof member.name!=="string"||member.name.length>80||
+       !Number.isSafeInteger(member.totalCount)||member.totalCount<0||
+       !validCounts(member.counts)||
+       keys.reduce((n,k)=>n+member.counts[k],0)!==member.totalCount)
+     throw Error("partner_month_team_member_contract");
+    memberTotal+=member.totalCount;
+    const additional=extraPeople.get(member.key);
+    const item=document.createElement("div");item.className="p-inline-row";
+    const title=document.createElement("strong");
+    title.textContent=member.name+"｜"+(member.totalCount+(additional?.totalCount||0))+"件";
+    const products=document.createElement("div");
+    products.className="p-inline-muted";
+    const nonzero=keys.filter(k=>member.counts[k]>0)
+     .map(k=>k+" "+member.counts[k]+"件");
+    const lines=[...nonzero,...partnerMonthExtraLabels(additional?.counts,extra)];
+    products.textContent=lines.length?lines.join(" / "):"保存済み0件";
+    item.append(title,products);details.append(item);
+   }
+   if(memberTotal!==team.totalCount)throw Error("partner_month_team_sum");
+   const originalMembers=new Set(team.members.map(person=>person.key));
+   for(const additional of extraTeam?.members||[]){
+    if(originalMembers.has(additional.key))continue;
+    const item=document.createElement("div");item.className="p-inline-row";
+    const title=document.createElement("strong");
+    title.textContent=additional.name+"｜"+additional.totalCount+"件";
+    const products=document.createElement("div");products.className="p-inline-muted";
+    products.textContent=partnerMonthExtraLabels(additional.counts,extra).join(" / ")||"保存済み0件";
+    item.append(title,products);details.append(item);
+   }
+   attributed+=team.totalCount;
+   teamBox.append(details);
+  }
+  if(attributed+(data.unattributedCount??0)!==data.totalCount)
+   throw Error("partner_month_total_sum");
+  partnerMonthAppendExtraOnlyTeams(teamBox,extra,new Set(data.teams.map(t=>t.key)));
+  if(!data.teams.length&&!extra?.teams.length)
+   partnerMainAppendRow(teamBox,"班の保存済みデータなし","未入力を0件確定とは扱いません。");
+  show("pInlineMonthPeople",partnerMonthMergedPeople(data,extra));
+  const products=[...keys.map(k=>({name:k,totalCount:data.counts[k]})),
+   ...(extra?.products||[]).map(p=>({name:p.name,totalCount:p.totalCount}))]
+   .sort((a,b)=>b.totalCount-a.totalCount||a.name.localeCompare(b.name,"ja"));
+  show("pInlineMonthProducts",products);
+  status.textContent=month.replace("-","年")+"月の保存済み件数："+amount+
+   "件（暫定・未入力日は未照合）"+
+   (data.missingHistoricalTeamAttribution||extra?.unattributedRows?
+    "。班未照合の過去実績があります。":"")+
+   (!extra?"。追加商材は未照合です。":extra.containsUnpublished?
+    "。非公開商材は集計対象外です。":"");
+  void partnerFetchJointMonth("partner",month,workspace);
+ }catch{
+  if(seq!==partnerInlineMonthNonce||auth.currentUser?.uid!==uid||
+     workspace!==partnerInlineWorkspaceCompany)return;
+  for(const id of containers)pInline(id).replaceChildren();
+  status.textContent="月別の件数を確認できません。月別APIの公開状態・所属を確認してください。日別入力は引き続き利用できます。";
+ }
+}
+// Extra products use a separate count-only ledger; the original nine-category
+// form and its save endpoint remain untouched. Unknown API state disables Save.
 async function partnerInlineFetch(){
  if(!auth.currentUser?.emailVerified)return;
  const seq=++partnerInlineNonce,uid=auth.currentUser.uid;
+ ++partnerExtraNonce;partnerExtraData=null;partnerExtraRenderCounts();
  partnerInlineStatus("件数を読み込み中...");
  try{
   const payload={date:pInline("pInlineDate").value};
@@ -12433,10 +13036,13 @@ async function partnerInlineFetch(){
      typeof snap.companyName!=="string"||snap.companyName.length===0)
    throw Error("partner_count_schema");
   partnerInlineData=snap;partnerInlineRender();
+  void partnerExtraFetch();
   partnerInlineStatus("件数を表示しています。金額・単価は読み込んでいません。");
  }catch(e){
   if(seq!==partnerInlineNonce||auth.currentUser?.uid!==uid)return;
-  partnerInlineData=null;pInline("pInlineSave").disabled=true;
+  partnerInlineData=null;partnerExtraData=null;
+  ++partnerExtraNonce;partnerExtraRenderCounts();
+  pInline("pInlineSave").disabled=true;
   pInline("pInlineRanking").replaceChildren();
   pInline("pInlineTeams").replaceChildren();pInline("pInlinePeople").replaceChildren();
   partnerInlineStatus("協力店の件数サービスを確認できません。自社オーナーの件数利用承認・所属・API公開状況をご確認ください。",true);
@@ -12460,18 +13066,24 @@ async function openSameAppPartnerWorkspace(user,workspaceCompanyId=""){
  loginStatus.textContent="ログイン済み・協力店";
  databaseStatus.textContent="件数API";
  pInline("pInlineDate").value=partnerMainDate();
+ pInline("pInlineMonth").value=partnerMainDate().slice(0,7);
  await partnerInlineFetch();
+ if(partnerInlineData)void partnerInlineMonthFetch();
 }
 async function partnerInlineRun(work){
  if(partnerInlineBusy||!partnerInlineData)return;
  const uid=auth.currentUser?.uid;
  partnerInlineBusy=true;
  pInline("pInlineSave").disabled=true;
+ pInline("pInlineExtraSave").disabled=true;
  try{
   const message=await work();
   if(uid!==auth.currentUser?.uid)return;
   await partnerInlineFetch();
-  if(partnerInlineData)partnerInlineStatus(message||"更新しました。");
+  if(partnerInlineData){
+   partnerInlineStatus(message||"更新しました。");
+   void partnerInlineMonthFetch();
+  }
  }catch{
   partnerInlineStatus("保存・招待を確認できませんでした。内容・所属・権限を確認してください。",true);
  }finally{partnerInlineBusy=false;if(partnerInlineData)partnerInlineRenderCounts();}
@@ -12479,7 +13091,19 @@ async function partnerInlineRun(work){
 function partnerInlinePayload(data){
  return {...data,...(partnerInlineWorkspaceCompany?{workspaceCompanyId:partnerInlineWorkspaceCompany}:{})};
 }
+function partnerShowJointRankingTab(which){
+ const options=[
+  ["personal","pInlineJointPersonToggle","pInlineJointPersonalContent"],
+  ["product","pInlineJointProductToggle","pInlineJointProductContent"]
+ ];
+ for(const [type,buttonId,contentId] of options)
+  setAccordionState(pInline(buttonId),pInline(contentId),which===type);
+}
+pInline("pInlineJointPersonToggle").onclick=()=>partnerShowJointRankingTab("personal");
+pInline("pInlineJointProductToggle").onclick=()=>partnerShowJointRankingTab("product");
 pInline("pInlineDate").onchange=partnerInlineFetch;
+pInline("pInlineMonth").onchange=partnerInlineMonthFetch;
+pInline("pInlineMonthRefresh").onclick=partnerInlineMonthFetch;
 pInline("pInlineRefresh").onclick=partnerInlineFetch;
 pInline("pInlineStaff").onchange=partnerInlineRenderCounts;
 pInline("pInlineAddTeam").onclick=()=>partnerInlineRun(async()=>{
@@ -12524,6 +13148,40 @@ pInline("pInlineCopyInvite").onclick=async()=>{
   partnerInlineStatus("招待リンクをコピーしました。");
  }catch{pInline("pInlineInviteUrl").select();partnerInlineStatus("リンクを選択しました。コピーしてください。");}
 };
+pInline("pInlineExtraSave").onclick=()=>partnerInlineRun(async()=>{
+ const snap=partnerInlineData,extra=partnerExtraData;
+ const staffId=pInline("pInlineStaff").value,day=pInline("pInlineDate").value;
+ if(!snap||!extra||extra.date!==day||
+    !snap.staff.some(person=>person.id===staffId&&person.active))
+  throw Error("extra_staff");
+ const inputs=[...pInline("pInlineExtraCountFields")
+  .querySelectorAll("input[data-extra-product-id]")];
+ if(!extra.products.length||inputs.length!==extra.products.length)throw Error("extra_fields");
+ const changes=Object.create(null);
+ for(const p of extra.products){
+  const node=inputs.find(x=>x.dataset.extraProductId===p.id);
+  const n=Number(node?.value);
+  if(!node||node.value.trim()===""||
+     !Number.isSafeInteger(n)||n<0||n>9999)throw Error("extra_count");
+  changes[p.id]=n;
+ }
+ const before=extra.records.find(record=>record.staffId===staffId);
+ const expectedVersion=before?.version??0;
+ const result=(await submitPartnerAdditionalDay(partnerInlinePayload({
+  date:day,staffId,changes,expectedVersion
+ }))).data;
+ if(result?.staffId!==staffId||result?.date!==day||
+    !Number.isSafeInteger(result?.version)||
+    !((result.saved===true&&result.version===expectedVersion+1)||
+     (result.unchanged===true&&result.version===expectedVersion)))
+  throw Error("extra_commit");
+ const verified=(await readPartnerAdditionalDay(partnerInlinePayload({date:day}))).data;
+ const record=verified?.records?.find(x=>x.staffId===staffId);
+ if(!record||record.version!==result.version||
+    extra.products.some(p=>record.counts?.[p.id]!==changes[p.id]))
+  throw Error("extra_verify");
+ return "追加商材の件数を保存し、再取得で確認しました。";
+});
 pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
  const snap=partnerInlineData,staffId=pInline("pInlineStaff").value;
  if(!snap.staff.some(p=>p.id===staffId&&p.active))throw Error("staff");
@@ -12547,15 +13205,141 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
 });
 // Original internal owner sees existing teams PLUS partner-company teams.
 // Never mix partner team IDs into the original sales-team write selectors.
+// Read-only, on-demand Owner view. Requests ONE authorized partner company
+// and ONE selected month; never loads internal finance originals or creates data.
+// The existing dashboard ranking tabs are the Owner's one entry point.
+// Cache by actual signed-in UID and selected month; manual refresh is available.
+function loadOwnerJointForRankingTab(force=false){
+ if(!auth.currentUser||!isCurrentCompanyOwner()||
+    currentCompanyData?.companyKind==="partner"||
+    !/^\d{4}-(?:0[1-9]|1[0-2])$/.test(dashboardMonth.value))return;
+ const key=auth.currentUser.uid+"|"+dashboardMonth.value;
+ if(!force&&ownerJointCachedMonth===key)return;
+ ownerJointCachedMonth=key;
+ void partnerFetchJointMonth("owner",dashboardMonth.value,"");
+}
+individualRankingToggle.addEventListener("click",()=>loadOwnerJointForRankingTab());
+productRankingToggle.addEventListener("click",()=>loadOwnerJointForRankingTab());
+pInline("ownerPartnerJointRefresh").onclick=()=>loadOwnerJointForRankingTab(true);
+pInline("ownerPartnerJointProductsRefresh").onclick=()=>loadOwnerJointForRankingTab(true);
+async function loadOwnerPartnerSavedMonth(companyId,companyName){
+ ++ownerJointNonce;
+ pInline("ownerPartnerJointPeople").replaceChildren();
+ pInline("ownerPartnerJointProducts").replaceChildren();
+ pInline("ownerPartnerJointStatus").textContent="保存済み件数の照合待ち";
+ if(!auth.currentUser||!isCurrentCompanyOwner()||
+    currentCompanyData?.companyKind==="partner"||
+    !partnerMainValidId(companyId))return;
+ const month=pInline("ownerPartnerMonth").value;
+ const status=pInline("ownerPartnerMonthStatus"),target=pInline("ownerPartnerMonthDetails");
+ const uid=auth.currentUser.uid,seq=++ownerPartnerMonthNonce;
+ target.replaceChildren();
+ if(!/^\d{4}-(?:0[1-9]|1[0-2])$/.test(month)){
+  status.textContent="表示月を選んでください。";return;
+ }
+ status.textContent=companyName+" の月別件数を照合中...";
+ try{
+  const data=(await readPartnerSavedMonth({month,partnerCompanyId:companyId})).data;
+  if(seq!==ownerPartnerMonthNonce||auth.currentUser?.uid!==uid||
+     !isCurrentCompanyOwner()||currentCompanyData?.companyKind==="partner"||
+     pInline("ownerPartnerMonth").value!==month||
+     ownerPartnerSelectedCompany!==companyId)return;
+  const keys=["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター",
+   "つばさ・HTB","太陽光・蓄電池AP","U-NEXT"];
+  if(data?.scope!=="partner_saved_month_counts_only"||data.month!==month||
+     data.complete!==false||data.financialFieldsIncluded!==false||
+     !Number.isSafeInteger(data.totalCount)||data.totalCount<0||
+     !Number.isSafeInteger(data.unattributedCount)||data.unattributedCount<0||
+     !Array.isArray(data.teams)||data.teams.length>150)
+   throw Error("owner_partner_month_schema");
+  partnerSavedMonthCheckTotals(data,keys);
+  const extra=partnerMonthVisibleExtras(data),
+   extraTeams=new Map((extra?.teams||[]).map(team=>[team.key,team]));
+  let total=0;
+  for(const team of data.teams){
+   const extraTeam=extraTeams.get(team.key);
+   const extraPeople=new Map((extraTeam?.members||[]).map(person=>[person.key,person]));
+   if(typeof team.name!=="string"||team.name.length>80||
+      !Number.isSafeInteger(team.totalCount)||team.totalCount<0||
+      !Array.isArray(team.members)||team.members.length>1000)
+    throw Error("owner_partner_team_schema");
+   const details=document.createElement("details");
+   details.className="p-inline-row";
+   const summary=document.createElement("summary");
+   summary.textContent=team.name+"｜"+(team.totalCount+(extraTeam?.totalCount||0))+"件（開いてスタッフ別内訳）";
+   details.append(summary);
+   let memberTotal=0;
+   for(const person of team.members){
+    if(typeof person.name!=="string"||person.name.length>80||
+       !Number.isSafeInteger(person.totalCount)||person.totalCount<0||
+       !person.counts||typeof person.counts!=="object"||
+       Object.keys(person.counts).length!==keys.length||
+       keys.some(k=>!Number.isSafeInteger(person.counts[k])||person.counts[k]<0)||
+       keys.reduce((n,k)=>n+person.counts[k],0)!==person.totalCount)
+     throw Error("owner_partner_team_member_schema");
+    memberTotal+=person.totalCount;
+    const additional=extraPeople.get(person.key);
+    const line=document.createElement("div");line.className="p-inline-row";
+    const strong=document.createElement("strong");
+    strong.textContent=person.name+"｜"+(person.totalCount+(additional?.totalCount||0))+"件";
+    const products=document.createElement("div");
+    products.className="p-inline-muted";
+    const lines=[...keys.filter(k=>person.counts[k]>0)
+     .map(k=>k+" "+person.counts[k]+"件"),
+     ...partnerMonthExtraLabels(additional?.counts,extra)];
+    products.textContent=lines.join(" / ")||"保存済み0件";
+    line.append(strong,products);details.append(line);
+   }
+   if(memberTotal!==team.totalCount)throw Error("owner_partner_member_total");
+   const oldPeople=new Set(team.members.map(person=>person.key));
+   for(const additional of extraTeam?.members||[]){
+    if(oldPeople.has(additional.key))continue;
+    const line=document.createElement("div");line.className="p-inline-row";
+    const strong=document.createElement("strong");
+    strong.textContent=additional.name+"｜"+additional.totalCount+"件";
+    const products=document.createElement("div");products.className="p-inline-muted";
+    products.textContent=partnerMonthExtraLabels(additional.counts,extra).join(" / ")||"保存済み0件";
+    line.append(strong,products);details.append(line);
+   }
+   target.append(details);total+=team.totalCount;
+  }
+  if(total+data.unattributedCount!==data.totalCount)
+   throw Error("owner_partner_month_total");
+  partnerMonthAppendExtraOnlyTeams(target,extra,new Set(data.teams.map(team=>team.key)));
+  if(!data.teams.length&&!extra?.teams.length)
+   partnerMainAppendRow(target,"保存済み班の実績がありません","未入力を0件確定とは扱いません。");
+  status.textContent=companyName+"｜"+month+"｜保存済み"+
+   (extra?data.combinedTotalCount:data.totalCount)+"件（暫定・未入力日は未照合）"+
+   (data.missingHistoricalTeamAttribution||extra?.unattributedRows?
+    "。保存当時の班が不明な件数があります。":"")+
+   (!extra?"。追加商材は未照合です。":extra.containsUnpublished?
+    "。非公開商材は集計対象外です。":"");
+ }catch{
+  if(seq!==ownerPartnerMonthNonce||auth.currentUser?.uid!==uid)return;
+  target.replaceChildren();
+  status.textContent="月別件数を確認できません。会社の所属・公開API・選択月を確認してください。";
+ }
+}
 async function loadOwnerPartnerCompanyTeams(){
  const target=document.getElementById("ownerPartnerTeamGroups");
  if(!target)return;
  const seq=++ownerPartnerTeamsNonce;
+ ++ownerPartnerMonthNonce;
+ ownerPartnerSelectedCompany="";ownerPartnerSelectedName="";
+ const controls=pInline("ownerPartnerMonthControls");
+ controls.hidden=true;
+ pInline("ownerPartnerMonthDetails").replaceChildren();
+ pInline("ownerPartnerJointPeople").replaceChildren();
+ pInline("ownerPartnerJointProducts").replaceChildren();
  target.replaceChildren();
  if(!auth.currentUser||!isCurrentCompanyOwner()||currentCompanyData?.companyKind==="partner")return;
  const uid=auth.currentUser.uid;
  const heading=document.createElement("strong");heading.textContent="🤝 協力店の班一覧";
  target.append(heading);
+ controls.hidden=false;
+ if(!pInline("ownerPartnerMonth").value)
+  pInline("ownerPartnerMonth").value=partnerMainDate().slice(0,7);
+ pInline("ownerPartnerMonthStatus").textContent="会社の「月別詳細」を押すと、選択月の班・人・商材の件数を確認できます。";
  try{
   const result=(await readPartnerWorkDay({date:partnerMainDate()})).data;
   if(seq!==ownerPartnerTeamsNonce||uid!==auth.currentUser?.uid)return;
@@ -12569,6 +13353,19 @@ async function loadOwnerPartnerCompanyTeams(){
    for(const team of company.teams)
     partnerMainAppendRow(target,company.name+"・"+team.name,
       company.active?"件数登録対象":"件数利用未承認");
+   // No bulk month fetch. A single explicit tap loads one company and
+   // prevents excessive read traffic when many partners are registered.
+   if(company.active&&partnerMainValidId(company.partnerCompanyId)){
+    const button=document.createElement("button");
+    button.type="button";
+    button.textContent=company.name+"｜月別詳細を表示";
+    button.onclick=()=>{
+     ownerPartnerSelectedCompany=company.partnerCompanyId;
+     ownerPartnerSelectedName=company.name;
+     void loadOwnerPartnerSavedMonth(company.partnerCompanyId,company.name);
+    };
+    target.append(button);
+   }
   }
  }catch{
   if(seq!==ownerPartnerTeamsNonce)return;
@@ -12576,6 +13373,10 @@ async function loadOwnerPartnerCompanyTeams(){
    "協力店APIの公開・オーナー権限・件数利用の承認を確認してください。");
  }
 }
+ pInline("ownerPartnerMonth").onchange=()=>{
+  if(ownerPartnerSelectedCompany)
+   void loadOwnerPartnerSavedMonth(ownerPartnerSelectedCompany,ownerPartnerSelectedName);
+ };
 async function showPartnerInviteAtMain(user,invite){
  // Invite acceptance is an explicit action; never accept while loading login.
  stopRealtimeListeners();
@@ -18042,6 +18843,84 @@ productList.addEventListener(
 );
 
 
+// Separate versioned publication setting; never modify the original sales
+// master when a public flag is toggled. Unknown state means disabled checkbox.
+let ownerCatalogState={revision:0,verified:false,busy:false,rows:new Map()};
+let ownerCatalogNonce=0;
+function ownerCatalogReset(){
+ ++ownerCatalogNonce;
+ ownerCatalogState={revision:0,verified:false,busy:false,rows:new Map()};
+ const el=document.getElementById("ownerPublishedCatalogStatus");
+ if(el)el.textContent="公開状態未確認。変更操作は停止しています。";
+}
+async function ownerCatalogRefresh(){
+ if(!auth.currentUser||!isCurrentCompanyOwner()||
+    currentCompanyData?.companyKind==="partner")return;
+ const uid=auth.currentUser.uid,seq=++ownerCatalogNonce;
+ const status=document.getElementById("ownerPublishedCatalogStatus");
+ ownerCatalogState.verified=false;
+ status.textContent="協力店商材公開設定を照合中...";
+ renderProducts();
+ try{
+  const data=(await readPartnerPublishedCatalog({})).data;
+  if(seq!==ownerCatalogNonce||uid!==auth.currentUser?.uid)return;
+  if(data?.scope!=="partner_published_catalog_count_only"||data.role!=="hub"||
+     !Number.isSafeInteger(data.revision)||data.revision<0||
+     !Array.isArray(data.products)||data.products.length>1000)
+   throw Error("catalog_schema");
+  const rows=new Map();
+  for(const product of data.products){
+   if(typeof product.id!=="string"||!/^[A-Za-z0-9_-]{1,128}$/.test(product.id)||
+      rows.has(product.id)||typeof product.published!=="boolean"||
+      typeof product.name!=="string"||product.name.length>80)
+    throw Error("catalog_product_schema");
+   rows.set(product.id,product);
+  }
+  ownerCatalogState={revision:data.revision,verified:true,busy:false,rows};
+  status.textContent="商材の公開状態を確認済み。";
+ }catch{
+  if(seq!==ownerCatalogNonce||uid!==auth.currentUser?.uid)return;
+  ownerCatalogState={revision:0,verified:false,busy:false,rows:new Map()};
+  status.textContent="公開状態を確認できません。変更せず接続・Owner権限・新APIを確認してください。";
+ }finally{if(seq===ownerCatalogNonce)renderProducts();}
+}
+async function ownerCatalogToggle(productId,published){
+ if(!ownerCatalogState.verified||ownerCatalogState.busy||
+    !ownerCatalogState.rows.has(productId)||
+    !isCurrentCompanyOwner()||currentCompanyData?.companyKind==="partner")return;
+ const uid=auth.currentUser?.uid,revision=ownerCatalogState.revision;
+ ownerCatalogState.busy=true;renderProducts();
+ const status=document.getElementById("ownerPublishedCatalogStatus");
+ status.textContent="公開状態を保存・再取得照合中...";
+ try{
+  const changed=(await setPartnerPublishedProduct({
+   productId,published,expectedRevision:revision
+  })).data;
+  if(uid!==auth.currentUser?.uid)return;
+  if(changed?.saved!==true||changed?.productId!==productId||
+     changed?.published!==published||changed?.revision!==revision+1)
+   throw Error("catalog_save_mismatch");
+  await ownerCatalogRefresh();
+  if(!ownerCatalogState.verified||
+     ownerCatalogState.rows.get(productId)?.published!==published)
+   throw Error("catalog_reload_mismatch");
+  status.textContent="協力店公開ON/OFFを保存・再取得で確認しました。";
+ }catch{
+  if(uid!==auth.currentUser?.uid)return;
+  ownerCatalogState.verified=false;ownerCatalogState.busy=false;
+  status.textContent="公開設定を確定できません。サーバーの設定を再確認してください。";
+  await ownerCatalogRefresh();
+ }finally{
+  if(uid===auth.currentUser?.uid){
+   ownerCatalogState.busy=false;renderProducts();
+  }
+ }
+}
+document.getElementById("ownerPublishedCatalogRefresh").onclick=ownerCatalogRefresh;
+productManagementToggle.addEventListener("click",()=>{
+ if(isCurrentCompanyOwner()&&currentCompanyData?.companyKind!=="partner")
+  void ownerCatalogRefresh();
+});
 function renderProducts() {
 
   productManagementCount.textContent =
@@ -18163,6 +19042,20 @@ function renderProducts() {
         edit
       );
 
+      if(isCurrentCompanyOwner()&&currentCompanyData?.companyKind!=="partner"){
+        const state=ownerCatalogState.rows.get(product.id);
+        const label=document.createElement("label");label.className="p-inline-field";
+        label.style.display="inline-flex";label.style.alignItems="center";
+        label.style.gap="6px";
+        const checkbox=document.createElement("input");checkbox.type="checkbox";
+        checkbox.setAttribute("aria-label",(product.name||"商材")+"を協力店に公開");
+        checkbox.checked=state?.published===true;
+        checkbox.disabled=!ownerCatalogState.verified||ownerCatalogState.busy||!state;
+        checkbox.onchange=()=>void ownerCatalogToggle(product.id,checkbox.checked);
+        const caption=document.createElement("span");
+        caption.textContent=state?.published===true?"協力店に公開中":"協力店に非公開";
+        label.append(checkbox,caption);actions.append(label);
+      }
 
       item.appendChild(
         info
