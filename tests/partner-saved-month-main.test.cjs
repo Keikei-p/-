@@ -399,6 +399,36 @@ test("OFF-only historical extra rows do not become public zero-count reports or 
   "OFF never erases historical extra counts, finance or source ledgers");
 });
 
+test("explicitly saved zero for a published extra product stays reported, without exposing prices",async()=>{
+ const {db,api,req}=seed();
+ db.seed("companies/partner",{...db.rows.get("companies/partner"),name:"協力店A"});
+ db.seed("products/new-service",{companyId:"hub",name:"追加商材X",active:true,
+  unitPrice:987654321,revenue:123456789});
+ db.seed("companies/hub/partnerCatalogSettings/publication",{
+  revision:1,productIds:["new-service"]
+ });
+ const path="companies/partner/partnerAdditionalCountEntries/2026-09-12__m";
+ db.seed(path,{
+  companyId:"partner",hubCompanyId:"hub",date:"2026-09-12",staffId:"m",
+  staffNameSnapshot:"田中",teamIdSnapshot:"teamB",version:1,
+  counts:{"new-service":0},totalCount:0
+ });
+ const before=structuredClone([...db.rows]);
+ const saved=await api.viewSavedMonth(req("p",{month:"2026-09"}));
+ assert.equal(saved.extra.verifiedExtraRows,1,
+  "the saved 0-value key for an ON product means a real report");
+ assert.equal(saved.extra.totalCount,0);
+ const combined=await api.viewCombinedMonth(req("p",{month:"2026-09"}));
+ assert.equal(combined.hasSavedRows,true,"0 reported is different from no report");
+ assert.equal(combined.verifiedPartnerRows,1);
+ assert.equal(combined.companies[0].reported,true);
+ assert.equal(combined.grandTotal,0);
+ assert.equal(combined.unpublishedExtraExcluded,false);
+ assert.doesNotMatch(JSON.stringify({saved,combined}),
+  /unitPrice|revenue|987654321|123456789/);
+ assert.deepEqual([...db.rows],before,"report verification never changes source data");
+});
+
 test("mapped legacy product extra quantities cannot be double-counted",async()=>{
  const {db,api,req}=seed();
  db.seed("companies/partner",{...db.rows.get("companies/partner"),name:"協力店A"});
