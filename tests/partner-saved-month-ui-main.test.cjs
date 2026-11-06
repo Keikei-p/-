@@ -326,6 +326,6 @@ test("partner has separate published extra-product count inputs and audited save
  assert.doesNotMatch(save,/innerHTML|setDoc|updateDoc|getDoc|formatYen/);
  // Existing 9-category form/callable are separate and intact.
  assert.match(html,/id="pInlineCountFields" class="p-inline-grid"/);
- assert.match(html,/pInline\("pInlineSave"\)\.onclick=()=>partnerInlineRun\(async\(\)=>/);
+ assert.match(html,/pInline\("pInlineSave"\)\.onclick=\(\)=>partnerInlineRun\(async\(\)=>/);
  assert.match(html,/await partnerInlineSave\(partnerInlinePayload/);
 });
