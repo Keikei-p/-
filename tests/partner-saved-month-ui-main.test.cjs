@@ -294,3 +294,38 @@ test("original product cards have owner-only server-confirmed partner publish sw
  assert.match(render,/ownerCatalogToggle\(product\.id,checkbox\.checked\)/);
  assert.match(html,/function resetPartnerInline\(\)\{\n ownerCatalogReset\(\)/);
 });
+
+
+test("partner has separate published extra-product count inputs and audited save",()=>{
+ for(const id of ["pInlineExtraCard","pInlineExtraStatus","pInlineExtraCountFields",
+  "pInlineExtraSave","pInlineExtraVersion"])
+  assert.equal((html.match(new RegExp('id="'+id+'"',"g"))||[]).length,1,id);
+ assert.match(index,/exports\.getPartnerAdditionalCounts=onCall\(opts,service\.viewAdditionalCounts\)/);
+ assert.match(index,/exports\.submitPartnerAdditionalCounts=onCall\(opts,service\.submitAdditionalCounts\)/);
+ assert.match(html,/const readPartnerAdditionalDay = httpsCallable\(partnerCountFunctions,"getPartnerAdditionalCounts"\)/);
+ assert.match(html,/const submitPartnerAdditionalDay = httpsCallable\(partnerCountFunctions,"submitPartnerAdditionalCounts"\)/);
+ const start=html.indexOf("function partnerExtraRenderCounts(){");
+ const end=html.indexOf("async function partnerInlineFetch(){",start);
+ assert(start>0&&end>start);
+ const code=html.slice(start,end);
+ assert.match(code,/input\.dataset\.extraProductId=product\.id/);
+ assert.match(code,/partnerExtraData=d/);
+ assert.match(code,/pInline\("pInlineExtraSave"\)\.disabled=!staffId/);
+ assert.match(code,/partnerInlineWorkspaceCompany!==workspace/);
+ assert.match(code,/Object\.values\(r\.counts\)\.reduce/);
+ assert.doesNotMatch(code,/innerHTML|setDoc|updateDoc|getDoc|onSnapshot|formatYen|revenuePerUnit/);
+ const saveStart=html.indexOf('pInline("pInlineExtraSave").onclick=');
+ const saveEnd=html.indexOf('pInline("pInlineSave").onclick=',saveStart);
+ assert(saveStart>0&&saveEnd>saveStart);
+ const save=html.slice(saveStart,saveEnd);
+ assert.match(save,/partnerInlineRun\(async\(\)=>/);
+ assert.match(save,/await submitPartnerAdditionalDay\(partnerInlinePayload/);
+ assert.match(save,/await readPartnerAdditionalDay\(partnerInlinePayload/);
+ assert.match(save,/expectedVersion/);
+ assert.match(save,/extra_verify/);
+ assert.doesNotMatch(save,/innerHTML|setDoc|updateDoc|getDoc|formatYen/);
+ // Existing 9-category form/callable are separate and intact.
+ assert.match(html,/id="pInlineCountFields" class="p-inline-grid"/);
+ assert.match(html,/pInline\("pInlineSave"\)\.onclick=()=>partnerInlineRun\(async\(\)=>/);
+ assert.match(html,/await partnerInlineSave\(partnerInlinePayload/);
+});
