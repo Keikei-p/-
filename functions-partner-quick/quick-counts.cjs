@@ -301,6 +301,85 @@ function makeQuickCounts({db,getAuth,FieldValue,HttpsError,enabled,now=()=>Date.
   if(saved.total!==row.totalCount)fail(HttpsError,"data-loss");
   return {counts:saved.counts,totalCount:saved.total,version:row.version};
  }
+
+ // Quick company-only SB Hikari / Air classification.  This is deliberately
+ // distinct from partnerWorkEntries and the staff-level internet split ledger.
+ // Classification never changes source counts, totals, sales, or rankings.
+ const quickSplitRef=(hubId,date,partnerId)=>db.collection("companies").doc(hubId)
+  .collection("partnerQuickInternetSplits").doc(date).collection("reports").doc(partnerId);
+ const quickSplitAuditRef=(hubId,date,partnerId,revision)=>{
+  const hash=crypto.createHash("sha256")
+   .update([hubId,date,partnerId].join("|")).digest("hex");
+  return db.collection("partnerQuickInternetSplitAudits").doc(hash+"_v"+revision);
+ };
+ const splitInt=n=>Number.isSafeInteger(n)&&n>=0&&n<=9999;
+ function readQuickSplit(saved,source){
+  const combined=source.counts["SB光・AIR"];
+  if(!saved)return {revision:0,verified:false,hikari:null,air:null,
+   combinedCount:combined,sourceVersion:source.version,unclassified:combined};
+  if(!splitInt(saved.hikari)||!splitInt(saved.air)||
+     !splitInt(saved.combinedCount)||
+     saved.hikari+saved.air!==saved.combinedCount||
+     !Number.isSafeInteger(saved.sourceVersion)||saved.sourceVersion<1||
+     !Number.isSafeInteger(saved.revision)||saved.revision<1||saved.revision>=999)
+    fail(HttpsError,"data-loss");
+  const verified=saved.combinedCount===combined&&
+    saved.sourceVersion===source.version;
+  return {revision:saved.revision,verified,hikari:saved.hikari,air:saved.air,
+   combinedCount:combined,sourceVersion:source.version,
+   savedSourceVersion:saved.sourceVersion,unclassified:verified?0:combined};
+ }
+ async function submitOwnerQuickInternetSplit(request){
+  const uid=await caller(request),d=request?.data||{};
+  if(!d||typeof d!=="object"||Array.isArray(d)||
+     Object.keys(d).sort().join("|")!==
+      "air|date|expectedRevision|hikari|partnerCompanyId|reason|sourceVersion"||
+     !ID.test(d.partnerCompanyId||"")||
+     !splitInt(d.hikari)||!splitInt(d.air)||
+     !Number.isSafeInteger(d.sourceVersion)||d.sourceVersion<1||
+     !Number.isSafeInteger(d.expectedRevision)||d.expectedRevision<0||
+     d.expectedRevision>=998||typeof d.reason!=="string"||
+     d.reason.trim().length<3||d.reason.trim().length>160||
+     /[\x00-\x1f\x7f]/.test(d.reason))
+    fail(HttpsError,"invalid-argument");
+  const date=validOwnerDate(d.date);
+  return db.runTransaction(async tx=>{
+   const scope=await ownerQuickContext(tx,uid,d.partnerCompanyId);
+   const sourceSnap=await tx.get(reportRef(scope.hubId,date,scope.partnerId));
+   if(!sourceSnap.exists)fail(HttpsError,"failed-precondition");
+   const source=inspectOwnerQuickRow(sourceSnap.data()||{},scope,date);
+   if(source.version!==d.sourceVersion)fail(HttpsError,"aborted");
+   const combined=source.counts["SB光・AIR"];
+   if(d.hikari+d.air!==combined)fail(HttpsError,"failed-precondition");
+   const ref=quickSplitRef(scope.hubId,date,scope.partnerId);
+   const splitSnap=await tx.get(ref);
+   const raw=splitSnap.exists?splitSnap.data()||{}:null;
+   if(raw&&(raw.hubCompanyId!==scope.hubId||
+      raw.partnerCompanyId!==scope.partnerId||raw.date!==date))
+     fail(HttpsError,"data-loss");
+   const previous=readQuickSplit(raw,source);
+   if(previous.revision!==d.expectedRevision)fail(HttpsError,"aborted");
+   if(previous.verified&&previous.hikari===d.hikari&&previous.air===d.air)
+    return {saved:false,unchanged:true,partnerCompanyId:scope.partnerId,date,
+     revision:previous.revision,combinedCount:combined};
+   const revision=previous.revision+1,stamp=FieldValue.serverTimestamp();
+   const next={hubCompanyId:scope.hubId,partnerCompanyId:scope.partnerId,date,
+    hikari:d.hikari,air:d.air,combinedCount:combined,
+    sourceVersion:source.version,revision,updatedByUid:uid,updatedAt:stamp};
+   if(splitSnap.exists)tx.update(ref,next);
+   else tx.create(ref,{...next,createdAt:stamp});
+   tx.create(quickSplitAuditRef(scope.hubId,date,scope.partnerId,revision),{
+    ...next,previousRevision:previous.revision,
+    previousHikari:previous.hikari,previousAir:previous.air,
+    previousSourceVersion:raw?.sourceVersion||null,
+    reason:d.reason.trim(),changedByUid:uid,createdAt:stamp
+   });
+   return {saved:true,partnerCompanyId:scope.partnerId,date,revision,
+    sourceVersion:source.version,combinedCount:combined,
+    classified:true,auditLogged:true};
+  });
+ }
+
  async function viewOwnerQuickCorrection(request){
   const uid=await caller(request),d=request?.data||{};
   if(Object.keys(d).sort().join("|")!=="date|partnerCompanyId"||
@@ -308,11 +387,19 @@ function makeQuickCounts({db,getAuth,FieldValue,HttpsError,enabled,now=()=>Date.
   const date=validOwnerDate(d.date);
   return db.runTransaction(async tx=>{
    const scope=await ownerQuickContext(tx,uid,d.partnerCompanyId);
-   const snap=await tx.get(reportRef(scope.hubId,date,scope.partnerId));
+   const [snap,splitSnap]=await Promise.all([
+    tx.get(reportRef(scope.hubId,date,scope.partnerId)),
+    tx.get(quickSplitRef(scope.hubId,date,scope.partnerId))
+   ]);
    const row=snap.exists?inspectOwnerQuickRow(snap.data()||{},scope,date):null;
+   if(splitSnap.exists&&(!row||
+      splitSnap.data()?.hubCompanyId!==scope.hubId||
+      splitSnap.data()?.partnerCompanyId!==scope.partnerId||
+      splitSnap.data()?.date!==date))fail(HttpsError,"data-loss");
    return {scope:"hub_owner_quick_count_correction",date,
     partnerCompanyId:scope.partnerId,companyName:scope.companyName,
-    report:row,existingRecordsOnly:true,financialFieldsIncluded:false};
+    report:row,internetSplit:row?readQuickSplit(splitSnap.exists?splitSnap.data():null,row):null,
+    existingRecordsOnly:true,financialFieldsIncluded:false};
   });
  }
  async function submitOwnerQuickCorrection(request){
@@ -354,6 +441,7 @@ function makeQuickCounts({db,getAuth,FieldValue,HttpsError,enabled,now=()=>Date.
     version,totalCount:total,correctionLogged:true};
   });
  }
- return Object.freeze({submit,view,approve,viewOwnerQuickCorrection,submitOwnerQuickCorrection});
+ return Object.freeze({submit,view,approve,viewOwnerQuickCorrection,
+  submitOwnerQuickCorrection,submitOwnerQuickInternetSplit});
 }
 module.exports={makeQuickCounts,KEYS};
