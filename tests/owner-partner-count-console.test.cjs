@@ -248,6 +248,18 @@ test("Owner Hikari/Air reclassification is revision-checked and audit-only, neve
  assert.equal(db.store.get("companies/partner1/partnerInternetSplitAudits/"+day+"__staff1__v2").hikari,2);
  assert.deepEqual(db.store.get("companies/partner1/partnerWorkEntries/"+day+"__staff1"),source);
 });
+test("Corrupt legacy nine-category source refuses Owner split without changing historical counts",async()=>{
+ const {db,ops,req}=fixture();
+ const path="companies/partner1/partnerWorkEntries/"+day+"__staff1";
+ db.seed(path,{...db.store.get(path),totalCount:5});
+ const original=clone([...db.store]);
+ await assert.rejects(ops.classifyOwnerInternet(req("owner",{
+  partnerCompanyId:"partner1",date:day,staffId:"staff1",
+  hikari:3,air:1,sourceVersion:3,expectedRevision:0,
+  reason:"契約内容を照合"})));
+ assert.deepEqual([...db.store],original);
+ assert.equal(db.writes.length,0);
+});
 test("Owner company console uses existing menu, no sign-out, and revokes stale account DOM",()=>{
  const html=fs.readFileSync(path.join(__dirname,"../index.html"),"utf8");
  const server=fs.readFileSync(path.join(__dirname,
