@@ -1,7 +1,7 @@
 name: NICO Nov 9 release candidate full proof gates (NO DEPLOY)
 on:
   push:
-    branches: [release/partner-month-phase1-candidate-20261106, fix/partner-daily-history-rank-active-input-20261106]
+    branches: [release/partner-month-phase1-candidate-20261106, fix/partner-daily-history-rank-active-input-20261106, fix/partner-deleted-staff-daily-count-20261106]
   pull_request:
     branches: [main, release/partner-month-phase1-candidate-20261106]
 permissions:
@@ -54,18 +54,20 @@ jobs:
           test "$(git merge-base HEAD f5ca2bd7ce5db64629d3b2543d1319e672999242)" = f5ca2bd7ce5db64629d3b2543d1319e672999242
           test "$(git hash-object index.html)" = 1b0d7e22d55d3b37f6767d716583ccd5df0c0b15
           test "$(git hash-object firestore.rules)" = 6d6ac7fd3544b0326823e419a3acd7e1d060b714
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = d6ad6aa8f0f26910515aad8cd70962cbcd9ed6c7
           test "$(git hash-object tools/production/phase1-partner-finance-release.mjs)" = 25172984fd36ebf44a19844ef80b2bc6713396c1
           test "$(git hash-object tools/production/verify-live-firestore-roles.mjs)" = 3227ed08c96e29dce9d918982fe9f8ca8199ac83
           git diff --name-only f5ca2bd7ce5db64629d3b2543d1319e672999242...HEAD > /tmp/release-candidate-extra.txt
           cat /tmp/release-candidate-extra.txt
-          if grep -Ev '^([.]github/workflows/(nico-nov9-release-candidate-no-deploy|nico-partner-daily-historic-ranking-no-deploy)[.]yml|index[.]html|docs/PHASE1_SECONDARY_FINANCE_RELEASE_SIGNOFF_NO_DEPLOY[.]md|tools/production/(phase1-bound-identity-readonly|phase1-live-proof-bridge|phase1-partner-finance-release|phase1-reviewed-operator|verify-live-firestore-roles)[.]mjs|tests/(phase1-live-proof-bridge|phase1-partner-finance-release|phase1-reviewed-operator|verify-live-firestore-roles)[.]test[.]mjs|tests/partner-daily-history-active-input[.]test[.]cjs)$' /tmp/release-candidate-extra.txt; then
+          if grep -Ev '^([.]github/workflows/(nico-nov9-release-candidate-no-deploy|nico-partner-daily-historic-ranking-no-deploy|nico-deleted-staff-historical-count-no-deploy)[.]yml|index[.]html|docs/PHASE1_SECONDARY_FINANCE_RELEASE_SIGNOFF_NO_DEPLOY[.]md|tools/production/(phase1-bound-identity-readonly|phase1-live-proof-bridge|phase1-partner-finance-release|phase1-reviewed-operator|verify-live-firestore-roles)[.]mjs|tests/(phase1-live-proof-bridge|phase1-partner-finance-release|phase1-reviewed-operator|verify-live-firestore-roles)[.]test[.]mjs|tests/(partner-daily-history-active-input|partner-workspace)[.]test[.]cjs|functions-partner-workspace/service[.]cjs)$' /tmp/release-candidate-extra.txt; then
             echo 'STOP_UNREVIEWED_NEW_SOURCE'
             exit 1
           fi
-          test "$(wc -l < /tmp/release-candidate-extra.txt)" -eq 14
-          git diff --exit-code f5ca2bd7ce5db64629d3b2543d1319e672999242 HEAD -- firestore.rules firestore.indexes.json functions functions-partner-workspace functions-partner-quick
+          test "$(wc -l < /tmp/release-candidate-extra.txt)" -eq 17
+          git diff --exit-code f5ca2bd7ce5db64629d3b2543d1319e672999242 HEAD -- firestore.rules firestore.indexes.json functions functions-partner-workspace functions-partner-quick ':(exclude)functions-partner-workspace/service.cjs'
       - name: Validate source and test syntax
         run: |
+          node --check functions-partner-workspace/service.cjs
           node --check tools/production/phase1-partner-finance-release.mjs
           node --check tools/production/verify-live-firestore-roles.mjs
           node --check tools/production/phase1-bound-identity-readonly.mjs
