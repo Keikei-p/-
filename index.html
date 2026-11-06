@@ -12471,7 +12471,52 @@ async function partnerInlineMonthFetch(){
    }
    if(items.length===0)partnerMainAppendRow(element,"保存済みデータ未確認","未入力を0件確定とは扱いません。");
   };
-  show("pInlineMonthTeams",data.teams);
+  // The team row opens saved-attribution staff/product details for ONE
+  // selected month. Never infer a historical team's people from today's roster.
+  const teamBox=pInline("pInlineMonthTeams");
+  const validCounts=counts=>counts&&typeof counts==="object"&&
+   Object.keys(counts).length===keys.length&&
+   keys.every(k=>Number.isSafeInteger(counts[k])&&counts[k]>=0);
+  let attributed=0;
+  for(const team of data.teams){
+   if(typeof team.name!=="string"||team.name.length>80||
+      !Number.isSafeInteger(team.totalCount)||team.totalCount<0||
+      !Array.isArray(team.members)||team.members.length>1000||
+      !validCounts(team.counts)||
+      keys.reduce((n,k)=>n+team.counts[k],0)!==team.totalCount)
+    throw Error("partner_month_team_contract");
+   const details=document.createElement("details");
+   details.className="p-inline-row";
+   const summary=document.createElement("summary");
+   summary.textContent=team.name+"｜"+team.totalCount+"件（"+
+    team.members.length+"人・押すと内訳表示）";
+   details.append(summary);
+   let memberTotal=0;
+   for(const member of team.members){
+    if(typeof member.name!=="string"||member.name.length>80||
+       !Number.isSafeInteger(member.totalCount)||member.totalCount<0||
+       !validCounts(member.counts)||
+       keys.reduce((n,k)=>n+member.counts[k],0)!==member.totalCount)
+     throw Error("partner_month_team_member_contract");
+    memberTotal+=member.totalCount;
+    const item=document.createElement("div");item.className="p-inline-row";
+    const title=document.createElement("strong");
+    title.textContent=member.name+"｜"+member.totalCount+"件";
+    const products=document.createElement("div");
+    products.className="p-inline-muted";
+    const nonzero=keys.filter(k=>member.counts[k]>0)
+     .map(k=>k+" "+member.counts[k]+"件");
+    products.textContent=nonzero.length?nonzero.join(" / "):"保存済み0件";
+    item.append(title,products);details.append(item);
+   }
+   if(memberTotal!==team.totalCount)throw Error("partner_month_team_sum");
+   attributed+=team.totalCount;
+   teamBox.append(details);
+  }
+  if(attributed+(data.unattributedCount??0)!==data.totalCount)
+   throw Error("partner_month_total_sum");
+  if(!data.teams.length)
+   partnerMainAppendRow(teamBox,"班の保存済みデータなし","未入力を0件確定とは扱いません。");
   show("pInlineMonthPeople",data.people);
   const products=keys.map(k=>({name:k,totalCount:data.counts[k]}))
    .sort((a,b)=>b.totalCount-a.totalCount||a.name.localeCompare(b.name,"ja"));
