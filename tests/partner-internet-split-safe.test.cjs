@@ -162,7 +162,7 @@ test("reclassifying an old 5-count split appends revision history and never chan
   "companies/p1/partnerInternetSplitAudits/"+day+"__person__v2"]);
  await assert.rejects(ops.submitInternetSplit(req("leader",{...data})));
  assert.equal((await ops.submitInternetSplit(req("leader",{
-  date:day,staffId:"person",hikari:4,air:1,sourceVersion:3,expectedRevision:2})).unchanged,true);
+  date:day,staffId:"person",hikari:4,air:1,sourceVersion:3,expectedRevision:2}))).unchanged,true);
 });
 test("editing the source afterwards marks saved split unverified, never silently claiming rank",async()=>{
  const {db,ops,req}=fixture();
