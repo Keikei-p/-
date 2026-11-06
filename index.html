@@ -6564,6 +6564,11 @@ body.product-reordering .product-list {
         <label class="p-inline-field">表示月<input type="month" id="ownerPartnerMonth" aria-label="本社から確認する協力店の月"></label>
         <p id="ownerPartnerMonthStatus" class="p-inline-muted" role="status" aria-live="polite"></p>
         <div id="ownerPartnerMonthDetails" class="p-inline-list"></div>
+        <div class="p-inline-card" id="ownerPartnerInternetMonth">
+          <h4>SB光・SoftBank Air 内訳（保存済み件数のみ）</h4>
+          <p id="ownerPartnerInternetStatus" class="p-inline-muted" role="status" aria-live="polite">内訳は未照合です。</p>
+          <div id="ownerPartnerInternetSummary" class="p-inline-list"></div>
+        </div>
 
       </div>
 
@@ -7193,6 +7198,7 @@ const readPartnerAdditionalDay = httpsCallable(partnerCountFunctions,"getPartner
 const submitPartnerAdditionalDay = httpsCallable(partnerCountFunctions,"submitPartnerAdditionalCounts");
 // Optional count-only correction API; failures never interrupt the legacy nine-category input.
 const readPartnerInternetSplitDay = httpsCallable(partnerCountFunctions,"getPartnerInternetSplitDay");
+const readPartnerInternetSplitMonth = httpsCallable(partnerCountFunctions,"getPartnerInternetSplitMonth");
 const submitPartnerInternetSplit = httpsCallable(partnerCountFunctions,"submitPartnerInternetSplit");
 
 const partnerInlineManage = httpsCallable(partnerCountFunctions,"managePartnerWorkspace");
@@ -12442,6 +12448,8 @@ function resetPartnerInline(){
  pInline("pInlineInviteUrl").value="";
  pInline("pInlineInviteResult").hidden=true;
  pInline("pInlineMonthStatus").textContent="";
+ pInline("ownerPartnerInternetStatus").textContent="";
+ pInline("ownerPartnerInternetSummary").replaceChildren();
  for(const id of ["pInlineJointPeople","pInlineJointProducts","pInlineMonthTeams","pInlineMonthPeople","pInlineMonthProducts"])
   pInline(id).replaceChildren();
  pInline("pInlineJointStatus").textContent="";
@@ -13423,6 +13431,60 @@ individualRankingToggle.addEventListener("click",()=>loadOwnerJointForRankingTab
 productRankingToggle.addEventListener("click",()=>loadOwnerJointForRankingTab());
 pInline("ownerPartnerJointRefresh").onclick=()=>loadOwnerJointForRankingTab(true);
 pInline("ownerPartnerJointProductsRefresh").onclick=()=>loadOwnerJointForRankingTab(true);
+// Optional/read-only: never interrupt the existing verified partner-month view.
+async function loadOwnerPartnerInternetMonth(companyId,month,uid,seq,expectedCombined){
+ const target=pInline("ownerPartnerInternetSummary"),
+  status=pInline("ownerPartnerInternetStatus");
+ target.replaceChildren();status.textContent="光・Air内訳を照合中…";
+ const stale=()=>seq!==ownerPartnerMonthNonce||auth.currentUser?.uid!==uid||
+  !isCurrentCompanyOwner()||ownerPartnerSelectedCompany!==companyId||
+  pInline("ownerPartnerMonth").value!==month;
+ try{
+  const d=(await readPartnerInternetSplitMonth({month,partnerCompanyId:companyId})).data;
+  if(stale())return;
+  if(d?.scope!=="partner_internet_split_month_counts_only"||
+     d.month!==month||d.partnerCompanyId!==companyId||
+     d.financialFieldsIncluded!==false||d.productionDocumentWrites!==0||
+     !Number.isSafeInteger(expectedCombined)||expectedCombined<0||
+     !Number.isSafeInteger(d.combinedTotal)||d.combinedTotal!==expectedCombined||
+     ![d.verifiedHikari,d.verifiedAir,d.unclassified,d.sourceRows,d.classifiedRows]
+      .every(n=>Number.isSafeInteger(n)&&n>=0)||
+     d.classifiedRows>d.sourceRows||
+     d.verifiedHikari+d.verifiedAir+d.unclassified!==d.combinedTotal||
+     !Array.isArray(d.people)||d.people.length>1000)throw Error("split_month_contract");
+  let sum=0,light=0,air=0,unknown=0;
+  for(const person of d.people){
+   if(!partnerMainValidId(person.staffId)||typeof person.name!=="string"||
+      person.name.length>60||
+      ![person.combined,person.hikari,person.air,person.unclassified]
+       .every(n=>Number.isSafeInteger(n)&&n>=0)||
+      person.hikari+person.air+person.unclassified!==person.combined)
+    throw Error("split_person_contract");
+   sum+=person.combined;light+=person.hikari;
+   air+=person.air;unknown+=person.unclassified;
+  }
+  if(sum!==d.combinedTotal||light!==d.verifiedHikari||
+     air!==d.verifiedAir||unknown!==d.unclassified)throw Error("split_month_parity");
+  partnerMainAppendRow(target,"SB光（確認済み）",d.verifiedHikari+"件");
+  partnerMainAppendRow(target,"SoftBank Air（確認済み）",d.verifiedAir+"件");
+  partnerMainAppendRow(target,"内訳未確認",d.unclassified+"件");
+  if(d.unclassified>0){
+   const details=document.createElement("details");details.className="p-inline-row";
+   const title=document.createElement("summary");
+   title.textContent="未確認の担当者を表示";details.append(title);
+   for(const person of d.people.filter(x=>x.unclassified>0))
+    partnerMainAppendRow(details,person.name,person.unclassified+"件・未振分");
+   target.append(details);
+  }
+  status.textContent="元の合算"+d.combinedTotal+"件＝SB光"+
+   d.verifiedHikari+"件＋Air"+d.verifiedAir+"件＋未確認"+
+   d.unclassified+"件（元の実績は変更しません）";
+ }catch{
+  if(stale())return;
+  target.replaceChildren();
+  status.textContent="内訳は未照合。従来の合算件数・本社の金額表示は変更ありません。";
+ }
+}
 async function loadOwnerPartnerSavedMonth(companyId,companyName){
  ++ownerJointNonce;
  pInline("ownerPartnerJointPeople").replaceChildren();
@@ -13435,6 +13497,8 @@ async function loadOwnerPartnerSavedMonth(companyId,companyName){
  const status=pInline("ownerPartnerMonthStatus"),target=pInline("ownerPartnerMonthDetails");
  const uid=auth.currentUser.uid,seq=++ownerPartnerMonthNonce;
  target.replaceChildren();
+ pInline("ownerPartnerInternetSummary").replaceChildren();
+ pInline("ownerPartnerInternetStatus").textContent="内訳は未照合です。";
  if(!/^\d{4}-(?:0[1-9]|1[0-2])$/.test(month)){
   status.textContent="表示月を選んでください。";return;
  }
@@ -13515,6 +13579,7 @@ async function loadOwnerPartnerSavedMonth(companyId,companyName){
     "。保存当時の班が不明な件数があります。":"")+
    (!extra?"。追加商材は未照合です。":extra.containsUnpublished?
     "。非公開商材は集計対象外です。":"");
+  void loadOwnerPartnerInternetMonth(companyId,month,uid,seq,data.counts["SB光・AIR"]);
  }catch{
   if(seq!==ownerPartnerMonthNonce||auth.currentUser?.uid!==uid)return;
   target.replaceChildren();
