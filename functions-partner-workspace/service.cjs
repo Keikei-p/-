@@ -9,6 +9,7 @@ const {projectPublishedPartnerExtras}=require("./partner-combined-extra-projecti
 const {makePartnerAdditionalOperations}=require("./partner-additional-operations.cjs");
 const {makeLegacyPublicationOperations}=require("./legacy-publication-operations.cjs");
 const {makePartnerInternetSplitOperations}=require("./internet-split-operations.cjs");
+const {makeOwnerPartnerCorrections}=require("./owner-partner-count-operations.cjs");
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -1139,10 +1140,15 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  const {viewInternetSplitDay,viewInternetSplitMonth,submitInternetSplit}=makePartnerInternetSplitOperations({
   db,actor,scope,collection,FieldValue,fail,validDate,canStaff
  });
+ const {viewDay:viewOwnerPartnerDay,correctDay:correctOwnerPartnerDay}=
+  makeOwnerPartnerCorrections({db,actor,scope,collection,FieldValue,fail,
+   validDate,validateCounts,validatePrivateCounts,KEYS,
+   legacyPolicyFor,assertLegacyEdit});
  return Object.freeze({
   manage,accept,view,viewSavedMonth,viewCombinedMonth,
   getPublishedCatalog,setPublishedProduct,viewAdditionalCounts,submitAdditionalCounts,submit,
-  getLegacyGate,activateLegacyCountGate,viewInternetSplitDay,viewInternetSplitMonth,submitInternetSplit
+  getLegacyGate,activateLegacyCountGate,viewInternetSplitDay,viewInternetSplitMonth,submitInternetSplit,
+  viewOwnerPartnerDay,correctOwnerPartnerDay
  });
 }
 module.exports={makeWorkspace,KEYS};
