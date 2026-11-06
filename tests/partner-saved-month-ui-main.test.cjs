@@ -21,7 +21,7 @@ test("monthly UI only fetches bound count-only callable; no money or direct Fire
  assert.match(index,/exports\.getPartnerSavedMonthlyCounts=onCall\(opts,service\.viewSavedMonth\)/);
  assert.match(html,/const readPartnerSavedMonth = httpsCallable\(partnerCountFunctions,"getPartnerSavedMonthlyCounts"\)/);
  const begin=html.indexOf("async function partnerInlineMonthFetch(){");
- const end=html.indexOf("async function partnerInlineFetch(){",begin);
+ const end=html.indexOf("\n}\n",begin)+2;
  assert(begin>=0&&end>begin);
  const block=html.slice(begin,end);
  assert.match(block,/await readPartnerSavedMonth\(payload\)/);
@@ -45,7 +45,7 @@ test("monthly UI only fetches bound count-only callable; no money or direct Fire
  assert.doesNotMatch(block,/\b(?:getDoc|getDocs|getFirestore|setDoc|updateDoc|deleteDoc|writeBatch|onSnapshot|formatYen)\s*\(/);
  assert.doesNotMatch(block,/totalRevenue|unitPrice|revenuePerUnit|cashback|salesAmount/);
  const start=service.indexOf(" async function viewSavedMonth(request){");
- const finish=service.indexOf(" async function submit(request){",start);
+ const finish=service.indexOf(" async function viewCombinedMonth(request){",start);
  assert(start>0&&finish>start);
  const handler=service.slice(start,finish);
  assert.doesNotMatch(handler,/tx\.(?:set|create|update|delete)\(|\b(?:setDoc|updateDoc|deleteDoc)\(/);
