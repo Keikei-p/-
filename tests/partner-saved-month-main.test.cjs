@@ -12,6 +12,7 @@ class Ref{
 }
 class Query{
  constructor(db,path,filters=[],max=Infinity){this.db=db;this.path=path;this.filters=filters;this.max=max;}
+ doc(id){return new Ref(this.db,this.path+"/"+id);}
  where(key,op,val){return new Query(this.db,this.path,[...this.filters,[key,op,val]],this.max);}
  limit(n){return new Query(this.db,this.path,this.filters,n);}
  async get(){
