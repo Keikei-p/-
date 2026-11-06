@@ -44,8 +44,8 @@ jobs:
           test "$(git merge-base HEAD "$base")" = "$base"
           git diff --name-only "$base"...HEAD > /tmp/nico-history-input-files.txt
           cat /tmp/nico-history-input-files.txt
-          test "$(wc -l < /tmp/nico-history-input-files.txt)" -eq 3
-          if grep -Ev '^(index[.]html|tests/partner-daily-history-active-input[.]test[.]cjs|[.]github/workflows/nico-partner-daily-historic-ranking-no-deploy[.]yml)$' /tmp/nico-history-input-files.txt; then
+          test "$(wc -l < /tmp/nico-history-input-files.txt)" -eq 4
+          if grep -Ev '^(index[.]html|tests/partner-daily-history-active-input[.]test[.]cjs|[.]github/workflows/(nico-partner-daily-historic-ranking-no-deploy|nico-nov9-release-candidate-no-deploy)[.]yml)$' /tmp/nico-history-input-files.txt; then
             echo STOP_UNREVIEWED_HISTORY_INPUT_FILES
             exit 1
           fi
