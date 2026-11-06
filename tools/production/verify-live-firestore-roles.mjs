@@ -218,6 +218,10 @@ export function createLiveFirestoreOwnerPreflight({
       await requireResponse(transport,ROOT+':runQuery',
         'POST',ownerIdToken,financeQuery(collection,internalCompanyId),200,null,internalCompanyId);
     }
+    // A four-request Owner proof can outlive a token that was valid on its
+    // first GET. Fail closed rather than claiming continuing finance access
+    // from stale authentication. No additional Firestore writes or reads.
+    identity(ownerIdToken,expectedOwnerUid,Math.floor(now()/1000));
     return Object.freeze({
       checkedAgainst:fetchImpl===undefined?'production-live':'synthetic-only',
       ownerFinanceAllowed:true
