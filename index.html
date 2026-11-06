@@ -12591,7 +12591,7 @@ function partnerValidateCombinedMonth(data,month){
  for(const row of data.people){
   if(!/^[a-f0-9]{64}$/.test(row.key||"")||ids.has(row.key)||
      !["direct","partner"].includes(row.kind)||
-     typeof row.companyName!=="string"||row.companyName.length>80)invalid();
+     typeof row.companyName!=="string"||!row.companyName.trim()||row.companyName.length>80)invalid();
   ids.add(row.key);
  }
  // Unexpected sensitive keys anywhere in the response are an API failure,
