@@ -833,7 +833,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  // Isolated read-only monthly counts. Never read financial originals or write.
  async function viewSavedMonth(request){
   const a=await actor(request),d=request?.data||{};
-  if(Object.keys(d).some(k=>!["month","workspaceCompanyId","partnerCompanyId"].includes(k)))
+  if(Object.keys(d).some(k=>!["month","workspaceCompanyId","partnerCompanyId","codeSessionToken"].includes(k)))
    fail("invalid-argument");
   const current=new Intl.DateTimeFormat("en-CA",{
    timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"
