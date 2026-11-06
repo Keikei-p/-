@@ -38,11 +38,11 @@ jobs:
           cat /tmp/partner-ui-files.txt
           while IFS= read -r file; do
             case "$file" in
-              index.html|tests/partner-ui-safe-increment.test.cjs|.github/workflows/nico-partner-ui-safe-no-deploy.yml) ;;
+              index.html|tests/partner-ui-safe-increment.test.cjs|tests/partner-saved-month-ui-main.test.cjs|.github/workflows/nico-partner-ui-safe-no-deploy.yml) ;;
               *) echo "BLOCK_PROTECTED_OR_UNREVIEWED_FILE: $file"; exit 1 ;;
             esac
           done < /tmp/partner-ui-files.txt
-          test "$(wc -l < /tmp/partner-ui-files.txt)" -eq 3
+          test "$(wc -l < /tmp/partner-ui-files.txt)" -eq 4
       - name: Synthetic catalog, ranking, staff, saved-month and current UI regression tests
         run: |
           set -euo pipefail
