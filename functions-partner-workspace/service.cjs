@@ -1136,13 +1136,13 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   db,actor,scope,collection,FieldValue,fail,validDate,validName,canStaff,jstToday,KEYS
  });
  // Additive SB光/Air detail lives in separate count-only docs, preserving old ledger.
- const {viewInternetSplitDay,submitInternetSplit}=makePartnerInternetSplitOperations({
+ const {viewInternetSplitDay,viewInternetSplitMonth,submitInternetSplit}=makePartnerInternetSplitOperations({
   db,actor,scope,collection,FieldValue,fail,validDate,canStaff
  });
  return Object.freeze({
   manage,accept,view,viewSavedMonth,viewCombinedMonth,
   getPublishedCatalog,setPublishedProduct,viewAdditionalCounts,submitAdditionalCounts,submit,
-  getLegacyGate,activateLegacyCountGate,viewInternetSplitDay,submitInternetSplit
+  getLegacyGate,activateLegacyCountGate,viewInternetSplitDay,viewInternetSplitMonth,submitInternetSplit
  });
 }
 module.exports={makeWorkspace,KEYS};
