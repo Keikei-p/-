@@ -12439,6 +12439,31 @@ function partnerInlineFillSelect(id,items,label,preferred){
  if(items.some(x=>x.id===pick))select.value=pick;
  return select.value;
 }
+// Only active staff who belong to an active team can be selected for NEW
+// count entry. Retired teams and inactive staff remain in historical rankings.
+function partnerInlineEditableStaff(snap){
+ const activeTeamIds=new Set((snap?.teams||[])
+  .filter(t=>t.active===true).map(t=>t.id));
+ return (snap?.staff||[]).filter(p=>p.active===true&&activeTeamIds.has(p.teamId));
+}
+function partnerInlineDailyRankingTotals(snap){
+ const staff=snap.staff||[],teams=snap.teams||[];
+ const byTeam=new Map(teams.map(t=>[t.id,0]));
+ const byPerson=[],byProduct=new Map(snap.categories.map(k=>[k,0]));
+ for(const entry of snap.records){
+  // Do not drop already-saved counts when a colleague or team is retired.
+  const person=staff.find(p=>p.id===entry.staffId);
+  if(!person)continue;
+  const total=entry.totalCount;
+  if(!Number.isSafeInteger(total)||total<0)continue;
+  byPerson.push({name:person.name,n:total});
+  if(byTeam.has(entry.teamIdSnapshot))
+   byTeam.set(entry.teamIdSnapshot,byTeam.get(entry.teamIdSnapshot)+total);
+  for(const key of snap.categories)
+   byProduct.set(key,byProduct.get(key)+(entry.counts?.[key]||0));
+ }
+ return {byTeam,byPerson,byProduct};
+}
 function partnerInlineRenderCounts(){
  const snap=partnerInlineData;
  if(!snap||snap.role==="hub")return;
@@ -12462,7 +12487,8 @@ function partnerInlineRender(){
  pInline("pInlineTitle").textContent="🤝 "+snap.companyName+"｜実績管理";
  const teams=(snap.teams||[]).filter(x=>x.active===true);
  const staff=(snap.staff||[]).filter(x=>x.active===true);
- const teamById=new Map(teams.map(x=>[x.id,x]));
+ const editableStaff=partnerInlineEditableStaff(snap);
+ const teamById=new Map((snap.teams||[]).map(x=>[x.id,x]));
  const teamList=pInline("pInlineTeams");teamList.replaceChildren();
  for(const t of teams)partnerMainAppendRow(teamList,snap.companyName+"・"+t.name,
   staff.filter(p=>p.teamId===t.id).length+"人");
@@ -12477,29 +12503,19 @@ function partnerInlineRender(){
  for(const person of staff)partnerMainAppendRow(list,person.name,
   (teamById.get(person.teamId)?.name||"未配属")+"・"+
   (person.kind==="managed"?"メールなし":person.role==="leader"?"リーダー":"メンバー"));
- partnerInlineFillSelect("pInlineStaff",staff,
+ partnerInlineFillSelect("pInlineStaff",editableStaff,
   p=>p.name+"（"+(teamById.get(p.teamId)?.name||"未設定")+"）");
  partnerInlineRenderCounts();
  // Show ONLY numerical counts from the isolated partner count API, never money.
  const rankings=pInline("pInlineRanking");rankings.replaceChildren();
- const byTeam=new Map(teams.map(t=>[t.id,0]));
- const byPerson=[],byProduct=new Map(snap.categories.map(k=>[k,0]));
- for(const entry of snap.records){
-  const person=staff.find(p=>p.id===entry.staffId);
-  if(!person)continue;
-  const total=entry.totalCount;
-  if(!Number.isSafeInteger(total)||total<0)continue;
-  byPerson.push({name:person.name,n:total});
-  if(byTeam.has(entry.teamIdSnapshot))
-   byTeam.set(entry.teamIdSnapshot,byTeam.get(entry.teamIdSnapshot)+total);
-  for(const key of snap.categories)byProduct.set(key,byProduct.get(key)+(entry.counts?.[key]||0));
- }
+ const {byTeam,byPerson,byProduct}=partnerInlineDailyRankingTotals(snap);
  const heading=label=>{
   const h=document.createElement("h4");h.textContent=label;rankings.append(h);
  };
  heading("班別");
  for(const [id,n] of [...byTeam.entries()].sort((a,b)=>b[1]-a[1]))
-  partnerMainAppendRow(rankings,snap.companyName+"・"+(teamById.get(id)?.name||"班"),n+"件");
+  partnerMainAppendRow(rankings,snap.companyName+"・"+(teamById.get(id)?.name||"班")+
+   (teamById.get(id)?.active===false?"（過去班）":""),n+"件");
  heading("個人別");
  for(const [i,p] of byPerson.sort((a,b)=>b.n-a.n).entries())
   partnerMainAppendRow(rankings,(i+1)+"位 "+p.name,p.n+"件");
@@ -13185,7 +13201,7 @@ pInline("pInlineExtraSave").onclick=()=>partnerInlineRun(async()=>{
 });
 pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
  const snap=partnerInlineData,staffId=pInline("pInlineStaff").value;
- if(!snap.staff.some(p=>p.id===staffId&&p.active))throw Error("staff");
+ if(!partnerInlineEditableStaff(snap).some(p=>p.id===staffId))throw Error("staff");
  const counts=Object.create(null);
  for(const key of snap.categories){
   const node=[...pInline("pInlineCountFields").querySelectorAll("input[data-count-key]")]
