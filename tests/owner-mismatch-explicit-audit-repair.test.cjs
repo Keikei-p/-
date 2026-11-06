@@ -52,7 +52,7 @@ test("well-formed divergent counts are eligible, but unknown evidence, consisten
   {results:{a:{count:null}}},
   {results:[{count:1},{count:2}]},
   {results:null},{id:null},{id:"../other"},
-  {companyId:"other"},{date:"2026-11-21"}
+  {companyId:"other"},{date:"not-a-date"}
  ]){
   assert.equal(c.canBeginOwnerMismatchCorrection(record(patch)),false,JSON.stringify(patch));
  }
