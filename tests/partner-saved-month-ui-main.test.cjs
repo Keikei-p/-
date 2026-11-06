@@ -280,7 +280,7 @@ test("original product cards have owner-only server-confirmed partner publish sw
  const publish=html.slice(start,end);
  assert.match(publish,/isCurrentCompanyOwner\(\)/);
  assert.match(publish,/currentCompanyData\?\.companyKind==="partner"/);
- assert.match(publish,/data\.scope!=="partner_published_catalog_count_only"/);
+ assert.match(publish,/data\?\.scope!=="partner_published_catalog_count_only"/);
  assert.match(publish,/await readPartnerPublishedCatalog\(\{\}\)/);
  assert.match(publish,/setPartnerPublishedProduct\(\{/);
  assert.match(publish,/expectedRevision:revision/);
