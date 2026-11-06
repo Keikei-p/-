@@ -4888,7 +4888,7 @@ body.product-reordering .product-list {
 
             <button id="quickPartnerButton" class="quick-menu-button" type="button" aria-pressed="false" style="display:none;">
               <span class="quick-menu-icon">🤝</span>
-              協力店
+              協力店管理
             </button>
 
             <button id="quickOwnerButton" class="quick-menu-button" type="button" aria-pressed="false" style="display:none;">
@@ -5614,7 +5614,7 @@ body.product-reordering .product-list {
   <!-- Owner-only partner companies; populated from the EXISTING count-only callable. -->
   <div id="partnerCompanyManagement" class="management-card quick-panel" style="display:none;">
     <div class="quick-panel-header">
-      <div class="management-title">🤝 協力店</div>
+      <div class="management-title">🤝 協力店管理</div>
       <button id="closePartnerCompanyButton" class="quick-panel-close" type="button">閉じる</button>
     </div>
     <p style="color:var(--sub);font-size:13px;line-height:1.8;">
@@ -5630,6 +5630,18 @@ body.product-reordering .product-list {
     </div>
     <p id="partnerCompanyStatus" role="status" aria-live="polite"></p>
     <div id="partnerCompanyList" style="display:grid;gap:12px;"></div>
+    <section id="ownerPartnerProxyPanel" class="p-inline-card" hidden>
+      <div class="quick-panel-header">
+        <h3 id="ownerPartnerProxyTitle">協力店の件数管理</h3>
+        <button type="button" class="team-action-button" id="ownerPartnerProxyClose">閉じる</button>
+      </div>
+      <p class="p-inline-muted">ログインを切り替えず、オーナー権限で保存済みの件数だけ訂正できます。売上・単価・契約履歴・班の所属は変更しません。新規の実績は協力店側で登録してください。</p>
+      <p id="ownerPartnerProxyStatus" role="status" aria-live="polite"></p>
+      <div class="p-inline-actions">
+        <button type="button" class="team-action-button" id="ownerPartnerProxyRefresh">選択会社の件数を再取得</button>
+      </div>
+      <div id="ownerPartnerProxyStaff" class="p-inline-list"></div>
+    </section>
     <p style="color:var(--sub);font-size:12px;line-height:1.7;">
       当面の件数入力は既存のメール認証付き専用画面を使ってください。会社コード方式は本番公開前です。
     </p>
@@ -7199,6 +7211,8 @@ const submitPartnerAdditionalDay = httpsCallable(partnerCountFunctions,"submitPa
 // Optional count-only correction API; failures never interrupt the legacy nine-category input.
 const readPartnerInternetSplitDay = httpsCallable(partnerCountFunctions,"getPartnerInternetSplitDay");
 const readPartnerInternetSplitMonth = httpsCallable(partnerCountFunctions,"getPartnerInternetSplitMonth");
+const readOwnerPartnerCorrectionDay = httpsCallable(partnerCountFunctions,"getOwnerPartnerCorrectionDay");
+const submitOwnerPartnerCorrection = httpsCallable(partnerCountFunctions,"submitOwnerPartnerCorrection");
 const submitPartnerInternetSplit = httpsCallable(partnerCountFunctions,"submitPartnerInternetSplit");
 
 const partnerInlineManage = httpsCallable(partnerCountFunctions,"managePartnerWorkspace");
@@ -9443,6 +9457,147 @@ quickInviteButton.onclick =
 // A small owner-only company view, backed by the existing count-only API.
 // Never use the legacy records/products collections or put financial data in this UI.
 let partnerCompanyListGeneration=0;
+let ownerProxyCompany="",ownerProxyCompanyName="",ownerProxyNonce=0;
+const ownerProxyPanel=document.getElementById("ownerPartnerProxyPanel");
+function ownerProxyReset(){
+ ++ownerProxyNonce;ownerProxyCompany="";ownerProxyCompanyName="";
+ ownerProxyPanel.hidden=true;
+ document.getElementById("ownerPartnerProxyStaff").replaceChildren();
+ document.getElementById("ownerPartnerProxyStatus").textContent="";
+}
+async function openOwnerPartnerProxy(companyId,companyName){
+ if(!canLoadPartnerRanking()||!partnerMainValidId(companyId)||!currentUser?.uid)
+  return;
+ const day=partnerCompanyDate.value,uid=currentUser.uid,seq=++ownerProxyNonce;
+ ownerProxyCompany=companyId;ownerProxyCompanyName=companyName;
+ ownerProxyPanel.hidden=false;
+ document.getElementById("ownerPartnerProxyTitle").textContent=
+  "🏢 "+companyName+"｜件数の確認・訂正";
+ const status=document.getElementById("ownerPartnerProxyStatus"),
+  target=document.getElementById("ownerPartnerProxyStaff");
+ target.replaceChildren();status.textContent="保存済み件数を照合中…";
+ const stale=()=>seq!==ownerProxyNonce||
+  currentUser?.uid!==uid||!canLoadPartnerRanking()||
+  partnerCompanyDate.value!==day||ownerProxyCompany!==companyId||
+  partnerCompanyManagement.style.display==="none";
+ try{
+  const data=(await readOwnerPartnerCorrectionDay({
+   date:day,partnerCompanyId:companyId
+  })).data;
+  if(stale())return;
+  const keys=["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR",
+   "ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"];
+  if(data?.scope!=="hub_owner_partner_count_correction"||
+     data.partnerCompanyId!==companyId||data.date!==day||
+     data.existingRecordsOnly!==true||data.financialFieldsIncluded!==false||
+     JSON.stringify(data.categories)!==JSON.stringify(keys)||
+     !Array.isArray(data.records)||data.records.length>200)
+   throw Error("owner_proxy_schema");
+  const seen=new Set();
+  for(const record of data.records){
+   if(!partnerMainValidId(record.staffId)||seen.has(record.staffId)||
+      typeof record.staffName!=="string"||record.staffName.length>60||
+      !Number.isSafeInteger(record.version)||record.version<1||
+      !record.counts||keys.some(k=>
+       !Number.isSafeInteger(record.counts[k])||record.counts[k]<0||
+        record.counts[k]>9999)||
+      keys.reduce((n,k)=>n+record.counts[k],0)!==record.totalCount)
+    throw Error("owner_proxy_record");
+   seen.add(record.staffId);
+   const card=document.createElement("details");card.className="p-inline-row";
+   const heading=document.createElement("summary");
+   heading.textContent=record.staffName+"｜"+record.totalCount+"件・第"+record.version+"版";
+   card.append(heading);
+   const form=document.createElement("div");
+   form.className="p-inline-grid";form.style.marginTop="12px";
+   const fields=new Map();
+   for(const key of keys){
+    const label=document.createElement("label");label.className="p-inline-field";
+    label.textContent=key;
+    const input=document.createElement("input");
+    input.type="number";input.inputMode="numeric";input.min="0";
+    input.max="9999";input.step="1";input.value=String(record.counts[key]);
+    label.append(input);form.append(label);fields.set(key,input);
+   }
+   const reasonLabel=document.createElement("label");
+   reasonLabel.className="p-inline-field";reasonLabel.textContent="訂正理由（必須）";
+   const reason=document.createElement("input");reason.type="text";
+   reason.maxLength=160;reason.placeholder="例：契約確認後の件数訂正";
+   reasonLabel.append(reason);
+   const save=document.createElement("button");
+   save.type="button";save.className="team-action-button";
+   save.textContent="この担当者の件数を訂正";
+   const feedback=document.createElement("p");feedback.className="p-inline-muted";
+   save.onclick=async()=>{
+    if(stale()||save.disabled)return;
+    const counts=Object.create(null);
+    for(const [key,input] of fields){
+     const value=input.value.trim();
+     if(!/^\\d+$/.test(value)){feedback.textContent="0以上の整数を入力してください。";return;}
+     const n=Number(value);
+     if(!Number.isSafeInteger(n)||n<0||n>9999){
+      feedback.textContent="件数は0～9999です。";return;
+     }
+     counts[key]=n;
+    }
+    const justification=reason.value.trim(),sum=keys.reduce((n,k)=>n+counts[k],0);
+    if(justification.length<3||justification.length>160){
+     feedback.textContent="訂正理由を3文字以上で入力してください。";return;
+    }
+    if(keys.every(k=>counts[k]===record.counts[k])){
+     feedback.textContent="件数に変更はありません。";return;
+    }
+    if(!window.confirm(companyName+"｜"+record.staffName+"｜"+day+
+      "\\n保存済み "+record.totalCount+"件 → 訂正 "+sum+
+      "件。変更履歴を残して保存しますか？"))return;
+    save.disabled=true;feedback.textContent="監査履歴付きで訂正を保存中…";
+    try{
+     const result=(await submitOwnerPartnerCorrection({
+      partnerCompanyId:companyId,date:day,staffId:record.staffId,
+      expectedVersion:record.version,counts,reason:justification
+     })).data;
+     if(stale())return;
+     if(result?.saved!==true||result.partnerCompanyId!==companyId||
+        result.staffId!==record.staffId||result.date!==day||
+        result.version!==record.version+1||result.totalCount!==sum||
+        result.correctionLogged!==true)throw Error("owner_proxy_save");
+     const verified=(await readOwnerPartnerCorrectionDay({
+      date:day,partnerCompanyId:companyId
+     })).data;
+     if(stale())return;
+     const fresh=verified?.records?.find(x=>x.staffId===record.staffId);
+     if(fresh?.version!==result.version||fresh.totalCount!==sum||
+        keys.some(k=>fresh.counts?.[k]!==counts[k]))
+      throw Error("owner_proxy_reverify");
+     feedback.textContent="保存・再取得・監査履歴を確認済み。";
+     // Always discard old editable version after any committed update.
+     void openOwnerPartnerProxy(companyId,companyName);
+     void loadPartnerCompanyList();
+    }catch{
+     if(!stale())feedback.textContent=
+      "保存または再取得を確認できません。最新件数を再取得してください。";
+    }finally{save.disabled=false;}
+   };
+   card.append(form,reasonLabel,save,feedback);target.append(card);
+  }
+  status.textContent=data.records.length?
+   "保存済み "+data.records.length+"人分。担当者を押すと商材別件数を訂正できます。":
+   "選択日の保存済み件数はありません。新規入力は協力店側で行ってください。";
+ }catch{
+  if(stale())return;
+  target.replaceChildren();
+  status.textContent="件数を確認できません。権限・所属・サービス状態をご確認ください。";
+ }
+}
+document.getElementById("ownerPartnerProxyClose").onclick=ownerProxyReset;
+document.getElementById("ownerPartnerProxyRefresh").onclick=()=>{
+ if(ownerProxyCompany)void openOwnerPartnerProxy(ownerProxyCompany,ownerProxyCompanyName);
+};
+partnerCompanyDate.addEventListener("change",()=>{
+ ownerProxyReset();
+ if(partnerCompanyManagement.style.display!=="none")
+  void loadPartnerCompanyList();
+});
 async function loadPartnerCompanyList(){
   const generation=++partnerCompanyListGeneration;
   partnerCompanyList.replaceChildren();
@@ -9588,6 +9743,13 @@ async function loadPartnerCompanyList(){
         card.append(separate);
       }
       if(company.active){
+        const enter=document.createElement("button");enter.type="button";
+        enter.className="team-action-button";
+        enter.style.cssText="min-height:44px;margin:6px 0;";
+        enter.textContent="🏢 "+company.name+" の管理画面を開く";
+        enter.onclick=()=>{if(stillOwner())void openOwnerPartnerProxy(
+          company.partnerCompanyId,company.name);};
+        card.append(enter);
         const teams=document.createElement("p");
         teams.style.cssText="font-size:12px;color:var(--sub);line-height:1.7;";
         teams.textContent="所属班："+(company.teams.length?
@@ -9648,6 +9810,7 @@ async function loadPartnerCompanyList(){
 }
 quickPartnerButton.onclick=()=>{
   if(!canLoadPartnerRanking())return;
+  ownerProxyReset();
   closeQuickPanels();
   showManagementWorkspace(partnerCompanyManagement);
   quickPartnerButton.setAttribute("aria-pressed","true");
@@ -9657,7 +9820,9 @@ quickPartnerButton.onclick=()=>{
   void loadPartnerCompanyList();
 };
 document.getElementById("refreshPartnerCompanies").onclick=()=>void loadPartnerCompanyList();
-document.getElementById("closePartnerCompanyButton").onclick=closeQuickPanels;
+document.getElementById("closePartnerCompanyButton").onclick=()=>{
+ ownerProxyReset();closeQuickPanels();
+};
 
 quickOwnerButton.onclick =
   () => {
