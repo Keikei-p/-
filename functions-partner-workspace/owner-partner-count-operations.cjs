@@ -183,6 +183,8 @@ function makeOwnerPartnerCorrections({db,actor,scope,collection,FieldValue,fail,
    try{
     source=validateSource(originalSnap.data(),{
      cid:d.partnerCompanyId,hubId:s.cid,date,staffId:d.staffId});
+    const originalCounts=validateCounts(originalSnap.data().counts);
+    if(originalCounts.total!==originalSnap.data().totalCount)fail("data-loss");
     previous=readSplit(splitSnap.exists?splitSnap.data():null,{
      cid:d.partnerCompanyId,hubId:s.cid,date,staffId:d.staffId});
    }catch{fail("data-loss");}
