@@ -276,3 +276,32 @@ test("joint-month access rejects arbitrary company overrides and future month",a
    e=>e.code==="invalid-argument");
  }
 });
+
+
+test("joint ranking never leaks a revoked partner or another hub's company",async()=>{
+ const {api,req,db}=seed();
+ db.seed("companies/partner",{...db.rows.get("companies/partner"),name:"協力店A"});
+ db.seed("companies/foreign",{companyKind:"partner",hubCompanyId:"otherHub",
+  name:"他社",active:true});
+ db.seed("partnerRelations/foreign",{partnerCompanyId:"foreign",
+  hubCompanyId:"otherHub",active:true,countSharingApproved:true});
+ db.seed("companies/foreign/partnerWorkEntries/2026-10-09__unknown",{
+  date:"2026-10-09",companyId:"foreign",hubCompanyId:"otherHub",
+  staffId:"unknown",teamIdSnapshot:"foreignTeam",staffNameSnapshot:"他社担当",
+  totalCount:999,counts:{...zero(),NURO:999}
+ });
+ const first=await api.viewCombinedMonth(req("h",{month:"2026-10"}));
+ assert.equal(first.partnerCount,1);
+ assert.equal(first.partnerTotal,9);
+ assert.doesNotMatch(JSON.stringify(first),/他社|foreign|999/);
+ db.seed("partnerRelations/partner",{...db.rows.get("partnerRelations/partner"),
+  countSharingApproved:false});
+ const revoked=await api.viewCombinedMonth(req("h",{month:"2026-10"}));
+ assert.equal(revoked.partnerCount,0);
+ assert.equal(revoked.partnerTotal,0);
+ assert.equal(revoked.people.length,0);
+ assert.equal(revoked.hasSavedRows,false);
+ assert.deepEqual(revoked.products,[]);
+ await assert.rejects(api.viewCombinedMonth(req("p",{month:"2026-10"})),
+  e=>e.code==="permission-denied");
+});
