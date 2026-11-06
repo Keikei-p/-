@@ -105,11 +105,19 @@ export async function phase1Boundary({
   stop('LIVE_BASELINE_PARITY');
  if(liveHash===hashes.candidate&&normalized(live)!==normalized(reviewedCandidate))
   stop('LIVE_CANDIDATE_PARITY');
- const managed=await backup();
- const age=now()-Date.parse(managed?.latestReadySnapshot||'');
- if(!Number.isInteger(managed?.readyBackups)||managed.readyBackups<1||
-    !Number.isFinite(age)||age<0||age>48*60*60*1000)
-  stop('RECENT_BACKUP_REQUIRED');
+ // A long inventory or emulator restore must not silently age a reviewed
+ // managed backup past 48 hours. This callback is read-only, and a failure
+ // cannot publish, change or roll back the active production Rules release.
+ const requireRecentManagedBackup=async()=>{
+  const managed=await backup();
+  const checkedAt=now();
+  const age=checkedAt-Date.parse(managed?.latestReadySnapshot||'');
+  if(!Number.isInteger(managed?.readyBackups)||managed.readyBackups<1||
+     !Number.isFinite(checkedAt)||!Number.isFinite(age)||
+     age<0||age>48*60*60*1000)
+   stop('RECENT_BACKUP_REQUIRED');
+ };
+ await requireRecentManagedBackup();
  const before=await snapshot();
  const inventory=fingerprint(before);
  if(!before.documents.length)stop('EMPTY_INVENTORY');
@@ -192,6 +200,10 @@ export async function phase1Boundary({
   if((await getRelease())!==starting)stop('RULES_RELEASE_RACE_BEFORE_PATCH');
   if(fingerprint(await snapshot())!==inventory)
     stop('LIVE_COUNT_OR_FINANCE_CHANGED_BEFORE_PATCH');
+  // Last irreversible boundary: recheck the managed backup's READY status
+  // and 48-hour freshness *after* the final account and inventory checks.
+  // Do not trust a timestamp cached before a slow local restore.
+  await requireRecentManagedBackup();
   attempted=true;
   await point(created.name);
   if((await getRelease())!==created.name||
