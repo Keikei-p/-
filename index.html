@@ -23939,7 +23939,7 @@ function recordConflict(message) {
 function readOnlyRecordCountEvidence(record) {
   const valid = value =>
     (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) ||
-    (typeof value === "string" && /^\\d+$/.test(value) &&
+    (typeof value === "string" && /^\d+$/.test(value) &&
       Number.isSafeInteger(Number(value)));
   const saved = valid(record?.totalCount) ? Number(record.totalCount) : null;
   const results = record?.results;
@@ -36110,7 +36110,7 @@ function renderRecordHistory(
     currentUserData?.accessKind !== "partner" &&
     (currentCompanyData?.companyKind == null ||
      currentCompanyData.companyKind === "internal");
-  if (ownerCanReview && /^\\d{4}-(?:0[1-9]|1[0-2])$/.test(selectedMonth || "")) {
+  if (ownerCanReview && /^\d{4}-(?:0[1-9]|1[0-2])$/.test(selectedMonth || "")) {
     const mismatched = currentRecordHistoryMonthly.filter(record =>
       record.companyId === currentUserData?.companyId &&
       typeof record.date === "string" &&
