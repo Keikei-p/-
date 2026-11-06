@@ -1235,3 +1235,69 @@ test("orphan daily count does not grant member access, even with a missing or un
    "member cannot access a deleted colleague's historical records");
  assert.deepEqual([...db.store],previous,"no data created or rewritten");
 });
+
+
+test("hub opt-in breakdown keeps archived team totals without re-enabling the team",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ const retired=(await api.manage(req("p",{action:"addTeam",name:"旧3班"}))).teamId;
+ const current=(await api.manage(req("p",{action:"addTeam",name:"現在1班"}))).teamId;
+ const oldStaff=(await api.manage(req("p",{action:"addManaged",name:"退職者",teamId:retired}))).staffId;
+ const currentStaff=(await api.manage(req("p",{action:"addManaged",name:"担当者",teamId:current}))).staffId;
+ await api.submit(req("p",{date,staffId:oldStaff,
+  counts:{...zero(),NURO:3,"U-NEXT":1},expectedVersion:0}));
+ await api.submit(req("p",{date,staffId:currentStaff,
+  counts:{...zero(),YMMNP:2},expectedVersion:0}));
+ const retiredPath="companies/partner/partnerWorkTeams/"+retired;
+ db.seed(retiredPath,{...db.store.get(retiredPath),active:false});
+ // A staff-account deletion must never rewrite original saved counts.
+ db.store.delete("companies/partner/partnerWorkStaff/"+oldStaff);
+ const before=clone([...db.store.entries()]);
+ const hub=await api.view(req("h",{date,partnerCompanyId:"partner"}));
+ const company=hub.registeredCompanies.find(x=>x.partnerCompanyId==="partner");
+ assert(company&&company.active===true);
+ assert.deepEqual(company.teams.map(x=>x.id),[current],
+  "inactive team may NOT be invited to or selected for new input");
+ const details=hub.partnerTeamDetails;
+ assert.equal(details.scope,"shared_counts_only");
+ assert.equal(details.verifiedSharedCount,6);
+ assert.equal(details.unverifiedTeamCount,0,
+  "all six saved counts remain attributed to immutable real team IDs");
+ assert.equal(details.unreconciledWithCompanyReport,false);
+ assert.equal(hub.partners.find(x=>x.partnerCompanyId==="partner").totalCount,6);
+ const old=details.teams.find(x=>x.teamId===retired);
+ const active=details.teams.find(x=>x.teamId===current);
+ assert(old&&active);
+ assert.equal(old.name,"旧3班（過去班）");
+ assert.equal(old.totalCount,4);
+ assert.equal(old.reportedStaffCount,1);
+ assert.equal(old.counts.NURO,3);
+ assert.equal(old.counts["U-NEXT"],1);
+ assert.equal(active.name,"現在1班");
+ assert.equal(active.totalCount,2);
+ assert.equal(active.counts.YMMNP,2);
+ await assert.rejects(api.manage(req("p",{action:"addManaged",name:"新規追加不可",teamId:retired})),
+  e=>e.code==="failed-precondition","retired team cannot accept a new member");
+ assert.deepEqual([...db.store.entries()],before,
+  "read-only team reporting and rejected member creation never writes history");
+ assert.doesNotMatch(JSON.stringify(hub),/unitPrice|totalRevenue|revenuePerUnit|privateCounts|cbCounts|staffId/);
+});
+
+test("hub unknown or physically deleted team snapshots stay UNVERIFIED instead of being reassigned",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ const previous=(await api.manage(req("p",{action:"addTeam",name:"以前の班"}))).teamId;
+ const today=(await api.manage(req("p",{action:"addTeam",name:"現在の班"}))).teamId;
+ const s=(await api.manage(req("p",{action:"addManaged",name:"異動者",teamId:previous}))).staffId;
+ await api.submit(req("p",{date,staffId:s,counts:{...zero(),NURO:2},expectedVersion:0}));
+ db.store.delete("companies/partner/partnerWorkTeams/"+previous);
+ const staff=db.store.get("companies/partner/partnerWorkStaff/"+s);
+ db.seed("companies/partner/partnerWorkStaff/"+s,{...staff,teamId:today});
+ const before=clone([...db.store.entries()]);
+ const hub=await api.view(req("h",{date,partnerCompanyId:"partner"}));
+ const info=hub.partnerTeamDetails;
+ assert.equal(info.verifiedSharedCount,0);
+ assert.equal(info.unverifiedTeamCount,2);
+ assert.equal(info.unreconciledWithCompanyReport,false);
+ assert.equal(info.teams.find(x=>x.teamId===today).totalCount,0,
+  "not allowed to rewrite historical team based on current membership");
+ assert.deepEqual([...db.store.entries()],before);
+});
