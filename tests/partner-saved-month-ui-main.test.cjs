@@ -264,3 +264,33 @@ test("partner uses the same ranking menu tabs instead of a second monthly rankin
  assert.equal(parent.split('id="pInlineJointPeople"').length-1,1);
  assert.equal(html.split('id="pInlineMonth"').length-1,1);
 });
+
+
+test("original product cards have owner-only server-confirmed partner publish switches",()=>{
+ for(const id of ["ownerPublishedCatalogControls","ownerPublishedCatalogRefresh",
+  "ownerPublishedCatalogStatus"])
+  assert.equal((html.match(new RegExp('id="'+id+'"',"g"))||[]).length,1,id);
+ assert.match(html,/const readPartnerPublishedCatalog = httpsCallable\(partnerCountFunctions,"getPartnerPublishedCatalog"\)/);
+ assert.match(html,/const setPartnerPublishedProduct = httpsCallable\(partnerCountFunctions,"setPartnerPublishedProduct"\)/);
+ assert.match(index,/exports\.getPartnerPublishedCatalog=onCall\(opts,service\.getPublishedCatalog\)/);
+ assert.match(index,/exports\.setPartnerPublishedProduct=onCall\(opts,service\.setPublishedProduct\)/);
+ const start=html.indexOf("let ownerCatalogState="),
+       end=html.indexOf("function renderProducts() {",start);
+ assert(start>0&&end>start);
+ const publish=html.slice(start,end);
+ assert.match(publish,/isCurrentCompanyOwner\(\)/);
+ assert.match(publish,/currentCompanyData\?\.companyKind==="partner"/);
+ assert.match(publish,/data\.scope!=="partner_published_catalog_count_only"/);
+ assert.match(publish,/await readPartnerPublishedCatalog\(\{\}\)/);
+ assert.match(publish,/setPartnerPublishedProduct\(\{/);
+ assert.match(publish,/expectedRevision:revision/);
+ assert.match(publish,/changed\?\.revision!==revision\+1/);
+ assert.match(publish,/ownerCatalogState\.rows\.get\(productId\)\?\.published!==published/);
+ assert.doesNotMatch(publish,/setDoc|addDoc|deleteDoc|updateDoc|writeBatch|formatYen|innerHTML/);
+ const render=html.slice(end,html.indexOf("// Report a failed catalog write",end));
+ assert.match(render,/checkbox\.type="checkbox"/);
+ assert.match(render,/checkbox\.checked=state\?\.published===true/);
+ assert.match(render,/checkbox\.disabled=!ownerCatalogState\.verified/);
+ assert.match(render,/ownerCatalogToggle\(product\.id,checkbox\.checked\)/);
+ assert.match(html,/function resetPartnerInline\(\)\{\n ownerCatalogReset\(\)/);
+});
