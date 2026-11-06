@@ -30962,6 +30962,10 @@ async function readPartnerRankingMonth(month){
   // Legacy quick-only reports older than 31 days stay provisional below.
   if(first<oldest)
     return {complete:false,rows:[],reason:"366日より前の協力店件数は未照合です"};
+  if(typeof mergedPartnerRankingDay!=="function"&&
+     month+"-01"<oldestQuick)
+    return {complete:false,rows:[],
+      reason:"旧集計APIだけでは31日より古い月の全件数を照合できません"};
   const days=[];
   // Freeze caller identity for every request: a logout mid-fetch must not
   // populate a new company's in-memory cache with old partner counts.
