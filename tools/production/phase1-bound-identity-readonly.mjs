@@ -200,7 +200,16 @@ export function createAffectedSecondaryIdentityVerifier({
        partnerMember.canViewRevenue!==false||
        partnerMember.canViewUnitPrice!==false)
       stop('AFFECTED_SECONDARY_NOT_BOUND');
-    if(now()<start || now()-start>60_000)stop('IDENTITY_INVENTORY_EXPIRED');
+    // A company report and the live count workspace are date-scoped in JST.
+    // If an audit crosses midnight, the previous day's safe summary cannot
+    // certify the new day's input precondition. Abort rather than flip Rules.
+    const finish=now();
+    if(!Number.isFinite(finish)||finish<start||finish-start>60_000)
+      stop('IDENTITY_INVENTORY_EXPIRED');
+    const finishJstDay=new Intl.DateTimeFormat('en-CA',{
+      timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'
+    }).format(new Date(finish));
+    if(finishJstDay!==jstDay)stop('CURRENT_DAY_ROLLOVER');
     // Avoid retaining the decoded private snapshot in the result.
     return Object.freeze({
       checkedAgainst:provenance,
