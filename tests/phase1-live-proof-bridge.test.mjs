@@ -559,3 +559,33 @@ test('old daily summary is never rewritten or deleted to manufacture input readi
  assert.equal(f.calls.length,0,'cannot even start monetary probes with blocked counts');
  assert.equal(identity.calls.every(x=>x.method==='GET'),true);
 });
+
+
+test('JST midnight while reading invalidates a previous-day partner report check',async()=>{
+ const f=fakeIdentity();
+ const args={expectedOwnerUid:'realOwner',expectedPartnerUid:'secondaryPartner',
+  internalCompanyId:'internal_company'};
+ const beforeMidnight=Date.parse('2026-11-05T14:59:55Z'); // 23:59:55 JST
+ let calls=0;
+ await assert.rejects(createAffectedSecondaryIdentityVerifier({
+  ...f,...args,now:()=>calls++===0?beforeMidnight:beforeMidnight+10_000
+ })(),/STOP_PHASE1_IDENTITY_CURRENT_DAY_ROLLOVER/);
+ assert.equal(f.calls.some(x=>x.path===SUMMARY_PATH),true,
+  'the prior-day report was checked but cannot certify the new day');
+ assert(f.calls.every(x=>x.method==='GET'),'audit must remain read-only');
+});
+
+test('cross-midnight identity proof never starts production Rules or finance requests',async()=>{
+ const f=fixture(),release=releaseFixture(),identity=fakeIdentity();
+ const beforeMidnight=Date.parse('2026-11-05T14:59:55Z');
+ let ticks=0;
+ await assert.rejects(phase1WithLiveAccountGate({
+  release:release.release,accounts:f.accounts,
+  identity:{...identity,now:()=>ticks++===0?beforeMidnight:beforeMidnight+10_000},
+  ...approvals
+ }),/STOP_PHASE1_IDENTITY_CURRENT_DAY_ROLLOVER/);
+ assert.equal(release.writes.length,0);
+ assert.equal(release.getActive(),oldId);
+ assert.equal(f.calls.length,0);
+ assert(identity.calls.every(x=>x.method==='GET'));
+});
