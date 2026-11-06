@@ -29,9 +29,11 @@ const snap={
  ]
 };
 const liveProof=()=>({checkedAgainst:'production-live',partnerDocumentDenied:true,
- partnerListDenied:true,ownerFinanceAllowed:true});
+ partnerListDenied:true,ownerFinanceAllowed:true,partnerCountViewAllowed:true});
 const approvals={approval:true,candidateEmulatorVerified:true,
- realOwnerBeforeVerified:true,backupReviewed:true,verifyLiveRoles:async()=>liveProof()};
+ realOwnerBeforeVerified:true,backupReviewed:true,verifyLiveRoles:async()=>liveProof(),
+ preApplyCheck:async()=>({checkedAgainst:'production-live',ownerFinanceAllowed:true,
+  affectedSecondaryBound:true,partnerSessionFresh:true,partnerCountViewAllowed:true})};
 const goodBackup=()=>({readyBackups:1,latestReadySnapshot:date});
 const snapshot=async()=>structuredClone(snap);
 const restore=async data=>({
@@ -165,8 +167,10 @@ test('uncertain patch or changed inventory rolls Rules back to exact previously 
    let n=0;
    f.args.snapshot=async()=>{
     const v=structuredClone(snap);
-    // Reads 1,2,3 precede the release; read 4 detects post-apply drift.
-    if(++n===4)v.documents[0].value.fields.totalCount.integerValue='4';
+    // Reads 1-4 precede the release, including our NEW final pre-PATCH
+    // concurrency gate. Read 5 now detects post-apply drift and triggers
+    // the rollback proof; earlier drift is instead stopped before PATCH.
+    if(++n===5)v.documents[0].value.fields.totalCount.integerValue='4';
     return v;
    };
   }
@@ -209,6 +213,35 @@ test('already-installed candidate cannot falsely claim safe state without live r
  assert.deepEqual(f.writes,[],'never rollback someone else’s previously active Rules');
  assert.equal(f.getCurrent(),candidateId);
 });
+test('already-installed candidate cannot claim current security after a concurrent post-proof Rules change',async()=>{
+ const f=fixture({starting:candidateId});
+ await assert.rejects(phase1Boundary({
+  ...f.args,...approvals,apply:true,
+  verifyLiveRoles:async()=>{
+   // A separate operator changes the active Rules while the real user
+   // probes are in progress. The old candidate must not be reported active.
+   f.setCurrent(otherId);
+   return liveProof();
+  }
+ }),/STOP_PHASE1_POST_PROOF_RULES_RELEASE_RACE/);
+ assert.equal(f.getCurrent(),otherId);
+ assert.deepEqual(f.writes,[],'never overwrite or roll back another operator');
+});
+
+test('a newly switched release does not report success if changed during the user proof',async()=>{
+ const f=fixture();
+ await assert.rejects(phase1Boundary({
+  ...f.args,...approvals,apply:true,
+  verifyLiveRoles:async()=>{
+   f.setCurrent(otherId);
+   return liveProof();
+  }
+ }),/STOP_PHASE1_CONCURRENT_OPERATOR_MANUAL_REVIEW/);
+ assert.equal(f.getCurrent(),otherId);
+ assert.deepEqual(f.writes.map(x=>x.method),['POST','PATCH'],
+  'no second PATCH may overwrite a competing operator');
+});
+
 test('verify-only never invokes live-role probe or implies live denial',async()=>{
  const f=fixture();
  let called=0;
@@ -271,4 +304,217 @@ test('release helper contains no executable production runner or identity loadin
  assert.doesNotMatch(source,/FIREBASE_SERVICE_ACCOUNT_JSON|GOOGLE_APPLICATION_CREDENTIALS|firebase\s+deploy/);
  assert.doesNotMatch(source,/applicationDefault|initializeApp|createRequire/);
  assert.match(source,/apply=false/);
+});
+
+
+test('after last full-data snapshot, expired credentials STOP before ANY active Rules PATCH',async()=>{
+ const f=fixture();
+ let precheck=0;
+ await assert.rejects(phase1Boundary({
+  ...f.args,...approvals,apply:true,
+  preApplyCheck:async()=>{precheck++;throw Error('STOP_TEST_USER_SESSION_EXPIRED');}
+ }),/STOP_TEST_USER_SESSION_EXPIRED/);
+ assert.equal(precheck,1);
+ assert.deepEqual(f.writes.map(x=>x.method),['POST'],
+  'creating an unactivated version is allowed; NEVER alter active Rules');
+ assert.equal(f.getCurrent(),oldId);
+});
+
+test('fake or incomplete pre-PATCH evidence does NOT authorize a Rules release',async()=>{
+ for(const evidence of [
+  null,{},'ok',
+  {checkedAgainst:'synthetic-only',ownerFinanceAllowed:true,
+   affectedSecondaryBound:true,partnerSessionFresh:true,partnerCountViewAllowed:true},
+  {checkedAgainst:'production-live',ownerFinanceAllowed:false,
+   affectedSecondaryBound:true,partnerSessionFresh:true,partnerCountViewAllowed:true},
+  {checkedAgainst:'production-live',ownerFinanceAllowed:true,
+   affectedSecondaryBound:false,partnerSessionFresh:true,partnerCountViewAllowed:true},
+  {checkedAgainst:'production-live',ownerFinanceAllowed:true,
+   affectedSecondaryBound:true,partnerSessionFresh:false}
+ ]){
+  const f=fixture();
+  await assert.rejects(phase1Boundary({...f.args,...approvals,apply:true,
+   preApplyCheck:async()=>evidence}),/STOP_PHASE1_PRE_SWITCH_ACCOUNT_UNVERIFIED/);
+  assert.equal(f.getCurrent(),oldId);
+  assert.deepEqual(f.writes.map(x=>x.method),['POST']);
+ }
+});
+
+test('pre-PATCH reproof is not called during readonly verify or candidate already active',async()=>{
+ for(const starting of [oldId,candidateId]){
+  const f=fixture({starting});
+  const result=await phase1Boundary({...f.args,...approvals,
+   apply:starting===candidateId,
+   preApplyCheck:async()=>{throw Error('must not contact account sessions');}});
+  assert.equal(result.applied,false);
+  assert.equal(f.writes.length,0);
+ }
+});
+
+test('pre-PATCH reproof runs after final inventory validation and BEFORE switch',async()=>{
+ const f=fixture();
+ const calls=[],getSnapshot=f.args.snapshot;
+ const result=await phase1Boundary({...f.args,...approvals,apply:true,
+  snapshot:async()=>{calls.push('snapshot');return getSnapshot();},
+  preApplyCheck:async()=>{
+   calls.push('preApply');
+   assert.equal(f.getCurrent(),oldId);
+   return {checkedAgainst:'production-live',ownerFinanceAllowed:true,
+    affectedSecondaryBound:true,partnerSessionFresh:true,partnerCountViewAllowed:true};
+  }
+ });
+ assert.equal(result.applied,true);
+ assert.equal(calls.filter(x=>x==='preApply').length,1);
+ assert.equal(calls[calls.indexOf('preApply')-1],'snapshot');
+ assert.equal(calls[calls.indexOf('preApply')+1],'snapshot',
+  'the live inventory is checked AGAIN after authenticated preflight');
+ assert.equal(f.getCurrent(),candidateId);
+});
+
+
+test('a real count arriving DURING pre-PATCH identity checks stops release BEFORE changing active Rules',async()=>{
+ const f=fixture();
+ let liveCount=3;
+ const snapFn=async()=>{
+  const snapshot=structuredClone(snap);
+  snapshot.documents[0].value.fields.totalCount.integerValue=String(liveCount);
+  return snapshot;
+ };
+ const good=()=>({checkedAgainst:'production-live',ownerFinanceAllowed:true,
+  affectedSecondaryBound:true,partnerSessionFresh:true,partnerCountViewAllowed:true});
+ await assert.rejects(phase1Boundary({
+  ...f.args,...approvals,apply:true,snapshot:snapFn,
+  preApplyCheck:async()=>{
+   assert.equal(f.getCurrent(),oldId);
+   liveCount=4; // another seller just entered a real count
+   return good();
+  }
+ }),/STOP_PHASE1_LIVE_COUNT_OR_FINANCE_CHANGED_BEFORE_PATCH/);
+ assert.equal(liveCount,4,'a legitimate count entry is NEVER rolled back');
+ assert.equal(f.getCurrent(),oldId,'finance Rules stay on the existing release');
+ assert.deepEqual(f.writes.map(x=>x.method),['POST'],
+  'no active release PATCH, no Firestore document writes');
+});
+
+test('a concurrent Rules operator during owner account proof prevents any PATCH',async()=>{
+ const f=fixture();
+ await assert.rejects(phase1Boundary({
+  ...f.args,...approvals,apply:true,
+  preApplyCheck:async()=>{
+   assert.equal(f.getCurrent(),oldId);
+   f.setCurrent(otherId);
+   return {checkedAgainst:'production-live',ownerFinanceAllowed:true,
+    affectedSecondaryBound:true,partnerSessionFresh:true,partnerCountViewAllowed:true};
+  }
+ }),/STOP_PHASE1_RULES_RELEASE_RACE_BEFORE_PATCH/);
+ assert.equal(f.getCurrent(),otherId,'do not revert an unrelated release');
+ assert.deepEqual(f.writes.map(x=>x.method),['POST']);
+});
+
+
+test('missing REAL pre-switch count-view proof blocks Rules PATCH without touching any saved totals',async()=>{
+ for(const absent of [undefined,false,'true']){
+  const f=fixture();
+  await assert.rejects(phase1Boundary({...f.args,...approvals,apply:true,
+   preApplyCheck:async()=>({
+    checkedAgainst:'production-live',ownerFinanceAllowed:true,
+    affectedSecondaryBound:true,partnerSessionFresh:true,
+    ...(absent===undefined?{}:{partnerCountViewAllowed:absent})
+   })
+  }),/STOP_PHASE1_PRE_SWITCH_COUNT_VIEW_UNVERIFIED/);
+  assert.equal(f.getCurrent(),oldId);
+  assert.deepEqual(f.writes.map(x=>x.method),['POST'],
+   'unactivated Rules version may exist, but live release MUST remain unchanged');
+ }
+});
+
+test('live finance 403 without a verified partner count view triggers Rules rollback',async()=>{
+ for(const missing of [undefined,false,'true']){
+  const f=fixture();
+  const result={...liveProof()};
+  if(missing===undefined)delete result.partnerCountViewAllowed;
+  else result.partnerCountViewAllowed=missing;
+  await assert.rejects(phase1Boundary({...f.args,...approvals,apply:true,
+   verifyLiveRoles:async()=>result
+  }),/STOP_PHASE1_POST_SWITCH_COUNT_VIEW_UNVERIFIED/);
+  assert.equal(f.getCurrent(),oldId);
+  assert.deepEqual(f.writes.map(x=>x.method),['POST','PATCH','PATCH'],
+   'finance-only proof may NEVER report a successful Rules cutover');
+ }
+});
+
+test('approved live proof reports count-view continuity without inventing pre-switch proof',async()=>{
+ const existing=fixture({starting:candidateId});
+ const noSwitch=await phase1Boundary({...existing.args,...approvals,apply:true});
+ assert.equal(noSwitch.applied,false);
+ assert.equal(noSwitch.reviewedPartnerCountViewBeforeSwitch,false,
+  'existing candidate has no new pre-switch check');
+ assert.equal(noSwitch.reviewedPartnerCountViewAfterSwitch,true);
+ assert.equal(existing.writes.length,0);
+ const pending=fixture();
+ const verifyOnly=await phase1Boundary({...pending.args});
+ assert.equal(verifyOnly.reviewedPartnerCountViewBeforeSwitch,false);
+ assert.equal(verifyOnly.reviewedPartnerCountViewAfterSwitch,false);
+ assert.equal(pending.writes.length,0);
+ const switched=fixture();
+ const success=await phase1Boundary({...switched.args,...approvals,apply:true});
+ assert.equal(success.applied,true);
+ assert.equal(success.reviewedPartnerCountViewBeforeSwitch,true);
+ assert.equal(success.reviewedPartnerCountViewAfterSwitch,true);
+ assert.equal(success.productionDocumentWrites,0);
+});
+
+test('Rules PATCH rechecks READY managed backup after slow Owner/partner preflight',async()=>{
+ for(const failure of ['expired-during-preflight','backup-revoked','backup-now-future','second-read-unavailable']){
+  const f=fixture();
+  let backupReads=0,currentTime=Date.parse(date)+1000;
+  const latest=Date.parse(date);
+  const backups=async()=>{
+   backupReads++;
+   if(backupReads===1)return {readyBackups:1,latestReadySnapshot:date};
+   if(failure==='backup-revoked')return {readyBackups:0,latestReadySnapshot:date};
+   if(failure==='backup-now-future')return {
+    readyBackups:1,latestReadySnapshot:new Date(currentTime+60_000).toISOString()
+   };
+   if(failure==='second-read-unavailable')throw Error('STOP_TEST_BACKUP_API_UNAVAILABLE');
+   return {readyBackups:1,latestReadySnapshot:date};
+  };
+  let preflightCalls=0;
+  await assert.rejects(phase1Boundary({
+   ...f.args,...approvals,apply:true,backup:backups,now:()=>currentTime,
+   preApplyCheck:async()=>{
+    preflightCalls++;
+    assert.equal(f.getCurrent(),oldId);
+    if(failure==='expired-during-preflight')
+     currentTime=latest+48*60*60*1000+1;
+    return {checkedAgainst:'production-live',ownerFinanceAllowed:true,
+     affectedSecondaryBound:true,partnerSessionFresh:true,
+     partnerCountViewAllowed:true};
+   }
+  }),/STOP_PHASE1_RECENT_BACKUP_REQUIRED|STOP_TEST_BACKUP_API_UNAVAILABLE/,
+  failure+' must stop without an active Rules release update');
+  assert.equal(preflightCalls,1,failure);
+  assert.equal(backupReads,2,failure+' must verify backup again just before PATCH');
+  assert.equal(f.getCurrent(),oldId,failure+' may never switch active Rules');
+  assert.deepEqual(f.writes.map(x=>x.method),['POST'],
+   'unactivated Ruleset creation is NOT an active release PATCH');
+ }
+});
+
+test('approved switch checks managed backup twice; verify-only reads it once',async()=>{
+ const f=fixture();
+ let checks=0;
+ const backup=async()=>{checks++;return goodBackup();};
+ const result=await phase1Boundary({...f.args,...approvals,apply:true,backup});
+ assert.equal(result.applied,true);
+ assert.equal(checks,2,'second READY check must be after preApplyCheck');
+ assert.deepEqual(f.writes.map(x=>x.method),['POST','PATCH']);
+ const readonly=fixture();
+ let readonlyChecks=0;
+ const verified=await phase1Boundary({...readonly.args,
+  backup:async()=>{readonlyChecks++;return goodBackup();}
+ });
+ assert.equal(verified.applied,false);
+ assert.equal(readonlyChecks,1,'read-only verification is never a release');
+ assert.equal(readonly.writes.length,0);
 });
