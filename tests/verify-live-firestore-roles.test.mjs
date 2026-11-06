@@ -437,17 +437,39 @@ test('member cannot submit without their own active account and matching active 
  }
 });
 
-test('a leader/owner with one active managed staff and one active team can continue input',async()=>{
+test('owner/leader require at least one active staff assigned to an ACTIVE team',async()=>{
  for(const role of ['owner','leader']){
   const f=liveCountFixture({role});
-  const result={...f.count,staff:[{
-   id:'managed1',uid:null,teamId:'old_team',active:true,kind:'managed'
+  const healthy={...f.count,staff:[{
+   id:'managed1',uid:null,teamId:'team1',active:true,kind:'managed'
   }]};
-  const verdict=await f.create({fetchImpl:async()=>({
-   status:200,json:async()=>({result})
-  })})();
-  assert.equal(verdict.partnerCountViewAllowed,true,
-   role+' can choose an active team for managed staff input');
+  assert.equal((await f.create({fetchImpl:async()=>({
+   status:200,json:async()=>({result:healthy})
+  })})()).partnerCountViewAllowed,true,
+   role+' can count a managed person assigned to an active team');
+  for(const mismatch of [
+   {staff:[{...healthy.staff[0],teamId:'retired_team'}]},
+   {staff:[{...healthy.staff[0],teamId:null}]},
+   {staff:[{...healthy.staff[0],teamId:'../internal'}]},
+   {teams:[
+    {id:'team1',name:'1班',active:true},
+    {id:'retired_team',name:'旧班',active:false}
+   ],staff:[{...healthy.staff[0],teamId:'retired_team'}]}
+  ]){
+   const view={...healthy,...mismatch};
+   await assert.rejects(f.create({fetchImpl:async()=>({
+    status:200,json:async()=>({result:view})
+   })})(),/STOP_LIVE_ROLE_COUNT_VIEW_NO_ACTIVE_INPUT_ROUTE/,
+   role+' may open a screen, but saved counts must not be orphaned from active team totals');
+  }
+  const mixed={...healthy,staff:[
+   {...healthy.staff[0],teamId:'retired_team'},
+   {id:'managed2',uid:null,teamId:'team1',active:true,kind:'managed'}
+  ]};
+  assert.equal((await f.create({fetchImpl:async()=>({
+   status:200,json:async()=>({result:mixed})
+  })})()).partnerCountViewAllowed,true,
+   role+' can count only after an active-team staff route is available');
  }
 });
 
