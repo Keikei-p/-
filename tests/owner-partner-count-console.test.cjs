@@ -192,6 +192,62 @@ test("Owner does not bypass active partner publication gate and never reattribut
  assert.equal(db.store.get("companies/partner1/partnerWorkEntries/"+day+"__staff1")
   .teamIdSnapshot,"oldteam");
 });
+test("Owner can classify SB光3 and Air1 while keeping old combined 4, prices and history unchanged",async()=>{
+ const {db,ops,req,source,report}=fixture(),original=clone([...db.store]);
+ const result=await ops.classifyOwnerInternet(req("owner",{
+  partnerCompanyId:"partner1",date:day,staffId:"staff1",
+  hikari:3,air:1,sourceVersion:3,expectedRevision:0,
+  reason:"契約書の光Air内訳を照合"}));
+ assert.equal(result.saved,true);
+ assert.equal(result.combinedCount,4);
+ assert.equal(result.correctionLogged,true);
+ const stored=db.store.get("companies/partner1/partnerInternetSplits/"+day+"__staff1");
+ assert.equal(stored.hikari,3);assert.equal(stored.air,1);
+ assert.equal(stored.combinedCount,4);assert.equal(stored.revision,1);
+ const audit=db.store.get("companies/partner1/partnerInternetSplitAudits/"+day+"__staff1__v1");
+ assert.equal(audit.correctionActorUid,"owner");
+ assert.equal(audit.correctionType,"hub_owner_internet_classification");
+ assert.equal(audit.previousHikari,null);
+ assert.equal(audit.previousAir,null);
+ for(const [p,v] of original)assert.deepEqual(db.store.get(p),v,p);
+ assert.deepEqual(db.store.get("companies/partner1/partnerWorkEntries/"+day+"__staff1"),source);
+ assert.deepEqual(db.store.get("companies/hub/partnerWorkCountDays/"+day+"/reports/partner1"),report);
+ assert.deepEqual(db.writes.map(x=>x.path).sort(),[
+  "companies/partner1/partnerInternetSplits/"+day+"__staff1",
+  "companies/partner1/partnerInternetSplitAudits/"+day+"__staff1__v1"].sort());
+});
+test("Owner cannot fabricate split totals or mutate another company's data",async()=>{
+ const {db,ops,req}=fixture(),original=clone([...db.store]);
+ const base={partnerCompanyId:"partner1",date:day,staffId:"staff1",
+  hikari:3,air:1,sourceVersion:3,expectedRevision:0,
+  reason:"販売契約を再確認"};
+ const examples=[
+  {...base,hikari:4},{...base,air:2},{...base,sourceVersion:2},
+  {...base,expectedRevision:1},{...base,staffId:"unknown"},
+  {...base,partnerCompanyId:"other"},{...base,reason:""},
+  {...base,extra:"unauthorized"},{...base,hikari:"3"}
+ ];
+ for(const data of examples)await assert.rejects(ops.classifyOwnerInternet(req("owner",data)));
+ for(const who of ["leader","other_owner","member"])
+  await assert.rejects(ops.classifyOwnerInternet(req(who,base)));
+ assert.deepEqual([...db.store],original);assert.equal(db.writes.length,0);
+});
+test("Owner Hikari/Air reclassification is revision-checked and audit-only, never overwrites legacy counts",async()=>{
+ const {db,ops,req,source}=fixture();
+ const base={partnerCompanyId:"partner1",date:day,staffId:"staff1",
+  hikari:3,air:1,sourceVersion:3,expectedRevision:0,reason:"契約確認後に振分"};
+ await ops.classifyOwnerInternet(req("owner",base));
+ const r=await ops.classifyOwnerInternet(req("owner",{
+  ...base,hikari:2,air:2,expectedRevision:1}));
+ assert.equal(r.revision,2);
+ await assert.rejects(ops.classifyOwnerInternet(req("owner",base)));
+ const unchanged=await ops.classifyOwnerInternet(req("owner",{
+  ...base,hikari:2,air:2,expectedRevision:2});
+ assert.equal(unchanged.unchanged,true);
+ assert.equal(db.store.get("companies/partner1/partnerInternetSplitAudits/"+day+"__staff1__v1").hikari,3);
+ assert.equal(db.store.get("companies/partner1/partnerInternetSplitAudits/"+day+"__staff1__v2").hikari,2);
+ assert.deepEqual(db.store.get("companies/partner1/partnerWorkEntries/"+day+"__staff1"),source);
+});
 test("Owner company console uses existing menu, no sign-out, and revokes stale account DOM",()=>{
  const html=fs.readFileSync(path.join(__dirname,"../index.html"),"utf8");
  const server=fs.readFileSync(path.join(__dirname,
@@ -214,4 +270,8 @@ test("Owner company console uses existing menu, no sign-out, and revokes stale a
  assert.match(server,/makeOwnerPartnerCorrections/);
  assert.match(endpoints,/exports\.submitOwnerPartnerCorrection=onCall/);
  assert.match(endpoints,/exports\.getOwnerPartnerCorrectionDay=onCall/);
+ assert.match(html,/async function openOwnerSplitEditor\\(/);
+ assert.match(html,/submitOwnerPartnerInternetSplit/);
+ assert.match(html,/SB光・Airの内訳を訂正/);
+ assert.match(endpoints,/exports\\.submitOwnerPartnerInternetSplit=onCall/);
 });
