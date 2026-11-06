@@ -317,8 +317,21 @@ export function createLivePartnerCountViewVerifier({
     stop('COUNT_VIEW_CONTRACT_UNVERIFIED');
   if(view.role!=='owner'&&!view.staff.some(staff=>
     staff?.uid===expectedPartnerUid&&staff.active===true&&
-    ['account'].includes(staff.kind)))
+    staff.kind==='account'))
     stop('COUNT_VIEW_OWN_INPUT_UNAVAILABLE');
+  // This endpoint must remain COUNT-ONLY, not just HTTP 200. Reject even a
+  // nested financial field if an incompatible server release is encountered.
+  const stack=[view];let checked=0;
+  while(stack.length){
+    const item=stack.pop();
+    if(!item||typeof item!=='object')continue;
+    if(++checked>4000)stop('COUNT_VIEW_CONTRACT_UNVERIFIED');
+    for(const [key,value] of Object.entries(item)){
+      if(/revenue|unitprice|unit_price|salesamount|commission|profit|(^|_)price|売上|単価|報酬|利益/i.test(key))
+        stop('COUNT_VIEW_FINANCE_FIELD_EXPOSED');
+      if(value&&typeof value==='object')stack.push(value);
+    }
+  }
   // The read-only session must remain live at the end of this request too.
   identity(partnerIdToken,expectedPartnerUid,Math.floor(now()/1000));
   return Object.freeze({
