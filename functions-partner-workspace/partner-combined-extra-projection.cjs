@@ -49,13 +49,14 @@ function projectPublishedPartnerExtras({hubId,cid,month,docs,visibleProducts=[],
   let normalized;try{normalized=normalizeExtraCounts(x.counts);}
   catch{fail();}
   if(normalized.total!==x.totalCount)fail();
-  let visibleDay=0;const visibleDayCounts={};
+  let visibleDay=0;const visibleDayCounts={};let hasVisibleProduct=false;
   for(const [id,n] of Object.entries(normalized.counts)){
    if(blocked.has(id)&&n>0)fail();
    if(!visible.has(id)){
     if(n>0)containsUnpublished=true;
     continue;
    }
+   hasVisibleProduct=true; // An explicitly saved published zero is a report, not an absent entry.
    const sum=counts.get(id).totalCount+n;
    if(!SAFE(sum))fail();
    counts.get(id).totalCount=sum;
@@ -63,10 +64,10 @@ function projectPublishedPartnerExtras({hubId,cid,month,docs,visibleProducts=[],
    visibleDay+=n;
   }
   if(!SAFE(visibleDay))fail();
-  // A saved row with ONLY unpublished/OFF products must not certify a
-  // visible 0-count report or fabricate a product ranking for this month.
-  // Keep its original ledger untouched and still report containsUnpublished.
-  if(visibleDay===0)continue;
+  // OFF-only rows are hidden, but an explicit 0 for an ON product
+  // is still a legitimate saved report. Do not conflate it with no report.
+  // Preserve unpublished originals and never show their product labels.
+  if(!hasVisibleProduct)continue;
   visibleEntryRows++;
   if(typeof x.staffNameSnapshot!=="string")fail();
   let name;try{name=nameOnly(x.staffNameSnapshot);}catch{fail();}
