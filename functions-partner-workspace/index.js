@@ -31,6 +31,9 @@ exports.submitPartnerWorkspaceCounts=onCall(opts,service.submit);
 // Non-destructive SB光 / SoftBank Air classification; old count ledger untouched.
 exports.getPartnerInternetSplitDay=onCall(opts,service.viewInternetSplitDay);
 exports.getPartnerInternetSplitMonth=onCall(opts,service.viewInternetSplitMonth);
+exports.getOwnerPartnerCorrectionDay=onCall(opts,service.viewOwnerPartnerDay);
+exports.submitOwnerPartnerCorrection=onCall(opts,service.correctOwnerPartnerDay);
+exports.submitOwnerPartnerInternetSplit=onCall(opts,service.classifyOwnerInternet);
 exports.submitPartnerInternetSplit=onCall(opts,service.submitInternetSplit);
 const codeAuth=makeCompanyCodeAuth({
  db:getFirestore(),getAuth,FieldValue,Timestamp,HttpsError,
