@@ -700,6 +700,55 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      verifiedSharedCount,unverifiedTeamCount,scope:"shared_counts_only"
     };
    }
+   // Owner-only, on-demand account roster. Reuse the already-approved
+   // hub -> partner scope. The default dashboard never pays for these reads.
+   // NO financial originals, auth secrets, invitations or document writes.
+   let partnerRoster=null;
+   if(d.includeRoster===true){
+    if(!selectedPartnerId)fail("invalid-argument");
+    const ownerSecondary=await db.collection("partnerWorkspaceContexts").doc(a.uid).get();
+    if(ownerSecondary.exists)fail(); // dual-context Owner cannot inspect accounts
+    const staffSnaps=await collection(selectedPartnerId,"partnerWorkStaff").limit(151).get();
+    if(staffSnaps.size>150)fail("resource-exhausted");
+    const people=await Promise.all(staffSnaps.docs.map(async doc=>{
+     const x=doc.data()||{};
+     if(!ID.test(doc.id)||x.companyId!==selectedPartnerId||
+        !validName(x.name)||!["account","managed"].includes(x.kind)||
+        !["leader","member"].includes(x.role)||typeof x.active!=="boolean"||
+        !ID.test(x.teamId||""))fail("data-loss");
+     if(x.kind==="managed"){
+      if(x.uid!=null)fail("data-loss");
+      return {staffId:doc.id,name:clean(x.name),teamId:x.teamId,
+       role:"member",kind:"managed",active:x.active,email:"",
+       memberVerified:false,secondaryMembership:false,financeFlagsSafe:false};
+     }
+     if(!ID.test(x.uid||"")||x.uid!==doc.id)fail("data-loss");
+     const [memberSnap,secondarySnap]=await Promise.all([
+      collection(selectedPartnerId,"members").doc(x.uid).get(),
+      db.collection("partnerWorkspaceContexts").doc(x.uid).get()
+     ]);
+     const m=memberSnap.data()||{},ctx=secondarySnap.data()||{};
+     const memberVerified=memberSnap.exists&&m.uid===x.uid&&
+      m.companyId===selectedPartnerId&&m.accessKind==="partner"&&
+      m.memberType==="cooperator"&&m.role===x.role&&m.teamId===x.teamId&&
+      m.active===x.active;
+     const email=memberVerified&&EMAIL.test(clean(m.email).toLowerCase())?
+      clean(m.email).toLowerCase():"";
+     return {staffId:doc.id,name:clean(x.name),teamId:x.teamId,
+      role:x.role,kind:"account",active:x.active,email,
+      memberVerified:!!memberVerified,
+      secondaryMembership:secondarySnap.exists&&ctx.kind==="partner_secondary"&&
+       ctx.partnerCompanyId===selectedPartnerId&&ctx.uid===x.uid,
+      // Flags are only an advisory; even false/false does not prove
+      // production Firestore Rules denied finance GET and LIST.
+      financeFlagsSafe:memberVerified&&m.canViewRevenue===false&&
+       m.canViewUnitPrice===false};
+    }));
+    people.sort((x,y)=>x.name.localeCompare(y.name,"ja")||
+     x.staffId.localeCompare(y.staffId));
+    partnerRoster={partnerCompanyId:selectedPartnerId,scope:"hub_partner_roster_read_only",
+     financialRulesVerified:false,staff:people};
+   }
    const qs=await collection(s.cid,"partnerWorkCountDays").doc(date)
     .collection("reports").limit(201).get();
    if(qs.size>200)fail("resource-exhausted");
@@ -787,11 +836,12 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    }
    return {role:"hub",date,partners,registeredCompanies,categories:KEYS,
     ...(partnerTeamDetails?{partnerTeamDetails}:{}),
+    ...(partnerRoster?{partnerRoster}:{}),
     ...(teamReports?{teamReports,teamStatusComplete:true}:{})};
   }
   // Company-wide partner breakdown is reserved for a verified internal hub
   // Owner; do not silently ignore forged hub options in a partner session.
-  if(d.includeTeamStatus===true||d.partnerCompanyId!=null)fail();
+  if(d.includeTeamStatus===true||d.includeRoster===true||d.partnerCompanyId!=null)fail();
   const [teams,staff,entries,privateProducts]=await Promise.all([
     collection(s.cid,"partnerWorkTeams").limit(151).get(),
     collection(s.cid,"partnerWorkStaff").limit(151).get(),
