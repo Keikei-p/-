@@ -59,11 +59,14 @@ jobs:
           test "$(git hash-object tools/production/verify-live-firestore-roles.mjs)" = 3227ed08c96e29dce9d918982fe9f8ca8199ac83
           git diff --name-only f5ca2bd7ce5db64629d3b2543d1319e672999242...HEAD > /tmp/release-candidate-extra.txt
           cat /tmp/release-candidate-extra.txt
-          if grep -Ev '^([.]github/workflows/(nico-nov9-release-candidate-no-deploy|nico-partner-daily-historic-ranking-no-deploy|nico-deleted-staff-historical-count-no-deploy)[.]yml|index[.]html|docs/PHASE1_SECONDARY_FINANCE_RELEASE_SIGNOFF_NO_DEPLOY[.]md|tools/production/(phase1-bound-identity-readonly|phase1-live-proof-bridge|phase1-partner-finance-release|phase1-reviewed-operator|verify-live-firestore-roles)[.]mjs|tests/(phase1-live-proof-bridge|phase1-partner-finance-release|phase1-reviewed-operator|verify-live-firestore-roles)[.]test[.]mjs|tests/(partner-daily-history-active-input|partner-workspace)[.]test[.]cjs|functions-partner-workspace/service[.]cjs)$' /tmp/release-candidate-extra.txt; then
+          if grep -Ev '^([.]github/workflows/(nico-nov9-release-candidate-no-deploy|nico-partner-daily-historic-ranking-no-deploy|nico-deleted-staff-historical-count-no-deploy)[.]yml|index[.]html|docs/(PHASE1_SECONDARY_FINANCE_RELEASE_SIGNOFF_NO_DEPLOY|SALES_RELEASE_SIGNOFF)[.]md|tools/production/(phase1-bound-identity-readonly|phase1-live-proof-bridge|phase1-partner-finance-release|phase1-reviewed-operator|verify-live-firestore-roles)[.]mjs|tests/(phase1-live-proof-bridge|phase1-partner-finance-release|phase1-reviewed-operator|verify-live-firestore-roles)[.]test[.]mjs|tests/(partner-daily-history-active-input|partner-workspace)[.]test[.]cjs|functions-partner-workspace/service[.]cjs)$' /tmp/release-candidate-extra.txt; then
             echo 'STOP_UNREVIEWED_NEW_SOURCE'
             exit 1
           fi
-          test "$(wc -l < /tmp/release-candidate-extra.txt)" -eq 17
+          test "$(wc -l < /tmp/release-candidate-extra.txt)" -eq 18
+          test "$(git hash-object docs/SALES_RELEASE_SIGNOFF.md)" = 9dd8af0548194943f85282fb1e51db76e289bf7e
+          grep -Fq 'PR #407 11月9日向け合同ランキング・協力店件数・金額遮断：公開専用レビュー記録（未署名）' docs/SALES_RELEASE_SIGNOFF.md
+          grep -Fq '本番デプロイ承認: **なし**' docs/SALES_RELEASE_SIGNOFF.md
           git diff --exit-code f5ca2bd7ce5db64629d3b2543d1319e672999242 HEAD -- firestore.rules firestore.indexes.json functions functions-partner-workspace functions-partner-quick ':(exclude)functions-partner-workspace/service.cjs'
       - name: Validate source and test syntax
         run: |
