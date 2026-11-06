@@ -172,7 +172,10 @@ test("actual quick + staff count API merge prioritizes staff ledger without doub
  assert.equal(merged.reduce((n,x)=>n+x.totalCount,0),7,
   "legacy 9 NURO must not be added again to staff-ledger 5");
  const month=await ctx.readPartnerRankingMonth("2026-10");
- assert.equal(month.complete,true);
+ assert.equal(month.complete,false,"old 9 and staff 5 must not certify rank");
+ assert.equal(month.legacyOverlapRows,1,"same partner/day conflict retained");
+ assert.equal(month.legacyOverlapCount,9,"original quick count still visible for audit");
+ assert.match(month.reason,/未突合/);
  assert.equal(month.rows.reduce((n,x)=>n+x.totalCount,0),7);
  assert.equal(calls.length,64,"daywise reads both services for each of 31 days, plus first direct check");
  ctx.monthRows=month.rows;

@@ -6677,6 +6677,7 @@ body.product-reordering .product-list {
 
         </div>
 
+        <div id="ownerCountIntegrityReview" class="ranking-product-help" role="status" hidden></div>
         <div id="recordHistoryList"></div>
       </div>
 
@@ -12795,7 +12796,8 @@ function resetPartnerInline(){
  ++partnerDashboardMonthNonce;partnerDashboardMonthCache=null;
  // Clear company-specific count snapshots and invalidate in-flight ranking reads
  // before another user or company can sign in on the same browser session.
- ++sharedDailyRankingGeneration;sharedDailyRankCache.clear();
+ ++sharedDailyRankingGeneration;++ownerMonthlyRankGeneration;
+  sharedDailyRankCache.clear();ownerMonthlyRankCache.clear();
  ++partnerProductMonthlyNonce;partnerProductMonthlyCache=null;
  partnerPublishedProductNames=new Map();
  pInline("pPartnerDailyCount").textContent="-";
@@ -13090,7 +13092,21 @@ function setOwnerCombinedCountCardVisibility(name){
 }
 installOwnerCombinedCountCards();
 
-let sharedDailyRankingGeneration=0;
+let sharedDailyRankingGeneration=0; // global epoch: invalidate across login/write
+// Each visible ranking has an independent request lane. A product rank must
+// never cancel an individual/team rank while both are loading.
+const sharedDailyRankRequestByLane=new Map();
+function beginSharedDailyRankRequest(lane){
+ if(!["partner","partnerDetail","Individual","Product","Team","owner","ownerDetail"].includes(lane))
+  throw Error("shared_ranking_unknown_lane");
+ const serial=(sharedDailyRankRequestByLane.get(lane)||0)+1;
+ sharedDailyRankRequestByLane.set(lane,serial);
+ return {lane,serial,epoch:sharedDailyRankingGeneration};
+}
+function currentSharedDailyRankRequest(token){
+ return token.epoch===sharedDailyRankingGeneration&&
+  sharedDailyRankRequestByLane.get(token.lane)===token.serial;
+}
 let partnerSharedRankPeriod="day";
 const sharedDailyRankCache=new Map();
 function verifiedDirectDayCounts(date){
@@ -13141,6 +13157,21 @@ function verifiedDirectDayCounts(date){
   products:[...productTotals].map(([name,count])=>({name,count}))};
 }
 
+// Only verified per-person quantities can produce a shared product-card total.
+// Never infer zero for unreported staff or derive totals from money fields.
+function verifiedSharedRankingGroupTotal(group){
+ if(group?.complete!==true)return null;
+ if(!Array.isArray(group.members)||group.members.length>4000)
+  throw Error("shared_rank_group_members_unverified");
+ let total=0;
+ for(const person of group.members){
+  if(!person||!Number.isSafeInteger(person.count)||person.count<0)
+   throw Error("shared_rank_group_count_unverified");
+  total+=person.count;
+  if(!Number.isSafeInteger(total))throw Error("shared_rank_group_sum_overflow");
+ }
+ return total;
+}
 let selectedPartnerSharedGroupId="";
 function renderPartnerSharedGroupCards(target,response){
  const groups=response.groupStandings;
@@ -13192,6 +13223,9 @@ function renderPartnerSharedGroupCards(target,response){
   button.className="ranking-product-card";button.dataset.groupId=group.id;
   const title=document.createElement("span");title.className="ranking-product-card-name";
   title.textContent=group.name;button.append(title);
+  const count=document.createElement("span");count.className="ranking-product-card-count";
+  const sum=verifiedSharedRankingGroupTotal(group);
+  count.textContent=sum===null?"件数未照合":sum+"件";button.append(count);
   button.onclick=()=>select(group);cardGrid.append(button);
  }
  select(groups.find(x=>x.id===selectedPartnerSharedGroupId));
@@ -13200,16 +13234,32 @@ function renderPartnerSharedGroupCards(target,response){
 function appendSharedRankingRows(container,heading,entries,complete){
  const section=document.createElement("section");section.className="p-inline-card";
  const h=document.createElement("h4");h.textContent=heading;section.append(h);
- const sorted=[...entries].sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name,"ja"));
+ if(!Array.isArray(entries)||entries.length>4000)throw Error("shared_ranking_entries_unverified");
+ const sorted=[...entries];
+ if(sorted.some(x=>!x||!Number.isSafeInteger(x.count)||x.count<0||
+    typeof x.name!=="string"))throw Error("shared_ranking_entry_invalid");
+ sorted.sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name,"ja"));
  if(!sorted.length)partnerMainAppendRow(section,"表示できる実績がありません","未報告を0件とは扱いません");
+ const list=document.createElement("div");list.className="ranking-grid";
+ list.dataset.columns="1";section.append(list);
  let previous=null,rank=0;
- for(const [i,row] of sorted.entries()){
-  if(!Number.isSafeInteger(row.count)||row.count<0||typeof row.name!=="string")
-   throw Error("shared_ranking_entry_invalid");
-  if(previous!==row.count)rank=i+1;
-  const prefix=complete?(rank===1&&row.count>0?"🏆 ":"")+rank+"位 ":"暫定"+rank+"位 ";
-  partnerMainAppendRow(section,prefix+row.name,row.count+"件");
-  previous=row.count;
+ for(const [i,item] of sorted.entries()){
+  if(previous!==item.count)rank=i+1;
+  previous=item.count;
+  const row=document.createElement("div");row.className="ranking-row";
+  // A provisional entry cannot be promoted as a confirmed champion.
+  if(complete===true&&rank===1&&item.count>0)
+   decorateRankingChampion(row,"individual");
+  const left=document.createElement("div");left.className="ranking-left";
+  const number=document.createElement("span");number.className="ranking-number";
+  number.textContent=complete===true?rank+"位":"暫定"+rank+"位";
+  if(complete===true&&rank<=3)number.classList.add("top"+rank);
+  const name=document.createElement("span");name.className="ranking-name";
+  name.textContent=item.name;left.append(number,name);
+  const value=document.createElement("div");value.className="ranking-value";
+  const count=document.createElement("span");count.className="ranking-count";
+  count.textContent=item.count+"件";value.append(count);
+  row.append(left,value);list.append(row);
  }
  container.append(section);
 }
@@ -13560,6 +13610,13 @@ function renderPartnerDashboardMonth(data,month){
   throw Error("partner_month_dashboard_contract");
  if(partnerInlineWorkspaceCompany&&partnerInlineWorkspaceCompany!==companyId)
   throw Error("partner_month_workspace_mismatch");
+ const directPending=data.directIntegrityUnverified===true;
+ if(directPending&&
+    (data.includesDirect!==false||data.direct!==null||
+     data.recordsVerified!==null||data.provisionalReason!=="MONTHLY_DIRECT_COUNTS_UNVERIFIED"))
+  throw Error("partner_month_direct_integrity_contract");
+ if(!directPending&&(!data.direct||data.includesDirect!==true))
+  throw Error("partner_month_direct_missing_without_reason");
  const company=data.companies.find(c=>c.id===companyId);
  if(!company||company.name!==snap.companyName||
     !Number.isSafeInteger(company.totalCount)||company.totalCount<0||
@@ -13622,6 +13679,9 @@ function renderPartnerDashboardMonth(data,month){
  if(!teams.length)partnerMainAppendRow(chart,"この月の保存済み班実績はありません",
   "未報告は0件として扱いません。");
  const shared=pInline("partnerSharedDetailTree");shared.replaceChildren();
+ if(directPending)
+  partnerMainAppendRow(shared,"🏢 直営｜件数未照合",
+   "保存済みの自社実績に不一致があるため、直営の件数・合同順位は保留しています。記録は変更していません。");
  if(data.direct?.teams&&data.direct?.people&&
     Array.isArray(data.direct.teams)&&Array.isArray(data.direct.people)){
   appendPartnerMonthCompany(shared,"🏢 直営｜"+
@@ -13636,12 +13696,15 @@ function renderPartnerDashboardMonth(data,month){
   appendPartnerMonthCompany(shared,"🤝 "+partner.name+"｜"+
    (partner.verifiedEntryCount>0?partner.totalCount+"件":"未報告"),t,p,keys);
  }
- pInline("pPartnerMonthStatus").textContent=reported?
-  label+"の保存済み実績を表示中｜未報告日は0件と扱わず、月間順位は暫定です。"+
+ pInline("pPartnerMonthStatus").textContent=(reported?
+  label+"の協力店の保存済み実績を表示中。未報告日は0件と扱いません。"+
   (company.archivedExtraTotalCount?" 公開OFF商材の過去"+company.archivedExtraTotalCount+"件も合計に保持しています。":"") :
-  label+"はまだ登録済み実績を確認できません。未報告を0件とは表示しません。";
+  label+"の協力店の保存済み実績は未報告です（0件とは扱いません）。")+
+  (directPending?" 直営の件数が未照合のため、合同ランキングは非表示・未確定です。":
+   " 月間合同ランキングは暫定です。");
  pInline("partnerSharedDetailStatus").textContent="対象月 "+label+
-  " の保存済み班・担当者別件数です。登録時の班を使用し、売上・単価は含みません。";
+  " の保存済み班・担当者別件数です。登録時の班を使用し、売上・単価は含みません。"+
+  (directPending?" 直営の件数は未照合です。":"");
 }
 async function loadPartnerDashboardMonth({force=false}={}){
  const snap=partnerInlineData,uid=auth.currentUser?.uid;
@@ -13717,7 +13780,7 @@ async function loadSharedDailyStandings(where,force=false){
  const date=pInline(dateField).value;
  const status=pInline(statusField);
  const content=pInline(contentField);
- const uid=auth.currentUser?.uid,seq=++sharedDailyRankingGeneration;
+ const uid=auth.currentUser?.uid,rankToken=beginSharedDailyRankRequest(where);
  content.replaceChildren();
  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||date>getTodayString()){
   status.textContent="確認する日付を選択してください。";return;
@@ -13731,7 +13794,7 @@ async function loadSharedDailyStandings(where,force=false){
   const cached=sharedDailyRankCache.get(cacheKey);
   const useCached=!force&&cached&&Date.now()-cached.checkedAt<30000;
   const response=useCached?cached.value:(await readPartnerWorkDay(payload)).data;
-  if(seq!==sharedDailyRankingGeneration||auth.currentUser?.uid!==uid||
+  if(!currentSharedDailyRankRequest(rankToken)||auth.currentUser?.uid!==uid||
      date!==pInline(dateField).value)return;
   if(response?.scope!=="shared_counts_only"||
      response.role!==(partner?"partner":"hub")||response.date!==date||
@@ -13829,7 +13892,7 @@ async function loadSharedDailyStandings(where,force=false){
   appendSharedRankingRows(content,"📦 商材別件数",
    [...productTotals].map(([name,count])=>({name,count})),complete);
  }catch(error){
-  if(seq!==sharedDailyRankingGeneration||auth.currentUser?.uid!==uid)return;
+  if(!currentSharedDailyRankRequest(rankToken)||auth.currentUser?.uid!==uid)return;
   content.replaceChildren();
   status.textContent="ランキングを正しく照合できません。データ・権限を確認して更新してください。";
   if(named==="Product"&&ownerJointProductMode){
@@ -13848,15 +13911,27 @@ async function loadSharedDailyStandings(where,force=false){
 // Explicit opt-in monthly count mode. Never switch the original revenue rank
 // to quantities or perform 31 unbounded daily reads in the browser.
 const ownerMonthlyRankCache=new Map();
-let ownerMonthlyRankGeneration=0;
+let ownerMonthlyRankGeneration=0; // global epoch: logout/write invalidation
+const ownerMonthlyRankRequestByLane=new Map();
+function beginOwnerMonthlyRankRequest(lane){
+ if(!["Individual","Product","partner"].includes(lane))
+  throw Error("monthly_rank_unknown_lane");
+ const serial=(ownerMonthlyRankRequestByLane.get(lane)||0)+1;
+ ownerMonthlyRankRequestByLane.set(lane,serial);
+ return {lane,serial,epoch:ownerMonthlyRankGeneration};
+}
+function currentOwnerMonthlyRankRequest(token){
+ return token.epoch===ownerMonthlyRankGeneration&&
+  ownerMonthlyRankRequestByLane.get(token.lane)===token.serial;
+}
 let ownerJointIndividualPeriod="day",ownerJointProductPeriod="day";
 async function loadOwnerMonthlySharedRanks(which){
  const monthField=which==="Product"?"ownerJointProductMonth":"ownerJointIndividualMonth";
  const month=document.getElementById(monthField).value;
  const status=document.getElementById("ownerJoint"+which+"Status");
- const uid=auth.currentUser?.uid,seq=++ownerMonthlyRankGeneration;
- // Cancel obsolete day fetches; stale responses must not overwrite new month.
- ++sharedDailyRankingGeneration;
+ const uid=auth.currentUser?.uid,rankToken=beginOwnerMonthlyRankRequest(which);
+ // Switching one card to month must not abort another card's daily ranking.
+ beginSharedDailyRankRequest(which);
  if(!uid||!canReadSharedCountOnlyRanks()||
     !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)||
     month>getTodayString().slice(0,7)){
@@ -13867,7 +13942,9 @@ async function loadOwnerMonthlySharedRanks(which){
   const key=uid+"|"+(currentUserData?.companyId||"")+"|"+month;
   const old=ownerMonthlyRankCache.get(key),cached=old&&Date.now()-old.checkedAt<180000;
   const response=cached?old.value:(await readPartnerMonthlySharedCounts({month})).data;
-  if(seq!==ownerMonthlyRankGeneration||auth.currentUser?.uid!==uid||
+  if(response?.directIntegrityUnverified===true)
+   throw Error("monthly_direct_integrity_unverified");
+  if(!currentOwnerMonthlyRankRequest(rankToken)||auth.currentUser?.uid!==uid||
      document.getElementById(monthField).value!==month)return;
   if(response?.scope!=="shared_monthly_counts_only"||response.role!=="hub"||
      response.month!==month||response.complete!==false||
@@ -13900,8 +13977,10 @@ async function loadOwnerMonthlySharedRanks(which){
   }
   status.textContent="月間件数の途中経過です。未報告・未照合の実績は0件として確定していません。";
  }catch(error){
-  if(seq!==ownerMonthlyRankGeneration||auth.currentUser?.uid!==uid)return;
-  status.textContent="月間の件数を照合できません。読取上限・認証・権限を確認してください。既存売上データは維持しています。";
+  if(!currentOwnerMonthlyRankRequest(rankToken)||auth.currentUser?.uid!==uid)return;
+  status.textContent=error?.message==="monthly_direct_integrity_unverified"?
+   "自社の保存済み実績に件数不一致があるため、合同順位は未確定として非表示です。協力店の月別実績・班別詳細は別画面で確認できます。":
+   "月間の件数を照合できません。読取上限・認証・権限を確認してください。既存売上データは維持しています。";
   if(which==="Individual"){ownerJointIndividualSnapshot=null;renderOwnerJointIndividualRanking();}
   else{ownerJointProductSnapshot=null;renderOwnerJointProductRanking(null);}
   console.error("shared_monthly_count_unavailable",error?.code||"unverified");
@@ -13913,14 +13992,14 @@ ownerJointIndividualDate.value=getTodayString();
 ownerJointIndividualDate.max=getTodayString();
 document.getElementById("ownerJointIndividualButton").onclick=()=>{
  if(!canReadSharedCountOnlyRanks())return;
- ++ownerMonthlyRankGeneration;ownerJointIndividualPeriod="day";
+ beginOwnerMonthlyRankRequest("Individual");ownerJointIndividualPeriod="day";
  ownerJointIndividualMode=true;ownerJointIndividualSnapshot=null;
  document.getElementById("ownerSharedDateIndividual").value=ownerJointIndividualDate.value;
  renderOwnerJointIndividualRanking();
  void loadSharedDailyStandings("Individual",true);
 };
 document.getElementById("ownerOriginalIndividualButton").onclick=()=>{
- ++ownerMonthlyRankGeneration;++sharedDailyRankingGeneration;
+ beginOwnerMonthlyRankRequest("Individual");beginSharedDailyRankRequest("Individual");
  ownerJointIndividualMode=false;ownerJointIndividualSnapshot=null;
  renderDashboard();
  document.getElementById("ownerJointIndividualStatus").textContent="自社の従来ランキングを表示しています。";
@@ -13937,7 +14016,7 @@ const ownerJointProductDate=document.getElementById("ownerJointProductDate");
 ownerJointProductDate.value=getTodayString();ownerJointProductDate.max=getTodayString();
 document.getElementById("ownerJointProductButton").onclick=()=>{
  if(!isCurrentCompanyManager())return;
- ++ownerMonthlyRankGeneration;ownerJointProductPeriod="day";
+ beginOwnerMonthlyRankRequest("Product");ownerJointProductPeriod="day";
  ownerJointProductMode=true;
  ownerJointProductSnapshot=null;
  ownerJointProductDateKey=ownerJointProductDate.value;
@@ -13947,7 +14026,7 @@ document.getElementById("ownerJointProductButton").onclick=()=>{
  void loadSharedDailyStandings("Product",true);
 };
 document.getElementById("ownerOriginalProductButton").onclick=()=>{
- ++ownerMonthlyRankGeneration;++sharedDailyRankingGeneration;
+ beginOwnerMonthlyRankRequest("Product");beginSharedDailyRankRequest("Product");
  ownerJointProductMode=false;ownerJointProductSnapshot=null;
  renderProductMemberRanking(records.filter(r=>r.date?.startsWith(dashboardMonth.value)));
  document.getElementById("ownerJointProductStatus").textContent="自社の従来の月間ランキングを表示しています。";
@@ -13990,8 +14069,8 @@ async function loadPartnerMonthlySharedRankings(){
  const monthInput=pInline("partnerSharedRankingsMonth");
  const month=monthInput.value,uid=auth.currentUser?.uid;
  const status=pInline("partnerSharedRankingsStatus"),content=pInline("partnerSharedRankingContent");
- const seq=++ownerMonthlyRankGeneration;
- ++sharedDailyRankingGeneration; // invalidate any older daily response
+ const rankToken=beginOwnerMonthlyRankRequest("partner");
+ beginSharedDailyRankRequest("partner"); // cancel only partner daily, not HQ
  content.replaceChildren();
  if(partnerSharedRankPeriod!=="month"||!uid||
     !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)||
@@ -14006,7 +14085,9 @@ async function loadPartnerMonthlySharedRankings(){
   const key=uid+"|partner|"+(partnerInlineWorkspaceCompany||"")+"|"+month;
   const old=ownerMonthlyRankCache.get(key),cached=old&&Date.now()-old.checkedAt<180000;
   const response=cached?old.value:(await readPartnerMonthlySharedCounts(payload)).data;
-  if(seq!==ownerMonthlyRankGeneration||auth.currentUser?.uid!==uid||
+  if(response?.directIntegrityUnverified===true)
+   throw Error("monthly_direct_integrity_unverified");
+  if(!currentOwnerMonthlyRankRequest(rankToken)||auth.currentUser?.uid!==uid||
      partnerSharedRankPeriod!=="month"||monthInput.value!==month)return;
   if(response?.scope!=="shared_monthly_counts_only"||response.role!=="partner"||
      response.month!==month||response.complete!==false||
@@ -14057,13 +14138,14 @@ async function loadPartnerMonthlySharedRankings(){
   }
   status.textContent="月間途中経過｜未報告・未照合は0件扱いせず、全社合同の暫定順位を表示しています。";
  }catch(error){
-  if(seq!==ownerMonthlyRankGeneration||auth.currentUser?.uid!==uid)return;
+  if(!currentOwnerMonthlyRankRequest(rankToken)||auth.currentUser?.uid!==uid)return;
   content.replaceChildren();
   const historicalCountMismatch=
    error?.code==="functions/failed-precondition"&&
    error?.message==="MONTHLY_DIRECT_COUNTS_UNVERIFIED";
-  status.textContent=historicalCountMismatch?
-   "直営の保存済み実績に件数不一致があるため、月間の合同ランキングを未確定として保留しています。順位の推測・0件扱いは行いません。":
+  status.textContent=historicalCountMismatch||
+   error?.message==="monthly_direct_integrity_unverified"?
+   "直営の保存済み実績に件数不一致があるため、月間の合同ランキングを未確定として保留しています。協力店の月別ダッシュボードは確認できます。順位の推測・0件扱いは行いません。":
    "月間の集計を照合できません。入力データ・権限・読取上限を確認してください。";
   console.error("partner_monthly_rank_unavailable",error?.code||"unverified");
  }
@@ -14657,7 +14739,8 @@ async function savePartnerExtra(){
    renderPartnerExtra();
    status.textContent="✅ 追加商材の件数を保存・確認しました。旧実績・単価・売上は変更していません。";
    ++partnerProductMonthlyNonce;partnerProductMonthlyCache=null;
-   ++sharedDailyRankingGeneration;sharedDailyRankCache.clear();
+   ++sharedDailyRankingGeneration;++ownerMonthlyRankGeneration;
+  sharedDailyRankCache.clear();ownerMonthlyRankCache.clear();
    if(["products","catalog"].includes(partnerSameAppSelectedPanel))
     void loadPartnerProductMonthlyTotals({force:true});
   }else{
@@ -15277,7 +15360,8 @@ async function partnerInlineRun(work){
   // when a save or invitation fails and the user needs to retry.
   if(refresh){
    ++partnerProductMonthlyNonce;partnerProductMonthlyCache=null;
-   ++sharedDailyRankingGeneration;sharedDailyRankCache.clear();
+   ++sharedDailyRankingGeneration;++ownerMonthlyRankGeneration;
+  sharedDailyRankCache.clear();ownerMonthlyRankCache.clear();
    if(!await partnerInlineFetch())throw Error("refresh_after_write");
   }
   completed=true;resultMessage=message||"更新しました。";
@@ -26876,6 +26960,30 @@ function isPersistedRecordCountConsistent(record) {
   return sum === Number(saved);
 }
 
+// READ-ONLY. Saved count and sum of product rows are independent evidence.
+// Never infer which number is correct or edit a damaged historical record.
+function readOnlyRecordCountEvidence(record) {
+  if (isPersistedRecordCountConsistent(record)) return null;
+  const valid = value =>
+    (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) ||
+    (typeof value === "string" && /^\d+$/.test(value) &&
+      Number.isSafeInteger(Number(value)));
+  const saved = valid(record?.totalCount) ? Number(record.totalCount) : null;
+  const rows = record?.results && typeof record.results === "object" &&
+    !Array.isArray(record.results) ? Object.values(record.results) : null;
+  let lines = rows ? 0 : null;
+  if (rows) {
+    for (const row of rows) {
+      if (!valid(row?.count) || !Number.isSafeInteger(lines + Number(row.count))) {
+        lines = null;
+        break;
+      }
+      lines += Number(row.count);
+    }
+  }
+  return {saved, lines};
+}
+
 async function persistDailyRecord(recordRef, data, expectedRecord, expectedRevision, writeCorrection = null) {
   // サーバーで同日を確認。旧IDの実績もそのまま更新し、重複は推測で統合しない。
   const daily = await getDocsFromServer(query(
@@ -30823,19 +30931,52 @@ function validatedPartnerRankingDay(value,expectedDate){
 // report at the same date, preferring verified staff-ledger data per partner.
 // Never add both amounts from the same partner/day: that double-counts people.
 async function mergedPartnerRankingDay(date){
-  const [legacy,staff]=await Promise.all([
-    readPartnerQuickDay({date}),readPartnerWorkDay({date})
+  // The legacy quick-count Callable only permits reads for the previous
+  // 31 days. The newer staff-ledger Callable supports 366 days. Read that
+  // historical ledger without asking the quick endpoint for an impossible
+  // date; keep the result provisional because older quick-only rows cannot
+  // be independently recovered here. Never replace unknown totals with zero.
+  const today=new Date(getTodayString()+"T00:00:00Z").getTime();
+  const day=Date.parse(date+"T00:00:00Z");
+  const quickReadable=Number.isFinite(day)&&day<=today&&
+    day>=today-31*86400000;
+  // If only the legacy quick endpoint is unavailable, the independently
+  // verified staff-ledger counts must not disappear. Unknown quick-only
+  // submissions remain UNVERIFIED; never convert the failure into zero.
+  // A failed staff endpoint remains fatal because its data has no substitute.
+  const [quick,staff]=await Promise.all([
+    quickReadable?readPartnerQuickDay({date})
+      .then(response=>({available:true,response}),()=>({available:false}))
+      :Promise.resolve({available:false}),
+    readPartnerWorkDay({date})
   ]);
-  const oldRows=validatedPartnerRankingDay(legacy.data,date);
+  const oldRows=quick.available?
+    validatedPartnerRankingDay(quick.response.data,date):[];
   const newRows=validatedPartnerRankingDay(staff.data,date);
   const selected=new Map(oldRows.map(row=>[row.id,row]));
-  for(const row of newRows)selected.set(row.id,row);
+  // A quick company total and a later staff ledger can refer to the SAME
+  // day, but are not independently deduplicated by staff ID. Never add them.
+  // If the totals or product breakdowns disagree, preserve the old total
+  // separately as unverified evidence rather than silently hiding it.
+  let legacyOverlapRows=0,legacyOverlapCount=0;
+  for(const row of newRows){
+    const old=selected.get(row.id);
+    if(old&&(old.totalCount!==row.totalCount||
+       PARTNER_QUICK_RANK_KEYS.some(key=>old.counts[key]!==row.counts[key]))){
+      legacyOverlapRows++;
+      legacyOverlapCount+=old.totalCount;
+      if(!Number.isSafeInteger(legacyOverlapCount))
+        throw Error("partner_legacy_overlap_overflow");
+    }
+    selected.set(row.id,row);
+  }
   const result=[...selected.values()];
   // A registered, approved partner missing from BOTH ledgers is unreported,
   // not a verified zero. Preserve available counts but never certify ranks.
   const registered=staff.data?.registeredCompanies;
   // Old backends that omit the company roster cannot prove a complete month.
-  let coverageComplete=Array.isArray(registered);
+  let coverageComplete=quick.available&&Array.isArray(registered)&&
+    legacyOverlapRows===0;
   if(Array.isArray(registered)){
     if(registered.length>100)throw Error("partner_month_scope_invalid");
     const seen=new Set();
@@ -30850,6 +30991,8 @@ async function mergedPartnerRankingDay(date){
   }
   // Non-enumerable metadata keeps the original row-array API compatible.
   Object.defineProperty(result,"coverageComplete",{value:coverageComplete});
+  Object.defineProperty(result,"legacyOverlapRows",{value:legacyOverlapRows});
+  Object.defineProperty(result,"legacyOverlapCount",{value:legacyOverlapCount});
   return result;
 }
 async function readPartnerRankingMonth(month){
@@ -30857,11 +31000,17 @@ async function readPartnerRankingMonth(month){
     throw Error("partner_month_invalid");
   const now=new Date(getTodayString()+"T00:00:00Z");
   const first=new Date(month+"-01T00:00:00Z");
-  const oldest=new Date(now.getTime()-31*86400000);
-  // Daily API only supports the last 31 days. Never present a partial
-  // previous-month snapshot as a completed combined ranking.
+  const oldest=new Date(now.getTime()-366*86400000);
+  const oldestQuick=new Date(now.getTime()-31*86400000).toISOString().slice(0,10);
+  // The staff-ledger read-only API supports 366 days. Older dates cannot
+  // be fetched and must never be shown as an invented completed month.
+  // Legacy quick-only reports older than 31 days stay provisional below.
   if(first<oldest)
-    return {complete:false,rows:[],reason:"協力店の前月以前の全件数は未照合です"};
+    return {complete:false,rows:[],reason:"366日より前の協力店件数は未照合です"};
+  if(typeof mergedPartnerRankingDay!=="function"&&
+     month+"-01"<oldestQuick)
+    return {complete:false,rows:[],
+      reason:"旧集計APIだけでは31日より古い月の全件数を照合できません"};
   const days=[];
   // Freeze caller identity for every request: a logout mid-fetch must not
   // populate a new company's in-memory cache with old partner counts.
@@ -30871,7 +31020,7 @@ async function readPartnerRankingMonth(month){
       cursor=new Date(cursor.getTime()+86400000))
     days.push(cursor.toISOString().slice(0,10));
   const map=new Map();
-  let coverageComplete=true;
+  let coverageComplete=true,legacyOverlapRows=0,legacyOverlapCount=0;
   // Bounded network concurrency; never request all 31 Functions at once.
   for(let i=0;i<days.length;i+=4){
     const dates=days.slice(i,i+4);
@@ -30880,17 +31029,30 @@ async function readPartnerRankingMonth(month){
       const cached=partnerRankingDailyCache.get(key);
       const ttl=date===getTodayString()?180000:3600000;
       if(cached&&Date.now()-cached.checkedAt<ttl)return cached.rows;
-      const rows=typeof mergedPartnerRankingDay==="function"
-        ? await mergedPartnerRankingDay(date)
-        : validatedPartnerRankingDay((await readPartnerQuickDay({date})).data,date);
+      let rows;
+      if(typeof mergedPartnerRankingDay==="function"){
+        rows=await mergedPartnerRankingDay(date);
+      }else if(date>=oldestQuick){
+        rows=validatedPartnerRankingDay((await readPartnerQuickDay({date})).data,date);
+      }else{
+        // On legacy-only deployments the old Callable cannot read this date.
+        // NEVER mistake its missing data for a verified zero-count day.
+        rows=[];
+        Object.defineProperty(rows,"coverageComplete",{value:false});
+      }
       partnerRankingDailyCache.set(key,{rows,checkedAt:Date.now()});
       // Bounded memory for private count-only rows; never persist in storage.
       if(partnerRankingDailyCache.size>100)
         partnerRankingDailyCache.delete(partnerRankingDailyCache.keys().next().value);
       return rows;
     }));
-    responses.forEach((rows,index)=>{
+    responses.forEach(rows=>{
       if(rows.coverageComplete===false)coverageComplete=false;
+      legacyOverlapRows+=rows.legacyOverlapRows||0;
+      legacyOverlapCount+=rows.legacyOverlapCount||0;
+      if(!Number.isSafeInteger(legacyOverlapRows)||
+         !Number.isSafeInteger(legacyOverlapCount))
+        throw Error("partner_month_overlap_overflow");
       for(const item of rows){
         const old=map.get(item.id)||{
           id:item.id,name:item.name,totalCount:0,
@@ -30907,7 +31069,10 @@ async function readPartnerRankingMonth(month){
     });
   }
   return {complete:coverageComplete,rows:[...map.values()],
-    reason:coverageComplete?"":"協力店に未報告の日があります。月間順位は未確定です。"};
+    legacyOverlapRows,legacyOverlapCount,
+    reason:legacyOverlapRows?
+      "同じ日の旧方式とスタッフ別入力に未突合の差があります。確定順位には反映しません。":
+      coverageComplete?"":"協力店に未報告・未照合の日があります。月間順位は未確定です。"};
 }
 // Preserve available company counts when an approved partner has not
 // reported a day, but NEVER turn these incomplete numbers into rank places.
@@ -30941,6 +31106,14 @@ function renderOwnerPartnerMonthlyPendingCounts(){
  }
  if(!rows.length)
   partnerMainAppendRow(card,"未照合","報告済みの協力店件数を確認できません。");
+ // Old and staff ledgers may describe the same work. Show BOTH original
+ // claims separately without summing them or fabricating a rank.
+ if(Number.isSafeInteger(partnerRankingState.legacyOverlapRows)&&
+    partnerRankingState.legacyOverlapRows>0&&
+    Number.isSafeInteger(partnerRankingState.legacyOverlapCount))
+   partnerMainAppendRow(card,"旧方式の未突合件数",
+     partnerRankingState.legacyOverlapCount+"件（"+
+     partnerRankingState.legacyOverlapRows+"記録）｜上記に加算せず確認中");
 }
 function currentPartnerRankingRows(){
   if(!canLoadPartnerRanking()||
@@ -30963,6 +31136,8 @@ async function refreshExistingPartnerRanking(){
     if(gen!==partnerRankingRequestGeneration||
        !canLoadPartnerRanking()||currentPartnerRankingKey()!==key)return;
     partnerRankingState={key,rows:data.rows,complete:data.complete,
+      legacyOverlapRows:data.legacyOverlapRows||0,
+      legacyOverlapCount:data.legacyOverlapCount||0,
       checkedAt:Date.now(),reason:data.reason};
     if(recordsReady&&recordsSubscribedMonth===month)renderDashboard();
   }catch(error){
@@ -36713,6 +36888,8 @@ function renderOwnerJointIndividualRanking(){
   if(prev!==person.count)rank=i+1;
   prev=person.count;
   const row=document.createElement("div");row.className="ranking-row";
+  if(state.complete===true&&rank===1&&person.count>0)
+   decorateRankingChampion(row,"individual");
   const left=document.createElement("div");left.className="ranking-left";
   const number=document.createElement("span");number.className="ranking-number";
   number.textContent=state.complete?rank+"位":"暫定"+rank+"位";
@@ -37479,7 +37656,10 @@ function renderOwnerJointProductRanking(snapshot){
   button.className="ranking-product-card";button.dataset.groupId=group.id;
   const label=document.createElement("span");
   label.className="ranking-product-card-name";label.textContent=group.name;
-  button.append(label);button.onclick=()=>show(group);
+  const count=document.createElement("span");count.className="ranking-product-card-count";
+  const sum=verifiedSharedRankingGroupTotal(group);
+  count.textContent=sum===null?"件数未照合":sum+"件";
+  button.append(label,count);button.onclick=()=>show(group);
   productRankingProductList.append(button);
  }
  show(groups.find(g=>g.id===selectedProductRankingKey));
@@ -39267,6 +39447,50 @@ function renderRecordHistory(
   const selectedMonth =
     dashboardMonth.value;
 
+  // Owner-only, same-company and selected-month review of existing data.
+  // This is NOT a correction flow. It never loads private finance originals
+  // for partner identities, writes Firestore, or guesses the true contract.
+  const review = document.getElementById("ownerCountIntegrityReview");
+  review.hidden = true;
+  review.replaceChildren();
+  const ownerCanReview = isCurrentCompanyOwner() &&
+    canCurrentUserViewRevenue() && !partnerInlineWorkspaceCompany &&
+    currentUserData?.accessKind !== "partner" &&
+    (currentCompanyData?.companyKind == null ||
+     currentCompanyData.companyKind === "internal");
+  if (ownerCanReview && selectedMonth) {
+    const mismatched = currentRecordHistoryMonthly.filter(record =>
+      record.companyId === currentUserData?.companyId &&
+      record.date?.startsWith(selectedMonth) &&
+      readOnlyRecordCountEvidence(record) !== null);
+    if (mismatched.length) {
+      review.hidden = false;
+      const heading = document.createElement("p");
+      heading.textContent = "要確認：保存済み総件数と商材明細が一致しない記録 " +
+        mismatched.length + "件（選択月）。件数・売上・単価・履歴は変更していません。";
+      review.appendChild(heading);
+      for (const record of mismatched) {
+        const counts = readOnlyRecordCountEvidence(record);
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "team-action-button";
+        button.textContent = record.date + "｜" + getCurrentMemberName(record) +
+          "｜保存 " + (counts.saved ?? "未確認") + "件 / 明細 " +
+          (counts.lines ?? "未確認") + "件｜履歴を見る";
+        button.onclick = () => {
+          // Navigation only: the existing history list stays read-only.
+          recordHistoryDate.value = record.date;
+          renderRecordHistory(currentRecordHistoryMonthly);
+          recordHistoryList.scrollIntoView({behavior:"smooth",block:"start"});
+        };
+        review.appendChild(button);
+      }
+      const note = document.createElement("p");
+      note.textContent = "どちらの件数が正しいかは未確定です。訂正履歴と契約内容をオーナーが照合するまで、対象記録の保存と合同正式順位は保留します。";
+      review.appendChild(note);
+    }
+  }
+
   const dates =
     Array.from(
       new Set(
@@ -39624,14 +39848,18 @@ function renderRecordHistory(
       `;
 
 
-      const canCorrect =
-        canCurrentUserCorrectRecord(
-          record
-        );
+      const inconsistent = readOnlyRecordCountEvidence(record) !== null;
+      if (inconsistent) {
+        const warning = document.createElement("p");
+        warning.className = "ranking-product-help";
+        warning.textContent = "保存済み総件数と商材明細が一致しません。過去の記録は自動修正せず、履歴を照合してください。";
+        item.appendChild(warning);
+      }
+      const canCorrect = !inconsistent &&
+        canCurrentUserCorrectRecord(record);
 
-      // No historical delete action is displayed; authorized correction remains possible.
-
-
+      // Existing safe correction remains available for CONSISTENT records.
+      // Damaged rows are never offered an edit button that would fail save.
       if (
         canCorrect
       ) {
