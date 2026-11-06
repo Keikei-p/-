@@ -2,6 +2,8 @@
 // Isolated partner operations: no reads/writes to sales products, records or prices.
 const crypto=require("node:crypto");
 const {monthBounds,projectSavedPartnerMonth}=require("./partner-saved-month.cjs");
+const {readDirectRangeCounts}=require("./shared-direct-counts.cjs");
+const {projectCombinedMonth}=require("./combined-saved-month-ranking.cjs");
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -880,6 +882,60 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    });
   }catch{fail("data-loss");}
  }
+ // Read-only joint MONTHLY individual/product counts for the same verified
+ // internal Owner and approved partners; no writes and no raw finance output.
+ async function viewCombinedMonth(request){
+  const a=await actor(request),d=request?.data||{};
+  if(Object.keys(d).some(k=>!["month","workspaceCompanyId","codeSessionToken"].includes(k)))
+   fail("invalid-argument");
+  const current=new Intl.DateTimeFormat("en-CA",{
+   timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"
+  }).format(now());
+  let bounds;
+  try{bounds=monthBounds(d.month,current);}catch{fail("invalid-argument");}
+  const s=await scope(a.uid,null,d.workspaceCompanyId);
+  if(s.kind!=="hub"&&s.kind!=="partner")fail();
+  const hubId=s.kind==="hub"?s.cid:s.hubId;
+  if(!ID.test(hubId||""))fail();
+  const relations=await db.collection("partnerRelations")
+   .where("hubCompanyId","==",hubId).limit(21).get();
+  if(relations.size>20)fail("resource-exhausted");
+  // Direct redactor reads legacy sales records SERVER-SIDE ONLY and rejects
+  // inconsistent saved totals, missing UID and non-auditable quantities.
+  // If even one source is malformed, no combined rank is published.
+  let direct;
+  try{direct=await readDirectRangeCounts(db,hubId,bounds.first,bounds.last,KEYS,{
+   maxRecords:10000
+  });}catch{fail("failed-precondition");}
+  const partners=[];
+  let reviewedRows=0;
+  for(const rs of relations.docs){
+   const rel=rs.data()||{},cid=rs.id;
+   if(!ID.test(cid)||rel.partnerCompanyId!==cid||rel.hubCompanyId!==hubId)
+    fail("data-loss");
+   if(rel.active!==true||rel.countSharingApproved!==true)continue;
+   const companySnap=await db.collection("companies").doc(cid).get();
+   const company=companySnap.data()||{};
+   if(!companySnap.exists||company.companyKind!=="partner"||
+      company.hubCompanyId!==hubId||company.active!==true||
+      !validCompanyName(company.name))fail("data-loss");
+   const rows=await collection(cid,"partnerWorkEntries")
+    .where("date",">=",bounds.first)
+    .where("date","<=",bounds.last).limit(1001).get();
+   if(rows.size>1000)fail("resource-exhausted");
+   reviewedRows+=rows.size;
+   if(reviewedRows>10000)fail("resource-exhausted");
+   let data;
+   try{
+    data=projectSavedPartnerMonth({hubId,partnerId:cid,month:d.month,
+     rows:rows.docs,categoryKeys:KEYS});
+   }catch{fail("data-loss");}
+   partners.push({id:cid,name:company.name,data});
+  }
+  try{
+   return projectCombinedMonth({month:d.month,hubId,keys:KEYS,direct,partners});
+  }catch{fail("failed-precondition");}
+ }
  async function submit(request){
   const a=await actor(request),d=request?.data||{},date=validDate(d.date),staffId=clean(d.staffId);
   if(!ID.test(staffId)||!Number.isSafeInteger(d.expectedVersion)||d.expectedVersion<0)fail("invalid-argument");
@@ -956,6 +1012,6 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      privateTotalCount:privateValidated.total};
   });
  }
- return Object.freeze({manage,accept,view,viewSavedMonth,submit});
+ return Object.freeze({manage,accept,view,viewSavedMonth,viewCombinedMonth,submit});
 }
 module.exports={makeWorkspace,KEYS};
