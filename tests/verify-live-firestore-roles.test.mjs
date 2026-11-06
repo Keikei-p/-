@@ -22,7 +22,11 @@ function fixture(opts={}){
   const calls=[];
   const fetchImpl=async (url,req)=>{
     calls.push({url,method:req.method,auth:req.headers.Authorization,body:req.body});
-    const partner=req.headers.Authorization==='Bearer '+jwt('partneruid');
+    // Distinguish test sessions by their synthetic UID, not byte-for-byte
+    // token equality: changing only an expiry must preserve partner identity.
+    const token=req.headers.Authorization.slice('Bearer '.length);
+    const claims=JSON.parse(Buffer.from(token.split('.')[1],'base64url').toString('utf8'));
+    const partner=claims.sub==='partneruid';
     const isProduct=url.includes('/products/');
     const status=opts.statusOverride?.({partner,url,req,calls})??(partner?403:200);
     return {
@@ -249,4 +253,36 @@ test('partner 403 with non-JSON body is not accepted as a Firestore Rules denial
       }};
   }});
   await assert.rejects(verifier(args),/STOP_LIVE_ROLE_PERMISSION_DENIAL_UNVERIFIED/);
+});
+
+
+test('secondary token nearing expiry DURING Owner proof cannot become a false money-403 success',async()=>{
+ let now=T*1000;
+ const f=fixture({statusOverride:({calls})=>{
+  if(calls.length===4)now=(T+80)*1000;
+ }});
+ const verifier=f.create({
+  partnerIdToken:jwt('partneruid',{exp:T+125}),
+  now:()=>now
+ });
+ await assert.rejects(verifier(args),/STOP_LIVE_ROLE_USER_IDENTITY_NOT_VERIFIED/);
+ assert.equal(f.calls.length,4,
+  'no 403 probe may run when the genuine partner session is near expiry');
+});
+
+test('both Owner and partner sessions must remain fresh THROUGH all eight live finance requests',async()=>{
+ for(const expiring of ['owner','partner']){
+  let now=T*1000;
+  const f=fixture({statusOverride:({calls})=>{
+   if(calls.length===8)now=(T+80)*1000;
+  }});
+  const verifier=f.create({
+   ownerIdToken:jwt('owneruid',{exp:T+(expiring==='owner'?125:3000)}),
+   partnerIdToken:jwt('partneruid',{exp:T+(expiring==='partner'?125:3000)}),
+   now:()=>now
+  });
+  await assert.rejects(verifier(args),/STOP_LIVE_ROLE_USER_IDENTITY_NOT_VERIFIED/,
+   'Do not certify fresh finance boundary when '+expiring+' expires during proof');
+  assert.equal(f.calls.length,8,'all REST responses looked valid, yet proof must fail');
+ }
 });
