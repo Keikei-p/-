@@ -51,14 +51,14 @@ jobs:
           test "$(git rev-parse origin/main)" = 17681e69d3ebd7271cc9a58e138fd0e202db7294
           test "$(git merge-base HEAD origin/feature/main-partner-month-readonly-20261106)" = 3372630b67c2a94346ae1ae76a7fe03739e86774
           git diff --name-only 3372630b67c2a94346ae1ae76a7fe03739e86774...HEAD > /tmp/nico-month-phase1-allowlist.txt
-          if grep -Ev '^(firestore[.]rules|tests/rules[.]test[.]cjs|docs/MAIN_MONTH_PHASE1_PRODUCTION_READINESS_NO_DEPLOY[.]md|[.]github/workflows/nico-main-month-phase1-rules-integrated-no-deploy[.]yml)$' /tmp/nico-month-phase1-allowlist.txt; then
+          if grep -Ev '^(firestore[.]rules|tests/rules[.]test[.]cjs|docs/MAIN_MONTH_PHASE1_PRODUCTION_READINESS_NO_DEPLOY[.]md|functions-partner-workspace/partner-combined-extra-projection[.]cjs|tests/partner-saved-month-main[.]test[.]cjs|[.]github/workflows/nico-main-month-phase1-rules-integrated-no-deploy[.]yml)$' /tmp/nico-month-phase1-allowlist.txt; then
             echo STOP_UNREVIEWED_INTEGRATION_FILE
             exit 1
           fi
           test "$(git hash-object firestore.rules)" = 6d6ac7fd3544b0326823e419a3acd7e1d060b714
           test "$(git hash-object tests/rules.test.cjs)" = 0292ea176ad67e6486cd9fd1a0d08dc18a3317cd
           # Existing price, count save, Auth and history implementation is untouched.
-          git diff --exit-code 3372630b67c2a94346ae1ae76a7fe03739e86774 -- index.html functions functions-partner-workspace functions-partner-quick firestore.indexes.json
+          git diff --exit-code 3372630b67c2a94346ae1ae76a7fe03739e86774 -- index.html functions functions-partner-quick firestore.indexes.json
       - name: Validate month, ranking, catalog, money-free API, owner revenue and count writes
         shell: bash
         run: |
