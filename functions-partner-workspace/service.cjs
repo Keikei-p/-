@@ -1,6 +1,7 @@
 "use strict";
 // Isolated partner operations: no reads/writes to sales products, records or prices.
 const crypto=require("node:crypto");
+const {monthBounds,projectSavedPartnerMonth}=require("./partner-saved-month.cjs");
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -829,6 +830,56 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     teams:visibleTeams,staff:[...allowed.values()],records:rows,categories:KEYS,
     privateProducts:productList};
  }
+ // Isolated read-only monthly counts. Never read financial originals or write.
+ async function viewSavedMonth(request){
+  const a=await actor(request),d=request?.data||{};
+  if(Object.keys(d).some(k=>!["month","workspaceCompanyId","partnerCompanyId"].includes(k)))
+   fail("invalid-argument");
+  const current=new Intl.DateTimeFormat("en-CA",{
+   timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"
+  }).format(now());
+  let bounds;
+  try{bounds=monthBounds(d.month,current);}catch{fail("invalid-argument");}
+  const s=await scope(a.uid,null,d.workspaceCompanyId);
+  let cid=s.cid,hubId=s.hubId,role=s.role;
+  if(s.kind==="hub"){
+   if(!ID.test(d.partnerCompanyId||""))fail("invalid-argument");
+   const [rs,cs]=await Promise.all([
+    db.collection("partnerRelations").doc(d.partnerCompanyId).get(),
+    db.collection("companies").doc(d.partnerCompanyId).get()
+   ]);
+   const r=rs.data()||{},company=cs.data()||{};
+   if(!rs.exists||!cs.exists||r.partnerCompanyId!==d.partnerCompanyId||
+      r.hubCompanyId!==s.cid||r.active!==true||r.countSharingApproved!==true||
+      company.companyKind!=="partner"||company.hubCompanyId!==s.cid||
+      company.active!==true)fail();
+   cid=d.partnerCompanyId;hubId=s.cid;role="hub";
+  }else if(s.kind==="partner"){
+   if(d.partnerCompanyId!=null)fail();
+  }else fail();
+  // The bounded date range never returns incomplete totals if it overflows.
+  const [entries,teams]=await Promise.all([
+   collection(cid,"partnerWorkEntries").where("date",">=",bounds.first)
+    .where("date","<=",bounds.last).limit(1001).get(),
+   collection(cid,"partnerWorkTeams").limit(151).get()
+  ]);
+  if(entries.size>1000||teams.size>150)fail("resource-exhausted");
+  const teamNames=Object.create(null);
+  for(const sn of teams.docs){
+   const x=sn.data()||{};
+   if(!ID.test(sn.id)||x.companyId!==cid)fail("data-loss");
+   teamNames[sn.id]=x.name;
+  }
+  // Members see only their own count rows; no other identities serialized.
+  const rows=role==="member"?entries.docs.filter(sn=>
+   sn.data()?.staffId===a.uid):entries.docs;
+  try{
+   return projectSavedPartnerMonth({
+    hubId,partnerId:cid,month:d.month,rows,categoryKeys:KEYS,
+    teamNames,role,actorUid:a.uid
+   });
+  }catch{fail("data-loss");}
+ }
  async function submit(request){
   const a=await actor(request),d=request?.data||{},date=validDate(d.date),staffId=clean(d.staffId);
   if(!ID.test(staffId)||!Number.isSafeInteger(d.expectedVersion)||d.expectedVersion<0)fail("invalid-argument");
@@ -905,6 +956,6 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      privateTotalCount:privateValidated.total};
   });
  }
- return Object.freeze({manage,accept,view,submit});
+ return Object.freeze({manage,accept,view,viewSavedMonth,submit});
 }
 module.exports={makeWorkspace,KEYS};
