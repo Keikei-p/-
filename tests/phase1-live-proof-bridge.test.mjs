@@ -242,7 +242,8 @@ test('owner proof does not satisfy future partner denial; synthetic post-switch 
     candidateEmulatorVerified:true,realOwnerBeforeVerified:true,
     backupReviewed:true,verifyLiveRoles,
     preApplyCheck:async()=>({checkedAgainst:'production-live',
-      ownerFinanceAllowed:true,affectedSecondaryBound:true,partnerSessionFresh:true})
+      ownerFinanceAllowed:true,affectedSecondaryBound:true,partnerSessionFresh:true,
+      partnerCountViewAllowed:true})
   }),/STOP_PHASE1_POST_SWITCH_ROLE_UNVERIFIED/);
   assert.equal(r.getActive(),oldId);
   assert.deepEqual(r.writes,['POST','PATCH','PATCH']);
