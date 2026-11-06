@@ -23,7 +23,8 @@ import {createAffectedSecondaryIdentityVerifier} from './phase1-bound-identity-r
 import {
   createLiveFirestoreOwnerPreflight,
   createLiveFirestoreRoleVerifier,
-  createLiveFirestoreSessionPreflight
+  createLiveFirestoreSessionPreflight,
+  createLivePartnerCountViewVerifier
 } from './verify-live-firestore-roles.mjs';
 
 const stop=code=>{throw Error('STOP_PHASE1_LIVE_BRIDGE_'+code);};
@@ -80,6 +81,17 @@ export async function phase1WithLiveAccountGate({
 
   const before=createLiveFirestoreOwnerPreflight(accounts);
   const after=createLiveFirestoreRoleVerifier(accounts);
+  const countViewArgs={
+    partnerIdToken:accounts.partnerIdToken,
+    expectedPartnerUid:accounts.expectedPartnerUid,
+    partnerCompanyId:identity.partnerCompanyId,
+    ...(accounts.fetchImpl===undefined?{}:{fetchImpl:accounts.fetchImpl}),
+    ...(accounts.now===undefined?{}:{now:accounts.now})
+  };
+  // Distinct one-use probes: verify count-entry workspace reads before and
+  // after the Rules switch, without writing any daily entry or count history.
+  const beforeCountView=createLivePartnerCountViewVerifier(countViewArgs);
+  const afterCountView=createLivePartnerCountViewVerifier(countViewArgs);
   const ownerProof=await before();
 
   // A fake injected transport can test the flow, but can NEVER be promoted
@@ -115,6 +127,14 @@ export async function phase1WithLiveAccountGate({
       if(owner?.checkedAgainst!=='production-live'||
          owner?.ownerFinanceAllowed!==true)
         stop('PRE_SWITCH_OWNER_FINANCE_UNVERIFIED');
+      // A valid partner 403 is not enough; the authenticated partner must
+      // still open their OWN count-entry workspace against real Functions.
+      // This onCall path performs read-only GETs, no entry submission.
+      const beforeCounts=await beforeCountView();
+      if(beforeCounts?.checkedAgainst!=='production-live'||
+         beforeCounts?.partnerCountViewAllowed!==true||
+         beforeCounts?.productionDocumentWrites!==0)
+        stop('PRE_SWITCH_COUNT_VIEW_UNVERIFIED');
       // The token freshness check also runs after network reads, ensuring
       // it did not expire during the pre-switch Owner probe.
       createLiveFirestoreSessionPreflight(accounts)();
@@ -134,7 +154,17 @@ export async function phase1WithLiveAccountGate({
          fresh?.ownerInternalBound!==true||
          fresh?.affectedSecondaryBound!==true)
         stop('POST_SWITCH_IDENTITY_UNVERIFIED');
-      return after(proofArgs);
+      const finances=await after(proofArgs);
+      const countView=await afterCountView();
+      if(countView?.checkedAgainst!=='production-live'||
+         countView?.partnerCountViewAllowed!==true||
+         countView?.productionDocumentWrites!==0)
+        stop('POST_SWITCH_COUNT_VIEW_UNVERIFIED');
+      // Both real user sessions must still be fresh after the final read.
+      createLiveFirestoreSessionPreflight({
+        ...accounts,minimumRemainingSeconds:120
+      })();
+      return {...finances,partnerCountViewAllowed:true};
     }
   });
 }

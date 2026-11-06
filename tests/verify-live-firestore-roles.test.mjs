@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createLiveFirestoreRoleVerifier} from '../tools/production/verify-live-firestore-roles.mjs';
+import {createLiveFirestoreRoleVerifier,createLivePartnerCountViewVerifier}
+ from '../tools/production/verify-live-firestore-roles.mjs';
 
 const T=Math.floor(Date.parse('2026-11-05T14:00:00Z')/1000);
 const PROJECT='sales-management-cc116';
@@ -285,4 +286,115 @@ test('both Owner and partner sessions must remain fresh THROUGH all eight live f
    'Do not certify fresh finance boundary when '+expiring+' expires during proof');
   assert.equal(f.calls.length,8,'all REST responses looked valid, yet proof must fail');
  }
+});
+
+
+const COUNT_DATE=new Intl.DateTimeFormat('en-CA',{
+ timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'
+}).format(new Date(T*1000));
+const COUNT_KEYS=['NURO','SBMNP','YMMNP','YM純新規','SB光・AIR',
+ 'ウォーター','つばさ・HTB','太陽光・蓄電池AP','U-NEXT'];
+function liveCountFixture({status=200,role='member',replaceResult,advanceClock}={}){
+ let clock=T*1000;
+ const calls=[];
+ const count={
+  role,date:COUNT_DATE,companyName:'協力店',teamId:'team1',
+  categories:COUNT_KEYS,teams:[{id:'team1',name:'1班'}],
+  staff:role==='owner'?[]:[{uid:'partneruid',active:true,kind:'account'}],
+  records:[],privateProducts:[]
+ };
+ const fetchImpl=async(url,req)=>{
+  calls.push({url,req});
+  if(advanceClock)clock=(T+80)*1000;
+  return {status,json:async()=>({result:replaceResult===undefined?count:replaceResult})};
+ };
+ const create=(override={})=>createLivePartnerCountViewVerifier({
+  partnerIdToken:jwt('partneruid'),expectedPartnerUid:'partneruid',
+  partnerCompanyId:'partner_company',fetchImpl,now:()=>clock,...override
+ });
+ return {calls,create,count};
+}
+
+test('affected partner count workspace uses real-user-style read-only onCall request and no write',async()=>{
+ const f=liveCountFixture();
+ const verified=await f.create()();
+ assert.deepEqual(verified,{
+  checkedAgainst:'synthetic-only',partnerCountViewAllowed:true,
+  productionDocumentWrites:0
+ });
+ assert.equal(f.calls.length,1);
+ const {url,req}=f.calls[0];
+ assert.equal(url,'https://asia-northeast1-sales-management-cc116.cloudfunctions.net/getPartnerWorkspace');
+ assert.equal(req.method,'POST');
+ assert.equal(req.redirect,'error');
+ assert.equal(req.headers.Authorization,'Bearer '+jwt('partneruid'));
+ assert.deepEqual(JSON.parse(req.body),{data:{
+  date:COUNT_DATE,workspaceCompanyId:'partner_company'
+ }});
+ assert(!/submitPartnerWorkspaceCounts|managePartnerWorkspace/.test(url));
+ const once=f.create() ;
+ await once();
+ await assert.rejects(once(),/STOP_LIVE_ROLE_SINGLE_USE_COUNT_VIEW/);
+});
+
+test('unavailable partner view cannot be mistaken for count entry continuity',async()=>{
+ for(const status of [401,403,404,429,500]){
+  const f=liveCountFixture({status});
+  await assert.rejects(f.create()(),/STOP_LIVE_ROLE_COUNT_VIEW_UNAVAILABLE/);
+ }
+});
+
+test('generic callable HTTP 200, wrong date, and wrong role cannot fake a count view',async()=>{
+ for(const view of [
+  {},{role:'hub',date:COUNT_DATE,categories:COUNT_KEYS,teams:[],staff:[],records:[]},
+  {role:'member',date:'2026-10-01',categories:COUNT_KEYS,teams:[],staff:[],records:[]},
+  {role:'member',date:COUNT_DATE,categories:[],teams:[],staff:[],records:[]}
+ ]){
+  const f=liveCountFixture({replaceResult:view});
+  await assert.rejects(f.create()(),/STOP_LIVE_ROLE_COUNT_VIEW_CONTRACT_UNVERIFIED/);
+ }
+});
+
+test('a partner member lacking their own active input row is not count-ready',async()=>{
+ const f=liveCountFixture();
+ for(const staff of [
+  [],[{uid:'anotherUser',active:true,kind:'account'}],
+  [{uid:'partneruid',active:false,kind:'account'}],
+  [{uid:'partneruid',active:true,kind:'managed'}]
+ ]){
+  const v={...f.count,staff};
+  await assert.rejects(f.create({fetchImpl:async()=>({
+   status:200,json:async()=>({result:v})
+  })})(),/STOP_LIVE_ROLE_COUNT_VIEW_OWN_INPUT_UNAVAILABLE/);
+ }
+ const owner=liveCountFixture({role:'owner'});
+ assert.equal((await owner.create()()).partnerCountViewAllowed,true,
+  'Owner can open workspace to create staff even before their first managed entry');
+});
+
+test('count-only response with extra financial fields cannot pass release signoff',async()=>{
+ const f=liveCountFixture();
+ for(const view of [
+  {...f.count,totalRevenue:50000},
+  {...f.count,records:[{staffId:'example',data:{revenuePerUnit:5000}}]}
+ ]){
+  await assert.rejects(f.create({fetchImpl:async()=>({
+   status:200,json:async()=>({result:view})
+  })})(),/STOP_LIVE_ROLE_COUNT_VIEW_FINANCE_FIELD_EXPOSED/);
+ }
+});
+
+test('token expiring while partner view is reading cannot be a valid live proof',async()=>{
+ const f=liveCountFixture({advanceClock:true});
+ await assert.rejects(f.create({partnerIdToken:jwt('partneruid',{exp:T+125})})(),
+  /STOP_LIVE_ROLE_USER_IDENTITY_NOT_VERIFIED/);
+ assert.equal(f.calls.length,1);
+});
+
+test('live count view rejects malformed scope and never falls back to privileged tokens',()=>{
+ const f=liveCountFixture();
+ for(const input of [{partnerCompanyId:'../internal'},
+  {expectedPartnerUid:'another-user'},{partnerIdToken:'server-oauth-bypass'}])
+  assert.throws(()=>f.create(input),/STOP_LIVE_ROLE_/);
+ assert.equal(f.calls.length,0);
 });

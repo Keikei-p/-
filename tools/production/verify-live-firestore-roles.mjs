@@ -259,3 +259,84 @@ export function createLiveFirestoreSessionPreflight({
     });
   };
 }
+
+
+/**
+ * Read-only continuity proof for the affected partner's EXISTING count-entry
+ * workspace, using their real Firebase USER ID token. A finance 403 is not
+ * sufficient evidence that they can still enter counts.
+ *
+ * Calls ONLY getPartnerWorkspace with an exact input date and company ID.
+ * It NEVER invokes submitPartnerWorkspaceCounts or other write APIs.
+ * The response is discarded; only safe booleans leave this function.
+ * Injected HTTP transports are synthetic-only and cannot certify production.
+ */
+export function createLivePartnerCountViewVerifier({
+ partnerIdToken,expectedPartnerUid,partnerCompanyId,
+ fetchImpl,now=()=>Date.now()
+}={}){
+ const transport=fetchImpl===undefined?globalThis.fetch:fetchImpl;
+ if(typeof transport!=='function'||typeof now!=='function'||
+    !ID.test(partnerCompanyId||''))stop('COUNT_VIEW_DEPENDENCIES');
+ identity(partnerIdToken,expectedPartnerUid,Math.floor(now()/1000));
+ const endpoint='https://asia-northeast1-'+PROJECT+
+  '.cloudfunctions.net/getPartnerWorkspace';
+ const provenance=fetchImpl===undefined?'production-live':'synthetic-only';
+ let attempted=false;
+ return async function verifyPartnerCountView(){
+  if(attempted)stop('SINGLE_USE_COUNT_VIEW');
+  attempted=true;
+  identity(partnerIdToken,expectedPartnerUid,Math.floor(now()/1000));
+  const date=new Intl.DateTimeFormat('en-CA',{
+   timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'
+  }).format(new Date(now()));
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date))stop('COUNT_VIEW_DATE');
+  let response;
+  try{
+   response=await transport(endpoint,{
+    method:'POST',redirect:'error',
+    headers:{Authorization:'Bearer '+partnerIdToken,
+     'Content-Type':'application/json'},
+    body:JSON.stringify({data:{date,workspaceCompanyId:partnerCompanyId}})
+   });
+  }catch{stop('COUNT_VIEW_TRANSPORT_UNVERIFIED');}
+  if(response?.status!==200)stop('COUNT_VIEW_UNAVAILABLE');
+  let payload;
+  try{payload=await response.json();}
+  catch{stop('COUNT_VIEW_RESPONSE_UNVERIFIED');}
+  // Callable v2 successful responses are wrapped in the "result" field.
+  // Do not mistake a generic HTTP 200 or error body for working count entry.
+  const view=payload?.result;
+  if(!view||typeof view!=='object'||Array.isArray(view)||
+     !['owner','leader','member'].includes(view.role)||
+     view.date!==date||!Array.isArray(view.categories)||
+     !Array.isArray(view.teams)||!Array.isArray(view.staff)||
+     !Array.isArray(view.records)||view.categories.length!==9||
+     view.categories.some(key=>typeof key!=='string')||
+     view.staff.length>150||view.records.length>200)
+    stop('COUNT_VIEW_CONTRACT_UNVERIFIED');
+  if(view.role!=='owner'&&!view.staff.some(staff=>
+    staff?.uid===expectedPartnerUid&&staff.active===true&&
+    staff.kind==='account'))
+    stop('COUNT_VIEW_OWN_INPUT_UNAVAILABLE');
+  // This endpoint must remain COUNT-ONLY, not just HTTP 200. Reject even a
+  // nested financial field if an incompatible server release is encountered.
+  const stack=[view];let checked=0;
+  while(stack.length){
+    const item=stack.pop();
+    if(!item||typeof item!=='object')continue;
+    if(++checked>4000)stop('COUNT_VIEW_CONTRACT_UNVERIFIED');
+    for(const [key,value] of Object.entries(item)){
+      if(/revenue|unitprice|unit_price|salesamount|commission|profit|(^|_)price|売上|単価|報酬|利益/i.test(key))
+        stop('COUNT_VIEW_FINANCE_FIELD_EXPOSED');
+      if(value&&typeof value==='object')stack.push(value);
+    }
+  }
+  // The read-only session must remain live at the end of this request too.
+  identity(partnerIdToken,expectedPartnerUid,Math.floor(now()/1000));
+  return Object.freeze({
+   checkedAgainst:provenance,partnerCountViewAllowed:true,
+   productionDocumentWrites:0
+  });
+ };
+}

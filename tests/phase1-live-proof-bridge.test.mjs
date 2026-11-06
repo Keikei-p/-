@@ -269,6 +269,14 @@ test('bridge is import-only, with no deployed runner, credential reader or impli
   assert.match(source,/realOwnerBeforeVerified:true/);
   assert.match(source,/TRUSTED_AFFECTED_IDENTITY_REQUIRED/);
   assert.match(source,/POST_SWITCH_IDENTITY_UNVERIFIED/);
+  // A money-403 proof alone must NOT certify release when a real partner
+  // cannot even open the count-entry workspace under their own user token.
+  assert.match(source,/createLivePartnerCountViewVerifier/);
+  assert.match(source,/beforeCountView\(\)/);
+  assert.match(source,/afterCountView\(\)/);
+  assert.match(source,/PRE_SWITCH_COUNT_VIEW_UNVERIFIED/);
+  assert.match(source,/POST_SWITCH_COUNT_VIEW_UNVERIFIED/);
+  assert.doesNotMatch(source,/submitPartnerWorkspaceCounts/);
 });
 
 test('synthetic identity cannot claim production even when EVERY expected membership is valid',async()=>{
