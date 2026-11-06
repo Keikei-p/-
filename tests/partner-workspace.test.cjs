@@ -1386,7 +1386,7 @@ test("hub account roster denies partner, revoked company, wrong company, and dua
  db.seed("partnerWorkspaceContexts/h",{uid:"h",kind:"partner_secondary",active:true,partnerCompanyId:"partner"});
  await assert.rejects(api.view(req("h",{date,partnerCompanyId:"partner",includeRoster:true})),
   e=>e.code==="permission-denied");
- assert.equal((await api.view(req("h",{date})).role,"hub","legacy day dashboard remains separate");
+ assert.equal((await api.view(req("h",{date}))).role,"hub","legacy day dashboard remains separate");
  db.seed("partnerRelations/partner",{partnerCompanyId:"partner",hubCompanyId:"hub",active:false,countSharingApproved:false});
  await assert.rejects(api.view(req("h",{date,partnerCompanyId:"partner",includeRoster:true})),
   e=>e.code==="permission-denied");
