@@ -1,6 +1,6 @@
 "use strict";
 const test=require("node:test"),assert=require("node:assert/strict");
-const fs=require("node:fs"),os=require("node:os"),path=require("node:path"),cp=require("node:child_process");
+const fs=require("node:fs"),os=require("node:os"),path=require("node:path"),cp=require("node:child_process"),vm=require("node:vm");
 const html=fs.readFileSync(path.join(__dirname,"../index.html"),"utf8");
 const index=fs.readFileSync(path.join(__dirname,"../functions-partner-workspace/index.js"),"utf8");
 const service=fs.readFileSync(path.join(__dirname,"../functions-partner-workspace/service.cjs"),"utf8");
@@ -89,4 +89,58 @@ test("HQ Owner sees an explicit month selector and opens one approved partner on
  assert.match(browse,/if\(company\.active&&partnerMainValidId\(company\.partnerCompanyId\)\)/);
  assert.doesNotMatch(browse,/readPartnerSavedMonth\(\{/,
   "reading one month must require a click, never 100 company reads at once");
+});
+
+
+test("both monthly views use the same strict saved count parity gate",()=>{
+ const fnStart=html.indexOf("function partnerSavedMonthCheckTotals(");
+ const fnEnd=html.indexOf("async function partnerInlineMonthFetch(){",fnStart);
+ assert(fnStart>0&&fnEnd>fnStart);
+ const source=html.slice(fnStart,fnEnd);
+ assert.match(source,/peopleTotal!==data\.totalCount/);
+ assert.match(source,/teamTotal\+data\.unattributedCount!==data\.totalCount/);
+ assert.match(source,/counts\[k\]!==team\.counts\[k\]/);
+ assert.match(source,/cash\.\?back/);
+ assert.match(html,/partnerSavedMonthCheckTotals\(data,keys\)/);
+ assert.equal(html.split("partnerSavedMonthCheckTotals(data,keys);").length-1,2);
+ assert.doesNotMatch(source,/\b(?:fetch|httpsCallable|setDoc|updateDoc|deleteDoc|onSnapshot)\(/);
+});
+test("money-free month totals are shown only when team, person, product all match",()=>{
+ const begin=html.indexOf("function partnerSavedMonthCheckTotals(");
+ const end=html.indexOf("async function partnerInlineMonthFetch(){",begin);
+ const check=vm.runInNewContext("("+html.slice(begin,end).trim()+")");
+ const KEYS=["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター",
+  "つばさ・HTB","太陽光・蓄電池AP","U-NEXT"];
+ const row=n=>Object.fromEntries(KEYS.map(k=>[k,k==="NURO"?n:0]));
+ const member=()=>({key:"a".repeat(64),name:"山田",totalCount:2,counts:row(2)});
+ const valid=()=>({
+  scope:"partner_saved_month_counts_only",month:"2026-10",
+  complete:false,provisional:true,financialFieldsIncluded:false,
+  totalCount:2,counts:row(2),unattributedCount:0,unattributedRows:0,
+  missingHistoricalTeamAttribution:false,
+  people:[member()],
+  teams:[{key:"b".repeat(64),name:"第1班",totalCount:2,counts:row(2),
+   members:[member()]}]
+ });
+ assert.equal(check(valid(),KEYS),true);
+ const bad=[
+  a=>{a.counts.NURO=1;},
+  a=>{a.people[0].counts.NURO=1;},
+  a=>{a.people[0].totalCount=1;},
+  a=>{a.teams[0].members[0].totalCount=1;},
+  a=>{a.teams[0].members[0].counts.NURO=1;},
+  a=>{a.teams[0].counts.NURO=1;},
+  a=>{a.teams[0].members[0].key="c".repeat(64);},
+  a=>{a.teams[0].members.push(member());},
+  a=>{a.unattributedCount=1;},
+  a=>{a.missingHistoricalTeamAttribution=true;},
+  a=>{a.teams[0].members[0].unitPrice=100000;},
+  a=>{a.teams[0].members[0].cbCounts={NURO:{"20000":2}};},
+  a=>{a.totalRevenue=100000;},
+  a=>{a.teams[0].members[0].name=1;}
+ ];
+ for(const mutate of bad){
+  const altered=valid();mutate(altered);
+  assert.throws(()=>check(altered,KEYS),/partner_saved_month_integrity/);
+ }
 });
