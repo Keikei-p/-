@@ -364,6 +364,41 @@ test("OFF hides extra product names and saved extras from ranking while retainin
  assert.deepEqual(db.rows.get("companies/partner/partnerAdditionalCountEntries/2026-10-21__m"),record);
 });
 
+test("OFF-only historical extra rows do not become public zero-count reports or fake rankings",async()=>{
+ const {db,api,req}=seed();
+ db.seed("companies/partner",{...db.rows.get("companies/partner"),name:"協力店A"});
+ db.seed("products/new-service",{companyId:"hub",name:"追加商材X",active:true,
+  unitPrice:987654321,revenue:123456789});
+ const savedExtra={
+  companyId:"partner",hubCompanyId:"hub",date:"2026-09-12",
+  staffId:"m",staffNameSnapshot:"田中",teamIdSnapshot:"teamB",
+  version:1,counts:{"new-service":3},totalCount:3
+ };
+ const extraPath="companies/partner/partnerAdditionalCountEntries/2026-09-12__m";
+ db.seed(extraPath,savedExtra);
+ const before=structuredClone([...db.rows]);
+ const saved=await api.viewSavedMonth(req("p",{month:"2026-09"}));
+ assert.equal(saved.extraVerified,true);
+ assert.equal(saved.extra.containsUnpublished,true);
+ assert.equal(saved.extra.verifiedExtraRows,0,
+  "a hidden-only ledger does not certify a PUBLIC extra count report");
+ assert.equal(saved.extra.totalCount,0);
+ assert.equal(saved.combinedTotalCount,0);
+ const combined=await api.viewCombinedMonth(req("p",{month:"2026-09"}));
+ assert.equal(combined.unpublishedExtraExcluded,true);
+ assert.equal(combined.hasSavedRows,false,
+  "a hidden-only historical ledger is not a published zero-count report");
+ assert.equal(combined.verifiedPartnerRows,0);
+ assert.equal(combined.companies[0].reported,false);
+ assert.deepEqual(combined.people,[]);
+ assert.deepEqual(combined.products,[]);
+ assert.equal(combined.grandTotal,0);
+ assert.doesNotMatch(JSON.stringify({saved,combined}),
+  /new-service|追加商材X|revenue|unitPrice|987654321|123456789/);
+ assert.deepEqual([...db.rows],before,
+  "OFF never erases historical extra counts, finance or source ledgers");
+});
+
 test("mapped legacy product extra quantities cannot be double-counted",async()=>{
  const {db,api,req}=seed();
  db.seed("companies/partner",{...db.rows.get("companies/partner"),name:"協力店A"});
