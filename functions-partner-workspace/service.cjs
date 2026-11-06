@@ -7,6 +7,7 @@ const {projectCombinedMonth}=require("./combined-saved-month-ranking.cjs");
 const {makePartnerCatalogOperations}=require("./partner-catalog-operations.cjs");
 const {projectPublishedPartnerExtras}=require("./partner-combined-extra-projection.cjs");
 const {makePartnerAdditionalOperations}=require("./partner-additional-operations.cjs");
+const {makeLegacyPublicationOperations}=require("./legacy-publication-operations.cjs");
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -16,7 +17,7 @@ const money=/(?:単価|売上|収益|利益|報酬|[¥￥$€]|\d[\d,]*円)/;
 const validCompanyName=x=>typeof x==="string"&&x.trim().length>0&&
  x.trim().length<=80&&!money.test(x);
 const clean=x=>typeof x==="string"?x.trim():"";
-function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>false,now=()=>Date.now()}={}){
+function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>false,now=()=>Date.now(),legacyGateActivationEnabled=()=>false}={}){
  if(!db||!getAuth||!FieldValue||!Timestamp||!HttpsError)throw Error("missing_partner_workspace_dependency");
  const fail=(code="permission-denied")=>{throw new HttpsError(code,"権限・入力内容を確認できません。");};
  const validName=x=>typeof x==="string"&&NAME.test(x)&&!money.test(x);
@@ -253,6 +254,9 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   return ["owner","leader"].includes(s.role)||
     (s.role==="member"&&staff.uid===s.uid&&staff.kind==="account");
  };
+ const {policyFor:legacyPolicyFor,getLegacyGate,activateLegacyCountGate,assertEdit:assertLegacyEdit}=
+  makeLegacyPublicationOperations({db,actor,scope,collection,fail,FieldValue,jstToday,KEYS,
+   activationEnabled:legacyGateActivationEnabled});
  async function manage(request){
   const {uid}=await actor(request),d=request?.data||{},op=d.action;
   if(!["addTeam","addManaged","createInvite","moveStaff","addPrivateProduct","setPrivateProduct",
@@ -842,6 +846,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   // Company-wide partner breakdown is reserved for a verified internal hub
   // Owner; do not silently ignore forged hub options in a partner session.
   if(d.includeTeamStatus===true||d.includeRoster===true||d.partnerCompanyId!=null)fail();
+  const legacyPublication=await legacyPolicyFor(s,date);
   const [teams,staff,entries,privateProducts]=await Promise.all([
     collection(s.cid,"partnerWorkTeams").limit(151).get(),
     collection(s.cid,"partnerWorkStaff").limit(151).get(),
@@ -898,7 +903,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    .filter(team=>["owner","leader"].includes(s.role)||team.id===s.teamId);
   return {role:s.role,date,companyName:clean(s.companyName),teamId:s.teamId,
     teams:visibleTeams,staff:[...allowed.values()],records:rows,categories:KEYS,
-    privateProducts:productList};
+    privateProducts:productList,legacyPublication};
  }
  // Isolated read-only monthly counts. Never read financial originals or write.
  async function viewSavedMonth(request){
@@ -1081,6 +1086,10 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    const privateValidated=validatePrivateCounts(privateNext);
    const prior=oldSnap.exists?validateCounts(old.counts).counts:
      Object.fromEntries(KEYS.map(key=>[key,0]));
+   // Optional per-company legacy ON/OFF enforcement. Gate is absent by default;
+   // an explicit future activation is required. Historical days remain editable.
+   const inputPolicy=await legacyPolicyFor(fresh,date,tx);
+   assertLegacyEdit(inputPolicy,prior,counts);
    const previous=totalSnap.exists?validateCounts(existing.counts).counts:
      Object.fromEntries(KEYS.map(key=>[key,0]));
    const aggregate={};let aggregateTotal=0;
@@ -1127,7 +1136,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  });
  return Object.freeze({
   manage,accept,view,viewSavedMonth,viewCombinedMonth,
-  getPublishedCatalog,setPublishedProduct,viewAdditionalCounts,submitAdditionalCounts,submit
+  getPublishedCatalog,setPublishedProduct,viewAdditionalCounts,submitAdditionalCounts,submit,
+  getLegacyGate,activateLegacyCountGate
  });
 }
 module.exports={makeWorkspace,KEYS};

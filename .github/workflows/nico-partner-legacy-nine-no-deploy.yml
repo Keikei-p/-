@@ -1,0 +1,75 @@
+name: NICO partner legacy9 opt-in safety (NO DEPLOY)
+on:
+  push:
+    branches: [feature/partner-legacy-nine-optin-safe-20261106]
+  pull_request:
+    branches: [feature/partner-owner-count-catalog-safe-20261106]
+permissions:
+  contents: read
+jobs:
+  legacy-nine-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      FIREBASE_PROJECT_ID: demo-sales-support
+      GOOGLE_APPLICATION_CREDENTIALS: ""
+      FIREBASE_SERVICE_ACCOUNT_JSON: ""
+      NICO_LEGACY_COUNT_GATE_ACTIVATION: ""
+      NICO_PHASE1_INDEPENDENT_SIGNOFF: ""
+      NICO_USAGE_APPROVAL: ""
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Reject unreviewed edits or deployment credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$FIREBASE_PROJECT_ID" = demo-sales-support
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$NICO_LEGACY_COUNT_GATE_ACTIVATION"
+          test -z "$NICO_PHASE1_INDEPENDENT_SIGNOFF"
+          test -z "$NICO_USAGE_APPROVAL"
+          git fetch --no-tags origin feature/partner-owner-count-catalog-safe-20261106
+          git diff --name-only origin/feature/partner-owner-count-catalog-safe-20261106...HEAD > /tmp/legacy-nine-checked.txt
+          cat /tmp/legacy-nine-checked.txt
+          while IFS= read -r file; do
+            case "$file" in
+              index.html|functions-partner-workspace/index.js|functions-partner-workspace/service.cjs|functions-partner-workspace/legacy-publication-policy.cjs|functions-partner-workspace/legacy-publication-operations.cjs|tests/partner-legacy-nine-optin-safe.test.cjs|tests/partner-one-login-same-app.test.cjs|.github/workflows/nico-partner-legacy-nine-no-deploy.yml) ;;
+              *) echo "STOP_UNREVIEWED_SOURCE: $file"; exit 1 ;;
+            esac
+          done < /tmp/legacy-nine-checked.txt
+          test "$(wc -l < /tmp/legacy-nine-checked.txt)" -eq 8
+      - name: Check isolated JS syntax and representative regression suite
+        run: |
+          set -euo pipefail
+          node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/legacy-publication-policy.cjs
+          node --check functions-partner-workspace/legacy-publication-operations.cjs
+          node --test \
+            tests/partner-legacy-nine-optin-safe.test.cjs \
+            tests/partner-ui-safe-increment.test.cjs \
+            tests/partner-saved-month-ui-main.test.cjs \
+            tests/partner-workspace.test.cjs \
+            tests/partner-additional-ledger-main.test.cjs \
+            tests/partner-combined-month-ranking-main.test.cjs \
+            tests/partner-catalog-publish-main.test.cjs \
+            tests/partner-saved-month-main.test.cjs \
+            tests/partner-company-code-auth.test.cjs \
+            tests/partner-company-invitations.test.cjs \
+            tests/partner-one-login-same-app.test.cjs \
+            tests/partner-invite-resend-and-accept.test.cjs \
+            tests/partner-money-free-workspace.test.cjs \
+            tests/partner-existing-ranking.test.cjs \
+            tests/internal-owner-finance-visibility.test.cjs \
+            tests/sales-regressions.cjs
+      - name: Confirm no production action
+        run: |
+          echo "PRODUCTION_DOCUMENT_WRITES=0"
+          echo "PRODUCTION_RULES_PATCHES=0"
+          echo "PRODUCTION_DEPLOYED=false"

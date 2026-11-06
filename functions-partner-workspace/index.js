@@ -8,7 +8,9 @@ const {makeCompanyCodeAuth}=require("./company-code-auth.cjs");
 initializeApp();
 const service=makeWorkspace({
  db:getFirestore(),getAuth,FieldValue,Timestamp,HttpsError,
- enabled:()=>process.env.PARTNER_WORKSPACE_ENABLED==="enabled"
+ enabled:()=>process.env.PARTNER_WORKSPACE_ENABLED==="enabled",
+ // OFF unless specifically authorized after independent production proofs.
+ legacyGateActivationEnabled:()=>process.env.NICO_LEGACY_COUNT_GATE_ACTIVATION==="approved"
 });
 const opts={region:"asia-northeast1",maxInstances:3,
  cors:["https://nico-factory.web.app"]};
@@ -19,6 +21,8 @@ exports.getPartnerSavedMonthlyCounts=onCall(opts,service.viewSavedMonth);
 exports.getPartnerCombinedMonthlyCounts=onCall(opts,service.viewCombinedMonth);
 exports.getPartnerPublishedCatalog=onCall(opts,service.getPublishedCatalog);
 exports.setPartnerPublishedProduct=onCall(opts,service.setPublishedProduct);
+exports.getPartnerLegacyCountGate=onCall(opts,service.getLegacyGate);
+exports.activatePartnerLegacyCountGate=onCall(opts,service.activateLegacyCountGate);
 exports.getPartnerAdditionalCounts=onCall(opts,service.viewAdditionalCounts);
 exports.submitPartnerAdditionalCounts=onCall(opts,service.submitAdditionalCounts);
 exports.managePartnerWorkspace=onCall(opts,service.manage);

@@ -7174,6 +7174,7 @@ const readPartnerSavedMonth = httpsCallable(partnerCountFunctions,"getPartnerSav
 const readPartnerCombinedMonth = httpsCallable(partnerCountFunctions,"getPartnerCombinedMonthlyCounts");
 const readPartnerPublishedCatalog = httpsCallable(partnerCountFunctions,"getPartnerPublishedCatalog");
 const setPartnerPublishedProduct = httpsCallable(partnerCountFunctions,"setPartnerPublishedProduct");
+const readPartnerLegacyCountGate = httpsCallable(partnerCountFunctions,"getPartnerLegacyCountGate");
 const readPartnerAdditionalDay = httpsCallable(partnerCountFunctions,"getPartnerAdditionalCounts");
 const submitPartnerAdditionalDay = httpsCallable(partnerCountFunctions,"submitPartnerAdditionalCounts");
 
@@ -12478,13 +12479,26 @@ function partnerInlineRenderCounts(){
  if(!snap||snap.role==="hub")return;
  const staffId=pInline("pInlineStaff").value;
  const entry=snap.records.find(x=>x.staffId===staffId);
+ const policy=snap.legacyPublication||{mode:"legacy",blockedCategories:[]};
+ if(!["legacy","scheduled","enforce"].includes(policy.mode)||
+    !Array.isArray(policy.blockedCategories)||
+    policy.blockedCategories.some(k=>!snap.categories.includes(k))||
+    new Set(policy.blockedCategories).size!==policy.blockedCategories.length)
+  throw Error("partner_legacy_policy_invalid");
+ const blocked=new Set(policy.blockedCategories);
  const grid=pInline("pInlineCountFields");grid.replaceChildren();
  for(const key of snap.categories){
+  const previous=entry?.counts?.[key]??0;
+  const frozen=blocked.has(key);
   const label=document.createElement("label");label.className="p-inline-field";
-  label.textContent=key;
+  label.textContent=key+(frozen?"｜公開OFF（過去件数保護）":"");
+  // Keep all nine numeric inputs in the form for the existing serializer.
+  // Invisible zero categories are still sent unchanged, never omitted.
+  if(frozen&&previous===0)label.hidden=true;
   const input=document.createElement("input");input.type="number";input.min="0";input.max="9999";
   input.step="1";input.inputMode="numeric";input.dataset.countKey=key;
-  input.value=String(entry?.counts?.[key]??0);
+  input.value=String(previous);
+  if(frozen)input.readOnly=true;
   label.append(input);grid.append(label);
  }
  pInline("pInlineSave").disabled=!staffId||partnerInlineBusy;
@@ -13395,6 +13409,33 @@ async function loadOwnerPartnerCompanyTeams(){
      void loadOwnerPartnerSavedMonth(company.partnerCompanyId,company.name);
     };
     card.append(button);
+    const gateButton=document.createElement("button");
+    gateButton.type="button";gateButton.className="team-action-button";
+    gateButton.textContent="旧9商材の公開連動状況";
+    const gateStatus=document.createElement("p");gateStatus.className="p-inline-muted";
+    gateStatus.textContent="現在の件数入力は変更しません。";
+    gateButton.onclick=async()=>{
+     if(!auth.currentUser||!isCurrentCompanyOwner()||
+        currentCompanyData?.companyKind==="partner")return;
+     const uid=auth.currentUser.uid;gateButton.disabled=true;
+     gateStatus.textContent="公開連動の準備状態を確認中…";
+     try{
+      const d=(await readPartnerLegacyCountGate({partnerCompanyId:company.partnerCompanyId})).data;
+      if(auth.currentUser?.uid!==uid||!isCurrentCompanyOwner())return;
+      if(d?.scope!=="hub_legacy_count_gate_read_only"||
+         d.partnerCompanyId!==company.partnerCompanyId||
+         typeof d.armed!=="boolean"||!Array.isArray(d.mappedCategories)||
+         d.mappedCategories.length>9||d.activationAvailable!==false)
+       throw Error("legacy_gate_status_invalid");
+      gateStatus.textContent=d.armed?
+       "公開ON/OFF連動の設定あり｜開始日："+d.effectiveFrom:
+       "従来入力を維持中｜旧9商材の対応登録 "+d.mappedCategories.length+"/9";
+     }catch{
+      if(auth.currentUser?.uid===uid)
+       gateStatus.textContent="設定を確認できません。現在の入力方式は変更していません。";
+     }finally{gateButton.disabled=false;}
+    };
+    card.append(gateButton,gateStatus);
    }
    target.append(card);
   }
