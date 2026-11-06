@@ -12592,8 +12592,8 @@ function partnerMainPendingInvite(){
  return null;
 }
 function resetPartnerInline(){
- ownerProxyReset(); // Clear previous Owner company view on sign-out/account change.
  ownerCatalogReset();
+ ownerProxyReset(); // Clear previous Owner company view on sign-out/account change.
  ++partnerInlineNonce;++ownerPartnerTeamsNonce;++partnerInlineMonthNonce;++ownerPartnerMonthNonce;
  ++partnerJointNonce;++ownerJointNonce;++partnerExtraNonce;++partnerInternetNonce;
  partnerExtraData=null;partnerInternetData=null;partnerInternetBusy=false;
