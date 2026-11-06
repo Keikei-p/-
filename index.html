@@ -4775,11 +4775,23 @@ body.product-reordering .product-list {
     <h4>班別</h4><div id="pInlineMonthTeams" class="p-inline-list"></div>
     <h4>個人別</h4><div id="pInlineMonthPeople" class="p-inline-list"></div>
     <h4>商材別</h4><div id="pInlineMonthProducts" class="p-inline-list"></div>
-    <h3>🏆 本社＋協力店 合同月間ランキング</h3>
+  </div>
+  <div class="dashboard-app-grid" aria-label="本社と共通の件数ランキングメニュー">
+    <button id="pInlineJointPersonToggle" class="dashboard-app-button" type="button" aria-expanded="false" aria-controls="pInlineJointPersonalContent">
+      <span class="dashboard-app-icon">🏆</span><span class="dashboard-app-title">個人ランキング</span>
+      <span class="dashboard-app-meta">自社＋協力店・件数順</span>
+    </button>
+    <button id="pInlineJointProductToggle" class="dashboard-app-button" type="button" aria-expanded="false" aria-controls="pInlineJointProductContent">
+      <span class="dashboard-app-icon">📦</span><span class="dashboard-app-title">商材別ランキング</span>
+      <span class="dashboard-app-meta">自社＋協力店・件数順</span>
+    </button>
+  </div>
+  <div id="pInlineJointPersonalContent" class="dashboard-app-content" hidden>
     <p id="pInlineJointStatus" class="p-inline-muted" role="status" aria-live="polite">保存済み件数の照合待ち</p>
-    <h4>合同個人ランキング（件数）</h4>
     <div id="pInlineJointPeople" class="ranking-grid" data-columns="1"></div>
-    <h4>合同商材ランキング（件数）</h4>
+  </div>
+  <div id="pInlineJointProductContent" class="dashboard-app-content" hidden>
+    <p id="pInlineJointProductStatus" class="p-inline-muted" role="status" aria-live="polite">保存済み件数の照合待ち</p>
     <div id="pInlineJointProducts" class="ranking-grid" data-columns="1"></div>
   </div>
   <div class="p-inline-card"><h3>🏆 選択日のランキング（件数のみ）</h3><div id="pInlineRanking" class="p-inline-list"></div></div>
@@ -12371,6 +12383,9 @@ function resetPartnerInline(){
  for(const id of ["pInlineJointPeople","pInlineJointProducts","pInlineMonthTeams","pInlineMonthPeople","pInlineMonthProducts"])
   pInline(id).replaceChildren();
  pInline("pInlineJointStatus").textContent="";
+ pInline("pInlineJointProductStatus").textContent="";
+ setAccordionState(pInline("pInlineJointPersonToggle"),pInline("pInlineJointPersonalContent"),false);
+ setAccordionState(pInline("pInlineJointProductToggle"),pInline("pInlineJointProductContent"),false);
  authScreen.removeAttribute("data-partner-invite");
  pInline("partnerInviteAtMain").hidden=true;
 }
@@ -12622,7 +12637,7 @@ async function partnerFetchJointMonth(kind,month,workspace){
  const uid=auth.currentUser?.uid;
  const prefix=owner?"ownerPartnerJoint":"pInlineJoint";
  const status=pInline(prefix+"Status");
- const productStatus=owner?pInline("ownerPartnerJointProductStatus"):null;
+ const productStatus=owner?pInline("ownerPartnerJointProductStatus"):pInline("pInlineJointProductStatus");
  const report=message=>{status.textContent=message;
   if(productStatus)productStatus.textContent=message;};
  const clear=()=>{pInline(prefix+"People").replaceChildren();
@@ -12663,6 +12678,7 @@ async function partnerInlineMonthFetch(){
  for(const id of containers)pInline(id).replaceChildren();
  pInline("pInlineJointPeople").replaceChildren();pInline("pInlineJointProducts").replaceChildren();
  pInline("pInlineJointStatus").textContent="保存済み件数の照合待ち";
+ pInline("pInlineJointProductStatus").textContent="保存済み件数の照合待ち";
  status.textContent="月別の保存済み件数を照合中...";
  if(!/^\d{4}-(?:0[1-9]|1[0-2])$/.test(month)){
   status.textContent="表示月を選択してください。";return;
@@ -12821,6 +12837,16 @@ async function partnerInlineRun(work){
 function partnerInlinePayload(data){
  return {...data,...(partnerInlineWorkspaceCompany?{workspaceCompanyId:partnerInlineWorkspaceCompany}:{})};
 }
+function partnerShowJointRankingTab(which){
+ const options=[
+  ["personal","pInlineJointPersonToggle","pInlineJointPersonalContent"],
+  ["product","pInlineJointProductToggle","pInlineJointProductContent"]
+ ];
+ for(const [type,buttonId,contentId] of options)
+  setAccordionState(pInline(buttonId),pInline(contentId),which===type);
+}
+pInline("pInlineJointPersonToggle").onclick=()=>partnerShowJointRankingTab("personal");
+pInline("pInlineJointProductToggle").onclick=()=>partnerShowJointRankingTab("product");
 pInline("pInlineDate").onchange=partnerInlineFetch;
 pInline("pInlineMonth").onchange=partnerInlineMonthFetch;
 pInline("pInlineMonthRefresh").onclick=partnerInlineMonthFetch;
