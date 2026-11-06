@@ -32,6 +32,16 @@ test("monthly UI only fetches bound count-only callable; no money or direct Fire
  assert.match(block,/data\.financialFieldsIncluded!==false/);
  assert.match(block,/未入力日は未照合/);
  assert.match(block,/partnerMainAppendRow/);
+ assert.match(block,/document\.createElement\("details"\)/);
+ assert.match(block,/document\.createElement\("summary"\)/);
+ assert.match(block,/team\.members/);
+ assert.match(block,/member\.counts\[k\]/);
+ assert.match(block,/memberTotal!==team\.totalCount/);
+ assert.match(block,/attributed\+\(data\.unattributedCount\?\?0\)!==data\.totalCount/);
+ assert.match(block,/summary\.textContent=team\.name/);
+ assert.match(block,/products\.textContent=nonzero\.length/);
+ assert.doesNotMatch(block,/\.innerHTML\s*=/);
+
  assert.doesNotMatch(block,/\b(?:getDoc|getDocs|getFirestore|setDoc|updateDoc|deleteDoc|writeBatch|onSnapshot|formatYen)\s*\(/);
  assert.doesNotMatch(block,/totalRevenue|unitPrice|revenuePerUnit|cashback|salesAmount/);
  const start=service.indexOf(" async function viewSavedMonth(request){");
