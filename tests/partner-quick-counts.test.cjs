@@ -295,7 +295,7 @@ test("hub quick management UI never switches account or edits staff ledger and c
  }
  assert(html.includes("async function openOwnerPartnerQuickProxy("));
  assert(html.includes("function ownerQuickReset(){"));
- assert(html.includes("ownerQuickReset(); //"));
+ assert(html.includes("ownerQuickReset();\n ownerDirReset();"));
  assert(html.includes('submitOwnerPartnerQuickCorrection = httpsCallable'));
  assert(html.includes('readOwnerPartnerQuickCorrection = httpsCallable'));
  assert(html.includes("件数専用の報告を管理"));
