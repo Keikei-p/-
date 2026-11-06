@@ -305,3 +305,78 @@ test("joint ranking never leaks a revoked partner or another hub's company",asyn
  await assert.rejects(api.viewCombinedMonth(req("p",{month:"2026-10"})),
   e=>e.code==="permission-denied");
 });
+
+
+test("live joint monthly API includes only Owner-published NEW product counts and matching staff totals",async()=>{
+ const {db,api,req}=seed();
+ db.seed("companies/partner",{...db.rows.get("companies/partner"),name:"協力店A"});
+ db.seed("products/new-service",{
+  companyId:"hub",name:"追加商材X",active:true,sortOrder:2,
+  unitPrice:50000,revenue:777777,price:888888,cb:30000
+ });
+ db.seed("companies/hub/partnerCatalogSettings/publication",{
+  revision:1,productIds:["new-service"]
+ });
+ db.seed("companies/partner/partnerAdditionalCountEntries/2026-10-21__m",{
+  date:"2026-10-21",companyId:"partner",hubCompanyId:"hub",staffId:"m",
+  staffNameSnapshot:"田中",teamIdSnapshot:"teamB",version:1,
+  counts:{"new-service":3},totalCount:3,unitPrice:888888
+ });
+ db.seed("records/direct_one",{
+  companyId:"hub",date:"2026-10-21",uid:"h",memberNameSnapshot:"本社担当",
+  teamId:"directTeam",totalCount:2,
+  results:[{productName:"NURO",count:2,revenuePerUnit:999999}]
+ });
+ const before=structuredClone([...db.rows]);
+ for(const who of ["h","p","m"]){
+  const out=await api.viewCombinedMonth(req(who,{month:"2026-10"}));
+  assert.equal(out.grandTotal,14);
+  assert.equal(out.partnerTotal,12);
+  assert.equal(out.directTotal,2);
+  assert.equal(out.products.find(p=>p.name==="追加商材X").totalCount,3);
+  assert.equal(out.products.find(p=>p.name==="NURO").totalCount,11);
+  assert.equal(out.people.find(p=>p.name==="田中").totalCount,7);
+  assert.equal(out.people.length,3,"same person combines old and extra counts, not duplicated");
+  assert.equal(out.people.reduce((n,p)=>n+p.totalCount,0),out.grandTotal);
+  assert.equal(out.products.reduce((n,p)=>n+p.totalCount,0),out.grandTotal);
+  assert.equal(out.unpublishedExtraExcluded,false);
+  assert.doesNotMatch(JSON.stringify(out),/unitPrice|revenue|price|cashback|888888|777777|999999|cb/);
+ }
+ assert.deepEqual([...db.rows],before,"monthly ranking writes no documents, including finance originals");
+});
+
+test("OFF hides extra product names and saved extras from ranking while retaining the historical entry",async()=>{
+ const {db,api,req}=seed();
+ db.seed("companies/partner",{...db.rows.get("companies/partner"),name:"協力店A"});
+ db.seed("products/new-service",{companyId:"hub",name:"追加商材X",active:true});
+ db.seed("companies/partner/partnerAdditionalCountEntries/2026-10-21__m",{
+  date:"2026-10-21",companyId:"partner",hubCompanyId:"hub",staffId:"m",
+  staffNameSnapshot:"田中",teamIdSnapshot:"teamB",version:1,
+  counts:{"new-service":3},totalCount:3
+ });
+ const record=structuredClone(db.rows.get("companies/partner/partnerAdditionalCountEntries/2026-10-21__m"));
+ const out=await api.viewCombinedMonth(req("p",{month:"2026-10"}));
+ assert.equal(out.grandTotal,9);
+ assert.equal(out.partnerTotal,9);
+ assert.equal(out.unpublishedExtraExcluded,true);
+ assert.equal(out.products.some(x=>x.name==="追加商材X"),false);
+ assert.doesNotMatch(JSON.stringify(out),/new-service|追加商材X/);
+ assert.deepEqual(db.rows.get("companies/partner/partnerAdditionalCountEntries/2026-10-21__m"),record);
+});
+
+test("mapped legacy product extra quantities cannot be double-counted",async()=>{
+ const {db,api,req}=seed();
+ db.seed("companies/partner",{...db.rows.get("companies/partner"),name:"協力店A"});
+ db.seed("products/nuro",{companyId:"hub",name:"NURO光",active:true});
+ db.seed("companies/hub/partnerCatalogSettings/publication",{
+  revision:1,productIds:["nuro"]
+ });
+ db.seed("companies/partner/partnerAdditionalCountEntries/2026-10-21__m",{
+  date:"2026-10-21",companyId:"partner",hubCompanyId:"hub",staffId:"m",
+  staffNameSnapshot:"田中",teamIdSnapshot:"teamB",version:1,
+  counts:{nuro:3},totalCount:3
+ });
+ await assert.rejects(api.viewCombinedMonth(req("p",{month:"2026-10"})),
+  e=>e.code==="data-loss");
+ assert.equal(db.rows.get("companies/partner/partnerAdditionalCountEntries/2026-10-21__m").totalCount,3);
+});
