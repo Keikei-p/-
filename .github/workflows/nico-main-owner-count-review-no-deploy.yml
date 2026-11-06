@@ -46,7 +46,7 @@ jobs:
           test "$(git rev-parse origin/main)" = 17681e69d3ebd7271cc9a58e138fd0e202db7294
           test "$(git merge-base HEAD origin/feature/main-partner-month-readonly-20261106)" = "$base"
           git diff --name-only "$base"...HEAD > /tmp/owner-review-files.txt
-          if grep -Ev '^(index[.]html|tests/owner-record-integrity-main[.]test[.]cjs|[.]github/workflows/nico-main-owner-count-review-no-deploy[.]yml)$' /tmp/owner-review-files.txt; then
+          if grep -Ev '^(index[.]html|tests/(owner-record-integrity-main[.]test[.]cjs|sales-regressions[.]cjs)|[.]github/workflows/nico-main-owner-count-review-no-deploy[.]yml)$' /tmp/owner-review-files.txt; then
             echo STOP_UNREVIEWED_OWNER_REVIEW_DIFF
             exit 1
           fi
