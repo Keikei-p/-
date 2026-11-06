@@ -21,6 +21,11 @@ const oldId='projects/'+PROJECT+'/rulesets/legacy';
 const nextId='projects/'+PROJECT+'/rulesets/reviewed';
 const DATE='2026-11-05T12:00:00Z';
 const T=Math.floor(Date.parse(DATE)/1000);
+const JST_DAY=new Intl.DateTimeFormat('en-CA',{
+ timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'
+}).format(new Date(DATE));
+const SUMMARY_PATH='companies/internal_company/partnerWorkCountDays/'+
+ JST_DAY+'/reports/partner_company';
 const jwt=(sub,overrides={})=>
   Buffer.from('{"typ":"JWT","alg":"RS256"}').toString('base64url')+'.'+
   Buffer.from(JSON.stringify({
@@ -98,7 +103,7 @@ const approvalRows={approval:true,candidateEmulatorVerified:true,backupReviewed:
 const oauthRoot=ROOT+'/';
 const str=v=>({stringValue:v});
 const flag=v=>({booleanValue:v});
-function fakeIdentity({changedPath='',changes={},statusOverride=0,role='leader'}={}){
+function fakeIdentity({changedPath='',changes={},statusOverride=0,role='leader',summaryPresent=true}={}){
  const owner='realOwner',partner='secondaryPartner',internal='internal_company',external='partner_company';
  const rows={
   ['users/'+owner]:{uid:str(owner),companyId:str(internal),companyRole:str('owner'),
@@ -132,6 +137,10 @@ function fakeIdentity({changedPath='',changes={},statusOverride=0,role='leader'}
   ['partnerRelations/'+external]:{
     partnerCompanyId:str(external),hubCompanyId:str(internal),
     active:flag(true),countSharingApproved:flag(true)},
+  [SUMMARY_PATH]:summaryPresent?{
+    source:str('staff-entries-v1'),hubCompanyId:str(internal),
+    partnerCompanyId:str(external),date:str(JST_DAY)
+  }:undefined,
   ['companies/'+external+'/partnerWorkStaff/'+partner]:{
     uid:str(partner),companyId:str(external),active:flag(true),
     kind:str('account'),name:str('Demo Member'),
@@ -290,7 +299,7 @@ test('synthetic identity cannot claim production even when EVERY expected member
   checkedAgainst:'synthetic-only',ownerInternalBound:true,
   affectedSecondaryBound:true,projectId:PROJECT,productionDocumentWrites:0
  });
- assert.equal(identity.calls.length,11);
+ assert.equal(identity.calls.length,12);
  assert(identity.calls.every(c=>c.method==='GET'));
  assert(!JSON.stringify(result).includes('secondaryPartner'));
  assert(!JSON.stringify(result).includes('internal_company'));
@@ -412,7 +421,7 @@ test('real partner workspace role parity: secondary leader, member and owner ALL
     assert.equal(proof.affectedSecondaryBound,true);
     assert.equal(proof.ownerInternalBound,true);
     assert.equal(proof.productionDocumentWrites,0);
-    assert.equal(identity.calls.length,role==='owner'?10:11);
+    assert.equal(identity.calls.length,role==='owner'?11:12);
     assert(identity.calls.every(x=>x.method==='GET'),
       'must never mutate any membership, financial or historical count');
   }
@@ -498,4 +507,55 @@ test('member or leader with missing, inactive, wrong-team, or non-account staff 
    assert(identity.calls.every(call=>call.method==='GET'));
   }
  }
+});
+
+
+test('read-only Owner-independent identity also validates partner daily summary source before Rules switch',async()=>{
+ const args={expectedOwnerUid:'realOwner',expectedPartnerUid:'secondaryPartner',
+  internalCompanyId:'internal_company'};
+ const valid=fakeIdentity();
+ const attested=await createAffectedSecondaryIdentityVerifier({...valid,...args})();
+ assert.equal(attested.affectedSecondaryBound,true);
+ assert.equal(valid.calls.some(x=>x.path===SUMMARY_PATH&&x.method==='GET'),true);
+ assert.equal(valid.calls.every(x=>x.method==='GET'),true);
+ const absent=fakeIdentity({summaryPresent:false});
+ const safeFirstEntry=await createAffectedSecondaryIdentityVerifier({...absent,...args})();
+ assert.equal(safeFirstEntry.affectedSecondaryBound,true,
+  'no current-day company report is a valid initial input state');
+ assert.equal(absent.calls.some(x=>x.path===SUMMARY_PATH),true);
+});
+
+test('old source, wrong scope or stale date blocks partner input before any live Rules changes',async()=>{
+ const args={expectedOwnerUid:'realOwner',expectedPartnerUid:'secondaryPartner',
+  internalCompanyId:'internal_company'};
+ for(const change of [
+  {source:str('legacy-single-total')},
+  {source:{}},
+  {source:str('')},
+  {hubCompanyId:str('unrelated-hub')},
+  {partnerCompanyId:str('unrelated-partner')},
+  {date:str('2026-10-01')}
+ ]){
+  const proof=fakeIdentity({changedPath:SUMMARY_PATH,changes:change});
+  await assert.rejects(createAffectedSecondaryIdentityVerifier({
+   ...proof,...args
+  })(),/STOP_PHASE1_IDENTITY_PARTNER_CURRENT_DAY_INPUT_BLOCKED/);
+  assert.equal(proof.calls.every(x=>x.method==='GET'),true);
+  assert.equal(proof.calls.some(x=>x.path===SUMMARY_PATH),true);
+ }
+});
+
+test('old daily summary is never rewritten or deleted to manufacture input readiness',async()=>{
+ const f=fixture(),release=releaseFixture();
+ const identity=fakeIdentity({
+  changedPath:SUMMARY_PATH,changes:{source:str('legacy-single-total')}
+ });
+ await assert.rejects(
+  phase1WithLiveAccountGate({release:release.release,accounts:f.accounts,
+   identity,...approvals}),
+  /STOP_PHASE1_IDENTITY_PARTNER_CURRENT_DAY_INPUT_BLOCKED/);
+ assert.equal(release.writes.length,0);
+ assert.equal(release.getActive(),oldId);
+ assert.equal(f.calls.length,0,'cannot even start monetary probes with blocked counts');
+ assert.equal(identity.calls.every(x=>x.method==='GET'),true);
 });
