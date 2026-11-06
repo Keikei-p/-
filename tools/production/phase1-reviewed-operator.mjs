@@ -17,6 +17,7 @@
  */
 import {readFileSync,statSync,realpathSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
@@ -96,11 +97,12 @@ async function runOperator(mode,env=process.env){
   cwd:ROOT,encoding:'utf8',maxBuffer:256*1024,stdio:['ignore','pipe','ignore']
  });
  const candidate=readFileSync(path.join(ROOT,'firestore.rules'),'utf8');
+ const candidateSha256=createHash('sha256').update(candidate.replace(/\r\n/g,'\n').trim()).digest('hex');
  const require=createRequire(new URL('../../functions/package.json',import.meta.url));
  const credential=require('firebase-admin/app').applicationDefault();
  const request=async(method,url,body)=>{
   if(!allowedPhase1Request(method,url,body,
-   undefined))stop('UNAPPROVED_ENDPOINT');
+   candidateSha256))stop('UNAPPROVED_ENDPOINT');
   // For allowlisted write requests the source digest check happens in
   // the Phase1 engine; never send any other production document mutation.
   let token;
