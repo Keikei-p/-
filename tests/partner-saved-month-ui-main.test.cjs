@@ -267,7 +267,7 @@ test("partner uses the same ranking menu tabs instead of a second monthly rankin
 });
 
 
-test("original product cards have owner-only server-confirmed partner publish switches",()=>{
+test("one Owner-only catalog panel has server-confirmed partner publish switches",()=>{
  for(const id of ["ownerPublishedCatalogControls","ownerPublishedCatalogRefresh",
   "ownerPublishedCatalogStatus"])
   assert.equal((html.match(new RegExp('id="'+id+'"',"g"))||[]).length,1,id);
@@ -288,11 +288,17 @@ test("original product cards have owner-only server-confirmed partner publish sw
  assert.match(publish,/changed\?\.revision!==revision\+1/);
  assert.match(publish,/ownerCatalogState\.rows\.get\(productId\)\?\.published!==published/);
  assert.doesNotMatch(publish,/setDoc|addDoc|deleteDoc|updateDoc|writeBatch|formatYen|innerHTML/);
+ assert.equal(html.split('id="ownerPublishedCatalogList"').length-1,1);
+ assert.match(publish,/function renderOwnerCatalogPublicationRows\(\)/);
+ assert.match(publish,/toggle\.type="checkbox"/);
+ assert.match(publish,/toggle\.checked=product\.published===true/);
+ assert.match(publish,/toggle\.disabled=!ownerCatalogState\.verified/);
+ assert.match(publish,/ownerCatalogToggle\(product\.id,toggle\.checked\)/);
+ assert.match(publish,/target\.replaceChildren\(\)/);
+ assert.doesNotMatch(publish,/\.innerHTML\s*=/);
  const render=html.slice(end,html.indexOf("// Report a failed catalog write",end));
- assert.match(render,/checkbox\.type="checkbox"/);
- assert.match(render,/checkbox\.checked=state\?\.published===true/);
- assert.match(render,/checkbox\.disabled=!ownerCatalogState\.verified/);
- assert.match(render,/ownerCatalogToggle\(product\.id,checkbox\.checked\)/);
+ assert.match(render,/renderOwnerCatalogPublicationRows\(\)/);
+ assert.doesNotMatch(render,/actions\.append\(label\)/);
  assert.match(html,/function resetPartnerInline\(\)\{\n ownerCatalogReset\(\)/);
 });
 
