@@ -22,7 +22,11 @@ function fixture(opts={}){
   const calls=[];
   const fetchImpl=async (url,req)=>{
     calls.push({url,method:req.method,auth:req.headers.Authorization,body:req.body});
-    const partner=req.headers.Authorization==='Bearer '+jwt('partneruid');
+    // Distinguish test sessions by their synthetic UID, not byte-for-byte
+    // token equality: changing only an expiry must preserve partner identity.
+    const token=req.headers.Authorization.slice('Bearer '.length);
+    const claims=JSON.parse(Buffer.from(token.split('.')[1],'base64url').toString('utf8'));
+    const partner=claims.sub==='partneruid';
     const isProduct=url.includes('/products/');
     const status=opts.statusOverride?.({partner,url,req,calls})??(partner?403:200);
     return {
