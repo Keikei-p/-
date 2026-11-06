@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createLiveFirestoreRoleVerifier,createLivePartnerCountViewVerifier}
+import {createLiveFirestoreRoleVerifier,createLivePartnerCountViewVerifier,
+ createLiveFirestoreOwnerPreflight}
  from '../tools/production/verify-live-firestore-roles.mjs';
 
 const T=Math.floor(Date.parse('2026-11-05T14:00:00Z')/1000);
@@ -466,4 +467,58 @@ test('cashback and CB monetary keys are disallowed even when count field names a
  assert.equal((await f.create({fetchImpl:async()=>({
   status:200,json:async()=>({result:view})
  })})()).partnerCountViewAllowed,true);
+});
+
+
+test('Owner finance preflight refuses success when identity expires during its four GET/list reads',async()=>{
+ let now=T*1000;
+ const calls=[];
+ const fetchImpl=async(url,req)=>{
+  calls.push({url,method:req.method});
+  if(calls.length===4)now=(T+80)*1000;
+  return {status:200,json:async()=>req.method==='POST'
+   ?[{document:{name:RESOURCE_ROOT+'/'+JSON.parse(req.body).structuredQuery.from[0].collectionId+
+     '/original',fields:{companyId:{stringValue:'internal_company'}}}}]
+   :{name:url.slice(API.length),fields:{
+      companyId:{stringValue:'internal_company'},
+      ...(url.includes('/products/')?{revenue:{integerValue:'999'}}:
+       {totalRevenue:{integerValue:'999'}})
+     }}};
+ };
+ const proof=createLiveFirestoreOwnerPreflight({
+  ownerIdToken:jwt('owneruid',{exp:T+125}),
+  expectedOwnerUid:'owneruid',
+  internalCompanyId:'internal_company',
+  productId:'product_a',recordId:'record_a',
+  fetchImpl,now:()=>now
+ });
+ await assert.rejects(proof(),/STOP_LIVE_ROLE_USER_IDENTITY_NOT_VERIFIED/);
+ assert.equal(calls.length,4);
+ assert(!calls.some(x=>x.method==='PATCH'),
+  'preflight is strictly read-only even when it expires');
+});
+
+test('Owner finance preflight succeeds with four valid money reads and fresh token',async()=>{
+ let calls=0;
+ const fetchImpl=async(url,req)=>{
+  calls++;
+  return {status:200,json:async()=>req.method==='POST'
+   ?[{document:{name:RESOURCE_ROOT+'/'+JSON.parse(req.body).structuredQuery.from[0].collectionId+
+     '/original',fields:{companyId:{stringValue:'internal_company'}}}}]
+   :{name:url.slice(API.length),fields:{
+      companyId:{stringValue:'internal_company'},
+      ...(url.includes('/products/')?{revenue:{integerValue:'999'}}:
+       {totalRevenue:{integerValue:'999'}})
+     }}};
+ };
+ const proof=createLiveFirestoreOwnerPreflight({
+  ownerIdToken:jwt('owneruid'),expectedOwnerUid:'owneruid',
+  internalCompanyId:'internal_company',productId:'product_a',
+  recordId:'record_a',fetchImpl,now:()=>T*1000
+ });
+ assert.deepEqual(await proof(),{
+  checkedAgainst:'synthetic-only',ownerFinanceAllowed:true
+ });
+ assert.equal(calls,4);
+ await assert.rejects(proof(),/STOP_LIVE_ROLE_SINGLE_USE_OWNER_PREFLIGHT/);
 });
