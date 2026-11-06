@@ -17,6 +17,9 @@
 const PROJECT='sales-management-cc116';
 const ROOT='https://firestore.googleapis.com/v1/projects/'+PROJECT+'/databases/(default)/documents/';
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
+// Keep name constraints aligned with partner-workspace submit()'s validName.
+const STAFF_NAME=/^[\p{L}\p{N} 　・ー（）()_.-]{1,60}$/u;
+const FINANCE_NAME=/(?:単価|売上|収益|利益|報酬|[¥￥$€]|\d[\d,]*円)/;
 const stop=code=>{throw Error('STOP_PHASE1_IDENTITY_'+code);};
 const internalKinds=new Set(['internal','direct']);
 const oldMemberTypes=new Set(['internal','direct','member','managed']);
@@ -147,7 +150,8 @@ export function createAffectedSecondaryIdentityVerifier({
          staff.kind!=='account'||staff.active!==true||
          staff.role!==context.role||
          staff.teamId!==context.teamId||
-         typeof staff.name!=='string'||staff.name.trim().length===0)
+         typeof staff.name!=='string'||!STAFF_NAME.test(staff.name)||
+         FINANCE_NAME.test(staff.name))
         stop('PARTNER_SELF_COUNT_ENTRY_NOT_READY');
     }
     if(context.uid!==expectedPartnerUid ||
