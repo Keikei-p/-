@@ -1,10 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {validateOperatorIntent} from '../tools/production/phase1-reviewed-operator.mjs';
+import {validateOperatorIntent,assertReviewedCodeGate} from '../tools/production/phase1-reviewed-operator.mjs';
 
 const baseline='d9f4df6a2ac0f8b5720534a2461ec66b94379190';
 const candidate='6d6ac7fd3544b0326823e419a3acd7e1d060b714';
 const main='17681e69d3ebd7271cc9a58e138fd0e202db7294';
+const head='a'.repeat(40);
+const ciRun='42163374662';
 const review='INDEPENDENT_REVIEW_OF_PHASE1_RULES_AND_LIVE_IDENTITIES_COMPLETE';
 const basic={
  FIREBASE_PROJECT_ID:'sales-management-cc116',
@@ -15,7 +17,9 @@ const approved={
  ...basic,NICO_PHASE1_INDEPENDENT_SIGNOFF:review,
  NICO_PHASE1_REVIEWED_MAIN_SHA:main,
  NICO_PHASE1_REVIEWED_BASELINE_BLOB:baseline,
- NICO_PHASE1_REVIEWED_CANDIDATE_BLOB:candidate
+ NICO_PHASE1_REVIEWED_CANDIDATE_BLOB:candidate,
+ NICO_PHASE1_REVIEWED_CHECKOUT_SHA:head,
+ NICO_PHASE1_REVIEWED_CI_RUN_ID:ciRun
 };
 const proof={
  ownerIdToken:'owner-proof-secret',partnerIdToken:'partner-proof-secret',
@@ -73,4 +77,74 @@ test('unknown mode and missing local-only environment fail without touching clou
  assert.throws(()=>validateOperatorIntent({mode:'verify',env:{
   ...basic,FIRESTORE_EMULATOR_HOST:'0.0.0.0:8080'
  },proof:null}),/STOP_PHASE1_OPERATOR_OFFLINE_PREFLIGHT/);
+});
+
+
+test('apply binds independent approval to exact clean checkout, fresh remote main and successful push CI',()=>{
+ const commands=[];
+ const git=(cmd,args)=>{
+  commands.push('git '+cmd);
+  if(cmd==='rev-parse')return head+'\n';
+  if(cmd==='status')return '';
+  if(cmd==='ls-remote')return main+'\trefs/heads/main\n';
+  throw Error('unexpected git request');
+ };
+ const gh=(cmd,args)=>{
+  commands.push('gh '+cmd);
+  assert.deepEqual(args,[
+   'view',ciRun,'--repo','Keikei-p/-','--json','headSha,conclusion,event,name'
+  ]);
+  return JSON.stringify({headSha:head,conclusion:'success',event:'push',
+   name:'NICO affected secondary identity + finance boundary (NO DEPLOY)'});
+ };
+ const actual=assertReviewedCodeGate({env:approved,git,gh});
+ assert.equal(actual.mainUnchanged,true);
+ assert.equal(actual.sourceReviewed,true);
+ assert.equal(actual.ciForExactCheckout,true);
+ assert.deepEqual(commands,['git rev-parse','git status','git ls-remote','gh run']);
+});
+
+test('apply cannot proceed on unreviewed, dirty, drifted, failed or fabricated CI evidence',()=>{
+ const ready=()=>({headSha:head,conclusion:'success',event:'push',
+  name:'NICO affected secondary identity + finance boundary (NO DEPLOY)'});
+ const scenarios=[
+  {local:'b'.repeat(40)},
+  {dirty:' M firestore.rules'},
+  {mainSha:'b'.repeat(40)},
+  {run:{...ready(),headSha:'b'.repeat(40)}},
+  {run:{...ready(),conclusion:'failure'}},
+  {run:{...ready(),event:'pull_request'}},
+  {run:{...ready(),name:'unrelated-workflow'}},
+  {run:{...ready(),conclusion:'cancelled'}},
+  {throwGit:true},
+  {throwGh:true}
+ ];
+ for(const scenario of scenarios){
+  const git=(cmd)=>{
+   if(scenario.throwGit)throw Error('remote failed');
+   if(cmd==='rev-parse')return (scenario.local??head)+'\n';
+   if(cmd==='status')return scenario.dirty??'';
+   if(cmd==='ls-remote')return (scenario.mainSha??main)+'\trefs/heads/main\n';
+   throw Error('unexpected');
+  };
+  const gh=()=>{
+   if(scenario.throwGh)throw Error('github missing');
+   return JSON.stringify(scenario.run??ready());
+  };
+  assert.throws(()=>assertReviewedCodeGate({env:approved,git,gh}),
+   /STOP_PHASE1_OPERATOR_REVIEWED_(SOURCE_OR_CI_DRIFT|CODE_CHECK_UNAVAILABLE)/);
+ }
+});
+
+test('apply requires explicitly reviewed CI ID and HEAD, not a self-described success flag',()=>{
+ for(const env of [
+  {...approved,NICO_PHASE1_REVIEWED_CHECKOUT_SHA:'main'},
+  {...approved,NICO_PHASE1_REVIEWED_CHECKOUT_SHA:''},
+  {...approved,NICO_PHASE1_REVIEWED_CI_RUN_ID:'not-a-run'},
+  {...approved,NICO_PHASE1_REVIEWED_CI_RUN_ID:'0'},
+  {...approved,NICO_PHASE1_REVIEWED_CI_RUN_ID:''}
+ ]){
+  assert.throws(()=>validateOperatorIntent({mode:'apply',env,proof}),
+   /STOP_PHASE1_OPERATOR_INDEPENDENT_SIGNOFF_OR_REAL_ACCOUNTS_REQUIRED/);
+ }
 });
