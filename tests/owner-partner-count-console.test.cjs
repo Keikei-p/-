@@ -242,7 +242,7 @@ test("Owner Hikari/Air reclassification is revision-checked and audit-only, neve
  assert.equal(r.revision,2);
  await assert.rejects(ops.classifyOwnerInternet(req("owner",base)));
  const unchanged=await ops.classifyOwnerInternet(req("owner",{
-  ...base,hikari:2,air:2,expectedRevision:2});
+  ...base,hikari:2,air:2,expectedRevision:2}));
  assert.equal(unchanged.unchanged,true);
  assert.equal(db.store.get("companies/partner1/partnerInternetSplitAudits/"+day+"__staff1__v1").hikari,3);
  assert.equal(db.store.get("companies/partner1/partnerInternetSplitAudits/"+day+"__staff1__v2").hikari,2);
