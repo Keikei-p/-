@@ -28,6 +28,7 @@ function projectPublishedPartnerExtras({hubId,cid,month,docs,visibleProducts=[],
  const counts=new Map([...visible].map(([id,name])=>[id,{id,name,totalCount:0}]));
  const people=new Map(),teams=new Map(),teamMembers=new Map(),seen=new Set();
  let totalCount=0,containsUnpublished=false,unattributedCount=0,unattributedRows=0;
+ let visibleEntryRows=0;
  const add=(target,day)=>{
   for(const [id,n] of Object.entries(day)){
    target.counts[id]=(target.counts[id]||0)+n;
@@ -48,13 +49,14 @@ function projectPublishedPartnerExtras({hubId,cid,month,docs,visibleProducts=[],
   let normalized;try{normalized=normalizeExtraCounts(x.counts);}
   catch{fail();}
   if(normalized.total!==x.totalCount)fail();
-  let visibleDay=0;const visibleDayCounts={};
+  let visibleDay=0;const visibleDayCounts={};let hasVisibleProduct=false;
   for(const [id,n] of Object.entries(normalized.counts)){
    if(blocked.has(id)&&n>0)fail();
    if(!visible.has(id)){
     if(n>0)containsUnpublished=true;
     continue;
    }
+   hasVisibleProduct=true; // An explicitly saved published zero is a report, not an absent entry.
    const sum=counts.get(id).totalCount+n;
    if(!SAFE(sum))fail();
    counts.get(id).totalCount=sum;
@@ -62,7 +64,11 @@ function projectPublishedPartnerExtras({hubId,cid,month,docs,visibleProducts=[],
    visibleDay+=n;
   }
   if(!SAFE(visibleDay))fail();
-  if(visibleDay===0)continue;
+  // OFF-only rows are hidden, but an explicit 0 for an ON product
+  // is still a legitimate saved report. Do not conflate it with no report.
+  // Preserve unpublished originals and never show their product labels.
+  if(!hasVisibleProduct)continue;
+  visibleEntryRows++;
   if(typeof x.staffNameSnapshot!=="string")fail();
   let name;try{name=nameOnly(x.staffNameSnapshot);}catch{fail();}
   const key=hash(cid,"staff",x.staffId);
@@ -105,7 +111,7 @@ function projectPublishedPartnerExtras({hubId,cid,month,docs,visibleProducts=[],
  })).sort(sorted);
  return {
   scope:"partner_published_extra_month_only",month,complete:false,
-  containsUnpublished,verifiedExtraRows:docs.length,totalCount,
+  containsUnpublished,verifiedExtraRows:visibleEntryRows,totalCount,
   products,people:[...people.values()].sort(sorted),teams:expandedTeams,
   unattributedCount,unattributedRows,
   productionDocumentWrites:0
