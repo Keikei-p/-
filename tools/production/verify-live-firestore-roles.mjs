@@ -155,6 +155,11 @@ export function createLiveFirestoreRoleVerifier({
       await requireResponse(transport,ROOT+':runQuery',
         'POST',ownerIdToken,financeQuery(collection,internalCompanyId),200,null,internalCompanyId);
     }
+    // Owner's four reads can take time. If either token is close to expiry
+    // NOW, an ensuing 403 could be an auth/session error rather than a
+    // meaningful denial by the reviewed Rules. Stop and trigger rollback.
+    identity(ownerIdToken,expectedOwnerUid,Math.floor(now()/1000));
+    identity(partnerIdToken,expectedPartnerUid,Math.floor(now()/1000));
     // Then require explicit 403, not 401/404/429/5xx or network failure.
     for(const [collection,id] of tests){
       await requireResponse(transport,ROOT+'/'+collection+'/'+id,
@@ -162,6 +167,11 @@ export function createLiveFirestoreRoleVerifier({
       await requireResponse(transport,ROOT+':runQuery',
         'POST',partnerIdToken,financeQuery(collection,internalCompanyId),403,null);
     }
+    // Even if all eight REST responses looked correct, a session that has
+    // become stale DURING verification is not evidence of a sustainable
+    // production release. Do not return success on an expiring account.
+    identity(ownerIdToken,expectedOwnerUid,Math.floor(now()/1000));
+    identity(partnerIdToken,expectedPartnerUid,Math.floor(now()/1000));
     // Only booleans and a checked source label leave this module.
     return Object.freeze({
       checkedAgainst:provenance,
