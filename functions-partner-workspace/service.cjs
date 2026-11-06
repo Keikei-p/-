@@ -1200,18 +1200,19 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   const extraVerifiedIds=activePublishedIds.filter(id=>!linkedIds.includes(id));
   // Monthly reads are intentionally bounded; never send incomplete data as a
   // "complete" ranking or pass any raw original financial fields to clients.
-  let direct;
+  let direct=null,directIntegrityUnverified=false;
   try{
    direct=await readDirectRangeCounts(db,hubId,first,lastDate,KEYS,{
     maxRecords:10000,approvedExtraProductIds:extraVerifiedIds
    });
   }catch(error){
-   // A historical count mismatch must never turn into a fake zero or a
-   // partial published monthly rank. Send only a fixed reason code;
-   // never return a record ID, stored amount, price, or source details.
-   if(isDirectCountIntegrityError(error))
-    throw new HttpsError("failed-precondition",MONTHLY_DIRECT_COUNTS_UNVERIFIED);
-   fail("failed-precondition");
+   if(!isDirectCountIntegrityError(error))fail("failed-precondition");
+   // Independent partner ledger rows must still be viewable in October and
+   // November when ONE unrelated legacy internal count is inconsistent.
+   // Do not infer missing direct quantities, return guessed zeroes, or
+   // certify any combined ranking. NEVER modify the disputed record.
+   // A fixed boolean only; original IDs, prices, amounts stay server-side.
+   directIntegrityUnverified=true;
   }
   const companies=[],people=[],teams=[],productCounts=Object.fromEntries(KEYS.map(k=>[k,0]));
   let additionalTotalCount=0,partnerRowsRead=0;
@@ -1265,6 +1266,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   }
   let sharedConfig={revision:0,groups:[]},groupStandings=[],groupStatus="unverified";
   try{
+   if(!directIntegrityUnverified){
    sharedConfig=await readRankingSettings(hubId,activePublishedIds);
    const allGroups=addAutomaticPublishedGroups(sharedConfig.groups,
     rankableProducts,linkedIds);
@@ -1285,6 +1287,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     ],{categories:KEYS,productLinks:effectiveLinks,extraVerifiedIds});
     groupStatus="verified";
    }
+   }
   }catch{groupStandings=[];}
   companies.sort((a,b)=>b.totalCount-a.totalCount||a.name.localeCompare(b.name,"ja"));
   people.sort((a,b)=>b.totalCount-a.totalCount||a.name.localeCompare(b.name,"ja"));
@@ -1293,13 +1296,15 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   return {scope:"shared_monthly_counts_only",month:d.month,
    role:s.kind==="hub"?"hub":"partner",
    ...(s.kind==="partner"?{workspaceCompanyId:s.cid}:{}),complete:false,
-   provisionalReason:"月間の全日・全員報告の照合前",
-   includesDirect:true,companies,teams,people,productCounts,additionalTotalCount,
+   provisionalReason:directIntegrityUnverified?
+    MONTHLY_DIRECT_COUNTS_UNVERIFIED:"月間の全日・全員報告の照合前",
+   includesDirect:!directIntegrityUnverified,
+   directIntegrityUnverified,companies,teams,people,productCounts,additionalTotalCount,
    // Same trusted filtered public catalog; no price, cashback or revenue fields.
    publishedProducts:rankableProducts.map(({id,name,sortOrder})=>({id,name,sortOrder})),
    categories:KEYS,direct,rankingGroups:sharedConfig.groups,groupStandings,
    groupRevision:sharedConfig.revision,groupStatus,
-   recordsVerified:direct.recordsVerified,partnerRowsVerified:partnerRowsRead};
+   recordsVerified:direct?.recordsVerified??null,partnerRowsVerified:partnerRowsRead};
  }
  async function view(request){
   const a=await actor(request),d=request?.data||{},date=validDate(d.date);
