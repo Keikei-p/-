@@ -1,6 +1,7 @@
 "use strict";
 // Owner-only partner count correction; authenticates the Hub Owner as themself.
 // NO impersonation, auth/user/team/sales/price changes, or new-count creation.
+const {validateSource,readSplit}=require("./internet-split-operations.cjs");
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const DATE=/^\d{4}-\d{2}-\d{2}$/;
 const ZERO=keys=>Object.fromEntries(keys.map(k=>[k,0]));
@@ -151,6 +152,66 @@ function makeOwnerPartnerCorrections({db,actor,scope,collection,FieldValue,fail,
     correctionLogged:true};
   });
  }
- return Object.freeze({viewDay,correctDay});
+
+ // Extra count-only operation to classify the ALREADY saved SB光・AIR total.
+ // This does not touch the original per-person legacy nine-category count.
+ async function classifyOwnerInternet(request){
+  const d=request?.data||{};
+  if(Object.keys(d).sort().join("|")!==
+   "air|date|expectedRevision|hikari|partnerCompanyId|reason|sourceVersion|staffId")
+   fail("invalid-argument");
+  const date=validDate(d.date);
+  if(!raw(d.partnerCompanyId)||!raw(d.staffId)||
+   !Number.isSafeInteger(d.hikari)||d.hikari<0||d.hikari>9999||
+   !Number.isSafeInteger(d.air)||d.air<0||d.air>9999||
+   !Number.isSafeInteger(d.sourceVersion)||d.sourceVersion<1||
+   !Number.isSafeInteger(d.expectedRevision)||d.expectedRevision<0||
+   d.expectedRevision>=999||typeof d.reason!=="string"||
+   d.reason.trim().length<3||d.reason.trim().length>160||
+   /[\x00-\x1f\x7f]/.test(d.reason))fail("invalid-argument");
+  const {a,s}=await owner(request);
+  return db.runTransaction(async tx=>{
+   const fresh=await owner(request,tx);
+   if(fresh.a.uid!==a.uid||fresh.s.cid!==s.cid)fail();
+   await relation(s.cid,d.partnerCompanyId,tx);
+   const cr=entry(d.partnerCompanyId,date,d.staffId);
+   const dr=collection(d.partnerCompanyId,"partnerInternetSplits")
+    .doc(date+"__"+d.staffId);
+   const [originalSnap,splitSnap]=await Promise.all([tx.get(cr),tx.get(dr)]);
+   if(!originalSnap.exists)fail("failed-precondition");
+   let source,previous;
+   try{
+    source=validateSource(originalSnap.data(),{
+     cid:d.partnerCompanyId,hubId:s.cid,date,staffId:d.staffId});
+    previous=readSplit(splitSnap.exists?splitSnap.data():null,{
+     cid:d.partnerCompanyId,hubId:s.cid,date,staffId:d.staffId});
+   }catch{fail("data-loss");}
+   if(source.sourceVersion!==d.sourceVersion||
+      d.hikari+d.air!==source.total)fail("failed-precondition");
+   if((previous?.revision??0)!==d.expectedRevision)fail("aborted");
+   if(previous&&previous.sourceVersion===source.sourceVersion&&
+      previous.hikari===d.hikari&&previous.air===d.air)
+    return {saved:false,unchanged:true,staffId:d.staffId,date,
+     partnerCompanyId:d.partnerCompanyId,revision:previous.revision,
+     combinedCount:source.total,verified:true};
+   const revision=(previous?.revision??0)+1,stamp=FieldValue.serverTimestamp();
+   const classification={companyId:d.partnerCompanyId,hubCompanyId:s.cid,
+    date,staffId:d.staffId,hikari:d.hikari,air:d.air,
+    combinedCount:source.total,sourceVersion:source.sourceVersion,revision,
+    updatedByUid:a.uid,updatedAt:stamp};
+   if(splitSnap.exists)tx.update(dr,classification);
+   else tx.create(dr,{...classification,createdAt:stamp});
+   const audit=collection(d.partnerCompanyId,"partnerInternetSplitAudits")
+    .doc(date+"__"+d.staffId+"__v"+revision);
+   tx.create(audit,{...classification,previousHikari:previous?.hikari??null,
+    previousAir:previous?.air??null,previousRevision:previous?.revision??0,
+    correctionType:"hub_owner_internet_classification",correctionActorUid:a.uid,
+    correctionReason:d.reason.trim(),createdAt:stamp});
+   return {saved:true,partnerCompanyId:d.partnerCompanyId,staffId:d.staffId,
+    date,revision,combinedCount:source.total,verified:true,
+    hikari:d.hikari,air:d.air,correctionLogged:true};
+  });
+ }
+ return Object.freeze({viewDay,correctDay,classifyOwnerInternet});
 }
 module.exports={makeOwnerPartnerCorrections};
