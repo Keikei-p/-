@@ -30895,11 +30895,18 @@ async function mergedPartnerRankingDay(date){
   const day=Date.parse(date+"T00:00:00Z");
   const quickReadable=Number.isFinite(day)&&day<=today&&
     day>=today-31*86400000;
-  const [legacy,staff]=await Promise.all([
-    quickReadable?readPartnerQuickDay({date}):Promise.resolve(null),
+  // If only the legacy quick endpoint is unavailable, the independently
+  // verified staff-ledger counts must not disappear. Unknown quick-only
+  // submissions remain UNVERIFIED; never convert the failure into zero.
+  // A failed staff endpoint remains fatal because its data has no substitute.
+  const [quick,staff]=await Promise.all([
+    quickReadable?readPartnerQuickDay({date})
+      .then(response=>({available:true,response}),()=>({available:false}))
+      :Promise.resolve({available:false}),
     readPartnerWorkDay({date})
   ]);
-  const oldRows=legacy?validatedPartnerRankingDay(legacy.data,date):[];
+  const oldRows=quick.available?
+    validatedPartnerRankingDay(quick.response.data,date):[];
   const newRows=validatedPartnerRankingDay(staff.data,date);
   const selected=new Map(oldRows.map(row=>[row.id,row]));
   for(const row of newRows)selected.set(row.id,row);
@@ -30908,7 +30915,7 @@ async function mergedPartnerRankingDay(date){
   // not a verified zero. Preserve available counts but never certify ranks.
   const registered=staff.data?.registeredCompanies;
   // Old backends that omit the company roster cannot prove a complete month.
-  let coverageComplete=quickReadable&&Array.isArray(registered);
+  let coverageComplete=quick.available&&Array.isArray(registered);
   if(Array.isArray(registered)){
     if(registered.length>100)throw Error("partner_month_scope_invalid");
     const seen=new Set();
