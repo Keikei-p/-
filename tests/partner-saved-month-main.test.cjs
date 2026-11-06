@@ -6,6 +6,7 @@ const NOW=Date.parse("2026-11-06T12:00:00+09:00");
 const zero=()=>Object.fromEntries(KEYS.map(k=>[k,0]));
 class Ref{
  constructor(db,p){this.db=db;this.path=p;this.id=p.split("/").at(-1);}
+ collection(name){return new Query(this.db,this.path+"/"+name);}
  async get(){const value=this.db.rows.get(this.path);return {
   id:this.id,exists:value!==undefined,data:()=>value===undefined?undefined:structuredClone(value)};}
 }
