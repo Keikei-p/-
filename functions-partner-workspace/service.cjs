@@ -816,7 +816,19 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   for(const sn of entries.docs){
    const x=sn.data()||{};
    if(x.companyId!==s.cid||x.date!==date||!ID.test(x.staffId||""))fail("data-loss");
-   if(!allowed.has(x.staffId))continue;
+   if(!allowed.has(x.staffId)){
+    // An account/staff roster row may have been removed AFTER this count was
+    // saved. Keep the signed Owner/Leader's HISTORICAL count visible without
+    // restoring the deleted account or making that person eligible for input.
+    // A member can still read only rows belonging to their active staff.
+    if(!["owner","leader"].includes(s.role))continue;
+    allowed.set(x.staffId,{
+     id:x.staffId,
+     name:validName(x.staffNameSnapshot) ? clean(x.staffNameSnapshot) : "過去の担当者",
+     teamId:ID.test(x.teamIdSnapshot||"")?x.teamIdSnapshot:null,
+     kind:"historical",role:"former",uid:null,active:false
+    });
+   }
    const {counts,total}=validateCounts(x.counts);
    if(total!==x.totalCount)fail("data-loss");
    // Return only saved, immutable attribution metadata from the original entry.
