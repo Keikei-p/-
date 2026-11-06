@@ -456,7 +456,10 @@ test('member or leader with missing, inactive, wrong-team, or non-account staff 
   {uid:str('other_member')},
   {kind:str('managed')},
   {role:str('owner')},
-  {name:str('')}
+  {name:str('')},
+  {name:str('売上100万円')},
+  {name:str('<invalid>')},
+  {name:str('a'.repeat(61))}
  ];
  for(const role of ['leader','member']){
   for(const changes of changesList){
