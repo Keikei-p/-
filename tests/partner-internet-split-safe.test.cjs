@@ -178,7 +178,7 @@ test("editing the source afterwards marks saved split unverified, never silently
  const changed=await ops.submitInternetSplit(req("leader",{
   date:day,staffId:"person",hikari:4,air:2,sourceVersion:4,expectedRevision:1}));
  assert.equal(changed.revision,2);
- assert.equal((await ops.viewInternetSplitDay(req("leader",{date:day})).records[0].verified,true);
+ assert.equal((await ops.viewInternetSplitDay(req("leader",{date:day}))).records[0].verified,true);
 });
 test("consumer count UI keeps original legacy save; new editor enforces the exact sum and account reset",()=>{
  const html=fs.readFileSync(path.join(__dirname,"../index.html"),"utf8");
