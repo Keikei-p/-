@@ -143,6 +143,24 @@ export function createAffectedSecondaryIdentityVerifier({
        relation.hubCompanyId!==internalCompanyId||
        relation.active!==true||relation.countSharingApproved!==true)
       stop('PARTNER_COUNT_SHARING_NOT_READY');
+    // submitPartnerWorkspaceCounts explicitly refuses to write when today's
+    // company report exists in an old/non-staff-entries-v1 format. A valid
+    // getPartnerWorkspace response cannot prove this hidden write precondition.
+    // Read the EXACT day/report path via trusted Admin GET only; never change
+    // the legacy report or rewrite staff counts to force a pass.
+    const jstDay=new Intl.DateTimeFormat('en-CA',{
+      timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'
+    }).format(new Date(start));
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(jstDay))
+      stop('CURRENT_DAY_UNVERIFIED');
+    const existingDay=await read('companies/'+internalCompanyId+
+      '/partnerWorkCountDays/'+jstDay+'/reports/'+partnerCompanyId,true);
+    if(existingDay!==null&&(
+       existingDay.source!=='staff-entries-v1'||
+       existingDay.hubCompanyId!==internalCompanyId||
+       existingDay.partnerCompanyId!==partnerCompanyId||
+       existingDay.date!==jstDay))
+      stop('PARTNER_CURRENT_DAY_INPUT_BLOCKED');
     // Leader/member submit has an authenticated self-staff path. A missing,
     // deactivated or moved-to-another-team staff row makes their ordinary
     // count-entry form fail even when all financial reads are denied.
