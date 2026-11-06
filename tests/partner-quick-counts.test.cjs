@@ -307,3 +307,135 @@ test("hub quick management UI never switches account or edits staff ledger and c
  const section=html.slice(a,b);
  assert.doesNotMatch(section,/\b(?:signOut|signIn|deleteDoc|updateDoc|setDoc)\s*\(/);
 });
+
+
+test("HQ owner separately classifies quick SB Hikari/Air and leaves original quick source, staff and finance untouched",async()=>{
+ const {db,service,req,counts}=setup();
+ await service.submit(req("p",{date:today,counts:{...counts,"SB光・AIR":5,NURO:2},expectedVersion:0}));
+ const source="companies/hub/partnerQuickCountDays/"+today+"/reports/partner1";
+ const before=copy(db.data.get(source));
+ const finance=copy(db.data.get("records/existing"));
+ const products=copy(db.data.get("products/private-revenue"));
+ const first=await service.viewOwnerQuickCorrection(req("h",{date:today,partnerCompanyId:"partner1"}));
+ assert.deepEqual(first.internetSplit,{revision:0,verified:false,hikari:null,air:null,
+  combinedCount:5,sourceVersion:1,unclassified:5});
+ assert.doesNotMatch(JSON.stringify(first),/unitPrice|totalRevenue|999999|password/i);
+ const done=await service.submitOwnerQuickInternetSplit(req("h",{
+  date:today,partnerCompanyId:"partner1",hikari:3,air:2,
+  sourceVersion:1,expectedRevision:0,reason:"契約書と照合して内訳を確定"
+ }));
+ assert.equal(done.saved,true);assert.equal(done.revision,1);
+ assert.equal(done.combinedCount,5);assert.equal(done.auditLogged,true);
+ assert.deepEqual(db.data.get(source),before);
+ assert.deepEqual(db.data.get("records/existing"),finance);
+ assert.deepEqual(db.data.get("products/private-revenue"),products);
+ const split="companies/hub/partnerQuickInternetSplits/"+today+"/reports/partner1";
+ assert.equal(db.data.get(split).hikari,3);
+ assert.equal(db.data.get(split).air,2);
+ assert.equal(db.data.get(split).sourceVersion,1);
+ assert.equal([...db.data.keys()].filter(x=>x.startsWith("partnerQuickInternetSplitAudits/")).length,1);
+ const after=await service.viewOwnerQuickCorrection(req("h",{date:today,partnerCompanyId:"partner1"}));
+ assert.equal(after.internetSplit.verified,true);
+ assert.equal(after.internetSplit.unclassified,0);
+ assert.equal(after.internetSplit.hikari+after.internetSplit.air,after.report.counts["SB光・AIR"]);
+ assert.equal(after.report.totalCount,7);
+});
+test("quick Hikari/Air fails closed on invalid sum, version, reason or unknown company",async()=>{
+ const {db,service,req,counts}=setup();
+ await service.submit(req("p",{date:today,counts:{...counts,"SB光・AIR":5},expectedVersion:0}));
+ const original=copy([...db.data]);
+ const base={date:today,partnerCompanyId:"partner1",hikari:3,air:2,
+  sourceVersion:1,expectedRevision:0,reason:"書面と照合して内訳確認"};
+ for(const mutation of [
+  {hikari:4},{air:3},{hikari:"3"},{hikari:-1},{air:2.5},
+  {sourceVersion:0},{sourceVersion:2},{expectedRevision:1},
+  {reason:""},{reason:"a"},{partnerCompanyId:"otherhub"},
+  {date:"2040-01-01"},{totalRevenue:88000}
+ ]){
+  await assert.rejects(service.submitOwnerQuickInternetSplit(req("h",{...base,...mutation})));
+  assert.deepEqual([...db.data],original);
+ }
+ for(const who of ["p","o"]){
+  await assert.rejects(service.submitOwnerQuickInternetSplit(req(who,base)));
+ }
+ assert.deepEqual([...db.data],original);
+});
+test("changing quick source marks old classified split unverified until an explicitly rechecked revision",async()=>{
+ const {db,service,req,counts}=setup();
+ await service.submit(req("p",{date:today,counts:{...counts,"SB光・AIR":5},expectedVersion:0}));
+ const base={date:today,partnerCompanyId:"partner1",hikari:3,air:2,
+  sourceVersion:1,expectedRevision:0,reason:"光とAirの契約数を照合"};
+ await service.submitOwnerQuickInternetSplit(req("h",base));
+ await service.submitOwnerQuickCorrection(req("h",{
+  date:today,partnerCompanyId:"partner1",
+  counts:{...counts,"SB光・AIR":6},expectedVersion:1,reason:"契約票の訂正を確認"
+ }));
+ const stale=await service.viewOwnerQuickCorrection(req("h",{
+  date:today,partnerCompanyId:"partner1"
+ }));
+ assert.equal(stale.internetSplit.verified,false);
+ assert.equal(stale.internetSplit.unclassified,6);
+ assert.equal(stale.internetSplit.hikari,3);
+ await assert.rejects(service.submitOwnerQuickInternetSplit(req("h",{
+  ...base,hikari:4,air:2,expectedRevision:1
+ })),e=>e.code==="aborted");
+ const res=await service.submitOwnerQuickInternetSplit(req("h",{
+  ...base,hikari:4,air:2,sourceVersion:2,expectedRevision:1
+ }));
+ assert.equal(res.revision,2);
+ const current=await service.viewOwnerQuickCorrection(req("h",{
+  date:today,partnerCompanyId:"partner1"
+ }));
+ assert.equal(current.internetSplit.verified,true);
+ assert.equal(current.internetSplit.unclassified,0);
+ assert.equal(current.report.counts["SB光・AIR"],6);
+ assert.equal([...db.data.keys()].filter(x=>x.startsWith("partnerQuickInternetSplitAudits/")).length,2);
+});
+test("quick internet split rejects revoked and secondary company Owner without mutations",async()=>{
+ const {db,service,req,counts}=setup();
+ await service.submit(req("p",{date:today,counts:{...counts,"SB光・AIR":5},expectedVersion:0}));
+ const base={date:today,partnerCompanyId:"partner1",hikari:1,air:4,
+  sourceVersion:1,expectedRevision:0,reason:"契約票の記載を照合"};
+ const before=copy([...db.data]);
+ db.seed("partnerWorkspaceContexts/h",{active:true,kind:"partner_secondary"});
+ await assert.rejects(service.submitOwnerQuickInternetSplit(req("h",base)));
+ db.data.delete("partnerWorkspaceContexts/h");
+ assert.deepEqual([...db.data],before);
+ db.seed("partnerRelations/partner1",{partnerCompanyId:"partner1",
+  hubCompanyId:"hub",active:false,countSharingApproved:false,
+  countSharingRevokedAt:{seconds:5}});
+ const revoked=copy([...db.data]);
+ await assert.rejects(service.submitOwnerQuickInternetSplit(req("h",base)));
+ assert.deepEqual([...db.data],revoked);
+});
+test("identical verified quick internet split is a no-op and never adds an audit entry",async()=>{
+ const {db,service,req,counts}=setup();
+ await service.submit(req("p",{date:today,counts:{...counts,"SB光・AIR":5},expectedVersion:0}));
+ const base={date:today,partnerCompanyId:"partner1",hikari:3,air:2,
+  sourceVersion:1,expectedRevision:0,reason:"元書類にて照合済み"};
+ await service.submitOwnerQuickInternetSplit(req("h",base));
+ const before=copy([...db.data]);
+ const again=await service.submitOwnerQuickInternetSplit(req("h",{...base,expectedRevision:1}));
+ assert.equal(again.saved,false);assert.equal(again.unchanged,true);
+ assert.deepEqual([...db.data],before);
+});
+test("quick owner-only internet split UI does not change the original quick or staff ledgers",()=>{
+ const fs=require("node:fs"),path=require("node:path");
+ const html=fs.readFileSync(path.join(__dirname,"../index.html"),"utf8");
+ const entry=fs.readFileSync(path.join(__dirname,"../functions-partner-quick/index.js"),"utf8");
+ for(const id of ["ownerPartnerQuickSplitPanel","ownerPartnerQuickSplitStatus",
+  "ownerPartnerQuickHikari","ownerPartnerQuickAir","ownerPartnerQuickSplitReason",
+  "ownerPartnerQuickSplitSave"]){
+  assert.equal(html.split('id="'+id+'"').length-1,1,id);
+ }
+ assert.match(entry,/exports\.submitOwnerPartnerQuickInternetSplit=onCall/);
+ assert.match(html,/submitOwnerPartnerQuickInternetSplit = httpsCallable/);
+ assert.match(html,/submitOwnerPartnerQuickInternetSplit\(\{/);
+ const start=html.indexOf("const split=d.internetSplit,combined=");
+ const stop=html.indexOf("  save.disabled=false;",start);
+ assert(start>0&&stop>start);
+ const section=html.slice(start,stop);
+ assert.doesNotMatch(section,/\b(?:setDoc|deleteDoc|updateDoc|signIn|signOut)\s*\(/);
+ assert.match(section,/hikari\+air!==combined/);
+ assert.match(section,/check\.internetSplit\?\.verified!==true/);
+});
