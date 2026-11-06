@@ -6677,6 +6677,7 @@ body.product-reordering .product-list {
 
         </div>
 
+        <div id="ownerCountIntegrityReview" class="ranking-product-help" role="status" hidden></div>
         <div id="recordHistoryList"></div>
       </div>
 
@@ -26959,6 +26960,30 @@ function isPersistedRecordCountConsistent(record) {
   return sum === Number(saved);
 }
 
+// READ-ONLY. Saved count and sum of product rows are independent evidence.
+// Never infer which number is correct or edit a damaged historical record.
+function readOnlyRecordCountEvidence(record) {
+  if (isPersistedRecordCountConsistent(record)) return null;
+  const valid = value =>
+    (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) ||
+    (typeof value === "string" && /^\d+$/.test(value) &&
+      Number.isSafeInteger(Number(value)));
+  const saved = valid(record?.totalCount) ? Number(record.totalCount) : null;
+  const rows = record?.results && typeof record.results === "object" &&
+    !Array.isArray(record.results) ? Object.values(record.results) : null;
+  let lines = rows ? 0 : null;
+  if (rows) {
+    for (const row of rows) {
+      if (!valid(row?.count) || !Number.isSafeInteger(lines + Number(row.count))) {
+        lines = null;
+        break;
+      }
+      lines += Number(row.count);
+    }
+  }
+  return {saved, lines};
+}
+
 async function persistDailyRecord(recordRef, data, expectedRecord, expectedRevision, writeCorrection = null) {
   // サーバーで同日を確認。旧IDの実績もそのまま更新し、重複は推測で統合しない。
   const daily = await getDocsFromServer(query(
@@ -39422,6 +39447,50 @@ function renderRecordHistory(
   const selectedMonth =
     dashboardMonth.value;
 
+  // Owner-only, same-company and selected-month review of existing data.
+  // This is NOT a correction flow. It never loads private finance originals
+  // for partner identities, writes Firestore, or guesses the true contract.
+  const review = document.getElementById("ownerCountIntegrityReview");
+  review.hidden = true;
+  review.replaceChildren();
+  const ownerCanReview = isCurrentCompanyOwner() &&
+    canCurrentUserViewRevenue() && !partnerInlineWorkspaceCompany &&
+    currentUserData?.accessKind !== "partner" &&
+    (currentCompanyData?.companyKind == null ||
+     currentCompanyData.companyKind === "internal");
+  if (ownerCanReview && selectedMonth) {
+    const mismatched = currentRecordHistoryMonthly.filter(record =>
+      record.companyId === currentUserData?.companyId &&
+      record.date?.startsWith(selectedMonth) &&
+      readOnlyRecordCountEvidence(record) !== null);
+    if (mismatched.length) {
+      review.hidden = false;
+      const heading = document.createElement("p");
+      heading.textContent = "要確認：保存済み総件数と商材明細が一致しない記録 " +
+        mismatched.length + "件（選択月）。件数・売上・単価・履歴は変更していません。";
+      review.appendChild(heading);
+      for (const record of mismatched) {
+        const counts = readOnlyRecordCountEvidence(record);
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "team-action-button";
+        button.textContent = record.date + "｜" + getCurrentMemberName(record) +
+          "｜保存 " + (counts.saved ?? "未確認") + "件 / 明細 " +
+          (counts.lines ?? "未確認") + "件｜履歴を見る";
+        button.onclick = () => {
+          // Navigation only: the existing history list stays read-only.
+          recordHistoryDate.value = record.date;
+          renderRecordHistory(currentRecordHistoryMonthly);
+          recordHistoryList.scrollIntoView({behavior:"smooth",block:"start"});
+        };
+        review.appendChild(button);
+      }
+      const note = document.createElement("p");
+      note.textContent = "どちらの件数が正しいかは未確定です。訂正履歴と契約内容をオーナーが照合するまで、対象記録の保存と合同正式順位は保留します。";
+      review.appendChild(note);
+    }
+  }
+
   const dates =
     Array.from(
       new Set(
@@ -39779,14 +39848,18 @@ function renderRecordHistory(
       `;
 
 
-      const canCorrect =
-        canCurrentUserCorrectRecord(
-          record
-        );
+      const inconsistent = readOnlyRecordCountEvidence(record) !== null;
+      if (inconsistent) {
+        const warning = document.createElement("p");
+        warning.className = "ranking-product-help";
+        warning.textContent = "保存済み総件数と商材明細が一致しません。過去の記録は自動修正せず、履歴を照合してください。";
+        item.appendChild(warning);
+      }
+      const canCorrect = !inconsistent &&
+        canCurrentUserCorrectRecord(record);
 
-      // No historical delete action is displayed; authorized correction remains possible.
-
-
+      // Existing safe correction remains available for CONSISTENT records.
+      // Damaged rows are never offered an edit button that would fail save.
       if (
         canCorrect
       ) {
