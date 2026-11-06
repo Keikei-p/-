@@ -12379,6 +12379,7 @@ function partnerMainPendingInvite(){
  return null;
 }
 function resetPartnerInline(){
+ ownerCatalogReset();
  ++partnerInlineNonce;++ownerPartnerTeamsNonce;++partnerInlineMonthNonce;++ownerPartnerMonthNonce;
  ++partnerJointNonce;++ownerJointNonce;
  partnerInlineData=null;partnerInlineWorkspaceCompany="";partnerInlineBusy=false;
