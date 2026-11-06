@@ -4765,6 +4765,20 @@ body.product-reordering .product-list {
       <span id="pInlineVersion" class="p-inline-muted"></span>
     </div>
   </div>
+  <div class="p-inline-card" id="pInlineInternetCard">
+    <h3>🔀 SB光・SoftBank Air の内訳確認</h3>
+    <p class="p-inline-muted">旧「SB光・AIR」の合算件数は変更しません。既存件数を光とAirに振り分けるだけです。内訳合計が保存済み件数と一致した場合だけ確定します。</p>
+    <p id="pInlineInternetStatus" class="p-inline-muted" role="status" aria-live="polite">保存済み件数の内訳を読み込み中…</p>
+    <div class="p-inline-grid">
+      <label class="p-inline-field">SB光<input id="pInlineInternetHikari" type="number" inputmode="numeric" min="0" max="9999" step="1" value="0" disabled></label>
+      <label class="p-inline-field">SoftBank Air<input id="pInlineInternetAir" type="number" inputmode="numeric" min="0" max="9999" step="1" value="0" disabled></label>
+    </div>
+    <div class="p-inline-actions">
+      <button id="pInlineInternetSave" type="button" disabled>内訳だけ確定（合計件数は変更しない）</button>
+      <button id="pInlineInternetRefresh" type="button">内訳を再取得</button>
+      <span id="pInlineInternetVersion" class="p-inline-muted"></span>
+    </div>
+  </div>
   <div class="p-inline-card" id="pInlineExtraCard">
     <h3>📦 本社が公開した追加商材｜件数入力</h3>
     <p class="p-inline-muted">公開ONの追加商材だけ表示します。既存9商材の件数は上の入力欄で管理します。</p>
@@ -7177,6 +7191,9 @@ const setPartnerPublishedProduct = httpsCallable(partnerCountFunctions,"setPartn
 const readPartnerLegacyCountGate = httpsCallable(partnerCountFunctions,"getPartnerLegacyCountGate");
 const readPartnerAdditionalDay = httpsCallable(partnerCountFunctions,"getPartnerAdditionalCounts");
 const submitPartnerAdditionalDay = httpsCallable(partnerCountFunctions,"submitPartnerAdditionalCounts");
+// Optional count-only correction API; failures never interrupt the legacy nine-category input.
+const readPartnerInternetSplitDay = httpsCallable(partnerCountFunctions,"getPartnerInternetSplitDay");
+const submitPartnerInternetSplit = httpsCallable(partnerCountFunctions,"submitPartnerInternetSplit");
 
 const partnerInlineManage = httpsCallable(partnerCountFunctions,"managePartnerWorkspace");
 const partnerInlineSave = httpsCallable(partnerCountFunctions,"submitPartnerWorkspaceCounts");
@@ -12389,6 +12406,7 @@ copyInviteButton.onclick =
 const pInline=id=>document.getElementById(id);
 let partnerInlineData=null,partnerInlineWorkspaceCompany="",partnerInlineNonce=0;
 let partnerExtraData=null,partnerExtraNonce=0;
+let partnerInternetData=null,partnerInternetNonce=0,partnerInternetBusy=false;
 let partnerInlineBusy=false,ownerPartnerTeamsNonce=0,partnerInlineMonthNonce=0;
 let ownerPartnerMonthNonce=0,ownerPartnerSelectedCompany="",ownerPartnerSelectedName="";
 let partnerJointNonce=0,ownerJointNonce=0,ownerJointCachedMonth="";
@@ -12405,8 +12423,14 @@ function partnerMainPendingInvite(){
 function resetPartnerInline(){
  ownerCatalogReset();
  ++partnerInlineNonce;++ownerPartnerTeamsNonce;++partnerInlineMonthNonce;++ownerPartnerMonthNonce;
- ++partnerJointNonce;++ownerJointNonce;++partnerExtraNonce;
- partnerExtraData=null;
+ ++partnerJointNonce;++ownerJointNonce;++partnerExtraNonce;++partnerInternetNonce;
+ partnerExtraData=null;partnerInternetData=null;partnerInternetBusy=false;
+ for(const id of ["pInlineInternetHikari","pInlineInternetAir"]){
+  const input=pInline(id);input.value="0";input.disabled=true;
+ }
+ pInline("pInlineInternetSave").disabled=true;
+ pInline("pInlineInternetVersion").textContent="";
+ pInline("pInlineInternetStatus").textContent="";
  pInline("pInlineExtraCountFields").replaceChildren();
  pInline("pInlineExtraSave").disabled=true;
  pInline("pInlineExtraStatus").textContent="";
@@ -12504,6 +12528,7 @@ function partnerInlineRenderCounts(){
  pInline("pInlineSave").disabled=!staffId||partnerInlineBusy;
  pInline("pInlineVersion").textContent=entry?"登録済み・第"+entry.version+"版":"未登録";
  partnerExtraRenderCounts();
+ partnerInternetRender();
 }
 function partnerInlineRender(){
  const snap=partnerInlineData;if(!snap||snap.role==="hub")return;
@@ -13077,11 +13102,13 @@ async function partnerInlineFetch(){
    throw Error("partner_count_schema");
   partnerInlineData=snap;partnerInlineRender();
   void partnerExtraFetch();
+  void partnerInternetFetch();
   partnerInlineStatus("件数を表示しています。金額・単価は読み込んでいません。");
  }catch(e){
   if(seq!==partnerInlineNonce||auth.currentUser?.uid!==uid)return;
-  partnerInlineData=null;partnerExtraData=null;
-  ++partnerExtraNonce;partnerExtraRenderCounts();
+  partnerInlineData=null;partnerExtraData=null;partnerInternetData=null;
+  ++partnerExtraNonce;++partnerInternetNonce;
+  partnerExtraRenderCounts();partnerInternetRender();
   pInline("pInlineSave").disabled=true;
   pInline("pInlineRanking").replaceChildren();
   pInline("pInlineTeams").replaceChildren();pInline("pInlinePeople").replaceChildren();
@@ -13145,7 +13172,141 @@ pInline("pInlineDate").onchange=partnerInlineFetch;
 pInline("pInlineMonth").onchange=partnerInlineMonthFetch;
 pInline("pInlineMonthRefresh").onclick=partnerInlineMonthFetch;
 pInline("pInlineRefresh").onclick=partnerInlineFetch;
-pInline("pInlineStaff").onchange=partnerInlineRenderCounts;
+pInline("pInlineStaff").onchange=()=>{
+ partnerInlineRenderCounts();
+ partnerInternetRender();
+};
+// Saved SB光/Air breakdowns never replace "SB光・AIR" originals.
+// The two-input editor is independent: an unavailable API cannot block main Save.
+function partnerInternetRecord(){
+ const staffId=pInline("pInlineStaff").value;
+ return partnerInternetData?.records?.find(r=>r.staffId===staffId)||null;
+}
+function partnerInternetRender(){
+ const status=pInline("pInlineInternetStatus");
+ const staffId=pInline("pInlineStaff").value;
+ const original=partnerInlineData?.records?.find(r=>r.staffId===staffId);
+ const match=partnerInternetRecord();
+ const hikari=pInline("pInlineInternetHikari"),air=pInline("pInlineInternetAir");
+ const save=pInline("pInlineInternetSave");
+ const available=!!partnerInternetData&&!!original&&!!match&&
+  Number.isSafeInteger(original.counts?.["SB光・AIR"])&&
+  match.total===original.counts["SB光・AIR"]&&
+  match.sourceVersion===original.version;
+ hikari.disabled=!available||partnerInternetBusy||partnerInlineBusy;
+ air.disabled=hikari.disabled;
+ save.disabled=true;
+ if(!available){
+  hikari.value="0";air.value="0";
+  pInline("pInlineInternetVersion").textContent="";
+  status.textContent=!partnerInternetData?
+   "内訳未確認。従来の件数入力・保存は引き続き利用できます。":
+   !original?"担当者の保存済み件数がありません。先に従来の件数を保存してください。":
+   "保存済み件数との照合に失敗しました。内訳登録は停止しています。";
+  return;
+ }
+ hikari.value=String(match.hikari??0);
+ air.value=String(match.air??0);
+ pInline("pInlineInternetVersion").textContent="内訳登録 第"+match.revision+"版";
+ partnerInternetUpdateTotal();
+}
+function partnerInternetUpdateTotal(){
+ const data=partnerInternetRecord(),status=pInline("pInlineInternetStatus");
+ const hikari=pInline("pInlineInternetHikari"),air=pInline("pInlineInternetAir");
+ const save=pInline("pInlineInternetSave");
+ const parse=x=>x.value.trim()!==""&&/^\\d+$/.test(x.value.trim())?
+  Number(x.value.trim()):NaN;
+ const h=parse(hikari),a=parse(air),total=data?.total;
+ const valid=Number.isSafeInteger(h)&&Number.isSafeInteger(a)&&
+  h>=0&&a>=0&&h<=9999&&a<=9999&&Number.isSafeInteger(total)&&
+  h+a===total;
+ save.disabled=!(valid&&!partnerInternetBusy&&!partnerInlineBusy&&
+  !hikari.disabled&&!air.disabled);
+ if(data&&Number.isSafeInteger(total)){
+  status.textContent=valid?
+   "光"+h+"件・Air"+a+"件／元の合算"+total+"件｜"+
+    (data.verified&&h===data.hikari&&a===data.air?"内訳確認済み":"保存で内訳を確定できます"):
+   "保存済み合算"+total+"件に対し、内訳合計が一致していません。"+
+   " 未振分の件数を確認してください。";
+ }
+}
+async function partnerInternetFetch(){
+ const uid=auth.currentUser?.uid,workspace=partnerInlineWorkspaceCompany;
+ const day=pInline("pInlineDate").value,seq=++partnerInternetNonce;
+ partnerInternetData=null;partnerInternetRender();
+ if(!uid||!partnerInlineData||!auth.currentUser?.emailVerified)return;
+ pInline("pInlineInternetStatus").textContent="光/Airの保存済み内訳を確認中…";
+ try{
+  const data=(await readPartnerInternetSplitDay(partnerInlinePayload({date:day}))).data;
+  if(seq!==partnerInternetNonce||auth.currentUser?.uid!==uid||
+     workspace!==partnerInlineWorkspaceCompany||pInline("pInlineDate").value!==day)return;
+  if(data?.scope!=="partner_internet_split_counts_only"||data.date!==day||
+     data.financialFieldsIncluded!==false||!Array.isArray(data.records)||
+     data.records.length>200)throw Error("internet_split_schema");
+  const ids=new Set();
+  for(const row of data.records){
+   if(!partnerMainValidId(row.staffId)||ids.has(row.staffId)||
+      !Number.isSafeInteger(row.total)||row.total<0||
+      !Number.isSafeInteger(row.sourceVersion)||row.sourceVersion<1||
+      !Number.isSafeInteger(row.revision)||row.revision<0||
+      typeof row.verified!=="boolean"||
+      !Number.isSafeInteger(row.unclassified)||row.unclassified<0||
+      row.unclassified!==(row.verified?0:row.total)||
+      (row.hikari!==null&&(!Number.isSafeInteger(row.hikari)||row.hikari<0))||
+      (row.air!==null&&(!Number.isSafeInteger(row.air)||row.air<0)))
+    throw Error("internet_split_row");
+   ids.add(row.staffId);
+  }
+  partnerInternetData=data;
+  partnerInternetRender();
+ }catch{
+  if(seq!==partnerInternetNonce||auth.currentUser?.uid!==uid)return;
+  partnerInternetData=null;partnerInternetRender();
+ }
+}
+pInline("pInlineInternetHikari").oninput=partnerInternetUpdateTotal;
+pInline("pInlineInternetAir").oninput=partnerInternetUpdateTotal;
+pInline("pInlineInternetRefresh").onclick=()=>void partnerInternetFetch();
+pInline("pInlineInternetSave").onclick=async()=>{
+ if(partnerInternetBusy||partnerInlineBusy)return;
+ const row=partnerInternetRecord(),staffId=pInline("pInlineStaff").value,
+  day=pInline("pInlineDate").value,uid=auth.currentUser?.uid,
+  workspace=partnerInlineWorkspaceCompany;
+ const h=Number(pInline("pInlineInternetHikari").value),
+  a=Number(pInline("pInlineInternetAir").value);
+ if(!row||!partnerMainValidId(staffId)||!Number.isSafeInteger(h)||
+    !Number.isSafeInteger(a)||h<0||a<0||h>9999||a>9999||
+    h+a!==row.total||!uid)return;
+ partnerInternetBusy=true;partnerInternetUpdateTotal();
+ try{
+  const saved=(await submitPartnerInternetSplit(partnerInlinePayload({
+   date:day,staffId,hikari:h,air:a,sourceVersion:row.sourceVersion,
+   expectedRevision:row.revision
+  }))).data;
+  if(auth.currentUser?.uid!==uid||workspace!==partnerInlineWorkspaceCompany||
+     pInline("pInlineDate").value!==day||pInline("pInlineStaff").value!==staffId)return;
+  if(saved?.staffId!==staffId||saved.date!==day||saved.verified!==true||
+     !Number.isSafeInteger(saved.revision)||
+     !(saved.saved===true||saved.unchanged===true))
+   throw Error("internet_save_invalid");
+  const verified=(await readPartnerInternetSplitDay(partnerInlinePayload({date:day}))).data;
+  if(auth.currentUser?.uid!==uid||workspace!==partnerInlineWorkspaceCompany||
+     pInline("pInlineDate").value!==day||pInline("pInlineStaff").value!==staffId)return;
+  const now=verified?.records?.find(x=>x.staffId===staffId);
+  if(verified?.scope!=="partner_internet_split_counts_only"||
+     !now||now.verified!==true||now.revision!==saved.revision||
+     now.hikari!==h||now.air!==a||now.total!==row.total)
+   throw Error("internet_save_verify");
+  partnerInternetData=verified;partnerInternetRender();
+  pInline("pInlineInternetStatus").textContent=
+   "内訳を保存・再取得で確認済み。元の合算"+now.total+"件は変更していません。";
+ }catch{
+  if(auth.currentUser?.uid===uid)
+   pInline("pInlineInternetStatus").textContent=
+    "内訳の保存を確認できません。元の件数には変更ありません。内訳を再取得してください。";
+ }finally{partnerInternetBusy=false;partnerInternetUpdateTotal();}
+};
+
 pInline("pInlineAddTeam").onclick=()=>partnerInlineRun(async()=>{
  if(!["owner","leader"].includes(partnerInlineData.role))throw Error("role");
  const name=pInline("pInlineTeamName").value.trim();
