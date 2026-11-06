@@ -351,8 +351,16 @@ export function createLivePartnerCountViewVerifier({
       if(value&&typeof value==='object')stack.push(value);
     }
   }
+  // A count form opened just before JST midnight cannot certify the
+  // following day's ability to save. Fail closed and recheck the new date.
+  const finishedAt=now();
+  if(!Number.isFinite(finishedAt))stop('COUNT_VIEW_DATE_ROLLOVER');
+  const finishedDay=new Intl.DateTimeFormat('en-CA',{
+   timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'
+  }).format(new Date(finishedAt));
+  if(finishedDay!==date)stop('COUNT_VIEW_DATE_ROLLOVER');
   // The read-only session must remain live at the end of this request too.
-  identity(partnerIdToken,expectedPartnerUid,Math.floor(now()/1000));
+  identity(partnerIdToken,expectedPartnerUid,Math.floor(finishedAt/1000));
   return Object.freeze({
    checkedAgainst:provenance,partnerCountViewAllowed:true,
    productionDocumentWrites:0
