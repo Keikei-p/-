@@ -14,5 +14,8 @@ const opts={region:"asia-northeast1",maxInstances:3,
  cors:["https://nico-factory.web.app"]};
 exports.submitPartnerQuickCounts=onCall(opts,service.submit);
 exports.getPartnerQuickCounts=onCall(opts,service.view);
+// Owner-only read/correction of the distinct company-level quick count ledger.
+exports.getOwnerPartnerQuickCorrection=onCall(opts,service.viewOwnerQuickCorrection);
+exports.submitOwnerPartnerQuickCorrection=onCall(opts,service.submitOwnerQuickCorrection);
 // Deliberately isolated: this does NOT activate workspace, catalog or finances.
 exports.approvePartnerQuickCounts=onCall(opts,service.approve);
