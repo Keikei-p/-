@@ -147,9 +147,15 @@ export async function phase1Boundary({
   return {postSwitchRoleVerified:true,
    reviewedRealPartnerFinanceDeny:true,reviewedLiveOwnerFinanceRead:true};
  };
- if(liveHash===hashes.candidate)
-  return {...summary,...await validateLiveRoles(),applied:false,
+ if(liveHash===hashes.candidate){
+  const roles=await validateLiveRoles();
+  // A concurrent operator can replace the release during the real user
+  // checks. Never report that the reviewed candidate is still active based
+  // only on the earlier source read; do not roll back a release we did not set.
+  if((await getRelease())!==starting)stop('POST_PROOF_RULES_RELEASE_RACE');
+  return {...summary,...roles,applied:false,
    alreadyAtReviewedCandidate:true,reviewedRulesPresent:true};
+ }
  let created=null,attempted=false;
  const point=async rulesetName=>call('PATCH',RELEASE,{
   release:{name:NAME,rulesetName},updateMask:'rulesetName'
@@ -186,6 +192,9 @@ export async function phase1Boundary({
     stop('RELEASE_READBACK_FAILED');
   if(fingerprint(await snapshot())!==inventory)stop('INVENTORY_CHANGED_AFTER_APPLY');
   const roleResult=await validateLiveRoles();
+  // A successful GET/LIST proof is stale if the active Rules release moved
+  // while those requests ran. The catch block preserves concurrent releases.
+  if((await getRelease())!==created.name)stop('POST_PROOF_RULES_RELEASE_RACE');
   return {...summary,...roleResult,applied:true,rollbackRuleset:starting,
    currentRuleset:created.name};
  }catch(error){
