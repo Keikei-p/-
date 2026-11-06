@@ -109,7 +109,7 @@ test("money-free month totals are shown only when team, person, product all matc
  const begin=html.indexOf("function partnerSavedMonthCheckTotals(");
  const end=html.indexOf("function partnerRenderJointRows(",begin);
  assert(begin>0&&end>begin);
- const check=vm.runInNewContext("("+html.slice(begin,end).trim()+")");
+ const check=vm.runInNewContext("("+html.slice(begin,end).trim()+"\n)");
  const KEYS=["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター",
   "つばさ・HTB","太陽光・蓄電池AP","U-NEXT"];
  const row=n=>Object.fromEntries(KEYS.map(k=>[k,k==="NURO"?n:0]));
