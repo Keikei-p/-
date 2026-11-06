@@ -142,7 +142,8 @@ export async function phase1WithLiveAccountGate({
         checkedAgainst:'production-live',
         ownerFinanceAllowed:true,
         affectedSecondaryBound:true,
-        partnerSessionFresh:true
+        partnerSessionFresh:true,
+        partnerCountViewAllowed:true
       });
     },
     // Recheck the affected secondary membership immediately AFTER the Rules

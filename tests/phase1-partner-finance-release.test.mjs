@@ -29,11 +29,11 @@ const snap={
  ]
 };
 const liveProof=()=>({checkedAgainst:'production-live',partnerDocumentDenied:true,
- partnerListDenied:true,ownerFinanceAllowed:true});
+ partnerListDenied:true,ownerFinanceAllowed:true,partnerCountViewAllowed:true});
 const approvals={approval:true,candidateEmulatorVerified:true,
  realOwnerBeforeVerified:true,backupReviewed:true,verifyLiveRoles:async()=>liveProof(),
  preApplyCheck:async()=>({checkedAgainst:'production-live',ownerFinanceAllowed:true,
-  affectedSecondaryBound:true,partnerSessionFresh:true})};
+  affectedSecondaryBound:true,partnerSessionFresh:true,partnerCountViewAllowed:true})};
 const goodBackup=()=>({readyBackups:1,latestReadySnapshot:date});
 const snapshot=async()=>structuredClone(snap);
 const restore=async data=>({
@@ -324,11 +324,11 @@ test('fake or incomplete pre-PATCH evidence does NOT authorize a Rules release',
  for(const evidence of [
   null,{},'ok',
   {checkedAgainst:'synthetic-only',ownerFinanceAllowed:true,
-   affectedSecondaryBound:true,partnerSessionFresh:true},
+   affectedSecondaryBound:true,partnerSessionFresh:true,partnerCountViewAllowed:true},
   {checkedAgainst:'production-live',ownerFinanceAllowed:false,
-   affectedSecondaryBound:true,partnerSessionFresh:true},
+   affectedSecondaryBound:true,partnerSessionFresh:true,partnerCountViewAllowed:true},
   {checkedAgainst:'production-live',ownerFinanceAllowed:true,
-   affectedSecondaryBound:false,partnerSessionFresh:true},
+   affectedSecondaryBound:false,partnerSessionFresh:true,partnerCountViewAllowed:true},
   {checkedAgainst:'production-live',ownerFinanceAllowed:true,
    affectedSecondaryBound:true,partnerSessionFresh:false}
  ]){
@@ -360,7 +360,7 @@ test('pre-PATCH reproof runs after final inventory validation and BEFORE switch'
    calls.push('preApply');
    assert.equal(f.getCurrent(),oldId);
    return {checkedAgainst:'production-live',ownerFinanceAllowed:true,
-    affectedSecondaryBound:true,partnerSessionFresh:true};
+    affectedSecondaryBound:true,partnerSessionFresh:true,partnerCountViewAllowed:true};
   }
  });
  assert.equal(result.applied,true);
@@ -381,7 +381,7 @@ test('a real count arriving DURING pre-PATCH identity checks stops release BEFOR
   return snapshot;
  };
  const good=()=>({checkedAgainst:'production-live',ownerFinanceAllowed:true,
-  affectedSecondaryBound:true,partnerSessionFresh:true});
+  affectedSecondaryBound:true,partnerSessionFresh:true,partnerCountViewAllowed:true});
  await assert.rejects(phase1Boundary({
   ...f.args,...approvals,apply:true,snapshot:snapFn,
   preApplyCheck:async()=>{
@@ -404,9 +404,62 @@ test('a concurrent Rules operator during owner account proof prevents any PATCH'
    assert.equal(f.getCurrent(),oldId);
    f.setCurrent(otherId);
    return {checkedAgainst:'production-live',ownerFinanceAllowed:true,
-    affectedSecondaryBound:true,partnerSessionFresh:true};
+    affectedSecondaryBound:true,partnerSessionFresh:true,partnerCountViewAllowed:true};
   }
  }),/STOP_PHASE1_RULES_RELEASE_RACE_BEFORE_PATCH/);
  assert.equal(f.getCurrent(),otherId,'do not revert an unrelated release');
  assert.deepEqual(f.writes.map(x=>x.method),['POST']);
+});
+
+
+test('missing REAL pre-switch count-view proof blocks Rules PATCH without touching any saved totals',async()=>{
+ for(const absent of [undefined,false,'true']){
+  const f=fixture();
+  await assert.rejects(phase1Boundary({...f.args,...approvals,apply:true,
+   preApplyCheck:async()=>({
+    checkedAgainst:'production-live',ownerFinanceAllowed:true,
+    affectedSecondaryBound:true,partnerSessionFresh:true,
+    ...(absent===undefined?{}:{partnerCountViewAllowed:absent})
+   })
+  }),/STOP_PHASE1_PRE_SWITCH_COUNT_VIEW_UNVERIFIED/);
+  assert.equal(f.getCurrent(),oldId);
+  assert.deepEqual(f.writes.map(x=>x.method),['POST'],
+   'unactivated Rules version may exist, but live release MUST remain unchanged');
+ }
+});
+
+test('live finance 403 without a verified partner count view triggers Rules rollback',async()=>{
+ for(const missing of [undefined,false,'true']){
+  const f=fixture();
+  const result={...liveProof()};
+  if(missing===undefined)delete result.partnerCountViewAllowed;
+  else result.partnerCountViewAllowed=missing;
+  await assert.rejects(phase1Boundary({...f.args,...approvals,apply:true,
+   verifyLiveRoles:async()=>result
+  }),/STOP_PHASE1_POST_SWITCH_COUNT_VIEW_UNVERIFIED/);
+  assert.equal(f.getCurrent(),oldId);
+  assert.deepEqual(f.writes.map(x=>x.method),['POST','PATCH','PATCH'],
+   'finance-only proof may NEVER report a successful Rules cutover');
+ }
+});
+
+test('approved live proof reports count-view continuity without inventing pre-switch proof',async()=>{
+ const existing=fixture({starting:candidateId});
+ const noSwitch=await phase1Boundary({...existing.args,...approvals,apply:true});
+ assert.equal(noSwitch.applied,false);
+ assert.equal(noSwitch.reviewedPartnerCountViewBeforeSwitch,false,
+  'existing candidate has no new pre-switch check');
+ assert.equal(noSwitch.reviewedPartnerCountViewAfterSwitch,true);
+ assert.equal(existing.writes.length,0);
+ const pending=fixture();
+ const verifyOnly=await phase1Boundary({...pending.args});
+ assert.equal(verifyOnly.reviewedPartnerCountViewBeforeSwitch,false);
+ assert.equal(verifyOnly.reviewedPartnerCountViewAfterSwitch,false);
+ assert.equal(pending.writes.length,0);
+ const switched=fixture();
+ const success=await phase1Boundary({...switched.args,...approvals,apply:true});
+ assert.equal(success.applied,true);
+ assert.equal(success.reviewedPartnerCountViewBeforeSwitch,true);
+ assert.equal(success.reviewedPartnerCountViewAfterSwitch,true);
+ assert.equal(success.productionDocumentWrites,0);
 });
