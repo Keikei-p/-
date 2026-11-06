@@ -1141,7 +1141,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   db,actor,scope,collection,FieldValue,fail,validDate,canStaff
  });
  const {viewDay:viewOwnerPartnerDay,correctDay:correctOwnerPartnerDay,
-  classifyOwnerInternet}=
+  classifyOwnerInternet,listCompaniesPage:ownerPartnerCompaniesPage}=
   makeOwnerPartnerCorrections({db,actor,scope,collection,FieldValue,fail,
    validDate,validateCounts,validatePrivateCounts,KEYS,
    legacyPolicyFor,assertLegacyEdit});
@@ -1149,7 +1149,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   manage,accept,view,viewSavedMonth,viewCombinedMonth,
   getPublishedCatalog,setPublishedProduct,viewAdditionalCounts,submitAdditionalCounts,submit,
   getLegacyGate,activateLegacyCountGate,viewInternetSplitDay,viewInternetSplitMonth,submitInternetSplit,
-  viewOwnerPartnerDay,correctOwnerPartnerDay,classifyOwnerInternet
+  viewOwnerPartnerDay,correctOwnerPartnerDay,classifyOwnerInternet,ownerPartnerCompaniesPage
  });
 }
 module.exports={makeWorkspace,KEYS};
