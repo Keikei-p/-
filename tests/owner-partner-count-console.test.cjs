@@ -270,8 +270,8 @@ test("Owner company console uses existing menu, no sign-out, and revokes stale a
  assert.match(server,/makeOwnerPartnerCorrections/);
  assert.match(endpoints,/exports\.submitOwnerPartnerCorrection=onCall/);
  assert.match(endpoints,/exports\.getOwnerPartnerCorrectionDay=onCall/);
- assert.match(html,/async function openOwnerSplitEditor\\(/);
- assert.match(html,/submitOwnerPartnerInternetSplit/);
- assert.match(html,/SB光・Airの内訳を訂正/);
- assert.match(endpoints,/exports\\.submitOwnerPartnerInternetSplit=onCall/);
+ assert.ok(html.includes("async function openOwnerSplitEditor("));
+ assert.ok(html.includes("submitOwnerPartnerInternetSplit"));
+ assert.ok(html.includes("SB光・Airの内訳を訂正"));
+ assert.ok(endpoints.includes("exports.submitOwnerPartnerInternetSplit=onCall"));
 });
