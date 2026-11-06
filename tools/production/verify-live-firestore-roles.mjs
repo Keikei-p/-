@@ -290,7 +290,7 @@ export function createLivePartnerCountViewVerifier({
   const date=new Intl.DateTimeFormat('en-CA',{
    timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'
   }).format(new Date(now()));
-  if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(date))stop('COUNT_VIEW_DATE');
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date))stop('COUNT_VIEW_DATE');
   let response;
   try{
    response=await transport(endpoint,{
