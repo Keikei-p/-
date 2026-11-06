@@ -130,6 +130,8 @@ export async function phase1Boundary({
   reviewedOwnerBeforeSwitch:realOwnerBeforeVerified===true,
   reviewedCandidateEmulatorBoundary:candidateEmulatorVerified===true,
   reviewedRealPartnerFinanceDeny:false,postSwitchRoleVerified:false,
+  reviewedPartnerCountViewBeforeSwitch:false,
+  reviewedPartnerCountViewAfterSwitch:false,
   applied:false
  });
  log(summary);
@@ -144,8 +146,11 @@ export async function phase1Boundary({
   if(result?.checkedAgainst!=='production-live'||
      result.partnerDocumentDenied!==true||result.partnerListDenied!==true||
      result.ownerFinanceAllowed!==true)stop('POST_SWITCH_ROLE_UNVERIFIED');
+  if(result.partnerCountViewAllowed!==true)
+   stop('POST_SWITCH_COUNT_VIEW_UNVERIFIED');
   return {postSwitchRoleVerified:true,
-   reviewedRealPartnerFinanceDeny:true,reviewedLiveOwnerFinanceRead:true};
+   reviewedRealPartnerFinanceDeny:true,reviewedLiveOwnerFinanceRead:true,
+   reviewedPartnerCountViewAfterSwitch:true};
  };
  if(liveHash===hashes.candidate){
   const roles=await validateLiveRoles();
@@ -178,6 +183,8 @@ export async function phase1Boundary({
      ready?.affectedSecondaryBound!==true||
      ready?.partnerSessionFresh!==true)
     stop('PRE_SWITCH_ACCOUNT_UNVERIFIED');
+  if(ready?.partnerCountViewAllowed!==true)
+    stop('PRE_SWITCH_COUNT_VIEW_UNVERIFIED');
   // A live rep may submit an actual count while Owner + partner identity
   // are being rechecked. Switching against that stale inventory would make
   // the release look successful briefly and then force rollback. Fail BEFORE
@@ -195,7 +202,9 @@ export async function phase1Boundary({
   // A successful GET/LIST proof is stale if the active Rules release moved
   // while those requests ran. The catch block preserves concurrent releases.
   if((await getRelease())!==created.name)stop('POST_PROOF_RULES_RELEASE_RACE');
-  return {...summary,...roleResult,applied:true,rollbackRuleset:starting,
+  return {...summary,...roleResult,
+   reviewedPartnerCountViewBeforeSwitch:true,
+   applied:true,rollbackRuleset:starting,
    currentRuleset:created.name};
  }catch(error){
   if(attempted){
