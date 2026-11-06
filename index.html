@@ -30886,10 +30886,20 @@ function validatedPartnerRankingDay(value,expectedDate){
 // report at the same date, preferring verified staff-ledger data per partner.
 // Never add both amounts from the same partner/day: that double-counts people.
 async function mergedPartnerRankingDay(date){
+  // The legacy quick-count Callable only permits reads for the previous
+  // 31 days. The newer staff-ledger Callable supports 366 days. Read that
+  // historical ledger without asking the quick endpoint for an impossible
+  // date; keep the result provisional because older quick-only rows cannot
+  // be independently recovered here. Never replace unknown totals with zero.
+  const today=new Date(getTodayString()+"T00:00:00Z").getTime();
+  const day=Date.parse(date+"T00:00:00Z");
+  const quickReadable=Number.isFinite(day)&&day<=today&&
+    day>=today-31*86400000;
   const [legacy,staff]=await Promise.all([
-    readPartnerQuickDay({date}),readPartnerWorkDay({date})
+    quickReadable?readPartnerQuickDay({date}):Promise.resolve(null),
+    readPartnerWorkDay({date})
   ]);
-  const oldRows=validatedPartnerRankingDay(legacy.data,date);
+  const oldRows=legacy?validatedPartnerRankingDay(legacy.data,date):[];
   const newRows=validatedPartnerRankingDay(staff.data,date);
   const selected=new Map(oldRows.map(row=>[row.id,row]));
   for(const row of newRows)selected.set(row.id,row);
@@ -30898,7 +30908,7 @@ async function mergedPartnerRankingDay(date){
   // not a verified zero. Preserve available counts but never certify ranks.
   const registered=staff.data?.registeredCompanies;
   // Old backends that omit the company roster cannot prove a complete month.
-  let coverageComplete=Array.isArray(registered);
+  let coverageComplete=quickReadable&&Array.isArray(registered);
   if(Array.isArray(registered)){
     if(registered.length>100)throw Error("partner_month_scope_invalid");
     const seen=new Set();
@@ -30920,11 +30930,12 @@ async function readPartnerRankingMonth(month){
     throw Error("partner_month_invalid");
   const now=new Date(getTodayString()+"T00:00:00Z");
   const first=new Date(month+"-01T00:00:00Z");
-  const oldest=new Date(now.getTime()-31*86400000);
-  // Daily API only supports the last 31 days. Never present a partial
-  // previous-month snapshot as a completed combined ranking.
+  const oldest=new Date(now.getTime()-366*86400000);
+  // The staff-ledger read-only API supports 366 days. Older dates cannot
+  // be fetched and must never be shown as an invented completed month.
+  // Legacy quick-only reports older than 31 days stay provisional below.
   if(first<oldest)
-    return {complete:false,rows:[],reason:"協力店の前月以前の全件数は未照合です"};
+    return {complete:false,rows:[],reason:"366日より前の協力店件数は未照合です"};
   const days=[];
   // Freeze caller identity for every request: a logout mid-fetch must not
   // populate a new company's in-memory cache with old partner counts.
