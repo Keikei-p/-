@@ -8,6 +8,7 @@ const {makePartnerCatalogOperations}=require("./partner-catalog-operations.cjs")
 const {projectPublishedPartnerExtras}=require("./partner-combined-extra-projection.cjs");
 const {makePartnerAdditionalOperations}=require("./partner-additional-operations.cjs");
 const {makeLegacyPublicationOperations}=require("./legacy-publication-operations.cjs");
+const {makePartnerInternetSplitOperations}=require("./internet-split-operations.cjs");
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -1134,10 +1135,14 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  const {viewAdditionalCounts,submitAdditionalCounts,getExtraPolicy}=makePartnerAdditionalOperations({
   db,actor,scope,collection,FieldValue,fail,validDate,validName,canStaff,jstToday,KEYS
  });
+ // Additive SB光/Air detail lives in separate count-only docs, preserving old ledger.
+ const {viewInternetSplitDay,viewInternetSplitMonth,submitInternetSplit}=makePartnerInternetSplitOperations({
+  db,actor,scope,collection,FieldValue,fail,validDate,canStaff
+ });
  return Object.freeze({
   manage,accept,view,viewSavedMonth,viewCombinedMonth,
   getPublishedCatalog,setPublishedProduct,viewAdditionalCounts,submitAdditionalCounts,submit,
-  getLegacyGate,activateLegacyCountGate
+  getLegacyGate,activateLegacyCountGate,viewInternetSplitDay,viewInternetSplitMonth,submitInternetSplit
  });
 }
 module.exports={makeWorkspace,KEYS};
