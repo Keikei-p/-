@@ -98,7 +98,7 @@ const approvalRows={approval:true,candidateEmulatorVerified:true,backupReviewed:
 const oauthRoot=ROOT+'/';
 const str=v=>({stringValue:v});
 const flag=v=>({booleanValue:v});
-function fakeIdentity({changedPath='',changes={},statusOverride=0}={}){
+function fakeIdentity({changedPath='',changes={},statusOverride=0,role='leader'}={}){
  const owner='realOwner',partner='secondaryPartner',internal='internal_company',external='partner_company';
  const rows={
   ['users/'+owner]:{companyId:str(internal),companyRole:str('owner'),
@@ -110,18 +110,23 @@ function fakeIdentity({changedPath='',changes={},statusOverride=0}={}){
   ['partnerWorkspaceContexts/'+partner]:{
     uid:str(partner),kind:str('partner_secondary'),active:flag(true),
     primaryCompanyId:str(internal),partnerCompanyId:str(external),
-    hubCompanyId:str(internal)},
+    hubCompanyId:str(internal),role:str(role),
+    ...(role==='owner'?{}:{teamId:str('partner_team')})},
   ['users/'+partner]:{companyId:str(internal),companyRole:str('member'),
     active:flag(true),accessKind:str('internal')},
   ['companies/'+internal+'/members/'+partner]:{
     companyRole:str('member'),active:flag(true),accessKind:str('internal')},
   ['companies/'+external]:{companyKind:str('partner'),active:flag(true),
-    hubCompanyId:str(internal)},
+    hubCompanyId:str(internal),
+    ownerUid:str(role==='owner'?partner:'other_owner'),
+    masterUid:str(role==='owner'?partner:'other_owner')},
   ['companies/'+external+'/members/'+partner]:{
     uid:str(partner),companyId:str(external),active:flag(true),
     accessKind:str('partner'),memberType:str('cooperator'),
-    companyRole:str('member'),canViewRevenue:flag(false),
-    canViewUnitPrice:flag(false)}
+    companyRole:str(role==='owner'?'owner':'member'),
+    role:str(role==='owner'?'leader':role),
+    ...(role==='owner'?{}:{teamId:str('partner_team')}),
+    canViewRevenue:flag(false),canViewUnitPrice:flag(false)}
  };
  const calls=[];
  const result={
@@ -361,4 +366,57 @@ test('synthetic pre-PATCH identity is blocked before any Rules change, even with
  }),/STOP_PHASE1_LIVE_BRIDGE_TRUSTED_AFFECTED_IDENTITY_REQUIRED/);
  assert.equal(r.writes.length,0);
  assert.equal(r.getActive(),oldId);
+});
+
+
+test('real partner workspace role parity: secondary leader, member and owner ALL qualify for affected-ID security check',async()=>{
+  for(const role of ['leader','member','owner']){
+    const identity=fakeIdentity({role});
+    const proof=await createAffectedSecondaryIdentityVerifier({
+      ...identity,expectedOwnerUid:'realOwner',
+      expectedPartnerUid:'secondaryPartner',internalCompanyId:'internal_company'
+    })();
+    assert.equal(proof.checkedAgainst,'synthetic-only');
+    assert.equal(proof.affectedSecondaryBound,true);
+    assert.equal(proof.ownerInternalBound,true);
+    assert.equal(proof.productionDocumentWrites,0);
+    assert.equal(identity.calls.length,9);
+    assert(identity.calls.every(x=>x.method==='GET'),
+      'must never mutate any membership, financial or historical count');
+  }
+});
+
+test('invalid Owner and worker role combinations stop BEFORE Rules release without changing saved counts',async()=>{
+  const cases=[
+    {role:'owner',changedPath:'companies/partner_company',
+      changes:{ownerUid:str('unrelated_owner')}},
+    {role:'owner',changedPath:'companies/partner_company',
+      changes:{masterUid:str('unrelated_master')}},
+    {role:'owner',changedPath:'companies/partner_company/members/secondaryPartner',
+      changes:{companyRole:str('member')}},
+    {role:'owner',changedPath:'companies/partner_company/members/secondaryPartner',
+      changes:{role:str('member')}},
+    {role:'owner',changedPath:'companies/partner_company/members/secondaryPartner',
+      changes:{teamId:str('unexpected_team')}},
+    {role:'leader',changedPath:'companies/partner_company/members/secondaryPartner',
+      changes:{role:str('member')}},
+    {role:'leader',changedPath:'companies/partner_company/members/secondaryPartner',
+      changes:{teamId:str('other_team')}},
+    {role:'member',changedPath:'partnerWorkspaceContexts/secondaryPartner',
+      changes:{teamId:str('other_team')}},
+    {role:'leader',changedPath:'companies/partner_company',
+      changes:{ownerUid:str('secondaryPartner')}},
+    {role:'member',changedPath:'companies/partner_company/members/secondaryPartner',
+      changes:{companyRole:str('owner')}}
+  ];
+  for(const variant of cases){
+    const identity=fakeIdentity(variant);
+    await assert.rejects(createAffectedSecondaryIdentityVerifier({
+      ...identity,expectedOwnerUid:'realOwner',
+      expectedPartnerUid:'secondaryPartner',internalCompanyId:'internal_company'
+    })(),/STOP_PHASE1_IDENTITY_AFFECTED_SECONDARY_NOT_BOUND/,
+      variant.role+' '+variant.changedPath);
+    assert(identity.calls.every(x=>x.method==='GET'),
+      'no writes even when real data is inconsistent');
+  }
 });
