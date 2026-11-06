@@ -73,7 +73,6 @@ function projectPublishedPartnerExtras({
    person={key,name,totalCount:0,productMap:freshProducts()};
    people.set(key,person);
   }
-  if(person.name!==name)fail();
   person.totalCount+=visibleDay;totalCount+=visibleDay;
   if(!SAFE(person.totalCount)||!SAFE(totalCount))fail();
   for(const [id,n] of dayProducts)add(person.productMap,id,n);
@@ -103,7 +102,6 @@ function projectPublishedPartnerExtras({
    member={key,name,totalCount:0,productMap:freshProducts()};
    team.memberMap.set(key,member);
   }
-  if(member.name!==name)fail();
   member.totalCount+=visibleDay;
   if(!SAFE(member.totalCount))fail();
   for(const [id,n] of dayProducts){
