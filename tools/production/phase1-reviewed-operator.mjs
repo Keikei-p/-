@@ -38,6 +38,15 @@ const OWN_KEYS=['ownerIdToken','partnerIdToken','expectedOwnerUid','expectedPart
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const SHA=/^[a-f0-9]{40}$/;
 const RUN_ID=/^[1-9][0-9]{0,14}$/;
+// The reviewed GitHub repository is the only approved provenance. A local
+// remote pointing elsewhere must not spoof the pinned main SHA.
+const REVIEWED_ORIGINS=new Set([
+  'https://github.com/Keikei-p/-.git',
+  'https://github.com/Keikei-p/-',
+  'git@github.com:Keikei-p/-.git',
+  'git@github.com:Keikei-p/-',
+  'ssh://git@github.com/Keikei-p/-.git'
+]);
 const stop=code=>{throw Error('STOP_PHASE1_OPERATOR_'+code);};
 const obj=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 
@@ -80,17 +89,21 @@ export function assertReviewedCodeGate({env,git,gh}){
     !SHA.test(env.NICO_PHASE1_REVIEWED_CHECKOUT_SHA||'')||
     !RUN_ID.test(env.NICO_PHASE1_REVIEWED_CI_RUN_ID||''))
    stop('REVIEWED_CODE_EVIDENCE_REQUIRED');
- let local,dirty,main,run;
+ let local,dirty,main,run,origin;
  try{
   local=git('rev-parse',['HEAD']).trim();
-  dirty=git('status',['--porcelain','--untracked-files=no']);
+  // Ignore build/cache files by .gitignore, but reject untracked files that
+  // could replace imported code or hide an unreviewed proof input.
+  dirty=git('status',['--porcelain','--untracked-files=normal']);
+  origin=git('remote',['get-url','origin']).trim();
   main=git('ls-remote',['--exit-code','origin','refs/heads/main']);
   run=JSON.parse(gh('run',['view',env.NICO_PHASE1_REVIEWED_CI_RUN_ID,
    '--repo','Keikei-p/-','--json','headSha,conclusion,event,name']));
  }catch{stop('REVIEWED_CODE_CHECK_UNAVAILABLE');}
  const matches=/^([a-f0-9]{40})\s+refs\/heads\/main\s*$/.exec(main);
  if(local!==env.NICO_PHASE1_REVIEWED_CHECKOUT_SHA||
-    dirty.trim()!==''||!matches||matches[1]!==REVIEWED_MAIN||
+    dirty.trim()!==''||!REVIEWED_ORIGINS.has(origin)||
+    !matches||matches[1]!==REVIEWED_MAIN||
     run?.headSha!==local||run?.conclusion!=='success'||
     run?.event!=='push'||
     run?.name!=='NICO affected secondary identity + finance boundary (NO DEPLOY)')
