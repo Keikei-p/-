@@ -18543,6 +18543,84 @@ productList.addEventListener(
 );
 
 
+// Separate versioned publication setting; never modify the original sales
+// master when a public flag is toggled. Unknown state means disabled checkbox.
+let ownerCatalogState={revision:0,verified:false,busy:false,rows:new Map()};
+let ownerCatalogNonce=0;
+function ownerCatalogReset(){
+ ++ownerCatalogNonce;
+ ownerCatalogState={revision:0,verified:false,busy:false,rows:new Map()};
+ const el=document.getElementById("ownerPublishedCatalogStatus");
+ if(el)el.textContent="公開状態未確認。変更操作は停止しています。";
+}
+async function ownerCatalogRefresh(){
+ if(!auth.currentUser||!isCurrentCompanyOwner()||
+    currentCompanyData?.companyKind==="partner")return;
+ const uid=auth.currentUser.uid,seq=++ownerCatalogNonce;
+ const status=document.getElementById("ownerPublishedCatalogStatus");
+ ownerCatalogState.verified=false;
+ status.textContent="協力店商材公開設定を照合中...";
+ renderProducts();
+ try{
+  const data=(await readPartnerPublishedCatalog({})).data;
+  if(seq!==ownerCatalogNonce||uid!==auth.currentUser?.uid)return;
+  if(data?.scope!=="partner_published_catalog_count_only"||data.role!=="hub"||
+     !Number.isSafeInteger(data.revision)||data.revision<0||
+     !Array.isArray(data.products)||data.products.length>1000)
+   throw Error("catalog_schema");
+  const rows=new Map();
+  for(const product of data.products){
+   if(typeof product.id!=="string"||!/^[A-Za-z0-9_-]{1,128}$/.test(product.id)||
+      rows.has(product.id)||typeof product.published!=="boolean"||
+      typeof product.name!=="string"||product.name.length>80)
+    throw Error("catalog_product_schema");
+   rows.set(product.id,product);
+  }
+  ownerCatalogState={revision:data.revision,verified:true,busy:false,rows};
+  status.textContent="商材の公開状態を確認済み。";
+ }catch{
+  if(seq!==ownerCatalogNonce||uid!==auth.currentUser?.uid)return;
+  ownerCatalogState={revision:0,verified:false,busy:false,rows:new Map()};
+  status.textContent="公開状態を確認できません。変更せず接続・Owner権限・新APIを確認してください。";
+ }finally{if(seq===ownerCatalogNonce)renderProducts();}
+}
+async function ownerCatalogToggle(productId,published){
+ if(!ownerCatalogState.verified||ownerCatalogState.busy||
+    !ownerCatalogState.rows.has(productId)||
+    !isCurrentCompanyOwner()||currentCompanyData?.companyKind==="partner")return;
+ const uid=auth.currentUser?.uid,revision=ownerCatalogState.revision;
+ ownerCatalogState.busy=true;renderProducts();
+ const status=document.getElementById("ownerPublishedCatalogStatus");
+ status.textContent="公開状態を保存・再取得照合中...";
+ try{
+  const changed=(await setPartnerPublishedProduct({
+   productId,published,expectedRevision:revision
+  })).data;
+  if(uid!==auth.currentUser?.uid)return;
+  if(changed?.saved!==true||changed?.productId!==productId||
+     changed?.published!==published||changed?.revision!==revision+1)
+   throw Error("catalog_save_mismatch");
+  await ownerCatalogRefresh();
+  if(!ownerCatalogState.verified||
+     ownerCatalogState.rows.get(productId)?.published!==published)
+   throw Error("catalog_reload_mismatch");
+  status.textContent="協力店公開ON/OFFを保存・再取得で確認しました。";
+ }catch{
+  if(uid!==auth.currentUser?.uid)return;
+  ownerCatalogState.verified=false;ownerCatalogState.busy=false;
+  status.textContent="公開設定を確定できません。サーバーの設定を再確認してください。";
+  await ownerCatalogRefresh();
+ }finally{
+  if(uid===auth.currentUser?.uid){
+   ownerCatalogState.busy=false;renderProducts();
+  }
+ }
+}
+document.getElementById("ownerPublishedCatalogRefresh").onclick=ownerCatalogRefresh;
+productManagementToggle.addEventListener("click",()=>{
+ if(isCurrentCompanyOwner()&&currentCompanyData?.companyKind!=="partner")
+  void ownerCatalogRefresh();
+});
 function renderProducts() {
 
   productManagementCount.textContent =
@@ -18664,6 +18742,20 @@ function renderProducts() {
         edit
       );
 
+      if(isCurrentCompanyOwner()&&currentCompanyData?.companyKind!=="partner"){
+        const state=ownerCatalogState.rows.get(product.id);
+        const label=document.createElement("label");label.className="p-inline-field";
+        label.style.display="inline-flex";label.style.alignItems="center";
+        label.style.gap="6px";
+        const checkbox=document.createElement("input");checkbox.type="checkbox";
+        checkbox.setAttribute("aria-label",(product.name||"商材")+"を協力店に公開");
+        checkbox.checked=state?.published===true;
+        checkbox.disabled=!ownerCatalogState.verified||ownerCatalogState.busy||!state;
+        checkbox.onchange=()=>void ownerCatalogToggle(product.id,checkbox.checked);
+        const caption=document.createElement("span");
+        caption.textContent=state?.published===true?"協力店に公開中":"協力店に非公開";
+        label.append(checkbox,caption);actions.append(label);
+      }
 
       item.appendChild(
         info
