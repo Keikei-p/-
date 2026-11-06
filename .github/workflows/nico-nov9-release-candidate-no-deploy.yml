@@ -1,7 +1,7 @@
 name: NICO Nov 9 release candidate full proof gates (NO DEPLOY)
 on:
   push:
-    branches: [release/partner-month-phase1-candidate-20261106, fix/partner-daily-history-rank-active-input-20261106, fix/partner-deleted-staff-daily-count-20261106]
+    branches: [release/partner-month-phase1-candidate-20261106, fix/partner-daily-history-rank-active-input-20261106, fix/partner-deleted-staff-daily-count-20261106, fix/partner-hub-archived-team-detail-20261106]
   pull_request:
     branches: [main, release/partner-month-phase1-candidate-20261106]
 permissions:
@@ -54,7 +54,8 @@ jobs:
           test "$(git merge-base HEAD f5ca2bd7ce5db64629d3b2543d1319e672999242)" = f5ca2bd7ce5db64629d3b2543d1319e672999242
           test "$(git hash-object index.html)" = 1b0d7e22d55d3b37f6767d716583ccd5df0c0b15
           test "$(git hash-object firestore.rules)" = 6d6ac7fd3544b0326823e419a3acd7e1d060b714
-          test "$(git hash-object functions-partner-workspace/service.cjs)" = d6ad6aa8f0f26910515aad8cd70962cbcd9ed6c7
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 001d0d483f02ad412248de7da9029aa4d5b8b583
+          test "$(git hash-object tests/partner-workspace.test.cjs)" = 7cdd2bfb352fce6c0005bee1c54a62c6fa584b6a
           test "$(git hash-object tools/production/phase1-partner-finance-release.mjs)" = 25172984fd36ebf44a19844ef80b2bc6713396c1
           test "$(git hash-object tools/production/verify-live-firestore-roles.mjs)" = 3227ed08c96e29dce9d918982fe9f8ca8199ac83
           git diff --name-only f5ca2bd7ce5db64629d3b2543d1319e672999242...HEAD > /tmp/release-candidate-extra.txt
