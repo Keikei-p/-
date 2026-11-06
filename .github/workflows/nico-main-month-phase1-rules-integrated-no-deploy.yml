@@ -1,0 +1,89 @@
+name: NICO main-month and Phase1 finance boundary integration (NO DEPLOY)
+on:
+  push:
+    branches: [integration/main-month-phase1-rules-20261106]
+  pull_request:
+    branches: [feature/main-partner-month-readonly-20261106]
+permissions:
+  contents: read
+concurrency:
+  group: nico-main-month-phase1-integration-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  month-plus-finance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      FIREBASE_PROJECT_ID: demo-sales-support
+      GCLOUD_PROJECT: demo-sales-support
+      GOOGLE_APPLICATION_CREDENTIALS: ""
+      FIREBASE_SERVICE_ACCOUNT_JSON: ""
+      NICO_RULES_APPROVAL: ""
+      NICO_PARTNER_RELEASE_CONFIRMATION: ""
+      PARTNER_WORKSPACE_ENABLED: ""
+      PARTNER_COMPANY_CODE_AUTH_ENABLED: ""
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Exact reviewed source and strict NO DEPLOY file scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$FIREBASE_PROJECT_ID" = demo-sales-support
+          test "$GCLOUD_PROJECT" = demo-sales-support
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$NICO_RULES_APPROVAL"
+          test -z "$NICO_PARTNER_RELEASE_CONFIRMATION"
+          test -z "$PARTNER_WORKSPACE_ENABLED"
+          test -z "$PARTNER_COMPANY_CODE_AUTH_ENABLED"
+          git fetch --no-tags origin feature/main-partner-month-readonly-20261106 main
+          test "$(git rev-parse origin/feature/main-partner-month-readonly-20261106)" = 3372630b67c2a94346ae1ae76a7fe03739e86774
+          test "$(git rev-parse origin/main)" = 17681e69d3ebd7271cc9a58e138fd0e202db7294
+          test "$(git merge-base HEAD origin/feature/main-partner-month-readonly-20261106)" = 3372630b67c2a94346ae1ae76a7fe03739e86774
+          git diff --name-only 3372630b67c2a94346ae1ae76a7fe03739e86774...HEAD > /tmp/nico-month-phase1-allowlist.txt
+          if grep -Ev '^(firestore[.]rules|tests/rules[.]test[.]cjs|[.]github/workflows/nico-main-month-phase1-rules-integrated-no-deploy[.]yml)$' /tmp/nico-month-phase1-allowlist.txt; then
+            echo STOP_UNREVIEWED_INTEGRATION_FILE
+            exit 1
+          fi
+          test "$(git hash-object firestore.rules)" = 6d6ac7fd3544b0326823e419a3acd7e1d060b714
+          test "$(git hash-object tests/rules.test.cjs)" = 0292ea176ad67e6486cd9fd1a0d08dc18a3317cd
+          # Existing price, count save, Auth and history implementation is untouched.
+          git diff --exit-code 3372630b67c2a94346ae1ae76a7fe03739e86774 -- index.html functions functions-partner-workspace functions-partner-quick firestore.indexes.json
+      - name: Validate month, ranking, catalog, money-free API, owner revenue and count writes
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/partner-saved-month.cjs
+          node --check functions-partner-workspace/partner-combined-extra-projection.cjs
+          node --check tests/rules.test.cjs
+          node --test tests/partner-saved-month-main.test.cjs tests/partner-saved-month-ui-main.test.cjs tests/partner-combined-month-ranking-main.test.cjs tests/partner-catalog-publish-main.test.cjs tests/partner-additional-product-main.test.cjs tests/partner-additional-ledger-main.test.cjs tests/partner-workspace.test.cjs tests/sales-regressions.cjs tests/partner-one-login-same-app.test.cjs tests/partner-money-free-workspace.test.cjs tests/internal-owner-finance-visibility.test.cjs tests/partner-company-code-auth.test.cjs
+      - name: Isolated Firestore Security Rules emulator dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix tests --ignore-scripts --no-audit --no-fund
+          npm install --global firebase-tools@15.34.1 --no-audit --no-fund
+      - name: Prove reviewed candidate Rules with actual emulator read write deny/allow
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase emulators:exec --project demo-sales-support --only firestore 'node --test tests/rules.test.cjs'
+      - name: NO production release
+        run: |
+          echo 'INTEGRATION_SYNTHETIC_AND_EMULATOR_PASS'
+          echo 'LIVE_AFFECTED_PARTNER_GET_LIST_VERIFIED=false'
+          echo 'LIVE_OWNER_FINANCE_VERIFIED=false'
+          echo 'PRODUCTION_DOCUMENT_WRITES=0'
+          echo 'PRODUCTION_DEPLOYED=false'
+          echo 'RELEASE_APPROVED=false'
