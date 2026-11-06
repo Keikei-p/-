@@ -5,9 +5,6 @@ const {monthBounds,projectSavedPartnerMonth}=require("./partner-saved-month.cjs"
 const {readDirectRangeCounts}=require("./shared-direct-counts.cjs");
 const {projectCombinedMonth}=require("./combined-saved-month-ranking.cjs");
 const {makePartnerCatalogOperations}=require("./partner-catalog-operations.cjs");
-const {loadPublication,projectMasterProducts}=require("./catalog-publication.cjs");
-const {readLinks}=require("./catalog-count-links.cjs");
-const {isLegacyCategoryName}=require("./partner-additional-operations.cjs");
 const {projectPublishedPartnerExtras}=require("./partner-combined-extra-projection.cjs");
 const {makePartnerAdditionalOperations}=require("./partner-additional-operations.cjs");
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
@@ -913,31 +910,14 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   try{direct=await readDirectRangeCounts(db,hubId,bounds.first,bounds.last,KEYS,{
    maxRecords:10000
   });}catch{fail("failed-precondition");}
-  // Reuse exactly the Owner's separate publication setting; the raw sales
-  // product master and links remain private to this authorized server call.
-  // Legacy-linked or legacy-named products cannot be double-counted as extras.
-  const [master,pubSnap,linksSnap]=await Promise.all([
-   db.collection("products").where("companyId","==",hubId).limit(1001).get(),
-   collection(hubId,"partnerCatalogSettings").doc("publication").get(),
-   collection(hubId,"partnerCatalogSettings").doc("countLinks").get()
-  ]);
-  if(master.size>1000||master.docs.some(sn=>sn.data()?.companyId!==hubId))
-   fail("data-loss");
+  // Financial product master is read ONLY by the isolated catalog module.
+  // Reuse its exact active publication + legacy category collision policy.
   let publishedExtras,blockedExtraIds;
   try{
-   const pub=loadPublication(pubSnap.exists?pubSnap.data():null);
-   const links=readLinks(linksSnap.exists?linksSnap.data():null,KEYS);
-   const blocked=new Set(links.links.map(item=>item.productId));
-   for(const sn of master.docs){
-    if(isLegacyCategoryName(sn.data()?.name))blocked.add(sn.id);
-   }
-   blockedExtraIds=[...blocked];
-   publishedExtras=projectMasterProducts(master.docs.map(sn=>({
-    ...sn.data(),id:sn.id
-   })),pub.productIds,true)
-    .filter(p=>!blocked.has(p.id))
-    .map(({id,name})=>({id,name}));
-  }catch{fail("data-loss");}
+   const policy=await getExtraPolicy(hubId);
+   publishedExtras=policy.products.map(({id,name})=>({id,name}));
+   blockedExtraIds=policy.blockedIds;
+  }catch{fail("failed-precondition");}
   const partners=[];
   let reviewedRows=0;
   for(const rs of relations.docs){
@@ -1055,7 +1035,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  const {getPublishedCatalog,setPublishedProduct}=makePartnerCatalogOperations({
   db,actor,scope,collection,FieldValue,fail
  });
- const {viewAdditionalCounts,submitAdditionalCounts}=makePartnerAdditionalOperations({
+ const {viewAdditionalCounts,submitAdditionalCounts,getExtraPolicy}=makePartnerAdditionalOperations({
   db,actor,scope,collection,FieldValue,fail,validDate,validName,canStaff,jstToday,KEYS
  });
  return Object.freeze({
