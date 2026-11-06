@@ -12593,7 +12593,7 @@ function partnerSavedMonthCheckTotals(data,keys){
     !safe(data.combinedTotalCount)||
     data.totalCount+e.totalCount!==data.combinedTotalCount)stop();
  const safeExtraLabel=x=>typeof x==="string"&&x.length>0&&x.length<=80&&
-  !/(?:単価|売上|収益|利益|報酬|価格|原価|[¥￥$€]|[0-9０-９][0-9０-９,.，]*\\s*(?:万|千)?円|revenue|unit.?price|cash.?back|commission)/i.test(x);
+  !/(?:単価|売上|収益|利益|報酬|価格|原価|[¥￥$€]|[0-9０-９][0-9０-９,.，]*\s*(?:万|千)?円|revenue|unit.?price|cash.?back|commission)/i.test(x);
  const permittedKeys=(value,allowed)=>Object.keys(value).every(k=>allowed.includes(k));
  const extraIds=new Set(),extraProductTotals=new Map();
  let productTotal=0;
