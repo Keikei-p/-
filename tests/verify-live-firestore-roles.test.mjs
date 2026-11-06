@@ -522,3 +522,22 @@ test('Owner finance preflight succeeds with four valid money reads and fresh tok
  assert.equal(calls,4);
  await assert.rejects(proof(),/STOP_LIVE_ROLE_SINGLE_USE_OWNER_PREFLIGHT/);
 });
+
+
+test('count view spanning JST midnight cannot certify yesterday\'s count-view as today\'s input',async()=>{
+ const f=liveCountFixture();
+ const justBefore=Date.parse('2026-11-05T14:59:55Z');
+ const justAfter=Date.parse('2026-11-05T15:00:05Z');
+ let ticks=0;
+ const prove=f.create({
+  partnerIdToken:jwt('partneruid',{
+   iat:T+3500,auth_time:T+3500,exp:T+7000
+  }),
+  now:()=>++ticks<=3?justBefore:justAfter
+ });
+ await assert.rejects(prove(),/STOP_LIVE_ROLE_COUNT_VIEW_DATE_ROLLOVER/);
+ assert.equal(f.calls.length,1,'only a read-only workspace request was made');
+ assert.equal(f.calls[0].req.method,'POST');
+ assert.equal(JSON.parse(f.calls[0].req.body).data.date,COUNT_DATE);
+ assert(!/submitPartnerWorkspaceCounts/.test(f.calls[0].url));
+});
