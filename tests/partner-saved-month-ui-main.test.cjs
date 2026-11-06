@@ -107,7 +107,8 @@ test("both monthly views use the same strict saved count parity gate",()=>{
 });
 test("money-free month totals are shown only when team, person, product all match",()=>{
  const begin=html.indexOf("function partnerSavedMonthCheckTotals(");
- const end=html.indexOf("async function partnerInlineMonthFetch(){",begin);
+ const end=html.indexOf("function partnerRenderJointRows(",begin);
+ assert(begin>0&&end>begin);
  const check=vm.runInNewContext("("+html.slice(begin,end).trim()+")");
  const KEYS=["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター",
   "つばさ・HTB","太陽光・蓄電池AP","U-NEXT"];
