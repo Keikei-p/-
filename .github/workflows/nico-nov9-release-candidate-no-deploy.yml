@@ -56,7 +56,7 @@ jobs:
           test "$(git hash-object firestore.rules)" = 6d6ac7fd3544b0326823e419a3acd7e1d060b714
           test "$(git hash-object functions-partner-workspace/service.cjs)" = c9f18b1d1b7a272783e74cea9ac644e7b0a53b88
           test "$(git hash-object tests/partner-workspace.test.cjs)" = be8908e675561f10eb682af6c8434549f8ce361b
-          test "$(git hash-object tests/partner-hub-roster-ui.test.cjs)" = 63a613da57c337c88716fe7e4c890b2df8aa12569
+          test "$(git hash-object tests/partner-hub-roster-ui.test.cjs)" = c905e84ba6861cd5bd3daca0f6359a040e67d3ae
           test "$(git hash-object tests/owner-record-count-review-main.test.cjs)" = 0ab5f47d48585998b794577c00447b24c3c34c0a
           test "$(git hash-object tests/owner-mismatch-explicit-audit-repair.test.cjs)" = 7f8a754b281e5cb0cb89ed550c9a1f22364b6d96
           test "$(git hash-object tools/production/phase1-partner-finance-release.mjs)" = 25172984fd36ebf44a19844ef80b2bc6713396c1
