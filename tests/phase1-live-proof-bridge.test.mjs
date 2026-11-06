@@ -101,20 +101,22 @@ const flag=v=>({booleanValue:v});
 function fakeIdentity({changedPath='',changes={},statusOverride=0,role='leader'}={}){
  const owner='realOwner',partner='secondaryPartner',internal='internal_company',external='partner_company';
  const rows={
-  ['users/'+owner]:{companyId:str(internal),companyRole:str('owner'),
+  ['users/'+owner]:{uid:str(owner),companyId:str(internal),companyRole:str('owner'),
    accessKind:str('internal'),active:flag(true)},
   ['companies/'+internal]:{companyKind:str('internal'),active:flag(true),
     ownerUid:str(owner)},
   ['companies/'+internal+'/members/'+owner]:{
+    uid:str(owner),companyId:str(internal),
     companyRole:str('owner'),active:flag(true),accessKind:str('internal')},
   ['partnerWorkspaceContexts/'+partner]:{
     uid:str(partner),kind:str('partner_secondary'),active:flag(true),
     primaryCompanyId:str(internal),partnerCompanyId:str(external),
     hubCompanyId:str(internal),role:str(role),
     ...(role==='owner'?{}:{teamId:str('partner_team')})},
-  ['users/'+partner]:{companyId:str(internal),companyRole:str('member'),
+  ['users/'+partner]:{uid:str(partner),companyId:str(internal),companyRole:str('member'),
     active:flag(true),accessKind:str('internal')},
   ['companies/'+internal+'/members/'+partner]:{
+    uid:str(partner),companyId:str(internal),
     companyRole:str('member'),active:flag(true),accessKind:str('internal')},
   ['companies/'+external]:{companyKind:str('partner'),active:flag(true),
     hubCompanyId:str(internal),
@@ -294,6 +296,19 @@ test('unrelated / incomplete partner account cannot be used to prove affected se
   ['companies/partner_company/members/secondaryPartner',{memberType:str('internal')}],
   ['companies/partner_company',{companyKind:str('internal')}],
   ['users/secondaryPartner',{companyId:str('wrong_company')}],
+  ['users/secondaryPartner',{uid:str('wrong_uid')}],
+  ['users/secondaryPartner',{active:flag(false)}],
+  ['users/secondaryPartner',{active:{}}],
+  ['companies/internal_company/members/secondaryPartner',{uid:str('wrong_uid')}],
+  ['companies/internal_company/members/secondaryPartner',{companyId:str('wrong_company')}],
+  ['users/realOwner',{uid:str('wrong_uid')}],
+  ['users/realOwner',{active:flag(false)}],
+  ['users/realOwner',{active:{}}],
+  ['companies/internal_company/members/realOwner',{uid:str('wrong_uid')}],
+  ['companies/internal_company/members/realOwner',{companyId:str('wrong_company')}],
+  ['companies/internal_company',{active:flag(false)}],
+  ['companies/partner_company',{active:flag(false)}],
+  ['companies/partner_company/members/secondaryPartner',{active:flag(false)}],
   ['users/realOwner',{companyRole:str('member')}],
   ['companies/internal_company',{ownerUid:str('anotherOwner')}]
  ];
