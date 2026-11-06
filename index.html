@@ -9649,7 +9649,7 @@ async function openOwnerPartnerQuickProxy(companyId,companyName){
    const counts=Object.create(null);
    for(const [key,input] of inputs){
     const v=input.value.trim();
-    if(!/^\\d+$/.test(v)||!Number.isSafeInteger(Number(v))||
+    if(!/^\d+$/.test(v)||!Number.isSafeInteger(Number(v))||
        Number(v)<0||Number(v)>9999){
      status.textContent="0以上9999以下の整数だけ入力してください。";return;
     }
