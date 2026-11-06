@@ -6504,6 +6504,12 @@ body.product-reordering .product-list {
       </div>
 
       <div id="ownerPartnerTeamGroups" class="team-list" aria-label="協力店の会社別班一覧" style="margin-top:14px"></div>
+      <div id="ownerPartnerMonthControls" class="p-inline-card" hidden>
+        <h3>協力店の月別班詳細（件数のみ）</h3>
+        <label class="p-inline-field">表示月<input type="month" id="ownerPartnerMonth" aria-label="本社から確認する協力店の月"></label>
+        <p id="ownerPartnerMonthStatus" class="p-inline-muted" role="status" aria-live="polite"></p>
+        <div id="ownerPartnerMonthDetails" class="p-inline-list"></div>
+      </div>
 
 
     </div>
@@ -12320,6 +12326,7 @@ copyInviteButton.onclick =
 const pInline=id=>document.getElementById(id);
 let partnerInlineData=null,partnerInlineWorkspaceCompany="",partnerInlineNonce=0;
 let partnerInlineBusy=false,ownerPartnerTeamsNonce=0,partnerInlineMonthNonce=0;
+let ownerPartnerMonthNonce=0,ownerPartnerSelectedCompany="",ownerPartnerSelectedName="";
 const partnerMainDate=()=>new Intl.DateTimeFormat("sv-SE",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
 const partnerMainValidId=id=>typeof id==="string"&&/^[A-Za-z0-9_-]{1,128}$/.test(id);
 function partnerMainPendingInvite(){
@@ -12331,7 +12338,7 @@ function partnerMainPendingInvite(){
  return null;
 }
 function resetPartnerInline(){
- ++partnerInlineNonce;++ownerPartnerTeamsNonce;++partnerInlineMonthNonce;
+ ++partnerInlineNonce;++ownerPartnerTeamsNonce;++partnerInlineMonthNonce;++ownerPartnerMonthNonce;
  partnerInlineData=null;partnerInlineWorkspaceCompany="";partnerInlineBusy=false;
  appScreen.removeAttribute("data-partner-count-only");
  pInline("partnerInlineWorkspace").hidden=true;
@@ -12667,15 +12674,99 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
 });
 // Original internal owner sees existing teams PLUS partner-company teams.
 // Never mix partner team IDs into the original sales-team write selectors.
+// Read-only, on-demand Owner view. Requests ONE authorized partner company
+// and ONE selected month; never loads internal finance originals or creates data.
+async function loadOwnerPartnerSavedMonth(companyId,companyName){
+ if(!auth.currentUser||!isCurrentCompanyOwner()||
+    currentCompanyData?.companyKind==="partner"||
+    !partnerMainValidId(companyId))return;
+ const month=pInline("ownerPartnerMonth").value;
+ const status=pInline("ownerPartnerMonthStatus"),target=pInline("ownerPartnerMonthDetails");
+ const uid=auth.currentUser.uid,seq=++ownerPartnerMonthNonce;
+ target.replaceChildren();
+ if(!/^\d{4}-(?:0[1-9]|1[0-2])$/.test(month)){
+  status.textContent="表示月を選んでください。";return;
+ }
+ status.textContent=companyName+" の月別件数を照合中...";
+ try{
+  const data=(await readPartnerSavedMonth({month,partnerCompanyId:companyId})).data;
+  if(seq!==ownerPartnerMonthNonce||auth.currentUser?.uid!==uid||
+     !isCurrentCompanyOwner()||currentCompanyData?.companyKind==="partner"||
+     pInline("ownerPartnerMonth").value!==month||
+     ownerPartnerSelectedCompany!==companyId)return;
+  const keys=["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター",
+   "つばさ・HTB","太陽光・蓄電池AP","U-NEXT"];
+  if(data?.scope!=="partner_saved_month_counts_only"||data.month!==month||
+     data.complete!==false||data.financialFieldsIncluded!==false||
+     !Number.isSafeInteger(data.totalCount)||data.totalCount<0||
+     !Number.isSafeInteger(data.unattributedCount)||data.unattributedCount<0||
+     !Array.isArray(data.teams)||data.teams.length>150)
+   throw Error("owner_partner_month_schema");
+  let total=0;
+  for(const team of data.teams){
+   if(typeof team.name!=="string"||team.name.length>80||
+      !Number.isSafeInteger(team.totalCount)||team.totalCount<0||
+      !Array.isArray(team.members)||team.members.length>1000)
+    throw Error("owner_partner_team_schema");
+   const details=document.createElement("details");
+   details.className="p-inline-row";
+   const summary=document.createElement("summary");
+   summary.textContent=team.name+"｜"+team.totalCount+"件（開いてスタッフ別内訳）";
+   details.append(summary);
+   let memberTotal=0;
+   for(const person of team.members){
+    if(typeof person.name!=="string"||person.name.length>80||
+       !Number.isSafeInteger(person.totalCount)||person.totalCount<0||
+       !person.counts||typeof person.counts!=="object"||
+       Object.keys(person.counts).length!==keys.length||
+       keys.some(k=>!Number.isSafeInteger(person.counts[k])||person.counts[k]<0)||
+       keys.reduce((n,k)=>n+person.counts[k],0)!==person.totalCount)
+     throw Error("owner_partner_team_member_schema");
+    memberTotal+=person.totalCount;
+    const line=document.createElement("div");line.className="p-inline-row";
+    const strong=document.createElement("strong");
+    strong.textContent=person.name+"｜"+person.totalCount+"件";
+    const products=document.createElement("div");
+    products.className="p-inline-muted";
+    products.textContent=keys.filter(k=>person.counts[k]>0)
+     .map(k=>k+" "+person.counts[k]+"件").join(" / ")||"保存済み0件";
+    line.append(strong,products);details.append(line);
+   }
+   if(memberTotal!==team.totalCount)throw Error("owner_partner_member_total");
+   target.append(details);total+=team.totalCount;
+  }
+  if(total+data.unattributedCount!==data.totalCount)
+   throw Error("owner_partner_month_total");
+  if(!data.teams.length)
+   partnerMainAppendRow(target,"保存済み班の実績がありません","未入力を0件確定とは扱いません。");
+  status.textContent=companyName+"｜"+month+"｜保存済み"+
+   data.totalCount+"件（暫定・未入力日は未照合）"+
+   (data.missingHistoricalTeamAttribution?
+    "。保存当時の班が不明な件数があります。":"");
+ }catch{
+  if(seq!==ownerPartnerMonthNonce||auth.currentUser?.uid!==uid)return;
+  target.replaceChildren();
+  status.textContent="月別件数を確認できません。会社の所属・公開API・選択月を確認してください。";
+ }
+}
 async function loadOwnerPartnerCompanyTeams(){
  const target=document.getElementById("ownerPartnerTeamGroups");
  if(!target)return;
  const seq=++ownerPartnerTeamsNonce;
+ ++ownerPartnerMonthNonce;
+ ownerPartnerSelectedCompany="";ownerPartnerSelectedName="";
+ const controls=pInline("ownerPartnerMonthControls");
+ controls.hidden=true;
+ pInline("ownerPartnerMonthDetails").replaceChildren();
  target.replaceChildren();
  if(!auth.currentUser||!isCurrentCompanyOwner()||currentCompanyData?.companyKind==="partner")return;
  const uid=auth.currentUser.uid;
  const heading=document.createElement("strong");heading.textContent="🤝 協力店の班一覧";
  target.append(heading);
+ controls.hidden=false;
+ if(!pInline("ownerPartnerMonth").value)
+  pInline("ownerPartnerMonth").value=partnerMainDate().slice(0,7);
+ pInline("ownerPartnerMonthStatus").textContent="会社の「月別詳細」を押すと、選択月の班・人・商材の件数を確認できます。";
  try{
   const result=(await readPartnerWorkDay({date:partnerMainDate()})).data;
   if(seq!==ownerPartnerTeamsNonce||uid!==auth.currentUser?.uid)return;
@@ -12689,6 +12780,19 @@ async function loadOwnerPartnerCompanyTeams(){
    for(const team of company.teams)
     partnerMainAppendRow(target,company.name+"・"+team.name,
       company.active?"件数登録対象":"件数利用未承認");
+   // No bulk month fetch. A single explicit tap loads one company and
+   // prevents excessive read traffic when many partners are registered.
+   if(company.active&&partnerMainValidId(company.partnerCompanyId)){
+    const button=document.createElement("button");
+    button.type="button";
+    button.textContent=company.name+"｜月別詳細を表示";
+    button.onclick=()=>{
+     ownerPartnerSelectedCompany=company.partnerCompanyId;
+     ownerPartnerSelectedName=company.name;
+     void loadOwnerPartnerSavedMonth(company.partnerCompanyId,company.name);
+    };
+    target.append(button);
+   }
   }
  }catch{
   if(seq!==ownerPartnerTeamsNonce)return;
@@ -12696,6 +12800,10 @@ async function loadOwnerPartnerCompanyTeams(){
    "協力店APIの公開・オーナー権限・件数利用の承認を確認してください。");
  }
 }
+ pInline("ownerPartnerMonth").onchange=()=>{
+  if(ownerPartnerSelectedCompany)
+   void loadOwnerPartnerSavedMonth(ownerPartnerSelectedCompany,ownerPartnerSelectedName);
+ };
 async function showPartnerInviteAtMain(user,invite){
  // Invite acceptance is an explicit action; never accept while loading login.
  stopRealtimeListeners();
