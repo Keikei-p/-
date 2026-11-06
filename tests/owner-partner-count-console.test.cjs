@@ -210,7 +210,7 @@ test("Owner company console uses existing menu, no sign-out, and revokes stale a
  assert.match(block,/submitOwnerPartnerCorrection/);
  assert.match(block,/readOwnerPartnerCorrectionDay/);
  assert.doesNotMatch(block,/\b(?:signOut|signIn|login|setDoc|deleteDoc|updateDoc|writeBatch)\s*\(/);
- assert.match(html,/function resetPartnerInline\(\)\{\n ownerProxyReset\(\)/);
+ assert.match(html,/function resetPartnerInline\(\)\{\n ownerCatalogReset\(\);\n ownerProxyReset\(\)/);
  assert.match(server,/makeOwnerPartnerCorrections/);
  assert.match(endpoints,/exports\.submitOwnerPartnerCorrection=onCall/);
  assert.match(endpoints,/exports\.getOwnerPartnerCorrectionDay=onCall/);
