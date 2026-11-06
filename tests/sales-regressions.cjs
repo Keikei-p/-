@@ -13,7 +13,12 @@ function source(name) {
 }
 function context(names, values = {}) {
   const ctx = vm.createContext(values);
-  vm.runInContext(names.map(source).join('\n'), ctx);
+  // The protected transaction now depends on the same read-only original
+  // integrity checker as the Owner review. Load it in isolated unit contexts.
+  const dependencies = names.includes('persistDailyRecord') &&
+    !names.includes('readOnlyRecordCountEvidence')
+    ? ['readOnlyRecordCountEvidence', ...names] : names;
+  vm.runInContext(dependencies.map(source).join('\n'), ctx);
   return ctx;
 }
 function handler(name) {
@@ -133,7 +138,7 @@ test('Hidden team revenue is labeled hidden instead of showing a false zero', ()
 
 test('Transactional correction replaces results and preserves metadata', async () => {
   for (const results of [{A:{count:1,revenuePerUnit:100}}, {C:{count:4,revenuePerUnit:300}}, {}]) {
-    let stored={companyId:'c',uid:'u',date:'2026-10-06',teamId:'a',createdAt:'keep',createdByUid:'creator',custom:'keep',results:{A:{count:3},B:{count:2}}};
+    let stored={companyId:'c',uid:'u',date:'2026-10-06',teamId:'a',createdAt:'keep',createdByUid:'creator',custom:'keep',totalCount:5,results:{A:{count:3},B:{count:2}}};
     const before=structuredClone(stored);
     const data={results,totalCount:Object.values(results).reduce((n,r)=>n+r.count,0),
       totalRevenue:Object.values(results).reduce((n,r)=>n+r.count*r.revenuePerUnit,0)};
