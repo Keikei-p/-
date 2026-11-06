@@ -47,6 +47,16 @@ test("published product toggles use one Owner-only list, server revision guard, 
  assert.match(html,/const changed=\(await setPartnerPublishedProduct\(\{/);
  assert.match(html,/await ownerCatalogRefresh\(\)/);
 });
+test("logout and account switching immediately clear the previous Owner's catalog DOM",()=>{
+ const begin=html.indexOf("function ownerCatalogReset(){");
+ const end=html.indexOf("async function ownerCatalogRefresh(){",begin);
+ assert(begin>0&&end>begin);
+ const code=html.slice(begin,end);
+ assert.match(code,/ownerCatalogState=\{revision:0,verified:false,busy:false,rows:new Map\(\)\}/);
+ assert.match(code,/document\.getElementById\("ownerPublishedCatalogList"\)/);
+ assert.match(code,/if\(list\)list\.replaceChildren\(\)/);
+ assert.doesNotMatch(code,/\b(?:setDoc|updateDoc|deleteDoc|writeBatch)\s*\(/);
+});
 test("managed partner staff is present in the existing server save model",()=>{
  assert.match(service,/if\(op==="addManaged"\)/);
  assert.match(service,/kind:"managed",role:"member",uid:null/);
