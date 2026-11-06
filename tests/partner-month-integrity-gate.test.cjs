@@ -56,7 +56,8 @@ test("month dashboard and rankings clear old cards and never show a fabricated z
  assert.match(section,/未確認の件数を0件とせず/);
  const ranking=html.slice(html.indexOf("async function loadPartnerMonthlySharedRankings("));
  assert.match(ranking,/MONTHLY_DIRECT_COUNTS_UNVERIFIED/);
- assert.match(ranking,/status\.textContent=historicalCountMismatch\?/);
+ assert.match(ranking,/status\.textContent=historicalCountMismatch\|\|/);
+ assert.match(ranking,/error\?\.message==="monthly_direct_integrity_unverified"/);
  assert.match(ranking,/content\.replaceChildren\(\)/);
 });
 
