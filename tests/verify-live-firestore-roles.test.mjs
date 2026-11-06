@@ -299,8 +299,9 @@ function liveCountFixture({status=200,role='member',replaceResult,advanceClock}=
  const calls=[];
  const count={
   role,date:COUNT_DATE,companyName:'協力店',teamId:'team1',
-  categories:COUNT_KEYS,teams:[{id:'team1',name:'1班'}],
-  staff:role==='owner'?[]:[{uid:'partneruid',active:true,kind:'account'}],
+  categories:COUNT_KEYS,teams:[{id:'team1',name:'1班',active:true}],
+  staff:[{id:'partneruid',uid:'partneruid',teamId:'team1',
+    active:true,kind:'account'}],
   records:[],privateProducts:[]
  };
  const fetchImpl=async(url,req)=>{
@@ -358,9 +359,10 @@ test('generic callable HTTP 200, wrong date, and wrong role cannot fake a count 
 test('a partner member lacking their own active input row is not count-ready',async()=>{
  const f=liveCountFixture();
  for(const staff of [
-  [],[{uid:'anotherUser',active:true,kind:'account'}],
-  [{uid:'partneruid',active:false,kind:'account'}],
-  [{uid:'partneruid',active:true,kind:'managed'}]
+  [],[{id:'other',uid:'anotherUser',teamId:'team1',active:true,kind:'account'}],
+  [{id:'partneruid',uid:'partneruid',teamId:'team1',active:false,kind:'account'}],
+  [{id:'partneruid',uid:'partneruid',teamId:'team1',active:true,kind:'managed'}],
+  [{id:'partneruid',uid:'partneruid',teamId:'inactiveTeam',active:true,kind:'account'}]
  ]){
   const v={...f.count,staff};
   await assert.rejects(f.create({fetchImpl:async()=>({
@@ -369,7 +371,7 @@ test('a partner member lacking their own active input row is not count-ready',as
  }
  const owner=liveCountFixture({role:'owner'});
  assert.equal((await owner.create()()).partnerCountViewAllowed,true,
-  'Owner can open workspace to create staff even before their first managed entry');
+  'Owner has an active staff and active team, hence can submit new counts');
 });
 
 test('count-only response with extra financial fields cannot pass release signoff',async()=>{
@@ -397,4 +399,71 @@ test('live count view rejects malformed scope and never falls back to privileged
   {expectedPartnerUid:'another-user'},{partnerIdToken:'server-oauth-bypass'}])
   assert.throws(()=>f.create(input),/STOP_LIVE_ROLE_/);
  assert.equal(f.calls.length,0);
+});
+
+
+test('screen-only 200 cannot certify input for an Owner with no active staff or no active teams',async()=>{
+ for(const role of ['owner','leader']){
+  const f=liveCountFixture({role});
+  for(const change of [
+   {staff:[]},
+   {staff:[{...f.count.staff[0],active:false}]},
+   {teams:[]},
+   {teams:[{id:'team1',name:'1班',active:false}]}
+  ]){
+   const view={...f.count,...change};
+   await assert.rejects(f.create({fetchImpl:async()=>({
+    status:200,json:async()=>({result:view})
+   })})(),/STOP_LIVE_ROLE_COUNT_VIEW_NO_ACTIVE_INPUT_ROUTE/,
+    role+' must not certify count input merely because screen opens');
+  }
+ }
+});
+
+test('member cannot submit without their own active account and matching active assigned team',async()=>{
+ const f=liveCountFixture();
+ for(const change of [
+  {staff:[{...f.count.staff[0],teamId:'retired'}]},
+  {staff:[{...f.count.staff[0],kind:'managed'}]},
+  {staff:[{...f.count.staff[0],uid:'other'}]},
+  {staff:[{...f.count.staff[0],id:'../internal'}]},
+  {teams:[{id:'team1',name:'1班',active:false}]}
+ ]){
+  const view={...f.count,...change};
+  await assert.rejects(f.create({fetchImpl:async()=>({
+   status:200,json:async()=>({result:view})
+  })})(),/STOP_LIVE_ROLE_COUNT_VIEW_(OWN_INPUT_UNAVAILABLE|NO_ACTIVE_INPUT_ROUTE)/);
+ }
+});
+
+test('a leader/owner with one active managed staff and one active team can continue input',async()=>{
+ for(const role of ['owner','leader']){
+  const f=liveCountFixture({role});
+  const result={...f.count,staff:[{
+   id:'managed1',uid:null,teamId:'old_team',active:true,kind:'managed'
+  }]};
+  const verdict=await f.create({fetchImpl:async()=>({
+   status:200,json:async()=>({result})
+  })})();
+  assert.equal(verdict.partnerCountViewAllowed,true,
+   role+' can choose an active team for managed staff input');
+ }
+});
+
+test('cashback and CB monetary keys are disallowed even when count field names are otherwise valid',async()=>{
+ const f=liveCountFixture();
+ for(const extra of [
+  {cashBackAmount:90000},{cbAmount:95000},{cashbackPerUnit:3000},
+  {settlementAmount:45678},{unit_price:1000},{feeAmount:1000}
+ ]){
+  const view={...f.count,records:[{...extra}]};
+  await assert.rejects(f.create({fetchImpl:async()=>({
+   status:200,json:async()=>({result:view})
+  })})(),/STOP_LIVE_ROLE_COUNT_VIEW_FINANCE_FIELD_EXPOSED/);
+ }
+ // NURO CB distribution quantities must remain accepted; amount is not.
+ const view={...f.count,records:[{staffId:'partneruid',cbCounts:{0:2,10000:1}}]};
+ assert.equal((await f.create({fetchImpl:async()=>({
+  status:200,json:async()=>({result:view})
+ })})()).partnerCountViewAllowed,true);
 });

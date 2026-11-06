@@ -315,10 +315,25 @@ export function createLivePartnerCountViewVerifier({
      view.categories.some(key=>typeof key!=='string')||
      view.staff.length>150||view.records.length>200)
     stop('COUNT_VIEW_CONTRACT_UNVERIFIED');
-  if(view.role!=='owner'&&!view.staff.some(staff=>
-    staff?.uid===expectedPartnerUid&&staff.active===true&&
-    staff.kind==='account'))
-    stop('COUNT_VIEW_OWN_INPUT_UNAVAILABLE');
+  // Opening the screen is NOT proof of being able to input a count.
+  // submitPartnerWorkspaceCounts needs a real, active staff row AND an
+  // active team. Member edits may target only their own account row and
+  // only their assigned team; Owner/Leader can choose any active team and
+  // active permitted staff (including a managed staff member).
+  const activeTeamIds=new Set(view.teams.filter(team=>
+    ID.test(team?.id||'')&&team.active===true).map(team=>team.id));
+  if(activeTeamIds.size===0)
+    stop('COUNT_VIEW_NO_ACTIVE_INPUT_ROUTE');
+  const activeStaff=view.staff.filter(staff=>
+    ID.test(staff?.id||'')&&staff.active===true&&
+    ['account','managed'].includes(staff.kind));
+  if(view.role==='member'){
+    if(!activeStaff.some(staff=>staff.kind==='account'&&
+      staff.uid===expectedPartnerUid&&activeTeamIds.has(staff.teamId)))
+      stop('COUNT_VIEW_OWN_INPUT_UNAVAILABLE');
+  }else if(activeStaff.length===0){
+    stop('COUNT_VIEW_NO_ACTIVE_INPUT_ROUTE');
+  }
   // This endpoint must remain COUNT-ONLY, not just HTTP 200. Reject even a
   // nested financial field if an incompatible server release is encountered.
   const stack=[view];let checked=0;
@@ -327,7 +342,7 @@ export function createLivePartnerCountViewVerifier({
     if(!item||typeof item!=='object')continue;
     if(++checked>4000)stop('COUNT_VIEW_CONTRACT_UNVERIFIED');
     for(const [key,value] of Object.entries(item)){
-      if(/revenue|unitprice|unit_price|salesamount|commission|profit|(^|_)price|売上|単価|報酬|利益/i.test(key))
+      if(/revenue|unit.?price|sales.?amount|commission|profit|cash.?back|cb.?amount|settlement|(^|_)price|fee.?amount|売上|単価|報酬|利益|還元金|キャッシュバック/i.test(key))
         stop('COUNT_VIEW_FINANCE_FIELD_EXPOSED');
       if(value&&typeof value==='object')stack.push(value);
     }
