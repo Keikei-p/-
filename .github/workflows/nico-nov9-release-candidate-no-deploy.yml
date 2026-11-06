@@ -1,9 +1,9 @@
 name: NICO Nov 9 release candidate full proof gates (NO DEPLOY)
 on:
   push:
-    branches: [release/partner-month-phase1-candidate-20261106]
+    branches: [release/partner-month-phase1-candidate-20261106, fix/partner-daily-history-rank-active-input-20261106]
   pull_request:
-    branches: [main]
+    branches: [main, release/partner-month-phase1-candidate-20261106]
 permissions:
   contents: read
 concurrency:
