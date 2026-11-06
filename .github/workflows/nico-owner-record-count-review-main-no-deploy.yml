@@ -1,0 +1,63 @@
+name: NICO Owner monthly record mismatch read-only review (NO DEPLOY)
+on:
+  push:
+    branches: [fix/owner-record-count-review-main-20261106]
+  pull_request:
+    branches: [feature/main-partner-month-readonly-20261106]
+permissions:
+  contents: read
+concurrency:
+  group: nico-owner-count-review-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  owner-count-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FIREBASE_PROJECT_ID: demo-sales-support
+      GCLOUD_PROJECT: demo-sales-support
+      GOOGLE_APPLICATION_CREDENTIALS: ""
+      FIREBASE_SERVICE_ACCOUNT_JSON: ""
+      NICO_RULES_APPROVAL: ""
+      NICO_PARTNER_RELEASE_CONFIRMATION: ""
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify exact base, allowed files and NO DEPLOY
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$FIREBASE_PROJECT_ID" = demo-sales-support
+          test "$GCLOUD_PROJECT" = demo-sales-support
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$NICO_RULES_APPROVAL"
+          test -z "$NICO_PARTNER_RELEASE_CONFIRMATION"
+          git fetch --no-tags origin feature/main-partner-month-readonly-20261106 main
+          base="$(git rev-parse origin/feature/main-partner-month-readonly-20261106)"
+          test "$base" = 3372630b67c2a94346ae1ae76a7fe03739e86774
+          test "$(git rev-parse origin/main)" = 17681e69d3ebd7271cc9a58e138fd0e202db7294
+          test "$(git merge-base HEAD "$base")" = "$base"
+          git diff --name-only "$base"...HEAD > /tmp/nico-owner-count-allowed.txt
+          if grep -Ev '^(index[.]html|tests/owner-record-count-review-main[.]test[.]cjs|[.]github/workflows/nico-owner-record-count-review-main-no-deploy[.]yml)$' /tmp/nico-owner-count-allowed.txt; then
+            echo STOP_UNREVIEWED_FILE; exit 1
+          fi
+          test "$(wc -l < /tmp/nico-owner-count-allowed.txt)" -eq 3
+          git diff --exit-code "$base" HEAD -- firestore.rules firestore.indexes.json functions functions-partner-workspace functions-partner-quick
+      - name: Verify owner-only no-write UI and existing save, finance, month, login regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check tests/owner-record-count-review-main.test.cjs
+          node --test tests/owner-record-count-review-main.test.cjs tests/sales-regressions.cjs tests/partner-saved-month-ui-main.test.cjs tests/internal-owner-finance-visibility.test.cjs tests/partner-one-login-same-app.test.cjs
+      - name: Release intentionally disabled
+        run: |
+          echo "READ_ONLY_OWNER_COUNT_UI_SYNTHETIC_PASS"
+          echo "PRODUCTION_DOCUMENT_WRITES=0"
+          echo "PRODUCTION_DEPLOYED=false"
+          echo "RELEASE_APPROVED=false"
