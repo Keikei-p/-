@@ -52,19 +52,21 @@ jobs:
           test "$(git rev-parse origin/main)" = 17681e69d3ebd7271cc9a58e138fd0e202db7294
           test "$(git rev-parse origin/integration/main-month-phase1-owner-review-20261106)" = f5ca2bd7ce5db64629d3b2543d1319e672999242
           test "$(git merge-base HEAD f5ca2bd7ce5db64629d3b2543d1319e672999242)" = f5ca2bd7ce5db64629d3b2543d1319e672999242
-          test "$(git hash-object index.html)" = 1b0d7e22d55d3b37f6767d716583ccd5df0c0b15
+          test "$(git hash-object index.html)" = 080ec2ab69e571994d670661163dce1ce2a1738c
           test "$(git hash-object firestore.rules)" = 6d6ac7fd3544b0326823e419a3acd7e1d060b714
           test "$(git hash-object functions-partner-workspace/service.cjs)" = 001d0d483f02ad412248de7da9029aa4d5b8b583
           test "$(git hash-object tests/partner-workspace.test.cjs)" = 7cdd2bfb352fce6c0005bee1c54a62c6fa584b6a
+          test "$(git hash-object tests/owner-record-count-review-main.test.cjs)" = 0ab5f47d48585998b794577c00447b24c3c34c0a
+          test "$(git hash-object tests/owner-mismatch-explicit-audit-repair.test.cjs)" = 7f8a754b281e5cb0cb89ed550c9a1f22364b6d96
           test "$(git hash-object tools/production/phase1-partner-finance-release.mjs)" = 25172984fd36ebf44a19844ef80b2bc6713396c1
           test "$(git hash-object tools/production/verify-live-firestore-roles.mjs)" = 3227ed08c96e29dce9d918982fe9f8ca8199ac83
           git diff --name-only f5ca2bd7ce5db64629d3b2543d1319e672999242...HEAD > /tmp/release-candidate-extra.txt
           cat /tmp/release-candidate-extra.txt
-          if grep -Ev '^([.]github/workflows/(nico-nov9-release-candidate-no-deploy|nico-partner-daily-historic-ranking-no-deploy|nico-deleted-staff-historical-count-no-deploy)[.]yml|index[.]html|docs/(PHASE1_SECONDARY_FINANCE_RELEASE_SIGNOFF_NO_DEPLOY|SALES_RELEASE_SIGNOFF)[.]md|tools/production/(phase1-bound-identity-readonly|phase1-live-proof-bridge|phase1-partner-finance-release|phase1-reviewed-operator|verify-live-firestore-roles)[.]mjs|tests/(phase1-live-proof-bridge|phase1-partner-finance-release|phase1-reviewed-operator|verify-live-firestore-roles)[.]test[.]mjs|tests/(partner-daily-history-active-input|partner-workspace)[.]test[.]cjs|functions-partner-workspace/service[.]cjs)$' /tmp/release-candidate-extra.txt; then
+          if grep -Ev '^([.]github/workflows/(nico-nov9-release-candidate-no-deploy|nico-partner-daily-historic-ranking-no-deploy|nico-deleted-staff-historical-count-no-deploy)[.]yml|index[.]html|docs/(PHASE1_SECONDARY_FINANCE_RELEASE_SIGNOFF_NO_DEPLOY|SALES_RELEASE_SIGNOFF)[.]md|tools/production/(phase1-bound-identity-readonly|phase1-live-proof-bridge|phase1-partner-finance-release|phase1-reviewed-operator|verify-live-firestore-roles)[.]mjs|tests/(phase1-live-proof-bridge|phase1-partner-finance-release|phase1-reviewed-operator|verify-live-firestore-roles)[.]test[.]mjs|tests/(partner-daily-history-active-input|partner-workspace|owner-record-count-review-main|owner-mismatch-explicit-audit-repair)[.]test[.]cjs|functions-partner-workspace/service[.]cjs)$' /tmp/release-candidate-extra.txt; then
             echo 'STOP_UNREVIEWED_NEW_SOURCE'
             exit 1
           fi
-          test "$(wc -l < /tmp/release-candidate-extra.txt)" -eq 18
+          test "$(wc -l < /tmp/release-candidate-extra.txt)" -eq 20
           test "$(git hash-object docs/SALES_RELEASE_SIGNOFF.md)" = 9dd8af0548194943f85282fb1e51db76e289bf7e
           grep -Fq 'PR #407 11月9日向け合同ランキング・協力店件数・金額遮断：公開専用レビュー記録（未署名）' docs/SALES_RELEASE_SIGNOFF.md
           grep -Fq '本番デプロイ承認: **なし**' docs/SALES_RELEASE_SIGNOFF.md
@@ -85,7 +87,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node --test tests/partner-daily-history-active-input.test.cjs tests/owner-record-count-review-main.test.cjs tests/partner-saved-month-main.test.cjs tests/partner-saved-month-ui-main.test.cjs tests/partner-combined-month-ranking-main.test.cjs tests/partner-catalog-publish-main.test.cjs tests/partner-additional-product-main.test.cjs tests/partner-additional-ledger-main.test.cjs tests/partner-workspace.test.cjs tests/sales-regressions.cjs tests/partner-one-login-same-app.test.cjs tests/partner-money-free-workspace.test.cjs tests/internal-owner-finance-visibility.test.cjs tests/partner-company-code-auth.test.cjs
+          node --test tests/owner-mismatch-explicit-audit-repair.test.cjs tests/partner-daily-history-active-input.test.cjs tests/owner-record-count-review-main.test.cjs tests/partner-saved-month-main.test.cjs tests/partner-saved-month-ui-main.test.cjs tests/partner-combined-month-ranking-main.test.cjs tests/partner-catalog-publish-main.test.cjs tests/partner-additional-product-main.test.cjs tests/partner-additional-ledger-main.test.cjs tests/partner-workspace.test.cjs tests/sales-regressions.cjs tests/partner-one-login-same-app.test.cjs tests/partner-money-free-workspace.test.cjs tests/internal-owner-finance-visibility.test.cjs tests/partner-company-code-auth.test.cjs
       - name: Independent real-UID and managed-backup release gate synthetic regression
         shell: bash
         run: |
