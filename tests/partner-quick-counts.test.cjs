@@ -187,3 +187,123 @@ test("quick count approval denies unauthorized company, malformed grants and rev
   assert.deepEqual([...y.db.data],initial);
  }
 });
+
+test("hub owner corrects separate quick count ledger with versioned audit; sales and staff originals untouched",async()=>{
+ const {db,service,req,counts}=setup();
+ await service.submit(req("p",{date:today,counts:{...counts,NURO:3,"SB光・AIR":2},expectedVersion:0}));
+ const source="companies/hub/partnerQuickCountDays/"+today+"/reports/partner1";
+ const original=copy(db.data.get(source));
+ const sales=copy(db.data.get("records/existing"));
+ const catalog=copy(db.data.get("products/private-revenue"));
+ const partnerUser=copy(db.data.get("users/p"));
+ const view=await service.viewOwnerQuickCorrection(req("h",{date:today,partnerCompanyId:"partner1"}));
+ assert.equal(view.scope,"hub_owner_quick_count_correction");
+ assert.equal(view.report.totalCount,5);
+ assert.equal(view.report.version,1);
+ assert.equal(view.financialFieldsIncluded,false);
+ assert.doesNotMatch(JSON.stringify(view),/totalRevenue|unitPrice|email|password/i);
+ const corrected={...counts,NURO:4,"SB光・AIR":2};
+ const result=await service.submitOwnerQuickCorrection(req("h",{
+  date:today,partnerCompanyId:"partner1",counts:corrected,
+  expectedVersion:1,reason:"元契約を照合して件数訂正"
+ }));
+ assert.deepEqual({
+  saved:result.saved,version:result.version,totalCount:result.totalCount,
+  correctionLogged:result.correctionLogged
+ },{saved:true,version:2,totalCount:6,correctionLogged:true});
+ const row=db.data.get(source);
+ assert.equal(row.counts.NURO,4);assert.equal(row.totalCount,6);
+ assert.equal(row.partnerCompanyId,original.partnerCompanyId);
+ assert.equal(row.hubCompanyId,original.hubCompanyId);
+ assert.equal(row.version,2);
+ const id=require("node:crypto").createHash("sha256")
+  .update(["hub",today,"partner1"].join("|")).digest("hex")+"_v2";
+ const audit=db.data.get("partnerQuickCountAudits/"+id);
+ assert.equal(audit.correctionActorUid,"h");
+ assert.equal(audit.correctionReason,"元契約を照合して件数訂正");
+ assert.equal(audit.correctionType,"hub_owner_quick_count_correction");
+ assert.deepEqual(audit.previousCounts,original.counts);
+ assert.deepEqual(audit.counts,corrected);
+ assert.deepEqual(db.data.get("records/existing"),sales);
+ assert.deepEqual(db.data.get("products/private-revenue"),catalog);
+ assert.deepEqual(db.data.get("users/p"),partnerUser);
+ const reRead=await service.viewOwnerQuickCorrection(req("h",{date:today,partnerCompanyId:"partner1"}));
+ assert.equal(reRead.report.totalCount,6);
+ assert.equal(reRead.report.version,2);
+});
+test("hub Owner quick correction rejects unknown day and stale versions without any writes",async()=>{
+ const {db,service,req,counts}=setup();
+ const changes={...counts,NURO:2};
+ const payload={date:today,partnerCompanyId:"partner1",counts:changes,
+  expectedVersion:1,reason:"元契約書と照合済み"};
+ const before=copy([...db.data]);
+ await assert.rejects(service.submitOwnerQuickCorrection(req("h",payload)),x=>x.code==="failed-precondition");
+ assert.deepEqual([...db.data],before);
+ await service.submit(req("p",{date:today,counts:{...counts,NURO:1},expectedVersion:0}));
+ const saved=copy([...db.data]);
+ for(const mutation of [
+  {expectedVersion:0},{expectedVersion:2},{reason:""},
+  {reason:"a"},{counts:{...changes,NURO:-1}},
+  {counts:{...changes,NURO:0.5}},{counts:{...changes,totalRevenue:12345}},
+  {date:"2045-01-01"},{extra:true},{partnerCompanyId:"wrong"}
+ ]){
+  await assert.rejects(service.submitOwnerQuickCorrection(req("h",{...payload,...mutation})));
+  assert.deepEqual([...db.data],saved);
+ }
+});
+test("partner account, another hub, revoked or dual-context Owner cannot proxy-correct quick counts",async()=>{
+ const {db,service,req,counts}=setup();
+ await service.submit(req("p",{date:today,counts:{...counts,NURO:1},expectedVersion:0}));
+ const changes={...counts,NURO:2};
+ const payload={date:today,partnerCompanyId:"partner1",counts:changes,
+  expectedVersion:1,reason:"業務日報と照合済み"};
+ const old=copy([...db.data]);
+ for(const who of ["p","o"]){
+  await assert.rejects(service.viewOwnerQuickCorrection(req(who,{
+   date:today,partnerCompanyId:"partner1"})));
+  await assert.rejects(service.submitOwnerQuickCorrection(req(who,payload)));
+ }
+ db.seed("partnerWorkspaceContexts/h",{active:true,kind:"partner_secondary"});
+ await assert.rejects(service.viewOwnerQuickCorrection(req("h",{
+  date:today,partnerCompanyId:"partner1"})));
+ await assert.rejects(service.submitOwnerQuickCorrection(req("h",payload)));
+ db.data.delete("partnerWorkspaceContexts/h");
+ assert.deepEqual([...db.data],old);
+ db.seed("partnerRelations/partner1",{partnerCompanyId:"partner1",hubCompanyId:"hub",
+  active:false,countSharingApproved:false,countSharingRevokedAt:{seconds:1}});
+ await assert.rejects(service.submitOwnerQuickCorrection(req("h",payload)));
+ assert.equal(db.data.get("companies/hub/partnerQuickCountDays/"+today+"/reports/partner1").totalCount,1);
+});
+test("no-op Owner quick correction never overwrites original or appends history",async()=>{
+ const {db,service,req,counts}=setup();
+ const first={...counts,NURO:2};
+ await service.submit(req("p",{date:today,counts:first,expectedVersion:0}));
+ const before=copy([...db.data]);
+ const result=await service.submitOwnerQuickCorrection(req("h",{
+  date:today,partnerCompanyId:"partner1",counts:first,
+  expectedVersion:1,reason:"帳票を照合して変更不要"
+ }));
+ assert.equal(result.unchanged,true);assert.equal(result.saved,false);
+ assert.deepEqual([...db.data],before);
+});
+test("hub quick management UI never switches account or edits staff ledger and closes on logout",()=>{
+ const fs=require("node:fs"),html=fs.readFileSync(require("node:path").join(__dirname,"../index.html"),"utf8");
+ const exports=fs.readFileSync(require("node:path").join(__dirname,"../functions-partner-quick/index.js"),"utf8");
+ for(const id of ["ownerPartnerQuickProxyPanel","ownerPartnerQuickStatus",
+   "ownerPartnerQuickFields","ownerPartnerQuickReason","ownerPartnerQuickSave","ownerPartnerQuickRefresh"]){
+  assert.equal(html.split('id="'+id+'"').length-1,1,id);
+ }
+ assert(html.includes("async function openOwnerPartnerQuickProxy("));
+ assert(html.includes("function ownerQuickReset(){"));
+ assert(html.includes("ownerQuickReset();\n ownerDirReset();"));
+ assert(html.includes('submitOwnerPartnerQuickCorrection = httpsCallable'));
+ assert(html.includes('readOwnerPartnerQuickCorrection = httpsCallable'));
+ assert(html.includes("件数専用の報告を管理"));
+ assert(exports.includes("exports.getOwnerPartnerQuickCorrection=onCall"));
+ assert(exports.includes("exports.submitOwnerPartnerQuickCorrection=onCall"));
+ const a=html.indexOf("async function openOwnerPartnerQuickProxy(");
+ const b=html.indexOf("document.getElementById(\"ownerPartnerQuickClose\")",a);
+ assert(a>0&&b>a);
+ const section=html.slice(a,b);
+ assert.doesNotMatch(section,/\b(?:signOut|signIn|deleteDoc|updateDoc|setDoc)\s*\(/);
+});
