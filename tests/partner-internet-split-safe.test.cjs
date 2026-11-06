@@ -15,14 +15,18 @@ class Col{
  constructor(db,p){this.db=db;this.path=p;}
  doc(id){return new Ref(this.db,this.path+"/"+id);}
  where(k,op,v){
-  assert.equal(op,"==");
-  return {limit:max=>({get:async()=>{
-   const docs=[];
-   for(const [p,data] of this.db.items)if(p.startsWith(this.path+"/")&&
-      !p.slice(this.path.length+1).includes("/")&&data[k]===v)
-    docs.push({id:p.split("/").at(-1),data:()=>clone(data)});
-   return {size:docs.length,docs:docs.slice(0,max)};
-  }})};
+  const filters=[[k,op,v]],check=(x,op,y)=>op==="=="?x===y:
+   op===">="?x>=y:op==="<="?x<=y:false;
+  const chain={where:(key,operator,value)=>{filters.push([key,operator,value]);return chain;},
+   limit:max=>({get:async()=>{
+    const docs=[];
+    for(const [p,d] of this.db.items)if(p.startsWith(this.path+"/")&&
+       !p.slice(this.path.length+1).includes("/")&&
+       filters.every(([k,op,v])=>check(d[k],op,v)))
+     docs.push({id:p.split("/").at(-1),data:()=>clone(d)});
+    return {size:docs.length,docs:docs.slice(0,max)};
+   }})};
+  return chain;
  }
 }
 class DB{
