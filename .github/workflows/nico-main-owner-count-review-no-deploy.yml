@@ -1,0 +1,74 @@
+name: NICO main-based owner record discrepancy review (NO DEPLOY)
+on:
+  push:
+    branches: [fix/main-owner-record-integrity-review-20261106]
+  pull_request:
+    branches: [feature/main-partner-month-readonly-20261106]
+permissions:
+  contents: read
+concurrency:
+  group: nico-main-owner-count-review-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  owner-count-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      FIREBASE_PROJECT_ID: demo-sales-support
+      GCLOUD_PROJECT: demo-sales-support
+      GOOGLE_APPLICATION_CREDENTIALS: ""
+      FIREBASE_SERVICE_ACCOUNT_JSON: ""
+      NICO_RULES_APPROVAL: ""
+      NICO_PARTNER_RELEASE_CONFIRMATION: ""
+      PARTNER_COMPANY_CODE_AUTH_ENABLED: ""
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Exactly reviewed parent SHA and restricted files
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$FIREBASE_PROJECT_ID" = demo-sales-support
+          test "$GCLOUD_PROJECT" = demo-sales-support
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$NICO_RULES_APPROVAL"
+          test -z "$NICO_PARTNER_RELEASE_CONFIRMATION"
+          test -z "$PARTNER_COMPANY_CODE_AUTH_ENABLED"
+          git fetch --no-tags origin feature/main-partner-month-readonly-20261106 main
+          base=3372630b67c2a94346ae1ae76a7fe03739e86774
+          test "$(git rev-parse origin/feature/main-partner-month-readonly-20261106)" = "$base"
+          test "$(git rev-parse origin/main)" = 17681e69d3ebd7271cc9a58e138fd0e202db7294
+          test "$(git merge-base HEAD origin/feature/main-partner-month-readonly-20261106)" = "$base"
+          git diff --name-only "$base"...HEAD > /tmp/owner-review-files.txt
+          if grep -Ev '^(index[.]html|tests/(owner-record-integrity-main[.]test[.]cjs|sales-regressions[.]cjs)|[.]github/workflows/nico-main-owner-count-review-no-deploy[.]yml)$' /tmp/owner-review-files.txt; then
+            echo STOP_UNREVIEWED_OWNER_REVIEW_DIFF
+            exit 1
+          fi
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          git diff --quiet "$base" -- functions functions-partner-workspace firestore.rules firebase.json
+      - name: Verify existing inline module JavaScript parses
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e 'const fs=require("node:fs");const h=fs.readFileSync("index.html","utf8");const m=/<script type="module">/.exec(h);const a=m?.index??-1;const b=h.indexOf("</script>",a);if(a<0||b<=a)throw Error("INLINE_MODULE_MISSING");fs.writeFileSync("/tmp/nico-owner-count-index.mjs",h.slice(a+m[0].length,b));'
+          node --check /tmp/nico-owner-count-index.mjs
+      - name: Owner count integrity, existing saved months, partner permissions and sales regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check tests/owner-record-integrity-main.test.cjs
+          node --test tests/owner-record-integrity-main.test.cjs
+          node --test tests/partner-saved-month-main.test.cjs tests/partner-saved-month-ui-main.test.cjs tests/partner-combined-month-ranking-main.test.cjs tests/partner-catalog-publish-main.test.cjs tests/partner-additional-product-main.test.cjs tests/partner-additional-ledger-main.test.cjs tests/partner-workspace.test.cjs tests/sales-regressions.cjs tests/partner-one-login-same-app.test.cjs tests/partner-money-free-workspace.test.cjs tests/internal-owner-finance-visibility.test.cjs tests/partner-company-code-auth.test.cjs
+      - name: Production remains unchanged
+        run: |
+          echo 'OWNER_DISCREPANCY_REVIEW_SYNTHETIC_ONLY'
+          echo 'CURRENT_LIVE_CORRUPT_RECORD_NOT_FIXED=true'
+          echo 'PRODUCTION_DOCUMENT_WRITES=0'
+          echo 'PRODUCTION_DEPLOYED=false'
+          echo 'RELEASE_APPROVED=false'
