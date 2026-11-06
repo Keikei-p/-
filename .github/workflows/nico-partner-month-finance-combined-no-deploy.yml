@@ -46,7 +46,7 @@ jobs:
           base_sha="$(git rev-parse origin/feature/partner-catalog-month-integrated-20261105)"
           test "$base_sha" = 17d470b7b9bc19f4ddfda32a32900728094a3de1
           git diff --name-only "$base_sha"...HEAD > /tmp/nico-month-finance-files.txt
-          if grep -Ev '^(firestore\.rules|tests/rules\.test\.cjs|index\.html|tests/partner-shared-rank-ui-parity\.test\.cjs|tests/partner-ranking-independent-requests\.test\.cjs|tests/partner-existing-ranking\.test\.cjs|\.github/workflows/nico-partner-month-finance-combined-no-deploy\.yml)$' /tmp/nico-month-finance-files.txt; then
+          if grep -Ev '^(firestore\.rules|tests/rules\.test\.cjs|index\.html|functions-partner-workspace/service\.cjs|tests/partner-month-integrity-gate\.test\.cjs|tests/partner-shared-rank-ui-parity\.test\.cjs|tests/partner-ranking-independent-requests\.test\.cjs|tests/partner-existing-ranking\.test\.cjs|\.github/workflows/nico-partner-month-finance-combined-no-deploy\.yml)$' /tmp/nico-month-finance-files.txt; then
             echo STOP_UNEXPECTED_MONTH_FINANCE_CHANGES
             exit 1
           fi
