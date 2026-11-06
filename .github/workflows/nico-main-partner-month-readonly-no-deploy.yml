@@ -3,8 +3,9 @@ on:
   push:
     branches:
       - feature/main-partner-month-readonly-20261106
+      - fix/partner-extra-month-drilldown-20261106
   pull_request:
-    branches: [main]
+    branches: [main, feature/main-partner-month-readonly-20261106]
 permissions:
   contents: read
 concurrency:
