@@ -4,6 +4,7 @@ const crypto=require("node:crypto");
 const {monthBounds,projectSavedPartnerMonth}=require("./partner-saved-month.cjs");
 const {readDirectRangeCounts}=require("./shared-direct-counts.cjs");
 const {projectCombinedMonth}=require("./combined-saved-month-ranking.cjs");
+const {makePartnerCatalogOperations}=require("./partner-catalog-operations.cjs");
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -1012,6 +1013,12 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      privateTotalCount:privateValidated.total};
   });
  }
- return Object.freeze({manage,accept,view,viewSavedMonth,viewCombinedMonth,submit});
+ const {getPublishedCatalog,setPublishedProduct}=makePartnerCatalogOperations({
+  db,actor,scope,collection,FieldValue,fail
+ });
+ return Object.freeze({
+  manage,accept,view,viewSavedMonth,viewCombinedMonth,
+  getPublishedCatalog,setPublishedProduct,submit
+ });
 }
 module.exports={makeWorkspace,KEYS};
