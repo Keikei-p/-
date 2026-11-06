@@ -6335,6 +6335,7 @@ body.product-reordering .product-list {
 
         </div>
 
+        <div id="ownerCountIntegrityReview" class="ranking-product-help" role="status" hidden></div>
         <div id="recordHistoryList"></div>
       </div>
 
@@ -23934,6 +23935,32 @@ function recordConflict(message) {
   return error;
 }
 
+// Read-only evidence for historic count drift. Never choose the "correct" count.
+function readOnlyRecordCountEvidence(record) {
+  const valid = value =>
+    (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) ||
+    (typeof value === "string" && /^\\d+$/.test(value) &&
+      Number.isSafeInteger(Number(value)));
+  const saved = valid(record?.totalCount) ? Number(record.totalCount) : null;
+  const results = record?.results;
+  const rows = Array.isArray(results) ? results :
+    results && typeof results === "object" ? Object.values(results) :
+    record?.productId ? [{count:record.count}] : null;
+  let lines = rows ? 0 : null;
+  if (rows) {
+    for (const row of rows) {
+      if (!row || typeof row !== "object" || !valid(row.count) ||
+          !Number.isSafeInteger(lines + Number(row.count))) {
+        lines = null;
+        break;
+      }
+      lines += Number(row.count);
+    }
+  }
+  return saved !== null && lines !== null && saved === lines
+    ? null : {saved, lines};
+}
+
 async function persistDailyRecord(recordRef, data, expectedRecord, expectedRevision, writeCorrection = null) {
   // サーバーで同日を確認。旧IDの実績もそのまま更新し、重複は推測で統合しない。
   const daily = await getDocsFromServer(query(
@@ -23945,6 +23972,10 @@ async function persistDailyRecord(recordRef, data, expectedRecord, expectedRevis
   await runTransaction(db, async transaction => {
     const snapshot = await transaction.get(recordRef);
     const current = snapshot.exists() ? {id: snapshot.id, ...snapshot.data()} : null;
+    // A damaged saved original needs private owner review, not a blind overwrite.
+    if (current && readOnlyRecordCountEvidence(current) !== null) {
+      throw recordConflict("保存済み実績の総件数と商材明細が不一致です。履歴を確認してオーナーへ相談してください。原票は変更していません。");
+    }
     if (current && !expectedRecord) {
       throw recordConflict("別の操作で同じ日の実績が登録されました。既存実績を読み直してください。");
     }
@@ -36069,6 +36100,49 @@ function renderRecordHistory(
   const selectedMonth =
     dashboardMonth.value;
 
+  // Show existing month-scoped records only to the original internal Owner.
+  // No new Firestore reads, no financial raw data in a partner workspace.
+  const review = document.getElementById("ownerCountIntegrityReview");
+  review.hidden = true;
+  review.replaceChildren();
+  const ownerCanReview = isCurrentCompanyOwner() &&
+    canCurrentUserViewRevenue() && !partnerInlineWorkspaceCompany &&
+    currentUserData?.accessKind !== "partner" &&
+    (currentCompanyData?.companyKind == null ||
+     currentCompanyData.companyKind === "internal");
+  if (ownerCanReview && /^\\d{4}-(?:0[1-9]|1[0-2])$/.test(selectedMonth || "")) {
+    const mismatched = currentRecordHistoryMonthly.filter(record =>
+      record.companyId === currentUserData?.companyId &&
+      typeof record.date === "string" &&
+      record.date.startsWith(selectedMonth + "-") &&
+      readOnlyRecordCountEvidence(record) !== null);
+    if (mismatched.length > 0) {
+      review.hidden = false;
+      const heading = document.createElement("p");
+      heading.textContent = "要確認：保存総件数と商材明細が一致しない記録 " +
+        mismatched.length + "件（選択月）。原票は変更していません。";
+      review.appendChild(heading);
+      for (const record of mismatched) {
+        const counts = readOnlyRecordCountEvidence(record);
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "team-action-button";
+        button.textContent = record.date + "｜" + getCurrentMemberName(record) +
+          "｜保存 " + (counts.saved ?? "未確認") + "件 / 明細 " +
+          (counts.lines ?? "未確認") + "件｜履歴を見る";
+        button.onclick = () => {
+          recordHistoryDate.value = record.date;
+          renderRecordHistory(currentRecordHistoryMonthly);
+          recordHistoryList.scrollIntoView({behavior:"smooth",block:"start"});
+        };
+        review.appendChild(button);
+      }
+      const note = document.createElement("p");
+      note.textContent = "訂正履歴・契約内容をオーナーが照合するまで、どちらの件数が正しいかは判断せず、該当原票の編集を停止します。合同順位も未照合のままです。";
+      review.appendChild(note);
+    }
+  }
+
   const dates =
     Array.from(
       new Set(
@@ -36426,12 +36500,18 @@ function renderRecordHistory(
       `;
 
 
-      const canCorrect =
-        canCurrentUserCorrectRecord(
-          record
-        );
+      const inconsistent = readOnlyRecordCountEvidence(record) !== null;
+      if (inconsistent && ownerCanReview &&
+          record.companyId === currentUserData?.companyId) {
+        const warning = document.createElement("p");
+        warning.className = "ranking-product-help";
+        warning.textContent = "保存総件数と商材明細が不一致です。契約・訂正履歴を確認してください。自動修正は行いません。";
+        item.appendChild(warning);
+      }
+      const canCorrect = !inconsistent &&
+        canCurrentUserCorrectRecord(record);
 
-      // No historical delete action is displayed; authorized correction remains possible.
+      // Normal, consistent records retain their original correction flow.
 
 
       if (
@@ -36507,6 +36587,10 @@ function editRecord(
 ) {
 
     if (recordSaveInProgress) return;
+    if (readOnlyRecordCountEvidence(record) !== null) {
+      showError("保存済み総件数と商材明細が不一致です。履歴と契約内容の照合が必要です。");
+      return;
+    }
     if (!canCurrentUserCorrectRecord(record)) {
       showError("この実績の訂正はオーナーへ依頼してください。");
       return;
