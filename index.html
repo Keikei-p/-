@@ -9533,7 +9533,7 @@ async function openOwnerPartnerProxy(companyId,companyName){
     const counts=Object.create(null);
     for(const [key,input] of fields){
      const value=input.value.trim();
-     if(!/^\\d+$/.test(value)){feedback.textContent="0以上の整数を入力してください。";return;}
+     if(!/^\d+$/.test(value)){feedback.textContent="0以上の整数を入力してください。";return;}
      const n=Number(value);
      if(!Number.isSafeInteger(n)||n<0||n>9999){
       feedback.textContent="件数は0～9999です。";return;
@@ -9548,7 +9548,7 @@ async function openOwnerPartnerProxy(companyId,companyName){
      feedback.textContent="件数に変更はありません。";return;
     }
     if(!window.confirm(companyName+"｜"+record.staffName+"｜"+day+
-      "\\n保存済み "+record.totalCount+"件 → 訂正 "+sum+
+      "\n保存済み "+record.totalCount+"件 → 訂正 "+sum+
       "件。変更履歴を残して保存しますか？"))return;
     save.disabled=true;feedback.textContent="監査履歴付きで訂正を保存中…";
     try{
@@ -12592,6 +12592,7 @@ function partnerMainPendingInvite(){
  return null;
 }
 function resetPartnerInline(){
+ ownerProxyReset(); // Clear previous Owner company view on sign-out/account change.
  ownerCatalogReset();
  ++partnerInlineNonce;++ownerPartnerTeamsNonce;++partnerInlineMonthNonce;++ownerPartnerMonthNonce;
  ++partnerJointNonce;++ownerJointNonce;++partnerExtraNonce;++partnerInternetNonce;
