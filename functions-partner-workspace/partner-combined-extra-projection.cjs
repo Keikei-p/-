@@ -28,6 +28,7 @@ function projectPublishedPartnerExtras({hubId,cid,month,docs,visibleProducts=[],
  const counts=new Map([...visible].map(([id,name])=>[id,{id,name,totalCount:0}]));
  const people=new Map(),teams=new Map(),teamMembers=new Map(),seen=new Set();
  let totalCount=0,containsUnpublished=false,unattributedCount=0,unattributedRows=0;
+ let visibleEntryRows=0;
  const add=(target,day)=>{
   for(const [id,n] of Object.entries(day)){
    target.counts[id]=(target.counts[id]||0)+n;
@@ -62,7 +63,11 @@ function projectPublishedPartnerExtras({hubId,cid,month,docs,visibleProducts=[],
    visibleDay+=n;
   }
   if(!SAFE(visibleDay))fail();
+  // A saved row with ONLY unpublished/OFF products must not certify a
+  // visible 0-count report or fabricate a product ranking for this month.
+  // Keep its original ledger untouched and still report containsUnpublished.
   if(visibleDay===0)continue;
+  visibleEntryRows++;
   if(typeof x.staffNameSnapshot!=="string")fail();
   let name;try{name=nameOnly(x.staffNameSnapshot);}catch{fail();}
   const key=hash(cid,"staff",x.staffId);
@@ -105,7 +110,7 @@ function projectPublishedPartnerExtras({hubId,cid,month,docs,visibleProducts=[],
  })).sort(sorted);
  return {
   scope:"partner_published_extra_month_only",month,complete:false,
-  containsUnpublished,verifiedExtraRows:docs.length,totalCount,
+  containsUnpublished,verifiedExtraRows:visibleEntryRows,totalCount,
   products,people:[...people.values()].sort(sorted),teams:expandedTeams,
   unattributedCount,unattributedRows,
   productionDocumentWrites:0
