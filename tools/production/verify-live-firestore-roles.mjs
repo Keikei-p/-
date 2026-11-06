@@ -319,11 +319,12 @@ export function createLivePartnerCountViewVerifier({
      view.categories.some(key=>typeof key!=='string')||
      view.staff.length>150||view.records.length>200)
     stop('COUNT_VIEW_CONTRACT_UNVERIFIED');
-  // Opening the screen is NOT proof of being able to input a count.
-  // submitPartnerWorkspaceCounts needs a real, active staff row AND an
-  // active team. Member edits may target only their own account row and
-  // only their assigned team; Owner/Leader can choose any active team and
-  // active permitted staff (including a managed staff member).
+  // Opening the screen is NOT proof of a usable count-entry route.
+  // A visible staff member attached only to a retired/missing team can
+  // submit a raw row, but its counts will be absent from ACTIVE team detail.
+  // A release preflight must protect both count entry and team attribution.
+  // This gate is stricter than the legacy submit endpoint; it never changes
+  // existing data or retroactively reassigns staff/history.
   const activeTeamIds=new Set(view.teams.filter(team=>
     ID.test(team?.id||'')&&team.active===true).map(team=>team.id));
   if(activeTeamIds.size===0)
@@ -335,7 +336,10 @@ export function createLivePartnerCountViewVerifier({
     if(!activeStaff.some(staff=>staff.kind==='account'&&
       staff.uid===expectedPartnerUid&&activeTeamIds.has(staff.teamId)))
       stop('COUNT_VIEW_OWN_INPUT_UNAVAILABLE');
-  }else if(activeStaff.length===0){
+  }else if(!activeStaff.some(staff=>
+    ID.test(staff.teamId||'')&&activeTeamIds.has(staff.teamId))){
+    // Staff may exist, but nobody can be attributed to an active team.
+    // Do not certify count continuity merely because a form opens.
     stop('COUNT_VIEW_NO_ACTIVE_INPUT_ROUTE');
   }
   // This endpoint must remain COUNT-ONLY, not just HTTP 200. Reject even a
