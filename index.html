@@ -6335,6 +6335,7 @@ body.product-reordering .product-list {
 
         </div>
 
+        <div id="ownerCountIntegrityReview" class="ranking-product-help" role="status" hidden></div>
         <div id="recordHistoryList"></div>
       </div>
 
@@ -23934,6 +23935,53 @@ function recordConflict(message) {
   return error;
 }
 
+// READ ONLY: the saved total and product lines are independent pieces of
+// evidence. A mismatch is not permission to repair, delete or reprice a row.
+function readOnlyRecordCountEvidence(record) {
+  const validCount = value =>
+    (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) ||
+    (typeof value === "string" && /^\d+$/.test(value) &&
+      Number.isSafeInteger(Number(value)));
+  const saved = validCount(record?.totalCount) ? Number(record.totalCount) : null;
+  const raw = record?.results;
+  const rows = Array.isArray(raw) ? raw :
+    raw && typeof raw === "object" ? Object.values(raw) :
+    record?.productId ? [record] : null;
+  let lines = rows ? 0 : null;
+  if (rows) {
+    for (const row of rows) {
+      if (!validCount(row?.count) || !Number.isSafeInteger(lines + Number(row.count))) {
+        lines = null;
+        break;
+      }
+      lines += Number(row.count);
+    }
+  }
+  return saved !== null && lines !== null && saved === lines
+    ? null : {saved, lines};
+}
+
+// Never expose a private owner review to a partner workspace, dual-role
+// partner account, other company or any unverified monthly record.
+function selectOwnerCountIntegrityRows(monthly, selectedMonth) {
+  const uid = currentUser?.uid;
+  if (!uid || !/^\d{4}-(0[1-9]|1[0-2])$/.test(selectedMonth || "") ||
+      !Array.isArray(monthly) || !isCurrentCompanyOwner() ||
+      !canCurrentUserViewRevenue() || Boolean(partnerInlineWorkspaceCompany) ||
+      currentUserData?.accessKind === "partner" ||
+      currentUserData?.memberType === "cooperator" ||
+      (currentCompanyData?.companyKind != null &&
+       currentCompanyData.companyKind !== "internal") ||
+      !currentUserData?.companyId ||
+      !(currentCompanyData?.ownerUid === uid || currentCompanyData?.masterUid === uid))
+    return [];
+  return monthly.filter(record =>
+    record?.companyId === currentUserData.companyId &&
+    typeof record.date === "string" &&
+    record.date.startsWith(selectedMonth + "-") &&
+    readOnlyRecordCountEvidence(record) !== null);
+}
+
 async function persistDailyRecord(recordRef, data, expectedRecord, expectedRevision, writeCorrection = null) {
   // サーバーで同日を確認。旧IDの実績もそのまま更新し、重複は推測で統合しない。
   const daily = await getDocsFromServer(query(
@@ -36069,6 +36117,38 @@ function renderRecordHistory(
   const selectedMonth =
     dashboardMonth.value;
 
+  // All source rows come from the existing selected-month listener.
+  // No new Firestore/API read and no write, including on navigation.
+  const review = document.getElementById("ownerCountIntegrityReview");
+  review.hidden = true;
+  review.replaceChildren();
+  const mismatched = selectOwnerCountIntegrityRows(currentRecordHistoryMonthly, selectedMonth);
+  if (mismatched.length) {
+    review.hidden = false;
+    const heading = document.createElement("p");
+    heading.textContent = "要確認：" + mismatched.length +
+      "件の保存済み総件数と商材明細が一致しません（選択月）。過去実績・売上は変更していません。";
+    review.appendChild(heading);
+    for (const record of mismatched) {
+      const evidence = readOnlyRecordCountEvidence(record);
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "team-action-button";
+      button.textContent = record.date + "｜" + getCurrentMemberName(record) +
+        "｜保存 " + (evidence.saved ?? "未確認") + "件 / 明細 " +
+        (evidence.lines ?? "未確認") + "件｜履歴を見る";
+      button.onclick = () => {
+        recordHistoryDate.value = record.date;
+        renderRecordHistory(currentRecordHistoryMonthly);
+        recordHistoryList.scrollIntoView({behavior:"smooth",block:"start"});
+      };
+      review.appendChild(button);
+    }
+    const note = document.createElement("p");
+    note.textContent = "件数を自動補正しません。オーナーが元契約と訂正履歴を照合し、正式な合同順位を確定してください。";
+    review.appendChild(note);
+  }
+
   const dates =
     Array.from(
       new Set(
@@ -36426,12 +36506,17 @@ function renderRecordHistory(
       `;
 
 
-      const canCorrect =
-        canCurrentUserCorrectRecord(
-          record
-        );
+      const inconsistent = readOnlyRecordCountEvidence(record) !== null;
+      if (inconsistent) {
+        const warning = document.createElement("p");
+        warning.className = "ranking-product-help";
+        warning.textContent = "保存済み件数と明細が一致しません。自動修正せず、オーナーへ履歴確認を依頼してください。";
+        item.appendChild(warning);
+      }
+      const canCorrect = !inconsistent &&
+        canCurrentUserCorrectRecord(record);
 
-      // No historical delete action is displayed; authorized correction remains possible.
+      // Consistent historical corrections remain available as before.
 
 
       if (
@@ -36507,6 +36592,10 @@ function editRecord(
 ) {
 
     if (recordSaveInProgress) return;
+    if (readOnlyRecordCountEvidence(record) !== null) {
+      showError("保存済み件数と明細が一致しないため、訂正履歴と元契約をオーナーが確認してください。");
+      return;
+    }
     if (!canCurrentUserCorrectRecord(record)) {
       showError("この実績の訂正はオーナーへ依頼してください。");
       return;
