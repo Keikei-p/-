@@ -7213,6 +7213,7 @@ const readPartnerInternetSplitDay = httpsCallable(partnerCountFunctions,"getPart
 const readPartnerInternetSplitMonth = httpsCallable(partnerCountFunctions,"getPartnerInternetSplitMonth");
 const readOwnerPartnerCorrectionDay = httpsCallable(partnerCountFunctions,"getOwnerPartnerCorrectionDay");
 const submitOwnerPartnerCorrection = httpsCallable(partnerCountFunctions,"submitOwnerPartnerCorrection");
+const submitOwnerPartnerInternetSplit = httpsCallable(partnerCountFunctions,"submitOwnerPartnerInternetSplit");
 const submitPartnerInternetSplit = httpsCallable(partnerCountFunctions,"submitPartnerInternetSplit");
 
 const partnerInlineManage = httpsCallable(partnerCountFunctions,"managePartnerWorkspace");
@@ -9465,6 +9466,97 @@ function ownerProxyReset(){
  document.getElementById("ownerPartnerProxyStaff").replaceChildren();
  document.getElementById("ownerPartnerProxyStatus").textContent="";
 }
+
+// Owner-only optional classification editor for the original SB光・AIR combined
+// entry. Does not require partner credentials, and does not change source totals.
+async function openOwnerSplitEditor({companyId,companyName,day,record,stale,container}){
+ container.replaceChildren();
+ const note=document.createElement("p");note.className="p-inline-muted";
+ note.textContent="保存済みの光・Air内訳を確認中…";container.append(note);
+ try{
+  const response=(await readPartnerInternetSplitDay({
+   date:day,partnerCompanyId:companyId
+  })).data;
+  if(stale())return;
+  if(response?.scope!=="partner_internet_split_counts_only"||
+     response.partnerCompanyId!==companyId||response.date!==day||
+     response.financialFieldsIncluded!==false||!Array.isArray(response.records)||
+     response.records.length>200)throw Error("owner_split_schema");
+  const split=response.records.find(r=>r.staffId===record.staffId);
+  if(!split||split.total!==record.counts["SB光・AIR"]||
+     split.sourceVersion!==record.version||
+     !Number.isSafeInteger(split.revision)||split.revision<0)
+   throw Error("owner_split_stale");
+  container.replaceChildren();
+  const title=document.createElement("strong");
+  title.textContent=record.staffName+"｜合算"+split.total+"件の振分";
+  container.append(title);
+  const grid=document.createElement("div");grid.className="p-inline-grid";
+  const first=document.createElement("input"),second=document.createElement("input");
+  for(const [name,input,n] of [["SB光",first,split.hikari??0],
+   ["SoftBank Air",second,split.air??0]]){
+   const field=document.createElement("label");field.className="p-inline-field";
+   field.textContent=name;input.type="number";input.inputMode="numeric";
+   input.min="0";input.max="9999";input.step="1";input.value=String(n);
+   field.append(input);grid.append(field);
+  }
+  const reason=document.createElement("input");reason.type="text";
+  reason.placeholder="振分の確認・訂正理由（必須）";reason.maxLength=160;
+  const save=document.createElement("button");save.type="button";
+  save.className="team-action-button";save.textContent="光・Airの内訳だけ保存";
+  const status=document.createElement("p");status.className="p-inline-muted";
+  status.textContent=split.verified?"既存内訳を確認済み":"内訳未確認・要振分";
+  save.onclick=async()=>{
+   if(stale()||save.disabled)return;
+   const h=first.value.trim(),a=second.value.trim(),why=reason.value.trim();
+   if(!/^\d+$/.test(h)||!/^\d+$/.test(a)||
+      !Number.isSafeInteger(Number(h))||!Number.isSafeInteger(Number(a))||
+      Number(h)>9999||Number(a)>9999||Number(h)+Number(a)!==split.total){
+    status.textContent="SB光＋Airを元の合算"+split.total+"件に一致させてください。";
+    return;
+   }
+   if(why.length<3||why.length>160){
+    status.textContent="訂正理由を3文字以上入力してください。";return;
+   }
+   if(!window.confirm(companyName+"｜"+record.staffName+
+     "：元の合算"+split.total+"件は保持し、光"+h+"件 / Air"+a+
+     "件に振り分けますか？"))return;
+   save.disabled=true;status.textContent="内訳を照合・保存中…";
+   try{
+    const result=(await submitOwnerPartnerInternetSplit({
+     date:day,partnerCompanyId:companyId,staffId:record.staffId,
+     hikari:Number(h),air:Number(a),sourceVersion:record.version,
+     expectedRevision:split.revision,reason:why
+    })).data;
+    if(stale())return;
+    if(result?.partnerCompanyId!==companyId||result.staffId!==record.staffId||
+       result.date!==day||result.verified!==true||
+       !Number.isSafeInteger(result.revision)||
+       result.combinedCount!==split.total||
+       !(result.saved===true||result.unchanged===true))
+     throw Error("owner_split_save");
+    const check=(await readPartnerInternetSplitDay({
+     date:day,partnerCompanyId:companyId
+    })).data;
+    if(stale())return;
+    const fresh=check?.records?.find(r=>r.staffId===record.staffId);
+    if(check?.scope!=="partner_internet_split_counts_only"||
+       !fresh||fresh.verified!==true||fresh.total!==split.total||
+       fresh.hikari!==Number(h)||fresh.air!==Number(a)||
+       fresh.revision!==result.revision)throw Error("owner_split_reverify");
+    status.textContent="内訳の保存・再取得確認済み。合算件数は不変更。";
+    void openOwnerPartnerProxy(companyId,companyName);
+   }catch{
+    if(!stale())status.textContent=
+     "内訳を確認できません。再取得してから訂正してください。";
+   }finally{save.disabled=false;}
+  };
+  container.append(grid,reason,save,status);
+ }catch{
+  if(!stale())note.textContent=
+   "この担当者の内訳はまだ取得できません。元の合算件数には変更ありません。";
+ }
+}
 async function openOwnerPartnerProxy(companyId,companyName){
  if(!canLoadPartnerRanking()||!partnerMainValidId(companyId)||!currentUser?.uid)
   return;
@@ -9578,7 +9670,21 @@ async function openOwnerPartnerProxy(companyId,companyName){
       "保存または再取得を確認できません。最新件数を再取得してください。";
     }finally{save.disabled=false;}
    };
-   card.append(form,reasonLabel,save,feedback);target.append(card);
+   card.append(form,reasonLabel,save,feedback);
+   if(record.counts["SB光・AIR"]>0){
+    const splitButton=document.createElement("button");
+    splitButton.type="button";splitButton.className="team-action-button";
+    splitButton.textContent="SB光・Airの内訳を訂正";
+    const splitArea=document.createElement("div");
+    splitButton.onclick=()=>{
+     if(stale())return;
+     void openOwnerSplitEditor({
+      companyId,companyName,day,record,stale,container:splitArea
+     });
+    };
+    card.append(splitButton,splitArea);
+   }
+   target.append(card);
   }
   status.textContent=data.records.length?
    "保存済み "+data.records.length+"人分。担当者を押すと商材別件数を訂正できます。":
