@@ -148,3 +148,42 @@ test("November can read October staff-ledger counts without invalid older quick 
  assert.equal(ancient.rows.length,0);
  assert.equal(staffCalls.length,31,"outside 366 days must not call either API");
 });
+
+
+test("legacy quick outage preserves verified staff totals only as provisional, not fictitious zero",async()=>{
+ const keys=["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR",
+  "ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"];
+ const counts=Object.fromEntries(keys.map(k=>[k,k==="NURO"?4:0]));
+ const row={partnerCompanyId:"p1",name:"協力店A",counts,totalCount:4};
+ let quickCalls=0,staffCalls=0;
+ const context={
+  PARTNER_QUICK_RANK_KEYS:keys,
+  getTodayString:()=>"2026-11-06",
+  readPartnerQuickDay:async()=>{quickCalls++;throw Error("legacy_quick_unavailable");},
+  readPartnerWorkDay:async({date})=>{staffCalls++;return {data:{
+   role:"hub",date,partners:[row],
+   registeredCompanies:[{partnerCompanyId:"p1",active:true}]
+  }};}
+ };
+ vm.createContext(context);
+ vm.runInContext(between("function validatedPartnerRankingDay(",
+   "async function readPartnerRankingMonth("),context);
+ const provisional=await vm.runInContext('mergedPartnerRankingDay("2026-11-06")',context);
+ assert.equal(quickCalls,1);
+ assert.equal(staffCalls,1);
+ assert.equal(provisional.length,1);
+ assert.equal(provisional[0].totalCount,4);
+ assert.equal(provisional.coverageComplete,false,"quick-only unknown entries cannot certify rank");
+ assert.equal(provisional[0].counts.NURO,4);
+ // A genuinely invalid quick response must never be silently accepted
+ // as an outage. It could mix a wrong company's counts into a live rank.
+ context.readPartnerQuickDay=async({date})=>({data:{
+  role:"hub",date,partners:[{...row,totalCount:999}]
+ }});
+ await assert.rejects(vm.runInContext('mergedPartnerRankingDay("2026-11-06")',context),
+  /partner_quick_sum_mismatch/);
+ // Staff endpoint failure is fatal, not silently replaced by legacy counts.
+ context.readPartnerWorkDay=async()=>{throw Error("staff_read_denied");};
+ await assert.rejects(vm.runInContext('mergedPartnerRankingDay("2026-11-06")',context),
+  /staff_read_denied/);
+});
