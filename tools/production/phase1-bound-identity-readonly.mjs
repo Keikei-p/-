@@ -45,6 +45,22 @@ function unpack(document,url){
   return result;
 }
 
+// Mirror the two legitimate secondary workspace account shapes in
+// functions-partner-workspace/service.cjs. A partner owner is NOT companyRole
+// "member"; rejecting one at the read-only audit blocks a valid cutover.
+// Conversely, a mismatched team/role must never satisfy a real-UID 403 proof.
+function matchingPartnerRole(context,company,member,uid){
+  const owner=context.role==='owner'&&
+    company.ownerUid===uid&&company.masterUid===uid&&
+    member.companyRole==='owner'&&member.role==='leader'&&
+    member.teamId==null;
+  const worker=['leader','member'].includes(context.role)&&
+    member.companyRole==='member'&&member.role===context.role&&
+    ID.test(context.teamId||'')&&member.teamId===context.teamId&&
+    company.ownerUid!==uid;
+  return owner||worker;
+}
+
 /** Human-readable IDs are accepted only as private arguments, never output. */
 export function createAffectedSecondaryIdentityVerifier({
   credential,expectedOwnerUid,expectedPartnerUid,
@@ -128,7 +144,7 @@ export function createAffectedSecondaryIdentityVerifier({
        partnerMember.active===false||
        partnerMember.accessKind!=='partner'||
        partnerMember.memberType!=='cooperator'||
-       partnerMember.companyRole!=='member'||
+       !matchingPartnerRole(context,partnerCompany,partnerMember,expectedPartnerUid)||
        partnerMember.canViewRevenue!==false||
        partnerMember.canViewUnitPrice!==false)
       stop('AFFECTED_SECONDARY_NOT_BOUND');
