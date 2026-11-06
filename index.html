@@ -12696,6 +12696,72 @@ async function partnerFetchJointMonth(kind,month,workspace){
   report("合同ランキング未照合。保存元の件数不一致・権限・新API公開状態を確認してください。既存実績は変更していません。");
  }
 }
+function partnerExtraRenderCounts(){
+ const grid=pInline("pInlineExtraCountFields");grid.replaceChildren();
+ const snap=partnerExtraData,staffId=pInline("pInlineStaff").value;
+ const status=pInline("pInlineExtraStatus");
+ pInline("pInlineExtraSave").disabled=true;
+ if(!partnerInlineData||!snap||snap.date!==pInline("pInlineDate").value){
+  pInline("pInlineExtraVersion").textContent="未照合";return;
+ }
+ const row=snap.records.find(r=>r.staffId===staffId);
+ for(const product of snap.products){
+  const field=document.createElement("label");
+  field.className="p-inline-field";field.textContent=product.name;
+  const input=document.createElement("input");
+  input.type="number";input.min="0";input.max="9999";input.step="1";
+  input.inputMode="numeric";input.dataset.extraProductId=product.id;
+  input.value=String(row?.counts?.[product.id]??0);
+  field.append(input);grid.append(field);
+ }
+ pInline("pInlineExtraSave").disabled=!staffId||!snap.products.length||partnerInlineBusy;
+ pInline("pInlineExtraVersion").textContent=row?"保存済み・第"+row.version+"版":"未登録";
+ if(!snap.products.length)status.textContent="公開ONの追加商材はありません。既存9商材の入力は利用できます。";
+}
+async function partnerExtraFetch(){
+ const uid=auth.currentUser?.uid,day=pInline("pInlineDate").value;
+ const workspace=partnerInlineWorkspaceCompany,seq=++partnerExtraNonce;
+ partnerExtraData=null;partnerExtraRenderCounts();
+ if(!uid||!partnerInlineData||!auth.currentUser?.emailVerified)return;
+ const status=pInline("pInlineExtraStatus");
+ status.textContent="本社公開の追加商材を読み込み中...";
+ try{
+  const d=(await readPartnerAdditionalDay(partnerInlinePayload({date:day}))).data;
+  if(seq!==partnerExtraNonce||auth.currentUser?.uid!==uid||
+     partnerInlineWorkspaceCompany!==workspace||pInline("pInlineDate").value!==day)return;
+  if(!d||d.scope!=="partner_extra_counts"||d.date!==day||
+     !Array.isArray(d.products)||d.products.length>100||
+     !Array.isArray(d.records)||d.records.length>200||
+     !["owner","leader","member"].includes(d.role))throw Error("extra_schema");
+  const ids=new Set(),seen=new Set();
+  for(const p of d.products){
+   if(!/^[A-Za-z0-9_-]{1,128}$/.test(p?.id||"")||ids.has(p.id)||
+      typeof p.name!=="string"||!p.name||p.name.length>80||
+      /売上|単価|利益|報酬|価格|原価|revenue|cashback|unitprice|[￥¥$€]/i.test(p.name))
+    throw Error("extra_product_schema");
+   ids.add(p.id);
+  }
+  for(const r of d.records){
+   if(!/^[A-Za-z0-9_-]{1,128}$/.test(r?.staffId||"")||
+      seen.has(r.staffId)||!Number.isSafeInteger(r.version)||r.version<1||
+      !Number.isSafeInteger(r.totalCount)||r.totalCount<0||
+      !Number.isSafeInteger(r.archivedTotal)||r.archivedTotal<0||
+      !r.counts||typeof r.counts!=="object"||Array.isArray(r.counts)||
+      Object.entries(r.counts).some(([id,n])=>!ids.has(id)||
+       !Number.isSafeInteger(n)||n<0||n>9999)||
+      Object.values(r.counts).reduce((a,n)=>a+n,0)+r.archivedTotal!==r.totalCount)
+    throw Error("extra_saved_schema");
+   seen.add(r.staffId);
+  }
+  partnerExtraData=d;
+  status.textContent="公開中の追加商材の件数を確認しました。金額は表示しません。";
+  partnerExtraRenderCounts();
+ }catch{
+  if(seq!==partnerExtraNonce||auth.currentUser?.uid!==uid)return;
+  partnerExtraData=null;partnerExtraRenderCounts();
+  status.textContent="追加商材の公開・件数APIを確認できません。既存9商材の入力はそのまま使えます。";
+ }
+}
 async function partnerInlineMonthFetch(){
  if(!auth.currentUser?.emailVerified||!partnerInlineData)return;
  const month=pInline("pInlineMonth").value,uid=auth.currentUser.uid;
@@ -12801,72 +12867,6 @@ async function partnerInlineMonthFetch(){
 }
 // Extra products use a separate count-only ledger; the original nine-category
 // form and its save endpoint remain untouched. Unknown API state disables Save.
-function partnerExtraRenderCounts(){
- const grid=pInline("pInlineExtraCountFields");grid.replaceChildren();
- const snap=partnerExtraData,staffId=pInline("pInlineStaff").value;
- const status=pInline("pInlineExtraStatus");
- pInline("pInlineExtraSave").disabled=true;
- if(!partnerInlineData||!snap||snap.date!==pInline("pInlineDate").value){
-  pInline("pInlineExtraVersion").textContent="未照合";return;
- }
- const row=snap.records.find(r=>r.staffId===staffId);
- for(const product of snap.products){
-  const field=document.createElement("label");
-  field.className="p-inline-field";field.textContent=product.name;
-  const input=document.createElement("input");
-  input.type="number";input.min="0";input.max="9999";input.step="1";
-  input.inputMode="numeric";input.dataset.extraProductId=product.id;
-  input.value=String(row?.counts?.[product.id]??0);
-  field.append(input);grid.append(field);
- }
- pInline("pInlineExtraSave").disabled=!staffId||!snap.products.length||partnerInlineBusy;
- pInline("pInlineExtraVersion").textContent=row?"保存済み・第"+row.version+"版":"未登録";
- if(!snap.products.length)status.textContent="公開ONの追加商材はありません。既存9商材の入力は利用できます。";
-}
-async function partnerExtraFetch(){
- const uid=auth.currentUser?.uid,day=pInline("pInlineDate").value;
- const workspace=partnerInlineWorkspaceCompany,seq=++partnerExtraNonce;
- partnerExtraData=null;partnerExtraRenderCounts();
- if(!uid||!partnerInlineData||!auth.currentUser?.emailVerified)return;
- const status=pInline("pInlineExtraStatus");
- status.textContent="本社公開の追加商材を読み込み中...";
- try{
-  const d=(await readPartnerAdditionalDay(partnerInlinePayload({date:day}))).data;
-  if(seq!==partnerExtraNonce||auth.currentUser?.uid!==uid||
-     partnerInlineWorkspaceCompany!==workspace||pInline("pInlineDate").value!==day)return;
-  if(!d||d.scope!=="partner_extra_counts"||d.date!==day||
-     !Array.isArray(d.products)||d.products.length>100||
-     !Array.isArray(d.records)||d.records.length>200||
-     !["owner","leader","member"].includes(d.role))throw Error("extra_schema");
-  const ids=new Set(),seen=new Set();
-  for(const p of d.products){
-   if(!/^[A-Za-z0-9_-]{1,128}$/.test(p?.id||"")||ids.has(p.id)||
-      typeof p.name!=="string"||!p.name||p.name.length>80||
-      /売上|単価|利益|報酬|価格|原価|revenue|cashback|unitprice|[￥¥$€]/i.test(p.name))
-    throw Error("extra_product_schema");
-   ids.add(p.id);
-  }
-  for(const r of d.records){
-   if(!/^[A-Za-z0-9_-]{1,128}$/.test(r?.staffId||"")||
-      seen.has(r.staffId)||!Number.isSafeInteger(r.version)||r.version<1||
-      !Number.isSafeInteger(r.totalCount)||r.totalCount<0||
-      !Number.isSafeInteger(r.archivedTotal)||r.archivedTotal<0||
-      !r.counts||typeof r.counts!=="object"||Array.isArray(r.counts)||
-      Object.entries(r.counts).some(([id,n])=>!ids.has(id)||
-       !Number.isSafeInteger(n)||n<0||n>9999)||
-      Object.values(r.counts).reduce((a,n)=>a+n,0)+r.archivedTotal!==r.totalCount)
-    throw Error("extra_saved_schema");
-   seen.add(r.staffId);
-  }
-  partnerExtraData=d;
-  status.textContent="公開中の追加商材の件数を確認しました。金額は表示しません。";
-  partnerExtraRenderCounts();
- }catch{
-  if(seq!==partnerExtraNonce||auth.currentUser?.uid!==uid)return;
-  partnerExtraData=null;partnerExtraRenderCounts();
-  status.textContent="追加商材の公開・件数APIを確認できません。既存9商材の入力はそのまま使えます。";
- }
-}
 async function partnerInlineFetch(){
  if(!auth.currentUser?.emailVerified)return;
  const seq=++partnerInlineNonce,uid=auth.currentUser.uid;
