@@ -187,3 +187,45 @@ test("legacy quick outage preserves verified staff totals only as provisional, n
  await assert.rejects(vm.runInContext('mergedPartnerRankingDay("2026-11-06")',context),
   /staff_read_denied/);
 });
+
+
+test("overlapping old and staff day rows remain distinct audit claims, never confirmed ranks",async()=>{
+ const keys=["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR",
+  "ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"];
+ const row=changes=>{
+  const counts=Object.fromEntries(keys.map(k=>[k,changes[k]||0]));
+  return {partnerCompanyId:"partner",name:"協力店",counts,
+   totalCount:Object.values(counts).reduce((a,b)=>a+b,0)};
+ };
+ const old=row({NURO:9}),staff=row({NURO:2,"つばさ・HTB":3});
+ const ctx={
+  PARTNER_QUICK_RANK_KEYS:keys,
+  getTodayString:()=>"2026-11-06",
+  readPartnerQuickDay:async({date})=>({data:{role:"hub",date,partners:[old]}}),
+  readPartnerWorkDay:async({date})=>({data:{role:"hub",date,partners:[staff],
+   registeredCompanies:[{partnerCompanyId:"partner",active:true}]}})
+ };
+ vm.createContext(ctx);
+ vm.runInContext(between("function validatedPartnerRankingDay(",
+  "async function readPartnerRankingMonth("),ctx);
+ const read=()=>vm.runInContext('mergedPartnerRankingDay("2026-11-06")',ctx);
+ const disputed=await read();
+ assert.equal(disputed.length,1,"do not add the same company twice");
+ assert.equal(disputed[0].totalCount,5,"staff ledger is the current shown count");
+ assert.equal(disputed.legacyOverlapRows,1,"record discrepancy instead of discarding it");
+ assert.equal(disputed.legacyOverlapCount,9,"old 9 are still available for review");
+ assert.equal(disputed.coverageComplete,false,"never publish finalized rank with conflicting input");
+ // An equal total with a different product breakdown also requires review.
+ ctx.readPartnerQuickDay=async({date})=>({data:{role:"hub",date,
+  partners:[row({SBMNP:5})]}});
+ const sameTotal=await read();
+ assert.equal(sameTotal.legacyOverlapRows,1);
+ assert.equal(sameTotal.legacyOverlapCount,5);
+ assert.equal(sameTotal.coverageComplete,false);
+ // Reconciled exact products/counts are not flagged as conflicting.
+ ctx.readPartnerQuickDay=async({date})=>({data:{role:"hub",date,partners:[staff]}});
+ const equal=await read();
+ assert.equal(equal.legacyOverlapRows,0);
+ assert.equal(equal.legacyOverlapCount,0);
+ assert.equal(equal.coverageComplete,true);
+});
