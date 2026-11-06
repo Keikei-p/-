@@ -51,7 +51,7 @@ jobs:
           test "$(git rev-parse origin/main)" = 17681e69d3ebd7271cc9a58e138fd0e202db7294
           test "$(git merge-base HEAD origin/feature/main-partner-month-readonly-20261106)" = 3372630b67c2a94346ae1ae76a7fe03739e86774
           git diff --name-only 3372630b67c2a94346ae1ae76a7fe03739e86774...HEAD > /tmp/nico-month-phase1-allowlist.txt
-          if grep -Ev '^(firestore[.]rules|tests/rules[.]test[.]cjs|[.]github/workflows/nico-main-month-phase1-rules-integrated-no-deploy[.]yml)$' /tmp/nico-month-phase1-allowlist.txt; then
+          if grep -Ev '^(firestore[.]rules|tests/rules[.]test[.]cjs|docs/MAIN_MONTH_PHASE1_PRODUCTION_READINESS_NO_DEPLOY[.]md|[.]github/workflows/nico-main-month-phase1-rules-integrated-no-deploy[.]yml)$' /tmp/nico-month-phase1-allowlist.txt; then
             echo STOP_UNREVIEWED_INTEGRATION_FILE
             exit 1
           fi
