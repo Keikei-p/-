@@ -6678,6 +6678,10 @@ body.product-reordering .product-list {
         <summary>🤝 協力店（会社別の班・メンバー）</summary>
         <div class="compact-settings-body">
           <p style="font-size:12px;color:var(--sub);line-height:1.6">協力店ごとに班と担当者を確認します。売上・単価は表示しません。</p>
+          <label class="form-group" style="margin:10px 0;">会社・班・表示済みのメールを検索
+            <input id="partnerMemberCompanySearch" type="search" maxlength="120" autocomplete="off" placeholder="例：協力店名・1班・メール">
+          </label>
+          <p style="font-size:12px;color:var(--sub);">金額・単価はここには表示しません。金額アクセスのFirestore GET/LISTは実アカウントでの検証が終わるまで「未確認」です。</p>
           <button id="partnerMemberCompanyRefresh" type="button" class="team-action-button">会社・メンバーを更新</button>
           <p id="partnerMemberCompanyStatus" role="status" aria-live="polite" style="font-size:12px;"></p>
           <div id="partnerMemberCompanyList" style="display:grid;gap:10px;"></div>
@@ -20704,7 +20708,16 @@ function showPartnerMemberGroup(container,title,teamsInGroup,people){
   empty.textContent="班の登録なし";card.append(empty);
  }
  container.append(card);
+ return card;
 }
+function filterPartnerMemberCompanies(){
+ const query=document.getElementById("partnerMemberCompanySearch").value.trim().toLocaleLowerCase("ja");
+ for(const card of partnerMemberList.children){
+  const searchable=card.dataset.partnerSearchText||"";
+  card.hidden=!!query&&!searchable.includes(query);
+ }
+}
+document.getElementById("partnerMemberCompanySearch").addEventListener("input",filterPartnerMemberCompanies);
 async function refreshPartnerMemberCompanies(){
  const generation=++partnerMemberGeneration;
  partnerMemberList.replaceChildren();
@@ -20725,7 +20738,8 @@ async function refreshPartnerMemberCompanies(){
   nativeGroups.get(matched[1]).push({id:team.id,name:matched[2]});
  }
  for(const [company,groupTeams] of nativeGroups){
-  showPartnerMemberGroup(partnerMemberList,"🤝 "+company,groupTeams,members);
+  const card=showPartnerMemberGroup(partnerMemberList,"🤝 "+company,groupTeams,members);
+  card.dataset.partnerSearchText=(company+" "+groupTeams.map(t=>t.name).join(" ")).toLocaleLowerCase("ja");
  }
  try{
   const result=(await readPartnerWorkDay({date:getTodayString()})).data;
@@ -20748,10 +20762,75 @@ async function refreshPartnerMemberCompanies(){
    }
    // The hub response intentionally excludes staff identities, so NEVER
    // invent leaders, guess names or scan a different company's Firestore.
-   showPartnerMemberGroup(partnerMemberList,"🏢 "+item.name,uniqueTeams,[]);
+   const card=showPartnerMemberGroup(partnerMemberList,"🏢 "+item.name,uniqueTeams,[]);
+   card.dataset.partnerSearchText=(item.name+" "+uniqueTeams.map(t=>t.name).join(" ")).toLocaleLowerCase("ja");
+   const controls=document.createElement("div");
+   controls.style.cssText="display:flex;flex-wrap:wrap;gap:8px;margin:10px 0;";
+   const rosterButton=document.createElement("button");
+   rosterButton.type="button";rosterButton.className="team-action-button";
+   rosterButton.textContent="この会社の登録アカウントを表示";
+   rosterButton.disabled=item.active!==true;
+   const inviteButton=document.createElement("button");
+   inviteButton.type="button";inviteButton.className="team-action-button";
+   inviteButton.textContent="既存の招待管理を開く";
+   inviteButton.disabled=item.active!==true;
+   inviteButton.onclick=()=>{if(stillCurrent())quickInviteButton.click();};
+   const roster=document.createElement("div");
+   roster.setAttribute("aria-live","polite");
+   roster.style.cssText="display:grid;gap:6px;min-width:0;";
+   rosterButton.onclick=async()=>{
+    if(!stillCurrent()||rosterButton.disabled)return;
+    rosterButton.disabled=true;
+    roster.textContent="登録アカウントを確認中…";
+    try{
+     const result=(await readPartnerWorkDay({date:getTodayString(),
+      partnerCompanyId:item.partnerCompanyId,includeRoster:true})).data;
+     if(!stillCurrent())return;
+     const info=result?.partnerRoster;
+     if(result?.role!=="hub"||info?.scope!=="hub_partner_roster_read_only"||
+        info.partnerCompanyId!==item.partnerCompanyId||
+        info.financialRulesVerified!==false||!Array.isArray(info.staff)||
+        info.staff.length>150)throw Error("partner_roster_schema");
+     roster.replaceChildren();
+     for(const person of info.staff){
+      if(!person||!partnerMainValidId(person.staffId)||
+         !partnerMainValidId(person.teamId)||typeof person.name!=="string"||
+         person.name.length>60||!["account","managed"].includes(person.kind)||
+         !["leader","member"].includes(person.role)||typeof person.active!=="boolean"||
+         typeof person.email!=="string"||person.email.length>254||
+         !["memberVerified","secondaryMembership","financeFlagsSafe"]
+          .every(key=>typeof person[key]==="boolean"))
+       throw Error("partner_roster_row_invalid");
+      const row=document.createElement("p");
+      row.style.cssText="margin:0;font-size:12px;line-height:1.7;overflow-wrap:anywhere;border:1px solid var(--border);border-radius:8px;padding:8px;";
+      const teamName=uniqueTeams.find(t=>t.id===person.teamId)?.name||"過去班・班未照合";
+      const label=person.kind==="managed"?"メールなし":
+       person.email||"メール未確認";
+      const warning=person.kind==="managed"?"件数入力用の管理メンバー":
+       !person.memberVerified||!person.financeFlagsSafe?
+        "登録・権限フラグに不整合（要確認）":
+       person.secondaryMembership?
+        "旧自社所属あり・金額遮断の実証が必要":
+        "登録フラグ正常・金額アクセスは未検証";
+      row.textContent=person.name+"｜"+label+"｜"+teamName+
+       "｜"+(person.role==="leader"?"リーダー":"メンバー")+
+       "｜"+(person.active?"有効":"停止中")+"｜"+warning;
+      roster.append(row);
+     }
+     if(!info.staff.length)roster.textContent="登録済みの担当者はありません。既存の招待管理で追加してください。";
+     card.dataset.partnerSearchText=(card.dataset.partnerSearchText+" "+
+      info.staff.map(p=>p.name+" "+p.email).join(" ")).toLocaleLowerCase("ja");
+     filterPartnerMemberCompanies();
+    }catch(e){
+     if(stillCurrent())roster.textContent="登録情報を取得できません。API・所属・権限を確認してください。";
+    }finally{rosterButton.disabled=item.active!==true;}
+   };
+   controls.append(rosterButton,inviteButton);
+   card.append(controls,roster);
   }
+  filterPartnerMemberCompanies();
   partnerMemberStatus.textContent=partnerMemberList.childElementCount?
-    "会社別の班を表示中。別会社の氏名は現在のAPIから取得できません。":
+    "会社別に登録アカウントを確認できます。金額アクセスは実アカウントでの検証待ちです。":
     "登録済みの協力店はありません。";
  }catch(e){
   if(!stillCurrent())return;
