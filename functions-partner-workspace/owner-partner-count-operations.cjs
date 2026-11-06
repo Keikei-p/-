@@ -38,6 +38,44 @@ function makeOwnerPartnerCorrections({db,actor,scope,collection,FieldValue,fail,
    typeof c.name!=="string"||!c.name.trim()||c.name.length>80)fail();
   return c.name.trim();
  }
+ // Bounded company directory for 100+ partners. Read-only and HUB Owner only.
+ // 25 relations + company summaries per page. No team/record/price reads.
+ async function listCompaniesPage(request){
+  const d=request?.data||{};
+  if(Object.keys(d).some(k=>k!=="cursor")||
+     (d.cursor!==undefined&&d.cursor!==null&&d.cursor!==""&&!raw(d.cursor)))
+   fail("invalid-argument");
+  const {s}=await owner(request);
+  const cursor=d.cursor||"";
+  const PAGE=25;
+  let query=db.collection("partnerRelations").where("hubCompanyId","==",s.cid)
+   .orderBy("__name__");
+  if(cursor)query=query.startAfter(cursor);
+  const snapshot=await query.limit(PAGE+1).get();
+  if(snapshot.size>PAGE+1)fail("resource-exhausted");
+  const docs=snapshot.docs.slice(0,PAGE);
+  const rows=await Promise.all(docs.map(async sn=>{
+   const rel=sn.data()||{},cid=sn.id;
+   if(!raw(cid)||rel.partnerCompanyId!==cid||
+      rel.hubCompanyId!==s.cid)fail("data-loss");
+   const company=await db.collection("companies").doc(cid).get();
+   const c=company.data()||{},name=c.name;
+   if(!company.exists||c.companyKind!=="partner"||
+      c.hubCompanyId!==s.cid||
+      typeof name!=="string"||!name.trim()||name.length>80||
+      /(?:単価|売上|収益|利益|報酬|[¥￥$€]|\d[\d,]*円)/.test(name))
+    fail("data-loss");
+   return {partnerCompanyId:cid,name:name.trim(),
+    approved:rel.active===true&&rel.countSharingApproved===true&&c.active===true};
+  }));
+  if(rows.some((row,i)=>i>0&&rows[i-1].partnerCompanyId>=row.partnerCompanyId))
+   fail("data-loss");
+  const hasMore=snapshot.size>PAGE;
+  return {scope:"hub_owner_partner_directory_counts_only",
+   companies:rows,nextCursor:hasMore?(docs.at(-1)?.id||null):null,
+   hasMore,pageSize:PAGE,financialFieldsIncluded:false,
+   productionDocumentWrites:0};
+ }
  async function viewDay(request){
   const d=request?.data||{};
   if(Object.keys(d).sort().join("|")!=="date|partnerCompanyId")
@@ -214,6 +252,6 @@ function makeOwnerPartnerCorrections({db,actor,scope,collection,FieldValue,fail,
     hikari:d.hikari,air:d.air,correctionLogged:true};
   });
  }
- return Object.freeze({viewDay,correctDay,classifyOwnerInternet});
+ return Object.freeze({viewDay,correctDay,classifyOwnerInternet,listCompaniesPage});
 }
 module.exports={makeOwnerPartnerCorrections};

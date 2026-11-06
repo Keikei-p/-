@@ -32,6 +32,7 @@ exports.submitPartnerWorkspaceCounts=onCall(opts,service.submit);
 exports.getPartnerInternetSplitDay=onCall(opts,service.viewInternetSplitDay);
 exports.getPartnerInternetSplitMonth=onCall(opts,service.viewInternetSplitMonth);
 exports.getOwnerPartnerCorrectionDay=onCall(opts,service.viewOwnerPartnerDay);
+exports.getOwnerPartnerCompaniesPage=onCall(opts,service.ownerPartnerCompaniesPage);
 exports.submitOwnerPartnerCorrection=onCall(opts,service.correctOwnerPartnerDay);
 exports.submitOwnerPartnerInternetSplit=onCall(opts,service.classifyOwnerInternet);
 exports.submitPartnerInternetSplit=onCall(opts,service.submitInternetSplit);
