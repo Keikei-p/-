@@ -114,13 +114,17 @@ export function createAffectedSecondaryIdentityVerifier({
     const ownerContext=await read('partnerWorkspaceContexts/'+expectedOwnerUid,true);
     // Owner must not be dual-context. Never use a finance-enabled leader as
     // the Owner proof, since leader permissions do not guarantee Owner parity.
-    if(ownerContext!==null || owner.companyId!==internalCompanyId ||
-       owner.companyRole!=='owner' || owner.active===false ||
-       !internalUser(owner) || !internal(company) || company.active===false ||
-       ownerMember.companyRole!=='owner' || ownerMember.active===false ||
-       !internalUser(ownerMember) ||
-       !(company.ownerUid===expectedOwnerUid||
-         company.masterUid===expectedOwnerUid))
+    // Mirror scope(): a present-but-disabled or mismatched users/{uid}
+    // record cannot authenticate, even if finance GET permissions look valid.
+    // Internal Owner scope requires the actual ownerUid (not masterUid alone).
+    if(ownerContext!==null || owner.uid!==expectedOwnerUid ||
+       owner.companyId!==internalCompanyId ||
+       owner.companyRole!=='owner' || owner.active!==true ||
+       !internalUser(owner) || !internal(company) || company.active!==true ||
+       ownerMember.uid!==expectedOwnerUid ||
+       (ownerMember.companyId!=null&&ownerMember.companyId!==internalCompanyId)||
+       ownerMember.companyRole!=='owner' || ownerMember.active!==true ||
+       !internalUser(ownerMember) || company.ownerUid!==expectedOwnerUid)
       stop('OWNER_NOT_INDEPENDENTLY_BOUND');
 
     const context=await read('partnerWorkspaceContexts/'+expectedPartnerUid);
@@ -159,16 +163,19 @@ export function createAffectedSecondaryIdentityVerifier({
        context.primaryCompanyId!==internalCompanyId||
        context.partnerCompanyId!==partnerCompanyId||
        context.hubCompanyId!==internalCompanyId||
-       oldUser.companyId!==internalCompanyId||oldUser.active===false||
+       oldUser.uid!==expectedPartnerUid||
+       oldUser.companyId!==internalCompanyId||oldUser.active!==true||
        oldUser.companyRole==='owner'||!internalUser(oldUser)||
+       (oldMember.uid!=null&&oldMember.uid!==expectedPartnerUid)||
+       (oldMember.companyId!=null&&oldMember.companyId!==internalCompanyId)||
        oldMember.companyRole==='owner'||oldMember.active===false||
        !internalUser(oldMember)||
        partnerCompany.companyKind!=='partner'||
        partnerCompany.hubCompanyId!==internalCompanyId||
-       partnerCompany.active===false||
+       partnerCompany.active!==true||
        partnerMember.uid!==expectedPartnerUid||
        partnerMember.companyId!==partnerCompanyId||
-       partnerMember.active===false||
+       partnerMember.active!==true||
        partnerMember.accessKind!=='partner'||
        partnerMember.memberType!=='cooperator'||
        !matchingPartnerRole(context,partnerCompany,partnerMember,expectedPartnerUid)||
