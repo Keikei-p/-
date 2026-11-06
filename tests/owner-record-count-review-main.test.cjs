@@ -92,7 +92,7 @@ test("only actual current hub Owner can inspect selected month; partner identiti
     assert.equal(sandbox.selectOwnerCountIntegrityRows([target],month).length,0,label);
   }
 });
-test("Owner warning is scoped to existing monthly history; editing invalid record is disabled",()=>{
+test("Owner warning is scoped to existing monthly history; inconsistent edits require Owner review",()=>{
   assert.match(html,/id="ownerCountIntegrityReview"[^>]*hidden/);
   const start=html.indexOf("function renderRecordHistory(");
   const end=html.indexOf("function editRecord(",start);
@@ -103,11 +103,12 @@ test("Owner warning is scoped to existing monthly history; editing invalid recor
     "review.hidden = true;","review.replaceChildren();","review.hidden = false;",
     "recordHistoryDate.value = record.date;",
     "renderRecordHistory(currentRecordHistoryMonthly);",
-    "const canCorrect = !inconsistent &&",
+    "const canCorrect = canCurrentUserCorrectRecord(record) &&",
     "readOnlyRecordCountEvidence(record) !== null"
   ])assert.ok(history.includes(token),token);
   assert.doesNotMatch(history,/\b(runTransaction|setDoc|updateDoc|deleteDoc|httpsCallable|getDocsFromServer)\s*\(/);
   const edit=html.slice(end,html.indexOf("/* =====================================================\n   実績削除",end));
-  assert.ok(edit.includes("readOnlyRecordCountEvidence(record) !== null"),"direct edit guarded");
+  assert.ok(edit.includes("canBeginOwnerMismatchCorrection(record)"),"only explicit Owner mismatch review can edit");
+  assert.ok(edit.includes("ownerMismatchCorrectionApproval = mismatch===null ? null"),"review intent bound to record revision");
   assert.ok(edit.includes("canCurrentUserCorrectRecord(record)"),"prior correction permissions retained");
 });
