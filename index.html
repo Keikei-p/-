@@ -18914,6 +18914,8 @@ function ownerCatalogReset(){
  ownerCatalogState={revision:0,verified:false,busy:false,rows:new Map()};
  const el=document.getElementById("ownerPublishedCatalogStatus");
  if(el)el.textContent="公開状態未確認。変更操作は停止しています。";
+ const list=document.getElementById("ownerPublishedCatalogList");
+ if(list)list.replaceChildren(); // No previous Owner catalog after sign-out or account switch.
 }
 async function ownerCatalogRefresh(){
  if(!auth.currentUser||!isCurrentCompanyOwner()||
