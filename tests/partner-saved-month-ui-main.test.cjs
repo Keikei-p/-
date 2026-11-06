@@ -62,3 +62,31 @@ test("existing app module parses after adding month controls (without running Fi
   assert.equal(result.status,0,result.stderr?.slice(0,1200));
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+test("HQ Owner sees an explicit month selector and opens one approved partner on demand",()=>{
+ for(const id of ["ownerPartnerMonthControls","ownerPartnerMonth","ownerPartnerMonthStatus",
+  "ownerPartnerMonthDetails"])
+  assert.equal((html.match(new RegExp('id="'+id+'"',"g"))||[]).length,1,id);
+ assert.match(html,/id="ownerPartnerMonth" aria-label="本社から確認する協力店の月"/);
+ assert.match(html,/ownerPartnerSelectedCompany=company\.partnerCompanyId/);
+ assert.match(html,/button\.textContent=company\.name\+"｜月別詳細を表示"/);
+ const start=html.indexOf("async function loadOwnerPartnerSavedMonth(");
+ const end=html.indexOf("async function loadOwnerPartnerCompanyTeams(",start);
+ assert(start>0&&end>start);
+ const code=html.slice(start,end);
+ assert.match(code,/!isCurrentCompanyOwner\(\)/);
+ assert.match(code,/currentCompanyData\?\.companyKind==="partner"/);
+ assert.match(code,/readPartnerSavedMonth\(\{month,partnerCompanyId:companyId\}\)/);
+ assert.match(code,/ownerPartnerSelectedCompany!==companyId/);
+ assert.match(code,/data\.financialFieldsIncluded!==false/);
+ assert.match(code,/document\.createElement\("details"\)/);
+ assert.match(code,/person\.counts\[k\]/);
+ assert.match(code,/data\.missingHistoricalTeamAttribution/);
+ assert.doesNotMatch(code,/\b(?:getDoc|getDocs|setDoc|updateDoc|deleteDoc|writeBatch|onSnapshot|formatYen)\s*\(/);
+ assert.doesNotMatch(code,/\.innerHTML\s*=/);
+ const from=end,to=html.indexOf("async function showPartnerInviteAtMain(",end);
+ const browse=html.slice(from,to);
+ assert.match(browse,/if\(company\.active&&partnerMainValidId\(company\.partnerCompanyId\)\)/);
+ assert.doesNotMatch(browse,/readPartnerSavedMonth\(\{/,
+  "reading one month must require a click, never 100 company reads at once");
+});
