@@ -2,6 +2,7 @@
 // Shared ranking accepts ONLY validated count summaries; originals never leave
 // the server. A malformed ledger must NEVER become "0", a tie, or a rank.
 const crypto=require("node:crypto");
+const {nameOnly}=require("./catalog-publication.cjs");
 const OPAQUE=/^[a-f0-9]{64}$/;
 const MONEY=/(?:単価|売上|利益|収益|報酬|[¥￥$€]|\d[\d,]*円)/;
 const NAME=/^[\p{L}\p{N} 　・ー（）()_.-]{1,60}$/u;
@@ -99,8 +100,10 @@ function projectCombinedMonth({month,hubId,keys,direct,partners=[]}={}){
    const extraIds=new Set();
    for(const product of extra.products){
     if(!/^[A-Za-z0-9_-]{1,128}$/.test(product?.id||"")||
-       extraIds.has(product.id)||!checkName(product.name)||
-       !validCount(product.totalCount))fail();
+       extraIds.has(product.id)||!validCount(product.totalCount))fail();
+    // The original Owner master permits safe labels up to 80 characters.
+    // Enforce exactly the same redaction contract for new ranking labels.
+    try{if(nameOnly(product.name)!==product.name)fail();}catch{fail();}
     extraIds.add(product.id);
     const prior=publishedExtras.get(product.id);
     if(prior&&prior.name!==product.name)fail();
