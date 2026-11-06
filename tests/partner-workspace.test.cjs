@@ -1301,3 +1301,115 @@ test("hub unknown or physically deleted team snapshots stay UNVERIFIED instead o
   "not allowed to rewrite historical team based on current membership");
  assert.deepEqual([...db.store.entries()],before);
 });
+
+
+test("hub Owner sees three existing partner email accounts across companies from one opt-in roster, without touching finance",async()=>{
+ const {db,api,req}=setup(),date="2026-10-31";
+ const first=(await api.manage(req("h",{action:"hubAddTeam",partnerCompanyId:"partner",name:"本社招待班"}))).teamId;
+ for(const [uid,role] of [["l","leader"],["m","member"]]){
+  const invite=await api.manage(req("h",{action:"hubCreateInvite",partnerCompanyId:"partner",
+   teamId:first,role,email:uid+"@example.com"}));
+  await api.accept(req(uid,{token:invite.token,name:"担当"+uid}));
+ }
+ const created=await api.manage(req("h",{action:"hubCreateInvite",companyName:"二社目",role:"leader",email:"n@example.com"}));
+ await api.accept(req("n",{token:created.token,name:"担当n"}));
+ const before=clone([...db.store.entries()]);
+ const defaultHub=await api.view(req("h",{date}));
+ assert.equal(Object.hasOwn(defaultHub,"partnerRoster"),false,"normal home dashboard has no expensive roster reads");
+ const a=await api.view(req("h",{date,partnerCompanyId:"partner",includeRoster:true}));
+ assert.equal(a.partnerRoster.scope,"hub_partner_roster_read_only");
+ assert.equal(a.partnerRoster.partnerCompanyId,"partner");
+ assert.equal(a.partnerRoster.financialRulesVerified,false,"account flags do not prove production GET/LIST denial");
+ assert.deepEqual(a.partnerRoster.staff.map(x=>x.email),["l@example.com","m@example.com"]);
+ assert.deepEqual(a.partnerRoster.staff.map(x=>x.role),["leader","member"]);
+ for(const member of a.partnerRoster.staff){
+  assert.equal(member.kind,"account");
+  assert.equal(member.active,true);
+  assert.equal(member.memberVerified,true);
+  assert.equal(member.secondaryMembership,false);
+  assert.equal(member.financeFlagsSafe,true);
+ }
+ const other=await api.view(req("h",{date,partnerCompanyId:created.partnerCompanyId,includeRoster:true}));
+ assert.deepEqual(other.partnerRoster.staff.map(x=>x.email),["n@example.com"]);
+ assert.equal(other.partnerRoster.staff[0].role,"leader");
+ assert.equal(other.partnerRoster.staff[0].teamId,"initial");
+ assert.deepEqual([...db.store.entries()],before,"roster must be strictly read only");
+ const payload=JSON.stringify([a.partnerRoster,other.partnerRoster]);
+ assert.doesNotMatch(payload,/808080|98765|12345|unitPrice|totalRevenue|revenuePerUnit|privateProducts|password|token/i);
+ assert.equal(db.store.get("records/old").totalRevenue,808080);
+ assert.equal(db.store.get("products/money").unitPrice,98765);
+});
+
+test("roster marks secondary old-internal email and unsafe finance flags for Owner review; NEVER calls it Rules safe",async()=>{
+ const {db,api,req}=setup(),date="2026-10-31";
+ const team=(await api.manage(req("h",{action:"hubAddTeam",partnerCompanyId:"partner",name:"危険検証班"}))).teamId;
+ // A historical primary company is retained, including its old sales.
+ const m={uid:"m",companyId:"hub",role:"member",companyRole:"member",teamId:"old",active:true,
+  accessKind:"internal",memberType:"direct",email:"m@example.com"};
+ db.seed("users/m",m);db.seed("companies/hub/members/m",m);
+ const invite=await api.manage(req("h",{action:"hubCreateInvite",partnerCompanyId:"partner",
+  teamId:team,email:"m@example.com",role:"member"}));
+ const accepted=await api.accept(req("m",{token:invite.token,name:"元本社メンバー",transferCurrentCompany:false}));
+ assert.equal(accepted.secondaryMembership,true);
+ let result=await api.view(req("h",{date,partnerCompanyId:"partner",includeRoster:true}));
+ let row=result.partnerRoster.staff.find(x=>x.email==="m@example.com");
+ assert(row);
+ assert.equal(row.secondaryMembership,true);
+ assert.equal(result.partnerRoster.financialRulesVerified,false);
+ const saved=db.store.get("companies/partner/members/m");
+ db.seed("companies/partner/members/m",{...saved,canViewRevenue:true});
+ result=await api.view(req("h",{date,partnerCompanyId:"partner",includeRoster:true}));
+ row=result.partnerRoster.staff.find(x=>x.email==="m@example.com");
+ assert.equal(row.financeFlagsSafe,false,"an unsafe flag is surfaced as warning, never granted");
+ assert.equal(row.secondaryMembership,true);
+ assert.equal(db.store.get("records/old").totalRevenue,808080);
+});
+
+test("hub account roster denies partner, revoked company, wrong company, and dual-context Owner",async()=>{
+ const {db,api,req}=setup(),date="2026-10-31";
+ const team=(await api.manage(req("h",{action:"hubAddTeam",partnerCompanyId:"partner",name:"実体班"}))).teamId;
+ await api.manage(req("p",{action:"addManaged",teamId:team,name:"メールなし"}));
+ const before=clone([...db.store.entries()]);
+ for(const r of [
+  req("p",{date,includeRoster:true}),
+  req("p",{date,partnerCompanyId:"partner",includeRoster:true}),
+  req("h",{date,includeRoster:true}),
+  req("h",{date,partnerCompanyId:"not-approved",includeRoster:true})
+ ]){
+  await assert.rejects(api.view(r),e=>["permission-denied","invalid-argument"].includes(e.code));
+ }
+ const x=await api.view(req("h",{date,partnerCompanyId:"partner",includeRoster:true}));
+ assert.equal(x.partnerRoster.staff[0].kind,"managed");
+ assert.equal(x.partnerRoster.staff[0].email,"");
+ assert.equal(x.partnerRoster.staff[0].memberVerified,false);
+ assert.deepEqual([...db.store.entries()],before);
+ db.seed("partnerWorkspaceContexts/h",{uid:"h",kind:"partner_secondary",active:true,partnerCompanyId:"partner"});
+ await assert.rejects(api.view(req("h",{date,partnerCompanyId:"partner",includeRoster:true})),
+  e=>e.code==="permission-denied");
+ assert.equal((await api.view(req("h",{date})).role,"hub","legacy day dashboard remains separate");
+ db.seed("partnerRelations/partner",{partnerCompanyId:"partner",hubCompanyId:"hub",active:false,countSharingApproved:false});
+ await assert.rejects(api.view(req("h",{date,partnerCompanyId:"partner",includeRoster:true})),
+  e=>e.code==="permission-denied");
+});
+
+test("roster exposes only active partner metadata and flags, no identity guessing or private ledger",async()=>{
+ const {db,api,req}=setup(),date="2026-10-31";
+ const team=(await api.manage(req("h",{action:"hubAddTeam",partnerCompanyId:"partner",name:"保全班"}))).teamId;
+ const invited=await api.manage(req("h",{action:"hubCreateInvite",partnerCompanyId:"partner",
+  teamId:team,role:"member",email:"m@example.com"}));
+ await api.accept(req("m",{token:invited.token,name:"実績入力者"}));
+ const staff=db.store.get("companies/partner/partnerWorkStaff/m");
+ db.seed("companies/partner/partnerWorkStaff/m",{...staff,active:false});
+ const membership=db.store.get("companies/partner/members/m");
+ db.seed("companies/partner/members/m",{...membership,active:false});
+ const before=clone([...db.store.entries()]);
+ const resp=await api.view(req("h",{date,partnerCompanyId:"partner",includeRoster:true}));
+ assert.equal(resp.partnerRoster.staff.length,1);
+ assert.equal(resp.partnerRoster.staff[0].active,false);
+ assert.equal(resp.partnerRoster.staff[0].memberVerified,true);
+ assert.equal(resp.partnerRoster.staff[0].financeFlagsSafe,true);
+ assert.equal(resp.partnerRoster.financialRulesVerified,false);
+ assert.equal(Object.hasOwn(resp.partnerRoster.staff[0],"uid"),false,
+  "avoid exposing auth identity: account is listed by scoped staff ID");
+ assert.deepEqual([...db.store.entries()],before);
+});
