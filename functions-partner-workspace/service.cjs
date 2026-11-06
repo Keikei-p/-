@@ -863,12 +863,15 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    if(d.partnerCompanyId!=null)fail();
   }else fail();
   // The bounded date range never returns incomplete totals if it overflows.
-  const [entries,teams]=await Promise.all([
+  const [entries,teams,extraEntries]=await Promise.all([
    collection(cid,"partnerWorkEntries").where("date",">=",bounds.first)
     .where("date","<=",bounds.last).limit(1001).get(),
-   collection(cid,"partnerWorkTeams").limit(151).get()
+   collection(cid,"partnerWorkTeams").limit(151).get(),
+   collection(cid,"partnerAdditionalCountEntries").where("date",">=",bounds.first)
+    .where("date","<=",bounds.last).limit(1001).get()
   ]);
-  if(entries.size>1000||teams.size>150)fail("resource-exhausted");
+  if(entries.size>1000||teams.size>150||extraEntries.size>1000)
+   fail("resource-exhausted");
   const teamNames=Object.create(null);
   for(const sn of teams.docs){
    const x=sn.data()||{};
@@ -878,11 +881,29 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   // Members see only their own count rows; no other identities serialized.
   const rows=role==="member"?entries.docs.filter(sn=>
    sn.data()?.staffId===a.uid):entries.docs;
+  // Partner additions stay in a SEPARATE ledger and never alter the original
+  // nine-category monthly projection or historical team assignment.
+  const extraRows=role==="member"?extraEntries.docs.filter(sn=>
+   sn.data()?.staffId===a.uid):extraEntries.docs;
+  let publishedExtras=[],blockedIds=[];
+  if(extraRows.length){
+   try{
+    const policy=await getExtraPolicy(hubId);
+    publishedExtras=policy.products.map(({id,name})=>({id,name}));
+    blockedIds=policy.blockedIds;
+   }catch{fail("failed-precondition");}
+  }
   try{
-   return projectSavedPartnerMonth({
+   const saved=projectSavedPartnerMonth({
     hubId,partnerId:cid,month:d.month,rows,categoryKeys:KEYS,
     teamNames,role,actorUid:a.uid
    });
+   const additional=projectPublishedPartnerExtras({
+    hubId,cid,month:d.month,docs:extraRows,
+    visibleProducts:publishedExtras,blockedIds,
+    teamNames,role,actorUid:a.uid
+   });
+   return {...saved,additional};
   }catch{fail("data-loss");}
  }
  // Read-only joint MONTHLY individual/product counts for the same verified
