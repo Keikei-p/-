@@ -12573,6 +12573,90 @@ function partnerSavedMonthCheckTotals(data,keys){
   teamTotal+=team.totalCount;
  }
  if(teamTotal+data.unattributedCount!==data.totalCount)stop();
+ // The additional catalog is a separate, optional ledger. Its failure must
+ // NEVER be interpreted as zero extra sales or corrupt the original nine.
+ if(data.extra===undefined)return true; // old synthetic contract
+ if(data.extra===null){
+  if(data.extraVerified!==false||data.combinedTotalCount!==null)stop();
+  return true;
+ }
+ const e=data.extra,safe=n=>Number.isSafeInteger(n)&&n>=0;
+ if(data.extraVerified!==true||e?.scope!=="partner_published_extra_month_only"||
+    e.month!==data.month||e.complete!==false||
+    e.productionDocumentWrites!==0||
+    typeof e.containsUnpublished!=="boolean"||
+    !safe(e.totalCount)||!safe(e.verifiedExtraRows)||
+    !safe(e.unattributedCount)||!safe(e.unattributedRows)||
+    !Array.isArray(e.people)||e.people.length>1000||
+    !Array.isArray(e.products)||e.products.length>1000||
+    !Array.isArray(e.teams)||e.teams.length>150||
+    !safe(data.combinedTotalCount)||
+    data.totalCount+e.totalCount!==data.combinedTotalCount)stop();
+ const extraIds=new Set(),extraProductTotals=new Map();
+ let productTotal=0;
+ for(const product of e.products){
+  if(!/^[A-Za-z0-9_-]{1,128}$/.test(product?.id||"")||
+     extraIds.has(product.id)||typeof product.name!=="string"||
+     !product.name||product.name.length>80||
+     !safe(product.totalCount)||product.totalCount===0)stop();
+  extraIds.add(product.id);extraProductTotals.set(product.id,product.totalCount);
+  productTotal+=product.totalCount;
+ }
+ if(productTotal!==e.totalCount)stop();
+ const extraPersonKeys=new Set(),personTotals=new Map();
+ let extraPeopleTotal=0;
+ const checkExtraCounts=counts=>{
+  if(!counts||typeof counts!=="object"||Array.isArray(counts)||
+     Object.keys(counts).length>extraIds.size)return false;
+  let sum=0;
+  for(const [id,n] of Object.entries(counts)){
+   if(!extraIds.has(id)||!safe(n)||n>9999*1000)return false;
+   sum+=n;
+  }
+  return safe(sum)?sum:false;
+ };
+ const productChecks=new Map();
+ for(const person of e.people){
+  const own=checkExtraCounts(person?.counts);
+  if(!keyCheck(person?.key)||extraPersonKeys.has(person.key)||
+     typeof person.name!=="string"||person.name.length>80||
+     !safe(person.totalCount)||own===false||own!==person.totalCount)stop();
+  extraPersonKeys.add(person.key);
+  personTotals.set(person.key,person.totalCount);
+  extraPeopleTotal+=person.totalCount;
+  for(const [id,n] of Object.entries(person.counts))
+   productChecks.set(id,(productChecks.get(id)||0)+n);
+ }
+ if(extraPeopleTotal!==e.totalCount||
+    [...extraProductTotals].some(([id,n])=>productChecks.get(id)!==n))stop();
+ const teamExtraKeys=new Set();
+ let extraTeamsTotal=0;
+ for(const team of e.teams){
+  const own=checkExtraCounts(team?.counts);
+  if(!keyCheck(team?.key)||teamExtraKeys.has(team.key)||
+     typeof team.name!=="string"||team.name.length>80||
+     !safe(team.totalCount)||own===false||own!==team.totalCount||
+     !Array.isArray(team.members)||team.members.length>1000)stop();
+  teamExtraKeys.add(team.key);
+  const seenMembers=new Set(),teamParts=new Map();
+  let memberSum=0;
+  for(const member of team.members){
+   const sum=checkExtraCounts(member?.counts);
+   if(!keyCheck(member?.key)||seenMembers.has(member.key)||
+      !extraPersonKeys.has(member.key)||
+      typeof member.name!=="string"||member.name.length>80||
+      !safe(member.totalCount)||sum===false||sum!==member.totalCount)stop();
+   seenMembers.add(member.key);memberSum+=member.totalCount;
+   if(member.totalCount>personTotals.get(member.key))stop();
+   for(const [id,n] of Object.entries(member.counts))
+    teamParts.set(id,(teamParts.get(id)||0)+n);
+  }
+  if(memberSum!==team.totalCount||
+     [...teamParts].some(([id,n])=>team.counts[id]!==n)||
+     Object.keys(team.counts).some(id=>(teamParts.get(id)||0)!==team.counts[id]))stop();
+  extraTeamsTotal+=team.totalCount;
+ }
+ if(extraTeamsTotal+e.unattributedCount!==e.totalCount)stop();
  return true;
 }
 // Identical count/rank presentation for the internal Owner and partners.
