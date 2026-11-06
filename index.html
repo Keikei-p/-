@@ -4765,7 +4765,18 @@ body.product-reordering .product-list {
       <span id="pInlineVersion" class="p-inline-muted"></span>
     </div>
   </div>
-  <div class="p-inline-card"><h3>🏆 班・個人・商材ランキング（件数のみ）</h3><div id="pInlineRanking" class="p-inline-list"></div></div>
+  <div class="p-inline-card" id="pInlineMonthCard">
+    <h3>📅 月別実績・班詳細（件数のみ）</h3>
+    <div class="p-inline-grid">
+      <label class="p-inline-field">表示月<input id="pInlineMonth" type="month" aria-label="協力店の表示月"></label>
+      <div class="p-inline-field"><label for="pInlineMonthRefresh">月別データ</label><button id="pInlineMonthRefresh" type="button">月別を更新</button></div>
+    </div>
+    <p id="pInlineMonthStatus" class="p-inline-muted" role="status" aria-live="polite">月別の保存済み件数を確認できます。</p>
+    <h4>班別</h4><div id="pInlineMonthTeams" class="p-inline-list"></div>
+    <h4>個人別</h4><div id="pInlineMonthPeople" class="p-inline-list"></div>
+    <h4>商材別</h4><div id="pInlineMonthProducts" class="p-inline-list"></div>
+  </div>
+  <div class="p-inline-card"><h3>🏆 選択日のランキング（件数のみ）</h3><div id="pInlineRanking" class="p-inline-list"></div></div>
 </section>
 
 
@@ -7099,6 +7110,7 @@ const partnerCountFunctions = getFunctions(app,"asia-northeast1");
 const readPartnerQuickDay = httpsCallable(partnerCountFunctions,"getPartnerQuickCounts");
 const approvePartnerQuickDay = httpsCallable(partnerCountFunctions,"approvePartnerQuickCounts");
 const readPartnerWorkDay = httpsCallable(partnerCountFunctions,"getPartnerWorkspace");
+const readPartnerSavedMonth = httpsCallable(partnerCountFunctions,"getPartnerSavedMonthlyCounts");
 
 const partnerInlineManage = httpsCallable(partnerCountFunctions,"managePartnerWorkspace");
 const partnerInlineSave = httpsCallable(partnerCountFunctions,"submitPartnerWorkspaceCounts");
@@ -12307,7 +12319,7 @@ copyInviteButton.onclick =
 // Never read products/records/revenueGoals in this branch. Server checks scope.
 const pInline=id=>document.getElementById(id);
 let partnerInlineData=null,partnerInlineWorkspaceCompany="",partnerInlineNonce=0;
-let partnerInlineBusy=false,ownerPartnerTeamsNonce=0;
+let partnerInlineBusy=false,ownerPartnerTeamsNonce=0,partnerInlineMonthNonce=0;
 const partnerMainDate=()=>new Intl.DateTimeFormat("sv-SE",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
 const partnerMainValidId=id=>typeof id==="string"&&/^[A-Za-z0-9_-]{1,128}$/.test(id);
 function partnerMainPendingInvite(){
@@ -12319,13 +12331,16 @@ function partnerMainPendingInvite(){
  return null;
 }
 function resetPartnerInline(){
- ++partnerInlineNonce;++ownerPartnerTeamsNonce;
+ ++partnerInlineNonce;++ownerPartnerTeamsNonce;++partnerInlineMonthNonce;
  partnerInlineData=null;partnerInlineWorkspaceCompany="";partnerInlineBusy=false;
  appScreen.removeAttribute("data-partner-count-only");
  pInline("partnerInlineWorkspace").hidden=true;
  pInline("pInlineStatus").textContent="";
  pInline("pInlineInviteUrl").value="";
  pInline("pInlineInviteResult").hidden=true;
+ pInline("pInlineMonthStatus").textContent="";
+ for(const id of ["pInlineMonthTeams","pInlineMonthPeople","pInlineMonthProducts"])
+  pInline(id).replaceChildren();
  authScreen.removeAttribute("data-partner-invite");
  pInline("partnerInviteAtMain").hidden=true;
 }
@@ -12418,6 +12433,59 @@ function partnerInlineRender(){
  for(const [key,n] of [...byProduct.entries()].sort((a,b)=>b[1]-a[1]))
   partnerMainAppendRow(rankings,key,n+"件");
 }
+
+async function partnerInlineMonthFetch(){
+ if(!auth.currentUser?.emailVerified||!partnerInlineData)return;
+ const month=pInline("pInlineMonth").value,uid=auth.currentUser.uid;
+ const workspace=partnerInlineWorkspaceCompany,seq=++partnerInlineMonthNonce;
+ const status=pInline("pInlineMonthStatus");
+ const containers=["pInlineMonthTeams","pInlineMonthPeople","pInlineMonthProducts"];
+ for(const id of containers)pInline(id).replaceChildren();
+ status.textContent="月別の保存済み件数を照合中...";
+ if(!/^\d{4}-(?:0[1-9]|1[0-2])$/.test(month)){
+  status.textContent="表示月を選択してください。";return;
+ }
+ try{
+  const payload={month,...(workspace?{workspaceCompanyId:workspace}:{})};
+  const data=(await readPartnerSavedMonth(payload)).data;
+  if(seq!==partnerInlineMonthNonce||auth.currentUser?.uid!==uid||
+     workspace!==partnerInlineWorkspaceCompany||pInline("pInlineMonth").value!==month)return;
+  const keys=partnerInlineData?.categories||[];
+  if(data?.scope!=="partner_saved_month_counts_only"||data.month!==month||
+     data.complete!==false||data.financialFieldsIncluded!==false||
+     !Array.isArray(data.teams)||!Array.isArray(data.people)||
+     data.teams.length>150||data.people.length>1000||
+     !Number.isSafeInteger(data.totalCount)||data.totalCount<0||
+     !data.counts||typeof data.counts!=="object"||
+     keys.length!==9||Object.keys(data.counts).length!==keys.length||
+     keys.some(k=>!Number.isSafeInteger(data.counts[k])||data.counts[k]<0))
+   throw Error("partner_saved_month_contract");
+  const amount=data.totalCount;
+  const show=(id,items)=>{
+   const element=pInline(id);
+   for(const item of items){
+    if(typeof item.name!=="string"||item.name.length>80||
+       !Number.isSafeInteger(item.totalCount)||item.totalCount<0)
+      throw Error("partner_saved_month_item");
+    partnerMainAppendRow(element,item.name,item.totalCount+"件");
+   }
+   if(items.length===0)partnerMainAppendRow(element,"保存済みデータ未確認","未入力を0件確定とは扱いません。");
+  };
+  show("pInlineMonthTeams",data.teams);
+  show("pInlineMonthPeople",data.people);
+  const products=keys.map(k=>({name:k,totalCount:data.counts[k]}))
+   .sort((a,b)=>b.totalCount-a.totalCount||a.name.localeCompare(b.name,"ja"));
+  show("pInlineMonthProducts",products);
+  status.textContent=month.replace("-","年")+"月の保存済み件数："+amount+
+   "件（暫定・未入力日は未照合）"+
+   (data.missingHistoricalTeamAttribution?"。班未照合の過去実績があります。":"");
+ }catch{
+  if(seq!==partnerInlineMonthNonce||auth.currentUser?.uid!==uid||
+     workspace!==partnerInlineWorkspaceCompany)return;
+  for(const id of containers)pInline(id).replaceChildren();
+  status.textContent="月別の件数を確認できません。月別APIの公開状態・所属を確認してください。日別入力は引き続き利用できます。";
+ }
+}
 async function partnerInlineFetch(){
  if(!auth.currentUser?.emailVerified)return;
  const seq=++partnerInlineNonce,uid=auth.currentUser.uid;
@@ -12460,7 +12528,9 @@ async function openSameAppPartnerWorkspace(user,workspaceCompanyId=""){
  loginStatus.textContent="ログイン済み・協力店";
  databaseStatus.textContent="件数API";
  pInline("pInlineDate").value=partnerMainDate();
+ pInline("pInlineMonth").value=partnerMainDate().slice(0,7);
  await partnerInlineFetch();
+ if(partnerInlineData)void partnerInlineMonthFetch();
 }
 async function partnerInlineRun(work){
  if(partnerInlineBusy||!partnerInlineData)return;
@@ -12471,7 +12541,10 @@ async function partnerInlineRun(work){
   const message=await work();
   if(uid!==auth.currentUser?.uid)return;
   await partnerInlineFetch();
-  if(partnerInlineData)partnerInlineStatus(message||"更新しました。");
+  if(partnerInlineData){
+   partnerInlineStatus(message||"更新しました。");
+   void partnerInlineMonthFetch();
+  }
  }catch{
   partnerInlineStatus("保存・招待を確認できませんでした。内容・所属・権限を確認してください。",true);
  }finally{partnerInlineBusy=false;if(partnerInlineData)partnerInlineRenderCounts();}
@@ -12480,6 +12553,8 @@ function partnerInlinePayload(data){
  return {...data,...(partnerInlineWorkspaceCompany?{workspaceCompanyId:partnerInlineWorkspaceCompany}:{})};
 }
 pInline("pInlineDate").onchange=partnerInlineFetch;
+pInline("pInlineMonth").onchange=partnerInlineMonthFetch;
+pInline("pInlineMonthRefresh").onclick=partnerInlineMonthFetch;
 pInline("pInlineRefresh").onclick=partnerInlineFetch;
 pInline("pInlineStaff").onchange=partnerInlineRenderCounts;
 pInline("pInlineAddTeam").onclick=()=>partnerInlineRun(async()=>{
