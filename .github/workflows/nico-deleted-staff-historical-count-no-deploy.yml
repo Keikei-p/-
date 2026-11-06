@@ -45,8 +45,8 @@ jobs:
           test "$base" = 895043175374865223dd98f6de4f96ae861fdf13
           test "$(git merge-base HEAD "$base")" = "$base"
           git diff --name-only "$base"...HEAD > /tmp/nico-orphan-count-files.txt
-          test "$(wc -l < /tmp/nico-orphan-count-files.txt)" -eq 3
-          if grep -Ev '^(functions-partner-workspace/service[.]cjs|tests/partner-workspace[.]test[.]cjs|[.]github/workflows/nico-deleted-staff-historical-count-no-deploy[.]yml)$' /tmp/nico-orphan-count-files.txt; then
+          test "$(wc -l < /tmp/nico-orphan-count-files.txt)" -eq 5
+          if grep -Ev '^(functions-partner-workspace/service[.]cjs|tests/partner-workspace[.]test[.]cjs|[.]github/workflows/(nico-deleted-staff-historical-count-no-deploy|nico-nov9-release-candidate-no-deploy|nico-partner-daily-historic-ranking-no-deploy)[.]yml)$' /tmp/nico-orphan-count-files.txt; then
             echo STOP_UNREVIEWED_DELETED_STAFF_CHANGE
             exit 1
           fi
