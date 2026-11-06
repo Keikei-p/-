@@ -4764,16 +4764,6 @@ body.product-reordering .product-list {
       <button id="pInlineSave" type="button">件数を保存</button>
       <span id="pInlineVersion" class="p-inline-muted"></span>
     </div>
-    <div id="pInlineExtraPanel" class="p-inline-card">
-      <h3>📦 本社公開の追加商材（件数のみ）</h3>
-      <p class="p-inline-muted">公開ONの新商材を2列で入力できます。従来の9商材は上の入力欄を使用してください。</p>
-      <div id="pInlineExtraFields" class="p-inline-grid"></div>
-      <div class="p-inline-actions">
-        <button id="pInlineExtraSave" type="button" disabled>追加商材の件数を保存</button>
-        <span id="pInlineExtraVersion" class="p-inline-muted"></span>
-      </div>
-      <p id="pInlineExtraStatus" class="p-inline-muted" role="status" aria-live="polite">公開対象の追加商材を確認中...</p>
-    </div>
   </div>
   <div class="p-inline-card" id="pInlineExtraCard">
     <h3>📦 本社が公開した追加商材｜件数入力</h3>
@@ -7179,8 +7169,6 @@ const readPartnerPublishedCatalog = httpsCallable(partnerCountFunctions,"getPart
 const setPartnerPublishedProduct = httpsCallable(partnerCountFunctions,"setPartnerPublishedProduct");
 const readPartnerAdditionalDay = httpsCallable(partnerCountFunctions,"getPartnerAdditionalCounts");
 const submitPartnerAdditionalDay = httpsCallable(partnerCountFunctions,"submitPartnerAdditionalCounts");
-const getPartnerAdditionalCounts = httpsCallable(partnerCountFunctions,"getPartnerAdditionalCounts");
-const submitPartnerAdditionalCounts = httpsCallable(partnerCountFunctions,"submitPartnerAdditionalCounts");
 
 const partnerInlineManage = httpsCallable(partnerCountFunctions,"managePartnerWorkspace");
 const partnerInlineSave = httpsCallable(partnerCountFunctions,"submitPartnerWorkspaceCounts");
