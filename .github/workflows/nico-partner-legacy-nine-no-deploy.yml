@@ -40,11 +40,11 @@ jobs:
           cat /tmp/legacy-nine-checked.txt
           while IFS= read -r file; do
             case "$file" in
-              index.html|functions-partner-workspace/index.js|functions-partner-workspace/service.cjs|functions-partner-workspace/legacy-publication-policy.cjs|functions-partner-workspace/legacy-publication-operations.cjs|tests/partner-legacy-nine-optin-safe.test.cjs|.github/workflows/nico-partner-legacy-nine-no-deploy.yml) ;;
+              index.html|functions-partner-workspace/index.js|functions-partner-workspace/service.cjs|functions-partner-workspace/legacy-publication-policy.cjs|functions-partner-workspace/legacy-publication-operations.cjs|tests/partner-legacy-nine-optin-safe.test.cjs|tests/partner-one-login-same-app.test.cjs|.github/workflows/nico-partner-legacy-nine-no-deploy.yml) ;;
               *) echo "STOP_UNREVIEWED_SOURCE: $file"; exit 1 ;;
             esac
           done < /tmp/legacy-nine-checked.txt
-          test "$(wc -l < /tmp/legacy-nine-checked.txt)" -eq 7
+          test "$(wc -l < /tmp/legacy-nine-checked.txt)" -eq 8
       - name: Check isolated JS syntax and representative regression suite
         run: |
           set -euo pipefail
