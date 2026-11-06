@@ -12621,7 +12621,7 @@ function partnerValidateCombinedMonth(data,month){
  if(!data||data.scope!=="joint_saved_month_counts_only"||
     data.month!==month||data.complete!==false||data.provisional!==true||
     !Array.isArray(data.people)||data.people.length>10000||
-    !Array.isArray(data.products)||data.products.length>10||
+    !Array.isArray(data.products)||data.products.length>1010||
     !Number.isSafeInteger(data.grandTotal)||data.grandTotal<0||
     !Number.isSafeInteger(data.partnerTotal)||data.partnerTotal<0||
     !Number.isSafeInteger(data.directTotal)||data.directTotal<0||
