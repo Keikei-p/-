@@ -17,6 +17,8 @@ exports.getPartnerWorkspace=onCall(opts,service.view);
 exports.getPartnerSavedMonthlyCounts=onCall(opts,service.viewSavedMonth);
 // Joint provisional saved-count ranking: never return internal sales/prices.
 exports.getPartnerCombinedMonthlyCounts=onCall(opts,service.viewCombinedMonth);
+exports.getPartnerPublishedCatalog=onCall(opts,service.getPublishedCatalog);
+exports.setPartnerPublishedProduct=onCall(opts,service.setPublishedProduct);
 exports.managePartnerWorkspace=onCall(opts,service.manage);
 exports.acceptPartnerWorkspaceInvite=onCall(opts,service.accept);
 exports.submitPartnerWorkspaceCounts=onCall(opts,service.submit);
