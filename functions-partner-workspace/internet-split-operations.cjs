@@ -130,7 +130,7 @@ function makePartnerInternetSplitOperations({db,actor,scope,collection,fail,
   const byId=new Map();
   for(const sn of splitDocs.docs){
    const row=sn.data()||{},id=row.date+"__"+row.staffId;
-   if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(row.date||"")||
+   if(!/^\d{4}-\d{2}-\d{2}$/.test(row.date||"")||
       !ID.test(row.staffId||"")||sn.id!==id||byId.has(id)||
       row.date<bounds.first||row.date>bounds.last)fail("data-loss");
    let parsed;
@@ -162,8 +162,8 @@ function makePartnerInternetSplitOperations({db,actor,scope,collection,fail,
    if(!person){
     const candidate=row.staffNameSnapshot;
     const label=typeof candidate==="string"&&
-      /^[\\p{L}\\p{N} 　・ー（）()_.-]{1,60}$/u.test(candidate)&&
-      !/(?:単価|売上|利益|報酬|[¥￥$€]|\\d[\\d,]*円)/.test(candidate)?
+      /^[\p{L}\p{N} 　・ー（）()_.-]{1,60}$/u.test(candidate)&&
+      !/(?:単価|売上|利益|報酬|[¥￥$€]|\d[\d,]*円)/.test(candidate)?
       candidate:"当時の氏名未確認";
     person={staffId,name:label,combined:0,hikari:0,air:0,unclassified:0};
     people.set(staffId,person);
