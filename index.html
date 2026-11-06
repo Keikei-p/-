@@ -13609,6 +13609,13 @@ function renderPartnerDashboardMonth(data,month){
   throw Error("partner_month_dashboard_contract");
  if(partnerInlineWorkspaceCompany&&partnerInlineWorkspaceCompany!==companyId)
   throw Error("partner_month_workspace_mismatch");
+ const directPending=data.directIntegrityUnverified===true;
+ if(directPending&&
+    (data.includesDirect!==false||data.direct!==null||
+     data.recordsVerified!==null||data.provisionalReason!=="MONTHLY_DIRECT_COUNTS_UNVERIFIED"))
+  throw Error("partner_month_direct_integrity_contract");
+ if(!directPending&&(!data.direct||data.includesDirect!==true))
+  throw Error("partner_month_direct_missing_without_reason");
  const company=data.companies.find(c=>c.id===companyId);
  if(!company||company.name!==snap.companyName||
     !Number.isSafeInteger(company.totalCount)||company.totalCount<0||
@@ -13671,6 +13678,9 @@ function renderPartnerDashboardMonth(data,month){
  if(!teams.length)partnerMainAppendRow(chart,"この月の保存済み班実績はありません",
   "未報告は0件として扱いません。");
  const shared=pInline("partnerSharedDetailTree");shared.replaceChildren();
+ if(directPending)
+  partnerMainAppendRow(shared,"🏢 直営｜件数未照合",
+   "保存済みの自社実績に不一致があるため、直営の件数・合同順位は保留しています。記録は変更していません。");
  if(data.direct?.teams&&data.direct?.people&&
     Array.isArray(data.direct.teams)&&Array.isArray(data.direct.people)){
   appendPartnerMonthCompany(shared,"🏢 直営｜"+
@@ -13685,12 +13695,15 @@ function renderPartnerDashboardMonth(data,month){
   appendPartnerMonthCompany(shared,"🤝 "+partner.name+"｜"+
    (partner.verifiedEntryCount>0?partner.totalCount+"件":"未報告"),t,p,keys);
  }
- pInline("pPartnerMonthStatus").textContent=reported?
-  label+"の保存済み実績を表示中｜未報告日は0件と扱わず、月間順位は暫定です。"+
+ pInline("pPartnerMonthStatus").textContent=(reported?
+  label+"の協力店の保存済み実績を表示中。未報告日は0件と扱いません。"+
   (company.archivedExtraTotalCount?" 公開OFF商材の過去"+company.archivedExtraTotalCount+"件も合計に保持しています。":"") :
-  label+"はまだ登録済み実績を確認できません。未報告を0件とは表示しません。";
+  label+"の協力店の保存済み実績は未報告です（0件とは扱いません）。")+
+  (directPending?" 直営の件数が未照合のため、合同ランキングは非表示・未確定です。":
+   " 月間合同ランキングは暫定です。");
  pInline("partnerSharedDetailStatus").textContent="対象月 "+label+
-  " の保存済み班・担当者別件数です。登録時の班を使用し、売上・単価は含みません。";
+  " の保存済み班・担当者別件数です。登録時の班を使用し、売上・単価は含みません。"+
+  (directPending?" 直営の件数は未照合です。":"");
 }
 async function loadPartnerDashboardMonth({force=false}={}){
  const snap=partnerInlineData,uid=auth.currentUser?.uid;
@@ -13928,6 +13941,8 @@ async function loadOwnerMonthlySharedRanks(which){
   const key=uid+"|"+(currentUserData?.companyId||"")+"|"+month;
   const old=ownerMonthlyRankCache.get(key),cached=old&&Date.now()-old.checkedAt<180000;
   const response=cached?old.value:(await readPartnerMonthlySharedCounts({month})).data;
+  if(response?.directIntegrityUnverified===true)
+   throw Error("monthly_direct_integrity_unverified");
   if(!currentOwnerMonthlyRankRequest(rankToken)||auth.currentUser?.uid!==uid||
      document.getElementById(monthField).value!==month)return;
   if(response?.scope!=="shared_monthly_counts_only"||response.role!=="hub"||
@@ -13962,7 +13977,9 @@ async function loadOwnerMonthlySharedRanks(which){
   status.textContent="月間件数の途中経過です。未報告・未照合の実績は0件として確定していません。";
  }catch(error){
   if(!currentOwnerMonthlyRankRequest(rankToken)||auth.currentUser?.uid!==uid)return;
-  status.textContent="月間の件数を照合できません。読取上限・認証・権限を確認してください。既存売上データは維持しています。";
+  status.textContent=error?.message==="monthly_direct_integrity_unverified"?
+   "自社の保存済み実績に件数不一致があるため、合同順位は未確定として非表示です。協力店の月別実績・班別詳細は別画面で確認できます。":
+   "月間の件数を照合できません。読取上限・認証・権限を確認してください。既存売上データは維持しています。";
   if(which==="Individual"){ownerJointIndividualSnapshot=null;renderOwnerJointIndividualRanking();}
   else{ownerJointProductSnapshot=null;renderOwnerJointProductRanking(null);}
   console.error("shared_monthly_count_unavailable",error?.code||"unverified");
@@ -14067,6 +14084,8 @@ async function loadPartnerMonthlySharedRankings(){
   const key=uid+"|partner|"+(partnerInlineWorkspaceCompany||"")+"|"+month;
   const old=ownerMonthlyRankCache.get(key),cached=old&&Date.now()-old.checkedAt<180000;
   const response=cached?old.value:(await readPartnerMonthlySharedCounts(payload)).data;
+  if(response?.directIntegrityUnverified===true)
+   throw Error("monthly_direct_integrity_unverified");
   if(!currentOwnerMonthlyRankRequest(rankToken)||auth.currentUser?.uid!==uid||
      partnerSharedRankPeriod!=="month"||monthInput.value!==month)return;
   if(response?.scope!=="shared_monthly_counts_only"||response.role!=="partner"||
@@ -14123,8 +14142,9 @@ async function loadPartnerMonthlySharedRankings(){
   const historicalCountMismatch=
    error?.code==="functions/failed-precondition"&&
    error?.message==="MONTHLY_DIRECT_COUNTS_UNVERIFIED";
-  status.textContent=historicalCountMismatch?
-   "直営の保存済み実績に件数不一致があるため、月間の合同ランキングを未確定として保留しています。順位の推測・0件扱いは行いません。":
+  status.textContent=historicalCountMismatch||
+   error?.message==="monthly_direct_integrity_unverified"?
+   "直営の保存済み実績に件数不一致があるため、月間の合同ランキングを未確定として保留しています。協力店の月別ダッシュボードは確認できます。順位の推測・0件扱いは行いません。":
    "月間の集計を照合できません。入力データ・権限・読取上限を確認してください。";
   console.error("partner_monthly_rank_unavailable",error?.code||"unverified");
  }
