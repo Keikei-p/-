@@ -184,6 +184,55 @@ test("editing the source afterwards marks saved split unverified, never silently
  assert.equal(changed.revision,2);
  assert.equal((await ops.viewInternetSplitDay(req("leader",{date:day}))).records[0].verified,true);
 });
+test("Owner month separates Hikari, Air, and unclassified without changing the saved five",async()=>{
+ const {db,ops,req}=fixture(),initial=clone([...db.items]);
+ const before=await ops.viewInternetSplitMonth(req("owner",{
+  month:"2026-11",partnerCompanyId:"p1"}));
+ assert.equal(before.combinedTotal,5);
+ assert.equal(before.verifiedHikari,0);
+ assert.equal(before.verifiedAir,0);
+ assert.equal(before.unclassified,5);
+ assert.equal(before.people.length,1);
+ assert.deepEqual([...db.items],initial);
+ await ops.submitInternetSplit(req("leader",{date:day,staffId:"person",
+  hikari:3,air:2,sourceVersion:3,expectedRevision:0}));
+ const after=await ops.viewInternetSplitMonth(req("owner",{
+  month:"2026-11",partnerCompanyId:"p1"}));
+ assert.equal(after.combinedTotal,5);
+ assert.equal(after.verifiedHikari,3);
+ assert.equal(after.verifiedAir,2);
+ assert.equal(after.unclassified,0);
+ assert.equal(after.classifiedRows,1);
+ assert.doesNotMatch(JSON.stringify(after),/revenue|unitPrice|cashback|999999|88000/i);
+});
+test("another historical date remains unclassified until its own exact source is verified",async()=>{
+ const {db,ops,req}=fixture();
+ db.seed("companies/p1/partnerWorkEntries/2026-11-05__person",{
+  ...row("p1","person",4,1),date:"2026-11-05"});
+ await ops.submitInternetSplit(req("leader",{date:day,staffId:"person",
+  hikari:2,air:3,sourceVersion:3,expectedRevision:0}));
+ const d=await ops.viewInternetSplitMonth(req("owner",{
+  month:"2026-11",partnerCompanyId:"p1"}));
+ assert.equal(d.combinedTotal,9);
+ assert.equal(d.verifiedHikari,2);
+ assert.equal(d.verifiedAir,3);
+ assert.equal(d.unclassified,4);
+ assert.equal(d.people[0].combined,9);
+ assert.equal(d.people[0].unclassified,4);
+ assert.equal(d.sourceRows,2);
+ assert.equal(d.classifiedRows,1);
+});
+test("monthly partner company authorization and date range fail without touching records",async()=>{
+ const {db,ops,req}=fixture(),before=clone([...db.items]);
+ await assert.rejects(ops.viewInternetSplitMonth(req("owner",{
+  month:"2026-11",partnerCompanyId:"not-hub"})));
+ await assert.rejects(ops.viewInternetSplitMonth(req("leader",{
+  month:"2026-11",partnerCompanyId:"p2"})));
+ await assert.rejects(ops.viewInternetSplitMonth(req("owner",{
+  month:"2030-01",partnerCompanyId:"p1"})));
+ assert.deepEqual([...db.items],before);
+ assert.equal(db.writes.length,0);
+});
 test("consumer count UI keeps original legacy save; new editor enforces the exact sum and account reset",()=>{
  const html=fs.readFileSync(path.join(__dirname,"../index.html"),"utf8");
  const service=fs.readFileSync(path.join(__dirname,"../functions-partner-workspace/service.cjs"),"utf8");
@@ -200,6 +249,8 @@ test("consumer count UI keeps original legacy save; new editor enforces the exac
  assert.match(html,/void partnerInternetFetch\(\)/);
  assert.match(service,/makePartnerInternetSplitOperations/);
  assert.match(callable,/exports\.getPartnerInternetSplitDay=onCall/);
+ assert.match(callable,/getPartnerInternetSplitMonth=onCall/);
+ assert.match(html,/loadOwnerPartnerInternetMonth\(companyId,month,uid,seq,data\.counts\["SB光・AIR"\]\)/);
  assert.match(callable,/exports\.submitPartnerInternetSplit=onCall/);
  assert.doesNotMatch(html.slice(html.indexOf("function partnerInternetRender(){"),
   html.indexOf('pInline("pInlineAddTeam").onclick=')),/\b(?:setDoc|updateDoc|deleteDoc|getDocs|getDoc|onSnapshot)\s*\(/);
