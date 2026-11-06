@@ -25,6 +25,7 @@ function projectCombinedMonth({month,hubId,keys,direct,partners=[]}={}){
     keys.some(x=>typeof x!=="string"||!x)||
     !Array.isArray(partners)||partners.length>20||
     !direct||!validCount(direct.totalCount)||!validCount(direct.otherCount)||
+    !validCount(direct.recordsVerified)||
     !Array.isArray(direct.people)||!Array.isArray(direct.teams)||
     direct.people.length>10000||direct.peopleVerified!==true)
    fail();
@@ -83,7 +84,8 @@ function projectCombinedMonth({month,hubId,keys,direct,partners=[]}={}){
   if(previous!==p.totalCount){rank=index+1;previous=p.totalCount;}
   return {...p,rank};
  });
- const products=keys.map(name=>({name,totalCount:totals[name]}));
+ const haveSavedRows=direct.recordsVerified+partnerRows>0;
+ const products=haveSavedRows?keys.map(name=>({name,totalCount:totals[name]})):[];
  if(direct.otherCount>0)products.push({name:"その他（直営）",totalCount:direct.otherCount});
  products.sort((a,b)=>b.totalCount-a.totalCount||a.name.localeCompare(b.name,"ja"));
  let prev=null,productRank=0;
@@ -97,7 +99,7 @@ function projectCombinedMonth({month,hubId,keys,direct,partners=[]}={}){
   scope:"joint_saved_month_counts_only",month,complete:false,provisional:true,
   provisionalReason:"保存済み件数のみ。未報告日・未報告者は未照合",
   includesDirect:true,partnerCount:partners.length,
-  verifiedPartnerRows:partnerRows,grandTotal,partnerTotal,
+  verifiedPartnerRows:partnerRows,hasSavedRows:haveSavedRows,grandTotal,partnerTotal,
   directTotal:direct.totalCount,otherDirectCount:direct.otherCount,
   companies,people:standing,products:productStanding,
   productionDocumentWrites:0
