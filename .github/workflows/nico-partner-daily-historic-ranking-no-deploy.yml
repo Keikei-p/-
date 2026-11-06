@@ -40,18 +40,19 @@ jobs:
           test -z "$NICO_PARTNER_RELEASE_CONFIRMATION"
           git fetch --no-tags origin release/partner-month-phase1-candidate-20261106
           base="$(git rev-parse origin/release/partner-month-phase1-candidate-20261106)"
-          test "$base" = 8b170ca7ae7309dfd5f148afebcf2f0e9dd5c4e9
+          test "$base" = 895043175374865223dd98f6de4f96ae861fdf13
           test "$(git merge-base HEAD "$base")" = "$base"
           git diff --name-only "$base"...HEAD > /tmp/nico-history-input-files.txt
           cat /tmp/nico-history-input-files.txt
-          test "$(wc -l < /tmp/nico-history-input-files.txt)" -eq 4
-          if grep -Ev '^(index[.]html|tests/partner-daily-history-active-input[.]test[.]cjs|[.]github/workflows/(nico-partner-daily-historic-ranking-no-deploy|nico-nov9-release-candidate-no-deploy)[.]yml)$' /tmp/nico-history-input-files.txt; then
+          test "$(wc -l < /tmp/nico-history-input-files.txt)" -eq 5
+          if grep -Ev '^(functions-partner-workspace/service[.]cjs|tests/partner-workspace[.]test[.]cjs|[.]github/workflows/(nico-partner-daily-historic-ranking-no-deploy|nico-nov9-release-candidate-no-deploy|nico-deleted-staff-historical-count-no-deploy)[.]yml)$' /tmp/nico-history-input-files.txt; then
             echo STOP_UNREVIEWED_HISTORY_INPUT_FILES
             exit 1
           fi
           test "$(git hash-object index.html)" = 1b0d7e22d55d3b37f6767d716583ccd5df0c0b15
           test "$(git hash-object firestore.rules)" = 6d6ac7fd3544b0326823e419a3acd7e1d060b714
-          git diff --exit-code "$base" HEAD -- firestore.rules firestore.indexes.json functions functions-partner-workspace functions-partner-quick
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = d6ad6aa8f0f26910515aad8cd70962cbcd9ed6c7
+          git diff --exit-code "$base" HEAD -- firestore.rules firestore.indexes.json functions functions-partner-workspace functions-partner-quick ':(exclude)functions-partner-workspace/service.cjs'
       - name: Existing rankings, monthly, authentication, sales and newly added historical case
         run: |
           node --test tests/partner-daily-history-active-input.test.cjs tests/partner-saved-month-ui-main.test.cjs tests/partner-saved-month-main.test.cjs tests/partner-existing-ranking.test.cjs tests/sales-regressions.cjs tests/internal-owner-finance-visibility.test.cjs tests/partner-one-login-same-app.test.cjs
