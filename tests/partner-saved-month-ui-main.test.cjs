@@ -204,3 +204,37 @@ test("joint rankings reject broken totals, ties, leaked finance, and unverified 
   assert.throws(()=>check(changed,"2026-10"),/joint_saved_month_invalid/);
  }
 });
+
+
+test("HQ joint personal and product count ranks live in original ranking tabs, not company admin",()=>{
+ const individualStart=html.indexOf('id="individualRankingContent"');
+ const productStart=html.indexOf('id="productRankingContent"');
+ const teamStart=html.indexOf('id="teamRankingContent"');
+ const adminStart=html.indexOf('id="ownerPartnerMonthControls"');
+ assert(individualStart>=0&&productStart>individualStart&&teamStart>productStart&&adminStart>teamStart);
+ const individual=html.slice(individualStart,productStart);
+ const product=html.slice(productStart,teamStart);
+ const admin=html.slice(adminStart,html.indexOf('id="productManagement"',adminStart));
+ assert.match(individual,/id="individualRankingList"/);
+ assert.match(individual,/id="ownerPartnerJointPeople"/);
+ assert.match(individual,/id="ownerPartnerJointRefresh"/);
+ assert.match(product,/id="productRankingMemberList"/);
+ assert.match(product,/id="ownerPartnerJointProducts"/);
+ assert.match(product,/id="ownerPartnerJointProductsRefresh"/);
+ assert.doesNotMatch(admin,/ownerPartnerJointPeople|ownerPartnerJointProducts/);
+ assert.match(html,/individualRankingToggle\.addEventListener\("click",\(\)=>loadOwnerJointForRankingTab\(\)\)/);
+ assert.match(html,/productRankingToggle\.addEventListener\("click",\(\)=>loadOwnerJointForRankingTab\(\)\)/);
+ const start=html.indexOf('function loadOwnerJointForRankingTab(');
+ const end=html.indexOf('async function loadOwnerPartnerSavedMonth(',start);
+ const source=html.slice(start,end);
+ assert.match(source,/dashboardMonth\.value/);
+ assert.match(source,/ownerJointCachedMonth===key/);
+ assert.match(source,/isCurrentCompanyOwner\(\)/);
+ assert.match(source,/partnerFetchJointMonth\("owner",dashboardMonth\.value,""\)/);
+ assert.doesNotMatch(source,/firebase-firestore|setDoc|updateDoc|deleteDoc|onSnapshot/);
+ const joint=html.slice(html.indexOf("async function partnerFetchJointMonth("),
+  html.indexOf("async function partnerInlineMonthFetch(){"));
+ assert.match(joint,/dashboardMonth\.value!==month/);
+ assert.match(joint,/pInline\("ownerPartnerJointProductStatus"\)/);
+ assert.doesNotMatch(joint,/ownerPartnerMonth"\)\.value!==month/);
+});
