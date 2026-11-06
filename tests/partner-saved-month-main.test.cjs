@@ -216,3 +216,63 @@ test("pure reducer rejects foreign staff rows in a member-scoped response",()=>{
   categoryKeys:KEYS,role:"member",actorUid:"member"
  }),/UNVERIFIED/);
 });
+
+
+test("real scoped joint-month API combines verified direct and partner saved counts without money",async()=>{
+ const {api,req,db}=seed();
+ const pc=db.rows.get("companies/partner");
+ db.seed("companies/partner",{...pc,name:"協力店A"});
+ db.seed("records/direct_one",{
+  companyId:"hub",date:"2026-10-21",uid:"h",
+  memberNameSnapshot:"本社担当",teamId:"directTeam",
+  teamNameSnapshot:"本社第1班",totalCount:2,
+  results:[{productName:"NURO",count:2,revenuePerUnit:999999}],
+  totalRevenue:888888,unitPrice:777777
+ });
+ const before=structuredClone([...db.rows]);
+ const owner=await api.viewCombinedMonth(req("h",{month:"2026-10"}));
+ const partner=await api.viewCombinedMonth(req("p",{month:"2026-10"}));
+ const member=await api.viewCombinedMonth(req("m",{month:"2026-10"}));
+ for(const result of [owner,partner,member]){
+  assert.equal(result.scope,"joint_saved_month_counts_only");
+  assert.equal(result.month,"2026-10");
+  assert.equal(result.grandTotal,11);
+  assert.equal(result.directTotal,2);
+  assert.equal(result.partnerTotal,9);
+  assert.equal(result.people.length,3);
+  assert.equal(result.companies[0].name,"協力店A");
+  assert.equal(result.products.find(x=>x.name==="NURO").totalCount,11);
+  assert.equal(result.complete,false);
+  assert.equal(result.provisional,true);
+  assert.deepEqual(result.people.map(x=>x.rank),[1,2,3]);
+  assert.doesNotMatch(JSON.stringify(result),
+   /totalRevenue|revenuePerUnit|unitPrice|888888|777777|999999|records\/|\/members\/|email/);
+ }
+ assert.deepEqual([...db.rows],before,"even live-role reads never alter histories");
+});
+test("joint-month API fails closed on financial original that does not match direct saved total",async()=>{
+ const {api,req,db}=seed();
+ db.seed("companies/partner",{...db.rows.get("companies/partner"),name:"協力店A"});
+ db.seed("records/invalid",{
+  companyId:"hub",date:"2026-10-23",uid:"h",
+  memberNameSnapshot:"本社担当",teamId:"teamA",
+  totalCount:2,results:[{productName:"NURO",count:1,revenuePerUnit:9999}]
+ });
+ await assert.rejects(api.viewCombinedMonth(req("p",{month:"2026-10"})),
+  e=>e.code==="failed-precondition");
+ // The isolated partner-only month stays available even if ONE direct
+ // original has a mismatch; never rewrite the disputed original.
+ const own=await api.viewSavedMonth(req("p",{month:"2026-10"}));
+ assert.equal(own.totalCount,9);
+ assert.equal(db.rows.get("records/invalid").totalCount,2);
+});
+test("joint-month access rejects arbitrary company overrides and future month",async()=>{
+ const {api,req}=seed();
+ for(const user of ["p","m","h"]){
+  await assert.rejects(api.viewCombinedMonth(req(user,{
+   month:"2026-10",partnerCompanyId:"partner"
+  })),e=>e.code==="invalid-argument");
+  await assert.rejects(api.viewCombinedMonth(req(user,{month:"2026-12"})),
+   e=>e.code==="invalid-argument");
+ }
+});
