@@ -456,3 +456,105 @@ test("unpublished extras stay saved; unavailable extra verification never become
  assert.equal(uncertain.combinedTotalCount,null);
  assert.equal(db.rows.get(path).totalCount,999);
 });
+
+
+test("monthly extra ledger preserves original team snapshots, product, partner and member counts",async()=>{
+ const {db,api,req}=seed();
+ db.seed("products/new-service",{companyId:"hub",name:"追加商材X",active:true,
+  unitPrice:555555,revenue:987654,price:999999});
+ db.seed("companies/hub/partnerCatalogSettings/publication",{
+  revision:1,productIds:["new-service"]
+ });
+ const save=(day,id,team,n)=>db.seed(
+  "companies/partner/partnerAdditionalCountEntries/"+day+"__"+id,{
+   companyId:"partner",hubCompanyId:"hub",date:day,staffId:id,
+   staffNameSnapshot:id==="m"?"田中":"佐藤",teamIdSnapshot:team,
+   counts:{"new-service":n},totalCount:n,version:1,unitPrice:555555
+  });
+ save("2026-10-09","p","teamA",2);
+ save("2026-10-21","m","teamB",3);
+ const before=structuredClone([...db.rows]);
+ const h=await api.viewSavedMonth(req("h",{
+  month:"2026-10",partnerCompanyId:"partner"
+ }));
+ const p=await api.viewSavedMonth(req("p",{month:"2026-10"}));
+ const m=await api.viewSavedMonth(req("m",{month:"2026-10"}));
+ assert.equal(h.totalCount,9,"historical 9-category totals stay unchanged");
+ assert.equal(h.extraVerified,true);
+ assert.equal(h.extra.totalCount,5);
+ assert.equal(h.combinedTotalCount,14);
+ assert.deepEqual(h.extra,p.extra);
+ assert.equal(h.extra.teams.find(x=>x.name==="旧班").totalCount,2);
+ assert.equal(h.extra.teams.find(x=>x.name==="新班").totalCount,3);
+ assert.equal(h.extra.teams.find(x=>x.name==="新班").members[0].name,"田中");
+ assert.equal(h.extra.teams.find(x=>x.name==="新班").members[0].counts["new-service"],3);
+ assert.equal(m.extraVerified,true);
+ assert.equal(m.extra.totalCount,3);
+ assert.equal(m.extra.teams.length,1);
+ assert.equal(m.extra.people.length,1);
+ assert.doesNotMatch(JSON.stringify(m.extra),/佐藤|旧班/);
+ const november=await api.viewSavedMonth(req("p",{month:"2026-11"}));
+ assert.equal(november.extraVerified,true);
+ assert.equal(november.extra.totalCount,0);
+ assert.equal(november.combinedTotalCount,11);
+ for(const snapshot of [h,p,m,november])
+  assert.doesNotMatch(JSON.stringify(snapshot),
+   /unitPrice|revenue|price|cashback|555555|987654|999999/);
+ assert.deepEqual([...db.rows],before,"monthly read cannot mutate old counts/sales/history");
+});
+test("monthly published OFF additional product retains the original count but is not returned",async()=>{
+ const {db,api,req}=seed();
+ db.seed("products/new-service",{companyId:"hub",name:"追加商材X",active:true});
+ db.seed("companies/partner/partnerAdditionalCountEntries/2026-10-21__m",{
+  date:"2026-10-21",companyId:"partner",hubCompanyId:"hub",staffId:"m",
+  staffNameSnapshot:"田中",teamIdSnapshot:"teamB",version:1,
+  counts:{"new-service":3},totalCount:3
+ });
+ const before=structuredClone([...db.rows]);
+ const v=await api.viewSavedMonth(req("p",{month:"2026-10"}));
+ assert.equal(v.totalCount,9);
+ assert.equal(v.extraVerified,true);
+ assert.equal(v.extra.totalCount,0);
+ assert.equal(v.combinedTotalCount,9);
+ assert.equal(v.extra.containsUnpublished,true);
+ assert.doesNotMatch(JSON.stringify(v.extra),/追加商材X|new-service/);
+ assert.deepEqual([...db.rows],before);
+});
+test("monthly extra ledger keeps unknown original team unattributed",async()=>{
+ const {db,api,req}=seed();
+ db.seed("products/new-service",{companyId:"hub",name:"追加商材X",active:true});
+ db.seed("companies/hub/partnerCatalogSettings/publication",{
+  revision:1,productIds:["new-service"]
+ });
+ db.seed("companies/partner/partnerAdditionalCountEntries/2026-10-30__m",{
+  date:"2026-10-30",companyId:"partner",hubCompanyId:"hub",staffId:"m",
+  staffNameSnapshot:"田中",teamIdSnapshot:null,version:1,
+  counts:{"new-service":4},totalCount:4
+ });
+ const v=await api.viewSavedMonth(req("p",{month:"2026-10"}));
+ assert.equal(v.extraVerified,true);
+ assert.equal(v.extra.totalCount,4);
+ assert.equal(v.extra.unattributedRows,1);
+ assert.equal(v.extra.unattributedCount,4);
+ assert.deepEqual(v.extra.teams,[]);
+ assert.equal(v.extra.people[0].counts["new-service"],4);
+});
+test("malformed additional month does not invent zero or block original nine count history",async()=>{
+ const {db,api,req}=seed();
+ db.seed("products/new-service",{companyId:"hub",name:"追加商材X",active:true});
+ db.seed("companies/hub/partnerCatalogSettings/publication",{
+  revision:1,productIds:["new-service"]
+ });
+ db.seed("companies/partner/partnerAdditionalCountEntries/2026-10-21__m",{
+  date:"2026-10-21",companyId:"partner",hubCompanyId:"hub",staffId:"m",
+  staffNameSnapshot:"田中",teamIdSnapshot:"teamB",version:1,
+  counts:{"new-service":3},totalCount:4
+ });
+ const before=structuredClone([...db.rows]);
+ const result=await api.viewSavedMonth(req("p",{month:"2026-10"}));
+ assert.equal(result.totalCount,9);
+ assert.equal(result.extra,null);
+ assert.equal(result.extraVerified,false);
+ assert.equal(result.combinedTotalCount,null,"unknown extra is never forged as zero");
+ assert.deepEqual([...db.rows],before);
+});
