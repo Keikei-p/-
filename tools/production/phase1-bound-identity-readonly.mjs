@@ -127,6 +127,29 @@ export function createAffectedSecondaryIdentityVerifier({
     const partnerCompany=await read('companies/'+partnerCompanyId);
     const partnerMember=await read('companies/'+partnerCompanyId+
       '/members/'+expectedPartnerUid);
+    // The live submitPartnerWorkspaceCounts Callable checks partnerRelations
+    // on EVERY call. A disabled/mismatched relation can still yield a valid
+    // partner 403 for money, but the user can no longer submit counts.
+    // This must be detected BEFORE changing any live Security Rules.
+    const relation=await read('partnerRelations/'+partnerCompanyId);
+    if(relation.partnerCompanyId!==partnerCompanyId||
+       relation.hubCompanyId!==internalCompanyId||
+       relation.active!==true||relation.countSharingApproved!==true)
+      stop('PARTNER_COUNT_SHARING_NOT_READY');
+    // Leader/member submit has an authenticated self-staff path. A missing,
+    // deactivated or moved-to-another-team staff row makes their ordinary
+    // count-entry form fail even when all financial reads are denied.
+    if(['leader','member'].includes(context.role)){
+      const staff=await read('companies/'+partnerCompanyId+
+        '/partnerWorkStaff/'+expectedPartnerUid);
+      if(staff.uid!==expectedPartnerUid||
+         staff.companyId!==partnerCompanyId||
+         staff.kind!=='account'||staff.active!==true||
+         staff.role!==context.role||
+         staff.teamId!==context.teamId||
+         typeof staff.name!=='string'||staff.name.trim().length===0)
+        stop('PARTNER_SELF_COUNT_ENTRY_NOT_READY');
+    }
     if(context.uid!==expectedPartnerUid ||
        context.kind!=='partner_secondary'||context.active!==true||
        context.primaryCompanyId!==internalCompanyId||
