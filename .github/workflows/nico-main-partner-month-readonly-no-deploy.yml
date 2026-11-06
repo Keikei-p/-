@@ -42,7 +42,7 @@ jobs:
           git fetch --no-tags origin main
           test "$(git rev-parse origin/main)" = 17681e69d3ebd7271cc9a58e138fd0e202db7294
           git diff --name-only origin/main...HEAD > /tmp/nico-month-files.txt
-          if grep -Ev '^(functions-partner-workspace/(partner-saved-month\.cjs|service\.cjs|index\.js)|tests/partner-saved-month-main\.test\.cjs|\.github/workflows/nico-main-partner-month-readonly-no-deploy\.yml)$' /tmp/nico-month-files.txt; then
+          if grep -Ev '^(functions-partner-workspace/(partner-saved-month\.cjs|service\.cjs|index\.js)|index\.html|tests/partner-saved-month-(main|ui-main)\.test\.cjs|\.github/workflows/nico-main-partner-month-readonly-no-deploy\.yml)$' /tmp/nico-month-files.txt; then
             echo 'STOP_MAIN_MONTH_UNREVIEWED_FILES'
             exit 1
           fi
@@ -55,7 +55,8 @@ jobs:
           node --check functions-partner-workspace/partner-saved-month.cjs
           node --check functions-partner-workspace/index.js
           node --check tests/partner-saved-month-main.test.cjs
-          node --test tests/partner-saved-month-main.test.cjs tests/partner-workspace.test.cjs tests/sales-regressions.cjs
+          node --check tests/partner-saved-month-ui-main.test.cjs
+          node --test tests/partner-saved-month-main.test.cjs tests/partner-saved-month-ui-main.test.cjs tests/partner-workspace.test.cjs tests/sales-regressions.cjs tests/partner-one-login-same-app.test.cjs tests/partner-money-free-workspace.test.cjs
       - name: Confirm no deploy or live credentials
         run: |
           echo 'MAIN_BASED_PARTNER_MONTH_API_CONTRACT_PASS'
