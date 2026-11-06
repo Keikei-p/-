@@ -6094,6 +6094,12 @@ body.product-reordering .product-list {
           </div>
         </div>
         <div id="individualRankingList" class="ranking-grid" data-columns="1"></div>
+        <div id="ownerPartnerJointPersonalPanel" class="p-inline-card">
+          <h3>🤝 自社＋協力店 合同個人ランキング｜件数順</h3>
+          <button id="ownerPartnerJointRefresh" type="button">合同件数を更新</button>
+          <p id="ownerPartnerJointStatus" class="p-inline-muted" role="status" aria-live="polite">月間件数は未照合です。</p>
+          <div id="ownerPartnerJointPeople" class="ranking-grid" data-columns="1"></div>
+        </div>
       </div>
 
       <div id="productRankingContent" class="dashboard-app-content" hidden>
@@ -6129,6 +6135,12 @@ body.product-reordering .product-list {
           <span id="productRankingMemberCount"></span>
         </div>
         <div id="productRankingMemberList" class="ranking-grid" data-columns="1"></div>
+        <div id="ownerPartnerJointProductPanel" class="p-inline-card">
+          <h3>🤝 自社＋協力店 合同商材ランキング｜件数順</h3>
+          <button id="ownerPartnerJointProductsRefresh" type="button">合同件数を更新</button>
+          <p id="ownerPartnerJointProductStatus" class="p-inline-muted" role="status" aria-live="polite">月間件数は未照合です。</p>
+          <div id="ownerPartnerJointProducts" class="ranking-grid" data-columns="1"></div>
+        </div>
       </div>
 
       <div
@@ -6515,10 +6527,7 @@ body.product-reordering .product-list {
         <label class="p-inline-field">表示月<input type="month" id="ownerPartnerMonth" aria-label="本社から確認する協力店の月"></label>
         <p id="ownerPartnerMonthStatus" class="p-inline-muted" role="status" aria-live="polite"></p>
         <div id="ownerPartnerMonthDetails" class="p-inline-list"></div>
-        <h3>🏆 本社＋協力店 合同月間ランキング</h3>
-        <p id="ownerPartnerJointStatus" class="p-inline-muted" role="status" aria-live="polite">保存済み件数の照合待ち</p>
-        <h4>個人ランキング（件数のみ）</h4><div id="ownerPartnerJointPeople" class="ranking-grid" data-columns="1"></div>
-        <h4>商材ランキング（件数のみ）</h4><div id="ownerPartnerJointProducts" class="ranking-grid" data-columns="1"></div>
+
       </div>
 
 
@@ -12338,7 +12347,7 @@ const pInline=id=>document.getElementById(id);
 let partnerInlineData=null,partnerInlineWorkspaceCompany="",partnerInlineNonce=0;
 let partnerInlineBusy=false,ownerPartnerTeamsNonce=0,partnerInlineMonthNonce=0;
 let ownerPartnerMonthNonce=0,ownerPartnerSelectedCompany="",ownerPartnerSelectedName="";
-let partnerJointNonce=0,ownerJointNonce=0;
+let partnerJointNonce=0,ownerJointNonce=0,ownerJointCachedMonth="";
 const partnerMainDate=()=>new Intl.DateTimeFormat("sv-SE",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
 const partnerMainValidId=id=>typeof id==="string"&&/^[A-Za-z0-9_-]{1,128}$/.test(id);
 function partnerMainPendingInvite(){
@@ -12613,32 +12622,35 @@ async function partnerFetchJointMonth(kind,month,workspace){
  const uid=auth.currentUser?.uid;
  const prefix=owner?"ownerPartnerJoint":"pInlineJoint";
  const status=pInline(prefix+"Status");
+ const productStatus=owner?pInline("ownerPartnerJointProductStatus"):null;
+ const report=message=>{status.textContent=message;
+  if(productStatus)productStatus.textContent=message;};
  const clear=()=>{pInline(prefix+"People").replaceChildren();
   pInline(prefix+"Products").replaceChildren();};
  clear();
- status.textContent="直営・協力店の保存済み件数を照合中...";
+ report("直営・協力店の保存済み件数を照合中...");
  if(!uid||!/^\d{4}-(?:0[1-9]|1[0-2])$/.test(month)){
-  status.textContent="表示月を選んでください。";return;
+  report("表示月を選んでください。");return;
  }
  try{
   const payload={month,...(!owner&&workspace?{workspaceCompanyId:workspace}:{})};
   const data=(await readPartnerCombinedMonth(payload)).data;
   const stale=()=>owner?seq!==ownerJointNonce||!isCurrentCompanyOwner()||
    currentCompanyData?.companyKind==="partner"||
-   pInline("ownerPartnerMonth").value!==month:
+   dashboardMonth.value!==month:
    seq!==partnerJointNonce||workspace!==partnerInlineWorkspaceCompany||
    pInline("pInlineMonth").value!==month;
   if(stale()||auth.currentUser?.uid!==uid)return;
   partnerValidateCombinedMonth(data,month);
   partnerRenderJointRows(prefix+"People",data.people,true);
   partnerRenderJointRows(prefix+"Products",data.products,false);
-  status.textContent=month+"｜本社＋協力店の保存済み"+
-   data.grandTotal+"件を集計（暫定・未報告日/未報告者は未照合）";
+  report(month+"｜本社＋協力店の保存済み"+
+   data.grandTotal+"件を集計（暫定・未報告日/未報告者は未照合）");
  }catch{
   if(auth.currentUser?.uid!==uid)return;
   if(owner?seq!==ownerJointNonce:seq!==partnerJointNonce)return;
   clear();
-  status.textContent="合同ランキング未照合。保存元の件数不一致・権限・新API公開状態を確認してください。既存実績は変更していません。";
+  report("合同ランキング未照合。保存元の件数不一致・権限・新API公開状態を確認してください。既存実績は変更していません。");
  }
 }
 async function partnerInlineMonthFetch(){
@@ -12881,6 +12893,21 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
 // Never mix partner team IDs into the original sales-team write selectors.
 // Read-only, on-demand Owner view. Requests ONE authorized partner company
 // and ONE selected month; never loads internal finance originals or creates data.
+// The existing dashboard ranking tabs are the Owner's one entry point.
+// Cache by actual signed-in UID and selected month; manual refresh is available.
+function loadOwnerJointForRankingTab(force=false){
+ if(!auth.currentUser||!isCurrentCompanyOwner()||
+    currentCompanyData?.companyKind==="partner"||
+    !/^\d{4}-(?:0[1-9]|1[0-2])$/.test(dashboardMonth.value))return;
+ const key=auth.currentUser.uid+"|"+dashboardMonth.value;
+ if(!force&&ownerJointCachedMonth===key)return;
+ ownerJointCachedMonth=key;
+ void partnerFetchJointMonth("owner",dashboardMonth.value,"");
+}
+individualRankingToggle.addEventListener("click",()=>loadOwnerJointForRankingTab());
+productRankingToggle.addEventListener("click",()=>loadOwnerJointForRankingTab());
+pInline("ownerPartnerJointRefresh").onclick=()=>loadOwnerJointForRankingTab(true);
+pInline("ownerPartnerJointProductsRefresh").onclick=()=>loadOwnerJointForRankingTab(true);
 async function loadOwnerPartnerSavedMonth(companyId,companyName){
  ++ownerJointNonce;
  pInline("ownerPartnerJointPeople").replaceChildren();
@@ -12953,7 +12980,6 @@ async function loadOwnerPartnerSavedMonth(companyId,companyName){
    data.totalCount+"件（暫定・未入力日は未照合）"+
    (data.missingHistoricalTeamAttribution?
     "。保存当時の班が不明な件数があります。":"");
-  void partnerFetchJointMonth("owner",month,"");
  }catch{
   if(seq!==ownerPartnerMonthNonce||auth.currentUser?.uid!==uid)return;
   target.replaceChildren();
@@ -12964,7 +12990,7 @@ async function loadOwnerPartnerCompanyTeams(){
  const target=document.getElementById("ownerPartnerTeamGroups");
  if(!target)return;
  const seq=++ownerPartnerTeamsNonce;
- ++ownerPartnerMonthNonce;++ownerJointNonce;
+ ++ownerPartnerMonthNonce;
  ownerPartnerSelectedCompany="";ownerPartnerSelectedName="";
  const controls=pInline("ownerPartnerMonthControls");
  controls.hidden=true;
