@@ -36,7 +36,8 @@ function projectSavedPartnerMonth({hubId,partnerId,month,rows,categoryKeys,
     !["owner","leader","member","hub"].includes(role)||
     (role==="member"&&!ID.test(actorUid||""))||
     !teamNames||typeof teamNames!=="object"||Array.isArray(teamNames))fail();
- const totals=zero(categoryKeys),people=new Map(),teams=new Map(),seen=new Set();
+ const totals=zero(categoryKeys),people=new Map(),teams=new Map(),
+  teamPeople=new Map(),seen=new Set();
  let totalCount=0,unattributedCount=0,unattributedRows=0;
  for(const doc of rows){
   const x=doc?.data?.();
@@ -80,18 +81,32 @@ function projectSavedPartnerMonth({hubId,partnerId,month,rows,categoryKeys,
     teamNames[teamId]:"当時の班名未確認";
    t={key:teamKey,name,totalCount:0,counts:zero(categoryKeys),reportedRows:0};
    teams.set(teamKey,t);
+   teamPeople.set(teamKey,new Map());
   }
   t.totalCount+=count;t.reportedRows++;
   for(const k of categoryKeys)t.counts[k]+=x.counts[k];
+  // Monthly team drilldown is based on IMMUTABLE saved team attribution,
+  // never the member's current team, and never reads monetary originals.
+  const withinTeam=teamPeople.get(teamKey);
+  let member=withinTeam.get(personKey);
+  if(!member){
+   member={key:personKey,name:personName,totalCount:0,counts:zero(categoryKeys)};
+   withinTeam.set(personKey,member);
+  }
+  member.totalCount+=count;
+  for(const k of categoryKeys)member.counts[k]+=x.counts[k];
  }
  const sorted=(a,b)=>b.totalCount-a.totalCount||a.name.localeCompare(b.name,"ja")||
    a.key.localeCompare(b.key);
+ const teamDetails=[...teams.values()].map(team=>({
+  ...team,members:[...teamPeople.get(team.key).values()].sort(sorted)
+ })).sort(sorted);
  return Object.freeze({
   scope:"partner_saved_month_counts_only",month,partnerKey:hash("partner",partnerId),
   complete:false,provisional:true,verifiedEntryRows:rows.length,
   missingHistoricalTeamAttribution:unattributedRows>0,
   unattributedRows,unattributedCount,totalCount,counts:totals,
-  people:[...people.values()].sort(sorted),teams:[...teams.values()].sort(sorted),
+  people:[...people.values()].sort(sorted),teams:teamDetails,
   // Intentionally no historical private counts / money / identifier paths.
   financialFieldsIncluded:false,productionDocumentWrites:0
  });
