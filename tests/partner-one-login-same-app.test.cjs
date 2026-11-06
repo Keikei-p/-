@@ -64,7 +64,9 @@ test("company-team presentation only reads owner-authorized money-free API, not 
  assert.match(index,/if\(!auth\.currentUser\|\|!isCurrentCompanyOwner\(\)/);
  assert.match(index,/readPartnerWorkDay\(\{date:partnerMainDate\(\)\}\)/);
  assert.match(index,/Array\.isArray\(result\.registeredCompanies\)/);
- assert.match(index,/company\.name\+"・"\+team\.name/);
+ assert.match(index,/summary\\.textContent=company\\.name\\+"｜"/);
+ assert.match(index,/partnerMainAppendRow\\(card,team\\.name/);
+ assert.match(index,/loadOwnerPartnerSavedMonth\\(company\\.partnerCompanyId,company\\.name\\)/);
  assert.match(index,/協力店の班を読み込めません/);
  assert.doesNotMatch(index.slice(index.indexOf("async function loadOwnerPartnerCompanyTeams("),index.indexOf("async function showPartnerInviteAtMain")),/\b(?:setDoc|updateDoc|writeBatch|addDoc|deleteDoc)\(/);
 });
