@@ -335,5 +335,47 @@ test('pre-PATCH reproof runs after final inventory validation and BEFORE switch'
  assert.equal(result.applied,true);
  assert.equal(calls.filter(x=>x==='preApply').length,1);
  assert.equal(calls[calls.indexOf('preApply')-1],'snapshot');
+ assert.equal(calls[calls.indexOf('preApply')+1],'snapshot',
+  'the live inventory is checked AGAIN after authenticated preflight');
  assert.equal(f.getCurrent(),candidateId);
+});
+
+
+test('a real count arriving DURING pre-PATCH identity checks stops release BEFORE changing active Rules',async()=>{
+ const f=fixture();
+ let liveCount=3;
+ const snapFn=async()=>{
+  const snapshot=structuredClone(snap);
+  snapshot.documents[0].value.fields.totalCount.integerValue=String(liveCount);
+  return snapshot;
+ };
+ const good=()=>({checkedAgainst:'production-live',ownerFinanceAllowed:true,
+  affectedSecondaryBound:true,partnerSessionFresh:true});
+ await assert.rejects(phase1Boundary({
+  ...f.args,...approvals,apply:true,snapshot:snapFn,
+  preApplyCheck:async()=>{
+   assert.equal(f.getCurrent(),oldId);
+   liveCount=4; // another seller just entered a real count
+   return good();
+  }
+ }),/STOP_PHASE1_LIVE_COUNT_OR_FINANCE_CHANGED_BEFORE_PATCH/);
+ assert.equal(liveCount,4,'a legitimate count entry is NEVER rolled back');
+ assert.equal(f.getCurrent(),oldId,'finance Rules stay on the existing release');
+ assert.deepEqual(f.writes.map(x=>x.method),['POST'],
+  'no active release PATCH, no Firestore document writes');
+});
+
+test('a concurrent Rules operator during owner account proof prevents any PATCH',async()=>{
+ const f=fixture();
+ await assert.rejects(phase1Boundary({
+  ...f.args,...approvals,apply:true,
+  preApplyCheck:async()=>{
+   assert.equal(f.getCurrent(),oldId);
+   f.setCurrent(otherId);
+   return {checkedAgainst:'production-live',ownerFinanceAllowed:true,
+    affectedSecondaryBound:true,partnerSessionFresh:true};
+  }
+ }),/STOP_PHASE1_RULES_RELEASE_RACE_BEFORE_PATCH/);
+ assert.equal(f.getCurrent(),otherId,'do not revert an unrelated release');
+ assert.deepEqual(f.writes.map(x=>x.method),['POST']);
 });
