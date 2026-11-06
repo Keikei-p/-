@@ -69,7 +69,7 @@ function fixture(){
  const scope=async(uid)=>uid==="owner"?
   {kind:"hub",cid:"hub",role:"owner"}:
   uid==="leader"?{kind:"partner",cid:"p1",hubId:"hub",role:"leader"}:
-  uid==="person"?{kind:"partner",cid:"p1",hubId:"hub",role:"member"}:
+  uid==="person"?{kind:"partner",uid,cid:"p1",hubId:"hub",role:"member"}:
   {kind:"partner",cid:"p2",hubId:"hub",role:"member"};
  const fail=code=>{const e=Error(code||"permission-denied");e.code=code||"permission-denied";throw e;};
  const ops=makePartnerInternetSplitOperations({db,actor,scope,
