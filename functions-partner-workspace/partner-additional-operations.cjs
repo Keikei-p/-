@@ -182,6 +182,9 @@ function makePartnerAdditionalOperations({db,actor,scope,collection,fail,FieldVa
    return {saved:true,staffId,date,version,totalCount:next.total};
   });
  }
- return Object.freeze({viewAdditionalCounts,submitAdditionalCounts});
+ // The caller must verify its Owner/partner scope before calling this helper.
+ // This does not expose private originals to a browser, only approved IDs/names.
+ const getExtraPolicy=hubId=>approvedExtraCatalog({kind:"partner",hubId});
+ return Object.freeze({viewAdditionalCounts,submitAdditionalCounts,getExtraPolicy});
 }
 module.exports={makePartnerAdditionalOperations,isLegacyCategoryName};
