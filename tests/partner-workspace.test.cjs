@@ -1171,3 +1171,67 @@ test("same-email login guidance and explicit transfer action exist in invite UI"
  assert.match(p,/auth\/email-already-in-use/);
  assert.match(invite,/auth\/email-already-in-use/);
 });
+
+
+test("archived partner daily counts survive staff removal without restoring a login or allowing another edit",async()=>{
+ const {db,api,req,zero}=setup();
+ const date="2026-10-31";
+ const team=(await api.manage(req("p",{action:"addTeam",name:"元所属班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"元担当者",teamId:team}))).staffId;
+ await api.submit(req("p",{date,staffId:staff,counts:{...zero(),NURO:4},expectedVersion:0}));
+ const entryPath="companies/partner/partnerWorkEntries/"+date+"__"+staff;
+ const before=clone(db.store.get(entryPath));
+ const finance=clone([db.store.get("records/old"),db.store.get("products/money")]);
+ db.store.delete("companies/partner/partnerWorkStaff/"+staff);
+ const beforeRead=clone([...db.store]);
+ const result=await api.view(req("p",{date}));
+ assert.equal(result.records.length,1,"original count is still reported");
+ assert.equal(result.records[0].totalCount,4);
+ assert.deepEqual(result.records[0].counts,{...zero(),NURO:4});
+ assert.equal(result.records[0].teamIdSnapshot,team);
+ const archived=result.staff.find(x=>x.id===staff);
+ assert(archived,"owner gets a display-only historical staff entry");
+ assert.equal(archived.name,"元担当者");
+ assert.equal(archived.active,false);
+ assert.equal(archived.kind,"historical");
+ assert.equal(archived.role,"former");
+ assert.equal(archived.uid,null);
+ assert.equal(archived.teamId,team);
+ assert.equal(result.staff.filter(x=>x.active===true).some(x=>x.id===staff),false);
+ assert.deepEqual([...db.store],beforeRead,"read cannot recreate deleted roster or change data");
+ assert.deepEqual(db.store.get(entryPath),before,"saved record unchanged");
+ assert.deepEqual([db.store.get("records/old"),db.store.get("products/money")],finance);
+ await assert.rejects(api.submit(req("p",{date,staffId:staff,counts:zero(),expectedVersion:1})),
+   e=>e.code==="permission-denied","deleted staff must never accept fresh count writes");
+ const hub=await api.view(req("h",{date}));
+ assert.equal(hub.partners[0].totalCount,4,"hub still sees its saved partner count");
+ assert.doesNotMatch(JSON.stringify({result,hub}),/unitPrice|totalRevenue|808080|98765|12345/);
+});
+
+test("orphan daily count does not grant member access, even with a missing or unsafe historical name",async()=>{
+ const {db,api,req,zero}=setup();
+ const date="2026-10-31";
+ const team=(await api.manage(req("p",{action:"addTeam",name:"履歴班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"担当者A",teamId:team}))).staffId;
+ await api.submit(req("p",{date,staffId:staff,counts:{...zero(),"U-NEXT":2},expectedVersion:0}));
+ const entryPath="companies/partner/partnerWorkEntries/"+date+"__"+staff;
+ // Existing original is deliberately left untouched in production; this is
+ // synthetic old-format/malicious-label test data only.
+ db.store.get(entryPath).staffNameSnapshot="売上500万円";
+ db.store.delete("companies/partner/partnerWorkStaff/"+staff);
+ const member={uid:"m",companyId:"partner",companyRole:"member",role:"member",
+  teamId:team,active:true,accessKind:"partner",memberType:"cooperator",
+  canViewRevenue:false,canViewUnitPrice:false};
+ db.seed("users/m",member);db.seed("companies/partner/members/m",member);
+ const previous=clone([...db.store]);
+ const owned=await api.view(req("p",{date}));
+ assert.equal(owned.staff.find(x=>x.id===staff).name,"過去の担当者",
+   "invalid saved names are never echoed");
+ assert.equal(owned.records[0].totalCount,2);
+ assert.doesNotMatch(JSON.stringify(owned),/売上500万円|totalRevenue|unitPrice/);
+ const stranger=await api.view(req("m",{date}));
+ assert.equal(stranger.records.length,0);
+ assert.equal(stranger.staff.some(x=>x.id===staff),false,
+   "member cannot access a deleted colleague's historical records");
+ assert.deepEqual([...db.store],previous,"no data created or rewritten");
+});
