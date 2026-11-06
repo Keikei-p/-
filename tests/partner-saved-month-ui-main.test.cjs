@@ -337,21 +337,21 @@ test("both monthly screens integrate extra-products by saved team without changi
  const owner=html.slice(html.indexOf("async function loadOwnerPartnerSavedMonth("),
   html.indexOf("async function loadOwnerPartnerCompanyTeams(",html.indexOf("async function loadOwnerPartnerSavedMonth(")));
  for(const region of [partner,owner]){
-  assert.match(region,/partnerMonthVisibleExtras\\(data\\)/);
-  assert.match(region,/extraTeam\\?\\.totalCount\\|\\|0/);
-  assert.match(region,/partnerMonthAppendExtraOnlyTeams\\(/);
-  assert.match(region,/partnerMonthExtraLabels\\(/);
+  assert.match(region,/partnerMonthVisibleExtras\(data\)/);
+  assert.match(region,/extraTeam\?\.totalCount\|\|0/);
+  assert.match(region,/partnerMonthAppendExtraOnlyTeams\(/);
+  assert.match(region,/partnerMonthExtraLabels\(/);
   assert.match(region,/追加商材は未照合です/);
-  assert.doesNotMatch(region,/\\b(?:setDoc|updateDoc|deleteDoc|formatYen)\\s*\\(/);
+  assert.doesNotMatch(region,/\b(?:setDoc|updateDoc|deleteDoc|formatYen)\s*\(/);
  }
- assert.match(partner,/partnerMonthMergedPeople\\(data,extra\\)/);
- assert.match(partner,/extra\\?\\.products/);
+ assert.match(partner,/partnerMonthMergedPeople\(data,extra\)/);
+ assert.match(partner,/extra\?\.products/);
 });
 
 test("extra saved-month contract rejects phantom totals, secret fields and split-team sums",()=>{
  const begin=html.indexOf("function partnerSavedMonthCheckTotals(");
  const end=html.indexOf("function partnerRenderJointRows(",begin);
- const check=vm.runInNewContext("("+html.slice(begin,end).trim()+"\\n)");
+ const check=vm.runInNewContext("("+html.slice(begin,end).trim()+"\n)");
  const keys=["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォー",
   "つばさ・HTB","太陽光・蓄電池AP","U-NEXT"];
  keys[5]="ウォーター";
