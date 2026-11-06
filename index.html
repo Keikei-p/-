@@ -9592,6 +9592,8 @@ function ownerQuickReset(){
 }
 async function openOwnerPartnerQuickProxy(companyId,companyName){
  if(!canLoadPartnerRanking()||!partnerMainValidId(companyId)||!currentUser?.uid)return;
+ // Revoke stale staff controls on switching to the company-only source.
+ ownerProxyReset();
  const uid=currentUser.uid,hub=currentUserData?.companyId,day=partnerCompanyDate.value,
   seq=++ownerQuickNonce;
  ownerQuickCompany=companyId;ownerQuickName=companyName;ownerQuickBusy=false;
@@ -9806,6 +9808,8 @@ async function openOwnerSplitEditor({companyId,companyName,day,record,stale,cont
 async function openOwnerPartnerProxy(companyId,companyName){
  if(!canLoadPartnerRanking()||!partnerMainValidId(companyId)||!currentUser?.uid)
   return;
+ // Do not show quick-ledger edits beside a different staff-ledger company.
+ ownerQuickReset();
  const day=partnerCompanyDate.value,uid=currentUser.uid,seq=++ownerProxyNonce;
  ownerProxyCompany=companyId;ownerProxyCompanyName=companyName;
  ownerProxyPanel.hidden=false;
