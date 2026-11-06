@@ -255,6 +255,12 @@ test("consumer count UI keeps original legacy save; new editor enforces the exac
  assert.doesNotMatch(html.slice(html.indexOf("function partnerInternetRender(){"),
   html.indexOf('pInline("pInlineAddTeam").onclick=')),/\b(?:setDoc|updateDoc|deleteDoc|getDocs|getDoc|onSnapshot)\s*\(/);
 });
+test("classification documents have no direct Firestore client Rules path",()=>{
+ const rules=fs.readFileSync(path.join(__dirname,"../firestore.rules"),"utf8");
+ assert.doesNotMatch(rules,/match\\s+\\/partnerInternetSplits(?:\\/|\\s)/);
+ assert.doesNotMatch(rules,/match\\s+\\/partnerInternetSplitAudits(?:\\/|\\s)/);
+ assert.doesNotMatch(rules,/match\\s+\\/companies\\/\\{companyId\\}\\/\\{document=\\*\\*\\}/);
+});
 test("client-side JS remains syntactically valid and no live Firebase is contacted",()=>{
  const html=fs.readFileSync(path.join(__dirname,"../index.html"),"utf8");
  const script=html.match(/<script\s+type="module"[^>]*>([\s\S]*?)<\/script>/);
