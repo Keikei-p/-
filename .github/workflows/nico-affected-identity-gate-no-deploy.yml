@@ -7,7 +7,9 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: nico-affected-secondary-identity-no-deploy
+  # Cancel only superseded checks of this same PR/branch, not a different
+  # release-safety review whose Emulator test may still be running.
+  group: nico-affected-secondary-identity-no-deploy-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
   test-contract:
