@@ -172,6 +172,13 @@ export async function phase1Boundary({
      ready?.affectedSecondaryBound!==true||
      ready?.partnerSessionFresh!==true)
     stop('PRE_SWITCH_ACCOUNT_UNVERIFIED');
+  // A live rep may submit an actual count while Owner + partner identity
+  // are being rechecked. Switching against that stale inventory would make
+  // the release look successful briefly and then force rollback. Fail BEFORE
+  // the active Rules PATCH instead, without touching the newly saved count.
+  if((await getRelease())!==starting)stop('RULES_RELEASE_RACE_BEFORE_PATCH');
+  if(fingerprint(await snapshot())!==inventory)
+    stop('LIVE_COUNT_OR_FINANCE_CHANGED_BEFORE_PATCH');
   attempted=true;
   await point(created.name);
   if((await getRelease())!==created.name||
