@@ -39,7 +39,7 @@ test("monthly UI only fetches bound count-only callable; no money or direct Fire
  assert.match(block,/memberTotal!==team\.totalCount/);
  assert.match(block,/attributed\+\(data\.unattributedCount\?\?0\)!==data\.totalCount/);
  assert.match(block,/summary\.textContent=team\.name/);
- assert.match(block,/products\\.textContent=lines\\.length/);
+ assert.match(block,/products\.textContent=lines\.length/);
  assert.match(block,/partnerMonthExtraLabels\\(additional\\?\\.counts,extra\\)/);
  assert.doesNotMatch(block,/\.innerHTML\s*=/);
 
