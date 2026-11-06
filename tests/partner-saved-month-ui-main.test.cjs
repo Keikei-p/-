@@ -144,3 +144,62 @@ test("money-free month totals are shown only when team, person, product all matc
   assert.throws(()=>check(altered,KEYS),/partner_saved_month_integrity/);
  }
 });
+
+
+test("joint ranking controls are in the same live app for owner and partner",()=>{
+ for(const id of ["pInlineJointStatus","pInlineJointPeople","pInlineJointProducts",
+  "ownerPartnerJointStatus","ownerPartnerJointPeople","ownerPartnerJointProducts"]){
+  assert.equal((html.match(new RegExp('id="'+id+'"',"g"))||[]).length,1,id);
+ }
+ assert.match(index,/exports\.getPartnerCombinedMonthlyCounts=onCall\(opts,service\.viewCombinedMonth\)/);
+ assert.match(html,/const readPartnerCombinedMonth = httpsCallable\(partnerCountFunctions,"getPartnerCombinedMonthlyCounts"\)/);
+ const start=html.indexOf("function partnerRenderJointRows(");
+ const end=html.indexOf("async function partnerInlineMonthFetch(){",start);
+ assert(start>0&&end>start);
+ const block=html.slice(start,end);
+ assert.match(block,/className="ranking-row"/);
+ assert.match(block,/className="ranking-number"/);
+ assert.match(block,/className="ranking-count"/);
+ assert.match(block,/await readPartnerCombinedMonth\(payload\)/);
+ assert.match(block,/partnerValidateCombinedMonth\(data,month\)/);
+ assert.match(block,/partnerRenderJointRows\(prefix\+"People",data\.people,true\)/);
+ assert.match(block,/partnerRenderJointRows\(prefix\+"Products",data\.products,false\)/);
+ assert.match(block,/data\.grandTotal/);
+ assert.match(block,/未報告日/);
+ assert.doesNotMatch(block,/\b(?:getDoc|getDocs|setDoc|updateDoc|deleteDoc|writeBatch|onSnapshot)\s*\(/);
+ assert.doesNotMatch(block,/\.innerHTML\s*=/);
+});
+test("joint rankings reject broken totals, ties, leaked finance, and unverified month",()=>{
+ const start=html.indexOf("function partnerValidateCombinedMonth(");
+ const end=html.indexOf("async function partnerFetchJointMonth(",start);
+ const check=vm.runInNewContext("("+html.slice(start,end).trim()+")");
+ const person=(kind,key,score,rank,name)=>({
+  kind,key:key.repeat(64),totalCount:score,rank,name,companyName:kind==="direct"?"直営":"協力店A"
+ });
+ const make=()=>({
+  scope:"joint_saved_month_counts_only",month:"2026-10",
+  complete:false,provisional:true,productionDocumentWrites:0,
+  grandTotal:5,partnerTotal:3,directTotal:2,
+  people:[person("partner","a",3,1,"田中"),person("direct","b",2,2,"佐藤")],
+  products:[{name:"NURO",totalCount:5,rank:1}]
+ });
+ assert.equal(check(make(),"2026-10"),true);
+ const mutations=[
+  d=>{d.grandTotal=10;},
+  d=>{d.people[0].rank=2;},
+  d=>{d.people[1].rank=1;},
+  d=>{d.products[0].totalCount=4;},
+  d=>{d.people[1].key=d.people[0].key;},
+  d=>{d.people[0].totalCount=4;},
+  d=>{d.people[0].name="";},
+  d=>{d.products[0].unitPrice=10000;},
+  d=>{d.people[0].cashback=20000;},
+  d=>{d.complete=true;},
+  d=>{d.month="2026-11";},
+  d=>{d.productionDocumentWrites=1;}
+ ];
+ for(const mutate of mutations){
+  const changed=make();mutate(changed);
+  assert.throws(()=>check(changed,"2026-10"),/joint_saved_month_invalid/);
+ }
+});
