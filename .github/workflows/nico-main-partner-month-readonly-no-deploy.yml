@@ -1,0 +1,77 @@
+name: NICO main-based partner saved-month count-only (NO DEPLOY)
+on:
+  push:
+    branches:
+      - feature/main-partner-month-readonly-20261106
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: nico-main-partner-month-readonly
+  cancel-in-progress: true
+jobs:
+  read-only-month-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FIREBASE_PROJECT_ID: demo-sales-support
+      GCLOUD_PROJECT: demo-sales-support
+      GOOGLE_APPLICATION_CREDENTIALS: ""
+      FIREBASE_SERVICE_ACCOUNT_JSON: ""
+      NICO_RULES_APPROVAL: ""
+      NICO_PARTNER_RELEASE_CONFIRMATION: ""
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Reject main drift, unreviewed files or live credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$FIREBASE_PROJECT_ID" = demo-sales-support
+          test "$GCLOUD_PROJECT" = demo-sales-support
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$NICO_RULES_APPROVAL"
+          test -z "$NICO_PARTNER_RELEASE_CONFIRMATION"
+          git fetch --no-tags origin main
+          test "$(git rev-parse origin/main)" = 17681e69d3ebd7271cc9a58e138fd0e202db7294
+          git diff --name-only origin/main...HEAD > /tmp/nico-month-files.txt
+          if grep -Ev '^(functions-partner-workspace/(partner-saved-month\.cjs|combined-saved-month-ranking\.cjs|shared-direct-counts\.cjs|catalog-publication\.cjs|catalog-count-links\.cjs|additional-counts\.cjs|partner-combined-extra-projection\.cjs|partner-additional-operations\.cjs|partner-catalog-operations\.cjs|service\.cjs|index\.js)|index\.html|tests/partner-(saved-month-(main|ui-main)|combined-month-ranking-main|catalog-publish-main|additional-(product|ledger)-main)\.test\.cjs|\.github/workflows/nico-main-partner-month-readonly-no-deploy\.yml)$' /tmp/nico-month-files.txt; then
+            echo 'STOP_MAIN_MONTH_UNREVIEWED_FILES'
+            exit 1
+          fi
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+      - name: Ensure month endpoint only reads saved partner entries
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/partner-saved-month.cjs
+          node --check functions-partner-workspace/index.js
+          node --check tests/partner-saved-month-main.test.cjs
+          node --check tests/partner-saved-month-ui-main.test.cjs
+          node --check functions-partner-workspace/shared-direct-counts.cjs
+          node --check functions-partner-workspace/combined-saved-month-ranking.cjs
+          node --check tests/partner-combined-month-ranking-main.test.cjs
+          node --check functions-partner-workspace/catalog-publication.cjs
+          node --check functions-partner-workspace/partner-catalog-operations.cjs
+          node --check functions-partner-workspace/catalog-count-links.cjs
+          node --check functions-partner-workspace/additional-counts.cjs
+          node --check functions-partner-workspace/partner-combined-extra-projection.cjs
+          node --check functions-partner-workspace/partner-additional-operations.cjs
+          node --check tests/partner-catalog-publish-main.test.cjs
+          node --check tests/partner-additional-product-main.test.cjs
+          node --check tests/partner-additional-ledger-main.test.cjs
+          node --test tests/partner-saved-month-main.test.cjs tests/partner-saved-month-ui-main.test.cjs tests/partner-combined-month-ranking-main.test.cjs tests/partner-catalog-publish-main.test.cjs tests/partner-additional-product-main.test.cjs tests/partner-additional-ledger-main.test.cjs tests/partner-workspace.test.cjs tests/sales-regressions.cjs tests/partner-one-login-same-app.test.cjs tests/partner-money-free-workspace.test.cjs
+      - name: Confirm no deploy or live credentials
+        run: |
+          echo 'MAIN_BASED_PARTNER_MONTH_API_CONTRACT_PASS'
+          echo 'PRODUCTION_DOCUMENT_WRITES=0'
+          echo 'PRODUCTION_DEPLOYED=false'
+          echo 'MONTH_SELECTOR_FRONTEND_DEPLOYED=false'

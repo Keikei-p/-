@@ -13,6 +13,14 @@ const service=makeWorkspace({
 const opts={region:"asia-northeast1",maxInstances:3,
  cors:["https://nico-factory.web.app"]};
 exports.getPartnerWorkspace=onCall(opts,service.view);
+// Separate read-only monthly saved-count totals; NOT published in this Draft PR.
+exports.getPartnerSavedMonthlyCounts=onCall(opts,service.viewSavedMonth);
+// Joint provisional saved-count ranking: never return internal sales/prices.
+exports.getPartnerCombinedMonthlyCounts=onCall(opts,service.viewCombinedMonth);
+exports.getPartnerPublishedCatalog=onCall(opts,service.getPublishedCatalog);
+exports.setPartnerPublishedProduct=onCall(opts,service.setPublishedProduct);
+exports.getPartnerAdditionalCounts=onCall(opts,service.viewAdditionalCounts);
+exports.submitPartnerAdditionalCounts=onCall(opts,service.submitAdditionalCounts);
 exports.managePartnerWorkspace=onCall(opts,service.manage);
 exports.acceptPartnerWorkspaceInvite=onCall(opts,service.accept);
 exports.submitPartnerWorkspaceCounts=onCall(opts,service.submit);
