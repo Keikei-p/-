@@ -36,6 +36,8 @@ const USAGE_APPROVAL='EXISTING_FUNCTIONS_AND_FULL_INVENTORY_APPROVED';
 const OWN_KEYS=['ownerIdToken','partnerIdToken','expectedOwnerUid','expectedPartnerUid',
   'internalCompanyId','partnerCompanyId','productId','recordId'];
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
+const SHA=/^[a-f0-9]{40}$/;
+const RUN_ID=/^[1-9][0-9]{0,14}$/;
 const stop=code=>{throw Error('STOP_PHASE1_OPERATOR_'+code);};
 const obj=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 
@@ -48,7 +50,9 @@ export function validateOperatorIntent({mode,env,proof}){
     Number(env.FIRESTORE_EMULATOR_HOST.split(':')[1])>65535)
    stop('OFFLINE_PREFLIGHT');
  if(mode==='verify')return Object.freeze({apply:false});
- if(env.NICO_PHASE1_INDEPENDENT_SIGNOFF!==VERIFIED_APPROVAL||
+ if(!SHA.test(env.NICO_PHASE1_REVIEWED_CHECKOUT_SHA||'')||
+    !RUN_ID.test(env.NICO_PHASE1_REVIEWED_CI_RUN_ID||'')||
+    env.NICO_PHASE1_INDEPENDENT_SIGNOFF!==VERIFIED_APPROVAL||
     env.NICO_PHASE1_REVIEWED_MAIN_SHA!==REVIEWED_MAIN||
     env.NICO_PHASE1_REVIEWED_BASELINE_BLOB!==BASELINE_GIT_BLOB||
     env.NICO_PHASE1_REVIEWED_CANDIDATE_BLOB!==PHASE1_GIT_BLOB||
@@ -61,6 +65,37 @@ export function validateOperatorIntent({mode,env,proof}){
     proof.ownerIdToken===proof.partnerIdToken)
    stop('INDEPENDENT_SIGNOFF_OR_REAL_ACCOUNTS_REQUIRED');
  return Object.freeze({apply:true});
+}
+
+
+/**
+ * A typed approval is not enough: only a clean, exact GitHub checkout with
+ * a successful CI run for that same commit is eligible for production.
+ * git ls-remote reads the current main without modifying the checkout.
+ * gh uses the operator's own GitHub identity, not a secret passed to the CLI.
+ * Injected functions are for offline contract tests, never the live CLI.
+ */
+export function assertReviewedCodeGate({env,git,gh}){
+ if(!obj(env)||typeof git!=='function'||typeof gh!=='function'||
+    !SHA.test(env.NICO_PHASE1_REVIEWED_CHECKOUT_SHA||'')||
+    !RUN_ID.test(env.NICO_PHASE1_REVIEWED_CI_RUN_ID||''))
+   stop('REVIEWED_CODE_EVIDENCE_REQUIRED');
+ let local,dirty,main,run;
+ try{
+  local=git('rev-parse',['HEAD']).trim();
+  dirty=git('status',['--porcelain','--untracked-files=no']);
+  main=git('ls-remote',['--exit-code','origin','refs/heads/main']);
+  run=JSON.parse(gh('run',['view',env.NICO_PHASE1_REVIEWED_CI_RUN_ID,
+   '--repo','Keikei-p/-','--json','headSha,conclusion,event,name']));
+ }catch{stop('REVIEWED_CODE_CHECK_UNAVAILABLE');}
+ const matches=/^([a-f0-9]{40})\s+refs\/heads\/main\s*$/.exec(main);
+ if(local!==env.NICO_PHASE1_REVIEWED_CHECKOUT_SHA||
+    dirty.trim()!==''||!matches||matches[1]!==REVIEWED_MAIN||
+    run?.headSha!==local||run?.conclusion!=='success'||
+    run?.event!=='push'||
+    run?.name!=='NICO affected secondary identity + finance boundary (NO DEPLOY)')
+  stop('REVIEWED_SOURCE_OR_CI_DRIFT');
+ return Object.freeze({sourceReviewed:true,ciForExactCheckout:true,mainUnchanged:true});
 }
 
 function privateProofFile(env){
@@ -89,6 +124,17 @@ async function runOperator(mode,env=process.env){
  // approved the identity/source/backup procedure or the output is unsafe.
  const proof=mode==='apply'?privateProofFile(env):null;
  const intent=validateOperatorIntent({mode,env,proof});
+ if(intent.apply){
+  // Must pass before Admin credentials, backup metadata, or any live read.
+  const run=(bin,args)=>execFileSync(bin,args,{
+   cwd:ROOT,encoding:'utf8',timeout:30000,maxBuffer:64*1024,
+   stdio:['ignore','pipe','ignore']
+  });
+  assertReviewedCodeGate({env,
+   git:(cmd,args)=>run('git',[cmd,...args]),
+   gh:(cmd,args)=>run('gh',[cmd,...args])
+  });
+ }
  let settings;
  try{settings=JSON.parse(readFileSync(path.join(ROOT,'.firebaserc'),'utf8'));}
  catch{stop('PROJECT_CONFIGURATION');}
