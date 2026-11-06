@@ -463,3 +463,58 @@ test('approved live proof reports count-view continuity without inventing pre-sw
  assert.equal(success.reviewedPartnerCountViewAfterSwitch,true);
  assert.equal(success.productionDocumentWrites,0);
 });
+
+test('Rules PATCH rechecks READY managed backup after slow Owner/partner preflight',async()=>{
+ for(const failure of ['expired-during-preflight','backup-revoked','backup-now-future','second-read-unavailable']){
+  const f=fixture();
+  let backupReads=0,currentTime=Date.parse(date)+1000;
+  const latest=Date.parse(date);
+  const backups=async()=>{
+   backupReads++;
+   if(backupReads===1)return {readyBackups:1,latestReadySnapshot:date};
+   if(failure==='backup-revoked')return {readyBackups:0,latestReadySnapshot:date};
+   if(failure==='backup-now-future')return {
+    readyBackups:1,latestReadySnapshot:new Date(currentTime+60_000).toISOString()
+   };
+   if(failure==='second-read-unavailable')throw Error('STOP_TEST_BACKUP_API_UNAVAILABLE');
+   return {readyBackups:1,latestReadySnapshot:date};
+  };
+  let preflightCalls=0;
+  await assert.rejects(phase1Boundary({
+   ...f.args,...approvals,apply:true,backup:backups,now:()=>currentTime,
+   preApplyCheck:async()=>{
+    preflightCalls++;
+    assert.equal(f.getCurrent(),oldId);
+    if(failure==='expired-during-preflight')
+     currentTime=latest+48*60*60*1000+1;
+    return {checkedAgainst:'production-live',ownerFinanceAllowed:true,
+     affectedSecondaryBound:true,partnerSessionFresh:true,
+     partnerCountViewAllowed:true};
+   }
+  }),/STOP_PHASE1_RECENT_BACKUP_REQUIRED|STOP_TEST_BACKUP_API_UNAVAILABLE/,
+  failure+' must stop without an active Rules release update');
+  assert.equal(preflightCalls,1,failure);
+  assert.equal(backupReads,2,failure+' must verify backup again just before PATCH');
+  assert.equal(f.getCurrent(),oldId,failure+' may never switch active Rules');
+  assert.deepEqual(f.writes.map(x=>x.method),['POST'],
+   'unactivated Ruleset creation is NOT an active release PATCH');
+ }
+});
+
+test('approved switch checks managed backup twice; verify-only reads it once',async()=>{
+ const f=fixture();
+ let checks=0;
+ const backup=async()=>{checks++;return goodBackup();};
+ const result=await phase1Boundary({...f.args,...approvals,apply:true,backup});
+ assert.equal(result.applied,true);
+ assert.equal(checks,2,'second READY check must be after preApplyCheck');
+ assert.deepEqual(f.writes.map(x=>x.method),['POST','PATCH']);
+ const readonly=fixture();
+ let readonlyChecks=0;
+ const verified=await phase1Boundary({...readonly.args,
+  backup:async()=>{readonlyChecks++;return goodBackup();}
+ });
+ assert.equal(verified.applied,false);
+ assert.equal(readonlyChecks,1,'read-only verification is never a release');
+ assert.equal(readonly.writes.length,0);
+});
