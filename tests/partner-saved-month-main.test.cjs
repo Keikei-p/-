@@ -117,6 +117,44 @@ test("owner sees saved October and November one-month count / team / people pari
    /totalRevenue|unitPrice|cbCounts|987654321|777777|1234567|partnerWorkEntries/);
  }
 });
+test("clickable team details preserve each person's original month/team/product counts",async()=>{
+ const {api,req,db}=seed();
+ const before=structuredClone([...db.rows]);
+ const october=await api.viewSavedMonth(req("p",{month:"2026-10"}));
+ const oldTeam=october.teams.find(t=>t.name==="旧班");
+ const newTeam=october.teams.find(t=>t.name==="新班");
+ assert(oldTeam&&newTeam);
+ assert.equal(oldTeam.totalCount,2);
+ assert.equal(oldTeam.members.length,1);
+ assert.equal(oldTeam.members[0].name,"佐藤");
+ assert.equal(oldTeam.members[0].counts.NURO,2);
+ assert.equal(newTeam.totalCount,7);
+ assert.deepEqual(newTeam.members.map(x=>[x.name,x.totalCount]),
+  [["田中",4],["佐藤",3]]);
+ assert.equal(newTeam.members[0].counts.NURO,4);
+ for(const team of october.teams){
+  assert.equal(team.members.reduce((n,m)=>n+m.totalCount,0),team.totalCount);
+  assert.equal(team.members.reduce((n,m)=>n+m.counts.NURO,0),team.counts.NURO);
+  assert.equal(team.members.every(x=>typeof x.key==="string"&&x.key.length===64),true);
+ }
+ const november=await api.viewSavedMonth(req("p",{month:"2026-11"}));
+ assert.equal(november.teams.length,1);
+ assert.deepEqual(november.teams[0].members.map(x=>[x.name,x.counts.NURO]),
+  [["田中",6],["佐藤",5]]);
+ assert.deepEqual([...db.rows],before,"aggregation is read-only");
+ assert.doesNotMatch(JSON.stringify({october,november}),
+  /unitPrice|totalRevenue|cbCounts|1234567|987654321|777777/);
+});
+test("member team drilldown contains only the authenticated member's saved work",async()=>{
+ const {api,req}=seed();
+ const month=await api.viewSavedMonth(req("m",{month:"2026-10"}));
+ assert.equal(month.teams.length,1);
+ assert.equal(month.teams[0].members.length,1);
+ assert.equal(month.teams[0].members[0].name,"田中");
+ assert.equal(month.teams[0].members[0].totalCount,4);
+ assert.equal(month.teams[0].members[0].counts.NURO,4);
+ assert.equal(month.teams[0].totalCount,4);
+});
 test("hub Owner can read related partner counts but not arbitrary company",async()=>{
  const {api,req}=seed();
  const owned=await api.viewSavedMonth(req("h",{month:"2026-10",partnerCompanyId:"partner"}));
