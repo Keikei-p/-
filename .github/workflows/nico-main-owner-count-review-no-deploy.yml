@@ -52,6 +52,12 @@ jobs:
           fi
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
           git diff --quiet "$base" -- functions functions-partner-workspace firestore.rules firebase.json
+      - name: Verify existing inline module JavaScript parses
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e 'const fs=require("node:fs");const h=fs.readFileSync("index.html","utf8");const mark="<script type=\\"module\\">";const a=h.indexOf(mark);const b=h.indexOf("</script>",a);if(a<0||b<=a)throw Error("INLINE_MODULE_MISSING");fs.writeFileSync("/tmp/nico-owner-count-index.mjs",h.slice(a+mark.length,b));'
+          node --check /tmp/nico-owner-count-index.mjs
       - name: Owner count integrity, existing saved months, partner permissions and sales regressions
         shell: bash
         run: |
