@@ -666,8 +666,11 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      const t=sn.data()||{};
      if(!ID.test(sn.id)||t.companyId!==selectedPartnerId||
         !validName(t.name)||typeof t.active!=="boolean")fail("data-loss");
-     if(t.active)rows.set(sn.id,{
-      teamId:sn.id,name:clean(t.name),
+     // A retired team is still the immutable attribution of OLD saved
+     // counts. Include it in the Owner's opt-in read-only breakdown, but
+     // NEVER add it back to registeredCompanies.teams (invite/input choices).
+     rows.set(sn.id,{
+      teamId:sn.id,name:clean(t.name)+(t.active?"":"（過去班）"),
       counts:Object.fromEntries(KEYS.map(k=>[k,0])),
       totalCount:0,reportedStaffCount:0
      });
