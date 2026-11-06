@@ -9472,10 +9472,11 @@ quickInviteButton.onclick =
 // Paginated count-only Owner directory. Avoids the older 100-company
 // limit without modifying accounts, company membership or financial records.
 let ownerDirNonce=0,ownerDirCursor=null,ownerDirHasMore=true,ownerDirBusy=false;
+let ownerDirError="";
 const ownerDirCompanies=new Map();
 function ownerDirReset(){
  ++ownerDirNonce;ownerDirCursor=null;ownerDirHasMore=true;
- ownerDirBusy=false;ownerDirCompanies.clear();
+ ownerDirBusy=false;ownerDirError="";ownerDirCompanies.clear();
  document.getElementById("ownerPartnerDirectoryRows").replaceChildren();
  document.getElementById("ownerPartnerDirectoryFilter").value="";
  document.getElementById("ownerPartnerDirectoryStatus").textContent="";
@@ -9503,7 +9504,7 @@ function ownerDirRender(){
  }
  more.hidden=!ownerDirHasMore;
  more.disabled=ownerDirBusy;
- hint.textContent="読み込み済み"+ownerDirCompanies.size+"社"+
+ hint.textContent=(ownerDirError?ownerDirError+"｜":"")+"読み込み済み"+ownerDirCompanies.size+"社"+
   (filter?"｜一致"+visible.length+"社":"")+
   (ownerDirBusy?"｜続きを確認中…":ownerDirHasMore?"｜続きがあります":"｜最終ページ")+
   "。見つからない場合は次のページを読み込んでください。";
@@ -9544,8 +9545,7 @@ async function ownerDirFetch(reset=false){
  }catch{
   if(!stale()){
    ownerDirHasMore=false;
-   document.getElementById("ownerPartnerDirectoryStatus").textContent=
-    "会社一覧の追加取得に失敗しました。更新して再確認してください。";
+   ownerDirError="会社一覧の取得に失敗。会社一覧を更新して再確認してください。";
   }
  }finally{
   if(!stale()){ownerDirBusy=false;ownerDirRender();}
@@ -10007,7 +10007,7 @@ async function loadPartnerCompanyList(){
   }catch(e){
     if(!stillOwner())return;
     partnerCompanyList.replaceChildren();
-    partnerCompanyStatus.textContent="協力店情報を取得できません。招待・権限・公開APIを確認してください。";
+    partnerCompanyStatus.textContent="従来の日別一覧を取得できません。上のページ別会社一覧から管理画面を選べます。件数利用の承認・報告状態は再確認してください。";
     console.error("partner company list read failed",e?.code||"unavailable");
   }
 }
