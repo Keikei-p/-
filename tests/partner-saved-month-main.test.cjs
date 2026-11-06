@@ -192,6 +192,20 @@ test("invalid stored totals, financial company mismatch and duplicate attributio
    e=>e.code==="data-loss");
  }
 });
+test("revoked company count-sharing stops both internal Owner and partner month reads",async()=>{
+ const {db,api,req}=seed();
+ db.seed("partnerRelations/partner",{
+  ...db.rows.get("partnerRelations/partner"),
+  countSharingApproved:false
+ });
+ const original=structuredClone([...db.rows]);
+ await assert.rejects(api.viewSavedMonth(req("h",{
+  month:"2026-10",partnerCompanyId:"partner"
+ })),e=>e.code==="permission-denied");
+ await assert.rejects(api.viewSavedMonth(req("p",{month:"2026-10"})),
+  e=>e.code==="permission-denied");
+ assert.deepEqual([...db.rows],original);
+});
 test("pure reducer rejects foreign staff rows in a member-scoped response",()=>{
  const row={id:"2026-10-05__other",data:()=>({
   date:"2026-10-05",companyId:"partner",hubCompanyId:"hub",staffId:"other",
