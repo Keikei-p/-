@@ -15,7 +15,8 @@ function source(name){
 function app(deps={}){
  const ctx=vm.createContext(deps);
  vm.runInContext([
-  "recordConflict","isPersistedRecordCountConsistent","persistDailyRecord"
+  "recordConflict","isPersistedRecordCountConsistent",
+  "readOnlyRecordCountEvidence","persistDailyRecord"
  ].map(source).join("\n"),ctx);
  return ctx;
 }
@@ -105,4 +106,43 @@ test("stale edit and duplicate person/day still abort before any save",async()=>
  await assert.rejects(missing.app.persistDailyRecord(missing.ref,replacement,null,null),
   e=>e?.code==="record-conflict");
  assert.equal(missing.writes.length,0);
+});
+
+
+test("owner review reads historic mismatch without choosing which quantity is true or mutating sales",()=>{
+ const {readOnlyRecordCountEvidence:evidence}=app();
+ const old={...base,results:{...base.results,orphan:{count:1,revenuePerUnit:0}}};
+ const before=JSON.stringify(old);
+ assert.deepEqual(JSON.parse(JSON.stringify(evidence(old))),{saved:2,lines:3});
+ assert.equal(JSON.stringify(old),before,"read-only diagnostic cannot write or reprice");
+ assert.equal(evidence(base),null,"healthy records never falsely flagged");
+ assert.deepEqual(JSON.parse(JSON.stringify(evidence({...base,results:{a:{count:null}}}))),
+  {saved:2,lines:null},"unknown product quantity must not become fake zero");
+ assert.deepEqual(JSON.parse(JSON.stringify(evidence({...base,totalCount:undefined}))),
+  {saved:null,lines:2},"missing stored total remains unknown");
+ assert.deepEqual(JSON.parse(JSON.stringify(evidence({...base,results:{a:{count:Number.MAX_SAFE_INTEGER},b:{count:3}}}))),
+  {saved:2,lines:null},"unsafe sum cannot overflow into a proposed replacement");
+});
+
+test("owner-only selected-month review stays on history page, no Firestore writes or partner render",()=>{
+ assert.match(html,/id="ownerCountIntegrityReview"[^>]*hidden/);
+ const start=html.indexOf("function renderRecordHistory(");
+ const end=html.indexOf("function editRecord(",start);
+ assert.ok(start>0&&end>start);
+ const source=html.slice(start,end);
+ for(const condition of [
+  "isCurrentCompanyOwner()","canCurrentUserViewRevenue()",
+  '!partnerInlineWorkspaceCompany',
+  'currentUserData?.accessKind !== "partner"',
+  'record.companyId === currentUserData?.companyId',
+  "record.date?.startsWith(selectedMonth)"
+ ])assert.ok(source.includes(condition),"owner scope missing: "+condition);
+ assert.match(source,/review\.hidden = true;/);
+ assert.match(source,/review\.replaceChildren\(\)/);
+ assert.match(source,/review\.hidden = false;/);
+ assert.match(source,/recordHistoryDate\.value = record\.date;/);
+ assert.match(source,/renderRecordHistory\(currentRecordHistoryMonthly\);/);
+ assert.match(source,/const canCorrect = !inconsistent &&/);
+ assert.doesNotMatch(source,/\b(runTransaction|setDoc|updateDoc|deleteDoc|transaction\.(?:set|create|update|delete))\s*\(/);
+ assert.doesNotMatch(source,/getDocsFromServer|httpsCallable|collection\(db/);
 });
