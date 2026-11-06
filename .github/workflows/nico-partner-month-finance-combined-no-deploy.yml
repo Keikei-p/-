@@ -1,13 +1,13 @@
 name: NICO Partner Month + Catalog + Finance Rules Combined (NO DEPLOY)
 on:
   push:
-    branches: [integration/partner-month-catalog-finance-20261105]
+    branches: [integration/partner-month-catalog-finance-20261105, fix/partner-october-history-readonly-20261106]
   pull_request:
-    branches: [feature/partner-catalog-month-integrated-20261105]
+    branches: [feature/partner-catalog-month-integrated-20261105, integration/partner-month-catalog-finance-20261105]
 permissions:
   contents: read
 concurrency:
-  group: nico-partner-month-finance-combined-no-deploy
+  group: nico-partner-month-finance-combined-no-deploy-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
   combined-emulator:

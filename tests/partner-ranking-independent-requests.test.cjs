@@ -96,3 +96,55 @@ test("original company revenue ranking, finance permissions and protected data w
  assert.match(app,/sharedDailyRankCache\.clear\(\);ownerMonthlyRankCache\.clear\(\)/);
  assert.equal((app.match(/\+\+sharedDailyRankingGeneration;\+\+ownerMonthlyRankGeneration/g)||[]).length,3);
 });
+
+
+test("November can read October staff-ledger counts without invalid older quick calls or fake finalized ranks",async()=>{
+ // Only synthetic responses: no Firebase, Auth, finance originals or writes.
+ const KEYS=["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR",
+  "ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"];
+ const row=(changes={})=>{
+  const counts=Object.fromEntries(KEYS.map(key=>[key,changes[key]||0]));
+  return {partnerCompanyId:"partnerA",name:"協力店A",counts,
+   totalCount:Object.values(counts).reduce((a,b)=>a+b,0)};
+ };
+ const quickCalls=[],staffCalls=[];
+ const ctx={
+  PARTNER_QUICK_RANK_KEYS:KEYS,
+  getTodayString:()=>"2026-11-06",
+  currentPartnerRankingKey:month=>"owner|hub|"+month,
+  partnerRankingDailyCache:new Map(),
+  readPartnerQuickDay:async({date})=>{
+   quickCalls.push(date);
+   if(date<"2026-10-06")throw Error("legacy_quick_date_outside_31_days");
+   return {data:{role:"hub",date,partners:date==="2026-10-20"?
+    [row({NURO:9})]:[]}};
+  },
+  readPartnerWorkDay:async({date})=>{
+   staffCalls.push(date);
+   return {data:{role:"hub",date,
+    partners:date==="2026-10-02"?[row({NURO:3})]:
+     date==="2026-10-20"?[row({NURO:2})]:[],
+    registeredCompanies:[{partnerCompanyId:"partnerA",active:true}]}};
+  }
+ };
+ vm.createContext(ctx);
+ vm.runInContext(between("function validatedPartnerRankingDay(",
+  "function renderOwnerPartnerMonthlyPendingCounts(){"),ctx);
+ const october=await vm.runInContext('readPartnerRankingMonth("2026-10")',ctx);
+ assert.equal(staffCalls.length,31,"all October dates must be checked");
+ assert.equal(quickCalls.length,26,"only Oct 6–31 may call the 31-day endpoint");
+ assert(quickCalls.every(date=>date>="2026-10-06"));
+ assert.equal(october.complete,false,
+  "missing historic quick-only reports must never be certified as zero");
+ assert.equal(october.rows.length,1);
+ assert.equal(october.rows[0].totalCount,5,
+  "3 early staff counts + 2 recent staff counts, not extra legacy 9");
+ const cached=await vm.runInContext('readPartnerRankingMonth("2026-10")',ctx);
+ assert.equal(cached.rows[0].totalCount,5);
+ assert.equal(staffCalls.length,31,"historical ledger cache avoids repeat reads");
+ assert.equal(quickCalls.length,26);
+ const ancient=await vm.runInContext('readPartnerRankingMonth("2025-09")',ctx);
+ assert.equal(ancient.complete,false);
+ assert.equal(ancient.rows.length,0);
+ assert.equal(staffCalls.length,31,"outside 366 days must not call either API");
+});
