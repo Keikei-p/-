@@ -5653,6 +5653,22 @@ body.product-reordering .product-list {
       </div>
       <div id="ownerPartnerProxyStaff" class="p-inline-list"></div>
     </section>
+    <section id="ownerPartnerQuickProxyPanel" class="p-inline-card" hidden>
+      <div class="quick-panel-header">
+        <h3 id="ownerPartnerQuickTitle">件数専用の報告｜会社全体の訂正</h3>
+        <button type="button" id="ownerPartnerQuickClose" class="team-action-button">閉じる</button>
+      </div>
+      <p class="p-inline-muted">こちらは「件数専用」の会社全体の報告です。担当者別・班別の件数とは別の原票です。勝手に合算・移行しません。</p>
+      <p id="ownerPartnerQuickStatus" role="status" aria-live="polite"></p>
+      <div id="ownerPartnerQuickFields" class="p-inline-grid"></div>
+      <label class="p-inline-field">訂正理由（必須）
+        <input id="ownerPartnerQuickReason" type="text" maxlength="160" placeholder="例：当日の契約件数を照合">
+      </label>
+      <div class="p-inline-actions">
+        <button id="ownerPartnerQuickSave" type="button" disabled>件数専用の報告を訂正する</button>
+        <button id="ownerPartnerQuickRefresh" type="button">件数専用を再取得</button>
+      </div>
+    </section>
     <p style="color:var(--sub);font-size:12px;line-height:1.7;">
       当面の件数入力は既存のメール認証付き専用画面を使ってください。会社コード方式は本番公開前です。
     </p>
@@ -7210,6 +7226,8 @@ const db =
 
 const partnerCountFunctions = getFunctions(app,"asia-northeast1");
 const readPartnerQuickDay = httpsCallable(partnerCountFunctions,"getPartnerQuickCounts");
+const readOwnerPartnerQuickCorrection = httpsCallable(partnerCountFunctions,"getOwnerPartnerQuickCorrection");
+const submitOwnerPartnerQuickCorrection = httpsCallable(partnerCountFunctions,"submitOwnerPartnerQuickCorrection");
 const approvePartnerQuickDay = httpsCallable(partnerCountFunctions,"approvePartnerQuickCounts");
 const readPartnerWorkDay = httpsCallable(partnerCountFunctions,"getPartnerWorkspace");
 const readPartnerSavedMonth = httpsCallable(partnerCountFunctions,"getPartnerSavedMonthlyCounts");
@@ -9500,7 +9518,12 @@ function ownerDirRender(){
   button.textContent=company.approved?"管理画面を開く":"件数共有の承認待ち";
   button.disabled=!company.approved;
   button.onclick=()=>void openOwnerPartnerProxy(company.partnerCompanyId,company.name);
-  card.append(button);rows.append(card);
+  card.append(button);
+  const quickButton=document.createElement("button");quickButton.type="button";
+  quickButton.className="team-action-button";
+  quickButton.textContent="件数専用の報告を管理";
+  quickButton.onclick=()=>void openOwnerPartnerQuickProxy(company.partnerCompanyId,company.name);
+  card.append(quickButton);rows.append(card);
  }
  more.hidden=!ownerDirHasMore;
  more.disabled=ownerDirBusy;
@@ -9797,7 +9820,7 @@ document.getElementById("ownerPartnerProxyRefresh").onclick=()=>{
  if(ownerProxyCompany)void openOwnerPartnerProxy(ownerProxyCompany,ownerProxyCompanyName);
 };
 partnerCompanyDate.addEventListener("change",()=>{
- ownerProxyReset();
+ ownerProxyReset();ownerQuickReset();
  if(partnerCompanyManagement.style.display!=="none")
   void loadPartnerCompanyList();
 });
@@ -10014,6 +10037,7 @@ async function loadPartnerCompanyList(){
 quickPartnerButton.onclick=()=>{
   if(!canLoadPartnerRanking())return;
   ownerProxyReset();
+  ownerQuickReset();
   ownerDirReset();
   closeQuickPanels();
   showManagementWorkspace(partnerCompanyManagement);
@@ -10028,7 +10052,7 @@ document.getElementById("refreshPartnerCompanies").onclick=()=>{
  void ownerDirFetch(true);void loadPartnerCompanyList();
 };
 document.getElementById("closePartnerCompanyButton").onclick=()=>{
- ownerProxyReset();closeQuickPanels();
+ ownerProxyReset();ownerQuickReset();closeQuickPanels();
 };
 
 quickOwnerButton.onclick =
@@ -12801,6 +12825,7 @@ function partnerMainPendingInvite(){
 function resetPartnerInline(){
  ownerCatalogReset();
  ownerProxyReset();
+ ownerQuickReset();
  ownerDirReset(); // Clear previous Owner company view on sign-out/account change.
  ++partnerInlineNonce;++ownerPartnerTeamsNonce;++partnerInlineMonthNonce;++ownerPartnerMonthNonce;
  ++partnerJointNonce;++ownerJointNonce;++partnerExtraNonce;++partnerInternetNonce;
