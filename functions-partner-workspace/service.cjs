@@ -863,12 +863,15 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    if(d.partnerCompanyId!=null)fail();
   }else fail();
   // The bounded date range never returns incomplete totals if it overflows.
-  const [entries,teams]=await Promise.all([
+  const [entries,extraEntries,teams]=await Promise.all([
    collection(cid,"partnerWorkEntries").where("date",">=",bounds.first)
+    .where("date","<=",bounds.last).limit(1001).get(),
+   collection(cid,"partnerAdditionalCountEntries").where("date",">=",bounds.first)
     .where("date","<=",bounds.last).limit(1001).get(),
    collection(cid,"partnerWorkTeams").limit(151).get()
   ]);
-  if(entries.size>1000||teams.size>150)fail("resource-exhausted");
+  if(entries.size>1000||extraEntries.size>1000||teams.size>150)
+   fail("resource-exhausted");
   const teamNames=Object.create(null);
   for(const sn of teams.docs){
    const x=sn.data()||{};
@@ -878,12 +881,31 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   // Members see only their own count rows; no other identities serialized.
   const rows=role==="member"?entries.docs.filter(sn=>
    sn.data()?.staffId===a.uid):entries.docs;
+  let base;
   try{
-   return projectSavedPartnerMonth({
+   base=projectSavedPartnerMonth({
     hubId,partnerId:cid,month:d.month,rows,categoryKeys:KEYS,
     teamNames,role,actorUid:a.uid
    });
   }catch{fail("data-loss");}
+  // The original nine categories remain available even when the separate
+  // extra catalog/ledger cannot be verified. Unknown extras are NEVER zero.
+  let extra=null;
+  try{
+   const policy=await getExtraPolicy(hubId);
+   const scopedExtra=role==="member"?extraEntries.docs.filter(sn=>
+    sn.data()?.staffId===a.uid):extraEntries.docs;
+   extra=projectPublishedPartnerExtras({
+    hubId,cid,month:d.month,docs:scopedExtra,
+    visibleProducts:policy.products,blockedIds:policy.blockedIds,
+    teamNames,role,actorUid:a.uid
+   });
+  }catch{ /* legacy nine-category read stays usable; extra is UNVERIFIED */ }
+  const combinedTotalCount=extra&&
+   Number.isSafeInteger(base.totalCount+extra.totalCount)?
+   base.totalCount+extra.totalCount:null;
+  return {...base,extra,extraVerified:!!extra&&combinedTotalCount!==null,
+   combinedTotalCount};
  }
  // Read-only joint MONTHLY individual/product counts for the same verified
  // internal Owner and approved partners; no writes and no raw finance output.
