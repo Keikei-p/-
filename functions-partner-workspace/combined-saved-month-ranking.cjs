@@ -32,8 +32,9 @@ function projectCombinedMonth({month,hubId,keys,direct,partners=[]}={}){
  validateCounts(direct.counts,keys);
  if(summed(direct.counts,keys)+direct.otherCount!==direct.totalCount)fail();
  const people=[],companies=[],totals={...direct.counts};
- const usedPersonIds=new Set(),partnerIds=new Set();
- let grandTotal=direct.totalCount,partnerTotal=0,partnerRows=0;
+ const usedPersonIds=new Set(),partnerIds=new Set(),publishedExtras=new Map();
+ let grandTotal=direct.totalCount,partnerTotal=0,partnerRows=0,extraRows=0;
+ let unpublishedExtraExcluded=false;
  const append=(person,companyId,companyName,kind)=>{
   if(!person||!OPAQUE.test(person.key||"")||!checkName(person.name)||
      !validCount(person.totalCount))fail();
@@ -54,7 +55,7 @@ function projectCombinedMonth({month,hubId,keys,direct,partners=[]}={}){
  const directPeopleSum=direct.people.reduce((n,p)=>n+p.totalCount,0);
  if(directPeopleSum!==direct.totalCount)fail();
  for(const company of partners){
-  const {id,name,data}=company||{};
+  const {id,name,data,extra}=company||{};
   if(!/^[A-Za-z0-9_-]{1,128}$/.test(id||"")||
      partnerIds.has(id)||id===hubId||!checkName(name)||!data||
      data.scope!=="partner_saved_month_counts_only"||
@@ -68,10 +69,57 @@ function projectCombinedMonth({month,hubId,keys,direct,partners=[]}={}){
   const before=people.length;
   for(const p of data.people)append(p,id,name,"partner");
   if(people.length-before!==data.people.length)fail();
-  companies.push({key:hash("joint_company",id),name,totalCount:data.totalCount,
-   verifiedEntryRows:data.verifiedEntryRows,reported:data.verifiedEntryRows>0});
+  let extraTotal=0,extraCountRows=0;
+  if(extra!==undefined){
+   if(extra?.scope!=="partner_published_extra_month_only"||
+      extra.month!==month||extra.complete!==false||
+      extra.productionDocumentWrites!==0||
+      typeof extra.containsUnpublished!=="boolean"||
+      !validCount(extra.totalCount)||!validCount(extra.verifiedExtraRows)||
+      !Array.isArray(extra.people)||extra.people.length>1000||
+      !Array.isArray(extra.products)||extra.products.length>1000)fail();
+   const originalPeople=new Map(people.slice(before).map(p=>[p.key,p]));
+   let peopleExtra=0,productsExtra=0;
+   for(const x of extra.people){
+    if(!OPAQUE.test(x?.key||"")||!checkName(x.name)||
+       !validCount(x.totalCount))fail();
+    const key=hash("joint_person",id,x.key);
+    let combined=originalPeople.get(key);
+    if(!combined){
+     if(usedPersonIds.has(key))fail();
+     usedPersonIds.add(key);
+     combined={key,name:x.name,companyName:name,kind:"partner",
+      totalCount:0,counts:Object.fromEntries(keys.map(k=>[k,0]))};
+     originalPeople.set(key,combined);people.push(combined);
+    }
+    combined.totalCount+=x.totalCount;
+    if(!validCount(combined.totalCount))fail();
+    peopleExtra+=x.totalCount;
+   }
+   const extraIds=new Set();
+   for(const product of extra.products){
+    if(!/^[A-Za-z0-9_-]{1,128}$/.test(product?.id||"")||
+       extraIds.has(product.id)||!checkName(product.name)||
+       !validCount(product.totalCount))fail();
+    extraIds.add(product.id);
+    const prior=publishedExtras.get(product.id);
+    if(prior&&prior.name!==product.name)fail();
+    publishedExtras.set(product.id,{id:product.id,name:product.name,
+     totalCount:(prior?.totalCount??0)+product.totalCount});
+    productsExtra+=product.totalCount;
+   }
+   if(peopleExtra!==extra.totalCount||productsExtra!==extra.totalCount)fail();
+   extraTotal=extra.totalCount;
+   extraCountRows=extra.verifiedExtraRows;
+   extraRows+=extraCountRows;
+   unpublishedExtraExcluded ||= extra.containsUnpublished;
+  }
+  companies.push({key:hash("joint_company",id),name,
+   totalCount:data.totalCount+extraTotal,
+   verifiedEntryRows:data.verifiedEntryRows+extraCountRows,
+   reported:data.verifiedEntryRows+extraCountRows>0});
   partnerRows+=data.verifiedEntryRows;
-  partnerTotal+=data.totalCount;grandTotal+=data.totalCount;
+  partnerTotal+=data.totalCount+extraTotal;grandTotal+=data.totalCount+extraTotal;
   if(!validCount(grandTotal)||!validCount(partnerRows))fail();
   for(const k of keys)totals[k]+=data.counts[k];
  }
@@ -84,8 +132,9 @@ function projectCombinedMonth({month,hubId,keys,direct,partners=[]}={}){
   if(previous!==p.totalCount){rank=index+1;previous=p.totalCount;}
   return {...p,rank};
  });
- const haveSavedRows=direct.recordsVerified+partnerRows>0;
+ const haveSavedRows=direct.recordsVerified+partnerRows+extraRows>0;
  const products=haveSavedRows?keys.map(name=>({name,totalCount:totals[name]})):[];
+ products.push(...publishedExtras.values());
  if(direct.otherCount>0)products.push({name:"その他（直営）",totalCount:direct.otherCount});
  products.sort((a,b)=>b.totalCount-a.totalCount||a.name.localeCompare(b.name,"ja"));
  let prev=null,productRank=0;
@@ -97,9 +146,12 @@ function projectCombinedMonth({month,hubId,keys,direct,partners=[]}={}){
     people.reduce((s,p)=>s+p.totalCount,0)!==grandTotal)fail();
  return Object.freeze({
   scope:"joint_saved_month_counts_only",month,complete:false,provisional:true,
-  provisionalReason:"保存済み件数のみ。未報告日・未報告者は未照合",
+  provisionalReason:unpublishedExtraExcluded?
+   "保存済み件数のみ。非公開商材・未報告日はランキング対象外":
+   "保存済み件数のみ。未報告日・未報告者は未照合",
   includesDirect:true,partnerCount:partners.length,
-  verifiedPartnerRows:partnerRows,hasSavedRows:haveSavedRows,grandTotal,partnerTotal,
+  verifiedPartnerRows:partnerRows+extraRows,hasSavedRows:haveSavedRows,
+  unpublishedExtraExcluded,grandTotal,partnerTotal,
   directTotal:direct.totalCount,otherDirectCount:direct.otherCount,
   companies,people:standing,products:productStanding,
   productionDocumentWrites:0
