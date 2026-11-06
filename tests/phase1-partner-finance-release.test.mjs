@@ -213,6 +213,35 @@ test('already-installed candidate cannot falsely claim safe state without live r
  assert.deepEqual(f.writes,[],'never rollback someone else’s previously active Rules');
  assert.equal(f.getCurrent(),candidateId);
 });
+test('already-installed candidate cannot claim current security after a concurrent post-proof Rules change',async()=>{
+ const f=fixture({starting:candidateId});
+ await assert.rejects(phase1Boundary({
+  ...f.args,...approvals,apply:true,
+  verifyLiveRoles:async()=>{
+   // A separate operator changes the active Rules while the real user
+   // probes are in progress. The old candidate must not be reported active.
+   f.setCurrent(otherId);
+   return liveProof();
+  }
+ }),/STOP_PHASE1_POST_PROOF_RULES_RELEASE_RACE/);
+ assert.equal(f.getCurrent(),otherId);
+ assert.deepEqual(f.writes,[],'never overwrite or roll back another operator');
+});
+
+test('a newly switched release does not report success if changed during the user proof',async()=>{
+ const f=fixture();
+ await assert.rejects(phase1Boundary({
+  ...f.args,...approvals,apply:true,
+  verifyLiveRoles:async()=>{
+   f.setCurrent(otherId);
+   return liveProof();
+  }
+ }),/STOP_PHASE1_CONCURRENT_OPERATOR_MANUAL_REVIEW/);
+ assert.equal(f.getCurrent(),otherId);
+ assert.deepEqual(f.writes.map(x=>x.method),['POST','PATCH'],
+  'no second PATCH may overwrite a competing operator');
+});
+
 test('verify-only never invokes live-role probe or implies live denial',async()=>{
  const f=fixture();
  let called=0;
