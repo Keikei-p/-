@@ -6546,7 +6546,7 @@ body.product-reordering .product-list {
 
       <div id="ownerPartnerTeamGroups" class="team-list" aria-label="協力店の会社別班一覧" style="margin-top:14px"></div>
       <div id="ownerPartnerMonthControls" class="p-inline-card" hidden>
-        <h3>協力店の月別班詳細（件数のみ）</h3>
+        <h3>協力店の会社 → 班 → 担当者 → 商材別件数</h3>
         <label class="p-inline-field">表示月<input type="month" id="ownerPartnerMonth" aria-label="本社から確認する協力店の月"></label>
         <p id="ownerPartnerMonthStatus" class="p-inline-muted" role="status" aria-live="polite"></p>
         <div id="ownerPartnerMonthDetails" class="p-inline-list"></div>
@@ -6638,6 +6638,8 @@ body.product-reordering .product-list {
         <p class="p-inline-muted">各商材カードで公開ON/OFFを選べます。価格・CB・売上は協力店へ渡しません。</p>
         <button id="ownerPublishedCatalogRefresh" type="button" class="team-action-button">公開状態を更新</button>
         <p id="ownerPublishedCatalogStatus" class="p-inline-muted" role="status" aria-live="polite">公開設定未確認</p>
+        <p class="p-inline-muted">商材ごとに公開を管理します。売上・単価・CBは共有しません。既存9区分の入力制限は段階確認し、現在の件数入力を止めません。</p>
+        <div id="ownerPublishedCatalogList" class="p-inline-list" aria-label="協力店商材管理・公開ON/OFF"></div>
       </div>
 
     </div>
@@ -13372,24 +13374,29 @@ async function loadOwnerPartnerCompanyTeams(){
    partnerMainAppendRow(target,"協力店は未登録です","招待リンクから協力店会社を追加できます。");
   for(const company of result.registeredCompanies){
    if(!company?.name||!Array.isArray(company.teams))continue;
+   const card=document.createElement("details");card.className="p-inline-row";
+   const summary=document.createElement("summary");
+   summary.textContent=company.name+"｜"+company.teams.length+"班"+
+    (company.active?"":"（件数利用未承認）");
+   card.append(summary);
    if(!company.teams.length)
-    partnerMainAppendRow(target,company.name,"班未登録"+(company.active?"":"・件数利用未承認"));
+    partnerMainAppendRow(card,"班未登録","班を登録するとここに表示します。");
    for(const team of company.teams)
-    partnerMainAppendRow(target,company.name+"・"+team.name,
+    partnerMainAppendRow(card,team.name,
       company.active?"件数登録対象":"件数利用未承認");
-   // No bulk month fetch. A single explicit tap loads one company and
-   // prevents excessive read traffic when many partners are registered.
+   // Month-only counts are fetched on an explicit company click.
    if(company.active&&partnerMainValidId(company.partnerCompanyId)){
-    const button=document.createElement("button");
-    button.type="button";
+    const button=document.createElement("button");button.type="button";
+    button.className="team-action-button";
     button.textContent=company.name+"｜月別詳細を表示";
     button.onclick=()=>{
      ownerPartnerSelectedCompany=company.partnerCompanyId;
      ownerPartnerSelectedName=company.name;
      void loadOwnerPartnerSavedMonth(company.partnerCompanyId,company.name);
     };
-    target.append(button);
+    card.append(button);
    }
+   target.append(card);
   }
  }catch{
   if(seq!==ownerPartnerTeamsNonce)return;
@@ -18871,6 +18878,37 @@ productList.addEventListener(
 // master when a public flag is toggled. Unknown state means disabled checkbox.
 let ownerCatalogState={revision:0,verified:false,busy:false,rows:new Map()};
 let ownerCatalogNonce=0;
+function renderOwnerCatalogPublicationRows(){
+ const target=document.getElementById("ownerPublishedCatalogList");
+ if(!target)return;
+ target.replaceChildren();
+ if(!auth.currentUser||!isCurrentCompanyOwner()||
+    currentCompanyData?.companyKind==="partner")return;
+ if(!ownerCatalogState.verified){
+  const note=document.createElement("p");note.className="p-inline-muted";
+  note.textContent="公開状態未確認。変更は停止しています。";
+  target.append(note);return;
+ }
+ const rows=[...ownerCatalogState.rows.values()].sort((a,b)=>
+  a.sortOrder-b.sortOrder||a.name.localeCompare(b.name,"ja"));
+ for(const product of rows){
+  const label=document.createElement("label");label.className="p-inline-row";
+  label.style.cssText="display:flex;align-items:center;justify-content:space-between;gap:12px";
+  const name=document.createElement("span");name.textContent=product.name;
+  const toggle=document.createElement("input");toggle.type="checkbox";
+  toggle.setAttribute("aria-label",product.name+"を協力店に公開");
+  toggle.checked=product.published===true;
+  toggle.disabled=!ownerCatalogState.verified||ownerCatalogState.busy;
+  toggle.onchange=()=>void ownerCatalogToggle(product.id,toggle.checked);
+  label.append(name,toggle);target.append(label);
+ }
+ if(!rows.length){
+  const empty=document.createElement("p");empty.className="p-inline-muted";
+  empty.textContent="商材がありません。本社の商材管理から追加してください。";
+  target.append(empty);
+ }
+}
+
 function ownerCatalogReset(){
  ++ownerCatalogNonce;
  ownerCatalogState={revision:0,verified:false,busy:false,rows:new Map()};
@@ -18946,6 +18984,7 @@ productManagementToggle.addEventListener("click",()=>{
   void ownerCatalogRefresh();
 });
 function renderProducts() {
+  renderOwnerCatalogPublicationRows();
 
   productManagementCount.textContent =
     `${products.length}件`;
@@ -19066,20 +19105,6 @@ function renderProducts() {
         edit
       );
 
-      if(isCurrentCompanyOwner()&&currentCompanyData?.companyKind!=="partner"){
-        const state=ownerCatalogState.rows.get(product.id);
-        const label=document.createElement("label");label.className="p-inline-field";
-        label.style.display="inline-flex";label.style.alignItems="center";
-        label.style.gap="6px";
-        const checkbox=document.createElement("input");checkbox.type="checkbox";
-        checkbox.setAttribute("aria-label",(product.name||"商材")+"を協力店に公開");
-        checkbox.checked=state?.published===true;
-        checkbox.disabled=!ownerCatalogState.verified||ownerCatalogState.busy||!state;
-        checkbox.onchange=()=>void ownerCatalogToggle(product.id,checkbox.checked);
-        const caption=document.createElement("span");
-        caption.textContent=state?.published===true?"協力店に公開中":"協力店に非公開";
-        label.append(checkbox,caption);actions.append(label);
-      }
 
       item.appendChild(
         info
