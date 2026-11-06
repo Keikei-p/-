@@ -8829,6 +8829,9 @@ let editingProductId = null;
 let editingMemberId = null;
 let editingRecordId = null;
 let editingRecordRevision = null;
+// Explicit Owner review is required before any saved-count mismatch can enter
+// the existing audited correction transaction. No automatic data repair.
+let ownerMismatchCorrectionApproval = null;
 let zeroResultRequested = false;
 let recordSaveInProgress = false;
 
@@ -23833,6 +23836,8 @@ recordSupportMembers.addEventListener("change", async () => {
 
 async function loadExistingRecordIntoForm() {
 
+  // Switching day/member invalidates any prior Owner mismatch review.
+  ownerMismatchCorrectionApproval = null;
   if (
     !recordDate.value ||
     !recordMember.value
@@ -23998,6 +24003,45 @@ function selectOwnerCountIntegrityRows(monthly, selectedMonth) {
     readOnlyRecordCountEvidence(record) !== null);
 }
 
+// A damaged saved count must NEVER be silently recalculated by opening and
+// saving the old form. Only a genuine internal Owner may intentionally start
+// the existing audit-trail correction flow. This is a UI gate; Firestore Rules
+// remain the independent server-side authorization boundary.
+function canBeginOwnerMismatchCorrection(record) {
+  const evidence = readOnlyRecordCountEvidence(record);
+  return evidence !== null && Number.isSafeInteger(evidence.saved) &&
+    Number.isSafeInteger(evidence.lines) && evidence.saved !== evidence.lines &&
+    typeof record?.id === "string" && /^[A-Za-z0-9_-]{1,180}$/.test(record.id) &&
+    record.results && typeof record.results === "object" &&
+    !Array.isArray(record.results) &&
+    selectOwnerCountIntegrityRows([record],record.date?.slice(0,7))[0] === record;
+}
+function ownerMismatchCountRows(results) {
+  if (!results || typeof results !== "object" || Array.isArray(results)) return null;
+  const counts = new Map();
+  for (const row of Object.values(results)) {
+    if (!row || typeof row !== "object" ||
+        typeof row.productId !== "string" ||
+        !/^[A-Za-z0-9_-]{1,128}$/.test(row.productId)) return null;
+    const cb = row.cashback ?? 0;
+    const n = row.count;
+    const validCount = (typeof n === "number" && Number.isSafeInteger(n)) ||
+      (typeof n === "string" && /^\\d+$/.test(n) && Number.isSafeInteger(Number(n)));
+    if (!validCount || Number(n)<0 || !Number.isSafeInteger(cb) || cb<0) return null;
+    if (!Number(n)) continue;
+    const key = JSON.stringify([row.productId,cb]);
+    if (counts.has(key)) return null;
+    counts.set(key,Number(n));
+  }
+  return counts;
+}
+function ownerMismatchCountsChanged(previous,next) {
+  const a=ownerMismatchCountRows(previous),b=ownerMismatchCountRows(next);
+  if (!a || !b) return false;
+  if (a.size !== b.size) return true;
+  return [...a].some(([k,n])=>b.get(k)!==n);
+}
+
 async function persistDailyRecord(recordRef, data, expectedRecord, expectedRevision, writeCorrection = null) {
   // サーバーで同日を確認。旧IDの実績もそのまま更新し、重複は推測で統合しない。
   const daily = await getDocsFromServer(query(
@@ -24049,6 +24093,7 @@ clearRecordButton.onclick =
 
     editingRecordId = null;
     editingRecordRevision = null;
+    ownerMismatchCorrectionApproval = null;
     recordSupportMembers.checked = false;
 
     showRecordCorrectionTeam(
@@ -24327,6 +24372,22 @@ saveRecordButton.onclick =
 
 
     const existingDailyRecord = findDailyRecord(targetUid, date);
+    // A pre-existing mismatch is NOT permission to change a saved total.
+    // It must be an explicit Owner-initiated review with a real quantity-row
+    // change and an additional confirmation at the point of saving.
+    if (existingDailyRecord && readOnlyRecordCountEvidence(existingDailyRecord)!==null) {
+      const review=ownerMismatchCorrectionApproval;
+      if (!canBeginOwnerMismatchCorrection(existingDailyRecord) ||
+          !review || review.recordId!==existingDailyRecord.id ||
+          review.revision!==editingRecordRevision ||
+          review.revision!==recordRevision(existingDailyRecord) ||
+          zeroResultSubmission ||
+          !ownerMismatchCountsChanged(existingDailyRecord.results,results)) {
+        showError("不一致の件数は自動補正できません。オーナーが元契約と訂正履歴を確認し、履歴一覧から明細を手動訂正してください。");
+        return;
+      }
+      if (!confirm("保存件数と商材明細に不一致があります。元契約・訂正履歴と照合し、変更する商材数量と売上を確認しましたか？訂正前後は監査履歴へ保存され、元の記録が更新されます。")) return;
+    }
     // CB is a selector only; sales are quantity * approved revenuePerUnit.
     // Never overwrite unchanged historical rates, but block new/incremented counts
     // whose unit rate no longer matches the catalog.
@@ -36529,8 +36590,8 @@ function renderRecordHistory(
         warning.textContent = "保存済み件数と明細が一致しません。自動修正せず、オーナーへ履歴確認を依頼してください。";
         item.appendChild(warning);
       }
-      const canCorrect = !inconsistent &&
-        canCurrentUserCorrectRecord(record);
+      const canCorrect = canCurrentUserCorrectRecord(record) &&
+        (!inconsistent || canBeginOwnerMismatchCorrection(record));
 
       // Consistent historical corrections remain available as before.
 
@@ -36608,15 +36669,20 @@ function editRecord(
 ) {
 
     if (recordSaveInProgress) return;
-    if (readOnlyRecordCountEvidence(record) !== null) {
-      showError("保存済み件数と明細が一致しないため、訂正履歴と元契約をオーナーが確認してください。");
+    const mismatch=readOnlyRecordCountEvidence(record);
+    if (mismatch !== null && !canBeginOwnerMismatchCorrection(record)) {
+      showError("不一致レコードは、売上閲覧権限を持つ本社オーナーだけが確認できます。未確認のレコードは変更できません。");
       return;
     }
     if (!canCurrentUserCorrectRecord(record)) {
       showError("この実績の訂正はオーナーへ依頼してください。");
       return;
     }
+    if (mismatch !== null &&
+        !confirm("保存済み件数と商材明細が一致しません。元契約と訂正履歴を確認した上で、数量を手動で訂正する場合のみ続行してください。表示するだけでは件数や金額は変更されません。")) return;
     editingRecordRevision = recordRevision(record);
+    ownerMismatchCorrectionApproval = mismatch===null ? null :
+      {recordId:record.id,revision:editingRecordRevision};
 
   recordDate.value =
     record.date;
@@ -36646,6 +36712,14 @@ function editRecord(
     record.results ||
     null
   );
+  if (mismatch!==null && ownerMismatchCountsChanged(record.results,getCurrentInputResults())) {
+    // A deleted/legacy product row was not representable in the current
+    // selector. Never drop such a row just because the form did not show it.
+    ownerMismatchCorrectionApproval=null;
+    editingRecordId=null;editingRecordRevision=null;
+    showError("旧商材の一部を現在の入力画面に再現できません。実績を変更せず、オーナーが元記録・訂正履歴を確認してください。");
+    return;
+  }
 
 
   saveRecordButton.textContent =
