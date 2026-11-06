@@ -167,8 +167,10 @@ test('uncertain patch or changed inventory rolls Rules back to exact previously 
    let n=0;
    f.args.snapshot=async()=>{
     const v=structuredClone(snap);
-    // Reads 1,2,3 precede the release; read 4 detects post-apply drift.
-    if(++n===4)v.documents[0].value.fields.totalCount.integerValue='4';
+    // Reads 1-4 precede the release, including our NEW final pre-PATCH
+    // concurrency gate. Read 5 now detects post-apply drift and triggers
+    // the rollback proof; earlier drift is instead stopped before PATCH.
+    if(++n===5)v.documents[0].value.fields.totalCount.integerValue='4';
     return v;
    };
   }
