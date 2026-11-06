@@ -1140,7 +1140,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  const {viewInternetSplitDay,viewInternetSplitMonth,submitInternetSplit}=makePartnerInternetSplitOperations({
   db,actor,scope,collection,FieldValue,fail,validDate,canStaff
  });
- const {viewDay:viewOwnerPartnerDay,correctDay:correctOwnerPartnerDay}=
+ const {viewDay:viewOwnerPartnerDay,correctDay:correctOwnerPartnerDay,
+  classifyOwnerInternet}=
   makeOwnerPartnerCorrections({db,actor,scope,collection,FieldValue,fail,
    validDate,validateCounts,validatePrivateCounts,KEYS,
    legacyPolicyFor,assertLegacyEdit});
@@ -1148,7 +1149,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   manage,accept,view,viewSavedMonth,viewCombinedMonth,
   getPublishedCatalog,setPublishedProduct,viewAdditionalCounts,submitAdditionalCounts,submit,
   getLegacyGate,activateLegacyCountGate,viewInternetSplitDay,viewInternetSplitMonth,submitInternetSplit,
-  viewOwnerPartnerDay,correctOwnerPartnerDay
+  viewOwnerPartnerDay,correctOwnerPartnerDay,classifyOwnerInternet
  });
 }
 module.exports={makeWorkspace,KEYS};
