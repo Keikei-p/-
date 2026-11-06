@@ -5629,6 +5629,17 @@ body.product-reordering .product-list {
       <button id="refreshPartnerCompanies" class="team-action-button" type="button">会社一覧を更新</button>
     </div>
     <p id="partnerCompanyStatus" role="status" aria-live="polite"></p>
+    <section id="ownerPartnerDirectory" class="p-inline-card" aria-label="協力店を会社別に探す">
+      <h3>協力店を探す・管理画面を開く</h3>
+      <p class="p-inline-muted">25社ずつ追加表示します。検索は読み込み済みの会社が対象です。会社の件数訂正は管理画面を開いて行います。</p>
+      <label class="p-inline-field">読み込み済みの会社名で絞り込み
+        <input type="search" id="ownerPartnerDirectoryFilter" placeholder="会社名を検索">
+      </label>
+      <p id="ownerPartnerDirectoryStatus" role="status" aria-live="polite"></p>
+      <div id="ownerPartnerDirectoryRows" class="p-inline-list"></div>
+      <button id="ownerPartnerDirectoryNext" type="button" class="team-action-button" hidden>次の25社を表示</button>
+    </section>
+    <h3>当日の報告・件数専用の承認状況</h3>
     <div id="partnerCompanyList" style="display:grid;gap:12px;"></div>
     <section id="ownerPartnerProxyPanel" class="p-inline-card" hidden>
       <div class="quick-panel-header">
@@ -7212,6 +7223,7 @@ const submitPartnerAdditionalDay = httpsCallable(partnerCountFunctions,"submitPa
 const readPartnerInternetSplitDay = httpsCallable(partnerCountFunctions,"getPartnerInternetSplitDay");
 const readPartnerInternetSplitMonth = httpsCallable(partnerCountFunctions,"getPartnerInternetSplitMonth");
 const readOwnerPartnerCorrectionDay = httpsCallable(partnerCountFunctions,"getOwnerPartnerCorrectionDay");
+const readOwnerPartnerCompaniesPage = httpsCallable(partnerCountFunctions,"getOwnerPartnerCompaniesPage");
 const submitOwnerPartnerCorrection = httpsCallable(partnerCountFunctions,"submitOwnerPartnerCorrection");
 const submitOwnerPartnerInternetSplit = httpsCallable(partnerCountFunctions,"submitOwnerPartnerInternetSplit");
 const submitPartnerInternetSplit = httpsCallable(partnerCountFunctions,"submitPartnerInternetSplit");
@@ -9457,6 +9469,91 @@ quickInviteButton.onclick =
 
 // A small owner-only company view, backed by the existing count-only API.
 // Never use the legacy records/products collections or put financial data in this UI.
+// Paginated count-only Owner directory. Avoids the older 100-company
+// limit without modifying accounts, company membership or financial records.
+let ownerDirNonce=0,ownerDirCursor=null,ownerDirHasMore=true,ownerDirBusy=false;
+const ownerDirCompanies=new Map();
+function ownerDirReset(){
+ ++ownerDirNonce;ownerDirCursor=null;ownerDirHasMore=true;
+ ownerDirBusy=false;ownerDirCompanies.clear();
+ document.getElementById("ownerPartnerDirectoryRows").replaceChildren();
+ document.getElementById("ownerPartnerDirectoryFilter").value="";
+ document.getElementById("ownerPartnerDirectoryStatus").textContent="";
+ document.getElementById("ownerPartnerDirectoryNext").hidden=true;
+}
+function ownerDirRender(){
+ const rows=document.getElementById("ownerPartnerDirectoryRows"),
+  hint=document.getElementById("ownerPartnerDirectoryStatus"),
+  more=document.getElementById("ownerPartnerDirectoryNext"),
+  filter=document.getElementById("ownerPartnerDirectoryFilter").value.trim().toLowerCase();
+ rows.replaceChildren();
+ const visible=[...ownerDirCompanies.values()].filter(c=>c.name.toLowerCase().includes(filter))
+  .sort((a,b)=>a.name.localeCompare(b.name,"ja")||a.partnerCompanyId.localeCompare(b.partnerCompanyId));
+ for(const company of visible){
+  const card=document.createElement("div");card.className="p-inline-row";
+  const label=document.createElement("strong");
+  label.textContent="🏢 "+company.name;
+  card.append(label);
+  const button=document.createElement("button");button.type="button";
+  button.className="team-action-button";
+  button.textContent=company.approved?"管理画面を開く":"件数共有の承認待ち";
+  button.disabled=!company.approved;
+  button.onclick=()=>void openOwnerPartnerProxy(company.partnerCompanyId,company.name);
+  card.append(button);rows.append(card);
+ }
+ more.hidden=!ownerDirHasMore;
+ more.disabled=ownerDirBusy;
+ hint.textContent="読み込み済み"+ownerDirCompanies.size+"社"+
+  (filter?"｜一致"+visible.length+"社":"")+
+  (ownerDirBusy?"｜続きを確認中…":ownerDirHasMore?"｜続きがあります":"｜最終ページ")+
+  "。見つからない場合は次のページを読み込んでください。";
+}
+async function ownerDirFetch(reset=false){
+ if(ownerDirBusy)return;
+ if(!canLoadPartnerRanking()||!currentUser?.uid||
+    partnerCompanyManagement.style.display==="none")return;
+ if(reset){ownerDirReset();}
+ if(!ownerDirHasMore)return;
+ const uid=currentUser.uid,hub=currentUserData?.companyId,seq=++ownerDirNonce;
+ ownerDirBusy=true;ownerDirRender();
+ const stale=()=>ownerDirNonce!==seq||uid!==currentUser?.uid||
+  hub!==currentUserData?.companyId||!canLoadPartnerRanking()||
+  partnerCompanyManagement.style.display==="none";
+ try{
+  const d=(await readOwnerPartnerCompaniesPage({cursor:ownerDirCursor||""})).data;
+  if(stale())return;
+  if(d?.scope!=="hub_owner_partner_directory_counts_only"||
+     d.financialFieldsIncluded!==false||d.productionDocumentWrites!==0||
+     d.pageSize!==25||!Array.isArray(d.companies)||d.companies.length>25||
+     typeof d.hasMore!=="boolean"||
+     (d.hasMore&&(!partnerMainValidId(d.nextCursor)||!d.companies.length))||
+     (!d.hasMore&&d.nextCursor!==null))throw Error("owner_directory_contract");
+  const pending=[];
+  let prevId=ownerDirCursor||"";
+  for(const c of d.companies){
+   if(!partnerMainValidId(c.partnerCompanyId)||
+      typeof c.name!=="string"||!c.name.trim()||c.name.length>80||
+      typeof c.approved!=="boolean"||
+      c.partnerCompanyId<=prevId||ownerDirCompanies.has(c.partnerCompanyId))
+    throw Error("owner_directory_row");
+   prevId=c.partnerCompanyId;pending.push(c);
+  }
+  if(d.hasMore&&d.nextCursor!==prevId)throw Error("owner_directory_cursor");
+  for(const c of pending)ownerDirCompanies.set(c.partnerCompanyId,c);
+  ownerDirCursor=d.nextCursor;ownerDirHasMore=d.hasMore;
+ }catch{
+  if(!stale()){
+   ownerDirHasMore=false;
+   document.getElementById("ownerPartnerDirectoryStatus").textContent=
+    "会社一覧の追加取得に失敗しました。更新して再確認してください。";
+  }
+ }finally{
+  if(!stale()){ownerDirBusy=false;ownerDirRender();}
+ }
+}
+document.getElementById("ownerPartnerDirectoryFilter").addEventListener("input",ownerDirRender);
+document.getElementById("ownerPartnerDirectoryNext").onclick=()=>void ownerDirFetch(false);
+
 let partnerCompanyListGeneration=0;
 let ownerProxyCompany="",ownerProxyCompanyName="",ownerProxyNonce=0;
 const ownerProxyPanel=document.getElementById("ownerPartnerProxyPanel");
@@ -9917,15 +10014,19 @@ async function loadPartnerCompanyList(){
 quickPartnerButton.onclick=()=>{
   if(!canLoadPartnerRanking())return;
   ownerProxyReset();
+  ownerDirReset();
   closeQuickPanels();
   showManagementWorkspace(partnerCompanyManagement);
   quickPartnerButton.setAttribute("aria-pressed","true");
   setManagementMenuOpen(false);
   if(!partnerCompanyDate.value)partnerCompanyDate.value=getTodayString();
   partnerCompanyDate.max=getTodayString();
+  void ownerDirFetch(true);
   void loadPartnerCompanyList();
 };
-document.getElementById("refreshPartnerCompanies").onclick=()=>void loadPartnerCompanyList();
+document.getElementById("refreshPartnerCompanies").onclick=()=>{
+ void ownerDirFetch(true);void loadPartnerCompanyList();
+};
 document.getElementById("closePartnerCompanyButton").onclick=()=>{
  ownerProxyReset();closeQuickPanels();
 };
@@ -12699,7 +12800,8 @@ function partnerMainPendingInvite(){
 }
 function resetPartnerInline(){
  ownerCatalogReset();
- ownerProxyReset(); // Clear previous Owner company view on sign-out/account change.
+ ownerProxyReset();
+ ownerDirReset(); // Clear previous Owner company view on sign-out/account change.
  ++partnerInlineNonce;++ownerPartnerTeamsNonce;++partnerInlineMonthNonce;++ownerPartnerMonthNonce;
  ++partnerJointNonce;++ownerJointNonce;++partnerExtraNonce;++partnerInternetNonce;
  partnerExtraData=null;partnerInternetData=null;partnerInternetBusy=false;
