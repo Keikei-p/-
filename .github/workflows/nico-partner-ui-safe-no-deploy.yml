@@ -1,0 +1,60 @@
+name: NICO partner UI safe increment (NO DEPLOY)
+on:
+  push:
+    branches: [feature/partner-owner-count-catalog-safe-20261106]
+  pull_request:
+    branches: [release/partner-month-phase1-candidate-20261106]
+permissions:
+  contents: read
+jobs:
+  isolated-count-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      FIREBASE_PROJECT_ID: demo-sales-support
+      GOOGLE_APPLICATION_CREDENTIALS: ""
+      FIREBASE_SERVICE_ACCOUNT_JSON: ""
+      NICO_USAGE_APPROVAL: ""
+      NICO_PHASE1_INDEPENDENT_SIGNOFF: ""
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Restrict changes to count-only UI and synthetic tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$FIREBASE_PROJECT_ID" = demo-sales-support
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$NICO_USAGE_APPROVAL"
+          test -z "$NICO_PHASE1_INDEPENDENT_SIGNOFF"
+          git fetch --no-tags origin release/partner-month-phase1-candidate-20261106
+          git diff --name-only origin/release/partner-month-phase1-candidate-20261106...HEAD > /tmp/partner-ui-files.txt
+          cat /tmp/partner-ui-files.txt
+          while IFS= read -r file; do
+            case "$file" in
+              index.html|tests/partner-ui-safe-increment.test.cjs|.github/workflows/nico-partner-ui-safe-no-deploy.yml) ;;
+              *) echo "BLOCK_PROTECTED_OR_UNREVIEWED_FILE: $file"; exit 1 ;;
+            esac
+          done < /tmp/partner-ui-files.txt
+          test "$(wc -l < /tmp/partner-ui-files.txt)" -eq 3
+      - name: Synthetic catalog, ranking, staff, saved-month and current UI regression tests
+        run: |
+          set -euo pipefail
+          node --test \
+            tests/partner-ui-safe-increment.test.cjs \
+            tests/partner-catalog-publish-main.test.cjs \
+            tests/partner-saved-month-ui-main.test.cjs \
+            tests/partner-saved-month-main.test.cjs \
+            tests/partner-combined-month-ranking-main.test.cjs \
+            tests/partner-workspace.test.cjs
+      - name: Confirm no production action
+        run: |
+          echo "PRODUCTION_DOCUMENT_WRITES=0"
+          echo "PRODUCTION_RULES_PATCHES=0"
+          echo "PRODUCTION_DEPLOYED=false"
