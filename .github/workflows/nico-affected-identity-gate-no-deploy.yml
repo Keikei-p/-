@@ -1,7 +1,7 @@
 name: NICO affected secondary identity + finance boundary (NO DEPLOY)
 on:
   push:
-    branches: [security/phase1-affected-account-binding-20261106, security/phase1-count-uptime-preswitch-20261106, security/phase1-secondary-role-parity-20261106, security/phase1-partner-count-entry-readiness-20261106]
+    branches: [security/phase1-affected-account-binding-20261106, security/phase1-count-uptime-preswitch-20261106, security/phase1-secondary-role-parity-20261106, security/phase1-partner-count-entry-readiness-20261106, security/phase1-final-count-race-and-code-login-20261106]
   pull_request:
     branches: [security/phase1-owner-preflight-bridge-20261105, security/phase1-affected-account-binding-20261106]
 permissions:
@@ -106,7 +106,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node --test tests/partner-workspace.test.cjs tests/partner-quick-counts.test.cjs tests/partner-firestore-admin-count-store.test.mjs tests/partner-count-only-write-contract.test.mjs tests/partner-existing-ranking.test.cjs tests/sales-regressions.cjs tests/internal-owner-finance-visibility.test.cjs
+          node --test tests/partner-workspace.test.cjs tests/partner-quick-counts.test.cjs tests/partner-firestore-admin-count-store.test.mjs tests/partner-count-only-write-contract.test.mjs tests/partner-existing-ranking.test.cjs tests/sales-regressions.cjs tests/internal-owner-finance-visibility.test.cjs tests/partner-company-code-auth.test.cjs tests/partner-public-auth-surface.test.mjs
       - name: Install isolated Firebase Emulator test dependencies (no production access)
         shell: bash
         run: |
@@ -119,6 +119,7 @@ jobs:
           set -euo pipefail
           firebase emulators:exec --project demo-sales-support --only firestore 'node --test tests/rules.test.cjs'
           echo 'PASS_INPUT_CONTINUITY_SYNTHETIC_AND_EMULATOR_ONLY'
+          echo 'COMPANY_CODE_LOGIN_AND_COUNT_ENTRY_TESTED_SYNTHETIC_ONLY=true'
           echo 'INTERNAL_SALES_HISTORY_MODIFIED=false'
           echo 'PARTNER_COUNT_HISTORY_MODIFIED=false'
           echo 'REAL_USER_WRITE_VERIFIED=false'
