@@ -126,7 +126,15 @@ function fakeIdentity({changedPath='',changes={},statusOverride=0,role='leader'}
     companyRole:str(role==='owner'?'owner':'member'),
     role:str(role==='owner'?'leader':role),
     ...(role==='owner'?{}:{teamId:str('partner_team')}),
-    canViewRevenue:flag(false),canViewUnitPrice:flag(false)}
+    canViewRevenue:flag(false),canViewUnitPrice:flag(false)},
+  ['partnerRelations/'+external]:{
+    partnerCompanyId:str(external),hubCompanyId:str(internal),
+    active:flag(true),countSharingApproved:flag(true)},
+  ['companies/'+external+'/partnerWorkStaff/'+partner]:{
+    uid:str(partner),companyId:str(external),active:flag(true),
+    kind:str('account'),name:str('Demo Member'),
+    role:str(role==='owner'?'leader':role),
+    teamId:str('partner_team')}
  };
  const calls=[];
  const result={
@@ -271,7 +279,7 @@ test('synthetic identity cannot claim production even when EVERY expected member
   checkedAgainst:'synthetic-only',ownerInternalBound:true,
   affectedSecondaryBound:true,projectId:PROJECT,productionDocumentWrites:0
  });
- assert.equal(identity.calls.length,9);
+ assert.equal(identity.calls.length,11);
  assert(identity.calls.every(c=>c.method==='GET'));
  assert(!JSON.stringify(result).includes('secondaryPartner'));
  assert(!JSON.stringify(result).includes('internal_company'));
@@ -380,7 +388,7 @@ test('real partner workspace role parity: secondary leader, member and owner ALL
     assert.equal(proof.affectedSecondaryBound,true);
     assert.equal(proof.ownerInternalBound,true);
     assert.equal(proof.productionDocumentWrites,0);
-    assert.equal(identity.calls.length,9);
+    assert.equal(identity.calls.length,role==='owner'?10:11);
     assert(identity.calls.every(x=>x.method==='GET'),
       'must never mutate any membership, financial or historical count');
   }
@@ -419,4 +427,48 @@ test('invalid Owner and worker role combinations stop BEFORE Rules release witho
     assert(identity.calls.every(x=>x.method==='GET'),
       'no writes even when real data is inconsistent');
   }
+});
+
+
+test('finance denial cannot pass when the partner Callable count-sharing relation is disabled or foreign',async()=>{
+ const variants=[
+  {active:flag(false)},
+  {countSharingApproved:flag(false)},
+  {hubCompanyId:str('foreign_hub')},
+  {partnerCompanyId:str('wrong_partner')},
+  {countSharingApproved:flag('false')}
+ ];
+ for(const changes of variants){
+  const identity=fakeIdentity({changedPath:'partnerRelations/partner_company',changes});
+  await assert.rejects(createAffectedSecondaryIdentityVerifier({
+   ...identity,expectedOwnerUid:'realOwner',expectedPartnerUid:'secondaryPartner',
+   internalCompanyId:'internal_company'
+  })(),/STOP_PHASE1_IDENTITY_PARTNER_COUNT_SHARING_NOT_READY/);
+  assert(identity.calls.every(call=>call.method==='GET'));
+ }
+});
+
+test('member or leader with missing, inactive, wrong-team, or non-account staff cannot be used as count-entry proof',async()=>{
+ const changesList=[
+  {active:flag(false)},
+  {teamId:str('other_team')},
+  {companyId:str('other_company')},
+  {uid:str('other_member')},
+  {kind:str('managed')},
+  {role:str('owner')},
+  {name:str('')}
+ ];
+ for(const role of ['leader','member']){
+  for(const changes of changesList){
+   const identity=fakeIdentity({
+    role,changedPath:'companies/partner_company/partnerWorkStaff/secondaryPartner',
+    changes
+   });
+   await assert.rejects(createAffectedSecondaryIdentityVerifier({
+     ...identity,expectedOwnerUid:'realOwner',expectedPartnerUid:'secondaryPartner',
+     internalCompanyId:'internal_company'
+   })(),/STOP_PHASE1_IDENTITY_PARTNER_SELF_COUNT_ENTRY_NOT_READY/);
+   assert(identity.calls.every(call=>call.method==='GET'));
+  }
+ }
 });
