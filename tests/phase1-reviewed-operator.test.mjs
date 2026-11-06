@@ -85,7 +85,14 @@ test('apply binds independent approval to exact clean checkout, fresh remote mai
  const git=(cmd,args)=>{
   commands.push('git '+cmd);
   if(cmd==='rev-parse')return head+'\n';
-  if(cmd==='status')return '';
+  if(cmd==='status'){
+   assert.deepEqual(args,['--porcelain','--untracked-files=normal']);
+   return '';
+  }
+  if(cmd==='remote'){
+   assert.deepEqual(args,['get-url','origin']);
+   return 'https://github.com/Keikei-p/-.git\n';
+  }
   if(cmd==='ls-remote')return main+'\trefs/heads/main\n';
   throw Error('unexpected git request');
  };
@@ -101,7 +108,7 @@ test('apply binds independent approval to exact clean checkout, fresh remote mai
  assert.equal(actual.mainUnchanged,true);
  assert.equal(actual.sourceReviewed,true);
  assert.equal(actual.ciForExactCheckout,true);
- assert.deepEqual(commands,['git rev-parse','git status','git ls-remote','gh run']);
+ assert.deepEqual(commands,['git rev-parse','git status','git remote','git ls-remote','gh run']);
 });
 
 test('apply cannot proceed on unreviewed, dirty, drifted, failed or fabricated CI evidence',()=>{
@@ -110,6 +117,11 @@ test('apply cannot proceed on unreviewed, dirty, drifted, failed or fabricated C
  const scenarios=[
   {local:'b'.repeat(40)},
   {dirty:' M firestore.rules'},
+  {dirty:'?? tools/production/unreviewed-proof.mjs'},
+  {dirty:'?? .env'},
+  {remote:'https://github.com/Attacker/-.git'},
+  {remote:'https://user:password@github.com/Keikei-p/-.git'},
+  {remote:'https://github.com/Keikei-p/-evil.git'},
   {mainSha:'b'.repeat(40)},
   {run:{...ready(),headSha:'b'.repeat(40)}},
   {run:{...ready(),conclusion:'failure'}},
@@ -124,6 +136,7 @@ test('apply cannot proceed on unreviewed, dirty, drifted, failed or fabricated C
    if(scenario.throwGit)throw Error('remote failed');
    if(cmd==='rev-parse')return (scenario.local??head)+'\n';
    if(cmd==='status')return scenario.dirty??'';
+   if(cmd==='remote')return (scenario.remote??'https://github.com/Keikei-p/-.git')+'\n';
    if(cmd==='ls-remote')return (scenario.mainSha??main)+'\trefs/heads/main\n';
    throw Error('unexpected');
   };
@@ -146,5 +159,33 @@ test('apply requires explicitly reviewed CI ID and HEAD, not a self-described su
  ]){
   assert.throws(()=>validateOperatorIntent({mode:'apply',env,proof}),
    /STOP_PHASE1_OPERATOR_INDEPENDENT_SIGNOFF_OR_REAL_ACCOUNTS_REQUIRED/);
+ }
+});
+
+
+test('reviewed checkout accepts only the exact GitHub origin and clean untracked-aware status',()=>{
+ for(const approvedRemote of [
+  'https://github.com/Keikei-p/-',
+  'git@github.com:Keikei-p/-.git',
+  'ssh://git@github.com/Keikei-p/-.git'
+ ]){
+  let statusChecked=false;
+  const git=(cmd,args)=>{
+   if(cmd==='rev-parse')return head+'\n';
+   if(cmd==='status'){
+    statusChecked=true;
+    assert.deepEqual(args,['--porcelain','--untracked-files=normal']);
+    return '';
+   }
+   if(cmd==='remote')return approvedRemote+'\n';
+   if(cmd==='ls-remote')return main+'\trefs/heads/main\n';
+   throw Error('unexpected local command');
+  };
+  const gh=()=>JSON.stringify({
+   headSha:head,conclusion:'success',event:'push',
+   name:'NICO affected secondary identity + finance boundary (NO DEPLOY)'
+  });
+  assert.equal(assertReviewedCodeGate({env:approved,git,gh}).sourceReviewed,true);
+  assert.equal(statusChecked,true);
  }
 });
