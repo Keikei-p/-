@@ -30956,6 +30956,7 @@ async function readPartnerRankingMonth(month){
   const now=new Date(getTodayString()+"T00:00:00Z");
   const first=new Date(month+"-01T00:00:00Z");
   const oldest=new Date(now.getTime()-366*86400000);
+  const oldestQuick=new Date(now.getTime()-31*86400000).toISOString().slice(0,10);
   // The staff-ledger read-only API supports 366 days. Older dates cannot
   // be fetched and must never be shown as an invented completed month.
   // Legacy quick-only reports older than 31 days stay provisional below.
@@ -30979,9 +30980,17 @@ async function readPartnerRankingMonth(month){
       const cached=partnerRankingDailyCache.get(key);
       const ttl=date===getTodayString()?180000:3600000;
       if(cached&&Date.now()-cached.checkedAt<ttl)return cached.rows;
-      const rows=typeof mergedPartnerRankingDay==="function"
-        ? await mergedPartnerRankingDay(date)
-        : validatedPartnerRankingDay((await readPartnerQuickDay({date})).data,date);
+      let rows;
+      if(typeof mergedPartnerRankingDay==="function"){
+        rows=await mergedPartnerRankingDay(date);
+      }else if(date>=oldestQuick){
+        rows=validatedPartnerRankingDay((await readPartnerQuickDay({date})).data,date);
+      }else{
+        // On legacy-only deployments the old Callable cannot read this date.
+        // NEVER mistake its missing data for a verified zero-count day.
+        rows=[];
+        Object.defineProperty(rows,"coverageComplete",{value:false});
+      }
       partnerRankingDailyCache.set(key,{rows,checkedAt:Date.now()});
       // Bounded memory for private count-only rows; never persist in storage.
       if(partnerRankingDailyCache.size>100)
