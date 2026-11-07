@@ -12,6 +12,7 @@ on:
       - 'tools/production/inspect-functions-spendcap-readonly.mjs'
       - 'tests/inspect-functions-spendcap-readonly.test.mjs'
       - '.github/workflows/nico-functions-spendcap-readonly-20261107.yml'
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
@@ -42,7 +43,7 @@ jobs:
           test "$(git hash-object functions-partner-workspace/index.js)" = '38da7e9174ffea7c406c92292dccfc651b565eb0'
   live:
     needs: offline
-    if: ${{ github.event_name == 'push' && github.repository == 'Keikei-p/-' && github.ref == 'refs/heads/main' && needs.offline.result == 'success' }}
+    if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.repository == 'Keikei-p/-' && github.ref == 'refs/heads/main' && needs.offline.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 16
     env:
@@ -80,7 +81,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node tools/production/inspect-functions-spendcap-readonly.mjs
+          node tools/production/inspect-functions-spendcap-readonly.mjs \
+            > "$RUNNER_TEMP/nico-spendcap-audit.safe.log"
+          grep '^NICO_FUNCTIONS_SPENDCAP_READONLY ' "$RUNNER_TEMP/nico-spendcap-audit.safe.log" || \
+            { echo 'BLOCK_SPENDCAP_REPORT_MISSING'; exit 1; }
+          if ! grep -q '"budgetInventoryReadable":true' "$RUNNER_TEMP/nico-spendcap-audit.safe.log"; then
+            echo 'BLOCK_SPENDCAP_INVENTORY_UNREADABLE'
+            exit 1
+          fi
+          echo 'SPENDCAP_INVENTORY_READ_SUCCESS_NO_DEPLOY_AUTHORIZATION'
           echo 'PRODUCTION_FUNCTION_DEPLOYS=0'
           echo 'PRODUCTION_BUDGET_MODIFICATIONS=0'
           echo 'PRODUCTION_RULES_WRITES=0'
@@ -88,5 +97,6 @@ jobs:
       - name: Delete temporary identity, never upload logs or documents
         if: always()
         run: |
-          rm -f "$RUNNER_TEMP/nico-spendcap.private.json"
+          rm -f "$RUNNER_TEMP/nico-spendcap.private.json" \
+            "$RUNNER_TEMP/nico-spendcap-audit.safe.log"
           rm -f firebase-debug.log firestore-debug.log
