@@ -53,7 +53,7 @@ jobs:
 
   publish-additive-only:
     needs: validate
-    if: ${{{ github.event_name == 'push' &&
+    if: ${{ github.event_name == 'push' &&
            github.ref == 'refs/heads/main' &&
            github.repository == 'Keikei-p/-' &&
            startsWith(github.event.head_commit.message, 'release: add read-only finance boundary diagnostic (preserve Hosting)') &&
@@ -70,7 +70,7 @@ jobs:
       - name: Reject stale source before credentials
         shell: bash
         env:
-          GH_TOKEN: ${{{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           test "$(gh api repos/Keikei-p/-/branches/main --jq '.commit.sha')" = "$GITHUB_SHA"
@@ -81,7 +81,7 @@ jobs:
       - name: Supply existing approved Hosting identity privately
         shell: bash
         env:
-          FIREBASE_SERVICE_ACCOUNT_JSON: ${{{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
         run: |
           set -euo pipefail
           test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
