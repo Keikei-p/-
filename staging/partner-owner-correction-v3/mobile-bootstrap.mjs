@@ -107,7 +107,10 @@ export async function mountVerifiedOwnerCorrection({
    destroy();invalid("AUTH_LISTENER_UNVERIFIED");
   }
   unsubscribe=cancel;listenerReady=true;
-  if(destroyed)unsubscribe();
+  if(destroyed){
+   unsubscribe();
+   invalid("AUTH_LISTENER_UNVERIFIED");
+  }
   return Object.freeze({
    companies,load:panel.load,save:panel.save,destroy
   });
