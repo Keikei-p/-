@@ -32,7 +32,7 @@ export function validateManifest(oldFiles, additions, expectedCount) {
   original.set(f.path,f.hash.toLowerCase());
  }
  if(!original.has("/index.html"))throw Error("LIVE_INDEX_MISSING");
- if(original.has(ASSET))throw Error("EXISTING_FINANCE_BOUNDARY_CHECK: do not overwrite without version review");
+ if(original.has(ASSET))throw Error("EXISTING_DIAGNOSTIC_PATH: do not overwrite without version review");
  if(!(additions instanceof Map)||additions.size!==1||
     !additions.has(ASSET)||!/^[0-9a-f]{64}$/.test(additions.get(ASSET)))
    throw Error("ONLY_ONE_NEW_DIAGNOSTIC_FILE_ALLOWED");
