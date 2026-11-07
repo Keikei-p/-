@@ -1,7 +1,7 @@
 "use strict";
 // Isolated partner operations: no reads/writes to sales products, records or prices.
 const crypto=require("node:crypto");
-const {LEGACY,PARTS,breakdown,nextBreakdown,aggregateBreakdown}=require("../../functions-partner-workspace/sb-category-v2.cjs");
+const {LEGACY,PARTS,breakdown,nextBreakdown,aggregateBreakdown}=require("./sb-category-v2.cjs");
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
