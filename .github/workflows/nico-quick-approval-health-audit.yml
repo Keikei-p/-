@@ -1,0 +1,95 @@
+name: NICO quick approval callable health audit (GET ONLY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/production/inspect-quick-approval-readonly.mjs'
+      - 'tests/inspect-quick-approval-readonly.test.mjs'
+      - '.github/workflows/nico-quick-approval-health-audit.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/production/inspect-quick-approval-readonly.mjs'
+      - 'tests/inspect-quick-approval-readonly.test.mjs'
+      - '.github/workflows/nico-quick-approval-health-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+concurrency:
+  group: nico-partner-quick-approval-health-readonly
+  cancel-in-progress: false
+
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify GET-only approval health contract and frozen production sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check tools/production/inspect-quick-approval-readonly.mjs
+          node --test tests/inspect-quick-approval-readonly.test.mjs
+          test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
+          test "$(git hash-object functions-partner-quick/index.js)" = '9e68a4745a668283f5af0028fca5f44351fbcd30'
+
+  live-get-only:
+    needs: offline
+    if: >-
+      ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+          github.repository == 'Keikei-p/-' &&
+          github.ref == 'refs/heads/main' &&
+          needs.offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Freeze correct main and original callable source before reading metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
+          test "$(git hash-object functions-partner-quick/index.js)" = '9e68a4745a668283f5af0028fca5f44351fbcd30'
+          node --test tests/inspect-quick-approval-readonly.test.mjs
+      - name: Install existing OAuth library only
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Supply existing audit identity without printing it
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-quick-approval-audit.private.json"
+          chmod 600 "$RUNNER_TEMP/nico-quick-approval-audit.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-quick-approval-audit.private.json" >> "$GITHUB_ENV"
+      - name: GET only approvePartnerQuickCounts metadata in Gen1 and Gen2
+        shell: bash
+        run: |
+          set -euo pipefail
+          result=0
+          node tools/production/inspect-quick-approval-readonly.mjs \
+            > "$RUNNER_TEMP/nico-quick-approval-audit.private.log" 2>&1 || result=$?
+          grep -E '^(PARTNER_QUICK_APPROVAL_METADATA |BLOCK_QUICK_APPROVAL_[A-Z0-9_]+$|STOP_QUICK_APPROVAL_AUDIT_[A-Z0-9_]+$)' \
+            "$RUNNER_TEMP/nico-quick-approval-audit.private.log" || true
+          test "$result" -eq 0
+          grep -q '^PARTNER_QUICK_APPROVAL_METADATA ' "$RUNNER_TEMP/nico-quick-approval-audit.private.log"
+          grep '^PARTNER_QUICK_APPROVAL_METADATA ' "$RUNNER_TEMP/nico-quick-approval-audit.private.log" \
+            | grep -q '"actualOwnerCountApprovalVerified":false'
+      - name: Erase private identity and logs; never upload artifacts
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/nico-quick-approval-audit.private.json" \
+            "$RUNNER_TEMP/nico-quick-approval-audit.private.log"
