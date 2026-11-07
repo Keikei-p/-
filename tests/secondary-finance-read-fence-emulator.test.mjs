@@ -86,13 +86,18 @@ test("real Rules emulator denies active partner-secondary raw GET and LIST but p
   for(const name of COLLECTIONS){
    await assertSucceeds(getDoc(doc(actor("owner"),name,"original")));
    await assertSucceeds(getDoc(doc(actor("ordinary"),name,"original")));
+   // revenueGoals is intentionally team-scoped for non-Owners. Require
+   // the existing approved team filter; never relax production Rules.
+   const filters=name==="revenueGoals"?
+    [where("companyId","==",hub),where("teamId","==","t1")]:
+    [where("companyId","==",hub)];
    await assertSucceeds(getDocsFromServer(query(
-    collection(actor("ordinary"),name),where("companyId","==",hub)
+    collection(actor("ordinary"),name),...filters
    )));
    for(const uid of ["dual","malformed"]){
     await assertFails(getDoc(doc(actor(uid),name,"original")));
     await assertFails(getDocsFromServer(query(
-     collection(actor(uid),name),where("companyId","==",hub)
+     collection(actor(uid),name),...filters
     )));
    }
   }
