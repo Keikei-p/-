@@ -1,4 +1,4 @@
-name: NICO approved partner boundary - inventory and manual Rules release
+name: NICO legacy partner boundary read-only inventory (apply frozen)
 on:
   pull_request:
     branches: [main]
@@ -11,7 +11,7 @@ on:
     inputs:
       mode:
         type: choice
-        options: [verify, apply]
+        options: [verify]
         default: verify
         required: true
       reviewed_main_sha:
@@ -25,7 +25,7 @@ on:
       rules_approval:
         type: string
         required: true
-        description: 'APPROVED_PARTNER_BOUNDARY_ONLY (or VERIFY_ONLY)'
+        description: 'VERIFY_ONLY; legacy apply is frozen pending real affected-user proof'
 permissions:
   contents: read
 concurrency:
@@ -52,7 +52,7 @@ jobs:
           firebase emulators:exec --project demo-sales-support --only firestore 'node --test tests/rules.test.cjs'
   controlled:
     needs: offline
-    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.reviewed_main_sha == github.sha && inputs.usage_approval == 'EXISTING_FUNCTIONS_AND_FULL_INVENTORY_APPROVED' && (inputs.mode == 'verify' || inputs.rules_approval == 'APPROVED_PARTNER_BOUNDARY_ONLY') }}
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.reviewed_main_sha == github.sha && inputs.usage_approval == 'EXISTING_FUNCTIONS_AND_FULL_INVENTORY_APPROVED' && inputs.mode == 'verify' && inputs.rules_approval == 'VERIFY_ONLY' }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
@@ -80,10 +80,10 @@ jobs:
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/partner-boundary-identity.json"
           chmod 600 "$RUNNER_TEMP/partner-boundary-identity.json"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/partner-boundary-identity.json" >> "$GITHUB_ENV"
-      - name: Full inventory, isolated field-and-ID restore, stable comparison and optional exact Rules switch
+      - name: Read-only full inventory, isolated restore and stable Rules comparison
         run: |
           set -euo pipefail
-          case "$RELEASE_MODE" in verify|apply) ;; *) exit 1;; esac
+          case "$RELEASE_MODE" in verify) ;; *) echo "STOP_LEGACY_RULES_APPLY_FROZEN"; exit 1;; esac
           # Actual values stay in memory and in the disposable localhost emulator.
           # Emulator logs are private temporary files, NEVER artifacts or console output.
           result=0
@@ -96,7 +96,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: partner-boundary-${{ inputs.mode }}-proof
+          name: partner-boundary-verify-proof
           path: ${{ runner.temp }}/partner-boundary-summary.json
           if-no-files-found: error
           retention-days: 7
