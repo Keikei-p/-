@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {classifySecondary,transferEligibility,publicInventorySummary} from '../tools/production/audit-secondary-contexts-readonly.mjs';
+import {readFileSync} from 'node:fs';
+import {classifySecondary,transferEligibility,publicInventorySummary,
+ classifyLiveRules,hasRecentReadyBackup} from '../tools/production/audit-secondary-contexts-readonly.mjs';
 const context={uid:'test_uid',kind:'partner_secondary',active:true,primaryCompanyId:'internal_company',
  partnerCompanyId:'partner_company',hubCompanyId:'internal_company'};
 const user={uid:'test_uid',companyId:'internal_company',companyRole:'member',active:true,accessKind:'internal',
@@ -61,12 +63,17 @@ test('public actions summary excludes single-user inventory details and never au
   internalOwnerContexts:0,inactiveOrUnknownContexts:0,inconsistentContexts:0,transferNeedsReview:0,
   transferEligibleCandidates:1,historicalTransfersPresent:0,readyBackups:7,
   latestBackupExists:true,rulesFingerprintMatchesLastReviewed:true,
+  recentReadyBackupWithin48h:true,exactReviewedPhase1RulesActive:false,
+  liveRulesSourceUnrecognized:false,
   uid:'synthetic-secret-uid',emailLower:'nobody@example.test',accountName:'sample',
   sensitiveRevenue:12345678};
  const report=publicInventorySummary(raw);
  assert.equal(report.secondaryContextsPresent,true);
  assert.equal(report.oldInternalFinancePathPresent,true);
  assert.equal(report.readyBackupPresent,true);
+ assert.equal(report.recentReadyBackupWithin48h,true);
+ assert.equal(report.exactReviewedPhase1RulesActive,false);
+ assert.equal(report.authenticatedBoundaryProofStillRequired,true);
  assert.equal(report.safeToDeploy,false);
  assert.equal(report.realPartnerFinanceDenyVerified,false);
  const shown=JSON.stringify(report);
@@ -75,4 +82,48 @@ test('public actions summary excludes single-user inventory details and never au
   assert.equal(shown.includes(secret),false,secret);
  assert.deepEqual(publicInventorySummary({...raw,totalContexts:0,nonOwnerOldFinancePaths:0,readyBackups:0}),
    {...report,secondaryContextsPresent:false,oldInternalFinancePathPresent:false,readyBackupPresent:false});
+});
+
+test('EXACT current main Rules are recognized, but not mistaken for reviewed Phase-1 closure',()=>{
+ const original=readFileSync(new URL('../firestore.rules',import.meta.url),'utf8');
+ const observed=classifyLiveRules(original);
+ assert.equal(observed.exactOriginalMainRules,true);
+ assert.equal(observed.matchesReviewedLegacyLive,true);
+ assert.equal(observed.exactReviewedPhase1Boundary,false);
+ assert.equal(observed.actualAuthenticatedBoundaryVerified,false);
+ // A single-byte change must NEVER be certified as a known source.
+ const modified=classifyLiveRules(original.replace('rules_version', 'rules_version '));
+ assert.equal(modified.exactOriginalMainRules,false);
+ assert.equal(modified.exactReviewedPhase1Boundary,false);
+ assert.equal(modified.actualAuthenticatedBoundaryVerified,false);
+ assert.throws(()=>classifyLiveRules(''),/STOP_SECONDARY_INVENTORY_UNVERIFIED_RULES_SOURCE/);
+});
+test('READY backup must be no more than 48 hours old and never in the future',()=>{
+ const now=Date.parse('2026-11-07T00:00:00.000Z');
+ const withAge=(ms,readyBackups=1)=>({
+  readyBackups,latestReadySnapshot:new Date(now-ms).toISOString()
+ });
+ assert.equal(hasRecentReadyBackup(withAge(0),now),true);
+ assert.equal(hasRecentReadyBackup(withAge(48*60*60*1000),now),true);
+ assert.equal(hasRecentReadyBackup(withAge(48*60*60*1000+1),now),false);
+ assert.equal(hasRecentReadyBackup(withAge(-1),now),false);
+ assert.equal(hasRecentReadyBackup(withAge(3600*1000,0),now),false);
+ assert.equal(hasRecentReadyBackup({readyBackups:1,latestReadySnapshot:'not-date'},now),false);
+ assert.equal(hasRecentReadyBackup(null,now),false);
+});
+test('public report is boolean-only and NEVER says security is already proven',()=>{
+ const report=publicInventorySummary({
+  totalContexts:2,nonOwnerOldFinancePaths:1,ownerConflicts:0,
+  internalOwnerContexts:0,inactiveOrUnknownContexts:0,inconsistentContexts:0,
+  transferNeedsReview:0,transferEligibleCandidates:0,historicalTransfersPresent:0,
+  readyBackups:1,latestBackupExists:true,
+  recentReadyBackupWithin48h:false,exactReviewedPhase1RulesActive:true,
+  liveRulesSourceUnrecognized:false
+ });
+ assert.equal(report.exactReviewedPhase1RulesActive,true);
+ assert.equal(report.recentReadyBackupWithin48h,false);
+ assert.equal(report.realPartnerFinanceDenyVerified,false);
+ assert.equal(report.safeToDeploy,false);
+ assert.equal(report.authenticatedBoundaryProofStillRequired,true);
+ assert.equal(JSON.stringify(report).includes('totalRevenue'),false);
 });
