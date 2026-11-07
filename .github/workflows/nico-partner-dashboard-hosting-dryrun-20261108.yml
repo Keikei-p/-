@@ -1,0 +1,91 @@
+name: NICO partner dashboard live Hosting preflight (GET ONLY / NO RELEASE)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-partner-dashboard-hosting-dryrun-20261108.yml'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-partner-dashboard-hosting-dryrun-20261108.yml'
+permissions:
+  contents: read
+concurrency:
+  group: nico-partner-dashboard-hosting-readonly-20261108
+  cancel-in-progress: false
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Pin count-only dashboard, finance sources and original one-page release safety tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object partner-workspace.html)" = '145fd8a1f3aaa9239c029d82ce97f602154cd819'
+          test "$(git hash-object index.html)" = '88ef5636bfe9254e71f2109d452b6d3049f99861'
+          test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
+          test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 'b94a6aba231dc2569009580a178297a5b6194bda'
+          node --test tests/partner-dashboard-self-app-count-parity.test.mjs
+          node --test tests/surgical-existing-partner-workspace.test.mjs
+  live-get-only:
+    needs: offline
+    if: >-
+      ${{ github.event_name == 'push' &&
+         github.repository == 'Keikei-p/-' &&
+         github.ref == 'refs/heads/main' &&
+         needs.offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Require exact reviewed main and no changed revenue/Rules sources
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq '.commit.sha')"
+          test "$(git hash-object partner-workspace.html)" = '145fd8a1f3aaa9239c029d82ce97f602154cd819'
+          test "$(git hash-object index.html)" = '88ef5636bfe9254e71f2109d452b6d3049f99861'
+          test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
+          test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 'b94a6aba231dc2569009580a178297a5b6194bda'
+      - name: Install existing read-only Firebase OAuth dependency
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Use existing Firebase audit identity temporarily
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-hosting-readonly.private.json"
+          chmod 600 "$RUNNER_TEMP/nico-hosting-readonly.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-hosting-readonly.private.json" >> "$GITHUB_ENV"
+      - name: GET-only validate live release, full manifest and one-page proposed diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/hosting/surgical-existing-partner-workspace.mjs --dry-run
+          echo 'PRODUCTION_HOSTING_RELEASES=0'
+          echo 'PRODUCTION_FUNCTION_DEPLOYS=0'
+          echo 'PRODUCTION_RULES_WRITES=0'
+          echo 'PRODUCTION_DOCUMENT_WRITES=0'
+      - name: Remove temporary identity and debug traces
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/nico-hosting-readonly.private.json" \
+            firebase-debug.log firestore-debug.log
