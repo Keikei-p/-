@@ -16,7 +16,7 @@ section{background:white;padding:20px;border:1px solid #dce3ec;border-radius:18p
 h1{font-size:1.3rem;margin:0 0 12px}h2{font-size:1.05rem}
 p{line-height:1.65}small,.muted{color:#586b7d}
 button{width:100%;padding:14px;border:0;border-radius:12px;background:#163b68;color:white;font-size:1rem;font-weight:650;cursor:pointer}
-button:disabled{opacity:.5;cursor:wait}label{display:block;margin:16px 0 5px}
+button:disabled{opacity:.5;cursor:wait}button.secondary{background:#e9eff8;color:#163b68;margin-top:8px}label{display:block;margin:16px 0 5px}
 input{width:100%;padding:12px;border:1px solid #aebdcc;border-radius:10px;font-size:1rem}
 .output{border-top:1px solid #e4e8ee;padding:12px 0;display:flex;justify-content:space-between;gap:12px}
 .output span:last-child{text-align:right;font-weight:650}
@@ -30,9 +30,21 @@ input{width:100%;padding:12px;border:1px solid #aebdcc;border-radius:10px;font-s
 <p>現在のログインで、金額入りFirestore原票を読み取れる権限があるかを確認します。<strong>売上・単価・CBの値は取得・表示・保存しません。</strong></p>
 <p class="muted">この診断は本番Rules切替の許可ではありません。自社Ownerと実際に自社から協力店へ移ったアカウントの両方で検証し、独立したUID照合と件数入力の確認が別途必要です。</p>
 <p id="status" role="status">ログイン状態を確認しています。</p>
+<div id="loginBox">
+  <h2>診断専用ログイン</h2>
+  <p class="muted">この画面は営業アプリとはログイン状態を共有しません。自社Ownerまたは協力店として使っている同じメールアドレスとパスワードでログインしてください。診断専用のタブ内だけで保持し、通常のアプリからログアウトさせません。</p>
+  <form id="loginForm">
+    <label for="email">メールアドレス</label>
+    <input id="email" type="email" autocomplete="username" inputmode="email" maxlength="254" required>
+    <label for="password">パスワード</label>
+    <input id="password" type="password" autocomplete="current-password" required>
+    <button id="login" type="submit">診断用にログイン</button>
+  </form>
+</div>
+<button id="logout" class="secondary" hidden type="button">診断用ログインを解除する</button>
 <label for="workspace">協力店ワークスペースID（協力店のみ・任意）</label>
 <input id="workspace" inputmode="text" autocomplete="off" spellcheck="false" maxlength="128" placeholder="協力店画面URLの workspaceCompanyId">
-<p><small>協力店の件数閲覧チェックを行う場合に指定します。入力値は保存・送信されず、正規のFirebase Functionsへの呼び出し時だけ使用します。診断の結果にIDは表示しません。</small></p>
+<p><small>協力店の件数閲覧チェックを行う場合に指定します。入力値は本ページで保存せず、本人認証付きのFirebase Functionsで照合します。診断の結果にIDは表示しません。</small></p>
 <button id="run" disabled>このログインで読み取り診断</button>
 <h2>検証結果</h2>
 <div class="output"><span>ログインと自社所属</span><span id="identity">未確認</span></div>
@@ -44,18 +56,21 @@ input{width:100%;padding:12px;border:1px solid #aebdcc;border-radius:10px;font-s
 </section></main>
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
-import {getAuth,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+import {initializeAuth,browserSessionPersistence,onAuthStateChanged,signInWithEmailAndPassword,signOut} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js";
 const PROJECT="sales-management-cc116";
 const BASE="https://firestore.googleapis.com/v1/projects/"+PROJECT+"/databases/(default)/documents";
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const $=id=>document.getElementById(id);
+// A named diagnostic-only Firebase app prevents this sign-in/out from
+// switching the normal sales-app Firebase Auth session.
 const app=initializeApp({apiKey:"AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
   authDomain:"sales-management-cc116.firebaseapp.com",projectId:PROJECT,
-  appId:"1:904932511564:web:6583e8b0c585231b9049e"});
-const auth=getAuth(app),functions=getFunctions(app,"asia-northeast1");
+  appId:"1:904932511564:web:6583e8b0c585231b9049e"},"nico-finance-boundary-diagnostic");
+const auth=initializeAuth(app,{persistence:browserSessionPersistence});
+const functions=getFunctions(app,"asia-northeast1");
 const countView=httpsCallable(functions,"getPartnerWorkspace",{timeout:15000});
-let busy=false,previous=new Map(),previousUid=null,previousCompany=null;
+let busy=false,loginBusy=false,previous=new Map(),previousUid=null,previousCompany=null;
 let priorBoundCompany=null; // Volatile one-page memory only; never persist identity
 const clearBinding=()=>{
   previous.clear();priorBoundCompany=null;previousUid=null;previousCompany=null;
@@ -161,6 +176,35 @@ const render=(name,result,role)=>{
     label(name,"LIST拒否・GET未検証（合格ではない）","unknown");
   else label(name,"判定保留（再検証が必要）","unknown");
 };
+$("loginForm").onsubmit=async event=>{
+  event.preventDefault();
+  if(loginBusy||busy||auth.currentUser)return;
+  loginBusy=true;$("login").disabled=true;
+  $("status").textContent="診断専用のFirebase認証を確認しています。";
+  const email=$("email").value.trim().toLowerCase();
+  const password=$("password").value;
+  // The password is sent ONLY through Firebase Auth SDK, never logs,
+  // local application storage, custom endpoints or report bodies.
+  $("password").value="";
+  try{
+    if(!email||!password||location.origin!=="https://nico-factory.web.app")
+      throw Error("INVALID_SIGNIN");
+    await signInWithEmailAndPassword(auth,email,password);
+    $("email").value="";
+    $("status").textContent="診断用ログインが完了しました。読み取り診断を実行できます。";
+  }catch{
+    $("status").textContent="診断用ログインに失敗しました。メールアドレス・パスワード・確認メールの状態を確認してください。";
+  }finally{
+    loginBusy=false;$("login").disabled=Boolean(auth.currentUser);
+  }
+};
+$("logout").onclick=async()=>{
+  if(loginBusy||busy)return;
+  $("logout").disabled=true;
+  try{await signOut(auth);}catch{
+    $("status").textContent="診断用ログアウトを確認できません。再試行してください。";
+  }finally{$("logout").disabled=false;}
+};
 $("run").onclick=async()=>{
   if(busy)return;
   busy=true;$("run").disabled=true;
@@ -214,15 +258,21 @@ $("run").onclick=async()=>{
   }catch{
     for(const name of ["products","records","counts"])label(name,"未確認");
     label("identity","認証・所属の確認が必要");
-    $("status").textContent="診断を完了できませんでした。通常のアプリでログインし直し、利用中の会社を確認してください。";
+    $("status").textContent="診断を完了できませんでした。診断専用ログインと利用中の会社・所属を確認してください。";
   }finally{busy=false;$("run").disabled=!auth.currentUser;}
 };
 onAuthStateChanged(auth,user=>{
   if(previousUid&&user?.uid!==previousUid)clearBinding();
-  $("run").disabled=!user||busy;
-  $("status").textContent=user&&user.emailVerified?
-    "ログインを確認。診断ボタンから実施できます。":
-    "未ログインまたはメール未確認です。通常の営業アプリでログインしてください。";
+  $("run").disabled=!user||!user.emailVerified||busy;
+  $("loginBox").hidden=Boolean(user);
+  $("logout").hidden=!user;
+  $("login").disabled=Boolean(user)||loginBusy;
+  if(user&&user.emailVerified)
+    $("status").textContent="診断専用ログイン確認済み。読み取り診断できます。";
+  else if(user)
+    $("status").textContent="診断用アカウントのメール確認が必要です。メール確認後、診断用ログインを解除して入り直してください。";
+  else
+    $("status").textContent="未ログインです。上の診断専用フォームからログインしてください。";
 });
 </script>
 </body>
