@@ -17,6 +17,8 @@ export const LABELS=Object.freeze({
  billing:"NICO_BILLING_METADATA_SAFE "
 });
 const fail=code=>{throw Error("STOP_NICO_UNIFIED_READINESS_"+code)};
+export const COUNT_FUNCTIONS=Object.freeze(["getPartnerWorkspace",
+ "submitPartnerWorkspaceCounts","managePartnerWorkspace","acceptPartnerWorkspaceInvite"]);
 const object=v=>v!==null&&typeof v==="object"&&!Array.isArray(v);
 const bool=(v,name)=>{
  if(typeof v!=="boolean")fail("INVALID_"+name.toUpperCase());
@@ -54,12 +56,34 @@ export function summarize(input){
  const fnAvailable=bool(partner.countFunctionMetadataPresent,"fn_present");
  const fnActive=bool(partner.countFunctionsActive,"fn_active");
  const fnEnabled=bool(partner.countFunctionsConfiguredEnabled,"fn_enabled");
+ // Validate actual per-function Cloud Functions v2 metadata rather than trusting
+ // a single aggregate boolean. Never copy raw deployment metadata, secrets,
+ // endpoints, traffic URIs or source environment into the public report.
+ if(!object(partner.functions)||Object.keys(partner.functions).sort().join("|")!==
+    [...COUNT_FUNCTIONS].sort().join("|"))fail("FOUR_FUNCTION_IDENTITIES");
+ const countFunctionHealth={};
+ for(const name of COUNT_FUNCTIONS){
+  const item=partner.functions[name];
+  if(!object(item)||Object.keys(item).sort().join("|")!==
+     ["deployed","active","callableGen2","countEnabled"].sort().join("|"))
+   fail("FUNCTION_METADATA_SHAPE");
+  const deployed=bool(item.deployed,"deployed"),active=bool(item.active,"active"),
+   callableGen2=bool(item.callableGen2,"callable_gen2"),
+   countEnabled=bool(item.countEnabled,"count_enabled");
+  if(active&&!deployed||callableGen2&&!active||countEnabled&&!callableGen2)
+   fail("FUNCTION_STATE_INCONSISTENT");
+  countFunctionHealth[name]=Object.freeze({deployed,active,
+   callableGen2,countEnabled});
+ }
+ if(fnAvailable!==COUNT_FUNCTIONS.every(name=>countFunctionHealth[name].deployed)||
+    fnActive!==COUNT_FUNCTIONS.every(name=>countFunctionHealth[name].active)||
+    fnEnabled!==COUNT_FUNCTIONS.every(name=>countFunctionHealth[name].countEnabled))
+  fail("FUNCTION_AGGREGATE_INCONSISTENT");
  const bills=bool(billing.billingEnabled,"billing_enabled");
  const linked=bool(billing.linkedBillingAccount,"billing_linked");
  const verifiedTrial=bool(billing.trialCreditBalanceVerified,"trial_balance");
  const guaranteed=bool(billing.noRecurringChargeGuaranteed,"recurring_guarantee");
- if(!Array.isArray(Object.keys(partner.functions||{}))||
-    rules.testedAgainstSyntheticEmulatorOnly!==true||
+ if(rules.testedAgainstSyntheticEmulatorOnly!==true||
     rules.realPartnerGetListProven!==false||
     secondary.realPartnerFinanceDenyVerified!==false||
     partner.realPartnerCountEntryVerified!==false||
@@ -86,6 +110,9 @@ export function summarize(input){
   secondaryContextUnknown:unknownRisk,
   recentReadyBackupPresent:backup,
   fourCountFunctionsDeployedActiveEnabled:fnAvailable&&fnActive&&fnEnabled,
+  // These statuses are independently useful and contain only four public names
+  // and boolean readiness flags, never user or billing information.
+  countFunctionHealth:Object.freeze(countFunctionHealth),
   firebaseBillingLinked:bills&&linked,
   trialBalanceVerifiedByProjectBillingApi:verifiedTrial,
   noFutureRecurringChargesGuaranteed:guaranteed,
