@@ -1,0 +1,66 @@
+name: NICO HQ Owner count source reconcile (NO DEPLOY)
+on:
+  push:
+    branches: [feature/owner-quick-staff-reconcile-20261107]
+  pull_request:
+    branches: [feature/owner-quick-air-hikari-split-20261107]
+permissions:
+  contents: read
+jobs:
+  read-only-reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      FIREBASE_PROJECT_ID: demo-sales-support
+      FIREBASE_SERVICE_ACCOUNT_JSON: ""
+      GOOGLE_APPLICATION_CREDENTIALS: ""
+      NICO_USAGE_APPROVAL: ""
+      NICO_PHASE1_INDEPENDENT_SIGNOFF: ""
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Fail closed on production keys and unexpected changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$FIREBASE_PROJECT_ID" = "demo-sales-support"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$NICO_USAGE_APPROVAL"
+          test -z "$NICO_PHASE1_INDEPENDENT_SIGNOFF"
+          git fetch --no-tags origin feature/owner-quick-air-hikari-split-20261107
+          git diff --name-only origin/feature/owner-quick-air-hikari-split-20261107...HEAD >/tmp/reconcile-changes
+          while IFS= read -r p; do
+            case "$p" in
+              functions-partner-quick/quick-counts.cjs|index.html|tests/partner-quick-counts.test.cjs|.github/workflows/nico-owner-source-reconciliation-no-deploy.yml) ;;
+              *) echo "UNEXPECTED_CHANGE: $p"; exit 1 ;;
+            esac
+          done < /tmp/reconcile-changes
+          test "$(wc -l < /tmp/reconcile-changes)" -eq 4
+      - name: Run count-source, owner, authentication and revenue redaction regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check functions-partner-quick/quick-counts.cjs
+          node --test \
+            tests/partner-quick-counts.test.cjs \
+            tests/owner-partner-directory-pagination.test.cjs \
+            tests/owner-partner-count-console.test.cjs \
+            tests/partner-internet-split-safe.test.cjs \
+            tests/partner-combined-month-ranking-main.test.cjs \
+            tests/partner-workspace.test.cjs \
+            tests/partner-money-free-workspace.test.cjs \
+            tests/partner-company-invitations.test.cjs \
+            tests/internal-owner-finance-visibility.test.cjs \
+            tests/sales-regressions.cjs
+      - name: Confirm no live writes and no deployment
+        run: |
+          echo "NO_FIREBASE_SERVICE_ACCOUNT=true"
+          echo "PRODUCTION_DOCUMENT_WRITES=0"
+          echo "PRODUCTION_DEPLOYED=false"
+          echo "QUICK_STAFF_AUTOMERGE=false"
