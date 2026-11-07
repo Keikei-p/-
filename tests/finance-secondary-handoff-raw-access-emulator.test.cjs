@@ -47,12 +47,17 @@ let env;
 const authDb=user=>env.authenticatedContext(user,{
  email:user+"@example.test",email_verified:true
 }).firestore();
-const readOriginals=async()=>env.withSecurityRulesDisabled(async ctx=>{
- const db=ctx.firestore(),original={};
- for(const table of tables)
-  original[table]=(await getDoc(doc(db,table,idFor(table)))).data();
+const readOriginals=async()=>{
+ let original;
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const db=ctx.firestore();original={};
+  for(const table of tables)
+   original[table]=(await getDoc(doc(db,table,idFor(table)))).data();
+ });
+ assert.ok(original&&Object.keys(original).length===tables.length,
+  "Privileged emulator fixture read must produce real document values");
  return original;
-});
+};
 test.before(async()=>{
  env=await initializeTestEnvironment({
   projectId:"demo-nico-secondary-handoff",firestore:{rules:SOURCE}
@@ -151,14 +156,17 @@ test("staged approved primary transition preserves all old originals but denies 
   ));
  }
  await assertFails(getDoc(doc(db,"partnerHistoricalTransfers",uid)));
- const retained=await env.withSecurityRulesDisabled(async ctx=>{
+ let retained;
+ await env.withSecurityRulesDisabled(async ctx=>{
   const db=ctx.firestore();
-  return {
+  retained={
    archive:(await getDoc(doc(db,"partnerHistoricalTransfers",uid))).data(),
    oldMember:(await getDoc(doc(db,"companies",hub,"members",uid))).data(),
    partnerMember:(await getDoc(doc(db,"companies",partner,"members",uid))).data()
   };
  });
+ assert.ok(retained&&retained.archive&&retained.oldMember&&retained.partnerMember,
+  "Privileged archive snapshot must actually exist");
  assert.deepEqual(retained.archive.originalUser.companyId,hub);
  assert.equal(retained.archive.originalMember.active,true);
  assert.equal(retained.oldMember.active,false);
