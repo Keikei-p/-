@@ -29,6 +29,15 @@
 - この連結は**デモ用の同一UID**と模擬Transaction + Firestore Emulator。公開URLのログイン・入力保存を実アカウントで検証した証拠にはならない。現行の本番`getPartnerWorkspace`等のFunctions配備・費用も別確認。
 - 協力店の元会社全体Quick件数と担当者別保存件数は異なる原票のため、同一契約と確認せず自動合算しない。
 
+## 本番移行前の件数入力停止防止ゲート（今回追加）
+
+- `buildService` が実際の隔離 `makeWorkspace.view()` を同じ認証済みBearer / UIDで呼ぶ `readCountWorkspace` 依存を必須にした。**バックエンドが未配備、機能フラグOFF、閲覧不可、本人のスタッフ行なし、役職/所属班不一致なら、プレビューと移行の両方が書込0で停止。**
+- プレビューとコミットの直前に東京日付の当人の個人件数とHub日計集計をトランザクションで再読込。`source=staff-entries-v1` 以外の旧日計、件数スキーマ不正、個人件数より少ない日計、日付・版数の食い違いがあれば旧自社所属を**失効させずに拒否**。
+- 入力件数を自動補正したりQuick会社全体原票と個人入力原票を合算しない。所有者の既存売上、単価、CB、元ユーザーと監査履歴の内容は変更しない。
+- 既存同意画面は今までどおり本人による明示チェックと二段階プレビューが必要。フラグ・Auth・Functions本番配備が済まない状態から「権限切替しても大丈夫」と推測しない。
+- `preview` の `countPathReadOnlyPreflightPassed=true` は**Emulator/該当UIDのその時点の読取が成功した**ことだけを意味し、新規件数保存や継続運用を証明しない。最後は実UIDでの件数1件登録/訂正と4金融GET/LIST拒否、READYバックアップ本体復元が必要。
+- このゲートを組み込んだStaging `handoff.cjs` は、本番のFunctionsには登録されておらず、本PRでの本番書き込み・移行は0件。
+
 ## 安全境界
 
 - **実際のFirebase Productionへの移行やRules変更ではない。** staged service本体・Functions exports・Hosting・Firestore Rulesのソースは変更しない。

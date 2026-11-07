@@ -15,6 +15,8 @@ const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const EMAIL=/^[^\s@]{1,128}@[^\s@]{1,254}$/;
 const CONSENT="MOVE_MY_PRIMARY_LOGIN_TO_PARTNER_KEEP_OLD_SALES_HISTORY";
 const INTERNAL_TYPES=new Set(["internal","direct","member","managed"]);
+const {KEYS}=require("../../functions-partner-workspace/service.cjs");
+const COUNT_KEYS=[...KEYS].sort().join("|");
 const clean=x=>typeof x==="string"?x.trim():"";
 const hasId=x=>ID.test(x||"");
 const validRole=x=>x==="leader"||x==="member";
@@ -26,11 +28,79 @@ function fail(ErrorType,code="failed-precondition"){
 function internalType(x){return x==null||INTERNAL_TYPES.has(x);}
 function sameEmail(data,email){return !clean(data?.email)||clean(data.email).toLowerCase()===email;}
 
-function buildService({db,getAuth,FieldValue,HttpsError}){
+function buildService({db,getAuth,FieldValue,HttpsError,readCountWorkspace,now=()=>Date.now()}){
  if(!db?.collection||!db?.runTransaction||
     typeof getAuth!=="function"||!FieldValue?.serverTimestamp||
-    !FieldValue?.delete||typeof HttpsError!=="function")
+    !FieldValue?.delete||typeof HttpsError!=="function"||
+    typeof readCountWorkspace!=="function"||typeof now!=="function")
   throw Error("SECONDARY_PRIMARY_HANDOFF_MISSING_DEPENDENCY");
+ // A handoff MUST NOT disable the primary money account while the separate
+ // count-only workspace is missing, disabled or returning an invalid view.
+ // Calls the REAL server-side count workspace viewer with the authenticated UID;
+ // never trust a caller-supplied "ready" boolean, company name, or count total.
+ const today=()=>new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Tokyo",
+  year:"numeric",month:"2-digit",day:"2-digit"}).format(now());
+ const validateCounts=(counts,limit=9999)=>{
+  if(!counts||typeof counts!=="object"||Array.isArray(counts)||
+     Object.keys(counts).sort().join("|")!==COUNT_KEYS)
+   fail(HttpsError,"failed-precondition");
+  let total=0;
+  for(const key of KEYS){
+   if(!Number.isSafeInteger(counts[key])||counts[key]<0||counts[key]>limit)
+    fail(HttpsError,"failed-precondition");
+   total+=counts[key];
+  }
+  return total;
+ };
+ async function countView(request,who,partnerCompanyId){
+  const date=today();
+  const safeRequest={...request,data:{date,workspaceCompanyId:partnerCompanyId}};
+  let view;
+  try{view=await readCountWorkspace(safeRequest);}
+  catch{fail(HttpsError,"failed-precondition");}
+  if(!view||typeof view!=="object"||view.date!==date||
+     !["member","leader"].includes(view.role)||
+     !Array.isArray(view.staff)||!Array.isArray(view.records)||
+     !Array.isArray(view.categories)||
+     view.categories.join("|")!==KEYS.join("|")||
+     view.staff.length>150||view.records.length>200||
+     !hasId(view.teamId)||!view.staff.some(staff=>
+      staff?.id===who.uid&&staff?.uid===who.uid&&staff?.active===true&&
+      staff?.kind==="account"))
+   fail(HttpsError,"failed-precondition");
+  return {date,role:view.role,teamId:view.teamId};
+ }
+ const assertCountIntegrity=async(tx,s,ready)=>{
+  if(ready.role!==s.ctx.role||ready.teamId!==s.ctx.teamId)
+   fail(HttpsError,"failed-precondition");
+  // Real partner-workspace submit() uses these exact count-only paths.
+  // A legacy per-company source is incompatible with person/day submit.
+  const countEntry=path(s.partnerCompanyId,"partnerWorkEntries")
+   .doc(ready.date+"__"+s.who.uid);
+  const countSummary=path(s.oldCid,"partnerWorkCountDays").doc(ready.date)
+   .collection("reports").doc(s.partnerCompanyId);
+  const [entrySnap,summarySnap]=await Promise.all([tx.get(countEntry),tx.get(countSummary)]);
+  const row=entrySnap.data()||{},summary=summarySnap.data()||{};
+  if(summarySnap.exists){
+   if(summary.source!=="staff-entries-v1"||
+      summary.hubCompanyId!==s.oldCid||
+      summary.partnerCompanyId!==s.partnerCompanyId||
+      summary.date!==ready.date||
+      summary.totalCount!==validateCounts(summary.counts))
+    fail(HttpsError,"failed-precondition");
+  }
+  if(entrySnap.exists){
+   if(!summarySnap.exists||
+      row.staffId!==s.who.uid||
+      row.companyId!==s.partnerCompanyId||
+      row.date!==ready.date||
+      !Number.isSafeInteger(row.version)||row.version<1||row.version>=999||
+      row.totalCount!==validateCounts(row.counts))
+    fail(HttpsError,"failed-precondition");
+   for(const key of KEYS)if(row.counts[key]>summary.counts[key])
+    fail(HttpsError,"failed-precondition");
+  }
+ }
  const refs=(company,uid)=>({
   users:db.collection("users").doc(uid),
   internalCompany:db.collection("companies").doc(company),
@@ -165,12 +235,15 @@ function buildService({db,getAuth,FieldValue,HttpsError}){
   const data=request?.data||{};
   if(Object.keys(data).join()!=="workspaceCompanyId"||!hasId(data.workspaceCompanyId))
    fail(HttpsError,"invalid-argument");
+  const ready=await countView(request,who,data.workspaceCompanyId);
   return db.runTransaction(async tx=>{
    const s=await resolve(tx,who,data.workspaceCompanyId);
+   await assertCountIntegrity(tx,s,ready);
    return {eligible:true,needsExplicitConsent:true,
     partnerCompanyId:s.partnerCompanyId,
     sourceHistoryPreserved:true,
     sourceFinanceAccessClosurePending:true,
+    countPathReadOnlyPreflightPassed:true,
     countInputReverificationRequired:true};
   });
  }
@@ -179,8 +252,10 @@ function buildService({db,getAuth,FieldValue,HttpsError}){
   if(Object.keys(d).sort().join()!=="consent,workspaceCompanyId"||
      d.consent!==CONSENT||!hasId(d.workspaceCompanyId))
    fail(HttpsError,"invalid-argument");
+  const ready=await countView(request,who,d.workspaceCompanyId);
   return db.runTransaction(async tx=>{
    const s=await resolve(tx,who,d.workspaceCompanyId);
+   await assertCountIntegrity(tx,s,ready);
    write(tx,s);
    return {transferred:true,partnerCompanyId:s.partnerCompanyId,
     historyArchived:true,requiresFreshSignInAndCountVerification:true};
