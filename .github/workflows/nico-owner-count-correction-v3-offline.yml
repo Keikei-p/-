@@ -4,6 +4,10 @@ on:
     branches: [main]
     paths:
       - 'staging/partner-owner-correction-v3/service.cjs'
+      - 'staging/partner-owner-correction-v3/entry.cjs'
+      - 'staging/partner-owner-correction-v3/firebase.owner-correction.json'
+      - 'tools/production/prepare-hub-owner-correction-v3-package.mjs'
+      - 'tests/prepare-hub-owner-correction-v3-package.test.mjs'
       - 'staging/partner-owner-correction-v3/trusted-auth.cjs'
       - 'tests/partner-owner-correction-v3-auth.test.cjs'
       - 'tests/partner-owner-correction-v3.test.cjs'
@@ -16,6 +20,10 @@ on:
     branches: [main]
     paths:
       - 'staging/partner-owner-correction-v3/service.cjs'
+      - 'staging/partner-owner-correction-v3/entry.cjs'
+      - 'staging/partner-owner-correction-v3/firebase.owner-correction.json'
+      - 'tools/production/prepare-hub-owner-correction-v3-package.mjs'
+      - 'tests/prepare-hub-owner-correction-v3-package.test.mjs'
       - 'staging/partner-owner-correction-v3/trusted-auth.cjs'
       - 'tests/partner-owner-correction-v3-auth.test.cjs'
       - 'tests/partner-owner-correction-v3.test.cjs'
@@ -42,6 +50,10 @@ jobs:
           node --check staging/partner-owner-correction-v3/trusted-auth.cjs
           node --check tests/partner-owner-correction-v3-auth.test.cjs
           node --test tests/partner-owner-correction-v3-auth.test.cjs
+          node --check staging/partner-owner-correction-v3/entry.cjs
+          node --check tools/production/prepare-hub-owner-correction-v3-package.mjs
+          node --check tests/prepare-hub-owner-correction-v3-package.test.mjs
+          node --test tests/prepare-hub-owner-correction-v3-package.test.mjs
           node --check staging/partner-owner-correction-v3/service.cjs
           node --check tests/partner-owner-correction-v3.test.cjs
           node --test tests/partner-owner-correction-v3.test.cjs
@@ -66,3 +78,21 @@ jobs:
            source.includes('firebase deploy')||/collection\("(?:products|records)"\)/.test(source))
             throw Error('OWNER_CORRECTION_SAFETY_CONTRACT_MISSING');
           NODE
+      - name: Prepare reviewed owner correction package in disposable runner (NEVER deploy)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/prepare-hub-owner-correction-v3-package.mjs --prepare
+          dir="$RUNNER_TEMP/nico-reviewed-owner-correction-v3-package"
+          test -d "$dir/functions-hub-owner-correction"
+          test "$(find "$dir" -type f | wc -l)" -eq 6
+          node --check "$dir/functions-hub-owner-correction/index.js"
+          node --check "$dir/functions-hub-owner-correction/service.cjs"
+          node --check "$dir/functions-hub-owner-correction/trusted-auth.cjs"
+          node --check "$dir/functions-hub-owner-correction/sb-category-v2.cjs"
+          test "$(node -e "const f=require('fs');const j=JSON.parse(f.readFileSync(process.argv[1],'utf8'));process.stdout.write(j.functions.codebase)" "$dir/firebase.owner-correction.json")" = 'hub-owner-correction-v3'
+          echo 'OWNER_CORRECTION_V3_DISPOSABLE_PACKAGE_VERIFIED_NO_DEPLOY'
+      - name: Always remove disposable codebase; do not upload or deploy
+        if: always()
+        shell: bash
+        run: rm -rf -- "$RUNNER_TEMP/nico-reviewed-owner-correction-v3-package"
