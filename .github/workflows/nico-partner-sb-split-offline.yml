@@ -3,24 +3,22 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - 'functions-partner-workspace/service.cjs'
+      - 'staging/partner-sb-v2/service.cjs'
+      - 'staging/partner-sb-v2/partner-workspace.html'
+      - 'tests/partner-sb-v2-workspace.test.cjs'
+      - 'tests/partner-sb-v2-dashboard.test.cjs'
       - 'functions-partner-workspace/sb-category-v2.cjs'
-      - 'tests/partner-workspace.test.cjs'
       - 'tests/partner-sb-category-v2.test.cjs'
-      - 'partner-workspace.html'
-      - 'tests/partner-count-dashboard.test.cjs'
-      - 'tests/partner-money-free-workspace.test.cjs'
       - '.github/workflows/nico-partner-sb-split-offline.yml'
   push:
     branches: [main]
     paths:
-      - 'functions-partner-workspace/service.cjs'
+      - 'staging/partner-sb-v2/service.cjs'
+      - 'staging/partner-sb-v2/partner-workspace.html'
+      - 'tests/partner-sb-v2-workspace.test.cjs'
+      - 'tests/partner-sb-v2-dashboard.test.cjs'
       - 'functions-partner-workspace/sb-category-v2.cjs'
-      - 'tests/partner-workspace.test.cjs'
       - 'tests/partner-sb-category-v2.test.cjs'
-      - 'partner-workspace.html'
-      - 'tests/partner-count-dashboard.test.cjs'
-      - 'tests/partner-money-free-workspace.test.cjs'
       - '.github/workflows/nico-partner-sb-split-offline.yml'
 permissions:
   contents: read
@@ -37,16 +35,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          node --check staging/partner-sb-v2/service.cjs
           node --check functions-partner-workspace/service.cjs
           node --check functions-partner-workspace/sb-category-v2.cjs
-          node --test tests/partner-sb-category-v2.test.cjs tests/partner-workspace.test.cjs
-          node --test tests/partner-count-dashboard.test.cjs tests/partner-money-free-workspace.test.cjs
+          node --test tests/partner-sb-category-v2.test.cjs tests/partner-sb-v2-workspace.test.cjs tests/partner-sb-v2-dashboard.test.cjs
+          node --test tests/partner-workspace.test.cjs
+          node --test tests/partner-count-dashboard.test.cjs tests/partner-money-free-workspace.test.cjs tests/partner-private-release-gate.test.mjs
           test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
           test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
           test "$(git hash-object functions-partner-workspace/index.js)" = '38da7e9174ffea7c406c92292dccfc651b565eb0'
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 'b94a6aba231dc2569009580a178297a5b6194bda'
+          test "$(git hash-object partner-workspace.html)" = '0930abb188165afea19ef427308ea22fddf636e7'
+          test "$(git hash-object tests/partner-workspace.test.cjs)" = '91208ffb8ae9e2b3332fdeb9cf288a35788e105b'
           node <<'NODE'
           const fs=require('node:fs');
-          const html=fs.readFileSync('partner-workspace.html','utf8');
+          const html=fs.readFileSync('staging/partner-sb-v2/partner-workspace.html','utf8');
           const start=html.indexOf('<script type="module">');
           const end=html.indexOf('</script>',start);
           const code=start>=0&&end>start?html.slice(start+'<script type="module">'.length,end):null;
@@ -64,7 +67,7 @@ jobs:
           node --check /tmp/nico-sb-split-browser-check.mjs
           node <<'NODE'
           const fs=require('node:fs');
-          const current=fs.readFileSync('functions-partner-workspace/service.cjs','utf8');
+          const current=fs.readFileSync('staging/partner-sb-v2/service.cjs','utf8');
           const helper=fs.readFileSync('functions-partner-workspace/sb-category-v2.cjs','utf8');
           if(!current.includes('sbBreakdownSchema:"sb-separated-v1"')||
             !current.includes('previousSbBreakdown:')||
