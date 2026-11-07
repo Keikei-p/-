@@ -48,10 +48,16 @@ function fixture({hub=workspace,enabled=()=>true}={}){
    email:"owner@example.com",email_verified:true
   }})};
  const auth={currentUser:owner},root=new FakeElement("main");
+ const authEvents={listener:null,unsubscribed:0};
  const seen={workspace:[],list:[],correct:[]};
  let latest=listing();
  const fn={
   root,auth,dom,enabled,dateGetter:()=>date,confirmChange:()=>true,
+  subscribeAuth:callback=>{
+   authEvents.listener=callback;
+   callback(auth.currentUser);
+   return ()=>{authEvents.unsubscribed++;authEvents.listener=null};
+  },
   workspaceCallable:async req=>{
    seen.workspace.push(req);return {data:await hub(req)}
   },
@@ -74,7 +80,12 @@ function fixture({hub=workspace,enabled=()=>true}={}){
    }};
   }
  };
- return {owner,auth,root,seen,fn};
+ return {owner,auth,root,seen,fn,authEvents,
+  notifyAuth(user){
+   auth.currentUser=user;
+   authEvents.listener?.(user);
+  }
+ };
 }
 test("approved hub company discovery returns only active-visible count-only labels",()=>{
  assert.deepEqual(countOnlyRegisteredCompanies(workspace(),date),[
@@ -181,6 +192,59 @@ test("discovery failure hides errors and does not send a correction",async()=>{
  assert.equal(f.root.children.length,0);
  assert.equal(f.seen.correct.length,0);
 });
+test("logout clears already displayed count data immediately and disposes requests",async()=>{
+ const f=fixture(),panel=await mountVerifiedOwnerCorrection(f.fn);
+ const company=f.root.children[0].children[3];
+ company.value=cid;
+ await panel.load();
+ assert.equal(f.root.children.length,1);
+ assert.equal(f.seen.list.length,1);
+ f.notifyAuth(null);
+ assert.equal(f.root.children.length,0,"old owner counts must disappear on sign-out");
+ assert.equal(f.authEvents.unsubscribed,1);
+ await panel.load();
+ assert.equal(f.seen.list.length,1,"disposed panel cannot reload");
+ panel.destroy();
+ assert.equal(f.authEvents.unsubscribed,1,"only one unsubscribe");
+});
+
+test("switching to another signed-in user clears the previous owner panel",async()=>{
+ const f=fixture(),panel=await mountVerifiedOwnerCorrection(f.fn);
+ f.root.children[0].children[3].value=cid;
+ await panel.load();
+ f.notifyAuth({...f.owner,uid:"other"});
+ assert.equal(f.root.children.length,0);
+ assert.equal(f.authEvents.unsubscribed,1);
+ await panel.save();
+ assert.equal(f.seen.correct.length,0);
+});
+test("loss of email verification or feature switch clears mounted counts",async()=>{
+ for(const mode of ["unverified","disabled"]){
+  let flag=true;
+  const f=fixture({enabled:()=>flag});
+  const panel=await mountVerifiedOwnerCorrection(f.fn);
+  f.root.children[0].children[3].value=cid;
+  await panel.load();
+  if(mode==="disabled")flag=false;
+  f.notifyAuth(mode==="unverified"?{...f.owner,emailVerified:false}:f.owner);
+  assert.equal(f.root.children.length,0,mode);
+  assert.equal(f.authEvents.unsubscribed,1,mode);
+  panel.destroy();
+ }
+});
+test("auth listener unavailable, throws, or sync logout rejects and empties panel",async()=>{
+ for(const mode of ["throws","missing","sync-logout"]){
+  const f=fixture();
+  f.fn.subscribeAuth=mode==="throws"?()=>{throw Error("auth-provider-internal-secret")}:
+   mode==="missing"?()=>undefined:
+   callback=>{callback(null);return ()=>{f.authEvents.unsubscribed++}};
+  await assert.rejects(mountVerifiedOwnerCorrection(f.fn),err=>
+   err.message==="OWNER_CORRECTION_BOOT_AUTH_LISTENER_UNVERIFIED");
+  assert.equal(f.root.children.length,0,mode);
+  assert.equal(f.seen.correct.length,0);
+ }
+});
+
 test("staged code contains no Firebase initialization, Firestore reads or credential storage",()=>{
  const source=readFileSync(new URL("../staging/partner-owner-correction-v3/mobile-bootstrap.mjs",import.meta.url),"utf8");
  assert.match(source,/STAGING ONLY \/ NO DEPLOY/);
