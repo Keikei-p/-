@@ -86,7 +86,6 @@ test("per-function readiness cannot be forged, cannot leak raw Function config o
  const cases=[
   {functions:{getPartnerWorkspace:{deployed:true,active:true,callableGen2:true,countEnabled:true}}},
   {functions:{...input.partner.functions,evilSecretEndpoint:{deployed:false,active:false,callableGen2:false,countEnabled:false}}},
-  {functions:{...input.partner.functions,getPartnerWorkspace:{deployed:true,active:true,callableGen2:true,countEnabled:true}}},
   {functions:{...input.partner.functions,getPartnerWorkspace:{deployed:false,active:true,callableGen2:false,countEnabled:false}}},
   {functions:{...input.partner.functions,getPartnerWorkspace:{deployed:false,active:false,callableGen2:false,countEnabled:false,uri:"private"}}}
  ];
@@ -94,6 +93,15 @@ test("per-function readiness cannot be forged, cannot leak raw Function config o
   assert.throws(()=>summarize({...input,partner:{...input.partner,...overrides}}),
    /STOP_NICO_UNIFIED_READINESS_/);
  }
+ // One of four actually deployed is a legitimate incomplete state,
+ // not a counterfeit report. Surface it without authorizing rollout.
+ const partial=reports();
+ partial.partner.functions.getPartnerWorkspace={deployed:true,
+  active:true,callableGen2:true,countEnabled:true};
+ const partialReport=summarize(partial);
+ assert.equal(partialReport.countFunctionHealth.getPartnerWorkspace.countEnabled,true);
+ assert.equal(partialReport.fourCountFunctionsDeployedActiveEnabled,false);
+ assert.equal(partialReport.safeForPartnerFullRelease,false);
  const result=summarize(input);
  const shown=JSON.stringify(result);
  for(const secret of ["private","https://","@example.test","access_token","uid","SECRET_KEY"])
