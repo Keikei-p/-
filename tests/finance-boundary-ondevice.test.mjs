@@ -18,7 +18,9 @@ function load(probeFetch){
  const box={console:{log:()=>{throw Error('no console logs allowed')}},
   document:{getElementById:el},location:{origin:'https://nico-factory.web.app'},
   URL,Intl,Date,Map,RegExp,JSON,Error,Number,
-  initializeApp:()=>({}),getAuth:()=>({currentUser:null}),
+  initializeApp:()=>({}),initializeAuth:()=>({currentUser:null}),
+  browserSessionPersistence:{kind:'mock-session'},signInWithEmailAndPassword:async()=>({}),
+  signOut:async()=>{},
   getFunctions:()=>({}),httpsCallable:()=>async()=>({data:{}}),
   onAuthStateChanged:(_a,cb)=>cb(null),
   fetch:probeFetch};
@@ -146,7 +148,9 @@ test('before-and-after real-session path survives old-company GET denial without
  const box={console:{log:()=>{throw Error('no console logs')}},
    document:{getElementById:el},location:{origin:'https://nico-factory.web.app'},
    URL,Intl,Date,Map,RegExp,JSON,Error,Number,
-   initializeApp:()=>({}),getAuth:()=>({currentUser:user}),
+   initializeApp:()=>({}),initializeAuth:()=>({currentUser:user}),
+   browserSessionPersistence:{kind:'mock-session'},signInWithEmailAndPassword:async()=>({}),
+   signOut:async()=>{},
    getFunctions:()=>({}),httpsCallable:()=>async()=>({data:{}}),
    onAuthStateChanged:(_a,cb)=>cb(user),
    fetch:requests};
@@ -187,4 +191,85 @@ test('inactive or missing self user cannot borrow an old successful company proo
   throw Error('Should never fetch a company for inactive user');
  });
  assert.equal(await probes.readCompany('token','user_a'),null);
+});
+
+test('diagnostic auth never shares the normal sales-app Firebase app session',()=>{
+ const names=[];
+ const auth={currentUser:null};
+ const elements=new Map();
+ const el=id=>{if(!elements.has(id))elements.set(id,{
+   value:'',disabled:false,textContent:'',hidden:false
+ });return elements.get(id);};
+ const app={tag:'isolated'};
+ const context={URL,Intl,Date,Map,RegExp,JSON,Error,Number,
+   location:{origin:'https://nico-factory.web.app'},
+   document:{getElementById:el},console:{log:()=>{throw Error('No logging')}},
+   browserSessionPersistence:{kind:'session'},
+   initializeApp:(config,name)=>{names.push(name);return app;},
+   initializeAuth:(a,options)=>{
+     assert.equal(a,app);
+     assert.equal(options.persistence.kind,'session');
+     return auth;
+   },
+   getFunctions:()=>({}),
+   httpsCallable:()=>async()=>({data:{}}),
+   onAuthStateChanged:(_a,cb)=>cb(null),
+   signInWithEmailAndPassword:async()=>({}),
+   signOut:async()=>{},
+   fetch:async()=>{throw Error('No network on bootstrap');}
+ };
+ runInNewContext(browser,context);
+ assert.equal(names[0],'nico-finance-boundary-diagnostic');
+ assert.equal(auth.currentUser,null);
+ assert.equal(el('loginBox').hidden,false);
+ assert.equal(el('run').disabled,true);
+});
+test('mobile sign-in uses only Firebase Auth; password cleared, no Firestore writes',async()=>{
+ const auth={currentUser:null};
+ const elements=new Map(),calls=[];
+ const el=id=>{if(!elements.has(id))elements.set(id,{
+   value:'',disabled:false,textContent:'',hidden:false
+ });return elements.get(id);};
+ const callbacks=[];
+ const context={URL,Intl,Date,Map,RegExp,JSON,Error,Number,
+   location:{origin:'https://nico-factory.web.app'},
+   document:{getElementById:el},console:{log:()=>{throw Error('No logging')}},
+   browserSessionPersistence:{kind:'session'},
+   initializeApp:()=>({}),initializeAuth:()=>auth,
+   getFunctions:()=>({}),httpsCallable:()=>async()=>({data:{}}),
+   onAuthStateChanged:(_a,cb)=>{callbacks.push(cb);cb(null);},
+   signInWithEmailAndPassword:async(_auth,email,password)=>{
+     calls.push({email,password});auth.currentUser={uid:'real-uid',emailVerified:true};
+     callbacks.forEach(cb=>cb(auth.currentUser));return {user:auth.currentUser};
+   },
+   signOut:async()=>{calls.push({logout:true});auth.currentUser=null;callbacks.forEach(cb=>cb(null));},
+   fetch:async()=>{throw Error('Login must not call Firestore REST');}
+ };
+ runInNewContext(browser,context);
+ el('email').value='  test@example.com  ';
+ el('password').value='test-secret-password';
+ let prevented=false;
+ await el('loginForm').onsubmit({preventDefault(){prevented=true;}});
+ assert.equal(prevented,true);
+ assert.equal(calls.length,1);
+ assert.equal(calls[0].email,'test@example.com');
+ assert.equal(calls[0].password,'test-secret-password');
+ assert.equal(el('password').value,'');
+ assert.equal(el('email').value,'');
+ assert.equal(el('loginBox').hidden,true);
+ assert.equal(el('run').disabled,false);
+ assert.doesNotMatch(el('status').textContent,/test-secret-password|test@example.com/);
+ await el('logout').onclick();
+ assert.equal(calls.length,2);
+ assert.equal(calls[1].logout,true);
+ assert.equal(el('loginBox').hidden,false);
+ assert.equal(el('run').disabled,true);
+});
+test('browser login is direct Firebase Auth only and never creates/changes accounts',()=>{
+ assert.match(html,/initializeApp\([^]*?"nico-finance-boundary-diagnostic"\)/);
+ assert.match(html,/initializeAuth\(app,\{persistence:browserSessionPersistence\}\)/);
+ assert.match(html,/signInWithEmailAndPassword\(auth,email,password\)/);
+ assert.match(html,/\$\("password"\)\.value=""/);
+ assert.doesNotMatch(html,/createUserWithEmailAndPassword|setPersistence\(|updateProfile\(|deleteUser\(/);
+ assert.doesNotMatch(html,/console\.log\(|localStorage|sessionStorage/);
 });
