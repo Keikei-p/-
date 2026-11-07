@@ -76,7 +76,7 @@ test('401/403 and network errors are UNKNOWN, not interpreted as missing deploym
  }
  await assert.rejects(inspect(async()=>{throw Error('private tokens');}),
   /STOP_PARTNER_CALLABLES_READ_TRANSPORT_UNVERIFIED/);
- await assert.rejects(inspect(async()=>answer(200,{json:()=>{throw Error('private doc')}})),
+ await assert.rejects(inspect(async()=>({status:200,json:async()=>{throw Error('private doc')}})),
   /STOP_PARTNER_CALLABLES_/);
 });
 test('no production write verbs, credentials or values emitted to console',()=>{
