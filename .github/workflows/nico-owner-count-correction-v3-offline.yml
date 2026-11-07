@@ -5,12 +5,16 @@ on:
     paths:
       - 'staging/partner-owner-correction-v3/service.cjs'
       - 'tests/partner-owner-correction-v3.test.cjs'
+      - 'staging/partner-owner-correction-v3/owner-ui.mjs'
+      - 'tests/partner-owner-correction-v3-ui.test.mjs'
       - '.github/workflows/nico-owner-count-correction-v3-offline.yml'
   push:
     branches: [main]
     paths:
       - 'staging/partner-owner-correction-v3/service.cjs'
       - 'tests/partner-owner-correction-v3.test.cjs'
+      - 'staging/partner-owner-correction-v3/owner-ui.mjs'
+      - 'tests/partner-owner-correction-v3-ui.test.mjs'
       - '.github/workflows/nico-owner-count-correction-v3-offline.yml'
 permissions:
   contents: read
@@ -30,6 +34,9 @@ jobs:
           node --check staging/partner-owner-correction-v3/service.cjs
           node --check tests/partner-owner-correction-v3.test.cjs
           node --test tests/partner-owner-correction-v3.test.cjs
+          node --check staging/partner-owner-correction-v3/owner-ui.mjs
+          node --check tests/partner-owner-correction-v3-ui.test.mjs
+          node --test tests/partner-owner-correction-v3-ui.test.mjs
           node --test tests/partner-sb-category-v2.test.cjs tests/partner-sb-v2-workspace.test.cjs tests/partner-sb-v2-dashboard.test.cjs
           node --test tests/partner-workspace.test.cjs
           test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
