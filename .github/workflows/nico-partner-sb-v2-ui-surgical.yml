@@ -5,12 +5,14 @@ on:
     paths:
       - 'tools/hosting/surgical-partner-sb-v2-ui.mjs'
       - 'tests/surgical-partner-sb-v2-ui.test.mjs'
+      - 'tests/nico-partner-sb-v2-ui-surgical-workflow.test.mjs'
       - '.github/workflows/nico-partner-sb-v2-ui-surgical.yml'
   push:
     branches: [main]
     paths:
       - 'tools/hosting/surgical-partner-sb-v2-ui.mjs'
       - 'tests/surgical-partner-sb-v2-ui.test.mjs'
+      - 'tests/nico-partner-sb-v2-ui-surgical-workflow.test.mjs'
       - '.github/workflows/nico-partner-sb-v2-ui-surgical.yml'
   workflow_dispatch:
     inputs:
@@ -63,6 +65,7 @@ jobs:
           test "$(git hash-object staging/partner-sb-v2/partner-workspace.html)" = '82a1ed0c67b14ea3fd915419da7864b7c99ffe7b'
           node --check tools/hosting/surgical-partner-sb-v2-ui.mjs
           node --test tests/surgical-partner-sb-v2-ui.test.mjs
+          node --test tests/nico-partner-sb-v2-ui-surgical-workflow.test.mjs
           node --test tests/partner-sb-v2-dashboard.test.cjs tests/partner-sb-v2-workspace.test.cjs
           node --test tests/partner-workspace.test.cjs
           node --test tests/finance-boundary-ondevice.test.mjs
