@@ -20,8 +20,8 @@ test("future rules proposal makes only 4 finance reads restrictive; source/write
  for(const rule of ["allow create:","allow update:","allow delete:"]){
   assert.equal(candidate.split(rule).length,current.split(rule).length);
  }
- assert.match(candidate,/get\(ref\).data.get\('active', true\) == true/);
- assert.match(candidate,/get\(ref\).data.get\('kind', ''\) != 'internal'/);
+ assert.match(candidate,/get\(ref\).data.get\('active', true\) != false/);
+ assert.doesNotMatch(candidate,/get\(ref\).data.get\('kind'/);
  assert.throws(()=>proposeSecondaryFinanceFence(current+" "),/BASE_RULES_CHANGED/);
  assert.doesNotMatch(candidate,/firebase deploy|FIREBASE_SERVICE_ACCOUNT_JSON/);
 });
@@ -62,7 +62,9 @@ test("real Rules emulator denies active partner-secondary raw GET and LIST but p
     active:true,hubCompanyId:hub,ownerUid:"otherOwner"});
    const users=[
     ["owner","owner",false],["ordinary","member",false],
-    ["dual","member",true],["malformed","member",true]
+    ["dual","member",true],["malformed","member",true],
+    ["internalKind","member",true],["stringFlag","member",true],
+    ["missingFlag","member",true],["inactive","member",true]
    ];
    for(const [id,role] of users){
     const profile={uid:id,companyId:hub,companyRole:role,
@@ -79,6 +81,18 @@ test("real Rules emulator denies active partner-secondary raw GET and LIST but p
    await setDoc(doc(db,"partnerWorkspaceContexts","malformed"),{
     uid:"malformed",kind:"unexpected",active:true,primaryCompanyId:hub
    });
+   await setDoc(doc(db,"partnerWorkspaceContexts","internalKind"),{
+    uid:"internalKind",kind:"internal",active:true,primaryCompanyId:hub
+   });
+   await setDoc(doc(db,"partnerWorkspaceContexts","stringFlag"),{
+    uid:"stringFlag",kind:"partner_secondary",active:"false",primaryCompanyId:hub
+   });
+   await setDoc(doc(db,"partnerWorkspaceContexts","missingFlag"),{
+    uid:"missingFlag",kind:"partner_secondary",primaryCompanyId:hub
+   });
+   await setDoc(doc(db,"partnerWorkspaceContexts","inactive"),{
+    uid:"inactive",kind:"partner_secondary",active:false,primaryCompanyId:hub
+   });
    await setDoc(doc(db,"teams","team1"),{companyId:hub,name:"1班",active:true});
    for(const [name,row] of Object.entries(moneyDocs))
     await setDoc(doc(db,name,"original"),row);
@@ -94,7 +108,11 @@ test("real Rules emulator denies active partner-secondary raw GET and LIST but p
    await assertSucceeds(getDocsFromServer(query(
     collection(actor("ordinary"),name),...filters
    )));
-   for(const uid of ["dual","malformed"]){
+   await assertSucceeds(getDoc(doc(actor("inactive"),name,"original")));
+   await assertSucceeds(getDocsFromServer(query(
+    collection(actor("inactive"),name),...filters
+   )));
+   for(const uid of ["dual","malformed","internalKind","stringFlag","missingFlag"]){
     await assertFails(getDoc(doc(actor(uid),name,"original")));
     await assertFails(getDocsFromServer(query(
      collection(actor(uid),name),...filters
