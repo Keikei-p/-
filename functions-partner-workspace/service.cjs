@@ -1,6 +1,7 @@
 "use strict";
 // Isolated partner operations: no reads/writes to sales products, records or prices.
 const crypto=require("node:crypto");
+const {LEGACY,breakdown,nextBreakdown,aggregateBreakdown}=require("./sb-category-v2.cjs");
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -709,7 +710,12 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     if(!relSnap.exists||rel.hubCompanyId!==s.cid||
        rel.partnerCompanyId!==sn.id||rel.active!==true||
        rel.countSharingApproved!==true)continue;
-    partners.push({partnerCompanyId:sn.id,name:x.partnerName,totalCount:total,counts});
+    if(x.sbBreakdown!=null){
+      try{breakdown(counts[LEGACY],x.sbBreakdown,{max:Number.MAX_SAFE_INTEGER});}
+      catch{fail("data-loss");}
+    }
+    partners.push({partnerCompanyId:sn.id,name:x.partnerName,totalCount:total,counts,
+      ...(x.sbBreakdown==null?{}:{sbBreakdown:x.sbBreakdown})});
    }
    partners.sort((x,y)=>x.name.localeCompare(y.name,"ja"));
    if(partnerTeamDetails){
@@ -776,7 +782,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
       date,verified:consistent,unattributedEntries,teams});
     }
    }
-   return {role:"hub",date,partners,registeredCompanies,categories:KEYS,
+   return {role:"hub",date,partners,registeredCompanies,categories:KEYS, sbBreakdownSchema:"sb-separated-v1",
     ...(partnerTeamDetails?{partnerTeamDetails}:{}),
     ...(teamReports?{teamReports,teamStatusComplete:true}:{})};
   }
@@ -820,19 +826,27 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    const privateCounts=validatePrivateCounts(x.privateCounts||{});
    if(Object.keys(privateCounts.counts).some(id=>!privateIdSet.has(id))||
       (x.privateTotalCount??0)!==privateCounts.total)fail("data-loss");
+   if(x.sbBreakdown!=null){
+     try{breakdown(counts[LEGACY],x.sbBreakdown);}
+     catch{fail("data-loss");}
+   }
    rows.push({staffId:x.staffId,counts,totalCount:total,version:x.version,
+     ...(x.sbBreakdown==null?{}:{sbBreakdown:x.sbBreakdown}),
      teamIdSnapshot,privateCounts:privateCounts.counts,privateTotalCount:privateCounts.total});
   }
   const visibleTeams=teams.docs.map(sn=>({id:sn.id,name:clean(sn.data().name),active:sn.data().active===true}))
    .filter(team=>["owner","leader"].includes(s.role)||team.id===s.teamId);
   return {role:s.role,date,companyName:clean(s.companyName),teamId:s.teamId,
     teams:visibleTeams,staff:[...allowed.values()],records:rows,categories:KEYS,
-    privateProducts:productList};
+    sbBreakdownSchema:"sb-separated-v1",privateProducts:productList};
  }
  async function submit(request){
   const a=await actor(request),d=request?.data||{},date=validDate(d.date),staffId=clean(d.staffId);
   if(!ID.test(staffId)||!Number.isSafeInteger(d.expectedVersion)||d.expectedVersion<0)fail("invalid-argument");
   const {counts,total}=validateCounts(d.counts);
+  const hasSbBreakdown=Object.prototype.hasOwnProperty.call(d,"sbBreakdown");
+  // A v2 correction is explicit. Older clients never fabricate a split.
+  if(hasSbBreakdown)breakdown(counts[LEGACY],d.sbBreakdown);
   const hasPrivateCounts=Object.prototype.hasOwnProperty.call(d,"privateCounts");
   const requestedPrivate=hasPrivateCounts?validatePrivateCounts(d.privateCounts).counts:null;
   const s=await scope(a.uid,null,d.workspaceCompanyId);
@@ -867,6 +881,10 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    const privateValidated=validatePrivateCounts(privateNext);
    const prior=oldSnap.exists?validateCounts(old.counts).counts:
      Object.fromEntries(KEYS.map(key=>[key,0]));
+   const nextSb=nextBreakdown({
+     previousLegacy:prior[LEGACY],previousRaw:oldSnap.exists?old.sbBreakdown:undefined,
+     nextLegacy:counts[LEGACY],requestedRaw:hasSbBreakdown?d.sbBreakdown:undefined
+   });
    const previous=totalSnap.exists?validateCounts(existing.counts).counts:
      Object.fromEntries(KEYS.map(key=>[key,0]));
    const aggregate={};let aggregateTotal=0;
@@ -877,6 +895,18 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    }
    if(totalSnap.exists&&existing.totalCount!==Object.values(previous).reduce((x,y)=>x+y,0))
      fail("data-loss");
+   // The legacy combined value remains the authoritative numeric checksum.
+   // A missing old split is "旧未分類", never guessed as 光 or AIR.
+   let summarySb=null;
+   if(nextSb!==null||existing.sbBreakdown!=null||old.sbBreakdown!=null){
+     try{
+       summarySb=aggregateBreakdown({
+         previousAggregate:previous[LEGACY],previousRaw:existing.sbBreakdown,
+         priorLegacy:prior[LEGACY],priorRaw:old.sbBreakdown,
+         nextLegacy:counts[LEGACY],nextRaw:nextSb
+       });
+     }catch{fail("data-loss");}
+   }
    // An edit cannot reassign a previously saved day to the current team.
    // Missing historical attribution remains unverified rather than inferred.
    const teamIdSnapshot=oldSnap.exists?
@@ -889,17 +919,20 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    if(staffNameSnapshot!==null&&!validName(staffNameSnapshot))fail("data-loss");
    const nowStamp=FieldValue.serverTimestamp(),nextVersion=d.expectedVersion+1;
    const row={companyId:s.cid,hubCompanyId:s.hubId,staffId,date,counts,totalCount:total,
+     ...(nextSb===null?{}:{sbBreakdown:nextSb}),
      privateCounts:privateValidated.counts,privateTotalCount:privateValidated.total,
      version:nextVersion,staffNameSnapshot,teamIdSnapshot,
      updatedByUid:a.uid,updatedAt:nowStamp};
    if(oldSnap.exists)tx.update(er,row);else tx.create(er,{...row,createdAt:nowStamp});
    const sum={source:"staff-entries-v1",hubCompanyId:s.hubId,partnerCompanyId:s.cid,
      partnerName:clean(s.companyName),date,counts:aggregate,totalCount:aggregateTotal,
+     ...(summarySb===null?{}:{sbBreakdown:summarySb}),
      updatedAt:nowStamp};
    if(!validCompanyName(sum.partnerName))fail();
    if(totalSnap.exists)tx.update(summary,sum);else tx.create(summary,{...sum,createdAt:nowStamp});
    const audit=collection(s.cid,"partnerWorkAudits").doc(date+"__"+staffId+"__v"+nextVersion);
    tx.create(audit,{...row,previousCounts:prior,previousPrivateCounts:previousPrivate,
+     ...(nextSb===null?{}:{previousSbBreakdown:breakdown(prior[LEGACY],old.sbBreakdown)}),
      createdAt:nowStamp});
    return {saved:true,staffId,date,version:nextVersion,totalCount:total,
      privateTotalCount:privateValidated.total};
