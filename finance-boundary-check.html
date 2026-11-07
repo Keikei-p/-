@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#163352">
+<title>NICO｜金額境界 診断専用</title>
+<style>
+:root{font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif;color-scheme:light}
+*{box-sizing:border-box}
+body{margin:0;background:#f2f5f9;color:#18283a}
+main{max-width:640px;margin:20px auto;padding:18px}
+section{background:white;padding:20px;border:1px solid #dce3ec;border-radius:18px}
+h1{font-size:1.3rem;margin:0 0 12px}h2{font-size:1.05rem}
+p{line-height:1.65}small,.muted{color:#586b7d}
+button{width:100%;padding:14px;border:0;border-radius:12px;background:#163b68;color:white;font-size:1rem;font-weight:650;cursor:pointer}
+button:disabled{opacity:.5;cursor:wait}label{display:block;margin:16px 0 5px}
+input{width:100%;padding:12px;border:1px solid #aebdcc;border-radius:10px;font-size:1rem}
+.output{border-top:1px solid #e4e8ee;padding:12px 0;display:flex;justify-content:space-between;gap:12px}
+.output span:last-child{text-align:right;font-weight:650}
+.warn{color:#a43619}.pass{color:#0d734c}.unknown{color:#755b29}
+#status{min-height:44px}a{color:#154e86}
+</style>
+</head>
+<body>
+<main><section>
+<h1>金額アクセスの診断（読み取り専用）</h1>
+<p>現在のログインで、金額入りFirestore原票を読み取れる権限があるかを確認します。<strong>売上・単価・CBの値は取得・表示・保存しません。</strong></p>
+<p class="muted">この診断は本番Rules切替の許可ではありません。自社Ownerと実際に自社から協力店へ移ったアカウントの両方で検証し、独立したUID照合と件数入力の確認が別途必要です。</p>
+<p id="status" role="status">ログイン状態を確認しています。</p>
+<label for="workspace">協力店ワークスペースID（協力店のみ・任意）</label>
+<input id="workspace" inputmode="text" autocomplete="off" spellcheck="false" maxlength="128" placeholder="協力店画面URLの workspaceCompanyId">
+<p><small>協力店の件数閲覧チェックを行う場合に指定します。入力値は保存・送信されず、正規のFirebase Functionsへの呼び出し時だけ使用します。診断の結果にIDは表示しません。</small></p>
+<button id="run" disabled>このログインで読み取り診断</button>
+<h2>検証結果</h2>
+<div class="output"><span>ログインと自社所属</span><span id="identity">未確認</span></div>
+<div class="output"><span>商材の金額原票（LIST / GET）</span><span id="products">未確認</span></div>
+<div class="output"><span>実績の金額原票（LIST / GET）</span><span id="records">未確認</span></div>
+<div class="output"><span>協力店件数画面（読取のみ）</span><span id="counts">未確認</span></div>
+<p class="muted" id="meaning">拒否されたLISTだけではGETの遮断は証明できません。診断ページを開いたままルール切替前後に再実行すると、前回読み取った原票IDに対するGETも検証できます。原票ID・UID・トークンは出力されません。</p>
+<p><a href="./">営業実績管理へ戻る</a></p>
+</section></main>
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+import {getAuth,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js";
+const PROJECT="sales-management-cc116";
+const BASE="https://firestore.googleapis.com/v1/projects/"+PROJECT+"/databases/(default)/documents";
+const ID=/^[A-Za-z0-9_-]{1,128}$/;
+const $=id=>document.getElementById(id);
+const app=initializeApp({apiKey:"AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
+  authDomain:"sales-management-cc116.firebaseapp.com",projectId:PROJECT,
+  appId:"1:904932511564:web:6583e8b0c585231b9049e"});
+const auth=getAuth(app),functions=getFunctions(app,"asia-northeast1");
+const countView=httpsCallable(functions,"getPartnerWorkspace",{timeout:15000});
+let busy=false,previous=new Map(),previousUid=null,previousCompany=null;
+const label=(id,text,klass="unknown")=>{const item=$(id);item.textContent=text;item.className=klass;};
+const request=async(url,method,token,data)=>{
+  if(!url.startsWith(BASE)||new URL(url).origin!=="https://firestore.googleapis.com")
+    throw Error("SCOPE");
+  const response=await fetch(url,{method,mode:"cors",redirect:"error",
+    cache:"no-store",referrerPolicy:"no-referrer",
+    headers:{Authorization:"Bearer "+token,...(data?{"Content-Type":"application/json"}:{})},
+    ...(data?{body:JSON.stringify(data)}:{})});
+  if(response.status===403){
+    let error;
+    try{error=await response.json();}catch{return {status:"unknown"};}
+    if(error?.error?.status==="PERMISSION_DENIED"&&error.error.code===403)
+      return {status:"denied"};
+    return {status:"unknown"};
+  }
+  if(response.status!==200)return {status:"unknown"};
+  try{return {status:"allowed",body:await response.json()};}
+  catch{return {status:"unknown"};}
+};
+const masked=async(path,fields,token)=>{
+  const url=new URL(BASE+"/"+path);
+  for(const field of fields)url.searchParams.append("mask.fieldPaths",field);
+  return request(url.toString(),"GET",token);
+};
+const readCompany=async(token,uid)=>{
+  const u=await masked("users/"+encodeURIComponent(uid),["companyId","active","companyRole"],token);
+  if(u.status!=="allowed"||u.body?.fields?.active?.booleanValue===false)return null;
+  const company=u.body?.fields?.companyId?.stringValue;
+  if(!ID.test(company||""))return null;
+  const c=await masked("companies/"+company,["companyKind","ownerUid"],token);
+  if(c.status!=="allowed")return null;
+  const kind=c.body?.fields?.companyKind?.stringValue||"internal";
+  if(!["internal","direct"].includes(kind))return null;
+  const role=c.body?.fields?.ownerUid?.stringValue===uid?"owner":"not-owner";
+  return {company,role};
+};
+const singleQuery=async(token,collection,company)=>{
+  return request(BASE+":runQuery","POST",token,{
+    structuredQuery:{from:[{collectionId:collection}],
+      where:{fieldFilter:{field:{fieldPath:"companyId"},op:"EQUAL",
+        value:{stringValue:company}}},
+      select:{fields:[{fieldPath:"companyId"}]},limit:1}
+  });
+};
+const checkCollection=async(token,name,company)=>{
+  const result=await singleQuery(token,name,company);
+  let listStatus=result.status,docId=null;
+  if(listStatus==="allowed"){
+    const docs=Array.isArray(result.body)?result.body.filter(x=>x?.document):[];
+    const match=docs.length===1&&docs[0]?.document?.fields?.companyId?.stringValue===company;
+    const fullName=match?docs[0].document.name:"";
+    const prefix="projects/"+PROJECT+"/databases/(default)/documents/"+name+"/";
+    const tail=fullName.startsWith(prefix)?fullName.slice(prefix.length):"";
+    if(ID.test(tail))docId=tail;
+    else listStatus="unknown";
+  }
+  const lookupKey=company+":"+name;
+  if(docId)previous.set(lookupKey,docId);
+  const target=docId||previous.get(lookupKey);
+  let getStatus="untested";
+  if(target){
+    const direct=await masked(name+"/"+target,["companyId"],token);
+    getStatus=direct.status;
+    if(direct.status==="allowed"&&direct.body?.fields?.companyId?.stringValue!==company)
+      getStatus="unknown";
+  }
+  return {listStatus,getStatus};
+};
+const render=(name,result)=>{
+  if(result.listStatus==="denied"&&result.getStatus==="denied")
+    label(name,"LIST拒否・GET拒否（候補）","pass");
+  else if(result.listStatus==="allowed"&&result.getStatus==="allowed")
+    label(name,"LIST許可・GET許可","warn");
+  else if(result.listStatus==="denied"&&result.getStatus==="untested")
+    label(name,"LIST拒否・GET未検証","unknown");
+  else label(name,"判定保留（再検証が必要）","unknown");
+};
+$("run").onclick=async()=>{
+  if(busy)return;
+  busy=true;$("run").disabled=true;
+  for(const name of ["identity","products","records","counts"])label(name,"検証中");
+  $("status").textContent="Firestoreの権限を読み取りのみで確認中";
+  try{
+    const user=auth.currentUser;
+    if(!user||!user.emailVerified||location.origin!=="https://nico-factory.web.app")
+      throw Error("SIGNIN_ORIGIN_REQUIRED");
+    const token=await user.getIdToken(true);
+    const account=await readCompany(token,user.uid);
+    if(!account)throw Error("NO_VERIFIED_INTERNAL_COMPANY");
+    if(previousUid!==user.uid||previousCompany!==account.company){
+      previous.clear();previousUid=user.uid;previousCompany=account.company;
+    }
+    label("identity",account.role==="owner"?"Owner候補（実UID独立照合は別）":"社内所属（協力店確認は別）");
+    for(const name of ["products","records"]){
+      const result=await checkCollection(token,name,account.company);
+      render(name,result);
+    }
+    const workspace=$("workspace").value.trim();
+    if(workspace){
+      if(!ID.test(workspace)||workspace===account.company)
+        throw Error("INVALID_WORKSPACE");
+      const parts=Object.fromEntries(new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Tokyo",
+        year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date())
+        .map(x=>[x.type,x.value]));
+      const date=parts.year+"-"+parts.month+"-"+parts.day;
+      try{
+        // The callable authenticates the user and validates the secondary
+        // membership. No count submission or other production write occurs.
+        await countView({workspaceCompanyId:workspace,date});
+        label("counts","専用画面の読取成功","pass");
+      }catch{label("counts","未確認（Functionsまたは所属条件）","unknown");}
+    }else label("counts","協力店ID未入力・未確認");
+    $("status").textContent="診断終了。金額遮断の本番承認には別途、独立した実UID照合が必要です。";
+  }catch{
+    for(const name of ["products","records","counts"])label(name,"未確認");
+    label("identity","認証・所属の確認が必要");
+    $("status").textContent="診断を完了できませんでした。通常のアプリでログインし直し、利用中の会社を確認してください。";
+  }finally{busy=false;$("run").disabled=!auth.currentUser;}
+};
+onAuthStateChanged(auth,user=>{
+  if(previousUid&&user?.uid!==previousUid){previous.clear();previousUid=null;previousCompany=null;}
+  $("run").disabled=!user||busy;
+  $("status").textContent=user&&user.emailVerified?
+    "ログインを確認。診断ボタンから実施できます。":
+    "未ログインまたはメール未確認です。通常の営業アプリでログインしてください。";
+});
+</script>
+</body>
+</html>
