@@ -33,6 +33,13 @@ jobs:
           node --check tools/readonly-backup/restore-emulator.mjs
           node --test tests/legacy-rules-apply-frozen.test.mjs tests/partner-boundary-release.test.mjs
           node --test tools/readonly-backup/backup.test.mjs
+          # Freeze the exact audited READ-ONLY inventory/restore implementation.
+          # Any production-writer or even innocuous source revision stops live reads
+          # until independently reviewed and the frozen blob IDs are updated.
+          test "$(git hash-object tools/production/release-partner-boundary.mjs)" = 038c4c0f6732232f1e751b6011cc5cb2cc4fd142
+          test "$(git hash-object tools/readonly-backup/backup.mjs)" = a7f21e94857a0e515655b99a725382974646dad7
+          test "$(git hash-object tools/readonly-backup/restore-emulator.mjs)" = 638bd79ed31ad28e7298d8ed2e6927730ec129b1
+          test "$(git hash-object tools/production/inspect-firestore-backups-readonly.mjs)" = 8016a0501a309ff52a002f34bed53832658d2ffb
           node -e "const f=require('fs');if(JSON.parse(f.readFileSync('.firebaserc','utf8')).projects.default!=='sales-management-cc116') process.exit(1)"
 
   live-isolated-restore:
@@ -53,11 +60,19 @@ jobs:
         with: {distribution: temurin, java-version: '21'}
       - name: Reject unknown checkout or an unfrozen Rules writer
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           test "${{ github.repository }}" = 'Keikei-p/-'
           test "${{ github.ref }}" = 'refs/heads/main'
           test "${{ github.sha }}" = "$(git rev-parse HEAD)"
+          # Do not scan while another commit is replacing the reviewed code.
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
+          test "$(git hash-object tools/production/release-partner-boundary.mjs)" = 038c4c0f6732232f1e751b6011cc5cb2cc4fd142
+          test "$(git hash-object tools/readonly-backup/backup.mjs)" = a7f21e94857a0e515655b99a725382974646dad7
+          test "$(git hash-object tools/readonly-backup/restore-emulator.mjs)" = 638bd79ed31ad28e7298d8ed2e6927730ec129b1
+          test "$(git hash-object tools/production/inspect-firestore-backups-readonly.mjs)" = 8016a0501a309ff52a002f34bed53832658d2ffb
           node --test tests/legacy-rules-apply-frozen.test.mjs
           node -e "const f=require('fs');if(JSON.parse(f.readFileSync('.firebaserc','utf8')).projects.default!=='sales-management-cc116') process.exit(1)"
       - name: Install existing local emulator and admin dependencies
@@ -76,13 +91,17 @@ jobs:
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-one-shot-readonly.json"
           chmod 600 "$RUNNER_TEMP/nico-one-shot-readonly.json"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-one-shot-readonly.json" >> "$GITHUB_ENV"
-      - name: Verify recent READY backup, typed full inventory, isolated restoration and stable original
+      - name: Verify recent READY metadata, capped live inventory, local emulator restore and stable original
         shell: bash
         run: |
           set -euo pipefail
           # Only the EXISTING verify mode is executable. Live Firestore requests
           # are GET-only. Local emulator writes never touch production.
           # Production data and credentials remain in ephemeral private files.
+          # NOTE: this restores a fresh live read-only inventory to localhost,
+          # NOT the actual managed READY backup payload, and NOT Auth/Storage.
+          # The immutable collector caps the scan at 10,000 documents and
+          # refuses incomplete snapshots rather than silently skipping records.
           result=0
           firebase emulators:exec --project demo-sales-restore --only firestore \
             "node tools/production/release-partner-boundary.mjs verify" \
