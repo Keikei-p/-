@@ -1,0 +1,123 @@
+name: NICO Nov 9 release candidate full proof gates (NO DEPLOY)
+on:
+  push:
+    branches: [release/partner-month-phase1-candidate-20261106, fix/partner-daily-history-rank-active-input-20261106, fix/partner-deleted-staff-daily-count-20261106, fix/partner-hub-archived-team-detail-20261106, feature/owner-partner-account-roster-readonly-20261106]
+  pull_request:
+    branches: [main, release/partner-month-phase1-candidate-20261106]
+permissions:
+  contents: read
+concurrency:
+  group: nico-release-candidate-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  reviewed-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      FIREBASE_PROJECT_ID: demo-sales-support
+      GCLOUD_PROJECT: demo-sales-support
+      GOOGLE_APPLICATION_CREDENTIALS: ""
+      FIREBASE_SERVICE_ACCOUNT_JSON: ""
+      NICO_RULES_APPROVAL: ""
+      NICO_PHASE1_INDEPENDENT_SIGNOFF: ""
+      NICO_USAGE_APPROVAL: ""
+      NICO_PARTNER_RELEASE_CONFIRMATION: ""
+      PARTNER_WORKSPACE_ENABLED: ""
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Freeze exact approved ancestors and audit added source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$FIREBASE_PROJECT_ID" = demo-sales-support
+          test "$GCLOUD_PROJECT" = demo-sales-support
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$NICO_RULES_APPROVAL"
+          test -z "$NICO_PHASE1_INDEPENDENT_SIGNOFF"
+          test -z "$NICO_USAGE_APPROVAL"
+          test -z "$NICO_PARTNER_RELEASE_CONFIRMATION"
+          test -z "$PARTNER_WORKSPACE_ENABLED"
+          git fetch --no-tags origin main integration/main-month-phase1-owner-review-20261106
+          test "$(git rev-parse origin/main)" = 17681e69d3ebd7271cc9a58e138fd0e202db7294
+          test "$(git rev-parse origin/integration/main-month-phase1-owner-review-20261106)" = f5ca2bd7ce5db64629d3b2543d1319e672999242
+          test "$(git merge-base HEAD f5ca2bd7ce5db64629d3b2543d1319e672999242)" = f5ca2bd7ce5db64629d3b2543d1319e672999242
+          test "$(git hash-object index.html)" = 71d4bcaef5adb0b9f0318cc64e59bcacecd9f5e4
+          test "$(git hash-object firestore.rules)" = 6d6ac7fd3544b0326823e419a3acd7e1d060b714
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = c9f18b1d1b7a272783e74cea9ac644e7b0a53b88
+          test "$(git hash-object tests/partner-workspace.test.cjs)" = 71c7c2e7be78de1fa2c5e8ff31b63652be04aa26
+          test "$(git hash-object tests/partner-hub-roster-ui.test.cjs)" = c905e84ba6861cd5bd3daca0f6359a040e67d3ae
+          test "$(git hash-object tests/owner-record-count-review-main.test.cjs)" = 0ab5f47d48585998b794577c00447b24c3c34c0a
+          test "$(git hash-object tests/owner-mismatch-explicit-audit-repair.test.cjs)" = 7f8a754b281e5cb0cb89ed550c9a1f22364b6d96
+          test "$(git hash-object tools/production/phase1-partner-finance-release.mjs)" = 25172984fd36ebf44a19844ef80b2bc6713396c1
+          test "$(git hash-object tools/production/verify-live-firestore-roles.mjs)" = 3227ed08c96e29dce9d918982fe9f8ca8199ac83
+          git diff --name-only f5ca2bd7ce5db64629d3b2543d1319e672999242...HEAD > /tmp/release-candidate-extra.txt
+          cat /tmp/release-candidate-extra.txt
+          if grep -Ev '^([.]github/workflows/(nico-nov9-release-candidate-no-deploy|nico-partner-daily-historic-ranking-no-deploy|nico-deleted-staff-historical-count-no-deploy)[.]yml|index[.]html|docs/(PHASE1_SECONDARY_FINANCE_RELEASE_SIGNOFF_NO_DEPLOY|SALES_RELEASE_SIGNOFF)[.]md|tools/production/(phase1-bound-identity-readonly|phase1-live-proof-bridge|phase1-partner-finance-release|phase1-reviewed-operator|verify-live-firestore-roles)[.]mjs|tests/(phase1-live-proof-bridge|phase1-partner-finance-release|phase1-reviewed-operator|verify-live-firestore-roles)[.]test[.]mjs|tests/(partner-daily-history-active-input|partner-workspace|owner-record-count-review-main|owner-mismatch-explicit-audit-repair|partner-hub-roster-ui)[.]test[.]cjs|functions-partner-workspace/service[.]cjs)$' /tmp/release-candidate-extra.txt; then
+            echo 'STOP_UNREVIEWED_NEW_SOURCE'
+            exit 1
+          fi
+          test "$(wc -l < /tmp/release-candidate-extra.txt)" -eq 21
+          test "$(git hash-object docs/SALES_RELEASE_SIGNOFF.md)" = 9dd8af0548194943f85282fb1e51db76e289bf7e
+          grep -Fq 'PR #407 11月9日向け合同ランキング・協力店件数・金額遮断：公開専用レビュー記録（未署名）' docs/SALES_RELEASE_SIGNOFF.md
+          grep -Fq '本番デプロイ承認: **なし**' docs/SALES_RELEASE_SIGNOFF.md
+          git diff --exit-code f5ca2bd7ce5db64629d3b2543d1319e672999242 HEAD -- firestore.rules firestore.indexes.json functions functions-partner-workspace functions-partner-quick ':(exclude)functions-partner-workspace/service.cjs'
+      - name: Validate source and test syntax
+        run: |
+          node --check functions-partner-workspace/service.cjs
+          node --check tools/production/phase1-partner-finance-release.mjs
+          node --check tools/production/verify-live-firestore-roles.mjs
+          node --check tools/production/phase1-bound-identity-readonly.mjs
+          node --check tools/production/phase1-live-proof-bridge.mjs
+          node --check tools/production/phase1-reviewed-operator.mjs
+          node --check tests/phase1-live-proof-bridge.test.mjs
+          node --check tests/phase1-partner-finance-release.test.mjs
+          node --check tests/phase1-reviewed-operator.test.mjs
+          node --check tests/verify-live-firestore-roles.test.mjs
+      - name: Month and rankings owner-only view, catalog, pricing, access and login regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/partner-hub-roster-ui.test.cjs tests/owner-mismatch-explicit-audit-repair.test.cjs tests/partner-daily-history-active-input.test.cjs tests/owner-record-count-review-main.test.cjs tests/partner-saved-month-main.test.cjs tests/partner-saved-month-ui-main.test.cjs tests/partner-combined-month-ranking-main.test.cjs tests/partner-catalog-publish-main.test.cjs tests/partner-additional-product-main.test.cjs tests/partner-additional-ledger-main.test.cjs tests/partner-workspace.test.cjs tests/sales-regressions.cjs tests/partner-one-login-same-app.test.cjs tests/partner-money-free-workspace.test.cjs tests/internal-owner-finance-visibility.test.cjs tests/partner-company-code-auth.test.cjs
+      - name: Independent real-UID and managed-backup release gate synthetic regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/verify-live-firestore-roles.test.mjs tests/phase1-live-proof-bridge.test.mjs tests/phase1-partner-finance-release.test.mjs tests/phase1-reviewed-operator.test.mjs
+      - name: Retain existing count save/edit, rankings, CB and company-code auth regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/partner-workspace.test.cjs tests/partner-quick-counts.test.cjs tests/partner-firestore-admin-count-store.test.mjs tests/partner-count-only-write-contract.test.mjs tests/partner-existing-ranking.test.cjs tests/sales-regressions.cjs tests/internal-owner-finance-visibility.test.cjs tests/partner-company-code-auth.test.cjs tests/partner-public-auth-surface.test.mjs
+      - name: Install demo-only Firestore Rules emulator dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix tests --ignore-scripts --no-audit --no-fund
+          npm install --global firebase-tools@15.34.1 --no-audit --no-fund
+      - name: Firestore Emulator actual get/list, direct record writes, partner finance denials
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase emulators:exec --project demo-sales-support --only firestore 'node --test tests/rules.test.cjs'
+      - name: Certification is synthetic only and production remains unchanged
+        run: |
+          echo 'NICO_RELEASE_CANDIDATE_SYNTHETIC_PASS'
+          echo 'PRODUCTION_DOCUMENT_WRITES=0'
+          echo 'PRODUCTION_AUTH_WRITES=0'
+          echo 'PRODUCTION_RULES_PATCHES=0'
+          echo 'PRODUCTION_DEPLOYED=false'
+          echo 'LIVE_OWNER_FINANCE_GET_LIST_VERIFIED=false'
+          echo 'LIVE_AFFECTED_PARTNER_FINANCE_DENIAL_VERIFIED=false'
+          echo 'CURRENT_MANAGED_BACKUP_AND_ISOLATED_RESTORE_VERIFIED=false'
+          echo 'RELEASE_APPROVED=false'

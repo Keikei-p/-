@@ -257,6 +257,240 @@ function makeQuickCounts({db,getAuth,FieldValue,HttpsError,enabled,now=()=>Date.
    totalCount:rows.reduce((n,r)=>n+r.totalCount,0),
    categories:KEYS,pendingPartners:pending};
  }
- return Object.freeze({submit,view,approve});
+ // Hub Owner correction for the *separate* company-only quick ledger.
+ // Never interpret this row as staff-level partnerWorkEntries.
+ function validOwnerDate(day){
+  if(typeof day!=="string"||!DATE.test(day))fail(HttpsError,"invalid-argument");
+  const t=Date.parse(day+"T00:00:00Z");
+  const today=new Intl.DateTimeFormat("en-CA",{
+   timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"
+  }).format(new Date(now()));
+  const start=Date.parse(today+"T00:00:00Z");
+  if(!Number.isFinite(t)||new Date(t).toISOString().slice(0,10)!==day||
+     t>start||start-t>366*86400000)fail(HttpsError,"invalid-argument");
+  return day;
+ }
+ async function ownerQuickContext(tx,uid,partnerId){
+  if(!ID.test(partnerId||""))fail(HttpsError,"invalid-argument");
+  const me=await identity(tx,uid);
+  if(me.role!=="hub")fail(HttpsError);
+  const [context,company,relation,grant]=await Promise.all([
+   tx.get(db.collection("partnerWorkspaceContexts").doc(uid)),
+   tx.get(db.collection("companies").doc(partnerId)),
+   tx.get(db.collection("partnerRelations").doc(partnerId)),
+   tx.get(grantRef(partnerId))
+  ]);
+  if(context.exists)fail(HttpsError); // no dual-identity Owner bypass
+  const c=company.data()||{},r=relation.data()||{};
+  if(!company.exists||!relation.exists||
+     c.companyKind!=="partner"||c.active!==true||
+     c.hubCompanyId!==me.hubId||!ID.test(c.ownerUid||"")||
+     !quickAllowed(r,grant.data()||{},partnerId,me.hubId,uid,c.ownerUid)||
+     typeof c.name!=="string"||!clean(c.name)||c.name.length>80||
+     BLOCKED_LABEL.test(c.name))fail(HttpsError);
+  return {hubId:me.hubId,partnerId,companyName:clean(c.name),
+   // The separate staff ledger may only be compared with active staff sharing.
+   canCompareStaff:r.active===true&&r.countSharingApproved===true};
+ }
+ function inspectOwnerQuickRow(row,scope,date){
+  if(row.hubCompanyId!==scope.hubId||
+     row.partnerCompanyId!==scope.partnerId||row.date!==date||
+     !Number.isSafeInteger(row.version)||row.version<1||row.version>=999||
+     typeof row.partnerCompanyName!=="string"||
+     BLOCKED_LABEL.test(row.partnerCompanyName))fail(HttpsError,"data-loss");
+  let saved;
+  try{saved=validateCounts(row.counts,HttpsError);}catch{fail(HttpsError,"data-loss");}
+  if(saved.total!==row.totalCount)fail(HttpsError,"data-loss");
+  return {counts:saved.counts,totalCount:saved.total,version:row.version};
+ }
+
+ // Quick company-only SB Hikari / Air classification.  This is deliberately
+ // distinct from partnerWorkEntries and the staff-level internet split ledger.
+ // Classification never changes source counts, totals, sales, or rankings.
+ const quickSplitRef=(hubId,date,partnerId)=>db.collection("companies").doc(hubId)
+  .collection("partnerQuickInternetSplits").doc(date).collection("reports").doc(partnerId);
+ const quickSplitAuditRef=(hubId,date,partnerId,revision)=>{
+  const hash=crypto.createHash("sha256")
+   .update([hubId,date,partnerId].join("|")).digest("hex");
+  return db.collection("partnerQuickInternetSplitAudits").doc(hash+"_v"+revision);
+ };
+ const splitInt=n=>Number.isSafeInteger(n)&&n>=0&&n<=9999;
+ function readQuickSplit(saved,source){
+  const combined=source.counts["SB光・AIR"];
+  if(!saved)return {revision:0,verified:false,hikari:null,air:null,
+   combinedCount:combined,sourceVersion:source.version,unclassified:combined};
+  if(!splitInt(saved.hikari)||!splitInt(saved.air)||
+     !splitInt(saved.combinedCount)||
+     saved.hikari+saved.air!==saved.combinedCount||
+     !Number.isSafeInteger(saved.sourceVersion)||saved.sourceVersion<1||
+     !Number.isSafeInteger(saved.revision)||saved.revision<1||saved.revision>=999)
+    fail(HttpsError,"data-loss");
+  const verified=saved.combinedCount===combined&&
+    saved.sourceVersion===source.version;
+  return {revision:saved.revision,verified,hikari:saved.hikari,air:saved.air,
+   combinedCount:combined,sourceVersion:source.version,
+   savedSourceVersion:saved.sourceVersion,unclassified:verified?0:combined};
+ }
+ async function submitOwnerQuickInternetSplit(request){
+  const uid=await caller(request),d=request?.data||{};
+  if(!d||typeof d!=="object"||Array.isArray(d)||
+     Object.keys(d).sort().join("|")!==
+      "air|date|expectedRevision|hikari|partnerCompanyId|reason|sourceVersion"||
+     !ID.test(d.partnerCompanyId||"")||
+     !splitInt(d.hikari)||!splitInt(d.air)||
+     !Number.isSafeInteger(d.sourceVersion)||d.sourceVersion<1||
+     !Number.isSafeInteger(d.expectedRevision)||d.expectedRevision<0||
+     d.expectedRevision>=998||typeof d.reason!=="string"||
+     d.reason.trim().length<3||d.reason.trim().length>160||
+     /[\x00-\x1f\x7f]/.test(d.reason))
+    fail(HttpsError,"invalid-argument");
+  const date=validOwnerDate(d.date);
+  return db.runTransaction(async tx=>{
+   const scope=await ownerQuickContext(tx,uid,d.partnerCompanyId);
+   const sourceSnap=await tx.get(reportRef(scope.hubId,date,scope.partnerId));
+   if(!sourceSnap.exists)fail(HttpsError,"failed-precondition");
+   const source=inspectOwnerQuickRow(sourceSnap.data()||{},scope,date);
+   if(source.version!==d.sourceVersion)fail(HttpsError,"aborted");
+   const combined=source.counts["SB光・AIR"];
+   if(d.hikari+d.air!==combined)fail(HttpsError,"failed-precondition");
+   const ref=quickSplitRef(scope.hubId,date,scope.partnerId);
+   const splitSnap=await tx.get(ref);
+   const raw=splitSnap.exists?splitSnap.data()||{}:null;
+   if(raw&&(raw.hubCompanyId!==scope.hubId||
+      raw.partnerCompanyId!==scope.partnerId||raw.date!==date))
+     fail(HttpsError,"data-loss");
+   const previous=readQuickSplit(raw,source);
+   if(previous.revision!==d.expectedRevision)fail(HttpsError,"aborted");
+   if(previous.verified&&previous.hikari===d.hikari&&previous.air===d.air)
+    return {saved:false,unchanged:true,partnerCompanyId:scope.partnerId,date,
+     revision:previous.revision,combinedCount:combined};
+   const revision=previous.revision+1,stamp=FieldValue.serverTimestamp();
+   const next={hubCompanyId:scope.hubId,partnerCompanyId:scope.partnerId,date,
+    hikari:d.hikari,air:d.air,combinedCount:combined,
+    sourceVersion:source.version,revision,updatedByUid:uid,updatedAt:stamp};
+   if(splitSnap.exists)tx.update(ref,next);
+   else tx.create(ref,{...next,createdAt:stamp});
+   tx.create(quickSplitAuditRef(scope.hubId,date,scope.partnerId,revision),{
+    ...next,previousRevision:previous.revision,
+    previousHikari:previous.hikari,previousAir:previous.air,
+    previousSourceVersion:raw?.sourceVersion||null,
+    reason:d.reason.trim(),changedByUid:uid,createdAt:stamp
+   });
+   return {saved:true,partnerCompanyId:scope.partnerId,date,revision,
+    sourceVersion:source.version,combinedCount:combined,
+    classified:true,auditLogged:true};
+  });
+ }
+
+
+ // Read-only owner reconciliation of two INDEPENDENT sources.
+ // Matching category totals cannot establish that underlying contracts match.
+ // Never add the quick report to staff rankings or infer staff attribution.
+ const staffReportRef=(hubId,date,partnerId)=>db.collection("companies").doc(hubId)
+  .collection("partnerWorkCountDays").doc(date).collection("reports").doc(partnerId);
+ function reconcileSourceCounts(quick,staffSnap,scope,date){
+  const base={scope:"hub_owner_count_source_reconciliation",
+   quickIncludedInIndividualRanking:false,automaticMergeAllowed:false,
+   contractIdentityVerified:false,productionDocumentWrites:0};
+  if(!scope.canCompareStaff)
+   return {...base,status:"staff_not_shared",quickTotalCount:quick?.totalCount??null,
+    staffTotalCount:null,categoryDifferences:[]};
+  let staff=null;
+  if(staffSnap?.exists){
+   const data=staffSnap.data()||{};
+   if(data.source!=="staff-entries-v1"||
+      data.hubCompanyId!==scope.hubId||
+      data.partnerCompanyId!==scope.partnerId||data.date!==date)
+    fail(HttpsError,"data-loss");
+   let checked;
+   try{checked=validateCounts(data.counts,HttpsError);}
+   catch{fail(HttpsError,"data-loss");}
+   if(checked.total!==data.totalCount)fail(HttpsError,"data-loss");
+   staff=checked;
+  }
+  if(!quick&&!staff)
+   return {...base,status:"none",quickTotalCount:null,staffTotalCount:null,
+    categoryDifferences:[]};
+  if(!quick)
+   return {...base,status:"staff_only",quickTotalCount:null,
+    staffTotalCount:staff.total,categoryDifferences:[]};
+  if(!staff)
+   return {...base,status:"quick_only",quickTotalCount:quick.totalCount,
+    staffTotalCount:null,categoryDifferences:[]};
+  const categoryDifferences=KEYS.filter(k=>quick.counts[k]!==staff.counts[k]);
+  const same=categoryDifferences.length===0&&quick.totalCount===staff.total;
+  return {...base,status:same?"totals_match_unverified":"different",
+   quickTotalCount:quick.totalCount,staffTotalCount:staff.total,
+   categoryDifferences};
+ }
+
+ async function viewOwnerQuickCorrection(request){
+  const uid=await caller(request),d=request?.data||{};
+  if(Object.keys(d).sort().join("|")!=="date|partnerCompanyId"||
+     !ID.test(d.partnerCompanyId||""))fail(HttpsError,"invalid-argument");
+  const date=validOwnerDate(d.date);
+  return db.runTransaction(async tx=>{
+   const scope=await ownerQuickContext(tx,uid,d.partnerCompanyId);
+   const [snap,splitSnap,staffSnap]=await Promise.all([
+    tx.get(reportRef(scope.hubId,date,scope.partnerId)),
+    tx.get(quickSplitRef(scope.hubId,date,scope.partnerId)),
+    // No staff-ledger read for quick-only or revoked staff-sharing approvals.
+    scope.canCompareStaff?
+     tx.get(staffReportRef(scope.hubId,date,scope.partnerId)):
+     Promise.resolve(null)
+   ]);
+   const row=snap.exists?inspectOwnerQuickRow(snap.data()||{},scope,date):null;
+   if(splitSnap.exists&&(!row||
+      splitSnap.data()?.hubCompanyId!==scope.hubId||
+      splitSnap.data()?.partnerCompanyId!==scope.partnerId||
+      splitSnap.data()?.date!==date))fail(HttpsError,"data-loss");
+   return {scope:"hub_owner_quick_count_correction",date,
+    partnerCompanyId:scope.partnerId,companyName:scope.companyName,
+    report:row,internetSplit:row?readQuickSplit(splitSnap.exists?splitSnap.data():null,row):null,
+    reconciliation:reconcileSourceCounts(row,staffSnap,scope,date),
+    existingRecordsOnly:true,financialFieldsIncluded:false};
+  });
+ }
+ async function submitOwnerQuickCorrection(request){
+  const uid=await caller(request),d=request?.data||{};
+  if(Object.keys(d).sort().join("|")!==
+    "counts|date|expectedVersion|partnerCompanyId|reason"||
+     !ID.test(d.partnerCompanyId||"")||
+     !Number.isSafeInteger(d.expectedVersion)||d.expectedVersion<1||
+     d.expectedVersion>=999||typeof d.reason!=="string"||
+     d.reason.trim().length<3||d.reason.trim().length>160||
+     /[\x00-\x1f\x7f]/.test(d.reason))fail(HttpsError,"invalid-argument");
+  const date=validOwnerDate(d.date);
+  const {counts,total}=validateCounts(d.counts,HttpsError);
+  return db.runTransaction(async tx=>{
+   const scope=await ownerQuickContext(tx,uid,d.partnerCompanyId);
+   const ref=reportRef(scope.hubId,date,scope.partnerId);
+   const snap=await tx.get(ref);
+   if(!snap.exists)fail(HttpsError,"failed-precondition");
+   const old=inspectOwnerQuickRow(snap.data()||{},scope,date);
+   if(old.version!==d.expectedVersion)fail(HttpsError,"aborted");
+   if(KEYS.every(k=>old.counts[k]===counts[k]))
+    return {saved:false,unchanged:true,date,partnerCompanyId:scope.partnerId,
+     version:old.version,totalCount:old.totalCount};
+   const version=old.version+1,stamp=FieldValue.serverTimestamp();
+   tx.update(ref,{counts,totalCount:total,version,
+    updatedByUid:uid,updatedAt:stamp});
+   const auditId=crypto.createHash("sha256")
+    .update([scope.hubId,date,scope.partnerId].join("|"))
+    .digest("hex")+"_v"+version;
+   tx.create(db.collection("partnerQuickCountAudits").doc(auditId),{
+    hubCompanyId:scope.hubId,partnerCompanyId:scope.partnerId,
+    partnerCompanyName:scope.companyName,date,counts,totalCount:total,
+    version,previousVersion:old.version,previousCounts:old.counts,
+    correctionType:"hub_owner_quick_count_correction",
+    correctionActorUid:uid,correctionReason:d.reason.trim(),
+    updatedByUid:uid,updatedAt:stamp,createdAt:stamp
+   });
+   return {saved:true,partnerCompanyId:scope.partnerId,date,
+    version,totalCount:total,correctionLogged:true};
+  });
+ }
+ return Object.freeze({submit,view,approve,viewOwnerQuickCorrection,
+  submitOwnerQuickCorrection,submitOwnerQuickInternetSplit});
 }
 module.exports={makeQuickCounts,KEYS};

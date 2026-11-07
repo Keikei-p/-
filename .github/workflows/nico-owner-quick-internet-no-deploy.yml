@@ -1,0 +1,68 @@
+name: NICO Owner quick Hikari Air split isolated (NO DEPLOY)
+on:
+  push:
+    branches: [feature/owner-quick-air-hikari-split-20261107]
+  pull_request:
+    branches: [feature/partner-owner-quick-correction-20261107]
+permissions:
+  contents: read
+jobs:
+  quick-split-safe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      FIREBASE_PROJECT_ID: demo-sales-support
+      GOOGLE_APPLICATION_CREDENTIALS: ""
+      FIREBASE_SERVICE_ACCOUNT_JSON: ""
+      NICO_USAGE_APPROVAL: ""
+      NICO_PHASE1_INDEPENDENT_SIGNOFF: ""
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check isolated file boundary and no production credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$FIREBASE_PROJECT_ID" = demo-sales-support
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$NICO_USAGE_APPROVAL"
+          test -z "$NICO_PHASE1_INDEPENDENT_SIGNOFF"
+          git fetch --no-tags origin feature/partner-owner-quick-correction-20261107
+          git diff --name-only origin/feature/partner-owner-quick-correction-20261107...HEAD > /tmp/quick-split-files
+          while IFS= read -r p; do
+            case "$p" in
+              index.html|functions-partner-quick/index.js|functions-partner-quick/quick-counts.cjs|tests/partner-quick-counts.test.cjs|.github/workflows/nico-owner-quick-internet-no-deploy.yml) ;;
+              *) echo "UNREVIEWED_FILE: $p"; exit 1 ;;
+            esac
+          done < /tmp/quick-split-files
+          test "$(wc -l < /tmp/quick-split-files)" -eq 5
+      - name: Check syntax and count, Owner, ranking, login and finance regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check functions-partner-quick/quick-counts.cjs
+          node --check functions-partner-quick/index.js
+          node --test \
+            tests/partner-quick-counts.test.cjs \
+            tests/owner-partner-directory-pagination.test.cjs \
+            tests/owner-partner-count-console.test.cjs \
+            tests/partner-internet-split-safe.test.cjs \
+            tests/partner-legacy-nine-optin-safe.test.cjs \
+            tests/partner-workspace.test.cjs \
+            tests/partner-combined-month-ranking-main.test.cjs \
+            tests/partner-company-code-auth.test.cjs \
+            tests/partner-company-invitations.test.cjs \
+            tests/partner-money-free-workspace.test.cjs \
+            tests/internal-owner-finance-visibility.test.cjs \
+            tests/sales-regressions.cjs
+      - name: Confirm no deployment and no original-data migration
+        run: |
+          echo "PRODUCTION_FIRESTORE_WRITES=0"
+          echo "FINANCIAL_RECORDS_CHANGED=false"
+          echo "PRODUCTION_DEPLOYED=false"
