@@ -162,7 +162,7 @@ test('before-and-after real-session path survives old-company GET denial without
  assert.equal(financeRequests.length,4);
  closed=true;
  await el('run').onclick();
- assert.match(el('identity').textContent,/切替前に検証済み/);
+ assert.match(el('identity').textContent,/旧自社所属/);
  assert.match(el('products').textContent,/LIST・GETともに拒否/);
  assert.match(el('records').textContent,/LIST・GETともに拒否/);
  assert.equal(financeRequests.length,8);
