@@ -49,7 +49,7 @@ function fixture({hub=workspace,enabled=()=>true}={}){
   }})};
  const auth={currentUser:owner},root=new FakeElement("main");
  const authEvents={listener:null,unsubscribed:0};
- const seen={workspace:[],list:[],correct:[]};
+ const seen={workspace:[],list:[],correct:[],invalidation:[]};
  let latest=listing();
  const fn={
   root,auth,dom,enabled,dateGetter:()=>date,confirmChange:()=>true,
@@ -58,6 +58,7 @@ function fixture({hub=workspace,enabled=()=>true}={}){
    callback(auth.currentUser);
    return ()=>{authEvents.unsubscribed++;authEvents.listener=null};
   },
+  invalidateRanking:async receipt=>{seen.invalidation.push(receipt)},
   workspaceCallable:async req=>{
    seen.workspace.push(req);return {data:await hub(req)}
   },
@@ -120,6 +121,9 @@ test("one mobile screen: hub discovery -> company -> staff -> save -> backend ve
  assert.equal(req.counts.NURO,3);
  assert.equal(req.expectedVersion,2);
  assert.equal(f.seen.list.length,2);
+ assert.deepEqual(f.seen.invalidation,[{
+  date,month:"2026-10",partnerCompanyId:cid,version:3
+ }]);
  assert.match(status.textContent,/保存・再照合完了：第3版/);
  assert.doesNotMatch(JSON.stringify(f.seen),/privateCounts|totalRevenue|unitPrice|cashback/i);
  panel.destroy();
@@ -257,6 +261,40 @@ test("identity switching before listener registration never leaves counts displa
  assert.equal(f.seen.correct.length,0);
 });
 
+test("ranking invalidation callback failure does not re-submit successful correction",async()=>{
+ const f=fixture();
+ f.fn.invalidateRanking=async()=>{throw Error("stale ranking")};
+ const panel=await mountVerifiedOwnerCorrection(f.fn);
+ f.root.children[0].children[3].value=cid;
+ await panel.load();
+ const wrap=f.root.children[0],editor=wrap.children[5],status=wrap.children[6];
+ editor.children[2].children.find(x=>x.textContent==="NURO").children[0].value="3";
+ editor.children[6].value="確認済みの契約内容を修正しました";
+ await panel.save();
+ assert.equal(f.seen.correct.length,1);
+ assert.equal(f.seen.list.length,2);
+ assert.match(status.textContent,/保存・再照合完了：第3版/);
+ assert.match(status.textContent,/ランキングは未更新/);
+ assert.doesNotMatch(status.textContent,/二重登録防止/);
+ panel.destroy();
+});
+test("no ranking invalidation without a verified write/readback",async()=>{
+ const f=fixture(),panel=await mountVerifiedOwnerCorrection(f.fn);
+ f.root.children[0].children[3].value=cid;
+ await panel.load();
+ await panel.save();
+ assert.equal(f.seen.correct.length,0);
+ assert.deepEqual(f.seen.invalidation,[]);
+ panel.destroy();
+});
+test("ranking invalidation cannot be omitted on integrated bootstrap",async()=>{
+ const f=fixture();
+ delete f.fn.invalidateRanking;
+ await assert.rejects(mountVerifiedOwnerCorrection(f.fn),
+  /OWNER_CORRECTION_BOOT_DEPENDENCIES/);
+ assert.equal(f.root.children.length,0);
+ assert.equal(f.seen.workspace.length,0);
+});
 test("staged code contains no Firebase initialization, Firestore reads or credential storage",()=>{
  const source=readFileSync(new URL("../staging/partner-owner-correction-v3/mobile-bootstrap.mjs",import.meta.url),"utf8");
  assert.match(source,/STAGING ONLY \/ NO DEPLOY/);
