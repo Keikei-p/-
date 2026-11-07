@@ -91,11 +91,15 @@ export async function releaseBoundary({request,snapshot,restore,backup,reviewed,
 
 async function main(){
  const mode=process.argv[2];
- if(!['verify','apply'].includes(mode)||process.argv.length!==3||
+ // Legacy live apply lacks exact affected dual-context user-token GET/LIST
+ // and count-entry continuity proofs. Refuse it before loading any credentials.
+ // The reviewed Phase-1 bridge is the only proposed future switch path.
+ if(mode==='apply')stop('LEGACY_APPLY_DISABLED_REAL_UID_PROOF_REQUIRED');
+ if(mode!=='verify'||process.argv.length!==3||
     process.env.GITHUB_ACTIONS!=='true'||!process.env.RUNNER_TEMP||
     process.env.FIREBASE_PROJECT_ID!==PROJECT||
     process.env.NICO_USAGE_APPROVAL!=='EXISTING_FUNCTIONS_AND_FULL_INVENTORY_APPROVED')stop('OPERATOR_GATE');
- if(mode==='apply'&&process.env.NICO_RULES_APPROVAL!=='APPROVED_PARTNER_BOUNDARY_ONLY')stop('RELEASE_APPROVAL');
+ if(process.env.NICO_RULES_APPROVAL!=='VERIFY_ONLY')stop('VERIFY_ONLY_REQUIRED');
  if(JSON.parse(readFileSync('.firebaserc','utf8')).projects.default!==PROJECT)stop('PROJECT');
  const require=createRequire(new URL('../../functions/package.json',import.meta.url));
  const credential=require('firebase-admin/app').applicationDefault();
