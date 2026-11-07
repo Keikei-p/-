@@ -40,3 +40,27 @@ test("workflow is GET-only and frozen original financial sources are unchanged",
  assert.doesNotMatch(w,/firebase deploy|gcloud functions deploy|firestore:rules|firebase functions:delete/);
  assert.match(w,/rm -f/);
 });
+
+test("CLI ACTIVE, codebase and enabled flags are only published as safe counts",()=>{
+ const secret="private_api_key_DO_NOT_LOG";
+ const report=classifyInventory({result:[{
+  id:TARGETS[0],region:REGION,platform:"gcfv2",status:"ACTIVE",
+  codebase:"partner-workspace",
+  environmentVariables:{PARTNER_WORKSPACE_ENABLED:"enabled",API_TOKEN:secret},
+  serviceConfig:{uri:"https://private.example",environmentVariables:{API_TOKEN:secret}}
+ },{
+  id:TARGETS[1],region:REGION,platform:"gcfv2",state:"FAILED",
+  codebase:"another-codebase"
+ }]});
+ const a=report.functions[TARGETS[0]],b=report.functions[TARGETS[1]];
+ assert.equal(a.activeState,1);
+ assert.equal(a.expectedCodebase,1);
+ assert.equal(a.workspaceFlagKnown,1);
+ assert.equal(a.workspaceFlagEnabled,1);
+ assert.equal(b.activeState,0);
+ assert.equal(b.codebaseKnown,1);
+ assert.equal(b.expectedCodebase,0);
+ assert.equal(b.workspaceFlagKnown,0);
+ assert.equal(JSON.stringify(report).includes(secret),false);
+ assert.equal(JSON.stringify(report).includes("https://private.example"),false);
+});
