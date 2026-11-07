@@ -1,0 +1,66 @@
+name: NICO four-source finance session identity hardening (NO DEPLOY)
+on:
+  push:
+    branches: [fix/finance-diagnostic-auth-reset-20261107]
+  pull_request:
+    branches: [main]
+    paths:
+      - 'staging/finance-diagnostic-v4/**'
+      - 'tests/finance-diagnostic-v4-session-safe.test.mjs'
+      - '.github/workflows/nico-finance-v4-session-proof-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  preserve-finance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      FIREBASE_PROJECT_ID: demo-sales-finance
+      FIREBASE_SERVICE_ACCOUNT_JSON: ""
+      GOOGLE_APPLICATION_CREDENTIALS: ""
+      NICO_STRICT_FOUR_RELEASE_CONFIRMATION: ""
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Prove scoped changes and no billing or production credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$FIREBASE_PROJECT_ID" = demo-sales-finance
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$NICO_STRICT_FOUR_RELEASE_CONFIRMATION"
+          git cat-file -e 9d92038efbfc88ebcccb819c60ca40c181b0cb97^{commit}
+          test "$(git merge-base HEAD 9d92038efbfc88ebcccb819c60ca40c181b0cb97)" = 9d92038efbfc88ebcccb819c60ca40c181b0cb97
+          git diff --name-only 9d92038efbfc88ebcccb819c60ca40c181b0cb97...HEAD >/tmp/finance-v4-changes
+          while IFS= read -r p; do
+            case "$p" in
+              staging/finance-diagnostic-v4/build-session-safe.mjs|tests/finance-diagnostic-v4-session-safe.test.mjs|.github/workflows/nico-finance-v4-session-proof-no-deploy.yml|docs/FINANCE_SESSION_DIAGNOSTIC_20261107.md) ;;
+              *) echo "UNREVIEWED_FINANCE_SOURCE: $p"; exit 1 ;;
+            esac
+          done < /tmp/finance-v4-changes
+          test "$(wc -l </tmp/finance-v4-changes)" -eq 4
+          git diff --exit-code 9d92038efbfc88ebcccb819c60ca40c181b0cb97 HEAD -- firestore.rules index.html partner-workspace.html functions functions-partner-workspace functions-partner-quick tools/hosting finance-boundary-check.html
+      - name: Verify session invalidation, no finance values, original strict four-source proof and sales regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check staging/finance-diagnostic-v4/build-session-safe.mjs
+          node --check tests/finance-diagnostic-v4-session-safe.test.mjs
+          node --test \
+            tests/finance-diagnostic-v4-session-safe.test.mjs \
+            tests/finance-diagnostic-v3-strict-proof.test.mjs \
+            tests/finance-diagnostic-four-collections-staging.test.mjs \
+            tests/surgical-finance-four-strict.test.mjs \
+            tests/finance-boundary-ondevice.test.mjs \
+            tests/sales-regressions.cjs
+      - name: Confirm v4 candidate is NOT published
+        run: |
+          echo 'LIVE_PARTNER_FINANCE_UID_PROVED=false'
+          echo 'PRODUCTION_DOCUMENT_WRITES=0'
+          echo 'PRODUCTION_DEPLOYED=false'
