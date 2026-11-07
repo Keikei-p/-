@@ -1,0 +1,125 @@
+name: NICO reviewed direct and secondary partner finance diagnostic single-page update
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'finance-boundary-check.html'
+      - 'tools/hosting/surgical-finance-boundary-partner-proof.mjs'
+      - 'tests/finance-boundary-ondevice.test.mjs'
+      - 'tests/surgical-finance-boundary-partner-proof.test.mjs'
+      - '.github/workflows/nico-finance-diagnostic-partner-proof.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'finance-boundary-check.html'
+      - 'tools/hosting/surgical-finance-boundary-partner-proof.mjs'
+      - 'tests/finance-boundary-ondevice.test.mjs'
+      - 'tests/surgical-finance-boundary-partner-proof.test.mjs'
+      - '.github/workflows/nico-finance-diagnostic-partner-proof.yml'
+permissions:
+  contents: read
+concurrency:
+  group: nico-finance-diagnostic-one-page-exact-replacement
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify old diagnostic blob, read-only GET/LIST logic and 11 unchanged assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check tools/hosting/surgical-finance-boundary-partner-proof.mjs
+          node --test tests/finance-boundary-ondevice.test.mjs tests/surgical-finance-boundary-partner-proof.test.mjs
+          node --test tests/legacy-rules-apply-frozen.test.mjs tests/finance-boundary-additive-hosting.test.mjs
+          test "$(git hash-object firestore.rules)" = "d9f4df6a2ac0f8b5720534a2461ec66b94379190"
+          test "$(git hash-object index.html)" = "88ef5636bfe9254e71f2109d452b6d3049f99861"
+          git show e52ec420e30c4470672bbe52d2566fc9fc16b8ed:finance-boundary-check.html |
+            git hash-object --stdin | grep -qx '44e4cda86d9ba23c0d33aa3dc4b8c425867e5c64'
+          node <<'NODE'
+          const fs=require('node:fs');
+          const html=fs.readFileSync('finance-boundary-check.html','utf8');
+          const code=html.match(/<script type="module">([\s\S]*?)<\/script>/)?.[1];
+          if(!code||/localStorage|sessionStorage|console\.log|writeBatch|setDoc\(/.test(code))
+            throw Error('UNSAFE_BROWSER_DIAGNOSTIC');
+          fs.writeFileSync('/tmp/nico-reviewed-diagnostic.mjs',code);
+          NODE
+          node --check /tmp/nico-reviewed-diagnostic.mjs
+
+  release-reviewed-one-page:
+    needs: validate
+    if: >-
+      ${{ github.event_name == 'push' &&
+        github.ref == 'refs/heads/main' &&
+        github.repository == 'Keikei-p/-' &&
+        startsWith(github.event.head_commit.message, 'release: partner identity proof diagnostic (one Hosting page only)') &&
+        needs.validate.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NICO_FINANCE_DIAGNOSTIC_RELEASE_CONFIRMATION: CONFIRM_REPLACE_DIAGNOSTIC_PARTNER_PROOF_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify exact protected merge, source and reviewed first diagnostic before credentials
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
+          test "$(git hash-object firestore.rules)" = "d9f4df6a2ac0f8b5720534a2461ec66b94379190"
+          test "$(git hash-object index.html)" = "88ef5636bfe9254e71f2109d452b6d3049f99861"
+          git show e52ec420e30c4470672bbe52d2566fc9fc16b8ed:finance-boundary-check.html |
+            git hash-object --stdin | grep -qx '44e4cda86d9ba23c0d33aa3dc4b8c425867e5c64'
+          node --test tests/finance-boundary-ondevice.test.mjs tests/surgical-finance-boundary-partner-proof.test.mjs
+      - name: Load existing Hosting identity without publishing credentials
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-diagnostic-reviewed-replace.json"
+          chmod 600 "$RUNNER_TEMP/nico-diagnostic-reviewed-replace.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-diagnostic-reviewed-replace.json" >> "$GITHUB_ENV"
+      - name: Install existing Hosting REST auth library only
+        shell: bash
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Pin exact previous Hosting version and all 12 original hashes (GET only)
+        run: node tools/hosting/surgical-finance-boundary-partner-proof.mjs --dry-run
+      - name: Replace ONLY reviewed diagnostic path, never a sales or partner page
+        run: node tools/hosting/surgical-finance-boundary-partner-proof.mjs --release
+      - name: Compare entire live diagnostic bytes and verify original pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          matched=false
+          for n in $(seq 1 12); do
+            curl -fsSL --max-time 25 \
+              "https://nico-factory.web.app/finance-boundary-check.html?live_fix=$GITHUB_SHA-$n" \
+              > "$RUNNER_TEMP/nico-reviewed-diagnostic-live.html" || true
+            if cmp -s "$RUNNER_TEMP/nico-reviewed-diagnostic-live.html" finance-boundary-check.html; then
+              matched=true;break
+            fi
+            sleep 5
+          done
+          test "$matched" = true || { echo "STOP_NO_POST_DEPLOY_PARITY"; exit 1; }
+          for route in / /partner-invite.html /partner-counts.html /partner-workspace.html; do
+            test "$(curl -fsSL -o /dev/null -w '%{http_code}' --max-time 25 "https://nico-factory.web.app$route")" = '200'
+          done
+          echo "PASS: reviewed partner-role diagnostic only; all 11 original assets preserved"
+      - name: Erase private identity and temporary HTML
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/nico-diagnostic-reviewed-replace.json" "$RUNNER_TEMP/nico-reviewed-diagnostic-live.html"
