@@ -44,7 +44,7 @@ input{width:100%;padding:12px;border:1px solid #aebdcc;border-radius:10px;font-s
 <button id="logout" class="secondary" hidden type="button">診断用ログインを解除する</button>
 <label for="workspace">協力店ワークスペースID（協力店のみ・任意）</label>
 <input id="workspace" inputmode="text" autocomplete="off" spellcheck="false" maxlength="128" placeholder="協力店画面URLの workspaceCompanyId">
-<p><small>自社アカウントで協力店も兼務する場合は協力店画面URLの workspaceCompanyId を入力。最初から協力店に所属する場合は空欄で構いません。本人認証済みの既存件数専用Functionsで所属を照合します。</small></p>
+<p><small>自社アカウントで協力店も兼務する場合は協力店画面URLの workspaceCompanyId を入力。最初から協力店に所属する場合は空欄で構いません。協力店の代表者は既存の簡易件数Functionでも所属確認できますが、兼務・班メンバーの所属照合には新ワークスペースFunctionの公開が必要です。</small></p>
 <button id="run" disabled>このログインで読み取り診断</button>
 <h2>検証結果</h2>
 <div class="output"><span>ログインと自社所属</span><span id="identity">未確認</span></div>
@@ -70,6 +70,10 @@ const app=initializeApp({apiKey:"AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
 const auth=initializeAuth(app,{persistence:browserSessionPersistence});
 const functions=getFunctions(app,"asia-northeast1");
 const countView=httpsCallable(functions,"getPartnerWorkspace",{timeout:15000});
+// Existing deployed quick-counts callable verifies direct partner Owners
+// before the new workspace Functions are published. It never proves
+// secondary workspace membership, count submission or finance isolation.
+const quickCountView=httpsCallable(functions,"getPartnerQuickCounts",{timeout:15000});
 let busy=false,loginBusy=false,previous=new Map(),previousUid=null,previousCompany=null;
 let priorBoundCompany=null; // Volatile one-page memory only; never persist identity
 let ownerHandoff=null; // Owner-verified finance document IDs only (no values)
@@ -248,12 +252,24 @@ $("run").onclick=async()=>{
           date,...(account.role==="partner-unverified"?{}:{workspaceCompanyId:workspace})
         });
         if(["owner","leader","member"].includes(reply?.data?.role)){
-          // Existing callable verifies the real authenticated UID, live
-          // membership, partner relation and active workspace context.
+          // New workspace caller binds the real UID and company context.
           account.role="partner-verified";
           countVerified=true;
         }
       }catch{}
+      if(!countVerified&&account.role==="partner-unverified"&&!workspace){
+        // A direct, fully transferred partner Owner may already have working
+        // quick-count access. Its server-side identity check uses the same UID
+        // and verifies that the partner account belongs to an approved hub.
+        // Never use this fallback for a secondary/dual-company membership.
+        try{
+          const reply=await quickCountView({date});
+          if(reply?.data?.role==="partner"&&reply?.data?.date===date){
+            account.role="partner-verified";
+            countVerified=true;
+          }
+        }catch{}
+      }
     }
     if(account.role==="partner-unverified"||
        (workspace&&account.role!=="partner-verified"))
