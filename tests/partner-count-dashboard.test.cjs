@@ -72,7 +72,7 @@ test("partial, duplicated, and malformed server count responses cannot appear as
   {...good,categories:["NURO"]}
  ])assert.throws(()=>ctx.summarizeCountOnlyResponses([bad],[],KEYS));
 });
-test("partner page adds count-only dashboard and management; legacy app is not copied or changed",()=>{
+test("partner page mirrors original dashboard visuals without copying finance backend or changing count entry",()=>{
  for(const id of ["tabDashboard","dashboardBox","countKpis","countTeamRank","countStaffRank",
   "countProductRank","countDailyRows","periodDay","periodWeek","periodMonth",
   "moveStaffBox","moveStaffAction","countCsv"])
@@ -81,7 +81,9 @@ test("partner page adds count-only dashboard and management; legacy app is not c
  assert.match(page,/submitPartnerWorkspaceCounts/);
  assert.match(page,/action:"moveStaff"/);
  assert.match(page,/countDayCache\.clear\(\)/);
- assert.match(page,/if\(gen!==countLoadId\|\|auth\.currentUser\?\.uid!==uid\)return/);
+ assert.match(page,/function currentCountIdentity\(\)/);
+ assert.equal((page.match(/if\(gen!==countLoadId\|\|currentCountIdentity\(\)!==uid\)return/g)||[]).length,2,
+  "both async read checkpoints must reject login/session changes");
  assert.match(page,/const message=await task\(\);await refresh\(\)/);
  assert.doesNotMatch(page,/firebase-firestore\.js|\bgetFirestore\(|\bgetDoc\(|\bgetDocs\(/);
  assert.doesNotMatch(page,/\brevenuePerUnit\b|\btotalRevenue\b|\bunitPrice\b|\bpricingOptions\b/);
