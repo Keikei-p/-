@@ -17,7 +17,31 @@ const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const RULESET=/^projects\/sales-management-cc116\/rulesets\/[A-Za-z0-9_-]+$/;
 const abort=code=>{throw Error('STOP_SECONDARY_INVENTORY_'+code);};
 const sha=v=>createHash('sha256').update(v.replace(/\r\n/g,'\n').trim()).digest('hex');
+// Fixed reviewed sources; SHA/Blob prove EXACT live source bytes, not a UI switch.
 const sourceFingerprint='d1d9998d874a1a31c81ddf6996e08cd9de3a3d13bd684e245140bf03cab32179';
+const reviewedPhase1GitBlob='6d6ac7fd3544b0326823e419a3acd7e1d060b714';
+const originalMainGitBlob='d9f4df6a2ac0f8b5720534a2461ec66b94379190';
+const sha1Blob=v=>createHash('sha1').update('blob '+Buffer.byteLength(v,'utf8')+'\\0').update(v,'utf8').digest('hex');
+
+/** Static classification ONLY. A matching rule candidate is NOT real-user proof. */
+export function classifyLiveRules(source){
+ if(typeof source!=='string'||source.length<100||source.length>200000)abort('UNVERIFIED_RULES_SOURCE');
+ const blob=sha1Blob(source);
+ return Object.freeze({
+  exactReviewedPhase1Boundary:blob===reviewedPhase1GitBlob,
+  exactOriginalMainRules:blob===originalMainGitBlob,
+  matchesReviewedLegacyLive:sha(source)===sourceFingerprint,
+  // Never promote any of these source checks to a real Owner/Partner token proof.
+  actualAuthenticatedBoundaryVerified:false
+ });
+}
+/** Presence of backups != freshness/restore: never use a stale READY snapshot. */
+export function hasRecentReadyBackup(backup,nowMs=Date.now()){
+ const time=Date.parse(backup?.latestReadySnapshot||'');
+ const age=nowMs-time;
+ return Number.isSafeInteger(backup?.readyBackups)&&backup.readyBackups>0&&
+  Number.isFinite(nowMs)&&Number.isFinite(age)&&age>=0&&age<=48*60*60*1000;
+}
 const internalType=x=>x===undefined||x==='internal'||x==='direct';
 const legacyType=x=>x===undefined||['internal','direct','member','managed'].includes(x);
 const validPartnerName=x=>typeof x==='string'&&/^[\p{L}\p{N} 　・ー（）()_.-]{1,60}$/u.test(x.trim())&&
@@ -109,7 +133,7 @@ function refDoc(db,name,id){
  if(!ID.test(id||''))abort('IDENTIFIER');
  return db.collection(name).doc(id);
 }
-async function getRulesHash(credential,request=fetch){
+async function getRulesClassification(credential,request=fetch){
  const {access_token:token}=await credential.getAccessToken();
  if(!token)abort('RULES_TOKEN');
  const root='https://firebaserules.googleapis.com/v1/';
@@ -124,7 +148,7 @@ async function getRulesHash(credential,request=fetch){
  const current=await requestJson(root+release.rulesetName);
  if(!Array.isArray(current?.source?.files)||current.source.files.length!==1||
     typeof current.source.files[0].content!=='string')abort('RULESET_CONTENT');
- return sha(current.source.files[0].content);
+ return classifyLiveRules(current.source.files[0].content);
 }
 
 export async function inventory({db,credential,authService,request=fetch,includeBackup=true}){
@@ -186,13 +210,19 @@ export async function inventory({db,credential,authService,request=fetch,include
      !legacyType(user.data().memberType)||
      !legacyType(member.data().memberType))abort('INTERNAL_OWNER_MEMBERSHIP');
  }
- const rulesHash=await getRulesHash(credential,request);
+ const rules=await getRulesClassification(credential,request);
  const backup=includeBackup?await inspectBackups():null;
  return Object.freeze({
   project:PROJECT,mode:'READ_ONLY',productionWrites:0,
   ...values,
-  rulesFingerprintMatchesLastReviewed:rulesHash===sourceFingerprint,
+  rulesFingerprintMatchesLastReviewed:rules.matchesReviewedLegacyLive,
+  exactReviewedPhase1RulesActive:rules.exactReviewedPhase1Boundary,
+  liveRulesSourceUnrecognized:!rules.matchesReviewedLegacyLive&&
+   !rules.exactReviewedPhase1Boundary&&!rules.exactOriginalMainRules,
+  // Rule presence is NOT evidence that the affected partner's USER token is denied.
+  rulesSourceOnlyNeverRealUserProof:true,
   readyBackups:backup?.readyBackups??null,
+  recentReadyBackupWithin48h:hasRecentReadyBackup(backup),
   latestBackupExists:Boolean(backup?.latestReadySnapshot),
   // Structural audit does not test with real partner UID.
   realPartnerFinanceDenyVerified:false,
@@ -217,6 +247,10 @@ export function publicInventorySummary(result){
   rulesFingerprintMatchesLastReviewed:result.rulesFingerprintMatchesLastReviewed===true,
   readyBackupPresent:Number.isInteger(result.readyBackups)&&result.readyBackups>0,
   latestBackupExists:result.latestBackupExists===true,
+  recentReadyBackupWithin48h:result.recentReadyBackupWithin48h===true,
+  exactReviewedPhase1RulesActive:result.exactReviewedPhase1RulesActive===true,
+  liveRulesSourceUnrecognized:result.liveRulesSourceUnrecognized===true,
+  authenticatedBoundaryProofStillRequired:true,
   realPartnerFinanceDenyVerified:false,liveOwnerLoginVerified:false,
   safeToMigrate:false,safeToDeploy:false
  });
@@ -239,7 +273,9 @@ async function main(){
  if(result.ownerConflicts||result.internalOwnerContexts)console.log('BLOCK_OWNER_SECONDARY_CONTEXT');
  if(result.nonOwnerOldFinancePaths)console.log('BLOCK_PARTNER_OLD_FINANCE_READ_PATH');
  if(result.inconsistentContexts)console.log('BLOCK_SECONDARY_CONTEXT_INVALID');
- if(!result.rulesFingerprintMatchesLastReviewed)console.log('BLOCK_LIVE_RULESET_DIFFERENT');
+ if(!result.exactReviewedPhase1RulesActive)console.log('BLOCK_PHASE1_FINANCE_BOUNDARY_NOT_ACTIVE');
+ if(result.liveRulesSourceUnrecognized)console.log('BLOCK_LIVE_RULESET_UNRECOGNIZED');
+ if(!result.recentReadyBackupWithin48h)console.log('BLOCK_RECENT_READY_BACKUP_NOT_VERIFIED');
  if(result.transferNeedsReview)console.log('BLOCK_TRANSFER_PRECONDITION');
  if(result.transferEligibleCandidates)console.log('TRANSFER_CANDIDATE_FOUND__NO_WRITES');
 }
