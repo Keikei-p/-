@@ -6,12 +6,16 @@ on:
     paths:
       - 'tools/production/partner-four-function-release-scope.mjs'
       - 'tests/partner-four-function-release-scope.test.mjs'
+      - 'tools/production/protect-original-functions-versions.mjs'
+      - 'tests/protect-original-functions-versions.test.mjs'
       - '.github/workflows/nico-partner-four-count-functions-manual.yml'
   push:
     branches: [main]
     paths:
       - 'tools/production/partner-four-function-release-scope.mjs'
       - 'tests/partner-four-function-release-scope.test.mjs'
+      - 'tools/production/protect-original-functions-versions.mjs'
+      - 'tests/protect-original-functions-versions.test.mjs'
       - '.github/workflows/nico-partner-four-count-functions-manual.yml'
   workflow_dispatch:
     inputs:
@@ -52,7 +56,7 @@ jobs:
         run: |
           set -euo pipefail
           node --check tools/production/partner-four-function-release-scope.mjs
-          node --test tests/partner-four-function-release-scope.test.mjs
+          node --test tests/partner-four-function-release-scope.test.mjs tests/protect-original-functions-versions.test.mjs
           node --test tests/partner-workspace.test.cjs
           node --test tests/partner-company-code-auth.test.cjs
           node --test tests/inspect-live-partner-callables-readonly.test.mjs tests/inspect-live-partner-functions-gen1-readonly.test.mjs
@@ -98,7 +102,7 @@ jobs:
           test "$(git hash-object functions-partner-workspace/service.cjs)" = 'b94a6aba231dc2569009580a178297a5b6194bda'
           test "$(git hash-object functions-partner-workspace/company-code-auth.cjs)" = 'f7e5899cdb9e36da610846d787955b13c1e16e4b'
           test "$(git hash-object firebase.partner-workspace.json)" = 'a6ceedec5fab4e22e0a8efe19c685716a2db9750'
-          node --test tests/partner-four-function-release-scope.test.mjs tests/partner-workspace.test.cjs
+          node --test tests/partner-four-function-release-scope.test.mjs tests/protect-original-functions-versions.test.mjs tests/partner-workspace.test.cjs
           node tools/production/partner-four-function-release-scope.mjs
       - name: Install only existing scoped backend dependencies and pinned CLI
         shell: bash
@@ -137,6 +141,11 @@ jobs:
           if(wanted.some(n=>ids.includes(n)))throw Error('STOP_EXISTING_OR_PARTIAL_WORKSPACE_DEPLOY');
           console.log('ORIGINAL_FUNCTION_INVENTORY_VERIFIED_NO_DATA_WRITES');
           NODE
+      - name: Snapshot immutable versions for all 6 original invite / count / LINE Functions (GET only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/protect-original-functions-versions.mjs before
       - name: Create isolated feature flag only in disposable runner
         shell: bash
         run: |
@@ -175,6 +184,11 @@ jobs:
           const proof=compareBeforeAfter(old,now);
           console.log('FOUR_FUNCTIONS_PRESERVED '+JSON.stringify(proof));
           NODE
+      - name: Check that ALL original 6 Function revisions/configurations remain byte-equivalent
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/protect-original-functions-versions.mjs after
       - name: Read-only recheck four live v2 endpoints and enabled flag (no user calls)
         shell: bash
         run: |
@@ -196,6 +210,7 @@ jobs:
         shell: bash
         run: |
           rm -f functions-partner-workspace/.env.sales-management-cc116
+          rm -f "$RUNNER_TEMP/nico-original-six-immutable-versions.private.json"
           rm -f "$RUNNER_TEMP/nico-four-count-private-identity.json" \
             "$RUNNER_TEMP/nico-four-count-before.json" \
             "$RUNNER_TEMP/nico-four-count-after.json" \
