@@ -32,7 +32,7 @@ jobs:
           node --check tools/production/release-partner-boundary.mjs
           node --check tools/readonly-backup/restore-emulator.mjs
           node --test tests/legacy-rules-apply-frozen.test.mjs tests/partner-boundary-release.test.mjs
-          node --test tools/readonly-backup/backup.test.mjs
+          node --test tools/readonly-backup/backup.test.mjs tests/nico-one-shot-hashpin-20261107.test.mjs
           # Freeze the exact audited READ-ONLY inventory/restore implementation.
           # Any production-writer or even innocuous source revision stops live reads
           # until independently reviewed and the frozen blob IDs are updated.
