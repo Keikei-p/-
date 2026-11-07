@@ -5660,6 +5660,7 @@ body.product-reordering .product-list {
       </div>
       <p class="p-inline-muted">こちらは「件数専用」の会社全体の報告です。担当者別・班別の件数とは別の原票です。勝手に合算・移行しません。</p>
       <p id="ownerPartnerQuickStatus" role="status" aria-live="polite"></p>
+      <p id="ownerPartnerQuickReconciliation" class="p-inline-muted" role="status" aria-live="polite"></p>
       <div id="ownerPartnerQuickFields" class="p-inline-grid"></div>
       <section id="ownerPartnerQuickSplitPanel" class="p-inline-card" hidden>
         <h4>SB光・SoftBank Air の内訳（件数専用の会社全体報告）</h4>
@@ -9605,6 +9606,7 @@ function ownerQuickReset(){
  document.getElementById("ownerPartnerQuickProxyPanel").hidden=true;
  document.getElementById("ownerPartnerQuickFields").replaceChildren();
  document.getElementById("ownerPartnerQuickStatus").textContent="";
+ document.getElementById("ownerPartnerQuickReconciliation").textContent="";
  document.getElementById("ownerPartnerQuickReason").value="";
  document.getElementById("ownerPartnerQuickSave").disabled=true;
  document.getElementById("ownerPartnerQuickSplitPanel").hidden=true;
@@ -9633,6 +9635,8 @@ async function openOwnerPartnerQuickProxy(companyId,companyName){
   splitReason=document.getElementById("ownerPartnerQuickSplitReason");
  splitPanel.hidden=true;splitSave.disabled=true;splitReason.value="";
  splitStatus.textContent="";
+ const reconcileLabel=document.getElementById("ownerPartnerQuickReconciliation");
+ reconcileLabel.textContent="";
  document.getElementById("ownerPartnerQuickTitle").textContent=
   "🏢 "+companyName+"｜件数専用の報告";
  status.textContent="会社全体の件数専用レコードを確認中…";
@@ -9651,6 +9655,39 @@ async function openOwnerPartnerQuickProxy(companyId,companyName){
      d.date!==day||d.partnerCompanyId!==companyId||
      d.existingRecordsOnly!==true||d.financialFieldsIncluded!==false)
    throw Error("owner_quick_response");
+  // Compare only server-projected count summaries, never raw financial records.
+  // Equal totals are NOT proof of identical contracts. Never sum the ledgers.
+  const comp=d.reconciliation;
+  const states=["staff_not_shared","none","staff_only","quick_only",
+   "totals_match_unverified","different"];
+  if(!comp||comp.scope!=="hub_owner_count_source_reconciliation"||
+     !states.includes(comp.status)||
+     comp.quickIncludedInIndividualRanking!==false||
+     comp.automaticMergeAllowed!==false||
+     comp.contractIdentityVerified!==false||
+     comp.productionDocumentWrites!==0||
+     !Array.isArray(comp.categoryDifferences)||
+     comp.categoryDifferences.some(k=>!keys.includes(k))||
+     new Set(comp.categoryDifferences).size!==comp.categoryDifferences.length||
+     ![comp.quickTotalCount,comp.staffTotalCount].every(n=>
+       n===null||(Number.isSafeInteger(n)&&n>=0)))
+    throw Error("owner_quick_reconciliation_response");
+  const reconcileMessages={
+   staff_not_shared:"担当者別原票は共有未承認のため照合しません。件数専用は個人ランキングへ自動加算しません。",
+   none:"両経路ともこの日の件数報告がありません。未入力は0件確定ではありません。",
+   staff_only:"担当者別の保存済み件数 "+comp.staffTotalCount+
+    "件。件数専用の会社全体報告は未登録です。",
+   quick_only:"件数専用の保存済み件数 "+comp.quickTotalCount+
+    "件。担当者別の保存済み報告がないため、個人ランキングへ自動追加しません。",
+   totals_match_unverified:"件数専用 "+comp.quickTotalCount+
+    "件と担当者別 "+comp.staffTotalCount+
+    "件は商材別にも一致。ただし同じ契約かは未照合のため合算禁止。",
+   different:"要確認：件数専用 "+comp.quickTotalCount+
+    "件と担当者別 "+comp.staffTotalCount+
+    "件が不一致。差異のある商材："+comp.categoryDifferences.join("、")+
+    "。原票を照合するまで自動合算しません。"
+  };
+  reconcileLabel.textContent=reconcileMessages[comp.status];
   if(!d.report){
    status.textContent="この日の件数専用の報告は未登録です。新規入力は協力店側で行ってください。";
    return;
@@ -9808,6 +9845,7 @@ async function openOwnerPartnerQuickProxy(companyId,companyName){
   if(stale())return;
   fields.replaceChildren();save.disabled=true;
   splitPanel.hidden=true;splitSave.disabled=true;
+  reconcileLabel.textContent="";
   status.textContent="件数専用の報告を確認できません。承認・権限・保存済みの有無をご確認ください。";
  }
 }
