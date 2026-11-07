@@ -433,3 +433,204 @@ test("partner submit -> authenticated hub correction -> company/team totals -> r
   "stale version must not change counts, sales, audits or team history");
  assert.deepEqual(financeSnapshot(),beforeFinance);
 });
+
+
+/*
+ * Permissioned partner resume after a hub owner writes a versioned correction.
+ * The same actual staging services operate on one synthetic database.
+ * There is no live Firebase or production data connection in this test.
+ */
+function partnerResumeOwnerService(db){
+ const {makeAuthenticatedOwnerCorrectionV3}=
+  require("../staging/partner-owner-correction-v3/trusted-auth.cjs");
+ return makeAuthenticatedOwnerCorrectionV3({
+  db,
+  getAuth:()=>({
+   verifyIdToken:async(jwt,check)=>{
+    assert.equal(jwt,"h".repeat(30));
+    assert.equal(check,true);
+    return {uid:"h",email:"h@example.com",email_verified:true};
+   },
+   getUser:async uid=>{
+    assert.equal(uid,"h");
+    return {uid,email:"h@example.com",emailVerified:true,disabled:false};
+   }
+  }),
+  FieldValue:{serverTimestamp:()=>({seconds:NOW/1000})},
+  HttpsError:CallError,
+  enabled:()=>true,
+  now:()=>Date.parse("2026-11-07T07:00:00+09:00")
+ });
+}
+test("after owner count correction, partner stale save rejects then fresh save works without losing private counts, split or audit",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ const product=(await api.manage(req("p",{
+  action:"addPrivateProduct",name:"協力店限定プラン"
+ }))).productId;
+ const team=(await api.manage(req("p",{
+  action:"addTeam",name:"代理訂正後の通常入力班"
+ }))).teamId;
+ const staff=(await api.manage(req("p",{
+  action:"addManaged",name:"担当者A",teamId:team
+ }))).staffId;
+ const initialCounts={...zero(),NURO:1,"SB光・AIR":5};
+ const submitted=await api.submit(req("p",{date,staffId,
+  counts:initialCounts,privateCounts:{[product]:3},expectedVersion:0}));
+ assert.equal(submitted.version,1);
+ assert.equal(submitted.totalCount,6);
+ const entryPath="companies/partner/partnerWorkEntries/"+date+"__"+staff;
+ const summaryPath="companies/hub/partnerWorkCountDays/"+date+"/reports/partner";
+ const auditPath=v=>"companies/partner/partnerWorkAudits/"+date+
+  "__"+staff+"__v"+v;
+ const original=clone(db.store.get(entryPath));
+ const originalFinance=clone([...db.store].filter(([id])=>
+  /^(?:products|records)\//.test(id)));
+ const correction=partnerResumeOwnerService(db),ownerReq=data=>req("h",data);
+ const changedCounts={...initialCounts,NURO:3};
+ const ownerSaved=await correction.correct(ownerReq({
+  date,partnerCompanyId:"partner",staffId,expectedVersion:1,
+  counts:changedCounts,
+  sbBreakdown:{"SB光":2,"SB AIR":2,"旧未分類":1},
+  correctionReason:"原票で確認した登録漏れと光AIR分類の訂正"
+ }));
+ assert.equal(ownerSaved.version,2);
+ assert.equal(ownerSaved.totalCount,8);
+ const afterOwner=clone(db.store.get(entryPath));
+ assert.deepEqual(afterOwner.privateCounts,original.privateCounts);
+ assert.deepEqual(afterOwner.createdAt,original.createdAt);
+ assert.deepEqual(afterOwner.staffNameSnapshot,original.staffNameSnapshot);
+ assert.deepEqual(afterOwner.teamIdSnapshot,original.teamIdSnapshot);
+ assert.equal(db.store.get(auditPath(1)).version,1);
+ assert.equal(db.store.get(auditPath(2)).kind,"hub_owner_count_correction_v1");
+ assert.equal(db.store.get(auditPath(2)).privateCounts,undefined);
+ const beforeStale=clone([...db.store]);
+ await assert.rejects(api.submit(req("p",{
+  date,staffId,expectedVersion:1,
+  counts:{...changedCounts,NURO:999},
+  privateCounts:{[product]:99}
+ })),e=>e?.code==="aborted");
+ assert.deepEqual(clone([...db.store]),beforeStale);
+ assert.equal(db.store.has(auditPath(3)),false);
+ // Refetch and explicitly use the CURRENT version. Neither the page nor
+ // the backend may blindly retry the stale mutation or silently reset data.
+ const fresh=await api.view(req("p",{date}));
+ const item=fresh.records.find(x=>x.staffId===staff);
+ assert.equal(item.version,2);
+ assert.equal(item.counts.NURO,3);
+ assert.equal(item.privateCounts[product],3);
+ assert.deepEqual(item.sbBreakdown,
+  {"SB光":2,"SB AIR":2,"旧未分類":1});
+ // Old page versions can still modify *unrelated* categories after refresh,
+ // preserving the classified SB combined count without supplying a new split.
+ const resumedCounts={...item.counts,NURO:4};
+ const resumed=await api.submit(req("p",{
+  date,staffId,expectedVersion:item.version,
+  counts:resumedCounts,privateCounts:{[product]:4}
+ }));
+ assert.equal(resumed.version,3);
+ assert.equal(resumed.totalCount,9);
+ assert.equal(resumed.privateTotalCount,4);
+ const final=db.store.get(entryPath),summary=db.store.get(summaryPath);
+ assert.equal(final.version,3);
+ assert.equal(final.totalCount,9);
+ assert.equal(final.privateCounts[product],4);
+ assert.equal(final.privateTotalCount,4);
+ assert.equal(final.counts.NURO,4);
+ assert.equal(final.counts["SB光・AIR"],5);
+ assert.deepEqual(final.sbBreakdown,
+  {"SB光":2,"SB AIR":2,"旧未分類":1});
+ assert.equal(summary.totalCount,9);
+ assert.equal(summary.counts.NURO,4);
+ assert.equal(summary.counts["SB光・AIR"],5);
+ assert.deepEqual(summary.sbBreakdown,
+  {"SB光":2,"SB AIR":2,"旧未分類":1});
+ assert.equal(db.store.get(auditPath(1)).version,1);
+ assert.equal(db.store.get(auditPath(2)).version,2);
+ assert.equal(db.store.get(auditPath(3)).version,3);
+ assert.deepEqual(db.store.get(auditPath(2)).previousCounts,initialCounts);
+ assert.deepEqual(db.store.get(auditPath(3)).previousCounts,changedCounts);
+ const ownerView=await correction.list(ownerReq({date,partnerCompanyId:"partner"}));
+ assert.equal(ownerView.entries[0].version,3);
+ assert.equal(ownerView.entries[0].totalCount,9);
+ assert.equal(ownerView.containsFinance,false);
+ assert.doesNotMatch(JSON.stringify(ownerView),/privateCounts|unitPrice|totalRevenue|cashback/i);
+ const hub=await api.view(req("h",{date,partnerCompanyId:"partner",includeTeamStatus:true}));
+ assert.equal(hub.partners[0].totalCount,9);
+ assert.equal(hub.partnerTeamDetails.verifiedSharedCount,9);
+ assert.equal(hub.partnerTeamDetails.teams[0].totalCount,9);
+ assert.equal(hub.teamReports[0].verified,true);
+ assert.deepEqual(clone([...db.store].filter(([id])=>
+  /^(?:products|records)\//.test(id))),originalFinance);
+});
+
+test("after owner SB classification, legacy split-less partner cannot change combined total, but can resume safely with explicit split",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ const team=(await api.manage(req("p",{action:"addTeam",name:"光AIR内訳班"}))).teamId;
+ const staff=(await api.manage(req("p",{
+  action:"addManaged",name:"担当者B",teamId:team
+ }))).staffId;
+ const originalCounts={...zero(),"SB光・AIR":5};
+ const original=await api.submit(req("p",{
+  date,staffId,counts:originalCounts,expectedVersion:0
+ }));
+ assert.equal(original.version,1);
+ const correction=partnerResumeOwnerService(db),ownerReq=data=>req("h",data);
+ const classified={"SB光":2,"SB AIR":2,"旧未分類":1};
+ const owner=await correction.correct(ownerReq({
+  date,partnerCompanyId:"partner",staffId,expectedVersion:1,
+  counts:originalCounts,sbBreakdown:classified,
+  correctionReason:"SB光とAIRの内訳を証憑で確認"
+ }));
+ assert.equal(owner.version,2);
+ assert.equal(owner.totalCount,5);
+ const entryPath="companies/partner/partnerWorkEntries/"+date+"__"+staff;
+ const summaryPath="companies/hub/partnerWorkCountDays/"+date+"/reports/partner";
+ const frozen=clone([...db.store]);
+ // A pre-correction form MUST fail version check before any write.
+ await assert.rejects(api.submit(req("p",{
+  date,staffId,expectedVersion:1,
+  counts:{...originalCounts,"SB光・AIR":6}
+ })),e=>e?.code==="aborted");
+ assert.deepEqual(clone([...db.store]),frozen);
+ // Refreshed legacy UI may safely change other products but cannot change
+ // the classified combined SB number unless it supplies the new split.
+ await assert.rejects(api.submit(req("p",{
+  date,staffId,expectedVersion:2,
+  counts:{...originalCounts,"SB光・AIR":6}
+ })),/SB_SPLIT_OLD_CLIENT_MUST_REFRESH/);
+ assert.deepEqual(clone([...db.store]),frozen);
+ assert.equal(db.store.has("companies/partner/partnerWorkAudits/"+date+"__"+staff+"__v3"),false);
+ const refreshed=await api.view(req("p",{date}));
+ const current=refreshed.records.find(x=>x.staffId===staff);
+ assert.equal(current.version,2);
+ assert.deepEqual(current.sbBreakdown,classified);
+ const explicitSplit={"SB光":2,"SB AIR":3,"旧未分類":1};
+ const partner=await api.submit(req("p",{
+  date,staffId,expectedVersion:current.version,
+  counts:{...current.counts,"SB光・AIR":6},
+  sbBreakdown:explicitSplit
+ }));
+ assert.equal(partner.version,3);
+ assert.equal(partner.totalCount,6);
+ assert.equal(db.store.get(summaryPath).totalCount,6);
+ assert.deepEqual(db.store.get(summaryPath).sbBreakdown,explicitSplit);
+ const ownerNext=await correction.correct(ownerReq({
+  date,partnerCompanyId:"partner",staffId,expectedVersion:3,
+  counts:{...current.counts,NURO:2,"SB光・AIR":6},
+  sbBreakdown:explicitSplit,
+  correctionReason:"確認できたNURO2件を代理反映"
+ }));
+ assert.equal(ownerNext.version,4);
+ assert.equal(ownerNext.totalCount,8);
+ assert.equal(db.store.get(entryPath).totalCount,8);
+ assert.equal(db.store.get(summaryPath).totalCount,8);
+ assert.deepEqual(db.store.get(summaryPath).sbBreakdown,explicitSplit);
+ for(const version of [1,2,3,4])
+  assert.equal(db.store.has("companies/partner/partnerWorkAudits/"+date+"__"+
+   staff+"__v"+version),true,"audit revision "+version+" retained");
+ const hub=await api.view(req("h",{date,partnerCompanyId:"partner",includeTeamStatus:true}));
+ assert.equal(hub.partners[0].totalCount,8);
+ assert.equal(hub.partnerTeamDetails.verifiedSharedCount,8);
+ assert.equal(hub.teamReports[0].teams[0].totalCount,8);
+ assert.equal(hub.partnerTeamDetails.unreconciledWithCompanyReport,false);
+});
