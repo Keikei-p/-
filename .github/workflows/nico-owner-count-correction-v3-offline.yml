@@ -12,6 +12,8 @@ on:
       - 'tests/partner-owner-correction-v3-auth.test.cjs'
       - 'tests/partner-owner-correction-v3.test.cjs'
       - 'tests/partner-sb-v2-workspace.test.cjs'
+      - 'staging/partner-sb-v2/partner-conflict-recovery-candidate.mjs'
+      - 'tests/partner-conflict-recovery-candidate.test.mjs'
       - 'staging/partner-owner-correction-v3/owner-ui.mjs'
       - 'ranking/partner-count-cache-invalidation.mjs'
       - 'tests/partner-count-cache-invalidation.test.mjs'
@@ -33,6 +35,8 @@ on:
       - 'tests/partner-owner-correction-v3-auth.test.cjs'
       - 'tests/partner-owner-correction-v3.test.cjs'
       - 'tests/partner-sb-v2-workspace.test.cjs'
+      - 'staging/partner-sb-v2/partner-conflict-recovery-candidate.mjs'
+      - 'tests/partner-conflict-recovery-candidate.test.mjs'
       - 'staging/partner-owner-correction-v3/owner-ui.mjs'
       - 'ranking/partner-count-cache-invalidation.mjs'
       - 'tests/partner-count-cache-invalidation.test.mjs'
@@ -79,6 +83,9 @@ jobs:
           node --check staging/partner-owner-correction-v3/owner-ui.mjs
           node --check tests/partner-owner-correction-v3-ui.test.mjs
           node --test tests/partner-owner-correction-v3-ui.test.mjs
+          node --check staging/partner-sb-v2/partner-conflict-recovery-candidate.mjs
+          node --check tests/partner-conflict-recovery-candidate.test.mjs
+          node --test tests/partner-conflict-recovery-candidate.test.mjs
           node --test tests/partner-sb-category-v2.test.cjs tests/partner-sb-v2-workspace.test.cjs tests/partner-sb-v2-dashboard.test.cjs
           node --test tests/partner-workspace.test.cjs
           test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
