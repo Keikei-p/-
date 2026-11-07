@@ -1,0 +1,47 @@
+name: NICO hub owner count correction v3 staging safety (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'staging/partner-owner-correction-v3/service.cjs'
+      - 'tests/partner-owner-correction-v3.test.cjs'
+      - '.github/workflows/nico-owner-count-correction-v3-offline.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'staging/partner-owner-correction-v3/service.cjs'
+      - 'tests/partner-owner-correction-v3.test.cjs'
+      - '.github/workflows/nico-owner-count-correction-v3-offline.yml'
+permissions:
+  contents: read
+jobs:
+  verify-nonbreaking-count-correction:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Confirm NO DEPLOY and frozen original money/count sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check staging/partner-owner-correction-v3/service.cjs
+          node --check tests/partner-owner-correction-v3.test.cjs
+          node --test tests/partner-owner-correction-v3.test.cjs
+          node --test tests/partner-sb-category-v2.test.cjs tests/partner-sb-v2-workspace.test.cjs tests/partner-sb-v2-dashboard.test.cjs
+          node --test tests/partner-workspace.test.cjs
+          test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
+          test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 'b94a6aba231dc2569009580a178297a5b6194bda'
+          test "$(git hash-object staging/partner-sb-v2/service.cjs)" = '41157a07e159cde651b542bbb9b725039ed7fb58'
+          test "$(git hash-object staging/partner-sb-v2/partner-workspace.html)" = '82a1ed0c67b14ea3fd915419da7864b7c99ffe7b'
+          node <<'NODE'
+          const fs=require('node:fs');
+          const source=fs.readFileSync('staging/partner-owner-correction-v3/service.cjs','utf8');
+          if(!source.includes('verifyHubOwner')||!source.includes('expectedVersion')||
+           !source.includes('partnerWorkAudits')||!source.includes('tx.create(ar,')||
+           source.includes('firebase deploy')||/collection\("(?:products|records)"\)/.test(source))
+            throw Error('OWNER_CORRECTION_SAFETY_CONTRACT_MISSING');
+          NODE
