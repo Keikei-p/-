@@ -182,3 +182,69 @@ test("SB Hikari/Air v2: inconsistent split, negative count and forged unknown ke
   assert.deepEqual([...db.store],baseline);
  }
 });
+
+test("Owner read: real shared company / team views reconcile old unknown and verified Light/Air without money",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ const team=(await api.manage(req("p",{action:"addTeam",name:"光とAIR管理班"}))).teamId;
+ const old=(await api.manage(req("p",{action:"addManaged",name:"旧担当",teamId:team}))).staffId;
+ const fresh=(await api.manage(req("p",{action:"addManaged",name:"新担当",teamId:team}))).staffId;
+ await api.submit(req("p",{date,staffId:old,expectedVersion:0,
+   counts:{...zero(),"SB光・AIR":5,NURO:1}}));
+ await api.submit(req("p",{date,staffId:fresh,expectedVersion:0,
+   counts:{...zero(),"SB光・AIR":4},
+   sbBreakdown:{"SB光":3,"SB AIR":1,"旧未分類":0}}));
+ const before=clone([...db.store]);
+ const hub=await api.view(req("h",{date,partnerCompanyId:"partner",includeTeamStatus:true}));
+ assert.equal(hub.role,"hub");
+ assert.equal(hub.sbBreakdownSchema,"sb-separated-v1");
+ assert.equal(hub.partners.length,1);
+ assert.equal(hub.partners[0].totalCount,10);
+ assert.equal(hub.partners[0].counts["SB光・AIR"],9);
+ assert.deepEqual(hub.partners[0].sbBreakdown,{"SB光":3,"SB AIR":1,"旧未分類":5});
+ const shared=hub.partnerTeamDetails;
+ assert.equal(shared.scope,"shared_counts_only");
+ assert.equal(shared.teams.length,1);
+ assert.equal(shared.teams[0].totalCount,10);
+ assert.deepEqual(shared.teams[0].sbBreakdown,{"SB光":3,"SB AIR":1,"旧未分類":5});
+ assert.equal(hub.teamReports[0].teams[0].totalCount,10);
+ assert.deepEqual(hub.teamReports[0].teams[0].sbBreakdown,
+   {"SB光":3,"SB AIR":1,"旧未分類":5});
+ assert.equal(hub.teamReports[0].verified,true);
+ assert.equal(hub.partnerTeamDetails.unreconciledWithCompanyReport,false);
+ assert.doesNotMatch(JSON.stringify(hub),/totalRevenue|unitPrice|revenuePerUnit|cashback/);
+ assert.deepEqual([...db.store],before,"Owner reads must not rewrite counts or money history");
+});
+
+test("Version-conflict split correction cannot change existing entry, daily summary, finance or audit history",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ const team=(await api.manage(req("p",{action:"addTeam",name:"訂正テスト班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"担当者",teamId:team}))).staffId;
+ await api.submit(req("p",{date,staffId:staff,expectedVersion:0,
+  counts:{...zero(),"SB光・AIR":5},
+  sbBreakdown:{"SB光":2,"SB AIR":3,"旧未分類":0}}));
+ const baseline=clone([...db.store]);
+ await assert.rejects(api.submit(req("p",{date,staffId:staff,expectedVersion:0,
+  counts:{...zero(),"SB光・AIR":5},
+  sbBreakdown:{"SB光":3,"SB AIR":2,"旧未分類":0}})));
+ assert.deepEqual([...db.store],baseline);
+ assert.equal(db.store.has("companies/partner/partnerWorkAudits/"+date+"__"+staff+"__v2"),false);
+});
+
+test("Corrupted stored split aggregate stops new input without repairing or resetting production data",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ const team=(await api.manage(req("p",{action:"addTeam",name:"整合性テスト班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"担当者",teamId:team}))).staffId;
+ await api.submit(req("p",{date,staffId:staff,expectedVersion:0,
+  counts:{...zero(),"SB光・AIR":5},
+  sbBreakdown:{"SB光":2,"SB AIR":3,"旧未分類":0}}));
+ const summaryPath="companies/hub/partnerWorkCountDays/"+date+"/reports/partner";
+ const report=clone(db.store.get(summaryPath));
+ db.store.set(summaryPath,{...report,
+  sbBreakdown:{"SB光":3,"SB AIR":3,"旧未分類":0}});
+ const baseline=clone([...db.store]);
+ await assert.rejects(api.submit(req("p",{date,staffId:staff,expectedVersion:1,
+  counts:{...zero(),"SB光・AIR":5},
+  sbBreakdown:{"SB光":4,"SB AIR":1,"旧未分類":0}})));
+ assert.deepEqual([...db.store],baseline);
+ assert.equal(db.store.has("companies/partner/partnerWorkAudits/"+date+"__"+staff+"__v2"),false);
+});
