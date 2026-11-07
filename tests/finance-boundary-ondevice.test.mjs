@@ -116,3 +116,75 @@ test('signed-in user profile checked with masked fields, never trusting arbitrar
  assert.equal(seen.length,2);
  assert.ok(seen.every(x=>x.includes('mask.fieldPaths=')));
 });
+test('before-and-after real-session path survives old-company GET denial without declaring a different UID safe',async()=>{
+ const user={uid:'secondary_u1',emailVerified:true,getIdToken:async()=> 'test-id-token'};
+ let closed=false,financeRequests=[];
+ const elements=new Map();
+ const el=id=>{if(!elements.has(id))elements.set(id,{
+   value:'',disabled:false,textContent:'',className:''
+ });return elements.get(id);};
+ const requests=async(url,opt)=>{
+   const path=new URL(url).pathname;
+   if(path.endsWith('/users/secondary_u1'))return response(200,{fields:{
+     companyId:{stringValue:'company_internal'},active:{booleanValue:true}}});
+   if(path.endsWith('/companies/company_internal')){
+     if(closed)return response(403,{error:{code:403,status:'PERMISSION_DENIED'}});
+     return response(200,{fields:{companyKind:{stringValue:'internal'},
+       ownerUid:{stringValue:'owner_u2'}}});
+   }
+   const kind=opt.method==='POST'?
+     JSON.parse(opt.body).structuredQuery.from[0].collectionId:
+     path.includes('/products/')?'products':'records';
+   financeRequests.push({kind,method:opt.method,url,closed});
+   if(closed)return response(403,{error:{code:403,status:'PERMISSION_DENIED'}});
+   if(opt.method==='POST')return response(200,[{document:{
+     name:base+kind+'/'+kind+'-original',
+     fields:{companyId:{stringValue:'company_internal'}}
+   }}]);
+   return response(200,{fields:{companyId:{stringValue:'company_internal'}}});
+ };
+ const box={console:{log:()=>{throw Error('no console logs')}},
+   document:{getElementById:el},location:{origin:'https://nico-factory.web.app'},
+   URL,Intl,Date,Map,RegExp,JSON,Error,Number,
+   initializeApp:()=>({}),getAuth:()=>({currentUser:user}),
+   getFunctions:()=>({}),httpsCallable:()=>async()=>({data:{}}),
+   onAuthStateChanged:(_a,cb)=>cb(user),
+   fetch:requests};
+ runInNewContext(browser,box);
+ await el('run').onclick();
+ assert.match(el('identity').textContent,/自社所属/);
+ assert.match(el('products').textContent,/金額原票へのアクセス許可/);
+ assert.match(el('records').textContent,/金額原票へのアクセス許可/);
+ assert.equal(financeRequests.length,4);
+ closed=true;
+ await el('run').onclick();
+ assert.match(el('identity').textContent,/切替前に検証済み/);
+ assert.match(el('products').textContent,/LIST・GETともに拒否/);
+ assert.match(el('records').textContent,/LIST・GETともに拒否/);
+ assert.equal(financeRequests.length,8);
+ assert.equal(financeRequests.filter(x=>x.closed&&x.method==='GET').length,2);
+ for(const item of financeRequests)assert.ok(!item.url.includes('totalRevenue'));
+});
+test('fresh post-cutover partner without a previous GET must not assert complete denial',async()=>{
+ const seen=[];
+ const {probes}=load(async(url,opt)=>{
+   seen.push({url,method:opt.method});
+   if(url.includes('/users/'))return response(200,{fields:{
+     active:{booleanValue:true},companyId:{stringValue:'company_a'}}});
+   return response(403,{error:{code:403,status:'PERMISSION_DENIED'}});
+ });
+ const account=await probes.readCompany('token','random-user');
+ assert.equal(account.role,'unknown');
+ const results=await probes.checkCollection('token','products',account.company);
+ assert.equal(results.listStatus,'denied');
+ assert.equal(results.getStatus,'untested');
+ assert.equal(seen.filter(x=>x.method==='GET').length,2);
+});
+test('inactive or missing self user cannot borrow an old successful company proof',async()=>{
+ const {probes}=load(async(url)=>{
+  if(url.includes('/users/'))return response(200,{fields:{
+   active:{booleanValue:false},companyId:{stringValue:'company_a'}}});
+  throw Error('Should never fetch a company for inactive user');
+ });
+ assert.equal(await probes.readCompany('token','user_a'),null);
+});
