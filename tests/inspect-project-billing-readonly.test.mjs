@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
-import {URL,PROJECT,inspectProjectBilling} from "../tools/production/inspect-project-billing-readonly.mjs";
+import {URL as BILLING_URL,PROJECT,inspectProjectBilling} from "../tools/production/inspect-project-billing-readonly.mjs";
 const good=()=>({
  name:"projects/"+PROJECT+"/billingInfo",
  projectId:PROJECT,billingAccountName:"billingAccounts/secret-1234",
@@ -12,7 +12,7 @@ test("one exact Cloud Billing GET yields safe booleans and NEVER verifies free c
  const result=await inspectProjectBilling(async url=>{
   calls.push(url);return {status:200,json:async()=>good()}
  });
- assert.deepEqual(calls,[URL]);
+ assert.deepEqual(calls,[BILLING_URL]);
  assert.equal(result.billingEnabled,true);
  assert.equal(result.linkedBillingAccount,true);
  assert.equal(result.trialCreditBalanceVerified,false);
