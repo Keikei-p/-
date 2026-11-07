@@ -15,10 +15,10 @@ const reports=()=>({
   project:PROJECT,mode:"CLOUD_FUNCTIONS_METADATA_GET_ONLY",
   countFunctionMetadataPresent:false,countFunctionsActive:false,
   countFunctionsConfiguredEnabled:false,functions:{
-   getPartnerWorkspace:{deployed:false},
-   submitPartnerWorkspaceCounts:{deployed:false},
-   managePartnerWorkspace:{deployed:false},
-   acceptPartnerWorkspaceInvite:{deployed:false}
+   getPartnerWorkspace:{deployed:false,active:false,callableGen2:false,countEnabled:false},
+   submitPartnerWorkspaceCounts:{deployed:false,active:false,callableGen2:false,countEnabled:false},
+   managePartnerWorkspace:{deployed:false,active:false,callableGen2:false,countEnabled:false},
+   acceptPartnerWorkspaceInvite:{deployed:false,active:false,callableGen2:false,countEnabled:false}
   },realPartnerCountEntryVerified:false,originalSalesDataWrites:0
  },
  secondary:{
@@ -44,6 +44,10 @@ test("current risk: even Rules parity success cannot certify secondary finances 
  assert.equal(r.secondaryFinanceAccessPathStillPresent,true);
  assert.equal(r.recentReadyBackupPresent,true);
  assert.equal(r.fourCountFunctionsDeployedActiveEnabled,false);
+ for(const name of ["getPartnerWorkspace","submitPartnerWorkspaceCounts",
+  "managePartnerWorkspace","acceptPartnerWorkspaceInvite"])
+  assert.deepEqual(r.countFunctionHealth[name],{
+   deployed:false,active:false,callableGen2:false,countEnabled:false});
  assert.equal(r.firebaseBillingLinked,true);
  assert.equal(r.trialBalanceVerifiedByProjectBillingApi,false);
  assert.equal(r.safeForFinanceBoundaryCutover,false);
@@ -65,6 +69,8 @@ test("even all four Functions being ready never turns off required real-user pro
  input.partner.countFunctionMetadataPresent=true;
  input.partner.countFunctionsActive=true;
  input.partner.countFunctionsConfiguredEnabled=true;
+ input.partner.functions=Object.fromEntries(Object.keys(input.partner.functions).map(name=>
+  [name,{deployed:true,active:true,callableGen2:true,countEnabled:true}]));
  input.billing.trialCreditBalanceVerified=true;
  input.billing.noRecurringChargeGuaranteed=true;
  const r=summarize(input);
@@ -73,6 +79,30 @@ test("even all four Functions being ready never turns off required real-user pro
  assert.equal(r.blockingReasons.includes("SECONDARY_ACCOUNT_INTERNAL_FINANCE_PATH"),false);
  assert.equal(r.safeForPartnerFullRelease,false);
  assert.ok(r.blockingReasons.includes("REAL_PARTNER_COUNT_SUBMISSION_NOT_PROVED"));
+});
+
+test("per-function readiness cannot be forged, cannot leak raw Function config or unlock release",()=>{
+ const input=reports();
+ const cases=[
+  {functions:{getPartnerWorkspace:{deployed:true,active:true,callableGen2:true,countEnabled:true}}},
+  {functions:{...input.partner.functions,evilSecretEndpoint:{deployed:false,active:false,callableGen2:false,countEnabled:false}}},
+  {functions:{...input.partner.functions,getPartnerWorkspace:{deployed:true,active:true,callableGen2:true,countEnabled:true}}},
+  {functions:{...input.partner.functions,getPartnerWorkspace:{deployed:false,active:true,callableGen2:false,countEnabled:false}}},
+  {functions:{...input.partner.functions,getPartnerWorkspace:{deployed:false,active:false,callableGen2:false,countEnabled:false,uri:"private"}}}
+ ];
+ for(const overrides of cases){
+  assert.throws(()=>summarize({...input,partner:{...input.partner,...overrides}}),
+   /STOP_NICO_UNIFIED_READINESS_/);
+ }
+ const result=summarize(input);
+ const shown=JSON.stringify(result);
+ for(const secret of ["private","https://","@example.test","access_token","uid","SECRET_KEY"])
+  assert.ok(!shown.includes(secret),secret);
+ assert.equal(result.safeForPartnerFullRelease,false);
+ assert.equal(result.safeForFinanceBoundaryCutover,false);
+ assert.deepEqual(Object.keys(result.countFunctionHealth).sort(),
+  ["getPartnerWorkspace","submitPartnerWorkspaceCounts",
+   "managePartnerWorkspace","acceptPartnerWorkspaceInvite"].sort());
 });
 
 test("only exactly one trusted prefix per audit, same project and zero production writes",()=>{
