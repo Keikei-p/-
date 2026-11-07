@@ -130,7 +130,7 @@ test("125 fully approved companies rank all reports without truncating the 101st
  const result=go(d);
  assert.equal(result.companyCount,125);
  assert.equal(result.combinedCount,132); // Original 9 + 123 authenticated company reports
- assert.equal(result.teamCountRanking.length,125);
+ assert.equal(result.teamCountRanking.length,126); // Two direct teams + 124 partner teams
  assert.equal(result.individualRankOnly.length,126); // Original 3 people + 123
  assert.equal(result.productCountRanking.reduce((n,row)=>n+row.count,0),132);
  assert.equal(result.teamCountRanking.some(row=>row.companyId==="partner_124"),true);
