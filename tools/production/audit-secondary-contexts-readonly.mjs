@@ -21,7 +21,7 @@ const sha=v=>createHash('sha256').update(v.replace(/\r\n/g,'\n').trim()).digest(
 const sourceFingerprint='d1d9998d874a1a31c81ddf6996e08cd9de3a3d13bd684e245140bf03cab32179';
 const reviewedPhase1GitBlob='6d6ac7fd3544b0326823e419a3acd7e1d060b714';
 const originalMainGitBlob='d9f4df6a2ac0f8b5720534a2461ec66b94379190';
-const sha1Blob=v=>createHash('sha1').update('blob '+Buffer.byteLength(v,'utf8')+'\\0').update(v,'utf8').digest('hex');
+const sha1Blob=v=>createHash('sha1').update('blob '+Buffer.byteLength(v,'utf8')+String.fromCharCode(0)).update(v,'utf8').digest('hex');
 
 /** Static classification ONLY. A matching rule candidate is NOT real-user proof. */
 export function classifyLiveRules(source){
