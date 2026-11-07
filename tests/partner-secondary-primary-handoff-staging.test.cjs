@@ -371,6 +371,73 @@ test("actual STAGED handoff transaction closes original finance GET/LIST under c
   }));
   assert.equal(ownWorkspace.role,"member");
   assert.equal(ownWorkspace.companyName,"協力店");
+
+  // Crucial release gate: the same UID that lost raw financial reads must
+  // still submit and edit the count-only partner ledger after actual handoff.
+  // This is the real isolated workspace service (Admin-backed in production),
+  // not a copy of a fabricated Firestore counts report.
+  const allZero=Object.fromEntries(KEYS.map(key=>[key,0]));
+  const firstCounts={...allZero,[KEYS[0]]:2};
+  const first=await workspace.submit(req("s",{
+   date:"2026-11-07",staffId:"s",expectedVersion:0,counts:firstCounts
+  }));
+  assert.equal(first.saved,true);
+  assert.equal(first.version,1);
+  assert.equal(first.totalCount,2);
+  const entries="companies/partner/partnerWorkEntries/2026-11-07__s";
+  const summary="companies/hub/partnerWorkCountDays/2026-11-07/reports/partner";
+  const audit1="companies/partner/partnerWorkAudits/2026-11-07__s__v1";
+  const audit2="companies/partner/partnerWorkAudits/2026-11-07__s__v2";
+  assert.equal(db.map.get(entries).totalCount,2);
+  assert.equal(db.map.get(summary).source,"staff-entries-v1");
+  assert.equal(db.map.get(summary).totalCount,2);
+  assert.deepEqual(db.map.get(audit1).counts,firstCounts);
+  assert.equal(db.map.get(audit2),undefined);
+  const refreshed=await workspace.view(req("s",{date:"2026-11-07"}));
+  assert.equal(refreshed.role,"member");
+  assert.equal(refreshed.records.length,1);
+  assert.equal(refreshed.records[0].totalCount,2);
+  const staleBefore=db.snapshot();
+  await assert.rejects(workspace.submit(req("s",{
+   date:"2026-11-07",staffId:"s",expectedVersion:0,counts:firstCounts
+  })),e=>e.code==="aborted");
+  assert.deepEqual(db.snapshot(),staleBefore,
+   "version conflict MUST NOT write count or financial documents");
+  const nextCounts={...allZero,[KEYS[0]]:3};
+  const edited=await workspace.submit(req("s",{
+   date:"2026-11-07",staffId:"s",expectedVersion:1,counts:nextCounts
+  }));
+  assert.equal(edited.saved,true);
+  assert.equal(edited.version,2);
+  assert.equal(edited.totalCount,3);
+  assert.equal(db.map.get(entries).version,2);
+  assert.equal(db.map.get(summary).totalCount,3);
+  assert.deepEqual(db.map.get(audit1).counts,firstCounts,
+   "earlier count audit must remain immutable");
+  assert.deepEqual(db.map.get(audit2).previousCounts,firstCounts);
+  assert.deepEqual(db.map.get(audit2).counts,nextCounts);
+  const afterEdit=await workspace.view(req("s",{date:"2026-11-07"}));
+  assert.equal(afterEdit.records[0].totalCount,3);
+  const hubAfterEdit=await workspace.view(req("h",{date:"2026-11-07"}));
+  assert.equal(hubAfterEdit.role,"hub");
+  for(const p of financialPaths)
+   assert.deepEqual(db.map.get(p),before[p],
+    "post-migration count submit/edit may not mutate old financial records: "+p);
+  assert.deepEqual(db.map.get("partnerHistoricalTransfers/s").originalUser,before["users/s"]);
+  // Emulate ONLY the count-only documents actually saved by the backend.
+  // Neither the owner's old raw originals nor Firestore Rules are modified.
+  await env.withSecurityRulesDisabled(async ctx=>{
+   const firestore=ctx.firestore();
+   for(const p of [entries,summary,audit1,audit2])
+    await setDoc(getRef(firestore,p),db.map.get(p));
+  });
+  for(const p of financialPaths){
+   await assertFails(getDoc(getRef(self,p)));
+   await assertFails(getDocsFromServer(query(
+    collection(self,p.split("/")[0]),where("companyId","==","hub")
+   )));
+   await assertSucceeds(getDoc(getRef(owner,p)));
+  }
   // GET/LIST denial is a LOCAL EMULATOR proof, not production UID proof.
   assert.equal(process.env.FIRESTORE_EMULATOR_HOST!==undefined,true);
   assert.equal(money.length,4);
