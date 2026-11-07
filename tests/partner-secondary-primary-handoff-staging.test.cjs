@@ -344,15 +344,20 @@ test("actual STAGED handoff transaction closes original finance GET/LIST under c
    await assertFails(getDocsFromServer(query(
     collection(self,p.split("/")[0]),where("companyId","==","hub")
    )));
-   const retained=(await env.withSecurityRulesDisabled(async ctx=>
-    getDoc(getRef(ctx.firestore(),p)))).data();
+   let retained;
+   await env.withSecurityRulesDisabled(async ctx=>{
+    retained=(await getDoc(getRef(ctx.firestore(),p))).data();
+   });
    assert.deepEqual(retained,before[p],"old source changed after transfer: "+p);
    // Internal owner rights remain valid; no person is lost.
    await assertSucceeds(getDoc(getRef(owner,p)));
   }
   await assertFails(getDoc(getRef(self,"partnerHistoricalTransfers/s")));
-  const archived=(await env.withSecurityRulesDisabled(async ctx=>
-   getDoc(getRef(ctx.firestore(),"partnerHistoricalTransfers/s")))).data();
+  let archived;
+  await env.withSecurityRulesDisabled(async ctx=>{
+   archived=(await getDoc(getRef(ctx.firestore(),
+    "partnerHistoricalTransfers/s"))).data();
+  });
   assert.deepEqual(archived.originalUser,before["users/s"]);
   assert.deepEqual(archived.originalMember,before["companies/hub/members/s"]);
   assert.deepEqual(archived.originalContext,before["partnerWorkspaceContexts/s"]);
