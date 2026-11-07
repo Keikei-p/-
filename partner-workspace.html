@@ -124,12 +124,6 @@ td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 <p class="muted">スタッフ本人・所属リーダー・協力店代表が登録できます。名前だけのスタッフはリーダーか代表が代理入力します。修正履歴は残ります。</p>
 <label for="staffSelect">担当者</label><select id="staffSelect"></select>
 <div id="countGrid" class="grid" style="margin:14px 0"></div>
-<div id="sbSplitBox" hidden>
- <h3>SB光・SB AIRを分けて入力</h3>
- <p class="muted">過去の合算実績は「旧未分類」として維持します。光やAIRへの振り分けは、実際の契約内容を確認した件数だけ変更してください。合計が変わる場合は売上ではなく件数そのものの訂正になります。</p>
- <div id="sbSplitGrid" class="grid" style="margin:14px 0"></div>
- <p class="muted" id="sbSplitStatus">旧件数は勝手に振り分けません。</p>
-</div>
 <h3>協力店の独自商材（自社側には非公開）</h3>
 <div id="privateCountGrid" class="grid" style="margin:14px 0"></div>
 <p class="muted">独自商材の名称・件数・合計は協力店内のみで管理し、自社側の合同件数には加算しません。</p>
@@ -234,51 +228,6 @@ const get=call("getPartnerWorkspace"),manage=call("managePartnerWorkspace"),
  codeLogout=call("logoutPartnerCompanyCode");
 const $=id=>document.getElementById(id);
 const KEYS=["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"];
-const SB_LEGACY="SB光・AIR",SB_PARTS=["SB光","SB AIR","旧未分類"];
-const supportsSbSplit=()=>data?.sbBreakdownSchema==="sb-separated-v1";
-function resolvedSbSplit(combined,stored){
- if(!Number.isSafeInteger(combined)||combined<0||combined>9999)throw Error("invalid_sb_combined");
- if(stored==null)return {"SB光":0,"SB AIR":0,"旧未分類":combined};
- if(typeof stored!=="object"||Array.isArray(stored)||
-    Object.keys(stored).sort().join("|")!==[...SB_PARTS].sort().join("|"))
-  throw Error("invalid_sb_breakdown");
- const sum=SB_PARTS.reduce((n,k)=>{
-  if(!Number.isSafeInteger(stored[k])||stored[k]<0||stored[k]>9999)
-   throw Error("invalid_sb_breakdown");
-  return n+stored[k];
- },0);
- if(sum!==combined)throw Error("sb_count_mismatch");
- return {...stored};
-}
-function validateSbGrid(){
- const o={},inputs=$("sbSplitGrid").querySelectorAll("input");
- for(const inp of inputs){
-  if(!SB_PARTS.includes(inp.dataset.sbPart)||
-    !/^(?:0|[1-9]\d{0,3})$/.test(inp.value.trim()))
-   throw Error("invalid_sb_input");
-  o[inp.dataset.sbPart]=Number(inp.value);
- }
- if(Object.keys(o).length!==SB_PARTS.length)throw Error("sb_input_missing");
- if(Object.values(o).reduce((a,b)=>a+b,0)>9999)throw Error("sb_limit_exceeded");
- return o;
-}
-function syncSbCombined(){
- if(!supportsSbSplit())return;
- try{
-  const sb=validateSbGrid();
-  const combined=SB_PARTS.reduce((n,k)=>n+sb[k],0);
-  const legacy=grid.querySelector('input[data-key="SB光・AIR"]');
-  if(!legacy)throw Error("sb_legacy_missing");
-  legacy.value=String(combined);
-  $("sbSplitStatus").textContent="光 "+sb["SB光"]+"件 / AIR "+sb["SB AIR"]+
-   "件 / 旧未分類 "+sb["旧未分類"]+"件（合計 "+combined+"件）";
- }catch{
-  const legacy=grid.querySelector('input[data-key="SB光・AIR"]');
-  if(legacy)legacy.value="";
-  $("sbSplitStatus").textContent="入力が不正です。件数は0〜9999の整数で、合計9999件まで。";
- }
- updateTotal();
-}
 let inviteToken=new URL(location.href).searchParams.get("invite")||"";
 const dateParts=Object.fromEntries(new Intl.DateTimeFormat("en-US",
 {timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"})
@@ -321,7 +270,7 @@ for(const k of KEYS){const box=document.createElement("div");box.className="item
 const lab=document.createElement("label");lab.textContent=k;const inp=document.createElement("input");
 inp.type="number";inp.min="0";inp.max="9999";inp.step="1";inp.inputMode="numeric";inp.value="0";inp.dataset.key=k;
 inp.addEventListener("input",updateTotal);box.append(lab,inp);grid.append(box)}
-function values(){if(supportsSbSplit())syncSbCombined();const o={};for(const x of grid.querySelectorAll("input")){
+function values(){const o={};for(const x of grid.querySelectorAll("input")){
  if(!/^(?:0|[1-9]\d{0,3})$/.test(x.value.trim()))throw Error("invalid count");
  o[x.dataset.key]=Number(x.value)}return o}
 function privateValues(){const o=Object.create(null);for(const x of $("privateCountGrid").querySelectorAll("input")){
@@ -354,11 +303,7 @@ function periodDatesForCounts(selected,period,today){
  return dates;
 }
 function summarizeCountOnlyResponses(responses,teamList,keys){
- const v2=responses.some(r=>r?.sbBreakdownSchema==="sb-separated-v1");
- if(v2&&responses.some(r=>r?.sbBreakdownSchema!=="sb-separated-v1"))
-  throw Error("mixed_sb_schema");
- const productKeys=v2?keys.filter(k=>k!==SB_LEGACY).concat(SB_PARTS):keys;
- const group=new Map(),individual=new Map(),days=[],products=Object.fromEntries(productKeys.map(k=>[k,0]));
+ const group=new Map(),individual=new Map(),days=[],products=Object.fromEntries(keys.map(k=>[k,0]));
  const teamProducts=new Map(),teamPeople=new Map();
  const teams=new Map((teamList||[]).map(t=>[t.id,t.name]));
  let total=0,hasUnverifiedTeams=false;
@@ -386,12 +331,7 @@ function summarizeCountOnlyResponses(responses,teamList,keys){
    for(const key of keys){
     const value=counts[key];
     if(!Number.isSafeInteger(value)||value<0||value>9999)throw Error("unverified count");
-    count+=value;
-    if(!v2||key!==SB_LEGACY)products[key]+=value;
-   }
-   if(v2){
-    const sb=resolvedSbSplit(counts[SB_LEGACY],record.sbBreakdown);
-    for(const k of SB_PARTS)products[k]+=sb[k];
+    count+=value;products[key]+=value;
    }
    if(count!==record.totalCount)throw Error("count mismatch");
    const privateCounts=record.privateCounts||{};
@@ -418,12 +358,8 @@ function summarizeCountOnlyResponses(responses,teamList,keys){
    const groupId=typeof teamId==="string"&&teams.has(teamId)?teamId:"__unverified__";
    if(groupId==="__unverified__")hasUnverifiedTeams=true;
    group.set(groupId,(group.get(groupId)||0)+count);
-    const detail=teamProducts.get(groupId)||Object.fromEntries(productKeys.map(k=>[k,0]));
-    for(const key of keys)if(!v2||key!==SB_LEGACY)detail[key]+=counts[key];
-    if(v2){
-     const sb=resolvedSbSplit(counts[SB_LEGACY],record.sbBreakdown);
-     for(const k of SB_PARTS)detail[k]+=sb[k];
-    }
+    const detail=teamProducts.get(groupId)||Object.fromEntries(keys.map(k=>[k,0]));
+    for(const key of keys)detail[key]+=counts[key];
     for(const [productId,n] of Object.entries(privateCounts)){
       const label="独自："+privateProducts.get(productId).name;
       detail[label]=(detail[label]||0)+n;
@@ -679,14 +615,8 @@ function renderHubCompanyDetail(){
  if(data?.role!=="hub")return;
  const select=$("hubCompanySelect"),selected=data.partners.find(p=>p.partnerCompanyId===select.value);
  $("hubCompanyDetail").hidden=!selected;
- const hubRows=selected?KEYS.flatMap(k=>{
-  if(k===SB_LEGACY&&supportsSbSplit()){
-   const sb=resolvedSbSplit(selected.counts[k],selected.sbBreakdown);
-   return SB_PARTS.map(part=>[part,sb[part]+"件"]);
-  }
-  return [[k,selected.counts[k]+"件"]];
- }):[];
- $("hubCompanyProducts").replaceChildren(countTable(["商材","報告件数"],hubRows));
+ $("hubCompanyProducts").replaceChildren(selected?
+  countTable(["商材","報告件数"],KEYS.map(k=>[k,selected.counts[k]+"件"])):countTable(["商材","報告件数"],[]));
 }
 function renderHubInvitePanel(){
  if(data?.role!=="hub")return;
@@ -874,25 +804,6 @@ function renderSelected(){if(!data||data.role==="hub")return;const rec=data.reco
    inp.addEventListener("input",updateTotal);box.append(lab,inp);custom.append(box);
  }
  for(const x of grid.querySelectorAll("input"))x.value=String(rec?.counts?.[x.dataset.key]??0);
- const sbMode=supportsSbSplit();
- $("sbSplitBox").hidden=!sbMode;
- const oldInput=grid.querySelector('input[data-key="SB光・AIR"]');
- if(oldInput)oldInput.parentElement.hidden=sbMode;
- if(sbMode){
-  const combined=rec?.counts?.[SB_LEGACY]??0;
-  const sb=resolvedSbSplit(combined,rec?.sbBreakdown);
-  const holder=$("sbSplitGrid");holder.replaceChildren();
-  for(const k of SB_PARTS){
-   const box=document.createElement("div");box.className="item";
-   const lab=document.createElement("label");lab.textContent=k;
-   const inp=document.createElement("input");inp.type="number";
-   inp.min="0";inp.max="9999";inp.step="1";inp.inputMode="numeric";
-   inp.dataset.sbPart=k;inp.value=String(sb[k]);
-   inp.addEventListener("input",syncSbCombined);
-   box.append(lab,inp);holder.append(box);
-  }
-  syncSbCombined();
- }else $("sbSplitGrid").replaceChildren();
  $("revision").textContent=rec?"第"+rec.version+"版・訂正可能":"未登録（0件報告も保存可能）";
  $("save").disabled=!$("staffSelect").value;updateTotal()}
 $("hubTeamCompanySelect").onchange=()=>{$("hubTeamCountStatus").textContent="会社が変更されました。班別件数を再取得してください。";$("hubTeamCountRows").replaceChildren()};
@@ -924,12 +835,8 @@ $("hubTeamCountLoad").onclick=async()=>{
    label.textContent=team.name+"｜"+(team.reportedStaffCount?
      team.totalCount+"件（報告 "+team.reportedStaffCount+"人）":"未報告");
    panel.append(label);
-   if(team.reportedStaffCount){
-    const sb=supportsSbSplit()?resolvedSbSplit(team.counts[SB_LEGACY],team.sbBreakdown):null;
-    const rows=KEYS.flatMap(k=>k===SB_LEGACY&&sb?
-      SB_PARTS.map(part=>[part,sb[part]+"件"]):[[k,team.counts[k]+"件"]]);
-    panel.append(countTable(["商材","件数"],rows));
-   }
+   if(team.reportedStaffCount)
+    panel.append(countTable(["商材","件数"],KEYS.map(k=>[k,team.counts[k]+"件"])));
    holder.append(panel);
   }
   if(sums!==detail.verifiedSharedCount||detail.unreconciledWithCompanyReport)
@@ -1013,15 +920,12 @@ $("copy").onclick=async()=>{try{await navigator.clipboard.writeText($("inviteUrl
 $("save").onclick=()=>action(async()=>{
  const staffId=$("staffSelect").value,record=data.records.find(r=>r.staffId===staffId),counts=values();
  const privateCounts=privateValues();
- const sbBreakdown=supportsSbSplit()?validateSbGrid():null;
  const result=(await save({date:$("date").value,staffId,counts,privateCounts,
-  ...(sbBreakdown?{sbBreakdown}:{}),
   expectedVersion:record?.version??0})).data;
  // Verify after actual API write, never show confirmation based on optimistic state.
  const verified=(await get({date:$("date").value})).data;
  const check=verified?.records?.find(r=>r.staffId===staffId);
  if(!check||check.version!==result.version||KEYS.some(k=>check.counts[k]!==counts[k])||
-    (sbBreakdown&&SB_PARTS.some(k=>check.sbBreakdown?.[k]!==sbBreakdown[k]))||
     Object.entries(privateCounts).some(([id,n])=>check.privateCounts?.[id]!==n))
   throw Error("save_not_verified");
  return "保存・再取得照合が成功しました。第"+result.version+"版";
