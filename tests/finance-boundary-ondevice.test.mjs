@@ -273,3 +273,125 @@ test('browser login is direct Firebase Auth only and never creates/changes accou
  assert.doesNotMatch(html,/createUserWithEmailAndPassword|setPersistence\(|updateProfile\(|deleteUser\(/);
  assert.doesNotMatch(html,/console\.log\(|localStorage|sessionStorage/);
 });
+
+test('direct partner maps protected finance to verified HUB, and never claims GET denial from LIST alone',async()=>{
+ const user={uid:'partner_direct_1',emailVerified:true,getIdToken:async()=> 'test-bearer'};
+ const accountAuth={currentUser:user},els=new Map(),called=[],fetches=[];
+ const el=id=>{if(!els.has(id))els.set(id,{value:'',disabled:false,hidden:false,textContent:'',className:''});return els.get(id);};
+ const context={URL,Intl,Date,Map,RegExp,JSON,Error,Number,
+  location:{origin:'https://nico-factory.web.app'},
+  document:{getElementById:el},console:{log:()=>{throw Error('LOG')}},
+  browserSessionPersistence:{kind:'test'},initializeApp:()=>({}),
+  initializeAuth:()=>accountAuth,getFunctions:()=>({}),
+  httpsCallable:(_fn,name)=>{assert.equal(name,'getPartnerWorkspace');
+    return async input=>{called.push(input);return {data:{role:'member'}};};},
+  onAuthStateChanged:(_a,cb)=>cb(user),
+  signInWithEmailAndPassword:async()=>({}),signOut:async()=>{},
+  fetch:async(url,options)=>{
+    fetches.push({url,options});
+    if(url.includes('/users/'))return response(200,{fields:{
+      active:{booleanValue:true},companyId:{stringValue:'partner_co'}}});
+    if(url.includes('/companies/partner_co'))return response(200,{fields:{
+      companyKind:{stringValue:'partner'},ownerUid:{stringValue:'partner_owner'},
+      hubCompanyId:{stringValue:'hub_main'}}});
+    assert.match(options.body||'',/hub_main/);
+    return response(403,{error:{code:403,status:'PERMISSION_DENIED'}});
+  }
+ };
+ runInNewContext(browser,context);
+ await el('run').onclick();
+ assert.match(el('identity').textContent,/協力店所属をFunctionsで照合済み/);
+ assert.match(el('counts').textContent,/読取成功/);
+ assert.match(el('products').textContent,/GET未検証/);
+ assert.match(el('records').textContent,/GET未検証/);
+ assert.equal(called.length,1);
+ assert.equal(called[0].workspaceCompanyId,undefined);
+ assert.equal(fetches.filter(x=>x.options.method==='POST').length,2);
+ assert.ok(fetches.filter(x=>x.options.method==='POST')
+   .every(x=>JSON.parse(x.options.body).structuredQuery.where.fieldFilter.value.stringValue==='hub_main'));
+});
+test('secondary partner requires live callable scope; an unrelated GET permission is not a partner proof',async()=>{
+ const user={uid:'secondary_1',emailVerified:true,getIdToken:async()=> 'test-bearer'};
+ const auth={currentUser:user},els=new Map(),call=[];
+ const el=id=>{if(!els.has(id))els.set(id,{value:'',disabled:false,hidden:false,textContent:'',className:''});return els.get(id);};
+ const context={URL,Intl,Date,Map,RegExp,JSON,Error,Number,
+  location:{origin:'https://nico-factory.web.app'},
+  document:{getElementById:el},console:{log:()=>{throw Error('LOG')}},
+  browserSessionPersistence:{},initializeApp:()=>({}),initializeAuth:()=>auth,
+  getFunctions:()=>({}),httpsCallable:()=>async data=>{call.push(data);
+    return {data:{role:'leader'}};},
+  onAuthStateChanged:(_a,cb)=>cb(user),
+  signInWithEmailAndPassword:async()=>({}),signOut:async()=>{},
+  fetch:async(url,options)=>{
+    if(url.includes('/users/'))return response(200,{fields:{
+      active:{booleanValue:true},companyId:{stringValue:'internal_co'}}});
+    if(url.includes('/companies/'))return response(200,{fields:{
+      companyKind:{stringValue:'internal'},ownerUid:{stringValue:'other_owner'}}});
+    if(options.method==='POST'){
+      const category=JSON.parse(options.body).structuredQuery.from[0].collectionId;
+      return response(200,[{document:{name:base+category+'/'+category+'-one',
+       fields:{companyId:{stringValue:'internal_co'}}}}]);
+    }
+    return response(200,{fields:{companyId:{stringValue:'internal_co'}}});
+  }
+ };
+ runInNewContext(browser,context);
+ el('workspace').value='partner_linked';
+ await el('run').onclick();
+ assert.match(el('identity').textContent,/協力店所属をFunctionsで照合済み/);
+ assert.match(el('products').textContent,/金額原票へのアクセス許可/);
+ assert.match(el('records').textContent,/金額原票へのアクセス許可/);
+ assert.equal(call.length,1);
+ assert.equal(call[0].workspaceCompanyId,'partner_linked');
+ assert.equal(el('counts').className,'pass');
+});
+test('Owner handoff reuses only Owner-proved raw IDs after partner login: GET and LIST both denied',async()=>{
+ let user={uid:'real_owner',emailVerified:true,getIdToken:async()=> 'owner-token'};
+ const auth={get currentUser(){return user;}},els=new Map(),events=[],requests=[];
+ const el=id=>{if(!els.has(id))els.set(id,{value:'',disabled:false,hidden:false,textContent:'',className:''});return els.get(id);};
+ const context={URL,Intl,Date,Map,RegExp,JSON,Error,Number,
+  location:{origin:'https://nico-factory.web.app'},
+  document:{getElementById:el},console:{log:()=>{throw Error('No private logs')}},
+  browserSessionPersistence:{},initializeApp:()=>({}),initializeAuth:()=>auth,
+  getFunctions:()=>({}),httpsCallable:()=>async()=>({data:{role:'member'}}),
+  onAuthStateChanged:(_a,cb)=>{events.push(cb);cb(user);},
+  signInWithEmailAndPassword:async()=>({}),signOut:async()=>{},
+  fetch:async(url,options)=>{
+    if(url.includes('/users/'))return response(200,{fields:{
+      active:{booleanValue:true},companyId:{stringValue:user.uid==='real_owner'?'company_main':'company_partner'}}});
+    if(url.includes('/companies/')){
+      if(user.uid==='real_owner')return response(200,{fields:{
+        companyKind:{stringValue:'internal'},ownerUid:{stringValue:'real_owner'}}});
+      return response(200,{fields:{
+        companyKind:{stringValue:'partner'},ownerUid:{stringValue:'other_partner_owner'},
+        hubCompanyId:{stringValue:'company_main'}}});
+    }
+    requests.push({url,method:options.method,uid:user.uid,body:options.body});
+    const collection=options.method==='POST'?
+      JSON.parse(options.body).structuredQuery.from[0].collectionId:
+      url.includes('/products/')?'products':'records';
+    if(user.uid!=='real_owner')return response(403,{
+      error:{code:403,status:'PERMISSION_DENIED'}});
+    if(options.method==='POST')return response(200,[{
+      document:{name:base+collection+'/'+collection+'_doc1',
+       fields:{companyId:{stringValue:'company_main'}}}
+    }]);
+    return response(200,{fields:{companyId:{stringValue:'company_main'}}});
+  }
+ };
+ runInNewContext(browser,context);
+ await el('run').onclick();
+ assert.match(el('products').textContent,/Owner閲覧許可/);
+ assert.match(el('records').textContent,/Owner閲覧許可/);
+ user={uid:'real_partner',emailVerified:true,getIdToken:async()=> 'partner-token'};
+ for(const cb of events)cb(user);
+ await el('run').onclick();
+ assert.match(el('identity').textContent,/協力店所属をFunctionsで照合済み/);
+ assert.match(el('products').textContent,/LIST・GETともに拒否/);
+ assert.match(el('records').textContent,/LIST・GETともに拒否/);
+ assert.equal(requests.filter(x=>x.uid==='real_owner'&&x.method==='GET').length,2);
+ assert.equal(requests.filter(x=>x.uid==='real_partner'&&x.method==='GET').length,2);
+ assert.ok(requests.filter(x=>x.uid==='real_partner'&&x.method==='GET')
+   .every(x=>/products_doc1|records_doc1/.test(x.url)));
+ assert.ok(requests.every(x=>!x.url.includes('revenue')));
+});
