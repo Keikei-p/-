@@ -288,7 +288,9 @@ function makeQuickCounts({db,getAuth,FieldValue,HttpsError,enabled,now=()=>Date.
      !quickAllowed(r,grant.data()||{},partnerId,me.hubId,uid,c.ownerUid)||
      typeof c.name!=="string"||!clean(c.name)||c.name.length>80||
      BLOCKED_LABEL.test(c.name))fail(HttpsError);
-  return {hubId:me.hubId,partnerId,companyName:clean(c.name)};
+  return {hubId:me.hubId,partnerId,companyName:clean(c.name),
+   // The separate staff ledger may only be compared with active staff sharing.
+   canCompareStaff:r.active===true&&r.countSharingApproved===true};
  }
  function inspectOwnerQuickRow(row,scope,date){
   if(row.hubCompanyId!==scope.hubId||
@@ -380,6 +382,48 @@ function makeQuickCounts({db,getAuth,FieldValue,HttpsError,enabled,now=()=>Date.
   });
  }
 
+
+ // Read-only owner reconciliation of two INDEPENDENT sources.
+ // Matching category totals cannot establish that underlying contracts match.
+ // Never add the quick report to staff rankings or infer staff attribution.
+ const staffReportRef=(hubId,date,partnerId)=>db.collection("companies").doc(hubId)
+  .collection("partnerWorkCountDays").doc(date).collection("reports").doc(partnerId);
+ function reconcileSourceCounts(quick,staffSnap,scope,date){
+  const base={scope:"hub_owner_count_source_reconciliation",
+   quickIncludedInIndividualRanking:false,automaticMergeAllowed:false,
+   contractIdentityVerified:false,productionDocumentWrites:0};
+  if(!scope.canCompareStaff)
+   return {...base,status:"staff_not_shared",quickTotalCount:quick?.totalCount??null,
+    staffTotalCount:null,categoryDifferences:[]};
+  let staff=null;
+  if(staffSnap?.exists){
+   const data=staffSnap.data()||{};
+   if(data.source!=="staff-entries-v1"||
+      data.hubCompanyId!==scope.hubId||
+      data.partnerCompanyId!==scope.partnerId||data.date!==date)
+    fail(HttpsError,"data-loss");
+   let checked;
+   try{checked=validateCounts(data.counts,HttpsError);}
+   catch{fail(HttpsError,"data-loss");}
+   if(checked.total!==data.totalCount)fail(HttpsError,"data-loss");
+   staff=checked;
+  }
+  if(!quick&&!staff)
+   return {...base,status:"none",quickTotalCount:null,staffTotalCount:null,
+    categoryDifferences:[]};
+  if(!quick)
+   return {...base,status:"staff_only",quickTotalCount:null,
+    staffTotalCount:staff.total,categoryDifferences:[]};
+  if(!staff)
+   return {...base,status:"quick_only",quickTotalCount:quick.totalCount,
+    staffTotalCount:null,categoryDifferences:[]};
+  const categoryDifferences=KEYS.filter(k=>quick.counts[k]!==staff.counts[k]);
+  const same=categoryDifferences.length===0&&quick.totalCount===staff.total;
+  return {...base,status:same?"totals_match_unverified":"different",
+   quickTotalCount:quick.totalCount,staffTotalCount:staff.total,
+   categoryDifferences};
+ }
+
  async function viewOwnerQuickCorrection(request){
   const uid=await caller(request),d=request?.data||{};
   if(Object.keys(d).sort().join("|")!=="date|partnerCompanyId"||
@@ -387,9 +431,13 @@ function makeQuickCounts({db,getAuth,FieldValue,HttpsError,enabled,now=()=>Date.
   const date=validOwnerDate(d.date);
   return db.runTransaction(async tx=>{
    const scope=await ownerQuickContext(tx,uid,d.partnerCompanyId);
-   const [snap,splitSnap]=await Promise.all([
+   const [snap,splitSnap,staffSnap]=await Promise.all([
     tx.get(reportRef(scope.hubId,date,scope.partnerId)),
-    tx.get(quickSplitRef(scope.hubId,date,scope.partnerId))
+    tx.get(quickSplitRef(scope.hubId,date,scope.partnerId)),
+    // No staff-ledger read for quick-only or revoked staff-sharing approvals.
+    scope.canCompareStaff?
+     tx.get(staffReportRef(scope.hubId,date,scope.partnerId)):
+     Promise.resolve(null)
    ]);
    const row=snap.exists?inspectOwnerQuickRow(snap.data()||{},scope,date):null;
    if(splitSnap.exists&&(!row||
@@ -399,6 +447,7 @@ function makeQuickCounts({db,getAuth,FieldValue,HttpsError,enabled,now=()=>Date.
    return {scope:"hub_owner_quick_count_correction",date,
     partnerCompanyId:scope.partnerId,companyName:scope.companyName,
     report:row,internetSplit:row?readQuickSplit(splitSnap.exists?splitSnap.data():null,row):null,
+    reconciliation:reconcileSourceCounts(row,staffSnap,scope,date),
     existingRecordsOnly:true,financialFieldsIncluded:false};
   });
  }
