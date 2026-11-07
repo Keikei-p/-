@@ -55,14 +55,28 @@ export function parseFunctionInventory(json){
  return set;
 }
 const basename=id=>id.split('/').at(-1);
+// A matching basename alone does not prove project/region identity. The CLI
+// can return short function IDs or fully qualified v2 resource names.
+// Fail closed on foreign projects, foreign regions and ambiguous aliases.
+const approvedNewIdentifier=id=>{
+ if(NAMES.includes(id))return true;
+ const match=id.match(/^projects\/sales-management-cc116\/locations\/asia-northeast1\/functions\/([A-Za-z][A-Za-z0-9_]*)$/);
+ return Boolean(match&&NAMES.includes(match[1]));
+};
 export function compareBeforeAfter(before,after){
  const initial=parseFunctionInventory(before),later=parseFunctionInventory(after);
  for(const id of initial)if(!later.has(id))stop('ORIGINAL_FUNCTION_DISAPPEARED');
+ // These four must be *new*. A partly deployed previous release requires
+ // an independent read-only investigation, never a blind resume.
+ if([...initial].some(id=>NAMES.includes(basename(id))))
+  stop('TARGET_ALREADY_PRESENT');
  const added=[...later].filter(id=>!initial.has(id));
- if(added.some(id=>!NAMES.includes(basename(id)))||added.length>4)
-  stop('UNAPPROVED_NEW_FUNCTION');
  for(const n of NAMES)if(![...later].some(id=>basename(id)===n))
   stop('EXPECTED_COUNT_FUNCTION_MISSING');
+ if(added.length!==4||added.some(id=>!approvedNewIdentifier(id)))
+  stop('UNAPPROVED_NEW_FUNCTION');
+ if(new Set(added.map(basename)).size!==4)
+  stop('DUPLICATE_FUNCTION_IDENTITY');
  return Object.freeze({
   originalFunctionIdsPreserved:true,
   requiredFourPresentInInventory:true,
