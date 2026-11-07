@@ -16,6 +16,9 @@ on:
       - 'tools/production/protect-original-functions-versions.mjs'
       - 'tests/protect-original-functions-versions.test.mjs'
       - '.github/workflows/nico-original-partner-functions-audit.yml'
+  # Safe manual recheck from GitHub Actions (mobile friendly): GET only, no deploy.
+  workflow_dispatch:
+
 permissions:
   contents: read
 concurrency:
@@ -43,7 +46,7 @@ jobs:
 
   read-only-live:
     needs: offline
-    if: ${{ github.event_name == 'push' &&
+    if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
        github.ref == 'refs/heads/main' &&
        github.repository == 'Keikei-p/-' &&
        needs.offline.result == 'success' }}
