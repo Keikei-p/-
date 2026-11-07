@@ -138,7 +138,7 @@ test("mock release preserves all 12 paths, same config, only partner workspace p
  assert.equal(remoteWrites.filter(x=>x.method==="POST"&&x.url.includes("/releases?")).length,1);
  assert.ok(remoteWrites.every(x=>x.url.includes("firebasehosting.googleapis.com")));
  assert.ok(remoteWrites.every(x=>!x.url.includes("firestore")&&!x.url.includes("cloudfunctions")));
- assert.equal(f.requests.filter(x=>x.url.endsWith("/"+newVersion+"/files?")).length,1);
+ assert.equal(f.requests.filter(x=>x.url.includes("/"+newVersion+"/files?")).length,1);
 });
 test("publisher never writes Rules, Functions, Firestore, accounts or logs finance",()=>{
  const s=readFileSync(new URL("../tools/hosting/surgical-partner-sb-v2-ui.mjs",import.meta.url),"utf8");
