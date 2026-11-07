@@ -12,6 +12,7 @@
 - `security/secondary-finance-read-fence.mjs`：ソースのGit Blob SHA `d9f4df6a2ac0f8b5720534a2461ec66b94379190` に完全一致したときだけ、4原票の `allow read` へ **サーバー保存のactiveなsecondary contextによる拒否**を追加した候補Rulesを生成。
 - 前提が一致しないRulesや、対象外のパス変更は安全停止。実際の `firestore.rules` や `firebase.json` を変更しない。
 - `tests/secondary-finance-read-fence-emulator.test.mjs`：架空のOwner（継続閲覧）、旧社内一般社員（許可済み閲覧）、協力店兼務（4原票GET/LIST拒否）、不正確な兼務マーカー（安全停止）、既存原票の完全保持、非金額チーム閲覧をEmulatorで確認。
+- **修正した潜在バイパス**：従来の候補Rulesが `active=true` かつ `kind=internal` の不正な兼務コンテキストを拒否対象から外していた。さらに `active` が文字列や欠落していると否認されないケースがあった。今回 `partnerWorkspaceContexts/{uid}` が存在し、`active` が**明示的なBoolean falseでない限り**旧自社の金融4原票を拒否する候補へ修正。Ownerや通常社員には副業コンテキストがなければ影響なし。意図的な `active:false` は引き続き遮断しない。Emulatorで malformed-kind、string active、active欠落の全ケースを検証する。
 - **既存のrecords新規作成のRules条件は変更しない**。ただし、読み取りを遮断すると旧社内recordsを読んでから保存・訂正する古い画面が正常に動かなくなる可能性があるため、実機での入力継続を実証するまでは**本番公開禁止**。
 - No Deploy CIでは本番秘密鍵・Firestore API・既存データへ接続しない。デモEmulatorのみ。
 
