@@ -29,7 +29,7 @@ async function readBoundedRankingRelations(db,hubId){
       !rel||rel.partnerCompanyId!==cid||rel.hubCompanyId!==hubId)
     fail("invalid_relation");
    previous=cid;seen.add(cid);
-   rows.push({id:cid,data:rel});
+   rows.push(doc);
   }
   pages++;
   if(docs.length<=PAGE_SIZE)break;
