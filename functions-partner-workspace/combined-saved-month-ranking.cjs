@@ -3,6 +3,8 @@
 // the server. A malformed ledger must NEVER become "0", a tie, or a rank.
 const crypto=require("node:crypto");
 const {nameOnly}=require("./catalog-publication.cjs");
+const {MAX_RANKING_COMPANIES}=require("./bounded-ranking-relations.cjs");
+const MAX_RANKED_PEOPLE=3000; // Bounds response size and existing UI deep-validation cost.
 const OPAQUE=/^[a-f0-9]{64}$/;
 const MONEY=/(?:単価|売上|利益|収益|報酬|[¥￥$€]|\d[\d,]*円)/;
 const NAME=/^[\p{L}\p{N} 　・ー（）()_.-]{1,60}$/u;
@@ -24,7 +26,7 @@ function projectCombinedMonth({month,hubId,keys,direct,partners=[]}={}){
     !Array.isArray(keys)||keys.length!==9||
     new Set(keys).size!==keys.length||
     keys.some(x=>typeof x!=="string"||!x)||
-    !Array.isArray(partners)||partners.length>20||
+    !Array.isArray(partners)||partners.length>MAX_RANKING_COMPANIES||
     !direct||!validCount(direct.totalCount)||!validCount(direct.otherCount)||
     !validCount(direct.recordsVerified)||
     !Array.isArray(direct.people)||!Array.isArray(direct.teams)||
@@ -46,6 +48,7 @@ function projectCombinedMonth({month,hubId,keys,direct,partners=[]}={}){
   if(summed(person.counts,keys)>person.totalCount)fail();
   const key=hash("joint_person",companyId,person.key);
   if(usedPersonIds.has(key))fail();
+  if(people.length>=MAX_RANKED_PEOPLE)fail();
   usedPersonIds.add(key);
   people.push({key,name:person.name,companyName,kind,
    totalCount:person.totalCount,counts:{...person.counts}});
@@ -88,6 +91,7 @@ function projectCombinedMonth({month,hubId,keys,direct,partners=[]}={}){
     let combined=originalPeople.get(key);
     if(!combined){
      if(usedPersonIds.has(key))fail();
+     if(people.length>=MAX_RANKED_PEOPLE)fail();
      usedPersonIds.add(key);
      combined={key,name:x.name,companyName:name,kind:"partner",
       totalCount:0,counts:Object.fromEntries(keys.map(k=>[k,0]))};

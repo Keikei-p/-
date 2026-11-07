@@ -29,15 +29,19 @@ test("joint monthly individual rankings never merge Quick company-only reports i
  assert.match(ranking,/provisional:true/);
 });
 
-test("company management >100 exists but multi-company monthly ranking remains limited to twenty",()=>{
+test("company management and provisional rankings have bounded pagination; no silent 126th omission",()=>{
  const directory=read("functions-partner-workspace/owner-partner-count-operations.cjs");
  const rankingSource=read("functions-partner-workspace/service.cjs");
  const rank=read("functions-partner-workspace/combined-saved-month-ranking.cjs");
+ const pages=read("functions-partner-workspace/bounded-ranking-relations.cjs");
  assert.match(directory,/const PAGE=25/);
  assert.match(directory,/startAfter\(cursor\)/);
- assert.match(rankingSource,/limit\(21\)\.get\(\)/);
- assert.match(rankingSource,/relations\.size>20/);
- assert.match(rank,/partners\.length>20/);
+ assert.match(rankingSource,/readBoundedRankingRelations\(db,hubId\)/);
+ assert.match(rankingSource,/reviewedRows>10000/);
+ assert.match(rank,/partners\.length>MAX_RANKING_COMPANIES/);
+ assert.match(pages,/MAX_RANKING_COMPANIES=125/);
+ assert.match(pages,/PAGE_SIZE=25/);
+ assert.match(pages,/fail\("too_many_companies"\)/);
 });
 
 test("quick and staff read-only reconciliation never returns contract-confirmed merge authorization",()=>{

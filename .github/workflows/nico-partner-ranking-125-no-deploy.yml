@@ -1,0 +1,79 @@
+name: NICO partner 125-company ranking pagination (NO DEPLOY)
+on:
+  push:
+    branches: [feature/partner-bounded-ranking-125-20261107]
+  pull_request:
+    branches: [feature/owner-directory-search-expand-20261107]
+permissions:
+  contents: read
+jobs:
+  rank-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      FIREBASE_PROJECT_ID: demo-sales-support
+      GCLOUD_PROJECT: demo-sales-support
+      FIREBASE_SERVICE_ACCOUNT_JSON: ""
+      GOOGLE_APPLICATION_CREDENTIALS: ""
+      NICO_RULES_APPROVAL: ""
+      NICO_PHASE1_INDEPENDENT_SIGNOFF: ""
+      NICO_PARTNER_RELEASE_CONFIRMATION: ""
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Enforce exact source and prevent unrelated or production changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$FIREBASE_PROJECT_ID" = demo-sales-support
+          test "$GCLOUD_PROJECT" = demo-sales-support
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$NICO_RULES_APPROVAL"
+          test -z "$NICO_PHASE1_INDEPENDENT_SIGNOFF"
+          test -z "$NICO_PARTNER_RELEASE_CONFIRMATION"
+          git cat-file -e c3551e5b4d77b0f7e3aa9dec938f2514a95ed7d6^{commit}
+          test "$(git merge-base HEAD c3551e5b4d77b0f7e3aa9dec938f2514a95ed7d6)" = c3551e5b4d77b0f7e3aa9dec938f2514a95ed7d6
+          git diff --name-only c3551e5b4d77b0f7e3aa9dec938f2514a95ed7d6...HEAD > /tmp/ranking-scope
+          cat /tmp/ranking-scope
+          test "$(wc -l </tmp/ranking-scope)" -eq 6
+          if grep -Ev '^(functions-partner-workspace/(service|combined-saved-month-ranking|bounded-ranking-relations)[.]cjs|tests/(partner-ranking-paginated-boundary|partner-integrated-release-boundaries)[.]test[.]cjs|[.]github/workflows/nico-partner-ranking-125-no-deploy[.]yml)$' /tmp/ranking-scope; then
+            echo STOP_OUT_OF_SCOPE; exit 1
+          fi
+          git diff --exit-code c3551e5b4d77b0f7e3aa9dec938f2514a95ed7d6 HEAD -- index.html firestore.rules firestore.indexes.json firebase.json functions functions-partner-quick
+      - name: Check ranking code and tests syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/bounded-ranking-relations.cjs
+          node --check functions-partner-workspace/combined-saved-month-ranking.cjs
+          node --check tests/partner-ranking-paginated-boundary.test.cjs
+      - name: Synthetic complete-source, 125-company, finance, input, invitation regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test \
+            tests/partner-ranking-paginated-boundary.test.cjs \
+            tests/partner-integrated-release-boundaries.test.cjs \
+            tests/partner-combined-month-ranking-main.test.cjs \
+            tests/owner-partner-directory-pagination.test.cjs \
+            tests/owner-directory-search-expand.test.cjs \
+            tests/partner-workspace.test.cjs \
+            tests/partner-quick-counts.test.cjs \
+            tests/partner-ui-safe-increment.test.cjs \
+            tests/partner-company-invitations.test.cjs \
+            tests/partner-money-free-workspace.test.cjs \
+            tests/internal-owner-finance-visibility.test.cjs \
+            tests/sales-regressions.cjs
+      - name: Confirm development-only changes
+        run: |
+          echo 'PRODUCTION_DEPLOYED=false'
+          echo 'PRODUCTION_DOCUMENT_WRITES=0'
+          echo 'FINANCE_USER_TOKEN_GET_LIST_VERIFIED=false'
+          echo 'RELEASE_APPROVED=false'

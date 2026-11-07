@@ -4,6 +4,7 @@ const crypto=require("node:crypto");
 const {monthBounds,projectSavedPartnerMonth}=require("./partner-saved-month.cjs");
 const {readDirectRangeCounts}=require("./shared-direct-counts.cjs");
 const {projectCombinedMonth}=require("./combined-saved-month-ranking.cjs");
+const {readBoundedRankingRelations}=require("./bounded-ranking-relations.cjs");
 const {makePartnerCatalogOperations}=require("./partner-catalog-operations.cjs");
 const {projectPublishedPartnerExtras}=require("./partner-combined-extra-projection.cjs");
 const {makePartnerAdditionalOperations}=require("./partner-additional-operations.cjs");
@@ -994,9 +995,11 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   if(s.kind!=="hub"&&s.kind!=="partner")fail();
   const hubId=s.kind==="hub"?s.cid:s.hubId;
   if(!ID.test(hubId||""))fail();
-  const relations=await db.collection("partnerRelations")
-   .where("hubCompanyId","==",hubId).limit(21).get();
-  if(relations.size>20)fail("resource-exhausted");
+  // Bounded pagination rejects >125 companies instead of silently dropping them.
+  // No partial ranking is returned if any page or relation is malformed.
+  let relations;
+  try{relations=await readBoundedRankingRelations(db,hubId);}
+  catch{fail("resource-exhausted");}
   // Direct redactor reads legacy sales records SERVER-SIDE ONLY and rejects
   // inconsistent saved totals, missing UID and non-auditable quantities.
   // If even one source is malformed, no combined rank is published.
@@ -1014,7 +1017,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   }catch{fail("failed-precondition");}
   const partners=[];
   let reviewedRows=0;
-  for(const rs of relations.docs){
+  for(const rs of relations){
    const rel=rs.data()||{},cid=rs.id;
    if(!ID.test(cid)||rel.partnerCompanyId!==cid||rel.hubCompanyId!==hubId)
     fail("data-loss");
