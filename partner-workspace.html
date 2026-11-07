@@ -424,7 +424,48 @@ const clearCompanySession=()=>{
  activeCodeSession="";companyCodeSession=false;
  try{sessionStorage.removeItem("nicoPartnerCodeSession")}catch{}
 };
-let countPeriod="day",countLoadId=0,countExportRows=null;
+let countPeriod="month",countLoadId=0,countExportRows=null;
+const jstMonth=[dateParts.year,dateParts.month].join("-");
+$("dashboardPartnerMonth").value=jstMonth;
+$("dashboardPartnerMonth").max=jstMonth;
+let currentCountPanel=null;
+const countPanelNames=new Set(["analysis","individual","productRanking","teamRanking",
+  "trend","teamDetail","productSummary","report","goal","daily","history"]);
+function openCountPanel(key){
+ if(!countPanelNames.has(key))return;
+ currentCountPanel=currentCountPanel===key?null:key;
+ for(const btn of document.querySelectorAll("[data-count-panel]")){
+  const active=btn.dataset.countPanel===currentCountPanel;
+  btn.setAttribute("aria-pressed",String(active));
+  btn.setAttribute("aria-expanded",String(active));
+  const panel=$("partnerPanel-"+btn.dataset.countPanel);
+  if(panel)panel.hidden=!active;
+ }
+ $("partnerDashboardDetail").hidden=currentCountPanel===null;
+ if(currentCountPanel==="goal"&&countPeriod!=="month"){
+  $("periodMonth").click();
+ }
+}
+for(const btn of document.querySelectorAll("[data-count-panel]"))
+ btn.addEventListener("click",()=>openCountPanel(btn.dataset.countPanel));
+$("countHistoryOpen").onclick=()=>activeTab("View");
+$("countReportCopy").onclick=async()=>{
+ const report=$("countReportBody");
+ if(!countExportRows||!report.value)return;
+ try{
+  await navigator.clipboard.writeText(report.value);
+  notice("件数報告文をコピーしました。");
+ }catch{report.focus();report.select();notice("件数報告文を選択しました。コピーしてください。")}
+};
+$("dashboardPartnerMonth").onchange=()=>{
+ if(!/^\d{4}-\d{2}$/.test($("dashboardPartnerMonth").value)){
+  $("countDashboardStatus").textContent="正しい年月を選択してください。";return;
+ }
+ countPeriod="month";
+ for(const mode of ["Day","Week","Month"])
+  $("period"+mode).setAttribute("aria-pressed",String(mode==="Month"));
+ loadCountDashboard();
+};
 const countDayCache=new Map(),countKeys=KEYS.slice();
 const notice=(s,bad=false)=>{$("notice").textContent=s;$("notice").className="notice"+(bad?" error":"")};
 const fail=e=>{
@@ -606,10 +647,11 @@ function renderProductRankMode(){
 }
 function countGoalKey(){
  return "nico-partner-month-goal-v1:"+auth.currentUser.uid+":"+
- encodeURIComponent(data.companyName||"")+":"+$("date").value.slice(0,7);
+ encodeURIComponent(data.companyName||"")+":"+$("dashboardPartnerMonth").value;
 }
 function renderCountGoal(){
- $("countGoalBox").hidden=countPeriod!=="month"||!countExportRows;
+ $("countGoalBox").hidden=countPeriod!=="month"||!countExportRows||!auth.currentUser?.uid;
+ $("countGoalUnavailable").hidden=!$("countGoalBox").hidden;
  if($("countGoalBox").hidden)return;
  let raw;
  try{raw=localStorage.getItem(countGoalKey())}catch{
@@ -623,13 +665,49 @@ function renderCountGoal(){
 }
 function renderCountOnlyDashboard(summary,days){
  const count=summary.total,positive=summary.days.filter(d=>d.count>0).length;
- const cards=[["合計実績",count+"件"],["活動日数",positive+"日"],
-  ["実績のある担当者",summary.people.filter(p=>p.count>0).length+"人"],
-  ["1日平均",Math.round(count/days.length*10)/10+"件"]];
+ const cards=[["合計件数",count+"件"],["稼働日数",positive+"日"],
+  ["実績のある担当者",summary.people.filter(p=>p.count>0).length+"人"]];
  const kpis=$("countKpis");kpis.replaceChildren();
- for(const [name,value] of cards){const box=document.createElement("div");box.className="count-kpi";
-  const lab=document.createElement("small"),val=document.createElement("strong");
-  lab.textContent=name;val.textContent=value;box.append(lab,val);kpis.append(box)}
+ for(const [name,value] of cards){
+  const box=document.createElement("div");box.className="summary-card";
+  const lab=document.createElement("div"),val=document.createElement("div");
+  lab.className="summary-label";val.className="summary-value";
+  lab.textContent=name;val.textContent=value;box.append(lab,val);kpis.append(box);
+ }
+ const topProduct=Object.entries(summary.products).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"ja"));
+ $("countAnalysisSummary").replaceChildren(countTable(["分析項目","件数"],[
+   ["合計獲得件数",count+"件"],
+   ["活動日数",positive+"日"],
+   ["活動担当者",summary.people.filter(p=>p.count>0).length+"人"],
+   ["1日平均",Math.round(count/days.length*10)/10+"件"],
+   ...summary.groups.slice(0,5).map(g=>["班："+g.name,g.count+"件"])
+ ]));
+ $("countProductSummary").replaceChildren(countTable(["商材","件数"],
+  topProduct.map(([name,n])=>[name,n+"件"])));
+ const chart=$("countTrendChart");chart.replaceChildren();
+ const max=Math.max(1,...summary.days.map(d=>d.count));
+ for(const day of summary.days.slice().reverse()){
+  const row=document.createElement("div");row.className="partner-count-trend-row";
+  const label=document.createElement("span");label.textContent=day.date.slice(5);
+  const rail=document.createElement("div");rail.className="partner-count-trend-rail";
+  const bar=document.createElement("i");bar.className="partner-count-trend-bar";
+  bar.style.width=Math.max(0,day.count/max*100)+"%";rail.append(bar);
+  const value=document.createElement("strong");value.textContent=day.count+"件";
+  row.append(label,rail,value);chart.append(row);
+ }
+ const report=[
+  "【"+String(data?.companyName||"協力店")+" 件数報告】",
+  dates[0]+" 〜 "+dates.at(-1),
+  "合計："+count+"件",
+  "稼働日数："+positive+"日",
+  "担当者："+summary.people.filter(p=>p.count>0).length+"人",
+  "【班別】",
+  ...summary.groups.map(g=>g.name+"："+g.count+"件"),
+  "【商材別】",
+  ...topProduct.map(([name,n])=>name+"："+n+"件")
+ ].join("\n");
+ $("countReportBody").value=report;
+ $("countReportCopy").disabled=false;
  $("countTeamHint").textContent=summary.hasUnverifiedTeams?
   "過去の班所属を推測しないため、保存時点の班情報をAPIから取得できない実績は「所属班未確認」として表示します。":
   "保存時の所属班で集計しています。";
@@ -650,12 +728,19 @@ function renderCountOnlyDashboard(summary,days){
  renderProductRankMode();renderCountGoal();
 }
 function clearCountOnlyDashboard(){
- countExportRows=null;$("countGoalBox").hidden=true;for(const id of ["countKpis","countTeamRank","countStaffRank",
-  "countProductRank","countDailyRows","countTeamProducts","countTeamPeople"])$(id).replaceChildren();
+ countExportRows=null;$("countGoalBox").hidden=true;
+ $("countGoalUnavailable").hidden=false;$("countReportCopy").disabled=true;
+ $("countReportBody").value="";
+ for(const id of ["countKpis","countTeamRank","countStaffRank","countAnalysisSummary",
+  "countProductSummary","countTrendChart","countProductRank","countDailyRows",
+  "countTeamProducts","countTeamPeople"])$(id).replaceChildren();
 }
 async function loadCountDashboard(){
  if(!data||data.role==="hub"||$("dashboardBox").hidden)return;
- const gen=++countLoadId,uid=auth.currentUser?.uid,day=$("date").value;
+ const gen=++countLoadId;
+ // Never reuse a member's cached counts across different company-code sessions.
+ const uid=activeCodeSession?"code:"+(workspaceCompanyId||"active"):auth.currentUser?.uid;
+ const day=countPeriod==="month"?$("dashboardPartnerMonth").value+"-01":$("date").value;
  const today=[dateParts.year,dateParts.month,dateParts.day].join("-");
  clearCountOnlyDashboard();
  let dates;
@@ -731,7 +816,7 @@ $("countCsv").onclick=()=>{
  const csvText="\uFEFF"+rows.map(csv).join("\r\n");
  const objectUrl=URL.createObjectURL(new Blob([csvText],{type:"text/csv;charset=utf-8"}));
  const anchor=document.createElement("a");anchor.href=objectUrl;
- anchor.download="nico-partner-counts-"+$("date").value+"-"+countPeriod+".csv";
+ anchor.download="nico-partner-counts-"+(countPeriod==="month"?$("dashboardPartnerMonth").value:$("date").value)+"-"+countPeriod+".csv";
  document.body.append(anchor);anchor.click();anchor.remove();
  URL.revokeObjectURL(objectUrl);
  notice("件数のみのCSVを出力しました。売上・単価は含まれません。");
@@ -1058,7 +1143,11 @@ async function refresh(){if(!activeCodeSession&&(!auth.currentUser||!auth.curren
   $("loginBox").hidden=false;$("loginLogout").hidden=!auth.currentUser;
   fail(e);
  }finally{if(current===nonce)loading=false}}
-$("date").onchange=refresh;$("refresh").onclick=()=>{countDayCache.clear();refresh()};
+$("date").onchange=()=>{
+ $("dashboardPartnerMonth").value=$("date").value.slice(0,7);
+ refresh();
+};
+$("refresh").onclick=()=>{countDayCache.clear();refresh()};
 async function action(task){if(loading)return;loading=true;try{
  countDayCache.clear();
  const message=await task();await refresh();
