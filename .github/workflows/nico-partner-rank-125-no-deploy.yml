@@ -1,0 +1,71 @@
+name: NICO partner rank 125 companies staging (NO DEPLOY)
+on:
+  push:
+    branches: [feature/partner-rank-125-staging-20261107]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  ranking-staging:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FIREBASE_PROJECT_ID: demo-sales-support
+      FIREBASE_SERVICE_ACCOUNT_JSON: ""
+      GOOGLE_APPLICATION_CREDENTIALS: ""
+      NICO_USAGE_APPROVAL: ""
+      NICO_PHASE1_INDEPENDENT_SIGNOFF: ""
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Reject unexpected changes and production credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$FIREBASE_PROJECT_ID" = "demo-sales-support"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$NICO_USAGE_APPROVAL"
+          test -z "$NICO_PHASE1_INDEPENDENT_SIGNOFF"
+          git fetch --no-tags origin main
+          git cat-file -e 9632ea4bc063f165e0197a65f068e6d4529c4410^{commit}
+          test "$(git merge-base HEAD 9632ea4bc063f165e0197a65f068e6d4529c4410)" = "9632ea4bc063f165e0197a65f068e6d4529c4410"
+          git diff --name-only 9632ea4bc063f165e0197a65f068e6d4529c4410...HEAD > /tmp/rank-changes
+          cat /tmp/rank-changes
+          while IFS= read -r p; do
+            case "$p" in
+              ranking/combined-count-leaderboard.mjs|ranking/combined-rank-only-handler.mjs|tests/combined-count-leaderboard.test.mjs|tests/combined-rank-only-publication.test.mjs|.github/workflows/nico-partner-rank-125-no-deploy.yml|docs/PARTNER_RANK_125_STAGING_20261107.md) ;;
+              *) echo "RANK_STAGING_UNREVIEWED_SOURCE: $p"; exit 1 ;;
+            esac
+          done < /tmp/rank-changes
+          test "$(wc -l </tmp/rank-changes)" -eq 6
+          git diff --exit-code 9632ea4bc063f165e0197a65f068e6d4529c4410 HEAD -- index.html firestore.rules firestore.indexes.json functions functions-partner-quick functions-partner-workspace staging partner-workspace.html
+      - name: Node syntax
+        run: |
+          node --check ranking/combined-count-leaderboard.mjs
+          node --check ranking/combined-rank-only-handler.mjs
+          node --check tests/combined-count-leaderboard.test.mjs
+          node --check tests/combined-rank-only-publication.test.mjs
+      - name: All rank-only, finance and existing-count regressions
+        run: |
+          node --test \
+            tests/combined-count-leaderboard.test.mjs \
+            tests/combined-rank-only-publication.test.mjs \
+            tests/public-projection.test.mjs \
+            tests/partner-canonical-ranking-groups.test.mjs \
+            tests/partner-existing-ranking.test.cjs \
+            tests/partner-count-cache-invalidation.test.mjs \
+            tests/internal-owner-finance-visibility.test.cjs \
+            tests/sales-regressions.cjs
+      - name: Assert staging only
+        run: |
+          echo 'RANK_125_STAGING_ONLY=true'
+          echo 'PRODUCTION_DOCUMENT_WRITES=0'
+          echo 'PRODUCTION_DEPLOYED=false'
+          echo 'REAL_125_COMPANY_E2E=false'
