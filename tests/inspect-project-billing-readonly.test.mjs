@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
-import {URL as BILLING_URL,PROJECT,inspectProjectBilling} from "../tools/production/inspect-project-billing-readonly.mjs";
+import {BILLING_INFO_URL as BILLING_URL,PROJECT,inspectProjectBilling} from "../tools/production/inspect-project-billing-readonly.mjs";
 const good=()=>({
  name:"projects/"+PROJECT+"/billingInfo",
  projectId:PROJECT,billingAccountName:"billingAccounts/secret-1234",
@@ -59,6 +59,8 @@ test("malformed resource and ambiguous errors always stop, do not authorize spen
 test("auditor only uses GET against exact project and does not write/deploy",()=>{
  const s=readFileSync(new URL("../tools/production/inspect-project-billing-readonly.mjs",import.meta.url),"utf8");
  assert.match(s,/method:"GET"/);
+ assert.doesNotMatch(s,/\b(?:const|let|var) URL\s*=/);
+ assert.match(s,/new URL\("\.\.\/\.\.\/\.firebaserc"/);
  assert.match(s,/FIREBASE_PROJECT_ID!==PROJECT/);
  assert.match(s,/trialCreditBalanceVerified:false/);
  assert.match(s,/releaseCostGatePassed:false/);

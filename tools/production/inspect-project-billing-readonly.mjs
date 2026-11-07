@@ -11,13 +11,13 @@ import path from "node:path";
 import {fileURLToPath} from "node:url";
 
 export const PROJECT="sales-management-cc116";
-export const URL="https://cloudbilling.googleapis.com/v1/projects/"+PROJECT+"/billingInfo";
+export const BILLING_INFO_URL="https://cloudbilling.googleapis.com/v1/projects/"+PROJECT+"/billingInfo";
 const stop=x=>{throw Error("STOP_NICO_BILLING_READONLY_"+x)};
 
 export async function inspectProjectBilling(read){
  if(typeof read!=="function")stop("READ_REQUIRED");
  let response;
- try{response=await read(URL)}catch{stop("REMOTE_UNVERIFIED")}
+ try{response=await read(BILLING_INFO_URL)}catch{stop("REMOTE_UNVERIFIED")}
  if(!response||![200,401,403,404].includes(response.status))
   stop("HTTP_UNVERIFIED");
  if(response.status===401||response.status===403)
@@ -72,7 +72,7 @@ async function main(){
   credential=require("firebase-admin/app").applicationDefault();
  }catch{stop("OAUTH_LIBRARY")}
  const read=async url=>{
-  if(url!==URL)stop("OTHER_ENDPOINT");
+  if(url!==BILLING_INFO_URL)stop("OTHER_ENDPOINT");
   const token=(await credential.getAccessToken())?.access_token;
   if(!token)stop("MISSING_TOKEN");
   return fetch(url,{
