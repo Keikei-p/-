@@ -77,11 +77,12 @@ export function verifyCorrectionReadback(saved,requested,lookup){
 }
 
 export function mountOwnerCorrection({
- root,companies,api,dateGetter,confirmChange,dom=document
+ root,companies,api,dateGetter,confirmChange,onVerifiedSave=()=>{},dom=document
 }){
  if(!root||!dom||!Array.isArray(companies)||!api||
   typeof api.list!=="function"||typeof api.correct!=="function"||
-  typeof dateGetter!=="function"||typeof confirmChange!=="function")
+  typeof dateGetter!=="function"||typeof confirmChange!=="function"||
+  typeof onVerifiedSave!=="function")
   throw Error("MISSING_OWNER_UI_DEPENDENCY");
  const allowed=companies.filter(x=>x.active===true&&ID.test(x.partnerCompanyId||"")&&
   typeof x.name==="string"&&!MONEY.test(x.name));
@@ -215,13 +216,26 @@ export function mountOwnerCorrection({
     throw Error("READBACK_UNVERIFIED");
    if(companySelect.value!==id||dateGetter()!==day)
     throw Error("STALE_SCOPE");
+   // The server write and versioned readback are confirmed. Refresh the
+   // ranking cache only now, without retrying an already-committed write.
+   let rankingRefreshed=true;
+   try{
+    await onVerifiedSave(Object.freeze({
+     date:day,partnerCompanyId:id,staffId:req.staffId,version:saved.version
+    }));
+   }catch{rankingRefreshed=false}
+   if(destroyed)return;
+   if(companySelect.value!==id||dateGetter()!==day)
+    throw Error("STALE_SCOPE");
    current=latest;staffSelect.replaceChildren();
    for(const row of latest.entries){
     const option=el("option","",row.staffName+"｜第"+row.version+"版");
     option.value=row.staffId;staffSelect.append(option);
    }
    staffSelect.value=req.staffId;redraw();
-   reason.value="";setStatus("保存・再照合完了：第"+saved.version+"版。訂正履歴が追加されました。");
+   reason.value="";setStatus(rankingRefreshed?
+    "保存・再照合完了：第"+saved.version+"版。訂正履歴が追加されました。":
+    "保存・再照合完了：第"+saved.version+"版。ランキングは未更新のため、画面を再読み込みしてください。");
   }catch{
    current=null;selected=null;editor.hidden=true;staffSelect.replaceChildren();
    setStatus("保存結果を確定できません。二重登録防止のため再送せず、最新件数を読み直してください。");
