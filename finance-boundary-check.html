@@ -227,44 +227,71 @@ $("run").onclick=async()=>{
       throw Error("SIGNIN_ORIGIN_REQUIRED");
     const token=await user.getIdToken(true);
     const account=await readCompany(token,user.uid);
-    if(!account)throw Error("NO_VERIFIED_INTERNAL_COMPANY");
+    if(!account)throw Error("NO_VERIFIED_COMPANY");
     if(previousUid!==user.uid||previousCompany!==account.company){
       clearBinding();previousUid=user.uid;previousCompany=account.company;
     }
-    label("identity",account.role==="owner"?"Owner候補（独立照合は別）":
+    const workspace=$("workspace").value.trim();
+    if(workspace&&!ID.test(workspace))throw Error("INVALID_WORKSPACE");
+    const parts=Object.fromEntries(new Intl.DateTimeFormat("en-CA",{
+      timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"
+    }).formatToParts(new Date()).map(x=>[x.type,x.value]));
+    const date=parts.year+"-"+parts.month+"-"+parts.day;
+    let countVerified=false;
+    if(account.role==="partner-unverified"&&workspace)
+      throw Error("DIRECT_PARTNER_MUST_NOT_CLAIM_SECONDARY");
+    if(workspace&&account.role==="owner")
+      throw Error("HUB_OWNER_PARTNER_CONTEXT_AMBIGUOUS");
+    if(account.role==="partner-unverified"||workspace){
+      try{
+        const reply=await countView({
+          date,...(account.role==="partner-unverified"?{}:{workspaceCompanyId:workspace})
+        });
+        if(["owner","leader","member"].includes(reply?.data?.role)){
+          // Existing callable verifies the real authenticated UID, live
+          // membership, partner relation and active workspace context.
+          account.role="partner-verified";
+          countVerified=true;
+        }
+      }catch{}
+    }
+    if(account.role==="partner-unverified"||
+       (workspace&&account.role!=="partner-verified"))
+      throw Error("PARTNER_MEMBERSHIP_UNVERIFIED");
+    label("identity",account.role==="owner"?"Owner候補（独立UID照合は別）":
+      account.role==="partner-verified"?"協力店所属をFunctionsで照合済み（UID監査は別）":
       account.role==="not-owner"?"自社所属（協力店照合は別）":
-      account.role==="partner-candidate"?"切替前に検証済みの旧所属（独立照合は別）":
-      "会社情報が現在は拒否（所属未確認）");
+      account.role==="partner-candidate"?"旧自社所属（独立UID照合は別）":
+      "現在の会社所属は未確認");
     const results={};
     for(const name of ["products","records"]){
-      const result=await checkCollection(token,name,account.company);
+      const handoffId=account.role==="partner-verified"&&
+        ownerHandoff?.company===account.company?ownerHandoff.ids?.[name]:null;
+      const result=await checkCollection(token,name,account.company,handoffId);
       results[name]=result;
       render(name,result,account.role);
     }
-    // Keep only the precise identity proven on the SAME active account
-    // before the switch, and only after Owner/non-Owner profile checks and
-    // both existing original paths were actually readable GET AND LIST.
+    // GET+LIST verified Owner samples are held only in this page's memory.
+    // The Owner token and document contents are not retained, and switching
+    // Firebase Auth user never grants the partner additional rights.
+    if(account.role==="owner"&&["products","records"].every(name=>
+      results[name].listStatus==="allowed"&&results[name].getStatus==="allowed")){
+      const ids=Object.fromEntries(["products","records"].map(name=>
+        [name,previous.get(account.company+":"+name)]));
+      if(["products","records"].every(name=>ID.test(ids[name]||"")))
+        ownerHandoff={company:account.company,ids};
+    }
+    // Preserve the strictly same-UID legacy secondary bridge for a Rules
+    // switch that denies old company GET. Never confuse that with role proof.
     if(account.liveCompanyVerified===true&&account.role==="not-owner"&&
        ["products","records"].every(name=>results[name].listStatus==="allowed"&&
          results[name].getStatus==="allowed")){
       priorBoundCompany={uid:user.uid,company:account.company,role:"not-owner",
         bothFinanceReadsPreviouslyAllowed:true};
     }
-    const workspace=$("workspace").value.trim();
-    if(workspace){
-      if(!ID.test(workspace)||workspace===account.company)
-        throw Error("INVALID_WORKSPACE");
-      const parts=Object.fromEntries(new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Tokyo",
-        year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date())
-        .map(x=>[x.type,x.value]));
-      const date=parts.year+"-"+parts.month+"-"+parts.day;
-      try{
-        // The callable authenticates the user and validates the secondary
-        // membership. No count submission or other production write occurs.
-        await countView({workspaceCompanyId:workspace,date});
-        label("counts","専用画面の読取成功","pass");
-      }catch{label("counts","未確認（Functionsまたは所属条件）","unknown");}
-    }else label("counts","協力店ID未入力・未確認");
+    if(countVerified)label("counts","協力店件数の読取成功","pass");
+    else if(account.role==="owner")label("counts","自社Owner（協力店の確認外）");
+    else label("counts","協力店件数は未確認","unknown");
     $("status").textContent="診断終了。金額遮断の本番承認には別途、独立した実UID照合が必要です。";
   }catch{
     for(const name of ["products","records","counts"])label(name,"未確認");
