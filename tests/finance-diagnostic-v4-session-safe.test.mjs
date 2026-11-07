@@ -122,7 +122,9 @@ test("sign-out DURING outstanding finance read cannot resurrect stale success ba
  h.login(h.owner);
  const run=h.run();
  await h.encountered;
- await h.logout();
+ // The UI disables the logout button while busy. Emulate an external Firebase
+ // Auth transition (another tab / SDK session change) instead.
+ h.login(null);
  h.release();
  await run;
  for(const n of ["identity",...names,"counts","overall"])
