@@ -735,11 +735,12 @@ function clearCountOnlyDashboard(){
   "countProductSummary","countTrendChart","countProductRank","countDailyRows",
   "countTeamProducts","countTeamPeople"])$(id).replaceChildren();
 }
+function currentCountIdentity(){return activeCodeSession?"code:"+(workspaceCompanyId||"active"):auth.currentUser?.uid;}
 async function loadCountDashboard(){
  if(!data||data.role==="hub"||$("dashboardBox").hidden)return;
  const gen=++countLoadId;
  // Never reuse a member's cached counts across different company-code sessions.
- const uid=activeCodeSession?"code:"+(workspaceCompanyId||"active"):auth.currentUser?.uid;
+ const uid=currentCountIdentity();
  const day=countPeriod==="month"?$("dashboardPartnerMonth").value+"-01":$("date").value;
  const today=[dateParts.year,dateParts.month,dateParts.day].join("-");
  clearCountOnlyDashboard();
@@ -762,12 +763,12 @@ async function loadCountDashboard(){
     }
     return entry.response;
    }));
-   if(gen!==countLoadId||auth.currentUser?.uid!==uid)return;
+   if(gen!==countLoadId||currentCountIdentity()!==uid)return;
    rows.push(...chunk);
    $("countDashboardStatus").textContent="件数を確認中（"+rows.length+"/"+dates.length+"日）。";
   }
   const summary=summarizeCountOnlyResponses(rows,data.teams,countKeys);
-  if(gen!==countLoadId||auth.currentUser?.uid!==uid)return;
+  if(gen!==countLoadId||currentCountIdentity()!==uid)return;
   renderCountOnlyDashboard(summary,dates);
   $("countDashboardStatus").textContent=dates[0]+" 〜 "+dates.at(-1)+
     " の集計完了（"+dates.length+"日分・件数のみ）";
