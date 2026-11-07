@@ -72,7 +72,7 @@ test('save success needs precise owner scope, version, count checksum and SB rea
   {saved,current:{...current,entries:[{...current.entries[0],version:2}]}},
   {saved,current:{...current,entries:[{...current.entries[0],totalCount:7}]}},
   {saved,current:{...current,entries:[{...current.entries[0],
-    sbBreakdown:{"SB光":3,"SB AIR":1,"旧未分類":1}]}},
+    sbBreakdown:{"SB光":3,"SB AIR":1,"旧未分類":1}}]}},
   {saved,current:{...current,entries:[]}}
  ])assert.equal(verifyCorrectionReadback(invalid.saved,r,invalid.current),false);
 });
