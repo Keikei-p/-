@@ -42,6 +42,10 @@ export function sessionSafeFour(source=strictBaseline()){
  '      assertCurrent();\n      results[name]=result;',
  "CHECK_FINANCE");
  html=one(html,
+ '    label("identity",account.role==="owner"?', 
+ '    assertCurrent();\n    label("identity",account.role==="owner"?',
+ "CHECK_ROLE_BEFORE_DISPLAY");
+ html=one(html,
  '    const deniedEvery=FINANCE_COLLECTIONS.every(name=>',
  '    assertCurrent();\n    const deniedEvery=FINANCE_COLLECTIONS.every(name=>',
  "CHECK_OVERALL");
