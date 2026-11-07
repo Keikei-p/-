@@ -47,7 +47,9 @@ export function proposeSecondaryFinanceFence(source=originalRules()){
   const pos=candidate.indexOf(marker);
   if(pos<0||candidate.indexOf(marker,pos+marker.length)!==-1)
    throw Error("FINANCE_READ_FENCE_MISSING_MATCH_"+name);
-  const next=candidate.indexOf("\n    match /",pos+marker.length);
+  let next=candidate.indexOf("\n    match /",pos+marker.length);
+  // revenueGoals is the final root collection in the reviewed production file.
+  if(next<0)next=candidate.lastIndexOf("\n  }\n}");
   if(next<=pos)throw Error("FINANCE_READ_FENCE_MISSING_BOUNDARY_"+name);
   const current=candidate.slice(pos,next);
   const old=name==="revenueGoals"?
