@@ -248,3 +248,188 @@ test("Corrupted stored split aggregate stops new input without repairing or rese
  assert.deepEqual([...db.store],baseline);
  assert.equal(db.store.has("companies/partner/partnerWorkAudits/"+date+"__"+staff+"__v2"),false);
 });
+
+
+/*
+ * Cross-service contract test: one synthetic dataset passes through the
+ * partner's real staged submit/view, the hub owner's authenticated correction,
+ * hub day/team reports and actual index.html monthly ranking functions.
+ * NO FIREBASE credentials / NO DEPLOY / no writes to existing production.
+ */
+test("partner submit -> authenticated hub correction -> company/team totals -> real ranking cache refresh agree exactly",async()=>{
+ const fs=require("node:fs");
+ const path=require("node:path");
+ const vm=require("node:vm");
+ const {makeAuthenticatedOwnerCorrectionV3}=
+  require("../staging/partner-owner-correction-v3/trusted-auth.cjs");
+ const {makeVerifiedPartnerRankingInvalidator}=await import(
+  "../ranking/partner-count-cache-invalidation.mjs");
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ const beforeFinance=clone([...db.store].filter(([key])=>
+  /^(?:products|records)\//.test(key)));
+ const financeSnapshot=()=>clone([...db.store].filter(([key])=>
+  /^(?:products|records)\//.test(key)));
+ const oldTeam=(await api.manage(req("p",{action:"addTeam",name:"光受付班"}))).teamId;
+ const newTeam=(await api.manage(req("p",{action:"addTeam",name:"MNP班"}))).teamId;
+ const oldPerson=(await api.manage(req("p",{action:"addManaged",
+  teamId:oldTeam,name:"担当者A"}))).staffId;
+ const newPerson=(await api.manage(req("p",{action:"addManaged",
+  teamId:newTeam,name:"担当者B"}))).staffId;
+ const first={...zero(),NURO:1,"SB光・AIR":5};
+ const second={...zero(),NURO:2,"SB光・AIR":3};
+ assert.equal((await api.submit(req("p",{
+  date,staffId:oldPerson,expectedVersion:0,counts:first
+ }))).version,1);
+ assert.equal((await api.submit(req("p",{
+  date,staffId:newPerson,expectedVersion:0,counts:second
+ }))).version,1);
+ const summaryPath="companies/hub/partnerWorkCountDays/"+date+"/reports/partner";
+ const originalEntryPath="companies/partner/partnerWorkEntries/"+date+"__"+oldPerson;
+ const secondEntryPath="companies/partner/partnerWorkEntries/"+date+"__"+newPerson;
+ const oldEntry=clone(db.store.get(originalEntryPath));
+ const secondEntry=clone(db.store.get(secondEntryPath));
+ const initialSummary=clone(db.store.get(summaryPath));
+ assert.equal(initialSummary.totalCount,11);
+ assert.equal(initialSummary.counts.NURO,3);
+ assert.equal(initialSummary.counts["SB光・AIR"],8);
+ const auth=()=>({
+  getUser:async uid=>({uid,email:uid+"@example.com",
+   emailVerified:true,disabled:false}),
+  verifyIdToken:async(jwt,check)=>{
+   assert.equal(check,true);
+   assert.equal(jwt,"h".repeat(30));
+   return {uid:"h",email:"h@example.com",email_verified:true};
+  }
+ });
+ const ownerCorrection=makeAuthenticatedOwnerCorrectionV3({
+  db,getAuth:auth,FieldValue:{serverTimestamp:()=>({seconds:NOW/1000})},
+  HttpsError:CallError,enabled:()=>true,
+  now:()=>Date.parse("2026-11-07T07:00:00+09:00")
+ });
+ const ownerRequest=data=>req("h",data);
+ const ownerBefore=await ownerCorrection.list(ownerRequest({
+  date,partnerCompanyId:"partner"
+ }));
+ assert.equal(ownerBefore.entries.length,2);
+ assert.doesNotMatch(JSON.stringify(ownerBefore),/revenue|unitPrice|cashback|privateCounts|totalRevenue/i);
+ const firstVisible=ownerBefore.entries.find(x=>x.staffId===oldPerson);
+ assert.deepEqual(firstVisible.sbBreakdown,{"SB光":0,"SB AIR":0,"旧未分類":5});
+ const html=fs.readFileSync(path.join(__dirname,"../index.html"),"utf8");
+ const extract=name=>{
+  let start=html.indexOf("function "+name+"(");
+  assert(start>=0,"existing production ranking function "+name);
+  if(html.slice(start-6,start)==="async ")start-=6;
+  const end=html.indexOf("\n}",start);
+  assert(end>start,"rank function terminator "+name);
+  return html.slice(start,end+2);
+ };
+ const cache=new Map(),rankRequests=[];
+ const rankScope={uid:"h",hubCompanyId:"hub"};
+ const ctx=vm.createContext({
+  PARTNER_QUICK_RANK_KEYS:KEYS,
+  currentPartnerRankingKey:month=>rankScope.uid+"|"+rankScope.hubCompanyId+"|"+month,
+  partnerRankingDailyCache:cache,
+  getTodayString:()=>date,
+  readPartnerQuickDay:async({date:day})=>{
+   rankRequests.push(["quick",day]);
+   // The historical quick total must NEVER be added to staff ledger totals.
+   return {data:{role:"hub",date:day,
+    partners:day===date?[{partnerCompanyId:"partner",name:"協力店",
+     counts:{...zero(),NURO:90},totalCount:90}]:[]}};
+  },
+  readPartnerWorkDay:async({date:day})=>{
+   rankRequests.push(["staff",day]);
+   return {data:await api.view(req("h",{date:day}))};
+  }
+ });
+ vm.runInContext([
+  extract("validatedPartnerRankingDay"),
+  extract("mergedPartnerRankingDay"),
+  extract("readPartnerRankingMonth")
+ ].join("\n"),ctx);
+ const beforeRank=await ctx.readPartnerRankingMonth("2026-10");
+ assert.equal(beforeRank.complete,true);
+ assert.equal(beforeRank.rows.length,1);
+ assert.equal(beforeRank.rows[0].totalCount,11,"staff ledger wins over old quick 90");
+ assert.equal(beforeRank.rows[0].counts["SB光・AIR"],8);
+ assert.equal(rankRequests.filter(x=>x[0]==="staff").length,31);
+ const next={...first,NURO:3}; // +2 in company and old team, no altered raw sale
+ const receipt=await ownerCorrection.correct(ownerRequest({
+  date,partnerCompanyId:"partner",staffId:oldPerson,expectedVersion:1,
+  counts:next,sbBreakdown:{"SB光":2,"SB AIR":2,"旧未分類":1},
+  correctionReason:"契約内容を照合して光とAIRの分類を訂正"
+ }));
+ assert.equal(receipt.saved,true);
+ assert.equal(receipt.version,2);
+ assert.equal(receipt.totalCount,8);
+ const afterEntry=db.store.get(originalEntryPath);
+ const afterSummary=db.store.get(summaryPath);
+ assert.equal(afterEntry.version,2);
+ assert.equal(afterEntry.totalCount,8);
+ assert.deepEqual(afterEntry.privateCounts,oldEntry.privateCounts);
+ assert.equal(afterEntry.teamIdSnapshot,oldEntry.teamIdSnapshot);
+ assert.deepEqual(db.store.get(secondEntryPath),secondEntry);
+ assert.equal(afterSummary.totalCount,13);
+ assert.equal(afterSummary.counts.NURO,5);
+ assert.equal(afterSummary.counts["SB光・AIR"],8);
+ assert.deepEqual(afterSummary.sbBreakdown,
+  {"SB光":2,"SB AIR":2,"旧未分類":4});
+ assert.equal(afterSummary.totalCount,
+  afterEntry.totalCount+secondEntry.totalCount);
+ const oldAudit="companies/partner/partnerWorkAudits/"+date+
+  "__"+oldPerson+"__v1";
+ const correctedAudit="companies/partner/partnerWorkAudits/"+date+
+  "__"+oldPerson+"__v2";
+ assert.equal(db.store.get(oldAudit).version,1);
+ assert.equal(db.store.get(correctedAudit).kind,
+  "hub_owner_count_correction_v1");
+ assert.deepEqual(financeSnapshot(),beforeFinance);
+ const hub=await api.view(req("h",{date,partnerCompanyId:"partner",
+  includeTeamStatus:true}));
+ assert.equal(hub.role,"hub");
+ assert.equal(hub.partners.length,1);
+ assert.equal(hub.partners[0].totalCount,13);
+ assert.equal(hub.partners[0].counts.NURO,5);
+ assert.deepEqual(hub.partners[0].sbBreakdown,
+  {"SB光":2,"SB AIR":2,"旧未分類":4});
+ assert.equal(hub.partnerTeamDetails.verifiedSharedCount,13);
+ assert.equal(hub.partnerTeamDetails.unverifiedTeamCount,0);
+ assert.equal(hub.partnerTeamDetails.unreconciledWithCompanyReport,false);
+ assert.equal(hub.partnerTeamDetails.teams.length,2);
+ assert.equal(hub.partnerTeamDetails.teams.reduce((s,t)=>s+t.totalCount,0),13);
+ assert.equal(hub.teamReports.length,1);
+ assert.equal(hub.teamReports[0].verified,true);
+ assert.equal(hub.teamReports[0].teams.reduce((s,t)=>s+t.totalCount,0),13);
+ assert.doesNotMatch(JSON.stringify(hub),/totalRevenue|unitPrice|cashback|privateCounts/i);
+ const ownerAfter=await ownerCorrection.list(ownerRequest({
+  date,partnerCompanyId:"partner"
+ }));
+ assert.equal(ownerAfter.entries.find(x=>x.staffId===oldPerson).version,2);
+ const staleWithoutRefresh=await ctx.readPartnerRankingMonth("2026-10");
+ assert.equal(staleWithoutRefresh.rows[0].totalCount,11,
+  "reproduces existing 1h stale historical cache before invalidation");
+ let resetMonth=[],recheck=null;
+ const invalidate=makeVerifiedPartnerRankingInvalidator({
+  dailyCache:cache,getActiveScope:()=>rankScope,
+  resetVisibleMonth:month=>{resetMonth.push(month)},
+  requestRefresh:async month=>{recheck=await ctx.readPartnerRankingMonth(month)}
+ });
+ await invalidate({date,month:"2026-10",partnerCompanyId:"partner",version:2});
+ assert.deepEqual(resetMonth,["2026-10"]);
+ assert.equal(recheck.complete,true);
+ assert.equal(recheck.rows.length,1);
+ assert.equal(recheck.rows[0].totalCount,13);
+ assert.equal(recheck.rows[0].counts.NURO,5);
+ assert.equal(recheck.rows[0].counts["SB光・AIR"],8);
+ assert.equal(rankRequests.filter(x=>x[0]==="staff").length,32,
+  "only the corrected date must be reread");
+ const frozen=clone([...db.store]);
+ await assert.rejects(ownerCorrection.correct(ownerRequest({
+  date,partnerCompanyId:"partner",staffId:oldPerson,expectedVersion:1,
+  counts:next,sbBreakdown:{"SB光":2,"SB AIR":2,"旧未分類":1},
+  correctionReason:"前回の訂正を重複送信しようとした"
+ })),error=>error?.code==="aborted");
+ assert.deepEqual(clone([...db.store]),frozen,
+  "stale version must not change counts, sales, audits or team history");
+ assert.deepEqual(financeSnapshot(),beforeFinance);
+});
