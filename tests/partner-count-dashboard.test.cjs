@@ -14,8 +14,9 @@ function source(name){
  assert(end>start);
  return page.slice(start,end+2);
 }
-const ctx=vm.createContext({Date,Number,Object,Map,Set,KEYS});
-vm.runInContext(["periodDatesForCounts","summarizeCountOnlyResponses","groupedProductCounts","companyPortalStats"].map(source).join("\n"),ctx);
+const SB_LEGACY="SB光・AIR",SB_PARTS=["SB光","SB AIR","旧未分類"];
+const ctx=vm.createContext({Date,Number,Object,Map,Set,KEYS,SB_LEGACY,SB_PARTS});
+vm.runInContext(["periodDatesForCounts","resolvedSbSplit","summarizeCountOnlyResponses","groupedProductCounts","companyPortalStats"].map(source).join("\n"),ctx);
 const counts=changes=>Object.fromEntries(KEYS.map(k=>[k,changes[k]||0]));
 const staff=[{id:"a",name:"佐藤",teamId:"t1"},{id:"b",name:"田中",teamId:"t2"}];
 const record=(id,changes,teamId)=>({staffId:id,counts:counts(changes),
@@ -170,4 +171,43 @@ test("company names and detail are visible only after authentication and existin
  assert.doesNotMatch(page,/firebase-firestore\.js|getFirestore\(|\brevenuePerUnit\b|\btotalRevenue\b|\bunitPrice\b|\bpricingOptions\b/);
  assert.match(original,/function canCurrentUserViewRevenue\(\)/);
  assert.match(original,/function canCurrentUserViewUnitPrice\(\)/);
+});
+
+test("v2 category split displays old combined 5 as UNCLASSIFIED; Light/Air are separate and summed once",()=>{
+ const old=record("a",{"SB光・AIR":5},"t1");
+ const newer={...record("b",{"SB光・AIR":3},"t2"),
+  sbBreakdown:{"SB光":1,"SB AIR":2,"旧未分類":0}};
+ const v2={...day("2026-10-31",[old,newer]),
+  sbBreakdownSchema:"sb-separated-v1"};
+ const before=JSON.stringify(v2);
+ const summary=ctx.summarizeCountOnlyResponses([v2],[{id:"t1",name:"1班"},{id:"t2",name:"2班"}],KEYS);
+ assert.equal(summary.total,8);
+ assert.equal(summary.products["SB光"],1);
+ assert.equal(summary.products["SB AIR"],2);
+ assert.equal(summary.products["旧未分類"],5);
+ assert.equal(summary.products["SB光・AIR"],undefined);
+ assert.equal(Object.values(summary.products).reduce((a,b)=>a+b,0),8);
+ assert.equal(summary.teamProducts.find(x=>x.id==="t1").products["旧未分類"],5);
+ assert.equal(summary.teamProducts.find(x=>x.id==="t2").products["SB光"],1);
+ assert.equal([...ctx.groupedProductCounts(summary.products,"single")].length,KEYS.length+2);
+ assert.equal(JSON.stringify(v2),before,"the response must never be silently backfilled");
+});
+test("inconsistent v2 split, mixed response schemas or wrong totals abort ranking",()=>{
+ const v2={...day("2026-10-31",[{...record("a",{"SB光・AIR":5},"t1"),
+  sbBreakdown:{"SB光":2,"SB AIR":4,"旧未分類":0}}]),
+  sbBreakdownSchema:"sb-separated-v1"};
+ assert.throws(()=>ctx.summarizeCountOnlyResponses([v2],[],KEYS),/sb_count_mismatch/);
+ const valid={...v2,records:[{...v2.records[0],
+  sbBreakdown:{"SB光":2,"SB AIR":3,"旧未分類":0}}]};
+ assert.throws(()=>ctx.summarizeCountOnlyResponses([valid,
+  day("2026-10-30",[record("b",{NURO:1},"t2")])],[],KEYS),/mixed_sb_schema/);
+});
+test("new input remains opt-in from server schema, without money or extra count writes",()=>{
+ assert.match(page,/id="sbSplitBox" hidden/);
+ assert.match(page,/const supportsSbSplit=\(\)=>data\?\.sbBreakdownSchema==="sb-separated-v1"/);
+ assert.match(page,/const sbBreakdown=supportsSbSplit\(\)\?validateSbGrid\(\):null/);
+ assert.match(page,/\.\.\.\(sbBreakdown\?\{sbBreakdown\}:\{\}\)/);
+ assert.match(page,/if\(oldInput\)oldInput\.parentElement\.hidden=sbMode/);
+ assert.match(page,/sbBreakdown&&SB_PARTS\.some\(k=>check\.sbBreakdown\?\.\[k\]!==sbBreakdown\[k\]\)/);
+ assert.doesNotMatch(page,/firebase-firestore\.js|getFirestore\(|setDoc\(|addDoc\(|deleteDoc\(/);
 });
