@@ -30,7 +30,16 @@ export function classifyInventory(json){
     const platform=item.platform??item.generation??"";
     const gen=/(?:gcfv1|gen1|1st)/i.test(platform)?"gen1":
       /(?:gcfv2|gen2|2nd)/i.test(platform)?"gen2":"unknown";
-    rows[basename].push({region,targetProject,gen});
+    const rawState=item.state??item.status??null;
+    const stateKnown=typeof rawState==="string";
+    const active=rawState==="ACTIVE";
+    const codebase=item.codebase??item.labels?.["firebase-functions-codebase"]??null;
+    const codebaseKnown=typeof codebase==="string";
+    const flags=item.environmentVariables??item.serviceConfig?.environmentVariables;
+    const flagKnown=isObj(flags)&&Object.prototype.hasOwnProperty.call(flags,"PARTNER_WORKSPACE_ENABLED");
+    const countEnabled=flagKnown&&flags.PARTNER_WORKSPACE_ENABLED==="enabled";
+    rows[basename].push({region,targetProject,gen,stateKnown,active,codebaseKnown,
+      codebaseMatch:codebaseKnown&&codebase==="partner-workspace",flagKnown,countEnabled});
   }
   const functions={};
   for(const name of TARGETS){
@@ -45,7 +54,13 @@ export function classifyInventory(json){
       otherProject:arr.filter(x=>x.targetProject==="no").length,
       gen1Listed:arr.filter(x=>x.gen==="gen1").length,
       gen2Listed:arr.filter(x=>x.gen==="gen2").length,
-      generationUnknown:arr.filter(x=>x.gen==="unknown").length
+      generationUnknown:arr.filter(x=>x.gen==="unknown").length,
+      stateKnown:arr.filter(x=>x.stateKnown).length,
+      activeState:arr.filter(x=>x.active).length,
+      codebaseKnown:arr.filter(x=>x.codebaseKnown).length,
+      expectedCodebase:arr.filter(x=>x.codebaseMatch).length,
+      workspaceFlagKnown:arr.filter(x=>x.flagKnown).length,
+      workspaceFlagEnabled:arr.filter(x=>x.countEnabled).length
     };
   }
   return Object.freeze({project:PROJECT,mode:"SANITIZED_FUNCTIONS_LIST_READ_ONLY",
