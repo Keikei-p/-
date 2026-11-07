@@ -70,7 +70,7 @@ const FieldValue={
  serverTimestamp:()=>({...stamp}),
  delete:()=>({__deleteField:true})
 };
-function fixture(){
+function fixture({workspaceEnabled=true}={}){
  const db=new FakeDb();
  db.seed("companies/hub",{name:"自社",companyKind:"internal",active:true,
   ownerUid:"h",masterUid:"h"});
@@ -127,10 +127,14 @@ function fixture(){
   verifyIdToken:async token=>({uid:token[0],email:token[0]+"@example.com",
    email_verified:true})
  });
- const service=buildService({db,getAuth:auth,FieldValue,HttpsError:CallError});
+ const clock=()=>Date.parse("2026-11-07T19:00:00+09:00");
  const workspace=makeWorkspace({db,getAuth:auth,FieldValue,
   Timestamp:{fromMillis:ms=>({toMillis:()=>ms})},
-  HttpsError:CallError,enabled:()=>true,now:()=>Date.parse("2026-11-07T19:00:00+09:00")});
+  HttpsError:CallError,enabled:()=>workspaceEnabled,now:clock});
+ // Read the actual count-only backend as the same verified bearer/UID.
+ // A disabled or incompatible backend must block handoff BEFORE writing.
+ const service=buildService({db,getAuth:auth,FieldValue,HttpsError:CallError,
+  readCountWorkspace:request=>workspace.view(request),now:clock});
  const req=(uid="s",data={})=>({data,auth:{uid,token:{
   email:uid+"@example.com",email_verified:true
  }},rawRequest:{headers:{authorization:"Bearer "+uid.repeat(40)}}});
@@ -145,6 +149,7 @@ test("read-only preview confirms eligibility but changes no company, money, memb
  assert.equal(result.eligible,true);
  assert.equal(result.needsExplicitConsent,true);
  assert.equal(result.countInputReverificationRequired,true);
+ assert.equal(result.countPathReadOnlyPreflightPassed,true);
  assert.deepEqual(db.snapshot(),before);
  await assert.rejects(service.commit(req("s",{workspaceCompanyId:"partner"})),
   e=>e.code==="invalid-argument");
@@ -202,6 +207,44 @@ test("atomic self handoff keeps every historical original and member snapshot; e
  assert.equal(db.map.get("partnerHistoricalTransfers/s").sourceCompanyId,"hub");
 });
 
+test("missing or disabled count-only backend prevents both preview and primary transfer; zero writes",async()=>{
+ const {db,service,req}=fixture({workspaceEnabled:false});
+ const original=db.snapshot();
+ await assert.rejects(service.preview(req("s",{workspaceCompanyId:"partner"})),
+  e=>e.code==="failed-precondition");
+ await assert.rejects(service.commit(req("s",{workspaceCompanyId:"partner",consent:CONSENT})),
+  e=>e.code==="failed-precondition");
+ assert.deepEqual(db.snapshot(),original);
+});
+
+test("existing incompatible shared count source blocks handoff without overwriting old reports",async()=>{
+ const {db,service,req}=fixture();
+ const summary="companies/hub/partnerWorkCountDays/2026-11-07/reports/partner";
+ const amounts=Object.fromEntries(KEYS.map(k=>[k,0]));
+ db.seed(summary,{source:"company-quick-v0",hubCompanyId:"hub",partnerCompanyId:"partner",
+  date:"2026-11-07",counts:amounts,totalCount:0});
+ const before=db.snapshot();
+ await assert.rejects(service.preview(req("s",{workspaceCompanyId:"partner"})),
+  e=>e.code==="failed-precondition");
+ await assert.rejects(service.commit(req("s",{workspaceCompanyId:"partner",consent:CONSENT})),
+  e=>e.code==="failed-precondition");
+ assert.deepEqual(db.snapshot(),before);
+});
+
+test("inconsistent staff/day summary blocks the same UID from losing its internal input rights",async()=>{
+ const {db,service,req}=fixture();
+ const entry="companies/partner/partnerWorkEntries/2026-11-07__s";
+ const summary="companies/hub/partnerWorkCountDays/2026-11-07/reports/partner";
+ const zero=Object.fromEntries(KEYS.map(k=>[k,0])),two={...zero,[KEYS[0]]:2};
+ db.seed(summary,{source:"staff-entries-v1",hubCompanyId:"hub",partnerCompanyId:"partner",
+  date:"2026-11-07",counts:zero,totalCount:0});
+ db.seed(entry,{staffId:"s",companyId:"partner",date:"2026-11-07",
+  counts:two,totalCount:2,version:1,privateCounts:{},privateTotalCount:0});
+ const before=db.snapshot();
+ await assert.rejects(service.preview(req("s",{workspaceCompanyId:"partner"})));
+ await assert.rejects(service.commit(req("s",{workspaceCompanyId:"partner",consent:CONSENT})));
+ assert.deepEqual(db.snapshot(),before);
+});
 test("repeat, forged actor, concurrent archive, owner, revoked partner, changed team and financial grants fail atomically",async()=>{
  const {db,service,req}=fixture();
  const good={workspaceCompanyId:"partner",consent:CONSENT};
