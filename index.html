@@ -5631,13 +5631,14 @@ body.product-reordering .product-list {
     <p id="partnerCompanyStatus" role="status" aria-live="polite"></p>
     <section id="ownerPartnerDirectory" class="p-inline-card" aria-label="協力店を会社別に探す">
       <h3>協力店を探す・管理画面を開く</h3>
-      <p class="p-inline-muted">25社ずつ追加表示します。検索は読み込み済みの会社が対象です。会社の件数訂正は管理画面を開いて行います。</p>
+      <p class="p-inline-muted">会社名検索は読み込み済みの会社が対象です。見つからなければ、ボタンでさらに最大125社分をまとめて検索できます。件数訂正は会社の管理画面から行えます。</p>
       <label class="p-inline-field">読み込み済みの会社名で絞り込み
         <input type="search" id="ownerPartnerDirectoryFilter" placeholder="会社名を検索">
       </label>
       <p id="ownerPartnerDirectoryStatus" role="status" aria-live="polite"></p>
       <div id="ownerPartnerDirectoryRows" class="p-inline-list"></div>
       <button id="ownerPartnerDirectoryNext" type="button" class="team-action-button" hidden>次の25社を表示</button>
+      <button id="ownerPartnerDirectorySearchMore" type="button" class="team-action-button" hidden>さらに最大125社を検索</button>
     </section>
     <h3>当日の報告・件数専用の承認状況</h3>
     <div id="partnerCompanyList" style="display:grid;gap:12px;"></div>
@@ -9509,20 +9510,23 @@ quickInviteButton.onclick =
 // Paginated count-only Owner directory. Avoids the older 100-company
 // limit without modifying accounts, company membership or financial records.
 let ownerDirNonce=0,ownerDirCursor=null,ownerDirHasMore=true,ownerDirBusy=false;
-let ownerDirError="";
+let ownerDirError="",ownerDirSearchRunning=false,ownerDirSearchNonce=0;
 const ownerDirCompanies=new Map();
 function ownerDirReset(){
- ++ownerDirNonce;ownerDirCursor=null;ownerDirHasMore=true;
+ ++ownerDirNonce;++ownerDirSearchNonce;ownerDirSearchRunning=false;
+ ownerDirCursor=null;ownerDirHasMore=true;
  ownerDirBusy=false;ownerDirError="";ownerDirCompanies.clear();
  document.getElementById("ownerPartnerDirectoryRows").replaceChildren();
  document.getElementById("ownerPartnerDirectoryFilter").value="";
  document.getElementById("ownerPartnerDirectoryStatus").textContent="";
  document.getElementById("ownerPartnerDirectoryNext").hidden=true;
+ document.getElementById("ownerPartnerDirectorySearchMore").hidden=true;
 }
 function ownerDirRender(){
  const rows=document.getElementById("ownerPartnerDirectoryRows"),
   hint=document.getElementById("ownerPartnerDirectoryStatus"),
   more=document.getElementById("ownerPartnerDirectoryNext"),
+  findMore=document.getElementById("ownerPartnerDirectorySearchMore"),
   filter=document.getElementById("ownerPartnerDirectoryFilter").value.trim().toLowerCase();
  rows.replaceChildren();
  const visible=[...ownerDirCompanies.values()].filter(c=>c.name.toLowerCase().includes(filter))
@@ -9545,11 +9549,13 @@ function ownerDirRender(){
   card.append(quickButton);rows.append(card);
  }
  more.hidden=!ownerDirHasMore;
- more.disabled=ownerDirBusy;
+ more.disabled=ownerDirBusy||ownerDirSearchRunning;
+ findMore.hidden=!ownerDirHasMore;
+ findMore.disabled=ownerDirBusy||ownerDirSearchRunning||!filter;
  hint.textContent=(ownerDirError?ownerDirError+"｜":"")+"読み込み済み"+ownerDirCompanies.size+"社"+
   (filter?"｜一致"+visible.length+"社":"")+
   (ownerDirBusy?"｜続きを確認中…":ownerDirHasMore?"｜続きがあります":"｜最終ページ")+
-  "。見つからない場合は次のページを読み込んでください。";
+  "。見つからない場合は次の25社、または検索対象を最大125社追加してください。";
 }
 async function ownerDirFetch(reset=false){
  if(ownerDirBusy)return;
@@ -9593,8 +9599,32 @@ async function ownerDirFetch(reset=false){
   if(!stale()){ownerDirBusy=false;ownerDirRender();}
  }
 }
+// Deliberate on-demand expansion: no background scans or unbounded reads.
+// Each click reads at most five ordinary 25-company pages; same Owner API.
+async function ownerDirSearchMore(){
+ if(ownerDirBusy||ownerDirSearchRunning||!ownerDirHasMore||
+    !document.getElementById("ownerPartnerDirectoryFilter").value.trim()||
+    !canLoadPartnerRanking()||!currentUser?.uid)return;
+ const uid=currentUser.uid,hub=currentUserData?.companyId;
+ const ticket=++ownerDirSearchNonce;
+ ownerDirSearchRunning=true;ownerDirRender();
+ try{
+  for(let page=0;page<5&&ownerDirHasMore;page++){
+   if(ticket!==ownerDirSearchNonce||uid!==currentUser?.uid||
+      hub!==currentUserData?.companyId||!canLoadPartnerRanking()||
+      partnerCompanyManagement.style.display==="none")break;
+   await ownerDirFetch(false);
+   if(ownerDirError)break;
+  }
+ }finally{
+  if(ticket===ownerDirSearchNonce){
+   ownerDirSearchRunning=false;ownerDirRender();
+  }
+ }
+}
 document.getElementById("ownerPartnerDirectoryFilter").addEventListener("input",ownerDirRender);
 document.getElementById("ownerPartnerDirectoryNext").onclick=()=>void ownerDirFetch(false);
+document.getElementById("ownerPartnerDirectorySearchMore").onclick=()=>void ownerDirSearchMore();
 
 let partnerCompanyListGeneration=0;
 let ownerProxyCompany="",ownerProxyCompanyName="",ownerProxyNonce=0;
