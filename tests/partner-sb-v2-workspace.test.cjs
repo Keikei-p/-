@@ -470,7 +470,7 @@ test("after owner count correction, partner stale save rejects then fresh save w
  const team=(await api.manage(req("p",{
   action:"addTeam",name:"代理訂正後の通常入力班"
  }))).teamId;
- const staff=(await api.manage(req("p",{
+ const staffId=(await api.manage(req("p",{
   action:"addManaged",name:"担当者A",teamId:team
  }))).staffId;
  const initialCounts={...zero(),NURO:1,"SB光・AIR":5};
@@ -566,7 +566,7 @@ test("after owner count correction, partner stale save rejects then fresh save w
 test("after owner SB classification, legacy split-less partner cannot change combined total, but can resume safely with explicit split",async()=>{
  const {db,api,req,zero}=setup(),date="2026-10-31";
  const team=(await api.manage(req("p",{action:"addTeam",name:"光AIR内訳班"}))).teamId;
- const staff=(await api.manage(req("p",{
+ const staffId=(await api.manage(req("p",{
   action:"addManaged",name:"担当者B",teamId:team
  }))).staffId;
  const originalCounts={...zero(),"SB光・AIR":5};
