@@ -270,3 +270,104 @@ test("candidate is unregistered, no production SDK, no historical financial muta
   "partnerWorkEntries","partnerQuickCountDays"])
   assert.doesNotMatch(candidate,new RegExp('collection\\("'+table+'"\\)'));
 });
+
+
+test("actual STAGED handoff transaction closes original finance GET/LIST under current Emulator Rules without changing source originals",{
+ skip:!process.env.FIRESTORE_EMULATOR_HOST
+},async()=>{
+ // This joins the REAL buildService.commit() output with Firestore Rules.
+ // The earlier Rules fixture modeled a hypothetical migration by hand.
+ // All writes remain on an isolated demo Firestore emulator.
+ const {initializeTestEnvironment,assertSucceeds,assertFails}=
+  require("@firebase/rules-unit-testing");
+ const {doc,setDoc,getDoc,collection,query,where,getDocsFromServer}=
+  require("firebase/firestore");
+ const {db,service,workspace,req}=fixture();
+ const before=db.snapshot();
+ const rules=readFileSync(path.join(__dirname,"../firestore.rules"),"utf8");
+ const env=await initializeTestEnvironment({
+  projectId:"demo-nico-secondary-handoff",firestore:{rules}
+ });
+ const self=env.authenticatedContext("s",{
+  email:"s@example.com",email_verified:true
+ }).firestore();
+ const owner=env.authenticatedContext("h",{
+  email:"h@example.com",email_verified:true
+ }).firestore();
+ const getRef=(firestore,p)=>doc(firestore,...p.split("/"));
+ const money=["products","records","recordCorrections","revenueGoals"];
+ try{
+  await env.withSecurityRulesDisabled(async ctx=>{
+   const firestore=ctx.firestore();
+   for(const [p,v] of Object.entries(before)){
+    await setDoc(getRef(firestore,p),v);
+   }
+  });
+  // PROVE existing primary/internal access for the same secondary partner UID:
+  // permissions are still present before any approved self-handoff.
+  for(const p of financialPaths.slice(0,3)){
+   await assertSucceeds(getDoc(getRef(self,p)));
+   await assertSucceeds(getDocsFromServer(query(
+    collection(self,p.split("/")[0]),where("companyId","==","hub")
+   )));
+  }
+  await assertFails(getDoc(getRef(self,financialPaths[3])));
+  const beforePreview=db.snapshot();
+  const preview=await service.preview(req("s",{
+   workspaceCompanyId:"partner"
+  }));
+  assert.equal(preview.eligible,true);
+  assert.deepEqual(db.snapshot(),beforePreview);
+  const result=await service.commit(req("s",{
+   workspaceCompanyId:"partner",consent:CONSENT
+  }));
+  assert.equal(result.transferred,true);
+  assert.equal(result.historyArchived,true);
+  const after=db.snapshot();
+  const changed=Object.keys(after).filter(p=>
+   JSON.stringify(after[p])!==JSON.stringify(before[p]));
+  assert.deepEqual(changed.sort(),[
+   "users/s","companies/hub/members/s",
+   "partnerWorkspaceContexts/s","partnerHistoricalTransfers/s"
+  ].sort());
+  for(const p of financialPaths)
+   assert.deepEqual(after[p],before[p],"financial document changed: "+p);
+  // Apply ONLY the four exact documents produced by the actual handoff logic
+  // to the local emulator, not any manually fabricated replacement.
+  await env.withSecurityRulesDisabled(async ctx=>{
+   const firestore=ctx.firestore();
+   for(const p of changed)
+    await setDoc(getRef(firestore,p),after[p]);
+  });
+  for(const p of financialPaths){
+   await assertFails(getDoc(getRef(self,p)));
+   await assertFails(getDocsFromServer(query(
+    collection(self,p.split("/")[0]),where("companyId","==","hub")
+   )));
+   const retained=(await env.withSecurityRulesDisabled(async ctx=>
+    getDoc(getRef(ctx.firestore(),p)))).data();
+   assert.deepEqual(retained,before[p],"old source changed after transfer: "+p);
+   // Internal owner rights remain valid; no person is lost.
+   await assertSucceeds(getDoc(getRef(owner,p)));
+  }
+  await assertFails(getDoc(getRef(self,"partnerHistoricalTransfers/s")));
+  const archived=(await env.withSecurityRulesDisabled(async ctx=>
+   getDoc(getRef(ctx.firestore(),"partnerHistoricalTransfers/s")))).data();
+  assert.deepEqual(archived.originalUser,before["users/s"]);
+  assert.deepEqual(archived.originalMember,before["companies/hub/members/s"]);
+  assert.deepEqual(archived.originalContext,before["partnerWorkspaceContexts/s"]);
+  assert.equal(after["companies/hub/members/s"].active,false);
+  assert.equal(after["partnerWorkspaceContexts/s"].active,false);
+  assert.equal(after["users/s"].companyId,"partner");
+  assert.equal(after["users/s"].canViewRevenue,false);
+  assert.equal(after["users/s"].canViewUnitPrice,false);
+  const ownWorkspace=await workspace.view(req("s",{
+   date:"2026-11-07"
+  }));
+  assert.equal(ownWorkspace.role,"member");
+  assert.equal(ownWorkspace.companyName,"協力店");
+  // GET/LIST denial is a LOCAL EMULATOR proof, not production UID proof.
+  assert.equal(process.env.FIRESTORE_EMULATOR_HOST!==undefined,true);
+  assert.equal(money.length,4);
+ }finally{await env.cleanup()}
+});
