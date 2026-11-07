@@ -56,7 +56,7 @@ const app=initializeApp({apiKey:"AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
 const auth=getAuth(app),functions=getFunctions(app,"asia-northeast1");
 const countView=httpsCallable(functions,"getPartnerWorkspace",{timeout:15000});
 let busy=false,previous=new Map(),previousUid=null,previousCompany=null;
-let priorBoundCompany=null; // Volatile only: NEVER localStorage/sessionStorage/URL/logs
+let priorBoundCompany=null; // Volatile one-page memory only; never persist identity
 const clearBinding=()=>{
   previous.clear();priorBoundCompany=null;previousUid=null;previousCompany=null;
 };
