@@ -121,7 +121,7 @@ test("strict publisher never writes Firestore, Rules, Functions, Auth or origina
  assert.match(code,/FINAL_ASSET_HASH_MISMATCH/);
  assert.match(code,/FINAL_VERSION_CONFIG_UNVERIFIED/);
  assert.match(code,/NON_DIAGNOSTIC_FILE_MODIFIED/);
- assert.match(code,/strictFour\(\)/);
+ assert.match(code,/sessionSafeFour\(\)/);
  assert.match(code,/financeAlertFour\(\)/);
  assert.doesNotMatch(code,/firebase deploy|firestore\.googleapis\.com|functions:deploy|firebaserules\.googleapis\.com/);
 });
