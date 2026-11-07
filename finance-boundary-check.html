@@ -39,7 +39,7 @@ input{width:100%;padding:12px;border:1px solid #aebdcc;border-radius:10px;font-s
 <div class="output"><span>商材の金額原票（LIST / GET）</span><span id="products">未確認</span></div>
 <div class="output"><span>実績の金額原票（LIST / GET）</span><span id="records">未確認</span></div>
 <div class="output"><span>協力店件数画面（読取のみ）</span><span id="counts">未確認</span></div>
-<p class="muted" id="meaning">拒否されたLISTだけではGETの遮断は証明できません。診断ページを開いたままルール切替前後に再実行すると、前回読み取った原票IDに対するGETも検証できます。原票ID・UID・トークンは出力されません。</p>
+<p class="muted" id="meaning">**重要：** 自社から協力店に移った実アカウントは、Rules変更前にこの画面で「LIST許可・GET許可」を確認し、<strong>画面を閉じずに</strong>切替後も再実行してください。旧自社情報の読み取りが拒否されても、本人の所属情報と直前に検証した文書IDをこの画面内だけで一時保持し、GETも試します。再読み込みすると文書IDは消え、その場合は「GET未検証」と表示します。独立した実UID照合と件数入力継続確認は別途必要です。</p>
 <p><a href="./">営業実績管理へ戻る</a></p>
 </section></main>
 <script type="module">
@@ -56,6 +56,10 @@ const app=initializeApp({apiKey:"AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
 const auth=getAuth(app),functions=getFunctions(app,"asia-northeast1");
 const countView=httpsCallable(functions,"getPartnerWorkspace",{timeout:15000});
 let busy=false,previous=new Map(),previousUid=null,previousCompany=null;
+let priorBoundCompany=null; // Volatile one-page memory only; never persist identity
+const clearBinding=()=>{
+  previous.clear();priorBoundCompany=null;previousUid=null;previousCompany=null;
+};
 const label=(id,text,klass="unknown")=>{const item=$(id);item.textContent=text;item.className=klass;};
 const request=async(url,method,token,data)=>{
   if(!url.startsWith(BASE)||new URL(url).origin!=="https://firestore.googleapis.com")
@@ -81,16 +85,34 @@ const masked=async(path,fields,token)=>{
   return request(url.toString(),"GET",token);
 };
 const readCompany=async(token,uid)=>{
+  // Self-profile GET is allowed independently of the old company membership.
+  // A protected Rules switch may intentionally deny company GET for a dual-
+  // context partner. Do not give up before testing their financial GET/LIST.
   const u=await masked("users/"+encodeURIComponent(uid),["companyId","active","companyRole"],token);
-  if(u.status!=="allowed"||u.body?.fields?.active?.booleanValue===false)return null;
+  if(u.status!=="allowed"||u.body?.fields?.active?.booleanValue!==true)return null;
   const company=u.body?.fields?.companyId?.stringValue;
   if(!ID.test(company||""))return null;
   const c=await masked("companies/"+company,["companyKind","ownerUid"],token);
-  if(c.status!=="allowed")return null;
-  const kind=c.body?.fields?.companyKind?.stringValue||"internal";
-  if(!["internal","direct"].includes(kind))return null;
-  const role=c.body?.fields?.ownerUid?.stringValue===uid?"owner":"not-owner";
-  return {company,role};
+  if(c.status==="allowed"){
+    const kind=c.body?.fields?.companyKind?.stringValue||"internal";
+    if(!["internal","direct"].includes(kind))return null;
+    const ownerUid=c.body?.fields?.ownerUid?.stringValue;
+    if(!ID.test(ownerUid||""))return null;
+    return {company,role:ownerUid===uid?"owner":"not-owner",
+      liveCompanyVerified:true};
+  }
+  // Never promote an unknown/denied company GET into a proved partner role.
+  // Only the SAME UID + company with a successful pre-switch self/company
+  // binding and BOTH finance GET/LIST may use the cached probe identity.
+  if(c.status==="denied"&&priorBoundCompany?.uid===uid&&
+     priorBoundCompany.company===company&&
+     priorBoundCompany.role==="not-owner"&&
+     priorBoundCompany.bothFinanceReadsPreviouslyAllowed===true){
+    return {company,role:"partner-candidate",liveCompanyVerified:false};
+  }
+  if(c.status==="denied")
+    return {company,role:"unknown",liveCompanyVerified:false};
+  return null;
 };
 const singleQuery=async(token,collection,company)=>{
   return request(BASE+":runQuery","POST",token,{
@@ -125,14 +147,18 @@ const checkCollection=async(token,name,company)=>{
   return {listStatus,getStatus};
 };
 const render=(name,result,role)=>{
-  if(result.listStatus==="denied"&&result.getStatus==="denied")
-    label(name,role==="owner"?"Ownerの閲覧が拒否（危険）":"LIST・GETともに拒否（候補）",
-      role==="owner"?"warn":"pass");
-  else if(result.listStatus==="allowed"&&result.getStatus==="allowed")
-    label(name,role==="owner"?"Owner閲覧許可（期待どおり）":"金額原票へのアクセス許可（要遮断）",
+  if(result.listStatus==="denied"&&result.getStatus==="denied"){
+    if(role==="owner")
+      label(name,"Ownerの閲覧が拒否（危険）","warn");
+    else if(role==="not-owner"||role==="partner-candidate")
+      label(name,"LIST・GETともに拒否（所属の独立照合は未完）","pass");
+    else label(name,"LIST・GET拒否（所属未確認）","unknown");
+  }else if(result.listStatus==="allowed"&&result.getStatus==="allowed")
+    label(name,role==="owner"?"Owner閲覧許可（期待どおり）":
+      "金額原票へのアクセス許可（協力店なら要遮断）",
       role==="owner"?"pass":"warn");
   else if(result.listStatus==="denied"&&result.getStatus==="untested")
-    label(name,"LIST拒否・GET未検証","unknown");
+    label(name,"LIST拒否・GET未検証（合格ではない）","unknown");
   else label(name,"判定保留（再検証が必要）","unknown");
 };
 $("run").onclick=async()=>{
@@ -148,12 +174,26 @@ $("run").onclick=async()=>{
     const account=await readCompany(token,user.uid);
     if(!account)throw Error("NO_VERIFIED_INTERNAL_COMPANY");
     if(previousUid!==user.uid||previousCompany!==account.company){
-      previous.clear();previousUid=user.uid;previousCompany=account.company;
+      clearBinding();previousUid=user.uid;previousCompany=account.company;
     }
-    label("identity",account.role==="owner"?"Owner候補（実UID独立照合は別）":"社内所属（協力店確認は別）");
+    label("identity",account.role==="owner"?"Owner候補（独立照合は別）":
+      account.role==="not-owner"?"自社所属（協力店照合は別）":
+      account.role==="partner-candidate"?"切替前に検証済みの旧所属（独立照合は別）":
+      "会社情報が現在は拒否（所属未確認）");
+    const results={};
     for(const name of ["products","records"]){
       const result=await checkCollection(token,name,account.company);
+      results[name]=result;
       render(name,result,account.role);
+    }
+    // Keep only the precise identity proven on the SAME active account
+    // before the switch, and only after Owner/non-Owner profile checks and
+    // both existing original paths were actually readable GET AND LIST.
+    if(account.liveCompanyVerified===true&&account.role==="not-owner"&&
+       ["products","records"].every(name=>results[name].listStatus==="allowed"&&
+         results[name].getStatus==="allowed")){
+      priorBoundCompany={uid:user.uid,company:account.company,role:"not-owner",
+        bothFinanceReadsPreviouslyAllowed:true};
     }
     const workspace=$("workspace").value.trim();
     if(workspace){
@@ -178,7 +218,7 @@ $("run").onclick=async()=>{
   }finally{busy=false;$("run").disabled=!auth.currentUser;}
 };
 onAuthStateChanged(auth,user=>{
-  if(previousUid&&user?.uid!==previousUid){previous.clear();previousUid=null;previousCompany=null;}
+  if(previousUid&&user?.uid!==previousUid)clearBinding();
   $("run").disabled=!user||busy;
   $("status").textContent=user&&user.emailVerified?
     "ログインを確認。診断ボタンから実施できます。":
