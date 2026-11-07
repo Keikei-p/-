@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="ja"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#17365c">
+<title>NICO FACTORY｜協力店への所属移行（検証版）</title>
+<style>
+:root{font:16px system-ui,-apple-system,"Noto Sans JP",sans-serif;color:#182a40;color-scheme:light}
+*{box-sizing:border-box}body{margin:0;background:#f2f5f9}
+main{max-width:580px;margin:auto;padding:18px 13px 45px}
+h1{font-size:22px;margin:10px 0}h2{font-size:17px;margin:0 0 12px}
+p{line-height:1.65}section{padding:17px;background:white;border-radius:15px;margin-bottom:13px;border:1px solid #dfe7f0}
+label{display:block;font-weight:700;font-size:14px;margin:13px 0 6px}
+input,button{font:inherit;border-radius:10px;min-height:44px}
+input:not([type=checkbox]){width:100%;padding:10px;border:1px solid #b0c3d7}
+button{width:100%;padding:11px;background:#17446e;color:#fff;border:0;font-weight:700;margin-top:10px;cursor:pointer}
+button:disabled{opacity:.45;cursor:not-allowed}
+.secondary{background:#e8eff7;color:#17446e}
+.muted{font-size:13px;color:#566c83;line-height:1.6}
+#status{white-space:pre-wrap;line-height:1.6;min-height:25px}
+.check{display:flex;align-items:start;gap:10px;margin:16px 0}
+.check input{width:22px;height:22px;margin:2px 0 0;flex:none}
+.check span{flex:1;line-height:1.6}
+[hidden]{display:none!important}
+</style></head>
+<body><main>
+<h1>協力店への所属移行</h1>
+<p class="muted">検証候補の画面です。本番の金額遮断・件数入力を保証するものではありません。サーバーの専用移行機能が未公開の場合は何も変更しません。</p>
+<section><h2>1. 本人確認</h2>
+<p class="muted">普段の営業アプリとは独立した一時ログインです。登録済みの同じメールでログインしてください。</p>
+<form id="loginForm">
+<label for="email">メールアドレス</label>
+<input type="email" id="email" autocomplete="username" maxlength="254" required>
+<label for="pass">パスワード</label>
+<input type="password" id="pass" autocomplete="current-password" required>
+<button type="submit" id="login">本人確認してログイン</button>
+</form>
+<button type="button" id="logout" class="secondary" hidden>診断用ログアウト</button>
+</section>
+<section><h2>2. 移行先の確認</h2>
+<label for="workspace">協力店ワークスペースID</label>
+<input id="workspace" maxlength="128" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="協力店リンクの workspaceCompanyId">
+<p class="muted">協力店の管理画面URLにある workspaceCompanyId を入力。自社Owner自身はこの方式で移行できません。</p>
+<button type="button" id="preview" disabled>データを変更せず移行条件を確認</button>
+<p class="muted">この確認操作は売上・件数・過去履歴を書き換えません。</p>
+</section>
+<section><h2>3. 移行の実行</h2>
+<p class="muted">対象は本人の現在の所属プロフィールだけです。昔の自社実績と金額原票は旧会社に残し、元の所属情報は監査用アーカイブへ保存します。件数原票は変更しません。</p>
+<label class="check">
+<input id="consent" type="checkbox" disabled>
+<span>同じメールで協力店へ正式所属を変更し、以前の自社所属を終了することを確認しました。</span>
+</label>
+<button id="commit" disabled type="button">正式に協力店へ移行する</button>
+<p class="muted">処理後は再ログインして、協力店の件数入力ができることを実際に確認します。完了前に入力済みの件数を再送信しないでください。</p>
+</section>
+<section aria-live="polite"><h2>状態</h2><p id="status" role="status">未ログインです。</p>
+<p><a href="https://nico-factory.web.app/partner-workspace.html">協力店実績管理に戻る</a></p></section>
+</main>
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+import {initializeAuth,browserSessionPersistence,onAuthStateChanged,signInWithEmailAndPassword,signOut} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js";
+
+const ONLY_ORIGIN="https://nico-factory.web.app";
+const ID=/^[A-Za-z0-9_-]{1,128}$/;
+const CONSENT="MOVE_MY_PRIMARY_LOGIN_TO_PARTNER_KEEP_OLD_SALES_HISTORY";
+const app=initializeApp({
+ apiKey:"AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
+ authDomain:"sales-management-cc116.firebaseapp.com",
+ projectId:"sales-management-cc116",
+ appId:"1:904932511564:web:6583e8b0c585231b9049e"
+},"nico-partner-handoff-staging-isolated");
+const auth=initializeAuth(app,{persistence:browserSessionPersistence});
+const functions=getFunctions(app,"asia-northeast1");
+const previewFn=httpsCallable(functions,"previewPartnerPrimaryHandoff",{timeout:15000});
+const commitFn=httpsCallable(functions,"commitPartnerPrimaryHandoff",{timeout:25000});
+const $=id=>document.getElementById(id);
+const qp=new URL(location.href).searchParams.get("workspaceCompanyId")||"";
+if(ID.test(qp))$("workspace").value=qp;
+let busy=false,seq=0,proved=null;
+const status=text=>{$("status").textContent=text;};
+const current=()=>auth.currentUser;
+const reset=()=>{
+ seq++;proved=null;$("consent").checked=false;$("consent").disabled=true;
+ $("commit").disabled=true;
+ $("preview").disabled=busy||!current()?.emailVerified||!ID.test($("workspace").value.trim());
+};
+$("workspace").addEventListener("input",()=>{reset();status("移行先が変更されました。再確認してください。");});
+$("consent").addEventListener("change",()=>{
+ $("commit").disabled=busy||!$("consent").checked||!proved||
+  proved.uid!==current()?.uid||proved.company!==$("workspace").value.trim();
+});
+$("loginForm").addEventListener("submit",async event=>{
+ event.preventDefault();
+ if(busy||current())return;
+ busy=true;$("login").disabled=true;
+ const email=$("email").value.trim();
+ const password=$("pass").value;
+ $("pass").value="";
+ try{
+  if(location.origin!==ONLY_ORIGIN)throw Error("origin");
+  await signInWithEmailAndPassword(auth,email,password);
+  $("email").value="";
+  status("ログイン済み。協力店のIDを確認してください。");
+ }catch{status("ログインできませんでした。メール・パスワード・認証状態を確認してください。");}
+ finally{busy=false;$("login").disabled=Boolean(current());reset();}
+});
+$("logout").onclick=async()=>{
+ if(busy)return;
+ busy=true;reset();
+ try{await signOut(auth);}catch{status("ログアウトを確認できません。");}
+ finally{busy=false;reset();}
+};
+$("preview").onclick=async()=>{
+ if(busy||!current()?.emailVerified||location.origin!==ONLY_ORIGIN)return;
+ const user=current(),uid=user.uid,company=$("workspace").value.trim();
+ if(!ID.test(company))return;
+ busy=true;reset();const revision=seq;
+ status("本人と現在の所属の整合性を読み取り確認しています。");
+ try{
+  await user.getIdToken(true);
+  const reply=await previewFn({workspaceCompanyId:company});
+  if(revision!==seq||current()?.uid!==uid||
+     company!==$("workspace").value.trim())return;
+  if(reply?.data?.eligible!==true||
+     reply?.data?.sourceHistoryPreserved!==true||
+     reply?.data?.needsExplicitConsent!==true)
+   throw Error("preview-not-eligible");
+  proved={uid,company};$("consent").disabled=false;
+  status("移行条件を確認できました。以前の自社履歴を保持する条件で、移行内容を確認してください。");
+ }catch{status("移行の事前確認ができませんでした。何も変更していません。管理者にご確認ください。");}
+ finally{busy=false;$("preview").disabled=!current()?.emailVerified||!ID.test($("workspace").value.trim());}
+};
+$("commit").onclick=async()=>{
+ if(busy||location.origin!==ONLY_ORIGIN||!$("consent").checked||
+   !proved||current()?.uid!==proved.uid||
+   $("workspace").value.trim()!==proved.company)return;
+ if(!confirm("自社の現役所属を終了し、協力店を正式な所属先に変更します。続けますか？"))return;
+ busy=true;$("commit").disabled=true;$("preview").disabled=true;
+ const user=current(),uid=user.uid,company=proved.company,revision=seq;
+ status("所属移行の保存を確認中です。画面を閉じず、再送信しないでください。");
+ try{
+  await user.getIdToken(true);
+  if(revision!==seq||current()?.uid!==uid)throw Error("session-changed");
+  const reply=await commitFn({workspaceCompanyId:company,consent:CONSENT});
+  if(revision!==seq||current()?.uid!==uid)return;
+  if(reply?.data?.transferred!==true||reply?.data?.historyArchived!==true)
+   throw Error("commit-unverified");
+  proved=null;$("consent").checked=false;$("consent").disabled=true;
+  status("移行保存の応答を確認しました。協力店実績管理へ戻り、同じメールで再ログインして件数の閲覧・入力を確認してください。金額遮断の実ユーザー検証は別途必要です。");
+ }catch{
+  proved=null;$("consent").checked=false;$("consent").disabled=true;
+  status("結果を確定できません。二重移行や件数の再送信はせず、管理者に履歴を確認してください。");
+ }finally{busy=false;$("commit").disabled=true;$("preview").disabled=!current()?.emailVerified||!ID.test($("workspace").value.trim());}
+};
+onAuthStateChanged(auth,user=>{
+ reset();
+ $("loginForm").hidden=Boolean(user);
+ $("logout").hidden=!user;
+ $("login").disabled=Boolean(user)||busy;
+ if(!user)status("未ログインです。");
+ else if(!user.emailVerified)status("メール認証が必要です。確認メールの認証後にログインし直してください。");
+ else status("ログイン確認済みです。移行先を確認してください。");
+});
+</script>
+</body></html>
