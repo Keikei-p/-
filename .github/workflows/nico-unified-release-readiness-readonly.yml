@@ -12,6 +12,7 @@ on:
       - 'tools/production/unified-release-readiness-readonly.mjs'
       - 'tests/unified-release-readiness-readonly.test.mjs'
       - '.github/workflows/nico-unified-release-readiness-readonly.yml'
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
@@ -43,7 +44,7 @@ jobs:
   live:
     needs: offline
     if: >-
-      ${{ github.event_name == 'push' &&
+      ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
           github.ref == 'refs/heads/main' &&
           github.repository == 'Keikei-p/-' &&
           needs.offline.result == 'success' }}
