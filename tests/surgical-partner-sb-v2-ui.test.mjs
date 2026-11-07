@@ -150,3 +150,33 @@ test("publisher never writes Rules, Functions, Firestore, accounts or logs finan
  assert.doesNotMatch(s,/firebase deploy|https:\/\/firestore\.googleapis\.com|firebaserules\.googleapis\.com/);
  assert.doesNotMatch(s,/setDoc\(|updateDoc\(|deleteDoc\(|runTransaction\(/);
 });
+
+test("repeated original Hosting file-list page tokens fail closed before any write",async()=>{
+ const f=fake();
+ const repeated=async(method,url,body)=>{
+  const response=await f.request(method,url,body);
+  return method==="GET"&&url.includes("/"+version+"/files?")
+   ?{...response,nextPageToken:"repeat"}:response;
+ };
+ await assert.rejects(uploadReviewedSbV2PartnerUi({
+  assetBytes:latest,originalBytes:original,request:repeated,release:true,log:()=>{}
+ }),/SOURCE_FILE_PAGE_LOOP/);
+ assert.equal(f.requests.length,4,"two metadata GETs and two file-list GETs only");
+ assert.ok(f.requests.every(x=>x.method==="GET"),"no release or asset writes");
+ assert.equal(f.released,false);
+});
+
+test("non-string live Hosting page tokens fail closed without releasing",async()=>{
+ const f=fake();
+ const malformed=async(method,url,body)=>{
+  const response=await f.request(method,url,body);
+  return method==="GET"&&url.includes("/"+version+"/files?")
+   ?{...response,nextPageToken:{broken:true}}:response;
+ };
+ await assert.rejects(uploadReviewedSbV2PartnerUi({
+  assetBytes:latest,originalBytes:original,request:malformed,release:true,log:()=>{}
+ }),/SOURCE_FILE_PAGE_TOKEN_INVALID/);
+ assert.equal(f.requests.length,3);
+ assert.ok(f.requests.every(x=>x.method==="GET"));
+ assert.equal(f.released,false);
+});

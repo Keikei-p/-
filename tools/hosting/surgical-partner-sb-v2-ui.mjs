@@ -98,12 +98,19 @@ export async function uploadReviewedSbV2PartnerUi({
  if(countKnown&&(!Number.isSafeInteger(count)||count<1))
    throw Error("INVALID_LIVE_FILE_COUNT");
  const files=[];let pageToken="";
+ const sourcePageTokens=new Set();
  do{
+  // A broken pagination token must never trigger unlimited read attempts.
+  if(sourcePageTokens.has(pageToken))throw Error("SOURCE_FILE_PAGE_LOOP");
+  sourcePageTokens.add(pageToken);
   const qs=new URLSearchParams({pageSize:"1000"});
   if(pageToken)qs.set("pageToken",pageToken);
   const page=await request("GET",url("/"+sourceName+"/files?"+qs));
   if(!Array.isArray(page.files))throw Error("SOURCE_FILE_LIST_UNAVAILABLE");
   files.push(...page.files);
+  if(page.nextPageToken!=null&&
+     (typeof page.nextPageToken!=="string"||page.nextPageToken.length>4096))
+   throw Error("SOURCE_FILE_PAGE_TOKEN_INVALID");
   pageToken=page.nextPageToken||"";
   if(files.length>30000)throw Error("TOO_MANY_LIVE_ASSETS");
  }while(pageToken);
