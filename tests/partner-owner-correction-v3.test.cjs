@@ -175,6 +175,43 @@ test("owner correction preserves old unknown SB count and audit history when no 
  assert.equal(db.store.get("companies/partner/partnerWorkAudits/"+day+"__s1__v3").version,3);
 });
 
+test("no-op with matching counts and semantic SB split never bumps version or writes audit",async()=>{
+ const {db,service,makeReq,entry,aggregate}=setup();
+ const counts={...zero(),NURO:1,"SB光・AIR":5};
+ entry("s1",counts);aggregate(counts);
+ const before=clone([...db.store]);
+ for(const rawSplit of [
+  undefined,{"SB光":0,"SB AIR":0,"旧未分類":5}
+ ]){
+  const data={date:day,partnerCompanyId:"partner",staffId:"s1",
+   expectedVersion:1,counts,correctionReason:"既存内容を再保存しようとした"};
+  if(rawSplit!==undefined)data.sbBreakdown=rawSplit;
+  await assert.rejects(service.correct(makeReq("owner",data)),err=>
+   err?.code==="failed-precondition");
+  assert.deepEqual([...db.store],before,"no-op must preserve entry, summary and audit");
+  assert.equal(db.writes.length,0);
+ }
+ // Distinguish a genuine category correction with unchanged total.
+ const classified=await service.correct(makeReq("owner",{
+  date:day,partnerCompanyId:"partner",staffId:"s1",expectedVersion:1,
+  counts,sbBreakdown:{"SB光":2,"SB AIR":3,"旧未分類":0},
+  correctionReason:"契約票で確認済みの内訳に変更"
+ }));
+ assert.equal(classified.version,2);
+ assert.equal(db.store.get(prefix+"s1").totalCount,6);
+ assert.deepEqual(db.store.get(prefix+"s1").sbBreakdown,
+  {"SB光":2,"SB AIR":3,"旧未分類":0});
+ assert.equal(db.writes.length,3);
+ const after=clone([...db.store]);
+ await assert.rejects(service.correct(makeReq("owner",{
+  date:day,partnerCompanyId:"partner",staffId:"s1",expectedVersion:2,
+  counts,sbBreakdown:{"SB光":2,"SB AIR":3,"旧未分類":0},
+  correctionReason:"同じ内訳を繰り返し送信"
+ })),err=>err?.code==="failed-precondition");
+ assert.deepEqual([...db.store],after);
+ assert.equal(db.writes.length,3,"no second audit/history revision");
+});
+
 test("wrong actor, company, expired relation, or forged request fields: no writes",async()=>{
  const {db,service,makeReq,entry,aggregate}=setup(),counts={...zero(),NURO:1};
  entry("s1",counts);aggregate(counts);
