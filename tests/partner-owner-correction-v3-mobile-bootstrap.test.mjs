@@ -245,6 +245,18 @@ test("auth listener unavailable, throws, or sync logout rejects and empties pane
  }
 });
 
+test("identity switching before listener registration never leaves counts displayed",async()=>{
+ const f=fixture();
+ let unsubscribed=0;
+ f.fn.subscribeAuth=()=>{f.auth.currentUser={...f.owner,uid:"other"};
+  return ()=>{unsubscribed++}};
+ await assert.rejects(mountVerifiedOwnerCorrection(f.fn),
+  /OWNER_CORRECTION_BOOT_STALE_SESSION/);
+ assert.equal(f.root.children.length,0);
+ assert.equal(unsubscribed,1);
+ assert.equal(f.seen.correct.length,0);
+});
+
 test("staged code contains no Firebase initialization, Firestore reads or credential storage",()=>{
  const source=readFileSync(new URL("../staging/partner-owner-correction-v3/mobile-bootstrap.mjs",import.meta.url),"utf8");
  assert.match(source,/STAGING ONLY \/ NO DEPLOY/);
