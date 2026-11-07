@@ -54,12 +54,13 @@ export function countOnlyRegisteredCompanies(raw,date){
 
 export async function mountVerifiedOwnerCorrection({
  root,auth,workspaceCallable,listCallable,correctCallable,
- dateGetter,confirmChange,subscribeAuth,enabled=()=>false,dom
+ dateGetter,confirmChange,subscribeAuth,invalidateRanking,enabled=()=>false,dom
 }={}){
  if(!root||!auth||typeof workspaceCallable!=="function"||
     typeof listCallable!=="function"||typeof correctCallable!=="function"||
     typeof dateGetter!=="function"||typeof confirmChange!=="function"||
     typeof subscribeAuth!=="function"||
+    typeof invalidateRanking!=="function"||
     typeof enabled!=="function"||!dom)
   invalid("DEPENDENCIES");
  if(enabled()!==true)invalid("DISABLED");
@@ -82,7 +83,18 @@ export async function mountVerifiedOwnerCorrection({
  }
  try{
   const panel=mountOwnerCorrection({
-   root,companies,api:client,dateGetter,confirmChange,dom
+   root,companies,api:client,dateGetter,confirmChange,dom,
+   onVerifiedSave:async receipt=>{
+    if(auth.currentUser!==owner||owner.emailVerified!==true||
+       dateGetter()!==receipt.date||enabled()!==true)
+     invalid("STALE_SESSION");
+    // Invalidate only a server-readback-verified partner/day. The caller
+    // must clear the existing in-memory daily ranking cache + monthly view.
+    await invalidateRanking(Object.freeze({
+     date:receipt.date,month:receipt.date.slice(0,7),
+     partnerCompanyId:receipt.partnerCompanyId,version:receipt.version
+    }));
+   }
   });
   let destroyed=false,unsubscribe=()=>{},listenerReady=false;
   const destroy=()=>{
