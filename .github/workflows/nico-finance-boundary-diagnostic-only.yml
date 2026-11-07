@@ -56,7 +56,7 @@ jobs:
     if: ${{{ github.event_name == 'push' &&
            github.ref == 'refs/heads/main' &&
            github.repository == 'Keikei-p/-' &&
-           github.event.head_commit.message == 'release: add read-only finance boundary diagnostic (preserve Hosting)' &&
+           startsWith(github.event.head_commit.message, 'release: add read-only finance boundary diagnostic (preserve Hosting)') &&
            needs.validate.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 18
