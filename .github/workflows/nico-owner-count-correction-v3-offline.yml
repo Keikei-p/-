@@ -4,6 +4,8 @@ on:
     branches: [main]
     paths:
       - 'staging/partner-owner-correction-v3/service.cjs'
+      - 'staging/partner-owner-correction-v3/trusted-auth.cjs'
+      - 'tests/partner-owner-correction-v3-auth.test.cjs'
       - 'tests/partner-owner-correction-v3.test.cjs'
       - 'staging/partner-owner-correction-v3/owner-ui.mjs'
       - 'tests/partner-owner-correction-v3-ui.test.mjs'
@@ -12,6 +14,8 @@ on:
     branches: [main]
     paths:
       - 'staging/partner-owner-correction-v3/service.cjs'
+      - 'staging/partner-owner-correction-v3/trusted-auth.cjs'
+      - 'tests/partner-owner-correction-v3-auth.test.cjs'
       - 'tests/partner-owner-correction-v3.test.cjs'
       - 'staging/partner-owner-correction-v3/owner-ui.mjs'
       - 'tests/partner-owner-correction-v3-ui.test.mjs'
@@ -31,6 +35,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          node --check staging/partner-owner-correction-v3/trusted-auth.cjs
+          node --check tests/partner-owner-correction-v3-auth.test.cjs
+          node --test tests/partner-owner-correction-v3-auth.test.cjs
           node --check staging/partner-owner-correction-v3/service.cjs
           node --check tests/partner-owner-correction-v3.test.cjs
           node --test tests/partner-owner-correction-v3.test.cjs
