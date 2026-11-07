@@ -10,6 +10,8 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/nico-four-count-cli-region-readonly-20261108.yml'
+      - 'tools/production/inspect-four-count-cli-region-readonly.mjs'
+      - 'tests/inspect-four-count-cli-region-readonly.test.mjs'
 permissions:
   contents: read
 concurrency:
