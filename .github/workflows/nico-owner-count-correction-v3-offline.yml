@@ -12,6 +12,8 @@ on:
       - 'tests/partner-owner-correction-v3-auth.test.cjs'
       - 'tests/partner-owner-correction-v3.test.cjs'
       - 'staging/partner-owner-correction-v3/owner-ui.mjs'
+      - 'ranking/partner-count-cache-invalidation.mjs'
+      - 'tests/partner-count-cache-invalidation.test.mjs'
       - 'staging/partner-owner-correction-v3/mobile-bootstrap.mjs'
       - 'tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs'
       - 'staging/partner-owner-correction-v3/owner-client.mjs'
@@ -30,6 +32,8 @@ on:
       - 'tests/partner-owner-correction-v3-auth.test.cjs'
       - 'tests/partner-owner-correction-v3.test.cjs'
       - 'staging/partner-owner-correction-v3/owner-ui.mjs'
+      - 'ranking/partner-count-cache-invalidation.mjs'
+      - 'tests/partner-count-cache-invalidation.test.mjs'
       - 'staging/partner-owner-correction-v3/mobile-bootstrap.mjs'
       - 'tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs'
       - 'staging/partner-owner-correction-v3/owner-client.mjs'
@@ -67,6 +71,9 @@ jobs:
           node --check staging/partner-owner-correction-v3/mobile-bootstrap.mjs
           node --check tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs
           node --test tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs
+          node --check ranking/partner-count-cache-invalidation.mjs
+          node --check tests/partner-count-cache-invalidation.test.mjs
+          node --test tests/partner-count-cache-invalidation.test.mjs
           node --check staging/partner-owner-correction-v3/owner-ui.mjs
           node --check tests/partner-owner-correction-v3-ui.test.mjs
           node --test tests/partner-owner-correction-v3-ui.test.mjs
