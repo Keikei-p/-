@@ -45,7 +45,7 @@ jobs:
       - name: Verify transport, rollback, existing finance and full candidate Rules
         run: |
           set -euo pipefail
-          node --test tests/partner-boundary-release.test.mjs tests/live-rules-surgical-preview.test.mjs tests/internal-owner-finance-visibility.test.cjs tests/sales-regressions.cjs
+          node --test tests/legacy-rules-apply-frozen.test.mjs tests/partner-boundary-release.test.mjs tests/live-rules-surgical-preview.test.mjs tests/internal-owner-finance-visibility.test.cjs tests/sales-regressions.cjs
           node --test tools/readonly-backup/backup.test.mjs
           npm install --prefix tests --ignore-scripts --no-audit --no-fund
           npm install -g firebase-tools@15.34.1 --no-audit --no-fund
