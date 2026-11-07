@@ -1,7 +1,7 @@
 "use strict";
 // Isolated partner operations: no reads/writes to sales products, records or prices.
 const crypto=require("node:crypto");
-const {LEGACY,breakdown,nextBreakdown,aggregateBreakdown}=require("./sb-category-v2.cjs");
+const {LEGACY,PARTS,breakdown,nextBreakdown,aggregateBreakdown}=require("./sb-category-v2.cjs");
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -664,6 +664,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      if(t.active)rows.set(sn.id,{
       teamId:sn.id,name:clean(t.name),
       counts:Object.fromEntries(KEYS.map(k=>[k,0])),
+      sbBreakdown:Object.fromEntries(PARTS.map(k=>[k,0])),
       totalCount:0,reportedStaffCount:0
      });
     }
@@ -685,6 +686,10 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      row.totalCount+=item.total;
      verifiedSharedCount+=item.total;
      for(const k of KEYS)row.counts[k]+=item.counts[k];
+     let parts;
+     try{parts=breakdown(item.counts[LEGACY],e.sbBreakdown);}
+     catch{fail("data-loss");}
+     for(const k of PARTS)row.sbBreakdown[k]+=parts[k];
     }
     partnerTeamDetails={
      partnerCompanyId:selectedPartnerId,companyName:chosen.name,date,
@@ -744,7 +749,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      if(staffSnap.size>150||entriesSnap.size>200)fail("resource-exhausted");
      const status=new Map(company.teams.map(t=>[t.id,{
       id:t.id,name:t.name,staffCount:0,reportedStaffCount:0,
-      totalCount:0,counts:Object.fromEntries(KEYS.map(k=>[k,0]))
+      totalCount:0,counts:Object.fromEntries(KEYS.map(k=>[k,0])),
+      sbBreakdown:Object.fromEntries(PARTS.map(k=>[k,0]))
      }]));
      for(const doc of staffSnap.docs){
       const person=doc.data()||{};
@@ -769,6 +775,10 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
       team.reportedStaffCount++;
       team.totalCount+=normalized.total;
       for(const key of KEYS)team.counts[key]+=normalized.counts[key];
+      let parts;
+      try{parts=breakdown(normalized.counts[LEGACY],row.sbBreakdown);}
+      catch{fail("data-loss");}
+      for(const k of PARTS)team.sbBreakdown[k]+=parts[k];
      }
      const aggregate=partners.find(p=>p.partnerCompanyId===cid);
      const consistent=unattributedEntries===0 &&
