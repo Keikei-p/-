@@ -23,13 +23,13 @@ function replaceOnce(source,before,after,name){
 const guard=[
 "    // A secondary partner must never inherit the old internal company's money reads.",
 "    // The caller cannot supply this context: it comes from protected Firestore.",
-"    function activeSecondaryPartnerForHub(companyId) {",
+"    function activeSecondaryPartnerContext() {",
 "      let ref = /databases/$(database)/documents/partnerWorkspaceContexts/$(request.auth.uid);",
 "      return verifiedUser()",
 "        && exists(ref)",
-"        && get(ref).data.get('active', false) == true",
-"        && get(ref).data.get('hubCompanyId', '') == companyId",
-"        // Unknown active partner context types fail closed.",
+"        // An incomplete active marker must NOT be treated as absent.",
+"        && get(ref).data.get('active', true) == true",
+"        // Unknown context kinds fail closed; a reviewed inactive context is safe.",
 "        && get(ref).data.get('kind', '') != 'internal';",
 "    }"
 ].join("\n");
@@ -61,11 +61,11 @@ export function proposeSecondaryFinanceFence(source=originalRules()){
   const safe=name==="revenueGoals"?
    "      allow read: if resource.data.companyId != null\n"+
    "        && sameCompany(resource.data.companyId)\n"+
-   "        && !activeSecondaryPartnerForHub(resource.data.companyId)\n"+
+   "        && !activeSecondaryPartnerContext()\n"+
    "        && (":
    "      allow read: if resource.data.companyId != null\n"+
    "        && sameCompany(resource.data.companyId)\n"+
-   "        && !activeSecondaryPartnerForHub(resource.data.companyId);";
+   "        && !activeSecondaryPartnerContext();";
   const patched=replaceOnce(current,old,safe,name);
   candidate=candidate.slice(0,pos)+patched+candidate.slice(next);
  }
