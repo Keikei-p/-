@@ -1,0 +1,49 @@
+name: NICO safe secondary to primary partner handoff (STAGING / NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'staging/partner-primary-handoff/**'
+      - 'tests/partner-secondary-primary-handoff-staging.test.cjs'
+      - '.github/workflows/nico-secondary-primary-handoff-staging.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'staging/partner-primary-handoff/**'
+      - 'tests/partner-secondary-primary-handoff-staging.test.cjs'
+      - '.github/workflows/nico-secondary-primary-handoff-staging.yml'
+permissions:
+  contents: read
+jobs:
+  verify-offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Keep exact existing Rules, HTML, original Functions and all data unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(git hash-object functions-partner-workspace/index.js)" = 38da7e9174ffea7c406c92292dccfc651b565eb0
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
+          test -z "$(printenv FIREBASE_SERVICE_ACCOUNT_JSON || true)"
+          test -z "$(printenv GOOGLE_APPLICATION_CREDENTIALS || true)"
+          node --check staging/partner-primary-handoff/handoff.cjs
+          node --check tests/partner-secondary-primary-handoff-staging.test.cjs
+      - name: Real existing count service integration - preflight, full archive, role switch, new count submit
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/partner-secondary-primary-handoff-staging.test.cjs
+          node --test tests/partner-workspace.test.cjs
+          node --test tests/nico-secondary-readonly-inventory.test.mjs
+          node --test tests/partner-four-function-release-scope.test.mjs
+          echo 'STAGING_HANDOFF_PASS_NO_DEPLOY_NO_PRODUCTION_CHANGES'
