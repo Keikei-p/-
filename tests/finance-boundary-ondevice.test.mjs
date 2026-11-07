@@ -283,7 +283,8 @@ test('direct partner maps protected finance to verified HUB, and never claims GE
   document:{getElementById:el},console:{log:()=>{throw Error('LOG')}},
   browserSessionPersistence:{kind:'test'},initializeApp:()=>({}),
   initializeAuth:()=>accountAuth,getFunctions:()=>({}),
-  httpsCallable:(_fn,name)=>{assert.equal(name,'getPartnerWorkspace');
+  httpsCallable:(_fn,name)=>{
+    assert.ok(['getPartnerWorkspace','getPartnerQuickCounts'].includes(name));
     return async input=>{called.push(input);return {data:{role:'member'}};};},
   onAuthStateChanged:(_a,cb)=>cb(user),
   signInWithEmailAndPassword:async()=>({}),signOut:async()=>{},
@@ -394,4 +395,118 @@ test('Owner handoff reuses only Owner-proved raw IDs after partner login: GET an
  assert.ok(requests.filter(x=>x.uid==='real_partner'&&x.method==='GET')
    .every(x=>/products_doc1|records_doc1/.test(x.url)));
  assert.ok(requests.every(x=>!x.url.includes('revenue')));
+});
+
+test('direct partner owner: deployed quick-count API verifies role if new workspace API is missing',async()=>{
+ const user={uid:'direct_partner_owner',emailVerified:true,getIdToken:async()=> 'test-bearer'};
+ const els=new Map(),calls=[],requests=[];
+ const el=id=>{if(!els.has(id))els.set(id,{
+   value:'',disabled:false,hidden:false,textContent:'',className:''});
+   return els.get(id);};
+ const context={URL,Intl,Date,Map,RegExp,JSON,Error,Number,
+  location:{origin:'https://nico-factory.web.app'},
+  document:{getElementById:el},console:{log:()=>{throw Error('NO_PRIVATE_LOGS')}},
+  browserSessionPersistence:{},initializeApp:()=>({}),
+  initializeAuth:()=>({currentUser:user}),getFunctions:()=>({}),
+  httpsCallable:(_fn,name)=>{
+   if(name==='getPartnerWorkspace')return async()=>{calls.push(name);throw Error('not deployed');};
+   if(name==='getPartnerQuickCounts')return async ({date})=>{
+    calls.push(name);return {data:{role:'partner',date,report:null}};
+   };
+   throw Error('UNEXPECTED_FUNCTION');
+  },
+  onAuthStateChanged:(_a,cb)=>cb(user),
+  signInWithEmailAndPassword:async()=>({}),signOut:async()=>{},
+  fetch:async(url,options)=>{
+   requests.push({url,options});
+   if(url.includes('/users/'))return response(200,{fields:{
+    active:{booleanValue:true},companyId:{stringValue:'partner_company'}}});
+   if(url.includes('/companies/partner_company'))return response(200,{fields:{
+    companyKind:{stringValue:'partner'},ownerUid:{stringValue:user.uid},
+    hubCompanyId:{stringValue:'original_hub'}}});
+   return response(403,{error:{code:403,status:'PERMISSION_DENIED'}});
+  }
+ };
+ runInNewContext(browser,context);
+ await el('run').onclick();
+ assert.deepEqual(calls,['getPartnerWorkspace','getPartnerQuickCounts']);
+ assert.match(el('identity').textContent,/協力店所属をFunctionsで照合済み/);
+ assert.match(el('counts').textContent,/読取成功/);
+ assert.match(el('products').textContent,/GET未検証/);
+ assert.match(el('records').textContent,/GET未検証/);
+ assert.equal(requests.filter(x=>x.options?.method==='POST').length,2);
+ assert.ok(requests.filter(x=>x.options?.method==='POST').every(x=>
+   JSON.parse(x.options.body).structuredQuery.where.fieldFilter.value.stringValue==='original_hub'));
+});
+
+test('quick-count fallback must reject a hub role and must not probe finance on unverified partner identity',async()=>{
+ const user={uid:'partner_actor',emailVerified:true,getIdToken:async()=> 'token'};
+ const els=new Map(),calls=[],requests=[];
+ const el=id=>{if(!els.has(id))els.set(id,{
+  value:'',disabled:false,hidden:false,textContent:'',className:''});
+  return els.get(id);};
+ const context={URL,Intl,Date,Map,RegExp,JSON,Error,Number,
+  location:{origin:'https://nico-factory.web.app'},
+  document:{getElementById:el},console:{log:()=>{throw Error('NO_PRIVATE_LOGS')}},
+  browserSessionPersistence:{},initializeApp:()=>({}),
+  initializeAuth:()=>({currentUser:user}),getFunctions:()=>({}),
+  httpsCallable:(_fn,name)=>{
+   if(name==='getPartnerWorkspace')return async()=>{calls.push(name);throw Error('not deployed');};
+   if(name==='getPartnerQuickCounts')return async({date})=>{
+    calls.push(name);return {data:{role:'hub',date}};
+   };
+   throw Error('UNEXPECTED_FUNCTION');
+  },
+  onAuthStateChanged:(_a,cb)=>cb(user),
+  signInWithEmailAndPassword:async()=>({}),signOut:async()=>{},
+  fetch:async(url,options)=>{
+   requests.push({url,options});
+   if(url.includes('/users/'))return response(200,{fields:{
+    active:{booleanValue:true},companyId:{stringValue:'partner_company'}}});
+   if(url.includes('/companies/partner_company'))return response(200,{fields:{
+    companyKind:{stringValue:'partner'},hubCompanyId:{stringValue:'original_hub'}}});
+   throw Error('FINANCE_PROBE_MUST_NOT_RUN');
+  }
+ };
+ runInNewContext(browser,context);
+ await el('run').onclick();
+ assert.deepEqual(calls,['getPartnerWorkspace','getPartnerQuickCounts']);
+ assert.match(el('identity').textContent,/認証・所属の確認が必要/);
+ assert.match(el('products').textContent,/未確認/);
+ assert.match(el('records').textContent,/未確認/);
+ assert.equal(requests.length,2);
+});
+
+test('quick-count fallback never promotes an unverified secondary company context',async()=>{
+ const user={uid:'internal_secondary',emailVerified:true,getIdToken:async()=> 'token'};
+ const els=new Map(),calls=[];
+ const el=id=>{if(!els.has(id))els.set(id,{
+  value:'',disabled:false,hidden:false,textContent:'',className:''});
+  return els.get(id);};
+ const context={URL,Intl,Date,Map,RegExp,JSON,Error,Number,
+  location:{origin:'https://nico-factory.web.app'},
+  document:{getElementById:el},console:{log:()=>{throw Error('NO_PRIVATE_LOGS')}},
+  browserSessionPersistence:{},initializeApp:()=>({}),
+  initializeAuth:()=>({currentUser:user}),getFunctions:()=>({}),
+  httpsCallable:(_fn,name)=>{
+   if(name==='getPartnerWorkspace')return async()=>{calls.push(name);throw Error('not deployed');};
+   if(name==='getPartnerQuickCounts')return async()=>{calls.push(name);return {data:{role:'partner'}};};
+   throw Error('UNEXPECTED_FUNCTION');
+  },
+  onAuthStateChanged:(_a,cb)=>cb(user),
+  signInWithEmailAndPassword:async()=>({}),signOut:async()=>{},
+  fetch:async(url)=>{
+   if(url.includes('/users/'))return response(200,{fields:{
+    active:{booleanValue:true},companyId:{stringValue:'internal_hub'}}});
+   if(url.includes('/companies/internal_hub'))return response(200,{fields:{
+    companyKind:{stringValue:'internal'},ownerUid:{stringValue:'different_owner'}}});
+   throw Error('FINANCE_PROBE_MUST_NOT_RUN');
+  }
+ };
+ runInNewContext(browser,context);
+ el('workspace').value='partner_company';
+ await el('run').onclick();
+ assert.deepEqual(calls,['getPartnerWorkspace']);
+ assert.match(el('identity').textContent,/認証・所属の確認が必要/);
+ assert.match(el('products').textContent,/未確認/);
 });
