@@ -1,0 +1,100 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
+
+const index=readFileSync(new URL("../index.html",import.meta.url),"utf8");
+const partner=readFileSync(new URL("../partner-workspace.html",import.meta.url),"utf8");
+const slice=(text,start,end)=>{
+ const a=text.indexOf(start),b=text.indexOf(end,a+start.length);
+ assert.ok(a>=0&&b>a,"missing UI section "+start);
+ return text.slice(a,b);
+};
+const original=slice(index,'<div class="dashboard-app-grid">','id="dashboardDetailArea"');
+const candidate=slice(partner,'<section id="dashboardBox" hidden>','<section id="recordsBox" hidden>');
+const labels=s=>[...s.matchAll(/class="dashboard-app-title">([^<]+)<\/span>/g)].map(m=>m[1].trim());
+const panels=[...candidate.matchAll(/data-count-panel="([^"]+)"/g)].map(m=>m[1]);
+
+test("partner is a counts-only copy of all eleven original dashboard cards and ordering",()=>{
+ const main=labels(original),copy=labels(candidate);
+ assert.equal(main.length,11);
+ assert.deepEqual(copy,main.map(x=>({
+  "売上分析":"件数分析",
+  "収益グラフ":"件数グラフ"
+ })[x]||x));
+ assert.deepEqual(panels,[
+  "analysis","individual","productRanking","teamRanking","trend","teamDetail",
+  "productSummary","report","goal","daily","history"
+ ]);
+ assert.equal(new Set(panels).size,11);
+ for(const name of panels){
+  assert.match(candidate,new RegExp('id="partnerPanel-'+name+'"'));
+ }
+});
+
+test("uses the canonical dashboard card, summary and mobile CSS grammar",()=>{
+ for(const css of [
+  ".dashboard-summary{",".summary-card{",".summary-label{",".summary-value{",
+  ".dashboard-app-grid{",".dashboard-app-button{",".dashboard-app-icon{",
+  ".dashboard-app-title{",".dashboard-app-meta{",".dashboard-detail-area{",
+  ".dashboard-app-content{","@media(max-width:700px)"
+ ])assert.ok(partner.includes(css),css);
+ assert.match(candidate,/<input id="dashboardPartnerMonth" type="month"/);
+ assert.match(candidate,/id="countKpis" class="dashboard-summary"/);
+ assert.match(candidate,/id="periodMonth" aria-pressed="true"/);
+ assert.match(partner,/let countPeriod="month"/);
+});
+
+test("the original login, recording, people, owner administration and CSV survive unchanged",()=>{
+ for(const id of [
+  "loginForm","companyCodeLoginForm","inviteAccept","appBox","recordsBox","peopleBox",
+  "listBox","hubBox","missingBox","staffSelect","save","revision","countGrid",
+  "privateCountGrid","makeTeam","privateProductAdmin","moveStaffAction","hubCompanySelect",
+  "hubTeamCountRows","countCsv","countGoal","countGoalSave","countGoalClear",
+  "countTeamRank","countStaffRank","countProductRank","countTeamSelect","countTeamProducts",
+  "countTeamPeople","countDailyRows"
+ ]) assert.ok(partner.includes('id="'+id+'"'),id);
+ const ids=[...partner.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);
+ assert.equal(ids.length,new Set(ids).size,"duplicate id in partner HTML");
+ assert.match(partner,/expectedVersion:record\?\.version\?\?0/);
+ assert.match(partner,/const verified=\(await get\(\{date:\$\("date"\)\.value\}\)\)\.data/);
+ assert.match(partner,/countDayCache\.clear\(\);refresh\(\)/);
+});
+
+test("partner copy cannot import internal Firestore or finance data and does not open money cards",()=>{
+ const script=slice(partner,'<script type="module">','</script>');
+ assert.match(script,/httpsCallable\(functions,name\)/);
+ for(const name of [
+  "getPartnerWorkspace","managePartnerWorkspace",
+  "acceptPartnerWorkspaceInvite","submitPartnerWorkspaceCounts"
+ ])assert.ok(script.includes(name),name);
+ assert.doesNotMatch(script,/firebase-firestore|firebase\/firestore|cloudflare-finance/);
+ assert.doesNotMatch(candidate,/id="monthlyRevenue"|id="salesAnalysisContent"|id="revenueChartContent"/);
+ assert.match(candidate,/件数分析/);
+ assert.match(candidate,/件数グラフ/);
+ assert.match(script,/\.textContent=/);
+ assert.match(script,/report\.value/);
+});
+
+test("repeated month loads reject stale sessions and never publish partial counts",()=>{
+ assert.match(partner,/function currentCountIdentity\(\)/);
+ assert.match(partner,/currentCountIdentity\(\)!==uid/g);
+ assert.match(partner,/countPeriod==="month"\?\$\("dashboardPartnerMonth"\)\.value\+"-01"/);
+ assert.match(partner,/countLoadId\+\+/);
+ assert.match(partner,/clearCountOnlyDashboard\(\)/);
+ assert.match(partner,/不完全な件数は表示しません/);
+ assert.match(partner,/summary\.hasUnverifiedTeams/);
+ assert.match(partner,/countExportRows=\{summary,days\}/);
+ assert.match(partner,/countPeriod!=="month"\|\|!countExportRows\|\|!auth\.currentUser\?\.uid/);
+});
+
+test("new report and trend are derived from validated counts, never new writes",()=>{
+ const module=slice(partner,'<script type="module">','</script>');
+ const block=slice(module,"function renderCountOnlyDashboard(summary,days){","function clearCountOnlyDashboard(){");
+ assert.match(block,/const report=\[/);
+ assert.match(block,/countReportBody/);
+ assert.match(block,/countProductSummary/);
+ assert.match(block,/countTrendChart/);
+ assert.match(block,/const max=Math\.max\(1,\.\.\.summary\.days/);
+ assert.doesNotMatch(block,/httpsCallable|save\(|manage\(|getFirestore|Firebase\.firestore|setDoc|updateDoc|addDoc|fetch\(/);
+ assert.match(partner,/countHistoryOpen"\)\.onclick=\(\)=>activeTab\("View"\)/);
+});

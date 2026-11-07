@@ -63,7 +63,7 @@ test("legacy private release is frozen to previously reviewed code and refuses n
  assert.match(release,/node scripts\/check-finance-read-boundary-before-deploy\.mjs/);
  assert.match(release,/node scripts\/nico-production-cutover-preflight\.mjs/);
 });
-test("new company-code coordinated release pins all updated files and keeps every cost, finance and history gate",()=>{
+test("historical company-code release stays frozen to reviewed page and retains cost, finance and history gates",()=>{
  const filePath=".github/workflows/nico-partner-company-code-release.yml";
  const newRelease=file(filePath),cwd=fileURLToPath(new URL("../",import.meta.url));
  for(const path of [
@@ -72,7 +72,11 @@ test("new company-code coordinated release pins all updated files and keeps ever
   "functions-partner-workspace/company-code-auth.cjs",
   "partner-workspace.html","functions/index.js","firebase.partner-workspace.json"
  ]){
-  const digest=execFileSync("git",["hash-object",path],{cwd,encoding:"utf8"}).trim();
+  // The historical company-code release remains pinned to the previously
+  // reviewed page; a new visual candidate must NOT silently unlock it.
+  const digest=path==="partner-workspace.html"?
+   "0930abb188165afea19ef427308ea22fddf636e7":
+   execFileSync("git",["hash-object",path],{cwd,encoding:"utf8"}).trim();
   assert.ok(newRelease.includes('test "$(git hash-object '+path+')" = '+String.fromCharCode(39)+digest+String.fromCharCode(39)),
     "New release must pin exact reviewed "+path);
  }

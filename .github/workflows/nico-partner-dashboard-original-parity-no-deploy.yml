@@ -1,0 +1,62 @@
+name: NICO partner original dashboard count-only parity (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'partner-workspace.html'
+      - 'tests/partner-dashboard-self-app-count-parity.test.mjs'
+      - '.github/workflows/nico-partner-dashboard-original-parity-no-deploy.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'partner-workspace.html'
+      - 'tests/partner-dashboard-self-app-count-parity.test.mjs'
+      - '.github/workflows/nico-partner-dashboard-original-parity-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ""
+      FIREBASE_SERVICE_ACCOUNT_JSON: ""
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Freeze original app, protected revenue code, Rules and partner backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object index.html)" = '88ef5636bfe9254e71f2109d452b6d3049f99861'
+          test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
+          test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
+          test "$(git hash-object functions-partner-workspace/index.js)" = '38da7e9174ffea7c406c92292dccfc651b565eb0'
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 'b94a6aba231dc2569009580a178297a5b6194bda'
+          test "$(git hash-object firebase.partner-workspace.json)" = 'a6ceedec5fab4e22e0a8efe19c685716a2db9750'
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+      - name: Extract real partner browser JavaScript and check syntax without runtime credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs=require("node:fs");
+          const src=fs.readFileSync("partner-workspace.html","utf8");
+          const block=src.match(/<script type="module">([\s\S]*?)<\/script>/);
+          if(!block)throw Error("MISSING_PARTNER_BROWSER_MODULE");
+          fs.writeFileSync(process.env.RUNNER_TEMP+"/nico-partner-count-only-check.mjs",block[1]);
+          NODE
+          node --check "$RUNNER_TEMP/nico-partner-count-only-check.mjs"
+      - name: Verify canonical dashboard parity, existing count-save and company-code contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/partner-dashboard-self-app-count-parity.test.mjs
+          node --test tests/partner-workspace.test.cjs tests/partner-company-code-auth.test.cjs
+          echo "PARTNER_DASHBOARD_COUNT_ONLY_PARITY_OFFLINE_OK"
+          echo "PRODUCTION_FUNCTION_DEPLOYS=0"
+          echo "PRODUCTION_RULES_WRITES=0"
+          echo "PRODUCTION_DOCUMENT_WRITES=0"
