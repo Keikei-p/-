@@ -62,3 +62,28 @@ test('module only validates a selected deployment and contains no production wri
  assert.match(s,/safeToCutOverRules:false/);
  assert.doesNotMatch(s,/firebase deploy|firebase functions:delete|setDoc\(|updateDoc\(|deleteDoc\(|writeBatch\(/);
 });
+
+test('release comparison rejects same-name Functions in foreign projects or regions',()=>{
+ const originals=['getPartnerQuickCounts','submitPartnerQuickCounts'];
+ const fq=name=>'projects/sales-management-cc116/locations/asia-northeast1/functions/'+name;
+ assert.equal(compareBeforeAfter(list(originals),
+  list([...originals,...NAMES.map(fq)])).requiredFourPresentInInventory,true);
+ for(const invalid of [
+  'projects/another-project/locations/asia-northeast1/functions/getPartnerWorkspace',
+  'projects/sales-management-cc116/locations/us-central1/functions/getPartnerWorkspace',
+  'companies/hub/functions/getPartnerWorkspace'
+ ]){
+  assert.throws(()=>compareBeforeAfter(list(originals),
+   list([...originals,invalid,...NAMES.slice(1)])),
+   /STOP_FOUR_COUNT_RELEASE_UNAPPROVED_NEW_FUNCTION/);
+ }
+});
+test('preexisting partial target and duplicate identity never certify a new four-Function deployment',()=>{
+ const originals=['getPartnerQuickCounts','submitPartnerQuickCounts'];
+ assert.throws(()=>compareBeforeAfter(list([...originals,NAMES[0]]),
+  list([...originals,...NAMES])),/STOP_FOUR_COUNT_RELEASE_TARGET_ALREADY_PRESENT/);
+ assert.throws(()=>compareBeforeAfter(list(originals),
+  list([...originals,...NAMES,
+   'projects/sales-management-cc116/locations/asia-northeast1/functions/getPartnerWorkspace'])),
+  /STOP_FOUR_COUNT_RELEASE_UNAPPROVED_NEW_FUNCTION/);
+});
