@@ -5,7 +5,7 @@
  * server-side verifyHubOwner(request, transaction?) callback from the existing
  * workspace actor/scope path when integrated. NEVER use client-supplied identity.
  */
-const {LEGACY,breakdown,nextBreakdown,aggregateBreakdown}=
+const {LEGACY,PARTS,breakdown,nextBreakdown,aggregateBreakdown}=
  require("../partner-sb-v2/sb-category-v2.cjs");
 const KEYS=Object.freeze([
  "NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター",
@@ -183,6 +183,14 @@ function makeHubCountCorrections({
       nextRaw:nextSb
      });
    }catch{fail("data-loss");}
+   // A replay with identical business counts must not manufacture a new
+   // revision or append an audit event. Compare semantic SB breakdowns so
+   // old "unclassified" and explicit unknown-only are treated identically.
+   const oldParts=breakdown(existing.counts[LEGACY],existing.raw.sbBreakdown);
+   const newParts=breakdown(counts[LEGACY],nextSb);
+   if(KEYS.every(k=>counts[k]===existing.counts[k])&&
+      PARTS.every(k=>oldParts[k]===newParts[k]))
+    fail("failed-precondition");
    const stamp=FieldValue.serverTimestamp(),version=d.expectedVersion+1;
    // PATCH only count and version fields. Preserve team snapshot, people,
    // private products/private counts, create time, and old sales documents.
