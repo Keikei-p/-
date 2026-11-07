@@ -1,0 +1,137 @@
+name: NICO partner Nov9 consolidated candidate (NO DEPLOY)
+on:
+  push:
+    branches: [release/partner-nov9-integrated-draft-20261107]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: nico-partner-consolidated-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  consolidated-safe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      FIREBASE_PROJECT_ID: demo-sales-support
+      GCLOUD_PROJECT: demo-sales-support
+      FIREBASE_SERVICE_ACCOUNT_JSON: ""
+      GOOGLE_APPLICATION_CREDENTIALS: ""
+      NICO_RULES_APPROVAL: ""
+      NICO_PHASE1_INDEPENDENT_SIGNOFF: ""
+      NICO_USAGE_APPROVAL: ""
+      NICO_PARTNER_RELEASE_CONFIRMATION: ""
+      PARTNER_WORKSPACE_ENABLED: ""
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Verify exact ancestors and allow only integration review files
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$FIREBASE_PROJECT_ID" = demo-sales-support
+          test "$GCLOUD_PROJECT" = demo-sales-support
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$NICO_RULES_APPROVAL"
+          test -z "$NICO_PHASE1_INDEPENDENT_SIGNOFF"
+          test -z "$NICO_USAGE_APPROVAL"
+          test -z "$NICO_PARTNER_RELEASE_CONFIRMATION"
+          test -z "$PARTNER_WORKSPACE_ENABLED"
+          git fetch --no-tags origin main feature/owner-quick-staff-reconcile-20261107
+          test "$(git rev-parse origin/main)" = "17681e69d3ebd7271cc9a58e138fd0e202db7294"
+          test "$(git rev-parse origin/feature/owner-quick-staff-reconcile-20261107)" = "062382b56372f4109413f3901e376aedad81063d"
+          test "$(git merge-base HEAD 062382b56372f4109413f3901e376aedad81063d)" = "062382b56372f4109413f3901e376aedad81063d"
+          git diff --name-only 062382b56372f4109413f3901e376aedad81063d...HEAD > /tmp/integration-changes
+          cat /tmp/integration-changes
+          while IFS= read -r p; do
+            case "$p" in
+              .github/workflows/nico-partner-nov9-integrated-no-deploy.yml|docs/PARTNER_NOV9_INTEGRATED_READINESS_20261107.md|tests/partner-integrated-release-boundaries.test.cjs) ;;
+              *) echo "INTEGRATION_UNREVIEWED_CHANGE: $p"; exit 1 ;;
+            esac
+          done < /tmp/integration-changes
+          test "$(wc -l </tmp/integration-changes)" -eq 3
+          git diff --exit-code 062382b56372f4109413f3901e376aedad81063d HEAD -- firestore.rules firestore.indexes.json index.html functions functions-partner-workspace functions-partner-quick scripts
+      - name: Check syntax on changed backend and release proof modules
+        run: |
+          set -euo pipefail
+          node --check functions-partner-quick/quick-counts.cjs
+          node --check functions-partner-quick/index.js
+          node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/index.js
+          node --check functions-partner-workspace/owner-partner-count-operations.cjs
+          node --check functions-partner-workspace/combined-saved-month-ranking.cjs
+          node --check tests/partner-integrated-release-boundaries.test.cjs
+          node --check tools/production/phase1-partner-finance-release.mjs
+          node --check tools/production/verify-live-firestore-roles.mjs
+      - name: Synthetic regression for company Owner, counts, catalog, invitation and ranking
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test \
+            tests/partner-integrated-release-boundaries.test.cjs \
+            tests/partner-quick-counts.test.cjs \
+            tests/owner-partner-directory-pagination.test.cjs \
+            tests/owner-partner-count-console.test.cjs \
+            tests/partner-internet-split-safe.test.cjs \
+            tests/partner-legacy-nine-optin-safe.test.cjs \
+            tests/partner-ui-safe-increment.test.cjs \
+            tests/partner-saved-month-ui-main.test.cjs \
+            tests/partner-saved-month-main.test.cjs \
+            tests/partner-combined-month-ranking-main.test.cjs \
+            tests/partner-catalog-publish-main.test.cjs \
+            tests/partner-additional-product-main.test.cjs \
+            tests/partner-additional-ledger-main.test.cjs \
+            tests/partner-workspace.test.cjs \
+            tests/partner-company-code-auth.test.cjs \
+            tests/partner-company-invitations.test.cjs \
+            tests/partner-one-login-same-app.test.cjs \
+            tests/partner-money-free-workspace.test.cjs \
+            tests/partner-existing-ranking.test.cjs \
+            tests/partner-daily-history-active-input.test.cjs \
+            tests/partner-hub-roster-ui.test.cjs \
+            tests/owner-mismatch-explicit-audit-repair.test.cjs \
+            tests/owner-record-count-review-main.test.cjs \
+            tests/internal-owner-finance-visibility.test.cjs \
+            tests/sales-regressions.cjs
+      - name: Synthetic actual UID finance-gate, backup and isolated-restore operator regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test \
+            tests/verify-live-firestore-roles.test.mjs \
+            tests/phase1-live-proof-bridge.test.mjs \
+            tests/phase1-partner-finance-release.test.mjs \
+            tests/phase1-reviewed-operator.test.mjs
+      - name: Demo-only install of Firestore rules emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix tests --ignore-scripts --no-audit --no-fund
+          npm install --global firebase-tools@15.34.1 --no-audit --no-fund
+      - name: Firestore Emulator rejects partner finance reads and preserves legitimate count writes
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase emulators:exec --project demo-sales-support --only firestore 'node --test tests/rules.test.cjs'
+      - name: Explicit synthetic-only certification
+        shell: bash
+        run: |
+          echo 'PRODUCTION_DOCUMENT_WRITES=0'
+          echo 'PRODUCTION_AUTH_WRITES=0'
+          echo 'PRODUCTION_RULES_PATCHES=0'
+          echo 'PRODUCTION_DEPLOYED=false'
+          echo 'LIVE_OWNER_FINANCE_GET_LIST_VERIFIED=false'
+          echo 'LIVE_AFFECTED_PARTNER_FINANCE_DENIAL_VERIFIED=false'
+          echo 'CURRENT_MANAGED_BACKUP_AND_ISOLATED_RESTORE_VERIFIED=false'
+          echo 'RELEASE_APPROVED=false'
