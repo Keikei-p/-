@@ -4,6 +4,11 @@ on:
     branches: [test/partner-handoff-real-service-rules-20261107]
   pull_request:
     branches: [main]
+    paths:
+      - 'tests/partner-secondary-primary-handoff-staging.test.cjs'
+      - 'tests/nico-handoff-ci-scope.test.mjs'
+      - '.github/workflows/nico-real-handoff-emulator-only.yml'
+      - 'docs/PARTNER_PRIMARY_HANDOFF_EXACT_EMULATOR_20261107.md'
 permissions:
   contents: read
 jobs:
@@ -40,21 +45,24 @@ jobs:
           test -z "$NICO_USAGE_APPROVAL"
           test -z "$NICO_PHASE1_INDEPENDENT_SIGNOFF"
           git fetch --no-tags origin main
-          git cat-file -e 9632ea4bc063f165e0197a65f068e6d4529c4410^{commit}
-          test "$(git merge-base HEAD 9632ea4bc063f165e0197a65f068e6d4529c4410)" = 9632ea4bc063f165e0197a65f068e6d4529c4410
-          git diff --name-only 9632ea4bc063f165e0197a65f068e6d4529c4410...HEAD >/tmp/handoff-changes
+          # Existing main moves forward after each reviewed merge.
+          # Compare the PR merge checkout with CURRENT main, not its old root SHA.
+          test "$(git merge-base HEAD origin/main)" = "$(git rev-parse origin/main)"
+          git diff --name-only origin/main...HEAD >/tmp/handoff-changes
+          test -s /tmp/handoff-changes
           while IFS= read -r p; do
             case "$p" in
-              tests/partner-secondary-primary-handoff-staging.test.cjs|.github/workflows/nico-real-handoff-emulator-only.yml|docs/PARTNER_PRIMARY_HANDOFF_EXACT_EMULATOR_20261107.md) ;;
+              tests/partner-secondary-primary-handoff-staging.test.cjs|tests/nico-handoff-ci-scope.test.mjs|.github/workflows/nico-real-handoff-emulator-only.yml|docs/PARTNER_PRIMARY_HANDOFF_EXACT_EMULATOR_20261107.md) ;;
               *) echo "HANDOFF_UNREVIEWED_SOURCE: $p"; exit 1 ;;
             esac
           done < /tmp/handoff-changes
-          test "$(wc -l </tmp/handoff-changes)" -eq 3
-          git diff --exit-code 9632ea4bc063f165e0197a65f068e6d4529c4410 HEAD -- firestore.rules index.html functions functions-partner-workspace functions-partner-quick staging partner-workspace.html
+          test "$(wc -l </tmp/handoff-changes)" -le 4
+          git diff --exit-code origin/main HEAD -- firestore.rules index.html functions functions-partner-workspace functions-partner-quick staging partner-workspace.html
       - name: JS syntax and synthetic identity, member and count tests
         run: |
           set -euo pipefail
           node --check tests/partner-secondary-primary-handoff-staging.test.cjs
+          node --test tests/nico-handoff-ci-scope.test.mjs
           node --test \
             tests/partner-secondary-primary-handoff-staging.test.cjs \
             tests/partner-primary-handoff-mobile-preview-staging.test.cjs \
