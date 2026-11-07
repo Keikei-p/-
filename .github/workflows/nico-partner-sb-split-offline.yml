@@ -7,6 +7,9 @@ on:
       - 'functions-partner-workspace/sb-category-v2.cjs'
       - 'tests/partner-workspace.test.cjs'
       - 'tests/partner-sb-category-v2.test.cjs'
+      - 'partner-workspace.html'
+      - 'tests/partner-count-dashboard.test.cjs'
+      - 'tests/partner-money-free-workspace.test.cjs'
       - '.github/workflows/nico-partner-sb-split-offline.yml'
   push:
     branches: [main]
@@ -15,6 +18,9 @@ on:
       - 'functions-partner-workspace/sb-category-v2.cjs'
       - 'tests/partner-workspace.test.cjs'
       - 'tests/partner-sb-category-v2.test.cjs'
+      - 'partner-workspace.html'
+      - 'tests/partner-count-dashboard.test.cjs'
+      - 'tests/partner-money-free-workspace.test.cjs'
       - '.github/workflows/nico-partner-sb-split-offline.yml'
 permissions:
   contents: read
@@ -34,10 +40,26 @@ jobs:
           node --check functions-partner-workspace/service.cjs
           node --check functions-partner-workspace/sb-category-v2.cjs
           node --test tests/partner-sb-category-v2.test.cjs tests/partner-workspace.test.cjs
+          node --test tests/partner-count-dashboard.test.cjs tests/partner-money-free-workspace.test.cjs
           test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
           test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
           test "$(git hash-object functions-partner-workspace/index.js)" = '38da7e9174ffea7c406c92292dccfc651b565eb0'
-          test "$(git hash-object partner-workspace.html)" = '0930abb188165afea19ef427308ea22fddf636e7'
+          node <<'NODE'
+          const fs=require('node:fs');
+          const html=fs.readFileSync('partner-workspace.html','utf8');
+          const code=html.match(/<script type="module">([\\s\\S]*?)<\\/script>/)?.[1];
+          if(!code||!html.includes('id="sbSplitBox" hidden')||
+             !code.includes('sbBreakdownSchema==="sb-separated-v1"')||
+             !code.includes('旧未分類')||
+             !code.includes('check.sbBreakdown?.[k]!==sbBreakdown[k]'))
+            throw Error('SB_SAFE_CLIENT_NOT_PRESENT');
+          // Existing money-free page contains no Firestore read SDK.
+          if(html.includes('firebase-firestore.js')||
+             /\\bgetFirestore\\(|\\bgetDoc\\(/.test(html))
+            throw Error('UNSAFE_PARTNER_PAGE_FINANCE_SDK');
+          fs.writeFileSync('/tmp/nico-sb-split-browser-check.mjs',code);
+          NODE
+          node --check /tmp/nico-sb-split-browser-check.mjs
           node <<'NODE'
           const fs=require('node:fs');
           const current=fs.readFileSync('functions-partner-workspace/service.cjs','utf8');
