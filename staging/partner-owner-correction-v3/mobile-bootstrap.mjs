@@ -111,14 +111,21 @@ export async function mountVerifiedOwnerCorrection({
    unsubscribe();
    invalid("AUTH_LISTENER_UNVERIFIED");
   }
+  // An account could switch between the first post-fetch check and
+  // listener registration; never return a stale visible panel even then.
+  if(auth.currentUser!==owner||
+     auth.currentUser?.emailVerified!==true||enabled()!==true){
+   destroy();
+   invalid("STALE_SESSION");
+  }
   return Object.freeze({
    companies,load:panel.load,save:panel.save,destroy
   });
  }catch(error){
   client.dispose();
   root.replaceChildren();
-  if(error?.message==="OWNER_CORRECTION_BOOT_AUTH_LISTENER_UNVERIFIED")
-   throw error;
+  if(/^OWNER_CORRECTION_BOOT_(AUTH_LISTENER_UNVERIFIED|STALE_SESSION)$/.test(
+    error?.message||""))throw error;
   invalid("PANEL_UNVERIFIED");
  }
 }
