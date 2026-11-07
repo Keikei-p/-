@@ -6,6 +6,8 @@ on:
     paths:
       - 'tools/production/prepare-partner-sb-v2-verified-package.mjs'
       - 'tests/prepare-partner-sb-v2-verified-package.test.mjs'
+      - 'tests/partner-sb-v2-manual-release-gate.test.mjs'
+      - '.github/workflows/nico-partner-sb-v2-manual.yml'
       - '.github/workflows/nico-partner-sb-v2-release-preflight.yml'
       - 'staging/partner-sb-v2/**'
       - 'tests/partner-sb-v2-*.test.cjs'
@@ -14,6 +16,8 @@ on:
     paths:
       - 'tools/production/prepare-partner-sb-v2-verified-package.mjs'
       - 'tests/prepare-partner-sb-v2-verified-package.test.mjs'
+      - 'tests/partner-sb-v2-manual-release-gate.test.mjs'
+      - '.github/workflows/nico-partner-sb-v2-manual.yml'
       - '.github/workflows/nico-partner-sb-v2-release-preflight.yml'
       - 'staging/partner-sb-v2/**'
       - 'tests/partner-sb-v2-*.test.cjs'
@@ -52,6 +56,7 @@ jobs:
         run: |
           set -euo pipefail
           node --test tests/prepare-partner-sb-v2-verified-package.test.mjs
+          node --test tests/partner-sb-v2-manual-release-gate.test.mjs
           node --test tests/partner-sb-category-v2.test.cjs
           node --test tests/partner-sb-v2-workspace.test.cjs
           node --test tests/partner-sb-v2-dashboard.test.cjs
