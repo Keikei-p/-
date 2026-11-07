@@ -117,3 +117,16 @@ test("no deploy, no billing mutations, no Firebase data writes or captured secre
  assert.match(s,/releaseAuthorized:false/);
  assert.doesNotMatch(s,/method:"(?:POST|PUT|PATCH|DELETE)"|firebase deploy|\.set\(|\.update\(|\.delete\(/);
 });
+
+test("manual GET-only spendcap recheck fails closed on unreadable Billing inventory",()=>{
+ const workflow=readFileSync(new URL("../.github/workflows/nico-functions-spendcap-readonly-20261107.yml",import.meta.url),"utf8");
+ assert.match(workflow,/\n  workflow_dispatch:\n/);
+ assert.match(workflow,/github.event_name == 'workflow_dispatch'/);
+ assert.match(workflow,/github.repository == 'Keikei-p\/\-'/);
+ assert.match(workflow,/github.ref == 'refs\/heads\/main'/);
+ assert.match(workflow,/"budgetInventoryReadable":true/);
+ assert.match(workflow,/BLOCK_SPENDCAP_INVENTORY_UNREADABLE/);
+ assert.match(workflow,/SPENDCAP_INVENTORY_READ_SUCCESS_NO_DEPLOY_AUTHORIZATION/);
+ assert.match(workflow,/\bPRODUCTION_FUNCTION_DEPLOYS=0\b/);
+ assert.doesNotMatch(workflow,/firebase deploy|gcloud functions deploy|method:"(?:POST|PATCH|DELETE)"/);
+});
