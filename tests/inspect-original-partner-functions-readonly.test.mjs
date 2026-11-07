@@ -56,7 +56,7 @@ test('auth errors, throttling, JSON and transport errors never get mistaken for 
  }
  await assert.rejects(inspectOriginal(async()=>{throw Error('secrets must never leak');}),
  /STOP_ORIGINAL_PARTNER_FUNCTIONS_REMOTE_READ_UNVERIFIED/);
- await assert.rejects(inspectOriginal(async()=>response(200,{json:async()=>{throw Error('secrets');}})),
+ await assert.rejects(inspectOriginal(async()=>({status:200,json:async()=>{throw Error('secrets');}})),
  /STOP_ORIGINAL_PARTNER_FUNCTIONS_/);
 });
 test('only metadata GET calls; never Firestore writes, deploy or output sensitive response',()=>{
