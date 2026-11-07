@@ -5,6 +5,7 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - 'staging/partner-primary-handoff/handoff.cjs'
       - 'tests/partner-secondary-primary-handoff-staging.test.cjs'
       - 'tests/nico-handoff-ci-scope.test.mjs'
       - '.github/workflows/nico-real-handoff-emulator-only.yml'
@@ -52,15 +53,16 @@ jobs:
           test -s /tmp/handoff-changes
           while IFS= read -r p; do
             case "$p" in
-              tests/partner-secondary-primary-handoff-staging.test.cjs|tests/nico-handoff-ci-scope.test.mjs|.github/workflows/nico-real-handoff-emulator-only.yml|docs/PARTNER_PRIMARY_HANDOFF_EXACT_EMULATOR_20261107.md) ;;
+              staging/partner-primary-handoff/handoff.cjs|tests/partner-secondary-primary-handoff-staging.test.cjs|tests/nico-handoff-ci-scope.test.mjs|.github/workflows/nico-real-handoff-emulator-only.yml|docs/PARTNER_PRIMARY_HANDOFF_EXACT_EMULATOR_20261107.md) ;;
               *) echo "HANDOFF_UNREVIEWED_SOURCE: $p"; exit 1 ;;
             esac
           done < /tmp/handoff-changes
-          test "$(wc -l </tmp/handoff-changes)" -le 4
-          git diff --exit-code origin/main HEAD -- firestore.rules index.html functions functions-partner-workspace functions-partner-quick staging partner-workspace.html
+          test "$(wc -l </tmp/handoff-changes)" -le 5
+          git diff --exit-code origin/main HEAD -- firestore.rules index.html functions functions-partner-workspace functions-partner-quick partner-workspace.html
       - name: JS syntax and synthetic identity, member and count tests
         run: |
           set -euo pipefail
+          node --check staging/partner-primary-handoff/handoff.cjs
           node --check tests/partner-secondary-primary-handoff-staging.test.cjs
           node --test tests/nico-handoff-ci-scope.test.mjs
           node --test \
