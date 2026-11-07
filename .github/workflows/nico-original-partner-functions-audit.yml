@@ -7,6 +7,7 @@ on:
       - 'tests/inspect-original-partner-functions-readonly.test.mjs'
       - 'tools/production/protect-original-functions-versions.mjs'
       - 'tests/protect-original-functions-versions.test.mjs'
+      - 'tests/partner-readonly-audit-dispatch.test.mjs'
       - '.github/workflows/nico-original-partner-functions-audit.yml'
   push:
     branches: [main]
@@ -15,7 +16,11 @@ on:
       - 'tests/inspect-original-partner-functions-readonly.test.mjs'
       - 'tools/production/protect-original-functions-versions.mjs'
       - 'tests/protect-original-functions-versions.test.mjs'
+      - 'tests/partner-readonly-audit-dispatch.test.mjs'
       - '.github/workflows/nico-original-partner-functions-audit.yml'
+  # Safe manual recheck from GitHub Actions (mobile friendly): GET only, no deploy.
+  workflow_dispatch:
+
 permissions:
   contents: read
 concurrency:
@@ -36,6 +41,7 @@ jobs:
           set -euo pipefail
           node --check tools/production/inspect-original-partner-functions-readonly.mjs
           node --test tests/inspect-original-partner-functions-readonly.test.mjs tests/protect-original-functions-versions.test.mjs
+          node --test tests/partner-readonly-audit-dispatch.test.mjs
           node --test tests/partner-four-function-release-scope.test.mjs tests/partner-workspace.test.cjs
           test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
           test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
@@ -43,7 +49,7 @@ jobs:
 
   read-only-live:
     needs: offline
-    if: ${{ github.event_name == 'push' &&
+    if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
        github.ref == 'refs/heads/main' &&
        github.repository == 'Keikei-p/-' &&
        needs.offline.result == 'success' }}
