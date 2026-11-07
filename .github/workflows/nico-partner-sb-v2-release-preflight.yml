@@ -1,0 +1,88 @@
+name: NICO staged SB hikari Air v2 packaged Functions release preflight (NO DEPLOY)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/production/prepare-partner-sb-v2-verified-package.mjs'
+      - 'tests/prepare-partner-sb-v2-verified-package.test.mjs'
+      - 'tests/partner-sb-v2-manual-release-gate.test.mjs'
+      - '.github/workflows/nico-partner-sb-v2-manual.yml'
+      - '.github/workflows/nico-partner-sb-v2-release-preflight.yml'
+      - 'staging/partner-sb-v2/**'
+      - 'tests/partner-sb-v2-*.test.cjs'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/production/prepare-partner-sb-v2-verified-package.mjs'
+      - 'tests/prepare-partner-sb-v2-verified-package.test.mjs'
+      - 'tests/partner-sb-v2-manual-release-gate.test.mjs'
+      - '.github/workflows/nico-partner-sb-v2-manual.yml'
+      - '.github/workflows/nico-partner-sb-v2-release-preflight.yml'
+      - 'staging/partner-sb-v2/**'
+      - 'tests/partner-sb-v2-*.test.cjs'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-no-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Strict immutable old sales / owner financial source and count access check
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
+          test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
+          test "$(git hash-object index.html)" = '88ef5636bfe9254e71f2109d452b6d3049f99861'
+          test "$(git hash-object partner-workspace.html)" = '0930abb188165afea19ef427308ea22fddf636e7'
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 'b94a6aba231dc2569009580a178297a5b6194bda'
+          test "$(git hash-object functions-partner-workspace/index.js)" = '38da7e9174ffea7c406c92292dccfc651b565eb0'
+          test "$(git hash-object functions-partner-workspace/company-code-auth.cjs)" = 'f7e5899cdb9e36da610846d787955b13c1e16e4b'
+          test "$(git hash-object firebase.partner-workspace.json)" = 'a6ceedec5fab4e22e0a8efe19c685716a2db9750'
+          node --check tools/production/prepare-partner-sb-v2-verified-package.mjs
+          node --check staging/partner-sb-v2/service.cjs
+          node --check staging/partner-sb-v2/sb-category-v2.cjs
+      - name: Run actual staged service, pure business logic, owner/shared/count rank and release guard tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/prepare-partner-sb-v2-verified-package.test.mjs
+          node --test tests/partner-sb-v2-manual-release-gate.test.mjs
+          node --test tests/partner-sb-category-v2.test.cjs
+          node --test tests/partner-sb-v2-workspace.test.cjs
+          node --test tests/partner-sb-v2-dashboard.test.cjs
+          node --test tests/partner-four-function-release-scope.test.mjs
+          node --test tests/partner-workspace.test.cjs
+      - name: Construct exact reviewed v2 Functions package into disposable runner (NO DEPLOY)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/prepare-partner-sb-v2-verified-package.mjs --prepare
+          review="$RUNNER_TEMP/nico-reviewed-sb-v2-functions-package"
+          test -d "$review/functions-partner-workspace"
+          test -f "$review/functions-partner-workspace/service.cjs"
+          test -f "$review/functions-partner-workspace/sb-category-v2.cjs"
+          test "$(find "$review" -type f | wc -l)" -eq 6
+          test "$(git hash-object "$review/functions-partner-workspace/index.js")" = '38da7e9174ffea7c406c92292dccfc651b565eb0'
+          test "$(git hash-object "$review/functions-partner-workspace/company-code-auth.cjs")" = 'f7e5899cdb9e36da610846d787955b13c1e16e4b'
+          test "$(git hash-object "$review/functions-partner-workspace/service.cjs")" = '41157a07e159cde651b542bbb9b725039ed7fb58'
+          test "$(git hash-object "$review/functions-partner-workspace/sb-category-v2.cjs")" = '7f1f7214dd38c6aae3339bab26a8378f1e556f4c'
+          node --check "$review/functions-partner-workspace/index.js"
+          node --check "$review/functions-partner-workspace/service.cjs"
+          node --check "$review/functions-partner-workspace/company-code-auth.cjs"
+          node --check "$review/functions-partner-workspace/sb-category-v2.cjs"
+          echo 'STAGED_SB_SPLIT_PACKAGE_REPRODUCED_NO_DEPLOY'
+      - name: Delete disposable package (never upload or publish any files)
+        if: always()
+        shell: bash
+        run: |
+          rm -rf -- "$RUNNER_TEMP/nico-reviewed-sb-v2-functions-package"
