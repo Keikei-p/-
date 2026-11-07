@@ -124,11 +124,13 @@ const checkCollection=async(token,name,company)=>{
   }
   return {listStatus,getStatus};
 };
-const render=(name,result)=>{
+const render=(name,result,role)=>{
   if(result.listStatus==="denied"&&result.getStatus==="denied")
-    label(name,"LIST拒否・GET拒否（候補）","pass");
+    label(name,role==="owner"?"Ownerの閲覧が拒否（危険）":"LIST・GETともに拒否（候補）",
+      role==="owner"?"warn":"pass");
   else if(result.listStatus==="allowed"&&result.getStatus==="allowed")
-    label(name,"LIST許可・GET許可","warn");
+    label(name,role==="owner"?"Owner閲覧許可（期待どおり）":"金額原票へのアクセス許可（要遮断）",
+      role==="owner"?"pass":"warn");
   else if(result.listStatus==="denied"&&result.getStatus==="untested")
     label(name,"LIST拒否・GET未検証","unknown");
   else label(name,"判定保留（再検証が必要）","unknown");
@@ -151,7 +153,7 @@ $("run").onclick=async()=>{
     label("identity",account.role==="owner"?"Owner候補（実UID独立照合は別）":"社内所属（協力店確認は別）");
     for(const name of ["products","records"]){
       const result=await checkCollection(token,name,account.company);
-      render(name,result);
+      render(name,result,account.role);
     }
     const workspace=$("workspace").value.trim();
     if(workspace){
