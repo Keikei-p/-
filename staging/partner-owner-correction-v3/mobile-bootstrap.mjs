@@ -54,11 +54,12 @@ export function countOnlyRegisteredCompanies(raw,date){
 
 export async function mountVerifiedOwnerCorrection({
  root,auth,workspaceCallable,listCallable,correctCallable,
- dateGetter,confirmChange,enabled=()=>false,dom
+ dateGetter,confirmChange,subscribeAuth,enabled=()=>false,dom
 }={}){
  if(!root||!auth||typeof workspaceCallable!=="function"||
     typeof listCallable!=="function"||typeof correctCallable!=="function"||
     typeof dateGetter!=="function"||typeof confirmChange!=="function"||
+    typeof subscribeAuth!=="function"||
     typeof enabled!=="function"||!dom)
   invalid("DEPENDENCIES");
  if(enabled()!==true)invalid("DISABLED");
@@ -83,11 +84,38 @@ export async function mountVerifiedOwnerCorrection({
   const panel=mountOwnerCorrection({
    root,companies,api:client,dateGetter,confirmChange,dom
   });
+  let destroyed=false,unsubscribe=()=>{},listenerReady=false;
+  const destroy=()=>{
+   if(destroyed)return;
+   destroyed=true;
+   client.dispose();
+   panel.destroy();
+   if(listenerReady)unsubscribe();
+  };
+  // Firebase onAuthStateChanged must be injected by the caller. Clearing
+  // an already-rendered count panel is essential: rejecting *new* requests
+  // alone cannot prevent a later user viewing the previous owner's counts.
+  let cancel;
+  try{
+   cancel=subscribeAuth(user=>{
+    if(destroyed)return;
+    if(user!==owner||user?.emailVerified!==true||
+       enabled()!==true)destroy();
+   });
+  }catch{destroy();invalid("AUTH_LISTENER_UNVERIFIED")}
+  if(typeof cancel!=="function"){
+   destroy();invalid("AUTH_LISTENER_UNVERIFIED");
+  }
+  unsubscribe=cancel;listenerReady=true;
+  if(destroyed)unsubscribe();
   return Object.freeze({
-   companies,load:panel.load,save:panel.save,
-   destroy(){client.dispose();panel.destroy()}
+   companies,load:panel.load,save:panel.save,destroy
   });
- }catch{
-  client.dispose();invalid("PANEL_UNVERIFIED")
+ }catch(error){
+  client.dispose();
+  root.replaceChildren();
+  if(error?.message==="OWNER_CORRECTION_BOOT_AUTH_LISTENER_UNVERIFIED")
+   throw error;
+  invalid("PANEL_UNVERIFIED");
  }
 }
