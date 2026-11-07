@@ -354,7 +354,11 @@ function periodDatesForCounts(selected,period,today){
  return dates;
 }
 function summarizeCountOnlyResponses(responses,teamList,keys){
- const group=new Map(),individual=new Map(),days=[],products=Object.fromEntries(keys.map(k=>[k,0]));
+ const v2=responses.some(r=>r?.sbBreakdownSchema==="sb-separated-v1");
+ if(v2&&responses.some(r=>r?.sbBreakdownSchema!=="sb-separated-v1"))
+  throw Error("mixed_sb_schema");
+ const productKeys=v2?keys.filter(k=>k!==SB_LEGACY).concat(SB_PARTS):keys;
+ const group=new Map(),individual=new Map(),days=[],products=Object.fromEntries(productKeys.map(k=>[k,0]));
  const teamProducts=new Map(),teamPeople=new Map();
  const teams=new Map((teamList||[]).map(t=>[t.id,t.name]));
  let total=0,hasUnverifiedTeams=false;
@@ -382,7 +386,12 @@ function summarizeCountOnlyResponses(responses,teamList,keys){
    for(const key of keys){
     const value=counts[key];
     if(!Number.isSafeInteger(value)||value<0||value>9999)throw Error("unverified count");
-    count+=value;products[key]+=value;
+    count+=value;
+    if(!v2||key!==SB_LEGACY)products[key]+=value;
+   }
+   if(v2){
+    const sb=resolvedSbSplit(counts[SB_LEGACY],record.sbBreakdown);
+    for(const k of SB_PARTS)products[k]+=sb[k];
    }
    if(count!==record.totalCount)throw Error("count mismatch");
    const privateCounts=record.privateCounts||{};
@@ -409,8 +418,12 @@ function summarizeCountOnlyResponses(responses,teamList,keys){
    const groupId=typeof teamId==="string"&&teams.has(teamId)?teamId:"__unverified__";
    if(groupId==="__unverified__")hasUnverifiedTeams=true;
    group.set(groupId,(group.get(groupId)||0)+count);
-    const detail=teamProducts.get(groupId)||Object.fromEntries(keys.map(k=>[k,0]));
-    for(const key of keys)detail[key]+=counts[key];
+    const detail=teamProducts.get(groupId)||Object.fromEntries(productKeys.map(k=>[k,0]));
+    for(const key of keys)if(!v2||key!==SB_LEGACY)detail[key]+=counts[key];
+    if(v2){
+     const sb=resolvedSbSplit(counts[SB_LEGACY],record.sbBreakdown);
+     for(const k of SB_PARTS)detail[k]+=sb[k];
+    }
     for(const [productId,n] of Object.entries(privateCounts)){
       const label="独自："+privateProducts.get(productId).name;
       detail[label]=(detail[label]||0)+n;
@@ -666,8 +679,14 @@ function renderHubCompanyDetail(){
  if(data?.role!=="hub")return;
  const select=$("hubCompanySelect"),selected=data.partners.find(p=>p.partnerCompanyId===select.value);
  $("hubCompanyDetail").hidden=!selected;
- $("hubCompanyProducts").replaceChildren(selected?
-  countTable(["商材","報告件数"],KEYS.map(k=>[k,selected.counts[k]+"件"])):countTable(["商材","報告件数"],[]));
+ const hubRows=selected?KEYS.flatMap(k=>{
+  if(k===SB_LEGACY&&supportsSbSplit()){
+   const sb=resolvedSbSplit(selected.counts[k],selected.sbBreakdown);
+   return SB_PARTS.map(part=>[part,sb[part]+"件"]);
+  }
+  return [[k,selected.counts[k]+"件"]];
+ }):[];
+ $("hubCompanyProducts").replaceChildren(countTable(["商材","報告件数"],hubRows));
 }
 function renderHubInvitePanel(){
  if(data?.role!=="hub")return;
@@ -905,8 +924,12 @@ $("hubTeamCountLoad").onclick=async()=>{
    label.textContent=team.name+"｜"+(team.reportedStaffCount?
      team.totalCount+"件（報告 "+team.reportedStaffCount+"人）":"未報告");
    panel.append(label);
-   if(team.reportedStaffCount)
-    panel.append(countTable(["商材","件数"],KEYS.map(k=>[k,team.counts[k]+"件"])));
+   if(team.reportedStaffCount){
+    const sb=supportsSbSplit()?resolvedSbSplit(team.counts[SB_LEGACY],team.sbBreakdown):null;
+    const rows=KEYS.flatMap(k=>k===SB_LEGACY&&sb?
+      SB_PARTS.map(part=>[part,sb[part]+"件"]):[[k,team.counts[k]+"件"]]);
+    panel.append(countTable(["商材","件数"],rows));
+   }
    holder.append(panel);
   }
   if(sums!==detail.verifiedSharedCount||detail.unreconciledWithCompanyReport)
