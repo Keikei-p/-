@@ -22,6 +22,11 @@
 - 認証実ユーザー3件の旧自社金額GET/LIST拒否、同一メールの正式所属移行、件数入力とOwner訂正継続、追加Functions費用の承認はこの検証では行わない。
 - 成功した場合でもFirestore Rules・Functions・Hostingの本番切替権限は付与しない。現行の`main`からのHosting一括デプロイを行わない。
 
+## 本番CIとの整合
+
+- 先行PR #474で、所属移行のEmulator検証を関係するPRの差分がある場合に限定し、古いmain SHAとの誤比較を修正済み。今回のバックアップPRは所属移行コードを変更せず、不要な認証/移行テストで誤停止しない。
+- 本番スナップショット走査中に既存の入力が変われば、2回の指紋が一致せずSTOPしても、売上や件数を巻き戻さない。復元検証はローカルのデータ写しのみ。
+
 ## 出力の判定
 `PARTNER_BOUNDARY_RESULT { ... "applied":false, "managedBackupRestored":false, "fieldsAndIdsRestored":true, "fullInventoryStableBefore":true, "productionDocumentWrites":0 }` だけがこの工程の合格条件。エラーならSTOPした事実のみ報告し、復元済みとは言わない。
 
