@@ -6,12 +6,14 @@ on:
     paths:
       - 'tools/production/inspect-live-partner-callables-readonly.mjs'
       - 'tests/inspect-live-partner-callables-readonly.test.mjs'
+      - 'tests/partner-readonly-audit-dispatch.test.mjs'
       - '.github/workflows/nico-live-partner-count-functions-audit.yml'
   push:
     branches: [main]
     paths:
       - 'tools/production/inspect-live-partner-callables-readonly.mjs'
       - 'tests/inspect-live-partner-callables-readonly.test.mjs'
+      - 'tests/partner-readonly-audit-dispatch.test.mjs'
       - '.github/workflows/nico-live-partner-count-functions-audit.yml'
 
   # Safe manual recheck from GitHub Actions (mobile friendly): GET only, no deploy.
@@ -38,6 +40,7 @@ jobs:
           set -euo pipefail
           node --check tools/production/inspect-live-partner-callables-readonly.mjs
           node --test tests/inspect-live-partner-callables-readonly.test.mjs
+          node --test tests/partner-readonly-audit-dispatch.test.mjs
           node --test tests/partner-workspace.test.cjs
           node --test tests/legacy-rules-apply-frozen.test.mjs
           test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
