@@ -1,0 +1,49 @@
+name: NICO finance four proof strict role verdict (STAGING / NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'staging/finance-diagnostic-v3/**'
+      - 'tests/finance-diagnostic-v3-strict-proof.test.mjs'
+      - '.github/workflows/nico-finance-four-strict-staging.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'staging/finance-diagnostic-v3/**'
+      - 'tests/finance-diagnostic-v3-strict-proof.test.mjs'
+      - '.github/workflows/nico-finance-four-strict-staging.yml'
+permissions:
+  contents: read
+jobs:
+  no-deploy-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify immutable production sales/partner/finance sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
+          test "$(git hash-object partner-workspace.html)" = 0930abb188165afea19ef427308ea22fddf636e7
+          test "$(git hash-object finance-boundary-check.html)" = 7fa664efb17f6d3337e9403498aa8c0857b35be5
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(git hash-object functions-partner-workspace/index.js)" = 38da7e9174ffea7c406c92292dccfc651b565eb0
+          test -z "$(printenv FIREBASE_SERVICE_ACCOUNT_JSON || true)"
+          test -z "$(printenv GOOGLE_APPLICATION_CREDENTIALS || true)"
+          node --check staging/finance-diagnostic-v3/build-strict.mjs
+      - name: Full masked GET/LIST role-scoped diagnostic safety tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/finance-diagnostic-v3-strict-proof.test.mjs
+          node --test tests/finance-diagnostic-four-collections-staging.test.mjs
+          node --test tests/finance-boundary-ondevice.test.mjs
+          node staging/finance-diagnostic-v3/build-strict.mjs --check
+          echo 'PASS_FINANCE_FOUR_STRICT_STAGING_NO_DEPLOY'
