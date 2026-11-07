@@ -439,3 +439,129 @@ test("quick owner-only internet split UI does not change the original quick or s
  assert.match(section,/hikari\+air!==combined/);
  assert.match(section,/check\.internetSplit\?\.verified!==true/);
 });
+
+
+test("HQ owner sees matching Quick and staff summaries as UNVERIFIED duplicate risk, never merged",async()=>{
+ const {db,service,req,counts}=setup();
+ await service.submit(req("p",{date:today,counts:{...counts,NURO:2,"SB光・AIR":3},expectedVersion:0}));
+ const staffPath="companies/hub/partnerWorkCountDays/"+today+"/reports/partner1";
+ db.seed(staffPath,{source:"staff-entries-v1",hubCompanyId:"hub",
+  partnerCompanyId:"partner1",date:today,counts:{...counts,NURO:2,"SB光・AIR":3},
+  totalCount:5,totalRevenue:999999,unitPrice:88000,email:"private@example.com"});
+ const before=copy([...db.data]);
+ const data=await service.viewOwnerQuickCorrection(req("h",{
+  date:today,partnerCompanyId:"partner1"
+ }));
+ const x=data.reconciliation;
+ assert.equal(x.status,"totals_match_unverified");
+ assert.equal(x.quickTotalCount,5);
+ assert.equal(x.staffTotalCount,5);
+ assert.deepEqual(x.categoryDifferences,[]);
+ assert.equal(x.contractIdentityVerified,false);
+ assert.equal(x.automaticMergeAllowed,false);
+ assert.equal(x.quickIncludedInIndividualRanking,false);
+ assert.equal(x.productionDocumentWrites,0);
+ assert.doesNotMatch(JSON.stringify(data),/totalRevenue|unitPrice|88000|999999|private@example.com/);
+ assert.deepEqual([...db.data],before);
+});
+test("HQ owner sees category differences even when both sources have the same total",async()=>{
+ const {db,service,req,counts}=setup();
+ await service.submit(req("p",{date:today,counts:{...counts,NURO:2,"SB光・AIR":3},expectedVersion:0}));
+ db.seed("companies/hub/partnerWorkCountDays/"+today+"/reports/partner1",{
+  source:"staff-entries-v1",hubCompanyId:"hub",partnerCompanyId:"partner1",
+  date:today,counts:{...counts,NURO:3,"SB光・AIR":2},totalCount:5});
+ const x=(await service.viewOwnerQuickCorrection(req("h",{
+  date:today,partnerCompanyId:"partner1"
+ }))).reconciliation;
+ assert.equal(x.status,"different");
+ assert.equal(x.quickTotalCount,5);
+ assert.equal(x.staffTotalCount,5);
+ assert.deepEqual(x.categoryDifferences,["NURO","SB光・AIR"]);
+ assert.equal(x.automaticMergeAllowed,false);
+});
+test("Quick-only, staff-only and no report are not misrepresented as verified zero",async()=>{
+ const {db,service,req,counts}=setup();
+ const view=async()=> (await service.viewOwnerQuickCorrection(req("h",{
+  date:today,partnerCompanyId:"partner1"
+ }))).reconciliation;
+ let x=await view();
+ assert.equal(x.status,"none");
+ assert.equal(x.quickTotalCount,null);
+ assert.equal(x.staffTotalCount,null);
+ await service.submit(req("p",{date:today,counts:{...counts,NURO:4},expectedVersion:0}));
+ x=await view();
+ assert.equal(x.status,"quick_only");
+ assert.equal(x.quickTotalCount,4);
+ assert.equal(x.staffTotalCount,null);
+ const path="companies/hub/partnerWorkCountDays/"+today+"/reports/partner1";
+ db.seed(path,{source:"staff-entries-v1",hubCompanyId:"hub",
+  partnerCompanyId:"partner1",date:today,counts:{...counts,NURO:1},totalCount:1});
+ x=await view();
+ assert.equal(x.status,"different");
+ assert.equal(x.staffTotalCount,1);
+ db.data.delete("companies/hub/partnerQuickCountDays/"+today+"/reports/partner1");
+ x=await view();
+ assert.equal(x.status,"staff_only");
+ assert.equal(x.quickTotalCount,null);
+ assert.equal(x.staffTotalCount,1);
+});
+test("Quick special approval never reads/discloses the unrelated staff summary",async()=>{
+ const {db,service,req,counts}=setup();
+ db.seed("partnerRelations/partner1",{
+  partnerCompanyId:"partner1",hubCompanyId:"hub",active:false,
+  countSharingApproved:false,catalogAccessApproved:false
+ });
+ await service.approve(req("h",{partnerCompanyId:"partner1",approved:true}));
+ await service.submit(req("p",{date:today,counts:{...counts,NURO:4},expectedVersion:0}));
+ db.seed("companies/hub/partnerWorkCountDays/"+today+"/reports/partner1",{
+  source:"unexpected-invalid-staff-source",unitPrice:444444,
+  email:"secret@example.com",totalCount:9999});
+ const x=await service.viewOwnerQuickCorrection(req("h",{
+  date:today,partnerCompanyId:"partner1"
+ }));
+ assert.equal(x.reconciliation.status,"staff_not_shared");
+ assert.equal(x.reconciliation.staffTotalCount,null);
+ assert.deepEqual(x.reconciliation.categoryDifferences,[]);
+ assert.equal(x.reconciliation.automaticMergeAllowed,false);
+ assert.doesNotMatch(JSON.stringify(x),/444444|secret@example.com|9999/);
+});
+test("corrupted, wrong-tenant or revenue-like staff summaries never become comparison totals",async()=>{
+ const {db,service,req,counts}=setup();
+ await service.submit(req("p",{date:today,counts:{...counts,NURO:4},expectedVersion:0}));
+ const path="companies/hub/partnerWorkCountDays/"+today+"/reports/partner1";
+ const correct={source:"staff-entries-v1",hubCompanyId:"hub",
+  partnerCompanyId:"partner1",date:today,counts:{...counts,NURO:4},totalCount:4};
+ for(const mutation of [
+  {source:"unexpected"},{hubCompanyId:"otherhub"},
+  {partnerCompanyId:"othercompany"},{date:"2026-10-01"},
+  {totalCount:5},{counts:{...correct.counts,NURO:-1}},
+  {counts:{...correct.counts,unitPrice:80000}},
+  {counts:{...correct.counts,NURO:"4"}}
+ ]){
+  db.seed(path,{...correct,...mutation});
+  const before=copy([...db.data]);
+  await assert.rejects(service.viewOwnerQuickCorrection(req("h",{
+   date:today,partnerCompanyId:"partner1"
+  })),e=>e.code==="data-loss");
+  assert.deepEqual([...db.data],before);
+ }
+});
+test("owner reconciliation UI is redacted, read-only and labels equality as unverified",()=>{
+ const fs=require("node:fs"),path=require("node:path");
+ const html=fs.readFileSync(path.join(__dirname,"../index.html"),"utf8");
+ const joint=fs.readFileSync(path.join(__dirname,
+  "../functions-partner-workspace/service.cjs"),"utf8");
+ assert.equal(html.split('id="ownerPartnerQuickReconciliation"').length-1,1);
+ const start=html.indexOf("const comp=d.reconciliation;");
+ const stop=html.indexOf("  if(!d.report){",start);
+ assert(start>0&&stop>start);
+ const code=html.slice(start,stop);
+ assert.match(code,/totals_match_unverified/);
+ assert.match(code,/同じ契約かは未照合/);
+ assert.match(code,/原票を照合するまで自動合算しません/);
+ assert.doesNotMatch(code,/\b(?:setDoc|updateDoc|deleteDoc|signIn|signOut)\s*\(/);
+ const join=joint.slice(joint.indexOf("async function viewCombinedMonth("),
+  joint.indexOf("async function ",joint.indexOf("async function viewCombinedMonth(")+15));
+ assert.match(join,/partnerWorkEntries|viewSavedMonth|projectSavedPartnerMonth/);
+ assert.doesNotMatch(join,/partnerQuickCountDays|partnerQuickInternetSplits/);
+});
