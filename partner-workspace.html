@@ -254,7 +254,7 @@ function validateSbGrid(){
  const o={},inputs=$("sbSplitGrid").querySelectorAll("input");
  for(const inp of inputs){
   if(!SB_PARTS.includes(inp.dataset.sbPart)||
-    !/^(?:0|[1-9]\\d{0,3})$/.test(inp.value.trim()))
+    !/^(?:0|[1-9]\d{0,3})$/.test(inp.value.trim()))
    throw Error("invalid_sb_input");
   o[inp.dataset.sbPart]=Number(inp.value);
  }
