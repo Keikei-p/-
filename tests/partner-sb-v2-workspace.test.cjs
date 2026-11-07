@@ -478,10 +478,10 @@ test("after owner count correction, partner stale save rejects then fresh save w
   counts:initialCounts,privateCounts:{[product]:3},expectedVersion:0}));
  assert.equal(submitted.version,1);
  assert.equal(submitted.totalCount,6);
- const entryPath="companies/partner/partnerWorkEntries/"+date+"__"+staff;
+ const entryPath="companies/partner/partnerWorkEntries/"+date+"__"+staffId;
  const summaryPath="companies/hub/partnerWorkCountDays/"+date+"/reports/partner";
  const auditPath=v=>"companies/partner/partnerWorkAudits/"+date+
-  "__"+staff+"__v"+v;
+  "__"+staffId+"__v"+v;
  const original=clone(db.store.get(entryPath));
  const originalFinance=clone([...db.store].filter(([id])=>
   /^(?:products|records)\//.test(id)));
@@ -514,7 +514,7 @@ test("after owner count correction, partner stale save rejects then fresh save w
  // Refetch and explicitly use the CURRENT version. Neither the page nor
  // the backend may blindly retry the stale mutation or silently reset data.
  const fresh=await api.view(req("p",{date}));
- const item=fresh.records.find(x=>x.staffId===staff);
+ const item=fresh.records.find(x=>x.staffId===staffId);
  assert.equal(item.version,2);
  assert.equal(item.counts.NURO,3);
  assert.equal(item.privateCounts[product],3);
@@ -583,7 +583,7 @@ test("after owner SB classification, legacy split-less partner cannot change com
  }));
  assert.equal(owner.version,2);
  assert.equal(owner.totalCount,5);
- const entryPath="companies/partner/partnerWorkEntries/"+date+"__"+staff;
+ const entryPath="companies/partner/partnerWorkEntries/"+date+"__"+staffId;
  const summaryPath="companies/hub/partnerWorkCountDays/"+date+"/reports/partner";
  const frozen=clone([...db.store]);
  // A pre-correction form MUST fail version check before any write.
@@ -599,9 +599,9 @@ test("after owner SB classification, legacy split-less partner cannot change com
   counts:{...originalCounts,"SB光・AIR":6}
  })),/SB_SPLIT_OLD_CLIENT_MUST_REFRESH/);
  assert.deepEqual(clone([...db.store]),frozen);
- assert.equal(db.store.has("companies/partner/partnerWorkAudits/"+date+"__"+staff+"__v3"),false);
+ assert.equal(db.store.has("companies/partner/partnerWorkAudits/"+date+"__"+staffId+"__v3"),false);
  const refreshed=await api.view(req("p",{date}));
- const current=refreshed.records.find(x=>x.staffId===staff);
+ const current=refreshed.records.find(x=>x.staffId===staffId);
  assert.equal(current.version,2);
  assert.deepEqual(current.sbBreakdown,classified);
  const explicitSplit={"SB光":2,"SB AIR":3,"旧未分類":1};
@@ -627,7 +627,7 @@ test("after owner SB classification, legacy split-less partner cannot change com
  assert.deepEqual(db.store.get(summaryPath).sbBreakdown,explicitSplit);
  for(const version of [1,2,3,4])
   assert.equal(db.store.has("companies/partner/partnerWorkAudits/"+date+"__"+
-   staff+"__v"+version),true,"audit revision "+version+" retained");
+   staffId+"__v"+version),true,"audit revision "+version+" retained");
  const hub=await api.view(req("h",{date,partnerCompanyId:"partner",includeTeamStatus:true}));
  assert.equal(hub.partners[0].totalCount,8);
  assert.equal(hub.partnerTeamDetails.verifiedSharedCount,8);
