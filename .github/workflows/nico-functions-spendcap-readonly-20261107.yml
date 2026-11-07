@@ -1,0 +1,92 @@
+name: NICO Cloud Run Functions spend cap inventory (GET ONLY / NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/production/inspect-functions-spendcap-readonly.mjs'
+      - 'tests/inspect-functions-spendcap-readonly.test.mjs'
+      - '.github/workflows/nico-functions-spendcap-readonly-20261107.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/production/inspect-functions-spendcap-readonly.mjs'
+      - 'tests/inspect-functions-spendcap-readonly.test.mjs'
+      - '.github/workflows/nico-functions-spendcap-readonly-20261107.yml'
+permissions:
+  contents: read
+concurrency:
+  group: nico-functions-spendcap-get-only
+  cancel-in-progress: false
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ""
+      FIREBASE_SERVICE_ACCOUNT_JSON: ""
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify public service target, cost fail-closed, and zero remote writes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          node --check tools/production/inspect-functions-spendcap-readonly.mjs
+          node --test tests/inspect-functions-spendcap-readonly.test.mjs
+          test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
+          test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
+          test "$(git hash-object functions-partner-workspace/index.js)" = '38da7e9174ffea7c406c92292dccfc651b565eb0'
+  live:
+    needs: offline
+    if: ${{ github.event_name == 'push' && github.repository == 'Keikei-p/-' && github.ref == 'refs/heads/main' && needs.offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Require exact main and unmodified financial sources
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq '.commit.sha')"
+          test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
+          test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
+          test "$(git hash-object functions-partner-workspace/index.js)" = '38da7e9174ffea7c406c92292dccfc651b565eb0'
+          node --test tests/inspect-functions-spendcap-readonly.test.mjs
+      - name: Install existing Firebase SDK for an OAuth GET only
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Bind existing read-only production identity as temporary file
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-spendcap.private.json"
+          chmod 600 "$RUNNER_TEMP/nico-spendcap.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-spendcap.private.json" >> "$GITHUB_ENV"
+      - name: Inspect linked Cloud Billing spend caps without modifying budgets
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/inspect-functions-spendcap-readonly.mjs
+          echo 'PRODUCTION_FUNCTION_DEPLOYS=0'
+          echo 'PRODUCTION_BUDGET_MODIFICATIONS=0'
+          echo 'PRODUCTION_RULES_WRITES=0'
+          echo 'PRODUCTION_DOCUMENT_WRITES=0'
+      - name: Delete temporary identity, never upload logs or documents
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/nico-spendcap.private.json"
+          rm -f firebase-debug.log firestore-debug.log
