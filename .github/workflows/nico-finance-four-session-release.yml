@@ -1,0 +1,128 @@
+name: NICO session-bound finance diagnostic (ONE HOSTING PAGE)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/hosting/surgical-finance-four-session.mjs'
+      - 'tests/surgical-finance-four-session.test.mjs'
+      - '.github/workflows/nico-finance-four-session-release.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/hosting/surgical-finance-four-session.mjs'
+      - 'tests/surgical-finance-four-session.test.mjs'
+      - '.github/workflows/nico-finance-four-session-release.yml'
+permissions:
+  contents: read
+concurrency:
+  group: nico-finance-session-one-html-release
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Freeze all original financial, sales and partner paths before touching Hosting
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
+          test "$(git hash-object partner-workspace.html)" = 0930abb188165afea19ef427308ea22fddf636e7
+          test "$(git hash-object finance-boundary-check.html)" = 7fa664efb17f6d3337e9403498aa8c0857b35be5
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(git hash-object functions-partner-workspace/index.js)" = 38da7e9174ffea7c406c92292dccfc651b565eb0
+          node --check tools/hosting/surgical-finance-four-session.mjs
+          node --check staging/finance-diagnostic-v4/build-session-safe.mjs
+      - name: Verify one-page 13-asset conservation, browser UID reset and no false PASS
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/surgical-finance-four-session.test.mjs
+          node --test tests/finance-diagnostic-v4-session-safe.test.mjs
+          node --test tests/finance-diagnostic-v3-strict-proof.test.mjs
+          node --test tests/finance-diagnostic-four-collections-staging.test.mjs
+          node --test tests/finance-boundary-ondevice.test.mjs
+          test -z "$(printenv FIREBASE_SERVICE_ACCOUNT_JSON || true)"
+          test -z "$(printenv GOOGLE_APPLICATION_CREDENTIALS || true)"
+          echo "PASS_NICO_FOUR_STRICT_READ_ONLY_TESTS"
+
+  release-reviewed-single-html:
+    needs: validate
+    if: >-
+      ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'Keikei-p/-' && startsWith(github.event.head_commit.message, 'release: finance session proof single Hosting page') && needs.validate.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 24
+    env:
+      NICO_SESSION_FOUR_RELEASE_CONFIRMATION: CONFIRM_REPLACE_SESSION_DIAGNOSTIC_ONLY
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Recheck latest main, project and historical hash contract before credentials
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
+          test "$FIREBASE_PROJECT_ID" = sales-management-cc116
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
+          test "$(git hash-object finance-boundary-check.html)" = 7fa664efb17f6d3337e9403498aa8c0857b35be5
+          test "$(git hash-object partner-workspace.html)" = 0930abb188165afea19ef427308ea22fddf636e7
+          node --test tests/surgical-finance-four-session.test.mjs tests/finance-diagnostic-v4-session-safe.test.mjs tests/finance-diagnostic-v3-strict-proof.test.mjs
+      - name: Load previously approved Hosting identity into a private temporary file
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-session-four-hosting.private.json"
+          chmod 600 "$RUNNER_TEMP/nico-session-four-hosting.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-session-four-hosting.private.json" >> "$GITHUB_ENV"
+      - name: Install existing Firebase REST authentication library only
+        shell: bash
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Verify EXACT existing live 13-asset manifest BEFORE writes
+        shell: bash
+        run: node tools/hosting/surgical-finance-four-session.mjs --dry-run
+      - name: Publish exact replacement for /finance-boundary-four.html ONLY
+        shell: bash
+        run: node tools/hosting/surgical-finance-four-session.mjs --release
+      - name: Confirm live page byte equality and preserve old 5 critical routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module -e "import{writeFileSync}from'node:fs';import{sessionSafeFour}from'./staging/finance-diagnostic-v4/build-session-safe.mjs';writeFileSync(process.env.RUNNER_TEMP+'/session-four-expected.html',sessionSafeFour())"
+          matched=false
+          for n in $(seq 1 12); do
+            curl -fsSL --max-time 25 "https://nico-factory.web.app/finance-boundary-four.html?verify=$GITHUB_SHA-$n" > "$RUNNER_TEMP/session-four-live.html" || true
+            if cmp -s "$RUNNER_TEMP/session-four-live.html" "$RUNNER_TEMP/session-four-expected.html"; then
+              matched=true
+              break
+            fi
+            sleep 5
+          done
+          test "$matched" = true || { echo 'STOP_FINANCE_FOUR_LIVE_BYTE_MISMATCH';exit 1; }
+          for route in / /partner-invite.html /partner-counts.html /partner-workspace.html /finance-boundary-check.html; do
+            test "$(curl -fsSL -o /dev/null -w '%{http_code}' --max-time 25 "https://nico-factory.web.app$route")" = 200
+          done
+          echo 'PASS_SESSION_FINANCE_FOUR_LIVE_ONLY_OLD_12_ASSETS_PRESERVED'
+      - name: Erase secret and verification HTML
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/nico-session-four-hosting.private.json" "$RUNNER_TEMP/session-four-live.html" "$RUNNER_TEMP/session-four-expected.html"
