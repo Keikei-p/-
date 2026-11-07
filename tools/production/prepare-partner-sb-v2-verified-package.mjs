@@ -135,8 +135,7 @@ export function writeDisposablePackage(packageResult,dest){
  }
 }
 async function main(){
- if(process.argv.length!==3||process.argv[2]!=="--prepare"||
-    process.env.GITHUB_EVENT_NAME==="workflow_dispatch")
+ if(process.argv.length!==3||process.argv[2]!=="--prepare")
   stop("PREPARE_ONLY_NOT_DEPLOY");
  const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"../..");
  const sources={};
