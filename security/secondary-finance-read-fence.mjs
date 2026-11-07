@@ -27,10 +27,9 @@ const guard=[
 "      let ref = /databases/$(database)/documents/partnerWorkspaceContexts/$(request.auth.uid);",
 "      return verifiedUser()",
 "        && exists(ref)",
-"        // An incomplete active marker must NOT be treated as absent.",
-"        && get(ref).data.get('active', true) == true",
-"        // Unknown context kinds fail closed; a reviewed inactive context is safe.",
-"        && get(ref).data.get('kind', '') != 'internal';",
+"        // Only the explicit Boolean false clears a partner context.",
+"        // Missing, null, string and any other malformed active flag deny.",
+"        && get(ref).data.get('active', true) != false;",
 "    }"
 ].join("\n");
 export function proposeSecondaryFinanceFence(source=originalRules()){
