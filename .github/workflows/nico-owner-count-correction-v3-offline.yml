@@ -35,6 +35,7 @@ jobs:
           node --check tests/partner-owner-correction-v3.test.cjs
           node --test tests/partner-owner-correction-v3.test.cjs
           node --check staging/partner-owner-correction-v3/owner-ui.mjs
+          node --check tests/partner-owner-correction-v3-ui.test.mjs
           node --test tests/partner-owner-correction-v3-ui.test.mjs
           node --test tests/partner-sb-category-v2.test.cjs tests/partner-sb-v2-workspace.test.cjs tests/partner-sb-v2-dashboard.test.cjs
           node --test tests/partner-workspace.test.cjs
