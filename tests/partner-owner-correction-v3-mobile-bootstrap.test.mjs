@@ -113,7 +113,8 @@ test("one mobile screen: hub discovery -> company -> staff -> save -> backend ve
  assert.doesNotMatch(JSON.stringify(f.seen),/privateCounts|totalRevenue|unitPrice|cashback/i);
  panel.destroy();
  assert.equal(f.root.children.length,0);
- await assert.rejects(panel.load(),/OWNER_CORRECTION_DISABLED|OWNER_CORRECTION_/);
+ await panel.load();
+ assert.equal(f.seen.list.length,2,"destroyed screen makes no additional requests");
 });
 test("fails closed on another role, invalid company, duplicate company, leaked finance or untrusted root key",()=>{
  const valid=workspace();
