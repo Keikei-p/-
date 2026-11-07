@@ -3,7 +3,7 @@ const test=require("node:test");
 const assert=require("node:assert/strict");
 const {readFileSync}=require("node:fs");
 const {LEGACY,LIGHT,AIR,UNCLASSIFIED,PARTS,
- breakdown,nextBreakdown,aggregateBreakdown}=require("../functions-partner-workspace/sb-category-v2.cjs");
+ breakdown,nextBreakdown,aggregateBreakdown}=require("../staging/partner-sb-v2/sb-category-v2.cjs");
 const split=(light,air,unknown=0)=>({[LIGHT]:light,[AIR]:air,[UNCLASSIFIED]:unknown});
 test("old combined SB counts remain unknown, NOT guessed as hikari or Air",()=>{
  assert.equal(LEGACY,"SB光・AIR");
@@ -87,7 +87,7 @@ test("corrupt aggregate refuses subtraction rather than rewriting saved history"
   /SB_SPLIT_TOTAL_MISMATCH/);
 });
 test("no money fields, financial records, Firestore side-effects or disclosure in helper",()=>{
- const code=readFileSync(require.resolve("../functions-partner-workspace/sb-category-v2.cjs"),"utf8");
+ const code=readFileSync(require.resolve("../staging/partner-sb-v2/sb-category-v2.cjs"),"utf8");
  for(const x of ["getFirestore","runTransaction","writeBatch","collection(","totalRevenue",
   "revenuePerUnit","cashback","FieldValue","getAuth","deleteDoc","setDoc"])
   assert.equal(code.includes(x),false,x);
