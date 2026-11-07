@@ -7,7 +7,7 @@ on:
       - 'staging/partner-sb-v2/partner-workspace.html'
       - 'tests/partner-sb-v2-workspace.test.cjs'
       - 'tests/partner-sb-v2-dashboard.test.cjs'
-      - 'functions-partner-workspace/sb-category-v2.cjs'
+      - 'staging/partner-sb-v2/sb-category-v2.cjs'
       - 'tests/partner-sb-category-v2.test.cjs'
       - '.github/workflows/nico-partner-sb-split-offline.yml'
   push:
@@ -17,7 +17,7 @@ on:
       - 'staging/partner-sb-v2/partner-workspace.html'
       - 'tests/partner-sb-v2-workspace.test.cjs'
       - 'tests/partner-sb-v2-dashboard.test.cjs'
-      - 'functions-partner-workspace/sb-category-v2.cjs'
+      - 'staging/partner-sb-v2/sb-category-v2.cjs'
       - 'tests/partner-sb-category-v2.test.cjs'
       - '.github/workflows/nico-partner-sb-split-offline.yml'
 permissions:
@@ -37,7 +37,7 @@ jobs:
           set -euo pipefail
           node --check staging/partner-sb-v2/service.cjs
           node --check functions-partner-workspace/service.cjs
-          node --check functions-partner-workspace/sb-category-v2.cjs
+          node --check staging/partner-sb-v2/sb-category-v2.cjs
           node --test tests/partner-sb-category-v2.test.cjs tests/partner-sb-v2-workspace.test.cjs tests/partner-sb-v2-dashboard.test.cjs
           node --test tests/partner-workspace.test.cjs
           node --test tests/partner-count-dashboard.test.cjs tests/partner-money-free-workspace.test.cjs tests/partner-private-release-gate.test.mjs
@@ -68,7 +68,7 @@ jobs:
           node <<'NODE'
           const fs=require('node:fs');
           const current=fs.readFileSync('staging/partner-sb-v2/service.cjs','utf8');
-          const helper=fs.readFileSync('functions-partner-workspace/sb-category-v2.cjs','utf8');
+          const helper=fs.readFileSync('staging/partner-sb-v2/sb-category-v2.cjs','utf8');
           if(!current.includes('sbBreakdownSchema:"sb-separated-v1"')||
             !current.includes('previousSbBreakdown:')||
             !helper.includes('旧未分類')||
