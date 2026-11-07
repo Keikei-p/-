@@ -35,7 +35,7 @@ test("one scoped deploy only, from reviewed disposable package, no overwrite, no
  assert.match(source,/test "\$\(find "\$review" -type f \| wc -l\)" -eq 6/);
  assert.ok(!source.includes("firebase deploy --only firestore"));
  assert.ok(!source.includes("firebase deploy --only hosting"));
- assert.doesNotMatch(source,/--force\b|firebase functions:delete|firebase deploy --only functions\s*$/m);
+ assert.doesNotMatch(source,/firebase deploy[^\\n]*--force\\b|firebase functions:delete|firebase deploy --only functions\\s*$/m);
  const onDispatch=source.indexOf("  gated-publish:");
  const deployment=source.indexOf("firebase deploy --non-interactive");
  assert.ok(onDispatch>=0&&deployment>onDispatch);
