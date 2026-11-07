@@ -57,7 +57,7 @@ jobs:
             throw Error('SB_SAFE_CLIENT_NOT_PRESENT');
           // Existing money-free page contains no Firestore read SDK.
           if(html.includes('firebase-firestore.js')||
-             /\\bgetFirestore\\(|\\bgetDoc\\(/.test(html))
+             html.includes('getFirestore(')||html.includes('getDoc('))
             throw Error('UNSAFE_PARTNER_PAGE_FINANCE_SDK');
           fs.writeFileSync('/tmp/nico-sb-split-browser-check.mjs',code);
           NODE
