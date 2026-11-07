@@ -20,6 +20,15 @@
 5. 元4原票のFirestore値が移行前後完全一致、移行アーカイブの元ユーザー・member・context完全保持、外部社員本人からアーカイブをGETできないことを確認。
 6. 同一UIDの協力店ワークスペースの件数表示権限が維持されることを確認。旧自社のユーザーデータ・金額は本人から見えなくなるが、会社Ownerの元履歴は保存する。
 
+## 新たな連結確認：同一UIDでの件数保存・訂正・監査履歴
+
+- 真正のSTAGING所属移行 `buildService.commit()` を終え、旧自社の4金融原票の本人GET/LISTが拒否された**同じUID**で、`makeWorkspace.submit()` を実行。
+- `partnerWorkEntries` に当日2件を保存し、`partnerWorkCountDays` の集計2件と不変の `partnerWorkAudits` v1を確認。読み取り画面 `makeWorkspace.view()` でも2件を表示。
+- 同じ `expectedVersion:0` の再送はabort（重複・上書きなし）。v1から3件に訂正し、集計3件と独立のv2監査履歴を確認。
+- 旧自社4金額原票、旧所属アーカイブ、旧会社・協力店スタッフ原票を変更せず、Finance Rules Emulatorへの旧会社GET/LIST拒否と自社Ownerの許可を**保存・訂正後にも**再検証。
+- この連結は**デモ用の同一UID**と模擬Transaction + Firestore Emulator。公開URLのログイン・入力保存を実アカウントで検証した証拠にはならない。現行の本番`getPartnerWorkspace`等のFunctions配備・費用も別確認。
+- 協力店の元会社全体Quick件数と担当者別保存件数は異なる原票のため、同一契約と確認せず自動合算しない。
+
 ## 安全境界
 
 - **実際のFirebase Productionへの移行やRules変更ではない。** staged service本体・Functions exports・Hosting・Firestore Rulesのソースは変更しない。
