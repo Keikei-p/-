@@ -48,9 +48,74 @@ td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 #companyOverviewStats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 #hubCompanyDetail{margin-top:13px}
 @media(max-width:420px){.count-menu{grid-template-columns:repeat(2,minmax(0,1fr))}.count-kpi strong{font-size:22px}}
+
+/* Counts-only mirror of the canonical index.html dashboard visual grammar.
+   Never import its finance scripts, Firestore readers or money data. */
+:root{--bg:#f5f7fb;--card:#fff;--card-soft:#f8fafc;--text:#111827;
+--sub:#6b7280;--border:#e5e7eb;--primary:#2563eb;--primary-text:#1d4ed8;
+--primary-soft:#eff6ff;--primary-border:#93c5fd;--primary-border-strong:#60a5fa;
+--primary-soft-strong:#dbeafe;--shadow:0 10px 30px rgba(0,0,0,.06)}
+body{background:var(--bg);color:var(--text);padding:0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+header{background:#1d4ed8;padding:calc(22px + env(safe-area-inset-top)) 20px 22px}
+header .header-inner{max-width:1200px;margin:auto}
+header h1{font-size:25px;font-weight:800;line-height:1.35}
+header p{opacity:.85;margin-top:5px}
+main{max-width:1200px}
+section{border-radius:16px;border:1px solid var(--border);box-shadow:var(--shadow)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #93c5fd;outline-offset:2px}
+.dashboard-select{margin:15px 0 0;max-width:250px}
+.dashboard-select input{padding:11px;border:1px solid var(--border);border-radius:9px;max-width:100%}
+.dashboard-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:18px}
+.summary-card{padding:18px;background:#f8fafc;border-radius:12px;min-width:0}
+.summary-label{color:var(--sub);font-size:12px;font-weight:700}
+.summary-value{margin-top:5px;font-size:23px;font-weight:800;font-variant-numeric:tabular-nums}
+.dashboard-app-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:18px}
+.dashboard-app-button{min-height:104px;display:flex;flex-direction:column;align-items:center;
+justify-content:center;gap:7px;padding:14px 10px;border:1px solid var(--border);
+border-radius:16px;background:#fff;color:var(--text);text-align:center;cursor:pointer;
+box-shadow:0 3px 10px rgba(15,23,42,.04)}
+.dashboard-app-button:hover{background:#f8fafc;border-color:var(--primary-border)}
+.dashboard-app-button[aria-pressed="true"]{border-color:var(--primary-border-strong);
+background:var(--primary-soft);color:var(--primary-text);box-shadow:var(--shadow)}
+.dashboard-app-icon{font-size:28px;line-height:1}
+.dashboard-app-title{font-size:13px;font-weight:800}
+.dashboard-app-meta{min-height:22px;display:inline-flex;align-items:center;justify-content:center;
+padding:4px 8px;border-radius:999px;background:#f1f5f9;color:#475569;font-size:10px;font-weight:800}
+.dashboard-app-button[aria-pressed="true"] .dashboard-app-meta{
+background:var(--primary-soft-strong);color:var(--primary-text)}
+.dashboard-detail-area{margin-top:14px;border:1px solid var(--border);border-radius:14px;
+background:#fff;overflow:hidden}
+.dashboard-app-content{padding:14px}
+.dashboard-detail-area[hidden],.dashboard-app-content[hidden]{display:none!important}
+.partner-panel-title{font-size:16px;font-weight:800;margin:0 0 10px}
+.partner-panel-note{color:var(--sub);font-size:12px;margin:0 0 12px;line-height:1.7}
+.partner-period-label{font-size:12px;color:var(--sub);font-weight:800}
+.partner-dashboard-top{display:flex;justify-content:space-between;gap:12px;align-items:start;flex-wrap:wrap}
+.partner-count-action{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.partner-count-action button{min-height:44px}
+.partner-count-trend{display:grid;gap:9px}
+.partner-count-trend-row{display:grid;grid-template-columns:minmax(92px,130px) 1fr auto;
+align-items:center;gap:8px;font-size:12px}
+.partner-count-trend-rail{height:10px;background:#eef2ff;border-radius:12px;overflow:hidden}
+.partner-count-trend-bar{display:block;height:100%;background:#2563eb;border-radius:12px}
+#countReportBody{width:100%;min-height:180px;resize:vertical;padding:12px;
+background:var(--card-soft);border:1px solid var(--border);border-radius:10px;
+font:inherit;font-size:13px;line-height:1.6}
+#countReportCopy:disabled{opacity:.5}
+#countDashboardStatus{font-size:12px;line-height:1.7;margin-top:12px}
+@media(max-width:700px){
+.dashboard-summary{grid-template-columns:1fr}
+.dashboard-app-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.dashboard-app-button{min-height:96px;padding:12px 7px}
+.dashboard-app-title{font-size:12px}
+.dashboard-app-meta{font-size:10px;text-wrap:balance}
+.partner-count-trend-row{grid-template-columns:minmax(68px,90px) 1fr auto}
+}
 </style></head><body>
-<header><h1 id="workspaceTitle">NICO FACTORY｜協力店 実績管理</h1>
-<p>会社・班・メンバーごとの件数を管理。売上・単価は表示しません。</p></header>
+<header><div class="header-inner">
+<h1 id="workspaceTitle">営業実績管理</h1>
+<p>Sales Management System｜協力店・件数専用版</p>
+</div></header>
 <main><div id="notice" class="notice" role="status" aria-live="polite">認証を確認しています。</div>
 <section id="loginBox"><h2>協力店ログイン</h2>
 <div class="row"><button id="selectCodeLogin" type="button">会社コードでログイン</button><button id="selectEmailLogin" type="button" class="secondary">自社・従来のメールログイン</button></div>
@@ -97,28 +162,146 @@ td,th{padding:10px 7px;border-bottom:1px solid #e6ebf3;text-align:left}
 <button type="button" id="tabPeople" aria-pressed="false">班・スタッフ管理</button>
 <button type="button" id="tabView" aria-pressed="false">📋 日別の入力履歴</button>
 <button type="button" id="tabMissing" aria-pressed="false">⚠️ 報告漏れ</button></div></section>
-<section id="dashboardBox" hidden><div class="count-heading"><h2>件数ダッシュボード</h2><button type="button" class="secondary" id="countCsv">件数CSV</button></div>
-<p class="muted">会社・班・個人・商材の実績を比較できます。売上と単価は一切扱いません。</p>
-<div class="period-menu" aria-label="集計期間"><button id="periodDay" type="button" aria-pressed="true">日別</button><button id="periodWeek" type="button" aria-pressed="false">週別</button><button id="periodMonth" type="button" aria-pressed="false">月別</button></div>
-<p id="countDashboardStatus" role="status" aria-live="polite"></p>
-<div id="countKpis" class="count-kpis"></div>
-<div id="countGoalBox" class="count-section" hidden><h3>🎯 月間目標件数</h3>
-<p class="muted">この端末のログイン者専用の目標です。会社全員には同期しません。実績データは変更しません。</p>
-<div class="row"><div><label for="countGoal">月間目標</label><input id="countGoal" type="number" inputmode="numeric" min="1" max="999999" step="1" placeholder="例：100"></div>
-<button id="countGoalSave" type="button">目標保存</button><button id="countGoalClear" type="button" class="secondary">解除</button></div>
-<p id="countGoalStatus" role="status" aria-live="polite"></p></div>
-<div class="count-section"><h3>🏆 班別ランキング</h3><p id="countTeamHint" class="count-subnav">班移動した担当者の過去の所属班は、画面上で正確に復元できない場合があります。</p><div id="countTeamRank" class="scroll"></div></div>
-<div class="count-section"><h3>🏅 個人別ランキング</h3><div id="countStaffRank" class="scroll"></div></div>
-<div class="count-section"><h3>📦 商材別ランキング</h3>
-<label for="countProductMode">集計方法</label><select id="countProductMode"><option value="single">商材ごと</option><option value="group">乗り換え・光・電気をまとめる</option></select>
-<p class="muted">表示のまとめ方だけを変更します。件数入力・CSVの元データには影響しません。</p>
-<div id="countProductRank" class="scroll"></div></div>
-<div class="count-section"><h3>🔎 班ごとの商材・個人実績</h3>
-<label for="countTeamSelect">班を選択</label><select id="countTeamSelect"></select>
-<p class="muted">記録した時点の班に集計します。古い記録で班が分からない場合は「所属班未確認」と表示します。</p>
-<h3>商材の実績</h3><div id="countTeamProducts" class="scroll"></div>
-<h3>個人の実績</h3><div id="countTeamPeople" class="scroll"></div></div>
-<div class="count-section"><h3>📆 日別推移</h3><div id="countDailyRows" class="scroll"></div></div>
+<section id="dashboardBox" hidden>
+ <div class="partner-dashboard-top">
+  <div><h2 class="dashboard-title">📈 月間ダッシュボード</h2>
+  <p class="muted">自社アプリと同じ機能配置の件数専用版。金額・単価・CBは取得しません。</p></div>
+  <div class="partner-count-action"><button type="button" id="countCsv" class="secondary" disabled>件数CSV</button></div>
+ </div>
+ <div class="dashboard-select"><label for="dashboardPartnerMonth">実績表示月</label>
+  <input id="dashboardPartnerMonth" type="month" aria-label="実績表示月"></div>
+ <div class="period-menu" aria-label="集計期間">
+  <button type="button" id="periodDay" aria-pressed="false">日別</button>
+  <button type="button" id="periodWeek" aria-pressed="false">週別</button>
+  <button type="button" id="periodMonth" aria-pressed="true">月別</button>
+ </div>
+ <p id="countDashboardStatus" role="status" aria-live="polite"></p>
+ <div id="countKpis" class="dashboard-summary"></div>
+ <div class="dashboard-app-grid" aria-label="件数ダッシュボードの機能">
+ <button type="button" class="dashboard-app-button" data-count-panel="analysis"
+ aria-expanded="false" aria-pressed="false" aria-controls="partnerPanel-analysis">
+ <span class="dashboard-app-icon">📊</span>
+ <span class="dashboard-app-title">件数分析</span>
+ <span class="dashboard-app-meta">会社・班・商材</span></button>
+<button type="button" class="dashboard-app-button" data-count-panel="individual"
+ aria-expanded="false" aria-pressed="false" aria-controls="partnerPanel-individual">
+ <span class="dashboard-app-icon">🏆</span>
+ <span class="dashboard-app-title">個人ランキング</span>
+ <span class="dashboard-app-meta">件数順</span></button>
+<button type="button" class="dashboard-app-button" data-count-panel="productRanking"
+ aria-expanded="false" aria-pressed="false" aria-controls="partnerPanel-productRanking">
+ <span class="dashboard-app-icon">📦</span>
+ <span class="dashboard-app-title">商材別ランキング</span>
+ <span class="dashboard-app-meta">件数順</span></button>
+<button type="button" class="dashboard-app-button" data-count-panel="teamRanking"
+ aria-expanded="false" aria-pressed="false" aria-controls="partnerPanel-teamRanking">
+ <span class="dashboard-app-icon">👥</span>
+ <span class="dashboard-app-title">班ランキング</span>
+ <span class="dashboard-app-meta">件数順</span></button>
+<button type="button" class="dashboard-app-button" data-count-panel="trend"
+ aria-expanded="false" aria-pressed="false" aria-controls="partnerPanel-trend">
+ <span class="dashboard-app-icon">📈</span>
+ <span class="dashboard-app-title">件数グラフ</span>
+ <span class="dashboard-app-meta">日別の推移</span></button>
+<button type="button" class="dashboard-app-button" data-count-panel="teamDetail"
+ aria-expanded="false" aria-pressed="false" aria-controls="partnerPanel-teamDetail">
+ <span class="dashboard-app-icon">📋</span>
+ <span class="dashboard-app-title">班別詳細</span>
+ <span class="dashboard-app-meta">班→担当者→商材</span></button>
+<button type="button" class="dashboard-app-button" data-count-panel="productSummary"
+ aria-expanded="false" aria-pressed="false" aria-controls="partnerPanel-productSummary">
+ <span class="dashboard-app-icon">📦</span>
+ <span class="dashboard-app-title">商材別</span>
+ <span class="dashboard-app-meta">件数内訳</span></button>
+<button type="button" class="dashboard-app-button" data-count-panel="report"
+ aria-expanded="false" aria-pressed="false" aria-controls="partnerPanel-report">
+ <span class="dashboard-app-icon">📣</span>
+ <span class="dashboard-app-title">報告文</span>
+ <span class="dashboard-app-meta">件数だけで自動作成</span></button>
+<button type="button" class="dashboard-app-button" data-count-panel="goal"
+ aria-expanded="false" aria-pressed="false" aria-controls="partnerPanel-goal">
+ <span class="dashboard-app-icon">🎯</span>
+ <span class="dashboard-app-title">目標日割り計算</span>
+ <span class="dashboard-app-meta">残り必要件数</span></button>
+<button type="button" class="dashboard-app-button" data-count-panel="daily"
+ aria-expanded="false" aria-pressed="false" aria-controls="partnerPanel-daily">
+ <span class="dashboard-app-icon">📅</span>
+ <span class="dashboard-app-title">日別</span>
+ <span class="dashboard-app-meta">日々の獲得件数</span></button>
+<button type="button" class="dashboard-app-button" data-count-panel="history"
+ aria-expanded="false" aria-pressed="false" aria-controls="partnerPanel-history">
+ <span class="dashboard-app-icon">📝</span>
+ <span class="dashboard-app-title">登録履歴</span>
+ <span class="dashboard-app-meta">保存・訂正の確認</span></button>
+ </div>
+ <div id="partnerDashboardDetail" class="dashboard-detail-area" hidden>
+ 
+<div id="partnerPanel-analysis" class="dashboard-app-content" hidden>
+ <h3 class="partner-panel-title">📊 件数分析</h3>
+ <p class="partner-panel-note">選択した期間の件数を会社・担当者・商材の順で確認できます。</p>
+ <div id="countAnalysisSummary" class="scroll"></div>
+</div>
+<div id="partnerPanel-individual" class="dashboard-app-content" hidden>
+ <h3 class="partner-panel-title">🏆 個人ランキング</h3>
+ <div id="countStaffRank" class="scroll"></div>
+</div>
+<div id="partnerPanel-productRanking" class="dashboard-app-content" hidden>
+ <h3 class="partner-panel-title">📦 商材別ランキング</h3>
+ <label for="countProductMode">商材の集計方法</label>
+ <select id="countProductMode"><option value="single">商材ごと</option><option value="group">乗り換え・光・電気をまとめる</option></select>
+ <p class="partner-panel-note">まとめ方は表示だけを変更します。保存済み件数や原票は変更しません。</p>
+ <div id="countProductRank" class="scroll"></div>
+</div>
+<div id="partnerPanel-teamRanking" class="dashboard-app-content" hidden>
+ <h3 class="partner-panel-title">👥 班ランキング</h3>
+ <p id="countTeamHint" class="partner-panel-note">所属班が確認できない過去の実績は推測しません。</p>
+ <div id="countTeamRank" class="scroll"></div>
+</div>
+<div id="partnerPanel-trend" class="dashboard-app-content" hidden>
+ <h3 class="partner-panel-title">📈 件数グラフ</h3>
+ <p class="partner-panel-note">売上グラフではなく、日別の保存済み件数です。</p>
+ <div id="countTrendChart" class="partner-count-trend"></div>
+</div>
+<div id="partnerPanel-teamDetail" class="dashboard-app-content" hidden>
+ <h3 class="partner-panel-title">📋 班別詳細</h3>
+ <label for="countTeamSelect">班を選択</label><select id="countTeamSelect"></select>
+ <p class="partner-panel-note">保存時点の所属班を確認できない実績は「所属班未確認」に分類します。</p>
+ <h3>商材の実績</h3><div id="countTeamProducts" class="scroll"></div>
+ <h3>個人の実績</h3><div id="countTeamPeople" class="scroll"></div>
+</div>
+<div id="partnerPanel-productSummary" class="dashboard-app-content" hidden>
+ <h3 class="partner-panel-title">📦 商材別</h3>
+ <div id="countProductSummary" class="scroll"></div>
+</div>
+<div id="partnerPanel-report" class="dashboard-app-content" hidden>
+ <h3 class="partner-panel-title">📣 件数報告文</h3>
+ <p class="partner-panel-note">集計済みの件数だけで作成します。金額や単価を取得しません。</p>
+ <textarea id="countReportBody" readonly aria-label="件数報告文"></textarea>
+ <div class="partner-count-action"><button id="countReportCopy" type="button" disabled>報告文をコピー</button></div>
+</div>
+<div id="partnerPanel-goal" class="dashboard-app-content" hidden>
+ <h3 class="partner-panel-title">🎯 目標日割り計算</h3>
+ <div id="countGoalBox" class="count-section" hidden>
+  <p class="partner-panel-note">個人アカウントのこの端末にだけ保存。会社の実績原票は変更しません。</p>
+  <div class="row"><div><label for="countGoal">月間目標件数</label>
+   <input id="countGoal" type="number" inputmode="numeric" min="1" max="999999" step="1" placeholder="例：100"></div>
+   <button id="countGoalSave" type="button">目標保存</button>
+   <button id="countGoalClear" type="button" class="secondary">解除</button>
+  </div>
+  <p id="countGoalStatus" role="status" aria-live="polite"></p>
+ </div>
+ <p id="countGoalUnavailable" class="partner-panel-note" hidden>目標を表示するには、月別と個人メールアカウントを選んでください。</p>
+</div>
+<div id="partnerPanel-daily" class="dashboard-app-content" hidden>
+ <h3 class="partner-panel-title">📅 日別</h3>
+ <div id="countDailyRows" class="scroll"></div>
+</div>
+<div id="partnerPanel-history" class="dashboard-app-content" hidden>
+ <h3 class="partner-panel-title">📝 登録履歴</h3>
+ <p class="partner-panel-note">既存の登録履歴画面に移動します。保存・訂正の処理やデータは変更しません。</p>
+ <button id="countHistoryOpen" type="button">登録履歴を開く</button>
+</div>
+ </div>
 </section>
 <section id="recordsBox" hidden><h2>件数登録・訂正</h2>
 <p class="muted">スタッフ本人・所属リーダー・協力店代表が登録できます。名前だけのスタッフはリーダーか代表が代理入力します。修正履歴は残ります。</p>
