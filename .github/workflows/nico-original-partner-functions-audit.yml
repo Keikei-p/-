@@ -5,12 +5,16 @@ on:
     paths:
       - 'tools/production/inspect-original-partner-functions-readonly.mjs'
       - 'tests/inspect-original-partner-functions-readonly.test.mjs'
+      - 'tools/production/protect-original-functions-versions.mjs'
+      - 'tests/protect-original-functions-versions.test.mjs'
       - '.github/workflows/nico-original-partner-functions-audit.yml'
   push:
     branches: [main]
     paths:
       - 'tools/production/inspect-original-partner-functions-readonly.mjs'
       - 'tests/inspect-original-partner-functions-readonly.test.mjs'
+      - 'tools/production/protect-original-functions-versions.mjs'
+      - 'tests/protect-original-functions-versions.test.mjs'
       - '.github/workflows/nico-original-partner-functions-audit.yml'
 permissions:
   contents: read
@@ -31,7 +35,7 @@ jobs:
         run: |
           set -euo pipefail
           node --check tools/production/inspect-original-partner-functions-readonly.mjs
-          node --test tests/inspect-original-partner-functions-readonly.test.mjs
+          node --test tests/inspect-original-partner-functions-readonly.test.mjs tests/protect-original-functions-versions.test.mjs
           node --test tests/partner-four-function-release-scope.test.mjs tests/partner-workspace.test.cjs
           test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
           test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
@@ -59,7 +63,7 @@ jobs:
           test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
           test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
           test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
-          node --test tests/inspect-original-partner-functions-readonly.test.mjs
+          node --test tests/inspect-original-partner-functions-readonly.test.mjs tests/protect-original-functions-versions.test.mjs
       - name: Install existing OAuth dependency only
         run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
       - name: Supply existing audit credential privately
@@ -85,8 +89,14 @@ jobs:
           grep -q '^ORIGINAL_PARTNER_FUNCTIONS ' "$RUNNER_TEMP/nico-original-six-private.log"
           grep '^ORIGINAL_PARTNER_FUNCTIONS ' "$RUNNER_TEMP/nico-original-six-private.log" \
             | grep -q '"safeToDeployNewFour":false'
+      - name: Live read-only six-original revision stability dry run (no deploy)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/protect-original-functions-versions.mjs before
+          node tools/production/protect-original-functions-versions.mjs after
       - name: Destroy private credential and metadata logs
         if: always()
         shell: bash
         run: |
-          rm -f "$RUNNER_TEMP/nico-original-six-identity.json" "$RUNNER_TEMP/nico-original-six-private.log"
+          rm -f "$RUNNER_TEMP/nico-original-six-identity.json" "$RUNNER_TEMP/nico-original-six-private.log" "$RUNNER_TEMP/nico-original-six-immutable-versions.private.json"
