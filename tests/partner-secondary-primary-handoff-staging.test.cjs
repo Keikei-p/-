@@ -2,6 +2,7 @@
 const test=require("node:test");
 const assert=require("node:assert/strict");
 const {readFileSync}=require("node:fs");
+const path=require("node:path");
 const {buildService,CONSENT}=require("../staging/partner-primary-handoff/handoff.cjs");
 const {makeWorkspace,KEYS}=require("../functions-partner-workspace/service.cjs");
 
@@ -257,9 +258,9 @@ test("rejects forged request fields and unverified tokens without Firestore writ
 });
 
 test("candidate is unregistered, no production SDK, no historical financial mutations or deploy scope",()=>{
- const candidate=readFileSync(new URL("../staging/partner-primary-handoff/handoff.cjs",import.meta.url),"utf8");
- const production=readFileSync(new URL("../functions-partner-workspace/index.js",import.meta.url),"utf8");
- const rules=readFileSync(new URL("../firestore.rules",import.meta.url),"utf8");
+ const candidate=readFileSync(path.join(__dirname,"../staging/partner-primary-handoff/handoff.cjs"),"utf8");
+ const production=readFileSync(path.join(__dirname,"../functions-partner-workspace/index.js"),"utf8");
+ const rules=readFileSync(path.join(__dirname,"../firestore.rules"),"utf8");
  assert.ok(!production.includes("buildService"));
  assert.ok(!production.includes("secondaryPrimaryHandoff"));
  assert.ok(!rules.includes("partnerHistoricalTransfers"));
