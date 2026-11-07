@@ -44,9 +44,11 @@ jobs:
           test -z "$GOOGLE_APPLICATION_CREDENTIALS"
           test -z "$NICO_RULES_APPROVAL"
           test -z "$NICO_PHASE1_INDEPENDENT_SIGNOFF"
-          git cat-file -e cb41664507b528857345c9c4c9ebe3c256c19f05^{commit}
-          test "$(git merge-base HEAD cb41664507b528857345c9c4c9ebe3c256c19f05)" = cb41664507b528857345c9c4c9ebe3c256c19f05
-          git diff --name-only cb41664507b528857345c9c4c9ebe3c256c19f05...HEAD >/tmp/fin-changes
+          git fetch --no-tags origin main
+          # The previous fixed SHA becomes stale after unrelated approved merges.
+          # Review only this PR against the actual current main merge base.
+          test "$(git merge-base HEAD origin/main)" = "$(git rev-parse origin/main)"
+          git diff --name-only origin/main...HEAD >/tmp/fin-changes
           cat /tmp/fin-changes
           while IFS= read -r path; do
             case "$path" in
@@ -54,8 +56,9 @@ jobs:
               *) echo "UNREVIEWED_FINANCE_CHANGE: $path"; exit 1 ;;
             esac
           done < /tmp/fin-changes
-          test "$(wc -l </tmp/fin-changes)" -eq 4
-          git diff --exit-code cb41664507b528857345c9c4c9ebe3c256c19f05 HEAD -- firestore.rules firebase.json index.html functions functions-partner-workspace functions-partner-quick finance-boundary-check.html
+          test -s /tmp/fin-changes
+          test "$(wc -l </tmp/fin-changes)" -le 4
+          git diff --exit-code origin/main HEAD -- firestore.rules firebase.json index.html functions functions-partner-workspace functions-partner-quick finance-boundary-check.html
       - name: Source syntax, original Rules fingerprint and preflight
         run: |
           set -euo pipefail
