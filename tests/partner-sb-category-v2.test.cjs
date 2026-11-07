@@ -74,8 +74,9 @@ test("bad schema cannot silently create or remove count amounts",()=>{
  assert.throws(()=>breakdown(10000),/SB_SPLIT_LEGACY_INVALID/);
  assert.throws(()=>breakdown(-1),/SB_SPLIT_LEGACY_INVALID/);
  assert.throws(()=>breakdown(0,split(0,1)),/SB_SPLIT_TOTAL_MISMATCH/);
- assert.throws(()=>breakdown(5,{__proto__:null,[LIGHT]:1,[AIR]:1,[UNCLASSIFIED]:3}),
-  /SB_SPLIT_SCHEMA_INVALID/);
+ assert.throws(()=>breakdown(5,Object.fromEntries([
+  [LIGHT,1],[AIR,1],[UNCLASSIFIED,3],["__proto__",10]
+ ])),/SB_SPLIT_SCHEMA_INVALID/);
 });
 test("corrupt aggregate refuses subtraction rather than rewriting saved history",()=>{
  assert.throws(()=>aggregateBreakdown({previousAggregate:0,priorLegacy:2,
