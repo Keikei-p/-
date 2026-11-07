@@ -12,6 +12,8 @@ on:
       - 'tests/partner-owner-correction-v3-auth.test.cjs'
       - 'tests/partner-owner-correction-v3.test.cjs'
       - 'staging/partner-owner-correction-v3/owner-ui.mjs'
+      - 'staging/partner-owner-correction-v3/mobile-bootstrap.mjs'
+      - 'tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs'
       - 'staging/partner-owner-correction-v3/owner-client.mjs'
       - 'tests/partner-owner-correction-v3-client.test.mjs'
       - 'tests/partner-owner-correction-v3-ui.test.mjs'
@@ -28,6 +30,8 @@ on:
       - 'tests/partner-owner-correction-v3-auth.test.cjs'
       - 'tests/partner-owner-correction-v3.test.cjs'
       - 'staging/partner-owner-correction-v3/owner-ui.mjs'
+      - 'staging/partner-owner-correction-v3/mobile-bootstrap.mjs'
+      - 'tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs'
       - 'staging/partner-owner-correction-v3/owner-client.mjs'
       - 'tests/partner-owner-correction-v3-client.test.mjs'
       - 'tests/partner-owner-correction-v3-ui.test.mjs'
@@ -60,6 +64,9 @@ jobs:
           node --check staging/partner-owner-correction-v3/owner-client.mjs
           node --check tests/partner-owner-correction-v3-client.test.mjs
           node --test tests/partner-owner-correction-v3-client.test.mjs
+          node --check staging/partner-owner-correction-v3/mobile-bootstrap.mjs
+          node --check tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs
+          node --test tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs
           node --check staging/partner-owner-correction-v3/owner-ui.mjs
           node --check tests/partner-owner-correction-v3-ui.test.mjs
           node --test tests/partner-owner-correction-v3-ui.test.mjs
