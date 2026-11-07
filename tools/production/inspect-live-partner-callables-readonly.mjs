@@ -38,10 +38,19 @@ export function classify(name,body,status){
  const active=deployed&&body.state==='ACTIVE';
  // A published v2 callable has type HTTPS. Do not infer live invocation,
  // ingress reachability, validity of user token, or successful count write.
+ let httpsUri=false;
+ try{
+  const u=new URL(service.uri);
+  // Cloud Run v2 and HTTPS Function URIs can have no trailing slash.
+  // Accept only Google's expected function hostnames (not arbitrary links).
+  httpsUri=u.protocol==='https:'&&!u.username&&!u.password&&
+   !u.search&&!u.hash&&u.port===''&&
+   (u.hostname.endsWith('.a.run.app')||
+    u.hostname.endsWith('.cloudfunctions.net'))&&
+   (u.pathname==='/'||/^\/[A-Za-z0-9/_-]+$/.test(u.pathname));
+ }catch{}
  const callableGen2=active&&build.entryPoint===name&&
-  /^nodejs(?:18|20|22|24)$/.test(build.runtime||'')&&
-  typeof service.uri==='string'&&
-  /^https:\/\/[a-z0-9.-]+\/(?:[A-Za-z0-9/_-]*)$/.test(service.uri);
+  /^nodejs(?:18|20|22|24)$/.test(build.runtime||'')&&httpsUri;
  const env=props(service.environmentVariables);
  const countEnabled=callableGen2&&env.PARTNER_WORKSPACE_ENABLED==='enabled';
  return Object.freeze({deployed,active,callableGen2,countEnabled});
