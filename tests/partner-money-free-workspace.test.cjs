@@ -7,6 +7,35 @@ const service=fs.readFileSync(require("node:path").join(__dirname,"../functions-
 const quick=fs.readFileSync(require("node:path").join(__dirname,"../functions-partner-quick/quick-counts.cjs"),"utf8");
 const KEYS=["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"];
 
+test("a date change during a save verifies the original day without updating the new view",async()=>{
+ const vm=require("node:vm"),date="2026-11-08";
+ const controls={save:{},date:{value:date},staffSelect:{value:"staff"}};
+ const counts=Object.fromEntries(KEYS.map(k=>[k,1]));
+ let verifiedDate,releases=0;
+ const context=vm.createContext({
+  $:id=>controls[id],KEYS,values:()=>counts,privateValues:()=>({}),
+  auth:{currentUser:{}},activeCodeSession:"",nonce:1,loading:false,
+  data:{date,records:[]},countDayCache:{clear(){}},
+  save:async input=>{
+   assert.equal(input.date,date);
+   controls.date.value="2026-11-09";
+   context.nonce++; // The new date now owns a pending refresh.
+   return {data:{version:1}};
+  },
+  get:async input=>{
+   verifiedDate=input.date;
+   return {data:{date,records:[{staffId:"staff",version:1,counts}]}};
+  },
+  refresh:()=>{releases++},notice:()=>assert.fail("stale success"),fail:e=>{throw e}
+ });
+ vm.runInContext(page.slice(page.indexOf("async function action(task)"),page.indexOf('$("addPrivateProduct").onclick'))+
+  page.slice(page.indexOf('$("save").onclick='),page.indexOf("const setLoginMode=")),context);
+ await controls.save.onclick();
+ assert.equal(verifiedDate,date);
+ assert.equal(releases,0);
+ assert.equal(context.loading,true);
+});
+
 test("partner page has ONLY count fields and isolated callable; no browser finance/Firestore reads",()=>{
  assert.ok(page.includes("submitPartnerWorkspaceCounts"));
  assert.ok(page.includes("getPartnerWorkspace"));
@@ -16,8 +45,8 @@ test("partner page has ONLY count fields and isolated callable; no browser finan
  assert.doesNotMatch(page,/firebase-firestore\.js|getFirestore\(|\bgetDoc\(|\bgetDocs\(|\brevenuePerUnit\b|\btotalRevenue\b|\bunitPrice\b|\bpricePerUnit\b/);
  assert.doesNotMatch(page,/\bformatYen\(|\b\u00a5\d|\\￥\d/);
  assert.match(page,/for\(const k of KEYS\)/);
- assert.match(page,/const message=await task\(\);await refresh\(\)/);
- assert.match(page,/if\(typeof message==="string"&&data\)notice\(message\)/);
+ assert.match(page,/if\(start!==nonce\|\|!sameView\(\)\)return;\s*ownedNonce=start\+1;\s*await refresh\(\)/);
+ assert.match(page,/if\(nonce===start\+1&&sameView\(\)&&typeof message==="string"&&data\)notice\(message\)/);
  assert.match(page,/const needsSetup=staff\.length===0/);
  assert.match(page,/inviteToken=""/);
  const clientKeys=page.match(/const KEYS=(\[[^;]+\]);/)[1];

@@ -19,7 +19,7 @@ const files={
 const generate=(opts={})=>buildRankingOwnerWorkspaceCandidate({...files,...opts});
 const count=(s,k)=>s.split(k).length-1;
 test("original partner-workspace source is pinned, immutable and generated copy is deterministic",()=>{
- assert.equal(REVIEWED_PARTNER_HTML_BLOB,"00d6d503f9061dba2b6113e52b99cb9c4ea3aedf");
+ assert.equal(REVIEWED_PARTNER_HTML_BLOB,"994e6faf6f68ac570549c2ddd6d69cad1038632a");
  const before=readFileSync(new URL("../partner-workspace.html",import.meta.url),"utf8");
  const a=buildCandidateFromRepo(),b=generate();
  assert.equal(a,b);
