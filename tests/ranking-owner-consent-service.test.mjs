@@ -88,7 +88,7 @@ function fake(){
   serverTimestamp:()=>({__serverTimestamp:true})}});
  return {db,d,events,seed,originals,service};
 }
-const auth=uid=>({uid,email:uid+"@example.test",emailVerified:true});
+const auth=uid=>({uid,email:(uid+"@example.test").toLowerCase(),emailVerified:true});
 const submit=(f,uid,enable,expectedVersion=0,partnerCompanyId="p1")=>
  f.service({auth:auth(uid),partnerCompanyId,enable,expectedVersion});
 const refuse=/RANKING_OWNER_CONSENT_NOT_AUTHORIZED_OR_STALE/;
