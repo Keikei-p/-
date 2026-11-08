@@ -396,3 +396,7 @@ export function buildVerifiedCountDashboard({
  auditNoFinancialKeys(data);
  return data;
 }
+
+export function verifiedDualCountWindow(period){
+ return windowFor(period);
+}
