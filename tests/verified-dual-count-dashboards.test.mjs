@@ -59,12 +59,15 @@ function fixture(partnerCount=2){
 const build=d=>buildVerifiedCountDashboard(d);
 test("2→3 correction is replacement, not additive: hub/company/person/SKU agree",()=>{
  const two=fixture(2),before=structuredClone(two);
+ two.period={kind:"month",day:"2026-11-08",asOf:"2026-11-08"};
  const first=build(two);
  assert.deepEqual(first.summary,{own:1,partner:2,total:3,unidentified:0});
  assert.equal(first.memberRanking.find(x=>x.id==="partner:p1").count,2);
  assert.equal(first.productRanking.find(x=>x.id==="nuro").count,3);
  assert.deepEqual(two,before,"input and historical source are immutable");
- const three=fixture(3),next=build(three);
+ const three=fixture(3);
+ three.period={kind:"month",day:"2026-11-08",asOf:"2026-11-08"};
+ const next=build(three);
  assert.deepEqual(next.summary,{own:1,partner:3,total:4,unidentified:0});
  assert.equal(next.companyBreakdown.find(x=>x.id==="partner").count,3);
  assert.equal(next.memberRanking.find(x=>x.id==="partner:p1").count,3);
