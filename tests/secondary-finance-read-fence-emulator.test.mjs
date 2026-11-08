@@ -43,7 +43,7 @@ test("real Rules emulator denies active partner-secondary raw GET and LIST but p
 },async()=>{
  const {initializeTestEnvironment,assertSucceeds,assertFails}=
   await import("@firebase/rules-unit-testing");
- const {doc,setDoc,getDoc,collection,query,where,getDocsFromServer,serverTimestamp}=
+ const {doc,setDoc,updateDoc,getDoc,collection,query,where,getDocsFromServer,serverTimestamp}=
   await import("firebase/firestore");
  const env=await initializeTestEnvironment({
   projectId:"demo-nico-secondary-finance-fence",firestore:{rules:candidate}
@@ -70,12 +70,14 @@ test("real Rules emulator denies active partner-secondary raw GET and LIST but p
    const users=[
     ["owner","owner",false],["ordinary","member",false],
     ["dual","member",true],["malformed","member",true],
+    ["financeLeader","leader",false],["dualFinanceLeader","leader",true],
     ["internalKind","member",true],["stringFlag","member",true],
     ["missingFlag","member",true],["inactive","member",true]
    ];
    for(const [id,role] of users){
-    const profile={uid:id,companyId:hub,companyRole:role,
-     role:role==="owner"?"leader":"member",active:true,accessKind:"internal",
+    const profile={uid:id,companyId:hub,companyRole:role==="owner"?"owner":"member",
+     role:role==="owner"||role==="leader"?"leader":"member",
+     active:true,accessKind:"internal",
      memberType:"direct",teamId:"t1",canViewRevenue:role!=="owner",
      canViewUnitPrice:role!=="owner"};
     await setDoc(doc(db,"users",id),profile);
@@ -100,6 +102,11 @@ test("real Rules emulator denies active partner-secondary raw GET and LIST but p
    await setDoc(doc(db,"partnerWorkspaceContexts","inactive"),{
     uid:"inactive",kind:"partner_secondary",active:false,primaryCompanyId:hub
    });
+   await setDoc(doc(db,"partnerWorkspaceContexts","dualFinanceLeader"),{
+    uid:"dualFinanceLeader",kind:"partner_secondary",active:true,
+    primaryCompanyId:hub,partnerCompanyId:partner,hubCompanyId:hub
+   });
+   await setDoc(doc(db,"teams","t1"),{companyId:hub,name:"1班",active:true});
    await setDoc(doc(db,"teams","team1"),{companyId:hub,name:"1班",active:true});
    for(const [name,row] of Object.entries(moneyDocs))
     await setDoc(doc(db,name,"original"),row);
@@ -119,7 +126,7 @@ test("real Rules emulator denies active partner-secondary raw GET and LIST but p
    await assertSucceeds(getDocsFromServer(query(
     collection(actor("inactive"),name),...filters
    )));
-   for(const uid of ["dual","malformed","internalKind","stringFlag","missingFlag"]){
+   for(const uid of ["dual","dualFinanceLeader","malformed","internalKind","stringFlag","missingFlag"]){
     await assertFails(getDoc(doc(actor(uid),name,"original")));
     await assertFails(getDocsFromServer(query(
      collection(actor(uid),name),...filters
@@ -147,6 +154,86 @@ test("real Rules emulator denies active partner-secondary raw GET and LIST but p
   const ordinaryRow=await assertSucceeds(getDoc(doc(actor("ordinary"),"records",
     "hub_ordinary_2026-11-07")));
   assert.equal(ordinaryRow.data().totalCount,0);
+  // Paired permission checks: these two synthetic leaders have the SAME
+  // old internal role, financial flags and team. Only the secondary partner
+  // context differs. If a legacy finance write would succeed for the normal
+  // leader, the candidate MUST deny exactly that operation for the dual user.
+  const leader=actor("financeLeader"),dualLeader=actor("dualFinanceLeader");
+  const productPayload=()=>({
+   companyId:hub,name:"Approved Product",revenue:12000,active:true,
+   createdAt:serverTimestamp(),updatedAt:serverTimestamp()
+  });
+  const productPath=(db,id)=>doc(db,"products",id);
+  await assertSucceeds(setDoc(productPath(leader,"safe_products_create"),productPayload()));
+  await assertFails(setDoc(productPath(dualLeader,"blocked_products_create"),productPayload()));
+  await assertSucceeds(updateDoc(productPath(leader,"safe_products_create"),{
+   name:"Approved Product Update",updatedAt:serverTimestamp()
+  }));
+  await assertFails(updateDoc(productPath(dualLeader,"safe_products_create"),{
+   name:"Blocked Product Update",updatedAt:serverTimestamp()
+  }));
+
+  const date="2026-11-08";
+  const recordPayload=user=>({
+   companyId:hub,uid:user,memberNameSnapshot:"Test Leader",teamId:"t1",
+   teamNameSnapshot:"1班",date,results:{},totalCount:0,totalRevenue:0,
+   createdByUid:user,updatedByUid:user,
+   createdAt:serverTimestamp(),updatedAt:serverTimestamp()
+  });
+  const recordId=user=>hub+"_"+user+"_"+date;
+  await assertSucceeds(setDoc(doc(leader,"records",recordId("financeLeader")),
+   recordPayload("financeLeader")));
+  await assertFails(setDoc(doc(dualLeader,"records",recordId("dualFinanceLeader")),
+   recordPayload("dualFinanceLeader")));
+  await assertSucceeds(updateDoc(doc(leader,"records",recordId("financeLeader")),{
+   totalCount:1,updatedByUid:"financeLeader",updatedAt:serverTimestamp()
+  }));
+  await assertFails(updateDoc(doc(dualLeader,"records",recordId("financeLeader")),{
+   totalCount:2,updatedByUid:"dualFinanceLeader",updatedAt:serverTimestamp()
+  }));
+
+  const correctionPayload=user=>({
+   companyId:hub,recordId:recordId("financeLeader"),
+   recordUid:"financeLeader",recordDate:date,
+   changedByUid:user,changedByName:"Test Leader",
+   before:{totalCount:0},after:{totalCount:1},
+   createdAt:serverTimestamp()
+  });
+  await assertSucceeds(setDoc(doc(leader,"recordCorrections","safe_correction_create"),
+   correctionPayload("financeLeader")));
+  await assertFails(setDoc(doc(dualLeader,"recordCorrections","blocked_correction_create"),
+   correctionPayload("dualFinanceLeader")));
+
+  const goalPayload=()=>({
+   companyId:hub,teamId:"t1",month:"2026-11",targetRevenue:100000,
+   createdAt:serverTimestamp(),updatedAt:serverTimestamp()
+  });
+  await assertSucceeds(setDoc(doc(leader,"revenueGoals","safe_goal_create"),goalPayload()));
+  await assertFails(setDoc(doc(dualLeader,"revenueGoals","blocked_goal_create"),goalPayload()));
+  await assertSucceeds(updateDoc(doc(leader,"revenueGoals","safe_goal_create"),{
+   targetRevenue:110000,updatedAt:serverTimestamp()
+  }));
+  await assertFails(updateDoc(doc(dualLeader,"revenueGoals","safe_goal_create"),{
+   targetRevenue:999999,updatedAt:serverTimestamp()
+  }));
+  // Confirm all denied browser mutations left the valid internal originals
+  // unchanged, rather than inferring success from error codes alone.
+  await env.withSecurityRulesDisabled(async ctx=>{
+   const db=ctx.firestore();
+   for(const [table,id] of [
+    ["products","blocked_products_create"],
+    ["records",recordId("dualFinanceLeader")],
+    ["recordCorrections","blocked_correction_create"],
+    ["revenueGoals","blocked_goal_create"]
+   ])assert.equal((await getDoc(doc(db,table,id))).exists(),false,
+     table+" dual finance create must not mutate the original datastore");
+   const product=(await getDoc(doc(db,"products","safe_products_create"))).data();
+   const record=(await getDoc(doc(db,"records",recordId("financeLeader")))).data();
+   const goal=(await getDoc(doc(db,"revenueGoals","safe_goal_create"))).data();
+   assert.equal(product.name,"Approved Product Update");
+   assert.equal(record.totalCount,1);
+   assert.equal(goal.targetRevenue,110000);
+  });
   let originals={};
   await env.withSecurityRulesDisabled(async ctx=>{
    const db=ctx.firestore();
