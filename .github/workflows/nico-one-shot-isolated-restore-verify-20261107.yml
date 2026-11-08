@@ -62,13 +62,14 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          REVIEWED_PUSH_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           set -euo pipefail
           test "${{ github.repository }}" = 'Keikei-p/-'
           test "${{ github.ref }}" = 'refs/heads/main'
           # This is a unique, explicit single-use re-audit; an unrelated main
           # merge may NEVER silently trigger a production inventory scan.
-          case "${{ github.event.head_commit.message }}" in
+          case "$REVIEWED_PUSH_MESSAGE" in
             'audit: recheck exact 20261108 isolated inventory (NO DEPLOY)'*) ;;
             *) echo 'STOP_UNREVIEWED_PRODUCTION_REAUDIT'; exit 1 ;;
           esac
