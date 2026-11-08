@@ -8,7 +8,7 @@ import {createHash} from "node:crypto";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
 const ROOT=fileURLToPath(new URL("../../",import.meta.url));
-export const REVIEWED_PARTNER_HTML_BLOB="00d6d503f9061dba2b6113e52b99cb9c4ea3aedf";
+export const REVIEWED_PARTNER_HTML_BLOB="994e6faf6f68ac570549c2ddd6d69cad1038632a";
 const gitBlob=text=>createHash("sha1").update("blob "+
   Buffer.byteLength(text,"utf8")+"\u0000").update(text).digest("hex");
 function exactlyOnce(src,needle,replacement,label){

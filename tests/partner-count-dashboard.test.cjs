@@ -84,7 +84,7 @@ test("partner page mirrors original dashboard visuals without copying finance ba
  assert.match(page,/function currentCountIdentity\(\)/);
  assert.equal((page.match(/if\(gen!==countLoadId\|\|currentCountIdentity\(\)!==uid\)return/g)||[]).length,2,
   "both async read checkpoints must reject login/session changes");
- assert.match(page,/const message=await task\(\);await refresh\(\)/);
+ assert.match(page,/if\(start!==nonce\|\|!sameView\(\)\)return;\s*ownedNonce=start\+1;\s*await refresh\(\)/);
  assert.doesNotMatch(page,/firebase-firestore\.js|\bgetFirestore\(|\bgetDoc\(|\bgetDocs\(/);
  assert.doesNotMatch(page,/\brevenuePerUnit\b|\btotalRevenue\b|\bunitPrice\b|\bpricingOptions\b/);
  assert.match(original,/function canCurrentUserViewRevenue\(\)/);

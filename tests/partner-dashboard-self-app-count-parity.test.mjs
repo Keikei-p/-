@@ -57,7 +57,7 @@ test("the original login, recording, people, owner administration and CSV surviv
  const ids=[...partner.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);
  assert.equal(ids.length,new Set(ids).size,"duplicate id in partner HTML");
  assert.match(partner,/expectedVersion:record\?\.version\?\?0/);
- assert.match(partner,/const verified=\(await get\(\{date:\$\("date"\)\.value\}\)\)\.data/);
+ assert.match(partner,/const verified=\(await get\(\{date\}\)\)\.data/);
  assert.match(partner,/countDayCache\.clear\(\);refresh\(\)/);
 });
 

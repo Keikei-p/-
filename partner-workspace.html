@@ -1156,12 +1156,19 @@ $("date").onchange=()=>{
  refresh();
 };
 $("refresh").onclick=()=>{countDayCache.clear();refresh()};
-async function action(task){if(loading)return;loading=true;try{
- countDayCache.clear();
- const message=await task();await refresh();
+async function action(task){if(loading)return;loading=true;
+ const start=nonce,user=auth.currentUser,session=activeCodeSession,date=$("date").value;
+ const sameView=()=>auth.currentUser===user&&activeCodeSession===session&&$("date").value===date;
+ let ownedNonce=start;
+ try{countDayCache.clear();
+ const message=await task();
+ if(start!==nonce||!sameView())return;
+ ownedNonce=start+1;
+ await refresh();
  // A successful re-read must not overwrite the actual save confirmation.
- if(typeof message==="string"&&data)notice(message);
- }catch(e){fail(e)}finally{loading=false}}
+ if(nonce===start+1&&sameView()&&typeof message==="string"&&data)notice(message);
+ }catch(e){if(nonce===ownedNonce&&sameView())fail(e)}
+ finally{if(nonce===ownedNonce)loading=false}}
 $("addPrivateProduct").onclick=()=>action(async()=>{
  await manage({action:"addPrivateProduct",name:$("privateProductName").value});
  $("privateProductName").value="";
@@ -1198,14 +1205,17 @@ $("makeInvite").onclick=()=>action(async()=>{
 });
 $("copy").onclick=async()=>{try{await navigator.clipboard.writeText($("inviteUrl").value);notice("招待リンクをコピーしました")}catch{ $("inviteUrl").select();notice("リンクを選択しました。コピーしてください。")}};
 $("save").onclick=()=>action(async()=>{
+ const date=$("date").value,user=auth.currentUser,session=activeCodeSession;
+ if(!data||data.date!==date)throw Error("save_not_verified");
  const staffId=$("staffSelect").value,record=data.records.find(r=>r.staffId===staffId),counts=values();
  const privateCounts=privateValues();
- const result=(await save({date:$("date").value,staffId,counts,privateCounts,
+ const result=(await save({date,staffId,counts,privateCounts,
   expectedVersion:record?.version??0})).data;
  // Verify after actual API write, never show confirmation based on optimistic state.
- const verified=(await get({date:$("date").value})).data;
+ if(auth.currentUser!==user||activeCodeSession!==session)return;
+ const verified=(await get({date})).data;
  const check=verified?.records?.find(r=>r.staffId===staffId);
- if(!check||check.version!==result.version||KEYS.some(k=>check.counts[k]!==counts[k])||
+ if(verified?.date!==date||!check||check.version!==result.version||KEYS.some(k=>check.counts[k]!==counts[k])||
     Object.entries(privateCounts).some(([id,n])=>check.privateCounts?.[id]!==n))
   throw Error("save_not_verified");
  return "保存・再取得照合が成功しました。第"+result.version+"版";
@@ -1364,7 +1374,7 @@ $("logout").onclick=async()=>{
  if(activeCodeSession){
   const previous=activeCodeSession;
   try{await codeLogout({codeSessionToken:previous})}catch{ /* local logout even offline */ }
-  clearCompanySession();++nonce;data=null;countDayCache.clear();
+  clearCompanySession();++nonce;loading=false;data=null;countDayCache.clear();
   $("appBox").hidden=true;$("loginBox").hidden=false;
   notice("協力店の会社コードからログアウトしました。");
   return;
@@ -1376,7 +1386,7 @@ onAuthStateChanged(auth,async u=>{
  // A prior invite's selected option must never carry into another login.
  $("transferExistingInternal").checked=false;
  $("keepInternalMembership").checked=false;
- ++nonce;++countLoadId;companyCodeSession=false;data=null;countDayCache.clear();
+ ++nonce;++countLoadId;loading=false;companyCodeSession=false;data=null;countDayCache.clear();
  clearCountOnlyDashboard();$("companyOverview").hidden=true;
  $("workspaceTitle").textContent="NICO FACTORY｜協力店 実績管理";
  $("appBox").hidden=true;$("loginBox").hidden=false;

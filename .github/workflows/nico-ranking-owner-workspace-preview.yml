@@ -40,7 +40,7 @@ jobs:
           set -euo pipefail
           test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
           test -z "$GOOGLE_APPLICATION_CREDENTIALS"
-          test "$(git hash-object partner-workspace.html)" = 00d6d503f9061dba2b6113e52b99cb9c4ea3aedf
+          test "$(git hash-object partner-workspace.html)" = 994e6faf6f68ac570549c2ddd6d69cad1038632a
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
           test "$(git hash-object functions-partner-workspace/index.js)" = 38da7e9174ffea7c406c92292dccfc651b565eb0
           test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
