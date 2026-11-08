@@ -72,7 +72,8 @@ export function createOwnerProductVisibilityPanel({
       const authToken=await identity.getIdToken();
       if(closed||auth.currentUser!==identity)return;
       const result=await save({token:authToken,productId:product.id,
-       enabled:checkbox.checked,expectedVersion:view.version});
+       enabled:checkbox.checked,expectedVersion:view.version,
+       partnerCompanyId:null});
       if(!result||typeof result.saved!=="boolean"||
          !Number.isSafeInteger(result.version)||
          result.productId!==product.id||
