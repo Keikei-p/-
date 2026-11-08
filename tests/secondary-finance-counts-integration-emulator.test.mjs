@@ -5,7 +5,7 @@ import {proposeSecondaryFinanceFence,COLLECTIONS} from
  "../security/secondary-finance-read-fence.mjs";
 
 const PROJECT="demo-nico-secondary-finance-fence";
-const HOST=/^(?:127\\.0\\.0\\.1|localhost|\\[::1\\]):[0-9]{2,5}$/;
+const HOST=/^(?:127\.0\.0\.1|localhost|\[::1\]):[0-9]{2,5}$/;
 const requireAdmin=createRequire(new URL("../functions-partner-workspace/package.json",import.meta.url));
 const requireService=createRequire(import.meta.url);
 
