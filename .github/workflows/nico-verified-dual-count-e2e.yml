@@ -8,6 +8,10 @@ on:
       - 'ranking/owner-product-visibility-firestore.mjs'
       - 'ranking/owner-product-visibility-panel.mjs'
       - 'ranking/owner-product-visibility-panel.css'
+      - 'functions-ranking-approvals/product-visibility-controller.cjs'
+      - 'functions-ranking-approvals/index.js'
+      - 'functions-ranking-approvals/vendor/owner-product-visibility-firestore.mjs'
+      - 'tests/owner-product-visibility-callables.test.cjs'
       - 'tests/owner-product-visibility-panel.test.mjs'
       - 'tests/owner-product-visibility-firestore.test.mjs'
       - 'tests/owner-product-visibility-rankings.test.mjs'
@@ -56,13 +60,17 @@ jobs:
           node --check ranking/owner-product-visibility-rankings.mjs
           node --check ranking/owner-product-visibility-firestore.mjs
           node --check ranking/owner-product-visibility-panel.mjs
+          node --check functions-ranking-approvals/index.js
+          node --check functions-ranking-approvals/product-visibility-controller.cjs
+          cmp ranking/owner-product-visibility-firestore.mjs functions-ranking-approvals/vendor/owner-product-visibility-firestore.mjs
+          grep -Fq 'NICO_OWNER_PRODUCT_VISIBILITY_ENABLED===\"enabled\"' functions-ranking-approvals/index.js
           node --check tests/verified-dual-count-dashboards.test.mjs
           node --check tests/verified-dual-count-live-ledger-emulator.test.mjs
       - name: Prove date/week/month tie, growth, unreported, private amounts and explicit SKU mappings
         shell: bash
         run: |
           set -euo pipefail
-          node --test tests/verified-dual-count-dashboards.test.mjs tests/owner-product-visibility-rankings.test.mjs tests/owner-product-visibility-firestore.test.mjs tests/owner-product-visibility-panel.test.mjs
+          node --test tests/verified-dual-count-dashboards.test.mjs tests/owner-product-visibility-rankings.test.mjs tests/owner-product-visibility-firestore.test.mjs tests/owner-product-visibility-panel.test.mjs tests/owner-product-visibility-callables.test.cjs
           node --test tests/partner-month-readonly-loader.test.mjs
       - name: Install ONLY isolated emulator tooling and existing workspace dependencies
         shell: bash
