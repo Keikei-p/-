@@ -1,0 +1,141 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {buildVerifiedCountDashboard} from "../ranking/verified-dual-count-dashboards.mjs";
+import {renderVerifiedDualCountDashboard,createVerifiedDualCountController}
+ from "../ranking/verified-dual-count-view.mjs";
+
+const TIME="2026-11-08T02:00:00.000Z";
+class Node{
+ constructor(tag){this.tagName=tag;this.children=[];this.textContent="";this.className="";
+  this.listeners={};this.value="";this.disabled=false;}
+ appendChild(child){this.children.push(child);return child;}
+ replaceChildren(...items){this.children=[...items];}
+ addEventListener(event,fn){(this.listeners[event]??=[]).push(fn);}
+ async fire(event){
+  for(const listener of this.listeners[event]||[])await listener();
+ }
+}
+const doc={createElement:tag=>new Node(tag)};
+const walk=n=>[n,...n.children.flatMap(walk)];
+const words=n=>walk(n).map(x=>x.textContent).filter(Boolean).join(" ");
+const find=(n,cls)=>walk(n).find(x=>x.className===cls);
+function src(cid,person,product,n){
+ const r={companyId:cid,sourceId:"2026-11-08__"+person,uid:person,date:"2026-11-08",
+  teamId:"team",totalCount:n,reportStatus:n===0?"no_result":"submitted",
+  memberNameSnapshot:cid==="hub"?"本社担当":"協力店担当",
+  teamNameSnapshot:"第一班",workLocation:""};
+ return {companyId:cid,companyLabel:cid==="hub"?"自社":"協力店A",
+  kind:cid==="hub"?"own":"partner",consentVerified:true,isComplete:true,
+  readTime:TIME,completeWindows:{current:true,previous:false},
+  teams:[{id:"team",name:"第一班",goalCount:null}],
+  roster:[{uid:person,name:cid==="hub"?"本社担当":"協力店担当",teamId:"team"}],
+  records:[r],lines:[{companyId:cid,sourceId:r.sourceId+"__0",
+   recordId:r.sourceId,uid:person,teamId:"team",date:r.date,productId:product,count:n}],
+  products:[{companyId:cid,sourceId:product,name:"NURO",active:true,sortOrder:0}]};
+}
+const input=role=>({
+ hubCompanyId:"hub",approvedCompanyIds:["hub","partner"],
+ context:{serverVerified:true,viewerUid:"testOwner",viewerCompanyId:role==="hub_owner"?"hub":"partner",
+  hubCompanyId:"hub",role,approvedCompanyIds:["hub","partner"],
+  reciprocalOwnersApproved:true,individualNamesApproved:true,
+  userActive:true,memberActive:true,companyActive:true,completeSnapshotBudgetApproved:true},
+ period:{kind:"day",day:"2026-11-08",asOf:"2026-11-08"},
+ productGroups:[
+  {companyId:"hub",productId:"hubNuro",groupId:"NURO",groupName:"NURO"},
+  {companyId:"partner",productId:"partnerSku01",groupId:"NURO",groupName:"NURO"}],
+ sources:[src("hub","owner","hubNuro",2),src("partner","partnerOwner","partnerSku01",3)]
+});
+test("real aggregate -> owner mobile view: company, two ranking names, all amounts in 件",()=>{
+ const root=new Node("main"),data=buildVerifiedCountDashboard(input("hub_owner"));
+ renderVerifiedDualCountDashboard({document:doc,root,payload:data});
+ const text=words(root);
+ for(const expected of ["全社獲得件数","自社","2件","協力店","3件",
+  "全体","5件","会社別内訳","班別内訳","個人ランキング","商材ランキング","NURO","1位"])
+  assert(text.includes(expected),expected);
+ assert(!text.includes("売上"));assert(!text.includes("単価"));assert(!text.includes("CB"));
+ assert.equal(root.children.length,1);
+});
+test("partner sees own results and public rankings only, not any hub internal team or finance details",()=>{
+ const root=new Node("main"),data=buildVerifiedCountDashboard(input("partner_owner"));
+ renderVerifiedDualCountDashboard({document:doc,root,payload:data});
+ const text=words(root);
+ for(const expected of ["自社の獲得件数・成長","協力店A","3件",
+  "自分たちの成果・前期比","公開承認済み・個人ランキング","商材ランキング"])
+  assert(text.includes(expected),expected);
+ for(const forbidden of ["班別内訳","会社別内訳","自社 2件","売上","単価","キャッシュバック","50000円"])
+  assert(!text.includes(forbidden),forbidden);
+});
+test("malformed or financial API payload clears stale names and never displays partial data",()=>{
+ const root=new Node("main"),good=buildVerifiedCountDashboard(input("hub_owner"));
+ renderVerifiedDualCountDashboard({document:doc,root,payload:good});
+ assert(words(root).includes("協力店A"));
+ for(const change of [
+  d=>{d.memberRanking[0].totalRevenue=50000;},
+  d=>{d.summary.revenue=50000;},
+  d=>{d.companyBreakdown[0].name="NURO_CB50000";},
+  d=>{d.memberRanking[0].name="担当 9000円";},
+  d=>{d.role="partner_owner";},
+  d=>{d.schema="forged";},
+  d=>{d.productRanking[0].privateCounts={CB:50000};}
+ ]){
+  const candidate=structuredClone(good);change(candidate);
+  assert.throws(()=>renderVerifiedDualCountDashboard({document:doc,root,payload:candidate}),
+   /件数の権限/);
+  assert.equal(root.children.length,0);
+  assert(!words(root).includes("協力店A"));
+  renderVerifiedDualCountDashboard({document:doc,root,payload:good});
+ }
+});
+test("server-bound controller refresh uses only period/filters and supports owner dropdown filtering",async()=>{
+ const auth={currentUser:{uid:"owner",emailVerified:true,getIdToken:async()=>{}}};
+ const calls=[],root=new Node("main");
+ const load=async ({period,filters})=>{
+  calls.push({period,filters});
+  return buildVerifiedCountDashboard({
+   ...input("hub_owner"),period,filters
+  });
+ };
+ const ctrl=createVerifiedDualCountController({
+  document:doc,root,auth,load,asOf:"2026-11-08"
+ });
+ assert.equal(await ctrl.refresh(),true);
+ assert.equal(calls.length,1);
+ const toolbar=find(root,"nico-dual-controls");
+ assert(toolbar,"interactive filters on the dashboard");
+ assert.equal(walk(toolbar).filter(x=>x.tagName==="select").length,5,
+  "period plus company/team/person/SKU filters");
+ assert(walk(toolbar).some(x=>x.tagName==="input"&&x.type==="date"));
+ await ctrl.setFilter("companyId","partner");
+ assert.equal(calls.at(-1).filters.companyId,"partner");
+ assert.equal(calls.at(-1).period.kind,"day");
+ assert(words(root).includes("3件"));
+ await ctrl.setPeriod("month","2026-11-08");
+ assert.equal(calls.at(-1).period.kind,"month");
+ ctrl.destroy();assert.equal(root.children.length,0);
+});
+test("auth switch while GET pending never displays former company's results",async()=>{
+ let resolve;const pending=new Promise(r=>{resolve=r;});
+ const old={uid:"owner",emailVerified:true,getIdToken:async()=>{}};
+ const auth={currentUser:old},root=new Node("main");
+ const ctrl=createVerifiedDualCountController({
+  document:doc,root,auth,asOf:"2026-11-08",
+  load:async()=>{await pending;return buildVerifiedCountDashboard(input("hub_owner"));}
+ });
+ const result=ctrl.refresh();
+ auth.currentUser={uid:"other",emailVerified:true,getIdToken:async()=>{}};
+ ctrl.onAuthChange();resolve();
+ assert.equal(await result,false);
+ assert.equal(root.children.length,0);
+});
+test("bad login, company filter attack and server errors do not reuse private earlier results",async()=>{
+ const root=new Node("main"),auth={currentUser:null};
+ const ctrl=createVerifiedDualCountController({
+  document:doc,root,auth,asOf:"2026-11-08",
+  load:async()=>buildVerifiedCountDashboard(input("hub_owner"))
+ });
+ assert.equal(await ctrl.refresh(),false);
+ assert.equal(root.children.length,0);
+ assert.throws(()=>ctrl.setFilter("companyId","../../other"));
+ assert.throws(()=>ctrl.setPeriod("month","2026-11-32"));
+ ctrl.destroy();
+});

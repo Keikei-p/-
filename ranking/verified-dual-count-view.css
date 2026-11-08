@@ -1,0 +1,27 @@
+/* Staging only. Matches NICO count-only dashboard, usable on small screens. */
+.nico-dual-dashboard{max-width:1080px;margin:0 auto;color:#21334f;font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif}
+.nico-dual-heading{font-size:1.15rem;font-weight:850;margin:0 0 8px}
+.nico-dual-period{font-size:.84rem;color:#5b6f85;line-height:1.6;margin:0 0 14px}
+.nico-dual-controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px;margin:0 0 16px}
+.nico-dual-control{display:flex;flex-direction:column;gap:5px;font-size:.79rem;font-weight:650;color:#4b657f}
+.nico-dual-control select,.nico-dual-control input{font:inherit;max-width:100%;padding:10px 12px;border:1px solid #d5dfeb;border-radius:10px;background:#fff;color:#173653;min-height:43px}
+.nico-dual-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:16px}
+.nico-dual-metric{padding:15px 10px;border-radius:14px;border:1px solid #dce5f2;background:#fff;display:flex;flex-direction:column;gap:6px}
+.nico-dual-metric-label{color:#526983;font-size:.78rem}
+.nico-dual-metric-score{color:#175899;font-size:1.45rem;font-variant-numeric:tabular-nums}
+.nico-dual-companies,.nico-dual-teams,.nico-dual-ranking{background:#fff;padding:15px;border:1px solid #e0e7f0;border-radius:15px;margin-bottom:14px}
+.nico-dual-title{font-size:.97rem;font-weight:800;margin:0 0 10px}
+.nico-dual-company-row{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid #eef2f7}
+.nico-dual-company-row:last-child{border-bottom:none}
+.nico-dual-company-name{font-size:.85rem;overflow-wrap:anywhere}
+.nico-dual-company-count{font-size:.95rem;white-space:nowrap;color:#175899}
+.nico-dual-rank-list{padding:0;margin:0;list-style:none}
+.nico-dual-rank-row{display:grid;grid-template-columns:48px minmax(0,1fr) auto;gap:7px;align-items:center;padding:11px 0;border-bottom:1px solid #eef2f7;font-size:.84rem}
+.nico-dual-rank-row:last-child{border-bottom:none}
+.nico-dual-rank-number{color:#175899}
+.nico-dual-rank-name{overflow-wrap:anywhere;font-weight:700}
+.nico-dual-rank-score{white-space:nowrap;font-variant-numeric:tabular-nums}
+.nico-dual-rank-details{grid-column:2 / -1;color:#60718a;line-height:1.65}
+.nico-dual-unidentified,.nico-dual-empty,.nico-dual-error{font-size:.85rem;line-height:1.7;padding:12px;border-radius:10px;background:#f2f6fb}
+.nico-dual-error{color:#8a2730}
+@media(max-width:480px){.nico-dual-metrics{gap:7px}.nico-dual-metric{padding:11px 8px}.nico-dual-metric-score{font-size:1.1rem}.nico-dual-rank-row{grid-template-columns:38px minmax(0,1fr) auto}.nico-dual-controls{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}}
