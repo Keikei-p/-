@@ -183,6 +183,13 @@ export function createOwnerProductVisibilityStore({db,FieldValue}={}){
      !["hub_owner","partner_owner"].includes(context.role)||
      !Array.isArray(context.approvedCompanyIds)||
      context.approvedCompanyIds.length<1||
+     context.approvedCompanyIds.length>30||
+     !ids(context.approvedCompanyIds)||
+     !context.approvedCompanyIds.includes(context.hubCompanyId)||
+     (context.role==="partner_owner"&&
+      (!id(context.viewerCompanyId)||
+       context.viewerCompanyId===context.hubCompanyId||
+       !context.approvedCompanyIds.includes(context.viewerCompanyId)))||
      mappingsReviewed!==true)stop();
   const hub=context.hubCompanyId;
   return db.runTransaction(async tx=>{
@@ -202,8 +209,12 @@ export function createOwnerProductVisibilityStore({db,FieldValue}={}){
     revision:Math.max(1,state.version),
     hubCompanyId:hub,enabledHubProductIds:state.enabledHubProductIds.filter(
      x=>activeProducts.has(x)),
-    partnerOverrides:Object.entries(state.partnerOverrides).map(
-     ([companyId,enabledHubProductIds])=>({
+    // A revoked or no-longer-approved partner must not appear in the
+    // current publication response or block rankings for remaining companies.
+    // Keep its saved override untouched for audit and possible re-approval.
+    partnerOverrides:Object.entries(state.partnerOverrides)
+     .filter(([companyId])=>context.approvedCompanyIds.includes(companyId))
+     .map(([companyId,enabledHubProductIds])=>({
       companyId,enabledHubProductIds
      }))};
   },{readOnly:true});

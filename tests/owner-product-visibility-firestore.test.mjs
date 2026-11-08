@@ -223,3 +223,30 @@ test("legacy products without an active field stay available, never exposing the
  assert.equal(saved.saved,true);
  assert.deepEqual(f.state.get("products/nuro"),old);
 });
+
+test("revoked partner override stays in audit settings but is omitted from active ranking scope",async()=>{
+ const f=fake();
+ await f.store.saveSwitch({principal,productId:"nuro",
+  enabled:true,expectedVersion:0});
+ await f.store.saveSwitch({principal,productId:"nuro",
+  partnerCompanyId:"partner",enabled:false,expectedVersion:1});
+ const stored=structuredClone(f.state.get("companies/hub/rankingProductVisibility/shared"));
+ const context={serverVerified:true,viewerUid:"owner",hubCompanyId:"hub",
+  role:"hub_owner",approvedCompanyIds:["hub"]};
+ const view=await f.store.readForRanking({context,mappingsReviewed:true});
+ assert.deepEqual(view.partnerOverrides,[],
+  "no longer approved partner must not appear in ranking response");
+ assert.deepEqual(view.enabledHubProductIds,["nuro"]);
+ assert.deepEqual(f.state.get("companies/hub/rankingProductVisibility/shared"),
+  stored,"historical override and version must remain untouched");
+ await assert.rejects(f.store.readForRanking({context:{
+  ...context,approvedCompanyIds:["hub","hub"]},mappingsReviewed:true}),
+  /UNAUTHORIZED_OR_INCOMPLETE/);
+ await assert.rejects(f.store.readForRanking({context:{
+  ...context,approvedCompanyIds:["partner"]},mappingsReviewed:true}),
+  /UNAUTHORIZED_OR_INCOMPLETE/);
+ await assert.rejects(f.store.readForRanking({context:{
+  ...context,role:"partner_owner",viewerCompanyId:"foreign"
+ },mappingsReviewed:true}),/UNAUTHORIZED_OR_INCOMPLETE/);
+ assert.equal(f.writes,4,"read-only ranking publication never mutates settings");
+});
