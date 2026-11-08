@@ -121,7 +121,7 @@ jobs:
           echo "NICO_FUNCTION_INVENTORY_PATH=$RUNNER_TEMP/nico-finance-rules-counts.private.json" >> "$GITHUB_ENV"
       - name: Validate selection, backup freshness, exact old/staged Rules and perform optional reviewed release
         env:
-          GH_TOKEN: __GH_TOKEN__
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail

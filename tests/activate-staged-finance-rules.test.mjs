@@ -126,3 +126,20 @@ test("live bridge is GitHub main-only, allowlisted Rules API and never touches F
  assert.equal(PINNED.candidateSha256,
   "25fd2c0257e92beb5ba9e3b2f8b3a5801d2fa010188675c685c05051eafb12a8");
 });
+
+
+test("main SHA revalidation uses real GitHub Actions token, not a placeholder",()=>{
+ const workflow=readFileSync(new URL(
+  "../.github/workflows/nico-staged-finance-rules-manual.yml",import.meta.url),"utf8");
+ const actualToken="GH_TOKEN: "+"$"+"{{ github.token }}";
+ assert.match(workflow,/workflow_dispatch:/);
+ assert.equal(workflow.split(actualToken).length,3,
+  "both main revalidation steps require real GitHub Actions token");
+ assert.doesNotMatch(workflow,/__GH_TOKEN__|__FIREBASE_SECRET__|__GATED_RELEASE__/);
+ assert.match(workflow,/github\.ref == 'refs\/heads\/main'/);
+ assert.match(workflow,/inputs\.reviewed_main_sha == github\.sha/);
+ assert.match(workflow,/test "\$GITHUB_SHA" = "\$\(gh api repos\/Keikei-p\/-\/branches\/main/);
+ assert.match(workflow,/type: choice/);
+ assert.match(workflow,/options: \[inspect, apply, rollback\]/);
+ assert.doesNotMatch(workflow,/firebase deploy|firebase firestore:delete/);
+});
