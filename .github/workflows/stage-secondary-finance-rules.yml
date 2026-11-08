@@ -22,11 +22,12 @@ jobs:
       - run: node --test tests/stage-secondary-finance-rules.test.mjs
       - run: npm install --prefix tests --ignore-scripts --no-audit --no-fund
       - run: npm install --prefix functions-partner-workspace --ignore-scripts --no-audit --no-fund
+      - run: npm install --global firebase-tools@15.34.1 --no-audit --no-fund
       - name: Check partner denial, owner access, count creation, correction and hub sharing
         env:
           FIREBASE_PROJECT_ID: demo-nico-secondary-finance-fence
           GCLOUD_PROJECT: demo-nico-secondary-finance-fence
-        run: npx --yes firebase-tools@15.34.1 emulators:exec --project demo-nico-secondary-finance-fence --only firestore 'node --test --test-concurrency=1 tests/secondary-finance-read-fence-emulator.test.mjs tests/secondary-finance-counts-integration-emulator.test.mjs'
+        run: firebase emulators:exec --project demo-nico-secondary-finance-fence --only firestore 'node --test --test-concurrency=1 tests/secondary-finance-read-fence-emulator.test.mjs tests/secondary-finance-counts-integration-emulator.test.mjs'
   stage:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     needs: verify
