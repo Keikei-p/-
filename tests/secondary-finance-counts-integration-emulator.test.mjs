@@ -90,7 +90,7 @@ test("isolated REAL Firestore emulator: secondary user preserves count save/corr
    write("partnerWorkspaceContexts/"+worker,{
     uid:worker,kind:"partner_secondary",active:true,primaryCompanyId:hub,
     partnerCompanyId:partner,hubCompanyId:hub,
-    role:"member",teamId:team,emailLower:worker+"@example.test"
+    role:"member",teamId:team,emailLower:(worker+"@example.test").toLowerCase()
    }),
    write("partnerRelations/"+partner,{
     active:true,countSharingApproved:true,hubCompanyId:hub,
