@@ -53,7 +53,7 @@ test("production verify only reads, stores no real documents in artifacts and wr
 });
 test("2026-11-08 live read-only inventory requires the one-time audited main commit only",()=>{
  const prefix="audit: recheck exact 20261108 isolated inventory (NO DEPLOY)";
- assert.match(wf,new RegExp("startsWith\\(github\\.event\\.head_commit\\.message, '"+prefix.replace(/[.*+?^${}()|[\]\\]/g,"\\test("the snapshot verification cannot be mistaken for an actual managed-backup restoration",()=>{")+"\\'\\)"));
+ assert.ok(wf.includes("startsWith(github.event.head_commit.message, '"+prefix+"')"));
  assert.match(wf,/github\.repository == 'Keikei-p\/-'/);
  assert.match(wf,/github\.event_name == 'push'/);
  assert.match(wf,/needs\.offline\.result == 'success'/);
