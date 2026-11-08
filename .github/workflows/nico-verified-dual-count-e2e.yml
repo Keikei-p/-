@@ -7,6 +7,7 @@ on:
       - 'ranking/owner-product-visibility-rankings.mjs'
       - 'ranking/owner-product-visibility-firestore.mjs'
       - 'ranking/owner-product-visibility-panel.mjs'
+      - 'ranking/owner-product-visibility-dashboard-mount.mjs'
       - 'ranking/owner-product-visibility-panel.css'
       - 'functions-ranking-approvals/product-visibility-controller.cjs'
       - 'functions-ranking-approvals/index.js'
@@ -15,6 +16,7 @@ on:
       - 'ranking/owner-product-visibility-firebase-bridge.mjs'
       - 'tests/owner-product-visibility-firebase-bridge.test.mjs'
       - 'tests/owner-product-visibility-panel.test.mjs'
+      - 'tests/owner-product-visibility-dashboard-mount.test.mjs'
       - 'tests/owner-product-visibility-firestore.test.mjs'
       - 'tests/owner-product-visibility-rankings.test.mjs'
       - 'tests/verified-dual-count-dashboards.test.mjs'
@@ -24,6 +26,8 @@ on:
     branches: [main]
     paths:
       - 'ranking/verified-dual-count-dashboards.mjs'
+      - 'ranking/owner-product-visibility-dashboard-mount.mjs'
+      - 'tests/owner-product-visibility-dashboard-mount.test.mjs'
       - 'tests/verified-dual-count-dashboards.test.mjs'
       - 'tests/verified-dual-count-live-ledger-emulator.test.mjs'
       - '.github/workflows/nico-verified-dual-count-e2e.yml'
@@ -62,6 +66,7 @@ jobs:
           node --check ranking/owner-product-visibility-rankings.mjs
           node --check ranking/owner-product-visibility-firestore.mjs
           node --check ranking/owner-product-visibility-panel.mjs
+          node --check ranking/owner-product-visibility-dashboard-mount.mjs
           node --check ranking/owner-product-visibility-firebase-bridge.mjs
           node --check functions-ranking-approvals/index.js
           node --check functions-ranking-approvals/product-visibility-controller.cjs
@@ -73,7 +78,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node --test tests/verified-dual-count-dashboards.test.mjs tests/owner-product-visibility-rankings.test.mjs tests/owner-product-visibility-firestore.test.mjs tests/owner-product-visibility-panel.test.mjs tests/owner-product-visibility-firebase-bridge.test.mjs tests/owner-product-visibility-callables.test.cjs
+          node --test tests/verified-dual-count-dashboards.test.mjs tests/owner-product-visibility-rankings.test.mjs tests/owner-product-visibility-firestore.test.mjs tests/owner-product-visibility-panel.test.mjs tests/owner-product-visibility-dashboard-mount.test.mjs tests/owner-product-visibility-firebase-bridge.test.mjs tests/owner-product-visibility-callables.test.cjs
           node --test tests/partner-month-readonly-loader.test.mjs
       - name: Install ONLY isolated emulator tooling and existing workspace dependencies
         shell: bash
