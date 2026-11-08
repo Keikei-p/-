@@ -58,6 +58,9 @@ test("2026-11-08 live read-only inventory requires the one-time audited main com
  assert.match(wf,/github\.event_name == 'push'/);
  assert.match(wf,/needs\.offline\.result == 'success'/);
  assert.match(wf,/STOP_UNREVIEWED_PRODUCTION_REAUDIT/);
+ assert.ok(wf.includes("REVIEWED_PUSH_MESSAGE: ${{ github.event.head_commit.message }}"));
+ assert.match(wf,/case "\$REVIEWED_PUSH_MESSAGE" in/);
+ assert.doesNotMatch(wf,/case "\$\{\{ github\.event\.head_commit\.message \}\}" in/);
  assert.match(wf,/test "\$GITHUB_SHA" = "\$\(git rev-parse HEAD\)"/);
  assert.match(wf,/test "\$GITHUB_SHA" = "\$\(gh api repos\/Keikei-p\/-\/branches\/main --jq \.commit\.sha\)"/);
  assert.match(wf,/FIREBASE_PROJECT_ID: sales-management-cc116/);
