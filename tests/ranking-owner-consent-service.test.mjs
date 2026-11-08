@@ -4,6 +4,8 @@ import {createRankingOwnerConsentService}
  from "../ranking/ranking-owner-consent-service.mjs";
 import {createFreshCombinedRankingContext}
  from "../ranking/trusted-combined-ranking-context.mjs";
+import {createOwnerRankingConsentStatusReader}
+ from "../ranking/ranking-owner-consent-status.mjs";
 
 const clone=v=>v==null?v:JSON.parse(JSON.stringify(v));
 class Ref{
@@ -227,4 +229,97 @@ test("corrupted owner consent versions are rejected; client cannot replace with 
    createFreshCombinedRankingContext({db:f.db})(auth("partnerOwner")),
    /UNVERIFIED/,String(version));
  }
+});
+
+
+const withNamedPartner=()=>{const x=fake();
+ x.d.get("companies/p1").name="協力店A";
+ return x;
+};
+
+test("owner settings status returns fresh correct own/other approvals and latest version",async()=>{
+ const f=withNamedPartner(),get=createOwnerRankingConsentStatusReader({db:f.db});
+ const hubBefore=await get(auth("hubOwner"));
+ assert.deepEqual(hubBefore,{schema:"nico-ranking-owner-consent-v1",role:"hub_owner",
+  partners:[{partnerCompanyId:"p1",companyName:"協力店A",
+   ownApproved:false,otherApproved:false,version:0,canEdit:true}]});
+ assert.equal(Object.isFrozen(hubBefore),true);
+ await submit(f,"hubOwner",true);
+ const hubWaiting=await get(auth("hubOwner"));
+ assert.equal(hubWaiting.partners[0].ownApproved,true);
+ assert.equal(hubWaiting.partners[0].otherApproved,false);
+ assert.equal(hubWaiting.partners[0].version,1);
+ const partnerWaiting=await get(auth("partnerOwner"));
+ assert.equal(partnerWaiting.role,"partner_owner");
+ assert.equal(partnerWaiting.partners[0].ownApproved,false);
+ assert.equal(partnerWaiting.partners[0].otherApproved,true);
+ await submit(f,"partnerOwner",true);
+ const partnerApproved=await get(auth("partnerOwner"));
+ assert.equal(partnerApproved.partners[0].ownApproved,true);
+ assert.equal(partnerApproved.partners[0].otherApproved,true);
+ await submit(f,"partnerOwner",false,1);
+ const partnerRevoked=await get(auth("partnerOwner"));
+ assert.equal(partnerRevoked.partners[0].ownApproved,false);
+ assert.equal(partnerRevoked.partners[0].version,2);
+ await submit(f,"partnerOwner",true,2);
+ const reapproved=await get(auth("partnerOwner"));
+ assert.equal(reapproved.partners[0].ownApproved,true);
+ assert.equal(reapproved.partners[0].version,3);
+ assert(f.events.filter(e=>e.op==="transaction").every(e=>e.options?.readOnly===true)
+   ||f.events.filter(e=>e.op==="get").length>0);
+});
+
+test("settings status cannot reveal finance originals or any other company's data",async()=>{
+ const f=withNamedPartner(),get=createOwnerRankingConsentStatusReader({db:f.db});
+ const before=f.events.length;
+ const response=await get(auth("hubOwner"));
+ const newOps=f.events.slice(before);
+ assert(newOps.filter(e=>e.op==="get").every(e=>!/^(records|products|recordCorrections|revenueGoals)(\/|$)/.test(e.path)));
+ assert(!JSON.stringify(response).includes("totalRevenue"));
+ assert(!JSON.stringify(response).includes("unitPrice"));
+ assert(!JSON.stringify(response).includes("cashback"));
+ assert(!JSON.stringify(response).includes("records"));
+ assert.deepEqual(copyOriginals(f),f.originals);
+});
+
+test("status fails closed on forged approval flags, missing owner, bad company, secondary role and monetary company labels",async()=>{
+ const mutations=[
+  f=>{f.d.get("partnerRelations/p1").combinedRankingApprovedByHub=true;},
+  f=>{f.d.get("partnerRelations/p1").individualNamesApprovedByPartner=true;},
+  f=>{f.d.get("companies/p1").ownerUid=null;},
+  f=>{f.d.get("companies/p1").name="単価 90000円";},
+  f=>{f.d.get("companies/p1").hubCompanyId="otherHub";},
+  f=>{f.d.get("users/hubOwner").companyRole="member";},
+  f=>{f.d.get("companies/hub/members/hubOwner").active=false;},
+  f=>{f.d.set("partnerWorkspaceContexts/hubOwner",{active:true,kind:"partner_secondary"});},
+  f=>{f.d.get("users/hubOwner").email="bad@example.test";},
+  f=>{f.d.get("partnerRelations/p1").hubCompanyId="otherHub";}
+ ];
+ for(let i=0;i<mutations.length;i++){
+  const f=withNamedPartner();mutations[i](f);
+  await assert.rejects(
+    createOwnerRankingConsentStatusReader({db:f.db})(auth("hubOwner")),
+    /RANKING_OWNER_STATUS_UNAUTHORIZED_OR_INCOMPLETE/,String(i));
+ }
+ const f=withNamedPartner();
+ await assert.rejects(createOwnerRankingConsentStatusReader({db:f.db})({
+  uid:"hubOwner",email:"hubowner@example.test",emailVerified:false}),
+  /RANKING_OWNER_STATUS_UNAUTHORIZED_OR_INCOMPLETE/);
+});
+
+test("stopped partner relation is visible to its hub owner but cannot be edited",async()=>{
+ const f=withNamedPartner();
+ f.d.get("partnerRelations/p1").active=false;
+ const d=await createOwnerRankingConsentStatusReader({db:f.db})(auth("hubOwner"));
+ assert.equal(d.partners.length,1);
+ assert.equal(d.partners[0].canEdit,false);
+});
+
+test("client-side settings panel consumes exactly the authenticated status contract",async()=>{
+ const f=withNamedPartner();
+ const status=await createOwnerRankingConsentStatusReader({db:f.db})(auth("hubOwner"));
+ assert.equal(status.schema,"nico-ranking-owner-consent-v1");
+ assert.deepEqual(Object.keys(status).sort(),["schema","role","partners"].sort());
+ assert.deepEqual(Object.keys(status.partners[0]).sort(),
+  ["partnerCompanyId","companyName","ownApproved","otherApproved","version","canEdit"].sort());
 });
