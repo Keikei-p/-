@@ -108,7 +108,7 @@ test("invite join requires an explicit, fresh transfer/secondary choice with no 
  assert.equal((section.match(/name="joinMembershipMode"/g)||[]).length,2);
  assert.doesNotMatch(section,/type="radio"[^>]*\schecked(?:\s|>)/);
  assert.match(section,/金額原票への旧権限が残る可能性/);
- const script=slice(partner,'$("join").onclick=async()=>{','\n\nconst setLoginMode=code=>{');
+ const script=slice(partner,'$("join").onclick=async()=>{','\n$("logout").onclick=async()=>{');
  assert.match(script,/if\(transfer===keep\)/);
  assert.match(script,/if\(!window\.confirm\(warning\)\)return/);
  assert.match(script,/await action\(async\(\)=>\{/);
@@ -117,7 +117,7 @@ test("invite join requires an explicit, fresh transfer/secondary choice with no 
 });
 
 test("join never invokes mutation until one option is selected AND confirmed",async()=>{
- const script=slice(partner,'$("join").onclick=async()=>{','\n\nconst setLoginMode=code=>{');
+ const script=slice(partner,'$("join").onclick=async()=>{','\n$("logout").onclick=async()=>{');
  const nodes={join:{},transferExistingInternal:{checked:false},
   keepInternalMembership:{checked:false},joinName:{value:"Test"}};
  let confirms=[],notices=[],calls=[],actions=0,permit=false;
