@@ -77,7 +77,8 @@ export function createOwnerRankingConsentPanel({
    for(const item of data.partners){
     const section=el(document,"section","ranking-owner-company");
     section.appendChild(el(document,"h3","ranking-owner-company-name",item.companyName));
-    const state=item.ownApproved&&item.otherApproved?"両社承認済み":
+    const state=!item.canEdit?"連携停止中・公開設定を変更できません":
+     item.ownApproved&&item.otherApproved?"両社承認済み":
      item.ownApproved?"自社承認済み・相手の承認待ち":
      item.otherApproved?"相手の承認済み・自社の承認待ち":"両社未承認";
     section.appendChild(el(document,"p","ranking-owner-state",state));
