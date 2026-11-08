@@ -13,8 +13,10 @@ import path from 'node:path';
 
 export const PROJECT='sales-management-cc116';
 const REGION='asia-northeast1';
-const ROOT='https://cloudfunctions.googleapis.com/v2/projects/'+PROJECT+
- '/locations/'+REGION+'/functions/';
+const FUNCTION_RESOURCE_ROOT='projects/'+PROJECT+'/locations/'+REGION+'/functions/';
+// The Google Functions API request URL includes /v2/, but the Function.name
+// inside the response is a resource NAME, not an absolute HTTP URL.
+const ROOT='https://cloudfunctions.googleapis.com/v2/'+FUNCTION_RESOURCE_ROOT;
 export const LIST_URL=ROOT.slice(0,-1)+'?pageSize=1000';
 export const EXPECTED=Object.freeze([
  'getPartnerWorkspace',
@@ -33,7 +35,7 @@ export function classify(name,body,status){
  });
  if(status!==200||!body||typeof body!=='object'||Array.isArray(body))
   abort('UNVERIFIED_FUNCTION_METADATA');
- const exact=ROOT+name;
+ const exact=FUNCTION_RESOURCE_ROOT+name;
  const service=props(body.serviceConfig),build=props(body.buildConfig);
  const deployed=body.name===exact;
  const active=deployed&&body.state==='ACTIVE';
@@ -131,8 +133,8 @@ export async function inspect(read){
   if(!row||typeof row!=='object'||Array.isArray(row)||
      typeof row.name!=='string'||row.name.length>500)
    abort('LIST_ROW_UNTRUSTED');
-  if(!row.name.startsWith(ROOT))continue;
-  const name=row.name.slice(ROOT.length);
+  if(!row.name.startsWith(FUNCTION_RESOURCE_ROOT))continue;
+  const name=row.name.slice(FUNCTION_RESOURCE_ROOT.length);
   if(!EXPECTED.includes(name))continue;
   if(regional.has(name))abort('LIST_DUPLICATE_TARGET');
   regional.set(name,row);
