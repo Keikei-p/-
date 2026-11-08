@@ -104,7 +104,7 @@ export function createOwnerProductVisibilityStore({db,FieldValue}={}){
    const state=normalize(read(saved),hub,ownerUid);
    validateSelected(state,products);
    const selected=new Set(state.enabledHubProductIds);
-   return {schema:"nico-hub-product-visibility-v1",version:state.version,
+   return {schema:"nico-hub-product-visibility-v1",role:"hub_owner",version:state.version,
     hubCompanyId:hub,products:products.map(p=>({
      id:p.id,name:p.name,active:p.active,enabled:selected.has(p.id)
     })),partnerOverrides:state.partnerOverrides};
