@@ -51,6 +51,24 @@ test("production verify only reads, stores no real documents in artifacts and wr
  assert.match(wf,/rm -f firestore-debug.log firebase-debug.log ui-debug.log/);
  assert.match(wf,/managed READY backup payload/);
 });
+test("2026-11-08 live read-only inventory requires the one-time audited main commit only",()=>{
+ const prefix="audit: recheck exact 20261108 isolated inventory (NO DEPLOY)";
+ assert.ok(wf.includes("startsWith(github.event.head_commit.message, '"+prefix+"')"));
+ assert.match(wf,/github\.repository == 'Keikei-p\/-'/);
+ assert.match(wf,/github\.event_name == 'push'/);
+ assert.match(wf,/needs\.offline\.result == 'success'/);
+ assert.match(wf,/STOP_UNREVIEWED_PRODUCTION_REAUDIT/);
+ assert.ok(wf.includes("REVIEWED_PUSH_MESSAGE: ${{ github.event.head_commit.message }}"));
+ assert.match(wf,/case "\$REVIEWED_PUSH_MESSAGE" in/);
+ assert.doesNotMatch(wf,/case "\$\{\{ github\.event\.head_commit\.message \}\}" in/);
+ assert.ok(wf.includes('test "${{ github.sha }}" = "$(git rev-parse HEAD)"'));
+ assert.match(wf,/test "\$GITHUB_SHA" = "\$\(gh api repos\/Keikei-p\/-\/branches\/main --jq \.commit\.sha\)"/);
+ assert.match(wf,/FIREBASE_PROJECT_ID: sales-management-cc116/);
+ assert.match(wf,/NICO_RULES_APPROVAL: VERIFY_ONLY/);
+ assert.doesNotMatch(wf,/firebase deploy|--import|upload-artifact@/);
+ assert.doesNotMatch(wf,/\bNICO_RULES_APPROVAL: (?!VERIFY_ONLY)\w+/);
+});
+
 test("the snapshot verification cannot be mistaken for an actual managed-backup restoration",()=>{
  const source=get(rule);
  assert.match(source,/managedBackupRestored:false/);
