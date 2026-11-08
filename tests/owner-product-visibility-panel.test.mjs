@@ -47,7 +47,7 @@ test("toggle saves only id/boolean/expectedVersion, then reloads confirmed serve
  const box=getCheckbox(root);box.checked=true;
  await box.fire("change");
  assert.deepEqual(calls,[{token:"signed-server-checked-token",productId:"nuro",
-  enabled:true,expectedVersion:1}]);
+  enabled:true,expectedVersion:1,partnerCompanyId:null}]);
  assert.equal(ctrl.getVersion(),2);
  assert.equal(getCheckbox(root).checked,true);
  assert(text(root).includes("ON"));
