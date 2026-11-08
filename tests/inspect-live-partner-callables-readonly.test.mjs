@@ -7,8 +7,10 @@ import {inspect,classify,summarize,EXPECTED,PROJECT,LIST_URL}
 const region='asia-northeast1';
 const root='https://cloudfunctions.googleapis.com/v2/projects/'+PROJECT+
  '/locations/'+region+'/functions/';
+// Cloud Functions REST v2 Function.name is a resource path, NOT an API URL.
+const resource='projects/'+PROJECT+'/locations/'+region+'/functions/';
 const body=(name,patch={})=>({
- name:root+name,
+ name:resource+name,
  state:'ACTIVE',
  buildConfig:{runtime:'nodejs22',entryPoint:name},
  serviceConfig:{uri:'https://nico-counts-abc.a.run.app',
@@ -37,6 +39,16 @@ test('all four targets have fixed regional URL, active state and exact enabled f
  assert.equal(report.safeToCutOverRules,false);
  assert.doesNotMatch(JSON.stringify(report),/nico-counts-abc|PARTNER_WORKSPACE_ENABLED|enabled/);
 });
+test('response Function.name must be canonical resource ID, never full REST URL',()=>{
+ const id=EXPECTED[0];
+ const valid=body(id);
+ assert.equal(valid.name,resource+id);
+ assert.equal(classify(id,valid,200).countEnabled,true);
+ const wrong=classify(id,{...valid,name:root+id},200);
+ assert.equal(wrong.deployed,false);
+ assert.equal(wrong.countEnabled,false);
+});
+
 test('HTTP 404 is a deployment blocker and never fakes success',async()=>{
  const result=await inspect(async url=>{
   if(url===LIST_URL)return answer(200,{functions:EXPECTED
@@ -78,13 +90,13 @@ test('regional LIST metadata fails closed on 403, pagination, duplicates, and ma
   answer(200,{functions:{bad:true}}),
   answer(200,{functions:EXPECTED.map(name=>body(name)),nextPageToken:'unreviewed'}),
   answer(200,{functions:[body(EXPECTED[0]),body(EXPECTED[0])]}),
-  answer(200,{functions:[{name:root+EXPECTED[0]}]})
+  answer(200,{functions:[{name:resource+EXPECTED[0]}]})
  ]){
   if(response===undefined)continue;
   // A syntactically present but incomplete v2 listing must never certify
   // all functions as ACTIVE or unlock any signed-in release gate.
   if((await response.json())?.functions?.length===1 &&
-      (await response.json()).functions[0].name===root+EXPECTED[0] &&
+      (await response.json()).functions[0].name===resource+EXPECTED[0] &&
       !(await response.json()).functions[0].buildConfig){
    const report=await fallback(response);
    assert.equal(report.countFunctionsConfiguredEnabled,false);
