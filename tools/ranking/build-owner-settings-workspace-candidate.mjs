@@ -170,7 +170,7 @@ export function buildCandidateFromRepo(){
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  if(process.argv.length!==4||process.argv[2]!=="--out"||
     !path.isAbsolute(process.argv[3])||
-    !/^\/(?:tmp|mnt\/data)\/[A-Za-z0-9._-]+[.]html$/.test(process.argv[3]))
+    !/^\/(?:tmp|mnt\/data|home\/runner\/work\/_temp)\/[A-Za-z0-9._-]+[.]html$/.test(process.argv[3]))
   throw Error("STOP_STAGING_OUTPUT_PATH_ONLY");
  const content=buildCandidateFromRepo();
  writeFileSync(process.argv[3],content,{encoding:"utf8",flag:"w",mode:0o600});
