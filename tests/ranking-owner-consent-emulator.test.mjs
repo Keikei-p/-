@@ -122,7 +122,8 @@ test("real Firestore Admin demo emulator: two owners sign independently, revoke 
   const context=await createFreshCombinedRankingContext({db})(approval(partnerOwner));
   assert.deepEqual(context.approvedCompanyIds,[hub,partner]);
   assert.equal((await act(partnerOwner,true,1)).saved,false);
-  await assert.rejects(act(partnerOwner,false,0),/STALE/);
+  await assert.rejects(act(partnerOwner,false,0),
+   error=>error.code==="permission-denied"&&error.message==="ranking_owner_action_denied");
   const revoked=await act(partnerOwner,false,1);
   assert.equal(revoked.version,2);
   await assert.rejects(createFreshCombinedRankingContext({db})(approval(partnerOwner)),/UNVERIFIED/);
@@ -138,7 +139,8 @@ test("real Firestore Admin demo emulator: two owners sign independently, revoke 
   assert.equal(partnerStatus.partners[0].version,3);
   const again=await createFreshCombinedRankingContext({db})(approval(partnerOwner));
   assert.deepEqual(again.approvedCompanyIds,[hub,partner]);
-  await assert.rejects(act(partnerOwner,false,1),/STALE/);
+  await assert.rejects(act(partnerOwner,false,1),
+   error=>error.code==="permission-denied"&&error.message==="ranking_owner_action_denied");
   assert.equal((await db.doc("companies/"+partner+"/rankingApprovals/"+hub).get())
    .data().version,3);
   assert.equal((await db.doc("partnerRelations/"+partner).get()).data()
