@@ -189,3 +189,23 @@ test("REAL store->server publication->company/person/SKU ranking switch uses ONE
  assert.deepEqual(off.productRanking.map(p=>p.name),["SoftBank Air"]);
  assert.deepEqual(input,original,"published totals change, immutable stored counts do not");
 });
+
+
+test("retired formerly-ON product is never ranked and owner can safely switch it OFF",async()=>{
+ const f=fake();
+ await f.store.saveSwitch({principal,productId:"nuro",enabled:true,expectedVersion:0});
+ f.state.set("products/nuro",{...f.state.get("products/nuro"),active:false});
+ const status=await f.store.readStatus(principal);
+ assert.equal(status.products.find(p=>p.id==="nuro").enabled,false);
+ const publication=await f.store.readForRanking({
+  context:{serverVerified:true,viewerUid:"owner",hubCompanyId:"hub",
+   role:"hub_owner",approvedCompanyIds:["hub","partner"]},mappingsReviewed:true
+ });
+ assert.deepEqual(publication.enabledHubProductIds,[]);
+ const off=await f.store.saveSwitch({
+  principal,productId:"nuro",enabled:false,expectedVersion:1
+ });
+ assert.equal(off.saved,true);
+ assert.deepEqual(f.state.get("companies/hub/rankingProductVisibility/shared")
+  .enabledHubProductIds,[]);
+});
