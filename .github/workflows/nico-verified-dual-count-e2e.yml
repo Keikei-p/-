@@ -5,14 +5,14 @@ on:
     paths:
       - 'ranking/verified-dual-count-dashboards.mjs'
       - 'tests/verified-dual-count-dashboards.test.mjs'
-      - 'tests/secondary-finance-counts-integration-emulator.test.mjs'
+      - 'tests/verified-dual-count-live-ledger-emulator.test.mjs'
       - '.github/workflows/nico-verified-dual-count-e2e.yml'
   push:
     branches: [main]
     paths:
       - 'ranking/verified-dual-count-dashboards.mjs'
       - 'tests/verified-dual-count-dashboards.test.mjs'
-      - 'tests/secondary-finance-counts-integration-emulator.test.mjs'
+      - 'tests/verified-dual-count-live-ledger-emulator.test.mjs'
       - '.github/workflows/nico-verified-dual-count-e2e.yml'
 permissions:
   contents: read
@@ -47,7 +47,7 @@ jobs:
           git diff --exit-code -- firestore.rules index.html partner-workspace.html functions functions-partner-workspace firebase.json
           node --check ranking/verified-dual-count-dashboards.mjs
           node --check tests/verified-dual-count-dashboards.test.mjs
-          node --check tests/secondary-finance-counts-integration-emulator.test.mjs
+          node --check tests/verified-dual-count-live-ledger-emulator.test.mjs
       - name: Prove date/week/month tie, growth, unreported, private amounts and explicit SKU mappings
         shell: bash
         run: |
@@ -66,7 +66,7 @@ jobs:
         run: |
           set -euo pipefail
           firebase emulators:exec --project demo-nico-secondary-finance-fence --only firestore \
-            'node --test --test-concurrency=1 tests/secondary-finance-counts-integration-emulator.test.mjs'
+            'node --test --test-concurrency=1 tests/verified-dual-count-live-ledger-emulator.test.mjs'
           echo 'CONFIRMED_LEDGER_SIMULATED_RANK_AND_CORRECTION_E2E_PASS_NO_PROD'
       - name: Assert original source and count data untouched
         shell: bash
