@@ -190,8 +190,10 @@ test("isolated REAL Firestore emulator: secondary user preserves count save/corr
   assert.equal(currentRank.companyBreakdown.find(x=>x.id===partner).count,4);
   assert.equal(currentRank.memberRanking.find(x=>x.id===partner+":"+worker).count,4);
   assert.equal(currentRank.productRanking.find(x=>x.id==="nuro").count,3);
-  assert.deepEqual(await makeDash(),currentRank,
+  const refreshRank=await makeDash();
+  assert.deepEqual({...refreshRank,readTime:null},{...currentRank,readTime:null},
    "server refresh must never sum past versions or derived summaries twice");
+  assert.notEqual(refreshRank.readTime,null,"real reads retain individual snapshot timestamps");
 
   await assert.rejects(service.submit(request(worker,{
    ...data,staffId:worker,counts:{...empty,NURO:99},expectedVersion:1
