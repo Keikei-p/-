@@ -179,7 +179,9 @@ export function createOwnerProductVisibilityStore({db,FieldValue}={}){
   */
  async function readForRanking({context,mappingsReviewed=false}={}){
   if(!context||context.serverVerified!==true||
-     !id(context.viewerUid)||!id(context.hubCompanyId)||
+     !id(context.viewerUid)||!id(context.viewerCompanyId)||
+     !id(context.hubCompanyId)||
+     (context.role==="hub_owner"&&context.viewerCompanyId!==context.hubCompanyId)||
      !["hub_owner","partner_owner"].includes(context.role)||
      !Array.isArray(context.approvedCompanyIds)||
      context.approvedCompanyIds.length<1||
@@ -193,12 +195,29 @@ export function createOwnerProductVisibilityStore({db,FieldValue}={}){
      mappingsReviewed!==true)stop();
   const hub=context.hubCompanyId;
   return db.runTransaction(async tx=>{
-   const [companySnap,stateSnap,all]=await Promise.all([
+   const partner=context.role==="partner_owner";
+   const [companySnap,stateSnap,all,viewerCompanySnap,relationSnap]=await Promise.all([
     tx.get(companies().doc(hub)),
-    tx.get(settingsRef(hub)),tx.get(catalog(hub))
+    tx.get(settingsRef(hub)),tx.get(catalog(hub)),
+    ...(partner?[
+     tx.get(companies().doc(context.viewerCompanyId)),
+     tx.get(db.collection("partnerRelations").doc(context.viewerCompanyId))
+    ]:[])
    ]);
    const company=read(companySnap);
    if(!obj(company)||!id(company.ownerUid)||company.active===false)stop();
+   // A claimed serverVerified flag is not sufficient: bind the viewer to
+   // the live owner/partner documents before returning publication settings.
+   if(!partner&&context.viewerUid!==company.ownerUid)stop();
+   if(partner){
+    const viewer=read(viewerCompanySnap),relation=read(relationSnap);
+    if(!obj(viewer)||viewer.ownerUid!==context.viewerUid||
+       viewer.companyKind!=="partner"||viewer.hubCompanyId!==hub||
+       viewer.active!==true||!obj(relation)||
+       relation.partnerCompanyId!==context.viewerCompanyId||
+       relation.hubCompanyId!==hub||relation.active!==true||
+       relation.countSharingApproved!==true)stop();
+   }
    // Missing settings mean nothing is published. No implicit ON.
    const state=normalize(read(stateSnap),hub,company.ownerUid);
    const productRows=productsOf(all,hub);
