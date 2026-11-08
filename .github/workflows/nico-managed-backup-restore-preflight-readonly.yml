@@ -1,5 +1,6 @@
 name: NICO managed READY backup restore preflight (GET ONLY / NO RESTORE)
 on:
+  workflow_dispatch:
   pull_request:
     branches: [main]
     paths:
@@ -41,7 +42,7 @@ jobs:
   live-get-only:
     needs: offline
     if: >-
-      github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' &&
       github.repository == 'Keikei-p/-' && needs.offline.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 13
