@@ -5,6 +5,8 @@ on:
     paths:
       - 'ranking/verified-dual-count-dashboards.mjs'
       - 'ranking/owner-product-visibility-rankings.mjs'
+      - 'ranking/owner-visible-count-server-handler.mjs'
+      - 'tests/owner-visible-count-server-handler.test.mjs'
       - 'ranking/owner-product-visibility-firestore.mjs'
       - 'ranking/owner-product-visibility-panel.mjs'
       - 'ranking/owner-product-visibility-dashboard-mount.mjs'
@@ -64,6 +66,8 @@ jobs:
           git diff --exit-code -- firestore.rules index.html partner-workspace.html functions functions-partner-workspace firebase.json
           node --check ranking/verified-dual-count-dashboards.mjs
           node --check ranking/owner-product-visibility-rankings.mjs
+          node --check ranking/owner-visible-count-server-handler.mjs
+          node --check tests/owner-visible-count-server-handler.test.mjs
           node --check ranking/owner-product-visibility-firestore.mjs
           node --check ranking/owner-product-visibility-panel.mjs
           node --check ranking/owner-product-visibility-dashboard-mount.mjs
@@ -78,7 +82,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node --test tests/verified-dual-count-dashboards.test.mjs tests/owner-product-visibility-rankings.test.mjs tests/owner-product-visibility-firestore.test.mjs tests/owner-product-visibility-panel.test.mjs tests/owner-product-visibility-dashboard-mount.test.mjs tests/owner-product-visibility-firebase-bridge.test.mjs tests/owner-product-visibility-callables.test.cjs
+          node --test tests/verified-dual-count-dashboards.test.mjs tests/owner-product-visibility-rankings.test.mjs tests/owner-visible-count-server-handler.test.mjs tests/owner-product-visibility-firestore.test.mjs tests/owner-product-visibility-panel.test.mjs tests/owner-product-visibility-dashboard-mount.test.mjs tests/owner-product-visibility-firebase-bridge.test.mjs tests/owner-product-visibility-callables.test.cjs
           node --test tests/partner-month-readonly-loader.test.mjs
       - name: Install ONLY isolated emulator tooling and existing workspace dependencies
         shell: bash
