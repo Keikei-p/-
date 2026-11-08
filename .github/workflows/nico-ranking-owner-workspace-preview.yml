@@ -5,6 +5,7 @@ on:
     paths:
       - 'tools/ranking/build-owner-settings-workspace-candidate.mjs'
       - 'tests/ranking-owner-workspace-candidate.test.mjs'
+      - 'tests/ranking-owner-workspace-real-dom.test.mjs'
       - 'ranking/owner-ranking-consent-panel.mjs'
       - 'ranking/owner-ranking-consent-panel.css'
       - 'ranking/owner-ranking-consent-firebase-bridge.mjs'
@@ -14,6 +15,7 @@ on:
     paths:
       - 'tools/ranking/build-owner-settings-workspace-candidate.mjs'
       - 'tests/ranking-owner-workspace-candidate.test.mjs'
+      - 'tests/ranking-owner-workspace-real-dom.test.mjs'
       - 'ranking/owner-ranking-consent-panel.mjs'
       - 'ranking/owner-ranking-consent-panel.css'
       - 'ranking/owner-ranking-consent-firebase-bridge.mjs'
@@ -58,6 +60,18 @@ jobs:
           set -euo pipefail
           node --test tests/ranking-owner-workspace-candidate.test.mjs tests/owner-ranking-consent-panel.test.mjs tests/owner-ranking-consent-firebase-bridge.test.mjs
           node --test tests/partner-workspace.test.cjs tests/partner-money-free-workspace.test.cjs tests/partner-count-dashboard.test.cjs
+      - name: Install browser DOM simulation dependencies in CI only
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix tests --no-save --package-lock=false --ignore-scripts --no-audit --no-fund jsdom@26.1.0
+      - name: Real browser DOM behavior without network, credentials or production Firebase
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          node --test tests/ranking-owner-workspace-real-dom.test.mjs
       - name: Build exactly one review-only HTML outside Firebase Hosting source
         shell: bash
         run: |
