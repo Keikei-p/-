@@ -29,7 +29,7 @@ before(async()=>{
  if(flag==='1'){
   if(process.env.FIREBASE_PROJECT_ID!=='demo-sales-support'||
      process.env.GCLOUD_PROJECT!=='demo-sales-support'||
-     !/^(?:127\\.0\\.0\\.1|localhost):[0-9]{2,5}$/.test(process.env.FIRESTORE_EMULATOR_HOST||'')||
+     !/^(?:127[.]0[.]0[.]1|localhost):[0-9]{2,5}$/.test(process.env.FIRESTORE_EMULATOR_HOST||'')||
      process.env.GOOGLE_APPLICATION_CREDENTIALS||
      process.env.FIREBASE_SERVICE_ACCOUNT_JSON)
    throw Error('REFUSE_NON_DEMO_SECONDARY_FINANCE_FENCE_TEST');
