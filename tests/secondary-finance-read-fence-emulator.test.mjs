@@ -15,14 +15,14 @@ test("future candidate narrows financial reads and writes only; production sourc
   const begin=candidate.indexOf("    match /"+collection+"/");
   const n=candidate.indexOf("\n    match /",begin+1);
   const body=candidate.slice(begin,n<0?undefined:n);
-  assert.match(body,/!activeSecondaryPartnerContext\\(\\)/);
+  assert.match(body,/!activeSecondaryPartnerContext\(\)/);
   const writeOps=collection==="recordCorrections"?["create"]:["create","update"];
   for(const op of writeOps){
    assert.match(body,new RegExp("allow "+op+": if !activeSecondaryPartnerContext\\(\\)"),
     collection+" "+op+" must reject dual financial browser write");
   }
   if(collection==="records")
-   assert.match(body,/allow get: if !activeSecondaryPartnerContext\\(\\)/);
+   assert.match(body,/allow get: if !activeSecondaryPartnerContext\(\)/);
  }
  for(const rule of ["allow create:","allow update:","allow delete:"]){
   assert.equal(candidate.split(rule).length,current.split(rule).length);
