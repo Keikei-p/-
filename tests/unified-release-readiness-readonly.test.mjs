@@ -34,6 +34,18 @@ const reports=()=>({
   productionWrites:0
  }
 });
+const cliInventory=()=>({
+ project:PROJECT,mode:"SANITIZED_FUNCTIONS_LIST_READ_ONLY",
+ deploymentAuthorized:false,financeRulesChangeAuthorized:false,
+ liveFunctionInvocations:0,productionDocumentWrites:0,
+ functions:Object.fromEntries(Object.keys(reports().partner.functions).map(name=>[name,{
+  listed:true,entries:1,inTargetRegion:1,outsideTargetRegion:0,
+  regionUnknown:0,projectUnknown:0,otherProject:0,
+  gen1Listed:0,gen2Listed:1,generationUnknown:0,
+  stateKnown:1,activeState:1,codebaseKnown:1,expectedCodebase:1,
+  workspaceFlagKnown:1,workspaceFlagEnabled:1
+ }]))
+});
 const from=val=>Object.fromEntries(Object.entries(val).map(([name,v])=>[
  name,"private diagnostic line not public\n"+LABELS[name]+JSON.stringify(v)+"\n"
 ]));
@@ -110,6 +122,57 @@ test("fully deployed count Functions cannot hide a live secondary finance exposu
  assert.equal(result.productionFunctionsDeploys,0);
 });
 
+test("healthy CLI Gen2 and direct-v2 404 produce source conflict, not a missing-deployment assertion",()=>{
+ const report=summarize(reports(),cliInventory());
+ assert.equal(report.fourCountFunctionsDeployedActiveEnabled,false);
+ assert.equal(report.fourCountFunctionsCliEvidenceAvailable,true);
+ assert.equal(report.fourCountFunctionsCliVerified,true);
+ assert.equal(report.countFunctionMetadataSourceConflict,true);
+ assert.ok(report.blockingReasons.includes("FOUR_COUNT_FUNCTION_METADATA_SOURCE_CONFLICT"));
+ assert.ok(!report.blockingReasons.includes("FOUR_NEW_COUNT_FUNCTIONS_NOT_READY"));
+ assert.deepEqual(Object.values(report.countFunctionCliHealth),[true,true,true,true]);
+ assert.equal(report.secondaryFinanceAccessPathStillPresent,true);
+ assert.equal(report.safeForPartnerFullRelease,false);
+ assert.equal(report.safeForFinanceBoundaryCutover,false);
+ assert.equal(report.realPartnerTokenGetListTestCompleted,false);
+ assert.equal(report.realPartnerCountSubmissionCompleted,false);
+ assert.equal(report.productionDocumentWrites,0);
+ assert.equal(report.productionRulesWrites,0);
+ assert.equal(report.productionFunctionsDeploys,0);
+});
+test("CLI collision, wrong region, Gen1, codebase and disabled flag do not satisfy independent evidence",()=>{
+ const input=reports(),name="getPartnerWorkspace";
+ for(const [key,value] of [
+  ["entries",2],["inTargetRegion",0],["outsideTargetRegion",1],
+  ["projectUnknown",1],["otherProject",1],["gen1Listed",1],
+  ["gen2Listed",0],["activeState",0],["expectedCodebase",0],
+  ["workspaceFlagEnabled",0],["regionUnknown",1],["generationUnknown",1]
+ ]){
+  const cli=cliInventory();cli.functions[name][key]=value;
+  const report=summarize(input,cli);
+  assert.equal(report.fourCountFunctionsCliVerified,false,key);
+  assert.equal(report.countFunctionCliHealth[name],false,key);
+  assert.ok(report.blockingReasons.includes("FOUR_NEW_COUNT_FUNCTIONS_NOT_READY"),key);
+  assert.equal(report.safeForPartnerFullRelease,false,key);
+ }
+});
+test("untrusted CLI metadata, forged writes and secret-shaped fields fail closed",()=>{
+ for(const bad of [
+  {...cliInventory(),project:"other"},
+  {...cliInventory(),productionDocumentWrites:1},
+  {...cliInventory(),deploymentAuthorized:true},
+  {...cliInventory(),functions:{getPartnerWorkspace:cliInventory().functions.getPartnerWorkspace}},
+  {...cliInventory(),functions:{...cliInventory().functions,
+    getPartnerWorkspace:{...cliInventory().functions.getPartnerWorkspace,uri:"https://private"}}},
+  {...cliInventory(),functions:{...cliInventory().functions,
+    getPartnerWorkspace:{...cliInventory().functions.getPartnerWorkspace,entries:-1}}}
+ ]){
+  assert.throws(()=>summarize(reports(),bad),/STOP_NICO_UNIFIED_READINESS_/);
+ }
+ const safe=JSON.stringify(summarize(reports(),cliInventory()));
+ for(const word of ["https://","@example.test","environmentVariables","API_TOKEN","private"])
+  assert.equal(safe.includes(word),false,word);
+});
 test("per-function readiness cannot be forged, cannot leak raw Function config or unlock release",()=>{
  const input=reports();
  const cases=[
@@ -186,4 +249,7 @@ test("new audit workflow is GET only, never auto-dispatches deployment or rewrit
  assert.match(src,/tools\/production\/audit-secondary-contexts-readonly\.mjs/);
  assert.match(src,/tools\/production\/audit-live-firestore-rules-readonly\.mjs/);
  assert.match(src,/tools\/production\/inspect-project-billing-readonly\.mjs/);
+ assert.match(src,/firebase functions:list --project/);
+ assert.match(src,/inspect-four-count-cli-region-readonly\.mjs/);
+ assert.match(src,/nico-readiness-cli\.private\.json/);
 });
