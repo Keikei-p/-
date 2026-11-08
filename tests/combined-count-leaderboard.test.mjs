@@ -57,6 +57,34 @@ test("unapproved, partial, missing or inconsistent partner snapshots fail closed
  d=>{d.sources[1].companyId="unknown";}
  ]){const d=make();change(d);assert.throws(()=>go(d),/Incomplete or unauthorized/);}
 });
+test("impossible record dates and timestamps stop the entire combined ranking",()=>{
+ for(const invalid of [
+  "2026-10-32","2026-10-00","2026-10-29-extra",
+  "2026-02-29","2026-11-01"
+ ]){
+  const data=make();
+  data.sources[0].records[0].date=invalid;
+  data.sources[0].lines[0].date=invalid;
+  data.sources[0].lines[1].date=invalid;
+  assert.throws(()=>go(data),/Incomplete or unauthorized/,
+   "reject invalid or other-month record date: "+invalid);
+ }
+ for(const invalid of [
+  "2026-10-32T01:00:00Z","2026-02-29T01:00:00Z",
+  "2026-10-29T24:00:00Z","2026-10-29T01:60:00Z",
+  "2026-10-29T01:00:60Z"
+ ]){
+  const data=make();
+  for(const source of data.sources)source.readTime=invalid;
+  assert.throws(()=>go(data),/Incomplete or unauthorized/,
+   "reject untrustworthy snapshot timestamp: "+invalid);
+ }
+ const valid=make();
+ for(const source of valid.sources)source.readTime="2024-02-29T23:59:59.123456789Z";
+ assert.equal(go(valid).combinedCount,9,
+  "valid leap-day nanosecond precision is still supported");
+});
+
 test("missing, duplicate, unauthorized, mismatched and financial rows are rejected",()=>{
  for(const change of [
  d=>{d.sources[0].lines.pop();},
