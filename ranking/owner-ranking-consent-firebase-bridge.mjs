@@ -1,7 +1,7 @@
 /**
  * STAGING ONLY / NO HOSTING RELEASE.
  * Callable bridge for the existing NICO Firebase email-login session.
- * No direct Firestore, localStorage, sessionStorage or unauthenticated GET.
+ * No direct document database, browser persistence or unauthenticated GET.
  * A company-code shared account and active secondary user MUST NOT use this.
  * The SERVER repeats revoked token, owner, membership and consent checks.
  */
