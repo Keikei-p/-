@@ -44,7 +44,7 @@ jobs:
 
   live-isolated-restore:
     needs: offline
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.offline.result == 'success' }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'Keikei-p/-' && startsWith(github.event.head_commit.message, 'audit: recheck exact 20261108 isolated inventory (NO DEPLOY)') && needs.offline.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
@@ -66,6 +66,12 @@ jobs:
           set -euo pipefail
           test "${{ github.repository }}" = 'Keikei-p/-'
           test "${{ github.ref }}" = 'refs/heads/main'
+          # This is a unique, explicit single-use re-audit; an unrelated main
+          # merge may NEVER silently trigger a production inventory scan.
+          case "${{ github.event.head_commit.message }}" in
+            'audit: recheck exact 20261108 isolated inventory (NO DEPLOY)'*) ;;
+            *) echo 'STOP_UNREVIEWED_PRODUCTION_REAUDIT'; exit 1 ;;
+          esac
           test "${{ github.sha }}" = "$(git rev-parse HEAD)"
           # Do not scan while another commit is replacing the reviewed code.
           test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
@@ -100,6 +106,8 @@ jobs:
           # Production data and credentials remain in ephemeral private files.
           # NOTE: this restores a fresh live read-only inventory to localhost,
           # NOT the actual managed READY backup payload, and NOT Auth/Storage.
+          # Existing sales/customer data is never uploaded as a GitHub artifact
+          # and is destroyed with the ephemeral runner after verification.
           # The immutable collector caps the scan at 10,000 documents and
           # refuses incomplete snapshots rather than silently skipping records.
           result=0
