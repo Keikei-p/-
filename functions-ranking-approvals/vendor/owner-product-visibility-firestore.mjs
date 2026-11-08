@@ -39,9 +39,9 @@ function productsOf(snapshot,hubId){
   const v=read(d);
   if(!id(d.id)||seen.has(d.id)||!obj(v)||
      v.companyId!==hubId||!saneName(v.name)||
-     typeof v.active!=="boolean")stop();
+     (v.active!==undefined&&typeof v.active!=="boolean"))stop();
   seen.add(d.id);
-  rows.push({id:d.id,name:v.name.trim(),active:v.active});
+  rows.push({id:d.id,name:v.name.trim(),active:v.active!==false});
  }
  return rows.sort((a,b)=>a.name.localeCompare(b.name,"ja")||
   a.id.localeCompare(b.id));
