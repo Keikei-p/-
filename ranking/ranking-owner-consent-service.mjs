@@ -26,7 +26,7 @@ function ownerVerified({auth,user,member,company,companyId}){
     company.ownerUid!==auth.uid||user.active!==true||
     member.active!==true||company.active===false||
     (typeof user.email==="string"&&
-      user.email.toLowerCase()!==auth.email))stop();
+      user.email.trim().toLowerCase()!==auth.email.trim().toLowerCase()))stop();
  if(company.companyKind==="partner"){
   if(user.accessKind!=="partner"||member.accessKind!=="partner"||
      user.memberType!=="cooperator"||member.memberType!=="cooperator"||
