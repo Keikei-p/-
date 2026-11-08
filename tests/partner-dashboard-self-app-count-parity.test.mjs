@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
+import {runInNewContext} from "node:vm";
 
 const index=readFileSync(new URL("../index.html",import.meta.url),"utf8");
 const partner=readFileSync(new URL("../partner-workspace.html",import.meta.url),"utf8");
@@ -97,4 +98,72 @@ test("new report and trend are derived from validated counts, never new writes",
  assert.match(block,/const max=Math\.max\(1,\.\.\.summary\.days/);
  assert.doesNotMatch(block,/httpsCallable|save\(|manage\(|getFirestore|Firebase\.firestore|setDoc|updateDoc|addDoc|fetch\(/);
  assert.match(partner,/countHistoryOpen"\)\.onclick=\(\)=>activeTab\("View"\)/);
+});
+
+
+test("invite join requires an explicit, fresh transfer/secondary choice with no default",()=>{
+ const section=slice(partner,'<section id="inviteAccept" hidden>','<section id="appBox" hidden>');
+ assert.match(section,/id="transferExistingInternal" name="joinMembershipMode" type="radio"/);
+ assert.match(section,/id="keepInternalMembership" name="joinMembershipMode" type="radio"/);
+ assert.equal((section.match(/name="joinMembershipMode"/g)||[]).length,2);
+ assert.doesNotMatch(section,/type="radio"[^>]*\schecked(?:\s|>)/);
+ assert.match(section,/金額原票への旧権限が残る可能性/);
+ const script=slice(partner,'$("join").onclick=async()=>{','\n$("logout").onclick=async()=>{');
+ assert.match(script,/if\(transfer===keep\)/);
+ assert.match(script,/if\(!window\.confirm\(warning\)\)return/);
+ assert.match(script,/await action\(async\(\)=>\{/);
+ assert.match(script,/transferCurrentCompany:\$\("transferExistingInternal"\)\.checked/);
+ assert.match(partner,/onAuthStateChanged\(auth,async u=>\{[\s\S]*?\$\("transferExistingInternal"\)\.checked=false;[\s\S]*?\$\("keepInternalMembership"\)\.checked=false;/);
+});
+
+test("join never invokes mutation until one option is selected AND confirmed",async()=>{
+ const script=slice(partner,'$("join").onclick=async()=>{','\n$("logout").onclick=async()=>{');
+ const nodes={join:{},transferExistingInternal:{checked:false},
+  keepInternalMembership:{checked:false},joinName:{value:"Test"}};
+ let confirms=[],notices=[],calls=[],actions=0,permit=false;
+ const context={
+  inviteToken:"synthetic_invitation",loading:false,
+  $:id=>nodes[id],notice:(s,bad)=>notices.push([s,bad]),
+  window:{confirm:message=>{confirms.push(message);return permit}},
+  action:async task=>{
+   actions++;
+   try{await task()}catch(e){
+    // Captured BEFORE any follow-on action or history/location mutation.
+    assert.equal(e.message,"TEST_CAPTURE_BEFORE_ANY_PRODUCTION_WRITE");
+   }
+  },
+  accept:async payload=>{
+   calls.push(payload);
+   throw Error("TEST_CAPTURE_BEFORE_ANY_PRODUCTION_WRITE");
+  }
+ };
+ runInNewContext(script,context);
+ assert.equal(typeof nodes.join.onclick,"function");
+ await nodes.join.onclick();
+ assert.equal(actions,0);
+ assert.equal(confirms.length,0);
+ assert.equal(calls.length,0);
+ assert.match(notices.at(-1)[0],/必ずどちらかを選択/);
+ nodes.transferExistingInternal.checked=true;
+ await nodes.join.onclick();
+ assert.equal(confirms.length,1);
+ assert.equal(actions,0,"cancelled primary transfer must not invoke backend");
+ permit=true;
+ await nodes.join.onclick();
+ assert.equal(actions,1);
+ assert.equal(calls.length,1);
+ assert.equal(calls[0].transferCurrentCompany,true);
+ nodes.transferExistingInternal.checked=false;
+ nodes.keepInternalMembership.checked=true;
+ permit=false;
+ await nodes.join.onclick();
+ assert.equal(actions,1,"cancelled dual membership must not invoke backend");
+ permit=true;
+ await nodes.join.onclick();
+ assert.equal(actions,2);
+ assert.equal(calls[1].transferCurrentCompany,false);
+ // Bad DOM state must fail closed, never fall through into account update.
+ nodes.transferExistingInternal.checked=true;
+ await nodes.join.onclick();
+ assert.equal(actions,2);
 });

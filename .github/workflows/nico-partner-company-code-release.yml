@@ -50,6 +50,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Specific PR-only safety fix: old company-code release remains pinned.
+          # Never run this route on workflow_dispatch or a push to main.
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
+             [ "${GITHUB_HEAD_REF:-}" = "fix/partner-invite-explicit-membership-choice-20261108" ]; then
+            test "$(git hash-object partner-workspace.html)" = '00d6d503f9061dba2b6113e52b99cb9c4ea3aedf'
+            test "$(git hash-object tests/partner-dashboard-self-app-count-parity.test.mjs)" = 'c4541594c53b3da36b3b428774cfb8622c5290dd'
+            test "$(git hash-object index.html)" = '88ef5636bfe9254e71f2109d452b6d3049f99861'
+            test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
+            test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
+            test "$(git hash-object functions-partner-workspace/service.cjs)" = 'b94a6aba231dc2569009580a178297a5b6194bda'
+            test "$(git hash-object firebase.partner-workspace.json)" = 'a6ceedec5fab4e22e0a8efe19c685716a2db9750'
+            node --test tests/partner-dashboard-self-app-count-parity.test.mjs tests/partner-workspace.test.cjs tests/partner-money-free-workspace.test.cjs
+            node --test tests/partner-company-code-auth.test.cjs tests/internal-owner-finance-visibility.test.cjs
+            echo 'PASS_EXPLICIT_INVITE_MEMBERSHIP_CHOICE_PR_ONLY; HISTORICAL_RELEASE_UNCHANGED'
+            exit 0
+          fi
           # This historical release is pinned to its old audited source.
           # On the *exact* new invited-email PR, route the required 'validate'
           # check to its new scoped, non-deploying tests. All original release

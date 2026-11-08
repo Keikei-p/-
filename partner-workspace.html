@@ -142,11 +142,18 @@ font:inherit;font-size:13px;line-height:1.6}
 <button class="secondary" id="verify" type="button" hidden>確認メールを送信・再送</button></section>
 <section id="inviteAccept" hidden><h2>協力店のスタッフ招待を承諾</h2><p>メール認証済みの招待先本人だけが参加できます。</p>
 <label for="joinName">表示名</label><input id="joinName" placeholder="例：田中 太郎" maxlength="60">
-<label for="transferExistingInternal" style="display:flex;gap:10px;align-items:flex-start;line-height:1.6">
- <input id="transferExistingInternal" type="checkbox" checked style="width:auto;min-width:20px;min-height:20px;margin-top:2px">
- <span><strong>自社から協力店へ移籍する</strong>（同じメールを使用）</span>
-</label>
-<p class="muted">以前、自社で利用したアカウントはそのままログインできます。自社の現役所属だけを終了し、古い実績・売上・班履歴は元の自社に保存します。自社と協力店の両方に所属したい場合はチェックを外してください。自社オーナーは先に管理権限の引継ぎが必要です。</p>
+<fieldset id="joinMembershipChoice" aria-describedby="joinModeDescription">
+ <legend><strong>参加方法を選択（初期選択なし）</strong></legend>
+ <label for="transferExistingInternal" style="display:flex;gap:10px;align-items:flex-start;line-height:1.6">
+  <input id="transferExistingInternal" name="joinMembershipMode" type="radio" value="transfer" style="width:auto;min-width:20px;min-height:20px;margin-top:2px">
+  <span><strong>自社から協力店へ移籍</strong>（現在の自社所属だけを終了。以前の実績・売上・班履歴は元の会社に保存）</span>
+ </label>
+ <label for="keepInternalMembership" style="display:flex;gap:10px;align-items:flex-start;line-height:1.6">
+  <input id="keepInternalMembership" name="joinMembershipMode" type="radio" value="secondary" style="width:auto;min-width:20px;min-height:20px;margin-top:2px">
+  <span><strong>現在の所属を残して参加</strong>（新規アカウント・兼務向け）</span>
+ </label>
+</fieldset>
+<p class="muted" id="joinModeDescription">移籍・兼務のどちらも選ばれるまで招待承諾は実行しません。<strong>自社所属のある方が「兼務」を選ぶ場合、金額原票への旧権限が残る可能性があります。</strong>金額完全遮断が検証されるまで、管理者の確認なしに兼務を選ばないでください。移籍には自社オーナーの事前引継ぎが必要な場合があります。</p>
 <button id="join" type="button">この会社に参加する</button></section>
 <section id="appBox" hidden><div class="row"><strong id="who"></strong><button id="logout" class="secondary" type="button">ログアウト</button></div>
 <div id="companyOverview" class="company-panel" hidden>
@@ -1327,7 +1334,21 @@ $("resetPassword").onclick=async()=>{
 };
 $("loginLogout").onclick=async()=>{try{await signOut(auth);notice("ログアウトしました。別のアカウントでログインできます。")}catch(e){fail(e)}};
 $("verify").onclick=async()=>{try{await sendEmailVerification(auth.currentUser);notice("確認メールを再送しました。")}catch(e){fail(e)}};
-$("join").onclick=async()=>{if(!inviteToken)return;await action(async()=>{
+$("join").onclick=async()=>{
+ if(!inviteToken||loading)return;
+ const transfer=$("transferExistingInternal").checked;
+ const keep=$("keepInternalMembership").checked;
+ if(transfer===keep){
+  notice("移籍か現在の所属を残すか、必ずどちらかを選択してください。",true);
+  return;
+ }
+ // Never turn a single generic「参加」tap into an unnoticed primary-company
+ // transition. Secondary membership also has a known live finance-read risk.
+ const warning=transfer?
+  "自社の現在の所属を終了して協力店へ移籍します。以前の実績と売上・履歴は元の自社に保存されます。移籍を確定しますか？":
+  "現在の所属を残して協力店に参加します。自社アカウントを兼務する場合、既存の金額閲覧権限が残る可能性があります。管理者の確認を受けましたか？";
+ if(!window.confirm(warning))return;
+ await action(async()=>{
  const joined=(await accept({token:inviteToken,name:$("joinName").value,transferCurrentCompany:$("transferExistingInternal").checked})).data;
  if(joined?.secondaryMembership&&joined.partnerCompanyId)
   workspaceCompanyId=joined.partnerCompanyId;
@@ -1351,6 +1372,10 @@ $("logout").onclick=async()=>{
  await signOut(auth);
 };
 onAuthStateChanged(auth,async u=>{
+ // Every new authentication state must require a FRESH membership decision.
+ // A prior invite's selected option must never carry into another login.
+ $("transferExistingInternal").checked=false;
+ $("keepInternalMembership").checked=false;
  ++nonce;++countLoadId;companyCodeSession=false;data=null;countDayCache.clear();
  clearCountOnlyDashboard();$("companyOverview").hidden=true;
  $("workspaceTitle").textContent="NICO FACTORY｜協力店 実績管理";
