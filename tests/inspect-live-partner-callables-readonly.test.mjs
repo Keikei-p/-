@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {inspect,classify,summarize,EXPECTED,PROJECT}
+import {inspect,classify,summarize,EXPECTED,PROJECT,LIST_URL}
  from '../tools/production/inspect-live-partner-callables-readonly.mjs';
 
 const region='asia-northeast1';
@@ -39,6 +39,8 @@ test('all four targets have fixed regional URL, active state and exact enabled f
 });
 test('HTTP 404 is a deployment blocker and never fakes success',async()=>{
  const result=await inspect(async url=>{
+  if(url===LIST_URL)return answer(200,{functions:EXPECTED
+   .filter(name=>name!=='submitPartnerWorkspaceCounts').map(name=>body(name))});
   if(url.endsWith('/submitPartnerWorkspaceCounts'))return answer(404,{});
   return answer(200,body(url.slice(root.length)));
  });
@@ -47,6 +49,50 @@ test('HTTP 404 is a deployment blocker and never fakes success',async()=>{
  assert.equal(result.countFunctionsConfiguredEnabled,false);
  assert.equal(result.functions.submitPartnerWorkspaceCounts.deployed,false);
 });
+test('404 on individual v2 GET but all four found in canonical regional LIST is a measurable audit conflict, not a missing deployment',async()=>{
+ const urls=[];
+ const report=await inspect(async url=>{
+  urls.push(url);
+  if(url===LIST_URL)return answer(200,{functions:EXPECTED.map(name=>body(name))});
+  return answer(404,{});
+ });
+ assert.deepEqual(urls,[...EXPECTED.map(name=>root+name),LIST_URL]);
+ assert.equal(report.countFunctionMetadataPresent,true);
+ assert.equal(report.countFunctionsActive,true);
+ assert.equal(report.countFunctionsConfiguredEnabled,true);
+ assert.equal(report.metadataListFallbackUsed,true);
+ assert.equal(report.directGetListConflict,true);
+ assert.equal(report.safeToCutOverRules,false);
+ assert.equal(report.actualCallableInvoked,false);
+ assert.equal(report.realPartnerCountEntryVerified,false);
+ assert.equal(report.originalSalesDataWrites,0);
+ assert.ok(EXPECTED.every(name=>report.functions[name].countEnabled===true));
+ assert.doesNotMatch(JSON.stringify(report),/nico-counts-abc|PARTNER_WORKSPACE_ENABLED|https:\/\//);
+});
+
+test('regional LIST metadata fails closed on 403, pagination, duplicates, and malformed payloads',async()=>{
+ const fallback=async (list)=>inspect(async url=>
+  url===LIST_URL?list:answer(404,{}));
+ for(const response of [
+  answer(403,{}),answer(500,{}),
+  answer(200,{functions:{bad:true}}),
+  answer(200,{functions:EXPECTED.map(name=>body(name)),nextPageToken:'unreviewed'}),
+  answer(200,{functions:[body(EXPECTED[0]),body(EXPECTED[0])]}),
+  answer(200,{functions:[{name:root+EXPECTED[0]}]})
+ ]){
+  if(response===undefined)continue;
+  // A syntactically present but incomplete v2 listing must never certify
+  // all functions as ACTIVE or unlock any signed-in release gate.
+  if((await response.json())?.functions?.length===1 &&
+      (await response.json()).functions[0].name===root+EXPECTED[0] &&
+      !(await response.json()).functions[0].buildConfig){
+   const report=await fallback(response);
+   assert.equal(report.countFunctionsConfiguredEnabled,false);
+   assert.equal(report.safeToCutOverRules,false);
+  }else await assert.rejects(fallback(response),/STOP_PARTNER_CALLABLES_/);
+ }
+});
+
 test('disabled or unknown function state and non-HTTPS gen2 URL stay blocked',()=>{
  for(const patch of [
   {state:'DEPLOYING'},
