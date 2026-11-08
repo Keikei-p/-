@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
-import {KEYS,validCountRow,compareStaffRollup,financeLockedIdentity,isInternalIdentitySafe,inspectLive}
+import {KEYS,validCountRow,compareStaffRollup,financeLockedIdentity,isInternalIdentitySafe,verifyOwnerlessPartnerCompany,inspectLive}
  from "../tools/production/audit-live-partner-counts.mjs";
 const zeros=()=>Object.fromEntries(KEYS.map(k=>[k,0]));
 const mk=(values,extra={})=>{
@@ -56,6 +56,24 @@ test("partner role markers always deny revenue and unit price even for owner",()
  assert.equal(isInternalIdentitySafe({}, {accessKind:null}),false);
  assert.equal(isInternalIdentitySafe({}, {memberType:null}),false);
 });
+test("ownerless hub-direct partner must have a matching active count-sharing relation",()=>{
+ const company={companyKind:"partner",active:true,hubCompanyId:"h",createdByUid:"hub-owner"};
+ const relation={partnerCompanyId:"direct",hubCompanyId:"h",createdByUid:"hub-owner",
+  active:true,countSharingApproved:true};
+ assert.doesNotThrow(()=>verifyOwnerlessPartnerCompany(company,relation,"direct"));
+ for(const patch of [{ownerUid:null},{ownerUid:"unexpected"},{createdByUid:""},
+                      {createdByUid:"different"},{active:false},{hubCompanyId:"foreign"}]){
+  assert.throws(()=>verifyOwnerlessPartnerCompany({...company,...patch},relation,"direct"),
+   /OWNERLESS_PARTNER_NOT_LINKED/);
+ }
+ for(const patch of [{partnerCompanyId:"other"},{hubCompanyId:"other"},
+  {createdByUid:"other"},{active:false},{countSharingApproved:false}]){
+  assert.throws(()=>verifyOwnerlessPartnerCompany(company,{...relation,...patch},"direct"),
+   /OWNERLESS_PARTNER_NOT_LINKED/);
+ }
+ assert.throws(()=>verifyOwnerlessPartnerCompany(company,null,"direct"),
+  /OWNERLESS_PARTNER_NOT_LINKED/);
+});
 test("audit is read-only at source-code level, does not call prod writes or sign in users",()=>{
  const source=readFileSync(new URL("../tools/production/audit-live-partner-counts.mjs",import.meta.url),"utf8");
  assert.doesNotMatch(source,/\b(?:setDoc|addDoc|updateDoc|deleteDoc|createUser|signInWith|runTransaction)\s*\(/);
@@ -72,9 +90,14 @@ test("mocked read-only production check matches live rule source and does not ex
  const doc=(id,data)=>({id,exists:true,data:()=>data});
  const push=(path,items)=>documents.set(path,items);
  push("companies",[doc("h",{companyKind:"internal",ownerUid:"h-owner",active:true}),
-  doc("p",{companyKind:"partner",ownerUid:"p-owner",hubCompanyId:"h",active:true})]);
+  doc("p",{companyKind:"partner",ownerUid:"p-owner",hubCompanyId:"h",active:true}),
+  doc("direct",{companyKind:"partner",hubCompanyId:"h",createdByUid:"h-owner",active:true})]);
  push("users/p-owner",[doc("p-owner",{accessKind:"partner",memberType:"cooperator",canViewRevenue:false,canViewUnitPrice:false})]);
  push("companies/p/members/p-owner",[doc("p-owner",{accessKind:"partner",memberType:"cooperator",canViewRevenue:false,canViewUnitPrice:false})]);
+ push("partnerRelations/direct",[doc("direct",{partnerCompanyId:"direct",hubCompanyId:"h",
+  createdByUid:"h-owner",active:true,countSharingApproved:true})]);
+ push("companies/direct/members",[doc("direct-member",{accessKind:"partner",memberType:"cooperator",
+  canViewRevenue:false,canViewUnitPrice:false,active:true})]);
  push("companies/h/members",[doc("h-owner",{
   // Legacy membership omits both copies of the path identifiers.
   companyRole:"owner",active:true,accessKind:"internal",memberType:"direct"
@@ -125,7 +148,9 @@ test("mocked read-only production check matches live rule source and does not ex
  assert.equal(result.internalOwnerAndStaffCompatibilityVerified,true);
  assert.equal(result.safeToDeployExistingRules,false,
   "static role-marker checks must never approve incomplete money gateway cutover");
- assert.equal(result.partnerCompanyCount,1);
+ assert.equal(result.partnerCompanyCount,2);
+ assert.equal(result.partnerActiveMemberCount,2);
+ assert(calls.includes("READ partnerRelations/direct"),"ownerless partner approval must be read");
  assert.equal(result.staffReportCount,1);
  assert.equal(result.quickReportCount,1);
  assert.equal(result.verifiedStaffEntryCount,1);

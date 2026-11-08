@@ -54,6 +54,20 @@ export function financeLockedIdentity(company,users,member){
    abort("PARTNER_IDENTITY_FINANCE_FLAGS");
  }
 }
+// Direct hub invitations intentionally create partner companies without an
+// owner account. Only the exact paired server-created approval relation may
+// establish such a company as valid; missing or malformed data fails closed.
+export function verifyOwnerlessPartnerCompany(company,relation,partnerCompanyId){
+ if(company?.companyKind!=="partner"||company.active!==true||
+    company.ownerUid!==undefined||
+    typeof company.hubCompanyId!=="string"||!company.hubCompanyId||
+    typeof company.createdByUid!=="string"||!company.createdByUid||
+    !relation||relation.partnerCompanyId!==partnerCompanyId||
+    relation.hubCompanyId!==company.hubCompanyId||
+    relation.createdByUid!==company.createdByUid||
+    relation.active!==true||relation.countSharingApproved!==true)
+   abort("OWNERLESS_PARTNER_NOT_LINKED");
+}
 // Match the positive internal classification allowlist in firestore.rules.
 // Reject unknown markers even when accessKind != "partner".
 const INTERNAL_ACCESS=new Set([undefined,"internal"]);
@@ -94,7 +108,7 @@ const dateJst=(time=Date.now())=>{
 export async function inspectLive({db,credential,clock=Date.now,request=fetch}){
  if(!db||typeof db.collection!=="function"||!credential)abort("MISSING_DEPENDENCY");
  const security=await retrieveRules(credential,request);
- const snap=await db.collection("companies").select("companyKind","ownerUid","hubCompanyId","active").limit(201).get();
+ const snap=await db.collection("companies").select("companyKind","ownerUid","hubCompanyId","createdByUid","active").limit(201).get();
  if(snap.size>200)abort("COMPANY_SCAN_INCOMPLETE");
  let internal=0,partners=0,accounts=0,staffReports=0,quickReports=0,staffEntries=0,verifiedCounts=0,unmatchedFlags=0;
  let activeInternalAccountsChecked=0,nonLoginManagedStaff=0,internalOwnersVerified=0;
@@ -106,14 +120,25 @@ export async function inspectLive({db,credential,clock=Date.now,request=fetch}){
   if(company.companyKind==="partner"){
    partners++;
    const ownerUid=company.ownerUid;
-   if(typeof ownerUid!=="string"||!ownerUid||typeof company.hubCompanyId!=="string"||!company.hubCompanyId)
+   if(typeof company.hubCompanyId!=="string"||!company.hubCompanyId)
      abort("PARTNER_COMPANY_MARKERS");
-   const [userDoc,memberDoc]=await Promise.all([
-    db.collection("users").doc(ownerUid).get(),
-    db.collection("companies").doc(companyDoc.id).collection("members").doc(ownerUid).get()
-   ]);
-   if(!userDoc.exists||!memberDoc.exists)abort("PARTNER_OWNER_PROFILE_MISSING");
-   financeLockedIdentity(company,[userDoc.data()],memberDoc.data());
+   if(ownerUid===undefined){
+    // The approved hub-direct invitation has no representative by design.
+    // Verify the immutable company/relation link instead of inventing an owner.
+    const relation=await db.collection("partnerRelations").doc(companyDoc.id).get();
+    if(!relation.exists)abort("OWNERLESS_PARTNER_NOT_LINKED");
+    verifyOwnerlessPartnerCompany(company,relation.data(),companyDoc.id);
+   }else{
+    // Companies created with a representative retain the original strict
+    // Owner profile and finance flag checks, including malformed UID denial.
+    if(typeof ownerUid!=="string"||!ownerUid)abort("PARTNER_COMPANY_MARKERS");
+    const [userDoc,memberDoc]=await Promise.all([
+     db.collection("users").doc(ownerUid).get(),
+     db.collection("companies").doc(companyDoc.id).collection("members").doc(ownerUid).get()
+    ]);
+    if(!userDoc.exists||!memberDoc.exists)abort("PARTNER_OWNER_PROFILE_MISSING");
+    financeLockedIdentity(company,[userDoc.data()],memberDoc.data());
+   }
    const memberSnapshot=await db.collection("companies").doc(companyDoc.id)
     .collection("members").select("accessKind","memberType","canViewRevenue","canViewUnitPrice","active").limit(201).get();
    if(memberSnapshot.size>200)abort("PARTNER_MEMBERS_INCOMPLETE");
