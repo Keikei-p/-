@@ -1,5 +1,6 @@
 name: NICO partner live count and financial boundary audit (read only)
 on:
+  workflow_dispatch:
   pull_request:
     branches: [main]
     paths:
@@ -38,7 +39,7 @@ jobs:
           node --test tests/partner-money-free-workspace.test.cjs
   live-readonly:
     needs: synthetic-tests
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.synthetic-tests.result == 'success' }}
+    if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && needs.synthetic-tests.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 22
     env:
