@@ -250,7 +250,8 @@ test("fresh Auth-backed owner context directly binds the existing Firestore publ
  assert(f.ops.every(x=>x.kind!=="transaction"||x.options.readOnly===true),
   "both identity and owner publication reads must be read-only");
  assert(f.ops.every(x=>x.kind!=="get"||
-  !/\\/(?:records|recordCorrections|revenueGoals)\\//.test(x.path)),
+  !["records","recordCorrections","revenueGoals"].some(name=>
+   x.path.includes("/"+name+"/"))),
   "never query raw finance documents");
  const forged={...(await load(f)(await verified("partnerOwner"))),role:"hub_owner"};
  await assert.rejects(store.readForRanking({context:forged,mappingsReviewed:true}),
