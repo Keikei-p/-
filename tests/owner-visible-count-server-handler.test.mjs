@@ -189,3 +189,36 @@ test("malformed methods, query, origin and auth cannot reach data loader",async(
  assert.equal((await run(missing)).status,401);
  assert.equal(calls,0);
 });
+
+test("opt-in atomic snapshot path serves count-only ranking without legacy publication reads",async()=>{
+ const f=fake(),ctx={...countInput({}).context};
+ const publication={serverVerified:true,ownerSettingsRead:true,
+  ownerUidVerified:true,productMappingsReviewed:true,revision:2,
+  hubCompanyId:"hub",snapshotReadTime:TIME,
+  enabledHubProductIds:["nuro"],partnerOverrides:[]};
+ let calls=0;
+ const run=createStagedOwnerVisibleCountHandler({
+  enabled:true,db:f.db,auth:f.auth,FieldValue:f.FieldValue,
+  loadAtomicVerifiedCountSnapshot:async({month,context})=>{
+   calls++;
+   assert.equal(month,MONTH);
+   const input={...countInput(context),snapshotReadTime:TIME};
+   return {input,publication};
+  }
+ });
+ const response=await run(request());
+ assert.equal(response.status,200);
+ assert.equal((await response.json()).summary.total,7);
+ assert.equal(calls,1);
+ assert(!f.ops.some(x=>x.kind==="get"&&
+  x.path==="companies/hub/rankingProductVisibility/shared"),
+  "atomic publication must not trigger an independent settings transaction");
+ const bad=createStagedOwnerVisibleCountHandler({
+  enabled:true,db:f.db,auth:f.auth,FieldValue:f.FieldValue,
+  loadAtomicVerifiedCountSnapshot:async({context})=>({
+   input:{...countInput(context),snapshotReadTime:TIME},
+   publication:{...publication,snapshotReadTime:"2026-11-09T00:00:01Z"}
+  })
+ });
+ assert.equal((await bad(request())).status,503);
+});
