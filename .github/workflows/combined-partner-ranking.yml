@@ -8,6 +8,8 @@ on:
       - "ranking/partner-month-readonly-loader.mjs"
       - "ranking/rank-only-publication.mjs"
       - "ranking/combined-rank-only-handler.mjs"
+      - "ranking/trusted-combined-ranking-context.mjs"
+      - "tests/trusted-combined-ranking-context.test.mjs"
       - "ranking/rank-only-view.mjs"
       - "ranking/rank-only-view.css"
       - "tests/combined-count-leaderboard.test.mjs"
@@ -23,6 +25,8 @@ on:
       - "ranking/combined-count-leaderboard.mjs"
       - "ranking/partner-workspace-count-source.mjs"
       - "ranking/partner-month-readonly-loader.mjs"
+      - "ranking/trusted-combined-ranking-context.mjs"
+      - "tests/trusted-combined-ranking-context.test.mjs"
       - "tests/combined-count-leaderboard.test.mjs"
       - "tests/partner-workspace-count-source.test.mjs"
       - "tests/partner-month-readonly-loader.test.mjs"
@@ -47,9 +51,10 @@ jobs:
           node --check ranking/partner-month-readonly-loader.mjs
           node --check ranking/rank-only-publication.mjs
           node --check ranking/combined-rank-only-handler.mjs
+          node --check ranking/trusted-combined-ranking-context.mjs
           node --check ranking/rank-only-view.mjs
       - name: Combined count and privacy synthetic test
-        run: node --test tests/combined-count-leaderboard.test.mjs tests/combined-rank-only-publication.test.mjs tests/partner-workspace-count-source.test.mjs tests/partner-month-readonly-loader.test.mjs
+        run: node --test tests/combined-count-leaderboard.test.mjs tests/combined-rank-only-publication.test.mjs tests/partner-workspace-count-source.test.mjs tests/partner-month-readonly-loader.test.mjs tests/trusted-combined-ranking-context.test.mjs
 
   emulator-count-read:
     needs: offline
