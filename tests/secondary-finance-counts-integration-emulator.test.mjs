@@ -15,10 +15,12 @@ test("isolated REAL Firestore emulator: secondary user preserves count save/corr
  skip:!process.env.FIRESTORE_EMULATOR_HOST,
  timeout:120000
 },async()=>{
- if(process.env.FIREBASE_PROJECT_ID!==PROJECT||
-    process.env.GCLOUD_PROJECT!==PROJECT||
-    !HOST.test(process.env.FIRESTORE_EMULATOR_HOST))
-  throw Error("STOP_NON_DEMO_FIRESTORE_EMULATOR");
+ if(process.env.FIREBASE_PROJECT_ID!==PROJECT)
+  throw Error("STOP_NOT_DEMO_FIREBASE_PROJECT");
+ if(process.env.GCLOUD_PROJECT!==PROJECT)
+  throw Error("STOP_NOT_DEMO_GCLOUD_PROJECT");
+ if(!HOST.test(process.env.FIRESTORE_EMULATOR_HOST))
+  throw Error("STOP_NOT_LOCAL_FIRESTORE_EMULATOR");
  const {initializeApp,deleteApp}=requireAdmin("firebase-admin/app");
  const {getFirestore,FieldValue,Timestamp}=requireAdmin("firebase-admin/firestore");
  const {makeWorkspace,KEYS}=requireService("../functions-partner-workspace/service.cjs");
