@@ -20,6 +20,10 @@ function fake({omitted=null,wrongMarker=null,exposed=null,noTab=false}={}){
    :path==="/partner-invite.html"?"createPartnerCompanyInvitation"
    :path==="/partner-counts.html"?"getPartnerQuickCounts"
    :path==="/partner-workspace.html"?"submitPartnerWorkspaceCounts"
+   :path==="/finance-boundary-four.html"?
+     '<div id="products"></div><div id="records"></div>'+
+     '<div id="recordCorrections"></div><div id="revenueGoals"></div>'+
+     'getIdToken(true) mask.fieldPaths'
    :"";
   if(path===wrongMarker)body="fallback login page without marker";
   return new Response(body,{status:200,headers:{"Content-Type":"text/html"}});
@@ -39,7 +43,7 @@ test("static public read-only audit finds pages and denies anonymous finance end
  assert.equal(r.partnerLoginAndCountSaveVerified,false);
  assert.equal(r.liveFinanceRulesVerified,false);
  assert.equal(r.backupRestoreVerified,false);
- assert.equal(client.calls.length,4+9+3);
+ assert.equal(client.calls.length,5+9+3);
  for(const {url,options} of client.calls){
   assert.ok(url.startsWith("https://nico-factory.web.app/")||
    url.startsWith("https://asia-northeast1-sales-management-cc116.cloudfunctions.net/")||
@@ -56,6 +60,26 @@ test("HTTP 200 for a SPA fallback does not mark partner page deployed",async()=>
  assert.equal(r.pages.partnerWorkspace.verified,false);
  assert.equal(r.publicPagesReady,false);
 });
+test("four-source masked diagnostic is required; SPA fallback or unmasked page is a blocker",async()=>{
+ const valid=await checkNicoLivePublic({fetcher:fake().fetcher});
+ assert.equal(valid.pages.financeFour.status,200);
+ assert.equal(valid.pages.financeFour.verified,true);
+ assert.equal(valid.publicPagesReady,true);
+ const absent=await checkNicoLivePublic({
+  fetcher:fake({omitted:"/finance-boundary-four.html"}).fetcher
+ });
+ assert.equal(absent.pages.financeFour.verified,false);
+ assert.equal(absent.publicPagesReady,false);
+ const fallback=await checkNicoLivePublic({
+  fetcher:fake({wrongMarker:"/finance-boundary-four.html"}).fetcher
+ });
+ assert.equal(fallback.pages.financeFour.verified,false);
+ assert.equal(fallback.publicPagesReady,false);
+ // Never assert real-user finance denial from a public GET.
+ assert.equal(valid.liveFinanceRulesVerified,false);
+ assert.equal(valid.fullProductionCutoverApproved,false);
+});
+
 test("missing invite/tab or failed anonymous refusal is not production-ready",async()=>{
  const r=await checkNicoLivePublic({fetcher:fake({noTab:true,exposed:"submitPartnerWorkspaceCounts"}).fetcher});
  assert.equal(r.publicPagesReady,true);

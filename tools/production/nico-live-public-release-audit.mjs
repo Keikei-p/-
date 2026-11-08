@@ -14,7 +14,8 @@ const PAGES=Object.freeze({
  home:{url:BASE+"/",marker:"営業実績管理"},
  partnerInvite:{url:BASE+"/partner-invite.html",marker:"createPartnerCompanyInvitation"},
  partnerCounts:{url:BASE+"/partner-counts.html",marker:"getPartnerQuickCounts"},
- partnerWorkspace:{url:BASE+"/partner-workspace.html",marker:"submitPartnerWorkspaceCounts"}
+ partnerWorkspace:{url:BASE+"/partner-workspace.html",marker:"submitPartnerWorkspaceCounts"},
+ financeFour:{url:BASE+"/finance-boundary-four.html",marker:'id="revenueGoals"'}
 });
 const FUNCTIONS=Object.freeze([
  "createPartnerCompanyInvitation","previewPartnerCompanyInvitation","acceptPartnerCompanyInvitation",
@@ -50,7 +51,14 @@ export async function checkNicoLivePublic({fetcher=fetch,timeoutMs=12000}={}){
    const r=await read(fetcher,info.url,{method:"GET",headers:{Accept:"text/html"}},timeoutMs);
    const body=r.status===200?await r.text():"";
    // A SPA fallback can return HTTP 200 for an absent route.
-   pages[name]=result(r.status,r.status===200&&body.includes(info.marker));
+   // The four-source diagnostic must be a real, read-only financial test
+   // page rather than an absent route silently serving the SPA fallback.
+   const financeProof=name!=="financeFour"||(
+    body.includes('id="products"')&&body.includes('id="records"')&&
+    body.includes('id="recordCorrections"')&&
+    body.includes("getIdToken(true)")&&body.includes("mask.fieldPaths"));
+   pages[name]=result(r.status,r.status===200&&
+    body.includes(info.marker)&&financeProof);
    if(name==="home")pages.inviteTabPresent=body.includes("partnerInviteInline");
   }catch{
    pages[name]=result(0,false);
