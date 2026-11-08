@@ -55,7 +55,7 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
              [ "${GITHUB_HEAD_REF:-}" = "fix/partner-invite-explicit-membership-choice-20261108" ]; then
             test "$(git hash-object partner-workspace.html)" = '00d6d503f9061dba2b6113e52b99cb9c4ea3aedf'
-            test "$(git hash-object tests/partner-dashboard-self-app-count-parity.test.mjs)" = '071666460ef1b0d17af00370de8e9c390a851ca9'
+            test "$(git hash-object tests/partner-dashboard-self-app-count-parity.test.mjs)" = 'c4541594c53b3da36b3b428774cfb8622c5290dd'
             test "$(git hash-object index.html)" = '88ef5636bfe9254e71f2109d452b6d3049f99861'
             test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
             test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
