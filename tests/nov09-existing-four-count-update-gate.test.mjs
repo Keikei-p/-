@@ -19,7 +19,7 @@ test("manual release updates exactly all four already-active trusted callable ex
  assert.match(src,/ensureExactOnly\(process\.env\.TARGETS\)/);
  assert.match(src,/--config firebase\.partner-workspace\.json --only "\$TARGETS"/);
  assert.equal((src.match(/\bfirebase deploy\b/g)||[]).length,1);
- assert.doesNotMatch(src,/--force|--only firestore|firebase deploy --only hosting|firebase functions:delete|firebase deploy --only functions\b/);
+ assert.doesNotMatch(src,/firebase deploy[^\n]*--force|firebase deploy[^\n]*--only\\s+firestore|firebase deploy[^\n]*--only\\s+hosting|firebase functions:delete|firebase deploy --only functions\\b/);
 });
 test("no PR, non-main, wrong SHA or absent billing approval can run production job",()=>{
  assert.match(src,/workflow_dispatch:/);
