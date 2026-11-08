@@ -78,3 +78,36 @@ test("unexpected money value in store response blocks before the network return"
   products:[{...status.products[0],revenue:50000}]}});
  await assert.rejects(f.api.load(request()),e=>e.code==="permission-denied");
 });
+
+test("malformed partner overrides and nested money never leave the owner callable",async()=>{
+ const invalid=[
+  {partner:{revenue:50000}},
+  {partner:["nuro","nuro"]},
+  {partner:["../../records"]},
+  {partner:["nuro",25000]},
+  {hub:["nuro"]},
+  {["__proto__"]:["nuro"]},
+  {partner:Array.from({length:1001},(_,i)=>"sku"+i)}
+ ];
+ for(const overrides of invalid){
+  const f=calls({loaded:{...status,partnerOverrides:overrides}});
+  await assert.rejects(f.api.load(request()),e=>e.code==="permission-denied");
+  assert.equal(f.reads,1);
+ }
+});
+test("owner response accepts only safe labels and unique active publication rows",async()=>{
+ const invalidProducts=[
+  [{...status.products[0],name:"NURO_CB50000"}],
+  [{...status.products[0],name:"NURO 50000円"}],
+  [{...status.products[0],id:"__proto__"}],
+  [{...status.products[0]}, {...status.products[0]}],
+  [{...status.products[0],active:false,enabled:true}]
+ ];
+ for(const products of invalidProducts){
+  const f=calls({loaded:{...status,products}});
+  await assert.rejects(f.api.load(request()),e=>e.code==="permission-denied");
+ }
+ const valid=calls({loaded:{...status,partnerOverrides:{partner:["nuro"]}}});
+ const response=await valid.api.load(request());
+ assert.deepEqual(response.partnerOverrides,{partner:["nuro"]});
+});

@@ -46,21 +46,36 @@ function makeProductVisibilityCallables({
   }catch{unauth()}
  }
  function verifyStatus(res){
+  const safeId=x=>typeof x==="string"&&ID.test(x)&&
+   !["__proto__","prototype","constructor"].includes(x);
+  const money=/(?:売上|単価|報酬|利益|キャッシュバック|[¥￥$€]|(?:CB|revenue|unitPrice|cashback)[\s:_=-]*[0-9０-９]|[0-9０-９][0-9０-９.,，]*\s*(?:万円|千円|円))/i;
   if(!exact(res,["schema","role","version","hubCompanyId","products",
       "partnerOverrides"])||
      res.schema!=="nico-hub-product-visibility-v1"||
-     res.role!=="hub_owner"||!ID.test(res.hubCompanyId||"")||
+     res.role!=="hub_owner"||!safeId(res.hubCompanyId)||
      !Number.isSafeInteger(res.version)||res.version<0||
      !Array.isArray(res.products)||res.products.length>1000||
      !res.products.every(p=>exact(p,["id","name","active","enabled"])&&
-       ID.test(p.id||"")&&typeof p.name==="string"&&
-       p.name.length<=80&&p.name.trim()&&
-       typeof p.active==="boolean"&&typeof p.enabled==="boolean")||
-     !res.partnerOverrides||typeof res.partnerOverrides!=="object")deny();
+       safeId(p.id)&&typeof p.name==="string"&&
+       p.name.trim().length>0&&p.name.trim().length<=80&&
+       !money.test(p.name)&&typeof p.active==="boolean"&&
+       typeof p.enabled==="boolean"&&(!p.enabled||p.active))||
+     new Set(res.products.map(p=>p.id)).size!==res.products.length||
+     !res.partnerOverrides||typeof res.partnerOverrides!=="object"||
+     Array.isArray(res.partnerOverrides))deny();
+  const overrides=Object.entries(res.partnerOverrides);
+  if(overrides.length>100||!overrides.every(([companyId,productIds])=>
+     safeId(companyId)&&companyId!==res.hubCompanyId&&
+     Array.isArray(productIds)&&productIds.length<=1000&&
+     productIds.every(safeId)&&
+     new Set(productIds).size===productIds.length))deny();
+  // Rebuild only approved count/label fields; never forward raw store objects.
   return {schema:res.schema,role:res.role,version:res.version,
    hubCompanyId:res.hubCompanyId,products:res.products.map(p=>({
     id:p.id,name:p.name,active:p.active,enabled:p.enabled
-   })),partnerOverrides:res.partnerOverrides};
+   })),partnerOverrides:Object.fromEntries(
+    overrides.map(([companyId,productIds])=>[companyId,productIds.slice()])
+   )};
  }
  const load=async request=>{
   const principal=await authorized(request,[]);
