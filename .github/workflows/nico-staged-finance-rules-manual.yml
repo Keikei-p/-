@@ -62,6 +62,7 @@ jobs:
           node --test tests/activate-staged-finance-rules.test.mjs tests/stage-secondary-finance-rules.test.mjs
           git diff --exit-code -- firestore.rules index.html partner-workspace.html firebase.json functions functions-partner-workspace
       - name: Prove count save/correction plus raw finance deny in real isolated emulator
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.mode != 'rollback' }}
         shell: bash
         env:
           FIREBASE_PROJECT_ID: demo-nico-secondary-finance-fence
@@ -98,10 +99,14 @@ jobs:
           test "$(git hash-object functions-partner-workspace/index.js)" = 38da7e9174ffea7c406c92292dccfc651b565eb0
           test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
           node --test tests/activate-staged-finance-rules.test.mjs
-      - name: Install original audit SDK and pinned Firebase CLI (no source or data write)
+      - name: Install original audit SDK (no source or data write)
         shell: bash
         run: |
           npm install --prefix functions --ignore-scripts --no-audit --no-fund --package-lock=false
+      - name: Install pinned Firebase CLI for inspect/apply only
+        if: ${{ inputs.mode != 'rollback' }}
+        shell: bash
+        run: |
           npm install --global firebase-tools@15.34.1 --no-audit --no-fund
       - name: Bind approved existing identity privately
         shell: bash
@@ -114,6 +119,7 @@ jobs:
           chmod 600 "$RUNNER_TEMP/nico-rules-switch.private.json"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-rules-switch.private.json" >> "$GITHUB_ENV"
       - name: GET-only confirm 4 ACTIVE count Functions and no unexpected region
+        if: ${{ inputs.mode != 'rollback' }}
         shell: bash
         run: |
           set -euo pipefail
