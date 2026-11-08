@@ -187,3 +187,25 @@ test("new audit workflow is GET only, never auto-dispatches deployment or rewrit
  assert.match(src,/tools\/production\/audit-live-firestore-rules-readonly\.mjs/);
  assert.match(src,/tools\/production\/inspect-project-billing-readonly\.mjs/);
 });
+
+
+test("live readiness refresh follows source inspector fixes, stays main-only and GET-only",()=>{
+ const workflow=readFileSync(new URL(
+  "../.github/workflows/nico-unified-release-readiness-readonly.yml",import.meta.url),"utf8");
+ for(const required of [
+  "tools/production/inspect-live-partner-callables-readonly.mjs",
+  "tools/production/audit-secondary-contexts-readonly.mjs",
+  "tools/production/audit-live-firestore-rules-readonly.mjs",
+  "tools/production/inspect-project-billing-readonly.mjs",
+  "security/secondary-finance-read-fence.mjs"
+ ]){
+  const appearances=workflow.split("'"+required+"'").length-1;
+  assert.equal(appearances,2,"watch both pull_request and push(main): "+required);
+ }
+ assert.match(workflow,/needs\.offline\.result == 'success'/);
+ assert.match(workflow,/github\.ref == 'refs\/heads\/main'/);
+ assert.match(workflow,/github\.repository == 'Keikei-p\/-'/);
+ assert.match(workflow,/NICO_SECONDARY_INVENTORY_MODE: READ_ONLY/);
+ assert.match(workflow,/production\/inspect-live-partner-callables-readonly\.mjs/);
+ assert.doesNotMatch(workflow,/firebase deploy|gcloud functions deploy|firebase firestore:delete/);
+});
