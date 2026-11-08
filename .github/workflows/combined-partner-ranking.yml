@@ -10,6 +10,9 @@ on:
       - "ranking/combined-rank-only-handler.mjs"
       - "ranking/trusted-combined-ranking-context.mjs"
       - "tests/trusted-combined-ranking-context.test.mjs"
+      - "ranking/ranking-owner-consent-service.mjs"
+      - "tests/ranking-owner-consent-service.test.mjs"
+      - "tests/ranking-owner-consent-emulator.test.mjs"
       - "tests/trusted-combined-ranking-context-emulator.test.mjs"
       - "ranking/rank-only-view.mjs"
       - "ranking/rank-only-view.css"
@@ -28,6 +31,9 @@ on:
       - "ranking/partner-month-readonly-loader.mjs"
       - "ranking/trusted-combined-ranking-context.mjs"
       - "tests/trusted-combined-ranking-context.test.mjs"
+      - "ranking/ranking-owner-consent-service.mjs"
+      - "tests/ranking-owner-consent-service.test.mjs"
+      - "tests/ranking-owner-consent-emulator.test.mjs"
       - "tests/trusted-combined-ranking-context-emulator.test.mjs"
       - "tests/combined-count-leaderboard.test.mjs"
       - "tests/partner-workspace-count-source.test.mjs"
@@ -54,9 +60,10 @@ jobs:
           node --check ranking/rank-only-publication.mjs
           node --check ranking/combined-rank-only-handler.mjs
           node --check ranking/trusted-combined-ranking-context.mjs
+          node --check ranking/ranking-owner-consent-service.mjs
           node --check ranking/rank-only-view.mjs
       - name: Combined count and privacy synthetic test
-        run: node --test tests/combined-count-leaderboard.test.mjs tests/combined-rank-only-publication.test.mjs tests/partner-workspace-count-source.test.mjs tests/partner-month-readonly-loader.test.mjs tests/trusted-combined-ranking-context.test.mjs
+        run: node --test tests/combined-count-leaderboard.test.mjs tests/combined-rank-only-publication.test.mjs tests/partner-workspace-count-source.test.mjs tests/partner-month-readonly-loader.test.mjs tests/trusted-combined-ranking-context.test.mjs tests/ranking-owner-consent-service.test.mjs
 
   emulator-count-read:
     needs: offline
@@ -90,6 +97,7 @@ jobs:
           test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
           node --check tests/partner-month-readonly-loader-emulator.test.mjs
           node --check tests/trusted-combined-ranking-context-emulator.test.mjs
+          node --check tests/ranking-owner-consent-emulator.test.mjs
       - name: Install pinned demo-only Firebase CLI and Admin SDK
         shell: bash
         run: |
@@ -102,5 +110,5 @@ jobs:
         run: |
           set -euo pipefail
           firebase emulators:exec --project demo-nico-partner-ranking --only firestore \
-            'node --test tests/partner-month-readonly-loader-emulator.test.mjs tests/trusted-combined-ranking-context-emulator.test.mjs'
+            'node --test tests/partner-month-readonly-loader-emulator.test.mjs tests/trusted-combined-ranking-context-emulator.test.mjs tests/ranking-owner-consent-emulator.test.mjs'
           echo 'STAGING_ONLY_PARTNER_MONTH_EMULATOR_PASS_PRODUCTION_WRITES=0'
