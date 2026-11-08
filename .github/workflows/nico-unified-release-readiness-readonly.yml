@@ -74,6 +74,9 @@ jobs:
       - name: Install existing read-only Firebase SDK dependencies before secrets
         shell: bash
         run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Install pinned Firebase CLI for independent Functions inventory
+        shell: bash
+        run: npm install --global firebase-tools@15.34.1 --no-audit --no-fund
       - name: Bind existing audit identity in temporary file
         shell: bash
         env:
@@ -96,6 +99,26 @@ jobs:
           set -euo pipefail
           node tools/production/inspect-live-partner-callables-readonly.mjs > "$RUNNER_TEMP/nico-readiness-partner.private.log" 2>&1 || { echo 'STOP_NICO_PARTNER_FUNCTION_AUDIT'; exit 1; }
           grep -q '^PARTNER_COUNT_FUNCTION_METADATA ' "$RUNNER_TEMP/nico-readiness-partner.private.log"
+      - name: Cross-check four Gen2 Functions through Firebase CLI inventory (READ ONLY)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # firebase functions:list is a metadata-only request, not an invocation
+          # or release. Keep the complete result private and delete it below.
+          firebase functions:list --project "$FIREBASE_PROJECT_ID" --json \
+            > "$RUNNER_TEMP/nico-readiness-cli.private.json" \
+            2> "$RUNNER_TEMP/nico-readiness-cli-stderr.private.log" || \
+            { echo 'STOP_NICO_READONLY_CLI_INVENTORY'; exit 1; }
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import {classifyInventory} from './tools/production/inspect-four-count-cli-region-readonly.mjs';
+          const raw=readFileSync(process.env.RUNNER_TEMP+'/nico-readiness-cli.private.json','utf8');
+          if(raw.length>2000000)throw Error('STOP_NICO_CLI_RESPONSE_TOO_LARGE');
+          const safe=classifyInventory(JSON.parse(raw));
+          if(safe.project!=='sales-management-cc116'||safe.productionDocumentWrites!==0)
+            throw Error('STOP_NICO_CLI_SCOPE');
+          console.log('FOUR_COUNT_CLI_METADATA_SANITIZED_ONLY');
+          NODE
       - name: Inventory secondary finance path and latest READY backups (GET only)
         shell: bash
         run: |
@@ -122,3 +145,5 @@ jobs:
           rm -f "$RUNNER_TEMP/nico-readiness-partner.private.log"
           rm -f "$RUNNER_TEMP/nico-readiness-secondary.private.log"
           rm -f "$RUNNER_TEMP/nico-readiness-billing.private.log"
+          rm -f "$RUNNER_TEMP/nico-readiness-cli.private.json"
+          rm -f "$RUNNER_TEMP/nico-readiness-cli-stderr.private.log"
