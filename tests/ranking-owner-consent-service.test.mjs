@@ -292,8 +292,7 @@ test("status fails closed on forged approval flags, missing owner, bad company, 
   f=>{f.d.get("users/hubOwner").companyRole="member";},
   f=>{f.d.get("companies/hub/members/hubOwner").active=false;},
   f=>{f.d.set("partnerWorkspaceContexts/hubOwner",{active:true,kind:"partner_secondary"});},
-  f=>{f.d.get("users/hubOwner").email="bad@example.test";},
-  f=>{f.d.get("partnerRelations/p1").hubCompanyId="otherHub";}
+  f=>{f.d.get("users/hubOwner").email="bad@example.test";}
  ];
  for(let i=0;i<mutations.length;i++){
   const f=withNamedPartner();mutations[i](f);
@@ -322,4 +321,17 @@ test("client-side settings panel consumes exactly the authenticated status contr
  assert.deepEqual(Object.keys(status).sort(),["schema","role","partners"].sort());
  assert.deepEqual(Object.keys(status.partners[0]).sort(),
   ["partnerCompanyId","companyName","ownApproved","otherApproved","version","canEdit"].sort());
+});
+
+
+test("hub relation query cannot return other hub's row; partner's direct relation lookup rejects reassignment",async()=>{
+ const f=withNamedPartner();
+ f.d.get("partnerRelations/p1").hubCompanyId="differentHub";
+ const hub=await createOwnerRankingConsentStatusReader({db:f.db})(auth("hubOwner"));
+ assert.deepEqual(hub.partners,[],
+  "a row indexed to another hub must never be exposed to original hub");
+ await assert.rejects(
+  createOwnerRankingConsentStatusReader({db:f.db})(auth("partnerOwner")),
+  /RANKING_OWNER_STATUS_UNAUTHORIZED_OR_INCOMPLETE/,
+  "partner direct doc lookup must reject a mismatched hub");
 });
