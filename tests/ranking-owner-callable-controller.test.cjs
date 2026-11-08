@@ -156,7 +156,7 @@ test("approved server errors never leak unexpected business details",async()=>{
  assert.equal(counts.save,1);
 });
 test("isolation and no production side effects are explicit in the new Firebase codebase",()=>{
- const source=readFileSync(new URL("../functions-ranking-approvals/index.js",`file://${__filename}`),"utf8");
+ const source=readFileSync(require("node:path").join(__dirname,"../functions-ranking-approvals/index.js"),"utf8");
  assert.match(source,/NICO_RANKING_OWNER_SETTINGS_ENABLED/);
  assert.match(source,/getRankingOwnerConsentStatus/);
  assert.match(source,/setRankingOwnerConsent/);
