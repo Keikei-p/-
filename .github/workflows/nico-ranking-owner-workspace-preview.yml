@@ -1,0 +1,76 @@
+name: NICO same-dashboard ranking owner preview (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/ranking/build-owner-settings-workspace-candidate.mjs'
+      - 'tests/ranking-owner-workspace-candidate.test.mjs'
+      - 'ranking/owner-ranking-consent-panel.mjs'
+      - 'ranking/owner-ranking-consent-panel.css'
+      - 'ranking/owner-ranking-consent-firebase-bridge.mjs'
+      - '.github/workflows/nico-ranking-owner-workspace-preview.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/ranking/build-owner-settings-workspace-candidate.mjs'
+      - 'tests/ranking-owner-workspace-candidate.test.mjs'
+      - 'ranking/owner-ranking-consent-panel.mjs'
+      - 'ranking/owner-ranking-consent-panel.css'
+      - 'ranking/owner-ranking-consent-firebase-bridge.mjs'
+      - '.github/workflows/nico-ranking-owner-workspace-preview.yml'
+permissions:
+  contents: read
+jobs:
+  review-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Assert reviewed live partner app and original counts/finance boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test "$(git hash-object partner-workspace.html)" = 00d6d503f9061dba2b6113e52b99cb9c4ea3aedf
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions-partner-workspace/index.js)" = 38da7e9174ffea7c406c92292dccfc651b565eb0
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
+          test "$(git hash-object firebase.partner-workspace.json)" = a6ceedec5fab4e22e0a8efe19c685716a2db9750
+          git diff --exit-code -- index.html partner-workspace.html firebase.json firestore.rules functions functions-partner-workspace
+      - name: Review all isolated owner module dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/ranking/verify-isolated-owner-callables.mjs
+          node --check tools/ranking/build-owner-settings-workspace-candidate.mjs
+          node --check ranking/owner-ranking-consent-panel.mjs
+          node --check ranking/owner-ranking-consent-firebase-bridge.mjs
+      - name: Exercise same app candidate, existing count save, mobile owner controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/ranking-owner-workspace-candidate.test.mjs tests/owner-ranking-consent-panel.test.mjs tests/owner-ranking-consent-firebase-bridge.test.mjs
+          node --test tests/partner-workspace.test.cjs tests/partner-money-free-workspace.test.cjs tests/partner-count-dashboard.test.cjs
+      - name: Build exactly one review-only HTML outside Firebase Hosting source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/ranking/build-owner-settings-workspace-candidate.mjs --out "$RUNNER_TEMP/nico-owner-settings-staging.html"
+          test -s "$RUNNER_TEMP/nico-owner-settings-staging.html"
+          grep -q 'id="tabRankingSettings"' "$RUNNER_TEMP/nico-owner-settings-staging.html"
+          grep -q 'submitPartnerWorkspaceCounts' "$RUNNER_TEMP/nico-owner-settings-staging.html"
+          echo 'STAGING_PREVIEW_GENERATED_NO_PRODUCTION_DEPLOY_OR_WRITES'
+      - name: Preserve temporary review candidate as 3-day Actions artifact only
+        uses: actions/upload-artifact@v4
+        with:
+          name: nico-ranking-owner-dashboard-review-only
+          path: ${{ runner.temp }}/nico-owner-settings-staging.html
+          if-no-files-found: error
+          retention-days: 3
