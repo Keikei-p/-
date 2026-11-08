@@ -100,7 +100,7 @@ export function summarize(input,cliInventory=null){
   cliMetadataAvailable=true;
   for(const name of CLI_TARGETS){
    const item=cliInventory.functions[name];
-   if(!object(item)||Object.values(item).some(v=>!Number.isSafeInteger(v)||v<0)||
+   if(!object(item)||Object.entries(item).some(([k,v])=>k!=="listed"&&(!Number.isSafeInteger(v)||v<0))||
       !Number.isSafeInteger(item.entries)||
       Object.keys(item).sort().join("|")!==[
        "listed","entries","inTargetRegion","outsideTargetRegion","regionUnknown",
