@@ -183,6 +183,11 @@ test("new audit workflow is GET only, never auto-dispatches deployment or rewrit
  assert.match(src,/FIREBASE_PROJECT_ID: sales-management-cc116/);
  assert.doesNotMatch(src,/firebase deploy|functions:deploy|firebase deploy|curl -X POST|gcloud functions deploy/);
  assert.match(src,/tools\/production\/inspect-live-partner-callables-readonly\.mjs/);
+ assert.match(src,/firebase functions:list --project/);
+ assert.match(src,/firebase-tools@15\.34\.1/);
+ assert.match(src,/nico-readiness-cli\.private\.json/);
+ assert.match(src,/metadataSource/);
+ assert.match(src,/nico-readiness-cli-stderr\.private\.log/);
  assert.match(src,/tools\/production\/audit-secondary-contexts-readonly\.mjs/);
  assert.match(src,/tools\/production\/audit-live-firestore-rules-readonly\.mjs/);
  assert.match(src,/tools\/production\/inspect-project-billing-readonly\.mjs/);
