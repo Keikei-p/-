@@ -15,7 +15,7 @@ function fake(){
   ["companies/hub",{name:"本社",ownerUid:"owner",companyKind:"internal",active:true}],
   ["companies/hub/members/owner",{uid:"owner",companyId:"hub",
    companyRole:"owner",active:true,accessKind:"internal"}],
-  ["companies/partner",{name:"協力店",companyKind:"partner",
+  ["companies/partner",{name:"協力店",ownerUid:"partner-owner",companyKind:"partner",
    hubCompanyId:"hub",active:true}],
   ["partnerRelations/partner",{partnerCompanyId:"partner",
    hubCompanyId:"hub",active:true,countSharingApproved:true}],
@@ -95,7 +95,7 @@ test("partner-specific OFF cannot turn on globally OFF product; OFF never delete
   partnerCompanyId:"partner",enabled:false,expectedVersion:saved.version});
  assert.equal(restricted.version,2);
  const state=await f.store.readForRanking({context:{
-  serverVerified:true,viewerUid:"owner",hubCompanyId:"hub",role:"hub_owner",
+  serverVerified:true,viewerUid:"owner",viewerCompanyId:"hub",hubCompanyId:"hub",role:"hub_owner",
   approvedCompanyIds:["hub","partner"]},mappingsReviewed:true});
  assert.deepEqual(state.enabledHubProductIds,["nuro"]);
  assert.deepEqual(state.partnerOverrides,[{companyId:"partner",
@@ -198,7 +198,7 @@ test("retired formerly-ON product is never ranked and owner can safely switch it
  const status=await f.store.readStatus(principal);
  assert.equal(status.products.find(p=>p.id==="nuro").enabled,false);
  const publication=await f.store.readForRanking({
-  context:{serverVerified:true,viewerUid:"owner",hubCompanyId:"hub",
+  context:{serverVerified:true,viewerUid:"owner",viewerCompanyId:"hub",hubCompanyId:"hub",
    role:"hub_owner",approvedCompanyIds:["hub","partner"]},mappingsReviewed:true
  });
  assert.deepEqual(publication.enabledHubProductIds,[]);
@@ -231,7 +231,7 @@ test("revoked partner override stays in audit settings but is omitted from activ
  await f.store.saveSwitch({principal,productId:"nuro",
   partnerCompanyId:"partner",enabled:false,expectedVersion:1});
  const stored=structuredClone(f.state.get("companies/hub/rankingProductVisibility/shared"));
- const context={serverVerified:true,viewerUid:"owner",hubCompanyId:"hub",
+ const context={serverVerified:true,viewerUid:"owner",viewerCompanyId:"hub",hubCompanyId:"hub",
   role:"hub_owner",approvedCompanyIds:["hub"]};
  const view=await f.store.readForRanking({context,mappingsReviewed:true});
  assert.deepEqual(view.partnerOverrides,[],
@@ -249,4 +249,23 @@ test("revoked partner override stays in audit settings but is omitted from activ
   ...context,role:"partner_owner",viewerCompanyId:"foreign"
  },mappingsReviewed:true}),/UNAUTHORIZED_OR_INCOMPLETE/);
  assert.equal(f.writes,4,"read-only ranking publication never mutates settings");
+});
+
+
+test("ranking settings read verifies live owner identity and partner consent, even with forged context",async()=>{
+ const f=fake();
+ const hub={serverVerified:true,viewerUid:"owner",viewerCompanyId:"hub",
+  hubCompanyId:"hub",role:"hub_owner",approvedCompanyIds:["hub","partner"]};
+ const read=context=>f.store.readForRanking({context,mappingsReviewed:true});
+ assert.deepEqual((await read(hub)).enabledHubProductIds,[]);
+ await assert.rejects(read({...hub,viewerUid:"attacker"}),/UNAUTHORIZED_OR_INCOMPLETE/);
+ await assert.rejects(read({...hub,viewerCompanyId:"partner"}),/UNAUTHORIZED_OR_INCOMPLETE/);
+ const partner={...hub,role:"partner_owner",viewerUid:"partner-owner",
+  viewerCompanyId:"partner"};
+ assert.deepEqual((await read(partner)).enabledHubProductIds,[]);
+ await assert.rejects(read({...partner,viewerUid:"other"}),/UNAUTHORIZED_OR_INCOMPLETE/);
+ f.state.set("partnerRelations/partner",{
+  ...f.state.get("partnerRelations/partner"),active:false});
+ await assert.rejects(read(partner),/UNAUTHORIZED_OR_INCOMPLETE/);
+ assert.equal(f.writes,0,"authorization tests must be read-only");
 });
