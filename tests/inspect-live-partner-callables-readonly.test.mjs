@@ -5,10 +5,10 @@ import {inspect,classify,summarize,EXPECTED,PROJECT,LIST_URL}
  from '../tools/production/inspect-live-partner-callables-readonly.mjs';
 
 const region='asia-northeast1';
-const root='https://cloudfunctions.googleapis.com/v2/projects/'+PROJECT+
- '/locations/'+region+'/functions/';
+const resourceRoot='projects/'+PROJECT+'/locations/'+region+'/functions/';
+const root='https://cloudfunctions.googleapis.com/v2/'+resourceRoot;
 const body=(name,patch={})=>({
- name:root+name,
+ name:resourceRoot+name,
  state:'ACTIVE',
  buildConfig:{runtime:'nodejs22',entryPoint:name},
  serviceConfig:{uri:'https://nico-counts-abc.a.run.app',
@@ -36,6 +36,23 @@ test('all four targets have fixed regional URL, active state and exact enabled f
  assert.equal(report.originalSalesDataWrites,0);
  assert.equal(report.safeToCutOverRules,false);
  assert.doesNotMatch(JSON.stringify(report),/nico-counts-abc|PARTNER_WORKSPACE_ENABLED|enabled/);
+});
+test('Functions v2 metadata reports resource name WITHOUT URL; reject full URL and other project aliases',()=>{
+ const name=EXPECTED[0],good=body(name);
+ assert.equal(good.name,resourceRoot+name);
+ assert.equal(classify(name,good,200).deployed,true);
+ assert.equal(classify(name,good,200).countEnabled,true);
+ for(const incorrect of [
+  root+name,
+  'projects/different/locations/'+region+'/functions/'+name,
+  'projects/'+PROJECT+'/locations/us-central1/functions/'+name,
+  'projects/'+PROJECT+'/locations/'+region+'/functions/anotherFunction'
+ ]){
+  const row=classify(name,body(name,{name:incorrect}),200);
+  assert.equal(row.deployed,false,incorrect);
+  assert.equal(row.active,false,incorrect);
+  assert.equal(row.countEnabled,false,incorrect);
+ }
 });
 test('HTTP 404 is a deployment blocker and never fakes success',async()=>{
  const result=await inspect(async url=>{
@@ -78,13 +95,13 @@ test('regional LIST metadata fails closed on 403, pagination, duplicates, and ma
   answer(200,{functions:{bad:true}}),
   answer(200,{functions:EXPECTED.map(name=>body(name)),nextPageToken:'unreviewed'}),
   answer(200,{functions:[body(EXPECTED[0]),body(EXPECTED[0])]}),
-  answer(200,{functions:[{name:root+EXPECTED[0]}]})
+  answer(200,{functions:[{name:resourceRoot+EXPECTED[0]}]})
  ]){
   if(response===undefined)continue;
   // A syntactically present but incomplete v2 listing must never certify
   // all functions as ACTIVE or unlock any signed-in release gate.
   if((await response.json())?.functions?.length===1 &&
-      (await response.json()).functions[0].name===root+EXPECTED[0] &&
+      (await response.json()).functions[0].name===resourceRoot+EXPECTED[0] &&
       !(await response.json()).functions[0].buildConfig){
    const report=await fallback(response);
    assert.equal(report.countFunctionsConfiguredEnabled,false);
