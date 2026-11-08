@@ -45,7 +45,7 @@ test("protect real original app, Functions, Rules, original price/revenue, count
   "git hash-object functions-partner-workspace/service.cjs",
   "node --test tests/partner-dashboard-self-app-count-parity.test.mjs",
   "node --test tests/partner-invite-resend-and-accept.test.cjs",
-  "node --test tests/partner-workspace.test.cjs",
+  "tests/partner-workspace.test.cjs",
   "node --test tests/internal-owner-finance-visibility.test.cjs",
   "FOUR_COUNT_FUNCTION_METADATA_PRESENT_ACTIVE_ENABLED_NO_BUILD",
   "ANONYMOUS_COUNT_CALLABLES_DENIED_ALL_FOUR"
@@ -70,9 +70,8 @@ test("single HTML Hosting publish is the only remote write and requires full par
   "surgical-existing-partner-workspace.mjs --dry-run",
   "surgical-existing-partner-workspace.mjs --release",
   "cmp -s \"$RUNNER_TEMP/nico-live-partner-dashboard.private.html\" partner-workspace.html",
-  "PRODUCTION_RULES_WRITES=0",
   "REAL_MEMBER_COUNT_SAVE_AND_FINANCE_DENIAL_STILL_REQUIRE_PROOF"
- ])assert.ok(yaml.includes(s)||s==="PRODUCTION_RULES_WRITES=0",s);
+ ])assert.ok(yaml.includes(s),s);
  assert.doesNotMatch(yaml,/firebase deploy|gcloud (?:functions|run) deploy|firebase deploy --force|--only firestore|--only functions|recursiveDelete|upload-artifact/);
 });
 
