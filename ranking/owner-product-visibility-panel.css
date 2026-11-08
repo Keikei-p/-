@@ -1,0 +1,15 @@
+/* Additive, opt-in owner product publication controls. No changes to live index. */
+.nico-owner-publications{display:grid;gap:12px;max-width:720px;padding:14px;
+ background:var(--card-bg,#fff);color:var(--text-color,#18304b)}
+.nico-owner-publications h2{margin:0;font-size:1.12rem}
+.nico-owner-publications>p{margin:0;font-size:.86rem;line-height:1.6;color:var(--muted,#60738a)}
+.nico-owner-product-switch{display:grid;grid-template-columns:24px minmax(0,1fr) auto;
+ align-items:center;gap:12px;border:1px solid #d8e3ef;border-radius:12px;
+ min-height:52px;padding:10px 12px;overflow-wrap:anywhere;cursor:pointer}
+.nico-owner-product-switch input{width:21px;height:21px;accent-color:#2563eb}
+.nico-owner-product-switch strong{font-size:.8rem;font-variant-numeric:tabular-nums}
+.nico-owner-product-switch:has(input:checked){border-color:#82acd9;background:#f1f7ff}
+.nico-owner-product-switch:has(input:disabled){opacity:.6;cursor:not-allowed}
+.nico-product-publication-status{padding:12px;font-size:.9rem;white-space:pre-wrap}
+@media(max-width:480px){.nico-owner-publications{padding:10px;gap:9px}
+ .nico-owner-product-switch{min-height:48px;padding:9px}}
