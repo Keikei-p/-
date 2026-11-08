@@ -117,7 +117,11 @@ export function createPartnerMonthReadOnlyLoader({db}={}) {
    // current team. buildPartnerCountRankingSource refuses unknown snapshots.
    const entries=entrySnap.docs.map(s=>{
     if(!id(s.id))halt();
-    return {id:s.id,...doc(s)};
+    const row=doc(s);
+    // Document ID is the authoritative staff/date identity. A stored
+    // shadow "id" field must never override the Firebase document ID.
+    if(Object.hasOwn(row,"id")&&row.id!==s.id)halt();
+    return {...row,id:s.id};
    });
    const summaries=[];
    for(let i=0;i<dailySnaps.length;i++){
