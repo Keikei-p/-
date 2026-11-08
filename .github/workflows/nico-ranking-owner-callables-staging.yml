@@ -1,0 +1,66 @@
+name: NICO isolated ranking-owner callables (STAGING ONLY / NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'functions-ranking-approvals/**'
+      - 'firebase.ranking-approvals.json'
+      - 'ranking/trusted-combined-ranking-context.mjs'
+      - 'ranking/ranking-owner-consent-status.mjs'
+      - 'ranking/ranking-owner-consent-service.mjs'
+      - 'ranking/owner-ranking-consent-firebase-bridge.mjs'
+      - 'ranking/owner-ranking-consent-panel.mjs'
+      - 'tools/ranking/verify-isolated-owner-callables.mjs'
+      - 'tests/ranking-owner-callable-controller.test.cjs'
+      - 'tests/owner-ranking-consent-firebase-bridge.test.mjs'
+      - '.github/workflows/nico-ranking-owner-callables-staging.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'functions-ranking-approvals/**'
+      - 'firebase.ranking-approvals.json'
+      - 'ranking/trusted-combined-ranking-context.mjs'
+      - 'ranking/ranking-owner-consent-status.mjs'
+      - 'ranking/ranking-owner-consent-service.mjs'
+      - 'ranking/owner-ranking-consent-firebase-bridge.mjs'
+      - 'ranking/owner-ranking-consent-panel.mjs'
+      - 'tools/ranking/verify-isolated-owner-callables.mjs'
+      - 'tests/ranking-owner-callable-controller.test.cjs'
+      - 'tests/owner-ranking-consent-firebase-bridge.test.mjs'
+      - '.github/workflows/nico-ranking-owner-callables-staging.yml'
+permissions:
+  contents: read
+jobs:
+  no-deploy-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Pin original financial and all four existing count-save Functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions-partner-workspace/index.js)" = 38da7e9174ffea7c406c92292dccfc651b565eb0
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
+          test "$(git hash-object firebase.partner-workspace.json)" = a6ceedec5fab4e22e0a8efe19c685716a2db9750
+          git diff --exit-code -- firestore.rules firebase.json index.html partner-workspace.html functions functions-partner-workspace
+      - name: Source/vendor parity, isolated codebase and disabled default
+        run: |
+          set -euo pipefail
+          node tools/ranking/verify-isolated-owner-callables.mjs
+          node --check functions-ranking-approvals/controller.cjs
+          node --check functions-ranking-approvals/index.js
+          node --check ranking/owner-ranking-consent-firebase-bridge.mjs
+          node --check tests/ranking-owner-callable-controller.test.cjs
+          node --check tests/owner-ranking-consent-firebase-bridge.test.mjs
+      - name: Fresh auth, strict callable payloads, mobile bridge and finance privacy tests
+        run: |
+          set -euo pipefail
+          node --test tests/ranking-owner-callable-controller.test.cjs tests/owner-ranking-consent-firebase-bridge.test.mjs tests/owner-ranking-consent-panel.test.mjs tests/ranking-owner-consent-service.test.mjs tests/trusted-combined-ranking-context.test.mjs
+          echo 'RANKING_OWNER_STAGING_ONLY_TESTS_PASS_PRODUCTION_WRITES=0'
