@@ -32,7 +32,7 @@ if(index.includes("submitPartnerWorkspaceCounts")||
    !index.includes('NICO_RANKING_OWNER_SETTINGS_ENABLED==="enabled"')||
    !index.includes("getRankingOwnerConsentStatus")||
    !index.includes("setRankingOwnerConsent")||
-   /process[.]env[.]NICO_RANKING_OWNER_SETTINGS_ENABLED\s*[=]\s*/.test(index)||
+   /process[.]env[.]NICO_RANKING_OWNER_SETTINGS_ENABLED\s*=(?!=)/.test(index)||
    /firebase\s+deploy|firestore[.]rules|\.delete\s*\(/.test(controller))
   throw Error("STOP_RANKING_FUNCTION_FINANCE_OR_DEPLOY_BOUNDARY");
 console.log("RANKING_OWNER_ISOLATED_FUNCTION_VENDOR_PARITY_PASS_NO_DEPLOY");
