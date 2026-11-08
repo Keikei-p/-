@@ -126,3 +126,14 @@ test("live bridge is GitHub main-only, allowlisted Rules API and never touches F
  assert.equal(PINNED.candidateSha256,
   "25fd2c0257e92beb5ba9e3b2f8b3a5801d2fa010188675c685c05051eafb12a8");
 });
+
+
+test("emergency rollback avoids unrelated Functions APIs and long emulator tests",()=>{
+ const w=readFileSync(new URL("../.github/workflows/nico-staged-finance-rules-manual.yml",import.meta.url),"utf8");
+ assert.match(w,/if: github\.event_name != 'workflow_dispatch' \|\| inputs\.mode != 'rollback'/);
+ assert.match(w,/if \[ "\$\{\{ inputs\.mode \}\}" = 'rollback' \]; then/);
+ assert.match(w,/printf '\{"result":\[\]\}'/);
+ assert.match(w,/firebase functions:list --project/);
+ assert.match(w,/if \[ "\$\{\{ inputs\.mode \}\}" != 'rollback' \]; then/);
+ assert.match(w,/node tools\/production\/finance-rule-switch-cli\.mjs/);
+});
