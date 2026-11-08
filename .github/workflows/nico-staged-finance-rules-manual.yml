@@ -1,0 +1,135 @@
+name: NICO staged finance fence apply/rollback (MANUAL, four originals)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/production/activate-staged-finance-rules.mjs'
+      - 'tools/production/finance-rule-switch-cli.mjs'
+      - 'tests/activate-staged-finance-rules.test.mjs'
+      - '.github/workflows/nico-staged-finance-rules-manual.yml'
+  workflow_dispatch:
+    inputs:
+      reviewed_main_sha:
+        description: Exact main SHA reviewed before Firebase Rules switch
+        required: true
+        type: string
+      mode:
+        description: Inspect, activate or return to exact original Rules
+        type: choice
+        required: true
+        default: inspect
+        options: [inspect, apply, rollback]
+      confirmation:
+        description: INSPECT_ONLY or CONFIRM_ACTIVATE_STAGED_FINANCE_FENCE or CONFIRM_ROLLBACK_TO_REVIEWED_FINANCE_BASELINE
+        type: string
+        required: true
+        default: INSPECT_ONLY
+      owner_before:
+        description: Owner logged in and verified original financial reads
+        type: string
+        required: false
+      partner_counts_before:
+        description: Real partner saved/corrected counts and Owner confirmed them
+        type: string
+        required: false
+permissions:
+  contents: read
+concurrency:
+  group: firebase-rules-production
+  cancel-in-progress: false
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '21'}
+      - name: Require reviewed production source and run exact-target rollback tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(git hash-object functions-partner-workspace/index.js)" = 38da7e9174ffea7c406c92292dccfc651b565eb0
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
+          test "$(git hash-object firebase.partner-workspace.json)" = a6ceedec5fab4e22e0a8efe19c685716a2db9750
+          node --check tools/production/activate-staged-finance-rules.mjs
+          node --check tools/production/finance-rule-switch-cli.mjs
+          node --test tests/activate-staged-finance-rules.test.mjs tests/stage-secondary-finance-rules.test.mjs
+          git diff --exit-code -- firestore.rules index.html partner-workspace.html firebase.json functions functions-partner-workspace
+      - name: Prove count save/correction plus raw finance deny in real isolated emulator
+        shell: bash
+        env:
+          FIREBASE_PROJECT_ID: demo-nico-secondary-finance-fence
+          GCLOUD_PROJECT: demo-nico-secondary-finance-fence
+        run: |
+          set -euo pipefail
+          npm install --prefix tests --ignore-scripts --no-audit --no-fund --package-lock=false
+          npm install --prefix functions-partner-workspace --ignore-scripts --no-audit --no-fund --package-lock=false
+          npx --yes firebase-tools@15.34.1 emulators:exec --project demo-nico-secondary-finance-fence --only firestore 'node --test --test-concurrency=1 tests/secondary-finance-read-fence-emulator.test.mjs tests/secondary-finance-counts-integration-emulator.test.mjs'
+  audited-release:
+    needs: offline
+    if: ${{ github.event_name == 'workflow_dispatch' && github.repository == 'Keikei-p/-' && github.ref == 'refs/heads/main' && inputs.reviewed_main_sha == github.sha && needs.offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 24
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      NICO_FINANCE_RULES_CONFIRMATION: ${{ inputs.confirmation }}
+      NICO_OWNER_BEFORE_PROOF: ${{ inputs.owner_before }}
+      NICO_PARTNER_COUNTS_BEFORE_PROOF: ${{ inputs.partner_counts_before }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Require reviewed current main before any authenticated call
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions-partner-workspace/index.js)" = 38da7e9174ffea7c406c92292dccfc651b565eb0
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
+          node --test tests/activate-staged-finance-rules.test.mjs
+      - name: Install original audit SDK and pinned Firebase CLI (no source or data write)
+        shell: bash
+        run: |
+          npm install --prefix functions --ignore-scripts --no-audit --no-fund --package-lock=false
+          npm install --global firebase-tools@15.34.1 --no-audit --no-fund
+      - name: Bind approved existing identity privately
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-rules-switch.private.json"
+          chmod 600 "$RUNNER_TEMP/nico-rules-switch.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-rules-switch.private.json" >> "$GITHUB_ENV"
+      - name: GET-only confirm 4 ACTIVE count Functions and no unexpected region
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase functions:list --project "$FIREBASE_PROJECT_ID" --json > "$RUNNER_TEMP/nico-finance-rules-counts.private.json"
+          echo "NICO_FUNCTION_INVENTORY_PATH=$RUNNER_TEMP/nico-finance-rules-counts.private.json" >> "$GITHUB_ENV"
+      - name: Validate selection, backup freshness, exact old/staged Rules and perform optional reviewed release
+        env:
+          GH_TOKEN: __GH_TOKEN__
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
+          node tools/production/finance-rule-switch-cli.mjs "${{ inputs.mode }}"
+      - name: Remove private credentials, inventory and logs
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/nico-rules-switch.private.json" \
+            "$RUNNER_TEMP/nico-finance-rules-counts.private.json"
