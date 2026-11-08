@@ -109,8 +109,8 @@ export function buildRankingOwnerWorkspaceCandidate({
   'if(data?.role==="hub"&&name!=="Missing"&&name!=="RankingSettings")name="View";\n '+
   'if(name!=="RankingSettings")closeRankingOwnerPanel();',"HUB_TAB");
  html=exactlyOnce(html,
-  'for(const x of ["Dashboard","Records","People","View","Missing"])\n   $("tab"+x).setAttribute("aria-pressed",String(x===name));',
-  'for(const x of ["Dashboard","Records","People","View","Missing","RankingSettings"])\n   $("tab"+x).setAttribute("aria-pressed",String(x===name));\n '+
+  'for(const x of ["Dashboard","Records","People","View","Missing"])\n  $("tab"+x).setAttribute("aria-pressed",String(x===name));',
+  'for(const x of ["Dashboard","Records","People","View","Missing","RankingSettings"])\n  $("tab"+x).setAttribute("aria-pressed",String(x===name));\n '+
   '$("rankingOwnerBox").hidden=name!=="RankingSettings";',"TAB_STATES");
  html=exactlyOnce(html,
   '$("hubBox").hidden=data?.role!=="hub"||name==="Missing";',
