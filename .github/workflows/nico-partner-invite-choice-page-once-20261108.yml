@@ -60,7 +60,7 @@ jobs:
       NICO_PARTNER_RELEASE_CONFIRMATION: CONFIRM_REPLACE_PARTNER_WORKSPACE_ONLY
     steps:
       - uses: actions/checkout@v4
-        with: {persist-credentials: false}
+        with: {persist-credentials: false, fetch-depth: 0}
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
       - name: Reject changed main SHA and any modified finance, count or original HTML source
