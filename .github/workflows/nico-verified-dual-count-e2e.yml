@@ -12,6 +12,8 @@ on:
       - 'functions-ranking-approvals/index.js'
       - 'functions-ranking-approvals/vendor/owner-product-visibility-firestore.mjs'
       - 'tests/owner-product-visibility-callables.test.cjs'
+      - 'ranking/owner-product-visibility-firebase-bridge.mjs'
+      - 'tests/owner-product-visibility-firebase-bridge.test.mjs'
       - 'tests/owner-product-visibility-panel.test.mjs'
       - 'tests/owner-product-visibility-firestore.test.mjs'
       - 'tests/owner-product-visibility-rankings.test.mjs'
@@ -60,6 +62,7 @@ jobs:
           node --check ranking/owner-product-visibility-rankings.mjs
           node --check ranking/owner-product-visibility-firestore.mjs
           node --check ranking/owner-product-visibility-panel.mjs
+          node --check ranking/owner-product-visibility-firebase-bridge.mjs
           node --check functions-ranking-approvals/index.js
           node --check functions-ranking-approvals/product-visibility-controller.cjs
           cmp ranking/owner-product-visibility-firestore.mjs functions-ranking-approvals/vendor/owner-product-visibility-firestore.mjs
@@ -70,7 +73,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node --test tests/verified-dual-count-dashboards.test.mjs tests/owner-product-visibility-rankings.test.mjs tests/owner-product-visibility-firestore.test.mjs tests/owner-product-visibility-panel.test.mjs tests/owner-product-visibility-callables.test.cjs
+          node --test tests/verified-dual-count-dashboards.test.mjs tests/owner-product-visibility-rankings.test.mjs tests/owner-product-visibility-firestore.test.mjs tests/owner-product-visibility-panel.test.mjs tests/owner-product-visibility-firebase-bridge.test.mjs tests/owner-product-visibility-callables.test.cjs
           node --test tests/partner-month-readonly-loader.test.mjs
       - name: Install ONLY isolated emulator tooling and existing workspace dependencies
         shell: bash
