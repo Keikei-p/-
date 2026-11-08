@@ -55,7 +55,7 @@ export function summarizeManagedRestorePreflight({
  if(!object(backups)||!Array.isArray(backups.backups)||
     backups.backups.length>1000||
     !Array.isArray(backups.unreachable??[])||
-    backups.unreachable.length>0||
+    (backups.unreachable??[]).length>0||
     (backups.nextPageToken!==undefined&&backups.nextPageToken!==""))
    STOP("BACKUP_INVENTORY_INCOMPLETE");
  const seen=new Set(),ready=[];

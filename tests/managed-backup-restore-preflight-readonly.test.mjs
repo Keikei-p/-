@@ -76,6 +76,16 @@ test("wrong database UID, location, invalid timestamp and missing identity block
  }
 });
 
+test("Google backup list may omit unreachable when no location was missed",()=>{
+ const without=fixtures();
+ delete without.backups.unreachable;
+ const report=summarize(without);
+ assert.equal(report.backupRestoreMetadataPreflightPassed,true);
+ const failed=fixtures();
+ failed.backups.unreachable=["asia-northeast1"];
+ assert.throws(()=>summarize(failed),/BACKUP_INVENTORY_INCOMPLETE/);
+});
+
 test("unreachable locations and incomplete or duplicate backup inventory must fail closed",()=>{
  const scenarios=[
   f=>{f.backups.unreachable=["asia-northeast1"];},
