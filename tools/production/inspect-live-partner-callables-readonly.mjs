@@ -10,6 +10,7 @@ import {readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
+import {classifyInventory,REGION as CLI_REGION} from './inspect-four-count-cli-region-readonly.mjs';
 
 export const PROJECT='sales-management-cc116';
 const REGION='asia-northeast1';
@@ -88,6 +89,59 @@ export function summarize(results){
  });
 }
 
+/**
+ * Firebase CLI and the Cloud Functions v2 per-name GET can report different
+ * visibility for the same existing deployment. Compare both independent
+ * READ-ONLY sources, never interpret a per-name 404 as proof that a function
+ * is absent when the reviewed CLI inventory confirms it is ACTIVE.
+ *
+ * A CLI result is accepted only if ALL required region, project, generation,
+ * state, codebase and enabled-flag fields are unambiguous. An untrusted or
+ * missing CLI inventory ALWAYS fails closed. This only confirms *metadata*;
+ * actual authenticated count save, corrections and finance denial are not
+ * established, and no production release is authorized.
+ */
+export function reconcileWithCli(primary,rawCli){
+ if(!primary||primary.project!==PROJECT||primary.region!==REGION||
+    primary.mode!=='CLOUD_FUNCTIONS_METADATA_GET_ONLY'||
+    !primary.functions||Object.keys(primary.functions).sort().join('|')!==
+      [...EXPECTED].sort().join('|')||CLI_REGION!==REGION)
+  abort('RECONCILE_PRIMARY');
+ const parsed=classifyInventory(rawCli);
+ if(parsed.project!==PROJECT||parsed.mode!=='SANITIZED_FUNCTIONS_LIST_READ_ONLY'||
+    Object.keys(parsed.functions).sort().join('|')!==[...EXPECTED].sort().join('|'))
+  abort('RECONCILE_CLI');
+ const reconciled=[],differences=[];
+ for(const name of EXPECTED){
+  const previous=primary.functions[name],c=parsed.functions[name];
+  if(!previous||!['deployed','active','callableGen2','countEnabled']
+     .every(key=>typeof previous[key]==='boolean')||!c)
+   abort('RECONCILE_FUNCTION_SHAPE');
+  const healthy=c.entries===1&&c.inTargetRegion===1&&
+   c.outsideTargetRegion===0&&c.regionUnknown===0&&
+   c.projectUnknown===0&&c.otherProject===0&&
+   c.gen1Listed===0&&c.gen2Listed===1&&c.generationUnknown===0&&
+   c.stateKnown===1&&c.activeState===1&&
+   c.codebaseKnown===1&&c.expectedCodebase===1&&
+   c.workspaceFlagKnown===1&&c.workspaceFlagEnabled===1;
+  // The CLI can prove deployment metadata, not a successful callable request.
+  // A failing, duplicated, missing or ambiguous CLI result blocks readiness.
+  const row={name,deployed:healthy,active:healthy,
+    callableGen2:healthy,countEnabled:healthy};
+  reconciled.push(row);
+  if(['deployed','active','callableGen2','countEnabled']
+      .some(key=>previous[key]!==row[key]))differences.push(name);
+ }
+ const report=summarize(reconciled);
+ return Object.freeze({...report,
+  metadataSourcesDisagree:differences.length>0,
+  metadataSource:'VERIFIED_FIREBASE_CLI_WITH_FUNCTIONS_API_CROSSCHECK',
+  // This deliberately does not authorize a Rules cutover or member migration.
+  safeToCutOverRules:false,actualCallableInvoked:false,
+  realPartnerCountEntryVerified:false,realPartnerFinanceDenyVerified:false,
+  originalSalesDataWrites:0});
+}
+
 export async function inspect(read){
  if(typeof read!=='function')abort('TRANSPORT');
  const results=[];
@@ -113,7 +167,10 @@ async function main(){
     process.env.GITHUB_REPOSITORY!=='Keikei-p/-'||
     process.env.GITHUB_REF!=='refs/heads/main'||
     process.env.FIREBASE_PROJECT_ID!==PROJECT||
-    !process.env.GOOGLE_APPLICATION_CREDENTIALS)
+    !process.env.GOOGLE_APPLICATION_CREDENTIALS||
+    !process.env.RUNNER_TEMP||process.argv.length!==3||
+    !path.isAbsolute(process.argv[2])||
+    path.dirname(path.resolve(process.argv[2]))!==path.resolve(process.env.RUNNER_TEMP))
    abort('WRONG_AUDIT_ENV');
  let firebase;
  try{
@@ -131,8 +188,14 @@ async function main(){
   return fetch(url,{method:'GET',redirect:'error',cache:'no-store',
    headers:{Authorization:'Bearer '+token}});
  };
- const result=await inspect(read);
+ const primary=await inspect(read);
+ let rawCli;
+ try{rawCli=JSON.parse(readFileSync(process.argv[2],'utf8'));}
+ catch{abort('CLI_INVENTORY_UNREADABLE');}
+ const result=reconcileWithCli(primary,rawCli);
  console.log('PARTNER_COUNT_FUNCTION_METADATA '+JSON.stringify(result));
+ if(result.metadataSourcesDisagree)
+  console.log('PARTNER_CALLABLE_METADATA_API_CLI_DISAGREEMENT_NO_DEPLOY');
  const blockers=[];
  if(!result.countFunctionMetadataPresent)blockers.push('COUNT_FUNCTION_MISSING');
  if(!result.countFunctionsActive)blockers.push('COUNT_FUNCTION_NOT_ACTIVE');
