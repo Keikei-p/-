@@ -70,10 +70,18 @@ function approvedServerContext(ctx,hub,partner) {
  * Firestore interfaces: db.collection().doc().collection(), query.where(),
  * query.limit(), and db.runTransaction(tx => tx.get(refOrQuery)).
  */
-export function createPartnerMonthReadOnlyLoader({db}={}) {
- if(!db||typeof db.collection!=="function"||
-    typeof db.runTransaction!=="function")throw Error("missing server Firestore");
- return async function loadPartnerMonth({hubCompanyId,partnerCompanyId,month,context}={}){
+/**
+ * Read the complete existing partner month inside the CALLER'S transaction.
+ * This is a trusted-server-only primitive for the atomic owner ranking
+ * loader; it must never create a nested transaction or accept client proofs.
+ * The outer caller must use db.runTransaction(..., {readOnly:true}).
+ */
+export function createPartnerMonthTransactionReader({db}={}) {
+ if(!db||typeof db.collection!=="function")throw Error("missing server Firestore");
+ return async function readPartnerMonthInTransaction({
+  tx,hubCompanyId,partnerCompanyId,month,context
+ }={}){
+  if(!tx||typeof tx.get!=="function")halt();
   if(!id(hubCompanyId)||!id(partnerCompanyId)||
      hubCompanyId===partnerCompanyId)halt();
   const days=monthDays(month);
@@ -87,8 +95,7 @@ export function createPartnerMonthReadOnlyLoader({db}={}) {
    .where("date","<=",days.at(-1)).limit(MAX_ENTRIES+1);
   const daily=days.map(day=>hub.collection("partnerWorkCountDays").doc(day)
    .collection("reports").doc(partnerCompanyId));
-  return db.runTransaction(async tx=>{
-   // Every result is from the SAME read-only Firestore transaction. No
+  // Every result is from the SAME caller-owned read-only transaction. No
    // independent client GETs can supply faux completeness/readTime proof.
    const [hubSnap,partnerSnap,relSnap,teamSnap,entrySnap,...dailySnaps]=
     await Promise.all([
@@ -142,6 +149,19 @@ export function createPartnerMonthReadOnlyLoader({db}={}) {
      historicalTeamsVerified:true,snapshotConsistent:true
     },teams,entries,summaries
    });
-  },{readOnly:true});
+  };
+ };
+}
+
+/**
+ * Preserve the original standalone read-only loader and its existing API.
+ * Both paths share exactly the same validation and source projection.
+ */
+export function createPartnerMonthReadOnlyLoader({db}={}) {
+ if(!db||typeof db.collection!=="function"||
+    typeof db.runTransaction!=="function")throw Error("missing server Firestore");
+ const read=createPartnerMonthTransactionReader({db});
+ return async function loadPartnerMonth(args={}) {
+  return db.runTransaction(tx=>read({...args,tx}),{readOnly:true});
  };
 }
