@@ -1,0 +1,16 @@
+/* STAGING ONLY. Mirrors the current NICO FACTORY partner dashboard palette. */
+.ranking-owner-settings{max-width:900px;margin:auto;color:#21334f;font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif}
+.ranking-owner-title{font-size:1.22rem;font-weight:850;line-height:1.4;margin:0 0 8px}
+.ranking-owner-caption{color:#52657b;line-height:1.7;font-size:.88rem;margin:0 0 16px}
+.ranking-owner-company{background:#fff;border:1px solid #dfe6f1;border-radius:16px;padding:18px;margin-bottom:14px;box-shadow:0 3px 14px #092d5008}
+.ranking-owner-company-name{font-size:1rem;font-weight:850;overflow-wrap:anywhere;margin:0 0 6px}
+.ranking-owner-state{font-size:.94rem;font-weight:750;color:#175899;margin:7px 0}
+.ranking-owner-meta{font-size:.79rem;color:#607186;margin:8px 0}
+.ranking-owner-confirm{display:flex;align-items:flex-start;gap:10px;line-height:1.7;font-size:.85rem;font-weight:650;margin:12px 0;cursor:pointer}
+.ranking-owner-checkbox{width:21px;height:21px;min-width:21px;flex:0 0 21px;accent-color:#175899}
+.ranking-owner-save{width:100%;min-height:50px;border:0;border-radius:10px;background:#175899;color:#fff;font:inherit;font-weight:750;padding:12px;margin:4px 0;cursor:pointer}
+.ranking-owner-save:disabled{opacity:.5;cursor:not-allowed}
+.ranking-owner-alert{background:#fff1ed;color:#852d27;border-radius:12px;padding:16px;line-height:1.65}
+.ranking-owner-empty{font-size:.87rem;color:#607186}
+@media(max-width:480px){.ranking-owner-company{padding:14px}.ranking-owner-save{min-height:52px}.ranking-owner-title{font-size:1.14rem}}
+@media(prefers-reduced-motion:reduce){.ranking-owner-settings *{animation:none!important;transition:none!important}}

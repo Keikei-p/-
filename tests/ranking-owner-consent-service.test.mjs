@@ -190,3 +190,41 @@ test("no client permission, count sharing and financial originals are untouched 
  assert.equal(f.d.get("companies/p1").hubCompanyId,"hub");
  assert.deepEqual(copyOriginals(f),f.originals);
 });
+
+
+test("ON -> OFF -> ON restores reciprocal public access at version 3 without changing sales or counts",async()=>{
+ const f=fake();
+ const before=copyOriginals(f);
+ await submit(f,"hubOwner",true,0);
+ await submit(f,"partnerOwner",true,0);
+ const beforeRevocation=await createFreshCombinedRankingContext({db:f.db})(auth("partnerOwner"));
+ assert.deepEqual(beforeRevocation.approvedCompanyIds,["hub","p1"]);
+ const revoked=await submit(f,"partnerOwner",false,1);
+ assert.equal(revoked.version,2);
+ await assert.rejects(
+  createFreshCombinedRankingContext({db:f.db})(auth("partnerOwner")),/UNVERIFIED/);
+ const approvedAgain=await submit(f,"partnerOwner",true,2);
+ assert.deepEqual(approvedAgain,{
+  saved:true,partnerCompanyId:"p1",enabled:true,version:3
+ });
+ const restored=await createFreshCombinedRankingContext({db:f.db})(auth("partnerOwner"));
+ assert.deepEqual(restored.approvedCompanyIds,["hub","p1"]);
+ assert.equal(f.d.get("companies/p1/rankingApprovals/hub").version,3);
+ assert.equal(f.d.get("partnerRelations/p1").individualNamesApprovedByHub,true);
+ assert.equal(f.d.get("partnerRelations/p1").individualNamesApprovedByPartner,true);
+ assert.equal(auditDocs(f).length,4);
+ await assert.rejects(submit(f,"partnerOwner",false,1),refuse);
+ assert.deepEqual(copyOriginals(f),before);
+});
+
+test("corrupted owner consent versions are rejected; client cannot replace with a fake v1",async()=>{
+ for(const version of [0,-1,1.2,1000,"1",null]){
+  const f=fake();
+  await submit(f,"hubOwner",true,0);
+  await submit(f,"partnerOwner",true,0);
+  f.d.get("companies/p1/rankingApprovals/hub").version=version;
+  await assert.rejects(
+   createFreshCombinedRankingContext({db:f.db})(auth("partnerOwner")),
+   /UNVERIFIED/,String(version));
+ }
+});

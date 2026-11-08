@@ -56,7 +56,8 @@ function consentOk(row,{companyId,hub,partner,owner}){
  return isObj(row)&&row.companyId===companyId&&
   row.hubCompanyId===hub&&row.partnerCompanyId===partner&&
   row.approvedByUid===owner&&row.active===true&&
-  row.scope==="combined_rank_only"&&row.version===1&&
+  row.scope==="combined_rank_only"&&
+  Number.isSafeInteger(row.version)&&row.version>=1&&row.version<=999&&
   row.combinedRankingApproved===true&&
   row.individualNamesApproved===true;
 }
