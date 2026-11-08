@@ -5,6 +5,8 @@ import {createVerifiedRankTokenReader,createFreshCombinedRankingContext}
  from "../ranking/trusted-combined-ranking-context.mjs";
 import {createStagedCombinedRankReadHandler}
  from "../ranking/combined-rank-only-handler.mjs";
+import {createOwnerProductVisibilityStore}
+ from "../ranking/owner-product-visibility-firestore.mjs";
 
 const clone=x=>JSON.parse(JSON.stringify(x));
 const baseDocs=()=>{
@@ -225,4 +227,33 @@ test("new approval collections are denied by unchanged client Firestore Rules",(
  const rules=readFileSync(new URL("../firestore.rules",import.meta.url),"utf8");
  assert.doesNotMatch(rules,/match\s+\/rankingApprovals\//);
  assert.doesNotMatch(rules,/allow\s+(?:read|write)\s*:\s*if\s+true/);
+});
+
+
+test("fresh Auth-backed owner context directly binds the existing Firestore publication reader (no client role)",async()=>{
+ const f=fakeDb();
+ const store=createOwnerProductVisibilityStore({db:f.db,
+  FieldValue:{serverTimestamp:()=>{throw Error("NO_WRITES_ALLOWED")}}});
+ for(const [uid,expectedRole] of [
+  ["hubOwner","hub_owner"],["partnerOwner","partner_owner"]
+ ]){
+  const ctx=await load(f)(await verified(uid));
+  assert.equal(ctx.role,expectedRole);
+  assert.equal(ctx.viewerUid,uid);
+  const published=await store.readForRanking({context:ctx,mappingsReviewed:true});
+  assert.equal(published.hubCompanyId,"hub");
+  assert.deepEqual(published.enabledHubProductIds,[],
+   "missing owner settings must never default to publishing every SKU");
+  assert.equal(published.ownerUidVerified,true);
+  assert.equal(published.productMappingsReviewed,true);
+ }
+ assert(f.ops.every(x=>x.kind!=="transaction"||x.options.readOnly===true),
+  "both identity and owner publication reads must be read-only");
+ assert(f.ops.every(x=>x.kind!=="get"||
+  !["records","recordCorrections","revenueGoals"].some(name=>
+   x.path.includes("/"+name+"/"))),
+  "never query raw finance documents");
+ const forged={...(await load(f)(await verified("partnerOwner"))),role:"hub_owner"};
+ await assert.rejects(store.readForRanking({context:forged,mappingsReviewed:true}),
+  /UNAUTHORIZED_OR_INCOMPLETE/);
 });

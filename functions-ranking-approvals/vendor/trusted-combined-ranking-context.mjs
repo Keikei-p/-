@@ -168,6 +168,7 @@ export function createFreshCombinedRankingContext({db}={}){
    }
    return Object.freeze({
     serverVerified:true,viewerUid:auth.uid,viewerCompanyId,
+    role:viewerIsPartner?"partner_owner":"hub_owner",
     hubCompanyId:hubId,approvedCompanyIds:Object.freeze(
      [hubId,...verified.sort()]),
     userActive:true,memberActive:true,companyActive:true,
