@@ -6,6 +6,9 @@ on:
       - 'ranking/verified-dual-count-dashboards.mjs'
       - 'ranking/owner-product-visibility-rankings.mjs'
       - 'ranking/owner-product-visibility-firestore.mjs'
+      - 'ranking/owner-product-visibility-panel.mjs'
+      - 'ranking/owner-product-visibility-panel.css'
+      - 'tests/owner-product-visibility-panel.test.mjs'
       - 'tests/owner-product-visibility-firestore.test.mjs'
       - 'tests/owner-product-visibility-rankings.test.mjs'
       - 'tests/verified-dual-count-dashboards.test.mjs'
@@ -52,13 +55,14 @@ jobs:
           node --check ranking/verified-dual-count-dashboards.mjs
           node --check ranking/owner-product-visibility-rankings.mjs
           node --check ranking/owner-product-visibility-firestore.mjs
+          node --check ranking/owner-product-visibility-panel.mjs
           node --check tests/verified-dual-count-dashboards.test.mjs
           node --check tests/verified-dual-count-live-ledger-emulator.test.mjs
       - name: Prove date/week/month tie, growth, unreported, private amounts and explicit SKU mappings
         shell: bash
         run: |
           set -euo pipefail
-          node --test tests/verified-dual-count-dashboards.test.mjs tests/owner-product-visibility-rankings.test.mjs tests/owner-product-visibility-firestore.test.mjs
+          node --test tests/verified-dual-count-dashboards.test.mjs tests/owner-product-visibility-rankings.test.mjs tests/owner-product-visibility-firestore.test.mjs tests/owner-product-visibility-panel.test.mjs
           node --test tests/partner-month-readonly-loader.test.mjs
       - name: Install ONLY isolated emulator tooling and existing workspace dependencies
         shell: bash
