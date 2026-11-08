@@ -145,6 +145,7 @@ test("incomplete query and summary mismatch stop rather than present false ranki
   d=>d.delete("companies/own/partnerWorkCountDays/2026-11-07/reports/partner"),
   d=>{d.get("companies/own/partnerWorkCountDays/2026-11-07/reports/partner").counts.NURO=99;},
   d=>{d.get("companies/partner/partnerWorkEntries/2026-11-07__member1").version=0;},
+  d=>{d.get("companies/partner/partnerWorkEntries/2026-11-07__member1").id="forged";},
   d=>{d.get("companies/partner/partnerWorkEntries/2026-11-07__member1").teamIdSnapshot="lostTeam";},
   d=>{d.get("companies/partner/partnerWorkEntries/2026-11-07__member1").counts.NURO=20;},
   d=>{d.get("companies/partner/partnerWorkEntries/2026-11-07__member1").privateCounts={"cashback":100000};d.get("companies/partner/partnerWorkEntries/2026-11-07__member1").totalCount=999;},
