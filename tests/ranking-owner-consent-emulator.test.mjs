@@ -5,6 +5,8 @@ import {createRankingOwnerConsentService}
  from "../ranking/ranking-owner-consent-service.mjs";
 import {createFreshCombinedRankingContext}
  from "../ranking/trusted-combined-ranking-context.mjs";
+import {createOwnerRankingConsentStatusReader}
+ from "../ranking/ranking-owner-consent-status.mjs";
 
 const PROJECT="demo-nico-partner-ranking";
 const LOCAL=/^(?:127[.]0[.]0[.]1|localhost):[0-9]{2,5}$/;
@@ -55,6 +57,11 @@ test("real Firestore Admin demo emulator: two owners sign independently, revoke 
   }
   const oldMoney=(await db.doc("records/immutable-ranking-consent-finance").get()).data();
   const service=createRankingOwnerConsentService({db,FieldValue});
+  const status=createOwnerRankingConsentStatusReader({db});
+  const initial=await status(approval(hubOwner));
+  assert.deepEqual(initial.partners.map(x=>({
+   id:x.partnerCompanyId,own:x.ownApproved,other:x.otherApproved,version:x.version
+  })),[{id:partner,own:false,other:false,version:0}]);
   const act=(uid,enable,expectedVersion)=>service({
    auth:approval(uid),partnerCompanyId:partner,enable,expectedVersion});
   const first=await act(hubOwner,true,0);
@@ -62,6 +69,10 @@ test("real Firestore Admin demo emulator: two owners sign independently, revoke 
   const relationBefore=(await db.doc("partnerRelations/"+partner).get()).data();
   assert.equal(relationBefore.combinedRankingApprovedByHub,true);
   assert.equal(relationBefore.combinedRankingApprovedByPartner,undefined);
+  const hubStatus=await status(approval(hubOwner));
+  assert.equal(hubStatus.partners[0].ownApproved,true);
+  assert.equal(hubStatus.partners[0].otherApproved,false);
+  assert.equal(hubStatus.partners[0].version,1);
   await assert.rejects(createFreshCombinedRankingContext({db})(approval(partnerOwner)),/UNVERIFIED/);
   const second=await act(partnerOwner,true,0);
   assert.equal(second.version,1);
@@ -74,6 +85,11 @@ test("real Firestore Admin demo emulator: two owners sign independently, revoke 
   await assert.rejects(createFreshCombinedRankingContext({db})(approval(partnerOwner)),/UNVERIFIED/);
   const reapproved=await act(partnerOwner,true,2);
   assert.equal(reapproved.version,3);
+  const partnerStatus=await status(approval(partnerOwner));
+  assert.equal(partnerStatus.role,"partner_owner");
+  assert.equal(partnerStatus.partners[0].ownApproved,true);
+  assert.equal(partnerStatus.partners[0].otherApproved,true);
+  assert.equal(partnerStatus.partners[0].version,3);
   const again=await createFreshCombinedRankingContext({db})(approval(partnerOwner));
   assert.deepEqual(again.approvedCompanyIds,[hub,partner]);
   await assert.rejects(act(partnerOwner,false,1),/STALE/);
