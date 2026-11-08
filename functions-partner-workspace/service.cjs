@@ -538,6 +538,13 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
         ["partner","cooperator"].includes(pm.memberType))
        fail("failed-precondition");
      formerMember=pm;
+     // Until the live Rules deny raw finance access, a dual secondary role
+     // would preserve this internal UID's old money-bearing GET/LIST grants.
+     // Reject creation of NEW unsafe secondary contexts in the server
+     // transaction. Existing joins/data remain untouched. An invited internal
+     // non-owner may explicitly transfer instead; original finance records
+     // and history are preserved by the transfer transaction below.
+     if(!transfer)fail("failed-precondition");
      if(transfer){
       // Never orphan a company owner, change another hub's roster or silently
       // re-parent original records. Original records and old member doc stay put.
