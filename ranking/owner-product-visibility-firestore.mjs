@@ -49,7 +49,9 @@ function productsOf(snapshot,hubId){
 function validateSelected(settings,products){
  const found=new Map(products.map(x=>[x.id,x]));
  for(const x of settings.enabledHubProductIds){
-  if(!found.has(x)||found.get(x).active!==true)stop();
+  // Retired products may remain in saved ON history, but can never publish.
+  // The owner must still be able to open settings and turn them OFF.
+  if(!found.has(x))stop();
  }
  for(const arr of Object.values(settings.partnerOverrides)){
   for(const x of arr)if(!found.has(x))stop();
@@ -106,7 +108,7 @@ export function createOwnerProductVisibilityStore({db,FieldValue}={}){
    const selected=new Set(state.enabledHubProductIds);
    return {schema:"nico-hub-product-visibility-v1",role:"hub_owner",version:state.version,
     hubCompanyId:hub,products:products.map(p=>({
-     id:p.id,name:p.name,active:p.active,enabled:selected.has(p.id)
+     id:p.id,name:p.name,active:p.active,enabled:p.active&&selected.has(p.id)
     })),partnerOverrides:state.partnerOverrides};
   },{readOnly:true});
  }
@@ -192,11 +194,14 @@ export function createOwnerProductVisibilityStore({db,FieldValue}={}){
    if(!obj(company)||!id(company.ownerUid)||company.active===false)stop();
    // Missing settings mean nothing is published. No implicit ON.
    const state=normalize(read(stateSnap),hub,company.ownerUid);
-   validateSelected(state,productsOf(all,hub));
+   const productRows=productsOf(all,hub);
+   validateSelected(state,productRows);
+   const activeProducts=new Set(productRows.filter(p=>p.active).map(p=>p.id));
    return {serverVerified:true,ownerSettingsRead:true,
     ownerUidVerified:true,productMappingsReviewed:true,
     revision:Math.max(1,state.version),
-    hubCompanyId:hub,enabledHubProductIds:state.enabledHubProductIds,
+    hubCompanyId:hub,enabledHubProductIds:state.enabledHubProductIds.filter(
+     x=>activeProducts.has(x)),
     partnerOverrides:Object.entries(state.partnerOverrides).map(
      ([companyId,enabledHubProductIds])=>({
       companyId,enabledHubProductIds
