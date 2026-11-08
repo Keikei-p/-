@@ -1,0 +1,207 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {buildVerifiedCountDashboard}
+ from "../ranking/verified-dual-count-dashboards.mjs";
+
+const TIME="2026-11-08T02:15:30.000Z";
+const rec=(cid,id,uid,date,n)=>({
+ companyId:cid,sourceId:id,uid,date,teamId:"team",
+ totalCount:n,reportStatus:n===0?"no_result":"submitted",
+ memberNameSnapshot:uid==="p1"?"協力店A担当":"自社担当",
+ teamNameSnapshot:"営業班",workLocation:""
+});
+const ln=(r,p,n,i=0)=>({
+ companyId:r.companyId,recordId:r.sourceId,sourceId:r.sourceId+"__"+i,
+ date:r.date,uid:r.uid,teamId:r.teamId,productId:p,count:n
+});
+const src=(cid,kind,records,lines,roster)=>({
+ companyId:cid,companyLabel:cid==="hub"?"自社":"協力店A",kind,
+ consentVerified:true,isComplete:true,readTime:TIME,
+ teams:[{id:"team",name:"営業班",goalCount:null}],
+ roster:roster.map(([uid,name])=>({uid,name,teamId:"team"})),
+ completeWindows:{current:true,previous:true},
+ records,lines,products:[{companyId:cid,sourceId:cid==="hub"?"ownNuro":"partnerSku01",
+  name:"NURO",active:true,sortOrder:0},
+  {companyId:cid,sourceId:cid==="hub"?"ownOther":"partnerSku05",
+   name:"SB光・AIR",active:true,sortOrder:0}]
+});
+const auth=(role="hub_owner")=>({
+ serverVerified:true,userActive:true,memberActive:true,companyActive:true,
+ reciprocalOwnersApproved:true,individualNamesApproved:true,
+ completeSnapshotBudgetApproved:true,viewerUid:role==="hub_owner"?"owner":"partnerOwner",
+ viewerCompanyId:role==="hub_owner"?"hub":"partner",
+ hubCompanyId:"hub",approvedCompanyIds:["hub","partner"],role
+});
+function fixture(partnerCount=2){
+ const ownNow=rec("hub","own_now","o1","2026-11-08",1),
+  partnerNow=rec("partner","2026-11-08__p1","p1","2026-11-08",partnerCount),
+  partnerZero=rec("partner","2026-11-08__p2","p2","2026-11-08",0),
+  ownPrevious=rec("hub","own_previous","o1","2026-10-08",1),
+  partnerPrevious=rec("partner","partner_previous","p1","2026-10-08",1);
+ return {
+  context:auth(),hubCompanyId:"hub",approvedCompanyIds:["hub","partner"],
+  period:{kind:"day",day:"2026-11-08",asOf:"2026-11-08"},
+  sources:[
+   src("hub","own",[ownNow,ownPrevious],
+    [ln(ownNow,"ownNuro",1),ln(ownPrevious,"ownNuro",1)],
+    [["o1","自社担当"]]),
+   src("partner","partner",[partnerNow,partnerZero,partnerPrevious],
+    [ln(partnerNow,"partnerSku01",partnerCount),
+     ln(partnerPrevious,"partnerSku01",1)],
+    [["p1","協力店A担当"],["p2","協力店0件"],["p3","協力店未報告"]])
+  ],
+  productGroups:[
+   {companyId:"hub",productId:"ownNuro",groupId:"nuro",groupName:"NURO"},
+   {companyId:"partner",productId:"partnerSku01",groupId:"nuro",groupName:"NURO"}
+  ]
+ };
+}
+const build=d=>buildVerifiedCountDashboard(d);
+test("2→3 correction is replacement, not additive: hub/company/person/SKU agree",()=>{
+ const two=fixture(2),before=structuredClone(two);
+ const first=build(two);
+ assert.deepEqual(first.summary,{own:1,partner:2,total:3,unidentified:0});
+ assert.equal(first.memberRanking.find(x=>x.id==="partner:p1").count,2);
+ assert.equal(first.productRanking.find(x=>x.id==="nuro").count,3);
+ assert.deepEqual(two,before,"input and historical source are immutable");
+ const three=fixture(3),next=build(three);
+ assert.deepEqual(next.summary,{own:1,partner:3,total:4,unidentified:0});
+ assert.equal(next.companyBreakdown.find(x=>x.id==="partner").count,3);
+ assert.equal(next.memberRanking.find(x=>x.id==="partner:p1").count,3);
+ assert.equal(next.productRanking.find(x=>x.id==="nuro").count,4);
+ assert.equal(next.memberRanking.find(x=>x.id==="partner:p1").change,2);
+ assert.equal(next.memberRanking.find(x=>x.id==="partner:p1").growth,"増加");
+ assert.deepEqual(build(three),next,"refresh/retry does not double count");
+});
+test("equal scores share ranks; filtered individual and SKU views use the SAME lines",()=>{
+ const a=fixture(1),all=build(a);
+ assert.deepEqual(all.memberRanking.filter(p=>p.count===1).map(p=>p.rank),[1,1]);
+ assert.equal(all.memberRanking.find(p=>p.id==="partner:p2").count,0);
+ const view=build({...fixture(3),filters:{productId:"nuro"}});
+ assert.equal(view.summary.total,4);
+ assert.equal(view.memberRanking.find(p=>p.id==="partner:p1").count,3);
+ assert.equal(view.memberRanking.find(p=>p.id==="partner:p2").count,0);
+ const p=build({...fixture(3),filters:{companyId:"partner",uid:"p1"}});
+ assert.equal(p.summary.total,3);
+ assert.equal(p.productRanking.find(x=>x.id==="nuro").count,3);
+});
+test("unreported staff and explicit zero results are never conflated",()=>{
+ const x=build(fixture(2));
+ const zero=x.memberRanking.find(p=>p.id==="partner:p2"),
+  missing=x.memberRanking.find(p=>p.id==="partner:p3");
+ assert.equal(zero.reportStatus,"確定0件");
+ assert.equal(missing.reportStatus,"未報告");
+ assert.equal(zero.count,0);
+ assert.equal(missing.count,0);
+});
+test("period selections use actual day/week/month boundaries, month-to-date prev month same elapsed days",()=>{
+ const x=fixture(3);
+ const day=build(x);
+ assert.deepEqual(day.range,{
+  start:"2026-11-08",end:"2026-11-08",
+  previousStart:"2026-11-07",previousEnd:"2026-11-07",days:1
+ });
+ const week=build({...x,period:{kind:"week",day:"2026-11-08",asOf:"2026-11-08"}});
+ assert.deepEqual(week.range,{
+  start:"2026-11-02",end:"2026-11-08",
+  previousStart:"2026-10-26",previousEnd:"2026-11-01",days:7
+ });
+ const month=build({...x,period:{kind:"month",day:"2026-11-08",asOf:"2026-11-08"}});
+ assert.deepEqual(month.range,{
+  start:"2026-11-01",end:"2026-11-08",
+  previousStart:"2026-10-01",previousEnd:"2026-10-08",days:8
+ });
+ const jan=build({...x,period:{kind:"month",day:"2027-01-31",asOf:"2027-01-31"}});
+ assert.equal(jan.range.previousStart,"2026-12-01");
+ assert.equal(jan.range.previousEnd,"2026-12-31");
+});
+test("owner company/team/product split; partner gets own detail and only approved public name+rank+count",()=>{
+ const x=fixture(3);
+ x.personGoals=[{companyId:"partner",uid:"p1",goalCount:8}];
+ x.historicalBest=[{companyId:"partner",uid:"p1",count:2}];
+ const hub=build(x);
+ assert.equal(hub.memberRanking.find(p=>p.id==="partner:p1").remainingToGoal,5);
+ assert.equal(hub.memberRanking.find(p=>p.id==="partner:p1").personalBestStatus,"自己ベスト更新");
+ assert.equal(hub.productRanking[0].ownCount,1);
+ assert.equal(hub.productRanking[0].partnerCount,3);
+ assert(hub.teamBreakdown.some(x=>x.companyId==="partner"&&x.count===3));
+ const partner=build({...x,context:auth("partner_owner")});
+ assert.equal(partner.role,"partner_owner");
+ assert.equal(partner.own.count,3);
+ assert.equal(partner.own.people.find(p=>p.id==="partner:p1").count,3);
+ assert.equal(partner.publicRanking.members[0].count,3);
+ assert.deepEqual(Object.keys(partner.publicRanking.members[0]).sort(),
+   ["company","count","name","rank"].sort());
+ assert(!("companyBreakdown" in partner));
+ assert(!("teamBreakdown" in partner));
+ assert(!("filters" in partner));
+ assert(!("summary" in partner));
+ assert(!("personGoals" in partner));
+ assert(!("historicalBest" in partner));
+ assert(!JSON.stringify(partner).includes("remainingToGoal"));
+});
+test("company-code unknown attribution included once in company/SKU but NEVER fake person",()=>{
+ const x=fixture(2);
+ x.unassigned=[{companyId:"partner",date:"2026-11-07",
+  sourceId:"codeSessionA-20261107",productId:"partnerSku01",
+  kind:"company-code-ledger",exclusiveVerified:true,count:4}];
+ x.period={kind:"week",day:"2026-11-08",asOf:"2026-11-08"};
+ // Same-date staff ledger and unknown company-code counts are never combined.
+ const v=build(x);
+ assert.deepEqual(v.summary,{own:1,partner:6,total:7,unidentified:4});
+ assert.equal(v.memberRanking.find(p=>p.id==="partner:p1").count,2);
+ assert.equal(v.productRanking[0].count,7);
+ assert.throws(()=>build({...x,unassigned:[{...x.unassigned[0],
+  date:"2026-11-08"}]}),/INCOMPLETE_OR_UNAUTHORIZED/,
+  "ambiguous same-company same-day staff and code ledgers risk double addition");
+});
+test("different company SKUs are NEVER merged merely because both names say NURO",()=>{
+ const x=fixture(3);
+ const value=build({...x,productGroups:[]});
+ assert.equal(value.productRanking.length,2);
+ assert(value.productRanking.every(p=>p.id.startsWith("unmapped:")));
+ assert.deepEqual(value.productRanking.map(p=>p.count),[3,1]);
+});
+test("canceled consent, wrong role, forged approvals, missing snapshot or company reject before publication",()=>{
+ for(const edit of [
+  d=>{d.context.reciprocalOwnersApproved=false;},
+  d=>{d.context.individualNamesApproved=false;},
+  d=>{d.context.serverVerified=false;},
+  d=>{d.context.viewerCompanyId="other";},
+  d=>{d.context.approvedCompanyIds=["hub"];},
+  d=>{d.sources.pop();},
+  d=>{d.sources[1].consentVerified=false;},
+  d=>{d.sources[1].completeWindows.current=false;},
+  d=>{d.sources[1].readTime="2026-11-08T02:15:31Z";},
+  d=>{d.sources[1].records[0].companyId="hub";},
+  d=>{d.sources[1].records[0].totalRevenue=99999;},
+  d=>{d.sources[1].lines[0].count=1;},
+  d=>{d.sources[1].lines.push({...d.sources[1].lines[0]});}
+ ]){const d=fixture(3);edit(d);assert.throws(()=>build(d),undefined,edit.toString());}
+});
+test("financial fields and labels cannot enter either hub or partner response",()=>{
+ for(const edit of [
+  d=>{d.sources[1].products[0].name="NURO_CB5000";},
+  d=>{d.sources[1].companyLabel="協力店 売上50000";},
+  d=>{d.sources[1].records[0].unitPrice=10000;},
+  d=>{d.sources[1].lines[0].cashback=10000;},
+  d=>{d.sources[1].roster[0].name="担当者 20000円";},
+  d=>{d.sources[1].teams[0].name="単価4000";},
+  d=>{d.sources[1].lines[0].sourceId="CB50000";},
+  d=>{d.productGroups[0].groupName="cashback30000";}
+ ]){const d=fixture(3);edit(d);assert.throws(()=>build(d),undefined,edit.toString());}
+});
+test("previous-period incomplete never invents initial participation or growth",()=>{
+ const d=fixture(3);
+ d.sources[1].completeWindows.previous=false;
+ const v=build(d),p=v.memberRanking.find(x=>x.id==="partner:p1");
+ assert.equal(p.growth,"比較不可");
+ assert.equal(p.change,null);
+ assert.equal(p.previousCount,null);
+ const noOld=fixture(3);
+ noOld.sources[1].records=noOld.sources[1].records.filter(x=>x.date>="2026-11-01");
+ noOld.sources[1].lines=noOld.sources[1].lines.filter(x=>x.date>="2026-11-01");
+ const initial=build(noOld).memberRanking.find(x=>x.id==="partner:p1");
+ assert.equal(initial.growth,"初参加");
+ assert.equal(initial.previousCount,0);
+});
