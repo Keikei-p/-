@@ -5,12 +5,16 @@ on:
     paths:
       - 'tools/production/unified-release-readiness-readonly.mjs'
       - 'tests/unified-release-readiness-readonly.test.mjs'
+      - 'tools/production/reconcile-four-count-metadata-readonly.mjs'
+      - 'tests/reconcile-four-count-metadata-readonly.test.mjs'
       - '.github/workflows/nico-unified-release-readiness-readonly.yml'
   push:
     branches: [main]
     paths:
       - 'tools/production/unified-release-readiness-readonly.mjs'
       - 'tests/unified-release-readiness-readonly.test.mjs'
+      - 'tools/production/reconcile-four-count-metadata-readonly.mjs'
+      - 'tests/reconcile-four-count-metadata-readonly.test.mjs'
       - '.github/workflows/nico-unified-release-readiness-readonly.yml'
   workflow_dispatch:
 permissions:
@@ -35,6 +39,8 @@ jobs:
           set -euo pipefail
           node --check tools/production/unified-release-readiness-readonly.mjs
           node --test tests/unified-release-readiness-readonly.test.mjs
+          node --check tools/production/reconcile-four-count-metadata-readonly.mjs
+          node --test tests/reconcile-four-count-metadata-readonly.test.mjs
           test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
           test "$(git hash-object index.html)" = '88ef5636bfe9254e71f2109d452b6d3049f99861'
           test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
@@ -71,6 +77,8 @@ jobs:
           test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
           test "$(git hash-object functions-partner-workspace/index.js)" = '38da7e9174ffea7c406c92292dccfc651b565eb0'
           node --test tests/unified-release-readiness-readonly.test.mjs
+          node --check tools/production/reconcile-four-count-metadata-readonly.mjs
+          node --test tests/reconcile-four-count-metadata-readonly.test.mjs
       - name: Install existing read-only Firebase SDK dependencies before secrets
         shell: bash
         run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
