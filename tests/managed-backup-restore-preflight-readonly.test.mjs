@@ -136,6 +136,9 @@ test("GET-only source and no cloud create/delete/restore operation in the audit"
   "../tools/production/audit-managed-backup-restore-preflight-readonly.mjs",
   import.meta.url),"utf8");
  assert.match(text,/method:"GET"/);
+ assert.match(text,/STOP_MANAGED_BACKUP_PREFLIGHT_UNEXPECTED_/);
+ assert.match(text,/NICO_PREFLIGHT_AUDIT_SOURCE_LINE=/);
+ assert.doesNotMatch(text,/console\\.error\\((?:e\\.stack|e\\.message|response)/);
  assert.match(text,/destinationDatabaseCreated:false/);
  assert.match(text,/managedBackupRestored:false/);
  assert.match(text,/restoreAuthorizationGranted:false/);
