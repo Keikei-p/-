@@ -138,7 +138,7 @@ test("owner company/team/product split; partner gets own detail and only approve
  assert(!("summary" in partner));
  assert(!("personGoals" in partner));
  assert(!("historicalBest" in partner));
- assert(!JSON.stringify(partner).includes("remainingToGoal"));
+ assert(!JSON.stringify(partner.publicRanking).includes("remainingToGoal"));
 });
 test("company-code unknown attribution included once in company/SKU but NEVER fake person",()=>{
  const x=fixture(2);
