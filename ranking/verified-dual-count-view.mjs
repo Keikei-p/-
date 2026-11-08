@@ -162,6 +162,19 @@ export function createVerifiedDualCountController({
  let generation=0,closed=false;
  const current={period:"day",day:asOf,filters:{}};
  const clear=()=>root.replaceChildren();
+ const thisSafePeriod=(kind,day=current.day)=>{
+  if(!["day","week","month"].includes(kind)||!validDate(day)||day>asOf)halt();
+  current.period=kind;current.day=day;
+  return refresh();
+ };
+ const thisSafeFilter=(key,value)=>{
+  if(!["companyId","teamId","uid","productId"].includes(key)||
+     typeof value!=="string"||value.length>200||
+     (value!==""&&!ID.test(value)))halt();
+  if(value==="")delete current.filters[key];
+  else current.filters[key]=value;
+  return refresh();
+ };
  async function refresh(){
   if(closed)return false;
   const token=++generation,identity=auth.currentUser;
@@ -176,7 +189,66 @@ export function createVerifiedDualCountController({
     filters:{...current.filters}
    });
    if(identity!==auth.currentUser||token!==generation||closed)halt();
-   renderVerifiedDualCountDashboard({document,root,payload:result});
+   const data=validate(result);
+   renderVerifiedDualCountDashboard({document,root,payload:data});
+   const toolbar=el(document,"section","nico-dual-controls");
+   function option(select,value,title){
+    const o=el(document,"option","",title);o.value=value;select.appendChild(o);
+   }
+   function selectControl(title,currentValue,options,handler){
+    const wrap=el(document,"label","nico-dual-control");
+    add(wrap,document,"span","",title);
+    const select=el(document,"select","");
+    for(const [value,name] of options)option(select,value,name);
+    select.value=currentValue??"";
+    select.addEventListener("change",()=>{
+      if(token!==generation||identity!==auth.currentUser||closed)return;
+      void handler(select.value);
+    });
+    wrap.appendChild(select);toolbar.appendChild(wrap);
+   }
+   selectControl("集計期間",current.period,[
+    ["day","日"],["week","週"],["month","月"]
+   ],value=>thisSafePeriod(value));
+   const dayWrap=el(document,"label","nico-dual-control");
+   add(dayWrap,document,"span","","基準日");
+   const dayInput=el(document,"input","");
+   dayInput.type="date";dayInput.value=current.day;dayInput.max=asOf;
+   dayInput.addEventListener("change",()=>{
+    if(token!==generation||identity!==auth.currentUser||closed)return;
+    void thisSafePeriod(current.period,dayInput.value);
+   });
+   dayWrap.appendChild(dayInput);toolbar.appendChild(dayWrap);
+   if(data.role==="hub_owner"){
+    const companyRows=data.companyBreakdown.map(x=>[x.id,x.name]);
+    selectControl("会社",current.filters.companyId??"",[
+     ["","全社"],...companyRows
+    ],v=>thisSafeFilter("companyId",v));
+    const teamIds=new Map(),staffIds=new Map(),products=new Map();
+    for(const row of data.teamBreakdown){
+     const name=String(row.id).slice(String(row.companyId).length+1);
+     if(ID.test(name))teamIds.set(name,row.name);
+    }
+    for(const row of data.memberRanking){
+     const uid=String(row.id).slice(String(row.companyId).length+1);
+     if(ID.test(uid))staffIds.set(uid,row.name+"（"+row.companyName+"）");
+    }
+    for(const row of data.productRanking){
+     if(typeof row.id==="string"&&row.id.length<=200)
+      products.set(row.id,row.name);
+    }
+    selectControl("班",current.filters.teamId??"",[
+     ["","全班"],...[...teamIds].map(([id,name])=>[id,name])
+    ],v=>thisSafeFilter("teamId",v));
+    selectControl("担当者",current.filters.uid??"",[
+     ["","全員"],...[...staffIds].map(([id,name])=>[id,name])
+    ],v=>thisSafeFilter("uid",v));
+    selectControl("商材",current.filters.productId??"",[
+     ["","全商材"],...[...products].map(([id,name])=>[id,name])
+    ],v=>thisSafeFilter("productId",v));
+   }
+   const page=root.children[0];
+   root.replaceChildren(toolbar,page);
    return true;
   }catch{
    clear();
@@ -189,18 +261,11 @@ export function createVerifiedDualCountController({
  return Object.freeze({
   refresh,
   setPeriod(kind,day){
-   if(closed||!["day","week","month"].includes(kind)||
-      !validDate(day)||day>asOf)halt();
-   current.period=kind;current.day=day;
-   return refresh();
+   return thisSafePeriod(kind,day);
   },
   setFilter(key,value){
-   if(closed||!["companyId","teamId","uid","productId"].includes(key)||
-      !(value==null||value===""||typeof value==="string"&&value.length<=200))halt();
-   if(value==null||value==="")delete current.filters[key];
-   else if(!ID.test(value))halt();
-   else current.filters[key]=value;
-   return refresh();
+   if(closed)halt();
+   return thisSafeFilter(key,value??"");
   },
   onAuthChange(){generation++;clear();},
   destroy(){closed=true;generation++;clear();}
