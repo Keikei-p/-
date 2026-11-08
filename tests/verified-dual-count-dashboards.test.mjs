@@ -58,8 +58,9 @@ function fixture(partnerCount=2){
 }
 const build=d=>buildVerifiedCountDashboard(d);
 test("2→3 correction is replacement, not additive: hub/company/person/SKU agree",()=>{
- const two=fixture(2),before=structuredClone(two);
+ const two=fixture(2);
  two.period={kind:"month",day:"2026-11-08",asOf:"2026-11-08"};
+ const before=structuredClone(two);
  const first=build(two);
  assert.deepEqual(first.summary,{own:1,partner:2,total:3,unidentified:0});
  assert.equal(first.memberRanking.find(x=>x.id==="partner:p1").count,2);
