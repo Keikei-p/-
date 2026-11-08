@@ -48,7 +48,7 @@ function makeProductVisibilityCallables({
  function verifyStatus(res){
   const safeId=x=>typeof x==="string"&&ID.test(x)&&
    !["__proto__","prototype","constructor"].includes(x);
-  const money=/(?:売上|単価|報酬|利益|キャッシュバック|[¥￥$€]|(?:CB|revenue|unitPrice|cashback)[\\s:_=-]*[0-9０-９]|[0-9０-９][0-9０-９.,，]*\\s*(?:万円|千円|円))/i;
+  const money=/(?:売上|単価|報酬|利益|キャッシュバック|[¥￥$€]|(?:CB|revenue|unitPrice|cashback)[\s:_=-]*[0-9０-９]|[0-9０-９][0-9０-９.,，]*\s*(?:万円|千円|円))/i;
   if(!exact(res,["schema","role","version","hubCompanyId","products",
       "partnerOverrides"])||
      res.schema!=="nico-hub-product-visibility-v1"||
