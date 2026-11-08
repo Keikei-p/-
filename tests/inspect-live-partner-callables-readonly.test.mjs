@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {inspect,classify,summarize,EXPECTED,PROJECT}
+import {inspect,classify,summarize,reconcileWithCli,EXPECTED,PROJECT}
  from '../tools/production/inspect-live-partner-callables-readonly.mjs';
 
 const region='asia-northeast1';
@@ -47,6 +47,64 @@ test('HTTP 404 is a deployment blocker and never fakes success',async()=>{
  assert.equal(result.countFunctionsConfiguredEnabled,false);
  assert.equal(result.functions.submitPartnerWorkspaceCounts.deployed,false);
 });
+const cliRows=()=>({result:EXPECTED.map(name=>({
+ id:'projects/'+PROJECT+'/locations/'+region+'/functions/'+name,
+ region,platform:'gcfv2',status:'ACTIVE',codebase:'partner-workspace',
+ environmentVariables:{PARTNER_WORKSPACE_ENABLED:'enabled',PRIVATE_API_TOKEN:'never-public'}
+}))});
+
+test('real deployment regression: per-function REST 404 and exact CLI ACTIVE => metadata confirmed, discrepancy surfaced',async()=>{
+ const rest=await inspect(async()=>answer(404,{}));
+ assert.equal(rest.countFunctionMetadataPresent,false);
+ const report=reconcileWithCli(rest,cliRows());
+ assert.equal(report.countFunctionMetadataPresent,true);
+ assert.equal(report.countFunctionsActive,true);
+ assert.equal(report.countFunctionsConfiguredEnabled,true);
+ assert.equal(report.metadataSourcesDisagree,true);
+ assert.equal(report.metadataSource,'VERIFIED_FIREBASE_CLI_WITH_FUNCTIONS_API_CROSSCHECK');
+ assert.equal(report.actualCallableInvoked,false);
+ assert.equal(report.realPartnerCountEntryVerified,false);
+ assert.equal(report.realPartnerFinanceDenyVerified,false);
+ assert.equal(report.safeToCutOverRules,false);
+ assert.equal(report.originalSalesDataWrites,0);
+ assert.equal(JSON.stringify(report).includes('PRIVATE_API_TOKEN'),false);
+ assert.equal(JSON.stringify(report).includes('never-public'),false);
+ for(const name of EXPECTED)
+  assert.deepEqual(report.functions[name],{
+   deployed:true,active:true,callableGen2:true,countEnabled:true
+  });
+});
+
+test('independent Functions API and exact CLI fully agree when both sources see ACTIVE',async()=>{
+ const rest=await inspect(async url=>answer(200,body(url.slice(root.length))));
+ const both=reconcileWithCli(rest,cliRows());
+ assert.equal(both.countFunctionsConfiguredEnabled,true);
+ assert.equal(both.metadataSourcesDisagree,false);
+ assert.equal(both.safeToCutOverRules,false);
+});
+
+test('untrusted, ambiguous, missing or disabled CLI rows always block readiness despite REST ACTIVE',async()=>{
+ const good=await inspect(async url=>answer(200,body(url.slice(root.length))));
+ const cases=[
+  {result:[]},
+  {result:cliRows().result.slice(0,3)},
+  {result:[...cliRows().result,cliRows().result[0]]},
+  {result:cliRows().result.map((x,i)=>i?x:{...x,region:'us-central1'})},
+  {result:cliRows().result.map((x,i)=>i?x:{...x,status:'DEPLOYING'})},
+  {result:cliRows().result.map((x,i)=>i?x:{...x,platform:'gcfv1'})},
+  {result:cliRows().result.map((x,i)=>i?x:{...x,codebase:'unapproved'})},
+  {result:cliRows().result.map((x,i)=>i?x:{...x,environmentVariables:{PARTNER_WORKSPACE_ENABLED:'disabled'}})},
+  {result:cliRows().result.map((x,i)=>i?x:{...x,id:'projects/other-project/locations/'+region+'/functions/'+EXPECTED[0]})}
+ ];
+ for(const value of cases){
+  const a=reconcileWithCli(good,value);
+  assert.equal(a.countFunctionsConfiguredEnabled,false);
+  assert.equal(a.safeToCutOverRules,false);
+ }
+ assert.throws(()=>reconcileWithCli(good,{result:null}),/STOP_FOUR_COUNT_CLI_INVENTORY_/);
+ assert.throws(()=>reconcileWithCli({...good,project:'other'},cliRows()),/STOP_PARTNER_CALLABLES_RECONCILE_PRIMARY/);
+});
+
 test('disabled or unknown function state and non-HTTPS gen2 URL stay blocked',()=>{
  for(const patch of [
   {state:'DEPLOYING'},
