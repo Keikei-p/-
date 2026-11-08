@@ -1372,6 +1372,10 @@ $("logout").onclick=async()=>{
  await signOut(auth);
 };
 onAuthStateChanged(auth,async u=>{
+ // Every new authentication state must require a FRESH membership decision.
+ // A prior invite's selected option must never carry into another login.
+ $("transferExistingInternal").checked=false;
+ $("keepInternalMembership").checked=false;
  ++nonce;++countLoadId;companyCodeSession=false;data=null;countDayCache.clear();
  clearCountOnlyDashboard();$("companyOverview").hidden=true;
  $("workspaceTitle").textContent="NICO FACTORY｜協力店 実績管理";
