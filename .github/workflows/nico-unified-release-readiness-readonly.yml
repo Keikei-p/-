@@ -74,6 +74,8 @@ jobs:
       - name: Install existing read-only Firebase SDK dependencies before secrets
         shell: bash
         run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Install pinned Firebase CLI for read-only four-Function inventory
+        run: npm install --global firebase-tools@15.34.1 --no-audit --no-fund
       - name: Bind existing audit identity in temporary file
         shell: bash
         env:
@@ -90,12 +92,30 @@ jobs:
           set -euo pipefail
           node tools/production/audit-live-firestore-rules-readonly.mjs > "$RUNNER_TEMP/nico-readiness-rules.private.log" 2>&1 || { echo 'STOP_NICO_LIVE_RULES_AUDIT'; exit 1; }
           grep -q '^NICO_LIVE_RULES_SOURCE_AUDIT ' "$RUNNER_TEMP/nico-readiness-rules.private.log"
-      - name: Read four partner Functions metadata only
+      - name: Read original Cloud Functions GET and regional LIST metadata only
         shell: bash
         run: |
           set -euo pipefail
-          node tools/production/inspect-live-partner-callables-readonly.mjs > "$RUNNER_TEMP/nico-readiness-partner.private.log" 2>&1 || { echo 'STOP_NICO_PARTNER_FUNCTION_AUDIT'; exit 1; }
+          node tools/production/inspect-live-partner-callables-readonly.mjs \
+            > "$RUNNER_TEMP/nico-readiness-functions-rest.private.log" 2>&1 ||
+            { echo 'STOP_NICO_PARTNER_FUNCTION_AUDIT'; exit 1; }
+          grep -q '^PARTNER_COUNT_FUNCTION_METADATA ' "$RUNNER_TEMP/nico-readiness-functions-rest.private.log"
+      - name: Cross-check independent Firebase CLI count-only Functions inventory (read only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase functions:list --project "$FIREBASE_PROJECT_ID" --json \
+            > "$RUNNER_TEMP/nico-readiness-cli.private.json" \
+            2> "$RUNNER_TEMP/nico-readiness-cli-stderr.private.log" ||
+            { echo 'STOP_NICO_CLI_FUNCTIONS_LIST'; exit 1; }
+          node tools/production/reconcile-four-count-metadata-readonly.mjs \
+            "$RUNNER_TEMP/nico-readiness-functions-rest.private.log" \
+            "$RUNNER_TEMP/nico-readiness-cli.private.json" \
+            > "$RUNNER_TEMP/nico-readiness-partner.private.log" 2>&1 ||
+            { echo 'STOP_NICO_FUNCTIONS_METADATA_RECONCILIATION'; exit 1; }
           grep -q '^PARTNER_COUNT_FUNCTION_METADATA ' "$RUNNER_TEMP/nico-readiness-partner.private.log"
+          grep -q '"metadataEvidence":"FIREBASE_CLI_INDEPENDENT_REGIONAL_CROSSCHECK"' "$RUNNER_TEMP/nico-readiness-partner.private.log" ||
+            { echo 'STOP_NICO_FUNCTIONS_METADATA_EVIDENCE_MISSING'; exit 1; }
       - name: Inventory secondary finance path and latest READY backups (GET only)
         shell: bash
         run: |
@@ -120,5 +140,8 @@ jobs:
           rm -f "$RUNNER_TEMP/nico-unified-audit-identity.private.json"
           rm -f "$RUNNER_TEMP/nico-readiness-rules.private.log"
           rm -f "$RUNNER_TEMP/nico-readiness-partner.private.log"
+          rm -f "$RUNNER_TEMP/nico-readiness-functions-rest.private.log"
+          rm -f "$RUNNER_TEMP/nico-readiness-cli.private.json"
+          rm -f "$RUNNER_TEMP/nico-readiness-cli-stderr.private.log"
           rm -f "$RUNNER_TEMP/nico-readiness-secondary.private.log"
           rm -f "$RUNNER_TEMP/nico-readiness-billing.private.log"
