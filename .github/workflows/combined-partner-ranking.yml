@@ -10,6 +10,7 @@ on:
       - "ranking/combined-rank-only-handler.mjs"
       - "ranking/trusted-combined-ranking-context.mjs"
       - "tests/trusted-combined-ranking-context.test.mjs"
+      - "tests/trusted-combined-ranking-context-emulator.test.mjs"
       - "ranking/rank-only-view.mjs"
       - "ranking/rank-only-view.css"
       - "tests/combined-count-leaderboard.test.mjs"
@@ -27,6 +28,7 @@ on:
       - "ranking/partner-month-readonly-loader.mjs"
       - "ranking/trusted-combined-ranking-context.mjs"
       - "tests/trusted-combined-ranking-context.test.mjs"
+      - "tests/trusted-combined-ranking-context-emulator.test.mjs"
       - "tests/combined-count-leaderboard.test.mjs"
       - "tests/partner-workspace-count-source.test.mjs"
       - "tests/partner-month-readonly-loader.test.mjs"
@@ -87,16 +89,18 @@ jobs:
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
           test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
           node --check tests/partner-month-readonly-loader-emulator.test.mjs
+          node --check tests/trusted-combined-ranking-context-emulator.test.mjs
       - name: Install pinned demo-only Firebase CLI and Admin SDK
         shell: bash
         run: |
           set -euo pipefail
           npm install --prefix functions-partner-workspace --ignore-scripts --no-audit --no-fund --package-lock=false
+          npm install --prefix tests --ignore-scripts --no-audit --no-fund --package-lock=false
           npm install --global firebase-tools@15.34.1 --no-audit --no-fund
       - name: Verify real Firestore read-only transaction and owner approval revoke
         shell: bash
         run: |
           set -euo pipefail
           firebase emulators:exec --project demo-nico-partner-ranking --only firestore \
-            'node --test tests/partner-month-readonly-loader-emulator.test.mjs'
+            'node --test tests/partner-month-readonly-loader-emulator.test.mjs tests/trusted-combined-ranking-context-emulator.test.mjs'
           echo 'STAGING_ONLY_PARTNER_MONTH_EMULATOR_PASS_PRODUCTION_WRITES=0'
