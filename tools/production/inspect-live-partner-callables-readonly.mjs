@@ -15,6 +15,7 @@ export const PROJECT='sales-management-cc116';
 const REGION='asia-northeast1';
 const ROOT='https://cloudfunctions.googleapis.com/v2/projects/'+PROJECT+
  '/locations/'+REGION+'/functions/';
+export const LIST_URL=ROOT.slice(0,-1)+'?pageSize=1000';
 export const EXPECTED=Object.freeze([
  'getPartnerWorkspace',
  'submitPartnerWorkspaceCounts',
@@ -56,7 +57,9 @@ export function classify(name,body,status){
  return Object.freeze({deployed,active,callableGen2,countEnabled});
 }
 
-export function summarize(results){
+export function summarize(results,{metadataListFallbackUsed=false,directGetListConflict=false}={}){
+ if(typeof metadataListFallbackUsed!=='boolean'||typeof directGetListConflict!=='boolean')
+  abort('UNTRUSTED_RECONCILIATION');
  if(!Array.isArray(results)||results.length!==EXPECTED.length)abort('INVENTORY_INCOMPLETE');
  const seen=new Set(),features={};
  for(const result of results){
@@ -80,6 +83,7 @@ export function summarize(results){
   countFunctionsActive:allActive,
   countFunctionsConfiguredEnabled:allEnabled,
   functions:features,
+  metadataListFallbackUsed,directGetListConflict,
   actualCallableInvoked:false,
   realPartnerCountEntryVerified:false,
   realPartnerFinanceDenyVerified:false,
@@ -91,6 +95,7 @@ export function summarize(results){
 export async function inspect(read){
  if(typeof read!=='function')abort('TRANSPORT');
  const results=[];
+ const get404=new Set();
  for(const name of EXPECTED){
   let response;
   try{response=await read(ROOT+name);}
@@ -103,9 +108,45 @@ export async function inspect(read){
    try{body=await response.json();}
    catch{abort('JSON_UNVERIFIED');}
   }
+  if(status===404)get404.add(name);
   results.push({name,...classify(name,body,status)});
  }
- return summarize(results);
+ if(get404.size===0)return summarize(results);
+ // Individual v2 GET can return 404 while Firebase CLI region inventory
+ // lists the exact Gen2 function. Never call 404 definitive absence until
+ // the canonical regional v2 LIST is independently checked, GET-only.
+ let listedResponse;
+ try{listedResponse=await read(LIST_URL);}
+ catch{abort('LIST_TRANSPORT_UNVERIFIED');}
+ if(listedResponse?.status!==200)abort('LIST_METADATA_UNVERIFIED');
+ let page;
+ try{page=await listedResponse.json();}
+ catch{abort('LIST_JSON_UNVERIFIED');}
+ if(!page||typeof page!=='object'||Array.isArray(page)||
+    !Array.isArray(page.functions??[])||page.functions.length>1000||
+    (page.nextPageToken!==undefined&&page.nextPageToken!==''))
+  abort('LIST_INCOMPLETE');
+ const regional=new Map();
+ for(const row of page.functions??[]){
+  if(!row||typeof row!=='object'||Array.isArray(row)||
+     typeof row.name!=='string'||row.name.length>500)
+   abort('LIST_ROW_UNTRUSTED');
+  if(!row.name.startsWith(ROOT))continue;
+  const name=row.name.slice(ROOT.length);
+  if(!EXPECTED.includes(name))continue;
+  if(regional.has(name))abort('LIST_DUPLICATE_TARGET');
+  regional.set(name,row);
+ }
+ let conflict=false;
+ for(let i=0;i<results.length;i++){
+  const name=results[i].name,listed=regional.get(name);
+  if(!get404.has(name)&&!listed)abort('LIST_DISAGREES_WITH_GET');
+  if(get404.has(name)&&listed){
+   results[i]={name,...classify(name,listed,200)};
+   conflict=true;
+  }
+ }
+ return summarize(results,{metadataListFallbackUsed:true,directGetListConflict:conflict});
 }
 
 async function main(){
@@ -124,8 +165,9 @@ async function main(){
    abort('WRONG_PROJECT');
  const tokenProvider=firebase.applicationDefault();
  const read=async url=>{
-  if(!url.startsWith(ROOT)||!EXPECTED.includes(url.slice(ROOT.length))||
-     url!==ROOT+url.slice(ROOT.length))abort('UNKNOWN_ENDPOINT');
+  if(url!==LIST_URL&&(!url.startsWith(ROOT)||
+     !EXPECTED.includes(url.slice(ROOT.length))||
+     url!==ROOT+url.slice(ROOT.length)))abort('UNKNOWN_ENDPOINT');
   const token=(await tokenProvider.getAccessToken())?.access_token;
   if(!token)abort('NO_READ_TOKEN');
   return fetch(url,{method:'GET',redirect:'error',cache:'no-store',
