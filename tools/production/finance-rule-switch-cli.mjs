@@ -63,7 +63,7 @@ async function run(){
   mode,request,functionsReady:ready,backup,
   operatorApproval:true,
   ownerBeforeAttested:process.env.NICO_OWNER_BEFORE_PROOF==="OWNER_FINANCE_LOGIN_READ_VERIFIED",
-  partnerCountsBeforeAttested:process.env.NICO_PARTNER_COUNTS_BEFORE_PROOF==="PARTNER_COUNTS_SAVE_CORRECT_VERIFYED"
+  partnerCountsBeforeAttested:process.env.NICO_PARTNER_COUNTS_BEFORE_PROOF==="PARTNER_COUNTS_SAVE_CORRECT_VERIFIED"
  });
  // No PII, user IDs, email, Rules bodies, tokens or monetary data in output.
  console.log("NICO_RULES_SWITCH "+JSON.stringify(output));
