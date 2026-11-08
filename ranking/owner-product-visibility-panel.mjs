@@ -53,7 +53,7 @@ export function createOwnerProductVisibilityPanel({
    const page=el(document,"section",undefined,"nico-owner-publications");
    page.appendChild(el(document,"h2","協力店に公開する商材"));
    page.appendChild(el(document,"p",
-    "ONの商材だけが協力店の件数と合同ランキングの対象です。OFFにしても保存済みの実績・売上・履歴は消えません。"));
+    "ONの商材だけが協力店の件数と合同ランキングの対象です。OFFにしても保存済みの件数・履歴は消えません。"));
    for(const product of view.products){
     const label=el(document,"label",undefined,"nico-owner-product-switch");
     const checkbox=el(document,"input");
