@@ -209,3 +209,17 @@ test("retired formerly-ON product is never ranked and owner can safely switch it
  assert.deepEqual(f.state.get("companies/hub/rankingProductVisibility/shared")
   .enabledHubProductIds,[]);
 });
+
+
+test("legacy products without an active field stay available, never exposing their prices",async()=>{
+ const f=fake(),old={...f.state.get("products/nuro")};
+ delete old.active;
+ f.state.set("products/nuro",old);
+ const row=(await f.store.readStatus(principal)).products.find(p=>p.id==="nuro");
+ assert.equal(row.active,true);
+ const saved=await f.store.saveSwitch({
+  principal,productId:"nuro",enabled:true,expectedVersion:0
+ });
+ assert.equal(saved.saved,true);
+ assert.deepEqual(f.state.get("products/nuro"),old);
+});
