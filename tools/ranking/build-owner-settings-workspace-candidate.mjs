@@ -136,8 +136,8 @@ export function buildRankingOwnerWorkspaceCandidate({
   'notice("最新の件数を読み込みました。");',
   "REFRESH_RESULT");
  html=exactlyOnce(html,
-  'data=null;$("appBox").hidden=true;\n   if(activeCodeSession',
-  'closeRankingOwnerPanel();data=null;$("appBox").hidden=true;\n   if(activeCodeSession',
+  'data=null;$("appBox").hidden=true;\n  if(activeCodeSession',
+  'closeRankingOwnerPanel();data=null;$("appBox").hidden=true;\n  if(activeCodeSession',
   "REFRESH_FAIL");
  html=exactlyOnce(html,
   'onAuthStateChanged(auth,async u=>{\n // Every new authentication state must require a FRESH membership decision.',
