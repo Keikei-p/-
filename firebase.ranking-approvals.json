@@ -1,0 +1,11 @@
+{
+  "functions": {
+    "source": "functions-ranking-approvals",
+    "codebase": "ranking-owner-approvals",
+    "ignore": [
+      "node_modules",
+      ".git",
+      "firebase-debug.log"
+    ]
+  }
+}
