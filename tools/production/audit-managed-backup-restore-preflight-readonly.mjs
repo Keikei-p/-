@@ -140,7 +140,17 @@ async function main(){
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))
  main().catch(e=>{
-  console.error(/^STOP_MANAGED_BACKUP_PREFLIGHT_[A-Z_]+$/.test(e?.message||"")?
-   e.message:"STOP_MANAGED_BACKUP_PREFLIGHT_UNVERIFIED");
+  const known=/^STOP_MANAGED_BACKUP_PREFLIGHT_[A-Z_]+$/.test(e?.message||"");
+  const errorType=e instanceof TypeError?"TYPE_ERROR":
+   e instanceof ReferenceError?"REFERENCE_ERROR":
+   e instanceof SyntaxError?"SYNTAX_ERROR":"OTHER_ERROR";
+  // Never print an API response body, token, database UID, backup ID, or
+  // untrusted exception.message/stack. Only a source line NUMBER is exposed.
+  const sourceLine=(typeof e?.stack==="string"?
+    e.stack.split("\n").find(x=>x.includes("audit-managed-backup-restore-preflight-readonly.mjs:")):"")||"";
+  const match=sourceLine.match(/audit-managed-backup-restore-preflight-readonly\.mjs:(\d+):\d+/);
+  console.error(known?e.message:
+   "STOP_MANAGED_BACKUP_PREFLIGHT_UNEXPECTED_"+errorType);
+  if(!known&&match)console.error("NICO_PREFLIGHT_AUDIT_SOURCE_LINE="+match[1]);
   process.exitCode=1;
  });
