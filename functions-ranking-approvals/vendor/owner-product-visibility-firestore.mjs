@@ -177,7 +177,9 @@ export function createOwnerProductVisibilityStore({db,FieldValue}={}){
   * context must come from fresh server-side owner/partner authorization.
   * The caller separately verifies the canonical SKU cross-company mapping.
   */
- async function readForRanking({context,mappingsReviewed=false}={}){
+ /** Reuse the caller's read-only transaction; never nest a second one. */
+ async function readForRankingInTransaction({tx,context,mappingsReviewed=false,requireReadTime=false}={}){
+  if(!tx||typeof tx.get!=="function")stop();
   if(!context||context.serverVerified!==true||
      !id(context.viewerUid)||!id(context.viewerCompanyId)||
      !id(context.hubCompanyId)||
@@ -194,8 +196,7 @@ export function createOwnerProductVisibilityStore({db,FieldValue}={}){
        !context.approvedCompanyIds.includes(context.viewerCompanyId)))||
      mappingsReviewed!==true)stop();
   const hub=context.hubCompanyId;
-  return db.runTransaction(async tx=>{
-   const partner=context.role==="partner_owner";
+  const partner=context.role==="partner_owner";
    const [companySnap,stateSnap,all,viewerCompanySnap,relationSnap]=await Promise.all([
     tx.get(companies().doc(hub)),
     tx.get(settingsRef(hub)),tx.get(catalog(hub)),
@@ -223,7 +224,7 @@ export function createOwnerProductVisibilityStore({db,FieldValue}={}){
    const productRows=productsOf(all,hub);
    validateSelected(state,productRows);
    const activeProducts=new Set(productRows.filter(p=>p.active).map(p=>p.id));
-   return {serverVerified:true,ownerSettingsRead:true,
+   const publication={serverVerified:true,ownerSettingsRead:true,
     ownerUidVerified:true,productMappingsReviewed:true,
     revision:Math.max(1,state.version),
     hubCompanyId:hub,enabledHubProductIds:state.enabledHubProductIds.filter(
@@ -236,7 +237,28 @@ export function createOwnerProductVisibilityStore({db,FieldValue}={}){
      .map(([companyId,enabledHubProductIds])=>({
       companyId,enabledHubProductIds
      }))};
-  },{readOnly:true});
+   if(requireReadTime){
+    const snaps=partner?[companySnap,stateSnap,all,viewerCompanySnap,relationSnap]:
+     [companySnap,stateSnap,all];
+    const t=snaps[0]?.readTime;
+    if(!Number.isSafeInteger(t?.seconds)||
+       !Number.isSafeInteger(t?.nanoseconds)||
+       t.nanoseconds<0||t.nanoseconds>=1000000000||
+       typeof t.toDate!=="function")stop();
+    for(const snap of snaps){
+     const r=snap?.readTime;
+     if(r?.seconds!==t.seconds||r?.nanoseconds!==t.nanoseconds)stop();
+    }
+    const d=t.toDate();
+    if(!(d instanceof Date)||!Number.isFinite(d.getTime()))stop();
+    publication.snapshotReadTime=d.toISOString().slice(0,19)+"."+
+     String(t.nanoseconds).padStart(9,"0")+"Z";
+   }
+   return publication;
  }
- return Object.freeze({readStatus,saveSwitch,readForRanking});
+ async function readForRanking(args={}){
+  return db.runTransaction(tx=>readForRankingInTransaction({...args,tx}),
+   {readOnly:true});
+ }
+ return Object.freeze({readStatus,saveSwitch,readForRanking,readForRankingInTransaction});
 }
