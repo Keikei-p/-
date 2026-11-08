@@ -46,7 +46,7 @@ test("protect real original app, Functions, Rules, original price/revenue, count
   "node --test tests/partner-dashboard-self-app-count-parity.test.mjs",
   "node --test tests/partner-invite-resend-and-accept.test.cjs",
   "tests/partner-workspace.test.cjs",
-  "node --test tests/internal-owner-finance-visibility.test.cjs",
+  "tests/internal-owner-finance-visibility.test.cjs",
   "FOUR_COUNT_FUNCTION_METADATA_PRESENT_ACTIVE_ENABLED_NO_BUILD",
   "ANONYMOUS_COUNT_CALLABLES_DENIED_ALL_FOUR"
  ])assert.ok(yaml.includes(s),s);
