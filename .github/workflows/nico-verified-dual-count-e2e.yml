@@ -7,7 +7,9 @@ on:
       - 'ranking/owner-product-visibility-rankings.mjs'
       - 'ranking/owner-visible-count-server-handler.mjs'
       - 'ranking/owner-visible-count-atomic-loader.mjs'
+      - 'ranking/owner-product-visibility-in-atomic-tx.mjs'
       - 'tests/owner-visible-count-atomic-loader.test.mjs'
+      - 'tests/owner-product-visibility-in-atomic-tx.test.mjs'
       - 'tests/owner-visible-count-server-handler.test.mjs'
       - 'ranking/owner-product-visibility-firestore.mjs'
       - 'ranking/owner-product-visibility-panel.mjs'
@@ -70,7 +72,9 @@ jobs:
           node --check ranking/owner-product-visibility-rankings.mjs
           node --check ranking/owner-visible-count-server-handler.mjs
           node --check ranking/owner-visible-count-atomic-loader.mjs
+          node --check ranking/owner-product-visibility-in-atomic-tx.mjs
           node --check tests/owner-visible-count-atomic-loader.test.mjs
+          node --check tests/owner-product-visibility-in-atomic-tx.test.mjs
           node --check tests/owner-visible-count-server-handler.test.mjs
           node --check ranking/owner-product-visibility-firestore.mjs
           node --check ranking/owner-product-visibility-panel.mjs
@@ -86,7 +90,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node --test tests/verified-dual-count-dashboards.test.mjs tests/owner-product-visibility-rankings.test.mjs tests/owner-visible-count-server-handler.test.mjs tests/owner-visible-count-atomic-loader.test.mjs tests/owner-product-visibility-firestore.test.mjs tests/owner-product-visibility-panel.test.mjs tests/owner-product-visibility-dashboard-mount.test.mjs tests/owner-product-visibility-firebase-bridge.test.mjs tests/owner-product-visibility-callables.test.cjs
+          node --test tests/verified-dual-count-dashboards.test.mjs tests/owner-product-visibility-rankings.test.mjs tests/owner-visible-count-server-handler.test.mjs tests/owner-visible-count-atomic-loader.test.mjs tests/owner-product-visibility-in-atomic-tx.test.mjs tests/owner-product-visibility-firestore.test.mjs tests/owner-product-visibility-panel.test.mjs tests/owner-product-visibility-dashboard-mount.test.mjs tests/owner-product-visibility-firebase-bridge.test.mjs tests/owner-product-visibility-callables.test.cjs
           node --test tests/partner-month-readonly-loader.test.mjs
       - name: Install ONLY isolated emulator tooling and existing workspace dependencies
         shell: bash
