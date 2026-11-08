@@ -133,32 +133,58 @@ test("verified email invite preview never changes membership, and refuses wrong 
  await assert.rejects(api.accept(req("n",{token:created.token,previewOnly:true})),{code:"failed-precondition"});
 });
 
-test("existing verified hub owner may join as separate count-only partner without missing legacy email fields",async()=>{
+test("existing hub Owner cannot create a new unsafe secondary membership (zero writes)",async()=>{
  const {db,api,req}=setup();
- // Existing production profiles may lack redundant email data. Firebase Auth
- // has already verified the signed-in email, and finance must remain untouched.
+ // Owner must retain the original company and financial records, including
+ // profiles with old optional email/member companyId omitted.
  delete db.store.get("users/h").email;
  delete db.store.get("companies/hub/members/h").email;
  delete db.store.get("companies/hub/members/h").companyId;
- const originals=clone([...db.store]);
  const team=(await api.manage(req("h",{action:"hubAddTeam",partnerCompanyId:"partner",name:"既存検証班"}))).teamId;
  const invite=await api.manage(req("h",{action:"hubCreateInvite",partnerCompanyId:"partner",
   teamId:team,role:"leader",email:"h@example.com"}));
- const preview=await api.accept(req("h",{token:invite.token,previewOnly:true}));
- assert.equal(preview.valid,true);
- const result=await api.accept(req("h",{token:invite.token,name:"既存オーナー",transferCurrentCompany:false}));
- assert.equal(result.secondaryMembership,true);
- assert.equal(result.transferredFromInternal,false);
+ assert.equal((await api.accept(req("h",{token:invite.token,previewOnly:true}))).valid,true);
+ const before=clone([...db.store]);
+ await assert.rejects(api.accept(req("h",{
+  token:invite.token,name:"既存オーナー",transferCurrentCompany:false
+ })),e=>e.code==="failed-precondition");
+ assert.deepEqual([...db.store],before,"refused secondary join must commit NO writes");
  assert.equal(db.store.get("users/h").companyId,"hub");
  assert.equal(db.store.get("companies/hub/members/h").active,true);
- const extra=db.store.get("companies/partner/members/h");
- assert.equal(extra.canViewRevenue,false);
- assert.equal(extra.canViewUnitPrice,false);
- const view=await api.view(req("h",{date:"2026-10-31",workspaceCompanyId:"partner"}));
- assert.equal(view.role,"leader");
- assert.deepEqual(db.store.get("products/money"),originals.find(([k])=>k==="products/money")[1]);
- assert.deepEqual(db.store.get("records/old"),originals.find(([k])=>k==="records/old")[1]);
- await assert.rejects(api.accept(req("h",{token:invite.token,name:"二度目"})),{code:"failed-precondition"});
+ assert.equal(db.store.get("companies/partner/members/h"),undefined);
+ assert.equal(db.store.get("partnerWorkspaceContexts/h"),undefined);
+ assert.equal(db.store.get("partnerHistoricalTransfers/h"),undefined);
+ const view=await api.view(req("h",{date:"2026-10-31"}));
+ assert.equal(view.role,"hub","Owner can still manage the partner via hub access");
+});
+
+test("existing non-owner internal member cannot keep money access by joining as secondary",async()=>{
+ const {db,api,req}=setup();
+ db.seed("users/m",{uid:"m",companyId:"hub",email:"m@example.com",
+  companyRole:"member",role:"member",active:true,accessKind:"internal",
+  canViewRevenue:true,canViewUnitPrice:true});
+ db.seed("companies/hub/members/m",{uid:"m",companyId:"hub",
+  email:"m@example.com",companyRole:"member",role:"member",
+  active:true,accessKind:"internal",canViewRevenue:true,canViewUnitPrice:true});
+ const team=(await api.manage(req("h",{
+  action:"hubAddTeam",partnerCompanyId:"partner",name:"金融境界検証班"
+ }))).teamId;
+ const invite=await api.manage(req("h",{
+  action:"hubCreateInvite",partnerCompanyId:"partner",teamId:team,
+  role:"member",email:"m@example.com"
+ }));
+ const before=clone([...db.store]);
+ for(const input of [false,undefined]){
+  await assert.rejects(api.accept(req("m",{
+   token:invite.token,name:"既存自社メンバー",
+   ...(input===undefined?{}:{transferCurrentCompany:input})
+  })),e=>e.code==="failed-precondition");
+  assert.deepEqual([...db.store],before,"rejected secondary cannot mutate finance, staff or invite");
+ }
+ assert.equal(db.store.get("companies/partner/members/m"),undefined);
+ assert.equal(db.store.get("partnerWorkspaceContexts/m"),undefined);
+ assert.equal(db.store.get("records/old").totalRevenue,808080);
+ assert.equal(db.store.get("products/money").unitPrice,98765);
 });
 
 test("legacy email fallback refuses explicit mismatched user or member email",async()=>{
