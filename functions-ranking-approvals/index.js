@@ -9,6 +9,7 @@ const {getAuth}=require("firebase-admin/auth");
 const {getFirestore,FieldValue}=require("firebase-admin/firestore");
 const {onCall,HttpsError}=require("firebase-functions/v2/https");
 const {makeRankingOwnerCallables}=require("./controller.cjs");
+const {makeProductVisibilityCallables}=require("./product-visibility-controller.cjs");
 initializeApp();
 const service=makeRankingOwnerCallables({
  db:getFirestore(),FieldValue,getAuth,HttpsError,
@@ -20,3 +21,9 @@ const options={
 };
 exports.getRankingOwnerConsentStatus=onCall(options,service.status);
 exports.setRankingOwnerConsent=onCall(options,service.save);
+const visibility=makeProductVisibilityCallables({
+ db:getFirestore(),FieldValue,getAuth,HttpsError,
+ enabled:()=>process.env.NICO_OWNER_PRODUCT_VISIBILITY_ENABLED==="enabled"
+});
+exports.getOwnerProductVisibility=onCall(options,visibility.load);
+exports.setOwnerProductVisibility=onCall(options,visibility.save);
