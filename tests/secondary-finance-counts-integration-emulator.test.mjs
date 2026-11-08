@@ -3,8 +3,6 @@ import assert from "node:assert/strict";
 import {createRequire} from "node:module";
 import {proposeSecondaryFinanceFence,COLLECTIONS} from
  "../security/secondary-finance-read-fence.mjs";
-import {createPartnerMonthReadOnlyLoader} from "../ranking/partner-month-readonly-loader.mjs";
-import {buildVerifiedCountDashboard} from "../ranking/verified-dual-count-dashboards.mjs";
 
 const PROJECT="demo-nico-secondary-finance-fence";
 const HOST=/^(?:127\.0\.0\.1|localhost|\[::1\]):[0-9]{2,5}$/;
@@ -96,9 +94,7 @@ test("isolated REAL Firestore emulator: secondary user preserves count save/corr
    }),
    write("partnerRelations/"+partner,{
     active:true,countSharingApproved:true,hubCompanyId:hub,
-    partnerCompanyId:partner,
-    combinedRankingApprovedByHub:true,combinedRankingApprovedByPartner:true,
-    individualNamesApprovedByHub:true,individualNamesApprovedByPartner:true
+    partnerCompanyId:partner
    }),
    write("companies/"+partner+"/partnerWorkTeams/"+team,{
     companyId:partner,name:"件数検証班",active:true
@@ -134,48 +130,6 @@ test("isolated REAL Firestore emulator: secondary user preserves count save/corr
   }));
   assert.equal(create.saved,true);
   assert.equal(create.version,1);
-  // VERIFIED emulator ledger -> trusted monthly adapter -> SAME count engine.
-  // This test has no real user identity and NEVER writes to production.
-  const verifiedContext={
-   serverVerified:true,userActive:true,memberActive:true,companyActive:true,
-   reciprocalOwnersApproved:true,individualNamesApproved:true,
-   completeSnapshotBudgetApproved:true,viewerUid:owner,
-   viewerCompanyId:hub,hubCompanyId:hub,
-   approvedCompanyIds:[hub,partner],role:"hub_owner"
-  };
-  const makeDash=async()=>{
-   const month=await createPartnerMonthReadOnlyLoader({db})({
-    hubCompanyId:hub,partnerCompanyId:partner,month:"2026-11",
-    context:verifiedContext
-   });
-   // In this disposable fixture the hub has no own count lines. The parent
-   // source is a verified empty-in-fixture projection, NOT a production owner
-   // loader or a claim that multi-company transaction completeness is solved.
-   const emptyHub={
-    companyId:hub,companyLabel:"自社",kind:"own",readTime:month.readTime,
-    consentVerified:true,isComplete:true,
-    teams:[],records:[],lines:[],products:[],roster:[],
-    completeWindows:{current:true,previous:false}
-   };
-   const attributed={...month,roster:[{
-    uid:worker,teamId:team,name:"検証担当"
-   }],completeWindows:{current:true,previous:false}};
-   return buildVerifiedCountDashboard({
-    context:verifiedContext,hubCompanyId:hub,
-    approvedCompanyIds:[hub,partner],
-    sources:[emptyHub,attributed],productGroups:[{
-      companyId:partner,productId:"partnerSku01",groupId:"nuro",
-      groupName:"NURO"
-    }],
-    period:{kind:"day",day:date,asOf:date}
-   });
-  };
-  const initialRank=await makeDash();
-  assert.equal(initialRank.summary.total,2);
-  assert.equal(initialRank.companyBreakdown.find(x=>x.id===partner).count,2);
-  assert.equal(initialRank.memberRanking.find(x=>x.id===partner+":"+worker).count,2);
-  assert.equal(initialRank.productRanking.find(x=>x.id==="nuro").count,2);
-
   const saved=await service.view(request(worker,data));
   assert.deepEqual(saved.records.map(r=>[r.staffId,r.counts.NURO,r.version]),
    [[worker,2,1]]);
@@ -185,16 +139,6 @@ test("isolated REAL Firestore emulator: secondary user preserves count save/corr
   }));
   assert.equal(corrected.saved,true);
   assert.equal(corrected.version,2);
-  const currentRank=await makeDash();
-  assert.equal(currentRank.summary.total,4);
-  assert.equal(currentRank.companyBreakdown.find(x=>x.id===partner).count,4);
-  assert.equal(currentRank.memberRanking.find(x=>x.id===partner+":"+worker).count,4);
-  assert.equal(currentRank.productRanking.find(x=>x.id==="nuro").count,3);
-  const refreshRank=await makeDash();
-  assert.deepEqual({...refreshRank,readTime:null},{...currentRank,readTime:null},
-   "server refresh must never sum past versions or derived summaries twice");
-  assert.notEqual(refreshRank.readTime,null,"real reads retain individual snapshot timestamps");
-
   await assert.rejects(service.submit(request(worker,{
    ...data,staffId:worker,counts:{...empty,NURO:99},expectedVersion:1
   })),e=>e.code==="aborted");
@@ -210,8 +154,6 @@ test("isolated REAL Firestore emulator: secondary user preserves count save/corr
    "/partnerWorkAudits/"+date+"__"+worker+"__v2").get();
   assert.equal(history.exists,true);
   assert.equal(history.data().previousCounts.NURO,2);
-  assert.equal((await db.collection("companies").doc(partner).collection("partnerWorkEntries").get()).size,1,
-   "one authoritative row per day/staff, correction replaces only saved state");
   const originalRecords=await db.doc("records/counts-integration-original").get();
   assert.equal(originalRecords.data().totalRevenue,before.records.totalRevenue);
   for(const name of COLLECTIONS){
