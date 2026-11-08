@@ -72,16 +72,23 @@ test("real Firestore Admin demo emulator: two owners sign independently, revoke 
   const revoked=await act(partnerOwner,false,1);
   assert.equal(revoked.version,2);
   await assert.rejects(createFreshCombinedRankingContext({db})(approval(partnerOwner)),/UNVERIFIED/);
+  const reapproved=await act(partnerOwner,true,2);
+  assert.equal(reapproved.version,3);
+  const again=await createFreshCombinedRankingContext({db})(approval(partnerOwner));
+  assert.deepEqual(again.approvedCompanyIds,[hub,partner]);
+  await assert.rejects(act(partnerOwner,false,1),/STALE/);
+  assert.equal((await db.doc("companies/"+partner+"/rankingApprovals/"+hub).get())
+   .data().version,3);
   assert.equal((await db.doc("partnerRelations/"+partner).get()).data()
    .individualNamesApprovedByHub,true);
   assert.equal((await db.doc("partnerRelations/"+partner).get()).data()
-   .individualNamesApprovedByPartner,false);
+   .individualNamesApprovedByPartner,true);
   const hubHistory=await db.collection("companies").doc(hub)
    .collection("rankingApprovalAudits").get();
   const partnerHistory=await db.collection("companies").doc(partner)
    .collection("rankingApprovalAudits").get();
   assert.equal(hubHistory.size,1);
-  assert.equal(partnerHistory.size,2);
+  assert.equal(partnerHistory.size,3);
   assert.equal((await db.doc("records/immutable-ranking-consent-finance").get())
    .data().totalRevenue,oldMoney.totalRevenue);
   assert.deepEqual((await db.doc("records/immutable-ranking-consent-finance").get())
