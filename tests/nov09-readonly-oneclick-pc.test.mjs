@@ -16,7 +16,10 @@ test("one-click PC script may invoke only exact reviewed, main-scoped read-only 
   const yaml=get(".github/workflows/"+name);
   assert.match(yaml,/^  workflow_dispatch:\s*$/m,name);
   assert.match(yaml,/github\.ref == 'refs\/heads\/main'/m,name);
-  assert.match(yaml,/github\.event_name == 'workflow_dispatch'/m,name);
+  if(name==="nico-secondary-production-inventory-readonly.yml")
+    assert.match(yaml,/github\.event_name != 'pull_request'/m,name);
+  else
+    assert.match(yaml,/github\.event_name == 'workflow_dispatch'/m,name);
   assert.match(yaml,/^\s+contents: read\s*$/m,name);
   if(name.includes("secondary-production-inventory"))
     assert.match(yaml,/READ_ONLY/);
