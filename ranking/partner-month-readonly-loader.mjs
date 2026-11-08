@@ -149,7 +149,6 @@ export function createPartnerMonthTransactionReader({db}={}) {
      historicalTeamsVerified:true,snapshotConsistent:true
     },teams,entries,summaries
    });
-  };
  };
 }
 
