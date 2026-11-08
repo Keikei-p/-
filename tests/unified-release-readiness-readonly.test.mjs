@@ -81,6 +81,35 @@ test("even all four Functions being ready never turns off required real-user pro
  assert.ok(r.blockingReasons.includes("REAL_PARTNER_COUNT_SUBMISSION_NOT_PROVED"));
 });
 
+test("fully deployed count Functions cannot hide a live secondary finance exposure",()=>{
+ // A post-deployment inventory must report four healthy callable Functions
+ // AND an existing risky secondary internal account at the same time.
+ // Valid metadata is not authentication, a count save, or a Rules deny.
+ const input=reports();
+ input.partner.countFunctionMetadataPresent=true;
+ input.partner.countFunctionsActive=true;
+ input.partner.countFunctionsConfiguredEnabled=true;
+ for(const name of Object.keys(input.partner.functions)){
+  input.partner.functions[name]={
+   deployed:true,active:true,callableGen2:true,countEnabled:true
+  };
+ }
+ const result=summarize(input);
+ assert.equal(result.fourCountFunctionsDeployedActiveEnabled,true);
+ assert.equal(result.secondaryFinanceAccessPathStillPresent,true);
+ assert.equal(result.realPartnerTokenGetListTestCompleted,false);
+ assert.equal(result.realPartnerCountSubmissionCompleted,false);
+ assert.equal(result.safeForFinanceBoundaryCutover,false);
+ assert.equal(result.safeForPartnerFullRelease,false);
+ assert.ok(result.blockingReasons.includes("SECONDARY_ACCOUNT_INTERNAL_FINANCE_PATH"));
+ assert.ok(!result.blockingReasons.includes("FOUR_NEW_COUNT_FUNCTIONS_NOT_READY"));
+ assert.ok(result.blockingReasons.includes("REAL_PARTNER_TOKEN_DENIAL_NOT_PROVED"));
+ assert.ok(result.blockingReasons.includes("REAL_PARTNER_COUNT_SUBMISSION_NOT_PROVED"));
+ assert.equal(result.productionDocumentWrites,0);
+ assert.equal(result.productionRulesWrites,0);
+ assert.equal(result.productionFunctionsDeploys,0);
+});
+
 test("per-function readiness cannot be forged, cannot leak raw Function config or unlock release",()=>{
  const input=reports();
  const cases=[
