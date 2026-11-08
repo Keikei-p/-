@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {createPartnerMonthReadOnlyLoader} from
+import {createPartnerMonthReadOnlyLoader,createPartnerMonthTransactionReader} from
  "../ranking/partner-month-readonly-loader.mjs";
 import {buildCombinedCountLeaderboard} from
  "../ranking/combined-count-leaderboard.mjs";
@@ -210,4 +210,45 @@ test("existing approved monthly source works with rank-only engine and never pub
  const out=createRankOnlyPublication(data);
  assert.equal(out.memberRanks.length,3);
  assert(!/"(?:count|totalCount|revenue|price|unitPrice|cashback)"/i.test(JSON.stringify(out)));
+});
+
+test("shared caller-owned transaction reads canonical partner ledger without nesting",async()=>{
+ const f=fake(),reader=createPartnerMonthTransactionReader({db:f.db});
+ const before=clone([...f.documents]);
+ await assert.rejects(reader(request()),/INCOMPLETE/,
+  "a trusted caller must supply a real transaction");
+ assert.equal(f.events.length,0,"no Firestore calls without tx");
+ const out=await f.db.runTransaction(async tx=>{
+  const first=await reader({...request(),tx});
+  const second=await reader({...request(),tx});
+  assert.deepEqual(first,second);
+  return first;
+ },{readOnly:true});
+ assert.equal(out.records.length,2);
+ assert.equal(out.lines.reduce((sum,row)=>sum+row.count,0),4);
+ assert.equal(f.events.filter(e=>e.kind==="transaction").length,1,
+  "both canonical reads must reuse exactly one outer transaction");
+ assert.deepEqual([...f.documents],before);
+ assert(!/privateCounts|secret-private|cashback|unitPrice|revenue/.test(JSON.stringify(out)));
+});
+
+test("shared transaction reader fails closed on revoked consent or partial month",async()=>{
+ for(const mutate of [
+  docs=>{docs.get("partnerRelations/partner").combinedRankingApprovedByHub=false;},
+  docs=>{docs.delete("companies/own/partnerWorkCountDays/2026-11-07/reports/partner");},
+  docs=>{docs.get("companies/partner/partnerWorkEntries/2026-11-07__member1").counts.NURO=88;}
+ ]){
+  const f=fake();mutate(f.documents);
+  const reader=createPartnerMonthTransactionReader({db:f.db});
+  await assert.rejects(f.db.runTransaction(tx=>reader({...request(),tx}),
+   {readOnly:true}),/INCOMPLETE/);
+  assert.equal(f.events.filter(e=>e.kind==="transaction").length,1);
+ }
+});
+
+test("standalone loader never trusts an injected transaction from request",async()=>{
+ const f=fake(),loader=createPartnerMonthReadOnlyLoader({db:f.db});
+ const result=await loader({...request(),tx:{get(){throw Error("injected");}}});
+ assert.equal(result.companyId,"partner");
+ assert.equal(f.events.filter(e=>e.kind==="transaction").length,1);
 });
