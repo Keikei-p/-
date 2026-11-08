@@ -7,9 +7,11 @@
  * owner-reviewed exact SKU mappings. Never use browser-supplied sources,
  * product IDs, consent, roles or publication flags.
  *
- * IMPORTANT: the source loader and owner settings reader currently use
- * separate read-only transactions. Until one snapshot/revision fence and
- * real-account finance-denial E2E are proven, do NOT enable in production.
+ * IMPORTANT: the default source loader and owner settings reader use
+ * separate read-only transactions. The optional atomic loader requires
+ * both to share a single transaction and matching read-time proof, but
+ * the real canonical Firestore adapters are still missing. Do NOT deploy
+ * until exhaustive sources and real-account finance-denial E2E are proven.
  */
 import {createVerifiedRankTokenReader,createFreshCombinedRankingContext}
  from "./trusted-combined-ranking-context.mjs";
@@ -52,12 +54,14 @@ function sameSet(a,b){
  * Feature flag is OFF unless explicitly enabled by a future release gate.
  */
 export function createStagedOwnerVisibleCountHandler({
- enabled=false,auth,db,FieldValue,loadCompleteVerifiedCountInput
+ enabled=false,auth,db,FieldValue,loadCompleteVerifiedCountInput,
+ loadAtomicVerifiedCountSnapshot
 }={}){
  if(enabled!==true)return async request=>reply(503,
   {error:"service_disabled"},request?.headers?.get?.("Origin")??"");
+ const atomic=typeof loadAtomicVerifiedCountSnapshot==="function";
  if(!db||!auth||!FieldValue||
-    typeof loadCompleteVerifiedCountInput!=="function")
+    (!atomic&&typeof loadCompleteVerifiedCountInput!=="function"))
   throw Error("trusted server count dependencies missing");
  const verify=createVerifiedRankTokenReader({auth});
  const contextReader=createFreshCombinedRankingContext({db});
@@ -79,8 +83,21 @@ export function createStagedOwnerVisibleCountHandler({
    let principal;
    try{principal=await verify(token);}catch{throw new Block(401);}
    const context=await contextReader(principal);
-   // The loader receives the authenticated server context, not request data.
-   const input=await loadCompleteVerifiedCountInput({month,context});
+   // The optional atomic path requires a single read-only transaction
+   // spanning canonical counts and owner publication. The legacy staged
+   // loader remains for offline tests, but is NOT production-release ready.
+   let input,publication;
+   if(atomic){
+    const pair=await loadAtomicVerifiedCountSnapshot({month,context});
+    input=pair?.input;publication=pair?.publication;
+    if(typeof input?.snapshotReadTime!=="string"||
+       publication?.snapshotReadTime!==input.snapshotReadTime||
+       !Array.isArray(input.sources)||
+       input.sources.some(s=>s?.readTime!==input.snapshotReadTime))
+     throw new Block();
+   }else{
+    input=await loadCompleteVerifiedCountInput({month,context});
+   }
    if(!input||input.hubCompanyId!==context.hubCompanyId||
       !sameSet(input.approvedCompanyIds,context.approvedCompanyIds)||
       !input.period||input.period.kind!=="month"||
@@ -94,7 +111,7 @@ export function createStagedOwnerVisibleCountHandler({
    // Ignore any context supplied by the loader. Only the fresh Auth-derived
    // server context is authorized to determine the audience and company set.
    const {mappingsReviewed:_proof,context:_ignored,...countInput}=input;
-   const publication=await publicationReader.readForRanking({
+   if(!atomic)publication=await publicationReader.readForRanking({
     context,mappingsReviewed:true
    });
    const result=buildOwnerVisibleCountRanking({
