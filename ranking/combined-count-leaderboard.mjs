@@ -14,6 +14,24 @@ const MONTH=/^\d{4}-(0[1-9]|1[0-2])$/;
 const READ_TIME=/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,9})?Z$/;
 const MONEY=/(?:売上|単価|キャッシュバック|報酬|利益|[¥￥$€]|(?:CB|cashback|revenue|unitPrice|commission)[\s:_=-]*[0-9０-９]|[0-9０-９][0-9０-９.,，]*\s*(?:万円|千円|円))/i;
 const fail=()=>{throw Error("Incomplete or unauthorized combined count snapshot");};
+// Firestore projections contain dates as strings. A YYYY-MM-DD prefix alone
+// accepts impossible days (e.g. the 32nd), falsely altering monthly rankings.
+function validCalendarDate(value){
+ if(typeof value!=="string"||
+    !/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(value))return false;
+ const [year,month,day]=value.split("-").map(Number);
+ const date=new Date(0);
+ date.setUTCHours(0,0,0,0);
+ date.setUTCFullYear(year,month-1,day);
+ return date.getUTCFullYear()===year&&date.getUTCMonth()+1===month&&
+  date.getUTCDate()===day;
+}
+function validReadTime(value){
+ if(typeof value!=="string"||!READ_TIME.test(value)||
+    !validCalendarDate(value.slice(0,10)))return false;
+ const [hour,minute,second]=value.slice(11,19).split(":").map(Number);
+ return hour<=23&&minute<=59&&second<=59;
+}
 const validId=id=>typeof id==="string"&&ID.test(id);
 function label(input){
  if(typeof input!=="string")fail();
@@ -47,7 +65,7 @@ function unique(list,key){
 function validateSource(source,hubCompanyId,approvedCompanyIds,period){
  if(!source||!validId(source.companyId)||!approvedCompanyIds.includes(source.companyId)||
     source.consentVerified!==true||typeof source.readTime!=="string"||
-    !READ_TIME.test(source.readTime)||source.isComplete!==true)fail();
+    !validReadTime(source.readTime)||source.isComplete!==true)fail();
  if(source.companyId===hubCompanyId && source.kind!=="own")fail();
  if(source.companyId!==hubCompanyId && source.kind!=="partner")fail();
  for(const key of ["teams","records","lines","products"]){
@@ -80,7 +98,7 @@ function validateSource(source,hubCompanyId,approvedCompanyIds,period){
  const recordMap=new Map(),countsByRecord=new Map(),people=new Map();
  for(const r of source.records){
    if(r.companyId!==source.companyId||!validId(r.sourceId)||!validId(r.uid)||
-     !r.date.startsWith(period+"-") ||
+     !validCalendarDate(r.date)||r.date.slice(0,7)!==period ||
      !validId(r.teamId) ||
      !["submitted","no_result"].includes(r.reportStatus))fail();
    unit(r.totalCount);
