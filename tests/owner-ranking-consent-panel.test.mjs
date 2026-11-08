@@ -137,3 +137,19 @@ test("invalid, forged or financial status clears any previously visible company 
  assert(!textOf(root).includes("協力店A"));
  assert(!textOf(root).includes("12345"));
 });
+
+
+test("inactive partner stays visible to its owner but every approval control is disabled",async()=>{
+ const root=new Element("main"),state=makeStatus({canEdit:false,ownApproved:true,otherApproved:true,version:3});
+ const panel=createOwnerRankingConsentPanel({
+  document,root,loadStatus:async()=>state,
+  saveConsent:async()=>{throw Error("inactive must not send anything");}
+ });
+ assert.equal(await panel.refresh(),true);
+ assert(textOf(root).includes("連携停止中"));
+ const button=find(root,"ranking-owner-save");
+ assert.equal(button.disabled,true);
+ await button.fire("click");
+ assert(textOf(root).includes("連携停止中"));
+ panel.destroy();
+});
