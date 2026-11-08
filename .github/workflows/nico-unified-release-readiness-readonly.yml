@@ -4,13 +4,25 @@ on:
     branches: [main]
     paths:
       - 'tools/production/unified-release-readiness-readonly.mjs'
+      - 'tools/production/inspect-live-partner-callables-readonly.mjs'
+      - 'tools/production/audit-secondary-contexts-readonly.mjs'
+      - 'tools/production/audit-live-firestore-rules-readonly.mjs'
+      - 'tools/production/inspect-project-billing-readonly.mjs'
+      - 'security/secondary-finance-read-fence.mjs'
       - 'tests/unified-release-readiness-readonly.test.mjs'
+      - 'tests/inspect-live-partner-callables-readonly.test.mjs'
       - '.github/workflows/nico-unified-release-readiness-readonly.yml'
   push:
     branches: [main]
     paths:
       - 'tools/production/unified-release-readiness-readonly.mjs'
+      - 'tools/production/inspect-live-partner-callables-readonly.mjs'
+      - 'tools/production/audit-secondary-contexts-readonly.mjs'
+      - 'tools/production/audit-live-firestore-rules-readonly.mjs'
+      - 'tools/production/inspect-project-billing-readonly.mjs'
+      - 'security/secondary-finance-read-fence.mjs'
       - 'tests/unified-release-readiness-readonly.test.mjs'
+      - 'tests/inspect-live-partner-callables-readonly.test.mjs'
       - '.github/workflows/nico-unified-release-readiness-readonly.yml'
   workflow_dispatch:
 permissions:
@@ -34,7 +46,11 @@ jobs:
         run: |
           set -euo pipefail
           node --check tools/production/unified-release-readiness-readonly.mjs
-          node --test tests/unified-release-readiness-readonly.test.mjs
+          node --check tools/production/inspect-live-partner-callables-readonly.mjs
+          node --check tools/production/audit-secondary-contexts-readonly.mjs
+          node --check tools/production/audit-live-firestore-rules-readonly.mjs
+          node --check tools/production/inspect-project-billing-readonly.mjs
+          node --test tests/unified-release-readiness-readonly.test.mjs tests/inspect-live-partner-callables-readonly.test.mjs
           test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
           test "$(git hash-object index.html)" = '88ef5636bfe9254e71f2109d452b6d3049f99861'
           test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
