@@ -18,7 +18,7 @@ const fail=()=>{throw Error("Incomplete or unauthorized combined count snapshot"
 // accepts impossible days (e.g. the 32nd), falsely altering monthly rankings.
 function validCalendarDate(value){
  if(typeof value!=="string"||
-    !/^\\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$/.test(value))return false;
+    !/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(value))return false;
  const [year,month,day]=value.split("-").map(Number);
  const date=new Date(0);
  date.setUTCHours(0,0,0,0);
