@@ -6,7 +6,7 @@
  */
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
 const MONEY=/(?:売上|単価|キャッシュバック|報酬|利益|[¥￥$€]|(?:CB|cashback|revenue|unitPrice|commission)[\s:_=-]*[0-9０-９]|[0-9０-９][0-9０-９.,，]*\s*(?:万円|千円|円))/i;
-const FORBIDDEN=/^(?:totalRevenue|revenue|revenuePerUnit|unitPrice|price|pricingOptions|cashback|cashbackOptions|amount|beforeRevenue|afterRevenue|bankAccount|phone|email|recordCorrections|audit|correctionHistory)$/i;
+const FORBIDDEN=/^(?:totalRevenue|revenue|revenuePerUnit|unitPrice|price|pricingOptions|cashback|cashbackOptions|amount|beforeRevenue|afterRevenue|bankAccount|phone|email|recordCorrections|audit|correctionHistory|privateCounts|privateTotalCount|privateProducts|totalSales|salary)$/i;
 const halt=()=>{throw Error("合同件数の権限・結果を確認できません。ログインし直してください。");};
 function inspect(value,depth=0){
  if(depth>15)halt();
@@ -22,6 +22,45 @@ function inspect(value,depth=0){
   inspect(v,depth+1);
  }
 }
+function strict(value,fields){
+ if(!value||typeof value!=="object"||Array.isArray(value)||
+    Object.keys(value).sort().join("|")!==fields.slice().sort().join("|"))halt();
+}
+function list(items,fields){
+ if(!Array.isArray(items)||items.length>5000)halt();
+ for(const item of items)strict(item,fields);
+}
+const PERSON=["id","name","companyId","companyName","teamId","teamName",
+ "count","reportStatus","reportedDays","previousCount","change","growth",
+ "topProduct","remainingToGoal","personalBestStatus","rank"];
+const PRODUCT=["id","name","count","ownCount","partnerCount","companies","rank"];
+function shape(value){
+ strict(value.range,["start","end","previousStart","previousEnd","days"]);
+ if(value.role==="hub_owner"){
+  strict(value.summary,["own","partner","total","unidentified"]);
+  for(const k of ["own","partner","total","unidentified"]){
+   if(!Number.isSafeInteger(value.summary[k])||value.summary[k]<0)halt();
+  }
+  if(value.summary.own+value.summary.partner!==value.summary.total)halt();
+  list(value.companyBreakdown,["id","name","kind","count","unidentifiedCount"]);
+  list(value.teamBreakdown,["id","companyId","companyName","name","count"]);
+  list(value.memberRanking,PERSON);
+  list(value.productRanking,PRODUCT);
+  for(const product of value.productRanking)
+   list(product.companies,["companyId","companyName","count"]);
+  if(!value.filters||typeof value.filters!=="object"||
+     Object.keys(value.filters).some(k=>!["companyId","teamId","uid","productId"].includes(k)))halt();
+ }else{
+  strict(value.own,["company","count","unidentifiedCount","people","products"]);
+  if(!Number.isSafeInteger(value.own.count)||value.own.count<0||
+     !Number.isSafeInteger(value.own.unidentifiedCount)||value.own.unidentifiedCount<0)halt();
+  list(value.own.people,PERSON);
+  list(value.own.products,["id","name","count"]);
+  strict(value.publicRanking,["members","products"]);
+  list(value.publicRanking.members,["rank","company","name","count"]);
+  list(value.publicRanking.products,["rank","name","count"]);
+ }
+}
 function validate(result){
  if(!result||typeof result!=="object"||Array.isArray(result)||
     result.schema!=="nico-verified-dual-count-v1"||
@@ -31,6 +70,7 @@ function validate(result){
     !result.range||!Number.isSafeInteger(result.range.days)||
     !/^\d{4}-\d\d-\d\dT/.test(result.readTime||""))halt();
  inspect(result);
+ shape(result);
  if(result.role==="hub_owner"){
   if(!result.summary||!Number.isSafeInteger(result.summary.total)||
      !Array.isArray(result.companyBreakdown)||
@@ -86,7 +126,12 @@ function ranked(doc,heading,items,mode){
  }
  section.appendChild(list);return section;
 }
-const validDate=x=>typeof x==="string"&&/^\d{4}-\d\d-\d\d$/.test(x);
+const validDate=x=>{
+ if(typeof x!=="string"||!/^\d{4}-\d\d-\d\d$/.test(x))return false;
+ const [y,m,d]=x.split("-").map(Number);
+ const t=new Date(0);t.setUTCHours(0,0,0,0);t.setUTCFullYear(y,m-1,d);
+ return t.getUTCFullYear()===y&&t.getUTCMonth()+1===m&&t.getUTCDate()===d;
+};
 /**
  * Static scoped render. Does not generate menus or produce network requests.
  * Throws and empties the root if malformed/financial data reaches the browser.
@@ -169,8 +214,8 @@ export function createVerifiedDualCountController({
  };
  const thisSafeFilter=(key,value)=>{
   if(!["companyId","teamId","uid","productId"].includes(key)||
-     typeof value!=="string"||value.length>200||
-     (value!==""&&!ID.test(value)))halt();
+     typeof value!=="string"||value.length>(key==="productId"?300:200)||
+     (value!==""&&!new RegExp("^[A-Za-z0-9_:-]{1,"+(key==="productId"?300:200)+"}$").test(value)))halt();
   if(value==="")delete current.filters[key];
   else current.filters[key]=value;
   return refresh();
@@ -234,7 +279,7 @@ export function createVerifiedDualCountController({
      if(ID.test(uid))staffIds.set(uid,row.name+"（"+row.companyName+"）");
     }
     for(const row of data.productRanking){
-     if(typeof row.id==="string"&&row.id.length<=200)
+     if(typeof row.id==="string"&&row.id.length<=300)
       products.set(row.id,row.name);
     }
     selectControl("班",current.filters.teamId??"",[
