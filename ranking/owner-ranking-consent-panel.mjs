@@ -15,7 +15,8 @@ export function validateOwnerRankingConsentStatus(value){
     ["schema","role","partners"].sort().join("|")||
     value.schema!=="nico-ranking-owner-consent-v1"||
     !["hub_owner","partner_owner"].includes(value.role)||
-    !Array.isArray(value.partners)||value.partners.length>100)fail();
+    !Array.isArray(value.partners)||value.partners.length>100||
+    value.role==="partner_owner"&&value.partners.length!==1)fail();
  const seen=new Set();
  for(const row of value.partners){
   if(!row||typeof row!=="object"||Array.isArray(row)||
@@ -55,13 +56,18 @@ export function createOwnerRankingConsentPanel({
   empty();root.appendChild(el(document,"p","ranking-owner-alert",x));
  };
  const secureClear=()=>message("公開設定を確認できません。再読み込みしてください。");
- const refresh=async()=>{
+ const refresh=async(expected=null)=>{
   if(closed||busy)return false;
   const current=++renderVersion;
   empty();
   try{
    const data=validateOwnerRankingConsentStatus(await loadStatus());
    if(closed||current!==renderVersion)return false;
+   if(expected){
+    const savedRow=data.partners.find(x=>x.partnerCompanyId===expected.partnerCompanyId);
+    if(!savedRow||savedRow.ownApproved!==expected.ownApproved||
+       savedRow.version!==expected.version)fail();
+   }
    const view=el(document,"section","ranking-owner-settings");
    view.appendChild(el(document,"h2","ranking-owner-title","合同ランキングの公開設定"));
    view.appendChild(el(document,"p","ranking-owner-caption",
@@ -105,7 +111,10 @@ export function createOwnerRankingConsentPanel({
           typeof saved.saved!=="boolean"||
           !Number.isSafeInteger(saved.version)||
           saved.version!==(saved.saved?previousVersion+1:previousVersion))fail();
-       busy=false;const ok=await refresh();
+       busy=false;const ok=await refresh({
+        partnerCompanyId:item.partnerCompanyId,
+        ownApproved:next,version:saved.version
+       });
        if(!ok)fail();
       }catch{
        busy=false;renderVersion++;secureClear();
