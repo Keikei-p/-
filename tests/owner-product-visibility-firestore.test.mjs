@@ -136,3 +136,56 @@ test("unknown, disabled and money-labelled products fail closed, never write",as
  await assert.rejects(f.store.readStatus(principal),/UNAUTHORIZED_OR_INCOMPLETE/);
  assert.equal(f.writes,0);
 });
+
+
+test("REAL store->server publication->company/person/SKU ranking switch uses ONE source of truth",async()=>{
+ const f=fake(),context={serverVerified:true,viewerUid:"owner",
+  viewerCompanyId:"hub",hubCompanyId:"hub",role:"hub_owner",
+  approvedCompanyIds:["hub","partner"],userActive:true,memberActive:true,
+  companyActive:true,reciprocalOwnersApproved:true,
+  completeSnapshotBudgetApproved:true,individualNamesApproved:true};
+ const today="2026-11-08";
+ const makeSource=(cid,kind,nuro,air)=>{
+  const uid="person"+cid,teamId="team",sourceId="record"+cid;
+  const products=[{companyId:cid,sourceId:cid==="hub"?"nuro":"p-nuro",
+   name:"NURO光",active:true,sortOrder:0},
+   {companyId:cid,sourceId:cid==="hub"?"air":"p-air",
+   name:"SoftBank Air",active:true,sortOrder:1}];
+  return {companyId:cid,kind,companyLabel:cid==="hub"?"本社":"協力店",
+   readTime:"2026-11-08T12:00:00Z",consentVerified:true,isComplete:true,
+   completeWindows:{current:true,previous:false},
+   teams:[{id:teamId,name:"営業班",goalCount:null}],
+   roster:[{uid,name:"営業担当",teamId}],products,
+   records:[{companyId:cid,sourceId,uid,teamId,date:today,
+    totalCount:nuro+air,reportStatus:"submitted",
+    memberNameSnapshot:"営業担当",teamNameSnapshot:"営業班",workLocation:""}],
+   lines:products.map((p,i)=>({companyId:cid,recordId:sourceId,
+    sourceId:sourceId+"__"+i,uid,teamId,date:today,
+    productId:p.sourceId,count:i===0?nuro:air}))};
+ };
+ const input={context,hubCompanyId:"hub",
+  approvedCompanyIds:["hub","partner"],
+  sources:[makeSource("hub","own",2,3),makeSource("partner","partner",5,2)],
+  productGroups:[
+   {companyId:"hub",productId:"nuro",groupId:"nuro",groupName:"NURO光"},
+   {companyId:"partner",productId:"p-nuro",groupId:"nuro",groupName:"NURO光"},
+   {companyId:"hub",productId:"air",groupId:"air",groupName:"SoftBank Air"},
+   {companyId:"partner",productId:"p-air",groupId:"air",groupName:"SoftBank Air"}
+  ],period:{kind:"day",day:today,asOf:today}};
+ const original=structuredClone(input);
+ const ranking=async()=>buildOwnerVisibleCountRanking({input,publication:
+  await f.store.readForRanking({context,mappingsReviewed:true})});
+ assert.equal((await ranking()).summary.total,0,"no saved owner setting = ALL OFF");
+ await f.store.saveSwitch({principal,productId:"nuro",enabled:true,expectedVersion:0});
+ const on=await ranking();
+ assert.deepEqual(on.summary,{own:2,partner:5,total:7,unidentified:0});
+ assert.deepEqual(on.productRanking.map(p=>p.name),["NURO光"]);
+ assert.equal(on.memberRanking.find(p=>p.companyId==="partner").count,5);
+ await f.store.saveSwitch({principal,productId:"air",enabled:true,expectedVersion:1});
+ assert.equal((await ranking()).summary.total,12);
+ await f.store.saveSwitch({principal,productId:"nuro",enabled:false,expectedVersion:2});
+ const off=await ranking();
+ assert.deepEqual(off.summary,{own:3,partner:2,total:5,unidentified:0});
+ assert.deepEqual(off.productRanking.map(p=>p.name),["SoftBank Air"]);
+ assert.deepEqual(input,original,"published totals change, immutable stored counts do not");
+});
