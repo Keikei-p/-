@@ -1171,3 +1171,245 @@ test("same-email login guidance and explicit transfer action exist in invite UI"
  assert.match(p,/auth\/email-already-in-use/);
  assert.match(invite,/auth\/email-already-in-use/);
 });
+
+
+test("archived partner daily counts survive staff removal without restoring a login or allowing another edit",async()=>{
+ const {db,api,req,zero}=setup();
+ const date="2026-10-31";
+ const team=(await api.manage(req("p",{action:"addTeam",name:"元所属班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"元担当者",teamId:team}))).staffId;
+ await api.submit(req("p",{date,staffId:staff,counts:{...zero(),NURO:4},expectedVersion:0}));
+ const entryPath="companies/partner/partnerWorkEntries/"+date+"__"+staff;
+ const before=clone(db.store.get(entryPath));
+ const finance=clone([db.store.get("records/old"),db.store.get("products/money")]);
+ db.store.delete("companies/partner/partnerWorkStaff/"+staff);
+ const beforeRead=clone([...db.store]);
+ const result=await api.view(req("p",{date}));
+ assert.equal(result.records.length,1,"original count is still reported");
+ assert.equal(result.records[0].totalCount,4);
+ assert.deepEqual(result.records[0].counts,{...zero(),NURO:4});
+ assert.equal(result.records[0].teamIdSnapshot,team);
+ const archived=result.staff.find(x=>x.id===staff);
+ assert(archived,"owner gets a display-only historical staff entry");
+ assert.equal(archived.name,"元担当者");
+ assert.equal(archived.active,false);
+ assert.equal(archived.kind,"historical");
+ assert.equal(archived.role,"former");
+ assert.equal(archived.uid,null);
+ assert.equal(archived.teamId,team);
+ assert.equal(result.staff.filter(x=>x.active===true).some(x=>x.id===staff),false);
+ assert.deepEqual([...db.store],beforeRead,"read cannot recreate deleted roster or change data");
+ assert.deepEqual(db.store.get(entryPath),before,"saved record unchanged");
+ assert.deepEqual([db.store.get("records/old"),db.store.get("products/money")],finance);
+ await assert.rejects(api.submit(req("p",{date,staffId:staff,counts:zero(),expectedVersion:1})),
+   e=>e.code==="permission-denied","deleted staff must never accept fresh count writes");
+ const hub=await api.view(req("h",{date}));
+ assert.equal(hub.partners[0].totalCount,4,"hub still sees its saved partner count");
+ assert.doesNotMatch(JSON.stringify({result,hub}),/unitPrice|totalRevenue|808080|98765|12345/);
+});
+
+test("orphan daily count does not grant member access, even with a missing or unsafe historical name",async()=>{
+ const {db,api,req,zero}=setup();
+ const date="2026-10-31";
+ const team=(await api.manage(req("p",{action:"addTeam",name:"履歴班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"担当者A",teamId:team}))).staffId;
+ await api.submit(req("p",{date,staffId:staff,counts:{...zero(),"U-NEXT":2},expectedVersion:0}));
+ const entryPath="companies/partner/partnerWorkEntries/"+date+"__"+staff;
+ // Existing original is deliberately left untouched in production; this is
+ // synthetic old-format/malicious-label test data only.
+ db.store.get(entryPath).staffNameSnapshot="売上500万円";
+ db.store.delete("companies/partner/partnerWorkStaff/"+staff);
+ const member={uid:"m",companyId:"partner",companyRole:"member",role:"member",
+  teamId:team,active:true,accessKind:"partner",memberType:"cooperator",
+  canViewRevenue:false,canViewUnitPrice:false};
+ db.seed("users/m",member);db.seed("companies/partner/members/m",member);
+ const previous=clone([...db.store]);
+ const owned=await api.view(req("p",{date}));
+ assert.equal(owned.staff.find(x=>x.id===staff).name,"過去の担当者",
+   "invalid saved names are never echoed");
+ assert.equal(owned.records[0].totalCount,2);
+ assert.doesNotMatch(JSON.stringify(owned),/売上500万円|totalRevenue|unitPrice/);
+ const stranger=await api.view(req("m",{date}));
+ assert.equal(stranger.records.length,0);
+ assert.equal(stranger.staff.some(x=>x.id===staff),false,
+   "member cannot access a deleted colleague's historical records");
+ assert.deepEqual([...db.store],previous,"no data created or rewritten");
+});
+
+
+test("hub opt-in breakdown keeps archived team totals without re-enabling the team",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ const retired=(await api.manage(req("p",{action:"addTeam",name:"旧3班"}))).teamId;
+ const current=(await api.manage(req("p",{action:"addTeam",name:"現在1班"}))).teamId;
+ const oldStaff=(await api.manage(req("p",{action:"addManaged",name:"退職者",teamId:retired}))).staffId;
+ const currentStaff=(await api.manage(req("p",{action:"addManaged",name:"担当者",teamId:current}))).staffId;
+ await api.submit(req("p",{date,staffId:oldStaff,
+  counts:{...zero(),NURO:3,"U-NEXT":1},expectedVersion:0}));
+ await api.submit(req("p",{date,staffId:currentStaff,
+  counts:{...zero(),YMMNP:2},expectedVersion:0}));
+ const retiredPath="companies/partner/partnerWorkTeams/"+retired;
+ db.seed(retiredPath,{...db.store.get(retiredPath),active:false});
+ // A staff-account deletion must never rewrite original saved counts.
+ db.store.delete("companies/partner/partnerWorkStaff/"+oldStaff);
+ const before=clone([...db.store.entries()]);
+ const hub=await api.view(req("h",{date,partnerCompanyId:"partner"}));
+ const company=hub.registeredCompanies.find(x=>x.partnerCompanyId==="partner");
+ assert(company&&company.active===true);
+ assert.deepEqual(company.teams.map(x=>x.id),[current],
+  "inactive team may NOT be invited to or selected for new input");
+ const details=hub.partnerTeamDetails;
+ assert.equal(details.scope,"shared_counts_only");
+ assert.equal(details.verifiedSharedCount,6);
+ assert.equal(details.unverifiedTeamCount,0,
+  "all six saved counts remain attributed to immutable real team IDs");
+ assert.equal(details.unreconciledWithCompanyReport,false);
+ assert.equal(hub.partners.find(x=>x.partnerCompanyId==="partner").totalCount,6);
+ const old=details.teams.find(x=>x.teamId===retired);
+ const active=details.teams.find(x=>x.teamId===current);
+ assert(old&&active);
+ assert.equal(old.name,"旧3班（過去班）");
+ assert.equal(old.totalCount,4);
+ assert.equal(old.reportedStaffCount,1);
+ assert.equal(old.counts.NURO,3);
+ assert.equal(old.counts["U-NEXT"],1);
+ assert.equal(active.name,"現在1班");
+ assert.equal(active.totalCount,2);
+ assert.equal(active.counts.YMMNP,2);
+ await assert.rejects(api.manage(req("p",{action:"addManaged",name:"新規追加不可",teamId:retired})),
+  e=>e.code==="failed-precondition","retired team cannot accept a new member");
+ assert.deepEqual([...db.store.entries()],before,
+  "read-only team reporting and rejected member creation never writes history");
+ assert.doesNotMatch(JSON.stringify(hub),/unitPrice|totalRevenue|revenuePerUnit|privateCounts|cbCounts|staffId/);
+});
+
+test("hub unknown or physically deleted team snapshots stay UNVERIFIED instead of being reassigned",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ const previous=(await api.manage(req("p",{action:"addTeam",name:"以前の班"}))).teamId;
+ const today=(await api.manage(req("p",{action:"addTeam",name:"現在の班"}))).teamId;
+ const s=(await api.manage(req("p",{action:"addManaged",name:"異動者",teamId:previous}))).staffId;
+ await api.submit(req("p",{date,staffId:s,counts:{...zero(),NURO:2},expectedVersion:0}));
+ db.store.delete("companies/partner/partnerWorkTeams/"+previous);
+ const staff=db.store.get("companies/partner/partnerWorkStaff/"+s);
+ db.seed("companies/partner/partnerWorkStaff/"+s,{...staff,teamId:today});
+ const before=clone([...db.store.entries()]);
+ const hub=await api.view(req("h",{date,partnerCompanyId:"partner"}));
+ const info=hub.partnerTeamDetails;
+ assert.equal(info.verifiedSharedCount,0);
+ assert.equal(info.unverifiedTeamCount,2);
+ assert.equal(info.unreconciledWithCompanyReport,false);
+ assert.equal(info.teams.find(x=>x.teamId===today).totalCount,0,
+  "not allowed to rewrite historical team based on current membership");
+ assert.deepEqual([...db.store.entries()],before);
+});
+
+
+test("hub Owner sees three existing partner email accounts across companies from one opt-in roster, without touching finance",async()=>{
+ const {db,api,req}=setup(),date="2026-10-31";
+ const first=(await api.manage(req("h",{action:"hubAddTeam",partnerCompanyId:"partner",name:"本社招待班"}))).teamId;
+ for(const [uid,role] of [["l","leader"],["m","member"]]){
+  const invite=await api.manage(req("h",{action:"hubCreateInvite",partnerCompanyId:"partner",
+   teamId:first,role,email:uid+"@example.com"}));
+  await api.accept(req(uid,{token:invite.token,name:"担当"+uid}));
+ }
+ const created=await api.manage(req("h",{action:"hubCreateInvite",companyName:"二社目",role:"leader",email:"n@example.com"}));
+ await api.accept(req("n",{token:created.token,name:"担当n"}));
+ const before=clone([...db.store.entries()]);
+ const defaultHub=await api.view(req("h",{date}));
+ assert.equal(Object.hasOwn(defaultHub,"partnerRoster"),false,"normal home dashboard has no expensive roster reads");
+ const a=await api.view(req("h",{date,partnerCompanyId:"partner",includeRoster:true}));
+ assert.equal(a.partnerRoster.scope,"hub_partner_roster_read_only");
+ assert.equal(a.partnerRoster.partnerCompanyId,"partner");
+ assert.equal(a.partnerRoster.financialRulesVerified,false,"account flags do not prove production GET/LIST denial");
+ assert.deepEqual(a.partnerRoster.staff.map(x=>x.email),["l@example.com","m@example.com"]);
+ assert.deepEqual(a.partnerRoster.staff.map(x=>x.role),["leader","member"]);
+ for(const member of a.partnerRoster.staff){
+  assert.equal(member.kind,"account");
+  assert.equal(member.active,true);
+  assert.equal(member.memberVerified,true);
+  assert.equal(member.secondaryMembership,false);
+  assert.equal(member.financeFlagsSafe,true);
+ }
+ const other=await api.view(req("h",{date,partnerCompanyId:created.partnerCompanyId,includeRoster:true}));
+ assert.deepEqual(other.partnerRoster.staff.map(x=>x.email),["n@example.com"]);
+ assert.equal(other.partnerRoster.staff[0].role,"leader");
+ assert.equal(other.partnerRoster.staff[0].teamId,"initial");
+ assert.deepEqual([...db.store.entries()],before,"roster must be strictly read only");
+ const payload=JSON.stringify([a.partnerRoster,other.partnerRoster]);
+ assert.doesNotMatch(payload,/808080|98765|12345|unitPrice|totalRevenue|revenuePerUnit|privateProducts|password|token/i);
+ assert.equal(db.store.get("records/old").totalRevenue,808080);
+ assert.equal(db.store.get("products/money").unitPrice,98765);
+});
+
+test("roster marks secondary old-internal email and unsafe finance flags for Owner review; NEVER calls it Rules safe",async()=>{
+ const {db,api,req}=setup(),date="2026-10-31";
+ const team=(await api.manage(req("h",{action:"hubAddTeam",partnerCompanyId:"partner",name:"危険検証班"}))).teamId;
+ // A historical primary company is retained, including its old sales.
+ const m={uid:"m",companyId:"hub",role:"member",companyRole:"member",teamId:"old",active:true,
+  accessKind:"internal",memberType:"direct",email:"m@example.com"};
+ db.seed("users/m",m);db.seed("companies/hub/members/m",m);
+ const invite=await api.manage(req("h",{action:"hubCreateInvite",partnerCompanyId:"partner",
+  teamId:team,email:"m@example.com",role:"member"}));
+ const accepted=await api.accept(req("m",{token:invite.token,name:"元本社メンバー",transferCurrentCompany:false}));
+ assert.equal(accepted.secondaryMembership,true);
+ let result=await api.view(req("h",{date,partnerCompanyId:"partner",includeRoster:true}));
+ let row=result.partnerRoster.staff.find(x=>x.email==="m@example.com");
+ assert(row);
+ assert.equal(row.secondaryMembership,true);
+ assert.equal(result.partnerRoster.financialRulesVerified,false);
+ const saved=db.store.get("companies/partner/members/m");
+ db.seed("companies/partner/members/m",{...saved,canViewRevenue:true});
+ result=await api.view(req("h",{date,partnerCompanyId:"partner",includeRoster:true}));
+ row=result.partnerRoster.staff.find(x=>x.email==="m@example.com");
+ assert.equal(row.financeFlagsSafe,false,"an unsafe flag is surfaced as warning, never granted");
+ assert.equal(row.secondaryMembership,true);
+ assert.equal(db.store.get("records/old").totalRevenue,808080);
+});
+
+test("hub account roster denies partner, revoked company, wrong company, and dual-context Owner",async()=>{
+ const {db,api,req}=setup(),date="2026-10-31";
+ const team=(await api.manage(req("h",{action:"hubAddTeam",partnerCompanyId:"partner",name:"実体班"}))).teamId;
+ await api.manage(req("p",{action:"addManaged",teamId:team,name:"メールなし"}));
+ const before=clone([...db.store.entries()]);
+ for(const r of [
+  req("p",{date,includeRoster:true}),
+  req("p",{date,partnerCompanyId:"partner",includeRoster:true}),
+  req("h",{date,includeRoster:true}),
+  req("h",{date,partnerCompanyId:"not-approved",includeRoster:true})
+ ]){
+  await assert.rejects(api.view(r),e=>["permission-denied","invalid-argument"].includes(e.code));
+ }
+ const x=await api.view(req("h",{date,partnerCompanyId:"partner",includeRoster:true}));
+ assert.equal(x.partnerRoster.staff[0].kind,"managed");
+ assert.equal(x.partnerRoster.staff[0].email,"");
+ assert.equal(x.partnerRoster.staff[0].memberVerified,false);
+ assert.deepEqual([...db.store.entries()],before);
+ db.seed("partnerWorkspaceContexts/h",{uid:"h",kind:"partner_secondary",active:true,partnerCompanyId:"partner"});
+ await assert.rejects(api.view(req("h",{date,partnerCompanyId:"partner",includeRoster:true})),
+  e=>e.code==="permission-denied");
+ assert.equal((await api.view(req("h",{date}))).role,"hub","legacy day dashboard remains separate");
+ db.seed("partnerRelations/partner",{partnerCompanyId:"partner",hubCompanyId:"hub",active:false,countSharingApproved:false});
+ await assert.rejects(api.view(req("h",{date,partnerCompanyId:"partner",includeRoster:true})),
+  e=>e.code==="permission-denied");
+});
+
+test("roster exposes only active partner metadata and flags, no identity guessing or private ledger",async()=>{
+ const {db,api,req}=setup(),date="2026-10-31";
+ const team=(await api.manage(req("h",{action:"hubAddTeam",partnerCompanyId:"partner",name:"保全班"}))).teamId;
+ const invited=await api.manage(req("h",{action:"hubCreateInvite",partnerCompanyId:"partner",
+  teamId:team,role:"member",email:"m@example.com"}));
+ await api.accept(req("m",{token:invited.token,name:"実績入力者"}));
+ const staff=db.store.get("companies/partner/partnerWorkStaff/m");
+ db.seed("companies/partner/partnerWorkStaff/m",{...staff,active:false});
+ const membership=db.store.get("companies/partner/members/m");
+ db.seed("companies/partner/members/m",{...membership,active:false});
+ const before=clone([...db.store.entries()]);
+ const resp=await api.view(req("h",{date,partnerCompanyId:"partner",includeRoster:true}));
+ assert.equal(resp.partnerRoster.staff.length,1);
+ assert.equal(resp.partnerRoster.staff[0].active,false);
+ assert.equal(resp.partnerRoster.staff[0].memberVerified,true);
+ assert.equal(resp.partnerRoster.staff[0].financeFlagsSafe,true);
+ assert.equal(resp.partnerRoster.financialRulesVerified,false);
+ assert.equal(Object.hasOwn(resp.partnerRoster.staff[0],"uid"),false,
+  "avoid exposing auth identity: account is listed by scoped staff ID");
+ assert.deepEqual([...db.store.entries()],before);
+});

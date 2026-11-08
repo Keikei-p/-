@@ -1,6 +1,12 @@
 "use strict";
 // Isolated partner operations: no reads/writes to sales products, records or prices.
 const crypto=require("node:crypto");
+const {monthBounds,projectSavedPartnerMonth}=require("./partner-saved-month.cjs");
+const {readDirectRangeCounts}=require("./shared-direct-counts.cjs");
+const {projectCombinedMonth}=require("./combined-saved-month-ranking.cjs");
+const {makePartnerCatalogOperations}=require("./partner-catalog-operations.cjs");
+const {projectPublishedPartnerExtras}=require("./partner-combined-extra-projection.cjs");
+const {makePartnerAdditionalOperations}=require("./partner-additional-operations.cjs");
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -660,8 +666,11 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      const t=sn.data()||{};
      if(!ID.test(sn.id)||t.companyId!==selectedPartnerId||
         !validName(t.name)||typeof t.active!=="boolean")fail("data-loss");
-     if(t.active)rows.set(sn.id,{
-      teamId:sn.id,name:clean(t.name),
+     // A retired team is still the immutable attribution of OLD saved
+     // counts. Include it in the Owner's opt-in read-only breakdown, but
+     // NEVER add it back to registeredCompanies.teams (invite/input choices).
+     rows.set(sn.id,{
+      teamId:sn.id,name:clean(t.name)+(t.active?"":"（過去班）"),
       counts:Object.fromEntries(KEYS.map(k=>[k,0])),
       totalCount:0,reportedStaffCount:0
      });
@@ -690,6 +699,55 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      teams:[...rows.values()].sort((a,b)=>a.name.localeCompare(b.name,"ja")),
      verifiedSharedCount,unverifiedTeamCount,scope:"shared_counts_only"
     };
+   }
+   // Owner-only, on-demand account roster. Reuse the already-approved
+   // hub -> partner scope. The default dashboard never pays for these reads.
+   // NO financial originals, auth secrets, invitations or document writes.
+   let partnerRoster=null;
+   if(d.includeRoster===true){
+    if(!selectedPartnerId)fail("invalid-argument");
+    const ownerSecondary=await db.collection("partnerWorkspaceContexts").doc(a.uid).get();
+    if(ownerSecondary.exists)fail(); // dual-context Owner cannot inspect accounts
+    const staffSnaps=await collection(selectedPartnerId,"partnerWorkStaff").limit(151).get();
+    if(staffSnaps.size>150)fail("resource-exhausted");
+    const people=await Promise.all(staffSnaps.docs.map(async doc=>{
+     const x=doc.data()||{};
+     if(!ID.test(doc.id)||x.companyId!==selectedPartnerId||
+        !validName(x.name)||!["account","managed"].includes(x.kind)||
+        !["leader","member"].includes(x.role)||typeof x.active!=="boolean"||
+        !ID.test(x.teamId||""))fail("data-loss");
+     if(x.kind==="managed"){
+      if(x.uid!=null)fail("data-loss");
+      return {staffId:doc.id,name:clean(x.name),teamId:x.teamId,
+       role:"member",kind:"managed",active:x.active,email:"",
+       memberVerified:false,secondaryMembership:false,financeFlagsSafe:false};
+     }
+     if(!ID.test(x.uid||"")||x.uid!==doc.id)fail("data-loss");
+     const [memberSnap,secondarySnap]=await Promise.all([
+      collection(selectedPartnerId,"members").doc(x.uid).get(),
+      db.collection("partnerWorkspaceContexts").doc(x.uid).get()
+     ]);
+     const m=memberSnap.data()||{},ctx=secondarySnap.data()||{};
+     const memberVerified=memberSnap.exists&&m.uid===x.uid&&
+      m.companyId===selectedPartnerId&&m.accessKind==="partner"&&
+      m.memberType==="cooperator"&&m.role===x.role&&m.teamId===x.teamId&&
+      m.active===x.active;
+     const email=memberVerified&&EMAIL.test(clean(m.email).toLowerCase())?
+      clean(m.email).toLowerCase():"";
+     return {staffId:doc.id,name:clean(x.name),teamId:x.teamId,
+      role:x.role,kind:"account",active:x.active,email,
+      memberVerified:!!memberVerified,
+      secondaryMembership:secondarySnap.exists&&ctx.kind==="partner_secondary"&&
+       ctx.partnerCompanyId===selectedPartnerId&&ctx.uid===x.uid,
+      // Flags are only an advisory; even false/false does not prove
+      // production Firestore Rules denied finance GET and LIST.
+      financeFlagsSafe:memberVerified&&m.canViewRevenue===false&&
+       m.canViewUnitPrice===false};
+    }));
+    people.sort((x,y)=>x.name.localeCompare(y.name,"ja")||
+     x.staffId.localeCompare(y.staffId));
+    partnerRoster={partnerCompanyId:selectedPartnerId,scope:"hub_partner_roster_read_only",
+     financialRulesVerified:false,staff:people};
    }
    const qs=await collection(s.cid,"partnerWorkCountDays").doc(date)
     .collection("reports").limit(201).get();
@@ -778,11 +836,12 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    }
    return {role:"hub",date,partners,registeredCompanies,categories:KEYS,
     ...(partnerTeamDetails?{partnerTeamDetails}:{}),
+    ...(partnerRoster?{partnerRoster}:{}),
     ...(teamReports?{teamReports,teamStatusComplete:true}:{})};
   }
   // Company-wide partner breakdown is reserved for a verified internal hub
   // Owner; do not silently ignore forged hub options in a partner session.
-  if(d.includeTeamStatus===true||d.partnerCompanyId!=null)fail();
+  if(d.includeTeamStatus===true||d.includeRoster===true||d.partnerCompanyId!=null)fail();
   const [teams,staff,entries,privateProducts]=await Promise.all([
     collection(s.cid,"partnerWorkTeams").limit(151).get(),
     collection(s.cid,"partnerWorkStaff").limit(151).get(),
@@ -810,7 +869,19 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   for(const sn of entries.docs){
    const x=sn.data()||{};
    if(x.companyId!==s.cid||x.date!==date||!ID.test(x.staffId||""))fail("data-loss");
-   if(!allowed.has(x.staffId))continue;
+   if(!allowed.has(x.staffId)){
+    // An account/staff roster row may have been removed AFTER this count was
+    // saved. Keep the signed Owner/Leader's HISTORICAL count visible without
+    // restoring the deleted account or making that person eligible for input.
+    // A member can still read only rows belonging to their active staff.
+    if(!["owner","leader"].includes(s.role))continue;
+    allowed.set(x.staffId,{
+     id:x.staffId,
+     name:validName(x.staffNameSnapshot) ? clean(x.staffNameSnapshot) : "過去の担当者",
+     teamId:ID.test(x.teamIdSnapshot||"")?x.teamIdSnapshot:null,
+     kind:"historical",role:"former",uid:null,active:false
+    });
+   }
    const {counts,total}=validateCounts(x.counts);
    if(total!==x.totalCount)fail("data-loss");
    // Return only saved, immutable attribution metadata from the original entry.
@@ -828,6 +899,149 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   return {role:s.role,date,companyName:clean(s.companyName),teamId:s.teamId,
     teams:visibleTeams,staff:[...allowed.values()],records:rows,categories:KEYS,
     privateProducts:productList};
+ }
+ // Isolated read-only monthly counts. Never read financial originals or write.
+ async function viewSavedMonth(request){
+  const a=await actor(request),d=request?.data||{};
+  if(Object.keys(d).some(k=>!["month","workspaceCompanyId","partnerCompanyId","codeSessionToken"].includes(k)))
+   fail("invalid-argument");
+  const current=new Intl.DateTimeFormat("en-CA",{
+   timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"
+  }).format(now());
+  let bounds;
+  try{bounds=monthBounds(d.month,current);}catch{fail("invalid-argument");}
+  const s=await scope(a.uid,null,d.workspaceCompanyId);
+  let cid=s.cid,hubId=s.hubId,role=s.role;
+  if(s.kind==="hub"){
+   if(!ID.test(d.partnerCompanyId||""))fail("invalid-argument");
+   const [rs,cs]=await Promise.all([
+    db.collection("partnerRelations").doc(d.partnerCompanyId).get(),
+    db.collection("companies").doc(d.partnerCompanyId).get()
+   ]);
+   const r=rs.data()||{},company=cs.data()||{};
+   if(!rs.exists||!cs.exists||r.partnerCompanyId!==d.partnerCompanyId||
+      r.hubCompanyId!==s.cid||r.active!==true||r.countSharingApproved!==true||
+      company.companyKind!=="partner"||company.hubCompanyId!==s.cid||
+      company.active!==true)fail();
+   cid=d.partnerCompanyId;hubId=s.cid;role="hub";
+  }else if(s.kind==="partner"){
+   if(d.partnerCompanyId!=null)fail();
+  }else fail();
+  // The bounded date range never returns incomplete totals if it overflows.
+  const [entries,extraEntries,teams]=await Promise.all([
+   collection(cid,"partnerWorkEntries").where("date",">=",bounds.first)
+    .where("date","<=",bounds.last).limit(1001).get(),
+   collection(cid,"partnerAdditionalCountEntries").where("date",">=",bounds.first)
+    .where("date","<=",bounds.last).limit(1001).get(),
+   collection(cid,"partnerWorkTeams").limit(151).get()
+  ]);
+  if(entries.size>1000||extraEntries.size>1000||teams.size>150)
+   fail("resource-exhausted");
+  const teamNames=Object.create(null);
+  for(const sn of teams.docs){
+   const x=sn.data()||{};
+   if(!ID.test(sn.id)||x.companyId!==cid)fail("data-loss");
+   teamNames[sn.id]=x.name;
+  }
+  // Members see only their own count rows; no other identities serialized.
+  const rows=role==="member"?entries.docs.filter(sn=>
+   sn.data()?.staffId===a.uid):entries.docs;
+  let base;
+  try{
+   base=projectSavedPartnerMonth({
+    hubId,partnerId:cid,month:d.month,rows,categoryKeys:KEYS,
+    teamNames,role,actorUid:a.uid
+   });
+  }catch{fail("data-loss");}
+  // The original nine categories remain available even when the separate
+  // extra catalog/ledger cannot be verified. Unknown extras are NEVER zero.
+  let extra=null;
+  try{
+   const policy=await getExtraPolicy(hubId);
+   const scopedExtra=role==="member"?extraEntries.docs.filter(sn=>
+    sn.data()?.staffId===a.uid):extraEntries.docs;
+   extra=projectPublishedPartnerExtras({
+    hubId,cid,month:d.month,docs:scopedExtra,
+    visibleProducts:policy.products,blockedIds:policy.blockedIds,
+    teamNames,role,actorUid:a.uid
+   });
+  }catch{ /* legacy nine-category read stays usable; extra is UNVERIFIED */ }
+  const combinedTotalCount=extra&&
+   Number.isSafeInteger(base.totalCount+extra.totalCount)?
+   base.totalCount+extra.totalCount:null;
+  return {...base,extra,extraVerified:!!extra&&combinedTotalCount!==null,
+   combinedTotalCount};
+ }
+ // Read-only joint MONTHLY individual/product counts for the same verified
+ // internal Owner and approved partners; no writes and no raw finance output.
+ async function viewCombinedMonth(request){
+  const a=await actor(request),d=request?.data||{};
+  if(Object.keys(d).some(k=>!["month","workspaceCompanyId","codeSessionToken"].includes(k)))
+   fail("invalid-argument");
+  const current=new Intl.DateTimeFormat("en-CA",{
+   timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"
+  }).format(now());
+  let bounds;
+  try{bounds=monthBounds(d.month,current);}catch{fail("invalid-argument");}
+  const s=await scope(a.uid,null,d.workspaceCompanyId);
+  if(s.kind!=="hub"&&s.kind!=="partner")fail();
+  const hubId=s.kind==="hub"?s.cid:s.hubId;
+  if(!ID.test(hubId||""))fail();
+  const relations=await db.collection("partnerRelations")
+   .where("hubCompanyId","==",hubId).limit(21).get();
+  if(relations.size>20)fail("resource-exhausted");
+  // Direct redactor reads legacy sales records SERVER-SIDE ONLY and rejects
+  // inconsistent saved totals, missing UID and non-auditable quantities.
+  // If even one source is malformed, no combined rank is published.
+  let direct;
+  try{direct=await readDirectRangeCounts(db,hubId,bounds.first,bounds.last,KEYS,{
+   maxRecords:10000
+  });}catch{fail("failed-precondition");}
+  // Financial product master is read ONLY by the isolated catalog module.
+  // Reuse its exact active publication + legacy category collision policy.
+  let publishedExtras,blockedExtraIds;
+  try{
+   const policy=await getExtraPolicy(hubId);
+   publishedExtras=policy.products.map(({id,name})=>({id,name}));
+   blockedExtraIds=policy.blockedIds;
+  }catch{fail("failed-precondition");}
+  const partners=[];
+  let reviewedRows=0;
+  for(const rs of relations.docs){
+   const rel=rs.data()||{},cid=rs.id;
+   if(!ID.test(cid)||rel.partnerCompanyId!==cid||rel.hubCompanyId!==hubId)
+    fail("data-loss");
+   if(rel.active!==true||rel.countSharingApproved!==true)continue;
+   const companySnap=await db.collection("companies").doc(cid).get();
+   const company=companySnap.data()||{};
+   if(!companySnap.exists||company.companyKind!=="partner"||
+      company.hubCompanyId!==hubId||company.active!==true||
+      !validCompanyName(company.name))fail("data-loss");
+   const [rows,extraDocs]=await Promise.all([
+    collection(cid,"partnerWorkEntries")
+     .where("date",">=",bounds.first)
+     .where("date","<=",bounds.last).limit(1001).get(),
+    collection(cid,"partnerAdditionalCountEntries")
+     .where("date",">=",bounds.first)
+     .where("date","<=",bounds.last).limit(1001).get()
+   ]);
+   if(rows.size>1000||extraDocs.size>1000)fail("resource-exhausted");
+   reviewedRows+=rows.size+extraDocs.size;
+   if(reviewedRows>10000)fail("resource-exhausted");
+   let data,extra;
+   try{
+    data=projectSavedPartnerMonth({hubId,partnerId:cid,month:d.month,
+     rows:rows.docs,categoryKeys:KEYS});
+    extra=projectPublishedPartnerExtras({
+     hubId,cid,month:d.month,docs:extraDocs.docs,
+     visibleProducts:publishedExtras,blockedIds:blockedExtraIds
+    });
+   }catch{fail("data-loss");}
+   partners.push({id:cid,name:company.name,data,extra});
+  }
+  try{
+   return projectCombinedMonth({month:d.month,hubId,keys:KEYS,direct,partners});
+  }catch{fail("failed-precondition");}
  }
  async function submit(request){
   const a=await actor(request),d=request?.data||{},date=validDate(d.date),staffId=clean(d.staffId);
@@ -905,6 +1119,15 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      privateTotalCount:privateValidated.total};
   });
  }
- return Object.freeze({manage,accept,view,submit});
+ const {getPublishedCatalog,setPublishedProduct}=makePartnerCatalogOperations({
+  db,actor,scope,collection,FieldValue,fail
+ });
+ const {viewAdditionalCounts,submitAdditionalCounts,getExtraPolicy}=makePartnerAdditionalOperations({
+  db,actor,scope,collection,FieldValue,fail,validDate,validName,canStaff,jstToday,KEYS
+ });
+ return Object.freeze({
+  manage,accept,view,viewSavedMonth,viewCombinedMonth,
+  getPublishedCatalog,setPublishedProduct,viewAdditionalCounts,submitAdditionalCounts,submit
+ });
 }
 module.exports={makeWorkspace,KEYS};

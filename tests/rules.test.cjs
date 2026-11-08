@@ -645,3 +645,528 @@ test('partner private product and count documents cannot be read or mutated thro
     'partnerWorkEntries','2026-10-06__helper'))).data(),countData);
  });
 });
+// A secondary partner account can retain its old internal UID. Because Rules
+// authorize by UID (not by the selected UI tab), that identity must not retain
+// a path to money-bearing internal documents via its old company membership.
+test('same Firebase UID with partner_secondary context cannot read or overwrite old internal finance originals', async()=>{
+ const original={};
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const admin=ctx.firestore();
+  await setDoc(doc(admin,'products','secondary-raw-product'),catalogPayload());
+  await setDoc(doc(admin,'records','secondary-raw-record'),payload('owner'));
+  await setDoc(doc(admin,'recordCorrections','secondary-raw-correction'),{
+   companyId:company,recordId:'secondary-raw-record',recordUid:'helper',
+   changedByUid:'owner',changedByName:'Owner',recordDate:date,
+   before:{totalCount:1,totalRevenue:100},after:{totalCount:2,totalRevenue:200},
+   createdAt:serverTimestamp()
+  });
+  await setDoc(doc(admin,'revenueGoals','secondary-raw-goal'),revenueGoalPayload());
+  await setDoc(doc(admin,'partnerWorkspaceContexts','owner'),{
+   uid:'owner',primaryCompanyId:company,partnerCompanyId:'partner-example',
+   hubCompanyId:company,kind:'partner_secondary',active:true
+  });
+  for(const [coll,id] of [
+   ['products','secondary-raw-product'],['records','secondary-raw-record'],
+   ['recordCorrections','secondary-raw-correction'],['revenueGoals','secondary-raw-goal']
+  ]) original[coll]=(await getDoc(doc(admin,coll,id))).data();
+ });
+ const db=dbFor('owner');
+ // Owner flags remain in both internal documents. Context is the veto.
+ for(const [coll,id] of [
+  ['products','secondary-raw-product'],['records','secondary-raw-record'],
+  ['recordCorrections','secondary-raw-correction'],['revenueGoals','secondary-raw-goal']
+ ]){
+  await assertFails(getDoc(doc(db,coll,id)));
+  await assertFails(getDocsFromServer(query(collection(db,coll),where('companyId','==',company))));
+ }
+ await assertFails(updateDoc(doc(db,'products','secondary-raw-product'),{
+  name:'unauthorized',updatedAt:serverTimestamp()
+ }));
+ await assertFails(setDoc(doc(db,'products','secondary-raw-new-product'),catalogPayload()));
+ await assertFails(updateDoc(doc(db,'records','secondary-raw-record'),{
+  totalCount:99,updatedByUid:'owner',updatedAt:serverTimestamp()
+ }));
+ await assertFails(setDoc(doc(db,'records',key('owner')),payload('owner','owner','a')));
+ await assertFails(setDoc(doc(db,'recordCorrections','secondary-raw-new-correction'),{
+  companyId:company,recordId:'secondary-raw-record',recordUid:'helper',
+  changedByUid:'owner',changedByName:'Owner',recordDate:date,
+  before:{totalRevenue:100},after:{totalRevenue:999},createdAt:serverTimestamp()
+ }));
+ await assertFails(updateDoc(doc(db,'revenueGoals','secondary-raw-goal'),{
+  targetRevenue:9999,updatedAt:serverTimestamp()
+ }));
+ await assertFails(setDoc(doc(db,'revenueGoals','secondary-raw-new-goal'),revenueGoalPayload()));
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const admin=ctx.firestore();
+  for(const [coll,id] of [
+   ['products','secondary-raw-product'],['records','secondary-raw-record'],
+   ['recordCorrections','secondary-raw-correction'],['revenueGoals','secondary-raw-goal']
+  ]) assert.deepEqual((await getDoc(doc(admin,coll,id))).data(),original[coll],
+   'blocked access must never change saved '+coll);
+ });
+});
+
+// Production inventory found one former internal, NON-owner account with
+// a live secondary partner context. A prior direct leader grant must not
+// survive that association; ordinary internal leaders must remain usable.
+test('secondary partner on formerly revenue-enabled non-owner leader blocks all raw finance reads and lists',async()=>{
+ const documents=[
+  ['products','secondary-leader-price'],
+  ['records','secondary-leader-record'],
+  ['recordCorrections','secondary-leader-correction'],
+  ['revenueGoals','secondary-leader-goal']
+ ];
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const admin=ctx.firestore();
+  await setDoc(doc(admin,'products','secondary-leader-price'),catalogPayload());
+  await setDoc(doc(admin,'records','secondary-leader-record'),payload('leaderA','helper','a'));
+  await setDoc(doc(admin,'recordCorrections','secondary-leader-correction'),{
+   companyId:company,recordId:'secondary-leader-record',recordUid:'helper',
+   changedByUid:'leaderA',changedByName:'leaderA',recordDate:date,
+   before:{totalCount:1,totalRevenue:100},after:{totalCount:2,totalRevenue:200},
+   createdAt:serverTimestamp()
+  });
+  await setDoc(doc(admin,'revenueGoals','secondary-leader-goal'),revenueGoalPayload('a'));
+  // The direct company membership and its prior finance grants remain valid
+  // before the secondary-context check, just like a legacy move.
+  await updateDoc(doc(admin,'companies',company,'members','leaderA'),{
+   canViewRevenue:true,canViewUnitPrice:true
+  });
+ });
+ const db=dbFor('leaderA');
+ for(const [coll,id] of documents)
+  await assertSucceeds(getDoc(doc(db,coll,id)));
+ await assertSucceeds(getDocsFromServer(query(
+  collection(db,'revenueGoals'),where('companyId','==',company),
+  where('teamId','==','a'))));
+ // Secondary context exists under the same Auth UID; no money may be
+ // exposed even if the UI is switched to its old internal company.
+ await env.withSecurityRulesDisabled(async ctx=>{
+  await setDoc(doc(ctx.firestore(),'partnerWorkspaceContexts','leaderA'),{
+   uid:'leaderA',kind:'partner_secondary',active:true,
+   primaryCompanyId:company,partnerCompanyId:'partner-example',hubCompanyId:company
+  });
+ });
+ for(const [coll,id] of documents){
+  await assertFails(getDoc(doc(db,coll,id)));
+  const filters=[where('companyId','==',company)];
+  if(coll==='revenueGoals')filters.push(where('teamId','==','a'));
+  await assertFails(getDocsFromServer(query(collection(db,coll),...filters)));
+ }
+ await assertFails(getDoc(doc(db,'records','secondary-leader-missing')));
+ await assertFails(updateDoc(doc(db,'records','secondary-leader-record'),{
+  updatedByUid:'leaderA',updatedAt:serverTimestamp()
+ }));
+ await assertFails(updateDoc(doc(db,'products','secondary-leader-price'),{
+  name:'must not overwrite',updatedAt:serverTimestamp()
+ }));
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const admin=ctx.firestore();
+  assert.equal((await getDoc(doc(admin,'products','secondary-leader-price'))).data().name,
+   catalogPayload().name);
+  assert.equal((await getDoc(doc(admin,'records','secondary-leader-record'))).data().totalCount,2);
+ });
+});
+
+test('internal owner without secondary partner context retains financial read and product edit',async()=>{
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const db=ctx.firestore();
+  await setDoc(doc(db,'products','owner-retained-finance'),catalogPayload());
+  await setDoc(doc(db,'records','owner-retained-record'),payload('owner'));
+  await setDoc(doc(db,'revenueGoals','owner-retained-goal'),revenueGoalPayload());
+ });
+ const db=dbFor('owner');
+ for(const [coll,id] of [
+  ['products','owner-retained-finance'],['records','owner-retained-record'],
+  ['revenueGoals','owner-retained-goal']
+ ]) await assertSucceeds(getDoc(doc(db,coll,id)));
+ await assertSucceeds(updateDoc(doc(db,'products','owner-retained-finance'),{
+  name:'Owner still sees prices',updatedAt:serverTimestamp()
+ }));
+ assert.equal((await getDoc(doc(db,'products','owner-retained-finance'))).data().revenue,5000);
+});
+
+test('even an inactive or malformed secondary context fails closed until an owner-approved identity separation',async()=>{
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const admin=ctx.firestore();
+  await setDoc(doc(admin,'products','stale-context-money'),catalogPayload());
+  await setDoc(doc(admin,'partnerWorkspaceContexts','owner'),{
+   kind:'partner_secondary',active:false,uid:'owner',primaryCompanyId:company
+  });
+ });
+ await assertFails(getDoc(doc(dbFor('owner'),'products','stale-context-money')));
+});
+
+
+
+test('ordinary internal member with new secondary context loses finance reads; unrelated internal Owner keeps access',async()=>{
+ // Real read-only production inventory found a non-Owner secondary UID with a
+ // legacy direct-finance path. Simulate it without production credentials.
+ const originals={};
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const admin=ctx.firestore();
+  await setDoc(doc(admin,'products','member-old-product'),catalogPayload());
+  await setDoc(doc(admin,'records','member-old-record'),payload('owner'));
+  await setDoc(doc(admin,'recordCorrections','member-old-correction'),{
+   companyId:company,recordId:'member-old-record',recordUid:'helper',
+   changedByUid:'owner',changedByName:'Owner',recordDate:date,
+   before:{totalCount:1,totalRevenue:100},after:{totalCount:2,totalRevenue:200},
+   createdAt:serverTimestamp()
+  });
+  await setDoc(doc(admin,'revenueGoals','member-old-goal'),revenueGoalPayload('b'));
+  for(const [coll,id] of [
+   ['products','member-old-product'],['records','member-old-record'],
+   ['recordCorrections','member-old-correction'],['revenueGoals','member-old-goal']
+  ]) originals[coll]=(await getDoc(doc(admin,coll,id))).data();
+ });
+ const member=dbFor('helper'),owner=dbFor('owner');
+ for(const [coll,id] of [
+  ['products','member-old-product'],['records','member-old-record'],
+  ['recordCorrections','member-old-correction']
+ ]) await assertSucceeds(getDoc(doc(member,coll,id)));
+ await env.withSecurityRulesDisabled(async ctx=>{
+  await setDoc(doc(ctx.firestore(),'partnerWorkspaceContexts','helper'),{
+   kind:'partner_secondary',uid:'helper',active:true,
+   primaryCompanyId:company,hubCompanyId:company,partnerCompanyId:'partner-example'
+  });
+ });
+ for(const [coll,id] of [
+  ['products','member-old-product'],['records','member-old-record'],
+  ['recordCorrections','member-old-correction'],['revenueGoals','member-old-goal']
+ ]){
+  await assertFails(getDoc(doc(member,coll,id)));
+  const filters=[where('companyId','==',company)];
+  if(coll==='revenueGoals')filters.push(where('teamId','==','b'));
+  await assertFails(getDocsFromServer(query(collection(member,coll),...filters)));
+  await assertSucceeds(getDoc(doc(owner,coll,id)));
+ }
+ await assertFails(getDoc(doc(member,'records','member-missing-record')));
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const admin=ctx.firestore();
+  for(const [coll,id] of [
+   ['products','member-old-product'],['records','member-old-record'],
+   ['recordCorrections','member-old-correction'],['revenueGoals','member-old-goal']
+  ]) assert.deepEqual((await getDoc(doc(admin,coll,id))).data(),originals[coll],
+   'secondary association must not edit '+coll);
+ });
+});
+
+
+test('secondary context cannot be forged or removed by any Firebase client to revive old finance grants',async()=>{
+ // Only Admin SDK may own the context lifecycle. A client capable of deleting
+ // the context would revive old direct grants under noSecondaryPartnerWorkspace().
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const admin=ctx.firestore();
+  await setDoc(doc(admin,'products','secondary-immutable-product'),catalogPayload());
+  await setDoc(doc(admin,'records','secondary-immutable-record'),payload('owner'));
+ });
+ const member=dbFor('helper'),owner=dbFor('owner');
+ const existing=doc(member,'records','secondary-immutable-record');
+ // Before the server marks the identity as secondary, legacy internal grants
+ // still read the old original. The test never edits that original.
+ await assertSucceeds(getDoc(existing));
+ for(const actor of ['helper','owner','leaderA']){
+  const db=dbFor(actor);
+  await assertFails(setDoc(doc(db,'partnerWorkspaceContexts','forged-'+actor),{
+   uid:actor,kind:'partner_secondary',active:true
+  }));
+ }
+ const canonical={uid:'helper',kind:'partner_secondary',active:true,
+  primaryCompanyId:company,partnerCompanyId:'partner-example',hubCompanyId:company};
+ await env.withSecurityRulesDisabled(async ctx=>{
+  await setDoc(doc(ctx.firestore(),'partnerWorkspaceContexts','helper'),canonical);
+ });
+ await assertFails(getDoc(existing));
+ await assertFails(getDoc(doc(member,'products','secondary-immutable-product')));
+ for(const actor of ['helper','owner','leaderA']){
+  const db=dbFor(actor),context=doc(db,'partnerWorkspaceContexts','helper');
+  await assertFails(getDoc(context));
+  await assertFails(getDocsFromServer(collection(db,'partnerWorkspaceContexts')));
+  await assertFails(updateDoc(context,{active:false}));
+  await assertFails(setDoc(context,{...canonical,kind:'internal',active:false}));
+  await assertFails(deleteDoc(context));
+ }
+ // A failed context mutation must not re-enable the old internal finance path.
+ await assertFails(getDoc(existing));
+ await assertFails(getDoc(doc(member,'products','secondary-immutable-product')));
+ await assertSucceeds(getDoc(doc(owner,'records','secondary-immutable-record')));
+ await assertSucceeds(getDoc(doc(owner,'products','secondary-immutable-product')));
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const admin=ctx.firestore();
+  assert.deepEqual((await getDoc(doc(admin,'partnerWorkspaceContexts','helper'))).data(),canonical);
+  assert.equal((await getDoc(doc(admin,'records','secondary-immutable-record'))).data().totalCount,2);
+  assert.equal((await getDoc(doc(admin,'products','secondary-immutable-product'))).data().revenue,5000);
+ });
+});
+
+
+test('secondary partner cannot read legacy internal reporting, LINE settings or open-ended goal maps',async()=>{
+ const financeTemplate={morning:{intro:'テスト売上100万円'},final:{outro:'社外秘テスト'},updatedBy:'owner'};
+ const privateLine={lineGroupId:'synthetic-private-channel',lineGroupName:'非公開の社内グループ'};
+ const oldGoal={companyId:company,teamId:'b',month:'2026-10',targets:{NURO:3,legacyRevenueTarget:500000}};
+ const managerGoal={companyId:company,teamId:'a',month:'2026-10',targets:{NURO:1}};
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const admin=ctx.firestore();
+  await setDoc(doc(admin,'companies',company,'settings','reporting'),financeTemplate);
+  await setDoc(doc(admin,'companies',company,'settings','notifications'),privateLine);
+  await setDoc(doc(admin,'goals','secondary-old-goal'),oldGoal);
+  await setDoc(doc(admin,'goals','secondary-leader-goal'),managerGoal);
+ });
+ const member=dbFor('helper'),leader=dbFor('leaderA'),owner=dbFor('owner');
+ const reporting=(db)=>doc(db,'companies',company,'settings','reporting');
+ const notifications=(db)=>doc(db,'companies',company,'settings','notifications');
+ const goal=(db,id)=>doc(db,'goals',id);
+ // Verify these were reachable through the unchanged legacy membership
+ // BEFORE the server-created partner context (the actual leak path).
+ await assertSucceeds(getDoc(reporting(member)));
+ await assertSucceeds(getDoc(notifications(member)));
+ await assertSucceeds(getDoc(goal(member,'secondary-old-goal')));
+ await assertSucceeds(getDoc(goal(leader,'secondary-leader-goal')));
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const admin=ctx.firestore();
+  for(const uid of ['helper','leaderA']){
+   await setDoc(doc(admin,'partnerWorkspaceContexts',uid),{
+    uid,kind:'partner_secondary',active:true,
+    primaryCompanyId:company,partnerCompanyId:'partner-demo',hubCompanyId:company
+   });
+  }
+ });
+ for(const db of [member,leader]){
+  await assertFails(getDoc(reporting(db)));
+  await assertFails(getDoc(notifications(db)));
+  await assertFails(getDocsFromServer(collection(db,'companies',company,'settings')));
+  await assertFails(getDoc(goal(db,'secondary-old-goal')));
+  await assertFails(getDocsFromServer(query(collection(db,'goals'),where('companyId','==',company))));
+ }
+ await assertFails(setDoc(goal(leader,'secondary-new-goal'),{
+  companyId:company,teamId:'a',month:'2026-10',
+  targets:{NURO:99},createdAt:serverTimestamp(),updatedAt:serverTimestamp()
+ }));
+ await assertFails(updateDoc(goal(leader,'secondary-leader-goal'),{
+  targets:{NURO:99},updatedAt:serverTimestamp()
+ }));
+ // A separate legitimate direct Owner still sees original settings/goals.
+ await assertSucceeds(getDoc(reporting(owner)));
+ await assertSucceeds(getDoc(notifications(owner)));
+ await assertSucceeds(getDoc(goal(owner,'secondary-old-goal')));
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const admin=ctx.firestore();
+  assert.deepEqual((await getDoc(reporting(admin))).data(),financeTemplate);
+  assert.deepEqual((await getDoc(notifications(admin))).data(),privateLine);
+  assert.deepEqual((await getDoc(goal(admin,'secondary-old-goal'))).data(),oldGoal);
+  assert.deepEqual((await getDoc(goal(admin,'secondary-leader-goal'))).data(),managerGoal);
+ });
+});
+
+test('partner-secondary former internal leader loses old peer directory and old invitations, while self and actual Owner stay available',async()=>{
+ const manager=dbFor('leaderA'),owner=dbFor('owner');
+ const oldPeer=doc(manager,'users','helper');
+ const oldMembers=collection(manager,'companies',company,'members');
+ const preInvite=doc(manager,'invitations','secondary-test-before');
+ const newInvite=doc(manager,'invitations','secondary-test-after');
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const admin=ctx.firestore();
+  await updateDoc(doc(admin,'companies',company),{name:'Demo Internal Company'});
+  await updateDoc(doc(admin,'companies',company,'members','leaderA'),{canCreateInvite:true});
+ });
+ const invite=(id)=>({
+  companyId:company,companyName:'Demo Internal Company',
+  email:id+'@example.test',role:'member',status:'pending',
+  invitedBy:'leaderA',createdAt:serverTimestamp(),
+  expiresAt:new Date(Date.now()+15*60*1000)
+ });
+ // Prove the exact legacy paths could be used before the server linked a
+ // secondary workspace. No existing historical document is changed here.
+ await assertSucceeds(getDoc(oldPeer));
+ await assertSucceeds(getDocsFromServer(oldMembers));
+ await assertSucceeds(setDoc(preInvite,invite('before')));
+ await env.withSecurityRulesDisabled(async ctx=>{
+  await setDoc(doc(ctx.firestore(),'partnerWorkspaceContexts','leaderA'),{
+   uid:'leaderA',kind:'partner_secondary',active:true,
+   primaryCompanyId:company,partnerCompanyId:'partner-demo',hubCompanyId:company
+  });
+ });
+ await assertFails(getDoc(oldPeer));
+ await assertFails(getDocsFromServer(oldMembers));
+ await assertFails(getDoc(doc(manager,'companies',company,'members','helper')));
+ await assertFails(getDocsFromServer(query(collection(manager,'users'),where('companyId','==',company))));
+ await assertFails(setDoc(newInvite,invite('after')));
+ // Routing can still identify the authenticated user's own old profile.
+ await assertSucceeds(getDoc(doc(manager,'users','leaderA')));
+ await assertSucceeds(getDoc(doc(manager,'companies',company,'members','leaderA')));
+ // Owner is a different internal UID and keeps the established staff tools.
+ await assertSucceeds(getDoc(doc(owner,'users','helper')));
+ await assertSucceeds(getDocsFromServer(collection(owner,'companies',company,'members')));
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const admin=ctx.firestore();
+  assert.equal((await getDoc(doc(admin,'invitations','secondary-test-before'))).data().status,'pending');
+  assert.equal((await getDoc(doc(admin,'invitations','secondary-test-after'))).exists(),false);
+  assert.equal((await getDoc(doc(admin,'users','helper'))).data().active,true);
+ });
+});
+
+
+test('secondary former internal Master or Owner cannot administer old company or edit old staff',async()=>{
+ const former=dbFor('owner');
+ const companyRef=doc(former,'companies',company);
+ const memberRef=doc(former,'companies',company,'members','helper');
+ // A registered staff member has a stable email in both old user/member docs.
+ // The minimal seed above omits it because most tests do not need manager edits.
+ await env.withSecurityRulesDisabled(async ctx=>{
+   const admin=ctx.firestore();
+   await updateDoc(doc(admin,'users','helper'),{email:'helper@example.test'});
+   await updateDoc(doc(admin,'companies',company,'members','helper'),{email:'helper@example.test'});
+ });
+ // These operations are intentionally allowed for the *real* internal owner.
+ // Assert that the partner linkage, rather than unrelated role rules,
+ // is what subsequently revokes their old administration grants.
+ await assertSucceeds(updateDoc(companyRef,{
+   name:'Internal owner preserved',updatedAt:serverTimestamp()
+ }));
+ await assertSucceeds(updateDoc(memberRef,{
+   name:'Before context',updatedAt:serverTimestamp()
+ }));
+ await env.withSecurityRulesDisabled(async ctx=>{
+   const admin=ctx.firestore();
+   await setDoc(doc(admin,'users','standbyOwner'),{
+     uid:'standbyOwner',name:'standbyOwner',companyId:company,
+     role:'leader',companyRole:'owner',teamId:'a',active:true
+   });
+   await setDoc(doc(admin,'companies',company,'members','standbyOwner'),{
+     uid:'standbyOwner',name:'standbyOwner',companyId:company,
+     role:'leader',companyRole:'owner',teamId:'a',active:true
+   });
+   await setDoc(doc(admin,'partnerWorkspaceContexts','owner'),{
+     uid:'owner',kind:'partner_secondary',active:true,
+     primaryCompanyId:company,partnerCompanyId:'partner-demo',hubCompanyId:company
+   });
+ });
+ await assertFails(updateDoc(companyRef,{
+   name:'Must not apply',updatedAt:serverTimestamp()
+ }));
+ await assertFails(updateDoc(memberRef,{
+   name:'Must not apply',updatedAt:serverTimestamp()
+ }));
+ // An old Master may still appear in company.masterUid. It must not use that
+ // legacy privilege to overwrite another member's finance permission.
+ await assertFails(updateDoc(memberRef,{
+   canViewRevenue:false,updatedAt:serverTimestamp()
+ }));
+ // Keep self-identity reads for historic membership and same-email login.
+ await assertSucceeds(getDoc(doc(former,'users','owner')));
+ await assertSucceeds(getDoc(doc(former,'companies',company,'members','owner')));
+ // A different, legitimate, non-partner company Owner must retain management.
+ const valid=dbFor('standbyOwner');
+ await assertSucceeds(updateDoc(doc(valid,'companies',company),{
+   name:'Legitimate owner controls',updatedAt:serverTimestamp()
+ }));
+ await assertSucceeds(updateDoc(doc(valid,'companies',company,'members','helper'),{
+   name:'Legitimate owner manages staff',updatedAt:serverTimestamp()
+ }));
+ await env.withSecurityRulesDisabled(async ctx=>{
+   const admin=ctx.firestore();
+   assert.equal((await getDoc(doc(admin,'companies',company))).data().name,
+     'Legitimate owner controls');
+   assert.equal((await getDoc(doc(admin,'companies',company,'members','helper'))).data().name,
+     'Legitimate owner manages staff');
+   assert.equal((await getDoc(doc(admin,'companies',company,'members','helper'))).data().active,true);
+ });
+});
+
+
+test('secondary partner cannot retrieve old internal LINE pairing codes',async()=>{
+ const pairingCode='ABCD1234';
+ await env.withSecurityRulesDisabled(async ctx=>{
+  await setDoc(doc(ctx.firestore(),'linePairingCodes',pairingCode),{
+   companyId:company,createdBy:'owner',status:'pending',
+   createdAt:serverTimestamp(),expiresAt:serverTimestamp()
+  });
+ });
+ const oldOwner=dbFor('owner'),internalLeader=dbFor('leaderA');
+ const sensitive=doc(oldOwner,'linePairingCodes',pairingCode);
+ await assertSucceeds(getDoc(sensitive));
+ await assertSucceeds(getDoc(doc(internalLeader,'linePairingCodes',pairingCode)));
+ let original;
+ await env.withSecurityRulesDisabled(async ctx=>{
+  original=(await getDoc(doc(ctx.firestore(),'linePairingCodes',pairingCode))).data();
+  await setDoc(doc(ctx.firestore(),'partnerWorkspaceContexts','owner'),{
+   uid:'owner',kind:'partner_secondary',active:true,
+   primaryCompanyId:company,partnerCompanyId:'partner-demo',hubCompanyId:company
+  });
+ });
+ await assertFails(getDoc(sensitive));
+ await assertSucceeds(getDoc(doc(internalLeader,'linePairingCodes',pairingCode)));
+ await env.withSecurityRulesDisabled(async ctx=>{
+  assert.deepEqual((await getDoc(doc(ctx.firestore(),'linePairingCodes',pairingCode))).data(),
+   original,'linking-code document must stay untouched');
+ });
+});
+
+
+test('isolated partner identity marker blocks old internal LINE pairing reads',async()=>{
+ const cases=[
+  ['company kind','companies/'+company,{companyKind:'partner'}],
+  ['user access','users/owner',{accessKind:'partner'}],
+  ['member access','companies/'+company+'/members/owner',{accessKind:'partner'}],
+  ['user type','users/owner',{memberType:'cooperator'}],
+  ['member type','companies/'+company+'/members/owner',{memberType:'cooperator'}]
+ ];
+ for(const [label,target,fields] of cases){
+  await env.clearFirestore();
+  await env.withSecurityRulesDisabled(async ctx=>{
+   const admin=ctx.firestore();
+   await setDoc(doc(admin,'companies',company),{ownerUid:'owner',masterUid:'owner',active:true});
+   const internal={uid:'owner',companyId:company,role:'leader',companyRole:'owner',
+     active:true,canViewRevenue:true,canViewUnitPrice:true};
+   await setDoc(doc(admin,'users','owner'),internal);
+   await setDoc(doc(admin,'companies',company,'members','owner'),internal);
+   await setDoc(doc(admin,'linePairingCodes','SAFE1234'),{
+    companyId:company,createdBy:'owner',status:'pending',
+    createdAt:serverTimestamp(),expiresAt:serverTimestamp()
+   });
+  });
+  const owner=dbFor('owner');
+  const pairing=doc(owner,'linePairingCodes','SAFE1234');
+  await assertSucceeds(getDoc(pairing));
+  let before;
+  await env.withSecurityRulesDisabled(async ctx=>{
+   const admin=ctx.firestore();
+   before=(await getDoc(doc(admin,'linePairingCodes','SAFE1234'))).data();
+   await updateDoc(doc(admin,target),fields);
+  });
+  await assertFails(getDoc(pairing),label+' must deny legacy LINE code');
+  await env.withSecurityRulesDisabled(async ctx=>{
+   const actual=(await getDoc(doc(ctx.firestore(),'linePairingCodes','SAFE1234'))).data();
+   assert.deepEqual(actual,before,label+' must not rewrite pairing document');
+  });
+ }
+});
+
+
+test('secondary partner cannot read former internal team roster and leader UIDs',async()=>{
+ const oldOwner=dbFor('owner'),validLeader=dbFor('leaderA');
+ const team=doc(oldOwner,'teams','a');
+ await env.withSecurityRulesDisabled(async ctx=>{
+  await updateDoc(doc(ctx.firestore(),'teams','a'),{
+    leaderUids:['owner','leaderA']
+  });
+ });
+ await assertSucceeds(getDoc(team));
+ await assertSucceeds(getDocsFromServer(query(collection(oldOwner,'teams'),
+   where('companyId','==',company))));
+ const before=(await getDoc(doc(validLeader,'teams','a'))).data();
+ await env.withSecurityRulesDisabled(async ctx=>{
+  await setDoc(doc(ctx.firestore(),'partnerWorkspaceContexts','owner'),{
+   uid:'owner',kind:'partner_secondary',active:true,
+   primaryCompanyId:company,partnerCompanyId:'partner-demo',hubCompanyId:company
+  });
+ });
+ await assertFails(getDoc(team));
+ await assertFails(getDocsFromServer(query(collection(oldOwner,'teams'),
+   where('companyId','==',company))));
+ await assertSucceeds(getDoc(doc(validLeader,'teams','a')));
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const stored=(await getDoc(doc(ctx.firestore(),'teams','a'))).data();
+  assert.deepEqual(stored,before,'existing team and roster must be unchanged');
+ });
+});
