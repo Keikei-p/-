@@ -86,7 +86,7 @@ test("malformed partner overrides and nested money never leave the owner callabl
   {partner:["../../records"]},
   {partner:["nuro",25000]},
   {hub:["nuro"]},
-  {"__proto__":["nuro"]},
+  {["__proto__"]:["nuro"]},
   {partner:Array.from({length:1001},(_,i)=>"sku"+i)}
  ];
  for(const overrides of invalid){
