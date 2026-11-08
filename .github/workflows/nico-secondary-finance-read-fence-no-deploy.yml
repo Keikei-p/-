@@ -66,12 +66,15 @@ jobs:
           node --check tests/secondary-finance-read-fence-emulator.test.mjs
           node security/secondary-finance-read-fence.mjs --check
           node --test tests/secondary-finance-read-fence-emulator.test.mjs
+          # The existing Callable is the count-only path: freeze its save,
+          # correction, ranking and no-money regressions before any Rules cutover.
+          node --test tests/partner-workspace.test.cjs tests/partner-money-free-workspace.test.cjs
       - name: Install offline demo emulator dependencies only
         run: |
           set -euo pipefail
           npm install --prefix tests --ignore-scripts --no-audit --no-fund
           npm install --global firebase-tools@15.34.1 --no-audit --no-fund
-      - name: Real Firestore Rules authorization on local demo emulator
+      - name: Real Firestore Rules financial read AND raw-write denial on local demo emulator
         run: |
           set -euo pipefail
           firebase emulators:exec --project demo-nico-secondary-finance-fence --only firestore 'node --test --test-concurrency=1 tests/secondary-finance-read-fence-emulator.test.mjs'
@@ -79,7 +82,9 @@ jobs:
         run: |
           echo 'OLD_INTERNAL_FINANCE_PATH_FENCED_IN_STAGING_ONLY=true'
           echo 'LEGACY_INTERNAL_COUNT_UI_CONTINUITY_PROVED=false'
+          echo 'COUNT_ONLY_CALLABLE_SYNTHETIC_SAVE_CORRECTION_TESTED=true'
           echo 'PRODUCTION_DOCUMENT_WRITES=0'
           echo 'PRODUCTION_RULES_WRITES=0'
+          echo 'ACTIVE_SECONDARY_RAW_FINANCE_WRITE_DENIED_IN_EMULATOR=true'
           echo 'PRODUCTION_DEPLOYED=false'
           echo 'REAL_UID_FINANCE_GET_LIST_PROVED=false'

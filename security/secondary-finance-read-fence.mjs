@@ -1,8 +1,8 @@
 /**
- * Candidate finance-read rule for an active secondary partner. EMULATOR ONLY.
- * This generator never replaces/deploys the source Firestore Rules.
- * A legacy read-then-write count form may break after denying raw records;
- * real UID count continuity must be proved before any Rules change.
+ * Candidate financial raw-GET/LIST/WRITE fence for active secondary partners.
+ * EMULATOR ONLY. This generator never changes the production Rules file.
+ * Legacy internal input can break: preserve count-only Function access and
+ * require independently verified real-user continuity before any cutover.
  */
 import {readFileSync} from "node:fs";
 import {createHash} from "node:crypto";
@@ -65,7 +65,25 @@ export function proposeSecondaryFinanceFence(source=originalRules()){
    "      allow read: if resource.data.companyId != null\n"+
    "        && sameCompany(resource.data.companyId)\n"+
    "        && !activeSecondaryPartnerContext();";
-  const patched=replaceOnce(current,old,safe,name);
+  let patched=replaceOnce(current,old,safe,name);
+  // Browser financial WRITE access must not survive the read-only cutover.
+  // The partner count-only Callable uses Admin SDK, not direct client writes.
+  // Freeze exact legacy expressions: only narrow each existing allow grant.
+  const operations=name==="recordCorrections"?["create"]:["create","update"];
+  for(const op of operations){
+   patched=replaceOnce(patched,
+    "      allow "+op+": if ",
+    "      allow "+op+": if !activeSecondaryPartnerContext()\n        && ",
+    name+"_WRITE_"+op);
+  }
+  if(name==="records"){
+   // The separate non-existent-record GET rule must not grant old clients an
+   // exception under an active secondary membership.
+   patched=replaceOnce(patched,
+    "      allow get: if verifiedUser()",
+    "      allow get: if !activeSecondaryPartnerContext()\n        && verifiedUser()",
+    "records_MISSING_GET");
+  }
   candidate=candidate.slice(0,pos)+patched+candidate.slice(next);
  }
  if(candidate===source)throw Error("FINANCE_READ_FENCE_UNCHANGED");

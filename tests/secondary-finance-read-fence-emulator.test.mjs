@@ -5,17 +5,24 @@ import {proposeSecondaryFinanceFence,originalRules,COLLECTIONS} from
  "../security/secondary-finance-read-fence.mjs";
 const current=originalRules(),candidate=proposeSecondaryFinanceFence();
 
-test("future rules proposal makes only 4 finance reads restrictive; source/writes are untouched",()=>{
+test("future candidate narrows financial reads and writes only; production sources are untouched",()=>{
  assert.equal(COLLECTIONS.length,4);
  assert.equal(readFileSync(new URL("../firebase.json",import.meta.url),"utf8")
   .includes('"rules": "firestore.rules"'),true);
  assert.notEqual(candidate,current);
- assert.equal(candidate.split("activeSecondaryPartnerContext()").length-1,5);
+ assert.equal(candidate.split("activeSecondaryPartnerContext()").length-1,13);
  for(const collection of COLLECTIONS){
   const begin=candidate.indexOf("    match /"+collection+"/");
   const n=candidate.indexOf("\n    match /",begin+1);
   const body=candidate.slice(begin,n<0?undefined:n);
   assert.match(body,/!activeSecondaryPartnerContext\(\)/);
+  const writeOps=collection==="recordCorrections"?["create"]:["create","update"];
+  for(const op of writeOps){
+   assert.match(body,new RegExp("allow "+op+": if !activeSecondaryPartnerContext\\(\\)"),
+    collection+" "+op+" must reject dual financial browser write");
+  }
+  if(collection==="records")
+   assert.match(body,/allow get: if !activeSecondaryPartnerContext\(\)/);
  }
  for(const rule of ["allow create:","allow update:","allow delete:"]){
   assert.equal(candidate.split(rule).length,current.split(rule).length);
@@ -121,19 +128,25 @@ test("real Rules emulator denies active partner-secondary raw GET and LIST but p
   }
   // Verified unrelated counts-supporting team reads remain possible.
   await assertSucceeds(getDoc(doc(actor("dual"),"teams","team1")));
-  // A legacy count save may still be permitted at Rules-level, BUT the UI's
-  // prefill read on records is denied. Consequently PRODUCTION CUTOVER BLOCKED
-  // until an independently tested count-only form replaces raw GET.
-  await assertSucceeds(setDoc(doc(actor("dual"),"records",
-   "hub_dual_2026-11-07"),{
-     companyId:hub,uid:"dual",memberNameSnapshot:"Member",
+  // A secondary user must not create a money-bearing raw record either.
+  // Preserve the old internal member's legitimate write path (same fixture).
+  // This is NOT a live test of the partner's separate Callable count save.
+  const recordData=user=>({
+     companyId:hub,uid:user,memberNameSnapshot:"Member",
      teamId:null,teamNameSnapshot:"",date:"2026-11-07",
      results:{},totalCount:0,totalRevenue:0,
-     createdByUid:"dual",updatedByUid:"dual",
+     createdByUid:user,updatedByUid:user,
      createdAt:serverTimestamp(),updatedAt:serverTimestamp()
-   }));
+   });
+  await assertFails(setDoc(doc(actor("dual"),"records",
+    "hub_dual_2026-11-07"),recordData("dual")));
   await assertFails(getDoc(doc(actor("dual"),"records",
-   "hub_dual_2026-11-07")));
+    "hub_dual_2026-11-07")));
+  await assertSucceeds(setDoc(doc(actor("ordinary"),"records",
+    "hub_ordinary_2026-11-07"),recordData("ordinary")));
+  const ordinaryRow=await assertSucceeds(getDoc(doc(actor("ordinary"),"records",
+    "hub_ordinary_2026-11-07")));
+  assert.equal(ordinaryRow.data().totalCount,0);
   let originals={};
   await env.withSecurityRulesDisabled(async ctx=>{
    const db=ctx.firestore();
