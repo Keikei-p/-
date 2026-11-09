@@ -14444,7 +14444,7 @@ function renderPartnerEntryTotals(){
  }
  // Same visual grouping as HQ, including a CB subtotal without leaking revenue.
  const cbLabel=grid.querySelector(".partner-cb-title");
- if(cbLabel)cbLabel.textContent="NURO光｜CB別件数（合計 "+cbTotal+"件）";
+ if(cbLabel)cbLabel.textContent="NURO光｜件数入力（合計 "+cbTotal+"件）";
  if(!partnerExtraValid()){
   // A failed/unfinished remote read is not proof of zero additional sales.
   target.textContent="通常商材 "+shared+"件｜協力店専用 "+privateTotal+
