@@ -5,7 +5,7 @@ const fs=require("node:fs");
 const path=require("node:path");
 const html=fs.readFileSync(path.join(__dirname,"../index.html"),"utf8");
 test("partner count save looks up existing record before hidden OFF category serialization",()=>{
- const start=html.indexOf("const counts=Object.create(null);",html.indexOf("const parsedCb=partnerInlineSelectedCb()")-100);
+ const start=html.lastIndexOf("const counts=Object.create(null);",html.indexOf("const parsedCb=partnerInlineSelectedCb()"));
  const before=html.lastIndexOf("const before=snap.records.find",start);
  assert.ok(before>0&&before<start,"prior entry must be initialized before count loop");
 });
