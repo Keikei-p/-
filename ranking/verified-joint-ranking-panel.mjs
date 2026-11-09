@@ -112,6 +112,7 @@ export function verifiedJointCountView(response,{month,role}={}){
   products=rankRows(response.productRanking,["name","count","rank"]);
   companies=rankBreakdown(response.companyBreakdown);
   teams=rankBreakdown(response.teamBreakdown,"companyName");
+  if(companies.reduce((total,x)=>total+x.count,0)!==response.summary.total)BLOCK();
  }else{
   if(!obj(response.publicRanking)||!obj(response.own)||
      !number(response.own.count))BLOCK();
@@ -119,6 +120,8 @@ export function verifiedJointCountView(response,{month,role}={}){
   products=rankRows(response.publicRanking.products,["name","count","rank"]);
   companies=rankRows(response.publicRanking.companies,["name","count","rank"]);
   teams=rankRows(response.publicRanking.teams,["name","count","rank"],"company");
+  if(companies.reduce((total,x)=>total+x.count,0)!==
+     products.reduce((total,x)=>total+x.count,0))BLOCK();
  }
  return Object.freeze({role,month,unit:"件",
   total:role==="hub_owner"?response.summary.total:null,
