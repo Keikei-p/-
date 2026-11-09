@@ -69,7 +69,9 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
-        with: {ref: ${{ github.sha }},persist-credentials: false}
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
       - name: Revalidate exact current main and protected source versions
