@@ -8,6 +8,8 @@ on:
       - 'ranking/owner-visible-count-server-handler.mjs'
       - 'ranking/owner-visible-count-atomic-loader.mjs'
       - 'ranking/internal-month-count-tx-reader.mjs'
+      - 'ranking/canonical-joint-count-sku-reader.mjs'
+      - 'tests/canonical-joint-count-sku-reader.test.mjs'
       - 'tests/internal-month-count-tx-reader.test.mjs'
       - 'ranking/owner-product-visibility-in-atomic-tx.mjs'
       - 'tests/owner-visible-count-atomic-loader.test.mjs'
@@ -75,6 +77,8 @@ jobs:
           node --check ranking/owner-visible-count-server-handler.mjs
           node --check ranking/owner-visible-count-atomic-loader.mjs
           node --check ranking/internal-month-count-tx-reader.mjs
+          node --check ranking/canonical-joint-count-sku-reader.mjs
+          node --check tests/canonical-joint-count-sku-reader.test.mjs
           node --check tests/internal-month-count-tx-reader.test.mjs
           node --check ranking/owner-product-visibility-in-atomic-tx.mjs
           node --check tests/owner-visible-count-atomic-loader.test.mjs
@@ -95,7 +99,7 @@ jobs:
         run: |
           set -euo pipefail
           node --test tests/verified-dual-count-dashboards.test.mjs tests/owner-product-visibility-rankings.test.mjs tests/owner-visible-count-server-handler.test.mjs tests/owner-visible-count-atomic-loader.test.mjs tests/owner-product-visibility-in-atomic-tx.test.mjs tests/owner-product-visibility-firestore.test.mjs tests/owner-product-visibility-panel.test.mjs tests/owner-product-visibility-dashboard-mount.test.mjs tests/owner-product-visibility-firebase-bridge.test.mjs tests/owner-product-visibility-callables.test.cjs
-          node --test tests/partner-month-readonly-loader.test.mjs tests/internal-month-count-tx-reader.test.mjs
+          node --test tests/partner-month-readonly-loader.test.mjs tests/internal-month-count-tx-reader.test.mjs tests/canonical-joint-count-sku-reader.test.mjs
       - name: Install ONLY isolated emulator tooling and existing workspace dependencies
         shell: bash
         run: |
