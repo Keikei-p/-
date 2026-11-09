@@ -56,21 +56,21 @@ test("shared owner-reviewed exact product IDs drive company, individual and SKU 
   companyId:"partner",productId:"partnerSku01",
   groupId:"nuro",groupName:"NURO光"
  });
- const on=buildOwnerVisibleCountRanking({input,publication:pub(["nuro"])});
+ const on=buildOwnerVisibleCountRanking({input:{...input,context},publication:pub(["nuro"])});
  assert.deepEqual(on.summary,{own:2,partner:5,total:7,unidentified:0});
  assert.equal(on.productRanking[0].count,7);
  assert.equal(on.memberRanking.find(x=>x.id==="partner:p1").count,5);
  assert.equal(on.companyBreakdown.find(x=>x.id==="partner").count,5);
- const off=buildOwnerVisibleCountRanking({input,publication:pub([])});
+ const off=buildOwnerVisibleCountRanking({input:{...input,context},publication:pub([])});
  assert.equal(off.summary.total,0);
- const back=buildOwnerVisibleCountRanking({input,publication:pub(["nuro","air"])});
+ const back=buildOwnerVisibleCountRanking({input:{...input,context},publication:pub(["nuro","air"])});
  assert.equal(back.summary.total,8);
  assert.deepEqual(input,before,"no source-count or original history may be changed");
  assert(!/revenue|cashback|unitPrice|totalRevenue/.test(JSON.stringify(input)));
 });
 test("same product names NEVER map two companies without explicit owner-reviewed binding",()=>{
  const noMap=compose({skuMap:{...map,bindings:[]}});
- const on=buildOwnerVisibleCountRanking({input:noMap,publication:pub(["nuro"])});
+ const on=buildOwnerVisibleCountRanking({input:{...noMap,context},publication:pub(["nuro"])});
  assert.equal(on.summary.partner,0);
  assert.equal(on.summary.own,2);
 });
