@@ -84,7 +84,7 @@ test("bounded live adapter never reads financial collections and does not output
  assert.equal(r.authChanges,0);
  assert.equal(r.financialOriginalsRead,false);
  assert.equal(r.actualPasswordSignInNotTested,true);
- assert.deepEqual(f.paths,["auth","companies","members"]);
+ assert.deepEqual(f.paths,["auth","companies","companies","members"]);
  const out=JSON.stringify(r);
  for(const v of [uid,cid,"@example.invalid"])assert(!out.includes(v),v);
 });
