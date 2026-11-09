@@ -653,3 +653,66 @@ test('partner private product and count documents cannot be read or mutated thro
     'partnerWorkEntries','2026-10-06__helper'))).data(),countData);
  });
 });
+
+
+test('existing-email secondary partner: active server context blocks four financial originals in candidate while legacy primary remains intact',async()=>{
+ // Mirrors the non-destructive invited-secondary flow: users/{uid} and their
+ // primary company Owner membership remain intact; a separate server-owned
+ // partnerWorkspaceContexts/{uid} document switches the secondary app scope.
+ const finance=[
+  ['products','secondary-price',{
+   companyId:company,name:'原本単価',revenue:10000,active:true,
+   pricingOptions:[{cashback:0,revenuePerUnit:10000}]
+  }],
+  ['records','secondary-record',payload('owner','owner','a')],
+  ['recordCorrections','secondary-correction',{
+   companyId:company,recordId:'secondary-record',recordUid:'owner',
+   before:{totalRevenue:10000},after:{totalRevenue:20000},
+   changedByUid:'owner',changedByName:'owner'
+  }],
+  ['revenueGoals','secondary-goal',{
+   companyId:company,teamId:'a',month:'2026-11',targetRevenue:2500000
+  }]
+ ];
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const admin=ctx.firestore();
+  for(const [coll,id,data] of finance)await setDoc(doc(admin,coll,id),data);
+  await setDoc(doc(admin,'partnerWorkspaceContexts','owner'),{
+   uid:'owner',kind:'partner_secondary',active:true,
+   primaryCompanyId:company,partnerCompanyId:'partner-company',
+   hubCompanyId:company,role:'owner'
+  });
+ });
+ let originalProfile;
+ await env.withSecurityRulesDisabled(async ctx=>{
+  originalProfile=(await getDoc(doc(ctx.firestore(),'users','owner'))).data();
+ });
+ const db=dbFor('owner');
+ const withCandidate=process.env.NICO_EMULATOR_REVIEW_SECONDARY_FENCE==='1';
+ for(const [coll,id] of finance){
+  const single=getDoc(doc(db,coll,id));
+  if(withCandidate)await assertFails(single,
+   'active secondary partner must lose finance GET: '+coll);
+  else await assertSucceeds(single,
+   'existing live Rules still grant legacy primary finance GET: '+coll);
+  // A filtered query can reveal all revenue originals, not just a known ID.
+  const list=getDocsFromServer(query(collection(db,coll),
+   where('companyId','==',company)));
+  if(withCandidate)await assertFails(list,
+   'active secondary partner must lose finance LIST: '+coll);
+  else await assertSucceeds(list,
+   'existing live Rules still grant legacy primary finance LIST: '+coll);
+ }
+ let afterProfile;
+ await env.withSecurityRulesDisabled(async ctx=>{
+  afterProfile=(await getDoc(doc(ctx.firestore(),'users','owner'))).data();
+ });
+ assert.deepEqual(afterProfile,originalProfile,
+  'switching roles may not alter or delete historical primary user');
+ // Explicit inactive context re-enables the original primary role.
+ await env.withSecurityRulesDisabled(async ctx=>
+  updateDoc(doc(ctx.firestore(),'partnerWorkspaceContexts','owner'),{active:false}));
+ for(const [coll,id] of finance)
+  await assertSucceeds(getDoc(doc(db,coll,id)),
+   'inactive secondary context preserves original internal history: '+coll);
+});
