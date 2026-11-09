@@ -1,0 +1,138 @@
+name: NICO login self-check ONE NEW Hosting page production
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'staging/login-selfcheck-v1/login-self-check.html'
+      - 'tests/login-self-check-page.test.mjs'
+      - 'tools/hosting/login-self-check-addone-guard.mjs'
+      - 'tools/hosting/release-login-self-check-addone.mjs'
+      - 'tests/release-login-self-check-addone.test.mjs'
+      - '.github/workflows/nico-login-self-check-addone-production.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'staging/login-selfcheck-v1/login-self-check.html'
+      - 'tests/login-self-check-page.test.mjs'
+      - 'tools/hosting/login-self-check-addone-guard.mjs'
+      - 'tools/hosting/release-login-self-check-addone.mjs'
+      - 'tests/release-login-self-check-addone.test.mjs'
+      - '.github/workflows/nico-login-self-check-addone-production.yml'
+permissions:
+  contents: read
+concurrency:
+  group: firebase-hosting-nico-self-check-single-add
+  cancel-in-progress: false
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Pin exact new page, release guard and critical production boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object staging/login-selfcheck-v1/login-self-check.html)" = a3a3ddd5ab4a87e6e7f120e0d6a5c3619d4e2709
+          test "$(git hash-object tests/login-self-check-page.test.mjs)" = b25e999ec66c025a516eb73a986deec72969fa1d
+          test "$(git hash-object tools/hosting/login-self-check-addone-guard.mjs)" = 195087206865dee3509a66e8c3f4ef80c3c41170
+          test "$(git hash-object tools/hosting/release-login-self-check-addone.mjs)" = 3f81dcee5e3929b57610260b15ac96fef5eb5b73
+          test "$(git hash-object tests/release-login-self-check-addone.test.mjs)" = d31b01cacc7a8d6cc053d660bafefb8d64c54822
+          test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object legacy-finance-entry-guard.mjs)" = 20d730127d0623bb94d14d21998ab5111d849cfc
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
+      - name: Test self-only account checks and strict additive Hosting manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check tools/hosting/login-self-check-addone-guard.mjs
+          node --check tools/hosting/release-login-self-check-addone.mjs
+          node --test tests/login-self-check-page.test.mjs tests/release-login-self-check-addone.test.mjs
+          node --test tests/legacy-finance-entry-guard.test.mjs
+          echo 'LOGIN_SELF_CHECK_OFFLINE_PASS_18_OLD_FILES_PROTECTED'
+  production:
+    needs: offline
+    if: >-
+      ${{ github.event_name == 'push' &&
+          github.ref == 'refs/heads/main' &&
+          github.repository == 'Keikei-p/-' &&
+          startsWith(github.event.head_commit.message, 'release(hosting): add login self-check as one new page') &&
+          needs.offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require unchanged reviewed main HEAD and release message
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
+          test "$(git log -1 --pretty=%s)" = 'release(hosting): add login self-check as one new page'
+      - name: Install existing OAuth SDK only, no Firebase deploy CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix functions --ignore-scripts --no-audit --no-fund --package-lock=false
+      - name: Store Firebase Hosting service credentials privately on runner
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-login-selfcheck.private.json"
+          chmod 600 "$RUNNER_TEMP/nico-login-selfcheck.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-login-selfcheck.private.json" >> "$GITHUB_ENV"
+      - name: LIVE GET-only Hosting manifest review (18 assets unchanged)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/hosting/release-login-self-check-addone.mjs --dry-run
+      - name: Publish ONLY new login self-check HTML page
+        shell: bash
+        env:
+          NICO_LOGIN_SELF_CHECK_RELEASE: APPROVE_SINGLE_READONLY_LOGIN_STATUS_PAGE
+        run: |
+          set -euo pipefail
+          node tools/hosting/release-login-self-check-addone.mjs --release
+      - name: Independently compare live published HTML bytes with reviewed Git source
+        shell: bash
+        run: |
+          set -euo pipefail
+          matched=no
+          for attempt in 1 2 3 4 5 6 7 8; do
+            if curl --fail --silent --show-error --max-time 20 \
+              -H 'Cache-Control: no-cache' \
+              "https://nico-factory.web.app/login-self-check.html?release=$GITHUB_SHA" \
+              --output "$RUNNER_TEMP/nico-login-selfcheck-public.html" &&
+              cmp --silent staging/login-selfcheck-v1/login-self-check.html \
+                "$RUNNER_TEMP/nico-login-selfcheck-public.html"; then
+              matched=yes
+              break
+            fi
+            sleep 4
+          done
+          test "$matched" = yes
+          echo 'LOGIN_SELF_CHECK_PUBLIC_BYTE_MATCH_PASS'
+          echo 'LOGIN_SELF_CHECK_ONE_PAGE_PRODUCTION_VERIFIED'
+      - name: Erase private credentials and downloaded public HTML
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/nico-login-selfcheck.private.json" "$RUNNER_TEMP/nico-login-selfcheck-public.html"
