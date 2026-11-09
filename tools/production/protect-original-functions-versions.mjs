@@ -40,12 +40,14 @@ export function immutableOriginal(name,body,generation='v2'){
   // Cloud Functions v1 has status/runtime/versionId/httpsTrigger instead of
   // v2's state/buildConfig/serviceConfig. A v1 404 is not a failure when a
   // separate verified active v2 exists, but an ACTIVE v1 must be fingerprinted.
-  const http=isObj(body.httpsTrigger)&&
+  // Coerce missing/null triggers to boolean false. Without this, null and
+  // undefined compare unequal and could bypass the exactly-one-trigger fence.
+  const http=Boolean(isObj(body.httpsTrigger)&&
    typeof body.httpsTrigger.url==='string'&&
-   body.httpsTrigger.url.startsWith('https://');
-  const event=isObj(body.eventTrigger)&&
+   body.httpsTrigger.url.startsWith('https://'));
+  const event=Boolean(isObj(body.eventTrigger)&&
    typeof body.eventTrigger.eventType==='string'&&
-   body.eventTrigger.eventType.length>0;
+   body.eventTrigger.eventType.length>0);
   if(body.status!=='ACTIVE'||!/^nodejs(?:18|20|22|24)$/.test(body.runtime||'')||
      !/^[1-9][0-9]*$/.test(body.versionId||'')||
      (body.entryPoint!==undefined&&
