@@ -14,16 +14,26 @@ const make=(name,custom={})=>({
   serviceAccountEmail:'internal-service-account@example.iam.gserviceaccount.com'},
  ...custom
 });
+const makeV1=(name,custom={})=>({
+ name:base+name,status:'ACTIVE',updateTime:'2026-11-07T03:34:35.123456Z',
+ versionId:'19',runtime:'nodejs20',entryPoint:name,
+ httpsTrigger:{url:'https://asia-northeast1-sales-management-cc116.cloudfunctions.net/'+name},
+ serviceAccountEmail:'protected-service-account@example.iam.gserviceaccount.com',
+ environmentVariables:{ORIGINAL_SERVICE:'preserved'},
+ ...custom
+});
 const answer=(body,status=200)=>({status,json:async()=>body});
 test('GET only six approved originals and report booleans, never real config',async()=>{
  const urls=[];
  const snapshot=await captureOriginal(async url=>{
   urls.push(url);
-  return answer(make(url.split('/').at(-1)));
+  return url.includes('/v2/')?
+   answer(make(url.split('/').at(-1))):{status:404};
  });
- assert.equal(urls.length,6);
- assert.deepEqual(urls.map(x=>x.split('/').at(-1)),ORIGINAL);
- assert.ok(urls.every(x=>x.startsWith('https://cloudfunctions.googleapis.com/v2/projects/sales-management-cc116/')));
+ assert.equal(urls.length,12);
+ assert.deepEqual(urls.filter(x=>x.includes('/v2/')).map(x=>x.split('/').at(-1)),ORIGINAL);
+ assert.deepEqual(urls.filter(x=>x.includes('/v1/')).map(x=>x.split('/').at(-1)),ORIGINAL);
+ assert.ok(urls.every(x=>/https:\/\/cloudfunctions\.googleapis\.com\/v[12]\/projects\/sales-management-cc116\//.test(x)));
  assert.deepEqual(Object.keys(snapshot),ORIGINAL);
  assert.ok(Object.values(snapshot).every(x=>/^[0-9a-f]{64}$/.test(x)));
  const proof=compareOriginalVersions(snapshot,snapshot);
@@ -76,7 +86,7 @@ test('missing, inactive, foreign, malformed metadata stops without revealing sen
  }
  assert.throws(()=>immutableOriginal('writeRecords',make(name)),/STOP_ORIGINAL_FUNCTION_VERSION_TARGET_UNKNOWN/);
  await assert.rejects(captureOriginal(async()=>({status:404})),
-  /STOP_ORIGINAL_FUNCTION_VERSION_ORIGINAL_GET_NOT_SUCCESSFUL/);
+  /STOP_ORIGINAL_FUNCTION_VERSION_ORIGINAL_BOTH_GENERATIONS_MISSING/);
  await assert.rejects(captureOriginal(async()=>{throw Error('private bearer token');}),
   /STOP_ORIGINAL_FUNCTION_VERSION_REMOTE_UNAVAILABLE/);
  await assert.rejects(captureOriginal(async()=>({status:200,json:async()=>{throw Error('private response');}})),
@@ -87,6 +97,67 @@ test('partial, malformed and changed original fingerprint inventory is rejected'
  assert.throws(()=>compareOriginalVersions(before,{}),/STOP_ORIGINAL_FUNCTION_VERSION_INVENTORY_INCOMPLETE/);
  assert.throws(()=>compareOriginalVersions(before,{...before,[ORIGINAL[0]]:'bad'}),
   /STOP_ORIGINAL_FUNCTION_VERSION_INVALID_FINGERPRINT/);
+});
+
+test('mixed Gen1/Gen2 originals are fingerprinted without losing either generation',async()=>{
+ const urls=[];
+ const read=async url=>{
+  urls.push(url);
+  const name=url.split('/').at(-1),isV2=url.includes('/v2/');
+  const activeGen2=ORIGINAL.indexOf(name)%2===0;
+  return isV2===activeGen2?
+   answer(isV2?make(name):makeV1(name)):{status:404};
+ };
+ const before=await captureOriginal(read);
+ assert.equal(urls.length,12);
+ assert.equal(Object.keys(before).length,6);
+ assert(Object.values(before).every(x=>/^[0-9a-f]{64}$/.test(x)));
+ const after=await captureOriginal(read);
+ assert.equal(compareOriginalVersions(before,after).allOriginalSixVersionsUnchanged,true);
+ assert.doesNotMatch(JSON.stringify(before),/protected-service-account|ORIGINAL_SERVICE/);
+});
+test('Gen1 revision, runtime, trigger, IAM and deployment presence changes block',async()=>{
+ const name=ORIGINAL[1];
+ const valid=makeV1(name);
+ for(const changed of [
+  {versionId:'20'},{runtime:'nodejs22'},{updateTime:'2026-11-07T03:35:35Z'},
+  {httpsTrigger:{url:'https://other.example/test'}},
+  {serviceAccountEmail:'other@example.iam.gserviceaccount.com'}
+ ]){
+  assert.notEqual(immutableOriginal(name,valid,'v1'),
+   immutableOriginal(name,makeV1(name,changed),'v1'));
+ }
+ for(const changed of [
+  {status:'OFFLINE'}, {versionId:'0'}, {runtime:'python312'},
+  {httpsTrigger:null}, {updateTime:'invalid'}
+ ]){
+  assert.throws(()=>immutableOriginal(name,makeV1(name,changed),'v1'),
+   /STOP_ORIGINAL_FUNCTION_VERSION_/);
+ }
+ const onlyV1=await captureOriginal(async url=>{
+  const n=url.split('/').at(-1);
+  return url.includes('/v1/')?answer(makeV1(n)):{status:404};
+ });
+ const both=await captureOriginal(async url=>{
+  const n=url.split('/').at(-1);
+  return answer(url.includes('/v1/')?makeV1(n):make(n));
+ });
+ assert.throws(()=>compareOriginalVersions(onlyV1,both),
+  /STOP_ORIGINAL_FUNCTION_VERSION_EXISTING_FUNCTION_VERSION_CHANGED/);
+});
+test('inactive or ambiguous generations and denied metadata are always blocked',async()=>{
+ const name=ORIGINAL[0];
+ const invalid=async url=>{
+  const n=url.split('/').at(-1);
+  if(n!==name)return url.includes('/v2/')?answer(make(n)):{status:404};
+  if(url.includes('/v2/'))return {status:404};
+  return answer(makeV1(n,{status:'OFFLINE'}));
+ };
+ await assert.rejects(captureOriginal(invalid),
+  /STOP_ORIGINAL_FUNCTION_VERSION_LIVE_ORIGINAL_V1_METADATA_MISSING_OR_INACTIVE/);
+ await assert.rejects(captureOriginal(async url=>
+  url.includes('/v2/')?answer(make(url.split('/').at(-1))):{status:403}
+ ),/STOP_ORIGINAL_FUNCTION_VERSION_ORIGINAL_GET_NOT_SUCCESSFUL/);
 });
 test('version guard cannot invoke Functions, deploy, access Firestore or leak secrets',()=>{
  const source=readFileSync(new URL('../tools/production/protect-original-functions-versions.mjs',import.meta.url),'utf8');
