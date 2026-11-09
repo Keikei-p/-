@@ -40,6 +40,20 @@ test("an existing ranking endpoint, extra Function, missing originals or other r
   [before,{result:[...before.result,{id:"getVerifiedJointCountRanking"}, {id:"another"}]}]
  ])assert.throws(()=>compareInventory(old,newer),/SCOPE_BLOCKED/);
 });
+test("short Function IDs require explicit Tokyo region metadata",()=>{
+ const short={result:[...before.result,{id:"getVerifiedJointCountRanking"}]};
+ assert.throws(()=>compareInventory(before,short),/SCOPE_BLOCKED/);
+ assert.throws(()=>compareInventory(before,{result:[
+  ...before.result,{id:"getVerifiedJointCountRanking",region:"us-central1"}
+ ]}),/SCOPE_BLOCKED/);
+ const verified=compareInventory(before,{result:[
+  ...before.result,{id:"getVerifiedJointCountRanking",region:"asia-northeast1"}
+ ]});
+ assert.equal(verified.regionRequiresConfirmation,false);
+ assert.throws(()=>compareInventory(before,{result:[
+  ...before.result,{id:newId,region:"us-central1"}
+ ]}),/SCOPE_BLOCKED/);
+});
 test("duplicate/malformed/unavailable inventory refuses deployment proof",()=>{
  for(const invalid of [
   null,{},{result:null},{result:[{id:"bad id!"}]},
