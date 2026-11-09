@@ -1,6 +1,7 @@
 "use strict";
 // Isolated partner operations: no reads/writes to sales products, records or prices.
 const crypto=require("node:crypto");
+const {enforceLegacyPublication}=require("./legacy-publication-guard.cjs");
 const {loadPublication,projectMasterProducts,changePublication,validId,nameOnly}=require("./catalog-publication.cjs");
 const {readLinks,addLink,projectLinks}=require("./catalog-count-links.cjs");
 const {normalizeExtraCounts,applyExtraCounts,projectedExtraRead}=require("./additional-counts.cjs");
@@ -1685,8 +1686,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    const er=entryRef(s.cid,date,staffId),summary=summaryRef(s.hubId,date,s.cid);
    const privateProductIds=Object.keys(requestedPrivate||{});
    // All reads happen before writes. Do not infer product ownership from IDs.
-   const [oldSnap,totalSnap,...productSnapshots]=await Promise.all([
-    tx.get(er),tx.get(summary),
+   const [oldSnap,totalSnap,publicationSnap,linksSnap,...productSnapshots]=await Promise.all([
+    tx.get(er),tx.get(summary),tx.get(publicationRef(s.hubId)),tx.get(countLinksRef(s.hubId)),
     ...privateProductIds.map(id=>tx.get(privateProductRef(s.cid,id)))
    ]);
    for(let i=0;i<privateProductIds.length;i++){
@@ -1707,6 +1708,11 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    const priorCounts=oldSnap.exists?validateCounts(old.counts).counts:
     Object.fromEntries(KEYS.map(key=>[key,0]));
    const oldCb=oldSnap.exists?validateCbCounts(old.cbCounts,priorCounts):null;
+   try{
+    enforceLegacyPublication({linksDoc:linksSnap.exists?linksSnap.data():null,
+     publicationDoc:publicationSnap.exists?publicationSnap.data():null,
+     categories:KEYS,date,previous:priorCounts,next:counts});
+   }catch{fail("failed-precondition");}
    // Old clients that save only totals cannot corrupt a previously saved CB
    // distribution. If they change NURO totals, mark the breakdown unclassified.
    const nextCb=requestedCb!==undefined?requestedCb:
