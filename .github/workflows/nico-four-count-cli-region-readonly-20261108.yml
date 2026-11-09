@@ -7,12 +7,16 @@ on:
       - '.github/workflows/nico-four-count-cli-region-readonly-20261108.yml'
       - 'tools/production/inspect-four-count-cli-region-readonly.mjs'
       - 'tests/inspect-four-count-cli-region-readonly.test.mjs'
+      - 'tools/production/inspect-ranking-function-cli-readonly.mjs'
+      - 'tests/inspect-ranking-function-cli-readonly.test.mjs'
   push:
     branches: [main]
     paths:
       - '.github/workflows/nico-four-count-cli-region-readonly-20261108.yml'
       - 'tools/production/inspect-four-count-cli-region-readonly.mjs'
       - 'tests/inspect-four-count-cli-region-readonly.test.mjs'
+      - 'tools/production/inspect-ranking-function-cli-readonly.mjs'
+      - 'tests/inspect-ranking-function-cli-readonly.test.mjs'
 permissions:
   contents: read
 concurrency:
@@ -32,7 +36,8 @@ jobs:
         run: |
           set -euo pipefail
           node --check tools/production/inspect-four-count-cli-region-readonly.mjs
-          node --test tests/inspect-four-count-cli-region-readonly.test.mjs
+          node --check tools/production/inspect-ranking-function-cli-readonly.mjs
+          node --test tests/inspect-four-count-cli-region-readonly.test.mjs tests/inspect-ranking-function-cli-readonly.test.mjs tests/inspect-ranking-function-cli-readonly.test.mjs
           test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
           test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
           test "$(git hash-object functions-partner-workspace/index.js)" = '38da7e9174ffea7c406c92292dccfc651b565eb0'
@@ -83,6 +88,8 @@ jobs:
             2> "$RUNNER_TEMP/nico-cli-region-stderr.private.log" || \
             { echo 'STOP_FOUR_COUNT_CLI_INVENTORY_REMOTE_LIST_FAILED'; exit 1; }
           node tools/production/inspect-four-count-cli-region-readonly.mjs \
+            "$RUNNER_TEMP/nico-cli-region-private.json"
+          node tools/production/inspect-ranking-function-cli-readonly.mjs \
             "$RUNNER_TEMP/nico-cli-region-private.json"
           echo 'PRODUCTION_FUNCTION_DEPLOYS=0'
           echo 'PRODUCTION_DOCUMENT_WRITES=0'
