@@ -7,12 +7,14 @@ on:
       - 'functions-partner-workspace/**'
       - 'tests/partner-legacy-publication-guard.test.cjs'
       - 'tests/partner-workspace.test.cjs'
+      - 'tests/partner-count-only-rankings.test.cjs'
       - '.github/workflows/partner-legacy-publication-guard-no-deploy.yml'
   pull_request:
     paths:
       - 'functions-partner-workspace/**'
       - 'tests/partner-legacy-publication-guard.test.cjs'
       - 'tests/partner-workspace.test.cjs'
+      - 'tests/partner-count-only-rankings.test.cjs'
       - '.github/workflows/partner-legacy-publication-guard-no-deploy.yml'
   workflow_dispatch:
 permissions:
@@ -36,7 +38,9 @@ jobs:
         run: |
           node --check functions-partner-workspace/legacy-publication-guard.cjs
           node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/count-only-rankings.cjs
           node --check tests/partner-legacy-publication-guard.test.cjs
           node --check tests/partner-workspace.test.cjs
+          node --check tests/partner-count-only-rankings.test.cjs
       - name: Isolated and service integration tests
-        run: node --test tests/partner-legacy-publication-guard.test.cjs tests/partner-workspace.test.cjs
+        run: node --test tests/partner-legacy-publication-guard.test.cjs tests/partner-workspace.test.cjs tests/partner-count-only-rankings.test.cjs
