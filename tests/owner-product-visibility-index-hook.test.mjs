@@ -6,7 +6,7 @@ import {spawnSync} from "node:child_process";
 
 const html=fs.readFileSync(new URL("../index.html",import.meta.url),"utf8");
 const anchor="const NICO_OWNER_PRODUCT_ONOFF_RELEASED=false;";
-const i=html.indexOf(anchor),end=html.indexOf("/* =====================================================\n    DOM",i);
+const i=html.indexOf(anchor),end=html.indexOf("/* =====================================================\n   DOM",i);
 test("existing owner product editor contains exactly one hidden count publication panel",()=>{
  assert.equal(html.split('id="ownerProductPublicationSection"').length,2);
  assert.equal(html.split('id="ownerProductPublicationRoot"').length,2);
