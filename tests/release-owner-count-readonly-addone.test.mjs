@@ -24,16 +24,25 @@ const paths=[
  ...Array.from({length:8},(_,i)=>"/old-asset-"+i+".js")
 ];
 function fixture({collision=false,drift=false,concurrent=false,unknownUpload=false,configChanged=false,
-  newerSameContents=false,newerDifferentContents=false,newerDifferentConfig=false}={}){
+  newerSameContents=false,newerDifferentContents=false,newerDifferentConfig=false,
+  newerOwnerDifferent=false,newerMissingPath=false}={}){
  const old=[
   ...paths.map((path,i)=>({path,hash:String(i%9+1).repeat(64)})),
   ...Object.entries(oldSources).map(([path,source])=>({path,hash:hostingHash(source)}))
  ];
  if(collision){old[0]={path:NEW_PATH,hash:old[0].hash}};
  if(drift){const row=old.find(x=>x.path==="/owner-partner-admin.html");row.hash="f".repeat(64)}
- const approved=new Map([...old.map(x=>[x.path,x.hash]),[NEW_PATH,hostingHash(candidate)]]);
+ const currentOld=old.map(x=>({...x}));
+ if(newerDifferentContents)currentOld[0].hash="f".repeat(64);
+ if(newerOwnerDifferent)currentOld.find(x=>
+  x.path==="/owner-partner-admin.html").hash="e".repeat(64);
+ if(newerMissingPath)currentOld[0].path="/unexpected-replacement-page";
+ const amended=newerDifferentContents||newerOwnerDifferent||newerMissingPath;
+ const approved=new Map([...(amended?currentOld:old).map(x=>[x.path,x.hash]),
+  [NEW_PATH,hostingHash(candidate)]]);
  const logs=[];
- let live=newerSameContents||newerDifferentContents||newerDifferentConfig?NEW_LIVE:BASE_VERSION,
+ let live=newerSameContents||newerDifferentContents||newerDifferentConfig||
+   newerOwnerDifferent||newerMissingPath?NEW_LIVE:BASE_VERSION,
   created=false,finalized=false,uploaded=false,postCount=0;
  const request=async(method,url,body=null,type="application/json")=>{
   logs.push({method,url,body:type==="application/octet-stream"?"binary":body});
@@ -47,10 +56,8 @@ function fixture({collision=false,drift=false,concurrent=false,unknownUpload=fal
    return {name:NEW_LIVE,status:"FINALIZED",config:newerDifferentConfig?{rewrites:[]}:C,fileCount:old.length};
   if(url===BASE+"/"+BASE_VERSION+"/files?pageSize=1000"&&method==="GET")
    return {files:old};
-  if(url===BASE+"/"+NEW_LIVE+"/files?pageSize=1000"&&method==="GET"){
-   if(!newerDifferentContents)return {files:old};
-   return {files:old.map((f,i)=>i===0?{...f,hash:"f".repeat(64)}:f)};
-  }
+  if(url===BASE+"/"+NEW_LIVE+"/files?pageSize=1000"&&method==="GET")
+   return {files:currentOld};
   if(url===BASE+"/sites/nico-factory/versions"&&method==="POST"){
    created=true;return {name:CREATED,status:"CREATED"};
   }
@@ -128,11 +135,21 @@ test("newer live version with identical 17 assets AND Hosting config is safe to 
  assert.equal(report.released,true);
  assert.equal(f.posted,1);
 });
-test("a newer live version with ANY changed old file or Hosting config is rejected BEFORE CREATE",async()=>{
- for(const opts of [{newerDifferentContents:true},{newerDifferentConfig:true}]){
+test("newer live app files are copied byte-identically, never reverted",async()=>{
+ const f=fixture({newerDifferentContents:true});
+ const r=await publishOwnerCountAddOne({request:f.request,oldSources,candidate,release:true});
+ assert.equal(r.released,true);
+ assert.equal(f.posted,1);
+ const upload=f.writes.find(x=>x.url.includes(":populateFiles"));
+ assert.equal(upload.body.files["/index.html"],"f".repeat(64));
+});
+test("a newer live version with Owner asset, original path or Hosting config drift is rejected BEFORE CREATE",async()=>{
+ for(const opts of [
+  {newerOwnerDifferent:true},{newerMissingPath:true},{newerDifferentConfig:true}
+ ]){
   const f=fixture(opts);
   await assert.rejects(publishOwnerCountAddOne({request:f.request,oldSources,candidate,release:true}),
-   /STOP_OWNER_COUNT_ONE_RELEASE_(LIVE_ASSET_DRIFT|REVIEWED_BASE_CONFIG_DRIFT)/);
+   /STOP_OWNER_(COUNT_ONE_RELEASE|COUNT_ADDONE)_/);
   assert.equal(f.writes.length,0);
  }
 });
