@@ -1,0 +1,84 @@
+name: NICO diagnostic Hosting exact-one-page safe preflight (GET ONLY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-finance-diagnostic-surgical-dryrun.yml'
+      - 'tests/finance-diagnostic-surgical-dryrun.test.mjs'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-finance-diagnostic-surgical-dryrun.yml'
+      - 'tests/finance-diagnostic-surgical-dryrun.test.mjs'
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Freeze reviewed source and prove dry-run cannot write Hosting
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
+          test "$(git hash-object tools/hosting/surgical-finance-boundary-mobile-login.mjs)" = eca7dc5becf5801ae1f0dc6c9dddf1ff6d55eced
+          test "$(git hash-object finance-boundary-check.html)" = 7fa664efb17f6d3337e9403498aa8c0857b35be5
+          node --check tools/hosting/surgical-finance-boundary-mobile-login.mjs
+          node --test tests/finance-diagnostic-surgical-dryrun.test.mjs tests/surgical-finance-boundary-mobile-login.test.mjs
+  live-get-only:
+    needs: offline
+    if: >-
+      ${{ github.event_name == 'push' &&
+          github.repository == 'Keikei-p/-' &&
+          github.ref == 'refs/heads/main' &&
+          needs.offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Stop if protected code, Rules or public app changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
+          test "$(git hash-object tools/hosting/surgical-finance-boundary-mobile-login.mjs)" = eca7dc5becf5801ae1f0dc6c9dddf1ff6d55eced
+          test "$(git hash-object finance-boundary-check.html)" = 7fa664efb17f6d3337e9403498aa8c0857b35be5
+          node --test tests/finance-diagnostic-surgical-dryrun.test.mjs
+      - name: Install preexisting read-only Hosting metadata credential dependency
+        shell: bash
+        run: npm install --prefix functions --ignore-scripts --no-audit --no-fund --package-lock=false
+      - name: Keep existing service identity in a private ephemeral file
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-diagnostic-dryrun.private.json"
+          chmod 600 "$RUNNER_TEMP/nico-diagnostic-dryrun.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-diagnostic-dryrun.private.json" >> "$GITHUB_ENV"
+      - name: GET current Hosting version and 12 assets, strict one-page dry-run only
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/hosting/surgical-finance-boundary-mobile-login.mjs --dry-run
+          echo 'PRODUCTION_HOSTING_RELEASES=0'
+          echo 'FIREBASE_AUTH_REQUESTS=0'
+          echo 'FIRESTORE_DOCUMENT_REQUESTS=0'
+          echo 'PRODUCTION_RULES_WRITES=0'
+      - name: Delete private temporary identity
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/nico-diagnostic-dryrun.private.json" firebase-debug.log
