@@ -115,7 +115,7 @@ test("no admin SDK or direct write, credential collection, other-user lookups or
  assert.match(html,/getAuth\(app\)/);
  assert.match(html,/onAuthStateChanged\(auth,user=>/);
  assert.match(html,/noindex,nofollow,noarchive/);
- assert.match(html,/companyCode/);
+ assert.match(html,/会社コード/);
  assert.doesNotMatch(html,/\b(?:setDoc|updateDoc|deleteDoc|writeBatch|runTransaction|createUserWithEmailAndPassword|createCustomToken|setCustomUserClaims|eval)\s*\(/);
  assert.doesNotMatch(html,/doc\(db,"(?:companies|members|records|products|revenueGoals|recordCorrections)"/);
  assert.doesNotMatch(html,/fetch\s*\(\s*["']https?:\/\//);
