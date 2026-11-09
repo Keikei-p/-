@@ -5,12 +5,16 @@ on:
     paths:
       - 'tools/hosting/surgical-finance-boundary-current-live.mjs'
       - 'tests/surgical-finance-boundary-current-live.test.mjs'
+      - 'tests/finance-boundary-ondevice.test.mjs'
+      - 'finance-boundary-check.html'
       - '.github/workflows/nico-finance-diagnostic-current-live-single-release.yml'
   push:
     branches: [main]
     paths:
       - 'tools/hosting/surgical-finance-boundary-current-live.mjs'
       - 'tests/surgical-finance-boundary-current-live.test.mjs'
+      - 'tests/finance-boundary-ondevice.test.mjs'
+      - 'finance-boundary-check.html'
       - '.github/workflows/nico-finance-diagnostic-current-live-single-release.yml'
 permissions:
   contents: read
@@ -33,8 +37,8 @@ jobs:
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
           test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
           test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
-          test "$(git hash-object finance-boundary-check.html)" = 7fa664efb17f6d3337e9403498aa8c0857b35be5
-          test "$(git hash-object tools/hosting/surgical-finance-boundary-current-live.mjs)" = 77fb1cd00f950cbe56ab794a54f54da8d0d9a093
+          test "$(git hash-object finance-boundary-check.html)" = ba0de47af53174d3ef37a9a047818568c0527035
+          test "$(git hash-object tools/hosting/surgical-finance-boundary-current-live.mjs)" = bc9d664ff2da577768c9e59c7ec1365b5390780f
           node --check tools/hosting/surgical-finance-boundary-current-live.mjs
           node --test tests/surgical-finance-boundary-current-live.test.mjs tests/surgical-finance-boundary-mobile-login.test.mjs tests/finance-boundary-ondevice.test.mjs
           test "$(git show 2c10e27bb6a92684470c74388a76cad3d0f3ee4c:finance-boundary-check.html | git hash-object --stdin)" = 1369f7523e171f64cacb263aa65e8e7e04572d27
@@ -67,8 +71,8 @@ jobs:
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
           test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
           test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
-          test "$(git hash-object finance-boundary-check.html)" = 7fa664efb17f6d3337e9403498aa8c0857b35be5
-          test "$(git hash-object tools/hosting/surgical-finance-boundary-current-live.mjs)" = 77fb1cd00f950cbe56ab794a54f54da8d0d9a093
+          test "$(git hash-object finance-boundary-check.html)" = ba0de47af53174d3ef37a9a047818568c0527035
+          test "$(git hash-object tools/hosting/surgical-finance-boundary-current-live.mjs)" = bc9d664ff2da577768c9e59c7ec1365b5390780f
           node --test tests/surgical-finance-boundary-current-live.test.mjs
       - name: Supply existing Hosting identity privately
         env:

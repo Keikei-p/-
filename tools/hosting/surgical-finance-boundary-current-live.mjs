@@ -5,7 +5,7 @@
  * Strictly requires explicit --release and live version recheck immediately before
  * publishing. Dry-run is read-only.
  *
- * Baseline is the SHA-exact archived Nov 7 diagnostic, independently
+ * Baseline is the SHA-exact most-recent Nov 7 diagnostic, independently
  * matched to the current public HTML on Nov 9 without exposing its source.
  * Any current-version update MUST preserve every original file path/hash,
  * pin the full old diagnostic blob and reconfirm the release just before POST.
@@ -26,8 +26,8 @@ export const ASSET="/finance-boundary-check.html";
 const BASE="https://firebasehosting.googleapis.com/v1beta1";
 const allowedVersion=/^sites\/nico-factory\/versions\/[A-Za-z0-9_-]+$/;
 export const EXACT_PREVIOUS_VERSION="sites/nico-factory/versions/c7e5a4d77339bbb9";
-export const EXACT_PREVIOUS_GIT_BLOB="3375c411babc15b14bd84405ab69822b987bd4a5";
-const ORIGINAL_GIT_COMMIT="d5c7cb85a734a5cad82fa890116cebdcf2941286";
+export const EXACT_PREVIOUS_GIT_BLOB="7fa664efb17f6d3337e9403498aa8c0857b35be5";
+const ORIGINAL_GIT_COMMIT="0bc073ba24d0f7bc840c868e3c3d42adea64485b";
 const gitBlob=b=>createHash("sha1").update("blob "+b.length+String.fromCharCode(0))
  .update(b).digest("hex");
 const sha256=b=>createHash("sha256").update(b).digest("hex");
