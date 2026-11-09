@@ -22,10 +22,12 @@ const text=x=>{
 const rankRows=(value,allowedKeys)=>{
  if(!Array.isArray(value)||value.length>10000)BLOCK();
  const out=[],ids=new Set();
- for(const row of value){
+ for(const [index,row] of value.entries()){
   if(!obj(row)||!number(row.count)||!number(row.rank)||row.rank<1||
      !allowedKeys.every(key=>key in row))BLOCK();
-  const id=text(row.id??row.name??("rank-"+row.rank));
+  // Public partner rankings intentionally omit personal IDs. Tied ranks
+  // and identical names across companies are valid; never coalesce people.
+  const id=row.id==null?"public-"+index:text(row.id);
   if(ids.has(id))BLOCK();
   ids.add(id);
   out.push({id,rank:row.rank,
@@ -40,9 +42,9 @@ export function verifiedJointCountView(response,{month,role}={}){
     response.period!=="month"||
     !["hub_owner","partner_owner"].includes(role)||
     response.role!==role||response.unit!=="件"||
-    !obj(response.range)||!obj(response.range.from)&&
-      !obj(response.range.start)&&
-      typeof response.range.start!=="string"||
+    !obj(response.range)||
+    typeof response.range.start!=="string"||
+    typeof response.range.end!=="string"||
     (typeof response.readTime!=="string"||
      Number.isNaN(Date.parse(response.readTime))))BLOCK();
 
