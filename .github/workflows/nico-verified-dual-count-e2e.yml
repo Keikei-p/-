@@ -9,6 +9,8 @@ on:
       - 'ranking/owner-visible-count-atomic-loader.mjs'
       - 'ranking/internal-month-count-tx-reader.mjs'
       - 'ranking/canonical-joint-count-sku-reader.mjs'
+      - 'ranking/canonical-owner-count-server-factory.mjs'
+      - 'tests/canonical-owner-count-server-factory.test.mjs'
       - 'tests/canonical-joint-count-sku-reader.test.mjs'
       - 'tests/internal-month-count-tx-reader.test.mjs'
       - 'ranking/owner-product-visibility-in-atomic-tx.mjs'
@@ -78,7 +80,9 @@ jobs:
           node --check ranking/owner-visible-count-atomic-loader.mjs
           node --check ranking/internal-month-count-tx-reader.mjs
           node --check ranking/canonical-joint-count-sku-reader.mjs
-          node --check tests/canonical-joint-count-sku-reader.test.mjs
+          node --check ranking/canonical-owner-count-server-factory.mjs
+          node --check tests/canonical-owner-count-server-factory.test.mjs
+          node --check tests/canonical-joint-count-sku-reader.test.mjs tests/canonical-owner-count-server-factory.test.mjs
           node --check tests/internal-month-count-tx-reader.test.mjs
           node --check ranking/owner-product-visibility-in-atomic-tx.mjs
           node --check tests/owner-visible-count-atomic-loader.test.mjs
