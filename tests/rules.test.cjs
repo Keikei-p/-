@@ -683,8 +683,10 @@ test('existing-email secondary partner: active server context blocks four financ
    hubCompanyId:company,role:'owner'
   });
  });
- const originalProfile=(await env.withSecurityRulesDisabled(async ctx=>
-  getDoc(doc(ctx.firestore(),'users','owner')))).data();
+ let originalProfile;
+ await env.withSecurityRulesDisabled(async ctx=>{
+  originalProfile=(await getDoc(doc(ctx.firestore(),'users','owner'))).data();
+ });
  const db=dbFor('owner');
  const withCandidate=process.env.NICO_EMULATOR_REVIEW_SECONDARY_FENCE==='1';
  for(const [coll,id] of finance){
@@ -701,8 +703,10 @@ test('existing-email secondary partner: active server context blocks four financ
   else await assertSucceeds(list,
    'existing live Rules still grant legacy primary finance LIST: '+coll);
  }
- const afterProfile=(await env.withSecurityRulesDisabled(async ctx=>
-  getDoc(doc(ctx.firestore(),'users','owner')))).data();
+ let afterProfile;
+ await env.withSecurityRulesDisabled(async ctx=>{
+  afterProfile=(await getDoc(doc(ctx.firestore(),'users','owner'))).data();
+ });
  assert.deepEqual(afterProfile,originalProfile,
   'switching roles may not alter or delete historical primary user');
  // Explicit inactive context re-enables the original primary role.
