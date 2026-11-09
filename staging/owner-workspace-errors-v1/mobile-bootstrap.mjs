@@ -1,0 +1,179 @@
+/**
+ * STAGING ONLY / NO DEPLOY.
+ * Combines an already authenticated hub workspace discovery call with the
+ * count-only client bridge and the mobile owner correction panel.
+ * Do NOT put this into production Hosting until independent real-account
+ * finance GET/LIST denial, working count API and billing approvals exist.
+ */
+import {makeOwnerCorrectionClient} from "./owner-client.mjs";
+import {mountOwnerCorrection} from "./owner-ui.mjs";
+
+const ID=/^[A-Za-z0-9_-]{1,128}$/;
+const DATE=/^\d{4}-\d{2}-\d{2}$/;
+const MONEY=/(?:単価|売上|収益|利益|報酬|[¥￥$€]|\d[\d,]*円)/;
+const invalid=(code="UNVERIFIED")=>{throw Error("OWNER_CORRECTION_BOOT_"+code)};
+const object=x=>x!==null&&typeof x==="object"&&!Array.isArray(x);
+const validDate=x=>typeof x==="string"&&DATE.test(x)&&
+ !Number.isNaN(Date.parse(x+"T00:00:00Z"))&&
+ new Date(x+"T00:00:00Z").toISOString().slice(0,10)===x;
+const validId=x=>typeof x==="string"&&ID.test(x);
+const exactKeys=(value,list)=>object(value)&&
+ Object.keys(value).sort().join("|")===list.slice().sort().join("|");
+const safeLabel=x=>typeof x==="string"&&x.length>0&&x.length<=80&&
+ x.trim()===x&&!MONEY.test(x);
+const ROOT_FIELDS=[
+ "role","date","partners","registeredCompanies","categories",
+ "sbBreakdownSchema","partnerTeamDetails","teamReports","teamStatusComplete"
+];
+const COMPANY_FIELDS=["partnerCompanyId","name","active","teams"];
+
+/** Phase 1: fail-closed, client-only diagnostic codes. Never echo Firebase
+ * error messages/details: those may include account IDs or backend internals.
+ * Server authorization remains entirely inside the existing Functions.
+ */
+const OWNER_WORKSPACE_HINTS=Object.freeze({
+ AUTH_REQUIRED:"ログインが切れました。自社アプリでログインしてください。",
+ EMAIL_UNVERIFIED:"メールアドレスの確認が必要です。",
+ OWNER_NOT_AUTHORIZED:"自社Owner権限を確認できません。会社と所属設定を確認してください。",
+ PARTNER_RELATION_MISSING:"対象協力店の共有承認を確認できません。",
+ FUNCTION_UNAVAILABLE:"件数管理APIを利用できません。しばらくして再取得してください。",
+ DATA_SHAPE_INVALID:"件数データの確認に失敗しました。訂正は停止しています。",
+ NETWORK_ERROR:"通信が完了しませんでした。接続状況を確認して再取得してください。"
+});
+export function classifyOwnerWorkspaceError(error){
+ const allowed=Object.keys(OWNER_WORKSPACE_HINTS);
+ const explicit=error?.details?.publicCode;
+ let code=typeof explicit==="string"&&allowed.includes(explicit)?explicit:null;
+ if(!code){
+  const status=typeof error?.code==="string"?
+   error.code.toLowerCase().replace(/^functions\//,""):"";
+  const kind=typeof error?.message==="string"?error.message:"";
+  if(status==="unauthenticated"||status==="auth/id-token-expired")
+   code="AUTH_REQUIRED";
+  else if(status==="permission-denied")
+   code="OWNER_NOT_AUTHORIZED";
+  else if(status==="auth/network-request-failed"||
+      ["deadline-exceeded","cancelled","network-request-failed"].includes(status))
+   code="NETWORK_ERROR";
+  else if(/^(?:OWNER_CORRECTION_BOOT_(?:WORKSPACE_UNVERIFIED|COMPANY_UNVERIFIED)|STALE_OR_UNTRUSTED|INVALID_TEAM_COUNTS|UNVERIFIED_TEAM)$/.test(kind))
+   code="DATA_SHAPE_INVALID";
+  else code="FUNCTION_UNAVAILABLE";
+ }
+ return Object.freeze({code,message:OWNER_WORKSPACE_HINTS[code]});
+}
+
+export function countOnlyRegisteredCompanies(raw,date){
+ if(!object(raw)||raw.role!=="hub"||raw.date!==date||
+    !Array.isArray(raw.registeredCompanies)||
+    raw.registeredCompanies.length>100||
+    Object.keys(raw).some(k=>!ROOT_FIELDS.includes(k)))
+  invalid("WORKSPACE_UNVERIFIED");
+ const output=[],seen=new Set();
+ for(const c of raw.registeredCompanies){
+  if(!exactKeys(c,COMPANY_FIELDS)||!validId(c.partnerCompanyId)||
+     !safeLabel(c.name)||typeof c.active!=="boolean"||
+     !Array.isArray(c.teams)||c.teams.length>150||
+     !c.teams.every(t=>exactKeys(t,["id","name"])&&
+      validId(t.id)&&safeLabel(t.name))||
+     seen.has(c.partnerCompanyId))
+   invalid("COMPANY_UNVERIFIED");
+  seen.add(c.partnerCompanyId);
+  // Retain only count-scope fields. Team details, financial originals and
+  // arbitrary response extensions never reach the editable panel.
+  output.push(Object.freeze({
+   partnerCompanyId:c.partnerCompanyId,name:c.name,active:c.active
+  }));
+ }
+ return Object.freeze(output);
+}
+
+export async function mountVerifiedOwnerCorrection({
+ root,auth,workspaceCallable,listCallable,correctCallable,
+ dateGetter,confirmChange,subscribeAuth,invalidateRanking,enabled=()=>false,dom
+}={}){
+ if(!root||!auth||typeof workspaceCallable!=="function"||
+    typeof listCallable!=="function"||typeof correctCallable!=="function"||
+    typeof dateGetter!=="function"||typeof confirmChange!=="function"||
+    typeof subscribeAuth!=="function"||
+    typeof invalidateRanking!=="function"||
+    typeof enabled!=="function"||!dom)
+  invalid("DEPENDENCIES");
+ if(enabled()!==true)invalid("DISABLED");
+ const owner=auth.currentUser,day=dateGetter();
+ if(!owner||!validId(owner.uid)||owner.emailVerified!==true||
+    typeof owner.email!=="string"||!validDate(day))
+  invalid("SESSION_UNVERIFIED");
+ let result;
+ try{result=await workspaceCallable({date:day})}
+ catch{invalid("DISCOVERY_UNAVAILABLE")}
+ if(enabled()!==true||auth.currentUser!==owner||
+    auth.currentUser?.emailVerified!==true||dateGetter()!==day)
+  invalid("STALE_SESSION");
+ const companies=countOnlyRegisteredCompanies(result?.data,day);
+ const client=makeOwnerCorrectionClient({
+  auth,listCallable,correctCallable,enabled
+ });
+ if(enabled()!==true||auth.currentUser!==owner||dateGetter()!==day){
+  client.dispose();invalid("STALE_SESSION");
+ }
+ try{
+  const panel=mountOwnerCorrection({
+   root,companies,api:client,dateGetter,confirmChange,dom,
+   onVerifiedSave:async receipt=>{
+    if(auth.currentUser!==owner||owner.emailVerified!==true||
+       dateGetter()!==receipt.date||enabled()!==true)
+     invalid("STALE_SESSION");
+    // Invalidate only a server-readback-verified partner/day. The caller
+    // must clear the existing in-memory daily ranking cache + monthly view.
+    await invalidateRanking(Object.freeze({
+     date:receipt.date,month:receipt.date.slice(0,7),
+     partnerCompanyId:receipt.partnerCompanyId,version:receipt.version
+    }));
+   }
+  });
+  let destroyed=false,unsubscribe=()=>{},listenerReady=false;
+  const destroy=()=>{
+   if(destroyed)return;
+   destroyed=true;
+   client.dispose();
+   panel.destroy();
+   if(listenerReady)unsubscribe();
+  };
+  // Firebase onAuthStateChanged must be injected by the caller. Clearing
+  // an already-rendered count panel is essential: rejecting *new* requests
+  // alone cannot prevent a later user viewing the previous owner's counts.
+  let cancel;
+  try{
+   cancel=subscribeAuth(user=>{
+    if(destroyed)return;
+    if(user!==owner||user?.emailVerified!==true||
+       enabled()!==true)destroy();
+   });
+  }catch{destroy();invalid("AUTH_LISTENER_UNVERIFIED")}
+  if(typeof cancel!=="function"){
+   destroy();invalid("AUTH_LISTENER_UNVERIFIED");
+  }
+  unsubscribe=cancel;listenerReady=true;
+  if(destroyed){
+   unsubscribe();
+   invalid("AUTH_LISTENER_UNVERIFIED");
+  }
+  // An account could switch between the first post-fetch check and
+  // listener registration; never return a stale visible panel even then.
+  if(auth.currentUser!==owner||
+     auth.currentUser?.emailVerified!==true||enabled()!==true){
+   destroy();
+   invalid("STALE_SESSION");
+  }
+  return Object.freeze({
+   companies,load:panel.load,save:panel.save,
+   selectCompany:panel.selectCompany,destroy
+  });
+ }catch(error){
+  client.dispose();
+  root.replaceChildren();
+  if(/^OWNER_CORRECTION_BOOT_(AUTH_LISTENER_UNVERIFIED|STALE_SESSION)$/.test(
+    error?.message||""))throw error;
+  invalid("PANEL_UNVERIFIED");
+ }
+}
