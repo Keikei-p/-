@@ -1,6 +1,8 @@
 "use strict";
 // Isolated partner operations: no reads/writes to sales products, records or prices.
 const crypto=require("node:crypto");
+const {enforceLegacyPublication}=require("./legacy-publication-guard.cjs");
+const {jointCountRankings}=require("./count-only-rankings.cjs");
 const {loadPublication,projectMasterProducts,changePublication,validId,nameOnly}=require("./catalog-publication.cjs");
 const {readLinks,addLink,projectLinks}=require("./catalog-count-links.cjs");
 const {normalizeExtraCounts,applyExtraCounts,projectedExtraRead}=require("./additional-counts.cjs");
@@ -1361,6 +1363,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    }
    return {scope:"shared_counts_only",date,role:s.kind==="hub"?"hub":"partner",
     complete,includesDirect:true,missingCompanies,companies,teams,people,
+    countRankings:jointCountRankings({companies,teams,people,direct}),
     productCounts,additionalTotalCount,categories:KEYS,direct,rankingGroups:sharedConfig.groups,
     groupStandings,groupRevision:sharedConfig.revision,groupStatus};
   }
@@ -1575,11 +1578,12 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   // Owner; do not silently ignore forged hub options in a partner session.
   if(d.includeTeamStatus===true||d.partnerCompanyId!=null)fail();
   if(d.includeAuditHistory!=null&&d.includeAuditHistory!==true)fail("invalid-argument");
-  const [teams,staff,entries,privateProducts]=await Promise.all([
+  const [teams,staff,entries,privateProducts,legacyLinksSnap,legacyPublicationSnap]=await Promise.all([
     collection(s.cid,"partnerWorkTeams").limit(151).get(),
     collection(s.cid,"partnerWorkStaff").limit(151).get(),
     collection(s.cid,"partnerWorkEntries").where("date","==",date).limit(201).get(),
-    collection(s.cid,"partnerPrivateProducts").limit(101).get()
+    collection(s.cid,"partnerPrivateProducts").limit(101).get(),
+    countLinksRef(s.hubId).get(),publicationRef(s.hubId).get()
   ]);
   if(teams.size>150||staff.size>150||entries.size>200||privateProducts.size>100)fail("resource-exhausted");
   const productList=privateProducts.docs.map(sn=>{
@@ -1661,6 +1665,16 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    .filter(team=>["owner","leader"].includes(s.role)||team.id===s.teamId);
   return {role:s.role,date,companyName:clean(s.companyName),teamId:s.teamId,
     teams:visibleTeams,staff:[...allowed.values()],records:rows,categories:KEYS,
+    legacyCategoryPublication:(()=>{
+     try{
+      const linked=readLinks(legacyLinksSnap.exists?legacyLinksSnap.data():null,KEYS).links;
+      const published=new Set(loadPublication(legacyPublicationSnap.exists?legacyPublicationSnap.data():null).productIds);
+      return KEYS.map(category=>{
+       const link=linked.find(x=>x.category===category);
+       return {category,acceptsIncrease:!link||date<link.effectiveFrom||published.has(link.productId)};
+      });
+     }catch{fail("data-loss");}
+    })(),
     privateProducts:productList,...(audits?{audits}: {})};
  }
  async function submit(request){
@@ -1685,8 +1699,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    const er=entryRef(s.cid,date,staffId),summary=summaryRef(s.hubId,date,s.cid);
    const privateProductIds=Object.keys(requestedPrivate||{});
    // All reads happen before writes. Do not infer product ownership from IDs.
-   const [oldSnap,totalSnap,...productSnapshots]=await Promise.all([
-    tx.get(er),tx.get(summary),
+   const [oldSnap,totalSnap,publicationSnap,linksSnap,...productSnapshots]=await Promise.all([
+    tx.get(er),tx.get(summary),tx.get(publicationRef(s.hubId)),tx.get(countLinksRef(s.hubId)),
     ...privateProductIds.map(id=>tx.get(privateProductRef(s.cid,id)))
    ]);
    for(let i=0;i<privateProductIds.length;i++){
@@ -1707,6 +1721,11 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    const priorCounts=oldSnap.exists?validateCounts(old.counts).counts:
     Object.fromEntries(KEYS.map(key=>[key,0]));
    const oldCb=oldSnap.exists?validateCbCounts(old.cbCounts,priorCounts):null;
+   try{
+    enforceLegacyPublication({linksDoc:linksSnap.exists?linksSnap.data():null,
+     publicationDoc:publicationSnap.exists?publicationSnap.data():null,
+     categories:KEYS,date,previous:priorCounts,next:counts});
+   }catch{fail("failed-precondition");}
    // Old clients that save only totals cannot corrupt a previously saved CB
    // distribution. If they change NURO totals, mark the breakdown unclassified.
    const nextCb=requestedCb!==undefined?requestedCb:

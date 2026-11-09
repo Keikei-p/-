@@ -1651,3 +1651,92 @@ test("unpublishing added partner product never shares hidden historic quantities
  assert.deepEqual([...db.store],beforeRead,"read-only rankings must not alter stored counts or prices");
  assert.deepEqual(db.store.get("records/old"),new Map(before).get("records/old"));
 });
+
+
+test("legacy publication OFF is enforced inside submit transaction without modifying records",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ const team=(await api.manage(req("p",{action:"addTeam",name:"営業班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"担当者",teamId:team}))).staffId;
+ const first=await api.submit(req("p",{date,staffId:staff,counts:{...zero(),NURO:2},expectedVersion:0}));
+ assert.equal(first.version,1);
+ db.seed("companies/hub/partnerCatalogSettings/countLinks",{revision:1,links:[
+  {productId:"nuro",category:"NURO",effectiveFrom:date}
+ ]});
+ db.seed("companies/hub/partnerCatalogSettings/publication",{revision:1,productIds:[]});
+ const before=clone([...db.store]);
+ await assert.rejects(api.submit(req("p",{date,staffId:staff,
+  counts:{...zero(),NURO:3},expectedVersion:1})),e=>e.code==="failed-precondition");
+ assert.deepEqual([...db.store],before,"rejected count edit must not write any document");
+ const corrected=await api.submit(req("p",{date,staffId:staff,
+  counts:{...zero(),NURO:1},expectedVersion:1}));
+ assert.equal(corrected.version,2);
+ assert.equal(db.store.get("records/old").totalRevenue,808080);
+ assert.equal(db.store.get("products/money").unitPrice,98765);
+});
+
+
+test("OFF legacy category does not block other legacy buckets or allow stale-version overwrite",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ const team=(await api.manage(req("p",{action:"addTeam",name:"別班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"別担当",teamId:team}))).staffId;
+ db.seed("companies/hub/partnerCatalogSettings/countLinks",{revision:1,links:[
+  {productId:"nuro",category:"NURO",effectiveFrom:date}
+ ]});
+ db.seed("companies/hub/partnerCatalogSettings/publication",{revision:1,productIds:[]});
+ const saved=await api.submit(req("p",{date,staffId:staff,
+  counts:{...zero(),"SB光・AIR":2},expectedVersion:0}));
+ assert.equal(saved.totalCount,2);
+ const snapshot=clone([...db.store]);
+ await assert.rejects(api.submit(req("p",{date,staffId:staff,
+  counts:{...zero(),NURO:1,"SB光・AIR":2},expectedVersion:1})),e=>e.code==="failed-precondition");
+ assert.deepEqual([...db.store],snapshot);
+ await assert.rejects(api.submit(req("p",{date,staffId:staff,
+  counts:{...zero(),"SB光・AIR":3},expectedVersion:0})),e=>e.code==="aborted");
+ assert.deepEqual([...db.store],snapshot);
+ const updated=await api.submit(req("p",{date,staffId:staff,
+  counts:{...zero(),"SB光・AIR":3},expectedVersion:1}));
+ assert.equal(updated.totalCount,3);
+});
+
+
+test("published legacy category saves, OFF blocks increase, re-ON restores count entry without rewriting history",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ const team=(await api.manage(req("p",{action:"addTeam",name:"公開切替班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"公開切替担当",teamId:team}))).staffId;
+ const pub="companies/hub/partnerCatalogSettings/publication";
+ db.seed("companies/hub/partnerCatalogSettings/countLinks",{revision:1,links:[
+  {productId:"nuro",category:"NURO",effectiveFrom:date}
+ ]});
+ db.seed(pub,{revision:1,productIds:["nuro"]});
+ const first=await api.submit(req("p",{date,staffId:staff,
+  counts:{...zero(),NURO:1},expectedVersion:0}));
+ assert.equal(first.version,1);
+ const priorEntry=clone(db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+staff));
+ db.seed(pub,{revision:2,productIds:[]});
+ const before=clone([...db.store]);
+ await assert.rejects(api.submit(req("p",{date,staffId:staff,
+  counts:{...zero(),NURO:2},expectedVersion:1})),e=>e.code==="failed-precondition");
+ assert.deepEqual([...db.store],before);
+ db.seed(pub,{revision:3,productIds:["nuro"]});
+ const second=await api.submit(req("p",{date,staffId:staff,
+  counts:{...zero(),NURO:2},expectedVersion:1}));
+ assert.equal(second.version,2);
+ assert.equal(second.totalCount,2);
+ assert.equal(db.store.get("records/old").totalRevenue,808080);
+ assert.equal(db.store.get("products/money").unitPrice,98765);
+ assert.ok(priorEntry===undefined||priorEntry.totalCount===1);
+});
+
+
+test("partner dashboard exposes only count-entry availability, never finance or hidden product identifiers",async()=>{
+ const {db,api,req}=setup(),date="2026-10-31";
+ db.seed("companies/hub/partnerCatalogSettings/countLinks",{revision:1,links:[
+  {productId:"secret_product",category:"NURO",effectiveFrom:date}
+ ]});
+ db.seed("companies/hub/partnerCatalogSettings/publication",{revision:1,productIds:[]});
+ const result=await api.view(req("p",{date}));
+ assert.equal(result.legacyCategoryPublication.find(x=>x.category==="NURO").acceptsIncrease,false);
+ assert.equal(result.legacyCategoryPublication.find(x=>x.category==="SB光・AIR").acceptsIncrease,true);
+ assert.equal(result.legacyCategoryPublication.length,KEYS.length);
+ assert.doesNotMatch(JSON.stringify(result.legacyCategoryPublication),/secret_product|revenue|price|cashback|98765/);
+});

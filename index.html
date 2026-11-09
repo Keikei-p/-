@@ -13227,7 +13227,7 @@ function appendSharedRankingRows(container,heading,entries,complete){
 // Common count-only presentation for both partner and HQ partner-company
 // breakdown. No currency, price, margin, commission, or finance read.
 const PARTNER_TEAM_CB_TIERS=["0","20000","40000","60000","80000"];
-function renderPartnerCountTeamCard(title,total,counts,cbCounts,members,keys,{verified=true}={}){
+function renderPartnerCountTeamCard(title,total,counts,cbCounts,members,keys,{verified=true,showCb=false}={}){
  if(!Number.isSafeInteger(total)||total<0||!counts||typeof counts!=="object"||
     !Array.isArray(members))throw Error("count_team_invalid");
  const card=document.createElement("details");card.className="partner-count-team-card";
@@ -13252,8 +13252,8 @@ function renderPartnerCountTeamCard(title,total,counts,cbCounts,members,keys,{ve
  }
  if(visible>total)throw Error("count_team_total_mismatch");
  const nuro=counts.NURO||0,tiers=cbCounts?.NURO;
- if(nuro>0||tiers){
-  const block=section("NURO光｜CB別件数");
+ if(showCb&&(nuro>0||tiers)){
+  const block=section("NURO光｜件数内訳");
   const grid=document.createElement("div");grid.className="partner-count-team-cb-grid";
   let assigned=0;
   for(const tier of PARTNER_TEAM_CB_TIERS){
@@ -13263,7 +13263,7 @@ function renderPartnerCountTeamCard(title,total,counts,cbCounts,members,keys,{ve
    const tile=document.createElement("div");tile.className="partner-count-team-cb-cell";
    const label=document.createElement("div");label.className="partner-count-team-cb-label";
    // Cashback tier names are a classification, not sales or unit prices.
-   label.textContent=tier==="0"?"CB0":"CB"+Number(tier)/10000+"万";
+   label.textContent="件数区分 "+(PARTNER_TEAM_CB_TIERS.indexOf(tier)+1);
    const count=document.createElement("div");count.className="partner-count-team-cb-value";
    count.textContent=amount+"件";tile.append(label,count);grid.append(tile);
   }
@@ -13271,12 +13271,12 @@ function renderPartnerCountTeamCard(title,total,counts,cbCounts,members,keys,{ve
   const unclassified=tiers?.unclassified??(nuro-assigned);
   if(!Number.isSafeInteger(unclassified)||unclassified<0||
      assigned+unclassified!==nuro)throw Error("count_team_cb_mismatch");
-  if(unclassified)partnerMainAppendRow(block,"CB未分類",unclassified+"件（過去実績）");
+  if(unclassified)partnerMainAppendRow(block,"未分類",unclassified+"件（過去実績）");
  }
  const products=section("商材別件数");
  for(const key of keys){
   const n=counts[key]??0;
-  if(!n||key==="NURO")continue;
+  if(!n)continue;
   const row=document.createElement("div");row.className="partner-count-team-product-row";
   const titleEl=document.createElement("span");titleEl.textContent=key;
   const number=document.createElement("strong");number.textContent=n+"件";
@@ -13346,7 +13346,7 @@ function renderPartnerCountTeamCardProductOnly(member,keys){
    classified+=count;
    const cell=document.createElement("div");cell.className="partner-count-team-cb-cell";
    const label=document.createElement("div");label.className="partner-count-team-cb-label";
-   label.textContent=tier==="0"?"CB0":"CB"+Number(tier)/10000+"万";
+   label.textContent="件数区分 "+(PARTNER_TEAM_CB_TIERS.indexOf(tier)+1);
    const value=document.createElement("div");value.className="partner-count-team-cb-value";
    value.textContent=count+"件";cell.append(label,value);grid.append(cell);
   }
@@ -13354,7 +13354,7 @@ function renderPartnerCountTeamCardProductOnly(member,keys){
   const unknown=cb?.unclassified??(nuro-classified);
   if(!Number.isSafeInteger(unknown)||unknown<0||classified+unknown!==nuro)
    throw Error("count_team_person_cb_mismatch");
-  if(unknown)partnerMainAppendRow(el,"CB未分類",unknown+"件（過去実績）");
+  if(unknown)partnerMainAppendRow(el,"未分類",unknown+"件（過去実績）");
  }
  return el;
 }
@@ -14444,7 +14444,7 @@ function renderPartnerEntryTotals(){
  }
  // Same visual grouping as HQ, including a CB subtotal without leaking revenue.
  const cbLabel=grid.querySelector(".partner-cb-title");
- if(cbLabel)cbLabel.textContent="NURO光｜CB別件数（合計 "+cbTotal+"件）";
+ if(cbLabel)cbLabel.textContent="NURO光｜件数入力（合計 "+cbTotal+"件）";
  if(!partnerExtraValid()){
   // A failed/unfinished remote read is not proof of zero additional sales.
   target.textContent="通常商材 "+shared+"件｜協力店専用 "+privateTotal+
@@ -14505,22 +14505,26 @@ function partnerInlineRenderCounts(){
  const grid=pInline("pInlineCountFields");grid.replaceChildren();
  pInline("pInlineSaveStatus").textContent="";
  delete pInline("pInlineSaveStatus").dataset.result;
+ const legacyAvailability=new Map((snap.legacyCategoryPublication||[]).map(x=>[x.category,x.acceptsIncrease===true]));
  for(const key of snap.categories){
+  const unavailable=legacyAvailability.get(key)===false;
+  const historicalCount=entry?.counts?.[key]??0;
+  if(unavailable&&historicalCount===0)continue; // OFF: hide zero-count input; server remains authoritative.
   if(key==="NURO"){
    const card=document.createElement("div");
    card.className="p-inline-field product-input-group product-input-group--compact partner-cb-card";
    const heading=document.createElement("div");heading.className="partner-cb-title";
-   heading.textContent="NURO光｜CB別件数";
+   heading.textContent="NURO光｜件数入力"+(unavailable?"（公開終了・訂正のみ）":"");
    const hint=document.createElement("div");hint.className="p-inline-muted";
-   hint.textContent="CB区分ごとの件数入力です。売上・単価は表示しません。";
+   hint.textContent="件数の内訳を入力します。金額は表示しません。";
    const tiers=document.createElement("div");tiers.className="partner-cb-options";
    const saved=partnerUiCbCountSnapshot(entry);
    for(const tier of PARTNER_NURO_CB_TIERS){
     if(tier==="unclassified"&&!saved.unclassified)continue;
     const field=document.createElement("label");field.className="p-inline-field";
     if(tier==="unclassified")field.classList.add("partner-cb-legacy");
-    field.textContent=tier==="unclassified"?"既存のCB未分類":
-     tier==="0"?"CB0円":"CB"+(Number(tier)/10000)+"万円";
+    field.textContent=tier==="unclassified"?"既存の未分類件数":
+     "件数区分 "+(PARTNER_NURO_CB_TIERS.indexOf(tier)+1);
     const input=document.createElement("input");input.type="number";input.min="0";
     input.max="9999";input.step="1";input.inputMode="numeric";
     input.className="product-plan-input";
@@ -14535,7 +14539,7 @@ function partnerInlineRenderCounts(){
   label.className="p-inline-field product-input-group product-input-group--compact";
   const title=document.createElement("div");title.className="product-input-group-title";
   const name=document.createElement("span");name.className="product-input-name";
-  name.textContent=key;title.append(name);label.append(title);
+  name.textContent=key+(unavailable?"（公開終了・訂正のみ）":"");title.append(name);label.append(title);
   const input=document.createElement("input");input.type="number";input.min="0";input.max="9999";
   input.step="1";input.inputMode="numeric";input.className="product-plan-input";input.dataset.countKey=key;
   input.value=String(entry?.counts?.[key]??0);
@@ -15367,18 +15371,26 @@ pInline("pInlineSave").onclick=()=>{
  if(!snap.staff.some(p=>p.id===staffId&&p.active))throw Error("staff");
  const workLocation=pInline("pInlineWorkLocation").value.trim();
  if(workLocation.length>100||/[\x00-\x1f\x7f]/.test(workLocation))throw Error("work_location_invalid");
+ const before=snap.records.find(x=>x.staffId===staffId);
  const counts=Object.create(null);
  const parsedCb=partnerInlineSelectedCb();
  const cbCounts={NURO:parsedCb.result};
  for(const key of snap.categories){
-  if(key==="NURO"){counts[key]=parsedCb.total;continue;}
+  if(key==="NURO"){
+   const blocked=snap.legacyCategoryPublication?.some(x=>x.category==="NURO"&&x.acceptsIncrease===false);
+   if(blocked&&(before?.counts?.NURO??0)===0&&parsedCb.total===0){
+    counts[key]=0;continue;
+   }
+   counts[key]=parsedCb.total;continue;
+  }
   const node=[...pInline("pInlineCountFields").querySelectorAll("input[data-count-key]")]
     .find(x=>x.dataset.countKey===key);
   const n=Number(node?.value);
+  if(!node&&snap.legacyCategoryPublication?.some(x=>x.category===key&&x.acceptsIncrease===false)&&
+     (before?.counts?.[key]??0)===0){counts[key]=0;continue;}
   if(!node||node.value.trim()===""||!Number.isSafeInteger(n)||n<0||n>9999)throw Error("counts");
   counts[key]=n;
  }
- const before=snap.records.find(x=>x.staffId===staffId);
  const workTeamId=pInline("pInlineWorkingTeam").value;
  if(!before&&(!partnerMainValidId(workTeamId)||
     !snap.teams.some(t=>t.id===workTeamId&&t.active===true)||

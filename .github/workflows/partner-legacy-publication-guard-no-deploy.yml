@@ -1,0 +1,51 @@
+name: Partner legacy publication guard (NO DEPLOY)
+on:
+  push:
+    branches:
+      - fix/partner-legacy-publication-guard-20261109
+    paths:
+      - 'functions-partner-workspace/**'
+      - 'tests/partner-legacy-publication-guard.test.cjs'
+      - 'tests/partner-workspace.test.cjs'
+      - 'tests/partner-count-only-rankings.test.cjs'
+      - 'tests/partner-ui-parity-contract.test.cjs'
+      - 'index.html'
+      - '.github/workflows/partner-legacy-publication-guard-no-deploy.yml'
+  pull_request:
+    paths:
+      - 'functions-partner-workspace/**'
+      - 'tests/partner-legacy-publication-guard.test.cjs'
+      - 'tests/partner-workspace.test.cjs'
+      - 'tests/partner-count-only-rankings.test.cjs'
+      - 'tests/partner-ui-parity-contract.test.cjs'
+      - 'index.html'
+      - '.github/workflows/partner-legacy-publication-guard-no-deploy.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      FIREBASE_PROJECT_ID: demo-partner-legacy-test
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax validation
+        run: |
+          node --check functions-partner-workspace/legacy-publication-guard.cjs
+          node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/count-only-rankings.cjs
+          node --check tests/partner-legacy-publication-guard.test.cjs
+          node --check tests/partner-workspace.test.cjs
+          node --check tests/partner-count-only-rankings.test.cjs
+          node --check tests/partner-ui-parity-contract.test.cjs
+      - name: Isolated and service integration tests
+        run: node --test tests/partner-legacy-publication-guard.test.cjs tests/partner-workspace.test.cjs tests/partner-count-only-rankings.test.cjs tests/partner-ui-parity-contract.test.cjs
