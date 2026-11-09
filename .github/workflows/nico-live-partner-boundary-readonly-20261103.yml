@@ -12,6 +12,7 @@ on:
       - 'tests/count-drift-correction-readonly.test.mjs'
       - '.github/workflows/nico-live-partner-boundary-readonly-20261103.yml'
       - 'firestore.rules'
+      - 'tests/partner-finance-rules-boundary.test.cjs'
 permissions:
   contents: read
 concurrency:
