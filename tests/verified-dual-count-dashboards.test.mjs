@@ -209,3 +209,29 @@ test("previous-period incomplete never invents initial participation or growth",
  assert.equal(initial.growth,"初参加");
  assert.equal(initial.previousCount,0);
 });
+
+test("partner has distinct joint company/team leaderboards with rank, name and count only",()=>{
+ const input=fixture(3),raw=structuredClone(input);
+ const partner=build({...input,context:auth("partner_owner")});
+ const ranking=partner.publicRanking;
+ assert.deepEqual(ranking.companies,[
+  {rank:1,name:"協力店A",count:3},
+  {rank:2,name:"自社",count:1}
+ ]);
+ assert.deepEqual(ranking.teams,[
+  {rank:1,name:"営業班",company:"協力店A",count:3},
+  {rank:2,name:"営業班",company:"自社",count:1}
+ ]);
+ assert.deepEqual(Object.keys(ranking.teams[0]).sort(),
+  ["rank","name","company","count"].sort());
+ assert(!("companyBreakdown" in partner));
+ assert(!("teamBreakdown" in partner));
+ assert(!JSON.stringify(ranking).match(/revenue|unitPrice|cashback|totalRevenue|uid|teamId|companyId/));
+ assert.deepEqual(input,raw,"new ranks never change stored records or roster");
+});
+test("ranking ties use standard competition ranking across companies and teams",()=>{
+ const input=fixture(1);
+ const partner=build({...input,context:auth("partner_owner")});
+ assert.deepEqual(partner.publicRanking.companies.map(x=>x.rank),[1,1]);
+ assert.deepEqual(partner.publicRanking.teams.map(x=>x.rank),[1,1]);
+});

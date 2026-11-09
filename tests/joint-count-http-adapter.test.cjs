@@ -263,3 +263,28 @@ test("only exact Hosting and direct Function paths are allowed, no prefix or pat
  }
  assert.equal(called,0);
 });
+
+test("approved company and team count-only rankings can cross authenticated Function boundary",async()=>{
+ const payload=data();
+ payload.publicRanking.companies=[
+  {rank:1,name:"協力店",count:5},{rank:2,name:"自社",count:3}];
+ payload.publicRanking.teams=[
+  {rank:1,name:"営業班",company:"協力店",count:5},
+  {rank:2,name:"営業班",company:"自社",count:3}];
+ const adapter=createJointCountHttpAdapter({enabled:()=>true,
+  loadHandler:()=>make(200,payload)});
+ const out=response();await adapter(req(),out);
+ assert.equal(out.statusCode,200);
+ assert.deepEqual(JSON.parse(out.body).publicRanking.companies,
+  payload.publicRanking.companies);
+ assert.deepEqual(JSON.parse(out.body).publicRanking.teams,
+  payload.publicRanking.teams);
+ const bad=structuredClone(payload);
+ bad.publicRanking.teams[0].salary=20000;
+ const rejected=response();
+ const guarded=createJointCountHttpAdapter({enabled:()=>true,
+  loadHandler:()=>make(200,bad)});
+ await guarded(req(),rejected);
+ assert.equal(rejected.statusCode,503);
+ assert.deepEqual(JSON.parse(rejected.body),{error:"request_blocked"});
+});

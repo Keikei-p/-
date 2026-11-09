@@ -21,7 +21,7 @@ const PUBLIC_FIELDS=new Set([
  "previousStart","previousEnd","days","summary","own","partner","total",
  "unidentified","memberRanking","productRanking","companyBreakdown",
  "teamBreakdown","filters","publicRanking","members","products","people",
- "companies","id","name","company","companyId","companyName","kind",
+ "companies","teams","id","name","company","companyId","companyName","kind",
  "teamId","teamName","uid","productId","count","unidentifiedCount",
  "ownCount","partnerCount","rank","reportStatus","reportedDays",
  "previousCount","change","growth","topProduct","remainingToGoal",

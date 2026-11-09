@@ -64,6 +64,31 @@ const rankRows=(value,allowedKeys,companyKey=null)=>{
  }
  return out.sort((a,b)=>a.rank-b.rank||a.name.localeCompare(b.name,"ja"));
 };
+/**
+ * The hub-only existing company/team breakdowns contain no rank field.
+ * Rank only validated name/count labels; IDs stay internal to this view.
+ * Ties use competition rank (1, 1, 3), never client-provided totals.
+ */
+function rankBreakdown(value,companyKey=null){
+ if(!Array.isArray(value)||value.length>10000)BLOCK();
+ const seen=new Set();
+ const ordered=value.map((row,index)=>{
+  if(!obj(row)||!number(row.count)||typeof row.id!=="string")BLOCK();
+  const id=text(row.id);
+  if(seen.has(id))BLOCK();
+  seen.add(id);
+  return {id,index,name:text(row.name),count:row.count,
+   company:companyKey===null?null:text(row[companyKey])};
+ }).sort((a,b)=>b.count-a.count||
+   a.name.localeCompare(b.name,"ja")||
+   a.id.localeCompare(b.id));
+ let previous=null,rank=0;
+ return ordered.map((row,index)=>{
+  if(previous!==row.count)rank=index+1;
+  previous=row.count;
+  return {...row,rank};
+ });
+}
 /** Validate and narrow the server response BEFORE rendering any content. */
 export function verifiedJointCountView(response,{month,role}={}){
  if(!MONTH.test(month||"")||!obj(response)||
@@ -80,7 +105,7 @@ export function verifiedJointCountView(response,{month,role}={}){
  const json=JSON.stringify(response);
  if(/"(?:records|lines|rawProducts|revenue|unitPrice|cashback|price|amount|totalRevenue|unitRevenue|commission)"\s*:/i.test(json)||
     json.length>1000000)BLOCK();
- let people,products;
+ let people,products,companies,teams;
  if(role==="hub_owner"){
   if(!obj(response.summary)||!number(response.summary.total)||
      !number(response.summary.own)||
@@ -88,16 +113,24 @@ export function verifiedJointCountView(response,{month,role}={}){
      response.summary.own+response.summary.partner!==response.summary.total)BLOCK();
   people=rankRows(response.memberRanking,["name","count","rank"],"companyName");
   products=rankRows(response.productRanking,["name","count","rank"]);
+  companies=rankBreakdown(response.companyBreakdown);
+  teams=rankBreakdown(response.teamBreakdown,"companyName");
+  if(companies.reduce((total,x)=>total+x.count,0)!==response.summary.total)BLOCK();
  }else{
   if(!obj(response.publicRanking)||!obj(response.own)||
      !number(response.own.count))BLOCK();
   people=rankRows(response.publicRanking.members,["name","count","rank"],"company");
   products=rankRows(response.publicRanking.products,["name","count","rank"]);
+  companies=rankRows(response.publicRanking.companies,["name","count","rank"]);
+  teams=rankRows(response.publicRanking.teams,["name","count","rank"],"company");
+  if(companies.reduce((total,x)=>total+x.count,0)!==
+     products.reduce((total,x)=>total+x.count,0))BLOCK();
  }
  return Object.freeze({role,month,unit:"件",
   total:role==="hub_owner"?response.summary.total:null,
   ownCount:role==="hub_owner"?response.summary.own:response.own.count,
-  people:Object.freeze(people),products:Object.freeze(products)});
+  people:Object.freeze(people),products:Object.freeze(products),
+  companies:Object.freeze(companies),teams:Object.freeze(teams)});
 }
 const el=(document,tag,content)=>{
  const node=document.createElement(tag);
@@ -166,6 +199,8 @@ export function createVerifiedJointRankingPanel({
    else section.appendChild(el(document,"p",
     "自社の対象件数 "+view.ownCount+"件"));
    section.appendChild(list(document,"個人ランキング",view.people));
+   section.appendChild(list(document,"会社ランキング",view.companies));
+   section.appendChild(list(document,"班ランキング",view.teams));
    section.appendChild(list(document,"商材ランキング",view.products));
    root.replaceChildren(section);
    activeIdentity=originalUid;

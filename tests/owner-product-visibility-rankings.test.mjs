@@ -147,3 +147,31 @@ test("owner-only ON/OFF change plans respect active products and do not modify r
   hubCompanyId:"hub",hubProducts,currentEnabledIds:["nuro"],productId:"fake",enabled:true}),
   /VISIBILITY_UNVERIFIED/);
 });
+
+test("all four partner leaderboards honor exact hub SKU ON/OFF and corrections",()=>{
+ const base=fixture(5), original=structuredClone(base);
+ const state=publication(["nuro"]);
+ const partner={...base,context:{...base.context,role:"partner_owner",
+  viewerUid:"partner-owner",viewerCompanyId:"partner"}};
+ const rank=run(partner,state);
+ assert.deepEqual(rank.publicRanking.companies.map(x=>x.count),[5,2]);
+ assert.deepEqual(rank.publicRanking.teams.map(x=>x.count),[5,2]);
+ assert.equal(rank.publicRanking.members.find(x=>x.company==="協力店A").count,5);
+ assert.equal(rank.publicRanking.products[0].count,7);
+ assert.deepEqual(rank.publicRanking.teams.map(x=>Object.keys(x).sort()),[
+  ["rank","name","company","count"].sort(),
+  ["rank","name","company","count"].sort()
+ ]);
+ const off=run(partner,publication([]));
+ assert.equal(off.publicRanking.companies.reduce((n,x)=>n+x.count,0),0);
+ assert.equal(off.publicRanking.teams.reduce((n,x)=>n+x.count,0),0);
+ assert.equal(off.publicRanking.products.length,0);
+ const corrected=fixture(6);
+ const partnerCorrected={...corrected,context:{...corrected.context,
+  role:"partner_owner",viewerUid:"partner-owner",viewerCompanyId:"partner"}};
+ const update=run(partnerCorrected,state);
+ assert.equal(update.publicRanking.companies[0].count,6);
+ assert.equal(update.publicRanking.teams[0].count,6);
+ assert.equal(update.publicRanking.products[0].count,8);
+ assert.deepEqual(base,original,"past original count records stay untouched");
+});
