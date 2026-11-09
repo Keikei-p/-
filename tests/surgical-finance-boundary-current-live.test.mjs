@@ -7,7 +7,7 @@ import {gzipSync} from "node:zlib";
 import {ASSET,EXACT_PREVIOUS_GIT_BLOB,validateManifest,uploadReviewedFinanceMobileLogin}
  from "../tools/hosting/surgical-finance-boundary-current-live.mjs";
 const original=execFileSync("git",["show",
- "d5c7cb85a734a5cad82fa890116cebdcf2941286:finance-boundary-check.html"],
+ "0bc073ba24d0f7bc840c868e3c3d42adea64485b:finance-boundary-check.html"],
  {maxBuffer:1024*1024});
 const candidate=readFileSync(new URL("../finance-boundary-check.html",import.meta.url));
 const hex=x=>createHash("sha256").update(x).digest("hex");
@@ -111,12 +111,12 @@ test("newly listed but missing required app page fails closed even at larger cou
  assert(f.calls.every(x=>x.method==="GET"));
 });
 
-test("reviewed live baseline is exactly the archived diagnostic identified by public GET provenance",()=>{
- assert.equal(oldGitBlob,"3375c411babc15b14bd84405ab69822b987bd4a5");
- assert.equal(original.includes("getPartnerQuickCounts"),false);
+test("reviewed live baseline is exactly the current public diagnostic identified by independent GET parity",()=>{
+ assert.equal(oldGitBlob,"7fa664efb17f6d3337e9403498aa8c0857b35be5");
+ assert.equal(original.includes("getPartnerQuickCounts"),true);
  assert.equal(candidate.toString("utf8").includes("getPartnerQuickCounts"),true);
  assert.notEqual(fresh,hash);
  const js=readFileSync(new URL("../tools/hosting/surgical-finance-boundary-current-live.mjs",import.meta.url),"utf8");
- assert.match(js,/d5c7cb85a734a5cad82fa890116cebdcf2941286/);
- assert.match(js,/3375c411babc15b14bd84405ab69822b987bd4a5/);
+ assert.match(js,/0bc073ba24d0f7bc840c868e3c3d42adea64485b/);
+ assert.match(js,/7fa664efb17f6d3337e9403498aa8c0857b35be5/);
 });
