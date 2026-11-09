@@ -1,0 +1,45 @@
+name: NICO joint ranking HTTP transport (STAGING / NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'functions-ranking-approvals/joint-count-http-adapter.cjs'
+      - 'tests/joint-count-http-adapter.test.cjs'
+      - '.github/workflows/nico-joint-count-http-adapter-staging.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'functions-ranking-approvals/joint-count-http-adapter.cjs'
+      - 'tests/joint-count-http-adapter.test.cjs'
+      - '.github/workflows/nico-joint-count-http-adapter-staging.yml'
+permissions:
+  contents: read
+jobs:
+  isolated-http-transport:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      NICO_JOINT_COUNT_RANKING_ENABLED: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Protect production and existing functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$NICO_JOINT_COUNT_RANKING_ENABLED"
+          git diff --exit-code -- firestore.rules firebase.json firebase.ranking-approvals.json index.html partner-workspace.html functions functions-partner-workspace functions-ranking-approvals/index.js
+          node --check functions-ranking-approvals/joint-count-http-adapter.cjs
+          node --check tests/joint-count-http-adapter.test.cjs
+      - name: Secure path/auth/CORS/no-money tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/joint-count-http-adapter.test.cjs
+          echo 'HTTP_TRANSPORT_STAGING_PASS_FUNCTION_DEPLOY=NO'
