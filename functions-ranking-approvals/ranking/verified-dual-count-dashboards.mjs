@@ -386,13 +386,25 @@ export function buildVerifiedCountDashboard({
  const publicProducts=rankedProducts.map(x=>({
   rank:x.rank,name:x.name,count:x.count
  }));
+ // Publish ranked, aggregate-only organization comparisons. This is the
+ // same already-verified set of ON-only source lines as member/SKU ranks.
+ // No team ID, UID, salary, unit price or source report can leave this API.
+ const publicCompanies=ordered(companyRows.map(x=>({
+  id:x.id,name:x.name,count:x.count
+ })),x=>x.count).map(x=>({rank:x.rank,name:x.name,count:x.count}));
+ const publicTeams=ordered([...teams.values()].map(x=>({
+  id:x.id,name:x.name,company:x.companyName,count:x.count
+ })),x=>x.count).map(x=>({
+  rank:x.rank,name:x.name,company:x.company,count:x.count
+ }));
  const data={schema:common.schema,period:common.period,range,unit:"件",
   readTime:common.readTime,role:"partner_owner",
   own:{company:parsed.names.get(ownCompany),
    count:companyRows.find(x=>x.id===ownCompany)?.count??0,
    unidentifiedCount:companyRows.find(x=>x.id===ownCompany)?.unidentifiedCount??0,
    people:ownPeople,products:ownProducts},
-  publicRanking:{members:publicMembers,products:publicProducts}};
+  publicRanking:{members:publicMembers,products:publicProducts,
+   companies:publicCompanies,teams:publicTeams}};
  auditNoFinancialKeys(data);
  return data;
 }
