@@ -13276,7 +13276,7 @@ function renderPartnerCountTeamCard(title,total,counts,cbCounts,members,keys,{ve
  const products=section("商材別件数");
  for(const key of keys){
   const n=counts[key]??0;
-  if(!n||key==="NURO")continue;
+  if(!n)continue;
   const row=document.createElement("div");row.className="partner-count-team-product-row";
   const titleEl=document.createElement("span");titleEl.textContent=key;
   const number=document.createElement("strong");number.textContent=n+"件";
