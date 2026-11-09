@@ -1,0 +1,133 @@
+name: NICO owner one-login partner portal ADD ONLY (FOUR NEW STATIC ASSETS)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-owner-one-login-portal-additive-hosting.yml'
+      - 'tools/hosting/owner-partner-admin-add-only.mjs'
+      - 'tests/owner-partner-admin-add-only.test.mjs'
+      - 'staging/hub-owner-management/owner-partner-admin.html'
+      - 'tools/production/prepare-hub-owner-portal-static.mjs'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-owner-one-login-portal-additive-hosting.yml'
+      - 'tools/hosting/owner-partner-admin-add-only.mjs'
+      - 'tests/owner-partner-admin-add-only.test.mjs'
+      - 'staging/hub-owner-management/owner-partner-admin.html'
+      - 'tools/production/prepare-hub-owner-portal-static.mjs'
+permissions:
+  contents: read
+concurrency:
+  group: nico-reviewed-finance-diagnostic-only-current-hosting
+  cancel-in-progress: false
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify immutable finance, existing count Functions, and exact four reviewed static assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
+          test "$(git hash-object staging/hub-owner-management/owner-partner-admin.html)" = f6609e6664ec11f629ea57751295abe18cb1dc2a
+          test "$(git hash-object tools/hosting/owner-partner-admin-add-only.mjs)" = d850c133bc3559dba7a04785ce893d9d7470feb8
+          test "$(git hash-object tools/production/prepare-hub-owner-portal-static.mjs)" = 75833cedbfe348999918ffb5ec00c8216f087593
+          node --check tools/hosting/owner-partner-admin-add-only.mjs
+          node --check tools/production/prepare-hub-owner-portal-static.mjs
+          node --test tests/owner-partner-admin-add-only.test.mjs tests/prepare-hub-owner-portal-static.test.mjs
+          node --test tests/partner-owner-correction-v3-ui.test.mjs tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs
+  release-reviewed-additive-assets-only:
+    needs: offline
+    if: >-
+      ${{ github.event_name == 'push' &&
+          github.repository == 'Keikei-p/-' &&
+          github.ref == 'refs/heads/main' &&
+          startsWith(github.event.head_commit.message, 'release: owner one-login management portal (READONLY FOUR ASSETS)') &&
+          needs.offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      NICO_OWNER_PORTAL_RELEASE_CONFIRMATION: CONFIRM_ADD_FOUR_NEW_COUNT_ONLY_ASSETS_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Lock exact reviewed main revision; never permit mutations to existing app, Counts or Rules
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
+          test "$(git hash-object tools/hosting/owner-partner-admin-add-only.mjs)" = d850c133bc3559dba7a04785ce893d9d7470feb8
+          test "$(git hash-object tools/production/prepare-hub-owner-portal-static.mjs)" = 75833cedbfe348999918ffb5ec00c8216f087593
+          node --test tests/owner-partner-admin-add-only.test.mjs tests/prepare-hub-owner-portal-static.test.mjs
+      - name: Load approved Hosting read identity with private temporary permissions
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-owner-portal.private.json"
+          chmod 600 "$RUNNER_TEMP/nico-owner-portal.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-owner-portal.private.json" >> "$GITHUB_ENV"
+      - name: Install existing Admin OAuth dependency without repository or lock changes
+        shell: bash
+        run: npm install --prefix functions --ignore-scripts --no-audit --no-fund --package-lock=false
+      - name: GET-only verify live Hosting assets all remain, new paths absent
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/hosting/owner-partner-admin-add-only.mjs --dry-run
+          echo 'HOSTING_ADD_ONLY_PREFLIGHT_PASS'
+      - name: Publish only 4 new count-only portal assets, preserving all original paths and hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/hosting/owner-partner-admin-add-only.mjs --release
+      - name: Verify every new asset has exact reviewed bytes and original app remains HTTP200
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/prepare-hub-owner-portal-static.mjs --prepare
+          base="$RUNNER_TEMP/nico-owner-portal-static"
+          for asset in owner-partner-admin.html owner-partner-admin-assets/mobile-bootstrap.mjs owner-partner-admin-assets/owner-client.mjs owner-partner-admin-assets/owner-ui.mjs; do
+            ok=false
+            for n in $(seq 1 10); do
+              curl -fsSL --max-time 25 "https://nico-factory.web.app/$asset?owner_portal_release=$GITHUB_SHA-$n" > "$RUNNER_TEMP/owner-portal-observed"
+              if cmp -s "$RUNNER_TEMP/owner-portal-observed" "$base/$asset"; then
+                ok=true
+                break
+              fi
+              sleep 4
+            done
+            test "$ok" = true || { echo 'STOP_OWNER_PORTAL_ASSET_BYTES_UNVERIFIED'; exit 1; }
+          done
+          for old in / /partner-invite.html /partner-counts.html /partner-workspace.html /finance-boundary-check.html; do
+            test "$(curl -fsSL --max-time 25 -o /dev/null -w '%{http_code}' "https://nico-factory.web.app$old")" = 200
+          done
+          echo 'OWNER_PORTAL_FOUR_ADDITIVE_ASSETS_POST_DEPLOY_PASS'
+          echo 'EXISTING_HOSTING_ASSETS_CHANGED=0'
+          echo 'PRODUCTION_FINANCE_AND_COUNT_DOCUMENT_WRITES=0'
+          echo 'PRODUCTION_FUNCTIONS_OR_RULES_DEPLOYS=0'
+      - name: Destroy temporary credentials and HTML
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/nico-owner-portal.private.json" "$RUNNER_TEMP/owner-portal-observed"
+          rm -rf -- "$RUNNER_TEMP/nico-owner-portal-static"
