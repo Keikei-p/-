@@ -21,7 +21,7 @@ export const REVIEWED=Object.freeze({
  "functions-partner-workspace/service.cjs":"b94a6aba231dc2569009580a178297a5b6194bda",
  "firestore.rules":"d9f4df6a2ac0f8b5720534a2461ec66b94379190",
  "index.html":"88ef5636bfe9254e71f2109d452b6d3049f99861",
- "partner-workspace.html":"0930abb188165afea19ef427308ea22fddf636e7"
+ "partner-workspace.html":"994e6faf6f68ac570549c2ddd6d69cad1038632a"
 });
 const stop=x=>{throw Error("STOP_OWNER_V3_PACKAGE_"+x)};
 export function gitBlob(s){

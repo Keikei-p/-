@@ -15,6 +15,7 @@ on:
       - 'staging/partner-sb-v2/partner-conflict-recovery-candidate.mjs'
       - 'tests/partner-conflict-recovery-candidate.test.mjs'
       - 'staging/partner-owner-correction-v3/owner-ui.mjs'
+      - 'staging/partner-owner-correction-v3/owner-console.html'
       - 'ranking/partner-count-cache-invalidation.mjs'
       - 'tests/partner-count-cache-invalidation.test.mjs'
       - 'staging/partner-owner-correction-v3/mobile-bootstrap.mjs'
@@ -38,6 +39,7 @@ on:
       - 'staging/partner-sb-v2/partner-conflict-recovery-candidate.mjs'
       - 'tests/partner-conflict-recovery-candidate.test.mjs'
       - 'staging/partner-owner-correction-v3/owner-ui.mjs'
+      - 'staging/partner-owner-correction-v3/owner-console.html'
       - 'ranking/partner-count-cache-invalidation.mjs'
       - 'tests/partner-count-cache-invalidation.test.mjs'
       - 'staging/partner-owner-correction-v3/mobile-bootstrap.mjs'
@@ -89,6 +91,7 @@ jobs:
           node --test tests/partner-sb-category-v2.test.cjs tests/partner-sb-v2-workspace.test.cjs tests/partner-sb-v2-dashboard.test.cjs
           node --test tests/partner-workspace.test.cjs
           test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
+          test "$(git hash-object index.html)" = '88ef5636bfe9254e71f2109d452b6d3049f99861'
           test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
           test "$(git hash-object functions-partner-workspace/service.cjs)" = 'b94a6aba231dc2569009580a178297a5b6194bda'
           test "$(git hash-object staging/partner-sb-v2/service.cjs)" = '41157a07e159cde651b542bbb9b725039ed7fb58'

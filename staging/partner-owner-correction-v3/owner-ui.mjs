@@ -77,7 +77,8 @@ export function verifyCorrectionReadback(saved,requested,lookup){
 }
 
 export function mountOwnerCorrection({
- root,companies,api,dateGetter,confirmChange,onVerifiedSave=()=>{},dom=document
+ root,companies,api,dateGetter,confirmChange,onVerifiedSave=()=>{},
+ preferredCompanyId="",dom=document
 }){
  if(!root||!dom||!Array.isArray(companies)||!api||
   typeof api.list!=="function"||typeof api.correct!=="function"||
@@ -132,7 +133,20 @@ export function mountOwnerCorrection({
  }
  const hint=el("p","", "SB光・SB AIR・旧未分類の合計は「SB光・AIR」と一致させてください。旧未分類は自動で振り分けません。");
  editor.append(staffLabel,staffSelect,fields,hint,sbFields,reasonLabel,reason,saveButton);
- wrap.append(heading,description,companyLabel,companySelect,loadButton,editor,status);
+ const companyShortcuts=el("div","nico-owner-company-shortcuts");
+ companyShortcuts.style.cssText="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px";
+ const companyButtons=new Map();
+ for(const company of allowed){
+  const button=el("button","",company.name+" の件数");
+  button.type="button";
+  button.style.cssText="min-height:48px;border-radius:11px;padding:10px 12px;border:1px solid #bfd3e8;background:#eef6ff;color:#164678;font-weight:750;text-align:left";
+  button.setAttribute("aria-label",company.name+" の件数を開く");
+  companyButtons.set(company.partnerCompanyId,button);
+  companyShortcuts.append(button);
+ }
+ const shortcutHint=el("p","", "会社ボタンから直接件数を開けます。毎回協力店アカウントにログインし直す必要はありません。");
+ shortcutHint.style.cssText="font-size:12px;color:#586e89;margin:0";
+ wrap.append(heading,description,companyLabel,companySelect,loadButton,editor,status,shortcutHint,companyShortcuts);
  root.replaceChildren(wrap);
  let current=null,selected=null,busy=false,epoch=0,destroyed=false;
  const setStatus=t=>{if(!destroyed)status.textContent=t};
@@ -140,6 +154,7 @@ export function mountOwnerCorrection({
   busy=value;companySelect.disabled=value;loadButton.disabled=value;
   staffSelect.disabled=value;saveButton.disabled=value;
   reason.disabled=value;
+  for(const button of companyButtons.values())button.disabled=value;
   for(const input of [...Object.values(gridInputs),...Object.values(sbInputs)])input.disabled=value;
  };
  function redraw(){
@@ -241,15 +256,29 @@ export function mountOwnerCorrection({
    setStatus("保存結果を確定できません。二重登録防止のため再送せず、最新件数を読み直してください。");
   }finally{lock(false)}
  }
+ function selectCompany(id){
+  if(busy||destroyed)return false;
+  if(!allowed.some(x=>x.partnerCompanyId===id))return false;
+  companySelect.value=id;
+  // Company switching always re-reads server-authorized counts. Neither
+  // counts nor security roles are cached across company selection.
+  void load();
+  return true;
+ }
+ for(const [id,button] of companyButtons)
+  button.addEventListener("click",()=>{selectCompany(id)});
  companySelect.addEventListener("change",()=>{
   epoch++;current=null;selected=null;editor.hidden=true;staffSelect.replaceChildren();
-  setStatus("会社を変更しました。登録済み件数を再取得してください。");
+  setStatus("会社を変更しました。最新の件数を読み込んでいます…");
+  if(allowed.some(x=>x.partnerCompanyId===companySelect.value))void load();
  });
+ if(allowed.some(x=>x.partnerCompanyId===preferredCompanyId))
+  companySelect.value=preferredCompanyId;
  staffSelect.addEventListener("change",redraw);
  loadButton.addEventListener("click",()=>{void load()});
  saveButton.addEventListener("click",()=>{void save()});
  return Object.freeze({
-  load,save,
+  load,save,selectCompany,
   destroy(){
    destroyed=true;epoch++;root.replaceChildren();
    current=null;selected=null;
