@@ -16,8 +16,12 @@ export function inspectSource(index,config){
  if(typeof index!=="string"||typeof config!=="string")STOP();
  let json;try{json=JSON.parse(config)}catch{STOP()}
  if(Object.keys(json).length!==1||
-    json.functions?.source!=="functions-ranking-approvals"||
-    json.functions?.codebase!=="ranking-owner-approvals"||
+    !json.functions||
+    Object.keys(json.functions).sort().join("|")!=="codebase|ignore|source"||
+    !Array.isArray(json.functions.ignore)||
+    json.functions.ignore.join("|")!=="node_modules|.git|firebase-debug.log"||
+    json.functions.source!=="functions-ranking-approvals"||
+    json.functions.codebase!=="ranking-owner-approvals"||
     !index.includes('exports.getVerifiedJointCountRanking=onRequest')||
     !index.includes('NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"')||
     !index.includes('region:"asia-northeast1"'))STOP();
