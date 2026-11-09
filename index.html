@@ -13346,7 +13346,7 @@ function renderPartnerCountTeamCardProductOnly(member,keys){
    classified+=count;
    const cell=document.createElement("div");cell.className="partner-count-team-cb-cell";
    const label=document.createElement("div");label.className="partner-count-team-cb-label";
-   label.textContent=tier==="0"?"CB0":"CB"+Number(tier)/10000+"万";
+   label.textContent="件数区分 "+(PARTNER_TEAM_CB_TIERS.indexOf(tier)+1);
    const value=document.createElement("div");value.className="partner-count-team-cb-value";
    value.textContent=count+"件";cell.append(label,value);grid.append(cell);
   }
