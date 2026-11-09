@@ -1,0 +1,88 @@
+name: NICO Owner primary-secondary topology LIVE READ ONLY
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/production/audit-owner-topology-live-readonly.mjs'
+      - 'tests/audit-owner-topology-live-readonly.test.mjs'
+      - '.github/workflows/nico-owner-topology-live-readonly.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/production/audit-owner-topology-live-readonly.mjs'
+      - 'tests/audit-owner-topology-live-readonly.test.mjs'
+      - '.github/workflows/nico-owner-topology-live-readonly.yml'
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify exactly reviewed diagnostics and unchanged production boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object tools/production/audit-owner-topology-live-readonly.mjs)" = 5bd929825e797a62f88fb5850ff1257c4a772e40
+          test "$(git hash-object tests/audit-owner-topology-live-readonly.test.mjs)" = a06934bd5495919b7f734fed659ab9b4bfe58db8
+          test "$(git hash-object tools/production/audit-owner-workspace-live-readonly.mjs)" = 642fe87d5e3026989d9619f3d0d0a02d19dee545
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
+          test "$(git hash-object staging/partner-owner-correction-v3/trusted-auth.cjs)" = a3e1f03f3e7032024e00109d9211bc34384b9a49
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          node --check tools/production/audit-owner-topology-live-readonly.mjs
+          node --test tests/audit-owner-topology-live-readonly.test.mjs
+          echo 'OWNER_TOPOLOGY_OFFLINE_PASS_NO_PRODUCTION_WRITES'
+  live-read-only:
+    needs: offline
+    if: >-
+      ${{ github.event_name == 'push' &&
+          github.ref == 'refs/heads/main' &&
+          github.repository == 'Keikei-p/-' &&
+          needs.offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Ensure main SHA has not moved
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
+      - name: Install official Firebase Admin SDK without deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix functions --ignore-scripts --no-audit --no-fund --package-lock=false
+      - name: Private production read identity
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-owner-topology.private.json"
+          chmod 600 "$RUNNER_TEMP/nico-owner-topology.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-owner-topology.private.json" >> "$GITHUB_ENV"
+      - name: Audit Owner root and other Owner memberships, output only aggregate counts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/audit-owner-topology-live-readonly.mjs --read-only
+          echo "OWNER_TOPOLOGY_LIVE_NO_WRITES_NO_ROLES_GRANTED_NO_FINANCE_READS"
+      - name: Remove credentials even on failure
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/nico-owner-topology.private.json"
