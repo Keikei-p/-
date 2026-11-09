@@ -180,3 +180,23 @@ test('staged owner UI never reads Firestore, leaks money or persists auth',()=>{
  assert.doesNotMatch(file,/innerHTML|outerHTML|insertAdjacentHTML/);
  assert.doesNotMatch(file,/firebase deploy|collection\("records"\)/);
 });
+
+test('one-tap hub company choice opens existing saved staff without another sign-in',async()=>{
+ const x=ui();
+ await x.mounted.openCompany(partnerCompanyId);
+ assert.deepEqual(x.requested,[{date,partnerCompanyId}]);
+ assert.equal(x.company.value,partnerCompanyId);
+ assert.equal(x.editor.hidden,false);
+ assert.equal(x.staff.value,"s1");
+ assert.equal(x.updates.length,0,"a company switch must never mutate counts");
+});
+test('one-tap hub choice cannot select an unapproved or another company',async()=>{
+ const x=ui();
+ for(const company of ["disabled","../foreign","other"])
+  await assert.rejects(x.mounted.openCompany(company),/UNAVAILABLE_PARTNER_COMPANY/);
+ assert.equal(x.requested.length,0);
+ assert.equal(x.updates.length,0);
+ x.mounted.destroy();
+ await assert.rejects(x.mounted.openCompany(partnerCompanyId),
+  /UNAVAILABLE_PARTNER_COMPANY/);
+});
