@@ -8,6 +8,12 @@ on:
       - 'tests/partner-legacy-publication-guard.test.cjs'
       - 'tests/partner-workspace.test.cjs'
       - '.github/workflows/partner-legacy-publication-guard-no-deploy.yml'
+  pull_request:
+    paths:
+      - 'functions-partner-workspace/**'
+      - 'tests/partner-legacy-publication-guard.test.cjs'
+      - 'tests/partner-workspace.test.cjs'
+      - '.github/workflows/partner-legacy-publication-guard-no-deploy.yml'
   workflow_dispatch:
 permissions:
   contents: read
