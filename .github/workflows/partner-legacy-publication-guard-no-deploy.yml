@@ -45,7 +45,7 @@ jobs:
           node --check functions-partner-workspace/count-only-rankings.cjs
           node --check tests/partner-legacy-publication-guard.test.cjs
           node --check tests/partner-workspace.test.cjs
-          node --check tests/partner-count-only-rankings.test.cjs tests/partner-ui-parity-contract.test.cjs
+          node --check tests/partner-count-only-rankings.test.cjs
           node --check tests/partner-ui-parity-contract.test.cjs
       - name: Isolated and service integration tests
-        run: node --test tests/partner-legacy-publication-guard.test.cjs tests/partner-workspace.test.cjs tests/partner-count-only-rankings.test.cjs
+        run: node --test tests/partner-legacy-publication-guard.test.cjs tests/partner-workspace.test.cjs tests/partner-count-only-rankings.test.cjs tests/partner-ui-parity-contract.test.cjs
