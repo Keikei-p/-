@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {
  classifyOwnerWorkspaceError
-} from "../staging/partner-owner-correction-v3/mobile-bootstrap.mjs";
+} from "../staging/owner-workspace-errors-v1/mobile-bootstrap.mjs";
 import {REVIEWED,prepareHubPortal}
  from "../tools/production/prepare-hub-owner-portal-static.mjs";
 
@@ -66,9 +66,12 @@ test("reviewed four-asset portal keeps correction OFF and displays typed errors 
  const files=Object.fromEntries(Object.keys(REVIEWED).map(p=>[
   p,readFileSync(new URL("../"+p,import.meta.url),"utf8")
  ]));
- const assets=prepareHubPortal(files);
- assert.equal(Object.keys(assets).length,4);
- const html=assets["owner-partner-admin.html"];
+ const originalAssets=prepareHubPortal(files);
+ assert.equal(Object.keys(originalAssets).length,4);
+ const html=readFileSync(new URL("../staging/owner-workspace-errors-v1/owner-partner-admin.html",import.meta.url),"utf8");
+ const boot=readFileSync(new URL("../staging/owner-workspace-errors-v1/mobile-bootstrap.mjs",import.meta.url),"utf8");
+ assert.match(boot,/export function classifyOwnerWorkspaceError/);
+ assert.equal(Object.keys(originalAssets).length,4);
  assert.match(html,/const HUB_OWNER_CORRECTION_READY=false/);
  assert.match(html,/classifyOwnerWorkspaceError\(error\)/);
  assert.match(html,/if\(target!==seq\|\|session!==user\|\|auth.currentUser!==user\)return;/);
