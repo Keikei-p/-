@@ -32,7 +32,7 @@ function fixture({
  const snap=path=>({exists:state.has(path),data:()=>deep(state.get(path))});
  const makeRef=path=>({
   path,get:async()=>snap(path),
-  collection:child=>({doc:id=>makeRef(path+"/"+child)})
+  collection:child=>({doc:id=>makeRef(path+"/"+child+"/"+id)})
  });
  const db={
   collection:name=>({
