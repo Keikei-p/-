@@ -15371,6 +15371,7 @@ pInline("pInlineSave").onclick=()=>{
  if(!snap.staff.some(p=>p.id===staffId&&p.active))throw Error("staff");
  const workLocation=pInline("pInlineWorkLocation").value.trim();
  if(workLocation.length>100||/[\x00-\x1f\x7f]/.test(workLocation))throw Error("work_location_invalid");
+ const before=snap.records.find(x=>x.staffId===staffId);
  const counts=Object.create(null);
  const parsedCb=partnerInlineSelectedCb();
  const cbCounts={NURO:parsedCb.result};
@@ -15384,7 +15385,6 @@ pInline("pInlineSave").onclick=()=>{
   if(!node||node.value.trim()===""||!Number.isSafeInteger(n)||n<0||n>9999)throw Error("counts");
   counts[key]=n;
  }
- const before=snap.records.find(x=>x.staffId===staffId);
  const workTeamId=pInline("pInlineWorkingTeam").value;
  if(!before&&(!partnerMainValidId(workTeamId)||
     !snap.teams.some(t=>t.id===workTeamId&&t.active===true)||
