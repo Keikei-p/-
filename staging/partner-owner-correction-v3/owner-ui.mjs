@@ -248,8 +248,18 @@ export function mountOwnerCorrection({
  staffSelect.addEventListener("change",redraw);
  loadButton.addEventListener("click",()=>{void load()});
  saveButton.addEventListener("click",()=>{void save()});
+ // One-tap navigation from the hub's company list; the actual
+ // backend still independently verifies owner UID and partner relation.
+ // Selecting a different company clears the previous person's editable data.
+ async function openCompany(partnerCompanyId){
+  if(destroyed||busy||!allowed.some(x=>x.partnerCompanyId===partnerCompanyId))
+   throw Error("UNAVAILABLE_PARTNER_COMPANY");
+  epoch++;current=null;selected=null;staffSelect.replaceChildren();
+  editor.hidden=true;companySelect.value=partnerCompanyId;
+  await load();
+ }
  return Object.freeze({
-  load,save,
+  load,save,openCompany,
   destroy(){
    destroyed=true;epoch++;root.replaceChildren();
    current=null;selected=null;
