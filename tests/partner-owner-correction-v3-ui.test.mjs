@@ -180,3 +180,51 @@ test('staged owner UI never reads Firestore, leaks money or persists auth',()=>{
  assert.doesNotMatch(file,/innerHTML|outerHTML|insertAdjacentHTML/);
  assert.doesNotMatch(file,/firebase deploy|collection\("records"\)/);
 });
+
+test("one-tap company shortcut opens the verified hub-only count editor without partner login",async()=>{
+ const x=ui();
+ const shortcuts=x.wrap.children[8];
+ assert.equal(shortcuts.children.length,1,"only active companies get quick-entry buttons");
+ assert.match(shortcuts.children[0].textContent,/協力店A の件数/);
+ assert.equal(x.mounted.selectCompany("disabled"),false,"inactive company is not selectable");
+ assert.equal(x.requested.length,0);
+ assert.equal(x.mounted.selectCompany(partnerCompanyId),true);
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(x.requested.length,1);
+ assert.deepEqual(x.requested[0],{date,partnerCompanyId});
+ assert.equal(x.editor.hidden,false);
+ assert.equal(x.company.value,partnerCompanyId);
+ assert.equal(x.updates.length,0,"opening a company cannot write");
+ x.mounted.destroy();
+ assert.equal(x.mounted.selectCompany(partnerCompanyId),false);
+ assert.equal(x.requested.length,1);
+});
+test("quick company button and native company selection load only selected valid company",async()=>{
+ const x=ui();
+ const shortcuts=x.wrap.children[8];
+ shortcuts.children[0].listeners.click();
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.deepEqual(x.requested,[{date,partnerCompanyId}]);
+ x.company.value="disabled";
+ x.company.listeners.change();
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(x.requested.length,1,"inactive company is never queried");
+ assert.equal(x.editor.hidden,true,"old partner data is cleared before any new request");
+ assert.equal(x.updates.length,0);
+});
+test("standalone owner management is staging-only and reuses Firebase Auth without impersonation",()=>{
+ const html=readFileSync(new URL("../staging/partner-owner-correction-v3/owner-console.html",import.meta.url),"utf8");
+ assert.match(html,/STAGING ONLY \/ NOT PUBLISHED/);
+ assert.match(html,/自社オーナー｜協力店一括管理/);
+ assert.match(html,/mountVerifiedOwnerCorrection/);
+ assert.match(html,/onAuthStateChanged\(auth/);
+ assert.match(html,/getAuth\(app\)/);
+ assert.match(html,/listHubPartnerCounts/);
+ assert.match(html,/correctHubPartnerCounts/);
+ assert.match(html,/getPartnerWorkspace/);
+ assert.match(html,/panel\.selectCompany\(chosen\.partnerCompanyId\)/);
+ assert.match(html,/dateInput\.addEventListener\("change"/);
+ assert.doesNotMatch(html,/signInWithEmailAndPassword|createUserWithEmailAndPassword|localStorage|sessionStorage|document\.cookie/);
+ assert.doesNotMatch(html,/firebase-firestore|getFirestore|setDoc\(|updateDoc\(|deleteDoc\(|collection\("records"\)/);
+ assert.doesNotMatch(html,/getPartnerQuickCounts|submitPartnerWorkspaceCounts|setPersistence|switchUser/);
+});
