@@ -14514,17 +14514,17 @@ function partnerInlineRenderCounts(){
    const card=document.createElement("div");
    card.className="p-inline-field product-input-group product-input-group--compact partner-cb-card";
    const heading=document.createElement("div");heading.className="partner-cb-title";
-   heading.textContent="NURO光｜CB別件数";
+   heading.textContent="NURO光｜件数入力"+(unavailable?"（公開終了・訂正のみ）":"");
    const hint=document.createElement("div");hint.className="p-inline-muted";
-   hint.textContent="CB区分ごとの件数入力です。売上・単価は表示しません。";
+   hint.textContent="件数の内訳を入力します。金額は表示しません。";
    const tiers=document.createElement("div");tiers.className="partner-cb-options";
    const saved=partnerUiCbCountSnapshot(entry);
    for(const tier of PARTNER_NURO_CB_TIERS){
     if(tier==="unclassified"&&!saved.unclassified)continue;
     const field=document.createElement("label");field.className="p-inline-field";
     if(tier==="unclassified")field.classList.add("partner-cb-legacy");
-    field.textContent=tier==="unclassified"?"既存のCB未分類":
-     tier==="0"?"CB0円":"CB"+(Number(tier)/10000)+"万円";
+    field.textContent=tier==="unclassified"?"既存の未分類件数":
+     "件数区分 "+(PARTNER_NURO_CB_TIERS.indexOf(tier)+1);
     const input=document.createElement("input");input.type="number";input.min="0";
     input.max="9999";input.step="1";input.inputMode="numeric";
     input.className="product-plan-input";
