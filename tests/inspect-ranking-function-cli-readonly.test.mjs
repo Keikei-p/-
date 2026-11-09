@@ -81,7 +81,7 @@ test("existing GitHub Actions workflow is GET-only, no production deploy or secr
  const w=readFileSync(new URL("../.github/workflows/nico-four-count-cli-region-readonly-20261108.yml",import.meta.url),"utf8");
  assert.match(w,/firebase functions:list --project/);
  assert.match(w,/inspect-ranking-function-cli-readonly\.mjs/);
- assert.match(w,/node --test tests\/inspect-ranking-function-cli-readonly\.test\.mjs/);
+ assert.match(w,/node --test tests\/inspect-four-count-cli-region-readonly\.test\.mjs tests\/inspect-ranking-function-cli-readonly\.test\.mjs/);
  assert.match(w,/firestore\.rules/);
  assert.doesNotMatch(w,/firebase deploy|gcloud functions deploy|firebase functions:delete|firebase firestore:delete/);
  assert.match(w,/Destroy private identity and metadata outputs/);
