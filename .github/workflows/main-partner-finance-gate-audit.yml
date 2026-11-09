@@ -1,0 +1,20 @@
+name: Canonical main partner finance gates (NO DEPLOY)
+on:
+  pull_request:
+    paths:
+      - 'firestore.rules'
+      - 'functions-ranking-approvals/**'
+      - 'tests/main-partner-finance-gate-audit.test.cjs'
+      - '.github/workflows/main-partner-finance-gate-audit.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test tests/main-partner-finance-gate-audit.test.cjs
