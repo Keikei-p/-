@@ -14,19 +14,27 @@ const {makeExplicitHubOwnerVerifier}=require("./verified-hub-owner.cjs");
 const {makeOwnerDelegateApproval}=require("./owner-approval-service.cjs");
 
 initializeApp();
-const featureEnabled=()=>process.env.HUB_OWNER_DELEGATION_V1_ENABLED==="enabled";
+// LIST and CHANGE are separate release gates: an early read-only rollout
+// must never implicitly activate the transaction that writes Owner grants.
+const listEnabled=()=>process.env.HUB_OWNER_DELEGATE_LIST_ENABLED==="enabled";
+const changeEnabled=()=>listEnabled()&&
+ process.env.HUB_OWNER_DELEGATE_CHANGE_ENABLED==="enabled";
 const db=getFirestore();
-const verifyHubOwner=makeExplicitHubOwnerVerifier({
- db,getAuth,HttpsError,enabled:featureEnabled
-});
-const service=makeOwnerDelegateApproval({
- db,getAuth,FieldValue,HttpsError,verifyHubOwner,enabled:featureEnabled
-});
+const makeService=enabled=>{
+ const verifyHubOwner=makeExplicitHubOwnerVerifier({
+  db,getAuth,HttpsError,enabled
+ });
+ return makeOwnerDelegateApproval({
+  db,getAuth,FieldValue,HttpsError,verifyHubOwner,enabled
+ });
+};
+const readService=makeService(listEnabled);
+const writeService=makeService(changeEnabled);
 const options=Object.freeze({
  region:"asia-northeast1",
  minInstances:0,
  maxInstances:2,
  cors:["https://nico-factory.web.app"]
 });
-exports.listHubOwnerDelegates=onCall(options,service.list);
-exports.changeHubOwnerDelegate=onCall(options,service.change);
+exports.listHubOwnerDelegates=onCall(options,readService.list);
+exports.changeHubOwnerDelegate=onCall(options,writeService.change);
