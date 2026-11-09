@@ -4,7 +4,7 @@ NICO FACTORY / SALES RELEASE READ ONLY PC CHECK
 ASCII only: Windows PowerShell 5.1 can parse it WITHOUT an UTF-8 BOM.
 No deploy, no Rules, no IAM/billing changes, no production data writes.
 Run IDs are identified by comparing the list BEFORE and AFTER dispatch.
-Never parse createdAt timestamps (Windows locale dependent).
+Never use locale-sensitive timestamps to identify workflow runs.
 #>
 [CmdletBinding()]
 param([switch]$NoBrowser)
