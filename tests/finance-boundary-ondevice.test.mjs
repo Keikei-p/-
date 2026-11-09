@@ -510,3 +510,64 @@ test('quick-count fallback never promotes an unverified secondary company contex
  assert.match(el('identity').textContent,/認証・所属の確認が必要/);
  assert.match(el('products').textContent,/未確認/);
 });
+
+function dualOwnerScenario(callable){
+ const user={uid:'hub-owner-dual',emailVerified:true,getIdToken:async()=> 'test-id-token'};
+ const auth={currentUser:user},els=new Map(),functionCalls=[],financialRequests=[];
+ const el=id=>{if(!els.has(id))els.set(id,{value:'',disabled:false,hidden:false,textContent:'',className:''});return els.get(id);};
+ const box={URL,Intl,Date,Map,RegExp,JSON,Error,Number,
+  location:{origin:'https://nico-factory.web.app'},
+  document:{getElementById:el},console:{log:()=>{throw Error('NO_LOG')}},
+  browserSessionPersistence:{},
+  initializeApp:()=>({}),initializeAuth:()=>auth,getFunctions:()=>({}),
+  httpsCallable:(_fn,name)=>async input=>{
+    functionCalls.push({name,input});
+    if(name!=='getPartnerWorkspace')throw Error('NO_QUICK_COUNT_IMPERSONATION');
+    return callable(input);
+  },
+  onAuthStateChanged:(_a,cb)=>cb(user),
+  signInWithEmailAndPassword:async()=>({}),signOut:async()=>{},
+  fetch:async(url,options)=>{
+    if(url.includes('/users/'))return response(200,{fields:{
+      companyId:{stringValue:'internal_hub'},active:{booleanValue:true}}});
+    if(url.includes('/companies/'))return response(200,{fields:{
+      companyKind:{stringValue:'internal'},ownerUid:{stringValue:user.uid}}});
+    financialRequests.push({url,method:options.method,body:options.body});
+    if(url.includes(':runQuery'))return response(403,{error:{
+      code:403,status:'PERMISSION_DENIED'}});
+    throw Error('DIRECT_FINANCE_GET_SHOULD_NOT_OCCUR_WITHOUT_APPROVED_HANDLE');
+  }
+ };
+ runInNewContext(browser,box);
+ el('workspace').value='partner_workspace';
+ return {el,functionCalls,financialRequests};
+}
+test('hub Owner can diagnose an explicitly approved second partner Owner workspace without changing the primary user',async()=>{
+ const x=dualOwnerScenario(async input=>({data:{role:'owner',date:input.date}}));
+ await x.el('run').onclick();
+ assert.equal(x.functionCalls.length,1);
+ assert.equal(x.functionCalls[0].name,'getPartnerWorkspace');
+ assert.equal(x.functionCalls[0].input.workspaceCompanyId,'partner_workspace');
+ assert.match(x.el('identity').textContent,/協力店所属をFunctionsで照合済み/);
+ assert.match(x.el('counts').textContent,/読取成功/);
+ assert.equal(x.financialRequests.length,2);
+ assert(x.financialRequests.every(r=>r.method==='POST'));
+ assert(x.financialRequests.every(r=>r.body.includes('"companyId"')));
+ assert.match(x.el('products').textContent,/GET未検証/);
+ assert.match(x.el('records').textContent,/GET未検証/);
+});
+test('dual hub Owner cannot reach finance queries when secondary callable fails or returns hub-only scope',async()=>{
+ for(const callable of [
+  async()=>{throw Error('UNAVAILABLE');},
+  async input=>({data:{role:'hub',date:input.date}}),
+  async()=>({data:{role:'unknown'}})
+ ]){
+  const x=dualOwnerScenario(callable);
+  await x.el('run').onclick();
+  assert.equal(x.functionCalls.length,1);
+  assert.equal(x.financialRequests.length,0);
+  assert.match(x.el('identity').textContent,/認証・所属の確認が必要/);
+  assert.equal(x.el('products').textContent,'未確認');
+  assert.equal(x.el('records').textContent,'未確認');
+ }
+});
