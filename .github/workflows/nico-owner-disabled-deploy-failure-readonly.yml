@@ -1,0 +1,87 @@
+name: NICO owner correction failed Function deploy forensic triage (READ ONLY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-owner-disabled-deploy-failure-readonly.yml'
+      - 'tools/production/inspect-owner-correction-deploy-failure-readonly.mjs'
+      - 'tests/inspect-owner-correction-deploy-failure-readonly.test.mjs'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-owner-disabled-deploy-failure-readonly.yml'
+      - 'tools/production/inspect-owner-correction-deploy-failure-readonly.mjs'
+      - 'tests/inspect-owner-correction-deploy-failure-readonly.test.mjs'
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Confirm no writes and immutable financial originals before forensics
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
+          node --check tools/production/inspect-owner-correction-deploy-failure-readonly.mjs
+          node --test tests/inspect-owner-correction-deploy-failure-readonly.test.mjs
+  live-get-only:
+    needs: offline
+    if: >-
+      ${{ github.event_name == 'push' &&
+          github.repository == 'Keikei-p/-' &&
+          github.ref == 'refs/heads/main' &&
+          needs.offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify exact approved project, no original function or Rules changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
+          node --test tests/inspect-owner-correction-deploy-failure-readonly.test.mjs
+      - name: Install existing Firebase OAuth library and pinned CLI (no source mutation)
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix functions --ignore-scripts --no-audit --no-fund --package-lock=false
+          npm install --global firebase-tools@15.34.1 --no-audit --no-fund
+      - name: Load existing read-only identity privately
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-owner-triage.private.credentials.json"
+          chmod 600 "$RUNNER_TEMP/nico-owner-triage.private.credentials.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-owner-triage.private.credentials.json" >> "$GITHUB_ENV"
+      - name: Read Firebase function metadata only; NEVER re-run failed deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase functions:list --project "$FIREBASE_PROJECT_ID" --json             > "$RUNNER_TEMP/nico-owner-triage.private.json"             2> "$RUNNER_TEMP/nico-owner-triage.private.cli.log"
+          node tools/production/inspect-owner-correction-deploy-failure-readonly.mjs --readonly
+          echo 'FUNCTION_DEPLOYS=0 FIRESTORE_WRITES=0 FINANCE_READS=0'
+      - name: Destroy all private metadata and identity
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/nico-owner-triage.private.credentials.json"             "$RUNNER_TEMP/nico-owner-triage.private.json"             "$RUNNER_TEMP/nico-owner-triage.private.cli.log"
