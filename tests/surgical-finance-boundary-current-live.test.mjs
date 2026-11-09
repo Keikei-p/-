@@ -54,7 +54,7 @@ test("pin each old diagnostic source byte; do not replace any other 11 live file
 });
 test("malformed current version, altered old diagnostic, missing partner page, unrelated count abort before POST",async()=>{
  for(const [files,version,expected] of [
-  [entries,"sites/another/versions/changed",/INVALID_SOURCE_MANIFEST|UNEXPECTED_LIVE_VERSION|UNRECOGNIZED_LIVE_RELEASE|UNRECOGNIZED_LIVE_VERSION|INVALID_LIVE_VERSION/],
+  [entries,"sites/another/versions/changed",/LIVE_HOSTING_RELEASE_NOT_VERIFIABLE|INVALID_LIVE_VERSION_NAME/],
   [entries.map(x=>x.path===ASSET?{...x,hash:"f".repeat(64)}:x),dynamic,/LIVE_DIAGNOSTIC_NOT_EXACT_PREVIOUS_BYTES/],
   [entries.filter(x=>x.path!=="/partner-workspace.html"),dynamic,/LIVE_REQUIRED_ASSETS_UNVERIFIED/],
   [entries.slice(0,11),dynamic,/LIVE_REQUIRED_ASSETS_UNVERIFIED/],
