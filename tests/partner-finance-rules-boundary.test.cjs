@@ -22,7 +22,7 @@ test("money-bearing product and record reads require internal company membership
  assert.match(company,/member\.get\('accessKind', 'internal'\) == 'internal'/);
  const same=rules.slice(rules.indexOf("function sameCompany("),rules.indexOf("function ownerBootstrap("));
  assert.match(same,/isCompanyMember\(companyId\)/);
- for(const name of ["match /products/{productId}","match /records/{recordId}"]){
+ for(const name of ["match /products/{productId}","match /records/{recordId}","match /recordCorrections/{correctionId}","match /goals/{goalId}","match /revenueGoals/{goalId}"]){
   const block=matchBlock(name);
   assert.match(block,/allow read: if resource\.data\.companyId != null\s*&& sameCompany\(resource\.data\.companyId\)/);
  }
