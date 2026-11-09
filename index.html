@@ -14505,7 +14505,11 @@ function partnerInlineRenderCounts(){
  const grid=pInline("pInlineCountFields");grid.replaceChildren();
  pInline("pInlineSaveStatus").textContent="";
  delete pInline("pInlineSaveStatus").dataset.result;
+ const legacyAvailability=new Map((snap.legacyCategoryPublication||[]).map(x=>[x.category,x.acceptsIncrease===true]));
  for(const key of snap.categories){
+  const unavailable=legacyAvailability.get(key)===false;
+  const historicalCount=entry?.counts?.[key]??0;
+  if(unavailable&&historicalCount===0)continue; // OFF: hide zero-count input; server remains authoritative.
   if(key==="NURO"){
    const card=document.createElement("div");
    card.className="p-inline-field product-input-group product-input-group--compact partner-cb-card";
@@ -14535,7 +14539,7 @@ function partnerInlineRenderCounts(){
   label.className="p-inline-field product-input-group product-input-group--compact";
   const title=document.createElement("div");title.className="product-input-group-title";
   const name=document.createElement("span");name.className="product-input-name";
-  name.textContent=key;title.append(name);label.append(title);
+  name.textContent=key+(unavailable?"（公開終了・訂正のみ）":"");title.append(name);label.append(title);
   const input=document.createElement("input");input.type="number";input.min="0";input.max="9999";
   input.step="1";input.inputMode="numeric";input.className="product-plan-input";input.dataset.countKey=key;
   input.value=String(entry?.counts?.[key]??0);
