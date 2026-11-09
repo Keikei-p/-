@@ -1,0 +1,60 @@
+name: NICO live finance diagnostic page parity (ANONYMOUS GET ONLY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/production/inspect-live-finance-diagnostic-page.mjs'
+      - 'tests/inspect-live-finance-diagnostic-page.test.mjs'
+      - '.github/workflows/nico-live-finance-diagnostic-probe.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/production/inspect-live-finance-diagnostic-page.mjs'
+      - 'tests/inspect-live-finance-diagnostic-page.test.mjs'
+      - '.github/workflows/nico-live-finance-diagnostic-probe.yml'
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Strictly pin financial sources and test sanitized GET-only page comparator
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
+          node --check tools/production/inspect-live-finance-diagnostic-page.mjs
+          node --test tests/inspect-live-finance-diagnostic-page.test.mjs
+  live-anonymous-get-only:
+    needs: offline
+    if: >-
+      ${{ github.event_name == 'push' &&
+          github.repository == 'Keikei-p/-' &&
+          github.ref == 'refs/heads/main' &&
+          needs.offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Reconfirm protected production source and audit exactly one public HTML route
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
+          node --test tests/inspect-live-finance-diagnostic-page.test.mjs
+          node tools/production/inspect-live-finance-diagnostic-page.mjs
+          echo 'AUTH_SESSIONS=0'
+          echo 'FINANCE_RECORD_QUERIES=0'
+          echo 'PRODUCTION_DATA_OR_HOSTING_WRITES=0'
