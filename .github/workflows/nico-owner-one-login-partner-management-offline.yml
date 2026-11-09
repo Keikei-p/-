@@ -1,0 +1,72 @@
+name: NICO Owner one-login partner management portal (OFFLINE ONLY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'staging/hub-owner-management/owner-partner-admin.html'
+      - 'staging/partner-owner-correction-v3/mobile-bootstrap.mjs'
+      - 'staging/partner-owner-correction-v3/owner-ui.mjs'
+      - 'tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs'
+      - 'tests/partner-owner-correction-v3-ui.test.mjs'
+      - 'tools/production/prepare-hub-owner-portal-static.mjs'
+      - 'tests/prepare-hub-owner-portal-static.test.mjs'
+      - '.github/workflows/nico-owner-one-login-partner-management-offline.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'staging/hub-owner-management/owner-partner-admin.html'
+      - 'staging/partner-owner-correction-v3/mobile-bootstrap.mjs'
+      - 'staging/partner-owner-correction-v3/owner-ui.mjs'
+      - 'tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs'
+      - 'tests/partner-owner-correction-v3-ui.test.mjs'
+      - 'tools/production/prepare-hub-owner-portal-static.mjs'
+      - 'tests/prepare-hub-owner-portal-static.test.mjs'
+      - '.github/workflows/nico-owner-one-login-partner-management-offline.yml'
+permissions:
+  contents: read
+jobs:
+  verify-safe-portal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify untouched money, partner count server, and original app
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
+          test "$(git hash-object index.html)" = '88ef5636bfe9254e71f2109d452b6d3049f99861'
+          test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 'b94a6aba231dc2569009580a178297a5b6194bda'
+          test "$(git hash-object functions-partner-quick/quick-counts.cjs)" = '70b3159aa7a469a69f37dea1288aeb855c982b71'
+          test "$(git hash-object staging/hub-owner-management/owner-partner-admin.html)" = '8899d1872a11eb8d6bdbdeae575782671ba0164a'
+          node --check tools/production/prepare-hub-owner-portal-static.mjs
+          node --test tests/partner-owner-correction-v3-ui.test.mjs tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs tests/partner-owner-correction-v3-client.test.mjs tests/prepare-hub-owner-portal-static.test.mjs
+          node --test tests/partner-owner-correction-v3.test.cjs tests/partner-owner-correction-v3-auth.test.cjs
+      - name: Create disposable, non-published portal assets from exact reviewed source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/prepare-hub-owner-portal-static.mjs --prepare
+          dir="$RUNNER_TEMP/nico-owner-portal-static"
+          test -f "$dir/owner-partner-admin.html"
+          for file in mobile-bootstrap.mjs owner-client.mjs owner-ui.mjs; do
+            test -f "$dir/owner-partner-admin-assets/$file"
+            node --check "$dir/owner-partner-admin-assets/$file"
+          done
+          cmp -s "$dir/owner-partner-admin.html" staging/hub-owner-management/owner-partner-admin.html
+          echo 'OWNER_ONE_LOGIN_PORTAL_LOCAL_ASSET_BUNDLE_PASS'
+          echo 'PRODUCTION_FIREBASE_WRITES=0'
+          echo 'PRODUCTION_HOSTING_RELEASES=0'
+      - name: Erase disposable bundle
+        if: always()
+        shell: bash
+        run: rm -rf -- "$RUNNER_TEMP/nico-owner-portal-static"
