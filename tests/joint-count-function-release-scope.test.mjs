@@ -31,6 +31,7 @@ test("source and config are isolated, original onCall exports preserved and flag
  assert.equal(inspectIsolatedRankingSource(src,config),true);
  for(const changed of [
   src.replace('NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"','true'),
+  src.replace('NICO_OWNER_SKU_MAPPING_ENABLED==="enabled"','true'),
   src.replace('exports.getVerifiedJointCountRanking=onRequest({','exports.getVerifiedJointCountRanking=onCall({'),
   src.replace('cors:false','cors:true'),
   src+"\nexports.deleteAllRecords=onCall(options,visibility.save);"
@@ -78,4 +79,14 @@ test("adding extra Function, removing original, wrong region or existing target 
  const already=copy(one);already.result.push({id:full,region:"asia-northeast1"});
  assert.throws(()=>compareOneDisabledFunction(already,already),
   /TARGET_ALREADY_PRESENT/);
+});
+
+test("review gate accepts the current seven exports but no eighth/unknown export",()=>{
+ assert.equal(inspectIsolatedRankingSource(src,config),true);
+ for(const required of ["getOwnerReviewedSkuMapping","setOwnerReviewedSkuMapping"]){
+  assert(src.includes("exports."+required+"="));
+  assert.throws(()=>inspectIsolatedRankingSource(
+   src.replace("exports."+required+"=","exports.unsupportedExtra="),config
+  ),/JOINT_RANKING_DISABLED_RELEASE_UNREVIEWED_EXPORTS/);
+ }
 });
