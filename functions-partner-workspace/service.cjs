@@ -3,7 +3,7 @@
 const crypto=require("node:crypto");
 const {enforceLegacyPublication}=require("./legacy-publication-guard.cjs");
 const {jointCountRankings}=require("./count-only-rankings.cjs");
-const {loadPublication,projectMasterProducts,changePublication,validId,nameOnly}=require("./catalog-publication.cjs");
+const {loadPublication,projectMasterProducts,projectOwnerPublicationRows,changePublication,validId,nameOnly}=require("./catalog-publication.cjs");
 const {readLinks,addLink,projectLinks}=require("./catalog-count-links.cjs");
 const {normalizeExtraCounts,applyExtraCounts,projectedExtraRead}=require("./additional-counts.cjs");
 const {projectExtraRankDocs}=require("./extra-rank-projection.cjs");
@@ -293,11 +293,13 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   let state,rows;
   try{
    state=loadPublication(settings.exists?settings.data():null);
-   rows=projectMasterProducts(master.docs.map(doc=>({...doc.data(),id:doc.id})),
-    state.productIds,s.kind==="partner");
+   const originals=master.docs.map(doc=>({...doc.data(),id:doc.id}));
+   rows=s.kind==="partner"?
+    projectMasterProducts(originals,state.productIds,true)
+     .map(({id,name,sortOrder})=>({id,name,sortOrder})):
+    projectOwnerPublicationRows(originals,state.productIds);
   }catch{fail("data-loss");}
-  return {role:s.kind,revision:state.revision,products:s.kind==="partner"?
-   rows.map(({id,name,sortOrder})=>({id,name,sortOrder})):rows};
+  return {role:s.kind,revision:state.revision,products:rows};
  }
  // One product flag per transaction; optimistic version guards concurrent owners.
  // Existing products, price metadata and history are never written.
