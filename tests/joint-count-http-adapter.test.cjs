@@ -158,3 +158,72 @@ test("upstream exceptions and unrecognized HTTP responses never leak tokens",asy
   assert.equal(r.body.includes("PRIVATE"),false);
  }
 });
+
+test("allowlisted hub-owner ranking shape remains readable without private source records",async()=>{
+ const hub={schema:"nico-verified-dual-count-v1",role:"hub_owner",unit:"件",
+  period:"month",range:{start:"2026-11-01",end:"2026-11-09",
+   previousStart:"2026-10-01",previousEnd:"2026-10-09",days:9},
+  readTime:"2026-11-09T00:00:00.000Z",
+  summary:{own:3,partner:2,total:5,unidentified:0},
+  memberRanking:[{id:"company:uid",name:"営業担当",companyId:"company",
+   companyName:"自社",teamId:"team",teamName:"営業班",count:3,
+   reportStatus:"報告済",reportedDays:1,previousCount:0,change:3,
+   growth:"増加",topProduct:"NURO光",remainingToGoal:2,
+   personalBestStatus:"比較不可",rank:1}],
+  productRanking:[{id:"sku",name:"NURO光",count:5,ownCount:3,
+   partnerCount:2,companies:[{companyId:"company",companyName:"自社",count:3}]}],
+  companyBreakdown:[{id:"company",name:"自社",kind:"自社",
+   count:3,unidentifiedCount:0}],
+  teamBreakdown:[{id:"company:team",companyId:"company",
+   companyName:"自社",name:"営業班",count:3}],
+  filters:{companyId:"",teamId:"",uid:"",productId:""}};
+ const adapter=createJointCountHttpAdapter({enabled:()=>true,
+  loadHandler:()=>make(200,hub)});
+ const out=response();await adapter(req(),out);
+ assert.equal(out.statusCode,200);
+ assert.deepEqual(JSON.parse(out.body),hub);
+});
+test("unexpected financial aliases, arbitrary fields and monetary text fail closed",async()=>{
+ const cases=[
+  {...data(),salary:50000},
+  {...data(),publicRanking:{members:[{rank:1,name:"営業担当",
+   count:2,company:"協力店",internalBillingRate:10000}],products:[]}},
+  {...data(),publicRanking:{members:[],products:[
+   {rank:1,name:"NURO光 10000円",count:2}]}},
+  {...data(),summary:{own:1,partner:1,total:2,
+   unidentified:0,bonusYen:20000}},
+  {...data(),unknownDebugPayload:"secret"}
+ ];
+ for(const item of cases){
+  const adapter=createJointCountHttpAdapter({enabled:()=>true,
+   loadHandler:()=>make(200,item)});
+  const out=response();await adapter(req(),out);
+  assert.equal(out.statusCode,503);
+  assert.deepEqual(JSON.parse(out.body),{error:"request_blocked"});
+ }
+});
+test("transient backend loader failure does not permanently poison future GET",async()=>{
+ let attempts=0;
+ const adapter=createJointCountHttpAdapter({enabled:()=>true,
+  loadHandler:()=>{
+   attempts++;
+   if(attempts===1)throw Error("temporary initialization failure");
+   return make();
+  }});
+ const first=response();await adapter(req(),first);
+ assert.equal(first.statusCode,503);
+ const second=response();await adapter(req(),second);
+ assert.equal(second.statusCode,200);
+ assert.equal(attempts,2);
+});
+test("invalid Content-Length never reaches the backend",async()=>{
+ let loads=0;
+ const adapter=createJointCountHttpAdapter({enabled:()=>true,
+  loadHandler:()=>{loads++;return make();}});
+ for(const length of ["invalid","-1","1","NaN"]){
+  const out=response();await adapter(req(URL_PATH,{
+   headers:{"content-length":length}}),out);
+  assert.equal(out.statusCode,400);
+ }
+ assert.equal(loads,0);
+});

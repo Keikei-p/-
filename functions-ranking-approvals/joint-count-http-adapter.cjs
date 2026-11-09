@@ -12,11 +12,21 @@
 const ORIGIN="https://nico-factory.web.app";
 const PATH="/v1/owner-visible-counts";
 const TOKEN=/^Bearer ([A-Za-z0-9._-]{20,12000})$/;
-const DANGEROUS=new Set([
- "revenue","unitprice","cashback","price","amount","totalrevenue",
- "unitrevenue","commission","profit","cost","rawproducts",
- "records","lines","bankaccount","financials","payout"
+// Exact output fields of buildVerifiedCountDashboard (hub/partner owner).
+// A newly introduced response field must be explicitly security-reviewed.
+// A blacklist alone cannot catch an unforeseen finance field (e.g. salary).
+const PUBLIC_FIELDS=new Set([
+ "schema","role","unit","period","range","readTime","start","end",
+ "previousStart","previousEnd","days","summary","own","partner","total",
+ "unidentified","memberRanking","productRanking","companyBreakdown",
+ "teamBreakdown","filters","publicRanking","members","products","people",
+ "companies","id","name","company","companyId","companyName","kind",
+ "teamId","teamName","uid","productId","count","unidentifiedCount",
+ "ownCount","partnerCount","rank","reportStatus","reportedDays",
+ "previousCount","change","growth","topProduct","remainingToGoal",
+ "personalBestStatus"
 ]);
+const PRIVATE_TEXT=/(?:[¥￥$€]|(?:[0-9０-９])[0-9０-９.,，]*\s*(?:万円|千円|円)|(?:売上|単価|キャッシュバック|cashback|revenue|commission|salary)[\\s:_=-]*[0-9０-９])/i;
 const fail=()=>{throw Error("JOINT_COUNT_HTTP_ADAPTER_INVALID");};
 const originFrom=req=>typeof req?.headers?.origin==="string"?
  req.headers.origin:"";
@@ -45,14 +55,15 @@ function requestPath(req){
 }
 function moneyFree(value,depth=0){
  if(depth>32)return false;
+ if(typeof value==="string")return value.length<=5000&&!PRIVATE_TEXT.test(value);
+ if(value===null||typeof value==="number"||typeof value==="boolean")
+  return typeof value!=="number"||Number.isFinite(value);
  if(Array.isArray(value))
   return value.length<=10000&&value.every(x=>moneyFree(x,depth+1));
- if(value===null||typeof value!=="object")return true;
+ if(typeof value!=="object")return false;
  const keys=Object.keys(value);
  return keys.length<=10000&&keys.every(k=>
-  !DANGEROUS.has(k.toLowerCase())&&
-  !["__proto__","prototype","constructor"].includes(k)&&
-  moneyFree(value[k],depth+1));
+  PUBLIC_FIELDS.has(k)&&moneyFree(value[k],depth+1));
 }
 /**
  * Calling this function never accesses live data. While the feature flag
@@ -90,16 +101,20 @@ function createJointCountHttpAdapter({enabled=()=>false,loadHandler}={}){
    }
    if(req.method!=="GET"){deny(res,405,origin);return;}
    if(req.headers?.["content-length"]!==undefined&&
-      Number(req.headers["content-length"])>0){
+      (!/^(?:0+)$/.test(String(req.headers["content-length"])))){
     deny(res,400,origin);return;
    }
    const token=req.headers?.authorization;
    if(typeof token!=="string"||!TOKEN.test(token)){
     deny(res,401,origin);return;
    }
-   if(!pending)pending=Promise.resolve().then(()=>loadHandler());
+   if(!pending){
+    const attempt=Promise.resolve().then(()=>loadHandler())
+     .then(fn=>{if(typeof fn!=="function")fail();return fn;})
+     .catch(error=>{if(pending===attempt)pending=null;throw error;});
+    pending=attempt;
+   }
    const handler=await pending;
-   if(typeof handler!=="function")fail();
    // Never forward a user-controlled Host or X-Forwarded-* header.
    const request=new Request(path.href,{
     method:"GET",
@@ -112,7 +127,13 @@ function createJointCountHttpAdapter({enabled=()=>false,loadHandler}={}){
    const body=await response.text();
    if(typeof body!=="string"||body.length>900000)fail();
    const data=JSON.parse(body);
-   if(!moneyFree(data))fail();
+   if(response.status===200){
+    if(!data||data.schema!=="nico-verified-dual-count-v1"||
+       !["hub_owner","partner_owner"].includes(data.role)||
+       !moneyFree(data))fail();
+   }else if(!data||typeof data!=="object"||Array.isArray(data)||
+            Object.keys(data).length!==1||
+            !["request_blocked","service_disabled"].includes(data.error))fail();
    headers(res,origin);
    res.status(response.status).send(JSON.stringify(data));
   }catch{
