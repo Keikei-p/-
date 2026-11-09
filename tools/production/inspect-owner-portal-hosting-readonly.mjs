@@ -83,7 +83,7 @@ const safeHost=u=>{
  try{parsed=new URL(u)}catch{STOP("URL_INVALID")}
  if(parsed.origin!==BASE.replace("/v1beta1","")||
     !parsed.pathname.startsWith("/v1beta1/sites/"+SITE+"/")||
-    !parsed.searchParams.keys().every(k=>["pageSize","pageToken"].includes(k))||
+    ![...parsed.searchParams.keys()].every(k=>["pageSize","pageToken"].includes(k))||
     parsed.username||parsed.password||parsed.hash)STOP("UNAPPROVED_URL");
  return parsed.href;
 };
