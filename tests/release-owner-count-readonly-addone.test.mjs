@@ -16,13 +16,15 @@ const oldSources={
 const candidate=read("staging/owner-count-readonly-v1/owner-partner-counts-readonly.html");
 const BASE="https://firebasehosting.googleapis.com/v1beta1";
 const CREATED="sites/nico-factory/versions/new_version";
+const NEW_LIVE="sites/nico-factory/versions/other_current_release";
 const C={headers:[{source:"**",headers:[{key:"X-Test",value:"keep"}]}]};
 const paths=[
  "/index.html","/partner-workspace.html","/partner-invite.html",
  "/partner-counts.html","/finance-boundary-check.html",
  ...Array.from({length:8},(_,i)=>"/old-asset-"+i+".js")
 ];
-function fixture({collision=false,drift=false,concurrent=false,unknownUpload=false,configChanged=false}={}){
+function fixture({collision=false,drift=false,concurrent=false,unknownUpload=false,configChanged=false,
+  newerSameContents=false,newerDifferentContents=false,newerDifferentConfig=false}={}){
  const old=[
   ...paths.map((path,i)=>({path,hash:String(i%9+1).repeat(64)})),
   ...Object.entries(oldSources).map(([path,source])=>({path,hash:hostingHash(source)}))
@@ -31,7 +33,8 @@ function fixture({collision=false,drift=false,concurrent=false,unknownUpload=fal
  if(drift){const row=old.find(x=>x.path==="/owner-partner-admin.html");row.hash="f".repeat(64)}
  const approved=new Map([...old.map(x=>[x.path,x.hash]),[NEW_PATH,hostingHash(candidate)]]);
  const logs=[];
- let live=BASE_VERSION,created=false,finalized=false,uploaded=false,postCount=0;
+ let live=newerSameContents||newerDifferentContents||newerDifferentConfig?NEW_LIVE:BASE_VERSION,
+  created=false,finalized=false,uploaded=false,postCount=0;
  const request=async(method,url,body=null,type="application/json")=>{
   logs.push({method,url,body:type==="application/octet-stream"?"binary":body});
   if(url===BASE+"/sites/nico-factory/releases?pageSize=1"&&method==="GET"){
@@ -40,8 +43,14 @@ function fixture({collision=false,drift=false,concurrent=false,unknownUpload=fal
   }
   if(url===BASE+"/"+BASE_VERSION&&method==="GET")
    return {name:BASE_VERSION,status:"FINALIZED",config:C,fileCount:old.length};
+  if(url===BASE+"/"+NEW_LIVE&&method==="GET")
+   return {name:NEW_LIVE,status:"FINALIZED",config:newerDifferentConfig?{rewrites:[]}:C,fileCount:old.length};
   if(url===BASE+"/"+BASE_VERSION+"/files?pageSize=1000"&&method==="GET")
    return {files:old};
+  if(url===BASE+"/"+NEW_LIVE+"/files?pageSize=1000"&&method==="GET"){
+   if(!newerDifferentContents)return {files:old};
+   return {files:old.map((f,i)=>i===0?{...f,hash:"f".repeat(64)}:f)};
+  }
   if(url===BASE+"/sites/nico-factory/versions"&&method==="POST"){
    created=true;return {name:CREATED,status:"CREATED"};
   }
@@ -109,6 +118,23 @@ test("one-shot release adds exactly the new reviewed page, preserves every origi
  assert.equal(f.writes.filter(x=>x.url.includes(":populateFiles")).length,1);
  assert.equal(f.writes.filter(x=>x.url.includes("upload-firebasehosting")).length,1);
  assert(f.logs.every(x=>!x.url.includes("firestore")&&!x.url.includes("cloudfunctions.net")));
+});
+test("newer live version with identical 17 assets AND Hosting config is safe to add one",async()=>{
+ const f=fixture({newerSameContents:true});
+ const dry=await publishOwnerCountAddOne({request:f.request,oldSources,candidate,release:false});
+ assert.equal(dry.released,false);
+ assert.equal(dry.baseVersion,NEW_LIVE);
+ const report=await publishOwnerCountAddOne({request:f.request,oldSources,candidate,release:true});
+ assert.equal(report.released,true);
+ assert.equal(f.posted,1);
+});
+test("a newer live version with ANY changed old file or Hosting config is rejected BEFORE CREATE",async()=>{
+ for(const opts of [{newerDifferentContents:true},{newerDifferentConfig:true}]){
+  const f=fixture(opts);
+  await assert.rejects(publishOwnerCountAddOne({request:f.request,oldSources,candidate,release:true}),
+   /STOP_OWNER_COUNT_ONE_RELEASE_(LIVE_ASSET_DRIFT|REVIEWED_BASE_CONFIG_DRIFT)/);
+  assert.equal(f.writes.length,0);
+ }
 });
 test("release blocks on unexpected upload hashes and modified config without activation",async()=>{
  for(const opts of [{unknownUpload:true},{configChanged:true},{drift:true}]){
