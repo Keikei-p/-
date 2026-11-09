@@ -1,0 +1,34 @@
+name: NICO isolated Owner delegation callables entry (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'staging/owner-delegation-v1/entry.cjs'
+      - 'tests/owner-delegate-two-callables-entry-staging.test.cjs'
+      - '.github/workflows/nico-owner-delegate-callables-entry-staging.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Guard reviewed pair of new exports and all original production sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object staging/owner-delegation-v1/entry.cjs)" = e35f458d3e57912f0d83bf31e7a77e6b2910635c
+          test "$(git hash-object tests/owner-delegate-two-callables-entry-staging.test.cjs)" = 0565b023694ea5f4fec4e8759dda62e3c7ecaf9d
+          test "$(git hash-object staging/owner-delegation-v1/owner-approval-service.cjs)" = 5784dcd2a591fcf33013ef28dcd3b6e3cca0336d
+          test "$(git hash-object staging/owner-delegation-v1/verified-hub-owner.cjs)" = eba49490458ce5732c6eebd9f9633d04f9ff414d
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
+          test "$(git hash-object functions-partner-workspace/index.js)" = 38da7e9174ffea7c406c92292dccfc651b565eb0
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          node --check staging/owner-delegation-v1/entry.cjs
+          node --test tests/owner-delegate-two-callables-entry-staging.test.cjs
+          node --test tests/owner-delegate-approval-staging.test.cjs tests/explicit-hub-owner-delegation-staging.test.cjs
+          echo 'OWNER_DELEGATE_TWO_CALLABLES_STAGING_DEFAULT_OFF_NO_DEPLOY'
