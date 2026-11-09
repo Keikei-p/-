@@ -21,13 +21,22 @@ const make=(role="hub_owner")=>({
    {id:"hub:one",rank:1,name:"田中",companyName:"自社",count:5},
    {id:"partner:two",rank:2,name:"鈴木",companyName:"協力店",count:3}
   ],
-  productRanking:[{id:"nuro",rank:1,name:"NURO光",count:8}]
+  productRanking:[{id:"nuro",rank:1,name:"NURO光",count:8}],
+  companyBreakdown:[
+   {id:"hub",name:"自社",kind:"自社",count:3,unidentifiedCount:0},
+   {id:"partner",name:"協力店",kind:"協力店",count:5,unidentifiedCount:0}],
+  teamBreakdown:[
+   {id:"hub:team",companyId:"hub",companyName:"自社",name:"営業班",count:3},
+   {id:"partner:team",companyId:"partner",companyName:"協力店",name:"営業班",count:5}]
  }:{
   own:{company:"協力店",count:5,people:[],products:[],unidentifiedCount:0},
   publicRanking:{members:[
    {rank:1,company:"自社",name:"佐藤",count:5},
    {rank:1,company:"協力店",name:"佐藤",count:5}
-  ],products:[{rank:1,name:"NURO光",count:8}]}
+  ],products:[{rank:1,name:"NURO光",count:8}],
+  companies:[{rank:1,name:"協力店",count:5},{rank:2,name:"自社",count:3}],
+  teams:[{rank:1,name:"営業班",company:"協力店",count:5},
+   {rank:2,name:"営業班",company:"自社",count:3}]}
  })
 });
 test("same ON-only joint numbers render for owner without any financial data",()=>{
@@ -247,5 +256,64 @@ test("injected financial or malformed organization labels never appear",()=>{
   raw.publicRanking.members[0].company=label;
   assert.throws(()=>verifiedJointCountView(raw,{month:"2026-11",role:"partner_owner"}),
    /JOINT_RANKING_RESPONSE_UNVERIFIED/);
+ }
+});
+
+test("both roles see four ON-only count ranking types without original finance",async()=>{
+ for(const role of ["hub_owner","partner_owner"]){
+  const root=new Node("main"),auth={currentUser:user};
+  const view=createVerifiedJointRankingPanel({
+   document,root,auth,featureEnabled:true,
+   fetchApi:async()=>({ok:true,json:async()=>make(role)}),
+   roleProvider:()=>role
+  });
+  assert.equal(await view.refresh("2026-11"),true);
+  const text=allText(root);
+  for(const label of ["個人ランキング","会社ランキング","班ランキング",
+   "商材ランキング","NURO光","協力店","営業班"])
+   assert(text.includes(label),role+" missing "+label);
+  assert(!/(?:売上|単価|キャッシュバック|円)/.test(text));
+ }
+});
+test("same-name teams remain separated by approved company labels",()=>{
+ const view=verifiedJointCountView(make("partner_owner"),{
+  month:"2026-11",role:"partner_owner"
+ });
+ assert.equal(view.teams.length,2);
+ assert.equal(view.teams[0].company,"協力店");
+ assert.equal(view.teams[1].company,"自社");
+ assert.equal(view.companies.map(x=>x.count).join(","),"5,3");
+ assert.equal(view.companies.reduce((n,x)=>n+x.count,0),8);
+});
+test("owner company/team ranks use safe source counts and competition ties",()=>{
+ const raw=make();
+ raw.companyBreakdown[0].count=5;
+ raw.teamBreakdown[0].count=5;
+ const view=verifiedJointCountView(raw,{month:"2026-11",role:"hub_owner"});
+ assert.deepEqual(view.companies.map(x=>x.rank),[1,1]);
+ assert.deepEqual(view.teams.map(x=>x.rank),[1,1]);
+});
+test("missing team/company ranking and injected money fails closed without displaying count",async()=>{
+ for(const role of ["hub_owner","partner_owner"]){
+  for(const modify of [
+   d=>{if(role==="hub_owner")delete d.companyBreakdown;
+    else delete d.publicRanking.companies;},
+   d=>{if(role==="hub_owner")delete d.teamBreakdown;
+    else delete d.publicRanking.teams;},
+   d=>{if(role==="hub_owner")d.teamBreakdown[0].companyName="売上1万円";
+    else d.publicRanking.teams[0].company="売上1万円";},
+   d=>{if(role==="hub_owner")d.companyBreakdown[0].count=-1;
+    else d.publicRanking.companies[0].count=-1;}
+  ]){
+   const raw=make(role);modify(raw);
+   const root=new Node("main");
+   const panel=createVerifiedJointRankingPanel({
+    document,root,auth:{currentUser:user},featureEnabled:true,
+    fetchApi:async()=>({ok:true,json:async()=>raw}),
+    roleProvider:()=>role
+   });
+   assert.equal(await panel.refresh("2026-11"),false);
+   assert(!allText(root).includes("合同合計"));
+  }
  }
 });
