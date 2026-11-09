@@ -98,8 +98,10 @@ export async function uploadReviewedFinanceMobileLogin({
  const count=countKnown?Number(source.fileCount):null;
  if(countKnown&&(!Number.isSafeInteger(count)||count<1))
    throw Error("INVALID_LIVE_FILE_COUNT");
- const files=[];let pageToken="";
+ const files=[];let pageToken="";const pageTokens=new Set();
  do{
+  if(pageTokens.has(pageToken))throw Error("SOURCE_FILE_PAGE_LOOP");
+  pageTokens.add(pageToken);
   const qs=new URLSearchParams({pageSize:"1000"});
   if(pageToken)qs.set("pageToken",pageToken);
   const page=await request("GET",url("/"+sourceName+"/files?"+qs));
@@ -108,8 +110,12 @@ export async function uploadReviewedFinanceMobileLogin({
   pageToken=page.nextPageToken||"";
   if(files.length>30000)throw Error("TOO_MANY_LIVE_ASSETS");
  }while(pageToken);
- if(files.length!==12||
-    ["/index.html","/partner-workspace.html","/partner-invite.html","/partner-counts.html",ASSET]
+ // An independently approved Hosting release may have added assets.
+ // Copy EVERY current live path/hash, not a stale fixed count of 12.
+ // Never create or delete any path other than replacing the reviewed page.
+ if(files.length<5||files.length>30000)
+   throw Error("LIVE_FILE_INVENTORY_OUT_OF_BOUNDS");
+ if(["/index.html","/partner-workspace.html","/partner-invite.html","/partner-counts.html",ASSET]
       .some(required=>!files.some(item=>item.path===required)))
    throw Error("LIVE_REQUIRED_ASSETS_UNVERIFIED");
  if(countKnown&&files.length!==count)throw Error("SOURCE_FILE_COUNT_MISMATCH");

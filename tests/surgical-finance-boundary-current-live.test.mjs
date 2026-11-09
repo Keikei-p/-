@@ -83,3 +83,30 @@ test("GET-only live release gate can never touch Rules or originals",()=>{
  assert.match(code,/ONLY_ONE_EXISTING_DIAGNOSTIC_REPLACEMENT_ALLOWED/);
  assert.doesNotMatch(code,/firestore\.googleapis\.com|firebaserules\.googleapis\.com|firebase deploy/);
 });
+
+test("all newer live Hosting assets are copied unchanged without fixed count twelve",async()=>{
+ const expanded=[...entries,{path:"/added-approved-icon.svg",hash:"c".repeat(64)}];
+ const f=fake(expanded);
+ const result=await uploadReviewedFinanceMobileLogin({
+  assetBytes:candidate,originalBytes:original,request:f.request,
+  release:false,log:()=>{}
+ });
+ assert.equal(result.released,false);
+ assert.equal(result.originalCount,13);
+ assert(f.calls.every(x=>x.method==="GET"));
+ const {original:before,next}=validateManifest(expanded,
+  new Map([[ASSET,fresh]]),13,hash);
+ assert.equal(next.get("/added-approved-icon.svg"),"c".repeat(64));
+ for(const [path,value] of before)if(path!==ASSET)
+  assert.equal(next.get(path),value,"must preserve "+path);
+});
+test("newly listed but missing required app page fails closed even at larger count",async()=>{
+ const missing=[...entries.filter(x=>x.path!=="/partner-counts.html"),
+  {path:"/new-file.svg",hash:"d".repeat(64)}];
+ const f=fake(missing);
+ await assert.rejects(uploadReviewedFinanceMobileLogin({
+  assetBytes:candidate,originalBytes:original,request:f.request,
+  release:true,log:()=>{}
+ }),/LIVE_REQUIRED_ASSETS_UNVERIFIED/);
+ assert(f.calls.every(x=>x.method==="GET"));
+});
