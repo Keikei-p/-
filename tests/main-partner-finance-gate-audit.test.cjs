@@ -16,8 +16,7 @@ test("main Firestore financial reads require verified internal company membershi
  const same=rules.slice(rules.indexOf("function sameCompany("),rules.indexOf("function ownerBootstrap("));
  assert.match(same,/isCompanyMember\(companyId\)/);
  for(const name of ["products","records","recordCorrections","goals","revenueGoals"]){
-  const re=new RegExp("match /"+name+"/\\\\{[^}]+\\\\} \\{");
-  const start=rules.search(re);
+  const start=rules.indexOf("match /"+name+"/{");
   assert(start>=0,"missing "+name);
   const tail=rules.slice(start,start+950);
   assert.match(tail,/allow read: if resource\.data\.companyId != null\s*&& sameCompany\(resource\.data\.companyId\)/);
