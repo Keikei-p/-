@@ -152,11 +152,25 @@ export function composeCanonicalMonthlyRankingInput({
  * Requires approved mapping doc. A missing mapping NEVER silently joins
  * SKUs by name; owner's browser-local groups are NOT an authorization.
  */
-export function createCanonicalCountTransactionReader({db}={}){
+function trustedJapanAsOf(month,clock){
+ const now=clock();
+ if(!(now instanceof Date)||!Number.isFinite(now.getTime()))STOP();
+ const fmt=new Intl.DateTimeFormat("en-US",{
+  timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"
+ });
+ const parts=Object.fromEntries(fmt.formatToParts(now).map(x=>[x.type,x.value]));
+ const today=parts.year+"-"+parts.month+"-"+parts.day;
+ if(month>today.slice(0,7))STOP();
+ const end=new Date(Date.UTC(+month.slice(0,4),+month.slice(5,7),0))
+  .toISOString().slice(0,10);
+ return month===today.slice(0,7)?today:end;
+}
+export function createCanonicalCountTransactionReader({db,clock=()=>new Date()}={}){
+ if(typeof clock!=="function")STOP();
  if(!db||typeof db.collection!=="function")STOP();
  const loadHub=createInternalMonthTransactionReader({db});
  const loadPartner=createPartnerMonthTransactionReader({db});
- return async function readCounts({tx,month,context,serverAsOf}={}){
+ return async function readCounts({tx,month,context}={}){
   if(!tx||typeof tx.get!=="function"||!context||
      !valid(context.hubCompanyId)||!MONTH.test(month||"")||
      !array(context.approvedCompanyIds)||
@@ -181,7 +195,7 @@ export function createCanonicalCountTransactionReader({db}={}){
   return composeCanonicalMonthlyRankingInput({
    context,hubSource,partnerSources,
    skuMap:doc(mappingSnap),hubOwnerUid:hubCompany.ownerUid,
-   month,serverAsOf
+   month,serverAsOf:trustedJapanAsOf(month,clock)
   });
  };
 }
