@@ -40,6 +40,18 @@ test("before disabled, after list enabled and writer remains metadata-byte-ident
  assert.equal(result.dataWrites,0);
  assert.equal(result.authenticatedOwnerRuntimeTested,false);
 });
+test("Firebase functions:list short IDs are accepted but still require project, region and codebase",()=>{
+ const short=j=>({result:j.result.map(r=>({...r,id:r.id.split("/").at(-1)}))});
+ const before=short(base()),after=short(changed());
+ assert.equal(inspectBeforeOwnerListOnly(before).listDisabled,true);
+ assert.equal(inspectAfterOwnerListOnly(before,after).correctionFunctionStillDisabled,true);
+ const bad=short(base());
+ delete bad.result[0].projectId;
+ assert.throws(()=>inspectBeforeOwnerListOnly(bad),/STOP_OWNER_LIST_ONLY_FUNCTION_METADATA_UNVERIFIED/);
+ const duplicates=short(base());
+ duplicates.result.push(make("listHubPartnerCounts","disabled"));
+ assert.throws(()=>inspectBeforeOwnerListOnly(duplicates),/STOP_OWNER_LIST_ONLY_/);
+});
 test("writer activation, writer metadata changes, original Function drift and set changes are rejected",()=>{
  const cases=[
   (()=>{const x=changed();x.result[1].environmentVariables.HUB_OWNER_COUNT_CORRECTION_V3_ENABLED="enabled";return x})(),
