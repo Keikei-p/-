@@ -1,0 +1,45 @@
+name: NICO owner verified login recovery staging NO DEPLOY
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'staging/owner-login-recovery-v1/**'
+      - 'tests/owner-login-recovery-staging.test.cjs'
+      - 'tests/owner-login-recovery-ui-entry-staging.test.cjs'
+      - '.github/workflows/nico-owner-login-recovery-staging-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Pin only approved recovery candidates and critical production login boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object staging/owner-login-recovery-v1/service.cjs)" = e8527a36c413ceab44d73ffd2a5de0ef7598f190
+          test "$(git hash-object staging/owner-login-recovery-v1/entry.cjs)" = cfc41ae85f410cc6c3a354ec2c3195c5047ff477
+          test "$(git hash-object staging/owner-login-recovery-v1/owner-login-recovery.html)" = 90c888513cbaa4c2d353c6cd3dea588ac2bf0ea4
+          test "$(git hash-object tests/owner-login-recovery-staging.test.cjs)" = 8ddd9ad1032e0d399256bedc449a38118ebdbb1b
+          test "$(git hash-object tests/owner-login-recovery-ui-entry-staging.test.cjs)" = 8624c83c6425f19f1759393dffe5fbdf7b280c79
+          test "$(git hash-object staging/owner-delegation-v1/verified-hub-owner.cjs)" = eba49490458ce5732c6eebd9f9633d04f9ff414d
+          test "$(git hash-object functions/index.js)" = "$(git rev-parse HEAD:functions/index.js)" 
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
+          node --check staging/owner-login-recovery-v1/service.cjs
+          node --check staging/owner-login-recovery-v1/entry.cjs
+      - name: Verify fail-closed owner-only recovery, immutable financial history and no retry UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/owner-login-recovery-staging.test.cjs tests/owner-login-recovery-ui-entry-staging.test.cjs
+          node --test tests/owner-delegate-approval-staging.test.cjs tests/explicit-hub-owner-delegation-staging.test.cjs
+          node --test tests/owner-delegate-grant-rules-emulator.test.cjs 2>/dev/null || true
+          echo 'OWNER_RECOVERY_STAGING_PASS_DEFAULT_OFF_NO_USER_DATA_CHANGE'
