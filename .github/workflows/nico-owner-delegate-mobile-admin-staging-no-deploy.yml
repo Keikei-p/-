@@ -1,0 +1,33 @@
+name: NICO Owner delegate approval mobile UI staging (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'staging/owner-delegation-v1/owner-delegate-admin.html'
+      - 'tests/owner-delegate-mobile-admin-staging.test.mjs'
+      - '.github/workflows/nico-owner-delegate-mobile-admin-staging-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify reviewed UI and original production source unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object staging/owner-delegation-v1/owner-delegate-admin.html)" = 97835b65cf2a81a422e52cb81f18ec0cf3e28755
+          test "$(git hash-object tests/owner-delegate-mobile-admin-staging.test.mjs)" = 69734c7babeca870b30752c95c60e254a8115186
+          test "$(git hash-object staging/owner-delegation-v1/owner-approval-service.cjs)" = 5784dcd2a591fcf33013ef28dcd3b6e3cca0336d
+          test "$(git hash-object staging/owner-delegation-v1/verified-hub-owner.cjs)" = eba49490458ce5732c6eebd9f9633d04f9ff414d
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
+          test "$(git hash-object staging/partner-owner-correction-v3/trusted-auth.cjs)" = a3e1f03f3e7032024e00109d9211bc34384b9a49
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          node --test tests/owner-delegate-mobile-admin-staging.test.mjs
+          node --test tests/owner-delegate-approval-staging.test.cjs tests/explicit-hub-owner-delegation-staging.test.cjs
+          echo 'OWNER_APPROVAL_MOBILE_UI_STAGED_NO_DEPLOY_NO_WRITE'
