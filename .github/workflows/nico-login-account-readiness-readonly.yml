@@ -28,7 +28,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git hash-object tools/production/audit-login-readiness-live-readonly.mjs)" = d91f8621a0d05a59635948bbdfd25ccfbc3c936a
-          test "$(git hash-object tests/audit-login-readiness-live-readonly.test.mjs)" = 4efae58dc1deed3fa95c4bb0ee40a80a2742ba16
+          test "$(git hash-object tests/audit-login-readiness-live-readonly.test.mjs)" = 29384dc1bb4cfbccb550c1d3ec7462600f9e1ec1
           test "$(git hash-object legacy-finance-entry-guard.mjs)" = 20d730127d0623bb94d14d21998ab5111d849cfc
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
           node --check tools/production/audit-login-readiness-live-readonly.mjs
