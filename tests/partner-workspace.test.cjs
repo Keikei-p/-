@@ -1651,3 +1651,25 @@ test("unpublishing added partner product never shares hidden historic quantities
  assert.deepEqual([...db.store],beforeRead,"read-only rankings must not alter stored counts or prices");
  assert.deepEqual(db.store.get("records/old"),new Map(before).get("records/old"));
 });
+
+
+test("legacy publication OFF is enforced inside submit transaction without modifying records",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ const team=(await api.manage(req("p",{action:"addTeam",name:"営業班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"担当者",teamId:team}))).staffId;
+ const first=await api.submit(req("p",{date,staffId:staff,counts:{...zero(),NURO:2},expectedVersion:0}));
+ assert.equal(first.version,1);
+ db.seed("companies/hub/partnerCatalogSettings/countLinks",{revision:1,links:[
+  {productId:"nuro",category:"NURO",effectiveFrom:date}
+ ]});
+ db.seed("companies/hub/partnerCatalogSettings/publication",{revision:1,productIds:[]});
+ const before=clone([...db.store]);
+ await assert.rejects(api.submit(req("p",{date,staffId:staff,
+  counts:{...zero(),NURO:3},expectedVersion:1})),e=>e.code==="failed-precondition");
+ assert.deepEqual([...db.store],before,"rejected count edit must not write any document");
+ const corrected=await api.submit(req("p",{date,staffId:staff,
+  counts:{...zero(),NURO:1},expectedVersion:1}));
+ assert.equal(corrected.version,2);
+ assert.equal(db.store.get("records/old").totalRevenue,808080);
+ assert.equal(db.store.get("products/money").unitPrice,98765);
+});
