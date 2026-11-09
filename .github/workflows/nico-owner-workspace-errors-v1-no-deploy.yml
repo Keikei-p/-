@@ -3,9 +3,7 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - 'staging/hub-owner-management/owner-partner-admin.html'
-      - 'staging/partner-owner-correction-v3/mobile-bootstrap.mjs'
-      - 'tools/production/prepare-hub-owner-portal-static.mjs'
+      - 'staging/owner-workspace-errors-v1/**'
       - 'tests/owner-workspace-error-classification.test.mjs'
       - '.github/workflows/nico-owner-workspace-errors-v1-no-deploy.yml'
 permissions:
@@ -25,7 +23,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node --check staging/partner-owner-correction-v3/mobile-bootstrap.mjs
+          node --check staging/owner-workspace-errors-v1/mobile-bootstrap.mjs
           node --check tools/production/prepare-hub-owner-portal-static.mjs
           node --test tests/owner-workspace-error-classification.test.mjs \
             tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs \
