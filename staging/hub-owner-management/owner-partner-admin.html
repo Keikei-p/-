@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#1d4ed8">
+<title>NICO FACTORY｜協力店管理</title>
+<style>
+:root{font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif;color:#192b42;background:#f4f7fb;color-scheme:light}
+*{box-sizing:border-box}body{margin:0;padding-bottom:env(safe-area-inset-bottom)}
+header{background:#1d4ed8;color:white;padding:calc(17px + env(safe-area-inset-top)) 16px 20px}
+header>div{max-width:1000px;margin:auto}
+header h1{font-size:21px;margin:0 0 7px}header p{font-size:13px;opacity:.95;line-height:1.55;margin:0}
+main{max-width:1000px;margin:0 auto;padding:14px 12px 50px}
+section{border:1px solid #dce6f2;background:white;border-radius:15px;margin-bottom:13px;padding:16px;box-shadow:0 3px 15px #172f4510}
+h2{font-size:17px;margin:0 0 10px}p{line-height:1.6}
+.muted{font-size:13px;color:#566b81}.notice{padding:13px;border-radius:10px;background:#e8f1ff;font-size:13px}
+.notice.warn{background:#fff4e5;color:#834400}
+.row{display:flex;gap:9px;align-items:center;flex-wrap:wrap}.row>*{flex:1 1 160px}
+button,input,select{font:inherit;min-height:44px;border-radius:9px}
+button{background:#1d4ed8;border:0;color:white;font-weight:700;padding:9px 14px;cursor:pointer}
+button:disabled{opacity:.5;cursor:default}button.subtle{background:#eaf1fa;color:#1b497a}
+input,select{padding:9px;border:1px solid #bdcde0;background:white;width:100%;min-width:0}
+a{color:#1b5c97}a.home{color:white;text-decoration:none;border-bottom:1px solid #fff9}
+#companies{display:grid;grid-template-columns:repeat(auto-fit,minmax(205px,1fr));gap:10px}
+.company{display:flex;flex-direction:column;align-items:start;justify-content:space-between;gap:8px;width:100%;min-height:90px;text-align:left;border:1px solid #b6cce7;background:#f5f9ff;color:#164373}
+.company strong{font-size:15px}.company small{font-size:12px;color:#506b83}
+.company[aria-pressed="true"]{border:2px solid #1d4ed8;background:#e4f1ff}
+.stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.stat{background:#f8fbff;border:1px solid #e0e9f4;border-radius:12px;padding:12px}
+.stat b{display:block;font-size:25px;color:#164a8d}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:310px}
+th,td{text-align:left;padding:9px 7px;border-bottom:1px solid #edf1f7}
+.scroll{overflow-x:auto}
+[hidden]{display:none!important}
+:focus-visible{outline:3px solid #7cb5ff;outline-offset:2px}
+@media(max-width:400px){#companies{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>
+</head>
+<body>
+<header><div>
+<h1>🤝 協力店管理</h1>
+<p>自社オーナー専用｜会社を選んで件数確認・訂正。協力店へのログイン切替は不要です。</p>
+<p><a class="home" href="/">← 自社の営業実績アプリへ戻る</a></p>
+</div></header>
+<main>
+<section><h2>ログイン状態</h2>
+<p id="state" class="notice" role="status" aria-live="polite">現在の自社ログインを確認中です。</p>
+<p id="authHint" class="muted" hidden>自社の営業実績アプリでログインしてから、この画面へ戻ってください。新しい協力店アカウントは不要です。</p>
+<div class="row"><div><label for="date">実績日</label><input type="date" id="date"></div>
+<div><button class="subtle" type="button" id="reload">最新を再取得</button></div></div>
+</section>
+<section id="ownerBox" hidden>
+<h2>協力店を選択 <span id="companyCount" class="muted"></span></h2>
+<p class="muted">承認済みの協力店が表示されます。未報告は0件として扱いません。ここでは金額・単価・キャッシュバックを取得しません。</p>
+<div id="companies" aria-label="登録済み協力店一覧"></div>
+</section>
+<section id="detailBox" hidden>
+<h2 id="detailName">協力店の実績</h2>
+<p class="muted" id="detailDate"></p>
+<div id="overview" class="stats"></div>
+<h3>班別・商材別件数</h3>
+<div class="scroll" id="teams"></div>
+<p class="muted">協力店の班・メンバー招待は <a href="/partner-workspace.html">既存の協力店管理画面</a> から行えます。</p>
+</section>
+<section id="correctionSection" hidden>
+<h2>✏️ 件数の訂正</h2>
+<p class="muted" id="editStatus">件数訂正のサーバー機能を確認しています。</p>
+<div id="correctionRoot"></div>
+</section>
+<section><p class="muted">件数の訂正は登録済みの担当者・登録済みの日付に限定します。訂正理由と変更履歴を残し、他社・他担当者の数字を無断で書き換えない仕組みです。売上・単価・CB・自社の過去履歴は変更しません。</p></section>
+</main>
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+import {getAuth,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js";
+import {mountVerifiedOwnerCorrection,countOnlyRegisteredCompanies}
+ from "./owner-partner-admin-assets/mobile-bootstrap.mjs";
+// Remains OFF until the isolated, server-authenticated correction v3 functions
+// are deployed, tested with the owner's existing account, and approved.
+const HUB_OWNER_CORRECTION_READY=false;
+const app=initializeApp({
+ apiKey:"AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
+ authDomain:"sales-management-cc116.firebaseapp.com",
+ projectId:"sales-management-cc116",
+ appId:"1:904932511564:web:6583e8b0c585231b9049e"
+});
+const auth=getAuth(app),functions=getFunctions(app,"asia-northeast1");
+const workspaceCall=httpsCallable(functions,"getPartnerWorkspace",{timeout:18000});
+const listCall=httpsCallable(functions,"listHubPartnerCounts",{timeout:18000});
+const correctCall=httpsCallable(functions,"correctHubPartnerCounts",{timeout:22000});
+const $=id=>document.getElementById(id);
+const ID=/^[A-Za-z0-9_-]{1,128}$/;
+const ZERO=()=>Object.fromEntries(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"].map(k=>[k,0]));
+const cleanCount=x=>Number.isSafeInteger(x)&&x>=0?x:null;
+const today=()=>Object.fromEntries(new Intl.DateTimeFormat("en-CA",{
+ timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"
+}).formatToParts(new Date()).map(p=>[p.type,p.value]));
+const t=today();$("date").value=[t.year,t.month,t.day].join("-");
+let session=null,companies=[],seq=0,currentPanel=null,currentCompany="";
+const clear=()=>{
+ ++seq;currentPanel?.destroy();currentPanel=null;companies=[];
+ currentCompany="";$("ownerBox").hidden=true;$("detailBox").hidden=true;
+ $("correctionSection").hidden=true;$("companies").replaceChildren();
+ $("overview").replaceChildren();$("teams").replaceChildren();
+ $("correctionRoot").replaceChildren();$("editStatus").textContent="";
+};
+const notice=(message,bad=false)=>{
+ $("state").textContent=message;$("state").className="notice"+(bad?" warn":"");
+};
+const make=(tag,text)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;return node;};
+const table=(cols,rows)=>{
+ const el=make("table"),thead=make("tr");
+ for(const name of cols)thead.append(make("th",name));el.append(thead);
+ for(const row of rows){const tr=make("tr");for(const x of row)tr.append(make("td",String(x)));el.append(tr);}
+ return el;
+};
+function showCompanies(){
+ const box=$("companies");box.replaceChildren();
+ for(const company of companies){
+  const button=make("button");button.className="company";button.type="button";
+  button.disabled=!company.active;button.dataset.companyId=company.partnerCompanyId;
+  button.setAttribute("aria-pressed",String(currentCompany===company.partnerCompanyId));
+  button.append(make("strong",company.name),make("small",company.active?
+   "タップして件数を確認・訂正":"現在は未承認"));
+  button.onclick=()=>{void chooseCompany(company.partnerCompanyId)};
+  box.append(button);
+ }
+ $("companyCount").textContent="（"+companies.length+"社）";
+ $("ownerBox").hidden=false;
+}
+async function chooseCompany(partnerId){
+ if(!session||auth.currentUser!==session||!companies.some(c=>
+  c.partnerCompanyId===partnerId&&c.active)||!ID.test(partnerId))return;
+ const day=$("date").value,mySeq=++seq,current=session;
+ currentCompany=partnerId;showCompanies();
+ $("detailBox").hidden=false;
+ $("detailName").textContent=companies.find(c=>c.partnerCompanyId===partnerId).name;
+ $("detailDate").textContent=day+"｜件数情報を照会中";
+ $("overview").replaceChildren();$("teams").replaceChildren();
+ try{
+  const result=(await workspaceCall({date:day,partnerCompanyId:partnerId,includeTeamStatus:true})).data;
+  if(seq!==mySeq||auth.currentUser!==current||$("date").value!==day||
+     result?.role!=="hub"||result?.date!==day||
+     result?.partnerTeamDetails?.partnerCompanyId!==partnerId||
+     result?.partnerTeamDetails?.scope!=="shared_counts_only")throw Error("STALE_OR_UNTRUSTED");
+  const report=result.partners?.find(p=>p.partnerCompanyId===partnerId);
+  const reported=report&&cleanCount(report.totalCount)!==null;
+  const teamData=result.partnerTeamDetails?.teams;
+  if(!Array.isArray(teamData)||teamData.length>150)throw Error("INVALID_TEAM_COUNTS");
+  const summary=$("overview");
+  for(const [label,value] of [
+   ["報告件数",reported?report.totalCount+" 件":"未報告"],
+   ["登録済みの班",teamData.length+" 班"]
+  ]){
+   const box=make("div");box.className="stat";box.append(make("small",label),make("b",value));summary.append(box);
+  }
+  const items=teamData.map(x=>{
+   if(typeof x.name!=="string"||x.name.length>60||
+      !ID.test(x.teamId)||cleanCount(x.totalCount)===null)
+     throw Error("UNVERIFIED_TEAM");
+   return [x.name,x.totalCount+" 件"];
+  });
+  $("teams").replaceChildren(table(["班","件数"],items));
+  $("detailDate").textContent=day+"｜会社・班の件数のみ表示中";
+ }catch{
+  if(seq!==mySeq||auth.currentUser!==current)return;
+  $("overview").replaceChildren();$("teams").replaceChildren();
+  $("detailDate").textContent="会社の件数を検証できません。最新情報を再取得してください。";
+ }
+ if(seq!==mySeq||auth.currentUser!==current)return;
+ if(currentPanel&&HUB_OWNER_CORRECTION_READY){
+  try{await currentPanel.openCompany(partnerId);}
+  catch{$("editStatus").textContent="件数訂正を読み込めません。権限またはAPIの状態をご確認ください。";}
+ }
+}
+async function refresh(){
+ const user=auth.currentUser;
+ clear();session=user;
+ if(!user){notice("未ログイン。自社アプリからログインして戻ってください。",true);$("authHint").hidden=false;return;}
+ if(!user.emailVerified){notice("メール確認済みの自社オーナーのみ利用できます。",true);$("authHint").hidden=false;return;}
+ $("authHint").hidden=true;
+ const target=++seq,day=$("date").value;
+ notice("自社オーナー権限と協力店一覧を確認しています。");
+ try{
+  const response=(await workspaceCall({date:day})).data;
+  if(target!==seq||session!==user||auth.currentUser!==user)return;
+  companies=countOnlyRegisteredCompanies(response,day);
+  notice("ログイン中の自社オーナーを確認しました。協力店をタップしてください。");
+  showCompanies();
+  if(!HUB_OWNER_CORRECTION_READY){
+   $("correctionSection").hidden=false;
+   $("editStatus").textContent="訂正機能は安全なサーバー配備・実アカウント検証が完了するまで停止中です。会社別の件数確認は利用できます。";
+   return;
+  }
+  $("correctionSection").hidden=false;
+  $("editStatus").textContent="登録済み件数を読み込めます。";
+  currentPanel=await mountVerifiedOwnerCorrection({
+   root:$("correctionRoot"),auth,dom:document,
+   workspaceCallable:workspaceCall,
+   listCallable:listCall,correctCallable:correctCall,
+   dateGetter:()=>$("date").value,
+   confirmChange:message=>window.confirm(message),
+   subscribeAuth:callback=>onAuthStateChanged(auth,callback),
+   invalidateRanking:async()=>{
+    // The next read must ask the server, never reuse old totals.
+    const current=currentCompany;currentCompany="";
+    if(current&&auth.currentUser===user)await chooseCompany(current);
+   },
+   enabled:()=>HUB_OWNER_CORRECTION_READY
+  });
+ }catch{
+  if(target!==seq||session!==user||auth.currentUser!==user)return;
+  clear();session=user;notice("自社オーナーの所属を確認できません。自社アプリの権限とネットワークを確認してください。",true);
+ }
+}
+$("date").onchange=()=>{void refresh()};
+$("reload").onclick=()=>{void refresh()};
+onAuthStateChanged(auth,user=>{
+ if(user!==session){clear();session=user;void refresh();}
+});
+</script>
+</body></html>
