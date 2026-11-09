@@ -319,8 +319,12 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    if(fresh.kind!=="hub"||fresh.role!=="owner"||fresh.cid!==s.cid)fail();
    const [productDoc,stateDoc]=await Promise.all([tx.get(productRef),tx.get(stateRef)]);
    const product=productDoc.data()||{};
-   if(!productDoc.exists||product.companyId!==s.cid||product.active===false)fail("failed-precondition");
-   try{nameOnly(product.name);}catch{fail("failed-precondition");}
+   // Retired products may be unpublished; publishing requires active, safe master data.
+   if(!productDoc.exists||product.companyId!==s.cid||
+      (d.published&&product.active===false))fail("failed-precondition");
+   if(d.published){
+    try{nameOnly(product.name);}catch{fail("failed-precondition");}
+   }
    let next;
    try{next=changePublication(stateDoc.exists?stateDoc.data():null,
      d.productId,d.published,d.expectedRevision);}
