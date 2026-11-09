@@ -1,0 +1,26 @@
+name: Partner finance rules boundary (NO DEPLOY)
+on:
+  pull_request:
+    paths:
+      - 'firestore.rules'
+      - 'tests/partner-finance-rules-boundary.test.cjs'
+      - '.github/workflows/partner-finance-rules-no-deploy.yml'
+  push:
+    branches:
+      - 'integration/partner-safe-release-20261110'
+    paths:
+      - 'firestore.rules'
+      - 'tests/partner-finance-rules-boundary.test.cjs'
+      - '.github/workflows/partner-finance-rules-no-deploy.yml'
+  workflow_dispatch:
+jobs:
+  offline-rules-contract:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test tests/partner-finance-rules-boundary.test.cjs
