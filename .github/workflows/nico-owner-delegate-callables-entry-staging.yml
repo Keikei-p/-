@@ -21,8 +21,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git hash-object staging/owner-delegation-v1/entry.cjs)" = 4d06a4c5b09ec5cd7a1c88f72af97795fd1ac7a6
-          test "$(git hash-object tests/owner-delegate-two-callables-entry-staging.test.cjs)" = 2bedda82e5bf69c6f27af888735f51699553d547
+          test "$(git hash-object staging/owner-delegation-v1/entry.cjs)" = e35f458d3e57912f0d83bf31e7a77e6b2910635c
+          test "$(git hash-object tests/owner-delegate-two-callables-entry-staging.test.cjs)" = 0565b023694ea5f4fec4e8759dda62e3c7ecaf9d
           test "$(git hash-object staging/owner-delegation-v1/owner-approval-service.cjs)" = 5784dcd2a591fcf33013ef28dcd3b6e3cca0336d
           test "$(git hash-object staging/owner-delegation-v1/verified-hub-owner.cjs)" = eba49490458ce5732c6eebd9f9633d04f9ff414d
           test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
