@@ -15378,7 +15378,9 @@ pInline("pInlineSave").onclick=()=>{
  for(const key of snap.categories){
   if(key==="NURO"){
    const blocked=snap.legacyCategoryPublication?.some(x=>x.category==="NURO"&&x.acceptsIncrease===false);
-   if(blocked&&parsedCb.total===0&&(before?.counts?.NURO??0)===0){counts[key]=0;continue;}
+   if(blocked&&(before?.counts?.NURO??0)===0&&parsedCb.total===0){
+    counts[key]=0;continue;
+   }
    counts[key]=parsedCb.total;continue;
   }
   const node=[...pInline("pInlineCountFields").querySelectorAll("input[data-count-key]")]
