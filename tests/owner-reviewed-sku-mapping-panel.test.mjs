@@ -165,7 +165,7 @@ test("bridge rejects spoofed token and changed user before rendering",async()=>{
   auth,functions:{},httpsCallable:()=>async()=>({data:status()})
  });
  await assert.rejects(bridge.readMappings({token:"fake"}),/UNVERIFIED/);
- await assert.rejects(bridge.saveMapping({token:"a".repeat(40),
+ assert.throws(()=>bridge.saveMapping({token:"a".repeat(40),
   partnerCompanyId:"../records",partnerProductId:"partnerSku01",
   hubProductId:"nuro",expectedVersion:0}),/UNVERIFIED/);
  auth.currentUser=null;bridge.onAuthChange();
