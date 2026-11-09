@@ -227,3 +227,39 @@ test("invalid Content-Length never reaches the backend",async()=>{
  }
  assert.equal(loads,0);
 });
+
+
+test("direct Cloud Function ingress is accepted and normalized to the same authenticated canonical path",async()=>{
+ const direct="/getVerifiedJointCountRanking?month=2026-11";
+ let seen=null,called=0;
+ const adapter=createJointCountHttpAdapter({enabled:()=>true,
+  loadHandler:()=>async request=>{
+   called++;seen=request;
+   return new Response(JSON.stringify(data()),{status:200});
+  }});
+ const res=response();
+ await adapter(req(direct),res);
+ assert.equal(res.statusCode,200);
+ assert.equal(called,1);
+ assert.equal(seen.url,ORIGIN+URL_PATH);
+ assert.equal(seen.headers.get("Authorization"),TOKEN);
+ assert.equal(seen.headers.get("Origin"),ORIGIN);
+ assert.deepEqual(JSON.parse(res.body),data());
+});
+test("only exact Hosting and direct Function paths are allowed, no prefix or path impersonation",async()=>{
+ let called=0;
+ const adapter=createJointCountHttpAdapter({enabled:()=>true,
+  loadHandler:()=>{called++;return make();}});
+ for(const badPath of [
+  "/getVerifiedJointCountRankingExtra?month=2026-11",
+  "/getVerifiedJointCountRanking/v2?month=2026-11",
+  "/getVerifiedJointCountRanking/../admin?month=2026-11",
+  "/v1/owner-visible-counts-extra?month=2026-11",
+  "//evil.example/getVerifiedJointCountRanking?month=2026-11"
+ ]){
+  const out=response();
+  await adapter(req(badPath),out);
+  assert.equal(out.statusCode,404,badPath);
+ }
+ assert.equal(called,0);
+});
