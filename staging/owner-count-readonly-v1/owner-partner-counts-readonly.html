@@ -136,7 +136,7 @@ function parseEntries(raw,expected){
      !Number.isSafeInteger(row.version)||row.version<1||row.version>999)fail();
   seen.add(row.staffId);
   const counts=safeCounts(row.counts);
-  if(!validCount(row.totalCount)||sum(counts)!==row.totalCount)fail();
+  if(!Number.isSafeInteger(row.totalCount)||row.totalCount<0||sum(counts)!==row.totalCount)fail();
   let sb;
   if(row.sbBreakdown===null){
    sb={"SB光":0,"SB AIR":0,"旧未分類":counts["SB光・AIR"]};
