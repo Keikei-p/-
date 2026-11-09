@@ -34,7 +34,7 @@ jobs:
           test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
           test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
           test "$(git hash-object finance-boundary-check.html)" = 7fa664efb17f6d3337e9403498aa8c0857b35be5
-          test "$(git hash-object tools/hosting/surgical-finance-boundary-current-live.mjs)" = 8abc2823119a148760c4d1cdcd11a6058cdbf39e
+          test "$(git hash-object tools/hosting/surgical-finance-boundary-current-live.mjs)" = 49b272fa9d38d92bbfde976aa9476d72428de6a1
           node --check tools/hosting/surgical-finance-boundary-current-live.mjs
           node --test tests/surgical-finance-boundary-current-live.test.mjs tests/surgical-finance-boundary-mobile-login.test.mjs tests/finance-boundary-ondevice.test.mjs
           test "$(git show 2c10e27bb6a92684470c74388a76cad3d0f3ee4c:finance-boundary-check.html | git hash-object --stdin)" = 1369f7523e171f64cacb263aa65e8e7e04572d27
@@ -68,7 +68,7 @@ jobs:
           test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
           test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
           test "$(git hash-object finance-boundary-check.html)" = 7fa664efb17f6d3337e9403498aa8c0857b35be5
-          test "$(git hash-object tools/hosting/surgical-finance-boundary-current-live.mjs)" = 8abc2823119a148760c4d1cdcd11a6058cdbf39e
+          test "$(git hash-object tools/hosting/surgical-finance-boundary-current-live.mjs)" = 49b272fa9d38d92bbfde976aa9476d72428de6a1
           node --test tests/surgical-finance-boundary-current-live.test.mjs
       - name: Supply existing Hosting identity privately
         env:
@@ -83,13 +83,13 @@ jobs:
       - name: Install existing Hosting auth SDK (no upgrades to source or locks)
         shell: bash
         run: npm install --prefix functions --ignore-scripts --no-audit --no-fund --package-lock=false
-      - name: Require exact current 12-file live manifest, old diagnostic SHA, identical other 11 assets
+      - name: Require complete bounded current live manifest, old diagnostic SHA and identical all other assets
         shell: bash
         run: |
           set -euo pipefail
           node tools/hosting/surgical-finance-boundary-current-live.mjs --dry-run
-          echo 'CURRENT_LIVE_VERSION_AND_DIAGNOSTIC_OLD_HASH_VERIFIED'
-      - name: Publish ONLY reviewed read-only finance diagnostic page preserving all other live files
+          echo 'CURRENT_FULL_LIVE_MANIFEST_AND_OLD_DIAGNOSTIC_HASH_VERIFIED'
+      - name: Publish ONLY reviewed read-only finance diagnostic page preserving every other live file
         shell: bash
         run: |
           set -euo pipefail
@@ -116,7 +116,7 @@ jobs:
           echo 'POST_DEPLOY_REVIEWED_FINANCE_DIAGNOSTIC_ONLY_PASS'
           echo 'PRODUCTION_FIRESTORE_WRITES=0'
           echo 'PRODUCTION_RULES_DEPLOYS=0'
-          echo 'ORIGINAL_HOSTING_ASSETS_CHANGED=0'
+          echo 'OTHER_ORIGINAL_HOSTING_ASSETS_CHANGED=0'
       - name: Erase temporary credential and HTML
         if: always()
         shell: bash
