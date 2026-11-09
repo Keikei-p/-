@@ -31,16 +31,16 @@ on:
       - '.github/workflows/nico-ranking-disabled-function-release.yml'
       - 'tools/production/ranking-disabled-function-scope.mjs'
       - 'tests/ranking-disabled-function-scope.test.mjs'
-      - 'tools/production/protect-original-functions-versions.mjs'
-      - 'tests/protect-original-functions-versions.test.mjs'
+      - 'tools/production/protect-ranking-original-functions-versions.mjs'
+      - 'tests/protect-ranking-original-functions-versions.test.mjs'
   push:
     branches: [main]
     paths:
       - '.github/workflows/nico-ranking-disabled-function-release.yml'
       - 'tools/production/ranking-disabled-function-scope.mjs'
       - 'tests/ranking-disabled-function-scope.test.mjs'
-      - 'tools/production/protect-original-functions-versions.mjs'
-      - 'tests/protect-original-functions-versions.test.mjs'
+      - 'tools/production/protect-ranking-original-functions-versions.mjs'
+      - 'tests/protect-ranking-original-functions-versions.test.mjs'
 permissions:
   contents: read
 jobs:
@@ -62,7 +62,7 @@ jobs:
           test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
           test "$(git hash-object firebase.partner-workspace.json)" = a6ceedec5fab4e22e0a8efe19c685716a2db9750
           node --check tools/production/ranking-disabled-function-scope.mjs
-          node --test tests/ranking-disabled-function-scope.test.mjs tests/isolated-joint-count-function-package.test.mjs tests/joint-count-http-adapter.test.cjs tests/protect-original-functions-versions.test.mjs
+          node --test tests/ranking-disabled-function-scope.test.mjs tests/isolated-joint-count-function-package.test.mjs tests/joint-count-http-adapter.test.cjs tests/protect-ranking-original-functions-versions.test.mjs
           node tools/production/ranking-disabled-function-scope.mjs
           echo 'INSPECT_ONLY_NO_FIREBASE_CREDENTIALS_NO_DEPLOY'
   deploy-disabled:
@@ -139,7 +139,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node tools/production/protect-original-functions-versions.mjs before
+          node tools/production/protect-ranking-original-functions-versions.mjs before
       - name: Create ephemerally DISABLED flags for all isolated ranking Functions
         shell: bash
         run: |
@@ -177,7 +177,7 @@ jobs:
           const r=compareInventory(before,after);
           console.log('ONE_DISABLED_FUNCTION_INVENTORY '+JSON.stringify(r));
           NODE
-          node tools/production/protect-original-functions-versions.mjs after
+          node tools/production/protect-ranking-original-functions-versions.mjs after
       - name: Public ANONYMOUS GET must remain DISABLED (503) after deployment
         shell: bash
         run: |
