@@ -1,0 +1,35 @@
+name: NICO Owner portal exact TWO assets replacement preflight (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/hosting/owner-portal-two-assets-replacement-guard.mjs'
+      - 'tests/owner-portal-two-assets-replacement-guard.test.mjs'
+      - '.github/workflows/nico-owner-portal-two-assets-guard-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Read-only proof that exactly two existing Owner portal assets would change
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check tools/hosting/owner-portal-two-assets-replacement-guard.mjs
+          node --test tests/owner-portal-two-assets-replacement-guard.test.mjs
+          node --test tests/owner-workspace-error-classification.test.mjs
+          node --test tests/owner-partner-admin-add-only.test.mjs tests/prepare-hub-owner-portal-static.test.mjs
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
+          test "$(git hash-object staging/hub-owner-management/owner-partner-admin.html)" = f6609e6664ec11f629ea57751295abe18cb1dc2a
+          test "$(git hash-object staging/partner-owner-correction-v3/mobile-bootstrap.mjs)" = fe8fa6779093a19cdc4c678acf85df348a61f76a
+          test "$(git hash-object tools/production/prepare-hub-owner-portal-static.mjs)" = 75833cedbfe348999918ffb5ec00c8216f087593
+          echo "OWNER_PORTAL_TWO_ASSET_OFFLINE_PLAN_READY_NO_PRODUCTION_WRITE"
