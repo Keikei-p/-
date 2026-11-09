@@ -302,3 +302,17 @@ test("staged code contains no Firebase initialization, Firestore reads or creden
  assert.doesNotMatch(source,/getFirestore|deleteDoc\(|updateDoc\(|setDoc\(/);
  assert.doesNotMatch(source,/console\.|getAuth\(|httpsCallable\(|functions\.net/);
 });
+
+test("owner can switch company using one action in the same verified Auth session",async()=>{
+ const f=fixture(),panel=await mountVerifiedOwnerCorrection(f.fn);
+ assert.equal(typeof panel.selectCompany,"function");
+ assert.equal(panel.selectCompany("inactive"),false);
+ assert.equal(f.seen.list.length,0);
+ assert.equal(panel.selectCompany(cid),true);
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.deepEqual(f.seen.list,[{date,partnerCompanyId:cid}]);
+ assert.equal(f.seen.correct.length,0);
+ f.notifyAuth(null);
+ assert.equal(panel.selectCompany(cid),false);
+ assert.equal(f.seen.list.length,1,"no stale requests after sign-out");
+});
