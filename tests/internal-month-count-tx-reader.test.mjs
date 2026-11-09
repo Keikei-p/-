@@ -19,6 +19,7 @@ const base=()=>({
   teamId:"teamA",active:true}}],
  records:[{id:"hub_uid1_2026-11-09",value:{companyId:hub,uid:"uid1",
   date:"2026-11-09",teamId:"teamA",memberNameSnapshot:"営業担当",
+  teamNameSnapshot:"広島班",
   results:{nuro:{count:5,unitPrice:25000,revenue:125000,
     cashback:5000},air:{count:2,revenuePerUnit:10000}},
   totalCount:7,totalRevenue:145000,reportStatus:"submitted"}}]
