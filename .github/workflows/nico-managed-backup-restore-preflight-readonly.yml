@@ -6,12 +6,16 @@ on:
     paths:
       - 'tools/production/audit-managed-backup-restore-preflight-readonly.mjs'
       - 'tests/managed-backup-restore-preflight-readonly.test.mjs'
+      - 'tools/production/inspect-live-firestore-rules-release.mjs'
+      - 'tests/inspect-live-firestore-rules-release.test.mjs'
       - '.github/workflows/nico-managed-backup-restore-preflight-readonly.yml'
   push:
     branches: [main]
     paths:
       - 'tools/production/audit-managed-backup-restore-preflight-readonly.mjs'
       - 'tests/managed-backup-restore-preflight-readonly.test.mjs'
+      - 'tools/production/inspect-live-firestore-rules-release.mjs'
+      - 'tests/inspect-live-firestore-rules-release.test.mjs'
       - '.github/workflows/nico-managed-backup-restore-preflight-readonly.yml'
 permissions:
   contents: read
@@ -37,7 +41,8 @@ jobs:
           test "$(git hash-object tools/production/inspect-firestore-backups-readonly.mjs)" = 8016a0501a309ff52a002f34bed53832658d2ffb
           test "$(git hash-object tools/readonly-backup/restore-emulator.mjs)" = 638bd79ed31ad28e7298d8ed2e6927730ec129b1
           node --check tools/production/audit-managed-backup-restore-preflight-readonly.mjs
-          node --test tests/managed-backup-restore-preflight-readonly.test.mjs
+          node --check tools/production/inspect-live-firestore-rules-release.mjs
+          node --test tests/managed-backup-restore-preflight-readonly.test.mjs tests/inspect-live-firestore-rules-release.test.mjs
           git diff --exit-code -- firestore.rules firebase.json index.html functions functions-partner-workspace
   live-get-only:
     needs: offline
@@ -66,7 +71,7 @@ jobs:
           test "$FIREBASE_PROJECT_ID" = sales-management-cc116
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
           test "$(git hash-object tools/readonly-backup/restore-emulator.mjs)" = 638bd79ed31ad28e7298d8ed2e6927730ec129b1
-          node --test tests/managed-backup-restore-preflight-readonly.test.mjs
+          node --test tests/managed-backup-restore-preflight-readonly.test.mjs tests/inspect-live-firestore-rules-release.test.mjs
       - name: Install only existing Firebase Admin identity dependency
         shell: bash
         run: |
@@ -82,6 +87,13 @@ jobs:
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-backup-preflight-identity.private.json"
           chmod 600 "$RUNNER_TEMP/nico-backup-preflight-identity.private.json"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-backup-preflight-identity.private.json" >> "$GITHUB_ENV"
+      - name: GET verified live Rules release before backup inspection (NO APPLY)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/inspect-live-firestore-rules-release.mjs
+          echo 'PRODUCTION_RULES_WRITES=0'
+          echo 'REAL_PARTNER_ACCOUNT_FINANCE_GET_LIST_UNPROVEN=YES'
       - name: GET current default DB UID and READY backup metadata only, NO RESTORE
         shell: bash
         run: |
