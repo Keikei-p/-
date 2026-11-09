@@ -179,24 +179,29 @@ async function apply(person){
  if(stamp!==generation||who!==auth.currentUser||model!==m)return;
  busy=true;controls();
  setStatus(verb+"の結果を確認中です。再度タップしないでください。");
- let outcome="結果が確認できません。最新の状況を取得してください。";
+ let serverAcknowledged=false;
  try{
   const result=(await changeCall({
    targetUid:person.uid,approved:desired,expectedVersion:m.version
   })).data;
   if(stamp!==generation||who!==auth.currentUser)return;
   parseChange(result,{uid:person.uid,approved:desired,version:m.version});
-  outcome=verb+"が反映されました。サーバーから最新状況を再取得します。";
+  serverAcknowledged=true;
  }catch{
   if(stamp!==generation||who!==auth.currentUser)return;
-  outcome="更新結果が未確認です。同じ操作を再送せず、最新の承認状況を確認してください。";
+  setStatus("更新結果が未確認です。同じ操作を再送しないでください。",true);
  }finally{
   busy=false;
   controls();
   if(stamp===generation&&who===auth.currentUser){
-   setStatus(outcome);
    // Read-only refresh only. Never automatically retry change after a failure.
    await refresh();
+   if(auth.currentUser===who&&model){
+    const currentState=model.people.find(p=>p.uid===person.uid);
+    if(serverAcknowledged&&currentState?.approved===desired)
+     setStatus(verb+"の反映をサーバーの最新一覧で確認しました。");
+    else setStatus("承認状態の反映は未確認です。最新一覧を確認してください。",true);
+   }
   }
  }
 }
