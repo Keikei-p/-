@@ -1,0 +1,177 @@
+name: NICO new joint ranking Function (DISABLED ONLY / MANUAL)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-joint-ranking-disabled-function-manual.yml'
+      - 'tools/production/joint-count-function-release-scope.mjs'
+      - 'tests/joint-count-function-release-scope.test.mjs'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-joint-ranking-disabled-function-manual.yml'
+      - 'tools/production/joint-count-function-release-scope.mjs'
+      - 'tests/joint-count-function-release-scope.test.mjs'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'INSPECT_ONLY or DEPLOY_DISABLED_ONLY'
+        type: choice
+        options: [INSPECT_ONLY, DEPLOY_DISABLED_ONLY]
+        default: INSPECT_ONLY
+        required: true
+      reviewed_main_sha:
+        description: 'Exact fully reviewed 40-character main SHA'
+        type: string
+        required: true
+      deployment_approval:
+        description: 'Only for DEPLOY_DISABLED_ONLY: CONFIRM_ADD_ONE_DISABLED_RANKING_FUNCTION'
+        type: string
+        required: false
+      usage_approval:
+        description: 'Only for DEPLOY: FUNCTION_BUILDS_AND_POSSIBLE_CHARGES_EXPLICITLY_APPROVED'
+        type: string
+        required: false
+permissions:
+  contents: read
+concurrency:
+  group: nico-one-disabled-count-ranking-function
+  cancel-in-progress: false
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Exact single target, source identity and user data protections
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(git hash-object functions-partner-workspace/index.js)" = 38da7e9174ffea7c406c92292dccfc651b565eb0
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
+          node tools/production/joint-count-function-release-scope.mjs
+          node --test tests/joint-count-function-release-scope.test.mjs
+          node --test tests/joint-count-http-adapter.test.cjs tests/isolated-joint-count-function-package.test.mjs
+          node --check functions-ranking-approvals/index.js
+          echo 'RANKING_DISABLED_RELEASE_PREFLIGHT_LOCAL_ONLY_NO_DEPLOY'
+  manual:
+    needs: offline
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' &&
+          github.repository == 'Keikei-p/-' &&
+          github.ref == 'refs/heads/main' &&
+          inputs.reviewed_main_sha == github.sha &&
+          needs.offline.result == 'success' &&
+          (inputs.mode == 'INSPECT_ONLY' ||
+           (inputs.mode == 'DEPLOY_DISABLED_ONLY' &&
+            inputs.deployment_approval == 'CONFIRM_ADD_ONE_DISABLED_RANKING_FUNCTION' &&
+            inputs.usage_approval == 'FUNCTION_BUILDS_AND_POSSIBLE_CHARGES_EXPLICITLY_APPROVED')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: ${{ github.sha }},persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Revalidate exact current main and protected source versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq '.commit.sha')"
+          test "$FIREBASE_PROJECT_ID" = sales-management-cc116
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(git hash-object functions-partner-workspace/index.js)" = 38da7e9174ffea7c406c92292dccfc651b565eb0
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
+          node tools/production/joint-count-function-release-scope.mjs
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Install pinned Firebase CLI only
+        run: npm install --global firebase-tools@15.34.1 --no-audit --no-fund
+      - name: Create temporary private Google identity (NO logged secrets)
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test ! -e "$RUNNER_TEMP/nico-ranking-one-identity.private.json"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-ranking-one-identity.private.json"
+          chmod 600 "$RUNNER_TEMP/nico-ranking-one-identity.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-ranking-one-identity.private.json" >> "$GITHUB_ENV"
+      - name: Read full Function inventory only; no changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase functions:list --project "$FIREBASE_PROJECT_ID" --json > "$RUNNER_TEMP/nico-ranking-one-before.private.json"
+          if [ "${{ inputs.mode }}" = "INSPECT_ONLY" ]; then
+            FILE="$RUNNER_TEMP/nico-ranking-one-before.private.json" node --input-type=module -e "import {readFileSync} from 'node:fs';import {inspectPredeployInventory} from './tools/production/joint-count-function-release-scope.mjs';inspectPredeployInventory(JSON.parse(readFileSync(process.env.FILE,'utf8')));console.log('NEW_RANKING_FUNCTION_NOT_PRESENT_INSPECT_ONLY')"
+            echo 'NO_FUNCTION_DEPLOY_NO_RULES_NO_DOCUMENT_WRITES'
+          else
+            FILE="$RUNNER_TEMP/nico-ranking-one-before.private.json" node --input-type=module -e "import {readFileSync} from 'node:fs';import {inspectPredeployInventory} from './tools/production/joint-count-function-release-scope.mjs';inspectPredeployInventory(JSON.parse(readFileSync(process.env.FILE,'utf8')));console.log('NEW_RANKING_TARGET_UNDEPLOYED_CONFIRMED')"
+          fi
+      - name: Build only isolated source and snapshot six original LIVE Function versions
+        if: ${{ inputs.mode == 'DEPLOY_DISABLED_ONLY' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix functions --ignore-scripts --no-audit --no-fund --package-lock=false
+          npm install --prefix functions-ranking-approvals --ignore-scripts --no-audit --no-fund --package-lock=false
+          node tools/production/protect-original-functions-versions.mjs before
+      - name: Pin ALL owner and ranking switches OFF in disposable build
+        if: ${{ inputs.mode == 'DEPLOY_DISABLED_ONLY' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e functions-ranking-approvals/.env.sales-management-cc116
+          printf '%s\n' 'NICO_JOINT_COUNT_RANKING_ENABLED=disabled' 'NICO_OWNER_PRODUCT_VISIBILITY_ENABLED=disabled' 'NICO_RANKING_OWNER_SETTINGS_ENABLED=disabled' > functions-ranking-approvals/.env.sales-management-cc116
+          chmod 600 functions-ranking-approvals/.env.sales-management-cc116
+          grep -Fxq 'NICO_JOINT_COUNT_RANKING_ENABLED=disabled' functions-ranking-approvals/.env.sales-management-cc116
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq '.commit.sha')"
+      - name: Deploy EXACT one NEW disabled ranking HTTP Function (not Hosting or Rules)
+        if: ${{ inputs.mode == 'DEPLOY_DISABLED_ONLY' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET="functions:ranking-owner-approvals:getVerifiedJointCountRanking"
+          TARGET="$TARGET" node --input-type=module -e "import {ensureSingleRankingTarget} from './tools/production/joint-count-function-release-scope.mjs';ensureSingleRankingTarget(process.env.TARGET)"
+          if ! firebase deploy --project "$FIREBASE_PROJECT_ID" --non-interactive --config firebase.ranking-approvals.json --only "$TARGET" > "$RUNNER_TEMP/nico-ranking-one-deploy.private.log" 2>&1; then
+            echo 'STOP_NEW_DISABLED_RANKING_DEPLOY_UNCONFIRMED_CHECK_PRIVATE_RUNNER_LOG'
+            exit 1
+          fi
+          echo 'ONE_DISABLED_FUNCTION_SCOPED_DEPLOY_RETURNED_SUCCESS'
+      - name: GET-only inventory, six original version hashes and disabled endpoint
+        if: ${{ inputs.mode == 'DEPLOY_DISABLED_ONLY' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase functions:list --project "$FIREBASE_PROJECT_ID" --json > "$RUNNER_TEMP/nico-ranking-one-after.private.json"
+          BEFORE="$RUNNER_TEMP/nico-ranking-one-before.private.json" AFTER="$RUNNER_TEMP/nico-ranking-one-after.private.json" node --input-type=module -e "import {readFileSync} from 'node:fs';import {compareOneDisabledFunction} from './tools/production/joint-count-function-release-scope.mjs';const x=compareOneDisabledFunction(JSON.parse(readFileSync(process.env.BEFORE,'utf8')),JSON.parse(readFileSync(process.env.AFTER,'utf8')));console.log('ORIGINAL_FUNCTIONS_PRESERVED '+x.allOriginalFunctionsPreserved+' EXACTLY_ONE_NEW_DISABLED_RANKING '+x.exactlyOneNewRankingFunction)"
+          node tools/production/protect-original-functions-versions.mjs after
+          code="$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 30 'https://asia-northeast1-sales-management-cc116.cloudfunctions.net/getVerifiedJointCountRanking?month=2026-11' || true)"
+          if [ "$code" != 503 ]; then
+            echo 'STOP_DISABLED_RANKING_HTTP_NOT_PROVEN_NO_ENABLE_NO_RETRY'
+            exit 1
+          fi
+          echo 'NEW_RANKING_FUNCTION_HTTP_503_FLAG_DISABLED_CONFIRMED'
+          echo 'HOSTING_REWRITE_NOT_DEPLOYED_REAL_ACCOUNT_E2E_NOT_PROVEN'
+      - name: Always destroy temporary identity, env, inventory and logs
+        if: always()
+        shell: bash
+        run: |
+          rm -f functions-ranking-approvals/.env.sales-management-cc116
+          rm -f "$RUNNER_TEMP/nico-ranking-one-identity.private.json"
+          rm -f "$RUNNER_TEMP/nico-ranking-one-before.private.json"
+          rm -f "$RUNNER_TEMP/nico-ranking-one-after.private.json"
+          rm -f "$RUNNER_TEMP/nico-ranking-one-deploy.private.log"
+          rm -f "$RUNNER_TEMP/nico-original-six-immutable-versions.private.json"
+          rm -f firebase-debug.log firestore-debug.log
