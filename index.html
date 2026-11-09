@@ -13271,7 +13271,7 @@ function renderPartnerCountTeamCard(title,total,counts,cbCounts,members,keys,{ve
   const unclassified=tiers?.unclassified??(nuro-assigned);
   if(!Number.isSafeInteger(unclassified)||unclassified<0||
      assigned+unclassified!==nuro)throw Error("count_team_cb_mismatch");
-  if(unclassified)partnerMainAppendRow(block,"CB未分類",unclassified+"件（過去実績）");
+  if(unclassified)partnerMainAppendRow(block,"未分類",unclassified+"件（過去実績）");
  }
  const products=section("商材別件数");
  for(const key of keys){
@@ -13354,7 +13354,7 @@ function renderPartnerCountTeamCardProductOnly(member,keys){
   const unknown=cb?.unclassified??(nuro-classified);
   if(!Number.isSafeInteger(unknown)||unknown<0||classified+unknown!==nuro)
    throw Error("count_team_person_cb_mismatch");
-  if(unknown)partnerMainAppendRow(el,"CB未分類",unknown+"件（過去実績）");
+  if(unknown)partnerMainAppendRow(el,"未分類",unknown+"件（過去実績）");
  }
  return el;
 }
