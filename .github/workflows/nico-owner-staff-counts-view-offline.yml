@@ -22,7 +22,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git hash-object staging/owner-staff-count-readonly-v1/owner-partner-admin.html)" = 3bcc5a267fd4d33def219ce5ac9799e5f9edf9f4
-          test "$(git hash-object tests/owner-staff-counts-readonly-view.test.mjs)" = ee975f6c9885a0a583ae32a2de1b4d583583b10f
+          test "$(git hash-object tests/owner-staff-counts-readonly-view.test.mjs)" = cccbaf0dd24b1c3040f41c0b075463a81bc431ca
           test "$(git hash-object staging/owner-workspace-errors-v1/owner-partner-admin.html)" = 8ac03f833b27706b256d9218742c343bb3e040ff
           test "$(git hash-object staging/owner-workspace-errors-v1/mobile-bootstrap.mjs)" = 8533ac6b02f7768189444c9bfb8cc11cea7b28e7
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
