@@ -13227,7 +13227,7 @@ function appendSharedRankingRows(container,heading,entries,complete){
 // Common count-only presentation for both partner and HQ partner-company
 // breakdown. No currency, price, margin, commission, or finance read.
 const PARTNER_TEAM_CB_TIERS=["0","20000","40000","60000","80000"];
-function renderPartnerCountTeamCard(title,total,counts,cbCounts,members,keys,{verified=true}={}){
+function renderPartnerCountTeamCard(title,total,counts,cbCounts,members,keys,{verified=true,showCb=false}={}){
  if(!Number.isSafeInteger(total)||total<0||!counts||typeof counts!=="object"||
     !Array.isArray(members))throw Error("count_team_invalid");
  const card=document.createElement("details");card.className="partner-count-team-card";
@@ -13252,7 +13252,7 @@ function renderPartnerCountTeamCard(title,total,counts,cbCounts,members,keys,{ve
  }
  if(visible>total)throw Error("count_team_total_mismatch");
  const nuro=counts.NURO||0,tiers=cbCounts?.NURO;
- if(nuro>0||tiers){
+ if(showCb&&(nuro>0||tiers)){
   const block=section("NURO光｜CB別件数");
   const grid=document.createElement("div");grid.className="partner-count-team-cb-grid";
   let assigned=0;
