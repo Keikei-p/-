@@ -1,0 +1,62 @@
+name: NICO diagnose current live diagnostic HTML provenance (GET ONLY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/production/inspect-live-finance-diagnostic-provenance.mjs'
+      - 'tests/inspect-live-finance-diagnostic-provenance.test.mjs'
+      - '.github/workflows/nico-finance-live-html-provenance-readonly.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/production/inspect-live-finance-diagnostic-provenance.mjs'
+      - 'tests/inspect-live-finance-diagnostic-provenance.test.mjs'
+      - '.github/workflows/nico-finance-live-html-provenance-readonly.yml'
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Freeze original production app and verify anonymous source provenance tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
+          test "$(git hash-object finance-boundary-check.html)" = 7fa664efb17f6d3337e9403498aa8c0857b35be5
+          node --check tools/production/inspect-live-finance-diagnostic-provenance.mjs
+          node --test tests/inspect-live-finance-diagnostic-provenance.test.mjs
+  live-anonymous-public-html-get-only:
+    needs: offline
+    if: >-
+      ${{ github.event_name == 'push' &&
+          github.repository == 'Keikei-p/-' &&
+          github.ref == 'refs/heads/main' &&
+          needs.offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify exact frozen source and read public production HTML without credential
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
+          node --test tests/inspect-live-finance-diagnostic-provenance.test.mjs
+          node tools/production/inspect-live-finance-diagnostic-provenance.mjs
+          echo 'PUBLIC_SITE_GET_REQUESTS=1'
+          echo 'FIREBASE_AUTH_REQUESTS=0'
+          echo 'PRODUCTION_FINANCE_DOCUMENT_READS=0'
+          echo 'PRODUCTION_DATA_WRITES=0'
+          echo 'PRODUCTION_HOSTING_RELEASES=0'
