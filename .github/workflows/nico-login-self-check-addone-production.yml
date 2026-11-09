@@ -39,7 +39,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git hash-object staging/login-selfcheck-v1/login-self-check.html)" = a3a3ddd5ab4a87e6e7f120e0d6a5c3619d4e2709
-          test "$(git hash-object tests/login-self-check-page.test.mjs)" = b25e999ec66c025a516eb73a986deec72969fa1d
+          test "$(git hash-object tests/login-self-check-page.test.mjs)" = 68aaae08a443dd5464ca4e4ab4e8ea3791fecdee
           test "$(git hash-object tools/hosting/login-self-check-addone-guard.mjs)" = 195087206865dee3509a66e8c3f4ef80c3c41170
           test "$(git hash-object tools/hosting/release-login-self-check-addone.mjs)" = 3f81dcee5e3929b57610260b15ac96fef5eb5b73
           test "$(git hash-object tests/release-login-self-check-addone.test.mjs)" = d31b01cacc7a8d6cc053d660bafefb8d64c54822
