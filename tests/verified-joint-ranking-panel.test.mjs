@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {verifiedJointCountView,createVerifiedJointRankingPanel}
+import {verifiedJointCountView,createVerifiedJointRankingPanel,jointRankingEndpoint}
  from "../ranking/verified-joint-ranking-panel.mjs";
 class Node{
  constructor(tag){this.tagName=tag;this.children=[];this.textContent="";}
@@ -131,4 +131,58 @@ test("server error never claims success, and preserves original counts",async()=
  assert.equal(await view.refresh("2026-11"),false);
  assert(allText(root).includes("確認できません"));
  assert(!allText(root).includes("合同合計"));
+});
+
+test("direct Function ingress is a fixed, explicitly selected count-only destination",async()=>{
+ assert.equal(jointRankingEndpoint(),
+  "https://nico-factory.web.app/v1/owner-visible-counts");
+ assert.equal(jointRankingEndpoint("direct-function"),
+  "https://asia-northeast1-sales-management-cc116.cloudfunctions.net/getVerifiedJointCountRanking");
+ const root=new Node("main"),auth={currentUser:user},requests=[];
+ const panel=createVerifiedJointRankingPanel({
+  document,root,auth,featureEnabled:true,transport:"direct-function",
+  fetchApi:async(url,opts)=>{
+   requests.push({url,opts});return {ok:true,json:async()=>make()};
+  },
+  roleProvider:()=> "hub_owner"
+ });
+ assert.equal(await panel.refresh("2026-11"),true);
+ assert.equal(requests.length,1);
+ assert.equal(requests[0].url,
+  "https://asia-northeast1-sales-management-cc116.cloudfunctions.net/getVerifiedJointCountRanking?month=2026-11");
+ assert.equal(requests[0].opts.method,"GET");
+ assert.equal(requests[0].opts.cache,"no-store");
+ assert.equal(requests[0].opts.headers.Authorization,"Bearer "+"a".repeat(40));
+ assert(!requests[0].url.includes("a".repeat(40)));
+ assert(!("body" in requests[0].opts));
+ assert(allText(root).includes("合同合計 8件"));
+ panel.destroy();
+});
+test("untrusted URL, token destination and misspelled transport fail before any network",()=>{
+ const auth={currentUser:user},root=new Node("main");
+ let requests=0;
+ for(const transport of [
+  "https://evil.example/collect","javascript:alert(1)","function",
+  "/getVerifiedJointCountRanking","Direct-Function",null,{},[]
+ ]){
+  assert.throws(()=>jointRankingEndpoint(transport),
+   /JOINT_RANKING_RESPONSE_UNVERIFIED/);
+  assert.throws(()=>createVerifiedJointRankingPanel({
+   document,root,auth,featureEnabled:true,transport,
+   fetchApi:async()=>{requests++;return {ok:true,json:async()=>make()}},
+   roleProvider:()=> "hub_owner"
+  }),/JOINT_RANKING_RESPONSE_UNVERIFIED/);
+ }
+ assert.equal(requests,0);
+});
+test("direct Function stays inert until explicitly enabled",async()=>{
+ let requests=0;
+ const panel=createVerifiedJointRankingPanel({
+  document,root:new Node("main"),auth:{currentUser:user},
+  featureEnabled:false,transport:"direct-function",
+  fetchApi:async()=>{requests++;throw Error("NETWORK_FORBIDDEN_WHEN_DISABLED")},
+  roleProvider:()=> "hub_owner"
+ });
+ assert.equal(await panel.refresh("2026-11"),false);
+ assert.equal(requests,0);
 });

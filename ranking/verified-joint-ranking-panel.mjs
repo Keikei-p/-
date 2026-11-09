@@ -9,9 +9,21 @@
  */
 const ORIGIN="https://nico-factory.web.app";
 const URL_PATH="/v1/owner-visible-counts";
+// The only other trusted ingress is the verified, fixed Firebase Function URL.
+// This does NOT make an arbitrary token-bearing API destination configurable.
+const DIRECT_FUNCTION_URL="https://asia-northeast1-sales-management-cc116.cloudfunctions.net/getVerifiedJointCountRanking";
 const MONTH=/^20\d\d-(0[1-9]|1[0-2])$/;
 const BAD=/(?:売上|単価|収益|報酬|利益|キャッシュバック|[¥￥$€]|(?:cashback|revenue|unitPrice|amount|price|commission)[\s:_=-]*[0-9０-９]|[0-9０-９][0-9０-９.,，]*\s*(?:円|万円))/i;
 const BLOCK=()=>{throw Error("JOINT_RANKING_RESPONSE_UNVERIFIED");};
+const TRUSTED_ENDPOINTS=Object.freeze({
+ hosting:ORIGIN+URL_PATH,
+ "direct-function":DIRECT_FUNCTION_URL
+});
+export function jointRankingEndpoint(transport="hosting"){
+ if(typeof transport!=="string"||
+    !Object.prototype.hasOwnProperty.call(TRUSTED_ENDPOINTS,transport))BLOCK();
+ return TRUSTED_ENDPOINTS[transport];
+}
 const obj=x=>x!==null&&typeof x==="object"&&!Array.isArray(x);
 const number=x=>Number.isSafeInteger(x)&&x>=0;
 const text=x=>{
@@ -92,11 +104,14 @@ function list(document,title,rows){
  * Client-supplied role is never used for authentication by the API.
  */
 export function createVerifiedJointRankingPanel({
- featureEnabled=false,document,root,auth,fetchApi,roleProvider
+ featureEnabled=false,document,root,auth,fetchApi,roleProvider,
+ transport="hosting"
 }={}){
  if(!document?.createElement||!root?.replaceChildren||
     !auth||typeof fetchApi!=="function"||
     typeof roleProvider!=="function")BLOCK();
+ // Fail closed before acquiring an ID token if an unknown destination is given.
+ const endpoint=jointRankingEndpoint(transport);
  let seq=0,destroyed=false,activeIdentity=null;
  const clear=()=>{root.replaceChildren()};
  async function refresh(month){
@@ -114,7 +129,7 @@ export function createVerifiedJointRankingPanel({
    const token=await user.getIdToken();
    if(run!==seq||destroyed||auth.currentUser!==user)return false;
    if(typeof token!=="string"||token.length<20)BLOCK();
-   const url=ORIGIN+URL_PATH+"?month="+encodeURIComponent(month);
+   const url=endpoint+"?month="+encodeURIComponent(month);
    const result=await fetchApi(url,{
     method:"GET",headers:{Authorization:"Bearer "+token,
      Accept:"application/json"},cache:"no-store"
