@@ -12,8 +12,12 @@ import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import {ORIGINAL} from './inspect-original-partner-functions-readonly.mjs';
 const PROJECT='sales-management-cc116';
-const ROOT='https://cloudfunctions.googleapis.com/v2/projects/'+PROJECT+
- '/locations/asia-northeast1/functions/';
+// Original production Functions may still be Gen1. Protect both versions,
+ // including a transitional dual-generation deployment, without invoking them.
+const ROOTS=Object.freeze(Object.fromEntries(['v2','v1'].map(version=>[
+ version,'https://cloudfunctions.googleapis.com/'+version+'/projects/'+PROJECT+
+ '/locations/asia-northeast1/functions/'
+])));
 const stop=reason=>{throw Error('STOP_ORIGINAL_FUNCTION_VERSION_'+reason)};
 const isObj=x=>x&&typeof x==='object'&&!Array.isArray(x);
 const validTime=t=>typeof t==='string'&&
@@ -25,12 +29,36 @@ const stable=value=>{
   .map(k=>[k,stable(value[k])]));
  return value;
 };
-export function immutableOriginal(name,body){
+export function immutableOriginal(name,body,generation='v2'){
  if(!ORIGINAL.includes(name))stop('TARGET_UNKNOWN');
+ if(!Object.hasOwn(ROOTS,generation))stop('GENERATION_UNKNOWN');
  if(!isObj(body)||body.name!=='projects/'+PROJECT+
   '/locations/asia-northeast1/functions/'+name||
-  body.state!=='ACTIVE'||!validTime(body.updateTime)||
-  !isObj(body.buildConfig)||!isObj(body.serviceConfig))
+  !validTime(body.updateTime))
+  stop('LIVE_ORIGINAL_NOT_ACTIVE_OR_METADATA_MISSING');
+ if(generation==='v1'){
+  // Cloud Functions v1 has status/runtime/versionId/httpsTrigger instead of
+  // v2's state/buildConfig/serviceConfig. A v1 404 is not a failure when a
+  // separate verified active v2 exists, but an ACTIVE v1 must be fingerprinted.
+  const http=isObj(body.httpsTrigger)&&
+   typeof body.httpsTrigger.url==='string'&&
+   body.httpsTrigger.url.startsWith('https://');
+  const event=isObj(body.eventTrigger)&&
+   typeof body.eventTrigger.eventType==='string'&&
+   body.eventTrigger.eventType.length>0;
+  if(body.status!=='ACTIVE'||!/^nodejs(?:18|20|22|24)$/.test(body.runtime||'')||
+     !/^[1-9][0-9]*$/.test(body.versionId||'')||
+     (body.entryPoint!==undefined&&
+      (typeof body.entryPoint!=='string'||!body.entryPoint))||
+     http===event)
+    stop('LIVE_ORIGINAL_V1_METADATA_MISSING_OR_INACTIVE');
+  // Hash the entire stable Gen1 metadata, including its deployment version,
+  // runtime, trigger, IAM identity, source, labels and environment settings.
+  // The raw metadata is never printed or retained as a public artifact.
+  return hash(stable({generation,metadata:body}));
+ }
+ if(body.state!=='ACTIVE'||!isObj(body.buildConfig)||
+    !isObj(body.serviceConfig))
   stop('LIVE_ORIGINAL_NOT_ACTIVE_OR_METADATA_MISSING');
  const build=body.buildConfig,service=body.serviceConfig;
  if(!/^nodejs(?:18|20|22|24)$/.test(build.runtime||'')||
@@ -52,14 +80,22 @@ export async function captureOriginal(read){
  if(typeof read!=='function')stop('NO_TRANSPORT');
  const snap={};
  for(const name of ORIGINAL){
-  let response;
-  try{response=await read(ROOT+name);}
-  catch{stop('REMOTE_UNAVAILABLE');}
-  if(response?.status!==200)stop('ORIGINAL_GET_NOT_SUCCESSFUL');
-  let data;
-  try{data=await response.json();}
-  catch{stop('ORIGINAL_METADATA_INVALID');}
-  snap[name]=immutableOriginal(name,data);
+  const generations={};
+  // Check BOTH generations even after finding an ACTIVE function. This catches
+  // transitions and ensures a newly added or removed generation changes hash.
+  for(const generation of ['v2','v1']){
+   let response;
+   try{response=await read(ROOTS[generation]+name);}
+   catch{stop('REMOTE_UNAVAILABLE');}
+   if(response?.status===404)continue;
+   if(response?.status!==200)stop('ORIGINAL_GET_NOT_SUCCESSFUL');
+   let data;
+   try{data=await response.json();}
+   catch{stop('ORIGINAL_METADATA_INVALID');}
+   generations[generation]=immutableOriginal(name,data,generation);
+  }
+  if(Object.keys(generations).length===0)stop('ORIGINAL_BOTH_GENERATIONS_MISSING');
+  snap[name]=hash(stable(generations));
  }
  return Object.freeze(snap);
 }
@@ -103,7 +139,8 @@ async function main(){
   credentials=require('firebase-admin/app').applicationDefault();
  }catch{stop('OAUTH_LIBRARY_UNAVAILABLE');}
  const read=async url=>{
-  if(!ORIGINAL.some(name=>url===ROOT+name))stop('ENDPOINT_UNREVIEWED');
+  if(!ORIGINAL.some(name=>Object.values(ROOTS).some(root=>url===root+name)))
+   stop('ENDPOINT_UNREVIEWED');
   const token=(await credentials.getAccessToken())?.access_token;
   if(!token)stop('OAUTH_TOKEN_UNAVAILABLE');
   return fetch(url,{method:'GET',cache:'no-store',redirect:'error',
