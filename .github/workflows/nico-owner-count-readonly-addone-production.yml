@@ -37,8 +37,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git hash-object tools/hosting/owner-count-readonly-addone-guard.mjs)" = f8f1ae21162de3eff6f23093f39ba7e2c2876b4d
-          test "$(git hash-object tools/hosting/release-owner-count-readonly-addone.mjs)" = 451500cba5a1acdd59911ebb98d87697a7cc8e95
-          test "$(git hash-object tests/release-owner-count-readonly-addone.test.mjs)" = ff80a0ac098373119e9a3de517c59b9f221a29e2
+          test "$(git hash-object tools/hosting/release-owner-count-readonly-addone.mjs)" = 47196cef95854135283c3b8e7ed5b6d6ce59a995
+          test "$(git hash-object tests/release-owner-count-readonly-addone.test.mjs)" = de3b82dcb692bb74dbfd2d4e16fa4f14c0324506
           test "$(git hash-object staging/owner-count-readonly-v1/owner-partner-counts-readonly.html)" = 95602110f5d5531fb5b4d0f53b5fd30883c87b32
           test "$(git hash-object tests/owner-count-readonly-page.test.mjs)" = 482129fcd9c6d31c22493f9db3ae6348dd4b419e
           test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
