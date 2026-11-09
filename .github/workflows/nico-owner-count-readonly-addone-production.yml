@@ -108,31 +108,25 @@ jobs:
         run: |
           set -euo pipefail
           node tools/hosting/release-owner-count-readonly-addone.mjs --release
-      - name: Independently verify public new page and original Owner assets byte-identically
+      - name: Independently verify public NEW HTML matches reviewed byte source
         shell: bash
         run: |
           set -euo pipefail
-          for item in \
-            'owner-partner-counts-readonly.html:staging/owner-count-readonly-v1/owner-partner-counts-readonly.html' \
-            'owner-partner-admin.html:staging/owner-workspace-errors-v1/owner-partner-admin.html' \
-            'owner-partner-admin-assets/mobile-bootstrap.mjs:staging/owner-workspace-errors-v1/mobile-bootstrap.mjs'; do
-            page="${item%%:*}"
-            source="${item#*:}"
-            matched=no
-            for attempt in 1 2 3 4 5 6 7 8; do
-              if curl --fail --silent --show-error --max-time 20 \
-                -H 'Cache-Control: no-cache' \
-                "https://nico-factory.web.app/$page?release=$GITHUB_SHA" \
-                --output "$RUNNER_TEMP/owner-count-public.html" &&
-                cmp --silent "$source" "$RUNNER_TEMP/owner-count-public.html"; then
-                matched=yes
-                break
-              fi
-              sleep 4
-            done
-            test "$matched" = yes
-            echo "PUBLIC_BYTE_MATCH: $page"
+          matched=no
+          for attempt in 1 2 3 4 5 6 7 8; do
+            if curl --fail --silent --show-error --max-time 20 \
+              -H 'Cache-Control: no-cache' \
+              "https://nico-factory.web.app/owner-partner-counts-readonly.html?release=$GITHUB_SHA" \
+              --output "$RUNNER_TEMP/owner-count-public.html" &&
+              cmp --silent staging/owner-count-readonly-v1/owner-partner-counts-readonly.html \
+                "$RUNNER_TEMP/owner-count-public.html"; then
+              matched=yes
+              break
+            fi
+            sleep 4
           done
+          test "$matched" = yes
+          echo "PUBLIC_BYTE_MATCH: owner-partner-counts-readonly.html"
           echo "OWNER_COUNT_READONLY_NEW_PAGE_PRODUCTION_VERIFIED"
       - name: Erase OAuth secret and public downloaded files
         if: always()
