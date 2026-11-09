@@ -1,0 +1,263 @@
+#!/usr/bin/env node
+/**
+ * Surgical, single-path activation of /owner-partner-admin.html onto the existing NICO Hosting
+ * live site. Never replace the existing index.html, PWA, scripts, routes or headers.
+ * Strictly requires explicit --release and live version recheck immediately before
+ * publishing. Dry-run is read-only.
+ *
+ * Baseline is the exact additively published read-only Owner portal source.
+ * The only permitted edit is the reviewed feature flag false-to-true.
+ * Any current-version update MUST preserve every original file path/hash,
+ * pin the full old diagnostic blob and reconfirm the release just before POST.
+ * Requires GOOGLE_APPLICATION_CREDENTIALS from a protected runner secret.
+ * Firebase Hosting REST API is the only remote write path; Firestore, Auth,
+ * Functions, Rules and LINE are never accessed.
+ */
+import {readFileSync} from "node:fs";
+import {createHash} from "node:crypto";
+import {gzipSync} from "node:zlib";
+import {createRequire} from "node:module";
+import {execFileSync} from "node:child_process";
+import {fileURLToPath} from "node:url";
+import path from "node:path";
+
+export const SITE="nico-factory", PROJECT="sales-management-cc116";
+export const ASSET="/owner-partner-admin.html";
+const BASE="https://firebasehosting.googleapis.com/v1beta1";
+const allowedVersion=/^sites\/nico-factory\/versions\/[A-Za-z0-9_-]+$/;
+export const EXACT_PREVIOUS_VERSION="sites/nico-factory/versions/c7e5a4d77339bbb9";
+export const EXACT_PREVIOUS_GIT_BLOB="f6609e6664ec11f629ea57751295abe18cb1dc2a";
+const ORIGINAL_GIT_COMMIT="e9b71350e1133a96e960f2a87fbd7c4f0b228acf";
+const gitBlob=b=>createHash("sha1").update("blob "+b.length+String.fromCharCode(0))
+ .update(b).digest("hex");
+const sha256=b=>createHash("sha256").update(b).digest("hex");
+
+export function validateManifest(oldFiles, additions, expectedCount,reviewedOldHash) {
+ if(!Array.isArray(oldFiles)||!Number.isSafeInteger(expectedCount)||expectedCount<1||
+   oldFiles.length!==expectedCount)throw Error("SOURCE_FILE_COUNT_MISMATCH");
+ const original=new Map();
+ for(const f of oldFiles){
+  if(typeof f.path!=="string"||!f.path.startsWith("/")||
+     typeof f.hash!=="string"||!/^[0-9a-f]{64}$/i.test(f.hash)||
+     original.has(f.path))throw Error("INVALID_SOURCE_MANIFEST");
+  original.set(f.path,f.hash.toLowerCase());
+ }
+ if(!original.has("/index.html"))throw Error("LIVE_INDEX_MISSING");
+ if(!original.has(ASSET))throw Error("LIVE_DIAGNOSTIC_MISSING");
+ if(typeof reviewedOldHash!=="string"||
+    !/^[0-9a-f]{64}$/.test(reviewedOldHash)||
+    original.get(ASSET)!==reviewedOldHash)
+   throw Error("LIVE_DIAGNOSTIC_NOT_EXACT_PREVIOUS_BYTES");
+ if(!(additions instanceof Map)||additions.size!==1||
+    !additions.has(ASSET)||!/^[0-9a-f]{64}$/.test(additions.get(ASSET)))
+   throw Error("ONLY_ONE_EXISTING_DIAGNOSTIC_REPLACEMENT_ALLOWED");
+ const next=new Map(original);
+ for(const [k,v] of additions)next.set(k,v);
+ if(next.get(ASSET)===original.get(ASSET))throw Error("DIAGNOSTIC_UNCHANGED");
+ for(const [k,v] of original)if(k!==ASSET&&next.get(k)!==v)
+   throw Error("NON_DIAGNOSTIC_FILE_MODIFIED");
+ if(next.size!==expectedCount)throw Error("UNEXPECTED_FILE_COUNT");
+ return {original,next};
+}
+
+export async function uploadReviewedOwnerPortalEnable({
+  assetBytes,originalBytes,request,release=false,log=console.log
+}){
+ if(!Buffer.isBuffer(originalBytes)||gitBlob(originalBytes)!==EXACT_PREVIOUS_GIT_BLOB)
+   throw Error("OLD_DIAGNOSTIC_BLOB_UNREVIEWED");
+ const oldHash=sha256(gzipSync(originalBytes,{mtime:0}));
+ if(!Buffer.isBuffer(assetBytes)||assetBytes.length<5000)
+   throw Error("INVALID_OWNER_PORTAL_ENABLED_ASSET");
+ const baseline=originalBytes.toString("utf8"),activated=assetBytes.toString("utf8");
+ const flag="const HUB_OWNER_CORRECTION_READY=false",enabled="const HUB_OWNER_CORRECTION_READY=true";
+ if(baseline.split(flag).length!==2||activated!==baseline.replace(flag,enabled)||
+    !activated.includes(enabled)||
+    !activated.includes("mountVerifiedOwnerCorrection")||
+    !activated.includes("countOnlyRegisteredCompanies(response,day)")||
+    !activated.includes("./owner-partner-admin-assets/mobile-bootstrap.mjs")||
+    /\\b(?:signInWithEmailAndPassword|createUserWithEmailAndPassword|deleteUser|setDoc|updateDoc|writeBatch|localStorage|sessionStorage)\\s*\\(/.test(activated))
+   throw Error("OWNER_PORTAL_ONLY_ONE_REVIEWED_FLAG_CHANGE_ALLOWED");
+ const gz=gzipSync(assetBytes,{mtime:0});
+ const hash=createHash("sha256").update(gz).digest("hex");
+ const url=s=>BASE+s;
+ const latest=async()=>{
+  const response=await request("GET",url("/sites/"+SITE+"/releases?pageSize=1"));
+  const releases=response.releases;
+  if(!Array.isArray(releases)||releases.length!==1||
+     !allowedVersion.test(releases[0]?.version?.name))
+   throw Error("LIVE_HOSTING_RELEASE_NOT_VERIFIABLE");
+  return releases[0].version.name;
+ };
+ const sourceName=await latest();
+ // Refuse any concurrent, manual or new unrelated Hosting release.
+ // Current Hosting versions may advance for unrelated approved releases.
+ // Never trust a version ID alone. validateManifest below pins the exact
+ // reviewed old diagnostic gzip hash AND copies every other live asset hash
+ // unchanged, while latest() is checked before both create and release.
+ if(!allowedVersion.test(sourceName))throw Error("INVALID_LIVE_VERSION_NAME");
+ const source=await request("GET",url("/"+sourceName));
+ if(source.status!=="FINALIZED"||source.name!==sourceName||
+    !source.config||typeof source.config!=="object")throw Error("BAD_LIVE_VERSION");
+ // Hosting may omit fileCount for verified prior releases. Use complete
+ // paginated file list, and require all four existing canonical app pages.
+ const countKnown=source.fileCount!==undefined&&source.fileCount!==null&&
+   source.fileCount!=="";
+ const count=countKnown?Number(source.fileCount):null;
+ if(countKnown&&(!Number.isSafeInteger(count)||count<1))
+   throw Error("INVALID_LIVE_FILE_COUNT");
+ const files=[];let pageToken="";const pageTokens=new Set();
+ do{
+  if(pageTokens.has(pageToken))throw Error("SOURCE_FILE_PAGE_LOOP");
+  pageTokens.add(pageToken);
+  const qs=new URLSearchParams({pageSize:"1000"});
+  if(pageToken)qs.set("pageToken",pageToken);
+  const page=await request("GET",url("/"+sourceName+"/files?"+qs));
+  if(!Array.isArray(page.files))throw Error("SOURCE_FILE_LIST_UNAVAILABLE");
+  files.push(...page.files);
+  pageToken=page.nextPageToken||"";
+  if(files.length>30000)throw Error("TOO_MANY_LIVE_ASSETS");
+ }while(pageToken);
+ // An independently approved Hosting release may have added assets.
+ // Copy EVERY current live path/hash, not a stale fixed count of 12.
+ // Never create or delete any path other than replacing the reviewed page.
+ if(files.length<5||files.length>30000)
+   throw Error("LIVE_FILE_INVENTORY_OUT_OF_BOUNDS");
+ if(["/index.html","/partner-workspace.html","/partner-invite.html","/partner-counts.html",ASSET]
+      .some(required=>!files.some(item=>item.path===required)))
+   throw Error("LIVE_REQUIRED_ASSETS_UNVERIFIED");
+ if(countKnown&&files.length!==count)throw Error("SOURCE_FILE_COUNT_MISMATCH");
+ const {next,original}=validateManifest(files,new Map([[ASSET,hash]]),files.length,oldHash);
+ log("Verified live version and original files: "+sourceName+" / "+original.size);
+ log("Only replaced path: "+ASSET+" (all other "+(original.size-1)+" live assets unchanged)");
+ if(!release) return {released:false,sourceName,originalCount:original.size,newHash:hash};
+ if(await latest()!==sourceName)throw Error("LIVE_CHANGED_BEFORE_CREATE");
+ const created=await request("POST",url("/sites/"+SITE+"/versions"),{config:source.config});
+ if(!allowedVersion.test(created?.name)||created.status!=="CREATED")
+  throw Error("UNEXPECTED_NEW_VERSION");
+ const entries=[...next.entries()];
+ let uploadUrl=null,needed=new Set();
+ for(let i=0;i<entries.length;i+=800){
+  const resp=await request("POST",url("/"+created.name+":populateFiles"),
+   {files:Object.fromEntries(entries.slice(i,i+800))});
+  // Hosting omits uploadRequiredHashes when every asset hash is already stored
+  // (e.g. after a prior finalized-but-unreleased attempt). It is optional.
+  if(resp===null||typeof resp!=="object"||
+     (resp.uploadRequiredHashes!==undefined&&
+      !Array.isArray(resp.uploadRequiredHashes)))
+   throw Error("BAD_POPULATE_RESULT");
+  for(const h of (resp.uploadRequiredHashes??[])){
+   if(typeof h!=="string"||!/^[0-9a-f]{64}$/i.test(h))
+    throw Error("BAD_REQUIRED_UPLOAD_HASH");
+   needed.add(h.toLowerCase());
+  }
+  if(resp.uploadUrl){ if(uploadUrl&&uploadUrl!==resp.uploadUrl)throw Error("UPLOAD_URL_MISMATCH");uploadUrl=resp.uploadUrl; }
+ }
+ if([...needed].some(h=>h!==hash)||needed.size>1)throw Error("OLD_LIVE_BLOB_NOT_REUSABLE: abort");
+ if(needed.has(hash)){
+  if(typeof uploadUrl!=="string"||!uploadUrl.startsWith("https://upload-firebasehosting.googleapis.com/"))
+   throw Error("UNTRUSTED_UPLOAD_URL");
+  await request("POST",uploadUrl+"/"+hash,gz,"application/octet-stream");
+ }
+ const finalized=await request("PATCH",url("/"+created.name+"?update_mask=status"),{status:"FINALIZED"});
+ if(finalized?.status!=="FINALIZED"||finalized.name!==created.name)
+  throw Error("FINAL_VERSION_NOT_CONFIRMED");
+ if(JSON.stringify(finalized.config)!==JSON.stringify(source.config))
+  throw Error("LIVE_HOSTING_CONFIG_CHANGED");
+ // The Hosting API's version.fileCount can temporarily disagree with the
+ // visible final file manifest. Never publish based on metadata alone:
+ // fetch every finalized path and hash, and enforce exact full equality.
+ const finalFiles=[];
+ let finalPageToken="";
+ const finalTokens=new Set();
+ do{
+  if(finalTokens.has(finalPageToken))throw Error("FINAL_FILE_PAGE_LOOP");
+  finalTokens.add(finalPageToken);
+  const qs=new URLSearchParams({pageSize:"1000"});
+  if(finalPageToken)qs.set("pageToken",finalPageToken);
+  const response=await request("GET",url("/"+created.name+"/files?"+qs));
+  if(!Array.isArray(response.files))throw Error("FINAL_FILE_LIST_UNAVAILABLE");
+  finalFiles.push(...response.files);
+  if(finalFiles.length>30000)throw Error("FINAL_TOO_MANY_FILES");
+  finalPageToken=response.nextPageToken||"";
+ }while(finalPageToken);
+ const finalMap=new Map();
+ for(const file of finalFiles){
+  if(typeof file.path!=="string"||typeof file.hash!=="string"||
+     !/^[0-9a-f]{64}$/i.test(file.hash)||finalMap.has(file.path))
+    throw Error("FINAL_INVALID_FILE_MANIFEST");
+  finalMap.set(file.path,file.hash.toLowerCase());
+ }
+ if(finalMap.size!==next.size)
+  throw Error("FINAL_ASSET_COUNT_MISMATCH expected="+next.size+
+    " api="+String(finalized.fileCount??"unreported")+
+    " enumerated="+finalMap.size);
+ for(const [filePath,expectedHash] of next)
+  if(finalMap.get(filePath)!==expectedHash)
+   throw Error("FINAL_ASSET_HASH_MISMATCH for "+filePath);
+ if(Number(finalized.fileCount)!==next.size)
+  log("Metadata count differs; safely validated all "+next.size+
+   " finalized file paths and hashes individually");
+ // Only the previously confirmed on-site configuration is permitted.
+ const finalRead=await request("GET",url("/"+created.name));
+ if(finalRead?.status!=="FINALIZED"||finalRead.name!==created.name||
+    JSON.stringify(finalRead.config)!==JSON.stringify(source.config))
+  throw Error("FINAL_VERSION_CONFIG_UNVERIFIED");
+ // Most important guard: no one may have replaced live since this run began.
+ if(await latest()!==sourceName)throw Error("LIVE_CHANGED_BEFORE_RELEASE");
+ const released=await request("POST",url("/sites/"+SITE+"/releases?versionName="+
+  encodeURIComponent(created.name)),{});
+ if(released?.version?.name!==created.name)throw Error("LIVE_RELEASE_NOT_CONFIRMED");
+ log("Released reviewed single-path Owner admin feature flag only: "+created.name);
+ return {released:true,sourceName,releaseName:released.name,newVersion:created.name,originalCount:original.size};
+}
+
+async function run(){
+ // argv[0] is the Node binary and argv[1] is this script path.
+ // Treat only user supplied flags as arguments (the live release previously
+ // stopped at dry-run because it incorrectly rejected these two).
+ const args=process.argv.slice(2);
+ const release=args.includes("--release");
+ if(args.some(a=>!["--dry-run","--release"].includes(a)))throw Error("UNKNOWN_ARGUMENT");
+ if(args.includes("--dry-run")&&release)throw Error("CONFLICTING_FLAGS");
+ if(release&&process.env.NICO_OWNER_PORTAL_ENABLE_CONFIRMATION!=="CONFIRM_ONE_EXISTING_OWNER_PORTAL_HTML_ONLY")
+  throw Error("RELEASE_CONFIRMATION_REQUIRED");
+ if(!process.env.GOOGLE_APPLICATION_CREDENTIALS)
+  throw Error("GOOGLE_APPLICATION_CREDENTIALS_REQUIRED");
+ const require=createRequire(new URL("../../functions/package.json",import.meta.url));
+ const {applicationDefault}=require("firebase-admin/app");
+ const credential=applicationDefault();
+ const request=async(method,url,body=null,type="application/json")=>{
+  if(!(url.startsWith(BASE+"/sites/"+SITE+"/")||
+        url.startsWith("https://upload-firebasehosting.googleapis.com/upload/sites/"+SITE+"/versions/")))
+   throw Error("UNAPPROVED_HOSTING_ENDPOINT");
+  const {access_token}=await credential.getAccessToken();
+  const headers={Authorization:"Bearer "+access_token};
+  if(body!==null)headers["Content-Type"]=type;
+  const opts={method,headers};
+  if(body!==null)opts.body=type==="application/octet-stream"?body:JSON.stringify(body);
+  const result=await fetch(url,opts);
+  if(!result.ok)throw Error("HOSTING_API_FAILURE "+method+" HTTP "+result.status);
+  const txt=await result.text();
+  return txt?JSON.parse(txt):{};
+ };
+ const asset=readFileSync(new URL("../../staging/hub-owner-management/owner-partner-admin-enabled.html",import.meta.url));
+ // Fail before writing or trusting a new source. Checkout MUST have full
+ // history; never derive a comparison baseline from the potentially altered
+ // live page or from user-supplied data.
+ const archive=execFileSync("git",["show",ORIGINAL_GIT_COMMIT+":staging/hub-owner-management/owner-partner-admin.html"],{
+   cwd:new URL("../../",import.meta.url),maxBuffer:1024*1024
+ });
+ const output=await uploadReviewedOwnerPortalEnable({
+   assetBytes:asset,originalBytes:archive,request,release
+ });
+ console.log(JSON.stringify({outcome:output.released?"RELEASED":"DRY_RUN_OK",oldVersion:output.sourceName,keptOriginalFiles:output.originalCount}));
+ if(output.released){
+  const page=await fetch("https://"+SITE+".web.app"+ASSET,{redirect:"manual",cache:"no-store"});
+  if(!page.ok||!((await page.text()).includes("HUB_OWNER_CORRECTION_READY=true")))
+    throw Error("POST_DEPLOY_OWNER_PORTAL_FLAG_UNVERIFIED");
+  console.log("POST_DEPLOY_OWNER_PORTAL_FLAG_HTTP_OK "+ASSET);
+ }
+}
+if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
+ run().catch(e=>{console.error("STOP "+e.message);process.exitCode=1;});
+}
