@@ -64,6 +64,7 @@ jobs:
           node --check tools/production/ranking-disabled-function-scope.mjs
           node --test tests/ranking-disabled-function-scope.test.mjs tests/isolated-joint-count-function-package.test.mjs tests/joint-count-http-adapter.test.cjs tests/protect-ranking-original-functions-versions.test.mjs
           node tools/production/ranking-disabled-function-scope.mjs
+          node --test tests/ranking-deploy-failure-diagnostic.test.mjs
           echo 'INSPECT_ONLY_NO_FIREBASE_CREDENTIALS_NO_DEPLOY'
   deploy-disabled:
     # Serialize only live deployments with existing partner Functions releases.
@@ -149,6 +150,7 @@ jobs:
           chmod 600 functions-ranking-approvals/.env.sales-management-cc116
           test "$(grep -c '=enabled' functions-ranking-approvals/.env.sales-management-cc116 || true)" = 0
       - name: Deploy EXACTLY one NEW ranking GET Function (disabled), not Rules or Hosting
+        id: deploy_ranking
         shell: bash
         run: |
           set -euo pipefail
@@ -159,10 +161,27 @@ jobs:
             --config firebase.ranking-approvals.json --only "$TARGET" \
             > "$RUNNER_TEMP/nico-ranking-deploy.private.log" 2>&1 || status=$?
           if [ "$status" -ne 0 ]; then
-            echo 'STOP_RANKING_FUNCTION_SCOPED_DEPLOY_FAILED_NO_AUTOMATIC_RETRY'
+            echo 'RANKING_DEPLOY_FAILED_NO_AUTOMATIC_RETRY'
             exit 1
           fi
           echo 'DISABLED_RANKING_FUNCTION_DEPLOY_CLI_SUCCESS'
+      - name: Reconcile partial Function creation after failed deploy (GET ONLY / NO RETRY)
+        if: ${{ failure() && steps.deploy_ranking.outcome == 'failure' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if firebase functions:list --project "$FIREBASE_PROJECT_ID" --json \
+            > "$RUNNER_TEMP/nico-rank-after-failure.private.json" \
+            2> "$RUNNER_TEMP/nico-rank-after-failure-cli.private.log"; then
+            node tools/production/ranking-deploy-failure-diagnostic.mjs \
+              "$RUNNER_TEMP/nico-rank-before.private.json" \
+              "$RUNNER_TEMP/nico-rank-after-failure.private.json" \
+              "$RUNNER_TEMP/nico-ranking-deploy.private.log" \
+              || echo 'RANKING_DEPLOY_RECONCILIATION_INCONCLUSIVE_NO_RETRY'
+          else
+            echo 'RANKING_DEPLOY_POSTFAILURE_INVENTORY_UNAVAILABLE_NO_RETRY'
+          fi
+          echo 'RANKING_DEPLOY_FAILED_NO_AUTOMATIC_RETRY'
       - name: Verify only the approved new Function exists and original six immutable
         shell: bash
         run: |
@@ -208,6 +227,8 @@ jobs:
           rm -f "$RUNNER_TEMP/nico-ranking-only.private.json" \
             "$RUNNER_TEMP/nico-rank-before.private.json" \
             "$RUNNER_TEMP/nico-rank-after.private.json" \
+            "$RUNNER_TEMP/nico-rank-after-failure.private.json" \
+            "$RUNNER_TEMP/nico-rank-after-failure-cli.private.log" \
             "$RUNNER_TEMP/nico-rank-cli.private.log" \
             "$RUNNER_TEMP/nico-ranking-deploy.private.log" \
             "$RUNNER_TEMP/nico-original-six-immutable-versions.private.json"
