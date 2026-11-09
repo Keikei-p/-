@@ -1,0 +1,83 @@
+name: NICO Owner correction v3 LIVE partial deploy audit (GET ONLY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-owner-correction-live-readonly-inventory.yml'
+      - 'tools/production/inspect-live-owner-correction-cli-readonly.mjs'
+      - 'tests/inspect-live-owner-correction-cli-readonly.test.mjs'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-owner-correction-live-readonly-inventory.yml'
+      - 'tools/production/inspect-live-owner-correction-cli-readonly.mjs'
+      - 'tests/inspect-live-owner-correction-cli-readonly.test.mjs'
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Validate metadata-only and freeze original sales and count system
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
+          node --check tools/production/inspect-live-owner-correction-cli-readonly.mjs
+          node --test tests/inspect-live-owner-correction-cli-readonly.test.mjs
+  live-readonly:
+    needs: offline
+    if: >-
+      ${{ github.event_name == 'push' &&
+          github.repository == 'Keikei-p/-' &&
+          github.ref == 'refs/heads/main' &&
+          needs.offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Require exact main and original financial sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          node --test tests/inspect-live-owner-correction-cli-readonly.test.mjs
+      - name: Install pinned Firebase CLI for metadata GET only
+        shell: bash
+        run: npm install --global firebase-tools@15.34.1 --no-audit --no-fund
+      - name: Bind existing Firebase identity privately
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-owner-ro.private.json"
+          chmod 600 "$RUNNER_TEMP/nico-owner-ro.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-owner-ro.private.json" >> "$GITHUB_ENV"
+      - name: Read live Function metadata exactly once and classify partial owner correction rollout
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase functions:list --project "$FIREBASE_PROJECT_ID" --json > "$RUNNER_TEMP/nico-owner-ro-list.private.json" 2> "$RUNNER_TEMP/nico-owner-ro-stderr.private.log"
+          node tools/production/inspect-live-owner-correction-cli-readonly.mjs "$RUNNER_TEMP/nico-owner-ro-list.private.json"
+          echo 'FIRESTORE_READS=0 FIRESTORE_WRITES=0'
+          echo 'FUNCTION_DEPLOYS=0 RULES_WRITES=0 HOSTING_WRITES=0'
+      - name: Erase identity and inventory
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/nico-owner-ro.private.json" "$RUNNER_TEMP/nico-owner-ro-list.private.json" "$RUNNER_TEMP/nico-owner-ro-stderr.private.log"
