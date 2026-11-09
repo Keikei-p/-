@@ -1,0 +1,36 @@
+name: NICO Owner staff product counts readonly view (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'staging/owner-staff-count-readonly-v1/owner-partner-admin.html'
+      - 'tests/owner-staff-counts-readonly-view.test.mjs'
+      - '.github/workflows/nico-owner-staff-counts-view-offline.yml'
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Compare reviewed immutable base, staged HTML and financial sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object staging/owner-staff-count-readonly-v1/owner-partner-admin.html)" = 3bcc5a267fd4d33def219ce5ac9799e5f9edf9f4
+          test "$(git hash-object tests/owner-staff-counts-readonly-view.test.mjs)" = cccbaf0dd24b1c3040f41c0b075463a81bc431ca
+          test "$(git hash-object staging/owner-workspace-errors-v1/owner-partner-admin.html)" = 8ac03f833b27706b256d9218742c343bb3e040ff
+          test "$(git hash-object staging/owner-workspace-errors-v1/mobile-bootstrap.mjs)" = 8533ac6b02f7768189444c9bfb8cc11cea7b28e7
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
+      - name: Run verified Owner staff count-only rendering tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/owner-staff-counts-readonly-view.test.mjs
+          node --test tests/owner-workspace-error-classification.test.mjs
+          echo "OWNER_STAFF_READONLY_OFFLINE_PASS_NO_DEPLOY_NO_NEW_DATA"
