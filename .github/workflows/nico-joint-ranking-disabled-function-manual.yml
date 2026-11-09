@@ -142,9 +142,12 @@ jobs:
         run: |
           set -euo pipefail
           test ! -e functions-ranking-approvals/.env.sales-management-cc116
-          printf '%s\n' 'NICO_JOINT_COUNT_RANKING_ENABLED=disabled' 'NICO_OWNER_PRODUCT_VISIBILITY_ENABLED=disabled' 'NICO_RANKING_OWNER_SETTINGS_ENABLED=disabled' > functions-ranking-approvals/.env.sales-management-cc116
+          printf '%s\n' 'NICO_JOINT_COUNT_RANKING_ENABLED=disabled' 'NICO_OWNER_PRODUCT_VISIBILITY_ENABLED=disabled' 'NICO_RANKING_OWNER_SETTINGS_ENABLED=disabled' 'NICO_OWNER_SKU_MAPPING_ENABLED=disabled' > functions-ranking-approvals/.env.sales-management-cc116
           chmod 600 functions-ranking-approvals/.env.sales-management-cc116
           grep -Fxq 'NICO_JOINT_COUNT_RANKING_ENABLED=disabled' functions-ranking-approvals/.env.sales-management-cc116
+          grep -Fxq 'NICO_OWNER_PRODUCT_VISIBILITY_ENABLED=disabled' functions-ranking-approvals/.env.sales-management-cc116
+          grep -Fxq 'NICO_RANKING_OWNER_SETTINGS_ENABLED=disabled' functions-ranking-approvals/.env.sales-management-cc116
+          grep -Fxq 'NICO_OWNER_SKU_MAPPING_ENABLED=disabled' functions-ranking-approvals/.env.sales-management-cc116
           test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq '.commit.sha')"
       - name: Deploy EXACT one NEW disabled ranking HTTP Function (not Hosting or Rules)
         if: ${{ inputs.mode == 'DEPLOY_DISABLED_ONLY' }}
