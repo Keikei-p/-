@@ -34,7 +34,7 @@ function fake({
  const authRecord=authUser??{uid:TARGET,email:EMAIL,emailVerified:true,disabled:false};
  const targetUser=snap(missingUser?undefined:dataUser,11,TARGET);
  const targetMember=snap(missingMember?undefined:dataMember,13,TARGET);
- const refs={user:{key:"users/"+TARGET},member:{key:"companies/"+CID+"/members/"+TARGET}};
+ const refs={user:{key:"users/"+TARGET,get:async()=>targetUser},member:{key:"companies/"+CID+"/members/"+TARGET,get:async()=>targetMember}};
  const changes=[],audit=[],lookups=[],authCalls=[];
  const db={
   collection(name){
