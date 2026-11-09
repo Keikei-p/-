@@ -67,3 +67,21 @@ test("reviewed original monetary Rules and count Functions remain exactly pinned
  assert.match(fs,/match \/records\/\{recordId\}/);
  assert.match(index,/submitPartnerWorkspaceCounts/);
 });
+
+
+test("PowerShell 5.1 download remains ASCII-safe without adding UTF8 BOM manually",()=>{
+ const safe=Buffer.from(script,"utf8");
+ assert(safe.every(byte=>byte<128),"No Japanese bytes or locale encoding traps");
+ assert.doesNotMatch(script,/DateTimeOffset|DateTime\.Parse|createdAt/i);
+ assert.doesNotMatch(script,/\\bConvertFrom-Json\\s+-AsHashtable\\b/i);
+ assert.match(script,/Get-ReadOnlyRunList/);
+ assert.match(script,/RUN_LIST_EMPTY/);
+});
+test("read-only run identity compares before/after exact IDs, never timestamp locale",()=>{
+ assert.match(script,/\$before\[\$wf\] = @\(/);
+ assert.match(script,/\[string\]\$_\.databaseId -notin \$before\[\$wf\]/);
+ assert.match(script,/\$_\.headSha -eq \$head/);
+ assert.match(script,/AMBIGUOUS_NEW_WORKFLOW_RUNS/);
+ assert.match(script,/NEW_RUN_NOT_FOUND/);
+ assert.match(script,/gh run view \$job.RunId --repo \$repo --json conclusion,status/);
+});
