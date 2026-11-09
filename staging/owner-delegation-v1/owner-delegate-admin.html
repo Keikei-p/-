@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#164a8d">
+<title>NICO FACTORY｜追加Ownerの承認管理</title>
+<style>
+:root{font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif;background:#f3f6fa;color:#172b42;color-scheme:light}
+*{box-sizing:border-box}body{margin:0;padding-bottom:env(safe-area-inset-bottom)}
+header{background:#164a8d;color:#fff;padding:calc(16px + env(safe-area-inset-top)) 14px 19px}
+header>div,main{max-width:900px;margin:auto}h1{font-size:21px;margin:0 0 7px}
+header p{font-size:13px;line-height:1.6;margin:5px 0}a{color:#0d4c9e}
+header a{color:#fff}main{padding:14px 12px 46px}
+section{background:white;border:1px solid #dce5f1;border-radius:14px;padding:15px;margin-bottom:12px;box-shadow:0 2px 10px #142f4810}
+h2{font-size:17px;margin:0 0 9px}p{line-height:1.65}
+.muted{color:#55697f;font-size:13px}.notice{padding:12px;border-radius:10px;background:#e8f2ff;line-height:1.6;font-size:14px}
+.notice.error{background:#fff1e0;color:#874309}
+button{font:inherit;background:#1d4ed8;border:0;border-radius:10px;padding:11px 14px;min-height:44px;color:white;font-weight:650;cursor:pointer}
+button:disabled{opacity:.48;cursor:default}
+button.danger{background:#ad2d39}button.secondary{background:#e7eff9;color:#194779}
+.actions{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+.person{padding:14px 0;border-bottom:1px solid #edf0f5;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.person:last-child{border-bottom:0}.person-title{font-size:15px;font-weight:700;overflow-wrap:anywhere}
+.person-id{color:#596d82;font-size:12px;margin-top:5px}
+.person-status{font-size:13px;margin-top:6px;font-weight:600}
+.person-status.active{color:#176a45}.person-status.inactive{color:#7a5900}
+.info{border-left:4px solid #5882c5;background:#f4f8ff;border-radius:6px;padding:10px 13px;font-size:13px}
+[hidden]{display:none!important}:focus-visible{outline:3px solid #7db5ff;outline-offset:2px}
+@media(max-width:550px){.person button{width:100%}.person .action{width:100%}}
+</style>
+</head>
+<body>
+<header><div>
+<h1>追加Ownerの承認管理</h1>
+<p>自社の主Owner専用。既存アカウントのまま追加Ownerの利用を承認・取消します。</p>
+<p><a href="/owner-partner-admin.html">← 協力店管理に戻る</a></p>
+</div></header>
+<main>
+<section>
+<h2>本人確認・承認状況</h2>
+<p id="status" class="notice" role="status" aria-live="polite">ログイン状態を確認しています。</p>
+<div class="actions"><button type="button" class="secondary" id="reload">最新の承認状況を取得</button></div>
+<p class="muted">ログイン中の自社アカウントを使用します。追加ログインや所属変更はありません。</p>
+</section>
+<section id="delegatesBox" hidden>
+<h2>同じ会社の追加Owner候補</h2>
+<p id="version" class="muted"></p>
+<div id="people"></div>
+<p id="empty" class="muted" hidden>承認可能な追加Ownerは登録されていません。</p>
+</section>
+<section>
+<h2>安全な管理について</h2>
+<div class="info">承認後も元の主Ownerは変更されません。取消しても過去の実績・売上・件数・履歴は削除されません。承認・取消は操作履歴を保存し、同時に更新された場合は再確認を要求します。</div>
+<p class="muted">この管理画面は追加Owner認証APIの本番準備用です。承認APIが有効化されるまでは操作できません。現行の協力店件数閲覧・件数訂正・商材公開の権限を、このページ単独で拡大することはありません。</p>
+</section>
+</main>
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+import {getAuth,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js";
+const app=initializeApp({
+ apiKey:"AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
+ authDomain:"sales-management-cc116.firebaseapp.com",
+ projectId:"sales-management-cc116",
+ appId:"1:904932511564:web:6583e8b0c585231b9049e"
+});
+const auth=getAuth(app),functions=getFunctions(app,"asia-northeast1");
+const listCall=httpsCallable(functions,"listHubOwnerDelegates",{timeout:18000});
+const changeCall=httpsCallable(functions,"changeHubOwnerDelegate",{timeout:18000});
+const $=id=>document.getElementById(id);
+const ID=/^[A-Za-z0-9_-]{1,128}$/;
+const MONEY=/(?:単価|売上|収益|利益|報酬|キャッシュバック|[¥￥$€]|\d[\d,]*円)/;
+const ROOT_KEYS=["scope","role","ownerGrantVersion","candidates","financeIncluded","canEditOriginalOwnerUid"];
+const ROW_KEYS=["uid","displayName","approved"];
+const REPLY_KEYS=["updated","ownerGrantVersion","delegatedOwnerUid","approved"];
+const isRecord=v=>v!==null&&typeof v==="object"&&!Array.isArray(v);
+const exact=(v,keys)=>isRecord(v)&&Object.keys(v).length===keys.length&&
+ keys.every(k=>Object.hasOwn(v,k));
+const validId=v=>typeof v==="string"&&ID.test(v);
+const safeName=v=>typeof v==="string"&&v.trim()===v&&v.length>0&&
+ v.length<=60&&!MONEY.test(v);
+const reject=()=>{throw Error("OWNER_DELEGATE_RESPONSE_NOT_REVIEWED")};
+function parseList(raw){
+ if(!exact(raw,ROOT_KEYS)||raw.scope!=="explicit-additional-hub-owners"||
+    raw.role!=="primary-owner"||!Number.isSafeInteger(raw.ownerGrantVersion)||
+    raw.ownerGrantVersion<0||raw.ownerGrantVersion>999999||
+    raw.financeIncluded!==false||raw.canEditOriginalOwnerUid!==false||
+    !Array.isArray(raw.candidates)||raw.candidates.length>10)reject();
+ const seen=new Set(),people=raw.candidates.map(p=>{
+  if(!exact(p,ROW_KEYS)||!validId(p.uid)||!safeName(p.displayName)||
+     typeof p.approved!=="boolean"||seen.has(p.uid))reject();
+  seen.add(p.uid);
+  return Object.freeze({uid:p.uid,name:p.displayName,approved:p.approved});
+ });
+ return Object.freeze({version:raw.ownerGrantVersion,people:Object.freeze(people)});
+}
+function parseChange(raw,expected){
+ if(!exact(raw,REPLY_KEYS)||raw.updated!==true||
+    raw.delegatedOwnerUid!==expected.uid||raw.approved!==expected.approved||
+    raw.ownerGrantVersion!==expected.version+1)reject();
+ return true;
+}
+function label(tag,s){
+ const element=document.createElement(tag);
+ if(s!==undefined)element.textContent=String(s);
+ return element;
+}
+let current=null,model=null,generation=0,busy=false;
+function setStatus(message,error=false){
+ const node=$("status");
+ node.textContent=message;
+ node.className="notice"+(error?" error":"");
+}
+function clearView(){
+ model=null;
+ $("delegatesBox").hidden=true;
+ $("people").replaceChildren();
+ $("version").textContent="";
+ $("empty").hidden=true;
+}
+function controls(){
+ $("reload").disabled=busy;
+ $("people").querySelectorAll("button").forEach(b=>{b.disabled=busy});
+}
+function render(){
+ $("people").replaceChildren();
+ if(!model){clearView();return}
+ $("delegatesBox").hidden=false;
+ $("version").textContent="承認設定の版："+model.version+"｜本人確認済みの候補のみ";
+ $("empty").hidden=model.people.length!==0;
+ for(const person of model.people){
+  const item=label("div");item.className="person";
+  const info=label("div");
+  const name=label("div",person.name);name.className="person-title";
+  const hint=label("div","アカウント識別末尾："+person.uid.slice(-5));
+  hint.className="person-id";
+  const state=label("div",person.approved?"承認済み":"未承認");
+  state.className="person-status "+(person.approved?"active":"inactive");
+  info.append(name,hint,state);
+  const action=label("div");action.className="action";
+  const button=label("button",person.approved?"承認を取り消す":"このOwnerを承認");
+  button.type="button";button.className=person.approved?"danger":"";
+  button.disabled=busy;button.onclick=()=>{void apply(person)};
+  action.append(button);item.append(info,action);$("people").append(item);
+ }
+ controls();
+}
+async function refresh(){
+ if(busy)return;
+ const who=auth.currentUser,stamp=++generation;
+ clearView();
+ current=who;
+ if(!who){setStatus("未ログインです。自社アプリにログインしてから戻ってください。",true);return}
+ if(who.emailVerified!==true){setStatus("メール認証済みの主Ownerのみ利用できます。",true);return}
+ setStatus("主Owner権限と承認候補をサーバーで確認中です。");
+ try{
+  const response=(await listCall({})).data;
+  if(generation!==stamp||auth.currentUser!==who)return;
+  model=parseList(response);
+  setStatus("主Owner権限を確認しました。承認・取消は確認後に1件ずつ実行します。");
+  render();
+ }catch{
+  if(generation!==stamp||auth.currentUser!==who)return;
+  clearView();
+  setStatus("主Ownerの権限または承認APIを確認できません。現時点で承認設定は変更されていません。",true);
+ }
+}
+async function apply(person){
+ const who=auth.currentUser,stamp=generation,m=model;
+ if(busy||!who||who!==current||!m||!m.people.includes(person))return;
+ const desired=!person.approved;
+ const verb=desired?"承認":"承認取消";
+ const message=person.name+"（識別末尾："+person.uid.slice(-5)+"）を"+verb+
+  "しますか？\n自社の主Ownerと既存実績は変更されません。";
+ if(!window.confirm(message))return;
+ if(stamp!==generation||who!==auth.currentUser||model!==m)return;
+ busy=true;controls();
+ setStatus(verb+"の結果を確認中です。再度タップしないでください。");
+ let serverAcknowledged=false;
+ try{
+  const result=(await changeCall({
+   targetUid:person.uid,approved:desired,expectedVersion:m.version
+  })).data;
+  if(stamp!==generation||who!==auth.currentUser)return;
+  parseChange(result,{uid:person.uid,approved:desired,version:m.version});
+  serverAcknowledged=true;
+ }catch{
+  if(stamp!==generation||who!==auth.currentUser)return;
+  setStatus("更新結果が未確認です。同じ操作を再送しないでください。",true);
+ }finally{
+  busy=false;
+  controls();
+  if(stamp===generation&&who===auth.currentUser){
+   // Read-only refresh only. Never automatically retry change after a failure.
+   await refresh();
+   if(auth.currentUser===who&&model){
+    const currentState=model.people.find(p=>p.uid===person.uid);
+    if(serverAcknowledged&&currentState?.approved===desired)
+     setStatus(verb+"の反映をサーバーの最新一覧で確認しました。");
+    else setStatus("承認状態の反映は未確認です。最新一覧を確認してください。",true);
+   }
+  }
+ }
+}
+$("reload").onclick=()=>{void refresh()};
+onAuthStateChanged(auth,user=>{
+ ++generation;busy=false;current=user;clearView();controls();
+ void refresh();
+});
+</script>
+</body>
+</html>
