@@ -67,6 +67,15 @@ test("valid individual count and SB split remain precise without auto reclassifi
  const unknown={...validList,entries:[{...validList.entries[0],sbBreakdown:null}]};
  assert.equal(parseEntries(unknown,{id:"partner_1",date:"2026-11-09"})[0].sb["旧未分類"],3);
 });
+test("large safe individual totals across distinct products are not wrongly treated as invalid",()=>{
+ const {parseEntries}=parser();
+ const high={...validList,entries:[{
+  ...validList.entries[0],
+  counts:{...COUNT,"SBMNP":9999,"YMMNP":9999},
+  totalCount:20002
+ }]};
+ assert.equal(parseEntries(high,{id:"partner_1",date:"2026-11-09"})[0].total,20002);
+});
 test("finance fields, invented totals, wrong partner scope and missing version fail closed",()=>{
  const {parseEntries}=parser();
  for(const invalid of [
