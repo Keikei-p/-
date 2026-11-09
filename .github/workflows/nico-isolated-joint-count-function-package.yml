@@ -1,0 +1,52 @@
+name: NICO isolated joint count API function packaging (STAGING / NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'functions-ranking-approvals/**'
+      - 'tests/isolated-joint-count-function-package.test.mjs'
+      - '.github/workflows/nico-isolated-joint-count-function-package.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'functions-ranking-approvals/**'
+      - 'tests/isolated-joint-count-function-package.test.mjs'
+      - '.github/workflows/nico-isolated-joint-count-function-package.yml'
+permissions:
+  contents: read
+jobs:
+  validate-disabled-isolated-function:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      NICO_JOINT_COUNT_RANKING_ENABLED: ''
+      NICO_OWNER_PRODUCT_VISIBILITY_ENABLED: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Prevent data, existing Functions, Hosting and Rules changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$NICO_JOINT_COUNT_RANKING_ENABLED"
+          test -z "$NICO_OWNER_PRODUCT_VISIBILITY_ENABLED"
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            git diff --exit-code "origin/main...HEAD" -- firestore.rules firebase.json .firebaserc index.html partner-workspace.html functions functions-partner-workspace firebase.partner-workspace.json
+          fi
+          node --check functions-ranking-approvals/index.js
+          node --check functions-ranking-approvals/joint-count-http-adapter.cjs
+      - name: Verify exact canonical module graph and OFF-by-default HTTP route
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/isolated-joint-count-function-package.test.mjs tests/joint-count-http-adapter.test.cjs
+          node --test tests/canonical-owner-count-server-factory.test.mjs
+          echo 'ISOLATED_COUNT_FUNCTION_READY_STAGING_ONLY_NO_DEPLOY'
