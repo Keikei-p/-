@@ -113,6 +113,13 @@ export function buildInternalMonthCountSource({
   }
   return original;
  };
+ // Seed removed historical teams from immutable record snapshots BEFORE
+ // resolving today's roster: a staff member may still reference that team.
+ for(const row of records){
+  if(!obj(row?.value)||row.value.companyId!==hubCompanyId||
+     day(row.value.date).slice(0,7)!==month)stop();
+  teamFor(row.value.teamId,row.value.teamNameSnapshot);
+ }
  for(const u of users){
   if(!id(u.id)||!obj(u.value)||u.value.companyId!==hubCompanyId)stop();
   if(u.value.active===false)continue;
