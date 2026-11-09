@@ -5,7 +5,11 @@
  * Strictly requires explicit --release and live version recheck immediately before
  * publishing. Dry-run is read-only.
  *
- * Dynamic current-version support is safe ONLY with the original diagnostic\n * gzip hash pin, full 12-file manifest equality, immutable config, and\n * double latest-version checks. No unrelated Hosting file changes allowed.\n * Requires GOOGLE_APPLICATION_CREDENTIALS from a protected runner secret.
+ * Baseline is the SHA-exact archived Nov 7 diagnostic, independently
+ * matched to the current public HTML on Nov 9 without exposing its source.
+ * Any current-version update MUST preserve every original file path/hash,
+ * pin the full old diagnostic blob and reconfirm the release just before POST.
+ * Requires GOOGLE_APPLICATION_CREDENTIALS from a protected runner secret.
  * Firebase Hosting REST API is the only remote write path; Firestore, Auth,
  * Functions, Rules and LINE are never accessed.
  */
@@ -22,8 +26,8 @@ export const ASSET="/finance-boundary-check.html";
 const BASE="https://firebasehosting.googleapis.com/v1beta1";
 const allowedVersion=/^sites\/nico-factory\/versions\/[A-Za-z0-9_-]+$/;
 export const EXACT_PREVIOUS_VERSION="sites/nico-factory/versions/c7e5a4d77339bbb9";
-export const EXACT_PREVIOUS_GIT_BLOB="1369f7523e171f64cacb263aa65e8e7e04572d27";
-const ORIGINAL_GIT_COMMIT="2c10e27bb6a92684470c74388a76cad3d0f3ee4c";
+export const EXACT_PREVIOUS_GIT_BLOB="3375c411babc15b14bd84405ab69822b987bd4a5";
+const ORIGINAL_GIT_COMMIT="d5c7cb85a734a5cad82fa890116cebdcf2941286";
 const gitBlob=b=>createHash("sha1").update("blob "+b.length+String.fromCharCode(0))
  .update(b).digest("hex");
 const sha256=b=>createHash("sha256").update(b).digest("hex");
