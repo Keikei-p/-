@@ -1,0 +1,92 @@
+name: NICO ranking original six post-dispatch audit (GET ONLY / NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-ranking-retrospective-original-six-readonly.yml'
+      - 'tools/production/audit-ranking-dispatch-original-versions.mjs'
+      - 'tests/audit-ranking-dispatch-original-versions.test.mjs'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-ranking-retrospective-original-six-readonly.yml'
+      - 'tools/production/audit-ranking-dispatch-original-versions.mjs'
+      - 'tests/audit-ranking-dispatch-original-versions.test.mjs'
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Ensure unchanged finance sources and offline tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
+          test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
+          test "$(git hash-object functions-partner-workspace/index.js)" = '38da7e9174ffea7c406c92292dccfc651b565eb0'
+          node --check tools/production/audit-ranking-dispatch-original-versions.mjs
+          node --test tests/audit-ranking-dispatch-original-versions.test.mjs tests/protect-ranking-original-functions-versions.test.mjs
+  live-metadata-get-only:
+    needs: offline
+    if: >-
+      ${{ github.event_name == 'push' &&
+          github.repository == 'Keikei-p/-' &&
+          github.ref == 'refs/heads/main' &&
+          needs.offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Pin exact project and immutable original code
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
+          test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
+          test "$(git hash-object functions-partner-workspace/index.js)" = '38da7e9174ffea7c406c92292dccfc651b565eb0'
+          node --test tests/audit-ranking-dispatch-original-versions.test.mjs
+      - name: Install existing Firebase Admin SDK for OAuth read only
+        shell: bash
+        run: npm install --prefix functions --ignore-scripts --no-audit --no-fund --package-lock=false
+      - name: Prepare existing identity privately
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-ranking-retrospective-auth.private.json"
+          chmod 600 "$RUNNER_TEMP/nico-ranking-retrospective-auth.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-ranking-retrospective-auth.private.json" >> "$GITHUB_ENV"
+      - name: GET original six Gen1/Gen2 metadata and new disabled Function (no writes)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/audit-ranking-dispatch-original-versions.mjs
+          echo "ORIGINAL_RANKING_AUDIT_READ_ONLY=YES"
+          echo "PRODUCTION_DOCUMENT_WRITES=0"
+          echo "PRODUCTION_FUNCTION_DEPLOYS=0"
+          echo "PRODUCTION_RULES_OR_HOSTING_WRITES=0"
+      - name: Remove private identity
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/nico-ranking-retrospective-auth.private.json"
+          rm -f firebase-debug.log firestore-debug.log
