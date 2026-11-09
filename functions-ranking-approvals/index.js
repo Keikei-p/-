@@ -11,6 +11,7 @@ const {onCall,onRequest,HttpsError}=require("firebase-functions/v2/https");
 const {createJointCountHttpAdapter}=require("./joint-count-http-adapter.cjs");
 const {makeRankingOwnerCallables}=require("./controller.cjs");
 const {makeProductVisibilityCallables}=require("./product-visibility-controller.cjs");
+const {createOwnerSkuMappingCallables}=require("./owner-sku-mapping-controller.cjs");
 initializeApp();
 const service=makeRankingOwnerCallables({
  db:getFirestore(),FieldValue,getAuth,HttpsError,
@@ -28,6 +29,18 @@ const visibility=makeProductVisibilityCallables({
 });
 exports.getOwnerProductVisibility=onCall(options,visibility.load);
 exports.setOwnerProductVisibility=onCall(options,visibility.save);
+/**
+ * ADDITIVE STAGING: only the verified hub owner may review exact partner
+ * category -> hub product IDs. OFF unless separately approved. Writes only
+ * canonical mapping + append-only audit, never source counts or prices.
+ */
+const skuMapping=createOwnerSkuMappingCallables({
+ db:getFirestore(),FieldValue,getAuth,HttpsError,
+ enabled:()=>process.env.NICO_OWNER_SKU_MAPPING_ENABLED==="enabled"
+});
+exports.getOwnerReviewedSkuMapping=onCall(options,skuMapping.get);
+exports.setOwnerReviewedSkuMapping=onCall(options,skuMapping.save);
+
 /**
  * ADDITIVE STAGING ONLY: standalone ranking GET endpoint.
  * No existing count-write or finance Functions are changed.
