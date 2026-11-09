@@ -5,12 +5,16 @@ on:
     paths:
       - 'functions-ranking-approvals/**'
       - 'tests/isolated-joint-count-function-package.test.mjs'
+      - 'tests/owner-sku-mapping-controller.test.cjs'
+      - 'ranking/owner-reviewed-sku-mapping-store.mjs'
       - '.github/workflows/nico-isolated-joint-count-function-package.yml'
   push:
     branches: [main]
     paths:
       - 'functions-ranking-approvals/**'
       - 'tests/isolated-joint-count-function-package.test.mjs'
+      - 'tests/owner-sku-mapping-controller.test.cjs'
+      - 'ranking/owner-reviewed-sku-mapping-store.mjs'
       - '.github/workflows/nico-isolated-joint-count-function-package.yml'
 permissions:
   contents: read
@@ -23,6 +27,7 @@ jobs:
       GOOGLE_APPLICATION_CREDENTIALS: ''
       NICO_JOINT_COUNT_RANKING_ENABLED: ''
       NICO_OWNER_PRODUCT_VISIBILITY_ENABLED: ''
+      NICO_OWNER_SKU_MAPPING_ENABLED: ''
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,15 +43,21 @@ jobs:
           test -z "$GOOGLE_APPLICATION_CREDENTIALS"
           test -z "$NICO_JOINT_COUNT_RANKING_ENABLED"
           test -z "$NICO_OWNER_PRODUCT_VISIBILITY_ENABLED"
+          test -z "$NICO_OWNER_SKU_MAPPING_ENABLED"
           if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
             git diff --exit-code "origin/main...HEAD" -- firestore.rules firebase.json .firebaserc index.html partner-workspace.html functions functions-partner-workspace firebase.partner-workspace.json
           fi
           node --check functions-ranking-approvals/index.js
           node --check functions-ranking-approvals/joint-count-http-adapter.cjs
+          node --check functions-ranking-approvals/owner-sku-mapping-controller.cjs
+          node --check functions-ranking-approvals/ranking/owner-reviewed-sku-mapping-store.mjs
+          cmp ranking/owner-reviewed-sku-mapping-store.mjs functions-ranking-approvals/ranking/owner-reviewed-sku-mapping-store.mjs
+          grep -Fq 'NICO_OWNER_SKU_MAPPING_ENABLED===' functions-ranking-approvals/index.js
       - name: Verify exact canonical module graph and OFF-by-default HTTP route
         shell: bash
         run: |
           set -euo pipefail
           node --test tests/isolated-joint-count-function-package.test.mjs tests/joint-count-http-adapter.test.cjs
           node --test tests/canonical-owner-count-server-factory.test.mjs
+          node --test tests/owner-sku-mapping-controller.test.cjs tests/owner-reviewed-sku-mapping-store.test.mjs
           echo 'ISOLATED_COUNT_FUNCTION_READY_STAGING_ONLY_NO_DEPLOY'
