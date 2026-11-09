@@ -1576,11 +1576,12 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   // Owner; do not silently ignore forged hub options in a partner session.
   if(d.includeTeamStatus===true||d.partnerCompanyId!=null)fail();
   if(d.includeAuditHistory!=null&&d.includeAuditHistory!==true)fail("invalid-argument");
-  const [teams,staff,entries,privateProducts]=await Promise.all([
+  const [teams,staff,entries,privateProducts,legacyLinksSnap,legacyPublicationSnap]=await Promise.all([
     collection(s.cid,"partnerWorkTeams").limit(151).get(),
     collection(s.cid,"partnerWorkStaff").limit(151).get(),
     collection(s.cid,"partnerWorkEntries").where("date","==",date).limit(201).get(),
-    collection(s.cid,"partnerPrivateProducts").limit(101).get()
+    collection(s.cid,"partnerPrivateProducts").limit(101).get(),
+    countLinksRef(s.hubId).get(),publicationRef(s.hubId).get()
   ]);
   if(teams.size>150||staff.size>150||entries.size>200||privateProducts.size>100)fail("resource-exhausted");
   const productList=privateProducts.docs.map(sn=>{
@@ -1662,6 +1663,16 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    .filter(team=>["owner","leader"].includes(s.role)||team.id===s.teamId);
   return {role:s.role,date,companyName:clean(s.companyName),teamId:s.teamId,
     teams:visibleTeams,staff:[...allowed.values()],records:rows,categories:KEYS,
+    legacyCategoryPublication:(()=>{
+     try{
+      const linked=readLinks(legacyLinksSnap.exists?legacyLinksSnap.data():null,KEYS).links;
+      const published=new Set(loadPublication(legacyPublicationSnap.exists?legacyPublicationSnap.data():null).productIds);
+      return KEYS.map(category=>{
+       const link=linked.find(x=>x.category===category);
+       return {category,acceptsIncrease:!link||date<link.effectiveFrom||published.has(link.productId)};
+      });
+     }catch{fail("data-loss");}
+    })(),
     privateProducts:productList,...(audits?{audits}: {})};
  }
  async function submit(request){
