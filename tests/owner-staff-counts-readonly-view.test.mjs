@@ -84,7 +84,7 @@ test("protected same-login Auth and count corrections stay OFF, response only sa
  assert(html.includes('$("#staffCounts")')===false);
  assert(html.includes('card.append(make("strong",entry.staffName)'));
  assert(html.includes('Object.entries(entry.counts).filter(([,count])=>count>0)'));
- assert(html.includes("スタッフ別・商材別件数（閲覧専用）"));
+ assert(html.includes("担当者別・商材別件数（閲覧専用）"));
  assert(html.includes("未報告を0件として扱いません"));
  assert.doesNotMatch(html,/(?:signInWithEmailAndPassword|createUserWithEmailAndPassword|setDoc|updateDoc|deleteDoc|writeBatch|localStorage|sessionStorage)\s*\(/);
  assert(old.includes("const HUB_OWNER_CORRECTION_READY=false"));
