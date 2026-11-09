@@ -287,8 +287,10 @@ test("same-name teams remain separated by approved company labels",()=>{
 });
 test("owner company/team ranks use safe source counts and competition ties",()=>{
  const raw=make();
- raw.companyBreakdown[0].count=5;
- raw.teamBreakdown[0].count=5;
+ raw.companyBreakdown[0].count=4;
+ raw.companyBreakdown[1].count=4;
+ raw.teamBreakdown[0].count=4;
+ raw.teamBreakdown[1].count=4;
  const view=verifiedJointCountView(raw,{month:"2026-11",role:"hub_owner"});
  assert.deepEqual(view.companies.map(x=>x.rank),[1,1]);
  assert.deepEqual(view.teams.map(x=>x.rank),[1,1]);
@@ -315,5 +317,15 @@ test("missing team/company ranking and injected money fails closed without displ
    assert.equal(await panel.refresh("2026-11"),false);
    assert(!allText(root).includes("合同合計"));
   }
+ }
+});
+
+test("mismatched company total cannot claim a valid cross-company leaderboard",()=>{
+ for(const role of ["hub_owner","partner_owner"]){
+  const raw=make(role);
+  if(role==="hub_owner")raw.companyBreakdown[0].count=9;
+  else raw.publicRanking.companies[0].count=9;
+  assert.throws(()=>verifiedJointCountView(raw,{month:"2026-11",role}),
+   /JOINT_RANKING_RESPONSE_UNVERIFIED/);
  }
 });
