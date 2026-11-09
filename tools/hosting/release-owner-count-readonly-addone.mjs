@@ -73,12 +73,18 @@ export async function publishOwnerCountAddOne({request,oldSources,candidate,rele
  }
  if([...pinned.originalManifest.keys()].some(path=>!current.has(path)))
   STOP("LIVE_ASSET_PATH_SET_DRIFT");
- // Other authorized releases may replace app files. Preserve their EXACT
- // latest hashes without reverting them. However the previously reviewed
- // Owner portal's four assets must still match their pinned source.
- const plan=planOwnerCountAddOne({
-  version:BASE_VERSION,liveFiles,oldSources,candidate
+ // The new read-only page is FULLY INDEPENDENT of existing Owner assets.
+ // Check the reviewed baseline's four Owner files against pinned Git sources,
+ // then preserve ALL 17 currently live asset hashes, including updated Owner
+ // assets. We neither load nor replace any existing HTML/JS in this release.
+ const plan=Object.freeze({
+  ...pinned,
+  originalManifest:current,
+  proposedManifest:new Map([...current,[NEW_PATH,pinned.newHash]])
  });
+ if(plan.originalManifest.size!==17||plan.proposedManifest.size!==18||
+    [...current].some(([p,h])=>plan.proposedManifest.get(p)!==h))
+  STOP("UNRELATED_LIVE_FILE_CHANGED");
  const changedExisting=[...current].filter(([p,h])=>
   pinned.originalManifest.get(p)!==h).length;
  log("OWNER_COUNT_ADDONE_PREFLIGHT "+JSON.stringify({

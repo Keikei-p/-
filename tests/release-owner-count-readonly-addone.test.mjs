@@ -143,10 +143,16 @@ test("newer live app files are copied byte-identically, never reverted",async()=
  const upload=f.writes.find(x=>x.url.includes(":populateFiles"));
  assert.equal(upload.body.files["/index.html"],"f".repeat(64));
 });
-test("a newer live version with Owner asset, original path or Hosting config drift is rejected BEFORE CREATE",async()=>{
- for(const opts of [
-  {newerOwnerDifferent:true},{newerMissingPath:true},{newerDifferentConfig:true}
- ]){
+test("updated Owner management assets are also preserved byte-identically, never reverted",async()=>{
+ const f=fixture({newerOwnerDifferent:true});
+ const result=await publishOwnerCountAddOne({request:f.request,oldSources,candidate,release:true});
+ assert.equal(result.released,true);
+ const upload=f.writes.find(x=>x.url.includes(":populateFiles"));
+ assert.equal(upload.body.files["/owner-partner-admin.html"],"e".repeat(64));
+ assert.equal(f.posted,1);
+});
+test("an existing asset path removal or Hosting configuration change still fails before CREATE",async()=>{
+ for(const opts of [{newerMissingPath:true},{newerDifferentConfig:true}]){
   const f=fixture(opts);
   await assert.rejects(publishOwnerCountAddOne({request:f.request,oldSources,candidate,release:true}),
    /STOP_OWNER_(COUNT_ONE_RELEASE|COUNT_ADDONE)_/);
