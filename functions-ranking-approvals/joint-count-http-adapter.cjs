@@ -26,7 +26,7 @@ const PUBLIC_FIELDS=new Set([
  "previousCount","change","growth","topProduct","remainingToGoal",
  "personalBestStatus"
 ]);
-const PRIVATE_TEXT=/(?:[¥￥$€]|(?:[0-9０-９])[0-9０-９.,，]*\\s*(?:万円|千円|円)|(?:売上|単価|キャッシュバック|cashback|revenue|commission|salary)[\\s:_=-]*[0-9０-９])/i;
+const PRIVATE_TEXT=/(?:[¥￥$€]|(?:[0-9０-９])[0-9０-９.,，]*\s*(?:万円|千円|円)|(?:売上|単価|キャッシュバック|cashback|revenue|commission|salary)[\\s:_=-]*[0-9０-９])/i;
 const fail=()=>{throw Error("JOINT_COUNT_HTTP_ADAPTER_INVALID");};
 const originFrom=req=>typeof req?.headers?.origin==="string"?
  req.headers.origin:"";
@@ -127,7 +127,13 @@ function createJointCountHttpAdapter({enabled=()=>false,loadHandler}={}){
    const body=await response.text();
    if(typeof body!=="string"||body.length>900000)fail();
    const data=JSON.parse(body);
-   if(!moneyFree(data))fail();
+   if(response.status===200){
+    if(!data||data.schema!=="nico-verified-dual-count-v1"||
+       !["hub_owner","partner_owner"].includes(data.role)||
+       !moneyFree(data))fail();
+   }else if(!data||typeof data!=="object"||Array.isArray(data)||
+            Object.keys(data).length!==1||
+            !["request_blocked","service_disabled"].includes(data.error))fail();
    headers(res,origin);
    res.status(response.status).send(JSON.stringify(data));
   }catch{
