@@ -57,11 +57,11 @@ export async function publishOwnerCountAddOne({request,oldSources,candidate,rele
  const baseFiles=await filesOf(request,BASE_VERSION);
  if(base.fileCount!=null&&Number(base.fileCount)!==baseFiles.length)
   STOP("REVIEWED_BASE_COUNT");
- const plan=planOwnerCountAddOne({
+ const pinned=planOwnerCountAddOne({
   version:BASE_VERSION,liveFiles:baseFiles,oldSources,candidate
  });
  const liveFiles=oldVersion===BASE_VERSION?baseFiles:await filesOf(request,oldVersion);
- if(liveFiles.length!==plan.previousCount||
+ if(liveFiles.length!==pinned.previousCount||
     old.fileCount!=null&&Number(old.fileCount)!==liveFiles.length)
   STOP("LIVE_ASSET_COUNT_DRIFT");
  const current=new Map();
@@ -71,10 +71,20 @@ export async function publishOwnerCountAddOne({request,oldSources,candidate,rele
      current.has(file.path))STOP("LIVE_ASSET_SCHEMA_DRIFT");
   current.set(file.path,file.hash.toLowerCase());
  }
- if([...plan.originalManifest].some(([path,hash])=>current.get(path)!==hash))
-  STOP("LIVE_ASSET_DRIFT");
+ if([...pinned.originalManifest.keys()].some(path=>!current.has(path)))
+  STOP("LIVE_ASSET_PATH_SET_DRIFT");
+ // Other authorized releases may replace app files. Preserve their EXACT
+ // latest hashes without reverting them. However the previously reviewed
+ // Owner portal's four assets must still match their pinned source.
+ const plan=planOwnerCountAddOne({
+  version:BASE_VERSION,liveFiles,oldSources,candidate
+ });
+ const changedExisting=[...current].filter(([p,h])=>
+  pinned.originalManifest.get(p)!==h).length;
  log("OWNER_COUNT_ADDONE_PREFLIGHT "+JSON.stringify({
   existingFilesPreserved:plan.previousCount,filesAdded:1,
+  existingFilesChangedSinceReviewedBaseline:changedExisting,
+  latestExistingHashesPreserved:true,
   scope:NEW_PATH,readOnlyPortal:true,firestoreWrites:0
  }));
  if(!release)return Object.freeze({
