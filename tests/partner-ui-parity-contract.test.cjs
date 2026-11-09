@@ -23,3 +23,9 @@ test("partner and hub team trees use the same count-only card renderer",()=>{
  assert.match(html,/function renderSharedCountTeamDetails\(/);
  assert.ok((html.match(/renderPartnerCountTeamCard\(/g)||[]).length>=4);
 });
+
+test("NURO partner input never restores cashback wording after count edit",()=>{
+ const render=html.slice(html.indexOf("function renderPartnerEntryTotals()"),html.indexOf("function renderPartnerEntryTotals()")+1700);
+ assert.match(render,/NURO光｜件数入力（合計 /);
+ assert.doesNotMatch(render,/NURO光｜CB別件数/);
+});
