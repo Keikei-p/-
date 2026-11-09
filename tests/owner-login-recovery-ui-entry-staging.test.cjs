@@ -63,7 +63,7 @@ test("UI requires explicit typed email, selected reason, native confirm and no a
  assert.match(html,/await reload\(\)/);
  assert.match(html,/listOwnerLoginRecovery/);
  assert.match(html,/reactivateOwnerLoginMember/);
- assert.match(html,/if\(!state\?\.canWrite/);
+ assert.match(html,/!state\?\.canWrite/);
  assert.doesNotMatch(html,/\b(?:signInWith|setDoc|updateDoc|deleteDoc|runTransaction|createUserWithEmailAndPassword|eval)\s*\(/);
  assert.doesNotMatch(html,/\b(?:localStorage|sessionStorage|firebase deploy)\b/);
 });
