@@ -9,8 +9,8 @@ import {readFileSync,mkdirSync,writeFileSync,rmSync,existsSync} from "node:fs";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
 export const REVIEWED=Object.freeze({
- "staging/hub-owner-management/owner-partner-admin.html":"f6609e6664ec11f629ea57751295abe18cb1dc2a",
- "staging/partner-owner-correction-v3/mobile-bootstrap.mjs":"fe8fa6779093a19cdc4c678acf85df348a61f76a",
+ "staging/hub-owner-management/owner-partner-admin.html":"8ac03f833b27706b256d9218742c343bb3e040ff",
+ "staging/partner-owner-correction-v3/mobile-bootstrap.mjs":"8533ac6b02f7768189444c9bfb8cc11cea7b28e7",
  "staging/partner-owner-correction-v3/owner-client.mjs":"3df123912de87d3212c173997465c721f5b9e54e",
  "staging/partner-owner-correction-v3/owner-ui.mjs":"7c10e98da34339aa26b5fdc0ac89798b57c01016"
 });
@@ -31,6 +31,8 @@ export function prepareHubPortal(files){
  if(!html.includes("const HUB_OWNER_CORRECTION_READY=false")||
   !html.includes('getAuth(app)')||!html.includes('getPartnerWorkspace')||
   !html.includes('countOnlyRegisteredCompanies(response,day)')||
+  !html.includes('classifyOwnerWorkspaceError(error)')||
+  !boot.includes('export function classifyOwnerWorkspaceError(error)')||
   !html.includes("await currentPanel.selectCompany(partnerId)")||
   !html.includes("./owner-partner-admin-assets/mobile-bootstrap.mjs")||
   /\b(?:signInWithEmailAndPassword|createUserWithEmailAndPassword|deleteUser|setDoc|updateDoc|writeBatch|localStorage|sessionStorage)\s*\(/.test(html)||
