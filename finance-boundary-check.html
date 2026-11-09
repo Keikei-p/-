@@ -244,8 +244,11 @@ $("run").onclick=async()=>{
     let countVerified=false;
     if(account.role==="partner-unverified"&&workspace)
       throw Error("DIRECT_PARTNER_MUST_NOT_CLAIM_SECONDARY");
-    if(workspace&&account.role==="owner")
-      throw Error("HUB_OWNER_PARTNER_CONTEXT_AMBIGUOUS");
+    // A real hub Owner can also have an approved secondary partner workspace.
+    // Do not block this legitimate existing-email transition before the
+    // authenticated server has checked this exact UID/workspace pair.
+    // The browser NEVER infers partner ownership from the workspace string.
+    // countView failure or a hub-only response still aborts below.
     if(account.role==="partner-unverified"||workspace){
       try{
         const reply=await countView({
