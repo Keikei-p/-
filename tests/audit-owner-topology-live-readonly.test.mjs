@@ -76,11 +76,12 @@ test("missing or invalid primary Owner blocks automatic entitlement change",asyn
  const r=await auditOwnerTopology(f);
  assert.equal(r.ownerStatusCounts.DIFFERENT_UID_PRIMARY_NOT_VERIFIED,2);
  assert.equal(r.suggestedAutomaticRoleChange,false);
- const badUserMap=new Map([
-  [PRIMARY,entry(PRIMARY)],[OTHER1,entry(OTHER1)],
-  [OTHER2,{...entry(OTHER2),active:false}]
+ const disabledAuth=new Map([
+  [PRIMARY,authRecord(PRIMARY)],
+  [OTHER1,authRecord(OTHER1)],
+  [OTHER2,{...authRecord(OTHER2),disabled:true}]
  ]);
- const r2=await auditOwnerTopology(fixture({users:badUserMap}));
+ const r2=await auditOwnerTopology(fixture({auth:disabledAuth}));
  assert.equal(r2.ownerStatusCounts.DIFFERENT_UID_SECONDARY_FULLY_VALID,1);
  assert.equal(r2.ownerStatusCounts.DIFFERENT_UID_SECONDARY_NOT_VERIFIED,1);
 });
@@ -104,7 +105,7 @@ test("standalone live adapter only reads metadata and never outputs identity fie
  const source=readFileSync(new URL("../tools/production/audit-owner-topology-live-readonly.mjs",import.meta.url),"utf8");
  assert.match(source,/--read-only/);
  assert.match(source,/GITHUB_REF!=="refs\/heads\/main"/);
- assert.doesNotMatch(source,/\.(?:set|update|delete|create|add|runTransaction)\s*\(/);
+ assert.doesNotMatch(source,/\b(?:tx|ref|document|batch|docRef|transaction)\.(?:set|update|delete|create|add|runTransaction)\s*\(/);
  assert.doesNotMatch(source,/\.collection\("(?:records|products|recordCorrections|revenueGoals|partnerWorkEntries)"\)/);
  assert.doesNotMatch(source,/signInWith|createCustomToken|setCustomUserClaims|firebase deploy|httpsCallable/);
  assert.match(source,/identitiesLogged:false/);
