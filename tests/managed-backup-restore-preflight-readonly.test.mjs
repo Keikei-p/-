@@ -157,3 +157,18 @@ test("GET-only source and no cloud create/delete/restore operation in the audit"
  assert.doesNotMatch(text,/method\s*:\s*"(?:POST|PUT|PATCH|DELETE)"/);
  assert.doesNotMatch(text,/\.set\s*\(|\.update\s*\(|\.delete\s*\(|firebase deploy|gcloud firestore databases restore/);
 });
+
+test("combined backup preflight verifies actual live Rules first, never applies Rules or restores any database",()=>{
+ const wf=readFileSync(new URL("../.github/workflows/nico-managed-backup-restore-preflight-readonly.yml",import.meta.url),"utf8");
+ const classifier="node tools/production/inspect-live-firestore-rules-release.mjs";
+ const backup="node tools/production/audit-managed-backup-restore-preflight-readonly.mjs";
+ assert(wf.indexOf(classifier)>=0);
+ assert(wf.indexOf(backup)>wf.indexOf(classifier));
+ assert.match(wf,/github\.event_name == 'push' \|\| github\.event_name == 'workflow_dispatch'/);
+ assert.match(wf,/test "\$\(git hash-object firestore\.rules\)"/);
+ assert.match(wf,/PRODUCTION_RULES_WRITES=0/);
+ assert.match(wf,/REAL_PARTNER_ACCOUNT_FINANCE_GET_LIST_UNPROVEN=YES/);
+ assert.match(wf,/test "\$GITHUB_SHA" = "\$\(gh api repos\/Keikei-p\/-\/branches\/main --jq '\.commit\.sha'\)"/);
+ assert.doesNotMatch(wf,/firebase deploy|firebase firestore:delete|gcloud firestore databases restore|rules:release|POST .*rulesets|PATCH .*releases/);
+ assert.doesNotMatch(wf,/upload-artifact|artifact\/upload/);
+});
