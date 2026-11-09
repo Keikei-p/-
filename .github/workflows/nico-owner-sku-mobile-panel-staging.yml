@@ -1,0 +1,49 @@
+name: NICO owner reviewed SKU mobile panel (STAGING / NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ranking/owner-reviewed-sku-mapping-panel.mjs'
+      - 'ranking/owner-reviewed-sku-mapping-panel.css'
+      - 'ranking/owner-reviewed-sku-mapping-firebase-bridge.mjs'
+      - 'tests/owner-reviewed-sku-mapping-panel.test.mjs'
+      - '.github/workflows/nico-owner-sku-mobile-panel-staging.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'ranking/owner-reviewed-sku-mapping-panel.mjs'
+      - 'ranking/owner-reviewed-sku-mapping-panel.css'
+      - 'ranking/owner-reviewed-sku-mapping-firebase-bridge.mjs'
+      - 'tests/owner-reviewed-sku-mapping-panel.test.mjs'
+      - '.github/workflows/nico-owner-sku-mobile-panel-staging.yml'
+permissions:
+  contents: read
+jobs:
+  owner-review-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      NICO_OWNER_SKU_MAPPING_ENABLED: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Require no changes to finance, original records or existing Functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$NICO_OWNER_SKU_MAPPING_ENABLED"
+          git diff --exit-code -- firestore.rules firebase.json index.html partner-workspace.html functions functions-partner-workspace functions-ranking-approvals/index.js
+          node --check ranking/owner-reviewed-sku-mapping-panel.mjs
+          node --check ranking/owner-reviewed-sku-mapping-firebase-bridge.mjs
+      - name: Count-only verified owner mapping UI, legacy mixed category and auth isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/owner-reviewed-sku-mapping-panel.test.mjs
+          echo 'NICO_SKU_OWNER_MOBILE_STAGING_PASS_NO_DEPLOY'

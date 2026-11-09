@@ -1,0 +1,22 @@
+/* STAGING ONLY. Additional owner-only mapping panel; not mounted to live app. */
+.nico-sku-map-panel{
+ display:grid;gap:12px;max-width:760px;padding:16px;
+ border-radius:14px;background:var(--card-bg,#fff);
+ color:var(--text-color,#243247)
+}
+.nico-sku-map-panel h2{margin:0;font-size:1.15rem}
+.nico-sku-map-panel>p{margin:0;line-height:1.6;font-size:.875rem;
+ color:var(--muted,#586776);overflow-wrap:anywhere}
+.nico-sku-map-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(170px,1.25fr);
+ align-items:center;gap:12px;padding:12px;border:1px solid #d6e2ed;
+ border-radius:12px;min-height:55px}
+.nico-sku-map-row>span{font-size:.9rem;overflow-wrap:anywhere}
+.nico-sku-map-row>select{width:100%;min-width:0;min-height:42px;border-radius:8px;
+ padding:8px;background:var(--card-bg,#fff);color:inherit;
+ border:1px solid #9baec2;font-size:16px}
+.nico-sku-map-row:has(select:disabled){opacity:.65}
+@media(max-width:540px){
+ .nico-sku-map-panel{gap:9px;padding:10px}
+ .nico-sku-map-row{grid-template-columns:minmax(0,1fr);
+  gap:5px;padding:10px}
+}
