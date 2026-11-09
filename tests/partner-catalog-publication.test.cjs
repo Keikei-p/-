@@ -94,3 +94,17 @@ test("retired publication OFF is permitted but unsafe ON is blocked in transacti
  assert.match(code,/tx\.get\(stateRef\)/);
  assert.doesNotMatch(code,/tx\.(?:set|update|delete)\((?:productRef|productDoc)/);
 });
+
+
+test("partner catalog response is count-only and owner can inspect retired OFF state",()=>{
+ const service=fs.readFileSync(require.resolve("../functions-partner-workspace/service.cjs"),"utf8");
+ const a=service.indexOf("async function viewCatalog(request)");
+ const z=service.indexOf("async function setCatalogPublication(request)",a);
+ assert(a>=0&&z>a);
+ const method=service.slice(a,z);
+ assert.match(method,/const s=await scope\(a\.uid,null,d\.workspaceCompanyId\)/);
+ assert.match(method,/projectMasterProducts\(originals,state\.productIds,true\)/);
+ assert.match(method,/\.map\(\(\{id,name,sortOrder\}\)=>\(\{id,name,sortOrder\}\)\)/);
+ assert.match(method,/projectOwnerPublicationRows\(originals,state\.productIds\)/);
+ assert.doesNotMatch(method,/return\s+\{[^}]*\b(?:revenue|unitPrice|cashback|pricingOptions)\b/);
+});
