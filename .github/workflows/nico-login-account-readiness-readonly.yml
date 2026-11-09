@@ -1,0 +1,86 @@
+name: NICO Firebase login and membership readiness LIVE READ ONLY
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/production/audit-login-readiness-live-readonly.mjs'
+      - 'tests/audit-login-readiness-live-readonly.test.mjs'
+      - '.github/workflows/nico-login-account-readiness-readonly.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/production/audit-login-readiness-live-readonly.mjs'
+      - 'tests/audit-login-readiness-live-readonly.test.mjs'
+      - '.github/workflows/nico-login-account-readiness-readonly.yml'
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify bounded immutable audit and exact reviewed login / financial boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object tools/production/audit-login-readiness-live-readonly.mjs)" = d91f8621a0d05a59635948bbdfd25ccfbc3c936a
+          test "$(git hash-object tests/audit-login-readiness-live-readonly.test.mjs)" = 29384dc1bb4cfbccb550c1d3ec7462600f9e1ec1
+          test "$(git hash-object legacy-finance-entry-guard.mjs)" = 20d730127d0623bb94d14d21998ab5111d849cfc
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          node --check tools/production/audit-login-readiness-live-readonly.mjs
+          node --test tests/audit-login-readiness-live-readonly.test.mjs
+          echo "LOGIN_READINESS_OFFLINE_PASS_NO_WRITES"
+  production-get:
+    needs: offline
+    if: >-
+      ${{ github.event_name == 'push' &&
+          github.ref == 'refs/heads/main' &&
+          github.repository == 'Keikei-p/-' &&
+          needs.offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Approve exact main HEAD before production metadata read
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
+      - name: Install official admin SDK only, no deploy CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix functions --ignore-scripts --no-audit --no-fund --package-lock=false
+      - name: Load existing service account privately for metadata GET only
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-login-audit.private.json"
+          chmod 600 "$RUNNER_TEMP/nico-login-audit.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-login-audit.private.json" >> "$GITHUB_ENV"
+      - name: GET only Firebase Auth/user/company/member login metadata, no identifiers or passwords
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/audit-login-readiness-live-readonly.mjs --read-only
+          echo "LOGIN_AUDIT_PRODUCTION_GET_ONLY_NO_USER_MODIFICATIONS_NO_FINANCE_READS"
+      - name: Delete private account credentials even on failure
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/nico-login-audit.private.json"
