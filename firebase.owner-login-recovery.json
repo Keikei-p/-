@@ -1,0 +1,11 @@
+{
+  "functions": {
+    "source": "functions-owner-login-recovery",
+    "codebase": "owner-login-recovery",
+    "ignore": [
+      "node_modules",
+      ".git",
+      "firebase-debug.log"
+    ]
+  }
+}
