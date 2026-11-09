@@ -30,8 +30,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git hash-object tools/production/owner-list-only-transition-scope.mjs)" = 7a28468e913b2dfc582d6ba8830add1cdb6899d2
-          test "$(git hash-object tests/owner-list-only-transition-scope.test.mjs)" = 9b7e53c9dee29f63c8768f0a640d53da17133890
+          test "$(git hash-object tools/production/owner-list-only-transition-scope.mjs)" = dabc9d3efa98deb14c4270c9a062a7218da3bdb4
+          test "$(git hash-object tests/owner-list-only-transition-scope.test.mjs)" = c47ef6aca655e137f933a2a472a5accda82009f6
           test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
           test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f

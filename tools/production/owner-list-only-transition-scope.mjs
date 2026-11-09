@@ -23,7 +23,7 @@ function inventory(json){
  for(const row of json.result){
   const id=row?.id??row?.name;
   if(!obj(row)||typeof id!=="string"||id.length>500||m.has(id)||
-     !/^projects\/[^/]+\/locations\/[^/]+\/functions\/[A-Za-z][A-Za-z0-9_-]*$/.test(id))
+     !/^(?:[A-Za-z][A-Za-z0-9_-]*|projects\/[^/]+\/locations\/[^/]+\/functions\/[A-Za-z][A-Za-z0-9_-]*)$/.test(id))
    STOP("BAD_FUNCTION_ID");
   m.set(id,row);
  }
