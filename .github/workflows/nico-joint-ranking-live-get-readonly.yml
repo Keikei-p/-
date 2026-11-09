@@ -1,0 +1,46 @@
+name: NICO joint ranking LIVE route status (GET ONLY / NO DEPLOY)
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/production/inspect-joint-ranking-live-readonly.mjs'
+      - 'tests/inspect-joint-ranking-live-readonly.test.mjs'
+      - '.github/workflows/nico-joint-ranking-live-get-readonly.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/production/inspect-joint-ranking-live-readonly.mjs'
+      - 'tests/inspect-joint-ranking-live-readonly.test.mjs'
+      - '.github/workflows/nico-joint-ranking-live-get-readonly.yml'
+permissions:
+  contents: read
+jobs:
+  classify-current-ranking-endpoints:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      GH_TOKEN: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify NO production credentials or deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$GH_TOKEN"
+          node --check tools/production/inspect-joint-ranking-live-readonly.mjs
+          node --test tests/inspect-joint-ranking-live-readonly.test.mjs
+      - name: Two anonymous GET requests and minimal status output only
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/inspect-joint-ranking-live-readonly.mjs
+          echo 'NO_AUTH_REAL_USER_FINANCE_BOUNDARY_UNVERIFIED'
+          echo 'NO_DEPLOY_NO_RULES_NO_DOCUMENT_WRITES'
