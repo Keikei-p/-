@@ -82,9 +82,12 @@ function rankBreakdown(value,companyKey=null){
  }).sort((a,b)=>b.count-a.count||
    a.name.localeCompare(b.name,"ja")||
    a.id.localeCompare(b.id));
- return ordered.map((row,index)=>({
-  ...row,rank:ordered.findIndex(x=>x.count===row.count)+1
- }));
+ let previous=null,rank=0;
+ return ordered.map((row,index)=>{
+  if(previous!==row.count)rank=index+1;
+  previous=row.count;
+  return {...row,rank};
+ });
 }
 /** Validate and narrow the server response BEFORE rendering any content. */
 export function verifiedJointCountView(response,{month,role}={}){
