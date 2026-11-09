@@ -28,7 +28,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git hash-object tools/production/audit-owner-topology-live-readonly.mjs)" = 5bd929825e797a62f88fb5850ff1257c4a772e40
-          test "$(git hash-object tests/audit-owner-topology-live-readonly.test.mjs)" = 9432d101b9453b393de0c4ebe0ee13eaa4874f83
+          test "$(git hash-object tests/audit-owner-topology-live-readonly.test.mjs)" = a06934bd5495919b7f734fed659ab9b4bfe58db8
           test "$(git hash-object tools/production/audit-owner-workspace-live-readonly.mjs)" = 642fe87d5e3026989d9619f3d0d0a02d19dee545
           test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
           test "$(git hash-object staging/partner-owner-correction-v3/trusted-auth.cjs)" = a3e1f03f3e7032024e00109d9211bc34384b9a49
