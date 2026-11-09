@@ -42,7 +42,7 @@ jobs:
           test "$(git hash-object tools/readonly-backup/restore-emulator.mjs)" = 638bd79ed31ad28e7298d8ed2e6927730ec129b1
           node --check tools/production/audit-managed-backup-restore-preflight-readonly.mjs
           node --check tools/production/inspect-live-firestore-rules-release.mjs
-          node --test tests/managed-backup-restore-preflight-readonly.test.mjs tests/inspect-live-firestore-rules-release.test.mjs tests/inspect-live-firestore-rules-release.test.mjs
+          node --test tests/managed-backup-restore-preflight-readonly.test.mjs tests/inspect-live-firestore-rules-release.test.mjs
           git diff --exit-code -- firestore.rules firebase.json index.html functions functions-partner-workspace
   live-get-only:
     needs: offline
