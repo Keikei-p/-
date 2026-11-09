@@ -43,15 +43,36 @@ export async function publishOwnerCountAddOne({request,oldSources,candidate,rele
     typeof log!=="function")STOP("ARGUMENTS");
  const latest=async()=>releasedName(await request("GET",RELEASES));
  const oldVersion=await latest();
- if(oldVersion!==BASE_VERSION)STOP("EXISTING_HOSTING_RELEASE_CHANGED");
+ // A concurrent routine can publish a newer Hosting version. Accept it ONLY
+ // if its full asset manifest and Hosting config are identical to the pinned
+ // 17-asset previously reviewed version. Never assume a new version is safe.
  const old=await request("GET",BASE+"/"+oldVersion);
  if(old?.name!==oldVersion||old.status!=="FINALIZED"||
     !old.config||typeof old.config!=="object"||Array.isArray(old.config))
-  STOP("OLD_CONFIG_UNVERIFIED");
- const original=await filesOf(request,oldVersion);
- if(old.fileCount!=null&&Number(old.fileCount)!==original.length)
-  STOP("OLD_MANIFEST_COUNT");
- const plan=planOwnerCountAddOne({version:oldVersion,liveFiles:original,oldSources,candidate});
+  STOP("LIVE_CONFIG_UNVERIFIED");
+ const base=oldVersion===BASE_VERSION?old:await request("GET",BASE+"/"+BASE_VERSION);
+ if(base?.name!==BASE_VERSION||base.status!=="FINALIZED"||
+    JSON.stringify(base.config)!==JSON.stringify(old.config))
+  STOP("REVIEWED_BASE_CONFIG_DRIFT");
+ const baseFiles=await filesOf(request,BASE_VERSION);
+ if(base.fileCount!=null&&Number(base.fileCount)!==baseFiles.length)
+  STOP("REVIEWED_BASE_COUNT");
+ const plan=planOwnerCountAddOne({
+  version:BASE_VERSION,liveFiles:baseFiles,oldSources,candidate
+ });
+ const liveFiles=oldVersion===BASE_VERSION?baseFiles:await filesOf(request,oldVersion);
+ if(liveFiles.length!==plan.previousCount||
+    old.fileCount!=null&&Number(old.fileCount)!==liveFiles.length)
+  STOP("LIVE_ASSET_COUNT_DRIFT");
+ const current=new Map();
+ for(const file of liveFiles){
+  if(typeof file?.path!=="string"||typeof file.hash!=="string"||
+     !/^[a-f0-9]{64}$/.test(file.hash.toLowerCase())||
+     current.has(file.path))STOP("LIVE_ASSET_SCHEMA_DRIFT");
+  current.set(file.path,file.hash.toLowerCase());
+ }
+ if([...plan.originalManifest].some(([path,hash])=>current.get(path)!==hash))
+  STOP("LIVE_ASSET_DRIFT");
  log("OWNER_COUNT_ADDONE_PREFLIGHT "+JSON.stringify({
   existingFilesPreserved:plan.previousCount,filesAdded:1,
   scope:NEW_PATH,readOnlyPortal:true,firestoreWrites:0
