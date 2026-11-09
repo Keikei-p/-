@@ -13,7 +13,8 @@ export const TARGET="functions:ranking-owner-approvals:getVerifiedJointCountRank
 export const NAME="getVerifiedJointCountRanking";
 const PROJECT="sales-management-cc116",REGION="asia-northeast1";
 const NAMES=new Set(["getRankingOwnerConsentStatus","setRankingOwnerConsent",
- "getOwnerProductVisibility","setOwnerProductVisibility",NAME]);
+ "getOwnerProductVisibility","setOwnerProductVisibility",
+ "getOwnerReviewedSkuMapping","setOwnerReviewedSkuMapping",NAME]);
 const STOP=reason=>{throw Error("JOINT_RANKING_DISABLED_RELEASE_"+reason);};
 export function ensureSingleRankingTarget(value){
  if(value!==TARGET)STOP("EXTRA_OR_WRONG_FUNCTION");
@@ -29,6 +30,7 @@ export function inspectIsolatedRankingSource(indexText,configText){
    cfg.functions?.codebase!=="ranking-owner-approvals"||
    !indexText.includes('NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"')||
    !indexText.includes('NICO_OWNER_PRODUCT_VISIBILITY_ENABLED==="enabled"')||
+   !indexText.includes('NICO_OWNER_SKU_MAPPING_ENABLED==="enabled"')||
    !indexText.includes('NICO_RANKING_OWNER_SETTINGS_ENABLED==="enabled"')||
    !indexText.includes('exports.getVerifiedJointCountRanking=onRequest({')||
    !indexText.includes('cors:false')||
