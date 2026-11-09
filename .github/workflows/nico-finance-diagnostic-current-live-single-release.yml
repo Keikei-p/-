@@ -1,0 +1,124 @@
+name: NICO reviewed finance diagnostic one-page current Hosting release (STRICT)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/hosting/surgical-finance-boundary-current-live.mjs'
+      - 'tests/surgical-finance-boundary-current-live.test.mjs'
+      - '.github/workflows/nico-finance-diagnostic-current-live-single-release.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/hosting/surgical-finance-boundary-current-live.mjs'
+      - 'tests/surgical-finance-boundary-current-live.test.mjs'
+      - '.github/workflows/nico-finance-diagnostic-current-live-single-release.yml'
+permissions:
+  contents: read
+concurrency:
+  group: nico-reviewed-finance-diagnostic-only-current-hosting
+  cancel-in-progress: false
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify immutable original app, current one-page deploy source and tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
+          test "$(git hash-object finance-boundary-check.html)" = 7fa664efb17f6d3337e9403498aa8c0857b35be5
+          test "$(git hash-object tools/hosting/surgical-finance-boundary-current-live.mjs)" = 8abc2823119a148760c4d1cdcd11a6058cdbf39e
+          node --check tools/hosting/surgical-finance-boundary-current-live.mjs
+          node --test tests/surgical-finance-boundary-current-live.test.mjs tests/surgical-finance-boundary-mobile-login.test.mjs tests/finance-boundary-ondevice.test.mjs
+          test "$(git show 2c10e27bb6a92684470c74388a76cad3d0f3ee4c:finance-boundary-check.html | git hash-object --stdin)" = 1369f7523e171f64cacb263aa65e8e7e04572d27
+  release-only-fully-reviewed-single-page:
+    needs: offline
+    if: >-
+      ${{ github.event_name == 'push' &&
+          github.repository == 'Keikei-p/-' &&
+          github.ref == 'refs/heads/main' &&
+          startsWith(github.event.head_commit.message, 'release: audited finance diagnostic page only (20261109)') &&
+          needs.offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      NICO_FINANCE_DIAGNOSTIC_RELEASE_CONFIRMATION: CONFIRM_REPLACE_DIAGNOSTIC_MOBILE_LOGIN_ONLY
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Refuse any unrelated main revision or unreviewed asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
+          test "$(git hash-object finance-boundary-check.html)" = 7fa664efb17f6d3337e9403498aa8c0857b35be5
+          test "$(git hash-object tools/hosting/surgical-finance-boundary-current-live.mjs)" = 8abc2823119a148760c4d1cdcd11a6058cdbf39e
+          node --test tests/surgical-finance-boundary-current-live.test.mjs
+      - name: Supply existing Hosting identity privately
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-finance-singlepage.private.json"
+          chmod 600 "$RUNNER_TEMP/nico-finance-singlepage.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-finance-singlepage.private.json" >> "$GITHUB_ENV"
+      - name: Install existing Hosting auth SDK (no upgrades to source or locks)
+        shell: bash
+        run: npm install --prefix functions --ignore-scripts --no-audit --no-fund --package-lock=false
+      - name: Require exact current 12-file live manifest, old diagnostic SHA, identical other 11 assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/hosting/surgical-finance-boundary-current-live.mjs --dry-run
+          echo 'CURRENT_LIVE_VERSION_AND_DIAGNOSTIC_OLD_HASH_VERIFIED'
+      - name: Publish ONLY reviewed read-only finance diagnostic page preserving all other live files
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/hosting/surgical-finance-boundary-current-live.mjs --release
+      - name: Verify exact diagnostic page bytes and existing app URLs after Hosting release
+        shell: bash
+        run: |
+          set -euo pipefail
+          matched=false
+          for n in $(seq 1 12); do
+            curl -fsSL --max-time 25 \
+              "https://nico-factory.web.app/finance-boundary-check.html?reviewed_release=$GITHUB_SHA-$n" \
+              > "$RUNNER_TEMP/nico-finance-diagnostic-verify.html" || true
+            if cmp -s "$RUNNER_TEMP/nico-finance-diagnostic-verify.html" finance-boundary-check.html; then
+              matched=true
+              break
+            fi
+            sleep 5
+          done
+          test "$matched" = true || { echo 'STOP_POST_DEPLOY_DIAGNOSTIC_BYTES_MISMATCH'; exit 1; }
+          for route in / /partner-invite.html /partner-counts.html /partner-workspace.html; do
+            test "$(curl -fsSL -o /dev/null -w '%{http_code}' --max-time 25 "https://nico-factory.web.app$route")" = '200'
+          done
+          echo 'POST_DEPLOY_REVIEWED_FINANCE_DIAGNOSTIC_ONLY_PASS'
+          echo 'PRODUCTION_FIRESTORE_WRITES=0'
+          echo 'PRODUCTION_RULES_DEPLOYS=0'
+          echo 'ORIGINAL_HOSTING_ASSETS_CHANGED=0'
+      - name: Erase temporary credential and HTML
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/nico-finance-singlepage.private.json" "$RUNNER_TEMP/nico-finance-diagnostic-verify.html" firebase-debug.log
