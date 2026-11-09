@@ -105,7 +105,7 @@ function parseChange(raw,expected){
 }
 function label(tag,s){
  const element=document.createElement(tag);
- element.textContent=String(s);
+ if(s!==undefined)element.textContent=String(s);
  return element;
 }
 let current=null,model=null,generation=0,busy=false;
