@@ -59,8 +59,8 @@ test("all six original config updateTimes before dispatch and new ranking OFF gi
  assert(!JSON.stringify(result).includes("do-not-show"));
 });
 test("Gen1 originals also protected; audit rejects updates newer than dispatch",async()=>{
- const replaced=fake({"v2/"+ORIGINAL[0]:null,
-  "v1/"+ORIGINAL[0]:v1(ORIGINAL[0])});
+ const replaced=fake({["v2/"+ORIGINAL[0]]:null,
+  ["v1/"+ORIGINAL[0]]:v1(ORIGINAL[0])});
  const okReport=await auditRetrospectiveReadOnly(replaced.read);
  assert.equal(okReport.originalSixGenerationCount,6);
  for(const changed of [
