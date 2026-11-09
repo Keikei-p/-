@@ -18,8 +18,8 @@ const make=(role="hub_owner")=>({
  ...(role==="hub_owner"?{
   summary:{own:3,partner:5,total:8,unidentified:0},
   memberRanking:[
-   {id:"hub:one",rank:1,name:"田中",count:5},
-   {id:"partner:two",rank:2,name:"鈴木",count:3}
+   {id:"hub:one",rank:1,name:"田中",companyName:"自社",count:5},
+   {id:"partner:two",rank:2,name:"鈴木",companyName:"協力店",count:3}
   ],
   productRanking:[{id:"nuro",rank:1,name:"NURO光",count:8}]
  }:{
@@ -185,4 +185,67 @@ test("direct Function stays inert until explicitly enabled",async()=>{
  });
  assert.equal(await panel.refresh("2026-11"),false);
  assert.equal(requests,0);
+});
+
+test("same-named employees from different companies remain distinguishable in partner rankings",async()=>{
+ const root=new Node("main"),auth={currentUser:user};
+ const view=createVerifiedJointRankingPanel({
+  document,root,auth,featureEnabled:true,
+  fetchApi:async()=>({ok:true,json:async()=>make("partner_owner")}),
+  roleProvider:()=> "partner_owner"
+ });
+ assert.equal(await view.refresh("2026-11"),true);
+ const content=allText(root);
+ assert(content.includes("佐藤（自社）"));
+ assert(content.includes("佐藤（協力店）"));
+ assert.equal(content.split("佐藤（").length-1,2);
+ assert(!content.includes("売上"));
+ view.destroy();
+});
+test("owner sees different company labels for equally named employees",async()=>{
+ const root=new Node("main");
+ const raw=make();
+ raw.memberRanking[0].name="佐藤";
+ raw.memberRanking[1].name="佐藤";
+ const view=createVerifiedJointRankingPanel({
+  document,root,auth:{currentUser:user},featureEnabled:true,
+  fetchApi:async()=>({ok:true,json:async()=>raw}),
+  roleProvider:()=> "hub_owner"
+ });
+ assert.equal(await view.refresh("2026-11"),true);
+ assert(allText(root).includes("佐藤（自社）"));
+ assert(allText(root).includes("佐藤（協力店）"));
+});
+test("ranking never displays a different requested month or impossible calendar range",async()=>{
+ for(const change of [
+  r=>r.range.start="2026-10-01",
+  r=>r.range.end="2026-10-31",
+  r=>r.range.end="2026-11-31",
+  r=>r.range.end="2026-11-00",
+  r=>r.range.days=31,
+  r=>r.range.days=0,
+  r=>r.range.days=9.5
+ ]){
+  const raw=make();change(raw);
+  assert.throws(()=>verifiedJointCountView(raw,{month:"2026-11",role:"hub_owner"}),
+   /JOINT_RANKING_RESPONSE_UNVERIFIED/);
+ }
+ const root=new Node("main"),raw=make();
+ raw.range.start="2026-10-01";
+ const view=createVerifiedJointRankingPanel({
+  document,root,auth:{currentUser:user},featureEnabled:true,
+  fetchApi:async()=>({ok:true,json:async()=>raw}),
+  roleProvider:()=> "hub_owner"
+ });
+ assert.equal(await view.refresh("2026-11"),false);
+ assert(!allText(root).includes("合同合計"));
+ assert(allText(root).includes("確認できません"));
+});
+test("injected financial or malformed organization labels never appear",()=>{
+ for(const label of ["自社の売上1万円","協力店 3000円",null,""]){
+  const raw=make("partner_owner");
+  raw.publicRanking.members[0].company=label;
+  assert.throws(()=>verifiedJointCountView(raw,{month:"2026-11",role:"partner_owner"}),
+   /JOINT_RANKING_RESPONSE_UNVERIFIED/);
+ }
 });
