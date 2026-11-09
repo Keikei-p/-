@@ -27,8 +27,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git hash-object tools/production/audit-owner-workspace-live-readonly.mjs)" = 488d5e2ab5bf15f686b9d94eb37ed84f59cd32b9
-          test "$(git hash-object tests/audit-owner-workspace-live-readonly.test.mjs)" = dce55fd72b9186124af523138af44e8ad260715b
+          test "$(git hash-object tools/production/audit-owner-workspace-live-readonly.mjs)" = 642fe87d5e3026989d9619f3d0d0a02d19dee545
+          test "$(git hash-object tests/audit-owner-workspace-live-readonly.test.mjs)" = 0cfddcd7ece38efc61d8d1a2b5e971222944ce21
           test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
           node --check tools/production/audit-owner-workspace-live-readonly.mjs

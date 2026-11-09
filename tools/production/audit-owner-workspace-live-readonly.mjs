@@ -26,8 +26,10 @@ export function classifyOwnerRoot({uid,user,company,member,authUser,hasCompany,h
  if(!hasMember||m.uid!==uid||m.active!==true||
     (m.companyId!=null&&m.companyId!==u.companyId))
   return "MEMBER_MISSING_OR_INACTIVE";
- if(c.companyKind!=null&&!["internal","direct"].includes(c.companyKind)||
-    c.ownerUid!==uid)return "COMPANY_OWNER_MISMATCH";
+ if(c.companyKind!=null&&!["internal","direct"].includes(c.companyKind))
+  return "COMPANY_KIND_MISMATCH";
+ if(c.ownerUid==null||c.ownerUid==="")return "COMPANY_OWNER_UID_MISSING";
+ if(c.ownerUid!==uid)return "COMPANY_OWNER_UID_DIFFERENT";
  if(u.companyRole!=="owner"||m.companyRole!=="owner"||
     m.companyRole!==u.companyRole||
     (u.accessKind!=null&&u.accessKind!=="internal")||

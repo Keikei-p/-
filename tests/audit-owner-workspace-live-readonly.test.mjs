@@ -75,7 +75,9 @@ test("no approved partner is a distinct metadata state, not zero reported counts
 test("Owner company and membership failures never escalate into relation access",async()=>{
  const cases=[
   {u:{...user,active:false},expected:"USER_MISMATCH_OR_INACTIVE"},
-  {c:{...company,ownerUid:"somebody_else"},expected:"COMPANY_OWNER_MISMATCH"},
+  {c:{...company,ownerUid:"somebody_else"},expected:"COMPANY_OWNER_UID_DIFFERENT"},
+  {c:{...company,ownerUid:null},expected:"COMPANY_OWNER_UID_MISSING"},
+  {c:{...company,companyKind:"partner-other"},expected:"COMPANY_KIND_MISMATCH"},
   {m:null,expected:"MEMBER_MISSING_OR_INACTIVE"},
   {m:{...member,companyRole:"member"},expected:"MEMBER_OWNER_ROLE_MISMATCH"},
   {auth:{...authUser,emailVerified:false},expected:"AUTH_METADATA_UNVERIFIED"},
