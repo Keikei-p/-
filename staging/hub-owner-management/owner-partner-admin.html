@@ -76,7 +76,7 @@ th,td{text-align:left;padding:9px 7px;border-bottom:1px solid #edf1f7}
 import {initializeApp} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
 import {getAuth,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js";
-import {mountVerifiedOwnerCorrection,countOnlyRegisteredCompanies,classifyOwnerWorkspaceError}
+import {mountVerifiedOwnerCorrection,countOnlyRegisteredCompanies}
  from "./owner-partner-admin-assets/mobile-bootstrap.mjs";
 // Remains OFF until the isolated, server-authenticated correction v3 functions
 // are deployed, tested with the owner's existing account, and approved.
@@ -165,11 +165,10 @@ async function chooseCompany(partnerId){
   });
   $("teams").replaceChildren(table(["班","件数"],items));
   $("detailDate").textContent=day+"｜会社・班の件数のみ表示中";
- }catch(error){
+ }catch{
   if(seq!==mySeq||auth.currentUser!==current)return;
   $("overview").replaceChildren();$("teams").replaceChildren();
-  const issue=classifyOwnerWorkspaceError(error);
-  $("detailDate").textContent=issue.message+"（"+issue.code+"）";
+  $("detailDate").textContent="会社の件数を検証できません。最新情報を再取得してください。";
  }
  if(seq!==mySeq||auth.currentUser!==current)return;
  if(currentPanel&&HUB_OWNER_CORRECTION_READY){
@@ -212,10 +211,9 @@ async function refresh(){
    },
    enabled:()=>HUB_OWNER_CORRECTION_READY
   });
- }catch(error){
+ }catch{
   if(target!==seq||session!==user||auth.currentUser!==user)return;
-  const issue=classifyOwnerWorkspaceError(error);
-  clear();session=user;notice(issue.message+"（"+issue.code+"）",true);
+  clear();session=user;notice("自社オーナーの所属を確認できません。自社アプリの権限とネットワークを確認してください。",true);
  }
 }
 $("date").onchange=()=>{void refresh()};
