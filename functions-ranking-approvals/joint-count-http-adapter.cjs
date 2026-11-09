@@ -4,13 +4,14 @@
  * Express (Firebase Functions v2 onRequest) -> validated standard Request
  * for the pre-existing authenticated count-only monthly ranking handler.
  *
- * This is an adapter, NOT a deployed Function. The only supported public
- * endpoint is a future Hosting rewrite to /v1/owner-visible-counts.
+ * This is an adapter, NOT a deployed Function. Only the known direct Function ingress and the future Hosting rewrite
+ * /v1/owner-visible-counts are accepted and normalized to one trusted path.
  * No Firebase credentials, data stores, finance APIs or production switches
  * are used here. The caller must inject the real, verified backend handler.
  */
 const ORIGIN="https://nico-factory.web.app";
 const PATH="/v1/owner-visible-counts";
+const DIRECT_FUNCTION_PATH="/getVerifiedJointCountRanking";
 const TOKEN=/^Bearer ([A-Za-z0-9._-]{20,12000})$/;
 // Exact output fields of buildVerifiedCountDashboard (hub/partner owner).
 // A newly introduced response field must be explicitly security-reviewed.
@@ -49,9 +50,12 @@ function requestPath(req){
     raw.includes("#")||raw.includes("\\")||
     /[\r\n\x00-\x1F]/.test(raw))return null;
  const url=new URL(raw,ORIGIN);
- if(url.origin!==ORIGIN||url.pathname!==PATH||
+ if(url.origin!==ORIGIN||
+    ![PATH,DIRECT_FUNCTION_PATH].includes(url.pathname)||
     url.username||url.password)return null;
- return url;
+ // The direct HTTPS Cloud Function path is allowed only as an ingress alias.
+ // Internal ranking authorization always receives the same canonical path.
+ return new URL(PATH+url.search,ORIGIN);
 }
 function moneyFree(value,depth=0){
  if(depth>32)return false;
