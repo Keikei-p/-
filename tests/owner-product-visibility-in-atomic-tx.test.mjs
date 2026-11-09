@@ -5,9 +5,10 @@ import {createAtomicOwnerPublicationReader}
 import {createStagedAtomicOwnerCountLoader}
  from "../ranking/owner-visible-count-atomic-loader.mjs";
 
-const READ="2026-11-09T00:00:00.123456789Z";
+const READ="2026-11-09T00:00:00.123Z";
 const ts={seconds:Math.floor(Date.parse("2026-11-09T00:00:00Z")/1000),
- nanoseconds:123456789,toDate(){return new Date(this.seconds*1000)}};
+ nanoseconds:123456789,toDate(){return new Date(this.seconds*1000+
+  Math.floor(this.nanoseconds/1000000))}};
 const hub={serverVerified:true,viewerUid:"owner",viewerCompanyId:"hub",
  hubCompanyId:"hub",role:"hub_owner",approvedCompanyIds:["hub","partner"]};
 const partner={...hub,viewerUid:"partner-owner",
@@ -94,4 +95,27 @@ test("atomic count loader consumes genuine owner settings from same transaction"
  assert.equal(result.publication.snapshotReadTime,READ);
  assert.deepEqual(result.publication.enabledHubProductIds,["nuro"]);
  assert.equal(f.transactions,1,"no nested Firestore transaction");
+});
+
+
+test("same Firestore transaction aligns canonical month source and owner settings with non-zero nanoseconds",async()=>{
+ const f=fixture();
+ const owner=await createAtomicOwnerPublicationReader(f)({tx:f.tx,context:hub});
+ assert.equal(owner.snapshotReadTime,READ);
+ assert.equal(owner.snapshotReadTime,new Date(
+  ts.seconds*1000+Math.floor(ts.nanoseconds/1000000)).toISOString());
+ const loader=createStagedAtomicOwnerCountLoader({
+  db:f.db,loadPublicationInTransaction:createAtomicOwnerPublicationReader(f),
+  loadCountsInTransaction:async({month,context})=>({
+   hubCompanyId:"hub",approvedCompanyIds:context.approvedCompanyIds,
+   period:{kind:"month",day:month+"-01",asOf:"2026-11-09"},
+   mappingsReviewed:true,productGroups:[],snapshotReadTime:READ,
+   sources:context.approvedCompanyIds.map(companyId=>({
+    companyId,readTime:READ
+   }))
+  })
+ });
+ const result=await loader({month:"2026-11",context:hub});
+ assert.equal(result.publication.snapshotReadTime,result.input.snapshotReadTime);
+ assert.equal(f.transactions,1);
 });
