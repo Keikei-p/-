@@ -66,11 +66,16 @@ export function compareInventory(before,after){
  if(newIds.length!==1||basename(newIds[0])!==NAME)STOP();
  const id=newIds[0];
  const exactLong="projects/sales-management-cc116/locations/asia-northeast1/functions/"+NAME;
- // The CLI short spelling needs a region/source codebase verification in
- // the workflow inventory; short ID alone is not proof of a correct region.
  if(id!==exactLong&&id!==NAME)STOP();
+ // firebase functions:list may report only a short ID. A matching name is
+ // NOT evidence of the region; require an independent region field in that
+ // case. Also reject contradictory metadata on fully qualified IDs.
+ const entry=after.result.find(item=>(item?.id||item?.name)===id);
+ const region=entry?.region;
+ if(region!==undefined&&region!=="asia-northeast1")STOP();
+ if(id===NAME&&region!=="asia-northeast1")STOP();
  return Object.freeze({newFunctionOnly:true,oldFunctionIdsPreserved:true,
-  targetFunctionName:NAME,regionRequiresConfirmation:id===NAME,
+  targetFunctionName:NAME,regionRequiresConfirmation:false,
   productionRankingEnabled:false,hostingRewritten:false,
   safeToExposePartnerFinance:false});
 }
