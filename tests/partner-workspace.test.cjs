@@ -1676,7 +1676,7 @@ test("legacy publication OFF is enforced inside submit transaction without modif
 
 
 test("OFF legacy category does not block other legacy buckets or allow stale-version overwrite",async()=>{
- const {db,api,req,zero}=setup(),date="2026-11-09";
+ const {db,api,req,zero}=setup(),date="2026-10-31";
  const team=(await api.manage(req("p",{action:"addTeam",name:"別班"}))).teamId;
  const staff=(await api.manage(req("p",{action:"addManaged",name:"別担当",teamId:team}))).staffId;
  db.seed("companies/hub/partnerCatalogSettings/countLinks",{revision:1,links:[
@@ -1684,17 +1684,17 @@ test("OFF legacy category does not block other legacy buckets or allow stale-ver
  ]});
  db.seed("companies/hub/partnerCatalogSettings/publication",{revision:1,productIds:[]});
  const saved=await api.submit(req("p",{date,staffId:staff,
-  counts:{...zero(),AIR:2},expectedVersion:0}));
+  counts:{...zero(),"SB光・AIR":2},expectedVersion:0}));
  assert.equal(saved.totalCount,2);
  const snapshot=clone([...db.store]);
  await assert.rejects(api.submit(req("p",{date,staffId:staff,
-  counts:{...zero(),NURO:1,AIR:2},expectedVersion:1})),e=>e.code==="failed-precondition");
+  counts:{...zero(),NURO:1,"SB光・AIR":2},expectedVersion:1})),e=>e.code==="failed-precondition");
  assert.deepEqual([...db.store],snapshot);
  await assert.rejects(api.submit(req("p",{date,staffId:staff,
-  counts:{...zero(),AIR:3},expectedVersion:0})),e=>e.code==="aborted");
+  counts:{...zero(),"SB光・AIR":3},expectedVersion:0})),e=>e.code==="aborted");
  assert.deepEqual([...db.store],snapshot);
  const updated=await api.submit(req("p",{date,staffId:staff,
-  counts:{...zero(),AIR:3},expectedVersion:1}));
+  counts:{...zero(),"SB光・AIR":3},expectedVersion:1}));
  assert.equal(updated.totalCount,3);
 });
 
