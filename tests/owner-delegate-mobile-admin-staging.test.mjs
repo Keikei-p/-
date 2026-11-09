@@ -34,7 +34,7 @@ function load({listResult=null,changeResult=null,confirm=()=>false}={}){
    if(name==="listHubOwnerDelegates")return async args=>{
     listCalls++;lastArgs=args;
     if(listResult===null)throw Error("backend unavailable");
-    return {data:listResult};
+    return {data:typeof listResult==="function"?listResult(listCalls):listResult};
    };
    if(name==="changeHubOwnerDelegate")return async args=>{
     changeCalls++;lastArgs=args;
@@ -148,6 +148,30 @@ test("confirmation performs exactly one version-gated change and ONLY one read r
  assert.equal(f.elements.get("delegatesBox").hidden,false);
 });
 
+test("server acknowledgment alone is insufficient: reloaded list must show desired grant",async()=>{
+ const f=load({listResult:validList,changeResult:validAck,confirm:()=>true});
+ f.auth.currentUser={uid:"primary",emailVerified:true};
+ await f.api.refresh();
+ await f.api.apply(f.api.model.people[0]);
+ assert.equal(f.getListCalls(),2);
+ assert.equal(f.getChangeCalls(),1);
+ assert.match(f.elements.get("status").textContent,/未確認/);
+});
+test("updated list confirms a primary-approved Owner without any second mutation",async()=>{
+ const f=load({
+  listResult:n=>n===1?validList:{
+   ...validList,ownerGrantVersion:2,
+   candidates:[{...candidate,approved:true}]
+  },
+  changeResult:validAck,confirm:()=>true
+ });
+ f.auth.currentUser={uid:"primary",emailVerified:true};
+ await f.api.refresh();
+ await f.api.apply(f.api.model.people[0]);
+ assert.equal(f.getChangeCalls(),1);
+ assert.equal(f.getListCalls(),2);
+ assert.match(f.elements.get("status").textContent,/最新一覧で確認しました/);
+});
 test("the page never automatically retries an unconfirmed mutation",async()=>{
  const f=load({listResult:validList,confirm:()=>true,changeResult:null});
  f.auth.currentUser={uid:"primary",emailVerified:true};
