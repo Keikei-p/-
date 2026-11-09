@@ -70,5 +70,7 @@ test("workflow is GET only, cannot log site contents, cannot reach financial API
  assert.match(js,/method:"GET"/);
  assert.doesNotMatch(js,/method:"POST"|method:"PUT"|method:"PATCH"|method:"DELETE"|Bearer /);
  assert.doesNotMatch(js,/console\.log\((?:body|html|reviewed|raw)/);
- assert.doesNotMatch(js,/firestore\.googleapis\.com|cloudfunctions\.net|firebase-admin/);
+ // Static marker text is legitimate for checking the public HTML.
+ // Forbid an actual network fetch to private Firestore/Functions resources.
+ assert.doesNotMatch(js,/fetch\(\s*["']https:\/\/(?:firestore\.googleapis\.com|[^"']*cloudfunctions\.net)|firebase-admin/);
 });
