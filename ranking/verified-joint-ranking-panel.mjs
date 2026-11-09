@@ -12,7 +12,20 @@ const URL_PATH="/v1/owner-visible-counts";
 // The only other trusted ingress is the verified, fixed Firebase Function URL.
 // This does NOT make an arbitrary token-bearing API destination configurable.
 const DIRECT_FUNCTION_URL="https://asia-northeast1-sales-management-cc116.cloudfunctions.net/getVerifiedJointCountRanking";
-const MONTH=/^20\d\d-(0[1-9]|1[0-2])$/;
+const MONTH=/^20\\d\\d-(0[1-9]|1[0-2])$/;
+const DATE=/^20\\d\\d-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$/;
+function monthRangeMatches(range,month){
+ if(!obj(range)||range.start!==month+"-01"||
+    typeof range.end!=="string"||!DATE.test(range.end)||
+    range.end.slice(0,7)!==month||
+    !Number.isSafeInteger(range.days))return false;
+ const [year,mon,day]=range.end.split("-").map(Number);
+ const check=new Date(0);
+ check.setUTCHours(0,0,0,0);
+ check.setUTCFullYear(year,mon-1,day);
+ return check.getUTCFullYear()===year&&check.getUTCMonth()+1===mon&&
+  check.getUTCDate()===day&&range.days===day;
+}
 const BAD=/(?:売上|単価|収益|報酬|利益|キャッシュバック|[¥￥$€]|(?:cashback|revenue|unitPrice|amount|price|commission)[\s:_=-]*[0-9０-９]|[0-9０-９][0-9０-９.,，]*\s*(?:円|万円))/i;
 const BLOCK=()=>{throw Error("JOINT_RANKING_RESPONSE_UNVERIFIED");};
 const TRUSTED_ENDPOINTS=Object.freeze({
@@ -31,19 +44,23 @@ const text=x=>{
     BAD.test(x))BLOCK();
  return x.trim();
 };
-const rankRows=(value,allowedKeys)=>{
+const rankRows=(value,allowedKeys,companyKey=null)=>{
  if(!Array.isArray(value)||value.length>10000)BLOCK();
  const out=[],ids=new Set();
  for(const [index,row] of value.entries()){
   if(!obj(row)||!number(row.count)||!number(row.rank)||row.rank<1||
-     !allowedKeys.every(key=>key in row))BLOCK();
+     !allowedKeys.every(key=>key in row)||
+     (companyKey!==null&&!(companyKey in row)))BLOCK();
   // Public partner rankings intentionally omit personal IDs. Tied ranks
   // and identical names across companies are valid; never coalesce people.
   const id=row.id==null?"public-"+index:text(row.id);
   if(ids.has(id))BLOCK();
   ids.add(id);
+  // Company names are part of the vetted server ranking projection.
+  // Preserve them to distinguish identical names across organizations.
   out.push({id,rank:row.rank,
-   name:text(row.name),count:row.count});
+   name:text(row.name),company:companyKey===null?null:text(row[companyKey]),
+   count:row.count});
  }
  return out.sort((a,b)=>a.rank-b.rank||a.name.localeCompare(b.name,"ja"));
 };
@@ -54,9 +71,7 @@ export function verifiedJointCountView(response,{month,role}={}){
     response.period!=="month"||
     !["hub_owner","partner_owner"].includes(role)||
     response.role!==role||response.unit!=="件"||
-    !obj(response.range)||
-    typeof response.range.start!=="string"||
-    typeof response.range.end!=="string"||
+    !monthRangeMatches(response.range,month)||
     (typeof response.readTime!=="string"||
      Number.isNaN(Date.parse(response.readTime))))BLOCK();
 
@@ -71,12 +86,12 @@ export function verifiedJointCountView(response,{month,role}={}){
      !number(response.summary.own)||
      !number(response.summary.partner)||
      response.summary.own+response.summary.partner!==response.summary.total)BLOCK();
-  people=rankRows(response.memberRanking,["name","count","rank"]);
+  people=rankRows(response.memberRanking,["name","count","rank"],"companyName");
   products=rankRows(response.productRanking,["name","count","rank"]);
  }else{
   if(!obj(response.publicRanking)||!obj(response.own)||
      !number(response.own.count))BLOCK();
-  people=rankRows(response.publicRanking.members,["name","count","rank"]);
+  people=rankRows(response.publicRanking.members,["name","count","rank"],"company");
   products=rankRows(response.publicRanking.products,["name","count","rank"]);
  }
  return Object.freeze({role,month,unit:"件",
@@ -95,7 +110,7 @@ function list(document,title,rows){
  const ol=el(document,"ol");
  if(!rows.length)ol.appendChild(el(document,"li","対象件数がありません"));
  for(const r of rows)ol.appendChild(el(document,"li",
-  r.rank+"位  "+r.name+"  "+r.count+"件"));
+  r.rank+"位  "+r.name+(r.company?"（"+r.company+"）":"")+"  "+r.count+"件"));
  section.appendChild(ol);
  return section;
 }
