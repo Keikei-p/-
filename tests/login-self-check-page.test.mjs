@@ -40,7 +40,7 @@ function load({existing=true,profile,readError=null}={}){
  };
  vm.runInNewContext(script+"\nglobalThis.__test={classify,inspect,status};",
   context,{filename:"login-self-check.html",timeout:2000});
- return {elements,auth,user,api:context.__test,observer:u=>observer(u),reads,
+ return {elements,element:$,auth,user,api:context.__test,observer:u=>observer(u),reads,
   get signIns(){return signIns},get logouts(){return logouts},get resets(){return resets}};
 }
 test("email sign-in categories exactly match current personal user status; no finance data",()=>{
@@ -101,13 +101,13 @@ test("a Firestore read failure is never represented as successful membership",as
 });
 test("login password is cleared immediately; explicit logout only when user requests it",async()=>{
  const x=load();
- x.elements.get("email").value=" DEMO@example.invalid ";
- x.elements.get("password").value="passphrase";
- await x.elements.get("loginForm").onsubmit({preventDefault(){}});
+ x.element("email").value=" DEMO@example.invalid ";
+ x.element("password").value="passphrase";
+ await x.element("loginForm").onsubmit({preventDefault(){}});
  assert.equal(x.signIns,1);
  assert.equal(x.logouts,0);
- assert.equal(x.elements.get("password").value,"");
- await x.elements.get("logoutBtn").onclick();
+ assert.equal(x.element("password").value,"");
+ await x.element("logoutBtn").onclick();
  assert.equal(x.logouts,1);
 });
 test("no admin SDK or direct write, credential collection, other-user lookups or money originals",()=>{
