@@ -22,7 +22,7 @@ function fixture({enabled=true,approvals,partner=false,authDisabled,memberRole="
  if(primaryInactive)users.set(userPath(PRIMARY),{...principal(PRIMARY),active:false});
  const company={active:true,ownerUid:PRIMARY,companyKind:partner?"partner":"internal"};
  if(approvals!==undefined)company.approvedHubOwnerUids=approvals;
- const values=new Map([[...users][0],...[]]);
+ const values=new Map();
  // Explicitly copy documents; no test mutates them during verification.
  for(const [k,v] of users)values.set(k,v);
  values.set(companyPath(CID),company);
@@ -89,7 +89,6 @@ test("wrong primary proof, disabled authentication, revoked membership, partner 
  for(const options of [
   {approvals:[SECOND],primaryInactive:true},
   {approvals:[SECOND],authDisabled:PRIMARY},
-  {approvals:[SECOND],authDisabled:SECOND},
   {approvals:[SECOND],memberRole:"member"},
   {approvals:[SECOND],partner:true},
   {approvals:[SECOND,SECOND]},
@@ -99,6 +98,8 @@ test("wrong primary proof, disabled authentication, revoked membership, partner 
   const f=fixture(options);
   await rejected(f.verify(f.request(SECOND)));
  }
+ const revokedSelf=fixture({approvals:[SECOND],authDisabled:SECOND});
+ await rejected(revokedSelf.verify(revokedSelf.request(SECOND)),"unauthenticated");
 });
 test("feature flag is OFF by default, never publish this candidate automatically",async()=>{
  const f=fixture({enabled:false,approvals:[SECOND]});
