@@ -1726,3 +1726,17 @@ test("published legacy category saves, OFF blocks increase, re-ON restores count
  assert.equal(db.store.get("products/money").unitPrice,98765);
  assert.ok(priorEntry===undefined||priorEntry.totalCount===1);
 });
+
+
+test("partner dashboard exposes only count-entry availability, never finance or hidden product identifiers",async()=>{
+ const {db,api,req}=setup(),date="2026-10-31";
+ db.seed("companies/hub/partnerCatalogSettings/countLinks",{revision:1,links:[
+  {productId:"secret_product",category:"NURO",effectiveFrom:date}
+ ]});
+ db.seed("companies/hub/partnerCatalogSettings/publication",{revision:1,productIds:[]});
+ const result=await api.view(req("p",{date}));
+ assert.equal(result.legacyCategoryPublication.find(x=>x.category==="NURO").acceptsIncrease,false);
+ assert.equal(result.legacyCategoryPublication.find(x=>x.category==="SB光・AIR").acceptsIncrease,true);
+ assert.equal(result.legacyCategoryPublication.length,KEYS.length);
+ assert.doesNotMatch(JSON.stringify(result.legacyCategoryPublication),/secret_product|revenue|price|cashback|98765/);
+});
