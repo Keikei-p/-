@@ -27,41 +27,6 @@ const ROOT_FIELDS=[
 ];
 const COMPANY_FIELDS=["partnerCompanyId","name","active","teams"];
 
-/** Phase 1: fail-closed, client-only diagnostic codes. Never echo Firebase
- * error messages/details: those may include account IDs or backend internals.
- * Server authorization remains entirely inside the existing Functions.
- */
-const OWNER_WORKSPACE_HINTS=Object.freeze({
- AUTH_REQUIRED:"ログインが切れました。自社アプリでログインしてください。",
- EMAIL_UNVERIFIED:"メールアドレスの確認が必要です。",
- OWNER_NOT_AUTHORIZED:"自社Owner権限を確認できません。会社と所属設定を確認してください。",
- PARTNER_RELATION_MISSING:"対象協力店の共有承認を確認できません。",
- FUNCTION_UNAVAILABLE:"件数管理APIを利用できません。しばらくして再取得してください。",
- DATA_SHAPE_INVALID:"件数データの確認に失敗しました。訂正は停止しています。",
- NETWORK_ERROR:"通信が完了しませんでした。接続状況を確認して再取得してください。"
-});
-export function classifyOwnerWorkspaceError(error){
- const allowed=Object.keys(OWNER_WORKSPACE_HINTS);
- const explicit=error?.details?.publicCode;
- let code=typeof explicit==="string"&&allowed.includes(explicit)?explicit:null;
- if(!code){
-  const status=typeof error?.code==="string"?
-   error.code.toLowerCase().replace(/^functions\//,""):"";
-  const kind=typeof error?.message==="string"?error.message:"";
-  if(status==="unauthenticated"||status==="auth/id-token-expired")
-   code="AUTH_REQUIRED";
-  else if(status==="permission-denied")
-   code="OWNER_NOT_AUTHORIZED";
-  else if(status==="auth/network-request-failed"||
-      ["deadline-exceeded","cancelled","network-request-failed"].includes(status))
-   code="NETWORK_ERROR";
-  else if(/^(?:OWNER_CORRECTION_BOOT_(?:WORKSPACE_UNVERIFIED|COMPANY_UNVERIFIED)|STALE_OR_UNTRUSTED|INVALID_TEAM_COUNTS|UNVERIFIED_TEAM)$/.test(kind))
-   code="DATA_SHAPE_INVALID";
-  else code="FUNCTION_UNAVAILABLE";
- }
- return Object.freeze({code,message:OWNER_WORKSPACE_HINTS[code]});
-}
-
 export function countOnlyRegisteredCompanies(raw,date){
  if(!object(raw)||raw.role!=="hub"||raw.date!==date||
     !Array.isArray(raw.registeredCompanies)||
