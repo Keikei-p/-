@@ -130,9 +130,9 @@ export async function publishOwnerCountAddOne({request,oldSources,candidate,rele
    STOP("FINAL_MANIFEST_MISMATCH");
  };
  await inspect();
- const current=await request("GET",BASE+"/"+created.name);
- if(current?.name!==created.name||current.status!=="FINALIZED"||
-    JSON.stringify(current.config)!==JSON.stringify(old.config))
+ const createdMeta=await request("GET",BASE+"/"+created.name);
+ if(createdMeta?.name!==created.name||createdMeta.status!=="FINALIZED"||
+    JSON.stringify(createdMeta.config)!==JSON.stringify(old.config))
   STOP("CREATED_VERSION_NOT_VERIFIED");
  if(await latest()!==oldVersion)STOP("CONCURRENT_RELEASE_BEFORE_PUBLISH");
  const published=await request("POST",BASE+"/sites/"+SITE+
