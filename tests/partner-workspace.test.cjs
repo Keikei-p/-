@@ -1697,3 +1697,32 @@ test("OFF legacy category does not block other legacy buckets or allow stale-ver
   counts:{...zero(),AIR:3},expectedVersion:1}));
  assert.equal(updated.totalCount,3);
 });
+
+
+test("published legacy category saves, OFF blocks increase, re-ON restores count entry without rewriting history",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ const team=(await api.manage(req("p",{action:"addTeam",name:"公開切替班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"公開切替担当",teamId:team}))).staffId;
+ const pub="companies/hub/partnerCatalogSettings/publication";
+ db.seed("companies/hub/partnerCatalogSettings/countLinks",{revision:1,links:[
+  {productId:"nuro",category:"NURO",effectiveFrom:date}
+ ]});
+ db.seed(pub,{revision:1,productIds:["nuro"]});
+ const first=await api.submit(req("p",{date,staffId:staff,
+  counts:{...zero(),NURO:1},expectedVersion:0}));
+ assert.equal(first.version,1);
+ const priorEntry=clone(db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+staff));
+ db.seed(pub,{revision:2,productIds:[]});
+ const before=clone([...db.store]);
+ await assert.rejects(api.submit(req("p",{date,staffId:staff,
+  counts:{...zero(),NURO:2},expectedVersion:1})),e=>e.code==="failed-precondition");
+ assert.deepEqual([...db.store],before);
+ db.seed(pub,{revision:3,productIds:["nuro"]});
+ const second=await api.submit(req("p",{date,staffId:staff,
+  counts:{...zero(),NURO:2},expectedVersion:1}));
+ assert.equal(second.version,2);
+ assert.equal(second.totalCount,2);
+ assert.equal(db.store.get("records/old").totalRevenue,808080);
+ assert.equal(db.store.get("products/money").unitPrice,98765);
+ assert.ok(priorEntry===undefined||priorEntry.totalCount===1);
+});
