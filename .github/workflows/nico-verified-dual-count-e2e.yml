@@ -9,6 +9,8 @@ on:
       - 'ranking/owner-visible-count-atomic-loader.mjs'
       - 'ranking/internal-month-count-tx-reader.mjs'
       - 'ranking/canonical-joint-count-sku-reader.mjs'
+      - 'ranking/owner-reviewed-sku-mapping-store.mjs'
+      - 'tests/owner-reviewed-sku-mapping-store.test.mjs'
       - 'ranking/canonical-owner-count-server-factory.mjs'
       - 'tests/canonical-owner-count-server-factory.test.mjs'
       - 'tests/canonical-joint-count-sku-reader.test.mjs'
@@ -80,6 +82,7 @@ jobs:
           node --check ranking/owner-visible-count-atomic-loader.mjs
           node --check ranking/internal-month-count-tx-reader.mjs
           node --check ranking/canonical-joint-count-sku-reader.mjs
+          node --check ranking/owner-reviewed-sku-mapping-store.mjs
           node --check ranking/canonical-owner-count-server-factory.mjs
           node --check tests/canonical-owner-count-server-factory.test.mjs
           node --check tests/canonical-joint-count-sku-reader.test.mjs
@@ -104,6 +107,7 @@ jobs:
           set -euo pipefail
           node --test tests/verified-dual-count-dashboards.test.mjs tests/owner-product-visibility-rankings.test.mjs tests/owner-visible-count-server-handler.test.mjs tests/owner-visible-count-atomic-loader.test.mjs tests/owner-product-visibility-in-atomic-tx.test.mjs tests/owner-product-visibility-firestore.test.mjs tests/owner-product-visibility-panel.test.mjs tests/owner-product-visibility-dashboard-mount.test.mjs tests/owner-product-visibility-firebase-bridge.test.mjs tests/owner-product-visibility-callables.test.cjs
           node --test tests/partner-month-readonly-loader.test.mjs tests/internal-month-count-tx-reader.test.mjs tests/canonical-joint-count-sku-reader.test.mjs tests/canonical-owner-count-server-factory.test.mjs
+          node --test tests/owner-reviewed-sku-mapping-store.test.mjs
       - name: Install ONLY isolated emulator tooling and existing workspace dependencies
         shell: bash
         run: |
