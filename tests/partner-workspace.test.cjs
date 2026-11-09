@@ -1676,7 +1676,7 @@ test("legacy publication OFF is enforced inside submit transaction without modif
 
 
 test("OFF legacy category does not block other legacy buckets or allow stale-version overwrite",async()=>{
- const {db,api,req,zero}=setup(),date="2026-10-31";
+ const {db,api,req,zero}=setup(),date="2026-11-09";
  const team=(await api.manage(req("p",{action:"addTeam",name:"別班"}))).teamId;
  const staff=(await api.manage(req("p",{action:"addManaged",name:"別担当",teamId:team}))).staffId;
  db.seed("companies/hub/partnerCatalogSettings/countLinks",{revision:1,links:[
