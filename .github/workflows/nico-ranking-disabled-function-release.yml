@@ -43,9 +43,6 @@ on:
       - 'tests/protect-original-functions-versions.test.mjs'
 permissions:
   contents: read
-concurrency:
-  group: nico-partner-workspace-production
-  cancel-in-progress: false
 jobs:
   offline:
     runs-on: ubuntu-latest
@@ -69,6 +66,11 @@ jobs:
           node tools/production/ranking-disabled-function-scope.mjs
           echo 'INSPECT_ONLY_NO_FIREBASE_CREDENTIALS_NO_DEPLOY'
   deploy-disabled:
+    # Serialize only live deployments with existing partner Functions releases.
+    # Offline PR validation must not be cancelled by unrelated workflows.
+    concurrency:
+      group: nico-partner-workspace-production
+      cancel-in-progress: false
     needs: offline
     if: >-
       ${{ github.event_name == 'workflow_dispatch' &&
