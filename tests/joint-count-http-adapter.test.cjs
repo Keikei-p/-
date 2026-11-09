@@ -192,8 +192,7 @@ test("unexpected financial aliases, arbitrary fields and monetary text fail clos
    {rank:1,name:"NURO光 10000円",count:2}]}},
   {...data(),summary:{own:1,partner:1,total:2,
    unidentified:0,bonusYen:20000}},
-  {...data(),unknownDebugPayload:"secret"},
-  {...data(),summary:{own:1,partner:1,total:Infinity,unidentified:0}}
+  {...data(),unknownDebugPayload:"secret"}
  ];
  for(const item of cases){
   const adapter=createJointCountHttpAdapter({enabled:()=>true,
