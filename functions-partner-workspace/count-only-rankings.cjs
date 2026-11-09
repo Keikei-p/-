@@ -13,11 +13,11 @@ function ranked(rows,{nameKey="name",countKey="totalCount"}={}){
 }
 function jointCountRankings({companies,teams,people,direct}){
  const directTeams=Array.isArray(direct?.teams)?direct.teams:[];
- const directPeople=Array.isArray(direct?.people)?direct.people:[];
+ const directPeople=direct?.peopleVerified===true&&Array.isArray(direct?.people)?direct.people:[];
  const teamsAll=[...teams.map(x=>({name:x.companyName+" / "+x.name,totalCount:x.totalCount})),
   ...directTeams.map(x=>({name:"直営 / "+x.name,totalCount:x.totalCount}))];
  const peopleAll=[...people.map(x=>({name:x.companyName+" / "+x.name,totalCount:x.totalCount})),
   ...directPeople.map(x=>({name:"直営 / "+x.name,totalCount:x.totalCount}))];
- return {companies:ranked(companies),teams:ranked(teamsAll),people:ranked(peopleAll)};
+ return {companies:ranked([...companies,{name:"直営",totalCount:direct.totalCount}]),teams:ranked(teamsAll),people:ranked(peopleAll),peopleComplete:direct.peopleVerified===true&&companies.every(x=>x.peopleVerified===true)};
 }
 module.exports={ranked,jointCountRankings};
