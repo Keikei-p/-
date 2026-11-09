@@ -12,8 +12,8 @@ const URL_PATH="/v1/owner-visible-counts";
 // The only other trusted ingress is the verified, fixed Firebase Function URL.
 // This does NOT make an arbitrary token-bearing API destination configurable.
 const DIRECT_FUNCTION_URL="https://asia-northeast1-sales-management-cc116.cloudfunctions.net/getVerifiedJointCountRanking";
-const MONTH=/^20\\d\\d-(0[1-9]|1[0-2])$/;
-const DATE=/^20\\d\\d-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$/;
+const MONTH=/^20\d\d-(0[1-9]|1[0-2])$/;
+const DATE=/^20\d\d-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 function monthRangeMatches(range,month){
  if(!obj(range)||range.start!==month+"-01"||
     typeof range.end!=="string"||!DATE.test(range.end)||
