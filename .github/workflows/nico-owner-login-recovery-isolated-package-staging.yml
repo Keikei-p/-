@@ -1,0 +1,48 @@
+name: NICO Owner login recovery isolated Functions package (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'functions-owner-login-recovery/**'
+      - 'firebase.owner-login-recovery.json'
+      - 'tests/owner-login-recovery-isolated-package.test.cjs'
+      - '.github/workflows/nico-owner-login-recovery-isolated-package-staging.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 13
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Pin independent codebase and unchanged critical live functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object functions-owner-login-recovery/index.js)" = a8f11ba36a0f778edd3afb875dbb2352de9549db
+          test "$(git hash-object functions-owner-login-recovery/service.cjs)" = e8527a36c413ceab44d73ffd2a5de0ef7598f190
+          test "$(git hash-object functions-owner-login-recovery/verified-hub-owner.cjs)" = eba49490458ce5732c6eebd9f9633d04f9ff414d
+          test "$(git hash-object functions-owner-login-recovery/package.json)" = d1c24ba2e410db6e2f7f5fd6b858d4d8ecbbe19c
+          test "$(git hash-object firebase.owner-login-recovery.json)" = 6e809d6fd4b2decad82249ace18a4b407c2bfe64
+          test "$(git hash-object tests/owner-login-recovery-isolated-package.test.cjs)" = 83a9abca905698b0f6c0c9d602a4a771e159e47b
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(git hash-object functions-partner-workspace/index.js)" = 38da7e9174ffea7c406c92292dccfc651b565eb0
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          node --check functions-owner-login-recovery/index.js
+          node --check functions-owner-login-recovery/service.cjs
+          node --check functions-owner-login-recovery/verified-hub-owner.cjs
+      - name: Validate owner-only reactivation and independent default-OFF Functions package
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/owner-login-recovery-isolated-package.test.cjs
+          node --test tests/owner-login-recovery-staging.test.cjs tests/owner-login-recovery-ui-entry-staging.test.cjs
+          node --test tests/explicit-hub-owner-delegation-staging.test.cjs
+          echo 'OWNER_LOGIN_RECOVERY_INDEPENDENT_FUNCTIONS_PACKAGE_OFFLINE_PASS'
+          echo 'FIREBASE_DEPLOYED=NO_FIRESTORE_WRITES=0_AUTH_CHANGED=0'
