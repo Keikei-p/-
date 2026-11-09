@@ -74,7 +74,7 @@ const app=initializeApp({apiKey:"AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
  projectId:"sales-management-cc116",
  appId:"1:904932511564:web:6583e8b0c585231b9049e"});
 const auth=getAuth(app),db=getFirestore(app),$=id=>document.getElementById(id);
-const ID=/^[A-Za-z0-9_-]{1,128}$/;
+const ID=/^[A-Za-z0-9_:-]{1,128}$/;
 let generation=0,busy=false;
 function status(message,kind=""){
  $("status").textContent=message;
