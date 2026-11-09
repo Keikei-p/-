@@ -75,7 +75,7 @@ export async function uploadReviewedOwnerPortalEnable({
     !activated.includes("mountVerifiedOwnerCorrection")||
     !activated.includes("countOnlyRegisteredCompanies(response,day)")||
     !activated.includes("./owner-partner-admin-assets/mobile-bootstrap.mjs")||
-    /\\b(?:signInWithEmailAndPassword|createUserWithEmailAndPassword|deleteUser|setDoc|updateDoc|writeBatch|localStorage|sessionStorage)\\s*\\(/.test(activated))
+    /\b(?:signInWithEmailAndPassword|createUserWithEmailAndPassword|deleteUser|setDoc|updateDoc|writeBatch|localStorage|sessionStorage)\s*\(/.test(activated))
    throw Error("OWNER_PORTAL_ONLY_ONE_REVIEWED_FLAG_CHANGE_ALLOWED");
  const gz=gzipSync(assetBytes,{mtime:0});
  const hash=createHash("sha256").update(gz).digest("hex");
