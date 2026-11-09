@@ -1,0 +1,89 @@
+name: NICO Owner portal Hosting live manifest read-only audit
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/production/inspect-owner-portal-hosting-readonly.mjs'
+      - 'tests/inspect-owner-portal-hosting-readonly.test.mjs'
+      - '.github/workflows/nico-owner-portal-live-manifest-readonly.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/production/inspect-owner-portal-hosting-readonly.mjs'
+      - 'tests/inspect-owner-portal-hosting-readonly.test.mjs'
+      - '.github/workflows/nico-owner-portal-live-manifest-readonly.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify static source boundaries and offline GET-only behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check tools/production/inspect-owner-portal-hosting-readonly.mjs
+          node --test tests/inspect-owner-portal-hosting-readonly.test.mjs tests/owner-portal-two-assets-replacement-guard.test.mjs
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
+          echo "LIVE_HOSTING_AUDIT_CODE_OFFLINE_ONLY_PASS"
+  inspect-live-get-only:
+    needs: offline
+    if: >-
+      ${{ github.event_name != 'pull_request' &&
+          github.ref == 'refs/heads/main' &&
+          github.repository == 'Keikei-p/-' &&
+          needs.offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify exact current main before any production GET
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
+      - name: Install official Admin SDK (no deployment tools)
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix functions --ignore-scripts --no-audit --no-fund --package-lock=false
+      - name: Load credential in runner-private temporary file
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/owner-portal-hosting-audit.private.json"
+          chmod 600 "$RUNNER_TEMP/owner-portal-hosting-audit.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/owner-portal-hosting-audit.private.json" >> "$GITHUB_ENV"
+      - name: Inspect LIVE Hosting with GET only, no Firestore/Auth/Functions reads
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/inspect-owner-portal-hosting-readonly.mjs --read-only
+          echo "NO_DEPLOY_NO_HOSTING_WRITES_NO_FINANCE_READS"
+      - name: Remove runner-private files
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/owner-portal-hosting-audit.private.json"
