@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
+import {createRequire} from "node:module";
 import {createCanonicalOwnerCountHandler}
  from "../functions-ranking-approvals/ranking/canonical-owner-count-server-factory.mjs";
 
@@ -71,4 +72,26 @@ test("default Firebase project rules and original live Function source are uncha
  assert.equal(stage.functions.codebase,"ranking-owner-approvals");
  const out=fs.readFileSync(path.join(root,"functions-ranking-approvals/index.js"),"utf8");
  assert(!out.includes("functions-partner-workspace"));
+});
+
+
+test("isolated Functions package uses ONLY nine immutable legacy keys, not the writable partner workspace",()=>{
+ const require=createRequire(import.meta.url);
+ const original=require("../functions-partner-workspace/service.cjs");
+ const shim=require("../functions-ranking-approvals/functions-partner-workspace/service.cjs");
+ assert.deepEqual(Object.keys(shim),["KEYS"]);
+ assert.deepEqual([...shim.KEYS],[...original.KEYS]);
+ assert.equal(shim.KEYS.length,9);
+ assert(Object.isFrozen(shim.KEYS));
+ assert(Object.isFrozen(shim));
+ const source=fs.readFileSync(path.join(root,
+  "functions-ranking-approvals/functions-partner-workspace/service.cjs"),"utf8");
+ assert(!source.includes("makeWorkspace("));
+ assert(!source.includes("firebase-admin"));
+ assert(!source.includes("runTransaction"));
+ assert(!source.includes(".collection("));
+ assert(!source.includes("tx.update"));
+ assert(!source.includes("tx.create"));
+ assert(!source.includes("setDoc"));
+ assert(!source.includes("deleteDoc"));
 });
