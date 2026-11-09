@@ -15379,6 +15379,8 @@ pInline("pInlineSave").onclick=()=>{
   const node=[...pInline("pInlineCountFields").querySelectorAll("input[data-count-key]")]
     .find(x=>x.dataset.countKey===key);
   const n=Number(node?.value);
+  if(!node&&snap.legacyCategoryPublication?.some(x=>x.category===key&&x.acceptsIncrease===false)&&
+     (before?.counts?.[key]??0)===0){counts[key]=0;continue;}
   if(!node||node.value.trim()===""||!Number.isSafeInteger(n)||n<0||n>9999)throw Error("counts");
   counts[key]=n;
  }
