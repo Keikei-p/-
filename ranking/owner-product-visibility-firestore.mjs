@@ -251,8 +251,11 @@ export function createOwnerProductVisibilityStore({db,FieldValue}={}){
     }
     const d=t.toDate();
     if(!(d instanceof Date)||!Number.isFinite(d.getTime()))stop();
-    publication.snapshotReadTime=d.toISOString().slice(0,19)+"."+
-     String(t.nanoseconds).padStart(9,"0")+"Z";
+    // Every original snapshot was compared at the full seconds+nanos level.
+    // Canonical internal/partner sources use Timestamp.toDate().toISOString()
+    // (millisecond precision); publish that SAME representation so their
+    // shared read-only transaction passes the final equality fence.
+    publication.snapshotReadTime=d.toISOString();
    }
    return publication;
  }
