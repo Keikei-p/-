@@ -13253,7 +13253,7 @@ function renderPartnerCountTeamCard(title,total,counts,cbCounts,members,keys,{ve
  if(visible>total)throw Error("count_team_total_mismatch");
  const nuro=counts.NURO||0,tiers=cbCounts?.NURO;
  if(showCb&&(nuro>0||tiers)){
-  const block=section("NURO光｜CB別件数");
+  const block=section("NURO光｜件数内訳");
   const grid=document.createElement("div");grid.className="partner-count-team-cb-grid";
   let assigned=0;
   for(const tier of PARTNER_TEAM_CB_TIERS){
@@ -13263,7 +13263,7 @@ function renderPartnerCountTeamCard(title,total,counts,cbCounts,members,keys,{ve
    const tile=document.createElement("div");tile.className="partner-count-team-cb-cell";
    const label=document.createElement("div");label.className="partner-count-team-cb-label";
    // Cashback tier names are a classification, not sales or unit prices.
-   label.textContent=tier==="0"?"CB0":"CB"+Number(tier)/10000+"万";
+   label.textContent="件数区分 "+(PARTNER_TEAM_CB_TIERS.indexOf(tier)+1);
    const count=document.createElement("div");count.className="partner-count-team-cb-value";
    count.textContent=amount+"件";tile.append(label,count);grid.append(tile);
   }
