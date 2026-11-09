@@ -59,3 +59,23 @@ test("production integration is isolated and no legacy sales write is introduced
  assert.match(html,/getPartnerCatalog/);
  assert.match(html,/協力店に公開/);
 });
+
+
+test("hub Owner can see retired/unsafe product toggle state, but partner gets no hidden or price data",()=>{
+ const products=[
+  {id:"retired",name:"販売終了商材",active:false,sortOrder:3,revenue:50000},
+  {id:"unsafe",name:"単価9万円",active:true,sortOrder:2,pricingOptions:[{revenuePerUnit:90000}]},
+  {id:"active",name:"NURO光",active:true,sortOrder:1,revenuePerUnit:77000}
+ ];
+ const state=["retired","unsafe","active"];
+ const owner=catalog.projectOwnerPublicationRows(products,state);
+ assert.deepEqual(owner.map(x=>x.id),["active","unsafe","retired"]);
+ assert(owner.every(x=>x.published===true));
+ assert.equal(owner.find(x=>x.id==="unsafe").name,"公開不可の商材");
+ assert.doesNotMatch(JSON.stringify(owner),/revenue|unitPrice|pricingOptions|90000|77000|50000/);
+ assert.deepEqual(catalog.projectMasterProducts([products[0],products[2]],state,true)
+  .map(x=>x.id),["active"]);
+ assert.throws(()=>catalog.projectMasterProducts(products,state,true),/INVALID/);
+ assert.deepEqual(catalog.projectOwnerPublicationRows(products,[]).map(x=>x.published),
+  [false,false,false]);
+});
