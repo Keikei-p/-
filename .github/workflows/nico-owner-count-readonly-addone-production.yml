@@ -1,0 +1,141 @@
+name: NICO Owner read-only count page ONE NEW Hosting asset production
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/hosting/owner-count-readonly-addone-guard.mjs'
+      - 'tools/hosting/release-owner-count-readonly-addone.mjs'
+      - 'tests/release-owner-count-readonly-addone.test.mjs'
+      - 'staging/owner-count-readonly-v1/owner-partner-counts-readonly.html'
+      - 'tests/owner-count-readonly-page.test.mjs'
+      - '.github/workflows/nico-owner-count-readonly-addone-production.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/hosting/owner-count-readonly-addone-guard.mjs'
+      - 'tools/hosting/release-owner-count-readonly-addone.mjs'
+      - 'tests/release-owner-count-readonly-addone.test.mjs'
+      - 'staging/owner-count-readonly-v1/owner-partner-counts-readonly.html'
+      - 'tests/owner-count-readonly-page.test.mjs'
+      - '.github/workflows/nico-owner-count-readonly-addone-production.yml'
+permissions:
+  contents: read
+concurrency:
+  group: firebase-hosting-owner-count-add-one
+  cancel-in-progress: false
+jobs:
+  offline-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify all source pins and original business data boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object tools/hosting/owner-count-readonly-addone-guard.mjs)" = f8f1ae21162de3eff6f23093f39ba7e2c2876b4d
+          test "$(git hash-object tools/hosting/release-owner-count-readonly-addone.mjs)" = d242d803ffd026840db1fa7b70b561ba67e5d5b9
+          test "$(git hash-object tests/release-owner-count-readonly-addone.test.mjs)" = 6f12e99a8933ed663101f58c6dbf2cccf40b98d9
+          test "$(git hash-object staging/owner-count-readonly-v1/owner-partner-counts-readonly.html)" = 95602110f5d5531fb5b4d0f53b5fd30883c87b32
+          test "$(git hash-object tests/owner-count-readonly-page.test.mjs)" = 482129fcd9c6d31c22493f9db3ae6348dd4b419e
+          test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
+          test "$(git hash-object staging/owner-workspace-errors-v1/owner-partner-admin.html)" = 8ac03f833b27706b256d9218742c343bb3e040ff
+          test "$(git hash-object staging/owner-workspace-errors-v1/mobile-bootstrap.mjs)" = 8533ac6b02f7768189444c9bfb8cc11cea7b28e7
+      - name: Execute offline fixture release, fail-closed response and count parser suites
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check tools/hosting/owner-count-readonly-addone-guard.mjs
+          node --check tools/hosting/release-owner-count-readonly-addone.mjs
+          node --test tests/release-owner-count-readonly-addone.test.mjs tests/owner-count-readonly-page.test.mjs
+          node --test tests/owner-workspace-error-classification.test.mjs
+          echo 'OWNER_COUNT_ADD_ONE_OFFLINE_PROOF_NO_LIVE_WRITES'
+  publish-add-one:
+    needs: offline-review
+    if: >-
+      ${{ github.event_name == 'push' &&
+          github.ref == 'refs/heads/main' &&
+          github.repository == 'Keikei-p/-' &&
+          startsWith(github.event.head_commit.message, 'release(hosting): add Owner count-only reader as single new page') &&
+          needs.offline-review.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Require precisely reviewed main SHA before accessing production
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
+          test "$(git log -1 --pretty=%s)" = 'release(hosting): add Owner count-only reader as single new page'
+      - name: Install existing official OAuth SDK, no Firebase deploy command
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix functions --ignore-scripts --no-audit --no-fund --package-lock=false
+      - name: Keep existing Hosting identity private on runner
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/owner-count-addone.private.json"
+          chmod 600 "$RUNNER_TEMP/owner-count-addone.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/owner-count-addone.private.json" >> "$GITHUB_ENV"
+      - name: LIVE GET preflight must match exact reviewed 17 asset version
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/hosting/release-owner-count-readonly-addone.mjs --dry-run
+      - name: Add ONLY new read-only HTML page, do not deploy Functions/Rules
+        env:
+          NICO_OWNER_COUNT_ADDONE_RELEASE: APPROVE_ADD_ONE_READONLY_OWNER_COUNTS_HTML
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/hosting/release-owner-count-readonly-addone.mjs --release
+      - name: Independently verify public new page and original Owner assets byte-identically
+        shell: bash
+        run: |
+          set -euo pipefail
+          for item in \
+            'owner-partner-counts-readonly.html:staging/owner-count-readonly-v1/owner-partner-counts-readonly.html' \
+            'owner-partner-admin.html:staging/owner-workspace-errors-v1/owner-partner-admin.html' \
+            'owner-partner-admin-assets/mobile-bootstrap.mjs:staging/owner-workspace-errors-v1/mobile-bootstrap.mjs'; do
+            page="${item%%:*}"
+            source="${item#*:}"
+            matched=no
+            for attempt in 1 2 3 4 5 6 7 8; do
+              if curl --fail --silent --show-error --max-time 20 \
+                -H 'Cache-Control: no-cache' \
+                "https://nico-factory.web.app/$page?release=$GITHUB_SHA" \
+                --output "$RUNNER_TEMP/owner-count-public.html" &&
+                cmp --silent "$source" "$RUNNER_TEMP/owner-count-public.html"; then
+                matched=yes
+                break
+              fi
+              sleep 4
+            done
+            test "$matched" = yes
+            echo "PUBLIC_BYTE_MATCH: $page"
+          done
+          echo "OWNER_COUNT_READONLY_NEW_PAGE_PRODUCTION_VERIFIED"
+      - name: Erase OAuth secret and public downloaded files
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/owner-count-addone.private.json" "$RUNNER_TEMP/owner-count-public.html"
