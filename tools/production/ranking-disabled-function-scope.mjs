@@ -23,8 +23,16 @@ export function inspectSource(index,config){
     json.functions.source!=="functions-ranking-approvals"||
     json.functions.codebase!=="ranking-owner-approvals"||
     !index.includes('exports.getVerifiedJointCountRanking=onRequest')||
-    !index.includes('NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"')||
-    !index.includes('region:"asia-northeast1"'))STOP();
+    !index.includes('NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"'))STOP();
+ // Both owner callable options and standalone GET Function must stay in
+ // the approved low-instance Tokyo region. Finding one correct region is NOT
+ // enough when another deployment entry could silently move elsewhere.
+ const regions=[...index.matchAll(/region\s*:\s*"([^"]+)"/g)].map(x=>x[1]);
+ const instances=[...index.matchAll(/maxInstances\s*:\s*(\d+)/g)].map(x=>+x[1]);
+ const concurrency=[...index.matchAll(/concurrency\s*:\s*(\d+)/g)].map(x=>+x[1]);
+ if(regions.length!==2||regions.some(x=>x!=="asia-northeast1")||
+    instances.length!==2||instances.some(x=>x!==2)||
+    concurrency.length!==2||concurrency.some(x=>x!==10))STOP();
  const names=[...index.matchAll(/exports\.([A-Za-z][A-Za-z0-9]*)\s*=/g)]
   .map(x=>x[1]);
  const expected=[
