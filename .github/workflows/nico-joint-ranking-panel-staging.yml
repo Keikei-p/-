@@ -1,0 +1,42 @@
+name: NICO joint ranking count-only panel (STAGING / NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ranking/verified-joint-ranking-panel.mjs'
+      - 'tests/verified-joint-ranking-panel.test.mjs'
+      - '.github/workflows/nico-joint-ranking-panel-staging.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'ranking/verified-joint-ranking-panel.mjs'
+      - 'tests/verified-joint-ranking-panel.test.mjs'
+      - '.github/workflows/nico-joint-ranking-panel-staging.yml'
+permissions:
+  contents: read
+jobs:
+  verify-count-only-client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Assert no production deployment or changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          git diff --exit-code -- firestore.rules firebase.json index.html partner-workspace.html functions functions-partner-workspace
+          node --check ranking/verified-joint-ranking-panel.mjs
+          node --check tests/verified-joint-ranking-panel.test.mjs
+      - name: Validate count-only ranking response and stale session
+        run: |
+          set -euo pipefail
+          node --test tests/verified-joint-ranking-panel.test.mjs
+          echo "COUNT_RANKING_CLIENT_PASS_STAGING_ONLY_NO_DEPLOY"
