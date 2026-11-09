@@ -6,6 +6,8 @@ on:
       - 'ranking/verified-dual-count-dashboards.mjs'
       - 'functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs'
       - 'ranking/verified-joint-ranking-panel.mjs'
+      - 'functions-ranking-approvals/joint-count-http-adapter.cjs'
+      - 'tests/joint-count-http-adapter.test.cjs'
       - 'tests/verified-dual-count-dashboards.test.mjs'
       - 'tests/owner-product-visibility-rankings.test.mjs'
       - 'tests/verified-joint-ranking-panel.test.mjs'
@@ -17,6 +19,8 @@ on:
       - 'ranking/verified-dual-count-dashboards.mjs'
       - 'functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs'
       - 'ranking/verified-joint-ranking-panel.mjs'
+      - 'functions-ranking-approvals/joint-count-http-adapter.cjs'
+      - 'tests/joint-count-http-adapter.test.cjs'
       - 'tests/verified-dual-count-dashboards.test.mjs'
       - 'tests/owner-product-visibility-rankings.test.mjs'
       - 'tests/verified-joint-ranking-panel.test.mjs'
@@ -47,6 +51,7 @@ jobs:
           node --check ranking/verified-dual-count-dashboards.mjs
           node --check functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs
           node --check ranking/verified-joint-ranking-panel.mjs
+          node --check functions-ranking-approvals/joint-count-http-adapter.cjs
       - name: E2E count reconciliation, source-vendor identity, role isolation
         shell: bash
         run: |
