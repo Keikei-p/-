@@ -131,7 +131,8 @@ export async function mountVerifiedOwnerCorrection({
    invalid("STALE_SESSION");
   }
   return Object.freeze({
-   companies,load:panel.load,save:panel.save,destroy
+   companies,load:panel.load,save:panel.save,
+   selectCompany:panel.selectCompany,destroy
   });
  }catch(error){
   client.dispose();
