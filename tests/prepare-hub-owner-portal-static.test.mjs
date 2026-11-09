@@ -40,7 +40,7 @@ test("new companion modules retain exact reviewed cross-imports and never call F
  assert.match(boot,/from "\.\/owner-client\.mjs"/);
  assert.match(boot,/from "\.\/owner-ui\.mjs"/);
  assert.match(client,/from "\.\/owner-ui\.mjs"/);
- assert.match(ui,/async function selectCompany\(partnerCompanyId\)/);
+ assert.match(ui,/function selectCompany\(id\)/);
  assert.doesNotMatch(boot+client+ui,/firebase-firestore|\bgetFirestore\(|\bsetDoc\(|\bupdateDoc\(|\bdeleteDoc\(/);
  assert.doesNotMatch(html,/totalRevenue|revenuePerUnit|cashbackOptions|pricingOptions/);
 });
