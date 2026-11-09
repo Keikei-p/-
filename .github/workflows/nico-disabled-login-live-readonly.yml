@@ -1,0 +1,91 @@
+name: NICO disabled login account status LIVE READ ONLY
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/production/audit-disabled-login-status-live-readonly.mjs'
+      - 'tests/audit-disabled-login-status-live-readonly.test.mjs'
+      - '.github/workflows/nico-disabled-login-live-readonly.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/production/audit-disabled-login-status-live-readonly.mjs'
+      - 'tests/audit-disabled-login-status-live-readonly.test.mjs'
+      - '.github/workflows/nico-disabled-login-live-readonly.yml'
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify source hash and original production boundaries unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object tools/production/audit-disabled-login-status-live-readonly.mjs)" = a517c8d82bf06fff7d18d7db110d6302dac97396
+          test "$(git hash-object tests/audit-disabled-login-status-live-readonly.test.mjs)" = efa656245a150f3bdf53de4d2d8e27df9572ea6d
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
+          test "$(git hash-object legacy-finance-entry-guard.mjs)" = 20d730127d0623bb94d14d21998ab5111d849cfc
+          node --check tools/production/audit-disabled-login-status-live-readonly.mjs
+          node --test tests/audit-disabled-login-status-live-readonly.test.mjs
+          echo 'DISABLED_LOGIN_OFFLINE_PASSED_NO_WRITES'
+  production-get:
+    needs: offline
+    if: >-
+      ${{ github.event_name == 'push' &&
+          github.ref == 'refs/heads/main' &&
+          github.repository == 'Keikei-p/-' &&
+          needs.offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require unchanged main SHA before account metadata GET
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
+      - name: Install official Auth SDK only, not deploy CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix functions --ignore-scripts --no-audit --no-fund --package-lock=false
+      - name: Keep metadata GET identity private
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-disabled-login.private.json"
+          chmod 600 "$RUNNER_TEMP/nico-disabled-login.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-disabled-login.private.json" >> "$GITHUB_ENV"
+      - name: LIVE GET-only classify disabled user and member, anonymous category counts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/audit-disabled-login-status-live-readonly.mjs --read-only
+          echo 'DISABLED_LOGIN_PRODUCTION_GET_ONLY_ZERO_WRITES'
+      - name: Erase private Auth SDK credentials even on failure
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/nico-disabled-login.private.json"
