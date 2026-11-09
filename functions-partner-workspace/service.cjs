@@ -2,6 +2,7 @@
 // Isolated partner operations: no reads/writes to sales products, records or prices.
 const crypto=require("node:crypto");
 const {enforceLegacyPublication}=require("./legacy-publication-guard.cjs");
+const {jointCountRankings}=require("./count-only-rankings.cjs");
 const {loadPublication,projectMasterProducts,changePublication,validId,nameOnly}=require("./catalog-publication.cjs");
 const {readLinks,addLink,projectLinks}=require("./catalog-count-links.cjs");
 const {normalizeExtraCounts,applyExtraCounts,projectedExtraRead}=require("./additional-counts.cjs");
@@ -1362,6 +1363,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    }
    return {scope:"shared_counts_only",date,role:s.kind==="hub"?"hub":"partner",
     complete,includesDirect:true,missingCompanies,companies,teams,people,
+    countRankings:jointCountRankings({companies,teams,people,direct}),
     productCounts,additionalTotalCount,categories:KEYS,direct,rankingGroups:sharedConfig.groups,
     groupStandings,groupRevision:sharedConfig.revision,groupStatus};
   }
