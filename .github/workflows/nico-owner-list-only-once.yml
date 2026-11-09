@@ -1,0 +1,201 @@
+name: NICO Owner read-only count list ONE Function production release
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-owner-list-only-once.yml'
+      - 'tools/production/owner-list-only-transition-scope.mjs'
+      - 'tests/owner-list-only-transition-scope.test.mjs'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-owner-list-only-once.yml'
+      - 'tools/production/owner-list-only-transition-scope.mjs'
+      - 'tests/owner-list-only-transition-scope.test.mjs'
+permissions:
+  contents: read
+concurrency:
+  group: nico-partner-workspace-production
+  cancel-in-progress: false
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify immutable original functions, Rules, release source and distinct read/write gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object tools/production/owner-list-only-transition-scope.mjs)" = 7a28468e913b2dfc582d6ba8830add1cdb6899d2
+          test "$(git hash-object tests/owner-list-only-transition-scope.test.mjs)" = 9b7e53c9dee29f63c8768f0a640d53da17133890
+          test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
+          test "$(git hash-object staging/partner-owner-correction-v3/entry.cjs)" = 309bd57fa808c59ab2cba4e9d7fd10b664f0b626
+          test "$(git hash-object staging/partner-owner-correction-v3/service.cjs)" = a595de15c33c9707342b3721c79e67e2d29a0748
+          test "$(git hash-object staging/partner-owner-correction-v3/trusted-auth.cjs)" = a3e1f03f3e7032024e00109d9211bc34384b9a49
+          node --check tools/production/owner-list-only-transition-scope.mjs
+          node --test tests/owner-list-only-transition-scope.test.mjs tests/partner-owner-correction-v3-auth.test.cjs tests/partner-owner-correction-v3.test.cjs tests/prepare-hub-owner-correction-v3-package.test.mjs
+          echo "OWNER_LIST_ONLY_OFFLINE_REVIEWED_NO_DEPLOY"
+  enable-list-only:
+    needs: offline
+    if: >-
+      ${{ github.event_name == 'push' &&
+          github.repository == 'Keikei-p/-' &&
+          github.ref == 'refs/heads/main' &&
+          startsWith(github.event.head_commit.message, 'release(owner): enable only existing count list callable') &&
+          needs.offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Block running against a moved main branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
+      - name: Install reviewed Firebase SDK and CLI for exactly one Function
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix functions --ignore-scripts --no-audit --no-fund --package-lock=false
+          npm install --global firebase-tools@15.34.1 --no-audit --no-fund
+      - name: Supply production service account privately
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-owner-list.private.json"
+          chmod 600 "$RUNNER_TEMP/nico-owner-list.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-owner-list.private.json" >> "$GITHUB_ENV"
+      - name: Verify both existing Tokyo Gen2 Owner functions currently ACTIVE and OFF
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase functions:list --project "$FIREBASE_PROJECT_ID" --json \
+            > "$RUNNER_TEMP/nico-owner-list-before.private.json" \
+            2> "$RUNNER_TEMP/nico-owner-list-cli.private.log"
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import {inspectBeforeOwnerListOnly} from './tools/production/owner-list-only-transition-scope.mjs';
+          const data=JSON.parse(readFileSync(process.env.RUNNER_TEMP+'/nico-owner-list-before.private.json','utf8'));
+          const result=inspectBeforeOwnerListOnly(data);
+          console.log('BOTH_OWNER_FUNCTIONS_EXIST_DISABLED '+JSON.stringify(result));
+          NODE
+      - name: Fingerprint all original Finance and partner Functions before scoped deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/protect-ranking-original-functions-versions.mjs before
+      - name: Build reviewed private package and enable only the selected list Function
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/prepare-hub-owner-correction-v3-package.mjs --prepare
+          root="$RUNNER_TEMP/nico-reviewed-owner-correction-v3-package"
+          test "$(find "$root" -type f | wc -l)" -eq 6
+          test ! -e "$root/functions-hub-owner-correction/.env.sales-management-cc116"
+          node --input-type=module - "$root" <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import {assertReadOnlyListSource} from './tools/production/owner-list-only-transition-scope.mjs';
+          const root=process.argv[2];
+          assertReadOnlyListSource({
+            service:readFileSync(root+'/functions-hub-owner-correction/service.cjs','utf8'),
+            entry:readFileSync(root+'/functions-hub-owner-correction/index.js','utf8')
+          });
+          console.log('VERIFIED_ONLY_LIST_READS_NO_FINANCE_WRITES');
+          NODE
+          npm install --prefix "$root/functions-hub-owner-correction" \
+            --ignore-scripts --no-audit --no-fund --package-lock=false
+          printf 'HUB_OWNER_COUNT_CORRECTION_V3_ENABLED=enabled\n' \
+            > "$root/functions-hub-owner-correction/.env.sales-management-cc116"
+          chmod 600 "$root/functions-hub-owner-correction/.env.sales-management-cc116"
+      - name: Selectively deploy ONE existing list Function, never retry failed CLI automatically
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="$(node --input-type=module -e \
+            "import {TARGET,exactListOnlyTarget} from './tools/production/owner-list-only-transition-scope.mjs';process.stdout.write(exactListOnlyTarget(TARGET))")"
+          test "$target" = "functions:hub-owner-correction-v3:listHubPartnerCounts"
+          root="$RUNNER_TEMP/nico-reviewed-owner-correction-v3-package"
+          (
+            cd "$root"
+            status=0
+            firebase deploy --non-interactive --project "$FIREBASE_PROJECT_ID" \
+              --config firebase.owner-correction.json --only "$target" \
+              > "$RUNNER_TEMP/nico-owner-list-deploy.private.log" 2>&1 || status=$?
+            if [ "$status" -ne 0 ]; then
+              echo 'OWNER_LIST_CLI_NONZERO_VERIFY_METADATA_NO_RETRY'
+            else
+              echo 'OWNER_LIST_DEPLOY_CLI_COMPLETE'
+            fi
+          )
+      - name: Verify list enabled, writer remains OFF, original six byte-metadata unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in 1 2 3 4 5 6; do
+            firebase functions:list --project "$FIREBASE_PROJECT_ID" --json \
+              > "$RUNNER_TEMP/nico-owner-list-after.private.json" \
+              2>> "$RUNNER_TEMP/nico-owner-list-cli.private.log"
+            if node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import {inspectAfterOwnerListOnly} from './tools/production/owner-list-only-transition-scope.mjs';
+          const root=process.env.RUNNER_TEMP;
+          inspectAfterOwnerListOnly(
+            JSON.parse(readFileSync(root+'/nico-owner-list-before.private.json','utf8')),
+            JSON.parse(readFileSync(root+'/nico-owner-list-after.private.json','utf8'))
+          );
+          NODE
+            then break; fi
+            sleep 8
+          done
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import {inspectAfterOwnerListOnly} from './tools/production/owner-list-only-transition-scope.mjs';
+          const root=process.env.RUNNER_TEMP;
+          const report=inspectAfterOwnerListOnly(
+            JSON.parse(readFileSync(root+'/nico-owner-list-before.private.json','utf8')),
+            JSON.parse(readFileSync(root+'/nico-owner-list-after.private.json','utf8'))
+          );
+          console.log('OWNER_LIST_ONLY_LIVE '+JSON.stringify(report));
+          NODE
+          node tools/production/protect-ranking-original-functions-versions.mjs after
+      - name: Verify no anonymous caller receives personal count details
+        shell: bash
+        run: |
+          set -euo pipefail
+          for fn in listHubPartnerCounts correctHubPartnerCounts; do
+            status="$(curl --connect-timeout 5 --max-time 20 --silent --show-error \
+              --output /dev/null --write-out '%{http_code}' --request POST \
+              -H 'Content-Type: application/json' --data '{"data":{}}' \
+              "https://asia-northeast1-sales-management-cc116.cloudfunctions.net/$fn" || true)"
+            case "$status" in 200|204) echo 'STOP_OWNER_ANONYMOUS_EXPOSURE'; exit 1;; esac
+          done
+          echo "OWNER_LIST_API_OWNER_AUTH_REQUIRED_WRITER_DISABLED"
+      - name: Delete private identity, source package, inventory and logs even on failure
+        if: always()
+        shell: bash
+        run: |
+          rm -rf -- "$RUNNER_TEMP/nico-reviewed-owner-correction-v3-package"
+          rm -f "$RUNNER_TEMP/nico-owner-list.private.json" \
+            "$RUNNER_TEMP/nico-owner-list-before.private.json" \
+            "$RUNNER_TEMP/nico-owner-list-after.private.json" \
+            "$RUNNER_TEMP/nico-owner-list-cli.private.log" \
+            "$RUNNER_TEMP/nico-owner-list-deploy.private.log" \
+            "$RUNNER_TEMP/nico-original-six-immutable-versions.private.json"
