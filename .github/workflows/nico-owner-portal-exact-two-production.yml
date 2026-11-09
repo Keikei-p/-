@@ -1,0 +1,129 @@
+name: NICO Owner portal production EXACT TWO error assets
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/hosting/release-owner-portal-exact-two.mjs'
+      - 'tests/release-owner-portal-exact-two.test.mjs'
+      - '.github/workflows/nico-owner-portal-exact-two-production.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/hosting/release-owner-portal-exact-two.mjs'
+      - 'tests/release-owner-portal-exact-two.test.mjs'
+      - '.github/workflows/nico-owner-portal-exact-two-production.yml'
+permissions:
+  contents: read
+concurrency:
+  group: firebase-hosting-owner-portal-exact-two
+  cancel-in-progress: false
+jobs:
+  verified-offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Check immutable reviewed release sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object tools/hosting/release-owner-portal-exact-two.mjs)" = 263f980b1ff8de3dee335cbb904303ee44e99e35
+          test "$(git hash-object tests/release-owner-portal-exact-two.test.mjs)" = ca415a9a5a9e30010595f1e5836bb26027ce075e
+          test "$(git hash-object staging/hub-owner-management/owner-partner-admin.html)" = f6609e6664ec11f629ea57751295abe18cb1dc2a
+          test "$(git hash-object staging/partner-owner-correction-v3/mobile-bootstrap.mjs)" = fe8fa6779093a19cdc4c678acf85df348a61f76a
+          test "$(git hash-object staging/owner-workspace-errors-v1/owner-partner-admin.html)" = 8ac03f833b27706b256d9218742c343bb3e040ff
+          test "$(git hash-object staging/owner-workspace-errors-v1/mobile-bootstrap.mjs)" = 8533ac6b02f7768189444c9bfb8cc11cea7b28e7
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
+      - name: Offline Hosting 2-asset release and financial-safety tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check tools/hosting/release-owner-portal-exact-two.mjs
+          node --test tests/release-owner-portal-exact-two.test.mjs tests/owner-portal-two-assets-replacement-guard.test.mjs tests/inspect-owner-portal-hosting-readonly.test.mjs
+          node --test tests/owner-workspace-error-classification.test.mjs
+          echo "EXACT_TWO_RELEASE_OFFLINE_PASS_NO_REMOTE_WRITE"
+  release-exact-two:
+    needs: verified-offline
+    if: >-
+      ${{ github.event_name == 'push' &&
+          github.ref == 'refs/heads/main' &&
+          github.repository == 'Keikei-p/-' &&
+          needs.verified-offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Lock reviewed main and release-intent commit, no moving head
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
+          test "$(git log -1 --pretty=%s)" = 'release(hosting): publish Owner error diagnostics two assets only'
+      - name: Install existing official Firebase Admin SDK only
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix functions --ignore-scripts --no-audit --no-fund --package-lock=false
+      - name: Private production Hosting identity (never print)
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/owner-exact-two-identity.private.json"
+          chmod 600 "$RUNNER_TEMP/owner-exact-two-identity.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/owner-exact-two-identity.private.json" >> "$GITHUB_ENV"
+      - name: Production preflight - read existing full Hosting manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/hosting/release-owner-portal-exact-two.mjs --dry-run
+      - name: Publish only 2 reviewed Owner diagnostics assets to production
+        env:
+          NICO_OWNER_EXACT_TWO_RELEASE: APPROVE_REPLACE_ONLY_TWO_REVIEWED_OWNER_ERROR_ASSETS
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/hosting/release-owner-portal-exact-two.mjs --release
+      - name: Independently verify public HTML and JS bytes, never retry write
+        shell: bash
+        run: |
+          set -euo pipefail
+          for item in owner-partner-admin.html owner-partner-admin-assets/mobile-bootstrap.mjs; do
+            case "$item" in
+              owner-partner-admin.html) local_path=staging/owner-workspace-errors-v1/owner-partner-admin.html;;
+              owner-partner-admin-assets/mobile-bootstrap.mjs) local_path=staging/owner-workspace-errors-v1/mobile-bootstrap.mjs;;
+            esac
+            matched=no
+            for attempt in 1 2 3 4 5 6 7 8; do
+              if curl --fail --silent --show-error --max-time 15 -H 'Cache-Control: no-cache' \
+                "https://nico-factory.web.app/$item?verified=$GITHUB_SHA" \
+                --output "$RUNNER_TEMP/owner-verified-download" &&
+                 cmp --silent "$local_path" "$RUNNER_TEMP/owner-verified-download"; then
+                matched=yes
+                break
+              fi
+              sleep 4
+            done
+            test "$matched" = yes
+            echo "PUBLIC_ASSET_BYTE_MATCH: $item"
+          done
+          echo "OWNER_PORTAL_EXACT_TWO_PRODUCTION_VERIFIED"
+      - name: Always remove private Hosting credentials and temporary downloaded files
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/owner-exact-two-identity.private.json" "$RUNNER_TEMP/owner-verified-download"
