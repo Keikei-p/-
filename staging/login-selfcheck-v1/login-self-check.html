@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow,noarchive"><meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#17458e">
+<title>NICO FACTORY｜ログイン状態の確認</title>
+<style>
+:root{font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif;color:#172943;background:#f3f6fb;color-scheme:light}
+*{box-sizing:border-box}body{margin:0;padding-bottom:env(safe-area-inset-bottom)}
+header{background:#17458e;color:#fff;padding:calc(20px + env(safe-area-inset-top)) 15px 20px}
+header>div,main{max-width:660px;margin:auto}h1{font-size:21px;margin:0 0 9px}
+header p{font-size:13px;line-height:1.65;margin:0}header a{color:#fff}
+main{padding:14px 12px 35px}section{background:white;border:1px solid #e0e7f2;
+border-radius:14px;padding:18px;margin-bottom:12px;box-shadow:0 2px 10px #19334c0d}
+h2{font-size:16px;margin:0 0 10px}p{line-height:1.65}
+label{display:block;font-size:13px;font-weight:700;margin:12px 0 5px}
+input{font:inherit;padding:12px;width:100%;min-height:46px;border:1px solid #9eb1c9;
+border-radius:8px}button{font:inherit;min-height:44px;padding:11px 14px;background:#1d4ed8;
+border:none;border-radius:9px;color:#fff;font-weight:700;cursor:pointer}
+button.secondary{background:#edf3ff;color:#154482}
+button:disabled{opacity:.55;cursor:default}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+#status{padding:12px 13px;border-radius:10px;background:#e7effc;white-space:pre-wrap;
+line-height:1.7;font-size:14px;overflow-wrap:anywhere}
+#status.warning{background:#fff1df;color:#783d08}#status.success{background:#e3f7ec;color:#145b39}
+.muted{font-size:12px;color:#52657e;line-height:1.6}
+a{color:#1656a9}a.link-card{display:block;border:1px solid #d8e3f4;
+border-radius:9px;padding:12px;margin:9px 0;text-decoration:none;font-weight:700}
+[hidden]{display:none!important}
+:focus-visible{outline:3px solid #75b1fc;outline-offset:2px}
+</style></head><body>
+<header><div>
+<h1>ログイン状態を確認</h1>
+<p>自社・協力店でログインできないときの確認ページです。営業実績アプリと同じFirebase認証を使います。会社の設定や実績は変更しません。</p>
+</div></header>
+<main>
+<section>
+<h2>確認結果</h2>
+<div id="status" role="status" aria-live="polite">ログイン状態を確認しています。</div>
+<p class="muted">本人のアカウント情報だけを読み取ります。会社全体の権限や他人の情報、売上・単価・キャッシュバック・実績は取得しません。</p>
+</section>
+<section id="loginBox" hidden>
+<h2>メールでログイン</h2>
+<form id="loginForm">
+<label for="email">メールアドレス</label><input id="email" type="email" autocomplete="username" required>
+<label for="password">パスワード</label><input id="password" type="password" autocomplete="current-password" required>
+<div class="actions"><button id="loginBtn" type="submit">ログイン状態を確認</button></div>
+</form>
+<div class="actions"><button id="resetBtn" type="button" class="secondary">パスワード再設定メールを送る</button></div>
+<p class="muted">すでに登録済みのアドレスは新規作成しないでください。パスワードは保存せず、画面から送信後に消去します。</p>
+</section>
+<section id="sessionBox" hidden>
+<h2>ログイン済みアカウント</h2>
+<p class="muted">別の人のアカウントに切り替える場合は、ここからログアウトしてください。</p>
+<div class="actions">
+<button id="checkAgain" type="button" class="secondary">もう一度確認</button>
+<button id="verifyBtn" type="button" class="secondary" hidden>確認メールを再送</button>
+<button id="logoutBtn" type="button" class="secondary">ログアウト・アカウント切替</button>
+</div></section>
+<section>
+<h2>利用する画面</h2>
+<a class="link-card" href="/">自社 営業実績アプリへ</a>
+<a class="link-card" href="/partner-workspace.html">協力店 件数入力・会社コードログインへ</a>
+<p class="muted">会社コードで利用する人は協力店画面からログインしてください。会社コードの認証状態は、このメールアカウント確認ページでは判定できません。</p>
+</section>
+</main>
+<script type="module">
+import{initializeApp}from"https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+import{getAuth,onAuthStateChanged,signInWithEmailAndPassword,
+ sendPasswordResetEmail,sendEmailVerification,signOut,reload}from"https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+import{getFirestore,doc,getDocFromServer}from"https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+const app=initializeApp({apiKey:"AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
+ authDomain:"sales-management-cc116.firebaseapp.com",
+ projectId:"sales-management-cc116",
+ appId:"1:904932511564:web:6583e8b0c585231b9049e"});
+const auth=getAuth(app),db=getFirestore(app),$=id=>document.getElementById(id);
+const ID=/^[A-Za-z0-9_-]{1,128}$/;
+let generation=0,busy=false;
+function status(message,kind=""){
+ $("status").textContent=message;
+ $("status").className=kind;
+}
+function controls(){
+ for(const id of ["loginBtn","resetBtn","checkAgain","verifyBtn","logoutBtn"])
+  $(id).disabled=busy;
+}
+function classify(user,profile,exists){
+ if(!exists)return{message:"Firebaseログインは成功していますが、利用者の初期設定が見つかりません。自社管理者へ登録状態を確認してください。",kind:"warning"};
+ if(!profile||profile.uid!==user.uid)
+  return{message:"Firebaseログインは成功しましたが、利用者情報の一致を確認できません。会社管理者に確認してください。",kind:"warning"};
+ if(profile.active===false)
+  return{message:"Firebaseログインは成功していますが、このアカウントは会社側で利用停止中です。パスワードの再設定では解除されません。会社オーナーに利用停止の理由と再開可否を確認してください。",kind:"warning"};
+ if(typeof profile.companyId!=="string"||!ID.test(profile.companyId))
+  return{message:"Firebaseログインは成功していますが、会社への所属設定または招待の処理が未完了です。新しいアカウントは作らず、会社オーナーへ確認してください。",kind:"warning"};
+ if(profile.accessKind==="partner"||["partner","cooperator"].includes(profile.memberType)){
+  if(profile.accessKind!=="partner"||profile.memberType!=="cooperator"||
+     profile.canViewRevenue!==false||profile.canViewUnitPrice!==false)
+   return{message:"Firebaseログインは成功していますが、協力店の件数専用権限の設定が一致しません。管理者へ確認してください。金額画面には移動できません。",kind:"warning"};
+  return{message:"Firebaseログイン・協力店利用者の基本設定は確認できました。件数入力画面へ進んでください。協力店内の承認・班設定は別途確認が必要です。",kind:"success"};
+ }
+ return{message:"Firebaseログイン・利用者の基本設定は確認できました。自社アプリに進めます。会社と班の最終権限はアプリ本体で確認されます。",kind:"success"};
+}
+async function inspect(user){
+ const round=++generation;
+ if(!user){
+  $("loginBox").hidden=false;$("sessionBox").hidden=true;
+  status("現在はメールログインしていません。メールで確認するか、協力店の会社コードログインをご利用ください。");
+  return;
+ }
+ $("loginBox").hidden=true;$("sessionBox").hidden=false;
+ $("verifyBtn").hidden=user.emailVerified===true;
+ if(user.emailVerified!==true){
+  status("Firebaseアカウントは認識されていますが、メール認証が未完了です。受信した確認メールを開き、もう一度確認してください。","warning");
+  return;
+ }
+ status("Firebaseログイン成功。本人の利用設定を読み取り中です。");
+ try{
+  const snapshot=await getDocFromServer(doc(db,"users",user.uid));
+  if(round!==generation||auth.currentUser?.uid!==user.uid)return;
+  const result=classify(user,snapshot.exists()?snapshot.data():null,snapshot.exists());
+  status(result.message,result.kind);
+ }catch(error){
+  if(round!==generation||auth.currentUser?.uid!==user.uid)return;
+  const kind=error?.code==="permission-denied"?"本人の情報を読み取る権限を確認できませんでした。":
+   "通信またはサーバーの状態により本人情報を確認できませんでした。";
+  status("Firebaseログインは成功していますが、"+kind+"再確認しても同じ場合は管理者へ連絡してください。","warning");
+ }
+}
+$("loginForm").onsubmit=async event=>{
+ event.preventDefault();
+ if(busy)return;
+ busy=true;controls();
+ const email=$("email").value.trim().toLowerCase();
+ const password=$("password").value;
+ $("password").value="";
+ try{
+  status("Firebaseにログインしています。");
+  await signInWithEmailAndPassword(auth,email,password);
+ }catch(error){
+  const code=error?.code||"";
+  const msg=code==="auth/too-many-requests"?"試行回数が多すぎます。少し時間をおいて再確認してください。":
+   code==="auth/network-request-failed"?"通信が不安定です。接続状態を確認してください。":
+   code==="auth/invalid-email"?"メールアドレスの形式を確認してください。":
+   "メールまたはパスワードを確認してください。登録済みなら再設定を利用できます。";
+  status("Firebaseでのメールログインは未完了です。"+msg,"warning");
+ }finally{busy=false;controls()}
+};
+$("resetBtn").onclick=async()=>{
+ if(busy)return;
+ const email=$("email").value.trim().toLowerCase();
+ if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){status("再設定するメールアドレスを入力してください。","warning");return}
+ busy=true;controls();
+ try{
+  await sendPasswordResetEmail(auth,email);
+  status("登録されているメールアドレスの場合は、パスワード再設定メールが届きます。受信箱と迷惑メールを確認してください。");
+ }catch{
+  status("メール送信を確認できませんでした。時間をおいて再試行してください。","warning");
+ }finally{busy=false;controls()}
+};
+$("verifyBtn").onclick=async()=>{
+ const u=auth.currentUser;if(!u||busy)return;
+ busy=true;controls();
+ try{
+  await reload(u);
+  if(auth.currentUser!==u)return;
+  if(u.emailVerified===true)await inspect(u);
+  else{await sendEmailVerification(u);status("確認メールを再送しました。メールのリンクを開いてください。")}
+ }catch{status("メール認証の確認に失敗しました。再度お試しください。","warning")}
+ finally{busy=false;controls()}
+};
+$("checkAgain").onclick=()=>{if(!busy)void inspect(auth.currentUser)};
+$("logoutBtn").onclick=async()=>{
+ if(busy)return;
+ busy=true;controls();
+ try{await signOut(auth);$("password").value=""}
+ catch{status("ログアウトを確認できませんでした。再度お試しください。","warning")}
+ finally{busy=false;controls()}
+};
+onAuthStateChanged(auth,user=>{void inspect(user)});
+</script>
+</body></html>
