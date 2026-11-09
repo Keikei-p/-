@@ -79,3 +79,18 @@ test("hub Owner can see retired/unsafe product toggle state, but partner gets no
  assert.deepEqual(catalog.projectOwnerPublicationRows(products,[]).map(x=>x.published),
   [false,false,false]);
 });
+
+
+test("retired publication OFF is permitted but unsafe ON is blocked in transaction",()=>{
+ const service=fs.readFileSync(require.resolve("../functions-partner-workspace/service.cjs"),"utf8");
+ const start=service.indexOf("async function setCatalogPublication(");
+ const end=service.indexOf(" // Share the original group editor",start);
+ assert(start>=0&&end>start);
+ const code=service.slice(start,end);
+ assert.match(code,/fresh\.kind!=="hub"\|\|fresh\.role!=="owner"/);
+ assert.match(code,/\(d\.published&&product\.active===false\)/);
+ assert.match(code,/if\(d\.published\)\s*\{\s*try\{nameOnly\(product\.name\)/);
+ assert.match(code,/tx\.get\(productRef\)/);
+ assert.match(code,/tx\.get\(stateRef\)/);
+ assert.doesNotMatch(code,/tx\.(?:set|update|delete)\((?:productRef|productDoc)/);
+});
