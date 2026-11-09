@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#1c4b83">
+<title>NICO FACTORY｜自社オーナーの協力店管理</title>
+<style>
+:root{font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif;color:#172f4d;background:#f4f7fd}
+*{box-sizing:border-box}body{margin:0;min-height:100vh}
+header{background:linear-gradient(110deg,#173e73,#255f9f);color:#fff;padding:calc(17px + env(safe-area-inset-top)) 18px 19px}
+header h1{font-size:21px;margin:0}header p{font-size:13px;opacity:.9;line-height:1.6}
+main{max-width:950px;margin:auto;padding:16px 12px 60px}
+nav{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:9px;margin-bottom:13px}
+a{color:#1c5295;text-decoration:none;font-weight:700}button{font:inherit;cursor:pointer}
+a.route{display:inline-block;padding:11px 14px;border:1px solid #cbd9ed;border-radius:11px;background:#fff}
+.panel{background:white;border:1px solid #dae5f3;border-radius:16px;padding:16px;margin-bottom:13px;box-shadow:0 9px 30px #143b6e10}
+p{line-height:1.65}.muted{font-size:12px;color:#5c6d82}
+input[type=date]{font:inherit;min-height:46px;padding:9px;border:1px solid #bfcfe3;border-radius:10px;width:100%;max-width:280px}
+#status{font-size:13px;white-space:pre-wrap}
+#correctionRoot{min-width:0}
+@media(max-width:430px){header h1{font-size:19px}main{padding:12px 9px 40px}.panel{padding:12px}}
+</style>
+</head>
+<body>
+<header><h1>🤝 自社オーナー｜協力店一括管理</h1>
+<p>会社をワンタップで切替。数字だけを確認・訂正。協力店のアカウントへ切り替えません。</p></header>
+<main>
+<nav><a class="route" href="/">← 自社ダッシュボードへ戻る</a>
+<a class="route" href="/partner-workspace.html">班・招待の管理</a></nav>
+<div class="panel">
+<label for="managerDate"><strong>実績日を選択</strong></label>
+<p class="muted">日付を切り替えると、その日の件数をサーバーから再取得します。</p>
+<input id="managerDate" type="date" aria-label="実績日">
+<p id="status" role="status" aria-live="polite">現在の自社ログインとオーナー権限を確認しています…</p>
+</div>
+<div id="correctionRoot"></div>
+<div class="panel">
+<p class="muted">訂正は自社オーナー本人の権限で行い、変更前・変更後・理由・版番号の履歴を残します。既存の実績・売上・単価・キャッシュバックは変更しません。未登録の担当者については既存の登録・招待画面を使用してください。</p>
+</div>
+</main>
+<script type="module">
+/* STAGING ONLY / NOT PUBLISHED: deploy ONLY with the separately audited owner-correction callables.
+   Deliberately reuse the DEFAULT Firebase app/session. No new Firebase user,
+   partner impersonation, company-code session or password input. */
+import {initializeApp} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+import {getAuth,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js";
+import {mountVerifiedOwnerCorrection} from "./mobile-bootstrap.mjs";
+
+const app=initializeApp({
+ apiKey:"AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
+ authDomain:"sales-management-cc116.firebaseapp.com",
+ projectId:"sales-management-cc116",
+ appId:"1:904932511564:web:6583e8b0c585231b9049e"
+});
+const auth=getAuth(app),functions=getFunctions(app,"asia-northeast1");
+const workspaceCallable=httpsCallable(functions,"getPartnerWorkspace");
+const listCallable=httpsCallable(functions,"listHubPartnerCounts");
+const correctCallable=httpsCallable(functions,"correctHubPartnerCounts");
+const dateInput=document.getElementById("managerDate");
+const status=document.getElementById("status");
+const root=document.getElementById("correctionRoot");
+const japanDate=()=>new Intl.DateTimeFormat("en-CA",{
+ timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"
+}).format(new Date());
+const today=japanDate();
+dateInput.value=today;dateInput.max=today;
+dateInput.min=new Date(Date.parse(today+"T00:00:00Z")-366*86400000).toISOString().slice(0,10);
+const dateGetter=()=>dateInput.value;
+const writeStatus=(message,failed=false)=>{
+ status.textContent=message;status.style.color=failed?"#9f2932":"#28527e";
+};
+let controller=null,sequence=0,lastPartnerCompanyId="";
+async function startOwner(user){
+ const call=++sequence;
+ if(controller){
+  const selected=root.querySelector('select[aria-label="協力店を選択"]');
+  if(selected?.value)lastPartnerCompanyId=selected.value;
+  controller.destroy();controller=null;
+ }
+ root.replaceChildren();
+ if(!user||user.emailVerified!==true){
+  writeStatus("自社のログインが必要です。自社ダッシュボードでログインしてください。",true);
+  return;
+ }
+ if(!/^[A-Za-z0-9_-]{1,128}$/.test(user.uid)){
+  writeStatus("本人情報を確認できませんでした。",true);return;
+ }
+ writeStatus("自社オーナーの権限と協力店一覧を照合しています…");
+ try{
+  const panel=await mountVerifiedOwnerCorrection({
+   root,auth,workspaceCallable,listCallable,correctCallable,
+   dateGetter,enabled:()=>true,dom:document,
+   subscribeAuth:callback=>onAuthStateChanged(auth,callback),
+   confirmChange:summary=>window.confirm(summary),
+   invalidateRanking:async receipt=>{
+    // The original production dashboard is not modified. Refresh hub
+    // company totals from the server after an exact versioned readback.
+    await workspaceCallable({date:receipt.date});
+   }
+  });
+  if(call!==sequence||auth.currentUser!==user||user.emailVerified!==true){
+   panel.destroy();return;
+  }
+  controller=panel;
+  const chosen=panel.companies.find(x=>x.active&&x.partnerCompanyId===lastPartnerCompanyId)||
+   panel.companies.find(x=>x.active);
+  writeStatus(chosen?"会社を選択して件数を読み込んでいます。":
+   "管理できる協力店はまだありません。自社側から招待・登録してください。");
+  if(chosen)panel.selectCompany(chosen.partnerCompanyId);
+ }catch{
+  if(call!==sequence)return;
+  root.replaceChildren();
+  writeStatus("協力店管理機能を使用できません。自社Owner権限と件数専用APIの稼働状態を確認してください。",true);
+ }
+}
+onAuthStateChanged(auth,user=>{void startOwner(user)});
+dateInput.addEventListener("change",()=>{
+ if(!dateInput.validity.valid||dateInput.value<dateInput.min||dateInput.value>dateInput.max){
+  writeStatus("正しい実績日を指定してください。",true);return;
+ }
+ void startOwner(auth.currentUser);
+});
+</script>
+</body>
+</html>
