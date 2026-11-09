@@ -21,8 +21,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git hash-object staging/owner-count-readonly-v1/owner-partner-counts-readonly.html)" = c30adddde61083a79c5afd9daac33177b792e578
-          test "$(git hash-object tests/owner-count-readonly-page.test.mjs)" = 8e25a0133a01736d106dd1218dd73e29021eed5f
+          test "$(git hash-object staging/owner-count-readonly-v1/owner-partner-counts-readonly.html)" = 95602110f5d5531fb5b4d0f53b5fd30883c87b32
+          test "$(git hash-object tests/owner-count-readonly-page.test.mjs)" = 482129fcd9c6d31c22493f9db3ae6348dd4b419e
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
           test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
           test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
