@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#164a8d">
+<title>NICO FACTORY｜協力店 件数明細（閲覧専用）</title>
+<style>
+:root{font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif;background:#f4f7fb;color:#192b42;color-scheme:light}
+*{box-sizing:border-box}body{margin:0;padding-bottom:env(safe-area-inset-bottom)}
+header{background:#164a8d;color:#fff;padding:calc(16px + env(safe-area-inset-top)) 14px 20px}
+header>div,main{max-width:1000px;margin:auto}
+h1{font-size:20px;margin:0 0 7px}header p{font-size:13px;line-height:1.5}
+header a{color:white}main{padding:14px 12px 45px}
+section{background:white;border:1px solid #dfebf8;border-radius:15px;margin-bottom:12px;padding:15px;box-shadow:0 3px 12px #153e7210}
+h2{font-size:17px;margin:0 0 10px}p{line-height:1.6}
+.muted{color:#587087;font-size:13px}.notice{border-radius:10px;background:#e7f1ff;padding:12px;font-size:13px}
+.notice.warn{background:#fff0df;color:#874500}
+label{display:block;font-size:13px;margin-bottom:4px}
+.row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+.row>*{flex:1 1 190px}button,input{font:inherit;min-height:44px;border-radius:9px}
+button{padding:9px 12px;background:#1d4ed8;color:#fff;border:0;font-weight:700;cursor:pointer}
+button:disabled{opacity:.5;cursor:default}
+input{padding:9px;border:1px solid #aec8e0;width:100%}
+#companies{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:9px}
+.company{width:100%;text-align:left;min-height:66px;background:#edf5ff;color:#164373;border:1px solid #b5cce7}
+.company[aria-pressed="true"]{border:2px solid #1d4ed8;background:#dceeff}
+.scroll{max-width:100%;overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:670px;font-size:13px}
+th,td{text-align:left;padding:9px 8px;white-space:nowrap;border-bottom:1px solid #e9eff7}
+th{background:#f3f7fd;position:sticky;top:0}
+.stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.stat{border:1px solid #dce5f2;border-radius:10px;padding:12px;background:#f8fbff}
+.stat b{font-size:24px;display:block;color:#164a8d}
+[hidden]{display:none!important}:focus-visible{outline:3px solid #80b5ff;outline-offset:2px}
+</style>
+</head>
+<body>
+<header><div>
+<h1>🤝 協力店の件数明細</h1>
+<p>自社Owner専用・閲覧のみ｜既存の自社アカウントで利用します。売上・単価・CBは取得しません。</p>
+<a href="/owner-partner-admin.html">← 協力店管理に戻る</a>
+</div></header>
+<main>
+<section>
+<h2>認証と日付</h2>
+<p id="status" class="notice" role="status" aria-live="polite">自社オーナー権限を確認中です。</p>
+<p class="muted">閲覧できない場合は自社アプリにログインし、Owner権限と会社の所属設定を確認してください。</p>
+<div class="row"><div><label for="date">実績日</label><input id="date" type="date"></div>
+<div><button type="button" id="reload">最新の件数を再取得</button></div></div>
+</section>
+<section id="companyBox" hidden>
+<h2>承認済み協力店</h2>
+<p class="muted">閲覧したい会社をタップすると登録済み個人実績を取得します。未報告と0件は別です。</p>
+<div id="companies"></div>
+</section>
+<section id="detailBox" hidden>
+<h2 id="detailTitle">件数明細</h2>
+<p id="detailStatus" class="muted" aria-live="polite"></p>
+<div class="stats" id="stats"></div>
+<h3>商材別・個人別（件数のみ）</h3>
+<p class="muted">「SB光・AIR」は元の合算件数を維持します。未分類の過去実績は自動配分しません。横スクロールで全商材を確認できます。</p>
+<div class="scroll" id="list"></div>
+</section>
+<section>
+<p class="muted">ここでの件数は登録済み担当者の明細合計です。会社の未報告・提出状況の判定や金額の計算には使いません。件数の訂正・招待・商材公開設定は実行できません。</p>
+</section>
+</main>
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+import {getAuth,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js";
+const app=initializeApp({
+ apiKey:"AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
+ authDomain:"sales-management-cc116.firebaseapp.com",
+ projectId:"sales-management-cc116",
+ appId:"1:904932511564:web:6583e8b0c585231b9049e"
+});
+const auth=getAuth(app),functions=getFunctions(app,"asia-northeast1");
+const workspaceCall=httpsCallable(functions,"getPartnerWorkspace",{timeout:18000});
+const listCall=httpsCallable(functions,"listHubPartnerCounts",{timeout:18000});
+const $=id=>document.getElementById(id);
+const ID=/^[A-Za-z0-9_-]{1,128}$/;
+const MONEY=/(?:単価|売上|収益|利益|報酬|[¥￥$€]|\d[\d,]*円)/;
+const COUNT_KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
+const PART_KEYS=Object.freeze(["SB光","SB AIR","旧未分類"]);
+const COMPANY_KEYS=Object.freeze(["partnerCompanyId","name","active","teams"]);
+const ROOT_KEYS=Object.freeze(["role","date","partners","registeredCompanies","categories","sbBreakdownSchema","partnerTeamDetails","teamReports","teamStatusComplete"]);
+const LIST_KEYS=Object.freeze(["role","scope","date","partnerCompanyId","entries","sbBreakdownSchema","containsFinance"]);
+const ROW_KEYS=Object.freeze(["staffId","staffName","teamIdSnapshot","counts","totalCount","version","sbBreakdown"]);
+const safeKeys=(value,keys)=>value!==null&&typeof value==="object"&&!Array.isArray(value)&&
+ Object.keys(value).length===keys.length&&keys.every(k=>Object.hasOwn(value,k));
+const safeSubset=(value,keys)=>value!==null&&typeof value==="object"&&!Array.isArray(value)&&
+ Object.keys(value).every(k=>keys.includes(k));
+const validId=s=>typeof s==="string"&&ID.test(s);
+const validLabel=(s,max=80)=>typeof s==="string"&&s.length>0&&s.length<=max&&
+ s===s.trim()&&!MONEY.test(s);
+const validCount=n=>Number.isSafeInteger(n)&&n>=0&&n<=9999;
+const fail=()=>{throw Error("COUNT_ONLY_CONTRACT_UNVERIFIED")};
+const sum=o=>Object.values(o).reduce((a,b)=>a+b,0);
+const safeCounts=counts=>{
+ if(!safeKeys(counts,COUNT_KEYS)||!COUNT_KEYS.every(k=>validCount(counts[k])))fail();
+ return counts;
+};
+function parseCompanies(raw,date){
+ if(!safeSubset(raw,ROOT_KEYS)||raw.role!=="hub"||raw.date!==date||
+    !Array.isArray(raw.registeredCompanies)||raw.registeredCompanies.length>100)fail();
+ const seen=new Set();
+ return raw.registeredCompanies.map(c=>{
+  if(!safeKeys(c,COMPANY_KEYS)||!validId(c.partnerCompanyId)||
+     !validLabel(c.name)||typeof c.active!=="boolean"||
+     !Array.isArray(c.teams)||c.teams.length>150||seen.has(c.partnerCompanyId))fail();
+  seen.add(c.partnerCompanyId);
+  const teams=new Map();
+  for(const t of c.teams){
+   if(!safeKeys(t,["id","name"])||!validId(t.id)||!validLabel(t.name,60)||
+      teams.has(t.id))fail();
+   teams.set(t.id,t.name);
+  }
+  return {id:c.partnerCompanyId,name:c.name,active:c.active,teams};
+ });
+}
+function parseEntries(raw,expected){
+ if(!safeKeys(raw,LIST_KEYS)||raw.role!=="hub"||
+    raw.scope!=="existing-partner-counts-only"||
+    raw.date!==expected.date||raw.partnerCompanyId!==expected.id||
+    raw.sbBreakdownSchema!=="sb-separated-v1"||
+    raw.containsFinance!==false||!Array.isArray(raw.entries)||raw.entries.length>200)fail();
+ const seen=new Set();
+ return raw.entries.map(row=>{
+  if(!safeKeys(row,ROW_KEYS)||!validId(row.staffId)||
+     !validLabel(row.staffName,60)||seen.has(row.staffId)||
+     !(row.teamIdSnapshot===null||validId(row.teamIdSnapshot))||
+     !Number.isSafeInteger(row.version)||row.version<1||row.version>999)fail();
+  seen.add(row.staffId);
+  const counts=safeCounts(row.counts);
+  if(!validCount(row.totalCount)||sum(counts)!==row.totalCount)fail();
+  let sb;
+  if(row.sbBreakdown===null){
+   sb={"SB光":0,"SB AIR":0,"旧未分類":counts["SB光・AIR"]};
+  }else{
+   if(!safeKeys(row.sbBreakdown,PART_KEYS)||
+      !PART_KEYS.every(k=>validCount(row.sbBreakdown[k]))||
+      sum(row.sbBreakdown)!==counts["SB光・AIR"])fail();
+   sb=row.sbBreakdown;
+  }
+  return {staffId:row.staffId,name:row.staffName,teamId:row.teamIdSnapshot,
+   counts,total:row.totalCount,version:row.version,sb};
+ });
+}
+const elt=(tag,value)=>{
+ const node=document.createElement(tag);
+ if(value!==undefined)node.textContent=String(value);
+ return node;
+};
+let user=null,companies=[],selected=null,seq=0;
+const clear=()=>{
+ ++seq;companies=[];selected=null;
+ $("companyBox").hidden=true;$("detailBox").hidden=true;
+ $("companies").replaceChildren();$("stats").replaceChildren();$("list").replaceChildren();
+ $("detailStatus").textContent="";
+};
+const notice=(str,error=false)=>{
+ $("status").textContent=str;$("status").className="notice"+(error?" warn":"");
+};
+function todayTokyo(){
+ const parts=Object.fromEntries(new Intl.DateTimeFormat("en-CA",{
+  timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"
+ }).formatToParts(new Date()).map(x=>[x.type,x.value]));
+ return [parts.year,parts.month,parts.day].join("-");
+}
+$("date").value=todayTokyo();
+function companyButtons(){
+ $("companies").replaceChildren();
+ for(const c of companies){
+  const b=elt("button",c.name);b.type="button";b.className="company";
+  b.disabled=!c.active;
+  b.setAttribute("aria-pressed",String(selected===c.id));
+  b.onclick=()=>{void showCompany(c.id)};
+  $("companies").append(b);
+ }
+ $("companyBox").hidden=false;
+}
+async function showCompany(id){
+ const c=companies.find(x=>x.id===id&&x.active);
+ if(!c||!user||auth.currentUser!==user)return;
+ const stamp=++seq,person=user,day=$("date").value;
+ selected=id;companyButtons();
+ $("detailBox").hidden=false;$("detailTitle").textContent=c.name+"｜個人件数明細";
+ $("detailStatus").textContent=day+"｜登録済み担当者を照会中";
+ $("stats").replaceChildren();$("list").replaceChildren();
+ try{
+  const result=(await listCall({date:day,partnerCompanyId:id})).data;
+  if(stamp!==seq||auth.currentUser!==person||$("date").value!==day)return;
+  const entries=parseEntries(result,{id,date:day});
+  const total=entries.reduce((a,x)=>a+x.total,0);
+  for(const [label,n] of [["登録済み担当者",entries.length+" 人"],["登録済み明細合計",total+" 件"]]){
+   const s=elt("div");s.className="stat";s.append(elt("span",label),elt("b",n));$("stats").append(s);
+  }
+  if(!entries.length){
+   $("detailStatus").textContent=day+"｜登録済み明細なし。未報告を0件とは扱いません。";
+   return;
+  }
+  const table=elt("table"),thead=elt("tr");
+  const cols=["担当者","班","合計",...COUNT_KEYS,...PART_KEYS];
+  for(const h of cols)thead.append(elt("th",h));
+  table.append(thead);
+  for(const row of entries){
+   const tr=elt("tr");
+   const teamName=row.teamId?c.teams.get(row.teamId)||"所属未確認":"所属未確認";
+   for(const v of [row.name,teamName,row.total,...COUNT_KEYS.map(k=>row.counts[k]),
+     ...PART_KEYS.map(k=>row.sb[k])])tr.append(elt("td",v));
+   table.append(tr);
+  }
+  $("list").append(table);
+  $("detailStatus").textContent=day+"｜登録済み担当者の件数のみ（閲覧専用）";
+ }catch{
+  if(stamp!==seq||auth.currentUser!==person)return;
+  $("stats").replaceChildren();$("list").replaceChildren();
+  $("detailStatus").textContent="件数明細を確認できません。権限・API・データ形式をご確認ください。";
+ }
+}
+async function refresh(){
+ const current=auth.currentUser;
+ clear();user=current;
+ if(!current){notice("未ログインです。自社アプリからログインしてください。",true);return}
+ if(current.emailVerified!==true){notice("メール確認済みの自社Ownerのみ利用できます。",true);return}
+ const stamp=++seq,day=$("date").value;
+ notice("自社Owner権限と協力店共有承認をサーバーで確認しています。");
+ try{
+  const result=(await workspaceCall({date:day})).data;
+  if(stamp!==seq||auth.currentUser!==current||$("date").value!==day)return;
+  companies=parseCompanies(result,day);
+  companyButtons();
+  notice("自社Owner権限を確認しました。承認済みの協力店を選択してください。");
+ }catch{
+  if(stamp!==seq||auth.currentUser!==current)return;
+  clear();user=current;
+  notice("Owner認証または協力店の共有承認を確認できません。所属設定をご確認ください。",true);
+ }
+}
+$("date").onchange=()=>{void refresh()};
+$("reload").onclick=()=>{void refresh()};
+onAuthStateChanged(auth,next=>{
+ if(next!==user){clear();user=next;void refresh()}
+});
+</script>
+</body>
+</html>
