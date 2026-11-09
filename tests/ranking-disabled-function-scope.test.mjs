@@ -61,3 +61,16 @@ test("altered isolated codebase, widened source, missing flag or export blocks",
   code+"\nexports.exposeFinance=onRequest({});"
  ])assert.throws(()=>inspectSource(value,config),/SCOPE_BLOCKED/);
 });
+
+test("read-only PR CI stays independent while live deploy shares production serialization",()=>{
+ const wf=readFileSync(new URL("../.github/workflows/nico-ranking-disabled-function-release.yml",import.meta.url),"utf8");
+ const [head,jobs]=wf.split(/^jobs:/m);
+ assert(jobs,"workflow jobs missing");
+ assert.doesNotMatch(head,/\nconcurrency:/);
+ assert.match(jobs,/^  offline:\n/m);
+ assert.match(jobs,/^  deploy-disabled:\n    #[^\n]*\n    #[^\n]*\n    concurrency:\n      group: nico-partner-workspace-production\n      cancel-in-progress: false\n    needs: offline/m);
+ assert.match(jobs,/github\.event_name == 'workflow_dispatch'/);
+ assert.match(jobs,/inputs\.mode == 'deploy_disabled'/);
+ assert.match(jobs,/reviewed_main_sha == github\.sha/);
+ assert.match(jobs,/--only "\$TARGET"/);
+});
