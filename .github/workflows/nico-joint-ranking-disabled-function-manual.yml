@@ -61,16 +61,7 @@ jobs:
           echo 'RANKING_DISABLED_RELEASE_PREFLIGHT_LOCAL_ONLY_NO_DEPLOY'
   manual:
     needs: offline
-    if: >-
-      ${{ github.event_name == 'workflow_dispatch' &&
-          github.repository == 'Keikei-p/-' &&
-          github.ref == 'refs/heads/main' &&
-          inputs.reviewed_main_sha == github.sha &&
-          needs.offline.result == 'success' &&
-          (inputs.mode == 'INSPECT_ONLY' ||
-           (inputs.mode == 'DEPLOY_DISABLED_ONLY' &&
-            inputs.deployment_approval == 'CONFIRM_ADD_ONE_DISABLED_RANKING_FUNCTION' &&
-            inputs.usage_approval == 'FUNCTION_BUILDS_AND_POSSIBLE_CHARGES_EXPLICITLY_APPROVED')) }}
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && needs.offline.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -83,8 +74,24 @@ jobs:
         with: {node-version: '22'}
       - name: Revalidate exact current main and protected source versions
         shell: bash
+        env:
+          INPUT_MODE: ${{ inputs.mode }}
+          REVIEWED_SHA: ${{ inputs.reviewed_main_sha }}
+          DEPLOY_APPROVAL: ${{ inputs.deployment_approval }}
+          COST_APPROVAL: ${{ inputs.usage_approval }}
         run: |
           set -euo pipefail
+          test "$GITHUB_REPOSITORY" = 'Keikei-p/-'
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$REVIEWED_SHA" = "$GITHUB_SHA"
+          case "$INPUT_MODE" in
+            INSPECT_ONLY) ;;
+            DEPLOY_DISABLED_ONLY)
+              test "$DEPLOY_APPROVAL" = CONFIRM_ADD_ONE_DISABLED_RANKING_FUNCTION
+              test "$COST_APPROVAL" = FUNCTION_BUILDS_AND_POSSIBLE_CHARGES_EXPLICITLY_APPROVED
+              ;;
+            *) echo STOP_INVALID_RELEASE_MODE; exit 1 ;;
+          esac
           test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
           test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq '.commit.sha')"
           test "$FIREBASE_PROJECT_ID" = sales-management-cc116
