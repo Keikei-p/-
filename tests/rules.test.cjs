@@ -439,7 +439,15 @@ for(const marker of ['companyKind','user-accessKind','member-accessKind','member
     ['records',key()],
     ['recordCorrections','partner-finance'],
     ['revenueGoals','partner-finance']
-  ]) await assertFails(getDoc(doc(db,coll,id)));
+  ]){
+    // A partner Owner/master must not enumerate financial original documents,
+    // even through filtered queries against its own company ID.
+    // GET alone cannot establish Firestore LIST safety.
+    await assertFails(getDoc(doc(db,coll,id)));
+    await assertFails(getDocsFromServer(query(collection(db,coll),
+      where('companyId','==',company))));
+    await assertFails(getDocsFromServer(collection(db,coll)));
+  }
   await assertFails(setDoc(doc(db,'products','partner-created-finance'),financeProduct));
   await assertFails(setDoc(doc(db,'records',key('owner')),payload('owner','owner','a')));
   await assertFails(setDoc(doc(db,'revenueGoals','partner-created-finance'),revenueGoalPayload()));
