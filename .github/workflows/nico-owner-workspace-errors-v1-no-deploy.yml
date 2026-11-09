@@ -1,0 +1,33 @@
+name: NICO Owner workspace error classification (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'staging/owner-workspace-errors-v1/**'
+      - 'tests/owner-workspace-error-classification.test.mjs'
+      - '.github/workflows/nico-owner-workspace-errors-v1-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate pure error classifier, four-asset scope and existing Owner behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check staging/owner-workspace-errors-v1/mobile-bootstrap.mjs
+          node --check tools/production/prepare-hub-owner-portal-static.mjs
+          node --test tests/owner-workspace-error-classification.test.mjs \
+            tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs \
+            tests/owner-partner-admin-add-only.test.mjs
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
+          echo "OWNER_PHASE1_DIAGNOSTICS_STAGING_TESTED_NO_DEPLOY"
