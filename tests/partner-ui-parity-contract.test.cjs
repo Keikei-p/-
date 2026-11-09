@@ -29,3 +29,12 @@ test("NURO partner input never restores cashback wording after count edit",()=>{
  assert.match(render,/NURO光｜件数入力（合計 /);
  assert.doesNotMatch(render,/NURO光｜CB別件数/);
 });
+
+test("optional team breakdown labels never reveal cashback monetary tiers",()=>{
+ const start=html.indexOf("function renderPartnerCountTeamCard(");
+ const end=html.indexOf("function renderPartnerFlatTeamDetails(",start);
+ const card=html.slice(start,end);
+ assert.match(card,/section\("NURO光｜件数内訳"\)/);
+ assert.match(card,/label\.textContent="件数区分 "/);
+ assert.doesNotMatch(card,/label\.textContent=tier==="0"\?"CB0"/);
+});
