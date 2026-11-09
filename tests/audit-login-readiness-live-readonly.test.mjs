@@ -82,7 +82,7 @@ test("bounded live adapter never reads financial collections and does not output
  assert.equal(r.categoryCounts.INTERNAL_ROUTE_METADATA_READY,1);
  assert.equal(r.productionWrites,0);
  assert.equal(r.authChanges,0);
- assert.equal(r.financeOriginalsRead,false);
+ assert.equal(r.financialOriginalsRead,false);
  assert.equal(r.actualPasswordSignInNotTested,true);
  assert.deepEqual(f.paths,["auth","companies","members"]);
  const out=JSON.stringify(r);
