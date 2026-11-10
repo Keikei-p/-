@@ -634,19 +634,27 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
       cursor.setUTCDate(cursor.getUTCDate()+1))
    days.push(cursor.toISOString().slice(0,10));
   if(days.length<1||days.length>31)fail("resource-exhausted");
-  const [hub,relations,visibility,mapping,products]=await Promise.all([
+  const [hub,relations,visibility,mapping,publicCatalog]=await Promise.all([
    db.collection("companies").doc(hubId).get(),
    db.collection("partnerRelations").where("hubCompanyId","==",hubId).limit(101).get(),
    collection(hubId,"rankingProductVisibility").doc("shared").get(),
    collection(hubId,"rankingSkuMappings").doc("shared").get(),
-   db.collection("products").where("companyId","==",hubId).limit(1001).get()
+   collection(hubId,"rankingCountPublicCatalog").doc("shared").get()
   ]);
   const hubCompany=hub.data()||{},ownerUid=hubCompany.ownerUid;
   if(!hub.exists||!ID.test(ownerUid||"")||hubCompany.active===false||
      (hubCompany.companyKind!=null&&!["internal","direct"].includes(hubCompany.companyKind))||
-     relations.size>100||products.size>1000||
-     !visibility.exists||!mapping.exists)fail("failed-precondition");
-  const productRows=products.docs.map(doc=>({...(doc.data()||{}),id:doc.id}));
+     relations.size>100||!visibility.exists||!mapping.exists||
+     !publicCatalog.exists)fail("failed-precondition");
+  const publicState=publicCatalog.data()||{};
+  if(publicState.schema!=="nico-reviewed-count-public-catalog-v1"||
+     publicState.hubCompanyId!==hubId||publicState.ownerUid!==ownerUid||
+     publicState.version!==visibility.data()?.version||
+     !Array.isArray(publicState.products)||publicState.products.length>1000)
+   fail("failed-precondition");
+  // This source is a separate Owner-approved whitelist; this service NEVER
+  // queries original money-bearing "products" or "records" collections.
+  const productRows=publicState.products;
   const approved=[];
   for(const relDoc of relations.docs){
    const rel=relDoc.data()||{},cid=relDoc.id;
