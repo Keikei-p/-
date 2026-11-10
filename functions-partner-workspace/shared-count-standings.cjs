@@ -136,8 +136,13 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
     status:verifiedPeople?"submitted":"historical_company_only"});
    for(const k of KEYS)products[k]=sum(products[k],companyProducts[k]);
   }
-  teams.push(...[...tMap.values()].map(x=>({...x,counts:safeCounts(x.counts)})));
-  people.push(...[...pMap.values()].map(x=>({...x,counts:safeCounts(x.counts)})));
+  // An entirely OFF partner has no published products: do not expose
+  // person/team names as zero-ranked rows. A genuinely submitted zero for
+  // an ON category remains visible and distinct from an unreported day.
+  if(allowed.size){
+   teams.push(...[...tMap.values()].map(x=>({...x,counts:safeCounts(x.counts)})));
+   people.push(...[...pMap.values()].map(x=>({...x,counts:safeCounts(x.counts)})));
+  }
  }
  return {schema:"nico-approved-partner-count-rank-v1",unit:"件",
   scope:"approved_partner_counts_only",includesDirect:false,fullyJoint:false,
