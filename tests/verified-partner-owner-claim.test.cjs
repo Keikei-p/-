@@ -176,6 +176,28 @@ test("verified invited Owner sees finance-free preview and confirms; source hist
  assert(!x.writes().some(w=>w.path==="users/pc_secret"));
  await denied(x.accept(token),"permission-denied");
 });
+test("legacy hub Owner without Firestore email can claim via their own verified Auth identity",async()=>{
+ const x=fixtures(),token=await x.invite();
+ delete x.store.get("users/"+owner).email;
+ const before=x.writes().length;
+ const r=await x.accept(token);
+ assert.equal(r.claimed,true);
+ assert.equal(x.store.get("companies/"+partner).ownerUid,receiver);
+ assert.equal(x.store.get("users/"+owner).email,undefined);
+ assert.equal(x.store.get("users/"+receiver).canViewRevenue,false);
+ assert.equal(x.store.get("users/"+receiver).canViewUnitPrice,false);
+ assert(x.writes().slice(before).every(w=>!["records","products",
+  "recordCorrections","partnerWorkEntries"].some(s=>w.path.includes(s))));
+});
+test("issuer Firestore email conflicting with verified Auth is denied before claim writes",async()=>{
+ const x=fixtures(),token=await x.invite();
+ x.store.get("users/"+owner).email="other@example.test";
+ const before=x.writes().length;
+ await denied(x.accept(token),"permission-denied");
+ assert.equal(x.writes().length,before);
+ assert.equal(x.store.get("companies/"+partner).ownerUid,undefined);
+ assert.equal(x.store.get("users/"+receiver),undefined);
+});
 test("third-party email, forged identity, bad scope and missing verified email cannot invite or claim",async()=>{
  const x=fixtures(),token=await x.invite();
  await denied(x.factory.preview(x.req(owner,{token})),"permission-denied");
