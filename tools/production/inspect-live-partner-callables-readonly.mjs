@@ -209,11 +209,12 @@ export async function inspectJointRankingMetadata(read){
  if(response?.status!==200)abort('JOINT_RANKING_LIST_UNVERIFIED');
  let listing;
  try{listing=await response.json();}catch{abort('JOINT_RANKING_LIST_JSON_UNVERIFIED');}
+ const rows=listing?.functions===undefined?[]:listing?.functions;
  if(!listing||typeof listing!=='object'||Array.isArray(listing)||
-   !Array.isArray(listing.functions??[])||listing.functions.length>1000||
+   !Array.isArray(rows)||rows.length>1000||
    (listing.nextPageToken!==undefined&&listing.nextPageToken!==''))
   abort('JOINT_RANKING_LIST_INCOMPLETE');
- const matches=listing.functions.filter(x=>x?.name===
+ const matches=rows.filter(x=>x?.name===
    RESOURCE_ROOT+'getVerifiedJointCountRanking');
  if(matches.length>1)abort('JOINT_RANKING_DUPLICATE');
  const v=matches.length?jointState(matches[0],200):jointState(null,404);
