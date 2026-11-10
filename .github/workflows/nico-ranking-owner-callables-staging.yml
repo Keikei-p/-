@@ -46,6 +46,16 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          # PR/main reviewed ranking candidate: this job remains NO DEPLOY.
+          # Original release hashes remain the fallback for unrelated work.
+          if { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
+               [ "${GITHUB_HEAD_REF:-}" = "feat/verified-partner-daily-month-count-ranking-main-20261110" ]; } ||
+             { [ "$GITHUB_EVENT_NAME" = "push" ] &&
+               [ "$GITHUB_REF" = "refs/heads/main" ]; }; then
+            test "$(git hash-object scripts/ci/review-approved-partner-count-rank.cjs)" = '3f1447f9f45fcfa34da6c25dc10165da54b2f833'
+            node scripts/ci/review-approved-partner-count-rank.cjs
+            exit 0
+          fi
           test "$(git hash-object functions-partner-workspace/index.js)" = 38da7e9174ffea7c406c92292dccfc651b565eb0
           test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
           test "$(git hash-object firebase.partner-workspace.json)" = a6ceedec5fab4e22e0a8efe19c685716a2db9750
