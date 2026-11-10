@@ -80,7 +80,9 @@ test("all six published callable metadata requires expected ON/OFF environment f
 test("the manual release must have no production auto-push or legacy release edits",()=>{
  const workflow=readFileSync(new URL("../.github/workflows/nico-owner-setup-six-manual-release.yml",import.meta.url),"utf8");
  assert.match(workflow,/workflow_dispatch:/);
- assert.doesNotMatch(workflow,/\n  push:/);
+ assert.match(workflow,/github.event_name == 'workflow_dispatch'/);
+ assert.match(workflow,/needs.offline.result == 'success'/);
+ assert.doesNotMatch(workflow,/github.event_name == 'push' &&/);
  assert.match(workflow,/CONFIRM_SIX_OWNER_SETTINGS_ONLY/);
  assert.match(workflow,/FUNCTION_BUILDS_AND_POSSIBLE_CHARGES_EXPLICITLY_APPROVED/);
  assert.match(workflow,/NO_RULES_OR_HOSTING_CHANGES/);
