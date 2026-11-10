@@ -181,6 +181,14 @@ jobs:
           else
             echo 'RANKING_DEPLOY_POSTFAILURE_INVENTORY_UNAVAILABLE_NO_RETRY'
           fi
+          # Verify immutable original versions even when the new Function deploy fails.
+          # This is a read-only metadata comparison; never retries or rolls back.
+          if node tools/production/protect-ranking-original-functions-versions.mjs after; then
+            echo 'RANKING_FAILED_DEPLOY_ORIGINAL_VERSIONS_PRESERVED_READONLY'
+          else
+            echo 'STOP_ORIGINAL_FUNCTION_VERSION_RECONCILIATION_FAILED'
+            exit 1
+          fi
           echo 'RANKING_DEPLOY_FAILED_NO_AUTOMATIC_RETRY'
       - name: Verify only the approved new Function exists and original six immutable
         shell: bash
