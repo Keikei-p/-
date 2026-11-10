@@ -1,0 +1,97 @@
+name: NICO owner SKU publication & partner rank blockers (LIVE READ ONLY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/production/inspect-live-sku-publication-readonly.mjs'
+      - 'tests/inspect-live-sku-publication-readonly.test.mjs'
+      - '.github/workflows/nico-live-owner-sku-publication-readiness.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/production/inspect-live-sku-publication-readonly.mjs'
+      - 'tests/inspect-live-sku-publication-readonly.test.mjs'
+      - '.github/workflows/nico-live-owner-sku-publication-readiness.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: nico-owner-sku-readonly-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate exact count-only publication analyzer without real identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          node --check tools/production/inspect-live-sku-publication-readonly.mjs
+          node --test tests/inspect-live-sku-publication-readonly.test.mjs
+          node -e "const f=require('fs');if(JSON.parse(f.readFileSync('.firebaserc')).projects.default!=='sales-management-cc116')process.exit(1)"
+  live-get-only:
+    needs: offline
+    if: >-
+      ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && github.repository == 'Keikei-p/-' && needs.offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      NICO_PARTNER_AUDIT_MODE: READ_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify main source and no private financial code changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          node --check tools/production/inspect-live-sku-publication-readonly.mjs
+          node --test tests/inspect-live-sku-publication-readonly.test.mjs
+      - name: Install existing read identity SDK, no deployment tooling
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Configure existing read identity in temporary file only
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-sku-readonly.json"
+          chmod 600 "$RUNNER_TEMP/nico-sku-readonly.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-sku-readonly.json" >> "$GITHUB_ENV"
+      - name: GET ONLY - verify all approved partner category maps and reciprocal rank approvals
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/inspect-live-sku-publication-readonly.mjs > "$RUNNER_TEMP/nico-sku-private.log" 2>&1 || {
+            grep -E '^STOP_SKU_PUBLICATION_READONLY_[A-Z_]+$' "$RUNNER_TEMP/nico-sku-private.log" || true
+            exit 1
+          }
+          grep -E '^NICO_PARTNER_SKU_READINESS |^BLOCK_[A-Z_]+$' "$RUNNER_TEMP/nico-sku-private.log" || true
+          grep -q '^NICO_PARTNER_SKU_READINESS ' "$RUNNER_TEMP/nico-sku-private.log"
+          grep -q '"productionDocumentWrites":0' "$RUNNER_TEMP/nico-sku-private.log"
+          grep -q '"safeToEnableNewRanking":false' "$RUNNER_TEMP/nico-sku-private.log"
+      - name: Remove service identity and private logs always
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/nico-sku-readonly.json" "$RUNNER_TEMP/nico-sku-private.log"
