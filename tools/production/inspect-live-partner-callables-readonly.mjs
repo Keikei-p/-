@@ -152,6 +152,81 @@ export async function inspect(read){
  return summarize(results,{metadataListFallbackUsed:true,directGetListConflict:conflict});
 }
 
+/**
+ * An independent, GET-only preflight for the ONE additive joint ranking API.
+ * Do not call the Function itself. Function metadata cannot establish whether
+ * a signed-in partner was denied finance GET/LIST or saved actual counts.
+ */
+export const JOINT_RANKING_METADATA_URL=ROOT+'getVerifiedJointCountRanking';
+function jointState(body,status){
+ if(status===404)return Object.freeze({deployed:false,active:false,configuredEnabled:false});
+ if(status!==200||!body||typeof body!=='object'||Array.isArray(body))
+  abort('JOINT_RANKING_METADATA_UNVERIFIED');
+ if(body.name!==RESOURCE_ROOT+'getVerifiedJointCountRanking')
+  abort('JOINT_RANKING_IDENTITY_UNVERIFIED');
+ const service=props(body.serviceConfig),build=props(body.buildConfig);
+ let safeIngress=false;
+ try{
+  const url=new URL(service.uri);
+  safeIngress=url.protocol==='https:'&&!url.username&&!url.password&&
+   !url.port&&!url.search&&!url.hash&&
+   (url.hostname.endsWith('.a.run.app')||
+    url.hostname.endsWith('.cloudfunctions.net'));
+ }catch{}
+ const active=body.state==='ACTIVE'&&safeIngress&&
+  /^nodejs(?:20|22|24)$/.test(build.runtime||'')&&
+  build.entryPoint==='getVerifiedJointCountRanking';
+ return Object.freeze({
+  deployed:true,active,configuredEnabled:active&&
+  props(service.environmentVariables).NICO_JOINT_COUNT_RANKING_ENABLED==='enabled'
+ });
+}
+export async function inspectJointRankingMetadata(read){
+ if(typeof read!=='function')abort('JOINT_RANKING_TRANSPORT_UNVERIFIED');
+ let result;
+ try{result=await read(JOINT_RANKING_METADATA_URL);}
+ catch{abort('JOINT_RANKING_TRANSPORT_UNVERIFIED');}
+ if(result?.status===401||result?.status===403)
+  abort('JOINT_RANKING_READ_PERMISSION_MISSING');
+ if(result?.status===200){
+  let data;
+  try{data=await result.json();}catch{abort('JOINT_RANKING_JSON_UNVERIFIED');}
+  return Object.freeze({jointRankingFunctionPresent:true,
+   ...(()=>{const v=jointState(data,200);return {
+    jointRankingFunctionActive:v.active,
+    jointRankingFunctionConfiguredEnabled:v.configuredEnabled
+   };})(),
+   jointMetadataFromRegionalList:false,
+   realPartnerFinanceDenyVerified:false,
+   realPartnerCountEntryVerified:false
+  });
+ }
+ if(result?.status!==404)abort('JOINT_RANKING_GET_UNVERIFIED');
+ // GET endpoints occasionally return 404 even for a listed gen2 Function.
+ // Resolve using the canonical regional list, never guess deployment from 404.
+ let response;
+ try{response=await read(LIST_URL);}catch{abort('JOINT_RANKING_LIST_UNVERIFIED');}
+ if(response?.status!==200)abort('JOINT_RANKING_LIST_UNVERIFIED');
+ let listing;
+ try{listing=await response.json();}catch{abort('JOINT_RANKING_LIST_JSON_UNVERIFIED');}
+ const rows=listing?.functions===undefined?[]:listing?.functions;
+ if(!listing||typeof listing!=='object'||Array.isArray(listing)||
+   !Array.isArray(rows)||rows.length>1000||
+   (listing.nextPageToken!==undefined&&listing.nextPageToken!==''))
+  abort('JOINT_RANKING_LIST_INCOMPLETE');
+ const matches=rows.filter(x=>x?.name===
+   RESOURCE_ROOT+'getVerifiedJointCountRanking');
+ if(matches.length>1)abort('JOINT_RANKING_DUPLICATE');
+ const v=matches.length?jointState(matches[0],200):jointState(null,404);
+ return Object.freeze({
+  jointRankingFunctionPresent:v.deployed,
+  jointRankingFunctionActive:v.active,
+  jointRankingFunctionConfiguredEnabled:v.configuredEnabled,
+  jointMetadataFromRegionalList:true,
+  realPartnerFinanceDenyVerified:false,
+  realPartnerCountEntryVerified:false
+ });
+}
 async function main(){
  if(process.env.GITHUB_ACTIONS!=='true'||
     process.env.GITHUB_REPOSITORY!=='Keikei-p/-'||
@@ -168,16 +243,17 @@ async function main(){
    abort('WRONG_PROJECT');
  const tokenProvider=firebase.applicationDefault();
  const read=async url=>{
-  if(url!==LIST_URL&&(!url.startsWith(ROOT)||
-     !EXPECTED.includes(url.slice(ROOT.length))||
-     url!==ROOT+url.slice(ROOT.length)))abort('UNKNOWN_ENDPOINT');
+  if(url!==LIST_URL&&url!==JOINT_RANKING_METADATA_URL&&
+     (!url.startsWith(ROOT)||!EXPECTED.includes(url.slice(ROOT.length))||
+      url!==ROOT+url.slice(ROOT.length)))abort('UNKNOWN_ENDPOINT');
   const token=(await tokenProvider.getAccessToken())?.access_token;
   if(!token)abort('NO_READ_TOKEN');
   return fetch(url,{method:'GET',redirect:'error',cache:'no-store',
    headers:{Authorization:'Bearer '+token}});
  };
  const result=await inspect(read);
- console.log('PARTNER_COUNT_FUNCTION_METADATA '+JSON.stringify(result));
+ const joint=await inspectJointRankingMetadata(read);
+ console.log('PARTNER_COUNT_FUNCTION_METADATA '+JSON.stringify({...result,...joint}));
  const blockers=[];
  if(!result.countFunctionMetadataPresent)blockers.push('COUNT_FUNCTION_MISSING');
  if(!result.countFunctionsActive)blockers.push('COUNT_FUNCTION_NOT_ACTIVE');

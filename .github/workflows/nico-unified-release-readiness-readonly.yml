@@ -54,8 +54,9 @@ jobs:
           test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
           test "$(git hash-object index.html)" = '88ef5636bfe9254e71f2109d452b6d3049f99861'
           test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
-          test "$(git hash-object functions-partner-workspace/index.js)" = '38da7e9174ffea7c406c92292dccfc651b565eb0'
-          test "$(git hash-object finance-boundary-check.html)" = '7fa664efb17f6d3337e9403498aa8c0857b35be5'
+          test "$(git hash-object functions-partner-workspace/index.js)" = 'ab551981ce12b4d291a20c0b51cbd461be60df54'
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = '5334aa48d7f4eb64274a6d7a8bbb4e76d4a2fb65'
+          test "$(git hash-object finance-boundary-check.html)" = 'ba0de47af53174d3ef37a9a047818568c0527035'
           echo 'PASS_NICO_NO_DEPLOY_READINESS_ONLY'
   live:
     needs: offline
@@ -85,7 +86,8 @@ jobs:
           test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
           test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq '.commit.sha')"
           test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
-          test "$(git hash-object functions-partner-workspace/index.js)" = '38da7e9174ffea7c406c92292dccfc651b565eb0'
+          test "$(git hash-object functions-partner-workspace/index.js)" = 'ab551981ce12b4d291a20c0b51cbd461be60df54'
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = '5334aa48d7f4eb64274a6d7a8bbb4e76d4a2fb65'
           node --test tests/unified-release-readiness-readonly.test.mjs
       - name: Install existing read-only Firebase SDK dependencies before secrets
         shell: bash
@@ -106,7 +108,7 @@ jobs:
           set -euo pipefail
           node tools/production/audit-live-firestore-rules-readonly.mjs > "$RUNNER_TEMP/nico-readiness-rules.private.log" 2>&1 || { echo 'STOP_NICO_LIVE_RULES_AUDIT'; exit 1; }
           grep -q '^NICO_LIVE_RULES_SOURCE_AUDIT ' "$RUNNER_TEMP/nico-readiness-rules.private.log"
-      - name: Read four partner Functions metadata only
+      - name: Read partner count Functions and joint ranking Function metadata only
         shell: bash
         run: |
           set -euo pipefail
