@@ -60,10 +60,55 @@ test("partner sees own results and public rankings only, not any hub internal te
  renderVerifiedDualCountDashboard({document:doc,root,payload:data});
  const text=words(root);
  for(const expected of ["自社の獲得件数・成長","協力店A","3件",
-  "自分たちの成果・前期比","公開承認済み・個人ランキング","商材ランキング"])
+  "自分たちの成果・前期比","公開承認済み・個人ランキング",
+  "公開承認済み・会社ランキング","公開承認済み・班ランキング","商材ランキング","自社","第一班"])
   assert(text.includes(expected),expected);
- for(const forbidden of ["班別内訳","会社別内訳","自社 2件","売上","単価","キャッシュバック","50000円"])
+ for(const forbidden of ["班別内訳","会社別内訳","teamId","uid","売上","単価","キャッシュバック","50000円"])
   assert(!text.includes(forbidden),forbidden);
+});
+test("partner jointly ranks internal company and approved partner teams without exposing team IDs",()=>{
+ const root=new Node("main"),data=buildVerifiedCountDashboard(input("partner_owner"));
+ assert.deepEqual(data.publicRanking.companies.map(x=>x.rank),[1,2]);
+ assert.deepEqual(data.publicRanking.teams.map(x=>x.rank),[1,2]);
+ renderVerifiedDualCountDashboard({document:doc,root,payload:data});
+ const text=words(root);
+ assert(text.includes("会社ランキング"));
+ assert(text.includes("班ランキング"));
+ assert(text.includes("協力店A"));
+ assert(text.includes("自社"));
+ assert(text.includes("第一班"));
+ assert(!text.includes("hub:team"));
+ assert(!text.includes("partner:team"));
+ assert(!text.includes("unitPrice"));
+ assert(!text.includes("totalRevenue"));
+});
+test("shared partner company/team ties are ranked 1,1 (not 1,2), and financial injection fails closed",()=>{
+ const same=input("partner_owner");
+ same.sources[0].records[0].totalCount=3;
+ same.sources[0].lines[0].count=3;
+ const root=new Node("main");
+ const data=buildVerifiedCountDashboard(same);
+ assert.deepEqual(data.publicRanking.companies.map(x=>x.rank),[1,1]);
+ assert.deepEqual(data.publicRanking.teams.map(x=>x.rank),[1,1]);
+ renderVerifiedDualCountDashboard({document:doc,root,payload:data});
+ assert(words(root).includes("1位"));
+ for(const change of [
+  d=>{d.publicRanking.companies[0].rank=2;},
+  d=>{d.publicRanking.teams[1].rank=2;},
+  d=>{d.publicRanking.companies[0].count=-1;},
+  d=>{d.publicRanking.teams[0].name="売上50000円";},
+  d=>{d.publicRanking.companies[0].unitPrice=99000;},
+  d=>{d.publicRanking.teams[0].uid="member-secret";},
+  d=>{delete d.publicRanking.companies;},
+  d=>{delete d.publicRanking.teams;},
+  d=>{d.publicRanking.privateCounts={NURO:10};}
+ ]){
+  const candidate=structuredClone(data);change(candidate);
+  assert.throws(()=>renderVerifiedDualCountDashboard({document:doc,root,payload:candidate}),
+   /件数の権限/);
+  assert.equal(root.children.length,0,"deny entire result, not partial leaderboard");
+  renderVerifiedDualCountDashboard({document:doc,root,payload:data});
+ }
 });
 test("malformed or financial API payload clears stale names and never displays partial data",()=>{
  const root=new Node("main"),good=buildVerifiedCountDashboard(input("hub_owner"));
