@@ -28,14 +28,14 @@ jobs:
         with: {persist-credentials: false}
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
-      - name: Protect all live sales, partner, rules, Functions and data
+      - name: Protect latest reviewed live sales, partner, rules, Functions and data
         shell: bash
         run: |
           set -euo pipefail
           test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
           test -z "$GOOGLE_APPLICATION_CREDENTIALS"
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
-          test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 5334aa48d7f4eb64274a6d7a8bbb4e76d4a2fb65
           test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
           git diff --exit-code -- firestore.rules index.html partner-workspace.html firebase.json functions functions-partner-workspace
       - name: Count rankings and mobile role-safe UI, period and filters
