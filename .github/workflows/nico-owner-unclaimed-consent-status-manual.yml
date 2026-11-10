@@ -9,6 +9,7 @@ on:
       - 'tests/owner-unclaimed-consent-status-vendor-parity.test.mjs'
       - 'tools/production/owner-status-single-function-version-guard.mjs'
       - 'tests/owner-status-single-function-version-guard.test.mjs'
+      - 'tests/owner-unclaimed-status-manual-release.test.mjs'
       - '.github/workflows/nico-owner-unclaimed-consent-status-manual.yml'
   push:
     branches: [main]
@@ -19,6 +20,7 @@ on:
       - 'tests/owner-unclaimed-consent-status-vendor-parity.test.mjs'
       - 'tools/production/owner-status-single-function-version-guard.mjs'
       - 'tests/owner-status-single-function-version-guard.test.mjs'
+      - 'tests/owner-unclaimed-status-manual-release.test.mjs'
       - '.github/workflows/nico-owner-unclaimed-consent-status-manual.yml'
 permissions:
   contents: read
@@ -49,7 +51,7 @@ jobs:
           test "$(git hash-object firebase.ranking-approvals.json)" = 35a8b4ab4b39b16927e0e7235b048d7052497632
           node --check ranking/ranking-owner-consent-status.mjs
           node --check functions-ranking-approvals/vendor/ranking-owner-consent-status.mjs
-          node --test tests/owner-unclaimed-consent-status-vendor-parity.test.mjs tests/owner-status-single-function-version-guard.test.mjs tests/ranking-owner-consent-service.test.mjs tests/ranking-owner-callable-controller.test.cjs
+          node --test tests/owner-unclaimed-status-manual-release.test.mjs tests/owner-unclaimed-consent-status-vendor-parity.test.mjs tests/owner-status-single-function-version-guard.test.mjs tests/ranking-owner-consent-service.test.mjs tests/ranking-owner-callable-controller.test.cjs
           node tools/ranking/verify-isolated-owner-callables.mjs
           echo 'ONE_OWNER_CONSENT_STATUS_OFFLINE_PASS_NO_DEPLOY'
       - name: Manual rerun approval gate (first push may NEVER deploy)
