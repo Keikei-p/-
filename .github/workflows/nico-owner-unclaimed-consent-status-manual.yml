@@ -1,0 +1,180 @@
+name: NICO Owner consent STATUS one Function (manual rerun only)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ranking/ranking-owner-consent-status.mjs'
+      - 'functions-ranking-approvals/vendor/ranking-owner-consent-status.mjs'
+      - 'tests/ranking-owner-consent-service.test.mjs'
+      - 'tests/owner-unclaimed-consent-status-vendor-parity.test.mjs'
+      - 'tools/production/owner-status-single-function-version-guard.mjs'
+      - 'tests/owner-status-single-function-version-guard.test.mjs'
+      - 'tests/owner-unclaimed-status-manual-release.test.mjs'
+      - '.github/workflows/nico-owner-unclaimed-consent-status-manual.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'ranking/ranking-owner-consent-status.mjs'
+      - 'functions-ranking-approvals/vendor/ranking-owner-consent-status.mjs'
+      - 'tests/ranking-owner-consent-service.test.mjs'
+      - 'tests/owner-unclaimed-consent-status-vendor-parity.test.mjs'
+      - 'tools/production/owner-status-single-function-version-guard.mjs'
+      - 'tests/owner-status-single-function-version-guard.test.mjs'
+      - 'tests/owner-unclaimed-status-manual-release.test.mjs'
+      - '.github/workflows/nico-owner-unclaimed-consent-status-manual.yml'
+permissions:
+  contents: read
+concurrency:
+  group: firebase-production-owner-six-serial
+  cancel-in-progress: false
+jobs:
+  consent-status-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 38
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify all original money/count/Rules/functions code and exact server vendor parity OFFLINE
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 614f3216e008642ddf5eda6b93c35cc0469557c3
+          test "$(git hash-object functions-ranking-approvals/index.js)" = 54855609e372ee1056b5206e445f20c0a251b1ef
+          test "$(git hash-object functions-ranking-approvals/controller.cjs)" = 0a7691d8a01ca6a47931300a2b650c7fbfb5b391
+          test "$(git hash-object functions-ranking-approvals/product-visibility-controller.cjs)" = 87a9381d9efce485b4edbe6ce7ed56a6b1c9d9d7
+          test "$(git hash-object functions-ranking-approvals/owner-sku-mapping-controller.cjs)" = fb32c016f647d01e90cbc82ec9ae823ab1df720d
+          test "$(git hash-object firebase.ranking-approvals.json)" = 35a8b4ab4b39b16927e0e7235b048d7052497632
+          node --check ranking/ranking-owner-consent-status.mjs
+          node --check functions-ranking-approvals/vendor/ranking-owner-consent-status.mjs
+          node --test tests/owner-unclaimed-status-manual-release.test.mjs tests/owner-unclaimed-consent-status-vendor-parity.test.mjs tests/owner-status-single-function-version-guard.test.mjs tests/ranking-owner-consent-service.test.mjs tests/ranking-owner-callable-controller.test.cjs
+          node tools/ranking/verify-isolated-owner-callables.mjs
+          echo 'ONE_OWNER_CONSENT_STATUS_OFFLINE_PASS_NO_DEPLOY'
+      - name: Manual rerun approval gate (first push may NEVER deploy)
+        id: gate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APPROVED_SCOPE: UPDATE_ONLY_getRankingOwnerConsentStatus_PRESERVE_ALL_OTHER_FUNCTIONS
+          APPROVED_USAGE: FUNCTION_BUILD_TRIAL_CHARGE_EXPLICITLY_APPROVED
+          RULES_APPROVAL: NO_FIRESTORE_AUTH_IAM_OR_HOSTING_CHANGES
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_RUN_ATTEMPT" = 1 ]; then
+            echo 'approved=false' >> "$GITHUB_OUTPUT"
+            echo 'ONE_CONSENT_STATUS_OFFLINE_PUSH_NO_DEPLOY'
+            exit 0
+          fi
+          test "$GITHUB_RUN_ATTEMPT" = 2
+          test "$GITHUB_EVENT_NAME" = push
+          test "$GITHUB_REF" = refs/heads/main
+          test "$GITHUB_REPOSITORY" = Keikei-p/-
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
+          test "$(git log -1 --pretty=%s)" = 'release(owner): one safe consent status read update for unclaimed partner workspace'
+          test "$APPROVED_SCOPE" = UPDATE_ONLY_getRankingOwnerConsentStatus_PRESERVE_ALL_OTHER_FUNCTIONS
+          test "$APPROVED_USAGE" = FUNCTION_BUILD_TRIAL_CHARGE_EXPLICITLY_APPROVED
+          test "$RULES_APPROVAL" = NO_FIRESTORE_AUTH_IAM_OR_HOSTING_CHANGES
+          echo 'approved=true' >> "$GITHUB_OUTPUT"
+          echo 'ONE_CONSENT_STATUS_MANUAL_RERUN_APPROVED'
+      - name: Install existing SDK and pinned CLI only for manual approval
+        if: ${{ steps.gate.outputs.approved == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+          npm install --prefix functions-ranking-approvals --ignore-scripts --package-lock=false --no-audit --no-fund
+          npm install --global firebase-tools@15.34.1 --no-audit --no-fund
+      - name: Establish existing Firebase deploy identity privately without permissions changes
+        if: ${{ steps.gate.outputs.approved == 'true' }}
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/owner-consent-status-identity.private.json"
+          chmod 600 "$RUNNER_TEMP/owner-consent-status-identity.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/owner-consent-status-identity.private.json" >> "$GITHUB_ENV"
+      - name: Record ALL Gen2 versions, old Finance/Count Functions, and every six Owner flags (GET only)
+        if: ${{ steps.gate.outputs.approved == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/protect-ranking-original-functions-versions.mjs before
+          node --input-type=module <<'NODE'
+          import {createRequire} from 'node:module';
+          import {writeFileSync} from 'node:fs';
+          import {snapshotOtherFunctions} from './tools/production/owner-status-single-function-version-guard.mjs';
+          const require=createRequire(new URL('./functions/package.json',import.meta.url));
+          const cred=require('firebase-admin/app').applicationDefault();
+          const token=(await cred.getAccessToken())?.access_token;
+          if(!token)throw Error('STOP_OWNER_STATUS_SINGLE_RELEASE_TOKEN_MISSING');
+          const url='https://cloudfunctions.googleapis.com/v2/projects/sales-management-cc116/locations/asia-northeast1/functions?pageSize=1000';
+          const res=await fetch(url,{method:'GET',cache:'no-store',redirect:'error',headers:{Authorization:'Bearer '+token}});
+          if(res.status!==200)throw Error('STOP_OWNER_STATUS_SINGLE_RELEASE_METADATA_READ');
+          const raw=await res.json();
+          if(!Array.isArray(raw.functions??[])||raw.nextPageToken)throw Error('STOP_OWNER_STATUS_SINGLE_RELEASE_PAGE');
+          const baseline=snapshotOtherFunctions(raw.functions??[]);
+          writeFileSync(process.env.RUNNER_TEMP+'/owner-consent-status-baseline.private.json',
+            JSON.stringify(baseline),{mode:0o600,flag:'wx'});
+          console.log('SINGLE_STATUS_REMOTE_BEFORE_CAPTURED_ORIGINALS_PROTECTED');
+          NODE
+      - name: Keep three Owner settings flags enabled and joint ranking disabled
+        if: ${{ steps.gate.outputs.approved == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e functions-ranking-approvals/.env.sales-management-cc116
+          printf 'NICO_RANKING_OWNER_SETTINGS_ENABLED=enabled\nNICO_OWNER_PRODUCT_VISIBILITY_ENABLED=enabled\nNICO_OWNER_SKU_MAPPING_ENABLED=enabled\nNICO_JOINT_COUNT_RANKING_ENABLED=disabled\n' > functions-ranking-approvals/.env.sales-management-cc116
+          chmod 600 functions-ranking-approvals/.env.sales-management-cc116
+          grep -qx 'NICO_JOINT_COUNT_RANKING_ENABLED=disabled' functions-ranking-approvals/.env.sales-management-cc116
+      - name: Deploy exact one already EXISTING Owner STATUS callable, and nothing else (NO automatic retry)
+        if: ${{ steps.gate.outputs.approved == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          export TARGET=functions:ranking-owner-approvals:getRankingOwnerConsentStatus
+          node --input-type=module -e "import{DEPLOY_TARGET}from'./tools/production/owner-status-single-function-version-guard.mjs';if(DEPLOY_TARGET!==process.env.TARGET)throw Error('STOP_ONE_STATUS_TARGET_DRIFT')" 
+          set +e
+          firebase deploy --non-interactive --project "$FIREBASE_PROJECT_ID" --config firebase.ranking-approvals.json --only "$TARGET" > "$RUNNER_TEMP/owner-consent-status-deploy.private.log" 2>&1
+          code=$?
+          set -e
+          echo "OWNER_ONE_FUNCTION_CLI_EXIT=$code"
+          echo 'NO_DEPLOY_RETRY_EVEN_ON_PARTIAL_CLI_FAILURE'
+      - name: Independent GET-only verify exactly one status revision, all others immutable
+        if: ${{ steps.gate.outputs.approved == 'true' && success() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/protect-ranking-original-functions-versions.mjs after
+          node --input-type=module <<'NODE'
+          import {createRequire} from 'node:module';
+          import {readFileSync} from 'node:fs';
+          import {compareSingleFunctionVersion} from './tools/production/owner-status-single-function-version-guard.mjs';
+          const require=createRequire(new URL('./functions/package.json',import.meta.url));
+          const cred=require('firebase-admin/app').applicationDefault();
+          const token=(await cred.getAccessToken())?.access_token;
+          if(!token)throw Error('STOP_OWNER_STATUS_SINGLE_RELEASE_TOKEN_MISSING');
+          const url='https://cloudfunctions.googleapis.com/v2/projects/sales-management-cc116/locations/asia-northeast1/functions?pageSize=1000';
+          const res=await fetch(url,{method:'GET',cache:'no-store',redirect:'error',headers:{Authorization:'Bearer '+token}});
+          if(res.status!==200)throw Error('STOP_OWNER_STATUS_SINGLE_RELEASE_METADATA_READ');
+          const raw=await res.json();
+          if(!Array.isArray(raw.functions??[])||raw.nextPageToken)throw Error('STOP_OWNER_STATUS_SINGLE_RELEASE_PAGE');
+          const baseline=JSON.parse(readFileSync(process.env.RUNNER_TEMP+'/owner-consent-status-baseline.private.json','utf8'));
+          console.log('OWNER_ONE_FUNCTION_POST_RELEASE '+JSON.stringify(
+           compareSingleFunctionVersion(baseline,raw.functions??[])));
+          NODE
+          echo ONE_OWNER_CONSENT_STATUS_LIVE_REVISION_VERIFIED_ALL_OTHER_FUNCTIONS_UNCHANGED
+      - name: Erase private identity, full metadata, CLI logs and ephemeral flags
+        if: always()
+        run: |
+          rm -f functions-ranking-approvals/.env.sales-management-cc116
+          rm -f "$RUNNER_TEMP/owner-consent-status-identity.private.json" \
+            "$RUNNER_TEMP/owner-consent-status-baseline.private.json" \
+            "$RUNNER_TEMP/owner-consent-status-deploy.private.log" \
+            "$RUNNER_TEMP/nico-original-six-immutable-versions.private.json"
