@@ -77,16 +77,25 @@ test("one owner toggle is atomic, version checked, audited, and changes no sales
  assert.deepEqual(f.state.get("products/nuro"),before);
  assert.equal(f.state.get("companies/hub/rankingProductVisibility/shared")
   .enabledHubProductIds.join(","),"nuro");
- assert.equal(f.writes,2,"only setting + append-only audit");
+ const publicCatalog=f.state.get("companies/hub/rankingCountPublicCatalog/shared");
+ assert.equal(publicCatalog.schema,"nico-reviewed-count-public-catalog-v1");
+ assert.equal(publicCatalog.version,1);
+ assert.equal(publicCatalog.ownerUid,"owner");
+ assert.deepEqual(publicCatalog.products.map(({id,name,active})=>({id,name,active})),
+  [{id:"air",name:"SoftBank Air",active:true},
+   {id:"nuro",name:"NURO光",active:true}].sort((a,b)=>a.name.localeCompare(b.name,"ja")||
+    a.id.localeCompare(b.id)));
+ assert.doesNotMatch(JSON.stringify(publicCatalog),/revenue|unitPrice|cashback|25000|10000/);
+ assert.equal(f.writes,3,"only visibility, sanitized public catalog and immutable audit");
  assert.equal((await f.store.readStatus(principal)).products
   .find(p=>p.id==="nuro").enabled,true);
  const repeat=await f.store.saveSwitch({principal,productId:"nuro",
   enabled:true,expectedVersion:1});
  assert.equal(repeat.saved,false);
- assert.equal(f.writes,2,"idempotent no-op must not duplicate audit");
+ assert.equal(f.writes,3,"idempotent no-op must not duplicate catalog or audit");
  await assert.rejects(f.store.saveSwitch({principal,productId:"air",
   enabled:true,expectedVersion:0}),/UNAUTHORIZED_OR_INCOMPLETE/);
- assert.equal(f.writes,2);
+ assert.equal(f.writes,3);
 });
 test("partner-specific OFF cannot turn on globally OFF product; OFF never deletes counts",async()=>{
  const f=fake(),saved=await f.store.saveSwitch({principal,productId:"nuro",
