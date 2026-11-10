@@ -119,7 +119,7 @@ jobs:
                [ "${GITHUB_HEAD_REF:-}" = "feat/partner-sku-onoff-count-save-safe-20261110" ]; } ||
              { [ "$GITHUB_EVENT_NAME" = "push" ] &&
                [ "$GITHUB_REF" = "refs/heads/main" ]; }; then
-            test "$(git hash-object scripts/ci/review-partner-sku-publication-write.cjs)" = 'ff1d22be89a18712178dd2a64164510af51b38b8'
+            test "$(git hash-object scripts/ci/review-partner-sku-publication-write.cjs)" = '253c1811410e87a2a5546fd148bd713ca90b348d'
             node scripts/ci/review-partner-sku-publication-write.cjs
           elif { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
                  [ "${GITHUB_HEAD_REF:-}" = "feat/verified-partner-daily-month-count-ranking-main-20261110" ]; } ||
