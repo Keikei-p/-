@@ -7,11 +7,11 @@
  * Only hub-published canonical products may contribute to hub totals.
  */
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
-const MONEY=/売上|単価|収益|利益|報酬|原価|価格|[¥￥$€]|(?:\d[\d,.]*)\s*(?:万|千)?円|revenue|unit.?price|cashback|commission/i;
+const MONEY=/売上|単価|収益|利益|報酬|原価|価格|キャッシュバック|(?:^|[^A-Za-z])CB(?=$|[^A-Za-z])|[¥￥$€]|(?:\d[\d,.]*)\s*(?:万|千)?円|revenue|unit.?price|cash\s*back|commission/i;
 const refuse=x=>{throw Error("CATALOG_PRIVACY_STOP_"+x);};
 const id=(x,label)=>{if(typeof x!=="string"||!ID.test(x))refuse(label);return x;};
 const name=x=>{
- if(typeof x!=="string"||!x.trim()||x.trim().length>80||MONEY.test(x))refuse("PRODUCT_NAME");
+ if(typeof x!=="string"||!x.trim()||x.trim().length>80||MONEY.test(x.normalize("NFKC")))refuse("PRODUCT_NAME");
  return x.trim();
 };
 const own=x=>x&&typeof x==="object"&&!Array.isArray(x)&&Object.getPrototypeOf(x)===Object.prototype;
@@ -113,7 +113,7 @@ export function projectPersonalRankings(rows){
   if(!own(r)||!id(r.personId,"PERSON")||!id(r.companyId,"COMPANY")||
      !safeCount(r.sharedCount)||!r.name||!r.affiliation||
      typeof r.name!=="string"||typeof r.affiliation!=="string"||
-     r.name.length>60||r.affiliation.length>80||MONEY.test(r.name)||MONEY.test(r.affiliation))
+     r.name.length>60||r.affiliation.length>80||MONEY.test(r.name.normalize("NFKC"))||MONEY.test(r.affiliation.normalize("NFKC")))
     refuse("RANK_ROW");
   const key=r.companyId+"|"+r.personId;
   if(seen.has(key))refuse("DUPLICATE_PERSON");
