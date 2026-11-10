@@ -50,6 +50,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # PR-only, source-pinned review of main-based partner rank tie fixes.
+          # Historical workflow_dispatch release hashes and finance gates below
+          # remain unchanged; this path cannot deploy anything.
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
+             [ "${GITHUB_HEAD_REF:-}" = "fix/partner-competition-ties-main-safe-20261110" ]; then
+            test "$(git hash-object partner-workspace.html)" = '7557af4a872464d0aa939e32e83ad41f71d67c47'
+            test "$(git hash-object tests/partner-dashboard-self-app-count-parity.test.mjs)" = '8a8bfd6c18434c3a83931e3e817fbfae85ce6009'
+            test "$(git hash-object index.html)" = '88ef5636bfe9254e71f2109d452b6d3049f99861'
+            test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
+            test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
+            test "$(git hash-object functions-partner-workspace/service.cjs)" = 'b94a6aba231dc2569009580a178297a5b6194bda'
+            test "$(git hash-object functions-partner-workspace/index.js)" = '38da7e9174ffea7c406c92292dccfc651b565eb0'
+            test "$(git hash-object functions-partner-workspace/company-code-auth.cjs)" = 'f7e5899cdb9e36da610846d787955b13c1e16e4b'
+            test "$(git hash-object firebase.partner-workspace.json)" = 'a6ceedec5fab4e22e0a8efe19c685716a2db9750'
+            node --test tests/partner-dashboard-self-app-count-parity.test.mjs tests/partner-workspace.test.cjs tests/partner-company-code-auth.test.cjs
+            node --test tests/internal-owner-finance-visibility.test.cjs tests/partner-money-free-workspace.test.cjs tests/partner-count-dashboard.test.cjs
+            echo 'PASS_PR_ONLY_REVIEWED_TIED_COUNTS_ORIGINAL_RELEASE_PINNED_NO_DEPLOY'
+            exit 0
+          fi
           # Specific PR-only safety fix: old company-code release remains pinned.
           # Never run this route on workflow_dispatch or a push to main.
           if [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
