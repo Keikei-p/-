@@ -2,7 +2,7 @@
 /** Read-only live Firestore Rules audit. Never reads user records or writes data. */
 const assert=require("node:assert/strict");
 const fs=require("node:fs");
-const {GoogleAuth}=require("google-auth-library");
+const {GoogleAuth}=require(process.env.NICO_AUDIT_GOOGLE_AUTH_MODULE || "google-auth-library");
 const project="sales-management-cc116";
 const endpoint="https://firebaserules.googleapis.com/v1/projects/"+project+"/releases/cloud.firestore";
 async function main(){
