@@ -58,8 +58,8 @@ jobs:
           set -euo pipefail
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
           test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
-          test "$(git hash-object functions-partner-workspace/index.js)" = 38da7e9174ffea7c406c92292dccfc651b565eb0
-          test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
+          test "$(git hash-object functions-partner-workspace/index.js)" = ab551981ce12b4d291a20c0b51cbd461be60df54
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 5334aa48d7f4eb64274a6d7a8bbb4e76d4a2fb65
           test "$(git hash-object firebase.partner-workspace.json)" = a6ceedec5fab4e22e0a8efe19c685716a2db9750
           node --check tools/production/ranking-disabled-function-scope.mjs
           node --test tests/ranking-disabled-function-scope.test.mjs tests/isolated-joint-count-function-package.test.mjs tests/joint-count-http-adapter.test.cjs tests/protect-ranking-original-functions-versions.test.mjs
@@ -153,8 +153,8 @@ jobs:
           test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
           test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
-          test "$(git hash-object functions-partner-workspace/index.js)" = 38da7e9174ffea7c406c92292dccfc651b565eb0
-          test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
+          test "$(git hash-object functions-partner-workspace/index.js)" = ab551981ce12b4d291a20c0b51cbd461be60df54
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 5334aa48d7f4eb64274a6d7a8bbb4e76d4a2fb65
           node --test tests/ranking-disabled-function-scope.test.mjs tests/isolated-joint-count-function-package.test.mjs
       - name: Install isolated SDK and reviewed CLI only
         shell: bash
