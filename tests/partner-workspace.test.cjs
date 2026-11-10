@@ -1225,6 +1225,28 @@ test("new approved monthly and daily ranking API excludes finance and OFF counts
  assert.equal(partner.period,"day");
  assert.equal(partner.start,date);
  assert.deepEqual([...db.store],before,"ranking reads may not write existing source records or settings");
+ // The old company-level quick count is used only on dates with no staff
+ // source; a second quick report on an already verified staff day is ignored.
+ db.seed("companies/hub/partnerQuickCountDays/2026-10-30/reports/partner",{
+  hubCompanyId:"hub",partnerCompanyId:"partner",date:"2026-10-30",
+  partnerCompanyName:"協力店",version:1,
+  counts:{...zero(),NURO:4},totalCount:4,
+  cashback:123456,unitPrice:50000
+ });
+ db.seed("companies/hub/partnerQuickCountDays/2026-10-31/reports/partner",{
+  hubCompanyId:"hub",partnerCompanyId:"partner",date:"2026-10-31",
+  partnerCompanyName:"協力店",version:1,
+  counts:{...zero(),NURO:999},totalCount:999
+ });
+ const mixed=await api.view(req("h",{
+  date,sharedCountRankings:true,rankingPeriod:"month"
+ }));
+ assert.equal(mixed.totalCount,7,"company-only fallback counts once");
+ assert.equal(mixed.people[0].totalCount,3,"legacy company-only count is never fabricated as staff");
+ assert.equal(mixed.historicalCompanyOnlyCount,4);
+ assert.equal(mixed.peopleComplete,false);
+ assert.equal(mixed.companies[0].totalCount,7);
+ assert.doesNotMatch(JSON.stringify(mixed),/cashback|unitPrice|123456|50000|999/);
  db.store.get("companies/hub/rankingProductVisibility/shared").partnerOverrides.partner=[];
  const off=await api.view(req("p",{date,sharedCountRankings:true}));
  assert.equal(off.companies.length,0,"OFF must not masquerade as saved 0");
