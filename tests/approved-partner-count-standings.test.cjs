@@ -36,6 +36,21 @@ test("two approved companies, individual/team, product totals, once only",()=>{
  assert.doesNotMatch(JSON.stringify(out),/cbCounts|80000|990000|7654321|privateSku|updatedByUid|revenue|SBMNP/);
  assert.equal(JSON.stringify([a,b]),before);
 });
+test("all-OFF partner publishes no personal/team ranks while ON zero remains reported",()=>{
+ const off=company("a","非公開会社",{...zero(),NURO:9},{allowed:[]});
+ const on=company("b","公開会社",{...zero(),NURO:2},{allowed:["NURO"]});
+ const submittedZero=company("c","ゼロ会社",zero(),{allowed:["NURO"]});
+ const originals=JSON.stringify([off,on,submittedZero]);
+ const out=build([off,on,submittedZero]);
+ assert.equal(out.totalCount,2);
+ assert.equal(out.reportCount,3);
+ assert.deepEqual(out.companies.map(x=>x.name),["公開会社","ゼロ会社"]);
+ assert.equal(out.people.length,2);
+ assert.equal(out.teams.length,2);
+ assert.equal(out.people.find(x=>x.companyName==="ゼロ会社").totalCount,0);
+ assert.equal(JSON.stringify(out).includes("非公開会社"),false);
+ assert.equal(JSON.stringify([off,on,submittedZero]),originals);
+});
 test("zero is submitted but missing report is not treated as zero",()=>{
  const submitted=company("a","会社A",zero());
  const missing={...company("b","会社B",zero()),entries:[],reports:[]};
