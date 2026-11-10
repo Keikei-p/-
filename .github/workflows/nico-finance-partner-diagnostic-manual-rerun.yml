@@ -1,0 +1,130 @@
+name: NICO partner finance real-account diagnostic (ONE NEW PAGE, manual rerun)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'finance-partner-boundary-check.html'
+      - 'tools/hosting/additive-finance-partner-boundary-diagnostic.mjs'
+      - 'tests/finance-partner-boundary-*.test.mjs'
+      - '.github/workflows/nico-finance-partner-diagnostic-manual-rerun.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'finance-partner-boundary-check.html'
+      - 'tools/hosting/additive-finance-partner-boundary-diagnostic.mjs'
+      - 'tests/finance-partner-boundary-*.test.mjs'
+      - '.github/workflows/nico-finance-partner-diagnostic-manual-rerun.yml'
+permissions:
+  contents: read
+concurrency:
+  group: firebase-production-finance-partner-single-additive
+  cancel-in-progress: false
+jobs:
+  one-new-page:
+    runs-on: ubuntu-latest
+    timeout-minutes: 28
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Protect original live finance diagnosis, index, Rules, and all sales Functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
+          test "$(git hash-object finance-boundary-check.html)" = ba0de47af53174d3ef37a9a047818568c0527035
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 614f3216e008642ddf5eda6b93c35cc0469557c3
+          test "$(git hash-object functions-ranking-approvals/index.js)" = 54855609e372ee1056b5206e445f20c0a251b1ef
+          test "$(git hash-object finance-partner-boundary-check.html)" = 8c5f70fae56535b6b9835e8384124d5cab640403
+          node --check tools/hosting/additive-finance-partner-boundary-diagnostic.mjs
+          node --test tests/finance-partner-boundary-check.test.mjs tests/finance-partner-boundary-additive-hosting.test.mjs tests/finance-boundary-ondevice.test.mjs
+          echo 'PARTNER_FINANCE_DIAGNOSTIC_OFFLINE_ONLY_OLD_APP_IMMUTABLE'
+      - name: One-time explicit manual job rerun gate (first main push is NO DEPLOY)
+        id: approval
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOY_ACK: ONLY_ONE_NEW_PARTNER_FINANCE_DIAGNOSTIC_ASSET
+          COST_ACK: HOSTING_OPERATIONS_AND_TRIAL_CHARGES_EXPLICITLY_APPROVED
+          DATA_ACK: NO_AUTH_FUNCTIONS_RULES_COUNTS_OR_FINANCE_CHANGES
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_RUN_ATTEMPT" = 1 ]; then
+            echo 'approved=false' >> "$GITHUB_OUTPUT"
+            echo 'PARTNER_FINANCE_DIAGNOSTIC_FIRST_PASS_NO_DEPLOY'
+            exit 0
+          fi
+          test "$GITHUB_RUN_ATTEMPT" = 2
+          test "$GITHUB_EVENT_NAME" = push
+          test "$GITHUB_REF" = refs/heads/main
+          test "$GITHUB_REPOSITORY" = Keikei-p/-
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
+          test "$(git log -1 --pretty=%s)" = 'release(finance): approved additive partner diagnostic one file'
+          test "$DEPLOY_ACK" = ONLY_ONE_NEW_PARTNER_FINANCE_DIAGNOSTIC_ASSET
+          test "$COST_ACK" = HOSTING_OPERATIONS_AND_TRIAL_CHARGES_EXPLICITLY_APPROVED
+          test "$DATA_ACK" = NO_AUTH_FUNCTIONS_RULES_COUNTS_OR_FINANCE_CHANGES
+          echo 'approved=true' >> "$GITHUB_OUTPUT"
+          echo 'PARTNER_FINANCE_SINGLE_PAGE_MANUAL_APPROVAL_CONFIRMED'
+      - name: Install existing Firebase Auth SDK only, after manual rerun approval
+        if: ${{ steps.approval.outputs.approved == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Load existing authorized Hosting service identity privately
+        if: ${{ steps.approval.outputs.approved == 'true' }}
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-partner-finance-diagnostic.private.json"
+          chmod 600 "$RUNNER_TEMP/nico-partner-finance-diagnostic.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-partner-finance-diagnostic.private.json" >> "$GITHUB_ENV"
+      - name: Read-only inspect existing Hosting manifest and reject any collision
+        if: ${{ steps.approval.outputs.approved == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/hosting/additive-finance-partner-boundary-diagnostic.mjs --dry-run
+          echo 'ONE_NEW_ASSET_SAFE_TO_ADD_TO_CURRENT_MANIFEST'
+      - name: Publish exactly one NEW static page with all previous paths and hashes retained
+        if: ${{ steps.approval.outputs.approved == 'true' && success() }}
+        shell: bash
+        env:
+          NICO_FINANCE_PARTNER_DIAGNOSTIC_RELEASE_CONFIRMATION: CONFIRM_ADD_PARTNER_FINANCE_DIAGNOSTIC_ONLY
+        run: |
+          set -euo pipefail
+          node tools/hosting/additive-finance-partner-boundary-diagnostic.mjs --release
+          echo 'PARTNER_FINANCE_SINGLE_ADD_ONLY_RELEASE_SUCCESS'
+      - name: Verify published page byte-for-byte and existing old site routes live
+        if: ${{ steps.approval.outputs.approved == 'true' && success() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          matched=false
+          for n in $(seq 1 10); do
+            curl -fsSL --max-time 20 --retry 1 "https://nico-factory.web.app/finance-partner-boundary-check.html?verify=$GITHUB_SHA-$n" > "$RUNNER_TEMP/partner-finance-live.private.html" || true
+            if cmp -s "$RUNNER_TEMP/partner-finance-live.private.html" finance-partner-boundary-check.html; then
+              matched=true
+              break
+            fi
+            sleep 4
+          done
+          test "$matched" = true || { echo 'STOP_PARTNER_FINANCE_DIAGNOSTIC_PUBLIC_BYTES_MISMATCH'; exit 1; }
+          for route in / /owner-partner-setup.html /finance-boundary-check.html /partner-workspace.html /partner-counts.html; do
+            code="$(curl -L -s -o /dev/null -w '%{http_code}' --max-time 20 "https://nico-factory.web.app$route")"
+            test "$code" = 200 || { echo 'STOP_EXISTING_ORIGINAL_ROUTE_UNVERIFIED'; exit 1; }
+          done
+          echo 'ONE_NEW_PARTNER_DIAGNOSTIC_PUBLIC_BYTES_VERIFIED_OLD_ROUTES_200'
+      - name: Delete private credential, temporary files; no artifacts
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/nico-partner-finance-diagnostic.private.json" "$RUNNER_TEMP/partner-finance-live.private.html"
