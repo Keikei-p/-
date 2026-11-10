@@ -286,7 +286,6 @@ test("status fails closed on forged approval flags, missing owner, bad company, 
  const mutations=[
   f=>{f.d.get("partnerRelations/p1").combinedRankingApprovedByHub=true;},
   f=>{f.d.get("partnerRelations/p1").individualNamesApprovedByPartner=true;},
-  f=>{f.d.get("companies/p1").ownerUid=null;},
   f=>{f.d.get("companies/p1").name="単価 90000円";},
   f=>{f.d.get("companies/p1").hubCompanyId="otherHub";},
   f=>{f.d.get("users/hubOwner").companyRole="member";},
@@ -335,3 +334,46 @@ test("hub relation query cannot return other hub's row; partner's direct relatio
   /RANKING_OWNER_STATUS_UNAUTHORIZED_OR_INCOMPLETE/,
   "partner direct doc lookup must reject a mismatched hub");
 });
+
+
+test("hub Owner can open configuration status for a hub-created unclaimed partner without signing on its behalf",async()=>{
+ const f=withNamedPartner();
+ const original=copyOriginals(f);
+ delete f.d.get("companies/p1").ownerUid;
+ const get=createOwnerRankingConsentStatusReader({db:f.db});
+ const visible=await get(auth("hubOwner"));
+ assert.equal(visible.role,"hub_owner");
+ assert.equal(visible.partners.length,1);
+ assert.deepEqual(visible.partners[0],{
+  partnerCompanyId:"p1",companyName:"協力店A",ownApproved:false,
+  otherApproved:false,version:0,canEdit:false
+ });
+ assert.deepEqual(copyOriginals(f),original);
+ assert.equal(f.events.filter(x=>x.op==="create"||x.op==="update").length,0);
+ await assert.rejects(submit(f,"hubOwner",true),refuse,
+  "missing partner Owner never permits Hub-only consent");
+ await assert.rejects(get(auth("partnerOwner")),
+  /RANKING_OWNER_STATUS_UNAUTHORIZED_OR_INCOMPLETE/,
+  "cannot invent partner Owner from merely knowing user role");
+});
+test("unclaimed partner never gains ranking if consent documents or relation flags appear",async()=>{
+ for(const mutate of [
+  f=>f.d.set("companies/p1/rankingApprovals/hub",{
+   companyId:"p1",hubCompanyId:"hub",partnerCompanyId:"p1",
+   active:true,version:1,combinedRankingApproved:true,individualNamesApproved:true,
+   scope:"combined_rank_only",approvedByUid:"partnerOwner"
+  }),
+  f=>{f.d.get("partnerRelations/p1").combinedRankingApprovedByPartner=true;},
+  f=>{f.d.get("partnerRelations/p1").individualNamesApprovedByPartner=true;},
+  f=>{f.d.get("companies/p1").ownerUid="../bad";},
+ ]){
+  const f=withNamedPartner();
+  delete f.d.get("companies/p1").ownerUid;
+  mutate(f);
+  await assert.rejects(
+   createOwnerRankingConsentStatusReader({db:f.db})(auth("hubOwner")),
+   /RANKING_OWNER_STATUS_UNAUTHORIZED_OR_INCOMPLETE/
+  );
+ }
+});
+
