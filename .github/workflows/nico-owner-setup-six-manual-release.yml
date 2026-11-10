@@ -1,0 +1,177 @@
+name: NICO six Owner settings Functions (MANUAL / NO RANKING)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/production/owner-setup-six-release-scope.mjs'
+      - 'tools/production/owner-setup-live-region-metadata.mjs'
+      - 'tests/owner-setup-six-release-scope.test.mjs'
+      - '.github/workflows/nico-owner-setup-six-manual-release.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/production/owner-setup-six-release-scope.mjs'
+      - 'tools/production/owner-setup-live-region-metadata.mjs'
+      - 'tests/owner-setup-six-release-scope.test.mjs'
+      - '.github/workflows/nico-owner-setup-six-manual-release.yml'
+  workflow_dispatch:
+    inputs:
+      reviewed_main_sha:
+        description: Exact reviewed main commit SHA
+        required: true
+        type: string
+      deployment_approval:
+        description: CONFIRM_SIX_OWNER_SETTINGS_ONLY
+        required: true
+        type: string
+      usage_approval:
+        description: FUNCTION_BUILDS_AND_POSSIBLE_CHARGES_EXPLICITLY_APPROVED
+        required: true
+        type: string
+      rules_approval:
+        description: NO_RULES_OR_HOSTING_CHANGES
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: firebase-production-owner-six-serial
+  cancel-in-progress: false
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Pin exact approved Functions, finance Rules and existing count code
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions-partner-workspace/index.js)" = 90d51246477cf5cfa6966f3e822326ef06cccd0f
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 614f3216e008642ddf5eda6b93c35cc0469557c3
+          test "$(git hash-object functions-ranking-approvals/index.js)" = 54855609e372ee1056b5206e445f20c0a251b1ef
+          test "$(git hash-object functions-ranking-approvals/controller.cjs)" = 0a7691d8a01ca6a47931300a2b650c7fbfb5b391
+          test "$(git hash-object functions-ranking-approvals/product-visibility-controller.cjs)" = 87a9381d9efce485b4edbe6ce7ed56a6b1c9d9d7
+          test "$(git hash-object functions-ranking-approvals/owner-sku-mapping-controller.cjs)" = fb32c016f647d01e90cbc82ec9ae823ab1df720d
+          test "$(git hash-object functions-ranking-approvals/ranking/owner-product-visibility-firestore.mjs)" = 8e2289b1dd8b62f4d682dc6231a339294178abcb
+          test "$(git hash-object functions-ranking-approvals/ranking/owner-reviewed-sku-mapping-store.mjs)" = 6652af761e44da1c33e75d1b7a15eeee4f504036
+          test "$(git hash-object firebase.ranking-approvals.json)" = 35a8b4ab4b39b16927e0e7235b048d7052497632
+          node -e "const f=require('fs');if(JSON.parse(f.readFileSync('.firebaserc')).projects.default!=='sales-management-cc116')process.exit(1)"
+      - name: Six-only release scope and complete Owner auth/finance-free regression suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check tools/production/owner-setup-six-release-scope.mjs
+          node --check tools/production/owner-setup-live-region-metadata.mjs
+          node --test tests/owner-setup-six-release-scope.test.mjs tests/protect-ranking-original-functions-versions.test.mjs tests/ranking-owner-callable-controller.test.cjs tests/owner-product-visibility-callables.test.cjs tests/owner-sku-mapping-controller.test.cjs tests/owner-product-visibility-firestore.test.mjs tests/owner-reviewed-sku-mapping-store.test.mjs tests/ranking-owner-consent-service.test.mjs
+          node tools/ranking/verify-isolated-owner-callables.mjs
+          node --test tests/isolated-joint-count-function-package.test.mjs
+          echo 'OWNER_SIX_OFFLINE_READY_NO_DEPLOY'
+  deploy-owner-six:
+    needs: offline
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' &&
+          github.repository == 'Keikei-p/-' &&
+          github.ref == 'refs/heads/main' &&
+          inputs.reviewed_main_sha == github.sha &&
+          inputs.deployment_approval == 'CONFIRM_SIX_OWNER_SETTINGS_ONLY' &&
+          inputs.usage_approval == 'FUNCTION_BUILDS_AND_POSSIBLE_CHARGES_EXPLICITLY_APPROVED' &&
+          inputs.rules_approval == 'NO_RULES_OR_HOSTING_CHANGES' &&
+          needs.offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Pin exact current main commit and all six functions before credentials
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
+          node --input-type=module -e "import {inspectIsolatedSource,ensureExactTargets,TARGETS} from './tools/production/owner-setup-six-release-scope.mjs';import{readFileSync}from'node:fs';inspectIsolatedSource(readFileSync('functions-ranking-approvals/index.js','utf8'),readFileSync('firebase.ranking-approvals.json','utf8'));ensureExactTargets(TARGETS.join(','))"
+      - name: Install only official Firebase SDK and pinned CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+          npm install --prefix functions-ranking-approvals --ignore-scripts --package-lock=false --no-audit --no-fund
+          npm install --global firebase-tools@15.34.1 --no-audit --no-fund
+      - name: Configure existing service identity privately
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-owner-six-identity.private.json"
+          chmod 600 "$RUNNER_TEMP/nico-owner-six-identity.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-owner-six-identity.private.json" >> "$GITHUB_ENV"
+      - name: Snapshot original 6 and ALL existing Gen2; six new targets MUST be absent
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase functions:list --project "$FIREBASE_PROJECT_ID" --json > "$RUNNER_TEMP/nico-owner-six-before.private.json"
+          node --input-type=module -e "import{readFileSync}from'node:fs';import{assertAbsent}from'./tools/production/owner-setup-six-release-scope.mjs';assertAbsent(JSON.parse(readFileSync(process.env.RUNNER_TEMP+'/nico-owner-six-before.private.json','utf8')))"
+          node tools/production/protect-ranking-original-functions-versions.mjs before
+          node tools/production/owner-setup-live-region-metadata.mjs before
+          echo 'OWNER_SIX_EXISTING_FUNCTIONS_PROTECTED'
+      - name: Enable only Owner setup, keep joint ranking GET disabled (temporary)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e functions-ranking-approvals/.env.sales-management-cc116
+          printf 'NICO_RANKING_OWNER_SETTINGS_ENABLED=enabled\nNICO_OWNER_PRODUCT_VISIBILITY_ENABLED=enabled\nNICO_OWNER_SKU_MAPPING_ENABLED=enabled\nNICO_JOINT_COUNT_RANKING_ENABLED=disabled\n' > functions-ranking-approvals/.env.sales-management-cc116
+          chmod 600 functions-ranking-approvals/.env.sales-management-cc116
+          test "$(grep -c '^NICO_.*_ENABLED=enabled$' functions-ranking-approvals/.env.sales-management-cc116)" = 3
+          grep -qx 'NICO_JOINT_COUNT_RANKING_ENABLED=disabled' functions-ranking-approvals/.env.sales-management-cc116
+      - name: Deploy exactly six NEW Owner callables, not ranking, Rules, Hosting or original Functions
+        id: deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGETS="$(node --input-type=module -e "import{TARGETS}from'./tools/production/owner-setup-six-release-scope.mjs';process.stdout.write(TARGETS.join(','))")"
+          TARGETS="$TARGETS" node --input-type=module -e "import{ensureExactTargets}from'./tools/production/owner-setup-six-release-scope.mjs';ensureExactTargets(process.env.TARGETS)"
+          if firebase deploy --non-interactive --project "$FIREBASE_PROJECT_ID" --config firebase.ranking-approvals.json --only "$TARGETS" > "$RUNNER_TEMP/nico-owner-six-deploy.private.log" 2>&1; then
+            echo 'SIX_OWNER_FUNCTIONS_DEPLOY_CLI_SUCCESS'
+          else
+            echo 'STOP_OWNER_SIX_DEPLOY_FAILED_NO_AUTOMATIC_RETRY'
+            exit 1
+          fi
+      - name: Independently verify exactly six additions, active env flags, all original versions unchanged
+        if: ${{ success() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase functions:list --project "$FIREBASE_PROJECT_ID" --json > "$RUNNER_TEMP/nico-owner-six-after.private.json"
+          node --input-type=module -e "import{readFileSync}from'node:fs';import{compareDeployment}from'./tools/production/owner-setup-six-release-scope.mjs';const root=process.env.RUNNER_TEMP;console.log('SIX_OWNER_FUNCTION_SCOPE '+JSON.stringify(compareDeployment(JSON.parse(readFileSync(root+'/nico-owner-six-before.private.json','utf8')),JSON.parse(readFileSync(root+'/nico-owner-six-after.private.json','utf8')))))"
+          node tools/production/protect-ranking-original-functions-versions.mjs after
+          node tools/production/owner-setup-live-region-metadata.mjs after
+          echo 'SIX_OWNER_SETTINGS_CONFIG_ONLY_LIVE_VERIFY_SUCCESS'
+      - name: If deployment failed, read original six versions without retry
+        if: ${{ failure() && steps.deploy.outcome == 'failure' }}
+        shell: bash
+        run: |
+          node tools/production/protect-ranking-original-functions-versions.mjs after || echo 'STOP_OWNER_SIX_ORIGINALS_MAY_HAVE_DRIFTED'
+          echo 'STOP_OWNER_SIX_PARTIAL_DEPLOY_NEEDS_MANUAL_RECONCILIATION'
+      - name: Cleanup private identity, snapshots, deploy logs and all flags
+        if: always()
+        shell: bash
+        run: |
+          rm -f functions-ranking-approvals/.env.sales-management-cc116
+          rm -f "$RUNNER_TEMP/nico-owner-six-identity.private.json" "$RUNNER_TEMP/nico-owner-six-before.private.json" "$RUNNER_TEMP/nico-owner-six-after.private.json" "$RUNNER_TEMP/nico-owner-six-other-gen2.private.json" "$RUNNER_TEMP/nico-original-six-immutable-versions.private.json" "$RUNNER_TEMP/nico-owner-six-deploy.private.log"
