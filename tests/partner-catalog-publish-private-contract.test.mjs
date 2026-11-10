@@ -24,7 +24,7 @@ test("Only real owner can choose global/per-partner existing catalog IDs",()=>{
 test("Published hub catalog drops all finance and disabled products",()=>{
  const before=JSON.stringify(catalog);
  const rows=projectPublishedProducts({hubCompanyId:"hub",partnerCompanyId:"p",
-  productMaster:catalog,globalIds:["nuro","water"],partnerIds:["electric"]});
+  productMaster:catalog,globalIds:["nuro","electric","water"],partnerIds:["nuro","electric"]});
  assert.deepEqual(rows,[
   {catalogId:"shared:hub:nuro",canonicalProductId:"nuro",name:"NURO光",origin:"hub"},
   {catalogId:"shared:hub:electric",canonicalProductId:"electric",name:"エバーグリーン",origin:"hub"}
@@ -34,6 +34,18 @@ test("Published hub catalog drops all finance and disabled products",()=>{
  const none=projectPublishedProducts({hubCompanyId:"hub",partnerCompanyId:"p",
    productMaster:catalog,globalIds:[],partnerIds:[]});
  assert.deepEqual(none,[]);
+ // Global OFF wins even if the partner override still contains that SKU.
+ const globalOff=projectPublishedProducts({hubCompanyId:"hub",partnerCompanyId:"p",
+   productMaster:catalog,globalIds:["nuro"],partnerIds:["electric"]});
+ assert.deepEqual(globalOff,[]);
+ // Missing override inherits global ON, but explicit empty override is OFF.
+ const inherited=projectPublishedProducts({hubCompanyId:"hub",partnerCompanyId:"p",
+   productMaster:catalog,globalIds:["nuro"]});
+ assert.deepEqual(inherited,[rows[0]]);
+ const partnerOff=projectPublishedProducts({hubCompanyId:"hub",partnerCompanyId:"p",
+   productMaster:catalog,globalIds:["nuro"],partnerIds:[]});
+ assert.deepEqual(partnerOff,[]);
+ assert.equal(JSON.stringify(catalog),before);
 });
 test("Partner custom product is always private; rejected for nonowners and money fields",()=>{
  const row=validatePrivateProduct({actor:partner,partnerCompanyId:"p",
@@ -68,11 +80,13 @@ test("Combined personal ranking reveals only order, name and affiliation",()=>{
   {personId:"a",companyId:"hub",name:"直営A",affiliation:"1班",sharedCount:3,
    totalRevenue:100000},
   {personId:"b",companyId:"p",name:"協力店B",affiliation:"協力店A",sharedCount:4,
-   privateCount:20}
+   privateCount:20},
+  {personId:"c",companyId:"p",name:"協力店C",affiliation:"協力店A",sharedCount:4}
  ]);
  assert.deepEqual(r,[
   {rank:1,name:"協力店B",affiliation:"協力店A"},
-  {rank:2,name:"直営A",affiliation:"1班"}
+  {rank:1,name:"協力店C",affiliation:"協力店A"},
+  {rank:3,name:"直営A",affiliation:"1班"}
  ]);
  assert(!/revenue|Count|total|price/i.test(JSON.stringify(r)));
  assert.throws(()=>projectPersonalRankings([

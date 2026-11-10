@@ -39,11 +39,14 @@ export function validateHubPublication({actor,hubCompanyId,partnerCompanyId=null
  * Omit prices and exclude unpublished/disabled products BEFORE responding
  * to the partner. Publish-by-ID, never guess by text label.
  */
-export function projectPublishedProducts({hubCompanyId,partnerCompanyId,productMaster,globalIds=[],partnerIds=[]}){
+export function projectPublishedProducts({hubCompanyId,partnerCompanyId,productMaster,globalIds=[],partnerIds=null}){
  id(hubCompanyId,"HUB_ID");id(partnerCompanyId,"PARTNER_ID");
  if(hubCompanyId===partnerCompanyId||!Array.isArray(productMaster)||productMaster.length>1000||
-    !safeIds(globalIds)||!safeIds(partnerIds))refuse("BAD_CATALOG");
- const allowed=new Set([...globalIds,...partnerIds]);
+    !safeIds(globalIds)||(partnerIds!==null&&!safeIds(partnerIds)))refuse("BAD_CATALOG");
+ // A partner override is an additional restriction, never an enable switch.
+ // null means inherit global ON; an explicit [] means OFF for this partner.
+ const allowed=new Set(partnerIds===null?globalIds:
+  globalIds.filter(productId=>partnerIds.includes(productId)));
  const seen=new Set(),out=[];
  for(const raw of productMaster){
   if(!own(raw)||!id(raw.id,"MASTER_PRODUCT_ID")||
@@ -120,5 +123,9 @@ export function projectPersonalRankings(rows){
  }
  ranked.sort((a,b)=>b.sharedCount-a.sharedCount||a.companyId.localeCompare(b.companyId)||
    a.personId.localeCompare(b.personId));
- return ranked.map((r,i)=>({rank:i+1,name:r.name,affiliation:r.affiliation}));
+ let prior=null,rank=0;
+ return ranked.map((r,i)=>{
+  if(r.sharedCount!==prior){rank=i+1;prior=r.sharedCount;}
+  return {rank,name:r.name,affiliation:r.affiliation};
+ });
 }
