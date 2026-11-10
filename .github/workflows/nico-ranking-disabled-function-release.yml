@@ -170,6 +170,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Always compare the original six even if post-failure listing fails.
+          # A failed listing must not suppress this independent read-only check.
+          inventory_status=0
           if firebase functions:list --project "$FIREBASE_PROJECT_ID" --json \
             > "$RUNNER_TEMP/nico-rank-after-failure.private.json" \
             2> "$RUNNER_TEMP/nico-rank-after-failure-cli.private.log"; then
@@ -177,9 +180,12 @@ jobs:
               "$RUNNER_TEMP/nico-rank-before.private.json" \
               "$RUNNER_TEMP/nico-rank-after-failure.private.json" \
               "$RUNNER_TEMP/nico-ranking-deploy.private.log" \
-              || echo 'RANKING_DEPLOY_RECONCILIATION_INCONCLUSIVE_NO_RETRY'
+              || inventory_status=1
           else
-            echo 'RANKING_DEPLOY_POSTFAILURE_INVENTORY_UNAVAILABLE_NO_RETRY'
+            inventory_status=1
+          fi
+          if [ "$inventory_status" -ne 0 ]; then
+            echo 'RANKING_DEPLOY_POSTFAILURE_INVENTORY_INCONCLUSIVE_NO_RETRY'
           fi
           # Verify immutable original versions even when the new Function deploy fails.
           # This is a read-only metadata comparison; never retries or rolls back.
