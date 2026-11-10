@@ -115,3 +115,14 @@ test("duplicate mapping, wrong scope, malformed counts, and unreviewed map fail 
  await denied(call());
  assert.equal(db.writes,0);
 });
+
+test("duplicate hub SKU and amount-encoded mapped name fail closed without writes",async()=>{
+ const {db,call}=fixture();
+ const mapping=db.rows.get("companies/hub/rankingSkuMappings/shared");
+ mapping.bindings.push({companyId:"partner",productId:"partnerSku02",hubProductId:"nuro"});
+ await denied(call(zero(),counts({NURO:1})));
+ mapping.bindings.pop();
+ db.rows.get("products/nuro").name="NURO 50000円";
+ await denied(call(zero(),counts({NURO:1})));
+ assert.equal(db.writes,0);
+});
