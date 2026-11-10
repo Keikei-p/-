@@ -152,7 +152,8 @@ test("public count catalog version mismatch and injected finance fields block sa
 test("canonical and deployed vendor reject CB and revenue-coded SKU names without reading finance",async()=>{
  for(const createGuard of [createPartnerSubmissionPublicationGuard,vendorGuard]){
   for(const name of ["NURO CB50000","NURO ＣＢ５０００","NURO cashback 5000",
-   "NURO revenue 5k","NURO 単価5000"]){
+   "NURO revenue 5k","NURO 単価5000","NURO 原価","NURO 価格",
+   "NURO commission","NURO ５万円","NURO ２千円"]){
    const {db,scope}=fixture();
    db.rows.get("companies/hub/rankingCountPublicCatalog/shared").products[0].name=name;
    const guard=createGuard({db});

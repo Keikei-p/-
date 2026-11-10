@@ -36,6 +36,21 @@ test("two approved companies, individual/team, product totals, once only",()=>{
  assert.doesNotMatch(JSON.stringify(out),/cbCounts|80000|990000|7654321|privateSku|updatedByUid|revenue|SBMNP/);
  assert.equal(JSON.stringify([a,b]),before);
 });
+test("all-OFF partner publishes no personal/team ranks while ON zero remains reported",()=>{
+ const off=company("a","非公開会社",{...zero(),NURO:9},{allowed:[]});
+ const on=company("b","公開会社",{...zero(),NURO:2},{allowed:["NURO"]});
+ const submittedZero=company("c","ゼロ会社",zero(),{allowed:["NURO"]});
+ const originals=JSON.stringify([off,on,submittedZero]);
+ const out=build([off,on,submittedZero]);
+ assert.equal(out.totalCount,2);
+ assert.equal(out.reportCount,3);
+ assert.deepEqual(out.companies.map(x=>x.name),["公開会社","ゼロ会社"]);
+ assert.equal(out.people.length,2);
+ assert.equal(out.teams.length,2);
+ assert.equal(out.people.find(x=>x.companyName==="ゼロ会社").totalCount,0);
+ assert.equal(JSON.stringify(out).includes("非公開会社"),false);
+ assert.equal(JSON.stringify([off,on,submittedZero]),originals);
+});
 test("zero is submitted but missing report is not treated as zero",()=>{
  const submitted=company("a","会社A",zero());
  const missing={...company("b","会社B",zero()),entries:[],reports:[]};
@@ -120,7 +135,8 @@ test("mapped public catalog rejects financial labels, extra fields and duplicate
  const base={hubId:"hub",cid:"a",ownerUid:"h",visibility,mapping,products};
  assert.deepEqual(allowedPartnerCategories(base),["NURO"]);
  for(const productName of ["NURO 5万円","NURO 5000円","NURO ＣＢ５０００",
-  "NURO cashback 5000","NURO revenue 5000","NURO 単価5000"]){
+  "NURO cashback 5000","NURO revenue 5000","NURO 単価5000",
+  "NURO 原価","NURO 価格","NURO commission","NURO ２千円"]){
   assert.throws(()=>allowedPartnerCategories({...base,
    products:[{...products[0],name:productName}]}),/UNVERIFIED/);
  }
@@ -132,7 +148,8 @@ test("mapped public catalog rejects financial labels, extra fields and duplicate
 });
 
 test("partner rankings reject financial labels in company, team and person names",()=>{
- for(const label of ["会社5万円","ＣＢ５０００","cashback 5000","単価5000"]){
+ for(const label of ["会社5万円","ＣＢ５０００","cashback 5000","単価5000",
+  "原価5000","commission 5000"]){
   const companyRow=company("a",label,{...zero(),NURO:1});
   assert.throws(()=>build([companyRow]),/UNVERIFIED/);
   const teamRow=company("a","会社A",{...zero(),NURO:1});
