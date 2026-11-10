@@ -1,0 +1,34 @@
+name: Partner count-only catalog finance fence (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "partner/catalog-publish-private-contract.mjs"
+      - "tests/partner-catalog-publish-private-contract.test.mjs"
+      - ".github/workflows/nico-partner-catalog-finance-no-deploy.yml"
+  push:
+    branches: [main]
+    paths:
+      - "partner/catalog-publish-private-contract.mjs"
+      - "tests/partner-catalog-publish-private-contract.test.mjs"
+      - ".github/workflows/nico-partner-catalog-finance-no-deploy.yml"
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ""
+      GOOGLE_APPLICATION_CREDENTIALS: ""
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Syntax and count-only privacy regression (no Firebase)
+        run: |
+          node --check partner/catalog-publish-private-contract.mjs
+          node --test tests/partner-catalog-publish-private-contract.test.mjs
