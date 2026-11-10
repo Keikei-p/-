@@ -56,7 +56,7 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
   for(const k of allowed)published.add(k);
   const visible=raw=>({counts:Object.fromEntries(KEYS.map(k=>[k,allowed.has(k)?raw.counts[k]:0])),
    total:KEYS.reduce((a,k)=>sum(a,allowed.has(k)?raw.counts[k]:0),0)});
-  const companyName=name(s.name),teamNames=new Map(),pMap=new Map(),
+  const companyName=name(s.name),companyKey=key("company",hubId,s.cid),teamNames=new Map(),pMap=new Map(),
    tMap=new Map(),entries=new Map(),reports=new Set();
   for(const t of s.teams){
    if(!t||!id(t.id)||teamNames.has(t.id))fail();
@@ -77,7 +77,7 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
    const personName=e.staffNameSnapshot==null?null:name(e.staffNameSnapshot);
    if(tid){
     const k=key("team",s.cid,tid);
-    const t=tMap.get(k)||{key:k,name:teamNames.get(tid),companyName,totalCount:0,
+    const t=tMap.get(k)||{key:k,name:teamNames.get(tid),companyName,companyKey,totalCount:0,
      counts:zero(),reportedStaffCount:0};
     t.reportedStaffCount++;
     t.totalCount=sum(t.totalCount,c.total);
@@ -86,7 +86,7 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
    }else unverifiedTeamCount=sum(unverifiedTeamCount,c.total);
    if(personName){
     const k=key("person",s.cid,e.staffId),tk=tid?key("team",s.cid,tid):null;
-    const p=pMap.get(k)||{key:k,name:personName,companyName,totalCount:0,
+    const p=pMap.get(k)||{key:k,name:personName,companyName,companyKey,totalCount:0,
      counts:zero(),teamKey:tk,teamName:tid?teamNames.get(tid):"所属班未確認"};
     if(p.teamKey!==tk){p.teamKey=null;p.teamName="複数班・所属未確認";}
     p.totalCount=sum(p.totalCount,c.total);
@@ -125,7 +125,7 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
   if(!reportedDays)unreportedCompanies.push({key:key("company",hubId,s.cid),name:companyName,status:"not_reported"});
   const safeCounts=raw=>Object.fromEntries(s.allowedCategories.map(k=>[k,raw[k]]));
   if(reportedDays&&allowed.size){
-   companies.push({key:key("company",hubId,s.cid),name:companyName,
+   companies.push({key:companyKey,name:companyName,
     totalCount:companyCount,counts:safeCounts(companyProducts),reportedDays,
     peopleVerified:verifiedPeople,
     status:verifiedPeople?"submitted":"historical_company_only"});
