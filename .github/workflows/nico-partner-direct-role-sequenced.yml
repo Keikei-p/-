@@ -33,6 +33,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Reviewed current count-save SKU publication branch and main ONLY.
+          # Historical workflow_dispatch / release conditions below remain frozen.
+          if { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
+               [ "${GITHUB_HEAD_REF:-}" = "feat/partner-sku-onoff-count-save-safe-20261110" ]; } ||
+             { [ "$GITHUB_EVENT_NAME" = "push" ] &&
+               [ "$GITHUB_REF" = "refs/heads/main" ]; }; then
+            test "$(git hash-object scripts/ci/review-partner-sku-publication-write.cjs)" = 'ff1d22be89a18712178dd2a64164510af51b38b8'
+            node scripts/ci/review-partner-sku-publication-write.cjs
+            echo 'REVIEWED_OWNER_SKU_WRITE_ON_OFF_NO_DEPLOY'
+            exit 0
+          fi
           # Separate, precisely source-pinned PR/main NO-DEPLOY ranking review.
           # Historical production release and workflow_dispatch paths below
           # remain pinned to their prior reviewed artifacts.

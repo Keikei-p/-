@@ -1,0 +1,65 @@
+name: NICO partner count publication save integration (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'functions-partner-workspace/service.cjs'
+      - 'functions-partner-workspace/index.js'
+      - 'functions-partner-workspace/submission-publication-guard.cjs'
+      - 'ranking/partner-submission-publication-guard.mjs'
+      - 'tests/partner-workspace.test.cjs'
+      - 'tests/partner-submission-publication-guard.test.mjs'
+      - 'scripts/ci/review-partner-sku-publication-write.cjs'
+      - '.github/workflows/nico-partner-publication-write-integration-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Review exact currently approved additive write path (release OFF)
+        run: node scripts/ci/review-partner-sku-publication-write.cjs
+      - name: Keep production finance sources and Rules unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/index.js
+          node --check functions-partner-workspace/submission-publication-guard.cjs
+          node --check ranking/partner-submission-publication-guard.mjs
+      - name: Verify exact canonical and isolated Functions guard parity
+        run: |
+          node <<'NODE'
+          const fs=require('node:fs'),assert=require('node:assert/strict');
+          const canonical=fs.readFileSync('ranking/partner-submission-publication-guard.mjs','utf8')
+            .replace('export function createPartnerSubmissionPublicationGuard({db}={}){',
+              'function createPartnerSubmissionPublicationGuard({db}={}){').trim();
+          const isolated=fs.readFileSync('functions-partner-workspace/submission-publication-guard.cjs','utf8')
+            .replace(/^"use strict";\n/,'')
+            .replace(/\nmodule\.exports=\{createPartnerSubmissionPublicationGuard\};\s*$/,'').trim();
+          assert.equal(isolated,canonical,'CANONICAL_VENDOR_DRIFT');
+          const index=fs.readFileSync('functions-partner-workspace/index.js','utf8');
+          assert.match(index,/NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED==="enabled"/);
+          assert.match(index,/sharedRankingEnabled:/);
+          const service=fs.readFileSync('functions-partner-workspace/service.cjs','utf8');
+          assert.match(service,/submissionPublicationEnabled=\(\)=>false/);
+          assert.match(service,/previousCounts:prior,nextCounts:counts/);
+          assert.ok(!/\btx\.delete\s*\(|\brecursiveDelete\s*\(/.test(service));
+          NODE
+      - name: Partner save and correction integration, finance regression
+        run: |
+          node --test tests/partner-submission-publication-guard.test.mjs tests/partner-workspace.test.cjs tests/partner-money-free-workspace.test.cjs tests/partner-count-dashboard.test.cjs
+          echo 'STAGING_PUBLICATION_WRITE_INTEGRATION_PASS'
+          echo 'FIREBASE_DEPLOY=NO RULES_DEPLOY=NO HOSTING_DEPLOY=NO'
