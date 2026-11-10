@@ -4,6 +4,7 @@
 // financial master fields, inactive products, raw IDs or cashback tier labels.
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
+const MONEY=/(?:単価|売上|収益|利益|報酬|原価|価格|キャッシュバック|cash\s*back|revenue|unit\s*price|commission|(?:^|[^A-Za-z])CB(?:$|[^A-Za-z])|[¥￥$€]|[0-9][0-9,.]*\s*(?:万|千)?円)/i;
 const stop=()=>{throw Error("PARTNER_PUBLICATION_UNVERIFIED")};
 const id=x=>typeof x==="string"&&ID.test(x)&&!["__proto__","constructor","prototype"].includes(x);
 const obj=x=>x!==null&&typeof x==="object"&&!Array.isArray(x);
@@ -36,7 +37,7 @@ function allowedPartnerCategories({hubId,cid,ownerUid,visibility,mapping,product
  }
  const scoped=Object.prototype.hasOwnProperty.call(visibility.partnerOverrides,cid)?
   new Set(visibility.partnerOverrides[cid]):approved;
- const binding=new Map(),seen=new Set();
+ const binding=new Map(),seen=new Set(),seenHubSku=new Set();
  for(const b of mapping.bindings){
   if(!obj(b)||Object.keys(b).sort().join("|")!==
    ["companyId","productId","hubProductId"].sort().join("|")||
@@ -50,9 +51,15 @@ function allowedPartnerCategories({hubId,cid,ownerUid,visibility,mapping,product
   // Unrelated historical masters may have no label. The exact chosen SKU
   // cannot: it must be reviewed, active and not amount-encoded.
   const chosen=catalog.get(b.hubProductId);
-  if(typeof chosen.name!=="string"||!chosen.name.trim()||
-     chosen.name.length>80||
-     /(?:単価|売上|利益|収益|報酬|キャッシュバック|[¥￥$€]|\\d[\\d,]*円)/i.test(chosen.name))stop();
+  // The mapped public row must be count-only and unique for this partner.
+  // Two categories mapped to one hub SKU would double-count the same result.
+  if(Object.keys(chosen).sort().join("|")!==
+     ["id","companyId","name","active"].sort().join("|")||
+     typeof chosen.active!=="boolean"||
+     typeof chosen.name!=="string"||!chosen.name.trim()||
+     chosen.name.length>80||MONEY.test(chosen.name.normalize("NFKC"))||
+     seenHubSku.has(b.hubProductId))stop();
+  seenHubSku.add(b.hubProductId);
   if(b.productId==="partnerSku05"&&
    !/SB光・AIR|旧合算|未分類/.test(catalog.get(b.hubProductId).name))stop();
   binding.set(b.productId,b.hubProductId);

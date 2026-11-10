@@ -109,3 +109,37 @@ test("only exact Owner-reviewed active mapped and partner-enabled SKUs publish",
   {...input,mapping:{...mapping,bindings:[{...mapping.bindings[0],hubProductId:"foreign"}]}}
  ])assert.throws(()=>allowedPartnerCategories(changed),/UNVERIFIED/);
 });
+
+test("mapped public catalog rejects financial labels, extra fields and duplicate hub SKU",()=>{
+ const products=[{id:"nuro",companyId:"hub",name:"NURO",active:true}];
+ const visibility={hubCompanyId:"hub",ownerUid:"h",version:1,
+  enabledHubProductIds:["nuro"],partnerOverrides:{}};
+ const mapping={hubCompanyId:"hub",ownerUid:"h",reviewedByUid:"h",
+  active:true,version:1,bindings:[
+   {companyId:"a",productId:"partnerSku01",hubProductId:"nuro"}]};
+ const base={hubId:"hub",cid:"a",ownerUid:"h",visibility,mapping,products};
+ assert.deepEqual(allowedPartnerCategories(base),["NURO"]);
+ for(const productName of ["NURO 5万円","NURO 5000円","NURO ＣＢ５０００",
+  "NURO cashback 5000","NURO revenue 5000","NURO 単価5000"]){
+  assert.throws(()=>allowedPartnerCategories({...base,
+   products:[{...products[0],name:productName}]}),/UNVERIFIED/);
+ }
+ assert.throws(()=>allowedPartnerCategories({...base,
+  products:[{...products[0],unitPrice:50000}]}),/UNVERIFIED/);
+ assert.throws(()=>allowedPartnerCategories({...base,
+  mapping:{...mapping,bindings:[...mapping.bindings,
+   {companyId:"a",productId:"partnerSku02",hubProductId:"nuro"}]}}),/UNVERIFIED/);
+});
+
+test("partner rankings reject financial labels in company, team and person names",()=>{
+ for(const label of ["会社5万円","ＣＢ５０００","cashback 5000","単価5000"]){
+  const companyRow=company("a",label,{...zero(),NURO:1});
+  assert.throws(()=>build([companyRow]),/UNVERIFIED/);
+  const teamRow=company("a","会社A",{...zero(),NURO:1});
+  teamRow.teams[0].name=label;
+  assert.throws(()=>build([teamRow]),/UNVERIFIED/);
+  const personRow=company("a","会社A",{...zero(),NURO:1});
+  personRow.entries[0].data.staffNameSnapshot=label;
+  assert.throws(()=>build([personRow]),/UNVERIFIED/);
+ }
+});
