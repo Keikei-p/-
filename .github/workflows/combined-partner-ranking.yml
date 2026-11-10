@@ -5,6 +5,8 @@ on:
     paths:
       - "ranking/combined-count-leaderboard.mjs"
       - "ranking/partner-workspace-count-source.mjs"
+      - "ranking/partner-submission-publication-guard.mjs"
+      - "tests/partner-submission-publication-guard.test.mjs"
       - "ranking/partner-month-readonly-loader.mjs"
       - "ranking/rank-only-publication.mjs"
       - "ranking/combined-rank-only-handler.mjs"
@@ -34,6 +36,8 @@ on:
     paths:
       - "ranking/combined-count-leaderboard.mjs"
       - "ranking/partner-workspace-count-source.mjs"
+      - "ranking/partner-submission-publication-guard.mjs"
+      - "tests/partner-submission-publication-guard.test.mjs"
       - "ranking/partner-month-readonly-loader.mjs"
       - "ranking/trusted-combined-ranking-context.mjs"
       - "tests/trusted-combined-ranking-context.test.mjs"
@@ -68,6 +72,7 @@ jobs:
         run: |
           node --check ranking/combined-count-leaderboard.mjs
           node --check ranking/partner-workspace-count-source.mjs
+          node --check ranking/partner-submission-publication-guard.mjs
           node --check ranking/partner-month-readonly-loader.mjs
           node --check ranking/rank-only-publication.mjs
           node --check ranking/combined-rank-only-handler.mjs
@@ -77,7 +82,7 @@ jobs:
           node --check ranking/ranking-owner-consent-status.mjs
           node --check ranking/rank-only-view.mjs
       - name: Combined count and privacy synthetic test
-        run: node --test tests/combined-count-leaderboard.test.mjs tests/combined-rank-only-publication.test.mjs tests/partner-workspace-count-source.test.mjs tests/partner-month-readonly-loader.test.mjs tests/trusted-combined-ranking-context.test.mjs tests/ranking-owner-consent-service.test.mjs tests/owner-ranking-consent-panel.test.mjs
+        run: node --test tests/partner-submission-publication-guard.test.mjs tests/combined-count-leaderboard.test.mjs tests/combined-rank-only-publication.test.mjs tests/partner-workspace-count-source.test.mjs tests/partner-month-readonly-loader.test.mjs tests/trusted-combined-ranking-context.test.mjs tests/ranking-owner-consent-service.test.mjs tests/owner-ranking-consent-panel.test.mjs
 
   emulator-count-read:
     needs: offline
