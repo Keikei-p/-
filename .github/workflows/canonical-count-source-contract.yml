@@ -1,0 +1,26 @@
+name: Canonical count source contract (NO DEPLOY)
+on:
+  pull_request:
+    paths:
+      - 'tests/canonical-count-source-contract.test.cjs'
+      - 'functions-ranking-approvals/ranking/internal-month-count-tx-reader.mjs'
+      - 'functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs'
+      - '.github/workflows/canonical-count-source-contract.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tests/canonical-count-source-contract.test.cjs'
+      - 'functions-ranking-approvals/ranking/internal-month-count-tx-reader.mjs'
+      - 'functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs'
+      - '.github/workflows/canonical-count-source-contract.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tests/canonical-count-source-contract.test.cjs
