@@ -4,10 +4,12 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/nico-owner-six-eleven-explicit-rerun-release.yml'
+      - 'tests/owner-six-eleven-manual-rerun-gate.test.mjs'
   push:
     branches: [main]
     paths:
       - '.github/workflows/nico-owner-six-eleven-explicit-rerun-release.yml'
+      - 'tests/owner-six-eleven-manual-rerun-gate.test.mjs'
 permissions:
   contents: read
 concurrency:
@@ -38,6 +40,7 @@ jobs:
           test "$(git hash-object functions-ranking-approvals/ranking/owner-product-visibility-firestore.mjs)" = 8e2289b1dd8b62f4d682dc6231a339294178abcb
           test "$(git hash-object functions-ranking-approvals/ranking/owner-reviewed-sku-mapping-store.mjs)" = 6652af761e44da1c33e75d1b7a15eeee4f504036
           test "$(git hash-object firebase.ranking-approvals.json)" = 35a8b4ab4b39b16927e0e7235b048d7052497632
+          node --test tests/owner-six-eleven-manual-rerun-gate.test.mjs
           node --check tools/production/owner-setup-six-release-scope.mjs
           node --check tools/hosting/release-owner-setup-additive.mjs
           node --test tests/owner-setup-six-release-scope.test.mjs tests/owner-setup-additive-hosting-release.test.mjs tests/owner-partner-setup-mount.test.mjs tests/ranking-owner-callable-controller.test.cjs tests/owner-product-visibility-callables.test.cjs tests/owner-sku-mapping-controller.test.cjs
