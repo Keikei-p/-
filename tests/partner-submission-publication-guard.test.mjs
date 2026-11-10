@@ -50,9 +50,12 @@ function fixture(){
   hubCompanyId:"hub",ownerUid:"owner",reviewedByUid:"owner",active:true,version:3,
   bindings:[{companyId:"partner",productId:"partnerSku01",hubProductId:"nuro"},
    {companyId:"partner",productId:"partnerSku05",hubProductId:"combined"}]});
+ db.seed("companies/hub/rankingCountPublicCatalog/shared",{
+  schema:"nico-reviewed-count-public-catalog-v1",hubCompanyId:"hub",ownerUid:"owner",version:2,
+  products:[{id:"nuro",companyId:"hub",name:"NURO",active:true},
+   {id:"combined",companyId:"hub",name:"SB光・AIR（旧合算・未分類）",active:true}]});
+ // Deliberate financial decoys: the partner guard must never query these.
  db.seed("products/nuro",{companyId:"hub",name:"NURO",active:true,unitPrice:50000});
- db.seed("products/combined",{companyId:"hub",name:"SB光・AIR（旧合算・未分類）",
-  active:true,unitPrice:9000});
  const scope={verifiedByServer:true,kind:"partner",uid:"staff",cid:"partner",hubId:"hub"};
  const guard=createPartnerSubmissionPublicationGuard({db});
  const call=(before=zero(),after=zero(),who=scope)=>
@@ -67,7 +70,8 @@ test("ON count passes, OFF count denied, server reads exact policy and never wri
  assert.equal(out.publicationVersion,2);
  assert.ok(db.reads.includes("companies/hub/rankingProductVisibility/shared"));
  assert.ok(db.reads.includes("companies/hub/rankingSkuMappings/shared"));
- assert.ok(db.reads.includes("products?companyId"));
+ assert.ok(db.reads.includes("companies/hub/rankingCountPublicCatalog/shared"));
+ assert.ok(!db.reads.some(p=>p.startsWith("products")),"never read financial products");
  await denied(call(zero(),counts({SBMNP:1})));
  assert.equal(db.writes,0);
 });
@@ -90,13 +94,14 @@ test("partner OFF further restricts global ON; global OFF cannot be re-enabled",
 });
 test("retired product, legacy split, missing mapping and revoked relation fail closed",async()=>{
  const {db,call}=fixture();
- db.rows.get("products/nuro").active=false;
+ db.rows.get("companies/hub/rankingCountPublicCatalog/shared").products[0].active=false;
  await denied(call(zero(),counts({NURO:1})));
- db.rows.get("products/nuro").active=true;
- db.rows.get("products/combined").name="SB光";
+ db.rows.get("companies/hub/rankingCountPublicCatalog/shared").products[0].active=true;
+ db.rows.get("companies/hub/rankingCountPublicCatalog/shared").products[1].name="SB光";
  await denied(call(zero(),counts({"SB光・AIR":1})));
  for(const path of ["companies/hub/rankingSkuMappings/shared",
-  "companies/hub/rankingProductVisibility/shared","partnerRelations/partner"]){
+  "companies/hub/rankingProductVisibility/shared",
+  "companies/hub/rankingCountPublicCatalog/shared","partnerRelations/partner"]){
   const {db:other,call:run}=fixture();
   other.rows.delete(path);await denied(run());assert.equal(other.writes,0);
  }
@@ -122,7 +127,20 @@ test("duplicate hub SKU and amount-encoded mapped name fail closed without write
  mapping.bindings.push({companyId:"partner",productId:"partnerSku02",hubProductId:"nuro"});
  await denied(call(zero(),counts({NURO:1})));
  mapping.bindings.pop();
- db.rows.get("products/nuro").name="NURO 50000円";
+ db.rows.get("companies/hub/rankingCountPublicCatalog/shared").products[0].name="NURO 50000円";
  await denied(call(zero(),counts({NURO:1})));
  assert.equal(db.writes,0);
+});
+
+test("public count catalog version mismatch and injected finance fields block save",async()=>{
+ const {db,call}=fixture(),path="companies/hub/rankingCountPublicCatalog/shared";
+ const catalog=db.rows.get(path);
+ catalog.version=3;
+ await denied(call(zero(),counts({NURO:1})));
+ catalog.version=2;
+ catalog.products[0].unitPrice=50000;
+ await denied(call(zero(),counts({NURO:1})));
+ delete catalog.products[0].unitPrice;
+ assert.equal(db.writes,0);
+ assert.ok(!db.reads.some(p=>p.startsWith("products")));
 });
