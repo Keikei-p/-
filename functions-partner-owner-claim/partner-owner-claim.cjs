@@ -248,9 +248,9 @@ function createPartnerOwnerClaimCallables({
    });
    tx.create(users(actor.uid),{...profile,createdAt:nowStamp});
    tx.create(memberRef,{...profile,joinedAt:nowStamp});
-   tx.update(current,{status:"accepted",acceptedByUid:actor.uid,
+   tx.update(invitation(hash),{status:"accepted",acceptedByUid:actor.uid,
     acceptedAt:nowStamp});
-   tx.update(mark,{status:"accepted",acceptedByUid:actor.uid,
+   tx.update(pending(i.partnerCompanyId),{status:"accepted",acceptedByUid:actor.uid,
     acceptedAt:nowStamp});
    tx.create(company(i.partnerCompanyId).collection("partnerOwnerClaimAudits").doc(),{
     action:"owner_claimed",partnerCompanyId:i.partnerCompanyId,
