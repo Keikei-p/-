@@ -1391,8 +1391,8 @@ test("audit history records every saved correction without exposing finance or l
 });
 
 
-test("audit exposes same-total CB tier and private product edits only inside the partner workspace",async()=>{
- const {api,req,zero}=setup(),date="2026-10-31";
+test("partner audit reveals same-total private count edits but preserves CB tier detail only in storage",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
  const team=(await api.manage(req("p",{action:"addTeam",name:"変更内容班"}))).teamId;
  const staff=(await api.manage(req("p",{action:"addManaged",name:"変更内容担当",teamId:team}))).staffId;
  const first=(await api.manage(req("p",{action:"addPrivateProduct",name:"協力店限定A"}))).productId;
@@ -1407,14 +1407,17 @@ test("audit exposes same-total CB tier and private product edits only inside the
  const correction=own.audits[1];
  assert.equal(correction.previousTotalCount,2);
  assert.equal(correction.totalCount,2);
- assert.equal(correction.previousCbCounts.NURO["20000"],2);
- assert.equal(correction.cbCounts.NURO["40000"],2);
+ assert.equal(Object.hasOwn(correction,"previousCbCounts"),false);
+ assert.equal(Object.hasOwn(correction,"cbCounts"),false);
+ const auditStored=db.store.get("companies/partner/partnerWorkAudits/"+date+"__"+staff+"__v2");
+ assert.equal(auditStored.previousCbCounts.NURO["20000"],2);
+ assert.equal(auditStored.cbCounts.NURO["40000"],2);
  assert.equal(correction.previousPrivateCounts[first],2);
  assert.equal(correction.privateCounts[first],0);
  assert.equal(correction.previousPrivateCounts[second],0);
  assert.equal(correction.privateCounts[second],2);
  const plain=JSON.stringify(correction);
- for(const secret of ["totalRevenue","revenuePerUnit","unitPrice","updatedByUid","createdByUid"])
+ for(const secret of ["totalRevenue","revenuePerUnit","unitPrice","updatedByUid","createdByUid","cbCounts","previousCbCounts","20000","40000"])
   assert.equal(plain.includes(secret),false,secret);
  assert.equal("audits" in await api.view(req("p",{date})),false);
  const hub=await api.view(req("h",{date}));
