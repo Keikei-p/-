@@ -12,8 +12,8 @@ const pins=Object.freeze({
  "index.html":"88ef5636bfe9254e71f2109d452b6d3049f99861",
  "firestore.rules":"d9f4df6a2ac0f8b5720534a2461ec66b94379190",
  "functions/index.js":"dfb4c48ada6fa89a24c898cd4a2f911bcede822f",
- "functions-partner-workspace/index.js":"ab551981ce12b4d291a20c0b51cbd461be60df54",
- "functions-partner-workspace/service.cjs":"5334aa48d7f4eb64274a6d7a8bbb4e76d4a2fb65",
+ "functions-partner-workspace/index.js":"90d51246477cf5cfa6966f3e822326ef06cccd0f",
+ "functions-partner-workspace/service.cjs":"614f3216e008642ddf5eda6b93c35cc0469557c3",
  "functions-partner-workspace/company-code-auth.cjs":"f7e5899cdb9e36da610846d787955b13c1e16e4b",
  "firebase.partner-workspace.json":"a6ceedec5fab4e22e0a8efe19c685716a2db9750",
  "sales-archive.js":"aa82307d20cda39a8e7199b5f65c7df62100f49c",
@@ -31,6 +31,11 @@ for(const secret of ["GOOGLE_APPLICATION_CREDENTIALS","FIREBASE_SERVICE_ACCOUNT_
  assert.ok(!process.env[secret],"NO_FIREBASE_CREDENTIALS_"+secret);
 const partner=fs.readFileSync("partner-workspace.html","utf8"),
  owner=fs.readFileSync("sales-archive.js","utf8");
+// The newer source adds an independent default-OFF publication guard.
+assert.match(fs.readFileSync("functions-partner-workspace/index.js","utf8"),
+ /NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED==="enabled"/);
+assert.match(fs.readFileSync("functions-partner-workspace/service.cjs","utf8"),
+ /submissionPublicationEnabled=\(\)=>false/);
 assert.match(partner,/const NICO_PARTNER_JOINT_COUNT_MONTH_RELEASED=false;/);
 assert.match(owner,/const NICO_INTERNAL_JOINT_COUNT_MONTH_RELEASED=false;/);
 assert.match(partner,/if\(!NICO_PARTNER_JOINT_COUNT_MONTH_RELEASED\|\|/);
