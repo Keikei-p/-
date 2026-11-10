@@ -89,3 +89,47 @@ test("failed save refreshes server state; never confirms unsaved toggle",async()
  assert.equal(getCheckbox(root).checked,false);
  assert.equal(ctrl.getVersion(),1);
 });
+
+test("company-specific ON/OFF uses server override, not global settings writes",async()=>{
+ const root=new Node("main"),auth={currentUser:user},calls=[];
+ let v=response(true,7);v.partnerOverrides={partner:[]};
+ const ctrl=createOwnerProductVisibilityPanel({document,root,auth,
+  partnerCompanyId:"partner",load:async()=>v,
+  save:async input=>{
+   calls.push(input);
+   v={...v,version:v.version+1,partnerOverrides:{partner:["nuro"]}};
+   return {saved:true,version:v.version,productId:input.productId,
+    enabled:input.enabled,partnerCompanyId:input.partnerCompanyId};
+  }});
+ assert.equal(await ctrl.refresh(),true);
+ assert.equal(getCheckbox(root).checked,false,"partner OFF even while globally ON");
+ const box=getCheckbox(root);box.checked=true;
+ await box.fire("change");
+ assert.equal(getCheckbox(root).checked,true);
+ assert.deepEqual(calls,[{token:"signed-server-checked-token",
+  productId:"nuro",enabled:true,expectedVersion:7,partnerCompanyId:"partner"}]);
+ assert.equal(ctrl.getVersion(),8);
+ ctrl.destroy();
+});
+test("company-specific control cannot switch globally OFF or malformed overrides",async()=>{
+ const root=new Node("main"),auth={currentUser:user};
+ const ctrl=createOwnerProductVisibilityPanel({document,root,auth,
+  partnerCompanyId:"partner",load:async()=>({
+   ...response(false,2),partnerOverrides:{partner:["nuro"]}
+  }),save:async()=>{throw Error("should_not_save")}});
+ assert.equal(await ctrl.refresh(),true);
+ assert.equal(getCheckbox(root).checked,false);
+ assert.equal(getCheckbox(root).disabled,true);
+ ctrl.destroy();
+ const invalid=new Node("main");
+ const bad=createOwnerProductVisibilityPanel({document,root:invalid,auth,
+  partnerCompanyId:"partner",load:async()=>({
+   ...response(true,2),partnerOverrides:{partner:"nuro"}
+  }),save:async()=>{}});
+ assert.equal(await bad.refresh(),false);
+ assert.equal(nodes(invalid).filter(x=>x.tagName==="input").length,0);
+ bad.destroy();
+ assert.throws(()=>createOwnerProductVisibilityPanel({document,
+  root:new Node("main"),auth,partnerCompanyId:"__proto__",
+  load:async()=>{},save:async()=>{}}));
+});
