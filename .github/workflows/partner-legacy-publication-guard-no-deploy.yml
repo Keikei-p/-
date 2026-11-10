@@ -6,6 +6,7 @@ on:
     paths:
       - 'functions-partner-workspace/**'
       - 'tests/partner-legacy-publication-guard.test.cjs'
+      - 'tests/partner-catalog-publication.test.cjs'
       - 'tests/partner-workspace.test.cjs'
       - 'tests/partner-count-only-rankings.test.cjs'
       - 'tests/partner-ui-parity-contract.test.cjs'
@@ -44,8 +45,9 @@ jobs:
           node --check functions-partner-workspace/service.cjs
           node --check functions-partner-workspace/count-only-rankings.cjs
           node --check tests/partner-legacy-publication-guard.test.cjs
+          node --check tests/partner-catalog-publication.test.cjs
           node --check tests/partner-workspace.test.cjs
           node --check tests/partner-count-only-rankings.test.cjs
           node --check tests/partner-ui-parity-contract.test.cjs
       - name: Isolated and service integration tests
-        run: node --test tests/partner-legacy-publication-guard.test.cjs tests/partner-workspace.test.cjs tests/partner-count-only-rankings.test.cjs tests/partner-ui-parity-contract.test.cjs
+        run: node --test tests/partner-catalog-publication.test.cjs tests/partner-legacy-publication-guard.test.cjs tests/partner-workspace.test.cjs tests/partner-count-only-rankings.test.cjs tests/partner-ui-parity-contract.test.cjs
