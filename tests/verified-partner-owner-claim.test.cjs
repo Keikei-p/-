@@ -101,7 +101,15 @@ function fixtures({enabled=true}={}){
  });
  const send=()=>factory.issue(req(owner,{partnerCompanyId:partner,email:partnerEmail}));
  const writes=()=>log.filter(x=>x.op!=="read");
- const unchanged=()=>Object.entries(original).every(([p,v])=>JSON.stringify(store.get(p))===v);
+ const unchanged=(allowOwnerClaim=false)=>Object.entries(original).every(([p,v])=>{
+  if(allowOwnerClaim&&p==="companies/"+partner){
+   const updated={...store.get(p)};
+   delete updated.ownerUid;
+   delete updated.ownerClaimedAt;
+   return JSON.stringify(updated)===v;
+  }
+  return JSON.stringify(store.get(p))===v;
+ });
  return {factory,store,req,send,writes,unchanged,clock,counts,ids,
   async invite(){
    const r=await send();
@@ -142,11 +150,11 @@ test("verified invited Owner sees finance-free preview and confirms; source hist
  assert.deepEqual(preview,{
   schema:"nico-partner-owner-claim-preview-v1",
   companyName:"協力店A",expiresAt:x.clock.now+30*60*1000,
-  needsConsent:true,currentFinanceDeniedByProfile:true
+  needsConsent:true,futureFinancialRoleFlagsFalse:true
  });
  const r=await x.accept(token);
  assert.deepEqual(r,{claimed:true,partnerCompanyId:partner,
-  companyRole:"owner",financeProfileDenied:true});
+  companyRole:"owner",financialRoleFlagsFalse:true});
  const c=x.store.get("companies/"+partner);
  assert.equal(c.ownerUid,receiver);
  assert.equal(c.companyCodePrincipalUid,"pc_secret");
@@ -162,7 +170,7 @@ test("verified invited Owner sees finance-free preview and confirms; source hist
   assert.equal(p.accessKind,"partner");
   assert.equal(p.memberType,"cooperator");
  }
- assert(x.unchanged(),"every old company code, finance, count and old membership byte-for-byte unchanged");
+ assert(x.unchanged(true),"only partner ownerUid/claimTimestamp added; old company code, count, finance, membership unchanged");
  assert(x.writes().every(w=>!["records","products","recordCorrections",
   "partnerWorkEntries"].some(s=>w.path.includes(s))));
  assert(!x.writes().some(w=>w.path==="users/pc_secret"));
