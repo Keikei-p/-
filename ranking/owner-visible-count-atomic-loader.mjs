@@ -26,7 +26,10 @@ export function createStagedAtomicOwnerCountLoader({
  return async function loadAtomic({month,context}={}){
   if(!MONTH.test(month||"")||!context||context.serverVerified!==true||
      !id(context.hubCompanyId)||!id(context.viewerUid)||
-     !sameSet(context.approvedCompanyIds,context.approvedCompanyIds)||
+     !Array.isArray(context.approvedCompanyIds)||
+     new Set(context.approvedCompanyIds).size!==context.approvedCompanyIds.length||
+     !context.approvedCompanyIds.every(id)||
+     !context.approvedCompanyIds.includes(context.hubCompanyId)||
      context.approvedCompanyIds.length<1||
      context.approvedCompanyIds.length>30)fail();
   return db.runTransaction(async tx=>{
