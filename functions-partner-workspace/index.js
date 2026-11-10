@@ -8,7 +8,9 @@ const {makeCompanyCodeAuth}=require("./company-code-auth.cjs");
 initializeApp();
 const service=makeWorkspace({
  db:getFirestore(),getAuth,FieldValue,Timestamp,HttpsError,
- enabled:()=>process.env.PARTNER_WORKSPACE_ENABLED==="enabled"
+ enabled:()=>process.env.PARTNER_WORKSPACE_ENABLED==="enabled",
+ // Must be explicitly enabled only after approved SKU mapping and finance proof.
+ sharedRankingEnabled:()=>process.env.NICO_PARTNER_SHARED_RANKING_ENABLED==="enabled"
 });
 const opts={region:"asia-northeast1",maxInstances:3,
  cors:["https://nico-factory.web.app"]};
