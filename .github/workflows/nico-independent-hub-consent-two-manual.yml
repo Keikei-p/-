@@ -12,6 +12,7 @@ on:
       - 'tools/production/owner-consent-two-version-guard.mjs'
       - 'tests/owner-consent-two-version-guard.test.mjs'
       - 'tests/unclaimed-hub-consent-live-vendor-parity.test.mjs'
+      - 'tests/owner-independent-hub-consent-release-gate.test.mjs'
       - 'tests/owner-unclaimed-status-manual-release.test.mjs'
       - '.github/workflows/nico-independent-hub-consent-two-manual.yml'
   push:
@@ -26,6 +27,7 @@ on:
       - 'tools/production/owner-consent-two-version-guard.mjs'
       - 'tests/owner-consent-two-version-guard.test.mjs'
       - 'tests/unclaimed-hub-consent-live-vendor-parity.test.mjs'
+      - 'tests/owner-independent-hub-consent-release-gate.test.mjs'
       - 'tests/owner-unclaimed-status-manual-release.test.mjs'
       - '.github/workflows/nico-independent-hub-consent-two-manual.yml'
 permissions:
@@ -59,7 +61,7 @@ jobs:
           node --check functions-ranking-approvals/vendor/ranking-owner-consent-service.mjs
           node --check ranking/ranking-owner-consent-status.mjs
           node --check functions-ranking-approvals/vendor/ranking-owner-consent-status.mjs
-          node --test tests/unclaimed-hub-consent-live-vendor-parity.test.mjs tests/owner-unclaimed-consent-status-vendor-parity.test.mjs tests/owner-consent-two-version-guard.test.mjs tests/ranking-owner-consent-service.test.mjs tests/ranking-owner-callable-controller.test.cjs
+          node --test tests/owner-independent-hub-consent-release-gate.test.mjs tests/unclaimed-hub-consent-live-vendor-parity.test.mjs tests/owner-unclaimed-consent-status-vendor-parity.test.mjs tests/owner-consent-two-version-guard.test.mjs tests/ranking-owner-consent-service.test.mjs tests/ranking-owner-callable-controller.test.cjs
           node --test tests/ranking-owner-consent-emulator.test.mjs
           node tools/ranking/verify-isolated-owner-callables.mjs
           echo 'TWO_OWNER_CONSENT_FUNCTIONS_OFFLINE_PASS_NO_DEPLOY'
