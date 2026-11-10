@@ -610,7 +610,7 @@ test("fresh partner owner with company GET denied can prove same-hub finance GET
     fields:{companyId:{stringValue:hub}}}}]);
   return response(200,{fields:{companyId:{stringValue:hub}}});
  };
- const scope=async(_functions,name)=>async(input)=>{
+ const scope=(_functions,name)=>async(input)=>{
   if(name!=="getPartnerWorkspace")throw Error("NO_FALLBACK_ALLOWED");
   calls.push({caller:auth.currentUser.uid,input});
   const date=input.date;
