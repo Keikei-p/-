@@ -1,6 +1,8 @@
 name: Main live finance Rules audit (READ ONLY / NO DEPLOY)
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '17 1 * * *'
   push:
     branches: [main]
     paths:
@@ -23,10 +25,13 @@ jobs:
       - run: node --check tools/production/audit-live-finance-rules-readonly.cjs
       - run: node --test tests/main-partner-finance-gate-audit.test.cjs
   live-readonly:
-    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'push' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'
     needs: static-contract
     runs-on: ubuntu-latest
     timeout-minutes: 8
+    concurrency:
+      group: nico-finance-rules-readonly
+      cancel-in-progress: false
     env:
       NICO_PROD_AUDIT_MODE: READ_ONLY
     steps:
