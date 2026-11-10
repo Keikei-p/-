@@ -131,3 +131,34 @@ test("untrusted status, finance or write claims cannot be promoted to readiness"
  assert(!/firebase deploy|setDoc\(|updateDoc\(|\.delete\(/.test(s));
  assert.match(s,/safeToEnableJointRanking:false/);
 });
+
+
+test("live Hosting finance diagnostic status is HASH-verified but never equated to real account proof",()=>{
+ const src=readFileSync(new URL("../finance-boundary-check.html",import.meta.url),"utf8");
+ const baseline=hosted();
+ const withFinance=[...baseline,{path:"/finance-boundary-check.html",hash:uploadSha(src)}];
+ const clean=classifyHosting(release,{name:version,status:"FINALIZED",
+   fileCount:withFinance.length,config:{}},withFinance,sourced(),src);
+ assert.equal(clean.financeBoundaryDiagnosticInspected,true);
+ assert.equal(clean.financeBoundaryDiagnosticPresent,true);
+ assert.equal(clean.financeBoundaryDiagnosticExactMatch,true);
+ assert.equal(clean.ownerSetupPageReady,true);
+ const absent=classifyHosting(release,{name:version,status:"FINALIZED",
+   fileCount:baseline.length,config:{}},baseline,sourced(),src);
+ assert.equal(absent.financeBoundaryDiagnosticPresent,false);
+ assert.equal(absent.financeBoundaryDiagnosticExactMatch,false);
+ const changed=classifyHosting(release,{name:version,status:"FINALIZED",
+   fileCount:withFinance.length,config:{}},
+   withFinance.map(x=>x.path==="/finance-boundary-check.html"?
+    {...x,hash:"f".repeat(64)}:x),sourced(),src);
+ assert.equal(changed.financeBoundaryDiagnosticPresent,true);
+ assert.equal(changed.financeBoundaryDiagnosticExactMatch,false);
+ assert.throws(()=>classifyHosting(release,{name:version,status:"FINALIZED",
+  fileCount:withFinance.length,config:{}},withFinance,sourced(),"secret"),
+  /STOP_OWNER_SETUP_CHAIN_FINANCE_DIAGNOSTIC_SOURCE_INVALID/);
+ const board=readinessBoard({functions:classifyFunctions(funcs()),hosting:clean,
+  publication:pub()});
+ assert.equal(board.financeBoundaryDiagnosticExactMatch,true);
+ assert.equal(board.realPartnerFinanceGetListDeniedVerified,false);
+ assert.equal(board.safeToEnableJointRanking,false);
+});
