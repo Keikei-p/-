@@ -192,7 +192,7 @@ function createPartnerOwnerClaimCallables({
     denied();
    return {schema:"nico-partner-owner-claim-preview-v1",
     companyName:name,expiresAt:toMillis(i.expiresAt),needsConsent:true,
-    currentFinanceDeniedByProfile:true};
+    futureFinancialRoleFlagsFalse:true};
   },{readOnly:true});
  }
  async function accept(request){
@@ -258,7 +258,7 @@ function createPartnerOwnerClaimCallables({
     issuedByUid:i.invitedByUid,createdAt:nowStamp
    });
    return {claimed:true,partnerCompanyId:i.partnerCompanyId,
-    companyRole:"owner",financeProfileDenied:true};
+    companyRole:"owner",financialRoleFlagsFalse:true};
   });
  }
  return Object.freeze({issue,preview,accept});
