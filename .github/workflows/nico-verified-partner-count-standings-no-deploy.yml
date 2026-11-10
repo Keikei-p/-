@@ -1,0 +1,76 @@
+name: NICO approved partner day-month count rankings (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'functions-partner-workspace/**'
+      - 'tests/approved-partner-count-standings.test.cjs'
+      - 'tests/partner-workspace.test.cjs'
+      - 'partner-workspace.html'
+      - 'tests/approved-partner-ranking-ui.test.mjs'
+      - 'ranking/owner-product-visibility-firestore.mjs'
+      - 'tests/owner-product-visibility-firestore.test.mjs'
+      - '.github/workflows/nico-verified-partner-count-standings-no-deploy.yml'
+  push:
+    branches: [feat/verified-partner-daily-month-count-ranking-main-20261110]
+    paths:
+      - 'functions-partner-workspace/**'
+      - 'tests/approved-partner-count-standings.test.cjs'
+      - 'tests/partner-workspace.test.cjs'
+      - 'partner-workspace.html'
+      - 'tests/approved-partner-ranking-ui.test.mjs'
+      - 'ranking/owner-product-visibility-firestore.mjs'
+      - 'tests/owner-product-visibility-firestore.test.mjs'
+      - '.github/workflows/nico-verified-partner-count-standings-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  rank-and-ledger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      NICO_PARTNER_SHARED_RANKING_ENABLED: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Protect original sales and Rules, no automatic release
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$NICO_PARTNER_SHARED_RANKING_ENABLED"
+          grep -Fq 'sharedRankingEnabled:()=>process.env.NICO_PARTNER_SHARED_RANKING_ENABLED==="enabled"' functions-partner-workspace/index.js
+      - name: Check every new count-only module and service syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/index.js
+          node --check functions-partner-workspace/shared-count-standings.cjs
+          node --check functions-partner-workspace/approved-published-categories.cjs
+          node --check tests/approved-partner-count-standings.test.cjs
+          node --check tests/partner-workspace.test.cjs
+          node --check tests/approved-partner-ranking-ui.test.mjs
+          node <<'NODE'
+          const fs=require('fs');
+          const html=fs.readFileSync('partner-workspace.html','utf8');
+          const m=html.match(/<script type="module">([\s\S]*?)<\/script>/);
+          if(!m)throw Error('PARTNER_MODULE_MISSING');
+          fs.writeFileSync(process.env.RUNNER_TEMP+'/approved-partner-ranking.mjs',m[1]);
+          NODE
+          node --check "$RUNNER_TEMP/approved-partner-ranking.mjs"
+      - name: Verify storage invariants, approved ON-only mappings and tied day-month ranks
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/approved-partner-count-standings.test.cjs tests/partner-workspace.test.cjs tests/owner-product-visibility-firestore.test.mjs tests/approved-partner-ranking-ui.test.mjs
+          node --test tests/internal-owner-finance-visibility.test.cjs tests/partner-money-free-workspace.test.cjs tests/partner-company-code-auth.test.cjs tests/partner-count-dashboard.test.cjs
+          echo 'NO_FIREBASE_DEPLOY=1 NO_RULES_WRITES=1 NO_PRODUCTION_COUNT_WRITES=1'

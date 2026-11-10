@@ -14,15 +14,18 @@ class Ref {
 class Coll {
  constructor(db,path){this.db=db;this.path=path;}
  doc(id){return new Ref(this.db,this.path+"/"+(id||"auto"+(++this.db.serial)));}
- where(k,op,v){assert.equal(op,"==");return new Query(this.db,this.path,{k,v});}
+ where(k,op,v){assert(["==",">=","<="].includes(op));return new Query(this.db,this.path,[{k,op,v}]);}
  limit(n){return new Query(this.db,this.path,null,n);}
 }
 class Query {
  constructor(db,path,filter,lim=Infinity){this.db=db;this.path=path;this.filter=filter;this.lim=lim;}
  limit(n){return new Query(this.db,this.path,this.filter,n);}
+ where(k,op,v){assert(["==",">=","<="].includes(op));
+  return new Query(this.db,this.path,[...(this.filter||[]),{k,op,v}],this.lim)}
  async get(){const docs=[];for(const [p,v] of this.db.store){
   if(p.startsWith(this.path+"/")&&!p.slice(this.path.length+1).includes("/")&&
-     (!this.filter||v[this.filter.k]===this.filter.v))
+     (this.filter||[]).every(f=>f.op==="=="?v[f.k]===f.v:
+      f.op===">="?v[f.k]>=f.v:v[f.k]<=f.v))
     docs.push({id:p.split("/").at(-1),data:()=>clone(v)});
   }const rows=docs.slice(0,this.lim);return {size:rows.length,docs:rows};}
 }
@@ -48,7 +51,7 @@ class DB {
  }
 }
 class CallError extends Error{constructor(code,message){super(message);this.code=code;}}
-function setup(){
+function setup(sharedRankingOn=false){
  const db=new DB();
  const partnerUser=(uid,role,teamId=null)=>({uid,companyId:"partner",companyRole:role==="owner"?"owner":"member",
  role,teamId,active:true,accessKind:"partner",memberType:"cooperator",
@@ -72,7 +75,7 @@ function setup(){
   delete:()=>({__deleteField:true})
  };
  const api=makeWorkspace({db,getAuth,Timestamp,FieldValue,HttpsError:CallError,
-  enabled:()=>true,now:()=>NOW});
+  enabled:()=>true,sharedRankingEnabled:()=>sharedRankingOn,now:()=>NOW});
  const req=(uid,data={})=>({auth:{uid,token:{email:uid+"@example.com",email_verified:true}},
   rawRequest:{headers:{authorization:"Bearer "+uid.repeat(30)}},data});
  const zero=()=>Object.fromEntries(KEYS.map(k=>[k,0]));
@@ -1170,4 +1173,116 @@ test("same-email login guidance and explicit transfer action exist in invite UI"
  assert.match(p,/transferCurrentCompany:\$\("transferExistingInternal"\)\.checked/);
  assert.match(p,/auth\/email-already-in-use/);
  assert.match(invite,/auth\/email-already-in-use/);
+});
+
+test("new approved monthly and daily ranking API excludes finance and OFF counts, without mutating source",async()=>{
+ const {db,api,req,zero}=setup(true),date="2026-10-31";
+ db.seed("products/nuro",{companyId:"hub",name:"NURO光",active:true,unitPrice:10000});
+ db.seed("products/ym",{companyId:"hub",name:"YM純新規",active:true,unitPrice:20000});
+ db.seed("companies/hub/rankingProductVisibility/shared",{
+  hubCompanyId:"hub",ownerUid:"h",version:1,
+  enabledHubProductIds:["nuro","ym"],partnerOverrides:{partner:["nuro"]}});
+ db.seed("companies/hub/rankingSkuMappings/shared",{
+  hubCompanyId:"hub",ownerUid:"h",reviewedByUid:"h",active:true,version:1,
+  bindings:[{companyId:"partner",productId:"partnerSku01",hubProductId:"nuro"},
+   {companyId:"partner",productId:"partnerSku04",hubProductId:"ym"}]});
+ db.seed("companies/hub/rankingCountPublicCatalog/shared",{
+  schema:"nico-reviewed-count-public-catalog-v1",hubCompanyId:"hub",
+  ownerUid:"h",version:1,products:[
+   {id:"nuro",companyId:"hub",name:"NURO光",active:true},
+   {id:"ym",companyId:"hub",name:"YM純新規",active:true}]});
+ Object.assign(db.store.get("partnerRelations/partner"),{
+  combinedRankingApprovedByHub:true,combinedRankingApprovedByPartner:true,
+  individualNamesApprovedByHub:true,individualNamesApprovedByPartner:true
+ });
+ for(const [companyId,otherId,uid] of [["hub","partner","h"],["partner","hub","p"]])
+  db.seed("companies/"+companyId+"/rankingApprovals/"+otherId,{
+   companyId,hubCompanyId:"hub",partnerCompanyId:"partner",
+   approvedByUid:uid,active:true,scope:"combined_rank_only",version:1,
+   combinedRankingApproved:true,individualNamesApproved:true
+  });
+ const team=(await api.manage(req("p",{action:"addTeam",name:"集計班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"検証担当",teamId:team}))).staffId;
+ await api.submit(req("p",{date,staffId:staff,counts:{...zero(),NURO:3,"YM純新規":7},expectedVersion:0}));
+ const before=clone([...db.store]);
+ const owner=await api.view(req("h",{date,sharedCountRankings:true,rankingPeriod:"month"}));
+ const partner=await api.view(req("p",{date,sharedCountRankings:true,rankingPeriod:"day"}));
+ for(const result of [owner,partner]){
+  assert.equal(result.scope,"approved_partner_counts_only");
+  assert.equal(result.fullyJoint,false);
+  assert.equal(result.includesDirect,false);
+  assert.equal(result.totalCount,3);
+  assert.equal(result.companies[0].totalCount,3);
+  assert.equal(result.people[0].totalCount,3);
+  assert.equal(result.teams[0].totalCount,3);
+  assert.deepEqual(result.products.map(x=>x.name),["NURO"]);
+  assert.equal(result.people[0].rank,1);
+  assert.doesNotMatch(JSON.stringify(result),/YM純新規|unitPrice|revenue|70000|updatedByUid|privateCounts|cbCounts|memberUid/);
+ }
+ assert.equal(owner.period,"month");
+ assert.equal(owner.start,"2026-10-01");
+ assert.equal(owner.end,date);
+ assert.equal(partner.period,"day");
+ assert.equal(partner.start,date);
+ assert.deepEqual([...db.store],before,"ranking reads may not write existing source records or settings");
+ // The old company-level quick count is used only on dates with no staff
+ // source; a second quick report on an already verified staff day is ignored.
+ db.seed("companies/hub/partnerQuickCountDays/2026-10-30/reports/partner",{
+  hubCompanyId:"hub",partnerCompanyId:"partner",date:"2026-10-30",
+  partnerCompanyName:"協力店",version:1,
+  counts:{...zero(),NURO:4},totalCount:4,
+  cashback:123456,unitPrice:50000
+ });
+ db.seed("companies/hub/partnerQuickCountDays/2026-10-31/reports/partner",{
+  hubCompanyId:"hub",partnerCompanyId:"partner",date:"2026-10-31",
+  partnerCompanyName:"協力店",version:1,
+  counts:{...zero(),NURO:999},totalCount:999
+ });
+ const mixed=await api.view(req("h",{
+  date,sharedCountRankings:true,rankingPeriod:"month"
+ }));
+ assert.equal(mixed.totalCount,7,"company-only fallback counts once");
+ assert.equal(mixed.people[0].totalCount,3,"legacy company-only count is never fabricated as staff");
+ assert.equal(mixed.historicalCompanyOnlyCount,4);
+ assert.equal(mixed.peopleComplete,false);
+ assert.equal(mixed.companies[0].totalCount,7);
+ assert.doesNotMatch(JSON.stringify(mixed),/cashback|unitPrice|123456|50000|999/);
+ db.store.get("companies/hub/rankingProductVisibility/shared").partnerOverrides.partner=[];
+ const off=await api.view(req("p",{date,sharedCountRankings:true}));
+ assert.equal(off.companies.length,0,"OFF must not masquerade as saved 0");
+ assert.equal(off.products.length,0,"OFF SKUs cannot appear in partner rankings");
+ assert.equal(db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+staff).counts.NURO,3);
+ // Revoking either owner's name consent must close the new ranking path,
+ // without modifying a single saved report.
+ db.store.get("partnerRelations/partner").individualNamesApprovedByPartner=false;
+ await assert.rejects(api.view(req("h",{date,sharedCountRankings:true})),{
+  code:"failed-precondition"
+ });
+ assert.equal(db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+staff).counts.NURO,3);
+});
+test("new ranking mode defaults disabled; missing approved mapping fails closed",async()=>{
+ const standard=setup();
+ await assert.rejects(standard.api.view(standard.req("h",{
+  date:"2026-10-31",sharedCountRankings:true})),{code:"unavailable"});
+ const on=setup(true);
+ await assert.rejects(on.api.view(on.req("h",{
+  date:"2026-10-31",sharedCountRankings:true})),{code:"failed-precondition"});
+});
+test("cross-company forgery cannot escape the server owned relation scope",async()=>{
+ const {db,api,req,zero}=setup(true);
+ db.seed("companies/hub/rankingProductVisibility/shared",{
+  hubCompanyId:"hub",ownerUid:"h",version:1,
+  enabledHubProductIds:["nuro"],partnerOverrides:{}});
+ db.seed("companies/hub/rankingSkuMappings/shared",{
+  hubCompanyId:"hub",ownerUid:"h",reviewedByUid:"h",active:true,version:1,bindings:[]});
+ db.seed("products/nuro",{companyId:"hub",name:"NURO光",active:true});
+ await assert.rejects(api.view(req("p",{
+  date:"2026-10-31",sharedCountRankings:true,partnerCompanyId:"foreign"
+ })),{code:"invalid-argument"});
+ db.store.get("partnerRelations/partner").countSharingApproved=false;
+ const snapshot=clone([...db.store]);
+ await assert.rejects(api.view(req("p",{
+  date:"2026-10-31",sharedCountRankings:true
+ })),{code:"permission-denied"});
+ assert.deepEqual([...db.store],snapshot);
 });

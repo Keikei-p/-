@@ -65,6 +65,10 @@ export function createOwnerProductVisibilityStore({db,FieldValue}={}){
  const users=()=>db.collection("users");
  const settingsRef=hub=>companies().doc(hub)
   .collection("rankingProductVisibility").doc("shared");
+ // Owner-reviewed public count catalog. No private sales master ever leaves
+ // this codebase: only id/name/active and the matching visibility revision.
+ const publicCatalogRef=hub=>companies().doc(hub)
+  .collection("rankingCountPublicCatalog").doc("shared");
  const catalog=hub=>db.collection("products")
   .where("companyId","==",hub).limit(1001);
  async function owner(tx,principal){
@@ -121,8 +125,9 @@ export function createOwnerProductVisibilityStore({db,FieldValue}={}){
   return db.runTransaction(async tx=>{
    const {hub,ownerUid}=await owner(tx,principal);
    if(partnerCompanyId===hub)stop();
-   const [stored,all]=await Promise.all([
-    tx.get(settingsRef(hub)),tx.get(catalog(hub))
+   const [stored,all,existingPublicCatalog]=await Promise.all([
+    tx.get(settingsRef(hub)),tx.get(catalog(hub)),
+    tx.get(publicCatalogRef(hub))
    ]);
    const products=productsOf(all,hub);
    const state=normalize(read(stored),hub,ownerUid);
@@ -163,6 +168,14 @@ export function createOwnerProductVisibilityStore({db,FieldValue}={}){
    const docRef=settingsRef(hub);
    if(stored.exists)tx.update(docRef,update);
    else tx.create(docRef,{...update,createdAt:at});
+   // Exact sanitized catalog for partner rank Functions. This is atomically
+   // version-matched with visibility, never copies unit price, sales or CB.
+   const publicRef=publicCatalogRef(hub);
+   const published={schema:"nico-reviewed-count-public-catalog-v1",
+    hubCompanyId:hub,ownerUid,version,updatedAt:at,
+    products:products.map(p=>({id:p.id,companyId:hub,name:p.name,active:p.active}))};
+   if(existingPublicCatalog.exists)tx.update(publicRef,published);
+   else tx.create(publicRef,{...published,createdAt:at});
    // Append-only audit, never delete a financial or count record.
    const audit=companies().doc(hub)
     .collection("rankingProductVisibilityAudit").doc();
