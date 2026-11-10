@@ -361,8 +361,9 @@ test("hub Owner can open configuration status for a hub-created unclaimed partne
  });
  assert.equal(f.d.has("companies/p1/rankingApprovals/hub"),false);
  assert.deepEqual(copyOriginals(f),original);
- await assert.rejects(createFreshCombinedRankingContext({db:f.db})(auth("hubOwner")),
-  /UNVERIFIED/,"independent Hub approval is never Partner consent");
+ const stillHubOnly=await createFreshCombinedRankingContext({db:f.db})(auth("hubOwner"));
+ assert.deepEqual(stillHubOnly.approvedCompanyIds,["hub"],
+  "Hub consent without Partner Owner must never publish Partner counts");
  await assert.rejects(get(auth("partnerOwner")),
   /RANKING_OWNER_STATUS_UNAUTHORIZED_OR_INCOMPLETE/,
   "cannot invent partner Owner from merely knowing user role");
