@@ -1307,7 +1307,7 @@ test("transactional partner save honors owner ON/OFF and preserves historical OF
  const team=(await api.manage(req("p",{action:"addTeam",name:"1班"}))).teamId;
  const staff=(await api.manage(req("p",{action:"addManaged",name:"保存担当",teamId:team}))).staffId;
  const date="2026-10-31";
- const save=(counts,version)=>api.submit(req("p",{date,staffId,counts,expectedVersion:version}));
+ const save=(counts,version)=>api.submit(req("p",{date,staffId:staff,counts,expectedVersion:version}));
  await save({...zero(),NURO:2,"SB光・AIR":3},0);
  const visibility=db.store.get("companies/hub/rankingProductVisibility/shared");
  visibility.enabledHubProductIds=["nuro"];visibility.version++;
