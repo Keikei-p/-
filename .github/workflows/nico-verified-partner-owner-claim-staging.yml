@@ -6,6 +6,7 @@ on:
       - 'functions-partner-owner-claim/**'
       - 'firebase.partner-owner-claim.json'
       - 'tests/verified-partner-owner-claim.test.cjs'
+      - 'tests/verified-partner-owner-claim-ui.test.mjs'
       - 'staging/partner-owner-claim-v1/**'
       - '.github/workflows/nico-verified-partner-owner-claim-staging.yml'
   push:
@@ -43,7 +44,7 @@ jobs:
           test "$(git hash-object functions-ranking-approvals/index.js)" = 54855609e372ee1056b5206e445f20c0a251b1ef
           node --check functions-partner-owner-claim/index.js
           node --check functions-partner-owner-claim/partner-owner-claim.cjs
-          node --test tests/verified-partner-owner-claim.test.cjs
+          node --test tests/verified-partner-owner-claim.test.cjs tests/verified-partner-owner-claim-ui.test.mjs
           node -e "const f=require('fs'),p=JSON.parse(f.readFileSync('firebase.partner-owner-claim.json'));if(p.functions.source!=='functions-partner-owner-claim'||p.functions.codebase!=='partner-owner-claim')process.exit(1)"
           cmp -s functions-partner-owner-claim/vendor/trusted-combined-ranking-context.mjs functions-ranking-approvals/vendor/trusted-combined-ranking-context.mjs
           echo PARTNER_OWNER_CLAIM_STAGING_PASS_NO_DEPLOY_NO_AUTH_CHANGES_NO_FINANCE_READS
