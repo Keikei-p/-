@@ -15,7 +15,7 @@ assert.ok(permitted,"REVIEW_ONLY_NEVER_WORKFLOW_DISPATCH");
 const hashes=Object.freeze({
  "functions-partner-workspace/service.cjs":"5334aa48d7f4eb64274a6d7a8bbb4e76d4a2fb65",
  "functions-partner-workspace/index.js":"ab551981ce12b4d291a20c0b51cbd461be60df54",
- "functions-partner-workspace/shared-count-standings.cjs":"6b2b4c8dd5d10872e9cc45b4a43cedf0968f9c58",
+ "functions-partner-workspace/shared-count-standings.cjs":"4655436c58a73210f7b6ab38223652bb8376ed97",
  "functions-partner-workspace/approved-published-categories.cjs":"6ae0009c85f4fb95233a4b3880ea4ea3ae906f86",
  "partner-workspace.html":"4d3bfaa1d928e354ac546d0be65af7c8ecda76de",
  "ranking/owner-product-visibility-firestore.mjs":"8e2289b1dd8b62f4d682dc6231a339294178abcb",
