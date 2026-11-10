@@ -11,7 +11,7 @@ import {fileURLToPath} from "node:url";
 import path from "node:path";
 const PROJECT="sales-management-cc116";
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
-const MONEY=/(?:revenue|sales|price|cashback|amount|commission|profit|salary|単価|売上|金額|報酬|利益|キャッシュバック|[¥￥$€]|[0-9０-９][0-9０-９.,，]*\\s*(?:万円|千円|円))/i;
+const MONEY=/(?:revenue|sales|price|cashback|amount|commission|profit|salary|単価|売上|金額|報酬|利益|キャッシュバック|[¥￥$€]|[0-9０-９][0-9０-９.,，]*\s*(?:万円|千円|円))/i;
 const fail=reason=>{throw Error("STOP_SKU_PUBLICATION_READONLY_"+reason);};
 const obj=x=>!!x&&typeof x==="object"&&!Array.isArray(x);
 const id=x=>typeof x==="string"&&ID.test(x)&&!["__proto__","constructor","prototype"].includes(x);
