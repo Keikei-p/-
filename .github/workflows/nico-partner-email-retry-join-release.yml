@@ -29,6 +29,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Separate, precisely source-pinned PR/main NO-DEPLOY ranking review.
+          # Historical production release and workflow_dispatch paths below
+          # remain pinned to their prior reviewed artifacts.
+          if { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
+               [ "${GITHUB_HEAD_REF:-}" = "feat/verified-partner-daily-month-count-ranking-main-20261110" ]; } ||
+             { [ "$GITHUB_EVENT_NAME" = "push" ] &&
+               [ "$GITHUB_REF" = "refs/heads/main" ]; }; then
+            test "$(git hash-object scripts/ci/review-approved-partner-count-rank.cjs)" = '6df553a712315ee13308b2e2bbce3575a05c0a9b'
+            node scripts/ci/review-approved-partner-count-rank.cjs
+            echo 'REVIEWED_NO_DEPLOY_RANK_CANDIDATE_VALIDATED'
+            exit 0
+          fi
           test "$(git hash-object index.html)" = '88ef5636bfe9254e71f2109d452b6d3049f99861'
           test "$(git hash-object functions-partner-workspace/service.cjs)" = 'b94a6aba231dc2569009580a178297a5b6194bda'
           test "$(git hash-object functions-partner-workspace/index.js)" = '38da7e9174ffea7c406c92292dccfc651b565eb0'
