@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="ja">
+<head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1">
+ <meta name="robots" content="noindex,nofollow,noarchive">
+ <meta name="referrer" content="no-referrer">
+ <title>協力店Owner本人登録 | NICO FACTORY</title>
+ <style>
+ :root{color-scheme:light;font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif;color:#18324d;background:#f5f7fb}
+ *{box-sizing:border-box}
+ body{margin:0}
+ header{background:#133654;color:#fff;padding:14px 16px}
+ header a{color:#fff;text-decoration:none}
+ main{max-width:720px;margin:0 auto;padding:16px;display:grid;gap:15px}
+ h1{font-size:1.55rem;margin:0}
+ h2{font-size:1.1rem;margin:0}
+ p{line-height:1.65;margin:.4rem 0}
+ section{background:white;border:1px solid #d8e1eb;border-radius:14px;padding:16px;display:grid;gap:11px}
+ label{display:grid;gap:6px;font-weight:600}
+ input,select,button{font:inherit;min-height:46px;border-radius:9px;padding:10px}
+ input,select{width:100%;border:1px solid #9db1c6;background:#fff;color:#17314b}
+ button{background:#1b5eb0;color:#fff;border:0;font-weight:700;cursor:pointer}
+ button:disabled{opacity:.55;cursor:not-allowed}
+ .muted{font-size:.9rem;color:#586579}
+ .warn{color:#8b4700}
+ [hidden]{display:none!important}
+ #message{border-radius:12px;padding:10px 14px;background:#e6effa;overflow-wrap:anywhere}
+ @media(max-width:540px){main{padding:12px}section{padding:13px}}
+ </style>
+</head>
+<body>
+ <header><a href="/owner-partner-setup.html">NICO FACTORY ／ 協力店管理へ戻る</a></header>
+ <main>
+  <h1>協力店Owner本人登録</h1>
+  <p class="muted">自社のOwnerが本人のメールアドレスへ招待リンクを渡し、協力店の本人がメール認証後に承諾します。既存の会社コードや件数履歴は残ります。既存の自社アカウントは自動移籍しません。</p>
+  <p id="message" role="status" aria-live="polite">ログイン情報を確認しています。</p>
+  <section id="signedOut">
+   <h2>メールアカウントでログイン</h2>
+   <form id="login"><label>メール<input type="email" id="email" required autocomplete="email" maxlength="180"></label>
+    <label>パスワード<input type="password" id="password" required autocomplete="current-password" minlength="8"></label>
+    <button type="submit">ログイン</button></form>
+   <form id="signup"><h2>初めて利用する本人はこちら</h2>
+    <label>メール<input type="email" id="newEmail" required maxlength="180"></label>
+    <label>パスワード（8文字以上）<input type="password" id="newPassword" required minlength="8" autocomplete="new-password"></label>
+    <button type="submit">本人用アカウント作成・確認メール送信</button></form>
+  </section>
+  <section id="verification" hidden>
+   <h2>本人メール確認が必要です</h2>
+   <p>確認メール内のリンクを開いたあと、この画面で再確認してください。</p>
+   <button type="button" id="sendVerify">確認メールを再送</button>
+   <button type="button" id="checkVerify">確認済みか再確認</button>
+  </section>
+  <section id="hubIssue" hidden>
+   <h2>自社Owner：協力店のOwner招待を作成</h2>
+   <p class="muted">招待は30分有効・1社1件の未承諾招待のみ。設定済み会社に再登録できません。本人に直接、専用リンクを安全に共有してください。</p>
+   <form id="issueForm">
+    <label>招待する協力店<select id="partner" required></select></label>
+    <label>本人のメールアドレス<input id="inviteEmail" type="email" autocomplete="off" maxlength="180" required></label>
+    <button type="submit">Owner招待リンクを発行する</button>
+   </form>
+   <div id="issued" hidden>
+    <label>本人だけに渡す30分有効のリンク<input id="inviteUrl" readonly></label>
+    <button id="copy" type="button">招待リンクをコピー</button>
+    <p class="warn">招待リンクを公開投稿しないでください。</p>
+   </div>
+  </section>
+  <section id="recipient" hidden>
+   <h2>協力店Owner：本人登録を承諾する</h2>
+   <p id="recipientCompany"></p>
+   <p class="warn">売上・単価・CBのアクセスは、会社の本番セキュリティ設定も確認したうえで利用開始してください。既存の会社コードでの件数入力には影響しません。</p>
+   <form id="acceptForm">
+    <label>Owner表示名<input id="displayName" required maxlength="60"></label>
+    <label><input id="acceptCheckbox" type="checkbox" required style="width:auto;min-height:20px"> この会社のOwnerとして参加することを承諾します</label>
+    <button type="submit">本人確認してOwner登録する</button>
+   </form>
+  </section>
+  <section id="account" hidden>
+   <p id="signedInAs" class="muted"></p>
+   <button id="logout" type="button">ログアウト</button>
+  </section>
+  <p class="muted">他社の売上・単価・CBは、この画面から読み込みません。招待受諾で既存の社員情報や過去の実績を自動変更しません。</p>
+ </main>
+ <script type="module">
+ import {initializeApp} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+ import {getAuth,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,
+   sendEmailVerification,signOut,reload} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+ import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js";
+ const app=initializeApp({
+  apiKey:"AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
+  authDomain:"sales-management-cc116.firebaseapp.com",
+  projectId:"sales-management-cc116",storageBucket:"sales-management-cc116.firebasestorage.app",
+  messagingSenderId:"904932511564",appId:"1:904932511564:web:6583e8b0c585231b9049e"
+ });
+ const auth=getAuth(app),functions=getFunctions(app,"asia-northeast1");
+ const call=name=>httpsCallable(functions,name);
+ const status=call("getRankingOwnerConsentStatus");
+ const issue=call("issuePartnerOwnerClaimInvite");
+ const preview=call("previewPartnerOwnerClaimInvite");
+ const accept=call("acceptPartnerOwnerClaimInvite");
+ const $=id=>document.getElementById(id);
+ const claim=new URL(location.href).searchParams.get("claim")||"";
+ const TOKEN=/^[A-Za-z0-9_-]{40,100}$/;
+ let busy=false,epoch=0,confirmed=false;
+ const tell=s=>{$("message").textContent=s;};
+ const show=(id,visible)=>{$(id).hidden=!visible;};
+ const safe=fn=>async e=>{
+  e?.preventDefault?.();
+  if(busy)return;
+  busy=true;
+  try{await fn()}catch{
+   tell("処理を確認できませんでした。本人アカウント・有効期限・権限を確認してください。");
+  }finally{busy=false;}
+ };
+ function reset(){
+  show("signedOut",false);show("verification",false);
+  show("hubIssue",false);show("recipient",false);show("account",false);
+  show("issued",false);$("inviteUrl").value="";
+  confirmed=false;
+ }
+ async function refresh(){
+  const ticket=++epoch,user=auth.currentUser;
+  reset();
+  if(!user){show("signedOut",true);tell("既存の本人アカウントでログインしてください。");return;}
+  show("account",true);
+  $("signedInAs").textContent="ログイン中： "+(user.email||"メール未確認");
+  if(!user.emailVerified){
+   show("verification",true);
+   tell("メール確認を完了してください。");return;
+  }
+  try{
+   if(claim){
+    if(!TOKEN.test(claim))throw Error("Invalid invitation shape");
+    const data=(await preview({token:claim})).data;
+    if(ticket!==epoch||auth.currentUser!==user)return;
+    if(data?.schema!=="nico-partner-owner-claim-preview-v1"||
+       typeof data.companyName!=="string"||!data.companyName||
+       data.needsConsent!==true||data.futureFinancialRoleFlagsFalse!==true)
+      throw Error("Unverified claim preview");
+    $("recipientCompany").textContent="登録先： "+data.companyName;
+    show("recipient",true);
+    tell("招待先本人のメール認証を確認しました。内容を確認し承諾してください。");
+    return;
+   }
+   const result=(await status({})).data;
+   if(ticket!==epoch||auth.currentUser!==user)return;
+   if(result?.schema!=="nico-ranking-owner-consent-v1"||
+      result.role!=="hub_owner"||!Array.isArray(result.partners))throw Error("Not hub Owner");
+   const select=$("partner");select.replaceChildren();
+   for(const partner of result.partners){
+    if(partner.canEdit!==false)continue;
+    const option=document.createElement("option");
+    option.value=partner.partnerCompanyId;
+    option.textContent=partner.companyName+"（Owner登録状況を要確認）";
+    select.appendChild(option);
+   }
+   if(!select.options.length){
+    tell("新たにOwner本人登録が必要な協力店はありません。");
+    return;
+   }
+   show("hubIssue",true);
+   tell("自社Ownerとしてログインしています。招待先本人のメールをご確認ください。");
+  }catch{
+   if(ticket===epoch)tell("Owner設定を確認できません。対象の招待リンクとアカウントを確認してください。");
+  }
+ }
+ onAuthStateChanged(auth,()=>{void refresh();});
+ $("login").addEventListener("submit",safe(async()=>{
+  await signInWithEmailAndPassword(auth,$("email").value.trim().toLowerCase(),$("password").value);
+  $("password").value="";
+ }));
+ $("signup").addEventListener("submit",safe(async()=>{
+  const value=await createUserWithEmailAndPassword(auth,$("newEmail").value.trim().toLowerCase(),$("newPassword").value);
+  $("newPassword").value="";
+  await sendEmailVerification(value.user);
+  tell("確認メールを送信しました。メール内のリンクを開いてください。");
+ }));
+ $("sendVerify").addEventListener("click",safe(async()=>{
+  if(!auth.currentUser)throw Error("Signed out");
+  await sendEmailVerification(auth.currentUser);
+  tell("確認メールを再送しました。");
+ }));
+ $("checkVerify").addEventListener("click",safe(async()=>{
+  if(!auth.currentUser)throw Error("Signed out");
+  await reload(auth.currentUser);await auth.currentUser.getIdToken(true);
+  await refresh();
+ }));
+ $("issueForm").addEventListener("submit",safe(async()=>{
+  const uid=auth.currentUser?.uid;
+  if(!uid||!auth.currentUser?.emailVerified)throw Error("No verified Owner");
+  const partnerCompanyId=$("partner").value;
+  if(!/^[A-Za-z0-9_-]{1,128}$/.test(partnerCompanyId))throw Error("Invalid partner");
+  const email=$("inviteEmail").value.trim().toLowerCase();
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))throw Error("Invalid email");
+  const result=(await issue({partnerCompanyId,email})).data;
+  if(uid!==auth.currentUser?.uid)return;
+  if(result?.issued!==true||result.partnerCompanyId!==partnerCompanyId||
+     !TOKEN.test(result.token)||!Number.isSafeInteger(result.expiresAt))
+    throw Error("Invalid invitation");
+  const url=new URL("/partner-owner-claim.html",location.origin);
+  url.searchParams.set("claim",result.token);
+  $("inviteUrl").value=url.href;
+  show("issued",true);
+  tell("本人専用リンクを発行しました。30分以内に本人へお渡しください。");
+ }));
+ $("copy").addEventListener("click",safe(async()=>{
+  const text=$("inviteUrl").value;
+  if(!text)throw Error("No link");
+  await navigator.clipboard.writeText(text);
+  tell("招待リンクをコピーしました。");
+ }));
+ $("acceptForm").addEventListener("submit",safe(async()=>{
+  const user=auth.currentUser;
+  if(!user?.emailVerified||!TOKEN.test(claim)||!$("acceptCheckbox").checked)
+   throw Error("Unverified consent");
+  const displayName=$("displayName").value.trim();
+  if(!displayName||displayName.length>60)throw Error("Invalid name");
+  const result=(await accept({token:claim,displayName,confirm:true})).data;
+  if(auth.currentUser!==user)return;
+  if(result?.claimed!==true||result.companyRole!=="owner"||
+     result.financialRoleFlagsFalse!==true)throw Error("Unverified owner");
+  show("recipient",false);
+  const link=new URL(location.href);link.searchParams.delete("claim");
+  history.replaceState(null,"",link.pathname);
+  tell("Owner本人登録を確認しました。協力店の件数画面で利用を確認してください。ランキング公開は別途両社の承認が必要です。");
+ }));
+ $("logout").addEventListener("click",safe(async()=>{await signOut(auth);}));
+ </script>
+</body>
+</html>
