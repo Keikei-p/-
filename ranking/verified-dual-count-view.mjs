@@ -144,6 +144,23 @@ function ranked(doc,heading,items,mode){
  }
  section.appendChild(list);return section;
 }
+// Reuse the same verified count totals for the internal company's visible
+// leaderboards. Rank 1,1,3 rather than assigning sequence position.
+function competitionFromBreakdown(items,convert){
+ const scored=items.map(convert);
+ for(const row of scored){
+  if(!Number.isSafeInteger(row.count)||row.count<0||
+     typeof row.name!=="string"||!row.name.trim())halt();
+ }
+ scored.sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name,"ja")||
+  (a.company||"").localeCompare(b.company||""));
+ let previous=null,rank=0;
+ return scored.map((row,i)=>{
+  if(i===0||row.count!==previous)rank=i+1;
+  previous=row.count;
+  return {...row,rank};
+ });
+}
 const validDate=x=>{
  if(typeof x!=="string"||!/^\d{4}-\d\d-\d\d$/.test(x))return false;
  const [y,m,d]=x.split("-").map(Number);
@@ -188,6 +205,14 @@ export function renderVerifiedDualCountDashboard({document,root,payload}={}){
     teams.appendChild(line);
    }
    page.appendChild(teams);
+   page.appendChild(ranked(document,"会社ランキング",
+    competitionFromBreakdown(data.companyBreakdown,x=>({
+     name:x.name,count:x.count
+    })),"company"));
+   page.appendChild(ranked(document,"班ランキング",
+    competitionFromBreakdown(data.teamBreakdown,x=>({
+     name:x.name,company:x.companyName,count:x.count
+    })),"team"));
    page.appendChild(ranked(document,"個人ランキング",data.memberRanking,"person"));
    page.appendChild(ranked(document,"商材ランキング",data.productRanking,"product"));
    if(data.summary.unidentified>0)
