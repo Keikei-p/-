@@ -136,7 +136,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TARGET=functions:ranking-owner-approvals:getRankingOwnerConsentStatus
+          export TARGET=functions:ranking-owner-approvals:getRankingOwnerConsentStatus
           node --input-type=module -e "import{DEPLOY_TARGET}from'./tools/production/owner-status-single-function-version-guard.mjs';if(DEPLOY_TARGET!==process.env.TARGET)throw Error('STOP_ONE_STATUS_TARGET_DRIFT')" 
           set +e
           firebase deploy --non-interactive --project "$FIREBASE_PROJECT_ID" --config firebase.ranking-approvals.json --only "$TARGET" > "$RUNNER_TEMP/owner-consent-status-deploy.private.log" 2>&1
