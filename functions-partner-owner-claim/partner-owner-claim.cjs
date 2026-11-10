@@ -214,17 +214,23 @@ function createPartnerOwnerClaimCallables({
       savedUser.companyRole!=="owner"||savedUser.active!==true||
       savedUser.authKind==="partner_code_shared"||
       (savedUser.accessKind!=null&&savedUser.accessKind!=="internal"))denied();
-   issuer.email=typeof savedUser.email==="string"?
-    savedUser.email.toLowerCase():actor.email;
-   if(issuer.email===actor.email||!validMail(issuer.email))denied();
-   // The issuing Hub Owner must still be enabled AND email verified in
-   // Firebase Auth, not only present in legacy membership documents.
+   // Legacy hub Owner profiles may have no Firestore email. Never use the
+   // invited partner's email as a fallback: resolve the issuer's own
+   // verified Auth email, and reject any conflicting stored identity.
+   const storedIssuerEmail=typeof savedUser.email==="string"?
+    savedUser.email.trim().toLowerCase():null;
+   if(storedIssuerEmail!==null&&!validMail(storedIssuerEmail))denied();
    let issuerAuth;
    try{issuerAuth=await getAuth().getUser(issuer.uid);}catch{denied()}
+   const verifiedIssuerEmail=typeof issuerAuth?.email==="string"?
+    issuerAuth.email.trim().toLowerCase():"";
    if(!issuerAuth||issuerAuth.uid!==issuer.uid||
       issuerAuth.disabled===true||issuerAuth.emailVerified!==true||
-      typeof issuerAuth.email!=="string"||
-      issuerAuth.email.trim().toLowerCase()!==issuer.email)denied();
+      !validMail(verifiedIssuerEmail)||
+      verifiedIssuerEmail===actor.email||
+      (storedIssuerEmail!==null&&storedIssuerEmail!==verifiedIssuerEmail))
+    denied();
+   issuer.email=verifiedIssuerEmail;
    if(await hubOwner(tx,issuer)!==i.hubCompanyId)denied();
    const p=await partnerFromHub(tx,i.hubCompanyId,i.partnerCompanyId);
    // Reject ALL existing user/secondary membership, even old internal email:
