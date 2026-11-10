@@ -14,7 +14,7 @@ class Ref {
 class Coll {
  constructor(db,path){this.db=db;this.path=path;}
  doc(id){return new Ref(this.db,this.path+"/"+(id||"auto"+(++this.db.serial)));}
- where(k,op,v){assert.equal(op,"==");return new Query(this.db,this.path,[{k,op,v}]);}
+ where(k,op,v){assert(["==",">=","<="].includes(op));return new Query(this.db,this.path,[{k,op,v}]);}
  limit(n){return new Query(this.db,this.path,null,n);}
 }
 class Query {
@@ -1186,6 +1186,11 @@ test("new approved monthly and daily ranking API excludes finance and OFF counts
   hubCompanyId:"hub",ownerUid:"h",reviewedByUid:"h",active:true,version:1,
   bindings:[{companyId:"partner",productId:"partnerSku01",hubProductId:"nuro"},
    {companyId:"partner",productId:"partnerSku04",hubProductId:"ym"}]});
+ db.seed("companies/hub/rankingCountPublicCatalog/shared",{
+  schema:"nico-reviewed-count-public-catalog-v1",hubCompanyId:"hub",
+  ownerUid:"h",version:1,products:[
+   {id:"nuro",companyId:"hub",name:"NURO光",active:true},
+   {id:"ym",companyId:"hub",name:"YM純新規",active:true}]});
  const team=(await api.manage(req("p",{action:"addTeam",name:"集計班"}))).teamId;
  const staff=(await api.manage(req("p",{action:"addManaged",name:"検証担当",teamId:team}))).staffId;
  await api.submit(req("p",{date,staffId:staff,counts:{...zero(),NURO:3,"YM純新規":7},expectedVersion:0}));
