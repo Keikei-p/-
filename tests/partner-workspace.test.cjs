@@ -51,7 +51,7 @@ class DB {
  }
 }
 class CallError extends Error{constructor(code,message){super(message);this.code=code;}}
-function setup(sharedRankingOn=false){
+function setup(sharedRankingOn=false,publicationWriteOn=false){
  const db=new DB();
  const partnerUser=(uid,role,teamId=null)=>({uid,companyId:"partner",companyRole:role==="owner"?"owner":"member",
  role,teamId,active:true,accessKind:"partner",memberType:"cooperator",
@@ -75,7 +75,8 @@ function setup(sharedRankingOn=false){
   delete:()=>({__deleteField:true})
  };
  const api=makeWorkspace({db,getAuth,Timestamp,FieldValue,HttpsError:CallError,
-  enabled:()=>true,sharedRankingEnabled:()=>sharedRankingOn,now:()=>NOW});
+  enabled:()=>true,sharedRankingEnabled:()=>sharedRankingOn,
+  submissionPublicationEnabled:()=>publicationWriteOn,now:()=>NOW});
  const req=(uid,data={})=>({auth:{uid,token:{email:uid+"@example.com",email_verified:true}},
   rawRequest:{headers:{authorization:"Bearer "+uid.repeat(30)}},data});
  const zero=()=>Object.fromEntries(KEYS.map(k=>[k,0]));
@@ -1285,4 +1286,51 @@ test("cross-company forgery cannot escape the server owned relation scope",async
   date:"2026-10-31",sharedCountRankings:true
  })),{code:"permission-denied"});
  assert.deepEqual([...db.store],snapshot);
+});
+
+// Staging only: real partner submit/correction path uses server-verified SKU
+// publication inside the same Firestore transaction. No production flags set.
+test("transactional partner save honors owner ON/OFF and preserves historical OFF counts",async()=>{
+ const {db,api,req,zero}=setup(false,true);
+ db.seed("products/money",{...db.store.get("products/money"),name:"内部専用商材",active:true});
+ db.seed("products/nuro",{companyId:"hub",name:"NURO",active:true,unitPrice:50000});
+ db.seed("products/combined",{companyId:"hub",name:"SB光・AIR（旧合算・未分類）",active:true,unitPrice:9000});
+ db.seed("companies/hub/rankingProductVisibility/shared",{
+  hubCompanyId:"hub",ownerUid:"h",version:1,
+  enabledHubProductIds:["nuro","combined"],partnerOverrides:{}});
+ db.seed("companies/hub/rankingSkuMappings/shared",{
+  hubCompanyId:"hub",ownerUid:"h",reviewedByUid:"h",active:true,version:1,
+  bindings:[{companyId:"partner",productId:"partnerSku01",hubProductId:"nuro"},
+   {companyId:"partner",productId:"partnerSku05",hubProductId:"combined"}]});
+ const money=clone(db.store.get("products/money"));
+ const original=clone(db.store.get("records/old"));
+ const team=(await api.manage(req("p",{action:"addTeam",name:"1班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"保存担当",teamId:team}))).staffId;
+ const date="2026-10-31";
+ const save=(counts,version)=>api.submit(req("p",{date,staffId,counts,expectedVersion:version}));
+ await save({...zero(),NURO:2,"SB光・AIR":3},0);
+ const visibility=db.store.get("companies/hub/rankingProductVisibility/shared");
+ visibility.enabledHubProductIds=["nuro"];visibility.version++;
+ await save({...zero(),NURO:4,"SB光・AIR":3},1);
+ const before=clone([...db.store]);
+ await assert.rejects(save({...zero(),NURO:4,"SB光・AIR":0},2),e=>e.code==="failed-precondition");
+ assert.deepEqual([...db.store],before,"OFF historical count and audit must not change");
+ visibility.partnerOverrides={partner:[]};visibility.version++;
+ await assert.rejects(save({...zero(),NURO:5,"SB光・AIR":3},2),e=>e.code==="failed-precondition");
+ assert.deepEqual(db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+staff).counts,
+  {...zero(),NURO:4,"SB光・AIR":3});
+ visibility.partnerOverrides={};visibility.version++;
+ await save({...zero(),NURO:5,"SB光・AIR":3},2);
+ assert.equal([...db.store.keys()].filter(k=>k.includes("partnerWorkAudits/")).length,3);
+ assert.deepEqual(db.store.get("records/old"),original);
+ assert.deepEqual(db.store.get("products/money"),money);
+});
+test("publication policy missing or forged SKU mapping fails without creating a count or audit",async()=>{
+ const {db,api,req,zero}=setup(false,true);
+ const team=(await api.manage(req("p",{action:"addTeam",name:"1班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"入力担当",teamId:team}))).staffId;
+ const before=clone([...db.store]);
+ await assert.rejects(api.submit(req("p",{date:"2026-10-31",staffId:staff,
+  counts:{...zero(),NURO:1},expectedVersion:0})),e=>e.code==="failed-precondition");
+ assert.deepEqual([...db.store],before);
 });
