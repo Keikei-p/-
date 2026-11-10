@@ -115,3 +115,24 @@ test("partner user, double membership, revoked relation, unknown SKU and finance
   /OWNER_SKU_MAPPING_REVIEW_UNVERIFIED/);
  assert.equal(f.writes,0);
 });
+
+test("same partner cannot reuse a hub SKU across categories; audit removal remains possible",async()=>{
+ const f=fake();
+ await f.store.change({principal:owner,partnerCompanyId:"partner",
+  partnerProductId:"partnerSku01",hubProductId:"nuro",expectedVersion:0});
+ const before=f.writes;
+ await assert.rejects(f.store.change({principal:owner,partnerCompanyId:"partner",
+  partnerProductId:"partnerSku02",hubProductId:"nuro",expectedVersion:1}),
+  /OWNER_SKU_MAPPING_REVIEW_UNVERIFIED/);
+ assert.equal(f.writes,before,"no writes when a hub SKU mapping collides");
+ assert.equal(f.state.get("companies/hub/rankingSkuMappings/shared").version,1);
+ const removed=await f.store.change({principal:owner,partnerCompanyId:"partner",
+  partnerProductId:"partnerSku01",hubProductId:null,expectedVersion:1});
+ assert.equal(removed.version,2);
+ const assigned=await f.store.change({principal:owner,partnerCompanyId:"partner",
+  partnerProductId:"partnerSku02",hubProductId:"nuro",expectedVersion:2});
+ assert.equal(assigned.version,3);
+ assert.deepEqual(f.state.get("companies/hub/rankingSkuMappings/shared").bindings,
+  [{companyId:"partner",productId:"partnerSku02",hubProductId:"nuro"}]);
+ assert.equal(f.writes,6,"only successful mapping revisions create audits");
+});
