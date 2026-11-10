@@ -1295,6 +1295,11 @@ test("transactional partner save honors owner ON/OFF and preserves historical OF
  db.seed("products/money",{...db.store.get("products/money"),name:"内部専用商材",active:true});
  db.seed("products/nuro",{companyId:"hub",name:"NURO",active:true,unitPrice:50000});
  db.seed("products/combined",{companyId:"hub",name:"SB光・AIR（旧合算・未分類）",active:true,unitPrice:9000});
+ db.seed("companies/hub/rankingCountPublicCatalog/shared",{
+  schema:"nico-reviewed-count-public-catalog-v1",hubCompanyId:"hub",ownerUid:"h",version:1,
+  products:[{id:"money",companyId:"hub",name:"内部専用商材",active:true},
+   {id:"nuro",companyId:"hub",name:"NURO",active:true},
+   {id:"combined",companyId:"hub",name:"SB光・AIR（旧合算・未分類）",active:true}]});
  db.seed("companies/hub/rankingProductVisibility/shared",{
   hubCompanyId:"hub",ownerUid:"h",version:1,
   enabledHubProductIds:["nuro","combined"],partnerOverrides:{}});
@@ -1310,16 +1315,17 @@ test("transactional partner save honors owner ON/OFF and preserves historical OF
  const save=(counts,version)=>api.submit(req("p",{date,staffId:staff,counts,expectedVersion:version}));
  await save({...zero(),NURO:2,"SB光・AIR":3},0);
  const visibility=db.store.get("companies/hub/rankingProductVisibility/shared");
- visibility.enabledHubProductIds=["nuro"];visibility.version++;
+ const publicCatalog=db.store.get("companies/hub/rankingCountPublicCatalog/shared");
+ visibility.enabledHubProductIds=["nuro"];visibility.version++;publicCatalog.version++;
  await save({...zero(),NURO:4,"SB光・AIR":3},1);
  const before=clone([...db.store]);
  await assert.rejects(save({...zero(),NURO:4,"SB光・AIR":0},2),e=>e.code==="failed-precondition");
  assert.deepEqual([...db.store],before,"OFF historical count and audit must not change");
- visibility.partnerOverrides={partner:[]};visibility.version++;
+ visibility.partnerOverrides={partner:[]};visibility.version++;publicCatalog.version++;
  await assert.rejects(save({...zero(),NURO:5,"SB光・AIR":3},2),e=>e.code==="failed-precondition");
  assert.deepEqual(db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+staff).counts,
   {...zero(),NURO:4,"SB光・AIR":3});
- visibility.partnerOverrides={};visibility.version++;
+ visibility.partnerOverrides={};visibility.version++;publicCatalog.version++;
  await save({...zero(),NURO:5,"SB光・AIR":3},2);
  assert.equal([...db.store.keys()].filter(k=>k.includes("partnerWorkAudits/")).length,3);
  assert.deepEqual(db.store.get("records/old"),original);
