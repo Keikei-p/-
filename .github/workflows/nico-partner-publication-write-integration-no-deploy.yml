@@ -56,6 +56,6 @@ jobs:
           NODE
       - name: Partner save and correction integration, finance regression
         run: |
-          node --test tests/partner-submission-publication-guard.test.mjs tests/partner-workspace.test.cjs tests/partner-money-free-workspace.test.cjs tests/partner-count-dashboard.test.cjs
+          node --test tests/owner-reviewed-sku-mapping-store.test.mjs tests/partner-submission-publication-guard.test.mjs tests/partner-workspace.test.cjs tests/partner-money-free-workspace.test.cjs tests/partner-count-dashboard.test.cjs
           echo 'STAGING_PUBLICATION_WRITE_INTEGRATION_PASS'
           echo 'FIREBASE_DEPLOY=NO RULES_DEPLOY=NO HOSTING_DEPLOY=NO'
