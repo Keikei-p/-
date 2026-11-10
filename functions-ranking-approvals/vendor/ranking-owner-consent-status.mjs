@@ -117,8 +117,14 @@ export function createOwnerRankingConsentStatusReader({db}={}){
     const partnerSnap=partnerViewer?viewerSnap:await tx.get(company(partnerId));
     const partner=doc(partnerSnap);
     if(!obj(partner)||partner.companyKind!=="partner"||
-       partner.hubCompanyId!==hubId||!id(partner.ownerUid)||
+       partner.hubCompanyId!==hubId||
+       (partner.ownerUid!=null&&partner.ownerUid!==""&&!id(partner.ownerUid))||
        !name(partner.name))STOP();
+    // Hub-created partner workspaces initially have NO ownerUid by design.
+    // Return their count-sharing relationship as read-only setup status.
+    // Never infer a partner owner, allow approval, or fabricate consent.
+    const ownerClaimed=id(partner.ownerUid);
+    if(partnerViewer&&!ownerClaimed)STOP();
     const [hubApprovalSnap,partnerApprovalSnap]=await Promise.all([
      tx.get(company(hubId).collection("rankingApprovals").doc(partnerId)),
      tx.get(company(partnerId).collection("rankingApprovals").doc(hubId))
@@ -126,9 +132,17 @@ export function createOwnerRankingConsentStatusReader({db}={}){
     const hubApproval=checkedApproval(hubApprovalSnap,{
      companyId:hubId,hubId,partnerId,ownerUid:hub.ownerUid
     });
-    const partnerApproval=checkedApproval(partnerApprovalSnap,{
-     companyId:partnerId,hubId,partnerId,ownerUid:partner.ownerUid
-    });
+    const partnerApproval=ownerClaimed?
+     checkedApproval(partnerApprovalSnap,{
+      companyId:partnerId,hubId,partnerId,ownerUid:partner.ownerUid
+     }):(()=>{
+      // A consent document/flag without a real, verified partner owner is
+      // NEVER proof. Treat as potential tampering instead of ignoring it.
+      if(partnerApprovalSnap.exists||
+         rel.combinedRankingApprovedByPartner===true||
+         rel.individualNamesApprovedByPartner===true)STOP();
+      return {approved:false,version:0};
+     })();
     matchFlags(rel,hubApproval,partnerApproval);
     const own=partnerViewer?partnerApproval:hubApproval;
     const other=partnerViewer?hubApproval:partnerApproval;
@@ -137,7 +151,7 @@ export function createOwnerRankingConsentStatusReader({db}={}){
      ownApproved:own.approved,otherApproved:other.approved,
      version:own.version,
      canEdit:rel.active===true&&rel.countSharingApproved===true&&
-      partner.active===true
+      partner.active===true&&ownerClaimed
     });
    }
    if(partnerViewer&&partners.length!==1)STOP();
