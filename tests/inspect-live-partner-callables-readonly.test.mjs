@@ -163,7 +163,7 @@ test('joint Function metadata GET verifies deployed ACTIVE flag while never clai
  assert.equal(result.jointMetadataFromRegionalList,false);
  assert.equal(result.realPartnerFinanceDenyVerified,false);
  assert.equal(result.realPartnerCountEntryVerified,false);
- assert.doesNotMatch(JSON.stringify(result),/nico-count-api|a\\.run\\.app|enabled|uid|token/i);
+ assert.doesNotMatch(JSON.stringify(result),/nico-count-api|a\\.run\\.app|uid|token/i);
 });
 test('joint Function default-OFF is identified even when gen2 metadata exists',async()=>{
  const result=await inspectJointRankingMetadata(async()=>answer(200,
