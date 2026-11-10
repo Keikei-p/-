@@ -26,7 +26,7 @@ class Query {
   if(p.startsWith(this.path+"/")&&!p.slice(this.path.length+1).includes("/")&&
      (this.filter||[]).every(f=>f.op==="=="?v[f.k]===f.v:
       f.op===">="?v[f.k]>=f.v:v[f.k]<=f.v))
-    docs.push({id:p.split("/").at(-1),data:()=>clone(v)});
+    docs.push({exists:true,id:p.split("/").at(-1),data:()=>clone(v)});
   }const rows=docs.slice(0,this.lim);return {size:rows.length,docs:rows};}
 }
 class DB {
