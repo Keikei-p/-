@@ -1800,3 +1800,32 @@ test("Owner can unpublish a newly unsafe name, but may never publish it to partn
  assert.deepEqual(db.store.get("companies/hub/partnerCatalogSettings/publication").productIds,[]);
  assert.equal(db.store.get("products/old").revenue,90000);
 });
+
+test("partner ordinary records and correction history redact monetary CB tier IDs without altering stored entries",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ const team=(await api.manage(req("p",{action:"addTeam",name:"第1班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"検証担当",teamId:team}))).staffId;
+ await api.submit(req("p",{date,staffId:staff,counts:{...zero(),NURO:2},
+  cbCounts:{NURO:{"60000":2}},expectedVersion:0}));
+ await api.submit(req("p",{date,staffId:staff,counts:{...zero(),NURO:3},
+  cbCounts:{NURO:{"60000":2,"80000":1}},expectedVersion:1}));
+ const storedBefore=clone([...db.store]);
+ const simple=await api.view(req("p",{date}));
+ const full=await api.view(req("p",{date,includeAuditHistory:true}));
+ assert.equal(simple.records[0].totalCount,3);
+ assert.equal(full.records[0].counts.NURO,3);
+ assert.equal(full.audits.length,2);
+ assert.equal(full.audits[0].previousTotalCount,0);
+ assert.equal(full.audits[1].previousTotalCount,2);
+ for(const response of [simple,full]){
+  assert(!Object.hasOwn(response.records[0],"cbCounts"));
+  assert.doesNotMatch(JSON.stringify(response),/cbCounts|previousCbCounts|"60000"|"80000"/);
+ }
+ assert(full.audits.every(row=>!Object.hasOwn(row,"cbCounts")&&!Object.hasOwn(row,"previousCbCounts")));
+ assert.deepEqual([...db.store],storedBefore,"masked reads never rewrite cashback or count history");
+ const version=await api.submit(req("p",{date,staffId:staff,counts:{...zero(),NURO:3},expectedVersion:2}));
+ assert.equal(version.totalCount,3);
+ const persisted=db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+staff);
+ assert.equal(persisted.cbCounts.NURO["60000"],2);
+ assert.equal(persisted.cbCounts.NURO["80000"],1);
+});
