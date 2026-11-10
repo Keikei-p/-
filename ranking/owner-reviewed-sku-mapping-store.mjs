@@ -106,6 +106,12 @@ export function createOwnerReviewedSkuMappingStore({db,FieldValue}={}){
    const found=previous.bindings.find(b=>b.companyId===partnerCompanyId&&
      b.productId===partnerProductId);
    const prevId=found?.hubProductId??null;
+   // One reviewed hub SKU may represent only one partner category.
+   // Otherwise the write guard would reject ALL subsequent count corrections.
+   // Preserve existing mappings for audited removal; reject only a new clash.
+   if(hubProductId!==null&&previous.bindings.some(b=>
+      b.companyId===partnerCompanyId&&b.productId!==partnerProductId&&
+      b.hubProductId===hubProductId))stop();
    if(hubProductId!==null){
     const product=read(await tx.get(db.collection("products").doc(hubProductId)));
     if(!obj(product)||product.companyId!==hub||
