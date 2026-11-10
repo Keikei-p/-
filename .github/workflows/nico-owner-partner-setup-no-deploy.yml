@@ -1,0 +1,52 @@
+name: NICO unified Owner partner setup (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'owner-partner-setup.html'
+      - 'ranking/owner-partner-setup-mount.mjs'
+      - 'ranking/owner-product-visibility-panel.mjs'
+      - 'tests/owner-partner-setup-mount.test.mjs'
+      - 'tests/owner-product-visibility-panel.test.mjs'
+      - '.github/workflows/nico-owner-partner-setup-no-deploy.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'owner-partner-setup.html'
+      - 'ranking/owner-partner-setup-mount.mjs'
+      - 'ranking/owner-product-visibility-panel.mjs'
+      - 'tests/owner-partner-setup-mount.test.mjs'
+      - 'tests/owner-product-visibility-panel.test.mjs'
+      - '.github/workflows/nico-owner-partner-setup-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  verified-owner-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      NICO_OWNER_PRODUCT_VISIBILITY_ENABLED: ''
+      NICO_OWNER_SKU_MAPPING_ENABLED: ''
+      NICO_RANKING_OWNER_SETTINGS_ENABLED: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify offline-only setup, syntax and authenticated role separation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$NICO_OWNER_PRODUCT_VISIBILITY_ENABLED"
+          test -z "$NICO_OWNER_SKU_MAPPING_ENABLED"
+          test -z "$NICO_RANKING_OWNER_SETTINGS_ENABLED"
+          node --check ranking/owner-partner-setup-mount.mjs
+          node --check ranking/owner-product-visibility-panel.mjs
+          node --test tests/owner-product-visibility-panel.test.mjs tests/owner-partner-setup-mount.test.mjs tests/owner-reviewed-sku-mapping-panel.test.mjs tests/owner-ranking-consent-panel.test.mjs
+          echo 'NICO_OWNER_SETUP_UI_VERIFIED_NO_DEPLOY'
