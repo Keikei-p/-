@@ -50,10 +50,28 @@ test("real aggregate -> owner mobile view: company, two ranking names, all amoun
  renderVerifiedDualCountDashboard({document:doc,root,payload:data});
  const text=words(root);
  for(const expected of ["全社獲得件数","自社","2件","協力店","3件",
-  "全体","5件","会社別内訳","班別内訳","個人ランキング","商材ランキング","NURO","1位"])
+  "全体","5件","会社別内訳","班別内訳","会社ランキング","班ランキング","個人ランキング","商材ランキング","NURO","1位"])
   assert(text.includes(expected),expected);
  assert(!text.includes("売上"));assert(!text.includes("単価"));assert(!text.includes("CB"));
  assert.equal(root.children.length,1);
+});
+test("internal dashboard presents company/team tied counts as 1,1 without altering original rows",()=>{
+ const payload=input("hub_owner");
+ payload.sources[0].records[0].totalCount=3;
+ payload.sources[0].lines[0].count=3;
+ const before=structuredClone(payload),root=new Node("main");
+ const data=buildVerifiedCountDashboard(payload);
+ renderVerifiedDualCountDashboard({document:doc,root,payload:data});
+ const sections=walk(root).filter(x=>x.className==="nico-dual-ranking");
+ assert.equal(sections.length,4);
+ for(const section of sections.slice(0,2)){
+  const ranks=walk(section).filter(x=>x.className==="nico-dual-rank-number")
+   .map(x=>x.textContent);
+  assert.deepEqual(ranks,["1位","1位"]);
+ }
+ assert.deepEqual(payload,before,"presentation cannot change stored count data");
+ assert(!words(root).includes("単価"));
+ assert(!words(root).includes("キャッシュバック"));
 });
 test("partner sees own results and public rankings only, not any hub internal team or finance details",()=>{
  const root=new Node("main"),data=buildVerifiedCountDashboard(input("partner_owner"));
