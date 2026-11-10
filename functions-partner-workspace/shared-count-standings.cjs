@@ -123,14 +123,16 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
   if([...entries.values()].some(e=>!reports.has(e.date)))fail();
   totalCount=sum(totalCount,companyCount);
   if(!reportedDays)unreportedCompanies.push({key:key("company",hubId,s.cid),name:companyName,status:"not_reported"});
+  const safeCounts=raw=>Object.fromEntries(s.allowedCategories.map(k=>[k,raw[k]]));
   if(reportedDays&&allowed.size){
    companies.push({key:key("company",hubId,s.cid),name:companyName,
-    totalCount:companyCount,counts:companyProducts,reportedDays,
+    totalCount:companyCount,counts:safeCounts(companyProducts),reportedDays,
     peopleVerified:verifiedPeople,
     status:verifiedPeople?"submitted":"historical_company_only"});
    for(const k of KEYS)products[k]=sum(products[k],companyProducts[k]);
   }
-  teams.push(...tMap.values());people.push(...pMap.values());
+  teams.push(...[...tMap.values()].map(x=>({...x,counts:safeCounts(x.counts)})));
+  people.push(...[...pMap.values()].map(x=>({...x,counts:safeCounts(x.counts)})));
  }
  return {schema:"nico-approved-partner-count-rank-v1",unit:"件",
   scope:"approved_partner_counts_only",includesDirect:false,fullyJoint:false,
