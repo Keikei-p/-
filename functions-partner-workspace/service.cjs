@@ -4,6 +4,7 @@ const crypto=require("node:crypto");
 const {enforceLegacyPublication}=require("./legacy-publication-guard.cjs");
 const {jointCountRankings}=require("./count-only-rankings.cjs");
 const {loadPublication,projectMasterProducts,projectOwnerPublicationRows,changePublication,validId,nameOnly}=require("./catalog-publication.cjs");
+const {redactCashbackTiers}=require("./count-only-response.cjs");
 const {readLinks,addLink,projectLinks}=require("./catalog-count-links.cjs");
 const {normalizeExtraCounts,applyExtraCounts,projectedExtraRead}=require("./additional-counts.cjs");
 const {projectExtraRankDocs}=require("./extra-rank-projection.cjs");
@@ -1159,13 +1160,14 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   people.sort((a,b)=>b.totalCount-a.totalCount||a.name.localeCompare(b.name,"ja"));
   // Individual ledgers alone cannot prove all companies submitted all days.
   // Always label this a provisional, VERIFIED-ENTRIES monthly leaderboard.
-  return {scope:"shared_monthly_counts_only",month:d.month,
+  const response={scope:"shared_monthly_counts_only",month:d.month,
    role:s.kind==="hub"?"hub":"partner",complete:false,
    provisionalReason:"月間の全日・全員報告の照合前",
    includesDirect:true,companies,teams,people,productCounts,additionalTotalCount,
    categories:KEYS,direct,rankingGroups:sharedConfig.groups,groupStandings,
    groupRevision:sharedConfig.revision,groupStatus,
    recordsVerified:direct.recordsVerified,partnerRowsVerified:partnerRowsRead};
+   return s.kind==="partner"?redactCashbackTiers(response):response;
  }
  async function view(request){
   const a=await actor(request),d=request?.data||{},date=validDate(d.date);
@@ -1367,11 +1369,12 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     // No raw errors, finance or hidden group names are serialized to clients.
     groupStandings=[];
    }
-   return {scope:"shared_counts_only",date,role:s.kind==="hub"?"hub":"partner",
+   const response={scope:"shared_counts_only",date,role:s.kind==="hub"?"hub":"partner",
     complete,includesDirect:true,missingCompanies,companies,teams,people,
     countRankings:jointCountRankings({companies,teams,people,direct}),
     productCounts,additionalTotalCount,categories:KEYS,direct,rankingGroups:sharedConfig.groups,
     groupStandings,groupRevision:sharedConfig.revision,groupStatus};
+    return s.kind==="partner"?redactCashbackTiers(response):response;
   }
   if(d.includeAuditHistory===true&&s.kind!=="partner")fail("invalid-argument");
   if(s.kind==="hub"){
