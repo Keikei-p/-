@@ -1191,6 +1191,16 @@ test("new approved monthly and daily ranking API excludes finance and OFF counts
   ownerUid:"h",version:1,products:[
    {id:"nuro",companyId:"hub",name:"NURO光",active:true},
    {id:"ym",companyId:"hub",name:"YM純新規",active:true}]});
+ Object.assign(db.store.get("partnerRelations/partner"),{
+  combinedRankingApprovedByHub:true,combinedRankingApprovedByPartner:true,
+  individualNamesApprovedByHub:true,individualNamesApprovedByPartner:true
+ });
+ for(const [companyId,otherId,uid] of [["hub","partner","h"],["partner","hub","p"]])
+  db.seed("companies/"+companyId+"/rankingApprovals/"+otherId,{
+   companyId,hubCompanyId:"hub",partnerCompanyId:"partner",
+   approvedByUid:uid,active:true,scope:"combined_rank_only",version:1,
+   combinedRankingApproved:true,individualNamesApproved:true
+  });
  const team=(await api.manage(req("p",{action:"addTeam",name:"集計班"}))).teamId;
  const staff=(await api.manage(req("p",{action:"addManaged",name:"検証担当",teamId:team}))).staffId;
  await api.submit(req("p",{date,staffId:staff,counts:{...zero(),NURO:3,"YM純新規":7},expectedVersion:0}));
@@ -1219,6 +1229,13 @@ test("new approved monthly and daily ranking API excludes finance and OFF counts
  const off=await api.view(req("p",{date,sharedCountRankings:true}));
  assert.equal(off.companies.length,0,"OFF must not masquerade as saved 0");
  assert.equal(off.products.length,0,"OFF SKUs cannot appear in partner rankings");
+ assert.equal(db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+staff).counts.NURO,3);
+ // Revoking either owner's name consent must close the new ranking path,
+ // without modifying a single saved report.
+ db.store.get("partnerRelations/partner").individualNamesApprovedByPartner=false;
+ await assert.rejects(api.view(req("h",{date,sharedCountRankings:true})),{
+  code:"failed-precondition"
+ });
  assert.equal(db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+staff).counts.NURO,3);
 });
 test("new ranking mode defaults disabled; missing approved mapping fails closed",async()=>{
