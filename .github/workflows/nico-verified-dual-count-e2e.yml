@@ -76,7 +76,7 @@ jobs:
                [ "${GITHUB_HEAD_REF:-}" = "feat/verified-partner-daily-month-count-ranking-main-20261110" ]; } ||
              { [ "$GITHUB_EVENT_NAME" = "push" ] &&
                [ "$GITHUB_REF" = "refs/heads/main" ]; }; then
-            test "$(git hash-object scripts/ci/review-approved-partner-count-rank.cjs)" = '92db40f1869ede9e361cc65e8737845cbd39a62b'
+            test "$(git hash-object scripts/ci/review-approved-partner-count-rank.cjs)" = '2ee6cfe39964074496cfb4a4aadf662687f52636'
             node scripts/ci/review-approved-partner-count-rank.cjs
             echo 'REVIEWED_NO_DEPLOY_RANK_CANDIDATE_VALIDATED'
             exit 0
