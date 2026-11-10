@@ -13,6 +13,7 @@ on:
       - 'tools/ranking/verify-isolated-owner-callables.mjs'
       - 'tests/ranking-owner-callable-controller.test.cjs'
       - 'tests/owner-ranking-consent-firebase-bridge.test.mjs'
+      - 'scripts/ci/review-approved-partner-count-rank.cjs'
       - '.github/workflows/nico-ranking-owner-callables-staging.yml'
   push:
     branches: [main]
@@ -27,6 +28,7 @@ on:
       - 'tools/ranking/verify-isolated-owner-callables.mjs'
       - 'tests/ranking-owner-callable-controller.test.cjs'
       - 'tests/owner-ranking-consent-firebase-bridge.test.mjs'
+      - 'scripts/ci/review-approved-partner-count-rank.cjs'
       - '.github/workflows/nico-ranking-owner-callables-staging.yml'
 permissions:
   contents: read
