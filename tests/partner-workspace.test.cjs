@@ -36,13 +36,14 @@ class DB {
  async runTransaction(fn){
   const changes=[],tx={
     get:r=>r.get(),create:(r,d)=>changes.push(["create",r.path,clone(d)]),
-    update:(r,d)=>changes.push(["update",r.path,clone(d)])
+    update:(r,d)=>changes.push(["update",r.path,clone(d)]),
+    set:(r,d)=>changes.push(["set",r.path,clone(d)])
   };
   const result=await fn(tx);
   for(const [op,p] of changes){if(op==="create"&&this.store.has(p))throw Error("duplicate");
    if(op==="update"&&!this.store.has(p))throw Error("missing");}
   for(const [op,p,d] of changes){
-   const next=op==="create"?d:{...this.store.get(p),...d};
+   const next=op==="create"||op==="set"?d:{...this.store.get(p),...d};
    for(const [key,value] of Object.entries(next))
     if(value?.__deleteField===true)delete next[key];
    this.store.set(p,next);
@@ -1739,4 +1740,59 @@ test("partner dashboard exposes only count-entry availability, never finance or 
  assert.equal(result.legacyCategoryPublication.find(x=>x.category==="SB光・AIR").acceptsIncrease,true);
  assert.equal(result.legacyCategoryPublication.length,KEYS.length);
  assert.doesNotMatch(JSON.stringify(result.legacyCategoryPublication),/secret_product|revenue|price|cashback|98765/);
+});
+
+test("Owner can turn OFF a retired published master without changing sales data or old partner entries",async()=>{
+ const {db,api,req,zero}=setup();
+ const date="2026-10-31";
+ db.seed("products/retired",{companyId:"hub",name:"販売終了商材",active:false,
+  pricingOptions:[{revenuePerUnit:123456}],revenue:789012});
+ db.seed("companies/hub/partnerCatalogSettings/publication",{
+  revision:1,productIds:["retired"]
+ });
+ const team=(await api.manage(req("p",{action:"addTeam",name:"既存班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"既存担当",teamId:team}))).staffId;
+ await api.submit(req("p",{date,staffId:staff,counts:{...zero(),NURO:2},expectedVersion:0}));
+ const financialOriginal=clone(db.store.get("products/retired"));
+ const savedEntry=clone(db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+staff));
+ const savedSummary=clone(db.store.get("companies/hub/partnerWorkCountDays/"+date+"/reports/partner"));
+ await assert.rejects(api.setCatalogPublication(req("h",{
+  productId:"retired",published:true,expectedRevision:1
+ })),{code:"failed-precondition"});
+ await assert.rejects(api.setCatalogPublication(req("p",{
+  productId:"retired",published:false,expectedRevision:1
+ })),{code:"permission-denied"});
+ const result=await api.setCatalogPublication(req("h",{
+  productId:"retired",published:false,expectedRevision:1
+ }));
+ assert.deepEqual(result,{saved:true,revision:2,productId:"retired",published:false});
+ assert.deepEqual(db.store.get("companies/hub/partnerCatalogSettings/publication").productIds,[]);
+ assert.equal(db.store.get("companies/hub/partnerCatalogSettings/publication").revision,2);
+ assert.deepEqual(db.store.get("products/retired"),financialOriginal);
+ assert.deepEqual(db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+staff),savedEntry);
+ assert.deepEqual(db.store.get("companies/hub/partnerWorkCountDays/"+date+"/reports/partner"),savedSummary);
+ assert.deepEqual((await api.viewCatalog(req("p",{}))).products,[]);
+ const ownerView=await api.viewCatalog(req("h",{}));
+ assert.equal(ownerView.role,"hub");
+ assert.equal(ownerView.products.find(x=>x.id==="retired").published,false);
+ await assert.rejects(api.setCatalogPublication(req("h",{
+  productId:"retired",published:false,expectedRevision:1
+ })),{code:"aborted"});
+});
+
+test("Owner can unpublish a newly unsafe name, but may never publish it to partners",async()=>{
+ const {db,api,req}=setup();
+ db.seed("products/old",{companyId:"hub",name:"単価9万円",active:true,revenue:90000});
+ db.seed("companies/hub/partnerCatalogSettings/publication",{
+  revision:1,productIds:["old"]
+ });
+ await assert.rejects(api.setCatalogPublication(req("h",{
+  productId:"old",published:true,expectedRevision:1
+ })),{code:"failed-precondition"});
+ const saved=await api.setCatalogPublication(req("h",{
+  productId:"old",published:false,expectedRevision:1
+ }));
+ assert.equal(saved.published,false);
+ assert.deepEqual(db.store.get("companies/hub/partnerCatalogSettings/publication").productIds,[]);
+ assert.equal(db.store.get("products/old").revenue,90000);
 });
