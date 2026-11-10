@@ -7,6 +7,8 @@ on:
       - 'tests/approved-partner-count-standings.test.cjs'
       - 'tests/partner-workspace.test.cjs'
       - 'partner-workspace.html'
+      - 'ranking/owner-product-visibility-firestore.mjs'
+      - 'tests/owner-product-visibility-firestore.test.mjs'
       - '.github/workflows/nico-verified-partner-count-standings-no-deploy.yml'
   push:
     branches: [feat/verified-partner-daily-month-count-ranking-main-20261110]
@@ -15,6 +17,8 @@ on:
       - 'tests/approved-partner-count-standings.test.cjs'
       - 'tests/partner-workspace.test.cjs'
       - 'partner-workspace.html'
+      - 'ranking/owner-product-visibility-firestore.mjs'
+      - 'tests/owner-product-visibility-firestore.test.mjs'
       - '.github/workflows/nico-verified-partner-count-standings-no-deploy.yml'
 permissions:
   contents: read
@@ -56,6 +60,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node --test tests/approved-partner-count-standings.test.cjs tests/partner-workspace.test.cjs
+          node --test tests/approved-partner-count-standings.test.cjs tests/partner-workspace.test.cjs tests/owner-product-visibility-firestore.test.mjs
           node --test tests/internal-owner-finance-visibility.test.cjs tests/partner-money-free-workspace.test.cjs tests/partner-company-code-auth.test.cjs tests/partner-count-dashboard.test.cjs
           echo 'NO_FIREBASE_DEPLOY=1 NO_RULES_WRITES=1 NO_PRODUCTION_COUNT_WRITES=1'
