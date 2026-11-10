@@ -98,7 +98,12 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
   for(const r of s.reports){
    if(!r||!date(r.date)||r.date<start||r.date>end||reports.has(r.date))fail();
    reports.add(r.date);
-   if(r.data==null)continue;
+   // A missing daily summary cannot authorize any staff row, even a zero-count row.
+   // Otherwise orphan entries could appear in team/person ranks while company totals stay zero.
+   if(r.data==null){
+    if([...entries.values()].some(e=>e.date===r.date))fail();
+    continue;
+   }
    const x=r.data;
    if(!x||x.hubCompanyId!==hubId||x.partnerCompanyId!==s.cid||
       x.date!==r.date||!["staff-entries-v1","quick-counts-v1","quick-counts"].includes(x.source))fail();
