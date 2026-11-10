@@ -1,0 +1,212 @@
+name: NICO owner six and eleven (explicit manual job rerun, one shot)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-owner-six-eleven-explicit-rerun-release.yml'
+      - 'tests/owner-six-eleven-manual-rerun-gate.test.mjs'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-owner-six-eleven-explicit-rerun-release.yml'
+      - 'tests/owner-six-eleven-manual-rerun-gate.test.mjs'
+permissions:
+  contents: read
+concurrency:
+  group: firebase-production-owner-six-serial
+  cancel-in-progress: false
+jobs:
+  owner-release-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Offline reviewed code, all original finance and counts and eleven static sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions-partner-workspace/index.js)" = 90d51246477cf5cfa6966f3e822326ef06cccd0f
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 614f3216e008642ddf5eda6b93c35cc0469557c3
+          test "$(git hash-object functions-ranking-approvals/index.js)" = 54855609e372ee1056b5206e445f20c0a251b1ef
+          test "$(git hash-object functions-ranking-approvals/controller.cjs)" = 0a7691d8a01ca6a47931300a2b650c7fbfb5b391
+          test "$(git hash-object functions-ranking-approvals/product-visibility-controller.cjs)" = 87a9381d9efce485b4edbe6ce7ed56a6b1c9d9d7
+          test "$(git hash-object functions-ranking-approvals/owner-sku-mapping-controller.cjs)" = fb32c016f647d01e90cbc82ec9ae823ab1df720d
+          test "$(git hash-object functions-ranking-approvals/ranking/owner-product-visibility-firestore.mjs)" = 8e2289b1dd8b62f4d682dc6231a339294178abcb
+          test "$(git hash-object functions-ranking-approvals/ranking/owner-reviewed-sku-mapping-store.mjs)" = 6652af761e44da1c33e75d1b7a15eeee4f504036
+          test "$(git hash-object firebase.ranking-approvals.json)" = 35a8b4ab4b39b16927e0e7235b048d7052497632
+          node --test tests/owner-six-eleven-manual-rerun-gate.test.mjs
+          node --check tools/production/owner-setup-six-release-scope.mjs
+          node --check tools/hosting/release-owner-setup-additive.mjs
+          node --test tests/owner-setup-six-release-scope.test.mjs tests/owner-setup-additive-hosting-release.test.mjs tests/owner-partner-setup-mount.test.mjs tests/ranking-owner-callable-controller.test.cjs tests/owner-product-visibility-callables.test.cjs tests/owner-sku-mapping-controller.test.cjs
+          node tools/ranking/verify-isolated-owner-callables.mjs
+          echo 'OWNER_RELEASE_CANDIDATE_TESTS_PASS_NO_DEPLOY'
+      - name: Manual rerun gate - first run NEVER deploys, only attempt TWO can release
+        id: gate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_INTENT: CONFIRM_SIX_OWNER_SETTINGS_ONLY_AND_ELEVEN_ADDITIVE_ASSETS
+          USAGE_APPROVAL: FUNCTION_BUILDS_AND_POSSIBLE_CHARGES_EXPLICITLY_APPROVED
+          SCOPE_APPROVAL: NO_FIRESTORE_RULES_AUTH_IAM_OR_ORIGINAL_FUNCTION_CHANGES
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_RUN_ATTEMPT" = 1 ]; then
+            echo 'approved=false' >> "$GITHUB_OUTPUT"
+            echo 'RELEASE_READY_BUT_MANUAL_CONNECTOR_JOB_RERUN_REQUIRED_NO_DEPLOY'
+            exit 0
+          fi
+          test "$GITHUB_RUN_ATTEMPT" = 2
+          test "$GITHUB_EVENT_NAME" = push
+          test "$GITHUB_REPOSITORY" = Keikei-p/-
+          test "$GITHUB_REF" = refs/heads/main
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
+          test "$(git log -1 --pretty=%s)" = 'release(owner): approved manual rerun six Functions and eleven assets'
+          test "$RELEASE_INTENT" = CONFIRM_SIX_OWNER_SETTINGS_ONLY_AND_ELEVEN_ADDITIVE_ASSETS
+          test "$USAGE_APPROVAL" = FUNCTION_BUILDS_AND_POSSIBLE_CHARGES_EXPLICITLY_APPROVED
+          test "$SCOPE_APPROVAL" = NO_FIRESTORE_RULES_AUTH_IAM_OR_ORIGINAL_FUNCTION_CHANGES
+          echo 'approved=true' >> "$GITHUB_OUTPUT"
+          echo 'OWNER_MANUAL_JOB_RERUN_APPROVED_ONE_TIME_SCOPE'
+      - name: Install reviewed Firebase tools ONLY after manual rerun
+        if: ${{ steps.gate.outputs.approved == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+          npm install --prefix functions-ranking-approvals --ignore-scripts --package-lock=false --no-audit --no-fund
+          npm install --global firebase-tools@15.34.1 --no-audit --no-fund
+      - name: Authorize existing Firebase identity privately, only on approved rerun
+        if: ${{ steps.gate.outputs.approved == 'true' }}
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/owner-approved-release.private.json"
+          chmod 600 "$RUNNER_TEMP/owner-approved-release.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/owner-approved-release.private.json" >> "$GITHUB_ENV"
+      - name: Snapshot all original Functions, require all SIX new targets absent
+        if: ${{ steps.gate.outputs.approved == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase functions:list --project "$FIREBASE_PROJECT_ID" --json > "$RUNNER_TEMP/owner-six-before.private.json"
+          node --input-type=module -e "import{readFileSync}from'node:fs';import{assertAbsent}from'./tools/production/owner-setup-six-release-scope.mjs';assertAbsent(JSON.parse(readFileSync(process.env.RUNNER_TEMP+'/owner-six-before.private.json','utf8')))"
+          node tools/production/protect-ranking-original-functions-versions.mjs before
+          node tools/production/owner-setup-live-region-metadata.mjs before
+          node tools/hosting/release-owner-setup-additive.mjs --dry-run
+          echo 'BEFORE_DEPLOY_ORIGINALS_PROTECTED_EXISTING_HOSTING_PRESERVED'
+      - name: Create ephemeral exact environment flags (joint rank OFF)
+        if: ${{ steps.gate.outputs.approved == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e functions-ranking-approvals/.env.sales-management-cc116
+          printf 'NICO_RANKING_OWNER_SETTINGS_ENABLED=enabled\nNICO_OWNER_PRODUCT_VISIBILITY_ENABLED=enabled\nNICO_OWNER_SKU_MAPPING_ENABLED=enabled\nNICO_JOINT_COUNT_RANKING_ENABLED=disabled\n' > functions-ranking-approvals/.env.sales-management-cc116
+          chmod 600 functions-ranking-approvals/.env.sales-management-cc116
+          test "$(grep -c '^NICO_.*_ENABLED=enabled$' functions-ranking-approvals/.env.sales-management-cc116)" = 3
+          grep -qx 'NICO_JOINT_COUNT_RANKING_ENABLED=disabled' functions-ranking-approvals/.env.sales-management-cc116
+      - name: Deploy ONLY six NEW Owner callables, no ranking GET, old Functions, Hosting or Rules
+        if: ${{ steps.gate.outputs.approved == 'true' }}
+        id: deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGETS="$(node --input-type=module -e "import{TARGETS}from'./tools/production/owner-setup-six-release-scope.mjs';process.stdout.write(TARGETS.join(','))")"
+          TARGETS="$TARGETS" node --input-type=module -e "import{ensureExactTargets}from'./tools/production/owner-setup-six-release-scope.mjs';ensureExactTargets(process.env.TARGETS)"
+          if firebase deploy --non-interactive --project "$FIREBASE_PROJECT_ID" --config firebase.ranking-approvals.json --only "$TARGETS" > "$RUNNER_TEMP/owner-six-deploy.private.log" 2>&1; then
+            echo 'SIX_OWNER_FUNCTIONS_DEPLOY_COMMAND_SUCCESS'
+          else
+            echo 'STOP_OWNER_SIX_PARTIAL_DEPLOY_NO_RETRY'
+            exit 1
+          fi
+      - name: Independently reconcile six additions and every original immutable version
+        if: ${{ steps.gate.outputs.approved == 'true' && success() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase functions:list --project "$FIREBASE_PROJECT_ID" --json > "$RUNNER_TEMP/owner-six-after.private.json"
+          node --input-type=module -e "import{readFileSync}from'node:fs';import{compareDeployment}from'./tools/production/owner-setup-six-release-scope.mjs';const t=process.env.RUNNER_TEMP;console.log('OWNER_SIX_LIVE_SCOPE '+JSON.stringify(compareDeployment(JSON.parse(readFileSync(t+'/owner-six-before.private.json','utf8')),JSON.parse(readFileSync(t+'/owner-six-after.private.json','utf8')))))"
+          node tools/production/protect-ranking-original-functions-versions.mjs after
+          node tools/production/owner-setup-live-region-metadata.mjs after
+          echo 'SIX_OWNER_FUNCTIONS_ADDED_ORIGINALS_UNCHANGED'
+      - name: Confirm all six active Owner Functions and the joint ranking remains disabled
+        if: ${{ steps.gate.outputs.approved == 'true' && success() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {createRequire} from 'node:module';
+          import {checkDeployedMetadata} from './tools/production/owner-setup-six-release-scope.mjs';
+          const require=createRequire(new URL('./functions/package.json',import.meta.url));
+          const creds=require('firebase-admin/app').applicationDefault();
+          const token=(await creds.getAccessToken())?.access_token;
+          if(!token)throw Error('STOP_OWNER_SIX_LIVE_TOKEN');
+          const url='https://cloudfunctions.googleapis.com/v2/projects/sales-management-cc116/locations/asia-northeast1/functions?pageSize=1000';
+          const response=await fetch(url,{method:'GET',redirect:'error',cache:'no-store',headers:{Authorization:'Bearer '+token}});
+          if(response.status!==200)throw Error('STOP_OWNER_SIX_LIVE_FUNCTION_GET');
+          const body=await response.json();
+          if(!Array.isArray(body.functions??[])||body.nextPageToken)throw Error('STOP_OWNER_SIX_FUNCTION_PAGE');
+          checkDeployedMetadata(body.functions??[]);
+          console.log('SIX_OWNER_FUNCTIONS_LIVE_READY_JOINT_RANKING_DISABLED');
+          NODE
+      - name: Publish exactly ELEVEN NEW reviewed Firebase Hosting assets (all old hashes preserved)
+        if: ${{ steps.gate.outputs.approved == 'true' && success() }}
+        shell: bash
+        env:
+          NICO_OWNER_SETUP_HOSTING_RELEASE: CONFIRM_ONLY_ELEVEN_NEW_OWNER_SETUP_ASSETS
+        run: |
+          set -euo pipefail
+          node tools/hosting/release-owner-setup-additive.mjs --release
+          echo 'OWNER_HOSTING_ELEVEN_ASSETS_DEPLOY_COMMAND_SUCCESS'
+      - name: Independently verify eleven public static files from official URL
+        if: ${{ steps.gate.outputs.approved == 'true' && success() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import {SOURCES} from './tools/hosting/owner-setup-additive-guard.mjs';
+          for(const file of Object.keys(SOURCES)){
+            const expected=readFileSync(file);
+            let verified=false;
+            for(let attempt=0;attempt<6;attempt++){
+              const url='https://nico-factory.web.app/'+file+'?verify='+process.env.GITHUB_SHA;
+              try{
+                const res=await fetch(url,{method:'GET',cache:'no-store',redirect:'error',
+                  headers:{'Cache-Control':'no-cache'}});
+                if(res.ok&&Buffer.from(await res.arrayBuffer()).equals(expected)){
+                  verified=true;break;
+                }
+              }catch{}
+              await new Promise(resolve=>setTimeout(resolve,3000));
+            }
+            if(!verified)throw Error('STOP_OWNER_SETUP_PUBLIC_STATIC_ASSET_UNVERIFIED');
+            console.log('LIVE_OWNER_ASSET_VERIFIED '+file);
+          }
+          console.log('ELEVEN_OWNER_STATIC_ASSETS_VERIFIED_OFFICIAL_URL');
+          NODE
+      - name: On Functions failure reconcile original versions without ANY retry
+        if: ${{ failure() && steps.deploy.outcome == 'failure' }}
+        shell: bash
+        run: |
+          node tools/production/protect-ranking-original-functions-versions.mjs after || echo 'STOP_ORIGINAL_FUNCTIONS_UNVERIFIED'
+          echo 'STOP_MANUAL_RECONCILIATION_REQUIRED'
+      - name: Always delete service identity, logs, original fingerprint files and ephemeral flags
+        if: always()
+        shell: bash
+        run: |
+          rm -f functions-ranking-approvals/.env.sales-management-cc116
+          rm -f "$RUNNER_TEMP/owner-approved-release.private.json" \
+            "$RUNNER_TEMP/owner-six-before.private.json" \
+            "$RUNNER_TEMP/owner-six-after.private.json" \
+            "$RUNNER_TEMP/owner-six-deploy.private.log" \
+            "$RUNNER_TEMP/nico-original-six-immutable-versions.private.json" \
+            "$RUNNER_TEMP/nico-owner-six-other-gen2.private.json"
