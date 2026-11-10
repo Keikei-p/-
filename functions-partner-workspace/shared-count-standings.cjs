@@ -40,15 +40,22 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
  if(!id(hubId)||!date(start)||!date(end)||start>end||
     start.slice(0,7)!==end.slice(0,7)||!Array.isArray(sources)||
     !sources.length||sources.length>20)fail();
- const seen=new Set(),companies=[],teams=[],people=[],products=zero();
+ const seen=new Set(),companies=[],teams=[],people=[],products=zero(),published=new Set();
  let totalCount=0,reportCount=0,unverifiedTeamCount=0,
   unverifiedPersonCount=0,historicalCompanyOnlyCount=0;
  for(const s of sources){
   if(!s||!id(s.cid)||s.cid===hubId||seen.has(s.cid)||
      s.approved!==true||!Array.isArray(s.teams)||
      !Array.isArray(s.entries)||!Array.isArray(s.reports)||
-     s.teams.length>150||s.entries.length>1000||s.reports.length>31)fail();
+      s.teams.length>150||s.entries.length>1000||s.reports.length>31||
+     !Array.isArray(s.allowedCategories)||s.allowedCategories.length>KEYS.length||
+     new Set(s.allowedCategories).size!==s.allowedCategories.length||
+     s.allowedCategories.some(k=>!KEYS.includes(k)))fail();
   seen.add(s.cid);
+  const allowed=new Set(s.allowedCategories);
+  for(const k of allowed)published.add(k);
+  const visible=raw=>({counts:Object.fromEntries(KEYS.map(k=>[k,allowed.has(k)?raw.counts[k]:0])),
+   total:KEYS.reduce((a,k)=>sum(a,allowed.has(k)?raw.counts[k]:0),0)});
   const companyName=name(s.name),teamNames=new Map(),pMap=new Map(),
    tMap=new Map(),entries=new Map(),reports=new Set();
   for(const t of s.teams){
@@ -63,8 +70,9 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
    const personDay=e.date+"__"+e.staffId;
    if(entries.has(personDay))fail();
    entries.set(personDay,e);
-   const c=counts(e.counts);
-   if(c.total!==e.totalCount)fail();
+   const raw=counts(e.counts);
+   if(raw.total!==e.totalCount)fail();
+   const c=visible(raw);
    const tid=id(e.teamIdSnapshot)&&teamNames.has(e.teamIdSnapshot)?e.teamIdSnapshot:null;
    const personName=e.staffNameSnapshot==null?null:name(e.staffNameSnapshot);
    if(tid){
@@ -94,15 +102,16 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
    const x=r.data;
    if(!x||x.hubCompanyId!==hubId||x.partnerCompanyId!==s.cid||
       x.date!==r.date||!["staff-entries-v1","quick-counts-v1","quick-counts"].includes(x.source))fail();
-   const c=counts(x.counts,Number.MAX_SAFE_INTEGER);
-   if(c.total!==x.totalCount)fail();
+   const raw=counts(x.counts,Number.MAX_SAFE_INTEGER);
+   if(raw.total!==x.totalCount)fail();
+   const c=visible(raw);
    const daily=zero();let recorded=0,rows=0;
    for(const e of entries.values())if(e.date===r.date){
     rows++;const v=counts(e.counts);recorded=sum(recorded,v.total);
     for(const product of KEYS)daily[product]=sum(daily[product],v.counts[product]);
    }
    if(x.source==="staff-entries-v1"){
-    if(recorded!==c.total||KEYS.some(k=>daily[k]!==c.counts[k]))fail();
+    if(recorded!==raw.total||KEYS.some(k=>daily[k]!==raw.counts[k]))fail();
    }else{
     if(rows)fail();
     verifiedPeople=false;
@@ -113,7 +122,7 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
   }
   if([...entries.values()].some(e=>!reports.has(e.date)))fail();
   totalCount=sum(totalCount,companyCount);
-  if(reportedDays){
+  if(reportedDays&&allowed.size){
    companies.push({key:key("company",hubId,s.cid),name:companyName,
     totalCount:companyCount,counts:companyProducts,reportedDays,
     peopleVerified:verifiedPeople,
@@ -125,7 +134,7 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
  return {schema:"nico-approved-partner-count-rank-v1",unit:"件",
   scope:"approved_partner_counts_only",includesDirect:false,fullyJoint:false,
   start,end,companies:ranked(companies),teams:ranked(teams),people:ranked(people),
-  products:ranked(KEYS.map((k,i)=>({key:"product-"+(i+1),name:k,totalCount:products[k]}))),
+  products:ranked(KEYS.filter(k=>published.has(k)).map((k,i)=>({key:"product-"+(i+1),name:k,totalCount:products[k]}))),
   totalCount,reportCount,unverifiedTeamCount,unverifiedPersonCount,
   historicalCompanyOnlyCount,
   peopleComplete:historicalCompanyOnlyCount===0&&unverifiedPersonCount===0,
