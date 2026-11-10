@@ -183,7 +183,7 @@ test("third-party email, forged identity, bad scope and missing verified email c
   token,displayName:"悪用",confirm:true
  })),"permission-denied");
  await denied(x.factory.issue(x.req(receiver,{
-  partnerCompanyId:partner,email:partnerEmail
+  partnerCompanyId:partner,email:ownerEmail
  })),"permission-denied");
  await denied(x.factory.issue(x.req(owner,{
   partnerCompanyId:partner,email:ownerEmail
