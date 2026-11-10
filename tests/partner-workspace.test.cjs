@@ -1500,7 +1500,7 @@ test("archiving cannot disable linked accounts, arbitrary staff or users from ot
 });
 
 
-test("shared partner and owner breakdown use identical sanitized NURO cashback-tier counts, never prices",async()=>{
+test("partner shared ranks hide NURO cashback amount tiers while owner data and stored records are preserved",async()=>{
  const {db,api,req,zero}=setup();
  const team=(await api.manage(req("p",{action:"addTeam",name:"1班"}))).teamId;
  const staff=(await api.manage(req("p",{action:"addManaged",name:"佐藤",teamId:team}))).staffId;
@@ -1511,11 +1511,13 @@ test("shared partner and owner breakdown use identical sanitized NURO cashback-t
  const partner=await api.view(req("p",{date,sharedRankings:true}));
  const owner=await api.view(req("h",{date,sharedRankings:true}));
  const ownerDetails=await api.view(req("h",{date,partnerCompanyId:"partner"}));
- assert.deepEqual(partner.people[0].cbCounts,owner.people[0].cbCounts);
- assert.deepEqual(partner.teams[0].cbCounts,owner.teams[0].cbCounts);
- assert.equal(partner.teams[0].cbCounts.NURO["0"],1);
- assert.equal(partner.teams[0].cbCounts.NURO["60000"],2);
- assert.equal(partner.teams[0].cbCounts.NURO["20000"],0);
+ assert.equal(partner.people[0].counts.NURO,3);
+ assert.equal(partner.teams[0].counts.NURO,3);
+ assert.equal(Object.hasOwn(partner.people[0],"cbCounts"),false);
+ assert.equal(Object.hasOwn(partner.teams[0],"cbCounts"),false);
+ assert.doesNotMatch(JSON.stringify(partner),/cbCounts|60000|80000/);
+ assert.equal(owner.teams[0].cbCounts.NURO["0"],1);
+ assert.equal(owner.teams[0].cbCounts.NURO["60000"],2);
  assert.equal(ownerDetails.partnerTeamDetails.teams[0].members[0].cbCounts.NURO["60000"],2);
  assert.equal(ownerDetails.partnerTeamDetails.teams[0].cbCounts.NURO["0"],1);
  for(const output of [partner,owner,ownerDetails.partnerTeamDetails]){
@@ -1531,8 +1533,8 @@ test("unclassified historic NURO entries stay unclassified and are never mapped 
  const date="2026-10-31";
  await api.submit(req("p",{date,staffId:staff,counts:{...zero(),NURO:4},expectedVersion:0}));
  const shared=await api.view(req("p",{date,sharedRankings:true}));
- assert.equal(shared.teams[0].cbCounts.NURO["0"],0);
- assert.equal(shared.teams[0].cbCounts.NURO.unclassified,4);
+ assert.equal(shared.teams[0].counts.NURO,4);
+ assert.equal(Object.hasOwn(shared.teams[0],"cbCounts"),false);
  const owner=await api.view(req("h",{date,partnerCompanyId:"partner"}));
  assert.equal(owner.partnerTeamDetails.teams[0].cbCounts.NURO.unclassified,4);
 });
