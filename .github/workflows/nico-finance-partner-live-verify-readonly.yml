@@ -1,0 +1,91 @@
+name: NICO finance partner diagnostic exact LIVE CDN+Hosting proof (GET ONLY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/production/verify-finance-partner-live-hosting-readonly.mjs'
+      - 'tests/verify-finance-partner-live-hosting-readonly.test.mjs'
+      - '.github/workflows/nico-finance-partner-live-verify-readonly.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/production/verify-finance-partner-live-hosting-readonly.mjs'
+      - 'tests/verify-finance-partner-live-hosting-readonly.test.mjs'
+      - '.github/workflows/nico-finance-partner-live-verify-readonly.yml'
+permissions:
+  contents: read
+concurrency:
+  group: nico-partner-finance-hosting-live-cdn-readonly
+  cancel-in-progress: false
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Reviewed source SHA pins, pure data proofs, no secrets or deployments
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object finance-boundary-check.html)" = ba0de47af53174d3ef37a9a047818568c0527035
+          test "$(git hash-object finance-partner-boundary-check.html)" = 8c5f70fae56535b6b9835e8384124d5cab640403
+          node --check tools/production/verify-finance-partner-live-hosting-readonly.mjs
+          node --test tests/verify-finance-partner-live-hosting-readonly.test.mjs
+          echo 'PARTNER_FINANCE_LIVE_PROOF_OFFLINE_PASS_NO_CREDENTIALS'
+  live-readonly:
+    needs: offline
+    if: >-
+      ${{ github.event_name == 'push' &&
+          github.ref == 'refs/heads/main' &&
+          github.repository == 'Keikei-p/-' &&
+          needs.offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      NICO_HOSTING_AUDIT_MODE: GET_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Original Rules, old finance site and new approved asset immutable
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object finance-boundary-check.html)" = ba0de47af53174d3ef37a9a047818568c0527035
+          test "$(git hash-object finance-partner-boundary-check.html)" = 8c5f70fae56535b6b9835e8384124d5cab640403
+          node --test tests/verify-finance-partner-live-hosting-readonly.test.mjs
+      - name: Install existing read-only Admin credential SDK without any deploy
+        shell: bash
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Existing service identity in temporary private file, IAM unchanged
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-partner-finance-proof.private.json"
+          chmod 600 "$RUNNER_TEMP/nico-partner-finance-proof.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-partner-finance-proof.private.json" >> "$GITHUB_ENV"
+      - name: GET only - exact old 30 assets, new 31 assets, public HTTPS bytes and all old routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/verify-finance-partner-live-hosting-readonly.mjs
+          echo 'NICO_PARTNER_FINANCE_LIVE_VERIFIED_GET_ONLY'
+      - name: Wipe credentials, avoid uploading any logs/artifacts
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/nico-partner-finance-proof.private.json"
