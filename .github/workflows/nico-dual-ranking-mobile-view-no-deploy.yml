@@ -6,6 +6,8 @@ on:
       - 'ranking/verified-dual-count-view.mjs'
       - 'ranking/verified-dual-count-view.css'
       - 'tests/verified-dual-count-view.test.mjs'
+      - 'ranking/verified-joint-month-http-bridge.mjs'
+      - 'tests/verified-joint-month-http-bridge.test.mjs'
       - '.github/workflows/nico-dual-ranking-mobile-view-no-deploy.yml'
   push:
     branches: [main]
@@ -13,6 +15,8 @@ on:
       - 'ranking/verified-dual-count-view.mjs'
       - 'ranking/verified-dual-count-view.css'
       - 'tests/verified-dual-count-view.test.mjs'
+      - 'ranking/verified-joint-month-http-bridge.mjs'
+      - 'tests/verified-joint-month-http-bridge.test.mjs'
       - '.github/workflows/nico-dual-ranking-mobile-view-no-deploy.yml'
 permissions:
   contents: read
@@ -43,6 +47,11 @@ jobs:
         run: |
           set -euo pipefail
           node --check ranking/verified-dual-count-view.mjs
+          node --check ranking/verified-joint-month-http-bridge.mjs
           node --check tests/verified-dual-count-view.test.mjs
-          node --test tests/verified-dual-count-view.test.mjs tests/verified-dual-count-dashboards.test.mjs
+          node --check tests/verified-joint-month-http-bridge.test.mjs
+          node --test tests/verified-dual-count-view.test.mjs tests/verified-dual-count-dashboards.test.mjs tests/verified-joint-month-http-bridge.test.mjs
+          grep -Fq 'featureEnabled=false' ranking/verified-joint-month-http-bridge.mjs
+          grep -Fq 'availablePeriods:["month"],allowFilters:false' ranking/verified-joint-month-http-bridge.mjs
+          git diff --exit-code -- firestore.rules index.html partner-workspace.html firebase.json functions functions-partner-workspace
           echo 'STAGING_MOBILE_RANKING_UI_ONLY_NO_PRODUCTION_DEPLOY'
