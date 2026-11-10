@@ -40,7 +40,7 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
  if(!id(hubId)||!date(start)||!date(end)||start>end||
     start.slice(0,7)!==end.slice(0,7)||!Array.isArray(sources)||
     !sources.length||sources.length>20)fail();
- const seen=new Set(),companies=[],teams=[],people=[],products=zero(),published=new Set();
+ const seen=new Set(),companies=[],teams=[],people=[],products=zero(),published=new Set(),unreportedCompanies=[];
  let totalCount=0,reportCount=0,unverifiedTeamCount=0,
   unverifiedPersonCount=0,historicalCompanyOnlyCount=0;
  for(const s of sources){
@@ -122,6 +122,7 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
   }
   if([...entries.values()].some(e=>!reports.has(e.date)))fail();
   totalCount=sum(totalCount,companyCount);
+  if(!reportedDays)unreportedCompanies.push({key:key("company",hubId,s.cid),name:companyName,status:"not_reported"});
   if(reportedDays&&allowed.size){
    companies.push({key:key("company",hubId,s.cid),name:companyName,
     totalCount:companyCount,counts:companyProducts,reportedDays,
@@ -135,7 +136,9 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
   scope:"approved_partner_counts_only",includesDirect:false,fullyJoint:false,
   start,end,companies:ranked(companies),teams:ranked(teams),people:ranked(people),
   products:ranked(KEYS.filter(k=>published.has(k)).map((k,i)=>({key:"product-"+(i+1),name:k,totalCount:products[k]}))),
-  totalCount,reportCount,unverifiedTeamCount,unverifiedPersonCount,
+  totalCount,reportCount,unreportedCompanies,
+  partnerCountsComplete:unreportedCompanies.length===0&&historicalCompanyOnlyCount===0,
+  unverifiedTeamCount,unverifiedPersonCount,
   historicalCompanyOnlyCount,
   peopleComplete:historicalCompanyOnlyCount===0&&unverifiedPersonCount===0,
   teamComplete:historicalCompanyOnlyCount===0&&unverifiedTeamCount===0};
