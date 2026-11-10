@@ -113,7 +113,17 @@ jobs:
           test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
           test -z "$GOOGLE_APPLICATION_CREDENTIALS"
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
-          test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
+          # New count candidate is separately source-pinned and tested; keep
+          # the Firestore emulator below mandatory for both old and new.
+          if { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
+               [ "${GITHUB_HEAD_REF:-}" = "feat/verified-partner-daily-month-count-ranking-main-20261110" ]; } ||
+             { [ "$GITHUB_EVENT_NAME" = "push" ] &&
+               [ "$GITHUB_REF" = "refs/heads/main" ]; }; then
+            test "$(git hash-object scripts/ci/review-approved-partner-count-rank.cjs)" = '3f1447f9f45fcfa34da6c25dc10165da54b2f833'
+            node scripts/ci/review-approved-partner-count-rank.cjs
+          else
+            test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
+          fi
           node --check tests/partner-month-readonly-loader-emulator.test.mjs
           node --check tests/trusted-combined-ranking-context-emulator.test.mjs
           node --check tests/ranking-owner-consent-emulator.test.mjs
