@@ -1,0 +1,101 @@
+name: NICO Owner setup to joint ranking LIVE release blockers (READ ONLY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/production/inspect-owner-setup-release-chain-readonly.mjs'
+      - 'tests/inspect-owner-setup-release-chain-readonly.test.mjs'
+      - '.github/workflows/nico-owner-setup-release-chain-live-readonly.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/production/inspect-owner-setup-release-chain-readonly.mjs'
+      - 'tests/inspect-owner-setup-release-chain-readonly.test.mjs'
+      - '.github/workflows/nico-owner-setup-release-chain-live-readonly.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: nico-owner-release-chain-get-only-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Source pin and standalone read-only board tests without any credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 614f3216e008642ddf5eda6b93c35cc0469557c3
+          test "$(git hash-object functions-ranking-approvals/index.js)" = 54855609e372ee1056b5206e445f20c0a251b1ef
+          node --check tools/production/inspect-owner-setup-release-chain-readonly.mjs
+          node --test tests/inspect-owner-setup-release-chain-readonly.test.mjs
+          node --test tests/inspect-live-sku-publication-readonly.test.mjs tests/owner-setup-six-release-scope.test.mjs tests/owner-setup-additive-hosting-release.test.mjs
+          node -e "const f=require('fs');if(JSON.parse(f.readFileSync('.firebaserc')).projects.default!=='sales-management-cc116')process.exit(1)"
+          echo 'OWNER_RELEASE_CHAIN_OFFLINE_ONLY_NO_DEPLOY'
+  live-readonly:
+    needs: offline
+    if: >-
+      ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+          github.ref == 'refs/heads/main' &&
+          github.repository == 'Keikei-p/-' &&
+          needs.offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      NICO_PARTNER_AUDIT_MODE: READ_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Guard live code against all existing production finance and count edits
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          node --test tests/inspect-owner-setup-release-chain-readonly.test.mjs
+      - name: Install only existing Admin SDK for authenticated metadata GET and read-only Firestore
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Load existing read identity privately; no change to project IAM
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-owner-release-chain.private.json"
+          chmod 600 "$RUNNER_TEMP/nico-owner-release-chain.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-owner-release-chain.private.json" >> "$GITHUB_ENV"
+      - name: Production GET-only - six owner callables, Hosting 11 assets, all 3 partner mappings and mutual consent
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/inspect-owner-setup-release-chain-readonly.mjs > "$RUNNER_TEMP/nico-owner-release-chain.private.log" 2>&1 || {
+            grep -E '^STOP_OWNER_SETUP_CHAIN_[A-Z0-9_]+$' "$RUNNER_TEMP/nico-owner-release-chain.private.log" || true
+            exit 1
+          }
+          grep -E '^NICO_OWNER_SETUP_CHAIN_READINESS |^BLOCK_[A-Z0-9_]+$' "$RUNNER_TEMP/nico-owner-release-chain.private.log" || true
+          grep -q '^NICO_OWNER_SETUP_CHAIN_READINESS ' "$RUNNER_TEMP/nico-owner-release-chain.private.log"
+          grep -q '"productionDocumentWrites":0' "$RUNNER_TEMP/nico-owner-release-chain.private.log"
+          grep -q '"safeToEnableJointRanking":false' "$RUNNER_TEMP/nico-owner-release-chain.private.log"
+          echo 'NICO_OWNER_CHAIN_INSPECTED_NO_REMOTE_WRITE_NO_DEPLOY'
+      - name: Delete private credentials and logs, never upload artifacts
+        if: always()
+        run: rm -f "$RUNNER_TEMP/nico-owner-release-chain.private.json" "$RUNNER_TEMP/nico-owner-release-chain.private.log"
