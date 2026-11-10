@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
  * LIVE GET ONLY: profile and product prerequisites for the six deployed
- * Owner settings callables. Only narrow non-finance document field projections,
- * Auth metadata (no tokens), and sanitized aggregate flags are returned.
+ * Owner settings callables. Read-only identity documents stay inside the
+ * trusted runner; only sanitized aggregate flags are returned. No raw values,
+ * Auth tokens or personal fields enter logs.
  * No sign-in, impersonation, writing, sales counts, history or finance reads.
  */
 import {createRequire} from "node:module";
@@ -24,7 +25,7 @@ const summary=arr=>Object.freeze(Object.fromEntries(
 export function classifyOwnerSettingIdentity({ownerUid,companyId,kind,
  user,member,company,context,authUser}={}){
  if(!id(ownerUid)||!id(companyId)||!obj(company)||
-    company.ownerUid!==ownerUid||company.active!==true)
+    company.ownerUid!==ownerUid||company.active===false)
   return "COMPANY_OWNER_LINK_INVALID";
  if(!obj(user)||user.uid!==ownerUid||user.companyId!==companyId||
     user.companyRole!=="owner"||user.active!==true||
