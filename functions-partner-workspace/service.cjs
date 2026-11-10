@@ -1,6 +1,8 @@
 "use strict";
 // Isolated partner operations: no reads/writes to sales products, records or prices.
 const crypto=require("node:crypto");
+const {buildApprovedPartnerCountStandings}=require("./shared-count-standings.cjs");
+const {allowedPartnerCategories}=require("./approved-published-categories.cjs");
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -10,7 +12,7 @@ const money=/(?:単価|売上|収益|利益|報酬|[¥￥$€]|\d[\d,]*円)/;
 const validCompanyName=x=>typeof x==="string"&&x.trim().length>0&&
  x.trim().length<=80&&!money.test(x);
 const clean=x=>typeof x==="string"?x.trim():"";
-function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>false,now=()=>Date.now()}={}){
+function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>false,sharedRankingEnabled=()=>false,now=()=>Date.now()}={}){
  if(!db||!getAuth||!FieldValue||!Timestamp||!HttpsError)throw Error("missing_partner_workspace_dependency");
  const fail=(code="permission-denied")=>{throw new HttpsError(code,"権限・入力内容を確認できません。");};
  const validName=x=>typeof x==="string"&&NAME.test(x)&&!money.test(x);
@@ -610,9 +612,106 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   });
   return {joined:true,...joined};
  }
+
+ // Opt-in, strictly counted shared ranking from the existing SAME stored
+ // partner daily entries. No new writes or index migrations. Strictly require
+ // reviewed Owner SKU mapping + visibility BEFORE giving any partner a rank.
+ // The separate direct-company ranking is intentionally NOT guessed here.
+ async function loadSharedPartnerRankings(s,date,period){
+  if(sharedRankingEnabled()!==true)fail("unavailable");
+  if(!["day","month"].includes(period))fail("invalid-argument");
+  const hubId=s.kind==="hub"?s.cid:s.hubId;
+  if(!ID.test(hubId||""))fail();
+  const today=jstToday(),month=date.slice(0,7);
+  const start=period==="month"?month+"-01":date;
+  const end=period==="month"?
+   (month===today.slice(0,7)?today:
+    new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7)),0)).toISOString().slice(0,10)):
+   date;
+  if(end<start||end>today)fail("invalid-argument");
+  const days=[];
+  for(let cursor=new Date(start+"T00:00:00Z");cursor<=new Date(end+"T00:00:00Z");
+      cursor.setUTCDate(cursor.getUTCDate()+1))
+   days.push(cursor.toISOString().slice(0,10));
+  if(days.length<1||days.length>31)fail("resource-exhausted");
+  const [hub,relations,visibility,mapping,products]=await Promise.all([
+   db.collection("companies").doc(hubId).get(),
+   db.collection("partnerRelations").where("hubCompanyId","==",hubId).limit(101).get(),
+   collection(hubId,"rankingProductVisibility").doc("shared").get(),
+   collection(hubId,"rankingSkuMappings").doc("shared").get(),
+   db.collection("products").where("companyId","==",hubId).limit(1001).get()
+  ]);
+  const hubCompany=hub.data()||{},ownerUid=hubCompany.ownerUid;
+  if(!hub.exists||!ID.test(ownerUid||"")||hubCompany.active===false||
+     (hubCompany.companyKind!=null&&!["internal","direct"].includes(hubCompany.companyKind))||
+     relations.size>100||products.size>1000||
+     !visibility.exists||!mapping.exists)fail("failed-precondition");
+  const productRows=products.docs.map(doc=>({...(doc.data()||{}),id:doc.id}));
+  const approved=[];
+  for(const relDoc of relations.docs){
+   const rel=relDoc.data()||{},cid=relDoc.id;
+   if(!ID.test(cid)||rel.partnerCompanyId!==cid||rel.hubCompanyId!==hubId)
+    fail("data-loss");
+   if(rel.active!==true||rel.countSharingApproved!==true)continue;
+   const companyDoc=await db.collection("companies").doc(cid).get();
+   const company=companyDoc.data()||{};
+   if(!companyDoc.exists||company.companyKind!=="partner"||
+      company.hubCompanyId!==hubId||!validCompanyName(company.name))fail("data-loss");
+   if(company.active!==true)continue;
+   approved.push({cid,name:company.name});
+  }
+  // Require that a partner caller remains a currently approved participant.
+  if(s.kind==="partner"&&!approved.some(x=>x.cid===s.cid))fail();
+  if(approved.length===0)fail("failed-precondition");
+  // Refuse incomplete pagination instead of publishing a partial leaderboard.
+  if(approved.length>20)fail("resource-exhausted");
+  const sources=[];
+  for(let offset=0;offset<approved.length;offset+=3){
+   const batch=await Promise.all(approved.slice(offset,offset+3).map(async row=>{
+    const [ts,es,rs]=await Promise.all([
+     collection(row.cid,"partnerWorkTeams").limit(151).get(),
+     (period==="day"?
+      collection(row.cid,"partnerWorkEntries").where("date","==",date):
+      collection(row.cid,"partnerWorkEntries").where("date",">=",start)
+       .where("date","<=",end)).limit(1001).get(),
+     Promise.all(days.map(day=>summaryRef(hubId,day,row.cid).get()))
+    ]);
+    if(ts.size>150||es.size>1000)fail("resource-exhausted");
+    const categories=(()=>{
+     try{return allowedPartnerCategories({
+      hubId,cid:row.cid,ownerUid,
+      visibility:visibility.data(),mapping:mapping.data(),products:productRows
+     })}catch{fail("failed-precondition")}
+    })();
+    const teams=ts.docs.map(doc=>{
+     const x=doc.data()||{};
+     if(!ID.test(doc.id)||x.companyId!==row.cid||!validName(x.name))fail("data-loss");
+     return {id:doc.id,name:x.name};
+    });
+    return {cid:row.cid,name:row.name,approved:true,allowedCategories:categories,
+     teams,
+     entries:es.docs.map(doc=>({id:doc.id,data:doc.data()})),
+     reports:days.map((day,i)=>({date:day,data:rs[i].exists?rs[i].data():null}))};
+   }));
+   sources.push(...batch);
+  }
+  let result;
+  try{result=buildApprovedPartnerCountStandings({hubId,start,end,sources})}
+  catch{fail("data-loss")}
+  return {role:s.kind,date,period,...result};
+ }
+
  async function view(request){
   const a=await actor(request),d=request?.data||{},date=validDate(d.date);
   const s=await scope(a.uid,null,d.workspaceCompanyId);
+  if(d.sharedCountRankings!==undefined){
+   if(d.sharedCountRankings!==true||
+      (d.rankingPeriod!==undefined&&
+       !["day","month"].includes(d.rankingPeriod))||
+      d.partnerCompanyId!==undefined||d.includeTeamStatus!==undefined)
+    fail("invalid-argument");
+   return loadSharedPartnerRankings(s,date,d.rankingPeriod||"day");
+  }
   if(s.kind==="hub"){
    // Registered companies appear before their first daily count report.
    // Unapproved company remains listed but cannot be invited into.
