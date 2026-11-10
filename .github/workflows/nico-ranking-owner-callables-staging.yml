@@ -56,8 +56,8 @@ jobs:
             node scripts/ci/review-approved-partner-count-rank.cjs
             exit 0
           fi
-          test "$(git hash-object functions-partner-workspace/index.js)" = 38da7e9174ffea7c406c92292dccfc651b565eb0
-          test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
+          test "$(git hash-object functions-partner-workspace/index.js)" = 90d51246477cf5cfa6966f3e822326ef06cccd0f
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 614f3216e008642ddf5eda6b93c35cc0469557c3
           test "$(git hash-object firebase.partner-workspace.json)" = a6ceedec5fab4e22e0a8efe19c685716a2db9750
           git diff --exit-code -- firestore.rules firebase.json index.html partner-workspace.html functions functions-partner-workspace
       - name: Source/vendor parity, isolated codebase and disabled default

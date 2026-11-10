@@ -106,6 +106,12 @@ export function createOwnerReviewedSkuMappingStore({db,FieldValue}={}){
    const found=previous.bindings.find(b=>b.companyId===partnerCompanyId&&
      b.productId===partnerProductId);
    const prevId=found?.hubProductId??null;
+   // The count-save guard rejects two categories pointing to the same hub
+   // SKU. Refuse that invalid state at the owner mapping writer, before writes.
+   // Allow removal of older mappings through the audited versioned path.
+   if(hubProductId!==null&&previous.bindings.some(b=>
+      b.companyId===partnerCompanyId&&b.productId!==partnerProductId&&
+      b.hubProductId===hubProductId))stop();
    if(hubProductId!==null){
     const product=read(await tx.get(db.collection("products").doc(hubProductId)));
     if(!obj(product)||product.companyId!==hub||
