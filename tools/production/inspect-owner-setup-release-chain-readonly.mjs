@@ -57,7 +57,7 @@ export function classifyFunctions(rows){
   jointRankingDisabled:true
  });
 }
-export function classifyHosting(releases,version,files,sources){
+export function classifyHosting(releases,version,files,sources,financeSource=null){
  const name=releases?.releases?.[0]?.version?.name;
  if(!Array.isArray(releases?.releases)||releases.releases.length!==1||
     !HOSTING_VERSION.test(name||"")||
@@ -92,7 +92,20 @@ export function classifyHosting(releases,version,files,sources){
    if(actual===uploadSha(data))matched++;
   }
  }
+ const financeHash=map.get("/finance-boundary-check.html");
+ const financeInspected=financeSource!==null;
+ if(financeInspected&&(
+    typeof financeSource!=="string"||
+    financeSource.length<3500||
+    !financeSource.includes("getIdToken(true)")||
+    !financeSource.includes("mask.fieldPaths")))
+  STOP("FINANCE_DIAGNOSTIC_SOURCE_INVALID");
+ const financeExact=financeInspected&&financeHash!==undefined&&
+  financeHash===uploadSha(financeSource);
  return Object.freeze({
+  financeBoundaryDiagnosticInspected:financeInspected,
+  financeBoundaryDiagnosticPresent:financeHash!==undefined,
+  financeBoundaryDiagnosticExactMatch:financeExact,
   ownerSetupHostingAssetsPresent:present,
   ownerSetupHostingAssetsExactMatch:matched,
   ownerSetupPageReady:present===11&&matched===11,
@@ -141,6 +154,9 @@ export function readinessBoard({functions,hosting,publication}={}){
   ownerSetupHostingAssetsPresent:hosting.ownerSetupHostingAssetsPresent,
   ownerSetupHostingAssetsExactMatch:hosting.ownerSetupHostingAssetsExactMatch,
   ownerSetupPageReady:hosting.ownerSetupPageReady,
+  financeBoundaryDiagnosticInspected:hosting.financeBoundaryDiagnosticInspected===true,
+  financeBoundaryDiagnosticPresent:hosting.financeBoundaryDiagnosticPresent===true,
+  financeBoundaryDiagnosticExactMatch:hosting.financeBoundaryDiagnosticExactMatch===true,
   partnerCompaniesApprovedForCountSharing:publication.activeApprovedPartnerCount,
   partnerCompaniesWithMappedRankCategories:publication.mappedPartnerCount,
   ownerPublicCatalogReady:publication.ownerPublicationCatalogReady,
@@ -210,7 +226,8 @@ async function main(){
  const sourceRoot=path.resolve(fileURLToPath(new URL("../..",import.meta.url)));
  const sources=Object.fromEntries(keys(SOURCES).map(file=>[
   file,readFileSync(path.join(sourceRoot,file),"utf8")]));
- const h=classifyHosting(release,version,files,sources);
+ const h=classifyHosting(release,version,files,sources,
+  readFileSync(path.join(sourceRoot,"finance-boundary-check.html"),"utf8"));
  const published=await inspectSkuPublication(getFirestore());
  const report=readinessBoard({functions:f,hosting:h,publication:published});
  console.log("NICO_OWNER_SETUP_CHAIN_READINESS "+JSON.stringify(report));
