@@ -1,0 +1,31 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
+const src=readFileSync(new URL("../.github/workflows/nico-independent-hub-consent-two-manual.yml",import.meta.url),"utf8");
+test("two-function production gate checks current main SHA and manual attempt 2",()=>{
+ assert.match(src,/GITHUB_RUN_ATTEMPT" = 1/);
+ assert.match(src,/approved=false/);
+ assert.match(src,/GITHUB_RUN_ATTEMPT" = 2/);
+ assert.match(src,/GITHUB_EVENT_NAME" = push/);
+ assert.match(src,/GITHUB_REF" = refs\/heads\/main/);
+ assert.match(src,/GITHUB_SHA" = "\$\(git rev-parse HEAD\)"/);
+ assert.match(src,/gh api repos\/Keikei-p\/-\/branches\/main/);
+ assert.match(src,/approved=true/);
+ assert.doesNotMatch(src,/\n  workflow_dispatch:/);
+});
+test("production operations only exact 2 Owner consent callable revisions and GET original metadata",()=>{
+ assert.match(src,/export TARGET=functions:ranking-owner-approvals:getRankingOwnerConsentStatus,functions:ranking-owner-approvals:setRankingOwnerConsent/);
+ assert.match(src,/DEPLOY_TARGETS.join\(','\)!==process.env.TARGET/);
+ assert.match(src,/--only "\$TARGET"/);
+ assert.match(src,/protect-ranking-original-functions-versions\.mjs before/);
+ assert.match(src,/protect-ranking-original-functions-versions\.mjs after/);
+ assert.match(src,/snapshotAllExceptTwo/);
+ assert.match(src,/compareTwoVersions/);
+ assert.match(src,/NICO_JOINT_COUNT_RANKING_ENABLED=disabled/);
+ assert.match(src,/NO_DEPLOY_RETRY_EVEN_ON_PARTIAL_CLI_FAILURE/);
+ assert.match(src,/test "\$\(git hash-object firestore.rules\)"/);
+ assert.match(src,/NO_FIRESTORE_AUTH_IAM_OR_HOSTING_CHANGES/);
+ assert.doesNotMatch(src,/--only hosting|--only firestore|firebase deploy --force/);
+ assert.equal((src.match(/firebase deploy --non-interactive/g)||[]).length,1);
+ assert.equal((src.match(/firebase deploy --non-interactive[\s\S]*?\n      - name:/g)||[]).length,1);
+});
