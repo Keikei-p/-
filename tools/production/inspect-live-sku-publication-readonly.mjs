@@ -33,9 +33,13 @@ export function assessSkuPublication({hubId,ownerUid,relations,visibility,mappin
      r.hubCompanyId!==hubId||r.active!==true||r.countSharingApproved!==true))
   fail("RELATION_UNTRUSTED");
  const mappedPartnerCount=relations.length;
+ // Consent is independent from SKU/catalog publication: never label an
+ // already approved relationship as unapproved solely because setup is missing.
+ const reciprocal=approvals.every(x=>x&&x.hubApproved===true&&
+  x.partnerApproved===true&&x.namesApproved===true);
  if(!visibility||!mapping||!catalog)return Object.freeze({
   publishedCatalogReady:false,mappingsReviewed:false,companyScopedOnOffReady:false,
-  reciprocalOwnerRankConsentReady:false,partnerCompanyCount:mappedPartnerCount,
+  reciprocalOwnerRankConsentReady:reciprocal,partnerCompanyCount:mappedPartnerCount,
   partnerCompaniesMapped:0,enabledCategoriesMappedToAllPartners:false
  });
  if(financialFields(visibility)||financialFields(mapping)||financialFields(catalog))
@@ -95,8 +99,6 @@ export function assessSkuPublication({hubId,ownerUid,relations,visibility,mappin
   if(matched.length>0)partnersReady++;
   if(matched.length!==allowed.length)allEligibleMapped=false;
  }
- const reciprocal=approvals.every(x=>x&&x.hubApproved===true&&
-  x.partnerApproved===true&&x.namesApproved===true);
  return Object.freeze({
   publishedCatalogReady:true,mappingsReviewed:true,
   companyScopedOnOffReady:true,reciprocalOwnerRankConsentReady:reciprocal,
