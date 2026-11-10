@@ -84,8 +84,8 @@ jobs:
           test "$FIREBASE_PROJECT_ID" = demo-nico-secondary-finance-fence
           test "$GCLOUD_PROJECT" = demo-nico-secondary-finance-fence
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
-          test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
-          test "$(git hash-object functions-partner-workspace/index.js)" = 38da7e9174ffea7c406c92292dccfc651b565eb0
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 614f3216e008642ddf5eda6b93c35cc0469557c3
+          test "$(git hash-object functions-partner-workspace/index.js)" = 90d51246477cf5cfa6966f3e822326ef06cccd0f
           test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
           git diff --exit-code -- firestore.rules index.html partner-workspace.html functions functions-partner-workspace firebase.json
           node --check ranking/verified-dual-count-dashboards.mjs
