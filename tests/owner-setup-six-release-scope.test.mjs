@@ -92,3 +92,26 @@ test("the manual release must have no production auto-push or legacy release edi
  assert.match(workflow,/--only "\$TARGETS"/);
  assert.doesNotMatch(workflow,/--only firestore|--only hosting|firebase deploy.*--force/);
 });
+
+test("complete regional metadata fingerprint protects ALL existing Gen2, including four count writers",async()=>{
+ const {summarizeRegional,compareProtected}=await import(
+  "../tools/production/owner-setup-live-region-metadata.mjs");
+ const other=["getPartnerWorkspace","submitPartnerWorkspaceCounts",
+  "managePartnerWorkspace","acceptPartnerWorkspaceInvite"];
+ const oldRows=other.map(n=>({
+  name:root+n,state:"ACTIVE",updateTime:"2026-11-10T00:00:00Z",
+  buildConfig:{runtime:"nodejs22",entryPoint:n},
+  serviceConfig:{uri:"https://private.a.run.app",environmentVariables:{a:"b"}}
+ }));
+ const before=summarizeRegional(oldRows,"before");
+ const after=summarizeRegional([...oldRows,...NEW.map(meta)],"after");
+ assert.equal(compareProtected(before,after).allExistingGen2FunctionsUnchanged,true);
+ assert.equal(Object.keys(before).length,4);
+ assert.throws(()=>summarizeRegional([...oldRows,meta(NEW[0])],"before"),
+  /STOP_OWNER_REGION_METADATA_OWNER_ALREADY_PRESENT/);
+ const drift=oldRows.map((x,i)=>i===1?{...x,updateTime:"2026-11-11T00:00:00Z"}:x);
+ assert.throws(()=>compareProtected(before,summarizeRegional(
+  [...drift,...NEW.map(meta)],"after")),
+  /STOP_OWNER_REGION_METADATA_EXISTING_V2_CHANGED_OR_REMOVED/);
+ assert.doesNotMatch(JSON.stringify(before),/private.a.run.app|environmentVariables/);
+});
