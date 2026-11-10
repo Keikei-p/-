@@ -1,6 +1,11 @@
 name: Main live finance Rules audit (READ ONLY / NO DEPLOY)
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/production/audit-live-finance-rules-readonly.cjs'
+      - '.github/workflows/main-live-finance-readonly.yml'
   pull_request:
     paths:
       - 'tools/production/audit-live-finance-rules-readonly.cjs'
@@ -18,7 +23,7 @@ jobs:
       - run: node --check tools/production/audit-live-finance-rules-readonly.cjs
       - run: node --test tests/main-partner-finance-gate-audit.test.cjs
   live-readonly:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && github.ref == 'refs/heads/main'
     needs: static-contract
     runs-on: ubuntu-latest
     timeout-minutes: 8
