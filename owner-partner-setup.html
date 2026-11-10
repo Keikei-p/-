@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ja">
+<head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1">
+ <meta name="robots" content="noindex,nofollow">
+ <title>協力店・ランキング一括管理 | NICO FACTORY</title>
+ <link rel="stylesheet" href="./ranking/owner-product-visibility-panel.css">
+ <link rel="stylesheet" href="./ranking/owner-reviewed-sku-mapping-panel.css">
+ <link rel="stylesheet" href="./ranking/owner-ranking-consent-panel.css">
+ <style>
+  :root{color-scheme:light;font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif;color:#16304c;background:#f4f7fb}
+  *,*::before,*::after{box-sizing:border-box}
+  body{margin:0;min-height:100vh}
+  header{background:#12375d;color:white;padding:16px max(16px,calc((100vw - 820px)/2))}
+  header a{color:#d9edff;text-decoration:none}
+  main{max-width:820px;margin:0 auto;padding:16px;display:grid;gap:18px}
+  main>h1{font-size:1.5rem;margin:0}
+  main>h2{font-size:1.16rem;margin:4px 0 0}
+  main>p{line-height:1.7;margin:0}
+  main>section{min-width:0}
+  main>select{font-size:16px;width:100%;min-height:48px;border:1px solid #afbed0;border-radius:10px;padding:10px;background:#fff;color:#16304c}
+  .note{font-size:.87rem;color:#47576c;line-height:1.6}
+  .ranking-owner-settings{background:white;padding:14px;border-radius:14px;display:grid;gap:12px}
+  .ranking-owner-company{border:1px solid #d7e1ec;border-radius:12px;padding:12px;display:grid;gap:8px}
+  .ranking-owner-company h3,.ranking-owner-settings h2{margin:0}
+  .ranking-owner-company p{margin:0}
+  .ranking-owner-save{min-height:44px;border:0;background:#1763ba;color:#fff;border-radius:9px;font-size:15px;font-weight:700}
+  .ranking-owner-save:disabled{opacity:.5}
+  .ranking-owner-confirm{display:flex;gap:10px;align-items:center;line-height:1.5}
+  .ranking-owner-confirm input{width:22px;height:22px}
+  @media(max-width:540px){main{padding:12px;gap:14px}header{padding:12px 16px}}
+ </style>
+</head>
+<body>
+<header><a href="./index.html">NICO FACTORY ← 自社アプリに戻る</a></header>
+<main>
+ <p class="note">この画面は既存メールログインを引き継ぎます。ランキング公開・件数連携はサーバーと双方Ownerの承認が揃うまで有効になりません。金額情報は表示しません。</p>
+ <div id="ownerSetupApp" role="region" aria-label="協力店・ランキング設定" aria-live="polite"></div>
+ <p class="note">商材をOFFにしても保存済み件数や履歴は削除しません。SB光・Airの旧合算は自動分割せず、承認した対応だけを登録します。</p>
+</main>
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+import {getAuth,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js";
+import {mountOwnerPartnerSetup} from "./ranking/owner-partner-setup-mount.mjs";
+const app=initializeApp({
+ apiKey:"AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
+ authDomain:"sales-management-cc116.firebaseapp.com",
+ projectId:"sales-management-cc116",
+ storageBucket:"sales-management-cc116.firebasestorage.app",
+ messagingSenderId:"904932511564",
+ appId:"1:904932511564:web:6583e8b0c585231b9049e"
+});
+mountOwnerPartnerSetup({
+ document,root:document.getElementById("ownerSetupApp"),
+ auth:getAuth(app),functions:getFunctions(app,"asia-northeast1"),
+ httpsCallable,onAuthStateChanged
+});
+</script>
+</body>
+</html>

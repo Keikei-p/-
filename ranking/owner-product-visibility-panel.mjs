@@ -27,10 +27,12 @@ const el=(doc,tag,text,klass)=>{
  return x;
 };
 export function createOwnerProductVisibilityPanel({
- document,root,auth,load,save
+ document,root,auth,load,save,partnerCompanyId=null
 }={}){
  if(!document?.createElement||!root?.replaceChildren||
-    !auth||typeof load!=="function"||typeof save!=="function")fail();
+    !auth||typeof load!=="function"||typeof save!=="function"||
+    (partnerCompanyId!==null&&(!ID.test(partnerCompanyId)||
+     ["__proto__","prototype","constructor"].includes(partnerCompanyId))))fail();
  let generation=0,closed=false,rendered=null,busy=false;
  const clear=()=>{root.replaceChildren();rendered=null;};
  function status(text){
@@ -49,20 +51,33 @@ export function createOwnerProductVisibilityPanel({
    if(closed||token!==generation||auth.currentUser!==identity)return false;
    if(typeof bearer!=="string"||!bearer)fail();
    const view=validate(await load({token:bearer}));
+   // Company switches are the intersection of globally published SKUs
+   // and the current company override. Missing override inherits global.
+   const scoped=partnerCompanyId!==null;
+   const settings=view.partnerOverrides;
+   if(scoped&&(!settings||typeof settings!=="object"||
+      Array.isArray(settings)||
+      Object.values(settings).some(v=>!Array.isArray(v)||
+       v.some(x=>typeof x!=="string"||!ID.test(x)))))fail();
+   const partnerAllowed=scoped?new Set(
+    Object.hasOwn(settings,partnerCompanyId)?settings[partnerCompanyId]:
+     view.products.filter(x=>x.enabled).map(x=>x.id)):null;
    if(closed||token!==generation||auth.currentUser!==identity)return false;
    const page=el(document,"section",undefined,"nico-owner-publications");
-   page.appendChild(el(document,"h2","協力店に公開する商材"));
+   page.appendChild(el(document,"h2",scoped?"選択した協力店の商材ON/OFF":"協力店に公開する商材"));
    page.appendChild(el(document,"p",
-    "ONの商材だけが協力店の件数と合同ランキングの対象です。OFFにしても保存済みの件数・履歴は消えません。"));
+    scoped?"自社で全体公開ONの商材だけを切替できます。OFFでも保存済み件数・履歴は消えません。":"ONの商材だけが協力店の件数と合同ランキングの対象です。OFFにしても保存済みの件数・履歴は消えません。"));
    for(const product of view.products){
     const label=el(document,"label",undefined,"nico-owner-product-switch");
     const checkbox=el(document,"input");
     checkbox.type="checkbox";
-    checkbox.checked=product.enabled;
-    checkbox.disabled=!product.active||busy;
+    const currentEnabled=scoped?
+     product.enabled&&partnerAllowed.has(product.id):product.enabled;
+    checkbox.checked=currentEnabled;
+    checkbox.disabled=!product.active||busy||(scoped&&!product.enabled);
     checkbox.setAttribute?.("aria-label",product.name+" を協力店に公開");
     const name=el(document,"span",product.name);
-    const flag=el(document,"strong",product.enabled?"ON":"OFF");
+    const flag=el(document,"strong",currentEnabled?"ON":"OFF");
     label.appendChild(checkbox);label.appendChild(name);label.appendChild(flag);
     checkbox.addEventListener("change",async()=>{
      if(closed||busy||auth.currentUser!==identity)return;
@@ -73,7 +88,7 @@ export function createOwnerProductVisibilityPanel({
       if(closed||auth.currentUser!==identity)return;
       const result=await save({token:authToken,productId:product.id,
        enabled:checkbox.checked,expectedVersion:view.version,
-       partnerCompanyId:null});
+       partnerCompanyId});
       if(!result||typeof result.saved!=="boolean"||
          !Number.isSafeInteger(result.version)||
          result.productId!==product.id||
