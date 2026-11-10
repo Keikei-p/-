@@ -247,20 +247,26 @@ export function renderVerifiedDualCountDashboard({document,root,payload}={}){
  * Clears stale name/score immediately on identity change and failed reload.
  */
 export function createVerifiedDualCountController({
- document,root,auth,load,asOf
+ document,root,auth,load,asOf,availablePeriods=["day","week","month"],
+ allowFilters=true
 }={}){
  if(!document||!root||typeof root.replaceChildren!=="function"||
-    !auth||typeof load!=="function"||!validDate(asOf))halt();
+    !auth||typeof load!=="function"||!validDate(asOf)||
+    !Array.isArray(availablePeriods)||availablePeriods.length<1||
+    availablePeriods.length>3||new Set(availablePeriods).size!==availablePeriods.length||
+    availablePeriods.some(p=>!["day","week","month"].includes(p))||
+    typeof allowFilters!=="boolean")halt();
+ const permitted=new Set(availablePeriods);
  let generation=0,closed=false;
- const current={period:"day",day:asOf,filters:{}};
+ const current={period:availablePeriods[0],day:asOf,filters:{}};
  const clear=()=>root.replaceChildren();
  const thisSafePeriod=(kind,day=current.day)=>{
-  if(!["day","week","month"].includes(kind)||!validDate(day)||day>asOf)halt();
+  if(!permitted.has(kind)||!validDate(day)||day>asOf)halt();
   current.period=kind;current.day=day;
   return refresh();
  };
  const thisSafeFilter=(key,value)=>{
-  if(!["companyId","teamId","uid","productId"].includes(key)||
+  if(!allowFilters||!["companyId","teamId","uid","productId"].includes(key)||
      typeof value!=="string"||value.length>(key==="productId"?300:200)||
      (value!==""&&!new RegExp("^[A-Za-z0-9_:-]{1,"+(key==="productId"?300:200)+"}$").test(value)))halt();
   if(value==="")delete current.filters[key];
@@ -301,17 +307,20 @@ export function createVerifiedDualCountController({
    }
    selectControl("集計期間",current.period,[
     ["day","日"],["week","週"],["month","月"]
-   ],value=>thisSafePeriod(value));
+   ].filter(([value])=>permitted.has(value)),value=>thisSafePeriod(value));
    const dayWrap=el(document,"label","nico-dual-control");
-   add(dayWrap,document,"span","","基準日");
+   const monthOnly=permitted.size===1&&permitted.has("month");
+   add(dayWrap,document,"span","",monthOnly?"対象月":"基準日");
    const dayInput=el(document,"input","");
-   dayInput.type="date";dayInput.value=current.day;dayInput.max=asOf;
+   dayInput.type=monthOnly?"month":"date";
+   dayInput.value=monthOnly?current.day.slice(0,7):current.day;
+   dayInput.max=monthOnly?asOf.slice(0,7):asOf;
    dayInput.addEventListener("change",()=>{
     if(token!==generation||identity!==auth.currentUser||closed)return;
-    void thisSafePeriod(current.period,dayInput.value);
+    void thisSafePeriod(current.period,monthOnly?dayInput.value+"-01":dayInput.value);
    });
    dayWrap.appendChild(dayInput);toolbar.appendChild(dayWrap);
-   if(data.role==="hub_owner"){
+   if(data.role==="hub_owner"&&allowFilters){
     const companyRows=data.companyBreakdown.map(x=>[x.id,x.name]);
     selectControl("会社",current.filters.companyId??"",[
      ["","全社"],...companyRows

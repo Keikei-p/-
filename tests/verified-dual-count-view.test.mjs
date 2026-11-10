@@ -176,6 +176,32 @@ test("server-bound controller refresh uses only period/filters and supports owne
  assert.equal(calls.at(-1).period.kind,"month");
  ctrl.destroy();assert.equal(root.children.length,0);
 });
+test("canonical month-only controller renders month picker without unsupported daily/filter actions",async()=>{
+ const auth={currentUser:{uid:"owner",emailVerified:true,getIdToken:async()=>{}}};
+ const root=new Node("main"),calls=[];
+ const ctrl=createVerifiedDualCountController({
+  document:doc,root,auth,asOf:"2026-11-08",
+  availablePeriods:["month"],allowFilters:false,
+  load:async ({period,filters})=>{
+   calls.push({period,filters});
+   return buildVerifiedCountDashboard({...input("partner_owner"),period});
+  }
+ });
+ assert.equal(await ctrl.refresh(),true);
+ const toolbar=find(root,"nico-dual-controls");
+ const selects=walk(toolbar).filter(x=>x.tagName==="select");
+ assert.equal(selects.length,1,"month only, no fake unsupported company/person filters");
+ assert.deepEqual(selects[0].children.map(x=>x.value),["month"]);
+ const month=walk(toolbar).find(x=>x.tagName==="input");
+ assert.equal(month.type,"month");
+ assert.equal(month.value,"2026-11");
+ assert.deepEqual(calls[0].filters,{});
+ assert.equal(calls[0].period.kind,"month");
+ assert.throws(()=>ctrl.setPeriod("day","2026-11-08"),/件数の権限/);
+ assert.throws(()=>ctrl.setFilter("companyId","hub"),/件数の権限/);
+ assert.equal(calls.length,1);
+ ctrl.destroy();
+});
 test("auth switch while GET pending never displays former company's results",async()=>{
  let resolve;const pending=new Promise(r=>{resolve=r;});
  const old={uid:"owner",emailVerified:true,getIdToken:async()=>{}};
