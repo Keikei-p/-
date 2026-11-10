@@ -10,7 +10,8 @@ const {execFileSync}=require("node:child_process");
 const assert=require("node:assert/strict");
 const permitted=process.env.GITHUB_EVENT_NAME==="pull_request"&&
  ["feat/partner-sku-onoff-count-save-safe-20261110",
-  "fix/partner-count-public-catalog-finance-label-20261111"].includes(process.env.GITHUB_HEAD_REF)||
+  "fix/partner-count-public-catalog-finance-label-20261111",
+  "fix/partner-onoff-count-only-parity-20261111"].includes(process.env.GITHUB_HEAD_REF)||
  process.env.GITHUB_EVENT_NAME==="push"&&
  process.env.GITHUB_REF==="refs/heads/main";
 assert.ok(permitted,"PUBLICATION_WRITE_REVIEW_PR_OR_MAIN_ONLY_NO_DEPLOY");
@@ -19,9 +20,9 @@ for(const key of ["GOOGLE_APPLICATION_CREDENTIALS","FIREBASE_SERVICE_ACCOUNT_JSO
 const reviewed=Object.freeze({
  "functions-partner-workspace/index.js":"90d51246477cf5cfa6966f3e822326ef06cccd0f",
  "functions-partner-workspace/service.cjs":"614f3216e008642ddf5eda6b93c35cc0469557c3",
- "functions-partner-workspace/submission-publication-guard.cjs":"4a6eb5494dbe1a94aaef49cb319ee6478fc78e68",
- "ranking/partner-submission-publication-guard.mjs":"b5b6892254e830a5957bae6a7521a6fafa270a99",
- "tests/partner-submission-publication-guard.test.mjs":"f731e12830f5a367726b0f53e27a3865c429493b",
+ "functions-partner-workspace/submission-publication-guard.cjs":"25e41cbcc6dcbcc3d26792278e05ad263b817f43",
+ "ranking/partner-submission-publication-guard.mjs":"4eacc641b4ca98363f4298b89e471e97cac13f29",
+ "tests/partner-submission-publication-guard.test.mjs":"f9c1725a60b638e88cdca42a5d178d8c56cb6a4f",
  "tests/partner-workspace.test.cjs":"decec4fa1278aa13a82a8a795ac3950a615f6520",
  "partner-workspace.html":"431b200e02934315eda57b6998bdde801252f78f",
  "index.html":"88ef5636bfe9254e71f2109d452b6d3049f99861",
