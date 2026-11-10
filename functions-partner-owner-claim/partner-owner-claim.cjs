@@ -216,8 +216,15 @@ function createPartnerOwnerClaimCallables({
       (savedUser.accessKind!=null&&savedUser.accessKind!=="internal"))denied();
    issuer.email=typeof savedUser.email==="string"?
     savedUser.email.toLowerCase():actor.email;
-   if(issuer.email===actor.email)denied();
-   if(issuer.email!==actor.email&&!validMail(issuer.email))denied();
+   if(issuer.email===actor.email||!validMail(issuer.email))denied();
+   // The issuing Hub Owner must still be enabled AND email verified in
+   // Firebase Auth, not only present in legacy membership documents.
+   let issuerAuth;
+   try{issuerAuth=await getAuth().getUser(issuer.uid);}catch{denied()}
+   if(!issuerAuth||issuerAuth.uid!==issuer.uid||
+      issuerAuth.disabled===true||issuerAuth.emailVerified!==true||
+      typeof issuerAuth.email!=="string"||
+      issuerAuth.email.trim().toLowerCase()!==issuer.email)denied();
    if(await hubOwner(tx,issuer)!==i.hubCompanyId)denied();
    const p=await partnerFromHub(tx,i.hubCompanyId,i.partnerCompanyId);
    // Reject ALL existing user/secondary membership, even old internal email:
