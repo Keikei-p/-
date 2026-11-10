@@ -151,7 +151,7 @@ export function createOwnerRankingConsentStatusReader({db}={}){
      ownApproved:own.approved,otherApproved:other.approved,
      version:own.version,
      canEdit:rel.active===true&&rel.countSharingApproved===true&&
-      partner.active===true&&ownerClaimed
+      partner.active===true&&(!partnerViewer||ownerClaimed)
     });
    }
    if(partnerViewer&&partners.length!==1)STOP();

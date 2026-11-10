@@ -84,8 +84,13 @@ export function createRankingOwnerConsentService({db,FieldValue}={}){
     tx.get(db.collection("partnerRelations").doc(partnerCompanyId))
    ]);
    const hub=doc(hubSnap),partner=doc(partnerSnap),rel=doc(relationSnap);
+   // Hub-approved partner workspaces are often created before a distinct
+   // email Owner has accepted an invitation. The Hub Owner may approve
+   // ONLY the Hub's own side; the absent Partner Owner can NEVER consent.
+   const partnerOwnerUnclaimed=partner.ownerUid==null||partner.ownerUid==="";
    if(!obj(hub)||!obj(partner)||!obj(rel)||!id(hub.ownerUid)||
-      !id(partner.ownerUid)||hub.active===false||
+      (!partnerOwnerUnclaimed&&!id(partner.ownerUid))||
+      (partnerViewer&&partnerOwnerUnclaimed)||hub.active===false||
       ![undefined,"internal","direct"].includes(hub.companyKind)||
       partner.active!==true||partner.companyKind!=="partner"||
       partner.hubCompanyId!==hubId||
@@ -95,7 +100,18 @@ export function createRankingOwnerConsentService({db,FieldValue}={}){
     stop();
    const approvalRef=companies(companyId).collection("rankingApprovals")
     .doc(partnerViewer?hubId:partnerCompanyId);
-   const consentSnap=await tx.get(approvalRef);
+   const [consentSnap,partnerConsentSnap]=await Promise.all([
+    tx.get(approvalRef),
+    ...(!partnerViewer&&partnerOwnerUnclaimed?[
+     tx.get(companies(partnerCompanyId).collection("rankingApprovals").doc(hubId))
+    ]:[])
+   ]);
+   // Never ignore fabricated or orphaned Partner-side approvals on an
+   // unclaimed workspace, even when the request comes from a real Hub Owner.
+   if(partnerOwnerUnclaimed&&(
+      partnerConsentSnap?.exists===true||
+      rel.combinedRankingApprovedByPartner===true||
+      rel.individualNamesApprovedByPartner===true))stop();
    const old=doc(consentSnap),version=priorVersion(consentSnap);
    if(version!==expectedVersion)stop();
    const side=partnerViewer?"Partner":"Hub";

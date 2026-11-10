@@ -8,7 +8,7 @@ const deployed=readFileSync(new URL(
 test("reviewed server consent status and vendored production callable stay byte-for-byte identical",()=>{
  assert.equal(deployed,canonical);
  assert.match(deployed,/const ownerClaimed=id\(partner.ownerUid\)/);
- assert.match(deployed,/partner.active===true&&ownerClaimed/);
+ assert.match(deployed,/partner.active===true&&\(!partnerViewer\|\|ownerClaimed\)/);
  assert.match(deployed,/partnerApprovalSnap.exists/);
  assert.match(deployed,/rel.combinedRankingApprovedByPartner===true/);
  assert.match(deployed,/rel.individualNamesApprovedByPartner===true/);
