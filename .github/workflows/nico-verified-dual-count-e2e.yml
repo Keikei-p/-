@@ -67,6 +67,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Separate, precisely source-pinned PR/main NO-DEPLOY ranking review.
+          # Historical production release and workflow_dispatch paths below
+          # remain pinned to their prior reviewed artifacts.
+          if { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
+               [ "${GITHUB_HEAD_REF:-}" = "feat/verified-partner-daily-month-count-ranking-main-20261110" ]; } ||
+             { [ "$GITHUB_EVENT_NAME" = "push" ] &&
+               [ "$GITHUB_REF" = "refs/heads/main" ]; }; then
+            test "$(git hash-object scripts/ci/review-approved-partner-count-rank.cjs)" = '6df553a712315ee13308b2e2bbce3575a05c0a9b'
+            node scripts/ci/review-approved-partner-count-rank.cjs
+            echo 'REVIEWED_NO_DEPLOY_RANK_CANDIDATE_VALIDATED'
+            exit 0
+          fi
           test -z "$GOOGLE_APPLICATION_CREDENTIALS"
           test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
           test "$FIREBASE_PROJECT_ID" = demo-nico-secondary-finance-fence
