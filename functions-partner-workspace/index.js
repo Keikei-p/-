@@ -10,7 +10,10 @@ const service=makeWorkspace({
  db:getFirestore(),getAuth,FieldValue,Timestamp,HttpsError,
  enabled:()=>process.env.PARTNER_WORKSPACE_ENABLED==="enabled",
  // Must be explicitly enabled only after approved SKU mapping and finance proof.
- sharedRankingEnabled:()=>process.env.NICO_PARTNER_SHARED_RANKING_ENABLED==="enabled"
+ sharedRankingEnabled:()=>process.env.NICO_PARTNER_SHARED_RANKING_ENABLED==="enabled",
+ // Separate hard OFF: existing count save/correction behavior is unchanged
+ // until owner SKU publication, finance denial and restore are verified.
+ submissionPublicationEnabled:()=>process.env.NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED==="enabled"
 });
 const opts={region:"asia-northeast1",maxInstances:3,
  cors:["https://nico-factory.web.app"]};
