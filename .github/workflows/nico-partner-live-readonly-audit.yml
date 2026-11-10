@@ -5,12 +5,16 @@ on:
     branches: [main]
     paths:
       - 'tools/production/audit-live-partner-counts.mjs'
+      - 'tools/production/inspect-live-sku-publication-readonly.mjs'
+      - 'tests/inspect-live-sku-publication-readonly.test.mjs'
       - 'tests/nico-partner-live-readonly-audit.test.mjs'
       - '.github/workflows/nico-partner-live-readonly-audit.yml'
   push:
     branches: [main]
     paths:
       - 'tools/production/audit-live-partner-counts.mjs'
+      - 'tools/production/inspect-live-sku-publication-readonly.mjs'
+      - 'tests/inspect-live-sku-publication-readonly.test.mjs'
       - 'tests/nico-partner-live-readonly-audit.test.mjs'
       - '.github/workflows/nico-partner-live-readonly-audit.yml'
       - 'partner-workspace.html'
@@ -33,7 +37,8 @@ jobs:
         run: |
           set -euo pipefail
           node --check tools/production/audit-live-partner-counts.mjs
-          node --test tests/nico-partner-live-readonly-audit.test.mjs
+          node --check tools/production/inspect-live-sku-publication-readonly.mjs
+          node --test tests/nico-partner-live-readonly-audit.test.mjs tests/inspect-live-sku-publication-readonly.test.mjs
           node --test tests/partner-workspace.test.cjs
           node --test tests/partner-existing-ranking.test.cjs
           node --test tests/partner-money-free-workspace.test.cjs
@@ -56,7 +61,8 @@ jobs:
           set -euo pipefail
           node -e "const fs=require('node:fs');if(JSON.parse(fs.readFileSync('.firebaserc','utf8')).projects.default!=='sales-management-cc116')process.exit(1)"
           node --check tools/production/audit-live-partner-counts.mjs
-          node --test tests/nico-partner-live-readonly-audit.test.mjs
+          node --check tools/production/inspect-live-sku-publication-readonly.mjs
+          node --test tests/nico-partner-live-readonly-audit.test.mjs tests/inspect-live-sku-publication-readonly.test.mjs
       - name: Configure existing authorized credentials for READ ONLY (no echo)
         shell: bash
         env:
@@ -71,6 +77,12 @@ jobs:
         run: npm install --prefix functions --ignore-scripts --package-lock=false
       - name: READ ONLY - inspect deployed Rules and compare partner count summaries with staff entries
         run: node tools/production/audit-live-partner-counts.mjs
+      - name: READ ONLY - verify Owner SKU publication and mapping can actually serve existing partner count saves
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/inspect-live-sku-publication-readonly.mjs
+          echo 'PRODUCTION_DOCUMENT_WRITES=0 PRODUCTION_FUNCTION_DEPLOYS=0'
       - name: Prepare Java and Firestore unit test dependencies
         uses: actions/setup-java@v4
         with:
