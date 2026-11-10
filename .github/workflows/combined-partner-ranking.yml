@@ -120,16 +120,24 @@ jobs:
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
           # New write policy is strictly OFF in production. Verify the
           # EXACT reviewed source before running the real isolated emulator.
+          # Main always validates BOTH current source-pinned reviewers.
+          # This PR checks the new ranking reviewer without running any release.
           if { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
-               [ "${GITHUB_HEAD_REF:-}" = "feat/partner-sku-onoff-count-save-safe-20261110" ]; } ||
+               [ "${GITHUB_HEAD_REF:-}" = "fix/main-count-ranking-reviewed-ci-20261111" ]; } ||
              { [ "$GITHUB_EVENT_NAME" = "push" ] &&
                [ "$GITHUB_REF" = "refs/heads/main" ]; }; then
+            test "$(git hash-object scripts/ci/review-partner-sku-publication-write.cjs)" = 'e05c7faf118cd5afa1850f00db83f474cc8b9b43'
+            test "$(git hash-object scripts/ci/review-approved-partner-count-rank.cjs)" = '2ee6cfe39964074496cfb4a4aadf662687f52636'
+            if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+              node scripts/ci/review-partner-sku-publication-write.cjs
+            fi
+            node scripts/ci/review-approved-partner-count-rank.cjs
+          elif [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
+               [ "${GITHUB_HEAD_REF:-}" = "feat/partner-sku-onoff-count-save-safe-20261110" ]; then
             test "$(git hash-object scripts/ci/review-partner-sku-publication-write.cjs)" = '253c1811410e87a2a5546fd148bd713ca90b348d'
             node scripts/ci/review-partner-sku-publication-write.cjs
-          elif { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
-                 [ "${GITHUB_HEAD_REF:-}" = "feat/verified-partner-daily-month-count-ranking-main-20261110" ]; } ||
-               { [ "$GITHUB_EVENT_NAME" = "push" ] &&
-                 [ "$GITHUB_REF" = "refs/heads/main" ]; }; then
+          elif [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
+               [ "${GITHUB_HEAD_REF:-}" = "feat/verified-partner-daily-month-count-ranking-main-20261110" ]; then
             test "$(git hash-object scripts/ci/review-approved-partner-count-rank.cjs)" = '3f1447f9f45fcfa34da6c25dc10165da54b2f833'
             node scripts/ci/review-approved-partner-count-rank.cjs
           else

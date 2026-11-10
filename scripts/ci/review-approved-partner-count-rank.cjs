@@ -10,14 +10,15 @@ const {execFileSync}=require("node:child_process");
 const assert=require("node:assert/strict");
 const permitted=process.env.GITHUB_EVENT_NAME==="pull_request"&&
  ["feat/verified-partner-daily-month-count-ranking-main-20261110",
-  "fix/owner-catalog-review-pins-20261111"].includes(process.env.GITHUB_HEAD_REF)||
+  "fix/owner-catalog-review-pins-20261111",
+  "fix/main-count-ranking-reviewed-ci-20261111"].includes(process.env.GITHUB_HEAD_REF)||
  process.env.GITHUB_EVENT_NAME==="push"&&process.env.GITHUB_REF==="refs/heads/main";
 assert.ok(permitted,"REVIEW_ONLY_NEVER_WORKFLOW_DISPATCH");
 const hashes=Object.freeze({
  "functions-partner-workspace/service.cjs":"614f3216e008642ddf5eda6b93c35cc0469557c3",
  "functions-partner-workspace/index.js":"90d51246477cf5cfa6966f3e822326ef06cccd0f",
- "functions-partner-workspace/shared-count-standings.cjs":"4655436c58a73210f7b6ab38223652bb8376ed97",
- "functions-partner-workspace/approved-published-categories.cjs":"6ae0009c85f4fb95233a4b3880ea4ea3ae906f86",
+ "functions-partner-workspace/shared-count-standings.cjs":"a2e1a0458aa75b69526e8e31a8b607c90951708e",
+ "functions-partner-workspace/approved-published-categories.cjs":"0e020d2b38152cd3669d65bf005bc76fba2cc568",
  "partner-workspace.html":"431b200e02934315eda57b6998bdde801252f78f",
  "ranking/owner-product-visibility-firestore.mjs":"3d3924aa52a2655879605c358f26d36953462262",
  "functions-ranking-approvals/vendor/owner-product-visibility-firestore.mjs":"3d3924aa52a2655879605c358f26d36953462262",
