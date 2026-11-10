@@ -1,0 +1,11 @@
+{
+  "functions": {
+    "source": "functions-partner-owner-claim",
+    "codebase": "partner-owner-claim",
+    "ignore": [
+      "node_modules",
+      ".git",
+      "firebase-debug.log"
+    ]
+  }
+}
