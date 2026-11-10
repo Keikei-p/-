@@ -38,3 +38,20 @@ test("optional team breakdown labels never reveal cashback monetary tiers",()=>{
  assert.match(card,/label\.textContent="件数区分 "/);
  assert.doesNotMatch(card,/label\.textContent=tier==="0"\?"CB0"/);
 });
+
+test("partner count UI uses competition ties for team person and product ranks",()=>{
+ const workspace=fs.readFileSync(path.join(__dirname,"../partner-workspace.html"),"utf8");
+ const start=workspace.indexOf("function mapCountRanks(");
+ const end=workspace.indexOf("function renderTeamCountDetail()",start);
+ assert.ok(start>0&&end>start);
+ const vm=require("node:vm");
+ const rank=vm.runInNewContext(workspace.slice(start,end)+"\nmapCountRanks");
+ const values=[{count:5},{count:5},{count:2},{count:2},{count:1}];
+ assert.deepEqual(Array.from(rank(values,x=>x.count,(_,r)=>r)),[1,1,3,3,5]);
+ assert.throws(()=>rank([{count:-1}],x=>x.count,(_,r)=>r),/invalid count rank/);
+ assert.match(workspace,/mapCountRanks\(summary\.groups/);
+ assert.match(workspace,/mapCountRanks\(summary\.people/);
+ assert.match(workspace,/mapCountRanks\(people,p=>p\.count/);
+ assert.match(workspace,/mapCountRanks\(Object\.entries\(summary\.products\)/);
+ assert.match(workspace,/mapCountRanks\(groupedProductCounts\(/);
+});
