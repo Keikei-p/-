@@ -86,7 +86,7 @@ jobs:
           inputs.deployment_approval == 'CONFIRM_SIX_OWNER_SETTINGS_ONLY' &&
           inputs.usage_approval == 'FUNCTION_BUILDS_AND_POSSIBLE_CHARGES_EXPLICITLY_APPROVED' &&
           inputs.rules_approval == 'NO_RULES_OR_HOSTING_CHANGES' &&
-          needs.offline.result == 'success' }
+          needs.offline.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
@@ -99,7 +99,7 @@ jobs:
       - name: Pin exact current main commit and all six functions before credentials
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
@@ -114,7 +114,7 @@ jobs:
           npm install --global firebase-tools@15.34.1 --no-audit --no-fund
       - name: Configure existing service identity privately
         env:
-          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
         shell: bash
         run: |
           set -euo pipefail
@@ -154,7 +154,7 @@ jobs:
             exit 1
           fi
       - name: Independently verify exactly six additions, active env flags, all original versions unchanged
-        if: ${{ success() }
+        if: ${{ success() }}
         shell: bash
         run: |
           set -euo pipefail
@@ -164,7 +164,7 @@ jobs:
           node tools/production/owner-setup-live-region-metadata.mjs after
           echo 'SIX_OWNER_SETTINGS_CONFIG_ONLY_LIVE_VERIFY_SUCCESS'
       - name: If deployment failed, read original six versions without retry
-        if: ${{ failure() && steps.deploy.outcome == 'failure' }
+        if: ${{ failure() && steps.deploy.outcome == 'failure' }}
         shell: bash
         run: |
           node tools/production/protect-ranking-original-functions-versions.mjs after || echo 'STOP_OWNER_SIX_ORIGINALS_MAY_HAVE_DRIFTED'
