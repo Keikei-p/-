@@ -660,12 +660,36 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    const rel=relDoc.data()||{},cid=relDoc.id;
    if(!ID.test(cid)||rel.partnerCompanyId!==cid||rel.hubCompanyId!==hubId)
     fail("data-loss");
-   if(rel.active!==true||rel.countSharingApproved!==true)continue;
-   const companyDoc=await db.collection("companies").doc(cid).get();
+   // Cross-company names/individual rankings require BOTH current owners'
+   // explicit consent. Sharing aggregate counts alone is insufficient.
+   if(rel.active!==true||rel.countSharingApproved!==true||
+      rel.combinedRankingApprovedByHub!==true||
+      rel.combinedRankingApprovedByPartner!==true||
+      rel.individualNamesApprovedByHub!==true||
+      rel.individualNamesApprovedByPartner!==true)continue;
+   const [companyDoc,hubConsentSnap,partnerConsentSnap]=await Promise.all([
+    db.collection("companies").doc(cid).get(),
+    collection(hubId,"rankingApprovals").doc(cid).get(),
+    collection(cid,"rankingApprovals").doc(hubId).get()
+   ]);
    const company=companyDoc.data()||{};
    if(!companyDoc.exists||company.companyKind!=="partner"||
-      company.hubCompanyId!==hubId||!validCompanyName(company.name))fail("data-loss");
+      company.hubCompanyId!==hubId||!validCompanyName(company.name)||
+      !ID.test(company.ownerUid||""))fail("data-loss");
    if(company.active!==true)continue;
+   const consentOk=(snap,sourceCompany,expectedOwner)=>{
+    if(!snap.exists)return false;
+    const c=snap.data()||{};
+    return c.companyId===sourceCompany&&
+      c.hubCompanyId===hubId&&c.partnerCompanyId===cid&&
+      c.approvedByUid===expectedOwner&&c.active===true&&
+      c.scope==="combined_rank_only"&&
+      Number.isSafeInteger(c.version)&&c.version>=1&&c.version<=999&&
+      c.combinedRankingApproved===true&&c.individualNamesApproved===true;
+   };
+   if(!consentOk(hubConsentSnap,hubId,ownerUid)||
+      !consentOk(partnerConsentSnap,cid,company.ownerUid))
+    fail("failed-precondition");
    approved.push({cid,name:company.name});
   }
   // Require that a partner caller remains a currently approved participant.
