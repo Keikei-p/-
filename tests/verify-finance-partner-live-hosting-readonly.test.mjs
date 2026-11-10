@@ -5,7 +5,7 @@ import {uploadSha} from "../tools/hosting/owner-setup-additive-guard.mjs";
 import {assessManifest} from "../tools/production/verify-finance-partner-live-hosting-readonly.mjs";
 const name="/finance-partner-boundary-check.html";
 const version="sites/nico-factory/versions/bd2bedba406f133d";
-const origin=["/","/index.html","/finance-boundary-check.html",
+const origin=["/index.html","/finance-boundary-check.html",
  "/owner-partner-setup.html","/partner-workspace.html",
  "/partner-counts.html","/partner-invite.html"];
 const more=Array.from({length:30-origin.length},(_,i)=>"/safe-file-"+i+".js");
