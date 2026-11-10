@@ -9,7 +9,8 @@ const fs=require("node:fs");
 const {execFileSync}=require("node:child_process");
 const assert=require("node:assert/strict");
 const permitted=process.env.GITHUB_EVENT_NAME==="pull_request"&&
- process.env.GITHUB_HEAD_REF==="feat/verified-partner-daily-month-count-ranking-main-20261110"||
+ ["feat/verified-partner-daily-month-count-ranking-main-20261110",
+  "fix/owner-catalog-review-pins-20261111"].includes(process.env.GITHUB_HEAD_REF)||
  process.env.GITHUB_EVENT_NAME==="push"&&process.env.GITHUB_REF==="refs/heads/main";
 assert.ok(permitted,"REVIEW_ONLY_NEVER_WORKFLOW_DISPATCH");
 const hashes=Object.freeze({
@@ -18,8 +19,9 @@ const hashes=Object.freeze({
  "functions-partner-workspace/shared-count-standings.cjs":"4655436c58a73210f7b6ab38223652bb8376ed97",
  "functions-partner-workspace/approved-published-categories.cjs":"6ae0009c85f4fb95233a4b3880ea4ea3ae906f86",
  "partner-workspace.html":"431b200e02934315eda57b6998bdde801252f78f",
- "ranking/owner-product-visibility-firestore.mjs":"8e2289b1dd8b62f4d682dc6231a339294178abcb",
- "functions-ranking-approvals/vendor/owner-product-visibility-firestore.mjs":"8e2289b1dd8b62f4d682dc6231a339294178abcb",
+ "ranking/owner-product-visibility-firestore.mjs":"3d3924aa52a2655879605c358f26d36953462262",
+ "functions-ranking-approvals/vendor/owner-product-visibility-firestore.mjs":"3d3924aa52a2655879605c358f26d36953462262",
+ "functions-ranking-approvals/ranking/owner-product-visibility-firestore.mjs":"3d3924aa52a2655879605c358f26d36953462262",
  "index.html":"88ef5636bfe9254e71f2109d452b6d3049f99861",
  "firestore.rules":"d9f4df6a2ac0f8b5720534a2461ec66b94379190",
  "functions/index.js":"dfb4c48ada6fa89a24c898cd4a2f911bcede822f",
@@ -47,6 +49,10 @@ assert.equal(fs.readFileSync(
  "functions-ranking-approvals/vendor/owner-product-visibility-firestore.mjs","utf8"),
  fs.readFileSync("ranking/owner-product-visibility-firestore.mjs","utf8"),
  "COUNT_CATALOG_VENDOR_OUT_OF_SYNC");
+assert.equal(fs.readFileSync(
+ "functions-ranking-approvals/ranking/owner-product-visibility-firestore.mjs","utf8"),
+ fs.readFileSync("ranking/owner-product-visibility-firestore.mjs","utf8"),
+ "COUNT_CATALOG_RANKING_COPY_OUT_OF_SYNC");
 const forbidden=["GOOGLE_APPLICATION_CREDENTIALS","FIREBASE_SERVICE_ACCOUNT_JSON"];
 for(const key of forbidden)assert.ok(!process.env[key],"LIVE_CREDENTIALS_NOT_PERMITTED_"+key);
 const checks=["functions-partner-workspace/service.cjs",
