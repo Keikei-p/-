@@ -56,7 +56,7 @@ jobs:
           test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
           test "$(git hash-object functions-partner-workspace/index.js)" = 'ab551981ce12b4d291a20c0b51cbd461be60df54'
           test "$(git hash-object functions-partner-workspace/service.cjs)" = '5334aa48d7f4eb64274a6d7a8bbb4e76d4a2fb65'
-          test "$(git hash-object finance-boundary-check.html)" = '7fa664efb17f6d3337e9403498aa8c0857b35be5'
+          test "$(git hash-object finance-boundary-check.html)" = 'ba0de47af53174d3ef37a9a047818568c0527035'
           echo 'PASS_NICO_NO_DEPLOY_READINESS_ONLY'
   live:
     needs: offline
