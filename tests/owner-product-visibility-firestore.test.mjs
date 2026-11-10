@@ -257,7 +257,7 @@ test("revoked partner override stays in audit settings but is omitted from activ
  await assert.rejects(f.store.readForRanking({context:{
   ...context,role:"partner_owner",viewerCompanyId:"foreign"
  },mappingsReviewed:true}),/UNAUTHORIZED_OR_INCOMPLETE/);
- assert.equal(f.writes,4,"read-only ranking publication never mutates settings");
+ assert.equal(f.writes,6,"two Owner toggles update settings, public catalog and audits; ranking reads add zero writes");
 });
 
 
