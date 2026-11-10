@@ -1221,7 +1221,8 @@ test("shared daily standings expose verified partners to both companies without 
  assert.equal(owner.teams[0].name,"第一班");
  assert.equal(owner.productCounts.NURO,2);
  assert.equal(owner.productCounts.SBMNP,1);
- assert.deepEqual(owner.people,partner.people,"both companies see the same counts-only standings");
+ assert.deepEqual(owner.people.map(({cbCounts,...counts})=>counts),partner.people,"both parties see identical count rankings; financial CB tiers are owner-only");
+ assert(partner.people.every(person=>!Object.hasOwn(person,"cbCounts")));
  assert.equal(partner.role,"partner");
  assert.match(owner.people[0].key,/^[a-f0-9]{64}$/);
  assert.doesNotMatch(JSON.stringify(owner),/unitPrice|revenuePerUnit|totalRevenue|pricingOptions|98765|808080|197530/);
@@ -1644,7 +1645,8 @@ test("unpublishing added partner product never shares hidden historic quantities
  assert.equal(shared.companies[0].extraTotalCount,2);
  assert.equal(shared.people[0].totalCount,2);
  assert.equal(shared.teams[0].totalCount,2);
- assert.deepEqual(shared.people,partner.people,"same count-only standings for approved parties");
+ assert.deepEqual(shared.people.map(({cbCounts,...counts})=>counts),partner.people,"identical verified count standings, but partner never receives CB tiers");
+ assert(partner.people.every(person=>!Object.hasOwn(person,"cbCounts")));
  assert.equal(JSON.stringify(shared).includes('"water":7'),false);
  assert.doesNotMatch(JSON.stringify(shared),/unitPrice|totalRevenue|90000|800000|30000|500000/);
  const retained=db.store.get("companies/partner/partnerAdditionalCountEntries/"+date+"__"+staff);
