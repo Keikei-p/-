@@ -26,6 +26,7 @@ test("production operations only exact 2 Owner consent callable revisions and GE
  assert.match(src,/test "\$\(git hash-object firestore.rules\)"/);
  assert.match(src,/NO_FIRESTORE_AUTH_IAM_OR_HOSTING_CHANGES/);
  assert.doesNotMatch(src,/--only hosting|--only firestore|firebase deploy --force/);
+ assert.doesNotMatch(src,/firebase firestore:delete|firebase auth:export|deleteUser\(/);
  assert.equal((src.match(/firebase deploy --non-interactive/g)||[]).length,1);
  assert.equal((src.match(/firebase deploy --non-interactive[\s\S]*?\n      - name:/g)||[]).length,1);
 });
