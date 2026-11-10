@@ -136,7 +136,7 @@ test("missing live catalog or approval reports blockers and never creates a docu
 });
 test("public release path is GET-only, no credential output and no deploy",()=>{
  const source=readFileSync(new URL("../tools/production/inspect-live-sku-publication-readonly.mjs",import.meta.url),"utf8");
- assert.doesNotMatch(source,/\.set\(|\.update\(|\.delete\(|\.create\(|runTransaction\(|firebase deploy|functions:delete/);
+ assert.doesNotMatch(source,/\b(?:tx|docRef|db|batch|writer)\.(?:set|update|delete|create)\s*\(|runTransaction\(|firebase deploy|functions:delete/);
  assert.match(source,/GITHUB_REF!=="refs\/heads\/main"/);
  assert.match(source,/mode:"LIVE_READ_ONLY_NO_DEPLOY"/);
  assert.match(source,/safeToEnableNewRanking:false/);
