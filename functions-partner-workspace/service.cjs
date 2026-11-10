@@ -3,6 +3,7 @@
 const crypto=require("node:crypto");
 const {buildApprovedPartnerCountStandings}=require("./shared-count-standings.cjs");
 const {allowedPartnerCategories}=require("./approved-published-categories.cjs");
+const {createPartnerSubmissionPublicationGuard}=require("./submission-publication-guard.cjs");
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -12,9 +13,11 @@ const money=/(?:単価|売上|収益|利益|報酬|[¥￥$€]|\d[\d,]*円)/;
 const validCompanyName=x=>typeof x==="string"&&x.trim().length>0&&
  x.trim().length<=80&&!money.test(x);
 const clean=x=>typeof x==="string"?x.trim():"";
-function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>false,sharedRankingEnabled=()=>false,now=()=>Date.now()}={}){
+function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>false,sharedRankingEnabled=()=>false,
+ submissionPublicationEnabled=()=>false,now=()=>Date.now()}={}){
  if(!db||!getAuth||!FieldValue||!Timestamp||!HttpsError)throw Error("missing_partner_workspace_dependency");
  const fail=(code="permission-denied")=>{throw new HttpsError(code,"権限・入力内容を確認できません。");};
+ const verifySubmissionPublication=createPartnerSubmissionPublicationGuard({db});
  const validName=x=>typeof x==="string"&&NAME.test(x)&&!money.test(x);
  const validDate=x=>{
   if(typeof x!=="string"||!DATE.test(x))fail("invalid-argument");
@@ -1017,6 +1020,16 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      Object.fromEntries(KEYS.map(key=>[key,0]));
    const previous=totalSnap.exists?validateCounts(existing.counts).counts:
      Object.fromEntries(KEYS.map(key=>[key,0]));
+   // STAGING / hard OFF: validate server-owned publication in this SAME
+   // transaction against the original saved staff counts, before any writes.
+   // Never trust browser-provided prior counts or a claimed company/owner.
+   if(submissionPublicationEnabled()===true){
+    try{
+     await verifySubmissionPublication({tx,
+      scope:{verifiedByServer:true,kind:fresh.kind,uid:a.uid,cid:fresh.cid,hubId:fresh.hubId},
+      previousCounts:prior,nextCounts:counts});
+    }catch{fail("failed-precondition");}
+   }
    const aggregate={};let aggregateTotal=0;
    for(const key of KEYS){
     const n=previous[key]+counts[key]-prior[key];
