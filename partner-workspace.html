@@ -310,6 +310,25 @@ font:inherit;font-size:13px;line-height:1.6}
 </div>
  </div>
 </section>
+<!-- Shared leaderboard is inert until verified production release. -->
+<section id="approvedSharedRankings" hidden aria-label="共有件数ランキング" aria-live="polite">
+ <h2>🏆 協力店の件数ランキング</h2>
+ <p class="partner-panel-note">承認済み・公開ON商材の件数のみ。直営の実績は未統合です。未報告と0件は区別します。</p>
+ <div class="row">
+  <div><label for="approvedSharedRankPeriod">期間</label><select id="approvedSharedRankPeriod"><option value="month">月別</option><option value="day">日別</option></select></div>
+  <div><label for="approvedSharedRankMonth">対象月</label><input id="approvedSharedRankMonth" type="month"></div>
+  <button id="approvedSharedRankRefresh" type="button">合同件数を更新</button>
+ </div>
+ <p id="approvedSharedRankStatus" class="partner-panel-note" role="status"></p>
+ <h3>🏢 会社別ランキング</h3><div id="approvedSharedRankCompanies" class="scroll"></div>
+ <h3>👥 班別ランキング</h3><div id="approvedSharedRankTeams" class="scroll"></div>
+ <h3>🏅 個人ランキング</h3><div id="approvedSharedRankPeople" class="scroll"></div>
+ <h3>📦 商材別ランキング</h3><div id="approvedSharedRankProducts" class="scroll"></div>
+ <h3>🔎 会社 → 班 → 個人の詳細</h3>
+ <label for="approvedSharedRankCompanySelect">会社を選択</label>
+ <select id="approvedSharedRankCompanySelect"></select>
+ <div id="approvedSharedRankDetails" class="scroll"></div>
+</section>
 <section id="recordsBox" hidden><h2>件数登録・訂正</h2>
 <p class="muted">スタッフ本人・所属リーダー・協力店代表が登録できます。名前だけのスタッフはリーダーか代表が代理入力します。修正履歴は残ります。</p>
 <label for="staffSelect">担当者</label><select id="staffSelect"></select>
@@ -417,6 +436,150 @@ const get=call("getPartnerWorkspace"),manage=call("managePartnerWorkspace"),
  codeLogin=call("loginPartnerCompanyCode"),
  codeLogout=call("logoutPartnerCompanyCode");
 const $=id=>document.getElementById(id);
+// Strict release gate. No additional callable is executed when false.
+// Separate backend flag NICO_PARTNER_SHARED_RANKING_ENABLED must also be ON.
+const NICO_APPROVED_PARTNER_RANKING_RELEASED=false;
+let approvedRankGeneration=0,approvedRankData=null;
+const approvedRankIds=["Companies","Teams","People","Products","Details"];
+function resetApprovedRanking(){
+ ++approvedRankGeneration;approvedRankData=null;
+ const root=$("approvedSharedRankings");
+ if(root)root.hidden=true;
+ for(const suffix of approvedRankIds){
+  const el=$("approvedSharedRank"+suffix);
+  if(el)el.replaceChildren();
+ }
+ if($("approvedSharedRankStatus"))$("approvedSharedRankStatus").textContent="";
+ const chooser=$("approvedSharedRankCompanySelect");
+ if(chooser)chooser.replaceChildren();
+}
+function verifyApprovedCountRanking(value,start,end){
+ if(!value||typeof value!=="object"||Array.isArray(value)||
+  value.schema!=="nico-approved-partner-count-rank-v1"||
+  value.unit!=="件"||value.scope!=="approved_partner_counts_only"||
+  value.fullyJoint!==false||value.includesDirect!==false||
+  value.start!==start||value.end!==end||
+  !["hub","partner"].includes(value.role)||!Array.isArray(value.companies)||
+  !Array.isArray(value.teams)||!Array.isArray(value.people)||
+  !Array.isArray(value.products)||!Array.isArray(value.unreportedCompanies)||
+  !Number.isSafeInteger(value.totalCount)||value.totalCount<0)
+  throw Error("UNVERIFIED_APPROVED_COUNT_RANK");
+ // Allowlisted response fields at every level. Even a new unexpected revenue
+ // key or amount-coded category must never be shown by this UI.
+ const allow=new Set(["schema","unit","scope","includesDirect","fullyJoint","start","end",
+  "date","period","role","companies","teams","people","products","key","companyKey",
+  "teamKey","name","companyName","teamName","totalCount","counts",
+  "reportedDays","reportedStaffCount","peopleVerified","status","rank",
+  "reportCount","unreportedCompanies","partnerCountsComplete","unverifiedTeamCount",
+  "unverifiedPersonCount","historicalCompanyOnlyCount","peopleComplete","teamComplete"]);
+ const categories=new Set(KEYS);
+ const walk=(x,depth=0)=>{
+  if(depth>15)throw Error("UNVERIFIED_APPROVED_COUNT_DEPTH");
+  if(Array.isArray(x)){if(x.length>10000)throw Error("UNVERIFIED_APPROVED_COUNT_LIMIT");x.forEach(y=>walk(y,depth+1));return;}
+  if(x&&typeof x==="object"){
+   for(const [key,val] of Object.entries(x)){
+    if(!allow.has(key)&&!categories.has(key))throw Error("UNVERIFIED_APPROVED_COUNT_KEY");
+    if(categories.has(key)&&(!Number.isSafeInteger(val)||val<0))throw Error("UNVERIFIED_APPROVED_COUNT_VALUE");
+    walk(val,depth+1);
+   }
+  }else if(typeof x==="string"){
+   if(x.length>250||/(?:単価|売上|収益|利益|報酬|原価|キャッシュバック|[¥￥$€]|\d[\d,]*円)/i.test(x))
+    throw Error("UNVERIFIED_APPROVED_COUNT_TEXT");
+  }else if(typeof x==="number"&&(!Number.isSafeInteger(x)||x<0))
+   throw Error("UNVERIFIED_APPROVED_COUNT_NUM");
+ };
+ walk(value);
+ const verifyRows=rows=>{
+  if(rows.length>10000)throw Error("UNVERIFIED_APPROVED_COUNT_ROWS");
+  let previous=null,rank=0;
+  rows.forEach((row,i)=>{
+   if(typeof row.name!=="string"||!row.name.trim()||
+    !Number.isSafeInteger(row.totalCount)||row.totalCount<0||
+    !Number.isSafeInteger(row.rank)||row.rank<1||
+    (i&&row.totalCount>previous))throw Error("UNVERIFIED_APPROVED_COUNT_ORDER");
+   if(i===0||row.totalCount!==previous)rank=i+1;
+   if(row.rank!==rank)throw Error("UNVERIFIED_APPROVED_COUNT_TIE");
+   previous=row.totalCount;
+  });
+ };
+ for(const k of ["companies","teams","people","products"])verifyRows(value[k]);
+ return value;
+}
+function renderApprovedCountRanking(value){
+ const display=(id,rows,extra=()=>[])=>{
+  $(id).replaceChildren(countTable(["順位","名称","件数"],rows.map(row=>[
+   row.rank+"位",row.name+(row.companyName?"（"+row.companyName+"）":""),
+   row.totalCount+"件"+(extra(row).length?"｜"+extra(row).join("｜"):"")
+  ])));
+ };
+ display("approvedSharedRankCompanies",value.companies);
+ display("approvedSharedRankTeams",value.teams);
+ display("approvedSharedRankPeople",value.people);
+ display("approvedSharedRankProducts",value.products);
+ const chooser=$("approvedSharedRankCompanySelect"),old=chooser.value;
+ chooser.replaceChildren();
+ for(const company of value.companies){
+  const option=document.createElement("option");option.value=company.key;
+  option.textContent=company.name+"（"+company.totalCount+"件）";chooser.appendChild(option);
+ }
+ if(value.companies.some(x=>x.key===old))chooser.value=old;
+ renderApprovedCountRankingDetails();
+ const missing=value.unreportedCompanies.length;
+ $("approvedSharedRankStatus").textContent=value.start+"〜"+value.end+
+  "｜報告のある会社 "+value.companies.length+
+  "社｜未報告 "+missing+"社"+
+  (value.partnerCountsComplete?"｜件数照合済み":"｜一部未確認")+
+  (value.unverifiedTeamCount?"｜班未確認 "+value.unverifiedTeamCount+"件":"")+
+  (value.historicalCompanyOnlyCount?"｜旧会社一括 "+value.historicalCompanyOnlyCount+"件":"");
+}
+function renderApprovedCountRankingDetails(){
+ const value=approvedRankData,companyKey=$("approvedSharedRankCompanySelect").value;
+ const root=$("approvedSharedRankDetails");root.replaceChildren();
+ if(!value)return;
+ const teams=value.teams.filter(x=>x.companyKey===companyKey);
+ const members=value.people.filter(x=>x.companyKey===companyKey);
+ root.append(countTable(["班","商材内訳・件数"],teams.map(t=>[
+  t.name, Object.entries(t.counts||{}).filter(([,n])=>n>0)
+   .map(([name,n])=>name+" "+n+"件").join(" / ")||"報告済み0件"
+ ])));
+ root.append(countTable(["班","担当者","件数"],members.map(p=>[
+  p.teamName||"所属班未確認",p.name,p.totalCount+"件"
+ ])));
+}
+async function loadApprovedCountRanking(){
+ if(!NICO_APPROVED_PARTNER_RANKING_RELEASED||!data||
+  !$("approvedSharedRankings")||$("approvedSharedRankings").hidden)return;
+ const gen=++approvedRankGeneration;
+ const identity=auth.currentUser,session=activeCodeSession,company=workspaceCompanyId;
+ const month=$("approvedSharedRankMonth").value,
+       period=$("approvedSharedRankPeriod").value;
+ if(!/^20\d\d-(0[1-9]|1[0-2])$/.test(month)||!["day","month"].includes(period))return;
+ const today=[dateParts.year,dateParts.month,dateParts.day].join("-");
+ const date=period==="month"?(month===today.slice(0,7)?today:
+  new Date(Date.UTC(+month.slice(0,4),+month.slice(5,7),0)).toISOString().slice(0,10)):
+  $("date").value;
+ const start=period==="month"?month+"-01":date,end=date;
+ if(date>today||date.slice(0,7)!==month)return;
+ approvedRankData=null;
+ for(const suffix of approvedRankIds)$("approvedSharedRank"+suffix).replaceChildren();
+ $("approvedSharedRankCompanySelect").replaceChildren();
+ $("approvedSharedRankStatus").textContent="承認済み件数を照合中…";
+ try{
+  const value=(await get({date,rankingPeriod:period,sharedCountRankings:true})).data;
+  if(gen!==approvedRankGeneration||auth.currentUser!==identity||
+   activeCodeSession!==session||workspaceCompanyId!==company)return;
+  approvedRankData=verifyApprovedCountRanking(value,start,end);
+  renderApprovedCountRanking(approvedRankData);
+ }catch{
+  if(gen!==approvedRankGeneration)return;
+  approvedRankData=null;
+  $("approvedSharedRankStatus").textContent=
+   "件数を検証できません。公開商材設定・承認・アクセス権を確認してください。";
+ }
+}
+$("approvedSharedRankCompanySelect").onchange=renderApprovedCountRankingDetails;
+$("approvedSharedRankRefresh").onclick=()=>void loadApprovedCountRanking();
+
 const KEYS=["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"];
 let inviteToken=new URL(location.href).searchParams.get("invite")||"";
 const dateParts=Object.fromEntries(new Intl.DateTimeFormat("en-US",
@@ -992,6 +1155,13 @@ for(const x of ["Dashboard","Records","People","View","Missing"])$("tab"+x).oncl
 function cell(row,value){const td=document.createElement("td");td.textContent=String(value);row.append(td)}
 function draw(){
  const hub=data?.role==="hub";
+ resetApprovedRanking();
+ if(NICO_APPROVED_PARTNER_RANKING_RELEASED&&data){
+  const panel=$("approvedSharedRankings");
+  panel.hidden=false;
+  $("approvedSharedRankMonth").value=$("dashboardPartnerMonth").value;
+  void loadApprovedCountRanking();
+ }
  $("appBox").hidden=false;$("loginBox").hidden=true;$("inviteAccept").hidden=true;
  $("who").textContent=hub?"自社オーナー・協力店報告":(data.companyName||"協力店")+"｜"+(data.role||"");
  renderCompanyOverview();
@@ -1156,7 +1326,7 @@ async function refresh(){if(!activeCodeSession&&(!auth.currentUser||!auth.curren
  data=res;countDayCache.set((activeCodeSession?"code-session":"email-"+auth.currentUser.uid)+"|"+res.date,{savedAt:Date.now(),response:res});draw();notice("最新の件数を読み込みました。");
  }catch(e){
   if(current!==nonce)return;
-  data=null;$("appBox").hidden=true;
+  data=null;resetApprovedRanking();$("appBox").hidden=true;
   if(activeCodeSession&&["functions/unauthenticated","functions/permission-denied"].includes(e?.code)){
    clearCompanySession();
    notice("会社コードのログイン期限が切れたか、権限が変更されました。もう一度ログインしてください。",true);
@@ -1390,7 +1560,7 @@ $("logout").onclick=async()=>{
  if(activeCodeSession){
   const previous=activeCodeSession;
   try{await codeLogout({codeSessionToken:previous})}catch{ /* local logout even offline */ }
-  clearCompanySession();++nonce;loading=false;data=null;countDayCache.clear();
+  clearCompanySession();++nonce;loading=false;data=null;countDayCache.clear();resetApprovedRanking();
   $("appBox").hidden=true;$("loginBox").hidden=false;
   notice("協力店の会社コードからログアウトしました。");
   return;
@@ -1403,7 +1573,7 @@ onAuthStateChanged(auth,async u=>{
  $("transferExistingInternal").checked=false;
  $("keepInternalMembership").checked=false;
  ++nonce;++countLoadId;loading=false;companyCodeSession=false;data=null;countDayCache.clear();
- clearCountOnlyDashboard();$("companyOverview").hidden=true;
+ clearCountOnlyDashboard();resetApprovedRanking();$("companyOverview").hidden=true;
  $("workspaceTitle").textContent="NICO FACTORY｜協力店 実績管理";
  $("appBox").hidden=true;$("loginBox").hidden=false;
  $("loginLogout").hidden=!u;$("inviteAccept").hidden=true;$("verify").hidden=true;
