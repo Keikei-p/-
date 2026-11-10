@@ -28,7 +28,7 @@ input{width:100%;padding:12px;border:1px solid #aebdcc;border-radius:10px;font-s
 <main><section>
 <h1>金額アクセスの診断（読み取り専用）</h1>
 <p>現在のログインで、金額入りFirestore原票を読み取れる権限があるかを確認します。<strong>売上・単価・CBの値は取得・表示・保存しません。</strong></p>
-<p class="muted">この診断は本番Rules切替の許可ではありません。自社Ownerと実際に自社から協力店へ移ったアカウントの両方で検証し、独立したUID照合と件数入力の確認が別途必要です。</p>
+<p class="muted">この診断は本番Rules切替の許可ではありません。自社Ownerと実際の協力店アカウントの両方で検証し、独立したUID照合と件数入力の確認が別途必要です。<strong>協力店の本人がテストする前に、同じ診断タブで自社Ownerが診断を実行してください。</strong>自社Ownerの検証後に診断用ログアウトし、協力店の本人がログインします（ページは再読み込みしない）。</p>
 <p id="status" role="status">ログイン状態を確認しています。</p>
 <div id="loginBox">
   <h2>診断専用ログイン</h2>
@@ -76,7 +76,7 @@ const countView=httpsCallable(functions,"getPartnerWorkspace",{timeout:15000});
 const quickCountView=httpsCallable(functions,"getPartnerQuickCounts",{timeout:15000});
 let busy=false,loginBusy=false,previous=new Map(),previousUid=null,previousCompany=null;
 let priorBoundCompany=null; // Volatile one-page memory only; never persist identity
-let ownerHandoff=null; // Owner-verified finance document IDs only (no values)
+let ownerHandoff=null; // Owner-verified hub, partner IDs, and masked document IDs only
 const clearBinding=()=>{
   previous.clear();priorBoundCompany=null;previousUid=null;previousCompany=null;
 };
@@ -230,7 +230,7 @@ $("run").onclick=async()=>{
     if(!user||!user.emailVerified||location.origin!=="https://nico-factory.web.app")
       throw Error("SIGNIN_ORIGIN_REQUIRED");
     const token=await user.getIdToken(true);
-    const account=await readCompany(token,user.uid);
+    let account=await readCompany(token,user.uid);
     if(!account)throw Error("NO_VERIFIED_COMPANY");
     if(previousUid!==user.uid||previousCompany!==account.company){
       clearBinding();previousUid=user.uid;previousCompany=account.company;
@@ -242,6 +242,33 @@ $("run").onclick=async()=>{
     }).formatToParts(new Date()).map(x=>[x.type,x.value]));
     const date=parts.year+"-"+parts.month+"-"+parts.day;
     let countVerified=false;
+    // Current Firestore Rules deny even companies/{partner} GET for a
+    // verified partner Owner. This is EXPECTED and must not make real
+    // finance testing impossible. A hub Owner must first independently
+    // capture both finance document IDs and its approved partner IDs
+    // through the existing authenticated count-only Function, in this
+    // SAME ephemeral diagnostic tab. Then a new partner user must sign in
+    // with their OWN token and pass that Function's fresh membership check.
+    // The browser NEVER trusts a company ID typed by a partner, and
+    // never treats mere 403 on the partner company doc as membership proof.
+    if(account.role==="unknown"&&!workspace&&ownerHandoff&&
+       ID.test(account.company)&&ID.test(ownerHandoff.company)&&
+       ownerHandoff.company!==account.company&&
+       Array.isArray(ownerHandoff.partnerIds)&&
+       ownerHandoff.partnerIds.includes(account.company)){
+      try{
+        const reply=(await countView({date})).data;
+        if(reply?.date===date&&
+           ["owner","leader","member"].includes(reply.role)&&
+           Array.isArray(reply.categories)&&reply.categories.length>0){
+          account={company:ownerHandoff.company,
+            primaryCompany:account.company,role:"partner-verified",
+            liveCompanyVerified:false};
+          countVerified=true;
+          previousCompany=account.company;
+        }
+      }catch{}
+    }
     if(account.role==="partner-unverified"&&workspace)
       throw Error("DIRECT_PARTNER_MUST_NOT_CLAIM_SECONDARY");
     // A real hub Owner can also have an approved secondary partner workspace.
@@ -297,8 +324,25 @@ $("run").onclick=async()=>{
       results[name].listStatus==="allowed"&&results[name].getStatus==="allowed")){
       const ids=Object.fromEntries(["products","records"].map(name=>
         [name,previous.get(account.company+":"+name)]));
-      if(["products","records"].every(name=>ID.test(ids[name]||"")))
-        ownerHandoff={company:account.company,ids};
+      // An Owner GET/LIST success alone is not a trusted company link.
+      // The authenticated Hub workspace must independently confirm which
+      // partner companies are currently active and count-sharing approved.
+      ownerHandoff=null;
+      if(["products","records"].every(name=>ID.test(ids[name]||""))){
+        try{
+          const reply=(await countView({date})).data;
+          const partners=reply?.registeredCompanies;
+          if(reply?.role==="hub"&&reply?.date===date&&
+             Array.isArray(partners)&&partners.length<=100&&
+             partners.every(x=>ID.test(x.partnerCompanyId)&&
+               typeof x.name==="string"&&typeof x.active==="boolean")){
+            const partnerIds=partners.filter(x=>x.active===true)
+              .map(x=>x.partnerCompanyId);
+            if(new Set(partnerIds).size===partnerIds.length)
+              ownerHandoff={company:account.company,ids,partnerIds};
+          }
+        }catch{}
+      }
     }
     // Preserve the strictly same-UID legacy secondary bridge for a Rules
     // switch that denies old company GET. Never confuse that with role proof.
