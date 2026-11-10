@@ -3,7 +3,8 @@
 const crypto=require("node:crypto");
 const {enforceLegacyPublication}=require("./legacy-publication-guard.cjs");
 const {jointCountRankings}=require("./count-only-rankings.cjs");
-const {loadPublication,projectMasterProducts,changePublication,validId,nameOnly}=require("./catalog-publication.cjs");
+const {loadPublication,projectMasterProducts,projectOwnerPublicationRows,changePublication,validId,nameOnly}=require("./catalog-publication.cjs");
+const {redactCashbackTiers}=require("./count-only-response.cjs");
 const {readLinks,addLink,projectLinks}=require("./catalog-count-links.cjs");
 const {normalizeExtraCounts,applyExtraCounts,projectedExtraRead}=require("./additional-counts.cjs");
 const {projectExtraRankDocs}=require("./extra-rank-projection.cjs");
@@ -293,11 +294,13 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   let state,rows;
   try{
    state=loadPublication(settings.exists?settings.data():null);
-   rows=projectMasterProducts(master.docs.map(doc=>({...doc.data(),id:doc.id})),
-    state.productIds,s.kind==="partner");
+   const originals=master.docs.map(doc=>({...doc.data(),id:doc.id}));
+   rows=s.kind==="partner"?
+    projectMasterProducts(originals,state.productIds,true)
+     .map(({id,name,sortOrder})=>({id,name,sortOrder})):
+    projectOwnerPublicationRows(originals,state.productIds);
   }catch{fail("data-loss");}
-  return {role:s.kind,revision:state.revision,products:s.kind==="partner"?
-   rows.map(({id,name,sortOrder})=>({id,name,sortOrder})):rows};
+  return {role:s.kind,revision:state.revision,products:rows};
  }
  // One product flag per transaction; optimistic version guards concurrent owners.
  // Existing products, price metadata and history are never written.
@@ -317,8 +320,12 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    if(fresh.kind!=="hub"||fresh.role!=="owner"||fresh.cid!==s.cid)fail();
    const [productDoc,stateDoc]=await Promise.all([tx.get(productRef),tx.get(stateRef)]);
    const product=productDoc.data()||{};
-   if(!productDoc.exists||product.companyId!==s.cid||product.active===false)fail("failed-precondition");
-   try{nameOnly(product.name);}catch{fail("failed-precondition");}
+   // Retired products may be unpublished; publishing requires active, safe master data.
+   if(!productDoc.exists||product.companyId!==s.cid||
+      (d.published&&product.active===false))fail("failed-precondition");
+   if(d.published){
+    try{nameOnly(product.name);}catch{fail("failed-precondition");}
+   }
    let next;
    try{next=changePublication(stateDoc.exists?stateDoc.data():null,
      d.productId,d.published,d.expectedRevision);}
@@ -1153,13 +1160,14 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   people.sort((a,b)=>b.totalCount-a.totalCount||a.name.localeCompare(b.name,"ja"));
   // Individual ledgers alone cannot prove all companies submitted all days.
   // Always label this a provisional, VERIFIED-ENTRIES monthly leaderboard.
-  return {scope:"shared_monthly_counts_only",month:d.month,
+  const response={scope:"shared_monthly_counts_only",month:d.month,
    role:s.kind==="hub"?"hub":"partner",complete:false,
    provisionalReason:"月間の全日・全員報告の照合前",
    includesDirect:true,companies,teams,people,productCounts,additionalTotalCount,
    categories:KEYS,direct,rankingGroups:sharedConfig.groups,groupStandings,
    groupRevision:sharedConfig.revision,groupStatus,
    recordsVerified:direct.recordsVerified,partnerRowsVerified:partnerRowsRead};
+   return s.kind==="partner"?redactCashbackTiers(response):response;
  }
  async function view(request){
   const a=await actor(request),d=request?.data||{},date=validDate(d.date);
@@ -1361,11 +1369,12 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     // No raw errors, finance or hidden group names are serialized to clients.
     groupStandings=[];
    }
-   return {scope:"shared_counts_only",date,role:s.kind==="hub"?"hub":"partner",
+   const response={scope:"shared_counts_only",date,role:s.kind==="hub"?"hub":"partner",
     complete,includesDirect:true,missingCompanies,companies,teams,people,
     countRankings:jointCountRankings({companies,teams,people,direct}),
     productCounts,additionalTotalCount,categories:KEYS,direct,rankingGroups:sharedConfig.groups,
     groupStandings,groupRevision:sharedConfig.revision,groupStatus};
+    return s.kind==="partner"?redactCashbackTiers(response):response;
   }
   if(d.includeAuditHistory===true&&s.kind!=="partner")fail("invalid-argument");
   if(s.kind==="hub"){
@@ -1663,7 +1672,9 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   }
   const visibleTeams=teams.docs.map(sn=>({id:sn.id,name:clean(sn.data().name),active:sn.data().active===true}))
    .filter(team=>["owner","leader"].includes(s.role)||team.id===s.teamId);
-  return {role:s.role,date,companyName:clean(s.companyName),teamId:s.teamId,
+  // Partner responses must not expose amount-coded cashback tier IDs
+  // in saved entries or immutable correction audits. Storage is unchanged.
+  return redactCashbackTiers({role:s.role,date,companyName:clean(s.companyName),teamId:s.teamId,
     teams:visibleTeams,staff:[...allowed.values()],records:rows,categories:KEYS,
     legacyCategoryPublication:(()=>{
      try{
@@ -1675,7 +1686,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
       });
      }catch{fail("data-loss");}
     })(),
-    privateProducts:productList,...(audits?{audits}: {})};
+    privateProducts:productList,...(audits?{audits}: {})});
  }
  async function submit(request){
   const a=await actor(request),d=request?.data||{},date=validDate(d.date),staffId=clean(d.staffId);

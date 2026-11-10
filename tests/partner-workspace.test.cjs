@@ -36,13 +36,14 @@ class DB {
  async runTransaction(fn){
   const changes=[],tx={
     get:r=>r.get(),create:(r,d)=>changes.push(["create",r.path,clone(d)]),
-    update:(r,d)=>changes.push(["update",r.path,clone(d)])
+    update:(r,d)=>changes.push(["update",r.path,clone(d)]),
+    set:(r,d)=>changes.push(["set",r.path,clone(d)])
   };
   const result=await fn(tx);
   for(const [op,p] of changes){if(op==="create"&&this.store.has(p))throw Error("duplicate");
    if(op==="update"&&!this.store.has(p))throw Error("missing");}
   for(const [op,p,d] of changes){
-   const next=op==="create"?d:{...this.store.get(p),...d};
+   const next=op==="create"||op==="set"?d:{...this.store.get(p),...d};
    for(const [key,value] of Object.entries(next))
     if(value?.__deleteField===true)delete next[key];
    this.store.set(p,next);
@@ -1220,7 +1221,8 @@ test("shared daily standings expose verified partners to both companies without 
  assert.equal(owner.teams[0].name,"第一班");
  assert.equal(owner.productCounts.NURO,2);
  assert.equal(owner.productCounts.SBMNP,1);
- assert.deepEqual(owner.people,partner.people,"both companies see the same counts-only standings");
+ assert.deepEqual(owner.people.map(({cbCounts,...counts})=>counts),partner.people,"both parties see identical count rankings; financial CB tiers are owner-only");
+ assert(partner.people.every(person=>!Object.hasOwn(person,"cbCounts")));
  assert.equal(partner.role,"partner");
  assert.match(owner.people[0].key,/^[a-f0-9]{64}$/);
  assert.doesNotMatch(JSON.stringify(owner),/unitPrice|revenuePerUnit|totalRevenue|pricingOptions|98765|808080|197530/);
@@ -1389,8 +1391,8 @@ test("audit history records every saved correction without exposing finance or l
 });
 
 
-test("audit exposes same-total CB tier and private product edits only inside the partner workspace",async()=>{
- const {api,req,zero}=setup(),date="2026-10-31";
+test("partner audit reveals same-total private count edits but preserves CB tier detail only in storage",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
  const team=(await api.manage(req("p",{action:"addTeam",name:"変更内容班"}))).teamId;
  const staff=(await api.manage(req("p",{action:"addManaged",name:"変更内容担当",teamId:team}))).staffId;
  const first=(await api.manage(req("p",{action:"addPrivateProduct",name:"協力店限定A"}))).productId;
@@ -1405,14 +1407,17 @@ test("audit exposes same-total CB tier and private product edits only inside the
  const correction=own.audits[1];
  assert.equal(correction.previousTotalCount,2);
  assert.equal(correction.totalCount,2);
- assert.equal(correction.previousCbCounts.NURO["20000"],2);
- assert.equal(correction.cbCounts.NURO["40000"],2);
+ assert.equal(Object.hasOwn(correction,"previousCbCounts"),false);
+ assert.equal(Object.hasOwn(correction,"cbCounts"),false);
+ const auditStored=db.store.get("companies/partner/partnerWorkAudits/"+date+"__"+staff+"__v2");
+ assert.equal(auditStored.previousCbCounts.NURO["20000"],2);
+ assert.equal(auditStored.cbCounts.NURO["40000"],2);
  assert.equal(correction.previousPrivateCounts[first],2);
  assert.equal(correction.privateCounts[first],0);
  assert.equal(correction.previousPrivateCounts[second],0);
  assert.equal(correction.privateCounts[second],2);
  const plain=JSON.stringify(correction);
- for(const secret of ["totalRevenue","revenuePerUnit","unitPrice","updatedByUid","createdByUid"])
+ for(const secret of ["totalRevenue","revenuePerUnit","unitPrice","updatedByUid","createdByUid","cbCounts","previousCbCounts","20000","40000"])
   assert.equal(plain.includes(secret),false,secret);
  assert.equal("audits" in await api.view(req("p",{date})),false);
  const hub=await api.view(req("h",{date}));
@@ -1499,7 +1504,7 @@ test("archiving cannot disable linked accounts, arbitrary staff or users from ot
 });
 
 
-test("shared partner and owner breakdown use identical sanitized NURO cashback-tier counts, never prices",async()=>{
+test("partner shared ranks hide NURO cashback amount tiers while owner data and stored records are preserved",async()=>{
  const {db,api,req,zero}=setup();
  const team=(await api.manage(req("p",{action:"addTeam",name:"1班"}))).teamId;
  const staff=(await api.manage(req("p",{action:"addManaged",name:"佐藤",teamId:team}))).staffId;
@@ -1510,11 +1515,13 @@ test("shared partner and owner breakdown use identical sanitized NURO cashback-t
  const partner=await api.view(req("p",{date,sharedRankings:true}));
  const owner=await api.view(req("h",{date,sharedRankings:true}));
  const ownerDetails=await api.view(req("h",{date,partnerCompanyId:"partner"}));
- assert.deepEqual(partner.people[0].cbCounts,owner.people[0].cbCounts);
- assert.deepEqual(partner.teams[0].cbCounts,owner.teams[0].cbCounts);
- assert.equal(partner.teams[0].cbCounts.NURO["0"],1);
- assert.equal(partner.teams[0].cbCounts.NURO["60000"],2);
- assert.equal(partner.teams[0].cbCounts.NURO["20000"],0);
+ assert.equal(partner.people[0].counts.NURO,3);
+ assert.equal(partner.teams[0].counts.NURO,3);
+ assert.equal(Object.hasOwn(partner.people[0],"cbCounts"),false);
+ assert.equal(Object.hasOwn(partner.teams[0],"cbCounts"),false);
+ assert.doesNotMatch(JSON.stringify(partner),/cbCounts|60000|80000/);
+ assert.equal(owner.teams[0].cbCounts.NURO["0"],1);
+ assert.equal(owner.teams[0].cbCounts.NURO["60000"],2);
  assert.equal(ownerDetails.partnerTeamDetails.teams[0].members[0].cbCounts.NURO["60000"],2);
  assert.equal(ownerDetails.partnerTeamDetails.teams[0].cbCounts.NURO["0"],1);
  for(const output of [partner,owner,ownerDetails.partnerTeamDetails]){
@@ -1530,8 +1537,8 @@ test("unclassified historic NURO entries stay unclassified and are never mapped 
  const date="2026-10-31";
  await api.submit(req("p",{date,staffId:staff,counts:{...zero(),NURO:4},expectedVersion:0}));
  const shared=await api.view(req("p",{date,sharedRankings:true}));
- assert.equal(shared.teams[0].cbCounts.NURO["0"],0);
- assert.equal(shared.teams[0].cbCounts.NURO.unclassified,4);
+ assert.equal(shared.teams[0].counts.NURO,4);
+ assert.equal(Object.hasOwn(shared.teams[0],"cbCounts"),false);
  const owner=await api.view(req("h",{date,partnerCompanyId:"partner"}));
  assert.equal(owner.partnerTeamDetails.teams[0].cbCounts.NURO.unclassified,4);
 });
@@ -1641,7 +1648,8 @@ test("unpublishing added partner product never shares hidden historic quantities
  assert.equal(shared.companies[0].extraTotalCount,2);
  assert.equal(shared.people[0].totalCount,2);
  assert.equal(shared.teams[0].totalCount,2);
- assert.deepEqual(shared.people,partner.people,"same count-only standings for approved parties");
+ assert.deepEqual(shared.people.map(({cbCounts,...counts})=>counts),partner.people,"identical verified count standings, but partner never receives CB tiers");
+ assert(partner.people.every(person=>!Object.hasOwn(person,"cbCounts")));
  assert.equal(JSON.stringify(shared).includes('"water":7'),false);
  assert.doesNotMatch(JSON.stringify(shared),/unitPrice|totalRevenue|90000|800000|30000|500000/);
  const retained=db.store.get("companies/partner/partnerAdditionalCountEntries/"+date+"__"+staff);
@@ -1739,4 +1747,88 @@ test("partner dashboard exposes only count-entry availability, never finance or 
  assert.equal(result.legacyCategoryPublication.find(x=>x.category==="SB光・AIR").acceptsIncrease,true);
  assert.equal(result.legacyCategoryPublication.length,KEYS.length);
  assert.doesNotMatch(JSON.stringify(result.legacyCategoryPublication),/secret_product|revenue|price|cashback|98765/);
+});
+
+test("Owner can turn OFF a retired published master without changing sales data or old partner entries",async()=>{
+ const {db,api,req,zero}=setup();
+ const date="2026-10-31";
+ db.seed("products/retired",{companyId:"hub",name:"販売終了商材",active:false,
+  pricingOptions:[{revenuePerUnit:123456}],revenue:789012});
+ db.seed("companies/hub/partnerCatalogSettings/publication",{
+  revision:1,productIds:["retired"]
+ });
+ const team=(await api.manage(req("p",{action:"addTeam",name:"既存班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"既存担当",teamId:team}))).staffId;
+ await api.submit(req("p",{date,staffId:staff,counts:{...zero(),NURO:2},expectedVersion:0}));
+ const financialOriginal=clone(db.store.get("products/retired"));
+ const savedEntry=clone(db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+staff));
+ const savedSummary=clone(db.store.get("companies/hub/partnerWorkCountDays/"+date+"/reports/partner"));
+ await assert.rejects(api.setCatalogPublication(req("h",{
+  productId:"retired",published:true,expectedRevision:1
+ })),{code:"failed-precondition"});
+ await assert.rejects(api.setCatalogPublication(req("p",{
+  productId:"retired",published:false,expectedRevision:1
+ })),{code:"permission-denied"});
+ const result=await api.setCatalogPublication(req("h",{
+  productId:"retired",published:false,expectedRevision:1
+ }));
+ assert.deepEqual(result,{saved:true,revision:2,productId:"retired",published:false});
+ assert.deepEqual(db.store.get("companies/hub/partnerCatalogSettings/publication").productIds,[]);
+ assert.equal(db.store.get("companies/hub/partnerCatalogSettings/publication").revision,2);
+ assert.deepEqual(db.store.get("products/retired"),financialOriginal);
+ assert.deepEqual(db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+staff),savedEntry);
+ assert.deepEqual(db.store.get("companies/hub/partnerWorkCountDays/"+date+"/reports/partner"),savedSummary);
+ assert.deepEqual((await api.viewCatalog(req("p",{}))).products,[]);
+ const ownerView=await api.viewCatalog(req("h",{}));
+ assert.equal(ownerView.role,"hub");
+ assert.equal(ownerView.products.find(x=>x.id==="retired").published,false);
+ await assert.rejects(api.setCatalogPublication(req("h",{
+  productId:"retired",published:false,expectedRevision:1
+ })),{code:"aborted"});
+});
+
+test("Owner can unpublish a newly unsafe name, but may never publish it to partners",async()=>{
+ const {db,api,req}=setup();
+ db.seed("products/old",{companyId:"hub",name:"単価9万円",active:true,revenue:90000});
+ db.seed("companies/hub/partnerCatalogSettings/publication",{
+  revision:1,productIds:["old"]
+ });
+ await assert.rejects(api.setCatalogPublication(req("h",{
+  productId:"old",published:true,expectedRevision:1
+ })),{code:"failed-precondition"});
+ const saved=await api.setCatalogPublication(req("h",{
+  productId:"old",published:false,expectedRevision:1
+ }));
+ assert.equal(saved.published,false);
+ assert.deepEqual(db.store.get("companies/hub/partnerCatalogSettings/publication").productIds,[]);
+ assert.equal(db.store.get("products/old").revenue,90000);
+});
+
+test("partner ordinary records and correction history redact monetary CB tier IDs without altering stored entries",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ const team=(await api.manage(req("p",{action:"addTeam",name:"第1班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"検証担当",teamId:team}))).staffId;
+ await api.submit(req("p",{date,staffId:staff,counts:{...zero(),NURO:2},
+  cbCounts:{NURO:{"60000":2}},expectedVersion:0}));
+ await api.submit(req("p",{date,staffId:staff,counts:{...zero(),NURO:3},
+  cbCounts:{NURO:{"60000":2,"80000":1}},expectedVersion:1}));
+ const storedBefore=clone([...db.store]);
+ const simple=await api.view(req("p",{date}));
+ const full=await api.view(req("p",{date,includeAuditHistory:true}));
+ assert.equal(simple.records[0].totalCount,3);
+ assert.equal(full.records[0].counts.NURO,3);
+ assert.equal(full.audits.length,2);
+ assert.equal(full.audits[0].previousTotalCount,0);
+ assert.equal(full.audits[1].previousTotalCount,2);
+ for(const response of [simple,full]){
+  assert(!Object.hasOwn(response.records[0],"cbCounts"));
+  assert.doesNotMatch(JSON.stringify(response),/cbCounts|previousCbCounts|"60000"|"80000"/);
+ }
+ assert(full.audits.every(row=>!Object.hasOwn(row,"cbCounts")&&!Object.hasOwn(row,"previousCbCounts")));
+ assert.deepEqual([...db.store],storedBefore,"masked reads never rewrite cashback or count history");
+ const version=await api.submit(req("p",{date,staffId:staff,counts:{...zero(),NURO:3},expectedVersion:2}));
+ assert.equal(version.totalCount,3);
+ const persisted=db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+staff);
+ assert.equal(persisted.cbCounts.NURO["60000"],2);
+ assert.equal(persisted.cbCounts.NURO["80000"],1);
 });

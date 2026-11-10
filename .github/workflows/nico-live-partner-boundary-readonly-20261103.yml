@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - feature/partner-shared-catalog-rank-20261103
+      - integration/partner-safe-release-20261110
     paths:
       - 'tools/production/verify-live-partner-boundary-readonly-20261103.mjs'
       - 'tests/live-partner-boundary-readonly-20261103.test.mjs'
@@ -10,6 +11,8 @@ on:
       - 'tests/count-drift-diagnostic-readonly-20261103.test.mjs'
       - 'tests/count-drift-correction-readonly.test.mjs'
       - '.github/workflows/nico-live-partner-boundary-readonly-20261103.yml'
+      - 'firestore.rules'
+      - 'tests/partner-finance-rules-boundary.test.cjs'
 permissions:
   contents: read
 concurrency:
