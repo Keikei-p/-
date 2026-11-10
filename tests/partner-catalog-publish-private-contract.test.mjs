@@ -94,3 +94,32 @@ test("Combined personal ranking reveals only order, name and affiliation",()=>{
   {personId:"a",companyId:"p",name:"A",affiliation:"P",sharedCount:3}
  ]),/DUPLICATE_PERSON/);
 });
+
+test("Unicode/fullwidth finance labels cannot leak through any count-only public name",()=>{
+ const forbidden=["NURO ＣＢ５０００","NURO CB5000","協力店 キャッシュバック",
+  "担当者 ５万円","NURO cash back 5000"];
+ for(const label of forbidden){
+  assert.throws(()=>projectPublishedProducts({
+   hubCompanyId:"hub",partnerCompanyId:"p",
+   productMaster:[{id:"nuro",companyId:"hub",name:label,active:true}],
+   globalIds:["nuro"]
+  }),/PRODUCT_NAME/,label);
+  assert.throws(()=>validatePrivateProduct({
+   actor:partner,partnerCompanyId:"p",productId:"service",productName:label
+  }),/PRODUCT_NAME/,label);
+  for(const field of ["name","affiliation"]){
+   const row={personId:"staff",companyId:"p",name:"担当者",affiliation:"協力店",
+    sharedCount:2};
+   row[field]=label;
+   assert.throws(()=>projectPersonalRankings([row]),/RANK_ROW/,field+": "+label);
+  }
+ }
+ // Validation normalizes for detection, but ordinary Japanese names are not rewritten.
+ const published=projectPublishedProducts({hubCompanyId:"hub",partnerCompanyId:"p",
+  productMaster:[{id:"nuro",companyId:"hub",name:"ＮＵＲＯ光",active:true}],
+  globalIds:["nuro"]});
+ assert.equal(published[0].name,"ＮＵＲＯ光");
+ assert.deepEqual(projectPersonalRankings([{personId:"staff",companyId:"p",
+  name:"山田 太郎",affiliation:"第１班",sharedCount:2}]),
+  [{rank:1,name:"山田 太郎",affiliation:"第１班"}]);
+});
