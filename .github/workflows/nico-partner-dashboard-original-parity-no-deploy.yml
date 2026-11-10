@@ -30,6 +30,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # New exact-byte owner+partner count dashboard review: NO DEPLOY.
+          # No changes to historical workflow_dispatch finance release rules.
+          # Future modifications require a new deliberate protected source review.
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ] ||
+             { [ "$GITHUB_EVENT_NAME" = "push" ] &&
+               [ "$GITHUB_REF" = "refs/heads/main" ]; }; then
+            test "$(git hash-object scripts/ci/review-verified-joint-count-hosts.cjs)" = '9f7b8ebd66480861bdeea4135a8be92abf0a32a3'
+            node scripts/ci/review-verified-joint-count-hosts.cjs
+            echo 'REVIEWED_JOINT_DASHBOARD_HOSTS_VALIDATED_NO_DEPLOY'
+            exit 0
+          fi
           # Separate, precisely source-pinned PR/main NO-DEPLOY ranking review.
           # Historical production release and workflow_dispatch paths below
           # remain pinned to their prior reviewed artifacts.

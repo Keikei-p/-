@@ -1,0 +1,58 @@
+name: NICO one shared count ranking on both original screens (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'sales-archive.js'
+      - 'partner-workspace.html'
+      - 'ranking/verified-joint-month-http-bridge.mjs'
+      - 'ranking/verified-dual-count-view.mjs'
+      - 'ranking/verified-dual-count-view.css'
+      - 'tests/verified-joint-count-host-wiring.test.mjs'
+      - '.github/workflows/nico-joint-count-host-wiring-no-deploy.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'sales-archive.js'
+      - 'partner-workspace.html'
+      - 'ranking/verified-joint-month-http-bridge.mjs'
+      - 'ranking/verified-dual-count-view.mjs'
+      - 'ranking/verified-dual-count-view.css'
+      - 'tests/verified-joint-count-host-wiring.test.mjs'
+      - '.github/workflows/nico-joint-count-host-wiring-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  verify-no-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Protect original money and production Functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(git hash-object functions-partner-workspace/index.js)" = ab551981ce12b4d291a20c0b51cbd461be60df54
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 5334aa48d7f4eb64274a6d7a8bbb4e76d4a2fb65
+      - name: Check both original UI hosts and canonical month-only count authorization
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check sales-archive.js
+          node --check ranking/verified-joint-month-http-bridge.mjs
+          node --check tests/verified-joint-count-host-wiring.test.mjs
+          node --test tests/verified-joint-count-host-wiring.test.mjs tests/verified-joint-month-http-bridge.test.mjs tests/verified-dual-count-view.test.mjs tests/verified-dual-count-dashboards.test.mjs
+          echo 'BOTH_ORIGINAL_SCREENS_SAME_COUNT_ONLY_VIEW_OFF_UNTIL_LIVE_PROOF'

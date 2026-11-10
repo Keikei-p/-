@@ -312,3 +312,56 @@ onAuthStateChanged(auth,async user=>{
   ownerCompany=c;button.style.display=c?"block":"none";
  }catch(err){console.warn("売上資料の権限確認:",err);}
 });
+
+// The same verified monthly count rankings are mounted INSIDE the existing
+// dashboard, never a second sign-in or copy of the finance records.
+// First deployment remains OFF until the real signed-in finance-denial,
+// count-correction and isolated restore release checks pass.
+const NICO_INTERNAL_JOINT_COUNT_MONTH_RELEASED=false;
+if(NICO_INTERNAL_JOINT_COUNT_MONTH_RELEASED){
+ const parent=document.getElementById("dashboard");
+ if(parent){
+  const host=document.createElement("section");
+  host.id="nicoVerifiedOwnerJointCountMonth";
+  host.hidden=true;
+  host.setAttribute("aria-label","自社・協力店の合同件数ランキング");
+  const root=document.createElement("div");
+  host.appendChild(root);
+  parent.appendChild(host);
+  let mounted=null,epoch=0,styles=null;
+  const japanDay=()=>{
+   const parts=new Intl.DateTimeFormat("en-US",{
+    timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"
+   }).formatToParts(new Date());
+   const m=Object.fromEntries(parts.map(x=>[x.type,x.value]));
+   return m.year+"-"+m.month+"-"+m.day;
+  };
+  onAuthStateChanged(auth,async user=>{
+   const current=++epoch;
+   mounted?.destroy();mounted=null;host.hidden=true;root.replaceChildren();
+   if(!user?.emailVerified||window.location.origin!=="https://nico-factory.web.app")return;
+   try{
+    const verified=await companyForOwner(user);
+    if(current!==epoch||auth.currentUser!==user||!verified)return;
+    const {mountVerifiedJointMonthCountDashboard}=await import(
+     "./ranking/verified-joint-month-http-bridge.mjs");
+    if(current!==epoch||auth.currentUser!==user)return;
+    if(!styles){
+     styles=document.createElement("link");
+     styles.rel="stylesheet";
+     styles.href="./ranking/verified-dual-count-view.css";
+     document.head.appendChild(styles);
+    }
+    mounted=mountVerifiedJointMonthCountDashboard({
+     featureEnabled:true,document,root,auth,
+     fetcher:window.fetch.bind(window),
+     endpoint:"https://asia-northeast1-sales-management-cc116.cloudfunctions.net/getVerifiedJointCountRanking",
+     asOf:japanDay(),onAuthStateChanged
+    });
+    host.hidden=false;
+   }catch{
+    if(current===epoch){host.hidden=true;root.replaceChildren();}
+   }
+  });
+ }
+}
