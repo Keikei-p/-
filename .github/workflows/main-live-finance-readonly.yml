@@ -48,5 +48,5 @@ jobs:
           chmod 600 "$audit_identity"
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$audit_identity"
           export GOOGLE_APPLICATION_CREDENTIALS="$audit_identity"
-          export NODE_PATH=/tmp/nico-readonly-audit/node_modules
+          export NICO_AUDIT_GOOGLE_AUTH_MODULE=/tmp/nico-readonly-audit/node_modules/google-auth-library
           node tools/production/audit-live-finance-rules-readonly.cjs
