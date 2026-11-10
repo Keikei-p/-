@@ -100,11 +100,20 @@ function fake({u=owner,m=member,puser=partnerOwner,pmember=partnerMember,
    }
   };
   if(name==="products")return {
-   where(k,op,v){assert.deepEqual([k,op,v],["companyId","==",hub]);return {
-    select(...n){assert.deepEqual(n,["companyId","name","active"]);return {
-     limit(n){assert.equal(n,1001);return {get:async()=>({docs:products})}};
-    }};
-   }}
+   where(k,op,v){
+    assert.deepEqual([k,op,v],["companyId","==",hub]);
+    return {
+     select(...n){
+      assert.deepEqual(n,["companyId","name","active"]);
+      return {
+       limit(n){
+        assert.equal(n,1001);
+        return {get:async()=>({docs:products})};
+       }
+      };
+     }
+    };
+   }
   };
   if(name==="users")return {doc(v){return {get:async()=>snap(v,v===uid?u:puser)}}};
   if(name==="partnerWorkspaceContexts")return {doc(v){return {
