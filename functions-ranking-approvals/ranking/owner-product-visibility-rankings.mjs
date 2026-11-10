@@ -98,6 +98,8 @@ export function buildOwnerVisibleCountRanking({input,publication}={}){
   groupOwners.set(m.groupId,m.productId);
  }
  for(const x of on)if(!canonical.has(x))deny();
+ // Encode the pair as a tuple: IDs may themselves contain ':' so joining is unsafe.
+ const key=(companyId,productId)=>JSON.stringify([companyId,productId]);
  const allowed=new Set();
  for(const m of input.productGroups){
   const hubId=groupOwners.get(m.groupId);
@@ -106,21 +108,21 @@ export function buildOwnerVisibleCountRanking({input,publication}={}){
    const enabledForPartner=partnerEnabled.get(m.companyId);
    if(enabledForPartner&&!enabledForPartner.has(hubId))continue;
   }
-  allowed.add(m.companyId+":"+m.productId);
+  allowed.add(key(m.companyId,m.productId));
  }
  // Preserve every original report, team and historical person, but recompute
  // its PUBLISHED count from the filtered line items. Never mutate originals.
  const sources=input.sources.map(source=>{
-  const lines=source.lines.filter(l=>allowed.has(source.companyId+":"+l.productId));
+  const lines=source.lines.filter(l=>allowed.has(key(source.companyId,l.productId)));
   const sums=new Map();
   for(const line of lines)
    sums.set(line.recordId,(sums.get(line.recordId)||0)+line.count);
   return {...source,lines,
-   products:source.products.filter(p=>allowed.has(source.companyId+":"+p.sourceId)),
+   products:source.products.filter(p=>allowed.has(key(source.companyId,p.sourceId))),
    records:source.records.map(r=>({...r,totalCount:sums.get(r.sourceId)||0}))};
  });
- const productGroups=input.productGroups.filter(g=>allowed.has(g.companyId+":"+g.productId));
- const unassigned=(input.unassigned||[]).filter(x=>allowed.has(x.companyId+":"+x.productId));
+ const productGroups=input.productGroups.filter(g=>allowed.has(key(g.companyId,g.productId)));
+ const unassigned=(input.unassigned||[]).filter(x=>allowed.has(key(x.companyId,x.productId)));
  // Personal bests from ALL products cannot be compared with an ON-only score.
  // Current count-only goals may remain; historical sales and rank data do not change.
  const result=buildVerifiedCountDashboard({
