@@ -50,6 +50,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # PR-only reviewed count publication hardening; historical manual
+          # company-code release hashes and workflow_dispatch remain untouched.
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
+             [ "${GITHUB_HEAD_REF:-}" = "fix/partner-onoff-count-only-parity-20261111" ]; then
+            test "$(git hash-object scripts/ci/review-partner-sku-publication-write.cjs)" = 'e05c7faf118cd5afa1850f00db83f474cc8b9b43'
+            test "$(git hash-object functions-partner-workspace/submission-publication-guard.cjs)" = '25e41cbcc6dcbcc3d26792278e05ad263b817f43'
+            test "$(git hash-object functions-partner-workspace/service.cjs)" = '614f3216e008642ddf5eda6b93c35cc0469557c3'
+            test "$(git hash-object functions-partner-workspace/index.js)" = '90d51246477cf5cfa6966f3e822326ef06cccd0f'
+            test "$(git hash-object index.html)" = '88ef5636bfe9254e71f2109d452b6d3049f99861'
+            test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
+            node scripts/ci/review-partner-sku-publication-write.cjs
+            node --test tests/approved-partner-count-standings.test.cjs tests/partner-submission-publication-guard.test.mjs tests/partner-company-code-auth.test.cjs
+            echo 'PASS_EXACT_PARTNER_ONOFF_REVIEW_PR_ONLY_NO_DEPLOY'
+            exit 0
+          fi
           # Exact PR-only review for the finance-label count guard. This branch
           # NEVER reaches the historical workflow_dispatch release pins below.
           if [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
