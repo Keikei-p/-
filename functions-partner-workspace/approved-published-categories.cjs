@@ -25,8 +25,7 @@ function allowedPartnerCategories({hubId,cid,ownerUid,visibility,mapping,product
  const catalog=new Map(),approved=new Set(visibility.enabledHubProductIds);
  for(const product of products){
   if(!obj(product)||!id(product.id)||product.companyId!==hubId||
-   catalog.has(product.id)||typeof product.name!=="string"||
-   !product.name.trim()||product.name.length>80||
+   catalog.has(product.id)||
    (product.active!==undefined&&typeof product.active!=="boolean"))stop();
   catalog.set(product.id,product);
  }
@@ -48,6 +47,12 @@ function allowedPartnerCategories({hubId,cid,ownerUid,visibility,mapping,product
   if(seen.has(k))stop();
   seen.add(k);
   if(b.companyId!==cid)continue;
+  // Unrelated historical masters may have no label. The exact chosen SKU
+  // cannot: it must be reviewed, active and not amount-encoded.
+  const chosen=catalog.get(b.hubProductId);
+  if(typeof chosen.name!=="string"||!chosen.name.trim()||
+     chosen.name.length>80||
+     /(?:単価|売上|利益|収益|報酬|キャッシュバック|[¥￥$€]|\\d[\\d,]*円)/i.test(chosen.name))stop();
   if(b.productId==="partnerSku05"&&
    !/SB光・AIR|旧合算|未分類/.test(catalog.get(b.hubProductId).name))stop();
   binding.set(b.productId,b.hubProductId);
