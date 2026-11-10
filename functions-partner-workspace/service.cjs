@@ -706,7 +706,24 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
       collection(row.cid,"partnerWorkEntries").where("date","==",date):
       collection(row.cid,"partnerWorkEntries").where("date",">=",start)
        .where("date","<=",end)).limit(1001).get(),
-     Promise.all(days.map(day=>summaryRef(hubId,day,row.cid).get()))
+     Promise.all(days.map(async day=>{
+      const [staff,legacy]=await Promise.all([
+       summaryRef(hubId,day,row.cid).get(),
+       collection(hubId,"partnerQuickCountDays").doc(day)
+        .collection("reports").doc(row.cid).get()
+      ]);
+      if(staff.exists)return {date:day,data:staff.data()};
+      if(!legacy.exists)return {date:day,data:null};
+      const raw=legacy.data()||{};
+      if(raw.hubCompanyId!==hubId||raw.partnerCompanyId!==row.cid||
+         raw.date!==day||!Number.isSafeInteger(raw.version)||
+         raw.version<1||raw.version>999)fail("data-loss");
+      // Legacy company-only report: zero staff attribution, never fabricated
+      // as a person or team and never double-added with the newer staff day.
+      return {date:day,data:{source:"quick-counts-v1",
+       hubCompanyId:hubId,partnerCompanyId:row.cid,date:day,
+       counts:raw.counts,totalCount:raw.totalCount}};
+     }))
     ]);
     if(ts.size>150||es.size>1000)fail("resource-exhausted");
     const categories=(()=>{
@@ -723,7 +740,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     return {cid:row.cid,name:row.name,approved:true,allowedCategories:categories,
      teams,
      entries:es.docs.map(doc=>({id:doc.id,data:doc.data()})),
-     reports:days.map((day,i)=>({date:day,data:rs[i].exists?rs[i].data():null}))};
+     reports:rs};
    }));
    sources.push(...batch);
   }
