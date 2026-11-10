@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#163352">
+<title>NICO｜協力店の金額境界 本人診断</title>
+<style>
+:root{font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif;color-scheme:light}
+*{box-sizing:border-box}
+body{margin:0;background:#f2f5f9;color:#18283a}
+main{max-width:640px;margin:20px auto;padding:18px}
+section{background:white;padding:20px;border:1px solid #dce3ec;border-radius:18px}
+h1{font-size:1.3rem;margin:0 0 12px}h2{font-size:1.05rem}
+p{line-height:1.65}small,.muted{color:#586b7d}
+button{width:100%;padding:14px;border:0;border-radius:12px;background:#163b68;color:white;font-size:1rem;font-weight:650;cursor:pointer}
+button:disabled{opacity:.5;cursor:wait}button.secondary{background:#e9eff8;color:#163b68;margin-top:8px}label{display:block;margin:16px 0 5px}
+input{width:100%;padding:12px;border:1px solid #aebdcc;border-radius:10px;font-size:1rem}
+.output{border-top:1px solid #e4e8ee;padding:12px 0;display:flex;justify-content:space-between;gap:12px}
+.output span:last-child{text-align:right;font-weight:650}
+.warn{color:#a43619}.pass{color:#0d734c}.unknown{color:#755b29}
+#status{min-height:44px}a{color:#154e86}
+</style>
+</head>
+<body>
+<main><section>
+<h1>協力店本人の金額アクセス診断（読み取り専用）</h1>
+<p>現在のログインで、金額入りFirestore原票を読み取れる権限があるかを確認します。<strong>売上・単価・CBの値は取得・表示・保存しません。</strong></p>
+<p class="muted">この診断は本番Rules切替の許可ではありません。自社Ownerと実際の協力店アカウントの両方で検証し、独立したUID照合と件数入力の確認が別途必要です。<strong>協力店の本人がテストする前に、同じ診断タブで自社Ownerが診断を実行してください。</strong>自社Ownerの検証後に診断用ログアウトし、協力店の本人がログインします（ページは再読み込みしない）。</p>
+<p id="status" role="status">ログイン状態を確認しています。</p>
+<div id="loginBox">
+  <h2>診断専用ログイン</h2>
+  <p class="muted">この画面は営業アプリとはログイン状態を共有しません。自社Ownerまたは協力店として使っている同じメールアドレスとパスワードでログインしてください。診断専用のタブ内だけで保持し、通常のアプリからログアウトさせません。</p>
+  <form id="loginForm">
+    <label for="email">メールアドレス</label>
+    <input id="email" type="email" autocomplete="username" inputmode="email" maxlength="254" required>
+    <label for="password">パスワード</label>
+    <input id="password" type="password" autocomplete="current-password" required>
+    <button id="login" type="submit">診断用にログイン</button>
+  </form>
+</div>
+<button id="logout" class="secondary" hidden type="button">診断用ログインを解除する</button>
+<label for="workspace">協力店ワークスペースID（協力店のみ・任意）</label>
+<input id="workspace" inputmode="text" autocomplete="off" spellcheck="false" maxlength="128" placeholder="協力店画面URLの workspaceCompanyId">
+<p><small>自社アカウントで協力店も兼務する場合は協力店画面URLの workspaceCompanyId を入力。最初から協力店に所属する場合は空欄で構いません。協力店の代表者は既存の簡易件数Functionでも所属確認できますが、兼務・班メンバーの所属照合には新ワークスペースFunctionの公開が必要です。</small></p>
+<button id="run" disabled>このログインで読み取り診断</button>
+<h2>検証結果</h2>
+<div class="output"><span>ログインと自社所属</span><span id="identity">未確認</span></div>
+<div class="output"><span>商材の金額原票（LIST / GET）</span><span id="products">未確認</span></div>
+<div class="output"><span>実績の金額原票（LIST / GET）</span><span id="records">未確認</span></div>
+<div class="output"><span>協力店件数画面（読取のみ）</span><span id="counts">未確認</span></div>
+<p class="muted" id="meaning">**重要：** 自社から協力店に移った実アカウントは、Rules変更前にこの画面で「LIST許可・GET許可」を確認し、<strong>画面を閉じずに</strong>切替後も再実行してください。旧自社情報の読み取りが拒否されても、本人の所属情報と直前に検証した文書IDをこの画面内だけで一時保持し、GETも試します。再読み込みすると文書IDは消え、その場合は「GET未検証」と表示します。独立した実UID照合と件数入力継続確認は別途必要です。</p>
+<p><a href="./">営業実績管理へ戻る</a></p>
+</section></main>
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+import {initializeAuth,browserSessionPersistence,onAuthStateChanged,signInWithEmailAndPassword,signOut} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js";
+const PROJECT="sales-management-cc116";
+const BASE="https://firestore.googleapis.com/v1/projects/"+PROJECT+"/databases/(default)/documents";
+const ID=/^[A-Za-z0-9_-]{1,128}$/;
+const $=id=>document.getElementById(id);
+// A named diagnostic-only Firebase app prevents this sign-in/out from
+// switching the normal sales-app Firebase Auth session.
+const app=initializeApp({apiKey:"AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
+  authDomain:"sales-management-cc116.firebaseapp.com",projectId:PROJECT,
+  appId:"1:904932511564:web:6583e8b0c585231b9049e"},"nico-finance-boundary-diagnostic");
+const auth=initializeAuth(app,{persistence:browserSessionPersistence});
+const functions=getFunctions(app,"asia-northeast1");
+const countView=httpsCallable(functions,"getPartnerWorkspace",{timeout:15000});
+// Existing deployed quick-counts callable verifies direct partner Owners
+// before the new workspace Functions are published. It never proves
+// secondary workspace membership, count submission or finance isolation.
+const quickCountView=httpsCallable(functions,"getPartnerQuickCounts",{timeout:15000});
+let busy=false,loginBusy=false,previous=new Map(),previousUid=null,previousCompany=null;
+let priorBoundCompany=null; // Volatile one-page memory only; never persist identity
+let ownerHandoff=null; // Owner-verified hub, partner IDs, and masked document IDs only
+const clearBinding=()=>{
+  previous.clear();priorBoundCompany=null;previousUid=null;previousCompany=null;
+};
+const label=(id,text,klass="unknown")=>{const item=$(id);item.textContent=text;item.className=klass;};
+const request=async(url,method,token,data)=>{
+  if(!url.startsWith(BASE)||new URL(url).origin!=="https://firestore.googleapis.com")
+    throw Error("SCOPE");
+  const response=await fetch(url,{method,mode:"cors",redirect:"error",
+    cache:"no-store",referrerPolicy:"no-referrer",
+    headers:{Authorization:"Bearer "+token,...(data?{"Content-Type":"application/json"}:{})},
+    ...(data?{body:JSON.stringify(data)}:{})});
+  if(response.status===403){
+    let error;
+    try{error=await response.json();}catch{return {status:"unknown"};}
+    if(error?.error?.status==="PERMISSION_DENIED"&&error.error.code===403)
+      return {status:"denied"};
+    return {status:"unknown"};
+  }
+  if(response.status!==200)return {status:"unknown"};
+  try{return {status:"allowed",body:await response.json()};}
+  catch{return {status:"unknown"};}
+};
+const masked=async(path,fields,token)=>{
+  const url=new URL(BASE+"/"+path);
+  for(const field of fields)url.searchParams.append("mask.fieldPaths",field);
+  return request(url.toString(),"GET",token);
+};
+const readCompany=async(token,uid)=>{
+  // Self-profile GET is allowed independently of the old company membership.
+  // A protected Rules switch may intentionally deny company GET for a dual-
+  // context partner. Do not give up before testing their financial GET/LIST.
+  const u=await masked("users/"+encodeURIComponent(uid),["companyId","active","companyRole"],token);
+  if(u.status!=="allowed"||u.body?.fields?.active?.booleanValue!==true)return null;
+  const company=u.body?.fields?.companyId?.stringValue;
+  if(!ID.test(company||""))return null;
+  const c=await masked("companies/"+company,["companyKind","ownerUid","hubCompanyId"],token);
+  if(c.status==="allowed"){
+    const kind=c.body?.fields?.companyKind?.stringValue||"internal";
+    if(kind==="partner"){
+      const hub=c.body?.fields?.hubCompanyId?.stringValue;
+      if(!ID.test(hub||"")||hub===company)return null;
+      // The hub is the intended protected finance company. Only the
+      // authenticated count-only callable may confirm partner membership.
+      return {company:hub,primaryCompany:company,role:"partner-unverified",
+        liveCompanyVerified:true};
+    }
+    if(!["internal","direct"].includes(kind))return null;
+    const ownerUid=c.body?.fields?.ownerUid?.stringValue;
+    if(!ID.test(ownerUid||""))return null;
+    return {company,primaryCompany:company,role:ownerUid===uid?"owner":"not-owner",
+      liveCompanyVerified:true};
+  }
+  // Never promote an unknown/denied company GET into a proved partner role.
+  // Only the SAME UID + company with a successful pre-switch self/company
+  // binding and BOTH finance GET/LIST may use the cached probe identity.
+  if(c.status==="denied"&&priorBoundCompany?.uid===uid&&
+     priorBoundCompany.company===company&&
+     priorBoundCompany.role==="not-owner"&&
+     priorBoundCompany.bothFinanceReadsPreviouslyAllowed===true){
+    return {company,role:"partner-candidate",liveCompanyVerified:false};
+  }
+  if(c.status==="denied")
+    return {company,role:"unknown",liveCompanyVerified:false};
+  return null;
+};
+const singleQuery=async(token,collection,company)=>{
+  return request(BASE+":runQuery","POST",token,{
+    structuredQuery:{from:[{collectionId:collection}],
+      where:{fieldFilter:{field:{fieldPath:"companyId"},op:"EQUAL",
+        value:{stringValue:company}}},
+      select:{fields:[{fieldPath:"companyId"}]},limit:1}
+  });
+};
+const checkCollection=async(token,name,company,handoffId=null)=>{
+  const result=await singleQuery(token,name,company);
+  let listStatus=result.status,docId=null;
+  if(listStatus==="allowed"){
+    const docs=Array.isArray(result.body)?result.body.filter(x=>x?.document):[];
+    const match=docs.length===1&&docs[0]?.document?.fields?.companyId?.stringValue===company;
+    const fullName=match?docs[0].document.name:"";
+    const prefix="projects/"+PROJECT+"/databases/(default)/documents/"+name+"/";
+    const tail=fullName.startsWith(prefix)?fullName.slice(prefix.length):"";
+    if(ID.test(tail))docId=tail;
+    else listStatus="unknown";
+  }
+  const lookupKey=company+":"+name;
+  if(docId)previous.set(lookupKey,docId);
+  const trustedHandoff=ownerHandoff?.company===company&&
+    ownerHandoff.ids?.[name]===handoffId&&ID.test(handoffId||"")?handoffId:null;
+  const target=docId||previous.get(lookupKey)||trustedHandoff;
+  let getStatus="untested";
+  if(target){
+    const direct=await masked(name+"/"+target,["companyId"],token);
+    getStatus=direct.status;
+    if(direct.status==="allowed"&&direct.body?.fields?.companyId?.stringValue!==company)
+      getStatus="unknown";
+  }
+  return {listStatus,getStatus};
+};
+const render=(name,result,role)=>{
+  if(result.listStatus==="denied"&&result.getStatus==="denied"){
+    if(role==="owner")
+      label(name,"Ownerの閲覧が拒否（危険）","warn");
+    else if(role==="not-owner"||role==="partner-candidate"||role==="partner-verified")
+      label(name,"LIST・GETともに拒否（所属の独立照合は未完）","pass");
+    else label(name,"LIST・GET拒否（所属未確認）","unknown");
+  }else if(result.listStatus==="allowed"&&result.getStatus==="allowed")
+    label(name,role==="owner"?"Owner閲覧許可（期待どおり）":
+      "金額原票へのアクセス許可（協力店なら要遮断）",
+      role==="owner"?"pass":"warn");
+  else if(result.listStatus==="denied"&&result.getStatus==="untested")
+    label(name,"LIST拒否・GET未検証（合格ではない）","unknown");
+  else label(name,"判定保留（再検証が必要）","unknown");
+};
+$("loginForm").onsubmit=async event=>{
+  event.preventDefault();
+  if(loginBusy||busy||auth.currentUser)return;
+  loginBusy=true;$("login").disabled=true;
+  $("status").textContent="診断専用のFirebase認証を確認しています。";
+  const email=$("email").value.trim().toLowerCase();
+  const password=$("password").value;
+  // The password is sent ONLY through Firebase Auth SDK, never logs,
+  // local application storage, custom endpoints or report bodies.
+  $("password").value="";
+  try{
+    if(!email||!password||location.origin!=="https://nico-factory.web.app")
+      throw Error("INVALID_SIGNIN");
+    await signInWithEmailAndPassword(auth,email,password);
+    $("email").value="";
+    $("status").textContent="診断用ログインが完了しました。読み取り診断を実行できます。";
+  }catch{
+    $("status").textContent="診断用ログインに失敗しました。メールアドレス・パスワード・確認メールの状態を確認してください。";
+  }finally{
+    loginBusy=false;$("login").disabled=Boolean(auth.currentUser);
+  }
+};
+$("logout").onclick=async()=>{
+  if(loginBusy||busy)return;
+  $("logout").disabled=true;
+  try{await signOut(auth);}catch{
+    $("status").textContent="診断用ログアウトを確認できません。再試行してください。";
+  }finally{$("logout").disabled=false;}
+};
+$("run").onclick=async()=>{
+  if(busy)return;
+  busy=true;$("run").disabled=true;
+  for(const name of ["identity","products","records","counts"])label(name,"検証中");
+  $("status").textContent="Firestoreの権限を読み取りのみで確認中";
+  try{
+    const user=auth.currentUser;
+    if(!user||!user.emailVerified||location.origin!=="https://nico-factory.web.app")
+      throw Error("SIGNIN_ORIGIN_REQUIRED");
+    const token=await user.getIdToken(true);
+    let account=await readCompany(token,user.uid);
+    if(!account)throw Error("NO_VERIFIED_COMPANY");
+    if(previousUid!==user.uid||previousCompany!==account.company){
+      clearBinding();previousUid=user.uid;previousCompany=account.company;
+    }
+    const workspace=$("workspace").value.trim();
+    if(workspace&&!ID.test(workspace))throw Error("INVALID_WORKSPACE");
+    const parts=Object.fromEntries(new Intl.DateTimeFormat("en-CA",{
+      timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"
+    }).formatToParts(new Date()).map(x=>[x.type,x.value]));
+    const date=parts.year+"-"+parts.month+"-"+parts.day;
+    let countVerified=false;
+    // Current Firestore Rules deny even companies/{partner} GET for a
+    // verified partner Owner. This is EXPECTED and must not make real
+    // finance testing impossible. A hub Owner must first independently
+    // capture both finance document IDs and its approved partner IDs
+    // through the existing authenticated count-only Function, in this
+    // SAME ephemeral diagnostic tab. Then a new partner user must sign in
+    // with their OWN token and pass that Function's fresh membership check.
+    // The browser NEVER trusts a company ID typed by a partner, and
+    // never treats mere 403 on the partner company doc as membership proof.
+    if(account.role==="unknown"&&!workspace&&ownerHandoff&&
+       ID.test(account.company)&&ID.test(ownerHandoff.company)&&
+       ownerHandoff.company!==account.company&&
+       Array.isArray(ownerHandoff.partnerIds)&&
+       ownerHandoff.partnerIds.includes(account.company)){
+      try{
+        const reply=(await countView({date})).data;
+        if(reply?.date===date&&
+           ["owner","leader","member"].includes(reply.role)&&
+           Array.isArray(reply.categories)&&reply.categories.length>0){
+          account={company:ownerHandoff.company,
+            primaryCompany:account.company,role:"partner-verified",
+            liveCompanyVerified:false};
+          countVerified=true;
+          previousCompany=account.company;
+        }
+      }catch{}
+    }
+    if(account.role==="partner-unverified"&&workspace)
+      throw Error("DIRECT_PARTNER_MUST_NOT_CLAIM_SECONDARY");
+    // A real hub Owner can also have an approved secondary partner workspace.
+    // Do not block this legitimate existing-email transition before the
+    // authenticated server has checked this exact UID/workspace pair.
+    // The browser NEVER infers partner ownership from the workspace string.
+    // countView failure or a hub-only response still aborts below.
+    if(account.role==="partner-unverified"||workspace){
+      try{
+        const reply=await countView({
+          date,...(account.role==="partner-unverified"?{}:{workspaceCompanyId:workspace})
+        });
+        if(["owner","leader","member"].includes(reply?.data?.role)){
+          // New workspace caller binds the real UID and company context.
+          account.role="partner-verified";
+          countVerified=true;
+        }
+      }catch{}
+      if(!countVerified&&account.role==="partner-unverified"&&!workspace){
+        // A direct, fully transferred partner Owner may already have working
+        // quick-count access. Its server-side identity check uses the same UID
+        // and verifies that the partner account belongs to an approved hub.
+        // Never use this fallback for a secondary/dual-company membership.
+        try{
+          const reply=await quickCountView({date});
+          if(reply?.data?.role==="partner"&&reply?.data?.date===date){
+            account.role="partner-verified";
+            countVerified=true;
+          }
+        }catch{}
+      }
+    }
+    if(account.role==="partner-unverified"||
+       (workspace&&account.role!=="partner-verified"))
+      throw Error("PARTNER_MEMBERSHIP_UNVERIFIED");
+    label("identity",account.role==="owner"?"Owner候補（独立UID照合は別）":
+      account.role==="partner-verified"?"協力店所属をFunctionsで照合済み（UID監査は別）":
+      account.role==="not-owner"?"自社所属（協力店照合は別）":
+      account.role==="partner-candidate"?"旧自社所属（独立UID照合は別）":
+      "現在の会社所属は未確認");
+    const results={};
+    for(const name of ["products","records"]){
+      const handoffId=account.role==="partner-verified"&&
+        ownerHandoff?.company===account.company?ownerHandoff.ids?.[name]:null;
+      const result=await checkCollection(token,name,account.company,handoffId);
+      results[name]=result;
+      render(name,result,account.role);
+    }
+    // GET+LIST verified Owner samples are held only in this page's memory.
+    // The Owner token and document contents are not retained, and switching
+    // Firebase Auth user never grants the partner additional rights.
+    if(account.role==="owner"&&["products","records"].every(name=>
+      results[name].listStatus==="allowed"&&results[name].getStatus==="allowed")){
+      const ids=Object.fromEntries(["products","records"].map(name=>
+        [name,previous.get(account.company+":"+name)]));
+      // An Owner GET/LIST success alone is not a trusted company link.
+      // The authenticated Hub workspace must independently confirm which
+      // partner companies are currently active and count-sharing approved.
+      ownerHandoff=null;
+      if(["products","records"].every(name=>ID.test(ids[name]||""))){
+        try{
+          const reply=(await countView({date})).data;
+          const partners=reply?.registeredCompanies;
+          if(reply?.role==="hub"&&reply?.date===date&&
+             Array.isArray(partners)&&partners.length<=100&&
+             partners.every(x=>ID.test(x.partnerCompanyId)&&
+               typeof x.name==="string"&&typeof x.active==="boolean")){
+            const partnerIds=partners.filter(x=>x.active===true)
+              .map(x=>x.partnerCompanyId);
+            if(new Set(partnerIds).size===partnerIds.length)
+              ownerHandoff={company:account.company,ids,partnerIds};
+          }
+        }catch{}
+      }
+    }
+    // Preserve the strictly same-UID legacy secondary bridge for a Rules
+    // switch that denies old company GET. Never confuse that with role proof.
+    if(account.liveCompanyVerified===true&&account.role==="not-owner"&&
+       ["products","records"].every(name=>results[name].listStatus==="allowed"&&
+         results[name].getStatus==="allowed")){
+      priorBoundCompany={uid:user.uid,company:account.company,role:"not-owner",
+        bothFinanceReadsPreviouslyAllowed:true};
+    }
+    if(countVerified)label("counts","協力店件数の読取成功","pass");
+    else if(account.role==="owner")label("counts","自社Owner（協力店の確認外）");
+    else label("counts","協力店件数は未確認","unknown");
+    $("status").textContent="診断終了。金額遮断の本番承認には別途、独立した実UID照合が必要です。";
+  }catch{
+    for(const name of ["products","records","counts"])label(name,"未確認");
+    label("identity","認証・所属の確認が必要");
+    $("status").textContent="診断を完了できませんでした。診断専用ログインと利用中の会社・所属を確認してください。";
+  }finally{busy=false;$("run").disabled=!auth.currentUser;}
+};
+onAuthStateChanged(auth,user=>{
+  if(previousUid&&user?.uid!==previousUid)clearBinding();
+  $("run").disabled=!user||!user.emailVerified||busy;
+  $("loginBox").hidden=Boolean(user);
+  $("logout").hidden=!user;
+  $("login").disabled=Boolean(user)||loginBusy;
+  if(user&&user.emailVerified)
+    $("status").textContent="診断専用ログイン確認済み。読み取り診断できます。";
+  else if(user)
+    $("status").textContent="診断用アカウントのメール確認が必要です。メール確認後、診断用ログインを解除して入り直してください。";
+  else
+    $("status").textContent="未ログインです。上の診断専用フォームからログインしてください。";
+});
+</script>
+</body>
+</html>
