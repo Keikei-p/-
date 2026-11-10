@@ -45,6 +45,16 @@ test("zero is submitted but missing report is not treated as zero",()=>{
  assert.equal(out.companies[0].reportedDays,1);
  assert.equal(out.reportCount,1);
 });
+test("orphan staff entries cannot appear in ranks without a saved daily summary",()=>{
+ const x=company("a","会社A",{...zero(),NURO:2});
+ x.reports=[{date:"2026-10-31",data:null}];
+ assert.throws(()=>build([x]),/UNVERIFIED/);
+ x.entries[0].data.counts=zero();
+ x.entries[0].data.totalCount=0;
+ assert.throws(()=>build([x]),/UNVERIFIED/);
+ x.reports=[];
+ assert.throws(()=>build([x]),/UNVERIFIED/);
+});
 test("legacy company-only counts never masquerade as staff or teams",()=>{
  const x=company("a","会社A",{...zero(),NURO:4});
  x.entries=[];x.reports[0].data.source="quick-counts-v1";
