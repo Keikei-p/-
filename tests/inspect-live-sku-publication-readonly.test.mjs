@@ -35,6 +35,8 @@ test("missing Owner publication does not claim readiness or modify previous part
  const r=assessSkuPublication(v);
  assert.equal(r.publishedCatalogReady,false);
  assert.equal(r.partnerCompaniesMapped,0);
+ assert.equal(r.reciprocalOwnerRankConsentReady,true,
+  "approved ranking consent must remain independently visible");
  assert.deepEqual(previous.relations, v.relations);
  assert.deepEqual(previous.visibility, v.visibility);
 });
@@ -132,6 +134,18 @@ test("missing live catalog or approval reports blockers and never creates a docu
  assert.equal(r.ownerPublicationCatalogReady,false);
  assert.equal(r.reciprocalOwnerRankConsentReady,false);
  assert(r.blockingReasons.includes("OWNER_PUBLIC_CATALOG_MISSING"));
+ assert.deepEqual([...db.docs],before);
+});
+test("missing catalog cannot falsely imply missing Owner ranking consent",async()=>{
+ const db=live();
+ db.docs.delete("companies/hub/rankingCountPublicCatalog/shared");
+ const before=structuredClone([...db.docs]);
+ const r=await inspectSkuPublication(db);
+ assert.equal(r.ownerPublicationCatalogReady,false);
+ assert.equal(r.reciprocalOwnerRankConsentReady,true);
+ assert(r.blockingReasons.includes("OWNER_PUBLIC_CATALOG_MISSING"));
+ assert(!r.blockingReasons.includes("RECIPROCAL_RANK_CONSENT_INCOMPLETE"));
+ assert.equal(r.productionDocumentWrites,0);
  assert.deepEqual([...db.docs],before);
 });
 test("public release path is GET-only, no credential output and no deploy",()=>{
