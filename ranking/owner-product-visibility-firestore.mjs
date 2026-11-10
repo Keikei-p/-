@@ -16,7 +16,7 @@ const read=x=>x?.exists===true&&typeof x.data==="function"?x.data():null;
 const ids=x=>Array.isArray(x)&&x.length<=1000&&
  x.every(id)&&new Set(x).size===x.length;
 const saneName=x=>typeof x==="string"&&x.trim().length>0&&
- x.trim().length<=80&&!MONEY.test(x);
+ x.trim().length<=80&&!MONEY.test(x.normalize("NFKC"));
 const normalize=(s,hubId,ownerUid)=>{
  if(!s)return {version:0,enabledHubProductIds:[],partnerOverrides:{}};
  if(s.hubCompanyId!==hubId||s.ownerUid!==ownerUid||

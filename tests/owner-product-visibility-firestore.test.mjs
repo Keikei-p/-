@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
 import {createOwnerProductVisibilityStore}
  from "../ranking/owner-product-visibility-firestore.mjs";
 import {buildOwnerVisibleCountRanking}
@@ -277,4 +278,21 @@ test("ranking settings read verifies live owner identity and partner consent, ev
   ...f.state.get("partnerRelations/partner"),active:false});
  await assert.rejects(read(partner),/UNAUTHORIZED_OR_INCOMPLETE/);
  assert.equal(f.writes,0,"authorization tests must be read-only");
+});
+
+
+test("Unicode-normalized amount labels never enter count-only owner publication or vendor copies",async()=>{
+ const f=fake();
+ f.state.set("products/nuro",product("nuro","ＮＵＲＯ ＣＢ５０００"));
+ await assert.rejects(f.store.readStatus(principal),/UNAUTHORIZED_OR_INCOMPLETE/);
+ await assert.rejects(f.store.saveSwitch({principal,productId:"air",
+  enabled:true,expectedVersion:0}),/UNAUTHORIZED_OR_INCOMPLETE/);
+ assert.equal(f.writes,0,"reject before any visibility/catalog/audit write");
+ assert.equal(f.state.has("companies/hub/rankingCountPublicCatalog/shared"),false);
+ const canonical=readFileSync(new URL("../ranking/owner-product-visibility-firestore.mjs",import.meta.url),"utf8");
+ for(const path of [
+  "../functions-ranking-approvals/ranking/owner-product-visibility-firestore.mjs",
+  "../functions-ranking-approvals/vendor/owner-product-visibility-firestore.mjs"
+ ])assert.equal(readFileSync(new URL(path,import.meta.url),"utf8"),canonical,
+  "canonical and deployable copies must have identical finance fences");
 });

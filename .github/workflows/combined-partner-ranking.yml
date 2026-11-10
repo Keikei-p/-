@@ -6,6 +6,8 @@ on:
       - "ranking/combined-count-leaderboard.mjs"
       - "ranking/partner-workspace-count-source.mjs"
       - "ranking/partner-submission-publication-guard.mjs"
+      - "ranking/owner-product-visibility-firestore.mjs"
+      - "tests/owner-product-visibility-firestore.test.mjs"
       - "tests/partner-submission-publication-guard.test.mjs"
       - "ranking/partner-month-readonly-loader.mjs"
       - "ranking/rank-only-publication.mjs"
@@ -37,7 +39,10 @@ on:
       - "ranking/combined-count-leaderboard.mjs"
       - "ranking/partner-workspace-count-source.mjs"
       - "ranking/partner-submission-publication-guard.mjs"
+      - "ranking/owner-product-visibility-firestore.mjs"
+      - "tests/owner-product-visibility-firestore.test.mjs"
       - "tests/partner-submission-publication-guard.test.mjs"
+      - ".github/workflows/combined-partner-ranking.yml"
       - "ranking/partner-month-readonly-loader.mjs"
       - "ranking/trusted-combined-ranking-context.mjs"
       - "tests/trusted-combined-ranking-context.test.mjs"
@@ -133,6 +138,7 @@ jobs:
           node --check tests/partner-month-readonly-loader-emulator.test.mjs
           node --check tests/trusted-combined-ranking-context-emulator.test.mjs
           node --check tests/ranking-owner-consent-emulator.test.mjs
+          node --test tests/owner-product-visibility-firestore.test.mjs
       - name: Install pinned demo-only Firebase CLI and Admin SDK
         shell: bash
         run: |
