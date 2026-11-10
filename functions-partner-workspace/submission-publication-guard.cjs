@@ -10,6 +10,7 @@
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター",
  "つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
+const MONEY=/(?:単価|売上|収益|利益|報酬|キャッシュバック|[¥￥$€]|[0-9０-９][0-9０-９,，]*\\s*(?:万円|千円|円))/i;
 const deny=()=>{throw Error("PARTNER_SUBMISSION_PUBLICATION_UNVERIFIED");};
 const id=x=>typeof x==="string"&&ID.test(x)&&
  !["__proto__","constructor","prototype"].includes(x);
@@ -53,7 +54,7 @@ function validatePolicy({hubId,partnerId,ownerUid,visibility,mapping,products}){
  }
  const partnerAllowed=Object.prototype.hasOwnProperty.call(overrides,partnerId)?
   new Set(overrides[partnerId]):globallyEnabled;
- const mapped=new Map(),seen=new Set();
+ const mapped=new Map(),seen=new Set(),seenHubSku=new Set();
  for(const b of mapping.bindings){
   if(!exact(b,["companyId","productId","hubProductId"])||
      !id(b.companyId)||b.companyId===hubId||
@@ -63,6 +64,10 @@ function validatePolicy({hubId,partnerId,ownerUid,visibility,mapping,products}){
   if(seen.has(key))deny();
   seen.add(key);
   if(b.companyId!==partnerId)continue;
+  // A single reviewed hub SKU cannot be published twice under two categories.
+  if(seenHubSku.has(b.hubProductId))deny();
+  seenHubSku.add(b.hubProductId);
+  if(MONEY.test(catalog.get(b.hubProductId).name))deny();
   // Never interpret old combined SB光・AIR as either new 光 or Air.
   if(b.productId==="partnerSku05"&&
      !/SB光・AIR|旧合算|未分類/.test(catalog.get(b.hubProductId).name))deny();
