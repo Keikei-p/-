@@ -30,6 +30,18 @@ function list(items,fields){
  if(!Array.isArray(items)||items.length>5000)halt();
  for(const item of items)strict(item,fields);
 }
+function checkedCompetition(items){
+ let last=null,rank=0;
+ for(const [index,row] of items.entries()){
+  if(!Number.isSafeInteger(row.count)||row.count<0||
+     !Number.isSafeInteger(row.rank)||row.rank<1||
+     typeof row.name!=="string"||!row.name.trim()||
+     (last!==null&&row.count>last))halt();
+  if(index===0||row.count!==last)rank=index+1;
+  if(row.rank!==rank)halt();
+  last=row.count;
+ }
+}
 const PERSON=["id","name","companyId","companyName","teamId","teamName",
  "count","reportStatus","reportedDays","previousCount","change","growth",
  "topProduct","remainingToGoal","personalBestStatus","rank"];
@@ -56,9 +68,13 @@ function shape(value){
      !Number.isSafeInteger(value.own.unidentifiedCount)||value.own.unidentifiedCount<0)halt();
   list(value.own.people,PERSON);
   list(value.own.products,["id","name","count"]);
-  strict(value.publicRanking,["members","products"]);
+  strict(value.publicRanking,["members","products","companies","teams"]);
   list(value.publicRanking.members,["rank","company","name","count"]);
   list(value.publicRanking.products,["rank","name","count"]);
+  list(value.publicRanking.companies,["rank","name","count"]);
+  list(value.publicRanking.teams,["rank","name","company","count"]);
+  for(const key of ["members","products","companies","teams"])
+   checkedCompetition(value.publicRanking[key]);
  }
 }
 function validate(result){
@@ -85,6 +101,8 @@ function validate(result){
     !Array.isArray(result.own.people)||!Array.isArray(result.own.products)||
     !result.publicRanking||!Array.isArray(result.publicRanking.members)||
     !Array.isArray(result.publicRanking.products)||
+    !Array.isArray(result.publicRanking.companies)||
+    !Array.isArray(result.publicRanking.teams)||
     Object.keys(result).sort().join("|")!==
     ["schema","period","range","readTime","unit","role","own","publicRanking"
     ].sort().join("|"))halt();
@@ -114,7 +132,7 @@ function ranked(doc,heading,items,mode){
   add(line,doc,"strong","nico-dual-rank-number",String(row.rank)+"位");
   add(line,doc,"span","nico-dual-rank-name",row.name||"担当者未特定");
   add(line,doc,"strong","nico-dual-rank-score",String(row.count)+"件");
-  const details=mode==="person"?
+  const details=mode==="team"?row.company:mode==="person"?
    [row.companyName||row.company, row.teamName,
     row.reportStatus,row.growth==="比較不可"?"":row.growth,
     row.change!=null?(row.change>0?"+":"")+String(row.change)+"件":"",
@@ -182,6 +200,10 @@ export function renderVerifiedDualCountDashboard({document,root,payload}={}){
     .map((p,i)=>({...p,rank:p.rank||i+1})),"person"));
    page.appendChild(ranked(document,"自社の商材別件数",data.own.products
     .map((p,i)=>({...p,rank:p.rank||i+1})),"product"));
+   page.appendChild(ranked(document,"公開承認済み・会社ランキング",
+    data.publicRanking.companies,"company"));
+   page.appendChild(ranked(document,"公開承認済み・班ランキング",
+    data.publicRanking.teams,"team"));
    page.appendChild(ranked(document,"公開承認済み・個人ランキング",
     data.publicRanking.members,"person"));
    page.appendChild(ranked(document,"公開承認済み・商材ランキング",
