@@ -13,11 +13,11 @@ const permitted=process.env.GITHUB_EVENT_NAME==="pull_request"&&
  process.env.GITHUB_EVENT_NAME==="push"&&process.env.GITHUB_REF==="refs/heads/main";
 assert.ok(permitted,"REVIEW_ONLY_NEVER_WORKFLOW_DISPATCH");
 const hashes=Object.freeze({
- "functions-partner-workspace/service.cjs":"5334aa48d7f4eb64274a6d7a8bbb4e76d4a2fb65",
- "functions-partner-workspace/index.js":"ab551981ce12b4d291a20c0b51cbd461be60df54",
+ "functions-partner-workspace/service.cjs":"614f3216e008642ddf5eda6b93c35cc0469557c3",
+ "functions-partner-workspace/index.js":"90d51246477cf5cfa6966f3e822326ef06cccd0f",
  "functions-partner-workspace/shared-count-standings.cjs":"4655436c58a73210f7b6ab38223652bb8376ed97",
  "functions-partner-workspace/approved-published-categories.cjs":"6ae0009c85f4fb95233a4b3880ea4ea3ae906f86",
- "partner-workspace.html":"4d3bfaa1d928e354ac546d0be65af7c8ecda76de",
+ "partner-workspace.html":"431b200e02934315eda57b6998bdde801252f78f",
  "ranking/owner-product-visibility-firestore.mjs":"8e2289b1dd8b62f4d682dc6231a339294178abcb",
  "functions-ranking-approvals/vendor/owner-product-visibility-firestore.mjs":"8e2289b1dd8b62f4d682dc6231a339294178abcb",
  "index.html":"88ef5636bfe9254e71f2109d452b6d3049f99861",
@@ -33,6 +33,12 @@ const src=fs.readFileSync("functions-partner-workspace/service.cjs","utf8");
 const page=fs.readFileSync("partner-workspace.html","utf8");
 const idx=fs.readFileSync("functions-partner-workspace/index.js","utf8");
 assert.match(idx,/sharedRankingEnabled:\(\)=>process\.env\.NICO_PARTNER_SHARED_RANKING_ENABLED==="enabled"/);
+assert.match(idx,/NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED==="enabled"/,
+ "OWNER_PUBLICATION_WRITE_MUST_REMAIN_EXPLICITLY_DISABLED_BY_DEFAULT");
+assert.match(src,/submissionPublicationEnabled=\(\)=>false/,
+ "NO_IMPLICIT_PARTNER_COUNT_WRITE_FLAG");
+assert.match(src,/previousCounts:prior,nextCounts:counts/,
+ "COUNT_CORRECTION_MUST_USE_SAME_TX_PREVIOUS_COUNTS");
 assert.match(page,/const NICO_APPROVED_PARTNER_RANKING_RELEASED=false;/);
 assert.ok(!/\.collection\s*\(\s*["'](?:records|products|recordCorrections|revenueGoals)["']\s*\)/.test(src),
  "RAW_FINANCE_COLLECTION_IN_PARTNER_WORKSPACE");
