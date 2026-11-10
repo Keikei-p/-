@@ -1,0 +1,147 @@
+name: NICO eleven Owner static assets (manual rerun after six live Functions)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-owner-eleven-explicit-rerun-release.yml'
+      - 'tests/owner-eleven-explicit-rerun-release.test.mjs'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-owner-eleven-explicit-rerun-release.yml'
+      - 'tests/owner-eleven-explicit-rerun-release.test.mjs'
+permissions:
+  contents: read
+concurrency:
+  group: firebase-production-owner-setup-static-manual
+  cancel-in-progress: false
+jobs:
+  owner-hosting-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Prove unchanged count, finance and full eleven candidate source locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions-partner-workspace/index.js)" = 90d51246477cf5cfa6966f3e822326ef06cccd0f
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 614f3216e008642ddf5eda6b93c35cc0469557c3
+          test "$(git hash-object functions-ranking-approvals/index.js)" = 54855609e372ee1056b5206e445f20c0a251b1ef
+          test "$(git hash-object firebase.ranking-approvals.json)" = 35a8b4ab4b39b16927e0e7235b048d7052497632
+          node --check tools/hosting/release-owner-setup-additive.mjs
+          node --test tests/owner-eleven-explicit-rerun-release.test.mjs tests/owner-setup-additive-hosting-release.test.mjs tests/owner-partner-setup-mount.test.mjs tests/owner-setup-six-release-scope.test.mjs
+          echo 'ELEVEN_OWNER_RELEASE_OFFLINE_PASS_NO_PRODUCTION_WRITE'
+      - name: First run cannot deploy - manual job rerun exactly attempt two required
+        id: approval
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOY_ACK: CONFIRM_ONLY_ELEVEN_NEW_OWNER_SETUP_ASSETS
+          USAGE_ACK: HOSTING_OPERATIONS_AND_POSSIBLE_CHARGES_EXPLICITLY_APPROVED
+          DATA_ACK: NO_FUNCTIONS_AUTH_FIRESTORE_RULES_CHANGES
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_RUN_ATTEMPT" = 1 ]; then
+            echo 'approved=false' >> "$GITHUB_OUTPUT"
+            echo 'MANUAL_HOSTING_REPLAY_REQUIRED_FIRST_RUN_NO_DEPLOY'
+            exit 0
+          fi
+          test "$GITHUB_RUN_ATTEMPT" = 2
+          test "$GITHUB_EVENT_NAME" = push
+          test "$GITHUB_REPOSITORY" = Keikei-p/-
+          test "$GITHUB_REF" = refs/heads/main
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
+          test "$(git log -1 --pretty=%s)" = 'release(hosting): approved manual rerun eleven Owner static assets'
+          test "$DEPLOY_ACK" = CONFIRM_ONLY_ELEVEN_NEW_OWNER_SETUP_ASSETS
+          test "$USAGE_ACK" = HOSTING_OPERATIONS_AND_POSSIBLE_CHARGES_EXPLICITLY_APPROVED
+          test "$DATA_ACK" = NO_FUNCTIONS_AUTH_FIRESTORE_RULES_CHANGES
+          echo 'approved=true' >> "$GITHUB_OUTPUT"
+          echo 'HOSTING_MANUAL_RERUN_APPROVED_TO_ADD_ELEVEN_ONLY'
+      - name: Install existing official Firebase Admin SDK only after manual approval
+        if: ${{ steps.approval.outputs.approved == 'true' }}
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Make existing private service identity available to read-only checks and Hosting API only
+        if: ${{ steps.approval.outputs.approved == 'true' }}
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-eleven-identity.private.json"
+          chmod 600 "$RUNNER_TEMP/nico-eleven-identity.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-eleven-identity.private.json" >> "$GITHUB_ENV"
+      - name: GET ONLY - verify all six new Owner Functions live, full flags, ranking still OFF
+        if: ${{ steps.approval.outputs.approved == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {createRequire} from 'node:module';
+          import {checkDeployedMetadata} from './tools/production/owner-setup-six-release-scope.mjs';
+          const require=createRequire(new URL('./functions/package.json',import.meta.url));
+          const credential=require('firebase-admin/app').applicationDefault();
+          const token=(await credential.getAccessToken())?.access_token;
+          if(!token)throw Error('STOP_OWNER_ELEVEN_AUTH_MISSING');
+          const url='https://cloudfunctions.googleapis.com/v2/projects/sales-management-cc116/locations/asia-northeast1/functions?pageSize=1000';
+          const response=await fetch(url,{method:'GET',cache:'no-store',redirect:'error',headers:{Authorization:'Bearer '+token}});
+          if(response.status!==200)throw Error('STOP_OWNER_ELEVEN_FUNCTIONS_UNVERIFIED');
+          const body=await response.json();
+          if(!Array.isArray(body.functions??[])||body.nextPageToken)throw Error('STOP_OWNER_ELEVEN_FUNCTIONS_INCOMPLETE');
+          checkDeployedMetadata(body.functions??[]);
+          console.log('OWNER_SIX_FUNCTIONS_LIVE_ACTIVE_JOINT_RANK_OFF');
+          NODE
+      - name: GET ONLY - prove all current Hosting files and config safe to preserve
+        if: ${{ steps.approval.outputs.approved == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/hosting/release-owner-setup-additive.mjs --dry-run
+          echo 'HOSTING_ELEVEN_ADD_ONLY_LIVE_PREFLIGHT_OK'
+      - name: Add exactly eleven reviewed Owner setup static assets to live Firebase Hosting
+        if: ${{ steps.approval.outputs.approved == 'true' && success() }}
+        shell: bash
+        env:
+          NICO_OWNER_SETUP_HOSTING_RELEASE: CONFIRM_ONLY_ELEVEN_NEW_OWNER_SETUP_ASSETS
+        run: |
+          set -euo pipefail
+          node tools/hosting/release-owner-setup-additive.mjs --release
+          echo 'HOSTING_ELEVEN_ADD_ONLY_RELEASE_COMMAND_OK'
+      - name: Public official URL GET independently verifies exact bytes of all 11 files
+        if: ${{ steps.approval.outputs.approved == 'true' && success() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import {SOURCES} from './tools/hosting/owner-setup-additive-guard.mjs';
+          for(const name of Object.keys(SOURCES)){
+            const expected=readFileSync(name);
+            let verified=false;
+            for(let attempt=0;attempt<6;attempt++){
+              try{
+                const url='https://nico-factory.web.app/'+name+'?nico-verified='+process.env.GITHUB_SHA;
+                const result=await fetch(url,{method:'GET',redirect:'error',cache:'no-store',
+                  headers:{'Cache-Control':'no-cache'}});
+                if(result.ok&&Buffer.from(await result.arrayBuffer()).equals(expected)){
+                  verified=true;break;
+                }
+              }catch{}
+              await new Promise(done=>setTimeout(done,3000));
+            }
+            if(!verified)throw Error('STOP_OWNER_ELEVEN_PUBLIC_BYTES_MISMATCH');
+            console.log('OWNER_ELEVEN_PUBLIC_BYTE_VERIFIED '+name);
+          }
+          console.log('OFFICIAL_OWNER_SETUP_ELEVEN_STATIC_ASSETS_VERIFIED');
+          NODE
+      - name: Delete all private credential files on success and error
+        if: always()
+        run: rm -f "$RUNNER_TEMP/nico-eleven-identity.private.json"
