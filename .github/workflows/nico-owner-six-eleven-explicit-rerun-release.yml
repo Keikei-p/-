@@ -53,8 +53,8 @@ jobs:
           SCOPE_APPROVAL: NO_FIRESTORE_RULES_AUTH_IAM_OR_ORIGINAL_FUNCTION_CHANGES
         run: |
           set -euo pipefail
-          echo 'approved=false' >> "$GITHUB_OUTPUT"
           if [ "$GITHUB_RUN_ATTEMPT" = 1 ]; then
+            echo 'approved=false' >> "$GITHUB_OUTPUT"
             echo 'RELEASE_READY_BUT_MANUAL_CONNECTOR_JOB_RERUN_REQUIRED_NO_DEPLOY'
             exit 0
           fi
