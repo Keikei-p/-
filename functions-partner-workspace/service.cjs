@@ -1672,7 +1672,9 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   }
   const visibleTeams=teams.docs.map(sn=>({id:sn.id,name:clean(sn.data().name),active:sn.data().active===true}))
    .filter(team=>["owner","leader"].includes(s.role)||team.id===s.teamId);
-  return {role:s.role,date,companyName:clean(s.companyName),teamId:s.teamId,
+  // Partner responses must not expose amount-coded cashback tier IDs
+  // in saved entries or immutable correction audits. Storage is unchanged.
+  return redactCashbackTiers({role:s.role,date,companyName:clean(s.companyName),teamId:s.teamId,
     teams:visibleTeams,staff:[...allowed.values()],records:rows,categories:KEYS,
     legacyCategoryPublication:(()=>{
      try{
@@ -1684,7 +1686,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
       });
      }catch{fail("data-loss");}
     })(),
-    privateProducts:productList,...(audits?{audits}: {})};
+    privateProducts:productList,...(audits?{audits}: {})});
  }
  async function submit(request){
   const a=await actor(request),d=request?.data||{},date=validDate(d.date),staffId=clean(d.staffId);
