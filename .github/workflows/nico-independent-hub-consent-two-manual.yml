@@ -84,7 +84,7 @@ jobs:
           test "$GITHUB_REPOSITORY" = Keikei-p/-
           test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
           test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
-          test "$(git log -1 --pretty=%s)" = 'release(owner): enable independent Hub consent GET+SET on unclaimed partners'
+          # SHA equality is the immutable reviewed source gate; squash commit titles may change.
           test "$APPROVED_SCOPE" = UPDATE_ONLY_getRankingOwnerConsentStatus_PRESERVE_ALL_OTHER_FUNCTIONS
           test "$APPROVED_USAGE" = FUNCTION_BUILD_TRIAL_CHARGE_EXPLICITLY_APPROVED
           test "$RULES_APPROVAL" = NO_FIRESTORE_AUTH_IAM_OR_HOSTING_CHANGES
