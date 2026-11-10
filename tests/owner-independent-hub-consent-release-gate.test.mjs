@@ -29,3 +29,14 @@ test("production operations only exact 2 Owner consent callable revisions and GE
  assert.equal((src.match(/firebase deploy --non-interactive/g)||[]).length,1);
  assert.equal((src.match(/firebase deploy --non-interactive[\s\S]*?\n      - name:/g)||[]).length,1);
 });
+
+
+test("manual scope env string and actual equality gate are identical, never stale single Function",()=>{
+ const vars=[...src.matchAll(/APPROVED_SCOPE:\s*([A-Z0-9_]+)/g)].map(x=>x[1]);
+ const guards=[...src.matchAll(/test "\$APPROVED_SCOPE" = ([A-Z0-9_]+)/g)].map(x=>x[1]);
+ assert.equal(vars.length,1);
+ assert.equal(guards.length,1);
+ assert.equal(guards[0],vars[0]);
+ assert.equal(vars[0],"UPDATE_EXACTLY_HUB_AND_PARTNER_CONSENT_GET_SET_ONLY");
+ assert(!src.includes("UPDATE_ONLY_getRankingOwnerConsentStatus_PRESERVE_ALL_OTHER_FUNCTIONS"));
+});
