@@ -66,6 +66,57 @@ jobs:
           node tools/production/ranking-disabled-function-scope.mjs
           node --test tests/ranking-deploy-failure-diagnostic.test.mjs
           echo 'INSPECT_ONLY_NO_FIREBASE_CREDENTIALS_NO_DEPLOY'
+  inspect-live:
+    # Manual, authenticated GET-only inventory. No Firebase deploy, Rules, Hosting or writes.
+    needs: offline
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' &&
+        github.repository == 'Keikei-p/-' &&
+        github.ref == 'refs/heads/main' &&
+        inputs.mode == 'inspect' &&
+        inputs.reviewed_main_sha == github.sha &&
+        needs.offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Install pinned Firebase CLI
+        run: npm install --global firebase-tools@15.34.1 --no-audit --no-fund
+      - name: Set read-only Firebase identity
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-inspect.private.json"
+          chmod 600 "$RUNNER_TEMP/nico-inspect.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-inspect.private.json" >> "$GITHUB_ENV"
+      - name: Read current Function inventory and report target presence only
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase functions:list --project "$FIREBASE_PROJECT_ID" --json > "$RUNNER_TEMP/nico-inspect-inventory.private.json"
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import {getIds} from './tools/production/ranking-disabled-function-scope.mjs';
+          const data=JSON.parse(readFileSync(process.env.RUNNER_TEMP+'/nico-inspect-inventory.private.json','utf8'));
+          const ids=getIds(data);
+          const target=[...ids].filter(x=>x.split('/').at(-1)==='getVerifiedJointCountRanking');
+          console.log('RANKING_TARGET_PRESENT='+String(target.length>0));
+          console.log('RANKING_TARGET_DUPLICATE='+String(target.length>1));
+          console.log('FUNCTION_INVENTORY_READONLY_OK');
+          if(target.length>1)process.exitCode=1;
+          NODE
+      - name: Remove private credentials and inventory
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/nico-inspect.private.json" "$RUNNER_TEMP/nico-inspect-inventory.private.json"
   deploy-disabled:
     # Serialize only live deployments with existing partner Functions releases.
     # Offline PR validation must not be cancelled by unrelated workflows.
