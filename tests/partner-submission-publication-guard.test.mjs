@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import {createRequire} from "node:module";
 import {createPartnerSubmissionPublicationGuard} from "../ranking/partner-submission-publication-guard.mjs";
+const require=createRequire(import.meta.url);
+const {createPartnerSubmissionPublicationGuard:vendorGuard}=require("../functions-partner-workspace/submission-publication-guard.cjs");
 const KEYS=["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター",
  "つばさ・HTB","太陽光・蓄電池AP","U-NEXT"];
 const zero=()=>Object.fromEntries(KEYS.map(k=>[k,0]));
@@ -143,4 +146,26 @@ test("public count catalog version mismatch and injected finance fields block sa
  delete catalog.products[0].unitPrice;
  assert.equal(db.writes,0);
  assert.ok(!db.reads.some(p=>p.startsWith("products")));
+});
+
+
+test("canonical and deployed vendor reject CB and revenue-coded SKU names without reading finance",async()=>{
+ for(const createGuard of [createPartnerSubmissionPublicationGuard,vendorGuard]){
+  for(const name of ["NURO CB50000","NURO ＣＢ５０００","NURO cashback 5000",
+   "NURO revenue 5k","NURO 単価5000"]){
+   const {db,scope}=fixture();
+   db.rows.get("companies/hub/rankingCountPublicCatalog/shared").products[0].name=name;
+   const guard=createGuard({db});
+   await denied(guard({tx:db.transaction(),scope,previousCounts:zero(),
+    nextCounts:counts({NURO:1})}));
+   assert.equal(db.writes,0);
+   assert.ok(!db.reads.some(path=>path.startsWith("products")));
+  }
+  const {db,scope}=fixture();
+  const guard=createGuard({db});
+  const result=await guard({tx:db.transaction(),scope,previousCounts:zero(),
+   nextCounts:counts({NURO:1})});
+  assert.ok(result.enabledCategories.includes("NURO"));
+  assert.equal(db.writes,0);
+ }
 });

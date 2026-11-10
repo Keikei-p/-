@@ -59,7 +59,7 @@ jobs:
           test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
           test "$(git hash-object functions-partner-workspace/service.cjs)" = 614f3216e008642ddf5eda6b93c35cc0469557c3
           test "$(git hash-object functions-partner-workspace/index.js)" = 90d51246477cf5cfa6966f3e822326ef06cccd0f
-          test "$(git hash-object functions-partner-workspace/submission-publication-guard.cjs)" = c9335a3c56083c9ed48530f593db5bbb0f176736
+          test "$(git hash-object functions-partner-workspace/submission-publication-guard.cjs)" = 4a6eb5494dbe1a94aaef49cb319ee6478fc78e68
           node --check security/secondary-finance-read-fence.mjs
           node --check tests/secondary-finance-counts-integration-emulator.test.mjs
           node --check tests/secondary-finance-read-fence-emulator.test.mjs

@@ -50,6 +50,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Exact PR-only review for the finance-label count guard. This branch
+          # NEVER reaches the historical workflow_dispatch release pins below.
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
+             [ "${GITHUB_HEAD_REF:-}" = "fix/partner-count-public-catalog-finance-label-20261111" ]; then
+            test "$(git hash-object scripts/ci/review-partner-sku-publication-write.cjs)" = '253c1811410e87a2a5546fd148bd713ca90b348d'
+            test "$(git hash-object scripts/ci/review-verified-joint-count-hosts.cjs)" = 'c389dd0e741e14bbcbd0fe80958c98839a0196ab'
+            node scripts/ci/review-partner-sku-publication-write.cjs
+            node scripts/ci/review-verified-joint-count-hosts.cjs
+            echo 'PASS_REVIEWED_FINANCE_LABEL_PR_ONLY_NO_DEPLOY'
+            exit 0
+          fi
           # Reviewed current count-save SKU publication branch and main ONLY.
           # Historical workflow_dispatch / release conditions below remain frozen.
           if { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
