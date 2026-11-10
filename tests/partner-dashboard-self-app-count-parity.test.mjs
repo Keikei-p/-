@@ -167,3 +167,44 @@ test("join never invokes mutation until one option is selected AND confirmed",as
  await nodes.join.onclick();
  assert.equal(actions,2);
 });
+
+test("partner competition ranks preserve 1,1,3 and exclude unverified team from placements",()=>{
+ const start=partner.indexOf("function competitionRanks(");
+ const end=partner.indexOf("function renderTeamCountDetail()",start);
+ assert.ok(start>=0&&end>start,"rank helper exists in existing dashboard");
+ const rank=runInNewContext(partner.slice(start,end)+"\ncompetitionRanks");
+ const rows=[{count:5},{count:5},{count:2},{count:1}];
+ const result=Array.from(rank(rows,x=>x.count,(_,r)=>r));
+ assert.deepEqual(result,[1,1,3,4]);
+ const withUnknown=[
+  {id:"__unverified__",count:10},
+  {id:"1",count:5},
+  {id:"2",count:5},
+  {id:"3",count:2}
+ ];
+ assert.deepEqual(
+  Array.from(rank(withUnknown,x=>x.count,(row,r)=>r,x=>x.id!=="__unverified__")),
+  [null,1,1,3]
+ );
+ assert.throws(()=>rank([{count:2},{count:4}],x=>x.count,(x,r)=>r),
+  /unordered count ranking/);
+ assert.throws(()=>rank([{count:-1}],x=>x.count,(x,r)=>r),
+  /invalid count ranking/);
+ assert.deepEqual(rows,[{count:5},{count:5},{count:2},{count:1}],
+  "display ranking must never mutate original counts");
+});
+test("all partner dashboard rank panels use the same count-only tie helper",()=>{
+ for(const snippet of [
+  "competitionRanks(people,p=>p.count",
+  "competitionRanks(groupedProductCounts(",
+  "competitionRanks(summary.groups,g=>g.count",
+  "competitionRanks(summary.people,p=>p.count",
+  "competitionRanks(Object.entries(summary.products)",
+  'g=>g.id!=="__unverified__"'
+ ])assert.ok(partner.includes(snippet),snippet);
+ for(const prior of [
+  'people.map((p,i)=>[i===0?"👑 1位":i+1',
+  'summary.people.map((p,i)=>[i+1',
+  'summary.groups.map((g,i)=>[g.id==="__unverified__"?"—":i+1',
+ ])assert.ok(!partner.includes(prior),"obsolete sequence-based leaderboard: "+prior);
+});
