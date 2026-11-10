@@ -9,6 +9,7 @@
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター",
  "つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
+const MONEY=/(?:単価|売上|収益|利益|報酬|キャッシュバック|[¥￥$€]|[0-9０-９][0-9０-９,，]*\s*(?:万円|千円|円))/i;
 const deny=()=>{throw Error("PARTNER_SUBMISSION_PUBLICATION_UNVERIFIED");};
 const id=x=>typeof x==="string"&&ID.test(x)&&
  !["__proto__","constructor","prototype"].includes(x);
@@ -37,8 +38,8 @@ function validatePolicy({hubId,partnerId,ownerUid,visibility,mapping,products}){
     mapping.bindings.length>1000||!Array.isArray(products)||products.length>1000)deny();
  const catalog=new Map();
  for(const p of products){
-  if(!obj(p)||!id(p.id)||p.companyId!==hubId||
-     (p.active!==undefined&&typeof p.active!=="boolean")||
+  if(!exact(p,["id","companyId","name","active"])||
+     !id(p.id)||p.companyId!==hubId||typeof p.active!=="boolean"||
      typeof p.name!=="string"||p.name.length<1||p.name.length>80||
      catalog.has(p.id))deny();
   catalog.set(p.id,p);
@@ -52,7 +53,7 @@ function validatePolicy({hubId,partnerId,ownerUid,visibility,mapping,products}){
  }
  const partnerAllowed=Object.prototype.hasOwnProperty.call(overrides,partnerId)?
   new Set(overrides[partnerId]):globallyEnabled;
- const mapped=new Map(),seen=new Set();
+ const mapped=new Map(),seen=new Set(),seenHubSku=new Set();
  for(const b of mapping.bindings){
   if(!exact(b,["companyId","productId","hubProductId"])||
      !id(b.companyId)||b.companyId===hubId||
@@ -62,6 +63,10 @@ function validatePolicy({hubId,partnerId,ownerUid,visibility,mapping,products}){
   if(seen.has(key))deny();
   seen.add(key);
   if(b.companyId!==partnerId)continue;
+  // A single reviewed hub SKU cannot be published twice under two categories.
+  if(seenHubSku.has(b.hubProductId))deny();
+  seenHubSku.add(b.hubProductId);
+  if(MONEY.test(catalog.get(b.hubProductId).name))deny();
   // Never interpret old combined SB光・AIR as either new 光 or Air.
   if(b.productId==="partnerSku05"&&
      !/SB光・AIR|旧合算|未分類/.test(catalog.get(b.hubProductId).name))deny();
@@ -87,13 +92,13 @@ export function createPartnerSubmissionPublicationGuard({db}={}){
   const before=counts(previousCounts),after=counts(nextCounts);
   const hub=db.collection("companies").doc(scope.hubId);
   const partner=db.collection("companies").doc(scope.cid);
-  const [hubSnap,partnerSnap,relationSnap,visibilitySnap,mappingSnap,productSnap]=
+  const [hubSnap,partnerSnap,relationSnap,visibilitySnap,mappingSnap,publicCatalogSnap]=
    await Promise.all([
     tx.get(hub),tx.get(partner),
     tx.get(db.collection("partnerRelations").doc(scope.cid)),
     tx.get(hub.collection("rankingProductVisibility").doc("shared")),
     tx.get(hub.collection("rankingSkuMappings").doc("shared")),
-    tx.get(db.collection("products").where("companyId","==",scope.hubId).limit(1001))
+    tx.get(hub.collection("rankingCountPublicCatalog").doc("shared"))
    ]);
   const h=snap(hubSnap),p=snap(partnerSnap),r=snap(relationSnap);
   if(!obj(h)||!id(h.ownerUid)||h.active===false||
@@ -101,12 +106,22 @@ export function createPartnerSubmissionPublicationGuard({db}={}){
      p.hubCompanyId!==scope.hubId||
      !obj(r)||r.hubCompanyId!==scope.hubId||
      r.partnerCompanyId!==scope.cid||r.active!==true||
-     r.countSharingApproved!==true||!Array.isArray(productSnap?.docs)||
-     productSnap.docs.length>1000)deny();
-  const products=productSnap.docs.map(d=>({...snap(d),id:d.id}));
+     r.countSharingApproved!==true)deny();
+  const visibility=snap(visibilitySnap),publicCatalog=snap(publicCatalogSnap);
+  // Count-only catalog is atomically published with visibility by the Owner.
+  // Never read the financial products collection in a partner count Function.
+  if(!obj(publicCatalog)||
+     publicCatalog.schema!=="nico-reviewed-count-public-catalog-v1"||
+     publicCatalog.hubCompanyId!==scope.hubId||
+     publicCatalog.ownerUid!==h.ownerUid||
+     publicCatalog.version!==visibility?.version||
+     !Array.isArray(publicCatalog.products)||publicCatalog.products.length>1000||
+     Object.keys(publicCatalog).some(k=>![
+      "schema","hubCompanyId","ownerUid","version","updatedAt","createdAt","products"
+     ].includes(k)))deny();
   const policy=validatePolicy({hubId:scope.hubId,partnerId:scope.cid,
-   ownerUid:h.ownerUid,visibility:snap(visibilitySnap),
-   mapping:snap(mappingSnap),products});
+   ownerUid:h.ownerUid,visibility,mapping:snap(mappingSnap),
+   products:publicCatalog.products});
   for(const key of KEYS){
    // OFF is a publication setting, never a destructive history migration.
    if(!policy.allowed.has(key)&&after[key]!==before[key])deny();
