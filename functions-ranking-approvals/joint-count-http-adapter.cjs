@@ -27,6 +27,7 @@ const PUBLIC_FIELDS=new Set([
  "previousCount","change","growth","topProduct","remainingToGoal",
  "personalBestStatus"
 ]);
+const FINANCE_KEY=/(?:revenue|sales|amount|price|unitprice|cashback|commission|salary|profit|margin|payment|fee|売上|単価|金額|報酬|利益|キャッシュバック)/i;
 const PRIVATE_TEXT=/(?:[¥￥$€]|(?:[0-9０-９])[0-9０-９.,，]*\s*(?:万円|千円|円)|(?:売上|単価|キャッシュバック|cashback|revenue|commission|salary)[\\s:_=-]*[0-9０-９])/i;
 const fail=()=>{throw Error("JOINT_COUNT_HTTP_ADAPTER_INVALID");};
 const originFrom=req=>typeof req?.headers?.origin==="string"?
@@ -67,7 +68,7 @@ function moneyFree(value,depth=0){
  if(typeof value!=="object")return false;
  const keys=Object.keys(value);
  return keys.length<=10000&&keys.every(k=>
-  PUBLIC_FIELDS.has(k)&&moneyFree(value[k],depth+1));
+  !FINANCE_KEY.test(k)&&PUBLIC_FIELDS.has(k)&&moneyFree(value[k],depth+1));
 }
 /**
  * Calling this function never accesses live data. While the feature flag
