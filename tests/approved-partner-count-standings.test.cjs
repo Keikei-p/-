@@ -135,7 +135,8 @@ test("mapped public catalog rejects financial labels, extra fields and duplicate
  const base={hubId:"hub",cid:"a",ownerUid:"h",visibility,mapping,products};
  assert.deepEqual(allowedPartnerCategories(base),["NURO"]);
  for(const productName of ["NURO 5万円","NURO 5000円","NURO ＣＢ５０００",
-  "NURO cashback 5000","NURO revenue 5000","NURO 単価5000"]){
+  "NURO cashback 5000","NURO revenue 5000","NURO 単価5000",
+  "NURO 原価","NURO 価格","NURO commission","NURO ２千円"]){
   assert.throws(()=>allowedPartnerCategories({...base,
    products:[{...products[0],name:productName}]}),/UNVERIFIED/);
  }
@@ -147,7 +148,8 @@ test("mapped public catalog rejects financial labels, extra fields and duplicate
 });
 
 test("partner rankings reject financial labels in company, team and person names",()=>{
- for(const label of ["会社5万円","ＣＢ５０００","cashback 5000","単価5000"]){
+ for(const label of ["会社5万円","ＣＢ５０００","cashback 5000","単価5000",
+  "原価5000","commission 5000"]){
   const companyRow=company("a",label,{...zero(),NURO:1});
   assert.throws(()=>build([companyRow]),/UNVERIFIED/);
   const teamRow=company("a","会社A",{...zero(),NURO:1});
