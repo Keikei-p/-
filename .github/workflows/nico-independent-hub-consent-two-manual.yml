@@ -87,7 +87,7 @@ jobs:
           test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
           test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
           # SHA equality is the immutable reviewed source gate; squash commit titles may change.
-          test "$APPROVED_SCOPE" = UPDATE_ONLY_getRankingOwnerConsentStatus_PRESERVE_ALL_OTHER_FUNCTIONS
+          test "$APPROVED_SCOPE" = UPDATE_EXACTLY_HUB_AND_PARTNER_CONSENT_GET_SET_ONLY
           test "$APPROVED_USAGE" = FUNCTION_BUILD_TRIAL_CHARGE_EXPLICITLY_APPROVED
           test "$RULES_APPROVAL" = NO_FIRESTORE_AUTH_IAM_OR_HOSTING_CHANGES
           echo 'approved=true' >> "$GITHUB_OUTPUT"
