@@ -39,8 +39,8 @@ function validatePolicy({hubId,partnerId,ownerUid,visibility,mapping,products}){
     mapping.bindings.length>1000||!Array.isArray(products)||products.length>1000)deny();
  const catalog=new Map();
  for(const p of products){
-  if(!obj(p)||!id(p.id)||p.companyId!==hubId||
-     (p.active!==undefined&&typeof p.active!=="boolean")||
+  if(!exact(p,["id","companyId","name","active"])||
+     !id(p.id)||p.companyId!==hubId||typeof p.active!=="boolean"||
      typeof p.name!=="string"||p.name.length<1||p.name.length>80||
      catalog.has(p.id))deny();
   catalog.set(p.id,p);
@@ -93,13 +93,13 @@ function createPartnerSubmissionPublicationGuard({db}={}){
   const before=counts(previousCounts),after=counts(nextCounts);
   const hub=db.collection("companies").doc(scope.hubId);
   const partner=db.collection("companies").doc(scope.cid);
-  const [hubSnap,partnerSnap,relationSnap,visibilitySnap,mappingSnap,productSnap]=
+  const [hubSnap,partnerSnap,relationSnap,visibilitySnap,mappingSnap,publicCatalogSnap]=
    await Promise.all([
     tx.get(hub),tx.get(partner),
     tx.get(db.collection("partnerRelations").doc(scope.cid)),
     tx.get(hub.collection("rankingProductVisibility").doc("shared")),
     tx.get(hub.collection("rankingSkuMappings").doc("shared")),
-    tx.get(db.collection("products").where("companyId","==",scope.hubId).limit(1001))
+    tx.get(hub.collection("rankingCountPublicCatalog").doc("shared"))
    ]);
   const h=snap(hubSnap),p=snap(partnerSnap),r=snap(relationSnap);
   if(!obj(h)||!id(h.ownerUid)||h.active===false||
@@ -107,12 +107,22 @@ function createPartnerSubmissionPublicationGuard({db}={}){
      p.hubCompanyId!==scope.hubId||
      !obj(r)||r.hubCompanyId!==scope.hubId||
      r.partnerCompanyId!==scope.cid||r.active!==true||
-     r.countSharingApproved!==true||!Array.isArray(productSnap?.docs)||
-     productSnap.docs.length>1000)deny();
-  const products=productSnap.docs.map(d=>({...snap(d),id:d.id}));
+     r.countSharingApproved!==true)deny();
+  const visibility=snap(visibilitySnap),publicCatalog=snap(publicCatalogSnap);
+  // Count-only catalog is atomically published with visibility by the Owner.
+  // Never read the financial products collection in a partner count Function.
+  if(!obj(publicCatalog)||
+     publicCatalog.schema!=="nico-reviewed-count-public-catalog-v1"||
+     publicCatalog.hubCompanyId!==scope.hubId||
+     publicCatalog.ownerUid!==h.ownerUid||
+     publicCatalog.version!==visibility?.version||
+     !Array.isArray(publicCatalog.products)||publicCatalog.products.length>1000||
+     Object.keys(publicCatalog).some(k=>![
+      "schema","hubCompanyId","ownerUid","version","updatedAt","createdAt","products"
+     ].includes(k)))deny();
   const policy=validatePolicy({hubId:scope.hubId,partnerId:scope.cid,
-   ownerUid:h.ownerUid,visibility:snap(visibilitySnap),
-   mapping:snap(mappingSnap),products});
+   ownerUid:h.ownerUid,visibility,mapping:snap(mappingSnap),
+   products:publicCatalog.products});
   for(const key of KEYS){
    // OFF is a publication setting, never a destructive history migration.
    if(!policy.allowed.has(key)&&after[key]!==before[key])deny();
