@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {inspect,classify,summarize,EXPECTED,PROJECT,LIST_URL}
+import {inspect,classify,summarize,inspectJointRankingMetadata,
+ JOINT_RANKING_METADATA_URL,EXPECTED,PROJECT,LIST_URL}
  from '../tools/production/inspect-live-partner-callables-readonly.mjs';
 
 const region='asia-northeast1';
@@ -144,4 +145,85 @@ test('no production write verbs, credentials or values emitted to console',()=>{
  assert.doesNotMatch(source,/method:'POST'|method:'PATCH'|method:'DELETE'|method:'PUT'/);
  assert.doesNotMatch(source,/setDoc\(|updateDoc\(|deleteDoc\(|firestore\.googleapis\.com|firebase deploy/);
  assert.doesNotMatch(source,/console\.log\(token|console\.log\(body|console\.log\(response/);
+});
+
+test('joint Function metadata GET verifies deployed ACTIVE flag while never claiming real-account finance denial',async()=>{
+ const calls=[];
+ const result=await inspectJointRankingMetadata(async url=>{
+  calls.push(url);
+  return answer(200,body('getVerifiedJointCountRanking',{
+   serviceConfig:{uri:'https://nico-count-api-001.a.run.app',
+    environmentVariables:{NICO_JOINT_COUNT_RANKING_ENABLED:'enabled'}}
+  }));
+ });
+ assert.deepEqual(calls,[JOINT_RANKING_METADATA_URL]);
+ assert.equal(result.jointRankingFunctionPresent,true);
+ assert.equal(result.jointRankingFunctionActive,true);
+ assert.equal(result.jointRankingFunctionConfiguredEnabled,true);
+ assert.equal(result.jointMetadataFromRegionalList,false);
+ assert.equal(result.realPartnerFinanceDenyVerified,false);
+ assert.equal(result.realPartnerCountEntryVerified,false);
+ assert.doesNotMatch(JSON.stringify(result),/nico-count-api|a\\.run\\.app|enabled|uid|token/i);
+});
+test('joint Function default-OFF is identified even when gen2 metadata exists',async()=>{
+ const result=await inspectJointRankingMetadata(async()=>answer(200,
+  body('getVerifiedJointCountRanking',{serviceConfig:{
+   uri:'https://nico-count-api-001.a.run.app',environmentVariables:{}
+  }})));
+ assert.equal(result.jointRankingFunctionPresent,true);
+ assert.equal(result.jointRankingFunctionActive,true);
+ assert.equal(result.jointRankingFunctionConfiguredEnabled,false);
+});
+test('joint direct 404 is independently reconciled with full regional GET-only inventory',async()=>{
+ const cases=[
+  {functions:[],expectPresent:false,expectEnabled:false},
+  {functions:[body('getVerifiedJointCountRanking',{
+   serviceConfig:{uri:'https://nico-count-api-001.a.run.app',
+    environmentVariables:{NICO_JOINT_COUNT_RANKING_ENABLED:'enabled'}}
+  })],expectPresent:true,expectEnabled:true}
+ ];
+ for(const c of cases){
+  const calls=[];
+  const result=await inspectJointRankingMetadata(async url=>{
+   calls.push(url);
+   return url===LIST_URL?answer(200,{functions:c.functions}):answer(404,{});
+  });
+  assert.deepEqual(calls,[JOINT_RANKING_METADATA_URL,LIST_URL]);
+  assert.equal(result.jointRankingFunctionPresent,c.expectPresent);
+  assert.equal(result.jointRankingFunctionConfiguredEnabled,c.expectEnabled);
+  assert.equal(result.jointMetadataFromRegionalList,true);
+ }
+});
+test('joint Function permission failures, partial listings and suspicious descriptors never certify release',async()=>{
+ for(const code of [401,403,429,500]){
+  await assert.rejects(inspectJointRankingMetadata(async()=>answer(code,{})),
+   /STOP_PARTNER_CALLABLES_/);
+ }
+ for(const listing of [
+  {nextPageToken:'page2',functions:[]},
+  {functions:[body('getVerifiedJointCountRanking'),
+   body('getVerifiedJointCountRanking')]},
+  {functions:null}
+ ]){
+  await assert.rejects(inspectJointRankingMetadata(async url=>
+   url===LIST_URL?answer(200,listing):answer(404,{})),
+   /STOP_PARTNER_CALLABLES_/);
+ }
+ for(const patch of [
+  {name:resource+'unexpectedRanking'},
+  {state:'FAILED'},
+  {buildConfig:{runtime:'python312',entryPoint:'getVerifiedJointCountRanking'}},
+  {serviceConfig:{uri:'http://evil.invalid',
+   environmentVariables:{NICO_JOINT_COUNT_RANKING_ENABLED:'enabled'}}}
+ ]){
+  if(patch.name){
+   await assert.rejects(inspectJointRankingMetadata(async()=>answer(200,
+    body('getVerifiedJointCountRanking',patch))),/STOP_PARTNER_CALLABLES_/);
+  }else{
+   const report=await inspectJointRankingMetadata(async()=>answer(200,
+    body('getVerifiedJointCountRanking',patch)));
+   assert.equal(report.jointRankingFunctionActive,false);
+   assert.equal(report.jointRankingFunctionConfiguredEnabled,false);
+  }
+ }
 });
