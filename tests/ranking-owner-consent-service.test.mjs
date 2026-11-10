@@ -346,12 +346,23 @@ test("hub Owner can open configuration status for a hub-created unclaimed partne
  assert.equal(visible.partners.length,1);
  assert.deepEqual(visible.partners[0],{
   partnerCompanyId:"p1",companyName:"協力店A",ownApproved:false,
-  otherApproved:false,version:0,canEdit:false
+  otherApproved:false,version:0,canEdit:true
  });
  assert.deepEqual(copyOriginals(f),original);
  assert.equal(f.events.filter(x=>x.op==="create"||x.op==="update").length,0);
- await assert.rejects(submit(f,"hubOwner",true),refuse,
-  "missing partner Owner never permits Hub-only consent");
+ const approved=await submit(f,"hubOwner",true);
+ assert.deepEqual(approved,{saved:true,partnerCompanyId:"p1",enabled:true,version:1});
+ assert.equal(f.d.get("partnerRelations/p1").combinedRankingApprovedByHub,true);
+ assert.equal(f.d.get("partnerRelations/p1").combinedRankingApprovedByPartner,undefined);
+ const after=await get(auth("hubOwner"));
+ assert.deepEqual(after.partners[0],{
+  partnerCompanyId:"p1",companyName:"協力店A",ownApproved:true,
+  otherApproved:false,version:1,canEdit:true
+ });
+ assert.equal(f.d.has("companies/p1/rankingApprovals/hub"),false);
+ assert.deepEqual(copyOriginals(f),original);
+ await assert.rejects(createFreshCombinedRankingContext({db:f.db})(auth("hubOwner")),
+  /UNVERIFIED/,"independent Hub approval is never Partner consent");
  await assert.rejects(get(auth("partnerOwner")),
   /RANKING_OWNER_STATUS_UNAUTHORIZED_OR_INCOMPLETE/,
   "cannot invent partner Owner from merely knowing user role");
@@ -377,3 +388,39 @@ test("unclaimed partner never gains ranking if consent documents or relation fla
  }
 });
 
+
+
+test("unclaimed partner: Hub approval can be revoked, but Partner approval cannot be forged",async()=>{
+ const f=withNamedPartner();
+ delete f.d.get("companies/p1").ownerUid;
+ const a=await submit(f,"hubOwner",true);
+ assert.equal(a.version,1);
+ await assert.rejects(submit(f,"partnerOwner",true),refuse);
+ const removed=await submit(f,"hubOwner",false,1);
+ assert.deepEqual(removed,{saved:true,partnerCompanyId:"p1",enabled:false,version:2});
+ assert.equal(f.d.has("companies/p1/rankingApprovals/hub"),false);
+ assert.equal(f.d.get("partnerRelations/p1").combinedRankingApprovedByHub,false);
+ assert.equal(f.d.get("partnerRelations/p1").combinedRankingApprovedByPartner,undefined);
+ assert.deepEqual(copyOriginals(f),f.originals);
+});
+test("unclaimed partner: fake Partner approval/invalid ownerUid blocks Hub consent save atomically",async()=>{
+ for(const mutate of [
+  f=>{f.d.get("partnerRelations/p1").combinedRankingApprovedByPartner=true;},
+  f=>{f.d.get("partnerRelations/p1").individualNamesApprovedByPartner=true;},
+  f=>f.d.set("companies/p1/rankingApprovals/hub",{
+   companyId:"p1",hubCompanyId:"hub",partnerCompanyId:"p1",
+   approvedByUid:"partnerOwner",scope:"combined_rank_only",
+   active:true,combinedRankingApproved:true,individualNamesApproved:true,version:1
+  }),
+  f=>{f.d.get("companies/p1").ownerUid="bad/uid";}
+ ]){
+  const f=withNamedPartner();
+  delete f.d.get("companies/p1").ownerUid;
+  mutate(f);
+  const before=copyOriginals(f);
+  await assert.rejects(submit(f,"hubOwner",true),refuse);
+  assert.equal(auditDocs(f).length,0);
+  assert.equal(f.d.has("companies/hub/rankingApprovals/p1"),false);
+  assert.deepEqual(copyOriginals(f),before);
+ }
+});
