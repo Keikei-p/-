@@ -288,3 +288,60 @@ test("approved company and team count-only rankings can cross authenticated Func
  assert.equal(rejected.statusCode,503);
  assert.deepEqual(JSON.parse(rejected.body),{error:"request_blocked"});
 });
+
+
+test("raw ingress path rejects URL-normalized traversal and percent-encoded aliases before backend loading",async()=>{
+ let loads=0;
+ const adapter=createJointCountHttpAdapter({enabled:()=>true,
+  loadHandler:()=>{loads++;return make();}});
+ for(const bad of [
+  "/v1/anything/../owner-visible-counts?month=2026-11",
+  "/v1/%2e/owner-visible-counts?month=2026-11",
+  "/v1/other/%2e%2e/owner-visible-counts?month=2026-11",
+  "/getVerifiedJointCountRanking/../getVerifiedJointCountRanking?month=2026-11",
+  "/%67etVerifiedJointCountRanking?month=2026-11",
+  "/v1//owner-visible-counts?month=2026-11"
+ ]){
+  const out=response();
+  await adapter(req(bad),out);
+  assert.equal(out.statusCode,404,bad);
+  assert.deepEqual(JSON.parse(out.body),{error:"request_blocked"});
+ }
+ assert.equal(loads,0,"invalid paths never initialize Auth/Firestore handler");
+});
+
+test("partner public ranking never accepts hub-only IDs, finance fields or internal leaderboard blocks",async()=>{
+ const mutations=[
+  p=>{p.publicRanking.members[0].uid="internalUid";},
+  p=>{p.publicRanking.members[0].teamId="privateTeam";},
+  p=>{p.publicRanking.products[0].companyId="internal";},
+  p=>{p.publicRanking.teams=[{rank:1,name:"営業班",company:"協力店",
+   count:5,companyId:"internal"}];},
+  p=>{p.memberRanking=[{id:"private",name:"担当者",count:5}];},
+  p=>{p.summary={own:5,partner:1,total:6,unidentified:0};},
+  p=>{p.publicRanking.companies=[{rank:1,name:"協力店",count:5,
+   sourceId:"privateSource"}];},
+  p=>{p.publicRanking.members[0].rank=0;},
+  p=>{p.publicRanking.products[0].count=-1;}
+ ];
+ for(const mutate of mutations){
+  const p=data();mutate(p);
+  const adapter=createJointCountHttpAdapter({enabled:()=>true,
+   loadHandler:()=>make(200,p)});
+  const out=response();await adapter(req(),out);
+  assert.equal(out.statusCode,503,mutate.toString());
+  assert.deepEqual(JSON.parse(out.body),{error:"request_blocked"});
+ }
+});
+
+test("NFKC-normalized money labels cannot cross the partner ranking HTTP boundary",async()=>{
+ for(const name of ["担当者 ＣＢ５０００","商品 cash back 3000",
+  "担当者 unit price 2500","担当者 ＲＥＶＥＮＵＥ９０００"]){
+  const p=data();p.publicRanking.members[0].name=name;
+  const adapter=createJointCountHttpAdapter({enabled:()=>true,
+   loadHandler:()=>make(200,p)});
+  const out=response();await adapter(req(),out);
+  assert.equal(out.statusCode,503,name);
+  assert(!out.body.includes(name));
+ }
+});
