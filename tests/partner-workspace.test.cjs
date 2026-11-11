@@ -1593,3 +1593,50 @@ test("all published SKUs OFF forbids new or repeated partner saves without ledge
  assert.equal(db.store.get("companies/hub/partnerWorkCountDays/"+date+
   "/reports/partner").totalCount,2);
 });
+
+test("hub Owner correction rejects mismatched saved ledger identity without writing",async()=>{
+ for(const mismatch of [
+  ["entry","companyId","other"],
+  ["entry","hubCompanyId","other"],
+  ["entry","staffId","other"],
+  ["entry","date","2026-10-30"],
+  ["summary","partnerCompanyId","other"],
+  ["summary","hubCompanyId","other"],
+  ["summary","date","2026-10-30"]
+ ]){
+  const {db,api,req,zero}=setup(false,true,true);
+  const prefix="companies/hub/";
+  db.seed(prefix+"rankingProductVisibility/shared",{
+   hubCompanyId:"hub",ownerUid:"h",version:1,
+   enabledHubProductIds:["skuNuro"],partnerOverrides:{}});
+  db.seed(prefix+"rankingSkuMappings/shared",{
+   hubCompanyId:"hub",ownerUid:"h",reviewedByUid:"h",active:true,version:1,
+   bindings:[{companyId:"partner",productId:"partnerSku01",hubProductId:"skuNuro"}]});
+  db.seed(prefix+"rankingCountPublicCatalog/shared",{
+   schema:"nico-reviewed-count-public-catalog-v1",hubCompanyId:"hub",
+   ownerUid:"h",version:1,products:[
+    {id:"skuNuro",companyId:"hub",name:"NURO",active:true}]});
+  const team=(await api.manage(req("p",{action:"addTeam",name:"監査班"}))).teamId;
+  const staff=(await api.manage(req("p",{action:"addManaged",name:"監査担当",teamId:team}))).staffId;
+  const date="2026-10-31";
+  await api.submit(req("p",{date,staffId:staff,
+   counts:{...zero(),NURO:2},expectedVersion:0}));
+  const entryPath="companies/partner/partnerWorkEntries/"+date+"__"+staff;
+  const summaryPath="companies/hub/partnerWorkCountDays/"+date+"/reports/partner";
+  const path=mismatch[0]==="entry"?entryPath:summaryPath;
+  db.store.get(path)[mismatch[1]]=mismatch[2];
+  const before=clone([...db.store]);
+  await assert.rejects(
+   api.submit(req("h",{
+    ownerPartnerCompanyId:"partner",date,staffId,
+    counts:{...zero(),NURO:3},expectedVersion:1
+   })),
+   e=>e.code==="data-loss",
+   mismatch.join(":")+" must fail closed"
+  );
+  assert.deepEqual([...db.store],before,
+   mismatch.join(":")+" must not alter counts, audits, money or identity");
+  assert.equal(db.store.get(entryPath).version,1);
+  assert.equal([...db.store.keys()].filter(x=>x.includes("/partnerWorkAudits/")).length,1);
+ }
+});
