@@ -802,7 +802,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    registeredCompanies.sort((a,b)=>a.name.localeCompare(b.name,"ja"));
    // Explicitly scoped, on-demand shared-count breakdown. Never read
    // financial originals, private products, or reveal staff identities.
-   let partnerTeamDetails=null,ownerCorrectionEntries=null;
+   let partnerTeamDetails=null,ownerCorrectionEntries=null,partnerStaffEntryCount=0;
    const selectedPartnerId=clean(d.partnerCompanyId);
    if(selectedPartnerId){
     if(!ID.test(selectedPartnerId))fail("invalid-argument");
@@ -813,6 +813,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      collection(selectedPartnerId,"partnerWorkEntries").where("date","==",date).limit(201).get()
     ]);
     if(teamSnaps.size>150||entrySnaps.size>200)fail("resource-exhausted");
+    partnerStaffEntryCount=entrySnaps.size;
     const rows=new Map();
     for(const sn of teamSnaps.docs){
      const t=sn.data()||{};
@@ -926,7 +927,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     partnerTeamDetails.unreconciledWithCompanyReport=report?
      report.totalCount!==partnerTeamDetails.verifiedSharedCount+
        partnerTeamDetails.unverifiedTeamCount:
-     entrySnaps.size>0;
+     partnerStaffEntryCount>0;
    }
    // Extra Firestore reads are opt-in. Default report/dashboard calls retain
    // their existing cost. Only approved hub Owner can invoke this branch.
