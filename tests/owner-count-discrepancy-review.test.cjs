@@ -134,7 +134,7 @@ function createAuditHarness({owner=true,finance=true,corrections}={}){
    calls.push({name:"list",args});
    return {size:refs.length,docs:refs.map(row=>({data:()=>row}))};
   },
-  recordRevision:x=>JSON.stringify(x),
+  recordRevision:x=>JSON.stringify(Object.fromEntries(Object.entries(x).sort(([a],[b])=>a.localeCompare(b)))),
  });
  vm.runInContext(program,ctx);
  return {ctx,panel,calls,record,setOwner:x=>{ownerAllowed=x}};
