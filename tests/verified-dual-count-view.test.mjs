@@ -375,3 +375,29 @@ test("own partner SKU ranking keeps count ties as 1,1 without affecting public j
  assert(words(sections[3]).includes("公開承認済み・商材ランキング"));
  assert.deepEqual(value,snapshot,"ranking ties must not rewrite source rows");
 });
+
+
+test("hub leaderboard excludes unreported company and keeps saved zero",()=>{
+ const missing=input("hub_owner");
+ missing.sources[1].records=[];missing.sources[1].lines=[];
+ const original=structuredClone(missing),root=new Node("main");
+ renderVerifiedDualCountDashboard({document:doc,root,
+  payload:buildVerifiedCountDashboard(missing)});
+ const sections=walk(root).filter(x=>x.className==="nico-dual-ranking");
+ const companies=sections.find(x=>words(x).includes("会社ランキング"));
+ assert(companies);assert(words(companies).includes("自社"));
+ assert(!words(companies).includes("協力店A"));
+ assert(words(root).includes("未報告"));
+ assert.deepEqual(missing,original);
+ const zero=input("hub_owner");
+ zero.sources[1].records[0].totalCount=0;
+ zero.sources[1].records[0].reportStatus="no_result";
+ zero.sources[1].lines[0].count=0;
+ const zeroRoot=new Node("main");
+ renderVerifiedDualCountDashboard({document:doc,root:zeroRoot,
+  payload:buildVerifiedCountDashboard(zero)});
+ const ranked=walk(zeroRoot).filter(x=>x.className==="nico-dual-ranking")
+  .find(x=>words(x).includes("会社ランキング"));
+ assert(words(ranked).includes("協力店A"));
+ assert(words(ranked).includes("0件"));
+});
