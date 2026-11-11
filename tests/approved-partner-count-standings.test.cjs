@@ -80,6 +80,24 @@ test("orphan staff entries cannot appear in ranks without a saved daily summary"
  x.reports=[];
  assert.throws(()=>build([x]),/UNVERIFIED/);
 });
+test("staff-day summary without a saved staff original cannot claim a reported zero",()=>{
+ const orphan=company("a","会社A",zero());
+ orphan.entries=[];
+ const legitimate=company("b","会社B",zero());
+ const originals=JSON.stringify([orphan,legitimate]);
+ assert.throws(()=>build([orphan]),/UNVERIFIED/);
+ assert.throws(()=>build([orphan,legitimate]),/UNVERIFIED/);
+ assert.equal(JSON.stringify([orphan,legitimate]),originals,
+  "a forged zero summary must not mutate either saved source");
+ // Historical company-only quick counts are distinct: they remain visible
+ // as company counts but cannot certify staff or team rankings.
+ const legacy=structuredClone(orphan);
+ legacy.reports[0].data.source="quick-counts-v1";
+ const output=build([legacy]);
+ assert.equal(output.totalCount,0);
+ assert.equal(output.peopleComplete,false);
+ assert.equal(output.teamComplete,false);
+});
 test("legacy company-only counts never masquerade as staff or teams",()=>{
  const x=company("a","会社A",{...zero(),NURO:4});
  x.entries=[];x.reports[0].data.source="quick-counts-v1";

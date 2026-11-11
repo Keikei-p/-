@@ -142,7 +142,10 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
     for(const product of KEYS)daily[product]=sum(daily[product],v.counts[product]);
    }
    if(x.source==="staff-entries-v1"){
-    if(recorded!==raw.total||KEYS.some(k=>daily[k]!==raw.counts[k]))fail();
+    // A saved zero requires a real staff-day original. An empty aggregate
+    // alone cannot prove that anyone reported zero rather than not reporting.
+    if(rows===0||recorded!==raw.total||
+       KEYS.some(k=>daily[k]!==raw.counts[k]))fail();
    }else{
     if(rows)fail();
     verifiedPeople=false;historicalCompanyOnlyReport=true;
