@@ -28,7 +28,7 @@ const PUBLIC_FIELDS=new Set([
  "personalBestStatus"
 ]);
 const FINANCE_KEY=/(?:revenue|sales|amount|price|unitprice|cashback|commission|salary|profit|margin|payment|fee|売上|単価|金額|報酬|利益|キャッシュバック)/i;
-const PRIVATE_TEXT=/(?:[¥￥$€]|(?:[0-9０-９])[0-9０-９.,，]*\s*(?:万円|千円|円)|(?:売上|単価|キャッシュバック|cashback|revenue|commission|salary)[\\s:_=-]*[0-9０-９])/i;
+const PRIVATE_TEXT=/(?:[¥￥$€]|(?:[0-9０-９])[0-9０-９.,，]*\s*(?:万円|千円|円)|(?:売上|単価|キャッシュバック|cash\s*back|revenue|commission|salary|unit\s*price|CB)[\s:_=-]*[0-9０-９])/i;
 const fail=()=>{throw Error("JOINT_COUNT_HTTP_ADAPTER_INVALID");};
 const originFrom=req=>typeof req?.headers?.origin==="string"?
  req.headers.origin:"";
@@ -50,6 +50,10 @@ function requestPath(req){
     !raw.startsWith("/")||raw.startsWith("//")||
     raw.includes("#")||raw.includes("\\")||
     /[\r\n\x00-\x1F]/.test(raw))return null;
+ // Reject the ORIGINAL path before URL normalizes /./, /../ or %2e%2e.
+ // Only these two literal ingress paths are authorized; no encoded aliases.
+ const rawPath=raw.split("?")[0];
+ if(rawPath!==PATH&&rawPath!==DIRECT_FUNCTION_PATH)return null;
  const url=new URL(raw,ORIGIN);
  if(url.origin!==ORIGIN||
     ![PATH,DIRECT_FUNCTION_PATH].includes(url.pathname)||
@@ -60,7 +64,8 @@ function requestPath(req){
 }
 function moneyFree(value,depth=0){
  if(depth>32)return false;
- if(typeof value==="string")return value.length<=5000&&!PRIVATE_TEXT.test(value);
+ if(typeof value==="string")return value.length<=5000&&
+  !PRIVATE_TEXT.test(value.normalize("NFKC"));
  if(value===null||typeof value==="number"||typeof value==="boolean")
   return typeof value!=="number"||Number.isFinite(value);
  if(Array.isArray(value))
@@ -69,6 +74,31 @@ function moneyFree(value,depth=0){
  const keys=Object.keys(value);
  return keys.length<=10000&&keys.every(k=>
   !FINANCE_KEY.test(k)&&PUBLIC_FIELDS.has(k)&&moneyFree(value[k],depth+1));
+}
+// A partner may receive only the approved count-only public leaderboard rows.
+// The general field allowlist is NOT sufficient: it also contains hub-only IDs.
+const own=(obj,key)=>Object.prototype.hasOwnProperty.call(obj,key);
+const exact=(obj,keys)=>obj!==null&&typeof obj==="object"&&
+ !Array.isArray(obj)&&Object.keys(obj).length===keys.length&&
+ keys.every(key=>own(obj,key));
+const rankRows=(rows,keys)=>Array.isArray(rows)&&rows.length<=10000&&
+ rows.every(row=>exact(row,keys)&&
+  Number.isSafeInteger(row.rank)&&row.rank>0&&
+  Number.isSafeInteger(row.count)&&row.count>=0&&
+  keys.filter(k=>["name","company"].includes(k)).every(k=>
+   typeof row[k]==="string"&&row[k].trim().length>0));
+function partnerPublicScopeSafe(data){
+ if(["summary","memberRanking","productRanking","companyBreakdown",
+      "teamBreakdown","filters"].some(key=>own(data,key)))return false;
+ const p=data.publicRanking;
+ if(!p||typeof p!=="object"||Array.isArray(p)||
+    !own(p,"members")||!own(p,"products")||
+    Object.keys(p).some(k=>!["members","products","companies","teams"].includes(k)))
+  return false;
+ return rankRows(p.members,["rank","company","name","count"])&&
+  rankRows(p.products,["rank","name","count"])&&
+  (!own(p,"companies")||rankRows(p.companies,["rank","name","count"]))&&
+  (!own(p,"teams")||rankRows(p.teams,["rank","name","company","count"]));
 }
 /**
  * Calling this function never accesses live data. While the feature flag
@@ -135,7 +165,8 @@ function createJointCountHttpAdapter({enabled=()=>false,loadHandler}={}){
    if(response.status===200){
     if(!data||data.schema!=="nico-verified-dual-count-v1"||
        !["hub_owner","partner_owner"].includes(data.role)||
-       !moneyFree(data))fail();
+       !moneyFree(data)||
+       (data.role==="partner_owner"&&!partnerPublicScopeSafe(data)))fail();
    }else if(!data||typeof data!=="object"||Array.isArray(data)||
             Object.keys(data).length!==1||
             !["request_blocked","service_disabled"].includes(data.error))fail();
