@@ -43,7 +43,8 @@ test("all-OFF partner publishes no personal/team ranks while ON zero remains rep
  const originals=JSON.stringify([off,on,submittedZero]);
  const out=build([off,on,submittedZero]);
  assert.equal(out.totalCount,2);
- assert.equal(out.reportCount,3);
+ assert.equal(out.reportCount,2,
+  "fully OFF company must not leak even its report count metadata");
  assert.deepEqual(out.companies.map(x=>x.name),["公開会社","ゼロ会社"]);
  assert.equal(out.people.length,2);
  assert.equal(out.teams.length,2);
@@ -289,4 +290,30 @@ test("truncated day inventories are rejected, never certify a false full-month l
  assert.deepEqual(buildApprovedPartnerCountStandings({
   ...source,sources:[full]
  }).unreportedCompanies.map(x=>x.status),["partial_report"]);
+});
+
+test("all OFF company reports and legacy-only history have zero public metadata influence",()=>{
+ const hidden=company("off","内密会社",{...zero(),NURO:27},
+  {allowed:[]});
+ hidden.entries=[];
+ hidden.reports[0].data.source="quick-counts-v1";
+ const published=company("on","公開会社",{...zero(),NURO:1});
+ const original=JSON.stringify([hidden,published]);
+ const output=build([hidden,published]);
+ assert.equal(output.totalCount,1);
+ assert.equal(output.reportCount,1);
+ assert.equal(output.peopleComplete,true);
+ assert.equal(output.teamComplete,true);
+ assert.equal(output.partnerCountsComplete,true);
+ assert.equal(output.historicalCompanyOnlyCount,0);
+ assert.equal(output.unverifiedTeamCount,0);
+ assert.equal(output.unverifiedPersonCount,0);
+ assert.deepEqual(output.companies.map(x=>x.name),["公開会社"]);
+ assert(!JSON.stringify(output).includes("内密会社"));
+ assert.equal(JSON.stringify([hidden,published]),original);
+ const offOnly=build([hidden]);
+ assert.equal(offOnly.reportCount,0);
+ assert.equal(offOnly.totalCount,0);
+ assert.deepEqual(offOnly.unreportedCompanies,[]);
+ assert.equal(offOnly.companies.length,0);
 });
