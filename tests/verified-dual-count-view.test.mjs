@@ -330,3 +330,48 @@ test("partner audience cannot claim hub-only internal or alternate company board
   assert.equal(root.children.length,0);
  }
 });
+
+
+test("partner shows four joint leaderboard sections in exactly the hub order before own results",()=>{
+ const root=new Node("main"),data=buildVerifiedCountDashboard(input("partner_owner"));
+ const frozen=structuredClone(data);
+ renderVerifiedDualCountDashboard({document:doc,root,payload:data});
+ const titles=walk(root).filter(x=>x.className==="nico-dual-ranking")
+  .map(section=>find(section,"nico-dual-title")?.textContent);
+ assert.deepEqual(titles,[
+  "公開承認済み・会社ランキング",
+  "公開承認済み・班ランキング",
+  "公開承認済み・個人ランキング",
+  "公開承認済み・商材ランキング",
+  "自分たちの成果・前期比",
+  "自社の商材別件数"
+ ]);
+ const text=words(root);
+ assert(text.includes("合同ランキング（公開承認済み・件数のみ）"));
+ assert(text.includes("自分の会社の件数内訳"));
+ for(const privateValue of ["単価","キャッシュバック","50000円","totalRevenue"])
+  assert(!text.includes(privateValue));
+ assert.deepEqual(data,frozen,"partner UI must not mutate verified counts");
+});
+
+test("own partner SKU ranking keeps count ties as 1,1 without affecting public joint ranks",()=>{
+ const value=input("partner_owner"),partner=value.sources[1];
+ partner.records[0].totalCount=4;
+ partner.lines[0].count=2;
+ partner.lines.push({...partner.lines[0],
+  sourceId:partner.lines[0].recordId+"__1",productId:"partnerSku02",count:2});
+ partner.products.push({companyId:"partner",sourceId:"partnerSku02",
+  name:"U-NEXT",active:true,sortOrder:1});
+ value.productGroups.push({companyId:"partner",productId:"partnerSku02",
+  groupId:"U-NEXT",groupName:"U-NEXT"});
+ const snapshot=structuredClone(value);
+ const data=buildVerifiedCountDashboard(value),root=new Node("main");
+ renderVerifiedDualCountDashboard({document:doc,root,payload:data});
+ const sections=walk(root).filter(x=>x.className==="nico-dual-ranking");
+ const ownProduct=sections[5],ranks=walk(ownProduct)
+  .filter(x=>x.className==="nico-dual-rank-number")
+  .map(x=>x.textContent);
+ assert.deepEqual(ranks,["1位","1位"]);
+ assert(words(sections[3]).includes("公開承認済み")===false);
+ assert.deepEqual(value,snapshot,"ranking ties must not rewrite source rows");
+});
