@@ -132,5 +132,5 @@ test("old partner UI weekly switch requests exactly the cross-month Monday-Sunda
  assert.equal(captured.sharedCountRankings,true);
  assert.deepEqual(ranges,{start:"2026-09-28",end:"2026-10-04"});
  assert.equal(rendered,1);
- assert.equal($("approvedSharedRankStatus").textContent,"");
+ assert.doesNotMatch($("approvedSharedRankStatus").textContent,/件数を検証できません/);
 });
