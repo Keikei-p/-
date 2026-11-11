@@ -21,8 +21,10 @@ const goodDay=d=>{
  return x.getUTCFullYear()===y&&x.getUTCMonth()+1===m&&x.getUTCDate()===day;
 };
 export function createVerifiedJointMonthHttpBridge({
- featureEnabled=false,auth,fetcher,endpoint=ORIGIN+"/v1/owner-visible-counts"
+ featureEnabled=false,auth,fetcher,endpoint=ORIGIN+"/v1/owner-visible-counts",
+ expectedRole=null
 }={}){
+ if(expectedRole!==null&&!["hub_owner","partner_owner"].includes(expectedRole))stop();
  if(featureEnabled!==true||!auth||typeof fetcher!=="function"||
     !ENDPOINTS.has(endpoint))stop();
  let generation=0;
@@ -58,6 +60,7 @@ export function createVerifiedJointMonthHttpBridge({
    if(seq!==generation||identity!==auth.currentUser||
       !value||value.schema!=="nico-verified-dual-count-v1"||
       !["hub_owner","partner_owner"].includes(value.role)||
+      (expectedRole!==null&&value.role!==expectedRole)||
       value.period!=="month"||value.unit!=="件"||
       !goodDay(value.range?.start)||value.range.start.slice(0,7)!==month||
       !goodDay(value.range?.end)||value.range.end.slice(0,7)!==month||
@@ -74,12 +77,14 @@ export function createVerifiedJointMonthHttpBridge({
  */
 export function mountVerifiedJointMonthCountDashboard({
  featureEnabled=false,document,root,auth,fetcher,endpoint,asOf,
- onAuthStateChanged
+ onAuthStateChanged,expectedRole=null
 }={}){
  if(featureEnabled!==true||!document?.createElement||
     !root?.replaceChildren||!goodDay(asOf)||
     typeof onAuthStateChanged!=="function")stop();
- const bridge=createVerifiedJointMonthHttpBridge({featureEnabled,auth,fetcher,endpoint});
+ const bridge=createVerifiedJointMonthHttpBridge({
+  featureEnabled,auth,fetcher,endpoint,expectedRole
+ });
  const controller=createVerifiedDualCountController({
   document,root,auth,load:bridge.load,asOf,availablePeriods:["month"],allowFilters:false
  });
