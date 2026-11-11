@@ -1218,7 +1218,10 @@ test("new approved monthly and daily ranking API excludes finance and OFF counts
   assert.equal(result.people[0].totalCount,3);
   assert.equal(result.teams[0].totalCount,3);
   assert.deepEqual(result.products.map(x=>x.name),["NURO"]);
-  assert.equal(result.people[0].rank,1);
+  // The daily report is complete, but one submitted day cannot certify
+  // an entire month. Retain counts for reconciliation without a final rank.
+  assert.equal(result.people[0].rank,result.period==="day"?1:null);
+  assert.equal(result.partnerCountsComplete,result.period==="day");
   assert.doesNotMatch(JSON.stringify(result),/YM純新規|unitPrice|revenue|70000|updatedByUid|privateCounts|cbCounts|memberUid/);
  }
  assert.equal(owner.period,"month");
