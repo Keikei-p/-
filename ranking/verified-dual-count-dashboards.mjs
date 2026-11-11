@@ -350,7 +350,15 @@ export function buildVerifiedCountDashboard({
       p.count>best.get(p.id)?"自己ベスト更新":"過去記録以下":"比較不可"
   };
  });
- const rankedPeople=ordered(personRows,p=>p.count);
+ // Unreported is NOT an official 0-count rank. Keep it visible in
+ // the owner's count-only people list, but never score or publish the
+ // person's name in the cross-company competition until submitted.
+ const rankedParticipants=ordered(
+  personRows.filter(p=>p.reportStatus!=="未報告"),p=>p.count);
+ const missingParticipants=personRows.filter(p=>p.reportStatus==="未報告")
+  .sort((x,y)=>x.name.localeCompare(y.name,"ja")||x.id.localeCompare(y.id))
+  .map(p=>({...p,rank:null}));
+ const rankedPeople=[...rankedParticipants,...missingParticipants];
  const rankedProducts=ordered([...products.values()].map(p=>({
   id:p.id,name:p.name,count:p.count,ownCount:p.ownCount,
   partnerCount:p.partnerCount,
@@ -380,7 +388,7 @@ export function buildVerifiedCountDashboard({
  const ownPeople=common.memberRanking.filter(x=>x.companyId===ownCompany);
  const ownProducts=rankedProducts.filter(x=>x.companies.some(c=>c.companyId===ownCompany))
   .map(p=>({id:p.id,name:p.name,count:p.companies.find(c=>c.companyId===ownCompany).count}));
- const publicMembers=rankedPeople.map(x=>({
+ const publicMembers=rankedParticipants.map(x=>({
   rank:x.rank,company:x.companyName,name:x.name,count:x.count
  }));
  const publicProducts=rankedProducts.map(x=>({
