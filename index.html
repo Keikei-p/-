@@ -35936,6 +35936,87 @@ function renderRecordHistory(
           mismatch.savedCount + "件 / 商材明細 " +
           mismatch.detailCount + "件。通常編集禁止・Ownerが訂正履歴を照合";
         item.appendChild(warning);
+        // The Owner may inspect the original audit AFTER count data without
+        // writing, repairing or inferring a correct contractual figure.
+        const auditButton = document.createElement("button");
+        auditButton.type = "button";
+        auditButton.className = "edit-product-button";
+        auditButton.textContent = "訂正履歴を照合（読み取りのみ）";
+        const auditResult = document.createElement("div");
+        auditResult.setAttribute("role","status");
+        auditButton.onclick = async () => {
+          if (!isCurrentCompanyOwner() ||
+              !canCurrentUserViewProductRevenue() ||
+              !currentUser?.uid ||
+              record.companyId !== currentUserData?.companyId ||
+              !record.id ||
+              dashboardMonth.value !== record.date.slice(0,7)) return;
+          const viewerUid = currentUser.uid;
+          auditButton.disabled = true;
+          auditResult.textContent = "監査履歴を確認中…";
+          try {
+            // Existing compound index companyId+recordDate is used; no
+            // collection-group or all-history scan, no server-side mutation.
+            const snapshots = await getDocsFromServer(query(
+              collection(db, "recordCorrections"),
+              where("companyId", "==", record.companyId),
+              where("recordDate", "==", record.date)
+            ));
+            if (snapshots.size > 100) throw Error("REVIEW_BUDGET");
+            if (currentUser?.uid !== viewerUid ||
+                !isCurrentCompanyOwner() ||
+                !canCurrentUserViewProductRevenue() ||
+                dashboardMonth.value !== record.date.slice(0,7))
+              return;
+            const entries = snapshots.docs.map(doc => doc.data())
+              .filter(row => row.companyId === record.companyId &&
+                row.recordId === record.id &&
+                row.recordUid === record.uid &&
+                row.recordDate === record.date &&
+                row.after && typeof row.after === "object");
+            if (!entries.length) {
+              auditResult.textContent =
+                "一致する監査履歴はありません。現在の件数は未確定のまま、契約原票を確認してください。";
+              return;
+            }
+            entries.sort((a,b) =>
+              (b.createdAt?.toMillis?.() ?? 0) -
+              (a.createdAt?.toMillis?.() ?? 0));
+            const latest = entries[0].after;
+            if (!latest.results || Array.isArray(latest.results) ||
+                typeof latest.results !== "object" ||
+                !Number.isSafeInteger(latest.totalCount) ||
+                latest.totalCount < 0) throw Error("AUDIT_INVALID");
+            const afterKeys = Object.keys(latest.results);
+            const nowKeys = Object.keys(record.results || {});
+            let afterCount=0;
+            for (const line of Object.values(latest.results)) {
+              if (!Number.isSafeInteger(line?.count) || line.count < 0 ||
+                  !Number.isSafeInteger(afterCount + line.count))
+                throw Error("AUDIT_INVALID");
+              afterCount += line.count;
+            }
+            const extra = nowKeys.filter(id =>
+              !Object.prototype.hasOwnProperty.call(latest.results,id));
+            const missing = afterKeys.filter(id =>
+              !Object.prototype.hasOwnProperty.call(record.results,id));
+            auditResult.textContent =
+              "最新訂正後：保存" + latest.totalCount +
+              "件・明細" + afterCount + "件（" + entries.length +
+              "件の監査履歴）。現在の原票：保存" +
+              mismatch.savedCount + "件・明細" +
+              mismatch.detailCount + "件。現在のみの商材行" +
+              extra.length + "本・訂正後のみに存在する行" +
+              missing.length + "本。契約実績の確定前に自動訂正しないでください。";
+          } catch {
+            auditResult.textContent =
+              "監査履歴を確認できません。原票を変更せず、権限・通信・監査履歴を確認してください。";
+          } finally {
+            auditButton.disabled = false;
+          }
+        };
+        item.appendChild(auditButton);
+        item.appendChild(auditResult);
       }
       const canCorrect = !mismatch &&
         canCurrentUserCorrectRecord(
