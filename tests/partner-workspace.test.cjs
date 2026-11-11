@@ -51,7 +51,7 @@ class DB {
  }
 }
 class CallError extends Error{constructor(code,message){super(message);this.code=code;}}
-function setup(sharedRankingOn=false,publicationWriteOn=false){
+function setup(sharedRankingOn=false,publicationWriteOn=false,ownerCorrectionOn=false){
  const db=new DB();
  const partnerUser=(uid,role,teamId=null)=>({uid,companyId:"partner",companyRole:role==="owner"?"owner":"member",
  role,teamId,active:true,accessKind:"partner",memberType:"cooperator",
@@ -76,7 +76,8 @@ function setup(sharedRankingOn=false,publicationWriteOn=false){
  };
  const api=makeWorkspace({db,getAuth,Timestamp,FieldValue,HttpsError:CallError,
   enabled:()=>true,sharedRankingEnabled:()=>sharedRankingOn,
-  submissionPublicationEnabled:()=>publicationWriteOn,now:()=>NOW});
+  submissionPublicationEnabled:()=>publicationWriteOn,
+  ownerCorrectionEnabled:()=>ownerCorrectionOn,now:()=>NOW});
  const req=(uid,data={})=>({auth:{uid,token:{email:uid+"@example.com",email_verified:true}},
   rawRequest:{headers:{authorization:"Bearer "+uid.repeat(30)}},data});
  const zero=()=>Object.fromEntries(KEYS.map(k=>[k,0]));
@@ -1421,4 +1422,88 @@ test("OFF legacy count is redacted from partner read and saved unchanged in tran
  assert.equal(visible.records[0].totalCount,3);
  assert.deepEqual(db.store.get("companies/partner/partnerWorkAudits/"+date+
   "__"+staff+"__v1"),originalAudit);
+});
+
+test("hub Owner can correct an approved partner's ON counts without changing OFF ledger, finance or identities",async()=>{
+ const {db,api,req,zero}=setup(false,true,true);
+ const pub="companies/hub/";
+ db.seed(pub+"rankingProductVisibility/shared",{
+  hubCompanyId:"hub",ownerUid:"h",version:1,
+  enabledHubProductIds:["skuNuro","skuSbmnp"],partnerOverrides:{}});
+ db.seed(pub+"rankingSkuMappings/shared",{
+  hubCompanyId:"hub",ownerUid:"h",reviewedByUid:"h",active:true,version:1,
+  bindings:[
+   {companyId:"partner",productId:"partnerSku01",hubProductId:"skuNuro"},
+   {companyId:"partner",productId:"partnerSku02",hubProductId:"skuSbmnp"}]});
+ db.seed(pub+"rankingCountPublicCatalog/shared",{
+  schema:"nico-reviewed-count-public-catalog-v1",
+  hubCompanyId:"hub",ownerUid:"h",version:1,products:[
+   {id:"skuNuro",companyId:"hub",name:"NURO",active:true},
+   {id:"skuSbmnp",companyId:"hub",name:"SBMNP",active:true}]});
+ const team=(await api.manage(req("p",{action:"addTeam",name:"協力店1班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"登録担当",teamId:team}))).staffId;
+ const date="2026-10-31";
+ await api.submit(req("p",{date,staffId:staff,
+  counts:{...zero(),NURO:2,SBMNP:7},expectedVersion:0}));
+ const originalFinance=clone(db.store.get("products/money"));
+ const originalRecord=clone(db.store.get("records/old"));
+ const originalIdentity=clone(db.store.get("users/h"));
+ const initial=await api.view(req("h",{date,partnerCompanyId:"partner",
+  includeOwnerCorrectionEntries:true}));
+ assert.equal(initial.role,"hub");
+ assert.equal(initial.ownerCorrectionAvailable,true);
+ assert.deepEqual(initial.ownerCorrectionEntries.enabledCategories,["NURO","SBMNP"]);
+ assert.equal(initial.ownerCorrectionEntries.records[0].totalCount,9);
+ db.store.get(pub+"rankingProductVisibility/shared").enabledHubProductIds=["skuNuro"];
+ const preview=await api.view(req("h",{date,partnerCompanyId:"partner",
+  includeOwnerCorrectionEntries:true}));
+ const row=preview.ownerCorrectionEntries.records[0];
+ assert.equal(row.counts.SBMNP,0);
+ assert.equal(row.totalCount,2);
+ const baseline=clone([...db.store]);
+ await assert.rejects(api.submit(req("p",{date,staffId:staff,
+  counts:{...row.counts,NURO:4},ownerPartnerCompanyId:"partner",
+  expectedVersion:1})),e=>e.code==="permission-denied");
+ await assert.rejects(api.view(req("p",{date,partnerCompanyId:"partner",
+  includeOwnerCorrectionEntries:true})),e=>e.code==="invalid-argument");
+ await assert.rejects(api.submit(req("h",{date,staffId:staff,
+  counts:{...row.counts,NURO:4},ownerPartnerCompanyId:"other",
+  expectedVersion:1})),e=>e.code==="failed-precondition");
+ assert.deepEqual([...db.store],baseline,"unauthorized requests cannot write");
+ const result=await api.submit(req("h",{date,staffId:staff,
+  counts:{...row.counts,NURO:4},ownerPartnerCompanyId:"partner",
+  expectedVersion:1}));
+ assert.equal(result.saved,true);
+ assert.equal(result.version,2);
+ const persisted=db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+staff);
+ assert.equal(persisted.updatedByUid,"h");
+ assert.equal(persisted.counts.NURO,4);
+ assert.equal(persisted.counts.SBMNP,7);
+ assert.equal(persisted.totalCount,11);
+ const audit=db.store.get("companies/partner/partnerWorkAudits/"+date+"__"+staff+"__v2");
+ assert.equal(audit.updatedByUid,"h");
+ assert.equal(audit.previousCounts.SBMNP,7);
+ assert.equal(audit.counts.SBMNP,7);
+ assert.deepEqual(db.store.get("products/money"),originalFinance);
+ assert.deepEqual(db.store.get("records/old"),originalRecord);
+ assert.deepEqual(db.store.get("users/h"),originalIdentity);
+ const beforeRevocation=clone([...db.store]);
+ db.store.get("partnerRelations/partner").countSharingApproved=false;
+ const snapshot=clone([...db.store]);
+ await assert.rejects(api.submit(req("h",{date,staffId:staff,
+  counts:{...row.counts,NURO:5},ownerPartnerCompanyId:"partner",
+  expectedVersion:2})),e=>e.code==="failed-precondition");
+ assert.deepEqual([...db.store],snapshot,"revoked sharing cannot change count ledger");
+ assert.equal(beforeRevocation.length,snapshot.length);
+});
+test("hub Owner correction and preview require independent feature flag",async()=>{
+ const {db,api,req,zero}=setup(false,true,false);
+ const before=clone([...db.store]);
+ await assert.rejects(api.view(req("h",{date:"2026-10-31",
+  partnerCompanyId:"partner",includeOwnerCorrectionEntries:true})),
+  e=>e.code==="invalid-argument");
+ await assert.rejects(api.submit(req("h",{date:"2026-10-31",
+  staffId:"staff",counts:zero(),expectedVersion:0,
+  ownerPartnerCompanyId:"partner"})),e=>e.code==="permission-denied");
+ assert.deepEqual([...db.store],before);
 });
