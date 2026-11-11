@@ -1096,7 +1096,13 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      companyName:partner.companyName,role:"owner"};
    }else if(fresh.kind!=="partner"||fresh.cid!==s.cid)fail();
    const sr=staffRef(target.cid,staffId),ss=await tx.get(sr),person=ss.data()||{};
-   if(!ss.exists||person.active!==true||person.companyId!==target.cid||
+   // An internal hub Owner may correct an already submitted historical
+   // report even after the partner employee is archived. A normal partner
+   // submission still requires an ACTIVE staff member. Existing-record
+   // enforcement and optimistic version checks below remain mandatory.
+   if(!ss.exists||typeof person.active!=="boolean"||
+      (person.active!==true&&!ownerCorrection)||
+      person.companyId!==target.cid||
       !validName(person.name)||!canStaff(target,person))fail();
    const er=entryRef(target.cid,date,staffId),summary=summaryRef(target.hubId,date,target.cid);
    const privateProductIds=Object.keys(requestedPrivate||{});
