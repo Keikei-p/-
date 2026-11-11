@@ -1782,3 +1782,36 @@ test("archived partner staff original count can be corrected ONLY by hub Owner a
   counts:{...zero(),NURO:5},expectedVersion:1,ownerPartnerCompanyId:"partner"})),
   e=>e.code==="aborted");
 });
+
+test("hub owner partner-team detail and missing-status reject aliased or foreign staff-day documents",async()=>{
+ for(const mutation of ["alias-doc-id","foreign-hub"]){
+  const {db,api,req,zero}=setup(),date="2026-10-31";
+  const team=(await api.manage(req("p",{action:"addTeam",name:"監査対象班"}))).teamId;
+  const staff=(await api.manage(req("p",{action:"addManaged",name:"記録対象",teamId:team}))).staffId;
+  await api.submit(req("p",{date,staffId:staff,
+   counts:{...zero(),NURO:3},expectedVersion:0}));
+  const basePath="companies/partner/partnerWorkEntries/"+date+"__"+staff;
+  const current=clone(db.store.get(basePath));
+  const beforeFinance=clone(db.store.get("products/money"));
+  const beforeSales=clone(db.store.get("records/old"));
+  const valid=await api.view(req("h",{date,partnerCompanyId:"partner",
+   includeTeamStatus:true}));
+  assert.equal(valid.partnerTeamDetails.verifiedSharedCount,3);
+  assert.equal(valid.teamReports[0].verified,true);
+  if(mutation==="alias-doc-id")
+   db.seed("companies/partner/partnerWorkEntries/"+date+"__alias",current);
+  else db.seed(basePath,{...current,hubCompanyId:"other-hub"});
+  const before=clone([...db.store]);
+  await assert.rejects(api.view(req("h",{date,
+   partnerCompanyId:"partner"})),e=>e.code==="data-loss",
+   "detailed team count must never double-add "+mutation);
+  await assert.rejects(api.view(req("h",{date,
+   includeTeamStatus:true})),e=>e.code==="data-loss",
+   "all-company missing report view must never trust "+mutation);
+  assert.deepEqual([...db.store],before,
+   "Owner view cannot repair/delete a corrupt historical entry");
+  assert.deepEqual(db.store.get("records/old"),beforeSales);
+  assert.deepEqual(db.store.get("products/money"),beforeFinance);
+  assert.equal(db.store.get(basePath).counts.NURO,3);
+ }
+});
