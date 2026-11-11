@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {buildVerifiedCountDashboard}
  from "../ranking/verified-dual-count-dashboards.mjs";
+import {buildVerifiedCountDashboard as buildVendorDashboard}
+ from "../functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs";
 
 const TIME="2026-11-08T02:15:30.000Z";
 const rec=(cid,id,uid,date,n)=>({
@@ -234,4 +236,27 @@ test("ranking ties use standard competition ranking across companies and teams",
  const partner=build({...input,context:auth("partner_owner")});
  assert.deepEqual(partner.publicRanking.companies.map(x=>x.rank),[1,1]);
  assert.deepEqual(partner.publicRanking.teams.map(x=>x.rank),[1,1]);
+});
+
+// Never allow finance-coded Unicode labels into any of the four shared ranks.
+// The Functions copy must reject the same inputs as the canonical module.
+test("NFKC financial labels fail closed in canonical and Functions ranking, ordinary Unicode stays intact",()=>{
+ for(const buildFn of [buildVerifiedCountDashboard,buildVendorDashboard]){
+  for(const [edit,value] of [
+   [d=>{d.sources[1].companyLabel="協力店 ＣＢ５０００";},"company"],
+   [d=>{d.sources[1].teams[0].name="営業班 ＣＡＳＨＢＡＣＫ５０００";},"team"],
+   [d=>{d.sources[1].roster[0].name="担当者 ＲＥＶＥＮＵＥ５０００";},"person"],
+   [d=>{d.sources[1].products[0].name="ＮＵＲＯ ＵＮＩＴＰＲＩＣＥ５０００";},"product"],
+   [d=>{d.productGroups[0].groupName="商品 ＣＢ５０００";},"group"]
+  ]){
+   const input=fixture(2),original=structuredClone(input);
+   edit(input);
+   assert.throws(()=>buildFn(input),/INCOMPLETE_OR_UNAUTHORIZED/,value);
+   assert.equal(original.sources[1].companyLabel,"協力店A");
+  }
+  const valid=fixture(2);
+  valid.sources[1].companyLabel="協力店Ａ";
+  const result=buildFn(valid);
+  assert.equal(result.companyBreakdown.find(x=>x.id==="partner").name,"協力店Ａ");
+ }
 });

@@ -16,7 +16,7 @@ const id=x=>typeof x==="string"&&ID.test(x)&&
 const count=n=>{if(!Number.isSafeInteger(n)||n<0)stop();return n;};
 const add=(a,b)=>count(count(a)+count(b));
 const label=x=>{
- if(typeof x!=="string"||!x.trim()||x.length>80||MONEY.test(x))stop();
+ if(typeof x!=="string"||!x.trim()||x.length>80||MONEY.test(x.normalize("NFKC")))stop();
  return x.replace(/[\r\n\t]/g," ").trim();
 };
 function date(x){
