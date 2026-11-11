@@ -1530,3 +1530,39 @@ test("hub Owner cannot create the first partner staff report through correction 
   "Hub Owner must not generate unreported entries, summaries or audit versions");
  assert.equal([...db.store.keys()].filter(path=>path.includes("/partnerWorkAudits/")).length,0);
 });
+
+test("all published SKUs OFF forbids new or repeated partner saves without ledger changes",async()=>{
+ const {db,api,req,zero}=setup(false,true,true);
+ const prefix="companies/hub/";
+ db.seed(prefix+"rankingProductVisibility/shared",{
+  hubCompanyId:"hub",ownerUid:"h",version:1,
+  enabledHubProductIds:["nuro"],partnerOverrides:{}});
+ db.seed(prefix+"rankingSkuMappings/shared",{
+  hubCompanyId:"hub",ownerUid:"h",reviewedByUid:"h",active:true,version:1,
+  bindings:[{companyId:"partner",productId:"partnerSku01",hubProductId:"nuro"}]});
+ db.seed(prefix+"rankingCountPublicCatalog/shared",{
+  schema:"nico-reviewed-count-public-catalog-v1",hubCompanyId:"hub",
+  ownerUid:"h",version:1,
+  products:[{id:"nuro",companyId:"hub",name:"NURO",active:true}]});
+ const team=(await api.manage(req("p",{action:"addTeam",name:"保護班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"登録担当",teamId:team}))).staffId;
+ const unreported=(await api.manage(req("p",{action:"addManaged",name:"未報告担当",teamId:team}))).staffId;
+ const date="2026-10-31";
+ await api.submit(req("p",{date,staffId:staff,counts:{...zero(),NURO:2},expectedVersion:0}));
+ const vis=db.store.get(prefix+"rankingProductVisibility/shared");
+ const catalog=db.store.get(prefix+"rankingCountPublicCatalog/shared");
+ vis.enabledHubProductIds=[];vis.version++;catalog.version++;
+ const view=await api.view(req("p",{date}));
+ assert.deepEqual(view.enabledCategories,[]);
+ const before=clone([...db.store]);
+ await assert.rejects(api.submit(req("p",{date,staffId:staff,counts:zero(),
+  expectedVersion:1})),e=>e.code==="failed-precondition");
+ await assert.rejects(api.submit(req("p",{date,staffId:unreported,counts:zero(),
+  expectedVersion:0})),e=>e.code==="failed-precondition");
+ await assert.rejects(api.submit(req("h",{date,staffId:staff,counts:zero(),
+  ownerPartnerCompanyId:"partner",expectedVersion:1})),e=>e.code==="failed-precondition");
+ assert.deepEqual([...db.store],before,"all-OFF catalog may not create or revise any count/audit");
+ assert.equal(db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+staff).counts.NURO,2);
+ assert.equal(db.store.get("companies/hub/partnerWorkCountDays/"+date+
+  "/reports/partner").totalCount,2);
+});
