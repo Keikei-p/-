@@ -129,9 +129,14 @@ function ranked(doc,heading,items,mode){
  const list=el(doc,"ol","nico-dual-rank-list");
  for(const row of items){
   const line=el(doc,"li","nico-dual-rank-row");
-  add(line,doc,"strong","nico-dual-rank-number",String(row.rank)+"位");
+  // A missing report must remain visible as 未報告, never 0件 or a
+  // tied numeric rank with a confirmed zero-count submission.
+  const unreported=mode==="person"&&row.reportStatus==="未報告";
+  add(line,doc,"strong","nico-dual-rank-number",
+   unreported?"—":String(row.rank)+"位");
   add(line,doc,"span","nico-dual-rank-name",row.name||"担当者未特定");
-  add(line,doc,"strong","nico-dual-rank-score",String(row.count)+"件");
+  add(line,doc,"strong","nico-dual-rank-score",
+   unreported?"未報告":String(row.count)+"件");
   const details=mode==="team"?row.company:mode==="person"?
    [row.companyName||row.company, row.teamName,
     row.reportStatus,row.growth==="比較不可"?"":row.growth,
@@ -221,8 +226,8 @@ export function renderVerifiedDualCountDashboard({document,root,payload}={}){
   }else{
    metrics.appendChild(metric(document,data.own.company,data.own.count));
    page.appendChild(metrics);
-   page.appendChild(ranked(document,"自分たちの成果・前期比",data.own.people
-    .map((p,i)=>({...p,rank:p.rank||i+1})),"person"));
+   page.appendChild(ranked(document,"自分たちの成果・前期比",
+    data.own.people,"person"));
    page.appendChild(ranked(document,"自社の商材別件数",data.own.products
     .map((p,i)=>({...p,rank:p.rank||i+1})),"product"));
    page.appendChild(ranked(document,"公開承認済み・会社ランキング",
