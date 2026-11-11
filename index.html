@@ -12843,6 +12843,13 @@ async function loadOwnerPartnerCompanyTeams(){
  const uid=auth.currentUser.uid;
  const heading=document.createElement("strong");heading.textContent="🤝 協力店の班一覧";
  target.append(heading);
+ // Navigation only: setup performs its own Firebase Auth/Owner verification.
+ // Keep the link query-free so invite tokens and workspace IDs are not forwarded.
+ const settingsLink=document.createElement("a");
+ settingsLink.href="./owner-partner-setup.html";
+ settingsLink.textContent="商材ON/OFF・合同ランキング設定";
+ settingsLink.setAttribute("aria-label","協力店の公開商材と合同ランキング設定を開く");
+ target.append(settingsLink);
  try{
   const result=(await readPartnerWorkDay({date:partnerMainDate()})).data;
   if(seq!==ownerPartnerTeamsNonce||uid!==auth.currentUser?.uid)return;
