@@ -171,3 +171,22 @@ test("published SKU ranking IDs remain stable after preceding SKU is OFF",()=>{
  assert.equal(onlyY.products.find(x=>x.name==="YMMNP").totalCount,2);
  assert.equal(onlyY.totalCount,2);
 });
+
+test("fully unpublished partner name never appears even when it has no reports",()=>{
+ const hidden={...company("off","非公開会社",zero(),{allowed:[]}),
+  reports:[],entries:[]};
+ const open=company("on","公開会社",{...zero(),NURO:1},{allowed:["NURO"]});
+ const output=build([hidden,open]);
+ assert.equal(output.totalCount,1);
+ assert.equal(output.partnerCountsComplete,true);
+ assert.equal(output.unreportedCompanies.length,0);
+ assert(!JSON.stringify(output).includes("非公開会社"));
+ assert.equal(output.companies.length,1);
+ assert.equal(output.companies[0].name,"公開会社");
+ // Switching ON makes a true unreported company visible as unreported,
+ // never as a zero-count submitted company.
+ const enabled=build([{...hidden,allowedCategories:["NURO"]},open]);
+ assert.deepEqual(enabled.unreportedCompanies.map(x=>x.name),["非公開会社"]);
+ assert.equal(enabled.companies.length,1);
+ assert.equal(enabled.partnerCountsComplete,false);
+});
