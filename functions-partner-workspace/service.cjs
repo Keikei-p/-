@@ -825,11 +825,18 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      });
     }
     let unverifiedTeamCount=0,verifiedSharedCount=0;
+    const verifiedStaffDays=new Set();
     for(const sn of entrySnaps.docs){
      const e=sn.data()||{};
+     // The doc path is authoritative: foreign, alias and duplicate staff
+     // rows cannot inflate Owner company/team count-only summaries.
      if(e.companyId!==selectedPartnerId||e.hubCompanyId!==s.cid||
         e.date!==date||!ID.test(e.staffId||"")||
-        !Number.isSafeInteger(e.version)||e.version<1)fail("data-loss");
+        sn.id!==date+"__"+e.staffId||
+        verifiedStaffDays.has(e.staffId)||
+        !Number.isSafeInteger(e.version)||e.version<1||e.version>999)
+      fail("data-loss");
+     verifiedStaffDays.add(e.staffId);
      const item=validateCounts(e.counts);
      if(item.total!==e.totalCount)fail("data-loss");
      const row=rows.get(e.teamIdSnapshot||"");
@@ -948,9 +955,12 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      let unattributedEntries=0,reportedTotal=0;
      for(const doc of entriesSnap.docs){
       const row=doc.data()||{};
-      if(!ID.test(doc.id)||!ID.test(row.staffId||"")||
-         row.companyId!==cid||row.date!==date||
-         seenStaff.has(row.staffId))fail("data-loss");
+      // The optional all-company team status must use exactly the same
+      // saved staff/day identity and hub boundary as the correction API.
+      if(!ID.test(row.staffId||"")||
+         doc.id!==date+"__"+row.staffId||
+         row.companyId!==cid||row.hubCompanyId!==s.cid||
+         row.date!==date||seenStaff.has(row.staffId))fail("data-loss");
       seenStaff.add(row.staffId);
       const normalized=validateCounts(row.counts);
       if(row.totalCount!==normalized.total)fail("data-loss");
