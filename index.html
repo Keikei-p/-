@@ -12601,6 +12601,12 @@ function openOwnerPartnerCountEditor(parent,company){
   const staffId=staff.value;
   if(!entry||!staffId||busy)return;
   const record=entry.records.find(r=>r.staffId===staffId);
+  // The Owner is allowed to CORRECT existing reports only. Never display
+  // a zero-filled form as an invitation to create a missing staff report.
+  if(!record){
+   status.textContent="未報告のため訂正対象外です。協力店本人の件数入力をご利用ください。";
+   return;
+  }
   for(const key of entry.enabledCategories){
    const label=document.createElement("label");
    label.textContent=key;
@@ -12613,8 +12619,7 @@ function openOwnerPartnerCountEditor(parent,company){
   save.disabled=entry.enabledCategories.length===0;
   status.textContent=entry.enabledCategories.length===0?
    "公開ONの商材がありません。過去の件数は保護されています。":
-   (record?"登録済み・第"+record.version+"版（過去の班情報は保持）":
-    "未報告。0件での登録もできます。");
+   "登録済み・第"+record.version+"版（過去の班情報は保持）";
  };
  const load=async()=>{
   const loadId=++ownerPartnerCorrectionNonce;
@@ -12638,14 +12643,16 @@ function openOwnerPartnerCountEditor(parent,company){
     throw Error("owner_partner_count_schema");
    snapshot=result;
    const previous=staff.value;staff.replaceChildren();
-   for(const member of entry.staff.filter(p=>p.active===true)){
+   const recorded=new Set(entry.records.filter(row=>
+    Number.isSafeInteger(row.version)&&row.version>=1).map(row=>row.staffId));
+   for(const member of entry.staff.filter(p=>p.active===true&&recorded.has(p.id))){
     const option=document.createElement("option");
     option.value=member.id;option.textContent=member.name;
     staff.append(option);
    }
    if([...staff.options].some(o=>o.value===previous))staff.value=previous;
    busy=false;render();
-   if(!staff.options.length)status.textContent="有効な担当者がいません。協力店のスタッフを確認してください。";
+   if(!staff.options.length)status.textContent="この日に訂正できる登録済みの件数はありません。未報告は協力店から新規入力してください。";
   }catch{
    if(loadId!==ownerPartnerCorrectionNonce||!editor.isConnected||
       actor!==auth.currentUser?.uid)return;
@@ -12663,6 +12670,7 @@ function openOwnerPartnerCountEditor(parent,company){
   if(busy||!entry||!stillHere()||!entry.staff.some(p=>p.id===staffId&&p.active)||
      entry.date!==selectedDate||entry.enabledCategories.length===0)return;
   const record=entry.records.find(r=>r.staffId===staffId);
+  if(!record||!Number.isSafeInteger(record.version)||record.version<1)return;
   const counts=Object.fromEntries(entry.categories.map(key=>[key,0]));
   for(const key of entry.enabledCategories){
    const input=[...fields.querySelectorAll("input[data-count-key]")]
@@ -12677,7 +12685,7 @@ function openOwnerPartnerCountEditor(parent,company){
   try{
    const response=(await partnerInlineSave({
     ownerPartnerCompanyId:company.partnerCompanyId,date:selectedDate,staffId,
-    counts,expectedVersion:record?.version??0})).data;
+    counts,expectedVersion:record.version})).data;
    const checked=(await readPartnerWorkDay({
     date:selectedDate,partnerCompanyId:company.partnerCompanyId,
     includeOwnerCorrectionEntries:true})).data;
