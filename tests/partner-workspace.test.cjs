@@ -1516,3 +1516,17 @@ test("hub Owner correction and preview require independent feature flag",async()
   ownerPartnerCompanyId:"partner"})),e=>e.code==="permission-denied");
  assert.deepEqual([...db.store],before);
 });
+
+test("hub Owner cannot create the first partner staff report through correction API",async()=>{
+ const {db,api,req,zero}=setup(false,true,true);
+ const team=(await api.manage(req("p",{action:"addTeam",name:"未報告班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"未報告担当",teamId:team}))).staffId;
+ const before=clone([...db.store]);
+ await assert.rejects(api.submit(req("h",{
+  date:"2026-10-31",ownerPartnerCompanyId:"partner",
+  staffId:staff,counts:{...zero(),NURO:5},expectedVersion:0
+ })),err=>err.code==="failed-precondition");
+ assert.deepEqual([...db.store],before,
+  "Hub Owner must not generate unreported entries, summaries or audit versions");
+ assert.equal([...db.store.keys()].filter(path=>path.includes("/partnerWorkAudits/")).length,0);
+});
