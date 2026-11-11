@@ -127,7 +127,11 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
   }
   if([...entries.values()].some(e=>!reports.has(e.date)))fail();
   totalCount=sum(totalCount,companyCount);
-  if(!reportedDays)unreportedCompanies.push({key:key("company",hubId,s.cid),name:companyName,status:"not_reported"});
+  // A fully unpublished company must not leak its name even through the
+  // no-report list. Hide OFF companies consistently with the rank lists.
+  if(!reportedDays&&allowed.size)unreportedCompanies.push({
+   key:key("company",hubId,s.cid),name:companyName,status:"not_reported"
+  });
   const safeCounts=raw=>Object.fromEntries(s.allowedCategories.map(k=>[k,raw[k]]));
   if(reportedDays&&allowed.size){
    companies.push({key:companyKey,name:companyName,
