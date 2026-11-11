@@ -228,3 +228,35 @@ test("bad login, company filter attack and server errors do not reuse private ea
  assert.throws(()=>ctrl.setPeriod("month","2026-11-32"));
  ctrl.destroy();
 });
+
+test("count dashboard DOM visually separates unreported from confirmed zero",()=>{
+ for(const role of ["hub_owner","partner_owner"]){
+  const original=input(role),company=original.sources[1];
+  company.roster.push({uid:"missing",name:"未報告スタッフ",teamId:"team"});
+  company.roster.push({uid:"zero",name:"報告済0件",teamId:"team"});
+  company.records.push({companyId:"partner",
+   sourceId:"2026-11-08__zero",uid:"zero",date:"2026-11-08",
+   teamId:"team",totalCount:0,reportStatus:"no_result",
+   memberNameSnapshot:"報告済0件",teamNameSnapshot:"第一班",workLocation:""});
+  const before=structuredClone(original),root=new Node("main");
+  const data=buildVerifiedCountDashboard(original);
+  renderVerifiedDualCountDashboard({document:doc,root,payload:data});
+  const findRow=name=>walk(root).find(node=>
+   node.className==="nico-dual-rank-row"&&node.children.some(child=>
+    child.className==="nico-dual-rank-name"&&child.textContent===name));
+  const missing=findRow("未報告スタッフ"),reportedZero=findRow("報告済0件");
+  if(role==="hub_owner"){
+   assert(missing,"hub Owner sees unreported in own private scope only");
+  }else{
+   assert(missing,"partner Owner still sees own unreported staff");
+   assert(!data.publicRanking.members.some(x=>x.name==="未報告スタッフ"));
+  }
+  assert(reportedZero,"explicit zero must remain listed and ranked");
+  const metric=(row,cls)=>row.children.find(x=>x.className===cls)?.textContent;
+  assert.equal(metric(missing,"nico-dual-rank-number"),"—");
+  assert.equal(metric(missing,"nico-dual-rank-score"),"未報告");
+  assert.match(metric(reportedZero,"nico-dual-rank-number"),/^[1-9]\\d*位$/);
+  assert.equal(metric(reportedZero,"nico-dual-rank-score"),"0件");
+  assert.deepEqual(original,before,"DOM rendering never mutates count originals");
+ }
+});
