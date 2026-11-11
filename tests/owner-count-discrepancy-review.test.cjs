@@ -14,6 +14,8 @@ const checkCode=extract("function inspectStoredRecordCountMismatch(record) {",
 const renderCode=extract("function renderProductSummary(",
  "function renderDailySummary(");
 const makeNode=()=>({style:{},children:[],textContent:"",innerHTML:"",
+ attributes:{},
+ setAttribute(key,value){this.attributes[key]=value},
  appendChild(node){this.children.push(node)},
  scrollIntoView(){this.scrolled=true}
 });
