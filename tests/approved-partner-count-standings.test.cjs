@@ -160,3 +160,14 @@ test("partner rankings reject financial labels in company, team and person names
   assert.throws(()=>build([personRow]),/UNVERIFIED/);
  }
 });
+
+test("published SKU ranking IDs remain stable after preceding SKU is OFF",()=>{
+ const a=company("a","会社A",{...zero(),NURO:3,YMMNP:2},
+  {allowed:["NURO","YMMNP"]});
+ const both=build([a]);
+ const onlyY=build([{...a,allowedCategories:["YMMNP"]}]);
+ assert.equal(both.products.find(x=>x.name==="YMMNP").key,"product-3");
+ assert.equal(onlyY.products.find(x=>x.name==="YMMNP").key,"product-3");
+ assert.equal(onlyY.products.find(x=>x.name==="YMMNP").totalCount,2);
+ assert.equal(onlyY.totalCount,2);
+});
