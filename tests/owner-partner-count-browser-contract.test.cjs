@@ -45,7 +45,7 @@ class Node{
   throw Error("Unexpected query: "+selector);
  }
 }
-function loadOwnerEditor(){
+function loadOwnerEditor({archived=false}={}){
  const html=fs.readFileSync("index.html","utf8");
  const start=html.indexOf("let ownerPartnerCorrectionNonce=0;");
  const end=html.indexOf("// Original internal owner sees existing teams PLUS",start);
@@ -70,7 +70,7 @@ function loadOwnerEditor(){
     ownerCorrectionEntries:{
      partnerCompanyId:"partner",companyName:"協力店A",date:payload.date,
      categories:names,enabledCategories:["NURO"],
-     staff:[{id:"staff",name:"担当者",active:true}],
+     staff:[{id:"staff",name:"担当者",active:!archived}],
      records:[{staffId:"staff",counts:{...state.counts},
       totalCount:state.counts.NURO,version:state.version}]
     }}};
@@ -163,4 +163,29 @@ test("stale Owner editor does not fetch or display partner data after login swit
  const save=panel.descendants().find(x=>x.textContent==="件数を保存・訂正");
  await save.onclick();
  assert.equal(writes.length,0);
+});
+
+test("archived partner's registered report remains Owner-correctable without reactivating staff",async()=>{
+ const {sandbox,parent,company,calls,writes,state}=loadOwnerEditor({archived:true});
+ sandbox.openOwnerPartnerCountEditor(parent,company);
+ await tick();
+ const panel=parent.querySelector("#ownerPartnerCorrectionPanel");
+ const selector=panel.descendants().find(node=>node.tag==="select");
+ assert(selector);
+ assert.equal(selector.options.length,1,
+  "registered archived employee remains selectable, unreported staff are excluded");
+ const input=panel.querySelectorAll("input[data-count-key]")[0];
+ assert.equal(input.dataset.countKey,"NURO");
+ input.value="6";
+ const save=panel.descendants().find(x=>x.tag==="button"&&
+  x.textContent==="件数を保存・訂正");
+ assert(save&&!save.disabled);
+ await save.onclick();
+ assert.equal(writes.length,1);
+ assert.equal(writes[0].staffId,"staff");
+ assert.equal(writes[0].ownerPartnerCompanyId,"partner");
+ assert.equal(writes[0].expectedVersion,1);
+ assert.equal(writes[0].counts.NURO,6);
+ assert.equal(calls.length,2,"must read back after archived staff correction");
+ assert.equal(state.version,2);
 });
