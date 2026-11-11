@@ -116,6 +116,7 @@ test("old partner UI weekly switch requests exactly the cross-month Monday-Sunda
   $,NICO_APPROVED_PARTNER_RANKING_RELEASED:true,
   data:{role:"owner"},auth:{currentUser:user},activeCodeSession:"",
   workspaceCompanyId:"partner",dateParts:{year:"2026",month:"10",day:"31"},
+  approvedRankIds:["Companies","Teams","People","Products","Details"],
   get:async args=>{captured=args;return {data:{safe:true}}},
   verifyApprovedCountRanking:(value,start,end)=>{
    ranges={start,end};return value;
