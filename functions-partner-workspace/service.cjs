@@ -1008,13 +1008,21 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    allowed.set(sn.id,{id:sn.id,name:clean(x.name),teamId:x.teamId,
      kind:x.kind,role:x.role,uid:x.uid||null,active:x.active===true});
   }
-  const rows=[];
+  const rows=[],seenEntryStaff=new Set();
   for(const sn of entries.docs){
    const x=sn.data()||{};
-   if(x.companyId!==s.cid||x.date!==date||!ID.test(x.staffId||""))fail("data-loss");
-   if(!allowed.has(x.staffId))continue;
+   // Validate the stored original BEFORE applying any role-based projection.
+   // An aliased/duplicate staff-day record must never enter a count ranking
+   // or be silently ignored because its staff member is no longer visible.
+   if(x.companyId!==s.cid||x.hubCompanyId!==s.hubId||
+      x.date!==date||!ID.test(x.staffId||"")||
+      sn.id!==date+"__"+x.staffId||seenEntryStaff.has(x.staffId)||
+      !Number.isSafeInteger(x.version)||x.version<1||x.version>999)
+    fail("data-loss");
+   seenEntryStaff.add(x.staffId);
    const {counts,total}=validateCounts(x.counts);
    if(total!==x.totalCount)fail("data-loss");
+   if(!allowed.has(x.staffId))continue;
    // Return only saved, immutable attribution metadata from the original entry.
    // Never infer a historical team from the member's current teamId.
    // Old entries without a snapshot stay unverified in the dashboard.
