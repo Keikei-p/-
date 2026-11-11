@@ -11,13 +11,16 @@ const row=(name,n,rank)=>({key:"hash",name,totalCount:n,rank});
 const base=()=>({schema:"nico-approved-partner-count-rank-v1",scope:"approved_partner_counts_only",
  unit:"件",fullyJoint:false,includesDirect:false,role:"partner",
  date:"2026-10-31",period:"day",start:"2026-10-31",end:"2026-10-31",
- companies:[row("協力店A",3,1),row("協力店B",3,1),row("協力店C",1,3)],
- teams:[],people:[],products:[row("NURO",7,1)],
+ companies:[row("協力店A",3,null),row("協力店B",3,null),row("協力店C",1,null)],
+ teams:[],people:[],products:[row("NURO",7,null)],
  unreportedCompanies:[{key:"unknown",name:"未報告会社",status:"not_reported"}],
  totalCount:7,reportCount:3,partnerCountsComplete:false,
  unverifiedTeamCount:0,unverifiedPersonCount:0,historicalCompanyOnlyCount:0,
  peopleComplete:true,teamComplete:true
 });
+const complete=()=>({...base(),
+ companies:[row("協力店A",3,1),row("協力店B",3,1),row("協力店C",1,3)],
+ products:[row("NURO",7,1)],unreportedCompanies:[],partnerCountsComplete:true});
 test("partner dashboard preserves original eleven cards and new shared surface is strictly disabled",()=>{
  assert.equal(html.split('id="approvedSharedRankings"').length,2);
  assert.match(html,/const NICO_APPROVED_PARTNER_RANKING_RELEASED=false;/);
@@ -30,10 +33,10 @@ test("partner dashboard preserves original eleven cards and new shared surface i
  assert.ok(html.indexOf('id="approvedSharedRankings"')<html.indexOf('id="recordsBox"'));
 });
 test("shared count UI validates 1,1,3, keeps zero and unknown report status separate",()=>{
- const response=base();
+ const response=complete();
  const result=verify(response,"2026-10-31","2026-10-31");
  assert.equal(result.totalCount,7);
- assert.equal(result.unreportedCompanies[0].status,"not_reported");
+ assert.equal(result.unreportedCompanies.length,0);
  assert.equal(result.companies[1].rank,1);
  assert.equal(result.companies[2].rank,3);
 });
@@ -51,6 +54,14 @@ test("shared count UI fails closed on finance extensions, duplicate wrong ranks 
  ])assert.throws(()=>verify(bad,"2026-10-31","2026-10-31"),/UNVERIFIED/);
 });
 
+test("incomplete partner rankings show pending positions instead of false final ranks",()=>{
+ const pending=base();
+ assert.equal(verify(pending,"2026-10-31","2026-10-31"),pending);
+ assert.throws(()=>verify({...pending,companies:[row("協力店A",3,1)]},
+  "2026-10-31","2026-10-31"),/UNVERIFIED/);
+ assert.throws(()=>verify({...complete(),companies:[row("協力店A",3,null)]},
+  "2026-10-31","2026-10-31"),/UNVERIFIED/);
+});
 test("partly reported month status is explicitly distinguished from unreported and zero",()=>{
  const payload=base();
  payload.unreportedCompanies.push({
