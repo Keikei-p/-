@@ -6,7 +6,7 @@
  * previousCounts and nextCounts from the same transaction (never browser
  * supplied previousCounts). OFF counts are immutable, not silently reset.
  */
-import {allowedPartnerCategories} from "../functions-partner-workspace/approved-published-categories.cjs";
+const {allowedPartnerCategories}=require("./approved-published-categories.cjs");
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター",
  "つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
