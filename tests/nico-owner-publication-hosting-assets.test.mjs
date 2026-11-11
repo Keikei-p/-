@@ -65,7 +65,7 @@ test("combined owner ON/OFF and joint-ranking setup is included in reviewed Host
  }
  const html=fs.readFileSync(path.join(root,page),"utf8");
  assert.match(html,/mountOwnerPartnerSetup/);
- assert.doesNotMatch(html,/firebase-firestore|localStorage\\s*\\(|sessionStorage\\s*\\(/);
+ assert.doesNotMatch(html,/firebase-firestore|localStorage\s*\(|sessionStorage\s*\(/);
  // Hosting remains manually reviewed and finance preflight remains mandatory.
  assert(workflow.includes("node scripts/nico-production-cutover-preflight.mjs"));
 });
