@@ -1640,3 +1640,44 @@ test("hub Owner correction rejects mismatched saved ledger identity without writ
   assert.equal([...db.store.keys()].filter(x=>x.includes("/partnerWorkAudits/")).length,1);
  }
 });
+
+test("partner count view rejects aliased, duplicated and foreign ledger identities before ranking",async()=>{
+ const {db,api,req,zero}=setup();
+ const team=(await api.manage(req("p",{action:"addTeam",name:"既存班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"既存報告者",teamId:team}))).staffId;
+ const date="2026-10-31";
+ const path="companies/partner/partnerWorkEntries/"+date+"__"+staff;
+ await api.submit(req("p",{date,staffId:staff,
+  counts:{...zero(),NURO:2},expectedVersion:0}));
+ const original=clone(db.store.get(path));
+ const originalMoney=clone(db.store.get("products/money"));
+ const originalSales=clone(db.store.get("records/old"));
+ assert.equal((await api.view(req("p",{date}))).records.length,1);
+ for(const patch of [
+  {companyId:"foreign"},{hubCompanyId:"foreign"},
+  {staffId:"other"},{date:"2026-10-30"},
+  {version:0},{version:1000},{totalCount:999}
+ ]){
+  db.seed(path,{...original,...patch});
+  const before=clone([...db.store]);
+  await assert.rejects(api.view(req("p",{date})),
+   e=>e.code==="data-loss");
+  assert.deepEqual([...db.store],before,
+   "corrupted partner view may never mutate ledger");
+  db.seed(path,original);
+ }
+ const alias="companies/partner/partnerWorkEntries/forged-id";
+ db.seed(alias,{...original});
+ const before=clone([...db.store]);
+ await assert.rejects(api.view(req("p",{date})),
+  e=>e.code==="data-loss",
+  "one extra aliased entry must never produce duplicate ranked counts");
+ assert.deepEqual([...db.store],before);
+ db.store.delete(alias);
+ const restored=await api.view(req("p",{date}));
+ assert.equal(restored.records.length,1);
+ assert.equal(restored.records[0].totalCount,2);
+ assert.deepEqual(db.store.get(path),original);
+ assert.deepEqual(db.store.get("products/money"),originalMoney);
+ assert.deepEqual(db.store.get("records/old"),originalSales);
+});
