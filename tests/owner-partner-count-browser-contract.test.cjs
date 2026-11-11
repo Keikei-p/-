@@ -147,3 +147,20 @@ test("owner editor refuses save after Firebase identity changes",async()=>{
  assert.equal(writes.length,0,
   "old Owner's count editor must not submit under a different signed-in identity");
 });
+
+test("stale Owner editor does not fetch or display partner data after login switch",async()=>{
+ const {sandbox,parent,company,calls,writes}=loadOwnerEditor();
+ sandbox.openOwnerPartnerCountEditor(parent,company);
+ await tick();
+ const panel=parent.querySelector("#ownerPartnerCorrectionPanel");
+ const reload=panel.descendants().find(x=>x.tag==="button"&&x.textContent==="読み直す");
+ assert(reload);
+ assert.equal(calls.length,1);
+ sandbox.auth.currentUser={uid:"another-owner"};
+ reload.onclick();
+ await tick();
+ assert.equal(calls.length,1,"account switch may not trigger a stale partner read");
+ const save=panel.descendants().find(x=>x.textContent==="件数を保存・訂正");
+ await save.onclick();
+ assert.equal(writes.length,0);
+});
