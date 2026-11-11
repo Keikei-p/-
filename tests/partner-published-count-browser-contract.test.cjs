@@ -95,3 +95,18 @@ test("Owner correction UI lists saved reports only and cannot submit a new staff
  assert(!ownerBlock.includes('record?.version??0'),
   "no new staff-day reports in Owner correction UI");
 });
+
+test("Owner correction editor excludes unreported staff and retains original login identity",()=>{
+ const start=index.indexOf("function openOwnerPartnerCountEditor(");
+ const end=index.indexOf("\n// Original internal owner sees",start);
+ assert(start>=0&&end>start);
+ const owner=index.slice(start,end);
+ assert.match(owner,/const initiatingOwnerUid=auth\.currentUser\?\.uid;/);
+ assert.match(owner,/auth\.currentUser\?\.uid===initiatingOwnerUid/);
+ assert.match(owner,/if\(!record\)\{/);
+ assert.match(owner,/recorded\.has\(p\.id\)/);
+ assert.match(owner,/if\(!record\|\|!Number\.isSafeInteger\(record\.version\)/);
+ assert.match(owner,/ownerPartnerCompanyId:company\.partnerCompanyId/);
+ assert.match(owner,/includeOwnerCorrectionEntries:true/);
+ assert.doesNotMatch(owner,/signInWithEmailAndPassword|updateDoc\(|deleteDoc\(/);
+});
