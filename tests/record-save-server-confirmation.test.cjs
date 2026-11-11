@@ -12,7 +12,7 @@ const extract=(start,end)=>{
 };
 const guards=extract("function recordSaveContentSignature(record) {",
  "function recordConflict(message) {");
-const module=vm.runInNewContext(guards+
+const guardsHarness=vm.runInNewContext(guards+
  "this.signature=recordSaveContentSignature;"+
  "this.uncertain=recordConfirmationUncertain;",{});
 const validator=vm.runInNewContext(
@@ -32,7 +32,7 @@ test("saved financial fields match only when all map rows, counts, price and CB 
  const reordered=clone(expected);
  reordered.results={skuA:{cashback:0,revenuePerUnit:1000,count:2,productId:"skuA"}};
  reordered.updatedAt={seconds:999};
- assert.equal(module.signature(reordered),module.signature(expected));
+ assert.equal(guardsHarness.signature(reordered),guardsHarness.signature(expected));
  const drift=[
   x=>{x.results.skuOld={productId:"old",count:1,revenuePerUnit:500,cashback:0};},
   x=>{delete x.results.skuA;},
@@ -48,7 +48,7 @@ test("saved financial fields match only when all map rows, counts, price and CB 
  ];
  for(const mutate of drift){
   const value=clone(expected);mutate(value);
-  assert.notEqual(module.signature(value),module.signature(expected));
+  assert.notEqual(guardsHarness.signature(value),guardsHarness.signature(expected));
  }
  assert.deepEqual(expected,sample(),"evidence is read-only");
 });
@@ -75,7 +75,7 @@ test("post-commit confirmation requires server read and never asks unsafe duplic
  assert.match(save,/recordSaveContentSignature\(persisted\)/);
  assert.match(save,/recordSaveContentSignature\(data\)/);
  assert.doesNotMatch(save,/await getDoc\(/);
- const error=module.uncertain();
+ const error=guardsHarness.uncertain();
  assert.equal(error.code,"record-confirmation-uncertain");
  assert.match(error.message,/再登録せず/);
  assert.match(html,/error\?\.code === "record-confirmation-uncertain"/);
