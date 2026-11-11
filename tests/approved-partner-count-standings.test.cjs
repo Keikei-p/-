@@ -59,6 +59,11 @@ test("zero is submitted but missing report is not treated as zero",()=>{
  assert.equal(out.companies[0].totalCount,0);
  assert.equal(out.companies[0].reportedDays,1);
  assert.equal(out.reportCount,1);
+ assert.equal(out.partnerCountsComplete,false);
+ assert.equal(out.peopleComplete,false,
+  "published partner with no submission cannot claim a complete person ranking");
+ assert.equal(out.teamComplete,false,
+  "published partner with no submission cannot claim a complete team ranking");
 });
 test("orphan staff entries cannot appear in ranks without a saved daily summary",()=>{
  const x=company("a","会社A",{...zero(),NURO:2});
