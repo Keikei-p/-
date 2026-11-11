@@ -197,3 +197,44 @@ test("partner local leaderboard uses same ranks, separates zero from unreported 
  assert(!rows.some(x=>x.name.includes("SB光・AIR")||x.description.includes("7件")),
   "OFF history must not appear in partner leaderboard");
 });
+
+test("hub company team UI displays unverified and not-reported warnings instead of a fake 0 total",async()=>{
+ const start=index.indexOf('button.textContent="班別件数を確認";');
+ assert(start>=0,"existing company management team button must be present");
+ const from=index.indexOf("button.onclick=async()=>{",start);
+ const to=index.indexOf("card.append(button,details);",from);
+ assert(from>start&&to>from,"reviewed Owner-only team detail handler exists");
+ const handler=index.slice(from,to);
+ for(const scenario of [
+  {status:"submitted",unreconciled:true,expected:"照合できません",hasRows:false},
+  {status:"not_reported",unreconciled:false,expected:"未報告です",hasRows:false},
+  {status:"submitted",unreconciled:false,expected:"1班：報告済み 0件",hasRows:true}
+ ]){
+  const details={
+   textContent:"",children:[],
+   replaceChildren(){this.children=[];this.textContent="";},
+   append(child){this.children.push(child);}
+  };
+  const button={disabled:false};
+  const sandbox={button,details,company:{partnerCompanyId:"partner"},
+   date:"2026-10-31",stillOwner:()=>true,
+   document:{createElement:()=>({textContent:""})},
+   readPartnerWorkDay:async()=>({data:{
+    role:"hub",partnerTeamDetails:{
+     partnerCompanyId:"partner",scope:"shared_counts_only",
+     companyReportStatus:scenario.status,
+     unreconciledWithCompanyReport:scenario.unreconciled,
+     unverifiedTeamCount:0,teams:[{name:"1班",totalCount:0}]
+    }}})
+  };
+  vm.runInNewContext(handler,sandbox,{timeout:1000});
+  await button.onclick();
+  const displayed=[details.textContent,
+   ...details.children.map(x=>x.textContent)].join(" ");
+  assert(displayed.includes(scenario.expected),scenario.expected);
+  assert.equal(details.children.length,scenario.hasRows?1:0,
+   "incomplete company count cannot be rendered as a ranked 0 row");
+  assert.equal(button.disabled,false,"loading guard always resets");
+  assert(!displayed.includes("売上")&&!displayed.includes("単価"));
+ }
+});
