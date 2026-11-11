@@ -9507,9 +9507,21 @@ async function loadPartnerCompanyList(){
             const info=scoped?.partnerTeamDetails;
             if(scoped?.role!=="hub"||info?.scope!=="shared_counts_only"||
                 info.partnerCompanyId!==company.partnerCompanyId||
-                !Array.isArray(info.teams)||info.teams.length>150)
+                !Array.isArray(info.teams)||info.teams.length>150||
+                !["submitted","not_reported"].includes(info.companyReportStatus)||
+                typeof info.unreconciledWithCompanyReport!=="boolean")
               throw Error("invalid_team_breakdown");
             details.replaceChildren();
+            // A missing aggregate or mismatched counts must not be shown as
+            // a final team total, even when saved staff counts sum to zero.
+            if(info.unreconciledWithCompanyReport){
+              details.textContent="班別件数と会社報告が照合できません。実績は保持されていますが、確認が必要です。";
+              return;
+            }
+            if(info.companyReportStatus==="not_reported"){
+              details.textContent="会社の件数報告は未報告です。報告済み0件とは区別しています。";
+              return;
+            }
             for(const team of info.teams){
               if(typeof team.name!=="string"||
                   !Number.isSafeInteger(team.totalCount)||team.totalCount<0)
