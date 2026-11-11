@@ -1281,7 +1281,9 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    tx.create(audit,{...row,previousCounts:prior,previousPrivateCounts:previousPrivate,
      createdAt:nowStamp});
    return {saved:true,staffId,date,version:nextVersion,totalCount:total,
-     privateTotalCount:privateValidated.total};
+     // Hub Owner corrections are count-only; partner-private totals must not
+     // escape in the correction response even though they remain persisted.
+     ...(!ownerCorrection?{privateTotalCount:privateValidated.total}:{})};
   });
  }
  return Object.freeze({manage,accept,view,submit});

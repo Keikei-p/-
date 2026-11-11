@@ -1470,8 +1470,10 @@ test("hub Owner can correct an approved partner's ON counts without changing OFF
  const team=(await api.manage(req("p",{action:"addTeam",name:"協力店1班"}))).teamId;
  const staff=(await api.manage(req("p",{action:"addManaged",name:"登録担当",teamId:team}))).staffId;
  const date="2026-10-31";
+ const privateId=(await api.manage(req("p",{
+  action:"addPrivateProduct",name:"協力店内限定"}))).productId;
  await api.submit(req("p",{date,staffId:staff,
-  counts:{...zero(),NURO:2,SBMNP:7},expectedVersion:0}));
+  counts:{...zero(),NURO:2,SBMNP:7},privateCounts:{[privateId]:9},expectedVersion:0}));
  const originalFinance=clone(db.store.get("products/money"));
  const originalRecord=clone(db.store.get("records/old"));
  const originalIdentity=clone(db.store.get("users/h"));
@@ -1511,7 +1513,12 @@ test("hub Owner can correct an approved partner's ON counts without changing OFF
   expectedVersion:1}));
  assert.equal(result.saved,true);
  assert.equal(result.version,2);
+ assert.equal(Object.prototype.hasOwnProperty.call(result,"privateTotalCount"),false,
+  "hub Owner correction response must never disclose partner-private totals");
  const persisted=db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+staff);
+ assert.equal(persisted.privateCounts[privateId],9);
+ assert.equal(persisted.privateTotalCount,9,
+  "hub Owner correction must preserve the partner-private ledger unchanged");
  assert.equal(persisted.updatedByUid,"h");
  assert.equal(persisted.counts.NURO,4);
  assert.equal(persisted.counts.SBMNP,7);
