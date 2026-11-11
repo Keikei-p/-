@@ -12676,6 +12676,9 @@ function openOwnerPartnerCountEditor(parent,company){
    "登録済み・第"+record.version+"版（過去の班情報は保持）";
  };
  const load=async()=>{
+  // The mounted editor belongs to one verified Owner session. Do not
+  // request partner data after logout / account switch / panel replacement.
+  if(!stillHere())return;
   const loadId=++ownerPartnerCorrectionNonce;
   busy=true;save.disabled=true;fields.replaceChildren();
   status.textContent="協力店の件数を読み込んでいます…";
@@ -12684,7 +12687,7 @@ function openOwnerPartnerCountEditor(parent,company){
    const result=(await readPartnerWorkDay({date:selectedDate,
     partnerCompanyId:company.partnerCompanyId,
     includeOwnerCorrectionEntries:true})).data;
-   if(loadId!==ownerPartnerCorrectionNonce||!editor.isConnected||
+   if(loadId!==ownerPartnerCorrectionNonce||!stillHere()||
       actor!==auth.currentUser?.uid||date.value!==selectedDate)return;
    const entry=result?.ownerCorrectionEntries;
    if(result?.role!=="hub"||result.ownerCorrectionAvailable!==true||
@@ -12708,7 +12711,7 @@ function openOwnerPartnerCountEditor(parent,company){
    busy=false;render();
    if(!staff.options.length)status.textContent="この日に訂正できる登録済みの件数はありません。未報告は協力店から新規入力してください。";
   }catch{
-   if(loadId!==ownerPartnerCorrectionNonce||!editor.isConnected||
+   if(loadId!==ownerPartnerCorrectionNonce||!stillHere()||
       actor!==auth.currentUser?.uid)return;
    busy=false;snapshot=null;staff.replaceChildren();fields.replaceChildren();
    save.disabled=true;
