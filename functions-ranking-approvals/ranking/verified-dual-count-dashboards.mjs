@@ -300,7 +300,9 @@ export function buildVerifiedCountDashboard({
     statuses.get(p.id).add(r.reportStatus);
    }
   }
-  if(r.teamId!==null)put(teams,r.companyId+":"+r.teamId,
+  // ':' is valid in both source IDs. Use the complete identity pair for
+  // aggregation; the legacy display ID alone can alias a different team.
+  if(r.teamId!==null)put(teams,JSON.stringify([r.companyId,r.teamId]),
    ()=>({id:r.companyId+":"+r.teamId,companyId:cid,
     companyName:r.companyName,name:r.teamName,count:0}),r.count);
   if(r.productKey!==null){

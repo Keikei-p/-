@@ -1148,11 +1148,12 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    const er=entryRef(target.cid,date,staffId),summary=summaryRef(target.hubId,date,target.cid);
    const privateProductIds=Object.keys(requestedPrivate||{});
    // All reads happen before writes. Do not infer product ownership from IDs.
-   const dayQuery=ownerCorrection?
-    collection(target.cid,"partnerWorkEntries").where("date","==",date).limit(201):null;
+   // Normal partner saves update the same shared day summary as an Owner
+   // correction. Reconcile its existing staff rows inside this transaction
+   // for both paths, so a new save cannot perpetuate or repair source drift.
+   const dayQuery=collection(target.cid,"partnerWorkEntries").where("date","==",date).limit(201);
    const [oldSnap,totalSnap,dayEntries,...productSnapshots]=await Promise.all([
-    tx.get(er),tx.get(summary),
-    ownerCorrection?tx.get(dayQuery):Promise.resolve(null),
+    tx.get(er),tx.get(summary),tx.get(dayQuery),
     ...privateProductIds.map(id=>tx.get(privateProductRef(target.cid,id)))
    ]);
    for(let i=0;i<privateProductIds.length;i++){
@@ -1169,13 +1170,15 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    // never create a missing report or rewrite a historical quick-count day.
    if(ownerCorrection&&(!oldSnap.exists||!totalSnap.exists))
     fail("failed-precondition");
-   if(ownerCorrection){
-    // A corrected staff day updates the entire partner day summary. Before
+   if(!Array.isArray(dayEntries?.docs)||dayEntries.size>200)
+    fail("resource-exhausted");
+   if(!oldSnap.exists&&dayEntries.size>=200)fail("resource-exhausted");
+   if(totalSnap.exists||dayEntries.size>0||oldSnap.exists){
+    // A staff save updates the entire partner day summary. Before
     // any writes, prove that every saved staff entry already reconciles
     // with each original category total, not just the grand total. Otherwise
     // a stale/corrupt aggregate could be perpetuated by a valid correction.
-    if(!Array.isArray(dayEntries?.docs)||dayEntries.size>200)
-     fail("resource-exhausted");
+    if(!totalSnap.exists||dayEntries.size===0)fail("data-loss");
     const dailyCounts=Object.fromEntries(KEYS.map(key=>[key,0]));
     const staffDays=new Set();
     let dailyTotal=0,targetFound=false;
@@ -1204,17 +1207,14 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      }
     }
     const daySummary=validateCounts(existing.counts);
-    if(!targetFound||existing.source!=="staff-entries-v1"||
+    if(targetFound!==oldSnap.exists||existing.source!=="staff-entries-v1"||
        daySummary.total!==dailyTotal||
        existing.totalCount!==dailyTotal||
        KEYS.some(key=>daySummary.counts[key]!==dailyCounts[key]))
      fail("data-loss");
     // Historical ledger identity must match its document paths before any
-    // Owner correction; never "heal" foreign / corrupt source documents.
-    const saved=validateCounts(old.counts);
-    if(old.companyId!==target.cid||old.hubCompanyId!==target.hubId||
-       old.staffId!==staffId||old.date!==date||
-       old.totalCount!==saved.total||existing.partnerCompanyId!==target.cid||
+    // save; never "heal" foreign / corrupt source documents.
+    if(existing.partnerCompanyId!==target.cid||
        existing.hubCompanyId!==target.hubId||existing.date!==date)
      fail("data-loss");
    }

@@ -105,6 +105,24 @@ test("partner audience only receives published count-only public ranking",()=>{
  assert(!JSON.stringify(r).includes("SoftBank Air"));
 });
 
+test("saved total drift blocks every audience even when the extra product is OFF",()=>{
+ // Issue #352: an extra saved product row must never be guessed away or
+ // reclassified as a confirmed zero by a publication switch.
+ for(const role of ["hub_owner","partner_owner"]){
+  for(const enabled of [[],["nuro"],["nuro","air"]]){
+   const input=fixture();
+   input.sources[0].lines.push({...input.sources[0].lines[1],
+    sourceId:"l-hub-extra-saved-row",count:1});
+   input.context={...input.context,role,
+    viewerCompanyId:role==="hub_owner"?"hub":"partner"};
+   const before=structuredClone(input);
+   assert.throws(()=>run(input,publication(enabled)),
+    /VERIFIED_COUNT_DASHBOARD_INCOMPLETE_OR_UNAUTHORIZED/);
+   assert.deepEqual(input,before,"inconsistent originals remain untouched for Owner review");
+  }
+ }
+});
+
 test("wrong owner, forged settings, disabled SKU, unknown IDs and missing SKU mapping reject",()=>{
  const x=fixture(),orig=publication(["nuro"]);
  const bad=[

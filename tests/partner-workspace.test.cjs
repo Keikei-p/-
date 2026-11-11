@@ -2063,3 +2063,42 @@ test("owner correction refuses corrupt same-total SKU summary and missing siblin
  assert.deepEqual(db.store.get("products/money"),rawMoney);
  assert.deepEqual(db.store.get("records/old"),rawSales);
 });
+
+test("normal partner save refuses inconsistent day summaries and orphan histories before any write",async()=>{
+ for(const corruption of ["sku_swap","missing_sibling","missing_summary"]){
+  const {db,api,req,zero}=setup(),date="2026-10-31";
+  const team=(await api.manage(req("p",{action:"addTeam",name:"本人照合班"}))).teamId;
+  const a=(await api.manage(req("p",{action:"addManaged",name:"A",teamId:team}))).staffId;
+  const b=(await api.manage(req("p",{action:"addManaged",name:"B",teamId:team}))).staffId;
+  const c=(await api.manage(req("p",{action:"addManaged",name:"C",teamId:team}))).staffId;
+  await api.submit(req("p",{date,staffId:a,
+   counts:{...zero(),NURO:2,SBMNP:1},expectedVersion:0}));
+  await api.submit(req("p",{date,staffId:b,
+   counts:{...zero(),NURO:1,SBMNP:2},expectedVersion:0}));
+  const aPath="companies/partner/partnerWorkEntries/"+date+"__"+a;
+  const bPath="companies/partner/partnerWorkEntries/"+date+"__"+b;
+  const sumPath="companies/hub/partnerWorkCountDays/"+date+"/reports/partner";
+  const sum=clone(db.store.get(sumPath)),sibling=clone(db.store.get(bPath));
+  if(corruption==="sku_swap"){
+   db.store.get(sumPath).counts.NURO=4;
+   db.store.get(sumPath).counts.SBMNP=2;
+  }else if(corruption==="missing_sibling")db.store.delete(bPath);
+  else db.store.delete(sumPath);
+  const before=clone([...db.store]);
+  await assert.rejects(api.submit(req("p",{date,staffId:a,
+   counts:{...zero(),NURO:3,SBMNP:1},expectedVersion:1})),
+   e=>e.code==="data-loss",corruption+" cannot be carried into a new audit version");
+  await assert.rejects(api.submit(req("p",{date,staffId:c,
+   counts:{...zero(),NURO:1},expectedVersion:0})),
+   e=>e.code==="data-loss",corruption+" cannot be extended by a new report");
+  assert.deepEqual([...db.store],before,
+   "failed reconciliation preserves every original, private field and audit");
+  db.seed(sumPath,sum);db.seed(bPath,sibling);
+  const result=await api.submit(req("p",{date,staffId:a,
+   counts:{...zero(),NURO:3,SBMNP:1},expectedVersion:1}));
+  assert.equal(result.saved,true);
+  assert.equal(result.version,2);
+  assert.equal(db.store.get(aPath).counts.NURO,3);
+  assert.equal(db.store.get(sumPath).totalCount,7);
+ }
+});

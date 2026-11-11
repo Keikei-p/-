@@ -341,3 +341,30 @@ test("saved zero company is ranked, unreported company is not",()=>{
   assert.deepEqual(input,original);
  }
 });
+
+test("colon-containing company and team IDs never combine different companies' team counts",()=>{
+ for(const buildFn of [buildVerifiedCountDashboard,buildVendorDashboard]){
+  const input=fixture(2);
+  // Both display IDs become hub:a:team. The source identity is the pair,
+  // so it must not make the partner's score part of the internal team.
+  const own=input.sources[0],partner=input.sources[1];
+  own.teams[0].id="a:team";
+  for(const row of [...own.roster,...own.records,...own.lines])row.teamId="a:team";
+  partner.companyId="hub:a";
+  for(const row of [...partner.records,...partner.lines,...partner.products])row.companyId="hub:a";
+  for(const row of input.productGroups)if(row.companyId==="partner")row.companyId="hub:a";
+  input.approvedCompanyIds=["hub","hub:a"];
+  input.context.approvedCompanyIds=["hub","hub:a"];
+  const before=structuredClone(input),hub=buildFn(input);
+  assert.deepEqual(hub.teamBreakdown.map(x=>[x.companyId,x.count]),
+   [["hub",1],["hub:a",2]]);
+  assert.deepEqual(hub.summary,{own:1,partner:2,total:3,unidentified:0});
+  const partnerView=buildFn({...input,context:{...input.context,
+   role:"partner_owner",viewerCompanyId:"hub:a"}});
+  assert.deepEqual(partnerView.publicRanking.teams,[
+   {rank:1,name:"営業班",company:"協力店A",count:2},
+   {rank:2,name:"営業班",company:"自社",count:1}
+  ]);
+  assert.deepEqual(input,before,"ranking never changes original team snapshots");
+ }
+});

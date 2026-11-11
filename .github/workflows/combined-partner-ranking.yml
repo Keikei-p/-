@@ -6,6 +6,12 @@ on:
       - "ranking/combined-count-leaderboard.mjs"
       - "ranking/partner-workspace-count-source.mjs"
       - "ranking/partner-submission-publication-guard.mjs"
+      - "ranking/verified-dual-count-dashboards.mjs"
+      - "ranking/owner-product-visibility-rankings.mjs"
+      - "tests/verified-dual-count-dashboards.test.mjs"
+      - "tests/owner-product-visibility-rankings.test.mjs"
+      - "scripts/ci/review-approved-partner-count-rank.cjs"
+      - "scripts/ci/review-partner-sku-publication-write.cjs"
       - "ranking/owner-product-visibility-firestore.mjs"
       - "tests/owner-product-visibility-firestore.test.mjs"
       - "tests/partner-submission-publication-guard.test.mjs"
@@ -39,6 +45,12 @@ on:
       - "ranking/combined-count-leaderboard.mjs"
       - "ranking/partner-workspace-count-source.mjs"
       - "ranking/partner-submission-publication-guard.mjs"
+      - "ranking/verified-dual-count-dashboards.mjs"
+      - "ranking/owner-product-visibility-rankings.mjs"
+      - "tests/verified-dual-count-dashboards.test.mjs"
+      - "tests/owner-product-visibility-rankings.test.mjs"
+      - "scripts/ci/review-approved-partner-count-rank.cjs"
+      - "scripts/ci/review-partner-sku-publication-write.cjs"
       - "ranking/owner-product-visibility-firestore.mjs"
       - "tests/owner-product-visibility-firestore.test.mjs"
       - "tests/partner-submission-publication-guard.test.mjs"
@@ -121,14 +133,17 @@ jobs:
           # New write policy is strictly OFF in production. Verify the
           # EXACT reviewed source before running the real isolated emulator.
           # Main always validates BOTH current source-pinned reviewers.
-          # This PR checks the new ranking reviewer without running any release.
+          # The integrated count candidate validates BOTH exact reviewers.
+          # This path is NO DEPLOY and never handles workflow_dispatch.
           if { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
-               [ "${GITHUB_HEAD_REF:-}" = "fix/main-count-ranking-reviewed-ci-20261111" ]; } ||
+               { [ "${GITHUB_HEAD_REF:-}" = "fix/main-count-ranking-reviewed-ci-20261111" ] ||
+                 [ "${GITHUB_HEAD_REF:-}" = "feat/partner-published-count-input-20261111" ]; }; } ||
              { [ "$GITHUB_EVENT_NAME" = "push" ] &&
                [ "$GITHUB_REF" = "refs/heads/main" ]; }; then
-            test "$(git hash-object scripts/ci/review-partner-sku-publication-write.cjs)" = 'e05c7faf118cd5afa1850f00db83f474cc8b9b43'
-            test "$(git hash-object scripts/ci/review-approved-partner-count-rank.cjs)" = '2ee6cfe39964074496cfb4a4aadf662687f52636'
-            if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            test "$(git hash-object scripts/ci/review-partner-sku-publication-write.cjs)" = '6204cb3603a5e2cc1ae06e6f4680163f8e3309ba'
+            test "$(git hash-object scripts/ci/review-approved-partner-count-rank.cjs)" = '00627520040fcd05538755fc4348aff861986844'
+            if [ "$GITHUB_EVENT_NAME" = "push" ] ||
+               [ "${GITHUB_HEAD_REF:-}" = "feat/partner-published-count-input-20261111" ]; then
               node scripts/ci/review-partner-sku-publication-write.cjs
             fi
             node scripts/ci/review-approved-partner-count-rank.cjs
