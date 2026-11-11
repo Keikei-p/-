@@ -1815,3 +1815,36 @@ test("hub owner partner-team detail and missing-status reject aliased or foreign
   assert.equal(db.store.get(basePath).counts.NURO,3);
  }
 });
+
+test("hub partner-team detail refuses to call orphan saved staff report reconciled",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ const team=(await api.manage(req("p",{action:"addTeam",name:"照合班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",
+  name:"件数0も保存",teamId:team}))).staffId;
+ await api.submit(req("p",{date,staffId:staff,counts:zero(),expectedVersion:0}));
+ const dayPath="companies/hub/partnerWorkCountDays/"+date+"/reports/partner";
+ const original=clone(db.store.get(dayPath));
+ assert.equal(original.totalCount,0);
+ const complete=await api.view(req("h",{date,partnerCompanyId:"partner"}));
+ assert.equal(complete.partnerTeamDetails.companyReportStatus,"submitted");
+ assert.equal(complete.partnerTeamDetails.unreconciledWithCompanyReport,false);
+ db.store.delete(dayPath); // Simulate missing aggregate, do not repair it.
+ const before=clone([...db.store]);
+ const missing=await api.view(req("h",{date,partnerCompanyId:"partner"}));
+ assert.equal(missing.partnerTeamDetails.companyReportStatus,"not_reported");
+ assert.equal(missing.partnerTeamDetails.verifiedSharedCount,0);
+ assert.equal(missing.partnerTeamDetails.unreconciledWithCompanyReport,true,
+  "an orphan submitted zero must not be certified as a reconciled empty day");
+ const status=await api.view(req("h",{date,includeTeamStatus:true}));
+ assert.equal(status.teamReports[0].verified,false);
+ assert.deepEqual([...db.store],before,"Owner read never restores source or rewrites history");
+ assert.deepEqual(db.store.get("records/old").results.a.count,5);
+ db.seed(dayPath,original);
+ const restored=await api.view(req("h",{date,partnerCompanyId:"partner"}));
+ assert.equal(restored.partnerTeamDetails.unreconciledWithCompanyReport,false);
+ const none=await api.view(req("h",{date:"2026-10-30",
+  partnerCompanyId:"partner"}));
+ assert.equal(none.partnerTeamDetails.companyReportStatus,"not_reported");
+ assert.equal(none.partnerTeamDetails.unreconciledWithCompanyReport,false,
+  "no staff entry and no report is simply unreported, not an orphan");
+});
