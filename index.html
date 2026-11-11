@@ -35955,6 +35955,14 @@ function renderRecordHistory(
           auditButton.disabled = true;
           auditResult.textContent = "監査履歴を確認中…";
           try {
+            // The locally rendered record must still be the exact stored
+            // original before comparing its append-only audit evidence.
+            const latestRecord = await getDocFromServer(
+              doc(db,"records",record.id));
+            if (!latestRecord.exists() ||
+                latestRecord.data()?.companyId !== record.companyId ||
+                recordRevision({id:record.id,...latestRecord.data()}) !==
+                recordRevision(record)) throw Error("STALE_ORIGINAL");
             // Existing compound index companyId+recordDate is used; no
             // collection-group or all-history scan, no server-side mutation.
             const snapshots = await getDocsFromServer(query(
@@ -35974,14 +35982,20 @@ function renderRecordHistory(
                 row.recordUid === record.uid &&
                 row.recordDate === record.date &&
                 row.after && typeof row.after === "object");
+            if (entries.some(entry =>
+                typeof entry.createdAt?.toMillis !== "function"))
+              throw Error("AUDIT_TIMESTAMP_UNVERIFIED");
             if (!entries.length) {
               auditResult.textContent =
                 "一致する監査履歴はありません。現在の件数は未確定のまま、契約原票を確認してください。";
               return;
             }
             entries.sort((a,b) =>
-              (b.createdAt?.toMillis?.() ?? 0) -
-              (a.createdAt?.toMillis?.() ?? 0));
+              b.createdAt.toMillis() - a.createdAt.toMillis());
+            if (entries.length > 1 &&
+                entries[0].createdAt.toMillis() ===
+                entries[1].createdAt.toMillis())
+              throw Error("AUDIT_ORDER_AMBIGUOUS");
             const latest = entries[0].after;
             if (!latest.results || Array.isArray(latest.results) ||
                 typeof latest.results !== "object" ||
