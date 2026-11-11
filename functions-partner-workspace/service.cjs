@@ -802,7 +802,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    registeredCompanies.sort((a,b)=>a.name.localeCompare(b.name,"ja"));
    // Explicitly scoped, on-demand shared-count breakdown. Never read
    // financial originals, private products, or reveal staff identities.
-   let partnerTeamDetails=null,ownerCorrectionEntries=null,partnerStaffEntryCount=0;
+   let partnerTeamDetails=null,ownerCorrectionEntries=null,partnerStaffEntryCount=0,
+    partnerStaffCategoryTotals=null;
    const selectedPartnerId=clean(d.partnerCompanyId);
    if(selectedPartnerId){
     if(!ID.test(selectedPartnerId))fail("invalid-argument");
@@ -814,6 +815,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     ]);
     if(teamSnaps.size>150||entrySnaps.size>200)fail("resource-exhausted");
     partnerStaffEntryCount=entrySnaps.size;
+    partnerStaffCategoryTotals=Object.fromEntries(KEYS.map(k=>[k,0]));
     const rows=new Map();
     for(const sn of teamSnaps.docs){
      const t=sn.data()||{};
@@ -840,6 +842,9 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      verifiedStaffDays.add(e.staffId);
      const item=validateCounts(e.counts);
      if(item.total!==e.totalCount)fail("data-loss");
+     // Validate each SKU independently. Equal grand totals may hide one
+     // incorrectly assigned product when two counts were swapped.
+     for(const key of KEYS)partnerStaffCategoryTotals[key]+=item.counts[key];
      const row=rows.get(e.teamIdSnapshot||"");
      if(!row){
       // Never fabricate an old team based on someone's current membership.
@@ -926,7 +931,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     partnerTeamDetails.companyReportStatus=report?"submitted":"not_reported";
     partnerTeamDetails.unreconciledWithCompanyReport=report?
      report.totalCount!==partnerTeamDetails.verifiedSharedCount+
-       partnerTeamDetails.unverifiedTeamCount:
+       partnerTeamDetails.unverifiedTeamCount||
+     KEYS.some(key=>report.counts[key]!==partnerStaffCategoryTotals[key]):
      partnerStaffEntryCount>0;
    }
    // Extra Firestore reads are opt-in. Default report/dashboard calls retain
@@ -959,6 +965,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      }
      const seenStaff=new Set();
      let unattributedEntries=0,reportedTotal=0;
+     const reportedCategories=Object.fromEntries(KEYS.map(k=>[k,0]));
      for(const doc of entriesSnap.docs){
       const row=doc.data()||{};
       // The optional all-company team status must use exactly the same
@@ -971,6 +978,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
       const normalized=validateCounts(row.counts);
       if(row.totalCount!==normalized.total)fail("data-loss");
       reportedTotal+=normalized.total;
+      for(const key of KEYS)reportedCategories[key]+=normalized.counts[key];
       const team=status.get(row.teamIdSnapshot);
       if(!team){unattributedEntries++;continue;}
       // A saved zero-count row counts as submitted, not missing.
@@ -980,7 +988,9 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      }
      const aggregate=partners.find(p=>p.partnerCompanyId===cid);
      const consistent=unattributedEntries===0 &&
-      (aggregate?aggregate.totalCount===reportedTotal:seenStaff.size===0);
+      (aggregate?aggregate.totalCount===reportedTotal&&
+       KEYS.every(key=>aggregate.counts[key]===reportedCategories[key]):
+       seenStaff.size===0);
      const teams=[...status.values()].map(team=>({
       ...team,status:team.reportedStaffCount>0?"submitted":
        !consistent?"unverified":
