@@ -12757,7 +12757,8 @@ function openOwnerPartnerCountEditor(parent,company){
    // must still be able to correct without re-activating their login.
    for(const member of entry.staff.filter(p=>recorded.has(p.id))){
     const option=document.createElement("option");
-    option.value=member.id;option.textContent=member.name;
+    option.value=member.id;
+    option.textContent=member.name+(member.active===false?"（退職・無効化済み）":"");
     staff.append(option);
    }
    if([...staff.options].some(o=>o.value===previous))staff.value=previous;
