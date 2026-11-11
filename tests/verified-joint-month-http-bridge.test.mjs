@@ -96,3 +96,22 @@ test("bad status, MIME, oversized payload, wrong month and impersonated schema a
   await assert.rejects(bridge.load({period,filters:{}}),/BRIDGE_BLOCKED/);
  }
 });
+
+test("dashboard audience must equal signed server response role",async()=>{
+ const hub=createVerifiedJointMonthHttpBridge({
+  featureEnabled:true,auth,expectedRole:"hub_owner",
+  fetcher:async()=>makeResponse({role:"hub_owner"})
+ });
+ assert.equal((await hub.load({period,filters:{}})).role,"hub_owner");
+ const partner=createVerifiedJointMonthHttpBridge({
+  featureEnabled:true,auth,expectedRole:"partner_owner",
+  fetcher:async()=>makeResponse({role:"hub_owner"})
+ });
+ await assert.rejects(partner.load({period,filters:{}}),/BRIDGE_BLOCKED/);
+ for(const invalid of ["owner","member","HUB_OWNER","",true]){
+  assert.throws(()=>createVerifiedJointMonthHttpBridge({
+   featureEnabled:true,auth,expectedRole:invalid,
+   fetcher:async()=>makeResponse()
+  }),/BRIDGE_BLOCKED/);
+ }
+});
