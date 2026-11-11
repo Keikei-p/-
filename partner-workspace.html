@@ -721,7 +721,7 @@ function privateValues(){const o=Object.create(null);for(const x of $("privateCo
  if(x.disabled)continue;
  if(!/^(?:0|[1-9]\d{0,3})$/.test(x.value.trim()))throw Error("invalid private count");
  o[x.dataset.privateId]=Number(x.value)}return o}
-function updateTotal(){let n=0;for(const x of document.querySelectorAll("#countGrid input,#privateCountGrid input")){const k=Number(x.value);if(Number.isSafeInteger(k)&&k>=0&&k<=9999)n+=k} $("total").textContent=n+" 件"}
+function updateTotal(){let n=0;for(const x of document.querySelectorAll("#countGrid input,#privateCountGrid input")){if(x.disabled)continue;const k=Number(x.value);if(Number.isSafeInteger(k)&&k>=0&&k<=9999)n+=k} $("total").textContent=n+" 件"}
 
 function periodDatesForCounts(selected,period,today){
  if(!/^\d{4}-\d{2}-\d{2}$/.test(selected)||!/^\d{4}-\d{2}-\d{2}$/.test(today))
@@ -1238,6 +1238,15 @@ function draw(){
    companySelect.value=previous;
   $("hubTeamCountLoad").disabled=!companySelect.value;
   return;
+ }
+ // Keep all nine stored keys, including hidden OFF history, for a
+ // non-destructive save. Only Owner-published categories are editable.
+ const published=data.enabledCategories??KEYS;
+ if(!Array.isArray(published)||new Set(published).size!==published.length||
+    published.some(key=>!KEYS.includes(key)))throw Error("publication_schema");
+ for(const input of grid.querySelectorAll("input")){
+  const allowed=published.includes(input.dataset.key);
+  input.disabled=!allowed;input.parentElement.hidden=!allowed;
  }
  $("makeTeam").hidden=data.role!=="owner";
   $("privateProductAdmin").hidden=data.role!=="owner";
