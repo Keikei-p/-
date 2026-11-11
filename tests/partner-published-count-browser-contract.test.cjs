@@ -128,3 +128,72 @@ test("joint count dashboard is present in both original audiences but never fetc
  assert(!index.includes("NICO_SAME_APP_JOINT_COUNT_MONTH_RELEASED=true"),
   "browser may not activate its own release gate");
 });
+
+test("partner local leaderboard uses same ranks, separates zero from unreported and keeps retired history",()=>{
+ const block=extract(index,"function partnerInlineRender(){",
+  "\nasync function partnerInlineFetch(){");
+ const elements=new Map();
+ const box=id=>{
+  if(!elements.has(id))elements.set(id,{
+   hidden:false,disabled:false,textContent:"",value:"",
+   children:[],replaceChildren(){this.children=[];},
+   append(child){this.children.push(child);}
+  });
+  return elements.get(id);
+ };
+ const counts=(extra={})=>({...zero(),...extra});
+ const state={role:"member",companyName:"協力店A",
+  categories:KEYS,enabledCategories:["NURO","SBMNP"],
+  teams:[
+   {id:"t1",name:"1班",active:true},
+   {id:"t2",name:"2班",active:true},
+   {id:"t3",name:"3班",active:true}
+  ],
+  staff:[
+   {id:"p1",name:"甲",teamId:"t1",active:true},
+   {id:"p2",name:"乙",teamId:"t1",active:true},
+   {id:"p3",name:"丙",teamId:"t2",active:true},
+   {id:"p4",name:"未報告者",teamId:"t1",active:true},
+   {id:"p5",name:"退職者",teamId:"t2",active:false}
+  ],
+  records:[
+   {staffId:"p1",teamIdSnapshot:"t1",counts:counts({NURO:2,"SB光・AIR":7})},
+   {staffId:"p2",teamIdSnapshot:"t1",counts:counts({SBMNP:2})},
+   {staffId:"p3",teamIdSnapshot:"t2",counts:counts()},
+   {staffId:"p5",teamIdSnapshot:"t2",counts:counts()}
+  ]
+ };
+ const sandbox={
+  partnerInlineData:state,
+  pInline:box,
+  document:{createElement(tag){return {tag,textContent:""};}},
+  partnerMainAppendRow:(target,name,description)=>{
+   target.children.push({name,description});
+  },
+  partnerInlineFillSelect:()=>{},
+  partnerInlineRenderCounts:()=>{},
+  mountSameAppJointMonth:()=>{}
+ };
+ vm.runInNewContext(block+"\nthis.render=partnerInlineRender;",sandbox,
+  {timeout:1000});
+ sandbox.render();
+ const output=box("pInlineRanking").children;
+ const rows=output.filter(r=>r.name);
+ assert(output.some(x=>x.textContent==="班別（当日・協力店内）"));
+ assert(output.some(x=>x.textContent==="個人別（当日・協力店内）"));
+ assert(output.some(x=>x.textContent==="商材別（公開ON・当日）"));
+ assert(rows.some(x=>x.name==="1位 甲"&&x.description==="2件"));
+ assert(rows.some(x=>x.name==="1位 乙"&&x.description==="2件"),
+  "equal personal count must share first rank");
+ assert(!rows.some(x=>x.name==="2位 乙"||x.name==="2位 甲"));
+ assert(rows.some(x=>x.name==="3位 丙"&&x.description==="0件"));
+ assert(rows.some(x=>x.name==="3位 退職者"&&x.description==="0件"),
+  "historical inactive staff entry must remain visible");
+ assert(rows.some(x=>x.name==="未報告者"&&x.description==="未報告"));
+ assert(rows.some(x=>x.name==="協力店A・3班"&&x.description==="未報告"));
+ assert(rows.some(x=>x.name==="2位 協力店A・2班"&&x.description==="0件"));
+ assert(rows.some(x=>x.name==="1位 NURO"&&x.description==="2件"));
+ assert(rows.some(x=>x.name==="1位 SBMNP"&&x.description==="2件"));
+ assert(!rows.some(x=>x.name.includes("SB光・AIR")||x.description.includes("7件")),
+  "OFF history must not appear in partner leaderboard");
+});
