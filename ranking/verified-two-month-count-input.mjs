@@ -8,9 +8,19 @@ import {auditNoFinancialKeys} from "../security/public-projection.mjs";
 
 const MONTH=/^20\d\d-(0[1-9]|1[0-2])$/;
 const DATE=/^20\d\d-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+const TIME=/^20\d\d-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,9})?Z$/;
 const reject=()=>{throw Error("VERIFIED_TWO_MONTH_COUNTS_UNVERIFIED");};
 const plain=x=>x!==null&&typeof x==="object"&&!Array.isArray(x);
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+// A syntactically shaped date such as 2026-11-31 is not an actual calendar day.
+const validDay=x=>{
+ if(typeof x!=="string"||!DATE.test(x))return false;
+ const [y,m,d]=x.split("-").map(Number),day=new Date(0);
+ day.setUTCHours(0,0,0,0);day.setUTCFullYear(y,m-1,d);
+ return day.getUTCFullYear()===y&&day.getUTCMonth()+1===m&&day.getUTCDate()===d;
+};
+const validReadTime=x=>typeof x==="string"&&TIME.test(x)&&
+ Number.isFinite(Date.parse(x));
 function monthDistance(a,b){
  if(!MONTH.test(a)||!MONTH.test(b)||a===b)reject();
  const [ay,am]=a.split("-").map(Number),[by,bm]=b.split("-").map(Number);
@@ -35,9 +45,9 @@ function mergeRows(left,right,field,monthA,monthB,identity=false){
   if(!identity||!same(prior.get(id),row))reject();
  }
  if(!identity){
-  for(const r of left)if(!DATE.test(r.date??"")||
+  for(const r of left)if(!validDay(r.date)||
    r.date.slice(0,7)!==monthA)reject();
-  for(const r of right)if(!DATE.test(r.date??"")||
+  for(const r of right)if(!validDay(r.date)||
    r.date.slice(0,7)!==monthB)reject();
  }
  return [...prior.values()];
@@ -49,11 +59,12 @@ function sameInputBase(a,b){
     !MONTH.test(b.period.day?.slice(0,7)??"")||
     a.period.day!==a.period.day.slice(0,7)+"-01"||
     b.period.day!==b.period.day.slice(0,7)+"-01"||
-    !DATE.test(a.period.asOf??"")||!DATE.test(b.period.asOf??"")||
+    !validDay(a.period.asOf)||!validDay(b.period.asOf)||
     a.period.asOf.slice(0,7)!==a.period.day.slice(0,7)||
     b.period.asOf.slice(0,7)!==b.period.day.slice(0,7)||
     a.hubCompanyId!==b.hubCompanyId||
     a.mappingsReviewed!==true||b.mappingsReviewed!==true||
+    !validReadTime(a.snapshotReadTime)||
     a.snapshotReadTime!==b.snapshotReadTime||
     !Array.isArray(a.approvedCompanyIds)||!Array.isArray(b.approvedCompanyIds)||
     !same(a.approvedCompanyIds,b.approvedCompanyIds)||
