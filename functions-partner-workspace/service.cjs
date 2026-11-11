@@ -872,8 +872,9 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      const ids=new Set(staff.map(p=>p.id));
      const records=entrySnaps.docs.map(doc=>{
       const e=doc.data()||{},row=validateCounts(e.counts);
-      if(!ID.test(e.staffId||"")||!ids.has(e.staffId)||
-         e.companyId!==selectedPartnerId||e.hubCompanyId!==s.cid||
+      if(!ID.test(e.staffId||"")||doc.id!==date+"__"+e.staffId||
+         !ids.has(e.staffId)||e.companyId!==selectedPartnerId||
+         e.hubCompanyId!==s.cid||
          e.date!==date||!Number.isSafeInteger(e.version)||
          e.version<1||e.version>999||row.total!==e.totalCount)
        fail("data-loss");
@@ -1104,6 +1105,16 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    // never create a missing report or rewrite a historical quick-count day.
    if(ownerCorrection&&(!oldSnap.exists||!totalSnap.exists))
     fail("failed-precondition");
+   if(ownerCorrection){
+    // Historical ledger identity must match its document paths before any
+    // Owner correction; never "heal" foreign / corrupt source documents.
+    const saved=validateCounts(old.counts);
+    if(old.companyId!==target.cid||old.hubCompanyId!==target.hubId||
+       old.staffId!==staffId||old.date!==date||
+       old.totalCount!==saved.total||existing.partnerCompanyId!==target.cid||
+       existing.hubCompanyId!==target.hubId||existing.date!==date)
+     fail("data-loss");
+   }
    // Never mix per-person entries with the earlier one-total-per-partner UI.
    if(totalSnap.exists&&existing.source!=="staff-entries-v1")fail("failed-precondition");
    const previousPrivate=oldSnap.exists?validatePrivateCounts(old.privateCounts||{}).counts:{};
