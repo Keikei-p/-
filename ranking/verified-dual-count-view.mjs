@@ -339,6 +339,15 @@ export function createVerifiedDualCountController({
   if(!allowFilters||!["companyId","teamId","uid","productId"].includes(key)||
      typeof value!=="string"||value.length>(key==="productId"?300:200)||
      (value!==""&&!new RegExp("^[A-Za-z0-9_:-]{1,"+(key==="productId"?300:200)+"}$").test(value)))halt();
+  // The same teamId / uid may exist in two approved companies. A scoped
+  // selection must always carry its company in the server request.
+  if((key==="teamId"||key==="uid")&&value!==""&&!current.filters.companyId)halt();
+  if(key==="companyId"&&value!==current.filters.companyId){
+   delete current.filters.teamId;
+   delete current.filters.uid;
+  }
+  if(key==="teamId"&&value!==current.filters.teamId)
+   delete current.filters.uid;
   if(value==="")delete current.filters[key];
   else current.filters[key]=value;
   return refresh();
@@ -400,12 +409,20 @@ export function createVerifiedDualCountController({
      ["","全社"],...companyRows
     ],v=>thisSafeFilter("companyId",v));
     const teamIds=new Map(),staffIds=new Map(),products=new Map();
+    // Never de-duplicate teams/staff across companies by local IDs.
+    // A company must be selected before a local team/staff selector is
+    // enabled; company switches above clear any stale subordinate filters.
+    const selectedCompany=current.filters.companyId??"";
     for(const row of data.teamBreakdown){
-     const name=String(row.id).slice(String(row.companyId).length+1);
+     if(!selectedCompany||row.companyId!==selectedCompany||
+        !String(row.id).startsWith(selectedCompany+":"))continue;
+     const name=String(row.id).slice(selectedCompany.length+1);
      if(ID.test(name))teamIds.set(name,row.name);
     }
     for(const row of data.memberRanking){
-     const uid=String(row.id).slice(String(row.companyId).length+1);
+     if(!selectedCompany||row.companyId!==selectedCompany||
+        !String(row.id).startsWith(selectedCompany+":"))continue;
+     const uid=String(row.id).slice(selectedCompany.length+1);
      if(ID.test(uid))staffIds.set(uid,row.name+"（"+row.companyName+"）");
     }
     for(const row of data.productRanking){
@@ -413,10 +430,12 @@ export function createVerifiedDualCountController({
       products.set(row.id,row.name);
     }
     selectControl("班",current.filters.teamId??"",[
-     ["","全班"],...[...teamIds].map(([id,name])=>[id,name])
+     ["",selectedCompany?"全班":"会社を選択"],
+     ...[...teamIds].map(([id,name])=>[id,name])
     ],v=>thisSafeFilter("teamId",v));
     selectControl("担当者",current.filters.uid??"",[
-     ["","全員"],...[...staffIds].map(([id,name])=>[id,name])
+     ["",selectedCompany?"全員":"会社を選択"],
+     ...[...staffIds].map(([id,name])=>[id,name])
     ],v=>thisSafeFilter("uid",v));
     selectControl("商材",current.filters.productId??"",[
      ["","全商材"],...[...products].map(([id,name])=>[id,name])
