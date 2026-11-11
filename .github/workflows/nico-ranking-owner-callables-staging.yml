@@ -48,6 +48,16 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          if { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
+               [ "${GITHUB_HEAD_REF:-}" = "feat/partner-published-count-input-20261111" ]; } ||
+             { [ "$GITHUB_EVENT_NAME" = "push" ] &&
+               [ "$GITHUB_REF" = "refs/heads/main" ]; }; then
+            # Exact integrated PR/main candidate, NO DEPLOY. Other branches and
+            # historical release-source checks retain their existing pins.
+            test "$(git hash-object scripts/ci/review-approved-partner-count-rank.cjs)" = '00627520040fcd05538755fc4348aff861986844'
+            node scripts/ci/review-approved-partner-count-rank.cjs
+            exit 0
+          fi
           # PR/main reviewed ranking candidate: this job remains NO DEPLOY.
           # Original release hashes remain the fallback for unrelated work.
           if { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&

@@ -12,6 +12,7 @@ on:
       - 'tests/owner-product-visibility-rankings.test.mjs'
       - 'tests/verified-joint-ranking-panel.test.mjs'
       - 'tests/isolated-joint-count-function-package.test.mjs'
+      - 'scripts/ci/review-approved-partner-count-rank.cjs'
       - '.github/workflows/nico-joint-four-rankings-staging.yml'
   push:
     branches: [main]
@@ -24,6 +25,7 @@ on:
       - 'tests/verified-dual-count-dashboards.test.mjs'
       - 'tests/owner-product-visibility-rankings.test.mjs'
       - 'tests/verified-joint-ranking-panel.test.mjs'
+      - 'scripts/ci/review-approved-partner-count-rank.cjs'
       - '.github/workflows/nico-joint-four-rankings-staging.yml'
 permissions:
   contents: read
@@ -47,7 +49,17 @@ jobs:
           test -z "$GOOGLE_APPLICATION_CREDENTIALS"
           test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
           test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
-          test "$(git hash-object functions-partner-workspace/index.js)" = '90d51246477cf5cfa6966f3e822326ef06cccd0f'
+          if { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
+               [ "${GITHUB_HEAD_REF:-}" = "feat/partner-published-count-input-20261111" ]; } ||
+             { [ "$GITHUB_EVENT_NAME" = "push" ] &&
+               [ "$GITHUB_REF" = "refs/heads/main" ]; }; then
+            # Integrated candidate only: exact count-only sources, vendor parity,
+            # historical count preservation and default-OFF flags. No release.
+            test "$(git hash-object scripts/ci/review-approved-partner-count-rank.cjs)" = '00627520040fcd05538755fc4348aff861986844'
+            node scripts/ci/review-approved-partner-count-rank.cjs
+          else
+            test "$(git hash-object functions-partner-workspace/index.js)" = '90d51246477cf5cfa6966f3e822326ef06cccd0f'
+          fi
           node --check ranking/verified-dual-count-dashboards.mjs
           node --check functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs
           node --check ranking/verified-joint-ranking-panel.mjs

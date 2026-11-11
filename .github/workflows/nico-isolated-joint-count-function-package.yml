@@ -7,6 +7,7 @@ on:
       - 'tests/isolated-joint-count-function-package.test.mjs'
       - 'tests/owner-sku-mapping-controller.test.cjs'
       - 'ranking/owner-reviewed-sku-mapping-store.mjs'
+      - 'scripts/ci/review-approved-partner-count-rank.cjs'
       - '.github/workflows/nico-isolated-joint-count-function-package.yml'
   push:
     branches: [main]
@@ -15,6 +16,7 @@ on:
       - 'tests/isolated-joint-count-function-package.test.mjs'
       - 'tests/owner-sku-mapping-controller.test.cjs'
       - 'ranking/owner-reviewed-sku-mapping-store.mjs'
+      - 'scripts/ci/review-approved-partner-count-rank.cjs'
       - '.github/workflows/nico-isolated-joint-count-function-package.yml'
 permissions:
   contents: read
@@ -44,8 +46,17 @@ jobs:
           test -z "$NICO_JOINT_COUNT_RANKING_ENABLED"
           test -z "$NICO_OWNER_PRODUCT_VISIBILITY_ENABLED"
           test -z "$NICO_OWNER_SKU_MAPPING_ENABLED"
-          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
-            if [ "${GITHUB_HEAD_REF:-}" = "feat/verified-partner-daily-month-count-ranking-main-20261110" ]; then
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ] ||
+             { [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$GITHUB_REF" = "refs/heads/main" ]; }; then
+            if { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
+                 [ "${GITHUB_HEAD_REF:-}" = "feat/partner-published-count-input-20261111" ]; } ||
+               { [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$GITHUB_REF" = "refs/heads/main" ]; }; then
+              # Count UI/transaction changes are pinned by the exact integrated
+              # reviewer. Financial source, Rules and project config stay frozen.
+              test "$(git hash-object scripts/ci/review-approved-partner-count-rank.cjs)" = '00627520040fcd05538755fc4348aff861986844'
+              node scripts/ci/review-approved-partner-count-rank.cjs
+              git diff --exit-code "origin/main...HEAD" -- firestore.rules firebase.json .firebaserc functions firebase.partner-workspace.json
+            elif [ "${GITHUB_HEAD_REF:-}" = "feat/verified-partner-daily-month-count-ranking-main-20261110" ]; then
               test "$(git hash-object scripts/ci/review-approved-partner-count-rank.cjs)" = '3f1447f9f45fcfa34da6c25dc10165da54b2f833'
               node scripts/ci/review-approved-partner-count-rank.cjs
               # Only the separately reviewed count-only files may differ;

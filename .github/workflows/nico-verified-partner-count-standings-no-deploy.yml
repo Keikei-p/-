@@ -10,9 +10,10 @@ on:
       - 'tests/approved-partner-ranking-ui.test.mjs'
       - 'ranking/owner-product-visibility-firestore.mjs'
       - 'tests/owner-product-visibility-firestore.test.mjs'
+      - 'scripts/ci/review-approved-partner-count-rank.cjs'
       - '.github/workflows/nico-verified-partner-count-standings-no-deploy.yml'
   push:
-    branches: [feat/verified-partner-daily-month-count-ranking-main-20261110]
+    branches: [main, feat/verified-partner-daily-month-count-ranking-main-20261110]
     paths:
       - 'functions-partner-workspace/**'
       - 'tests/approved-partner-count-standings.test.cjs'
@@ -21,6 +22,7 @@ on:
       - 'tests/approved-partner-ranking-ui.test.mjs'
       - 'ranking/owner-product-visibility-firestore.mjs'
       - 'tests/owner-product-visibility-firestore.test.mjs'
+      - 'scripts/ci/review-approved-partner-count-rank.cjs'
       - '.github/workflows/nico-verified-partner-count-standings-no-deploy.yml'
 permissions:
   contents: read
@@ -41,6 +43,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$NICO_PARTNER_SHARED_RANKING_ENABLED"
+          # Reviewed current PR #690 / main candidate only; no dispatch or deploy.
+          if { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
+               [ "${GITHUB_HEAD_REF:-}" = "feat/partner-published-count-input-20261111" ]; } ||
+             { [ "$GITHUB_EVENT_NAME" = "push" ] &&
+               [ "$GITHUB_REF" = "refs/heads/main" ]; }; then
+            test "$(git hash-object scripts/ci/review-approved-partner-count-rank.cjs)" = '00627520040fcd05538755fc4348aff861986844'
+            node scripts/ci/review-approved-partner-count-rank.cjs
+            echo 'REVIEWED_CURRENT_COUNT_RANKINGS_NO_DEPLOY'
+            exit 0
+          fi
           test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
           test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f

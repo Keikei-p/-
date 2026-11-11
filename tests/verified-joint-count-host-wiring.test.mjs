@@ -23,7 +23,7 @@ test("both original apps mount the exact same backend-verified count view, defau
    "entry point must reuse month-only mode in canonical bridge");
   assert(source.includes("onAuthStateChanged"));
  }
- assert(bridge.includes("availablePeriods:[\"month\"],allowFilters:false"));
+ assert(bridge.includes("availablePeriods:[\"day\",\"week\",\"month\"],allowFilters:false"));
 });
 test("partner cannot display owner rankings from company-code sessions or employee accounts",()=>{
  assert(partner.includes("activeCodeSession||data?.role!==\"owner\""));

@@ -33,6 +33,9 @@ test("isolated REAL Firestore emulator: secondary user preserves count save/corr
  const env=await initializeTestEnvironment({
   projectId:PROJECT,firestore:{rules:proposeSecondaryFinanceFence()}
  });
+ // A fresh fictional database is required when this localhost test repeats.
+ // The fixed demo project and loopback checks above precede this reset.
+ await env.clearFirestore();
  const app=initializeApp({projectId:PROJECT},"isolated-dual-count-finance");
  const db=getFirestore(app);
  const hub="hubCount",partner="partnerCount",worker="dualCount",
@@ -143,10 +146,12 @@ test("isolated REAL Firestore emulator: secondary user preserves count save/corr
    viewerCompanyId:hub,hubCompanyId:hub,
    approvedCompanyIds:[hub,partner],role:"hub_owner"
   };
-  const makeDash=async()=>{
+  const makeDash=async(role="hub_owner")=>{
+   const audienceContext={...verifiedContext,role,
+    viewerCompanyId:role==="partner_owner"?partner:hub};
    const month=await createPartnerMonthReadOnlyLoader({db})({
     hubCompanyId:hub,partnerCompanyId:partner,month:"2026-11",
-    context:verifiedContext
+    context:audienceContext
    });
    // In this disposable fixture the hub has no own count lines. The parent
    // source is a verified empty-in-fixture projection, NOT a production owner
@@ -161,7 +166,7 @@ test("isolated REAL Firestore emulator: secondary user preserves count save/corr
     uid:worker,teamId:team,name:"検証担当"
    }],completeWindows:{current:true,previous:false}};
    return buildVerifiedCountDashboard({
-    context:verifiedContext,hubCompanyId:hub,
+    context:audienceContext,hubCompanyId:hub,
     approvedCompanyIds:[hub,partner],
     sources:[emptyHub,attributed],productGroups:[{
       companyId:partner,productId:"partnerSku01",groupId:"nuro",
@@ -175,6 +180,16 @@ test("isolated REAL Firestore emulator: secondary user preserves count save/corr
   assert.equal(initialRank.companyBreakdown.find(x=>x.id===partner).count,2);
   assert.equal(initialRank.memberRanking.find(x=>x.id===partner+":"+worker).count,2);
   assert.equal(initialRank.productRanking.find(x=>x.id==="nuro").count,2);
+  assert.deepEqual(initialRank.teamBreakdown.map(x=>[x.companyId,x.id,x.count]),
+   [[partner,partner+":"+team,2]]);
+  const initialPartnerRank=await makeDash("partner_owner");
+  assert.equal(initialPartnerRank.own.count,2);
+  assert.equal(initialPartnerRank.own.people[0].count,2);
+  assert.equal(initialPartnerRank.own.products.find(x=>x.id==="nuro").count,2);
+  assert.deepEqual(initialPartnerRank.publicRanking.teams,
+   [{rank:1,name:"件数検証班",company:"協力店",count:2}]);
+  assert.deepEqual(initialPartnerRank.publicRanking.companies,
+   [{rank:1,name:"協力店",count:2}]);
 
   const saved=await service.view(request(worker,data));
   assert.deepEqual(saved.records.map(r=>[r.staffId,r.counts.NURO,r.version]),
@@ -190,6 +205,20 @@ test("isolated REAL Firestore emulator: secondary user preserves count save/corr
   assert.equal(currentRank.companyBreakdown.find(x=>x.id===partner).count,4);
   assert.equal(currentRank.memberRanking.find(x=>x.id===partner+":"+worker).count,4);
   assert.equal(currentRank.productRanking.find(x=>x.id==="nuro").count,3);
+  assert.deepEqual(currentRank.teamBreakdown.map(x=>[x.companyId,x.id,x.count]),
+   [[partner,partner+":"+team,4]]);
+  const currentPartnerRank=await makeDash("partner_owner");
+  assert.equal(currentPartnerRank.own.count,4);
+  assert.equal(currentPartnerRank.own.people[0].count,4);
+  assert.equal(currentPartnerRank.own.products.find(x=>x.id==="nuro").count,3);
+  assert.equal(currentPartnerRank.publicRanking.members[0].count,4);
+  assert.equal(currentPartnerRank.publicRanking.products.find(x=>x.name==="NURO").count,3);
+  assert.deepEqual(currentPartnerRank.publicRanking.teams,
+   [{rank:1,name:"件数検証班",company:"協力店",count:4}]);
+  assert.deepEqual(currentPartnerRank.publicRanking.companies,
+   [{rank:1,name:"協力店",count:4}]);
+  assert.equal(Object.hasOwn(currentPartnerRank,"companyBreakdown"),false);
+  assert.equal(Object.hasOwn(currentPartnerRank,"teamBreakdown"),false);
   const refreshRank=await makeDash();
   assert.deepEqual({...refreshRank,readTime:null},{...currentRank,readTime:null},
    "server refresh must never sum past versions or derived summaries twice");

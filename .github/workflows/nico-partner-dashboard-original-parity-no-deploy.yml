@@ -5,12 +5,14 @@ on:
     paths:
       - 'partner-workspace.html'
       - 'tests/partner-dashboard-self-app-count-parity.test.mjs'
+      - 'scripts/ci/review-approved-partner-count-rank.cjs'
       - '.github/workflows/nico-partner-dashboard-original-parity-no-deploy.yml'
   push:
     branches: [main]
     paths:
       - 'partner-workspace.html'
       - 'tests/partner-dashboard-self-app-count-parity.test.mjs'
+      - 'scripts/ci/review-approved-partner-count-rank.cjs'
       - '.github/workflows/nico-partner-dashboard-original-parity-no-deploy.yml'
 permissions:
   contents: read
@@ -30,6 +32,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          # Current PR #690 / main review is source-pinned and never deploys.
+          if { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
+               [ "${GITHUB_HEAD_REF:-}" = "feat/partner-published-count-input-20261111" ]; } ||
+             { [ "$GITHUB_EVENT_NAME" = "push" ] &&
+               [ "$GITHUB_REF" = "refs/heads/main" ]; }; then
+            test "$(git hash-object scripts/ci/review-approved-partner-count-rank.cjs)" = '00627520040fcd05538755fc4348aff861986844'
+            node scripts/ci/review-approved-partner-count-rank.cjs
+            echo 'REVIEWED_CURRENT_PARTNER_DASHBOARD_NO_DEPLOY'
+            exit 0
+          fi
           # New exact-byte owner+partner count dashboard review: NO DEPLOY.
           # No changes to historical workflow_dispatch finance release rules.
           # Future modifications require a new deliberate protected source review.

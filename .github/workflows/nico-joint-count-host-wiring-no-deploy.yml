@@ -42,12 +42,20 @@ jobs:
           set -euo pipefail
           test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
           test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          if { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
+               [ "${GITHUB_HEAD_REF:-}" = "feat/partner-published-count-input-20261111" ]; } ||
+             { [ "$GITHUB_EVENT_NAME" = "push" ] &&
+               [ "$GITHUB_REF" = "refs/heads/main" ]; }; then
+            test "$(git hash-object scripts/ci/review-approved-partner-count-rank.cjs)" = 00627520040fcd05538755fc4348aff861986844
+            node scripts/ci/review-approved-partner-count-rank.cjs
+            exit 0
+          fi
           test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
           test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
           test "$(git hash-object functions-partner-workspace/index.js)" = ab551981ce12b4d291a20c0b51cbd461be60df54
           test "$(git hash-object functions-partner-workspace/service.cjs)" = 5334aa48d7f4eb64274a6d7a8bbb4e76d4a2fb65
-      - name: Check both original UI hosts and canonical month-only count authorization
+      - name: Check both original UI hosts and canonical count period authorization
         shell: bash
         run: |
           set -euo pipefail

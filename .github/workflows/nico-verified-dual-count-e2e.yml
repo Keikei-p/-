@@ -73,10 +73,11 @@ jobs:
           # Historical production release and workflow_dispatch paths below
           # remain pinned to their prior reviewed artifacts.
           if { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
-               [ "${GITHUB_HEAD_REF:-}" = "feat/verified-partner-daily-month-count-ranking-main-20261110" ]; } ||
+               { [ "${GITHUB_HEAD_REF:-}" = "feat/verified-partner-daily-month-count-ranking-main-20261110" ] ||
+                 [ "${GITHUB_HEAD_REF:-}" = "feat/partner-published-count-input-20261111" ]; }; } ||
              { [ "$GITHUB_EVENT_NAME" = "push" ] &&
                [ "$GITHUB_REF" = "refs/heads/main" ]; }; then
-            test "$(git hash-object scripts/ci/review-approved-partner-count-rank.cjs)" = '2ee6cfe39964074496cfb4a4aadf662687f52636'
+            test "$(git hash-object scripts/ci/review-approved-partner-count-rank.cjs)" = '00627520040fcd05538755fc4348aff861986844'
             node scripts/ci/review-approved-partner-count-rank.cjs
             echo 'REVIEWED_NO_DEPLOY_RANK_CANDIDATE_VALIDATED'
             exit 0

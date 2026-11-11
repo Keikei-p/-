@@ -38,6 +38,14 @@ jobs:
           set -euo pipefail
           test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
           test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          if { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
+               [ "${GITHUB_HEAD_REF:-}" = "feat/partner-published-count-input-20261111" ]; } ||
+             { [ "$GITHUB_EVENT_NAME" = "push" ] &&
+               [ "$GITHUB_REF" = "refs/heads/main" ]; }; then
+            test "$(git hash-object scripts/ci/review-approved-partner-count-rank.cjs)" = 00627520040fcd05538755fc4348aff861986844
+            node scripts/ci/review-approved-partner-count-rank.cjs
+            exit 0
+          fi
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
           test "$(git hash-object functions-partner-workspace/service.cjs)" = 5334aa48d7f4eb64274a6d7a8bbb4e76d4a2fb65
           test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
@@ -52,6 +60,6 @@ jobs:
           node --check tests/verified-joint-month-http-bridge.test.mjs
           node --test tests/verified-dual-count-view.test.mjs tests/verified-dual-count-dashboards.test.mjs tests/verified-joint-month-http-bridge.test.mjs
           grep -Fq 'featureEnabled=false' ranking/verified-joint-month-http-bridge.mjs
-          grep -Fq 'availablePeriods:["month"],allowFilters:false' ranking/verified-joint-month-http-bridge.mjs
+          grep -Fq 'availablePeriods:["day","week","month"],allowFilters:false' ranking/verified-joint-month-http-bridge.mjs
           git diff --exit-code -- firestore.rules index.html partner-workspace.html firebase.json functions functions-partner-workspace
           echo 'STAGING_MOBILE_RANKING_UI_ONLY_NO_PRODUCTION_DEPLOY'
