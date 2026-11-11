@@ -1,0 +1,28 @@
+name: NICO partner published count input regression (NO DEPLOY)
+on:
+  pull_request:
+    paths:
+      - 'functions-partner-workspace/service.cjs'
+      - 'functions-partner-workspace/shared-count-standings.cjs'
+      - 'index.html'
+      - 'partner-workspace.html'
+      - 'tests/partner-workspace.test.cjs'
+      - 'tests/approved-partner-count-standings.test.cjs'
+      - '.github/workflows/nico-partner-published-count-input-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  offline-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check count-only backend syntax
+        run: |
+          node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/shared-count-standings.cjs
+      - name: Test partner ON/OFF read-write contract and stable ranking identities
+        run: node --test tests/partner-workspace.test.cjs tests/approved-partner-count-standings.test.cjs
