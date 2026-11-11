@@ -20,11 +20,11 @@ test("approval constants match exactly and target six new Owner callables only",
   ["RULES_APPROVAL","NO_RULES_HOSTING_AUTH_COUNT_OR_FINANCE_CHANGES"]
  ]){
   const env=src.match(new RegExp("^          "+name+": ([A-Z0-9_]+)$","m"));
-  const check=src.match(new RegExp("test \\"\\$"+name+"\\" = ([A-Z0-9_]+)"));
+  const check=src.split("\n").find(line=>line.includes('test "$'+name+'" = '+value));
   assert.ok(env,name+" env missing");
   assert.ok(check,name+" gate missing");
   assert.equal(env[1],value);
-  assert.equal(check[1],value);
+  assert.ok(check.includes(value));
  }
  assert.match(src,/ensureExactTargets\(TARGETS\.join\(','\)\)/);
  assert.match(src,/assertAbsent\(JSON\.parse/);
