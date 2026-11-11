@@ -1688,3 +1688,34 @@ test("partner count view rejects aliased, duplicated and foreign ledger identiti
  assert.deepEqual(db.store.get("products/money"),originalMoney);
  assert.deepEqual(db.store.get("records/old"),originalSales);
 });
+
+test("partner manager refuses incomplete historic roster instead of displaying partial ranking",async()=>{
+ const {db,api,req,zero}=setup();
+ const team=(await api.manage(req("p",{action:"addTeam",name:"履歴保護班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",
+  name:"履歴ありスタッフ",teamId:team}))).staffId;
+ const date="2026-10-31",staffPath="companies/partner/partnerWorkStaff/"+staff;
+ const originalFinance=clone(db.store.get("products/money"));
+ const originalSales=clone(db.store.get("records/old"));
+ await api.submit(req("p",{date,staffId:staff,counts:{...zero(),NURO:4},expectedVersion:0}));
+ const originalLedger=clone(db.store.get("companies/partner/partnerWorkEntries/"+
+  date+"__"+staff));
+ // An inactive staff member retains their previously reported count.
+ db.store.get(staffPath).active=false;
+ const historical=await api.view(req("p",{date}));
+ assert.equal(historical.records.length,1);
+ assert.equal(historical.records[0].totalCount,4);
+ // If a roster was accidentally removed, report incomplete data instead of
+ // saying "0 staff/0 counts". Do NOT recreate or delete the saved entry.
+ const archived=clone(db.store.get(staffPath));
+ db.store.delete(staffPath);
+ const before=clone([...db.store]);
+ await assert.rejects(api.view(req("p",{date})),e=>e.code==="data-loss");
+ assert.deepEqual([...db.store],before,"read-only manager view must not repair originals");
+ assert.deepEqual(db.store.get("companies/partner/partnerWorkEntries/"+
+  date+"__"+staff),originalLedger);
+ assert.deepEqual(db.store.get("records/old"),originalSales);
+ assert.deepEqual(db.store.get("products/money"),originalFinance);
+ db.seed(staffPath,archived);
+ assert.equal((await api.view(req("p",{date}))).records[0].totalCount,4);
+});
