@@ -4765,7 +4765,8 @@ body.product-reordering .product-list {
       <span id="pInlineVersion" class="p-inline-muted"></span>
     </div>
   </div>
-  <div class="p-inline-card"><h3>🏆 班・個人・商材ランキング（件数のみ）</h3><div id="pInlineRanking" class="p-inline-list"></div></div>
+  <div class="p-inline-card"><h3>🏆 班・個人・商材ランキング（件数のみ）</h3><div id="pInlineRanking" class="p-inline-list"></div>
+  <div id="nicoVerifiedSameAppPartnerJointMonth" hidden aria-label="合同件数ランキング"></div></div>
 </section>
 
 
@@ -5830,6 +5831,7 @@ body.product-reordering .product-list {
     </div>
 
     <div id="monthlyRecordsStatus" role="status" aria-live="polite" style="display:none;padding:12px;border-radius:10px;margin-bottom:12px;background:var(--card-soft);color:var(--sub);font-size:13px;font-weight:700"></div>
+    <div id="nicoVerifiedSameAppHubJointMonth" hidden aria-label="自社と協力店の合同件数ランキング"></div>
 
     <div class="dashboard-summary">
 
@@ -12306,6 +12308,54 @@ copyInviteButton.onclick =
 // NICO partner: same Firebase email sign-in, same URL, isolated COUNT-ONLY API.
 // Never read products/records/revenueGoals in this branch. Server checks scope.
 const pInline=id=>document.getElementById(id);
+// Same original application: hub/partner shared count-only monthly board.
+// Hard OFF until live finance GET/LIST denial, backed-up restore and real
+// account count-save/reconciliation are proven. Never use financial originals.
+const NICO_SAME_APP_JOINT_COUNT_MONTH_RELEASED=false;
+let sameAppJointMonthMount=null,sameAppJointMonthAudience="",sameAppJointMonthEpoch=0;
+let sameAppJointMonthStyle=null;
+function resetSameAppJointMonth(){
+ ++sameAppJointMonthEpoch;
+ sameAppJointMonthMount?.destroy();
+ sameAppJointMonthMount=null;sameAppJointMonthAudience="";
+ for(const id of ["nicoVerifiedSameAppHubJointMonth","nicoVerifiedSameAppPartnerJointMonth"]){
+  const root=document.getElementById(id);
+  if(root){root.hidden=true;root.replaceChildren();}
+ }
+}
+async function mountSameAppJointMonth(audience){
+ if(NICO_SAME_APP_JOINT_COUNT_MONTH_RELEASED!==true||
+    !auth.currentUser?.emailVerified||
+    window.location.origin!=="https://nico-factory.web.app")return;
+ if(audience==="hub"){
+  if(!isCurrentCompanyOwner()||currentCompanyData?.companyKind==="partner")return;
+ }else if(audience==="partner"){
+  if(partnerInlineData?.role!=="owner"||partnerInlineWorkspaceCompany)return;
+ }else return;
+ const root=document.getElementById(audience==="hub"?
+  "nicoVerifiedSameAppHubJointMonth":"nicoVerifiedSameAppPartnerJointMonth");
+ if(!root||sameAppJointMonthMount&&sameAppJointMonthAudience===audience)return;
+ resetSameAppJointMonth();
+ const seq=++sameAppJointMonthEpoch,identity=auth.currentUser;
+ try{
+  const {mountVerifiedJointMonthCountDashboard}=await import(
+   "./ranking/verified-joint-month-http-bridge.mjs");
+  if(seq!==sameAppJointMonthEpoch||auth.currentUser!==identity)return;
+  if(!sameAppJointMonthStyle){
+   sameAppJointMonthStyle=document.createElement("link");
+   sameAppJointMonthStyle.rel="stylesheet";
+   sameAppJointMonthStyle.href="./ranking/verified-dual-count-view.css";
+   document.head.appendChild(sameAppJointMonthStyle);
+  }
+  sameAppJointMonthMount=mountVerifiedJointMonthCountDashboard({
+   featureEnabled:true,document,root,auth,
+   fetcher:window.fetch.bind(window),
+   endpoint:"https://asia-northeast1-sales-management-cc116.cloudfunctions.net/getVerifiedJointCountRanking",
+   asOf:partnerMainDate(),onAuthStateChanged
+  });
+  sameAppJointMonthAudience=audience;root.hidden=false;
+ }catch{if(seq===sameAppJointMonthEpoch)resetSameAppJointMonth();}
+}
 let partnerInlineData=null,partnerInlineWorkspaceCompany="",partnerInlineNonce=0;
 let partnerInlineBusy=false,ownerPartnerTeamsNonce=0;
 const partnerMainDate=()=>new Intl.DateTimeFormat("sv-SE",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
@@ -12319,6 +12369,7 @@ function partnerMainPendingInvite(){
  return null;
 }
 function resetPartnerInline(){
+ resetSameAppJointMonth();
  ++partnerInlineNonce;++ownerPartnerTeamsNonce;
  partnerInlineData=null;partnerInlineWorkspaceCompany="";partnerInlineBusy=false;
  appScreen.removeAttribute("data-partner-count-only");
@@ -12392,6 +12443,7 @@ function partnerInlineRender(){
  partnerInlineFillSelect("pInlineStaff",staff,
   p=>p.name+"（"+(teamById.get(p.teamId)?.name||"未設定")+"）");
  partnerInlineRenderCounts();
+ void mountSameAppJointMonth("partner");
  // Show ONLY numerical counts from the isolated partner count API, never money.
  const rankings=pInline("pInlineRanking");rankings.replaceChildren();
  const byTeam=new Map(teams.map(t=>[t.id,0]));
@@ -12725,6 +12777,7 @@ async function loadOwnerPartnerCompanyTeams(){
   const result=(await readPartnerWorkDay({date:partnerMainDate()})).data;
   if(seq!==ownerPartnerTeamsNonce||uid!==auth.currentUser?.uid)return;
   if(result?.role!=="hub"||!Array.isArray(result.registeredCompanies))throw Error("scope");
+  void mountSameAppJointMonth("hub");
   if(!result.registeredCompanies.length)
    partnerMainAppendRow(target,"協力店は未登録です","招待リンクから協力店会社を追加できます。");
   for(const company of result.registeredCompanies){
