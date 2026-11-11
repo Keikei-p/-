@@ -260,3 +260,29 @@ test("NFKC financial labels fail closed in canonical and Functions ranking, ordi
   assert.equal(result.companyBreakdown.find(x=>x.id==="partner").name,"協力店Ａ");
  }
 });
+
+test("joint leaderboard ranks submitted zero, never scores unreported staff",()=>{
+ for(const buildFn of [buildVerifiedCountDashboard,buildVendorDashboard]){
+  const original=fixture(2),before=structuredClone(original);
+  const hub=buildFn(original);
+  const submitted=hub.memberRanking.find(x=>x.id==="partner:p2");
+  const missing=hub.memberRanking.find(x=>x.id==="partner:p3");
+  assert.equal(submitted.reportStatus,"確定0件");
+  assert.equal(submitted.count,0);
+  assert(Number.isSafeInteger(submitted.rank)&&submitted.rank>0);
+  assert.equal(missing.reportStatus,"未報告");
+  assert.equal(missing.count,0);
+  assert.equal(missing.rank,null,
+   "a never-submitted staff member must not tie a genuine zero submission");
+  assert.equal(hub.memberRanking.at(-1).id,"partner:p3");
+  const partner=buildFn({...fixture(2),context:auth("partner_owner")});
+  assert.equal(partner.own.people.find(x=>x.id==="partner:p3").rank,null);
+  assert.equal(partner.own.people.find(x=>x.id==="partner:p3").reportStatus,"未報告");
+  assert(partner.publicRanking.members.some(x=>x.name==="協力店0件"&&x.count===0));
+  assert(!partner.publicRanking.members.some(x=>x.name==="協力店未報告"),
+   "public ranked names must contain only submitted reports");
+  assert.equal(partner.publicRanking.members.length,3);
+  assert.deepEqual(original,before,
+   "rank projection must not mutate source, counts or historical data");
+ }
+});
