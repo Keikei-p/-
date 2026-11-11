@@ -12667,7 +12667,7 @@ function openOwnerPartnerCountEditor(parent,company){
   for(const key of entry.enabledCategories){
    const input=[...fields.querySelectorAll("input[data-count-key]")]
     .find(node=>node.dataset.countKey===key);
-   if(!input||!/^(?:0|[1-9]\\d{0,3})$/.test(input.value.trim())){
+   if(!input||!/^(?:0|[1-9][0-9]{0,3})$/.test(input.value.trim())){
     status.textContent=key+"の件数を0〜9999の整数で入力してください。";return;
    }
    counts[key]=Number(input.value);
