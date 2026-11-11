@@ -68,7 +68,8 @@ function shape(value){
      value.companyBreakdown.some(x=>
       x.rank!==(companyRankById.get(x.id)??null)))halt();
   const teamRanked=competitionFromBreakdown(value.teamBreakdown,x=>({
-   id:x.id,name:x.name,company:x.companyName,count:x.count
+   id:x.id,companyId:x.companyId,name:x.name,
+   company:x.companyName,count:x.count
   }));
   const key=x=>JSON.stringify([x.companyId,x.id]);
   const teamRankById=new Map(teamRanked.map(x=>[key(x),x.rank]));
