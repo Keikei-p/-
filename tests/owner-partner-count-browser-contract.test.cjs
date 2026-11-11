@@ -132,3 +132,18 @@ test("original app exposes correction controls only when Owner flag is present",
  assert(!src.includes("ownerCorrectionEnabled=true"),
   "browser must not turn a server release flag on");
 });
+
+test("owner editor refuses save after Firebase identity changes",async()=>{
+ const {sandbox,parent,company,writes}=loadOwnerEditor();
+ sandbox.openOwnerPartnerCountEditor(parent,company);
+ await tick();
+ const panel=parent.querySelector("#ownerPartnerCorrectionPanel");
+ assert(panel);
+ const save=panel.descendants().find(x=>
+  x.tag==="button"&&x.textContent==="件数を保存・訂正");
+ assert.equal(save?.disabled,false,"current verified Owner may edit existing count");
+ sandbox.auth.currentUser={uid:"second-owner"};
+ await save.onclick();
+ assert.equal(writes.length,0,
+  "old Owner's count editor must not submit under a different signed-in identity");
+});
