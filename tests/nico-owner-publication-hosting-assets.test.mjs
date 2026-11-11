@@ -43,6 +43,33 @@ test("all four owner-only UI assets exist and are included in both verification 
  assert.match(copy,/cmp "\$f" "\.nico-hosting-staging\/\$f"/);
 });
 
+test("combined owner ON/OFF and joint-ranking setup is included in reviewed Hosting assets",()=>{
+ const page="owner-partner-setup.html";
+ const modules=[
+ "ranking/owner-partner-setup-mount.mjs",
+ "ranking/owner-ranking-consent-firebase-bridge.mjs",
+ "ranking/owner-ranking-consent-panel.mjs",
+ "ranking/owner-ranking-consent-panel.css",
+ "ranking/owner-reviewed-sku-mapping-firebase-bridge.mjs",
+ "ranking/owner-reviewed-sku-mapping-panel.mjs",
+ "ranking/owner-reviewed-sku-mapping-panel.css"
+];
+ assert(fs.statSync(path.join(root,page)).isFile());
+ assert(verification.includes("'"+page+"'"),"Owner setup page not in preflight");
+ assert(copy.includes("sales-archive.js "+page+" partner-invite.html"),
+  "Owner page not in the manual Hosting package");
+ for(const asset of modules){
+  assert(fs.statSync(path.join(root,asset)).isFile(),asset+" missing");
+  assert(verification.includes("'"+asset+"'"),asset+" not checked");
+  assert(copy.includes(asset),asset+" not staged");
+ }
+ const html=fs.readFileSync(path.join(root,page),"utf8");
+ assert.match(html,/mountOwnerPartnerSetup/);
+ assert.doesNotMatch(html,/firebase-firestore|localStorage\\s*\\(|sessionStorage\\s*\\(/);
+ // Hosting remains manually reviewed and finance preflight remains mandatory.
+ assert(workflow.includes("node scripts/nico-production-cutover-preflight.mjs"));
+});
+
 test("dashboard mount imports only files included in the approved public asset set",()=>{
  const source=fs.readFileSync(path.join(root,assets[0]),"utf8");
  const dependencies=[...source.matchAll(/from\s+["'](\.\/[^"']+)["']/g)]
