@@ -1340,3 +1340,31 @@ test("publication policy missing or forged SKU mapping fails without creating a 
   counts:{...zero(),NURO:1},expectedVersion:0})),e=>e.code==="failed-precondition");
  assert.deepEqual([...db.store],before);
 });
+
+test("view returns only verified ON categories without changing financial originals",async()=>{
+ const {db,api,req}=setup(false,true);
+ const prefix="companies/hub/";
+ db.seed(prefix+"rankingProductVisibility/shared",{
+  hubCompanyId:"hub",ownerUid:"h",version:1,
+  enabledHubProductIds:["skuNuro"],partnerOverrides:{}});
+ db.seed(prefix+"rankingSkuMappings/shared",{
+  hubCompanyId:"hub",ownerUid:"h",reviewedByUid:"h",active:true,version:1,
+  bindings:[{companyId:"partner",productId:"partnerSku01",hubProductId:"skuNuro"}]});
+ db.seed(prefix+"rankingCountPublicCatalog/shared",{
+  schema:"nico-reviewed-count-public-catalog-v1",hubCompanyId:"hub",
+  ownerUid:"h",version:1,products:[
+   {id:"skuNuro",companyId:"hub",name:"NURO",active:true}]});
+ const before=clone([...db.store]);
+ const view=await api.view(req("p",{date:"2026-10-31"}));
+ assert.deepEqual(view.categories,KEYS,"legacy full-key saves stay compatible");
+ assert.deepEqual(view.enabledCategories,["NURO"]);
+ assert.deepEqual([...db.store],before,"read must not change any stored data");
+ db.store.get(prefix+"rankingProductVisibility/shared").enabledHubProductIds=[];
+ const disabled=await api.view(req("p",{date:"2026-10-31"}));
+ assert.deepEqual(disabled.enabledCategories,[]);
+ db.store.get(prefix+"rankingCountPublicCatalog/shared").products[0].name="NURO 売上5000円";
+ await assert.rejects(api.view(req("p",{date:"2026-10-31"})),
+  error=>error.code==="failed-precondition");
+ assert.deepEqual(db.store.get("records/old"),before.find(([p])=>p==="records/old")[1]);
+ assert.deepEqual(db.store.get("products/money"),before.find(([p])=>p==="products/money")[1]);
+});
