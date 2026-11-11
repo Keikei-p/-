@@ -12,14 +12,16 @@ const extract=(start,end)=>{
 };
 const guards=extract("function recordSaveContentSignature(record) {",
  "function recordConflict(message) {");
-const guardsHarness=vm.runInNewContext(guards+
+const guardsHarness={};
+vm.runInNewContext(guards+
  "this.signature=recordSaveContentSignature;"+
- "this.uncertain=recordConfirmationUncertain;",{});
-const validator=vm.runInNewContext(
+ "this.uncertain=recordConfirmationUncertain;",guardsHarness);
+const validator={};
+vm.runInNewContext(
  "function recordConflict(message){const e=new Error(message);e.code='record-conflict';return e;}"+
  extract("function validateFinancialRecordForSave(data) {",
  "function calculateResultsTotals(")+
- "this.validate=validateFinancialRecordForSave;",{});
+ "this.validate=validateFinancialRecordForSave;",validator);
 const sample=()=>({
  companyId:"hub",uid:"salesperson",date:"2026-11-11",teamId:"team",
  workLocation:"",reportStatus:"submitted",totalCount:2,totalRevenue:2000,
