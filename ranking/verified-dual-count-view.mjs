@@ -54,9 +54,25 @@ function shape(value){
    if(!Number.isSafeInteger(value.summary[k])||value.summary[k]<0)halt();
   }
   if(value.summary.own+value.summary.partner!==value.summary.total)halt();
-  list(value.companyBreakdown,["id","name","kind","count","unidentifiedCount","hasVerifiedSubmission"]);
+  list(value.companyBreakdown,["id","name","kind","count","unidentifiedCount","hasVerifiedSubmission","rank"]);
   if(value.companyBreakdown.some(x=>typeof x.hasVerifiedSubmission!=="boolean"))halt();
-  list(value.teamBreakdown,["id","companyId","companyName","name","count"]);
+  list(value.teamBreakdown,["id","companyId","companyName","name","count","rank"]);
+  // Server-certified competition ranks must match the verified submitted
+  // company/team counts. A missing report cannot be presented as rank 1 at 0.
+  const submitted=value.companyBreakdown.filter(x=>x.hasVerifiedSubmission);
+  const companyRanked=competitionFromBreakdown(submitted,x=>({
+   id:x.id,name:x.name,count:x.count
+  }));
+  const companyRankById=new Map(companyRanked.map(x=>[x.id,x.rank]));
+  if(companyRankById.size!==submitted.length||
+     value.companyBreakdown.some(x=>
+      x.rank!==(companyRankById.get(x.id)??null)))halt();
+  const teamRanked=competitionFromBreakdown(value.teamBreakdown,x=>({
+   id:x.id,name:x.name,company:x.companyName,count:x.count
+  }));
+  const teamRankById=new Map(teamRanked.map(x=>[x.id,x.rank]));
+  if(teamRankById.size!==value.teamBreakdown.length||
+     value.teamBreakdown.some(x=>x.rank!==teamRankById.get(x.id)))halt();
   list(value.memberRanking,PERSON);
   list(value.productRanking,PRODUCT);
   for(const product of value.productRanking)

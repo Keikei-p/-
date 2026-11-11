@@ -73,6 +73,25 @@ test("internal dashboard presents company/team tied counts as 1,1 without alteri
  assert(!words(root).includes("単価"));
  assert(!words(root).includes("キャッシュバック"));
 });
+test("owner server company/team ranks are verified and unreported companies remain unranked",()=>{
+ const good=buildVerifiedCountDashboard(input("hub_owner")),root=new Node("main");
+ assert.deepEqual(good.companyBreakdown.map(x=>[x.id,x.rank]),[["hub",2],["partner",1]]);
+ assert.deepEqual(good.teamBreakdown.map(x=>[x.companyId,x.rank]),
+  [["partner",1],["hub",2]]);
+ renderVerifiedDualCountDashboard({document:doc,root,payload:good});
+ for(const change of [
+  d=>{d.companyBreakdown[0].rank=1;},
+  d=>{d.companyBreakdown[1].rank=null;},
+  d=>{d.teamBreakdown[0].rank=2;},
+  d=>{d.teamBreakdown[0].rank=null;},
+  d=>{d.companyBreakdown.push({...d.companyBreakdown[0]});}
+ ]){
+  const candidate=structuredClone(good);change(candidate);
+  assert.throws(()=>renderVerifiedDualCountDashboard({
+   document:doc,root,payload:candidate}),/件数の権限/);
+  assert.equal(root.children.length,0);
+ }
+});
 test("partner sees own results and public rankings only, not any hub internal team or finance details",()=>{
  const root=new Node("main"),data=buildVerifiedCountDashboard(input("partner_owner"));
  renderVerifiedDualCountDashboard({document:doc,root,payload:data});
