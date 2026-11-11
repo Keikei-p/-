@@ -12349,6 +12349,7 @@ async function mountSameAppJointMonth(audience){
   }
   sameAppJointMonthMount=mountVerifiedJointMonthCountDashboard({
    featureEnabled:true,document,root,auth,
+   expectedRole:audience==="hub"?"hub_owner":"partner_owner",
    fetcher:window.fetch.bind(window),
    endpoint:"https://asia-northeast1-sales-management-cc116.cloudfunctions.net/getVerifiedJointCountRanking",
    asOf:partnerMainDate(),onAuthStateChanged
