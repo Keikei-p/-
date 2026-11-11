@@ -1628,7 +1628,7 @@ test("hub Owner correction rejects mismatched saved ledger identity without writ
   const before=clone([...db.store]);
   await assert.rejects(
    api.submit(req("h",{
-    ownerPartnerCompanyId:"partner",date,staffId,
+    ownerPartnerCompanyId:"partner",date,staffId:staff,
     counts:{...zero(),NURO:3},expectedVersion:1
    })),
    e=>e.code==="data-loss",
