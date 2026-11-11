@@ -77,7 +77,7 @@ test("owner server company/team ranks are verified and unreported companies rema
  const good=buildVerifiedCountDashboard(input("hub_owner")),root=new Node("main");
  assert.deepEqual(good.companyBreakdown.map(x=>[x.id,x.rank]),[["hub",2],["partner",1]]);
  assert.deepEqual(good.teamBreakdown.map(x=>[x.companyId,x.rank]),
-  [["partner",1],["hub",2]]);
+  [["hub",2],["partner",1]]);
  renderVerifiedDualCountDashboard({document:doc,root,payload:good});
  for(const change of [
   d=>{d.companyBreakdown[0].rank=1;},

@@ -387,7 +387,12 @@ export function buildVerifiedCountDashboard({
   rank:verifiedCompanyRanks.get(x.id)??null}));
  // Every team here comes from a verified submitted record, including
  // an explicitly submitted zero. Never invent teams for missing reports.
- const ownerTeamBreakdown=ordered([...teams.values()],x=>x.count);
+ const verifiedTeamRanks=new Map(ordered([...teams.values()],x=>x.count)
+  .map(x=>[JSON.stringify([x.companyId,x.id]),x.rank]));
+ // Keep the existing stable management display order; only attach the rank.
+ // A JSON tuple avoids ambiguous colon-containing company/team IDs.
+ const ownerTeamBreakdown=[...teams.values()].map(x=>({...x,
+  rank:verifiedTeamRanks.get(JSON.stringify([x.companyId,x.id]))}));
  const self=companyRows.find(x=>x.id===hubCompanyId)?.count??0;
  const total=companyRows.reduce((a,b)=>add(a,b.count),0);
  if(total!==rankedProducts.reduce((a,p)=>add(a,p.count),0))stop();

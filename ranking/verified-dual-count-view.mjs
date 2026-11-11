@@ -70,9 +70,10 @@ function shape(value){
   const teamRanked=competitionFromBreakdown(value.teamBreakdown,x=>({
    id:x.id,name:x.name,company:x.companyName,count:x.count
   }));
-  const teamRankById=new Map(teamRanked.map(x=>[x.id,x.rank]));
+  const key=x=>JSON.stringify([x.companyId,x.id]);
+  const teamRankById=new Map(teamRanked.map(x=>[key(x),x.rank]));
   if(teamRankById.size!==value.teamBreakdown.length||
-     value.teamBreakdown.some(x=>x.rank!==teamRankById.get(x.id)))halt();
+     value.teamBreakdown.some(x=>x.rank!==teamRankById.get(key(x))))halt();
   list(value.memberRanking,PERSON);
   list(value.productRanking,PRODUCT);
   for(const product of value.productRanking)
