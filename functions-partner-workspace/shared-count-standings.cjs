@@ -158,7 +158,11 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
   partnerCountsComplete:unreportedCompanies.length===0&&historicalCompanyOnlyCount===0,
   unverifiedTeamCount,unverifiedPersonCount,
   historicalCompanyOnlyCount,
-  peopleComplete:historicalCompanyOnlyCount===0&&unverifiedPersonCount===0,
-  teamComplete:historicalCompanyOnlyCount===0&&unverifiedTeamCount===0};
+  // Never advertise complete team/individual ranks while a published partner
+  // remains unreported. A saved 0 is complete; an absent submission is not.
+  peopleComplete:unreportedCompanies.length===0&&
+   historicalCompanyOnlyCount===0&&unverifiedPersonCount===0,
+  teamComplete:unreportedCompanies.length===0&&
+   historicalCompanyOnlyCount===0&&unverifiedTeamCount===0};
 }
 module.exports={buildApprovedPartnerCountStandings,KEYS};
