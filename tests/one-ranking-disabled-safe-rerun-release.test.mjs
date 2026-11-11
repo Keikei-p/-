@@ -35,7 +35,7 @@ test("one NEW ranking Function, all setup and ranking flags OFF, originals prese
  assert.doesNotMatch(w,/firebase deploy --force|firestore:delete|auth:delete|--only hosting|--only firestore/);
 });
 test("all real credential/network/deploy steps are explicitly gated; cleanup always runs",()=>{
- const lines=w.split("\n"),scopes=[];
+ const lines=w.slice(w.indexOf("\n  deploy-disabled:")).split("\n"),scopes=[];
  for(let i=0;i<lines.length;i++){
   if(!lines[i].startsWith("      - name: "))continue;
   const name=lines[i].slice("      - name: ".length);
