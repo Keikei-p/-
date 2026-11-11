@@ -12753,7 +12753,9 @@ function openOwnerPartnerCountEditor(parent,company){
    const previous=staff.value;staff.replaceChildren();
    const recorded=new Set(entry.records.filter(row=>
     Number.isSafeInteger(row.version)&&row.version>=1).map(row=>row.staffId));
-   for(const member of entry.staff.filter(p=>p.active===true&&recorded.has(p.id))){
+   // Archived staff may have real submitted reports that the hub Owner
+   // must still be able to correct without re-activating their login.
+   for(const member of entry.staff.filter(p=>recorded.has(p.id))){
     const option=document.createElement("option");
     option.value=member.id;option.textContent=member.name;
     staff.append(option);
@@ -12775,7 +12777,7 @@ function openOwnerPartnerCountEditor(parent,company){
  save.onclick=async()=>{
   const entry=snapshot?.ownerCorrectionEntries,selectedDate=date.value;
   const actor=auth.currentUser?.uid,staffId=staff.value;
-  if(busy||!entry||!stillHere()||!entry.staff.some(p=>p.id===staffId&&p.active)||
+  if(busy||!entry||!stillHere()||!entry.staff.some(p=>p.id===staffId)||
      entry.date!==selectedDate||entry.enabledCategories.length===0)return;
   const record=entry.records.find(r=>r.staffId===staffId);
   if(!record||!Number.isSafeInteger(record.version)||record.version<1)return;
