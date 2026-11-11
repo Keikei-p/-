@@ -23330,6 +23330,33 @@ function recordRevision(record) {
   }));
 }
 
+function recordSaveContentSignature(record) {
+  // Compare only submitted business fields. Server timestamps are generated
+  // on commit and therefore must not be included in this equality proof.
+  const stable = value => {
+    if (Array.isArray(value)) return value.map(stable);
+    if (value && typeof value === "object")
+      return Object.fromEntries(Object.keys(value).sort()
+        .map(key => [key, stable(value[key])]));
+    return value;
+  };
+  return JSON.stringify(stable({
+    companyId: record.companyId, uid: record.uid, date: record.date,
+    teamId: record.teamId ?? null,
+    workLocation: record.workLocation ?? "",
+    reportStatus: record.reportStatus,
+    results: record.results, totalCount: record.totalCount,
+    totalRevenue: record.totalRevenue
+  }));
+}
+
+function recordConfirmationUncertain() {
+  const error = new Error(
+    "保存後のサーバー再確認ができませんでした。保存済みの可能性があります。再登録せず、管理者が実績・訂正履歴を確認してください。");
+  error.code = "record-confirmation-uncertain";
+  return error;
+}
+
 function recordConflict(message) {
   const error = new Error(message);
   error.code = "record-conflict";
@@ -23353,7 +23380,18 @@ async function persistDailyRecord(recordRef, data, expectedRecord, expectedRevis
     if (expectedRecord && (!current || recordRevision(current) !== expectedRevision)) {
       throw recordConflict("編集中に実績が変更・削除されました。上書きせず、日付・担当者を選び直してください。");
     }
-    // resultsの削除済み商材が復活しないようマップ全体を置換。
+    // A legacy record with stale product rows cannot be silently repaired
+    // by the normal edit path: historical sales and correction evidence need
+    // a separate owner review, never inferred deletion or zero fill.
+    if (current) {
+      try { validateFinancialRecordForSave(current); }
+      catch {
+        throw recordConflict(
+          "既存実績の件数・商材明細・金額に不一致があります。上書きせず、管理者が訂正履歴を確認してください。");
+      }
+    }
+    // results is an entire map field, not a field-by-field merge: deletion of
+    // an old SKU must never resurrect stale lines in a new saved record.
     transaction.set(recordRef, data, {mergeFields: Object.keys(data)});
     if (writeCorrection) writeCorrection(transaction);
   });
@@ -23907,22 +23945,24 @@ saveRecordButton.onclick =
         Firestoreへ実際に反映されたことを確認する。
       */
 
-      const confirmedSnap =
-        await getDoc(
-          recordRef
-        );
-
-
-      if (
-        !confirmedSnap.exists()
-      ) {
-
-        throw new Error(
-          "保存確認に失敗しました。もう一度お試しください。"
-        );
-
+      // A cached snapshot may be stale after a write. Require an actual
+      // server read and exact persisted business fields before claiming that
+      // a count or a removed product line was saved successfully.
+      let confirmedSnap;
+      try {
+        confirmedSnap = await getDocFromServer(recordRef);
+      } catch {
+        throw recordConfirmationUncertain();
       }
-
+      if (!confirmedSnap.exists()) throw recordConfirmationUncertain();
+      const persisted = confirmedSnap.data();
+      try {
+        validateFinancialRecordForSave(persisted);
+        if (recordSaveContentSignature(persisted) !==
+            recordSaveContentSignature(data)) throw Error("MISMATCH");
+      } catch {
+        throw recordConfirmationUncertain();
+      }
 
       editingRecordId =
         recordRef.id;
@@ -24055,7 +24095,8 @@ saveRecordButton.onclick =
       console.error(error);
 
 
-      if (error?.code === "record-conflict") {
+      if (error?.code === "record-conflict" ||
+          error?.code === "record-confirmation-uncertain") {
         showError(error.message);
       } else if (
         error?.code ===
