@@ -57,6 +57,10 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
      s.allowedCategories.some(k=>!KEYS.includes(k)))fail();
   seen.add(s.cid);
   const allowed=new Set(s.allowedCategories);
+  // A fully OFF partner has no published categories. Its names, report
+  // counts and attribution flags must not influence any public ranking or
+  // completeness metadata. Historical originals remain in Firestore.
+  if(!allowed.size)continue;
   for(const k of allowed)published.add(k);
   const visible=raw=>({counts:Object.fromEntries(KEYS.map(k=>[k,allowed.has(k)?raw.counts[k]:0])),
    total:KEYS.reduce((a,k)=>sum(a,allowed.has(k)?raw.counts[k]:0),0)});
