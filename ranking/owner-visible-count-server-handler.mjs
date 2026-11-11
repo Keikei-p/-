@@ -42,6 +42,33 @@ function validDay(day){
  const t=new Date(0);t.setUTCHours(0,0,0,0);t.setUTCFullYear(y,m-1,d);
  return t.getUTCFullYear()===y&&t.getUTCMonth()+1===m&&t.getUTCDate()===d;
 }
+
+// An authenticated monthly snapshot can safely answer a DAY or a WEEK only
+// if every requested day belongs to that same canonical month. Cross-month
+// weeks require a separate complete, atomic two-month reader: fail closed.
+function requestedPeriod(params){
+ const keys=[...params.keys()];
+ if(keys.length!==1||!["month","day","week"].includes(keys[0]))
+  throw new Block(400);
+ const kind=keys[0],value=params.get(kind);
+ if(kind==="month"){
+  if(!MONTH.test(value??""))throw new Block(400);
+  return {kind,month:value,day:value+"-01"};
+ }
+ if(!validDay(value))throw new Block(400);
+ const month=value.slice(0,7);
+ if(kind==="week"){
+  const monday=new Date(value+"T12:00:00Z");
+  monday.setUTCDate(monday.getUTCDate()-((monday.getUTCDay()+6)%7));
+  const sunday=new Date(monday);
+  sunday.setUTCDate(sunday.getUTCDate()+6);
+  if(monday.toISOString().slice(0,7)!==month||
+     sunday.toISOString().slice(0,7)!==month)
+   throw new Block(400); // never publish an incomplete weekly total
+ }
+ return {kind,month,day:value};
+}
+
 function sameSet(a,b){
  return Array.isArray(a)&&Array.isArray(b)&&a.length===b.length&&
   new Set(a).size===a.length&&a.every(x=>b.includes(x));
@@ -73,11 +100,7 @@ export function createStagedOwnerVisibleCountHandler({
    if(origin&&origin!==ORIGIN)throw new Block(403);
    const url=new URL(request.url);
    if(url.pathname!==PATH||url.origin!==ORIGIN)throw new Block(404);
-   const keys=[...url.searchParams.keys()];
-   if(keys.length!==1||keys[0]!=="month"||
-      !MONTH.test(url.searchParams.get("month")??""))
-    throw new Block(400);
-   const month=url.searchParams.get("month");
+   const {kind,month,day}=requestedPeriod(url.searchParams);
    const token=request.headers.get("Authorization")?.match(TOKEN)?.[1];
    if(!token)throw new Block(401);
    let principal;
@@ -108,14 +131,18 @@ export function createStagedOwnerVisibleCountHandler({
       input.sources.length!==context.approvedCompanyIds.length||
       input.mappingsReviewed!==true)
     throw new Block();
+   // A month-scoped transactional snapshot may be safely narrowed, but
+   // never broadened into another month or after its trusted server asOf.
+   if(day>input.period.asOf)throw new Block(400);
    // Ignore any context supplied by the loader. Only the fresh Auth-derived
-   // server context is authorized to determine the audience and company set.
+   // server context is authorized to determine audience and company set.
    const {mappingsReviewed:_proof,context:_ignored,...countInput}=input;
+   const period={kind,day,asOf:input.period.asOf};
    if(!atomic)publication=await publicationReader.readForRanking({
     context,mappingsReviewed:true
    });
    const result=buildOwnerVisibleCountRanking({
-    input:{...countInput,context},publication
+    input:{...countInput,period,context},publication
    });
    auditNoFinancialKeys(result);
    const json=JSON.stringify(result);
