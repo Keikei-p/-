@@ -40,7 +40,7 @@ jobs:
           test "$(git hash-object functions-ranking-approvals/controller.cjs)" = 0a7691d8a01ca6a47931300a2b650c7fbfb5b391
           test "$(git hash-object functions-ranking-approvals/product-visibility-controller.cjs)" = 87a9381d9efce485b4edbe6ce7ed56a6b1c9d9d7
           test "$(git hash-object functions-ranking-approvals/owner-sku-mapping-controller.cjs)" = fb32c016f647d01e90cbc82ec9ae823ab1df720d
-          test "$(git hash-object functions-ranking-approvals/ranking/owner-product-visibility-firestore.mjs)" = 8e2289b1dd8b62f4d682dc6231a339294178abcb
+          test "$(git hash-object functions-ranking-approvals/ranking/owner-product-visibility-firestore.mjs)" = 3d3924aa52a2655879605c358f26d36953462262
           test "$(git hash-object functions-ranking-approvals/ranking/owner-reviewed-sku-mapping-store.mjs)" = 6652af761e44da1c33e75d1b7a15eeee4f504036
           test "$(git hash-object firebase.ranking-approvals.json)" = 35a8b4ab4b39b16927e0e7235b048d7052497632
           node -e "const f=require('fs');if(JSON.parse(f.readFileSync('.firebaserc')).projects.default!=='sales-management-cc116')process.exit(1)"
