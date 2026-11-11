@@ -170,6 +170,15 @@ function competitionFromBreakdown(items,convert){
 // The view-only audience switch never reads financial originals or invents
 // unsent counts. All rows come from the already verified server payload.
 // Company kind is server-owned, not a browser authorization claim.
+// Personal and own-company leaderboards use the same tie ranking as the
+// public hub board. Unreported people never receive a numeric rank.
+function rerankReportedPeople(rows){
+ const submitted=competitionFromBreakdown(
+  rows.filter(r=>r.reportStatus!=="未報告"),r=>({...r}));
+ const unreported=rows.filter(r=>r.reportStatus==="未報告")
+  .map(r=>({...r,rank:null}));
+ return [...submitted,...unreported];
+}
 function hubAudienceRows(data,audience){
  if(!["joint","own","partner"].includes(audience))halt();
  if(audience==="joint")return {
@@ -184,17 +193,8 @@ function hubAudienceRows(data,audience){
  if(!Number.isSafeInteger(total)||total!==
     (audience==="own"?data.summary.own:data.summary.partner))halt();
  const teams=data.teamBreakdown.filter(x=>ids.has(x.companyId));
- // Original API ordering is already verified count DESC. Preserve it and
- // reassign competition ranks after filtering: 1,1,3. Never rank an unreported person.
- const members=data.memberRanking.filter(x=>ids.has(x.companyId));
- let rank=0,last=null;
- const scored=members.filter(x=>x.reportStatus!=="未報告").map((x,i)=>{
-  if(i===0||x.count!==last)rank=i+1;
-  last=x.count;
-  return {...x,rank};
- });
- const missing=members.filter(x=>x.reportStatus==="未報告")
-  .map(x=>({...x,rank:null}));
+ // Re-rank only verified submissions within the selected company scope.
+ const members=rerankReportedPeople(data.memberRanking.filter(x=>ids.has(x.companyId)));
  const products=competitionFromBreakdown(
   data.productRanking.filter(x=>x.companies.some(c=>ids.has(c.companyId))),
   x=>({...x,count:audience==="own"?x.ownCount:x.partnerCount,
@@ -204,7 +204,7 @@ function hubAudienceRows(data,audience){
   }));
  const sum=products.reduce((n,x)=>n+x.count,0);
  if(!Number.isSafeInteger(sum)||sum!==total)halt();
- return {companies,teams,people:[...scored,...missing],products,total};
+ return {companies,teams,people:members,products,total};
 }
 
 const validDate=x=>{
@@ -278,10 +278,11 @@ export function renderVerifiedDualCountDashboard({document,root,payload,audience
   }else{
    metrics.appendChild(metric(document,data.own.company,data.own.count));
    page.appendChild(metrics);
-   page.appendChild(ranked(document,"自分たちの成果・前期比",
-    data.own.people,"person"));
-   page.appendChild(ranked(document,"自社の商材別件数",data.own.products
-    .map((p,i)=>({...p,rank:p.rank||i+1})),"product"));
+   // Keep the same four leaderboard positions and order as the hub Owner.
+   // Partner public rows contain only server-approved names and count totals;
+   // never derive cross-company ranks from unapproved own staff records.
+   add(page,document,"h3","nico-dual-title",
+    "合同ランキング（公開承認済み・件数のみ）");
    page.appendChild(ranked(document,"公開承認済み・会社ランキング",
     data.publicRanking.companies,"company"));
    page.appendChild(ranked(document,"公開承認済み・班ランキング",
@@ -290,6 +291,11 @@ export function renderVerifiedDualCountDashboard({document,root,payload,audience
     data.publicRanking.members,"person"));
    page.appendChild(ranked(document,"公開承認済み・商材ランキング",
     data.publicRanking.products,"product"));
+   add(page,document,"h3","nico-dual-title","自分の会社の件数・履歴");
+   page.appendChild(ranked(document,"自分たちの成果・前期比",
+    rerankReportedPeople(data.own.people),"person"));
+   page.appendChild(ranked(document,"自社の商材別件数",
+    competitionFromBreakdown(data.own.products,p=>({...p})),"product"));
    if(data.own.unidentifiedCount>0)
     add(page,document,"p","nico-dual-unidentified",
      "担当者未特定 "+data.own.unidentifiedCount+"件");
