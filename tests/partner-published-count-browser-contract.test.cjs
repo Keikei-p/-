@@ -80,6 +80,20 @@ test("both partner pages use server enabledCategories and protect disabled saves
   "UI must not re-send legacy OFF count history");
 });
 
+test("original hub Owner can reach the existing product ON/OFF and joint ranking setup",()=>{
+ const owner=extract(index,"async function loadOwnerPartnerCompanyTeams(){",
+  "\nasync function showPartnerInviteAtMain(");
+ const gate='if(!auth.currentUser||!isCurrentCompanyOwner()||currentCompanyData?.companyKind==="partner")return;';
+ assert(owner.includes(gate),"only an authenticated hub Owner receives setup navigation");
+ assert(owner.includes('settingsLink.href="./owner-partner-setup.html";'),
+  "use a fixed query-free destination, never forward invite tokens");
+ assert(owner.includes('settingsLink.textContent="商材ON/OFF・合同ランキング設定";'));
+ assert(owner.indexOf(gate)<owner.indexOf("settingsLink.href"),
+  "Owner guard must precede the settings link");
+ assert.doesNotMatch(owner,/getDocFromServer|recordsCollectionQuery|persistDailyRecord/,
+  "navigation must not start new financial data reads or writes");
+});
+
 test("Owner correction UI lists saved reports only and cannot submit a new staff day",()=>{
  const ownerBlock=extract(index,
   'function openOwnerPartnerCountEditor(parent,company){',
