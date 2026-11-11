@@ -271,3 +271,56 @@ test("cross-month weeks, future days and invalid query never return a misleading
   assert.deepEqual(await result.json(),{error:"request_blocked"});
  }
 });
+
+
+test("verified two-month joint week includes both company ledgers without partial owner/partner ranks",async()=>{
+ const f=fake(),months=[];
+ const publication={serverVerified:true,ownerSettingsRead:true,
+  ownerUidVerified:true,productMappingsReviewed:true,revision:2,
+  hubCompanyId:"hub",snapshotReadTime:TIME,
+  enabledHubProductIds:["nuro"],partnerOverrides:[]};
+ const input=countInput({});
+ input.period.asOf="2026-11-09";
+ input.snapshotReadTime=TIME;
+ input.verifiedMonths=["2026-11","2026-10"];
+ input.sources=input.sources.map(s=>{
+  const recent={...s.records[0],date:"2026-11-01"};
+  const currentLine={...s.lines[0],date:"2026-11-01"};
+  const old={...recent,sourceId:recent.sourceId+"October",date:"2026-10-31"};
+  const oldLine={...currentLine,sourceId:currentLine.sourceId+"October",
+   recordId:old.sourceId,date:"2026-10-31"};
+  return {...s,completeWindows:{current:true,previous:true},
+   records:[recent,old],lines:[currentLine,oldLine]};
+ });
+ const snapshot=copy(input);
+ const run=createStagedOwnerVisibleCountHandler({
+  enabled:true,db:f.db,auth:f.auth,FieldValue:f.FieldValue,
+  loadAtomicVerifiedCountSnapshot:async ({month,secondMonth,context})=>{
+   assert.equal(context.serverVerified,true);
+   months.push([month,secondMonth]);
+   return {input,publication};
+  }
+ });
+ const own=await run(request("hub","week=2026-11-01"));
+ assert.equal(own.status,200);
+ const board=await own.json();
+ assert.deepEqual(board.summary,{own:4,partner:10,total:14,unidentified:0});
+ assert.equal(board.range.start,"2026-10-26");
+ assert.equal(board.range.end,"2026-11-01");
+ const partner=await run(request("partner","week=2026-11-01"));
+ assert.equal(partner.status,200);
+ const publicView=await partner.json();
+ assert.equal(publicView.role,"partner_owner");
+ assert.equal(publicView.own.count,10);
+ assert.equal(publicView.publicRanking.products[0].count,14);
+ assert.deepEqual(months,[["2026-11","2026-10"],["2026-11","2026-10"]]);
+ assert.deepEqual(input,snapshot,"count originals remain immutable");
+ assert(!f.ops.some(x=>/write|create|update|delete/.test(x.kind)));
+ const corrupted=createStagedOwnerVisibleCountHandler({
+  enabled:true,db:f.db,auth:f.auth,FieldValue:f.FieldValue,
+  loadAtomicVerifiedCountSnapshot:async()=>({
+   input:{...input,verifiedMonths:["2026-11"]},publication
+  })
+ });
+ assert.equal((await corrupted(request("hub","week=2026-11-01"))).status,503);
+});
