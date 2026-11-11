@@ -541,16 +541,21 @@ function verifyApprovedCountRanking(value,start,end,expected={}){
    throw Error("UNVERIFIED_APPROVED_COUNT_NUM");
  };
  walk(value);
+ // Incomplete published periods are useful for count reconciliation only;
+ // a numerical rank would falsely certify a partial company or product.
+ const ranksVerified=value.unreportedCompanies.length===0;
+ if(!ranksVerified&&value.partnerCountsComplete!==false)
+  throw Error("UNVERIFIED_APPROVED_COUNT_COMPLETENESS");
  const verifyRows=rows=>{
   if(rows.length>10000)throw Error("UNVERIFIED_APPROVED_COUNT_ROWS");
   let previous=null,rank=0;
   rows.forEach((row,i)=>{
    if(typeof row.name!=="string"||!row.name.trim()||
     !Number.isSafeInteger(row.totalCount)||row.totalCount<0||
-    !Number.isSafeInteger(row.rank)||row.rank<1||
+    (ranksVerified?(!Number.isSafeInteger(row.rank)||row.rank<1):row.rank!==null)||
     (i&&row.totalCount>previous))throw Error("UNVERIFIED_APPROVED_COUNT_ORDER");
    if(i===0||row.totalCount!==previous)rank=i+1;
-   if(row.rank!==rank)throw Error("UNVERIFIED_APPROVED_COUNT_TIE");
+   if(ranksVerified&&row.rank!==rank)throw Error("UNVERIFIED_APPROVED_COUNT_TIE");
    previous=row.totalCount;
   });
  };
@@ -571,7 +576,7 @@ function verifyApprovedCountRanking(value,start,end,expected={}){
 function renderApprovedCountRanking(value){
  const display=(id,rows,extra=()=>[])=>{
   $(id).replaceChildren(countTable(["順位","名称","件数"],rows.map(row=>[
-   row.rank+"位",row.name+(row.companyName?"（"+row.companyName+"）":""),
+   (row.rank===null?"保留":row.rank+"位"),row.name+(row.companyName?"（"+row.companyName+"）":""),
    row.totalCount+"件"+(extra(row).length?"｜"+extra(row).join("｜"):"")
   ])));
  };
