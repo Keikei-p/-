@@ -85,6 +85,9 @@ jobs:
             "hosting": {
               "site": "nico-factory",
               "public": ".nico-hosting-staging",
+              "rewrites": [
+                {"source": "/v1/owner-visible-counts", "function": {"functionId": "getVerifiedJointCountRanking", "region": "asia-northeast1"}}
+              ],
               "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
               "headers": [
                 {"source":"/index.html","headers":[{"key":"Cache-Control","value":"no-cache, no-store, must-revalidate"}]},
