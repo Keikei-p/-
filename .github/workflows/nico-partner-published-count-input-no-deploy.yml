@@ -20,6 +20,8 @@ on:
       - 'tests/verified-joint-month-http-bridge.test.mjs'
       - 'tests/owner-visible-count-server-handler.test.mjs'
       - 'ranking/owner-visible-count-server-handler.mjs'
+      - 'functions-ranking-approvals/ranking/owner-visible-count-server-handler.mjs'
+      - 'tests/ranking-day-week-deployment-parity.test.cjs'
       - 'tests/verified-dual-count-dashboards.test.mjs'
       - 'tests/verified-dual-count-view.test.mjs'
       - 'ranking/verified-joint-month-http-bridge.mjs'
@@ -49,8 +51,9 @@ jobs:
           node --check ranking/partner-submission-publication-guard.mjs
           node --check ranking/owner-visible-count-server-handler.mjs
           node --check ranking/verified-joint-month-http-bridge.mjs
+          node --check functions-ranking-approvals/ranking/owner-visible-count-server-handler.mjs
       - name: Test partner ON/OFF read-write contract and stable ranking identities
-        run: node --test tests/partner-workspace.test.cjs tests/approved-partner-count-standings.test.cjs tests/partner-published-count-browser-contract.test.cjs tests/owner-partner-count-browser-contract.test.cjs tests/partner-publication-write-ranking-consistency.test.cjs tests/verified-joint-month-http-bridge.test.mjs tests/owner-visible-count-server-handler.test.mjs tests/finance-partner-boundary-check.test.mjs tests/approved-partner-ranking-ui.test.mjs tests/verified-dual-count-dashboards.test.mjs tests/verified-dual-count-view.test.mjs
+        run: node --test tests/partner-workspace.test.cjs tests/approved-partner-count-standings.test.cjs tests/partner-published-count-browser-contract.test.cjs tests/owner-partner-count-browser-contract.test.cjs tests/partner-publication-write-ranking-consistency.test.cjs tests/verified-joint-month-http-bridge.test.mjs tests/owner-visible-count-server-handler.test.mjs tests/ranking-day-week-deployment-parity.test.cjs tests/finance-partner-boundary-check.test.mjs tests/approved-partner-ranking-ui.test.mjs tests/verified-dual-count-dashboards.test.mjs tests/verified-dual-count-view.test.mjs
 
   isolated-finance-counts:
     runs-on: ubuntu-latest
