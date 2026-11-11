@@ -712,6 +712,9 @@ const lab=document.createElement("label");lab.textContent=k;const inp=document.c
 inp.type="number";inp.min="0";inp.max="9999";inp.step="1";inp.inputMode="numeric";inp.value="0";inp.dataset.key=k;
 inp.addEventListener("input",updateTotal);box.append(lab,inp);grid.append(box)}
 function values(){const o={};for(const x of grid.querySelectorAll("input")){
+ // Disabled OFF counts are intentionally redacted; only server-held history
+ // can restore them on write. Never resend hidden historical counts.
+ if(x.disabled){o[x.dataset.key]=0;continue;}
  if(!/^(?:0|[1-9]\d{0,3})$/.test(x.value.trim()))throw Error("invalid count");
  o[x.dataset.key]=Number(x.value)}return o}
 function privateValues(){const o=Object.create(null);for(const x of $("privateCountGrid").querySelectorAll("input")){
