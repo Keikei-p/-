@@ -7,6 +7,8 @@ on:
       - 'functions-partner-workspace/shared-count-standings.cjs'
       - 'index.html'
       - 'partner-workspace.html'
+      - 'finance-partner-boundary-check.html'
+      - 'tests/finance-partner-boundary-check.test.mjs'
       - 'tests/partner-workspace.test.cjs'
       - 'tests/approved-partner-count-standings.test.cjs'
       - 'tests/partner-published-count-browser-contract.test.cjs'
@@ -33,7 +35,7 @@ jobs:
           node --check functions-partner-workspace/service.cjs
           node --check functions-partner-workspace/shared-count-standings.cjs
       - name: Test partner ON/OFF read-write contract and stable ranking identities
-        run: node --test tests/partner-workspace.test.cjs tests/approved-partner-count-standings.test.cjs tests/partner-published-count-browser-contract.test.cjs tests/owner-partner-count-browser-contract.test.cjs tests/verified-joint-month-http-bridge.test.mjs
+        run: node --test tests/partner-workspace.test.cjs tests/approved-partner-count-standings.test.cjs tests/partner-published-count-browser-contract.test.cjs tests/owner-partner-count-browser-contract.test.cjs tests/verified-joint-month-http-bridge.test.mjs tests/finance-partner-boundary-check.test.mjs
 
   isolated-finance-counts:
     runs-on: ubuntu-latest
