@@ -50,3 +50,46 @@ test("shared count UI fails closed on finance extensions, duplicate wrong ranks 
   {...base(),companies:[row("A",3,1)],unreportedCompanies:[{...base().unreportedCompanies[0],unitPrice:50000}]},
  ])assert.throws(()=>verify(bad,"2026-10-31","2026-10-31"),/UNVERIFIED/);
 });
+
+test("partly reported month status is explicitly distinguished from unreported and zero",()=>{
+ const payload=base();
+ payload.unreportedCompanies.push({
+  key:"hash",name:"協力店A",status:"partial_report"
+ });
+ assert.equal(verify(payload,"2026-10-31","2026-10-31"),payload);
+ const start=html.indexOf("function renderApprovedCountRanking(value){");
+ const end=html.indexOf("function renderApprovedCountRankingDetails(){",start);
+ assert(start>0&&end>start);
+ const nodes=new Map();
+ const $=id=>{
+  if(!nodes.has(id))nodes.set(id,{
+   value:"",textContent:"",children:[],
+   replaceChildren(...items){this.children=items;},
+   appendChild(x){this.children.push(x);}
+  });
+  return nodes.get(id);
+ };
+ const sandbox={ $,document:{createElement:()=>({value:"",textContent:""})},
+  countTable:()=>({}),renderApprovedCountRankingDetails:()=>{} };
+ vm.runInNewContext(html.slice(start,end)+
+  "\nthis.render=renderApprovedCountRanking;",sandbox);
+ sandbox.render(payload);
+ const summary=$("approvedSharedRankStatus").textContent;
+ assert.match(summary,/未報告 1社/);
+ assert.match(summary,/一部未報告 1社/);
+ assert.match(summary,/一部未確認/);
+ assert(!summary.includes("未報告 2社"),
+  "a partly reported company must not be shown as fully unreported");
+});
+test("shared ranking UI refuses contradictory or forged partial report status",()=>{
+ const normal=base();
+ for(const row of [
+  {key:"missing-company",name:"任意",status:"partial_report"},
+  {key:"hash",name:"協力店A",status:"not_reported"},
+  {key:"hash",name:"協力店A",status:"partially_confirmed"},
+  {key:"hash",name:"協力店A",status:"partial_report",revenue:50000}
+ ]){
+  assert.throws(()=>verify({...normal,unreportedCompanies:[row]},
+   "2026-10-31","2026-10-31"),/UNVERIFIED/);
+ }
+});
