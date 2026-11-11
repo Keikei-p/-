@@ -90,7 +90,14 @@ test("tampered clock, scope, SKU mapping, duplicate record, and identities fail 
   x=>{x.secondary.sources[1].teams[0].name="別の班";},
   x=>{x.secondary.sources.pop();},
   x=>{x.secondary.period.day="2026-09-01";},
-  x=>{x.secondary.sources[0].records[0].date="2026-11-01";}
+  x=>{x.secondary.sources[0].records[0].date="2026-11-01";},
+  x=>{x.primary.sources[0].records[0].date="2026-11-31";},
+  x=>{x.primary.period.asOf="2026-11-31";},
+  x=>{x.primary.snapshotReadTime=undefined;x.secondary.snapshotReadTime=undefined;
+   for(const s of [...x.primary.sources,...x.secondary.sources])s.readTime=undefined;},
+  x=>{x.primary.snapshotReadTime="not-a-timestamp";
+   x.secondary.snapshotReadTime="not-a-timestamp";
+   for(const s of [...x.primary.sources,...x.secondary.sources])s.readTime="not-a-timestamp";}
  ];
  for(const mutate of mutations){
   const value=copy(args);mutate(value);
