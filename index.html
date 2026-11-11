@@ -12357,7 +12357,7 @@ function partnerInlineRenderCounts(){
  const staffId=pInline("pInlineStaff").value;
  const entry=snap.records.find(x=>x.staffId===staffId);
  const grid=pInline("pInlineCountFields");grid.replaceChildren();
- for(const key of snap.categories){
+ for(const key of (snap.enabledCategories??snap.categories)){
   const label=document.createElement("label");label.className="p-inline-field";
   label.textContent=key;
   const input=document.createElement("input");input.type="number";input.min="0";input.max="9999";
@@ -12365,7 +12365,8 @@ function partnerInlineRenderCounts(){
   input.value=String(entry?.counts?.[key]??0);
   label.append(input);grid.append(label);
  }
- pInline("pInlineSave").disabled=!staffId||partnerInlineBusy;
+ pInline("pInlineSave").disabled=!staffId||partnerInlineBusy||
+  snap.enabledCategories?.length===0;
  pInline("pInlineVersion").textContent=entry?"登録済み・第"+entry.version+"版":"未登録";
 }
 function partnerInlineRender(){
@@ -12394,16 +12395,17 @@ function partnerInlineRender(){
  // Show ONLY numerical counts from the isolated partner count API, never money.
  const rankings=pInline("pInlineRanking");rankings.replaceChildren();
  const byTeam=new Map(teams.map(t=>[t.id,0]));
- const byPerson=[],byProduct=new Map(snap.categories.map(k=>[k,0]));
+ const visible=snap.enabledCategories??snap.categories;
+ const byPerson=[],byProduct=new Map(visible.map(k=>[k,0]));
  for(const entry of snap.records){
   const person=staff.find(p=>p.id===entry.staffId);
   if(!person)continue;
-  const total=entry.totalCount;
+  const total=visible.reduce((n,k)=>n+(entry.counts?.[k]||0),0);
   if(!Number.isSafeInteger(total)||total<0)continue;
   byPerson.push({name:person.name,n:total});
   if(byTeam.has(entry.teamIdSnapshot))
    byTeam.set(entry.teamIdSnapshot,byTeam.get(entry.teamIdSnapshot)+total);
-  for(const key of snap.categories)byProduct.set(key,byProduct.get(key)+(entry.counts?.[key]||0));
+  for(const key of visible)byProduct.set(key,byProduct.get(key)+(entry.counts?.[key]||0));
  }
  const heading=label=>{
   const h=document.createElement("h4");h.textContent=label;rankings.append(h);
@@ -12432,6 +12434,11 @@ async function partnerInlineFetch(){
      !Array.isArray(snap.categories)||!Array.isArray(snap.records)||
      typeof snap.companyName!=="string"||snap.companyName.length===0)
    throw Error("partner_count_schema");
+  if(snap.enabledCategories!==undefined&&
+     (!Array.isArray(snap.enabledCategories)||
+      new Set(snap.enabledCategories).size!==snap.enabledCategories.length||
+      snap.enabledCategories.some(key=>!snap.categories.includes(key))))
+   throw Error("partner_publication_schema");
   partnerInlineData=snap;partnerInlineRender();
   partnerInlineStatus("件数を表示しています。金額・単価は読み込んでいません。");
  }catch(e){
@@ -12527,15 +12534,18 @@ pInline("pInlineCopyInvite").onclick=async()=>{
 pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
  const snap=partnerInlineData,staffId=pInline("pInlineStaff").value;
  if(!snap.staff.some(p=>p.id===staffId&&p.active))throw Error("staff");
- const counts=Object.create(null);
- for(const key of snap.categories){
+ const before=snap.records.find(x=>x.staffId===staffId);
+ // Preserve every OFF historical count exactly as stored. Only published
+ // categories are edited, and the server revalidates OFF inside its write.
+ const counts=Object.assign(Object.create(null),before?.counts||
+  Object.fromEntries(snap.categories.map(key=>[key,0])));
+ for(const key of (snap.enabledCategories??snap.categories)){
   const node=[...pInline("pInlineCountFields").querySelectorAll("input[data-count-key]")]
     .find(x=>x.dataset.countKey===key);
   const n=Number(node?.value);
   if(!node||node.value.trim()===""||!Number.isSafeInteger(n)||n<0||n>9999)throw Error("counts");
   counts[key]=n;
  }
- const before=snap.records.find(x=>x.staffId===staffId);
  const result=(await partnerInlineSave(partnerInlinePayload({
   date:pInline("pInlineDate").value,staffId,counts,expectedVersion:before?.version??0
  }))).data;
