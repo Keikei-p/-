@@ -104,3 +104,24 @@ test("nonadjacent months are never treated as a complete seven-day window",()=>{
  assert.throws(()=>mergeVerifiedTwoMonthInputs(x),
   /VERIFIED_TWO_MONTH_COUNTS_UNVERIFIED/);
 });
+
+
+test("Owner global OFF and partner override OFF never erase two months of historical count originals",()=>{
+ const args=fixtures(),snapshot=copy(args),merged=mergeVerifiedTwoMonthInputs(args);
+ const period={kind:"week",day:"2026-11-01",asOf:"2026-11-11"};
+ const build=policy=>buildOwnerVisibleCountRanking({
+  input:{...merged,context,period},publication:policy
+ });
+ const partnerOff=build({...publication,partnerOverrides:[
+  {companyId:"partner",enabledHubProductIds:[]}
+ ]});
+ assert.deepEqual(partnerOff.summary,{own:7,partner:0,total:7,unidentified:0});
+ assert.equal(partnerOff.productRanking[0].count,7);
+ const globalOff=build({...publication,enabledHubProductIds:[]});
+ assert.equal(globalOff.summary.total,0);
+ const restored=build(publication);
+ assert.deepEqual(restored.summary,{own:7,partner:7,total:14,unidentified:0});
+ assert.deepEqual(args,snapshot,"visibility changes publish only; no original record is touched");
+ assert.equal(merged.sources[1].records[0].totalCount,2);
+ assert.equal(merged.sources[1].records[1].totalCount,5);
+});
