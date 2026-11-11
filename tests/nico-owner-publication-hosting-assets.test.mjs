@@ -53,7 +53,7 @@ test("dashboard mount imports only files included in the approved public asset s
 });
 
 test("only verified count GET is routed, without automatic Function deployment",()=>{
- const match=workflow.match(/cat > \\.nico-only-hosting-config\\.json <<'JSON'\\n([\\s\\S]*?)\\n\\s*JSON/);
+ const match=workflow.match(/cat > \.nico-only-hosting-config\.json <<'JSON'\n([\s\S]*?)\n\s*JSON/);
  assert(match,"Hosting config heredoc missing");
  const config=JSON.parse(match[1]);
  assert.equal(config.hosting.site,"nico-factory");
