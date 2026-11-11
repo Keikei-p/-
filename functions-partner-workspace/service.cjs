@@ -1100,6 +1100,10 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    if(oldSnap.exists&&old.version!==d.expectedVersion||!oldSnap.exists&&d.expectedVersion!==0)
      fail("aborted");
    if(d.expectedVersion>=999)fail("resource-exhausted");
+   // Owner corrections may edit only an already-registered staff report;
+   // never create a missing report or rewrite a historical quick-count day.
+   if(ownerCorrection&&(!oldSnap.exists||!totalSnap.exists))
+    fail("failed-precondition");
    // Never mix per-person entries with the earlier one-total-per-partner UI.
    if(totalSnap.exists&&existing.source!=="staff-entries-v1")fail("failed-precondition");
    const previousPrivate=oldSnap.exists?validatePrivateCounts(old.privateCounts||{}).counts:{};
