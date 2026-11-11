@@ -1259,23 +1259,23 @@ test("new approved monthly and daily ranking API excludes finance and OFF counts
  assert.equal(weekly.period,"week");
  assert.equal(weekly.totalCount,7);
  assert.equal(weekly.people[0].totalCount,3);
- // Cross-month week: Sep 28 - Oct 4. An aggregate based on only October
- // would silently drop Sep 30, so require the legacy September day report.
+ // Cross-month week: Sep 28 - Oct 4. The legacy partner-only endpoint
+ // reads each day independently, so it cannot prove a single atomic snapshot
+ // across September and October. Reject rather than publish a partial rank.
  db.seed("companies/hub/partnerQuickCountDays/2026-09-30/reports/partner",{
   hubCompanyId:"hub",partnerCompanyId:"partner",date:"2026-09-30",
   partnerCompanyName:"協力店",version:1,
   counts:{...zero(),NURO:2},totalCount:2
  });
- const across=await api.view(req("h",{
+ const crossMonthOriginals=clone([...db.store]);
+ await assert.rejects(api.view(req("h",{
   date:"2026-10-01",sharedCountRankings:true,rankingPeriod:"week"
- }));
- assert.equal(across.start,"2026-09-28");
- assert.equal(across.end,"2026-10-04");
- assert.equal(across.period,"week");
- assert.equal(across.totalCount,2,"September count must not disappear");
- assert.equal(across.historicalCompanyOnlyCount,2);
- assert.deepEqual(across.people,[],"legacy report cannot invent an individual");
- assert.doesNotMatch(JSON.stringify(across),/unitPrice|totalRevenue|cashback/);
+ })),{code:"failed-precondition"});
+ await assert.rejects(api.view(req("p",{
+  date:"2026-10-01",sharedCountRankings:true,rankingPeriod:"week"
+ })),{code:"failed-precondition"});
+ assert.deepEqual([...db.store],crossMonthOriginals,
+  "rejected cross-month ranks must not rewrite September or October originals");
  db.store.get("companies/hub/rankingProductVisibility/shared").partnerOverrides.partner=[];
  const off=await api.view(req("p",{date,sharedCountRankings:true}));
  assert.equal(off.companies.length,0,"OFF must not masquerade as saved 0");
