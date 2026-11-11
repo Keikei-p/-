@@ -29,15 +29,20 @@ async function run(){
  const mode=process.argv[2];
  if(process.argv.length!==3)abort("ARGUMENT");
  authorize(mode);
- const scope=process.env.NICO_FUNCTION_INVENTORY_PATH;
- if(!scope||path.dirname(path.resolve(scope))!==path.resolve(process.env.RUNNER_TEMP))
-  abort("INVENTORY_NOT_RUNNER_TEMP");
- const live=classifyInventory(JSON.parse(readFileSync(scope,"utf8")));
- let ready=true;
- for(const f of Object.values(live.functions)){
-  if(f.entries!==1||f.inTargetRegion!==1||f.activeState!==1||
-     f.expectedCodebase!==1||f.workspaceFlagEnabled!==1||
-     f.gen2Listed!==1||f.otherProject!==0)ready=false;
+ // Emergency rollback must not depend on the Functions API or firebase CLI.
+ // Inspect/apply retain the full four-Function inventory gate.
+ let ready=false;
+ if(mode!=="rollback"){
+  const scope=process.env.NICO_FUNCTION_INVENTORY_PATH;
+  if(!scope||path.dirname(path.resolve(scope))!==path.resolve(process.env.RUNNER_TEMP))
+   abort("INVENTORY_NOT_RUNNER_TEMP");
+  const live=classifyInventory(JSON.parse(readFileSync(scope,"utf8")));
+  ready=true;
+  for(const f of Object.values(live.functions)){
+   if(f.entries!==1||f.inTargetRegion!==1||f.activeState!==1||
+      f.expectedCodebase!==1||f.workspaceFlagEnabled!==1||
+      f.gen2Listed!==1||f.otherProject!==0)ready=false;
+  }
  }
  const require=createRequire(new URL("../../functions/package.json",import.meta.url));
  const {applicationDefault}=require("firebase-admin/app");
