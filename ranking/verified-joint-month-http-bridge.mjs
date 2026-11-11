@@ -20,6 +20,35 @@ const goodDay=d=>{
  const x=new Date(0);x.setUTCHours(0,0,0,0);x.setUTCFullYear(y,m-1,day);
  return x.getUTCFullYear()===y&&x.getUTCMonth()+1===m&&x.getUTCDate()===day;
 };
+
+// Date-only query. The server owns every count and consent; this guard only
+// prevents a calendar selection from requesting a partial cross-month week.
+const dateAt=(value,days=0)=>{
+ if(!goodDay(value))stop();
+ const d=new Date(value+"T12:00:00Z");
+ d.setUTCDate(d.getUTCDate()+days);
+ return d.toISOString().slice(0,10);
+};
+const weekStart=value=>dateAt(value,-((new Date(value+"T12:00:00Z").getUTCDay()+6)%7));
+const monthEnd=value=>{
+ const m=new Date(value.slice(0,7)+"-01T12:00:00Z");
+ m.setUTCMonth(m.getUTCMonth()+1);m.setUTCDate(0);
+ return m.toISOString().slice(0,10);
+};
+function expectedRange(period){
+ if(!["month","day","week"].includes(period.kind)||!goodDay(period.day)||
+    !goodDay(period.asOf)||period.day>period.asOf)stop();
+ const month=period.day.slice(0,7);
+ const start=period.kind==="month"?month+"-01":
+  period.kind==="week"?weekStart(period.day):period.day;
+ const last=period.kind==="month"?monthEnd(period.day):
+  period.kind==="week"?dateAt(start,6):period.day;
+ if(start.slice(0,7)!==month||last.slice(0,7)!==month)stop();
+ const end=last<period.asOf?last:period.asOf;
+ if(end<start)stop();
+ return {start,end};
+}
+
 export function createVerifiedJointMonthHttpBridge({
  featureEnabled=false,auth,fetcher,endpoint=ORIGIN+"/v1/owner-visible-counts",
  expectedRole=null
@@ -30,10 +59,9 @@ export function createVerifiedJointMonthHttpBridge({
  let generation=0;
  async function load({period,filters}={}){
   if(!period||Object.keys(period).sort().join("|")!=="asOf|day|kind"||
-     period.kind!=="month"||!goodDay(period.day)||!goodDay(period.asOf)||
-     period.day>period.asOf||!MONTH.test(period.day.slice(0,7))||
      !filters||typeof filters!=="object"||Array.isArray(filters)||
      Object.keys(filters).length!==0)stop();
+  const range=expectedRange(period);
   const month=period.day.slice(0,7),seq=++generation;
   const identity=auth.currentUser;
   if(!identity||typeof identity.uid!=="string"||!ID.test(identity.uid)||
@@ -44,7 +72,8 @@ export function createVerifiedJointMonthHttpBridge({
    token=await identity.getIdToken();
    if(typeof token!=="string"||!/^[-A-Za-z0-9._]{20,12000}$/.test(token)||
       seq!==generation||identity!==auth.currentUser)stop();
-   const url=endpoint+"?month="+month;
+   const url=endpoint+"?"+(period.kind==="month"?"month="+month:
+    period.kind+"="+period.day);
    response=await fetcher(url,{
     method:"GET",headers:{Authorization:"Bearer "+token,Accept:"application/json"},
     cache:"no-store",redirect:"error",credentials:"omit",referrerPolicy:"no-referrer"
@@ -61,10 +90,8 @@ export function createVerifiedJointMonthHttpBridge({
       !value||value.schema!=="nico-verified-dual-count-v1"||
       !["hub_owner","partner_owner"].includes(value.role)||
       (expectedRole!==null&&value.role!==expectedRole)||
-      value.period!=="month"||value.unit!=="件"||
-      !goodDay(value.range?.start)||value.range.start.slice(0,7)!==month||
-      !goodDay(value.range?.end)||value.range.end.slice(0,7)!==month||
-      value.range.end>period.asOf)stop();
+      value.period!==period.kind||value.unit!=="件"||
+      value.range?.start!==range.start||value.range.end!==range.end)stop();
    return value; // existing DOM renderer strictly rejects all finance keys
   }catch{stop()}
  }
@@ -86,7 +113,8 @@ export function mountVerifiedJointMonthCountDashboard({
   featureEnabled,auth,fetcher,endpoint,expectedRole
  });
  const controller=createVerifiedDualCountController({
-  document,root,auth,load:bridge.load,asOf,availablePeriods:["month"],allowFilters:false
+  document,root,auth,load:bridge.load,asOf,
+  availablePeriods:["day","week","month"],allowFilters:false
  });
  let closed=false,off=()=>{};
  try{
