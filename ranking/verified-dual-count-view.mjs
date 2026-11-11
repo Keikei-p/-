@@ -166,6 +166,47 @@ function competitionFromBreakdown(items,convert){
   return {...row,rank};
  });
 }
+
+// The view-only audience switch never reads financial originals or invents
+// unsent counts. All rows come from the already verified server payload.
+// Company kind is server-owned, not a browser authorization claim.
+function hubAudienceRows(data,audience){
+ if(!["joint","own","partner"].includes(audience))halt();
+ if(audience==="joint")return {
+  companies:data.companyBreakdown,teams:data.teamBreakdown,
+  people:data.memberRanking,products:data.productRanking,total:data.summary.total
+ };
+ const expectedKind=audience==="own"?"自社":"協力店";
+ if(data.companyBreakdown.some(x=>!["自社","協力店"].includes(x.kind)))halt();
+ const companies=data.companyBreakdown.filter(x=>x.kind===expectedKind);
+ const ids=new Set(companies.map(x=>x.id));
+ const total=companies.reduce((sum,x)=>sum+x.count,0);
+ if(!Number.isSafeInteger(total)||total!==
+    (audience==="own"?data.summary.own:data.summary.partner))halt();
+ const teams=data.teamBreakdown.filter(x=>ids.has(x.companyId));
+ // Original API ordering is already verified count DESC. Preserve it and
+ // reassign competition ranks after filtering: 1,1,3. Never rank an unreported person.
+ const members=data.memberRanking.filter(x=>ids.has(x.companyId));
+ let rank=0,last=null;
+ const scored=members.filter(x=>x.reportStatus!=="未報告").map((x,i)=>{
+  if(i===0||x.count!==last)rank=i+1;
+  last=x.count;
+  return {...x,rank};
+ });
+ const missing=members.filter(x=>x.reportStatus==="未報告")
+  .map(x=>({...x,rank:null}));
+ const products=competitionFromBreakdown(
+  data.productRanking.filter(x=>x.companies.some(c=>ids.has(c.companyId))),
+  x=>({...x,count:audience==="own"?x.ownCount:x.partnerCount,
+   ownCount:audience==="own"?x.ownCount:null,
+   partnerCount:audience==="partner"?x.partnerCount:null,
+   companies:x.companies.filter(c=>ids.has(c.companyId))
+  }));
+ const sum=products.reduce((n,x)=>n+x.count,0);
+ if(!Number.isSafeInteger(sum)||sum!==total)halt();
+ return {companies,teams,people:[...scored,...missing],products,total};
+}
+
 const validDate=x=>{
  if(typeof x!=="string"||!/^\d{4}-\d\d-\d\d$/.test(x))return false;
  const [y,m,d]=x.split("-").map(Number);
@@ -176,25 +217,36 @@ const validDate=x=>{
  * Static scoped render. Does not generate menus or produce network requests.
  * Throws and empties the root if malformed/financial data reaches the browser.
  */
-export function renderVerifiedDualCountDashboard({document,root,payload}={}){
+export function renderVerifiedDualCountDashboard({document,root,payload,audience="joint"}={}){
  if(!document||!root||typeof root.replaceChildren!=="function")halt();
  root.replaceChildren();
  try{
   const data=validate(payload);
+  if(!["joint","own","partner"].includes(audience)||
+     (data.role!=="hub_owner"&&audience!=="joint"))halt();
+  const board=data.role==="hub_owner"?hubAudienceRows(data,audience):null;
   const page=el(document,"section","nico-dual-dashboard");
   add(page,document,"h2","nico-dual-heading",
     data.role==="hub_owner"?"全社獲得件数・合同ランキング":"自社の獲得件数・成長");
+  if(data.role==="hub_owner")
+   add(page,document,"p","nico-dual-audience",
+    "ランキング表示："+({joint:"合同",own:"自社のみ",partner:"協力店のみ"}[audience]));
   add(page,document,"p","nico-dual-period",
    data.range.start+" 〜 "+data.range.end+"｜全て件数のみ");
   const metrics=el(document,"div","nico-dual-metrics");
   if(data.role==="hub_owner"){
-   metrics.appendChild(metric(document,"自社",data.summary.own));
-   metrics.appendChild(metric(document,"協力店",data.summary.partner));
-   metrics.appendChild(metric(document,"全体",data.summary.total));
+   if(audience==="joint"){
+    metrics.appendChild(metric(document,"自社",data.summary.own));
+    metrics.appendChild(metric(document,"協力店",data.summary.partner));
+    metrics.appendChild(metric(document,"全体",data.summary.total));
+   }else{
+    metrics.appendChild(metric(document,
+     audience==="own"?"自社":"協力店",board.total));
+   }
    page.appendChild(metrics);
    const companies=el(document,"section","nico-dual-companies");
    add(companies,document,"h3","nico-dual-title","会社別内訳");
-   for(const row of data.companyBreakdown){
+   for(const row of board.companies){
     const line=el(document,"div","nico-dual-company-row");
     add(line,document,"span","nico-dual-company-name",row.name+"（"+row.kind+"）");
     add(line,document,"strong","nico-dual-company-count",row.count+"件");
@@ -203,7 +255,7 @@ export function renderVerifiedDualCountDashboard({document,root,payload}={}){
    page.appendChild(companies);
    const teams=el(document,"section","nico-dual-teams");
    add(teams,document,"h3","nico-dual-title","班別内訳");
-   for(const row of data.teamBreakdown){
+   for(const row of board.teams){
     const line=el(document,"div","nico-dual-company-row");
     add(line,document,"span","nico-dual-company-name",row.companyName+"・"+row.name);
     add(line,document,"strong","nico-dual-company-count",row.count+"件");
@@ -211,15 +263,15 @@ export function renderVerifiedDualCountDashboard({document,root,payload}={}){
    }
    page.appendChild(teams);
    page.appendChild(ranked(document,"会社ランキング",
-    competitionFromBreakdown(data.companyBreakdown,x=>({
+    competitionFromBreakdown(board.companies,x=>({
      name:x.name,count:x.count
     })),"company"));
    page.appendChild(ranked(document,"班ランキング",
-    competitionFromBreakdown(data.teamBreakdown,x=>({
+    competitionFromBreakdown(board.teams,x=>({
      name:x.name,company:x.companyName,count:x.count
     })),"team"));
-   page.appendChild(ranked(document,"個人ランキング",data.memberRanking,"person"));
-   page.appendChild(ranked(document,"商材ランキング",data.productRanking,"product"));
+   page.appendChild(ranked(document,"個人ランキング",board.people,"person"));
+   page.appendChild(ranked(document,"商材ランキング",board.products,"product"));
    if(data.summary.unidentified>0)
     add(page,document,"p","nico-dual-unidentified",
      "担当者未特定 "+data.summary.unidentified+"件（個人順位には加算しません）");
@@ -263,12 +315,17 @@ export function createVerifiedDualCountController({
     typeof allowFilters!=="boolean")halt();
  const permitted=new Set(availablePeriods);
  let generation=0,closed=false;
- const current={period:availablePeriods[0],day:asOf,filters:{}};
+ const current={period:availablePeriods[0],day:asOf,filters:{},audience:"joint"};
  const clear=()=>root.replaceChildren();
  const thisSafePeriod=(kind,day=current.day)=>{
   if(!permitted.has(kind)||!validDate(day)||day>asOf)halt();
   current.period=kind;current.day=day;
   return refresh();
+ };
+ const thisSafeAudience=(value)=>{
+  if(!["joint","own","partner"].includes(value))halt();
+  current.audience=value;
+  return refresh(); // Recheck identity and verified server scope.
  };
  const thisSafeFilter=(key,value)=>{
   if(!allowFilters||!["companyId","teamId","uid","productId"].includes(key)||
@@ -293,7 +350,7 @@ export function createVerifiedDualCountController({
    });
    if(identity!==auth.currentUser||token!==generation||closed)halt();
    const data=validate(result);
-   renderVerifiedDualCountDashboard({document,root,payload:data});
+   renderVerifiedDualCountDashboard({document,root,payload:data,audience:current.audience});
    const toolbar=el(document,"section","nico-dual-controls");
    function option(select,value,title){
     const o=el(document,"option","",title);o.value=value;select.appendChild(o);
@@ -313,6 +370,10 @@ export function createVerifiedDualCountController({
    selectControl("集計期間",current.period,[
     ["day","日"],["week","週"],["month","月"]
    ].filter(([value])=>permitted.has(value)),value=>thisSafePeriod(value));
+   if(data.role==="hub_owner")
+    selectControl("ランキング範囲",current.audience,[
+     ["joint","合同"],["own","自社のみ"],["partner","協力店のみ"]
+    ],value=>thisSafeAudience(value));
    const dayWrap=el(document,"label","nico-dual-control");
    const monthOnly=permitted.size===1&&permitted.has("month");
    add(dayWrap,document,"span","",monthOnly?"対象月":"基準日");
@@ -372,6 +433,10 @@ export function createVerifiedDualCountController({
   setFilter(key,value){
    if(closed)halt();
    return thisSafeFilter(key,value??"");
+  },
+  setAudience(value){
+   if(closed)halt();
+   return thisSafeAudience(value);
   },
   onAuthChange(){generation++;clear();},
   destroy(){closed=true;generation++;clear();}
