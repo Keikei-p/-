@@ -12561,6 +12561,7 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
 let ownerPartnerCorrectionNonce=0;
 function openOwnerPartnerCountEditor(parent,company){
  const nonce=++ownerPartnerCorrectionNonce;
+ const initiatingOwnerUid=auth.currentUser?.uid;
  const old=parent.querySelector("#ownerPartnerCorrectionPanel");
  if(old)old.remove();
  const editor=document.createElement("section");
@@ -12592,7 +12593,7 @@ function openOwnerPartnerCountEditor(parent,company){
  parent.append(editor);
  let snapshot=null,busy=false;
  const stillHere=()=>nonce<=ownerPartnerCorrectionNonce&&editor.isConnected&&
-  auth.currentUser?.uid&&isCurrentCompanyOwner()&&
+  auth.currentUser?.uid===initiatingOwnerUid&&isCurrentCompanyOwner()&&
   currentCompanyData?.companyKind!=="partner";
  const render=()=>{
   fields.replaceChildren();
