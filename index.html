@@ -34169,6 +34169,26 @@ function renderTeamRanking(
    商材別
 ===================================================== */
 
+// Owner-only, read-only comparison of ORIGINAL saved counts and SKU rows.
+// Never infer a contractual count, backfill a missing SKU, or modify pricing.
+// Returned values remain local to the existing protected internal UI.
+function inspectStoredRecordCountMismatch(record) {
+  if (!record || !record.results ||
+      typeof record.results !== "object" || Array.isArray(record.results) ||
+      !Number.isSafeInteger(record.totalCount) || record.totalCount < 0)
+    return null;
+  let lineCount = 0;
+  for (const item of Object.values(record.results)) {
+    if (!item || !Number.isSafeInteger(item.count) ||
+        item.count < 0 || !Number.isSafeInteger(lineCount + item.count))
+      return null; // unknown source, never treat malformed counts as zero
+    lineCount += item.count;
+  }
+  if (lineCount === record.totalCount) return null;
+  return {savedCount:record.totalCount,detailCount:lineCount,
+    difference:lineCount - record.totalCount};
+}
+
 function auditSavedRevenueRates(monthlyRecords, productCatalog) {
   const findings = [];
   const productsById = new Map((productCatalog || []).map(p => [p.id,p]));
@@ -34276,6 +34296,43 @@ function renderProductSummary(
       const currentRows = (records || []).filter(row =>
         typeof row.date === "string" && row.date.startsWith(month + "-"));
       const warnings = auditSavedRevenueRates(currentRows, products);
+      const mismatches = currentRows.map(record => ({
+        record, comparison:inspectStoredRecordCountMismatch(record)
+      })).filter(item => item.comparison);
+      if (mismatches.length) {
+        const reviewPanel = document.createElement("div");
+        reviewPanel.className = "summary-row";
+        reviewPanel.style.display = "block";
+        const title = document.createElement("strong");
+        title.textContent = "⚠️ 保存件数と商材明細が不一致：" +
+          mismatches.length + "件（Owner確認が必要・未訂正）";
+        reviewPanel.appendChild(title);
+        const explanation = document.createElement("p");
+        explanation.textContent =
+          "正しい契約件数を推測せず、保存原票・訂正履歴を照合してください。通常編集で自動修復しません。";
+        reviewPanel.appendChild(explanation);
+        for (const {record,comparison} of mismatches.slice(0,20)) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "edit-product-button";
+          button.style.display = "block";
+          button.style.marginTop = "6px";
+          button.textContent = String(record.date || "日付不明") + " / " +
+            getCurrentMemberName(record) + "：保存" +
+            comparison.savedCount + "件・明細" +
+            comparison.detailCount + "件（履歴を確認）";
+          button.onclick = () => {
+            if (!isCurrentCompanyOwner() ||
+                !canCurrentUserViewProductRevenue() ||
+                dashboardMonth.value !== month) return;
+            recordHistoryDate.value = record.date;
+            renderRecordHistory(currentRecordHistoryMonthly);
+            recordHistoryList.scrollIntoView?.({behavior:"smooth",block:"start"});
+          };
+          reviewPanel.appendChild(button);
+        }
+        productSummaryList.appendChild(reviewPanel);
+      }
       if (warnings.length) {
         const panel = document.createElement("div");
         panel.className = "summary-row";
@@ -35869,7 +35926,18 @@ function renderRecordHistory(
       `;
 
 
-      const canCorrect =
+      const mismatch = isCurrentCompanyOwner() &&
+        canCurrentUserViewProductRevenue()
+        ? inspectStoredRecordCountMismatch(record) : null;
+      if (mismatch) {
+        const warning = document.createElement("div");
+        warning.className = "history-product";
+        warning.textContent = "⚠️ 原票不一致：保存総件数 " +
+          mismatch.savedCount + "件 / 商材明細 " +
+          mismatch.detailCount + "件。通常編集禁止・Ownerが訂正履歴を照合";
+        item.appendChild(warning);
+      }
+      const canCorrect = !mismatch &&
         canCurrentUserCorrectRecord(
           record
         );
