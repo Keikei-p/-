@@ -317,11 +317,27 @@ test("a company without a submitted record never ties a submitted zero in public
   const before=structuredClone(input);
   const hub=buildFn(input);
   assert.equal(hub.companyBreakdown.find(x=>x.id==="partner").count,0);
+  assert.equal(hub.companyBreakdown.find(x=>x.id==="partner").hasVerifiedSubmission,false);
+  assert.equal(hub.companyBreakdown.find(x=>x.id==="hub").hasVerifiedSubmission,true);
   const partner=buildFn({...input,context:auth("partner_owner")});
   assert.equal(partner.own.count,0);
   assert.deepEqual(partner.publicRanking.companies,
    [{rank:1,name:"自社",count:1}]);
   assert(!partner.publicRanking.members.some(x=>x.company==="協力店A"));
   assert.deepEqual(input,before,"unreported companies are never zero-filled");
+ }
+});
+
+
+test("saved zero company is ranked, unreported company is not",()=>{
+ for(const buildFn of [buildVerifiedCountDashboard,buildVendorDashboard]){
+  const input=fixture(0);
+  input.sources[0].records=[];input.sources[0].lines=[];
+  const original=structuredClone(input),owner=buildFn(input);
+  assert.equal(owner.companyBreakdown.find(x=>x.id==="hub").hasVerifiedSubmission,false);
+  assert.equal(owner.companyBreakdown.find(x=>x.id==="partner").hasVerifiedSubmission,true);
+  const partner=buildFn({...input,context:auth("partner_owner")});
+  assert.deepEqual(partner.publicRanking.companies,[{rank:1,name:"協力店A",count:0}]);
+  assert.deepEqual(input,original);
  }
 });
