@@ -174,6 +174,7 @@ test("archived partner's registered report remains Owner-correctable without rea
  assert(selector);
  assert.equal(selector.options.length,1,
   "registered archived employee remains selectable, unreported staff are excluded");
+ assert.match(selector.options[0].textContent,/退職・無効化済み/);
  const input=panel.querySelectorAll("input[data-count-key]")[0];
  assert.equal(input.dataset.countKey,"NURO");
  input.value="6";
