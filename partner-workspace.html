@@ -316,7 +316,8 @@ font:inherit;font-size:13px;line-height:1.6}
  <h2>🏆 協力店の件数ランキング</h2>
  <p class="partner-panel-note">承認済み・公開ON商材の件数のみ。直営の実績は未統合です。未報告と0件は区別します。</p>
  <div class="row">
-  <div><label for="approvedSharedRankPeriod">期間</label><select id="approvedSharedRankPeriod"><option value="month">月別</option><option value="day">日別</option></select></div>
+  <div><label for="approvedSharedRankPeriod">期間</label><select id="approvedSharedRankPeriod"><option value="month">月別</option><option value="week">週別</option><option value="day">日別</option></select></div>
+  <div id="approvedSharedRankDayBox" hidden><label for="approvedSharedRankDay">対象日・週の基準日</label><input id="approvedSharedRankDay" type="date"></div>
   <div><label for="approvedSharedRankMonth">対象月</label><input id="approvedSharedRankMonth" type="month"></div>
   <button id="approvedSharedRankRefresh" type="button">合同件数を更新</button>
  </div>
@@ -614,13 +615,25 @@ async function loadApprovedCountRanking(){
  const identity=auth.currentUser,session=activeCodeSession,company=workspaceCompanyId;
  const month=$("approvedSharedRankMonth").value,
        period=$("approvedSharedRankPeriod").value;
- if(!/^20\d\d-(0[1-9]|1[0-2])$/.test(month)||!["day","month"].includes(period))return;
+ if(!/^20\d\d-(0[1-9]|1[0-2])$/.test(month)||
+    !["day","week","month"].includes(period))return;
  const today=[dateParts.year,dateParts.month,dateParts.day].join("-");
  const date=period==="month"?(month===today.slice(0,7)?today:
   new Date(Date.UTC(+month.slice(0,4),+month.slice(5,7),0)).toISOString().slice(0,10)):
-  $("date").value;
- const start=period==="month"?month+"-01":date,end=date;
- if(date>today||date.slice(0,7)!==month)return;
+  $("approvedSharedRankDay").value;
+ if(!/^20\d\d-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(date)||
+    new Date(date+"T12:00:00Z").toISOString().slice(0,10)!==date||
+    date>today||date.slice(0,7)!==month)return;
+ // Monday to Sunday; the existing count API reads both months when needed.
+ // Current incomplete week stops at today's authoritative Japan date.
+ const monday=new Date(date+"T12:00:00Z");
+ monday.setUTCDate(monday.getUTCDate()-((monday.getUTCDay()+6)%7));
+ const sunday=new Date(monday);
+ sunday.setUTCDate(sunday.getUTCDate()+6);
+ const start=period==="month"?month+"-01":
+  period==="week"?monday.toISOString().slice(0,10):date;
+ const last=period==="week"?sunday.toISOString().slice(0,10):date;
+ const end=period==="month"?date:last>today?today:last;
  approvedRankData=null;
  for(const suffix of approvedRankIds)$("approvedSharedRank"+suffix).replaceChildren();
  $("approvedSharedRankCompanySelect").replaceChildren();
@@ -640,6 +653,22 @@ async function loadApprovedCountRanking(){
 }
 $("approvedSharedRankCompanySelect").onchange=renderApprovedCountRankingDetails;
 $("approvedSharedRankRefresh").onclick=()=>void loadApprovedCountRanking();
+$("approvedSharedRankPeriod").onchange=()=>{
+ $("approvedSharedRankDayBox").hidden=$("approvedSharedRankPeriod").value==="month";
+};
+$("approvedSharedRankMonth").onchange=()=>{
+ const month=$("approvedSharedRankMonth").value;
+ if(!/^20\d\d-(0[1-9]|1[0-2])$/.test(month))return;
+ const last=new Date(Date.UTC(+month.slice(0,4),+month.slice(5,7),0))
+  .toISOString().slice(0,10);
+ const today=[dateParts.year,dateParts.month,dateParts.day].join("-");
+ $("approvedSharedRankDay").value=last>today?today:last;
+};
+$("approvedSharedRankDay").onchange=()=>{
+ const day=$("approvedSharedRankDay").value;
+ if(/^20\d\d-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(day))
+  $("approvedSharedRankMonth").value=day.slice(0,7);
+};
 
 const KEYS=["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"];
 let inviteToken=new URL(location.href).searchParams.get("invite")||"";
@@ -647,6 +676,8 @@ const dateParts=Object.fromEntries(new Intl.DateTimeFormat("en-US",
 {timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"})
 .formatToParts(new Date()).map(p=>[p.type,p.value]));
 $("date").value=[dateParts.year,dateParts.month,dateParts.day].join("-");
+$("approvedSharedRankDay").value=$("date").value;
+$("approvedSharedRankDay").max=$("date").value;
 let data=null,loading=false,nonce=0,activeWorkspaceTab="Dashboard",companyCodeSession=false;
 let activeCodeSession="";
 try{activeCodeSession=sessionStorage.getItem("nicoPartnerCodeSession")||""}catch{}
