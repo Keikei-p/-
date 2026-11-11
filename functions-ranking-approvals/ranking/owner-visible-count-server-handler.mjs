@@ -113,7 +113,7 @@ export function createStagedOwnerVisibleCountHandler({
    // spanning canonical counts and owner publication. The legacy staged
    // loader remains for offline tests, but is NOT production-release ready.
    let input,publication;
-   if(secondMonth&&!atomic)throw new Block();
+   if(secondMonth&&!atomic)throw new Block(400);
    if(atomic){
     const pair=await loadAtomicVerifiedCountSnapshot({month,context,secondMonth});
     input=pair?.input;publication=pair?.publication;
