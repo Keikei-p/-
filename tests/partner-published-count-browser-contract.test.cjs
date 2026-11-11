@@ -110,3 +110,21 @@ test("Owner correction editor excludes unreported staff and retains original log
  assert.match(owner,/includeOwnerCorrectionEntries:true/);
  assert.doesNotMatch(owner,/signInWithEmailAndPassword|updateDoc\(|deleteDoc\(/);
 });
+
+test("joint count dashboard is present in both original audiences but never fetches while hard OFF",async()=>{
+ assert.match(index,/id="nicoVerifiedSameAppHubJointMonth" hidden/);
+ assert.match(index,/id="nicoVerifiedSameAppPartnerJointMonth" hidden/);
+ assert.match(index,/const NICO_SAME_APP_JOINT_COUNT_MONTH_RELEASED=false;/);
+ const start=index.indexOf("const NICO_SAME_APP_JOINT_COUNT_MONTH_RELEASED=false;");
+ const end=index.indexOf("let partnerInlineData=",start);
+ assert(start>0&&end>start);
+ const sandbox={
+  window:{get location(){throw Error("NETWORK_OR_ORIGIN_ACCESSED");}},
+  document:{getElementById(){throw Error("DOM_READ_ON_DISABLED_RELEASE");}}
+ };
+ vm.runInNewContext(index.slice(start,end)+"\nthis.mount=mountSameAppJointMonth;",sandbox,{timeout:1000});
+ await sandbox.mount("hub");
+ await sandbox.mount("partner");
+ assert(!index.includes("NICO_SAME_APP_JOINT_COUNT_MONTH_RELEASED=true"),
+  "browser may not activate its own release gate");
+});
