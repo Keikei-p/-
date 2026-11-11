@@ -133,7 +133,7 @@ test('Hidden team revenue is labeled hidden instead of showing a false zero', ()
 
 test('Transactional correction replaces results and preserves metadata', async () => {
   for (const results of [{A:{count:1,revenuePerUnit:100}}, {C:{count:4,revenuePerUnit:300}}, {}]) {
-    let stored={companyId:'c',uid:'u',date:'2026-10-06',teamId:'a',createdAt:'keep',createdByUid:'creator',custom:'keep',results:{A:{count:3},B:{count:2}}};
+    let stored={companyId:'c',uid:'u',date:'2026-10-06',teamId:'a',createdAt:'keep',createdByUid:'creator',custom:'keep',totalCount:5,totalRevenue:500,results:{A:{count:3,revenuePerUnit:100},B:{count:2,revenuePerUnit:100}}};
     const before=structuredClone(stored);
     const data={results,totalCount:Object.values(results).reduce((n,r)=>n+r.count,0),
       totalRevenue:Object.values(results).reduce((n,r)=>n+r.count*r.revenuePerUnit,0)};
@@ -1431,7 +1431,7 @@ test('Sales correction and its audit must be written in one atomic transaction',
   const next={...old,totalCount:3,totalRevenue:300,results:{x:{count:3,revenuePerUnit:100}}};
   let committed=[],readRecord=structuredClone(old);
   const transactions=[];
-  const ctx=context(['persistDailyRecord','recordRevision','recordConflict'],{
+  const ctx=context(['persistDailyRecord','recordRevision','recordConflict','validateFinancialRecordForSave'],{
     db:{},recordsCollectionQuery:()=>({}),query:()=>({}),where:()=>({}),
     getDocsFromServer:async()=>({size:1,docs:[{id:'r'}]}),
     runTransaction:async(_db,cb)=>{
@@ -1455,6 +1455,27 @@ test('Sales correction and its audit must be written in one atomic transaction',
   await assert.rejects(ctx.persistDailyRecord({id:'r'},next,old,ctx.recordRevision(old),writeAudit),{code:'record-conflict'});
   assert.deepEqual(committed,[],'no stale overwrite when source record changed');
 });
+test('Existing inconsistent original with stale extra SKU cannot be overwritten or corrected without Owner review',async()=>{
+ const original={companyId:'c',uid:'u',date:'2026-10-06',teamId:'a',
+  totalCount:2,totalRevenue:200,
+  results:{x:{count:2,revenuePerUnit:100},
+   stale:{count:1,revenuePerUnit:100}}};
+ const attempted={...original,results:{x:{count:2,revenuePerUnit:100}}};
+ const ctx=context(['persistDailyRecord','recordRevision','recordConflict',
+  'validateFinancialRecordForSave'],{
+  db:{},recordsCollectionQuery:()=>({}),query:()=>({}),where:()=>({}),
+  getDocsFromServer:async()=>({size:1,docs:[{id:'r'}]}),
+  runTransaction:async(_db,cb)=>cb({
+   get:async()=>({exists:()=>true,id:'r',data:()=>structuredClone(original)}),
+   set:()=>{throw Error('UNEXPECTED_WRITE');}
+  })
+ });
+ await assert.rejects(ctx.persistDailyRecord({id:'r'},attempted,original,
+  ctx.recordRevision(original)),{code:'record-conflict'});
+ assert.equal(Object.keys(original.results).length,2,
+  'no automatic removal of historical stale line or revision');
+});
+
 test('Sales form always delegates the correction audit to the transaction, never separate setDoc',()=>{
  const begin=html.indexOf('validateFinancialRecordForSave(data);');
  const end=html.indexOf('保存完了後に同じドキュメントを読み直し',begin);
