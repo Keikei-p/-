@@ -84,3 +84,18 @@ test("same-app joint count runtime assets are in the manually staged Hosting pac
  }
  assert.doesNotMatch(workflow,/^  (?:push|pull_request|schedule):/m);
 });
+
+test("manual Hosting cutover retains the existing partner workspace linked by the sales and invite screens",()=>{
+ const file="partner-workspace.html";
+ assert(fs.statSync(path.join(root,file)).isFile(),"partner workspace must remain present");
+ assert(verification.includes("'"+file+"'"),"partner page must be verified before credentials");
+ assert.match(copy,/for f in index\.html[^\n]*partner-invite\.html partner-workspace\.html/);
+ assert.match(copy,/cp "\$f" \.nico-hosting-staging\//);
+ assert.match(copy,/cmp "\$f" "\.nico-hosting-staging\/\$f"/);
+ for(const source of ["index.html","partner-invite.html"]){
+  const html=fs.readFileSync(path.join(root,source),"utf8");
+  assert(html.includes("/partner-workspace.html"),
+   source+" links to partner workspace which must be preserved");
+ }
+ assert(!/\b(?:firestore:rules|functions:)\b/.test(copy));
+});
