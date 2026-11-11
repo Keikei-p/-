@@ -623,21 +623,30 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  // The separate direct-company ranking is intentionally NOT guessed here.
  async function loadSharedPartnerRankings(s,date,period){
   if(sharedRankingEnabled()!==true)fail("unavailable");
-  if(!["day","month"].includes(period))fail("invalid-argument");
+  if(!["day","week","month"].includes(period))fail("invalid-argument");
   const hubId=s.kind==="hub"?s.cid:s.hubId;
   if(!ID.test(hubId||""))fail();
   const today=jstToday(),month=date.slice(0,7);
-  const start=period==="month"?month+"-01":date;
-  const end=period==="month"?
-   (month===today.slice(0,7)?today:
-    new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7)),0)).toISOString().slice(0,10)):
-   date;
+  // A weekly leaderboard must read ALL seven calendar days, even when
+  // the week crosses a month boundary. The existing staff-day and legacy
+  // summary readers already use a bounded, exact date range.
+  const weekMonday=new Date(date+"T12:00:00Z");
+  weekMonday.setUTCDate(weekMonday.getUTCDate()-((weekMonday.getUTCDay()+6)%7));
+  const weekSunday=new Date(weekMonday);
+  weekSunday.setUTCDate(weekSunday.getUTCDate()+6);
+  const start=period==="month"?month+"-01":
+   period==="week"?weekMonday.toISOString().slice(0,10):date;
+  const formalEnd=period==="month"?
+   new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7)),0)).toISOString().slice(0,10):
+   period==="week"?weekSunday.toISOString().slice(0,10):date;
+  const end=formalEnd>today?today:formalEnd;
   if(end<start||end>today)fail("invalid-argument");
   const days=[];
   for(let cursor=new Date(start+"T00:00:00Z");cursor<=new Date(end+"T00:00:00Z");
       cursor.setUTCDate(cursor.getUTCDate()+1))
    days.push(cursor.toISOString().slice(0,10));
-  if(days.length<1||days.length>31)fail("resource-exhausted");
+  if(days.length<1||days.length>31||
+     (period==="week"&&days.length>7))fail("resource-exhausted");
   const [hub,relations,visibility,mapping,publicCatalog]=await Promise.all([
    db.collection("companies").doc(hubId).get(),
    db.collection("partnerRelations").where("hubCompanyId","==",hubId).limit(101).get(),
@@ -766,7 +775,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   if(d.sharedCountRankings!==undefined){
    if(d.sharedCountRankings!==true||
       (d.rankingPeriod!==undefined&&
-       !["day","month"].includes(d.rankingPeriod))||
+       !["day","week","month"].includes(d.rankingPeriod))||
       d.partnerCompanyId!==undefined||d.includeTeamStatus!==undefined)
     fail("invalid-argument");
    return loadSharedPartnerRankings(s,date,d.rankingPeriod||"day");
