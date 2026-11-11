@@ -124,6 +124,9 @@ export function createPartnerSubmissionPublicationGuard({db}={}){
   const policy=validatePolicy({hubId:scope.hubId,partnerId:scope.cid,
    ownerUid:h.ownerUid,visibility,mapping,
    products:publicCatalog.products});
+  // Both write authorization and published rankings must resolve to the
+  // exact same categories. Fail closed on any policy drift; never rewrite
+  // existing counts or silently turn an OFF category into a zero.
   let published;
   try{
    published=allowedPartnerCategories({hubId:scope.hubId,cid:scope.cid,
