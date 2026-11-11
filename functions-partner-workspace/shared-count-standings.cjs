@@ -177,11 +177,16 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
    people.push(...[...pMap.values()].map(x=>({...x,counts:safeCounts(x.counts)})));
   }
  }
+ // Any missing published company/day makes this period provisional. Preserve
+ // read-only count details, but never publish definitive positions for a
+ // partial company, its teams/people, or cross-company product totals.
+ const ranksVerified=unreportedCompanies.length===0;
+ const safeRanks=rows=>ranked(rows).map(row=>ranksVerified?row:{...row,rank:null});
  return {schema:"nico-approved-partner-count-rank-v1",unit:"件",
   scope:"approved_partner_counts_only",includesDirect:false,fullyJoint:false,
-  start,end,companies:ranked(companies),teams:ranked(teams),people:ranked(people),
+  start,end,companies:safeRanks(companies),teams:safeRanks(teams),people:safeRanks(people),
   // Product IDs must never shift when an earlier category is switched OFF.
-  products:ranked(KEYS.flatMap((k,i)=>published.has(k)?
+  products:safeRanks(KEYS.flatMap((k,i)=>published.has(k)?
    [{key:"product-"+(i+1),name:k,totalCount:products[k]}]:[])),
   totalCount,reportCount,unreportedCompanies,
   partnerCountsComplete:unreportedCompanies.length===0&&historicalCompanyOnlyCount===0,
