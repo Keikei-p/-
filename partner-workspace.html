@@ -502,13 +502,16 @@ function resetApprovedRanking(){
  const chooser=$("approvedSharedRankCompanySelect");
  if(chooser)chooser.replaceChildren();
 }
-function verifyApprovedCountRanking(value,start,end){
+function verifyApprovedCountRanking(value,start,end,expected={}){
  if(!value||typeof value!=="object"||Array.isArray(value)||
   value.schema!=="nico-approved-partner-count-rank-v1"||
   value.unit!=="件"||value.scope!=="approved_partner_counts_only"||
   value.fullyJoint!==false||value.includesDirect!==false||
   value.start!==start||value.end!==end||
-  !["hub","partner"].includes(value.role)||!Array.isArray(value.companies)||
+  !["hub","partner"].includes(value.role)||
+  (expected.role!==undefined&&value.role!==expected.role)||
+  (expected.period!==undefined&&value.period!==expected.period)||
+  !Array.isArray(value.companies)||
   !Array.isArray(value.teams)||!Array.isArray(value.people)||
   !Array.isArray(value.products)||!Array.isArray(value.unreportedCompanies)||
   !Number.isSafeInteger(value.totalCount)||value.totalCount<0)
@@ -642,7 +645,9 @@ async function loadApprovedCountRanking(){
   const value=(await get({date,rankingPeriod:period,sharedCountRankings:true})).data;
   if(gen!==approvedRankGeneration||auth.currentUser!==identity||
    activeCodeSession!==session||workspaceCompanyId!==company)return;
-  approvedRankData=verifyApprovedCountRanking(value,start,end);
+  approvedRankData=verifyApprovedCountRanking(value,start,end,{
+   period,role:data.role==="hub"?"hub":"partner"
+  });
   renderApprovedCountRanking(approvedRankData);
  }catch{
   if(gen!==approvedRankGeneration)return;
