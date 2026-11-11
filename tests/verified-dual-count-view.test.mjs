@@ -255,7 +255,7 @@ test("count dashboard DOM visually separates unreported from confirmed zero",()=
   const metric=(row,cls)=>row.children.find(x=>x.className===cls)?.textContent;
   assert.equal(metric(missing,"nico-dual-rank-number"),"—");
   assert.equal(metric(missing,"nico-dual-rank-score"),"未報告");
-  assert.match(metric(reportedZero,"nico-dual-rank-number"),/^[1-9]\\d*位$/);
+  assert.match(metric(reportedZero,"nico-dual-rank-number"),/^[1-9][0-9]*位$/);
   assert.equal(metric(reportedZero,"nico-dual-rank-score"),"0件");
   assert.deepEqual(original,before,"DOM rendering never mutates count originals");
  }
