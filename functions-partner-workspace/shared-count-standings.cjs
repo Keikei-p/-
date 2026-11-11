@@ -38,8 +38,13 @@ function ranked(rows){
 }
 function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
  if(!id(hubId)||!date(start)||!date(end)||start>end||
-    start.slice(0,7)!==end.slice(0,7)||!Array.isArray(sources)||
-    !sources.length||sources.length>20)fail();
+    !Array.isArray(sources)||!sources.length||sources.length>20)fail();
+ // Weekly reports may legitimately cross the end of a month; reject any
+ // longer range rather than silently dropping dates or scanning unbounded
+ // history. The caller supplies ALL daily report snapshots for this window.
+ const windowDays=Math.round(
+  (Date.parse(end+"T00:00:00Z")-Date.parse(start+"T00:00:00Z"))/86400000)+1;
+ if(!Number.isSafeInteger(windowDays)||windowDays<1||windowDays>31)fail();
  const seen=new Set(),companies=[],teams=[],people=[],products=zero(),published=new Set(),unreportedCompanies=[];
  let totalCount=0,reportCount=0,unverifiedTeamCount=0,
   unverifiedPersonCount=0,historicalCompanyOnlyCount=0;
@@ -114,9 +119,7 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
   // The production reader supplies one daily status for every day of a
   // requested month. Reject truncated partial source arrays, which otherwise
   // could silently appear complete with a lower month total.
-  const expectedDays=Math.round(
-   (Date.parse(end+"T00:00:00Z")-Date.parse(start+"T00:00:00Z"))/86400000)+1;
-  if(s.reports.length&&s.reports.length!==expectedDays)fail();
+  if(s.reports.length&&s.reports.length!==windowDays)fail();
   for(const r of s.reports){
    if(!r||!date(r.date)||r.date<start||r.date>end||reports.has(r.date))fail();
    reports.add(r.date);
