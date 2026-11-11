@@ -992,8 +992,10 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
        KEYS.every(key=>aggregate.counts[key]===reportedCategories[key]):
        seenStaff.size===0);
      const teams=[...status.values()].map(team=>({
-      ...team,status:team.reportedStaffCount>0?"submitted":
-       !consistent?"unverified":
+      // A submitted row is not independently verified when its saved
+      // product counts disagree with the company's original day report.
+      ...team,status:!consistent?"unverified":
+       team.reportedStaffCount>0?"submitted":
        team.staffCount>0?"missing":"not_expected"
      }));
      teamReports.push({partnerCompanyId:cid,name:company.name,
