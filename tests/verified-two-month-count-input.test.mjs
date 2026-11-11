@@ -95,6 +95,9 @@ test("tampered clock, scope, SKU mapping, duplicate record, and identities fail 
   x=>{x.primary.period.asOf="2026-11-31";},
   x=>{x.primary.snapshotReadTime=undefined;x.secondary.snapshotReadTime=undefined;
    for(const s of [...x.primary.sources,...x.secondary.sources])s.readTime=undefined;},
+  x=>{x.primary.snapshotReadTime="2026-11-31T12:00:00.000Z";
+   x.secondary.snapshotReadTime="2026-11-31T12:00:00.000Z";
+   for(const s of [...x.primary.sources,...x.secondary.sources])s.readTime="2026-11-31T12:00:00.000Z";},
   x=>{x.primary.snapshotReadTime="not-a-timestamp";
    x.secondary.snapshotReadTime="not-a-timestamp";
    for(const s of [...x.primary.sources,...x.secondary.sources])s.readTime="not-a-timestamp";}
