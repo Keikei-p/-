@@ -1875,6 +1875,8 @@ test("hub company/team counts detect SKU swaps that preserve the overall total",
   "equal total must not hide category-specific count mismatch");
  const status=await api.view(req("h",{date,includeTeamStatus:true}));
  assert.equal(status.teamReports[0].verified,false);
+ assert.equal(status.teamReports[0].teams.find(x=>x.id===team).status,"unverified",
+  "a submitted team with wrong SKU mapping cannot be stamped verified");
  assert.deepEqual([...db.store],before,"read-only checks may not repair a summary");
  assert.deepEqual(db.store.get(entryPath),entry);
  assert.equal(db.store.get("products/money").unitPrice,98765);
