@@ -118,8 +118,8 @@ test("old partner UI weekly switch requests exactly the cross-month Monday-Sunda
   workspaceCompanyId:"partner",dateParts:{year:"2026",month:"10",day:"31"},
   approvedRankIds:["Companies","Teams","People","Products","Details"],
   get:async args=>{captured=args;return {data:{safe:true}}},
-  verifyApprovedCountRanking:(value,start,end)=>{
-   ranges={start,end};return value;
+  verifyApprovedCountRanking:(value,start,end,expected)=>{
+   ranges={start,end,expected};return value;
   },
   renderApprovedCountRanking:()=>{rendered++}
  };
@@ -130,7 +130,21 @@ test("old partner UI weekly switch requests exactly the cross-month Monday-Sunda
  assert.equal(captured.date,"2026-10-01");
  assert.equal(captured.rankingPeriod,"week");
  assert.equal(captured.sharedCountRankings,true);
- assert.deepEqual(ranges,{start:"2026-09-28",end:"2026-10-04"});
+ assert.deepEqual(ranges,{start:"2026-09-28",end:"2026-10-04",
+  expected:{period:"week",role:"partner"}});
  assert.equal(rendered,1);
  assert.doesNotMatch($("approvedSharedRankStatus").textContent,/件数を検証できません/);
+});
+
+test("approved partner rankings reject mismatched authenticated role or selected period",()=>{
+ const response=base();
+ assert.equal(verify(response,"2026-10-31","2026-10-31",{
+  period:"day",role:"partner"
+ }),response);
+ assert.throws(()=>verify(response,"2026-10-31","2026-10-31",{
+  period:"week",role:"partner"
+ }),/UNVERIFIED/);
+ assert.throws(()=>verify(response,"2026-10-31","2026-10-31",{
+  period:"day",role:"hub"
+ }),/UNVERIFIED/);
 });
