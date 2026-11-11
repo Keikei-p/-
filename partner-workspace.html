@@ -550,6 +550,17 @@ function verifyApprovedCountRanking(value,start,end){
   });
  };
  for(const k of ["companies","teams","people","products"])verifyRows(value[k]);
+ const rankedKeys=new Set(value.companies.map(x=>x.key));
+ for(const row of value.unreportedCompanies){
+  if(!row||typeof row!=="object"||Array.isArray(row)||
+     Object.keys(row).sort().join("|")!=="key|name|status"||
+     !["not_reported","partial_report"].includes(row.status)||
+     typeof row.key!=="string"||!row.key||
+     typeof row.name!=="string"||!row.name.trim()||
+     (row.status==="partial_report"&&!rankedKeys.has(row.key))||
+     (row.status==="not_reported"&&rankedKeys.has(row.key)))
+   throw Error("UNVERIFIED_APPROVED_COUNT_REPORT_STATUS");
+ }
  return value;
 }
 function renderApprovedCountRanking(value){
@@ -571,10 +582,12 @@ function renderApprovedCountRanking(value){
  }
  if(value.companies.some(x=>x.key===old))chooser.value=old;
  renderApprovedCountRankingDetails();
- const missing=value.unreportedCompanies.length;
+ const missing=value.unreportedCompanies.filter(x=>x.status==="not_reported").length;
+ const partial=value.unreportedCompanies.filter(x=>x.status==="partial_report").length;
  $("approvedSharedRankStatus").textContent=value.start+"〜"+value.end+
   "｜報告のある会社 "+value.companies.length+
   "社｜未報告 "+missing+"社"+
+  (partial?"｜一部未報告 "+partial+"社":"")+
   (value.partnerCountsComplete?"｜件数照合済み":"｜一部未確認")+
   (value.unverifiedTeamCount?"｜班未確認 "+value.unverifiedTeamCount+"件":"")+
   (value.historicalCompanyOnlyCount?"｜旧会社一括 "+value.historicalCompanyOnlyCount+"件":"");
