@@ -20,7 +20,7 @@ const validDay=x=>{
  return day.getUTCFullYear()===y&&day.getUTCMonth()+1===m&&day.getUTCDate()===d;
 };
 const validReadTime=x=>typeof x==="string"&&TIME.test(x)&&
- Number.isFinite(Date.parse(x));
+ validDay(x.slice(0,10))&&Number.isFinite(Date.parse(x));
 function monthDistance(a,b){
  if(!MONTH.test(a)||!MONTH.test(b)||a===b)reject();
  const [ay,am]=a.split("-").map(Number),[by,bm]=b.split("-").map(Number);
