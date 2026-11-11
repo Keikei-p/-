@@ -377,6 +377,17 @@ export function buildVerifiedCountDashboard({
   hasVerifiedSubmission:submittedCompanies.has(x.id)}))
   .sort((a,b)=>a.kind==="自社"?-1:
    b.kind==="自社"?1:a.name.localeCompare(b.name,"ja"));
+ // The hub dashboard needs the same competition ranks as the partner view.
+ // An unreported company remains visible for management but has no rank.
+ // Preserve the existing self-first management display order.
+ const verifiedCompanyRanks=new Map(ordered(
+  companyRows.filter(x=>x.hasVerifiedSubmission),x=>x.count)
+  .map(x=>[x.id,x.rank]));
+ const ownerCompanyBreakdown=companyRows.map(x=>({...x,
+  rank:verifiedCompanyRanks.get(x.id)??null}));
+ // Every team here comes from a verified submitted record, including
+ // an explicitly submitted zero. Never invent teams for missing reports.
+ const ownerTeamBreakdown=ordered([...teams.values()],x=>x.count);
  const self=companyRows.find(x=>x.id===hubCompanyId)?.count??0;
  const total=companyRows.reduce((a,b)=>add(a,b.count),0);
  if(total!==rankedProducts.reduce((a,p)=>add(a,p.count),0))stop();
@@ -388,7 +399,7 @@ export function buildVerifiedCountDashboard({
   productRanking:rankedProducts};
  if(context.role==="hub_owner"){
   const data={...common,role:"hub_owner",
-   companyBreakdown:companyRows,teamBreakdown:[...teams.values()],
+   companyBreakdown:ownerCompanyBreakdown,teamBreakdown:ownerTeamBreakdown,
    filters:{...filters}};
   auditNoFinancialKeys(data);
   return data;

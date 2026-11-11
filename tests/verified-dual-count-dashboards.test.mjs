@@ -121,6 +121,23 @@ test("period selections use actual day/week/month boundaries, month-to-date prev
  assert.equal(jan.range.previousStart,"2026-12-01");
  assert.equal(jan.range.previousEnd,"2026-12-31");
 });
+test("hub company/team rankings use competition ties and exclude unreported from official ranks",()=>{
+ const tied=build(fixture(1));
+ assert.deepEqual(tied.companyBreakdown.map(x=>[x.id,x.rank,x.count]),
+  [["hub",1,1],["partner",1,1]]);
+ assert.deepEqual(tied.teamBreakdown.map(x=>[x.companyId,x.rank,x.count]),
+  [["hub",1,1],["partner",1,1]]);
+ const absent=fixture(2);
+ absent.sources[1].records=[];
+ absent.sources[1].lines=[];
+ const noReport=build(absent);
+ assert.equal(noReport.companyBreakdown.find(x=>x.id==="partner").rank,null);
+ assert.equal(noReport.companyBreakdown.find(x=>x.id==="partner").hasVerifiedSubmission,false);
+ assert.equal(noReport.teamBreakdown.some(x=>x.companyId==="partner"),false);
+ const zero=build(fixture(0));
+ assert.equal(zero.companyBreakdown.find(x=>x.id==="partner").rank,2);
+ assert.equal(zero.teamBreakdown.find(x=>x.companyId==="partner").rank,2);
+});
 test("owner company/team/product split; partner gets own detail and only approved public name+rank+count",()=>{
  const x=fixture(3);
  x.personGoals=[{companyId:"partner",uid:"p1",goalCount:8}];
