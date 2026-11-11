@@ -54,7 +54,8 @@ function shape(value){
    if(!Number.isSafeInteger(value.summary[k])||value.summary[k]<0)halt();
   }
   if(value.summary.own+value.summary.partner!==value.summary.total)halt();
-  list(value.companyBreakdown,["id","name","kind","count","unidentifiedCount"]);
+  list(value.companyBreakdown,["id","name","kind","count","unidentifiedCount","hasVerifiedSubmission"]);
+  if(value.companyBreakdown.some(x=>typeof x.hasVerifiedSubmission!=="boolean"))halt();
   list(value.teamBreakdown,["id","companyId","companyName","name","count"]);
   list(value.memberRanking,PERSON);
   list(value.productRanking,PRODUCT);
@@ -249,7 +250,8 @@ export function renderVerifiedDualCountDashboard({document,root,payload,audience
    for(const row of board.companies){
     const line=el(document,"div","nico-dual-company-row");
     add(line,document,"span","nico-dual-company-name",row.name+"（"+row.kind+"）");
-    add(line,document,"strong","nico-dual-company-count",row.count+"件");
+    add(line,document,"strong","nico-dual-company-count",
+     row.hasVerifiedSubmission?row.count+"件":"未報告");
     companies.appendChild(line);
    }
    page.appendChild(companies);
@@ -263,7 +265,7 @@ export function renderVerifiedDualCountDashboard({document,root,payload,audience
    }
    page.appendChild(teams);
    page.appendChild(ranked(document,"会社ランキング",
-    competitionFromBreakdown(board.companies,x=>({
+    competitionFromBreakdown(board.companies.filter(x=>x.hasVerifiedSubmission),x=>({
      name:x.name,count:x.count
     })),"company"));
    page.appendChild(ranked(document,"班ランキング",
