@@ -93,3 +93,43 @@ test("shared ranking UI refuses contradictory or forged partial report status",(
    "2026-10-31","2026-10-31"),/UNVERIFIED/);
  }
 });
+
+
+test("old partner UI weekly switch requests exactly the cross-month Monday-Sunday interval",async()=>{
+ assert.match(html,/id="approvedSharedRankPeriod"[^>]*>[^\n]*value="week"/);
+ assert.match(html,/id="approvedSharedRankDay" type="date"/);
+ const start=html.indexOf("async function loadApprovedCountRanking(){");
+ const end=html.indexOf('\n$("approvedSharedRankCompanySelect").onchange=',start);
+ assert(start>=0&&end>start,"reviewed count-only weekly load handler exists");
+ const source=html.slice(start,end);
+ const el=Object.create(null),user={uid:"partnerOwner"};
+ const $=id=>{
+  if(!el[id])el[id]={value:"",hidden:false,textContent:"",
+   replaceChildren(){this.children=[]},children:[]};
+  return el[id];
+ };
+ $("approvedSharedRankMonth").value="2026-10";
+ $("approvedSharedRankPeriod").value="week";
+ $("approvedSharedRankDay").value="2026-10-01";
+ let captured=null,ranges=null,rendered=0;
+ const sandbox={
+  $,NICO_APPROVED_PARTNER_RANKING_RELEASED:true,
+  data:{role:"owner"},auth:{currentUser:user},activeCodeSession:"",
+  workspaceCompanyId:"partner",dateParts:{year:"2026",month:"10",day:"31"},
+  get:async args=>{captured=args;return {data:{safe:true}}},
+  verifyApprovedCountRanking:(value,start,end)=>{
+   ranges={start,end};return value;
+  },
+  renderApprovedCountRanking:()=>{rendered++}
+ };
+ const ctx=vm.createContext(sandbox);
+ vm.runInContext('let approvedRankGeneration=0,approvedRankData=null;\n'+
+  source+'\nthis.loadApprovedCountRanking=loadApprovedCountRanking;',ctx);
+ await sandbox.loadApprovedCountRanking();
+ assert.equal(captured.date,"2026-10-01");
+ assert.equal(captured.rankingPeriod,"week");
+ assert.equal(captured.sharedCountRankings,true);
+ assert.deepEqual(ranges,{start:"2026-09-28",end:"2026-10-04"});
+ assert.equal(rendered,1);
+ assert.equal($("approvedSharedRankStatus").textContent,"");
+});
