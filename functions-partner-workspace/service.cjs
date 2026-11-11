@@ -1118,6 +1118,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    // Never mix per-person entries with the earlier one-total-per-partner UI.
    if(totalSnap.exists&&existing.source!=="staff-entries-v1")fail("failed-precondition");
    const previousPrivate=oldSnap.exists?validatePrivateCounts(old.privateCounts||{}).counts:{};
+   if(ownerCorrection&&old.privateTotalCount!==
+      validatePrivateCounts(previousPrivate).total)fail("data-loss");
    const privateNext={...previousPrivate,...(requestedPrivate||{})};
    const privateValidated=validatePrivateCounts(privateNext);
    const prior=oldSnap.exists?validateCounts(old.counts).counts:
