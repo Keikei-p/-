@@ -14,7 +14,7 @@ const validCompanyName=x=>typeof x==="string"&&x.trim().length>0&&
  x.trim().length<=80&&!money.test(x);
 const clean=x=>typeof x==="string"?x.trim():"";
 function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>false,sharedRankingEnabled=()=>false,
- submissionPublicationEnabled=()=>false,now=()=>Date.now()}={}){
+ submissionPublicationEnabled=()=>false,ownerCorrectionEnabled=()=>false,now=()=>Date.now()}={}){
  if(!db||!getAuth||!FieldValue||!Timestamp||!HttpsError)throw Error("missing_partner_workspace_dependency");
  const fail=(code="permission-denied")=>{throw new HttpsError(code,"権限・入力内容を確認できません。");};
  const verifySubmissionPublication=createPartnerSubmissionPublicationGuard({db});
@@ -246,7 +246,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     rel.hubCompanyId!==hubId||c.hubCompanyId!==hubId||
     c.companyKind!=="partner"||c.active!==true||
     !validCompanyName(c.name))fail("failed-precondition");
-  return {active:rel.active===true&&rel.countSharingApproved===true};
+  return {active:rel.active===true&&rel.countSharingApproved===true,
+  companyName:clean(c.name)};
  }
  const canStaff=(s,staff)=>{
   return ["owner","leader"].includes(s.role)||
@@ -1010,23 +1011,39 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   const hasPrivateCounts=Object.prototype.hasOwnProperty.call(d,"privateCounts");
   const requestedPrivate=hasPrivateCounts?validatePrivateCounts(d.privateCounts).counts:null;
   const s=await scope(a.uid,null,d.workspaceCompanyId);
-  if(s.kind!=="partner")fail();
+  // Owner correction is an explicit opt-in and never changes identity,
+  // partner membership, sales masters or private partner products.
+  const ownerTarget=d.ownerPartnerCompanyId;
+  const ownerCorrection=ownerTarget!==undefined;
+  if(ownerCorrection){
+   if(!ID.test(ownerTarget)||ownerCorrectionEnabled()!==true||
+      submissionPublicationEnabled()!==true||s.kind!=="hub"||
+      s.role!=="owner"||d.workspaceCompanyId!==undefined||hasPrivateCounts)
+    fail();
+  }else if(s.kind!=="partner")fail();
   return db.runTransaction(async tx=>{
    const fresh=await scope(a.uid,tx,d.workspaceCompanyId);
-   if(fresh.kind!=="partner"||fresh.cid!==s.cid)fail();
-   const sr=staffRef(s.cid,staffId),ss=await tx.get(sr),person=ss.data()||{};
-   if(!ss.exists||person.active!==true||person.companyId!==s.cid||
-      !validName(person.name)||!canStaff(fresh,person))fail();
-   const er=entryRef(s.cid,date,staffId),summary=summaryRef(s.hubId,date,s.cid);
+   let target=fresh;
+   if(ownerCorrection){
+    if(fresh.kind!=="hub"||fresh.role!=="owner"||fresh.cid!==s.cid)fail();
+    const partner=await hubPartner(tx,fresh.cid,ownerTarget);
+    if(!partner.active)fail("failed-precondition");
+    target={kind:"partner",uid:a.uid,cid:ownerTarget,hubId:fresh.cid,
+     companyName:partner.companyName,role:"owner"};
+   }else if(fresh.kind!=="partner"||fresh.cid!==s.cid)fail();
+   const sr=staffRef(target.cid,staffId),ss=await tx.get(sr),person=ss.data()||{};
+   if(!ss.exists||person.active!==true||person.companyId!==target.cid||
+      !validName(person.name)||!canStaff(target,person))fail();
+   const er=entryRef(target.cid,date,staffId),summary=summaryRef(target.hubId,date,target.cid);
    const privateProductIds=Object.keys(requestedPrivate||{});
    // All reads happen before writes. Do not infer product ownership from IDs.
    const [oldSnap,totalSnap,...productSnapshots]=await Promise.all([
     tx.get(er),tx.get(summary),
-    ...privateProductIds.map(id=>tx.get(privateProductRef(s.cid,id)))
+    ...privateProductIds.map(id=>tx.get(privateProductRef(target.cid,id)))
    ]);
    for(let i=0;i<privateProductIds.length;i++){
     const doc=productSnapshots[i],x=doc?.data()||{};
-    if(!doc?.exists||x.companyId!==s.cid||x.origin!=="partner_custom"||
+    if(!doc?.exists||x.companyId!==target.cid||x.origin!=="partner_custom"||
        x.visibility!=="private"||(x.active!==true&&requestedPrivate[privateProductIds[i]]>0))
       fail("failed-precondition");
    }
@@ -1051,7 +1068,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    if(submissionPublicationEnabled()===true){
     try{
      const policy=await verifySubmissionPublication({tx,
-      scope:{verifiedByServer:true,kind:fresh.kind,uid:a.uid,cid:fresh.cid,hubId:fresh.hubId},
+      scope:{verifiedByServer:true,kind:target.kind,uid:a.uid,cid:target.cid,hubId:target.hubId},
       previousCounts:prior,nextCounts:prior});
      const allowed=new Set(policy.enabledCategories);
      effectiveCounts={...counts};
@@ -1081,18 +1098,18 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    if(teamIdSnapshot!==null&&!ID.test(teamIdSnapshot))fail("data-loss");
    if(staffNameSnapshot!==null&&!validName(staffNameSnapshot))fail("data-loss");
    const nowStamp=FieldValue.serverTimestamp(),nextVersion=d.expectedVersion+1;
-   const row={companyId:s.cid,hubCompanyId:s.hubId,staffId,date,
+   const row={companyId:target.cid,hubCompanyId:target.hubId,staffId,date,
      counts:effectiveCounts,totalCount:effectiveTotal,
      privateCounts:privateValidated.counts,privateTotalCount:privateValidated.total,
      version:nextVersion,staffNameSnapshot,teamIdSnapshot,
      updatedByUid:a.uid,updatedAt:nowStamp};
    if(oldSnap.exists)tx.update(er,row);else tx.create(er,{...row,createdAt:nowStamp});
-   const sum={source:"staff-entries-v1",hubCompanyId:s.hubId,partnerCompanyId:s.cid,
-     partnerName:clean(s.companyName),date,counts:aggregate,totalCount:aggregateTotal,
+   const sum={source:"staff-entries-v1",hubCompanyId:target.hubId,partnerCompanyId:target.cid,
+     partnerName:clean(target.companyName),date,counts:aggregate,totalCount:aggregateTotal,
      updatedAt:nowStamp};
    if(!validCompanyName(sum.partnerName))fail();
    if(totalSnap.exists)tx.update(summary,sum);else tx.create(summary,{...sum,createdAt:nowStamp});
-   const audit=collection(s.cid,"partnerWorkAudits").doc(date+"__"+staffId+"__v"+nextVersion);
+   const audit=collection(target.cid,"partnerWorkAudits").doc(date+"__"+staffId+"__v"+nextVersion);
    tx.create(audit,{...row,previousCounts:prior,previousPrivateCounts:previousPrivate,
      createdAt:nowStamp});
    return {saved:true,staffId,date,version:nextVersion,totalCount:total,
