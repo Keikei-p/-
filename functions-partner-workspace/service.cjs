@@ -919,9 +919,14 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    partners.sort((x,y)=>x.name.localeCompare(y.name,"ja"));
    if(partnerTeamDetails){
     const report=partners.find(x=>x.partnerCompanyId===partnerTeamDetails.partnerCompanyId);
-    partnerTeamDetails.unreconciledWithCompanyReport=Boolean(report&&
+    // Missing aggregate + saved per-person entries is an orphaned ledger,
+    // never an OK/verified count comparison. Missing with no entries is
+    // genuinely "not reported", distinct from a submitted 0.
+    partnerTeamDetails.companyReportStatus=report?"submitted":"not_reported";
+    partnerTeamDetails.unreconciledWithCompanyReport=report?
      report.totalCount!==partnerTeamDetails.verifiedSharedCount+
-       partnerTeamDetails.unverifiedTeamCount);
+       partnerTeamDetails.unverifiedTeamCount:
+     entrySnaps.size>0;
    }
    // Extra Firestore reads are opt-in. Default report/dashboard calls retain
    // their existing cost. Only approved hub Owner can invoke this branch.
