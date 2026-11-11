@@ -317,3 +317,31 @@ test("all OFF company reports and legacy-only history have zero public metadata 
  assert.deepEqual(offOnly.unreportedCompanies,[]);
  assert.equal(offOnly.companies.length,0);
 });
+
+
+test("cross-month weekly reports reconcile prior-month staff records without finance leaks",()=>{
+ const counts={...zero(),NURO:3},a=company("a","承認済み会社",counts,{date:"2026-09-30"});
+ const days=Array.from({length:7},(_,i)=>{
+  const d=new Date("2026-09-28T12:00:00Z");
+  d.setUTCDate(d.getUTCDate()+i);
+  return d.toISOString().slice(0,10);
+ });
+ a.reports=days.map(date=>date==="2026-09-30"?a.reports[0]:{date,data:null});
+ const original=JSON.stringify(a);
+ const input={hubId:"hub",start:"2026-09-28",end:"2026-10-04",sources:[a]};
+ const result=buildApprovedPartnerCountStandings(input);
+ assert.equal(result.totalCount,3);
+ assert.equal(result.people[0].totalCount,3);
+ assert.equal(result.teams[0].totalCount,3);
+ assert.equal(result.products[0].totalCount,3);
+ assert.equal(result.partnerCountsComplete,false,"unreported days are never invented as 0");
+ assert.deepEqual(result.unreportedCompanies.map(x=>x.status),["partial_report"]);
+ assert.doesNotMatch(JSON.stringify(result),/revenue|unitPrice|cashback|7654321/);
+ assert.equal(JSON.stringify(a),original,"week reads must not mutate saved history");
+ assert.throws(()=>buildApprovedPartnerCountStandings({
+  ...input,sources:[{...a,reports:a.reports.slice(1)}]
+ }),/UNVERIFIED/,"truncated prior-month day inventory fails closed");
+ assert.throws(()=>buildApprovedPartnerCountStandings({
+  ...input,start:"2026-09-01",end:"2026-10-04"
+ }),/UNVERIFIED/,"unbounded cross-month ranges are not allowed");
+});
