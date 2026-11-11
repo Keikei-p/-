@@ -12556,12 +12556,157 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
    snap.categories.some(key=>saved.counts?.[key]!==counts[key]))throw Error("save_verify");
  return "件数の保存と再取得を確認しました。";
 });
+// Hub Owner-only partner count correction. The UI never impersonates a partner
+// and never touches sales records, prices, historical team snapshots or raw data.
+let ownerPartnerCorrectionNonce=0;
+function openOwnerPartnerCountEditor(parent,company){
+ const nonce=++ownerPartnerCorrectionNonce;
+ const old=parent.querySelector("#ownerPartnerCorrectionPanel");
+ if(old)old.remove();
+ const editor=document.createElement("section");
+ editor.id="ownerPartnerCorrectionPanel";
+ editor.className="p-inline-row";
+ editor.style.marginTop="12px";
+ const heading=document.createElement("strong");
+ heading.textContent=company.name+"｜件数確認・訂正（自社Owner専用）";
+ const controls=document.createElement("div");
+ controls.style.display="flex";controls.style.flexWrap="wrap";
+ controls.style.gap="8px";controls.style.alignItems="center";
+ const date=document.createElement("input");
+ date.type="date";date.value=partnerMainDate();date.max=partnerMainDate();
+ date.setAttribute("aria-label","協力店の対象日");
+ const staff=document.createElement("select");
+ staff.setAttribute("aria-label","協力店の担当者");
+ const reload=document.createElement("button");
+ reload.type="button";reload.textContent="読み直す";
+ const fields=document.createElement("div");
+ fields.style.display="grid";fields.style.gap="8px";
+ fields.style.gridTemplateColumns="repeat(auto-fit,minmax(130px,1fr))";
+ const save=document.createElement("button");
+ save.type="button";save.textContent="件数を保存・訂正";
+ save.disabled=true;
+ const status=document.createElement("p");
+ status.setAttribute("role","status");
+ controls.append(date,staff,reload);
+ editor.append(heading,controls,fields,save,status);
+ parent.append(editor);
+ let snapshot=null,busy=false;
+ const stillHere=()=>nonce<=ownerPartnerCorrectionNonce&&editor.isConnected&&
+  auth.currentUser?.uid&&isCurrentCompanyOwner()&&
+  currentCompanyData?.companyKind!=="partner";
+ const render=()=>{
+  fields.replaceChildren();
+  save.disabled=true;
+  const entry=snapshot?.ownerCorrectionEntries;
+  const staffId=staff.value;
+  if(!entry||!staffId||busy)return;
+  const record=entry.records.find(r=>r.staffId===staffId);
+  for(const key of entry.enabledCategories){
+   const label=document.createElement("label");
+   label.textContent=key;
+   const input=document.createElement("input");
+   input.type="number";input.min="0";input.max="9999";input.step="1";
+   input.inputMode="numeric";input.dataset.countKey=key;
+   input.value=String(record?.counts?.[key]??0);
+   label.append(input);fields.append(label);
+  }
+  save.disabled=entry.enabledCategories.length===0;
+  status.textContent=entry.enabledCategories.length===0?
+   "公開ONの商材がありません。過去の件数は保護されています。":
+   (record?"登録済み・第"+record.version+"版（過去の班情報は保持）":
+    "未報告。0件での登録もできます。");
+ };
+ const load=async()=>{
+  const loadId=++ownerPartnerCorrectionNonce;
+  busy=true;save.disabled=true;fields.replaceChildren();
+  status.textContent="協力店の件数を読み込んでいます…";
+  const actor=auth.currentUser?.uid,selectedDate=date.value;
+  try{
+   const result=(await readPartnerWorkDay({date:selectedDate,
+    partnerCompanyId:company.partnerCompanyId,
+    includeOwnerCorrectionEntries:true})).data;
+   if(loadId!==ownerPartnerCorrectionNonce||!editor.isConnected||
+      actor!==auth.currentUser?.uid||date.value!==selectedDate)return;
+   const entry=result?.ownerCorrectionEntries;
+   if(result?.role!=="hub"||result.ownerCorrectionAvailable!==true||
+      entry?.partnerCompanyId!==company.partnerCompanyId||
+      entry.date!==selectedDate||!Array.isArray(entry.staff)||
+      !Array.isArray(entry.records)||!Array.isArray(entry.enabledCategories)||
+      !Array.isArray(entry.categories)||
+      entry.enabledCategories.some(k=>!entry.categories.includes(k))||
+      new Set(entry.enabledCategories).size!==entry.enabledCategories.length)
+    throw Error("owner_partner_count_schema");
+   snapshot=result;
+   const previous=staff.value;staff.replaceChildren();
+   for(const member of entry.staff.filter(p=>p.active===true)){
+    const option=document.createElement("option");
+    option.value=member.id;option.textContent=member.name;
+    staff.append(option);
+   }
+   if([...staff.options].some(o=>o.value===previous))staff.value=previous;
+   busy=false;render();
+   if(!staff.options.length)status.textContent="有効な担当者がいません。協力店のスタッフを確認してください。";
+  }catch{
+   if(loadId!==ownerPartnerCorrectionNonce||!editor.isConnected||
+      actor!==auth.currentUser?.uid)return;
+   busy=false;snapshot=null;staff.replaceChildren();fields.replaceChildren();
+   save.disabled=true;
+   status.textContent="件数を取得できません。オーナー権限・公開設定・サービス公開状況を確認してください。";
+  }
+ };
+ date.onchange=()=>void load();
+ staff.onchange=render;
+ reload.onclick=()=>void load();
+ save.onclick=async()=>{
+  const entry=snapshot?.ownerCorrectionEntries,selectedDate=date.value;
+  const actor=auth.currentUser?.uid,staffId=staff.value;
+  if(busy||!entry||!stillHere()||!entry.staff.some(p=>p.id===staffId&&p.active)||
+     entry.date!==selectedDate||entry.enabledCategories.length===0)return;
+  const record=entry.records.find(r=>r.staffId===staffId);
+  const counts=Object.fromEntries(entry.categories.map(key=>[key,0]));
+  for(const key of entry.enabledCategories){
+   const input=[...fields.querySelectorAll("input[data-count-key]")]
+    .find(node=>node.dataset.countKey===key);
+   if(!input||!/^(?:0|[1-9]\\d{0,3})$/.test(input.value.trim())){
+    status.textContent=key+"の件数を0〜9999の整数で入力してください。";return;
+   }
+   counts[key]=Number(input.value);
+  }
+  busy=true;save.disabled=true;reload.disabled=true;date.disabled=true;staff.disabled=true;
+  status.textContent="訂正内容を保存・照合しています…";
+  try{
+   const response=(await partnerInlineSave({
+    ownerPartnerCompanyId:company.partnerCompanyId,date:selectedDate,staffId,
+    counts,expectedVersion:record?.version??0})).data;
+   const checked=(await readPartnerWorkDay({
+    date:selectedDate,partnerCompanyId:company.partnerCompanyId,
+    includeOwnerCorrectionEntries:true})).data;
+   if(!editor.isConnected||actor!==auth.currentUser?.uid||date.value!==selectedDate)return;
+   const saved=checked?.ownerCorrectionEntries?.records?.find(r=>r.staffId===staffId);
+   if(checked.role!=="hub"||!response?.saved||
+      saved?.version!==response.version||
+      entry.categories.some(key=>saved?.counts?.[key]!==counts[key]))
+    throw Error("owner_save_recheck_failed");
+   snapshot=checked;
+   busy=false;reload.disabled=false;date.disabled=false;staff.disabled=false;
+   render();
+   status.textContent="保存・再取得照合が成功しました。第"+response.version+"版（履歴を保持）";
+  }catch{
+   if(actor!==auth.currentUser?.uid||!editor.isConnected)return;
+   status.textContent="保存または再照合に失敗しました。数字は確定表示していません。再読み込みして確認してください。";
+   busy=false;reload.disabled=false;date.disabled=false;staff.disabled=false;
+   save.disabled=true;
+  }
+ };
+ void load();
+}
 // Original internal owner sees existing teams PLUS partner-company teams.
 // Never mix partner team IDs into the original sales-team write selectors.
 async function loadOwnerPartnerCompanyTeams(){
  const target=document.getElementById("ownerPartnerTeamGroups");
  if(!target)return;
  const seq=++ownerPartnerTeamsNonce;
+ ++ownerPartnerCorrectionNonce;
  target.replaceChildren();
  if(!auth.currentUser||!isCurrentCompanyOwner()||currentCompanyData?.companyKind==="partner")return;
  const uid=auth.currentUser.uid;
@@ -12580,6 +12725,13 @@ async function loadOwnerPartnerCompanyTeams(){
    for(const team of company.teams)
     partnerMainAppendRow(target,company.name+"・"+team.name,
       company.active?"件数登録対象":"件数利用未承認");
+   if(result.ownerCorrectionAvailable===true&&company.active===true&&
+      partnerMainValidId(company.partnerCompanyId)){
+    const button=document.createElement("button");
+    button.type="button";button.textContent=company.name+"｜件数確認・訂正";
+    button.onclick=()=>openOwnerPartnerCountEditor(target,company);
+    target.append(button);
+   }
   }
  }catch{
   if(seq!==ownerPartnerTeamsNonce)return;
