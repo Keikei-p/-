@@ -1884,3 +1884,50 @@ test("hub company/team counts detect SKU swaps that preserve the overall total",
  assert.equal((await api.view(req("h",{date,includeTeamStatus:true})))
   .teamReports[0].verified,true);
 });
+
+test("same-grand-total but swapped SKU counts mark partner teams and Owner detail unverified",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ const team=(await api.manage(req("p",{action:"addTeam",name:"内訳照合班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",
+  name:"保存担当",teamId:team}))).staffId;
+ const entryPath="companies/partner/partnerWorkEntries/"+date+"__"+staff;
+ const summaryPath="companies/hub/partnerWorkCountDays/"+date+"/reports/partner";
+ await api.submit(req("p",{date,staffId:staff,counts:{
+  ...zero(),NURO:3,SBMNP:1
+ },expectedVersion:0}));
+ const beforeFinance=clone(db.store.get("products/money"));
+ const beforeSales=clone(db.store.get("records/old"));
+ const original=clone(db.store.get(summaryPath));
+ const valid=await api.view(req("h",{date,partnerCompanyId:"partner",
+  includeTeamStatus:true}));
+ assert.equal(valid.partnerTeamDetails.unreconciledWithCompanyReport,false);
+ assert.equal(valid.teamReports[0].teams.find(t=>t.id===team).status,"submitted");
+ // Emulate a corrupt summary where the TOTAL stays at 4 while the
+ // category totals shift. Never write to a real database in this test.
+ db.store.get(summaryPath).counts.NURO=2;
+ db.store.get(summaryPath).counts.SBMNP=2;
+ assert.equal(db.store.get(summaryPath).totalCount,4);
+ const ledgerBefore=clone([...db.store]);
+ const result=await api.view(req("h",{
+  date,partnerCompanyId:"partner",includeTeamStatus:true
+ }));
+ assert.equal(result.partnerTeamDetails.unreconciledWithCompanyReport,true);
+ assert.equal(result.teamReports[0].verified,false);
+ const row=result.teamReports[0].teams.find(t=>t.id===team);
+ assert.equal(row.totalCount,4,"staff total is retained as historical fact");
+ assert.equal(row.status,"unverified",
+  "submitted does not override a mismatched product breakdown");
+ assert.deepEqual([...db.store],ledgerBefore,
+  "read-only detection cannot automatically correct historic counts");
+ assert.deepEqual(db.store.get("companies/partner/partnerWorkEntries/"+
+  date+"__"+staff).counts,{...zero(),NURO:3,SBMNP:1});
+ assert.deepEqual(db.store.get("products/money"),beforeFinance);
+ assert.deepEqual(db.store.get("records/old"),beforeSales);
+ db.seed(summaryPath,original);
+ const restored=await api.view(req("h",{
+  date,partnerCompanyId:"partner",includeTeamStatus:true
+ }));
+ assert.equal(restored.partnerTeamDetails.unreconciledWithCompanyReport,false);
+ assert.equal(restored.teamReports[0].verified,true);
+ assert.equal(restored.teamReports[0].teams.find(t=>t.id===team).status,"submitted");
+});
