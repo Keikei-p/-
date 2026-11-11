@@ -369,7 +369,11 @@ export function buildVerifiedCountDashboard({
    companyId:cid,companyName:parsed.names.get(cid),count:n
   }))
  })),p=>p.count);
- const companyRows=[...allCompany.values()].sort((a,b)=>a.kind==="自社"?-1:
+ const submittedCompanies=new Set(current.filter(r=>r.reported===true||
+  r.unidentified===true).map(r=>r.companyId));
+ const companyRows=[...allCompany.values()].map(x=>({...x,
+  hasVerifiedSubmission:submittedCompanies.has(x.id)}))
+  .sort((a,b)=>a.kind==="自社"?-1:
    b.kind==="自社"?1:a.name.localeCompare(b.name,"ja"));
  const self=companyRows.find(x=>x.id===hubCompanyId)?.count??0;
  const total=companyRows.reduce((a,b)=>add(a,b.count),0);
@@ -402,8 +406,6 @@ export function buildVerifiedCountDashboard({
  // No team ID, UID, salary, unit price or source report can leave this API.
  // A company without a verified submission in this window is not a
  // submitted zero-count company. Do not award it an official public rank.
- const submittedCompanies=new Set(current.filter(r=>r.reported===true||
-  r.unidentified===true).map(r=>r.companyId));
  const publicCompanies=ordered(companyRows.filter(x=>submittedCompanies.has(x.id))
   .map(x=>({id:x.id,name:x.name,count:x.count})),x=>x.count)
   .map(x=>({rank:x.rank,name:x.name,count:x.count}));
