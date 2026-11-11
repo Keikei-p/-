@@ -247,3 +247,46 @@ test("one company's zero-count unknown person does not mark another company's ve
  assert.equal(output.people.length,1);
  assert.equal(output.people[0].name,"担当者");
 });
+
+test("partly reported month is incomplete, while true submitted zero stays ranked",()=>{
+ const partial=company("a","一部未報告会社",{...zero(),NURO:3},{date:"2026-10-01"});
+ partial.reports.push({date:"2026-10-02",data:null});
+ const missing={...company("b","未報告会社",zero(),{date:"2026-10-01"}),
+  entries:[],reports:[
+   {date:"2026-10-01",data:null},
+   {date:"2026-10-02",data:null}
+  ]};
+ const submittedZero=company("c","0件報告会社",zero(),{date:"2026-10-01"});
+ submittedZero.reports.push({date:"2026-10-02",data:null});
+ const originals=JSON.stringify([partial,missing,submittedZero]);
+ const output=buildApprovedPartnerCountStandings({
+  hubId:"hub",start:"2026-10-01",end:"2026-10-02",
+  sources:[partial,missing,submittedZero]
+ });
+ assert.equal(output.totalCount,3);
+ assert.equal(output.reportCount,2);
+ assert.equal(output.partnerCountsComplete,false);
+ assert.equal(output.peopleComplete,false);
+ assert.equal(output.teamComplete,false);
+ assert.deepEqual(output.unreportedCompanies.map(x=>[x.name,x.status]),[
+  ["一部未報告会社","partial_report"],
+  ["未報告会社","not_reported"],
+  ["0件報告会社","partial_report"]
+ ]);
+ assert.equal(output.companies.find(x=>x.name==="0件報告会社").totalCount,0);
+ assert.equal(output.companies.find(x=>x.name==="0件報告会社").reportedDays,1);
+ assert.equal(JSON.stringify([partial,missing,submittedZero]),originals,
+  "read-only monthly ranking never rewrites source documents");
+});
+test("truncated day inventories are rejected, never certify a false full-month leaderboard",()=>{
+ const partial=company("a","会社A",{...zero(),NURO:1},{date:"2026-10-01"});
+ const source={hubId:"hub",start:"2026-10-01",end:"2026-10-02",
+  sources:[partial]};
+ assert.throws(()=>buildApprovedPartnerCountStandings(source),/UNVERIFIED/);
+ const full={...partial,reports:[
+  ...partial.reports,{date:"2026-10-02",data:null}
+ ]};
+ assert.deepEqual(buildApprovedPartnerCountStandings({
+  ...source,sources:[full]
+ }).unreportedCompanies.map(x=>x.status),["partial_report"]);
+});
