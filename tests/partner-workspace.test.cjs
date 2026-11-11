@@ -1719,3 +1719,66 @@ test("partner manager refuses incomplete historic roster instead of displaying p
  db.seed(staffPath,archived);
  assert.equal((await api.view(req("p",{date}))).records[0].totalCount,4);
 });
+
+test("archived partner staff original count can be corrected ONLY by hub Owner and preserves audits",async()=>{
+ const {db,api,req,zero}=setup(false,true,true);
+ const path="companies/hub/";
+ db.seed(path+"rankingProductVisibility/shared",{
+  hubCompanyId:"hub",ownerUid:"h",version:1,
+  enabledHubProductIds:["skuNuro","skuSbmnp"],partnerOverrides:{}});
+ db.seed(path+"rankingSkuMappings/shared",{
+  hubCompanyId:"hub",ownerUid:"h",reviewedByUid:"h",active:true,version:1,
+  bindings:[
+   {companyId:"partner",productId:"partnerSku01",hubProductId:"skuNuro"},
+   {companyId:"partner",productId:"partnerSku02",hubProductId:"skuSbmnp"}]});
+ db.seed(path+"rankingCountPublicCatalog/shared",{
+  schema:"nico-reviewed-count-public-catalog-v1",
+  hubCompanyId:"hub",ownerUid:"h",version:1,products:[
+   {id:"skuNuro",companyId:"hub",name:"NURO",active:true},
+   {id:"skuSbmnp",companyId:"hub",name:"SBMNP",active:true}]});
+ const team=(await api.manage(req("p",{action:"addTeam",name:"過去班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"退職者",teamId:team}))).staffId;
+ const date="2026-10-31",staffPath="companies/partner/partnerWorkStaff/"+staff,
+  entry="companies/partner/partnerWorkEntries/"+date+"__"+staff;
+ await api.submit(req("p",{date,staffId:staff,
+  counts:{...zero(),NURO:2,SBMNP:7},expectedVersion:0}));
+ db.store.get(staffPath).active=false; // archive staff but keep report
+ db.store.get(path+"rankingProductVisibility/shared").enabledHubProductIds=["skuNuro"];
+ const initial=await api.view(req("h",{
+  date,partnerCompanyId:"partner",includeOwnerCorrectionEntries:true}));
+ assert.equal(initial.ownerCorrectionEntries.staff[0].active,false);
+ assert.deepEqual(initial.ownerCorrectionEntries.enabledCategories,["NURO"]);
+ assert.equal(initial.ownerCorrectionEntries.records[0].counts.SBMNP,0);
+ const originalIdentity=clone(db.store.get(staffPath));
+ const originalFinance=clone(db.store.get("products/money"));
+ const originalSales=clone(db.store.get("records/old"));
+ const before=clone([...db.store]);
+ await assert.rejects(api.submit(req("p",{date,staffId:staff,
+  counts:{...zero(),NURO:4},expectedVersion:1})),e=>e.code==="permission-denied");
+ await assert.rejects(api.submit(req("h",{date,staffId:"missing",
+  counts:zero(),expectedVersion:0,ownerPartnerCompanyId:"partner"})),
+  e=>e.code==="permission-denied"||e.code==="failed-precondition");
+ assert.deepEqual([...db.store],before);
+ const result=await api.submit(req("h",{date,staffId:staff,
+  counts:{...zero(),NURO:4},expectedVersion:1,ownerPartnerCompanyId:"partner"}));
+ assert.equal(result.saved,true);
+ assert.equal(result.version,2);
+ const saved=db.store.get(entry);
+ assert.equal(saved.counts.NURO,4);
+ assert.equal(saved.counts.SBMNP,7,"unpublished historical count kept intact");
+ assert.equal(saved.totalCount,11);
+ assert.equal(saved.version,2);
+ assert.equal(saved.teamIdSnapshot,team);
+ assert.equal(saved.updatedByUid,"h");
+ assert.equal(db.store.get("companies/partner/partnerWorkAudits/"+
+  date+"__"+staff+"__v2").previousCounts.SBMNP,7);
+ assert.equal(db.store.get("companies/partner/partnerWorkAudits/"+
+  date+"__"+staff+"__v2").updatedByUid,"h");
+ assert.deepEqual(db.store.get(staffPath),originalIdentity,
+  "archived employee is never reactivated or moved");
+ assert.deepEqual(db.store.get("products/money"),originalFinance);
+ assert.deepEqual(db.store.get("records/old"),originalSales);
+ await assert.rejects(api.submit(req("h",{date,staffId:staff,
+  counts:{...zero(),NURO:5},expectedVersion:1,ownerPartnerCompanyId:"partner"})),
+  e=>e.code==="aborted");
+});
