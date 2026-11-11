@@ -52,8 +52,18 @@ test("dashboard mount imports only files included in the approved public asset s
   assert(assets.includes(dependency),"Unpackaged UI import: "+dependency);
 });
 
-test("this release staging does not add an API rewrite or any automatic production deployment",()=>{
- assert.doesNotMatch(workflow,/\/v1\/owner-visible-counts/);
+test("only verified count GET is routed, without automatic Function deployment",()=>{
+ const match=workflow.match(/cat > \\.nico-only-hosting-config\\.json <<'JSON'\\n([\\s\\S]*?)\\n\\s*JSON/);
+ assert(match,"Hosting config heredoc missing");
+ const config=JSON.parse(match[1]);
+ assert.equal(config.hosting.site,"nico-factory");
+ assert.equal(config.hosting.public,".nico-hosting-staging");
+ assert.deepEqual(config.hosting.rewrites,[{
+  source:"/v1/owner-visible-counts",
+  function:{functionId:"getVerifiedJointCountRanking",region:"asia-northeast1"}
+ }]);
+ // No pinTag: firebase deploy --only hosting must never deploy Functions.
+ assert.doesNotMatch(workflow,/"pinTag"\\s*:/);
  assert.doesNotMatch(copy,/firebase deploy|firestore:rules|functions:/);
 });
 
