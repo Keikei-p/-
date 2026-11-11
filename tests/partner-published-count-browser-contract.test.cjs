@@ -238,3 +238,20 @@ test("hub company team UI displays unverified and not-reported warnings instead 
   assert(!displayed.includes("売上")&&!displayed.includes("単価"));
  }
 });
+
+
+test("standalone partner month rankings reject a hub Owner response even after a valid partner sign-in",()=>{
+ const standalone=extract(partner,
+  "async function mountVerifiedJointMonthForPartner(){",
+  "\nlet approvedRankGeneration=");
+ assert.match(standalone,/data\?\.role!==["']owner["']/);
+ assert.match(standalone,/expectedRole:["']partner_owner["']/,
+  "server response role must be partner_owner, not a browser role claim");
+ assert.doesNotMatch(standalone,/expectedRole:["']hub_owner["']/);
+ const sameApp=extract(index,
+  "async function mountSameAppJointMonth(audience){",
+  "\nlet partnerInlineData=");
+ assert.match(sameApp,/expectedRole:audience===["']hub["']\?["']hub_owner["']:["']partner_owner["']/);
+ assert.match(partner,/const NICO_PARTNER_JOINT_COUNT_MONTH_RELEASED=false/);
+ assert.match(index,/const NICO_SAME_APP_JOINT_COUNT_MONTH_RELEASED=false/);
+});
