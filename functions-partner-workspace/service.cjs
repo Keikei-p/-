@@ -627,9 +627,9 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   const hubId=s.kind==="hub"?s.cid:s.hubId;
   if(!ID.test(hubId||""))fail();
   const today=jstToday(),month=date.slice(0,7);
-  // A weekly leaderboard must read ALL seven calendar days, even when
-  // the week crosses a month boundary. The existing staff-day and legacy
-  // summary readers already use a bounded, exact date range.
+  // This legacy partner-only path uses independent Firestore reads, not
+  // the verified two-month atomic snapshot required for a cross-month week.
+  // Week-to-date inside one month is allowed; crossing months fails closed.
   const weekMonday=new Date(date+"T12:00:00Z");
   weekMonday.setUTCDate(weekMonday.getUTCDate()-((weekMonday.getUTCDay()+6)%7));
   const weekSunday=new Date(weekMonday);
@@ -641,6 +641,10 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    period==="week"?weekSunday.toISOString().slice(0,10):date;
   const end=formalEnd>today?today:formalEnd;
   if(end<start||end>today)fail("invalid-argument");
+  // Never publish a partially reconciled cross-month weekly leaderboard.
+  // The canonical atomic ranking endpoint has a separate two-month gate.
+  if(period==="week"&&start.slice(0,7)!==end.slice(0,7))
+   fail("failed-precondition");
   const days=[];
   for(let cursor=new Date(start+"T00:00:00Z");cursor<=new Date(end+"T00:00:00Z");
       cursor.setUTCDate(cursor.getUTCDate()+1))
