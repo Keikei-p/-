@@ -976,8 +976,23 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   }
   const visibleTeams=teams.docs.map(sn=>({id:sn.id,name:clean(sn.data().name),active:sn.data().active===true}))
    .filter(team=>["owner","leader"].includes(s.role)||team.id===s.teamId);
+  // Read the same count-only publication policy used by submit(). This
+  // display read never authorizes a write; submit rechecks in its transaction.
+  let enabledCategories;
+  if(submissionPublicationEnabled()===true){
+   const zero=Object.fromEntries(KEYS.map(key=>[key,0]));
+   try{
+    const policy=await verifySubmissionPublication({
+     tx:{get:ref=>ref.get()},
+     scope:{verifiedByServer:true,kind:s.kind,uid:a.uid,cid:s.cid,hubId:s.hubId},
+     previousCounts:zero,nextCounts:zero
+    });
+    enabledCategories=policy.enabledCategories;
+   }catch{fail("failed-precondition");}
+  }
   return {role:s.role,date,companyName:clean(s.companyName),teamId:s.teamId,
     teams:visibleTeams,staff:[...allowed.values()],records:rows,categories:KEYS,
+    ...(enabledCategories?{enabledCategories}:{}),
     privateProducts:productList};
  }
  async function submit(request){
