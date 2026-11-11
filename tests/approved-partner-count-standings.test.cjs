@@ -31,6 +31,7 @@ test("two approved companies, individual/team, product totals, once only",()=>{
  assert.equal(out.totalCount,4);
  assert.equal(out.reportCount,2);
  assert.equal(out.peopleComplete,true);
+ assert.deepEqual(out.products.map(x=>x.rank),[1]);
  assert.equal(out.includesDirect,false);
  assert.equal(out.fullyJoint,false);
  assert.doesNotMatch(JSON.stringify(out),/cbCounts|80000|990000|7654321|privateSku|updatedByUid|revenue|SBMNP/);
@@ -61,6 +62,9 @@ test("zero is submitted but missing report is not treated as zero",()=>{
  assert.equal(out.companies[0].reportedDays,1);
  assert.equal(out.reportCount,1);
  assert.equal(out.partnerCountsComplete,false);
+ assert.deepEqual(out.companies.map(x=>x.rank),[null],
+  "a missing published company makes all cross-company ranks provisional");
+ assert.deepEqual(out.products.map(x=>x.rank),[null]);
  assert.equal(out.peopleComplete,false,
   "published partner with no submission cannot claim a complete person ranking");
  assert.equal(out.teamComplete,false,
@@ -249,7 +253,7 @@ test("one company's zero-count unknown person does not mark another company's ve
  assert.equal(output.people[0].name,"担当者");
 });
 
-test("partly reported month is incomplete, while true submitted zero stays ranked",()=>{
+test("partly reported month retains submitted zero but withholds all definitive ranks",()=>{
  const partial=company("a","一部未報告会社",{...zero(),NURO:3},{date:"2026-10-01"});
  partial.reports.push({date:"2026-10-02",data:null});
  const missing={...company("b","未報告会社",zero(),{date:"2026-10-01"}),
@@ -267,6 +271,9 @@ test("partly reported month is incomplete, while true submitted zero stays ranke
  assert.equal(output.totalCount,3);
  assert.equal(output.reportCount,2);
  assert.equal(output.partnerCountsComplete,false);
+ for(const kind of ["companies","teams","people","products"])
+  assert(output[kind].every(row=>row.rank===null),
+   "incomplete published month must not advertise "+kind+" positions");
  assert.equal(output.peopleComplete,false);
  assert.equal(output.teamComplete,false);
  assert.deepEqual(output.unreportedCompanies.map(x=>[x.name,x.status]),[
