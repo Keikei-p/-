@@ -12445,33 +12445,84 @@ function partnerInlineRender(){
   p=>p.name+"（"+(teamById.get(p.teamId)?.name||"未設定")+"）");
  partnerInlineRenderCounts();
  void mountSameAppJointMonth("partner");
- // Show ONLY numerical counts from the isolated partner count API, never money.
+ // Rankings use ONLY published partner counts for the selected DAY.
+ // This is partner-local: the verified all-company monthly ranking stays
+ // behind the separate server release flag until the finance boundary passes.
  const rankings=pInline("pInlineRanking");rankings.replaceChildren();
- const byTeam=new Map(teams.map(t=>[t.id,0]));
  const visible=snap.enabledCategories??snap.categories;
- const byPerson=[],byProduct=new Map(visible.map(k=>[k,0]));
- for(const entry of snap.records){
-  const person=staff.find(p=>p.id===entry.staffId);
-  if(!person)continue;
-  const total=visible.reduce((n,k)=>n+(entry.counts?.[k]||0),0);
-  if(!Number.isSafeInteger(total)||total<0)continue;
-  byPerson.push({name:person.name,n:total});
-  if(byTeam.has(entry.teamIdSnapshot))
-   byTeam.set(entry.teamIdSnapshot,byTeam.get(entry.teamIdSnapshot)+total);
-  for(const key of visible)byProduct.set(key,byProduct.get(key)+(entry.counts?.[key]||0));
- }
+ const entries=new Map(snap.records.map(x=>[x.staffId,x]));
+ const allStaff=snap.staff||[];
+ const byProduct=new Map(visible.map(k=>[k,0]));
+ const teamTotals=new Map((snap.teams||[]).map(t=>[t.id,{
+  id:t.id,name:t.name,total:0,reported:0,unreported:0,active:t.active===true
+ }]));
+ const personRows=[];
+ let unattributed=0;
  const heading=label=>{
   const h=document.createElement("h4");h.textContent=label;rankings.append(h);
  };
- heading("班別");
- for(const [id,n] of [...byTeam.entries()].sort((a,b)=>b[1]-a[1]))
-  partnerMainAppendRow(rankings,snap.companyName+"・"+(teamById.get(id)?.name||"班"),n+"件");
- heading("個人別");
- for(const [i,p] of byPerson.sort((a,b)=>b.n-a.n).entries())
-  partnerMainAppendRow(rankings,(i+1)+"位 "+p.name,p.n+"件");
- heading("商材別");
- for(const [key,n] of [...byProduct.entries()].sort((a,b)=>b[1]-a[1]))
-  partnerMainAppendRow(rankings,key,n+"件");
+ // Inactive staff with recorded history remain visible; never erase their
+ // historical rank merely because their present-day membership is inactive.
+ for(const person of allStaff){
+  const record=entries.get(person.id);
+  if(!record&&person.active!==true)continue;
+  const team=record?teamTotals.get(record.teamIdSnapshot):
+   teamTotals.get(person.teamId);
+  if(!record){
+   personRows.push({id:person.id,name:person.name,reported:false,total:0});
+   if(team)team.unreported++;
+   continue;
+  }
+  const total=visible.reduce((n,k)=>n+(record.counts?.[k]||0),0);
+  if(!Number.isSafeInteger(total)||total<0)continue;
+  personRows.push({id:person.id,name:person.name,reported:true,total});
+  if(team){team.total+=total;team.reported++;}
+  else unattributed+=total;
+  for(const key of visible)byProduct.set(key,
+   byProduct.get(key)+(record.counts?.[key]||0));
+ }
+ heading("班別（当日・協力店内）");
+ const orderedTeams=[...teamTotals.values()].filter(t=>t.active||t.reported>0);
+ const rankedTeams=orderedTeams.filter(t=>t.reported>0)
+  .sort((a,b)=>b.total-a.total||a.name.localeCompare(b.name,"ja")||
+   a.id.localeCompare(b.id));
+ let previousRank=0;
+ for(let i=0;i<rankedTeams.length;i++){
+  const row=rankedTeams[i];
+  const rank=i>0&&rankedTeams[i-1].total===row.total?previousRank:i+1;
+  previousRank=rank;
+  partnerMainAppendRow(rankings,rank+"位 "+snap.companyName+"・"+row.name,
+   row.total+"件"+(row.unreported?"（未報告者あり）":""));
+ }
+ for(const row of orderedTeams.filter(t=>t.reported===0))
+  partnerMainAppendRow(rankings,snap.companyName+"・"+row.name,"未報告");
+ if(unattributed)partnerMainAppendRow(rankings,"班未確認",
+  unattributed+"件（班ランキングから除外）");
+ heading("個人別（当日・協力店内）");
+ const rankedPeople=personRows.filter(row=>row.reported)
+  .sort((a,b)=>b.total-a.total||a.name.localeCompare(b.name,"ja")||
+   a.id.localeCompare(b.id));
+ previousRank=0;
+ for(let i=0;i<rankedPeople.length;i++){
+  const row=rankedPeople[i];
+  const rank=i>0&&rankedPeople[i-1].total===row.total?previousRank:i+1;
+  previousRank=rank;
+  partnerMainAppendRow(rankings,rank+"位 "+row.name,row.total+"件");
+ }
+ for(const row of personRows.filter(row=>!row.reported))
+  partnerMainAppendRow(rankings,row.name,"未報告");
+ heading("商材別（公開ON・当日）");
+ const rankedProducts=[...byProduct.entries()]
+  .sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"ja"));
+ previousRank=0;
+ for(let i=0;i<rankedProducts.length;i++){
+  const [key,total]=rankedProducts[i];
+  const rank=i>0&&rankedProducts[i-1][1]===total?previousRank:i+1;
+  previousRank=rank;
+  partnerMainAppendRow(rankings,rank+"位 "+key,total+"件");
+ }
+ if(!visible.length)partnerMainAppendRow(rankings,
+  "公開中の商材はありません","過去の実績は保持されています。");
 }
 async function partnerInlineFetch(){
  if(!auth.currentUser?.emailVerified)return;
