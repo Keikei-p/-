@@ -244,6 +244,9 @@ export function buildVerifiedCountDashboard({
   (filters.teamId==null||filters.teamId===""||filters.teamId===r.teamId)&&
   (filters.uid==null||filters.uid===""||filters.uid===r.uid)&&
   (filters.productId==null||filters.productId===""||
+    // Report markers have no product key. Keep them for submitted/zero status
+    // even when a single SKU is selected; they contribute exactly 0 counts.
+    r.reported===true||
     (r.productKey!==null&&
      (filters.productId===productKey(r.productKey)||filters.productId===r.productKey)))
  );
@@ -397,9 +400,13 @@ export function buildVerifiedCountDashboard({
  // Publish ranked, aggregate-only organization comparisons. This is the
  // same already-verified set of ON-only source lines as member/SKU ranks.
  // No team ID, UID, salary, unit price or source report can leave this API.
- const publicCompanies=ordered(companyRows.map(x=>({
-  id:x.id,name:x.name,count:x.count
- })),x=>x.count).map(x=>({rank:x.rank,name:x.name,count:x.count}));
+ // A company without a verified submission in this window is not a
+ // submitted zero-count company. Do not award it an official public rank.
+ const submittedCompanies=new Set(current.filter(r=>r.reported===true||
+  r.unidentified===true).map(r=>r.companyId));
+ const publicCompanies=ordered(companyRows.filter(x=>submittedCompanies.has(x.id))
+  .map(x=>({id:x.id,name:x.name,count:x.count})),x=>x.count)
+  .map(x=>({rank:x.rank,name:x.name,count:x.count}));
  const publicTeams=ordered([...teams.values()].map(x=>({
   id:x.id,name:x.name,company:x.companyName,count:x.count
  })),x=>x.count).map(x=>({
