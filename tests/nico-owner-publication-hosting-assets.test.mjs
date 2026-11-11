@@ -104,3 +104,22 @@ test("manual Hosting cutover preserves partner workspace and legacy count pages"
  }
  assert(!/\b(?:firestore:rules|functions:)\b/.test(copy));
 });
+
+
+test("owner finance boundary diagnostic is preserved as read-only same-origin, session-scoped Hosting asset",()=>{
+ const file="finance-partner-boundary-check.html";
+ const source=fs.readFileSync(path.join(root,file),"utf8");
+ assert(verification.includes("'"+file+"'"),
+  "diagnostic must be verified before deploying credentials");
+ assert(copy.includes(file),"diagnostic must be copied into manual Hosting release");
+ assert.match(workflow,/https:\/\/nico-factory\.web\.app\/finance-partner-boundary-check\.html/);
+ assert.match(workflow,/grep -Fq '協力店本人の金額アクセス診断'/);
+ assert.match(source,/name="robots" content="noindex,nofollow,noarchive"/);
+ assert.match(source,/browserSessionPersistence/);
+ assert.match(source,/FINANCE_COLLECTIONS=Object\.freeze\(\["products","records","recordCorrections","revenueGoals"\]\)/);
+ assert.match(source,/firestore\.googleapis\.com/);
+ assert.match(source,/:runQuery/);
+ assert.doesNotMatch(source,/\b(?:setDoc|updateDoc|deleteDoc|firebase deploy)\s*\(/);
+ assert.doesNotMatch(source,/localStorage\s*\./);
+ assert.doesNotMatch(source,/console\.(?:log|error)\(/);
+});
