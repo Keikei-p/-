@@ -82,7 +82,7 @@ test("owner server company/team ranks are verified and unreported companies rema
  for(const change of [
   d=>{d.companyBreakdown[0].rank=1;},
   d=>{d.companyBreakdown[1].rank=null;},
-  d=>{d.teamBreakdown[0].rank=2;},
+  d=>{d.teamBreakdown[0].rank=1;},
   d=>{d.teamBreakdown[0].rank=null;},
   d=>{d.companyBreakdown.push({...d.companyBreakdown[0]});}
  ]){
