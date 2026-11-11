@@ -372,6 +372,6 @@ test("own partner SKU ranking keeps count ties as 1,1 without affecting public j
   .filter(x=>x.className==="nico-dual-rank-number")
   .map(x=>x.textContent);
  assert.deepEqual(ranks,["1位","1位"]);
- assert(words(sections[3]).includes("公開承認済み")===false);
+ assert(words(sections[3]).includes("公開承認済み・商材ランキング"));
  assert.deepEqual(value,snapshot,"ranking ties must not rewrite source rows");
 });
