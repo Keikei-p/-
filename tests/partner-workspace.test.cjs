@@ -1655,7 +1655,7 @@ test("partner count view rejects aliased, duplicated and foreign ledger identiti
  assert.equal((await api.view(req("p",{date}))).records.length,1);
  for(const patch of [
   {companyId:"foreign"},{hubCompanyId:"foreign"},
-  {staffId:"other"},{date:"2026-10-30"},
+  {staffId:"other"},
   {version:0},{version:1000},{totalCount:999}
  ]){
   db.seed(path,{...original,...patch});
@@ -1666,6 +1666,13 @@ test("partner count view rejects aliased, duplicated and foreign ledger identiti
    "corrupted partner view may never mutate ledger");
   db.seed(path,original);
  }
+ // A changed date no longer matches the day query: it must be excluded,
+ // not misreported as a valid zero-count entry or silently rewritten.
+ db.seed(path,{...original,date:"2026-10-30"});
+ const excluded=await api.view(req("p",{date}));
+ assert.deepEqual(excluded.records,[]);
+ assert.equal(db.store.get(path).totalCount,2);
+ db.seed(path,original);
  const alias="companies/partner/partnerWorkEntries/forged-id";
  db.seed(alias,{...original});
  const before=clone([...db.store]);
