@@ -97,3 +97,88 @@ test("previous-month action and revoked Owner authority cannot navigate stale re
  assert.match(source,/inspectStoredRecordCountMismatch\(record\)/);
  assert.doesNotMatch(checkCode,/setDoc\(|updateDoc\(|deleteDoc\(|transaction\./);
 });
+
+
+function createAuditHarness({owner=true,finance=true,corrections}={}){
+ const record={...makeRecord(),id:"original-r1"};
+ record.results.skuB={count:1,revenuePerUnit:100};
+ const panel=makeNode(),calls=[];
+ let ownerAllowed=owner;
+ const source=extract('const auditButton = document.createElement("button");',
+   'const canCorrect = !mismatch &&');
+ const closing=source.lastIndexOf("\n      }");
+ assert(closing>0);
+ const program=source.slice(0,closing)+
+  "\nthis.trigger=auditButton.onclick;this.auditResult=auditResult;";
+ const refs=Array.isArray(corrections)?corrections:[{
+  companyId:"hub",recordId:record.id,recordUid:record.uid,
+  recordDate:record.date,createdAt:{toMillis:()=>123},
+  after:{totalCount:2,results:{skuA:{count:2,revenuePerUnit:100}}}
+ }];
+ const ctx=vm.createContext({
+  item:panel,document:{createElement:()=>makeNode()},record,
+  mismatch:{savedCount:2,detailCount:3},db:{},JSON,Number,Object,
+  currentUser:{uid:"owner"},currentUserData:{companyId:"hub"},
+  dashboardMonth:{value:"2026-11"},
+  isCurrentCompanyOwner:()=>ownerAllowed,
+  canCurrentUserViewProductRevenue:()=>finance,
+  getDocFromServer:async (...args)=>{
+   calls.push({name:"get",args});
+   return {exists:()=>true,data:()=>structuredClone(record)};
+  },
+  doc:(...args)=>({path:args}),
+  query:(...args)=>({queries:args}),
+  collection:(...args)=>({collection:args}),
+  where:(...args)=>({field:args}),
+  getDocsFromServer:async (...args)=>{
+   calls.push({name:"list",args});
+   return {size:refs.length,docs:refs.map(row=>({data:()=>row}))};
+  },
+  recordRevision:x=>JSON.stringify(x),
+ });
+ vm.runInContext(program,ctx);
+ return {ctx,panel,calls,record,setOwner:x=>{ownerAllowed=x}};
+}
+test("Owner audit cross-check reads current original and indexed company/day history only",async()=>{
+ const h=createAuditHarness();
+ await h.ctx.trigger();
+ assert.equal(h.calls.length,2);
+ assert.equal(h.calls[0].name,"get");
+ assert.equal(h.calls[1].name,"list");
+ assert.equal(h.calls[0].args[0].path[1],"records");
+ assert.equal(h.calls[0].args[0].path[2],"original-r1");
+ const query=h.calls[1].args[0].queries;
+ assert.equal(query[0].collection[1],"recordCorrections");
+ assert.deepEqual(JSON.parse(JSON.stringify(query.slice(1).map(x=>x.field))),[
+  ["companyId","==","hub"],["recordDate","==","2026-11-10"]
+ ]);
+ assert.match(h.ctx.auditResult.textContent,/現在のみの商材行1本/);
+ assert.match(h.ctx.auditResult.textContent,/最新訂正後：保存2件・明細2件/);
+ assert.equal(h.record.results.skuB.count,1,"never auto-delete old result row");
+});
+test("unauthorized audit read fails before remote GET and history LIST",async()=>{
+ for(const [owner,finance] of [[false,true],[true,false],[false,false]]){
+  const h=createAuditHarness({owner,finance});
+  await h.ctx.trigger();
+  assert.equal(h.calls.length,0);
+  assert.equal(h.ctx.auditResult.textContent,"");
+ }
+});
+test("Owner proof fails closed on missing audit, malformed timestamps and wrong record identity",async()=>{
+ const cases=[[],[
+  {companyId:"other",recordId:"original-r1",recordUid:"owner",
+   recordDate:"2026-11-10",createdAt:{toMillis:()=>123},
+   after:{totalCount:2,results:{skuA:{count:2}}}}
+ ],[
+  {companyId:"hub",recordId:"original-r1",recordUid:"owner",
+   recordDate:"2026-11-10",createdAt:null,
+   after:{totalCount:2,results:{skuA:{count:2}}}}
+ ]];
+ for(const corrections of cases){
+  const h=createAuditHarness({corrections});
+  await h.ctx.trigger();
+  assert(!h.ctx.auditResult.textContent.includes("現在のみの商材行"));
+  assert(!h.ctx.auditResult.textContent.includes("最新訂正後："));
+  assert.equal(h.calls.length,2);
+ }
+});
