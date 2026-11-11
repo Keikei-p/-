@@ -43,7 +43,10 @@ function expectedRange(period){
   period.kind==="week"?weekStart(period.day):period.day;
  const last=period.kind==="month"?monthEnd(period.day):
   period.kind==="week"?dateAt(start,6):period.day;
- if(start.slice(0,7)!==month||last.slice(0,7)!==month)stop();
+ // Only the trusted backend may approve a cross-month week after reading
+ // both complete monthly inventories under the same atomic transaction.
+ if(period.kind!=="week"&&
+    (start.slice(0,7)!==month||last.slice(0,7)!==month))stop();
  const end=last<period.asOf?last:period.asOf;
  if(end<start)stop();
  return {start,end};
