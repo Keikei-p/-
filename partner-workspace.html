@@ -1326,7 +1326,7 @@ function renderSelected(){if(!data||data.role==="hub")return;const rec=data.reco
  }
  for(const x of grid.querySelectorAll("input"))x.value=String(rec?.counts?.[x.dataset.key]??0);
  $("revision").textContent=rec?"第"+rec.version+"版・訂正可能":"未登録（0件報告も保存可能）";
- $("save").disabled=!$("staffSelect").value;updateTotal()}
+ $("save").disabled=!$("staffSelect").value||data.enabledCategories?.length===0;updateTotal()}
 $("hubTeamCompanySelect").onchange=()=>{$("hubTeamCountStatus").textContent="会社が変更されました。班別件数を再取得してください。";$("hubTeamCountRows").replaceChildren()};
 $("hubTeamCountLoad").onclick=async()=>{
  if(!data||data.role!=="hub")return;
