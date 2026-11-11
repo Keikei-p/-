@@ -1368,3 +1368,55 @@ test("view returns only verified ON categories without changing financial origin
  assert.deepEqual(db.store.get("records/old"),before.find(([p])=>p==="records/old")[1]);
  assert.deepEqual(db.store.get("products/money"),before.find(([p])=>p==="products/money")[1]);
 });
+
+test("OFF legacy count is redacted from partner read and saved unchanged in transaction",async()=>{
+ const {db,api,req,zero}=setup(false,true);
+ const prefix="companies/hub/";
+ db.seed(prefix+"rankingProductVisibility/shared",{
+  hubCompanyId:"hub",ownerUid:"h",version:1,
+  enabledHubProductIds:["skuNuro","skuSbmnp"],partnerOverrides:{}});
+ db.seed(prefix+"rankingSkuMappings/shared",{
+  hubCompanyId:"hub",ownerUid:"h",reviewedByUid:"h",active:true,version:1,
+  bindings:[
+   {companyId:"partner",productId:"partnerSku01",hubProductId:"skuNuro"},
+   {companyId:"partner",productId:"partnerSku02",hubProductId:"skuSbmnp"}]});
+ db.seed(prefix+"rankingCountPublicCatalog/shared",{
+  schema:"nico-reviewed-count-public-catalog-v1",hubCompanyId:"hub",
+  ownerUid:"h",version:1,products:[
+   {id:"skuNuro",companyId:"hub",name:"NURO",active:true},
+   {id:"skuSbmnp",companyId:"hub",name:"SBMNP",active:true}]});
+ const team=(await api.manage(req("p",{action:"addTeam",name:"1班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",
+  name:"協力店スタッフ",teamId:team}))).staffId;
+ const date="2026-10-31",path="companies/partner/partnerWorkEntries/"+date+"__"+staff;
+ const counts={...zero(),NURO:2,SBMNP:7};
+ await api.submit(req("p",{date,staffId:staff,counts,expectedVersion:0}));
+ const historical=clone(db.store.get(path));
+ assert.equal(historical.totalCount,9);
+ db.store.get(prefix+"rankingProductVisibility/shared").enabledHubProductIds=["skuNuro"];
+ const redacted=await api.view(req("p",{date}));
+ const read=redacted.records.find(x=>x.staffId===staff);
+ assert.deepEqual(redacted.enabledCategories,["NURO"]);
+ assert.equal(read.counts.NURO,2);
+ assert.equal(read.counts.SBMNP,0);
+ assert.equal(read.totalCount,2);
+ const originalAudit=clone(db.store.get("companies/partner/partnerWorkAudits/"+date+
+  "__"+staff+"__v1"));
+ await assert.rejects(api.submit(req("p",{date,staffId:staff,
+  counts:{...read.counts,NURO:3,SBMNP:8},expectedVersion:1})),
+  error=>error.code==="failed-precondition");
+ assert.deepEqual(db.store.get(path),historical);
+ await api.submit(req("p",{date,staffId:staff,
+  counts:{...read.counts,NURO:3},expectedVersion:1}));
+ const persisted=db.store.get(path);
+ assert.equal(persisted.counts.NURO,3);
+ assert.equal(persisted.counts.SBMNP,7);
+ assert.equal(persisted.totalCount,10);
+ assert.equal(db.store.get("companies/hub/partnerWorkCountDays/"+date+
+  "/reports/partner").totalCount,10);
+ const visible=await api.view(req("p",{date}));
+ assert.equal(visible.records[0].counts.SBMNP,0);
+ assert.equal(visible.records[0].totalCount,3);
+ assert.deepEqual(db.store.get("companies/partner/partnerWorkAudits/"+date+
+  "__"+staff+"__v1"),originalAudit);
+});
