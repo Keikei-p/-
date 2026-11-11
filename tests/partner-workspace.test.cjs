@@ -1933,3 +1933,67 @@ test("same-grand-total but swapped SKU counts mark partner teams and Owner detai
  assert.equal(restored.teamReports[0].verified,true);
  assert.equal(restored.teamReports[0].teams.find(t=>t.id===team).status,"submitted");
 });
+
+test("owner correction refuses corrupt same-total SKU summary and missing sibling staff rows",async()=>{
+ const {db,api,req,zero}=setup(false,true,true);
+ const base="companies/hub/";
+ db.seed(base+"rankingProductVisibility/shared",{
+  hubCompanyId:"hub",ownerUid:"h",version:1,
+  enabledHubProductIds:["skuNuro","skuSbmnp"],partnerOverrides:{}});
+ db.seed(base+"rankingSkuMappings/shared",{
+  hubCompanyId:"hub",ownerUid:"h",reviewedByUid:"h",active:true,version:1,
+  bindings:[
+   {companyId:"partner",productId:"partnerSku01",hubProductId:"skuNuro"},
+   {companyId:"partner",productId:"partnerSku02",hubProductId:"skuSbmnp"}]});
+ db.seed(base+"rankingCountPublicCatalog/shared",{
+  schema:"nico-reviewed-count-public-catalog-v1",
+  hubCompanyId:"hub",ownerUid:"h",version:1,products:[
+   {id:"skuNuro",companyId:"hub",name:"NURO",active:true},
+   {id:"skuSbmnp",companyId:"hub",name:"SBMNP",active:true}]});
+ const team=(await api.manage(req("p",{action:"addTeam",name:"照合班"}))).teamId;
+ const a=(await api.manage(req("p",{action:"addManaged",name:"A",teamId:team}))).staffId;
+ const b=(await api.manage(req("p",{action:"addManaged",name:"B",teamId:team}))).staffId;
+ const date="2026-10-31";
+ await api.submit(req("p",{date,staffId:a,
+  counts:{...zero(),NURO:2,SBMNP:1},expectedVersion:0}));
+ await api.submit(req("p",{date,staffId:b,
+  counts:{...zero(),NURO:1,SBMNP:2},expectedVersion:0}));
+ const aPath="companies/partner/partnerWorkEntries/"+date+"__"+a;
+ const bPath="companies/partner/partnerWorkEntries/"+date+"__"+b;
+ const sumPath="companies/hub/partnerWorkCountDays/"+date+"/reports/partner";
+ const originalSum=clone(db.store.get(sumPath));
+ const originalB=clone(db.store.get(bPath));
+ const rawMoney=clone(db.store.get("products/money"));
+ const rawSales=clone(db.store.get("records/old"));
+ const correction={date,staffId:a,ownerPartnerCompanyId:"partner",
+  counts:{...zero(),NURO:3,SBMNP:1},expectedVersion:1};
+ // Forged changes to two SKU totals can cancel out in the grand total.
+ db.store.get(sumPath).counts.NURO=4;
+ db.store.get(sumPath).counts.SBMNP=2;
+ assert.equal(db.store.get(sumPath).totalCount,6);
+ let before=clone([...db.store]);
+ await assert.rejects(api.submit(req("h",correction)),
+  e=>e.code==="data-loss");
+ assert.deepEqual([...db.store],before);
+ // Even if the summary is valid, missing OTHER staff histories must block
+ // correction of the current employee (never silently lose 3 counts).
+ db.seed(sumPath,originalSum);
+ db.store.delete(bPath);
+ before=clone([...db.store]);
+ await assert.rejects(api.submit(req("h",correction)),
+  e=>e.code==="data-loss");
+ assert.deepEqual([...db.store],before);
+ db.seed(bPath,originalB);
+ const result=await api.submit(req("h",correction));
+ assert.equal(result.saved,true);
+ assert.equal(result.version,2);
+ assert.equal(db.store.get(aPath).counts.NURO,3);
+ assert.equal(db.store.get(bPath).counts.NURO,1);
+ assert.equal(db.store.get(sumPath).counts.NURO,4);
+ assert.equal(db.store.get(sumPath).counts.SBMNP,3);
+ assert.equal(db.store.get(sumPath).totalCount,7);
+ assert.equal(db.store.get("companies/partner/partnerWorkAudits/"+
+  date+"__"+a+"__v2").updatedByUid,"h");
+ assert.deepEqual(db.store.get("products/money"),rawMoney);
+ assert.deepEqual(db.store.get("records/old"),rawSales);
+});
