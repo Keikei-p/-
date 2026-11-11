@@ -6,6 +6,7 @@
  * previousCounts and nextCounts from the same transaction (never browser
  * supplied previousCounts). OFF counts are immutable, not silently reset.
  */
+import {allowedPartnerCategories} from "../functions-partner-workspace/approved-published-categories.cjs";
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター",
  "つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
@@ -119,9 +120,17 @@ export function createPartnerSubmissionPublicationGuard({db}={}){
      Object.keys(publicCatalog).some(k=>![
       "schema","hubCompanyId","ownerUid","version","updatedAt","createdAt","products"
      ].includes(k)))deny();
+  const mapping=snap(mappingSnap);
   const policy=validatePolicy({hubId:scope.hubId,partnerId:scope.cid,
-   ownerUid:h.ownerUid,visibility,mapping:snap(mappingSnap),
+   ownerUid:h.ownerUid,visibility,mapping,
    products:publicCatalog.products});
+  let published;
+  try{
+   published=allowedPartnerCategories({hubId:scope.hubId,cid:scope.cid,
+    ownerUid:h.ownerUid,visibility,mapping,products:publicCatalog.products});
+  }catch{deny();}
+  if(published.length!==policy.allowed.size||
+     published.some(key=>!policy.allowed.has(key)))deny();
   for(const key of KEYS){
    // OFF is a publication setting, never a destructive history migration.
    if(!policy.allowed.has(key)&&after[key]!==before[key])deny();
