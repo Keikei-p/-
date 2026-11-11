@@ -291,7 +291,7 @@ export function renderVerifiedDualCountDashboard({document,root,payload,audience
     data.publicRanking.members,"person"));
    page.appendChild(ranked(document,"公開承認済み・商材ランキング",
     data.publicRanking.products,"product"));
-   add(page,document,"h3","nico-dual-title","自分の会社の件数・履歴");
+   add(page,document,"h3","nico-dual-title","自分の会社の件数内訳");
    page.appendChild(ranked(document,"自分たちの成果・前期比",
     rerankReportedPeople(data.own.people),"person"));
    page.appendChild(ranked(document,"自社の商材別件数",
