@@ -1505,6 +1505,7 @@ test("hub Owner can correct an approved partner's ON counts without changing OFF
   [path,{staffId:"someone-else"}],
   [path,{date:"2026-10-30"}],
   [path,{totalCount:999}],
+  [path,{privateTotalCount:999}],
   [summaryPath,{partnerCompanyId:"foreign"}],
   [summaryPath,{hubCompanyId:"foreign"}]
  ]){
