@@ -1022,7 +1022,13 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    seenEntryStaff.add(x.staffId);
    const {counts,total}=validateCounts(x.counts);
    if(total!==x.totalCount)fail("data-loss");
-   if(!allowed.has(x.staffId))continue;
+   if(!allowed.has(x.staffId)){
+    // An Owner/leader must never receive an apparently complete team and
+    // person ranking if a historic staff record is missing from the roster.
+    // Members still only see their own staff-day entry: other staff stay hidden.
+    if(s.role==="owner"||s.role==="leader")fail("data-loss");
+    continue;
+   }
    // Return only saved, immutable attribution metadata from the original entry.
    // Never infer a historical team from the member's current teamId.
    // Old entries without a snapshot stay unverified in the dashboard.
