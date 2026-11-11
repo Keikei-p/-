@@ -15,7 +15,12 @@ on:
       - 'tests/partner-published-count-browser-contract.test.cjs'
       - 'tests/owner-partner-count-browser-contract.test.cjs'
       - 'tests/verified-joint-month-http-bridge.test.mjs'
+      - 'tests/verified-dual-count-dashboards.test.mjs'
+      - 'tests/verified-dual-count-view.test.mjs'
       - 'ranking/verified-joint-month-http-bridge.mjs'
+      - 'ranking/verified-dual-count-dashboards.mjs'
+      - 'ranking/verified-dual-count-view.mjs'
+      - 'functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs'
       - 'security/secondary-finance-read-fence.mjs'
       - 'tests/secondary-finance-read-fence-emulator.test.mjs'
       - 'tests/secondary-finance-counts-integration-emulator.test.mjs'
@@ -36,7 +41,7 @@ jobs:
           node --check functions-partner-workspace/service.cjs
           node --check functions-partner-workspace/shared-count-standings.cjs
       - name: Test partner ON/OFF read-write contract and stable ranking identities
-        run: node --test tests/partner-workspace.test.cjs tests/approved-partner-count-standings.test.cjs tests/partner-published-count-browser-contract.test.cjs tests/owner-partner-count-browser-contract.test.cjs tests/verified-joint-month-http-bridge.test.mjs tests/finance-partner-boundary-check.test.mjs tests/approved-partner-ranking-ui.test.mjs
+        run: node --test tests/partner-workspace.test.cjs tests/approved-partner-count-standings.test.cjs tests/partner-published-count-browser-contract.test.cjs tests/owner-partner-count-browser-contract.test.cjs tests/verified-joint-month-http-bridge.test.mjs tests/finance-partner-boundary-check.test.mjs tests/approved-partner-ranking-ui.test.mjs tests/verified-dual-count-dashboards.test.mjs tests/verified-dual-count-view.test.mjs
 
   isolated-finance-counts:
     runs-on: ubuntu-latest
