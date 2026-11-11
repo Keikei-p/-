@@ -53,8 +53,9 @@ test("unknown periods, filters, future dates and invalid days are rejected befor
   featureEnabled:true,auth,fetcher:async()=>{fetches++;return makeResponse()}
  });
  for(const args of [
-  {period:{...period,kind:"day"},filters:{}},
-  {period:{...period,kind:"week"},filters:{}},
+  {period:{...period,kind:"year"},filters:{}},
+  {period:{...period,kind:"week",day:"2026-11-01"},filters:{}},
+  {period:{...period,kind:"week",day:"2026-11-30"},filters:{}},
   {period,filters:{companyId:"another"}},
   {period:{...period,day:"2026-11-32"},filters:{}},
   {period:{...period,day:"2026-12-01"},filters:{}},
@@ -114,4 +115,53 @@ test("dashboard audience must equal signed server response role",async()=>{
    fetcher:async()=>makeResponse()
   }),/BRIDGE_BLOCKED/);
  }
+});
+
+
+test("day and week perform authenticated GETs with exact calendar boundaries",async()=>{
+ const calls=[];
+ const responses={
+  day:makeResponse({period:"day",range:{
+   start:"2026-11-08",end:"2026-11-08"}}),
+  week:makeResponse({period:"week",range:{
+   start:"2026-11-02",end:"2026-11-08"}})
+ };
+ const bridge=createVerifiedJointMonthHttpBridge({
+  featureEnabled:true,auth,
+  fetcher:async(url,options)=>{
+   calls.push([url,options]);
+   return url.includes("?day=")?responses.day:responses.week;
+  }
+ });
+ const day=await bridge.load({period:{...period,kind:"day",day:"2026-11-08"},filters:{}});
+ const week=await bridge.load({period:{...period,kind:"week",day:"2026-11-08"},filters:{}});
+ assert.equal(day.period,"day");
+ assert.equal(week.period,"week");
+ assert.deepEqual(calls.map(x=>x[0]),[
+  "https://nico-factory.web.app/v1/owner-visible-counts?day=2026-11-08",
+  "https://nico-factory.web.app/v1/owner-visible-counts?week=2026-11-08"
+ ]);
+ assert(calls.every(x=>x[1].headers.Authorization==="Bearer "+token));
+ assert(calls.every(x=>x[1].cache==="no-store"));
+});
+
+test("cross-month week and mismatched day/week range fail without showing another month",async()=>{
+ let fetches=0;
+ const bridge=createVerifiedJointMonthHttpBridge({
+  featureEnabled:true,auth,fetcher:async()=>{
+   fetches++;
+   return makeResponse({period:"day",range:{
+    start:"2026-11-07",end:"2026-11-07"}});
+  }
+ });
+ for(const p of [
+  {...period,kind:"week",day:"2026-11-01"},
+  {...period,kind:"week",day:"2026-11-30"},
+  {...period,kind:"day",day:"2026-11-12"}
+ ])await assert.rejects(bridge.load({period:p,filters:{}}),/BRIDGE_BLOCKED/);
+ assert.equal(fetches,0,"invalid calendar selections must be blocked before Auth and fetch");
+ await assert.rejects(bridge.load({period:{
+  ...period,kind:"day",day:"2026-11-08"
+ },filters:{}}),/BRIDGE_BLOCKED/,"wrong dated response must not render");
+ assert.equal(fetches,1);
 });
