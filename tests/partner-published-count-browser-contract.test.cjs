@@ -79,3 +79,19 @@ test("both partner pages use server enabledCategories and protect disabled saves
  assert(!index.includes("Object.assign(Object.create(null),before?.counts"),
   "UI must not re-send legacy OFF count history");
 });
+
+test("Owner correction UI lists saved reports only and cannot submit a new staff day",()=>{
+ const ownerBlock=extract(index,
+  'function openOwnerPartnerCountEditor(parent,company){',
+  '\n// Original internal owner sees existing teams PLUS partner-company teams.');
+ assert(ownerBlock.includes('const recorded=new Set(entry.records.filter(row=>'),
+  "staff dropdown must exclude unreported staff");
+ assert(ownerBlock.includes('recorded.has(p.id)'),
+  "only saved entries may be selectable for correction");
+ assert(ownerBlock.includes('if(!record||!Number.isSafeInteger(record.version)||record.version<1)return;'),
+  "submit must refuse new records without a verified version");
+ assert(ownerBlock.includes('expectedVersion:record.version'),
+  "submit must carry exact saved version, never an implicit zero");
+ assert(!ownerBlock.includes('record?.version??0'),
+  "no new staff-day reports in Owner correction UI");
+});
