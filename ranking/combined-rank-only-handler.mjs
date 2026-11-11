@@ -4,6 +4,7 @@
  * Never make the browser a holder of raw records or approval data.
  */
 import {createRankOnlyPublication} from "./rank-only-publication.mjs";
+import {MAX_COMBINED_COMPANIES} from "./combined-count-leaderboard.mjs";
 const CANONICAL="https://nico-factory.web.app";
 const PATH="/v1/combined-ranks";
 const MONTH=/^\d{4}-(0[1-9]|1[0-2])$/;
@@ -25,7 +26,8 @@ function contextValid(ctx,uid){
     ctx.viewerUid!==uid||!UID.test(ctx.hubCompanyId||"")||
     !UID.test(ctx.viewerCompanyId||"")||
     !Array.isArray(ctx.approvedCompanyIds)||
-    ctx.approvedCompanyIds.length<1||ctx.approvedCompanyIds.length>30||
+    ctx.approvedCompanyIds.length<1||
+    ctx.approvedCompanyIds.length>MAX_COMBINED_COMPANIES||
     ctx.approvedCompanyIds.some(x=>!UID.test(x))||
     new Set(ctx.approvedCompanyIds).size!==ctx.approvedCompanyIds.length||
     !ctx.approvedCompanyIds.includes(ctx.hubCompanyId)||

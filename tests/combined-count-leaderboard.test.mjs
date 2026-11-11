@@ -140,3 +140,69 @@ test("2,101 records do not trigger the previous 2,000-document boundary",()=>{
  assert.equal(out.individualRankOnly.length,1);
  assert(!("count" in out.individualRankOnly[0]));
 });
+
+test("125 fully approved companies rank all reports without truncating the 101st company",()=>{
+ const d=make();
+ const original=JSON.stringify(d);
+ for(let n=2;n<125;n++){
+  const id="partner_"+n,recordId="r_"+n,productId="sku_"+n;
+  const r=record(id,recordId,"uid_"+n,"team_"+n,1);
+  d.approvedCompanyIds.push(id);
+  d.sources.push({companyId:id,companyLabel:"協力店"+n,kind:"partner",
+   consentVerified:true,isComplete:true,readTime:TIME,
+   teams:[{id:"team_"+n,name:"班"+n,goalCount:2}],
+   records:[r],lines:[line(id,r,productId,1)],
+   products:[product(id,productId,"品目"+n)]});
+ }
+ assert.equal(d.sources.length,125);
+ const result=go(d);
+ assert.equal(result.companyCount,125);
+ assert.equal(result.combinedCount,132); // Original 9 + 123 authenticated company reports
+ assert.equal(result.teamCountRanking.length,126); // Two direct teams + 124 partner teams
+ assert.equal(result.individualRankOnly.length,126); // Original 3 people + 123
+ assert.equal(result.productCountRanking.reduce((n,row)=>n+row.count,0),132);
+ assert.equal(result.teamCountRanking.some(row=>row.companyId==="partner_124"),true);
+ assert.equal(result.needsProductMapping,true);
+ assert.doesNotMatch(JSON.stringify(result),/totalRevenue|revenuePerUnit|unitPrice|cashback|price/i);
+ assert.equal(JSON.stringify(make()),original);
+});
+
+test("missing approved 101st company, 126th company, stale or unapproved source fail closed",()=>{
+ const fixture=()=>{
+  const d=make();
+  for(let n=2;n<125;n++){
+   const id="partner_"+n;
+   d.approvedCompanyIds.push(id);
+   d.sources.push({companyId:id,companyLabel:"協力店"+n,kind:"partner",
+    consentVerified:true,isComplete:true,readTime:TIME,
+    teams:[],records:[],lines:[],products:[]});
+  }
+  return d;
+ };
+ const missing=fixture();
+ missing.sources.splice(100,1);
+ assert.throws(()=>go(missing),/Incomplete or unauthorized/);
+ const extra=fixture();
+ extra.approvedCompanyIds.push("partner_125");
+ extra.sources.push({companyId:"partner_125",companyLabel:"協力店126",
+  kind:"partner",consentVerified:true,isComplete:true,readTime:TIME,
+  teams:[],records:[],lines:[],products:[]});
+ assert.throws(()=>go(extra),/Incomplete or unauthorized/);
+ const revoked=fixture();revoked.sources[100].consentVerified=false;
+ assert.throws(()=>go(revoked),/Incomplete or unauthorized/);
+ const inconsistent=fixture();inconsistent.sources[100].readTime="2026-10-29T01:00:01Z";
+ assert.throws(()=>go(inconsistent),/Incomplete or unauthorized/);
+});
+
+test("global ranking document budgets reject unsafe large snapshots before processing",()=>{
+ for(const [key,limit] of [["records",25000],["lines",50000],
+   ["teams",5000],["products",8000]]){
+  const d=make();
+  d.sources[0][key]=Array(limit+1).fill(null);
+  assert.throws(()=>go(d),/Incomplete or unauthorized/,key+" requires global budget");
+ }
+ const d=make();
+ d.sources[0].records=Array(20000).fill(null);
+ d.sources[1].records=Array(5001).fill(null);
+ assert.throws(()=>go(d),/Incomplete or unauthorized/);
+});

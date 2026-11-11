@@ -176,3 +176,47 @@ test("untrusted HTML is always textContent and never injected as markup",()=>{
  assert(words(root).includes("<img src=x onerror=alert(1)>"));
  assert.equal(typeof root.innerHTML,"undefined");
 });
+
+test("staged trusted HTTP handler accepts 125 complete approved companies, but not 126 or partial",async()=>{
+ const makeLarge=()=>{
+  const d=sample();
+  for(let n=2;n<125;n++){
+   const id="partner_"+n;
+   d.approvedCompanyIds.push(id);
+   d.sources.push({companyId:id,companyLabel:"協力店"+n,kind:"partner",
+    consentVerified:true,isComplete:true,readTime:TIME,
+    teams:[],records:[],lines:[],products:[]});
+  }
+  return d;
+ };
+ const s=server(),full=makeLarge();
+ const context={...s.context,approvedCompanyIds:[...full.approvedCompanyIds]};
+ const h=createStagedCombinedRankReadHandler({
+  ...s.deps,loadFreshApprovedContext:async()=>structuredClone(context),
+  loadCompletePublicCountSources:async()=>structuredClone(full)
+ });
+ const ok=await h(req());
+ assert.equal(ok.status,200);
+ const body=await ok.json();
+ assert.equal(body.teamRanks.length,2);
+ assert.equal(body.memberRanks.length,2);
+ assert(!/\"(?:companyCount|combinedCount|count|unitPrice|totalRevenue)\"\s*:/.test(JSON.stringify(body)));
+ assert.equal(ok.headers.get("Cache-Control"),"no-store");
+ // Missing one approved company cannot be reported as an otherwise valid rank.
+ const missing={...full,sources:full.sources.slice(0,-1)};
+ const hMissing=createStagedCombinedRankReadHandler({
+  ...s.deps,loadFreshApprovedContext:async()=>structuredClone(context),
+  loadCompletePublicCountSources:async()=>structuredClone(missing)
+ });
+ const refused=await hMissing(req());
+ assert.equal(refused.status,503);
+ assert.deepEqual(await refused.json(),{error:"request_blocked"});
+ const overflow={...context,approvedCompanyIds:[...full.approvedCompanyIds,"partner_126"]};
+ const hOver=createStagedCombinedRankReadHandler({
+  ...s.deps,loadFreshApprovedContext:async()=>structuredClone(overflow),
+  loadCompletePublicCountSources:async()=>{throw Error("should not fetch");}
+ });
+ const denied=await hOver(req());
+ assert.equal(denied.status,403);
+ assert.deepEqual(await denied.json(),{error:"request_blocked"});
+});

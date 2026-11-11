@@ -9,6 +9,14 @@
  */
 import {assertPublicSchema,auditNoFinancialKeys} from "../security/public-projection.mjs";
 
+// Bound the entire trusted snapshot; never silently publish partial ranks.
+// Changing these limits requires a separate read-budget and cost review.
+export const MAX_COMBINED_COMPANIES=125;
+const MAX_COMBINED_RECORDS=25000;
+const MAX_COMBINED_LINES=50000;
+const MAX_COMBINED_TEAMS=5000;
+const MAX_COMBINED_PRODUCTS=8000;
+const MAX_COMBINED_RANK_WORK=5000000;
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
 const MONTH=/^\d{4}-(0[1-9]|1[0-2])$/;
 const READ_TIME=/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,9})?Z$/;
@@ -134,11 +142,25 @@ export function buildCombinedCountLeaderboard({
 }){
  if(!validId(hubCompanyId)||!MONTH.test(period)||
     !Array.isArray(approvedCompanyIds)||!approvedCompanyIds.includes(hubCompanyId)||
-    approvedCompanyIds.length>50||!approvedCompanyIds.every(validId)||
+    approvedCompanyIds.length>MAX_COMBINED_COMPANIES||!approvedCompanyIds.every(validId)||
     !Array.isArray(sources)||sources.length!==approvedCompanyIds.length ||
     !Array.isArray(productGroups)||productGroups.length>5000)fail();
  unique(approvedCompanyIds,x=>x);
  unique(sources,x=>x.companyId);
+ // Require the trusted loader to have fetched every approved company.
+ // A missing 101st company must NOT be published as a valid 100-company rank.
+ // Bound all record quantities BEFORE schema traversal or ranking sorts.
+ const budgets={teams:0,records:0,lines:0,products:0};
+ const limits={teams:MAX_COMBINED_TEAMS,records:MAX_COMBINED_RECORDS,
+  lines:MAX_COMBINED_LINES,products:MAX_COMBINED_PRODUCTS};
+ for(const source of sources){
+  if(!source||typeof source!=="object"||Array.isArray(source))fail();
+  for(const key of Object.keys(budgets)){
+   if(!Array.isArray(source[key]))fail();
+   budgets[key]+=source[key].length;
+   if(budgets[key]>limits[key])fail();
+  }
+ }
  const groupMap=new Map(),productLabelMap=new Map();
  for(const map of productGroups){
    if(!map||!validId(map.companyId)||!approvedCompanyIds.includes(map.companyId)||
@@ -198,6 +220,9 @@ export function buildCombinedCountLeaderboard({
    memberRows.push(...people.values());
  }
  if([...productTotals.values()].reduce((s,p)=>safeAdd(s,p.count),0)!==combinedCount)fail();
+ // Publication builds per-product member standings. Cap the cross-product
+ // scan so a very large network cannot exhaust a single function instance.
+ if(memberRows.length*productTotals.size>MAX_COMBINED_RANK_WORK)fail();
  const countRanking=orderedRanks(teamRows,team=>team.count);
  const progressRanking=orderedRanks(teamRows.filter(t=>t.goalCount!==null&&t.goalCount>0)
    .map(t=>({...t,progressPercent:Math.round(t.count*10000/t.goalCount)/100})),
