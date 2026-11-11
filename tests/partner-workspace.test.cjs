@@ -1848,3 +1848,39 @@ test("hub partner-team detail refuses to call orphan saved staff report reconcil
  assert.equal(none.partnerTeamDetails.unreconciledWithCompanyReport,false,
   "no staff entry and no report is simply unreported, not an orphan");
 });
+
+test("hub company/team counts detect SKU swaps that preserve the overall total",async()=>{
+ const {db,api,req,zero}=setup(),date="2026-10-31";
+ const team=(await api.manage(req("p",{action:"addTeam",name:"商材照合班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",
+  name:"商材確認担当",teamId:team}))).staffId;
+ await api.submit(req("p",{date,staffId:staff,
+  counts:{...zero(),NURO:2,SBMNP:1},expectedVersion:0}));
+ const summaryPath="companies/hub/partnerWorkCountDays/"+date+"/reports/partner";
+ const entryPath="companies/partner/partnerWorkEntries/"+date+"__"+staff;
+ const original=clone(db.store.get(summaryPath)),entry=clone(db.store.get(entryPath));
+ assert.equal(original.totalCount,3);
+ assert.equal((await api.view(req("h",{date,partnerCompanyId:"partner"})))
+  .partnerTeamDetails.unreconciledWithCompanyReport,false);
+ // A forged summary still adds up to 3; comparing only totalCount would
+ // incorrectly mark the wrong NURO / SBMNP category allocations verified.
+ db.seed(summaryPath,{...original,
+  counts:{...original.counts,NURO:1,SBMNP:2}});
+ const before=clone([...db.store]);
+ const result=await api.view(req("h",{date,partnerCompanyId:"partner"}));
+ assert.equal(result.partnerTeamDetails.verifiedSharedCount,3);
+ assert.equal(result.partners[0].totalCount,3);
+ assert.equal(result.partnerTeamDetails.companyReportStatus,"submitted");
+ assert.equal(result.partnerTeamDetails.unreconciledWithCompanyReport,true,
+  "equal total must not hide category-specific count mismatch");
+ const status=await api.view(req("h",{date,includeTeamStatus:true}));
+ assert.equal(status.teamReports[0].verified,false);
+ assert.deepEqual([...db.store],before,"read-only checks may not repair a summary");
+ assert.deepEqual(db.store.get(entryPath),entry);
+ assert.equal(db.store.get("products/money").unitPrice,98765);
+ db.seed(summaryPath,original);
+ assert.equal((await api.view(req("h",{date,partnerCompanyId:"partner"})))
+  .partnerTeamDetails.unreconciledWithCompanyReport,false);
+ assert.equal((await api.view(req("h",{date,includeTeamStatus:true})))
+  .teamReports[0].verified,true);
+});
