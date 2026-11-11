@@ -1448,6 +1448,15 @@ test("hub Owner can correct an approved partner's ON counts without changing OFF
  const originalFinance=clone(db.store.get("products/money"));
  const originalRecord=clone(db.store.get("records/old"));
  const originalIdentity=clone(db.store.get("users/h"));
+ // A legitimate hub Owner may correct an already saved entry but cannot
+ // create a new staff/day record with expectedVersion=0.
+ const notReported=(await api.manage(req("p",{
+  action:"addManaged",name:"未報告担当",teamId:team}))).staffId;
+ const noNewBefore=clone([...db.store]);
+ await assert.rejects(api.submit(req("h",{date,staffId:notReported,
+  counts:zero(),expectedVersion:0,ownerPartnerCompanyId:"partner"})),
+  error=>error.code==="failed-precondition");
+ assert.deepEqual([...db.store],noNewBefore);
  const initial=await api.view(req("h",{date,partnerCompanyId:"partner",
   includeOwnerCorrectionEntries:true}));
  assert.equal(initial.role,"hub");
