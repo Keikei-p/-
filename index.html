@@ -12535,9 +12535,10 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
  const snap=partnerInlineData,staffId=pInline("pInlineStaff").value;
  if(!snap.staff.some(p=>p.id===staffId&&p.active))throw Error("staff");
  const before=snap.records.find(x=>x.staffId===staffId);
- // Preserve every OFF historical count exactly as stored. Only published
- // categories are edited, and the server revalidates OFF inside its write.
- const counts=Object.assign(Object.create(null),before?.counts||
+ // OFF counts are masked as zero in the authenticated read response.
+ // Never send original OFF counts back. The server alone restores their
+ // saved history under the current Owner publication policy.
+ const counts=Object.assign(Object.create(null),
   Object.fromEntries(snap.categories.map(key=>[key,0])));
  for(const key of (snap.enabledCategories??snap.categories)){
   const node=[...pInline("pInlineCountFields").querySelectorAll("input[data-count-key]")]
