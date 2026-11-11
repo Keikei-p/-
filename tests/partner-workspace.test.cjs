@@ -1317,16 +1317,18 @@ test("transactional partner save honors owner ON/OFF and preserves historical OF
  const visibility=db.store.get("companies/hub/rankingProductVisibility/shared");
  const publicCatalog=db.store.get("companies/hub/rankingCountPublicCatalog/shared");
  visibility.enabledHubProductIds=["nuro"];visibility.version++;publicCatalog.version++;
- await save({...zero(),NURO:4,"SB光・AIR":3},1);
+ await save({...zero(),NURO:4,"SB光・AIR":0},1);
  const before=clone([...db.store]);
- await assert.rejects(save({...zero(),NURO:4,"SB光・AIR":0},2),e=>e.code==="failed-precondition");
+ // Once OFF, the count is redacted in API. Old clients must not resend
+ // saved historical values, which the server restores from its original.
+ await assert.rejects(save({...zero(),NURO:4,"SB光・AIR":3},2),e=>e.code==="failed-precondition");
  assert.deepEqual([...db.store],before,"OFF historical count and audit must not change");
  visibility.partnerOverrides={partner:[]};visibility.version++;publicCatalog.version++;
  await assert.rejects(save({...zero(),NURO:5,"SB光・AIR":3},2),e=>e.code==="failed-precondition");
  assert.deepEqual(db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+staff).counts,
   {...zero(),NURO:4,"SB光・AIR":3});
  visibility.partnerOverrides={};visibility.version++;publicCatalog.version++;
- await save({...zero(),NURO:5,"SB光・AIR":3},2);
+ await save({...zero(),NURO:5,"SB光・AIR":0},2);
  assert.equal([...db.store.keys()].filter(k=>k.includes("partnerWorkAudits/")).length,3);
  assert.deepEqual(db.store.get("records/old"),original);
  assert.deepEqual(db.store.get("products/money"),money);
