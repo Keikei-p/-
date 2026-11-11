@@ -54,7 +54,6 @@ test("unknown periods, filters, future dates and invalid days are rejected befor
  });
  for(const args of [
   {period:{...period,kind:"year"},filters:{}},
-  {period:{...period,kind:"week",day:"2026-11-01"},filters:{}},
   {period:{...period,kind:"week",day:"2026-11-30"},filters:{}},
   {period,filters:{companyId:"another"}},
   {period:{...period,day:"2026-11-32"},filters:{}},
@@ -155,7 +154,6 @@ test("cross-month week and mismatched day/week range fail without showing anothe
   }
  });
  for(const p of [
-  {...period,kind:"week",day:"2026-11-01"},
   {...period,kind:"week",day:"2026-11-30"},
   {...period,kind:"day",day:"2026-11-12"}
  ])await assert.rejects(bridge.load({period:p,filters:{}}),/BRIDGE_BLOCKED/);
@@ -164,4 +162,32 @@ test("cross-month week and mismatched day/week range fail without showing anothe
   ...period,kind:"day",day:"2026-11-08"
  },filters:{}}),/BRIDGE_BLOCKED/,"wrong dated response must not render");
  assert.equal(fetches,1);
+});
+
+
+test("cross-month weeks are permitted only with server-verified exact seven-day range",async()=>{
+ const calls=[];
+ const bridge=createVerifiedJointMonthHttpBridge({
+  featureEnabled:true,auth,expectedRole:"partner_owner",
+  fetcher:async(url)=>{
+   calls.push(url);
+   return makeResponse({period:"week",range:{
+    start:"2026-10-26",end:"2026-11-01"}});
+  }
+ });
+ const result=await bridge.load({period:{
+  ...period,kind:"week",day:"2026-11-01"
+ },filters:{}});
+ assert.equal(result.range.start,"2026-10-26");
+ assert.equal(result.range.end,"2026-11-01");
+ assert.deepEqual(calls,[
+  "https://nico-factory.web.app/v1/owner-visible-counts?week=2026-11-01"
+ ]);
+ const wrong=createVerifiedJointMonthHttpBridge({
+  featureEnabled:true,auth,fetcher:async()=>makeResponse({period:"week",
+   range:{start:"2026-11-01",end:"2026-11-01"}})
+ });
+ await assert.rejects(wrong.load({period:{
+  ...period,kind:"week",day:"2026-11-01"
+ },filters:{}}),/BRIDGE_BLOCKED/);
 });
