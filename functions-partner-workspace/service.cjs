@@ -757,6 +757,12 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  async function view(request){
   const a=await actor(request),d=request?.data||{},date=validDate(d.date);
   const s=await scope(a.uid,null,d.workspaceCompanyId);
+  const correctionRequested=d.includeOwnerCorrectionEntries===true;
+  if(d.includeOwnerCorrectionEntries!==undefined&&
+     (!correctionRequested||s.kind!=="hub"||s.role!=="owner"||
+      ownerCorrectionEnabled()!==true||submissionPublicationEnabled()!==true||
+      !ID.test(d.partnerCompanyId||"")||d.includeTeamStatus!==undefined))
+   fail("invalid-argument");
   if(d.sharedCountRankings!==undefined){
    if(d.sharedCountRankings!==true||
       (d.rankingPeriod!==undefined&&
@@ -796,7 +802,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    registeredCompanies.sort((a,b)=>a.name.localeCompare(b.name,"ja"));
    // Explicitly scoped, on-demand shared-count breakdown. Never read
    // financial originals, private products, or reveal staff identities.
-   let partnerTeamDetails=null;
+   let partnerTeamDetails=null,ownerCorrectionEntries=null;
    const selectedPartnerId=clean(d.partnerCompanyId);
    if(selectedPartnerId){
     if(!ID.test(selectedPartnerId))fail("invalid-argument");
@@ -842,6 +848,45 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      teams:[...rows.values()].sort((a,b)=>a.name.localeCompare(b.name,"ja")),
      verifiedSharedCount,unverifiedTeamCount,scope:"shared_counts_only"
     };
+    if(correctionRequested){
+     // The hub Owner sees only count-only, bounded staff data of an already
+     // approved partner. No raw financial records or partner private catalog.
+     const blank=Object.fromEntries(KEYS.map(key=>[key,0]));
+     const policy=await verifySubmissionPublication({
+      tx:{get:ref=>ref.get()},
+      scope:{verifiedByServer:true,kind:"partner",uid:a.uid,
+       cid:selectedPartnerId,hubId:s.cid},
+      previousCounts:blank,nextCounts:blank
+     }).catch(()=>fail("failed-precondition"));
+     const peopleSnap=await collection(selectedPartnerId,"partnerWorkStaff").limit(151).get();
+     if(peopleSnap.size>150)fail("resource-exhausted");
+     const published=new Set(policy.enabledCategories);
+     const staff=peopleSnap.docs.map(doc=>{
+      const p=doc.data()||{};
+      if(!ID.test(doc.id)||p.companyId!==selectedPartnerId||
+         !validName(p.name)||!ID.test(p.teamId||"")||
+         typeof p.active!=="boolean")fail("data-loss");
+      return {id:doc.id,name:clean(p.name),teamId:p.teamId,
+       active:p.active===true};
+     });
+     const ids=new Set(staff.map(p=>p.id));
+     const records=entrySnaps.docs.map(doc=>{
+      const e=doc.data()||{},row=validateCounts(e.counts);
+      if(!ID.test(e.staffId||"")||!ids.has(e.staffId)||
+         e.companyId!==selectedPartnerId||e.hubCompanyId!==s.cid||
+         e.date!==date||!Number.isSafeInteger(e.version)||
+         e.version<1||e.version>999||row.total!==e.totalCount)
+       fail("data-loss");
+      const visible=Object.fromEntries(KEYS.map(k=>
+       [k,published.has(k)?row.counts[k]:0]));
+      return {staffId:e.staffId,version:e.version,counts:visible,
+       totalCount:Object.values(visible).reduce((a,b)=>a+b,0),
+       teamIdSnapshot:e.teamIdSnapshot??null};
+     });
+     ownerCorrectionEntries={partnerCompanyId:selectedPartnerId,
+      date,companyName:chosen.name,enabledCategories:policy.enabledCategories,
+      categories:KEYS,staff,records};
+    }
    }
    const qs=await collection(s.cid,"partnerWorkCountDays").doc(date)
     .collection("reports").limit(201).get();
@@ -930,11 +975,15 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    }
    return {role:"hub",date,partners,registeredCompanies,categories:KEYS,
     ...(partnerTeamDetails?{partnerTeamDetails}:{}),
+    ...(ownerCorrectionEnabled()===true&&submissionPublicationEnabled()===true?
+     {ownerCorrectionAvailable:true}:{}),
+    ...(ownerCorrectionEntries?{ownerCorrectionEntries}:{}),
     ...(teamReports?{teamReports,teamStatusComplete:true}:{})};
   }
   // Company-wide partner breakdown is reserved for a verified internal hub
   // Owner; do not silently ignore forged hub options in a partner session.
-  if(d.includeTeamStatus===true||d.partnerCompanyId!=null)fail();
+  if(d.includeTeamStatus===true||d.partnerCompanyId!=null||
+     d.includeOwnerCorrectionEntries!==undefined)fail();
   const [teams,staff,entries,privateProducts]=await Promise.all([
     collection(s.cid,"partnerWorkTeams").limit(151).get(),
     collection(s.cid,"partnerWorkStaff").limit(151).get(),
