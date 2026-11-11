@@ -1123,6 +1123,9 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      const policy=await verifySubmissionPublication({tx,
       scope:{verifiedByServer:true,kind:target.kind,uid:a.uid,cid:target.cid,hubId:target.hubId},
       previousCounts:prior,nextCounts:prior});
+     // A completely OFF catalog is not a zero-count submission. Reject
+     // rather than create a misleading new version or no-op audit entry.
+     if(policy.enabledCategories.length===0)fail("failed-precondition");
      const allowed=new Set(policy.enabledCategories);
      effectiveCounts={...counts};
      for(const key of KEYS)if(!allowed.has(key)){
