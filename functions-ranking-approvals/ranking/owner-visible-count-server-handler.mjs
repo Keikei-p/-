@@ -43,9 +43,8 @@ function validDay(day){
  return t.getUTCFullYear()===y&&t.getUTCMonth()+1===m&&t.getUTCDate()===d;
 }
 
-// An authenticated monthly snapshot can safely answer a DAY or a WEEK only
-// if every requested day belongs to that same canonical month. Cross-month
-// weeks require a separate complete, atomic two-month reader: fail closed.
+// A week spanning two months requires BOTH complete monthly originals
+// reconciled under one atomic Firestore read-only transaction.
 function requestedPeriod(params){
  const keys=[...params.keys()];
  if(keys.length!==1||!["month","day","week"].includes(keys[0]))
@@ -62,9 +61,13 @@ function requestedPeriod(params){
   monday.setUTCDate(monday.getUTCDate()-((monday.getUTCDay()+6)%7));
   const sunday=new Date(monday);
   sunday.setUTCDate(sunday.getUTCDate()+6);
-  if(monday.toISOString().slice(0,7)!==month||
-     sunday.toISOString().slice(0,7)!==month)
-   throw new Block(400); // never publish an incomplete weekly total
+  const startMonth=monday.toISOString().slice(0,7);
+  const endMonth=sunday.toISOString().slice(0,7);
+  // One week can intersect at most two months. The secondary month is
+  // authenticated and loaded in the same snapshot; never accept client IDs.
+  if(startMonth!==endMonth)
+   return {kind,month,day:value,
+    secondMonth:startMonth===month?endMonth:startMonth};
  }
  return {kind,month,day:value};
 }
@@ -100,7 +103,7 @@ export function createStagedOwnerVisibleCountHandler({
    if(origin&&origin!==ORIGIN)throw new Block(403);
    const url=new URL(request.url);
    if(url.pathname!==PATH||url.origin!==ORIGIN)throw new Block(404);
-   const {kind,month,day}=requestedPeriod(url.searchParams);
+   const {kind,month,day,secondMonth}=requestedPeriod(url.searchParams);
    const token=request.headers.get("Authorization")?.match(TOKEN)?.[1];
    if(!token)throw new Block(401);
    let principal;
@@ -110,8 +113,9 @@ export function createStagedOwnerVisibleCountHandler({
    // spanning canonical counts and owner publication. The legacy staged
    // loader remains for offline tests, but is NOT production-release ready.
    let input,publication;
+   if(secondMonth&&!atomic)throw new Block();
    if(atomic){
-    const pair=await loadAtomicVerifiedCountSnapshot({month,context});
+    const pair=await loadAtomicVerifiedCountSnapshot({month,context,secondMonth});
     input=pair?.input;publication=pair?.publication;
     if(typeof input?.snapshotReadTime!=="string"||
        publication?.snapshotReadTime!==input.snapshotReadTime||
@@ -126,7 +130,14 @@ export function createStagedOwnerVisibleCountHandler({
       !input.period||input.period.kind!=="month"||
       input.period.day!==month+"-01"||
       !validDay(input.period.asOf)||
-      input.period.asOf.slice(0,7)!==month||
+      (secondMonth?
+       ![month,secondMonth].includes(input.period.asOf.slice(0,7)):
+       input.period.asOf.slice(0,7)!==month)||
+      (secondMonth&&(!Array.isArray(input.verifiedMonths)||
+       input.verifiedMonths.length!==2||
+       input.verifiedMonths[0]!==month||
+       input.verifiedMonths[1]!==secondMonth||
+       input.sources.some(s=>s.completeWindows?.previous!==true)))||
       !Array.isArray(input.sources)||!Array.isArray(input.productGroups)||
       input.sources.length!==context.approvedCompanyIds.length||
       input.mappingsReviewed!==true)
