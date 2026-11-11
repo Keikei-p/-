@@ -22,7 +22,7 @@ const reviewed=Object.freeze({
  "functions-partner-workspace/index.js":"90d51246477cf5cfa6966f3e822326ef06cccd0f",
  "functions-partner-workspace/service.cjs":"614f3216e008642ddf5eda6b93c35cc0469557c3",
  "functions-partner-workspace/submission-publication-guard.cjs":"a56ae6100ce70602ed90233af038549129941cd9",
- "ranking/partner-submission-publication-guard.mjs":"17efb452199d5b147859c5aae4403c2ed8d36deb",
+ "ranking/partner-submission-publication-guard.mjs":"273359cd7f8a6aee40fba54a1a91a2557ef817b9",
  "tests/partner-submission-publication-guard.test.mjs":"f9c1725a60b638e88cdca42a5d178d8c56cb6a4f",
  "tests/partner-workspace.test.cjs":"decec4fa1278aa13a82a8a795ac3950a615f6520",
  "partner-workspace.html":"431b200e02934315eda57b6998bdde801252f78f",
