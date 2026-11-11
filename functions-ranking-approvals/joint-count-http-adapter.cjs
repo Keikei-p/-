@@ -87,9 +87,34 @@ const rankRows=(rows,keys)=>Array.isArray(rows)&&rows.length<=10000&&
   Number.isSafeInteger(row.count)&&row.count>=0&&
   keys.filter(k=>["name","company"].includes(k)).every(k=>
    typeof row[k]==="string"&&row[k].trim().length>0));
+// The shared allowlist covers both roles. Enforce the exact role envelope too:
+// otherwise a partner response could smuggle hub-only aggregate fields that
+// happen to be individually allowlisted (for example partner/total/people).
+const HUB_ENVELOPE=["schema","role","unit","period","range","readTime",
+ "summary","memberRanking","productRanking","companyBreakdown","teamBreakdown","filters"];
+const PARTNER_ENVELOPE=["schema","role","unit","period","range","readTime",
+ "own","publicRanking"];
+const PARTNER_OWN_FIELDS=new Set(["company","count","unidentifiedCount","people","products"]);
+const OWN_PRODUCT_ROW=["id","name","count"];
+const OWN_PERSON_ROW=["id","name","companyId","companyName","teamId",
+ "teamName","count","reportStatus","reportedDays","previousCount",
+ "change","growth","topProduct","remainingToGoal","personalBestStatus","rank"];
+const ownRows=(rows,keys)=>Array.isArray(rows)&&rows.length<=10000&&
+ rows.every(row=>exact(row,keys)&&Number.isSafeInteger(row.count)&&row.count>=0);
+function partnerOwnScopeSafe(ownData){
+ if(!ownData||typeof ownData!=="object"||Array.isArray(ownData)||
+    Object.keys(ownData).some(key=>!PARTNER_OWN_FIELDS.has(key))||
+    !Number.isSafeInteger(ownData.count)||ownData.count<0)return false;
+ if(own(ownData,"company")&&typeof ownData.company!=="string")return false;
+ if(own(ownData,"unidentifiedCount")&&
+    (!Number.isSafeInteger(ownData.unidentifiedCount)||
+     ownData.unidentifiedCount<0||ownData.unidentifiedCount>ownData.count))return false;
+ if(own(ownData,"people")&&!ownRows(ownData.people,OWN_PERSON_ROW))return false;
+ if(own(ownData,"products")&&!ownRows(ownData.products,OWN_PRODUCT_ROW))return false;
+ return true;
+}
 function partnerPublicScopeSafe(data){
- if(["summary","memberRanking","productRanking","companyBreakdown",
-      "teamBreakdown","filters"].some(key=>own(data,key)))return false;
+ if(!exact(data,PARTNER_ENVELOPE)||!partnerOwnScopeSafe(data.own))return false;
  const p=data.publicRanking;
  if(!p||typeof p!=="object"||Array.isArray(p)||
     !own(p,"members")||!own(p,"products")||
@@ -166,7 +191,8 @@ function createJointCountHttpAdapter({enabled=()=>false,loadHandler}={}){
     if(!data||data.schema!=="nico-verified-dual-count-v1"||
        !["hub_owner","partner_owner"].includes(data.role)||
        !moneyFree(data)||
-       (data.role==="partner_owner"&&!partnerPublicScopeSafe(data)))fail();
+       (data.role==="partner_owner"&&!partnerPublicScopeSafe(data))||
+       (data.role==="hub_owner"&&!exact(data,HUB_ENVELOPE)))fail();
    }else if(!data||typeof data!=="object"||Array.isArray(data)||
             Object.keys(data).length!==1||
             !["request_blocked","service_disabled"].includes(data.error))fail();
