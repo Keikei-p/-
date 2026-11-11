@@ -475,6 +475,7 @@ async function mountVerifiedJointMonthForPartner(){
   const root=$("nicoVerifiedPartnerJointCountMonth");
   verifiedJointMonthMount=mountVerifiedJointMonthCountDashboard({
    featureEnabled:true,document,root,auth,
+   expectedRole:"partner_owner",
    fetcher:window.fetch.bind(window),
    endpoint:"https://asia-northeast1-sales-management-cc116.cloudfunctions.net/getVerifiedJointCountRanking",
    asOf:today.year+"-"+today.month+"-"+today.day,
