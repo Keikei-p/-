@@ -56,3 +56,21 @@ test("this release staging does not add an API rewrite or any automatic producti
  assert.doesNotMatch(workflow,/\/v1\/owner-visible-counts/);
  assert.doesNotMatch(copy,/firebase deploy|firestore:rules|functions:/);
 });
+
+
+test("same-app joint count runtime assets are in the manually staged Hosting package",()=>{
+ const html=fs.readFileSync(path.join(root,"index.html"),"utf8");
+ const bridge="ranking/verified-joint-month-http-bridge.mjs";
+ const view="ranking/verified-dual-count-view.mjs";
+ const css="ranking/verified-dual-count-view.css";
+ assert.match(html,/import\(\s*["']\.\/ranking\/verified-joint-month-http-bridge\.mjs["']\s*\)/);
+ assert.match(html,/sameAppJointMonthStyle\.href=["']\.\/ranking\/verified-dual-count-view\.css["']/);
+ const source=fs.readFileSync(path.join(root,bridge),"utf8");
+ assert.match(source,/from\s+["']\.\/verified-dual-count-view\.mjs["']/);
+ for(const asset of [bridge,view,css]){
+  assert(fs.statSync(path.join(root,asset)).isFile(),asset+" missing");
+  assert(verification.includes("'"+asset+"'"),asset+" missing in preflight");
+  assert(copy.includes(asset),asset+" missing in staging copy");
+ }
+ assert.doesNotMatch(workflow,/^  (?:push|pull_request|schedule):/m);
+});
