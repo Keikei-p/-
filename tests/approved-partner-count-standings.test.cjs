@@ -195,3 +195,55 @@ test("fully unpublished partner name never appears even when it has no reports",
  assert.equal(enabled.companies.length,1);
  assert.equal(enabled.partnerCountsComplete,false);
 });
+
+test("zero-count submissions with missing historical attribution never certify complete ranks",()=>{
+ const teamLost=company("a","A社",zero());
+ teamLost.entries[0].data.teamIdSnapshot=null;
+ const teamOutput=build([teamLost]);
+ assert.equal(teamOutput.totalCount,0);
+ assert.equal(teamOutput.reportCount,1);
+ assert.equal(teamOutput.partnerCountsComplete,true);
+ assert.equal(teamOutput.unverifiedTeamCount,0,
+  "zero numeric unidentified total must not imply verified attribution");
+ assert.equal(teamOutput.teams.length,0);
+ assert.equal(teamOutput.teamComplete,false);
+ assert.equal(teamOutput.peopleComplete,true);
+ assert.equal(teamOutput.people.length,1);
+
+ const personLost=company("a","A社",zero());
+ personLost.entries[0].data.staffNameSnapshot=null;
+ const personOutput=build([personLost]);
+ assert.equal(personOutput.totalCount,0);
+ assert.equal(personOutput.unverifiedPersonCount,0);
+ assert.equal(personOutput.people.length,0);
+ assert.equal(personOutput.companies[0].peopleVerified,false);
+ assert.equal(personOutput.peopleComplete,false);
+ assert.equal(personOutput.teamComplete,true);
+ assert.equal(personOutput.teams.length,1);
+});
+test("historical company-only zero cannot falsely certify personal and team ranks",()=>{
+ const legacy=company("a","旧会社",zero());
+ legacy.entries=[];
+ legacy.reports[0].data.source="quick-counts-v1";
+ const output=build([legacy]);
+ assert.equal(output.totalCount,0);
+ assert.equal(output.reportCount,1);
+ assert.equal(output.historicalCompanyOnlyCount,0);
+ assert.equal(output.companies.length,1);
+ assert.equal(output.companies[0].peopleVerified,false);
+ assert.equal(output.people.length,0);
+ assert.equal(output.teams.length,0);
+ assert.equal(output.peopleComplete,false);
+ assert.equal(output.teamComplete,false);
+});
+test("one company's zero-count unknown person does not mark another company's verified staff unverified",()=>{
+ const unverified=company("a","A社",zero());
+ unverified.entries[0].data.staffNameSnapshot=null;
+ const valid=company("b","B社",zero());
+ const output=build([unverified,valid]);
+ assert.equal(output.companies.find(c=>c.name==="A社").peopleVerified,false);
+ assert.equal(output.companies.find(c=>c.name==="B社").peopleVerified,true);
+ assert.equal(output.peopleComplete,false);
+ assert.equal(output.people.length,1);
+ assert.equal(output.people[0].name,"担当者");
+});
