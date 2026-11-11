@@ -8,6 +8,7 @@ on:
       - 'partner-workspace.html'
       - 'tests/partner-workspace.test.cjs'
       - 'tests/approved-partner-count-standings.test.cjs'
+      - 'tests/partner-published-count-browser-contract.test.cjs'
       - '.github/workflows/nico-partner-published-count-input-no-deploy.yml'
 permissions:
   contents: read
@@ -25,4 +26,4 @@ jobs:
           node --check functions-partner-workspace/service.cjs
           node --check functions-partner-workspace/shared-count-standings.cjs
       - name: Test partner ON/OFF read-write contract and stable ranking identities
-        run: node --test tests/partner-workspace.test.cjs tests/approved-partner-count-standings.test.cjs
+        run: node --test tests/partner-workspace.test.cjs tests/approved-partner-count-standings.test.cjs tests/partner-published-count-browser-contract.test.cjs
